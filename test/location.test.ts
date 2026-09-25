@@ -178,9 +178,28 @@ describe('location master data (ADR-0054)', () => {
     const update = src.slice(src.indexOf('export async function updateLocationAction'));
     const body = update.slice(0, update.indexOf('export async function', 1));
     expect(body, 'the Save must not post a state').not.toContain("fd.get('state')");
-    // …and the fields it DOES still post, so this cannot pass on an action that stopped posting anything.
+    expect(body, 'nor mention the column at all on the update path').not.toContain('state');
+    /**
+     * 639bf4a5 rev 2 (r338) — READ THROUGH THE SHARED CONTRACT NOW, NOT FIELD BY FIELD. The four
+     * `fd.get('<field>')` calls this loop used to look for are one `for (const field of LOCATION_FIELDS)`
+     * in app/admin/work-locations/location-fields.ts: the form, the action and the refusal echo all read
+     * ONE list, so the page cannot post a field the action never reads. The property is unchanged and is
+     * still asserted in both halves — the contract names exactly the four fields ADR-0086 left editable,
+     * and the action really does hand each of them to the service — so this still cannot pass on an
+     * action that stopped posting anything.
+     */
+    const fields = readFileSync(
+      resolvePath(__dirname, '..', 'app/admin/work-locations/location-fields.ts'),
+      'utf8',
+    );
+    expect(fields, 'the contract names the four fields, and no state').toContain(
+      "export const LOCATION_FIELDS = ['code', 'name', 'country', 'branch'] as const;",
+    );
+    expect(src, 'the action reads the posted values through that one list').toContain(
+      'for (const field of LOCATION_FIELDS) out[field] = String(fd.get(field) ?? \'\');',
+    );
     for (const kept of ['code', 'name', 'country', 'branch']) {
-      expect(body, `${kept} is still posted`).toContain(`fd.get('${kept}')`);
+      expect(body, `${kept} is still handed to the service`).toContain(`${kept}: typed.${kept}`);
     }
   });
 

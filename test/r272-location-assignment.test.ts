@@ -16,7 +16,16 @@ import { readFileSync } from 'node:fs';
 
 const CARD = 'app/admin/personnel/[employmentId]/page.tsx';
 const PICKER = 'components/attendance/location-assignment.tsx';
-const ADMIN = 'app/admin/work-locations/page.tsx';
+/**
+ * 639bf4a5 rev 2 (r338) — RE-POINTED, NOT LOOSENED. This read the REGISTER
+ * (app/admin/work-locations/page.tsx), because that is where a clocking point's row was rendered when
+ * r272 shipped. The register is a COMPANY LISTING now — Company | Location | Status | Action, no rows of
+ * its own — and every point's row moved verbatim to app/admin/work-locations/clocking-points.tsx, which
+ * the location's own View / Edit screens and the unlinked-points screen all render. Every property r272
+ * won is asserted below exactly as before, at the file that now holds it; a guard left reading the old
+ * file would have gone quietly vacuous the moment the rows moved.
+ */
+const ADMIN = 'app/admin/work-locations/clocking-points.tsx';
 const read = (p: string) => readFileSync(p, 'utf8');
 const card = read(CARD);
 const picker = read(PICKER);
@@ -126,7 +135,15 @@ describe('§C · the two remaining cosmetic couplings', () => {
     // A clocking site has had no company since 0459. What it optionally links to is a `location`, which
     // IS company-scoped — printing that company made the whole register read as company configuration.
     expect(admin).not.toContain('g.companyName ? ` · ${g.companyName}` : \'\'');
-    expect(admin, 'the location’s own identity stays').toContain('{g.code} · {g.name}');
+    // 639bf4a5 rev 2 (r338) — the group HEADING that carried `{g.code} · {g.name}` is gone with the
+    // register's grouping: a point's rows now hang under the location's OWN screen, which is headed by
+    // that location. So the identity is asserted where it went — on the Edit screen's page header — and
+    // the "no company name on a point" half stays here, on the rows themselves.
+    const edit = read('app/admin/work-locations/[id]/edit/page.tsx');
+    expect(edit, 'the location’s own identity heads the screen its points hang off').toContain(
+      '`${site.companyName} · ${site.code} · ${site.name}`',
+    );
+    expect(admin, 'and a point’s row still names no company of its own').not.toContain('companyName');
   });
 
   it('the branch-unmapped sentence stops sending a holiday-calendar problem to the clocking screen', () => {
@@ -153,9 +170,13 @@ describe('§D · the list says what state a site is in, and lets a reader open i
   it('a reader who may not edit still gets a way in', () => {
     // clocking/[id]/page.tsx already renders a read-only fact list for a non-group-admin; nothing linked
     // to it, so the only people who could open a site were the ones allowed to change it.
-    expect(admin).toContain('{!groupAdmin && (');
-    const at = admin.indexOf('{!groupAdmin && (');
-    expect(admin.slice(at, at + 300)).toContain("t('view')");
+    // 639bf4a5 rev 2 (r338) — the flag is `manage` now, not `groupAdmin`: the same rows render on three
+    // screens (a location's View, a location's Edit, and the unlinked-points screen) and only ONE of
+    // them offers the controls, so the component takes the decision as a prop rather than re-deriving
+    // it. The property r272 won is unchanged and still asserted: a reader who may not edit gets a View.
+    expect(admin).toContain('{!manage && (');
+    const at = admin.indexOf('{!manage && (');
+    expect(admin.slice(at, at + 700)).toContain("t('view')");
   });
 
   it('every string this round minted exists in all six catalogues and is translated', () => {

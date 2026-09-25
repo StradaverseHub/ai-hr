@@ -21,7 +21,6 @@ import {
   Wand2,
   LayoutDashboard,
   ListChecks,
-  MapPin,
   MessageSquareText,
   Megaphone,
   Network,
@@ -407,28 +406,32 @@ const GROUPS: Group[] = [
     items: [
       { href: '/admin/organization', labelKey: 'organization', icon: Building2, tour: 'nav-admin' },
       /**
-       * 639bf4a5 (r336) — PHYSICAL WORK LOCATION. The row MOVED here from the attendance pack's
-       * Attendance settings node (packs/attendance/index.ts), where it read "Clocking location" and
-       * pointed at /admin/locations. The screen moved with it, to /admin/work-locations; the old
-       * addresses are guarded redirect stubs so no bookmark 404s.
+       * 639bf4a5 rev 2 (r338) — THE PHYSICAL WORK LOCATION ROW STOOD HERE and is DELIBERATELY GONE.
        *
-       * WHY IT BELONGS BESIDE ORGANIZATION. A place the company operates from is master data: every row
-       * is `location.companyId`-scoped, RLS gates it by app.is_admin_for(company_id), it carries the
-       * BRANCH MAPPING that the Personnel Attendance tab proposes work locations from, and it is the
-       * ONLY screen in the product where a work site can be created or edited at all. Filing it under
-       * Attendance also had the 4509d2b8 cost: `attendance` is billable (isCore:false in
-       * packs/catalog.ts), so MODULE_OF_HREF hid the organization's own site register — and its branch
-       * mapping — from any tenant that had not bought attendance. Here it is owned by no sellable
-       * module and shows for every administrator.
+       * r336 moved it in from the attendance pack's settings node and renamed it; it shipped, and the
+       * reporter contested it. They asked for the screen back under ATTENDANCE, renamed "Locations",
+       * with a company-based listing and dedicated Add / View / Edit screens. That is their decision and
+       * it is approved, so the row is a child of ATTENDANCE_NAV again (packs/attendance/index.ts,
+       * labelKey `locations`). The line is DESCRIBED, never quoted: four exact-set guards grep this file
+       * for that literal, and a commented-out row is still a row somebody uncomments.
        *
-       * A FLAT ROW DIRECTLY UNDER Organization, not a child of it: /admin/organization is not a flyout
-       * node (its "Companies" and "Group structure" are SECTIONS of that one page, not routes), and it
-       * deliberately has no exactHref, so a route nested under /admin/organization/… would light two
-       * rows at once (components/nav-flyout.tsx isNavRowActive is a segment-prefix match).
+       * ⚠️ WHAT DID NOT MOVE WITH IT. The ROUTE is still `/admin/work-locations` — the reporter asked to
+       * rename the FUNCTION, not the address, and moving it a second time in two days would churn every
+       * bookmark again and need the three `/admin/locations` redirect stubs re-pointed for nothing. Nor
+       * did `screenKey: 'locations'` (lib/permissions.ts), which is a permission identity stored role
+       * configs may name.
        *
-       * MapPin is the glyph it carried under Attendance and no sibling in this group uses it.
+       * ⚠️ AND IT IS MODULE-GATED AGAIN, KNOWINGLY. MODULE_OF_HREF above is built by flatMap over the
+       * attendance pack's nav children and `attendance` is BILLABLE, so the row's return re-gates this
+       * register behind the attendance entitlement — the 4509d2b8 Holidays argument, in reverse. The
+       * tenant HAS attendance, so nothing changes for them today; a future Leave-only customer would have
+       * no route to the work-site register or its branch mapping. The plan said so and offered to keep it
+       * un-gated; the reporter did not answer, so their structure is built as they described it and the
+       * un-gating stays a one-line change. See app/admin/work-locations/page.tsx.
+       *
+       * MapPin left this file with the row — no sibling here used it, and the pack's own node is where it
+       * is drawn now.
        */
-      { href: '/admin/work-locations', labelKey: 'physicalWorkLocation', icon: MapPin },
       { href: '/admin/personnel', labelKey: 'personnelAdmin', icon: Users },
       // a4e49748: the three system-wide setup rows (Employee ID numbering / Dashboard cards / System
       // Labels) collapsed into the single System Settings node above.

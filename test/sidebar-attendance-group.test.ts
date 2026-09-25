@@ -57,6 +57,10 @@ const SRC = SIDEBAR + PACK;
 const TICKET_HREFS = [
   '/admin/attendance',
   '/admin/attendance-allowance',
+  // 639bf4a5 rev 2 (r338) — the Locations register is a child of this node again, at its r336 address
+  // (TICKET_RE_ADDRESSED below). DECLARED here rather than the list being left short, so the "each child
+  // is admin-gated" case below covers it the way it covered it before r336 moved it out.
+  '/admin/work-locations',
 ] as const;
 
 /**
@@ -79,26 +83,36 @@ const TICKET_FOLDED = ['/admin/toil'] as const;
 const TICKET_MOVED_OUT = ['/admin/holidays'] as const;
 
 /**
- * 639bf4a5 (r336) — the SECOND ticket screen to leave this node, and the first to change address doing it.
+ * 639bf4a5 — the ticket screen that LEFT this node and then CAME BACK, at the address r336 gave it.
  *
- * Clocking Location is Administration › Physical Work Location now, at `/admin/work-locations`, a flat row
- * beside Organization in components/sidebar.tsx. The work-site register is `location.companyId`-scoped
- * master data — it carries the branch mapping and is the only editor of either — and while it hung off
- * this node MODULE_OF_HREF gated it behind the billable `attendance` module, which is the same fault
- * 4509d2b8 moved Holidays out for. The clocking points moved with the site at the reporter's approval.
+ * ⚠️ REWRITTEN, NOT LOOSENED, AND IT NOW ASSERTS THE OPPOSITE OF WHAT IT DID. r336 moved Clocking
+ * Location out to Administration › Physical Work Location, and this constant said so: the case below
+ * asserted the row was NOT a child of this node and WAS a row in components/sidebar.tsx. That shipped,
+ * and the reporter contested it — they want the screen under ATTENDANCE, renamed "Locations", with a
+ * company listing and dedicated screens. Their structure to decide. So r338 puts the row back HERE and
+ * this guard follows the decision rather than the round that made it.
  *
- * Declared as a PAIR (`was` → `now`) rather than a bare href, because the rail-wide invariants below have
- * to be asserted at the address the row carries today: "exactly once across the rail" read at the OLD
- * address would be satisfied by a row that no longer exists anywhere. The old address is not gone — it is
- * a guarded redirect stub — it simply has no menu row, which is asserted too.
+ * STILL A PAIR (`was` → `now`), and still for the r336 reason: the ADDRESS did not come back with the
+ * row. `/admin/work-locations` is what the row carries — the reporter asked to rename the function, not
+ * the URL — and `/admin/locations` is a guarded redirect stub with no menu row anywhere, which is the
+ * half asserted negatively. Reading the rail-wide invariants at the OLD address would pass on a row that
+ * exists nowhere at all.
+ *
+ * ⚠️ AND THE GATING CONSEQUENCE IS BACK WITH IT, knowingly. MODULE_OF_HREF is built by flatMap over this
+ * node's children and `attendance` is billable, so the register is entitlement-gated again — the
+ * 4509d2b8 argument in reverse. The tenant has attendance; the plan said so and offered to keep it
+ * un-gated; the reporter did not answer. Recorded here so the next reader does not read the reversal as
+ * an accident.
  */
 const TICKET_RE_ADDRESSED = [{ was: '/admin/locations', now: '/admin/work-locations' }] as const;
 
-/** Every ticket screen, wherever it now lives — the rail-wide invariants below hold for all five. */
+/**
+ * Every ticket screen, wherever it now lives — the rail-wide invariants below hold for all five.
+ * DEDUPED since r338: the re-addressed row is a child of this node again, so it is in TICKET_HREFS too,
+ * and "exactly once across the rail" must be one assertion about one href rather than two.
+ */
 const ALL_TICKET_HREFS = [
-  ...TICKET_HREFS,
-  ...TICKET_MOVED_OUT,
-  ...TICKET_RE_ADDRESSED.map((r) => r.now),
+  ...new Set<string>([...TICKET_HREFS, ...TICKET_MOVED_OUT, ...TICKET_RE_ADDRESSED.map((r) => r.now)]),
 ] as const;
 
 /**
@@ -114,10 +128,11 @@ const ALL_TICKET_HREFS = [
  * the part of the ticket order this item did not touch, so it is still asserted.
  */
 // 3fb1a611 (r299) — two long now: /admin/toil was folded into Leave Credit (TICKET_FOLDED above).
-// 639bf4a5 (r336) — ONE long now: Clocking Location left the node (TICKET_RE_ADDRESSED above), so the
-// "relative order among themselves" the ticket asked for has only one member left inside this node and the
-// sequence case below says so rather than asserting an order over a single element.
-const TICKET_TAIL_HREFS = ['/admin/attendance-allowance'] as const;
+// 639bf4a5 (r336) — ONE long: Clocking Location left the node. rev 2 (r338) — TWO again, because the row
+// came back (TICKET_RE_ADDRESSED above) and came back IN THE TICKET'S OWN ORDER: Attendance allowance,
+// then the Locations register, exactly where 5cb199b3 put them relative to each other. It is at its new
+// address, which is why the second entry is the `now` spelling and not the `was` one.
+const TICKET_TAIL_HREFS = ['/admin/attendance-allowance', '/admin/work-locations'] as const;
 
 /** One of the node literals (packs/attendance/index.ts): declaration to the closing `};`. */
 function nodeBlock(constName: string): string {
@@ -150,7 +165,7 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     expect(node).toMatch(/labelKey:\s*'attendanceSettings'/);
   });
 
-  it('contains the four remaining ticket screens as children, with the tail in the ticket order', () => {
+  it('contains the ticket screens that live in this node as children, with the tail in the ticket order', () => {
     for (const href of TICKET_HREFS) {
       expect(node.indexOf(`'${href}'`), `${href} is a child of the Attendance settings node`).toBeGreaterThan(-1);
     }
@@ -169,19 +184,20 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     }
   });
 
-  it('639bf4a5: Clocking Location has LEFT this node — for Administration, at a new address, not for nowhere', () => {
-    // Stated positively, both halves, exactly as the Holidays case below: gone from the attendance node
-    // AND present in the Administration group. A row deleted from one file and never added to the other
-    // passes "not here" and strands the only screen that can create a work site.
+  it('639bf4a5 rev 2: the Locations register is a child of THIS node again, at its r336 address', () => {
+    // ⚠️ THIS ASSERTED THE OPPOSITE UNTIL r338, and the reversal is the reporter's. Stated positively in
+    // both directions, exactly as the Holidays case below: the row IS a child of the attendance node and
+    // is NOT a row in components/sidebar.tsx — a row added here and never removed there would render the
+    // register TWICE, which is the likeliest way to get this wrong.
     for (const { was, now } of TICKET_RE_ADDRESSED) {
-      expect(node.indexOf(`'${was}'`), `${was} is NOT a child of the Attendance settings node`).toBe(-1);
-      expect(node.indexOf(`'${now}'`), `${now} is NOT a child of the Attendance settings node either`).toBe(-1);
-      expect(countQuoted(SIDEBAR, now), `${now} is a row in components/sidebar.tsx`).toBe(1);
+      expect(node.indexOf(`'${now}'`), `${now} is a child of the Attendance settings node`).toBeGreaterThan(-1);
+      expect(countQuoted(SIDEBAR, now), `${now} must have no hand-written row in components/sidebar.tsx`).toBe(0);
       // …and the OLD address keeps no row anywhere, while still resolving as a guarded redirect stub.
+      expect(node.indexOf(`'${was}'`), `${was} is NOT a child of the node — the route did not move back`).toBe(-1);
       expect(countQuoted(SRC, was), `${was} must have no menu row left anywhere in the rail`).toBe(0);
       const stub = fs.readFileSync(path.resolve(__dirname, '..', `app${was}`, 'page.tsx'), 'utf8');
       expect(stub, `${was} must still resolve, guard first, as a redirect to ${now}`).toContain('requireAdmin()');
-      expect(stub, `${was} must forward to the register's new address`).toContain('LOCATIONS_LIST');
+      expect(stub, `${was} must forward to the register's address`).toContain('LOCATIONS_LIST');
     }
   });
 
@@ -243,7 +259,7 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     }
   });
 
-  it('admin-gates each of the four remaining children (permissions unchanged by the move)', () => {
+  it('admin-gates each of this node\u2019s ticket children (permissions unchanged by either move)', () => {
     for (const href of TICKET_HREFS) {
       const line = node.split('\n').find((l) => l.includes(`'${href}'`));
       expect(line, `child row for ${href}`).toBeDefined();

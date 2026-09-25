@@ -276,16 +276,42 @@ describe('f9afd1ce — the two screens', () => {
     expect(page).not.toContain("tc('noSites')");
   });
 
-  it('the locations page renders ONE tenant-level block and NO clocking form; the page of its own gates on isGroupAdmin and posts no companyId (rev 2, r267)', () => {
+  it('the clocking rows render ONE tenant-level register beside the location they belong to, and NO clocking form; the page of its own gates on isGroupAdmin and posts no companyId (rev 2, r267)', () => {
+    /**
+     * 639bf4a5 rev 2 (r338) — RE-POINTED, NOT LOOSENED. Until this round the assertions below read the
+     * REGISTER (app/admin/work-locations/page.tsx), which rendered every clocking point in the tenant.
+     * The register is a COMPANY LISTING now — the reporter asked for Company | Location | Status |
+     * Action with no rows of its own — and the points moved onto the location's OWN screens, with the
+     * ones that link to no location on a screen of their own. So each property f9afd1ce won is asserted
+     * at the file that now holds it: the shared row component, the Edit screen that renders it with its
+     * controls, and the unlinked-points screen. The one about the REGISTER that still belongs to the
+     * register is asserted there — that it renders no clocking form, which is now trivially true because
+     * it renders no form at all.
+     */
+    const rows = read('app/admin/work-locations/clocking-points.tsx');
+    const edit = read('app/admin/work-locations/[id]/edit/page.tsx');
+    const offRegister = read('app/admin/work-locations/clocking/page.tsx');
     const page = read('app/admin/work-locations/page.tsx');
-    expect(page).toContain('const groupAdmin = isGroupAdmin(s);');
-    expect(page).toContain('await listClockingLocations(s, { includeArchived: true })');
-    expect(page).toContain("t('sharedManagedByGroupAdmin')");
-    expect(page).toContain("t('usedBy')");
-    // rev 2 (r267): the create / edit forms MOVED to app/admin/work-locations/clocking/*. The list posts nothing
-    // for a site beyond Archive / Restore / Delete; the form of its own is gated the way the list's was.
-    expect(page).not.toContain('action={createClockingLocationAction}');
-    expect(page).not.toContain('action={updateClockingLocationAction}');
+    expect(edit).toContain('const groupAdmin = isGroupAdmin(s);');
+    expect(offRegister).toContain('const groupAdmin = isGroupAdmin(s);');
+    // ONE tenant-level read, still through the pack's published facade, still including archived rows.
+    for (const src of [edit, offRegister, page]) {
+      expect(src).toContain('await listClockingLocations(s, { includeArchived: true })');
+      expect(src, 'through the facade, never the implementation').toContain("from '@/packs/attendance/service'");
+    }
+    expect(edit).toContain("t('sharedManagedByGroupAdmin')");
+    expect(offRegister).toContain("t('sharedManagedByGroupAdmin')");
+    expect(rows).toContain("t('usedBy')");
+    // rev 2 (r267): the create / edit forms MOVED to app/admin/work-locations/clocking/*. The rows post
+    // nothing for a site beyond Archive / Restore / Delete; the form of its own is gated as the list's was.
+    for (const src of [rows, edit, offRegister, page]) {
+      expect(src).not.toContain('action={createClockingLocationAction}');
+      expect(src).not.toContain('action={updateClockingLocationAction}');
+    }
+    // 639bf4a5 rev 2 — and the REGISTER carries no <form> of ANY kind: Add, View and Edit each open a
+    // screen of their own, which is the reporter's own requirement and is what makes the line above
+    // true for reasons that cannot quietly stop holding.
+    expect(page, 'the company listing renders no form at all').not.toContain('<form');
     const form = read('app/admin/work-locations/clocking/clocking-form.tsx');
     expect(form).toContain("action={mode === 'edit' ? updateClockingLocationAction : createClockingLocationAction}");
     // The clocking form used to carry <input type="hidden" name="companyId" …> — only the per-company
@@ -314,7 +340,6 @@ describe('f9afd1ce — the two screens', () => {
         people: { detail: { clocking: Record<string, string> } };
       };
       for (const k of [
-        'clockingSharedTitle',
         'sharedManagedByGroupAdmin',
         'usedBy',
         'coordinates',
@@ -335,10 +360,27 @@ describe('f9afd1ce — the two screens', () => {
         'radiusMetresLabel',
         'cancel',
         'saved',
+        // 639bf4a5 rev 2 (r338) — what replaced the two retired headings, on the screens that exist now.
+        'clockingPointsHeading',
+        'offRegisterTitle',
+        'offRegisterDescription',
+        'offRegisterLink',
       ]) {
         expect(m.admin.locations[k], `${loc} admin.locations.${k}`).toBeTruthy();
       }
       expect(m.admin.locations.noLocationsForCompany, `${loc} retired key`).toBeUndefined();
+      /**
+       * 639bf4a5 rev 2 (r338) — MOVED FROM THE MUST-EXIST LIST ABOVE TO HERE, the same way `sectionInfo`
+       * was below. `clockingSharedTitle` ("Shared clocking locations") and `clockingHeading` ("Clocking
+       * locations — shared across companies") headed the tenant-wide register on the main page. That page
+       * is a COMPANY LISTING now and the points render under the location they belong to, so neither
+       * heading has a screen to be on. Deleted rather than orphaned, and asserted absent in all six so a
+       * merge of an older branch cannot resurrect them silently (CLAUDE.md §10). What replaced them, on
+       * the screens that exist, is asserted in the must-exist list above: `clockingPointsHeading` and
+       * `offRegisterTitle`.
+       */
+      expect(m.admin.locations.clockingSharedTitle, `${loc} retired with the tenant-wide register (r338)`).toBeUndefined();
+      expect(m.admin.locations.clockingHeading, `${loc} retired with the tenant-wide register (r338)`).toBeUndefined();
       /**
        * 0fe1ca2e rev 6 (r335) — MOVED FROM THE MUST-EXIST LIST ABOVE TO HERE, which is the whole of the
        * round in one line. "Location information" was the heading of the first of two cards; the reporter

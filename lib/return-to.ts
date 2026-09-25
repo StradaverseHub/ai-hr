@@ -149,3 +149,54 @@ export function withPayrollFrom(destination: string, raw: unknown): string {
   if (from === '/payroll') return destination;
   return `${destination}${destination.includes('?') ? '&' : '?'}from=${encodeURIComponent(from)}`;
 }
+
+/**
+ * 639bf4a5 rev 2 (r338) — WHERE A WORK-LOCATION SCREEN SENDS THE OPERATOR BACK TO.
+ *
+ * ⚠️ THIS MODULE HELD NOTHING GENERIC BEFORE THIS ROUND. Everything above is payroll: three whitelists
+ * and two appenders, each pinned to `/payroll` or to `ADJUSTMENT_RETURN_PATHS`. The r338 brief asked the
+ * Locations screens to "reuse the existing lib/return-to.ts helper rather than hardcoding a path"; there
+ * was no helper to reuse, so the MODULE is reused and one is added here in its idiom rather than a
+ * fourth private copy of the shape-whitelist being written inside app/admin/. Reported as a correction.
+ *
+ * WHY A WHITELIST AT ALL. The Locations listing is a company table, and Add / View / Edit each open a
+ * screen of their own. Every one of those screens has to know where "back" is, and the value reaches
+ * them through the ADDRESS BAR (`?from=`) and, for a Save, through a FormData — both untrusted, both the
+ * open-redirect shape if echoed. So it is whitelisted BY SHAPE, exactly as `payrollListReturnTo` is:
+ *   • it must start with `/admin/work-locations`, and the next character must be end-of-string, `/` or
+ *     `?` — so `/admin/work-locationsevil.example` is refused as well as `/admin/users`;
+ *   • `//evil.example/admin/work-locations` fails the first rule, and so does any `https://…` form.
+ * Anything else falls back to the listing itself, which is where every way out leads anyway.
+ *
+ * THE QUERY IS KEPT (the r265 idiom the clocking stubs already preserve): the listing carries `?saved=`,
+ * `?focus=` and `?error=`, and a Cancel that dropped them would land the operator on a listing that has
+ * forgotten which row they were standing on. `toast=`/`error=` are stripped for the reason the two
+ * helpers above strip them — the caller appends its own and a round-tripped one would double.
+ */
+export const WORK_LOCATIONS_LIST = '/admin/work-locations';
+
+export function workLocationsReturnTo(raw: unknown): string {
+  const fallback = WORK_LOCATIONS_LIST;
+  if (typeof raw !== 'string' || raw === '') return fallback;
+  if (!raw.startsWith(WORK_LOCATIONS_LIST)) return fallback;
+  const next = raw.charAt(WORK_LOCATIONS_LIST.length);
+  if (next !== '' && next !== '/' && next !== '?') return fallback;
+  const [path, query = ''] = raw.split('?', 2);
+  const kept = query
+    .split('&')
+    .filter((p) => p && !/^(toast|error)=/.test(p))
+    .join('&');
+  return kept ? `${path}?${kept}` : path;
+}
+
+/**
+ * Carry the operator's place onto a link OUT of the listing (`?from=…`), the `withPayrollFrom` idiom.
+ * ENCODED, because the carried value is itself a query string — appending it raw would make its own
+ * `&focus=…` a parameter of the outer url. An unfiltered listing carries nothing, so the plain address
+ * keeps exactly the spelling it has today.
+ */
+export function withWorkLocationsFrom(destination: string, raw: unknown): string {
+  const from = workLocationsReturnTo(raw);
+  if (from === WORK_LOCATIONS_LIST) return destination;
+  return `${destination}${destination.includes('?') ? '&' : '?'}from=${encodeURIComponent(from)}`;
+}

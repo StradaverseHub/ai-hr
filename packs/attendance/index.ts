@@ -24,10 +24,17 @@
  *   639bf4a5 (r336) — `app/admin/locations/` (clocking-site admin) IS NO LONGER ON THIS LIST, and the
  *   matching entry left test/attendance-pack-drift.test.ts's ALWAYS_ALLOWED in the same commit. The
  *   register moved to Organization as "Physical Work Location" (app/admin/work-locations/), taking its
- *   clocking points with it at the reporter's approval. It is an ORGANIZATION surface now, so it reads
- *   this pack the way every other outside caller does — through `packs/attendance/service` — and the
- *   ratchet SHRANK by one entry rather than gaining one. The old addresses stay as guarded redirect
- *   stubs under app/admin/locations/ and import nothing from this pack.
+ *   clocking points with it at the reporter's approval. It reads this pack the way every other outside
+ *   caller does — through `packs/attendance/service` — and the ratchet SHRANK by one entry rather than
+ *   gaining one. The old addresses stay as guarded redirect stubs under app/admin/locations/ and import
+ *   nothing from this pack.
+ *
+ *   ⚠️ 639bf4a5 rev 2 (r338) — THE MENU ROW CAME BACK TO THIS PACK AND THE SURFACE CLAIM DID NOT, which
+ *   is not a contradiction: the ratchet is about IMPORTS, not menus. The reporter asked for the screen
+ *   back under Attendance as "Locations", so ATTENDANCE_NAV carries the row again (see the note beside
+ *   it) — but app/admin/work-locations/** still consumes this pack ONLY through the published facade, so
+ *   it needs no claim here and none is added. ADR-0080 allowlists only ever shrink; re-adding the
+ *   deleted prefix at the new address would re-open the same hole and fail the guard by design.
  * - The boundary is enforced by test/attendance-pack-drift.test.ts (D11 criterion 4, shrink-only
  *   ratchet seeded in test/pack-drift-allowlist.json under "attendance").
  *
@@ -71,6 +78,7 @@ import {
   FileUp,
   HandCoins,
   Hourglass,
+  MapPin,
   Plane,
   Table2,
   Users,
@@ -445,22 +453,43 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // and re-enter it into MODULE_OF_HREF (built by flatMap over these children), which is exactly the
     // entitlement gating the move exists to remove.
     { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
-    // 639bf4a5 (r336) — THE CLOCKING LOCATION ROW STOOD HERE and is DELIBERATELY GONE. It read
-    // It was one line: href = the old /admin/locations address, labelKey = the clocking-location nav key,
-    // icon = the map pin, adminOnly. DESCRIBED, NEVER QUOTED — four exact-set guards and this pack's own
-    // drift ratchet grep this file for those literals, so a verbatim copy in a comment would satisfy the
-    // assertions the move exists to reverse, and a commented-out row is still a row somebody uncomments.
-    //
-    // The screen is Administration › Physical Work Location now — a flat row beside Organization in
-    // components/sidebar.tsx — because a place the company operates from is master data, not an
-    // attendance setting, and because that screen is the ONLY editor of the work-site register and of
-    // the branch mapping that hangs off it. The clocking points moved with it, which the approved plan
-    // recommended and the reporter accepted; leaving a second row here pointing at the same screen would
-    // be the "one thing maintained in two places" that same paragraph argues against, AND would put the
-    // organization's work-site register back into MODULE_OF_HREF (components/sidebar.tsx builds it by
-    // flatMap over these children), gating master data behind the billable attendance module — exactly
-    // the fault 4509d2b8 moved Holidays out of this node to fix. The OLD ROUTE is the link back: it is a
-    // guarded redirect stub, pinned by test/work-location-organization-relocation.test.ts.
+    /**
+     * 639bf4a5 rev 2 (r338) — LOCATIONS IS BACK IN THIS NODE, AND IT IS THE REPORTER'S DECISION.
+     *
+     * The row was "Clocking location" here until r336, which moved it to Administration › Physical Work
+     * Location on the argument that a place the company operates from is master data rather than an
+     * attendance setting. That shipped. The reporter contested it and asked for the screen back under
+     * ATTENDANCE, renamed **Locations**, with a company listing and dedicated Add / View / Edit screens.
+     * It is their structure to decide; this is that structure, built as they described it.
+     *
+     * ⚠️ THE ADDRESS DID NOT MOVE BACK. `/admin/work-locations` is unchanged — they asked to rename the
+     * FUNCTION, not the URL, and moving it a second time in two days would churn every bookmark again
+     * and need the three `/admin/locations` redirect stubs re-pointed for nothing. Nor did
+     * `screenKey: 'locations'` (lib/permissions.ts): that is a permission identity stored role configs
+     * may name. Only `labelKey` and this PARENT changed. `nav.locations` is the label key — a string
+     * that has read "Locations" in all six catalogues since ADR-0054 and had been left unrendered when
+     * r336 minted `nav.physicalWorkLocation`; that newer key is deleted, because a live-looking nav key
+     * nothing renders is how a retired row comes back.
+     *
+     * ⚠️ AND THE REGISTER IS ENTITLEMENT-GATED AGAIN, KNOWINGLY. MODULE_OF_HREF (components/sidebar.tsx)
+     * is built by flatMap over THESE children and `attendance` is billable (isCore:false in
+     * packs/catalog.ts), so this row puts the work-site register — and the branch mapping that hangs off
+     * it — behind the attendance entitlement. That is the 4509d2b8 Holidays fault in reverse, and it is
+     * a real consequence rather than an oversight: the tenant HAS attendance so nothing changes for them,
+     * a future Leave-only customer would have no route to either screen, the plan said so and offered to
+     * keep it un-gated, and the reporter did not answer. Their words, their structure. Un-gating it later
+     * is one hand-written MODULE_OF_HREF exemption, nothing more.
+     *
+     * ⚠️ THE PACK'S SURFACE CLAIM DOES NOT COME BACK WITH IT. `app/admin/locations/` left this file's
+     * surface list and test/attendance-pack-drift.test.ts's allowlist in r336, and both stay as they are:
+     * the ratchet is about IMPORTS, not menus. app/admin/work-locations/** reads the clocking register
+     * through `packs/attendance/service` like any other outside consumer, so it needs no claim — and
+     * ADR-0080 allowlists only ever shrink.
+     *
+     * MapPin, as it always was: the fly-out renders every child's glyph and the collapsed rail renders
+     * glyphs ALONE, and no sibling in this node carries it.
+     */
+    { href: '/admin/work-locations', labelKey: 'locations', icon: MapPin, adminOnly: true },
     //
     // e776d17d reserves the "Overtime Configuration" child slot here (after Attendance allowance, before Roster).
     // 3fb1a611 (r299) — the Time off in lieu row (/admin/toil, label key timeOffInLieu) STOOD HERE and is

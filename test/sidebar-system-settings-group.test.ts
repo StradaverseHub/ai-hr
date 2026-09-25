@@ -84,15 +84,18 @@ const SYSTEM_SETTINGS_CHILD_HREFS = [
  */
 const ADMIN_GROUP_FLAT_HREFS = [
   '/admin/organization',
-  // 639bf4a5 (r336) — Physical Work Location, DECLARED rather than the list being loosened, exactly as
-  // the Notice Board note below requires. The row came from the attendance pack's settings node
-  // (packs/attendance/index.ts), where it read "Clocking location" and opened /admin/locations: the
-  // work-site register is company-scoped master data carrying the branch mapping, not an attendance
-  // setting, and while it hung there MODULE_OF_HREF gated it behind the billable attendance module. It
-  // sits HERE, immediately after Organization, because that is the screen it belongs beside — and as a
-  // SIBLING rather than a route nested under /admin/organization, which has no exactHref and would
-  // therefore have lit two rows at once. Pinned by test/work-location-organization-relocation.test.ts.
-  '/admin/work-locations',
+  // 639bf4a5 (r336) — '/admin/work-locations' (Physical Work Location) STOOD HERE, immediately after
+  // Organization, having come from the attendance pack's settings node. rev 2 (r338) — IT IS GONE FROM
+  // THIS GROUP, and the removal is DECLARED rather than the list being quietly shortened, for the same
+  // reason the Notice Board note below requires a new row to be declared: this list's whole job is to
+  // catch a sibling clipped by an edit, and a row that leaves has to say so.
+  //
+  // WHY IT LEFT. The reporter contested the r336 move after it shipped: they want the screen under
+  // ATTENDANCE, renamed "Locations", with a company listing and dedicated screens. It is a child of
+  // ATTENDANCE_NAV again (packs/attendance/index.ts), which also re-gates it behind the billable
+  // attendance module — stated, not hidden. The ADDRESS did not move back and neither did the
+  // screenKey. Pinned at its home by test/work-location-organization-relocation.test.ts and
+  // test/sidebar-attendance-group.test.ts.
   '/admin/personnel',
   // 6e122302 — the Notice Board is a flat row (one screen; its new/detail pages are routes on it),
   // sitting after PAYROLL_NODE and before /analytics. Added here deliberately: this list is an EXACT

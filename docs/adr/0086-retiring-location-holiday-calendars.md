@@ -100,6 +100,15 @@ withdrawal is real and belongs in the round entry, not in a diff nobody reads.
    markup it searched. Removed at r336, with the six retired strings quoted in
    `test/work-location-organization-relocation.test.ts` so they cannot return. The screen itself moved in
    the same round — it is `/admin/work-locations` now — and nothing about this ADR's decision changed.
+   ⚠️ **Addendum 2026-09-25 (639bf4a5 rev 2, r338) — the screen moved AGAIN and the guard moved with it.**
+   The reporter contested r336's relocation; the register is Attendance › **Locations** again, still at
+   `/admin/work-locations`, and it is a COMPANY LISTING with Add / View / Edit on screens of their own
+   (ADR-0070's r338 amendment has the shape). What matters to THIS ADR is that the State control now
+   lives on `app/admin/work-locations/location-form.tsx` rather than on the register's inline strips, so
+   the assertion that no such control exists was RE-POINTED at that file — a guard left reading the
+   listing would have been green on a form that had regrown one. The namespace-wide check (the retired
+   sentence absent from EVERY string in `admin.locations`, in all six locales) is carried through
+   unchanged, and the update action is pinned separately to omit `state` rather than post null.
 5. The criteria axis, with the approval-template withdrawal recorded.
 6. **The migration last**, allocated at the moment of writing from `max(idx)`. ⚠️ Earlier plans
    "reserved" 0477/0478; those numbers are now UNUSABLE —
