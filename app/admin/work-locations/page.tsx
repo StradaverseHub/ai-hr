@@ -85,8 +85,10 @@ import {
  *
  * NO FORM, ABOVE OR BELOW. Add, View and Edit open ./new, ./[id] and ./[id]/edit; Save, Cancel and Back
  * all return here, carrying the listing's own query through `?from=` (lib/return-to.ts
- * `withWorkLocationsFrom` / `workLocationsReturnTo`, whitelisted by shape). The only `<form>` element
- * this page renders is none.
+ * `withWorkLocationsFrom` / `workLocationsReturnTo`, whitelisted by shape). This page posts NOTHING: it
+ * renders links and a table, and zero form elements — asserted as a raw source scan in
+ * test/clocking-location-shared.test.ts, which is why the opening angle bracket of that tag name is
+ * deliberately absent from this comment as well as from the code.
  *
  * THE CLOCKING REGISTER LEFT THIS PAGE. Until r338 it led the screen: every clocking point in the
  * tenant, grouped under the location it links to. The points now render on the location's OWN screen
