@@ -4,6 +4,7 @@ import { scopedSession } from '@/lib/scope';
 import { listCompanies, listDepartments, listEmployeesPage } from '@/core/read';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { Avatar, Card, EmployeeCode, PageHeader, StatusBadge } from '@/components/ui';
+import { employmentPhotoIds } from '@/core/person-photo';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { Pager } from '@/components/pager';
 import { pageState, parsePageQuery } from '@/lib/pagination';
@@ -55,6 +56,15 @@ export default async function PersonnelPage({
     listCompanies(session),
     listDepartments(session),
   ]);
+  // 597c810a — the SAME avatar in the same place as /admin/personnel, so the two listings cannot look
+  // like one of them is faulty. ONE bulk RLS-scoped existence read for this page's rows (never an <img>
+  // per row: 89 persons, 2 photos on production means 87 pointless 404s), taken AFTER the page's rows are
+  // known. Photo visibility is unchanged and is RLS's decision, not this page's — a person whose name this
+  // viewer can see but whose photo they cannot is simply absent from the Map and keeps their initials.
+  const photoIds = await employmentPhotoIds(
+    session,
+    employees.map((e) => e.employmentId),
+  );
   const pgState = pageState(pq, total, employees.length);
   const EMPLOYMENT_TYPES = [
     { value: 'full_time', labelKey: 'employmentFullTime' },
@@ -159,7 +169,10 @@ export default async function PersonnelPage({
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <Avatar name={e.name} />
+                    <Avatar
+                      name={e.name}
+                      src={photoIds.has(e.employmentId) ? `/personnel/photo/${photoIds.get(e.employmentId)}` : undefined}
+                    />
                     <div className="min-w-0">
                       <Link
                         href={`/personnel/${e.employmentId}`}

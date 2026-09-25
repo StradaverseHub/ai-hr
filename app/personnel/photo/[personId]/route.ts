@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { getSession } from '@/lib/session';
 import { getPersonPhoto } from '@/core/person-photo';
 
@@ -12,7 +13,7 @@ import { getPersonPhoto } from '@/core/person-photo';
  * only) and X-Content-Type-Options: nosniff stops the browser re-sniffing it into something scriptable
  * (exactly why SVG is excluded from what setPersonPhotoAction accepts).
  */
-export async function GET(_req: Request, { params }: { params: Promise<{ personId: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ personId: string }> }) {
   const { personId } = await params;
   const s = await getSession();
   const photo = await getPersonPhoto(s, personId);
@@ -20,12 +21,33 @@ export async function GET(_req: Request, { params }: { params: Promise<{ personI
 
   const safe = (name: string) => name.replace(/[^a-zA-Z0-9._ -]/g, '_').slice(0, 120) || 'photo';
   const bytes = new Uint8Array(photo.content);
+  // 597c810a — CACHING. The list now renders this URL once per person WITH a photo, so the same bytes are
+  // re-fetched on every page of the listing and on every navigation back to it.
+  //
+  // `private` IS NOT OPTIONAL: this is a face photo behind app.can_see_person, and a shared/proxy cache
+  // holding it would serve one viewer's scope to another. `must-revalidate` with NO max-age is the other
+  // half — the URL carries no version or content hash, so an admin who REPLACES a photo would otherwise
+  // keep being served the old face for the life of the max-age. The browser must ask every time; the ETag
+  // is what makes asking cheap (304, no body) instead of free-but-wrong.
+  //
+  // The ETag is derived from the CONTENT, not from updated_at: a replace that happens to land in the same
+  // clock tick still changes the bytes, and a hash cannot be wrong about that.
+  const etag = `"${createHash('sha256').update(bytes).digest('base64url').slice(0, 27)}"`;
+  const cache = { 'Cache-Control': 'private, must-revalidate', ETag: etag } as const;
+  // A conditional request that already holds these bytes gets no body. `If-None-Match` may carry a LIST
+  // (and a `W/` weak prefix), so the tag is matched against its members rather than the raw header.
+  const inm = req.headers.get('if-none-match');
+  if (inm) {
+    const held = inm.split(',').map((t) => t.trim().replace(/^W\//, ''));
+    if (held.includes(etag) || held.includes('*')) return new Response(null, { status: 304, headers: cache });
+  }
   return new Response(bytes, {
     headers: {
       'Content-Type': photo.mimeType || 'application/octet-stream',
       'Content-Disposition': `inline; filename="${safe(photo.fileName)}"`,
       'Content-Length': String(bytes.byteLength),
       'X-Content-Type-Options': 'nosniff',
+      ...cache,
     },
   });
 }

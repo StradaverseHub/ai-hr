@@ -91,8 +91,36 @@ export function Field({
   );
 }
 
-/** Initials avatar (no photos) — the warm, consistent identity mark used everywhere. */
-export function Avatar({ name, className }: { name: string; className?: string }) {
+/**
+ * The identity mark used everywhere: initials by default, a PHOTO when the caller supplies one.
+ *
+ * 597c810a — `src` is OPTIONAL and that is the whole design. Twelve of the thirteen call sites pass no
+ * `src` and are byte-identical to before; only the two Personnel listings opt in. The reporter asked for
+ * Personnel, and attendance / user admin / the org chart stay on initials until they ask.
+ *
+ * THE CALLER DECIDES WHETHER THERE IS A PHOTO, NOT THIS COMPONENT. `src` must be passed ONLY for a person
+ * the caller has already established has one (core/person-photo.ts `employmentPhotoIds`, one bulk
+ * RLS-scoped read per page render). An <img> on every row would fire one
+ * request per person — 89 on production, 87 of them 404s after a session read and an RLS query each —
+ * which is why this component deliberately has no "try the photo, fall back on error" path: there is no
+ * error to fall back from, and adding one would need state and therefore a client island in a file that
+ * every server component imports.
+ *
+ * `object-cover` keeps the face centred inside the circle at any of the size classes callers pass (the
+ * same fitting components/company-logo.tsx uses). The lightbox is the place that shows the WHOLE photo at
+ * its natural aspect ratio — see app/admin/personnel/[employmentId]/photo-lightbox.tsx.
+ */
+export function Avatar({ name, src, className }: { name: string; src?: string | null; className?: string }) {
+  if (src) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- dynamic bytea served by our RLS route; not a static asset
+      <img
+        src={src}
+        alt=""
+        className={cn('size-8 shrink-0 rounded-full object-cover ring-1 ring-border', className)}
+      />
+    );
+  }
   const initials = name
     .split(/\s+/)
     .slice(0, 2)

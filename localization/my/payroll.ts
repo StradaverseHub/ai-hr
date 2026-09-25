@@ -32,6 +32,10 @@ import {
   type StatutoryRuleset,
   type TaxCategory,
 } from './statutory-tables';
+// 04b88724 — the ONE child-relief derivation (the count, the money and the working). Kept in its own
+// db-free leaf because the Identification & Tax card calls the same function through the CLIENT seam, and
+// this module must not be dragged into a browser bundle to make that possible.
+import { childReliefFor, childReliefPrices } from './child-relief';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 /** Round a contribution up to the next whole ringgit (KWSP Third Schedule convention). */
@@ -531,19 +535,13 @@ export function childReliefAmountFor(
   table: unknown,
   reliefs?: StatutoryRuleset['pcb']['reliefs'],
 ): number {
-  if (!table || typeof table !== 'object' || Array.isArray(table)) return 0;
-  const amounts = reliefs?.childByCategory ?? DEFAULT_MY_STATUTORY.pcb.reliefs.childByCategory ?? {};
-  let total = 0;
-  for (const [key, cell] of Object.entries(table as Record<string, unknown>)) {
-    const amount = amounts[key];
-    if (typeof amount !== 'number' || !Number.isFinite(amount)) continue;
-    if (!cell || typeof cell !== 'object') continue;
-    const c = cell as { full?: unknown; half?: unknown };
-    const full = typeof c.full === 'number' && Number.isFinite(c.full) ? Math.max(0, Math.floor(c.full)) : 0;
-    const half = typeof c.half === 'number' && Number.isFinite(c.half) ? Math.max(0, Math.floor(c.half)) : 0;
-    total += full * amount + half * (amount / 2);
-  }
-  return total;
+  // 04b88724 (r340 fix pass) — THE WALK MOVED, THE ANSWER DID NOT. This is now one field of
+  // `childReliefFor`'s return value, which also carries the qualifying-children COUNT and the per-line
+  // working. Before the move, three places multiplied category counts by category prices — here,
+  // core/dependents.ts and the Identification & Tax card — and the card's copy under-stated the relief it
+  // printed on screen. One derivation, in ./child-relief.ts; the money and the count are two fields of one
+  // value and cannot come apart. Every input this returned a figure for returns the identical figure.
+  return childReliefFor({ from: 'table', table, prices: childReliefPrices(reliefs) }).amountRM;
 }
 
 /**

@@ -16,6 +16,10 @@ import { dobFromIC, isMalaysianNationality } from './ic-dob';
 import { entitlement } from './leave';
 import { BNM_BANKS } from './bank-files/bnm-codes';
 import { defaultSocsoEisNumber } from './socso-eis';
+// 04b88724 — THE child-relief derivation, from the same db-free leaf the server pack's
+// `childReliefAmountFor` is built on. This is the whole point of putting it in a leaf: the Identification &
+// Tax card prices the grid the admin is typing into with the PACK's arithmetic, not a copy of it.
+import { childReliefFor } from './child-relief';
 
 export const myClientPack: CountryPackClient = {
   country: 'MY',
@@ -33,6 +37,13 @@ export const myClientPack: CountryPackClient = {
   leave: {
     // The EA-1955 statutory floor the leave-rule preview shows (same resolver the server engines use).
     entitlement,
+  },
+  payroll: {
+    // Item 04b88724 — the qualifying-children COUNT and the ringgit, as one value, from ONE derivation
+    // (./child-relief.ts). The card receives the per-category PRICES as plain props from the server and
+    // hands them straight back here with the counts on screen, so the statutory rule never leaves the pack
+    // and the screen cannot work out a different figure from the payslip's.
+    childReliefFor,
   },
   // Item ef720d3a — canonical MY bank names for the employee bank picker, in BNM catalog order
   // (the four common banks first). Projection of the shared bank master (lib/my-banks via

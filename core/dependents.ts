@@ -35,7 +35,7 @@ import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { company, employeeDependent, employeeStatutoryMy, employment, payrollBatch, profileOption } from '../db/schema';
-import { requirePackFor } from '../localization/registry';
+import { packFor, requirePackFor } from '../localization/registry';
 // item 759dfc7d — the closed value sets, shared with the browser (see the re-export block below).
 import {
   CHILD_RELIEF_CATEGORIES,
@@ -875,4 +875,272 @@ export async function archiveDependent(
   // archivedAt rows), so the tax figure must come down with it.
   const childReliefSync = await syncChildReliefFromFamily(ctx, res.personId);
   return { id: res.id, childReliefSync };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════════
+ * QUALIFYING CHILDREN (PCB) — item 04b88724, r340
+ *
+ * THE DISTINCTION THIS SECTION EXISTS TO MAKE VISIBLE. `employee_statutory_my.num_children` is a HEAD
+ * COUNT: Form E, CP8D and the EA statement all read it, and it keeps that meaning in all three
+ * child-relief modes. It is NOT the figure the PCB calculation counts in. LHDN's own 2026 computerised
+ * calculation slip prints those as two separate lines — the per-child rate and QC, the qualifying-children
+ * COUNT — and in the specification's own worked example two children give QC = 9, because a disabled child
+ * in higher education is counted as eight. The screen used to show one number under one caption and the
+ * reporter was right to contest it.
+ *
+ * DERIVED, NEVER STORED, AND DERIVED IN ONE PLACE. There is no new column and there is no second
+ * arithmetic. Both figures come back from the PACK, as two fields of one value:
+ *
+ *     const figure = pack.payroll.childReliefFor(…)   // { units, amountRM, rows }
+ *
+ * `units` is QC, `amountRM` is the ringgit — and `amountRM` is literally what
+ * `pack.payroll.childReliefAmountFor` returns, because that function is now this one's `.amountRM` (see
+ * localization/my/child-relief.ts). The kernel calls it for an 'auto_table' employee (core/payroll.ts
+ * ~5625, core/payroll-view.ts ~1487) and uses `num_children × perChild` for every other mode, which is the
+ * `from: 'headCount'` input here. So the count on the screen cannot drift from the money on the payslip:
+ * they are not two derivations that agree, they are two fields of one return value.
+ *
+ * THIS IS THE r340 FIX AND IT IS WORTH SAYING WHY. The first build of this item left the amount in the pack
+ * and worked the COUNT out twice more — once here and once in components/identity-tax-card.tsx — arguing
+ * that dividing the pack's ringgit by `perChild` gave the same single-source property. It did not: the card
+ * read its own copy, and in 'auto' mode it printed a child-relief figure in ringgit that this repo's own PCB
+ * kernel contradicted. The approved plan had named that failure in advance ("two call sites that each work
+ * out C is exactly the duplicate-source-of-truth problem CLAUDE.md section 1 forbids. Put it where both
+ * payroll and the screen read it"), so the count now lives beside the amount in the pack and both readers
+ * call it.
+ *
+ * NO PCB ARITHMETIC CHANGES HERE. Nothing in this section writes, and nothing it returns is fed back into
+ * a calculation. It surfaces a figure the kernel already produced.
+ * ═════════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/** One line of "how the qualifying count was reached". */
+export type QualifyingChildRow = {
+  /** 'child' = one row of the Family register; 'category' = one cell of the stored relief grid. */
+  kind: 'child' | 'category';
+  /** The child's name for a 'child' row; null for a 'category' row (which stands for a count, not a person). */
+  name: string | null;
+  /** s.48 category key (CHILD_RELIEF_CATEGORIES), or null when the child carries none. */
+  category: string | null;
+  /** The LHDN claim share: 100 (whole relief) or 50 (split between parents). */
+  sharePercent: number;
+  /** How many children this line stands for — always 1 for a 'child' row. */
+  children: number;
+  /** Qualifying units this line contributes, AS THIS MODE COUNTS THEM (already halved for a 50% share). */
+  units: number;
+  /** Ringgit this line contributes, as this mode prices it. */
+  amountRM: number;
+};
+
+export type QualifyingChildRelief = {
+  /** As stored on employee_statutory_my.child_relief_mode. */
+  mode: 'manual' | 'auto' | 'auto_table';
+  /** true for 'auto' and 'auto_table' — the figure was WORKED OUT. false for 'manual' — it was TYPED.
+   *  The screen shows this as provenance, and read-only applies only where it is true. */
+  derived: boolean;
+  /** num_children — the head count Form E / CP8D / EA read. Unchanged by this item. */
+  physicalChildren: number;
+  /** Live 'child' rows on the Family register (archived and deceased excluded), whether or not any of
+   *  them is eligible. This is the "physical children" the reporter means, and it can legitimately differ
+   *  from `physicalChildren` on a manual-mode record — which is itself worth seeing. */
+  familyChildren: number;
+  /** C — the qualifying-children count the projection of P counts in. Fractional when a 50%-shared child
+   *  is priced by category; see the note on rounding below. */
+  qualifyingChildren: number;
+  /** The child deduction in ringgit, from the same expression the kernel uses for this employee. */
+  reliefRM: number;
+  /** The flat per-child figure from the resolved ruleset (RM2,000 in 2026) — the divisor above. */
+  perChild: number;
+  /** What the resolved ruleset prices each s.48 category at, in canonical order: the ringgit AND the
+   *  qualifying units (`amountRM / perChild`). This is what a SCREEN needs, because a screen has to price
+   *  a grid the admin is still typing into and cannot wait for a save; handing it the pack's prices keeps
+   *  the statutory rule in the pack and leaves the view doing arithmetic on data. */
+  categories: { key: string; amountRM: number; units: number }[];
+  /** Eligible children on the Family register AS OF `asOf` — the count 'auto' mode's server-side sync
+   *  would write into `num_children` if it ran right now.
+   *
+   *  IT IS NOT NECESSARILY `physicalChildren`, and the gap is the r340 blocking defect's whole cause:
+   *  `syncChildReliefFromFamily` fires only on a dependent add / edit / archive, so a child simply ageing
+   *  past 18 moves this and leaves the stored head count — the figure the payslip uses — where it was. The
+   *  screen shows BOTH and says which one the tax calculation counts in.
+   *
+   *  ONE INSTANT. This is `breakdown.length` in 'auto' mode by construction (both come from the same
+   *  `eligible` list, filtered once at `asOf`), which is why the card's total and its own rows can no
+   *  longer differ by a row on a child's 18th birthday — they used to be taken at two different instants,
+   *  this one at KL midnight and the card's at real UTC now. */
+  eligibleChildren: number;
+  /** The ruleset version that priced it, so the reader knows which schedule they are looking at. */
+  statutoryVersion: string | null;
+  /** How the count was reached. Empty in 'manual' mode: a typed number has no breakdown, and inventing
+   *  one would dress it up as a calculation. */
+  breakdown: QualifyingChildRow[];
+  /** Eligible children on the Family register carrying NO relief category. They would contribute nothing
+   *  to a category-priced figure, so a total computed without them would be understated. */
+  uncategorisedChildren: number;
+};
+
+/**
+ * Item 04b88724 — the two figures and the working behind the second, for ONE person's PCB record.
+ *
+ * Returns null when the country has no pack or the pack publishes no PCB reliefs: this reports no figure
+ * rather than naming a relief amount the kernel would not use (the same posture core/child-relief-review.ts
+ * takes). The caller then keeps showing what it showed before.
+ *
+ * ── WHAT THE BREAKDOWN SAYS IN EACH MODE, AND WHY IT IS NOT THE SAME SHAPE IN ALL THREE ────────────────
+ *   auto_table — one line per grid cell that holds anything, priced by `childByCategory`. There are no
+ *                individual child records behind the grid, so these are CATEGORY lines; fabricating child
+ *                rows to fill a table would be inventing people.
+ *   auto       — one line per ELIGIBLE child on the Family register, each contributing ONE unit. That is
+ *                not an oversight: in 'auto' mode the kernel's child leg is `num_children × perChild`, so
+ *                one eligible child is worth exactly one unit whatever category is recorded against it.
+ *                The category and share are still shown on the line, as information, and the screen says
+ *                out loud that they price the relief only in 'auto (from table)' mode. Printing "4 units"
+ *                against a tertiary-study child in a mode where the payslip gives it 1 would be printing a
+ *                figure this repo's own kernel contradicts (CLAUDE.md §8).
+ *   manual     — empty. Nothing was worked out.
+ *
+ * ── ROUNDING, AND WHAT IS NOT KNOWN ───────────────────────────────────────────────────────────────────
+ * A 50%-shared child is worth half its category's ringgit (`childReliefAmountFor`: `half * (amount / 2)`,
+ * with no rounding — the projection of P is truncated ONCE, downstream). Dividing by `perChild` therefore
+ * yields a HALF unit: one 50%-shared child under 18 is QC 0.5, RM1,000. This function does not round,
+ * because rounding here would make the count disagree with the money.
+ * UNKNOWN: whether LHDN's specification intends QC to be an integer in a shared-claim case. The spec
+ * expresses QC as a count of children and prices the split in ringgit; nothing in the PDF pages cited in
+ * localization/my/statutory-tables.ts settles what QC reads as when a claim is halved. The repo's existing
+ * choice — carry the ringgit, do not round — is preserved and surfaced, not decided here.
+ */
+export async function qualifyingChildReliefFor(
+  ctx: SessionContext,
+  p: {
+    personId: string;
+    /** The acting country pack. The Personnel detail page resolves 'MY' explicitly; this mirrors that
+     *  rather than silently widening the screen to the company's own country (a separate change). */
+    country?: string;
+    /** Kuala Lumpur "today" the ruleset is resolved as of, and the date child ages are taken against. */
+    asOf: string;
+  },
+): Promise<QualifyingChildRelief | null> {
+  const pack = packFor(p.country ?? 'MY');
+  // Captured OUT of the optional properties: both are optional on the pack surface (a jurisdiction with no
+  // per-category child relief omits them), and a narrowing on `pack.payroll.childReliefFor` does not
+  // survive into the async closure below. `childReliefFor` is the ONE derivation — the count, the money and
+  // the working — and `childReliefPrices` the only conversion between ringgit and qualifying children.
+  const childReliefFor = pack?.payroll?.childReliefFor;
+  const childReliefPrices = pack?.payroll?.childReliefPrices;
+  if (!pack || !childReliefFor || !childReliefPrices) return null;
+  return withTenant(ctx, async (tx) => {
+    const rules = await pack.payroll.loadRuleset(tx, { asOf: p.asOf });
+    const reliefs = rules.pcb?.reliefs;
+    if (!reliefs) return null;
+    const perChild = reliefs.perChild;
+    // A zero or missing per-child figure prices no qualifying-children COUNT at all (`childReliefPrices`
+    // returns units 0 rather than Infinity), so report nothing rather than a screen full of zeroes that
+    // look like a figure.
+    if (typeof perChild !== 'number' || !Number.isFinite(perChild) || perChild <= 0) return null;
+
+    const [statutory] = await tx
+      .select({
+        numChildren: employeeStatutoryMy.numChildren,
+        childReliefMode: employeeStatutoryMy.childReliefMode,
+        childReliefTable: employeeStatutoryMy.childReliefTable,
+      })
+      .from(employeeStatutoryMy)
+      .where(eq(employeeStatutoryMy.personId, p.personId))
+      .limit(1);
+    if (!statutory) return null;
+
+    const rawMode = statutory.childReliefMode ?? 'manual';
+    const mode: QualifyingChildRelief['mode'] =
+      rawMode === 'auto' || rawMode === 'auto_table' ? rawMode : 'manual';
+    const physicalChildren = statutory.numChildren ?? 0;
+
+    // ORDER BY so the breakdown reads the same on every load (CLAUDE.md §8: an asserted array needs one).
+    const family = await tx
+      .select({
+        fullName: employeeDependent.fullName,
+        relationship: employeeDependent.relationship,
+        dateOfBirth: employeeDependent.dateOfBirth,
+        isStudent: employeeDependent.isStudent,
+        isDeceased: employeeDependent.isDeceased,
+        archivedAt: employeeDependent.archivedAt,
+        childTaxRelief: employeeDependent.childTaxRelief,
+        childReliefCategory: employeeDependent.childReliefCategory,
+        childReliefPercentage: employeeDependent.childReliefPercentage,
+      })
+      .from(employeeDependent)
+      .where(and(eq(employeeDependent.personId, p.personId), isNull(employeeDependent.archivedAt)))
+      .orderBy(asc(employeeDependent.dateOfBirth), asc(employeeDependent.fullName));
+
+    // `childAgeYears` parses a DOB as `${dob}T00:00:00Z`, so the other endpoint is built the same way —
+    // the same reasoning core/child-relief-review.ts records: an eight-hour offset could otherwise flip a
+    // child's whole-year age on their birthday, the one day the eligibility rule turns on.
+    const asOfDate = new Date(`${p.asOf}T00:00:00Z`);
+    const children = family.filter((d) => d.relationship === 'child' && !d.isDeceased);
+    const eligible = children.filter((d) => isChildReliefEligible(d, asOfDate));
+    const uncategorisedChildren = eligible.filter((d) => !d.childReliefCategory).length;
+
+    // The pack's own prices, and the ONLY place ringgit and qualifying children are converted into each
+    // other. The screen receives this list verbatim: it has to price a grid the admin is still typing into,
+    // and handing it the prices keeps the statutory rule in the pack while it does.
+    const categories = childReliefPrices(reliefs);
+
+    // ── THE FIGURE. ONE CALL, TWO FIELDS, AND IT IS THE KERNEL'S OWN ─────────────────────────────────
+    // 'auto_table' prices the stored grid; every other mode is `num_children × perChild`, which is what
+    // core/payroll.ts and core/payroll-view.ts do for the same employee. An empty / unkeyed grid claims
+    // NOTHING — the count follows the money to zero rather than optimistically reporting the head count.
+    const figure =
+      mode === 'auto_table'
+        ? childReliefFor({ from: 'table', table: statutory.childReliefTable, prices: categories })
+        : childReliefFor({ from: 'headCount', children: physicalChildren, perChild });
+
+    const breakdown: QualifyingChildRow[] =
+      mode === 'auto_table'
+        ? // One line PER SHARE, so "claimed in full or shared" is visible rather than averaged away. The
+          // lines are the PACK's own rows; this only names them for a screen.
+          figure.rows.map((r) => ({
+            kind: 'category' as const,
+            name: null,
+            category: r.category,
+            sharePercent: r.sharePercent,
+            children: r.children,
+            units: r.units,
+            amountRM: r.amountRM,
+          }))
+        : mode === 'auto'
+          ? // One line per ELIGIBLE child, each worth exactly one qualifying child — which is not a
+            // simplification but this mode's kernel expression applied to a single child (`from:
+            // 'headCount'`, children 1). Printing its category's units instead would print a figure the
+            // payslip denies.
+            eligible.map((d) => {
+              const one = childReliefFor({ from: 'headCount', children: 1, perChild });
+              return {
+                kind: 'child' as const,
+                name: d.fullName,
+                category: d.childReliefCategory ?? null,
+                // 100 when nothing is recorded: an unshared claim is the whole relief, which is what the
+                // kernel's flat count already assumes. `setDependentChildRelief` validates the stored
+                // 100|50 on write, so this never has to re-validate it.
+                sharePercent: d.childReliefPercentage === 50 ? 50 : 100,
+                children: 1,
+                units: one.units,
+                amountRM: one.amountRM,
+              };
+            })
+          : // manual — nothing was worked out, so there is nothing to break down.
+            [];
+
+    return {
+      mode,
+      derived: mode !== 'manual',
+      physicalChildren,
+      familyChildren: children.length,
+      eligibleChildren: eligible.length,
+      categories,
+      qualifyingChildren: figure.units,
+      reliefRM: figure.amountRM,
+      perChild,
+      statutoryVersion: rules.version ?? null,
+      breakdown,
+      uncategorisedChildren,
+    };
+  });
 }

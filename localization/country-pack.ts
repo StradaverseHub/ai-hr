@@ -118,6 +118,66 @@ export type {
 };
 
 /**
+ * ── CHILD RELIEF: THE COUNT AND THE AMOUNT, AS ONE VALUE (item 04b88724) ────────────────────────────
+ *
+ * Malaysia's PCB specification prices a child in two currencies at once: the RINGGIT the projection of P
+ * deducts, and the QUALIFYING-CHILDREN count (QC) the same table expresses it as ("considered with 4
+ * children"). The Personnel screen must print the count; the payslip deducts the money; they are the SAME
+ * statement and a screen that works one of them out for itself will eventually contradict the other. It
+ * did: the first r340 build re-derived the count in the view and under-stated the relief on screen.
+ *
+ * So the contract carries them together. `childReliefFor` returns both plus the working, `childReliefPrices`
+ * is the only conversion between them, and `childReliefAmountFor` (unchanged in signature, because the
+ * payroll kernel calls it) is `childReliefFor(...).amountRM`. The SAME functions are exposed on
+ * `CountryPackClient.payroll` so the interactive card prices the grid the admin is typing into with the
+ * pack's own arithmetic instead of a copy of it.
+ *
+ * Contract-owned rather than MY-owned so no generic consumer has to name the MY pack to hold the shape
+ * (ADR-0080 D1/D7: a type-only import of `localization/my` counts as coupling).
+ */
+export type ChildReliefPrice = {
+  /** The jurisdiction's relief-category key (MY: the five LHDN s.48 keys). */
+  key: string;
+  /** What the resolved ruleset prices one such child at, claimed in full. */
+  amountRM: number;
+  /** The SAME price as a qualifying-children count: `amountRM / perChild`. */
+  units: number;
+};
+
+/** One line of the working behind a category-priced child-relief figure. */
+export type ChildReliefRow = {
+  /** The relief-category key this line prices. */
+  category: string;
+  /** The claim share: 100 (the whole relief) or 50 (split between parents). */
+  sharePercent: 100 | 50;
+  /** How many children this line stands for. */
+  children: number;
+  /** Qualifying units the line contributes — already halved for a 50% share. */
+  units: number;
+  /** Ringgit the line contributes — already halved for a 50% share. */
+  amountRM: number;
+};
+
+/** A child-relief figure: the count, the money, and the working, from ONE derivation. */
+export type ChildReliefFigure = {
+  /** QC — the qualifying-children count the tax projection counts in. Fractional on a shared claim. */
+  units: number;
+  /** The child deduction in ringgit — the figure the payslip deducts. */
+  amountRM: number;
+  /** One line per priced grid cell; empty for a flat head count, which has no per-category working. */
+  rows: ChildReliefRow[];
+};
+
+/**
+ * The two child legs this kernel has, and no third: a keyed category GRID, or a flat HEAD COUNT.
+ * `prices` comes from `childReliefPrices` so the caller never names a relief figure — including a client
+ * island, which receives the prices as plain data and hands them straight back.
+ */
+export type ChildReliefInput =
+  | { from: 'table'; table: unknown; prices: readonly ChildReliefPrice[] }
+  | { from: 'headCount'; children: number; perChild: number };
+
+/**
  * Rung 5c (ADR-0080 D4) — a country-admin configuration section the pack contributes. FLAT data only
  * (anti-framework, ADR-0080 §7 "descriptor-driven UI"): a stable key, an i18n `labelKey`, and the
  * route `href`. `overview` marks the sections that also appear in the Statutory Configuration
@@ -191,6 +251,21 @@ export interface CountryPackClient {
   leave: {
     /** Statutory floor: entitlement in days for a leave-type code at completed years of service. */
     entitlement: (code: string, serviceYears: number) => number;
+  };
+
+  /**
+   * Client-safe PAYROLL vocabulary — pure functions only (item 04b88724).
+   *
+   * The Identification & Tax card is an interactive island: it prices the child-relief grid WHILE the admin
+   * types into it, so it cannot wait for a server round trip. Before this slice existed it multiplied the
+   * pack's prices by the keyed counts itself, which is a SECOND derivation of the qualifying-children
+   * count — and the screen ended up printing a relief figure the payroll kernel contradicted. The card now
+   * calls the pack's own function with the counts on screen; the statutory rule never leaves the pack and
+   * there is one arithmetic, not two.
+   */
+  payroll: {
+    /** The SAME function the server pack exposes (and `childReliefAmountFor` is built on). */
+    childReliefFor: (p: ChildReliefInput) => ChildReliefFigure;
   };
 
   /**
@@ -350,6 +425,21 @@ export interface CountryPack {
      * kernel then never supplies an amount, leaving that pack's own arithmetic untouched.
      */
     childReliefAmountFor?: (table: unknown, reliefs?: StatutoryRuleset['pcb']['reliefs']) => number;
+    /**
+     * Item 04b88724 — THE child-relief derivation: the qualifying-children COUNT, the ringgit, and the
+     * working, as one value. `childReliefAmountFor` above is this function's `.amountRM` and stays on the
+     * surface because the payroll kernel calls it by that name; anything that needs the COUNT (the
+     * Personnel screen, via core/dependents.ts) calls this instead of dividing the amount by a rate it
+     * would have to know. Optional for the same reason `childReliefAmountFor` is: a jurisdiction with no
+     * per-category child relief omits all three and nothing in the kernel asks for them.
+     */
+    childReliefFor?: (p: ChildReliefInput) => ChildReliefFigure;
+    /**
+     * Item 04b88724 — what the resolved ruleset prices each relief category at, in ringgit AND in
+     * qualifying children. The ONE place `units = amountRM / perChild` is written; a screen that has to
+     * price a grid the admin is still typing into receives this as plain data.
+     */
+    childReliefPrices?: (reliefs?: StatutoryRuleset['pcb']['reliefs']) => ChildReliefPrice[];
     /** EPF relief cap (RM) used by the PCB accumulator maths. */
     epfReliefCap: number;
     /**

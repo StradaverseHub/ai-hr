@@ -36,6 +36,7 @@ import { resetEmployeeColumnsAction, saveEmployeeColumnsAction } from './column-
 import { ColumnPicker } from './column-picker';
 import { DraftRow } from './draft-row';
 import { EmployeeRow } from './employee-row';
+import { employmentPhotoIds } from '@/core/person-photo';
 import {
   DRAFT_BUCKET,
   EMPLOYEE_STATUS_BUCKETS,
@@ -231,6 +232,20 @@ export default async function PeoplePage({
   const employees = draftOnly ? [] : employeeRows;
   const total = draftOnly ? 0 : employeeTotal;
   const pgState = pageState(pq, total, employees.length);
+
+  // 597c810a — WHO ON THIS PAGE HAS A PROFILE PHOTO, in ONE query, AFTER the page's rows are known.
+  //
+  // It cannot join the Promise.all above: the answer depends on the twenty-five rows that read returns, and
+  // a photo lookup over the whole scoped set would be a bulk read of the wrong population. One extra round
+  // trip for the page is the point — the alternative is an <img> on every row, which on production's 89
+  // persons and 2 photos means 89 browser requests, 87 of them 404s that each cost a session read and an
+  // RLS query. The Map is empty for a page where nobody has one, and then the rows are byte-identical to
+  // before. RLS decides membership, not this call: a person outside can_see_person is simply absent
+  // (core/person-photo.ts).
+  const photoIds = await employmentPhotoIds(
+    session,
+    employees.map((e) => e.employmentId),
+  );
 
   // ── Filters ───────────────────────────────────────────────────────────────────────────────────────
   // Consolidated filter panel (feedback 3542ed4a): same GET params, same query path — only the
@@ -657,6 +672,7 @@ export default async function PeoplePage({
                     statusLabel={tStatus(st)}
                     columns={columns}
                     text={text}
+                    photoPersonId={photoIds.get(e.employmentId) ?? null}
                   />
                 );
               })}

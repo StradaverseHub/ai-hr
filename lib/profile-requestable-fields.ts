@@ -158,7 +158,7 @@ export const PROFILE_REQUESTABLE_FIELDS: readonly RequestableField[] = [
       { value: '3', labelKey: 'pcbOption3' },
     ],
   },
-  { key: 'numChildren', labelKey: 'childrenPcbRelief', tab: 'bankStatutory', target: 'statutory', column: 'numChildren', input: 'number' },
+  { key: 'numChildren', labelKey: 'childrenPhysical', tab: 'bankStatutory', target: 'statutory', column: 'numChildren', input: 'number' },
   // New in stage two — the registration numbers an employee is issued and HR records. Each is filed on
   // a statutory return (EPF Form A, SOCSO 8A, CP39), so a wrong one is a wrong filing, not a typo.
   { key: 'epfNumber', labelKey: 'epfNumber', tab: 'bankStatutory', target: 'statutory', column: 'epfNumber', input: 'text' },
