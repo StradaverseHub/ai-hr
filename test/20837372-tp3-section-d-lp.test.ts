@@ -543,6 +543,52 @@ describe('20837372 (f) · seeding ∑LP may not restate a month that has been fi
     expect(after.pcbMeta!.trace!.lpAccumulated).toBe(0);
   });
 
+  /**
+   * ⚠️ THERE ARE TWO GUARDS, NOT ONE, AND THE ARM ABOVE ONLY REACHES THE FIRST.
+   *
+   * `createAdditionalRun` refuses at creation; `generatePayslips` refuses again at `runSeq > 1`, and
+   * that second one is the load-bearing half — a run CREATED before the filing and GENERATED after it
+   * walks straight past the first check. Mutation-testing this file found the gap: deleting the
+   * `generatePayslips` refusal left the arm above green, because it never reaches that line. So the
+   * batch here is opened BEFORE the filing and generated AFTER it, which is the only order that puts a
+   * newly seeded ∑LP in front of the second guard.
+   */
+  it('refuses at GENERATION too, for a run opened before the filing and generated after it', async () => {
+    const e = await payableEmployee('Filed At Generate');
+    const period = `${YEAR}-05`;
+    await runMonth(period, ['Filed At Generate']);
+
+    // Opened while the month was still unfiled — so the creation-time guard lets it through.
+    const extra = await createAdditionalRun(a, { companyId: b.companyId, payPeriod: period, runType: 'adjustment' });
+
+    const [rep] = await owner.db
+      .insert(schema.statutoryReport)
+      .values({
+        tenantId: b.tenantId,
+        companyId: b.companyId,
+        jurisdiction: 'MY',
+        reportType: 'my.cp39',
+        periodKind: 'month',
+        periodKey: period,
+        status: 'draft',
+        statutoryVersion: 'MY-2026.1',
+        rowCount: 1,
+        generatedBy: b.adminUserId,
+      })
+      .returning({ id: schema.statutoryReport.id });
+    await markReportFiled(a, { reportId: rep.id, ackRef: 'LHDN-ACK-GEN-20837372', filedOn: `${YEAR}-06-10` });
+
+    // The TP3 lands afterwards — exactly the sequence this round makes reachable for the first time.
+    await saveTp3(adminCtx(b), { personId: e.personId, assessmentYear: YEAR, sectionC: SECTION_C, sectionD: SECTION_D });
+
+    const err = await generatePayslips(a, { batchId: extra.batchId }).then(
+      () => null,
+      (x: unknown) => x,
+    );
+    expect(err, 'the run that would restate a filed month must not generate').toBeInstanceOf(PeriodAlreadyFiledError);
+    expect((err as PeriodAlreadyFiledError).message).toContain('LHDN-ACK-GEN-20837372');
+  });
+
   it('a LATER unfiled month does pick the ∑LP up — which is the point of the fix', async () => {
     const e = await payableEmployee('Filed Then Later');
     const filedPeriod = `${YEAR}-05`;
