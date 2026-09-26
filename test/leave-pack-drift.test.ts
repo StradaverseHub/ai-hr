@@ -73,6 +73,12 @@ const BOUNDARIES = [
   'core/replacement-eligibility',
   // 296fc027 Step 2 — the employee replacement-leave request path. In BOTH lists, same reasoning.
   'core/replacement-request',
+  // r343 cbfa8b0b — the single-table Leave Credit request (Day Type as an input, adjudicated against the
+  // roster). In BOTH lists for the reason every note above gives: as a BOUNDARY it is guarded like its
+  // siblings, so a future file importing it directly is caught; in ALWAYS_ALLOWED it may import them back,
+  // because leave implementation files import each other freely. No pack-drift-allowlist entry is added —
+  // its only outside consumer is app/leave/, which is already always-allowed below.
+  'core/leave-credit-request',
   'core/benefit-scheme',
   // 6e9a126e — the entitlement redesign's new layer + its archive reader. In BOTH lists, same reasoning as
   // the notes above: as BOUNDARIES they are guarded like their siblings, and in ALWAYS_ALLOWED they may
@@ -104,6 +110,7 @@ const ALWAYS_ALLOWED = [
   'core/toil.ts',
   'core/replacement-eligibility.ts', // 296fc027 — see the BOUNDARIES note above
   'core/replacement-request.ts', // 296fc027 Step 2 — see the BOUNDARIES note above
+  'core/leave-credit-request.ts', // r343 cbfa8b0b — see the BOUNDARIES note above
   'core/benefit-scheme.ts',
   'core/entitlement-template.ts', // 6e9a126e — see the BOUNDARIES note above
   'core/entitlement-archive.ts', // 6e9a126e — see the BOUNDARIES note above

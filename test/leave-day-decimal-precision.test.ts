@@ -321,6 +321,11 @@ describe('4a1abc4a · ONE formatter, and it stays one', () => {
     '/app/approvals/leave-date-breakdown.tsx',
     '/components/leave-duration-fields.tsx',
     '/components/leave/replacement-leave-request-dialog.tsx',
+    // r343 cbfa8b0b — the single-table Leave Credit request and its screen. The table prints a per-row
+    // credit, a Total Credit and a stored credit per submitted line; all three are day figures, so they are
+    // listed here for the reason the header gives rather than left to be found by rendering later.
+    '/components/leave/leave-credit-request-table.tsx',
+    '/app/leave/credit/page.tsx',
   ];
 
   it('no leave surface still prints a RAW day count', () => {
