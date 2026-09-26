@@ -465,17 +465,58 @@ export async function syncChildReliefFromFamily(
           isDeceased: employeeDependent.isDeceased,
           archivedAt: employeeDependent.archivedAt,
           childTaxRelief: employeeDependent.childTaxRelief,
+          // a5f21891 — the two columns the WEIGHTED grid needs. The head count below ignores them, which
+          // is why they were not read before; `childReliefGridFromFamily` cannot work without them.
+          childReliefCategory: employeeDependent.childReliefCategory,
+          childReliefPercentage: employeeDependent.childReliefPercentage,
         })
         .from(employeeDependent)
         .where(eq(employeeDependent.personId, personId));
-      return { statutory, derived: eligibleChildReliefCount(rows) };
+      // ONE READ, TWO ANSWERS, AND THEY ANSWER DIFFERENT QUESTIONS (a5f21891). `derived` is the HEAD
+      // COUNT and stays `num_children`, because Form E, CP8D and EA all read that column as a head count.
+      // `grid` is the s.48 WEIGHTING — 1 / 4 / 8 per category, halved for a 50% share — and it is what
+      // the PCB calculation prices. Deriving both from the same rows is what stops them disagreeing.
+      // ⚠️ THE GRID IS ONLY USABLE WHEN EVERY ELIGIBLE CHILD CARRIES A CATEGORY, AND THIS GATE IS THE
+      // WHOLE SAFETY OF THE ITEM. `childReliefGridFromFamily` SKIPS a child with no
+      // `child_relief_category` — it cannot price what it cannot classify — but that same child DOES
+      // count towards the head count. Pricing an incomplete grid would therefore relieve FEWER children
+      // than the employee has: production has one 'auto' employee with 2 eligible children and only 1
+      // categorised, who would have gone from RM4,000 of relief to RM2,000 the moment this shipped.
+      //
+      // So: complete ⇒ the derived grid, and the weighting reaches the payslip. Incomplete ⇒ NULL, which
+      // clears any stale grid and drops the kernel back to `num_children × perChild` — exactly today's
+      // behaviour, so nobody loses relief while a category is missing. Never carry a stale grid forward:
+      // a grid that no longer describes the family is the one thing worse than no grid.
+      const built = childReliefGridFromFamily(rows, new Date());
+      const grid = built.categorised === built.eligible && built.eligible > 0 ? built.grid : null;
+      return { statutory, derived: eligibleChildReliefCount(rows), grid, gridComplete: grid != null };
     });
 
     if (!state) return NO_SYNC('no_statutory_row');
     // Rail (a) — opt-in. A person on 'manual' keeps full human control of their tax figure.
     if (state.statutory.childReliefMode !== 'auto') return NO_SYNC('manual_mode');
     // Rail (b) — no-op when nothing moved. Prevents a spurious tax event on every unrelated family edit.
-    if (state.statutory.numChildren === state.derived) return NO_SYNC('unchanged');
+    //
+    // ⚠️ THE GRID IS PART OF "MOVED" SINCE a5f21891, AND LEAVING IT OUT WOULD HAVE BEEN A SILENT BUG.
+    // Changing a child from `under_18` to `disabled_study` moves the s.48 weighting from 1 unit to 8 —
+    // RM2,000 of relief to RM16,000 — WITHOUT moving the head count. Comparing only the count would have
+    // short-circuited here and left the stored grid, and therefore the payslip, on the old category for
+    // as long as nobody added or removed a child.
+    // ⚠️ COMPARED CANONICALLY, NOT BY JSON.stringify. The stored grid comes back from JSONB with no key
+    // order guarantee, so a plain stringify compares unequal to a freshly-derived grid that is identical
+    // in every value — and the sync then fires on EVERY family edit, reporting `changed` where nothing
+    // moved. Three existing guards caught that: a spouse add, a custom-relationship add, and an
+    // unchanged re-sync all began reporting a move. Sort the keys and normalise the two counts.
+    const canonicalGrid = (g: ChildReliefGrid | null | undefined): string =>
+      JSON.stringify(
+        Object.keys(g ?? {})
+          .filter((k) => (g![k]?.full ?? 0) !== 0 || (g![k]?.half ?? 0) !== 0)
+          .sort()
+          .map((k) => [k, Number(g![k]?.full ?? 0), Number(g![k]?.half ?? 0)]),
+      );
+    const gridMoved =
+      canonicalGrid(state.statutory.childReliefTable as ChildReliefGrid | null) !== canonicalGrid(state.grid);
+    if (state.statutory.numChildren === state.derived && !gridMoved) return NO_SYNC('unchanged');
 
     // Rail (d) — is a payroll run for the current period still open? Detect BEFORE writing so the alert
     // describes the same moment as the write. We alert rather than block (approved): blocking would leave
@@ -527,7 +568,12 @@ export async function syncChildReliefFromFamily(
       // the employee and their family; a family-record edit must never silently withdraw one.
       disabledIndividual: state.statutory.disabledIndividual ?? false,
       disabledSpouse: state.statutory.disabledSpouse ?? false,
-      childReliefTable: state.statutory.childReliefTable ?? null,
+      // a5f21891 — DERIVED, not carried forward. On 'auto' the Family register is the source of truth,
+      // so the grid it implies is what gets stored and priced. Before this the sync wrote the head count
+      // and left the grid untouched, so `childReliefAmountFor` never saw the weighting and an 'auto'
+      // employee was relieved heads x perChild — RM2,000 for a disabled child in higher education that
+      // the rules price at RM16,000.
+      childReliefTable: state.grid,  // null when a category is missing — see the gate above
       provenance: 'auto_child_relief',
     });
 

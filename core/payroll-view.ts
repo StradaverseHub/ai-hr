@@ -1484,7 +1484,13 @@ export function currentPcbReliefs(
     if (!r) return null;
     const category = Number(row.category ?? 1);
     const children =
-      row.childReliefMode === 'auto_table' && pack.payroll.childReliefAmountFor
+      // a5f21891 — 'auto' PRICES ITS GRID TOO, and all three gates widen together. The sync derives that
+      // grid from the Family register (core/dependents.ts), so on 'auto' the categories decide the money
+      // exactly as a keyed grid does on 'auto_table'. Widening one gate alone leaves the multicycle
+      // worksheet printing a fabricated difference against the payslips it replays — which is what
+      // test/child-relief-weighted-units-r343.test.ts (g) exists to catch.
+      (row.childReliefMode === 'auto_table' || (row.childReliefMode === 'auto' && row.childReliefTable != null)) &&
+      pack.payroll.childReliefAmountFor
         ? pack.payroll.childReliefAmountFor(row.childReliefTable, r)
         : Number(row.children ?? 0) * r.perChild;
     const spouse = category === 2 ? r.spouse : 0;

@@ -598,7 +598,14 @@ function taxProfileOf(e: ProfileRow, rules: StatutoryRuleset): TaxProfile {
     disabled: e.disabledIndividual ?? false,
     disabledSpouse: e.disabledSpouse ?? false,
     childReliefAmount:
-      e.childReliefMode === 'auto_table' ? childReliefAmountFor(e.childReliefTable, rules.pcb.reliefs) : undefined,
+      // a5f21891 — 'auto' PRICES ITS GRID TOO, and all three gates widen together. The sync derives that
+      // grid from the Family register (core/dependents.ts), so on 'auto' the categories decide the money
+      // exactly as a keyed grid does on 'auto_table'. Widening one gate alone leaves the multicycle
+      // worksheet printing a fabricated difference against the payslips it replays — which is what
+      // test/child-relief-weighted-units-r343.test.ts (g) exists to catch.
+      e.childReliefMode === 'auto_table' || (e.childReliefMode === 'auto' && e.childReliefTable != null)
+        ? childReliefAmountFor(e.childReliefTable, rules.pcb.reliefs)
+        : undefined,
   };
 }
 

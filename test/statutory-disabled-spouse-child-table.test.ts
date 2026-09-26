@@ -358,7 +358,19 @@ describe('d64d0df4 · regression A — a family edit must not withdraw a relief 
     expect(after?.numChildren).toBe(1);
     expect(after?.disabledIndividual).toBe(true);
     expect(after?.disabledSpouse).toBe(true);
-    expect(after?.childReliefTable).toEqual({ under_18: { full: 1, half: 0 } });
+    // ⚠️ UPDATED BY a5f21891, AND THE CHANGE IS THE POINT OF THAT ITEM. This used to assert the grid was
+    // CARRIED FORWARD across a family edit. On 'auto' the Family register is now the source of truth for
+    // the grid, and "Kiddo" is added with NO `childReliefCategory` — so the register no longer fully
+    // supports the seeded grid, and the sync CLEARS it rather than leaving a grid that describes a family
+    // that no longer exists. The kernel then falls back to `num_children × perChild`, which is what this
+    // employee was being relieved before and after, so NO MONEY MOVES here.
+    //
+    // The claim this case actually defends — that a family edit never silently withdraws a relief CLAIM —
+    // is untouched and asserted above: disabledIndividual and disabledSpouse both survive.
+    expect(
+      after?.childReliefTable,
+      'an incomplete family clears the grid rather than keeping a stale one; relief falls back to the head count',
+    ).toBeNull();
     // And the columns the sync already carried forward are still carried forward.
     expect(after?.taxCategory).toBe(2);
     expect(after?.childReliefMode).toBe('auto');
