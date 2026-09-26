@@ -70,8 +70,15 @@ const PRODUCTION_SECTION_C = {
   c3: { amount: 8979 },
   c5: { amount: 3000 },
 } as const;
-/** (C1 − ΣC2) − C3 = 60000 − 3600 − 8979. */
-const PRODUCTION_NET = 47421;
+/**
+ * (C1 − ΣC2) − K = 60000 − 3600 − min(8979, 4000).
+ *
+ * ⚠️ UPDATED BY 20837372 (r342), and this row is WHY the item was raised. It used to read 47421 — the
+ * whole 8,979 subtracted — while `core/payroll.ts` capped K at 4,000 for the same box. The two
+ * disagreed, this employee's accumulated pay was recorded RM4,979 too low, and their PCB came out
+ * correspondingly light. C2(i) is 3,600, inside its RM6,000 limit, so ΣC2 does not move here.
+ */
+const PRODUCTION_NET = 52400;
 
 beforeAll(async () => {
   await migrateTestDb();
@@ -150,9 +157,16 @@ describe('1bb09a73 · the Section-C → payroll-column mapping', () => {
     });
     expect(seed).toEqual({
       gross: 60000,
+      // ΣC2 AS IT COUNTS. C2(i) is 3,600 against a RM6,000 limit, so nothing is trimmed here and this
+      // equals `exemptEntered` — the pair is asserted together on purpose, so a future change that
+      // starts trimming an in-limit box has to disagree with one of them.
       exemptTotal: 3600,
+      exemptEntered: 3600,
       netRemuneration: PRODUCTION_NET,
+      // THE RAW BOX, because the form prints it — and the ALLOWABLE figure beside it, which is what
+      // (Y−K) is struck against. Before r342 only the first existed and the arithmetic used it.
       epfClaimed: 8979,
+      epfAllowable: 4000,
       pcbPaid: 3000,
       zakatPaid: 500,
       // Item 20837372 — Section D joins the seed as ∑LP. An EXACT-SET assertion, UPDATED not loosened:

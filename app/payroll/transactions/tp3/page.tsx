@@ -424,12 +424,19 @@ export default async function Tp3Page({
                                 {sub.frequency ? (
                                   <p className="text-xs text-muted-foreground">{t(`frequency.${sub.frequency}`)}</p>
                                 ) : null}
-                                {/* ⚠️ A WARNING, NOT A CORRECTION. The keyed figure is left exactly as it
-                                    is and the tax calculation still uses all of it; what is over the
-                                    limit was already moved into C1 as taxable pay by the previous
-                                    employer (specification printed page 20, item 9), so trimming it here
-                                    would tax the same ringgit twice. What an over-limit box means is
-                                    that the FORM was filled wrong, and this says so with the figure. */}
+                                {/* ⚠️ A WARNING, AND THE KEYED FIGURE IS STILL LEFT EXACTLY AS IT IS —
+                                    but since item 20837372 the CALCULATION no longer uses all of it.
+                                    `deriveAccumulatorSeed` holds each sub-line to this same limit, so
+                                    the part above it stays taxable, which is what the specification's
+                                    printed page 20 item 9 requires ("Any amount exceed the restricted
+                                    amount shall be taxable"). This comment used to say trimming it would
+                                    "tax the same ringgit twice"; see core/tp3.ts `tp3ExemptionOverLimits`
+                                    for why that was wrong — C1 is gross, so C1 − ΣC2 taxes the excess
+                                    exactly once. The INPUT is still never refused (ADR-0008); only what
+                                    the arithmetic may use is limited. An over-limit box still usually
+                                    means the FORM was filled wrong, and this still says so with the
+                                    figure — the message the operator reads is unchanged and remains
+                                    true in all six locales. */}
                                 {over ? (
                                   <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
                                     {t('tp3.exemptOverLimit', {

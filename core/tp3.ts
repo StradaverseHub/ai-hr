@@ -107,6 +107,51 @@ function tp3Packs(): Tp3Catalogue[] {
     .filter((c): c is Tp3Catalogue => c != null);
 }
 
+/**
+ * The EPF relief cap of the pack that owns the TP3 catalogue — LHDN's K limit (item 20837372).
+ *
+ * ⚠️ READ FROM THE PACK, NEVER WRITTEN HERE. `core/payroll.ts` already caps K with
+ * `pack.payroll.epfReliefCap` and its comment says why ("pack-owned: cap math always matches the
+ * calculator"). A second literal in this file would be the duplicate-source-of-truth CLAUDE.md §1
+ * forbids, and the two copies would disagree the first time an agency moved the figure.
+ *
+ * NULL ⇒ no cap is sourced for this country, and none is invented — the same discipline
+ * `tp3ExemptionOverLimits` applies to a sub-line whose `exemptionLimit` is null.
+ */
+function tp3EpfReliefCap(): number | null {
+  const owner = countryPacks().find((p) => p.payroll.tp3Catalogue != null);
+  return owner?.payroll.epfReliefCap ?? null;
+}
+
+/**
+ * ONE Section C line, totalled with each sub-line held to its own statutory limit (item 20837372).
+ *
+ * The limits are the SAME `exemptionLimit` values `tp3ExemptionOverLimits` compares against, read off
+ * the same catalogue, so the warning the operator sees and the figure the calculation uses can never
+ * describe different rules. A sub-line with no sourced limit contributes in full; a line with no
+ * sub-lines has nothing to cap and contributes its stored amount.
+ */
+function cappedLineTotal(payload: Tp3Payload, code: string): number {
+  const line = TP3_SECTION_C.find((l) => l.code === code);
+  const stored = (payload.sectionC ?? {})[code];
+  const amount = Number(stored?.amount ?? 0);
+  if (line == null || line.subItems.length === 0) return amount;
+  // ⚠️ NO SUB-LINES STORED ⇒ USE THE AMOUNT, NEVER A RECOMPUTED ZERO. `readGroup` above sets a
+  // sub-lined item's `amount` to the SUM of its sub-lines and writes `subItems` only where one is
+  // above zero, so a payload this codebase saved can never carry a non-zero `amount` here without the
+  // sub-lines behind it. A hand-built or legacy payload can, and summing its absent keys would silently
+  // erase the figure — which is how the first cut of this change turned a −400 keying error into +500
+  // and hid it. There is nothing to apply a PER-SUB limit to in that shape, so the amount stands.
+  if (stored?.subItems == null) return amount;
+  return round2(
+    line.subItems.reduce((sum, sub) => {
+      const keyed = Number(stored.subItems?.[sub.code] ?? 0);
+      const limit = sub.exemptionLimit;
+      return sum + (limit == null ? keyed : Math.min(keyed, limit));
+    }, 0),
+  );
+}
+
 function mergeByCode<T extends { code: string }>(lists: readonly (readonly T[])[]): readonly T[] {
   const byCode = new Map<string, T>();
   for (const list of lists) for (const item of list) if (!byCode.has(item.code)) byCode.set(item.code, item);
@@ -319,8 +364,18 @@ export type Tp3AccumulatorSeed = {
    * printed annual limit, so this total cannot exceed what Section D is allowed to carry.
    */
   lpDeclared: number;
-  /** ΣC2 — shown in its own right, because it is the figure the old single column swallowed. */
+  /**
+   * ΣC2 AS IT COUNTS — each sub-line held to its own statutory limit (item 20837372). This is the
+   * figure `netRemuneration` is struck against; `exemptEntered` below is what the operator keyed.
+   */
   exemptTotal: number;
+  /** ΣC2 exactly as keyed, so the form can print what was entered beside what counts. */
+  exemptEntered: number;
+  /**
+   * C3 held to the EPF relief cap — LHDN's K, which the specification DEFINES as capped. `epfClaimed`
+   * above is the raw box, and it stays raw because the form prints it.
+   */
+  epfAllowable: number;
   /** C1 — the gross before anything comes off it. */
   gross: number;
 };
@@ -329,8 +384,16 @@ export function deriveAccumulatorSeed(payload: Tp3Payload | null | undefined): T
   if (!payload || payload.form !== 'tp3-2026') return null;
   const c = payload.sectionC ?? {};
   const gross = Number(c.c1?.amount ?? 0);
-  const exemptTotal = Number(c.c2?.amount ?? 0);
+  // ⚠️ CAPPED, AND THIS IS THE ITEM (20837372). Until this round both lines below went into
+  // `netRemuneration` exactly as keyed, so a box over its statutory limit reduced taxable pay by the
+  // whole of itself. The specification's printed page 20 item 9 says the opposite of that: "Any amount
+  // exceed the restricted amount shall be taxable." See the note on `tp3ExemptionOverLimits` for why
+  // the earlier reading of this file was wrong.
+  const exemptEntered = Number(c.c2?.amount ?? 0);
+  const exemptTotal = cappedLineTotal(payload, 'c2');
   const epfClaimed = Number(c.c3?.amount ?? 0);
+  const epfCap = tp3EpfReliefCap();
+  const epfAllowable = epfCap == null ? epfClaimed : Math.min(epfClaimed, epfCap);
   const pcbPaid = Number(c.c5?.amount ?? 0);
   const zakatPaid = Number(c.c4?.subItems?.i ?? 0);
   // ∑LP — Section D, item 20837372. OVER THE CATALOGUE, not over the payload's own keys: a stored
@@ -343,11 +406,17 @@ export function deriveAccumulatorSeed(payload: Tp3Payload | null | undefined): T
   return {
     gross,
     exemptTotal,
+    exemptEntered,
     epfClaimed,
+    epfAllowable,
     pcbPaid,
     zakatPaid,
     lpDeclared,
-    netRemuneration: round2(gross - exemptTotal - epfClaimed),
+    // ∑(Y−K) IS STRUCK AGAINST THE ALLOWABLE FIGURES, NOT THE KEYED ONES. K is defined as capped, so
+    // (Y−K) must subtract the capped K — `core/payroll.ts` already caps K itself, and until this round
+    // the two disagreed about the same box: on the one production form C3 was 8,979 against a 4,000
+    // cap, so K was 4,000 while this subtracted 8,979 and understated accumulated pay by 4,979.
+    netRemuneration: round2(gross - exemptTotal - epfAllowable),
   };
 }
 
@@ -355,15 +424,31 @@ export function deriveAccumulatorSeed(payload: Tp3Payload | null | undefined): T
  * The C2 sub-lines whose keyed figure is ABOVE the statutory exemption limit for that line (item
  * 20837372). Empty when every box is within its limit, or when no limit is sourced for it.
  *
- * ⚠️ IT REPORTS; IT NEVER CAPS AND IT NEVER REFUSES, and the reason is the form itself. TP3 Section C
- * prints ONE money column and no limit column (verified on the agency's own Exhibit 2, printed page 39,
- * and on the standalone `bm-borang-tp3-2026.pdf`), so ADR-0008's "an item with no printed cap is
- * captured and never blocked" decides it. Beyond that, the specification's printed page 20 item 9 says
- * of the exemption limits "Any amount exceed the restricted amount shall be taxable" — addressed to the
- * employer running the payroll, which for a TP3 is the PREVIOUS employer. The over-limit part is
- * therefore already sitting in C1 as taxable pay by the time the form is filled in, and capping C2 here
- * would tax the same ringgit twice. A figure over the limit means the FORM was filled wrong; the
- * operator fixes the form, and this is what tells them to.
+ * ⚠️ IT REPORTS; IT NEVER REFUSES. TP3 Section C prints ONE money column and no limit column (verified
+ * on the agency's own Exhibit 2, printed page 39, and on the standalone `bm-borang-tp3-2026.pdf`), so
+ * ADR-0008's "an item with no printed cap is captured and never blocked" decides the INPUT: the form
+ * stores exactly what the operator keyed, and this function's job is to tell them when a box looks
+ * wrong. That is unchanged.
+ *
+ * ⚠️⚠️ WHAT DID CHANGE — IT NOW ALSO CAPS, IN THE ARITHMETIC ONLY (item 20837372, after the reporter
+ * contested). This comment used to argue the opposite, and the argument was wrong, so it is recorded
+ * here rather than quietly deleted. It said: the over-limit part "is therefore already sitting in C1 as
+ * taxable pay by the time the form is filled in, and capping C2 here would tax the same ringgit twice."
+ *
+ * It does not. C1 is GROSS — this file's own header says C1 "is LHDN's Y before anything is taken off
+ * it" — so the excess is in C1 either way, and `C1 − ΣC2` is precisely where it is either taxed or not:
+ *
+ *     C1 57,000 (including a 7,000 travel allowance), C2(i) keyed 7,000, limit 6,000
+ *       uncapped →  net 50,000  — the whole allowance escapes tax
+ *       capped   →  net 51,000  — the 1,000 excess is taxed, ONCE
+ *
+ * Capping taxes the excess exactly once, which is what printed page 20 item 9 requires of it. NOT
+ * capping is what let it escape. The two things ADR-0008 governs and this now does are different:
+ * nothing here refuses an entry, and `deriveAccumulatorSeed` limits only what the CALCULATION may use.
+ * Keep them separate — a later reader must not collapse "never blocked" into "never capped".
+ *
+ * A figure over the limit still usually means the FORM was filled wrong, and this is still what tells
+ * the operator so.
  */
 export type Tp3ExemptionOverLimit = {
   /** 'c2' — the Section C line. */
@@ -548,6 +633,53 @@ export type Tp3SeedOutcome =
  * here because writing the columns from a person-keyed form makes it look like a new decision. It is
  * not, and a per-employment previous-employment balance would need a new column before it could be one.
  */
+/**
+ * Re-derive every stored TP3 projection from the form it came from (item 20837372, r342).
+ *
+ * ⚠️ WHY A RESYNC IS OWED AT ALL. `employee_statutory_my`'s five TP3 columns are a PROJECTION, written
+ * only when the form is saved. r342 changed the arithmetic that produces them — Section C is now
+ * counted to its statutory limits — so every row stored before this round holds a figure derived by the
+ * old rule and will keep seeding PCB with it until somebody re-saves that form. On the reporter's
+ * system that is one row, and it is wrong by RM4,979.
+ *
+ * ⚠️ IT REUSES `projectSeedOntoStatutory`, WHICH IS THE POINT. A script that wrote the five columns
+ * itself would be a second author of the same projection, and the two would drift the first time one of
+ * them changed. This walks the forms and hands each freshly-derived seed to the SAME function the save
+ * path uses, so the resynced row is byte-identical to what a re-save would have produced — including
+ * the `laterYearHoldsColumns` refusal and the missing-profile refusal, which are reported, not
+ * overridden.
+ *
+ * Returns one outcome per form so the caller can print what moved and what did not. CLAUDE.md §6:
+ * `deploy.sh` runs migrations, not scripts — this must be run on the box and its rows verified.
+ */
+export async function resyncTp3Projections(
+  ctx: SessionContext,
+  opts: { dryRun?: boolean } = {},
+): Promise<{ personId: string; assessmentYear: number; before: number | null; after: number; outcome: Tp3SeedOutcome }[]> {
+  return withTenant(ctx, async (tx) => {
+    const forms = await tx
+      .select({ personId: employeeTp3.personId, assessmentYear: employeeTp3.assessmentYear, payload: employeeTp3.payload })
+      .from(employeeTp3)
+      .orderBy(employeeTp3.personId, employeeTp3.assessmentYear);
+    const out: { personId: string; assessmentYear: number; before: number | null; after: number; outcome: Tp3SeedOutcome }[] = [];
+    for (const f of forms) {
+      const seed = deriveAccumulatorSeed(f.payload as Tp3Payload | null);
+      if (seed == null) continue;
+      const [stat] = await tx
+        .select({ net: employeeStatutoryMy.tp3NetRemuneration })
+        .from(employeeStatutoryMy)
+        .where(eq(employeeStatutoryMy.personId, f.personId))
+        .limit(1);
+      const before = stat?.net == null ? null : Number(stat.net);
+      const outcome = opts.dryRun
+        ? ({ applied: false, reason: 'dryRun' } as unknown as Tp3SeedOutcome)
+        : await projectSeedOntoStatutory(tx, ctx, { personId: f.personId, assessmentYear: f.assessmentYear, seed });
+      out.push({ personId: f.personId, assessmentYear: f.assessmentYear, before, after: seed.netRemuneration, outcome });
+    }
+    return out;
+  });
+}
+
 async function projectSeedOntoStatutory(
   tx: Tx,
   ctx: SessionContext,

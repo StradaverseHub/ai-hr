@@ -419,19 +419,38 @@ describe('20837372 (c) · each C2 sub-item carries its own sourced exemption lim
     expect(tp3ExemptionOverLimits(huge), 'ADR-0008 — no printed cap means nothing to check against').toEqual([]);
   });
 
-  it('⚠️ DOES NOT CAP: an over-limit C2 is SAVED WHOLE and reaches the calculation whole', async () => {
+  it('SAVED WHOLE, BUT COUNTED TO ITS LIMIT: an over-limit C2 and an over-cap C3 reach the calculation capped', async () => {
     const e = await payableEmployee('C2 Over');
-    // C2(ii) child-care at RM5,000 — RM2,000 over its RM3,000 limit.
+    // C2(ii) child-care at RM5,000 — RM2,000 over its RM3,000 limit. C3 at RM8,979 — RM4,979 over the
+    // RM4,000 EPF relief cap. These are the reporter's own production figures for C3.
     await saveTp3(adminCtx(b), {
       personId: e.personId,
       assessmentYear: YEAR,
       sectionC: { c1: { amount: 60000 }, c2: { subItems: { ii: 5000 } }, c3: { amount: 8979 } },
     });
     const row = await statRow(e.personId);
-    // 60000 − 5000 − 8979. A capped ΣC2 would have produced 60000 − 3000 − 8979 = 48021 and taxed the
-    // RM2,000 a second time: the previous employer already moved the over-limit part into C1 as taxable
-    // pay (specification printed page 20, item 9). THIS ASSERTION IS THE DECISION, written down.
-    expect(Number(row.tp3NetRemuneration)).toBe(46021);
+    // ⚠️⚠️ THIS ASSERTION IS THE DECISION, AND THE DECISION WAS REVERSED (20837372, r342, after the
+    // reporter contested). It used to read 46021 — 60000 − 5000 − 8979, both boxes counted whole — and
+    // its comment said a capped ΣC2 "would tax the RM2,000 a second time: the previous employer already
+    // moved the over-limit part into C1 as taxable pay".
+    //
+    // That was wrong, and the arithmetic shows it. C1 is GROSS, so the excess is in C1 either way, and
+    // C1 − ΣC2 is where it is either taxed or not: counting ΣC2 whole SUBTRACTS the excess again and
+    // lets it escape entirely. Capping taxes it exactly ONCE, which is what the specification's printed
+    // page 20 item 9 requires — "Any amount exceed the restricted amount shall be taxable".
+    //
+    //   60000 − min(5000, 3000) − min(8979, 4000) = 60000 − 3000 − 4000 = 53000
+    expect(Number(row.tp3NetRemuneration)).toBe(53000);
+    // THE INPUT IS STILL NEVER REFUSED (ADR-0008) — the form stores exactly what was keyed, and only
+    // what the ARITHMETIC may use is limited. Collapsing those two is the mistake this pair guards.
+    const saved = (await owner.db
+      .select()
+      .from(schema.employeeTp3)
+      .where(eq(schema.employeeTp3.personId, e.personId))
+      .then((r) => r[0]))!;
+    const savedC = (saved.payload as { sectionC: Record<string, { amount?: number; subItems?: Record<string, number> }> }).sectionC;
+    expect(savedC.c2.subItems?.ii, 'the keyed C2(ii) is stored whole').toBe(5000);
+    expect(savedC.c3.amount, 'the keyed C3 is stored whole').toBe(8979);
     // …and the warning is raised, so the operator is told the form looks wrong even though nothing moved.
     const form = (await owner.db
       .select()

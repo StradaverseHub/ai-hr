@@ -223,20 +223,28 @@ describe('df35d60d · Section C, and the arithmetic that could not be run backwa
     const seed = deriveAccumulatorSeed(row.payload)!;
     expect(seed.gross).toBe(60000);
     expect(seed.exemptTotal, 'the server sums C2, the client never sends a total').toBe(4000);
-    expect(seed.epfClaimed).toBe(6600);
-    expect(seed.netRemuneration, '60000 − 4000 − 6600').toBe(49400);
+    expect(seed.epfClaimed, 'the RAW box, because the form prints it').toBe(6600);
+    // ⚠️ UPDATED BY 20837372 (r342), not loosened. C3 is 6,600 against an EPF relief cap of 4,000, and
+    // LHDN DEFINES K as capped — `core/payroll.ts` already capped K and this subtracted the raw box, so
+    // the two disagreed about the same figure. (Y−K) is now struck against the allowable K. The C2
+    // sub-lines here are all UNDER their own limits (2,400 + 1,200 + 400, against 6,000 / 3,000 / none),
+    // so ΣC2 is untouched at 4,000 — this case moves for the EPF reason ALONE, which is why it is worth
+    // asserting both legs separately.
+    expect(seed.epfAllowable, 'K as the specification defines it: min(6600, 4000)').toBe(4000);
+    expect(seed.netRemuneration, '60000 − 4000 − 4000').toBe(52000);
     expect(seed.pcbPaid, 'C5, the form’s own “excluding CP38”').toBe(3120.5);
     expect(seed.zakatPaid, 'C4(i)').toBe(500);
 
-    // ⚠️ THE POINT OF THE WHOLE ITEM: the ONE stored figure cannot be taken apart again. A second set of
-    // boxes with a different gross and a different exempt total lands on the SAME 49400.
+    // ⚠️ THE POINT OF THE WHOLE ITEM, AND IT SURVIVES THE CAP: the ONE stored figure cannot be taken
+    // apart again. A second set of boxes with a different gross and a different exempt total still
+    // lands on the SAME figure — 52000 now rather than 49400, for the EPF reason above.
     await saveTp3(adminCtx(b), {
       personId,
       assessmentYear: YEAR + 1,
       sectionC: { c1: { amount: 56000 }, c2: { subItems: { i: 0, ii: 0, iii: 0, iv: 0, v: 0 } }, c3: { amount: 6600 } },
     });
     const other = (await getTp3ForPersonYear(adminCtx(b), { personId, assessmentYear: YEAR + 1 }))!;
-    expect(deriveAccumulatorSeed(other.payload)!.netRemuneration).toBe(49400);
+    expect(deriveAccumulatorSeed(other.payload)!.netRemuneration).toBe(52000);
     expect(deriveAccumulatorSeed(other.payload)!.gross, 'but the gross differs — hence seven boxes').toBe(56000);
   });
 
