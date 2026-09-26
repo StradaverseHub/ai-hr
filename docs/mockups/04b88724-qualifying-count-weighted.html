@@ -1,0 +1,96 @@
+<!doctype html><meta charset="utf-8"><title>Qualifying children — the working</title>
+<style>
+ *{box-sizing:border-box}
+ body{margin:0;background:#eef1f5;font:13.5px/1.5 -apple-system,"Segoe UI",Roboto,sans-serif;color:#111;padding:26px}
+ h1{font-size:19px;margin:0 0 3px}
+ .sub{color:#555;font-size:12.5px;margin:0 0 16px;max-width:1150px}
+ .alert{background:#fdeceb;border:1px solid #d9534f;border-left:5px solid #d9534f;padding:11px 14px;
+        border-radius:5px;margin:0 0 18px;font-size:12.8px;max-width:1150px}
+ .alert b{color:#8a2018}
+ .cols{display:flex;gap:18px;align-items:flex-start;max-width:1150px}
+ .col{flex:1;background:#fff;border:1px solid #c4ccd6;border-radius:6px;overflow:hidden;
+      box-shadow:0 1px 4px rgba(0,0,0,.07)}
+ .hd{padding:9px 13px;font-weight:700;font-size:12.4px;border-bottom:1px solid #c4ccd6}
+ .now .hd{background:#fdeceb;color:#8a2018}
+ .new .hd{background:#e8f4ea;color:#175a28}
+ .hd span{font-weight:400;opacity:.8}
+ .body{padding:13px}
+ .fieldrow{display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:13px}
+ .fieldrow .lbl{color:#555}
+ .fieldrow .val{font-variant-numeric:tabular-nums;font-weight:600}
+ .bad{color:#b3261e}
+ .good{color:#175a28}
+ .card{margin-top:11px;border:1px solid #d3dae2;border-radius:6px;background:#fafbfc;padding:11px}
+ .card h3{margin:0 0 8px;font-size:11.4px;font-weight:600}
+ table{width:100%;border-collapse:collapse;font-size:12.4px}
+ th{text-align:left;font-size:10.3px;text-transform:uppercase;letter-spacing:.4px;color:#667;
+    font-weight:600;padding:0 8px 5px 0;border-bottom:1px solid #d3dae2}
+ td{padding:6px 8px 6px 0;border-bottom:1px solid #e6eaef;vertical-align:middle}
+ tfoot td{border-bottom:0;border-top:2px solid #c4ccd6;font-weight:700;padding-top:7px}
+ .num{text-align:right;font-variant-numeric:tabular-nums}
+ .note{margin-top:9px;font-size:11.6px;color:#666;line-height:1.5}
+ .note.warn{color:#8a2018}
+ .legend{margin:16px 0 0;font-size:12.3px;color:#444;max-width:1150px;line-height:1.6}
+ .tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.4px;padding:2px 6px;
+      border-radius:3px;vertical-align:1px}
+ .tag.k{background:#fdeceb;color:#8a2018}
+ .tag.g{background:#e8f4ea;color:#175a28}
+</style>
+<h1>Qualifying children (PCB) — showing the working for a weighted child</h1>
+<p class="sub">Sketch for feedback item 04b88724, using your Daniel Tan example: one physical child, relief category <b>Disabled child</b>, claim ticked, mode <b>Auto (from Family records)</b>.</p>
+
+<div class="alert"><b>You are right, and this one is ours.</b> Two rounds ago we taught the payslip to
+count a disabled child as four. We did not teach this screen the same thing — so the tax calculation and
+the screen that explains it now disagree, and the screen is the one that is wrong. That is why you see
+1 where you expected 4.</div>
+
+<div class="cols">
+
+<div class="col now">
+ <div class="hd">What the screen shows today <span>&mdash; wrong</span></div>
+ <div class="body">
+  <div class="fieldrow"><span class="lbl">Physical children</span><span class="val">1</span></div>
+  <div class="fieldrow"><span class="lbl">Qualifying children (PCB)</span><span class="val bad">1</span></div>
+  <div class="fieldrow"><span class="lbl">Child relief</span><span class="val bad">RM 2,000.00</span></div>
+  <div class="card">
+   <h3>How the qualifying count was reached</h3>
+   <table>
+    <thead><tr><th>Item</th><th>Relief category</th><th>Share</th><th class="num">Qualifying</th><th class="num">Relief (RM)</th></tr></thead>
+    <tbody>
+     <tr><td>Daniel Tan Jr.</td><td>Disabled child</td><td>100%</td><td class="num bad">1</td><td class="num bad">2,000.00</td></tr>
+    </tbody>
+    <tfoot><tr><td colspan="3">Total</td><td class="num bad">1</td><td class="num bad">2,000.00</td></tr></tfoot>
+   </table>
+   <p class="note warn">&ldquo;In Auto (from Family records) every eligible child counts as one qualifying child. The relief category shown is for information only&hellip;&rdquo;</p>
+  </div>
+  <p class="note warn"><b>This sentence is out of date.</b> It described how the system worked before the last change. The payslip no longer counts every child as one.</p>
+ </div>
+</div>
+
+<div class="col new">
+ <div class="hd">What it will show <span>&mdash; matching the payslip</span></div>
+ <div class="body">
+  <div class="fieldrow"><span class="lbl">Physical children</span><span class="val">1</span></div>
+  <div class="fieldrow"><span class="lbl">Qualifying children (PCB)</span><span class="val good">4</span></div>
+  <div class="fieldrow"><span class="lbl">Child relief</span><span class="val good">RM 8,000.00</span></div>
+  <div class="card">
+   <h3>How the qualifying count was reached</h3>
+   <table>
+    <thead><tr><th>Item</th><th>Relief category</th><th>Share</th><th class="num">Qualifying</th><th class="num">Relief (RM)</th></tr></thead>
+    <tbody>
+     <tr><td>Daniel Tan Jr.</td><td>Disabled child</td><td>100%</td><td class="num good">4</td><td class="num good">8,000.00</td></tr>
+    </tbody>
+    <tfoot><tr><td colspan="3">Total</td><td class="num good">4</td><td class="num good">8,000.00</td></tr></tfoot>
+   </table>
+   <p class="note">1 disabled child &times; 4 = 4 qualifying children. Physical children stays 1 &mdash; the two are separate figures and both are shown.</p>
+  </div>
+  <p class="note">If a category is missing on any qualifying child, the weighting cannot be applied to anyone on the record, and the screen says so plainly instead of showing a part-weighted figure.</p>
+ </div>
+</div>
+</div>
+
+<p class="legend">
+<span class="tag k">TODAY</span> the screen counts every child as one, whatever category is recorded.
+<span class="tag g">AFTER</span> it applies the same rule the payslip already applies: a child 18+ in diploma-or-above study and a disabled child each count as four, and a disabled child in that study counts as eight.
+<br><b>Physical children and Qualifying children (PCB) remain two separate figures</b>, exactly as you asked &mdash; the first is how many children are on the Family record, the second is what the tax calculation uses.
+</p>
