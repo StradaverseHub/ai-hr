@@ -185,3 +185,43 @@ WHAT THIS SYSTEM ALREADY HOLDS FOR EVERY BOX
 Section A comes from the staff record; B, C, D, E and F are already derived by `localization/my/reports.ts`
 (EA_FIELDS) and already amendable through `ea_override`. This transcription changes WHERE they print, not
 whether they are known. Do not blank them: see the approved plan on item ece6d75d.
+
+
+THE FILLED BLACK BLOCKS — MEASURED, NOT ESTIMATED (added 2026-09-27, item fda53352)
+-----------------------------------------------------------------------------------
+The reporter's red-boxed comparison showed the one thing that still makes our page read as a
+different document: LHDN sets its section letters, its banner and its top-right heading as SOLID
+BLACK BLOCKS WITH WHITE LETTERING. We draw plain text.
+
+Measured off `ea-cp8a-pin-2023-official-en.pdf` rasterised at 150 dpi, by scanning for rows and
+columns that are >55% ink within the block's own window. A longest-dark-run measure does NOT work
+here: the blocks contain WHITE TEXT, which breaks the run and under-reports the height (the first
+attempt returned 4.8 pt for a two-line block). Values are points from the top-left of the page.
+
+    block                     top      height     x      width
+    PRIVATE SECTOR heading    17.8      20.2     398.9   133.0     (two lines, English edition)
+    banner                    78.2      14.9      39.8   516.0     (39.8 -> 555.8)
+    section square A          96.5      12.5      39.8    17.3
+    section square B         222.7      10.6      39.8    17.3
+    section square C         443.0      10.1      39.8    17.3
+    section square D         512.6       9.6      39.8    17.3
+    section square E         641.8      10.6      39.8    17.3
+    section square F         706.1      10.1      39.8    17.3
+
+CONSISTENCY CHECKS, and they are why these numbers can be trusted:
+  · EXACTLY SIX squares were found scanning the whole left margin — one per section, A through F,
+    and nothing else. A detector picking up stray ink would not land on six.
+  · Every square is at the SAME x (39.8) and the SAME width (17.3).
+  · The banner spans 39.8 -> 555.8, which is the body's own right edge (556.6, from the table cells)
+    to within rounding.
+  · 39.8 is the body's left column edge, the same one the item captions sit against.
+
+⚠️ THE HEIGHTS VARY (9.6 - 12.5) AND THAT IS NOT NECESSARILY REAL. A 10 pt square is ~21 px at
+150 dpi, so a one-pixel threshold difference is ±0.5 pt. The squares may be sized to their row rather
+than fixed. Trust the WIDTH (17.3, identical across all six) and re-check the height against the
+drawn output rather than treating the spread above as six different sizes.
+
+⚠️ AND THE LEFT MARGIN IS OURS, DELIBERATELY. EA_FORM.left is 24 where the agency's rules start at
+16.8, because the agency's margin is inside the unprintable area of most office printers. The blocks
+above are given in the AGENCY's coordinates; a build must decide per block whether it follows the
+agency or our shifted margin, and say which.
