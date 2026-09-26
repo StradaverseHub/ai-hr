@@ -54,6 +54,7 @@ async function main() {
   let moved = 0;
   let same = 0;
   let refused = 0;
+  let skipped = 0;
 
   for (const t of tenants) {
     // SYSTEM CONTEXT, as scripts/anomaly-sweep.ts documents: a bare { tenantId } is correctly hidden by
@@ -62,7 +63,22 @@ async function main() {
     const entitlements = await owner.db.transaction((tx) => resolveEntitlementsTx(tx, t.id));
     const ctx: SessionContext = { tenantId: t.id, roles: ['hr_admin'], entitlements };
 
-    const rows = await resyncTp3Projections(ctx, { dryRun });
+    // ⚠️ A TENANT WITHOUT THE PAYROLL MODULE IS SKIPPED, NOT FATAL. `resyncTp3Projections` runs under
+    // `withPayrollTenant`, which correctly refuses an account the module is not enabled for — and the
+    // first cut of this script let that reject the whole run. It happened on the very first dry run:
+    // tenant 1 resynced, tenant 2 threw "The payroll module is not enabled for this account", and the
+    // process exited. Had the two sorted the other way, NOTHING would have been resynced and the script
+    // would still have looked like it had failed loudly rather than silently — but a multi-tenant fixup
+    // that stops at the first ineligible tenant is a fixup that quietly does not finish.
+    let rows: Awaited<ReturnType<typeof resyncTp3Projections>>;
+    try {
+      rows = await resyncTp3Projections(ctx, { dryRun });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.log(`${t.name} (${t.id.slice(0, 8)}) — SKIPPED: ${msg}`);
+      skipped += 1;
+      continue;
+    }
     if (rows.length === 0) continue;
     console.log(`${t.name} (${t.id.slice(0, 8)}) — ${rows.length} form(s)`);
     for (const r of rows) {
@@ -83,7 +99,9 @@ async function main() {
     console.log();
   }
 
-  console.log(`${dryRun ? 'would move' : 'moved'}: ${moved}   unchanged: ${same}   refused: ${refused}`);
+  console.log(
+    `${dryRun ? 'would move' : 'moved'}: ${moved}   unchanged: ${same}   refused: ${refused}   tenants skipped: ${skipped}`,
+  );
   if (dryRun) console.log('\nDRY RUN — nothing was written. Re-run without --dry-run to apply.');
   process.exit(0);
 }
