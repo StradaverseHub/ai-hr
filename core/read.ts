@@ -3174,8 +3174,10 @@ export function leaveBalances(
        * holds CGL CPL EXM GD MRL NDL STD and is placed 'primary', while only CPL and NDL carry
        * `balance_source_type_id` → SP. Marriage Leave holds 177.00 days of its OWN across 59 employments and
        * was being folded into a pooled card that does not contain them — 59 people could not see a balance
-       * they can actually spend. CGL/EXM/GD/STD sit at 0.00 today, which is not a reason to fold them
-       * either: the day an entitlement table is written for one of them the same defect returns.
+       * they can actually spend. CGL/EXM/GD/STD sit at 0.00 today, which r341 took to be no reason to fold
+       * them either: the day an entitlement table is written for one of them the same defect returns.
+       * ⚠️ THAT LAST SENTENCE IS NO LONGER THE RULE — r343 folds them and answers the objection a different
+       * way. Read the r343 paragraph below before acting on this one.
        *
        * `isPoolBorrower` is the ONE named answer to "is this row's balance somebody else's" (r340,
        * lib/shared-leave-balance.ts) and the pooling pass eight lines above has already set it from
