@@ -11769,7 +11769,7 @@
       "deleted": "Form TP3 record removed.",
       "deductionMonthBlank": "Not stated",
       "colExemptionLimit": "Exemption limit",
-      "exemptLimitNote": "The exemption limits below come from LHDN's monthly tax deduction specification, not from the TP3 form — the form prints no limit column in this section. They are shown to help you check the figures. Whatever you key is recorded and used exactly as it is; nothing is trimmed.",
+      "exemptLimitNote": "The exemption limits below come from LHDN's monthly tax deduction specification, not from the TP3 form — the form prints no limit column in this section. Whatever you key is recorded exactly as it is and is never trimmed. An amount above a limit stays taxable, so only the part up to the limit counts towards Accumulated Net Remuneration.",
       "exemptOverLimit": "Above the RM {limit} exemption limit by RM {excess}. Anything over the limit is taxable and should already be counted in C1, so please check the form.",
       "downloadPdf": "Download Form TP3 (English)",
       "downloadPdfMs": "Download Form TP3 (Bahasa Malaysia)",
@@ -11781,7 +11781,14 @@
       "openFromPayrollTab": "Open Form TP3",
       "pdfProvenanceMs": "Susun atur kami sendiri, dilukis mengikut Borang PCB/TP3 — bukan borang rasmi LHDN.",
       "pdfProvenanceEn": "Our own layout, drawn to follow the LHDN TP3 form. This is not the agency's own page. Every figure is the one stored against this record; the item wording and the annual limits come from the TP3 (1/2026) form.",
-      "backToTransactions": "Transaction Entry"
+      "backToTransactions": "Transaction Entry",
+      "colTaxExempt": "Tax-exempt",
+      "colExcess": "Excess (taxable)",
+      "colRemaining": "Remaining",
+      "totalExemptCounted": "Exempt allowances counted (C2)",
+      "totalEpfCounted": "EPF and approved funds counted (C3)",
+      "totalNetRemuneration": "Accumulated Net Remuneration",
+      "totalCappedNote": "You keyed RM {entered} across C2 and C3; RM {counted} counts towards Accumulated Net Remuneration. The difference is above the statutory limits and stays taxable."
     }
   },
   "payRule": {

@@ -11769,7 +11769,7 @@
       "deleted": "Đã xoá hồ sơ Mẫu TP3.",
       "deductionMonthBlank": "Không ghi",
       "colExemptionLimit": "Mức miễn thuế tối đa",
-      "exemptLimitNote": "Các mức miễn thuế dưới đây lấy từ đặc tả tính thuế khấu trừ hằng tháng của cơ quan thuế, không phải từ chính mẫu TP3 — mẫu này không in cột mức tối đa ở phần đó. Chúng được hiển thị để giúp bạn đối chiếu số liệu. Số bạn nhập được ghi nhận và sử dụng nguyên vẹn; hệ thống không cắt bớt.",
+      "exemptLimitNote": "Các giới hạn miễn thuế bên dưới lấy từ quy định khấu trừ thuế hằng tháng của LHDN, không phải từ mẫu TP3 — mẫu này không in cột giới hạn ở phần này. Số bạn nhập được ghi nhận đúng như vậy và không bao giờ bị cắt bớt. Số vượt giới hạn vẫn chịu thuế, nên chỉ phần trong giới hạn được tính vào Thù lao ròng lũy kế.",
       "exemptOverLimit": "Vượt mức miễn thuế RM {limit} một khoản RM {excess}. Phần vượt mức phải chịu thuế và lẽ ra đã được tính vào C1, vui lòng kiểm tra lại mẫu.",
       "downloadPdf": "Tải Mẫu TP3 (tiếng Anh)",
       "downloadPdfMs": "Tải Mẫu TP3 (tiếng Mã Lai)",
@@ -11781,7 +11781,14 @@
       "openFromPayrollTab": "Mở Mẫu TP3",
       "pdfProvenanceMs": "Susun atur kami sendiri, dilukis mengikut Borang PCB/TP3 — bukan borang rasmi LHDN.",
       "pdfProvenanceEn": "Our own layout, drawn to follow the LHDN TP3 form. This is not the agency's own page. Every figure is the one stored against this record; the item wording and the annual limits come from the TP3 (1/2026) form.",
-      "backToTransactions": "Nhập giao dịch"
+      "backToTransactions": "Nhập giao dịch",
+      "colTaxExempt": "Được miễn thuế",
+      "colExcess": "Phần vượt (chịu thuế)",
+      "colRemaining": "Còn lại",
+      "totalExemptCounted": "Phụ cấp miễn thuế được tính (C2)",
+      "totalEpfCounted": "EPF và quỹ được phê duyệt được tính (C3)",
+      "totalNetRemuneration": "Thù lao ròng lũy kế",
+      "totalCappedNote": "Bạn đã nhập RM {entered} cho C2 và C3; RM {counted} được tính vào Thù lao ròng lũy kế. Phần chênh lệch vượt giới hạn luật định và vẫn chịu thuế."
     }
   },
   "payRule": {

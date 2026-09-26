@@ -11769,7 +11769,7 @@
       "deleted": "Rekod Borang TP3 dibuang.",
       "deductionMonthBlank": "Tidak dinyatakan",
       "colExemptionLimit": "Had pengecualian",
-      "exemptLimitNote": "Had pengecualian di bawah diambil daripada spesifikasi pengiraan PCB LHDN, bukan daripada borang TP3 — borang itu tidak mencetak lajur had bagi bahagian ini. Ia dipaparkan untuk membantu anda menyemak angka. Apa sahaja yang anda kunci masuk direkodkan dan digunakan seadanya; tiada apa-apa dipotong.",
+      "exemptLimitNote": "Had pengecualian di bawah datang daripada spesifikasi potongan cukai bulanan LHDN, bukan daripada Borang TP3 — borang itu tidak mencetak lajur had dalam bahagian ini. Apa sahaja yang anda masukkan direkodkan tepat seperti yang dimasukkan dan tidak sekali-kali dipotong. Amaun melebihi had kekal bercukai, jadi hanya bahagian sehingga had dikira ke dalam Saraan Bersih Terkumpul.",
       "exemptOverLimit": "Melebihi had pengecualian RM {limit} sebanyak RM {excess}. Jumlah yang melebihi had dikenakan cukai dan sepatutnya sudah dikira dalam C1, jadi sila semak borang.",
       "downloadPdf": "Muat turun Borang TP3 (Bahasa Inggeris)",
       "downloadPdfMs": "Muat turun Borang TP3 (Bahasa Malaysia)",
@@ -11781,7 +11781,14 @@
       "openFromPayrollTab": "Buka Borang TP3",
       "pdfProvenanceMs": "Susun atur kami sendiri, dilukis mengikut Borang PCB/TP3 — bukan borang rasmi LHDN.",
       "pdfProvenanceEn": "Our own layout, drawn to follow the LHDN TP3 form. This is not the agency's own page. Every figure is the one stored against this record; the item wording and the annual limits come from the TP3 (1/2026) form.",
-      "backToTransactions": "Kemasukan Transaksi"
+      "backToTransactions": "Kemasukan Transaksi",
+      "colTaxExempt": "Dikecualikan cukai",
+      "colExcess": "Lebihan (bercukai)",
+      "colRemaining": "Baki",
+      "totalExemptCounted": "Elaun dikecualikan yang dikira (C2)",
+      "totalEpfCounted": "KWSP dan kumpulan wang diluluskan yang dikira (C3)",
+      "totalNetRemuneration": "Saraan Bersih Terkumpul",
+      "totalCappedNote": "Anda memasukkan RM {entered} bagi C2 dan C3; RM {counted} dikira ke dalam Saraan Bersih Terkumpul. Bakinya melebihi had berkanun dan kekal bercukai."
     }
   },
   "payRule": {

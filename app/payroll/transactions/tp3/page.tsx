@@ -2,9 +2,11 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
+import { tp3LineFigures } from '@/lib/tp3-line-figures';
 import { listEmployees } from '@/core/read';
 import {
   deriveAccumulatorSeed,
+  tp3EpfReliefCap,
   getTp3ForPersonYear,
   tp3ExemptionOverLimits,
   getTp3Identity,
@@ -143,6 +145,17 @@ export default async function Tp3Page({
   const d = record?.payload?.sectionD ?? {};
   /** Item 20837372 — the C2 boxes keyed ABOVE their statutory exemption limit. Shown, never enforced. */
   const overLimits = tp3ExemptionOverLimits(record?.payload);
+  /**
+   * C3's cap, from the SAME accessor `deriveAccumulatorSeed` uses (item 20837372). Never a literal:
+   * a second copy of 4,000 here would disagree with the kernel the first time an agency moved it.
+   */
+  const epfCap = tp3EpfReliefCap();
+  /** One right-aligned figure cell. Empty for null — never a dash, never 0.00. */
+  const Fig = ({ v }: { v: number | null }) => (
+    <span className="w-28 pt-2 text-right text-sm tabular-nums text-muted-foreground">
+      {v == null ? '' : money(v)}
+    </span>
+  );
 
   // Twelve month NAMES for the deduction-month dropdown, in the request's own locale, paired with the
   // INTEGER that is stored. See the note beside the field for why the value may not become the name.
@@ -390,8 +403,11 @@ export default async function Tp3Page({
                       keying, never a rule the save enforces. The note below says so in the operator's
                       own words rather than leaving them to infer it from a column heading. */}
                   <p className="text-xs text-muted-foreground">{t('tp3.exemptLimitNote')}</p>
-                  <div className="flex justify-end gap-6 text-xs uppercase tracking-wide text-muted-foreground">
-                    <span className="w-40 text-right">{t('tp3.colExemptionLimit')}</span>
+                  <div className="flex flex-wrap justify-end gap-3 text-xs uppercase tracking-wide text-muted-foreground">
+                    <span className="w-28 text-right">{t('tp3.colExemptionLimit')}</span>
+                    <span className="w-28 text-right">{t('tp3.colTaxExempt')}</span>
+                    <span className="w-28 text-right">{t('tp3.colExcess')}</span>
+                    <span className="w-28 text-right">{t('tp3.colRemaining')}</span>
                     <span className="w-40 text-right">{t('colAccumulated')}</span>
                   </div>
                   {TP3_SECTION_C.map((line, i) => {
@@ -404,10 +420,29 @@ export default async function Tp3Page({
                           <p className="min-w-0 flex-1 pt-2 text-sm">{t(`tp3.money.${line.code}.label`)}</p>
                           {line.subItems.length === 0 ? (
                             <>
-                              {/* A whole-line box has no exemption limit of its own — C1, C3 and C5 are
-                                  not exemptions at all. The cell is EMPTY rather than a dash: an absent
-                                  box asserts nothing, and a dash would read as "no limit applies". */}
-                              <span className="w-40 pt-2" />
+                              {/* C1 and C5 carry no limit — gross pay and PCB already paid are not
+                                  exemptions, so every cell is EMPTY rather than a dash: an absent box
+                                  asserts nothing, and a dash would read as "no limit applies".
+
+                                  ⚠️ C3 IS DIFFERENT AND USED TO BE DRAWN HERE AS IF IT WERE NOT. It is
+                                  held to the EPF relief cap by `deriveAccumulatorSeed` — the reporter's
+                                  own row keyed 8,979 against a 4,000 cap — and until item 20837372 this
+                                  branch printed an empty limit cell beside it, so the single largest
+                                  capping on the form was the one thing the screen never mentioned. */}
+                              {(() => {
+                                const lim = line.code === 'c3' ? epfCap : null;
+                                const r = tp3LineFigures(stored?.amount, lim);
+                                return (
+                                  <>
+                                    <span className="w-28 pt-2 text-right text-sm tabular-nums text-muted-foreground">
+                                      {lim == null ? '' : money(lim)}
+                                    </span>
+                                    <Fig v={lim == null ? null : r.exempt} />
+                                    <Fig v={r.excess} />
+                                    <Fig v={r.remaining} />
+                                  </>
+                                );
+                              })()}
                               <MoneyInput name={amountField('c', line.code)} value={stored?.amount} />
                             </>
                           ) : null}
@@ -446,9 +481,19 @@ export default async function Tp3Page({
                                   </p>
                                 ) : null}
                               </div>
-                              <span className="w-40 pt-2 text-right text-sm tabular-nums text-muted-foreground">
+                              <span className="w-28 pt-2 text-right text-sm tabular-nums text-muted-foreground">
                                 {sub.exemptionLimit == null ? t('noLimit') : money(sub.exemptionLimit)}
                               </span>
+                              {(() => {
+                                const r = tp3LineFigures(stored?.subItems?.[sub.code], sub.exemptionLimit);
+                                return (
+                                  <>
+                                    <Fig v={r.exempt} />
+                                    <Fig v={r.excess} />
+                                    <Fig v={r.remaining} />
+                                  </>
+                                );
+                              })()}
                               <MoneyInput
                                 name={subField('c', line.code, sub.code)}
                                 value={stored?.subItems?.[sub.code]}
@@ -459,6 +504,38 @@ export default async function Tp3Page({
                       </div>
                     );
                   })}
+
+                  {/* ── WHAT SECTION C ACTUALLY CONTRIBUTES ──────────────────────────────────────
+                      Every figure here is READ OFF THE SEED, never recomputed. `exemptTotal` and
+                      `epfAllowable` are the same fields `core/tp3.ts` strikes `netRemuneration`
+                      against, so this row cannot drift from the arithmetic it reports — two call
+                      sites each working the caps out is the duplicate source of truth §1 forbids.
+                      Absent when nothing is keyed yet: a form with no figures has no total, and
+                      printing 0.00 would assert one. */}
+                  {derived ? (
+                    <div className="mt-4 space-y-1 border-t-2 border-border pt-3 text-sm">
+                      <div className="flex flex-wrap justify-between gap-2">
+                        <span className="text-muted-foreground">{t('tp3.totalExemptCounted')}</span>
+                        <span className="tabular-nums">{money(derived.exemptTotal)}</span>
+                      </div>
+                      <div className="flex flex-wrap justify-between gap-2">
+                        <span className="text-muted-foreground">{t('tp3.totalEpfCounted')}</span>
+                        <span className="tabular-nums">{money(derived.epfAllowable)}</span>
+                      </div>
+                      <div className="flex flex-wrap justify-between gap-2 border-t border-border pt-1 font-semibold">
+                        <span>{t('tp3.totalNetRemuneration')}</span>
+                        <span className="tabular-nums">{money(derived.netRemuneration)}</span>
+                      </div>
+                      {derived.exemptEntered > derived.exemptTotal || derived.epfClaimed > derived.epfAllowable ? (
+                        <p className="pt-1 text-xs text-muted-foreground">
+                          {t('tp3.totalCappedNote', {
+                            entered: money(derived.exemptEntered + derived.epfClaimed),
+                            counted: money(derived.exemptTotal + derived.epfAllowable),
+                          })}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </Card>
 
