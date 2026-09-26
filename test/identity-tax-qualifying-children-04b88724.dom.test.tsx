@@ -301,6 +301,53 @@ describe('auto — DERIVED from the Family records, and it is the PAYSLIP\'s fig
     ],
   };
 
+  /**
+   * DANIEL TAN, EMP-0002, AS PRODUCTION ACTUALLY HOLDS HIM (r347, item 04b88724).
+   *
+   * mode 'auto' with the grid STORED: one under-18 child (1 unit) and one disabled child in qualifying
+   * higher education (8 units) = 9 qualifying children, RM18,000. Before r347 this card showed the head
+   * count — 2 children, RM4,000 — while his payslip already used the weighted figure. The card was the
+   * wrong half, and this fixture is the case the reporter raised.
+   */
+  const WEIGHTED: ChildReliefPricing = {
+    ...PRICING,
+    mode: 'auto',
+    derived: true,
+    physicalChildren: 2,
+    eligibleChildren: 2,
+    familyChildren: 2,
+    uncategorisedChildren: 0,
+    pricedFromGrid: true,
+    qualifyingChildren: 9,
+    reliefRM: RELIEFS.childByCategory!.under_18 + RELIEFS.childByCategory!.disabled_study,
+    ruleUnits: 9,
+    ruleReliefRM: RELIEFS.childByCategory!.under_18 + RELIEFS.childByCategory!.disabled_study,
+    breakdown: [
+      { kind: 'child', name: 'Under 18 Child A', category: 'under_18', sharePercent: 100, children: 1, units: 1, amountRM: RELIEFS.childByCategory!.under_18 },
+      { kind: 'child', name: 'D Child Study', category: 'disabled_study', sharePercent: 100, children: 1, units: 8, amountRM: RELIEFS.childByCategory!.disabled_study },
+    ],
+  };
+
+  it('a weighted register shows the WEIGHTED count, and the note says the category prices it', () => {
+    renderCard({ mode: 'auto', numChildren: 2, pricing: WEIGHTED });
+    expect(qualifyingText(), 'nine qualifying children, not the head count of two').toBe('9');
+    expect(text('[data-child-breakdown-total-units]')).toBe('9');
+    expect(text('[data-child-breakdown-total-rm]')).toBe(rm(WEIGHTED.reliefRM));
+    // The disabled-in-study child carries its own eight, on its own row.
+    const rows = breakdownRows();
+    expect(rows[1].textContent).toContain('D Child Study');
+    expect(rows[1].textContent).toContain('8');
+    // The head-count note must be ABSENT and the weighted one present — before r347 it was the reverse.
+    expect(document.querySelector('[data-child-auto-units-note]'), 'the head-count note must not render').toBeNull();
+    expect(text('[data-child-auto-weighted-note]')).toBe(D.childQualifyingAutoWeightedNote);
+  });
+
+  it('a weighted register carries NO gap warning — the card and the payslip now agree', () => {
+    renderCard({ mode: 'auto', numChildren: 2, pricing: WEIGHTED });
+    expect(document.querySelector('[data-child-auto-weighting-gap]')).toBeNull();
+    expect(document.querySelector('[data-child-uncategorised]')).toBeNull();
+  });
+
   it('the figure is read-only, marked as worked out from the Family records', () => {
     renderCard({ mode: 'auto', numChildren: 2, pricing: FAMILY });
     expect(qualifyingInput()).toBeNull();
