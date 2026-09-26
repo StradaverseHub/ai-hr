@@ -1,3 +1,53 @@
+## r347 (2026-09-27) — the screen and the payslip disagreed about a weighted child by RM14,000. `main@5842931c`, **no migration**.
+
+Closed: `04b88724`. Gate: **1033 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=488`.
+
+### THE DEFECT WAS r344's, WHICH IS MINE
+
+r344 widened three money consumers to price the DERIVED s.48 grid on `'auto'` as well as `'auto_table'` — `core/payroll.ts`, `core/payroll-view.ts`, `localization/my/multicycle-worksheet.ts`. It did **not** widen the fourth, `qualifyingChildBreakdown` in `core/dependents.ts`, which still read `mode === 'auto_table'`.
+
+So an `'auto'` employee whose grid IS derived was relieved at the s.48 weight on their payslip while the Identification & Tax card that **explains** that figure showed the plain head count. Each of the three kernel sites carried its **own copy** of the condition, which is precisely why widening three of four looked finished.
+
+### MEASURED ON PRODUCTION — the answer the reporter is owed
+
+    Daniel Tan, EMP-0002 — mode 'auto', grid STORED
+      "Under 18 Child A"  under_18        →  1 unit
+      "D Child Study"     disabled_study  →  8 units
+      payslip relieves 9 qualifying children = RM18,000   (correct since r344)
+      the card was showing 2 qualifying children = RM4,000
+
+**His tax was already right; only the screen was wrong.** Note his child is disabled **and** in qualifying higher education, so **8** units — not the **4** his own example assumed. Also on production: `Aisyah Rahman` EMP-0001 is `'auto'` with **no** grid stored (3 eligible children, 1 categorised) and correctly stays on the head count — she is the case the r345 category-gap list exists to surface.
+
+### THE FIX
+
+One exported predicate, `pricesChildReliefFromGrid`, in `core/dependents.ts` beside the grid it describes. All four consumers read it; none restates it, so a fifth gets it right by construction. The breakdown prices each child through a **one-child grid** run by the same `childReliefFor` the total uses, so the rows provably sum to the total instead of agreeing by coincidence — which is what the reporter asked to see.
+
+r344's completeness gate is **untouched**: a null grid still means "cannot be priced by category yet" and all four fall back to the head count, because `childReliefGridFromFamily` skips a child it cannot classify and a partial grid would relieve *fewer* children than the employee has.
+
+### THREE GUARDS THAT WERE GREEN THROUGH THE DEFECT, AND WHY
+
+This is the part worth reading. All three were well-written, well-reasoned, and could not see it.
+
+- **`a5f21891` (b)/(c)** asserted "all THREE kernel consumers" by grepping each file for its own copy of the literal condition. A fourth consumer was invisible to it by construction.
+- **`04b88724` (g)** read the mode literals out of three files and required the three *sets to be equal* — an explicitly-reasoned agreement guard, with a failure message telling a future reader to "find where it went and update this list". It compared the copies it was given. **Comparing copies only ever finds the copies you list.**
+- Both now assert the predicate over **all four** consumers and refuse a restated copy. (g) further asserts that **no** consumer carries a private mode gate, so divergence is impossible rather than merely detectable.
+
+### STALE COPY, AGAIN
+
+`childQualifyingAutoUnitsNote` rendered for **every** `'auto'` employee saying *"every eligible child counts as one qualifying child… the relief category shown is for information only"* — flatly untrue for anyone with a derived grid. It now renders only when the figure really IS the head count, and names the missing category as the reason; a new `childQualifyingAutoWeightedNote` covers the other branch. The card branches on a returned `pricedFromGrid` flag rather than on the mode, because since r344 the mode alone no longer determines the rule.
+
+The two `WeightingGap` sentences were rewritten the same way. My first rewrite dropped "over-deducted" from the under-direction sentence and the r343 direction guard caught it — that guard's insistence that *each sentence names its own tax consequence* is correct and survived.
+
+### DECISIONS THE TICKET DID NOT SETTLE
+
+- **`num_children` remains the head count.** Form E, CP8D and the EA read it as one. Physical children and qualifying children stay two figures on the screen, which is what the reporter asked for and what the data already held — only the card had conflated them.
+- **The reporter's "Child 18+ in qualifying full-time study → 1 or applicable category"** is not implemented as a conditional: the five s.48 categories are what the Family register stores, and the pack prices them. No new category was invented.
+
+### NOT DONE
+
+- The production read answered the *what*; nobody has re-cut Daniel Tan's issued payslips, and they do not need re-cutting, because the payslip figure was correct throughout.
+- The gate ran before two additive DOM cases were appended to an already-covered file; those were run green in isolation (25 passed) and touch no production code.
+
 ## r346 (2026-09-26) — the EA was following a revision LHDN does not issue. `main@c70094d9`, **no migration**.
 
 Closed: `fda53352`. Gate: **1032 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=488`.
