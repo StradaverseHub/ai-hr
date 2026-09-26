@@ -87,7 +87,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ employme
   // `present`, `yearEnded` and the two subtotals have no box on the printed form at all. Every one of
   // them still exists in `payroll.ea` for the HTML statement; see the EaPdfLabels block comment for why
   // each left. test/ea-form-boxes-contract.test.ts fails on a declared label nothing prints.
-  const bytes = await renderEaPdf(data, await eaPdfLabels(locale, { year: ea.year, version: ea.statutoryVersion }));
+  const bytes = await renderEaPdf(
+    data,
+    await eaPdfLabels(locale, { year: ea.year, version: ea.statutoryVersion }),
+    // r346 — the form's own furniture follows the DOCUMENT's language, as LHDN's two editions do.
+    { locale },
+  );
 
   // Substrate: this is a read-only render (no state change), so it appends NO domain event — same as the
   // payslip-pdf route. Deliberate skip.

@@ -267,7 +267,7 @@ const cell = (s: string) => s.replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ').tr
  */
 export function renderEaFieldRegisterMarkdown(): string {
   const out: string[] = [];
-  out.push('# EA (C.P.8A Pin. 2024) — field register');
+  out.push('# EA (C.P.8A Pin. 2023) — field register');
   out.push('');
   out.push('Every box on the EA form as this system draws it: the form’s own section, the form’s own box');
   out.push('number, the agency’s own wording, the kind of value the box takes, and what feeds it today —');
@@ -276,7 +276,7 @@ export function renderEaFieldRegisterMarkdown(): string {
   out.push('**Hold this beside a blank C.P.8A and work down it.** The blank copy this system produces is on');
   out.push('the Statutory Forms screen, beside each of the two EA rows (“Download blank EA form”).');
   out.push('');
-  out.push('**What this page is not.** The EA is drawn to the C.P.8A (Pin. 2024) arrangement on paper of');
+  out.push('**What this page is not.** The EA is drawn to the C.P.8A (Pin. 2023) arrangement on paper of');
   out.push('ours — we hold no blank C.P.8A from LHDN to print onto — so this register describes our');
   out.push('rendering of that arrangement, not agency artwork. The wording in the third column is taken from');
   out.push('`docs/forms/ea-cp8a-pin-2024-transcription.txt`, the hand transcription of the specimen.');
@@ -297,7 +297,7 @@ export function renderEaFieldRegisterMarkdown(): string {
     out.push('');
     out.push(`## ${SECTION_TITLE[section]}`);
     out.push('');
-    out.push('| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |');
+    out.push('| Section | Box | Official wording (C.P.8A Pin. 2023) | Value | Fed by | Notes | Caption |');
     out.push('| --- | --- | --- | --- | --- | --- | --- |');
     for (const r of rows) {
       const captionName = r.caption.from === 'agency' ? `form.${r.caption.key}` : `payroll.ea.${r.caption.key}`;

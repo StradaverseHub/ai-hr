@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
-import { blankEaPdfData, renderEaPdf, type EaPdfData, type EaPdfLabels } from '../lib/ea-pdf';
+import { blankEaPdfData, renderEaPdf, type EaPdfData, type EaPdfLabels, eaFormWords } from '../lib/ea-pdf';
 
 /**
  * 6036dab7 — READ THE DRAWN TEXT BACK OUT OF THE PDF, WITH ITS COORDINATES.
@@ -376,7 +376,7 @@ describe('EA PDF renderer — the real message bundle', () => {
   it.each(LOCALES)('%s: the whole form is ONE page, with every line inside it', async (locale) => {
     const real = bundleFor(locale);
     // The fully-populated form WITH an amendment marker — the tallest document this renderer can produce.
-    const { items, pageHeights } = await drawnText(await renderEaPdf(fullForm, real));
+    const { items, pageHeights } = await drawnText(await renderEaPdf(fullForm, real, { locale }));
 
     expect(items.length).toBeGreaterThan(40); // the whole form was drawn, not an early return
     expect(pageHeights.length, `${locale}: the EA must be a single page`).toBe(1);
@@ -396,7 +396,7 @@ describe('EA PDF renderer — the real message bundle', () => {
     // this is the only way to exercise it. Every line must still be on a page, and the spill must carry
     // content — an empty trailing page is the failure mode the r209 fix removed from the normal path.
     const longWinded = { ...bundleFor('en'), disclaimer: Array.from({ length: 400 }, (_, i) => `clause-${i}`).join(' ') };
-    const { items, pageHeights } = await drawnText(await renderEaPdf(fullForm, longWinded));
+    const { items, pageHeights } = await drawnText(await renderEaPdf(fullForm, longWinded, { locale: 'en' }));
 
     expect(pageHeights.length).toBeGreaterThan(1);
     const off = items.filter((it) => it.y < 0 || it.y > pageHeights[it.page]);
@@ -431,7 +431,7 @@ describe('r220 — the blank C.P.8A', () => {
 
   it.each(LOCALES)('%s: is ONE page, with every line inside it', async (locale) => {
     const { items, pageHeights } = await drawnText(
-      await renderEaPdf(blankEaPdfData(), blankBundle(locale), { blank: true }),
+      await renderEaPdf(blankEaPdfData(), blankBundle(locale), { blank: true, locale }),
     );
     expect(items.length, `${locale}: the whole form was drawn, not an early return`).toBeGreaterThan(40);
     expect(pageHeights.length, `${locale}: the blank EA must be a single page`).toBe(1);
@@ -440,7 +440,7 @@ describe('r220 — the blank C.P.8A', () => {
   });
 
   it.each(LOCALES)('%s: carries no 0.00 and no figure of any kind', async (locale) => {
-    const { items } = await drawnText(await renderEaPdf(blankEaPdfData(), blankBundle(locale), { blank: true }));
+    const { items } = await drawnText(await renderEaPdf(blankEaPdfData(), blankBundle(locale), { blank: true, locale }));
     const printed = items.map((it) => it.text);
 
     // The headline assertion, named on its own so a regression says exactly this.
@@ -464,8 +464,8 @@ describe('r220 — the blank C.P.8A', () => {
    * area — because that is the whole point of holding it up against the agency's page.
    */
   it('draws every caption the filled form draws, and differs from it only in the figures', async () => {
-    const filled = (await drawnText(await renderEaPdf(fullForm, bundleFor('ms')))).items.map((it) => it.text);
-    const blank = (await drawnText(await renderEaPdf(blankEaPdfData(), blankBundle('ms'), { blank: true }))).items.map(
+    const filled = (await drawnText(await renderEaPdf(fullForm, bundleFor('ms'), { locale: 'ms' }))).items.map((it) => it.text);
+    const blank = (await drawnText(await renderEaPdf(blankEaPdfData(), blankBundle('ms'), { blank: true, locale: 'ms' }))).items.map(
       (it) => it.text,
     );
 
@@ -514,7 +514,7 @@ describe('r220 — the blank C.P.8A', () => {
       fullForm.employer.officerPosition!,
       fullForm.employer.address.join(', '),
       fullForm.partE.fundName,
-      `${'BAGI TAHUN BERAKHIR 31 DISEMBER'} ${fullForm.year}`,
+      `${eaFormWords('ms').masthead4} ${fullForm.year}`,
     ]);
     const disclaimerLines = new Set(filled.slice(filled.indexOf(winAnsi(real.amendedNote)) + 1));
     const unexplained = onlyOnFilled.filter(

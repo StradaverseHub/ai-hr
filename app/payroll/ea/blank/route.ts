@@ -45,7 +45,7 @@ export async function GET(req: Request) {
   const lang: EaLang | null = EA_LANGS.includes(langParam as EaLang) ? (langParam as EaLang) : null;
   const locale = lang ?? (await getLocale());
 
-  const bytes = await renderEaPdf(blankEaPdfData(), await eaPdfLabels(locale, { blank: true }), { blank: true });
+  const bytes = await renderEaPdf(blankEaPdfData(), await eaPdfLabels(locale, { blank: true }), { blank: true, locale });
 
   // The language rides in the filename because both are offered from the same shelf and an operator
   // downloading each of them should not end up with "…(1).pdf" and no way to tell which is which.

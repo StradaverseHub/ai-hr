@@ -228,7 +228,15 @@ describe('r220 — the field register and the drawn form describe the same page'
   it('every caption the renderer draws has a row in the register', () => {
     const missingLabels = eaPdfLabelKeys().filter((k) => !labelCaptions.includes(k));
     expect(missingLabels, `captions drawn on the form with no register row: ${missingLabels.join(', ')}`).toEqual([]);
-    const missingAgency = Object.keys(EA_FORM_WORDS).filter((k) => !agencyCaptions.includes(k));
+    // ⚠️ AN AGENCY WORD THAT IS EMPTY IN THIS EDITION IS NOT A BOX (r346). `privateStatement2` is the
+    // SECOND LINE of the "Penyata Gaji Pekerja SWASTA" heading, which LHDN's English edition sets on two
+    // lines and its Malay edition on one. It is a typesetting split of a heading the register already
+    // documents, not a field of its own, so it has no row — and demanding one would put an empty
+    // `wording` in the HEADER section, which the last case in this file correctly forbids.
+    const documented = EA_FORM_WORDS as Record<string, string>;
+    const missingAgency = Object.keys(EA_FORM_WORDS).filter(
+      (k) => documented[k] !== '' && !agencyCaptions.includes(k),
+    );
     expect(missingAgency, `agency words drawn on the form with no register row: ${missingAgency.join(', ')}`).toEqual([]);
   });
 
@@ -283,13 +291,13 @@ describe('r220 — the field register and the drawn form describe the same page'
    */
   it('every official wording in the register appears in the transcription of the specimen', () => {
     const norm = (v: string) => v.replace(/_+/g, '_').replace(/\s+/g, ' ').trim();
-    const transcription = norm(read('docs/forms/ea-cp8a-pin-2024-transcription.txt'));
+    const transcription = norm(read('docs/forms/ea-cp8a-pin-2023-transcription.txt'));
     const worded = EA_REGISTER.filter((r) => r.wording !== '');
     expect(worded.length).toBeGreaterThan(55); // sanity: nearly every row carries agency wording
     const missing = worded.filter((r) => !transcription.includes(norm(r.wording)));
     expect(
       missing.map((r) => `${r.section}${r.box ? ` ${r.box}` : ''}: ${JSON.stringify(r.wording)}`),
-      'register wordings that are not in docs/forms/ea-cp8a-pin-2024-transcription.txt',
+      'register wordings that are not in docs/forms/ea-cp8a-pin-2023-transcription.txt',
     ).toEqual([]);
     // The only rows allowed to carry no agency wording are the ones that are not the agency's boxes.
     const wordless = EA_REGISTER.filter((r) => r.wording === '');

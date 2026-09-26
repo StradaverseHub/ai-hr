@@ -127,7 +127,7 @@ export async function eaPdfResponse(req: Request, disposition: EaDisposition): P
       // 1.2.6 EA Data Overwrite — HR's EA-only amendments, so the PDF prints the "Amended" footnote.
       overrides: ea.overrides,
     };
-    const bytes = await renderEaPdf(data, await labelsFor(ea.year, ea.statutoryVersion));
+    const bytes = await renderEaPdf(data, await labelsFor(ea.year, ea.statutoryVersion), { locale });
     const src = await PDFDocument.load(bytes);
     for (const page of await out.copyPages(src, src.getPageIndices())) out.addPage(page);
   }

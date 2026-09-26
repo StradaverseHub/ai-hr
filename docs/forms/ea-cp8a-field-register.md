@@ -1,4 +1,4 @@
-# EA (C.P.8A Pin. 2024) — field register
+# EA (C.P.8A Pin. 2023) — field register
 
 Every box on the EA form as this system draws it: the form’s own section, the form’s own box
 number, the agency’s own wording, the kind of value the box takes, and what feeds it today —
@@ -7,7 +7,7 @@ or “nothing feeds this yet”, said in as many words.
 **Hold this beside a blank C.P.8A and work down it.** The blank copy this system produces is on
 the Statutory Forms screen, beside each of the two EA rows (“Download blank EA form”).
 
-**What this page is not.** The EA is drawn to the C.P.8A (Pin. 2024) arrangement on paper of
+**What this page is not.** The EA is drawn to the C.P.8A (Pin. 2023) arrangement on paper of
 ours — we hold no blank C.P.8A from LHDN to print onto — so this register describes our
 rendering of that arrangement, not agency artwork. The wording in the third column is taken from
 `docs/forms/ea-cp8a-pin-2024-transcription.txt`, the hand transcription of the specimen.
@@ -24,11 +24,11 @@ the reader has chosen.
 
 ## Header band
 
-| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| Section | Box | Official wording (C.P.8A Pin. 2023) | Value | Fed by | Notes | Caption |
 | --- | --- | --- | --- | --- | --- | --- |
-| HEADER |  | (C.P.8A - Pin. 2024) | heading (takes no value) | The form itself — printed on every copy, nothing goes in it | The edition this page is drawn to. Changing it means re-tracing the form. | `form.formNo` |
+| HEADER |  | (C.P.8A - Pin. 2023) | heading (takes no value) | The form itself — printed on every copy, nothing goes in it | The edition this page is drawn to. Changing it means re-tracing the form. | `form.formNo` |
 | HEADER |  | No. Siri | text | nothing feeds this yet | The employer’s own running number for the statements it issues. Nothing in this system holds it, and the rule is printed empty. | `form.serialNo` |
-| HEADER |  | TIN Majikan E | text | The employer’s company record (employer.eNumber) |  | `form.employerTin` |
+| HEADER |  | No. Majikan E | text | The employer’s company record (employer.eNumber) |  | `form.employerTin` |
 | HEADER |  | MALAYSIA | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `form.masthead1` |
 | HEADER |  | CUKAI PENDAPATAN | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `form.masthead2` |
 | HEADER |  | PENYATA SARAAN DARIPADA PENGGAJIAN | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `form.masthead3` |
@@ -41,7 +41,7 @@ the reader has chosen.
 
 ## A — Butiran Pekerja (employee particulars)
 
-| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| Section | Box | Official wording (C.P.8A Pin. 2023) | Value | Fed by | Notes | Caption |
 | --- | --- | --- | --- | --- | --- | --- |
 | A | A | BUTIRAN PEKERJA | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `payroll.ea.sectionAEmployeeParticulars` |
 | A | 1 | Nama Penuh Pekerja / Pesara (Encik/Cik/Puan) | text | The employee’s staff record (employee.name) |  | `payroll.ea.name` |
@@ -58,7 +58,7 @@ the reader has chosen.
 
 ## B — Pendapatan Penggajian, Manfaat dan Tempat Kediaman (employment income, benefits, accommodation)
 
-| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| Section | Box | Official wording (C.P.8A Pin. 2023) | Value | Fed by | Notes | Caption |
 | --- | --- | --- | --- | --- | --- | --- |
 | B | B | PENDAPATAN PENGGAJIAN, MANFAAT DAN TEMPAT KEDIAMAN | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `payroll.ea.sectionBEmploymentIncome` |
 | B |  | (Tidak Termasuk Elaun / Perkuisit / Pemberian / Manfaat Yang Dikecualikan Cukai) | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `payroll.ea.sectionBExcluding` |
@@ -83,7 +83,7 @@ the reader has chosen.
 
 ## C — Pencen dan Lain-lain (pension and others)
 
-| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| Section | Box | Official wording (C.P.8A Pin. 2023) | Value | Fed by | Notes | Caption |
 | --- | --- | --- | --- | --- | --- | --- |
 | C | C | PENCEN DAN LAIN-LAIN | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `payroll.ea.sectionCPensionOther` |
 | C | 1 | Pencen | amount (RM) | Only “Amend EA figures” — no payroll source exists (partC.pension) | This product pays no pensions, so there is no payroll source and never has been. | `payroll.ea.pension` |
@@ -92,7 +92,7 @@ the reader has chosen.
 
 ## D — Jumlah Potongan (total deductions)
 
-| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| Section | Box | Official wording (C.P.8A Pin. 2023) | Value | Fed by | Notes | Caption |
 | --- | --- | --- | --- | --- | --- | --- |
 | D | D | JUMLAH POTONGAN | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `payroll.ea.sectionDTotalDeductions` |
 | D | 1 | Potongan cukai bulanan (PCB) yang dibayar kepada LHDNM | amount (RM) | Payroll, and amendable under “Amend EA figures” (partD.mtd) |  | `payroll.ea.monthlyTaxDeduction` |
@@ -106,32 +106,32 @@ the reader has chosen.
 
 ## E — Caruman … Kumpulan Wang Simpanan / Pencen yang Diluluskan dan PERKESO (contributions)
 
-| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| Section | Box | Official wording (C.P.8A Pin. 2023) | Value | Fed by | Notes | Caption |
 | --- | --- | --- | --- | --- | --- | --- |
 | E | E | CARUMAN YANG DIBAYAR OLEH PEKERJA KEPADA KUMPULAN WANG SIMPANAN / PENCEN YANG DILULUSKAN DAN PERKESO | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `payroll.ea.sectionEContributions` |
 | E | 1 | Nama Kumpulan Wang | text | Payroll — the year’s payslips (partE.fundName) |  | `payroll.ea.fundName` |
 | E | 1 | Amaun caruman yang wajib dibayar (nyatakan bahagian pekerja sahaja) | amount (RM) | Payroll, and amendable under “Amend EA figures” (partE.epf) | The employee’s share only. The same caption is printed again on item 2, after the agency’s “2. PERKESO:”. | `payroll.ea.contributionAmount` |
-| E | 2 | 2. PERKESO: | amount (RM) | Payroll, and amendable under “Amend EA figures” (partE.socso) | The item number and the word PERKESO are the agency’s and are printed in Malay in both languages; the caption after them is item 1’s. | `form.perkeso` |
+| E | 2 | 2. PERKESO : | amount (RM) | Payroll, and amendable under “Amend EA figures” (partE.socso) | The item number and the word PERKESO are the agency’s and are printed in Malay in both languages; the caption after them is item 1’s. | `form.perkeso` |
 
 ## F — Jumlah Elaun … yang Dikecualikan Cukai (total exempt allowances)
 
-| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| Section | Box | Official wording (C.P.8A Pin. 2023) | Value | Fed by | Notes | Caption |
 | --- | --- | --- | --- | --- | --- | --- |
 | F | F | JUMLAH ELAUN / PERKUISIT / PEMBERIAN / MANFAAT YANG DIKECUALIKAN CUKAI | amount (RM) | Payroll — the year’s payslips (partB.exemptAllowances) | ONE line: the section title IS the item. The figure is the year’s tax-exempt allowance portions, which are a PART of 1(c) and not an addition to it. | `payroll.ea.sectionFExemptAllowances` |
 
 ## The foot — signing date and officer box
 
-| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| Section | Box | Official wording (C.P.8A Pin. 2023) | Value | Fed by | Notes | Caption |
 | --- | --- | --- | --- | --- | --- | --- |
 | FOOT |  | Tarikh: | date | nothing feeds this yet | The date the employer SIGNS the statement. Theirs to write, not ours to invent, so the rule prints empty on a filled form too. | `form.date` |
-| FOOT |  | Name Pegawai | text | The employer’s company record (employer.officerName) | “Name Pegawai” is the SPECIMEN’S own spelling — Malay would be “Nama”. Reproduced as the agency’s form has it and deliberately not corrected. | `form.officerName` |
+| FOOT |  | Nama Pegawai | text | The employer’s company record (employer.officerName) | “Name Pegawai” is the SPECIMEN’S own spelling — Malay would be “Nama”. Reproduced as the agency’s form has it and deliberately not corrected. | `form.officerName` |
 | FOOT |  | Jawatan | text | The employer’s company record (employer.officerPosition) |  | `form.officerPosition` |
 | FOOT |  | Nama dan Alamat Majikan | text | The employer’s company record (employer.name, employer.address) | TWO rules: the employer’s name on the first, the address folded onto the second. The form has no third rule. | `form.employerNameAddress` |
 | FOOT |  | No. Telefon Majikan | text | The employer’s company record (employer.phone) |  | `form.employerPhone` |
 
 ## Below the form — our own strip
 
-| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| Section | Box | Official wording (C.P.8A Pin. 2023) | Value | Fed by | Notes | Caption |
 | --- | --- | --- | --- | --- | --- | --- |
 | BELOW |  | — | amount (RM) | Payroll — the year’s payslips (partE.eis) | NOT a box on the C.P.8A: the official Section E carries exactly two amounts and EIS is not one of them. The employee’s own EIS deduction is real and they may need it, so it is printed below the form with “RM” spelled out. | `payroll.ea.eisSip` |
 | BELOW |  | — | sentence | Filled in by this system | Ours. Names the year of assessment and the statutory table version, says which boxes payroll fed, and says the page is our rendering of the agency’s arrangement. The blank copy carries a different sentence, because none of that is true of a blank. | `payroll.ea.disclaimer` |
@@ -139,7 +139,7 @@ the reader has chosen.
 
 ## Not drawn on the page
 
-| Section | Box | Official wording (C.P.8A Pin. 2024) | Value | Fed by | Notes | Caption |
+| Section | Box | Official wording (C.P.8A Pin. 2023) | Value | Fed by | Notes | Caption |
 | --- | --- | --- | --- | --- | --- | --- |
 | META |  | — | sentence | Filled in by this system (year) | The PDF’s document title — the browser tab and the file’s properties. Nothing is drawn from it. | `payroll.ea.title` |
 
