@@ -1,0 +1,85 @@
+<!doctype html><meta charset="utf-8"><title>Section C — the working</title>
+<style>
+ *{box-sizing:border-box}
+ body{margin:0;background:#eef1f5;font:13.5px/1.55 -apple-system,"Segoe UI",Roboto,sans-serif;color:#111;padding:26px}
+ h1{font-size:19px;margin:0 0 3px}
+ .sub{color:#555;font-size:12.5px;margin:0 0 16px;max-width:1120px}
+ .ok{background:#e8f4ea;border:1px solid #3f8f52;border-left:5px solid #3f8f52;padding:11px 14px;
+     border-radius:5px;margin:0 0 12px;font-size:12.8px;max-width:1120px}
+ .ok b{color:#175a28}
+ .bad{background:#fdeceb;border:1px solid #d9534f;border-left:5px solid #d9534f;padding:11px 14px;
+      border-radius:5px;margin:0 0 18px;font-size:12.8px;max-width:1120px}
+ .bad b{color:#8a2018}
+ .cols{display:flex;gap:18px;align-items:flex-start;max-width:1120px}
+ .col{flex:1;background:#fff;border:1px solid #c4ccd6;border-radius:6px;overflow:hidden;
+      box-shadow:0 1px 4px rgba(0,0,0,.07)}
+ .hd{padding:9px 13px;font-weight:700;font-size:12.4px;border-bottom:1px solid #c4ccd6}
+ .now .hd{background:#fdeceb;color:#8a2018}
+ .new .hd{background:#e8f4ea;color:#175a28}
+ .hd span{font-weight:400;opacity:.8}
+ .body{padding:13px}
+ table{width:100%;border-collapse:collapse;font-size:13px}
+ td{padding:5px 0;vertical-align:baseline}
+ td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;padding-left:12px}
+ tr.rule td{border-top:1px solid #d3dae2}
+ tr.total td{border-top:2px solid #98a3b0;font-weight:700;padding-top:7px}
+ .muted{color:#5b6672}
+ .note{margin-top:10px;font-size:11.8px;line-height:1.55;padding:8px 10px;border-radius:4px}
+ .note.w{background:#fff6f5;color:#8a2018;border:1px solid #f0c9c6}
+ .note.g{background:#f3faf4;color:#2c5c38;border:1px solid #cfe6d5}
+ .legend{margin:16px 0 0;font-size:12.3px;color:#444;max-width:1120px;line-height:1.6}
+</style>
+<h1>TP3 Section C &mdash; showing how Accumulated Net Remuneration is reached</h1>
+<p class="sub">Sketch for feedback item 20837372, using your own C2(i) example: keyed RM7,000 against the RM6,000 annual exemption limit, inside a gross C1 of RM60,000.</p>
+
+<div class="ok"><b>Your calculation rule is what the system already does.</b> We ran both your scenarios
+through the live calculation: keyed RM3,600 against a RM6,000 limit adds <b>RM0</b> to Accumulated Net
+Remuneration, and keyed RM7,000 adds exactly <b>RM1,000</b>. The exempt part is never added, and never
+deducted twice.</div>
+
+<div class="bad"><b>But the sentence we put on the screen yesterday says the opposite, and that is our
+mistake.</b> It reads &ldquo;RM10,000 counts towards Accumulated Net Remuneration&rdquo; &mdash; when that
+figure is what comes <i>off</i> it. Anyone reading that screen would conclude exactly what you concluded.
+We are replacing it with the arithmetic itself, so there is nothing left to misread.</div>
+
+<div class="cols">
+
+<div class="col now">
+ <div class="hd">On screen today <span>&mdash; says the opposite of what it does</span></div>
+ <div class="body">
+  <table>
+   <tr><td class="muted">Exempt allowances counted (C2)</td><td class="n">6,000.00</td></tr>
+   <tr><td class="muted">EPF and approved funds counted (C3)</td><td class="n">4,000.00</td></tr>
+   <tr class="total"><td>Accumulated Net Remuneration</td><td class="n">50,000.00</td></tr>
+  </table>
+  <p class="note w"><b>&ldquo;You keyed RM17,000 across C2 and C3; RM10,000 counts towards Accumulated
+  Net Remuneration. The difference is above the statutory limits and stays taxable.&rdquo;</b><br><br>
+  Wrong twice: RM10,000 is <i>deducted from</i> Accumulated Net Remuneration, not counted towards it &mdash;
+  and &ldquo;counted&rdquo; in the two rows above is just as ambiguous. The figures themselves were right;
+  the words around them were not.</p>
+ </div>
+</div>
+
+<div class="col new">
+ <div class="hd">What it will show <span>&mdash; the sum, written out</span></div>
+ <div class="body">
+  <table>
+   <tr><td>Gross remuneration (C1)</td><td class="n">60,000.00</td></tr>
+   <tr class="rule"><td class="muted">Less tax-exempt allowances (C2)</td><td class="n">&minus; 6,000.00</td></tr>
+   <tr><td class="muted">Less EPF and approved funds (C3)</td><td class="n">&minus; 4,000.00</td></tr>
+   <tr class="total"><td>Accumulated Net Remuneration</td><td class="n">50,000.00</td></tr>
+  </table>
+  <p class="note g">Of the RM7,000 keyed at C2(i), <b>RM6,000 is exempt and comes off</b>; the
+  <b>RM1,000 above the limit stays in</b> and is taxed once. Nothing exempt is ever added, and nothing
+  is deducted twice.<br><br>
+  Each C2 line already shows its own limit, exempt part, excess and remaining balance beside the box you
+  type in &mdash; that shipped yesterday and is unchanged.</p>
+ </div>
+</div>
+</div>
+
+<p class="legend">
+The only thing changing is <b>wording</b>. No figure moves, and the way Accumulated Net Remuneration is
+worked out is not being touched &mdash; it already matches the rule in your request, line for line, and we
+have added a test built from your two scenarios so it stays that way.
+</p>
