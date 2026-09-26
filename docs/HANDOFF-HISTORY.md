@@ -1,3 +1,36 @@
+## r344 (2026-09-26) — the money half of the child-relief weighting, and a near miss that would have over-deducted. `main@46ef91e8`, **no migration**.
+
+Closed: `a5f21891`. Gate: **1029 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=488`.
+
+### WHAT r343 LEFT, AND THIS FINISHES
+
+r343 made the Identification & Tax card **display** the weighted child figure beside the one the payslip uses. It did not make the payslip use it — `childReliefAmount` reached the kernel only for `'auto_table'` — so a disabled child in higher education was relieved RM2,000 where s.48 prices it at RM16,000. The screen said so; the money did not move.
+
+Now the `'auto'` sync **derives** the grid from the Family register instead of carrying the old one forward, and all three money-path consumers widen together: `core/payroll.ts`, `core/payroll-view.ts` and `localization/my/multicycle-worksheet.ts`. Widening one alone would leave the worksheet printing a fabricated difference against the payslips it replays — which is exactly what r343's `(g)` guard exists to catch, and it passes with all three moved.
+
+### THE NEAR MISS, WHICH IS THE PART WORTH READING
+
+`childReliefGridFromFamily` **skips** a child with no `child_relief_category` — it cannot price what it cannot classify — while that same child **does** count towards the head count. So deriving the grid unconditionally relieves *fewer* children than the employee has.
+
+Production has **one `'auto'` employee with 2 eligible children and only 1 categorised**. Shipping the obvious version would have taken them from RM4,000 of relief to RM2,000 — an over-deduction, caused by a change whose entire purpose is to stop over-deducting. It surfaced only because an existing guard asserted the stored grid, and chasing that assertion led to the measurement.
+
+So the grid is stored **only** when every eligible child carries a category. Otherwise it is **nulled** — never carried stale, because a grid that no longer describes the family is worse than no grid — and all three consumers fall back to `num_children × perChild`, exactly today's behaviour. Nobody loses relief while a category is missing.
+
+### TWO BUGS OF MINE, BOTH CAUGHT BY GUARDS I DID NOT WRITE
+
+- **Rail (b) compared the grid with `JSON.stringify`**, which is key-order sensitive, so a grid read back from JSONB never matched an identical freshly-derived one and the sync fired on *every* family edit. Three existing guards caught it — a spouse add, a custom-relationship add, an unchanged re-sync. Now compared canonically.
+- **Rail (b) originally compared only the head count**, so changing a child from `under_18` to `disabled_study` — 1 unit to 8, RM2,000 to RM16,000 — would have short-circuited and left the stored grid on the old category indefinitely.
+
+### DECISIONS
+
+- **`num_children` stays the head count.** Form E, CP8D and EA all read it as one; a test asserts the sync still writes the plain count there.
+- **One guard updated, not loosened.** `statutory-disabled-spouse-child-table` asserted the grid was carried forward across a family edit. On `'auto'` the register is now the source of truth, and that case adds an *uncategorised* child, so the grid clears and relief falls back to the head count — no money moves for that employee. The claim the case actually defends, that a family edit never withdraws a relief *claim*, is untouched.
+
+### WHAT WAS NOT DONE
+
+- **`scripts/resync-child-relief-grid.ts` has not run yet.** The sync fires only on a family edit, so the three existing `'auto'` employees keep a null grid until somebody touches their record. It calls `syncChildReliefFromFamily` itself rather than writing the column, so every rail comes with it — including rail (d)'s payroll alert when a figure moves under an open batch. It carries forward r342's lesson: a tenant that cannot be resolved is skipped and counted, not allowed to abort the run.
+- Issued payslips are not recomputed.
+
 ## r343 (2026-09-26) — four items, and two of the round's errors were the plans, not the builds. `main@dd6a9a07`, **no migration ran**.
 
 Closed: `04b88724`, `03f89c0f`, `1478c281`, `cbfa8b0b`. Raised: `a5f21891`.
