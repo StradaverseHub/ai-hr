@@ -93,7 +93,7 @@ import {
 } from '../lib/entitlement-status';
 // r209 — the shared-pool descriptor. Declared in lib/ rather than here so the CLIENT-safe balance grids can
 // name the shape without importing a module that drags in db/client.
-import { isPoolBorrower, type SharedLeaveBalanceInfo } from '../lib/shared-leave-balance';
+import { holdsNothingOfItsOwn, isPoolBorrower, type SharedLeaveBalanceInfo } from '../lib/shared-leave-balance';
 import type { EmployeePickOption } from '../lib/employment-selection';
 // 1ae7f3ab + 4fdb69b2 — the ONE declaration of what references a leave type. listLeaveTypes' inUse
 // predicate is generated from it, and so is deleteLeaveType's guard; two hand-written lists are what
@@ -3146,9 +3146,10 @@ export function leaveBalances(
      * the pooled card already reflects that activity, because every debit for a borrower landed on the
      * pool's own ledger. Pinned in both directions in test/a0b90c81-shared-group-cards.test.ts.
      *
-     * ⚠️ AND MEMBERSHIP ALONE DOES NOT COST A CARD — see the gate at the bottom of this block (r341,
-     * 8d3a7bff). A member that holds its own days keeps its own card; only a member whose balance IS the
-     * pool's is folded.
+     * ⚠️ AND MEMBERSHIP ALONE DOES NOT COST A CARD — see the gate at the bottom of this block, which is
+     * where the WHOLE rule lives, both halves of it (r341 8d3a7bff, r343 1478c281). A member keeps its own
+     * card while it holds its own days. It is folded when its balance IS the pool's, and also when its own
+     * ledger holds no days at all — there is then no balance on it the merged card is not already showing.
      */
     const pooledAway = await (async () => {
       if (opts.includeHidden) return visible;
@@ -3173,8 +3174,10 @@ export function leaveBalances(
        * holds CGL CPL EXM GD MRL NDL STD and is placed 'primary', while only CPL and NDL carry
        * `balance_source_type_id` → SP. Marriage Leave holds 177.00 days of its OWN across 59 employments and
        * was being folded into a pooled card that does not contain them — 59 people could not see a balance
-       * they can actually spend. CGL/EXM/GD/STD sit at 0.00 today, which is not a reason to fold them
-       * either: the day an entitlement table is written for one of them the same defect returns.
+       * they can actually spend. CGL/EXM/GD/STD sit at 0.00 today, which r341 took to be no reason to fold
+       * them either: the day an entitlement table is written for one of them the same defect returns.
+       * ⚠️ THAT LAST SENTENCE IS NO LONGER THE RULE — r343 folds them and answers the objection a different
+       * way. Read the r343 paragraph below before acting on this one.
        *
        * `isPoolBorrower` is the ONE named answer to "is this row's balance somebody else's" (r340,
        * lib/shared-leave-balance.ts) and the pooling pass eight lines above has already set it from
@@ -3187,10 +3190,50 @@ export function leaveBalances(
        * balance they do not draw or drop five from a ceiling that caps them. A member that keeps its card
        * says so on the card instead (the group's ceiling line, app/leave/page.tsx).
        * Pinned in test/8d3a7bff-special-leave-one-card.test.ts.
+       *
+       * ⚠️ r343 (1478c281) — AND THE SECOND CONDITION, IN THIS SAME GATE: A MEMBER THAT HOLDS NOTHING OF ITS
+       * OWN DRAWS NO CARD EITHER.
+       *
+       * r341 was right about Marriage Leave and wrong about the four members sitting at 0.00. The paragraph
+       * above argued that a zero today is no reason to fold, because "the day an entitlement table is written
+       * for one of them the same defect returns" — and that is answered, not ignored: the condition is keyed
+       * on the LEDGER, so the day one of them is granted a day its card is back, carrying that day AND its
+       * caption, with nobody un-hiding anything. What r341 actually shipped was FIVE new cards on a ticket
+       * asking for fewer: Marriage (the point) plus Caregiver, Examination, Graduation and Study, each with a
+       * balance of 0.00.
+       *
+       * TWO REASONS TO FOLD, BOTH HERE, AND THEY ARE NOT THE SAME REASON:
+       *   · `isPoolBorrower(r)` — this row's balance IS the pool's, so its own card would repeat the pool's
+       *     card verbatim. True however many days have been FILED under it.
+       *   · `holdsNothingOfItsOwn(r)` — this row's own LEDGER holds no days (`accrued`, `taken`, `pending`
+       *     and `balance` each 0.00), so its card shows no balance the merged card is not already showing.
+       *     Read that function before touching this: it states WHICH FOUR figures it reads, the two kinds of
+       *     "nothing" it deliberately does NOT read (an unconfigured entitlement table — r209's trap — and a
+       *     cycle that has not opened), and ⚠️ WHAT THE CARD PRINTS THAT IT NEVER SEES. That last part is the
+       *     one to read before calling this cheap: the card also prints an Entitlement row and the r209
+       *     entitlement-status caption. MEASURED 2026-09-26, correcting an earlier unchecked claim here: the
+       *     reporter's four carry NO entitlement template at all (zero rows, NULL max_balance_days), so they
+       *     are not `capped_by_max_balance`. A capped table clamped
+       *     to 0.00 — `capped_by_max_balance`, a notice-bearing status. So the cards this drops read
+       *     "Entitlement 3.00 / Balance 0.00" under an amber sentence explaining the clamp, and folding takes
+       *     that sentence with them. Measured and recorded in (f) of
+       *     test/1478c281-empty-member-cards.test.ts; HR keeps both via `includeHidden` (994a5287).
+       *
+       * ⚠️ `||`, NOT `&&`, AND THE TWO REASONS MUST NOT BE COLLAPSED BY A LATER READER. Marriage Leave
+       * satisfies NEITHER and keeps its 177.00 days. CPL and NDL satisfy the FIRST whatever they hold — a
+       * borrower with filed days holds something, so `&&` would put their cards back. CGL/EXM/GD/STD satisfy
+       * the SECOND while borrowing from nobody. Each reason is asserted on its own in
+       * test/1478c281-empty-member-cards.test.ts, and so is the card returning with its first granted day.
+       *
+       * ⚠️ STILL ONLY A CARD, FOR BOTH CONDITIONS. `mayAppearInApplyMenu` is not on this path and neither
+       * condition reaches it: every member stays in Request Leave. That is the whole of item a0b90c81 and it
+       * has now survived two narrowings of this gate.
        */
       return folded.size === 0
         ? visible
-        : visible.filter((r) => !(folded.has(r.leaveTypeId) && isPoolBorrower(r)));
+        : visible.filter(
+            (r) => !(folded.has(r.leaveTypeId) && (isPoolBorrower(r) || holdsNothingOfItsOwn(r))),
+          );
     })();
 
     // ec991c2a — ARCHIVED gate. An administrator archiving a leave type means it is retired; until this

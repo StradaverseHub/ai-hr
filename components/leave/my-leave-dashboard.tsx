@@ -61,9 +61,14 @@ export type MyLeaveDashboardCard = MyLeaveCard & {
   pooledCeiling?: PooledCeilingLines | null;
   /**
    * r341 (8d3a7bff) — pre-translated lines for the ceilings this card COUNTS TOWARDS while keeping its own
-   * balance. On production: Marriage Leave (177.00 days across 59 employments), Caregiver, Examination,
-   * Graduation and Study. Hiding these cards was the literal request and would have hidden those 177 days;
-   * naming the ceiling is what was approved instead.
+   * balance. Hiding these cards was the literal request and would have hidden 177.00 days of Marriage Leave
+   * from 59 employments; naming the ceiling is what was approved instead.
+   *
+   * ⚠️ r343 (1478c281) — ON PRODUCTION THAT IS MARRIAGE LEAVE AND NOTHING ELSE, which corrects what this
+   * comment said before. Caregiver, Examination, Graduation and Study are in the same group and hold 0.00
+   * days each; a member that holds nothing of its own now draws no card at all (the gate in core/read.ts), so
+   * no card of theirs reaches this component and no ceiling line is built for them. Granting one of them a
+   * day brings its card back and this line with it — there is no list of names anywhere to maintain.
    */
   ceilingLines?: string[];
 };
@@ -190,6 +195,13 @@ export function MyLeaveDashboard({
           {line}
         </p>
       ))}
+      {/* 31e39d74 / r209 — WHY THIS TYPE READS 0.00, in one amber line. ⚠️ r343 (1478c281): a placed-group
+          member folded by the gate in core/read.ts never reaches this component, so this caption is dropped
+          WITH its card and never FROM a card that renders — the fold removes whole rows and touches nothing
+          here. MEASURED 2026-09-26: the reporter's folded four have NO entitlement
+          template, so they are NOT `capped_by_max_balance`; that shape is a different member's (a 3-day table under a
+          Maximum Balance of 0), so that caption is part of what hiding them costs; HR keeps it through
+          `includeHidden`. Both halves pinned in test/1478c281-empty-member-cards.test.ts (f). */}
       {entitlementStatusNeedsNotice(c.entitlementStatus) && (
         <p
           className="mt-2 text-[11px] text-amber-700 dark:text-amber-500"
