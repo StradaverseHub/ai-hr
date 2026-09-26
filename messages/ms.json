@@ -1997,7 +1997,20 @@
       "disagreeColTypedRM": "Relief on the entered figure (RM)",
       "disagreeColRecordRM": "Relief the children on file support (RM)",
       "disagreeColUnsupportedRM": "Difference in relief (RM)",
-      "disagreeCategorised": "{done} of {total} have a relief category recorded."
+      "disagreeCategorised": "{done} of {total} have a relief category recorded.",
+      "gapTitle": "Anak tanpa kategori pelepasan cukai",
+      "gapDescription": "Pekerja ini ditetapkan untuk mengira pelepasan anak secara automatik, tetapi sekurang-kurangnya seorang anak yang layak tiada kategori pelepasan cukai direkodkan. Sehingga setiap anak yang layak mempunyai kategori, pelepasan kekal pada kiraan kepala dan anak yang sepatutnya dikira lebih tinggi dikira sebagai satu.",
+      "gapStatPeople": "pekerja terlibat",
+      "gapStatChildren": "anak tanpa kategori",
+      "gapColEligible": "Anak yang layak",
+      "gapColCategorised": "Ada kategori",
+      "gapColMissing": "Tiada",
+      "gapColTodayRM": "Pelepasan hari ini (RM)",
+      "gapOpenFamily": "Buka rekod keluarga",
+      "gapWhyNote": "Pemberat hanya digunakan apabila setiap anak yang layak mempunyai kategori, kerana rekod yang separuh lengkap akan memberi pelepasan kepada lebih sedikit anak daripada yang sebenarnya ada.",
+      "gapNotAnErrorNote": "Kategori yang tiada bukan kesilapan pada rekod — ia maklumat yang mungkin tidak pernah diberikan kepada majikan.",
+      "gapNoBulkNote": "Tiada pengisian pukal, dan memang tidak sepatutnya ada: kategori seorang anak ialah fakta tentang anak itu dan hanya boleh ditetapkan pada rekodnya sendiri.",
+      "gapManualNote": "Pekerja dengan angka yang ditaip tidak disenaraikan di sini. Bagi mereka angka yang ditaip menentukan, jadi kategori tidak mengubah apa-apa."
     }
   },
   "leave": {

@@ -1997,7 +1997,20 @@
       "disagreeColTypedRM": "Relief on the entered figure (RM)",
       "disagreeColRecordRM": "Relief the children on file support (RM)",
       "disagreeColUnsupportedRM": "Difference in relief (RM)",
-      "disagreeCategorised": "{done} of {total} have a relief category recorded."
+      "disagreeCategorised": "{done} of {total} have a relief category recorded.",
+      "gapTitle": "บุตรที่ยังไม่มีประเภทการลดหย่อนภาษี",
+      "gapDescription": "พนักงานเหล่านี้ตั้งค่าให้คำนวณการลดหย่อนบุตรโดยอัตโนมัติ แต่มีบุตรที่เข้าเกณฑ์อย่างน้อยหนึ่งคนที่ยังไม่ได้บันทึกประเภทการลดหย่อนภาษี จนกว่าบุตรที่เข้าเกณฑ์ทุกคนจะมีประเภท การลดหย่อนจะยังคิดตามจำนวนหัวและบุตรที่ควรนับได้มากกว่าจะถูกนับเป็นหนึ่ง",
+      "gapStatPeople": "พนักงานที่ได้รับผลกระทบ",
+      "gapStatChildren": "บุตรที่ยังไม่มีประเภท",
+      "gapColEligible": "บุตรที่เข้าเกณฑ์",
+      "gapColCategorised": "มีประเภทแล้ว",
+      "gapColMissing": "ยังขาด",
+      "gapColTodayRM": "การลดหย่อนปัจจุบัน (RM)",
+      "gapOpenFamily": "เปิดระเบียนครอบครัว",
+      "gapWhyNote": "การถ่วงน้ำหนักจะมีผลเมื่อบุตรที่เข้าเกณฑ์ทุกคนมีประเภทแล้วเท่านั้น เพราะระเบียนที่กรอกไม่ครบจะให้การลดหย่อนแก่บุตรน้อยกว่าที่พนักงานมีจริง",
+      "gapNotAnErrorNote": "การไม่มีประเภทไม่ใช่ข้อผิดพลาดของระเบียน แต่เป็นข้อมูลที่นายจ้างอาจไม่เคยได้รับ",
+      "gapNoBulkNote": "ไม่มีการกรอกแบบกลุ่ม และไม่ควรมี เพราะประเภทของบุตรเป็นข้อเท็จจริงเกี่ยวกับบุตรคนนั้น และตั้งได้เฉพาะในระเบียนของเขาเอง",
+      "gapManualNote": "พนักงานที่ใช้ตัวเลขที่พิมพ์เองจะไม่ปรากฏที่นี่ สำหรับพวกเขาตัวเลขที่พิมพ์เป็นตัวตัดสิน ประเภทจึงไม่เปลี่ยนแปลงอะไร"
     }
   },
   "leave": {

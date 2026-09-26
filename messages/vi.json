@@ -1997,7 +1997,20 @@
       "disagreeColTypedRM": "Relief on the entered figure (RM)",
       "disagreeColRecordRM": "Relief the children on file support (RM)",
       "disagreeColUnsupportedRM": "Difference in relief (RM)",
-      "disagreeCategorised": "{done} of {total} have a relief category recorded."
+      "disagreeCategorised": "{done} of {total} have a relief category recorded.",
+      "gapTitle": "Trẻ chưa có nhóm miễn giảm thuế",
+      "gapDescription": "Những nhân viên này được đặt tự động tính miễn giảm cho con, nhưng có ít nhất một người con đủ điều kiện chưa được ghi nhóm miễn giảm thuế. Cho đến khi mọi người con đủ điều kiện đều có nhóm, mức miễn giảm vẫn tính theo đầu người và một người con lẽ ra được tính cao hơn chỉ được tính là một.",
+      "gapStatPeople": "nhân viên bị ảnh hưởng",
+      "gapStatChildren": "trẻ chưa có nhóm",
+      "gapColEligible": "Con đủ điều kiện",
+      "gapColCategorised": "Đã có nhóm",
+      "gapColMissing": "Còn thiếu",
+      "gapColTodayRM": "Miễn giảm hiện nay (RM)",
+      "gapOpenFamily": "Mở hồ sơ gia đình",
+      "gapWhyNote": "Trọng số chỉ áp dụng khi mọi người con đủ điều kiện đều có nhóm, vì hồ sơ điền dở sẽ miễn giảm cho ít con hơn số con thực tế của nhân viên.",
+      "gapNotAnErrorNote": "Thiếu nhóm không phải là lỗi của hồ sơ — đó là thông tin mà người sử dụng lao động có thể chưa từng được cung cấp.",
+      "gapNoBulkNote": "Không có chức năng điền hàng loạt, và cũng không nên có: nhóm của một người con là thông tin về chính người con đó và chỉ có thể đặt trên hồ sơ của họ.",
+      "gapManualNote": "Nhân viên dùng con số nhập tay không xuất hiện ở đây. Với họ, con số đã nhập là quyết định, nên nhóm không thay đổi điều gì."
     }
   },
   "leave": {

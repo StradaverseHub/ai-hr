@@ -5,6 +5,7 @@ import { Card, PageHeader, pageWideCls } from '@/components/ui';
 import {
   ChildReliefAmountsCard,
   ChildReliefDisagreementTable,
+  ChildReliefCategoryGapTable,
   ChildReliefReviewTable,
 } from '@/components/child-relief-review-table';
 
@@ -201,6 +202,46 @@ export default async function ChildReliefReviewPage() {
       {view.recordDisagreement.people.length > 0 && (
         <Card className="overflow-hidden">
           <ChildReliefDisagreementTable rows={view.recordDisagreement.people} />
+        </Card>
+      )}
+
+      {/* ── THE CATEGORIES THAT ARE NOT THERE — item 9653472a (r345) ─────────────────────────────────
+          r344 made an 'auto' employee's relief price from the Family register's s.48 categories, but
+          gated the derived grid on every eligible child carrying one: `childReliefGridFromFamily` SKIPS a
+          child it cannot classify, so pricing a partial grid would relieve FEWER children than the
+          employee has. The gate is right and stays. Its consequence is that the weighting reaches NOBODY
+          until the categories are filled in, and until now nothing said so anywhere.
+
+          ⚠️ NO "YOU COULD BE RELIEVING RM X" FIGURE. The weight of an uncategorised child is unknown by
+          definition — 1 unit or 8 — so that number cannot be stood behind (§8). The card states the gap
+          and what relief is given today, and stops there. */}
+      {view.categoryGap.people.length > 0 && (
+        <Card className="p-5">
+          <h2 className="text-sm font-semibold">{t('gapTitle')}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t('gapDescription')}</p>
+          <div className="mt-4 flex flex-wrap items-end gap-8">
+            <div>
+              <p className="text-3xl font-semibold tabular-nums">{view.categoryGap.people.length}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t('gapStatPeople')}</p>
+            </div>
+            <div>
+              <p className="text-3xl font-semibold tabular-nums">
+                {view.categoryGap.uncategorisedChildren}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">{t('gapStatChildren')}</p>
+            </div>
+          </div>
+          <ul className="mt-4 space-y-1.5 border-t border-border pt-3 text-sm text-muted-foreground">
+            <li>{t('gapWhyNote')}</li>
+            <li>{t('gapNotAnErrorNote')}</li>
+            <li>{t('gapNoBulkNote')}</li>
+            <li>{t('gapManualNote')}</li>
+          </ul>
+        </Card>
+      )}
+      {view.categoryGap.people.length > 0 && (
+        <Card className="overflow-hidden">
+          <ChildReliefCategoryGapTable rows={view.categoryGap.people} />
         </Card>
       )}
 

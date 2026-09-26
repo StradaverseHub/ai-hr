@@ -320,3 +320,88 @@ export function ChildReliefDisagreementTable({ rows }: { rows: ChildReliefDisagr
     </div>
   );
 }
+
+/**
+ * THE CHILDREN WITH NO RELIEF CATEGORY — item 9653472a (r345).
+ *
+ * ⚠️ THIS TABLE PRINTS NO FIGURE FOR WHAT THE CATEGORIES WOULD BE WORTH, AND THAT IS DELIBERATE.
+ * The s.48 weight of a child nobody has categorised is unknown by definition — it could be 1 unit or 8.
+ * A "you could be relieving RM X" column would be a number this repo cannot stand behind, which
+ * CLAUDE.md §8 forbids on exactly this kind of screen. What IS true and checkable is printed instead:
+ * how many eligible children there are, how many carry a category, and what relief is being given today.
+ *
+ * ⚠️ IT IS NOT AN ERROR LIST. A missing category is information the employer may never have been given.
+ * The wording says the weighting cannot apply until it is filled in — never that the record is wrong —
+ * and there is no bulk action, because nobody can know a child's category from this screen.
+ */
+export type ChildReliefCategoryGapRow = {
+  personId: string;
+  name: string;
+  jobs: { employmentId: string; employeeCode: string | null; company: string }[];
+  /** 'auto' or 'auto_table' — the only two modes this list carries; a category changes nothing on manual. */
+  mode: string;
+  /** Eligible child rows on the Family register (core/dependents' one eligibility rule). */
+  familyEligible: number;
+  /** How many of those carry a recorded s.48 relief category. */
+  familyCategorised: number;
+  /** Relief being given today (RM), on the plain head count. */
+  todayRM: number;
+};
+
+export function ChildReliefCategoryGapTable({ rows }: { rows: ChildReliefCategoryGapRow[] }) {
+  const t = useTranslations('people.childRelief');
+  // Same fixed map as the review table: an unrecognised stored value renders as itself rather than
+  // being silently relabelled as one of the three we know.
+  const modeLabel: Record<string, string> = {
+    manual: t('modeManual'),
+    auto: t('modeAuto'),
+    auto_table: t('modeAutoTable'),
+  };
+  return (
+    <div className={tableWrapCls}>
+      <table className="w-full text-sm">
+        <thead className={theadCls}>
+          <tr>
+            <th className={thCls}>{t('colEmployee')}</th>
+            <th className={thCls}>{t('colMode')}</th>
+            <th className={`${thCls} text-right`}>{t('gapColEligible')}</th>
+            <th className={`${thCls} text-right`}>{t('gapColCategorised')}</th>
+            <th className={`${thCls} text-right`}>{t('gapColMissing')}</th>
+            <th className={`${thCls} text-right`}>{t('gapColTodayRM')}</th>
+          </tr>
+        </thead>
+        <tbody className={tbodyCls}>
+          {rows.map((r) => (
+            <tr key={r.personId} className="align-top" data-category-gap-row>
+              <td className="px-3 py-2">
+                <span className="font-medium text-foreground">{r.name}</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {r.jobs.map((j) => [j.employeeCode, j.company].filter(Boolean).join(' · ')).join(' / ')}
+                </span>
+                {/* One record at a time. The category is a fact about a child that only the employee's
+                    own record can carry, so this is the only action offered. */}
+                {r.jobs.map((j) => (
+                  <a
+                    key={j.employmentId}
+                    href={`/admin/personnel/${j.employmentId}?tab=family`}
+                    className="mt-1 mr-2 inline-block text-xs font-medium text-primary underline underline-offset-2"
+                  >
+                    {t('gapOpenFamily')}
+                  </a>
+                ))}
+              </td>
+              <td className="px-3 py-2">{modeLabel[r.mode] ?? r.mode}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{r.familyEligible}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{r.familyCategorised}</td>
+              {/* NOT coloured red. This is a gap, not a fault — see the note on the type. */}
+              <td className="px-3 py-2 text-right font-medium tabular-nums">
+                {r.familyEligible - r.familyCategorised}
+              </td>
+              <td className="px-3 py-2 text-right tabular-nums">{money(r.todayRM)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

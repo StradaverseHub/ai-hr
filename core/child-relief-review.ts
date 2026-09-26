@@ -169,7 +169,62 @@ export type ChildReliefReview = {
     /** Σ `excessRM` — the relief those children carry, priced by the pack, never by a constant here. */
     excessReliefRM: number;
   };
+  /**
+   * r345 9653472a — THE CHILDREN WITH NO RELIEF CATEGORY, WHICH IS WHAT HOLDS THE WEIGHTING SHUT.
+   *
+   * r344 made an 'auto' employee's relief price from the Family register's s.48 categories, but gated the
+   * derived grid on `built.categorised === built.eligible`: every eligible child must carry a category or
+   * the grid is NULLED and all three consumers fall back to `num_children × perChild`. That gate is
+   * deliberate and must stay — `childReliefGridFromFamily` SKIPS a child it cannot classify, so pricing a
+   * partial grid would relieve FEWER children than the employee has. Production measured one 'auto'
+   * employee who would have gone from RM4,000 to RM2,000 the moment r344 shipped without it.
+   *
+   * The consequence is that the weighting reaches NOBODY until somebody fills the categories in, and
+   * nothing on any screen said so. This is that list.
+   *
+   * ⚠️ SCOPED TO THE TWO AUTO MODES ON PURPOSE. On 'manual' the typed figure decides and a category
+   * changes nothing at all, so listing a manual employee's children would imply an action that has no
+   * effect. `recordDisagreement` above is the list for typed figures; this one is for the auto modes.
+   *
+   * ⚠️ A MISSING CATEGORY IS NOT AN ERROR. It is information the employer may never have been given. It
+   * is a gap that stops the weighting applying, never something wrong with the record — and there is
+   * deliberately no bulk fill anywhere near it, because nobody can know a child's category from a list.
+   *
+   * A subset of `people` (the same objects, so no second walk and no second arithmetic), in `people`'s
+   * order, so the list is reproducible between loads.
+   */
+  categoryGap: {
+    people: ChildReliefReviewPerson[];
+    /** Σ `familyEligible − familyCategorised` — eligible children carrying no category. */
+    uncategorisedChildren: number;
+  };
 };
+
+/**
+ * Does this person belong on the category-gap list? EXPORTED so the test drives the REAL predicate.
+ *
+ * ⚠️ A TEST THAT RE-STATES THIS RULE LOCALLY PROVES NOTHING. The first cut of
+ * `test/9653472a-child-relief-category-gap.test.ts` did exactly that — it filtered its own fixtures with
+ * its own copy of the condition, so loosening the production filter to every mode left every behavioural
+ * case green and only a source-text assertion caught it. Import this instead.
+ *
+ * THE TWO AUTO MODES ONLY. On 'manual' the typed figure decides and a category changes nothing, so a
+ * manual row would put an action on screen that has no effect; `recordDisagreement` is the list that
+ * covers typed figures. An unrecognised stored mode is excluded too — this names the two it trusts
+ * rather than excluding the one it knows, so a hand-edited mode is not silently treated as auto.
+ *
+ * `familyEligible` / `familyCategorised` come from the single walk in `childReliefReview`, counted by
+ * core/dependents' own `isChildReliefEligible` — no eligibility rule is re-expressed in SQL here, which
+ * is precisely the mistake the a5f21891 raise made and this item corrects.
+ */
+export function hasCategoryGap(p: {
+  mode: string;
+  familyEligible: number;
+  familyCategorised: number;
+}): boolean {
+  if (p.mode !== 'auto' && p.mode !== 'auto_table') return false;
+  return p.familyEligible > p.familyCategorised;
+}
 
 /** Round to cents the way every other money figure in this repo is rounded before display. */
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -300,6 +355,7 @@ export async function childReliefReview(ctx: SessionContext): Promise<ChildRelie
       people: [],
       totals: { people: 0, children: 0, todayRM: 0, switchRM: 0, deltaRM: 0 },
       recordDisagreement: { people: [], excessChildren: 0, excessReliefRM: 0 },
+      categoryGap: { people: [], uncategorisedChildren: 0 },
     };
     if (rows.length === 0) return empty;
 
@@ -404,6 +460,7 @@ export async function childReliefReview(ctx: SessionContext): Promise<ChildRelie
     // r343 03f89c0f — the subset, from the rows already built. The SAME objects, so the list and the table
     // above it can never report two different numbers for one person.
     const disagreeing = people.filter((x) => (x.typedExcess ?? 0) > 0);
+    const gapped = people.filter(hasCategoryGap);
     return {
       asOf,
       statutoryVersion: first.version,
@@ -421,6 +478,10 @@ export async function childReliefReview(ctx: SessionContext): Promise<ChildRelie
         people: disagreeing,
         excessChildren: disagreeing.reduce((n, x) => n + (x.typedExcess ?? 0), 0),
         excessReliefRM: round2(disagreeing.reduce((n, x) => n + x.excessRM, 0)),
+      },
+      categoryGap: {
+        people: gapped,
+        uncategorisedChildren: gapped.reduce((n, x) => n + (x.familyEligible - x.familyCategorised), 0),
       },
     };
   });

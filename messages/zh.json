@@ -1997,7 +1997,20 @@
       "disagreeColTypedRM": "Relief on the entered figure (RM)",
       "disagreeColRecordRM": "Relief the children on file support (RM)",
       "disagreeColUnsupportedRM": "Difference in relief (RM)",
-      "disagreeCategorised": "{done} of {total} have a relief category recorded."
+      "disagreeCategorised": "{done} of {total} have a relief category recorded.",
+      "gapTitle": "没有税务减免类别的子女",
+      "gapDescription": "这些员工设定为自动计算子女减免，但至少有一名符合条件的子女未记录税务减免类别。在每一名符合条件的子女都有类别之前，减免仍按人头计算，原本可计更高额度的子女只会被计为一名。",
+      "gapStatPeople": "受影响员工",
+      "gapStatChildren": "没有类别的子女",
+      "gapColEligible": "符合条件的子女",
+      "gapColCategorised": "已有类别",
+      "gapColMissing": "缺少",
+      "gapColTodayRM": "目前减免（RM）",
+      "gapOpenFamily": "打开家庭记录",
+      "gapWhyNote": "只有在每一名符合条件的子女都有类别后，加权才会生效；记录填写不完整会导致减免的子女人数少于实际人数。",
+      "gapNotAnErrorNote": "缺少类别并不是记录上的错误——这可能只是雇主从未获得的信息。",
+      "gapNoBulkNote": "这里没有批量填写功能，也不应该有：子女的类别是关于该名子女的事实，只能在其本人的记录上设定。",
+      "gapManualNote": "使用手动输入数字的员工不会列在此处。对他们而言以输入的数字为准，类别不会产生任何影响。"
     }
   },
   "leave": {

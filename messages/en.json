@@ -1997,7 +1997,20 @@
       "disagreeColTypedRM": "Relief on the entered figure (RM)",
       "disagreeColRecordRM": "Relief the children on file support (RM)",
       "disagreeColUnsupportedRM": "Difference in relief (RM)",
-      "disagreeCategorised": "{done} of {total} have a relief category recorded."
+      "disagreeCategorised": "{done} of {total} have a relief category recorded.",
+      "gapTitle": "Children with no tax relief category",
+      "gapDescription": "These employees are set to work their child relief out automatically, but at least one of their qualifying children has no tax relief category recorded. Until every qualifying child has one, the relief stays on the plain head count and a child who would count for more is counted as one.",
+      "gapStatPeople": "employees affected",
+      "gapStatChildren": "children with no category",
+      "gapColEligible": "Qualifying children",
+      "gapColCategorised": "With a category",
+      "gapColMissing": "Missing",
+      "gapColTodayRM": "Relief today (RM)",
+      "gapOpenFamily": "Open family record",
+      "gapWhyNote": "The weighting only applies once every qualifying child has a category, because a partly-filled record would relieve fewer children than the employee actually has.",
+      "gapNotAnErrorNote": "A missing category is not a mistake on the record — it is information the employer may simply never have been given.",
+      "gapNoBulkNote": "There is no bulk fill, and there should not be: a child’s category is a fact about that child, and it can only be set on their own record.",
+      "gapManualNote": "Employees on a typed figure are not listed here. For them the typed number decides, so a category would change nothing."
     }
   },
   "leave": {
