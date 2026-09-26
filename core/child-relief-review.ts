@@ -58,7 +58,8 @@ import { isAdmin } from '../lib/authz';
 import { packFor } from '../localization/registry';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { company, employeeDependent, employeeStatutoryMy, employment, person } from '../db/schema';
-import { CHILD_RELIEF_CATEGORIES, isChildReliefEligible } from './dependents';
+import { childReliefGridFromFamily } from './dependents';
+import type { ChildReliefGrid } from './dependents';
 
 export class ChildReliefReviewAccessError extends Error {
   constructor() {
@@ -72,8 +73,16 @@ export function assertMayReadChildReliefReview(ctx: SessionContext): void {
   if (!isAdmin(ctx)) throw new ChildReliefReviewAccessError();
 }
 
-/** The stored grid shape: per s.48 category, the count claimed at 100% and the count claimed at 50%. */
-export type ChildReliefGrid = Record<string, { full: number; half: number }>;
+/**
+ * RE-EXPORTED, NOT REDEFINED (r343). The grid shape and `childReliefGridFromFamily` moved to
+ * core/dependents.ts, beside `isChildReliefEligible` — the rule they apply — because the weighted
+ * qualifying-children count (`eligibleChildReliefUnits`, item 04b88724) needs them there and that module
+ * cannot import this one without a cycle. Copying either would be a second walk of the Family register,
+ * which is the exact duplication r340 shipped and had to undo. Every existing caller and test keeps
+ * importing them from here.
+ */
+export type { ChildReliefGrid } from './dependents';
+export { childReliefGridFromFamily };
 
 /** One employment a reviewed person holds — the way in to the grid, which lives on their record. */
 export type ChildReliefReviewJob = {
@@ -104,6 +113,24 @@ export type ChildReliefReviewPerson = {
   familyEligible: number;
   /** How many of those carry a recorded relief category. The rest contribute nothing to familyRM. */
   familyCategorised: number;
+  /** r343 03f89c0f — true when the child count on the tax record was TYPED ('manual' mode) rather than
+   *  worked out. NOT a defect: a typed figure is legitimate and there are good reasons to keep one. */
+  typedFigure: boolean;
+  /** r343 03f89c0f — `numChildren − familyEligible` for a TYPED figure; null for the two auto modes,
+   *  where there is nothing typed to disagree with the record.
+   *
+   *  ⚠️ HEAD COUNT AGAINST HEAD COUNT, both sides. `num_children` is a head count (Form E / CP8D / EA read
+   *  it as one) and this counts the eligible child ROWS on the Family register, one per child, ignoring the
+   *  1/4/8 s.48 weighting entirely. Comparing a head count against a weighted count would make the
+   *  difference meaningless, so the screen states which one this is in its caption. Positive = typed above
+   *  the record; negative = typed below it; 0 = they agree. */
+  typedExcess: number | null;
+  /** r343 03f89c0f — relief the Family register's HEAD COUNT supports: `familyEligible × perChild`, the
+   *  same basis `todayRM` uses for anyone not on the category table, so the two are comparable. */
+  recordRM: number;
+  /** r343 03f89c0f — relief carried by the children the record does NOT account for: the positive part of
+   *  `typedExcess × perChild`, priced by the pack. 0 for everyone whose figure is not typed above. */
+  excessRM: number;
 };
 
 export type ChildReliefReview = {
@@ -118,54 +145,28 @@ export type ChildReliefReview = {
   people: ChildReliefReviewPerson[];
   /** Totals over `people` — of what this reader can see, which RLS decides. */
   totals: { people: number; children: number; todayRM: number; switchRM: number; deltaRM: number };
+  /**
+   * r343 03f89c0f — THE TYPED FIGURES THAT DISAGREE WITH THE FAMILY RECORD.
+   *
+   * A subset of `people` (same objects, so no second walk and no second arithmetic): those on 'manual'
+   * whose typed child count is ABOVE the eligible children on file. It is a LIST TO LOOK AT, not an error
+   * list: some of those missing children are probably real and simply never entered, which is why nothing
+   * here changes anybody and there is deliberately no bulk action anywhere near it.
+   *
+   * ORDER is `people`'s order (person name, then employee code, then employment id), so the list is
+   * reproducible between loads.
+   */
+  recordDisagreement: {
+    people: ChildReliefReviewPerson[];
+    /** Σ of the positive `typedExcess` — children carried by a tax figure and by no Family record. */
+    excessChildren: number;
+    /** Σ `excessRM` — the relief those children carry, priced by the pack, never by a constant here. */
+    excessReliefRM: number;
+  };
 };
 
 /** Round to cents the way every other money figure in this repo is rounded before display. */
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
-
-/**
- * The Family register → a priced grid, by the SAME eligibility rule `num_children` auto mode uses
- * (`isChildReliefEligible`: relationship 'child', not deceased, not archived, explicit per-child decision
- * wins, else student-or-under-18).
- *
- * ⚠️ A SHARE OF `null` IS COUNTED AS THE FULL 100% CLAIM. That is the LHDN default (the whole child is
- * claimed by one parent unless the parents split it) and it matches how the head count already treats a
- * 50%-shared child — as one whole child. The screen says so in its own words rather than letting a
- * derived figure look more certain than it is.
- *
- * A child with NO recorded category contributes nothing and is counted in `eligible` but not in
- * `categorised`, so the caller can say "this suggestion covers 4 of 6 children" instead of quietly
- * understating somebody's relief.
- */
-export function childReliefGridFromFamily(
-  rows: {
-    relationship: string;
-    dateOfBirth: string | null;
-    isStudent: boolean | null;
-    isDeceased: boolean;
-    archivedAt: Date | null;
-    childTaxRelief: boolean | null;
-    childReliefCategory: string | null;
-    childReliefPercentage: number | null;
-  }[],
-  asOf: Date,
-): { grid: ChildReliefGrid; eligible: number; categorised: number } {
-  const grid: ChildReliefGrid = {};
-  let eligible = 0;
-  let categorised = 0;
-  for (const r of rows) {
-    if (!isChildReliefEligible(r, asOf)) continue;
-    eligible += 1;
-    const cat = r.childReliefCategory;
-    if (!cat || !(CHILD_RELIEF_CATEGORIES as readonly string[]).includes(cat)) continue;
-    categorised += 1;
-    const cell = (grid[cat] ??= { full: 0, half: 0 });
-    // 50 is the only share that is not the whole claim; null/absent ⇒ the full claim (see the note above).
-    if (r.childReliefPercentage === 50) cell.half += 1;
-    else cell.full += 1;
-  }
-  return { grid, eligible, categorised };
-}
 
 /**
  * The three figures for one person, PURE. `amountFor` is the country pack's own pricing function, passed
@@ -192,6 +193,41 @@ export function childReliefReviewFigures(p: {
     deltaRM: round2(switchRM - todayRM),
     gridKeyed: gridStoredIsNonEmpty(p.storedGrid),
     familyRM: p.familyGrid ? round2(p.amountFor(p.familyGrid)) : null,
+  };
+}
+
+/**
+ * r343 03f89c0f — IS THIS PERSON'S TYPED CHILD COUNT ABOVE THE CHILDREN ON FILE, AND WHAT DOES THE GAP
+ * CARRY IN RELIEF? Pure, so the whole finding is testable without a database.
+ *
+ * ⚠️ 'manual' IS NOT A DEFECT. A typed figure is a legitimate, deliberate entry — an employee may genuinely
+ * have four children and have had only one entered into the Family register, in which case the typed figure
+ * is right and the RECORD is what is incomplete. This function reports a DISAGREEMENT between two numbers,
+ * and says nothing about which of them is wrong. Nothing in this module can know that.
+ *
+ * ⚠️ HEAD COUNT AGAINST HEAD COUNT. `numChildren` is a head count and `familyEligible` counts child rows,
+ * one per child. The s.48 1/4/8 weighting is deliberately NOT applied to either side: mixing the two bases
+ * would make the difference a number nobody could act on. `familyRM` on the row beside this is the weighted
+ * question and is labelled as its own thing.
+ *
+ * The two auto modes return `typedExcess: null` — nothing was typed, so there is nothing to disagree. That
+ * is what keeps them off the screen this feeds.
+ */
+export function childReliefRecordDisagreement(p: {
+  mode: string;
+  numChildren: number;
+  familyEligible: number;
+  perChild: number;
+}): Pick<ChildReliefReviewPerson, 'typedFigure' | 'typedExcess' | 'recordRM' | 'excessRM'> {
+  const typedFigure = p.mode !== 'auto' && p.mode !== 'auto_table';
+  const typedExcess = typedFigure ? p.numChildren - p.familyEligible : null;
+  return {
+    typedFigure,
+    typedExcess,
+    recordRM: round2(p.familyEligible * p.perChild),
+    // Only the POSITIVE gap carries unsupported relief. A figure typed BELOW the record under-claims, which
+    // costs the employee rather than the revenue, and is a different conversation this screen does not open.
+    excessRM: typedExcess != null && typedExcess > 0 ? round2(typedExcess * p.perChild) : 0,
   };
 }
 
@@ -257,6 +293,7 @@ export async function childReliefReview(ctx: SessionContext): Promise<ChildRelie
       categoryAmounts: [],
       people: [],
       totals: { people: 0, children: 0, todayRM: 0, switchRM: 0, deltaRM: 0 },
+      recordDisagreement: { people: [], excessChildren: 0, excessReliefRM: 0 },
     };
     if (rows.length === 0) return empty;
 
@@ -342,6 +379,13 @@ export async function childReliefReview(ctx: SessionContext): Promise<ChildRelie
         familyEligible: derived.eligible,
         familyCategorised: derived.categorised,
         ...figures,
+        // r343 03f89c0f — the typed-figure-against-the-record finding, on the SAME row and the same read.
+        ...childReliefRecordDisagreement({
+          mode: r.mode ?? 'manual',
+          numChildren: r.numChildren ?? 0,
+          familyEligible: derived.eligible,
+          perChild: priced.perChild,
+        }),
       };
       seen.set(r.personId, row);
       people.push(row);
@@ -351,6 +395,9 @@ export async function childReliefReview(ctx: SessionContext): Promise<ChildRelie
     // A multi-country tenant is out of scope for this screen's caption, not misreported by it: the
     // per-person figures above are each priced by their own company's pack.
     const first = packs.get(rows.find((r) => packs.has(r.country))!.country)!;
+    // r343 03f89c0f — the subset, from the rows already built. The SAME objects, so the list and the table
+    // above it can never report two different numbers for one person.
+    const disagreeing = people.filter((x) => (x.typedExcess ?? 0) > 0);
     return {
       asOf,
       statutoryVersion: first.version,
@@ -363,6 +410,11 @@ export async function childReliefReview(ctx: SessionContext): Promise<ChildRelie
         todayRM: round2(people.reduce((n, p) => n + p.todayRM, 0)),
         switchRM: round2(people.reduce((n, p) => n + p.switchRM, 0)),
         deltaRM: round2(people.reduce((n, p) => n + p.deltaRM, 0)),
+      },
+      recordDisagreement: {
+        people: disagreeing,
+        excessChildren: disagreeing.reduce((n, x) => n + (x.typedExcess ?? 0), 0),
+        excessReliefRM: round2(disagreeing.reduce((n, x) => n + x.excessRM, 0)),
       },
     };
   });

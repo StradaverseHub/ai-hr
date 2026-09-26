@@ -36,6 +36,9 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { company, employeeDependent, employeeStatutoryMy, employment, payrollBatch, profileOption } from '../db/schema';
 import { packFor, requirePackFor } from '../localization/registry';
+// Type-only (ADR-0080 D7): the child-relief COUNT/AMOUNT contract shapes, so the weighted derivation
+// below can take the pack's own functions as parameters without this module naming a MY figure.
+import type { ChildReliefFigure, ChildReliefInput, ChildReliefPrice } from '../localization/country-pack';
 // item 759dfc7d — the closed value sets, shared with the browser (see the re-export block below).
 import {
   CHILD_RELIEF_CATEGORIES,
@@ -238,11 +241,126 @@ export function isChildReliefEligible(r: ChildReliefEligibilityRow, asOf: Date =
   return age != null && age < 18;
 }
 
+/**
+ * THE HEAD COUNT. One eligible child is ONE, whatever s.48 category is recorded against it.
+ *
+ * ⚠️ r343 (04b88724) — THIS STAYS A HEAD COUNT ON PURPOSE, AND THE REASON IS THE COLUMN IT IS WRITTEN TO.
+ * `syncChildReliefFromFamily` writes this value into `employee_statutory_my.num_children`, and that column
+ * is read as a HEAD COUNT by Form E, CP8D and the EA statement (db/schema.ts records that on the column
+ * itself). Making this function return the s.48 WEIGHTED count would make those three statutory forms print
+ * a weighted figure as a head count — an employee with one disabled child in higher education would be
+ * declared as having eight children. The approved plan named that as the decision the item turns on and
+ * recommended leaving `num_children` alone.
+ *
+ * The weighted figure the PCB calculation actually wants is `eligibleChildReliefUnits` below. It is derived,
+ * never stored here, and what still has to happen for it to reach a payslip is recorded on that function.
+ */
 export function eligibleChildReliefCount(
   rows: ChildReliefEligibilityRow[],
   asOf: Date = new Date(),
 ): number {
   return rows.filter((r) => isChildReliefEligible(r, asOf)).length;
+}
+
+/** A Family-register row carrying the two PCB child-relief facts on top of the eligibility fields: the
+ *  s.48 category (item 6c635212) and the claim share (100 | 50). */
+export type ChildReliefCategorisedRow = ChildReliefEligibilityRow & {
+  childReliefCategory: string | null;
+  childReliefPercentage: number | null;
+};
+
+/** The keyed relief grid: per s.48 category, the count claimed at 100% and the count claimed at 50%. The
+ *  same shape `employee_statutory_my.child_relief_table` stores and `childReliefAmountFor` prices. */
+export type ChildReliefGrid = Record<string, { full: number; half: number }>;
+
+/**
+ * The Family register → a keyed relief grid, by the SAME eligibility rule the head count uses
+ * (`isChildReliefEligible`: relationship 'child', not deceased, not archived, explicit per-child decision
+ * wins, else student-or-under-18).
+ *
+ * ⚠️ A SHARE OF `null` IS COUNTED AS THE FULL 100% CLAIM. That is the LHDN default (the whole child is
+ * claimed by one parent unless the parents split it) and it matches how the head count already treats a
+ * 50%-shared child — as one whole child. Every screen that prints a figure from this says so in its own
+ * words rather than letting a derived number look more certain than it is.
+ *
+ * A child with NO recorded category contributes nothing and is counted in `eligible` but not in
+ * `categorised`, so the caller can say "this covers 4 of 6 children" instead of quietly understating
+ * somebody's relief.
+ *
+ * ITS HOME MOVED HERE IN r343 (from core/child-relief-review.ts, which re-exports it unchanged so every
+ * existing caller and test is untouched). It had to move because `eligibleChildReliefUnits` and
+ * `qualifyingChildReliefFor` — both in this module — need it, and core/child-relief-review.ts already
+ * imports from here; leaving it there and importing it back would be a cycle, and copying it would be a
+ * second walk of the Family register, which is the exact duplication r340 shipped and had to undo.
+ */
+export function childReliefGridFromFamily(
+  rows: ChildReliefCategorisedRow[],
+  asOf: Date,
+): { grid: ChildReliefGrid; eligible: number; categorised: number } {
+  const grid: ChildReliefGrid = {};
+  let eligible = 0;
+  let categorised = 0;
+  for (const r of rows) {
+    if (!isChildReliefEligible(r, asOf)) continue;
+    eligible += 1;
+    const cat = r.childReliefCategory;
+    if (!cat || !(CHILD_RELIEF_CATEGORIES as readonly string[]).includes(cat)) continue;
+    categorised += 1;
+    const cell = (grid[cat] ??= { full: 0, half: 0 });
+    // 50 is the only share that is not the whole claim; null/absent ⇒ the full claim (see the note above).
+    if (r.childReliefPercentage === 50) cell.half += 1;
+    else cell.full += 1;
+  }
+  return { grid, eligible, categorised };
+}
+
+/**
+ * ═══ r343, item 04b88724 — WHAT THE s.48 RULES ACTUALLY CALL FOR, FROM THE FAMILY REGISTER ═══
+ *
+ * THE DEFECT THIS EXISTS TO MEASURE. `eligibleChildReliefCount` above is a plain head count, the 'auto'
+ * sync writes it to `num_children`, and for every mode but 'auto_table' the kernel's child leg is
+ * `num_children × perChild` (core/payroll.ts ~5881 and core/payroll-view.ts ~1487 both gate the worked
+ * amount on `childReliefMode === 'auto_table'`). So an 'auto' employee is relieved HEADS × RM2,000 and the
+ * s.48 weighting never reaches them:
+ *
+ *     under 18 / pre-university      1 unit    'auto' gives 1   ✓ right by accident
+ *     18+ diploma or degree          4 units   'auto' gives 1   ✗ RM8,000 relieved as RM2,000
+ *     disabled child                 4 units   'auto' gives 1   ✗
+ *     disabled + higher education     8 units   'auto' gives 1   ✗ RM16,000 relieved as RM2,000
+ *
+ * Under-relieving OVER-deducts PCB every month for those employees.
+ *
+ * NO UNITS ARE TRANSCRIBED HERE, AND THAT IS DELIBERATE. r339 corrected two of the five figures against
+ * the specification's printed p.27 and a second copy in this file would drift from them. The weighting
+ * comes from the PACK — `prices` (`pack.payroll.childReliefPrices`, the one place `units = amountRM ÷
+ * perChild` is written) priced by `childReliefFor` (`pack.payroll.childReliefFor`, whose `.amountRM` is
+ * literally what the payroll kernel's `childReliefAmountFor` returns). Both are passed IN rather than
+ * imported, exactly as `childReliefReviewFigures` takes `amountFor`, so this module never names a
+ * Malaysian relief amount and a test can drive it with the real pack function.
+ *
+ * A 50%-shared child is HALF A UNIT, because `childReliefFor` halves it for the grid and this is the same
+ * call. No rounding: the count would then disagree with the money beside it.
+ *
+ * ⚠️⚠️ THIS FIGURE DOES NOT REACH A PAYSLIP YET, AND NOTHING HERE PRETENDS IT DOES. Making it do so needs
+ * the worked amount to be supplied for 'auto' as well as 'auto_table', which is a change to the two gates
+ * in core/payroll.ts and core/payroll-view.ts named above — and a place to keep the weighted figure that
+ * is NOT `num_children` (see the warning on `eligibleChildReliefCount`). Neither was available to the
+ * round that added this. So for now this is REPORTED, on the Identification & Tax card, as the gap between
+ * what the rules call for and what the calculation gives — a disclosure, never a silent tax move.
+ */
+export function eligibleChildReliefUnits(
+  rows: ChildReliefCategorisedRow[],
+  p: {
+    /** `pack.payroll.childReliefPrices(reliefs)` — the ringgit AND the units for each s.48 category. */
+    prices: readonly ChildReliefPrice[];
+    /** `pack.payroll.childReliefFor` — the ONE derivation; `.amountRM` is what the kernel deducts. */
+    childReliefFor: (i: ChildReliefInput) => ChildReliefFigure;
+    asOf?: Date;
+  },
+): { units: number; amountRM: number; eligible: number; categorised: number } {
+  const { grid, eligible, categorised } = childReliefGridFromFamily(rows, p.asOf ?? new Date());
+  const figure = p.childReliefFor({ from: 'table', table: grid, prices: p.prices });
+  return { units: figure.units, amountRM: figure.amountRM, eligible, categorised };
 }
 
 /**
@@ -976,6 +1094,21 @@ export type QualifyingChildRelief = {
   /** Eligible children on the Family register carrying NO relief category. They would contribute nothing
    *  to a category-priced figure, so a total computed without them would be understated. */
   uncategorisedChildren: number;
+  /**
+   * r343 04b88724 — WHAT THE s.48 CATEGORIES ON FILE ACTUALLY CALL FOR, weighted 1 / 4 / 8 (half for a
+   * 50%-shared child), from `eligibleChildReliefUnits`. NOT what the calculation gives: in 'auto' mode the
+   * kernel's child leg is `num_children × perChild`, so a disabled child in higher education is relieved as
+   * one child. `ruleUnits` is therefore the size of that defect, per employee, and the Identification & Tax
+   * card prints it BESIDE the figure the payslip uses and never in place of it — the reporter is owed the
+   * gap, and §8 forbids printing a figure this repo's own kernel contradicts as if it were the amount.
+   *
+   * It is a property of the FAMILY REGISTER, so it is computed in every mode; only 'auto' currently has
+   * anything to compare it against, because 'auto_table' already prices the weighting and a typed 'manual'
+   * figure has no per-child record behind it.
+   */
+  ruleUnits: number;
+  /** The ringgit `ruleUnits` prices at, from the same one pack call. */
+  ruleReliefRM: number;
 };
 
 /**
@@ -1083,6 +1216,15 @@ export async function qualifyingChildReliefFor(
     // and handing it the prices keeps the statutory rule in the pack while it does.
     const categories = childReliefPrices(reliefs);
 
+    // r343 04b88724 — the s.48 WEIGHTED figure from the children on file, through the pack's own prices and
+    // the pack's own walk. One call; no units are named here. See `eligibleChildReliefUnits` for why this is
+    // reported rather than applied.
+    const rule = eligibleChildReliefUnits(family, {
+      prices: categories,
+      childReliefFor,
+      asOf: asOfDate,
+    });
+
     // ── THE FIGURE. ONE CALL, TWO FIELDS, AND IT IS THE KERNEL'S OWN ─────────────────────────────────
     // 'auto_table' prices the stored grid; every other mode is `num_children × perChild`, which is what
     // core/payroll.ts and core/payroll-view.ts do for the same employee. An empty / unkeyed grid claims
@@ -1141,6 +1283,8 @@ export async function qualifyingChildReliefFor(
       statutoryVersion: rules.version ?? null,
       breakdown,
       uncategorisedChildren,
+      ruleUnits: rule.units,
+      ruleReliefRM: rule.amountRM,
     };
   });
 }

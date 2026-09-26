@@ -78,6 +78,11 @@ export type ChildReliefPricing = {
   /** Eligible children carrying no relief category: they would contribute nothing to a category-priced
    *  figure, so a reader must know they exist before trusting one. */
   uncategorisedChildren: number;
+  /** r343 04b88724 — the s.48 WEIGHTED qualifying-children count the categories on file come to (1 / 4 / 8,
+   *  half for a 50%-shared child), from `core/dependents.ts eligibleChildReliefUnits`. */
+  ruleUnits: number;
+  /** r343 04b88724 — the ringgit `ruleUnits` prices at, from the same one pack call. */
+  ruleReliefRM: number;
 
   // ── WHAT THE STORED RECORD ACTUALLY DEDUCTS (r340 fix pass) ───────────────────────────────────────
   // The six fields below are `qualifyingChildReliefFor`'s own answer for the SAVED employee. The first
@@ -667,6 +672,29 @@ export function IdentityTaxCard({
               {mode === 'auto' && (
                 <p className="mt-2 text-xs text-muted-foreground" data-child-auto-units-note>
                   {t('childQualifyingAutoUnitsNote')}
+                </p>
+              )}
+              {/* ── r343 04b88724 — THE GAP, NAMED, IN THE MODE WHERE IT COSTS MONEY ────────────────────
+                  The reporter is right about the rule: s.48 counts a child 18+ in diploma-or-above study,
+                  and a disabled child, as FOUR children, and a disabled child in that study as EIGHT. In
+                  'auto' mode the kernel's child leg is `num_children × perChild`, so those children are
+                  relieved as ONE each and the employee's monthly PCB is OVER-deducted.
+                  WHY THIS IS A SENTENCE AND NOT A DIFFERENT NUMBER IN THE TOTAL: the total above is what the
+                  payslip deducts, and replacing it with the weighted figure would print an amount this
+                  repo's own kernel contradicts (CLAUDE.md §8, and the r340 defect this card was rebuilt to
+                  stop). So both are shown, each labelled with what it is. Rendered only when the two
+                  actually differ — on a register of under-18 children they agree and there is nothing to
+                  say. */}
+              {mode === 'auto' && childRelief.mode === 'auto' && childRelief.ruleUnits > qualifying && (
+                <p
+                  className="mt-2 text-xs text-amber-700 dark:text-amber-400"
+                  data-child-auto-weighting-gap
+                >
+                  {t('childQualifyingWeightingGap', {
+                    ruleUnits: fmtCount(childRelief.ruleUnits),
+                    ruleAmount: fmtRM(childRelief.ruleReliefRM),
+                    amount: fmtRM(reliefRM),
+                  })}
                 </p>
               )}
               {childRelief.uncategorisedChildren > 0 && (
