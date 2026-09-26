@@ -12933,7 +12933,18 @@
       "total": "பிரிவு மொத்தம்",
       "nonWorkingDayRefused": "இந்த தேதி வேலை நாள் அல்ல. அதற்குப் பதிலாக வேலை அல்லாத நாள் பணியைப் பயன்படுத்தவும்.",
       "belowThreshold": "{minutes} நிமிடங்களுக்குக் குறைவு. வரவுக்குத் தகுதியில்லை."
-    }
+    },
+    "table": {
+      "help": "Add one row for each date you worked and choose its day type. An ordinary working day earns a credit only for the hours worked after your scheduled shift end, so those rows ask for the hours claimed; the other three day types do not. Nothing is credited until your manager approves.",
+      "dayTypeChoose": "Choose a day type",
+      "rosterMismatch": "Your roster has {roster} for this date.",
+      "windowNotClaimed": "Claimed hours apply to an ordinary working day only.",
+      "myRequests": "My Leave Credit requests",
+      "noRequests": "You have not submitted a Leave Credit request yet.",
+      "statusHeading": "Status",
+      "submittedOn": "Submitted"
+    },
+    "viewMyRequests": "View my leave credit requests"
   },
   "notices": {
     "pageTitle": "அறிவிப்புப் பலகை",

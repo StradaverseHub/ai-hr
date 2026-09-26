@@ -164,6 +164,7 @@ describe('My Leave — the Leave Credit request and the Apply form', () => {
     expect(en.replacementRequest.trigger).toBe('+ Leave Credit request');
     expect(en.replacementRequest.title).toBe('Leave Credit request');
     const dialog = read('components/leave/replacement-leave-request-dialog.tsx');
+    const table = read('components/leave/leave-credit-request-table.tsx');
     /*
      * cbfa8b0b (r336) — BOTH SENTENCES MOVED, AND THE RULE THEY STATE GOT WIDER.
      *
@@ -172,18 +173,30 @@ describe('My Leave — the Leave Credit request and the Apply form', () => {
      * cbfa8b0b put both kinds of claim in one request, so BOTH became false by omission: extended hours
      * past the shift end on an ordinary WORKING day now earn a credit.
      *
-     * The dialog states the wider rule in `description`, and a working day in Section A is refused by
-     * `sectionA.workingDayRefused` — which no longer merely says no, it says where the claim belongs
-     * ("This date is a working day. Use Extended ordinary-day work instead."), in the reporter's own
-     * approved words. The two superseded keys still exist in the catalogues with no renderer, so pinning
-     * them here would have kept passing against dead strings while the screen said something else.
+     * ⚠️ UPDATED AGAIN BY r343's FIX PASS, AND THE SECOND MOVE IS THE REPORTER'S REVERSAL. The contest on
+     * cbfa8b0b replaced the two sections with ONE table whose Day Type is an input, so
+     * `sectionA.workingDayRefused` ("This date is a working day. Use Extended ordinary-day work instead.")
+     * lost the section it pointed at and lost its renderer with it. What the screen says now, on the row:
      *
-     * The rule is still asserted — that is this case's subject — but at the keys that carry it now.
+     *   · `table.rosterMismatch` — the roster's own answer for that date, whenever the chosen Day Type
+     *     disagrees with it. This is the r299 claim ("names the kind of each date worked") at its new home,
+     *     and it covers three kinds the old sentence could not: rest day, off day and public holiday were
+     *     one claim path, so no section boundary could tell them apart.
+     *   · `workingDayRefused` — the ORIGINAL r299 sentence, back in service with a renderer, on an Ordinary
+     *     Day row in a company that has not switched extended hours on. That is exactly the case it was
+     *     written for, and it is translated in all six locales.
+     *
+     * The dialog states the wider rule in `description` (it is the shell now; the table is its body), so
+     * that half is asserted where it still lives.
      */
     expect(dialog).toContain("t('description')");
-    expect(dialog).toContain("t('sectionA.workingDayRefused')");
-    expect(en.replacementRequest.sectionA.workingDayRefused).toMatch(/Extended ordinary-day work/);
-    expect(read('app/leave/page.tsx')).toContain('dayKindAction={leaveCreditDayKindAction}');
+    expect(dialog).toContain('<LeaveCreditRequestTable');
+    expect(table).toContain("t('table.rosterMismatch'");
+    expect(table).toContain("t('workingDayRefused')");
+    expect(en.replacementRequest.workingDayRefused).toMatch(/cannot earn a credit/);
+    expect(en.replacementRequest.table.rosterMismatch).toMatch(/\{roster\}/);
+    // The roster read that feeds the adjudication, wired from My Absence to the dialog it opens.
+    expect(read('app/leave/page.tsx')).toContain('dayFactsAction={leaveCreditDayFactsAction}');
   });
 
   it('the Apply summary renders Expiring soon when (and only when) the figure is a number', () => {

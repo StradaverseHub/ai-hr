@@ -121,7 +121,11 @@ export const SCREENS: readonly ScreenEntry[] = [
     // figure, opened from the card on this very screen. The 570fd56e precedent, and the reason it
     // matters here in particular is that a second column would carry the SAME label — two rows reading
     // "My Absence" in the access grid describe one function as if it were two.
-    routes: ['/leave', '/leave/shared/[groupId]'],
+    // r343 (cbfa8b0b) — '/leave/credit' rides THIS column too, on the 76dbcaa1 precedent directly above:
+    // the same audience, the same scope and the same guard, reached from this very screen. It is the
+    // employee's own Leave Credit request table, so a second column would carry the same label and describe
+    // one function as if it were two.
+    routes: ['/leave', '/leave/shared/[groupId]', '/leave/credit'],
     hasScopeNote: true,
   },
   {

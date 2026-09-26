@@ -56,6 +56,11 @@ export * from '../../core/replacement-eligibility';
 // the line above: a BOUNDARY so it is guarded, re-exported here so outside callers reach it through the
 // facade rather than adding an entry to the audited debt allowlist.
 export * from '../../core/replacement-request';
+// r343 cbfa8b0b — the SINGLE-TABLE Leave Credit request: the four-option Day Type, the roster adjudication
+// that refuses a row whose chosen type is not what the roster holds, and the submit that composes
+// `submitReplacementLeaveRequest` rather than replacing it. Same registration discipline as the line above
+// (BOUNDARIES + ALWAYS_ALLOWED in test/leave-pack-drift.test.ts, no allowlist entry).
+export * from '../../core/leave-credit-request';
 export * from '../../core/benefit-scheme';
 // 6e9a126e RELEASE ONE — the entitlement redesign's new layer (named templates + eligibility rules) and
 // the read-only record of what the eventual reset clears. Registered in BOTH BOUNDARIES and ALWAYS_ALLOWED

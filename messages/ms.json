@@ -12933,7 +12933,18 @@
       "total": "Jumlah bahagian",
       "nonWorkingDayRefused": "Tarikh ini bukan hari bekerja. Gunakan Kerja pada hari bukan bekerja sebaliknya.",
       "belowThreshold": "Kurang daripada {minutes} minit. Tidak layak mendapat kredit."
-    }
+    },
+    "table": {
+      "help": "Add one row for each date you worked and choose its day type. An ordinary working day earns a credit only for the hours worked after your scheduled shift end, so those rows ask for the hours claimed; the other three day types do not. Nothing is credited until your manager approves.",
+      "dayTypeChoose": "Choose a day type",
+      "rosterMismatch": "Your roster has {roster} for this date.",
+      "windowNotClaimed": "Claimed hours apply to an ordinary working day only.",
+      "myRequests": "My Leave Credit requests",
+      "noRequests": "You have not submitted a Leave Credit request yet.",
+      "statusHeading": "Status",
+      "submittedOn": "Submitted"
+    },
+    "viewMyRequests": "View my leave credit requests"
   },
   "notices": {
     "pageTitle": "Papan Notis",

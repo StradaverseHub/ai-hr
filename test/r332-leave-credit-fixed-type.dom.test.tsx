@@ -40,10 +40,19 @@ const LOCALES = Object.keys(CATALOGUES) as Locale[];
  *  string in `messages/`: a box that printed a translated constant would read "Replacement Leave" here. */
 const TENANT_TYPE = { id: '11111111-1111-4111-8111-111111111111', name: 'Off in Lieu (Acme)' };
 
+/** r343 — the roster answer the single table needs for a typed date. No date is typed in this file. */
+const NO_FACTS = vi.fn(async () => null);
+
 function openDialog(locale: Locale) {
   render(
     <NextIntlClientProvider locale={locale} messages={CATALOGUES[locale]}>
-      <ReplacementLeaveRequestDialog replacementType={TENANT_TYPE} submitAction={vi.fn()} today="2026-09-17" />
+      <ReplacementLeaveRequestDialog
+        replacementType={TENANT_TYPE}
+        submitAction={vi.fn()}
+        today="2026-09-17"
+        dayFactsAction={NO_FACTS}
+        extendedHoursTiers={null}
+      />
     </NextIntlClientProvider>,
   );
   const rr = (CATALOGUES[locale] as unknown as { replacementRequest: Record<string, string> }).replacementRequest;
@@ -60,7 +69,8 @@ describe('2a237f5f: the Leave Credit request names one leave type and offers no 
       // The field is still LABELLED "Leave type" — the employee must still be told what the box is.
       expect(dialog.textContent).toContain(rr.leaveType);
 
-      const box = dialog.querySelector('[data-testid="replacement-request-leave-type"]') as HTMLInputElement;
+      // r343 — the fixed box moved into the single table with the rest of the form; the testid moved with it.
+      const box = dialog.querySelector('[data-testid="leave-credit-leave-type"]') as HTMLInputElement;
       expect(box).toBeTruthy();
       expect(box.tagName).toBe('INPUT');
       expect(box.value).toBe(TENANT_TYPE.name);
@@ -70,28 +80,31 @@ describe('2a237f5f: the Leave Credit request names one leave type and offers no 
       expect(box.getAttribute('name')).toBeNull();
 
       /*
-       * NO CHOICE IS ON OFFER — and cbfa8b0b (r336) took one MORE choice away, so this reads differently
-       * from r332 while pinning the same thing more tightly.
+       * NO CHOICE OF LEAVE TYPE IS ON OFFER — pinned by NAMING every dropdown the form has, which is the
+       * only form of this assertion that cannot rot.
        *
-       * r332 asserted "the one <select> left is the day/hour unit". The unit is no longer selectable:
-       * both of the dialog's sections credit in DAYS, so an Hour request had nothing left to mean. It is
-       * now a hidden `unit=day` plus a read-only display — exactly what 2a237f5f did to the leave TYPE,
-       * which is what this file exists to pin. The one remaining <select> is Section A's 1-or-0.5 day
-       * picker, the only two answers a non-working day has.
-       *
-       * So: still exactly one select, still nothing selecting a leave type, and now the unit is fixed
-       * too. Asserting the unit posts as a constant is strictly stronger than asserting it was a
-       * two-option dropdown.
+       * ⚠️ UPDATED TWICE, AND BOTH TIMES THE SUBJECT SURVIVED. r332 asserted "the one <select> left is the
+       * day/hour unit". cbfa8b0b (r336) made the unit a fixed field, so the one select became Section A's
+       * 1-or-0.5 day picker. r343's contest then made the DAY TYPE an input, so the row has TWO selects: the
+       * four-option day type and the day count. Counting them is not the claim — the claim is that NEITHER
+       * offers a leave type, and it is asserted by aria-label, by `select[name="leaveTypeId"]` and by the
+       * option labels below.
        */
       const selects = Array.from(dialog.querySelectorAll('select'));
-      expect(selects).toHaveLength(1);
-      expect(selects[0].getAttribute('aria-label'), 'the one select is Section A’s day count').toBe(rr.days);
+      const dayTypeLabel = (rr as unknown as { sectionA: Record<string, string> }).sectionA.dayType;
+      expect(selects.map((el) => el.getAttribute('aria-label'))).toEqual([dayTypeLabel, rr.days]);
       expect(dialog.querySelector('select[name="leaveTypeId"]')).toBeNull();
       expect(dialog.querySelector('select[name="unit"]'), 'the unit stopped being a choice').toBeNull();
 
-      const unitField = dialog.querySelector('input[name="unit"]') as HTMLInputElement | null;
-      expect(unitField, 'the unit is posted as a constant, not picked').toBeTruthy();
-      expect(unitField!.value).toBe('day');
+      /*
+       * …AND THE UNIT IS NOT POSTED AT ALL ANY MORE. r336 posted `<input type="hidden" name="unit"
+       * value="day">`; r343's `submitLeaveCreditRequest` DERIVES it (every row of the single table credits in
+       * days) and passes `unit: 'day'` to the layer below itself. A field the form does not send cannot be
+       * tampered with, so this is the stronger end of the same claim — but it is a real change, and pinning
+       * the absence is what stops the constant being reintroduced as an employee-controlled value.
+       */
+      expect(dialog.querySelector('input[name="unit"]'), 'nothing posts a unit; the service derives it').toBeNull();
+      expect(dialog.querySelector('select[name="aDays"]'), 'r336’s section field names are gone').toBeNull();
 
       const optionLabels = Array.from(dialog.querySelectorAll('option')).map((o) => o.textContent);
       expect(optionLabels).not.toContain(TENANT_TYPE.name);
@@ -100,8 +113,8 @@ describe('2a237f5f: the Leave Credit request names one leave type and offers no 
   }
 
   it('POSTS the resolved replacement type id — once, from a hidden field', () => {
-    // The contract this dialog has with app/leave/actions.ts `submitReplacementLeaveRequestAction`, which
-    // reads `formData.get('leaveTypeId')`. Asserted through FormData rather than by looking for an input,
+    // The contract this dialog has with app/leave/credit/actions.ts `submitLeaveCreditRequestAction`, which
+    // reads `formData.get('leaveTypeId')` (r343; it was `submitReplacementLeaveRequestAction` before). Asserted through FormData rather than by looking for an input,
     // because "a field exists" and "a field is submitted" are different facts and `disabled` is the whole
     // difference here (CLAUDE.md §8: a form field that is always submitted cannot be read by presence).
     const { dialog, form } = openDialog('en');
@@ -122,14 +135,18 @@ describe('2a237f5f: the Leave Credit request names one leave type and offers no 
     const other = { id: '22222222-2222-4222-8222-222222222222', name: 'Rest Day Credit' };
     render(
       <NextIntlClientProvider locale="en" messages={en}>
-        <ReplacementLeaveRequestDialog replacementType={other} submitAction={vi.fn()} today="2026-09-17" />
+        <ReplacementLeaveRequestDialog
+          replacementType={other}
+          submitAction={vi.fn()}
+          today="2026-09-17"
+          dayFactsAction={NO_FACTS}
+          extendedHoursTiers={null}
+        />
       </NextIntlClientProvider>,
     );
     fireEvent.click(screen.getByText((en as unknown as { replacementRequest: { trigger: string } }).replacementRequest.trigger));
     const dialog = screen.getByRole('dialog');
-    expect((dialog.querySelector('[data-testid="replacement-request-leave-type"]') as HTMLInputElement).value).toBe(
-      other.name,
-    );
+    expect((dialog.querySelector('[data-testid="leave-credit-leave-type"]') as HTMLInputElement).value).toBe(other.name);
     expect(new FormData(dialog.querySelector('form') as HTMLFormElement).get('leaveTypeId')).toBe(other.id);
   });
 });
