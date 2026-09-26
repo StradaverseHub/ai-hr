@@ -1,3 +1,36 @@
+## r342 (2026-09-26) — one item, contested, and it was money that was already wrong. `main@6ba48e0e`, **no migration**.
+
+Closed: `20837372`. Gate: **1020 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. No `gate:shadow`: the change is arithmetic plus a resync script, `db/` is untouched, watermark unchanged at `max(idx)=488`.
+
+### THE SAME BOX GAVE TWO ANSWERS, AND ONE OF THEM WAS ON A REAL PAYSLIP
+
+`core/payroll.ts:4349` capped K with `pack.payroll.epfReliefCap`, while `deriveAccumulatorSeed` subtracted the **raw** C3 from accumulated pay. LHDN defines K as capped, so `∑(Y−K)` must be struck against the capped K. The reporter's one production form holds **C3 = 8,979 against a RM4,000 cap**, so `tp3_net_remuneration` was stored at **47,421 where it should be 52,400** — RM4,979 too low, and that employee's PCB light by the tax on it.
+
+### THE C2 HALF REVERSES A DECISION THIS REPO WROTE DOWN TWICE
+
+Both `core/tp3.ts` and a test whose comment read *"THIS ASSERTION IS THE DECISION"* argued that capping C2 *"would tax the same ringgit twice"*. It does not, and the arithmetic settles it:
+
+    C1 57,000 (including a 7,000 travel allowance), C2(i) keyed 7,000, limit 6,000
+      uncapped →  net 50,000  — the whole allowance escapes tax
+      capped   →  net 51,000  — the 1,000 excess is taxed, ONCE
+
+C1 is **gross** by the file's own definition, so the excess sits in it either way; `C1 − ΣC2` is the single place it is taxed or not. Counting ΣC2 whole subtracts the excess *again*. Capping taxes it once, which is exactly what the specification's printed page 20 item 9 requires: *"Any amount exceed the restricted amount shall be taxable."* Both comments now **record the reversal** rather than being deleted.
+
+### DECISIONS
+
+- **ADR-0008 is preserved, not overridden.** It governs refusing *input*, and nothing here refuses anything: every box stores exactly what was keyed, and only what the *arithmetic* may use is limited. The seed reports both sides — `exemptEntered` beside `exemptTotal`, `epfClaimed` beside `epfAllowable` — and they are asserted separately, because collapsing them is the mistake a later reader is most likely to make.
+- **The cap is read from the pack, never written here.** `core/payroll.ts` already owns it and its comment says why ("cap math always matches the calculator"). A second literal would be the duplicate source of truth §1 forbids.
+- **No limit is invented.** C2(iii) and C2(v) carry no sourced limit and contribute in full, the same discipline `tp3ExemptionOverLimits` already applied.
+
+### A BUG IN MY OWN FIRST CUT, CAUGHT BY AN EXISTING GUARD
+
+`cappedLineTotal` summed the catalogue's sub-lines, so a payload carrying `amount` with no `subItems` — which `readGroup` cannot produce but a legacy or hand-built payload can — recomputed to **zero** and turned a −400 keying error into +500, hiding the very thing that guard exists to surface. It now falls back to the stored amount, and the case is pinned. The guard that caught it was the negative-net keying-error test, which predates this item by several rounds.
+
+### WHAT WAS NOT DONE
+
+- **Issued payslips are not recomputed.** Correcting the seed changes what future runs compute; re-cutting a payslip moves money already paid and reported. The reporter's decision.
+- Five guards were updated rather than loosened, including the two that pinned the old decision. Non-vacuity proven on both halves: uncapping the EPF gives `K as the specification defines it: expected 8979 to be 4000`; uncapping C2 gives `what counts: expected 7000 to be 6000`.
+
 ## r341 (2026-09-26) — one item, and the build corrected the premise it was briefed with. `main@c510d515`, **no migration**.
 
 Closed: `8d3a7bff`. Re-planned and returned to the reporter: `20837372`, `cbfa8b0b`. Raised: `1478c281`.
