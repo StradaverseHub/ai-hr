@@ -12925,7 +12925,8 @@
       "noRequests": "You have not submitted a Leave Credit request yet.",
       "statusHeading": "Status",
       "submittedOn": "Submitted"
-    }
+    },
+    "viewMyRequests": "View my leave credit requests"
   },
   "notices": {
     "pageTitle": "กระดานประกาศ",

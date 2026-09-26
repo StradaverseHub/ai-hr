@@ -1137,6 +1137,21 @@ export default async function LeavePage({
                   extendedHoursTiers={extendedHoursTiers}
                 />
               )}
+              {/* ⚠️ THE WAY BACK. Without this the employee could reach /leave/credit only by submitting
+                  something or by typing the URL, and that screen holds the OTHER half of the reporter's
+                  contest — "displayed in the same request table". My Absence shows a summed pending-days
+                  figure (above); the itemised list of what they asked for lives there and nowhere else.
+                  A summary with no route to its detail is the half-delivered shape this item exists to
+                  stop, so the link sits beside the trigger that opens the form it lists. */}
+              {ess && replacementRequest.allowed && replacementLeaveType != null && (
+                <Link
+                  href="/leave/credit"
+                  className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                  data-testid="leave-credit-requests-link"
+                >
+                  {t('replacementRequest.viewMyRequests')}
+                </Link>
+              )}
             </div>
           }
         />

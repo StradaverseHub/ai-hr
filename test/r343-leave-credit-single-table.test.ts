@@ -237,6 +237,18 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
 // when a defect lives in the contract between two files, pin it across both).
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 describe('r343 · the employee has ONE Leave Credit surface, and it is the single table', () => {
+
+  // ⚠️ AND A WAY BACK TO IT. /leave/credit holds the itemised list of what the employee asked for — the
+  // other half of the contest, "displayed in the same request table". My Absence renders only a summed
+  // pending-days figure, so without a link the employee reaches the list by submitting something or by
+  // typing the URL. A summary with no route to its detail is the half-delivered shape this item exists
+  // to stop.
+  it('My Absence links to the requests list, so the itemised table is reachable without submitting', () => {
+    const page = read('app/leave/page.tsx');
+    expect(page, 'the link exists').toContain('href="/leave/credit"');
+    expect(page, 'and is findable by test rather than by position').toContain('leave-credit-requests-link');
+    expect(page, 'and is captioned from the catalogue, not hardcoded').toContain("replacementRequest.viewMyRequests");
+  });
   const DIALOG_TSX = 'components/leave/replacement-leave-request-dialog.tsx';
   const MY_LEAVE = 'app/leave/page.tsx';
   const CREDIT_PAGE = 'app/leave/credit/page.tsx';
