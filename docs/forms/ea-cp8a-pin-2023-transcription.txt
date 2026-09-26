@@ -1,16 +1,41 @@
-BORANG C.P.8A (Pin. 2024) — "EA" — VERBATIM TRANSCRIPTION AND LAYOUT NOTES
+BORANG C.P.8A (Pin. 2023) — "EA" — VERBATIM TRANSCRIPTION AND LAYOUT NOTES
 =========================================================================
 
-SOURCE, AND WHAT IT IS NOT
---------------------------
-Transcribed on 2026-08-23 from docs/forms/ea-cp8a-pin-2024-specimen.png, which is the attachment
-"Income Tax EA (2) (2).pdf" on feedback item ece6d75d (feedback_attachment
-9c080805-6b93-40ab-ba99-1d00d961b38b), rasterised at 150dpi. The PDF is a BLANK C.P.8A Pin. 2024, one
-page — and its Producer is "Developer Express Inc. DXperience (tm) v23.2.5", i.e. ANOTHER PAYROLL
-SYSTEM'S rendering of the agency's page, the sixth such "agency reference" this reporter has sent.
+⚠️ THE REVISION IN THIS FILE'S OLD NAME WAS WRONG. READ THIS FIRST (r346).
+--------------------------------------------------------------------------
+This file used to be called `ea-cp8a-pin-2024-transcription.txt` and its first line said Pin. 2024.
+There is no such revision. **LHDN publishes Pin. 2023**, and on 2026-09-26 it was still the current
+EA at hasil.gov.my: `borang_ea__c.p.8a_-_pin._2023_.pdf` returns 206 `application/pdf`, while the
+same path for 2024, 2025 and 2026 returns 404. The agency's own "EA & EC Guide Notes — Remuneration
+for the Year 2024" accompany the **Pin. 2023** form: THE REVISION LABEL IS NOT THE YEAR, and reading
+it as one is almost certainly how the error was made upstream.
 
-It is a TRACING SOURCE, not LHDN artwork. A form drawn from it may declare `agency-layout` and may NEVER
-declare `official`; `public/forms/` holds agency artwork only and this does not go there. See AGENTS 28b.
+ORIGINAL SOURCE, AND WHAT IT WAS NOT
+------------------------------------
+Transcribed on 2026-08-23 from `docs/forms/ea-cp8a-pin-2024-specimen.png`, the attachment
+"Income Tax EA (2) (2).pdf" on feedback item ece6d75d (feedback_attachment
+9c080805-6b93-40ab-ba99-1d00d961b38b), rasterised at 150dpi — Producer "Developer Express Inc.
+DXperience (tm) v23.2.5", i.e. ANOTHER PAYROLL SYSTEM'S rendering, the sixth such "agency reference"
+this reporter had sent. That file stamped itself Pin. 2024 and we copied the claim.
+
+The caution written here at the time was right; the revision number taken from the same file was not.
+
+THE SOURCE NOW, AND IT IS THE REAL ONE
+--------------------------------------
+`docs/forms/ea-cp8a-pin-2023-official-en.pdf` — fetched live from hasil.gov.my on 2026-09-26, sha256
+`6b76638173b9d06a…`, 381,770 bytes, **byte-identical** to the reporter's attachment on item fda53352.
+Vector text (5 Arial/Times faces, no image XObject), authored in Word 2016, `/Title` "Borang EA
+(C.P.8A - Pin. 2023)". `docs/forms/ea-cp8a-pin-2023-official-bm.xlsx` is the Bahasa Malaysia sheet,
+docProps `Company=LHDNM`. These are genuine LHDN artwork — the first this board has received.
+
+STRUCTURALLY the traced form and the real one agree box for box: same sections, same numbering, same
+BM captions. What differed was the WORDING of our English (26 captions were our paraphrase, corrected
+in r346 to the agency's own) and the MONEY COLUMN, which the tracing put at 504.5 → 571.3 where the
+agency's own cells put it at 482.3 → 556.6.
+
+The rendered form is still OURS — drawn to the agency's arrangement, on our paper. It may declare
+`agency-layout` and may NEVER declare `official`. Holding the agency's file for comparison does not
+change what we print.
 
 PAGE
 ----
@@ -20,10 +45,14 @@ HEADER BAND — three blocks
 --------------------------
 LEFT (small, top-left corner):
 
-    (C.P.8A - Pin. 2024)
+    (C.P.8A - Pin. 2023)
 
     No. Siri              <dotted rule>
-    TIN Majikan E         <dotted rule>
+    No. Majikan E         <dotted rule>          ⚠️ r346: the tracing said "TIN Majikan E".
+                                                   The agency's own BM file says "No. Majikan E",
+                                                   and its English edition "Employer's No. E". It is a
+                                                   FILE NUMBER, not a TIN — the TIN on this page is the
+                                                   EMPLOYEE's, further right.
 
 CENTRE (centred; line 2 is the large bold one):
 
@@ -116,7 +145,8 @@ E   CARUMAN YANG DIBAYAR OLEH PEKERJA KEPADA KUMPULAN WANG SIMPANAN / PENCEN YAN
 
     1.  Nama Kumpulan Wang   <rule runs to the right margin>
         Amaun caruman yang wajib dibayar (nyatakan bahagian pekerja sahaja)      RM ______
-    2.  PERKESO:  Amaun caruman yang wajib dibayar (nyatakan bahagian pekerja sahaja)   RM ______
+    2.  PERKESO :  Amaun caruman yang wajib dibayar (nyatakan bahagian pekerja sahaja)   RM ______
+        ⚠️ r346: spaced "PERKESO :" per the agency's own xlsx shared string; the tracing had no space.
 
     Both amounts print "RM" immediately before the rule, right-aligned, rather than under B's column.
 
@@ -127,16 +157,17 @@ F   JUMLAH ELAUN / PERKUISIT / PEMBERIAN / MANFAAT YANG DIKECUALIKAN CUKAI      
 THE FOOT — a ruled box on the RIGHT, and a date on the LEFT outside it
 
     Tarikh:  <rule>          ┌──────────────────────────────────────────────┐
-                             │ Name Pegawai        <rule>                   │
+                             │ Nama Pegawai        <rule>                   │
                              │ Jawatan             <rule>                   │
                              │ Nama dan Alamat Majikan  <rule>              │
                              │                          <rule>              │
                              │ No. Telefon Majikan      <rule>              │
                              └──────────────────────────────────────────────┘
 
-    ⚠️ "Name Pegawai" is spelled that way ON THE SPECIMEN — Malay would be "Nama". Reproduce the caption
-    as the agency's form has it and do NOT silently correct it; note it here so the next reader knows it
-    was read, not mistyped. "Nama dan Alamat Majikan" gets TWO rules, for two address lines.
+    ⚠️ r346 — THIS NOTE USED TO DEFEND A TYPO. It read: '"Name Pegawai" is spelled that way ON THE
+    SPECIMEN — Malay would be "Nama". Reproduce the caption as the agency has it.' The "specimen" was
+    another vendor's rendering, and the typo was ITS. LHDN's own BM file says "Nama Pegawai". Corrected.
+    A faithful transcription of the wrong source is still the wrong words.
 
 WHAT WE DREW FROM IT (r219, 2026-08-23)
 --------------------------------------

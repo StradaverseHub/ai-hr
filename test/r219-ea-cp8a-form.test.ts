@@ -3,7 +3,7 @@
  * MAKES THAT HAVE TO KEEP BEING TRUE.
  *
  * The arrangement itself is pinned where it can be: `docs/forms/ea-cp8a-pin-2024-specimen.png` is the
- * blank form, `docs/forms/ea-cp8a-pin-2024-transcription.txt` is every caption on it, and the
+ * blank form, `docs/forms/ea-cp8a-pin-2023-transcription.txt` is every caption on it, and the
  * coordinates live in `EA_FORM`. What a test can hold is (a) that the agency's own words reach the page
  * in BOTH languages, (b) that item 9 obeys the form's own condition rather than the presence of a date,
  * (c) that the boxes the form does NOT have stay off it, and (d) that the foot's officer box is fed and
@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
-import { EA_FORM, EA_FORM_WORDS, renderEaPdf, type EaPdfData, type EaPdfLabels } from '../lib/ea-pdf';
+import { EA_FORM, EA_FORM_WORDS, renderEaPdf, type EaPdfData, type EaPdfLabels, eaFormWords } from '../lib/ea-pdf';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => readFileSync(path.join(ROOT, rel), 'utf8');
@@ -139,7 +139,10 @@ const EMPTY: EaPdfData = {
 };
 
 const textsOf = async (d: EaPdfData, locale: 'en' | 'ms' = 'ms') =>
-  (await drawn(await renderEaPdf(d, bundleFor(locale)))).map((i) => i.text);
+  // r346 — the furniture follows the DOCUMENT's language, so the render is given the same locale its
+  // label bundle is for. Without it a Malay-captioned form is drawn with English furniture, which is a
+  // page no route produces.
+  (await drawn(await renderEaPdf(d, bundleFor(locale), { locale }))).map((i) => i.text);
 
 describe('r219 — item 9 is conditional on the YEAR, not on a date existing', () => {
   /**
@@ -200,40 +203,68 @@ describe('r219 — item 9 is conditional on the YEAR, not on a date existing', (
 describe('r219 — the agency’s own page furniture reaches the paper, in both languages', () => {
   it.each(['ms', 'en'] as const)('%s: the masthead, the banner and the header boxes are drawn', async (locale) => {
     const printed = await textsOf(BASE, locale);
+    // r346 — THIS EDITION's words, not one edition's words on both pages. See the reversal recorded on
+    // the case below.
+    const W = eaFormWords(locale);
     for (const w of [
-      EA_FORM_WORDS.formNo,
-      EA_FORM_WORDS.serialNo,
-      EA_FORM_WORDS.employerTin,
-      EA_FORM_WORDS.masthead1,
-      EA_FORM_WORDS.masthead2,
-      EA_FORM_WORDS.masthead3,
-      EA_FORM_WORDS.privateStatement,
-      EA_FORM_WORDS.ea,
-      EA_FORM_WORDS.employeeTin,
-      EA_FORM_WORDS.lhdnState,
-      EA_FORM_WORDS.banner,
+      W.formNo,
+      W.serialNo,
+      W.employerTin,
+      W.masthead1,
+      W.masthead2,
+      W.masthead3,
+      W.privateStatement,
+      W.ea,
+      W.employeeTin,
+      W.lhdnState,
+      W.banner,
     ]) {
       expect(printed, `${locale}: ${w}`).toContain(w);
     }
     // The masthead's fourth line carries the YEAR of assessment, which the blank form leaves open.
-    expect(printed).toContain(`${EA_FORM_WORDS.masthead4} 2026`);
+    expect(printed).toContain(`${W.masthead4} 2026`);
     // …and the values that belong in those boxes.
     expect(printed).toContain('E1234567890'); // TIN Majikan E
     expect(printed).toContain('SG12345678090'); // the employee's own TIN, under the "EA"
     expect(printed).toContain('W.P. Kuala Lumpur'); // LHDNM Negeri
   });
 
-  it('the agency’s words are the SAME in both languages — they are not translated', async () => {
+  /**
+   * ⚠️ THIS CASE USED TO ASSERT THE OPPOSITE, AND IT WAS WRONG (r346, item fda53352).
+   *
+   * It read "the agency's words are the SAME in both languages — they are not translated", and pinned
+   * the Malay masthead, banner and officer box onto the ENGLISH form too. The rationale was that "the
+   * viewer's language never changes a Malaysian tax form".
+   *
+   * LHDN CONTRADICTS IT BY PUBLISHING BOTH. `docs/forms/ea-cp8a-pin-2023-official-en.pdf` — fetched from
+   * hasil.gov.my and byte-identical to the reporter's attachment — has an ENGLISH masthead: "Serial No.",
+   * "Employer's No. E", "LHDNM State", "THIS FORM EA MUST BE PREPARED AND PROVIDED TO THE EMPLOYEE FOR
+   * INCOME TAX PURPOSE", "Name of Officer". We were not preserving the agency's page; we were printing
+   * the Malay edition's furniture around English captions, which is a document the agency does not issue.
+   *
+   * What the old case was RIGHT about is kept below: neither edition is translated by us. Each is read
+   * off the agency's own file for that language.
+   */
+  it('each edition prints ITS OWN agency words, and neither is translated by us', async () => {
     const ms = await textsOf(BASE, 'ms');
     const en = await textsOf(BASE, 'en');
-    for (const [key, w] of Object.entries(EA_FORM_WORDS)) {
-      // masthead4 is the one line that is COMPLETED rather than merely printed: the blank form leaves the
-      // year of assessment open and we fill it in, so it reaches the page as "… 31 DISEMBER 2026".
-      const match = (drawnStrings: string[]) =>
-        key === 'masthead4' ? drawnStrings.some((s) => s.startsWith(w)) : drawnStrings.includes(w);
-      expect(match(ms), `ms: ${w}`).toBe(true);
-      expect(match(en), `en: ${w}`).toBe(true);
+    for (const [locale, printed] of [
+      ['ms', ms],
+      ['en', en],
+    ] as const) {
+      const W = eaFormWords(locale);
+      for (const [key, w] of Object.entries(W)) {
+        if (w === '') continue; // privateStatement2 — a line the Malay edition does not use
+        // masthead4 is COMPLETED rather than merely printed: the year of assessment is filled in.
+        const hit = key === 'masthead4' ? printed.some((t) => t.startsWith(w)) : printed.includes(w);
+        expect(hit, `${locale}: ${w}`).toBe(true);
+      }
     }
+    // …and the two editions really are different pages, not the same one twice.
+    expect(ms).toContain('CUKAI PENDAPATAN');
+    expect(en).toContain('INCOME TAX');
+    expect(en, 'the Malay masthead must not appear on the English form').not.toContain('CUKAI PENDAPATAN');
+    expect(ms, 'nor the English on the Malay').not.toContain('INCOME TAX');
   });
 });
 
@@ -257,20 +288,28 @@ describe('r219 — the foot: the officer box, and the agency’s own spelling of
   });
 
   /**
-   * ⚠️ "Name Pegawai", NOT "Nama Pegawai". That is how the specimen spells it, and the caption is
-   * reproduced as the agency's form has it rather than silently corrected. This case exists so that a
-   * later reader who spots the typo finds a test telling them it was READ, not mistyped — and so that
-   * "fixing" it fails here rather than shipping a form that no longer matches the page it was traced
-   * from. The transcription carries the same warning.
+   * ⚠️ THIS CASE USED TO PIN A TYPO, AND DEFENDED IT IN DETAIL (reversed in r346).
+   *
+   * It asserted `officerName === 'Name Pegawai'` and explained that this "is how the specimen spells it",
+   * so that anyone "fixing" it would fail here rather than "shipping a form that no longer matches the
+   * page it was traced from". Every word of that was true — and the page it was traced from was another
+   * payroll vendor's rendering (item ece6d75d, Producer "Developer Express Inc. DXperience v23.2.5"),
+   * not LHDN's form. The typo was THEIRS.
+   *
+   * LHDN's own Bahasa Malaysia file (`docs/forms/ea-cp8a-pin-2023-official-bm.xlsx`, docProps
+   * Company=LHDNM) carries the shared string "Nama Pegawai". A faithful transcription of the wrong
+   * source is still the wrong words, and a guard that pins it makes the error permanent.
    */
-  it('the officer caption keeps the specimen’s own spelling, and the transcription says why', async () => {
-    expect(EA_FORM_WORDS.officerName).toBe('Name Pegawai');
-    expect(await textsOf(BASE)).toContain('Name Pegawai');
-    const transcription = read('docs/forms/ea-cp8a-pin-2024-transcription.txt');
-    expect(transcription).toContain('Name Pegawai');
-    expect(transcription).toMatch(/spelled that way ON THE SPECIMEN/);
-    // The renderer says so too, next to the constant.
-    expect(read('lib/ea-pdf.ts')).toMatch(/Malay would be "Nama"/);
+  it('the officer caption is the agency’s own “Nama Pegawai”', async () => {
+    expect(eaFormWords('ms').officerName).toBe('Nama Pegawai');
+    expect(await textsOf(BASE)).toContain('Nama Pegawai');
+    expect(await textsOf(BASE, 'en'), 'and the English edition says what the English form says').toContain(
+      'Name of Officer',
+    );
+    const transcription = read('docs/forms/ea-cp8a-pin-2023-transcription.txt');
+    expect(transcription).toContain('Nama Pegawai');
+    // The correction is RECORDED, not silently applied — the next reader must find out why it moved.
+    expect(transcription).toMatch(/THIS NOTE USED TO DEFEND A TYPO/);
   });
 
   it('Tarikh is an empty rule — the signing date is the employer’s to write, not ours to invent', () => {
@@ -391,13 +430,13 @@ describe('r219 — an unsourced box prints the blank form’s rule, never 0.00',
  * reader checking a C.P.8A against the blank form has no reason to doubt a numbered caption.
  *
  * So every Malay caption the drawn form uses must appear VERBATIM in
- * docs/forms/ea-cp8a-pin-2024-transcription.txt — the hand transcription of the specimen. The numbering
+ * docs/forms/ea-cp8a-pin-2023-transcription.txt — the hand transcription of the specimen. The numbering
  * prefix is ours (the form prints the number in its own column), so it is stripped before the check;
  * everything after it is the agency's and must match. A caption cannot be reworded without the
  * transcription being changed too, and the transcription cannot be changed without reading the image.
  */
 describe('r219 — every Malay box caption is the agency’s own, checked against the transcription', () => {
-  const TRANSCRIPTION = read('docs/forms/ea-cp8a-pin-2024-transcription.txt');
+  const TRANSCRIPTION = read('docs/forms/ea-cp8a-pin-2023-transcription.txt');
   const ms = JSON.parse(read('messages/ms.json')).payroll.ea as Record<string, string>;
 
   /**
@@ -451,7 +490,7 @@ describe('r219 — every Malay box caption is the agency’s own, checked agains
     // `?? <<unresolved>>` and not `?? ''`: `includes('')` is true, so a key that stopped resolving
     // would have passed this case too — exactly the way the old `.filter` let four of them through.
     const missing = AGENCY_CAPTIONS.filter((k) => !TRANSCRIPTION.includes(caption(ms[k] ?? `<<unresolved:${k}>>`)));
-    expect(missing, `these Malay captions are not in docs/forms/ea-cp8a-pin-2024-transcription.txt: ${missing.map((k) => `${k}=${JSON.stringify(ms[k])}`).join(', ')}`).toEqual([]);
+    expect(missing, `these Malay captions are not in docs/forms/ea-cp8a-pin-2023-transcription.txt: ${missing.map((k) => `${k}=${JSON.stringify(ms[k])}`).join(', ')}`).toEqual([]);
   });
 
   it('D.5(a) is the form’s own one-word caption — the case this guard exists for', () => {

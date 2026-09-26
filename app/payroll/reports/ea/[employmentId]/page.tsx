@@ -302,7 +302,7 @@ export default async function EaStatementPage({
           </p>
           {/* d6e2cccc — THIS SCREEN IS NOT THE FORM, AND SAYING SO IS THE WHOLE ROUND. The reporter
               photographed this page and filed "the EA is not the statutory form"; what downloads from
-              the button above IS the C.P.8A (Pin. 2024), drawn by lib/ea-pdf.ts to an arrangement
+              the button above IS the C.P.8A (Pin. 2023), drawn by lib/ea-pdf.ts to an arrangement
               measured off the blank C.P.8A they themselves supplied. The gap was never the PDF, it was
               that nothing on the screen in front of it said which one you were looking at.
               print:hidden — it is a note about the screen, so it must not appear on the printed sheet.

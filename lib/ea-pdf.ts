@@ -12,14 +12,14 @@
 // ── r219 (item ece6d75d) — THE PAGE IS NOW THE AGENCY'S ARRANGEMENT, NOT OUR LIST ────────────────────
 // Until this round the EA printed as a tidy list of label/value rows: a letterhead, five section headers
 // and a right-hand money column of our own devising. Everything on it was correct and nothing on it
-// looked like the form. It is now drawn to the C.P.8A (Pin. 2024) arrangement — masthead, No. Siri /
+// looked like the form. It is now drawn to the C.P.8A (Pin. 2023) arrangement — masthead, No. Siri /
 // TIN Majikan E, the "Penyata Gaji Pekerja SWASTA EA" block, the ruled banner, Section A's two-column
 // numbering, B to F in the form's own order with the RM column down the right, and the ruled officer box
 // at the foot.
 //
 // WHERE THE ARRANGEMENT CAME FROM, AND WHAT IT IS NOT. `docs/forms/ea-cp8a-pin-2024-specimen.png` is a
-// BLANK C.P.8A Pin. 2024 (feedback attachment 9c080805-6b93-40ab-ba99-1d00d961b38b, rasterised at
-// 150dpi) and `docs/forms/ea-cp8a-pin-2024-transcription.txt` is every caption on it, transcribed by
+// BLANK C.P.8A (feedback attachment 9c080805-6b93-40ab-ba99-1d00d961b38b, rasterised at
+// 150dpi) and `docs/forms/ea-cp8a-pin-2023-transcription.txt` is every caption on it, transcribed by
 // hand, with the layout notes. Every coordinate in `EA_FORM` below was MEASURED off that PNG by scanning
 // it for rules, not eyeballed — the CP39 lesson (lib/cp39-form-pdf.ts), where the eyeballed percentages
 // were wrong by up to 20 points of page width.
@@ -162,6 +162,16 @@ export type EaRenderOptions = {
    * flag and never a sentinel amount.
    */
   blank?: boolean;
+  /**
+   * The DOCUMENT's language, which decides which edition of the form's own furniture is drawn — the
+   * masthead, the banner and the officer box (item fda53352, r346). LHDN publishes the C.P.8A in both
+   * languages and its English edition has an English masthead, so an English EA drawn with the Malay
+   * furniture is a document the agency does not issue.
+   *
+   * Defaults to English. `app/me/ea/[employmentId]/pdf/route.ts` and the blank route already resolve a
+   * document locale for the CAPTIONS; this makes the furniture follow the same one.
+   */
+  locale?: string;
 };
 
 /**
@@ -336,15 +346,30 @@ const A4: [number, number] = [595.28, 841.89];
  * ── THE FORM'S GEOMETRY, MEASURED OFF THE SPECIMEN RATHER THAN GUESSED ──────────────────────────────
  *
  * `x` is points from the LEFT edge. `t` (and every `…T` field) is points from the TOP edge, because that
- * is how the specimen reads and how a form is described; `at()` inside the renderer turns one into a
- * pdf-lib y. Every number was read off `docs/forms/ea-cp8a-pin-2024-specimen.png` (1240 × 1755 px at
- * 150 dpi ⇒ 1 px = 0.48 pt) by scanning for rules — the banner box at 77.3/90.2, the money column at
- * 504.5 → 572.2, the JUMLAH double rule at 425.8/435.4, the officer box at 640.8 → 730.6 — not by eye.
+ * is how the form reads and how a form is described; `at()` inside the renderer turns one into a pdf-lib y.
  *
- * The only deliberate departure is the LEFT margin: the specimen sets its rules 16.8 pt from the paper
+ * ⚠️ TWO SOURCES, AND THEY ARE NOT EQUALLY GOOD. Read this before trusting a number here.
+ *
+ *  · MOST of these were scanned off `docs/forms/ea-cp8a-pin-2024-specimen.png` (1240 × 1755 px at 150 dpi
+ *    ⇒ 1 px = 0.48 pt) — the banner box at 77.3/90.2, the JUMLAH double rule at 425.8/435.4, the officer
+ *    box at 640.8 → 730.6. That PNG is a rasterisation of ANOTHER PAYROLL VENDOR'S rendering of the form
+ *    (item ece6d75d, Producer "Developer Express Inc. DXperience v23.2.5"). It is a tracing, at half-point
+ *    resolution, of something that was itself a redrawing.
+ *
+ *  · The MONEY COLUMN is different: since r346 it is measured off LHDN's OWN vector PDF,
+ *    `docs/forms/ea-cp8a-pin-2023-official-en.pdf`, whose table cells give it exactly — 89 cells begin at
+ *    482.3, 129 end there, 162 end at 556.6, and a width of 74.3 occurs 87 times.
+ *
+ * The tracing had that column at 504.5 → 571.3: 22.2 pt too far right, 7.5 pt too narrow, and running to
+ * the page frame where the agency's stops 15.3 pt inside it. Anything still on the first list is a
+ * candidate for the same treatment, and the agency's file is now on disk to do it with.
+ *
+ * The one deliberate departure is the LEFT margin: the traced page set its rules 16.8 pt from the paper
  * edge (under 6 mm), which is inside the unprintable margin of most office printers. Everything
- * left-anchored is shifted to 24 pt; the money column, which is what a reader checks against the
- * agency's own page, is untouched.
+ * left-anchored is shifted to 24 pt. This sentence used to end "…the money column, which is what a
+ * reader checks against the agency's own page, is untouched" — true of the TRACING it was written about,
+ * and false of the agency's page, which is the one it named. r346 moved that column onto the agency's
+ * own coordinates; the left-margin shift is now the only departure, and it is a printability one.
  *
  * Exported so test/ea-pdf.test.ts can assert against WHAT IS ACTUALLY DRAWN — the r205 Borang A lesson:
  * pdf-lib does not clip, so a caption wider than its slot prints straight through its neighbour and the
@@ -353,8 +378,25 @@ const A4: [number, number] = [595.28, 841.89];
 export const EA_FORM = {
   left: 24,
   right: 571.3,
-  /** The RM column: every Section B/C/D6 amount is right-aligned on a rule between these. */
-  moneyLeft: 504.5,
+  /**
+   * The RM column: every Section B/C/D6 amount is right-aligned on a rule between these.
+   *
+   * ⚠️ MEASURED OFF THE AGENCY'S OWN PDF IN r346, NOT OFF THE TRACING. The C.P.8A is a Word TABLE and
+   * its geometry lives in cell rectangles, not in rules: 89 cells start at x=482.3, 129 end there, 162
+   * end at 556.6, and a cell width of 74.3 occurs 87 times. That is the money column, unambiguously.
+   *
+   * It used to be 504.5 → `right` (571.3), i.e. 22.2pt too far right and running all the way to the
+   * page frame, because it was traced from another payroll vendor's 150dpi rendering (item ece6d75d)
+   * rather than from LHDN's own file. The old comment claimed this column "is untouched" so a reader
+   * could check it against the agency's page; that was true only of the tracing.
+   */
+  moneyLeft: 482.3,
+  /**
+   * …and its RIGHT edge, which is NOT the page frame. The agency's money cells stop 15.3pt inside the
+   * outer rule; ours ran to it. Every amount, every money rule and the JUMLAH pair use this, so the
+   * column and the figures in it move together.
+   */
+  moneyRight: 556.6,
   /** Section A's two columns: caption x, then the rule the value is written on. */
   aLeftLabel: 30,
   aLeftRule: [92, 283.2] as const,
@@ -375,39 +417,82 @@ export const EA_FORM = {
 } as const;
 
 /**
- * THE AGENCY'S OWN WORDS, VERBATIM FROM THE TRANSCRIPTION, MALAY IN BOTH LANGUAGES.
+ * THE AGENCY'S OWN WORDS — ONE SET PER LANGUAGE, BECAUSE LHDN PUBLISHES ONE PER LANGUAGE.
  *
- * Copied from `docs/forms/ea-cp8a-pin-2024-transcription.txt`, which was transcribed by hand from the
- * specimen. NOT paraphrased, NOT translated, NOT corrected.
+ * ⚠️ THIS USED TO BE MALAY IN BOTH LANGUAGES, ON A RATIONALE THE AGENCY ITSELF CONTRADICTS (r346).
+ * The old note argued that "the viewer's language never changes a Malaysian tax form", so the masthead,
+ * the banner and the officer box were drawn in Malay even on the English EA. But LHDN publishes the
+ * C.P.8A in BOTH languages and its English edition has an ENGLISH masthead — "Serial No.",
+ * "Employer's No. E", "LHDNM State", "THIS FORM EA MUST BE PREPARED AND PROVIDED TO THE EMPLOYEE FOR
+ * INCOME TAX PURPOSE", "Name of Officer". We were not preserving the agency's page; we were printing
+ * the Malay edition's furniture around English captions, which is a document LHDN does not issue.
+ * The English below is read off `docs/forms/ea-cp8a-pin-2023-official-en.pdf`; the Malay off
+ * `docs/forms/ea-cp8a-pin-2023-official-bm.xlsx` (docProps Company=LHDNM). Neither is translated here.
  *
- * ⚠️ `officerName` READS "Name Pegawai" AND THAT IS THE SPECIMEN'S OWN SPELLING. Malay would be "Nama".
- * It is reproduced as the agency's form has it and is NOT silently corrected; this note exists so the
- * next reader knows it was read off the page, not mistyped here. The transcription carries the same
- * warning beside it.
+ * ⚠️ `officerName` USED TO READ "Name Pegawai", AND THAT WAS A TYPO WE INHERITED. It came from the
+ * DevExpress tracing (item ece6d75d) and a comment here defended it as "the specimen's own spelling".
+ * The agency's own BM file says "Nama Pegawai". Corrected in r346 — and it is a small, exact example of
+ * why tracing a rival vendor's rendering is not the same as reading the agency's form.
  */
-export const EA_FORM_WORDS = {
-  formNo: '(C.P.8A - Pin. 2024)',
+const EA_FORM_WORDS_MS = {
+  formNo: '(C.P.8A - Pin. 2023)',
   serialNo: 'No. Siri',
-  employerTin: 'TIN Majikan E',
+  employerTin: 'No. Majikan E',
   masthead1: 'MALAYSIA',
   masthead2: 'CUKAI PENDAPATAN',
   masthead3: 'PENYATA SARAAN DARIPADA PENGGAJIAN',
   masthead4: 'BAGI TAHUN BERAKHIR 31 DISEMBER',
   privateStatement: 'Penyata Gaji Pekerja SWASTA',
+  /** r346 — a SECOND line, because the English edition needs one and the Malay does not. Empty = one line. */
+  privateStatement2: '',
   ea: 'EA',
   employeeTin: 'No. Pengenalan Cukai (TIN) Pekerja',
   lhdnState: 'LHDNM Negeri',
   banner: 'BORANG EA INI PERLU DISEDIAKAN UNTUK DISERAHKAN KEPADA PEKERJA BAGI TUJUAN CUKAI PENDAPATAN',
   /** E's second item. The "2." is the form's own numbering, which is structure rather than wording — the
    *  same reason every other item's number rides in its caption. */
-  perkeso: '2. PERKESO:',
+  perkeso: '2. PERKESO :',
   rm: 'RM',
-  officerName: 'Name Pegawai',
+  officerName: 'Nama Pegawai',
   officerPosition: 'Jawatan',
   employerNameAddress: 'Nama dan Alamat Majikan',
   employerPhone: 'No. Telefon Majikan',
   date: 'Tarikh:',
 } as const;
+
+/** The SAME furniture as LHDN's English edition prints it. Read off the agency PDF, not translated. */
+const EA_FORM_WORDS_EN: Record<keyof typeof EA_FORM_WORDS_MS, string> = {
+  formNo: '(C.P.8A - Pin. 2023)',
+  serialNo: 'Serial No.',
+  employerTin: "Employer's No. E",
+  masthead1: 'MALAYSIA',
+  masthead2: 'INCOME TAX',
+  masthead3: 'STATEMENT OF REMUNERATION FROM EMPLOYMENT',
+  masthead4: 'FOR THE YEAR ENDED 31 DECEMBER',
+  privateStatement: "PRIVATE SECTOR Employee's",
+  privateStatement2: 'Statement of Remuneration',
+  ea: 'EA',
+  employeeTin: "Employee's Tax Identification No. (TIN)",
+  lhdnState: 'LHDNM State',
+  banner: 'THIS FORM EA MUST BE PREPARED AND PROVIDED TO THE EMPLOYEE FOR INCOME TAX PURPOSE',
+  perkeso: '2. SOCSO:',
+  rm: 'RM',
+  officerName: 'Name of Officer',
+  officerPosition: 'Designation',
+  employerNameAddress: 'Name and Address of Employer',
+  employerPhone: "Employer's Telephone No.",
+  date: 'Date:',
+} as const;
+
+/**
+ * The form's own furniture for ONE language. `locale` is the DOCUMENT's language (the routes allowlist
+ * `en` / `ms`), not the viewer's — an employer may need both in the same year from the same session.
+ * Anything not `ms` gets the English edition, which is also what the English-only surfaces expect.
+ */
+export const eaFormWords = (locale: string) => (locale === 'ms' ? EA_FORM_WORDS_MS : EA_FORM_WORDS_EN);
+
+/** Back-compat for callers that predate the split; the Malay edition is what they were getting. */
+export const EA_FORM_WORDS = EA_FORM_WORDS_MS;
 
 export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOptions = {}): Promise<Uint8Array> {
   /** r220 — see `EaRenderOptions`. Read once, so every suppression below reads off one name. */
@@ -420,7 +505,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
 
   const H = A4[1];
-  const { left: L, right: R, moneyLeft: MX } = EA_FORM;
+  const { left: L, right: R, moneyLeft: MX, moneyRight: MR } = EA_FORM;
   const CX = (L + R) / 2;
   const ink = rgb(0.09, 0.09, 0.11);
   const muted = rgb(0.42, 0.42, 0.47);
@@ -578,7 +663,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   /** One numbered money line: the caption at `x`, its amount on the RM column's rule. */
   const moneyLine = (caption: string, x: number, tt: number, value: string, size = 8) => {
     putFit(caption, x, MX - x - 14, tt, size);
-    amountOrRule(value, MX, R, tt);
+    amountOrRule(value, MX, MR, tt);
   };
   /** A caption, then the form's own cue word in brackets and an inline dotted rule for a description the
    *  agency asks for and this system does not hold. The rule stays empty — writing a description we do
@@ -590,7 +675,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
     put(')', ruleTo + 2, tt, size);
   };
 
-  const W = EA_FORM_WORDS;
+  const W = eaFormWords(opts.locale ?? 'en');
 
   // ── THE HEADER BAND — three blocks and the ruled banner under them ──────────────────────────────────
   put(W.formNo, L, 20, 7.5);
@@ -615,7 +700,17 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
 
   // RIGHT: the "EA" is the largest type on the page, and the employee's own TIN sits under it.
   const eaW = bold.widthOfTextAtSize(W.ea, 17);
-  putR(W.privateStatement, R - eaW - 6, 24, 8.5, bold);
+  // ⚠️ TWO LINES WHEN THE EDITION NEEDS TWO. The agency's English sets this in a two-line box where the
+  // Malay uses one, and the English string is 96pt wider: drawn on a single line it runs left out of its
+  // own block and straight through the centred "MALAYSIA". pdf-lib does not clip, so the page still
+  // renders and still downloads — the r205 Borang A lesson, and it was live in this round until the
+  // blank form was rasterised and looked at. A caption is not proven by a green test.
+  if (W.privateStatement2) {
+    putR(W.privateStatement, R - eaW - 6, 17, 8, bold);
+    putR(W.privateStatement2, R - eaW - 6, 26, 8, bold);
+  } else {
+    putR(W.privateStatement, R - eaW - 6, 24, 8.5, bold);
+  }
   putR(W.ea, R, 26, 17, bold);
   putR(W.employeeTin, R, 36, 7.5);
   valueOrRule(d.employee.taxNo ?? '', 438, R, 47);
@@ -675,7 +770,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   putFit(t.sectionBEmploymentIncome, L, R - L, 197.5, 8.5, bold);
   putFit(t.sectionBExcluding, L + 6, 430, 208, 7.5, bold);
   // The bold RM heading, printed ONCE for the whole form, over the right-hand column.
-  putC(W.rm, (MX + R) / 2, 208, 9, bold);
+  putC(W.rm, (MX + MR) / 2, 208, 9, bold);
 
   moneyLine(t.grossSalary, A.itemLabel, 220.8, derived(d.partB.grossSalary));
   // 1(b) and 1(c) are ONE box each on the agency's form over TWO of our figures. The form's own captions
@@ -685,7 +780,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // useful: the HTML statement and the amend panel keep a row each.
   moneyLine(t.feesCommissionBonus, A.itemLabel, 234.2, mixed(d.partB.bonus, d.partB.directorFee));
   captionWithInlineRule(t.tipsPerquisitesOther, t.paymentDetail, A.itemLabel, 248.2, 481);
-  amountOrRule(mixed(d.partB.allowances, d.partB.tipsPerquisites), MX, R, 248.2);
+  amountOrRule(mixed(d.partB.allowances, d.partB.tipsPerquisites), MX, MR, 248.2);
   moneyLine(t.taxBorneByEmployer, A.itemLabel, 261.6, manual(d.partB.taxBorneByEmployer));
   moneyLine(t.esos, A.itemLabel, 275, manual(d.partB.esos));
   // 1(f) — "Ganjaran bagi tempoh dari … hingga …". The period is not a fact this system holds, so both
@@ -696,7 +791,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
     dotted(from + 4, from + 92, 290.9);
     const to = putFit(t.periodTo, from + 98, 40, 288.4, 8);
     dotted(to + 4, to + 92, 290.9);
-    amountOrRule(manual(d.partB.gratuity), MX, R, 288.4);
+    amountOrRule(manual(d.partB.gratuity), MX, MR, 288.4);
   }
   // Item 2 — the caption, then "Jenis pendapatan (a) …/(b) …" beneath it. The two description rules carry
   // no money; the amount belongs to item 2 and sits on the (b) line, exactly as the specimen sets it.
@@ -706,11 +801,11 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   dotted(146, 291.4, 315.7);
   put('(b)', 128, 326.6, 8);
   dotted(146, 291.4, 329.1);
-  amountOrRule(manual(d.partB.arrears), MX, R, 326.6);
+  amountOrRule(manual(d.partB.arrears), MX, MR, 326.6);
   captionWithInlineRule(t.benefitsInKind, t.stateWhat, A.itemLabel, 339.8, 481);
-  amountOrRule(manual(d.partB.benefitsInKind), MX, R, 339.8);
+  amountOrRule(manual(d.partB.benefitsInKind), MX, MR, 339.8);
   captionWithInlineRule(t.livingAccommodation, t.addressCue, A.itemLabel, 353.2, 481);
-  amountOrRule(manual(d.partB.livingAccommodation), MX, R, 353.2);
+  amountOrRule(manual(d.partB.livingAccommodation), MX, MR, 353.2);
   moneyLine(t.unapprovedFundRefund, A.itemLabel, 366.6, manual(d.partB.unapprovedFundRefund));
   moneyLine(t.compensation, A.itemLabel, 380, manual(d.partB.compensation));
 
@@ -732,13 +827,13 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // upper rule for the digits' cap height — and the lower rule moves 2 pt down to clear the commas'
   // descenders. Drawn at the specimen's spacing, the upper rule struck straight through the total.
   putFit(t.formTotal, A.itemLabel, 200, 433.5, 8.5, bold);
-  hRule(MX, R, 425.8, 0.8, ink);
+  hRule(MX, MR, 425.8, 0.8, ink);
   // r220 — the JUMLAH is the one amount that does NOT go through `amountOrRule`: the form closes it with
   // its own double rule instead of a dotted one, so it is drawn directly. Both rules are still drawn on a
   // blank — they are the agency's page — and only the figure between them is withheld.
   const jumlah = derived(d.partB.gross + d.partC.total);
-  if (!blank) putR(jumlah, R - 2, 433.5, 8.5, bold);
-  hRule(MX, R, 437.5, 1.4, ink);
+  if (!blank) putR(jumlah, MR - 2, 433.5, 8.5, bold);
+  hRule(MX, MR, 437.5, 1.4, ink);
 
   // ── D — JUMLAH POTONGAN ────────────────────────────────────────────────────────────────────────────
   putFit(t.sectionDTotalDeductions, L, R - L, 447.5, 8.5, bold);
@@ -766,7 +861,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
     const x = prefix ? putFit(prefix, x0, 70, tt, 8) + 4 : x0;
     putFit(t.contributionAmount, x, MX - x - 24, tt, 8);
     put(W.rm, MX - 20, tt, 8);
-    amountOrRule(value, MX, R, tt);
+    amountOrRule(value, MX, MR, tt);
   };
   eContribution('', A.subLabel, 594.5, derived(d.partE.epf));
   eContribution(W.perkeso, A.itemLabel, 608, derived(d.partE.socso));
@@ -775,7 +870,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // ONE LINE: the section title IS the item, and "RM" sits just before its rule.
   putFit(t.sectionFExemptAllowances, L, MX - L - 26, 627.5, 8.5, bold);
   put(W.rm, MX - 20, 627.5, 8.5, bold);
-  amountOrRule(derived(d.partB.exemptAllowances ?? 0), MX, R, 627.5);
+  amountOrRule(derived(d.partB.exemptAllowances ?? 0), MX, MR, 627.5);
 
   // ── THE FOOT — the date at the left, the ruled officer box at the right ────────────────────────────
   const O = EA_FORM.officerBox;
