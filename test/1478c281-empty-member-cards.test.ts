@@ -155,6 +155,12 @@ async function fixture() {
     employmentType: 'full_time',
     hiredOn: '2020-01-01',
   });
+  // ⚠️ THIS FIXTURE BUILDS THE CAPPED SHAPE — {days: 3, maxBalanceDays: 0}. It is a real state and the
+  // gate must fold it, but it is NOT the reporter's. MEASURED ON PRODUCTION 2026-09-26: CGL, EXM, GD and
+  // STD have ZERO entitlement templates and a NULL max_balance_days, so they are not
+  // `capped_by_max_balance` — that status needs a table with a cap. The reporter's actual shape is
+  // covered by its own case at the end of this file ("the shape the reporter's four are really in"),
+  // added after a comment asserting the capped shape turned out never to have been checked.
   for (const t of [cpl, ndl, cgl, exm, gd, std]) await table(ctx, t, 'Special — all staff', CAPPED_TO_NOTHING);
   await table(ctx, mrl, 'Marriage — all staff', [
     { fromYears: 0, toYears: null, days: 3, carryForwardDays: 0, maxBalanceDays: null },
@@ -447,5 +453,57 @@ describe('1478c281 · (f) WHAT THE FOLDED CARD WAS CARRYING, AND WHAT STILL CARR
       entitlementStatusNeedsNotice(card!.entitlementStatus),
       'AND THE SENTENCE THAT EXPLAINS WHY 3 GRANTED DAYS ARE WORTH 2 — a rendering card never loses its notice',
     ).toBe(true);
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════════════
+  // THE SHAPE THE REPORTER'S FOUR ARE REALLY IN — no table at all
+  //
+  // Everything above builds `{days: 3, maxBalanceDays: 0}`, because an earlier comment in this round
+  // said the reporter's four carried such a table. That was never checked, and it is wrong. MEASURED ON
+  // PRODUCTION 2026-09-26: CGL, EXM, GD and STD have ZERO entitlement_template rows and a NULL
+  // max_balance_days, so `capped_by_max_balance` is not reachable for them — that status needs a table
+  // with a cap. They hold nothing because nothing was ever granted.
+  //
+  // The gate reads four ledger figures and folds on four zeros, so it folds BOTH shapes — but a fixture
+  // that only ever built the wrong one would prove nothing about the employees this item was raised for.
+  // ══════════════════════════════════════════════════════════════════════════════════════════════════
+  it("the shape the reporter's four are really in: NO entitlement table, and the card still folds", async () => {
+    const ctx = adminCtx(b);
+    const bare = await leaveTypeRow('Bare Member');
+    const pool = await leaveTypeRow('Bare Pool');
+    const emp = await hireEmployee(ctx, {
+      person: { fullName: 'Bare Member Holder', primaryEmail: `r343b_${randomUUID().slice(0, 8)}@t.local` },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2020-01-01',
+    });
+    // The POOL gets a table; the MEMBER deliberately gets none — production's shape.
+    await table(ctx, pool, 'Bare Pool — all staff', [
+      { fromYears: 0, toYears: null, days: 10, carryForwardDays: 0, maxBalanceDays: null },
+    ]);
+    await createLeaveSharedGroup(ctx, {
+      name: 'Bare Special Leave',
+      totalLimitDays: 10,
+      maxDaysPerApplication: 3,
+      leaveTypeIds: [pool, bare],
+      essPlacement: 'primary',
+    });
+
+    const rows = await leaveBalances(ctx, emp.employmentId, 'en', { includeHidden: true });
+    const row = rows.find((r) => r.leaveTypeId === bare);
+    // It holds nothing for the reporter's reason — no grant — rather than for the capped-table reason.
+    if (row) {
+      expect(holdsNothingOfItsOwn(row), 'no table ⇒ nothing accrued, taken, pending or held').toBe(true);
+    }
+    const bd = await leaveEntitlementBreakdown(ctx, emp.employmentId, bare, ASOF, 'en');
+    expect(bd?.eligibleDays ?? 0, 'no table grants nothing — NOT a 3-day table clamped to 0').toBe(0);
+    expect(bd?.entitlementStatus, 'and it is not the capped status, which needs a cap to be capped by').not.toBe(
+      'capped_by_max_balance',
+    );
+
+    // THE POINT: the card folds in this shape too.
+    const shown = (await cards(ctx, emp.employmentId)).find((c) => c.leaveTypeId === bare);
+    expect(shown, 'a member holding nothing draws no card, whatever the reason it holds nothing').toBeUndefined();
   });
 });

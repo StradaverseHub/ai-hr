@@ -121,7 +121,12 @@ export function isPoolBorrower(row: { leaveTypeId: string; sharedBalance?: Share
  *   · the 31e39d74 / r209 ENTITLEMENT-STATUS NOTICE, whose entire purpose is to say why a type reads 0.00.
  * MEASURED, in the production shape, in test/1478c281-empty-member-cards.test.ts (f): a member whose band is
  * `{days: 3, maxBalanceDays: 0}` with the leave year opened has four zeros on this row — and a breakdown of
- * `eligibleDays` 3, `capped_by_max_balance`, `entitlementStatusNeedsNotice` TRUE. Its card read
+ * `eligibleDays` 3, `capped_by_max_balance`, `entitlementStatusNeedsNotice` TRUE — ONE of the two
+ * shapes that reaches this gate, and NOT the reporter's. MEASURED ON PRODUCTION 2026-09-26, because an earlier draft of this
+ * comment asserted the shape without checking it: CGL, EXM, GD and STD have ZERO entitlement templates
+ * and a NULL `max_balance_days`. They are not `capped_by_max_balance` — that status needs a table with a
+ * cap, and they have neither. They hold nothing because nothing was ever granted to them.
+ * The other shape, a capped table clamped to 0.00, is real elsewhere and is kept covered. Its card read
  * "Entitlement 3.00", "Balance 0.00" and an amber caption. That is the state the reporter's four Special
  * Leave types are in.
  *

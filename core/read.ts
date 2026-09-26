@@ -3211,7 +3211,9 @@ export function leaveBalances(
        *     "nothing" it deliberately does NOT read (an unconfigured entitlement table — r209's trap — and a
        *     cycle that has not opened), and ⚠️ WHAT THE CARD PRINTS THAT IT NEVER SEES. That last part is the
        *     one to read before calling this cheap: the card also prints an Entitlement row and the r209
-       *     entitlement-status caption, and on the reporter's account these four carry a 3-day table clamped
+       *     entitlement-status caption. MEASURED 2026-09-26, correcting an earlier unchecked claim here: the
+       *     reporter's four carry NO entitlement template at all (zero rows, NULL max_balance_days), so they
+       *     are not `capped_by_max_balance`. A capped table clamped
        *     to 0.00 — `capped_by_max_balance`, a notice-bearing status. So the cards this drops read
        *     "Entitlement 3.00 / Balance 0.00" under an amber sentence explaining the clamp, and folding takes
        *     that sentence with them. Measured and recorded in (f) of
