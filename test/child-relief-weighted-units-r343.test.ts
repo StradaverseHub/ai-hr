@@ -11,8 +11,10 @@
  *
  * WHAT THIS FILE PINS. `eligibleChildReliefUnits` — the weighted figure — and the fact that
  * `eligibleChildReliefCount` STAYED a head count, which is the decision the item turned on: `num_children`
- * is read as a head count by Form E, CP8D and the EA statement (db/schema.ts says so on the column), so a
- * weighted figure written there would declare an employee with one disabled higher-education child as
+ * is read as a head count by Form E and CP8D (localization/my/reports.ts, printed by `CP8D_COLS`) and by the
+ * EA statement (the same select in `eaStatement`, printed into EA item 8 by lib/ea-pdf.ts) — the r343 fix
+ * pass corrected this citation, which used to point at db/schema.ts, where no such note exists. A weighted
+ * figure written to that column would declare an employee with one disabled higher-education child as
  * having eight children.
  *
  * ⚠️ NOT ONE UNIT IS TYPED OUT BELOW. Every expected weight is `childReliefPrices(RELIEFS)`'s own `units`
@@ -20,6 +22,8 @@
  * same derived grid. r339 corrected two of the five figures against the specification's printed p.27; a
  * literal here would have to be corrected a second time and would silently disagree in between.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_MY_STATUTORY, CHILD_RELIEF_CATEGORY_KEYS } from '../localization/my/statutory-tables';
 import { childReliefAmountFor } from '../localization/my/payroll';
@@ -165,5 +169,64 @@ describe('04b88724 · (f) ONE derivation — the ringgit is the kernel’s own',
 
   it('the grid builder is still reachable from core/child-relief-review — the re-export is intact', () => {
     expect(gridFromReviewModule).toBe(childReliefGridFromFamily);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// (g) THE THREE 'auto_table' GATES MOVE TOGETHER OR NOT AT ALL.
+//
+// The weighted figure above does NOT reach a payslip yet: the worked child-relief amount is supplied only
+// for 'auto_table'. THREE places decide that, and the round that wrote the weighting named only two of them
+// in its handoff — the third was found by adversarial verification:
+//
+//   1. core/payroll.ts                            the PAYSLIP
+//   2. core/payroll-view.ts                       the PCB DRILL-DOWN read model
+//   3. localization/my/multicycle-worksheet.ts    the MULTICYCLE SIGN-OFF WORKSHEET, whose own header says
+//                                                 it mirrors core/payroll.ts "term for term"
+//
+// A follow-up that widens one or two of them ships a system that disagrees with itself: the worksheet
+// replays a period and prints the difference against the filed payslips, so a payslip priced by category
+// against a replay priced by head count prints a fabricated ringgit difference on a sign-off document.
+//
+// ⚠️ THIS GUARD ASSERTS AGREEMENT, NOT TODAY'S ANSWER. It reads the mode literals each gate admits and
+// requires all three sets to be EQUAL. It therefore passes today (all three narrow), passes after a correct
+// widening of all three, and FAILS on a partial one — which is the only outcome anybody needs to be told
+// about. If it fires, widen the others; do not narrow it back and do not delete it.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+const GATE_FILES = [
+  'core/payroll.ts',
+  'core/payroll-view.ts',
+  'localization/my/multicycle-worksheet.ts',
+] as const;
+
+/** The mode literals the child-relief-amount gate in one file admits, read out of its source. */
+function gateModes(rel: string): string[] {
+  const src = readFileSync(resolve(process.cwd(), rel), 'utf8');
+  const lines = src.split('\n');
+  const modes = new Set<string>();
+  lines.forEach((line, i) => {
+    if (!line.includes('childReliefMode ===') && !line.includes('childReliefMode !==')) return;
+    // The gate's own statement, not the whole file: the conditional line plus the two lines on either side,
+    // which is where the amount call and any added mode sit.
+    const window = lines.slice(Math.max(0, i - 2), i + 3).join('\n');
+    if (!/childReliefAmount/.test(window)) return;
+    for (const m of window.matchAll(/childReliefMode\s*[!=]==\s*'([a-z_]+)'/g)) modes.add(m[1]);
+    for (const m of window.matchAll(/'(auto|auto_table|manual)'/g)) modes.add(m[1]);
+  });
+  return [...modes].sort();
+}
+
+describe('04b88724 · (g) the three child-relief-amount gates admit the same modes', () => {
+  it('each named file still HAS a gate — a moved gate must not read as an agreeing one', () => {
+    for (const f of GATE_FILES) {
+      expect(gateModes(f).length, `${f} no longer contains a childReliefMode gate near a child-relief amount — find where it went and update this list; the three gates are ${GATE_FILES.join(', ')}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('⚠️ all three admit the SAME modes — widening one without the others is the failure this catches', () => {
+    const [payroll, view, worksheet] = GATE_FILES.map(gateModes);
+    const why = `the payslip (${GATE_FILES[0]}), the PCB drill-down (${GATE_FILES[1]}) and the multicycle sign-off worksheet (${GATE_FILES[2]}) must all price child relief for the same set of modes. Widening one leaves the worksheet printing a fabricated difference against the payslips it replays.`;
+    expect(view, why).toEqual(payroll);
+    expect(worksheet, why).toEqual(payroll);
   });
 });

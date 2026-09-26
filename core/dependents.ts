@@ -246,11 +246,20 @@ export function isChildReliefEligible(r: ChildReliefEligibilityRow, asOf: Date =
  *
  * ⚠️ r343 (04b88724) — THIS STAYS A HEAD COUNT ON PURPOSE, AND THE REASON IS THE COLUMN IT IS WRITTEN TO.
  * `syncChildReliefFromFamily` writes this value into `employee_statutory_my.num_children`, and that column
- * is read as a HEAD COUNT by Form E, CP8D and the EA statement (db/schema.ts records that on the column
- * itself). Making this function return the s.48 WEIGHTED count would make those three statutory forms print
- * a weighted figure as a head count — an employee with one disabled child in higher education would be
- * declared as having eight children. The approved plan named that as the decision the item turns on and
- * recommended leaving `num_children` alone.
+ * is read as a HEAD COUNT by three statutory documents. Each reader, checked in this tree (the r343 fix pass
+ * corrected this citation: it used to point at db/schema.ts, which says nothing about a head count on that
+ * column — the note there is about how the column is MAINTAINED, not how it is read):
+ *   · Form E / CP8D — localization/my/reports.ts, the `children: employeeStatutoryMy.numChildren` select
+ *     under the `── Annual (Form E / CP8D) ──` heading, printed by the `{ key: 'children', label: 'Children' }`
+ *     column of `CP8D_COLS`;
+ *   · the EA statement — the same select inside `eaStatement`, printed into EA item 8 by lib/ea-pdf.ts
+ *     (`String(d.employee.children)`);
+ *   · and localization/my/statutory.ts states it in words: "Payroll always reads num_children as the head
+ *     count regardless of mode."
+ * Making this function return the s.48 WEIGHTED count would make those statutory documents print a weighted
+ * figure as a head count — an employee with one disabled child in higher education would be declared as
+ * having eight children. The approved plan named that as the decision the item turns on and recommended
+ * leaving `num_children` alone.
  *
  * The weighted figure the PCB calculation actually wants is `eligibleChildReliefUnits` below. It is derived,
  * never stored here, and what still has to happen for it to reach a payslip is recorded on that function.
@@ -342,11 +351,23 @@ export function childReliefGridFromFamily(
  * call. No rounding: the count would then disagree with the money beside it.
  *
  * ⚠️⚠️ THIS FIGURE DOES NOT REACH A PAYSLIP YET, AND NOTHING HERE PRETENDS IT DOES. Making it do so needs
- * the worked amount to be supplied for 'auto' as well as 'auto_table', which is a change to the two gates
- * in core/payroll.ts and core/payroll-view.ts named above — and a place to keep the weighted figure that
- * is NOT `num_children` (see the warning on `eligibleChildReliefCount`). Neither was available to the
- * round that added this. So for now this is REPORTED, on the Identification & Tax card, as the gap between
- * what the rules call for and what the calculation gives — a disclosure, never a silent tax move.
+ * the worked amount to be supplied for 'auto' as well as 'auto_table' — and a place to keep the weighted
+ * figure that is NOT `num_children` (see the warning on `eligibleChildReliefCount`). Neither was available
+ * to the round that added this. So for now this is REPORTED, on the Identification & Tax card, as the gap
+ * between what the rules call for and what the calculation gives — a disclosure, never a silent tax move.
+ *
+ * ⚠️⚠️ AND THERE ARE **THREE** `childReliefMode === 'auto_table'` GATES, NOT TWO. The r343 fix pass found the
+ * third; a follow-up that widened only the first two would ship a worksheet that disagrees with the payslip
+ * it exists to mirror. All three, as they stand today:
+ *   1. core/payroll.ts ~5881 — the PAYSLIP. `childReliefAmount` is supplied only for 'auto_table'.
+ *   2. core/payroll-view.ts ~1487 — the PCB DRILL-DOWN read model, the same choice again.
+ *   3. localization/my/multicycle-worksheet.ts ~601, inside `taxProfileOf` — the MULTICYCLE SIGN-OFF
+ *      WORKSHEET, whose own header says it "Mirrors core/payroll.ts's derivation of the per-employee
+ *      statutory options, term for term". It replays a period and prints the difference against the filed
+ *      payslips, so leaving it on the narrow gate would print a fabricated ringgit difference for every
+ *      'auto' employee with a weighted child — the exact class of row that header calls `unexplained`.
+ * Whoever widens them widens all three in one change, and the worksheet's mirror claim is the test that
+ * they did.
  */
 export function eligibleChildReliefUnits(
   rows: ChildReliefCategorisedRow[],
