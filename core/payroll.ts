@@ -12,6 +12,7 @@ import { type SessionContext, type Tx } from '../db/client';
 // core/claims.ts, core/read.ts and core/reporting.ts call them and none of those is payroll-only.
 // See core/module-gate.ts.
 import { withPayrollTenant as withTenant } from './module-gate';
+import { pricesChildReliefFromGrid } from './dependents';
 import { actorOf, appendEvent } from '../db/events';
 import {
   PAYROLL_PERMISSION_DEFAULTS,
@@ -5883,7 +5884,7 @@ export async function generatePayslips(
       // exactly as a keyed grid does on 'auto_table'. Widening one gate alone leaves the multicycle
       // worksheet printing a fabricated difference against the payslips it replays — which is what
       // test/child-relief-weighted-units-r343.test.ts (g) exists to catch.
-        (e.childReliefMode === 'auto_table' || (e.childReliefMode === 'auto' && e.childReliefTable != null)) &&
+        pricesChildReliefFromGrid(e) &&
         pack.payroll.childReliefAmountFor
           ? pack.payroll.childReliefAmountFor(e.childReliefTable, rules.pcb?.reliefs)
           : undefined;

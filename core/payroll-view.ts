@@ -27,6 +27,7 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, gte, inArray, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { type SessionContext, type Tx } from '../db/client';
+import { pricesChildReliefFromGrid } from './dependents';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withPayrollTenant` — all 21 processed-payslip
 // read models refuse a tenant without the Payroll module. See core/module-gate.ts.
 import { withPayrollTenant as withTenant } from './module-gate';
@@ -1489,7 +1490,7 @@ export function currentPcbReliefs(
       // exactly as a keyed grid does on 'auto_table'. Widening one gate alone leaves the multicycle
       // worksheet printing a fabricated difference against the payslips it replays — which is what
       // test/child-relief-weighted-units-r343.test.ts (g) exists to catch.
-      (row.childReliefMode === 'auto_table' || (row.childReliefMode === 'auto' && row.childReliefTable != null)) &&
+      pricesChildReliefFromGrid(row) &&
       pack.payroll.childReliefAmountFor
         ? pack.payroll.childReliefAmountFor(row.childReliefTable, r)
         : Number(row.children ?? 0) * r.perChild;

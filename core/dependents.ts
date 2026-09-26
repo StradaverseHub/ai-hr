@@ -283,6 +283,32 @@ export type ChildReliefCategorisedRow = ChildReliefEligibilityRow & {
 export type ChildReliefGrid = Record<string, { full: number; half: number }>;
 
 /**
+ * DOES THIS EMPLOYEE'S CHILD RELIEF COME FROM THE s.48 GRID, OR FROM THE PLAIN HEAD COUNT?
+ *
+ * ⚠️ ONE EXPRESSION, FOUR CONSUMERS. r344 widened `core/payroll.ts`, `core/payroll-view.ts` and
+ * `localization/my/multicycle-worksheet.ts` to price the DERIVED grid on 'auto' as well as 'auto_table'
+ * — and did not widen `qualifyingChildBreakdown` in this file. The payslip then relieved a disabled
+ * child at four while the Identification & Tax card that explains the figure still showed one, so the
+ * screen under-reported the employee's own relief. The reporter found it on a named employee.
+ *
+ * The three kernel sites each carried their own copy of the condition, which is why widening three of
+ * four looked complete. They now read this instead. A fifth consumer gets it right by construction.
+ *
+ * `table == null` on 'auto' is NOT an oversight: `syncChildReliefFromFamily` stores the grid only when
+ * EVERY eligible child carries a category (`childReliefGridFromFamily` skips one it cannot classify, so
+ * a partial grid would relieve fewer children than the employee has). A null grid therefore means
+ * "cannot be priced by category yet" and every consumer must fall back to the head count — which is the
+ * behaviour `test/9653472a-child-relief-category-gap.test.ts` (e) pins.
+ */
+export function pricesChildReliefFromGrid(p: {
+  childReliefMode: string | null | undefined;
+  childReliefTable: unknown;
+}): boolean {
+  if (p.childReliefMode === 'auto_table') return true;
+  return p.childReliefMode === 'auto' && p.childReliefTable != null;
+}
+
+/**
  * The Family register → a keyed relief grid, by the SAME eligibility rule the head count uses
  * (`isChildReliefEligible`: relationship 'child', not deceased, not archived, explicit per-child decision
  * wins, else student-or-under-18).
@@ -1161,6 +1187,10 @@ export type QualifyingChildRelief = {
   /** Eligible children on the Family register carrying NO relief category. They would contribute nothing
    *  to a category-priced figure, so a total computed without them would be understated. */
   uncategorisedChildren: number;
+  /** r347 — true when the figure above was priced from the s.48 grid, false when it is the head count.
+   *  The card used to infer this from `mode`, which stopped being sufficient when r344 made an 'auto'
+   *  employee's relief depend on whether the grid is DERIVED as well as on the mode. */
+  pricedFromGrid: boolean;
   /**
    * r343 04b88724 — WHAT THE s.48 CATEGORIES ON FILE ACTUALLY CALL FOR, weighted 1 / 4 / 8 (half for a
    * 50%-shared child), from `eligibleChildReliefUnits`. NOT what the calculation gives: in 'auto' mode the
@@ -1293,18 +1323,64 @@ export async function qualifyingChildReliefFor(
     });
 
     // ── THE FIGURE. ONE CALL, TWO FIELDS, AND IT IS THE KERNEL'S OWN ─────────────────────────────────
-    // 'auto_table' prices the stored grid; every other mode is `num_children × perChild`, which is what
-    // core/payroll.ts and core/payroll-view.ts do for the same employee. An empty / unkeyed grid claims
-    // NOTHING — the count follows the money to zero rather than optimistically reporting the head count.
-    const figure =
-      mode === 'auto_table'
-        ? childReliefFor({ from: 'table', table: statutory.childReliefTable, prices: categories })
-        : childReliefFor({ from: 'headCount', children: physicalChildren, perChild });
+    //
+    // ⚠️ THIS GATE WAS THE DEFECT, AND THE COMMENT ABOVE IT WAS THE EVIDENCE (item 04b88724, r347).
+    // It read `mode === 'auto_table'`, under a comment saying "every other mode is num_children ×
+    // perChild, which is what core/payroll.ts and core/payroll-view.ts do for the same employee". That
+    // was true when it was written and r344 made it FALSE: r344 widened those two — and the multicycle
+    // worksheet — to price the DERIVED grid on 'auto' too, and did not widen this one. An 'auto'
+    // employee whose grid IS derived was then relieved at the s.48 weight on their payslip while the
+    // card that explains the figure showed the head count. The reporter found it on a named employee:
+    // one disabled child, 1 qualifying shown where the payslip used 4.
+    //
+    // It now reads the SAME predicate the other three read. A comment asserting what another module
+    // does is worth exactly as much as the day it was written; the predicate is worth more.
+    //
+    // An empty / unkeyed grid still claims NOTHING — the count follows the money to zero rather than
+    // optimistically reporting the head count.
+    const figure = pricesChildReliefFromGrid({ childReliefMode: mode, childReliefTable: statutory.childReliefTable })
+      ? childReliefFor({ from: 'table', table: statutory.childReliefTable, prices: categories })
+      : childReliefFor({ from: 'headCount', children: physicalChildren, perChild });
+
+    /**
+     * ONE LINE PER CHILD, PRICED THE WAY THAT CHILD IS ACTUALLY PRICED (r347).
+     *
+     * The child's own category is turned into a ONE-CHILD GRID and run through the SAME
+     * `childReliefFor({ from: 'table' })` that prices the whole employee, so the lines provably sum to
+     * the total above them rather than being a second arithmetic that agrees by coincidence. This is
+     * what the reporter asked to see: "1 Disabled Child × 4 = 4 Qualifying Children".
+     *
+     * An uncategorised child cannot reach here: the grid is only stored when EVERY eligible child has a
+     * category, so if any is missing `pricesChildReliefFromGrid` is false and the head-count branch runs.
+     */
+    const oneChildRow = (d: (typeof eligible)[number]): QualifyingChildRow => {
+      const cat = d.childReliefCategory ?? null;
+      const half = d.childReliefPercentage === 50;
+      const priced =
+        cat != null
+          ? childReliefFor({
+              from: 'table',
+              table: { [cat]: { full: half ? 0 : 1, half: half ? 1 : 0 } },
+              prices: categories,
+            })
+          : childReliefFor({ from: 'headCount', children: 1, perChild });
+      return {
+        kind: 'child' as const,
+        name: d.fullName,
+        category: cat,
+        sharePercent: half ? 50 : 100,
+        children: 1,
+        units: priced.units,
+        amountRM: priced.amountRM,
+      };
+    };
 
     const breakdown: QualifyingChildRow[] =
       mode === 'auto_table'
         ? // One line PER SHARE, so "claimed in full or shared" is visible rather than averaged away. The
-          // lines are the PACK's own rows; this only names them for a screen.
+          // lines are the PACK's own rows; this only names them for a screen. 'auto_table' holds category
+          // COUNTS and no individual children, so its lines are categories — inventing one child row per
+          // counted child would be inventing people.
           figure.rows.map((r) => ({
             kind: 'category' as const,
             name: null,
@@ -1315,25 +1391,25 @@ export async function qualifyingChildReliefFor(
             amountRM: r.amountRM,
           }))
         : mode === 'auto'
-          ? // One line per ELIGIBLE child, each worth exactly one qualifying child — which is not a
-            // simplification but this mode's kernel expression applied to a single child (`from:
-            // 'headCount'`, children 1). Printing its category's units instead would print a figure the
-            // payslip denies.
-            eligible.map((d) => {
-              const one = childReliefFor({ from: 'headCount', children: 1, perChild });
-              return {
-                kind: 'child' as const,
-                name: d.fullName,
-                category: d.childReliefCategory ?? null,
-                // 100 when nothing is recorded: an unshared claim is the whole relief, which is what the
-                // kernel's flat count already assumes. `setDependentChildRelief` validates the stored
-                // 100|50 on write, so this never has to re-validate it.
-                sharePercent: d.childReliefPercentage === 50 ? 50 : 100,
-                children: 1,
-                units: one.units,
-                amountRM: one.amountRM,
-              };
-            })
+          ? // 'auto' HAS the actual children, so its lines are children. Each is priced by its own
+            // category when the grid is live, and at one unit when it is not — which is exactly what the
+            // payslip does for the same employee, because both now read `pricesChildReliefFromGrid`.
+            eligible.map((d) =>
+              pricesChildReliefFromGrid({ childReliefMode: mode, childReliefTable: statutory.childReliefTable })
+                ? oneChildRow(d)
+                : {
+                    kind: 'child' as const,
+                    name: d.fullName,
+                    category: d.childReliefCategory ?? null,
+                    // 100 when nothing is recorded: an unshared claim is the whole relief, which is what
+                    // the kernel's flat count already assumes. `setDependentChildRelief` validates the
+                    // stored 100|50 on write, so this never has to re-validate it.
+                    sharePercent: d.childReliefPercentage === 50 ? 50 : 100,
+                    children: 1,
+                    units: childReliefFor({ from: 'headCount', children: 1, perChild }).units,
+                    amountRM: childReliefFor({ from: 'headCount', children: 1, perChild }).amountRM,
+                  },
+            )
           : // manual — nothing was worked out, so there is nothing to break down.
             [];
 
@@ -1346,6 +1422,18 @@ export async function qualifyingChildReliefFor(
       categories,
       qualifyingChildren: figure.units,
       reliefRM: figure.amountRM,
+      /**
+       * r347 — is this figure priced from the s.48 grid, or from the plain head count?
+       *
+       * The card used to infer it from `mode`, which was right until r344 made an 'auto' employee's
+       * relief depend on whether the grid is DERIVED as well as on the mode. Returning it means the
+       * screen and the kernel cannot disagree about which rule produced the number they are both
+       * describing — and the notes under the table say the right thing without re-deriving anything.
+       */
+      pricedFromGrid: pricesChildReliefFromGrid({
+        childReliefMode: mode,
+        childReliefTable: statutory.childReliefTable,
+      }),
       perChild,
       statutoryVersion: rules.version ?? null,
       breakdown,

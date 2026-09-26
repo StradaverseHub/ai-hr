@@ -227,17 +227,43 @@ function gateModes(rel: string): string[] {
   return [...modes].sort();
 }
 
-describe('04b88724 · (g) the three child-relief-amount gates admit the same modes', () => {
-  it('each named file still HAS a gate — a moved gate must not read as an agreeing one', () => {
+describe('04b88724 · (g) there is ONE child-relief gate, and every consumer reads it', () => {
+  /**
+   * ⚠️ THIS GUARD CHANGED SHAPE IN r347, AND THE REASON IS THE DEFECT IT FAILED TO CATCH.
+   *
+   * It used to read the mode literals out of THREE files and require the three sets to be equal —
+   * "widening one without the others is the failure this catches". That was a real failure and it did
+   * catch it. But it could only compare the files it was given, and there was a FOURTH consumer:
+   * `qualifyingChildBreakdown` in core/dependents.ts, which prices the figure the Identification & Tax
+   * card shows. r344 widened the three on this list, left the fourth reading `mode === 'auto_table'`,
+   * and this guard stayed green while the card and the payslip disagreed about a disabled child by
+   * RM14,000 on a real employee.
+   *
+   * Comparing copies can only ever find the copies you list. So there is now ONE exported predicate,
+   * `pricesChildReliefFromGrid`, and this asserts the property that makes divergence IMPOSSIBLE rather
+   * than merely detectable: no consumer carries its own mode gate, and all of them read the predicate.
+   *
+   * `gateModes` is kept — it is now the proof that no file has grown a private gate again.
+   */
+  it('no consumer carries its own childReliefMode gate beside a child-relief amount', () => {
     for (const f of GATE_FILES) {
-      expect(gateModes(f).length, `${f} no longer contains a childReliefMode gate near a child-relief amount — find where it went and update this list; the three gates are ${GATE_FILES.join(', ')}`).toBeGreaterThan(0);
+      expect(
+        gateModes(f),
+        `${f} has grown its own mode gate again. The rule lives in pricesChildReliefFromGrid ` +
+          `(core/dependents.ts); a private copy here is how r344's defect reached production.`,
+      ).toEqual([]);
     }
   });
 
-  it('⚠️ all three admit the SAME modes — widening one without the others is the failure this catches', () => {
-    const [payroll, view, worksheet] = GATE_FILES.map(gateModes);
-    const why = `the payslip (${GATE_FILES[0]}), the PCB drill-down (${GATE_FILES[1]}) and the multicycle sign-off worksheet (${GATE_FILES[2]}) must all price child relief for the same set of modes. Widening one leaves the worksheet printing a fabricated difference against the payslips it replays.`;
-    expect(view, why).toEqual(payroll);
-    expect(worksheet, why).toEqual(payroll);
+  it('⚠️ and EVERY consumer reads the one predicate — including the card, which r344 missed', () => {
+    const why =
+      'the payslip, the PCB drill-down, the multicycle sign-off worksheet AND the Identification & Tax ' +
+      'card must price child relief by the same rule. When they did not, the payslip relieved a disabled ' +
+      'child at four while the card that explains the figure showed one.';
+    for (const f of [...GATE_FILES, 'core/dependents.ts']) {
+      expect(readFileSync(resolve(process.cwd(), f), 'utf8'), `${f}: ${why}`).toContain(
+        'pricesChildReliefFromGrid',
+      );
+    }
   });
 });

@@ -1611,13 +1611,14 @@
       "childQualifyingColUnits": "Qualifying children",
       "childQualifyingColAmount": "Relief (RM)",
       "childQualifyingTotal": "Total",
-      "childQualifyingAutoUnitsNote": "In Auto (from Family records) every eligible child counts as one qualifying child. The relief category shown is for information only: it prices the relief in Auto (from table) mode.",
+      "childQualifyingAutoUnitsNote": "此处每名符合条件的子女均按一名计算，因为其中至少有一名尚未记录减免类别。只有在每名符合条件的子女都有类别后，加权才会生效——请在「家庭」页签补上缺少的类别，此数字将在下一次薪资运行时随之更新。",
       "childQualifyingUncategorised": "{count} eligible child(ren) carry no relief category, so they would add nothing to a figure priced by category.",
       "childQualifyingRuleset": "Priced by statutory ruleset {version}.",
       "childQualifyingItemChildren": "{count} child(ren)",
       "childQualifyingStaleFamily": "The PCB calculation still uses {stored} child(ren) — the figure last worked out from the Family records. The records now hold {eligible} eligible child(ren). Saving this card brings the tax figure back in step.",
-      "childQualifyingWeightingGap": "The official relief categories recorded against these children add up to {ruleUnits} qualifying children — {ruleAmount} of relief — because a child 18+ in diploma or degree study, and a disabled child, each count as four, and a disabled child in that study as eight. Auto (from Family records) claims {amount}, counting every child as one, so this employee’s monthly tax is over-deducted. Auto (from table) is the mode that prices the categories today.",
-      "childQualifyingWeightingGapOver": "The official relief categories recorded against these children add up to {ruleUnits} qualifying children — {ruleAmount} of relief — which is LESS than Auto (from Family records) is claiming: {amount}. Auto counts every child as one whole child, so a child whose claim share is recorded as 50% (the other half claimed by the other parent) is still counted in full. This employee’s monthly tax is therefore under-deducted, and the shortfall is settled at the annual assessment. Auto (from table) is the mode that prices the categories and the claim shares today."
+      "childQualifyingWeightingGap": "这些子女已记录的减免类别合计为 {ruleUnits} 名符合条件的子女，即 {ruleAmount} 的减免，但目前只给予 {amount}，因为至少有一名符合条件的子女未记录类别，而加权无法套用于填写不完整的记录。因此该员工的每月税款被多扣（over-deducted）。补上缺少的类别即可释放其余部分。",
+      "childQualifyingWeightingGapOver": "这些子女已记录的减免类别合计为 {ruleUnits} 名符合条件的子女，即 {ruleAmount} 的减免，低于目前给予的 {amount}。系统目前将每名子女都按一整名计算，因此申报比例记录为 50%（另一半由另一位家长申报）的子女仍被完整计入。该员工的每月税款因此扣减不足，差额将在年度评税时结清。",
+      "childQualifyingAutoWeightedNote": "每名子女按其减免类别的权重计算：年满 18 岁且就读文凭或学位课程的子女，以及残疾子女，各计为四名；就读该等课程的残疾子女计为八名。此数字与薪资单所用者相同。"
     },
     "import": {
       "title": "导入员工",

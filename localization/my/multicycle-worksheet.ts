@@ -51,6 +51,7 @@ import {
   person,
 } from '../../db/schema';
 import { childReliefAmountFor, epf, statutory, type PcbAccumulators, type TaxProfile } from './payroll';
+import { pricesChildReliefFromGrid } from '../../core/dependents';
 import { computeMonthlyRuns, type MonthRunInput, type RunType } from './multicycle';
 import { getActiveStatutoryMY } from './statutory-config';
 import { todayInKualaLumpur } from '../../lib/hr-date';
@@ -603,7 +604,7 @@ function taxProfileOf(e: ProfileRow, rules: StatutoryRuleset): TaxProfile {
       // exactly as a keyed grid does on 'auto_table'. Widening one gate alone leaves the multicycle
       // worksheet printing a fabricated difference against the payslips it replays — which is what
       // test/child-relief-weighted-units-r343.test.ts (g) exists to catch.
-      e.childReliefMode === 'auto_table' || (e.childReliefMode === 'auto' && e.childReliefTable != null)
+      pricesChildReliefFromGrid(e)
         ? childReliefAmountFor(e.childReliefTable, rules.pcb.reliefs)
         : undefined,
   };

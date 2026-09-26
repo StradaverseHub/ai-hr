@@ -59,6 +59,7 @@ const GAP_PRICING: ChildReliefPricing = {
   statutoryVersion: '2026.9',
   familyChildren: 1,
   uncategorisedChildren: 0,
+  pricedFromGrid: false,
   mode: 'auto',
   derived: true,
   physicalChildren: 1,

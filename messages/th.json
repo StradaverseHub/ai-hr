@@ -1611,13 +1611,14 @@
       "childQualifyingColUnits": "Qualifying children",
       "childQualifyingColAmount": "Relief (RM)",
       "childQualifyingTotal": "Total",
-      "childQualifyingAutoUnitsNote": "In Auto (from Family records) every eligible child counts as one qualifying child. The relief category shown is for information only: it prices the relief in Auto (from table) mode.",
+      "childQualifyingAutoUnitsNote": "บุตรที่เข้าเกณฑ์แต่ละคนถูกนับเป็นหนึ่งคนที่นี่ เพราะมีอย่างน้อยหนึ่งคนที่ยังไม่ได้บันทึกประเภทการลดหย่อน การถ่วงน้ำหนักจะมีผลเมื่อบุตรที่เข้าเกณฑ์ทุกคนมีประเภทแล้ว โปรดเพิ่มประเภทที่ขาดในแท็บครอบครัว แล้วตัวเลขนี้จะเปลี่ยนตามในรอบจ่ายเงินเดือนถัดไป",
       "childQualifyingUncategorised": "{count} eligible child(ren) carry no relief category, so they would add nothing to a figure priced by category.",
       "childQualifyingRuleset": "Priced by statutory ruleset {version}.",
       "childQualifyingItemChildren": "{count} child(ren)",
       "childQualifyingStaleFamily": "The PCB calculation still uses {stored} child(ren) — the figure last worked out from the Family records. The records now hold {eligible} eligible child(ren). Saving this card brings the tax figure back in step.",
-      "childQualifyingWeightingGap": "The official relief categories recorded against these children add up to {ruleUnits} qualifying children — {ruleAmount} of relief — because a child 18+ in diploma or degree study, and a disabled child, each count as four, and a disabled child in that study as eight. Auto (from Family records) claims {amount}, counting every child as one, so this employee’s monthly tax is over-deducted. Auto (from table) is the mode that prices the categories today.",
-      "childQualifyingWeightingGapOver": "The official relief categories recorded against these children add up to {ruleUnits} qualifying children — {ruleAmount} of relief — which is LESS than Auto (from Family records) is claiming: {amount}. Auto counts every child as one whole child, so a child whose claim share is recorded as 50% (the other half claimed by the other parent) is still counted in full. This employee’s monthly tax is therefore under-deducted, and the shortfall is settled at the annual assessment. Auto (from table) is the mode that prices the categories and the claim shares today."
+      "childQualifyingWeightingGap": "ประเภทการลดหย่อนที่บันทึกไว้สำหรับบุตรเหล่านี้รวมได้ {ruleUnits} คนที่เข้าเกณฑ์ คิดเป็นการลดหย่อน {ruleAmount} แต่ให้จริงเพียง {amount} เพราะมีบุตรที่เข้าเกณฑ์อย่างน้อยหนึ่งคนยังไม่มีประเภท และไม่สามารถถ่วงน้ำหนักกับระเบียนที่กรอกไม่ครบได้ ภาษีรายเดือนของพนักงานรายนี้จึงถูกหักเกิน (over-deducted) การเพิ่มประเภทที่ขาดจะปลดส่วนที่เหลือ",
+      "childQualifyingWeightingGapOver": "ประเภทการลดหย่อนที่บันทึกไว้สำหรับบุตรเหล่านี้รวมได้ {ruleUnits} คนที่เข้าเกณฑ์ คิดเป็นการลดหย่อน {ruleAmount} ซึ่งน้อยกว่า {amount} ที่ให้อยู่ในปัจจุบัน ระบบนับบุตรทุกคนเต็มคน บุตรที่บันทึกสัดส่วนการขอลดหย่อนไว้ 50% (อีกครึ่งขอโดยผู้ปกครองอีกฝ่าย) จึงยังถูกนับเต็ม ภาษีรายเดือนของพนักงานรายนี้จึงถูกหักน้อยเกินไป และส่วนต่างจะชำระเมื่อประเมินภาษีประจำปี",
+      "childQualifyingAutoWeightedNote": "บุตรแต่ละคนถูกนับตามน้ำหนักของประเภทการลดหย่อน: บุตรอายุ 18 ปีขึ้นไปที่กำลังศึกษาระดับอนุปริญญาหรือปริญญา และบุตรทุพพลภาพ นับเป็นสี่คน ส่วนบุตรทุพพลภาพที่กำลังศึกษาดังกล่าวนับเป็นแปดคน ตัวเลขนี้เป็นตัวเดียวกับที่สลิปเงินเดือนใช้"
     },
     "import": {
       "title": "นำเข้าพนักงาน",
