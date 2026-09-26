@@ -1,3 +1,53 @@
+## r346 (2026-09-26) — the EA was following a revision LHDN does not issue. `main@c70094d9`, **no migration**.
+
+Closed: `fda53352`. Gate: **1032 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=488`.
+
+### THE TICKET WAS INVERTED, AND THE REPORTER STILL ENDS UP RIGHT
+
+They asked us to rebuild the EA because ours was "not up to date". Ours printed **`(C.P.8A - Pin. 2024)`**. **LHDN does not issue a Pin. 2024.** Checked against the agency's own site on 2026-09-26: `borang_ea__c.p.8a_-_pin._2023_.pdf` returns `206 application/pdf`; 2024, 2025 and 2026 at the same path return **404**. LHDN's own *"EA & EC Guide Notes — Remuneration for the Year 2024"* accompany the **Pin. 2023** form.
+
+**THE REVISION LABEL IS NOT THE YEAR**, and reading it as one is almost certainly how the error was made upstream. Our claim came from item `ece6d75d`'s attachment — Producer *"Developer Express Inc. DXperience v23.2.5"*, another payroll vendor's rendering. `docs/forms/…-transcription.txt` had **already** flagged that file as *"a TRACING SOURCE, not LHDN artwork"*. The caution was right; the revision number taken from the same file was not.
+
+The reporter's attachment is **byte-identical** to what hasil.gov.my serves (sha256 `6b766381…`, 381,770 bytes) — the first genuine agency artwork this board has received. It is now in `docs/forms/` with the BM xlsx (docProps `Company=LHDNM`).
+
+### WHAT MOVED
+
+- The revision, everywhere: the form, the field register, the report page, 18 catalogue strings across six locales.
+- **35 English captions** to the agency's own wording, verbatim. They had been our paraphrase, because until now there was no agency English to check against.
+- **The form's furniture is now per-edition.** It was Malay on BOTH forms, on a rationale — *"the viewer's language never changes a Malaysian tax form"* — that LHDN contradicts by publishing an English edition with an English masthead. We were printing the Malay edition's furniture around English captions: a document the agency does not issue.
+- **The money column**, measured off the agency's own vector PDF: `482.3 → 556.6`, where the tracing had `504.5 → 571.3` — 22.2 pt too far right, 7.5 pt too narrow, and running to the page frame where the agency's stops 15.3 pt inside it.
+- `No. Majikan E`, not `TIN Majikan E` — it is a **file number, not a TIN**; the TIN on that band is the employee's.
+- `Nama Pegawai`, not `Name Pegawai` — an inherited typo that a comment in `lib/ea-pdf.ts` and a test had both explicitly **defended** as "the specimen's own spelling".
+
+### DECISIONS THE TICKET DID NOT SETTLE
+
+- **The agency's file is held for comparison; it is not served.** It went to `docs/forms/`, not `public/forms/`. What we print is still our rendering on our paper, so `my.ea.en` / `my.ea.ms` still declare `agency-layout` and still may never declare `official`. The user-facing note "we hold no blank C.P.8A from LHDN" was left alone: its purpose — *this is our page, check it against the real one* — is unchanged.
+- **Only the money column was re-measured.** Every other constant is still a 150 dpi tracing of a redrawing, and `lib/ea-pdf.ts` now says exactly that instead of claiming "every number was read off the specimen".
+
+### THREE DEFECTS THE RENDER CHECK CAUGHT THAT NOTHING ELSE COULD
+
+All three passed `tsc`, the suite and `next build` while being **visibly wrong on the page**. They were found by rasterising the blank form and looking at it.
+
+- **Section E printed twice**, the second reading `2. PERKESO: 2. SOCSO : Amount of…`. `contributionAmount` is a **shared caption** for E1 and E2 and I had prefixed it with E2's word. §8: *a shared caption may say only what is true of every member.*
+- **`Gratuity for the period from from`** — the renderer already draws `periodFrom` after the caption.
+- The English **`PRIVATE SECTOR Employee's Statement of Remuneration` ran left out of its block and straight through the centred `MALAYSIA`**. pdf-lib does not clip, so the page still rendered, still returned 200 and still downloaded — the r205 Borang A lesson, live again. It now wraps to two lines, as the agency's English edition sets it.
+
+### TWO GUARDS THAT PINNED DECISIONS THIS ROUND REVERSES
+
+Updated, not deleted (§8), each carrying the reversal and its evidence:
+
+- *"the agency's words are the SAME in both languages — they are not translated"* asserted the Malay masthead onto the English form. Rewritten to assert each edition prints **its own** words, and that the two really are different pages — keeping what the old case was right about: neither is translated by us.
+- *"the officer caption keeps the specimen's own spelling"* pinned `Name Pegawai` and argued that anyone "fixing" it should fail there rather than ship a form *"that no longer matches the page it was traced from"*. Every word true — and the page traced from was a rival vendor's. **A guard that pins a faithful transcription of the wrong source makes the error permanent.**
+
+### A MISTAKE OF MINE THAT COST ~15 MINUTES OF GATE
+
+I renamed the transcription and updated the two references I knew about. A **third** test file (`test/r219-ea-cp8a-form.test.ts`) held the old name and failed the gate at chunk 4 with `ENOENT` — a **collection** error, so `grep -c AssertionError` correctly reported **0**, which §4 reads as "environment". It was not: the file never loaded. Fixing it changed the tree and invalidated the five chunks already run, so the gate restarted. **`grep -rn` for every reference to a renamed file before starting a 40-minute gate**; a targeted run of five EA tests did not include the one that broke.
+
+### NOT DONE
+
+- The remaining geometry constants (banner, officer box, section rules, Section A columns) still come from the tracing. The agency's file is on disk to finish that with.
+- The agency's page sets its section letters in filled black boxes and numbers items `1.` then `(a)` where we set `1(a)`. Both are visible on a side-by-side and neither was touched.
+
 ## r345 (2026-09-26) — two screens told the truth about arithmetic that was already right. `main@7006882d`, **no migration**.
 
 Closed: `20837372`, `9653472a`. Gate: **1031 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=488`.
