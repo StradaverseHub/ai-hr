@@ -148,10 +148,16 @@ export type ChildReliefReview = {
   /**
    * r343 03f89c0f — THE TYPED FIGURES THAT DISAGREE WITH THE FAMILY RECORD.
    *
-   * A subset of `people` (same objects, so no second walk and no second arithmetic): those on 'manual'
-   * whose typed child count is ABOVE the eligible children on file. It is a LIST TO LOOK AT, not an error
-   * list: some of those missing children are probably real and simply never entered, which is why nothing
-   * here changes anybody and there is deliberately no bulk action anywhere near it.
+   * A subset of `people` (same objects, so no second walk and no second arithmetic): those whose child count
+   * was TYPED — every mode but the two auto ones, so a hand-edited or unrecognised stored mode is not
+   * silently exonerated — and typed ABOVE the eligible children on file. It is a LIST TO LOOK AT, not an
+   * error list: some of those missing children are probably real and simply never entered, which is why
+   * nothing here changes anybody and there is deliberately no bulk action anywhere near it.
+   *
+   * ⚠️ WHICH ROWS THESE ARE IS THE WHOLE SCREEN, SO IT IS PINNED AGAINST A REAL DATABASE:
+   * test/child-relief-disagreement-subset-r343.test.ts. Widening this filter to every typed figure — which
+   * would put the five employees whose figures AGREE, and anyone typed BELOW their record, under a heading
+   * that says "above" — left the whole related suite green when adversarial verification tried it.
    *
    * ORDER is `people`'s order (person name, then employee code, then employment id), so the list is
    * reproducible between loads.

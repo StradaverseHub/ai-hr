@@ -21,9 +21,11 @@
  * this file checked the stat Card's nine captions as CATALOGUE STRINGS — `expect(cr[key]).toBeTypeOf(
  * 'string')` — against a key list typed into the test. That proves nothing about the screen: a key the page
  * asks for and no catalogue has would still have passed, and next-intl was never on the path, which is the
- * only thing that can raise MISSING_MESSAGE or FORMATTING_ERROR. The last describe block instead READS
- * app/admin/personnel/child-relief/page.tsx, extracts every `t('…')` the page asks for, and resolves each one
- * through `useTranslations('people.childRelief')` in all six locales. That Card is gated on
+ * only thing that can raise MISSING_MESSAGE or FORMATTING_ERROR. Instead this file READS
+ * app/admin/personnel/child-relief/page.tsx and extracts every `t('…')` the page asks for (`PAGE_KEYS`); the
+ * per-locale block below renders all of them through `useTranslations('people.childRelief')` in the
+ * `PageCaptions` harness, and a separate block asserts the extraction itself found the Card's nine captions,
+ * so a regex that silently matched nothing cannot make the rest vacuous. That Card is gated on
  * `recordDisagreement.people.length > 0` and `pnpm db:seed` creates no employee with children, so no
  * dev-server pass can reach it; this is the only place it is rendered at all.
  */
