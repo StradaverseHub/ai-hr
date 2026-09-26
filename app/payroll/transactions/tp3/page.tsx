@@ -505,32 +505,57 @@ export default async function Tp3Page({
                     );
                   })}
 
-                  {/* ── WHAT SECTION C ACTUALLY CONTRIBUTES ──────────────────────────────────────
-                      Every figure here is READ OFF THE SEED, never recomputed. `exemptTotal` and
-                      `epfAllowable` are the same fields `core/tp3.ts` strikes `netRemuneration`
-                      against, so this row cannot drift from the arithmetic it reports — two call
-                      sites each working the caps out is the duplicate source of truth §1 forbids.
-                      Absent when nothing is keyed yet: a form with no figures has no total, and
-                      printing 0.00 would assert one. */}
+                  {/* ── HOW ACCUMULATED NET REMUNERATION IS REACHED, WRITTEN AS THE SUBTRACTION ──
+                      ⚠️ THIS BLOCK USED TO SAY THE OPPOSITE OF WHAT THE KERNEL DOES (r348, item 20837372).
+                      r345 printed two rows labelled "counted" above the total, under a sentence reading
+                      "RM {counted} counts towards Accumulated Net Remuneration" — where that figure is
+                      `exemptTotal + epfAllowable`, which is SUBTRACTED from gross to reach it. The numbers
+                      were right and the words described a different system, so the reporter read the
+                      screen and contested the arithmetic. They were right to; the sentence was ours.
+
+                      It is now the sum itself — gross, less C2, less C3, equals ANR — with explicit minus
+                      signs, because a subtraction cannot be read backwards the way a caption can.
+
+                      Every figure is still READ OFF THE SEED and never recomputed: `gross`, `exemptTotal`
+                      and `epfAllowable` are the same fields `core/tp3.ts` strikes `netRemuneration`
+                      against, so these rows cannot drift from the arithmetic they report. Two call sites
+                      each working the caps out is the duplicate source of truth §1 forbids.
+
+                      Absent when nothing is keyed yet: a form with no figures has no total, and printing
+                      0.00 would assert one. */}
                   {derived ? (
-                    <div className="mt-4 space-y-1 border-t-2 border-border pt-3 text-sm">
+                    <div className="mt-4 space-y-1 border-t-2 border-border pt-3 text-sm" data-anr-working>
                       <div className="flex flex-wrap justify-between gap-2">
-                        <span className="text-muted-foreground">{t('tp3.totalExemptCounted')}</span>
-                        <span className="tabular-nums">{money(derived.exemptTotal)}</span>
+                        <span>{t('tp3.totalGross')}</span>
+                        <span className="tabular-nums" data-anr-gross>{money(derived.gross)}</span>
+                      </div>
+                      <div className="flex flex-wrap justify-between gap-2 border-t border-border pt-1">
+                        <span className="text-muted-foreground">{t('tp3.totalLessExempt')}</span>
+                        <span className="tabular-nums text-muted-foreground" data-anr-less-exempt>
+                          &minus; {money(derived.exemptTotal)}
+                        </span>
                       </div>
                       <div className="flex flex-wrap justify-between gap-2">
-                        <span className="text-muted-foreground">{t('tp3.totalEpfCounted')}</span>
-                        <span className="tabular-nums">{money(derived.epfAllowable)}</span>
+                        <span className="text-muted-foreground">{t('tp3.totalLessEpf')}</span>
+                        <span className="tabular-nums text-muted-foreground" data-anr-less-epf>
+                          &minus; {money(derived.epfAllowable)}
+                        </span>
                       </div>
-                      <div className="flex flex-wrap justify-between gap-2 border-t border-border pt-1 font-semibold">
+                      <div className="flex flex-wrap justify-between gap-2 border-t-2 border-border pt-1 font-semibold">
                         <span>{t('tp3.totalNetRemuneration')}</span>
-                        <span className="tabular-nums">{money(derived.netRemuneration)}</span>
+                        <span className="tabular-nums" data-anr-net>{money(derived.netRemuneration)}</span>
                       </div>
                       {derived.exemptEntered > derived.exemptTotal || derived.epfClaimed > derived.epfAllowable ? (
-                        <p className="pt-1 text-xs text-muted-foreground">
-                          {t('tp3.totalCappedNote', {
+                        <p className="pt-1 text-xs text-muted-foreground" data-anr-capped-note>
+                          {t('tp3.totalExcessNote', {
                             entered: money(derived.exemptEntered + derived.epfClaimed),
-                            counted: money(derived.exemptTotal + derived.epfAllowable),
+                            exempt: money(derived.exemptTotal + derived.epfAllowable),
+                            excess: money(
+                              derived.exemptEntered +
+                                derived.epfClaimed -
+                                derived.exemptTotal -
+                                derived.epfAllowable,
+                            ),
                           })}
                         </p>
                       ) : null}

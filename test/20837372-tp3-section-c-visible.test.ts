@@ -131,7 +131,7 @@ describe('20837372 · (d) the section total is the seed’s own figure', () => {
 
   it('the page prints the seed’s fields and does not sum the lines a second time', () => {
     const s = src(PAGE);
-    for (const f of ['derived.exemptTotal', 'derived.epfAllowable', 'derived.netRemuneration']) {
+    for (const f of ['derived.gross', 'derived.exemptTotal', 'derived.epfAllowable', 'derived.netRemuneration']) {
       expect(s, `${f} is read off the seed`).toContain(f);
     }
     // Two call sites each working the caps out is the duplicate source of truth CLAUDE.md §1 forbids —
@@ -161,10 +161,13 @@ describe('20837372 · (e) the screen actually carries the columns', () => {
       'colTaxExempt',
       'colExcess',
       'colRemaining',
-      'totalExemptCounted',
-      'totalEpfCounted',
+      // r348 — the total block is now the subtraction itself. `totalExemptCounted`,
+      // `totalEpfCounted` and `totalCappedNote` are RETIRED (see the r348 case below).
+      'totalGross',
+      'totalLessExempt',
+      'totalLessEpf',
       'totalNetRemuneration',
-      'totalCappedNote',
+      'totalExcessNote',
     ];
     for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
       const m = JSON.parse(src(`messages/${loc}.json`)) as Record<string, any>;
@@ -192,5 +195,88 @@ describe('20837372 · (f) the limits reach the screen and never the paper', () =
     // match the one the employee signed. Asserted here as well as in the section-D file, because this
     // is the round that could most plausibly have broken it.
     expect(src('app/payroll/transactions/tp3/pdf/route.ts')).not.toContain('exemptionLimit');
+  });
+});
+
+// ─── (g) r348 — THE TOTAL IS THE SUBTRACTION, BECAUSE A CAPTION COULD BE READ BACKWARDS ─────────────
+
+describe('20837372 · (g) Accumulated Net Remuneration shows its own working', () => {
+  /**
+   * ⚠️ r345 SHIPPED A SENTENCE THAT SAID THE OPPOSITE OF WHAT THE KERNEL DOES, AND THE REPORTER
+   * CONTESTED THE ARITHMETIC BECAUSE OF IT. `totalCappedNote` read "RM {counted} counts towards
+   * Accumulated Net Remuneration" where `counted` was `exemptTotal + epfAllowable` — the figure
+   * SUBTRACTED from gross to reach it. The rows above it were labelled "counted", equally ambiguous.
+   *
+   * The figures were right throughout. Verified against the shipped kernel with C1 = 60,000 gross and
+   * the allowance inside it: keyed 3,600 under a 6,000 limit contributes 0 to `netRemuneration`
+   * against a no-allowance baseline, and keyed 7,000 contributes exactly 1,000 — which is the
+   * reporter's own MAX(keyed − limit, 0), reached from the other direction because C1 is gross.
+   *
+   * This is the SECOND wording defect on this screen in two rounds (r345 also had to correct
+   * `exemptLimitNote`, false since r342). Shipping kernel behaviour and leaving prose behind that
+   * asserts the old behaviour is the recurring failure here — not the arithmetic.
+   */
+  const seedOf = (keyed: number, c3 = 0, c1 = 60_000) =>
+    deriveAccumulatorSeed({
+      form: 'tp3-2026',
+      sectionC: { c1: { amount: c1 }, c2: { amount: keyed, subItems: { i: keyed } }, c3: { amount: c3 } },
+      sectionD: {},
+    })!;
+
+  it('the reporter’s scenario 1: keyed 3,600 under a 6,000 limit adds NOTHING to ANR', () => {
+    const s = seedOf(3_600);
+    const baseline = s.gross - 3_600; // the same pay with no allowance at all
+    expect(s.netRemuneration - baseline, 'contribution to Accumulated Net Remuneration').toBe(0);
+  });
+
+  it('the reporter’s scenario 2: keyed 7,000 adds exactly the 1,000 excess', () => {
+    const s = seedOf(7_000);
+    const baseline = s.gross - 7_000;
+    expect(s.netRemuneration - baseline).toBe(1_000);
+  });
+
+  it('and it is never deducted twice — the contribution is never negative, at any keyed value', () => {
+    for (const k of [0, 1_000, 5_999, 6_000, 6_001, 7_000, 50_000]) {
+      const s = seedOf(k);
+      expect(s.netRemuneration - (s.gross - k), `keyed ${k}`).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('the screen renders the sum: gross, less C2, less C3, equals ANR', () => {
+    const s = src(PAGE);
+    for (const k of ['tp3.totalGross', 'tp3.totalLessExempt', 'tp3.totalLessEpf', 'tp3.totalNetRemuneration']) {
+      expect(s, `${k} is a row`).toContain(k);
+    }
+    // The minus signs are what make it unreadable backwards.
+    expect(s, 'the deductions are drawn as deductions').toContain('&minus; {money(derived.exemptTotal)}');
+    expect(s).toContain('&minus; {money(derived.epfAllowable)}');
+  });
+
+  it('gross − exempt − epf equals the printed ANR, to the cent', () => {
+    const s = seedOf(7_000, 8_979);
+    expect(s.gross - s.exemptTotal - s.epfAllowable).toBeCloseTo(s.netRemuneration, 2);
+  });
+
+  it('NOTHING on that screen still claims the exempt amount counts TOWARDS ANR', () => {
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const tp3 = (JSON.parse(src(`messages/${loc}.json`)) as Record<string, any>).taxRelief.tp3;
+      for (const k of ['totalExemptCounted', 'totalEpfCounted', 'totalCappedNote']) {
+        expect(tp3[k], `${loc}.${k} must be retired, not live`).toMatch(/^\[retired r348/);
+      }
+    }
+    // …and the page must not render a retired key.
+    const page = src(PAGE);
+    for (const k of ['totalExemptCounted', 'totalEpfCounted', 'totalCappedNote']) {
+      expect(page, `the page still renders the retired ${k}`).not.toContain(`tp3.${k}`);
+    }
+  });
+
+  it('the retired keys are RETIRED, not deleted — a key dropped from en alone still renders from ms', () => {
+    // i18n/request.ts deep-merges each locale over English. Deleting from en.json only would leave the
+    // old sentence rendering for a Malay reader, which is the worst possible half-fix here.
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const tp3 = (JSON.parse(src(`messages/${loc}.json`)) as Record<string, any>).taxRelief.tp3;
+      expect(Object.keys(tp3), `${loc} dropped a retired key instead of marking it`).toContain('totalCappedNote');
+    }
   });
 });

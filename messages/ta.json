@@ -11799,10 +11799,14 @@
       "colTaxExempt": "வரி விலக்கு",
       "colExcess": "உபரி (வரிக்குரியது)",
       "colRemaining": "மீதம்",
-      "totalExemptCounted": "கணக்கிடப்பட்ட வரிவிலக்குப் படிகள் (C2)",
-      "totalEpfCounted": "கணக்கிடப்பட்ட EPF மற்றும் அங்கீகரிக்கப்பட்ட நிதிகள் (C3)",
+      "totalExemptCounted": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
+      "totalEpfCounted": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
       "totalNetRemuneration": "திரட்டப்பட்ட நிகர ஊதியம்",
-      "totalCappedNote": "C2 மற்றும் C3 இல் நீங்கள் RM {entered} உள்ளிட்டீர்கள்; RM {counted} திரட்டப்பட்ட நிகர ஊதியத்தில் கணக்கிடப்படுகிறது. வித்தியாசம் சட்டப்பூர்வ வரம்புகளுக்கு மேல் உள்ளது, வரிக்குரியதாகவே இருக்கும்."
+      "totalCappedNote": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
+      "totalGross": "மொத்த ஊதியம் (C1)",
+      "totalLessExempt": "கழி: வரிவிலக்கு படிகள் (C2)",
+      "totalLessEpf": "கழி: EPF மற்றும் அங்கீகரிக்கப்பட்ட நிதிகள் (C3)",
+      "totalExcessNote": "C2 மற்றும் C3 இல் உள்ளிடப்பட்ட RM {entered} இல், RM {exempt} சட்டப்பூர்வ வரம்புகளுக்குள் உள்ளது, மேலே உள்ள தொகையிலிருந்து கழிக்கப்படுகிறது. மீதமுள்ள RM {excess} வரம்புகளுக்கு மேல் உள்ளது; அது திரட்டப்பட்ட நிகர ஊதியத்தில் இருந்து ஒரு முறை மட்டும் வரி விதிக்கப்படும்."
     }
   },
   "payRule": {

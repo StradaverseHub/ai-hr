@@ -11799,10 +11799,14 @@
       "colTaxExempt": "免税部分",
       "colExcess": "超出部分（应税）",
       "colRemaining": "剩余额度",
-      "totalExemptCounted": "计入的免税津贴（C2）",
-      "totalEpfCounted": "计入的公积金及核准基金（C3）",
+      "totalExemptCounted": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
+      "totalEpfCounted": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
       "totalNetRemuneration": "累计净薪酬",
-      "totalCappedNote": "您在 C2 和 C3 共输入 RM {entered}；其中 RM {counted} 计入累计净薪酬。差额超出法定上限，仍需纳税。"
+      "totalCappedNote": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
+      "totalGross": "薪酬总额（C1）",
+      "totalLessExempt": "减：免税津贴（C2）",
+      "totalLessEpf": "减：公积金及核准基金（C3）",
+      "totalExcessNote": "在 C2 与 C3 共输入的 RM {entered} 当中，RM {exempt} 在法定上限以内，已从上方数字中扣除。其余 RM {excess} 超出上限，仍保留在累计净薪酬内并计税一次。"
     }
   },
   "payRule": {
