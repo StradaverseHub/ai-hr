@@ -2577,6 +2577,9 @@
       "cancelledAt": "ரத்துசெய்யப்பட்டது {date}",
       "cancelledAutomaticallyAt": "ரத்து தானாக ஒப்புதல் அளிக்கப்பட்டது · {date}",
       "cancellationRequestedAt": "ரத்து கோரப்பட்டது {date}"
+    },
+    "replacementRequest": {
+      "viewMyRequests": "View my leave credit requests"
     }
   },
   "leaveTracker": {
@@ -12943,8 +12946,7 @@
       "noRequests": "You have not submitted a Leave Credit request yet.",
       "statusHeading": "Status",
       "submittedOn": "Submitted"
-    },
-    "viewMyRequests": "View my leave credit requests"
+    }
   },
   "notices": {
     "pageTitle": "அறிவிப்புப் பலகை",

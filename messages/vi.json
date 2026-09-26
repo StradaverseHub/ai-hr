@@ -2577,6 +2577,9 @@
       "cancelledAt": "Đã hủy {date}",
       "cancelledAutomaticallyAt": "Việc hủy được duyệt tự động · {date}",
       "cancellationRequestedAt": "Yêu cầu hủy lúc {date}"
+    },
+    "replacementRequest": {
+      "viewMyRequests": "View my leave credit requests"
     }
   },
   "leaveTracker": {
@@ -12943,8 +12946,7 @@
       "noRequests": "You have not submitted a Leave Credit request yet.",
       "statusHeading": "Status",
       "submittedOn": "Submitted"
-    },
-    "viewMyRequests": "View my leave credit requests"
+    }
   },
   "notices": {
     "pageTitle": "Bảng thông báo",

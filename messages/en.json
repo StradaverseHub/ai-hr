@@ -2577,6 +2577,9 @@
       "cancelledAt": "Cancelled {date}",
       "cancelledAutomaticallyAt": "Cancellation approved automatically · {date}",
       "cancellationRequestedAt": "Cancellation requested {date}"
+    },
+    "replacementRequest": {
+      "viewMyRequests": "View my leave credit requests"
     }
   },
   "leaveTracker": {
@@ -12943,8 +12946,7 @@
       "noRequests": "You have not submitted a Leave Credit request yet.",
       "statusHeading": "Status",
       "submittedOn": "Submitted"
-    },
-    "viewMyRequests": "View my leave credit requests"
+    }
   },
   "notices": {
     "pageTitle": "Notice Board",

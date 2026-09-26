@@ -2577,6 +2577,9 @@
       "cancelledAt": "已取消 {date}",
       "cancelledAutomaticallyAt": "取消已自动批准 · {date}",
       "cancellationRequestedAt": "申请取消于 {date}"
+    },
+    "replacementRequest": {
+      "viewMyRequests": "View my leave credit requests"
     }
   },
   "leaveTracker": {
@@ -12943,8 +12946,7 @@
       "noRequests": "You have not submitted a Leave Credit request yet.",
       "statusHeading": "Status",
       "submittedOn": "Submitted"
-    },
-    "viewMyRequests": "View my leave credit requests"
+    }
   },
   "notices": {
     "pageTitle": "公告栏",
