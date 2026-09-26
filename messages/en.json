@@ -11799,10 +11799,14 @@
       "colTaxExempt": "Tax-exempt",
       "colExcess": "Excess (taxable)",
       "colRemaining": "Remaining",
-      "totalExemptCounted": "Exempt allowances counted (C2)",
-      "totalEpfCounted": "EPF and approved funds counted (C3)",
+      "totalExemptCounted": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
+      "totalEpfCounted": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
       "totalNetRemuneration": "Accumulated Net Remuneration",
-      "totalCappedNote": "You keyed RM {entered} across C2 and C3; RM {counted} counts towards Accumulated Net Remuneration. The difference is above the statutory limits and stays taxable."
+      "totalCappedNote": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
+      "totalGross": "Gross remuneration (C1)",
+      "totalLessExempt": "Less tax-exempt allowances (C2)",
+      "totalLessEpf": "Less EPF and approved funds (C3)",
+      "totalExcessNote": "Of the RM {entered} keyed across C2 and C3, RM {exempt} is within the statutory limits and comes off the figure above. The remaining RM {excess} is above the limits, stays in Accumulated Net Remuneration and is taxed once."
     }
   },
   "payRule": {

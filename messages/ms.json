@@ -11799,10 +11799,14 @@
       "colTaxExempt": "Dikecualikan cukai",
       "colExcess": "Lebihan (bercukai)",
       "colRemaining": "Baki",
-      "totalExemptCounted": "Elaun dikecualikan yang dikira (C2)",
-      "totalEpfCounted": "KWSP dan kumpulan wang diluluskan yang dikira (C3)",
+      "totalExemptCounted": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
+      "totalEpfCounted": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
       "totalNetRemuneration": "Saraan Bersih Terkumpul",
-      "totalCappedNote": "Anda memasukkan RM {entered} bagi C2 dan C3; RM {counted} dikira ke dalam Saraan Bersih Terkumpul. Bakinya melebihi had berkanun dan kekal bercukai."
+      "totalCappedNote": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
+      "totalGross": "Saraan kasar (C1)",
+      "totalLessExempt": "Tolak elaun dikecualikan cukai (C2)",
+      "totalLessEpf": "Tolak KWSP dan kumpulan wang diluluskan (C3)",
+      "totalExcessNote": "Daripada RM {entered} yang dimasukkan bagi C2 dan C3, RM {exempt} berada dalam had berkanun dan ditolak daripada angka di atas. Baki RM {excess} melebihi had, kekal dalam Saraan Bersih Terkumpul dan dikenakan cukai sekali sahaja."
     }
   },
   "payRule": {

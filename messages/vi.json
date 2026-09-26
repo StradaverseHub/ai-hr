@@ -11799,10 +11799,14 @@
       "colTaxExempt": "Được miễn thuế",
       "colExcess": "Phần vượt (chịu thuế)",
       "colRemaining": "Còn lại",
-      "totalExemptCounted": "Phụ cấp miễn thuế được tính (C2)",
-      "totalEpfCounted": "EPF và quỹ được phê duyệt được tính (C3)",
+      "totalExemptCounted": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
+      "totalEpfCounted": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
       "totalNetRemuneration": "Thù lao ròng lũy kế",
-      "totalCappedNote": "Bạn đã nhập RM {entered} cho C2 và C3; RM {counted} được tính vào Thù lao ròng lũy kế. Phần chênh lệch vượt giới hạn luật định và vẫn chịu thuế."
+      "totalCappedNote": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
+      "totalGross": "Thù lao gộp (C1)",
+      "totalLessExempt": "Trừ phụ cấp được miễn thuế (C2)",
+      "totalLessEpf": "Trừ EPF và quỹ được phê duyệt (C3)",
+      "totalExcessNote": "Trong RM {entered} đã nhập cho C2 và C3, RM {exempt} nằm trong giới hạn luật định và được trừ khỏi con số phía trên. Phần còn lại RM {excess} vượt giới hạn, vẫn nằm trong Thù lao ròng lũy kế và chịu thuế một lần."
     }
   },
   "payRule": {

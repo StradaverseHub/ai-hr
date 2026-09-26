@@ -11799,10 +11799,14 @@
       "colTaxExempt": "ได้รับยกเว้นภาษี",
       "colExcess": "ส่วนเกิน (ต้องเสียภาษี)",
       "colRemaining": "คงเหลือ",
-      "totalExemptCounted": "เงินช่วยเหลือที่ได้รับยกเว้นซึ่งนำมาคำนวณ (C2)",
-      "totalEpfCounted": "EPF และกองทุนที่ได้รับอนุมัติซึ่งนำมาคำนวณ (C3)",
+      "totalExemptCounted": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
+      "totalEpfCounted": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
       "totalNetRemuneration": "ค่าตอบแทนสุทธิสะสม",
-      "totalCappedNote": "คุณกรอก RM {entered} ใน C2 และ C3 โดยนำ RM {counted} ไปคำนวณเป็นค่าตอบแทนสุทธิสะสม ส่วนต่างเกินเพดานตามกฎหมายและยังต้องเสียภาษี"
+      "totalCappedNote": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
+      "totalGross": "ค่าตอบแทนรวม (C1)",
+      "totalLessExempt": "หัก เงินช่วยเหลือที่ได้รับยกเว้นภาษี (C2)",
+      "totalLessEpf": "หัก EPF และกองทุนที่ได้รับอนุมัติ (C3)",
+      "totalExcessNote": "จากจำนวน RM {entered} ที่กรอกใน C2 และ C3 มี RM {exempt} ที่อยู่ในเพดานตามกฎหมายและถูกหักออกจากตัวเลขด้านบน ส่วนที่เหลือ RM {excess} เกินเพดาน จะยังคงอยู่ในค่าตอบแทนสุทธิสะสมและเสียภาษีเพียงครั้งเดียว"
     }
   },
   "payRule": {
