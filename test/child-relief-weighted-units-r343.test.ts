@@ -208,7 +208,18 @@ function gateModes(rel: string): string[] {
     if (!line.includes('childReliefMode ===') && !line.includes('childReliefMode !==')) return;
     // The gate's own statement, not the whole file: the conditional line plus the two lines on either side,
     // which is where the amount call and any added mode sit.
-    const window = lines.slice(Math.max(0, i - 2), i + 3).join('\n');
+    const raw = lines.slice(Math.max(0, i - 2), i + 3);
+    // ⚠️ COMMENTS ARE STRIPPED BEFORE THE SCAN, AND THAT IS NOT A DETAIL. The loose literal pattern
+    // below deliberately catches a mode added in a nearby EXPRESSION, but it cannot tell an expression
+    // from prose: a comment reading "a 'manual' figure is priced by num_children" beside the gate made
+    // this file's set read ['auto_table', 'manual'] and failed the agreement test below with text
+    // telling the reader three gates had diverged when nothing had been widened. A guard that
+    // false-positives with a misdirecting message is worse than no guard, and the next round's own
+    // hand-fix is expected to add exactly such comments here.
+    const window = raw
+      .map((l) => l.replace(/\/\*.*?\*\//g, '').replace(/(^|[^:])\/\/.*$/, '$1'))
+      .filter((l) => !/^\s*(\*|\/\*)/.test(l))
+      .join('\n');
     if (!/childReliefAmount/.test(window)) return;
     for (const m of window.matchAll(/childReliefMode\s*[!=]==\s*'([a-z_]+)'/g)) modes.add(m[1]);
     for (const m of window.matchAll(/'(auto|auto_table|manual)'/g)) modes.add(m[1]);
