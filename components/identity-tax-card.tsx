@@ -78,6 +78,11 @@ export type ChildReliefPricing = {
   /** Eligible children carrying no relief category: they would contribute nothing to a category-priced
    *  figure, so a reader must know they exist before trusting one. */
   uncategorisedChildren: number;
+  /** r343 04b88724 — the s.48 WEIGHTED qualifying-children count the categories on file come to (1 / 4 / 8,
+   *  half for a 50%-shared child), from `core/dependents.ts eligibleChildReliefUnits`. */
+  ruleUnits: number;
+  /** r343 04b88724 — the ringgit `ruleUnits` prices at, from the same one pack call. */
+  ruleReliefRM: number;
 
   // ── WHAT THE STORED RECORD ACTUALLY DEDUCTS (r340 fix pass) ───────────────────────────────────────
   // The six fields below are `qualifyingChildReliefFor`'s own answer for the SAVED employee. The first
@@ -275,6 +280,20 @@ export function IdentityTaxCard({
         : whole(numChildren);
   const qualifying = figure?.units ?? headCount;
   const reliefRM = figure?.amountRM ?? 0;
+  // ── r343 FIX PASS — THE WEIGHTING GAP, SIGNED, BECAUSE IT HAS TWO DIRECTIONS ──────────────────────
+  // `ruleUnits` is what the s.48 categories on file come to (1 / 4 / 8, HALVED for a 50% claim share);
+  // `qualifying` is what the calculation actually gives, which in 'auto' is one unit per eligible child.
+  //   positive ⇒ the rules call for MORE than the payslip gives  ⇒ PCB OVER-deducted (the reported case:
+  //              a disabled child in higher education is relieved as one child instead of eight);
+  //   negative ⇒ the rules call for LESS                          ⇒ PCB UNDER-deducted. Reachable and, until
+  //              this pass, SILENT: a child recorded at a 50% claim share is half a unit to the rules and a
+  //              whole child to the head count, so an 'auto' employee with one 50%-shared child is relieved
+  //              RM2,000 where the categories support RM1,000.
+  // A TOLERANCE RATHER THAN `!==`: a half share makes both sides fractional, and float equality on a
+  // derived figure would put an amber warning on a difference of 1e-15.
+  const ruleUnitsGap = (childRelief?.ruleUnits ?? qualifying) - qualifying;
+  const weightingGap: 'under' | 'over' | null =
+    Math.abs(ruleUnitsGap) < 0.0005 ? null : ruleUnitsGap > 0 ? 'under' : 'over';
   // IS THE STORED TAX FIGURE BEHIND THE FAMILY RECORDS? Only a record STORED as 'auto' can be: the
   // server-side sync fires on a dependent add / edit / archive, so a child simply ageing past 18 moves the
   // eligible count and leaves `num_children` — the figure the payslip uses — where it was. `childRelief.mode`
@@ -667,6 +686,40 @@ export function IdentityTaxCard({
               {mode === 'auto' && (
                 <p className="mt-2 text-xs text-muted-foreground" data-child-auto-units-note>
                   {t('childQualifyingAutoUnitsNote')}
+                </p>
+              )}
+              {/* ── r343 04b88724 — THE GAP, NAMED, IN THE MODE WHERE IT COSTS MONEY ────────────────────
+                  The reporter is right about the rule: s.48 counts a child 18+ in diploma-or-above study,
+                  and a disabled child, as FOUR children, and a disabled child in that study as EIGHT. In
+                  'auto' mode the kernel's child leg is `num_children × perChild`, so those children are
+                  relieved as ONE each and the employee's monthly PCB is OVER-deducted.
+                  WHY THIS IS A SENTENCE AND NOT A DIFFERENT NUMBER IN THE TOTAL: the total above is what the
+                  payslip deducts, and replacing it with the weighted figure would print an amount this
+                  repo's own kernel contradicts (CLAUDE.md §8, and the r340 defect this card was rebuilt to
+                  stop). So both are shown, each labelled with what it is.
+                  ⚠️ BOTH DIRECTIONS, AND A DIFFERENT SENTENCE FOR EACH (r343 fix pass). The first version of
+                  this note fired only on `ruleUnits > qualifying` while its comment claimed it fired
+                  "whenever the two differ" — and the OTHER direction is real: a child recorded at a 50%
+                  claim share is half a unit to the rules and a whole child to the head count, so that
+                  employee is OVER-relieved and their PCB UNDER-deducted, with the card saying nothing. The
+                  two directions do not share a sentence, because "your tax is over-deducted" printed on an
+                  under-deduction is worse than silence. See `weightingGap` above for the arithmetic.
+                  Absent when the two agree — on a register of whole-claim under-18 children they do, and an
+                  amber warning on a correct figure teaches the reader to ignore the one that matters. */}
+              {mode === 'auto' && childRelief.mode === 'auto' && weightingGap != null && (
+                <p
+                  className="mt-2 text-xs text-amber-700 dark:text-amber-400"
+                  data-child-auto-weighting-gap
+                  data-child-auto-weighting-gap-direction={weightingGap}
+                >
+                  {t(
+                    weightingGap === 'under' ? 'childQualifyingWeightingGap' : 'childQualifyingWeightingGapOver',
+                    {
+                      ruleUnits: fmtCount(childRelief.ruleUnits),
+                      ruleAmount: fmtRM(childRelief.ruleReliefRM),
+                      amount: fmtRM(reliefRM),
+                    },
+                  )}
                 </p>
               )}
               {childRelief.uncategorisedChildren > 0 && (

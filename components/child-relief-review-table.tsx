@@ -28,6 +28,10 @@ const money = (n: number) =>
 /** Signed, so "less relief" reads as less at a glance and never as an unexplained smaller number. */
 const signedMoney = (n: number) => (n > 0 ? `+${money(n)}` : money(n));
 
+/** A signed whole count, on the same principle: the '+' is DERIVED from the value, so a negative difference
+ *  prints as "-2" rather than as the "+-2" a hardcoded plus sign would produce. */
+const signedCount = (n: number) => (n > 0 ? `+${n}` : String(n));
+
 /**
  * THE AMOUNTS EVERY FIGURE ON THE SCREEN WAS PRICED WITH — and the caveat that must travel with them.
  *
@@ -187,6 +191,128 @@ export function ChildReliefReviewTable({ rows }: { rows: ChildReliefReviewTableR
                   </>
                 )}
               </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * ═══ r343, item 03f89c0f — TYPED CHILD COUNTS THAT DISAGREE WITH THE FAMILY RECORD ═══
+ *
+ * Measured on production 2026-09-26: 22 employees on 'manual' carry a typed child count ABOVE the children
+ * on file, none below, five agree. Between them that is 52 children who appear in no Family record, and at
+ * RM2,000 of relief each, RM104,000 of relief the records do not support. Seven of the 22 have been paid.
+ * Relief reduces chargeable income, so too much relief means too little PCB deducted every month.
+ *
+ * ⚠️ A TYPED FIGURE IS NOT A DEFECT, AND THIS TABLE MUST NEVER CALL IT ONE. 'manual' is a legitimate,
+ * deliberate setting. Some of those 52 children are probably real and were simply never entered into the
+ * Family register — in which case the typed figure is RIGHT and the record is what is incomplete. Nothing
+ * here can tell those two cases apart, so every row is worded as a DISAGREEMENT to look at and never as an
+ * error to clear.
+ *
+ * ⚠️ NO BULK ACTION, DELIBERATELY. There is no "fix all", no checkbox, no Apply. 52 children whose reality
+ * nobody has established is the worst possible thing to change in one click, and correcting a figure RAISES
+ * that employee's PCB from the next run. The only interactive element is a link to one person's record — the
+ * same posture the report above it takes, for the same reason.
+ *
+ * ⚠️ HEAD COUNT AGAINST HEAD COUNT, AND THE CAPTION ON THE PAGE SAYS SO. `num_children` is a head count
+ * (Form E, CP8D and the EA statement all read it as one) while the Family register carries per-child s.48
+ * categories that weight 1 / 4 / 8. Both columns here count CHILDREN, one per child. Comparing a head count
+ * against a weighted count is a different question and would make the difference column meaningless.
+ *
+ * CLIENT ISLAND for the same reason the table above is one: `pnpm db:seed` creates no employee with
+ * children, so a dev-server render check can only ever reach this screen's empty state. The six-locale
+ * proof is test/child-relief-disagreement-locales-r343.dom.test.tsx (the r343 fix pass corrected this
+ * pointer: it named a `-03f89c0f` file that has never existed). WHICH ROWS reach this table — and the
+ * Card's two headline figures above it — is a separate question and is pinned against a real database by
+ * test/child-relief-disagreement-subset-r343.test.ts; the copy on that Card resolves through next-intl in
+ * all six locales in test/child-relief-disagreement-locales-r343.dom.test.tsx.
+ */
+export type ChildReliefDisagreementRow = {
+  personId: string;
+  name: string;
+  jobs: { employmentId: string; employeeCode: string | null; company: string }[];
+  /** `num_children` as typed — a HEAD COUNT. */
+  numChildren: number;
+  /** Eligible child rows on the Family register — also a HEAD COUNT, one per child. */
+  familyEligible: number;
+  /** How many of those carry a recorded s.48 relief category. Shown so the reader knows how complete the
+   *  record they are being asked to judge actually is. */
+  familyCategorised: number;
+  /** `numChildren − familyEligible`. Positive on every row this table lists. */
+  typedExcess: number | null;
+  /** Relief the typed figure claims today (RM). */
+  todayRM: number;
+  /** Relief the children on file support, on the same head-count basis (RM). */
+  recordRM: number;
+  /** Relief carried by the difference (RM) — priced by the pack, never by a constant in this island. */
+  excessRM: number;
+};
+
+export function ChildReliefDisagreementTable({ rows }: { rows: ChildReliefDisagreementRow[] }) {
+  const t = useTranslations('people.childRelief');
+  return (
+    <div className={tableWrapCls}>
+      <table className="w-full text-sm">
+        <thead className={theadCls}>
+          <tr>
+            <th className={thCls}>{t('colEmployee')}</th>
+            <th className={`${thCls} text-right`}>{t('disagreeColTyped')}</th>
+            <th className={`${thCls} text-right`}>{t('disagreeColOnFile')}</th>
+            <th className={`${thCls} text-right`}>{t('disagreeColDifference')}</th>
+            <th className={`${thCls} text-right`}>{t('disagreeColTypedRM')}</th>
+            <th className={`${thCls} text-right`}>{t('disagreeColRecordRM')}</th>
+            <th className={`${thCls} text-right`}>{t('disagreeColUnsupportedRM')}</th>
+          </tr>
+        </thead>
+        <tbody className={tbodyCls}>
+          {rows.map((r) => (
+            <tr key={r.personId} className="align-top" data-disagreement-row>
+              <td className="px-3 py-2">
+                <span className="font-medium text-foreground">{r.name}</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {r.jobs.map((j) => [j.employeeCode, j.company].filter(Boolean).join(' · ')).join(' / ')}
+                </span>
+                {/* The way in to ONE record at a time — which is the whole point: the corrections are the
+                    reader's to make one person at a time, with the reasons in front of them. */}
+                {r.jobs.map((j) => (
+                  <a
+                    key={j.employmentId}
+                    href={`/admin/personnel/${j.employmentId}?tab=bankStatutory`}
+                    className="mt-1 mr-2 inline-block text-xs font-medium text-primary underline underline-offset-2"
+                  >
+                    {t('openRecord')}
+                  </a>
+                ))}
+              </td>
+              <td className="px-3 py-2 text-right tabular-nums">{r.numChildren}</td>
+              <td className="px-3 py-2 text-right tabular-nums">
+                {r.familyEligible}
+                {/* How complete the record is. A reader deciding whether the typed figure or the record is
+                    right needs to know the record may be half-keyed. */}
+                {r.familyCategorised < r.familyEligible && (
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {t('disagreeCategorised', { done: r.familyCategorised, total: r.familyEligible })}
+                  </span>
+                )}
+              </td>
+              {/* THE SIGN COMES FROM THE NUMBER, not from what this table expects to be handed. Every row
+                  the screen passes is a figure typed ABOVE the record (core/child-relief-review.ts filters
+                  on `typedExcess > 0`, pinned by test/child-relief-disagreement-subset-r343.test.ts), so in
+                  practice this always prints '+'. It used to print a literal '+' in front of the value,
+                  which would have rendered a widened filter as "+-2" — a wrong number, on a money screen,
+                  from a caller-side change with nothing to stop it. */}
+              <td className="px-3 py-2 text-right font-medium tabular-nums">
+                {signedCount(r.typedExcess ?? 0)}
+              </td>
+              <td className="px-3 py-2 text-right tabular-nums">{money(r.todayRM)}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{money(r.recordRM)}</td>
+              {/* NOT coloured as an error. It is the size of a disagreement, and the caption above says the
+                  record is as likely to be the incomplete half as the figure. */}
+              <td className="px-3 py-2 text-right tabular-nums">{money(r.excessRM)}</td>
             </tr>
           ))}
         </tbody>

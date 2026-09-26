@@ -2,7 +2,11 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { childReliefReview } from '@/core/child-relief-review';
 import { Card, PageHeader, pageWideCls } from '@/components/ui';
-import { ChildReliefAmountsCard, ChildReliefReviewTable } from '@/components/child-relief-review-table';
+import {
+  ChildReliefAmountsCard,
+  ChildReliefDisagreementTable,
+  ChildReliefReviewTable,
+} from '@/components/child-relief-review-table';
 
 /**
  * 99b2d6c0 (r336) — CHILD RELIEF REVIEW (PCB).
@@ -141,6 +145,62 @@ export default async function ChildReliefReviewPage() {
             perChild={view.perChild}
             categories={view.categoryAmounts}
           />
+        </Card>
+      )}
+
+      {/* ══ r343 03f89c0f — TYPED CHILD COUNTS ABOVE THE FAMILY RECORD ═══════════════════════════════
+          Measured on production 2026-09-26: 22 employees on 'manual' type a child count ABOVE the children
+          on file, 0 below, 5 agree — 52 children carrying RM104,000 of relief that no Family record
+          supports, and 7 of the 22 have already been paid. Nobody had reported it; the r341 round that made
+          this figure say whether it was worked out or entered is what made it visible at all.
+
+          ⚠️ IT IS A DECISION, NOT A DEFECT, AND THE CAPTION HAS TO CARRY THAT. A typed figure is legitimate;
+          some of those 52 children are probably real and simply never entered, in which case the typed
+          number is right and the RECORD is incomplete. Nothing in this system can tell which. So this
+          section changes nobody, offers no bulk action, and is worded throughout as a disagreement to look
+          at rather than an error to clear.
+
+          ⚠️ IT SAYS WHICH COUNT THE COLUMNS ARE. num_children is a HEAD COUNT (Form E, CP8D and EA read it
+          as one); the Family register carries per-child s.48 categories weighting 1 / 4 / 8. Head against
+          head is the right comparison for THIS question, and the caption says so, because a reader who
+          assumed the weighted count would read the difference column as meaning something it does not.
+
+          ⚠️ IT DOES NOT RECOMMEND AUTO YET. Auto derives the head count from the record, which fixes the
+          drift — but item 04b88724's weighting has NOT reached the payroll calculation (core/dependents.ts
+          `eligibleChildReliefUnits` records exactly what is still missing), so Auto today still relieves a
+          higher-education or disabled child as one child. The note says that plainly instead of sending
+          somebody to a setting that is only right for under-18 and pre-university children. */}
+      {view.recordDisagreement.people.length > 0 && (
+        <Card className="p-5">
+          <h2 className="text-sm font-semibold">{t('disagreeTitle')}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t('disagreeDescription')}</p>
+          <div className="mt-4 flex flex-wrap items-end gap-8">
+            <div>
+              <p className="text-3xl font-semibold tabular-nums">{view.recordDisagreement.people.length}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t('disagreeStatPeople')}</p>
+            </div>
+            <div>
+              <p className="text-3xl font-semibold tabular-nums">{view.recordDisagreement.excessChildren}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t('disagreeStatChildren')}</p>
+            </div>
+            <div>
+              <p className="text-2xl font-semibold tabular-nums">
+                {money(view.recordDisagreement.excessReliefRM)}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">{t('disagreeStatReliefRM')}</p>
+            </div>
+          </div>
+          <ul className="mt-4 space-y-1.5 border-t border-border pt-3 text-sm text-muted-foreground">
+            <li>{t('disagreeHeadCountNote')}</li>
+            <li>{t('disagreeNotAnErrorNote')}</li>
+            <li>{t('disagreeNoBulkNote')}</li>
+            <li>{t('disagreeAutoCaveatNote')}</li>
+          </ul>
+        </Card>
+      )}
+      {view.recordDisagreement.people.length > 0 && (
+        <Card className="overflow-hidden">
+          <ChildReliefDisagreementTable rows={view.recordDisagreement.people} />
         </Card>
       )}
 

@@ -1615,7 +1615,9 @@
       "childQualifyingUncategorised": "{count} eligible child(ren) carry no relief category, so they would add nothing to a figure priced by category.",
       "childQualifyingRuleset": "Priced by statutory ruleset {version}.",
       "childQualifyingItemChildren": "{count} child(ren)",
-      "childQualifyingStaleFamily": "The PCB calculation still uses {stored} child(ren) — the figure last worked out from the Family records. The records now hold {eligible} eligible child(ren). Saving this card brings the tax figure back in step."
+      "childQualifyingStaleFamily": "The PCB calculation still uses {stored} child(ren) — the figure last worked out from the Family records. The records now hold {eligible} eligible child(ren). Saving this card brings the tax figure back in step.",
+      "childQualifyingWeightingGap": "The official relief categories recorded against these children add up to {ruleUnits} qualifying children — {ruleAmount} of relief — because a child 18+ in diploma or degree study, and a disabled child, each count as four, and a disabled child in that study as eight. Auto (from Family records) claims {amount}, counting every child as one, so this employee’s monthly tax is over-deducted. Auto (from table) is the mode that prices the categories today.",
+      "childQualifyingWeightingGapOver": "The official relief categories recorded against these children add up to {ruleUnits} qualifying children — {ruleAmount} of relief — which is LESS than Auto (from Family records) is claiming: {amount}. Auto counts every child as one whole child, so a child whose claim share is recorded as 50% (the other half claimed by the other parent) is still counted in full. This employee’s monthly tax is therefore under-deducted, and the shortfall is settled at the annual assessment. Auto (from table) is the mode that prices the categories and the claim shares today."
     },
     "import": {
       "title": "นำเข้าพนักงาน",
@@ -1979,7 +1981,23 @@
       "openRecord": "เปิดระเบียน",
       "emptyTitle": "ไม่มีพนักงานปัจจุบันคนใดที่บันทึกบุตรไว้เพื่อขอลดหย่อนภาษี",
       "emptyBody": "รายการนี้ครอบคลุมพนักงานปัจจุบันที่ระเบียนภาษีระบุจำนวนบุตร หรือผู้ที่ใช้ตารางหมวดหมู่อยู่แล้ว บันทึกจำนวนบุตรในแท็บธนาคารและข้อกำหนดตามกฎหมายของพนักงาน แล้วพวกเขาจะปรากฏที่นี่",
-      "shareNote": "บุตรที่ไม่ได้บันทึกสัดส่วนการขอลดหย่อนจะนับเป็นการขอเต็ม 100% ซึ่งเป็นค่าเริ่มต้น ส่วนบุตรที่บันทึกไว้ที่ 50% มีมูลค่าครึ่งหนึ่งของจำนวนเงินในหมวดหมู่นั้น"
+      "shareNote": "บุตรที่ไม่ได้บันทึกสัดส่วนการขอลดหย่อนจะนับเป็นการขอเต็ม 100% ซึ่งเป็นค่าเริ่มต้น ส่วนบุตรที่บันทึกไว้ที่ 50% มีมูลค่าครึ่งหนึ่งของจำนวนเงินในหมวดหมู่นั้น",
+      "disagreeTitle": "Typed child counts above the Family record",
+      "disagreeDescription": "These employees have a child count entered by hand on their tax record that is higher than the children on file for them. Nothing here has been changed and nothing on this page changes it.",
+      "disagreeStatPeople": "Employees to look at",
+      "disagreeStatChildren": "Children the records do not account for",
+      "disagreeStatReliefRM": "Relief those children carry (RM)",
+      "disagreeHeadCountNote": "Both counts are a plain number of children, one per child. The entered figure is the head count that Form E, CP8D and the EA statement read, and the column beside it counts the children on file the same way. The official relief categories, which count some children as four or eight, are a separate question and are not used in either column.",
+      "disagreeNotAnErrorNote": "An entered figure is not a mistake. There are good reasons to enter one, and an employee may genuinely have children who were never added to the Family record — in which case the figure is right and the record is what is incomplete. This list only says the two disagree; it does not say which one is wrong.",
+      "disagreeNoBulkNote": "There is deliberately no way to change these in one go. Correcting a figure raises that employee’s tax from the next payroll run, and it does not touch payslips already issued, so each one is a decision to make on its own record with the reasons in front of you.",
+      "disagreeAutoCaveatNote": "Auto (from Family records) is the durable answer for anyone whose Family record is complete, because the figure then follows the record. Be aware that today it counts every child as one, so it is right for a child under 18 or in pre-university study and still under-claims for a child in diploma or degree study and for a disabled child.",
+      "disagreeColTyped": "Entered on the tax record",
+      "disagreeColOnFile": "Children on file",
+      "disagreeColDifference": "Difference",
+      "disagreeColTypedRM": "Relief on the entered figure (RM)",
+      "disagreeColRecordRM": "Relief the children on file support (RM)",
+      "disagreeColUnsupportedRM": "Difference in relief (RM)",
+      "disagreeCategorised": "{done} of {total} have a relief category recorded."
     }
   },
   "leave": {

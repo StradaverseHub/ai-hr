@@ -81,6 +81,10 @@ const PRICING: ChildReliefPricing = {
   qualifyingChildren: 0,
   reliefRM: 0,
   breakdown: [],
+  // r343 04b88724 — the s.48 WEIGHTED figure from the children on file. Zero here because this fixture's
+  // Family register carries no relief categories; the gap note is asserted from its own fixture.
+  ruleUnits: 0,
+  ruleReliefRM: 0,
 };
 
 function renderCard(over: {
