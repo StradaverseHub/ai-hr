@@ -21,18 +21,19 @@ import { leaveCreditDayFactsAction, submitLeaveCreditRequestAction } from './act
 /**
  * r343 cbfa8b0b · MY ABSENCE › LEAVE CREDIT REQUEST (`/leave/credit`).
  *
- * ── WHY THIS IS A SCREEN AND NOT THE r336 MODAL ─────────────────────────────────────────────────────────
+ * ── WHAT THIS SCREEN IS, AND WHY IT IS NOT A SECOND WAY TO ASK ──────────────────────────────────────────
  * The reporter's contest asks for ONE screen holding all four day types in ONE request table — "Do not
  * create separate sections/screens for these day types" — and for the requests already submitted to be
- * displayed in that same table. r336's modal is two sections inside a dialog, and a nine-column table with
- * a per-row conditional and a submitted-requests list beneath it does not belong in a dialog at 95vw. So
- * the single table gets a route of its own, off My Absence.
+ * displayed in that same table. This screen is the second half: the form ABOVE is the very same component
+ * the My Absence dialog opens (`LeaveCreditRequestTable`, imported, never copied), and the table BELOW is
+ * what has already been submitted, which is the part that cannot live inside a dialog.
  *
- * ⚠️ WHAT THIS PAGE DOES NOT DO, RECORDED RATHER THAN LEFT TO BE DISCOVERED: it does not remove the r336
- * two-section modal from app/leave/page.tsx, which is still mounted there. Both surfaces write through the
- * same service and the same tables, so neither can corrupt the other — but the product currently offers two
- * ways to ask for one thing, and the modal is the one the reporter reversed. Retiring it is an edit to
- * app/leave/page.tsx and components/leave/replacement-leave-request-dialog.tsx.
+ * ⚠️ r343 FIX PASS — THE r336 TWO-SECTION MODAL IS GONE, NOT MERELY UNMOUNTED. The first cut of this round
+ * added this screen and left that modal on app/leave/page.tsx, so the product offered two ways to ask for one
+ * credit and the prominent one was the design the reporter had just rejected. The dialog's BODY is now this
+ * same single table (components/leave/replacement-leave-request-dialog.tsx is a shell around it) and its
+ * trigger is untouched, so the button the employee already knows opens the form they asked for and the
+ * submission lands back HERE, with the toast and the new request in the list below.
  *
  * ── GATED ON THE `toil` MODULE ENTITLEMENT, NOT ON TOIL_ENABLED ─────────────────────────────────────────
  * ADR-0077 slice 3; core/toil.ts's header records that `TOIL_ENABLED` is set in no tracked env file and is

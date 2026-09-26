@@ -78,6 +78,22 @@ describe('r343 · the four options and the per-row conditional', () => {
     for (const d of ['rest_day', 'off_day', 'holiday'] as const) expect(sourceTypeForDayType(d), d).toBe('non_working_day');
   });
 
+  /**
+   * THE TWO VOCABULARIES ARE SET-EQUAL, AT RUNTIME, AGAINST THE COLUMN'S OWN ENUM.
+   *
+   * ⚠️ ADDED IN r343's FIX PASS. core/leave-credit-request.ts used to claim a compile-time pin here that it
+   * did not have: `LEAVE_CREDIT_DAY_TYPES satisfies readonly ToilWorkedDayKind[]` is one-directional, so a
+   * FIFTH roster kind satisfied it unchanged and the dropdown would have gone on offering four options for
+   * a roster that answers five. The type-level check is now bidirectional (two `Exclude`s), and this case is
+   * its runtime twin — because a type error is invisible to `vitest`, and `toilWorkedDayKindEnum` is what the
+   * `worked_day_kind` column actually accepts. Widen the pg enum and this fails by name.
+   */
+  it('the four options are the roster vocabulary itself — set-equal to toil_worked_day_kind, both ways', () => {
+    const roster = [...schema.toilWorkedDayKindEnum.enumValues].sort();
+    expect([...LEAVE_CREDIT_DAY_TYPES].sort()).toEqual(roster);
+    for (const kind of roster) expect(isLeaveCreditDayType(kind), kind).toBe(true);
+  });
+
   it('a value that is not one of the four is not a day type', () => {
     for (const v of ['', 'weekend', 'WORKDAY', null, undefined, 7]) expect(isLeaveCreditDayType(v), String(v)).toBe(false);
   });
@@ -141,7 +157,6 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
 
   it('no visible date / time / select control carries a posted name — the row state is the only source', () => {
     const src = read(TABLE_TSX);
-    for (const bad of ['type="date"\n', 'type="time"\n']) void bad;
     // A `name=` on a control that can be disabled is the defect. The only named controls in the form are
     // the hidden row fields plus the three whole-form fields, none of which is ever disabled.
     const named = [...src.matchAll(/name="([a-zA-Z]+)"/g)].map((m) => m[1]);
@@ -150,11 +165,52 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
     );
   });
 
+  /**
+   * ⚠️ STRENGTHENED IN r343's FIX PASS — THE SET ABOVE CANNOT SEE A DOUBLE-POSTED FIELD.
+   *
+   * `new Set` deduplicates, so adding `name="claimStart"` to the VISIBLE time input while KEEPING the hidden
+   * one leaves the set identical and passes. That is not a theoretical shape: it posts TWO values for one
+   * row whenever the cell is enabled and ONE when it is disabled, which breaks the action's by-index zip
+   * from the other direction — the same defect the hidden inputs exist to prevent, arrived at by addition
+   * instead of omission. Verified against the real failure: the adversarial verifier's revert 3 (hidden
+   * input deleted, name moved onto the visible input) passed the set assertion and was caught only by the
+   * `type="hidden"` case. COUNTING is what closes both directions at once.
+   */
+  it('each of the five row fields is posted EXACTLY ONCE, and that one occurrence is the hidden input', () => {
+    const src = read(TABLE_TSX);
+    for (const name of ['workedDate', 'dayType', 'days', 'claimStart', 'claimEnd']) {
+      const all = (src.match(new RegExp(`name="${name}"`, 'g')) ?? []).length;
+      const hidden = (src.match(new RegExp(`type="hidden" name="${name}"`, 'g')) ?? []).length;
+      expect(all, `${name}: one posted occurrence, not ${all} — two would post two values per row`).toBe(1);
+      expect(hidden, `${name}: its one occurrence must be the hidden input`).toBe(1);
+    }
+  });
+
   it('the per-row conditional is expressed as DISABLED cells driven by the chosen day type', () => {
     const src = read(TABLE_TSX);
-    expect(src).toContain('disabled={!wantsWindow}');
+    // Three states, one per cell group: the Days cell is live when the row DECLARES days; the claimed-window
+    // cells are live only when the row wants a window AND the company can credit one (`windowLive`) — the
+    // fix-pass split, because the Ordinary Day option is now offered to companies that cannot credit it.
+    expect(src).toContain('disabled={!windowLive}');
     expect(src).toContain('disabled={!declaresDays}');
+    expect(src).toContain('const windowLive = wantsWindow && !ordinaryUnavailable;');
     expect(src).toContain('claimsTimeWindow');
+  });
+
+  /**
+   * ⚠️ THE FIX-PASS PIN FOR THE FOURTH OPTION. The first cut filtered `LEAVE_CREDIT_DAY_TYPES` by the
+   * company's extended-hours switch, which is false by default on every company (migration 0486) — so the
+   * reporter's "exactly four options" rendered as three. The runtime proof is in
+   * test/r343-leave-credit-table.dom.test.tsx (four options with the tiers and without); this is the source
+   * shape, because a filter is easy to reintroduce and reads as a courtesy while it removes a requirement.
+   */
+  it('the dropdown is built from the WHOLE vocabulary — no company switch filters the option list', () => {
+    const src = read(TABLE_TSX);
+    expect(src).toContain('const dayTypeOptions = LEAVE_CREDIT_DAY_TYPES;');
+    expect(src).not.toMatch(/LEAVE_CREDIT_DAY_TYPES\s*\.\s*filter/);
+    // What the switch DOES decide, stated once: whether an Ordinary Day row can earn anything here.
+    expect(src).toContain('const ordinaryEarnsNothing = extendedHoursTiers == null;');
+    expect(src).toContain('ordinaryUnavailableRows.length > 0');
   });
 
   it('the screen composes its day-type labels from the dayKind keys that already exist in all six locales', () => {
@@ -165,6 +221,169 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
       expect(Object.keys(m.replacementRequest.dayKind).sort(), l).toEqual(['holiday', 'offDay', 'restDay', 'workday']);
       expect(typeof m.replacementRequest.table.rosterMismatch, l).toBe('string');
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// (2b) ONE EMPLOYEE SURFACE, NOT TWO.
+//
+// ⚠️ THIS BLOCK IS THE FIX-PASS PIN FOR THE ROUND'S WORST DEFECT, and nothing in the suite could see it
+// before. r343's first cut built the single table as a new screen at /leave/credit and LEFT r336's
+// two-section dialog mounted on My Absence — so the product offered two ways to ask for one credit, and the
+// prominent one was the layout the reporter had just rejected. Every guard was green: the new screen's tests
+// passed against the new screen, the r336 tests passed against the r336 modal, and the exact-set nav guards
+// passed precisely BECAUSE nothing had been added to nav. A duplicate surface is invisible to any test that
+// only ever looks at one surface, which is why these cases look at the wiring BETWEEN files (CLAUDE.md §8:
+// when a defect lives in the contract between two files, pin it across both).
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+describe('r343 · the employee has ONE Leave Credit surface, and it is the single table', () => {
+  const DIALOG_TSX = 'components/leave/replacement-leave-request-dialog.tsx';
+  const MY_LEAVE = 'app/leave/page.tsx';
+  const CREDIT_PAGE = 'app/leave/credit/page.tsx';
+
+  it('the My Absence dialog’s BODY is the single table — r336’s two sections are gone from it', () => {
+    const src = read(DIALOG_TSX);
+    expect(src).toContain('<LeaveCreditRequestTable');
+    expect(src).toContain("from './leave-credit-request-table'");
+    // The two sections, their own field names and their own totals. Any one of these coming back is the
+    // rejected design coming back — in the file the employee's own button opens.
+    for (const gone of [
+      'leave-credit-section-a',
+      'leave-credit-section-b',
+      'sectionA.title',
+      'sectionB.title',
+      'aWorkedDate',
+      'bWorkedDate',
+      'leave-credit-total-a',
+      'leave-credit-total-b',
+    ]) {
+      expect(src, `${gone} must not be in the dialog any more`).not.toContain(gone);
+    }
+  });
+
+  it('the trigger the employee already knows is still the only one, and it opens THAT dialog', () => {
+    const dialog = read(DIALOG_TSX);
+    expect(dialog).toContain('data-tour="replacement-leave-request"');
+    expect(dialog).toContain("{t('trigger')}");
+    const myLeave = read(MY_LEAVE);
+    expect(myLeave).toContain('<ReplacementLeaveRequestDialog');
+    // …and it posts through the SINGLE-TABLE action, not r336's two-section one.
+    expect(myLeave).toContain('submitAction={submitLeaveCreditRequestAction}');
+    expect(myLeave).toContain('dayFactsAction={leaveCreditDayFactsAction}');
+    expect(myLeave).not.toContain('submitAction={submitReplacementLeaveRequestAction}');
+    expect(myLeave).not.toContain('dayKindAction=');
+    expect(myLeave).not.toContain('extendedHoursAction=');
+  });
+
+  it('the /leave/credit screen renders the SAME component, imported — never a second copy of the form', () => {
+    const page = read(CREDIT_PAGE);
+    expect(page).toContain("from '@/components/leave/leave-credit-request-table'");
+    expect(page).toContain('<LeaveCreditRequestTable');
+    // A second copy would mean a second <form>, a second dropdown or a second set of posted names here.
+    expect(page).not.toContain('name="workedDate"');
+    expect(page).not.toContain('<select');
+    // Exactly one file in the product defines this form.
+    const defining = ['components/leave/leave-credit-request-table.tsx', DIALOG_TSX, CREDIT_PAGE, MY_LEAVE].filter((f) =>
+      read(f).includes('export function LeaveCreditRequestTable'),
+    );
+    expect(defining).toEqual(['components/leave/leave-credit-request-table.tsx']);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// (2c) WHAT THIS SCREEN SAYS IN SIX LOCALES — COUNTED, NOT ASSERTED AGAINST ITSELF.
+//
+// ⚠️ THE GUARD THIS REPLACES COULD NOT FAIL. The six-locale DOM test compares the rendered text with the
+// same catalogue it feeds the provider, so it passes whatever the words are: overwrite zh's `dayKind.restDay`
+// with "Rest day" and it stays green (the verifier proved exactly that). What can fail is a comparison
+// between the CATALOGUES: a key that is meant to be translated must differ from English in all five
+// non-English locales, and the keys that ship English must be a NAMED, FIXED set — so the English debt of
+// this screen cannot grow by accident, and a key that is translated today fails the day it turns English.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+describe('r343 · the translated keys are translated, and the English ones are named and counted', () => {
+  const SURFACE = [
+    'components/leave/leave-credit-request-table.tsx',
+    'components/leave/replacement-leave-request-dialog.tsx',
+    'app/leave/credit/page.tsx',
+  ];
+  const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
+  const CAT = Object.fromEntries(
+    LOCALES.map((l) => [l, JSON.parse(read(`messages/${l}.json`)).replacementRequest as Record<string, unknown>]),
+  ) as Record<(typeof LOCALES)[number], Record<string, unknown>>;
+  const at = (locale: (typeof LOCALES)[number], key: string) =>
+    key.split('.').reduce<unknown>((cur, part) => (cur && typeof cur === 'object' ? (cur as Record<string, unknown>)[part] : undefined), CAT[locale]);
+
+  /** Every `replacementRequest` key the three files of this surface actually render, comments stripped. */
+  const renderedKeys = () => {
+    const out = new Set<string>();
+    for (const f of SURFACE) {
+      const code = read(f)
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '');
+      for (const m of code.matchAll(/\bt\('([^']+)'/g)) out.add(m[1]);
+    }
+    return [...out].sort();
+  };
+
+  /**
+   * THE ENGLISH DEBT OF THIS SCREEN, NAMED. Nineteen keys read the same in all six catalogues: the eight
+   * `table.*` keys r343 added, and eleven this form already rendered in English before it. They are listed
+   * here so the number is a decision rather than an accident — the report for this round claimed the screen
+   * "composed from existing translated keys", and for the four day-type LABELS that is true, but these
+   * nineteen are English on the ms, ta, th, vi and zh screens and saying so is the honest half.
+   */
+  const ENGLISH_EVERYWHERE = [
+    'addRow',
+    'cancel',
+    'days',
+    'firstScheduleConsent',
+    'leaveType',
+    'reason',
+    'removeRow',
+    'table.dayTypeChoose',
+    'table.help',
+    'table.myRequests',
+    'table.noRequests',
+    'table.rosterMismatch',
+    'table.statusHeading',
+    'table.submittedOn',
+    'table.windowNotClaimed',
+    'totalDays',
+    'unit',
+    'unitDay',
+    'workedDate',
+  ];
+
+  it('the keys that ship English are EXACTLY the nineteen named above — a twentieth fails this case', () => {
+    const english = renderedKeys().filter((k) => {
+      const en = at('en', k);
+      return typeof en === 'string' && LOCALES.slice(1).every((l) => at(l, k) === en);
+    });
+    expect(english).toEqual(ENGLISH_EVERYWHERE);
+  });
+
+  it('every OTHER key this screen renders is genuinely different from English in all five locales', () => {
+    const shouldBeTranslated = renderedKeys().filter((k) => !ENGLISH_EVERYWHERE.includes(k));
+    // Non-vacuity: the four day-type labels and the ordinary-day refusal are in this set by construction.
+    for (const k of ['dayKind.restDay', 'dayKind.offDay', 'dayKind.holiday', 'dayKind.workday', 'workingDayRefused'])
+      expect(shouldBeTranslated, k).toContain(k);
+    for (const k of shouldBeTranslated) {
+      const en = at('en', k);
+      expect(typeof en, k).toBe('string');
+      for (const l of LOCALES.slice(1)) {
+        const v = at(l, k);
+        expect(typeof v, `${l}:${k}`).toBe('string');
+        expect(v, `${l}:${k} is still the English string — a deep merge over en.json cannot be told from a translation at runtime`).not.toBe(en);
+      }
+    }
+  });
+
+  it('the fourth day type’s "earns nothing here" sentence is a TRANSLATED key, not a new English one', () => {
+    // The Ordinary Day option is offered on every company (see the component header); what the switch
+    // decides is what it earns. `workingDayRefused` says exactly that and exists translated in all six.
+    expect(read(SURFACE[0])).toContain("t('workingDayRefused')");
+    expect(at('en', 'workingDayRefused')).toBe('An ordinary working day cannot earn a credit.');
+    for (const l of LOCALES.slice(1)) expect(at(l, 'workingDayRefused'), l).not.toBe(at('en', 'workingDayRefused'));
   });
 });
 

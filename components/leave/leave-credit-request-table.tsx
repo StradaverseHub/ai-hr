@@ -59,13 +59,32 @@ const emptyRow = (key: number): Row => ({ key, workedDate: '', dayType: '', days
  * which section they are in, and an approver reads one table.
  *
  * ── DAY TYPE IS AN INPUT NOW. ⚠️ DELIBERATE CHANGE FROM r336, WHICH MADE IT READ-ONLY ───────────────────
- * The dropdown carries exactly the four options the reporter listed, and its LABELS are composed from the
- * `dayKind` keys that already exist in all six locales rather than from new English strings — a new key
- * would have put "Ordinary Day" in English on the five translated screens beside three translated
- * neighbours. The roster then ADJUDICATES: a row whose chosen type is not what the roster holds is marked
- * here, with the roster's own answer named on the row, and refused again by the service
- * (`adjudicateDayTypes`, core/leave-credit-request.ts) because this component is one `curl` away from
- * being irrelevant.
+ * The dropdown carries EXACTLY FOUR OPTIONS AND ALWAYS THE SAME FOUR — Rest Day, Off Day, Public Holiday,
+ * Ordinary Day — whatever the company has switched on. The roster then ADJUDICATES: a row whose chosen type
+ * is not what the roster holds is marked here, with the roster's own answer named on the row, and refused
+ * again by the service (`adjudicateDayTypes`, core/leave-credit-request.ts) because this component is one
+ * `curl` away from being irrelevant.
+ *
+ * ⚠️ FIXED IN r343's FIX PASS: THE FOURTH OPTION USED TO DISAPPEAR, AND IT DISAPPEARED ON EVERY COMPANY.
+ * The first cut filtered Ordinary Day out of the list when the company had no extended-hours tiers. That
+ * switch is `NOT NULL DEFAULT false` (migration 0486), so the reporter — who asked for "exactly four
+ * options" — would have been shown three. A day type is a fact about the DATE, not a feature flag: a
+ * company that cannot yet CREDIT an ordinary day still has ordinary days, and an option that vanishes
+ * teaches the employee nothing. So the option stays and the ROW explains what it earns, through
+ * `workingDayRefused` ("An ordinary working day cannot earn a credit") — a key translated in all six
+ * locales that r336 left without a renderer when it moved to sections. The submit is blocked while such a
+ * row is present, and `submitReplacementLeaveRequest` refuses the same row server-side
+ * (`ReplacementRequestDisabledError`): the message is the courtesy, the refusal is the control.
+ *
+ * ── WHAT THIS SCREEN'S WORDS COST IN TRANSLATION, SAID PLAINLY RATHER THAN ARGUED AWAY ──────────────────
+ * The four option LABELS are the existing `dayKind.*` keys, translated in all six locales, so no new string
+ * was minted for "Ordinary Day" and none is needed for the refusal above. The eight `table.*` keys this
+ * screen introduced (`help`, `dayTypeChoose`, `rosterMismatch`, `windowNotClaimed`, `myRequests`,
+ * `noRequests`, `statusHeading`, `submittedOn`) DO ship English in all six catalogues — like the fourteen
+ * other English `replacementRequest.*` keys this form already rendered before them (`workedDate`, `days`,
+ * `addRow`, `reason`, `unit`, `totalDays`, …). That is the debt stated, not hidden:
+ * test/r343-leave-credit-single-table.test.ts pins the English set EXACTLY, so it cannot grow by accident
+ * and a key that is translated today fails the guard the day it turns English.
  *
  * ── WHY EVERY POSTED VALUE IS A HIDDEN INPUT, AND THE VISIBLE CONTROLS CARRY NO `name` ──────────────────
  * THIS IS LOAD-BEARING, NOT A STYLE. The action zips the repeated fields BY INDEX, and a browser does not
@@ -89,6 +108,7 @@ export function LeaveCreditRequestTable({
   requiresFirstScheduleConsent,
   dayFactsAction,
   extendedHoursTiers,
+  onSubmitted,
 }: {
   replacementType: LeaveCreditLeaveTypeView;
   submitAction: Action;
@@ -96,24 +116,33 @@ export function LeaveCreditRequestTable({
   dayFactsAction: (workedDate: string) => Promise<LeaveCreditDayFacts | null>;
   /**
    * The company's tier figures, so the credit shown as the employee types is the one they will get. NULL
-   * when the company has not switched extended hours on — the Ordinary Day option is then not offered,
-   * and the service refuses such a row regardless (the hidden option is the courtesy, the refusal is the
-   * control).
+   * when the company has not switched extended hours on — which is every company at release. The Ordinary
+   * Day OPTION IS STILL OFFERED then (see the header: exactly four options, always); what null changes is
+   * that an Ordinary Day row says it cannot earn a credit here and blocks the submit, and the service
+   * refuses it regardless.
    */
   extendedHoursTiers: ExtendedHoursTiers | null;
   /** Today in the tenant's zone, resolved on the server — the max selectable worked date. */
   today: string;
   requiresFirstScheduleConsent?: boolean;
+  /**
+   * Called as the form is submitted, so a host that OPENED this table can close itself. Optional: the
+   * `/leave/credit` screen has nothing to close, and the dialog on My Absence passes its own setter. It is
+   * not a validation hook — the submit is a server action and this runs beside it, not before it.
+   */
+  onSubmitted?: () => void;
 }) {
   const t = useTranslations('replacementRequest');
   // The four statuses of the requests table below share the vocabulary every other leave surface prints.
   const [rows, setRows] = useState<Row[]>([emptyRow(1)]);
 
-  const ordinaryOffered = extendedHoursTiers != null;
-  const dayTypeOptions = useMemo(
-    () => LEAVE_CREDIT_DAY_TYPES.filter((d) => ordinaryOffered || !claimsTimeWindow(d)),
-    [ordinaryOffered],
-  );
+  /**
+   * EXACTLY FOUR OPTIONS, ALWAYS — the whole list, unfiltered, with no company switch in front of it. See
+   * the header for why the earlier filter was a defect rather than a courtesy. `ordinaryEarnsNothing` is
+   * what the switch actually decides: whether an Ordinary Day row can earn anything here.
+   */
+  const dayTypeOptions = LEAVE_CREDIT_DAY_TYPES;
+  const ordinaryEarnsNothing = extendedHoursTiers == null;
 
   // One fetch per distinct date, marked as asked (null) at once so a re-render mid-flight does not re-ask.
   const [facts, setFacts] = useState<Record<string, LeaveCreditDayFacts | null>>({});
@@ -202,16 +231,26 @@ export function LeaveCreditRequestTable({
     return r.dayType !== '' && claimsTimeWindow(r.dayType) && r.claimStart && r.claimEnd && d?.view != null && d.credit === 0;
   });
   const incompleteRows = rows.filter(
-    (r) => r.workedDate !== '' && (r.dayType === '' || (claimsTimeWindow(r.dayType as LeaveCreditDayType) && (!r.claimStart || !r.claimEnd))),
+    (r) =>
+      r.workedDate !== '' &&
+      (r.dayType === '' ||
+        (claimsTimeWindow(r.dayType as LeaveCreditDayType) && !ordinaryEarnsNothing && (!r.claimStart || !r.claimEnd))),
   );
+  // An Ordinary Day row on a company without extended hours. The option is offered (the header says why),
+  // the row says it earns nothing, and the submit waits for the row to go — the service refuses it anyway.
+  const ordinaryUnavailableRows = rows.filter((r) => r.dayType !== '' && claimsTimeWindow(r.dayType) && ordinaryEarnsNothing);
   const blocked =
-    totalCredit <= 0 || mismatchRows.length > 0 || belowThresholdRows.length > 0 || incompleteRows.length > 0;
+    totalCredit <= 0 ||
+    mismatchRows.length > 0 ||
+    belowThresholdRows.length > 0 ||
+    incompleteRows.length > 0 ||
+    ordinaryUnavailableRows.length > 0;
 
   const belowThresholdText = t('sectionB.belowThreshold', { minutes: extendedHoursTiers?.extendedHalfDayMinutes ?? 240 });
   const disabledCell = `${inputCls} flex items-center bg-muted text-xs text-muted-foreground`;
 
   return (
-    <form action={submitAction} className="space-y-4" data-testid="leave-credit-request-form">
+    <form action={submitAction} onSubmit={() => onSubmitted?.()} className="space-y-4" data-testid="leave-credit-request-form">
       <p className="text-xs text-muted-foreground" data-testid="leave-credit-helper">
         {t('table.help')}
       </p>
@@ -252,6 +291,10 @@ export function LeaveCreditRequestTable({
               const wantsWindow = chosen !== '' && claimsTimeWindow(chosen);
               // A chosen day type is what decides which cells are live — NOT which section a row sits in.
               const declaresDays = chosen !== '' && !claimsTimeWindow(chosen);
+              // Ordinary Day chosen on a company that cannot credit one: the option was still offered, so
+              // the row is where that is explained. Its claimed-window cells are dead, not merely empty.
+              const ordinaryUnavailable = wantsWindow && ordinaryEarnsNothing;
+              const windowLive = wantsWindow && !ordinaryUnavailable;
               const mismatch = d?.rosterMismatch ?? null;
               const below = !!(wantsWindow && r.claimStart && r.claimEnd && d?.view != null && d.credit === 0);
               const credit = rowCredit(r);
@@ -320,11 +363,11 @@ export function LeaveCreditRequestTable({
                         type="time"
                         value={r.claimStart}
                         onChange={(e) => patch(r.key, 'claimStart', e.target.value)}
-                        disabled={!wantsWindow}
-                        title={wantsWindow ? undefined : t('table.windowNotClaimed')}
+                        disabled={!windowLive}
+                        title={windowLive ? undefined : t('table.windowNotClaimed')}
                         aria-label={t('sectionB.extendedStart')}
                         data-testid="leave-credit-claim-start"
-                        className={wantsWindow ? inputCls : `${inputCls} bg-muted`}
+                        className={windowLive ? inputCls : `${inputCls} bg-muted`}
                       />
                     </td>
                     <td className="px-3 py-2">
@@ -332,11 +375,11 @@ export function LeaveCreditRequestTable({
                         type="time"
                         value={r.claimEnd}
                         onChange={(e) => patch(r.key, 'claimEnd', e.target.value)}
-                        disabled={!wantsWindow}
-                        title={wantsWindow ? undefined : t('table.windowNotClaimed')}
+                        disabled={!windowLive}
+                        title={windowLive ? undefined : t('table.windowNotClaimed')}
                         aria-label={t('sectionB.extendedEnd')}
                         data-testid="leave-credit-claim-end"
-                        className={wantsWindow ? inputCls : `${inputCls} bg-muted`}
+                        className={windowLive ? inputCls : `${inputCls} bg-muted`}
                       />
                     </td>
                     <td className="px-3 py-2">
@@ -362,13 +405,17 @@ export function LeaveCreditRequestTable({
                       </Button>
                     </td>
                   </tr>
-                  {(mismatch != null || below) && (
+                  {(mismatch != null || ordinaryUnavailable || below) && (
                     <tr>
                       <td colSpan={10} className="px-3 pb-2 text-[11px] font-medium text-destructive">
                         {mismatch != null ? (
                           <span data-testid="leave-credit-roster-mismatch">
                             {t('table.rosterMismatch', { roster: dayTypeLabel(mismatch) })}
                           </span>
+                        ) : ordinaryUnavailable ? (
+                          /* The fourth option is offered on every company; what it EARNS is the switch.
+                             `workingDayRefused` is translated in all six locales and says exactly this. */
+                          <span data-testid="leave-credit-ordinary-earns-nothing">{t('workingDayRefused')}</span>
                         ) : (
                           <span data-testid="leave-credit-below-threshold">{belowThresholdText}</span>
                         )}
@@ -382,12 +429,14 @@ export function LeaveCreditRequestTable({
         </table>
       </div>
 
-      <Button type="button" size="sm" variant="secondary" onClick={addRow}>
+      <Button type="button" size="sm" variant="secondary" onClick={addRow} data-testid="leave-credit-add-row">
         {t('addRow')}
       </Button>
 
       <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
-        <span className="font-medium text-foreground">{t('grandTotal')}</span>
+        <span className="font-medium text-foreground" data-testid="leave-credit-total-label">
+          {t('grandTotal')}
+        </span>
         <span className="font-semibold tabular-nums text-foreground" data-testid="leave-credit-total">
           {t('totalDays', { days: formatDays(totalCredit) })}
         </span>

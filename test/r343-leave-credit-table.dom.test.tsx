@@ -8,17 +8,25 @@
  * either (CLAUDE.md §8). Only a mounted render sees a `MISSING_MESSAGE`.
  *
  * AND WHY SIX LOCALES EXPLICITLY. `i18n/request.ts` DEEP-MERGES each locale over English, so a key missing
- * from ms.json renders the English sentence rather than `MISSING_MESSAGE`. The assertions below check that
- * each locale's OWN day-type strings are the ones on screen — which is the one thing a deep merge cannot
- * fake, and the point of composing the dropdown from the existing `dayKind` keys instead of minting four new
- * English ones (r341's regression: English on a zh screen where Chinese had been).
+ * from ms.json renders the English sentence rather than `MISSING_MESSAGE`. Mounting each locale is what
+ * catches an unresolved key on this screen.
+ *
+ * ⚠️ WHAT MOUNTING SIX LOCALES DOES **NOT** PROVE, CORRECTED IN r343's FIX PASS. The first cut of this file
+ * claimed these assertions caught English text on a non-English screen because each one compared the DOM
+ * against "the locale's own string". It cannot: the expectation is read from the very catalogue handed to
+ * `NextIntlClientProvider`, so if zh.json said "Rest day" the assertion would expect "Rest day" and pass.
+ * The verifier proved it — overwriting zh's `dayKind.restDay` with English left this file green. Two
+ * independent checks replace the claim: `the same screen, rendered in two locales, DIFFERS` below (a
+ * comparison between two RENDERS, with no catalogue in the expectation), and an exact named set of the keys
+ * that ship English in test/r343-leave-credit-single-table.test.ts.
  *
  * WHAT ELSE IS PINNED HERE, none of it statically assertable:
  *   · ONE table for all four day types — no second section, one "+ Add date", one total;
+ *   · EXACTLY FOUR day-type options, on a company with extended hours and on one without;
  *   · the per-row conditional as DISABLED CELLS: an Ordinary Day row takes the claimed window and not the
  *     Days figure, the other three the reverse, on the same row of the same table;
  *   · the roster MISMATCH message naming what the roster holds, and that it BLOCKS the submit button;
- *   · the Ordinary Day option is NOT OFFERED without the company's tier figures (r334's switch, UI half);
+ *   · an Ordinary Day row on a company without extended hours SAYS it earns nothing and blocks the submit;
  *   · the derived cells are not inputs — the employee cannot type an eligible-minutes figure or a credit.
  */
 import { describe, expect, it, vi as vitestVi } from 'vitest';
@@ -88,6 +96,56 @@ describe('r343 · the single table renders in all six locales, with no unresolve
   });
 });
 
+/**
+ * THE ONE CHECK IN THIS FILE THAT DOES NOT READ THE CATALOGUE INTO ITS EXPECTATION.
+ *
+ * Everything above compares the DOM with the same JSON it gave the provider, so it is blind to translation
+ * quality by construction (see the header). This compares TWO RENDERS of the same component: whatever zh.json
+ * says, the Chinese screen's day-type options, its submit button and its total label must not be the English
+ * screen's — and the strings this surface knowingly ships in English must be IDENTICAL across the two, which
+ * is the same debt stated from the render side rather than the catalogue side.
+ */
+describe('r343 · the same screen, rendered in two locales, DIFFERS where it claims to be translated', () => {
+  /** What the screen SAYS, read off the DOM with no catalogue involved. */
+  const spoken = (locale: Locale) => {
+    const { unmount } = mount(locale);
+    const select = dayTypeSelect(locale);
+    const out = {
+      /** The four day types, in order — composed from the `dayKind.*` keys, which are translated. */
+      dayTypes: [...select.options].slice(1).map((o) => o.textContent?.trim() ?? ''),
+      submit: screen.getByTestId('leave-credit-submit').textContent?.trim() ?? '',
+      totalLabel: screen.getByTestId('leave-credit-total-label').textContent?.trim() ?? '',
+      /** Knowingly English on all six screens: the placeholder row and the "+ Add date" button. */
+      placeholder: select.options[0].textContent?.trim() ?? '',
+      addRow: screen.getByTestId('leave-credit-add-row').textContent?.trim() ?? '',
+    };
+    unmount();
+    return out;
+  };
+
+  it.each(LOCALES.filter((l) => l !== 'en'))('%s — the day types, the submit and the total are NOT the English words', (locale) => {
+    const english = spoken('en');
+    const other = spoken(locale);
+    expect(other.dayTypes).toHaveLength(4);
+    other.dayTypes.forEach((word, i) => {
+      expect(word, `${locale}: day type ${i} still reads the English "${english.dayTypes[i]}"`).not.toBe(english.dayTypes[i]);
+      expect(word.length, `${locale}: day type ${i} is empty`).toBeGreaterThan(0);
+    });
+    expect(other.submit, `${locale}: the submit button still reads English`).not.toBe(english.submit);
+    expect(other.totalLabel, `${locale}: the total label still reads English`).not.toBe(english.totalLabel);
+  });
+
+  it.each(LOCALES.filter((l) => l !== 'en'))('%s — and the two strings this screen ships in English are the same words', (locale) => {
+    // NOT an accident and not hidden: `table.dayTypeChoose` and `addRow` are English in all six catalogues,
+    // with the whole English set named in test/r343-leave-credit-single-table.test.ts. Asserting the sameness
+    // is what keeps this case honest — it fails if the debt is paid off without the list being updated.
+    const english = spoken('en');
+    const other = spoken(locale);
+    expect(other.placeholder).toBe(english.placeholder);
+    expect(other.addRow).toBe(english.addRow);
+  });
+});
+
 describe('r343 · the per-row conditional, as disabled cells on ONE row', () => {
   it('an Ordinary Day row takes the claimed window and NOT the Days figure', async () => {
     const user = userEvent.setup();
@@ -118,10 +176,40 @@ describe('r343 · the per-row conditional, as disabled cells on ONE row', () => 
     }
   });
 
-  it('without the company’s tier figures the Ordinary Day option is not offered at all', () => {
-    mount('en', { tiers: null });
-    const options = [...dayTypeSelect('en').options].map((o) => o.value);
-    expect(options).toEqual(['', 'rest_day', 'off_day', 'holiday']);
+  /**
+   * ⚠️ REVERSED IN r343's FIX PASS, AND THE OLD ASSERTION WAS THE DEFECT IT PINNED.
+   *
+   * This case used to read "without the company's tier figures the Ordinary Day option is not offered at
+   * all" and asserted a THREE-option dropdown. `toil_policy.extended_hours_enabled` is `NOT NULL DEFAULT
+   * false` (migration 0486), so that is the state of every company at release — meaning the reporter, who
+   * asked for "exactly four options: Rest Day, Off Day, Public Holiday, Ordinary Day", would have opened the
+   * screen and counted three. A requirement stated as exactly four is not met by three plus a setting.
+   *
+   * The option is now always offered and the ROW carries the consequence. This case is the pin for both
+   * halves: four options with the tiers, four without.
+   */
+  it('EXACTLY FOUR day-type options, with the company’s tier figures and without them', () => {
+    for (const tiers of [TIERS, null]) {
+      const { unmount } = mount('en', { tiers });
+      const options = [...dayTypeSelect('en').options].map((o) => o.value);
+      expect(options, tiers ? 'extended hours ON' : 'extended hours OFF').toEqual(['', 'rest_day', 'off_day', 'holiday', 'workday']);
+      unmount();
+    }
+  });
+
+  it('an Ordinary Day row on a company WITHOUT extended hours says it earns nothing, and blocks the submit', async () => {
+    const user = userEvent.setup();
+    mount('en', { facts: WORKING_DAY, tiers: null });
+    await user.type(dateInput('en'), '2026-09-16');
+    await user.selectOptions(dayTypeSelect('en'), 'workday');
+    const said = await waitFor(() => screen.getByTestId('leave-credit-ordinary-earns-nothing'));
+    // A translated key, not a new English string: r336 left this one without a renderer when it moved to
+    // sections, and it says precisely what is true of a company that cannot credit an ordinary day.
+    expect(said.textContent).toBe(en.replacementRequest.workingDayRefused);
+    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(true);
+    // And the two claimed-window cells are dead rather than merely empty — there is nothing to claim.
+    expect(startInput('en').disabled).toBe(true);
+    expect(endInput('en').disabled).toBe(true);
   });
 });
 

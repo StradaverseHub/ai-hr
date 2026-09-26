@@ -320,7 +320,12 @@ describe('4a1abc4a · ONE formatter, and it stays one', () => {
     '/app/leave/employee-records/export/route.ts',
     '/app/approvals/leave-date-breakdown.tsx',
     '/components/leave-duration-fields.tsx',
-    '/components/leave/replacement-leave-request-dialog.tsx',
+    // ⚠️ r343 — components/leave/replacement-leave-request-dialog.tsx LEFT THIS LIST, and its removal is not
+    // a loosening: that file no longer prints a day figure at all. It became a shell (trigger, title,
+    // purpose sentence) around the single table below, which IS on this list and carries every day figure
+    // the dialog used to draw — the per-row credit, the two section totals now merged into one Total Credit.
+    // A file with no day figure cannot be guarded for how it formats one; if a figure ever comes back to the
+    // shell, it comes back through `LeaveCreditRequestTable` and is guarded there.
     // r343 cbfa8b0b — the single-table Leave Credit request and its screen. The table prints a per-row
     // credit, a Total Credit and a stored credit per submitted line; all three are day figures, so they are
     // listed here for the reason the header gives rather than left to be found by rendering later.

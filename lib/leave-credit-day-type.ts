@@ -20,7 +20,9 @@
  * Deliberately the SAME vocabulary as `ToilWorkedDayKind` (db/schema) rather than a parallel one — the
  * roster answers in that vocabulary and the adjudication below compares the two directly, so a mapping
  * table (which is where a fifth day type gets silently dropped) is never needed. core/leave-credit-request
- * pins the two sets equal with a `satisfies` check, so widening one and not the other fails to typecheck.
+ * pins the two sets equal IN BOTH DIRECTIONS (a pair of `Exclude`s that must both be `never`; a lone
+ * `satisfies` would not have caught a WIDENED roster), and the suite pins the same equality at runtime
+ * against `toilWorkedDayKindEnum.enumValues`.
  */
 export const LEAVE_CREDIT_DAY_TYPES = ['rest_day', 'off_day', 'holiday', 'workday'] as const;
 export type LeaveCreditDayType = (typeof LEAVE_CREDIT_DAY_TYPES)[number];

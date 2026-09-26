@@ -221,13 +221,40 @@ describe('Reverse', () => {
 });
 
 describe('The employee’s Leave Credit request', () => {
+  /*
+   * ⚠️ UPDATED BY r343's FIX PASS — THE CLAIM SURVIVES, ITS MECHANISM WAS REVERSED BY THE REPORTER.
+   *
+   * r299 pinned that the request NAMES THE KIND OF EACH DATE WORKED, flags a working day and states the
+   * rule — with the day kind as a read-only chip resolved from the roster (`leave-credit-day-kind`) and a
+   * refusal pointing at the other section. The contest on cbfa8b0b reverses the input side: the employee now
+   * CHOOSES the day type from exactly four options and the roster ADJUDICATES the choice. So the kind of the
+   * date is still named from the roster — but on the row, as the correction to a chosen type that disagrees
+   * with it (`leave-credit-roster-mismatch`), which is strictly more than the chip ever did: it also catches
+   * rest day vs off day vs public holiday, three kinds the old chip and the old sections could not tell apart
+   * because all three were one claim path.
+   *
+   * CLAUDE.md §8 — a guard pinning a decision you are reversing is updated, not deleted. Both halves of
+   * r299's claim are asserted below, in all six locales: the rule sentence (`description`) and the roster's
+   * own answer named on the offending row.
+   */
   for (const locale of LOCALES) {
-    it(`[${locale}] names the kind of each date worked, flags a working day, and states the rule`, async () => {
-      const dayKindAction = vi.fn(async (d: string) => (d === '2026-08-03' ? 'workday' : 'off_day') as 'workday' | 'off_day');
+    it(`[${locale}] states the rule, and names what the ROSTER holds when the chosen day type disagrees`, async () => {
+      const dayFactsAction = vi.fn(async (d: string) => ({
+        kind: (d === '2026-08-03' ? 'workday' : 'off_day') as 'workday' | 'off_day',
+        shiftEnd: d === '2026-08-03' ? '18:00:00' : null,
+        actualClockOut: '19:00:00',
+        measuredExtendedMinutes: 0,
+      }));
       render(
         <NextIntlClientProvider locale={locale} messages={CATALOGUES[locale]}>
           {/* 2a237f5f — ONE resolved type, not a list: the leave-type box is fixed. */}
-          <ReplacementLeaveRequestDialog replacementType={{ id: 'rl', name: 'Replacement Leave' }} submitAction={vi.fn()} today="2026-09-17" dayKindAction={dayKindAction} />
+          <ReplacementLeaveRequestDialog
+            replacementType={{ id: 'rl', name: 'Replacement Leave' }}
+            submitAction={vi.fn()}
+            today="2026-09-17"
+            dayFactsAction={dayFactsAction}
+            extendedHoursTiers={null}
+          />
         </NextIntlClientProvider>,
       );
       const rr = (CATALOGUES[locale] as unknown as { replacementRequest: Record<string, unknown> }).replacementRequest;
@@ -235,54 +262,36 @@ describe('The employee’s Leave Credit request', () => {
       const dialog = screen.getByRole('dialog');
       expect(dialog.textContent).toContain(rr.title as string);
       /*
-       * cbfa8b0b (r336) — THIS ASSERTION FOLLOWED THE SENTENCE, IT WAS NOT DROPPED.
-       *
-       * r299 pinned `eligibleDaysNote` ("Only a rest day, off day or public holiday can earn a credit"),
-       * which was true while the dialog held ONE kind of claim. The approved plan for cbfa8b0b put both
-       * kinds in one request, so that sentence became false by omission — extended hours on an ordinary
-       * WORKING day now earn a credit too — and the dialog renders `description` instead, which says both
-       * halves and keeps r299's "nothing is credited until your manager approves" clause verbatim.
-       *
-       * `eligibleDaysNote` still exists in all six catalogues with no renderer (cbfa8b0b left it rather
-       * than take a six-file deletion risk mid-round), so asserting it here would have gone on passing as
-       * a string comparison against a dead key while the screen said something else. Pinning what the
-       * dialog ACTUALLY shows is the point of this case.
+       * The RULE. r299 pinned `eligibleDaysNote` ("Only a rest day, off day or public holiday can earn a
+       * credit"); cbfa8b0b made that false by omission (extended hours on an ordinary working day earn a
+       * credit too) and moved the sentence to `description`, which says both halves and keeps r299's
+       * "nothing is credited until your manager approves" clause verbatim. Still the dialog's own sentence
+       * after r343 — the shell renders it above the table.
        */
       expect(dialog.textContent).toContain(rr.description as string);
-      /*
-       * cbfa8b0b (r336) — `workedDate` became `aWorkedDate` (Section A's own field set).
-       *
-       * Not cosmetic: the dialog now holds TWO sections, and `app/leave/actions.ts` zips repeated form
-       * fields BY INDEX. One shared `workedDate` list across both sections would silently shift every row
-       * after the first as soon as both had rows, so the two sets are disjoint by construction. This case
-       * is Section A's, which is the claim r299 was written about.
-       */
-      const date = dialog.querySelector('input[name="aWorkedDate"]') as HTMLInputElement;
+
+      const dayKindCopy = rr.dayKind as Record<string, string>;
+      const sectionACopy = rr.sectionA as Record<string, string>;
+      const date = screen.getAllByLabelText(rr.workedDate as string)[0] as HTMLInputElement;
+      const dayType = screen.getAllByLabelText(sectionACopy.dayType)[0] as HTMLSelectElement;
+
+      // (a) A rest-day claim on a date the roster calls an OFF day — the mix-up no section could see.
       await act(async () => {
         fireEvent.change(date, { target: { value: '2026-08-08' } });
       });
-      await waitFor(() => expect(screen.getByTestId('leave-credit-day-kind').textContent).toBe((rr.dayKind as Record<string, string>).offDay));
+      await act(async () => {
+        fireEvent.change(dayType, { target: { value: 'rest_day' } });
+      });
+      await waitFor(() => expect(screen.getByTestId('leave-credit-roster-mismatch').textContent).toContain(dayKindCopy.offDay));
+
+      // (b) …and the same row on a date the roster calls an ORDINARY WORKING day names that instead. This is
+      // where r299's "flags a working day" lives now: the date is not refused (extended hours can earn a
+      // credit on it) — the employee's DESCRIPTION of it is.
       await act(async () => {
         fireEvent.change(date, { target: { value: '2026-08-03' } });
       });
-      /*
-       * cbfa8b0b (r336) — the refusal SEPARATED from the day-kind chip, and this case now pins both.
-       *
-       * r299 had one message doing two jobs: the chip printed "An ordinary working day cannot earn a
-       * credit", which named the day AND refused it. With Section B added that sentence became false —
-       * an ordinary working day CAN earn a credit now, for extended hours past the shift end — so the
-       * chip states the day kind from the roster and the refusal says where the claim belongs instead,
-       * in the reporter's own approved words.
-       *
-       * Asserting both is stronger than what it replaces: the old single assertion would have passed on
-       * a chip that refused without naming the day, or named the day without refusing.
-       */
-      const dayKindCopy = rr.dayKind as Record<string, string>;
-      const sectionACopy = rr.sectionA as Record<string, string>;
-      await waitFor(() => expect(screen.getByTestId('leave-credit-day-kind').textContent).toBe(dayKindCopy.workday));
-      expect(dialog.textContent, 'a working day in Section A must say where the claim belongs').toContain(
-        sectionACopy.workingDayRefused,
-      );
+      await waitFor(() => expect(screen.getByTestId('leave-credit-roster-mismatch').textContent).toContain(dayKindCopy.workday));
+      expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(true);
       expect(unresolved(dialog.textContent ?? '')).toBe(false);
     });
   }

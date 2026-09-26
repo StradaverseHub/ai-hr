@@ -60,7 +60,6 @@ import {
 // (db/client). lib/extended-hours.ts's precedent, same reasoning. Re-exported below so the pack facade
 // carries one Leave Credit surface rather than two.
 import {
-  LEAVE_CREDIT_DAY_TYPES,
   adjudicateDayTypes,
   claimsTimeWindow,
   dayTypeMismatchMessage,
@@ -80,12 +79,29 @@ export {
 } from '../lib/leave-credit-day-type';
 
 /**
- * THE TWO VOCABULARIES ARE PINNED EQUAL HERE, and this line is the whole reason lib/ may hold a day-type
- * list of its own. `LeaveCreditDayType` is the screen's four options; `ToilWorkedDayKind` is what the roster
- * answers. Widening one without the other stops compiling at this statement rather than silently producing a
- * row nothing can adjudicate.
+ * THE TWO VOCABULARIES ARE PINNED EQUAL HERE, IN BOTH DIRECTIONS, and this pair of `Exclude`s is the whole
+ * reason lib/ may hold a day-type list of its own. `LeaveCreditDayType` is the screen's four options;
+ * `ToilWorkedDayKind` is what the roster answers, and the adjudication compares them directly.
+ *
+ * ⚠️ CORRECTED IN r343's FIX PASS, AND THE CORRECTION IS THE POINT. This was a single
+ * `LEAVE_CREDIT_DAY_TYPES satisfies readonly ToilWorkedDayKind[]` under a comment claiming that widening
+ * either vocabulary stopped compiling here. It did not: `satisfies` is ONE-DIRECTIONAL — it checks every
+ * member of the array is assignable to the element type, so adding a FIFTH kind to `ToilWorkedDayKind`
+ * satisfied it unchanged, and the screen would have gone on offering four options for a roster that answers
+ * five. A comment asserting a property the code does not have is itself the defect (CLAUDE.md §8), so the
+ * property was made true rather than the sentence softened.
+ *
+ * `_NOT_ON_THE_SCREEN` is every roster kind the dropdown cannot offer; `_NOT_ON_THE_ROSTER` is every option
+ * the roster cannot answer. Both must be `never`, or the assignment below has type `never` and this file
+ * stops compiling. test/r343-leave-credit-single-table.test.ts pins the same equality AT RUNTIME against
+ * `toilWorkedDayKindEnum.enumValues`, so the day someone widens the pg enum the suite says so too — a type
+ * error is invisible to `vitest`, and the enum is what the column actually accepts.
  */
-const _DAY_TYPES_MATCH_THE_ROSTER_VOCABULARY = LEAVE_CREDIT_DAY_TYPES satisfies readonly ToilWorkedDayKind[];
+type _NOT_ON_THE_SCREEN = Exclude<ToilWorkedDayKind, LeaveCreditDayType>;
+type _NOT_ON_THE_ROSTER = Exclude<LeaveCreditDayType, ToilWorkedDayKind>;
+const _DAY_TYPES_MATCH_THE_ROSTER_VOCABULARY: [_NOT_ON_THE_SCREEN, _NOT_ON_THE_ROSTER] extends [never, never]
+  ? true
+  : never = true;
 void _DAY_TYPES_MATCH_THE_ROSTER_VOCABULARY;
 
 /**

@@ -455,10 +455,21 @@ describe('5570c6a2: no document-required badge in the employee leave-type dropdo
     expect(at, 'the page resolves ONE replacement type for that dialog').toBeGreaterThan(-1);
     const block = page.slice(at, page.indexOf(';', at));
     expect(block).toContain('pickReplacementLeaveType(leaveTypes)');
-    const dialog = read('components/leave/replacement-leave-request-dialog.tsx');
-    const dialogCode = dialog.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-    // The one remaining <select> in that dialog is the day/hour unit, which is not a leave type. A
-    // `<select name="leaveTypeId">` is the list coming back, and nothing else in this file can be.
+    /*
+     * ⚠️ r343 — THE FORM MOVED OUT OF THE DIALOG, SO THIS READS BOTH FILES. The dialog is now a shell
+     * (trigger, title, purpose sentence) around components/leave/leave-credit-request-table.tsx, which holds
+     * every field it used to. Reading only the shell would have made the assertions below pass on a file
+     * with no form in it at all — vacuously — while a leave-type list came back in the body.
+     */
+    const dialogCode = [
+      read('components/leave/replacement-leave-request-dialog.tsx'),
+      read('components/leave/leave-credit-request-table.tsx'),
+    ]
+      .join('\n')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+    // The selects in that form are the four-option Day Type and the 1-or-0.5 day count, neither of which is
+    // a leave type. A `<select name="leaveTypeId">` is the list coming back, and nothing else here can be.
     expect(dialogCode).not.toMatch(/<select[\s\S]{0,300}name="leaveTypeId"/);
     expect(dialogCode).toContain('<input type="hidden" name="leaveTypeId" value={replacementType.id} />');
     expect(dialogCode).not.toContain('documentRequiredBadge');

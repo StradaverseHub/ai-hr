@@ -65,6 +65,10 @@ import { RequestLeaveDialog } from '@/components/leave/request-leave-dialog';
 // 296fc027 — the employee replacement-leave request: the button beside "+ Request Leave", the availability
 // read that decides whether to offer it, and the action it posts to.
 import { ReplacementLeaveRequestDialog } from '@/components/leave/replacement-leave-request-dialog';
+// r343 — the dialog's body is now the single Leave Credit table, and it posts to that table's own action.
+// The two actions live beside the `/leave/credit` screen because that screen is the other entry point to the
+// SAME component (components/leave/leave-credit-request-table.tsx) and both must post through one path.
+import { leaveCreditDayFactsAction, submitLeaveCreditRequestAction } from './credit/actions';
 // r219 (7966ee35) — …and, when that availability read says NO, the sentence saying why. The read has always
 // carried a discriminated reason; this page rendered the boolean and dropped it, so the reporter spent a
 // round changing Leave config settings against a cause that sits above Leave config.
@@ -87,9 +91,6 @@ import { leaveDisplaySplit } from '@/lib/leave-split';
 import { LEAVE_STATUS_PILL, LEAVE_STATUS_PILL_DEFAULT } from '@/lib/leave-status';
 import {
   requestLeaveAction,
-  leaveCreditExtendedDayAction,
-  submitReplacementLeaveRequestAction,
-  leaveCreditDayKindAction,
   requestLeaveCancellationAction,
   adminCancelLeaveAction,
   editLeaveAction,
@@ -1121,16 +1122,19 @@ export default async function LeavePage({
               {ess && replacementRequest.allowed && replacementLeaveType != null && (
                 <ReplacementLeaveRequestDialog
                   replacementType={{ id: replacementLeaveType.id, name: replacementLeaveType.name }}
-                  submitAction={submitReplacementLeaveRequestAction}
+                  // r343 — the SINGLE-TABLE submit. It adjudicates each row's chosen Day Type against the
+                  // roster before composing `submitReplacementLeaveRequest`, which still enforces every
+                  // control it ever did, and it redirects to /leave/credit where the new request is listed.
+                  submitAction={submitLeaveCreditRequestAction}
                   today={today}
                   requiresFirstScheduleConsent={replacementRequest.requiresFirstScheduleConsent}
-                  // 3fb1a611 (r299) — the kind-of-day chip beside each date worked (a server action, not a closure).
-                  dayKindAction={leaveCreditDayKindAction}
-                  // r336 — Section B's read-only row, and the company's tier figures. BOTH are passed or
-                  // NEITHER is: the dialog draws Section B only when it has the action AND the tiers, so a
-                  // company with the switch off can never be shown a section whose credit it cannot compute.
-                  extendedHoursAction={extendedHoursTiers ? leaveCreditExtendedDayAction : undefined}
-                  extendedHoursTiers={extendedHoursTiers ?? undefined}
+                  // r343 — one read per date for EVERY row: what the roster holds (the thing the chosen Day
+                  // Type is adjudicated against) plus the scheduled shift end and the actual clock-out. It
+                  // replaces r336's pair of actions, one of which answered only for ordinary-day rows.
+                  dayFactsAction={leaveCreditDayFactsAction}
+                  // NULL on a company without extended hours — every company at release. The dropdown still
+                  // offers all four day types; an Ordinary Day row then says it cannot earn a credit here.
+                  extendedHoursTiers={extendedHoursTiers}
                 />
               )}
             </div>
