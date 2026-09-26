@@ -1997,7 +1997,20 @@
       "disagreeColTypedRM": "Relief on the entered figure (RM)",
       "disagreeColRecordRM": "Relief the children on file support (RM)",
       "disagreeColUnsupportedRM": "Difference in relief (RM)",
-      "disagreeCategorised": "{done} of {total} have a relief category recorded."
+      "disagreeCategorised": "{done} of {total} have a relief category recorded.",
+      "gapTitle": "Children with no tax relief category",
+      "gapDescription": "These employees are set to work their child relief out automatically, but at least one of their qualifying children has no tax relief category recorded. Until every qualifying child has one, the relief stays on the plain head count and a child who would count for more is counted as one.",
+      "gapStatPeople": "employees affected",
+      "gapStatChildren": "children with no category",
+      "gapColEligible": "Qualifying children",
+      "gapColCategorised": "With a category",
+      "gapColMissing": "Missing",
+      "gapColTodayRM": "Relief today (RM)",
+      "gapOpenFamily": "Open family record",
+      "gapWhyNote": "The weighting only applies once every qualifying child has a category, because a partly-filled record would relieve fewer children than the employee actually has.",
+      "gapNotAnErrorNote": "A missing category is not a mistake on the record — it is information the employer may simply never have been given.",
+      "gapNoBulkNote": "There is no bulk fill, and there should not be: a child’s category is a fact about that child, and it can only be set on their own record.",
+      "gapManualNote": "Employees on a typed figure are not listed here. For them the typed number decides, so a category would change nothing."
     }
   },
   "leave": {
@@ -11769,7 +11782,7 @@
       "deleted": "Form TP3 record removed.",
       "deductionMonthBlank": "Not stated",
       "colExemptionLimit": "Exemption limit",
-      "exemptLimitNote": "The exemption limits below come from LHDN's monthly tax deduction specification, not from the TP3 form — the form prints no limit column in this section. They are shown to help you check the figures. Whatever you key is recorded and used exactly as it is; nothing is trimmed.",
+      "exemptLimitNote": "The exemption limits below come from LHDN's monthly tax deduction specification, not from the TP3 form — the form prints no limit column in this section. Whatever you key is recorded exactly as it is and is never trimmed. An amount above a limit stays taxable, so only the part up to the limit counts towards Accumulated Net Remuneration.",
       "exemptOverLimit": "Above the RM {limit} exemption limit by RM {excess}. Anything over the limit is taxable and should already be counted in C1, so please check the form.",
       "downloadPdf": "Download Form TP3 (English)",
       "downloadPdfMs": "Download Form TP3 (Bahasa Malaysia)",
@@ -11781,7 +11794,14 @@
       "openFromPayrollTab": "Open Form TP3",
       "pdfProvenanceMs": "Susun atur kami sendiri, dilukis mengikut Borang PCB/TP3 — bukan borang rasmi LHDN.",
       "pdfProvenanceEn": "Our own layout, drawn to follow the LHDN TP3 form. This is not the agency's own page. Every figure is the one stored against this record; the item wording and the annual limits come from the TP3 (1/2026) form.",
-      "backToTransactions": "Transaction Entry"
+      "backToTransactions": "Transaction Entry",
+      "colTaxExempt": "Tax-exempt",
+      "colExcess": "Excess (taxable)",
+      "colRemaining": "Remaining",
+      "totalExemptCounted": "Exempt allowances counted (C2)",
+      "totalEpfCounted": "EPF and approved funds counted (C3)",
+      "totalNetRemuneration": "Accumulated Net Remuneration",
+      "totalCappedNote": "You keyed RM {entered} across C2 and C3; RM {counted} counts towards Accumulated Net Remuneration. The difference is above the statutory limits and stays taxable."
     }
   },
   "payRule": {

@@ -30,6 +30,8 @@ import {
   ChildReliefAmountsCard,
   ChildReliefReviewTable,
   type ChildReliefReviewTableRow,
+  ChildReliefCategoryGapTable,
+  type ChildReliefCategoryGapRow,
 } from '../components/child-relief-review-table';
 import { CHILD_RELIEF_CATEGORY_KEYS } from '../localization/my/statutory-tables';
 
@@ -214,5 +216,82 @@ describe('99b2d6c0 · the six renders are genuinely six languages', () => {
     // Deep-merge fallback means an untranslated locale renders English. Six DISTINCT strings is the only
     // assertion that catches it, and it is the one the render check cannot make.
     expect(new Set(rendered).size, 'two locales rendered identical text').toBe(LOCALES.length);
+  });
+});
+
+/**
+ * ── ITEM 9653472a (r345) — THE CATEGORY-GAP TABLE, IN ALL SIX LOCALES ───────────────────────────────
+ *
+ * Same reason as the file's own header: the §8 dev-server pass renders this screen's EMPTY state,
+ * because no seeded employee has children. The gap table's captions and its four explanatory notes only
+ * ever appear with rows, so they are proven here against the six real catalogues.
+ */
+const GAP_ROWS: ChildReliefCategoryGapRow[] = [
+  {
+    personId: 'g1',
+    name: 'Nurul binti Hassan',
+    jobs: [{ employmentId: 'e1', employeeCode: 'E-101', company: 'Acme Sdn Bhd' }],
+    mode: 'auto',
+    familyEligible: 3,
+    familyCategorised: 1,
+    todayRM: 6000,
+  },
+  {
+    personId: 'g2',
+    name: 'Raj Kumar',
+    jobs: [{ employmentId: 'e2', employeeCode: 'E-102', company: 'Acme Sdn Bhd' }],
+    mode: 'auto_table',
+    familyEligible: 2,
+    familyCategorised: 0,
+    todayRM: 4000,
+  },
+];
+
+describe.each(LOCALES)('9653472a · %s — the category-gap list resolves against the real catalogue', (loc, m) => {
+  it('renders six column headers and one row per employee, with no raw key anywhere', () => {
+    const { container } = wrap(loc, m, <ChildReliefCategoryGapTable rows={GAP_ROWS} />);
+    const ths = [...container.querySelectorAll('th')];
+    expect(ths, 'six columns').toHaveLength(6);
+    for (const th of ths) resolves(th, `${loc} gap column`);
+    expect(container.querySelectorAll('[data-category-gap-row]')).toHaveLength(GAP_ROWS.length);
+  });
+
+  it('the missing count is the arithmetic, not a stored figure — 3−1 and 2−0', () => {
+    const { container } = wrap(loc, m, <ChildReliefCategoryGapTable rows={GAP_ROWS} />);
+    const rows = [...container.querySelectorAll('[data-category-gap-row]')];
+    // Column order: employee, mode, eligible, categorised, missing, relief today.
+    expect(rows[0].querySelectorAll('td')[4].textContent?.trim()).toBe('2');
+    expect(rows[1].querySelectorAll('td')[4].textContent?.trim()).toBe('2');
+  });
+
+  it('the mode is the locale’s own word, never the stored value', () => {
+    const { container } = wrap(loc, m, <ChildReliefCategoryGapTable rows={GAP_ROWS} />);
+    const rows = [...container.querySelectorAll('[data-category-gap-row]')];
+    for (const r of rows) {
+      const cell = r.querySelectorAll('td')[1];
+      resolves(cell, `${loc} gap mode`);
+      expect(cell.textContent, 'the raw stored value never reaches the screen').not.toMatch(
+        /^auto(_table)?$/,
+      );
+    }
+  });
+
+  it('every row offers a way into the family record — one link per job', () => {
+    const { container } = wrap(loc, m, <ChildReliefCategoryGapTable rows={GAP_ROWS} />);
+    const links = [...container.querySelectorAll('a')];
+    expect(links).toHaveLength(GAP_ROWS.reduce((n, r) => n + r.jobs.length, 0));
+    for (const a of links) {
+      resolves(a, `${loc} gap link`);
+      expect(a.getAttribute('href'), 'it opens the FAMILY tab, where a category can be set').toMatch(
+        /\?tab=family$/,
+      );
+    }
+  });
+
+  it('offers no bulk action of any kind', () => {
+    const { container } = wrap(loc, m, <ChildReliefCategoryGapTable rows={GAP_ROWS} />);
+    expect(container.querySelectorAll('button')).toHaveLength(0);
+    expect(container.querySelectorAll('input')).toHaveLength(0);
+    expect(container.querySelectorAll('form')).toHaveLength(0);
   });
 });

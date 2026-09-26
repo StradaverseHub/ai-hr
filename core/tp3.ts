@@ -117,8 +117,12 @@ function tp3Packs(): Tp3Catalogue[] {
  *
  * NULL ⇒ no cap is sourced for this country, and none is invented — the same discipline
  * `tp3ExemptionOverLimits` applies to a sub-line whose `exemptionLimit` is null.
+ *
+ * EXPORTED IN r345 so the TP3 screen can print C3's cap beside the box. The screen must not carry a
+ * literal 4000 and must not work the cap out a second way: this accessor and `deriveAccumulatorSeed`
+ * are then provably reading one figure, which is the whole point of the item that exported it.
  */
-function tp3EpfReliefCap(): number | null {
+export function tp3EpfReliefCap(): number | null {
   const owner = countryPacks().find((p) => p.payroll.tp3Catalogue != null);
   return owner?.payroll.epfReliefCap ?? null;
 }

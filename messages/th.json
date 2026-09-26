@@ -1997,7 +1997,20 @@
       "disagreeColTypedRM": "Relief on the entered figure (RM)",
       "disagreeColRecordRM": "Relief the children on file support (RM)",
       "disagreeColUnsupportedRM": "Difference in relief (RM)",
-      "disagreeCategorised": "{done} of {total} have a relief category recorded."
+      "disagreeCategorised": "{done} of {total} have a relief category recorded.",
+      "gapTitle": "บุตรที่ยังไม่มีประเภทการลดหย่อนภาษี",
+      "gapDescription": "พนักงานเหล่านี้ตั้งค่าให้คำนวณการลดหย่อนบุตรโดยอัตโนมัติ แต่มีบุตรที่เข้าเกณฑ์อย่างน้อยหนึ่งคนที่ยังไม่ได้บันทึกประเภทการลดหย่อนภาษี จนกว่าบุตรที่เข้าเกณฑ์ทุกคนจะมีประเภท การลดหย่อนจะยังคิดตามจำนวนหัวและบุตรที่ควรนับได้มากกว่าจะถูกนับเป็นหนึ่ง",
+      "gapStatPeople": "พนักงานที่ได้รับผลกระทบ",
+      "gapStatChildren": "บุตรที่ยังไม่มีประเภท",
+      "gapColEligible": "บุตรที่เข้าเกณฑ์",
+      "gapColCategorised": "มีประเภทแล้ว",
+      "gapColMissing": "ยังขาด",
+      "gapColTodayRM": "การลดหย่อนปัจจุบัน (RM)",
+      "gapOpenFamily": "เปิดระเบียนครอบครัว",
+      "gapWhyNote": "การถ่วงน้ำหนักจะมีผลเมื่อบุตรที่เข้าเกณฑ์ทุกคนมีประเภทแล้วเท่านั้น เพราะระเบียนที่กรอกไม่ครบจะให้การลดหย่อนแก่บุตรน้อยกว่าที่พนักงานมีจริง",
+      "gapNotAnErrorNote": "การไม่มีประเภทไม่ใช่ข้อผิดพลาดของระเบียน แต่เป็นข้อมูลที่นายจ้างอาจไม่เคยได้รับ",
+      "gapNoBulkNote": "ไม่มีการกรอกแบบกลุ่ม และไม่ควรมี เพราะประเภทของบุตรเป็นข้อเท็จจริงเกี่ยวกับบุตรคนนั้น และตั้งได้เฉพาะในระเบียนของเขาเอง",
+      "gapManualNote": "พนักงานที่ใช้ตัวเลขที่พิมพ์เองจะไม่ปรากฏที่นี่ สำหรับพวกเขาตัวเลขที่พิมพ์เป็นตัวตัดสิน ประเภทจึงไม่เปลี่ยนแปลงอะไร"
     }
   },
   "leave": {
@@ -11769,7 +11782,7 @@
       "deleted": "ลบบันทึกแบบฟอร์ม TP3 แล้ว",
       "deductionMonthBlank": "ไม่ได้ระบุ",
       "colExemptionLimit": "เพดานยกเว้นภาษี",
-      "exemptLimitNote": "เพดานยกเว้นภาษีด้านล่างมาจากข้อกำหนดการคำนวณภาษีหัก ณ ที่จ่ายของกรมสรรพากรมาเลเซีย ไม่ได้มาจากแบบฟอร์ม TP3 เอง — แบบฟอร์มไม่มีคอลัมน์เพดานในส่วนนี้ แสดงไว้เพื่อช่วยคุณตรวจสอบตัวเลข จำนวนที่คุณกรอกจะถูกบันทึกและใช้ตามที่กรอกทุกประการ ระบบไม่ตัดทอน",
+      "exemptLimitNote": "เพดานการยกเว้นด้านล่างมาจากข้อกำหนดการหักภาษีรายเดือนของ LHDN ไม่ใช่จากแบบฟอร์ม TP3 ซึ่งไม่ได้พิมพ์คอลัมน์เพดานในส่วนนี้ จำนวนที่คุณกรอกจะถูกบันทึกตามจริงและไม่ถูกตัดทอน จำนวนที่เกินเพดานยังต้องเสียภาษี จึงนำเฉพาะส่วนที่ไม่เกินเพดานไปคำนวณเป็นค่าตอบแทนสุทธิสะสม",
       "exemptOverLimit": "เกินเพดานยกเว้น RM {limit} อยู่ RM {excess} ส่วนที่เกินเพดานต้องเสียภาษีและควรรวมอยู่ใน C1 แล้ว กรุณาตรวจสอบแบบฟอร์ม",
       "downloadPdf": "ดาวน์โหลดแบบฟอร์ม TP3 (อังกฤษ)",
       "downloadPdfMs": "ดาวน์โหลดแบบฟอร์ม TP3 (มลายู)",
@@ -11781,7 +11794,14 @@
       "openFromPayrollTab": "เปิดแบบฟอร์ม TP3",
       "pdfProvenanceMs": "Susun atur kami sendiri, dilukis mengikut Borang PCB/TP3 — bukan borang rasmi LHDN.",
       "pdfProvenanceEn": "Our own layout, drawn to follow the LHDN TP3 form. This is not the agency's own page. Every figure is the one stored against this record; the item wording and the annual limits come from the TP3 (1/2026) form.",
-      "backToTransactions": "การบันทึกรายการ"
+      "backToTransactions": "การบันทึกรายการ",
+      "colTaxExempt": "ได้รับยกเว้นภาษี",
+      "colExcess": "ส่วนเกิน (ต้องเสียภาษี)",
+      "colRemaining": "คงเหลือ",
+      "totalExemptCounted": "เงินช่วยเหลือที่ได้รับยกเว้นซึ่งนำมาคำนวณ (C2)",
+      "totalEpfCounted": "EPF และกองทุนที่ได้รับอนุมัติซึ่งนำมาคำนวณ (C3)",
+      "totalNetRemuneration": "ค่าตอบแทนสุทธิสะสม",
+      "totalCappedNote": "คุณกรอก RM {entered} ใน C2 และ C3 โดยนำ RM {counted} ไปคำนวณเป็นค่าตอบแทนสุทธิสะสม ส่วนต่างเกินเพดานตามกฎหมายและยังต้องเสียภาษี"
     }
   },
   "payRule": {
