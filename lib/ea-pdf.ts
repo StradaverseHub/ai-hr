@@ -19,7 +19,7 @@
 //
 // WHERE THE ARRANGEMENT CAME FROM, AND WHAT IT IS NOT. `docs/forms/ea-cp8a-pin-2024-specimen.png` is a
 // BLANK C.P.8A (feedback attachment 9c080805-6b93-40ab-ba99-1d00d961b38b, rasterised at
-// 150dpi) and `docs/forms/ea-cp8a-pin-2024-transcription.txt` is every caption on it, transcribed by
+// 150dpi) and `docs/forms/ea-cp8a-pin-2023-transcription.txt` is every caption on it, transcribed by
 // hand, with the layout notes. Every coordinate in `EA_FORM` below was MEASURED off that PNG by scanning
 // it for rules, not eyeballed — the CP39 lesson (lib/cp39-form-pdf.ts), where the eyeballed percentages
 // were wrong by up to 20 points of page width.

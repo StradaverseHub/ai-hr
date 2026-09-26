@@ -10,7 +10,7 @@ the Statutory Forms screen, beside each of the two EA rows (“Download blank EA
 **What this page is not.** The EA is drawn to the C.P.8A (Pin. 2023) arrangement on paper of
 ours — we hold no blank C.P.8A from LHDN to print onto — so this register describes our
 rendering of that arrangement, not agency artwork. The wording in the third column is taken from
-`docs/forms/ea-cp8a-pin-2024-transcription.txt`, the hand transcription of the specimen.
+`docs/forms/ea-cp8a-pin-2023-transcription.txt`, the hand transcription of the specimen.
 
 **This file is generated.** Edit `lib/ea-field-register.ts` and run
 `pnpm tsx scripts/gen-ea-field-register.ts`. `test/ea-form-boxes-contract.test.ts` fails if a row

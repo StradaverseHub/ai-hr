@@ -16,7 +16,7 @@
  * A hand-written document would have been correct on the day it was written and quietly wrong ever after —
  * which is the state the form's mapping was already in, and the reason this item exists.
  *
- * WHERE THE WORDING COMES FROM. `docs/forms/ea-cp8a-pin-2024-transcription.txt`, the hand transcription of
+ * WHERE THE WORDING COMES FROM. `docs/forms/ea-cp8a-pin-2023-transcription.txt`, the hand transcription of
  * the specimen, is the authority for every `wording` below, and the contract test refuses one that is not
  * in it. The agency's page furniture (the form number, the masthead, the banner, the officer box) is not
  * retyped at all — it is read straight out of `EA_FORM_WORDS`, the same constant the renderer draws from,
@@ -86,7 +86,7 @@ export type EaRegisterRow = {
   /**
    * The agency's own words. For an `agency` caption this is read from `EA_FORM_WORDS` at build time and
    * is not retyped here; for a `label` caption it is the Malay from the transcription, and the contract
-   * test refuses any string that is not in `docs/forms/ea-cp8a-pin-2024-transcription.txt`.
+   * test refuses any string that is not in `docs/forms/ea-cp8a-pin-2023-transcription.txt`.
    *
    * EMPTY only for the three lines below the form and the PDF's own title, which are ours and have no
    * agency wording to be checked against.
@@ -279,7 +279,7 @@ export function renderEaFieldRegisterMarkdown(): string {
   out.push('**What this page is not.** The EA is drawn to the C.P.8A (Pin. 2023) arrangement on paper of');
   out.push('ours — we hold no blank C.P.8A from LHDN to print onto — so this register describes our');
   out.push('rendering of that arrangement, not agency artwork. The wording in the third column is taken from');
-  out.push('`docs/forms/ea-cp8a-pin-2024-transcription.txt`, the hand transcription of the specimen.');
+  out.push('`docs/forms/ea-cp8a-pin-2023-transcription.txt`, the hand transcription of the specimen.');
   out.push('');
   out.push('**This file is generated.** Edit `lib/ea-field-register.ts` and run');
   out.push('`pnpm tsx scripts/gen-ea-field-register.ts`. `test/ea-form-boxes-contract.test.ts` fails if a row');
