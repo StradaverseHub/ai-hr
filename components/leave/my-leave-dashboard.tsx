@@ -195,6 +195,12 @@ export function MyLeaveDashboard({
           {line}
         </p>
       ))}
+      {/* 31e39d74 / r209 — WHY THIS TYPE READS 0.00, in one amber line. ⚠️ r343 (1478c281): a placed-group
+          member folded by the gate in core/read.ts never reaches this component, so this caption is dropped
+          WITH its card and never FROM a card that renders — the fold removes whole rows and touches nothing
+          here. On the reporter's account the folded four are `capped_by_max_balance` (a 3-day table under a
+          Maximum Balance of 0), so that caption is part of what hiding them costs; HR keeps it through
+          `includeHidden`. Both halves pinned in test/1478c281-empty-member-cards.test.ts (f). */}
       {entitlementStatusNeedsNotice(c.entitlementStatus) && (
         <p
           className="mt-2 text-[11px] text-amber-700 dark:text-amber-500"

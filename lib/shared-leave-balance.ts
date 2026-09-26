@@ -103,23 +103,48 @@ export function isPoolBorrower(row: { leaveTypeId: string; sharedBalance?: Share
  *
  * WHY IT EXISTS. r341 narrowed the fold to the pooling pointer, which was right: before it, EVERY member of a
  * placed shared group lost its card, so Marriage Leave's 177.00 days were invisible to 59 employments. But it
- * also made FOUR cards APPEAR that had none — Caregiver, Examination, Graduation and Study, each reading
- * 0.00 — on a ticket whose whole point was FEWER cards. A member card that holds nothing of its own tells the
- * employee nothing the merged card does not already say, so it draws no card.
+ * also made FOUR cards APPEAR that had none — Caregiver, Examination, Graduation and Study, each with a
+ * balance of 0.00 — on a ticket whose whole point was FEWER cards. A member card that holds no days of its own
+ * shows the employee no balance the merged card is not already showing, so it draws no card.
  *
- * ⚠️ WHICH FIGURES IT READS — EXACTLY THE FOUR THE CARD WOULD HAVE PRINTED, AND NOTHING ELSE. `accrued`,
- * `taken`, `pending` and `balance`, as `leaveBalances` derives them for THIS leave type from `leave_ledger`
- * (accruals, debits, adjustments) and from this type's own undecided requests. So "draws no card" and "the
- * card would have read four zeros" are one sentence, checkable against the screen rather than inferred.
- * Measured on production 2026-09-26: MRL holds 177.00 ledger days across 59 employments and keeps its card;
- * CGL, EXM, GD and STD hold 0.00 and lose theirs.
+ * ⚠️ WHICH FIGURES IT READS — FOUR, AND THEY ARE THE LEDGER'S. `accrued`, `taken`, `pending` and `balance`,
+ * as `leaveBalances` derives them for THIS leave type from `leave_ledger` (accruals, debits, adjustments) and
+ * from this type's own undecided requests. Measured on production 2026-09-26: MRL holds 177.00 ledger days
+ * across 59 employments and keeps its card; CGL, EXM, GD and STD hold 0.00 and lose theirs.
+ *
+ * ⚠️ AND WHAT IT DOES NOT READ, WHICH AN EARLIER VERSION OF THIS COMMENT GOT WRONG. It said these were
+ * "exactly the four the card would have printed, and nothing else", so that "draws no card" and "the card
+ * would have read four zeros" were one sentence. THEY ARE NOT ONE SENTENCE. The card is not built from this
+ * row: `core/my-leave.ts` builds it from `leaveEntitlementBreakdown` (through `balanceStoryTypeId`), and it
+ * also prints
+ *   · an ENTITLEMENT row — `eligibleDays`, the day TABLE's figure, which this predicate never sees; and
+ *   · the 31e39d74 / r209 ENTITLEMENT-STATUS NOTICE, whose entire purpose is to say why a type reads 0.00.
+ * MEASURED, in the production shape, in test/1478c281-empty-member-cards.test.ts (f): a member whose band is
+ * `{days: 3, maxBalanceDays: 0}` with the leave year opened has four zeros on this row — and a breakdown of
+ * `eligibleDays` 3, `capped_by_max_balance`, `entitlementStatusNeedsNotice` TRUE. Its card read
+ * "Entitlement 3.00", "Balance 0.00" and an amber caption. That is the state the reporter's four Special
+ * Leave types are in.
+ *
+ * SO WHAT IS ACTUALLY GUARANTEED, and it is the whole of it: every figure this type's own LEDGER can put on a
+ * card is 0.00 — nothing accrued, nothing taken, nothing reserved, nothing to spend. That is a statement about
+ * days, and folding is justified on days: there is no balance here the merged card is not already showing.
+ * It is NOT a claim that the card was blank.
+ *
+ * ⚠️ THE COST, SAID OUT LOUD RATHER THAN LEFT TO A SUPPORT QUESTION. Folding takes the explanation with the
+ * card: the employee stops seeing WHY three configured days are worth 0.00. HR does not — `includeHidden`
+ * keeps the type and its status on Employee Balances and the Personnel leave card (994a5287), which is where
+ * a Maximum Balance of 0 over a 3-day table gets fixed. That trade is what 1478c281 approved, and it is the
+ * first thing to revisit if the reporter asks why a type "disappeared" instead of explaining itself. What
+ * never happens is a card that still renders losing its caption — the fold removes whole rows and touches no
+ * notice logic, and that invariant is pinned in (f) too.
  *
  * ⚠️ THREE DIFFERENT KINDS OF NOTHING, AND THIS IS DELIBERATELY ONLY THE FIRST. A zero balance, an
  * unconfigured entitlement and a cycle that has not opened are three different states of the world:
  *
  *  1. NOTHING ON THE LEDGER FOR THIS PERSON — what this reads. No accrual, no debit, no adjustment and no
- *     pending request: there is no figure to print. It is a statement about this EMPLOYMENT, so two
- *     colleagues in the same group can honestly see a different number of cards.
+ *     pending request: no DAYS to print, though the table behind them and its caption may still have had
+ *     plenty to say (see above). It is a statement about this EMPLOYMENT, so two colleagues in the same group
+ *     can honestly see a different number of cards.
  *
  *  2. NO ENTITLEMENT TABLE CONFIGURED — NOT read, and it must not be. That is a statement about HR's
  *     configuration rather than about this employee; it lives in the breakdown (`leaveEntitlementBreakdown`,

@@ -3148,8 +3148,8 @@ export function leaveBalances(
      *
      * ⚠️ AND MEMBERSHIP ALONE DOES NOT COST A CARD — see the gate at the bottom of this block, which is
      * where the WHOLE rule lives, both halves of it (r341 8d3a7bff, r343 1478c281). A member keeps its own
-     * card while it holds its own days. It is folded when its balance IS the pool's, and also when it holds
-     * nothing at all — a card of four zeros beside the merged card says nothing the employee can use.
+     * card while it holds its own days. It is folded when its balance IS the pool's, and also when its own
+     * ledger holds no days at all — there is then no balance on it the merged card is not already showing.
      */
     const pooledAway = await (async () => {
       if (opts.includeHidden) return visible;
@@ -3197,17 +3197,25 @@ export function leaveBalances(
        * r341 was right about Marriage Leave and wrong about the four members sitting at 0.00. The paragraph
        * above argued that a zero today is no reason to fold, because "the day an entitlement table is written
        * for one of them the same defect returns" — and that is answered, not ignored: the condition is keyed
-       * on the LEDGER, so the day one of them is granted a day its card is back, carrying that day, with
-       * nobody un-hiding anything. What r341 actually shipped was FIVE new cards on a ticket asking for
-       * fewer: Marriage (the point) plus Caregiver, Examination, Graduation and Study, each reading 0.00.
+       * on the LEDGER, so the day one of them is granted a day its card is back, carrying that day AND its
+       * caption, with nobody un-hiding anything. What r341 actually shipped was FIVE new cards on a ticket
+       * asking for fewer: Marriage (the point) plus Caregiver, Examination, Graduation and Study, each with a
+       * balance of 0.00.
        *
        * TWO REASONS TO FOLD, BOTH HERE, AND THEY ARE NOT THE SAME REASON:
        *   · `isPoolBorrower(r)` — this row's balance IS the pool's, so its own card would repeat the pool's
        *     card verbatim. True however many days have been FILED under it.
-       *   · `holdsNothingOfItsOwn(r)` — there is no figure on this row at all (`accrued`, `taken`, `pending`
-       *     and `balance` each 0.00), so its card would say nothing. Read that function before touching this:
-       *     it states WHICH figures it reads and the two kinds of "nothing" it deliberately does NOT read —
-       *     an unconfigured entitlement table (r209's trap) and a cycle that has not opened.
+       *   · `holdsNothingOfItsOwn(r)` — this row's own LEDGER holds no days (`accrued`, `taken`, `pending`
+       *     and `balance` each 0.00), so its card shows no balance the merged card is not already showing.
+       *     Read that function before touching this: it states WHICH FOUR figures it reads, the two kinds of
+       *     "nothing" it deliberately does NOT read (an unconfigured entitlement table — r209's trap — and a
+       *     cycle that has not opened), and ⚠️ WHAT THE CARD PRINTS THAT IT NEVER SEES. That last part is the
+       *     one to read before calling this cheap: the card also prints an Entitlement row and the r209
+       *     entitlement-status caption, and on the reporter's account these four carry a 3-day table clamped
+       *     to 0.00 — `capped_by_max_balance`, a notice-bearing status. So the cards this drops read
+       *     "Entitlement 3.00 / Balance 0.00" under an amber sentence explaining the clamp, and folding takes
+       *     that sentence with them. Measured and recorded in (f) of
+       *     test/1478c281-empty-member-cards.test.ts; HR keeps both via `includeHidden` (994a5287).
        *
        * ⚠️ `||`, NOT `&&`, AND THE TWO REASONS MUST NOT BE COLLAPSED BY A LATER READER. Marriage Leave
        * satisfies NEITHER and keeps its 177.00 days. CPL and NDL satisfy the FIRST whatever they hold — a
