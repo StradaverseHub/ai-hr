@@ -1,3 +1,45 @@
+## r345 (2026-09-26) — two screens told the truth about arithmetic that was already right. `main@7006882d`, **no migration**.
+
+Closed: `20837372`, `9653472a`. Gate: **1031 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=488`.
+
+### BOTH ITEMS WERE THE SAME SHAPE OF DEFECT
+
+Neither ticket was a calculation bug. r342 capped TP3 Section C correctly and r344 weighted child relief correctly; in both cases the round shipped the arithmetic and not the surface that would let anyone SEE it, and in both cases the reporter came back. `20837372` was contested a **third** time. The lesson is not "add a screen" — it is that an approved plan promising a display (`r342`: *"the screen will show what part of it the calculation is allowed to use, beside it"*) is not discharged by shipping the kernel half.
+
+### 20837372 — SECTION C
+
+Each C2 sub-line and C3 now print **limit / tax-exempt / excess / remaining** beside the box, and a section total reads `exemptTotal`, `epfAllowable` and `netRemuneration` **off the seed** rather than summing them again — two call sites each working the caps out is the duplicate source of truth §1 forbids, and is the same defect pointing the other way.
+
+Two things found while building it, neither in the ticket:
+
+- **C3 was drawn as though it had no limit.** It has no `subItems`, so it fell in the whole-line branch beside C1 and C5, whose comment read *"C1, C3 and C5 are not exemptions at all"*. C1 and C5 genuinely carry no limit; C3 is held to the EPF relief cap. The single largest capping on the form — RM4,000 against the reporter's own keyed 8,979 — was the one figure the screen never mentioned. `tp3EpfReliefCap` is now exported so the page and the kernel provably read one cap; the page carries no literal `4000`.
+- **`taxRelief.tp3.exemptLimitNote` was false.** It said *"Whatever you key is recorded and used exactly as it is; nothing is trimmed."* That stopped being true when r342 shipped, and it contradicted the very behaviour this item makes visible. The input is still never trimmed and the note still says so; the claim that the whole of it is *used* is gone.
+
+An unlimited sub-line (C2(iii), C2(v)) shows **blank** excess and remaining, never `0.00`: a zero there asserts "we checked and nothing is over", which for a line with no sourced limit is a claim this repo cannot make (§8).
+
+### 9653472a — THE CATEGORY GAP
+
+r344 gated the derived child-relief grid on `built.categorised === built.eligible`. That gate is **right** and is untouched: `childReliefGridFromFamily` skips a child it cannot classify, so a partial grid relieves fewer children than the employee has — production held one employee who would have gone RM4,000 → RM2,000 the moment r344 shipped without it. Its consequence is that the weighting reaches **nobody** until categories are filled in, and nothing said so anywhere. `core/child-relief-review.ts` now carries `categoryGap` beside `recordDisagreement` as a subset of the same `people` objects (no second walk, no second arithmetic).
+
+**Scoped to `auto` and `auto_table` only.** On `manual` the typed figure decides and a category changes nothing, so a manual row would put an action on screen that has no effect. The predicate **names the two modes it trusts** rather than excluding the one it knows, so a hand-edited mode is not silently treated as auto.
+
+**No "you could be relieving RM x" column.** The s.48 weight of an uncategorised child is unknowable — 1 unit or 8 — so that figure cannot be stood behind (§8). Eligible / categorised / missing and relief-given-today are printed instead. No bulk fill: a child's category is a fact about that child.
+
+### DECISIONS THE TICKETS DID NOT SETTLE
+
+- **The TP3 limits reach the screen and never the paper.** They are the specification's, not the form's; a printed TP3 carrying a limit column would not match the one the employee signed. Re-asserted from both sides.
+- **`manual` employees are absent from the category-gap list** rather than shown-with-a-caveat. The plan allowed either; a row implying an action that has no effect is worse than no row.
+
+### TWO MISTAKES OF MINE, BOTH CAUGHT BY MY OWN VERIFICATION AND WORTH READING
+
+- **My test proved nothing where it mattered most.** The first cut of `test/9653472a-child-relief-category-gap.test.ts` filtered its fixtures with a **local copy** of the production condition. Loosening the real filter to every mode left all six behavioural cases green — only a source-text assertion failed. `hasCategoryGap` is now exported and the test drives the real predicate; the same revert now fails *"a MANUAL employee is absent"* with a real `AssertionError`. **A behavioural test that restates the rule it is testing is a source-text test wearing better clothes.**
+- **My first render check was worthless and looked fine.** Six locales × two routes all returned **200 with zero intl errors** — while every request rendered **English**, because locale comes from the `NEXT_LOCALE` cookie and I was sending `Accept-Language`. It also fetched `/payroll/transactions/tp3` with no `employmentId`, so the Section C block never rendered at all: the pre-existing `colExemptionLimit` came back absent too, which is what exposed it. Re-run with the cookie and a seeded employment id, all six locales render all four columns with no raw keys. **§8's "a 200 is not a render check" is not about status codes — a check can exercise the wrong page in the wrong language and still be all green.**
+
+### NOT DONE
+
+- The child-relief gap card is proven populated only by `test/child-relief-review-locales.dom.test.tsx` (six locales, real catalogues). The dev-server pass renders its **empty** state, because no seeded employee has children — the same gap that file was created for.
+- `fda53352` (the EA C.P.8A) is planned, not built, and its plan was corrected mid-session: our form prints `Pin. 2024`, a revision **LHDN does not issue**. The agency publishes `Pin. 2023`, byte-identical to the reporter's attachment. Measured off the genuine vector PDF, the money column also moves (agency `482.3 → 556.6`, ours `504.5 → 571.3`), so `lib/ea-pdf.ts`'s claim that it "is untouched" holds only against the rival vendor's tracing.
+
 ## r344 (2026-09-26) — the money half of the child-relief weighting, and a near miss that would have over-deducted. `main@46ef91e8`, **no migration**.
 
 Closed: `a5f21891`. Gate: **1029 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=488`.
