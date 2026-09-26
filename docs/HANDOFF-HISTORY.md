@@ -1,3 +1,48 @@
+## r348 (2026-09-27) — the figures were right and the sentence said the opposite. `main@b362128f`, **no migration**.
+
+Closed: `20837372`. Gate: **1033 files — equal to the suite file count**, 16 chunks, first pass, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched.
+
+### THE PREMISE WAS FALSE AND THE REPORTER WAS STILL RIGHT
+
+They contested this a **fourth** time, saying the C2 calculation misunderstands the rule. It does not. Verified against the shipped kernel before touching anything, with C1 = 60,000 gross and the allowance inside it:
+
+    keyed 3,600 under a 6,000 limit  →  contributes 0 to netRemuneration
+    keyed 7,000 over  a 6,000 limit  →  contributes exactly 1,000
+    and the contribution is never negative at any keyed value — no double deduction
+
+That is their own `MAX(keyed − limit, 0)`, reached from the other direction, because C1 is gross and the excess sits in it exactly once.
+
+**The cause was my own copy, shipped in r345.** `taxRelief.tp3.totalCappedNote` read *"RM {counted} **counts towards** Accumulated Net Remuneration"* where `counted` was `exemptTotal + epfAllowable` — the figure **subtracted from** gross to reach it. The two rows above it were labelled "counted", equally ambiguous. The numbers were right and the words described a different system: **the exact one the reporter was telling us not to build.** Anyone reading that screen reaches their conclusion.
+
+### THE FIX
+
+The total is the **sum itself** — gross, less C2, less C3, equals ANR — with explicit minus signs, because a subtraction cannot be read backwards the way a caption can. Every figure is still read **off the seed**; `derived.gross` joins the three already there.
+
+The three misleading keys are **retired, not deleted**, in all six locales. `i18n/request.ts` deep-merges each locale over English, so dropping a key from `en.json` alone would leave the old sentence rendering for a Malay reader — the worst possible half-fix. A test pins that they stay present and marked, and that the page renders none of them.
+
+### THE RECURRING FAILURE, NAMED
+
+This is the **second wording defect on this one screen in two rounds**, and the fourth of its kind this session:
+
+- r342 shipped the C2/C3 capping; `exemptLimitNote` went on saying the keyed figure was "used exactly as it is". Corrected in r345.
+- r345 shipped the display; `totalCappedNote` said the exempt amount counts *towards* ANR. Corrected here.
+- r344 shipped the weighted child relief; `childQualifyingAutoUnitsNote` went on saying every child counts as one. Corrected in r347.
+- r346 traced the EA from a rival vendor's rendering; a comment and a test both *defended* its typo as "the specimen's own spelling".
+
+**Shipping kernel behaviour and leaving prose behind that asserts the old behaviour is the failure mode of this codebase, not the arithmetic.** Every one of these passed `tsc`, the full suite and `next build`. A round that changes what the system does must grep the catalogues and the comments for sentences describing what it used to do.
+
+### THE RENDER CHECK, DONE PROPERLY THIS TIME
+
+The block is behind `derived`, so it renders only for an employee with a saved TP3. The seed plants none, and the first pass reported all four rows **absent in all six locales** — which was the check working, not the code failing. A record was planted with the reporter's own figures and the page re-read:
+
+    en / ms / ta / th / vi / zh  →  60,000.00  −  6,000.00  −  4,000.00  =  50,000.00
+
+the 7,000 capped to 6,000 and the 8,979 capped to 4,000, no retired key on screen, 0 intl errors. **Twice this session a conditional block made a green render check prove nothing** (r345's picker, r346's un-selected employee). Plant the data and read the page.
+
+### NOT DONE
+
+- `fda53352` is planned, not built: the reporter sent a red-boxed comparison showing LHDN sets its section letters and banner as **filled black blocks with white lettering** where we draw plain text — which r346's own record had listed as not done.
+
 ## r347 (2026-09-27) — the screen and the payslip disagreed about a weighted child by RM14,000. `main@5842931c`, **no migration**.
 
 Closed: `04b88724`. Gate: **1033 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=488`.
