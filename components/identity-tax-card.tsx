@@ -78,6 +78,11 @@ export type ChildReliefPricing = {
   /** Eligible children carrying no relief category: they would contribute nothing to a category-priced
    *  figure, so a reader must know they exist before trusting one. */
   uncategorisedChildren: number;
+  /** r347 — true when the figure was priced from the s.48 grid, false when it is the plain head count.
+   *  The notes under the table branch on THIS, not on `mode`: since r344 an 'auto' employee's relief
+   *  depends on whether the grid is derived as well as on the mode, and a note keyed on mode alone told
+   *  half of them the opposite of what their own payslip does. */
+  pricedFromGrid: boolean;
   /** r343 04b88724 — the s.48 WEIGHTED qualifying-children count the categories on file come to (1 / 4 / 8,
    *  half for a 50%-shared child), from `core/dependents.ts eligibleChildReliefUnits`. */
   ruleUnits: number;
@@ -680,12 +685,21 @@ export function IdentityTaxCard({
                   </table>
                 </div>
               )}
-              {/* In 'auto' the kernel counts one unit per eligible child whatever category is on file, so
-                  the category column above is INFORMATION. Saying so is the difference between a screen
-                  that explains a figure and one that misreports it. */}
-              {mode === 'auto' && (
+              {/* ⚠️ THIS NOTE USED TO SAY THE WRONG THING UNCONDITIONALLY (r347, item 04b88724).
+                  It read "In Auto (from Family records) every eligible child counts as one qualifying
+                  child… the relief category shown is for information only", and it rendered for EVERY
+                  'auto' employee. That was true until r344 taught the payslip to price the derived grid
+                  on 'auto' — after which an employee WITH a grid was relieved at the s.48 weight while
+                  this sentence told the reader the opposite. The reporter found it on a named employee.
+                  It now renders only when the figure really IS the head count, and says WHY. */}
+              {mode === 'auto' && !childRelief.pricedFromGrid && (
                 <p className="mt-2 text-xs text-muted-foreground" data-child-auto-units-note>
                   {t('childQualifyingAutoUnitsNote')}
+                </p>
+              )}
+              {mode === 'auto' && childRelief.pricedFromGrid && (
+                <p className="mt-2 text-xs text-muted-foreground" data-child-auto-weighted-note>
+                  {t('childQualifyingAutoWeightedNote')}
                 </p>
               )}
               {/* ── r343 04b88724 — THE GAP, NAMED, IN THE MODE WHERE IT COSTS MONEY ────────────────────

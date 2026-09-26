@@ -74,6 +74,7 @@ const PRICING: ChildReliefPricing = {
   statutoryVersion: '2026.9',
   familyChildren: 2,
   uncategorisedChildren: 0,
+  pricedFromGrid: false,
   mode: 'manual',
   derived: false,
   physicalChildren: 0,
@@ -266,6 +267,7 @@ describe('auto — DERIVED from the Family records, and it is the PAYSLIP\'s fig
     eligibleChildren: 1,
     familyChildren: 2,
     uncategorisedChildren: 0,
+    pricedFromGrid: false,
     qualifyingChildren: 2,
     reliefRM: kernelFlatRM(2),
     breakdown: [
@@ -290,6 +292,7 @@ describe('auto — DERIVED from the Family records, and it is the PAYSLIP\'s fig
     eligibleChildren: 2,
     familyChildren: 2,
     uncategorisedChildren: 1,
+    pricedFromGrid: false,
     qualifyingChildren: 2,
     reliefRM: kernelFlatRM(2),
     breakdown: [
@@ -359,6 +362,7 @@ describe('auto — DERIVED from the Family records, and it is the PAYSLIP\'s fig
     eligibleChildren: 0,
     familyChildren: 0,
     uncategorisedChildren: 0,
+    pricedFromGrid: false,
     qualifyingChildren: 5,
     reliefRM: kernelFlatRM(5),
     breakdown: [],

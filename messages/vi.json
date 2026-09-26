@@ -1611,13 +1611,14 @@
       "childQualifyingColUnits": "Qualifying children",
       "childQualifyingColAmount": "Relief (RM)",
       "childQualifyingTotal": "Total",
-      "childQualifyingAutoUnitsNote": "In Auto (from Family records) every eligible child counts as one qualifying child. The relief category shown is for information only: it prices the relief in Auto (from table) mode.",
+      "childQualifyingAutoUnitsNote": "Ở đây mỗi người con đủ điều kiện được tính là một, vì có ít nhất một người chưa được ghi nhóm miễn giảm. Trọng số chỉ áp dụng khi mọi người con đủ điều kiện đều có nhóm — hãy bổ sung nhóm còn thiếu ở tab Gia đình và con số này sẽ thay đổi theo ở kỳ tính lương kế tiếp.",
       "childQualifyingUncategorised": "{count} eligible child(ren) carry no relief category, so they would add nothing to a figure priced by category.",
       "childQualifyingRuleset": "Priced by statutory ruleset {version}.",
       "childQualifyingItemChildren": "{count} child(ren)",
       "childQualifyingStaleFamily": "The PCB calculation still uses {stored} child(ren) — the figure last worked out from the Family records. The records now hold {eligible} eligible child(ren). Saving this card brings the tax figure back in step.",
-      "childQualifyingWeightingGap": "The official relief categories recorded against these children add up to {ruleUnits} qualifying children — {ruleAmount} of relief — because a child 18+ in diploma or degree study, and a disabled child, each count as four, and a disabled child in that study as eight. Auto (from Family records) claims {amount}, counting every child as one, so this employee’s monthly tax is over-deducted. Auto (from table) is the mode that prices the categories today.",
-      "childQualifyingWeightingGapOver": "The official relief categories recorded against these children add up to {ruleUnits} qualifying children — {ruleAmount} of relief — which is LESS than Auto (from Family records) is claiming: {amount}. Auto counts every child as one whole child, so a child whose claim share is recorded as 50% (the other half claimed by the other parent) is still counted in full. This employee’s monthly tax is therefore under-deducted, and the shortfall is settled at the annual assessment. Auto (from table) is the mode that prices the categories and the claim shares today."
+      "childQualifyingWeightingGap": "Các nhóm miễn giảm đã ghi cho những người con này tương đương {ruleUnits} người con đủ điều kiện — {ruleAmount} miễn giảm — nhưng chỉ {amount} đang được áp dụng, vì có ít nhất một người con đủ điều kiện chưa có nhóm và không thể áp trọng số lên hồ sơ điền dở. Do đó thuế hằng tháng của nhân viên này bị khấu trừ thừa (over-deducted). Bổ sung nhóm còn thiếu sẽ mở phần còn lại.",
+      "childQualifyingWeightingGapOver": "Các nhóm miễn giảm đã ghi cho những người con này tương đương {ruleUnits} người con đủ điều kiện — {ruleAmount} miễn giảm — THẤP HƠN mức {amount} đang được áp dụng. Mỗi người con đang được tính trọn vẹn, nên người con có tỷ lệ kê khai 50% (nửa còn lại do người kia kê khai) vẫn được tính đủ. Thuế hằng tháng của nhân viên này vì vậy bị khấu trừ thiếu, và phần chênh lệch sẽ được quyết toán khi kê khai năm.",
+      "childQualifyingAutoWeightedNote": "Mỗi người con được tính theo trọng số của nhóm miễn giảm: con từ 18 tuổi đang học cao đẳng hoặc đại học, và con khuyết tật, mỗi trường hợp tính bằng bốn; con khuyết tật đang theo học như vậy tính bằng tám. Đây chính là con số phiếu lương đang dùng."
     },
     "import": {
       "title": "Nhập nhân viên",
