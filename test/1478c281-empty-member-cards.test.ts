@@ -27,20 +27,37 @@
  * distinction is the whole of item a0b90c81, it survived r341 and it survives this. Note that (e) is a
  * NO-CHANGE guard: it was green before this change and is green after, which is exactly what it claims.
  *
- * ⚠️ THE r209 TRAP IS NOT RESURRECTED. `holdsNothingOfItsOwn` reads the four figures already on the row and
- * NEVER the type's own entitlement table; lib/shared-leave-balance.ts records what happened when a display
- * decision consulted a borrower's own entitlement story — "YTD Entitled 0.00" under a red notice telling HR
- * to create a table, which is the one change that would end the borrowing. Nothing here asks that question.
+ * ⚠️ THE r209 TRAP IS NOT RESURRECTED, AND THAT IS A NARROWER CLAIM THAN IT LOOKS — (f). `holdsNothingOfItsOwn`
+ * reads the four figures already on the row and NEVER the type's own entitlement table, so it cannot print the
+ * WRONG notice, which is what r209's trap was: lib/shared-leave-balance.ts records "YTD Entitled 0.00" under a
+ * red instruction to create a table, over days the employee could in fact spend. But the CORRECT notice goes
+ * unprinted instead, because it is part of the card and the card is gone. (f) measures exactly that, in the
+ * state production is actually in, and pins the two halves of the answer:
+ *   · the four folded members carry a 3-day table clamped to 0.00 — `capped_by_max_balance`, a notice-bearing
+ *     status — so the card this fold removes was NOT four blank zeros. Folding takes that sentence with it,
+ *     and that is the cost of what the reporter approved, recorded rather than implied;
+ *   · no card that STILL RENDERS ever loses its notice: the same capped member holding two days by adjustment
+ *     keeps its card AND its caption, and a member of a HIDDEN group keeps both as well.
+ *
+ * ⚠️ AND THE FIXTURE IS PRODUCTION'S STATE, WHICH IT WAS NOT AT FIRST. The first cut raw-inserted seven bare
+ * leave types, so its four "empty" members were `no_entitlement_table` — a state the reporter's four are NOT
+ * in. Their six Special Leave types carry bands of `{days: 3, maxBalanceDays: 0}`
+ * (test/r196-entitlement-not-generated.test.ts:168): the year-open grants the 3, `applyMaxBalance` clamps it
+ * to 0.00, and the accrual row is still written. In the bare-type shape the question (f) asks cannot even
+ * arise, which is how it went unasked.
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { decideLeave, requestLeave } from '../core/leave';
-import { leaveBalances, listEligibleLeaveTypesFor } from '../core/read';
+import { decideLeave, openLeaveYear, requestLeave } from '../core/leave';
+import { createEntitlementTemplate } from '../core/entitlement-template';
+import { leaveBalances, leaveEntitlementBreakdown, listEligibleLeaveTypesFor } from '../core/read';
+import { myLeaveDashboard } from '../core/my-leave';
 import { createLeaveSharedGroup } from '../core/leave-shared-group';
 import { holdsNothingOfItsOwn, isPoolBorrower } from '../lib/shared-leave-balance';
 import { planSharedGroupCeilings } from '../lib/shared-leave-pool';
+import { entitlementStatusNeedsNotice } from '../lib/entitlement-status';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -63,24 +80,61 @@ async function leaveTypeRow(name: string, balanceSourceTypeId?: string): Promise
   return row.id;
 }
 
-async function grant(employmentId: string, leaveTypeId: string, days: number) {
+/** The leave year the fixture opens, and the day the screen is read on. Inside one cycle, deliberately: the
+ *  CARD's figures are cycle-scoped even though the row's are the whole ledger. */
+const YEAR = 2026;
+const TODAY = '2026-09-26';
+const ASOF = '2026-12-31';
+
+/**
+ * THE REPORTER'S OWN BAND, and the reason this file needs entitlement tables at all: 3 days granted, a
+ * Maximum Balance of 0 that clamps them to nothing, and the accrual row written anyway (r196, r209). The row
+ * reads 0.00 four times over while `eligibleDays` is 3 and the status is notice-bearing.
+ */
+const CAPPED_TO_NOTHING = [{ fromYears: 0, toYears: null, days: 3, carryForwardDays: 0, maxBalanceDays: 0 }];
+
+async function table(
+  ctx: ReturnType<typeof adminCtx>,
+  leaveTypeId: string,
+  name: string,
+  bands: { fromYears: number; toYears: number | null; days: number; carryForwardDays: number; maxBalanceDays: number | null }[],
+) {
+  await createEntitlementTemplate(ctx, { leaveTypeId, name, validFrom: `${YEAR}-01-01`, serviceBands: bands });
+}
+
+/** An ad-hoc grant, the way HR actually puts a day on one person's type: an ADJUSTMENT row, inside the cycle
+ *  the card is read in, so it reaches the card and not only the row. */
+async function adjust(employmentId: string, leaveTypeId: string, days: number) {
   await owner.db.insert(schema.leaveLedger).values({
     tenantId: b.tenantId,
     employmentId,
     leaveTypeId,
-    entryType: 'accrual',
+    entryType: 'adjustment',
     days: days.toFixed(2),
-    effectiveOn: '2020-01-01',
+    effectiveOn: `${YEAR}-03-01`,
   });
 }
 
+/** The card as the employee's own screen builds it — `myLeaveDashboard`, not the raw row, because the notice
+ *  and the Entitlement figure come from the BREAKDOWN and only exist at this level. */
+async function cards(ctx: ReturnType<typeof adminCtx>, employmentId: string) {
+  return (await myLeaveDashboard(ctx, employmentId, { today: TODAY, locale: 'en' })).cards;
+}
+
 /**
- * PRODUCTION'S SHAPE, SMALL — all seven members of "Special Leave" plus a control arm:
- *   · `sp`   — the pot, 10 days on its own ledger (production: SP, 800.00 / 80 employments);
- *   · `cpl`, `ndl` — `balance_source_type_id` → `sp`. Folded by the POINTER, whatever they hold;
- *   · `mrl`  — a member holding 6 days OF ITS OWN (production: MRL, 177.00 / 59). Folded by NEITHER reason;
- *   · `cgl`, `exm`, `gd`, `std` — members with nothing granted at all (production: 0.00 each). Folded by the
- *     BALANCE reason, and each one's card must return the day it is granted a day;
+ * PRODUCTION'S SHAPE, SMALL — all seven members of "Special Leave" IN THE STATE PRODUCTION IS ACTUALLY IN,
+ * plus a control arm. Every figure below comes from the leave year being OPENED over a real entitlement table,
+ * not from a hand-written ledger row, because the whole question (f) asks is what the table says while the
+ * ledger says nothing:
+ *   · `sp`   — the pot, a 10-day table (production: SP, 800.00 / 80 employments = 10 each). NOT a group
+ *              member, which is production's arrangement: the pointers point INTO it from outside the group;
+ *   · `cpl`, `ndl` — `balance_source_type_id` → `sp`, and the capped band. Folded by the POINTER, whatever
+ *              they hold;
+ *   · `mrl`  — the same 3 days with NO cap, so the year-open really grants them (production: MRL, 177.00
+ *              across 59 employments = 3 × 59). Folded by NEITHER reason;
+ *   · `cgl`, `exm`, `gd`, `std` — `{days: 3, maxBalanceDays: 0}`: the table grants 3, the cap clamps it to
+ *              0.00, the accrual row is written anyway (production: 0.00 each, six types, r196/r209). Folded
+ *              by the BALANCE reason — and each card must return the day it is granted a day;
  *   · `loose` — in no group, 14 days: the control arm, so a gate that dropped everything cannot pass.
  */
 async function fixture() {
@@ -101,9 +155,14 @@ async function fixture() {
     employmentType: 'full_time',
     hiredOn: '2020-01-01',
   });
-  await grant(emp.employmentId, sp, 10);
-  await grant(emp.employmentId, mrl, 6);
-  await grant(emp.employmentId, loose, 14);
+  for (const t of [cpl, ndl, cgl, exm, gd, std]) await table(ctx, t, 'Special — all staff', CAPPED_TO_NOTHING);
+  await table(ctx, mrl, 'Marriage — all staff', [
+    { fromYears: 0, toYears: null, days: 3, carryForwardDays: 0, maxBalanceDays: null },
+  ]);
+  await table(ctx, sp, 'Special Leave — all staff', [
+    { fromYears: 0, toYears: null, days: 10, carryForwardDays: 0, maxBalanceDays: null },
+  ]);
+  await adjust(emp.employmentId, loose, 14);
   const group = await createLeaveSharedGroup(ctx, {
     name: 'Special Leave',
     totalLimitDays: 10,
@@ -111,6 +170,9 @@ async function fixture() {
     leaveTypeIds: [cpl, ndl, mrl, cgl, exm, gd, std],
     essPlacement: 'primary',
   });
+  // ⚠️ THE STEP THE FIRST CUT OF THIS FILE DID NOT HAVE. Without it the four empty members are
+  // `no_entitlement_table` and nothing here is production's case.
+  await openLeaveYear(ctx, { year: YEAR });
   return { ctx, sp, cpl, ndl, mrl, cgl, exm, gd, std, loose, group, employmentId: emp.employmentId };
 }
 
@@ -140,7 +202,8 @@ describe('1478c281 · (a) Marriage Leave keeps its card AND its days', () => {
     const mrlRow = rows.find((r) => r.leaveTypeId === mrl);
 
     expect(mrlRow, 'Marriage Leave is in the placed group and must still draw its card').toBeDefined();
-    expect(mrlRow!.balance, 'and the card must carry its own days, not a pooled or folded zero').toBe(6);
+    // 3.00, because the year-open granted its uncapped table — production's 177.00 is this figure × 59.
+    expect(mrlRow!.balance, 'and the card must carry its own days, not a pooled or folded zero').toBe(3);
     expect(holdsNothingOfItsOwn(mrlRow!), 'it holds something, so the new condition does not touch it').toBe(false);
     expect(isPoolBorrower(mrlRow!), 'and it borrows nothing — its ledger is its own').toBe(false);
     // CONTROL ARM: a type in no group at all is untouched, so a gate that dropped every row cannot pass here.
@@ -188,7 +251,7 @@ describe('1478c281 · (c) the card comes back by itself', () => {
     const { ctx, gd, employmentId } = await fixture();
     expect(await cardIds(ctx, employmentId), 'hidden while it holds nothing').not.toContain(gd);
 
-    await grant(employmentId, gd, 1);
+    await adjust(employmentId, gd, 1);
 
     const rows = await leaveBalances(ctx, employmentId, 'en');
     const gdRow = rows.find((r) => r.leaveTypeId === gd);
@@ -201,7 +264,7 @@ describe('1478c281 · (c) the card comes back by itself', () => {
     const { ctx, std, employmentId } = await fixture();
     expect(await cardIds(ctx, employmentId), 'hidden while nothing at all is on the row').not.toContain(std);
 
-    // No entitlement, no accrual: only an undecided request, which `pending` carries. The card must show,
+    // Nothing on the ledger but a 0.00 accrual row: only an undecided request, which `pending` carries. The card must show,
     // or the employee has applied for something with nowhere on screen to see it — the defect the
     // pending-only tail exists for (core/read.ts), and folding must not undo it.
     await requestLeave(ctx, {
@@ -273,15 +336,24 @@ describe('1478c281 · (d) TWO REASONS, ASSERTED SEPARATELY', () => {
       employmentType: 'full_time',
       hiredOn: '2020-01-01',
     });
-    await grant(emp.employmentId, sp, 10);
+    await table(ctx, sp, 'Special Leave — all staff', [
+      { fromYears: 0, toYears: null, days: 10, carryForwardDays: 0, maxBalanceDays: null },
+    ]);
+    await table(ctx, exm, 'Special — all staff', CAPPED_TO_NOTHING);
     // Placement defaults to hidden (migration 0438): the out-of-the-box state, in which nothing folds because
     // the group draws no card to absorb anything — including the empty member, whose card is the only place
     // its (future) days could ever appear.
     await createLeaveSharedGroup(ctx, { name: 'Special Leave', totalLimitDays: 10, leaveTypeIds: [cpl, exm] });
+    await openLeaveYear(ctx, { year: YEAR });
 
     const ids = await cardIds(ctx, emp.employmentId);
     expect(ids, 'the borrower keeps its card: no pooled card exists to absorb it').toContain(cpl);
     expect(ids, 'and so does the empty member').toContain(exm);
+    // …AND SO DOES ITS EXPLANATION. The out-of-the-box tenant is the one that still gets the r209 sentence
+    // over a 0.00 it cannot otherwise account for, and no part of r343 reaches it.
+    const exmCard = (await cards(ctx, emp.employmentId)).find((c) => c.leaveTypeId === exm)!;
+    expect(exmCard.entitlementStatus, 'the capped table is what its 0.00 is').toBe('capped_by_max_balance');
+    expect(entitlementStatusNeedsNotice(exmCard.entitlementStatus), 'and the caption saying so is printed').toBe(true);
   });
 });
 
@@ -298,5 +370,82 @@ describe('1478c281 · (e) a hidden card never removes the right to apply', () =>
       employmentId, leaveTypeId: gd, startDate: '2026-08-03', endDate: '2026-08-04', today: '2026-07-01',
     });
     expect(req.leaveRequestId, 'Graduation Leave has no card and is still applicable for').toBeTruthy();
+  });
+});
+
+describe('1478c281 · (f) WHAT THE FOLDED CARD WAS CARRYING, AND WHAT STILL CARRIES IT', () => {
+  /**
+   * ⚠️ WHY THIS BLOCK EXISTS, AND IT IS NOT A HAPPY ONE. `holdsNothingOfItsOwn` reads FOUR LEDGER FIGURES. The
+   * card is not built from those four — core/my-leave.ts builds it from `leaveEntitlementBreakdown`, so it also
+   * prints an ENTITLEMENT row (`eligibleDays`) and the 31e39d74 / r209 ENTITLEMENT-STATUS NOTICE, the one screen
+   * element whose entire purpose is to say why a type reads 0.00. A row can therefore be four zeros and still
+   * have had a card worth reading. On the reporter's account it IS: `{days: 3, maxBalanceDays: 0}` prints
+   * "Entitlement 3.00", "Balance 0.00" and an amber caption.
+   *
+   * So the fold does not remove a blank card; it removes an explained zero. That is the cost of what the
+   * reporter approved in 1478c281, and it is recorded here rather than left for someone to rediscover from a
+   * support question. The two cases below are the two halves of the honest answer: what goes, and what never
+   * goes.
+   */
+  it('the four folded members were NOT four blank zeros — a 3-day table and its caption go with the card', async () => {
+    const { ctx, cgl, exm, gd, std, mrl, employmentId } = await fixture();
+
+    // What the row says — the four figures the gate reads, and all it reads.
+    const rows = await leaveBalances(ctx, employmentId, 'en', { includeHidden: true });
+    for (const [id, label] of [[cgl, 'CGL'], [exm, 'EXM'], [gd, 'GD'], [std, 'STD']] as const) {
+      const row = rows.find((r) => r.leaveTypeId === id)!;
+      expect(holdsNothingOfItsOwn(row), `${label}: the ledger holds nothing, which is why it folds`).toBe(true);
+
+      // …and what the CARD would have said, which is a different and larger thing. If this ever reads
+      // `granted`/false, the fold has become cheap and the comment on `holdsNothingOfItsOwn` must change with it.
+      const bd = await leaveEntitlementBreakdown(ctx, employmentId, id, ASOF, 'en');
+      expect(bd!.eligibleDays, `${label}: the table grants 3 days`).toBe(3);
+      expect(bd!.currentYearEntitlement, `${label}: and the Maximum Balance of 0 clamps them to nothing`).toBe(0);
+      expect(bd!.entitlementStatus, `${label}: which is the state r209 exists to announce`).toBe('capped_by_max_balance');
+      expect(
+        entitlementStatusNeedsNotice(bd!.entitlementStatus),
+        `${label}: so the card we are folding away carried an explanatory notice, not silence`,
+      ).toBe(true);
+    }
+
+    // THE CONSEQUENCE, ON THE EMPLOYEE'S OWN SCREEN: no card, so no notice. Stated as a fact about the screen,
+    // because "the notice still resolves" is true and beside the point.
+    const own = await cards(ctx, employmentId);
+    const shown = own.map((c) => c.leaveTypeId);
+    for (const [id, label] of [[cgl, 'CGL'], [exm, 'EXM'], [gd, 'GD'], [std, 'STD']] as const) {
+      expect(shown, `${label}: folded, and its explanation is folded with it`).not.toContain(id);
+    }
+    // HR still has both — 994a5287: folding is a self-service display decision, so the misconfiguration this
+    // caption reports is still visible to the only people who can fix it.
+    expect(rows.map((r) => r.leaveTypeId), 'the type is still on HR screens').toContain(cgl);
+    // And the keeper's card is a GRANTED one, so nothing here is claiming Marriage Leave needs a caption.
+    const mrlCard = own.find((c) => c.leaveTypeId === mrl)!;
+    expect(mrlCard.entitlementStatus, 'the uncapped table really granted its days').toBe('granted');
+    expect(entitlementStatusNeedsNotice(mrlCard.entitlementStatus), 'so it has nothing to explain').toBe(false);
+  });
+
+  /**
+   * ⚠️ THE INVARIANT THIS FIX PASS OWES: THE NOTICE IS NEVER DROPPED FROM A CARD THAT STILL RENDERS. The fold
+   * removes whole rows and touches no notice logic, so the caption can only ever leave WITH its card — and the
+   * moment a member holds anything of its own, it has both back. A later reader who tries to answer the problem
+   * above by folding on "nothing but a caption", or by suppressing the caption for group members instead of the
+   * card, breaks this case.
+   */
+  it('a capped member that holds two days by adjustment keeps its card AND the caption explaining its 0.00', async () => {
+    const { ctx, cgl, employmentId } = await fixture();
+    expect((await cards(ctx, employmentId)).map((c) => c.leaveTypeId), 'folded while the ledger is empty').not.toContain(cgl);
+
+    // The same `{days: 3, maxBalanceDays: 0}` table, unchanged — only the ledger moves.
+    await adjust(employmentId, cgl, 2);
+
+    const card = (await cards(ctx, employmentId)).find((c) => c.leaveTypeId === cgl);
+    expect(card, 'two days of its own, so the card is back').toBeDefined();
+    expect(card!.balance, 'carrying them').toBe(2);
+    expect(card!.entitlement, 'and the table behind them').toBe(3);
+    expect(card!.entitlementStatus, 'with the status unchanged by any of this').toBe('capped_by_max_balance');
+    expect(
+      entitlementStatusNeedsNotice(card!.entitlementStatus),
+      'AND THE SENTENCE THAT EXPLAINS WHY 3 GRANTED DAYS ARE WORTH 2 — a rendering card never loses its notice',
+    ).toBe(true);
   });
 });
