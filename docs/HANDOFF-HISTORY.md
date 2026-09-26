@@ -1,3 +1,36 @@
+## r343 (2026-09-26) — four items, and two of the round's errors were the plans, not the builds. `main@dd6a9a07`, **no migration ran**.
+
+Closed: `04b88724`, `03f89c0f`, `1478c281`, `cbfa8b0b`. Raised: `a5f21891`.
+Gate: **1028 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. Migration **0489 was allocated to `cbfa8b0b` and went unused** — the build composes the existing `submitReplacementLeaveRequest`, which already has its storage, so `db/` is untouched and the watermark stays at `max(idx)=488`. Verified no orphan `.sql`: every file in `db/migrations` matches a journal entry.
+
+### THE TWO ERRORS THAT SHAPED THE ROUND WERE MINE
+
+**`cbfa8b0b`'s plan said "grep-confirmed" that no employee request path existed.** False. `core/replacement-request.ts` is 1030 lines (item `296fc027`), and `components/leave/replacement-leave-request-dialog.tsx` was **already mounted on `app/leave/page.tsx`**, already carrying the two-section shape the contest asked us to replace. I grepped `leaveCreditRequest` / `leave_credit_request`; the feature is named *replacement*. So the agent built a correct single table at an **orphan route** while the real surface sat untouched — which is exactly what the verifier reported as "unreachable from anywhere in the product". The fix replaced the dialog's **body** with the single table (500 → 149 lines) and kept its trigger, so there is one surface; I then added the missing link, because the itemised request list lives only at `/leave/credit` and My Absence renders a summed figure.
+
+**`04b88724`'s plan contradicted itself** — it demanded `eligibleChildReliefCount` return a weighted count *and* that `num_children` stay a head count, when that function is precisely what the sync writes there. The agent caught it, kept the head count (protecting Form E / CP8D / EA), added a separate weighted path, and said so.
+
+### THE MONEY HALF OF 04b88724 IS NOT DONE, DELIBERATELY
+
+The weighted figure is derived and **disclosed** on the Identity & Tax card, but the payslip still relieves heads × RM2,000 — a disabled child in higher education is still relieved at RM2,000 rather than RM16,000. Finishing it needs three consumers (`core/payroll.ts:5881`, `core/payroll-view.ts:1487`, `localization/my/multicycle-worksheet.ts` — the third is the one a partial fix misses) plus a backfill. Raised as **`a5f21891`** with the full design; the reporter was told plainly that half shipped. Exposure: 3 employees, 2 children counted where the rules count 5, **RM6,000** of relief not given.
+
+### DECISIONS
+
+- **`num_children` stays a head count.** Form E, CP8D and EA read it as one; the weighting lives in the grid, which has no other readers.
+- **A typed figure is not an error.** `03f89c0f`'s screen words every row as a *disagreement*, says the record is as likely to be the incomplete half, and offers **no bulk action** — 52 children whose reality nobody has established is the worst thing to change in one click.
+- **Four day types, always.** `cbfa8b0b` offered three wherever extended hours is off, which is every company. The option list is now the whole vocabulary; an Ordinary Day row explains it earns nothing rather than vanishing.
+
+### WHAT THE CHECKS CAUGHT THAT TESTS DID NOT
+
+- **Three comments asserted an unmeasured production fact as measured** — the same class the fix pass was correcting. All three said the four folded Special Leave members "carry a 3-day table clamped to 0.00 — `capped_by_max_balance`". Measured: CGL, EXM, GD and STD have **zero** entitlement templates and a NULL `max_balance_days`, so that status is unreachable for them. Corrected, and the fixture gained a case in the shape production is actually in.
+- **A guard that would have misdirected the next round.** The three-gate agreement guard scanned a 5-line window *including comments*, so a comment mentioning a mode beside a gate failed it with text claiming the gates had diverged. `a5f21891` is the round that widens those gates and will add exactly such comments. Now strips comments; proved both ways.
+- **The full gate caught a raw key.** The new requests-link key went top-level beside the dialog's own `replacementRequest.*`, but the page's translator is scoped to `leave` — so it resolved `leave.replacementRequest.viewMyRequests` in all six locales and would have rendered as a raw key on screen. `tsc` and the targeted tests were green either way.
+
+### WHAT WAS NOT DONE
+
+- The money half of `04b88724` (raised as `a5f21891`).
+- Issued payslips are not recomputed anywhere in this round.
+- `/leave/credit` still has no nav entry — it is reached from the link beside the request trigger and the post-submit redirect, which is enough to make the list reachable but is not a menu item.
+
 ## r342 (2026-09-26) — one item, contested, and it was money that was already wrong. `main@6ba48e0e`, **no migration**.
 
 Closed: `20837372`. Gate: **1020 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. No `gate:shadow`: the change is arithmetic plus a resync script, `db/` is untouched, watermark unchanged at `max(idx)=488`.
