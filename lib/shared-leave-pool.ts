@@ -21,9 +21,11 @@
  *     tile of its own. That is the "one card" the reporter asked for.
  *   · ALSO-COUNTS — every other member that still draws a card of its own (it holds its own days; see the
  *     gate in core/read.ts). It keeps every figure and gains one line naming the ceiling it counts towards,
- *     so the connection is visible without the balance disappearing. On production that is Marriage Leave
- *     with 177.00 days across 59 employments, plus CGL/EXM/GD/STD at 0.00 — the zeros are not a reason to
- *     treat them differently, they are the same arrangement with nothing granted yet.
+ *     so the connection is visible without the balance disappearing. On production that is Marriage Leave,
+ *     with 177.00 days across 59 employments, AND IT ALONE: r343 (1478c281) added the second half of that
+ *     gate, so CGL/EXM/GD/STD — each holding 0.00 — draw no card and therefore name no ceiling. Nothing here
+ *     decides that; this module reads the already-gated card list it is handed, which is why a member's card
+ *     returning with its first granted day brings its ceiling line back with it and needs no change here.
  *   · STANDALONE — a group with no pooled member at all, i.e. no card whose ledger is the pot. There is
  *     nothing to merge onto, so it keeps drawing its own tile; folding it away would delete the only place
  *     the ceiling is shown. This is the out-of-the-box shape (`pnpm db:seed` configures no pooled type), so

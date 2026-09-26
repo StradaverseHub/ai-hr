@@ -7,12 +7,19 @@
  * ⚠️ HALF OF THAT WOULD HAVE HIDDEN 177 DAYS FROM 59 PEOPLE, AND THE PLAN SAID SO BEFORE IT WAS APPROVED.
  * Re-measured on production 2026-09-26: the shared group "Special Leave" holds CGL CPL EXM GD MRL NDL STD and
  * is placed 'primary'; only CPL and NDL carry `balance_source_type_id` → SP. Marriage Leave holds 177.00
- * `leave_ledger` days across 59 employments of its own, and CGL/EXM/GD/STD hold 0.00 — which is the same
- * arrangement with nothing granted yet, never a reason to treat them differently. So:
+ * `leave_ledger` days across 59 employments of its own, and CGL/EXM/GD/STD hold 0.00. So:
  *
  *   · the shared GROUP's tile is merged onto the leave-type card whose ledger IS the pot — one card;
  *   · CPL and NDL lose their own cards, because their balance IS that card's;
- *   · MRL, CGL, EXM, GD and STD keep theirs, each naming the ceiling it also counts towards.
+ *   · MRL keeps its own card, naming the ceiling it also counts towards.
+ *
+ * ⚠️ UPDATED BY r343 (1478c281), AND THE TWO ASSERTIONS IT CHANGED ARE MARKED BELOW. This file originally
+ * read "CGL/EXM/GD/STD hold 0.00 — the same arrangement with nothing granted yet, never a reason to treat them
+ * differently", and pinned that they keep a card. The reporter, shown the result, decided the other way: a
+ * member card holding NOTHING of its own draws no card, so those four are folded too and only MRL keeps one.
+ * The assertions are rewritten to that decision rather than deleted or relaxed — they still fail if anyone
+ * widens the fold back to group membership, which is the regression that costs 59 people 177.00 days. The new
+ * rule itself is pinned in test/1478c281-empty-member-cards.test.ts.
  *
  * ⚠️ THE TWO SETTINGS ARE NOT RECONCILED AND MUST NOT BE. `leave_shared_group` is a combined CEILING
  * (10.00 days, 3.00 per application, enforced by `enforceSharedLeaveGroupLimit`);
@@ -196,9 +203,13 @@ describe('8d3a7bff · (c) and (d) — which members lose a card, and which must 
     expect(isPoolBorrower(mrlRow!), 'it borrows nothing — its ledger is its own').toBe(false);
     expect(mrlRow!.sharedBalance, 'and it is in no balance pool at all').toBeNull();
 
-    // A member at 0.00 today is the SAME arrangement, so it keeps its card too: hiding it would make the rule
-    // depend on a figure, and the day an entitlement table is written for it the defect would be back.
-    expect(rows.map((r) => r.leaveTypeId), 'a zero-balance member keeps its card').toContain(exm);
+    // r343 (1478c281) — THIS ASSERTION IS REVERSED, ON THE REPORTER'S DECISION, AND THE OLD REASONING WAS
+    // ANSWERED RATHER THAN DROPPED. It used to read "a zero-balance member keeps its card", on the grounds
+    // that hiding it would make the rule depend on a figure and the defect would return the day an
+    // entitlement table was written. It does depend on a figure — the LEDGER — and that is why the card comes
+    // back by itself the day a day is granted (pinned in test/1478c281-empty-member-cards.test.ts). What the
+    // old behaviour actually put on screen was four cards reading 0.00 on a ticket asking for fewer cards.
+    expect(rows.map((r) => r.leaveTypeId), 'a member holding nothing of its own draws no card').not.toContain(exm);
   });
 
   it('(d) the ceiling is NAMED on the cards that keep their balance, so the connection is still visible', async () => {
@@ -208,7 +219,9 @@ describe('8d3a7bff · (c) and (d) — which members lose a card, and which must 
       { id: group.id, members: [{ id: cpl }, { id: mrl }, { id: exm }] },
     ]);
     expect([...plan.mergedOnto.keys()], 'the pot’s card holds the ceiling').toEqual([sp]);
-    expect([...plan.alsoCounts.keys()].sort(), 'and the keepers name it').toEqual([mrl, exm].sort());
+    // r343 (1478c281) — REWRITTEN WITH THE ABOVE: `exm` draws no card now, so there is no card of its to name
+    // the ceiling on. MRL is the keeper, and it is the one this assertion exists to protect.
+    expect([...plan.alsoCounts.keys()], 'and the keeper names it').toEqual([mrl]);
     expect(plan.alsoCounts.get(sp), 'the host does not also "count towards" its own ceiling').toBeUndefined();
   });
 });

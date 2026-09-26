@@ -119,7 +119,15 @@ const ceilingLines = (loc: Locale): PooledCeilingLines => ({
   detailsLabel: slg(loc).viewDetails,
 });
 
-/** The five that keep their own cards. MRL is production's 177-day case; EXM is the 0.00 case. */
+/**
+ * The cards the server hands over as KEPT. MRL is production's 177-day case.
+ *
+ * ⚠️ r343 (1478c281) — EXM IS NOW A HYPOTHETICAL HERE, NOT PRODUCTION'S SHAPE. A member holding 0.00 no longer
+ * draws a card at all (the gate in core/read.ts; test/1478c281-empty-member-cards.test.ts), so the server
+ * never hands this component such a card for a member of a placed group. It is kept as a fixture on purpose:
+ * this file pins the RENDER given a card, and a 0.00 card still reaches it by other routes (an ungrouped type,
+ * or the same type once its group placement is Hidden), where it must still print its figures and its lines.
+ */
 const keepers = (loc: Locale) => [
   card({
     leaveTypeId: 'lt-mrl', leaveType: 'Marriage Leave', code: 'MRL',
@@ -268,7 +276,8 @@ describe('8d3a7bff · (d) Marriage Leave keeps its card, its balance and the con
     // And it is NOT given the pool's ceiling block — those figures belong to the card that holds the pot.
     expect(within(mrl).queryByTestId('pooled-ceiling'), `${loc}: MRL must not print the pooled ceiling`).toBeNull();
 
-    // A member at 0.00 today is the same arrangement and says the same thing.
+    // A 0.00 card, WHEREVER it came from, says the same thing as a card holding days — see `keepers` above for
+    // why r343 means a placed group's empty member is no longer one of the routes it can come from.
     const exm = cardNamed('Examination Leave');
     expect(exm.querySelector('p')!.textContent, `${loc}: EXM headline balance`).toBe(formatDays(0));
     expect(within(exm).getByTestId('ceiling-membership').textContent, `${loc}: EXM ceiling line`).toBe(
