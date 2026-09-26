@@ -27,12 +27,20 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { childReliefGridFromFamily } from '../core/dependents';
+import { childReliefGridFromFamily, pricesChildReliefFromGrid } from '../core/dependents';
 import { childReliefAmountFor } from '../localization/my/payroll';
 import { DEFAULT_MY_STATUTORY } from '../localization/my/statutory-tables';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const src = (p: string) => readFileSync(new URL(p, `file://${root}`), 'utf8');
+/** ALL FOUR. core/dependents.ts is the one r344 left behind; naming it here is the point. */
+const KERNEL_CONSUMERS = [
+  'core/payroll.ts',
+  'core/payroll-view.ts',
+  'localization/my/multicycle-worksheet.ts',
+  'core/dependents.ts',
+] as const;
+
 const RELIEFS = DEFAULT_MY_STATUTORY.pcb.reliefs;
 /** `childByCategory` is OPTIONAL on the ruleset (a pack predating 2026.7 omits it) — asserted present
  *  once here rather than non-null-asserted at every use, so a pack that dropped it fails loudly. */
@@ -102,9 +110,19 @@ describe('a5f21891 · (b) an incomplete family never prices from a partial grid'
     expect(s, 'and an incomplete family clears the grid').toContain('? built.grid : null');
   });
 
-  it('and all THREE kernel consumers fall back to the head count when the grid is absent', () => {
-    for (const f of ['core/payroll.ts', 'core/payroll-view.ts', 'localization/my/multicycle-worksheet.ts']) {
-      expect(src(f), `${f} requires a grid before pricing one`).toMatch(/childReliefMode === 'auto' && \w+\.childReliefTable != null/);
+  it('and every kernel consumer falls back to the head count when the grid is absent', () => {
+    // ⚠️ THIS USED TO GREP FOR THE LITERAL CONDITION IN THREE FILES, AND THAT IS HOW r344's DEFECT
+    // SURVIVED IT (r347, item 04b88724). Each consumer carried its own COPY of
+    // `childReliefMode === 'auto' && x.childReliefTable != null`, so a fourth consumer —
+    // `qualifyingChildBreakdown` in core/dependents.ts — could go on reading `mode === 'auto_table'`
+    // while this case stayed green. The payslip relieved a disabled child at four and the card that
+    // explains the figure showed one.
+    //
+    // There is now ONE predicate and the rule is asserted on IT. A restated copy is a defect, not a pass.
+    expect(pricesChildReliefFromGrid({ childReliefMode: 'auto', childReliefTable: null }), 'a null grid never prices').toBe(false);
+    expect(pricesChildReliefFromGrid({ childReliefMode: 'auto', childReliefTable: { under_18: { full: 1, half: 0 } } })).toBe(true);
+    for (const f of KERNEL_CONSUMERS) {
+      expect(src(f), `${f} requires a grid before pricing one`).toContain('pricesChildReliefFromGrid');
     }
   });
 });
@@ -112,10 +130,17 @@ describe('a5f21891 · (b) an incomplete family never prices from a partial grid'
 // ─── (c) All three consumers moved together ──────────────────────────────────────────────────────────
 
 describe('a5f21891 · (c) the payslip, the preview and the worksheet widened together', () => {
-  it("each of the three admits 'auto' as well as 'auto_table'", () => {
-    for (const f of ['core/payroll.ts', 'core/payroll-view.ts', 'localization/my/multicycle-worksheet.ts']) {
-      expect(src(f), `${f} still prices a keyed grid`).toContain("'auto_table'");
-      expect(src(f), `${f} now prices a derived one too`).toContain("=== 'auto'");
+  it('each consumer admits a derived grid as well as a keyed one, through the one predicate', () => {
+    expect(pricesChildReliefFromGrid({ childReliefMode: 'auto_table', childReliefTable: null }), 'a keyed grid').toBe(true);
+    expect(
+      pricesChildReliefFromGrid({ childReliefMode: 'auto', childReliefTable: { disabled: { full: 1, half: 0 } } }),
+      'a derived grid',
+    ).toBe(true);
+    for (const f of KERNEL_CONSUMERS) {
+      expect(src(f), `${f} reads the shared predicate`).toContain('pricesChildReliefFromGrid');
+      expect(src(f), `${f} restates the condition instead of reading it`).not.toMatch(
+        /childReliefMode === 'auto_table' \|\| \(\w*\.?childReliefMode === 'auto' &&/,
+      );
     }
   });
 
