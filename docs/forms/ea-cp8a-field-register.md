@@ -133,6 +133,7 @@ the reader has chosen.
 
 | Section | Box | Official wording (C.P.8A Pin. 2023) | Value | Fed by | Notes | Caption |
 | --- | --- | --- | --- | --- | --- | --- |
+| BELOW |  | — | sentence | Filled in by this system | Ours, and it says so — r349. The reporter’s red-boxed comparison marked the EIS figure and the disclaimer below the form as differences from the agency’s page, and they are: LHDN prints nothing there. The strip stays, because an employee’s EIS deduction is real money off their pay and this is their only annual statement; this line and a heavier rule above it make plain which part of the page is not the agency’s. | `payroll.ea.notOfficialStrip` |
 | BELOW |  | — | amount (RM) | Payroll — the year’s payslips (partE.eis) | NOT a box on the C.P.8A: the official Section E carries exactly two amounts and EIS is not one of them. The employee’s own EIS deduction is real and they may need it, so it is printed below the form with “RM” spelled out. | `payroll.ea.eisSip` |
 | BELOW |  | — | sentence | Filled in by this system | Ours. Names the year of assessment and the statutory table version, says which boxes payroll fed, and says the page is our rendering of the agency’s arrangement. The blank copy carries a different sentence, because none of that is true of a blank. | `payroll.ea.disclaimer` |
 | BELOW |  | — | sentence | Filled in by this system (overrides) | Printed only when HR has amended at least one figure on this statement. | `payroll.ea.amendedNote` |
@@ -145,7 +146,7 @@ the reader has chosen.
 
 ## Boxes nothing feeds yet
 
-8 of the 71 entries in this register take a value the agency asks
+8 of the 72 entries in this register take a value the agency asks
 for and this system holds nothing for. Each prints the blank form’s own rule and nothing on it —
 never a placeholder, never `0.00`, never a plausible guess. They are listed again here because
 they are the shortest answer to “what is still missing from the EA?”.

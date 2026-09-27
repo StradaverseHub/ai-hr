@@ -95,6 +95,7 @@ export async function eaPdfLabels(locale: string, mode: EaLabelMode): Promise<Ea
     contributionAmount: t('contributionAmount'),
     sectionEContributions: t('sectionEContributions'),
     eisSip: t('eisSip'),
+    notOfficialStrip: t('notOfficialStrip'),
     disclaimer: mode.blank
       ? t('blankDisclaimer')
       : t('disclaimer', { year: mode.year, version: mode.version }),

@@ -335,6 +335,8 @@ export type EaPdfLabels = {
   /** r219 — "Amaun caruman yang wajib dibayar (nyatakan bahagian pekerja sahaja)", used by E1 and E2. */
   contributionAmount: string;
   eisSip: string;
+  /** r349 — names the strip below the form as ours, so it cannot be mistaken for an agency box. */
+  notOfficialStrip: string;
   sectionFExemptAllowances: string;
   disclaimer: string; // already interpolated with {year} + {version} by the caller
   amendedNote: string; // 1.2.6 — printed only when ≥1 EA field was amended by HR
@@ -409,7 +411,17 @@ export const EA_FORM = {
   midMoney: [323, 390.7] as const,
   /** The banner, the officer box and the strip of ours below them. */
   bannerT: [77.3, 90.7] as const,
-  officerBox: { x0: 158.9, t0: 640.8, t1: 730.6, ruleX: [272, 563] as const },
+  /**
+   * The officer box at the foot. `ruleX[0]` is where the writing lines START, and it must clear the
+   * LONGEST caption in EITHER edition.
+   *
+   * ⚠️ IT WAS 272 AND THE ENGLISH EDITION OVERRAN IT BY 7.9 pt (item fda53352, r349). "Name and Address
+   * of Employer" ends at 279.9 at Helvetica 8, so the caption ran into its own rule — which is the red
+   * bar the reporter drew on that box. The Malay caption ("Nama dan Alamat Majikan") ends at 260.7 and
+   * fits with 11 pt to spare, which is why it was never seen: the form was only ever read in Malay.
+   * A guard now measures both editions instead of trusting this number.
+   */
+  officerBox: { x0: 158.9, t0: 640.8, t1: 730.6, ruleX: [288, 563] as const },
   /** Where OUR strip starts — the ~110 pt the specimen leaves empty beneath its own foot. */
   footStripT: 742,
   /** The page floor. Nothing may be drawn below it. */
@@ -582,6 +594,20 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
     page.drawLine({ start: { x: x0, y: at(tt) }, end: { x: x1, y: at(tt) }, thickness, color });
   const box = (x0: number, t0: number, x1: number, t1: number, thickness = 0.8) =>
     page.drawRectangle({ x: x0, y: at(t1), width: x1 - x0, height: t1 - t0, borderColor: rule, borderWidth: thickness });
+  /**
+   * A SOLID BLACK BLOCK — the agency's own device, and the thing that made our page read as a different
+   * document (item fda53352, r349). LHDN sets its section letters, its banner and its top-right heading
+   * filled black with WHITE lettering; we drew plain text inside an outline, and the reporter's red-boxed
+   * comparison marked every one of them.
+   *
+   * ⚠️ THE FILL IS DRAWN FIRST AND THE TEXT SECOND. Reversed out of order the caption is painted over and
+   * the block renders as an empty black rectangle — which still returns 200, still downloads, and is
+   * exactly the class of defect that reached the reporter twice already. `test/…-chrome…` asserts a white
+   * caption exists for every fill.
+   */
+  const fill = (x0: number, t0: number, x1: number, t1: number) =>
+    page.drawRectangle({ x: x0, y: at(t1), width: x1 - x0, height: t1 - t0, color: ink });
+  const white = rgb(1, 1, 1);
   /** The dotted rule the specimen writes every value on. */
   const dotted = (x0: number, x1: number, tt: number) => {
     for (let x = x0; x < x1; x += 3) {
@@ -675,6 +701,34 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
     put(')', ruleTo + 2, tt, size);
   };
 
+  /**
+   * ONE SECTION HEADING: the letter in a filled black square, the title beside it (r349).
+   *
+   * The label carries its own letter ("A  PARTICULARS OF EMPLOYEE") because the form's numbering is part
+   * of its wording — `lib/ea-field-register.ts` matches on it and the six catalogues own it. So the
+   * letter is SPLIT OFF here rather than removed from the catalogues, which would have made the register
+   * and the page disagree about what the form says.
+   *
+   * ⚠️ WHICH COORDINATE THIS FOLLOWS, AND WHY. The agency puts its square at x 39.8, its own body column.
+   * Ours goes at `L` (24), because EA_FORM.left is already a deliberate departure — the agency's rules
+   * start 16.8 pt from the paper edge, inside the unprintable margin of most office printers. The square's
+   * SIZE is the agency's (17.3 pt wide, measured off its page); its POSITION is ours. The transcription
+   * records both and says a build must choose per block; this is that choice, stated.
+   */
+  const sectionHeading = (label: string, tt: number) => {
+    const m = /^\s*([A-F])\s+(.*)$/.exec(label);
+    // A label that does not start with a lone section letter is drawn whole, unboxed — a locale that
+    // reorders it must not silently lose its title.
+    if (!m) return putFit(label, L, R - L, tt, 8.5, bold);
+    const [, letter, title] = m;
+    const SQ = 17.3; // the agency's own square width, measured off its page
+    const top = tt - 8.2;
+    const bot = tt + 2.3;
+    fill(L, top, L + SQ, bot);
+    putC(letter, L + SQ / 2, tt, 8.5, bold, white);
+    return putFit(title, L + SQ + 6, R - (L + SQ + 6), tt, 8.5, bold);
+  };
+
   const W = eaFormWords(opts.locale ?? 'en');
 
   // ── THE HEADER BAND — three blocks and the ruled banner under them ──────────────────────────────────
@@ -705,11 +759,18 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // own block and straight through the centred "MALAYSIA". pdf-lib does not clip, so the page still
   // renders and still downloads — the r205 Borang A lesson, and it was live in this round until the
   // blank form was rasterised and looked at. A caption is not proven by a green test.
-  if (W.privateStatement2) {
-    putR(W.privateStatement, R - eaW - 6, 17, 8, bold);
-    putR(W.privateStatement2, R - eaW - 6, 26, 8, bold);
-  } else {
-    putR(W.privateStatement, R - eaW - 6, 24, 8.5, bold);
+  // r349 — the agency sets this in a filled black block too (measured: x 398.9, width 133.0, height 20.2
+  // for its two English lines). ⚠️ THE BLOCK SIZES TO THE EDITION, never to a constant: English runs two
+  // lines and Malay one, so a fixed rectangle leaves the Malay page with a half-empty black box.
+  {
+    const right = R - eaW - 6;
+    const lines = W.privateStatement2 ? [W.privateStatement, W.privateStatement2] : [W.privateStatement];
+    const size = lines.length > 1 ? 8 : 8.5;
+    const widest = Math.max(...lines.map((l) => bold.widthOfTextAtSize(safe(l), size)));
+    const top = lines.length > 1 ? 10.5 : 17.5;
+    const bot = lines.length > 1 ? 29.5 : 27;
+    fill(right - widest - 5, top, right + 3, bot);
+    lines.forEach((l, i) => putR(l, right, (lines.length > 1 ? 17 : 24) + i * 9, size, bold, white));
   }
   putR(W.ea, R, 26, 17, bold);
   putR(W.employeeTin, R, 36, 7.5);
@@ -717,12 +778,15 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   put(W.lhdnState, 440, 66, 7.5);
   valueOrRule(d.employer.lhdnState ?? '', 495, R, 66);
 
-  box(L, EA_FORM.bannerT[0], R, EA_FORM.bannerT[1]);
-  putC(W.banner, CX, 86.5, 8, bold);
+  // r349 — SOLID, WHITE-ON-BLACK, as the agency prints it. Measured off its page: top 78.2, height 14.9,
+  // spanning its body width (39.8 -> 555.8). We keep OUR margins (L -> R) so the banner stays flush with
+  // the rest of our page; what is adopted is the treatment, not the coordinate.
+  fill(L, EA_FORM.bannerT[0], R, EA_FORM.bannerT[1]);
+  putC(W.banner, CX, 86.5, 8, bold, white);
 
   // ── A — BUTIRAN PEKERJA ────────────────────────────────────────────────────────────────────────────
   const A = EA_FORM;
-  putFit(t.sectionAEmployeeParticulars, L, R - L, 99.5, 8.5, bold);
+  sectionHeading(t.sectionAEmployeeParticulars, 99.5);
   putFit(t.name, L + 6, 165, 114, 7.5);
   valueOrRule(d.employee.name, 197.3, R, 114);
 
@@ -767,7 +831,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   valueOrRule(inYear(d.employee.terminatedOn), A.aRightRule[0], A.aRightRule[1], 186.6);
 
   // ── B — PENDAPATAN PENGGAJIAN, MANFAAT DAN TEMPAT KEDIAMAN ─────────────────────────────────────────
-  putFit(t.sectionBEmploymentIncome, L, R - L, 197.5, 8.5, bold);
+  sectionHeading(t.sectionBEmploymentIncome, 197.5);
   putFit(t.sectionBExcluding, L + 6, 430, 208, 7.5, bold);
   // The bold RM heading, printed ONCE for the whole form, over the right-hand column.
   putC(W.rm, (MX + MR) / 2, 208, 9, bold);
@@ -810,7 +874,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   moneyLine(t.compensation, A.itemLabel, 380, manual(d.partB.compensation));
 
   // ── C — PENCEN DAN LAIN-LAIN, closed by the form's single JUMLAH ───────────────────────────────────
-  putFit(t.sectionCPensionOther, L, R - L, 391.5, 8.5, bold);
+  sectionHeading(t.sectionCPensionOther, 391.5);
   moneyLine(t.pension, A.itemLabel, 405.6, manual(d.partC.pension));
   moneyLine(t.annuity, A.itemLabel, 418.6, manual(d.partC.annuity));
   /**
@@ -836,7 +900,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   hRule(MX, MR, 437.5, 1.4, ink);
 
   // ── D — JUMLAH POTONGAN ────────────────────────────────────────────────────────────────────────────
-  putFit(t.sectionDTotalDeductions, L, R - L, 447.5, 8.5, bold);
+  sectionHeading(t.sectionDTotalDeductions, 447.5);
   moneyLine(t.monthlyTaxDeduction, A.itemLabel, 461.3, derived(d.partD.mtd));
   moneyLine(t.cp38Deductions, A.itemLabel, 474.7, derived(d.partD.cp38));
   moneyLine(t.zakatViaSalary, A.itemLabel, 487.7, derived(d.partD.zakat));
@@ -854,7 +918,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   moneyLine(t.childRelief, A.itemLabel, 551.4, manual(d.partD.childRelief));
 
   // ── E — CARUMAN ... KUMPULAN WANG SIMPANAN / PENCEN YANG DILULUSKAN DAN PERKESO ────────────────────
-  putFit(t.sectionEContributions, L, R - L, 567.8, 8.5, bold);
+  sectionHeading(t.sectionEContributions, 567.8);
   putFit(t.fundName, A.itemLabel, 100, 581.5, 8);
   valueOrRule(d.partE.fundName, 148, R, 581.5, 8);
   const eContribution = (prefix: string, x0: number, tt: number, value: string) => {
@@ -868,7 +932,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
 
   // ── F — JUMLAH ELAUN / PERKUISIT / PEMBERIAN / MANFAAT YANG DIKECUALIKAN CUKAI ─────────────────────
   // ONE LINE: the section title IS the item, and "RM" sits just before its rule.
-  putFit(t.sectionFExemptAllowances, L, MX - L - 26, 627.5, 8.5, bold);
+  sectionHeading(t.sectionFExemptAllowances, 627.5);
   put(W.rm, MX - 20, 627.5, 8.5, bold);
   amountOrRule(derived(d.partB.exemptAllowances ?? 0), MX, MR, 627.5);
 
@@ -902,6 +966,15 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // r219 keeps that decision and moves it the rest of the way out: below the form entirely, in our own
   // strip, with the RM spelled out so it cannot be read as one of the form's own boxes.
   let y: number = EA_FORM.footStripT;
+  // r349 — A HEAVIER RULE AND A LINE SAYING WHOSE STRIP THIS IS. The reporter red-boxed the EIS figure
+  // and the note below it in their comparison against the agency's page, and they were right: LHDN's form
+  // has nothing there. The decision to keep them stands — an employee's EIS deduction is real money off
+  // their pay and this is the only annual statement they receive — but a reader holding the two pages side
+  // by side must be able to tell instantly which part is not the agency's. The plan offered to remove the
+  // strip outright if the reporter preferred; they approved keeping it.
+  hRule(L, R, y - 7, 1.2, ink);
+  put(t.notOfficialStrip, L, y - 1, 6.5, font, muted);
+  y += 8;
   put(t.eisSip, L, y, 7, font, muted);
   // r220 — the second amount outside `amountOrRule`, and the only one that spells "RM" out. The CAPTION
   // stays on a blank form (it is a line this document has, and the reader comparing it against LHDN's page

@@ -248,8 +248,11 @@ describe('fda53352 · (f) the English heading wraps instead of running through t
     // edge; the joined English string is far wider than the Malay it replaced, and pdf-lib does not clip.
     const joined = `${eaFormWords('en').privateStatement} ${eaFormWords('en').privateStatement2}`;
     expect(joined.length).toBeGreaterThan(eaFormWords('ms').privateStatement.length);
-    expect(src('lib/ea-pdf.ts'), 'the renderer branches on the second line').toContain(
-      'if (W.privateStatement2)',
+    // r349 replaced the `if (W.privateStatement2)` branch with a block that measures the edition's own
+    // lines and sizes a FILLED rectangle to them — the agency sets this heading white-on-black. The
+    // property is unchanged and still asserted: the English edition draws two lines and the Malay one.
+    expect(src('lib/ea-pdf.ts'), 'the renderer still sizes to the edition').toContain(
+      'const lines = W.privateStatement2 ?',
     );
   });
 });

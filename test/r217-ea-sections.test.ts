@@ -78,9 +78,14 @@ describe('da4fc817 — Section D carries all six of the official form lines', ()
 });
 
 describe('da4fc817 — Sections E and F match the published form', () => {
+  // ⚠️ THE SECTION MARKERS MOVED IN r349, AND THE GUARDS DID NOT CHANGE MEANING. Section titles are
+  // drawn by `sectionHeading(t.sectionX, …)` rather than `putFit(t.sectionX, …)`, because the agency
+  // sets its section letters in filled black squares with white lettering. These cases slice the source
+  // BETWEEN section markers, so the marker text had to follow — everything they assert about what lives
+  // inside each slice is untouched.
   it('Section E names the fund before its amount, and no longer carries EIS', () => {
     const pdf = read('lib/ea-pdf.ts');
-    const e = pdf.slice(pdf.indexOf('putFit(t.sectionEContributions'), pdf.indexOf('putFit(t.sectionFExemptAllowances'));
+    const e = pdf.slice(pdf.indexOf('sectionHeading(t.sectionEContributions'), pdf.indexOf('sectionHeading(t.sectionFExemptAllowances'));
     // The fund is NAMED before it is quantified, exactly as the form asks ("Nama Kumpulan Wang" first).
     expect(e).toContain('putFit(t.fundName');
     expect(e).toContain('d.partE.fundName');
@@ -98,11 +103,11 @@ describe('da4fc817 — Sections E and F match the published form', () => {
   it('Section F exists as its own section, and the exempt figure left Part B', () => {
     const pdf = read('lib/ea-pdf.ts');
     // ONE LINE whose title IS the item, with its own RM before the rule — the form's own arrangement.
-    expect(pdf).toContain('putFit(t.sectionFExemptAllowances');
+    expect(pdf).toContain('sectionHeading(t.sectionFExemptAllowances');
     expect(pdf).toContain('derived(d.partB.exemptAllowances ?? 0)');
     // It must not come back inside Part B, where it read as another component of that total, which it is
     // not: it is the tax-exempt PORTION of the allowances already printed on 1(c).
-    const b = pdf.slice(pdf.indexOf('putFit(t.sectionBEmploymentIncome'), pdf.indexOf('putFit(t.sectionCPensionOther'));
+    const b = pdf.slice(pdf.indexOf('sectionHeading(t.sectionBEmploymentIncome'), pdf.indexOf('sectionHeading(t.sectionCPensionOther'));
     expect(b).not.toContain('exemptAllowances');
   });
 

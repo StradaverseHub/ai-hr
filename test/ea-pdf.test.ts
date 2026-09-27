@@ -91,6 +91,7 @@ const labels: EaPdfLabels = {
   fundName: '1. Name of fund',
   contributionAmount: "Amount of contribution payable (state the employee's share only)",
   eisSip: 'EIS / SIP',
+  notOfficialStrip: 'Not part of the official form.',
   sectionFExemptAllowances: 'F  TOTAL EXEMPT ALLOWANCES / PERQUISITES / GIFTS / BENEFITS',
   disclaimer:
     'Generated from payroll for YA 2026 (statutory tables 2026.3). Verify against your records; this is not a substitute for the official LHDN form.',
@@ -267,8 +268,10 @@ describe('EA PDF renderer', () => {
     expect(printed).toContain('Executive'); // job title
     expect(printed).toContain('EMP-0001'); // employee no.
     expect(printed).toContain('A12345678'); // passport no.
-    // Part C — the section that did not exist.
-    expect(printed).toContain(labels.sectionCPensionOther);
+    // Part C — the section that did not exist. r349 draws the section LETTER in a filled black square
+    // and the title beside it, so the heading reaches the page as two pieces, not one string.
+    expect(printed).toContain(labels.sectionCPensionOther.replace(/^\s*[A-F]\s+/, ''));
+    expect(printed, 'the boxed section letter').toContain('C');
     expect(printed).toContain(labels.pension);
     // r219 — THE FIGURES ARE UNCHANGED; ONLY THE FORMAT MOVED. The C.P.8A prints ONE bold "RM" at the
     // head of its money column and bare figures down it, so an amount in that column no longer carries
@@ -367,6 +370,7 @@ function bundleFor(locale: string): EaPdfLabels {
     contributionAmount: L('contributionAmount'),
     sectionEContributions: L('sectionEContributions'),
     eisSip: L('eisSip'),
+    notOfficialStrip: 'Not part of the official form.',
     disclaimer: interp(L('disclaimer'), { year: '2026', version: '2026.3' }),
     amendedNote: ea.override.amendedNote,
   };
@@ -471,13 +475,22 @@ describe('r220 — the blank C.P.8A', () => {
 
     const real = bundleFor('ms');
     // Named individually, so a regression says WHICH part of the form left rather than "a caption is gone".
+    // ⚠️ A SECTION HEADING IS NO LONGER ONE DRAWN STRING (r349, item fda53352). The agency sets its
+    // section letters in filled black squares with white lettering, so the renderer now splits
+    // "C  PENSION AND OTHERS" into a boxed "C" and the title beside it. The label is unchanged — the
+    // catalogues still own the letter, because the form's numbering is part of its wording — but the
+    // PAGE draws two pieces. Asserting the joined string here would fail on a page that is correct.
+    const titleOf = (label: string) => {
+      const m = /^\s*([A-F])\s+(.*)$/.exec(label);
+      return m ? m[2] : label;
+    };
     for (const caption of [
-      real.sectionAEmployeeParticulars,
-      real.sectionBEmploymentIncome,
-      real.sectionCPensionOther,
-      real.sectionDTotalDeductions,
-      real.sectionEContributions,
-      real.sectionFExemptAllowances,
+      titleOf(real.sectionAEmployeeParticulars),
+      titleOf(real.sectionBEmploymentIncome),
+      titleOf(real.sectionCPensionOther),
+      titleOf(real.sectionDTotalDeductions),
+      titleOf(real.sectionEContributions),
+      titleOf(real.sectionFExemptAllowances),
       real.formTotal,
       real.grossSalary,
       real.gratuity,
