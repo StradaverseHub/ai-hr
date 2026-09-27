@@ -1,3 +1,53 @@
+## r349 (2026-09-27) — the form's own chrome: solid black blocks, white lettering. `main@f1163aed`, **no migration**.
+
+Closed: `fda53352`. Gate: **1034 files — equal to the suite file count**, 16 chunks, first pass, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched.
+
+### WHAT THE REPORTER SENT, AND WHY IT WAS THE RIGHT THING TO SEND
+
+A side-by-side of our page against LHDN's, with red boxes on every difference. Almost all of them were **one thing**: the agency sets its section letters, its banner and its top-right heading as **solid black blocks with white lettering**, and we drew plain text inside an outline. That single treatment is what made our page read as a different document at a glance.
+
+**r346's own round record had already listed exactly this as NOT DONE** — *"the agency's page sets its section letters in filled black boxes … neither was touched"*. They found the list we wrote. A "not done" note is a promise to somebody, and this is the round that pays it.
+
+### MEASURED BEFORE THE BUILD, NOT DURING IT
+
+The measurement was taken and committed **while the item was still awaiting approval** — which is the r346 lesson, where the same plan had asserted "no geometry moves" and was wrong about the money column. Six squares found scanning the agency's whole left margin — one per section A–F and nothing else — all at `x 39.8, width 17.3`; the banner spans its body width.
+
+**The obvious method is wrong, and that is recorded with the numbers.** These blocks contain WHITE TEXT, so a longest-dark-run measure breaks on the letters and under-reports the height — it returned **4.8 pt for a two-line block**. Measuring by dark FRACTION within the block's own window is what works.
+
+### WHAT MOVED
+
+- Six section letters: a filled square at the left margin, white bold letter, title beside it. The letter is **split off the label**, not removed from the catalogues — the form's numbering is part of its wording and `lib/ea-field-register.ts` matches on it.
+- The banner: a fill with a white caption, replacing the outlined box.
+- The top-right heading: a filled block that **sizes to the edition**. English runs two lines and Malay one; a fixed rectangle leaves the Malay page with a half-empty black box.
+- `officerBox.ruleX[0]` **272 → 288**. *"Name and Address of Employer"* ends at 279.9 at Helvetica 8, so the English caption ran **into its own writing line** — the red bar the reporter drew on that box. The Malay caption ends at 260.7 and fit with 11 pt to spare, **which is why it was never seen: the form was only ever read in Malay.**
+- The foot strip gets a heavier rule and a line naming it as not part of the official C.P.8A, in all six locales.
+
+### THE DECISION THE PLAN INVITED A REVERSAL ON
+
+The **EIS figure stays.** `da4fc817` established that the official Section E carries exactly two amounts and EIS is not one of them; the figure is real money off the employee's pay and this is their only annual statement, so it lives below the form rather than being dropped. The plan stated that as its one course and explicitly offered to remove the strip outright if the reporter preferred. They approved it as written.
+
+### TWO PARSER BUGS OF MINE, IN THE TEST, WORTH RECORDING
+
+The test asserts the **drawing**, not the source, because white-on-black renders as an **empty black rectangle** if the fill is drawn after the text — and that still returns 200 and still downloads. Writing it found two things about pdf-lib that are not obvious:
+
+- **It does not emit `re`.** A filled rectangle comes out as a `cm` translate plus an `m`/`l`/`h`/`f` path.
+- **It writes text as HEX**, `<48656C6C6F> Tj`, not `(Hello) Tj`.
+
+Matching the obvious forms returned nothing — which reads as *"six missing section squares"* on a page that was drawing all six correctly. **A parser that silently finds nothing is worse than no parser**, so the helpers now assert a non-empty result before anything else does.
+
+### SIX GUARDS UPDATED, NOT DELETED
+
+Four sliced `lib/ea-pdf.ts` between `putFit(t.sectionX` markers; one asserted a section heading reaches the page as a single string (it now reaches it as a boxed letter plus a title); one asserted the `if (W.privateStatement2)` branch r349 replaced. **All were caught by sweeping the related tests BEFORE the gate** — the r346 lesson applied, and the reason this round gated green on the first pass.
+
+### THE RENDER CHECK CAUGHT A 500, AND IT WAS THE ENVIRONMENT
+
+The blank EA route returned **500 in all six locales** after a green gate and a green build. `grep` of the dev log: *"No valid dev principal — run `pnpm db:seed`"*. **The chunked gate rebuilds the cluster per chunk, which drops `ai_hr_dev`** — so any render check after a gate must re-seed first. Re-seeded: all six serve a real PDF, 0 intl errors, and the rasterised page shows all six squares, the solid banner, the two-line heading block, clean officer columns and the labelled foot strip.
+
+### NOT DONE
+
+- The remaining geometry constants (Section A's two columns, the JUMLAH rules, `midMoney`) still come from the 150 dpi tracing of a rival vendor's rendering. The agency's own file is on disk and the method is now written down.
+- The agency numbers its items `1.` then `(a)` where we set `1(a)`. Visible on a side-by-side, not touched, and not raised by the reporter.
+
 ## r348 (2026-09-27) — the figures were right and the sentence said the opposite. `main@b362128f`, **no migration**.
 
 Closed: `20837372`. Gate: **1033 files — equal to the suite file count**, 16 chunks, first pass, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched.
