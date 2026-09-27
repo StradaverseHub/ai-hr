@@ -4296,7 +4296,8 @@
         "body": "Nhân viên này được nhiều công ty trả lương trong năm nay, nên mỗi công ty phải cấp một biểu mẫu EA riêng. Chọn một người sử dụng lao động để xem và in biểu mẫu."
       },
       "downloadPdf": "Tải xuống biểu mẫu EA",
-      "previewNotice": "Màn hình này là bản xem trước, để kiểm tra các con số trước khi bạn nộp. “Tải biểu mẫu EA” sẽ cho bạn chính bản C.P.8A, trình bày theo đúng biểu mẫu in."
+      "previewNotice": "Màn hình này là bản xem trước, để kiểm tra các con số trước khi bạn nộp. “Tải biểu mẫu EA” sẽ cho bạn chính bản C.P.8A, trình bày theo đúng biểu mẫu in.",
+      "notOfficialStrip": "Không thuộc mẫu C.P.8A chính thức — do AI HR bổ sung."
     },
     "cp22": {
       "download": "Tải CP22",

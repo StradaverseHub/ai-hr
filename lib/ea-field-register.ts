@@ -218,6 +218,8 @@ export const EA_REGISTER: EaRegisterRow[] = [
   { section: 'FOOT', box: '', wording: EA_FORM_WORDS.employerPhone, caption: agency('employerPhone'), value: 'text', sources: ['employer.phone'], feed: 'company' },
 
   // ── Below the form — OUR strip, in the space the specimen leaves empty ────────────────────────────
+  { section: 'BELOW', box: '', wording: '', caption: label('notOfficialStrip'), value: 'note', sources: [], feed: 'system',
+    note: 'Ours, and it says so — r349. The reporter’s red-boxed comparison marked the EIS figure and the disclaimer below the form as differences from the agency’s page, and they are: LHDN prints nothing there. The strip stays, because an employee’s EIS deduction is real money off their pay and this is their only annual statement; this line and a heavier rule above it make plain which part of the page is not the agency’s.' },
   { section: 'BELOW', box: '', wording: '', caption: label('eisSip'), value: 'money', sources: ['partE.eis'], feed: 'payroll',
     note: 'NOT a box on the C.P.8A: the official Section E carries exactly two amounts and EIS is not one of them. The employee’s own EIS deduction is real and they may need it, so it is printed below the form with “RM” spelled out.' },
   { section: 'BELOW', box: '', wording: '', caption: label('disclaimer'), value: 'note', sources: [], feed: 'system',
