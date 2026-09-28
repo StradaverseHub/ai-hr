@@ -10,6 +10,11 @@
  *   node --import tsx scripts/measure-ea-official-pdf.ts            # the Section A report
  *   node --import tsx scripts/measure-ea-official-pdf.ts --all      # every text run, top-down
  *   node --import tsx scripts/measure-ea-official-pdf.ts --rects    # every filled/stroked rectangle
+ *   node --import tsx scripts/measure-ea-official-pdf.ts --file out.pdf --all   # …on OUR output instead
+ *
+ * `--file` is what makes it a comparison rather than a reading: point it at a form this system just
+ * rendered and the same numbers come out in the same coordinate system, so the agency's page and ours
+ * can be diffed line for line. §8 — when two PDF renderers disagree, the disagreement is the instrument.
  *
  * WHAT IT PRINTS, AND IN WHICH COORDINATE SYSTEM. PDF space has y growing UPWARD from the bottom left;
  * `lib/ea-pdf.ts` works TOP-DOWN in `tt` units through its `at()` helper. Everything here is reported as
@@ -28,8 +33,13 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
+import { EA_FORM } from '../lib/ea-pdf';
 
-const OFFICIAL = path.resolve(__dirname, '..', 'docs/forms/ea-cp8a-pin-2023-official-en.pdf');
+const AT = process.argv.indexOf('--file');
+const OFFICIAL =
+  AT > 0 && process.argv[AT + 1]
+    ? path.resolve(process.cwd(), process.argv[AT + 1])
+    : path.resolve(__dirname, '..', 'docs/forms/ea-cp8a-pin-2023-official-en.pdf');
 
 type Run = { text: string; x: number; tt: number; size: number };
 type Rect = { x0: number; x1: number; tt0: number; tt1: number; op: string };
@@ -53,6 +63,11 @@ function streamOf(page: ReturnType<PDFDocument['getPages']>[number]): string {
  * (a move relative to the line matrix). Ignoring `Td` loses most of a Word-generated page — the producer
  * sets `Tm` once per block and then walks down it — which would silently report a section as having one
  * line in it. The size is taken from `Tf` and scaled by the matrix's vertical component.
+ *
+ * ⚠️ AND BOTH STRING ENCODINGS, WHICH IS WHAT MAKES `--file` WORTH HAVING. The agency's file writes
+ * literal `(text) Tj` / `[…] TJ`; pdf-lib writes HEX, `<0041…> Tj`. A parser that reads only one of them
+ * reports the other document as having no text at all — an empty report that reads exactly like a page
+ * with nothing on it, which is the wrong answer to be given silently.
  */
 function runsOf(raw: string, height: number): Run[] {
   const out: Run[] = [];
@@ -64,7 +79,7 @@ function runsOf(raw: string, height: number): Run[] {
     if (text) out.push({ text, x: round(tm.e), tt: round(height - tm.f), size: round(size * tm.d) });
   };
   const token =
-    /(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) Tm|(-?[\d.]+) (-?[\d.]+) T([dD])|\/\w+ (-?[\d.]+) Tf|\(((?:\\.|[^\\)])*)\) Tj|\[((?:\\.|[^\]])*)\] TJ|BT|ET/g;
+    /(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) Tm|(-?[\d.]+) (-?[\d.]+) T([dD])|\/[^\s/]+ (-?[\d.]+) Tf|\(((?:\\.|[^\\)])*)\) Tj|\[((?:\\.|[^\]])*)\] TJ|<([0-9A-Fa-f]*)> Tj|BT|ET/g;
   for (const m of raw.matchAll(token)) {
     if (m[0] === 'BT') {
       tm = { a: 1, d: 1, e: 0, f: 0 };
@@ -82,6 +97,9 @@ function runsOf(raw: string, height: number): Run[] {
     } else if (m[12] !== undefined) {
       // A TJ array: the strings are the text, the numbers are kerning we do not need.
       show([...m[12].matchAll(/\(((?:\\.|[^\\)])*)\)/g)].map((s) => s[1]).join(''));
+    } else if (m[13] !== undefined) {
+      // pdf-lib's own encoding: one hex byte per WinAnsi character (lib/ea-pdf.ts embeds Helvetica).
+      show(Buffer.from(m[13], 'hex').toString('latin1'));
     }
   }
   return out;
@@ -138,18 +156,42 @@ async function run() {
     if (hits.length === 0) return console.log('  (not found — the producer may split this caption across runs)');
     for (const h of hits) console.log(`  tt ${String(h.tt).padStart(7)}  x ${String(h.x).padStart(6)}  ${String(h.size).padStart(4)}pt  ${h.text}`);
   };
-  report('BANNER (the white-on-black strip above Section A)', find(/MUST BE PREPARED|PERLU DISEDIAKAN/i));
+  // The producer splits this caption across runs, so match its FIRST words rather than the sentence.
+  report('BANNER (the white-on-black strip above Section A)', find(/^THIS FORM|^BORANG/i));
   report("SECTION A's heading", find(/PARTICULARS OF EMPLOYEE|BUTIRAN PEKERJA/i));
   report("SECTION A's item 1 (the first field row)", find(/^1\.?\s*(Name|Nama)|^(Name|Nama) of Employee/i));
-  report("SECTION A's items 2-3 (the row pitch under it)", find(/Designation|Employee No|Jawatan|No\. Pekerja/i));
+  /**
+   * ⚠️ MATCHED ON THE ITEM NUMBER AND SCOPED TO SECTION A, because neither alternative works.
+   *
+   * The agency's producer breaks captions mid-word — "Job Designat" + "ion", "New I.C." + "No" — so no
+   * caption match finds row 2 at all; and "Designation" IS one whole run 650 pt further down, in the
+   * officer box, so an unscoped caption match reported the FOOT as Section A's second row. A confidently
+   * wrong coordinate is worse than a blank line. The numbered items ARE standalone runs ("2.", "3." …),
+   * so they are what the rows are found by.
+   */
+  const a0 = find(/PARTICULARS OF EMPLOYEE|BUTIRAN PEKERJA/i)[0];
+  report(
+    "SECTION A's numbered items (the row pitch under the heading)",
+    runs.filter((r) => a0 && r.tt > a0.tt && r.tt < a0.tt + 95 && /^\d\.$/.test(r.text)),
+  );
   report("SECTION B's heading (Section A's floor)", find(/EMPLOYMENT INCOME|PENDAPATAN PENGGAJIAN/i));
 
   const a = find(/PARTICULARS OF EMPLOYEE|BUTIRAN PEKERJA/i)[0];
   const one = find(/^1\.?\s*(Name|Nama)|^(Name|Nama) of Employee/i)[0];
   if (a && one) {
     console.log(`\nHEADING → FIRST FIELD, on the agency's page: ${round(one.tt - a.tt)} pt (baseline to baseline).`);
-    console.log('lib/ea-pdf.ts holds 99.5 → 114, i.e. 14.5 pt. Compare, then decide; the cell edges');
-    console.log('(--rects) are the form where a baseline is only the typesetter inside it.');
+    // ⚠️ READ OFF EA_FORM, NEVER RESTATED. This line used to end "lib/ea-pdf.ts holds 99.5 → 114, i.e.
+    // 14.5 pt", which was true the day it was written and wrong the moment the renderer changed — the
+    // exact failure mode CLAUDE.md §8 keeps warning about. It now derives what OURS is from the same
+    // constants the renderer draws with.
+    const SQUARE_ASCENT = 8.2; // sectionHeading hangs its black square this far above the caption's baseline
+    const ourHeading = round(EA_FORM.bannerT[1] + EA_FORM.sectionGapUnderBanner + SQUARE_ASCENT);
+    console.log(
+      `OURS (derived in lib/ea-pdf.ts): heading ${ourHeading} → first field ` +
+        `${round(ourHeading + EA_FORM.sectionAFieldPitch)}, i.e. ${EA_FORM.sectionAFieldPitch} pt, with ` +
+        `${EA_FORM.sectionGapUnderBanner} pt under a banner ending at ${EA_FORM.bannerT[1]}.`,
+    );
+    console.log('The cell edges (--rects) are the form where a baseline is only the typesetter inside it.');
   }
   // The rows that bound Section A vertically, so a change to its pitch can be checked for room.
   const rows = runs.filter((r) => a && r.tt > a.tt - 1 && r.tt < a.tt + 130);
