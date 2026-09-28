@@ -49,6 +49,10 @@ import { adminCtx, closeAll, owner, resetDb, seedBase, type Base } from './harne
 import * as schema from '../db/schema';
 import { saveCompanyGeneralTabAction } from '../app/admin/actions';
 import { COMPANY_GENERAL_TAB_SECTION_ORDER } from '../lib/company-tab-sections';
+// 15e5bd93 — the second vocabulary on this screen. Imported rather than hand-listed, so the exact-set
+// marker assertion below cannot drift from the list the server actually validates against.
+import { COMPANY_STATUTORY_TAB_SECTION_ORDER } from '../lib/company-statutory-tab-sections';
+import { STATUTORY_AUTHORITIES } from '../lib/statutory-authorities';
 import { SECTION_FIELD_PREFIX, SECTIONS_FIELD } from '../lib/tab-save-sections';
 import { CompanyPanel, type PanelCompany } from '../components/company-panel';
 
@@ -203,6 +207,9 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
   const noop = () => undefined;
   const actions = {
     saveGeneralTab: async () => ({ ok: true, saved: [] }),
+    // 15e5bd93 — the STATUTORY tab got a consolidated Save of its own, so the panel this file renders has
+    // two. Its own sections are declared in lib/company-statutory-tab-sections.ts and asserted below.
+    saveStatutoryTab: async () => ({ ok: true, saved: [] }),
     updateCompany: noop,
     archiveCompany: noop,
     deleteCompany: noop,
@@ -313,25 +320,62 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
     ],
   };
 
-  it('EXACTLY the three bucket (a) cards carry a section marker, and they are the declared ones', () => {
+  /**
+   * ⚠️ UPDATED BY 15e5bd93 (r352) — THE EXACT SET GREW, AND IT IS STILL AN EXACT SET.
+   *
+   * This asserted that the ONLY marked forms on the screen are General's three. That was the whole screen's
+   * marker set because the Statutory tab had no scope — 65b22c00's finding 1 refused it one. The reporter's
+   * approved statutory redesign gave that tab a consolidated Save, so the marker set is now General's three
+   * followed by Statutory's nine, in document order, and it is asserted against the two DECLARED
+   * vocabularies rather than a hand-written list. A marked form belonging to neither tab still fails.
+   *
+   * Bucket (b) has not moved: nothing that DELETES or ARCHIVES anything gained a marker (the case below).
+   */
+  it('EXACTLY the declared sections of the two tabs carry a marker, and nothing else does', () => {
     const all = formsIn(markup(FULL));
     // A company with one bank account and one configured body renders every kind of form this screen has.
     expect(all.length, 'the whole screen is in this markup').toBeGreaterThanOrEqual(11);
     const marked = all.filter((f) => f.attrs.includes('data-save-section'));
     const ids = marked.map((f) => /data-save-section="([^"]+)"/.exec(f.attrs)?.[1]);
-    expect(ids).toEqual([...COMPANY_GENERAL_TAB_SECTION_ORDER]);
+    expect(ids).toEqual([...COMPANY_GENERAL_TAB_SECTION_ORDER, ...COMPANY_STATUTORY_TAB_SECTION_ORDER]);
+    // The Statutory tab's sections are the identity card plus ONE PER BODY, so a partial failure can name
+    // the body that failed rather than "the statutory tab".
+    expect(COMPANY_STATUTORY_TAB_SECTION_ORDER).toEqual(['identity', ...STATUTORY_AUTHORITIES]);
   });
 
   /**
    * THE HALF THAT WOULD OTHERWISE ROT. Every form the classification put in bucket (b) — archive,
-   * unarchive, delete, bank save, bank remove, authority save, authority clear, and the statutory
-   * registrations card that is bucket (a) but cannot join the scope — must still stand on its own with
-   * its own submit control. A future round folding one of them in fails here.
+   * unarchive, delete, bank save, bank remove, authority clear — must still stand on its own with its own
+   * submit control. A future round folding one of them in fails here.
+   *
+   * ⚠️ UPDATED BY 15e5bd93 (r352), AND THE BOUND IS NOW EXACT RATHER THAN A FLOOR. Two kinds of form left
+   * this set and both left it legitimately: the eight authority-save forms and the statutory registrations
+   * card joined the Statutory tab's consolidated Save. `>= 8` would now be satisfied by nothing at all
+   * (there are five), so the case names the five it expects BY THE FIELD THAT IDENTIFIES EACH — which is
+   * stronger than the count it replaces, because a bucket (b) form that lost its marker-free standing can
+   * no longer hide behind a loose inequality.
    */
   it('every OTHER form still has its own submit control and no marker', () => {
     const forms = formsIn(markup(FULL));
     const unmarked = forms.filter((f) => !f.attrs.includes('data-save-section'));
-    expect(unmarked.length, 'the nine bucket (b) bindings, rendered').toBeGreaterThanOrEqual(8);
+    // Identified by a field only that form carries. `archived` is the archive/unarchive marker,
+    // `debitAccountNo` a bank-account editor (one saved + one blank "add"), and a lone `id`+`companyId`
+    // pair is a REMOVE form — one for the bank profile, one for "Clear this authority".
+    const signature = (body: string) =>
+      /name="archived"/.test(body)
+        ? 'archive'
+        : /name="debitAccountNo"/.test(body)
+          ? 'bankEditor'
+          : /name="id"/.test(body) && /name="companyId"/.test(body)
+            ? 'remove'
+            : 'other';
+    expect(unmarked.map((f) => signature(f.body)).sort(), 'the bucket (b) bindings, rendered').toEqual([
+      'archive',
+      'bankEditor',
+      'bankEditor',
+      'remove',
+      'remove',
+    ]);
     for (const f of unmarked) expect(f.body, f.attrs.slice(0, 80)).toMatch(/<button\b/);
     // …and the three that ARE marked lost theirs: that is what "one Save" means.
     for (const f of forms.filter((x) => x.attrs.includes('data-save-section'))) {
@@ -370,17 +414,38 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
   });
 
   /**
-   * FINDING 1 OF THE AUDIT, pinned so the next round cannot quietly "finish the job". The SSM / MyInvois
-   * registrations form is bucket (a) and keeps its own button, because it is drawn on the STATUTORY tab
-   * and a scope cannot span two panes. Folding it in means moving the card off a tab r226 put it on for
-   * a reason — and that is a decision for the reporter, not a tidy-up.
+   * FINDING 1 OF THE AUDIT — ⚠️ THE ONE CASE IN THIS FILE THAT 15e5bd93 (r352) REVERSES, AND IT IS
+   * REWRITTEN RATHER THAN REMOVED, BECAUSE HALF OF IT IS STILL THE POINT.
+   *
+   * WHAT IT SAID: the SSM / MyInvois registrations form is bucket (a) and keeps its OWN button, because it
+   * is drawn on the Statutory tab and a scope cannot span two panes; folding it in would mean moving the
+   * card off a tab r226 put it on for a reason, and that is a decision for the reporter.
+   *
+   * WHAT IS TRUE NOW: the reporter made a decision that settles it, and it is not the one this case feared.
+   * Their approved statutory redesign put the eight bodies in a permanent rail with one workspace and one
+   * Save for the tab, so the Statutory tab has its own scope — and the registrations card is consolidated
+   * INTO THAT, without moving. `saveStatutoryIdentity` is therefore gone from the screen.
+   *
+   * WHAT THIS CASE STILL GUARDS, unchanged and asserted harder: the card is on the STATUTORY tab. The
+   * failure this was written against was the card drifting onto General as a side effect of a save-button
+   * change, and that is still forbidden — so it is now pinned by POSITION relative to the General pane's
+   * end marker, not merely by the absence of a marker it no longer lacks.
    */
-  it('the statutory registrations card keeps its own Save, on the tab r226 put it on', () => {
+  it('the statutory registrations card is consolidated on the STATUTORY tab, not moved to General', () => {
     const html = markup({ statutory: null });
     const en = JSON.parse(read('messages/en.json')).admin.organization as Record<string, string>;
-    expect(html).toContain(en.saveStatutoryIdentity);
+    expect(html, 'the tab Save replaced its own button').not.toContain(en.saveStatutoryIdentity);
     const form = formsIn(html).find((f) => f.body.includes('name="ssmRegistrationNo"'));
     expect(form, 'the registrations form is rendered').toBeTruthy();
-    expect(form!.attrs, 'and it is NOT under the General tab Save').not.toContain('data-save-section');
+    expect(form!.attrs, 'and it IS a section of a consolidated Save now').toContain('data-save-section="identity"');
+    // It is under the STATUTORY scope, not the General one. Both are in the markup, so the test is which.
+    const general = html.indexOf('data-tab-save-scope="general"');
+    const statutory = html.indexOf('data-tab-save-scope="statutory"');
+    const ssm = html.indexOf('name="ssmRegistrationNo"');
+    expect(general).toBeGreaterThan(-1);
+    expect(statutory).toBeGreaterThan(general);
+    expect(ssm, 'the card did not drift onto General').toBeGreaterThan(statutory);
+    // And General's own vocabulary did not grow an identity section on the way past.
+    expect(COMPANY_GENERAL_TAB_SECTION_ORDER as readonly string[]).not.toContain('identity');
   });
 });

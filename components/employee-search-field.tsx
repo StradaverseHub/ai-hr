@@ -93,6 +93,7 @@ export function EmployeeSearchField({
   id,
   className,
   dataTour,
+  fieldLabel,
   onValueChange,
 }: {
   /**
@@ -121,6 +122,20 @@ export function EmployeeSearchField({
   /** Width lives on the WRAPPER: `inputCls` already carries `w-full`, so `${inputCls} w-64` is a no-op. */
   className?: string;
   dataTour?: string;
+  /**
+   * 15e5bd93 (r352) — THE CAPTION A CONSOLIDATED TAB SAVE SHOULD PRINT FOR THIS CONTROL.
+   *
+   * Set it only when this field sits inside a `components/tab-save-scope.tsx` section. That scope names
+   * every changed field in its "Review changes" table, and it reads a caption off the nearest enclosing
+   * `<label>` (lib/tab-save-dom.ts `fieldLabel`). This control must NOT be wrapped in one — it is a div
+   * holding two inputs plus a clear button, and a wrapping label would attach itself to whichever input
+   * came first — so its caller renders a separate `<label htmlFor>` and the scope has nothing to read.
+   * Without this the table would head the row "Signatory Person Id". Rendered as `data-field-label` on
+   * the hidden input, which is exactly the override `fieldLabel` documents.
+   *
+   * Omitted by every caller outside such a scope, and then nothing about the markup changes.
+   */
+  fieldLabel?: string;
   /**
    * r293 — fires when the committed selection changes (including a clear, which reports ''). Added for
    * the same reason and on the same precedent as Combobox's `onValueChange` (item e3ce0d4d): a CLIENT
@@ -220,7 +235,7 @@ export function EmployeeSearchField({
     >
       {/* The value the surrounding <form> submits — the same field a native <select> would have posted.
           Rendered only when the caller asked for one: a controlled parent posts the value itself. */}
-      {name ? <input type="hidden" name={name} value={selected} /> : null}
+      {name ? <input type="hidden" name={name} value={selected} data-field-label={fieldLabel} /> : null}
 
       <input
         ref={inputRef}

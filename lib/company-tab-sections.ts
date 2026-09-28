@@ -17,12 +17,17 @@
  * lying about what it does.
  *
  * Bucket (a) has FOUR members, and only three are here. The fourth — the SSM / MyInvois registrations
- * form — is bucket (a) by every test and still keeps its own button, because it is drawn on the
- * STATUTORY tab and a scope cannot span two tab panes. Moving the card to General to win a tidier button
- * would reverse r226's deliberate placement (pinned by test/company-panel-bank-statutory-layout.test.ts),
- * and leaving a one-card scope on the Statutory tab would put a Save/Discard bar above eight statutory
- * body editors it does not own. Finding 1 of the audit has the full argument, and the reporter is owed
- * that sentence rather than a silent omission.
+ * form — is bucket (a) by every test and is drawn on the STATUTORY tab, and a scope cannot span two tab
+ * panes. Moving the card to General to win a tidier button would reverse r226's deliberate placement
+ * (pinned by test/company-panel-bank-statutory-layout.test.ts). Finding 1 of the audit has the full
+ * argument, and the reporter was owed that sentence rather than a silent omission.
+ *
+ * ⚠️ UPDATED BY 15e5bd93 (r352): the fourth member no longer keeps its own button. It did not move — it
+ * is still on the Statutory tab, where r226 put it — but that tab now has a consolidated Save of its own
+ * (lib/company-statutory-tab-sections.ts). The audit's objection to one was that a bar there would sit
+ * above "eight statutory body editors it does not own"; the reporter's approved statutory redesign took
+ * the Save buttons off those eight editors, so the bar owns them. Two scopes, two vocabularies, one
+ * screen — and this list is still only about General.
  *
  * THE ORDER IS THE READING ORDER, and that is a real choice rather than a default. Unlike the personnel
  * tabs, these three writers touch DISJOINT columns of the same row — `updateCompany` writes the identity

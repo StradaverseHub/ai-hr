@@ -56,6 +56,9 @@ const noop = () => undefined;
 const saveTab = async () => ({ ok: true, saved: [] });
 const actions = {
   saveGeneralTab: saveTab,
+  // 15e5bd93 — the Statutory tab's own consolidated Save. Present on the fixture so this file renders the
+  // screen the page really mounts; nothing here presses it.
+  saveStatutoryTab: saveTab,
   updateCompany: noop,
   archiveCompany: noop,
   deleteCompany: noop,
@@ -234,27 +237,39 @@ const inMarkup = (s: string) =>
     .replace(/'/g, '&#x27;');
 
 /**
- * ── ITEM 3783fd87 — READING A CARD'S FACE OUT OF THE MARKUP ──────────────────────────────────────
+ * ── ITEM 3783fd87 — READING A BODY'S FACE OUT OF THE MARKUP ──────────────────────────────────────
  *
- * ⚠️ `<script>` IS STRIPPED AND THE SLICE STOPS AT THE OPEN CONTROL, and both halves are load-bearing.
- * AGENTS §8: a key is not a screen. Every editor on this panel stays MOUNTED (hidden with CSS), so each
- * value appears in the markup twice over — once as the face's text, once as an input's `value=` — and
- * every <select>'s full option list is in there too. A bare `toContain` therefore proves nothing about
- * what is ON SCREEN: it passes on a face that renders nothing at all, and it finds "No Contribution"
- * inside the HRD Corp band picker of a company that has no identity row. So assertions about the face
- * are made on the face SLICE: from each authority row's own <li> up to that row's Open control.
+ * ⚠️ `<script>` IS STRIPPED, and that half is load-bearing. AGENTS §8: a key is not a screen. Every
+ * editor on this panel stays MOUNTED (hidden with CSS), so each value appears in the markup twice over —
+ * once as the face's text, once as an input's `value=` — and every <select>'s full option list is in
+ * there too. A bare `toContain` therefore proves nothing about what is ON SCREEN: it passes on a face
+ * that renders nothing at all, and it finds "No Contribution" inside the HRD Corp band picker of a
+ * company that has no identity row. So assertions about the face are made on the face SLICE.
  *
- * The class string is the row's exact opener (EIS adds `pl-6` for its indent and still starts with it),
- * so this cannot pick up an <li> belonging to some other list on the panel.
+ * ⚠️ UPDATED BY 15e5bd93 (r352) — THE SLICE NO LONGER STOPS AT AN "Open settings" CONTROL, because there
+ * is no longer one to stop at: the approved redesign replaced the per-body fold with a permanent rail
+ * beside a workspace. The rail row IS the face, end to end, and it is now identified by
+ * `data-statutory-body="<key>"` rather than by a Tailwind class string — a stronger handle, since a class
+ * string changes whenever the row is restyled while the attribute says what the element IS. The face slice
+ * is therefore that `<li>`, and it can no longer accidentally include anything from the editor pane,
+ * which lives in a different column of the DOM entirely.
  */
-function cardFaces(html: string, en: Record<string, string>): string[] {
-  const chunks = html.replace(/<script\b[\s\S]*?<\/script>/g, '').split('<li class="flex flex-col bg-card').slice(1);
-  expect(chunks.length, 'one <li> per statutory body').toBe(STATUTORY_AUTHORITIES.length);
-  return chunks.map((chunk, i) => {
-    const cut = chunk.indexOf(inMarkup(en.authorityOpen));
-    expect(cut, `${STATUTORY_AUTHORITIES[i]}: the row carries its Open control`).toBeGreaterThan(0);
-    return chunk.slice(0, cut);
-  });
+function cardFaces(html: string): string[] {
+  const clean = html.replace(/<script\b[\s\S]*?<\/script>/g, '');
+  const rows = [...clean.matchAll(/<li[^>]*\sdata-statutory-body="([^"]+)"[^>]*>([\s\S]*?)<\/li>/g)];
+  expect(
+    rows.map((m) => m[1]),
+    'one rail row per statutory body, in the controlled set’s own order',
+  ).toEqual([...STATUTORY_AUTHORITIES]);
+  return rows.map((m) => m[2]);
+}
+
+/** The eight workspace panes, keyed by body, with the class string that says whether one is on screen. */
+function workspacePanes(html: string): { body: string; cls: string }[] {
+  return [...html.matchAll(/<div\s+data-statutory-workspace="([^"]+)"\s+class="([^"]*)"/g)].map((m) => ({
+    body: m[1],
+    cls: m[2],
+  }));
 }
 
 /**
@@ -294,25 +309,95 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
     // 3c2f55d7 rev 2 — this is now the assertion that keeps the card's Open/Edit HONEST. The editor is
     // collapsed on arrival, but it is collapsed with CSS: every one of the nine forms is still rendered,
     // so a half-typed address survives a collapse and this count cannot be satisfied by unmounting.
+    // 15e5bd93 — the same count, and it means MORE than it did: with one Save for the whole tab, a body
+    // whose pane were unmounted would be a body whose edits cannot be packed into the payload at all.
     expect(html.match(/name="signatoryPersonId"/g) ?? []).toHaveLength(STATUTORY_AUTHORITIES.length);
     expect(html).toContain('value="ACC-1"');
   });
 
   /**
-   * 3c2f55d7 rev 2 — the card FACE, rendered. The description strings are dynamic keys
+   * 3c2f55d7 rev 2 — the body's FACE, rendered. The description strings are dynamic keys
    * (`authorityDesc_epf`, …) which no static check can see; the six-locale loop above would catch a
-   * MISSING_MESSAGE, and this catches the other failure: a card that renders no description at all.
+   * MISSING_MESSAGE, and this catches the other failure: a row that renders no description at all.
+   *
+   * ⚠️ UPDATED BY 15e5bd93 — the second half of this case used to count the "Open settings" controls, one
+   * per body. There are none: the reporter asked for the expand-style interface to go. So it asserts the
+   * OPPOSITE, plus the two things that replaced it — one rail row per body, and one workspace pane per
+   * body. That is strictly more than the old case checked, on the same rendered markup.
    */
-  it('every statutory body shows its name and its description on the card face', () => {
+  it('every statutory body shows its name and its description on its rail row', () => {
     const en = messagesFor('en').admin.organization as Record<string, string>;
     const html = render('en', richProps);
-    for (const a of STATUTORY_AUTHORITIES) {
-      expect(html, `authority_${a}`).toContain(inMarkup(en[`authority_${a}`]));
-      expect(html, `authorityDesc_${a}`).toContain(inMarkup(en[`authorityDesc_${a}`]));
+    const faces = cardFaces(html);
+    for (const [i, a] of STATUTORY_AUTHORITIES.entries()) {
+      expect(faces[i], `authority_${a}`).toContain(inMarkup(en[`authority_${a}`]));
+      expect(faces[i], `authorityDesc_${a}`).toContain(inMarkup(en[`authorityDesc_${a}`]));
     }
-    // One Open/Edit per body, and nothing native about it.
-    const opens = html.split(inMarkup(en.authorityOpen)).length - 1;
-    expect(opens, 'one Open-settings control per statutory body').toBe(STATUTORY_AUTHORITIES.length);
+    // NOTHING expands: the Open/Close captions do not reach the screen at all any more.
+    expect(html, 'no Open-settings control survives').not.toContain(inMarkup(en.authorityOpen));
+    expect(html, 'and no Close either').not.toContain(inMarkup(en.authorityClose));
+    // NOT asserted here: "no aria-expanded in the markup". The panel itself declares none (pinned in
+    // test/company-panel-bank-statutory-layout.test.ts), but the eight searchable signatory fields are
+    // comboboxes and each renders its own `aria-expanded` — a rendered-markup ban would fail on a control
+    // that is not a disclosure at all. The source guard is the right instrument for that claim.
+  });
+
+  /**
+   * 15e5bd93 — THE WORKSPACE, RENDERED: one pane per body, exactly ONE of them on screen, and the other
+   * seven hidden rather than absent.
+   *
+   * Both halves need a render to prove. A source guard can see `!selected && 'hidden'` and still miss a
+   * pane that renders with no fields in it, or eight panes all visible at once (which is the old
+   * scroll-forever screen with extra steps), or a "hidden" that was spelled as an unmount.
+   */
+  it('fills the workspace with exactly one body, and keeps the other seven mounted but hidden', () => {
+    const html = render('en', richProps);
+    const panes = workspacePanes(html);
+    expect(
+      panes.map((p) => p.body),
+      'one pane per body',
+    ).toEqual([...STATUTORY_AUTHORITIES]);
+    const visible = panes.filter((p) => !p.cls.split(/\s+/).includes('hidden'));
+    expect(
+      visible.map((p) => p.body),
+      'the rail opens on the first body of the controlled set, and only that one is on screen',
+    ).toEqual([STATUTORY_AUTHORITIES[0]]);
+    // The seven hidden ones are hidden, not gone: every field is in the DOM for the tab Save to read.
+    expect(panes.length - visible.length).toBe(STATUTORY_AUTHORITIES.length - 1);
+    // And the visible pane really carries its fields, already open — no expander between the reader and
+    // the boxes. `E123` is EPF's filing number and `ACC-1` its payment reference, both on the EPF pane.
+    const epf = html.slice(html.indexOf('data-statutory-workspace="epf"'));
+    const epfPane = epf.slice(0, epf.indexOf('data-statutory-workspace="socso"'));
+    expect(epfPane).toContain('name="epfEmployerNo" value="E123"');
+    expect(epfPane).toContain('value="ACC-1"');
+    expect(epfPane).toContain('name="addressLine1"');
+    expect(epfPane).toContain('name="signatoryPersonId"');
+  });
+
+  /**
+   * 15e5bd93 — ONE SAVE FOR THE TAB, and the SSM / MyInvois card is under it.
+   *
+   * 65b22c00's finding 1 left that card with a Save button of its own because a scope here would have sat
+   * above eight body editors it did not own. It is now inside the tab's scope, on the tab r226 put it on,
+   * and the assertion is made on the RENDER because "is this form inside that scope?" is a DOM question.
+   */
+  it('renders the statutory tab Save bar, with the registrations card inside its scope', () => {
+    const en = messagesFor('en').admin.organization as Record<string, string>;
+    const html = render('en', richProps);
+    const scope = html.indexOf('data-tab-save-scope="statutory"');
+    expect(scope, 'the statutory scope is rendered').toBeGreaterThan(-1);
+    const ssm = html.indexOf('name="ssmRegistrationNo"');
+    const bar = html.indexOf('data-tab-save-bar', scope);
+    expect(ssm, 'the registrations card is inside the scope').toBeGreaterThan(scope);
+    expect(ssm, '…and above its bar').toBeLessThan(bar);
+    // The one Save replaced the per-card buttons, so neither caption reaches the screen.
+    expect(html, 'the registrations card lost its own Save').not.toContain(inMarkup(en.saveStatutoryIdentity));
+    expect(html, 'and so did every body').not.toContain(inMarkup(en.authoritySave));
+    // "Clear this authority" is bucket (b) and keeps its own control.
+    expect(html).toContain(inMarkup(en.authorityClear));
+    // The bar says what it covers, by name, through the real catalogues.
+    const covers = html.slice(html.indexOf('data-tab-save-covers', scope));
+    expect(covers.slice(0, covers.indexOf('</p>'))).toContain(en.authoritiesTitle);
   });
 
   /**
@@ -324,17 +409,21 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
    * empty, or one whose values only appear once the editor is open.
    *
    * ⚠️ `<script>` IS STRIPPED FIRST, and that is the whole reason this case is worth writing. AGENTS §8:
-   * a key is not a screen. The editor below the face is MOUNTED and merely hidden with CSS, so every
-   * value on this panel appears in the markup twice over — once as the face's text and once as an
-   * input's `value=` — and `toContain('E123')` would pass on a face that renders nothing at all. So the
-   * assertions below are made on the FACE SLICE: the markup from the card's opening `<li>` up to its
-   * Open control, with scripts removed. A value found there was on screen before anybody clicked.
+   * a key is not a screen. The editors are MOUNTED and merely hidden with CSS, so every value on this
+   * panel appears in the markup twice over — once as the face's text and once as an input's `value=` —
+   * and `toContain('E123')` would pass on a face that renders nothing at all. So the assertions below are
+   * made on the FACE SLICE: the body's own rail `<li>`, with scripts removed.
+   *
+   * ⚠️ 15e5bd93 (r352) MAKES THIS CASE MORE IMPORTANT, NOT LESS. The redesign moves a body's fields into a
+   * workspace that shows ONE body at a time, so if the values ever left the rail, "compare EPF's employer
+   * number with LHDN's" would be back to two clicks and a memory — which is the exact complaint 3783fd87
+   * was raised for. The values stay on the rail, and this is what says so.
    */
   it('shows each body\u2019s employer number and paying account on the face, before any interaction', () => {
     const en = messagesFor('en').admin.organization as Record<string, string>;
     const html = render('en', richProps);
 
-    const faces = cardFaces(html, en);
+    const faces = cardFaces(html);
 
     // richProps: statutory.epfEmployerNo = 'E123', authority[0] (= epf) accountNo 'ACC-1' paid from bp1
     // ("Payroll — Maybank" / 512345678901). All three are on the face, each under its own caption.
@@ -377,7 +466,7 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
     const en = messagesFor('en').admin.organization as Record<string, string>;
     const strip = (h: string) => h.replace(/<script\b[\s\S]*?<\/script>/g, '');
 
-    const hrdfFace = (props: unknown) => cardFaces(render('en', props), en)[STATUTORY_AUTHORITIES.indexOf('hrdf')];
+    const hrdfFace = (props: unknown) => cardFaces(render('en', props))[STATUTORY_AUTHORITIES.indexOf('hrdf')];
 
     // richProps carries hrdfStatus: 'mandatory' — a real decision on file, so the face states it.
     expect(faceValues(hrdfFace(richProps))[0]).toBe(inMarkup(en.hrdfMandatory));
