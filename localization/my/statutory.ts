@@ -790,16 +790,28 @@ export type TaxResidency = (typeof TAX_RESIDENCIES)[number];
 export const isTaxResidency = (v: string): v is TaxResidency => (TAX_RESIDENCIES as readonly string[]).includes(v);
 
 /** How the child relief is maintained.
- *  - 'manual'     — HR keys num_children; payroll applies children × perChild (today's behaviour).
- *  - 'auto'       — num_children is derived from the Family register on every dependent write
- *                   (syncChildReliefFromFamily); payroll still applies children × perChild.
+ *  - 'manual'     — HR keys num_children; payroll applies children × perChild.
+ *  - 'auto'       — num_children AND child_relief_table are both derived from the Family register on every
+ *                   dependent write (syncChildReliefFromFamily). Payroll prices the DERIVED GRID when the
+ *                   register can be priced by category at all — every eligible child classified — and falls
+ *                   back to children × perChild when it cannot.
  *  - 'auto_table' — item d64d0df4. HR keys the LHDN s.48 CATEGORY GRID directly against the employee
  *                   (child_relief_table) and payroll works the deduction out category by category at the
  *                   official amount for each, halved for anyone recorded in the 50% column. num_children
  *                   is still maintained as the whole HEAD COUNT so Form E / CP8D / EA are unaffected.
  *                   This mode exists for the case where an employee's DECLARED relief differs from what
  *                   the Family tab holds.
- *  Payroll always reads num_children as the head count regardless of mode. */
+ *
+ *  ⚠️ THIS BLOCK USED TO END "Payroll still applies children × perChild" FOR 'auto', AND "Payroll always
+ *  reads num_children as the head count regardless of mode". Both stopped being true at a5f21891 (r344),
+ *  which taught the payslip, the PCB drill-down and the multicycle worksheet to price a DERIVED grid on
+ *  'auto'. The sentence survived the round that falsified it, and core/dependents.ts cited THIS FILE as its
+ *  authority for the claim — so one stale comment was propping up another. Corrected in r351.
+ *
+ *  What IS still true, and is what the citation actually needs: the three ANNUAL readers — Form E, CP8D and
+ *  the EA statement — read num_children as a plain head count, which is why the derived weighting is never
+ *  written to that column. The one gate every consumer asks is core/dependents.ts
+ *  `pricesChildReliefFromGrid`; no consumer carries its own copy, and a test pins that. */
 export const CHILD_RELIEF_MODES = ['manual', 'auto', 'auto_table'] as const;
 export type ChildReliefMode = (typeof CHILD_RELIEF_MODES)[number];
 export const isChildReliefMode = (v: string): v is ChildReliefMode => (CHILD_RELIEF_MODES as readonly string[]).includes(v);

@@ -100,17 +100,33 @@ export type ChildReliefPricing = {
   /** true for the two auto modes: the stored figure was WORKED OUT, not typed. */
   derived: boolean;
   /** `num_children` as stored — the head count Form E / CP8D / the EA statement read, AND the count the
-   *  kernel's child leg multiplies in 'manual' and 'auto' mode. */
+   *  kernel's child leg multiplies in 'manual' mode and in 'auto' mode when no grid is stored. */
   physicalChildren: number;
   /** Eligible children on the Family register as of the page's own KL "today". In 'auto' mode this is what
-   *  the next save writes into `num_children`; when it differs from `physicalChildren` the stored tax
-   *  figure is behind the family records and the card says so out loud. */
+   *  the next save writes into `num_children`, and since r351 it is also what the figure below is priced
+   *  from — the register, not the column an unrelated edit last wrote. */
   eligibleChildren: number;
-  /** QC for the stored record, from the pack. */
+  /** QC as the FAMILY REGISTER supports it in the auto modes (r351), as stored/typed in 'manual'. */
   qualifyingChildren: number;
-  /** The child deduction in ringgit for the stored record — the same value
-   *  `pack.payroll.childReliefAmountFor` returns, because it is one field of the same call. */
+  /** The child deduction in ringgit for `qualifyingChildren`, from the pack's own call. */
   reliefRM: number;
+  /** r351 — QC and the ringgit the STORED columns come to, in the kernel's own expression: what payroll
+   *  deducts for this employee right now. It equals the two fields above whenever the record is in step and
+   *  differs the moment time has passed without a save, because nothing re-derives `num_children` or
+   *  `child_relief_table` on the passage of time. The card prints the register figure and names THIS in
+   *  amber when they differ — never one without the other (CLAUDE.md §8). */
+  storedQualifyingChildren: number;
+  storedReliefRM: number;
+  /** r351 — the s.48 grid the Family register supports as of `asOf`, or null when it cannot be priced by
+   *  category. POSTED BACK by the hidden inputs in 'auto' mode, so saving the card genuinely brings the
+   *  stored record into step instead of re-posting the stale grid it was rendered with. */
+  derivedGrid: Record<string, { full: number; half: number }> | null;
+  /** r351 — child records with no usable date of birth, BY NAME. They cannot be counted (the age the rule
+   *  turns on cannot be confirmed) and until now nothing on any screen said which ones they were. */
+  undatedChildren: string[];
+  /** r351 — the Kuala Lumpur calendar day every figure above was taken at, so the card can SAY which date
+   *  it is describing instead of implying "now". */
+  asOf: string;
   /** The working behind the stored figure: one line per eligible child in 'auto', one per priced grid cell
    *  in 'auto_table', empty in 'manual'. */
   breakdown: {
@@ -262,9 +278,16 @@ export function IdentityTaxCard({
   //   auto_table — the grid ON SCREEN, priced live. The admin is typing into it, so a figure the server
   //                computed for the saved record would contradict the boxes the moment anything is keyed.
   //   manual     — the head count ON SCREEN, priced live, for the same reason: it is an editable box.
-  //   auto       — the SAVED record's figure, from the server. Nothing on this screen changes it; the
-  //                children's records do, and `num_children` is what the payslip multiplies until the next
-  //                save. Showing anything else here is the r340 blocking defect.
+  //   auto       — the server's figure for the SAVED record. Nothing on this screen changes it; the
+  //                children's records do.
+  //                ⚠️ r351 — WHAT THAT FIGURE IS MADE OF CHANGED, AND THIS COMMENT USED TO NAME THE OLD
+  //                ONE ("`num_children` is what the payslip multiplies until the next save. Showing
+  //                anything else here is the r340 blocking defect"). The server now prices 'auto' from the
+  //                Family register as of its own KL date, because a figure captioned as describing that
+  //                register cannot be read out of a column that only an unrelated family edit ever moves.
+  //                The r340 rule it was protecting is KEPT, and kept where it belongs: the card must never
+  //                print a figure without naming what the payslip actually deducts, so the server also
+  //                returns `storedReliefRM` and the amber line below states it whenever the two differ.
   const figure =
     mode === 'auto_table'
       ? (packChildReliefFor?.({ from: 'table', table: typedGrid, prices }) ?? null)
@@ -285,6 +308,12 @@ export function IdentityTaxCard({
         : whole(numChildren);
   const qualifying = figure?.units ?? headCount;
   const reliefRM = figure?.amountRM ?? 0;
+  // r351 — IS ANY CHILD RELIEF BEING CLAIMED AT ALL, by either figure? `reliefRM` is what the record as it
+  // stands supports; `storedReliefRM` is what payroll is deducting until somebody saves. A sentence that
+  // denies the relief has to be false of BOTH before it may be printed, because a reader cannot be told
+  // "nothing is claimed" while either number is spending money. The two differ only on an 'auto' record the
+  // register has moved under, and the amber line says which is which.
+  const claimedRM = Math.max(reliefRM, childRelief?.storedReliefRM ?? 0);
   // ── r343 FIX PASS — THE WEIGHTING GAP, SIGNED, BECAUSE IT HAS TWO DIRECTIONS ──────────────────────
   // `ruleUnits` is what the s.48 categories on file come to (1 / 4 / 8, HALVED for a 50% claim share);
   // `qualifying` is what the calculation actually gives, which in 'auto' is one unit per eligible child.
@@ -299,17 +328,25 @@ export function IdentityTaxCard({
   const ruleUnitsGap = (childRelief?.ruleUnits ?? qualifying) - qualifying;
   const weightingGap: 'under' | 'over' | null =
     Math.abs(ruleUnitsGap) < 0.0005 ? null : ruleUnitsGap > 0 ? 'under' : 'over';
-  // IS THE STORED TAX FIGURE BEHIND THE FAMILY RECORDS? Only a record STORED as 'auto' can be: the
-  // server-side sync fires on a dependent add / edit / archive, so a child simply ageing past 18 moves the
-  // eligible count and leaves `num_children` — the figure the payslip uses — where it was. `childRelief.mode`
-  // and `.derived` are the STORED provenance, deliberately not the select's current value: a mode the admin
-  // has just picked and not saved describes nothing on file and cannot be stale.
+  // IS PAYROLL BEHIND THE FAMILY RECORDS? Only a record STORED as 'auto' can be: the server-side sync fires
+  // on a dependent add / edit / archive, so a child simply ageing past 18 moves the register and leaves the
+  // stored columns — which are what the payslip reads — where they were. `childRelief.mode` and `.derived`
+  // are the STORED provenance, deliberately not the select's current value: a mode the admin has just picked
+  // and not saved describes nothing on file and cannot be stale.
+  //
+  // ⚠️ r351 — THE TEST IS THE MONEY, NOT THE HEAD COUNTS, AND THE OLD TEST MISSED HALF THE CASES. It read
+  // `physicalChildren !== eligibleChildren`, which cannot see a stale GRID: changing a child from `under_18`
+  // to `disabled_study` moves the relief from RM2,000 to RM16,000 with the head count unmoved, and since
+  // r344 the payslip prices that grid. Comparing the two ringgit figures catches both directions of both
+  // branches, and it is the difference that actually lands on a payslip.
+  // A TOLERANCE, not `!==`: a 50%-shared child priced by category makes both sides fractional, and float
+  // equality on a derived figure would put an amber warning on a difference of 1e-15.
   const storedAutoStale =
     childRelief != null &&
     childRelief.derived &&
     childRelief.mode === 'auto' &&
     mode === 'auto' &&
-    childRelief.physicalChildren !== childRelief.eligibleChildren;
+    Math.abs(childRelief.storedReliefRM - childRelief.reliefRM) >= 0.005;
   // PROVENANCE IS PART OF THE FIELD. 'manual' is a TYPED figure and is labelled as one; the two auto modes
   // are worked out and are labelled by WHAT they were worked out from. A typed number must never be dressed
   // up as a calculated one, and a calculated one must never look editable.
@@ -526,18 +563,24 @@ export function IdentityTaxCard({
                   {t('childReliefAmountHint', { amount: fmtRM(reliefRM) })}
                 </span>
               )}
-              {/* ── THE STORED FIGURE IS BEHIND THE FAMILY RECORDS ────────────────────────────────────
-                  The one case that previously said NOTHING at all. 'auto' mode's sync fires on a dependent
-                  add / edit / archive, so a child ageing past 18 — or a head count typed before the mode was
-                  switched — leaves `num_children` holding a figure the Family register no longer supports,
-                  and `num_children` is what the payslip multiplies. The card now prints the figure the
-                  payslip uses (above) and this line says, in the same breath, that the records disagree with
-                  it and what closes the gap. Amber, never blocking: HR decides when a tax figure moves. */}
+              {/* ── PAYROLL IS BEHIND THE FAMILY RECORDS ──────────────────────────────────────────────
+                  'auto' mode's sync fires on a dependent add / edit / archive and on nothing else, so a child
+                  ageing past 18 — or a category corrected on the Family tab while this record sat untouched —
+                  leaves the STORED columns holding a relief the register no longer supports, and it is the
+                  stored columns the payslip reads.
+                  ⚠️ r351 — THE FIGURE ABOVE IS NOW THE REGISTER'S, so this line carries the other half: what
+                  payroll will actually deduct until the record is saved, in ringgit, beside what the records
+                  support. Both numbers, always, in one sentence — a screen that shows one and hides the other
+                  is the r340 defect whichever of the two it picks. Amber, never blocking: HR decides when a
+                  tax figure moves, and Save is the button that moves it. */}
               {storedAutoStale && childRelief && (
                 <span className="text-xs text-amber-700 dark:text-amber-400" data-child-stale-figure>
-                  {t('childQualifyingStaleFamily', {
-                    stored: childRelief.physicalChildren,
-                    eligible: childRelief.eligibleChildren,
+                  {t('childQualifyingPayrollBehind', {
+                    storedCount: fmtCount(childRelief.storedQualifyingChildren),
+                    storedAmount: fmtRM(childRelief.storedReliefRM),
+                    count: fmtCount(qualifying),
+                    amount: fmtRM(reliefRM),
+                    date: childRelief.asOf,
                   })}
                 </span>
               )}
@@ -595,14 +638,36 @@ export function IdentityTaxCard({
               </div>
             </div>
           ) : (
-            // Not in table mode — still POST the stored grid, so a save made in Manual or Auto mode
-            // cannot wipe a grid the admin keyed earlier and silently change their tax on the way back.
-            CHILD_RELIEF_CATEGORY_KEYS.map((key) => (
-              <span key={key} className="hidden">
-                <input type="hidden" name={`childRelief_${key}_full`} value={grid[key].full} />
-                <input type="hidden" name={`childRelief_${key}_half`} value={grid[key].half} />
-              </span>
-            ))
+            // Not in table mode — the grid is still POSTED, because `setTaxProfileMY` overwrites the whole
+            // tax column set and an omitted grid would be a silent tax change. WHICH grid depends on the
+            // mode, and that distinction is r351's:
+            //
+            //   manual     — the STORED grid, verbatim, exactly as before. 'manual' short-circuits the sync
+            //                (NO_SYNC('manual_mode')), so nothing here is machine-maintained and a save must
+            //                not wipe a grid the admin keyed earlier under 'auto (from table)'.
+            //   auto       — the DERIVED grid: what the Family register supports as of the server's own KL
+            //                date, or all zeros when it cannot be priced by category (setTaxProfileMY turns
+            //                all-zero into NULL, which is exactly what the sync stores in that case).
+            //                ⚠️ THE OLD BEHAVIOUR MADE THE AMBER LINE ABOVE A FALSE PROMISE. It re-posted
+            //                the stored grid out of these hidden inputs, so "Saving this card brings the tax
+            //                figure back in step" was true for the head count — the box above posts the
+            //                derived eligible count — and FALSE for an employee priced from a stored grid:
+            //                the save wrote the stale grid straight back and the payslip did not move. In
+            //                'auto' the grid IS machine-maintained (syncChildReliefFromFamily overwrites the
+            //                same column on every family edit), so posting the derivation is the one answer
+            //                consistent with its only other writer.
+            CHILD_RELIEF_CATEGORY_KEYS.map((key) => {
+              const cell =
+                mode === 'auto' && childRelief
+                  ? (childRelief.derivedGrid?.[key] ?? { full: 0, half: 0 })
+                  : grid[key];
+              return (
+                <span key={key} className="hidden">
+                  <input type="hidden" name={`childRelief_${key}_full`} value={String(cell.full)} />
+                  <input type="hidden" name={`childRelief_${key}_half`} value={String(cell.half)} />
+                </span>
+              );
+            })
           )}
           {/* ── 04b88724 — HOW THE QUALIFYING COUNT WAS REACHED ──────────────────────────────────────
               The plan promises the working, not just the answer: each line, its category, whether it is
@@ -630,10 +695,23 @@ export function IdentityTaxCard({
                    relief is claimed" under a stated "Child relief: RM 10,000.00" made one fieldset
                    assert both, which is the defect this item exists to stop. Production has three
                    employees stored 'auto', so the state is reachable. Choose on the MONEY, not on the
-                   row count; the amber line above already names the stored and eligible counts. */
+                   row count; the amber line above already names the stored and eligible counts.
+                   ⚠️ r351 — AND THE SENTENCE IT CHOSE WAS ITSELF FALSE. `childQualifyingBreakdownUnsupported`
+                   opened "No children are recorded in the Family register", but it renders on the row COUNT,
+                   so it also fired when children ARE recorded and none of them qualifies — the reporter's own
+                   case, told that their family records were empty. It is retired. Its replacement says only
+                   what is true of every case that reaches it: there is no per-child working behind this
+                   figure, and money is still claimed. WHY none qualifies is a separate sentence below, which
+                   can state the reason because it is rendered only when the facts are known.
+                   ⚠️ AND THE TEST IS `claimedRM`, THE LARGER OF THE TWO FIGURES, NOT `reliefRM`. Since r351
+                   the figure above is the register's, so the r340 contradiction can now arrive from the
+                   OTHER side: an 'auto' record with an empty register supports RM0 while its stored head
+                   count still has payroll deducting RM10,000, and "no child relief is claimed" under that is
+                   the same false sentence read from the opposite end. Whichever of the two is claiming
+                   money, this box must not deny it; the amber line above names both and which is which. */
                 <p className="text-xs text-muted-foreground" data-child-breakdown-empty>
-                  {reliefRM > 0
-                    ? t('childQualifyingBreakdownUnsupported', { amount: fmtRM(reliefRM) })
+                  {claimedRM > 0
+                    ? t('childQualifyingBreakdownUnitemised', { amount: fmtRM(claimedRM) })
                     : t('childQualifyingBreakdownEmpty')}
                 </p>
               ) : (
@@ -736,6 +814,40 @@ export function IdentityTaxCard({
                   )}
                 </p>
               )}
+              {/* ── r351 — THE CHILDREN ARE THERE AND NONE OF THEM QUALIFIES, SAID IN THOSE WORDS ───────
+                  The reporter's exact scenario: a child turned 18 and is not in further education, so the
+                  Family tab says "No" in its relief column and the figure here is nothing. What the card
+                  used to offer was the retired sentence claiming the register was EMPTY — the one fact the
+                  reporter could see with their own eyes to be wrong.
+                  Gated on the STORED mode being 'auto' as well as the select: it is only in that mode that
+                  the Family register decides the figure at all. In 'auto (from table)' the keyed grid does,
+                  and telling an administrator there that their children do not qualify would be the next
+                  false sentence. It names the rule too, because "none qualifies" without the rule leaves the
+                  reader to guess whether it is the age, the studies or the record. */}
+              {mode === 'auto' &&
+                childRelief.mode === 'auto' &&
+                childRelief.familyChildren > 0 &&
+                childRelief.eligibleChildren === 0 && (
+                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-400" data-child-none-eligible>
+                    {t('childQualifyingNoneEligible', {
+                      count: childRelief.familyChildren,
+                      date: childRelief.asOf,
+                    })}
+                  </p>
+                )}
+              {/* ── r351 — A CHILD WITH NO DATE OF BIRTH IS NAMED, NOT SILENTLY COUNTED ZERO ─────────────
+                  `isChildReliefEligible` cannot confirm the age the rule turns on without a date of birth,
+                  so it does not count the child — the right answer, and one the register gave no sign of.
+                  BY NAME: a count would send an administrator through the whole Family tab to find which
+                  record is incomplete, and the fix is one field on one child. */}
+              {childRelief.undatedChildren.length > 0 && (
+                <p className="mt-2 text-xs text-amber-700 dark:text-amber-400" data-child-no-dob>
+                  {t('childQualifyingNoDob', {
+                    count: childRelief.undatedChildren.length,
+                    names: childRelief.undatedChildren.join(', '),
+                  })}
+                </p>
+              )}
               {childRelief.uncategorisedChildren > 0 && (
                 <p className="mt-2 text-xs text-amber-700 dark:text-amber-400" data-child-uncategorised>
                   {t('childQualifyingUncategorised', { count: childRelief.uncategorisedChildren })}
@@ -754,6 +866,12 @@ export function IdentityTaxCard({
             // syncChildReliefFromFamily in core/dependents.ts), so there is nothing left for a human to
             // confirm. What remains is an explanation of where the number comes from and that it maintains
             // itself — plus the honest warning that this is a tax figure moving without a human in the loop.
+            // ⚠️ r351 — THE SENTENCE WAS OVERSTATED IN BOTH HALVES AND IS REWRITTEN IN ALL SIX LOCALES. It
+            // called `{count}` "the figure that feeds PCB": the figure that feeds PCB is `num_children` (and,
+            // since r344, `child_relief_table`), and this count is what the next write puts there. And
+            // "updates on its own" was true only of a family add / edit / archive — the sync fires on nothing
+            // else, so a birthday moves the register and leaves the tax record untouched. The new text names
+            // the trigger it really has, and the amber line above is what reports the gap when one opens.
             <div className="rounded-md border border-dashed border-border bg-card/60 p-3">
               <p className="text-xs text-muted-foreground">
                 {t('childReliefAutoSyncNote', { count: childRelief?.eligibleChildren ?? 0 })}
