@@ -137,6 +137,11 @@ export type ChildReliefPricing = {
     children: number;
     units: number;
     amountRM: number;
+    /** 77e882f5 — which limb of the eligibility rule counted this child ('explicit' = somebody ticked
+     *  "Claim tax relief" on the record, which wins over the age test). Absent on a grid cell. */
+    why?: 'explicit' | 'student' | 'under_18' | null;
+    /** 77e882f5 — the child's recorded category is disproved by their own date of birth. */
+    categoryContradictsDob?: boolean;
   }[];
 };
 
@@ -368,6 +373,8 @@ export function IdentityTaxCard({
     children: number;
     units: number;
     amountRM: number;
+    why: 'explicit' | 'student' | 'under_18' | null;
+    categoryContradictsDob: boolean;
   }[] =
     mode === 'auto_table'
       ? (figure?.rows ?? []).map((r) => ({
@@ -381,6 +388,10 @@ export function IdentityTaxCard({
           children: r.children,
           units: r.units,
           amountRM: r.amountRM,
+          // A grid cell stands for a COUNT, not a person, so there is no child whose record could carry
+          // a reason or contradict itself. Null rather than absent, so the row shape is uniform.
+          why: null,
+          categoryContradictsDob: false,
         }))
       : mode === 'auto'
         ? (childRelief?.breakdown ?? []).map((r, i) => ({
@@ -395,6 +406,12 @@ export function IdentityTaxCard({
             children: r.children,
             units: r.units,
             amountRM: r.amountRM,
+            // 77e882f5 — WHY this child counts, and whether their own record disproves their category.
+            // Carried per row and rendered under the name: the reporter read a count of 1 against a child
+            // called "More than 18Y" twice and both times concluded the age check was broken, when what
+            // had actually happened is that somebody ticked "Claim tax relief" on that child.
+            why: r.why ?? null,
+            categoryContradictsDob: r.categoryContradictsDob === true,
           }))
         : [];
 
@@ -733,7 +750,23 @@ export function IdentityTaxCard({
                               NUMBER OF CHILDREN for a grid cell. It is deliberately not the category name
                               again — that is the next column, and a row that printed it twice made the
                               reader check whether the two were saying different things. */}
-                          <td className="py-1.5 pr-4 align-middle">{row.label}</td>
+                          <td className="py-1.5 pr-4 align-middle">
+                            {row.label}
+                            {/* 77e882f5 — the disclosure. Only an EXPLICIT tick is worth a line: a child
+                                counted because they are under 18, or because they are a full-time
+                                student, is counted for the reason the caption already implies, and
+                                annotating every row would bury the one that matters. */}
+                            {row.why === 'explicit' ? (
+                              <span className="block text-[11px] text-muted-foreground" data-child-why-explicit>
+                                {t('childQualifyingWhyExplicit')}
+                              </span>
+                            ) : null}
+                            {row.categoryContradictsDob ? (
+                              <span className="block text-[11px] font-medium text-amber-700" data-child-category-contradicts>
+                                {t('childQualifyingCategoryContradictsDob')}
+                              </span>
+                            ) : null}
+                          </td>
                           <td className="py-1.5 pr-4 align-middle text-muted-foreground">
                             {row.category
                               ? t(`family.childReliefCat_${row.category}`)

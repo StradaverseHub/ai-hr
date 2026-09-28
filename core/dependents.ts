@@ -220,6 +220,13 @@ export type ChildReliefEligibilityRow = Pick<
  * third copy of the arithmetic. Re-exported here so every existing caller is untouched.
  */
 export { childAgeYears } from '../lib/dependent-vocabulary';
+import {
+  childCategoryContradictsDob,
+  childEligibilityReason,
+  childReliefEligible,
+  type ChildEligibilityReason,
+  type ChildReliefRow,
+} from '../lib/dependent-vocabulary';
 
 /**
  * Item 5988053a — the per-row eligibility predicate, extracted from eligibleChildReliefCount so there is
@@ -233,17 +240,14 @@ export { childAgeYears } from '../lib/dependent-vocabulary';
  * changes nothing against the original fractional comparison.)
  */
 export function isChildReliefEligible(r: ChildReliefEligibilityRow, asOf: Date = new Date()): boolean {
-  if (r.relationship !== 'child') return false;
-  if (r.isDeceased) return false;
-  if (r.archivedAt) return false;
-  // Explicit per-child decision wins over inference (both directions).
-  if (r.childTaxRelief != null) return r.childTaxRelief;
-  // Full-time student ⇒ eligible regardless of exact age (covers the 18+ in-education case).
-  if (r.isStudent) return true;
-  // Otherwise eligible only when under 18. No DOB ⇒ cannot confirm age ⇒ not auto-counted (HR keys it).
-  const age = childAgeYears(r.dateOfBirth, asOf);
-  return age != null && age < 18;
+  return childReliefEligible(r as ChildReliefRow, asOf);
 }
+
+// 77e882f5 (r353) — the rule and its two disclosures MOVED to lib/dependent-vocabulary.ts so the client
+// card that renders them can import them without dragging db/client into a browser bundle, exactly as
+// `childAgeYears` moved for the Family form. Re-exported here so every existing caller is untouched.
+export { childEligibilityReason, childCategoryContradictsDob } from '../lib/dependent-vocabulary';
+export type { ChildEligibilityReason } from '../lib/dependent-vocabulary';
 
 /**
  * THE HEAD COUNT. One eligible child is ONE, whatever s.48 category is recorded against it.
@@ -1186,6 +1190,13 @@ export type QualifyingChildRow = {
   units: number;
   /** Ringgit this line contributes, as this mode prices it. */
   amountRM: number;
+  /** 77e882f5 — WHICH LIMB OF THE ELIGIBILITY RULE COUNTED THIS CHILD, so the screen can say why a
+   *  figure is what it is instead of leaving the reader to infer it wrongly. null on a 'category' row
+   *  (which stands for a count, not a person) and on any row this mode did not derive from a register. */
+  why?: ChildEligibilityReason | null;
+  /** 77e882f5 — this child's recorded category is disproved by their own date of birth
+   *  (`under_18` on someone 18 or over). Reported, never applied: the category still prices what it did. */
+  categoryContradictsDob?: boolean;
 };
 
 export type QualifyingChildRelief = {
@@ -1514,6 +1525,9 @@ export async function qualifyingChildReliefFor(
         children: 1,
         units: priced.units,
         amountRM: priced.amountRM,
+        // 77e882f5 — the two disclosures, from the SAME row and the SAME date the figure was taken at.
+        why: childEligibilityReason(d, asOfDate),
+        categoryContradictsDob: childCategoryContradictsDob(d, asOfDate),
       };
     };
 
@@ -1555,6 +1569,8 @@ export async function qualifyingChildReliefFor(
                     children: 1,
                     units: childReliefFor({ from: 'headCount', children: 1, perChild }).units,
                     amountRM: childReliefFor({ from: 'headCount', children: 1, perChild }).amountRM,
+                    why: childEligibilityReason(d, asOfDate),
+                    categoryContradictsDob: childCategoryContradictsDob(d, asOfDate),
                   },
             )
           : // manual — nothing was worked out, so there is nothing to break down.
