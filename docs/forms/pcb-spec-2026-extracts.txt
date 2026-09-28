@@ -1,0 +1,65 @@
+PCB 2026 COMPUTERISED-CALCULATION SPECIFICATION — TRANSCRIBED EXTRACTS
+Source: docs/forms/pcb-spec-2026-computerised-calculation.pdf (52 pages, LHDNM).
+Retrieved 2026-09-28 from https://www.hasil.gov.my/wp-content/uploads/spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf
+The /media/arvlrzh5/ URL recorded elsewhere in this repo is DEAD (404); /wp-content/uploads/ is live.
+Index page: https://www.hasil.gov.my/en/majikan/jadual-pcb-dan-spesifikasi-data/
+
+====================================================================================================
+RULE 5 — ZAKAT AND DEPARTURE LEVY (printed page 19-20). Verbatim, layout preserved.
+====================================================================================================
+         5. Zakat and departure levy shall be treated as follows:
+
+            i) Employees receive only remuneration (without additional remuneration).
+
+               MTD for current           Zakat and departure            Net                 Zakat and
+                 month (RM)                levy for current             MTD               departure levy
+                                             month (RM)                 (RM)            carried forward to
+                                                                                          the following
+                                                                                        month (value of Z)
+                                                                                               (RM)
+                     (a)                        (b)                   (a – b = c)               (d)
+    a.           8.00 ≈ 0.00                   5.00                 - 5.00 ≈ 0.00              5.00
+    b.              15.00                     20.00                 - 5.00 ≈ 0.00              20.00
+    c.              15.00                      8.00                      7.00                  8.00
+    d.             120.00                     100.00                    20.00                 100.00
+
+            ii) Employees receive additional remuneration during the month. Please refer to MTD for
+                additional remuneration formula.
+
+             MTD for        Zakat for       Net MTD          Zakat carried        MTD for       MTD for
+             current         current         (RM)           forward to the       additional      current
+            month (RM)       month                         following month     remuneration      month
+                              (RM)                            (value of Z)         (RM)           (RM)
+                                             Step 1(c)           (RM)              Step 4        Step 5
+                (a)              (b)        (a – b = c)            (d)               (e)       (c + e = f)
+    a.      8.00 ≈ 0.00         5.00       -5.00 ≈ 0.00           5.00          9.00 ≈ 0.00        0.00
+
+====================================================================================================
+RULE 9 — TAX EXEMPTION EXCLUDED FROM REMUNERATION (printed page 20).
+====================================================================================================
+9. MTD is to be deducted from the employee’s taxable remuneration only. All the tax exemption on
+   allowances, benefit-in-kind and perquisites shall be excluded from the remuneration for MTD
+   purposes. Any amount exceed the restricted amount shall be taxable. Please refer to Form E
+   Explanatory Notes for references.
+
+
+
+
+
+====================================================================================================
+RULE 15 — REBATE ON ZAKAT (printed page 35).
+====================================================================================================
+       15.    Rebate on Zakat
+
+              There are two type of zakat as follows:
+
+              a. Zakat that deducted from the remuneration (payslip). Amount of zakat should appear in the payslip
+                 and EA Form.
+
+              b. Zakat claimed through TP1 form
+
+                   •    Amount of zakat should not appear in the payslip and EA Form due to employee himself paid
+                        directly to Pusat Zakat.
+                   •    It is treated as zakat for current month in the month claimed by the employee.
+
+

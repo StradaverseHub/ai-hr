@@ -997,6 +997,20 @@ export const MY_TP1_2026_ITEMS: readonly Tp1CatalogueItem[] = [
  * so these amounts are NOT part of the `tp1_amount` roll-up the PCB kernel consumes. They are captured,
  * stored and printed on the form. The paper form prints NO annual-limit figure against either line.
  *
+ * ⚠️ 72d1a390 (r352) — "NOT A DEDUCTION" WAS READ AS "DOES NOTHING", AND THAT WAS THE DEFECT.
+ * The sentence above is correct about chargeable income and says nothing about the TAX, which is what a
+ * rebate reduces. Both of these lines were captured, validated, stored, printed — and offset against
+ * nothing, so every employee who claimed either had too much tax deducted every month.
+ * The specification is now in the repo and settles it: docs/forms/pcb-spec-2026-extracts.txt, rule 5,
+ * printed p.19 — "Zakat and departure levy shall be treated as follows", with column (b) of its table
+ * reading "Zakat and departure levy for current month (RM)" and the net MTD being (a − b) floored at
+ * zero. Rule 15, printed p.35, adds that zakat claimed through Form TP1 "is treated as zakat for current
+ * month in the month claimed by the employee" and "should not appear in the payslip and EA Form".
+ * So both sub-lines belong in the month's zakat offset (localization/my/payroll.ts `zakatOffsetWorking`),
+ * and neither belongs on the payslip's zakat line. What must NOT be built is an unused-balance
+ * carry-forward: rule 5's column (d) equals column (b) in every printed row, so it is the Z accumulator
+ * taking the full amount, not a residual. See the header on `zakatOffsetWorking` for the row-by-row read.
+ *
  * D1(a) is zakat OTHER THAN that paid through monthly salary deductions — the exclusion is the whole
  * point of the line, and it is what stops the same zakat being counted twice against a person who also
  * has a payroll zakat deduction (core/tax-relief.ts states the rule; test/tp1-zakat-screens.test.ts and
