@@ -38,6 +38,14 @@ import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 
 import en from '../messages/en.json';
+// r351 — the other five catalogues, for the render check at the end of this file. A key that resolves in
+// English and is missing or malformed elsewhere passes tsc and `next build` and fails only on a screen
+// (CLAUDE.md §8), and four of the sentences on this card are new this round.
+import ms from '../messages/ms.json';
+import ta from '../messages/ta.json';
+import th from '../messages/th.json';
+import vi_ from '../messages/vi.json';
+import zh from '../messages/zh.json';
 import { IdentityTaxCard, type ChildReliefPricing } from '../components/identity-tax-card';
 // THE KERNEL'S OWN FIGURES. test/ is not scanned by the country-pack drift guard, so a test may name the
 // pack directly — and it must here: the whole point is to compare what the SCREEN prints against what the
@@ -100,10 +108,12 @@ function renderCard(over: {
   numChildren?: number;
   grid?: Record<string, { full: number; half: number }> | null;
   pricing?: ChildReliefPricing | null;
+  /** r351 — a different catalogue, for the six-locale render check. Defaults to English. */
+  messages?: unknown;
 } = {}) {
   const user = userEvent.setup();
   render(
-    <NextIntlClientProvider locale="en" messages={en as never}>
+    <NextIntlClientProvider locale="en" messages={(over.messages ?? en) as never}>
       <IdentityTaxCard
         action={() => {}}
         employmentId="emp-1"
@@ -704,5 +714,72 @@ describe('no country pack / no PCB reliefs', () => {
     expect(document.querySelector('[data-child-relief-amount]')).toBeNull();
     expect(document.querySelector('[data-child-breakdown]')).toBeNull();
     expect(document.querySelector('[data-child-manual-note]')).toBeNull();
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════════
+ * r351 — THE FOUR NEW SENTENCES RENDER, IN ALL SIX LOCALES
+ *
+ * A message key that resolves in English and is missing, misspelt or malformed in another catalogue passes
+ * `tsc`, passes the whole node suite and passes `next build`; it surfaces as `MISSING_MESSAGE` or
+ * `FORMATTING_ERROR` on a screen, in a language nobody on this side reads (CLAUDE.md §8). The catalogue
+ * guard in test/r351-child-relief-register-truth.test.ts proves the keys EXIST and carry the right
+ * placeholders; only a render proves next-intl can actually produce a sentence from them with the arguments
+ * this card passes. Four of the sentences here are new this round and one of them carries five arguments.
+ * ═════════════════════════════════════════════════════════════════════════════════════════════════════ */
+describe('r351 · every new line on the card resolves in all six locales', () => {
+  /** Stale in BOTH directions at once: payroll behind, no child eligible, and one child undated. It makes
+   *  all four new lines render from a single fixture, so one pass per locale covers every one of them. */
+  const ALL_LINES: ChildReliefPricing = {
+    ...PRICING,
+    mode: 'auto',
+    derived: true,
+    physicalChildren: 3,
+    eligibleChildren: 0,
+    familyChildren: 3,
+    uncategorisedChildren: 0,
+    pricedFromGrid: false,
+    qualifyingChildren: 0,
+    reliefRM: 0,
+    storedQualifyingChildren: 3,
+    storedReliefRM: kernelFlatRM(3),
+    derivedGrid: null,
+    undatedChildren: ['Siti', 'Arun'],
+    breakdown: [],
+  };
+
+  it.each([
+    ['en', en],
+    ['ms', ms],
+    ['ta', ta],
+    ['th', th],
+    ['vi', vi_],
+    ['zh', zh],
+  ])('%s renders all four with every argument substituted', (loc, m) => {
+    renderCard({ mode: 'auto', numChildren: 3, pricing: ALL_LINES, messages: m });
+    for (const sel of [
+      '[data-child-stale-figure]', // childQualifyingPayrollBehind — five arguments
+      '[data-child-none-eligible]', // childQualifyingNoneEligible
+      '[data-child-no-dob]', // childQualifyingNoDob
+      '[data-child-breakdown-empty]', // childQualifyingBreakdownUnitemised
+    ]) {
+      const s = text(sel);
+      expect(s, `${loc} ${sel} did not render`).not.toBe('');
+      expect(s, `${loc} ${sel} left an ICU placeholder unsubstituted`).not.toMatch(/\{[a-zA-Z]/);
+      expect(s, `${loc} ${sel} failed to resolve`).not.toMatch(
+        /MISSING_MESSAGE|FORMATTING_ERROR|people\.detail/,
+      );
+      expect(s, `${loc} ${sel} rendered a RETIRED key`).not.toMatch(/\[retired r/);
+    }
+    // The figure payroll is deducting must survive the translation: a locale that drops it leaves a reader
+    // looking at RM0 with nothing telling them their payslip disagrees. Only this one is asserted here —
+    // the register figure on this fixture is 0.00, which is a SUBSTRING of every other amount on the line,
+    // so asserting it would pass whatever the sentence said. Both figures are pinned against each other in
+    // English, where they are distinguishable, by the BLOCKING and stale-GRID cases above.
+    const stale = text('[data-child-stale-figure]');
+    expect(stale, `${loc}: what payroll deducts`).toContain(rm(ALL_LINES.storedReliefRM));
+    // And the named children must survive the translation, because the name is the actionable part.
+    expect(text('[data-child-no-dob]'), `${loc}: the names`).toContain('Siti');
+    expect(text('[data-child-no-dob]'), `${loc}: both of them`).toContain('Arun');
   });
 });
