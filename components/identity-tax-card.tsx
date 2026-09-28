@@ -139,7 +139,7 @@ export type ChildReliefPricing = {
     amountRM: number;
     /** 77e882f5 — which limb of the eligibility rule counted this child ('explicit' = somebody ticked
      *  "Claim tax relief" on the record, which wins over the age test). Absent on a grid cell. */
-    why?: 'explicit' | 'student' | 'under_18' | null;
+    why?: 'category' | 'student' | 'under_18' | null;
     /** 77e882f5 — the child's recorded category is disproved by their own date of birth. */
     categoryContradictsDob?: boolean;
   }[];
@@ -373,7 +373,7 @@ export function IdentityTaxCard({
     children: number;
     units: number;
     amountRM: number;
-    why: 'explicit' | 'student' | 'under_18' | null;
+    why: 'category' | 'student' | 'under_18' | null;
     categoryContradictsDob: boolean;
   }[] =
     mode === 'auto_table'
@@ -756,9 +756,9 @@ export function IdentityTaxCard({
                                 counted because they are under 18, or because they are a full-time
                                 student, is counted for the reason the caption already implies, and
                                 annotating every row would bury the one that matters. */}
-                            {row.why === 'explicit' ? (
-                              <span className="block text-[11px] text-muted-foreground" data-child-why-explicit>
-                                {t('childQualifyingWhyExplicit')}
+                            {row.why === 'category' ? (
+                              <span className="block text-[11px] text-muted-foreground" data-child-why-category>
+                                {t('childQualifyingWhyCategory')}
                               </span>
                             ) : null}
                             {row.categoryContradictsDob ? (

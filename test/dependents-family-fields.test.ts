@@ -342,15 +342,58 @@ describe('isChildReliefEligible / childAgeYears (5988053a, pure)', () => {
     expect(isChildReliefEligible(child({ dateOfBirth: '2005-01-01', isStudent: false }), asOf)).toBe(false);
   });
 
-  it('an explicit childTaxRelief decision overrides the inference in BOTH directions', () => {
-    // true: an 18-plus non-student still counts.
+  // ⚠️ r355 (77e882f5) — THIS CASE IS HALF REVERSED, BY THE OWNER, AND THE OLD CLAIM IS QUOTED HERE
+  // RATHER THAN DELETED.
+  //
+  // It read: "an explicit childTaxRelief decision overrides the inference in BOTH directions", and it
+  // asserted that a ticked 18-plus non-student "still counts". That was item 6c635212's rule and it was
+  // load-bearing — the tick was the only way to claim a disabled or studying child over 18.
+  //
+  // The owner reversed the TRUE direction: "The Claim tax relief checkbox should indicate the user's
+  // intention to claim the relief, but it must not override the statutory eligibility validation."
+  // A tick is now consent; the record must justify it. The over-18 cases the old rule protected are
+  // carried by `childReliefCategory` instead, which is asserted in the case below this one.
+  //
+  // THE FALSE DIRECTION IS UNCHANGED and is still asserted: an explicit no refuses at any age.
+  it('an explicit NO still refuses at any age; an explicit YES is now consent, not an override', () => {
+    // REVERSED: a ticked 18-plus non-student with no qualifying category NO LONGER counts.
     expect(
       isChildReliefEligible(child({ dateOfBirth: '2000-01-01', isStudent: false, childTaxRelief: true }), asOf),
-    ).toBe(true);
-    // false: an under-18 child is explicitly opted out.
+      'was true before r355 — the tick used to win outright',
+    ).toBe(false);
+    // UNCHANGED: an under-18 child is explicitly opted out.
     expect(
       isChildReliefEligible(child({ dateOfBirth: '2020-01-01', childTaxRelief: false }), asOf),
     ).toBe(false);
+  });
+
+  it('a ticked 18-plus child counts when a relief category justifies it — the route the old override served', () => {
+    for (const childReliefCategory of ['disabled', 'disabled_study', 'study_tertiary', 'study_preu']) {
+      expect(
+        isChildReliefEligible(
+          child({ dateOfBirth: '2000-01-01', isStudent: false, childTaxRelief: true, childReliefCategory }),
+          asOf,
+        ),
+        `${childReliefCategory} justifies a claim past 18`,
+      ).toBe(true);
+    }
+    // `under_18` is the one category that cannot justify an over-18 claim — it asserts the opposite.
+    expect(
+      isChildReliefEligible(
+        child({ dateOfBirth: '2000-01-01', isStudent: false, childTaxRelief: true, childReliefCategory: 'under_18' }),
+        asOf,
+      ),
+    ).toBe(false);
+  });
+
+  it('a NEVER-TICKED child keeps the pre-r355 inference — legacy rows do not drop out', () => {
+    // null is most legacy rows; reading it as "not claimed" would remove every one of them from relief
+    // in a single nightly resync. Deliberately left alone.
+    expect(isChildReliefEligible(child({ dateOfBirth: '2020-01-01', childTaxRelief: null }), asOf)).toBe(true);
+    expect(isChildReliefEligible(child({ dateOfBirth: '2000-01-01', childTaxRelief: null }), asOf)).toBe(false);
+    expect(
+      isChildReliefEligible(child({ dateOfBirth: '2000-01-01', isStudent: true, childTaxRelief: null }), asOf),
+    ).toBe(true);
   });
 
   it('deceased and archived children are excluded, and only child rows count at all', () => {
