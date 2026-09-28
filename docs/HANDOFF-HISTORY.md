@@ -1,3 +1,65 @@
+## r352 (2026-09-28) — five items, and the specification this platform cites was never in the building. `main@0724f2f2`, **no migration**.
+
+Closed: `b25e421e`, `04b88724`, `0df7dd44`, `15e5bd93`, `72d1a390`. Gate: **1043 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=489`.
+
+### THE DOCUMENT
+
+`docs/forms/pcb-spec-2026-computerised-calculation.pdf` is now in the repo, 52 pages, with rules 5, 9 and 15 transcribed verbatim into `docs/forms/pcb-spec-2026-extracts.txt`. So are the **Form TP1 2026 explanatory notes** and the TP1 form — r350's entry records the TP1/TP3 notes as unobtainable because their URLs 404.
+
+**They 404 because the repo cites the wrong path.** Every `/media/<hash>/` URL in this tree is dead; the live one is `https://www.hasil.gov.my/wp-content/uploads/<name>.pdf`, indexed from `.../majikan/jadual-pcb-dan-spesifikasi-data/`. Four rounds have now reasoned around a document that was one working URL away. `STATUTORY-SOURCES.md` records the retrieval and says to cite the local copy, never a URL.
+
+### `72d1a390` — WE WERE HALF RIGHT, AND THE HALF WE HAD WRONG WAS OURS
+
+We raised this ourselves claiming rule 5 deducts both zakat and the departure levy AND carries any unused part forward.
+
+**Confirmed:** rule 5 (p.19) is headed *"Zakat and departure levy shall be treated as follows"* and its column (b) is *"Zakat and departure levy for current month"*. The Umrah levy on TP1 D1(b) offsets tax exactly as zakat does, and offset nothing — an over-deduction for everyone who claimed it.
+
+**Refuted, and it was our own sentence:** column (d), headed *"carried forward to the following month (value of Z)"*, equals column (b) in **every printed row** — MTD 15.00, zakat 8.00, net 7.00, **(d) 8.00**. It is the Z accumulator taking the full amount, which the kernel already did. There is no residual ledger to build, and a test pins that the remainder is dropped.
+
+**Rule 15 decided the shape and contradicted our own plan.** We had promised to show the figure on the payslip; the spec says a TP1-claimed amount *"should not appear in the payslip and EA Form"* while still being *"treated as zakat for current month"*. So it is a second term beside `effectiveZakat`, stamped as `statutory.zakatRebateTp1`, never folded into the payslip's zakat line, and deliberately not a `DELTA_KEY`.
+
+**FED AS A DELTA, AND THE FIRST CUT HAD THIS WRONG.** Reading only the row whose deduction month is this month loses money outright: a claim FOR March approved in August is in force from August, March is paid, and it lands in neither. A unit case caught it. `tp1RebateInForce` is a running total and the caller feeds `max(0, inForce − alreadyOffset)` replaying its own payslips — `resolveTp1Feed`'s shape for Section C.
+
+Rule 9 also arrived: *"All the tax exemption ... shall be EXCLUDED FROM THE REMUNERATION ... Any amount exceed the restricted amount shall be taxable."* That is the rule `fda53352` point 3 turns on, now quotable from the primary source instead of from a round entry.
+
+### `b25e421e` + `04b88724` — A BIRTHDAY NOW REACHES THE PAYSLIP, AND THE AGE RULE WAS WRONG ON THE DAY
+
+`num_children` / `child_relief_table` are a cached projection whose correct value depends on the CLOCK, invalidated only by writes. `scripts/resync-child-relief-grid.ts` already existed, already called the single author with all four rails, and was simply never scheduled. Now at 01:15 in the crontab, documented in `deploy/DEPLOY.md`, with the property that makes scheduling sufficient pinned in a test (a cron line lives on the box; no test can see it).
+
+**Found while pinning it:** `childAgeYears` computed `floor(elapsed / 365.25 days)` and answered **SEVENTEEN to a child on their eighteenth birthday** — 2008-06-15 to 2026-06-15 is 6,574 days and 18 × 365.25 is 6,574.5. `isChildReliefEligible` tests `age < 18`, so an ineligible child stayed in the PCB relief for up to an extra day, by an amount that depended on how many 29-Februaries fell in the span. `lib/completed-years.ts` already had calendar-accurate math and its header **already asked future age consumers to reuse it**; this was the reinvention it warned about, and `family-form-dialog.tsx` held a third copy. Money-affecting, outside the approved scope, hand-fixed.
+
+### `15e5bd93` — TWO DEFECTS THAT WOULD HAVE SHIPPED GREEN
+
+Rail + workspace + one Save, per the approved mockup. Both defects were invisible to source scan, `tsc` and a static render:
+
+- **The pack flag would have been poisoned.** Every body editor carries a visible `country` (postal address), so `syncCarriedValues` would have overwritten the identity card's hidden `country="MY"` with `"Malaysia"` → *"No statutory pack for Malaysia"* on every identity save. Fixed by the `filingCountry` rename r226 already coined one file over.
+- **A signatory-only edit was silently discarded** — `diffTab` skips a hidden input it cannot prove is user-facing, and `EmployeeSearchField` posts through one.
+
+**DEVIATION FROM THE APPROVED MOCKUP, recorded because the reporter approved a picture:** the rail keeps the 3783fd87 summary (employer number + paying account) and is 288px rather than the sketch's 260px. Removing it would regress an item the same reporter approved in r327 — the promise there was that you can read what is set on *every* body at once, and the workspace shows one at a time. Their most likely objection.
+
+### `0df7dd44` — THE MESSAGE EXISTED AND WAS WRITTEN TO THE WRONG SCREEN
+
+Not a missing message: a `redirect()` to the TP1 **list**, while the **form** has a working `ErrorBanner` no action ever targeted — so a 40-box form was lost on every refusal, and five of six locales showed English. Now `useActionState` on the form, six locales, and the box clamps to `limit − alreadyApproved`.
+
+**The clamp target is the load-bearing decision.** Clamping to the annual limit would over-claim for every employee with a prior claim this year — a worse fault than the reported one. Fixtures carry a prior approved claim so `limit` and `remaining` differ.
+
+**A controlled checkbox is not restored by React after a form action resolves** (a controlled `value` is; `checked` is not — the element is referentially identical so nothing re-commits it). A refused Submit silently cleared the Section E declaration and the next press was refused *for the tick*.
+
+### TOOLING
+
+`scripts/gate-chunked.sh` gained `CHUNK_FROM`/`CHUNK_TO`. §4 says the reliable workflow here is chunks in the FOREGROUND, and a foreground call is time-bounded, so a 16-chunk gate could not use it. A slice prints `SLICE GREEN … THIS IS NOT A GATE`, because the one thing a reader must never do is read a green slice as a green gate.
+
+**The first gate attempt was red and it was the environment.** 14 `Hook timed out in 30000ms`, 3 TRUNCATE deadlocks, **zero AssertionErrors** — `vitest.config.ts:8` defaults to `availableParallelism() − 2`, so 12 cores gave 10 workers on a cluster that takes 4. Re-run at `VITEST_MAX_WORKERS=4`. Also: that run was piped through `tail`, so its completion notification read **exit 0** while chunk 1 was red — §4's own warning, demonstrated.
+
+### NOT DONE
+
+- **`cbfa8b0b`** (leave credit) and **`fda53352`** (EA form) are planned, not built.
+- **`fda53352` point 3 is now provable and unbuilt**: Section B's own heading in our transcription reads *"EXCLUDING Tax Exempt Allowances"*, we print that caption and put the exempt money under it, and the same money is printed again in Section F. `B1(c) = allowances − exemptAllowances`.
+- **The EA's A.8 count**: correct on `'auto'`, unenforced on `'manual'`, and **never synced on `'auto_table'`** — the gate is `!== 'auto'`, so a mode whose name promises derivation keeps a hand-keyed count beside a correct s.48 grid.
+- **The `')'` on EA lines 1(c), 3 and 4 overprints the money column** — drawn at `ruleTo + 2 = 483` where `moneyLeft` is 482.3. Unguarded.
+- **The nightly resync has not run on the box yet** — `deploy.sh` runs migrations, not scripts. Dry run first; relief moves in both directions.
+- Discard on the TP1 month form has never worked (`id: ''` → invalid uuid); left byte-identical.
+- Two dirty `TabSaveScope`s on one screen open two unsaved-changes dialogs. Pre-existing shape (personnel mounts five).
 ## r351 (2026-09-28) — four statutory items in one gate, and the gate earned its keep. `main@cc2f165c`, **migration 0489**.
 
 Closed: `1785b766`, `ad7bc503`, `fda53352`, `04b88724` (screen half — see below). Gate: **1037 files — equal to the suite file count**, 16 chunks, GREEN FIRST PASS on the final tree, `tsc` 0, `next build` 0, `gate:shadow` **PASS 402/402**.
