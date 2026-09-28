@@ -272,8 +272,23 @@ describe('r219 — the foot: the officer box, and the agency’s own spelling of
     const printed = await textsOf(BASE);
     expect(printed).toContain('Nurul Aina binti Hamzah');
     expect(printed).toContain('Human Resource Manager');
-    expect(printed).toContain('ISEDECOR BINA SDN BHD');
-    expect(printed).toContain('No. 12, Jalan Raja Chulan, 50200 Kuala Lumpur, Wilayah Persekutuan');
+    /**
+     * ⚠️ r353 — RE-POINTED, NOT LOOSENED: THE NAME AND ADDRESS ARE ONE BLOCK OVER TWO RULES NOW.
+     *
+     * This used to assert the employer's name as one whole run and the joined address as another, because
+     * that is what was drawn — the name alone on the first rule and the ENTIRE address squeezed onto the
+     * second by `fitSize`, which shrinks instead of wrapping and is floored at 1 pt (a four-part address
+     * printed at about 6 pt). The agency's box gives "Name and Address of Employer" two writing lines
+     * (measured: `scripts/measure-ea-official-pdf.ts --rects`, rows at tt 766.2 and 779.4), so the block
+     * is greedy-wrapped across both and neither run is any one field.
+     *
+     * What the case is FOR is unchanged and is asserted more strictly than before: every word of the
+     * employer's name and address reaches the page, and nothing is dropped in the wrap.
+     */
+    const block = printed.join(' ');
+    for (const part of ['ISEDECOR BINA SDN BHD', 'No. 12, Jalan Raja Chulan', '50200 Kuala Lumpur, Wilayah Persekutuan']) {
+      expect(block, `${part} is missing from the officer box`).toContain(part);
+    }
     expect(printed).toContain('03-2000 1234');
 
     // An employer with none of it on file prints the blank form's rules and NOTHING ELSE — no placeholder,
