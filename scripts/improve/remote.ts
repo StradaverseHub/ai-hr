@@ -480,3 +480,54 @@ export function markDeployed(p: { id: string; tenantId: string; reporterEmployme
 function shellQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
+
+/** One row of `feedback_attachment`, without its bytes. */
+export type RemoteAttachment = {
+  id: string;
+  feedback_request_id: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  stage: string;
+  plan_revision: number | null;
+  created_at: string;
+};
+
+/**
+ * THE REPORTER'S OWN ATTACHMENTS, LISTED AND FETCHED (item fda53352).
+ *
+ * ═══ WHY THIS EXISTS ═══
+ *
+ * CLAUDE.md §8 makes reading them mandatory — "Verify the premise hardest when it is your own
+ * correction of the reporter. Read attachments (`feedback_attachment`, base64 out, `unzip` a docx, look
+ * in `word/media/`) before calling anything unobtainable" — and §9 records that of 151 attachments on
+ * production, 143 are IMAGES: the reporter communicates in pictures. There was no command for it. Every
+ * session that needed one hand-rolled an ssh+psql one-liner, which is both unreviewable and the exact
+ * shape a sandbox classifier refuses.
+ *
+ * ⚠️ LISTING AND FETCHING ARE SEPARATE CALLS, ON PURPOSE. `content` is a bytea holding whole PNGs and
+ * docx files; one production item carries several MB. Selecting it alongside the metadata would push the
+ * bytes of every attachment on the board through a single 32 MB ssh buffer to answer "what is attached?".
+ * So the list carries no bytes and the fetch takes one id.
+ *
+ * base64 is produced ON THE SERVER by `encode(content,'base64')` and decoded here. psql's default text
+ * output would mangle a PNG through its bytea hex/escape formatting and the newline handling in between.
+ */
+export function listAttachments(feedbackId: string): RemoteAttachment[] {
+  assertUuid(feedbackId, 'feedback id');
+  const sql =
+    `select coalesce(json_agg(row_to_json(t) order by t.created_at), '[]') from (` +
+    `select id, feedback_request_id, file_name, mime_type, size_bytes, stage, plan_revision, created_at ` +
+    `from feedback_attachment where feedback_request_id = '${feedbackId}' order by created_at) t`;
+  const out = remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -tAc ${shellQuote(sql)}`).trim();
+  return JSON.parse(out || '[]') as RemoteAttachment[];
+}
+
+/** The bytes of ONE attachment. `-tAc` with `encode(...,'base64')` so psql never reformats the payload. */
+export function fetchAttachment(attachmentId: string): Buffer {
+  assertUuid(attachmentId, 'attachment id');
+  const sql = `select encode(content,'base64') from feedback_attachment where id = '${attachmentId}'`;
+  const b64 = remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -tAc ${shellQuote(sql)}`).trim();
+  if (!b64) throw new Error(`no attachment ${attachmentId}`);
+  return Buffer.from(b64, 'base64');
+}

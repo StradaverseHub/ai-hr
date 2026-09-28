@@ -1,0 +1,107 @@
+<meta charset="utf-8">
+<title>PCB / MTD Calculation Detail — the agency's own shape</title>
+<!--
+  ad7bc503 (contested since r340). Verified this session against
+  spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf (hasil.gov.my, pdftotext -layout):
+    ONE P formula, seven occurrences, always identical, always carrying (Yt - Kt):
+      P = [∑(Y – K*) + (Y1 – K1*) + [(Y2 – K2*) n] + (Yt – Kt*)**] – [D + S + DU + SU + QC + (∑LP + LP1)]
+    worked examples print "Where (Yt – Kt ) = 0"
+    Step 1 [A]..[E] are the document's own letters
+    [C] = [(P – M) R + B] / (n+1) – (Z + X) all over n+1 ; [D] = [C] – zakat for current month
+    glossary defines Q and C separately; the FORMULA prints QC (= the product our reliefs.children holds)
+  PDF glyph defect confirmed by RUNNING slip-pdf.ts safe(): "Σ(Y − K)" -> "?(Y - K)", "∑LP" -> "?LP".
+  Figures below are ILLUSTRATIVE of the presentation, not a production payslip.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--border:#c9cad6;--ok:#1f7a52;--warn:#b54708;--bad:#a8453a;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1030px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 6px;font-size:12.5px;color:var(--mf)}
+ .sketch{display:inline-block;margin:0 0 18px;font-size:10.5px;color:var(--mf);border:1px dashed var(--border);border-radius:99px;padding:2px 10px}
+ .sec{margin-bottom:16px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .bd{padding:14px}
+ .step{border:1px solid var(--rule);border-radius:9px;margin-bottom:11px;overflow:hidden}
+ .step>.h{background:#f6f7fb;padding:6px 11px;font-size:11px;font-weight:700;border-bottom:1px solid var(--rule)}
+ .step>.h em{font-style:normal;color:var(--mf);font-weight:400}
+ .step>.b{padding:10px 11px}
+ .lrow{display:grid;grid-template-columns:96px 1fr;gap:9px;padding:3px 0;font-size:11.5px;align-items:baseline}
+ .lrow>.k{color:var(--mf);font-size:9.5px;text-transform:uppercase;letter-spacing:.05em}
+ .m{font-family:var(--mono);font-size:11px;line-height:1.7;word-break:break-word}
+ .res{font-weight:700;font-variant-numeric:tabular-nums}
+ .zero{color:var(--mf)}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+ .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf);margin:0 0 7px}
+ .box{border:1px solid var(--rule);border-radius:9px;padding:11px;font-family:var(--mono);font-size:11px;line-height:1.75}
+ .box.now{border-color:#e3bdb7;background:#fdf7f6}
+ .box.next{border-color:#b7d8c6;background:#f6fbf8}
+ .final{margin-top:4px;border:2px solid var(--ok);border-radius:9px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;background:#f2faf5}
+ .final b{font-size:13px}
+ .final .v{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ok)}
+ .note{font-size:11.5px;color:var(--mf);margin-top:10px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .bad{color:var(--bad)} .good{color:var(--ok)}
+</style>
+<div class="wrap">
+<h1>PCB / MTD Calculation Detail — following the agency's own steps</h1>
+<p class="sub">Payroll &gt; Transaction View &gt; Statutory Explanation &gt; View the full PCB calculation</p>
+<p class="sketch">Sketch — wording, spacing and colour will differ. Figures illustrate the presentation, not a real payslip.</p>
+
+<div class="sec"><h2>The chargeable income formula, today and as the agency prints it</h2><div class="bd">
+<div class="two">
+ <div><p class="lbl">Today</p><div class="box now">P = &Sigma;(Y &minus; K) + (Y&#8321; &minus; K&#8321;) + (Y&#8322; &minus; K&#8322;) &times; n &minus; [ D + S + Du + Su + <span class="bad">Q</span> ] &minus; [ &Sigma;LP + LP&#8321; ]<br><br><span style="color:var(--bad)">(Y&#8348; &minus; K&#8348;) is hidden whenever it is zero</span></div></div>
+ <div><p class="lbl">After this change</p><div class="box next">P = [ &Sigma;(Y &minus; K) + (Y&#8321; &minus; K&#8321;) + [ (Y&#8322; &minus; K&#8322;) n ] + (Y&#8348; &minus; K&#8348;) ] &minus; [ D + S + DU + SU + <span class="good">QC</span> + ( &Sigma;LP + LP&#8321; ) ]<br><br><span style="color:var(--ok)">Where (Y&#8348; &minus; K&#8348;) = 0</span></div></div>
+</div>
+<p class="note">The right-hand shape, including the words <b>&ldquo;Where (Y&#8348; &minus; K&#8348;) = 0&rdquo;</b>, is copied from the specification's own worked examples.</p>
+</div></div>
+
+<div class="sec"><h2>Step 1 — the agency's own lettering</h2><div class="bd">
+
+<div class="step"><div class="h">[A] &nbsp; Determine the category of the employee</div><div class="b">
+ <div class="lrow"><span class="k">Result</span><span class="res">Category 3 — married, spouse working &nbsp;<span class="zero">(D = 9,000 · S = 0 · QC = 4,000)</span></span></div>
+</div></div>
+
+<div class="step"><div class="h">[B] &nbsp; Determine the chargeable income for the year <em>— P</em></div><div class="b">
+ <div class="lrow"><span class="k">Formula</span><span class="m">P = [ &Sigma;(Y &minus; K) + (Y&#8321; &minus; K&#8321;) + [ (Y&#8322; &minus; K&#8322;) n ] + (Y&#8348; &minus; K&#8348;) ] &minus; [ D + S + DU + SU + QC + ( &Sigma;LP + LP&#8321; ) ]</span></div>
+ <div class="lrow"><span class="k">Actual values</span><span class="m">[ 56,000.00 + (8,000.00 &minus; 880.00) + [ (8,000.00 &minus; 880.00) &times; 4 ] + (0.00 &minus; 0.00) ] &minus; [ 9,000.00 + 0.00 + 0.00 + 0.00 + 4,000.00 + ( 1,200.00 + 0.00 ) ]</span></div>
+ <div class="lrow"><span class="k">Calculation</span><span class="m">[ 56,000.00 + 7,120.00 + 28,480.00 + 0.00 ] &minus; [ 14,200.00 ] &nbsp;=&nbsp; 91,600.00 &minus; 14,200.00</span></div>
+ <div class="lrow"><span class="k">Result</span><span class="res">P = 77,400.00</span></div>
+ <div class="lrow"><span class="k">Note</span><span class="zero" style="font-size:11px">(Y&#8348; &minus; K&#8348;) = 0 — no additional remuneration this month</span></div>
+</div></div>
+
+<div class="step"><div class="h">[C] &nbsp; Determine the monthly deduction for net normal remuneration</div><div class="b">
+ <div class="lrow"><span class="k">Formula</span><span class="m">MTD = [ [ (P &minus; M) R + B ] &minus; ( Z + X ) ] &nbsp;&divide;&nbsp; ( n + 1 )</span></div>
+ <div class="lrow"><span class="k">Actual values</span><span class="m">[ [ ( 77,400.00 &minus; 70,000.00 ) &times; 0.24 + 4,400.00 ] &minus; ( 0.00 + 3,180.00 ) ] &divide; ( 4 + 1 )</span></div>
+ <div class="lrow"><span class="k">Calculation</span><span class="m">[ 6,176.00 &minus; 3,180.00 ] &divide; 5 &nbsp;=&nbsp; 2,996.00 &divide; 5</span></div>
+ <div class="lrow"><span class="k">Result</span><span class="res">599.20</span></div>
+ <div class="lrow"><span class="k">Floor</span><span class="zero" style="font-size:11px">A negative result is treated as 0.00 (specification rules 3 and 5). Not applied here.</span></div>
+</div></div>
+
+<div class="step"><div class="h">[D] &nbsp; Determine the net monthly deduction for the current month</div><div class="b">
+ <div class="lrow"><span class="k">Formula</span><span class="m">Net MTD = MTD for the current month &minus; zakat and departure levy for the current month</span></div>
+ <div class="lrow"><span class="k">Actual values</span><span class="m">599.20 &minus; ( 50.00 zakat + 0.00 levy )</span></div>
+ <div class="lrow"><span class="k">Result</span><span class="res">549.20</span></div>
+ <div class="lrow"><span class="k">Note</span><span class="zero" style="font-size:11px">X (3,180.00) is tax already PAID in earlier months and is not this line. It was deducted in [C].</span></div>
+</div></div>
+
+<div class="step"><div class="h">[E] &nbsp; Determine the total deduction for the year</div><div class="b">
+ <div class="lrow"><span class="k">Formula</span><span class="m">X + [ Step [C] &times; ( n + 1 ) ]</span></div>
+ <div class="lrow"><span class="k">Actual values</span><span class="m">3,180.00 + ( 599.20 &times; 5 )</span></div>
+ <div class="lrow"><span class="k">Result</span><span class="res">6,176.00</span></div>
+</div></div>
+
+<div class="final"><b>Final PCB / MTD deducted on this payslip</b><span class="v">RM 549.20</span></div>
+<p class="note">Every figure is read from the payslip's own stored calculation. <b>The downloaded PDF will contain all of the above</b>, including this final line — today it contains none of it.</p>
+</div></div>
+
+<div class="sec"><h2>A defect found while checking: the PDF cannot print the sigma</h2><div class="bd">
+<div class="two">
+ <div><p class="lbl">Downloaded PDF today</p><div class="box now">?(Y - K) &nbsp;&nbsp; 56,000.00<br>?LP &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 1,200.00</div></div>
+ <div><p class="lbl">After this change</p><div class="box next">Sum(Y - K) &nbsp; 56,000.00<br>Sum LP &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 1,200.00</div></div>
+</div>
+<p class="note">Confirmed by running the PDF's own character handling. It replaces anything it cannot print with a question mark, and the Greek sigma is one of those. <b>No test covers the PDF's contents today</b>, which is why this was never caught. One will be added.</p>
+</div></div>
+</div>

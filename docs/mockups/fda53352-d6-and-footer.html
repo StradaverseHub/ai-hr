@@ -1,0 +1,101 @@
+<meta charset="utf-8">
+<title>EA form — D.6 filled, footer removed, numbering matched</title>
+<!--
+  fda53352 (contested, 4th). Drawn from the reporter's OWN marked-up comparison, read this round via
+  the new `pnpm improve:attachments` command: EA Form Compare V3/V4/V5, stage 'refuted', plan_revision 3.
+    V3 — the whole foot strip, annotated by the reporter "Remove this part from the EA Form"
+         (this REVERSES r349's recorded "The EIS figure stays", which that plan offered to reverse)
+    V4 — the section A black square; the ')' on B.3 "(Specify:" and B.4 "(Address:"
+    V5 — D.5 sub-items: agency prints "(a)"/"(b)", we print "5(a)"/"5(b)"
+  D.6 today is an EMPTY RULE, never a count: lib/ea-pdf.ts:918 manual(d.partD.childRelief),
+  manual(0) -> '' (:565), amountOrRule draws the rule and writes nothing (:680-688),
+  localization/my/reports.ts:1694 childRelief: 0. The "2" the reporter sees is A.8.
+  Official captions verbatim from docs/forms/ea-cp8a-pin-2023-official-en.pdf.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--border:#c9cad6;--ok:#1f7a52;--bad:#a8453a}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1020px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 6px;font-size:12.5px;color:var(--mf)}
+ .sketch{display:inline-block;margin:0 0 18px;font-size:10.5px;color:var(--mf);border:1px dashed var(--border);border-radius:99px;padding:2px 10px}
+ .sec{margin-bottom:16px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .bd{padding:14px}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+ .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf);margin:0 0 7px}
+ /* a small facsimile of the form's own look */
+ .form{border:1px solid var(--rule);border-radius:8px;padding:12px 13px;background:#fff;font:11.5px/1.75 Arial,Helvetica,sans-serif}
+ .form.now{border-color:#e3bdb7;background:#fdf7f6}
+ .form.next{border-color:#b7d8c6;background:#f6fbf8}
+ .sq{display:inline-block;background:#000;color:#fff;font-weight:700;width:15px;height:15px;line-height:15px;text-align:center;font-size:10.5px;vertical-align:-2px;margin-right:7px}
+ .hd{font-weight:700;font-size:11.5px;margin:0 0 5px}
+ .ln{display:grid;grid-template-columns:1fr 92px;gap:8px;align-items:baseline}
+ .ln .d{border-bottom:1px dotted #8a8a96;text-align:right;font-variant-numeric:tabular-nums;padding-right:2px}
+ .ln .d.empty{color:transparent}
+ .ind{padding-left:17px}
+ .ind2{padding-left:34px}
+ .hi{background:#ffe9e5;outline:2px solid var(--bad);border-radius:2px;padding:0 3px}
+ .hg{background:#e6f5ec;outline:2px solid var(--ok);border-radius:2px;padding:0 3px}
+ .strip{margin-top:9px;border-top:1.4px solid #000;padding-top:5px;font-size:8.5px;color:#666;line-height:1.5}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .tag{display:inline-block;font-size:9.5px;font-weight:700;border-radius:99px;padding:1px 8px;vertical-align:1px}
+ .tag.r{background:#fdecea;color:var(--bad)} .tag.g{background:#e9f7ef;color:var(--ok)}
+</style>
+<div class="wrap">
+<h1>Form C.P.8A (EA) — the four things you marked</h1>
+<p class="sub">Payroll &gt; Statutory Forms &gt; Form EA</p>
+<p class="sketch">Sketch — wording, spacing and colour will differ in the real form.</p>
+
+<div class="sec"><h2>Section D, and the foot of the page</h2><div class="bd">
+<div class="two">
+ <div><p class="lbl">Ours today <span class="tag r">as you marked it</span></p>
+  <div class="form now">
+   <p class="hd"><span class="sq">D</span>TOTAL DEDUCTION</p>
+   <div class="ln"><span>1. Monthly tax deductions (MTD) remitted to LHDNM</span><span class="d">1,770.85</span></div>
+   <div class="ln"><span>2. CP38 deductions remitted to LHDNM</span><span class="d">0.00</span></div>
+   <div class="ln"><span>3. <i>Zakat</i> paid via salary deduction</span><span class="d">1,000.00</span></div>
+   <div class="ln"><span>4. Approved donations / gifts / contributions via salary deduction</span><span class="d empty">.</span></div>
+   <div class="ln"><span>5. Total claim for deduction by employee via Form TP1 in respect of:</span><span class="d empty">.</span></div>
+   <div class="ln ind2"><span><span class="hi">5(a)</span> Relief &nbsp;&nbsp; RM &nbsp; <span style="border-bottom:1px dotted #8a8a96">&nbsp;&nbsp;500.00&nbsp;&nbsp;</span></span><span class="d empty">.</span></div>
+   <div class="ln ind2"><span><span class="hi">5(b)</span> <i>Zakat</i> other than that paid via monthly salary deduction</span><span class="d empty">.</span></div>
+   <div class="ln"><span>6. Total qualifying child relief</span><span class="d empty">.</span></div>
+   <div class="strip"><span class="hi">Not part of the official C.P.8A - added by AI HR.<br>EIS / SIP &nbsp;&nbsp;&nbsp; RM 11.90<br>Generated from payroll for YA 2026 (statutory tables 2026.9). Salary, bonus, allowances, EPF, SOCSO/EIS, MTD, CP38 and zakat come from payroll&hellip; so check every figure against your records before filing.</span></div>
+  </div>
+  <p class="note">D.6 prints <b>nothing</b> &mdash; a caption and an empty rule. The sub-items repeat the item number. The added block at the foot is what you asked us to remove.</p>
+ </div>
+ <div><p class="lbl">After this change <span class="tag g">matches the official form</span></p>
+  <div class="form next">
+   <p class="hd"><span class="sq">D</span>TOTAL DEDUCTION</p>
+   <div class="ln"><span>1. Monthly tax deductions (MTD) remitted to LHDNM</span><span class="d">1,770.85</span></div>
+   <div class="ln"><span>2. CP38 deductions remitted to LHDNM</span><span class="d">0.00</span></div>
+   <div class="ln"><span>3. <i>Zakat</i> paid via salary deduction</span><span class="d">1,000.00</span></div>
+   <div class="ln"><span>4. Approved donations / gifts / contributions via salary deduction</span><span class="d empty">.</span></div>
+   <div class="ln"><span>5. Total claim for deduction by employee via Form TP1 in respect of:</span><span class="d empty">.</span></div>
+   <div class="ln ind2"><span><span class="hg">(a)</span> Relief &nbsp;&nbsp; RM &nbsp; <span style="border-bottom:1px dotted #8a8a96">&nbsp;&nbsp;500.00&nbsp;&nbsp;</span></span><span class="d empty">.</span></div>
+   <div class="ln ind2"><span><span class="hg">(b)</span> <i>Zakat</i> other than that paid via monthly salary deduction</span><span class="d empty">.</span></div>
+   <div class="ln"><span>6. Total qualifying child relief</span><span class="d"><span class="hg">4,000.00</span></span></div>
+  </div>
+  <p class="note">D.6 carries the child relief actually allowed in working out the year's tax. The page <b>ends at the officer's box</b>, as the official form does.</p>
+ </div>
+</div></div></div>
+
+<div class="sec"><h2>Why D.6 reads 4,000.00 — and what the &ldquo;2&rdquo; you saw actually is</h2><div class="bd">
+<div class="form" style="background:#fff">
+ <p class="hd"><span class="sq">A</span>PARTICULARS OF EMPLOYEE</p>
+ <div class="ln"><span>8. Number of children qualified for tax relief &nbsp; <span style="border-bottom:1px dotted #8a8a96">&nbsp;&nbsp;&nbsp;2&nbsp;&nbsp;&nbsp;</span></span><span class="d empty">.</span></div>
+</div>
+<p class="note"><b>Box A.8 asks for a count, and 2 is correct there.</b> The official form carries both boxes: A.8 the number of children, D.6 the ringgit. Their captions read almost the same, which is how the two got crossed. Two qualifying children at RM2,000 each gives the RM4,000 you asked for in D.6 &mdash; and where a child is weighted more heavily, for instance a disabled child in higher education, D.6 shows RM16,000 while A.8 still shows 1.</p>
+</div></div>
+
+<div class="sec"><h2>The two smaller marks</h2><div class="bd">
+<div class="form" style="background:#fff">
+ <div class="ln"><span>3. Benefits in kind &nbsp;(Specify: <span style="border-bottom:1px dotted #8a8a96">&nbsp;</span> <span class="hi">)</span></span><span class="d empty">.</span></div>
+ <div class="ln"><span>4. Value of living accommodation provided (Address: <span style="border-bottom:1px dotted #8a8a96">&nbsp;</span> <span class="hi">)</span></span><span class="d empty">.</span></div>
+</div>
+<p class="note">The closing bracket on those two lines, and the black square beside section A, will be measured against the agency's own file and moved to match it. While we are there we will also pull the right-hand edge of the page in to where the agency's is &mdash; ours currently runs about fifteen points wider, which shifts everything anchored to the right.</p>
+</div></div>
+</div>
