@@ -168,6 +168,11 @@ describe('1bb09a73 · the Section-C → payroll-column mapping', () => {
       // starts trimming an in-limit box has to disagree with one of them.
       exemptTotal: 3600,
       exemptEntered: 3600,
+      // Item 1785b766 — the SAME 3,600, split by the exemption code C2(i) draws on. An EXACT-SET
+      // assertion, UPDATED not loosened: the map must name `PCB_TRA_BUSINESS` and must not name the two
+      // sub-lines that map to nothing, because attributing money to a code is what spends an employee's
+      // annual exemption. `test/1785b766-tp3-exemption-headroom.test.ts` carries the rest.
+      exemptionUsed: { PCB_TRA_BUSINESS: 3600 },
       // r350 — nothing is over its limit, so nothing is taxable and nothing is added. The pair above
       // says what is exempt; this says what reaches the calculation, and here it is nil.
       excessTotal: 0,
