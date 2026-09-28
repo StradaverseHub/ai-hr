@@ -71,6 +71,8 @@ import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } fr
 import { PROFILE_REQUESTABLE_FIELDS } from '@/lib/profile-requestable-fields';
 import { saveTp1Draft, submitTp1 } from '@/core/tax-relief';
 import { readTp1FormInput } from '@/lib/tp1-form-input';
+import type { Tp1FormState } from '@/lib/tp1-form-state';
+import { tp1RefusalMessage } from '@/lib/tp1-refusal';
 import { addResignationAttachment, submitResignation, withdrawResignation } from '@/core/offboarding';
 import { LeaveBalanceFrozenError } from '@/core/leave-encashment';
 // 6aee1d91 — the read AFTER an insufficient-balance refusal, through the pack facade (ADR-0080 D9).
@@ -775,28 +777,37 @@ export async function myRequestProfileChange(formData: FormData) {
 // order. Two hand-maintained copies of seventeen items' field names is how a figure silently drops on
 // one surface and not the other. See that file's header, including the RULE 17 note on the tick.
 
-export async function mySaveTp1Draft(formData: FormData) {
+/**
+ * ══ THE EMPLOYEE'S OWN TP1 FORM, ONE ACTION (r352, item 0df7dd44) ═══════════════════════════════════
+ *
+ * ⚠️ THE ITEM WAS RAISED ABOUT THE HR SCREEN, AND IT LANDS HERE TOO — because both screens render the
+ * SAME component (`components/tp1-declaration-form.tsx`) through the same reader
+ * (`lib/tp1-form-input.ts`). `mySaveTp1Draft` / `mySubmitTp1` had the identical defect in a milder form:
+ * a refusal `redirect`ed to /me/tax-relief, which at least IS the right screen, but the navigation still
+ * discarded every amount box the employee had keyed, because the form was uncontrolled.
+ *
+ * So this is `useActionState`-shaped like the HR one: a refusal RETURNS a message, nothing navigates,
+ * and the figures stay. Success redirects with a toast, exactly as before. The refusal is translated by
+ * the shared `tp1RefusalMessage` (lib/tp1-refusal.ts), so the two surfaces cannot word one differently.
+ *
+ * SUBMIT-AND-APPROVE IS NOT AN INTENT HERE, and that is the point of Section F: an employee may not
+ * approve their own claim. Only `draft` and `submit` are reachable, and the services refuse the rest
+ * anyway (`requireAdminTarget`, `refuseSelfApproval`, and the tp1_relief RLS beneath both).
+ */
+export async function myTp1FormAction(_prev: Tp1FormState, formData: FormData): Promise<Tp1FormState> {
   const { s } = await resolveMe();
   const input = readTp1FormInput(formData);
+  const draft = String(formData.get('intent') ?? 'submit') === 'draft';
   try {
-    await saveTp1Draft(s, input);
+    if (draft) await saveTp1Draft(s, input);
+    else await submitTp1(s, input);
   } catch (e) {
-    redirect(`/me/tax-relief?year=${input.assessmentYear}&error=${encodeURIComponent((e as Error).message)}`);
+    return { error: await tp1RefusalMessage(e) };
   }
   revalidatePath('/me/tax-relief');
-  redirect(`/me/tax-relief?year=${input.assessmentYear}&toast=Draft+saved`);
-}
-
-export async function mySubmitTp1(formData: FormData) {
-  const { s } = await resolveMe();
-  const input = readTp1FormInput(formData);
-  try {
-    await submitTp1(s, input);
-  } catch (e) {
-    redirect(`/me/tax-relief?year=${input.assessmentYear}&error=${encodeURIComponent((e as Error).message)}`);
-  }
-  revalidatePath('/me/tax-relief');
-  redirect(`/me/tax-relief?year=${input.assessmentYear}&toast=TP1+submitted`);
+  redirect(
+    `/me/tax-relief?year=${input.assessmentYear}&toast=${draft ? 'Draft+saved' : 'TP1+submitted'}`,
+  );
 }
 
 // ── Resignation (ADR-0042, #29) — employee-initiated, HR-approved offboarding ──

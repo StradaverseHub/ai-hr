@@ -90,8 +90,8 @@ export default async function Tp1DeclarationPage({
     employmentId?: string;
     error?: string;
     toast?: string;
-    /** The selected assessment year. Server-owned (see the header); also written by adminSaveTp1Draft /
-     *  adminSubmitTp1, which redirect back here after a save. */
+    /** The selected assessment year. Server-owned (see the header); also written by
+     *  `adminTp1FormAction`, which redirects back here after a successful save (r352). */
     year?: string;
     /** 27605faa rev 2 — the record a Delete confirmation is about, and whether deleted rows are shown. */
     confirmDelete?: string;

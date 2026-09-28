@@ -99,6 +99,62 @@ export class TaxReliefError extends Error {
   }
 }
 
+/**
+ * ══ A LIMIT REFUSAL, AS DATA RATHER THAN AS AN ENGLISH SENTENCE (r352, item 0df7dd44) ═══════════════
+ *
+ * Every refusal below used to be a prepared English string built in this file, and five of the six
+ * locales showed it in English — on a statutory form, to a reader who keyed the figure in Malay. A
+ * kernel cannot translate (it has no request, no locale and no catalogue, and it must not acquire one),
+ * so it now states WHAT was refused and the UI layer says it in the reader's language.
+ *
+ * ⚠️ THE MESSAGE IS STILL BUILT, AND DELIBERATELY UNCHANGED. `Tp1LimitError extends TaxReliefError` and
+ * carries the same sentence it always did, because the API path, the logs and every existing refusal
+ * test read `.message`. The structured `breach` is ADDITIONAL, not a replacement: a caller that knows
+ * nothing about it behaves exactly as before.
+ *
+ * ⚠️ AND `remaining` IS limit − already, NEVER the limit. Someone with an RM 8,000 line and RM 5,000
+ * already approved this year may still claim RM 3,000. A UI that clamped to the LIMIT instead would
+ * silently over-claim for every employee who has claimed once already this year, and the over-claim
+ * would reach payroll as a real reduction in somebody's tax. This is the one number in this file that
+ * must not be re-derived anywhere else — see `assertWithinRemaining`, which computes it.
+ */
+export type Tp1LimitBreachCode =
+  /** A lettered sub-line's own "(Limited RM…)" figure, checked against THIS claim alone. */
+  | 'lineLimit'
+  /** An item's ANNUAL LIMIT column, checked against THIS claim's total for the item. */
+  | 'itemLimit'
+  /** The year-to-date check: this claim plus what is already APPROVED for the assessment year. */
+  | 'annualRemaining';
+
+export type Tp1LimitBreach = {
+  code: Tp1LimitBreachCode;
+  /** The form's OWN name for the offending box — "C5", "C1(c)". Never translated: it is printed. */
+  label: string;
+  /** The catalogue item code (`c1`…`c17`, `d1`) the box belongs to. */
+  item: string;
+  /** The lettered sub-line code, or null for an item's single box. */
+  sub: string | null;
+  /** The figure the agency's form prints against the offending line. */
+  limit: number;
+  /** What is ALREADY approved this assessment year against it. Null ⇒ a this-claim-only check. */
+  already: number | null;
+  /** What was keyed. */
+  claim: number;
+  /** The most this box may still hold: `max(0, limit − already)`. NOT the limit. */
+  remaining: number;
+  /** `claim + already − limit`, i.e. how far past the line this went. */
+  over: number;
+};
+
+export class Tp1LimitError extends TaxReliefError {
+  readonly breach: Tp1LimitBreach;
+  constructor(breach: Tp1LimitBreach, message: string) {
+    super(message);
+    this.name = 'Tp1LimitError';
+    this.breach = breach;
+  }
+}
+
 // A non-negative finite amount under a sane annual ceiling, in a sane year range.
 const TP1_MAX = 1_000_000; // generous ceiling on the SUM; per-category caps below where sourced.
 const YEAR_MIN = 2000;
@@ -178,15 +234,43 @@ function validateYear(assessmentYear: number): number {
   return year;
 }
 
-/** A single non-negative, finite RM amount (2-dp rounded), with an optional sourced per-category cap. */
-function validateAmount(raw: unknown, label: string, cap?: number): number {
+/**
+ * A single non-negative, finite RM amount (2-dp rounded), with an optional sourced per-category cap.
+ *
+ * `where` names the catalogue box the amount came from, so the cap refusal can be reported as data and
+ * translated by the UI (see `Tp1LimitError`). It is absent on the legacy eight-key path, whose labels are
+ * category keys rather than form boxes — that path keeps the plain `TaxReliefError` it always threw.
+ */
+function validateAmount(
+  raw: unknown,
+  label: string,
+  cap?: number,
+  where?: { item: string; sub: string | null },
+): number {
   const amount = Number(raw ?? 0);
   if (!Number.isFinite(amount) || amount < 0) {
     throw new TaxReliefError(`${label} must be a non-negative number.`);
   }
   const rounded = round2(amount);
   if (cap != null && rounded > cap) {
-    throw new TaxReliefError(`${label} must not exceed the statutory cap of RM ${cap}.`);
+    // The sentence is unchanged on purpose — the API path and every existing refusal test read it.
+    const message = `${label} must not exceed the statutory cap of RM ${cap}.`;
+    if (!where) throw new TaxReliefError(message);
+    throw new Tp1LimitError(
+      {
+        code: 'lineLimit',
+        label,
+        item: where.item,
+        sub: where.sub,
+        limit: cap,
+        // This check sees ONE claim; the year is `assertWithinRemaining`'s question, not this one's.
+        already: null,
+        claim: rounded,
+        remaining: cap,
+        over: round2(rounded - cap),
+      },
+      message,
+    );
   }
   return rounded;
 }
@@ -259,7 +343,10 @@ function validateCatalogueCategories(raw: Partial<Record<string, unknown>>): {
         let sum = 0;
         for (const sub of def.subItems) {
           const label = `${def.code.toUpperCase()}(${sub.code})`;
-          const v = validateAmount((entry.subItems ?? {})[sub.code], label, sub.limit ?? undefined);
+          const v = validateAmount((entry.subItems ?? {})[sub.code], label, sub.limit ?? undefined, {
+            item: def.code,
+            sub: sub.code,
+          });
           if (v > 0) subs[sub.code] = v;
           sum += v;
         }
@@ -271,8 +358,20 @@ function validateCatalogueCategories(raw: Partial<Record<string, unknown>>): {
       // The group ANNUAL LIMIT column. `perSubLimit` items (C16) have none — the form gives each of their
       // bands its own limit AND its own Current/Accumulated row, so they are two claims, not a group.
       if (def.limit != null && !def.perSubLimit && amount > def.limit) {
-        throw new TaxReliefError(
-          `${def.code.toUpperCase()} must not exceed its annual limit of RM ${def.limit.toFixed(2)}.`,
+        const label = def.code.toUpperCase();
+        throw new Tp1LimitError(
+          {
+            code: 'itemLimit',
+            label,
+            item: def.code,
+            sub: null,
+            limit: def.limit,
+            already: null,
+            claim: amount,
+            remaining: def.limit,
+            over: round2(amount - def.limit),
+          },
+          `${label} must not exceed its annual limit of RM ${def.limit.toFixed(2)}.`,
         );
       }
       out[def.code] = subItems ? { amount, subItems } : { amount };
@@ -579,26 +678,48 @@ export function tp1RebateInForce(approvedRows: readonly Tp1CountableRow[], throu
  * ordinary item's "(Limited RM…)" sub-line — one rule, not two.
  */
 function assertWithinRemaining(categories: Tp1Categories2026, prior: Tp1Accumulated): void {
-  const check = (label: string, limit: number | null, claim: number, already: number) => {
+  const check = (
+    where: { item: string; sub: string | null },
+    limit: number | null,
+    claim: number,
+    already: number,
+  ) => {
     if (limit == null || claim <= 0) return;
     const total = round2(already + claim);
     if (total <= limit) return;
     const over = round2(total - limit);
-    throw new TaxReliefError(
+    // ⚠️ THE NUMBER THE SCREEN CLAMPS TO. limit − already, floored at zero — never the limit. It has
+    // always been computed here; since r352 it also leaves this function as data, so the box the reader
+    // is keying into can be reduced to exactly the figure this refusal would have named.
+    const remaining = Math.max(0, round2(limit - already));
+    const label = where.sub == null ? where.item.toUpperCase() : `${where.item.toUpperCase()}(${where.sub})`;
+    throw new Tp1LimitError(
+      {
+        code: 'annualRemaining',
+        label,
+        item: where.item,
+        sub: where.sub,
+        limit,
+        already,
+        claim,
+        remaining,
+        over,
+      },
+      // Unchanged wording: the API path, the logs and the existing refusal tests read `.message`.
       `${label} exceeds its annual limit of RM ${limit.toFixed(2)} by RM ${over.toFixed(2)}. ` +
         `RM ${already.toFixed(2)} has already been approved for this assessment year, ` +
-        `so at most RM ${Math.max(0, round2(limit - already)).toFixed(2)} can be claimed now.`,
+        `so at most RM ${remaining.toFixed(2)} can be claimed now.`,
     );
   };
   for (const def of [...TP1_ITEMS, ...TP1_REBATES]) {
     const entry = (categories.items[def.code] ?? categories.rebates?.[def.code]) as Tp1ItemAmounts | undefined;
     if (!entry) continue;
     if (!def.perSubLimit) {
-      check(def.code.toUpperCase(), def.limit, Number(entry.amount ?? 0), prior.items[def.code] ?? 0);
+      check({ item: def.code, sub: null }, def.limit, Number(entry.amount ?? 0), prior.items[def.code] ?? 0);
     }
     for (const sub of def.subItems) {
       check(
-        `${def.code.toUpperCase()}(${sub.code})`,
+        { item: def.code, sub: sub.code },
         sub.limit,
         Number((entry.subItems ?? {})[sub.code] ?? 0),
         prior.subItems[def.code]?.[sub.code] ?? 0,
@@ -1315,7 +1436,25 @@ async function saveTp1DraftForPersonId(
   // PDPA Layer-0: list the changed FIELD names only — never the cleartext amounts.
   const fields = categories ? ['tp1Amount', 'categories'] : ['tp1Amount'];
   if (deductionMonth != null) fields.push('deductionMonth');
+  const isCatalogue = isTp1Categories2026(categories);
   return withTenant(ctx, async (tx) => {
+    // ⚠️ THE YEAR-TO-DATE CHECK RUNS ON A DRAFT TOO (r352, item 0df7dd44), and until this round it did
+    // not. `resolveInput` above has always checked THIS claim on its own — each sub-line against its
+    // printed cap, each item against its annual-limit column — but the accumulated check needs the
+    // person's other approved months and therefore a transaction, so it lived only in the submit path.
+    //
+    // The consequence was a draft that saved clean and then refused on submit with a figure the reader
+    // had already been told was fine. The reporter's words for the same defect on the submit path were
+    // that they "do not receive a clear explanation of why the entry was rejected"; being told a month
+    // late is the same complaint. It is the SAME function with the SAME month, so a draft and a
+    // submission cannot disagree about what is left to claim.
+    //
+    // A draft is not money — nothing here reaches payroll until it is submitted AND approved — so this
+    // is a guard for the reader, not for the ledger. It refuses rather than clamps: silently rewriting
+    // somebody's statutory figure at save time is the thing this item was raised to stop.
+    if (isCatalogue) {
+      assertWithinRemaining(categories, await accumulatedInTx(tx, personId, year, deductionMonth));
+    }
     // THE OPEN DRAFT IS NOW PER (YEAR, MONTH), not per year. With a deduction month on the record, one
     // draft per year would make keying February overwrite the January draft — a data-loss bug that no
     // type check can see. A month-less save keeps the old behaviour and reuses the month-less draft.

@@ -226,11 +226,23 @@ describe('27605faa · an administrator may not approve their own tax relief', ()
   });
 });
 
+/**
+ * ⚠️ FOUR OF THESE FIVE CASES WERE UPDATED BY r352 (item 0df7dd44), NOT LOOSENED, and what moved is worth
+ * naming. The three actions that carried keyed amounts — save draft, submit, submit-and-approve — all
+ * `redirect()`ED ON REFUSAL, to the TP1 Relief LIST rather than to the form, which unmounted the form and
+ * discarded every figure in it. They are now ONE `useActionState`-shaped action, `adminTp1FormAction`,
+ * with the pressed button's `name="intent"` choosing between them; submit-and-approve became a private
+ * helper of that action and the `requireAdmin()` door moved to the one public entry point.
+ *
+ * Every decision these cases were written to pin still holds and is still asserted here: the two services
+ * are composed in that order, no status is written directly, an administrator is required at the door, an
+ * employee's own screen can reach neither control, and each button is drawn only where it is enabled.
+ */
 describe('27605faa · submit and approve in one press', () => {
   it('composes the two services in order, and writes no status itself', () => {
     const fn = ACTIONS.slice(
-      ACTIONS.indexOf('export async function adminSubmitAndApproveTp1'),
-      ACTIONS.indexOf('export async function adminDiscardTp1Draft'),
+      ACTIONS.indexOf('async function adminSubmitAndApproveTp1'),
+      ACTIONS.indexOf('// ── Section F — employer consent'),
     );
     expect(fn).toContain('submitTp1ForPerson');
     expect(fn).toContain('approveTp1ForPerson');
@@ -242,22 +254,30 @@ describe('27605faa · submit and approve in one press', () => {
   });
 
   it('is gated to an administrator at the door', () => {
-    const fn = ACTIONS.slice(ACTIONS.indexOf('export async function adminSubmitAndApproveTp1'));
-    expect(fn.slice(0, 400)).toContain('requireAdmin()');
+    // r352 — the door is the ONE public action, and submit-and-approve is only reachable through it.
+    const entry = ACTIONS.slice(ACTIONS.indexOf('export async function adminTp1FormAction'));
+    expect(entry.slice(0, 400), 'the form action is not admin-gated').toContain('requireAdmin()');
+    expect(entry, 'submitApprove is reachable without passing that gate').toContain(
+      "if (intent === 'submitApprove') return adminSubmitAndApproveTp1(",
+    );
+    // …and the helper is NOT exported, so there is no second, ungated way in.
+    expect(ACTIONS, 'the combined press is exported past its own gate').not.toContain(
+      'export async function adminSubmitAndApproveTp1',
+    );
   });
 
   it('is ADMIN-ONLY on the screen too: only the HR page passes it', () => {
-    expect(src('app/payroll/transactions/tp1/[year]/[month]/page.tsx')).toContain(
-      'submitApproveAction={adminSubmitAndApproveTp1}',
-    );
+    const hr = src('app/payroll/transactions/tp1/[year]/[month]/page.tsx');
+    expect(hr, 'the HR screen offers the one-press control').toContain('canSubmitApprove');
+    expect(hr).toContain('formAction={adminTp1FormAction}');
     // The employee's own screen renders the SAME component and must not hand it either control.
     const me = src('app/me/tax-relief/page.tsx');
-    expect(me, 'an employee cannot approve their own').not.toContain('submitApproveAction');
+    expect(me, 'an employee cannot approve their own').not.toContain('canSubmitApprove');
     expect(me, 'nor discard through this path').not.toContain('discardDraftAction');
   });
 
   it('the buttons are drawn only when their actions are supplied', () => {
-    expect(FORM).toContain('{submitApproveAction && (');
+    expect(FORM).toContain('{canSubmitApprove && (');
     expect(FORM).toContain("{discardDraftAction && status === 'draft' && (");
   });
 });

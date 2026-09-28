@@ -5,7 +5,7 @@ import { getTp1, getTp1Accumulated, getTp1FormIdentity, listTp1Years } from '@/c
 import { myEmployment } from '@/core/read';
 import { Button, Card, ErrorBanner, PageHeader, inputCls } from '@/components/ui';
 import { Tp1DeclarationForm } from '@/components/tp1-declaration-form';
-import { mySaveTp1Draft, mySubmitTp1 } from '../actions';
+import { myTp1FormAction } from '../actions';
 
 /**
  * Self Personal Tax Relief — LHDN TP1 yearly self-service (ADR-0050, #1.1.3; a2f1fa24).
@@ -100,8 +100,7 @@ export default async function TaxReliefPage({
         readOnly={readOnly}
         employer={identity?.employer ?? null}
         employee={identity?.employee ?? { name: me?.name ?? '', idNumber: null, tin: null }}
-        saveDraftAction={mySaveTp1Draft}
-        submitAction={mySubmitTp1}
+        formAction={myTp1FormAction}
       />
 
       <p className="text-xs text-muted-foreground">{t('historyNote')}</p>
