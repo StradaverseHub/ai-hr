@@ -103,6 +103,11 @@ const GOLDEN_STATUTORY = {
       zakatCurrent: 0,
       zakatLeftover: 0,
     },
+    // 4011903e (r354) — Y joins the snapshot. This is an EXACT-SHAPE guard over the whole stored
+    // payload, which is its value: a new member of `pcbMeta` has to be noticed here and accounted
+    // for rather than arriving unremarked. Zero because this fixture has no prior month, which is a
+    // true statement about Y and not a placeholder — the same reason `ytdNet` is 0 beside it.
+    ytdGross: 0,
     ytdNet: 0,
   },
   pcbNormalPreZakat: 0,
