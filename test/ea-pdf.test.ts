@@ -91,7 +91,6 @@ const labels: EaPdfLabels = {
   fundName: '1. Name of fund',
   contributionAmount: "Amount of contribution payable (state the employee's share only)",
   eisSip: 'EIS / SIP',
-  notOfficialStrip: 'Not part of the official form.',
   sectionFExemptAllowances: 'F  TOTAL EXEMPT ALLOWANCES / PERQUISITES / GIFTS / BENEFITS',
   disclaimer:
     'Generated from payroll for YA 2026 (statutory tables 2026.3). Verify against your records; this is not a substitute for the official LHDN form.',
@@ -370,7 +369,6 @@ function bundleFor(locale: string): EaPdfLabels {
     contributionAmount: L('contributionAmount'),
     sectionEContributions: L('sectionEContributions'),
     eisSip: L('eisSip'),
-    notOfficialStrip: 'Not part of the official form.',
     disclaimer: interp(L('disclaimer'), { year: '2026', version: '2026.3' }),
     amendedNote: ea.override.amendedNote,
   };

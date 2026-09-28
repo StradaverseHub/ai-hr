@@ -4229,8 +4229,8 @@
       "zakatViaSalary": "3. Zakat yang dibayar melalui potongan gaji",
       "donations": "4. Derma / hadiah / sumbangan diluluskan yang dibayar melalui potongan gaji",
       "tp1ClaimHeading": "5. Jumlah tuntutan potongan oleh pekerja melalui Borang TP1 berkaitan:",
-      "tp1Relief": "5(a) Pelepasan",
-      "zakatOther": "5(b) Zakat selain yang dibayar melalui potongan gaji bulanan",
+      "tp1Relief": "(a) Pelepasan",
+      "zakatOther": "(b) Zakat selain yang dibayar melalui potongan gaji bulanan",
       "childRelief": "6. Jumlah pelepasan bagi anak yang layak",
       "sectionEContributions": "E  CARUMAN YANG DIBAYAR OLEH PEKERJA KEPADA KUMPULAN WANG SIMPANAN / PENCEN YANG DILULUSKAN DAN PERKESO",
       "fundName": "1. Nama Kumpulan Wang",
@@ -4297,7 +4297,7 @@
       },
       "downloadPdf": "Muat turun borang EA",
       "previewNotice": "Skrin ini ialah pratonton, untuk menyemak angka sebelum anda memfailkan. “Muat turun borang EA” memberikan anda C.P.8A itu sendiri, disusun seperti borang bercetak.",
-      "notOfficialStrip": "Bukan sebahagian daripada C.P.8A rasmi — ditambah oleh AI HR."
+      "notOfficialStrip": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A now ends at the officer's box and this line has no reader]"
     },
     "cp22": {
       "download": "Muat turun CP22",

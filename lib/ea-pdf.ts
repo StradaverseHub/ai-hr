@@ -336,7 +336,6 @@ export type EaPdfLabels = {
   contributionAmount: string;
   eisSip: string;
   /** r349 — names the strip below the form as ours, so it cannot be mistaken for an agency box. */
-  notOfficialStrip: string;
   sectionFExemptAllowances: string;
   disclaimer: string; // already interpolated with {year} + {version} by the caller
   amendedNote: string; // 1.2.6 — printed only when ≥1 EA field was amended by HR
@@ -553,7 +552,12 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
    * `ea_override` HR has keyed — nothing in payroll can derive it: `payslip` persists only aggregate
    * scalars (basic_salary / allowance / overtime_pay / bonus / gross_pay + a statutory jsonb), there is
    * no payslip-line table anywhere in db/schema.ts, and core/payroll.ts folds every earning component
-   * into `payslip.allowance` before the row is written. Printing those as a derived 0.00 asserted that
+   * into `payslip.allowance` before the row is written.
+   *
+   * ⚠️ THAT ENUMERATION IS ABOUT PAYSLIP **COLUMNS**, AND IT MISSED THE `statutory` JSONB. r351 found the
+   * annual child-relief ringgit already stamped there as `pcbMeta.reliefs.children` — the figure the
+   * kernel actually netted off P — and D.6 is now sourced from it. A box being absent from the columns
+   * is not proof that payroll cannot derive it; look in the snapshot before concluding a box is manual. Printing those as a derived 0.00 asserted that
    * money does not exist while the same money was printed two lines up under Allowances: a director paid
    * RM 4,000/month of commission got "Fees (incl. director's fees) RM 0.00" on a C.P.8A.
    *
@@ -915,6 +919,12 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   };
   midAmount(t.tp1Relief, 524.5, manual(d.partD.tp1Relief));
   midAmount(t.zakatOther, 538, manual(d.partD.zakatOther));
+  // r351 — DERIVED, not manual. See localization/my/reports.ts for what reverses da4fc817's decision.
+  // `derived` prints even at 0.00 … except that a year whose slips carry no relief snapshot at all
+  // (pre-169e3c24, or a flat-rate non-resident) legitimately has nothing to state, and `0.00` on a tax
+  // document asserts the money does not exist. So the box takes `manual`'s zero-suppression while taking
+  // `derived`'s source: a real RM0.00 relief and an unknown one are indistinguishable here, and the
+  // honest output for both is the agency's own empty rule.
   moneyLine(t.childRelief, A.itemLabel, 551.4, manual(d.partD.childRelief));
 
   // ── E — CARUMAN ... KUMPULAN WANG SIMPANAN / PENCEN YANG DILULUSKAN DAN PERKESO ────────────────────
@@ -955,41 +965,33 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   put(W.date, L + 6, 723, 8);
   valueOrRule('', 68, 150, 723, 8);
 
-  // ── OUR OWN STRIP, BELOW THE FORM ─────────────────────────────────────────────────────────────────
-  // Everything from here down is NOT on the agency's page, and it is kept below the officer box — in the
-  // ~110 points the specimen leaves empty — precisely so that nothing on the drawn form claims a box the
-  // C.P.8A does not have.
+  // ── BELOW THE FORM ────────────────────────────────────────────────────────────────────────────────
   //
-  // EIS / SIP IS THE ONE FIGURE THAT LIVES HERE. da4fc817 established that the official Section E carries
-  // exactly two amounts (the approved fund and PERKESO) and that EIS is not one of them, and kept the
-  // figure — an employee's own EIS deduction is real and they may need it — printed outside the section.
-  // r219 keeps that decision and moves it the rest of the way out: below the form entirely, in our own
-  // strip, with the RM spelled out so it cannot be read as one of the form's own boxes.
+  // ⚠️ r351 — THE STRIP IS GONE, AND THAT REVERSES r349's RECORDED DECISION. r349 wrote: "THE EIS FIGURE
+  // STAYS — da4fc817's decision, real money off the employee's pay, their only annual statement. The plan
+  // offered to remove it; approval kept it." The reporter has now looked at the shipped page and written,
+  // in their own hand on the comparison image (`EA Form Compare V3.png`, stage 'refuted', revision 3),
+  // **"Remove this part from the EA Form"**, with a red box around the whole strip: the "Not part of the
+  // official C.P.8A" line, the EIS / SIP figure, and the disclaimer paragraph. That is the owner
+  // exercising the option r349's own plan offered them, so all three go and the page ends where the
+  // agency's page ends — at the officer's box.
+  //
+  // THE EIS FIGURE IS NOW NOWHERE ON THE PRINTED FORM. That was the cost da4fc817 and r349 were unwilling
+  // to pay, and the reporter has now decided to pay it. The figure is still on the HTML statement
+  // (app/payroll/reports/ea/[employmentId]/page.tsx), which is why `eisSip` and `disclaimer` stay LIVE
+  // message keys rather than being retired — only `notOfficialStrip` had no other reader.
+  //
+  // THE AMENDED MARKER STAYS. It was not in the reporter's red box and the approved plan named only the
+  // three items above. It is also different in kind: it discloses that HR overwrote a figure on a tax
+  // document, and an amended statement that looks identical to an unamended one is an audit hole, not a
+  // cosmetic difference. Removing it is a decision for the reporter to make explicitly.
   let y: number = EA_FORM.footStripT;
-  // r349 — A HEAVIER RULE AND A LINE SAYING WHOSE STRIP THIS IS. The reporter red-boxed the EIS figure
-  // and the note below it in their comparison against the agency's page, and they were right: LHDN's form
-  // has nothing there. The decision to keep them stands — an employee's EIS deduction is real money off
-  // their pay and this is the only annual statement they receive — but a reader holding the two pages side
-  // by side must be able to tell instantly which part is not the agency's. The plan offered to remove the
-  // strip outright if the reporter preferred; they approved keeping it.
-  hRule(L, R, y - 7, 1.2, ink);
-  put(t.notOfficialStrip, L, y - 1, 6.5, font, muted);
-  y += 8;
-  put(t.eisSip, L, y, 7, font, muted);
-  // r220 — the second amount outside `amountOrRule`, and the only one that spells "RM" out. The CAPTION
-  // stays on a blank form (it is a line this document has, and the reader comparing it against LHDN's page
-  // should see that we print one) while the figure goes, like every other figure.
-  if (!blank) putR(rm(d.partE.eis), R, y, 7, font, muted);
-  y += 10;
-
-  const discLines = wrapped(t.disclaimer, 7, R - L);
   const noteH = d.overrides && d.overrides.length > 0 ? 11 : 0;
-  const bandH = noteH + 12 + discLines.length * 9;
   const newPage = () => {
     page = doc.addPage(A4);
     y = 60;
   };
-  if (y + bandH > EA_FORM.bottom) newPage();
+  if (noteH && y + noteH > EA_FORM.bottom) newPage();
 
   // 1.2.6 — "Amended" marker: a footnote when ≥1 EA field was overwritten by HR (the merge already
   // overlaid the figures above). Disclosure of WHICH figures were amended is a compliance decision flagged
@@ -997,15 +999,6 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   if (noteH) {
     put(t.amendedNote, L, y, 7.5, bold, ink);
     y += 11;
-  }
-  hRule(L, R, y - 4, 0.5);
-  y += 8;
-  for (const line of discLines) {
-    // Only a disclaimer taller than a whole strip reaches this — the measurement above has already placed
-    // a band that fits. It stays so an absurd string spills onto a second page rather than off this one.
-    if (y > EA_FORM.bottom) newPage();
-    put(line, L, y, 7, font, muted);
-    y += 9;
   }
 
   return doc.save();

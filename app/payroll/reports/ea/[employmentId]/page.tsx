@@ -468,6 +468,9 @@ export default async function EaStatementPage({
           {(ea.partD.zakatOther !== 0 || ovByField.has('zakatOther')) && (
             <Row label={t('zakatOther')} value={rm(ea.partD.zakatOther)} amended={ovByField.has('zakatOther')} amendedLabel={amendedBadge} />
           )}
+          {/* r351 — D.6 is DERIVED now, so it renders whenever payroll produced a figure. The condition
+              stays rather than becoming unconditional: a year with no relief snapshot on any slip
+              legitimately has nothing to state, and the row is absent instead of asserting RM0.00. */}
           {(ea.partD.childRelief !== 0 || ovByField.has('childRelief')) && (
             <Row label={t('childRelief')} value={rm(ea.partD.childRelief)} amended={ovByField.has('childRelief')} amendedLabel={amendedBadge} />
           )}

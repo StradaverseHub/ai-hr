@@ -32,16 +32,36 @@ describe('da4fc817 — Section D carries all six of the official form lines', ()
    * Allowances figure that carried it. An absent box asserts nothing; a box reading 0.00 asserts the money
    * does not exist, and on a tax document that is the more expensive failure.
    */
-  it('prints the three unsourced boxes ONLY when set — never as a derived 0.00', () => {
+  it('prints these boxes ONLY when set — never as a derived 0.00', () => {
     const pdf = read('lib/ea-pdf.ts');
     // r219 — the SHAPE moved with the C.P.8A redraw and the RULE did not. `optionalRow` used to drop the
     // whole line; the form's caption and rule are now always printed (that is what the blank agency page
     // carries) and the conditional narrowed to the AMOUNT, which is `manual()`. What must stay true is
     // that none of these four can reach the page as a derived 0.00.
+    //
+    // ⚠️ r351 — THE TITLE USED TO SAY "the three UNSOURCED boxes" AND THAT IS NO LONGER WHY childRelief
+    // IS HERE. D.6 now HAS a payroll source (see the next case). It keeps `manual()`'s zero-suppression
+    // for a different reason: a year whose slips carry no `pcbMeta.reliefs` snapshot at all — written
+    // before 169e3c24, or a flat-rate non-resident — has nothing to state, and a real RM0.00 relief and
+    // an unknown one are indistinguishable at this point. The agency's empty rule is honest for both.
     for (const f of ['donations', 'zakatOther', 'childRelief', 'tp1Relief']) {
       expect(pdf, `${f} must go through manual()`).toContain(`manual(d.partD.${f})`);
       expect(pdf, `${f} must not be drawn as a derived figure`).not.toContain(`derived(d.partD.${f})`);
     }
+  });
+
+  it('r351 — D.6 carries the RINGGIT the payroll kernel allowed, not a hardcoded 0 and not a count', () => {
+    // The reporter asked for the amount and was reading A.8's count, which is a different box. This pins
+    // BOTH halves: D.6 is sourced from the kernel's own annual relief snapshot, and A.8 stays a count.
+    const reports = read('localization/my/reports.ts');
+    expect(reports, 'D.6 is still hardcoded to zero').not.toMatch(/\n\s*childRelief: 0,/);
+    expect(reports, 'D.6 must read the kernel snapshot').toContain('childReliefFromPayroll');
+    expect(reports, 'the snapshot member the kernel stamps').toContain('pcbMeta?.reliefs?.children');
+    // The LAST month's figure, so the query it is read from must be ordered. CLAUDE.md §8 forbids
+    // reading "the last" off an unordered result, and every other figure here is a sum that did not care.
+    expect(reports, 'the slips query must ORDER BY the pay period').toContain('.orderBy(payrollBatch.payPeriod)');
+    // A.8 is the COUNT and must stay one — the r343 head-count decision is not touched by this.
+    expect(read('lib/ea-pdf.ts'), 'A.8 must still print the head count').toContain('String(d.employee.children)');
   });
 
   it('the TP1 line is DERIVED through the one counting rule, not summed a second time', () => {

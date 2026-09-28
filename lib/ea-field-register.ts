@@ -193,7 +193,8 @@ export const EA_REGISTER: EaRegisterRow[] = [
     note: 'Derived from the year’s APPROVED TP1 declarations. Prints its own “RM” and rule at mid-page; the right-hand column stays empty on this line.' },
   { section: 'D', box: '5(b)', wording: 'Zakat selain yang dibayar melalui potongan gaji bulanan', caption: label('zakatOther'), value: 'money', sources: ['partD.zakatOther'], feed: 'amendment',
     note: 'Mid-page “RM” and rule, like 5(a).' },
-  { section: 'D', box: '6', wording: 'Jumlah pelepasan bagi anak yang layak', caption: label('childRelief'), value: 'money', sources: ['partD.childRelief'], feed: 'amendment' },
+  { section: 'D', box: '6', wording: 'Jumlah pelepasan bagi anak yang layak', caption: label('childRelief'), value: 'money', sources: ['partD.childRelief'], feed: 'payroll',
+    note: 'r351 — DERIVED since the reporter asked for the ringgit rather than an empty rule. The annual, s.48-weighted child relief the payroll kernel actually allowed, read off the year’s LAST slip carrying a pcbMeta.reliefs snapshot (so a disabled child in higher education shows RM16,000, not RM2,000). Still amendable. A year whose slips carry no snapshot — written before 169e3c24, or a flat-rate non-resident — leaves the box empty rather than printing 0.00. NOT to be confused with A.8, which is the COUNT and stays a count.' },
 
   // ── E — Caruman kepada Kumpulan Wang Simpanan / Pencen yang Diluluskan dan PERKESO ────────────────
   { section: 'E', box: 'E', wording: 'CARUMAN YANG DIBAYAR OLEH PEKERJA KEPADA KUMPULAN WANG SIMPANAN / PENCEN YANG DILULUSKAN DAN PERKESO', caption: label('sectionEContributions'), value: 'heading', sources: [], feed: 'form' },
@@ -218,12 +219,13 @@ export const EA_REGISTER: EaRegisterRow[] = [
   { section: 'FOOT', box: '', wording: EA_FORM_WORDS.employerPhone, caption: agency('employerPhone'), value: 'text', sources: ['employer.phone'], feed: 'company' },
 
   // ── Below the form — OUR strip, in the space the specimen leaves empty ────────────────────────────
-  { section: 'BELOW', box: '', wording: '', caption: label('notOfficialStrip'), value: 'note', sources: [], feed: 'system',
-    note: 'Ours, and it says so — r349. The reporter’s red-boxed comparison marked the EIS figure and the disclaimer below the form as differences from the agency’s page, and they are: LHDN prints nothing there. The strip stays, because an employee’s EIS deduction is real money off their pay and this is their only annual statement; this line and a heavier rule above it make plain which part of the page is not the agency’s.' },
-  { section: 'BELOW', box: '', wording: '', caption: label('eisSip'), value: 'money', sources: ['partE.eis'], feed: 'payroll',
-    note: 'NOT a box on the C.P.8A: the official Section E carries exactly two amounts and EIS is not one of them. The employee’s own EIS deduction is real and they may need it, so it is printed below the form with “RM” spelled out.' },
-  { section: 'BELOW', box: '', wording: '', caption: label('disclaimer'), value: 'note', sources: [], feed: 'system',
-    note: 'Ours. Names the year of assessment and the statutory table version, says which boxes payroll fed, and says the page is our rendering of the agency’s arrangement. The blank copy carries a different sentence, because none of that is true of a blank.' },
+  // ⚠️ r351 — THE STRIP'S THREE ROWS ARE GONE FROM THIS REGISTER BECAUSE THEY ARE GONE FROM THE FORM.
+  // r349 recorded the opposite decision ("the strip stays… an employee's EIS deduction is real money off
+  // their pay and this is their only annual statement"). The reporter has since written "Remove this part
+  // from the EA Form" on the shipped page, so the printed C.P.8A now ends at the officer's box.
+  // `eisSip` and `disclaimer` are still rendered on the HTML statement, so those two message keys stay
+  // LIVE; `notOfficialStrip` lost its only reader and is retired. This register describes the PRINTED
+  // form, which is why the rows leave rather than being annotated.
   { section: 'BELOW', box: '', wording: '', caption: label('amendedNote'), value: 'note', sources: ['overrides'], feed: 'system',
     note: 'Printed only when HR has amended at least one figure on this statement.' },
 

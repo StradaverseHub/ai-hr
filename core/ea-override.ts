@@ -128,8 +128,18 @@ function derivedField(ea: EaStatement, field: EaField): number {
     case 'annuity':
       return ea.partC.annuity;
     // da4fc817 — Section D's four. `tp1Relief` has a real derived baseline (the year's approved TP1
-    // declarations through `tp1CountForYear`); the other three are 0 until HR enters one, exactly like
-    // the manual Part B boxes above, and are read off the statement where the pack resolved them.
+    // declarations through `tp1CountForYear`); `donations` and `zakatOther` are 0 until HR enters one,
+    // exactly like the manual Part B boxes above. All are read off the statement where the pack
+    // resolved them, which is why this switch needs no change when a baseline starts being derived.
+    //
+    // ⚠️ r351 — `childRelief` NOW HAS A REAL DERIVED BASELINE TOO, and two consequences follow that are
+    // worth stating rather than discovering. (1) The no-op clear at the foot of `setEaOverride` compares
+    // the keyed amount against THIS value, so HR keying the derived figure back in deletes the override
+    // — correct, and now reachable for this field. HR keying 0 to suppress the box stores an override of
+    // 0, which the renderer prints as an empty rule; that is a usable escape hatch and it is deliberate.
+    // (2) Any `ea_override` row for `childRelief` written BEFORE r351 recorded `original: 0`, so its
+    // audit trail states a `before` that no longer matches the baseline. Those rows are not rewritten —
+    // an audit trail records what was true when it was written.
     case 'tp1Relief':
       return ea.partD.tp1Relief;
     case 'donations':

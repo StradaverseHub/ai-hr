@@ -392,6 +392,11 @@ async function loadBatchRows(ctx: SessionContext, params: ReportParams): Promise
         socsoNo: employeeStatutoryMy.socsoNumber,
         gross: payslip.grossPay,
         statutory: payslip.statutory,
+        // r351 — the period, and with it an ORDER BY. D.6 below needs "the LAST month's figure", and
+        // CLAUDE.md §8 forbids reading that off an unordered result: "no [length-1], no 'the last entry'
+        // … any asserted array from a query needs ORDER BY". Every other figure here is a SUM and did
+        // not care; this one does, so the ordering is now explicit rather than whatever the planner gave.
+        payPeriod: payrollBatch.payPeriod,
       })
       .from(payslip)
       .innerJoin(employment, eq(employment.id, payslip.employmentId))
@@ -1036,9 +1041,16 @@ export const EA_FIELDS = [
   'annuity',
   // da4fc817 — SECTION D's missing lines. `tp1Relief` is DERIVED (core/tax-relief's tp1CountForYear, the
   // same rule the payroll feed reads) and amendable for the reason `mtd` is: HR may need to reconcile the
-  // form against what was actually deducted. The other three have NO payroll source and stay at a derived
-  // baseline of 0 until HR enters them — which is why the renderer prints them with `optionalRow` and an
-  // absent box stays ABSENT rather than drawing 0.00 (AGENTS 28; r209 shipped exactly that defect here).
+  // form against what was actually deducted.
+  //
+  // r351 — `childRelief` JOINED IT AS DERIVED. It is the annual, s.48-weighted relief the payroll kernel
+  // allowed, read off the year's last slip carrying a `pcbMeta.reliefs` snapshot. `donations` and
+  // `zakatOther` still have no payroll source and stay at a baseline of 0 until HR enters them.
+  //
+  // ⚠️ THIS COMMENT NAMED `optionalRow` UNTIL r351 AND THAT FUNCTION NO LONGER EXISTS — r346/r349
+  // replaced it. The behaviour it described still holds under a different mechanism: the caption and its
+  // rule are always printed and only the FIGURE is withheld, so an unset box is an empty rule rather than
+  // a `0.00` (AGENTS 28; r209 shipped exactly that defect here).
   'tp1Relief',
   'donations',
   'zakatOther',
@@ -1241,11 +1253,18 @@ export type EaStatement = {
      * THE rule, not a second sum of `tp1_relief` (that file's header explains at length what a second
      * spelling cost last time).
      *
-     * `donations`, `zakatOther` and `childRelief` have NO payroll source: donations through salary are not
-     * a payroll deduction here, zakat paid outside the salary is by definition not on a payslip, and the
-     * child-relief TOTAL is a tax computation the employee claims rather than a figure the employer
-     * withholds. All three are 0 until HR enters one, and the renderer omits an unset box rather than
-     * printing 0.00 on a tax document.
+     * `donations` and `zakatOther` have NO payroll source: donations through salary are not a payroll
+     * deduction here and zakat paid outside the salary is by definition not on a payslip. Both are 0
+     * until HR enters one, and the renderer prints the caption and an empty rule rather than 0.00 on a
+     * tax document.
+     *
+     * ⚠️ `childRelief` WAS in that list until r351 and is now DERIVED, at the reporter's instruction.
+     * It is the annual, s.48-weighted child relief the payroll kernel actually allowed, read off the
+     * year's LAST slip that carries a `pcbMeta.reliefs` snapshot. `da4fc817`'s reasoning — "a tax
+     * computation the employee claims rather than a figure the employer withholds" — was the reason it
+     * stayed empty; the agency's Section D is headed TOTAL DEDUCTION and lists it beside the employer's
+     * own MTD, CP38 and TP1 figures, so it is the employer's allowance that belongs there. Still
+     * amendable by HR, exactly as before.
      */
     tp1Relief: number;
     donations: number;
@@ -1503,7 +1522,8 @@ export async function eaStatement(
           // that — so this join is company-true for closed years as well as the current one.
           eq(payrollBatch.companyId, employerId),
         ),
-      );
+      )
+      .orderBy(payrollBatch.payPeriod);
 
     /**
      * ⚠️ 5d721048 — THE SAME REFUSAL `localization/my/pcb2ii.ts` MAKES, AND FOR THE SAME REASON.
@@ -1540,8 +1560,46 @@ export async function eaStatement(
     let socso = 0;
     let eis = 0;
     let exemptAllowances = 0;
+    /**
+     * ⚠️ r351, item fda53352 — D.6 "Total qualifying child relief" STOPS BEING AN EMPTY RULE.
+     *
+     * WHAT CHANGED AND WHAT DECISION IT REVERSES. `da4fc817` decided this box has no payroll source
+     * because "the child-relief TOTAL is a tax computation the employee claims rather than a figure the
+     * employer withholds", and left it 0 so the renderer prints the caption and an empty rule. The
+     * reporter has asked for the ringgit, and the box is plainly a money box: the agency's own Section D
+     * is headed TOTAL DEDUCTION and D.6 sits among MTD, CP38, zakat, donations and the TP1 relief, all
+     * RM amounts. The count they were reading is A.8, "Number of children qualified for tax relief",
+     * which is a different box and is correct as a count.
+     *
+     * THE FIGURE IS THE KERNEL'S OWN, NOT A SECOND DERIVATION. `pcbMeta.reliefs.children` is what
+     * `localization/my/payroll.ts` actually netted off the annual projected income P — an ANNUAL ringgit
+     * figure, already weighted by the s.48 grid, so a disabled child in higher education shows RM16,000
+     * and not RM2,000. It is already on the slips this function selects, so no new query and no import
+     * of core/dependents.ts (which would close a module cycle through localization/registry).
+     *
+     * ⚠️ THE LAST MONTH'S FIGURE, NOT THE SUM AND NOT THE MAXIMUM. The relief is annual and is restated
+     * on every slip, so summing twelve months would print twelve times the relief. MTD is cumulative and
+     * self-correcting, so the final month's projection is the one that reconciles the whole year — that
+     * is the employee's year-end position and the figure a return would claim. The ORDER BY above is what
+     * makes "last" mean anything.
+     *
+     * ⚠️ TWO SHAPES CARRY NO FIGURE, AND BOTH LEAVE THE BOX EMPTY RATHER THAN PRINT 0.00. A slip written
+     * before item 169e3c24 has no `reliefs` key at all, and a `kind: 'flat'` snapshot (non-resident /
+     * flat rate) has no relief block by construction. `core/pcb-explain.ts:384` handles the first by
+     * falling back to the employee's CURRENT position and saying which it is showing; an EA cannot say
+     * that in a box, and substituting today's family for the year's would be a figure we cannot stand
+     * behind. CLAUDE.md §8: an absent box asserts nothing, `0.00` asserts the money does not exist.
+     */
+    let childReliefFromPayroll: number | null = null;
     for (const s of slips) {
-      const st = (s.statutory ?? {}) as Stat & { exemptionUsed?: Record<string, number> };
+      const st = (s.statutory ?? {}) as Stat & {
+        exemptionUsed?: Record<string, number>;
+        pcbMeta?: { reliefs?: { children?: number } };
+      };
+      const stampedChildRelief = st.pcbMeta?.reliefs?.children;
+      if (stampedChildRelief !== undefined && stampedChildRelief !== null) {
+        childReliefFromPayroll = num(stampedChildRelief);
+      }
       grossSalary += num(s.basic) + num(s.overtime);
       bonus += num(s.bonus);
       allowances += num(s.allowance);
@@ -1685,13 +1743,14 @@ export async function eaStatement(
       // core/tax-relief.ts's header on why a second sum is forbidden). No `throughMonth` — an EA covers
       // the WHOLE year, where the feed asks month by month.
       tp1Relief: round2(tp1ReliefTotal),
-      // The other three have no payroll source, exactly like the manual boxes above: donations through
-      // salary are not a payroll deduction in this system, zakat paid OUTSIDE the salary is by definition
-      // not on a payslip, and the child-relief total is a claim the employee makes rather than money the
-      // employer withheld.
+      // donations and zakatOther still have no payroll source: donations through salary are not a payroll
+      // deduction in this system, and zakat paid OUTSIDE the salary is by definition not on a payslip.
       donations: 0,
       zakatOther: 0,
-      childRelief: 0,
+      // r351 — childRelief IS derived now. See the long note on `childReliefFromPayroll` above for what
+      // reverses `da4fc817`'s decision and why the fallback is 0 (the renderer prints an empty rule for
+      // 0, which is the honest output for a year whose slips carry no relief snapshot at all).
+      childRelief: childReliefFromPayroll ?? 0,
     };
     // b7b22514 — AN AMENDMENT IS APPLIED TO EXACTLY ONE OF A TRANSFER YEAR'S FORMS.
     //

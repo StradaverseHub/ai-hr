@@ -4297,7 +4297,7 @@
       },
       "downloadPdf": "Tải xuống biểu mẫu EA",
       "previewNotice": "Màn hình này là bản xem trước, để kiểm tra các con số trước khi bạn nộp. “Tải biểu mẫu EA” sẽ cho bạn chính bản C.P.8A, trình bày theo đúng biểu mẫu in.",
-      "notOfficialStrip": "Không thuộc mẫu C.P.8A chính thức — do AI HR bổ sung."
+      "notOfficialStrip": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A now ends at the officer's box and this line has no reader]"
     },
     "cp22": {
       "download": "Tải CP22",
