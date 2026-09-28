@@ -139,15 +139,17 @@ describe('1785b766 §1 · the TP3’s C2 limits ARE the mapped exemption codes�
 // 2 · THE SEED — which code each box spends, and how much of it
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
 
-const seedOf = (c2: Record<string, number>) =>
+const seedOfWith = (c1: number, c2: Record<string, number>) =>
   deriveAccumulatorSeed({
     form: 'tp3-2026',
     sectionC: {
-      c1: { amount: 60_000 },
+      c1: { amount: c1 },
       c2: { amount: Object.values(c2).reduce((a, x) => a + x, 0), subItems: c2 },
     },
     sectionD: {},
   })!;
+/** The ordinary shape: taxable pay in C1 alongside the C2 boxes. */
+const seedOf = (c2: Record<string, number>) => seedOfWith(60_000, c2);
 
 describe('1785b766 §2 · deriveAccumulatorSeed splits ΣC2 by exemption code', () => {
   it('attributes each mapped box to its own code, and leaves the unmapped ones out entirely', () => {
@@ -384,7 +386,11 @@ describe('1785b766 §3 · the previous employer’s usage opens this employer’
     const columnBefore = await statOf(e.personId);
     const first = await run(`${YEAR}-07`);
     const before = await exemptedOn(first, e.employmentId);
-    await generatePayslips(a, { batchId: first });
+    // ⚠️ REPROCESS, NOT RE-GENERATE. A second bare `generatePayslips` on the same batch throws
+    // BatchNotDraftError (core/payroll.ts:3372) — the batch is `processed` by then, and the first cut of
+    // this test died there. `reprocessSubset` is the path the product actually uses to re-run one
+    // employee on a processed batch, so it is the path this property has to hold on.
+    await generatePayslips(a, { batchId: first, reprocessSubset: { employmentIds: [e.employmentId] } });
     const after = await exemptedOn(first, e.employmentId);
     expect(after).toEqual(before);
     expect(after.used).toBe(1_000);
@@ -442,7 +448,13 @@ describe('1785b766 §4 · a C2-only form is money, so the year-mismatch gate mus
   });
 
   it('the seed really does score zero on all five older figures (so this arm is not vacuous)', () => {
-    const s = seedOf({ i: 2_000 });
+    // ⚠️ C1 = 0 IS LOAD-BEARING AND THE FIRST CUT OF THIS TEST MISSED IT. `seedOf` defaults C1 to 60,000,
+    // which made the arm fail with [60000, 0, 0, 0, 0, 0] — and that failure is worth recording, because
+    // it narrows the claim above it. A C2-only form scores zero on the five older figures only when C1 is
+    // ALSO zero; with any taxable pay, `netRemuneration` is non-zero and the old gate already fired. The
+    // form this widening exists for is the one whose previous employer paid nothing but exempt
+    // allowances, which is exactly the `c2Only` fixture used by the two cases below.
+    const s = seedOfWith(0, { i: 2_000 });
     expect([s.netRemuneration, s.epfClaimed, s.pcbPaid, s.zakatPaid, s.lpDeclared, s.excessTotal]).toEqual([
       0, 0, 0, 0, 0, 0,
     ]);

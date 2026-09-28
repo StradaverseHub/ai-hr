@@ -111,13 +111,16 @@ describe('da4fc817 — Sections E and F match the published form', () => {
     expect(e).toContain('d.partE.fundName');
     expect(e).toContain('derived(d.partE.epf)');
     expect(e).toContain('derived(d.partE.socso)');
-    // The official Section E has exactly two amounts. EIS is kept as a figure but printed outside it —
-    // r219 moved it the rest of the way out, below the officer box in our own strip, so that no line
-    // inside the drawn form claims a box the C.P.8A does not have.
+    // The official Section E has exactly two amounts. EIS is not one of them, and it is not inside the
+    // section — that half of this guard is unchanged since r219.
     expect(e).not.toContain('eisSip');
-    const strip = pdf.slice(pdf.indexOf('let y: number = EA_FORM.footStripT'));
-    expect(strip, 'the EIS figure must still be printed somewhere').toContain('t.eisSip');
-    expect(strip).toContain('d.partE.eis');
+    // ⚠️ r351 — THE SECOND HALF IS INVERTED. It used to require the figure to be printed SOMEWHERE, in
+    // our own strip below the officer box. The reporter has had that strip removed ("Remove this part
+    // from the EA Form"), so the EIS figure is now on no printed EA at all. It remains on the HTML
+    // statement, which is the surface that still shows it, and `test/ea-form-boxes-contract.test.ts`
+    // pins that. Inverted rather than deleted, so the strip cannot return unnoticed.
+    expect(pdf, 'the EIS figure is back on the printed form').not.toContain('t.eisSip');
+    expect(pdf, 'the EIS amount is back on the printed form').not.toContain('rm(d.partE.eis)');
   });
 
   it('Section F exists as its own section, and the exempt figure left Part B', () => {

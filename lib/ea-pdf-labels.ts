@@ -94,10 +94,6 @@ export async function eaPdfLabels(locale: string, mode: EaLabelMode): Promise<Ea
     fundName: t('fundName'),
     contributionAmount: t('contributionAmount'),
     sectionEContributions: t('sectionEContributions'),
-    eisSip: t('eisSip'),
-    disclaimer: mode.blank
-      ? t('blankDisclaimer')
-      : t('disclaimer', { year: mode.year, version: mode.version }),
     // 1.2.6 — the "Amended" marker. A blank form has no overrides, so the renderer never prints it there;
     // it is still resolved, because `EaPdfLabels` requires it and a mode-dependent hole in the bundle is a
     // hole a later edit can widen.

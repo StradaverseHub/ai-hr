@@ -102,7 +102,7 @@ the reader has chosen.
 | D | 5 | Jumlah tuntutan potongan oleh pekerja melalui Borang TP1 berkaitan: | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `payroll.ea.tp1ClaimHeading` |
 | D | 5(a) | Pelepasan | amount (RM) | Payroll, and amendable under “Amend EA figures” (partD.tp1Relief) | Derived from the year’s APPROVED TP1 declarations. Prints its own “RM” and rule at mid-page; the right-hand column stays empty on this line. | `payroll.ea.tp1Relief` |
 | D | 5(b) | Zakat selain yang dibayar melalui potongan gaji bulanan | amount (RM) | Only “Amend EA figures” — no payroll source exists (partD.zakatOther) | Mid-page “RM” and rule, like 5(a). | `payroll.ea.zakatOther` |
-| D | 6 | Jumlah pelepasan bagi anak yang layak | amount (RM) | Only “Amend EA figures” — no payroll source exists (partD.childRelief) |  | `payroll.ea.childRelief` |
+| D | 6 | Jumlah pelepasan bagi anak yang layak | amount (RM) | Payroll — the year’s payslips (partD.childRelief) | r351 — DERIVED since the reporter asked for the ringgit rather than an empty rule. The annual, s.48-weighted child relief the payroll kernel actually allowed, read off the year’s LAST slip carrying a pcbMeta.reliefs snapshot (so a disabled child in higher education shows RM16,000, not RM2,000). Still amendable. A year whose slips carry no snapshot — written before 169e3c24, or a flat-rate non-resident — leaves the box empty rather than printing 0.00. NOT to be confused with A.8, which is the COUNT and stays a count. | `payroll.ea.childRelief` |
 
 ## E — Caruman … Kumpulan Wang Simpanan / Pencen yang Diluluskan dan PERKESO (contributions)
 
@@ -133,9 +133,6 @@ the reader has chosen.
 
 | Section | Box | Official wording (C.P.8A Pin. 2023) | Value | Fed by | Notes | Caption |
 | --- | --- | --- | --- | --- | --- | --- |
-| BELOW |  | — | sentence | Filled in by this system | Ours, and it says so — r349. The reporter’s red-boxed comparison marked the EIS figure and the disclaimer below the form as differences from the agency’s page, and they are: LHDN prints nothing there. The strip stays, because an employee’s EIS deduction is real money off their pay and this is their only annual statement; this line and a heavier rule above it make plain which part of the page is not the agency’s. | `payroll.ea.notOfficialStrip` |
-| BELOW |  | — | amount (RM) | Payroll — the year’s payslips (partE.eis) | NOT a box on the C.P.8A: the official Section E carries exactly two amounts and EIS is not one of them. The employee’s own EIS deduction is real and they may need it, so it is printed below the form with “RM” spelled out. | `payroll.ea.eisSip` |
-| BELOW |  | — | sentence | Filled in by this system | Ours. Names the year of assessment and the statutory table version, says which boxes payroll fed, and says the page is our rendering of the agency’s arrangement. The blank copy carries a different sentence, because none of that is true of a blank. | `payroll.ea.disclaimer` |
 | BELOW |  | — | sentence | Filled in by this system (overrides) | Printed only when HR has amended at least one figure on this statement. | `payroll.ea.amendedNote` |
 
 ## Not drawn on the page
@@ -146,7 +143,7 @@ the reader has chosen.
 
 ## Boxes nothing feeds yet
 
-8 of the 72 entries in this register take a value the agency asks
+8 of the 69 entries in this register take a value the agency asks
 for and this system holds nothing for. Each prints the blank form’s own rule and nothing on it —
 never a placeholder, never `0.00`, never a plausible guess. They are listed again here because
 they are the shortest answer to “what is still missing from the EA?”.

@@ -334,10 +334,8 @@ export type EaPdfLabels = {
   fundName: string;
   /** r219 — "Amaun caruman yang wajib dibayar (nyatakan bahagian pekerja sahaja)", used by E1 and E2. */
   contributionAmount: string;
-  eisSip: string;
   /** r349 — names the strip below the form as ours, so it cannot be mistaken for an agency box. */
   sectionFExemptAllowances: string;
-  disclaimer: string; // already interpolated with {year} + {version} by the caller
   amendedNote: string; // 1.2.6 — printed only when ≥1 EA field was amended by HR
 };
 

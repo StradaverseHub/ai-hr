@@ -75,10 +75,39 @@ describe('6036dab7 — every EA box reaches every surface', () => {
     expect(unknown, `amend panel offers fields the service rejects: ${unknown.join(', ')}`).toEqual([]);
   });
 
+  /**
+   * ⚠️ r351 — `eis` IS THE ONE EA FIELD THE PRINTED FORM DOES NOT CARRY, AND THAT IS NOW DELIBERATE.
+   *
+   * The official C.P.8A has no EIS box: `da4fc817` established that Section E carries exactly two
+   * amounts and EIS is not one of them. It was printed in a strip of OURS below the officer box until
+   * the reporter wrote "Remove this part from the EA Form" on the shipped page, so the printed form now
+   * ends where the agency's ends. `eis` stays in the EA vocabulary because it is still a real datum on
+   * the HTML statement and HR can still amend it — it simply has no box on the paper.
+   *
+   * The exception is an explicit, single-member list rather than a loosened regex, so a SECOND field
+   * quietly dropping off the form still fails this test.
+   */
+  const NOT_ON_THE_PRINTED_FORM: readonly string[] = ['eis'];
+
   it('every field in the EA vocabulary is DRAWN by the PDF renderer', () => {
-    const missing = EA_FIELDS.filter((f) => !/^(gross)$/.test(f) && !new RegExp(`\\bd\\.part[BCDE]\\.${f}\\b`).test(RENDERER));
+    const missing = EA_FIELDS.filter(
+      (f) =>
+        !/^(gross)$/.test(f) &&
+        !NOT_ON_THE_PRINTED_FORM.includes(f) &&
+        !new RegExp(`\\bd\\.part[BCDE]\\.${f}\\b`).test(RENDERER),
+    );
     expect(missing, `EA fields the PDF never draws: ${missing.join(', ')}`).toEqual([]);
     expect(RENDERER).toContain('d.partB.gross'); // the total, drawn by its own row
+  });
+
+  it('the one field that is NOT on the printed form is still on the HTML statement and still amendable', () => {
+    // Otherwise the exception above would be a hole: a field could be dropped from the form AND from the
+    // screen and this suite would say nothing.
+    const html = read('app/payroll/reports/ea/[employmentId]/page.tsx');
+    for (const f of NOT_ON_THE_PRINTED_FORM) {
+      expect(EA_FIELDS as readonly string[], `${f} left the vocabulary`).toContain(f);
+      expect(html, `${f} is not rendered on the HTML statement either`).toContain(`ea.partE.${f}`);
+    }
   });
 
   it('every label the PDF renderer declares is actually drawn, and is supplied by the route', () => {

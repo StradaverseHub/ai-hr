@@ -90,10 +90,7 @@ const labels: EaPdfLabels = {
   sectionEContributions: 'E  CONTRIBUTIONS PAID BY THE EMPLOYEE TO AN APPROVED FUND AND PERKESO',
   fundName: '1. Name of fund',
   contributionAmount: "Amount of contribution payable (state the employee's share only)",
-  eisSip: 'EIS / SIP',
   sectionFExemptAllowances: 'F  TOTAL EXEMPT ALLOWANCES / PERQUISITES / GIFTS / BENEFITS',
-  disclaimer:
-    'Generated from payroll for YA 2026 (statutory tables 2026.3). Verify against your records; this is not a substitute for the official LHDN form.',
   amendedNote: 'Some figures on this EA form were amended by HR and differ from the payroll-derived values.',
 };
 
@@ -368,8 +365,6 @@ function bundleFor(locale: string): EaPdfLabels {
     fundName: L('fundName'),
     contributionAmount: L('contributionAmount'),
     sectionEContributions: L('sectionEContributions'),
-    eisSip: L('eisSip'),
-    disclaimer: interp(L('disclaimer'), { year: '2026', version: '2026.3' }),
     amendedNote: ea.override.amendedNote,
   };
 }
@@ -386,27 +381,30 @@ describe('EA PDF renderer — the real message bundle', () => {
     const off = items.filter((it) => it.y < 0 || it.y > pageHeights[it.page]);
     expect(off.map((it) => `p${it.page} y=${it.y} ${it.text}`), `${locale}: every line inside its page`).toEqual([]);
 
-    // The three blocks that orphaned onto page two: Part E's last figure, the "amended" marker and the
-    // wrapped disclaimer. Named individually so a regression says WHICH one left, not just "2 pages".
-    expect(items.find((it) => it.text.includes('RM 118.80'))?.page, `${locale}: the EIS figure`).toBe(0);
+    // ⚠️ r351 — TWO OF THE THREE BLOCKS THIS GUARDED NO LONGER EXIST. It used to name Part E's EIS
+    // figure, the "amended" marker and the wrapped disclaimer, because all three once orphaned onto a
+    // second page. The reporter has since had the whole strip removed from the form, so the EIS figure
+    // and the disclaimer are gone and only the amended marker remains to be kept on page one.
+    //
+    // The two removals become POSITIVE assertions rather than being deleted: this is now also the guard
+    // that the strip cannot come back through the renderer, from the pagination side.
     expect(items.find((it) => it.text === winAnsi(real.amendedNote))?.page, `${locale}: the amended marker`).toBe(0);
-    expect(items[items.length - 1].page, `${locale}: the last disclaimer line`).toBe(0);
+    expect(
+      items.find((it) => it.text.includes('RM 118.80')),
+      `${locale}: the EIS figure is back on the printed form`,
+    ).toBeUndefined();
+    expect(items[items.length - 1].page, `${locale}: nothing spills to a second page`).toBe(0);
   });
 
-  it('a disclaimer taller than the band still lands INSIDE the pages it spills onto', async () => {
-    // The pathological input the band's own page break exists for: no real bundle string is this long, so
-    // this is the only way to exercise it. Every line must still be on a page, and the spill must carry
-    // content — an empty trailing page is the failure mode the r209 fix removed from the normal path.
-    const longWinded = { ...bundleFor('en'), disclaimer: Array.from({ length: 400 }, (_, i) => `clause-${i}`).join(' ') };
-    const { items, pageHeights } = await drawnText(await renderEaPdf(fullForm, longWinded, { locale: 'en' }));
-
-    expect(pageHeights.length).toBeGreaterThan(1);
-    const off = items.filter((it) => it.y < 0 || it.y > pageHeights[it.page]);
-    expect(off.map((it) => `p${it.page} y=${it.y} ${it.text}`), 'every line inside its page').toEqual([]);
-    // Every page carries drawn text — no page is created and left blank.
-    for (let p = 0; p < pageHeights.length; p++) {
-      expect(items.some((it) => it.page === p), `page ${p} must carry text`).toBe(true);
-    }
+  it('r351 — the form ends at the officer box: nothing of ours is drawn below it', () => {
+    // ⚠️ THIS REPLACES "a disclaimer taller than the band still lands INSIDE the pages it spills onto".
+    // That case existed for the band's own page break, which existed for the disclaimer — and the
+    // disclaimer is gone from the form, so the pathological input it exercised is unreachable. Deleting
+    // the case outright would leave nothing asserting WHY, so it is inverted: the renderer must no longer
+    // contain the wrapping band at all, which is the mechanism that could reintroduce a second page.
+    const renderer = readFileSync(new URL('../lib/ea-pdf.ts', import.meta.url), 'utf8');
+    expect(renderer, 'the disclaimer band is back').not.toContain('wrapped(t.disclaimer');
+    expect(renderer, 'the strip rule is back').not.toContain('hRule(L, R, y - 7, 1.2, ink);');
   });
 });
 
@@ -425,11 +423,9 @@ describe('EA PDF renderer — the real message bundle', () => {
  * caption the filled form draws — a "blank" that quietly lost half the form would satisfy the first two.
  */
 describe('r220 — the blank C.P.8A', () => {
-  const blankBundle = (locale: string): EaPdfLabels => ({
-    ...bundleFor(locale),
-    disclaimer: JSON.parse(readFileSync(new URL(`../messages/${locale}.json`, import.meta.url), 'utf8')).payroll.ea
-      .blankDisclaimer,
-  });
+  // r351 — the blank no longer carries a disclaimer: the strip it sat in is gone from the form entirely,
+  // so a blank and a filled form differ only in their figures, which is what the agency's own blank does.
+  const blankBundle = (locale: string): EaPdfLabels => bundleFor(locale);
 
   it.each(LOCALES)('%s: is ONE page, with every line inside it', async (locale) => {
     const { items, pageHeights } = await drawnText(
@@ -496,7 +492,6 @@ describe('r220 — the blank C.P.8A', () => {
       real.childRelief,
       real.contributionAmount,
       real.partYearNote,
-      real.eisSip,
     ]) {
       expect(blank, `the blank form is missing: ${caption}`).toContain(winAnsi(caption));
     }

@@ -60,10 +60,9 @@ function bundleFor(locale: 'en' | 'ms'): EaPdfLabels {
     'livingAccommodation', 'unapprovedFundRefund', 'compensation', 'sectionCPensionOther', 'pension', 'annuity',
     'formTotal', 'sectionDTotalDeductions', 'monthlyTaxDeduction', 'cp38Deductions', 'zakatViaSalary', 'donations',
     'tp1ClaimHeading', 'tp1Relief', 'zakatOther', 'childRelief', 'sectionEContributions', 'fundName',
-    'contributionAmount', 'eisSip', 'sectionFExemptAllowances', 'title',
+    'contributionAmount', 'sectionFExemptAllowances', 'title',
   ] as const;
   const bundle = Object.fromEntries(keys.map((k) => [k, L(k)])) as unknown as EaPdfLabels;
-  bundle.disclaimer = interp(L('disclaimer'), { year: '2026', version: '2026.3' });
   bundle.amendedNote = ea.override.amendedNote;
   return bundle;
 }
@@ -370,10 +369,16 @@ describe('r219 — the boxes the C.P.8A does not have stay OFF the drawn page', 
     expect(printed.filter((s) => s === '1,500.00')).toEqual(['1,500.00']); // B6 compensation only
   });
 
-  it('EIS is printed BELOW the form, not inside Section E, because the C.P.8A has no EIS box', async () => {
+  it('r351 — EIS is on NO printed EA, because the reporter had our strip removed', async () => {
+    // ⚠️ INVERTED, NOT DELETED. This case used to assert the figure was printed BELOW the form, outside
+    // Section E — r219's compromise, because the C.P.8A has no EIS box but the deduction is real money.
+    // The reporter wrote "Remove this part from the EA Form" on the shipped page, so the compromise is
+    // over and the page ends at the officer box. The cost is recorded in the round entry: the EA is no
+    // longer anywhere an employee can read their annual EIS. The HTML statement still shows it.
     const items = await drawn(await renderEaPdf(BASE, bundleFor('ms')));
     const eis = items.find((i) => i.text === 'RM 118.80');
-    expect(eis, 'the EIS figure must still be printed').toBeTruthy();
+    expect(eis, 'the EIS figure is back on the printed form').toBeUndefined();
+    return;
     // In pdf-lib coordinates a LOWER y is further down the page; the officer box's bottom edge is at
     // EA_FORM.officerBox.t1 from the top.
     const officerBoxBottom = 841.89 - EA_FORM.officerBox.t1;
@@ -494,7 +499,11 @@ describe('r219 — every Malay box caption is the agency’s own, checked agains
   });
 
   it('D.5(a) is the form’s own one-word caption — the case this guard exists for', () => {
-    expect(ms.tp1Relief).toBe('5(a) Pelepasan');
+    // ⚠️ r351 — "5(a)" BECAME "(a)", and the agency's own transcription is why. The reporter red-boxed
+    // this exact pair on their comparison: docs/forms/ea-cp8a-pin-2023-transcription.txt:137-138 prints
+    // "(a) Pelepasan" and "(b) Zakat selain…" beneath the parent line "5. Jumlah tuntutan potongan…",
+    // so repeating the 5 was ours. The guard keeps pinning the caption verbatim; only the value moved.
+    expect(ms.tp1Relief).toBe('(a) Pelepasan');
     expect(TRANSCRIPTION).toContain('(a) Pelepasan');
     // …and NOT the r217 wording it carried into this round.
     expect(ms.tp1Relief).not.toMatch(/dituntut melalui/);
