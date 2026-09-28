@@ -1,0 +1,233 @@
+<meta charset="utf-8">
+<title>15e5bd93 rev 2 — Statutory Payment Setup as a dedicated screen</title>
+<!--
+  Mockup for 15e5bd93 REVISION 2, after the reporter contested what r352 shipped.
+
+  WHY THERE IS A SECOND DRAWING. r352 shipped a rail + workspace INSIDE the Statutory tab. The reporter's
+  contest is explicit and it is not what we built: "Do not expand the statutory settings directly within
+  the existing Statutory tab" and "The preferred approach is a dedicated full-width screen". They also
+  asked for something r352 did not attempt at all: a VIEW mode with an Edit button, distinct from an
+  EDIT mode with Save and Back/Cancel.
+
+  So the top half of this drawing is WHAT IS LIVE NOW (r352, main@c27f5cf1) and the bottom half is the
+  dedicated screen they asked for. Drawing what we shipped is the honest way to show the difference.
+
+  HONESTY NOTES — a mockup is a promise:
+  · NOW is real, as deployed today: rail of 8 bodies + workspace + one sticky Save, all inside
+    /admin/organization/<id>?tab=statutory. components/company-panel.tsx.
+  · The eight bodies and their order are STATUTORY_AUTHORITIES (lib/statutory-authorities.ts:14-30).
+    EIS stays indented under SOCSO and is its own record — the reasoning, with production evidence, is
+    at components/company-panel.tsx:84-104. It is drawn that way in BOTH halves.
+  · The fields drawn in the edit card are the REAL ones, in the real order
+    (components/company-panel.tsx:702-854): filing number (epf/socso/lhdn only) or the HRDF rate select,
+    then account no., paid-from, signatory, then the address block, phone and email.
+  · VIEW MODE IS NEW. Nothing in the product renders these fields read-only today. The read-only
+    treatment drawn here is a proposal, not an existing pattern being reused.
+  · The success message is drawn as the repo's existing toast, not a new invention.
+  · NOT DRAWN, because we cannot promise it yet: exactly which fields are hidden when empty in view mode.
+    Drawn here as "Not set up" rows, which is what the current face does.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;
+        vertical-align:2px;margin-left:6px}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin:0 0 12px}
+  .tab{padding:7px 14px;font-size:12.5px;border-radius:9px 9px 0 0;color:var(--mf)}
+  .tab.on{background:var(--muted);color:var(--fg);font-weight:650;box-shadow:inset 0 -2px 0 var(--primary)}
+  .stack{display:grid;grid-template-columns:230px 1fr;gap:12px;align-items:start}
+  .rail{border:1px solid var(--border);border-radius:11px;overflow:hidden;background:#fff}
+  .rr{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 11px;
+      border-bottom:1px solid var(--border);font-size:12px}
+  .rr:last-child{border-bottom:0}
+  .rr.sel{background:color-mix(in srgb,var(--primary) 8%,white);box-shadow:inset 3px 0 0 var(--primary);font-weight:650}
+  .rr.ind{padding-left:26px}
+  .badge{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:600}
+  .ok{background:color-mix(in srgb,var(--good) 12%,white);color:var(--good)}
+  .no{background:var(--muted);color:var(--mf)}
+  .work{border:1px solid var(--border);border-radius:11px;background:#fff;padding:12px}
+  .crumb{font-size:11.5px;color:var(--mf);margin:0 0 10px}
+  .crumb b{color:var(--fg)}
+  .back{display:inline-block;font-size:11.5px;color:var(--primary);font-weight:650;margin:0 0 10px}
+  .hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin:0 0 14px}
+  .h1{font-size:18px;font-weight:700;margin:0}
+  .h1s{font-size:11.5px;color:var(--mf);margin:2px 0 0}
+  .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .bcard{border:1px solid var(--border);border-radius:12px;background:#fff;padding:13px}
+  .bhead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 3px}
+  .bname{font-weight:700;font-size:13px}
+  .bdesc{font-size:10.5px;color:var(--mf);margin:0 0 9px}
+  .dl{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:11.5px}
+  .dl dt{color:var(--mf)}
+  .dl dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+  .editbtn{font-size:11px;color:var(--primary);font-weight:650;white-space:nowrap}
+  .sect{border-top:1px solid var(--border);padding-top:9px;margin-top:10px}
+  .sh{font-size:10.5px;font-weight:700;margin:0 0 6px;text-transform:uppercase;letter-spacing:.03em;color:var(--mf)}
+  .fgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px 9px}
+  .f{display:flex;flex-direction:column;gap:2px}
+  .f .cap{font-size:10px;color:var(--mf);font-weight:600}
+  .f .box{border:1px solid var(--border);border-radius:7px;background:#fff;height:22px}
+  .f.wide{grid-column:span 3}.f.two{grid-column:span 2}
+  .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:5px 14px;font-size:11.5px;font-weight:650}
+  .btn.ghost{background:var(--muted);color:var(--mf)}
+  .toast{border:1px solid color-mix(in srgb,var(--good) 35%,white);background:color-mix(in srgb,var(--good) 8%,white);
+         color:var(--good);border-radius:9px;padding:7px 11px;font-size:11.5px;font-weight:600;margin:0 0 12px}
+  .cap2{font-size:11px;color:var(--mf);margin:9px 0 0}
+  .arrow{text-align:center;font-size:20px;color:var(--mf);margin:2px 0 14px}
+  .flag{color:var(--bad);font-weight:650}
+</style>
+
+<div class="card">
+  <h2>Statutory payment setup <span class="chip now">LIVE NOW (what r352 shipped)</span></h2>
+  <p class="sub">A permanent list of the eight bodies on the left, the selected one open on the right, one
+    Save for the tab. It removed the eight open-and-close cycles &mdash; but it is still
+    <b>inside the Statutory tab</b>, and everything is always editable. Both are what you asked us to change.</p>
+
+  <div class="tabs"><div class="tab">General</div><div class="tab">Bank Account</div><div class="tab on">Statutory</div></div>
+  <div class="stack">
+    <div class="rail">
+      <div class="rr sel"><span>EPF (KWSP)</span><span class="badge ok">Set</span></div>
+      <div class="rr"><span>SOCSO (PERKESO)</span><span class="badge ok">Set</span></div>
+      <div class="rr ind"><span>EIS</span><span class="badge no">Not set</span></div>
+      <div class="rr"><span>LHDN</span><span class="badge ok">Set</span></div>
+      <div class="rr"><span>HRDF (HRD Corp)</span><span class="badge no">Not set</span></div>
+      <div class="rr"><span>Zakat</span><span class="badge no">Not set</span></div>
+      <div class="rr"><span>PTPTN</span><span class="badge no">Not set</span></div>
+      <div class="rr"><span>Tabung Haji</span><span class="badge no">Not set</span></div>
+    </div>
+    <div class="work">
+      <div class="bhead"><span class="bname">EPF (KWSP)</span><span class="badge ok">Configured</span></div>
+      <p class="bdesc">Every field open for editing, always. No view mode.</p>
+      <div class="fgrid">
+        <div class="f"><span class="cap">EPF employer no.</span><span class="box"></span></div>
+        <div class="f two"><span class="cap">Employer account / reference no.</span><span class="box"></span></div>
+        <div class="f wide"><span class="cap">Address line 1</span><span class="box"></span></div>
+        <div class="f"><span class="cap">City</span><span class="box"></span></div>
+        <div class="f"><span class="cap">Postcode</span><span class="box"></span></div>
+        <div class="f"><span class="cap">Phone</span><span class="box"></span></div>
+      </div>
+    </div>
+  </div>
+  <p class="cap2"><span class="flag">Your two objections:</span> it never leaves the tab, and there is no
+    read-only view to protect a saved setup from an accidental keystroke.</p>
+</div>
+
+<div class="arrow">&#8595;</div>
+
+<div class="card">
+  <h2>Statutory Payment Setup <span class="chip new">PROPOSED — a dedicated screen</span></h2>
+  <p class="sub">Its own full-width page. Every body is a card, all visible at once. Each card is read-only
+    until you press Edit on that card. Saving keeps you here and says so.</p>
+
+  <a class="back">&larr; Back to Company &rsaquo; Statutory</a>
+  <p class="crumb">Organization &rsaquo; <b>Tanjung Manufacturing Sdn Bhd</b> &rsaquo; Statutory &rsaquo; <b>Statutory Payment Setup</b></p>
+
+  <div class="hdr">
+    <div><p class="h1">Statutory Payment Setup</p>
+      <p class="h1s">Tanjung Manufacturing Sdn Bhd &middot; SSM 201901234567 &middot; MyInvois C12345678900</p></div>
+  </div>
+
+  <div class="toast">&#10003; EPF (KWSP) saved.</div>
+
+  <div class="grid2">
+    <div class="bcard">
+      <div class="bhead"><span class="bname">EPF / KWSP</span>
+        <span><span class="badge ok">Configured</span> <span class="editbtn">Edit</span></span></div>
+      <p class="bdesc">Employees Provident Fund &mdash; monthly contribution</p>
+      <dl class="dl">
+        <dt>Employer no.</dt><dd>E 1234567890</dd>
+        <dt>Account / reference</dt><dd>0012345678</dd>
+        <dt>Paid from</dt><dd>Maybank &middot;&middot;&middot;4471</dd>
+        <dt>Signatory</dt><dd>Aminah binti Ali</dd>
+        <dt>Address</dt><dd>Level 8, Menara Tanjung&hellip;</dd>
+        <dt>Phone</dt><dd>03-2712 3400</dd>
+      </dl>
+    </div>
+
+    <div class="bcard" style="border-color:var(--primary)">
+      <div class="bhead"><span class="bname">SOCSO / PERKESO</span><span class="badge ok">Editing</span></div>
+      <p class="bdesc">Social security &mdash; this card is in edit mode</p>
+      <div class="sect" style="border-top:0;padding-top:0;margin-top:0">
+        <p class="sh">Filing identity</p>
+        <div class="fgrid"><div class="f wide"><span class="cap">SOCSO employer code</span><span class="box"></span></div></div>
+      </div>
+      <div class="sect">
+        <p class="sh">Payment setup</p>
+        <div class="fgrid">
+          <div class="f two"><span class="cap">Employer account / reference no.</span><span class="box"></span></div>
+          <div class="f"><span class="cap">Paid from</span><span class="box"></span></div>
+          <div class="f wide"><span class="cap">Authorised signatory</span><span class="box"></span></div>
+        </div>
+      </div>
+      <div class="sect">
+        <p class="sh">Correspondence address</p>
+        <div class="fgrid">
+          <div class="f wide"><span class="cap">Address line 1</span><span class="box"></span></div>
+          <div class="f wide"><span class="cap">Address line 2</span><span class="box"></span></div>
+          <div class="f"><span class="cap">City</span><span class="box"></span></div>
+          <div class="f"><span class="cap">State</span><span class="box"></span></div>
+          <div class="f"><span class="cap">Postcode</span><span class="box"></span></div>
+          <div class="f"><span class="cap">Country</span><span class="box"></span></div>
+          <div class="f"><span class="cap">Phone</span><span class="box"></span></div>
+          <div class="f"><span class="cap">Email</span><span class="box"></span></div>
+        </div>
+      </div>
+      <div style="margin-top:11px"><span class="btn">Save</span> <span class="btn ghost">Cancel</span></div>
+    </div>
+
+    <div class="bcard" style="margin-left:22px">
+      <div class="bhead"><span class="bname">EIS / SIP</span>
+        <span><span class="badge no">Not set up</span> <span class="editbtn">Edit</span></span></div>
+      <p class="bdesc">Employment insurance &mdash; a separate registration from SOCSO, under it</p>
+      <dl class="dl"><dt>Account / reference</dt><dd>Not set</dd><dt>Paid from</dt><dd>Not set</dd></dl>
+    </div>
+
+    <div class="bcard">
+      <div class="bhead"><span class="bname">Income Tax / LHDN</span>
+        <span><span class="badge ok">Configured</span> <span class="editbtn">Edit</span></span></div>
+      <p class="bdesc">Monthly tax deduction</p>
+      <dl class="dl"><dt>E number</dt><dd>E 9876543210</dd><dt>Account / reference</dt><dd>0098765432</dd>
+        <dt>Paid from</dt><dd>Maybank &middot;&middot;&middot;4471</dd></dl>
+    </div>
+
+    <div class="bcard">
+      <div class="bhead"><span class="bname">HRDF / HRD Corp</span>
+        <span><span class="badge no">Not set up</span> <span class="editbtn">Edit</span></span></div>
+      <p class="bdesc">Training levy</p>
+      <dl class="dl"><dt>Contribution rate</dt><dd>No Contribution</dd><dt>Account / reference</dt><dd>Not set</dd></dl>
+    </div>
+
+    <div class="bcard">
+      <div class="bhead"><span class="bname">Zakat</span>
+        <span><span class="badge no">Not set up</span> <span class="editbtn">Edit</span></span></div>
+      <p class="bdesc">Religious contribution</p>
+      <dl class="dl"><dt>Account / reference</dt><dd>Not set</dd><dt>Paid from</dt><dd>Not set</dd></dl>
+    </div>
+
+    <div class="bcard">
+      <div class="bhead"><span class="bname">PTPTN</span>
+        <span><span class="badge no">Not set up</span> <span class="editbtn">Edit</span></span></div>
+      <p class="bdesc">Study loan deduction</p>
+      <dl class="dl"><dt>Account / reference</dt><dd>Not set</dd><dt>Paid from</dt><dd>Not set</dd></dl>
+    </div>
+
+    <div class="bcard">
+      <div class="bhead"><span class="bname">Tabung Haji</span>
+        <span><span class="badge no">Not set up</span> <span class="editbtn">Edit</span></span></div>
+      <p class="bdesc">Pilgrimage savings deduction</p>
+      <dl class="dl"><dt>Account / reference</dt><dd>Not set</dd><dt>Paid from</dt><dd>Not set</dd></dl>
+    </div>
+  </div>
+
+  <p class="cap2">Only the bodies this system supports are shown. Same fields, same rules, same people
+    allowed to edit. Saving a card keeps you on this screen &mdash; you are never sent back to the company list.</p>
+</div>

@@ -1,3 +1,66 @@
+## r353 (2026-09-28) — four items, and three of my own instructions were wrong. `main@373cd3af`, **no migration**.
+
+Closed: `cbfa8b0b`, `fda53352`, `15e5bd93`, `77e882f5`. Gate: **1046 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=489`.
+
+### THE ROUND'S REAL FINDING: THREE BRIEFS OF MINE WERE WRONG AND THE AGENTS REFUSED THEM
+
+Each was refused with evidence, and each refusal was correct. Recorded here because the pattern matters more than any one feature.
+
+1. **The `auto_table` sync gate would have moved real tax.** My `fda53352` brief said "extend the sync gate to 'auto_table' (its grid already derives)". It does not. `core/dependents.ts:569` gates on `!== 'auto'` and `:636` writes `childReliefMode: 'auto'` **hardcoded**, alongside `childReliefTable: state.grid` — null when a category is missing. Widening it would have replaced every `auto_table` employee's DECLARED grid with the register's and flipped their mode, on the rail built to prevent exactly that. For a disabled child in higher education: RM16,000 → RM2,000. Built as a READ instead (`childReliefTableHeadCount`, `core/dependents.ts` untouched). **I verified the refusal in the source before accepting it.**
+
+2. **A false justification in my brief would have hidden a bug.** I told the `15e5bd93` builder to keep r352's `EmployeeSearchField` fix "because the personnel tab-save guards depend on it." They grepped: the dom file about to be retired was the **only** test in the repo exercising `hiddenInputIsUserFacing` / `controlDisplay`. Deleting it on my say-so would have left r352's silent-data-loss fix as untested code behind a green suite. They tested both functions directly instead.
+
+3. **`cbfa8b0b` item 7 was half wrong**, and the builder said so: on rest/off/PH rows the time cells genuinely are disabled, so "it still says they do not ask for hours" was TRUE. What was stale was the sentence's account of how an ordinary day's credit is derived.
+
+### `cbfa8b0b` — THE ENTERED WINDOW IS THE CLAIM, AND THE SAFETY MOVED TO THE APPROVER
+
+The clock-out clip and the measured cap are gone from `lib/extended-hours.ts`; the shift-end floor and cross-midnight roll stay. `eligibleExtendedMinutes` is now a projection of one `assessExtendedClaim`, so the figure and the approver's warning cannot disagree. `measuredExtendedMinutes` was dropped from the signature, which is what caught all four stale call sites at compile time.
+
+**A money bug found outside the brief and hand-fixed:** the cross-midnight roll tested `<=`, so `claimEnd === claimStart` rolled to +1440 — **a full day's credit from an obvious mis-entry**. Masked by the measured cap; removing the cap exposed it. Verified by execution, pinned.
+
+**RESIDUAL HOLE, STATED NOT HIDDEN:** `actualClockOut` is a time with no date, so a clock-out *earlier* than the claimed start reads as next-day. Someone who left at 17:00 and claims 18:00–23:51 gets the credit and no warning. Every alternative traced broke the ordinary evening-shift case. Needs a dated clock-out from the attendance engine.
+
+**THE RULE MY PLAN DROPPED.** Their contest listed four business rules "do not change"; the plan carried three. The missing one: *"Rest day / off day / public holiday use the same time fields."* Their point 8 was pointing at it and I read it as a wording fix. They approved a plan that had silently lost one of their own rules. Raised as its own item with the money consequence named (a 2-hour rest-day claim goes from 1 day to nothing under their 240-minute rule).
+
+### `fda53352` — SECTION B CARRIES THE TAXABLE EXCESS ONLY
+
+`eaStatement` now derives `taxableAllowances = allowances − exemptAllowances`. The annual cap is NOT re-derived: `roomFor()` already applied it, so the over-limit remainder is already in `allowanceApplied`. The exempt total was being printed **twice** on one form — inside 1(c) and again in Section F. Non-vacuity re-derived **by me, not just reported**: reverting the subtraction fails by exactly RM3,000, the exempt slice.
+
+The HTML statement read the exempt figure three times on one screen; now once, in Section F. `notTracked` and `exemptAllowances` retired in place.
+
+**Geometry, measured rather than eyeballed — and two of the reporter's premises were inverted.** Section A's pitch was 14.5pt against the agency's 13.8, i.e. already *wider*; the genuinely tight gap was our section square sitting 0.6pt under the banner where the agency leaves 4.0. The officer box has five 13.2pt rows = **two** writing lines, so the plan's "two lines to three" is not on the form; the real defect was `fitSize` flooring at 1pt and shrinking a four-part address to ~6pt. `scripts/measure-ea-official-pdf.ts` is **committed this time** — r349's was written and never committed, which is why r351 was still guessing.
+
+`captionWithInlineRule` now THROWS if a caller's `ruleTo` would put the `')'` past `moneyLeft`, so r351's overprint cannot return by someone re-typing a literal.
+
+### `15e5bd93` — A DEDICATED SCREEN, AFTER WE BUILT THE WRONG SHAPE THIS MORNING
+
+r352 shipped a rail + workspace inside the tab; they contested it and asked for a dedicated screen with view/edit modes, which their original text had already said. The route is `/admin/organization/[companyId]/statutory`, added to `SCREENS` (the trap `test/function-access.test.ts` exists to catch). Per-card `viewing | editing`, one at a time, posting to the existing action. `statutory-tab-actions.ts` and `company-statutory-tab-sections.ts` deleted rather than orphaned.
+
+**Cancel now UNMOUNTS the form, inverting r352's "hidden, never unmounted"** — r352 needed mounting because one Save read every body out of the DOM; with per-card Save there is no such reader, and a mounted closed form makes Cancel a lie.
+
+**DEPARTURE FROM THE APPROVED DRAWING, accepted and owed to the reporter:** while one card is editing, the other cards' Edit buttons are disabled. The picture showed them ordinary. Pressing another Edit would unmount a dirty form and discard typed statutory data with no warning. A hint on screen says why.
+
+**A VACUITY TRAP CAUGHT IN PASSING:** a `.test.tsx` that is not `.dom.test.tsx` matches **neither** vitest project and is silently skipped. The new render guard was first written that way. Verified across the merged tree: only the three deliberate `.browser.test.tsx` files match that shape.
+
+### `77e882f5` — THE COUNT WAS RIGHT AND THE SCREEN WAS THE DEFECT
+
+Read off production: the one non-archived child is born 2004-01-01, not a student, **`child_tax_relief` TRUE**, category `under_18`. The count of 1 is correct — the explicit decision is tested before the age, deliberately, because that is the only way a disabled or studying child over 18 is claimable. Unticking gives 0 with no code change. The screen printed the 1 and said nothing, twice.
+
+Now the breakdown names the tick as the reason, and a category its own date of birth disproves is flagged. Only the explicit case is annotated; an ordinary under-18 child gets neither label, which is what stops the labels being unconditional.
+
+The rule moved to `lib/dependent-vocabulary.ts` for the reason `childAgeYears` moved: the card is a CLIENT component and `core/dependents.ts` pulls the pg driver, so the test could not even import it. The browser can now reach the predicate instead of needing a second copy.
+
+### PROCESS FAULTS OF MINE, RECORDED SO THE NEXT ROUND DOES NOT REPEAT THEM
+
+- **`build-start` before briefing makes the plan unreadable.** `pull-approved` excludes `building` items and no CLI subcommand pulls a building item's plan. All four agents built from my briefs, not the approved plans; two said so explicitly and one added a temporary local subcommand to read it. Either brief with the plan text inline, or mark building *after* the agent has read it.
+- **A broken staleness probe made me report a stall that was not happening.** `find -newermt '-30 minutes' 2>/dev/null` errors on this box (`bfs` rejects the relative date); stderr was discarded, the empty result read as "no activity". Same shape as the `git -C <missing dir>` trap §2 names. Validate a probe against a known-positive before trusting a negative.
+
+### NOT DONE
+
+- **`4011903e`** is planned, not built — and its plan says the reporter's mechanism is impossible (LP never enters Σ(Y−K), and double-feeding it would *under*-deduct). The real defect in that figure is that the replay accumulates `payslip.grossPay`, so exempt allowances, unpaid leave and pre-tax deductions inflate Σ(Y−K) for every prior month. We asked for Employee A's records rather than assert which of four causes produced their RM1,500.
+- **`localization/my/multicycle-worksheet.ts` still misses `zakatRebateTp1`** — a divergence **r352 introduced** by widening the kernel's Z replay and not the worksheet's. Named in `4011903e`'s plan; not fixed here.
+- The `/approvals` warning path has never been rendered with a real discrepancy — the seed produces none. Pinned in jsdom and by source shape only.
+- `EA_FORM.right` is still 571.3 vs the agency's 556.6; B.1 sub-items still read `1(a)`…`1(f)`.
 ## r352 (2026-09-28) — five items, and the specification this platform cites was never in the building. `main@0724f2f2`, **no migration**.
 
 Closed: `b25e421e`, `04b88724`, `0df7dd44`, `15e5bd93`, `72d1a390`. Gate: **1043 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=489`.
