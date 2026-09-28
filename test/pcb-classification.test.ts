@@ -295,6 +295,44 @@ describe('09b554e9 — engine: declared classification drives the PCB/EPF stream
       (ea?.partB.grossSalary ?? 0) + (ea?.partB.bonus ?? 0) + 1000,
       2,
     );
+
+    // ⚠️ THE MARCH RUN BELOW MUST STAY AFTER THE EA ASSERTIONS ABOVE. It was first written before
+    // them and broke B.1(c): the RM3,000 cap is spent by February, so March's whole 2,000 allowance
+    // is taxable and the EA's taxable total becomes 3,000 rather than the 1,000 those lines pin.
+    // The two-month EA figures and the three-month accumulator are different claims; order is what
+    // keeps them both true.
+    // ── 4011903e (r354) — AND THE SAME SPLIT MUST REACH Σ(Y−K) ──────────────────────────────────────
+    //
+    // This is the money case for that item, and this fixture is the only place in the suite where gross
+    // pay and the PCB base genuinely differ, so it is the only place the assertion is non-vacuous.
+    //   Jan: paid 6,000 (basic 4,000 + allowance 2,000), charged 4,000 — all 2,000 exempt.
+    //   Feb: paid 6,000, charged 5,000 — 1,000 of headroom left, so 1,000 became taxable.
+    // March's accumulator must therefore carry 9,000, not 12,000. The RM3,000 gap IS the exempt total
+    // asserted two lines below, and before this item it was silently inflating P and over-deducting
+    // every employee with a tax-exempt allowance. Spec rule 9, printed p.20:
+    // "All the tax exemption ... shall be EXCLUDED FROM THE REMUNERATION for MTD purposes."
+    const mar = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-03' });
+    await generatePayslips(a, { batchId: mar.batchId });
+    const sMar = await slipOf(mar.batchId, e.employmentId);
+    const marMeta = (sMar.statutory as { pcbMeta?: { ytdGross?: number; ytdNet?: number; epfClaimed?: number } }).pcbMeta;
+    const janBase = Number((sJan.statutory as { bases?: { pcb?: number } }).bases?.pcb ?? 0);
+    const febBase = Number((sFeb.statutory as { bases?: { pcb?: number } }).bases?.pcb ?? 0);
+    expect(janBase, 'January charged the basic only').toBeCloseTo(4000, 2);
+    expect(febBase, 'February charged the basic plus the taxable 1,000').toBeCloseTo(5000, 2);
+    expect(
+      Number(marMeta?.ytdGross ?? 0),
+      'Y is the two CHARGED bases (9,000), never the two gross figures (12,000)',
+    ).toBeCloseTo(9000, 2);
+    expect(
+      Number(marMeta?.ytdGross ?? 0),
+      'the RM3,000 gap is exactly the exempt total — this is the over-deduction 4011903e reported',
+    ).not.toBeCloseTo(12000, 2);
+    // And the identity the explanation screen reconciles against.
+    expect(
+      Math.round((Number(marMeta?.ytdGross ?? 0) - Number(marMeta?.epfClaimed ?? 0)) * 100) / 100,
+      'Y − K must equal Σ(Y−K)',
+    ).toBeCloseTo(Number(marMeta?.ytdNet ?? 0), 2);
+
   });
 
   it('EPF Bonus 2012 on an epf+socso code routes the amount down the additional-remuneration EPF path', async () => {
