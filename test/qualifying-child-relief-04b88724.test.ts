@@ -236,12 +236,36 @@ describe('04b88724 · provenance — derived or typed, and never dressed up as t
     expect(q!.mode).toBe('auto');
     expect(q!.derived).toBe(true);
     expect(q!.familyChildren, 'two child records on the Family register').toBe(2);
-    // …and the deduction is STILL the flat two children, because that is what 'auto' mode's kernel
-    // expression is. Reporting "five qualifying children" here would print a figure the payslip denies.
-    expect(q!.reliefRM).toBeCloseTo(2 * RELIEFS.perChild, 2);
-    expect(q!.qualifyingChildren).toBe(2);
+    /**
+     * ⚠️ r351 REVERSED THIS ASSERTION, AND THE PAIR IS THE POINT.
+     *
+     * It used to read "the deduction is STILL the flat two children, because that is what 'auto' mode's
+     * kernel expression is", pinning `reliefRM` at 2 × perChild. That was the DEFECT the reporter
+     * reported: both children here are classified, so the register supports Ain (under_18, 1 unit) plus
+     * Bala (study_tertiary, 4 units at a 50% share = 2) = 3 units = RM6,000, and the card was printing
+     * the stored head count instead.
+     *
+     * The card now shows the REGISTER's figure. What has NOT moved is the payslip: `core/payroll.ts`
+     * still prices from the stored columns, so `storedReliefRM` is still 2 × perChild. r351 deliberately
+     * did not move the kernel — that is a three-consumer money change and this repo already split this
+     * item once for exactly that reason (r343 the card, a5f21891/r344 the payslip).
+     *
+     * So the assertion is the PAIR, in both directions: the box shows what the records support, the
+     * amber line names what payroll will actually deduct, and neither figure can be hidden.
+     */
+    expect(q!.reliefRM, 'the register supports 3 units').toBeCloseTo(3 * RELIEFS.perChild, 2);
+    expect(q!.qualifyingChildren).toBe(3);
+    expect(q!.storedReliefRM, 'but the payslip still deducts the stored head count').toBeCloseTo(
+      2 * RELIEFS.perChild,
+      2,
+    );
+    expect(q!.storedQualifyingChildren).toBe(2);
+    expect(q!.reliefRM, 'and the two must differ here, or this case proves nothing').not.toBeCloseTo(
+      q!.storedReliefRM,
+      2,
+    );
     expect(q!.breakdown.map((r) => [r.kind, r.name, r.category, r.sharePercent, r.units])).toEqual([
-      ['child', 'Bala', 'study_tertiary', 50, 1],
+      ['child', 'Bala', 'study_tertiary', 50, 2],
       ['child', 'Ain', 'under_18', 100, 1],
     ]);
     expect(
