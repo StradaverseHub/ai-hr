@@ -1,0 +1,85 @@
+-- r351 · 1785b766 — THE ANNUAL PCB EXEMPTION IS PER EMPLOYEE, AND WE WERE TRACKING IT PER EMPLOYER.
+--
+-- ══ THE DEFECT, IN OUR OWN TABLE'S OWN WORDS ════════════════════════════════════════════════════════
+--
+-- `localization/my/statutory-tables.ts`, the header over `MY_PCB_EXEMPTION_CODES`, verbatim:
+--
+--     "Caps are ANNUAL, tracked per employee per code via the payslip-ledger replay in core/payroll.ts"
+--
+-- The first half is the statute. The second half is where it went wrong: that replay reads THIS
+-- employer's issued payslips (`payslip.statutory.exemptionUsed`) and nothing else, so the ledger is
+-- per employer per code. `core/payroll.ts` computes each pay item's headroom as
+--
+--     roomFor(code, cap) = cap − priorUsed[code] − exemptionUsed[code]
+--
+-- and `priorUsed` opened at nothing for anybody with no payslip from us yet. So an employee who joins in
+-- July having already spent the whole RM6,000 travel exemption at their old job arrived here with a
+-- fresh RM6,000: the same annual exemption granted TWICE in one tax year, RM6,000 of pay kept out of
+-- every statutory base that should have been in it, and too little MTD deducted every month for the
+-- rest of the year. Nothing on a payslip shows it. The employee finds out at assessment, when they owe.
+--
+-- THE FORM ALREADY TOLD US. Form TP3 Section C2 is exactly this figure — "Jumlah elaun/perkuisit/
+-- pemberian/manfaat YANG DIKECUALIKAN CUKAI", the previous employment's TAX-EXEMPT allowances, in five
+-- lettered boxes. We captured it (item df35d60d), we validated it against the specification's limits and
+-- we added its over-limit excess to ∑(Y−K) (item 20837372 / r350). What we never did was tell the
+-- exemption ledger that the money had been spent.
+--
+-- ══ A COLUMN, BESIDE THE FIVE THAT ARE ALREADY THERE — AND IT IS NOT A SIXTH FORMULA VARIABLE ════════
+--
+-- The specification's printed page 22 names FOUR variables a TP3 feeds ("(Y–K*), X, Z and ∑LP") and all
+-- four are already columns. This is not a fifth: it is the OPENING BALANCE OF A LEDGER, the per-code
+-- equivalent of what `payslip.statutory.exemptionUsed` holds for each of our own months. It reaches the
+-- money by deciding how much exemption a CURRENT-year pay item may still claim, never by entering P.
+--
+-- ALTER, not CREATE: `employee_statutory_my` already carries its grants, and CLAUDE.md §6 requires a
+-- GRANT only for a table the migration itself creates. Verified before writing this — 0488 added
+-- `tp3_lp` to this same table with no GRANT for the same reason, and the table's privileges are
+-- unchanged since. Adding one here would be noise.
+--
+-- JSONB, NOT FIVE MORE NUMERIC COLUMNS. The set of exemption codes is a COUNTRY PACK's table
+-- (`MY_PCB_EXEMPTION_CODES`), not a statutory constant of this schema; under ADR-0080 a pack with a
+-- different exemption list is the normal case, and a column per code would put one pack's taxonomy into
+-- the kernel's DDL. The map's keys are the same keys `payslip.statutory.exemptionUsed` already uses, so
+-- both halves of the year — previous employment and ours — speak one language and are summed by one
+-- loop in `core/payroll.ts`.
+--
+-- NULLABLE, no default. Null is "no previous-employment exemption recorded", read as an empty map, read
+-- in turn as FULL annual headroom — which is exactly today's behaviour and is correct for everyone
+-- without a TP3. A NOT NULL DEFAULT '{}' would assert on every existing row that somebody checked.
+--
+-- GOVERNED BY THE SAME `tp3_year` AS THE OTHER FIVE. `core/payroll.ts` applies all six on one test,
+-- `tp3Applies = e.tp3Year === pYear`, so a form for a year this run is not paying seeds nothing and a
+-- new tax year starts with full headroom without anything having to reset it.
+ALTER TABLE "employee_statutory_my" ADD COLUMN IF NOT EXISTS "tp3_exemption_used" jsonb;
+
+COMMENT ON COLUMN "employee_statutory_my"."tp3_exemption_used" IS
+  'Per-PCB-exemption-code amounts already used at the PREVIOUS employer, for the year in tp3_year — derived from Form TP3 Section C2 as min(keyed, annual limit) per mapped code. Written by core/tp3.ts saveTp3; read by core/payroll.ts to open priorUsed in the per-code exemption ledger, so a mid-year joiner draws only on the REMAINING annual headroom. Keys match payslip.statutory.exemptionUsed. Null = none recorded, read as full headroom.';
+
+-- ══ WHY THERE IS NO BACKFILL IN THIS FILE, AND WHERE THE BACKFILL IS ════════════════════════════════
+--
+-- Migration 0488 backfilled `tp3_lp` in SQL because that figure is a plain SUM of a JSONB object's
+-- `amount` members and needed no statutory knowledge to compute. THIS figure needs two things SQL here
+-- would have to be told: which PCB exemption code each C2 sub-line maps to, and what that code's annual
+-- limit is. Writing either into this file would create a THIRD transcription of the statutory facts that
+-- `MY_PCB_EXEMPTION_CODES` owns — and de-duplicating the SECOND one (the literal 6,000 / 3,000 / 2,000
+-- that sat on `MY_TP3_2026_SECTION_C`) is half of what this very item is for. A backfill that could
+-- drift from the calculation it is seeding is worse than no backfill.
+--
+-- SO IT IS `scripts/resync-tp3-projections.ts`, WHICH ALREADY DOES EXACTLY THIS. It walks every
+-- `employee_tp3` row and hands each freshly-derived seed to `projectSeedOntoStatutory` — the SAME
+-- function the save path uses — so a resynced row is byte-identical to what re-opening and re-saving the
+-- form would have produced, including the `laterYearHoldsColumns` and missing-profile refusals. It needs
+-- no change for this column beyond the seed type it already passes through.
+--
+-- ⚠️ CLAUDE.md §6: `deploy.sh` RUNS MIGRATIONS, NOT SCRIPTS. Until that script has been run on the box
+-- and its rows verified, this column is null everywhere and every existing TP3 employee keeps the full
+-- annual headroom they have today — i.e. the defect persists for them, silently, with no error. The
+-- round is NOT done when this migration lands. On the reporter's system the affected population is the
+-- `employee_tp3` rows whose person's `tp3_year` equals the form's assessment year and whose Section C2
+-- carries money on sub-line i, ii or iv.
+--
+-- ⚠️ IT DOES NOT TOUCH ONE PAYSLIP, here or in the script. This writes an opening balance that FUTURE
+-- runs read; no payslip, batch or statutory snapshot is read or written. A month that has been FILED is
+-- protected where it has always been protected, in `refuseIfPeriodFiled`. The next unfiled run for an
+-- affected employee will correctly exempt LESS and deduct MORE — which is the money the employee would
+-- otherwise have owed at assessment.

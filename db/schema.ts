@@ -3127,6 +3127,26 @@ export const employeeStatutoryMy = pgTable(
     tp3PcbPaid: numeric('tp3_pcb_paid', { precision: 12, scale: 2 }),
     tp3ZakatPaid: numeric('tp3_zakat_paid', { precision: 12, scale: 2 }),
     tp3Lp: numeric('tp3_lp', { precision: 12, scale: 2 }),
+    /**
+     * SIX, AND THE SIXTH IS NOT A VARIABLE IN THE FORMULA — it is the opening balance of a LEDGER
+     * (item 1785b766, migration 0489).
+     *
+     * `{ PCB_TRA_BUSINESS: 6000, … }` — how much of each ANNUAL, PER-EMPLOYEE PCB exemption cap the
+     * PREVIOUS employer already spent, derived from Form TP3 Section C2 by `core/tp3.ts`'s
+     * `deriveAccumulatorSeed` and governed by the same `tp3_year` as the five columns above.
+     * `core/payroll.ts` opens `priorUsed` with it, so `roomFor(code, cap) = cap − priorUsed − used`
+     * hands this employer's pay items only the REMAINING headroom.
+     *
+     * WHY IT IS NOT FIVE MORE NUMERIC COLUMNS: the set of codes is a PACK TABLE
+     * (`MY_PCB_EXEMPTION_CODES`), not a statutory constant of the schema — a country pack with a
+     * different exemption list is the normal case under ADR-0080, and a column per code would put the
+     * pack's taxonomy into the kernel's DDL. The map's keys are exactly the keys the payslip ledger
+     * already stores in `payslip.statutory.exemptionUsed`, so both halves of the year speak one language.
+     *
+     * NULL = nothing recorded, read as an empty map ⇒ full annual headroom, which is what every row
+     * meant before 0489 and remains correct for everyone with no TP3.
+     */
+    tp3ExemptionUsed: jsonb('tp3_exemption_used').$type<Record<string, number>>(),
     // 1.2.4 Zakat election (ADR-0058). zakatActive is the opt-in flag — false ⇒ no zakat regardless of the
     // other fields. zakatState is one of MY_STATES (display/metadata only; no per-state behaviour in v1).
     // zakatMethod selects percent-of-MTD vs a fixed RM amount; zakatPercent is a decimal (e.g. 0.0250 = 2.5%)
