@@ -66,50 +66,135 @@ function timeToMinutes(t: string | null | undefined): number {
 }
 
 /**
- * r336 cbfa8b0b · HOW MANY OF THE EMPLOYEE'S CLAIMED MINUTES ARE ELIGIBLE — the derived figure Section B
- * shows beside every row, and the one the tier ladder is then tested against.
+ * r336 cbfa8b0b · HOW MANY OF THE EMPLOYEE'S CLAIMED MINUTES ARE ELIGIBLE — the derived figure the Leave
+ * Credit table shows beside every row, and the one the tier ladder is then tested against.
  *
- * ── THE CLAIM NARROWS A MEASURED FIGURE; IT NEVER WIDENS ONE ────────────────────────────────────────────
- * `measuredExtendedMinutes` is r334's `extendedMinutesAfterShiftEnd` over the day's stored `ot_minutes` —
- * the authoritative record of how long this person actually worked past their scheduled shift end, owned by
- * the attendance engine and already the basis payroll pays from. The employee's window can only take AWAY
- * from it: someone who stayed until 23:00 but only wants to claim to 22:00 gets 22:00, and someone who
- * types 02:00 on a day the engine measured two hours of extended work gets two hours. That asymmetry is the
- * entire safety property here — the screen cannot mint minutes, so it cannot mint a credit, so it cannot
- * suppress an hour of overtime pay that was never worked.
+ * ── ⚠️ r353 cbfa8b0b · THE OWNER REVERSED THE RULE: THE ENTERED WINDOW *IS* THE CLAIM ──────────────────
+ * Two paragraphs used to sit here arguing FOR two reducers that are now gone. They are REWRITTEN rather
+ * than deleted, because the argument was long and explicit and a later reader has to be able to see which
+ * way the decision went (CLAUDE.md §8: prose outlives the kernel, and a sentence pinning a decision you are
+ * reversing is updated, not removed).
  *
- * ── THE WINDOW IS ALSO CLIPPED TO [shift end, actual clock-out] WHEN BOTH ARE KNOWN ──────────────────────
- * Not as a second measurement — the cap above already bounds the answer — but so the FIGURE ON SCREEN
- * matches the two read-only times printed next to it. A row that says "shift ended 18:00, clocked out
- * 22:00, claimed 17:00–22:00, eligible 300" is a row an approver has to reconcile by hand; clipping makes
- * it say 240. Each clip is skipped when its time is unknown (no assigned shift ⇒ no scheduled end; an
- * unclosed day ⇒ no clock-out), which is a narrower answer, never a wider one, because the cap still holds.
+ * WHAT THEY SAID.
+ *  (1) "THE CLAIM NARROWS A MEASURED FIGURE; IT NEVER WIDENS ONE." The answer was capped at
+ *      `measuredExtendedMinutes` — the attendance engine's `extendedMinutesAfterShiftEnd` over the day's
+ *      stored `ot_minutes` — "so the screen cannot mint minutes, so it cannot mint a credit, so it cannot
+ *      suppress an hour of overtime pay that was never worked".
+ *  (2) "THE WINDOW IS ALSO CLIPPED TO [shift end, actual clock-out] WHEN BOTH ARE KNOWN", so that the
+ *      figure on screen matched the two read-only times printed next to it.
  *
- * ── CROSS-MIDNIGHT ─────────────────────────────────────────────────────────────────────────────────────
- * An end at or before the start is read as the next day (+1440), which is what extended hours after an
- * evening shift look like. It is NOT read as a typo, because for THIS field a reversed pair is the ordinary
- * case rather than the mistake — unlike `minutesBetween` in core/replacement-request.ts, which is a
- * same-day hours claim and refuses one. A zero-length window still yields zero minutes and no credit.
+ * WHY BOTH ARE GONE. The reporter's own repro on cbfa8b0b — a shift ending 18:00, clocked out at 18:00,
+ * nothing measured, and a claimed window of 18:00–23:51 — returned ZERO, and it returned zero TWICE OVER:
+ * the clip alone gave 0, and with the clip removed the cap still gave 0. Traced by execution before the
+ * plan was written, which is also why the reporter's own proposed fix (drop the clock-out) would not have
+ * fixed the reporter's own example. The owner then reversed the rule: the employee's entered window IS the
+ * claim. An attendance row is a convenience that is routinely missing or wrong — nobody clocks out after a
+ * late release — and a rule that silently answers "no credit" for work that was done is worse than one that
+ * asks a human to look.
+ *
+ * ⚠️ MONEY · WHERE THE SAFETY PROPERTY WENT: TO THE APPROVER, AND THAT IS WHAT `assessExtendedClaim` IS FOR.
+ * It did not evaporate, it moved, and moving it is only honest if the approver can actually see the thing
+ * the kernel stopped enforcing. So the discrepancy is RETURNED rather than swallowed: one computation
+ * yields the minutes AND whether the claimed end runs past the recorded clock-out AND whether there is a
+ * clock-out at all, and the request table and the approvals queue render that same result. Replacement
+ * leave blocks overtime pay for the same hours (ADR-0033) and converts to cash on expiry, so after this
+ * change the line manager is the ONLY check on a claimed window. That is the owner's decision, recorded on
+ * cbfa8b0b — not an oversight here.
+ *
+ * ── WHAT IS KEPT, AND NONE OF IT IS AN OVERSIGHT ───────────────────────────────────────────────────────
+ * THE SHIFT-END FLOOR STAYS. Minutes before the scheduled shift end are ordinary rostered work, not
+ * extended work, whoever types them: a 17:00–22:00 window on a shift ending 18:00 is 240 eligible minutes,
+ * not 300. That is the DEFINITION of the thing being claimed, not a check on the person claiming it.
+ * THE CROSS-MIDNIGHT ROLL STAYS. An end BEFORE the start is read as the next day (+1440), which is what
+ * extended hours after an evening shift look like. It is NOT read as a typo, because for THIS field a
+ * reversed pair is the ordinary case rather than the mistake — unlike `minutesBetween` in
+ * core/replacement-request.ts, which is a same-day hours claim and refuses one.
+ *
+ * ⚠️ AND THE ROLL NOW TESTS `<` RATHER THAN `<=`, WHICH IS A FIX THE CAP WAS HIDING. `end === start` is
+ * ambiguous — zero minutes or twenty-four hours — and this file used to roll it, producing 1440. That was
+ * harmless only because the measured cap then cut it back; with the cap gone, 18:00→18:00 typed by mistake
+ * became 1440 minutes and, through the tier ladder, A FULL DAY OF CREDIT. Verified by execution before it
+ * was changed. A zero-length window reads as zero, which is the conservative reading and the one the
+ * paragraph above always claimed: an employee who means a 24-hour claim can type the next day's time.
+ * THE TIER LADDER IS STILL THE WHOLE-DAY CAP. `extendedHoursCreditDays` above still rounds down and still
+ * stops at 1.0 day, so a 23-hour window cannot become more than one day of credit however it is typed.
+ */
+export type ExtendedClaimAssessment = {
+  /** Eligible minutes: the claimed window, floored at the scheduled shift end, rolled across midnight. */
+  minutes: number;
+  /**
+   * Whether an actual clock-out is on record for the day AT ALL.
+   *
+   * ⚠️ NAMED FOR WHAT IT CAN ASSERT. The approvals queue derives this from the two times STORED on the
+   * claim line (no migration), where a day with an attendance row but no clock-out and a day with no row at
+   * all are the same absence — `extendedHoursDayForTx` returns `row?.checkOutAt ?? null` for both. So this
+   * says "there is no clock-out to compare with", which is true in either case and checkable from here,
+   * rather than "there is no attendance row", which from this input would be a guess.
+   */
+  hasClockOut: boolean;
+  /**
+   * The claimed end runs PAST the recorded clock-out — the amber warning both screens print. FALSE when
+   * there is no clock-out at all: that case is `hasClockOut` and reads differently to an approver.
+   */
+  exceedsClockOut: boolean;
+};
+
+/**
+ * THE ONE COMPUTATION. `eligibleExtendedMinutes` below is a projection of this, so the figure an approver
+ * sees and the warning beside it can never come from two different readings of the same row.
+ *
+ * ⚠️ THE ONE THING THIS CANNOT SEE, stated rather than left to be discovered. `actualClockOut` is a TIME OF
+ * DAY with no date on it, so a clock-out EARLIER than the claimed start is read as belonging to the
+ * following day (`clockOutRaw < start ⇒ +1440`) — the rule this file already carried, unchanged, because it
+ * is what makes an 00:30 clock-out after an 18:00 shift end six and a half hours rather than minus
+ * seventeen. The blind spot that rule leaves: an employee who clocked out BEFORE the window they claim
+ * (left at 17:00, claims 18:00–23:51) is read as having clocked out at 17:00 the next day, so
+ * `exceedsClockOut` stays false and no warning is raised. The approver still has the clock-out printed on
+ * the row beside the claimed window, which is the reading that catches it. Fixing it properly needs a
+ * dated clock-out from the attendance engine, not a better guess here.
+ */
+export function assessExtendedClaim(p: {
+  claimStart: string;
+  claimEnd: string;
+  shiftEnd: string | null;
+  actualClockOut: string | null;
+}): ExtendedClaimAssessment {
+  const clockOutRaw = timeToMinutes(p.actualClockOut);
+  const hasClockOut = Number.isFinite(clockOutRaw);
+  const start = timeToMinutes(p.claimStart);
+  const end0 = timeToMinutes(p.claimEnd);
+  if (!Number.isFinite(start) || !Number.isFinite(end0)) return { minutes: 0, hasClockOut, exceedsClockOut: false };
+  // Cross-midnight: an end BEFORE the start belongs to the following day. `end === start` is zero, not 1440
+  // — see the header; the measured cap used to hide that and its removal exposed a full day of free credit.
+  const end = end0 < start ? end0 + 1440 : end0;
+  const shiftEnd = timeToMinutes(p.shiftEnd);
+  // The clock-out is read on the same day-rolled axis as the claim, so a 00:30 clock-out after an 18:00
+  // shift end does not read as 30 minutes past midnight ON THE MORNING OF the worked date.
+  const clockOut = hasClockOut && clockOutRaw < start ? clockOutRaw + 1440 : clockOutRaw;
+  // The floor is the scheduled shift end when there is one (no assigned shift ⇒ no scheduled end, and then
+  // the claimed start is the floor). There is deliberately no ceiling any more: see the header.
+  const lo = Number.isFinite(shiftEnd) ? Math.max(start, shiftEnd) : start;
+  return {
+    minutes: Math.max(0, Math.round(end - lo)),
+    hasClockOut,
+    exceedsClockOut: hasClockOut && end > clockOut,
+  };
+}
+
+/**
+ * The eligible minutes alone, for the two kernel paths that bank the credit (`accrueExtendedWorkdayToilTx`
+ * and `submitReplacementLeaveRequest`) — the tier ladder's input.
+ *
+ * ⚠️ `measuredExtendedMinutes` IS NO LONGER A PARAMETER, and dropping it from the signature is deliberate
+ * rather than tidying: it was the cap, the cap is the thing the owner reversed, and a parameter left in
+ * place "for later" is how a reducer comes back. Every caller that still believed the measured figure bore
+ * on the answer now fails to compile instead of quietly agreeing.
  */
 export function eligibleExtendedMinutes(p: {
   claimStart: string;
   claimEnd: string;
   shiftEnd: string | null;
   actualClockOut: string | null;
-  measuredExtendedMinutes: number;
 }): number {
-  const start = timeToMinutes(p.claimStart);
-  const end0 = timeToMinutes(p.claimEnd);
-  if (!Number.isFinite(start) || !Number.isFinite(end0)) return 0;
-  // Cross-midnight: an end at or before the start belongs to the following day.
-  const end = end0 <= start ? end0 + 1440 : end0;
-  const shiftEnd = timeToMinutes(p.shiftEnd);
-  const clockOutRaw = timeToMinutes(p.actualClockOut);
-  // The clock-out is clipped on the same day-rolled axis as the claim, so a 00:30 clock-out after an 18:00
-  // shift end does not read as 30 minutes past midnight ON THE MORNING OF the worked date.
-  const clockOut = Number.isFinite(clockOutRaw) && clockOutRaw < start ? clockOutRaw + 1440 : clockOutRaw;
-  const lo = Number.isFinite(shiftEnd) ? Math.max(start, shiftEnd) : start;
-  const hi = Number.isFinite(clockOut) ? Math.min(end, clockOut) : end;
-  const claimed = Math.max(0, hi - lo);
-  return Math.max(0, Math.min(Math.round(claimed), Math.max(0, Math.round(p.measuredExtendedMinutes))));
+  return assessExtendedClaim(p).minutes;
 }

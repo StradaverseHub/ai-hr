@@ -3647,7 +3647,10 @@
     "creditSourceExtended": "ชั่วโมงทำงานต่อ",
     "creditShiftEnd": "เลิกกะ",
     "creditClockOut": "ออกงาน",
-    "creditEligibleMinutes": "{minutes} นาทีเข้าเกณฑ์"
+    "creditEligibleMinutes": "{minutes} นาทีเข้าเกณฑ์",
+    "creditClockOutNone": "ไม่มีบันทึกเวลาออกงาน",
+    "creditWarnPastClockOut": "แจ้งถึง {claimEnd} ออกงาน {clockOut} — คำขอเกินเวลาออกงานที่บันทึกไว้",
+    "creditWarnNoClockOut": "ไม่มีบันทึกเวลาออกงานสำหรับ {date} ชั่วโมงเหล่านี้เป็นการแจ้งของพนักงานเอง"
   },
   "performance": {
     "list": {
@@ -12998,14 +13001,17 @@
       "belowThreshold": "น้อยกว่า {minutes} นาที ไม่เข้าเกณฑ์รับเครดิต"
     },
     "table": {
-      "help": "Add one row for each date you worked and choose its day type. An ordinary working day earns a credit only for the hours worked after your scheduled shift end, so those rows ask for the hours claimed; the other three day types do not. Nothing is credited until your manager approves.",
+      "help": "Add one row for each date you worked. The day type fills in from your roster when you pick the date, and you can change it. An ordinary working day earns a credit for the hours you claim after your scheduled shift end, so those rows ask for those hours; the other three day types are claimed as a whole day or half a day. Your recorded clock-out is shown for reference and no longer limits what you can claim — where the two differ, your manager sees it and checks it before approving. Nothing is credited until your manager approves.",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "Claimed hours apply to an ordinary working day only.",
       "myRequests": "My Leave Credit requests",
       "noRequests": "You have not submitted a Leave Credit request yet.",
       "statusHeading": "Status",
-      "submittedOn": "Submitted"
+      "submittedOn": "Submitted",
+      "noClockOutRecord": "ไม่มีบันทึก",
+      "clockOutMissing": "ไม่มีบันทึกเวลาออกงานสำหรับวันนี้ ผู้จัดการของคุณจะตรวจสอบชั่วโมงเหล่านี้ก่อนอนุมัติ",
+      "clockOutEarlier": "คุณแจ้งถึง {claimEnd} แต่เวลาออกงานที่บันทึกไว้คือ {clockOut} ผู้จัดการของคุณจะตรวจสอบก่อนอนุมัติ"
     }
   },
   "notices": {

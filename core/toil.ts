@@ -1373,8 +1373,14 @@ export async function accrueSelfDeclaredToilTx(
  * this round. This path shares the two things that must never diverge — `extendedHoursCreditDays` (the
  * tiers, the break and grace deductions, the one-day cap) and `bankToilCreditTx` (the double-bank guard,
  * the First Schedule gate, the frozen expiry, the ledger credit and the register row) — and differs only in
- * that the minutes are the employee's CLAIMED window narrowed by the measured figure rather than the whole
- * measured figure. There is no second copy of the arithmetic.
+ * that the minutes are the employee's CLAIMED WINDOW rather than the whole measured figure. There is no
+ * second copy of the arithmetic.
+ *
+ * ⚠️ r353 cbfa8b0b — THIS SENTENCE USED TO READ "the employee's CLAIMED window NARROWED BY THE MEASURED
+ * FIGURE". It no longer is: the owner reversed the rule and `eligibleExtendedMinutes` no longer caps the
+ * claim at `measuredExtendedMinutes` nor clips it to the clock-out. Gate 3 below therefore re-reads the
+ * attendance row for the SHIFT END (the floor, which is kept) and for the clock-out it shows the approver —
+ * not for a ceiling. The check this removed is now the approver's, on the approvals queue.
  *
  * ── EVERY GATE IS RE-RUN HERE, because this is the binding moment and submission was the courtesy ────────
  *  1. the company switch (`extended_hours_enabled`) — off ⇒ r334's byte-identical pre-r334 sentence;
@@ -1424,13 +1430,16 @@ export async function accrueExtendedWorkdayToilTx(
   // Section A, and the message says exactly that.
   if (day.kind !== 'workday') throw new LeaveCreditSectionMismatchError('B', [p.workedDate]);
 
-  // Gate 3 — re-derived from the LIVE attendance row, never from what the claim line stored at submission.
+  // Gate 3 — re-derived from the LIVE attendance row, never from what the claim line stored at submission,
+  // so a shift end corrected between submission and approval still moves the floor. NO CAP IS APPLIED HERE
+  // AND NONE IS APPLIED BELOW: `eligibleExtendedMinutes` is the whole of the arithmetic (r353, see its
+  // header), and re-applying a ceiling of this path's own would be the reversed rule coming back in one
+  // file out of three.
   const eligibleMinutes = eligibleExtendedMinutes({
     claimStart: p.claimStart,
     claimEnd: p.claimEnd,
     shiftEnd: day.shiftEnd,
     actualClockOut: day.actualClockOut,
-    measuredExtendedMinutes: day.measuredExtendedMinutes,
   });
   // Gate 4 — the tiers. `extendedHoursCreditDays` is r334's, unmodified: break and grace come off first,
   // then 0.5 from the half-day figure and 1.0 from the full-day figure, rounded down, one day the cap.

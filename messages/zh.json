@@ -3647,7 +3647,10 @@
     "creditSourceExtended": "延长工时",
     "creditShiftEnd": "下班时间",
     "creditClockOut": "打卡下班",
-    "creditEligibleMinutes": "符合资格 {minutes} 分钟"
+    "creditEligibleMinutes": "符合资格 {minutes} 分钟",
+    "creditClockOutNone": "无打卡下班记录",
+    "creditWarnPastClockOut": "申报至 {claimEnd}，打卡下班 {clockOut} — 申报超出记录的打卡下班时间。",
+    "creditWarnNoClockOut": "{date} 没有打卡下班记录。这些工时是员工本人的申报。"
   },
   "performance": {
     "list": {
@@ -12998,14 +13001,17 @@
       "belowThreshold": "少于 {minutes} 分钟，不符合额度资格。"
     },
     "table": {
-      "help": "Add one row for each date you worked and choose its day type. An ordinary working day earns a credit only for the hours worked after your scheduled shift end, so those rows ask for the hours claimed; the other three day types do not. Nothing is credited until your manager approves.",
+      "help": "Add one row for each date you worked. The day type fills in from your roster when you pick the date, and you can change it. An ordinary working day earns a credit for the hours you claim after your scheduled shift end, so those rows ask for those hours; the other three day types are claimed as a whole day or half a day. Your recorded clock-out is shown for reference and no longer limits what you can claim — where the two differ, your manager sees it and checks it before approving. Nothing is credited until your manager approves.",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "Claimed hours apply to an ordinary working day only.",
       "myRequests": "My Leave Credit requests",
       "noRequests": "You have not submitted a Leave Credit request yet.",
       "statusHeading": "Status",
-      "submittedOn": "Submitted"
+      "submittedOn": "Submitted",
+      "noClockOutRecord": "无记录",
+      "clockOutMissing": "此日期没有打卡下班记录。您的经理会在批准前核对这些工时。",
+      "clockOutEarlier": "您申报至 {claimEnd}，但记录的打卡下班时间为 {clockOut}。您的经理会在批准前核对。"
     }
   },
   "notices": {

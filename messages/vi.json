@@ -3647,7 +3647,10 @@
     "creditSourceExtended": "Giờ làm thêm",
     "creditShiftEnd": "kết thúc ca",
     "creditClockOut": "giờ ra",
-    "creditEligibleMinutes": "{minutes} phút đủ điều kiện"
+    "creditEligibleMinutes": "{minutes} phút đủ điều kiện",
+    "creditClockOutNone": "không có giờ ra được ghi nhận",
+    "creditWarnPastClockOut": "Khai đến {claimEnd}, giờ ra {clockOut} — khai vượt quá giờ ra được ghi nhận.",
+    "creditWarnNoClockOut": "Không có giờ ra được ghi nhận cho {date}. Số giờ này do nhân viên tự khai."
   },
   "performance": {
     "list": {
@@ -12998,14 +13001,17 @@
       "belowThreshold": "Dưới {minutes} phút. Không đủ điều kiện nhận tín dụng."
     },
     "table": {
-      "help": "Add one row for each date you worked and choose its day type. An ordinary working day earns a credit only for the hours worked after your scheduled shift end, so those rows ask for the hours claimed; the other three day types do not. Nothing is credited until your manager approves.",
+      "help": "Add one row for each date you worked. The day type fills in from your roster when you pick the date, and you can change it. An ordinary working day earns a credit for the hours you claim after your scheduled shift end, so those rows ask for those hours; the other three day types are claimed as a whole day or half a day. Your recorded clock-out is shown for reference and no longer limits what you can claim — where the two differ, your manager sees it and checks it before approving. Nothing is credited until your manager approves.",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "Claimed hours apply to an ordinary working day only.",
       "myRequests": "My Leave Credit requests",
       "noRequests": "You have not submitted a Leave Credit request yet.",
       "statusHeading": "Status",
-      "submittedOn": "Submitted"
+      "submittedOn": "Submitted",
+      "noClockOutRecord": "Không có dữ liệu",
+      "clockOutMissing": "Không có giờ ra được ghi nhận cho ngày này. Quản lý của bạn sẽ kiểm tra số giờ này trước khi phê duyệt.",
+      "clockOutEarlier": "Bạn khai đến {claimEnd}, nhưng giờ ra được ghi nhận là {clockOut}. Quản lý của bạn sẽ kiểm tra trước khi phê duyệt."
     }
   },
   "notices": {

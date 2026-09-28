@@ -3681,13 +3681,26 @@ export async function workedDayKindForTx(tx: Tx, employmentId: string, date: str
  * core/toil.ts's tier ladder already runs on, produced by the same function rather than re-derived from
  * `checkOutAt − shiftEnd` here. Re-deriving it would put a SECOND owner on "how long did this person work
  * past their shift end", and the two would diverge the first time a shift's OT rule, its rounding band or
- * its daily cap moved, while payroll kept paying the first one. The clock-out below is shown to the
- * EMPLOYEE so they can see what the system has; it is not what the credit is computed from.
+ * its daily cap moved, while payroll kept paying the first one.
+ *
+ * ⚠️ r353 cbfa8b0b — THIS PARAGRAPH USED TO END "the clock-out below is shown to the EMPLOYEE so they can
+ * see what the system has; it is not what the credit is computed from." The second half was true of r336's
+ * arithmetic and is now WRONG IN BOTH DIRECTIONS, so it is corrected rather than left to age: the owner
+ * reversed the rule on cbfa8b0b, so the clock-out no longer clips the claim (it never was the basis, and
+ * now it does not narrow it either) AND `measuredExtendedMinutes` no longer caps it. What the clock-out is
+ * for now is the APPROVER: `assessExtendedClaim` (lib/extended-hours.ts) compares it with the claimed end
+ * and both the request table and the approvals queue print an amber warning when the claim runs past it, or
+ * when there is no clock-out on record at all. `measuredExtendedMinutes` is still returned as the engine's
+ * own measurement and is read by no credit arithmetic since r353 — do not reintroduce it as a ceiling.
  *
  * NULLS ARE HONEST ANSWERS, not failures. `shiftEnd` is NULL on the company-policy branch (no assigned
  * shift, so there is no scheduled end to claim past — ResolvedSchedule documents this). `actualClockOut`
- * is NULL when the day has no attendance row or was never clocked out. A screen renders "—" for either;
- * the REFUSAL for a day that cannot earn anything comes from the minutes, not from a missing time.
+ * is NULL when the day has no attendance row or was never clocked out, and THOSE TWO ARE INDISTINGUISHABLE
+ * HERE — `row?.checkOutAt ?? null` collapses them on purpose, which is why the screens say "No record"
+ * (there is no clock-out to compare with) rather than claiming there is no attendance row. On an Ordinary
+ * Day row a NULL clock-out now reads as that "No record", not as the em dash that means "this cell does not
+ * apply to this day type"; the REFUSAL for a day that cannot earn anything comes from the minutes, never
+ * from a missing time.
  */
 export type ExtendedHoursDayView = {
   kind: WorkedDayKind;

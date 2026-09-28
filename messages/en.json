@@ -3647,7 +3647,10 @@
     "creditSourceExtended": "Extended hours",
     "creditShiftEnd": "shift end",
     "creditClockOut": "clocked out",
-    "creditEligibleMinutes": "{minutes} eligible min"
+    "creditEligibleMinutes": "{minutes} eligible min",
+    "creditClockOutNone": "no clock-out on record",
+    "creditWarnPastClockOut": "Claimed to {claimEnd}, clocked out {clockOut} — the claim runs past the recorded clock-out.",
+    "creditWarnNoClockOut": "No clock-out on record for {date}. These hours are the employee’s own declaration."
   },
   "performance": {
     "list": {
@@ -12998,14 +13001,17 @@
       "belowThreshold": "Under {minutes} minutes. Not eligible for credit."
     },
     "table": {
-      "help": "Add one row for each date you worked and choose its day type. An ordinary working day earns a credit only for the hours worked after your scheduled shift end, so those rows ask for the hours claimed; the other three day types do not. Nothing is credited until your manager approves.",
+      "help": "Add one row for each date you worked. The day type fills in from your roster when you pick the date, and you can change it. An ordinary working day earns a credit for the hours you claim after your scheduled shift end, so those rows ask for those hours; the other three day types are claimed as a whole day or half a day. Your recorded clock-out is shown for reference and no longer limits what you can claim — where the two differ, your manager sees it and checks it before approving. Nothing is credited until your manager approves.",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "Claimed hours apply to an ordinary working day only.",
       "myRequests": "My Leave Credit requests",
       "noRequests": "You have not submitted a Leave Credit request yet.",
       "statusHeading": "Status",
-      "submittedOn": "Submitted"
+      "submittedOn": "Submitted",
+      "noClockOutRecord": "No record",
+      "clockOutMissing": "No clock-out is on record for this date. Your manager will check these hours before approving.",
+      "clockOutEarlier": "You claimed to {claimEnd}, but the clock-out on record is {clockOut}. Your manager will check this before approving."
     }
   },
   "notices": {

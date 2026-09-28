@@ -54,6 +54,9 @@ import {
   LeaveEmployeeCell,
   LeaveTypeCell,
 } from '@/components/leave/leave-request-cells';
+// r353 cbfa8b0b — the SAME assessment the employee's own request table runs, so the approver's warning
+// and the employee's eligible minutes come from one computation rather than two readings of one row.
+import { assessExtendedClaim } from '@/lib/extended-hours';
 import { durationLabel } from '@/lib/leave-duration';
 import { ApprovalsSortControl } from './sort-control';
 import { AttentionOnArrival } from './attention-on-arrival';
@@ -804,9 +807,51 @@ export default async function ApprovalsPage({
                           {d.sourceType === 'extended_hours' ? (
                             <span data-testid="approval-credit-extended-detail">
                               {d.shiftEnd ? ` · ${t('creditShiftEnd')} ${d.shiftEnd.slice(0, 5)}` : ''}
-                              {d.actualClockOut ? ` · ${t('creditClockOut')} ${d.actualClockOut.slice(0, 5)}` : ''}
+                              {/* ⚠️ r353 — THE ABSENCE IS PRINTED NOW. This used to render nothing at all when
+                                  `actualClockOut` was NULL, so a claim with no clock-out behind it and a claim
+                                  the approver had simply not read looked identical on the row. */}
+                              {' · '}
+                              {d.actualClockOut ? `${t('creditClockOut')} ${d.actualClockOut.slice(0, 5)}` : t('creditClockOutNone')}
                               {d.fromTime && d.toTime ? ` · ${d.fromTime.slice(0, 5)} → ${d.toTime.slice(0, 5)}` : ''}
                               {d.eligibleMinutes != null ? ` · ${t('creditEligibleMinutes', { minutes: d.eligibleMinutes })}` : ''}
+                              {/* ⚠️⚠️ r353 cbfa8b0b · MONEY · THE WARNING THAT REPLACED A KERNEL CONTROL.
+                                  Until r353 `eligibleExtendedMinutes` CLIPPED the claim to this clock-out and
+                                  CAPPED it at the attendance engine's measured figure, so a claim that ran past
+                                  what was recorded quietly shrank — and the reporter's own example shrank to
+                                  zero. The owner reversed both: the employee's window is the claim. Replacement
+                                  leave blocks overtime pay for the same hours (ADR-0033) and converts to cash on
+                                  expiry, so THIS APPROVER IS NOW THE ONLY CHECK, which is why the difference is
+                                  drawn as a warning rather than left to be noticed among the times above.
+
+                                  DERIVED, NOT STORED — no migration. `assessExtendedClaim` is the SAME function
+                                  that produced the eligible minutes on the employee's own screen, run here over
+                                  the two times already on the claim line, so the two surfaces cannot disagree
+                                  about one row. "No record" and "clocked out earlier" are told apart because
+                                  they are different questions for an approver: one is a missing fact, the other
+                                  is a contradicted one. */}
+                              {(() => {
+                                if (!d.fromTime || !d.toTime) return null;
+                                const a = assessExtendedClaim({
+                                  claimStart: d.fromTime,
+                                  claimEnd: d.toTime,
+                                  shiftEnd: d.shiftEnd,
+                                  actualClockOut: d.actualClockOut,
+                                });
+                                if (a.hasClockOut && !a.exceedsClockOut) return null;
+                                return (
+                                  <span
+                                    className="mt-1 block rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+                                    data-testid="approval-credit-clock-out-warning"
+                                  >
+                                    {a.hasClockOut
+                                      ? t('creditWarnPastClockOut', {
+                                          claimEnd: d.toTime.slice(0, 5),
+                                          clockOut: (d.actualClockOut ?? '').slice(0, 5),
+                                        })
+                                      : t('creditWarnNoClockOut', { date: d.workedDate })}
+                                  </span>
+                                );
+                              })()}
                             </span>
                           ) : (
                             (d.fromTime && d.toTime ? ` · ${d.fromTime.slice(0, 5)} → ${d.toTime.slice(0, 5)}` : '')
