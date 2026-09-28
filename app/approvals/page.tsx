@@ -810,8 +810,8 @@ export default async function ApprovalsPage({
                               {/* ⚠️ r353 — THE ABSENCE IS PRINTED NOW. This used to render nothing at all when
                                   `actualClockOut` was NULL, so a claim with no clock-out behind it and a claim
                                   the approver had simply not read looked identical on the row. */}
-                              {` · ${t('creditClockOut')} `}
-                              {d.actualClockOut ? d.actualClockOut.slice(0, 5) : t('creditClockOutNone')}
+                              {' · '}
+                              {d.actualClockOut ? `${t('creditClockOut')} ${d.actualClockOut.slice(0, 5)}` : t('creditClockOutNone')}
                               {d.fromTime && d.toTime ? ` · ${d.fromTime.slice(0, 5)} → ${d.toTime.slice(0, 5)}` : ''}
                               {d.eligibleMinutes != null ? ` · ${t('creditEligibleMinutes', { minutes: d.eligibleMinutes })}` : ''}
                               {/* ⚠️⚠️ r353 cbfa8b0b · MONEY · THE WARNING THAT REPLACED A KERNEL CONTROL.
