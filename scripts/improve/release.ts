@@ -301,18 +301,23 @@ export function followDeploy(deps: FollowDeps): DeployStatus {
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-export async function releaseBuiltItem(p: {
-  id: string;
-  tenantId: string;
-  reporterEmploymentId: string;
-  worktree: string;
-  branch?: string;
-  buildRef: string;
-}): Promise<void> {
+/**
+ * SHIP THE WORKTREE, AND NOTHING ELSE. Steps 1-4 of a release, with no board write.
+ *
+ * r357 — SPLIT OUT BECAUSE A ROUND THAT CLOSES NO BOARD ITEM IS A REAL CASE AND HAD NO COMMAND. r356
+ * fixed three defects found by reading rather than reported, so there was no item to hand
+ * `releaseBuiltItem`, and it was shipped by hand-rolling the rsync and the detached launch over ssh.
+ * That worked and still cost something: the ANNOUNCE step was forgotten, so the box recorded
+ * `built_ref=unknown` and its own `stale_build` check lost the sha it compares against. It is also the
+ * exact shape this file exists to prevent — `rsync --delete` against production typed fresh each time,
+ * where one mistyped `--exclude` deletes files on the server.
+ *
+ * `releaseBuiltItem` is now this plus the board write, so the two cannot drift.
+ */
+export async function deployWorktree(p: { worktree: string }): Promise<void> {
   if (!p.worktree || !existsSync(p.worktree)) {
-    throw new Error(`worktree not found: ${p.worktree} — build the item first`);
+    throw new Error(`worktree not found: ${p.worktree}`);
   }
-
   // 1. FINAL GATE — re-verify green in the worktree before anything leaves this machine.
   //
   // tsc always runs (seconds). The full suite only runs when we can't prove it already passed on THIS exact
@@ -401,6 +406,20 @@ export async function releaseBuiltItem(p: {
         `  current state: ssh -p ${PORT} ${USER}@${HOST} "cd ${DIR} && deploy/deploy-state.sh status"`,
     );
   }
+}
+
+export async function releaseBuiltItem(p: {
+  id: string;
+  tenantId: string;
+  reporterEmploymentId: string;
+  worktree: string;
+  branch?: string;
+  buildRef: string;
+}): Promise<void> {
+  if (!p.worktree || !existsSync(p.worktree)) {
+    throw new Error(`worktree not found: ${p.worktree} — build the item first`);
+  }
+  await deployWorktree({ worktree: p.worktree });
 
   // 5. close the loop: status → deployed + a feedback.deployed event.
   markDeployed({ id: p.id, tenantId: p.tenantId, reporterEmploymentId: p.reporterEmploymentId, buildRef: p.buildRef });

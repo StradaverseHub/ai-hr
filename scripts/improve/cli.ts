@@ -12,6 +12,9 @@
  * question and its answer have left feedback_request entirely.
  *   echo '{"id","tenantId","reporterEmploymentId","plan","model","mockupPaths"?}' | pnpm improve:push-plan
  *   echo '{"id","tenantId","reporterEmploymentId","buildRef"}'     | pnpm improve:mark-deployed
+ *   pnpm improve:deploy <worktree>   → ship a round that closes NO board item (r357). Same four steps
+ *                                      as release — final gate, announce, rsync, detached deploy.sh,
+ *                                      poll — and no board write, because there is nothing to write.
  *
  * push-plan / mark-deployed read their argument as JSON on stdin (plans contain newlines/quotes).
  *
@@ -40,7 +43,7 @@ import {
   pushPlanWithMockups,
   raiseFeedback,
 } from './remote';
-import { releaseBuiltItem } from './release';
+import { deployWorktree, releaseBuiltItem } from './release';
 
 /** Mime for the handful of image types a mockup is ever going to be. Explicit rather than a lookup
  *  dependency, and it THROWS on anything else: the board renders `plan` attachments inline as an <img>,
@@ -178,6 +181,20 @@ async function main() {
       await releaseBuiltItem(p);
       break;
     }
+    case 'deploy': {
+      // r357 — SHIP A ROUND THAT CLOSES NO BOARD ITEM. Same four steps as `release` (final gate,
+      // announce, rsync, detached deploy.sh, poll) and no board write, because there is nothing to
+      // write: r356 fixed three defects found by reading rather than reported. Before this existed that
+      // round was shipped by typing the rsync and the launch out by hand, which forgot the announce —
+      // the box then recorded `built_ref=unknown` and its own stale_build check lost the sha it compares
+      // against. Reads {worktree} on stdin, or takes it as the next argument.
+      const raw = process.argv[3] ? null : await readStdin();
+      const worktree = raw ? (JSON.parse(raw) as { worktree: string }).worktree : process.argv[3];
+      await deployWorktree({ worktree });
+      console.log(`\n✓ deployed ${worktree} — no board item was touched.`);
+      console.log('  Remaining manual step on the server:  sudo systemctl restart aihr');
+      break;
+    }
     case 'mark-deployed': {
       const p = JSON.parse(await readStdin());
       markDeployed(p);
@@ -186,7 +203,7 @@ async function main() {
     }
     default:
       console.error(
-        'usage: improve <pull | pull-approved | pull-blocked | raise | push-plan | block | unblock | build-start | build-complete | release | mark-deployed>',
+        'usage: improve <pull | pull-approved | pull-blocked | raise | push-plan | block | unblock | build-start | build-complete | release | deploy | mark-deployed>',
       );
       process.exit(2);
   }

@@ -39,6 +39,7 @@
     "improve:build-start": "node --import tsx scripts/improve/cli.ts build-start",
     "improve:build-complete": "node --import tsx scripts/improve/cli.ts build-complete",
     "improve:release": "node --import tsx scripts/improve/cli.ts release",
+    "improve:deploy": "node --import tsx scripts/improve/cli.ts deploy",
     "improve:mark-deployed": "node --import tsx scripts/improve/cli.ts mark-deployed",
     "kb:seed": "node --env-file=.env.local --import tsx db/seed-guides.ts",
     "db:studio": "drizzle-kit studio",
