@@ -289,14 +289,23 @@ describe('df35d60d · the stage boundary, as item 1bb09a73 moved it', () => {
 
   it('the payroll kernel still seeds its accumulators from the five columns, and now guards the year', () => {
     expect(CORE_PAYROLL).toMatch(/tp3Applies = e\.tp3Year === pYear/);
-    expect(CORE_PAYROLL).toMatch(/netRemuneration: tp3Applies/);
-    // ⚠️ ALSO REVERSED. `employeeTp3` is now read by the PRE-PROCESSING GATE — not by the calculation,
-    // which still takes its figures from the five columns. That distinction is what the next two lines
-    // pin: the kernel reads the form to REFUSE a run, never to compute one.
-    expect(CORE_PAYROLL, 'reads the form table to guard the run').toMatch(/from\(employeeTp3\)/);
-    expect(CORE_PAYROLL, 'and the accumulator seed is still the columns').toMatch(
-      /netRemuneration: tp3Applies \? Number\(e\.tp3Net/,
+    // ⚠️ r356 — THE SAME TWO CLAIMS, AND THE SPELLING MOVED UNDER THEM. These read
+    //     /netRemuneration: tp3Applies/   and   /netRemuneration: tp3Applies \? Number\(e\.tp3Net/
+    // while the kernel built the opening balances inline. It now hands the five columns to the pack's
+    // `openingAccumulatorsFromTp3`, because the multicycle worksheet was building the same seed from a
+    // copy that had fallen three rounds behind. WHAT IS PINNED IS UNCHANGED and is now pinned in two
+    // halves, because that is where the claim lives: the year still gates whether a TP3 is read at all,
+    // and the figures still come from the five columns and from nowhere else.
+    expect(CORE_PAYROLL, 'the year still gates the seed').toMatch(
+      /pack\.payroll\.openingAccumulatorsFromTp3\(\s*\n\s*tp3Applies/,
     );
+    expect(CORE_PAYROLL, 'and the accumulator seed is still the columns').toMatch(
+      /netRemuneration: Number\(e\.tp3Net/,
+    );
+    // ⚠️ ALSO REVERSED (1bb09a73). `employeeTp3` is read by the PRE-PROCESSING GATE — not by the
+    // calculation, which still takes its figures from the five columns. That distinction is what this
+    // line pins: the kernel reads the form to REFUSE a run, never to compute one.
+    expect(CORE_PAYROLL, 'reads the form table to guard the run').toMatch(/from\(employeeTp3\)/);
   });
 
   it('saving a TP3 for an EARLIER year never demotes the year the PCB kernel matches on', async () => {
