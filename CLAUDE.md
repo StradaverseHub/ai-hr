@@ -173,7 +173,9 @@ data directories are what the slow background drain is for.
 Deploy is automatic after a green gate (the owner's standing override of ADR-0045's human gate).
 Sequence: gate → merge to main → `IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:release` (tsc; vitest
 unless `.gate-receipt.json` matches HEAD; `rsync --delete`; `deploy.sh` on the box; marks the item
-deployed) → `sudo systemctl restart aihr` on the box (you may) → run any script the round depends on
+deployed) — or `pnpm improve:deploy <worktree>` for a round that closes NO board item, which is the
+same four steps and no board write → `sudo systemctl restart aihr` on the box (you may) → run any
+script the round depends on
 → prove arrival with the zero-line dry-run of §3 → `GET localhost:3000/` on the box returns **401**
 (the password gate: healthy) → record the round (§12) → `graphify update .` (§11).
 
@@ -229,7 +231,9 @@ Statuses: open → planned → approved → building → done → deployed; plus
 reporter's latest words), blocked (approved, waiting on an answer; read `block_trail`), rejected,
 cancelled. Commands from mainwt as `IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:<cmd>`: status ·
 pull · pull-approved · pull-blocked · push-plan · block · unblock · build-start · build-complete ·
-release · mark-deployed · raise. The CLI's default host is LAN-only; always set the host.
+release · deploy · mark-deployed · raise. The CLI's default host is LAN-only; always set the host.
+`deploy <worktree>` (r357) is `release` without the board write — for a round that closes no item,
+which is a real case and used to be shipped by retyping `rsync --delete` against production.
 
 - Plans are PLAIN TEXT, read by a non-technical consultant, rendered raw. Use the `feedback-plan` skill
   (`~/Projects/ai-hr/.claude/skills/feedback-plan`). State ONE course of action: approve carries no

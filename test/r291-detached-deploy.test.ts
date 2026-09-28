@@ -895,6 +895,52 @@ describe('source shape (not executable — see file header)', () => {
     expect(RELEASE_TS).toContain(`DEPLOY_STATE_SENTINEL = '${DEPLOY_STATE_SENTINEL}'`);
   });
 
+  it('a board release and a no-item deploy are ONE code path (r357)', () => {
+    // r356 closed no board item — it fixed three defects found by reading — so there was nothing to
+    // hand `releaseBuiltItem`, and it was shipped by typing the rsync and the detached launch out by
+    // hand over ssh. That worked and cost something: the ANNOUNCE step was forgotten, the box recorded
+    // `built_ref=unknown`, and its own stale_build check lost the sha it compares against. Worse, it is
+    // `rsync --delete` against production retyped from memory, where one mistyped --exclude removes
+    // files on the server. `improve:deploy` exists so the next such round has a command.
+    //
+    // WHAT THIS PINS is that the command is not a SECOND copy of the shipping steps. releaseBuiltItem
+    // must ship THROUGH deployWorktree and keep none of it: two copies of an rsync --delete is how the
+    // board path and the no-board path come to differ in which excludes they carry.
+    const fn = (name: string) => {
+      const at = RELEASE_TS.indexOf(`export async function ${name}(`);
+      expect(at, `${name} must exist`).toBeGreaterThan(-1);
+      const after = RELEASE_TS.slice(at + 1);
+      const next = after.indexOf('\nexport ');
+      return next === -1 ? after : after.slice(0, next);
+    };
+    const release = fn('releaseBuiltItem');
+    const deploy = fn('deployWorktree');
+
+    expect(release, 'release ships through the shared path').toContain('await deployWorktree(');
+    expect(release, 'and keeps no rsync of its own').not.toContain("run('rsync'");
+    expect(release, 'nor a launch of its own').not.toContain('buildLaunchCommand(');
+    expect(release, 'nor a follow of its own').not.toContain('followDeploy(');
+    // …and the shared path still does all four steps, so the split did not drop one on the way.
+    expect(deploy).toContain("run('npx', ['tsc', '--noEmit']");
+    expect(deploy).toContain('buildPendingCommand(');
+    expect(deploy).toContain("run('rsync'");
+    expect(deploy).toContain('buildLaunchCommand(');
+    expect(deploy).toContain('followDeploy(');
+    // The ANNOUNCE is the step the hand-rolled deploy forgot; it is inside the shared path now, so a
+    // no-item deploy cannot forget it.
+    expect(deploy.indexOf('buildPendingCommand('), 'announce comes BEFORE the rsync').toBeLessThan(
+      deploy.indexOf("run('rsync'"),
+    );
+
+    const CLI = fs.readFileSync(path.join(REPO, 'scripts/improve/cli.ts'), 'utf8');
+    expect(CLI, 'the CLI exposes it').toContain("case 'deploy': {");
+    expect(CLI).toContain('await deployWorktree({ worktree });');
+    const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts['improve:deploy']).toBe('node --import tsx scripts/improve/cli.ts deploy');
+  });
+
   it('buildFollowCommand and buildLaunchCommand point at the same state directory', () => {
     expect(buildFollowCommand(0, '/opt/ai-hr', '/var/tmp/aihr-deploy')).toContain("AIHR_DEPLOY_STATE_DIR='/var/tmp/aihr-deploy'");
     expect(buildLaunchCommand('x', '/opt/ai-hr', '/var/tmp/aihr-deploy')).toContain("AIHR_DEPLOY_STATE_DIR='/var/tmp/aihr-deploy'");
