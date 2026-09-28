@@ -158,6 +158,13 @@ export function controlDisplay(el: FormControl, blankLabel = '—'): string {
     const trigger = el.parentElement?.querySelector('button[aria-haspopup="listbox"]');
     const text = trigger?.textContent?.trim();
     if (text) return text;
+    // 15e5bd93 (r352) — a SEARCHABLE field (components/employee-search-field.tsx) posts through a hidden
+    // input too, but its visible half is a text `[role="combobox"]` rather than a button, and what the
+    // reader sees is that box's own value ("Aminah binti Ali — EMP-0001"). Without this the summary would
+    // read a person id at the reader, which is the fault this function exists to prevent.
+    const combo = el.parentElement?.querySelector('input[role="combobox"]');
+    const typed = combo instanceof HTMLInputElement ? combo.value.trim() : '';
+    if (typed) return typed;
   }
   return el.value.trim() || blankLabel;
 }
@@ -250,7 +257,14 @@ export function baselineNewSections(
  */
 export function hiddenInputIsUserFacing(el: HTMLInputElement): boolean {
   if (el.hasAttribute('data-field-label')) return true;
-  return Boolean(el.parentElement?.querySelector('button[aria-haspopup="listbox"]'));
+  // 15e5bd93 (r352) — the SEARCHABLE field (components/employee-search-field.tsx) is the second island of
+  // this shape and its visible half is a text `[role="combobox"]`, not a button. Recognising the SHAPE as
+  // well as the opt-in marker is what makes a forgotten `fieldLabel` prop cost a poor caption instead of a
+  // lost edit: a change nothing reports is a change the bar calls "No unsaved changes", so Save is
+  // disabled and the reader's pick goes nowhere.
+  return Boolean(
+    el.parentElement?.querySelector('button[aria-haspopup="listbox"],input[role="combobox"]'),
+  );
 }
 
 /**

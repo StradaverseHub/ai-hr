@@ -24,9 +24,34 @@ const orgOf = (loc: string) =>
   (JSON.parse(read(`messages/${loc}.json`)) as { admin: { organization: Record<string, string> } }).admin
     .organization;
 
-/** The StatutoryAuthorityCard component's source only — several assertions are about WHERE a thing is. */
-const CARD_SRC = panel.slice(
-  panel.indexOf('function StatutoryAuthorityCard'),
+/**
+ * ⚠️ UPDATED BY 15e5bd93 (r352) — `CARD_SRC` was `StatutoryAuthorityCard`'s source, and that component is
+ * gone: the reporter's approved redesign split it along the line its fold used to run down. Several
+ * assertions in this file are about WHERE a thing is, so the slice becomes THREE, and every assertion
+ * that used to name CARD_SRC now names the half it is really about. Nothing was widened to "the whole
+ * panel" to make it pass — an assertion that cannot say which half it means is not a structure guard.
+ *
+ *   ROW_SRC       the rail entry: the body's FACE. Read-only, no controls, never collapses.
+ *   EDITOR_SRC    the workspace pane: the body's fields, all open, and its Clear button.
+ *   WORKSPACE_SRC both, for the handful of claims that are about the pair rather than one of them.
+ */
+const WORKSPACE_SRC = panel.slice(
+  panel.indexOf('function StatutoryBodyRow'),
+  panel.indexOf('export function CompanyPanel'),
+);
+const ROW_SRC = panel.slice(panel.indexOf('function StatutoryBodyRow'), panel.indexOf('function StatutoryBodyEditor'));
+
+/**
+ * COMMENTS STRIPPED — the r331 aec53564 lesson, and it bites here: `ROW_SRC` runs up to the editor's
+ * `function` keyword, so it carries the editor's own doc comment, and that comment EXPLAINS why the form
+ * keeps its `action` ("a `<form>` with no action at all would POST to the current URL"). A guard asserting
+ * "the face contains no form" would read that sentence and fail on prose about the code. Every assertion
+ * below that is about the absence of MARKUP runs on the stripped text.
+ */
+const stripComments = (src: string): string =>
+  src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, ' ');
+const EDITOR_SRC = panel.slice(
+  panel.indexOf('function StatutoryBodyEditor'),
   panel.indexOf('export function CompanyPanel'),
 );
 
@@ -63,25 +88,41 @@ describe('an opened company has nothing left to unfold (3c2f55d7)', () => {
    * STILL TRUE, and still the point: the PANEL itself has no expand/collapse. You arrived by opening this
    * company; the panel is the page body and it does not fold. `defaultExpanded` must not come back.
    *
-   * RETIRED: the blanket ban on `aria-expanded` anywhere in the file. The reporter's approved card
-   * redesign puts one statutory body's FOURTEEN-FIELD EDITOR behind its card's Open/Edit — which is the
-   * opposite trade from the four folds rev 1 removed, because the card face already states the body's
-   * name, purpose and configured status with no click at all. So the ban narrows from "none" to "exactly
-   * one, and it belongs to the statutory card": a re-added disclosure on the panel, a tab or a bank
-   * account still fails here.
+   * ⚠️ UPDATED AGAIN BY 15e5bd93 (r352), AND THE BAN GOES BACK TO "NONE" — which is TIGHTER than either
+   * previous version, not looser. 3c2f55d7 rev 2 narrowed rev 1's blanket ban to "exactly one, and it
+   * belongs to the statutory card", because that round kept one fold: a body's fourteen-field editor
+   * behind its Open/Edit. The reporter has now asked for exactly that to go — "the current behaviour
+   * opens the settings in a tab/expand-style interface, which makes the information less clear and less
+   * convenient to view or edit" — so the eight bodies became a permanent rail and a workspace, and NOTHING
+   * in this file expands any more. `authorityOpen` / `authorityClose` are no longer rendered either, which
+   * is asserted here because a re-added toggle would most likely reach for them first.
+   *
+   * The two keys stay in the six catalogues, unused, the way `tabOther` / `tabPayroll` / `tabBankAccount`
+   * each did in their turn — and `tabBankAccount` came back. A retired key costs nothing; re-translating
+   * a deleted one into six languages costs a round.
    */
-  it('has no outer expand/collapse — the panel IS the page body', () => {
+  it('has no expand/collapse anywhere in the panel — nothing on it folds (15e5bd93)', () => {
     expect(panel).not.toContain('defaultExpanded');
-    expect(panel.match(/aria-expanded/g) ?? [], 'exactly ONE expandable thing in this file').toHaveLength(1);
-    expect(CARD_SRC, 'and it is the statutory card Open/Edit').toContain('aria-expanded={open}');
+    expect(panel.match(/aria-expanded/g) ?? [], 'nothing in this file expands').toHaveLength(0);
+    expect(panel, 'the per-body Open control is gone').not.toContain("t('authorityOpen')");
+    expect(panel, 'and so is its Close').not.toContain("t('authorityClose')");
+    // Selection replaced disclosure: the rail marks the chosen body instead of revealing it.
+    expect(ROW_SRC, 'the rail row marks the CHOSEN body').toContain("aria-current={selected ? 'true' : undefined}");
   });
 
-  it('the statutory editor is HIDDEN when collapsed, never UNMOUNTED', () => {
-    // This is what keeps the fold honest: every field stays in the DOM (so a half-typed address survives
-    // a collapse, and the render guard can still count all nine forms), and only CSS hides it. The
-    // mistake it rules out is `{open && <form …>}`, which would drop the form from the tree entirely.
-    expect(CARD_SRC).toContain("!open && 'hidden'");
-    expect(CARD_SRC).not.toMatch(/\{\s*open\s*&&/);
+  /**
+   * ⚠️ UPDATED BY 15e5bd93 — the CLAIM is unchanged and it is the load-bearing one: a body's fields stay
+   * in the DOM whether or not you are looking at them. What changed is the condition. It was "collapsed"
+   * (`!open`); it is now "not the body the rail has selected" (`!selected`), and the payoff is bigger than
+   * before: the tab's ONE Save reads every body's fields out of the DOM, so an unmounted pane would be a
+   * body whose edits cannot be saved at all rather than merely one whose half-typed address is lost.
+   */
+  it('a body the rail has not selected is HIDDEN, never UNMOUNTED', () => {
+    expect(WORKSPACE_SRC).toContain("!selected && 'hidden'");
+    // The mistake it rules out is `{selected && <form …>}`, which would drop the form from the tree.
+    expect(WORKSPACE_SRC, 'no conditional MOUNTING of a body pane').not.toMatch(/\{\s*selected\s*&&\s*[<{]/);
+    // …and the panel renders one editor per body, not one editor for the chosen body.
+    expect(panel, 'every body gets an editor').toMatch(/STATUTORY_AUTHORITIES\.map\(\(a\) => \(\s*<StatutoryBodyEditor/);
   });
 
   it('drops the fold-only labels rather than leaving them to rot in six catalogues', () => {
@@ -217,9 +258,24 @@ describe('Bank Account tab: the account form keeps every field mounted', () => {
 });
 
 describe('Statutory tab: per-authority payment setup', () => {
-  it('renders one card per authority in the controlled set', () => {
-    expect(panel.includes('STATUTORY_AUTHORITIES.map')).toBe(true);
-    expect(panel.includes('<StatutoryAuthorityCard')).toBe(true);
+  /**
+   * ⚠️ UPDATED BY 15e5bd93 — one card per authority became one RAIL ROW plus one WORKSPACE EDITOR per
+   * authority, so the count claim is asserted twice over rather than dropped. Both maps run over the
+   * controlled set, so a body cannot appear in the rail without its editor or the other way round.
+   */
+  it('renders one rail row AND one workspace editor per authority in the controlled set', () => {
+    // Both maps run over the controlled set itself — never over a filtered or sliced copy of it, which is
+    // how a body would vanish from one column while staying in the other.
+    expect(
+      panel.match(/STATUTORY_AUTHORITIES\.map\(\(a\) => \(\s*<StatutoryBody(Row|Editor)/g) ?? [],
+      'the rail and the workspace',
+    ).toHaveLength(2);
+    expect(panel.includes('<StatutoryBodyRow')).toBe(true);
+    expect(panel.includes('<StatutoryBodyEditor')).toBe(true);
+    // The old one-component shape must not come back with the fold in it.
+    // Comments stripped: the new components' own doc comment NAMES the component it replaced, and that
+    // record is exactly what must survive (the r331 aec53564 lesson again).
+    expect(stripComments(panel), 'the folding card is retired').not.toContain('StatutoryAuthorityCard');
   });
 
   it('keeps the statutory IDENTITY form alongside it (the two are different things)', () => {
@@ -267,9 +323,16 @@ describe('Statutory tab: per-authority payment setup', () => {
 describe('Statutory tab: one body, one card, both of its numbers (r226)', () => {
   const CS = read('localization/my/company-statutory.ts');
   const ACTIONS = read('app/admin/actions.ts');
+  /**
+   * 15e5bd93 (r352) — THE SECOND DOOR TO THE SAME ROW. The Statutory tab's consolidated Save reaches
+   * `company_statutory_my` too, so every claim in this block about "the action half" is now a claim about
+   * TWO files, and both are asserted. A partial-patch writer with one presence-checked caller and one
+   * collapsing caller is a partial-patch writer that still loses data.
+   */
+  const TAB_ACTION = read('app/admin/organization/statutory-tab-actions.ts');
 
   it('puts EPF, SOCSO and LHDN filing numbers on their own card, and nobody else', () => {
-    const map = panel.slice(panel.indexOf('const MY_FILING_FIELD'), panel.indexOf('function StatutoryAuthorityCard'));
+    const map = panel.slice(panel.indexOf('const MY_FILING_FIELD'), panel.indexOf('function StatutoryBodyRow'));
     expect(map).toContain("epf: { name: 'epfEmployerNo'");
     expect(map).toContain("socso: { name: 'socsoEmployerCode'");
     expect(map).toContain("lhdn: { name: 'lhdnEmployerNo'");
@@ -294,16 +357,36 @@ describe('Statutory tab: one body, one card, both of its numbers (r226)', () => 
   it('labels the two numbers so the card says which is which', () => {
     // The reporter's complaint was that a body had one number on its card and a different number for the
     // same body in a list above it, with nothing on screen saying they were different things.
-    expect(CARD_SRC).toContain("t('authorityFilingSection')");
-    expect(CARD_SRC).toContain("t('authorityFilingHint')");
-    expect(CARD_SRC).toContain("t('authorityPaymentSection')");
-    expect(CARD_SRC).toContain("t('authorityAccountNo')");
+    expect(EDITOR_SRC).toContain("t('authorityFilingSection')");
+    expect(EDITOR_SRC).toContain("t('authorityFilingHint')");
+    expect(EDITOR_SRC).toContain("t('authorityPaymentSection')");
+    expect(EDITOR_SRC).toContain("t('authorityAccountNo')");
+    /**
+     * 15e5bd93 — THE THREE GROUPS THE REPORTER APPROVED, and the third one is new only as a HEADING. The
+     * address run was the one block of this form with no heading at all; the drawing gives it one. Nothing
+     * was added, removed, renamed or re-validated — every box under each heading is a box that was there.
+     *
+     * HRD Corp's first group stays "Registration", not "Filing identity": its control is a band that
+     * decides whether the levy is charged, not a number on a filed form, and r226 removed that exact
+     * mislabelling once already.
+     */
+    expect(EDITOR_SRC, 'the address run finally has a heading').toContain("t('authorityAddressSection')");
+    expect(EDITOR_SRC).toContain("t('authorityPaymentHint')");
+    expect(EDITOR_SRC).toContain("t('authorityAddressHint')");
+    expect(EDITOR_SRC, "HRD Corp's band is not filed under a filing-number caption").toContain(
+      "showHrdf ? t('authorityRegistrationSection') : t('authorityFilingSection')",
+    );
     for (const loc of LOCALES) {
       const org = orgOf(loc);
       for (const k of [
         'authorityFilingSection',
         'authorityFilingHint',
         'authorityPaymentSection',
+        'authorityPaymentHint',
+        'authorityAddressSection',
+        'authorityAddressHint',
+        'authorityRegistrationSection',
+        'authorityRegistrationHint',
         'authorityEisSharesSocso',
       ]) {
         expect(org[k], `${loc}: ${k}`).toBeTruthy();
@@ -314,13 +397,13 @@ describe('Statutory tab: one body, one card, both of its numbers (r226)', () => 
   it('says out loud that EIS files under the SOCSO code rather than showing an empty box', () => {
     // Two inputs writing socsoEmployerCode would be two controls fighting over one column, and the card
     // saved second would win. An empty EIS box would read as a number somebody forgot. So: a sentence.
-    expect(CARD_SRC).toContain("t('authorityEisSharesSocso')");
-    const map = panel.slice(panel.indexOf('const MY_FILING_FIELD'), panel.indexOf('function StatutoryAuthorityCard'));
+    expect(EDITOR_SRC).toContain("t('authorityEisSharesSocso')");
+    const map = panel.slice(panel.indexOf('const MY_FILING_FIELD'), panel.indexOf('function StatutoryBodyRow'));
     expect(map, 'EIS gets no second input on the same column').not.toMatch(/\beis:/);
   });
 
   it('HRD Corp keeps its rate select — moved onto its card, not duplicated', () => {
-    expect(CARD_SRC).toContain('name="hrdfStatus"');
+    expect(EDITOR_SRC).toContain('name="hrdfStatus"');
     // Exactly one hrdfStatus control in the panel: the old flat identity form must not still carry one.
     expect(panel.match(/name="hrdfStatus"/g) ?? [], 'one HRDF control, on the HRD Corp card').toHaveLength(1);
   });
@@ -338,14 +421,56 @@ describe('Statutory tab: one body, one card, both of its numbers (r226)', () => 
     expect(ACTIONS, 'the collapsing read is gone from the statutory action').not.toContain(
       "epfEmployerNo: (formData.get('epfEmployerNo') as string) || undefined",
     );
+    /**
+     * 15e5bd93 — AND THE SAME ON THE TAB SAVE'S SIDE. It unpacks each card's own FormData and hands it to
+     * the same services, so it needs the identical "absent means leave as-is" read. The two helpers are
+     * deliberate duplicates (a `'use server'` module cannot export a non-async function, and hoisting this
+     * one would move a contract this very case pins by name) — so what stops them drifting is this pair of
+     * assertions, not a shared import.
+     */
+    expect(TAB_ACTION, 'the tab save reads presence too').toContain(
+      'function postedField(formData: FormData, key: string)',
+    );
+    expect(TAB_ACTION).toContain('formData.has(key)');
+    expect(TAB_ACTION, 'and never collapses an absent key to a blank').not.toMatch(
+      /epfEmployerNo:\s*\(?\w*\.?get\('epfEmployerNo'\)/,
+    );
+    // Both callers pass the SAME set of names to the writer, so neither can quietly stop patching one.
+    for (const field of ['epfEmployerNo', 'socsoEmployerCode', 'lhdnEmployerNo', 'myinvoisTin', 'ssmRegistrationNo']) {
+      expect(TAB_ACTION, `the identity section writes ${field} by presence`).toContain(
+        `${field}: postedField(fd, '${field}')`,
+      );
+    }
   });
 
   it('the card posts its filing field under a name that cannot collide with the address country', () => {
     // `country` is already taken on this form by the authority's postal address (a country NAME from the
     // ISO list). Reusing it for the statutory-pack lookup would post "Malaysia" into packFor().
-    expect(CARD_SRC).toContain('name="filingCountry"');
+    expect(EDITOR_SRC).toContain('name="filingCountry"');
     expect(ACTIONS).toContain("formData.get('filingCountry')");
-    expect(CARD_SRC).toContain('name="country"'); // the address field, untouched
+    expect(TAB_ACTION, 'the tab save reads the same flag').toContain("fd.get('filingCountry')");
+    expect(EDITOR_SRC).toContain('name="country"'); // the address field, untouched
+  });
+
+  /**
+   * 15e5bd93 — THE BODY A SECTION WRITES IS THE SECTION ID, NOT THE FORM'S OWN HIDDEN COPY.
+   *
+   * Nine hidden `authority` inputs in one payload are nine chances for a crafted request to point one
+   * body's write at another body's row. The section id has already been checked against the closed
+   * vocabulary, so it is the trustworthy value — the same move `companySectionFormData` makes for the
+   * company id, and for the same reason. The hidden input stays on the form because the per-body action
+   * (still bound, still the writer the submit guard intercepts) reads it.
+   */
+  it('the tab save takes the authority from the validated section id, not from the payload', () => {
+    expect(TAB_ACTION).toContain('async function applyAuthoritySection(s: Session, authority: string, fd: FormData)');
+    expect(TAB_ACTION, 'the id is what is written').toContain('authority,');
+    expect(TAB_ACTION, 'the hidden copy is never read').not.toContain("fd.get('authority')");
+    // The vocabulary is a closed list and an unknown section is refused before anything is written.
+    expect(TAB_ACTION).toContain('COMPANY_STATUTORY_TAB_SECTION_ORDER');
+    expect(TAB_ACTION).toContain('return { ok: false, saved: [], failedSection: unknown[0]');
+    // …and the company is forced from the one trusted top-level value.
+    expect(TAB_ACTION).toContain("out.set('companyId', companyId)");
+    expect(TAB_ACTION).toContain("if (field === 'companyId' || field === 'id') continue;");
   });
 });
 
@@ -370,6 +495,11 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
    * request, rather than fourteen identical field blocks stacked up. What changed is that the faces are
    * rows in one divided list instead of tiles in a grid, so the border and the rounding moved from each
    * entry to the list, and an opened entry no longer needs to span columns it no longer has.
+   *
+   * ⚠️ UPDATED AGAIN BY 15e5bd93 (r352) — the divided list is still the shape, and it is now PERMANENT.
+   * efe424b0's list still had to choose between showing you eight rows and showing you one body's fields;
+   * the list is now a left RAIL that never collapses, beside a workspace that holds the fields. So this
+   * case gains the two halves of that, and keeps everything it asserted before.
    */
   it('renders one divided list of rows, not a grid and not a stack of forms', () => {
     expect(panel, 'the authority list is one divided list').toMatch(/divide-y divide-border\/60 rounded-lg border/);
@@ -377,7 +507,82 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
     // No column spanning on the ROW WRAPPER, because there are no columns to span. Targeted at the
     // card's own `open && 'sm:col-span-2 xl:col-span-3'` rather than the bare string: `sm:col-span-2`
     // is also how a wide FIELD lays out inside the three-column form, and that is untouched.
-    expect(CARD_SRC, 'the row no longer spans grid columns').not.toContain('xl:col-span-3');
+    expect(WORKSPACE_SRC, 'the row no longer spans grid columns').not.toContain('xl:col-span-3');
+  });
+
+  /**
+   * 15e5bd93 — THE LIST IS A RAIL AND IT NEVER COLLAPSES, WITH THE FIELDS BESIDE IT.
+   *
+   * The reporter's words: the settings open "in a tab/expand-style interface, which makes the information
+   * less clear and less convenient to view or edit". The approved drawing
+   * (docs/mockups/15e5bd93-statutory-workspace.html) answers it with a permanent left-hand list and a
+   * workspace on the right that fills with ALL of the selected body's fields, already open.
+   *
+   * Pinned at source because the failure mode is a later round "tidying" the two columns back into one
+   * stack — which no behavioural test would notice, because every field is in the DOM either way.
+   */
+  it('the rail and the workspace are two columns, and the rail is a <nav> that is always drawn', () => {
+    const pane = panel.slice(panel.indexOf("cn('space-y-4', tab === 'statutory'"), panel.indexOf('{/* end Statutory tab */}'));
+    expect(pane, 'two columns on a wide screen, stacked on a narrow one').toContain('flex flex-col gap-4 lg:flex-row');
+    expect(pane, 'the rail is a fixed-width column of its own').toContain('lg:w-72');
+    expect(pane, 'and it is navigation, not decoration').toMatch(/<nav aria-label=\{t\('authoritiesTitle'\)\}>/);
+    expect(pane, 'the workspace takes the rest').toContain('min-w-0 flex-1');
+    // The rail is never behind a condition of its own: only `isMY` decides whether the tab has one at all.
+    expect(pane, 'the rail is not conditional on a selection').not.toMatch(/\{\s*statutoryBody\s*&&/);
+    // Selection is CLIENT state — no per-body route, so no new row in the function-access matrix.
+    expect(panel).toContain('const [statutoryBody, setStatutoryBody] = useState<string>(STATUTORY_AUTHORITIES[0])');
+  });
+
+  /**
+   * 15e5bd93 — ONE SAVE FOR THE WHOLE TAB, and the registrations card is inside it.
+   *
+   * This is the half that resolves 65b22c00's finding 1 (docs/audits/…): that round consolidated three of
+   * the screen's four bucket (a) forms and left the SSM / MyInvois card with its own button, because a
+   * scope on this tab would have sat above eight body editors it did not own. The bodies have no Save
+   * buttons of their own now, so it does. The card did NOT move off this tab — r226's placement is pinned
+   * two describes up and still passes.
+   */
+  it('the tab has ONE Save, and every card under the bar carries a section marker', () => {
+    const pane = panel.slice(panel.indexOf("cn('space-y-4', tab === 'statutory'"), panel.indexOf('{/* end Statutory tab */}'));
+    expect(pane).toContain('<TabSaveScope');
+    expect(pane).toContain('tabKey="statutory"');
+    expect(pane).toContain('saveAction={actions.saveStatutoryTab}');
+    // The bar names what it covers AND which bodies moved — see TabSaveScope's `covers` / `sectionLabels`.
+    expect(pane).toContain("covers={[t('authoritiesTitle'), t('statutoryIdentityMY')]}");
+    expect(pane).toContain('sectionLabels={statutorySectionLabels}');
+    // Each body editor is a section named for the body, so a partial failure can say WHICH body failed.
+    expect(EDITOR_SRC).toContain('data-save-section={authority}');
+    // The registrations card is a section too, and it is the id the server vocabulary declares.
+    expect(pane).toContain('data-save-section={STATUTORY_IDENTITY_SECTION}');
+    // …and the per-body Save button is gone, which is what "one Save" means.
+    expect(panel, 'no per-body Save button').not.toContain("t('authoritySave')");
+    expect(panel, 'no second Save on the registrations card').not.toContain("t('saveStatutoryIdentity')");
+    // "Clear this authority" DELETES a row: bucket (b), its own button, outside every section marker.
+    expect(EDITOR_SRC).toContain("t('authorityClear')");
+    const clear = EDITOR_SRC.slice(EDITOR_SRC.indexOf('<form action={removeAction}>'));
+    expect(clear, 'the Clear form is not part of the tab Save').not.toContain('data-save-section');
+    expect(clear, 'and it keeps its own control').toMatch(/<button\b/);
+  });
+
+  /**
+   * 15e5bd93 — THE PACK FLAG ON THE REGISTRATIONS CARD IS `filingCountry`, NOT `country`, AND THIS IS A
+   * DATA GUARD RATHER THAN A NAMING ONE.
+   *
+   * `lib/tab-save-dom.ts` `syncCarriedValues` treats a HIDDEN input as a mirror of any VISIBLE control
+   * with the same name in a sibling section of the same scope, and copies the visible value into it — the
+   * behaviour the personnel cards need. Every statutory body's editor carries a visible `country` for its
+   * postal address (a country NAME from the ISO list). So the moment the registrations card joined this
+   * scope, a hidden `name="country"` on it would have been overwritten with "Malaysia" and posted into
+   * `packFor()`. That is exactly the collision r226 named one file over, which is why the flag reuses the
+   * name r226 coined for it.
+   */
+  it('the registrations card posts its pack flag under a name no address field can collide with', () => {
+    const pane = panel.slice(panel.indexOf("cn('space-y-4', tab === 'statutory'"), panel.indexOf('{/* end Statutory tab */}'));
+    const form = pane.slice(pane.indexOf('data-save-section={STATUTORY_IDENTITY_SECTION}'), pane.indexOf('</form>'));
+    expect(form).toContain('<input type="hidden" name="filingCountry" value="MY" />');
+    expect(form, 'a hidden country here would be overwritten by a body address').not.toContain('name="country"');
+    // And the consolidated writer reads that name.
+    expect(read('app/admin/organization/statutory-tab-actions.ts')).toContain("fd.get('filingCountry')");
   });
 
   /**
@@ -393,10 +598,10 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
     // NOT removed from the controlled set: the services and the payroll feed still know it.
     expect(STATUTORY_AUTHORITIES).toContain('eis');
     // Indented, and without a second copy of the mark its group head already carries.
-    expect(CARD_SRC).toContain("subordinate && 'pl-6'");
-    expect(CARD_SRC).toContain('{subordinate ? (');
+    expect(ROW_SRC).toContain("subordinate && 'pl-6'");
+    expect(ROW_SRC).toContain('{subordinate ? (');
     // Its own authority value still posts, so its own record is what the form writes.
-    expect(CARD_SRC).toContain('<input type="hidden" name="authority" value={authority} />');
+    expect(EDITOR_SRC).toContain('<input type="hidden" name="authority" value={authority} />');
   });
 
   it('gives every authority in the controlled set its own icon', () => {
@@ -406,11 +611,17 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
     for (const a of STATUTORY_AUTHORITIES) {
       expect(map, `AUTHORITY_ICON.${a}`).toMatch(new RegExp(`\\b${a}:`));
     }
-    expect(CARD_SRC).toContain('AUTHORITY_ICON[authority] ?? Landmark');
+    expect(ROW_SRC).toContain('AUTHORITY_ICON[authority] ?? Landmark');
   });
 
-  it('shows name, description and status on the card FACE — before any click', () => {
-    const face = CARD_SRC.slice(0, CARD_SRC.indexOf('aria-expanded'));
+  /**
+   * ⚠️ UPDATED BY 15e5bd93 — the FACE slice was "everything in the card before `aria-expanded`", i.e.
+   * everything above the Open control. There is no Open control any more, so the face is the whole rail
+   * row: `ROW_SRC`. That is the same claim about a tighter subject — the row component contains nothing
+   * BUT the face, so this can no longer be satisfied by something living further down the card.
+   */
+  it('shows name, description and status on the rail row FACE — before any click', () => {
+    const face = stripComments(ROW_SRC);
     expect(face).toContain('t(`authority_${authority}` as never)');
     expect(face).toContain('t(`authorityDesc_${authority}` as never)');
     expect(face).toContain("t('authorityConfigured')");
@@ -426,30 +637,39 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
    * one card per authority "showing what is set without opening anything — the employer number and the
    * bank account it is paid from — and saying plainly where nothing is set yet".
    *
-   * The three captions are asserted SEPARATELY and on the FACE slice (everything before `aria-expanded`,
-   * i.e. before the Open control) because collapsing them into one anonymous "employer number" is
-   * precisely the fault r226 was raised for: a body has TWO different numbers and the screen has to say
-   * which is which. A future edit that moves any of them behind the disclosure fails here.
+   * The three captions are asserted SEPARATELY and on the FACE slice because collapsing them into one
+   * anonymous "employer number" is precisely the fault r226 was raised for: a body has TWO different
+   * numbers and the screen has to say which is which.
+   *
+   * ⚠️ 15e5bd93 (r352) KEPT THIS ON THE FACE ON PURPOSE, and it is the assertion that says so. The new
+   * layout moves a body's FIELDS into a workspace beside the rail, so the obvious edit is to let the rail
+   * row carry only a name and a Configured chip and let the values live in the (now always-open) fields.
+   * That would undo this item: the promise made to the same reporter was that you can read what is set on
+   * EVERY body at once, because comparing two used to mean opening both and remembering the first — and
+   * the workspace shows one body at a time. So the summary stays on the rail row, and the face slice is
+   * now `ROW_SRC`, which contains nothing but the face.
    */
   it('shows the employer number and the paying bank account on the FACE too (3783fd87)', () => {
-    const face = CARD_SRC.slice(0, CARD_SRC.indexOf('aria-expanded'));
+    const face = stripComments(ROW_SRC);
     // The summary is built once and rendered on the face; both halves are pinned.
-    expect(CARD_SRC, 'the at-a-glance summary is derived').toContain('const summary:');
-    expect(face, 'the summary is rendered before the Open control').toContain('summary.map(');
+    expect(ROW_SRC, 'the at-a-glance summary is derived').toContain('const summary:');
+    expect(face, 'the summary is rendered on the rail row').toContain('summary.map(');
+    // …and it is NOT quietly relocated into the workspace, where only one body is ever visible.
+    expect(EDITOR_SRC, 'the summary is not moved into the one-body-at-a-time pane').not.toContain('summary.map(');
     // The FILING number, under the body's own caption (epfEmployerNo / socsoEmployerCode / lhdnENumber).
-    expect(CARD_SRC).toContain('label: t(filing.labelKey as never)');
-    expect(CARD_SRC).toContain('value: statutory?.[filing.name] || null');
+    expect(ROW_SRC).toContain('label: t(filing.labelKey as never)');
+    expect(ROW_SRC).toContain('value: statutory?.[filing.name] || null');
     // The PAYMENT reference and the bank account that pays it.
-    expect(CARD_SRC).toContain("label: t('authorityAccountNo')");
-    expect(CARD_SRC).toContain("label: t('authorityBankAccount')");
-    expect(CARD_SRC).toContain("bankProfiles.find((bp) => bp.id === r?.bankProfileId)");
+    expect(ROW_SRC).toContain("label: t('authorityAccountNo')");
+    expect(ROW_SRC).toContain("label: t('authorityBankAccount')");
+    expect(ROW_SRC).toContain("bankProfiles.find((bp) => bp.id === r?.bankProfileId)");
     // "Not set" where nothing is on file — an absent value says so rather than rendering an empty gap.
     expect(face).toContain("t('authorityValueNotSet')");
     // HRD Corp's band is shown only when the identity row CARRIES one. Payroll resolves a missing row to
     // 'not_registered', but printing "Not registered" for a company with no row at all would assert a
     // registration decision nobody made (§8: an absent box asserts nothing).
-    expect(CARD_SRC).toContain("statutory?.hrdfStatus === 'not_registered'");
-    expect(CARD_SRC).toContain('hrdfBandKey ? t(hrdfBandKey as never) : null');
+    expect(ROW_SRC).toContain("statutory?.hrdfStatus === 'not_registered'");
+    expect(ROW_SRC).toContain('hrdfBandKey ? t(hrdfBandKey as never) : null');
     // READ-ONLY. The face must not grow a second set of controls over the same columns — the editor
     // below is the only writer, and `company_statutory_authority` is also what the EA officer block and
     // the CP39 preparer block read (localization/my/reports.ts).
@@ -470,8 +690,21 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
       // 3783fd87 — `authorityValueNotSet` is the face's "nothing on file yet". It is a STATIC key, so
       // test/i18n-coverage.test.ts check C sees it; it is listed here anyway because this is the file
       // that owns what the card says, and a reader adding an authority reads this list, not that one.
+      //
+      // ⚠️ 15e5bd93 — `authorityOpen` / `authorityClose` are RETIRED, not deleted: nothing renders them
+      // since the fold went (asserted at the top of this file), and they stay in all six catalogues the
+      // way `tabOther`, `tabPayroll` and `tabBankAccount` each did — `tabBankAccount` came back. Keeping
+      // them asserted PRESENT is the point: a future round must not tidy away a string this screen has
+      // already needed twice.
       for (const k of ['authorityOpen', 'authorityClose', 'authorityValueNotSet']) {
         expect(org[k], `${loc}: ${k}`).toBeTruthy();
+      }
+      // 15e5bd93 — the three group headings, and the retired per-body Save captions kept alongside them.
+      for (const k of ['authorityAddressSection', 'authorityAddressHint', 'authorityPaymentHint']) {
+        expect(org[k], `${loc}: ${k}`).toBeTruthy();
+      }
+      for (const k of ['authoritySave', 'saveStatutoryIdentity']) {
+        expect(org[k], `${loc}: ${k} is retired, not deleted`).toBeTruthy();
       }
     }
   });
@@ -489,17 +722,17 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
 describe('Statutory tab: the signatory picker', () => {
   it('is the shared searchable employee field, not a plain select', () => {
     expect(panel).toContain("from './employee-search-field'");
-    expect(CARD_SRC).toContain('<EmployeeSearchField');
-    expect(CARD_SRC).toContain('name="signatoryPersonId"');
+    expect(EDITOR_SRC).toContain('<EmployeeSearchField');
+    expect(EDITOR_SRC).toContain('name="signatoryPersonId"');
     // The old control, gone: a bare <select> over every candidate.
-    expect(CARD_SRC).not.toMatch(/<select name="signatoryPersonId"/);
+    expect(EDITOR_SRC).not.toMatch(/<select name="signatoryPersonId"/);
   });
 
   it('keeps a signatory who has since LEFT selectable, so an unrelated save cannot wipe them', () => {
     // EmployeeSearchField treats a value that is not in its option list as "no selection" — it would post
     // an empty string and clear the column. The former employee is therefore injected into the list.
-    expect(CARD_SRC).toContain("t('authoritySignatoryFormer')");
-    expect(CARD_SRC).toContain('signatoryOptions.unshift');
+    expect(EDITOR_SRC).toContain("t('authoritySignatoryFormer')");
+    expect(EDITOR_SRC).toContain('signatoryOptions.unshift');
   });
 
   it('carries the five search captions in all six locales', () => {
@@ -535,7 +768,7 @@ describe('Bank Account: the company debit account is not masked here', () => {
 
   it('both display spots print the whole number', () => {
     // The "Paid from" picker on each authority card…
-    expect(CARD_SRC).toContain("' · ' + bp.debitAccountNo");
+    expect(EDITOR_SRC).toContain("' · ' + bp.debitAccountNo");
     // …and the heading over each saved account under Other.
     expect(panel).toContain('{myBankLabel(bp.bank)} · {bp.debitAccountNo} · {bp.currency}');
   });

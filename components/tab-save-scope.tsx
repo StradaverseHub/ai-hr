@@ -146,6 +146,7 @@ export function TabSaveScope({
   identity,
   saveAction,
   covers,
+  sectionLabels,
   children,
 }: {
   /** The tab this scope belongs to — submitted so the action can land the reader back on it. */
@@ -178,6 +179,22 @@ export function TabSaveScope({
    * and a new tab cannot be wired up without answering the question.
    */
   covers: string[];
+  /**
+   * 15e5bd93 (r352) — SECTION ID → THE NAME OF THE CARD IT IS, so the bar can say WHICH cards moved.
+   *
+   * `covers` is static: it names everything this Save owns, whether or not it changed. On a tab whose
+   * cards are a handful of named things that all look alike — the Organization Statutory tab is eight
+   * statutory bodies with an identical field set — "Unsaved changes: 3" does not answer the question the
+   * reader actually has, which is *which bodies*. The reporter's approved drawing for that item has the
+   * bar reading "2 bodies changed — EPF, LHDN", and this is that.
+   *
+   * OPTIONAL, and omitted by every scope that existed before it: a tab whose cards are already visibly
+   * different from one another gains nothing, and the bar renders exactly as it did. An id with no entry
+   * is skipped rather than printed raw, so a section added without a label degrades to the old bar.
+   * Deliberately NOT a new catalogue string: the values are card names the page has already translated,
+   * and they are printed as a plain list beside the count rather than inside a sentence.
+   */
+  sectionLabels?: Record<string, string>;
   children: ReactNode;
 }) {
   const t = useTranslations('components.tabSave');
@@ -292,6 +309,17 @@ export function TabSaveScope({
   }, [recompute, nonce]);
 
   const dirty = changes.length > 0;
+
+  /**
+   * 15e5bd93 — WHICH cards moved, in document order (which is the order `diffTab` walks the sections in,
+   * and therefore the order the reader sees them on screen). An id with no label is skipped: a bar that
+   * printed a raw section id would be worse than one that printed nothing.
+   */
+  const changedLabels = sectionLabels
+    ? Array.from(new Set(changes.map((c) => c.section)))
+        .map((id) => sectionLabels[id])
+        .filter((label): label is string => Boolean(label))
+    : [];
 
   const save = useCallback(
     (onDone?: () => void) => {
@@ -676,6 +704,13 @@ export function TabSaveScope({
                 >
                   {expanded ? t('hideChanges') : t('reviewChanges')}
                 </button>
+                {/* 15e5bd93 — the cards that moved, by name. See `sectionLabels`: absent on every scope
+                    that does not ask for it, so the bar is byte-identical there. */}
+                {changedLabels.length > 0 && (
+                  <span data-tab-save-changed className="min-w-0 text-xs text-muted-foreground">
+                    {changedLabels.join(' · ')}
+                  </span>
+                )}
               </>
             ) : (
               <span className="text-xs text-muted-foreground">{t('noChanges')}</span>

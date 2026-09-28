@@ -126,6 +126,16 @@ classification confirms the plan's buckets.** What it does not confirm is that t
 
 ### Finding 1 — the four (a) forms are NOT on one tab, so "one Save for the whole screen" cannot be built as written
 
+> **SETTLED BY 15e5bd93 (r352), and the record below is kept as the reasoning that led there.** This
+> finding's two refusals both still hold: `TabSaveScope` still cannot span two tab panes, and the
+> Company Registrations card still must not move off the Statutory tab. What it could not foresee is the
+> third answer — the reporter's approved statutory redesign put the eight bodies in one permanent rail
+> with one workspace and took the Save button off every body editor, so a scope on the Statutory tab now
+> owns every card under its bar instead of claiming eight it did not. The Statutory tab therefore has a
+> consolidated Save of its own (`lib/company-statutory-tab-sections.ts`), the registrations card is in
+> it, and it did not move. The "one-card scope would be worse than none" paragraph below was correct
+> about a one-card scope; it is simply no longer the choice on offer.
+
 The panel is three tabs: **General | Bank Account | Statutory**. The (a) forms sit like this:
 
 | tab | (a) forms | (b) forms |

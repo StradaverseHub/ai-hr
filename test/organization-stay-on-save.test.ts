@@ -364,6 +364,9 @@ describe('§5 the panel posts what the actions read, and says it in six language
   const noop = () => undefined;
   const actions = {
     saveGeneralTab: async () => ({ ok: true, saved: [] }),
+    // 15e5bd93 — the Statutory tab's consolidated Save. It does NOT redirect (it returns a TabSaveResult),
+    // which is why §1's twelve redirect cases are unchanged: there is no thirteenth destination to pin.
+    saveStatutoryTab: async () => ({ ok: true, saved: [] }),
     updateCompany: noop,
     archiveCompany: noop,
     deleteCompany: noop,

@@ -29,6 +29,10 @@ import {
   updateCompanyAction,
   updateCompanyDefaultCycleAction,
 } from '../../actions';
+// 15e5bd93 (r352) — the STATUTORY tab's own consolidated Save. A route-local `'use server'` module, the
+// shape app/admin/settings/actions.ts and app/admin/attendance/shift-actions.ts already use; it reaches
+// the same two services the per-body actions above reach.
+import { saveCompanyStatutoryTabAction } from '../statutory-tab-actions';
 
 /**
  * Admin → Organization → ONE COMPANY: the maintenance screen (item defd4644).
@@ -194,6 +198,9 @@ export default async function CompanyMaintenancePage({
           // is the r123 hazard, and this is the shape that is safe: the action is declared in a
           // `'use server'` module and passed by reference, never wrapped in a closure built here.
           saveGeneralTab: saveCompanyGeneralTabAction,
+          // 15e5bd93 — the Statutory tab's ONE Save: the eight bodies plus the SSM / MyInvois
+          // registrations card, which is the fourth bucket (a) form 65b22c00's finding 1 could not reach.
+          saveStatutoryTab: saveCompanyStatutoryTabAction,
         }}
       />
       </Card>
