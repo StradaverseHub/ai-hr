@@ -321,7 +321,20 @@ export const SCREENS: readonly ScreenEntry[] = [
     // separate function-access rights: browsing, creating and maintaining a company are the same
     // administrative capability, which is why they share one column — the /admin/notice-board and
     // /admin/personnel entries below collapse their own new/detail routes for the same reason.
-    routes: ['/admin/organization', '/admin/organization/new', '/admin/organization/[companyId]'],
+    //
+    // 15e5bd93 rev 2 (r353) — FOUR routes now. The reporter contested r352's in-tab redesign and asked
+    // for the statutory bodies on "a dedicated full-width screen", so
+    // /admin/organization/[companyId]/statutory exists and calls the same scopedAdmin() the company's
+    // maintenance page does. It joins this column rather than getting one of its own for the reason above:
+    // maintaining a company's statutory payment setup is not a different administrative capability from
+    // maintaining the company, and splitting it would mean a tenant could grant one without the other and
+    // reach a Back link to a screen it may not see.
+    routes: [
+      '/admin/organization',
+      '/admin/organization/new',
+      '/admin/organization/[companyId]',
+      '/admin/organization/[companyId]/statutory',
+    ],
   },
   {
     screenKey: 'personnelAdmin',

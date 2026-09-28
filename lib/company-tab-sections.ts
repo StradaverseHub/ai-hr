@@ -22,12 +22,15 @@
  * (pinned by test/company-panel-bank-statutory-layout.test.ts). Finding 1 of the audit has the full
  * argument, and the reporter was owed that sentence rather than a silent omission.
  *
- * ⚠️ UPDATED BY 15e5bd93 (r352): the fourth member no longer keeps its own button. It did not move — it
- * is still on the Statutory tab, where r226 put it — but that tab now has a consolidated Save of its own
- * (lib/company-statutory-tab-sections.ts). The audit's objection to one was that a bar there would sit
- * above "eight statutory body editors it does not own"; the reporter's approved statutory redesign took
- * the Save buttons off those eight editors, so the bar owns them. Two scopes, two vocabularies, one
- * screen — and this list is still only about General.
+ * ⚠️ 15e5bd93 (r352) GAVE THE STATUTORY TAB A CONSOLIDATED SAVE OF ITS OWN, AND 15e5bd93 REVISION 2
+ * (r353) TOOK IT BACK OUT. That is not a flip-flop, it is the reporter contesting the premise: r352 could
+ * consolidate the fourth member only because it had removed the Save buttons from the eight statutory body
+ * editors on the same tab, and the contest rejects those editors being on the tab at all ("Do not expand
+ * the statutory settings directly within the existing Statutory tab"). With the editors on a dedicated
+ * screen, the registrations card is alone on the tab and a sticky bar over one two-field card is the
+ * "worse than none" finding 1 named — so it has its own Save button again. `lib/company-statutory-tab-
+ * sections.ts` is retired with the action it declared the vocabulary for. ONE scope on this screen, and
+ * this list is still only about General.
  *
  * THE ORDER IS THE READING ORDER, and that is a real choice rather than a default. Unlike the personnel
  * tabs, these three writers touch DISJOINT columns of the same row — `updateCompany` writes the identity

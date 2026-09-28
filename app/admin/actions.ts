@@ -148,6 +148,9 @@ import {
   upsertCompanyStatutoryAuthority,
   removeCompanyStatutoryAuthority,
 } from '@/core/statutory-authority';
+// 15e5bd93 rev 2 (r353) — the controlled set, so the "<body> saved" confirmation resolves the posted
+// authority through it rather than echoing a reader-supplied string into a redirect URL.
+import { isStatutoryAuthority } from '@/lib/statutory-authorities';
 import { packFor } from '@/localization/registry';
 // 4e9a4d59 — the post-action redirect contract lives in a plain module so BOTH this file and
 // app/admin/leave-approval/actions.ts share ONE okEntitlements (a 'use server' file can only export
@@ -161,8 +164,12 @@ import {
   SYSTEM_LABELS,
   fail,
   failCompany,
+  // 15e5bd93 rev 2 (r353) — the dedicated Statutory Payment Setup screen's own pair. See the note on
+  // `fromStatutorySetupScreen` below for why the destination is chosen per FORM and not per action.
+  failStatutorySetup,
   ok,
   okCompany,
+  okStatutorySetup,
   okToast,
   okEntitlements,
 } from './_redirects';
@@ -203,6 +210,47 @@ function companyTab(fd: FormData): string {
  */
 function fromCompanyScreen(fd: FormData): boolean {
   return String(fd.get('returnTo') ?? '') === 'company';
+}
+
+/**
+ * 15e5bd93 rev 2 (r353) — "was this submitted from the DEDICATED Statutory Payment Setup screen?"
+ *
+ * The second marker of exactly the shape above, and it exists for the same reason: two actions are now
+ * bound in two places. `setCompanyStatutoryAuthorityAction` and `removeCompanyStatutoryAuthorityAction`
+ * are reached from the company panel's Statutory tab (where the reader must return to that tab) and from
+ * `/admin/organization/<id>/statutory` (where the reader must stay on that screen, which is the
+ * reporter's fourth approved point in their own words: "Saving keeps the user on this page… Never
+ * redirected to the Organization company list").
+ *
+ * ⚠️ THE DESTINATION COMES FROM THE FORM, NOT FROM THE ACTION, and repointing the actions instead would
+ * have been the wrong fix: the panel's rail links out to the new screen rather than editing in place
+ * today, but "Clear this authority" and any future in-panel binding would then land on a screen the
+ * reader did not press a button on.
+ *
+ * A FIXED VALUE COMPARED AGAINST A LITERAL, never a path echoed into a redirect — the one rule
+ * `companyTab` above exists to state. `okStatutorySetup` builds the address from `companyId` alone.
+ */
+const STATUTORY_SETUP_RETURN = 'statutory-setup';
+function fromStatutorySetupScreen(fd: FormData): boolean {
+  return String(fd.get('returnTo') ?? '') === STATUTORY_SETUP_RETURN;
+}
+
+/**
+ * The confirmation the dedicated screen shows, NAMING THE BODY THAT WAS SAVED.
+ *
+ * The reporter asked for "a confirmation naming what was saved", and on a screen showing eight cards at
+ * once a bare "Saved" answers the wrong question — it cannot tell an operator who pressed Save on PTPTN
+ * from one who pressed it on EPF. The body's name is the SAME catalogue string the card itself is headed
+ * with (`authority_<key>`), so the toast and the card can never call one body two different things.
+ *
+ * ⚠️ RESOLVED THROUGH THE CONTROLLED SET, never from the posted string. `authority` is reader-supplied
+ * and this value goes into a redirect URL; an unrecognised body falls back to the plain "Saved" rather
+ * than echoing what was posted or throwing a MISSING_MESSAGE at the reader.
+ */
+async function statutoryBodySavedToast(authority: string): Promise<string> {
+  const t = await getTranslations('admin.organization');
+  if (!isStatutoryAuthority(authority)) return t('savedToast');
+  return t('authoritySavedToast', { body: t(`authority_${authority}` as never) });
 }
 
 /** The session the company writers run under — named once rather than re-spelled at each helper. */
@@ -525,7 +573,16 @@ export async function setCompanyStatutoryAuthorityAction(formData: FormData) {
       await pack.companyStatutory.set(s, { companyId, ...filing });
     }
   } catch (e) {
+    // 15e5bd93 rev 2 (r353) — a refusal returns to the screen that holds the form. From the dedicated
+    // setup screen that is the setup screen, not the company panel: `failCompany` would have shown
+    // "Choose a signatory who is an active employee of this company" on a page with no such box on it.
+    if (fromStatutorySetupScreen(formData)) failStatutorySetup(e, companyId);
     failCompany(e, companyId, companyTab(formData));
+  }
+  // 15e5bd93 rev 2 — "Saving keeps the user on this page and shows a confirmation naming what was
+  // saved." Eight cards are on screen at once, so a bare "Saved" cannot say which one took.
+  if (fromStatutorySetupScreen(formData)) {
+    okStatutorySetup(companyId, await statutoryBodySavedToast(String(formData.get('authority') ?? '')));
   }
   const t = await getTranslations('admin.organization');
   okCompany(companyId, t('savedToast'), companyTab(formData));
@@ -538,9 +595,14 @@ export async function removeCompanyStatutoryAuthorityAction(formData: FormData) 
   try {
     await removeCompanyStatutoryAuthority(s, { id: String(formData.get('id')) });
   } catch (e) {
+    if (fromStatutorySetupScreen(formData)) failStatutorySetup(e, companyId);
     failCompany(e, companyId, companyTab(formData));
   }
   const t = await getTranslations('admin.organization');
+  // 15e5bd93 rev 2 — Clear is the one control on the setup screen that is NOT a field edit: it DELETES
+  // the body's row. It stays on the screen like everything else there, but it keeps the generic
+  // "Removed" — naming a body that no longer has a record would read as a confirmation that it was saved.
+  if (fromStatutorySetupScreen(formData)) okStatutorySetup(companyId, t('removedToast'));
   okCompany(companyId, t('removedToast'), companyTab(formData));
 }
 

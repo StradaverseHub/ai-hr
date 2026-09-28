@@ -1,19 +1,9 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import {
-  BookOpen,
-  GraduationCap,
-  HandCoins,
-  Landmark,
-  type LucideIcon,
-  Moon,
-  PiggyBank,
-  ShieldPlus,
-  Umbrella,
-} from 'lucide-react';
+import { Landmark } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { COUNTRY_CODE_OPTIONS, COUNTRY_NAME_OPTIONS } from '@/lib/countries';
 import { type CompanyPanelTab } from '@/lib/company-panel-tabs';
@@ -22,9 +12,13 @@ import { firstDirtyGuard } from '@/lib/unsaved-changes';
 import { TabSaveScope } from './tab-save-scope';
 import { DISBURSEMENT_CAPABLE_BANKS, DISBURSEMENT_UNSUPPORTED_BANKS, MY_BANKS, myBankLabel } from '@/lib/my-banks';
 import { STATUTORY_AUTHORITIES } from '@/lib/statutory-authorities';
-// 15e5bd93 — the Statutory tab's own consolidated-Save vocabulary. The eight body sections ARE their
-// authority keys; `identity` is the SSM / MyInvois registrations card.
-import { STATUTORY_IDENTITY_SECTION } from '@/lib/company-statutory-tab-sections';
+// 15e5bd93 rev 2 (r353) — the marks and the r226 filing-field map moved to lib/, because the reporter's
+// approved rev-2 redesign gives the statutory bodies a DEDICATED screen and both that screen and this
+// panel's read-only list must agree about a body's logo and about which of the three filing numbers is
+// its own. `STATUTORY_IDENTITY_SECTION` is GONE with the consolidated statutory Save it named — see the
+// Statutory pane below.
+import { AUTHORITY_ICON, AUTHORITY_LOGO, MY_FILING_FIELD } from '@/lib/statutory-authority-display';
+import { OptionSelect } from './option-select';
 import { Button, Field, inputCls } from './ui';
 // 7d2df42a — the Company Code input and its duplicate warning, shared with the create form so the two
 // screens that edit this column cannot disagree about what a duplicate is.
@@ -32,7 +26,6 @@ import { CompanyCodeField } from './company-code-field';
 import type { CompanyCodeHolder } from '@/lib/company-code';
 import { ConfirmSubmit } from './ui/confirm-submit';
 import { CompanyLogo, CompanyLogoEdit } from './company-logo';
-import { EmployeeSearchField, type EmployeeSearchOption } from './employee-search-field';
 // r79a — company.currency is now the salary-form default currency, so it uses the same ISO 4217 picker.
 import { CurrencySelect } from './currency-select';
 
@@ -64,71 +57,6 @@ type TabKey = CompanyPanelTab;
  * to thirteen forms across two files, one of which would be forgotten.
  */
 const TAB_TRACKER_ATTR = 'data-company-tab-tracker';
-
-/**
- * The visual mark on each statutory body's ROW.
- *
- * ⚠️ THIS REVERSES 3c2f55d7 rev 2, AND THE REASON IT GAVE IS THE REASON IT CAN BE REVERSED. That round
- * refused the official logos in these words: "this repo bundles no remote assets, and reproducing a
- * government agency's mark inside a product needs permission we do not have on file… swapping in a
- * licensed mark later is a one-line change here."
- *
- * efe424b0 (r327) — the reporter ATTACHED all seven marks to the request themselves (KWSP, PERKESO,
- * LHDN, Zakat, PTPTN, Tabung Haji, HRDF). That is the condition the old comment named, and they are the
- * owner of the deployment these identify. The files are committed under public/statutory/ rather than
- * fetched, so the "bundles no remote assets" half still holds exactly as before.
- *
- * ⚠️ THE ICON FALLBACK STAYS, and it is not vestigial: a body with no logo file falls back to its Lucide
- * mark, so adding an authority can never render a blank tile. That property is why AUTHORITY_ICON had a
- * default in the first place and it survives the change.
- */
-/**
- * ⚠️ efe424b0 — WHY "SOCSO & EIS" CANNOT BE ONE CONFIGURATION, ONLY ONE ROW.
- *
- * The request says: consolidate SOCSO and EIS. The EIS card has said for some time that EIS has no
- * filing number of its own because it files under SOCSO's PERKESO employer code, which makes the merge
- * sound free. It is not, and the data says so.
- *
- * MEASURED ON PRODUCTION 2026-09-22, `company_statutory_authority` holds a SEPARATE row per body with
- * its own payment account, bank profile and signatory — and they DIFFER:
- *
- *     eis   | bank=d7347908… | acct=SMSB_EIS        socso | bank=d7347908… | acct=SMSB_SOCSO
- *     eis   | bank=(none)    | acct=E1400003148V    socso | (no counterpart)
- *     socso | sig=af6dfdc1…                          eis   | (no counterpart)
- *
- * So a company can pay EIS on a different account from SOCSO, and one already does. Drawing ONE card
- * backed by SOCSO's row would leave `SMSB_EIS` on file with no screen that can edit it — a setting that
- * still governs a payment, quietly unreachable. That is the failure this note exists to prevent.
- *
- * WHAT CONSOLIDATION THEREFORE MEANS HERE: one ROW in the list, named for both bodies and carrying the
- * PERKESO mark once — and, when opened, BOTH configurations. The filing code stays stated once, because
- * that genuinely is shared; the payment details stay two, because they genuinely are not.
- */
-const AUTHORITY_LOGO: Record<string, string> = {
-  epf: '/statutory/kwsp.png',
-  socso: '/statutory/perkeso.png',
-  // EIS files under PERKESO and is drawn with SOCSO in one row — see the consolidation note below.
-  eis: '/statutory/perkeso.png',
-  lhdn: '/statutory/lhdn.png',
-  hrdf: '/statutory/hrdf.png',
-  zakat: '/statutory/zakat.png',
-  ptptn: '/statutory/ptptn.png',
-  tabung_haji: '/statutory/tabunghaji.png',
-};
-
-/**
- * The fallback mark, keyed by the same strings as lib/statutory-authorities.ts.
- */
-const AUTHORITY_ICON: Record<string, LucideIcon> = {
-  epf: PiggyBank, // retirement savings
-  socso: ShieldPlus, // injury / invalidity cover
-  eis: Umbrella, // retrenchment cover
-  lhdn: Landmark, // the revenue board
-  hrdf: GraduationCap, // training levy
-  zakat: HandCoins, // religious contribution
-  ptptn: BookOpen, // study loan
-  tabung_haji: Moon, // pilgrimage savings
-};
 
 /** One tab trigger — mirrors the claims-tabs styling (border-b, active = border-primary text-primary). */
 function TabButton({
@@ -278,34 +206,6 @@ function SubHeader({ children }: { children: React.ReactNode }) {
   return <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{children}</div>;
 }
 
-/** A pick-list backed by a tenant-wide profile-option catalog (bc5d4891). Legacy-tolerant: if the stored
- *  value is not (or no longer) in the active catalog it is still rendered as a selectable option so an edit
- *  of any OTHER field never silently drops it. Empty = the placeholder (clears to null on save). */
-function OptionSelect({
-  name,
-  value,
-  options,
-  placeholder,
-}: {
-  name: string;
-  value: string | null;
-  options: PanelOption[];
-  placeholder: string;
-}) {
-  const known = !value || options.some((o) => o.value === value);
-  return (
-    <select name={name} defaultValue={value ?? ''} className={inputCls}>
-      <option value="">{placeholder}</option>
-      {!known && value ? <option value={value}>{value}</option> : null}
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
-  );
-}
-
 /**
  * One company bank account (R46 orgbank 84719377). Used twice: prefilled for each saved account (a hidden
  * `id` makes the save an UPDATE of that row) and blank to add another. A company may hold several accounts
@@ -424,91 +324,59 @@ function BankAccountForm({
 }
 
 /**
- * WHICH FILING NUMBER BELONGS TO WHICH BODY (r226).
+ * ── 15e5bd93 REVISION 2 (r353) — THE STATUTORY TAB LISTS THE BODIES AND LINKS OUT ─────────────
  *
- * There are TWO numbers per statutory body, and until this round nothing on screen said so:
+ * ⚠️ THIS REPLACES THE r352 NOTE THAT STOOD HERE, AND THE REPORTER CONTESTED r352 IN WRITING. That round
+ * split the old folding `StatutoryAuthorityCard` into a permanent left-hand rail plus a workspace, both
+ * INSIDE this tab, under one Save. The contest names both halves: "Do not expand the statutory settings
+ * directly within the existing Statutory tab" and "The preferred approach is a dedicated full-width
+ * screen" — plus a view/edit distinction that round did not attempt at all.
  *
- *   • the EMPLOYER ACCOUNT / REFERENCE number — the one on the payment slip. It has always lived on the
- *     body's own card (company_statutory_authority.accountNo, `name="accountNo"` below).
- *   • the FILING number — the one that goes on the body's filed form. It lived in a single flat list
- *     above the cards (company_statutory_my), which is what made the two look like duplicates.
+ * So the FIELDS are gone from this tab. They live on `/admin/organization/<companyId>/statutory`
+ * (components/statutory-setup-screen.tsx), which draws every body as its own card, read-only until that
+ * card's Edit is pressed. `StatutoryBodyEditor` was not deleted so much as MOVED there — group headings,
+ * field order, the `filingCountry` flag and the signatory tolerance all intact.
  *
- * They are not duplicates. This map moves the second one onto the same card as the first, and both are
- * now labelled so a reader can tell them apart.
- *
- * ⚠️ WHAT IS DELIBERATELY ABSENT, because "add the missing ones" is the obvious next edit and it is wrong:
- *
- *   • SSM and MyInvois get NO entry and no card. Neither is a body an employer pays a contribution to,
- *     neither is in STATUTORY_AUTHORITIES, and the SSM number is read by two statutory files we produce
- *     (localization/my/borang-8a.ts:145, localization/my/socso-eis-file.ts:140) — filing it under a
- *     payment card would be actively misleading. They stay in the identity list on the Statutory tab.
- *   • EIS gets no entry either: it files under the SAME PERKESO employer code as SOCSO. A second input
- *     writing socsoEmployerCode would be two controls fighting over one column, and whichever card was
- *     saved second would win. The EIS card says so in words instead (`authorityEisSharesSocso`).
- *   • HRD Corp's filing identity is not a number but a registration STATUS (the levy rate), so it is
- *     handled separately in the card as the same three-value select it has always been.
- *
- * Each card posts ONLY its own field, and the writer is a partial patch, so one card's save cannot blank
- * another's number — see localization/my/company-statutory.ts and setCompanyStatutoryAuthorityAction.
- */
-type MyFilingKey = 'epfEmployerNo' | 'socsoEmployerCode' | 'lhdnEmployerNo';
-const MY_FILING_FIELD: Record<string, { name: MyFilingKey; labelKey: string }> = {
-  epf: { name: 'epfEmployerNo', labelKey: 'epfEmployerNo' },
-  socso: { name: 'socsoEmployerCode', labelKey: 'socsoEmployerCode' },
-  lhdn: { name: 'lhdnEmployerNo', labelKey: 'lhdnENumber' },
-};
-
-/**
- * ── 15e5bd93 (r352) — WHY THERE ARE NOW TWO COMPONENTS WHERE THERE WAS ONE CARD ──────────────────
- *
- * Until this round each statutory body was ONE `StatutoryAuthorityCard`: a readable face plus its own
- * fourteen-field editor folded behind an "Open settings" toggle. The reporter's complaint about that
- * shape, in their words: "the current behaviour opens the settings in a tab/expand-style interface,
- * which makes the information less clear and less convenient to view or edit."
- *
- * The approved drawing (docs/mockups/15e5bd93-statutory-workspace.html) splits the card in two along the
- * line the fold used to run down:
- *
- *   · `StatutoryBodyRow`    — the body's face, as one row of a PERMANENT left-hand rail. It never
- *                             collapses and it is never the only place a value lives.
- *   · `StatutoryBodyEditor` — the body's fields, ALL of them already open, filling the workspace to the
- *                             right of the rail. Nothing inside it expands.
- *
- * ⚠️ NOTHING IS UNMOUNTED, and that property is older than this round and survives it. All eight editors
- * render; the seven that are not selected are hidden with CSS. So a half-typed address survives a switch
- * between bodies, the consolidated Save can read every body's fields whether or not you are looking at
- * them, and the render guard can still count all eight forms
- * (test/company-panel-no-disclosure-render.test.ts).
+ * WHAT IS LEFT HERE IS THE LIST, AND IT IS THE REPORTER'S FIRST APPROVED POINT: "Open Settings" becomes a
+ * link to a real page. Each body is one row of a read-only list — mark, name, description, Configured /
+ * Not set up, and what is on file — with an "Open settings" LINK to that screen.
  *
  * ⚠️ THE ROW KEEPS THE SUMMARY 3783fd87 PUT ON THE FACE, and that is a deliberate refusal to let this
- * item quietly undo the last one. That round's promise to the same reporter was a body "showing what is
+ * item quietly undo an earlier one. That round's promise to the same reporter was a body "showing what is
  * set without opening anything — the employer number and the bank account it is paid from — and saying
  * plainly where nothing is set yet", because comparing two bodies meant opening both and remembering the
- * first. A rail listing only names and a Configured chip would put that back: you would have to select
- * each body in turn to read its number. The drawing is a sketch of the LAYOUT (it says so), and the
- * summary is a sub-line of a row it already draws — so it stays, under its own captions.
+ * first. A list of names and Configured chips would put that back. It stays, under its own captions, and
+ * it is now the whole reason this tab still says anything about the bodies at all.
  *
  * ⚠️ TWO DIFFERENT NUMBERS, TWO CAPTIONS — r226's rule, unchanged. The FILING number goes on the body's
  * filed form (company_statutory_my); the employer account is the reference on its PAYMENT slip
  * (company_statutory_authority). They are not duplicates, and summarising them into one anonymous
  * "employer number" is the exact fault r226 was raised for.
  *
- * ⚠️ NO PER-BODY ROUTE. Selection is client state and there is no `/admin/organization/<id>/<body>`:
- * a route would need its own entry in the function-access matrix (lib/permissions.ts) and would put a
- * page load between "which body do I mean" and "here are its fields" — the opposite of what the redesign
- * is for. The argument is the same one that kept the editor in place in 3c2f55d7 rev 2.
+ * ⚠️ NO ROUTE *PER AUTHORITY* — REWORDED, NOT DROPPED, AND THE DISTINCTION IS THE POINT. r352 argued here
+ * against `/admin/organization/<id>/<body>`: it "would put a page load between 'which body do I mean' and
+ * 'here are its fields'". That argument is still correct and still binding, and it is NOT an argument
+ * against what r353 built. There is ONE route for the whole setup, it shows all eight bodies at once, and
+ * moving between them costs no navigation — so the objection the old sentence raised does not apply to it.
+ * Left as written, that sentence would have read as forbidding the screen the reporter approved. (The
+ * route IS registered in lib/permissions.ts under screenKey 'organization', which is the other half the
+ * old note named; test/function-access.test.ts requires exactly that.)
  */
 
 /**
- * ONE STATUTORY BODY, AS A ROW OF THE PERMANENT RAIL.
+ * ONE STATUTORY BODY, AS A READ-ONLY ROW OF THIS TAB'S LIST.
  *
  * The face: the body's own mark, its name, a one-line description, Configured / Not set up, and the
- * summary of what is on file. Read-only throughout — it renders text, never a control, because the
- * editor beside it is the only writer and `company_statutory_authority` is also what the EA officer
- * block and the CP39 preparer block read (localization/my/reports.ts).
+ * summary of what is on file. READ-ONLY THROUGHOUT — it renders text and one link, never a field. That
+ * was true while a workspace sat beside it and it is more true now: the only writer is the dedicated
+ * setup screen, and `company_statutory_authority` is also what the EA officer block and the CP39 preparer
+ * block read (localization/my/reports.ts), so a second set of controls over the same columns on a screen
+ * nobody expects to save from is how two doors start disagreeing.
  *
- * The `<dl>` sits OUTSIDE the selection `<button>` on purpose: a button may only contain phrasing
- * content, and a definition list inside one is markup a screen reader has to guess at.
+ * 15e5bd93 rev 2 — `selected` / `onSelect` are GONE with the workspace they chose between, and the row's
+ * selection `<button>` with them. What replaces it is a LINK: the reporter's first approved point is that
+ * "Open Settings" becomes a link to a real page. The `<dl>` now sits beside that link rather than outside
+ * a button, which was only ever a markup constraint (a button may contain phrasing content only).
  */
 function StatutoryBodyRow({
   authority,
@@ -517,8 +385,7 @@ function StatutoryBodyRow({
   subordinate = false,
   filingCountry,
   bankProfiles,
-  selected,
-  onSelect,
+  setupHref,
 }: {
   authority: string;
   row: PanelStatutoryAuthority | null;
@@ -529,16 +396,21 @@ function StatutoryBodyRow({
    * efe424b0 — draw this body as part of the group ABOVE it rather than as its own entry: indented, and
    * without a second copy of the mark its group head already carries. Only EIS under SOCSO today.
    *
-   * It is a presentation flag and nothing else. The body keeps its own editor, its own authority value
-   * and its own record — which is the point, because EIS's payment account genuinely differs from
-   * SOCSO's on this tenant (see the note on AUTHORITY_LOGO).
+   * It is a presentation flag and nothing else. The body keeps its own CARD on the setup screen, its own
+   * authority value and its own record — which is the point, because EIS's payment account genuinely
+   * differs from SOCSO's on this tenant (see lib/statutory-authority-display.ts).
    */
   subordinate?: boolean;
   /** ISO code of the company. 'MY' is the only pack with a filing identity today. */
   filingCountry: string;
   bankProfiles: PanelBankProfile[];
-  selected: boolean;
-  onSelect: () => void;
+  /**
+   * 15e5bd93 rev 2 — WHERE "Open settings" GOES. The dedicated Statutory Payment Setup screen for this
+   * company, built by the pane below from the company id it already holds. Every row links to the SAME
+   * address: there is no route per authority (see the note above this component), and the screen shows
+   * every body at once, so a row does not need to say which body it means.
+   */
+  setupHref: string;
 }) {
   const t = useTranslations('admin.organization');
   const r = row;
@@ -556,7 +428,7 @@ function StatutoryBodyRow({
    * row actually carries one: payroll resolves a MISSING row to 'not_registered' and charges nothing,
    * but printing "Not registered" for a company that has no row at all would assert a registration
    * decision nobody made. EIS gets no filing line because it has none — it files under SOCSO's PERKESO
-   * code, which the editor says in words.
+   * code, which its card on the setup screen says in words.
    */
   const hrdfBandKey =
     statutory?.hrdfStatus === 'mandatory'
@@ -592,18 +464,11 @@ function StatutoryBodyRow({
         subordinate && 'pl-6',
       )}
     >
-      {/* SELECTION. `aria-current` + the accent fill is the rail pattern this product already uses —
-          components/sidebar.tsx and components/leave-type-workspace.tsx. It is NOT a disclosure: it does
-          not hide or reveal anything, it chooses which body the workspace is showing. */}
-      <button
-        type="button"
-        onClick={onSelect}
-        aria-current={selected ? 'true' : undefined}
-        className={cn(
-          'flex w-full items-start gap-3 p-3 text-left transition-colors',
-          selected ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60',
-        )}
-      >
+      {/* 15e5bd93 rev 2 — THE ROW'S HEAD AND ITS ONE CONTROL. `aria-current` and the accent fill that
+          marked the selected body are gone with the selection they expressed; what stands here now is the
+          body's face and an "Open settings" LINK to the dedicated setup screen, which is the reporter's
+          first approved point in their own words. A <div>, not a <button>: nothing on this row toggles. */}
+      <div className="flex w-full items-start gap-3 p-3 text-left">
         {/* efe424b0 — the body's OWN mark, from public/statutory/, with the Lucide icon as the fallback
             for a body whose file we do not have. `object-contain` on a fixed box because the seven marks
             are different shapes: letting each set its own height would make the rows jump. Decorative,
@@ -645,12 +510,25 @@ function StatutoryBodyRow({
             {configured ? t('authorityConfigured') : t('authorityNotConfigured')}
           </span>
         </span>
-      </button>
+        {/* `authorityOpen` — THE RETIRED KEY, BACK IN SERVICE AND SAYING THE SAME THING. It captioned the
+            per-body fold until r352 took the fold out, and the two catalogue entries were kept unused
+            rather than deleted precisely because a retired string costs nothing and re-translating a
+            deleted one into six languages costs a round. The reporter's approved wording for this row is
+            "Open Settings becomes a link to a real page", so the caption is the one they already know. */}
+        <Link
+          href={setupHref}
+          className="shrink-0 text-xs font-medium text-primary hover:underline"
+          data-statutory-setup-link={authority}
+        >
+          {t('authorityOpen')}
+          <span aria-hidden> →</span>
+        </Link>
+      </div>
 
-      {/* 3783fd87 — WHAT IS SET, WITHOUT SELECTING ANYTHING. A <dl> because each entry is a caption and
+      {/* 3783fd87 — WHAT IS SET, WITHOUT OPENING ANYTHING. A <dl> because each entry is a caption and
           its value, and the caption is what stops the two numbers being mistaken for each other.
           Rendered as plain text, never as a disabled input: a greyed-out box looks like something you can
-          fix here, and this half of the row is read-only. */}
+          fix here, and the whole of this row is read-only — the setup screen is the only writer. */}
       <dl className="space-y-0.5 px-3 pb-2.5 text-xs">
         {summary.map((f) => (
           <div key={f.key} className="flex min-w-0 items-baseline gap-1">
@@ -664,268 +542,6 @@ function StatutoryBodyRow({
         ))}
       </dl>
     </li>
-  );
-}
-
-/**
- * ONE STATUTORY BODY'S FIELDS, FILLING THE WORKSPACE. Every field is already open; nothing here expands.
- *
- * ── THE THREE GROUPS, AND WHY THE FIRST ONE HAS TWO FACES ────────────────────────────────────────
- * The approved drawing groups the existing fields under three headings: the filing identity, the payment
- * setup, and the correspondence address. No field is added, removed, renamed or re-validated — the
- * groups are the headings r226 already introduced (`authorityFilingSection`, `authorityPaymentSection`)
- * plus a name for the address block, which was the one run of fields with no heading at all.
- *
- * ⚠️ HRD CORP'S FIRST GROUP IS "Registration", NOT "Filing identity", and that is r226's rule rather
- * than a leftover. HRD Corp's control is not a number — it is a registration BAND (not registered /
- * mandatory / optional) that decides whether the levy is charged at all. Rendering it under a caption
- * promising a filed-form number tells the operator something untrue about the box they are filling in.
- *
- * ⚠️ EIS GETS A SENTENCE WHERE ITS FILING NUMBER WOULD BE. It has none of its own: it files under
- * SOCSO's PERKESO employer code. A second input writing `socsoEmployerCode` would be two controls
- * fighting over one column and whichever was saved second would win; an empty box would read as a number
- * somebody forgot. So: `authorityEisSharesSocso`, in the group where the missing box would have been.
- *
- * ── NO SAVE BUTTON, AND THAT IS WHAT "ONE SAVE" MEANS ────────────────────────────────────────────
- * The form keeps its `action` — not as a no-JavaScript fallback, but because a bound form is what the
- * writer is wired to, because it is what TabSaveScope's submit guard intercepts, and because a `<form>`
- * with no action at all would POST to the current URL. Its submit button is gone: the tab's one sticky
- * Save owns it now (`data-save-section={authority}`). "Clear this authority" is NOT part of that Save —
- * it DELETES the body's row, which is a discrete act, so it keeps its own button outside the marker.
- *
- * ── THE SIGNATORY PICKER ─────────────────────────────────────────────────────────────────────────
- * Scoped to ACTIVE employees of THIS company, searchable by Employee ID or name (EmployeeSearchField).
- * It is legacy-tolerant in the same way the profile-option pickers are: a stored signatory who has since
- * left is injected into the option list as "former employee" so the field still POSTS them, and editing
- * the phone number does not silently clear the signatory. (EmployeeSearchField drops a value that is not
- * in its list, which without this would have turned an unrelated save into a wipe.) The service refuses
- * to newly APPOINT a leaver — that rule is untouched.
- */
-function StatutoryBodyEditor({
-  authority,
-  row,
-  statutory,
-  filingCountry,
-  companyId,
-  bankProfiles,
-  signatories,
-  stateOptions,
-  selected,
-  setAction,
-  removeAction,
-}: {
-  authority: string;
-  row: PanelStatutoryAuthority | null;
-  statutory: PanelStatutory;
-  filingCountry: string;
-  companyId: string;
-  bankProfiles: PanelBankProfile[];
-  signatories: PanelSignatory[];
-  stateOptions: PanelOption[];
-  /** Which body the rail has chosen. The other seven stay MOUNTED and are hidden with CSS. */
-  selected: boolean;
-  setAction: Action;
-  removeAction: Action;
-}) {
-  const t = useTranslations('admin.organization');
-  const fieldId = useId();
-  const r = row;
-  const configured = !!r;
-  const filing = filingCountry === 'MY' ? MY_FILING_FIELD[authority] : undefined;
-  const showHrdf = filingCountry === 'MY' && authority === 'hrdf';
-  const sharesSocsoCode = filingCountry === 'MY' && authority === 'eis';
-
-  // The searchable option list: this company's active employees, plus — only when the saved signatory is
-  // no longer among them — the stored person, so the hidden input keeps posting the id already on record.
-  const signatoryOptions: EmployeeSearchOption[] = signatories.map((sg) => ({
-    value: sg.personId,
-    name: sg.name,
-    employeeCode: sg.employeeCode,
-  }));
-  if (r?.signatoryPersonId && !signatories.some((sg) => sg.personId === r.signatoryPersonId)) {
-    signatoryOptions.unshift({
-      value: r.signatoryPersonId,
-      name: t('authoritySignatoryFormer'),
-      employeeCode: null,
-    });
-  }
-
-  return (
-    <div data-statutory-workspace={authority} className={cn('space-y-3', !selected && 'hidden')}>
-      {/* The workspace head — the body you are editing, and whether it has a record yet. No mark here:
-          the rail beside it carries the marks, and a second copy would only compete with them. */}
-      <div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold text-foreground">{t(`authority_${authority}` as never)}</span>
-          <span className={configured ? badge.emerald : badge.muted}>
-            {configured ? t('authorityConfigured') : t('authorityNotConfigured')}
-          </span>
-        </div>
-        <p className="mt-1 text-xs text-muted-foreground">{t(`authorityDesc_${authority}` as never)}</p>
-      </div>
-
-      <form action={setAction} data-save-section={authority} className="space-y-3">
-        <input type="hidden" name="companyId" value={companyId} />
-        <input type="hidden" name="authority" value={authority} />
-        {/* `filingCountry` is the hidden flag that tells the writer a filing control was on this form at
-            all, and it is deliberately NOT called `country`: that name is already taken further down by
-            the body's postal address, and a collision there would post a country NAME into the
-            statutory-pack lookup. Emitted once, for whichever of the two controls is present, and a body
-            with neither posts nothing at all towards the identity row. */}
-        {(filing || showHrdf) && <input type="hidden" name="filingCountry" value={filingCountry} />}
-
-        {/* ── GROUP 1 · THE FILING IDENTITY (r226) ───────────────────────────────────────────────
-            The number that goes on THIS body's filed form. It lives in a different table from everything
-            else on this form (company_statutory_my, not company_statutory_authority), but it is one body,
-            so it saves with the one button — the tab's consolidated action writes both halves. */}
-        {(filing || showHrdf || sharesSocsoCode) && (
-          <div className="space-y-2 rounded-md border border-border/60 p-2.5">
-            <SubHeader>{showHrdf ? t('authorityRegistrationSection') : t('authorityFilingSection')}</SubHeader>
-            {filing && <p className="text-xs text-muted-foreground">{t('authorityFilingHint')}</p>}
-            {showHrdf && <p className="text-xs text-muted-foreground">{t('authorityRegistrationHint')}</p>}
-            {filing && (
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <Field label={t(filing.labelKey as never)}>
-                  <input name={filing.name} defaultValue={statutory?.[filing.name] ?? ''} className={inputCls} />
-                </Field>
-              </div>
-            )}
-            {showHrdf && (
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <Field label={t('hrdfStatusLabel')}>
-                  <select name="hrdfStatus" defaultValue={statutory?.hrdfStatus ?? 'not_registered'} className={inputCls}>
-                    <option value="not_registered">{t('hrdfNotRegistered')}</option>
-                    <option value="mandatory">{t('hrdfMandatory')}</option>
-                    <option value="optional">{t('hrdfOptional')}</option>
-                  </select>
-                </Field>
-              </div>
-            )}
-            {sharesSocsoCode && <p className="text-xs text-muted-foreground">{t('authorityEisSharesSocso')}</p>}
-          </div>
-        )}
-
-        {/* ── GROUP 2 · THE PAYMENT SETUP ────────────────────────────────────────────────────────── */}
-        <div className="space-y-2 rounded-md border border-border/60 p-2.5">
-          <SubHeader>{t('authorityPaymentSection')}</SubHeader>
-          <p className="text-xs text-muted-foreground">{t('authorityPaymentHint')}</p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <Field label={t('authorityAccountNo')}>
-              <input
-                name="accountNo"
-                defaultValue={r?.accountNo ?? ''}
-                className={inputCls}
-                placeholder={t('authorityAccountNoHint')}
-              />
-            </Field>
-            <div className="sm:col-span-2">
-              <Field label={t('authorityBankAccount')}>
-                <select name="bankProfileId" defaultValue={r?.bankProfileId ?? ''} className={inputCls}>
-                  <option value="">{t('authorityBankAccountNone')}</option>
-                  {bankProfiles.map((bp) => (
-                    // 3c2f55d7 rev 2 — the account number is shown IN FULL. It was masked to its last four
-                    // digits, which is an employee-facing habit applied where it does not belong: this
-                    // screen is admin-only (RLS), the number is the company's OWN debit account, and an
-                    // admin routing EPF to the right account needs to read the whole thing. The masks on
-                    // EMPLOYEE bank details elsewhere (app/me, the audit formatter) are a different
-                    // decision and stay.
-                    <option key={bp.id} value={bp.id}>
-                      {(bp.accountLabel || myBankLabel(bp.bank)) + ' · ' + bp.debitAccountNo}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            {/* Not a <Field>: that WRAPS its children in a <label>, and this control is a div holding two
-                inputs plus a clear button — a wrapping label would attach itself to whichever input came
-                first and every click on the row would re-focus the text box. The caption points at the
-                field's own id instead, the way the Leave Inquiry pickers do. `fieldLabel` hands the same
-                caption to the tab Save's change summary, which has no label to read it off. */}
-            <div className="flex flex-col gap-1.5 sm:col-span-3">
-              <label htmlFor={`${fieldId}-sig`} className="text-xs font-medium text-muted-foreground">
-                {t('authoritySignatory')}
-              </label>
-              <EmployeeSearchField
-                id={`${fieldId}-sig`}
-                name="signatoryPersonId"
-                fieldLabel={t('authoritySignatory')}
-                employees={signatoryOptions}
-                value={r?.signatoryPersonId ?? null}
-                labels={{
-                  placeholder: t('signatorySearchPlaceholder'),
-                  ariaLabel: t('signatorySearchLabel'),
-                  resultsLabel: t('signatorySearchResults'),
-                  noMatches: t('signatoryNoMatches'),
-                  clear: t('signatoryClear'),
-                }}
-                className="w-full"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* ── GROUP 3 · THE CORRESPONDENCE ADDRESS ───────────────────────────────────────────────── */}
-        <div className="space-y-2 rounded-md border border-border/60 p-2.5">
-          <SubHeader>{t('authorityAddressSection')}</SubHeader>
-          <p className="text-xs text-muted-foreground">{t('authorityAddressHint')}</p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <div className="sm:col-span-3">
-              <Field label={t('addressLine1')}>
-                <input name="addressLine1" defaultValue={r?.addressLine1 ?? ''} className={inputCls} />
-              </Field>
-            </div>
-            <div className="sm:col-span-3">
-              <Field label={t('addressLine2')}>
-                <input name="addressLine2" defaultValue={r?.addressLine2 ?? ''} className={inputCls} />
-              </Field>
-            </div>
-            <div className="sm:col-span-3">
-              <Field label={t('addressLine3')}>
-                <input name="addressLine3" defaultValue={r?.addressLine3 ?? ''} className={inputCls} />
-              </Field>
-            </div>
-            <Field label={t('city')}>
-              <input name="city" defaultValue={r?.city ?? ''} className={inputCls} />
-            </Field>
-            <Field label={t('addrState')}>
-              <OptionSelect name="state" value={r?.state ?? null} options={stateOptions} placeholder={t('optionNone')} />
-            </Field>
-            <Field label={t('postcode')}>
-              <input name="postcode" defaultValue={r?.postcode ?? ''} className={inputCls} />
-            </Field>
-            <Field label={t('addrCountry')}>
-              <OptionSelect
-                name="country"
-                value={r?.country ?? null}
-                options={COUNTRY_NAME_OPTIONS}
-                placeholder={t('optionNone')}
-              />
-            </Field>
-            <Field label={t('phone')}>
-              <input name="phone" type="tel" defaultValue={r?.phone ?? ''} className={inputCls} />
-            </Field>
-            <Field label={t('authorityEmail')}>
-              <input name="email" type="email" defaultValue={r?.email ?? ''} className={inputCls} />
-            </Field>
-          </div>
-        </div>
-      </form>
-
-      {/* Bucket (b): this DELETES the body's row, so it stands outside the section marker and keeps its
-          own control. A tab-wide "Discard Changes" that appeared to undo it would be a control lying
-          about what it does. */}
-      {r && (
-        <form action={removeAction}>
-          <input type="hidden" name="id" value={r.id} />
-          {/* 65b22c00 — as with the bank profile: `id` is the authority ROW, `companyId` is where the
-              save came from and therefore where it returns to. */}
-          <input type="hidden" name="companyId" value={companyId} />
-          <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
-            {t('authorityClear')}
-          </button>
-        </form>
-      )}
-    </div>
   );
 }
 
@@ -948,8 +564,10 @@ function StatutoryBodyEditor({
  * NOTHING ON THIS PANEL FOLDS ANY MORE. 3c2f55d7 rev 2 kept exactly one fold — a statutory body's
  * fourteen-field editor, behind its card's Open/Edit — because the card face already stated the body's
  * name, purpose and configured status without a click. 15e5bd93 (r352) retired even that: the reporter
- * asked for the "tab/expand-style interface" to go, so the eight bodies are a permanent rail and their
- * fields fill a workspace beside it, already open. See StatutoryBodyRow / StatutoryBodyEditor.
+ * asked for the "tab/expand-style interface" to go. 15e5bd93 REVISION 2 (r353) went further on the same
+ * instruction and took the statutory FIELDS off this panel altogether — they are a dedicated screen now
+ * (components/statutory-setup-screen.tsx) — so the Statutory tab holds the company's own registrations
+ * and a read-only list of the eight bodies that LINKS there. See StatutoryBodyRow.
  *
  * DO NOT reintroduce a details/summary disclosure here — the source guard in
  * test/company-panel-bank-statutory-layout.test.ts fails the build if one comes back, and it also pins
@@ -1029,42 +647,28 @@ export function CompanyPanel({
      */
     saveGeneralTab: TabSaveAction;
     /**
-     * 15e5bd93 — ONE Save for the STATUTORY tab: the eight bodies' editors plus the SSM / MyInvois
-     * registrations card. Declared in app/admin/organization/statutory-tab-actions.ts and passed by
-     * reference, never wrapped in a closure built here (the r123 hazard).
+     * 15e5bd93 rev 2 (r353) — `saveStatutoryTab` STOOD HERE AND IS GONE, with the consolidated statutory
+     * Save it named. The reporter contested r352's one-Save-for-the-tab shape along with the in-tab
+     * editing it depended on, and asked for Save and Cancel on each body's own card on a dedicated screen.
+     * `app/admin/organization/statutory-tab-actions.ts` is retired rather than left bound to nothing:
+     * a `'use server'` export nothing submits to is a second writer of `company_statutory_my` that no
+     * screen exercises and no reader can see is dead.
+     *
+     * The Statutory tab's SSM / MyInvois registrations card therefore has its own Save button again —
+     * which is exactly where 65b22c00's finding 1 left it, and that finding's objection to a scope on this
+     * tab ("a sticky bar above eight statutory-body editors it does not own") is true once more now that
+     * the editors have gone somewhere else entirely.
      */
-    saveStatutoryTab: TabSaveAction;
   };
 }) {
   const t = useTranslations('admin.organization');
   const [tab, setTab] = useState<TabKey>(initialTab ?? 'general');
-  /**
-   * 15e5bd93 — WHICH statutory body the workspace is showing. Client state and nothing else: there is no
-   * `/admin/organization/<id>/<body>` route to add to the function-access matrix, and no server read
-   * depends on the choice. It opens on the first body of the controlled set, which is the first row of
-   * the rail.
-   */
-  const [statutoryBody, setStatutoryBody] = useState<string>(STATUTORY_AUTHORITIES[0]);
   const c = company;
   const isMY = c.country === 'MY';
   // Readiness for the monthly filings: the three agency identifiers reports key on.
   const statMissing = isMY
     ? [statutory?.epfEmployerNo, statutory?.socsoEmployerCode, statutory?.lhdnEmployerNo].filter((v) => !v).length
     : 0;
-
-  /**
-   * 15e5bd93 — the Statutory tab's Save bar names the CARDS that changed, not just how many fields did.
-   *
-   * Eight statutory bodies share one field set, so "Unsaved changes: 3" cannot tell an administrator
-   * whether they edited EPF or PTPTN — and the approved drawing has the bar reading "2 bodies changed —
-   * EPF, LHDN". A section id maps to the same string the rail row shows for that body, so the bar and the
-   * rail can never call one body two different things. Built here, in the one place that already holds
-   * this namespace's translator.
-   */
-  const statutorySectionLabels: Record<string, string> = {
-    [STATUTORY_IDENTITY_SECTION]: t('statutoryIdentityMY'),
-    ...Object.fromEntries(STATUTORY_AUTHORITIES.map((a) => [a, t(`authority_${a}` as never)] as const)),
-  };
 
   /**
    * 65b22c00 — KEEPING THE TAB ACROSS A SAVE, which is two moves and needs both.
@@ -1558,161 +1162,136 @@ export function CompanyPanel({
         <div className={cn('space-y-4', tab === 'statutory' ? '' : 'hidden')}>
         {isMY ? (
           /**
-           * ── 15e5bd93 (r352) — ONE SAVE FOR THE WHOLE STATUTORY TAB ───────────────────────────────
+           * ── 15e5bd93 REVISION 2 (r353) — THIS TAB SHOWS THE SETUP, IT NO LONGER EDITS IT ───────
            *
-           * ⚠️ THIS REPLACES THE COMMENT THAT USED TO STAND ON THE GENERAL SCOPE SAYING "a scope cannot
-           * span two panes", and it resolves it rather than working around it. 65b22c00 found FOUR
-           * bucket (a) forms on this screen and could consolidate three: the fourth — the SSM / MyInvois
-           * registrations card — is drawn HERE, and that round's audit (finding 1) refused both available
-           * answers. Moving the card to General would have reversed r226's placement as a side effect of
-           * a button change; leaving a one-card scope here would have put a sticky Save/Discard bar above
-           * eight statutory-body editors it did not own.
+           * ⚠️ THIS REPLACES r352'S "ONE SAVE FOR THE WHOLE STATUTORY TAB", AND THE REPORTER CONTESTED
+           * THAT SHAPE. r352 answered 65b22c00's finding 1 by consolidating this tab: the eight bodies
+           * became a rail plus a workspace with no Save buttons of their own, so one sticky bar could own
+           * them and the SSM / MyInvois card together. The contest rejects the premise — "Do not expand
+           * the statutory settings directly within the existing Statutory tab" — so the editors are gone
+           * from here and the consolidated Save has nothing left to consolidate.
            *
-           * The reporter's approved redesign removes the premise: the eight bodies are now a permanent
-           * rail and ONE workspace, and their editors have no Save buttons of their own, so this bar owns
-           * every card under it. The registrations card joins it and stays exactly where r226 put it.
+           * FINDING 1 IS THEREFORE BACK WHERE IT WAS, AND THAT IS THE HONEST OUTCOME rather than a
+           * regression: the audit's objection to a scope on this tab was that a sticky bar would sit
+           * "above eight statutory-body editors it does not own". There are no editors here now, but there
+           * is also only ONE card left — and a sticky Save/Discard bar above a single two-field card is
+           * the "worse than none" that same finding named. So the registrations card keeps its own Save
+           * button, exactly as it did before r352, and it stays on the tab r226 put it on.
            *
-           * WHAT THE BAR SAYS IT COVERS is required, not decorative (see TabSaveScope's `covers`), and
-           * `sectionLabels` is the half this tab needs on top of that: eight bodies with an identical
-           * field set make "Unsaved changes: 3" an answer to the wrong question, so the bar also names
-           * the bodies that moved — which is what the approved drawing shows it doing.
-           *
-           * NOT in this scope, deliberately: "Clear this authority", which DELETES a body's row. It is
-           * bucket (b), it keeps its own button, and it is outside every section marker.
+           * WHAT THE TAB IS FOR NOW: the company's own registrations (editable, here), and a read-only
+           * list of the eight bodies with what is on file for each and a link to the dedicated screen
+           * that edits them. Approved point 1, in the reporter's words: "Open Settings" becomes a link to
+           * a real page.
            */
-          <TabSaveScope
-            tabKey="statutory"
-            identity={{ companyId: c.id }}
-            saveAction={actions.saveStatutoryTab}
-            covers={[t('authoritiesTitle'), t('statutoryIdentityMY')]}
-            sectionLabels={statutorySectionLabels}
-          >
-          {/* R46 orgbank (84719377) — per-authority PAYMENT setup: for each statutory body, which company
-              bank account pays it, its address/contact, and the authorised signatory. Every authority in
-              the controlled set is listed whether configured or not, so nothing is silently missing.
-
-              ⚠️ THE RAIL NEVER COLLAPSES, and that is the whole of this item. efe424b0 had already turned
-              a grid of tall cards into one divided LIST, at the reporter's request ("displayed as a
-              structured list rather than individual large boxes, allowing administrators to quickly
-              identify, access, and manage each statutory setting"). What was still wrong is what 15e5bd93
-              reports: the list could show you eight collapsed rows, or one body's fourteen boxes pushed
-              down the page by the rows above it — never a body's details AND where you are in the list at
-              the same time. So the list becomes a permanent left rail and the fields move to a workspace
-              beside it, already open.
-
-              ⚠️ SOCSO AND EIS ARE ONE GROUP, NOT ONE SETTING, and the difference is the whole of the
-              consolidation note on AUTHORITY_LOGO: their payment configurations genuinely differ on this
-              tenant. So SOCSO's row is named for both bodies and carries the PERKESO mark, and EIS
-              follows it as a SUBORDINATE row — indented, no second mark, its own editor intact.
-
-              Nothing is filtered out: `eis` remains a real authority that the services, the reports and
-              the payroll feed all still know. */}
           <div className="flex flex-col gap-4 lg:flex-row">
-            <div className="w-full shrink-0 space-y-4 lg:w-72">
-              <div className="space-y-2.5 rounded-lg border border-border bg-card p-3">
-                <SubHeader>{t('authoritiesTitle')}</SubHeader>
-                <p className="text-xs text-muted-foreground">{t('authoritiesHint')}</p>
-                {bankProfiles.length === 0 && (
-                  <p className="text-xs text-amber-700 dark:text-amber-400">{t('authoritiesNoBankAccounts')}</p>
-                )}
-                <nav aria-label={t('authoritiesTitle')}>
-                  <ul className="divide-y divide-border/60 rounded-lg border border-border/60">
-                    {STATUTORY_AUTHORITIES.map((a) => (
-                      <StatutoryBodyRow
-                        key={a}
-                        authority={a}
-                        row={statutoryAuthorities.find((r) => r.authority === a) ?? null}
-                        /** efe424b0 — EIS is drawn beneath SOCSO as part of one PERKESO group. */
-                        subordinate={c.country === 'MY' && a === 'eis'}
-                        statutory={statutory}
-                        filingCountry={c.country}
-                        bankProfiles={bankProfiles}
-                        selected={statutoryBody === a}
-                        onSelect={() => setStatutoryBody(a)}
-                      />
-                    ))}
-                  </ul>
-                </nav>
+            {/* ── COMPANY REGISTRATIONS ───────────────────────────────────────────────
+                What is LEFT of the old flat identity list, and what is left is the point.
+
+                r226 moved EPF's, SOCSO's and LHDN's filing numbers, and HRD Corp's contribution rate, onto
+                their own body's editor, so that everything about one body is in one place. These two did
+                NOT move, deliberately: neither the SSM registration number nor the MyInvois TIN belongs to
+                a body an employer pays a contribution to, neither is in STATUTORY_AUTHORITIES, and the SSM
+                number is read by two statutory files we produce (localization/my/borang-8a.ts,
+                localization/my/socso-eis-file.ts). Giving either one a payment card would have been a
+                tidier screen making a false claim.
+
+                They did not move again in rev 2 either. The dedicated setup screen PRINTS both in its
+                heading so an operator can check them without coming back, and edits neither: one owner,
+                one editor, and a heading that reads rather than writes.
+
+                This form posts only the two boxes it renders. That is safe because the writer is a PARTIAL
+                PATCH (localization/my/company-statutory.ts): before r226 it was a full-row overwrite, and
+                a form this shape would have silently NULLed EPF, SOCSO and LHDN.
+
+                ⚠️ THE PACK FLAG IS `filingCountry`, NOT `country`, AND THE RENAME IS KEPT ON PURPOSE (r352,
+                carried forward by r353). It was `name="country"` before r352 and the collision that forced
+                the rename is real: lib/tab-save-dom.ts `syncCarriedValues` treats a HIDDEN input as a
+                mirror of any VISIBLE control with the same name in a sibling section of the same scope, and
+                every statutory body's editor carries a visible `country` for its postal address — so a
+                hidden `country` here was overwritten with "Malaysia" and posted into `packFor()`, killing
+                EVERY identity save with "No statutory pack for Malaysia".
+
+                This card is no longer inside a consolidated scope, so that particular door is shut — but
+                the name stays, and reverting it would be wrong twice over. `setCompanyStatutoryAction`
+                reads `country` and defaults an absent one to 'MY', which is the only value this MY-only
+                card ever posted; and the SAME collision is live on the dedicated setup screen, where a
+                body's filing field and its visible postal `country` sit on one form. One name for one
+                concept, on both screens. */}
+            <form
+              action={actions.setStatutory}
+              className="w-full shrink-0 space-y-2.5 rounded-lg border border-border bg-card p-3 lg:w-72"
+            >
+              <SubHeader>{t('statutoryIdentityMY')}</SubHeader>
+              <input type="hidden" name="companyId" value={c.id} />
+              <input type="hidden" name="filingCountry" value="MY" />
+              <div className="grid grid-cols-1 gap-2">
+                <Field label={t('ssmRegistrationNo')}>
+                  <input
+                    name="ssmRegistrationNo"
+                    defaultValue={statutory?.ssmRegistrationNo ?? ''}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label={t('myinvoisTin')}>
+                  <input name="myinvoisTin" defaultValue={statutory?.myinvoisTin ?? ''} className={inputCls} />
+                </Field>
               </div>
+              <p className="text-xs text-muted-foreground">{t('statutoryFilingsHint')}</p>
+              {/* `saveStatutoryIdentity` — THE RETIRED CAPTION, BACK IN SERVICE. r352 took this button off
+                  when the tab's one Save absorbed the card, and the key was kept in all six catalogues
+                  rather than deleted, on the rule this repo keeps proving right: a retired string costs
+                  nothing and re-translating a deleted one into six languages costs a round. */}
+              <Button type="submit" size="sm">
+                {t('saveStatutoryIdentity')}
+              </Button>
+              {/* The HRDF headcount hint ("mandatory at 10+, optional at 5–9") is deliberately gone —
+                  HRDF eligibility is a free company choice, not a headcount rule. It now lives on the
+                  HRD Corp body as that body's registration band. */}
+            </form>
 
-              {/* ── COMPANY REGISTRATIONS ──────────────────────────────────────────────────────────
-                  What is LEFT of the old flat identity list, and what is left is the point.
+            {/* R46 orgbank (84719377) — per-authority PAYMENT setup: for each statutory body, which company
+                bank account pays it, its address/contact, and the authorised signatory. Every authority in
+                the controlled set is listed whether configured or not, so nothing is silently missing.
 
-                  r226 moved EPF's, SOCSO's and LHDN's filing numbers, and HRD Corp's contribution rate,
-                  onto their own body's editor, so that everything about one body is in one place. These
-                  two did NOT move, deliberately: neither the SSM registration number nor the MyInvois TIN
-                  belongs to a body an employer pays a contribution to, neither is in STATUTORY_AUTHORITIES,
-                  and the SSM number is read by two statutory files we produce
-                  (localization/my/borang-8a.ts, localization/my/socso-eis-file.ts). Giving either one a
-                  payment card would have been a tidier screen making a false claim.
+                ⚠️ THE LIST IS READ-ONLY AND IT NEVER COLLAPSES. efe424b0 turned a grid of tall cards into
+                one divided LIST at the reporter's request ("displayed as a structured list rather than
+                individual large boxes, allowing administrators to quickly identify, access, and manage
+                each statutory setting"); r352 made the list permanent; rev 2 takes the FIELDS off it. What
+                survives all three rounds is the sentence 3783fd87 was raised for: you can read what is set
+                on every body at once, without opening anything.
 
-                  This form posts only the two boxes it renders. That is safe because the writer is a
-                  PARTIAL PATCH (localization/my/company-statutory.ts): before r226 it was a full-row
-                  overwrite, and a form this shape would have silently NULLed EPF, SOCSO and LHDN.
+                ⚠️ SOCSO AND EIS ARE ONE GROUP, NOT ONE SETTING, and the difference is the consolidation
+                note in lib/statutory-authority-display.ts: their payment configurations genuinely differ on
+                this tenant. So SOCSO's row is named for both bodies and carries the PERKESO mark, and EIS
+                follows it as a SUBORDINATE row — indented, no second mark, its own record intact.
 
-                  ⚠️ THE PACK FLAG IS `filingCountry`, NOT `country`, AND THE RENAME IS LOAD-BEARING (r352).
-                  It was `name="country"` while this card had its own Save and its own payload. Inside one
-                  consolidated scope it cannot be: lib/tab-save-dom.ts `syncCarriedValues` treats a HIDDEN
-                  input as a mirror of any VISIBLE control with the same name in a sibling section — which
-                  is exactly right for the personnel cards it was written for, and exactly wrong here,
-                  because every body's editor carries a visible `country` for its postal address. It would
-                  have copied "Malaysia" over this card's "MY" and posted a country NAME into packFor().
-                  `filingCountry` is the name r226 already coined for this same collision one file over, so
-                  this is that rule applied, not a new one. The consolidated writer reads `filingCountry`;
-                  `setCompanyStatutoryAction`, still bound below for the reasons the editor's comment
-                  gives, defaults an absent country to 'MY' — which is the only value this MY-only card
-                  ever posted. */}
-              <form
-                action={actions.setStatutory}
-                data-save-section={STATUTORY_IDENTITY_SECTION}
-                className="space-y-2.5 rounded-lg border border-border bg-card p-3"
-              >
-                <SubHeader>{t('statutoryIdentityMY')}</SubHeader>
-                <input type="hidden" name="companyId" value={c.id} />
-                <input type="hidden" name="filingCountry" value="MY" />
-                <div className="grid grid-cols-1 gap-2">
-                  <Field label={t('ssmRegistrationNo')}>
-                    <input
-                      name="ssmRegistrationNo"
-                      defaultValue={statutory?.ssmRegistrationNo ?? ''}
-                      className={inputCls}
+                Nothing is filtered out: `eis` remains a real authority that the services, the reports and
+                the payroll feed all still know. */}
+            <div className="min-w-0 flex-1 space-y-2.5 rounded-lg border border-border bg-card p-3">
+              <SubHeader>{t('authoritiesTitle')}</SubHeader>
+              <p className="text-xs text-muted-foreground">{t('authoritiesHint')}</p>
+              {bankProfiles.length === 0 && (
+                <p className="text-xs text-amber-700 dark:text-amber-400">{t('authoritiesNoBankAccounts')}</p>
+              )}
+              <nav aria-label={t('authoritiesTitle')}>
+                <ul className="divide-y divide-border/60 rounded-lg border border-border/60">
+                  {STATUTORY_AUTHORITIES.map((a) => (
+                    <StatutoryBodyRow
+                      key={a}
+                      authority={a}
+                      row={statutoryAuthorities.find((r) => r.authority === a) ?? null}
+                      /** efe424b0 — EIS is drawn beneath SOCSO as part of one PERKESO group. */
+                      subordinate={c.country === 'MY' && a === 'eis'}
+                      statutory={statutory}
+                      filingCountry={c.country}
+                      bankProfiles={bankProfiles}
+                      setupHref={`/admin/organization/${c.id}/statutory`}
                     />
-                  </Field>
-                  <Field label={t('myinvoisTin')}>
-                    <input name="myinvoisTin" defaultValue={statutory?.myinvoisTin ?? ''} className={inputCls} />
-                  </Field>
-                </div>
-                <p className="text-xs text-muted-foreground">{t('statutoryFilingsHint')}</p>
-                {/* The HRDF headcount hint ("mandatory at 10+, optional at 5–9") is deliberately gone —
-                    HRDF eligibility is a free company choice, not a headcount rule. It now lives on the
-                    HRD Corp body as that body's registration band. */}
-              </form>
-            </div>
-
-            {/* THE WORKSPACE. All eight editors render; the seven that are not selected are hidden with
-                CSS, never unmounted — so a half-typed address survives a switch, the one Save can read
-                every body whether or not you are looking at it, and the render guard still counts eight
-                forms. */}
-            <div className="min-w-0 flex-1 rounded-lg border border-border bg-card p-3">
-              {STATUTORY_AUTHORITIES.map((a) => (
-                <StatutoryBodyEditor
-                  key={a}
-                  authority={a}
-                  row={statutoryAuthorities.find((r) => r.authority === a) ?? null}
-                  statutory={statutory}
-                  filingCountry={c.country}
-                  companyId={c.id}
-                  bankProfiles={bankProfiles}
-                  signatories={signatories}
-                  stateOptions={stateOptions}
-                  selected={statutoryBody === a}
-                  setAction={actions.setStatutoryAuthority}
-                  removeAction={actions.removeStatutoryAuthority}
-                />
-              ))}
+                  ))}
+                </ul>
+              </nav>
             </div>
           </div>
-          </TabSaveScope>
         ) : (
           <p className="rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
             {t('noStatutoryPack', { country: c.country })}
