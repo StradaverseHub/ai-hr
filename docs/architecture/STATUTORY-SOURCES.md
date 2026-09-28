@@ -61,6 +61,27 @@ to these tables is traceable to the exact runs it affects.
   inputs on the draft batch; zakat offsets the MTD per the §E.5 tables verbatim (normal first,
   remainder offsets additional; the FULL zakat accrues to Z) — golden-tested against all nine
   table rows; ∑LP and Z accumulate through the payslip replay.
+- **THE 2026 SPECIFICATION IS NOW HELD LOCALLY** (item `72d1a390`, 2026-09-28).
+  `docs/forms/pcb-spec-2026-computerised-calculation.pdf`, 52 pages, with the decisive rules transcribed
+  verbatim into `docs/forms/pcb-spec-2026-extracts.txt`. Also retrieved: the **Form TP1 2026 explanatory
+  notes** and the **TP1 2026 form** itself (`docs/forms/tp1-2026-*.pdf`) — r350 recorded the TP1/TP3 notes
+  as unobtainable because their URLs 404. **The `/media/<hash>/` URLs this repo cites are dead; the live
+  path is `https://www.hasil.gov.my/wp-content/uploads/<name>.pdf`**, indexed from
+  `https://www.hasil.gov.my/en/majikan/jadual-pcb-dan-spesifikasi-data/`. Cite the local copy, not a URL.
+  - **Rule 5 (printed p.19) is "Zakat AND DEPARTURE LEVY"**, one column, both netted off the month's MTD.
+    The Umrah / religious-travel departure levy (Form TP1 D1(b)) therefore offsets tax exactly as zakat
+    does. We capture it and offset nothing — `72d1a390`, an over-deduction.
+  - **Rule 5 column (d) is NOT an unused-balance carry-forward**, though its heading reads like one. It
+    equals column (b) in every printed row (MTD 15.00 / zakat 8.00 / net 7.00 / **(d) 8.00**), so it is the
+    Z accumulator taking the FULL amount — which the kernel already does. **`72d1a390`'s own claim that an
+    unused part carries forward is WRONG and must not be built.**
+  - **Rule 15 (printed p.35)** splits the two zakats: the payroll-deducted one "should appear in the
+    payslip and EA Form"; the TP1-claimed one "should not appear in the payslip and EA Form" and "is
+    treated as zakat for current month in the month claimed by the employee".
+  - **Rule 9 (printed p.20)** — "All the tax exemption on allowances, benefit-in-kind and perquisites
+    shall be excluded from the remuneration for MTD purposes. Any amount exceed the restricted amount
+    shall be taxable." This is the excess rule `fda53352` point 3 turns on, now quotable from the primary
+    source rather than from a round entry.
 - **Non-resident — ✅ implemented**: flat **30%** of taxable remuneration (spec §D.a, golden:
   RM3,000 → RM900), toggled by the statutory profile's residency flag; §E rounding applies.
 - **Disabled individual (OKU) further deduction — ✅ SOURCED FROM THE PRIMARY SPEC (2026.9). STILL

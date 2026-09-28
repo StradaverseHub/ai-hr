@@ -358,6 +358,33 @@ const rm10Floor = (n: number) => (n < 10 ? 0 : n);
  * remainder offsets the additional-remuneration MTD; the FULL zakat amount still accrues to Z.
  * The RM10 floor applies to each component BEFORE offsetting (table (ii) rows a–b).
  *
+ * ═══ 72d1a390 (r352) — THE SPECIFICATION IS NOW IN THE REPO, AND IT SETTLES TWO THINGS ═══
+ *
+ * docs/forms/pcb-spec-2026-computerised-calculation.pdf, printed p.19, rule 5, transcribed verbatim into
+ * docs/forms/pcb-spec-2026-extracts.txt. (The /media/arvlrzh5/ URL this repo used to cite is dead; the
+ * live path is /wp-content/uploads/. STATUTORY-SOURCES.md records the retrieval.)
+ *
+ * 1. THE COLUMN IS "ZAKAT AND DEPARTURE LEVY", NOT ZAKAT ALONE. Rule 5 is headed "Zakat and departure
+ *    levy shall be treated as follows", and its table's column (b) is "Zakat and departure levy for
+ *    current month (RM)". So the Umrah / religious-travel departure levy is offset by THIS function, on
+ *    the same footing as zakat. We capture it on Form TP1 D1(b) and it currently reaches nothing —
+ *    that is the over-deduction 72d1a390 reports, and the reporter's "single column" reading is correct.
+ *
+ * 2. THERE IS NO UNUSED-BALANCE CARRY-FORWARD, AND OUR OWN TICKET SAID THERE WAS. Column (d) is headed
+ *    "Zakat and departure levy carried forward to the following month (value of Z)" — which reads like a
+ *    carry-forward of the UNUSED part, and is not. Read the rows: (c) MTD 15.00, zakat 8.00, net 7.00,
+ *    column (d) = 8.00; (d) MTD 120.00, zakat 100.00, net 20.00, column (d) = 100.00. Column (d) equals
+ *    column (b) in every row, spent or not. It is the Z ACCUMULATOR taking the FULL amount — exactly what
+ *    core/payroll.ts already does ("§E.5: full zakat accrues to Z"). Anything left after the additional
+ *    leg is dropped, and dropping it is correct. Do not build a residual ledger.
+ *
+ * Rule 15 (printed p.35) governs what may be SHOWN: zakat deducted from remuneration "should appear in
+ * the payslip and EA Form", while zakat claimed through Form TP1 "should not appear in the payslip and
+ * EA Form due to employee himself paid directly to Pusat Zakat" and "is treated as zakat for current
+ * month in the month claimed by the employee". So a TP1-sourced amount enters THIS offset and the Z
+ * accumulator, and must NOT be folded into the payslip's zakat line or the EA — the two are different
+ * money with the same effect on the month's tax.
+ *
  * 45df860a — THE WORKING, not just the two answers. Between `mtdNormalCalc` and the figure on the
  * payslip sit FOUR steps that a reader cannot see and cannot infer: the §E.3 RM10 rule on each leg, and
  * then two zero-clamped subtractions. A screen that printed "normal + additional − zakat" would be

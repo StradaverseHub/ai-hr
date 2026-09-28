@@ -525,6 +525,51 @@ export function tp1CountForYear(
 }
 
 /**
+ * 72d1a390 (r352) — THE SECTION D REBATE IN FORCE BY A MONTH: zakat paid otherwise than through
+ * salary, D1(a), plus the Umrah / religious-travel departure levy, D1(b).
+ *
+ * ── IN FORCE BY THE MONTH, NOT CLAIMED FOR IT — AND THE DIFFERENCE IS THE EMPLOYEE'S MONEY ─────────
+ * The obvious reading of rule 15 ("treated as zakat for current month in the month claimed") is "the
+ * row whose deduction month is this month", and that reading silently loses money. A claim FOR March
+ * that HR only approves in August is in force from August, and March is long paid — so a per-month read
+ * offsets it in neither month and the employee keeps the over-deduction this item exists to end. The
+ * caller therefore treats this as a running total and feeds
+ *     max(0, inForceByNow − alreadyOffsetByUs)
+ * replaying its own payslips for the second term, which is `resolveTp1Feed`'s shape for Section C and is
+ * self-correcting under a late approval, a correction and a re-run alike. This function owns only the
+ * first term; it deliberately does not know what has been fed.
+ *
+ * ── THE ORDER OF THE TWO STEPS IS `tp1CountForYear`'S, DELIBERATELY ─────────────────────────────────
+ * Narrow to what was in force by the month, THEN collapse newest-wins. The long note on that function
+ * records the money this ordering loses when it is reversed — an August correction reaching back and
+ * deleting March's figure from every month between — and a second spelling of the rule here would be
+ * free to drift from it. Same helpers, same sequence, same reason.
+ *
+ * ── WHAT IT DOES NOT DO ────────────────────────────────────────────────────────────────────────────
+ * It does not apply a limit: the paper form prints no annual limit against either D1 line and
+ * MY_TP1_2026_REBATES records both as `limit: null` under ADR-0008 (no unsourced statutory number).
+ * It does not read `amount` when sub-lines are present — the form posts D1 as sub-lines only
+ * (`tp1_rebates_d1_sub_a` / `_b`), and summing both would double the claim.
+ */
+export function tp1RebateInForce(approvedRows: readonly Tp1CountableRow[], throughMonth: number): number {
+  const m = Math.trunc(Number(throughMonth));
+  if (!Number.isFinite(m)) return 0;
+  const inForce = approvedRows.filter((r) => tp1EffectiveFromMonth(r) <= m);
+  let total = 0;
+  for (const row of collapseTp1ApprovedByMonth(inForce)) {
+    const cat = isTp1Categories2026(row.categories) ? row.categories : null;
+    if (!cat) continue; // a legacy row carries no attributed rebate; its money is Section C only
+    for (const entry of Object.values(cat.rebates ?? {})) {
+      const subs = Object.values(entry?.subItems ?? {});
+      total = subs.length
+        ? subs.reduce((s, v) => round2(s + Number(v ?? 0)), total)
+        : round2(total + Number(entry?.amount ?? 0));
+    }
+  }
+  return round2(Math.max(0, total));
+}
+
+/**
  * The check the reporter actually asked for: "the system stops an over-claim before payroll ever sees
  * it". Accumulated + this claim against the annual limit, per item AND per lettered sub-line, with the
  * SHORTFALL named in the message — "by RM 300.00" is actionable; "invalid" is not.
