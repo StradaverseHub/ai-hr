@@ -105,6 +105,7 @@ import { cp38ForPeriod } from './cp38';
 // agree on which row is the record for a month, and one function is the only way that stays true.
 import {
   TP1_COUNTABLE_COLUMNS,
+  tp1RebateInForce,
   tp1CountForYear,
   type Tp1Counted,
   type Tp1CountableRow,
@@ -4411,15 +4412,23 @@ export async function generatePayslips(
     }
     /** Item 3fa088fb — ∑LP THIS employer has already fed this assessment year. TP3 opening EXCLUDED. */
     const lpFedByEmp = new Map<string, number>();
+    // 72d1a390 — Section D rebate ALREADY OFFSET by us this assessment year, replayed from our own
+    // payslips exactly as `lpFedByEmp` replays Section C. It is what turns the rebate into a self-
+    // correcting delta rather than a figure that can be missed or applied twice; see `tp1RebateByEmp`.
+    const rebateFedByEmp = new Map<string, number>();
     for (const s of priorSlips) {
       const acc = accByEmp.get(s.employmentId);
       if (!acc) continue;
-      const st = (s.statutory ?? {}) as { epfEmployee?: number; pcb?: number; lp?: number; zakat?: number; exemptionUsed?: Record<string, number>; lpDetail?: { tp1?: number } };
+      const st = (s.statutory ?? {}) as { epfEmployee?: number; pcb?: number; lp?: number; zakat?: number; zakatRebateTp1?: number; exemptionUsed?: Record<string, number>; lpDetail?: { tp1?: number } };
       const claimed = Math.min(Number(st.epfEmployee ?? 0), Math.max(0, EPF_RELIEF_CAP - acc.epfClaimed));
       acc.netRemuneration = round2(acc.netRemuneration + Number(s.gross) - claimed);
       acc.epfClaimed = round2(acc.epfClaimed + claimed);
       acc.pcbPaid = round2(acc.pcbPaid + Number(st.pcb ?? 0));
-      acc.zakatPaid = round2(acc.zakatPaid + Number(st.zakat ?? 0)); // §E.5: full zakat accrues to Z
+      // §E.5 / rule 5: the FULL amount accrues to Z, spent or not — the spec's column (d) equals its
+      // column (b) in every printed row. 72d1a390: column (b) is "Zakat AND DEPARTURE LEVY for current
+      // month", so the TP1-claimed rebate accrues here too. It is a separate stamp because rule 15 keeps
+      // it off the payslip's zakat line; Z is an accumulator, not a disclosure, so both belong in it.
+      acc.zakatPaid = round2(acc.zakatPaid + Number(st.zakat ?? 0) + Number(st.zakatRebateTp1 ?? 0));
       acc.lpAccumulated = round2(acc.lpAccumulated + Number(st.lp ?? 0));
       // Item 3fa088fb — THE SAME MONEY, COUNTED SEPARATELY, AND THE SEPARATION IS THE POINT. `acc
       // .lpAccumulated` above opens with the TP3 Section D balance (a PREVIOUS employer's accumulated
@@ -4442,6 +4451,10 @@ export async function generatePayslips(
       // reachable on this deployment; and a keyed figure is an operator override, which under the
       // precedence rule below wins on its own run and is struck from no delta anyway.
       lpFedByEmp.set(s.employmentId, round2((lpFedByEmp.get(s.employmentId) ?? 0) + Number(st.lpDetail?.tp1 ?? 0)));
+      rebateFedByEmp.set(
+        s.employmentId,
+        round2((rebateFedByEmp.get(s.employmentId) ?? 0) + Number(st.zakatRebateTp1 ?? 0)),
+      );
       if (st.exemptionUsed) {
         const used = exemptUsedByEmp.get(s.employmentId) ?? {};
         for (const [code, amt] of Object.entries(st.exemptionUsed)) {
@@ -4526,6 +4539,11 @@ export async function generatePayslips(
     // about THAT payslip, and silently discarding a number somebody typed is worse than honouring it.
     const tp1TargetByEmp = new Map<string, string>(); // employmentId → personId, for targets only
     const tp1FeedByEmp = new Map<string, Tp1Feed>();
+    // 72d1a390 — Section D's REBATE for this month, kept in its own map beside the Section C feed because
+    // the two are different money with different arithmetic: C is a deduction fed as an annual delta, D is
+    // a rebate consumed whole in the month it is claimed (spec rule 15). Sharing one map would invite a
+    // later reader to net them.
+    const tp1RebateByEmp = new Map<string, number>();
     if (!isAdditionalRun && empIds.length) {
       // §0.5 routing, off the batch's WHOLE active set rather than `emps` — which this run may already
       // have narrowed for a selective reprocess. See `tp1TargetEmploymentByPerson` for why that matters:
@@ -4558,6 +4576,21 @@ export async function generatePayslips(
             throughMonth: pMonth,
             lpAlreadyFed: lpFedByEmp.get(employmentId) ?? 0,
           }),
+        );
+        // The month's zakat-and-levy rebate, through core/tax-relief's ONE spelling of "which rows count".
+        // THE DELTA, not the month's own claim. A claim FOR March approved only in August is in force
+        // from August and March is long paid, so a per-month read would drop it entirely — the employee
+        // would keep the over-deduction this item exists to end. Feeding
+        //   max(0, claimed-in-force-by-now − already-offset-by-us)
+        // makes the offset converge on what was claimed, charged exactly once, and self-correct under a
+        // late approval, a correction and a re-run alike. It is `resolveTp1Feed`'s shape for the same
+        // reason, and the replay above is what makes it safe.
+        tp1RebateByEmp.set(
+          employmentId,
+          Math.max(
+            0,
+            round2(tp1RebateInForce(approvedRows, pMonth) - (rebateFedByEmp.get(employmentId) ?? 0)),
+          ),
         );
       }
     }
@@ -6049,7 +6082,17 @@ export async function generatePayslips(
       // so a carve-out describing money this run is paying must not appear on that side of the delta, or
       // the increment comes out wrong in both directions. The WAGE-side carve-outs stay on both sides:
       // both calls re-fold the same recurring components, so they describe the same money.
-      const computeMonth = (additional: number, ot: number, zakatCurrent = effectiveZakat, bases = stOpts) =>
+      // 72d1a390 — THE MONTH'S SECTION D REBATE, AND WHY IT IS A SECOND TERM RATHER THAN PART OF THE FIRST.
+      // Spec rule 5 (p.19) is headed "Zakat and departure levy" and nets BOTH off the month's MTD, so the
+      // TP1 D1(a) zakat and the D1(b) departure levy belong in the offset. Rule 15 (p.35) says the
+      // TP1-claimed amount "should not appear in the payslip and EA Form" — the employee paid Pusat Zakat
+      // directly, and it is not an employer deduction. So it must NOT be folded into `effectiveZakat`,
+      // which IS the payslip's zakat line (stamped as `st.zakat`) and the figure the EA reports.
+      // Kept out of the additional-run path for the same reason the fixed election is: a regular + bonus
+      // pair must apply the month's rebate ONCE, and the regular run is the one that carries it.
+      const tp1Rebate = isAdditionalRun ? 0 : round2(tp1RebateByEmp.get(e.employmentId) ?? 0);
+      let zakatOffsetTotal = round2(effectiveZakat + tp1Rebate);
+      const computeMonth = (additional: number, ot: number, zakatCurrent = zakatOffsetTotal, bases = stOpts) =>
         pack.payroll.statutory(
           wagesExOt,
           taxProfile,
@@ -6066,6 +6109,9 @@ export async function generatePayslips(
       if (zakat <= 0 && !isAdditionalRun && e.zakatActive && e.zakatMethod === 'percent_of_pcb') {
         const probe = computeMonth(bonus, otStat, 0);
         effectiveZakat = round2(Number(e.zakatPercent ?? 0) * (probe.pcbNormalPreZakat ?? 0));
+        // The probe re-resolves the payslip's zakat, so the offset total has to be re-derived from it or
+        // every `computeMonth` below would default to the pre-probe figure. The probe itself passes 0.
+        zakatOffsetTotal = round2(effectiveZakat + tp1Rebate);
       }
       const earlierRun = earlierRunByEmp.get(e.employmentId) ?? { additional: 0, overtime: 0 };
       // The baseline option bag for either delta: THIS run's additional-stream carve-outs are dropped,
@@ -6181,6 +6227,13 @@ export async function generatePayslips(
             }
           : {}),
         zakat: effectiveZakat,
+        // 72d1a390 — the month's TP1 Section D rebate, stamped BESIDE `zakat` and never inside it.
+        // Spec rule 15: the TP1-claimed amount must not appear in the payslip or the EA Form, so nothing
+        // renders this as a deduction; it is here because the Z accumulator replays it (the spec's rule 5
+        // column (d) carries zakat AND departure levy forward as Z) and a replay needs a stamped figure.
+        // Omitted entirely when zero so no existing slip's payload shape changes.
+        // NOT a DELTA_KEY: an additional run neither charges nor re-charges it (`tp1Rebate` is 0 there).
+        ...(tp1Rebate > 0 ? { zakatRebateTp1: tp1Rebate } : {}),
         // HRD Corp levy rides the normal wage (regular run only); a bonus/off-cycle run adds none.
         hrdf: isAdditionalRun ? 0 : hrdf,
         // 1.2.3 CP38 — stamped as the DISTINCT CP39 source (separate from PCB) + its LHDN ref, only when
