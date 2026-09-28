@@ -1072,7 +1072,30 @@ export type Tp3MoneyLineSubItem = {
   /** A restriction the form states in words. Captured and printed, never enforced. */
   readonly frequency?: string;
   /**
+   * The PCB exemption code whose ANNUAL, PER-EMPLOYEE cap this box draws on (item 1785b766).
+   *
+   * ⚠️ THIS IS THE JOIN THAT MAKES THE TWO HALVES OF ONE ALLOWANCE THE SAME ALLOWANCE. The previous
+   * employer's exempt money is keyed here; this employer's exempt money is paid through a pay item
+   * carrying `pay_component.pcb_exemption_code`. Both spend ONE cap — `MY_PCB_EXEMPTION_CODES` says so
+   * in its own header ("Caps are ANNUAL, tracked per employee per code") — so without this code the
+   * ledger in `core/payroll.ts` could not know that a July joiner had already used their RM6,000 and
+   * handed them a second one. `core/tp3.ts`'s `deriveAccumulatorSeed` maps the keyed figure onto this
+   * code and `core/payroll.ts` opens the year's headroom with it.
+   *
+   * ⚠️ NULL / ABSENT IS AN ANSWER, NOT AN OMISSION. C2(iii) and C2(v) map to NOTHING (see the line
+   * comments below), so they spend no code's cap and are not netted off one. A code invented to give
+   * them a cap would take exemption away from a real one.
+   */
+  readonly exemptionCode?: string | null;
+  /**
    * The STATUTORY EXEMPTION LIMIT for this line, per year, in ringgit — or absent when none is sourced.
+   *
+   * ⚠️ DERIVED FROM `exemptionCode`, NEVER WRITTEN HERE (item 1785b766). Until this round these three
+   * figures were LITERALS — 6,000 / 3,000 / 2,000 on C2(i)/(ii)/(iv) — sitting beside the identical
+   * three in `MY_PCB_EXEMPTION_CODES`: two owners of one statutory fact, which CLAUDE.md §1 forbids and
+   * which would have disagreed about the same ringgit the first time LHDN moved one of them. They are
+   * now ONE number read through `tp3C2Sub` below, and `test/1785b766-tp3-exemption-headroom.test.ts`
+   * pins the equality so a re-introduced literal fails the suite.
    *
    * ⚠️ READ OFF THE SPECIFICATION, NOT OFF THIS FORM, AND THEREFORE SHOWN AND NEVER ENFORCED.
    * `MY_TP3_2026_SECTION_C`'s header records the whole reasoning; the short version is that the TP3's
@@ -1090,6 +1113,32 @@ export type Tp3MoneyLine = {
   /** Roman-numeral sub-lines with their own box. Empty when the line is a single box on the form. */
   readonly subItems: readonly Tp3MoneyLineSubItem[];
 };
+
+/**
+ * ONE C2 sub-line, with its exemption limit READ OFF the PCB exemption code it draws on (item 1785b766).
+ *
+ * ⚠️ THE ONE PLACE A TP3 SECTION-C LIMIT IS RESOLVED, and it resolves to `MY_PCB_EXEMPTION_CODES` —
+ * the table whose own header already says the caps are "ANNUAL, tracked per employee per code". The
+ * literals this replaces were a second copy of three numbers that table already owned; a limit that
+ * moved in one and not the other would have exempted the same ringgit twice on one side of the year
+ * and not at all on the other, with nothing to report it.
+ *
+ * ⚠️ IT THROWS ON AN UNKNOWN CODE, AT MODULE LOAD, DELIBERATELY. The only way to reach it is a typo in
+ * this file — the reporter's own ticket wrote `PCB_CHILS_CARE` for `PCB_CHILD_CARE` — and a typo that
+ * resolved to `undefined` would silently turn a capped box into an uncapped one, which is a wrong tax
+ * figure with no error message. There is no runtime data on this path, so this can only ever fire on a
+ * developer's own edit, and it fires immediately rather than in a payroll run three months later.
+ */
+function tp3C2Sub(code: string, exemptionCode: string | null): Tp3MoneyLineSubItem {
+  if (exemptionCode == null) return { code, exemptionCode: null, exemptionLimit: null };
+  const limit = MY_PCB_EXEMPTION_CODES[exemptionCode];
+  if (typeof limit !== 'number') {
+    throw new Error(
+      `TP3 Section C2(${code}) maps to PCB exemption code "${exemptionCode}", which is not in MY_PCB_EXEMPTION_CODES.`,
+    );
+  }
+  return { code, exemptionCode, exemptionLimit: limit };
+}
 
 /**
  * TP3 Section C — REMUNERATION INFORMATION / EPF / ZAKAT / PCB, in the form's own order.
@@ -1134,6 +1183,21 @@ export type Tp3MoneyLine = {
  * `core/tp3.ts`'s `deriveAccumulatorSeed` now computes `C1 + Σ max(C2ₖ − limitₖ, 0) − C3` — the excess
  * over a limit is taxable and is NOT in C1, so it is ADDED. The full evidence and the reporter's two
  * worked examples are on that function; do not restate the arithmetic here, there is one owner of it.
+ *
+ * ══ AND SINCE ITEM 1785b766 THE LIMITS ARE NOT WRITTEN HERE AT ALL ══════════════════════════════════
+ *
+ * Three of these sub-lines carried a LITERAL limit — 6,000 / 3,000 / 2,000 — identical to three entries
+ * in `MY_PCB_EXEMPTION_CODES` twenty lines up this same file. TWO OWNERS OF ONE STATUTORY FACT, which is
+ * what CLAUDE.md §1 forbids, and the consequence was not cosmetic: the TP3 half of an annual exemption
+ * and the PAYROLL half were about to start netting off ONE per-employee cap, so a drift between the two
+ * copies would have meant the two halves disagreeing about the same ringgit. Each sub-line now names the
+ * PCB exemption CODE it draws on and `tp3C2Sub` reads the cap from that code. The mapping is:
+ *
+ *     C2(i)   → PCB_TRA_BUSINESS   (travel / petrol / toll for official duties)
+ *     C2(ii)  → PCB_CHILD_CARE     (child-care allowance)
+ *     C2(iv)  → PCB_PERQUISITE     (past-service / excellent-service / long-service awards)
+ *     C2(iii) → UNKNOWN — nothing in the specification's printed-page-21 table answers to it
+ *     C2(v)   → UNKNOWN by construction — a remainder over entries with different limit SHAPES
  */
 export const MY_TP3_2026_SECTION_C: readonly Tp3MoneyLine[] = [
   // C1 — total monthly gross remuneration AND additional remuneration, including allowances /
@@ -1153,27 +1217,40 @@ export const MY_TP3_2026_SECTION_C: readonly Tp3MoneyLine[] = [
       // C2(i) travel allowance, petrol card or petrol allowance, and toll fees, for official duties.
       // Specification printed page 21, item i: "Petrol card, petrol allowance, travelling allowance or
       // toll payment or any of its combination for official duties." EXEMPTION LIMIT (PER YEAR)
-      // RM6,000.00. The same entry adds that an amount above RM6,000 may still be deducted for what was
-      // actually spent on official duties, which is a second reason this is a warning and not a cap.
-      { code: 'i', exemptionLimit: 6_000 },
+      // RM6,000.00, now read off `PCB_TRA_BUSINESS` rather than written here. The same entry adds that an
+      // amount above RM6,000 may still be deducted for what was actually spent on official duties, which
+      // is a second reason this is a warning and not a cap.
+      tp3C2Sub('i', 'PCB_TRA_BUSINESS'),
       // C2(ii) child-care allowance. Specification printed page 21, item ii: "Child care allowance in
-      // respect of children up to 12 years of age." EXEMPTION LIMIT (PER YEAR) RM3,000.00.
-      { code: 'ii', exemptionLimit: 3_000 },
+      // respect of children up to 12 years of age." EXEMPTION LIMIT (PER YEAR) RM3,000.00 — `PCB_CHILD_CARE`.
+      // ⚠️ THE SPELLING IS THE SYSTEM'S, NOT THE TICKET'S: the item that wired this asked for
+      // `PCB_CHILS_CARE`, which is not a code this platform has. `tp3C2Sub` would have thrown on it.
+      tp3C2Sub('ii', 'PCB_CHILD_CARE'),
       // C2(iii) products of the employer's own business given free or at a discount.
-      // ⚠️ NO LIMIT IS SOURCED. This line has NO counterpart in the specification's printed-page-21
-      // table, and the form prints none. ADR-0008: captured, shown without a limit, never blocked. A
-      // plausible figure is not put here to have something to check against.
-      { code: 'iii', exemptionLimit: null },
+      // ⚠️ NO LIMIT IS SOURCED AND NO EXEMPTION CODE IS MAPPED — UNKNOWN, written down as UNKNOWN. This
+      // line has NO counterpart in the specification's printed-page-21 table, and the form prints none.
+      // ADR-0008: captured, shown without a limit, never blocked. A plausible figure is not put here to
+      // have something to check against.
+      //
+      // ⚠️⚠️ `MY_PCB_EXEMPTION_CODES` DOES CARRY `PCB_COMPANY_PROD: 1000`, WHICH LOOKS LIKE THIS SUBJECT
+      // FROM ANOTHER DOCUMENT, AND IT IS DELIBERATELY NOT WIRED HERE. That RM1,000 is not verified
+      // against any source this repo holds: it arrived with the 2026-07-22 pay-code classification list
+      // and no agency page has been read for it. Mapping this box to it would net RM1,000 of a real
+      // annual exemption off a new joiner on an UNVERIFIED figure, which is precisely what CLAUDE.md §8
+      // forbids printing, let alone deducting. It stays UNKNOWN until somebody reads the source.
+      tp3C2Sub('iii', null),
       // C2(iv) past-service achievement / excellent-service / innovation / productivity awards and
       // long-service awards (more than 10 years with the same employer). Specification printed page 21,
       // item v — the specification's fifth entry, this form's fourth line; the wording is the same three
-      // clauses in the same order. EXEMPTION LIMIT (PER YEAR) RM2,000.00.
-      { code: 'iv', exemptionLimit: 2_000 },
+      // clauses in the same order. EXEMPTION LIMIT (PER YEAR) RM2,000.00 — `PCB_PERQUISITE`.
+      tp3C2Sub('iv', 'PCB_PERQUISITE'),
       // C2(v) other tax-exempt allowances — the form itself points at the Form BE explanatory notes.
-      // ⚠️ NO SINGLE LIMIT EXISTS, BY CONSTRUCTION: this box is a remainder covering the rest of the
-      // specification's table, whose entries carry different limits (one unit per asset category, the
-      // actual amount expended, a loan-interest formula). One number cannot stand for all of them.
-      { code: 'v', exemptionLimit: null },
+      // ⚠️ NO SINGLE LIMIT EXISTS, BY CONSTRUCTION, SO NO SINGLE CODE CAN EXIST EITHER: this box is a
+      // remainder covering the rest of the specification's table, whose entries carry different limits
+      // (one unit per asset category, the actual amount expended, a loan-interest formula). One number
+      // cannot stand for all of them, and one exemption code cannot either — a remainder mapped to any
+      // single code would spend that code's whole cap on money that mostly belongs to other rules.
+      tp3C2Sub('v', null),
     ],
   },
   // C3 — total approved EPF or other approved fund contributions on ALL remuneration (monthly salary

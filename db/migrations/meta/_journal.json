@@ -2808,6 +2808,13 @@
       "when": 1789980198344,
       "tag": "0488_tp3_section_d_lp",
       "breakpoints": true
+    },
+    {
+      "idx": 489,
+      "version": "7",
+      "when": 1789980199344,
+      "tag": "0489_tp3_exemption_used",
+      "breakpoints": true
     }
   ]
 }

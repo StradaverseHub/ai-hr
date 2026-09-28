@@ -3709,6 +3709,9 @@ export async function generatePayslips(
         tp3Zakat: employeeStatutoryMy.tp3ZakatPaid,
         // ∑LP carried in from previous employment — Form TP3 Section D (item 20837372, migration 0488).
         tp3Lp: employeeStatutoryMy.tp3Lp,
+        // Per-code PCB exemption already spent at the previous employer — Form TP3 Section C2 (item
+        // 1785b766, migration 0489). NOT a formula variable: it opens the exemption LEDGER below.
+        tp3ExemptionUsed: employeeStatutoryMy.tp3ExemptionUsed,
         // 1.2.4 Zakat election (per-employee). The current row is read like every other statutory field
         // (this config class is not effective-dated); effective from/to are display-only and not read here.
         zakatActive: employeeStatutoryMy.zakatActive,
@@ -4365,6 +4368,47 @@ export async function generatePayslips(
     // each slip stamps the month's per-code exempt/claimed amounts as statutory.exemptionUsed, and the
     // replay sums them so the annual caps carry across months (no mutable balance table).
     const exemptUsedByEmp = new Map<string, Record<string, number>>();
+    // ── ITEM 1785b766 — THE YEAR OPENS WHERE THE PREVIOUS EMPLOYER LEFT IT, NOT AT ZERO ─────────────
+    //
+    // THE DEFECT. The replay below sums THIS employer's issued payslips and nothing else, so the annual
+    // caps in `MY_PCB_EXEMPTION_CODES` were being tracked per EMPLOYER. That table's own header says what
+    // the grain actually is: "Caps are ANNUAL, tracked per employee per code". A person who joined in
+    // July having already spent the whole RM6,000 travel exemption at their old job arrived here with a
+    // fresh RM6,000 — the same exemption given twice in one tax year, and too little tax taken. The
+    // employee owes the difference at assessment and nothing on a payslip reveals it.
+    //
+    // THE ORDER THE TWO HALVES COMPOSE IN, WHICH IS THE ONLY ORDER AVAILABLE: the TP3 box is the EARLIER
+    // employment in the same year, so it consumes the annual exemption FIRST; anything it keyed ABOVE the
+    // limit was never exempt and is added to ∑(Y−K) as taxable pay (item 20837372 / r350, in
+    // `core/tp3.ts`); and this employer's own pay items then draw on whatever headroom is LEFT, below.
+    // Both halves read ONE limit — `MY_TP3_2026_SECTION_C` now derives its C2 limits from
+    // `MY_PCB_EXEMPTION_CODES` rather than restating them — so they cannot disagree about one ringgit.
+    //
+    // THE SAME `tp3Applies` GATE AS THE FIVE MONEY COLUMNS, restated rather than shared because the map
+    // is declared here: a form for a year this run is not paying seeds nothing, which is what makes a new
+    // tax year start with full headroom without anything having to reset it.
+    //
+    // PERSON-GRAINED, LIKE THE OTHER FIVE. `employee_statutory_my` is unique on `person_id`, so a person
+    // holding two concurrent employments opens BOTH runs from the one row — the grain
+    // `projectSeedOntoStatutory`'s header records, inherited here deliberately rather than re-decided.
+    //
+    // IT IS READ AND NEVER WRITTEN BACK. Nothing below updates `tp3_exemption_used`, so reprocessing the
+    // same month any number of times consumes the previous employer's exemption exactly once (the
+    // reporter's Expected Function point 9, which needs no mechanism — see `projectSeedOntoStatutory`).
+    for (const e of emps) {
+      if (e.tp3Year !== pYear) continue;
+      const opening = e.tp3ExemptionUsed;
+      if (opening == null) continue;
+      const seeded: Record<string, number> = {};
+      for (const [code, amt] of Object.entries(opening)) {
+        const used = round2(Number(amt ?? 0));
+        // A zero or a negative is not headroom taken. The column is derived from `min(keyed, limit)` and
+        // cannot hold either, but a hand-edited row could, and subtracting a negative would INVENT
+        // headroom above the statutory cap.
+        if (used > 0) seeded[code] = used;
+      }
+      if (Object.keys(seeded).length) exemptUsedByEmp.set(e.employmentId, seeded);
+    }
     /** Item 3fa088fb — ∑LP THIS employer has already fed this assessment year. TP3 opening EXCLUDED. */
     const lpFedByEmp = new Map<string, number>();
     for (const s of priorSlips) {
@@ -5095,6 +5139,11 @@ export async function generatePayslips(
       // LHDN PCB 2026 (feedback 09b554e9) — this month's optional-deduction (LP) claims and per-code
       // exemption usage. `priorUsed` is the YTD usage replayed from the year's earlier slips; `exemptionUsed`
       // accumulates THIS month's usage (so two components sharing a code share the remaining cap headroom).
+      //
+      // ⚠️ SINCE ITEM 1785b766 `priorUsed` DOES NOT START AT THIS EMPLOYER. It OPENS with the Form TP3
+      // Section C2 figures (`employee_statutory_my.tp3_exemption_used`, migration 0489) and the payslip
+      // replay adds this employer's own months on top — the caps are annual PER EMPLOYEE, so a mid-year
+      // joiner's previous employment has already spent part of them. See the seeding block above.
       let lpDeclared = 0;
       const exemptionUsed: Record<string, number> = {};
       const priorUsed = exemptUsedByEmp.get(e.employmentId) ?? {};
@@ -9126,13 +9175,25 @@ async function preProcessChecksTx(
       // now moves the monthly deduction, so a year mismatch on it drops a real figure. Leaving it out
       // would make this gate quietly narrower than the kernel it guards — the exact drift the comment
       // above ("the gate and the thing it guards cannot drift apart") was written to prevent.
+      //
+      // ⚠️⚠️ AND `exemptionUsed` JOINS IT IN ITEM 1785b766, FOR THE SAME REASON ONE STEP FURTHER OUT.
+      // A form whose only money is an exempt Section C2 allowance produces net / epf / pcb / zakat / ∑LP
+      // all ZERO — C1 holds only taxable pay and an in-limit C2 adds no excess (r350) — and yet it now
+      // moves the deduction, because it spends this employee's ANNUAL per-code exemption headroom. A year
+      // mismatch would hand them a second full set of exemptions with nothing reported.
+      //
+      // ⚠️ THE TEST IS THE MAP, NOT `exemptTotal`. `exemptTotal` also counts C2(iii) and C2(v), which map
+      // to no exemption code and therefore reach no calculation — blocking a payroll run over one of those
+      // would make this gate BROADER than the kernel, which is its own kind of wrong. The map's keys are
+      // exactly what `core/payroll.ts` seeds the ledger from, so gate and kernel agree by construction.
       if (
         seed &&
         (seed.netRemuneration !== 0 ||
           seed.epfClaimed !== 0 ||
           seed.pcbPaid !== 0 ||
           seed.zakatPaid !== 0 ||
-          seed.lpDeclared !== 0)
+          seed.lpDeclared !== 0 ||
+          Object.keys(seed.exemptionUsed).length !== 0)
       ) {
         tp3MoneyPersonIds.add(t.personId);
       }

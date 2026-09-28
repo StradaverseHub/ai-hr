@@ -383,6 +383,20 @@ const REGISTRY: Record<string, RegistryTable> = {
         fields: ['tp3Lp'],
       },
       {
+        // 1785b766 — ITS OWN ENTRY AGAIN, for the same reason `tp3Lp` has one and one more of its own.
+        // It is form-only and derived (Form TP3 Section C2 → `deriveAccumulatorSeed` → the same
+        // `projectSeedOntoStatutory` transaction), so an import column would be a second writer. AND it
+        // is not a figure a person can key at all: it is a MAP from PCB exemption code to amount, whose
+        // keys come from a country pack's `MY_PCB_EXEMPTION_CODES`. A spreadsheet cell carrying it would
+        // be a hand-typed code name deciding how much annual tax exemption an employee still has — the
+        // exact failure the ticket that asked for this feature demonstrated, by writing `PCB_CHILS_CARE`.
+        // Known gap, stated rather than papered over: an employer adopting mid-year cannot key a previous
+        // employer's exemption usage without recording the TP3 form, which is the intended shape.
+        reason:
+          'TP3 per-code exemption usage — a code→amount MAP derived from Form TP3 Section C2 and written only by that save; form-only by design, and a hand-typed exemption code in a bulk file would silently decide how much annual exemption an employee has left',
+        fields: ['tp3ExemptionUsed'],
+      },
+      {
         reason:
           'zakat election (ADR-0058) — an employee opt-in with its own card, method and effective dates; not day-one identity data',
         fields: [
