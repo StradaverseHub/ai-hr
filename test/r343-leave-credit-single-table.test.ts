@@ -400,6 +400,86 @@ describe('r343 · the translated keys are translated, and the English ones are n
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// (2d) ⚠️ r353 cbfa8b0b · THE APPROVER'S HALF OF THE REVERSAL.
+//
+// The owner removed the clock-out clip and the measured cap from `eligibleExtendedMinutes`, so the only
+// thing standing between a typed window and a banked credit — which blocks overtime pay for the same hours
+// and converts to cash on expiry — is the line manager reading the approvals queue. A warning nobody drew,
+// or one drawn from a SECOND derivation that disagrees with the employee's own screen, would make that
+// hand-over a fiction. Neither is visible at runtime from a server component, so both are pinned here as a
+// source shape, the way (2b) pins the wiring between files.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+describe('r353 · the approvals queue warns, from the SAME computation the employee’s screen used', () => {
+  const APPROVALS = 'app/approvals/page.tsx';
+  const TABLE = 'components/leave/leave-credit-request-table.tsx';
+
+  it('ONE computation: both surfaces call assessExtendedClaim, and neither re-derives the discrepancy', () => {
+    for (const f of [APPROVALS, TABLE]) {
+      expect(read(f), `${f} must read the shared assessment`).toContain('assessExtendedClaim(');
+      expect(read(f), `${f} must import it rather than copy it`).toMatch(/from '@\/lib\/extended-hours'/);
+    }
+    // A hand-rolled comparison of the two times on either surface is the second derivation this forbids.
+    for (const f of [APPROVALS, TABLE]) {
+      expect(read(f), `${f}: the discrepancy is returned, never recomputed`).not.toMatch(/claimEnd\s*>\s*clockOut/);
+    }
+  });
+
+  it('the approver is shown the absence as well as the time — the clock-out is no longer printed only when present', () => {
+    const src = read(APPROVALS);
+    // Before r353 the row rendered nothing at all when `actualClockOut` was NULL, so "no clock-out behind
+    // this claim" and "an approver who has not looked" were the same row.
+    expect(src).toContain("t('creditClockOutNone')");
+    expect(src).not.toContain("{d.actualClockOut ? ` · ${t('creditClockOut')}");
+  });
+
+  it('both warnings exist, are amber, and are findable by test rather than by position', () => {
+    const src = read(APPROVALS);
+    expect(src).toContain("data-testid=\"approval-credit-clock-out-warning\"");
+    expect(src).toContain("t('creditWarnPastClockOut'");
+    expect(src).toContain("t('creditWarnNoClockOut'");
+    // ⚠️ VISIBILITY IS THE REQUIREMENT, not the mention. A control this loosens must not be handed over in
+    // the same muted grey as the rest of the line.
+    expect(src).toMatch(/border-amber-300[^"]*bg-amber-50/);
+    expect(src).toMatch(/dark:border-amber-700/);
+  });
+
+  it('the three approver strings are translated in all six locales, not English six times', () => {
+    const keys = ['creditClockOutNone', 'creditWarnPastClockOut', 'creditWarnNoClockOut'] as const;
+    const cat = Object.fromEntries(
+      ['en', 'ms', 'ta', 'th', 'vi', 'zh'].map((l) => [l, JSON.parse(read(`messages/${l}.json`)).approvals as Record<string, string>]),
+    ) as Record<string, Record<string, string>>;
+    for (const k of keys) {
+      expect(typeof cat.en[k], k).toBe('string');
+      for (const l of ['ms', 'ta', 'th', 'vi', 'zh']) {
+        expect(typeof cat[l][k], `${l}:${k}`).toBe('string');
+        expect(cat[l][k], `${l}:${k} is still the English string`).not.toBe(cat.en[k]);
+      }
+    }
+    // The two placeholders the warning is useless without.
+    expect(cat.en.creditWarnPastClockOut).toContain('{claimEnd}');
+    expect(cat.en.creditWarnPastClockOut).toContain('{clockOut}');
+    expect(cat.en.creditWarnNoClockOut).toContain('{date}');
+  });
+
+  it('⚠️ the kernel keeps no ceiling of its own: neither caller re-applies one after the shared call', () => {
+    // CLAUDE.md §8 — when a defect lives in the contract between files, pin it across both. The plan's third
+    // point was exactly this question, and "it inherits the new basis" is only true while nothing local
+    // narrows the answer afterwards.
+    for (const f of ['core/replacement-request.ts', 'core/toil.ts']) {
+      const src = read(f);
+      expect(src, `${f} must not pass a measured cap into the shared function any more`).not.toMatch(
+        // `[^)]` stops the scan at the end of the call's own argument object: a later mention of the
+        // measured figure elsewhere in the file is not this call passing it.
+        /eligibleExtendedMinutes\(\{[^)]*?measuredExtendedMinutes/,
+      );
+      expect(src, `${f} must not clamp the returned minutes`).not.toMatch(
+        /Math\.min\([^)]*(eligibleMinutes|measuredExtendedMinutes)/,
+      );
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
 // (3) END TO END, AGAINST A REAL ROSTER.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 let b: Base;

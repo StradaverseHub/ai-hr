@@ -27,7 +27,11 @@
  *     Days figure, the other three the reverse, on the same row of the same table;
  *   · the roster MISMATCH message naming what the roster holds, and that it BLOCKS the submit button;
  *   · an Ordinary Day row on a company without extended hours SAYS it earns nothing and blocks the submit;
- *   · the derived cells are not inputs — the employee cannot type an eligible-minutes figure or a credit.
+ *   · the derived cells are not inputs — the employee cannot type an eligible-minutes figure or a credit;
+ *   · ⚠️ r353 — the Day Type FILLS ITSELF from the roster and never overwrites a choice, the clock-out cell
+ *     tells "No record" apart from "this cell does not apply", and a claim past the recorded clock-out shows
+ *     an amber warning and STILL CREDITS (the owner's reversal: the check moved to the approver, so the
+ *     screen's job is to say so rather than to refuse).
  */
 import { describe, expect, it, vi as vitestVi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -57,6 +61,10 @@ const TIERS = { extendedHalfDayMinutes: 240, extendedFullDayMinutes: 480, extend
 const WORKING_DAY: LeaveCreditDayFacts = { kind: 'workday', shiftEnd: '18:00:00', actualClockOut: '02:00:00', measuredExtendedMinutes: 480 };
 const OFF_DAY: LeaveCreditDayFacts = { kind: 'off_day', shiftEnd: null, actualClockOut: '17:00:00', measuredExtendedMinutes: 0 };
 const REST_DAY: LeaveCreditDayFacts = { kind: 'rest_day', shiftEnd: null, actualClockOut: '17:00:00', measuredExtendedMinutes: 0 };
+/** r353 · an ordinary working day with NO attendance row: the clock-out is the absence the screens name. */
+const NO_ATTENDANCE: LeaveCreditDayFacts = { kind: 'workday', shiftEnd: '18:00:00', actualClockOut: null, measuredExtendedMinutes: 0 };
+/** r353 · clocked out at 20:00 — a claim to 22:00 runs PAST it and must credit anyway, with a warning. */
+const CLOCKED_OUT_EARLY: LeaveCreditDayFacts = { kind: 'workday', shiftEnd: '18:00:00', actualClockOut: '20:00:00', measuredExtendedMinutes: 0 };
 
 function mount(locale: Locale, opts: { facts?: LeaveCreditDayFacts | null; tiers?: typeof TIERS | null } = {}) {
   return render(
@@ -271,5 +279,128 @@ describe('r343 · the roster adjudicates, on the row, and blocks the submit', ()
     await user.type(screen.getAllByLabelText(en.replacementRequest.sectionB.extendedEnd)[1], '02:00');
     // 1 day for the rest day + 1 day for eight hours past the shift end (the cap, not a proportion).
     await waitFor(() => expect(screen.getByTestId('leave-credit-total').textContent).toBe('2.00 day(s)'));
+  });
+});
+
+/**
+ * ⚠️ r353 cbfa8b0b · WHAT THE REVERSAL LOOKS LIKE ON THE EMPLOYEE'S OWN SCREEN.
+ *
+ * The kernel used to clip a claim to the recorded clock-out and cap it at the measured figure; the owner
+ * reversed both, so the two read-only time cells stopped being decoration and became the approver's evidence.
+ * Every case here is a RENDER: an amber block and a filled dropdown are exactly the class of thing tsc, the
+ * node suite and `next build` all pass over.
+ */
+describe('r353 · the claimed window is the claim, and the clock-out is drawn as a warning', () => {
+  it('a claim that ends AFTER the recorded clock-out warns, names both times, and still credits', async () => {
+    const user = userEvent.setup();
+    mount('en', { facts: CLOCKED_OUT_EARLY });
+    await user.type(dateInput('en'), '2026-09-16');
+    await user.selectOptions(dayTypeSelect('en'), 'workday');
+    await user.type(startInput('en'), '18:00');
+    await user.type(endInput('en'), '22:00');
+
+    // 240 minutes: the clock-out no longer cuts it to 120.
+    await waitFor(() => expect(screen.getByTestId('leave-credit-eligible-minutes')).toHaveTextContent('240'));
+    expect(screen.getByTestId('leave-credit-row-credit')).toHaveTextContent('0.5');
+    const warn = screen.getByTestId('leave-credit-clock-out-warning');
+    // BOTH figures, so the employee can see which two the manager will be comparing.
+    expect(warn.textContent).toContain('22:00');
+    expect(warn.textContent).toContain('20:00');
+    // ⚠️ IT IS A WARNING, NOT A REFUSAL. The submit stays available — that is the loosening the owner chose.
+    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('a claim INSIDE the recorded clock-out says nothing at all — the warning is not decoration', async () => {
+    const user = userEvent.setup();
+    mount('en', { facts: WORKING_DAY }); // clocked out 02:00, shift end 18:00
+    await user.type(dateInput('en'), '2026-09-16');
+    await user.selectOptions(dayTypeSelect('en'), 'workday');
+    await user.type(startInput('en'), '18:00');
+    await user.type(endInput('en'), '22:00');
+    await waitFor(() => expect(screen.getByTestId('leave-credit-eligible-minutes')).toHaveTextContent('240'));
+    expect(screen.queryByTestId('leave-credit-clock-out-warning')).toBeNull();
+  });
+
+  it('NO attendance row reads "No record" rather than the em dash, warns differently, and still credits', async () => {
+    const user = userEvent.setup();
+    mount('en', { facts: NO_ATTENDANCE });
+    await user.type(dateInput('en'), '2026-09-16');
+    await user.selectOptions(dayTypeSelect('en'), 'workday');
+    // The absence is named BEFORE any window is typed: it is a fact about the day, not about the claim.
+    await waitFor(() => expect(screen.getByTestId('leave-credit-clock-out')).toHaveTextContent(en.replacementRequest.table.noClockOutRecord));
+    expect(screen.getByTestId('leave-credit-clock-out-warning').textContent).toBe(en.replacementRequest.table.clockOutMissing);
+
+    await user.type(startInput('en'), '18:00');
+    await user.type(endInput('en'), '23:51'); // the reporter's own window: 351 minutes
+    await waitFor(() => expect(screen.getByTestId('leave-credit-eligible-minutes')).toHaveTextContent('351'));
+    expect(screen.getByTestId('leave-credit-row-credit')).toHaveTextContent('0.5');
+    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('the em dash still means "this cell does not apply": a Rest Day row prints no "No record"', async () => {
+    const user = userEvent.setup();
+    mount('en', { facts: REST_DAY }); // has a 17:00 clock-out, but the cell is not applicable
+    await user.type(dateInput('en'), '2026-09-13');
+    await user.selectOptions(dayTypeSelect('en'), 'rest_day');
+    await waitFor(() => expect(screen.getByTestId('leave-credit-clock-out').textContent).not.toContain('17:00'));
+    expect(screen.getByTestId('leave-credit-clock-out').textContent).not.toContain(en.replacementRequest.table.noClockOutRecord);
+    expect(screen.queryByTestId('leave-credit-clock-out-warning')).toBeNull();
+  });
+
+  it.each(LOCALES)('%s — the two new warning sentences resolve in this locale', async (locale) => {
+    const user = userEvent.setup();
+    mount(locale, { facts: NO_ATTENDANCE });
+    await user.type(dateInput(locale), '2026-09-16');
+    await user.selectOptions(dayTypeSelect(locale), 'workday');
+    const warn = await waitFor(() => screen.getByTestId('leave-credit-clock-out-warning'));
+    expect(warn.textContent).toBe(copy(locale).table.clockOutMissing);
+    expect(looksUnresolved(warn.textContent ?? '')).toBe(false);
+    expect(looksUnresolved(screen.getByTestId('leave-credit-clock-out').textContent ?? '')).toBe(false);
+  });
+});
+
+/**
+ * r353 cbfa8b0b · THE DAY TYPE FILLS ITSELF FROM THE ROSTER, AND NEVER OVER A CHOICE.
+ *
+ * The roster kind was already fetched for the mismatch check, so asking the employee to retype it was pure
+ * friction. The second case is the one that matters: the fill must not be able to undo a deliberate answer,
+ * because a row whose chosen type disagrees with the roster is exactly the row the screen is about to warn
+ * about, and a fill that "corrected" it would delete the warning instead of showing it.
+ */
+describe('r353 · the Day Type fills in from the roster when the date is picked', () => {
+  it.each([
+    ['rest_day', REST_DAY],
+    ['off_day', OFF_DAY],
+    ['workday', WORKING_DAY],
+  ] as const)('picking a date the roster calls %s fills the cell with it, and shows no mismatch', async (kind, facts) => {
+    const user = userEvent.setup();
+    mount('en', { facts });
+    expect(dayTypeSelect('en').value, 'nothing is chosen before a date is picked').toBe('');
+    await user.type(dateInput('en'), '2026-09-16');
+    await waitFor(() => expect(dayTypeSelect('en').value).toBe(kind));
+    // A filled value agrees with the roster by construction, so the row is clean.
+    expect(screen.queryByTestId('leave-credit-roster-mismatch')).toBeNull();
+  });
+
+  it('⚠️ it never overwrites a value the employee chose — the deliberate mismatch survives and still warns', async () => {
+    const user = userEvent.setup();
+    mount('en', { facts: OFF_DAY }); // the roster says off day
+    // Chosen BEFORE the date, so the fill is racing a value that already exists.
+    await user.selectOptions(dayTypeSelect('en'), 'rest_day');
+    await user.type(dateInput('en'), '2026-09-12');
+    const problem = await waitFor(() => screen.getByTestId('leave-credit-roster-mismatch'));
+    expect(dayTypeSelect('en').value, 'the roster reached in and overwrote the employee').toBe('rest_day');
+    expect(problem.textContent).toContain(en.replacementRequest.dayKind.offDay);
+  });
+
+  it('and it does not come back after the employee clears the cell', async () => {
+    const user = userEvent.setup();
+    mount('en', { facts: REST_DAY });
+    await user.type(dateInput('en'), '2026-09-13');
+    await waitFor(() => expect(dayTypeSelect('en').value).toBe('rest_day'));
+    // Choosing the placeholder back is a choice. The fill must not treat an empty cell as "never answered".
+    await user.selectOptions(dayTypeSelect('en'), '');
+    await waitFor(() => expect(dayTypeSelect('en').value).toBe(''));
+    expect(dayTypeSelect('en').value).toBe('');
   });
 });

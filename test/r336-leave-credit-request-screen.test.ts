@@ -7,9 +7,17 @@
  *  1. THE TWO SECTIONS ARE VALIDATED AGAINST OPPOSITE FACTS. Section A needs a NON-working day, Section B
  *     needs a WORKING day, and each refusal names the other section. A single shared "is this date
  *     claimable" check would pass one of these and fail the other silently.
- *  2. SECTION B'S CREDIT IS DERIVED, NEVER TYPED. The claim narrows a measured figure and can never widen
- *     it, which is the safety property: the screen cannot mint minutes, so it cannot mint a credit, so it
- *     cannot suppress overtime pay for time nobody worked.
+ *  2. ⚠️ REVERSED IN r353 — SECTION B'S CREDIT IS THE EMPLOYEE'S OWN WINDOW, AND THE CHECK IS THE APPROVER'S.
+ *     This point used to read: "SECTION B'S CREDIT IS DERIVED, NEVER TYPED. The claim narrows a measured
+ *     figure and can never widen it, which is the safety property: the screen cannot mint minutes, so it
+ *     cannot mint a credit, so it cannot suppress overtime pay for time nobody worked." The owner reversed
+ *     that on cbfa8b0b after the reporter's own repro was traced to returning ZERO twice over (the clock-out
+ *     clip AND the measured cap each gave 0 on their own). The window is now the claim, floored at the
+ *     scheduled shift end; the discrepancy against the recorded clock-out is RETURNED by
+ *     `assessExtendedClaim` and drawn as an amber warning on the employee's row and on the approvals queue.
+ *     ⚠️ MONEY: this loosens a control rather than moving it — replacement leave blocks overtime pay for the
+ *     same hours and converts to cash on expiry, so the line manager is now the only check. The cases below
+ *     therefore assert that a claim past the clock-out CREDITS and WARNS, not that it is refused.
  *  3. THE OVERLAP CHECK RUNS BOTH WAYS FROM ONE PREDICATE, and releases on a rejection.
  *  4. ⚠️ MONEY — the credit still suppresses the day's overtime pay exactly as r334 left it, and
  *     `toil_accrual.day_type` is still NULL on an extended-hours credit so `convertAmountFor` cannot price
@@ -30,7 +38,7 @@ import { assignDefaultShift, assignShift, createShift, setRestDay } from '../cor
 import { createBatch, generatePayslips, prefillOvertimeFromAttendance } from '../core/payroll';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { setToilPolicy, LeaveCreditSectionMismatchError, ToilExtendedHoursBelowThresholdError, type ToilPolicyInput } from '../core/toil';
-import { eligibleExtendedMinutes, extendedHoursCreditDays } from '../lib/extended-hours';
+import { assessExtendedClaim, eligibleExtendedMinutes, extendedHoursCreditDays } from '../lib/extended-hours';
 import {
   decideReplacementLeaveRequest,
   extendedHoursOfferForEmployment,
@@ -203,34 +211,138 @@ describe('r336 · the derived figures, as pure arithmetic', () => {
     expect(extendedHoursCreditDays(960, TIERS).days).toBe(1);
   });
 
-  it('the claimed window NARROWS the measured figure and can never widen it', () => {
-    const day = { shiftEnd: '14:00:00', actualClockOut: '22:00:00', measuredExtendedMinutes: 480 };
-    // Claiming the whole measured span gives the whole measured span.
-    expect(eligibleExtendedMinutes({ claimStart: '14:00', claimEnd: '22:00', ...day })).toBe(480);
-    // Claiming LESS gives less — an employee may claim only part of what they worked.
-    expect(eligibleExtendedMinutes({ claimStart: '14:00', claimEnd: '18:00', ...day })).toBe(240);
-    // Claiming MORE gives no more: the measured cap holds even when the window is a whole day.
-    expect(eligibleExtendedMinutes({ claimStart: '00:00', claimEnd: '23:59', ...day })).toBe(480);
-    // ⚠️ THE SAFETY PROPERTY. A day the engine measured at ZERO extended minutes can never be claimed,
-    // however wide the window — which is what stops the screen minting minutes, and therefore pay.
+  /**
+   * ⚠️⚠️ REVERSED BY THE OWNER ON cbfa8b0b (r353), AND THE OLD ASSERTION IS QUOTED SO THE DECISION IS READABLE
+   * FROM HERE. CLAUDE.md §8: a guard pinning a decision you are reversing is UPDATED, not deleted.
+   *
+   * This case used to be called "the claimed window NARROWS the measured figure and can never widen it", and
+   * its last expectation was the one that mattered:
+   *
+   *     // ⚠️ THE SAFETY PROPERTY. A day the engine measured at ZERO extended minutes can never be claimed,
+   *     // however wide the window — which is what stops the screen minting minutes, and therefore pay.
+   *     expect(eligibleExtendedMinutes({ claimStart: '14:00', claimEnd: '22:00', shiftEnd: '14:00:00',
+   *       actualClockOut: '22:00:00', measuredExtendedMinutes: 0 })).toBe(0);
+   *
+   * WHY IT IS INVERTED. The reporter's own repro — a shift ending 18:00, clocked out at 18:00, nothing
+   * measured, 18:00–23:51 typed — returned ZERO, and it returned zero twice over: the clock-out clip alone
+   * gave 0, and with the clip removed the measured cap still gave 0. So the reporter's proposed fix (drop the
+   * clock-out) would not have fixed the reporter's own example. The owner reversed the rule: the employee's
+   * entered window IS the claim, and the clock-out is the APPROVER's reference. `measuredExtendedMinutes` is
+   * not a parameter of this function any more — the signature itself is the pin, because a parameter left in
+   * place is how a cap comes back.
+   *
+   * WHERE THE SAFETY PROPERTY WENT: to `assessExtendedClaim`'s `exceedsClockOut` / `hasClockOut` and the two
+   * screens that print them, asserted below and in test/r343-leave-credit-table.dom.test.tsx. It is a WARNING
+   * now, not a refusal, which is the loosening the owner accepted.
+   */
+  it('⚠️ the entered window IS the claim now — a day the engine measured at ZERO still credits it', () => {
+    // THE REPORTER'S OWN REPRO, BY NUMBER. 18:00 shift end, clocked out 18:00, nothing measured. Before
+    // r353 this was 0 and the request was refused under the half-day threshold; it is 351 minutes and half a
+    // day. This is the named assertion the non-vacuity check reverts the fix against.
     expect(
-      eligibleExtendedMinutes({ claimStart: '14:00', claimEnd: '22:00', shiftEnd: '14:00:00', actualClockOut: '22:00:00', measuredExtendedMinutes: 0 }),
-    ).toBe(0);
+      eligibleExtendedMinutes({ claimStart: '18:00', claimEnd: '23:51', shiftEnd: '18:00:00', actualClockOut: '18:00:00' }),
+    ).toBe(351);
+    expect(extendedHoursCreditDays(351, TIERS).days).toBe(0.5);
+    // Claiming less than the window still gives less: an employee may claim part of what they worked.
+    expect(
+      eligibleExtendedMinutes({ claimStart: '14:00', claimEnd: '18:00', shiftEnd: '14:00:00', actualClockOut: '22:00:00' }),
+    ).toBe(240);
+    // A window that runs from midnight is floored at the SHIFT END, not at what was measured: 14:00 → 23:59.
+    expect(
+      eligibleExtendedMinutes({ claimStart: '00:00', claimEnd: '23:59', shiftEnd: '14:00:00', actualClockOut: '22:00:00' }),
+    ).toBe(599);
   });
 
-  it('clips to the scheduled shift end and the actual clock-out so the figure matches the times printed beside it', () => {
-    // An hour claimed BEFORE the shift ended is not extended work.
+  /**
+   * ⚠️ THE OTHER HALF OF THE REVERSAL, AND WHAT SURVIVED IT. This case used to read "clips to the scheduled
+   * shift end AND THE ACTUAL CLOCK-OUT so the figure matches the times printed beside it", and its middle
+   * expectation was the clock-out clip itself:
+   *
+   *     // An hour claimed AFTER the clock-out was not worked.
+   *     expect(eligibleExtendedMinutes({ claimStart: '14:00', claimEnd: '19:00', shiftEnd: '14:00:00',
+   *       actualClockOut: '18:00:00', measuredExtendedMinutes: 600 })).toBe(240);
+   *
+   * That is 300 now, and the difference is reported to the approver rather than silently applied. The
+   * SHIFT-END FLOOR is kept and is asserted here unchanged, because it is the definition of extended work
+   * rather than a check on the person claiming it.
+   */
+  it('⚠️ the shift-end FLOOR is kept; the clock-out CEILING is gone and is reported instead', () => {
+    // KEPT: an hour claimed BEFORE the shift ended is not extended work, whoever types it.
     expect(
-      eligibleExtendedMinutes({ claimStart: '13:00', claimEnd: '18:00', shiftEnd: '14:00:00', actualClockOut: '18:00:00', measuredExtendedMinutes: 600 }),
+      eligibleExtendedMinutes({ claimStart: '13:00', claimEnd: '18:00', shiftEnd: '14:00:00', actualClockOut: '18:00:00' }),
     ).toBe(240);
-    // An hour claimed AFTER the clock-out was not worked.
+    // REVERSED: an hour claimed after the clock-out is credited — and flagged.
+    const past = assessExtendedClaim({ claimStart: '14:00', claimEnd: '19:00', shiftEnd: '14:00:00', actualClockOut: '18:00:00' });
+    expect(past.minutes, 'the claim used to be clipped to 240 by the clock-out').toBe(300);
+    expect(past.exceedsClockOut).toBe(true);
+    expect(past.hasClockOut).toBe(true);
+    // Cross-midnight: 18:00 → 00:30 is six and a half hours, not a negative span. Unchanged by r353.
     expect(
-      eligibleExtendedMinutes({ claimStart: '14:00', claimEnd: '19:00', shiftEnd: '14:00:00', actualClockOut: '18:00:00', measuredExtendedMinutes: 600 }),
-    ).toBe(240);
-    // Cross-midnight: 18:00 → 00:30 is six and a half hours, not a negative span.
-    expect(
-      eligibleExtendedMinutes({ claimStart: '18:00', claimEnd: '00:30', shiftEnd: '18:00:00', actualClockOut: '00:30:00', measuredExtendedMinutes: 600 }),
+      eligibleExtendedMinutes({ claimStart: '18:00', claimEnd: '00:30', shiftEnd: '18:00:00', actualClockOut: '00:30:00' }),
     ).toBe(390);
+  });
+
+  /**
+   * ⚠️ A ZERO-LENGTH WINDOW IS ZERO, NOT TWENTY-FOUR HOURS — a defect the removed cap was hiding.
+   *
+   * The roll tested `end <= start`, so 18:00 → 18:00 became 1440 minutes. With the measured cap in front of
+   * it that was cut back to whatever was measured; with the cap gone it was A FULL DAY OF CREDIT from an
+   * obvious mis-entry. Verified by execution on the new function before the `<=` was narrowed to `<`.
+   */
+  it('18:00 → 18:00 is a zero-length window, not a 24-hour claim', () => {
+    const a = assessExtendedClaim({ claimStart: '18:00', claimEnd: '18:00', shiftEnd: '18:00:00', actualClockOut: '18:00:00' });
+    expect(a.minutes).toBe(0);
+    expect(extendedHoursCreditDays(a.minutes, TIERS).days).toBe(0);
+  });
+
+  /**
+   * THE REPORTER'S SEVEN ARITHMETIC CASES, AS ONE TABLE. Six of the seven passed before this round and the
+   * plan told the reporter so; the fifth row is the one that did not, and it is their own example. The shift
+   * ends at 18:00 throughout, which is the shift end in the ticket.
+   *
+   * ⚠️ `actualClockOut` IS DELIBERATELY THE SHIFT END ON EVERY ROW — i.e. the worst case, a day nobody
+   * clocked out of after the release. Before r353 every row but the fourth would have returned 0 through the
+   * clip; that they now return the claimed span is the whole point of the table.
+   */
+  const SEVEN: { name: string; start: string; end: string; minutes: number; days: number }[] = [
+    { name: '239 minutes earns nothing — under the half-day threshold', start: '18:00', end: '21:59', minutes: 239, days: 0 },
+    { name: '240 minutes earns half a day, exactly at the threshold', start: '18:00', end: '22:00', minutes: 240, days: 0.5 },
+    { name: '480 minutes ACROSS MIDNIGHT earns a full day', start: '18:00', end: '02:00', minutes: 480, days: 1 },
+    { name: 'a 17:00 start is floored UP to the 18:00 shift end: 240, not 300', start: '17:00', end: '22:00', minutes: 240, days: 0.5 },
+    { name: "⚠️ THE TICKET'S OWN EXAMPLE: 18:00–23:51 is 351 minutes and half a day", start: '18:00', end: '23:51', minutes: 351, days: 0.5 },
+    { name: '720 minutes is STILL one day — the tier cap, which r353 keeps', start: '18:00', end: '06:00', minutes: 720, days: 1 },
+    { name: 'a zero-length window earns nothing', start: '18:00', end: '18:00', minutes: 0, days: 0 },
+  ];
+  for (const c of SEVEN) {
+    it(`(reporter) ${c.name}`, () => {
+      const minutes = eligibleExtendedMinutes({ claimStart: c.start, claimEnd: c.end, shiftEnd: '18:00:00', actualClockOut: '18:00:00' });
+      expect(minutes, `${c.start}–${c.end}`).toBe(c.minutes);
+      expect(extendedHoursCreditDays(minutes, TIERS).days, `${c.start}–${c.end} in days`).toBe(c.days);
+    });
+  }
+
+  /**
+   * THE DISCREPANCY IS RETURNED, FROM ONE COMPUTATION — the property that lets the request table and the
+   * approvals queue print the same warning without either of them re-deriving it.
+   */
+  it('⚠️ the approver’s two questions are answered beside the minutes, not instead of them', () => {
+    // A claim that ends after the clock-out: flagged AND still credited.
+    const past = assessExtendedClaim({ claimStart: '18:00', claimEnd: '23:51', shiftEnd: '18:00:00', actualClockOut: '18:00:00' });
+    expect(past).toEqual({ minutes: 351, hasClockOut: true, exceedsClockOut: true });
+    // A claim inside the clock-out: nothing to say.
+    const inside = assessExtendedClaim({ claimStart: '18:00', claimEnd: '22:00', shiftEnd: '18:00:00', actualClockOut: '22:00:00' });
+    expect(inside).toEqual({ minutes: 240, hasClockOut: true, exceedsClockOut: false });
+    // NO CLOCK-OUT AT ALL is a DIFFERENT answer from "clocked out earlier", because it is a different
+    // question for an approver: a missing fact rather than a contradicted one. And it still credits.
+    const none = assessExtendedClaim({ claimStart: '18:00', claimEnd: '23:51', shiftEnd: '18:00:00', actualClockOut: null });
+    expect(none).toEqual({ minutes: 351, hasClockOut: false, exceedsClockOut: false });
+    // No assigned shift ⇒ no scheduled end ⇒ the claimed start is the floor. A narrower answer, never wider.
+    expect(assessExtendedClaim({ claimStart: '18:00', claimEnd: '22:00', shiftEnd: null, actualClockOut: null }).minutes).toBe(240);
+    // `eligibleExtendedMinutes` is a PROJECTION of the same call, never a second reading of the row.
+    for (const c of SEVEN) {
+      const p = { claimStart: c.start, claimEnd: c.end, shiftEnd: '18:00:00', actualClockOut: '18:00:00' };
+      expect(eligibleExtendedMinutes(p), c.name).toBe(assessExtendedClaim(p).minutes);
+    }
   });
 });
 
@@ -397,6 +509,91 @@ describe('r336 · (c) under the half-day threshold blocks the submission', () =>
         today: TODAY,
       }),
     ).rejects.toThrow(ToilExtendedHoursBelowThresholdError);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+/**
+ * ⚠️⚠️ r353 cbfa8b0b · THE REVERSAL, END TO END THROUGH A REAL ATTENDANCE ROW AND A REAL APPROVAL.
+ *
+ * The pure cases above prove the arithmetic; these two prove that nothing between the form and the ledger
+ * puts the ceiling back — `submitReplacementLeaveRequest` re-derives at submit and
+ * `accrueExtendedWorkdayToilTx` re-derives again at approval, and either of them re-applying a cap of its own
+ * would be invisible to a unit test of lib/extended-hours.ts.
+ *
+ * ⚠️ BOTH CASES WERE REFUSED BEFORE THIS ROUND, with `ToilExtendedHoursBelowThresholdError` at 0 counted
+ * minutes. That is the non-vacuity: they are not new shapes that happen to pass, they are the reporter's
+ * complaint reproduced through the whole stack.
+ */
+describe('r353 · a claim past the clock-out, and a day with no attendance row, both CREDIT', () => {
+  it('⚠️ THE TICKET: clocked out AT the shift end, nothing measured, 351 minutes claimed ⇒ half a day banked', async () => {
+    await setToilPolicy(ctx, extendedPolicy());
+    const { employmentId, shiftId } = await hire();
+    // Out at exactly the 14:00 shift end: the engine measures ZERO extended minutes, which is the reporter's
+    // 18:00/18:00 pair with this fixture's shift times.
+    const measured = await workShift(employmentId, shiftId, WORKDAY, '06:00:00', '14:00:00');
+    expect(measured, 'the fixture must measure nothing, or this case proves nothing').toBe(0);
+
+    // 14:00 → 19:51 is 351 minutes. Under the old rule the clip gave 0 and the cap gave 0, and the submit
+    // was refused; the claim is now the employee's window.
+    const res = await submitReplacementLeaveRequest(ctx, {
+      employmentId,
+      unit: 'day',
+      lines: [{ workedDate: WORKDAY, fromTime: '14:00', toTime: '19:51', sourceType: 'extended_hours' }],
+      today: TODAY,
+    });
+    expect(res.totalDays).toBe(0.5);
+    const [line] = await claimLines(employmentId);
+    expect(line.eligibleMinutes).toBe(351);
+    // The two times the approver's warning is derived FROM are stored on the line — no new column, no
+    // migration, and the discrepancy is recomputable from them by `assessExtendedClaim`.
+    expect(line.shiftEnd).toBe('14:00:00');
+    expect(line.actualClockOut).toBe('14:00:00');
+    expect(
+      assessExtendedClaim({ claimStart: line.fromTime!, claimEnd: line.toTime!, shiftEnd: line.shiftEnd, actualClockOut: line.actualClockOut }),
+    ).toEqual({ minutes: 351, hasClockOut: true, exceedsClockOut: true });
+
+    // AND IT BANKS. The approval re-reads the live attendance row, so this is the second place a cap could
+    // have survived.
+    await decideReplacementLeaveRequest(ctx, { requestId: res.requestId, decision: 'approved', decidedAt: DECIDED_AT });
+    expect(await replacementBalance(employmentId)).toBe(0.5);
+    const [accrual] = await accruals(employmentId);
+    expect(Number(accrual.daysCredited)).toBe(0.5);
+    expect(accrual.otMinutes).toBe(351);
+    // ⚠️ MONEY, UNCHANGED BY r353: `day_type` stays NULL on an extended-hours credit so `convertAmountFor`
+    // cannot price a rounded-down tier as exact statutory cash. r334's decision, restated because this round
+    // widened what can be claimed and therefore widened what could be mispriced.
+    expect(accrual.dayType).toBeNull();
+    expect(accrual.workedDayKind).toBe('workday');
+  });
+
+  it('a rostered working day with NO ATTENDANCE ROW credits, and the line records no clock-out', async () => {
+    await setToilPolicy(ctx, extendedPolicy());
+    const { employmentId, shiftId } = await hire();
+    // Rostered, never clocked: `extendedHoursDayForTx` returns `actualClockOut: null` and 0 measured.
+    await assignShift(adminCtx(b), { employmentId, shiftDate: WORKDAY, shiftId });
+
+    const res = await submitReplacementLeaveRequest(ctx, {
+      employmentId,
+      unit: 'day',
+      lines: [{ workedDate: WORKDAY, fromTime: '14:00', toTime: '19:51', sourceType: 'extended_hours' }],
+      today: TODAY,
+    });
+    expect(res.totalDays).toBe(0.5);
+    const [line] = await claimLines(employmentId);
+    expect(line.eligibleMinutes).toBe(351);
+    expect(line.actualClockOut, 'no row ⇒ no clock-out, which is what the screens print as "No record"').toBeNull();
+    const a = assessExtendedClaim({
+      claimStart: line.fromTime!,
+      claimEnd: line.toTime!,
+      shiftEnd: line.shiftEnd,
+      actualClockOut: line.actualClockOut,
+    });
+    // "No record" and "clocked out earlier" are distinguished, and neither blocks the credit.
+    expect(a.hasClockOut).toBe(false);
+    expect(a.exceedsClockOut).toBe(false);
+    await decideReplacementLeaveRequest(ctx, { requestId: res.requestId, decision: 'approved', decidedAt: DECIDED_AT });
+    expect(await replacementBalance(employmentId)).toBe(0.5);
   });
 });
 
