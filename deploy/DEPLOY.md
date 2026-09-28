@@ -258,6 +258,7 @@ crontab -e
 0 3 1 4 * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/expire-carry.ts >> /home/ubuntu/aihr-cron-logs/expire-carry.log 2>&1
 0 1 * * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/capture-usage.ts >> /home/ubuntu/aihr-cron-logs/capture-usage.log 2>&1
 30 2 * * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/anomaly-sweep.ts >> /home/ubuntu/aihr-cron-logs/anomaly-sweep.log 2>&1
+15 1 * * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/resync-child-relief-grid.ts >> /home/ubuntu/aihr-cron-logs/child-relief.log 2>&1
 ```
 
 `capture-usage` runs FIRST, at 01:00, because it meters the day before the other sweeps mutate anything.
@@ -266,6 +267,21 @@ every PROCESSED payroll run for anomalies so the exceptions queue is already fil
 opens it. It is **read-only with respect to money** and idempotent — a re-run supersedes its previous
 verdicts rather than duplicating them — so a missed night costs nothing and needs no backfill. Add
 `--dry-run` to see what it would evaluate without writing.
+
+`resync-child-relief-grid` (b25e421e, r352) runs at 01:15, between metering and the anomaly sweep, and it
+is the reason a child's birthday reaches the payslip at all. `employee_statutory_my.num_children` and
+`.child_relief_table` are a cached projection of the Family register that the payroll kernel reads, and
+`syncChildReliefFromFamily` only ever fired on a dependent add / edit / archive — so the figure aged only
+when a human happened to touch the record. This job re-derives it nightly for every employee on `auto`.
+
+It does **not** write the column itself: it calls that same `syncChildReliefFromFamily`, so a resynced row
+is byte-identical to what the next family edit would have produced, including the rail that skips anyone on
+`manual`, the rail that reports `unchanged` when nothing moved, and the alert raised when a figure moves
+while a payroll batch for the current period is still open. That alert is why the job is scheduled BEFORE
+the working day rather than during it. It is safe to run more than once — a second run the same night
+reports `unchanged` for everyone — and it does not recompute issued payslips; it changes what FUTURE runs
+compute. Add `--dry-run` to print whose relief would move without writing, and **read that output before
+the first real run**: on a register that has never been resynced, relief moves in both directions.
 
 First `mkdir -p /home/ubuntu/aihr-cron-logs`. Keep the logs **outside** `/opt/ai-hr`: `improve:release`
 rsyncs with `--delete` and would wipe anything it doesn't exclude.

@@ -5,6 +5,11 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui';
 import type { ButtonProps } from '@/components/ui/button';
+// b25e421e — from lib/, never core/: the header below records that core/dependents.ts pulls the pg driver
+// via db/client and must not cross into a client bundle. lib/dependent-vocabulary.ts is the client-safe
+// half core/dependents.ts re-exports, and lib/hr-date.ts is pure Intl.
+import { childAgeYears } from '@/lib/dependent-vocabulary';
+import { todayInKualaLumpur } from '@/lib/hr-date';
 
 /**
  * Item 5988053a — Family tab Add/Edit child dialog shell. The ONLY client file this feature adds, modelled
@@ -51,11 +56,13 @@ export function FamilyFormDialog({
     if (!el || el.name !== 'dateOfBirth') return;
     const out = e.currentTarget.querySelector<HTMLInputElement>('input[data-child-age]');
     if (!out) return;
-    const ms = Date.parse(`${el.value}T00:00:00Z`);
-    out.value =
-      el.value === '' || Number.isNaN(ms)
-        ? '—'
-        : String(Math.floor((Date.now() - ms) / (365.25 * 24 * 60 * 60 * 1000)));
+    // b25e421e (r352) — THROUGH THE SHARED COUNTER, not a third copy of the arithmetic. This line used to
+    // carry its own `floor(elapsed / 365.25 days)`, the same approximation `childAgeYears` was built on and
+    // the same one that read 17 to a child on their eighteenth birthday. Two copies of an age rule agree
+    // until one is corrected, and this dialog is where HR reads the Age back before saving the date — so it
+    // is the worst possible place to disagree with the eligibility the tax figure is then derived from.
+    const age = childAgeYears(el.value, new Date(`${todayInKualaLumpur()}T00:00:00Z`));
+    out.value = age == null ? '—' : String(age);
   };
 
   return (
