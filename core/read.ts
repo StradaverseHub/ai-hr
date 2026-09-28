@@ -3131,8 +3131,13 @@ export function leaveBalances(
      *     Gating on the SAME flag keeps it that way: the summer takes the unfiltered list, so the number on
      *     screen still cannot drift from the verdict `enforceSharedLeaveGroupLimit` gives. A filter applied
      *     unconditionally here would make the pool depend on which cards happen to be drawn.
-     *  2. APPLYING. `mayAppearInApplyMenu` is untouched. Every reason stays in Request Leave and on the
-     *     details screen; this drops a CARD, never a right to apply. That distinction is the whole item.
+     *  2. APPLYING. `mayAppearInApplyMenu` is untouched. Every reason stays in Request Leave — grouped
+     *     under the pool's name by the <optgroup> in components/leave-duration-fields.tsx — so this drops a
+     *     CARD, never a right to apply. That distinction is the whole item.
+     *     ⚠️ r355 (8d3a7bff): this sentence used to read "Request Leave AND the details screen". The
+     *     details screen (/leave/shared/[groupId]) is deleted, so the Request Leave picker is now the ONLY
+     *     apply path for a folded reason and the clause naming a second one would have been false. The
+     *     claim this paragraph makes is unchanged and is now carried by one surface instead of two.
      *  3. HR's SCREENS. Employee Balances and the Personnel leave card pass `includeHidden`, so they keep
      *     showing every member type for every employee, which is what 994a5287 established.
      *

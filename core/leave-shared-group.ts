@@ -338,7 +338,13 @@ export type SharedLeaveGroupBalance = {
    *  The pot is what it is; naming only the visible half would describe a different pot. */
   memberNames: string[];
   /**
-   * 76dbcaa1 — the SAME members, with their ids, so a caller can offer one Apply action per reason.
+   * 76dbcaa1 — the SAME members, with their ids, so a caller can name the pool a reason belongs to.
+   *
+   * ⚠️ r355 (8d3a7bff) — THE CALLER CHANGED AND THE FIELD DID NOT. This said "so a caller can offer one
+   * Apply action per reason", which was /leave/shared/[groupId]'s per-reason Apply buttons; that page is
+   * deleted. The surviving reader is app/leave/page.tsx, which builds `groupNameByTypeId` from exactly this
+   * list to put the pool's members under one <optgroup> in the Request Leave picker. Same ids, same reason
+   * for carrying them (one pass, so the picker and the card cannot disagree about who is in the pool).
    *
    * Identical set and identical order to `memberNames` (both are built from one list in one pass), and
    * hidden members are in it for the reason above: the employee may still APPLY for a member type whose

@@ -12,18 +12,27 @@
  *   1. the members are exposed with their IDS, from the same pass that builds the names, so the picker
  *      and the card can never disagree about who is in the pool;
  *   2. the picker groups a pooled type under its pool and still posts ONE leaveTypeId;
- *   3. the details screen is the employee's own, resolves through `myEmployment`, and 404s a group the
- *      viewer has none of rather than rendering an empty page that confirms the id exists;
+ *   3. — r355: WAS "the details screen is the employee's own, resolves through `myEmployment`, and 404s a
+ *      group the viewer has none of". THE DETAILS SCREEN IS DELETED, so that claim is replaced by its
+ *      inverse: the file is gone, the route is deregistered, nothing links to it, and the one figure it
+ *      held alone is on the card instead. See the section head below for why.
  *   4. `?type=` is seeded, never trusted — an id the subject may not take falls back.
+ *
+ * ⚠️ r355 (8d3a7bff) — WHY THIS FILE CHANGED AT ALL, since 76dbcaa1 is not the item being built. It read
+ * app/leave/shared/[groupId]/page.tsx AT MODULE LEVEL (the key-grep below was a `describe`-body statement),
+ * so the deletion did not fail an assertion here — it threw during collection and took the picker guards,
+ * which are still live and still correct, down with it. The structural guards on that file are rewritten as
+ * guards on its ABSENCE rather than dropped: a reinstated orphan page must fail something.
  */
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const codeOnly = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
+/** r355 — the page this item built, now DELETED. Kept as a constant because its absence is asserted. */
 const DETAIL = 'app/leave/shared/[groupId]/page.tsx';
 const FIELDS = 'components/leave-duration-fields.tsx';
 const GROUP = 'core/leave-shared-group.ts';
@@ -61,53 +70,90 @@ describe('76dbcaa1 · the picker groups a pooled type under its pool', () => {
   });
 });
 
-describe('76dbcaa1 · the details screen is the employee’s own', () => {
-  it('resolves the signed-in employee and never takes one as a parameter', () => {
-    const src = codeOnly(read(DETAIL));
-    expect(src).toContain('myEmployment(s)');
-    expect(src, 'no employee parameter — there is no on-behalf path here').not.toContain('employmentId:');
+/**
+ * r355 (8d3a7bff) — THE DETAILS SCREEN IS GONE, AND THIS SECTION IS THE OLD ONE INVERTED.
+ *
+ * WHAT IT USED TO CLAIM, case by case, and why each claim was withdrawn rather than relaxed:
+ *   · "resolves the signed-in employee and never takes one as a parameter" — true of the page while it
+ *     existed, and it is exactly why the reporter's reading of it as an admin/configuration screen was a
+ *     misreading of a correct page. The misreading was still the defect: it led with the policy limits under
+ *     a heading repeating the card just clicked, with no way back. Removed on that ground, not on a bug.
+ *   · "404s a group the viewer has none of" / "shows what is drawable with the ceiling as context" — both
+ *     statements about a file that no longer exists. Kept as a single assertion that it does NOT exist,
+ *     because an orphan page reachable by URL with no link to it is the failure mode r355 is closing.
+ *   · "each reason links into the EXISTING apply form, not a second write path" — this is the one that had
+ *     to be re-proved somewhere else before the page could go, and it was: the Request Leave picker groups
+ *     every pooled reason under its pool (the <optgroup> cases above, unchanged). The page's Apply buttons
+ *     pointed INTO that same form, so they were a shortcut to it, never the only way to it.
+ *   · "rides the leave column in the access grid" — INVERTED, and this is the bidirectional half. Deleting
+ *     the page without deleting the route from lib/permissions.ts leaves test/function-access.test.ts's
+ *     "no stale routes" red; keeping the route without the page leaves "reverse completeness" red. Both
+ *     halves are asserted here too so this file says why the entry went, not just that it did.
+ */
+describe('r355 · the details screen and its route are gone, and nothing points at them', () => {
+  it('the page file does not exist', () => {
+    expect(existsSync(root + DETAIL), `${DETAIL} must stay deleted`).toBe(false);
   });
 
-  it('404s a group the viewer has none of, rather than rendering an empty screen', () => {
-    const src = codeOnly(read(DETAIL));
-    expect((src.match(/notFound\(\)/g) ?? []).length, 'missing employment AND missing group').toBe(2);
-  });
-
-  it('shows what is drawable with the ceiling as context — never the ceiling as the figure', () => {
-    const src = codeOnly(read(DETAIL));
-    expect(src, 'the big number is `available`').toContain('formatDays(group.available)');
-    expect(src, 'the ceiling is a caption').toContain("t('ofLimit'");
-  });
-
-  it('each reason links into the EXISTING apply form, not a second write path', () => {
-    const src = codeOnly(read(DETAIL));
-    // `applyType`, not `type`: the retired admin register owned bare `type` on this path and
-    // test/leave-filter-panel.test.ts keeps it inert, so a stale admin link cannot preselect anything.
-    expect(src).toContain('href={`/leave?applyType=${m.id}`}');
-    expect(src, 'the details screen submits nothing').not.toContain("'use server'");
-    expect(src).not.toContain('<form');
-  });
-
-  it('rides the leave column in the access grid, rather than minting a second one', () => {
+  it('the route is deregistered from the access grid, and the leave column keeps its one label', () => {
     const perms = read('lib/permissions.ts');
-    expect(perms).toContain("'/leave/shared/[groupId]'");
-    // Same audience, same scope, same guard as /leave — and a second column would carry the SAME label,
-    // describing one function as two. (570fd56e made the identical call for the per-day attendance view.)
+    // ⚠️ THE CODE, NOT THE COMMENTARY. lib/permissions.ts explains in prose WHY the entry was removed and
+    // names the route while doing so, so a bare `not.toContain` would fail against correct code.
+    expect(codeOnly(perms), 'no registered route for the deleted page').not.toContain("'/leave/shared/[groupId]'");
+    expect(codeOnly(perms), 'and the leave column still carries /leave itself and /leave/credit').toContain(
+      "routes: ['/leave', '/leave/credit']",
+    );
+    // Unchanged from 76dbcaa1: the point of riding an existing column was that a second one would repeat
+    // this label. Removing the sub-route must not have minted one on the way out.
     expect((perms.match(/labelKey: 'nav.myAbsence'/g) ?? []).length, 'one My Absence column').toBe(1);
+  });
+
+  it('no employee surface links to /leave/shared any more', () => {
+    for (const f of ['app/leave/page.tsx', 'components/leave/my-leave-dashboard.tsx', 'components/leave/shared-leave-group-cards.tsx']) {
+      expect(codeOnly(read(f)), `${f} must not build a /leave/shared href`).not.toContain('/leave/shared');
+    }
+    // The card's link was the ONE runtime entry point, so the two fields that carried it are off the type.
+    // A reinstated link cannot be built without failing tsc first, which is the guard that outlives a grep.
+    const dash = codeOnly(read('components/leave/my-leave-dashboard.tsx'));
+    expect(dash, 'no detailsHref on PooledCeilingLines').not.toContain('detailsHref');
+    expect(dash, 'and the pooled block imports no router link').not.toContain("from 'next/link'");
+  });
+
+  it('the one figure the page held alone is on the merged card instead', () => {
+    // `usedThisYear` was unique to that page: `sharedLeaveGroupBalances` has exactly two callers and the
+    // surviving one never read `usedDays`. Losing it was the only real cost of the deletion, so the move is
+    // pinned across BOTH files in the contract — the RSC that builds the line and the card that draws it.
+    expect(codeOnly(read('app/leave/page.tsx'))).toContain("tMe('sharedLeaveGroups.usedThisYear'");
+    expect(codeOnly(read('app/leave/page.tsx')), 'the group cycle figure, not a card figure').toContain(
+      'merged.usedDays',
+    );
+    expect(codeOnly(read('components/leave/my-leave-dashboard.tsx'))).toContain('c.pooledCeiling.usedLine');
   });
 });
 
-describe('76dbcaa1 · every string it renders exists in all six locales', () => {
-  const keys = [...new Set([...codeOnly(read(DETAIL)).matchAll(/\bt\('([a-zA-Z0-9_.]+)'/g)].map((m) => m[1]))];
+/**
+ * r355 — WAS "every string it renders exists in all six locales", a grep of the page for `t('…')` keys.
+ *
+ * With the page gone there is nothing to grep, and the honest replacement is the other half of the same
+ * concern: those keys must be RETIRED IN PLACE, not deleted. i18n/request.ts deep-merges each locale over
+ * English, so dropping a key from en.json alone leaves the Malay and Chinese sentences still rendering while
+ * the English one vanishes — the one-sided deletion this convention exists to prevent.
+ */
+describe('r355 · the strings that page rendered are retired in place, in all six catalogues', () => {
+  const RETIRED = ['detailDescription', 'remaining', 'reasonsHeading', 'reasonsHelp', 'applyForReason', 'viewDetails'];
 
-  it('found the keys to check', () => {
-    expect(keys.length).toBeGreaterThan(4);
-    expect(keys).toContain('reasonsHeading');
-  });
-
-  it.each(LOCALES)('%s resolves every one, plus the card’s View details', (loc) => {
+  it.each(LOCALES)('%s keeps every retired key, marked as retired', (loc) => {
     const bag = JSON.parse(read(`messages/${loc}.json`)).me.sharedLeaveGroups as Record<string, unknown>;
-    for (const k of keys) expect(typeof bag[k], `${loc}: me.sharedLeaveGroups.${k}`).toBe('string');
-    expect(typeof bag.viewDetails, `${loc}: viewDetails`).toBe('string');
+    for (const k of RETIRED) {
+      expect(typeof bag[k], `${loc}: me.sharedLeaveGroups.${k} must still exist`).toBe('string');
+      expect(String(bag[k]), `${loc}: ${k} must be marked retired, not left reading as live copy`).toMatch(
+        /^\[retired r355 —/,
+      );
+    }
+    // `usedThisYear` is the opposite case: it MOVED to the card rather than being retired, so it must stay
+    // live and translated. It is the whole reason the deletion costs the reporter nothing.
+    expect(typeof bag.usedThisYear, `${loc}: usedThisYear stays live`).toBe('string');
+    expect(String(bag.usedThisYear), `${loc}: usedThisYear must not be retired`).not.toContain('[retired');
+    expect(String(bag.usedThisYear), `${loc}: and must keep its placeholder`).toContain('{days}');
   });
 });

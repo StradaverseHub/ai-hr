@@ -25,7 +25,9 @@
  * Substrate: read-only presentation → NO DomainEvent. // substrate: read-only, no event
  */
 import { useState } from 'react';
-import Link from 'next/link';
+// r355 (8d3a7bff) — no `next/link` here any more: this component's ONLY navigation was the pooled card's
+// "View details", and the page it navigated to is deleted. Nothing on a balance card navigates now; the
+// Details affordances are in-page panels (`leave.myLeave.details`), which is what the reporter wanted.
 import { useTranslations } from 'next-intl';
 import { LEAVE_FIGURE_LABEL_KEY, LEAVE_FIGURE_NS } from '@/lib/leave-figure-labels';
 import { Layers } from 'lucide-react';
@@ -82,9 +84,19 @@ export type PooledCeilingLines = {
   membersLine: string;
   /** e.g. "Up to 3.00 days in one application", or null when the group sets no per-application cap. */
   capLine: string | null;
-  /** The way in to the reasons and their Apply actions (76dbcaa1) — the link the vanished tile carried. */
-  detailsHref: string;
-  detailsLabel: string;
+  /**
+   * r355 (8d3a7bff) — e.g. "Used this year: 2.00": the whole cycle's committed days across the pool.
+   *
+   * ⚠️ THIS FIELD REPLACES `detailsHref` / `detailsLabel`, and that is the whole shape of r355. 76dbcaa1
+   * put a "View details" link here into /leave/shared/[groupId]; the reporter read that page as a
+   * configuration screen — it repeated the heading they had just clicked, led with policy limits, had no
+   * way back, and after r341 folded the group's tile onto this card it repeated four of its five figures
+   * too. The page is deleted. The fifth figure is this line, so the removal loses nothing.
+   *
+   * NOT OPTIONAL. A merged ceiling always has a used figure (0.00 is a real answer and says the pool is
+   * untouched), so making it nullable would only invite a caller to drop it silently.
+   */
+  usedLine: string;
 };
 
 export function MyLeaveDashboard({
@@ -166,8 +178,21 @@ export function MyLeaveDashboard({
       )}
       {/* r341 (8d3a7bff) — THE MERGED SHARED-GROUP CEILING. The stacked-layers tile that used to sit beside
           this card is gone and its lines are here: the drawable pooled figure with the ceiling beside it, who
-          shares it, the per-application cap, and the link into the reasons. Below the pool caption, because
-          that sentence says whose ledger this is and these lines qualify what may be taken from it. */}
+          shares it, and the per-application cap. Below the pool caption, because that sentence says whose
+          ledger this is and these lines qualify what may be taken from it.
+
+          ⚠️ r355 (8d3a7bff, same item) — AND THE "View details" LINK IS GONE FROM THE END OF IT. The
+          reporter contested r341 not on the cards but on the page behind this link: it re-used the heading
+          they had just clicked, led with the policy limits, offered no way back, and — once r341 had moved
+          the tile's figures here — told them almost nothing this block does not. The page is deleted and the
+          route deregistered (lib/permissions.ts). `usedLine` below is the one figure that page held alone,
+          which is why its removal takes no information with it.
+
+          ⚠️ AND THIS IS NOT A LOST WAY TO APPLY, which was the reporter's own question. Every member type of
+          the pool is in the Request Leave picker, grouped under the pool's name by the <optgroup> at
+          components/leave-duration-fields.tsx; core/read.ts's folding gate records the same rule — dropping
+          a card is "never a right to apply". The deleted page's per-reason Apply buttons pointed INTO that
+          same form (`/leave?applyType=…`), so they were a shortcut to it and never a second write path. */}
       {c.pooledCeiling && (
         <div className="mt-2 border-t border-border pt-2" data-testid="pooled-ceiling">
           <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -176,14 +201,13 @@ export function MyLeaveDashboard({
             <span aria-hidden>·</span>
             <span>{c.pooledCeiling.limitLabel}</span>
           </p>
+          {/* What has already gone, so the subtraction behind the figure above is visible rather than
+              implied — the deleted page's own words for it, in the deleted page's own key. */}
+          <p className="text-[11px] text-muted-foreground" data-testid="pooled-used">
+            {c.pooledCeiling.usedLine}
+          </p>
           <p className="text-[11px] text-muted-foreground">{c.pooledCeiling.membersLine}</p>
           {c.pooledCeiling.capLine && <p className="text-[11px] text-muted-foreground">{c.pooledCeiling.capLine}</p>}
-          <Link
-            href={c.pooledCeiling.detailsHref}
-            className="text-[11px] font-medium text-primary underline-offset-2 hover:underline"
-          >
-            {c.pooledCeiling.detailsLabel}
-          </Link>
         </div>
       )}
       {/* r341 (8d3a7bff) — a member that keeps its OWN balance and also counts towards a ceiling. This is the

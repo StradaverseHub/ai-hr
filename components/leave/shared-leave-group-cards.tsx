@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { Layers } from 'lucide-react';
 // The pooled figure is a day figure like every other on this page, so it prints through the one formatter
 // (4a1abc4a). A private toFixed here is how the group's number and the rows it pools drift apart.
@@ -39,10 +38,11 @@ export type SharedLeaveGroupEntry = {
   capLabel: string | null;
   /** Pre-translated membership line, e.g. "Shared across: Caregiver, Compassionate, …". */
   membersLabel: string;
-  /** 76dbcaa1 — where View details goes, and what the link says. Both supplied by the caller so this
-   *  component stays presentational and server-safe (it cannot call t() or build a route itself). */
-  detailsHref: string;
-  detailsLabel: string;
+  // ⚠️ r355 (8d3a7bff) — `detailsHref` / `detailsLabel` WERE HERE AND ARE GONE WITH THE PAGE THEY POINTED
+  // AT. 76dbcaa1 added them for /leave/shared/[groupId]; that page is deleted, so a required field no
+  // caller can fill would only break the build. THIS TYPE IS STILL LIVE even though the component below is
+  // not: app/leave/page.tsx builds `SharedLeaveGroupEntry` values for the standalone tiles that
+  // my-leave-dashboard.tsx draws, and it is the type — not this component — that they are checked against.
 };
 
 export function SharedLeaveGroupCards({
@@ -69,11 +69,9 @@ export function SharedLeaveGroupCards({
             <span className="line-clamp-2 text-xs font-medium">{g.name}</span>
             <span className="line-clamp-2 text-xs text-muted-foreground">{g.membersLabel}</span>
             {g.capLabel && <span className="text-xs text-muted-foreground">{g.capLabel}</span>}
-            {/* 76dbcaa1 — the way in to the reasons. A plain link, not a button: the card is a figure and
-                this is navigation, and the card stays server-safe with nothing to click that needs state. */}
-            <Link href={g.detailsHref} className="text-xs font-medium text-primary underline-offset-2 hover:underline">
-              {g.detailsLabel}
-            </Link>
+            {/* r355 (8d3a7bff) — 76dbcaa1's "View details" link stood here and is gone with its page. There
+                is nothing to click on a shared-group card now, which is what the surviving comment in this
+                file's header always said a group was: a pooled ceiling, not a ledger with a breakdown. */}
           </div>
         ))}
       </div>
