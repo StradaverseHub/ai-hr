@@ -18,10 +18,20 @@
  * printed term that does not belong is invisible in every test that checks numbers — it can only be
  * caught by reading the string against the engine. Three rules, each of which this screen got wrong once:
  *
- *   · P₁ AND P₂ ARE TWO CALCULATIONS, NOT ONE WITH AN OPTIONAL LIMB. In a bonus month the engine runs
- *     §D.1 on P₁ and §D.2 on P₂, and P₂ re-estimates the projected EPF leg (K₂ₜ, not K₂) because the
- *     bonus has eaten into the same annual relief cap. Appending "+ (Yₜ − Kₜ)" to the P₁ line produced an
- *     expression belonging to neither, overshooting the P printed beside it by the whole bonus.
+ *   · P₁ AND P₂ ARE TWO CALCULATIONS OF ONE PUBLISHED FORMULA, NOT ONE CALCULATION WITH AN OPTIONAL LIMB.
+ *     In a bonus month the engine runs §D.1 on P₁ and §D.2 on P₂, and P₂ re-estimates the projected EPF
+ *     leg (K₂ₜ, not K₂) because the bonus has eaten into the same annual relief cap. Appending
+ *     "+ (Yₜ − Kₜ)" to the P₁ line produced an expression belonging to neither, overshooting the P
+ *     printed beside it by the whole bonus.
+ *
+ *     r351 REVERSED THE GUARD THAT HID THE LIMB, AND KEPT THE POINT BEHIND IT. The limb used to be
+ *     printed only when `trace.Yt > 0`, so on most payslips the P line simply had no (Yₜ − Kₜ) term and
+ *     did not look like the agency's formula at all. The specification publishes ONE P formula and its own
+ *     worked examples annotate it "Where (Yt – Kt ) = 0" for a month with no additional pay, so the limb
+ *     is now always printed — as that zero, in figures. It is still NOT `trace.Yt`: the zero is a fact
+ *     about §D.1, which excludes additional remuneration in a bonus month too, and the bonus still
+ *     reaches the page only through the second calculation. `test/pcb-detail.test.ts` still forbids
+ *     `trace.Yt` in the P₁ expression, now reading it out of `formulas.ts` where the expression lives.
  *
  *   · THE LAST LINE IS §E.3 + §E.5, NOT A SUBTRACTION. Between the two calculated legs and the deducted
  *     figure sit the RM10 rule on each leg and two zero-clamped subtractions (zakat takes the normal leg
@@ -43,6 +53,20 @@
  * testable without rendering anything. The symbols are language-neutral and come from core untranslated;
  * only the captions are looked up, which is why no Malay caption is hardcoded here.
  *
+ * r351 — AND THE SAME FIGURES ONE MORE TIME, IN THE AGENCY'S OWN FIVE STEPS. The page below is ordered
+ * and titled by the specification's lettering (Step 1 [A] category, [B] chargeable income for a year,
+ * [C] the monthly deduction on net normal remuneration, [D] the net deduction after zakat, [E] the total
+ * for the year). It used to carry five differently-named blocks and a thirteen-step trace of this file's
+ * own invention, which a reader holding the agency's worked example could not follow down the page. The
+ * thirteen captions are retired in the catalogue, not deleted. Three further consequences:
+ *
+ *   · EVERY EXPRESSION NOW LIVES IN `./formulas.ts`, because the DOWNLOADED PDF carried none of them.
+ *   · EACH STEP SHOWS FOUR ROWS — formula, actual values, calculation, result — and the third is ABSENT
+ *     wherever the engine stored no intermediate, rather than being computed here.
+ *   · THE FORMULA ROW IS THE AGENCY'S, WHICH PRINTS NO FLOORS, WHILE THE SUBSTITUTION KEEPS THE CLAMPS
+ *     THE ENGINE APPLIED. The difference is not left to be noticed: §E's zero floors and the RM10 rule
+ *     are a visible step of their own between [C] and [D].
+ *
  * WHAT AN OLD PAYSLIP GETS. Runs processed before 45df860a carry no `trace`, so `explainPcb` hands back
  * `trace: null` and this screen says "not recorded for this run" in the places the legs would have gone.
  * It does NOT print them as RM 0.00 and it does NOT back-derive them from P: both would be a statement
@@ -57,6 +81,10 @@ import { formatMoney } from '@/lib/money';
 // the payroll cycle nor the marital tax status the reporter's section 1 asks for.
 import { CATEGORY_LABEL, CYCLE_LABEL, pcbBasisLabels } from '@/core/pcb-explain';
 import type { PcbExplanation, PcbSlipSection, PcbWorksheet, PcbWorksheetValue } from '@/core/pcb-explain';
+// r351 — THE SUBSTITUTED EXPRESSIONS MOVED OUT OF THIS FILE, and not for tidiness: the DOWNLOADED PDF
+// carried none of them. One assembly, painted by this screen and by `shared.ts`, is the only way the
+// promise that the document shows "the same calculation details displayed on screen" survives an edit.
+import { pcbFormulaBlocks, pcbFormulaByKey } from './formulas';
 
 export type PcbDetailContext = {
   employeeCode: string | null;
@@ -214,19 +242,37 @@ function SlipRow({
   );
 }
 
-/** Formula and its substitution, side by side — requirement 14: never the symbols alone. */
+/**
+ * Formula and its substitution, side by side — requirement 14: never the symbols alone.
+ *
+ * r351 — FOUR ROWS, NOT THREE: formula → actual values → CALCULATION → result, which is the sequence the
+ * reporter asked for. `calculation` is one step further along than `substituted` and it is OPTIONAL,
+ * because it may contain nothing that is not itself a figure the engine wrote down. Where no intermediate
+ * was stored the row is absent rather than computed here; `formulas.ts` decides that, per step, and says
+ * why on the line where it decides it.
+ *
+ * `legend` is the sentence the agency prints BENEATH a formula when one published formula serves two
+ * calculations — "Where (Yt – Kt) = 0" is its own wording. It sits directly under the symbols, because a
+ * reader who meets the substitution first has already been told which leg they are reading.
+ */
 function Formula({
   formulaLabel,
   formula,
+  legend,
   substitutedLabel,
   substituted,
+  calculationLabel,
+  calculation,
   resultLabel,
   result,
 }: {
   formulaLabel: string;
   formula: string;
+  legend?: string;
   substitutedLabel: string;
   substituted: React.ReactNode;
+  calculationLabel?: string;
+  calculation?: React.ReactNode;
   resultLabel: string;
   result: React.ReactNode;
 }) {
@@ -234,12 +280,19 @@ function Formula({
     <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
       <div>
         <p className="text-xs uppercase tracking-wide text-muted-foreground">{formulaLabel}</p>
-        <p className="font-mono text-sm">{formula}</p>
+        <p className="break-words font-mono text-sm">{formula}</p>
+        {legend && <p className="pt-1 text-xs text-muted-foreground">{legend}</p>}
       </div>
       <div>
         <p className="text-xs uppercase tracking-wide text-muted-foreground">{substitutedLabel}</p>
         <p className="break-words font-mono text-sm tabular-nums">{substituted}</p>
       </div>
+      {calculation !== undefined && calculationLabel !== undefined && (
+        <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">{calculationLabel}</p>
+          <p className="break-words font-mono text-sm tabular-nums">{calculation}</p>
+        </div>
+      )}
       <div className="flex items-baseline justify-between gap-4 border-t border-border pt-2">
         <span className="text-xs uppercase tracking-wide text-muted-foreground">{resultLabel}</span>
         <span className="font-mono text-sm font-semibold tabular-nums">{result}</span>
@@ -278,6 +331,9 @@ export async function PcbDetailView({
    *  The unit is stated once, on the line above each expression. */
   const b2 = (v: number) => v.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const pct = (r: number) => `${(r * 100).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+  /** r351 — the assembled expressions. `formulas.ts` chooses which stored figure goes where; these three
+   *  formatters are the only thing this screen contributes to them, which is why they are injected. */
+  const fb = pcbFormulaByKey(pcbFormulaBlocks(explanation, { b2, pct, int: (v: number) => `${v}` }));
   const NotRecorded = () => <span className="font-normal text-muted-foreground">{t('notRecordedShort')}</span>;
   /**
    * 7f251381 — ONE WORKSHEET CELL. This switch chooses a FORMATTER; it never chooses or computes a value.
@@ -491,30 +547,30 @@ export async function PcbDetailView({
           />
           <Row label={basis ? t(L.netSystem) : t('netMtd')} value={rm(sys)} />
           {basis && <Row label={t(L.netDeducted)} value={rm(explanation.pcb)} />}
-          <div className="mt-3">
-            <Formula
-              formulaLabel={t('formulaLabel')}
-              formula={t('flatFormula')}
-              substitutedLabel={t('substitutedLabel')}
-              substituted={
-                explanation.trace ? (
-                  `(${b2(explanation.trace.remuneration)} + ${b2(explanation.trace.additional)}) × ${pct(explanation.rate)}`
-                ) : (
-                  <NotRecorded />
-                )
-              }
-              resultLabel={t('resultLabel')}
-              // The figure this multiplication ACTUALLY produced, which is the whole month's — the stored
-              // remuneration above is the cumulative month on an additional run, and a hand-set PCB is not
-              // what any multiplication produced. Printing the deduction here would make the flat rate
-              // look like it explained a number it never touched.
-              result={rm(sys)}
-            />
-          </div>
+          {/* r351 — the SAME assembly the document paints. `result` is still the figure the multiplication
+              ACTUALLY produced (the whole month's `pcbSystem`), never the deduction: the stored
+              remuneration above is the cumulative month on an additional run, and a hand-set PCB is not
+              what any multiplication produced. There is no `calculation` row here on purpose — the only
+              intermediate is (remuneration + additional) and the engine never stored the sum. */}
+          {fb.flat && (
+            <div className="mt-3">
+              <Formula
+                formulaLabel={t('formulaLabel')}
+                formula={t(fb.flat.formula)}
+                substitutedLabel={t('substitutedLabel')}
+                substituted={fb.flat.substituted ?? <NotRecorded />}
+                resultLabel={t(fb.flat.resultLabel)}
+                result={rm(sys)}
+              />
+            </div>
+          )}
           {/* The flat leg is truncated, rounded up to 5 sen and RM10-floored exactly as the MTD leg is, so
               the product above lands within 5 sen of the figure rather than on it. Said, not hidden. */}
-          <p className="pt-2 text-xs text-muted-foreground">{t('flatRoundingNote')}</p>
-          <p className="pt-2 text-xs text-muted-foreground">{t('flatNote')}</p>
+          {(fb.flat?.notes ?? []).map((k) => (
+            <p key={k} className="pt-2 text-xs text-muted-foreground">
+              {t(k)}
+            </p>
+          ))}
           {!explanation.trace && <p className="pt-2 text-xs text-muted-foreground">{t('traceNotRecorded')}</p>}
         </Block>
       )}
@@ -547,91 +603,68 @@ export async function PcbDetailView({
             <p className="pt-2 text-xs text-muted-foreground">{t('netMtdNote')}</p>
           </Block>
 
-          {/* ── The formula, symbolically and substituted (requirements 4, 10, 14) ──
-              THE TWO max( 0, … ) ARE NOT DECORATION. The inner one is `annualTaxFor`'s floor: B carries
-              the RM400 / RM800 rebate as a NEGATIVE number, so for a small P the bracket line is below
-              zero and the engine takes 0. The outer one is pcbMonth's, for a month whose accumulated
-              Z + X already exceeds the year's tax. Print the bare bracket and a low earner's screen shows
-              a negative expression beside a RM 0.00 answer. ── */}
-          <Block title={t('formulaHeading')}>
-            <Formula
-              formulaLabel={t('formulaLabel')}
-              formula={t('formulaMtd')}
-              substitutedLabel={t('substitutedLabel')}
-              substituted={
-                trace ? (
-                  `max( 0, max( 0, ( ${b2(explanation.chargeableIncome)} − ${b2(trace.M)} ) × ${pct(trace.R)} + ${b2(trace.B)} ) − ( ${b2(trace.Z)} + ${b2(explanation.pcbPaidYtd)} ) ) ÷ ( ${explanation.remainingMonths} + 1 )`
-                ) : (
-                  <NotRecorded />
-                )
-              }
-              resultLabel={t('resultLabel')}
-              result={trace ? rm(trace.mtdNormalCalc) : <NotRecorded />}
-            />
-            <p className="pt-2 text-xs text-muted-foreground">{t('roundingNote')}</p>
+          {/* ══ r351: FROM HERE DOWN THE PAGE IS THE SPECIFICATION'S OWN MONTHLY STEPS, [A] TO [E] ══
+              The document letters them — Step 1 [A] determine the category, [B] the chargeable income for
+              a year, [C] the monthly tax deduction for net normal remuneration, [D] the NET deduction
+              after zakat, [E] the total deduction for a year — and this screen had five differently-named
+              blocks and a thirteen-line trace of its own invention. Two orderings of one calculation is
+              exactly the drift this screen exists to remove, so ours is gone: the block titles ARE the
+              agency's step letters, and `step1…step13` are retired in the catalogue rather than deleted. ══ */}
 
-            {/* ── …and the LAST line: §E.3 then §E.5. The two calculated legs above are not the deduction.
-                A is the normal leg after the RM10 rule, E the additional leg after the same rule, and the
-                month's zakat reduces A first — only what it cannot absorb reaches E. Every one of those
-                figures is stored by the engine (`zakatOffsetWorking`), so the expression below is the
-                arithmetic that ran, and it lands on the figure the payslip carries. ── */}
-            <div className="mt-3">
-              <Row label={t('netA')} value={trace ? rm(trace.mtdNormalFloored) : <NotRecorded />} />
-              <Row label={t('netE')} value={trace ? rm(trace.mtdAdditionalFloored) : <NotRecorded />} />
-              <Row label={t('netZ1')} value={trace ? rm(trace.zakatCurrent) : rm(explanation.zakat)} muted />
-              <Row label={t('netLeftover')} value={trace ? rm(trace.zakatLeftover) : <NotRecorded />} muted />
-            </div>
-            <div className="mt-3">
-              <Formula
-                formulaLabel={t('formulaLabel')}
-                formula={t('formulaNet')}
-                substitutedLabel={t('substitutedLabel')}
-                substituted={
-                  trace ? (
-                    `max( 0, ${b2(trace.mtdNormalFloored)} − ${b2(trace.zakatCurrent)} ) + max( 0, ${b2(trace.mtdAdditionalFloored)} − max( 0, ${b2(trace.zakatCurrent)} − ${b2(trace.mtdNormalFloored)} ) )`
-                  ) : (
-                    <NotRecorded />
-                  )
-                }
-                resultLabel={t('resultLabel')}
-                result={rm(sys)}
-              />
-            </div>
-            <p className="pt-2 text-xs text-muted-foreground">{t('netFormulaNote')}</p>
-            <p className="pt-2 text-xs text-muted-foreground">{t('currencyNote', { currency: cur ?? '—' })}</p>
+          {/* ── Step 1 [A] — the category. FIRST, because every later step depends on it: the B column of
+              Table 1 is chosen by it and so is whether a spouse deduction exists at all. `trace.category`
+              is the category the RUN applied, which is not necessarily the one stored on the employee
+              today — the identification block above prints that one, and a disagreement between the two is
+              exactly what this screen exists to surface. ── */}
+          <Block title={t('stepAHeading')}>
+            <Row
+              label={t('bracketCategory')}
+              value={trace && CATEGORY_LABEL[trace.category] ? t(CATEGORY_LABEL[trace.category]) : <NotRecorded />}
+            />
+            <Row label={t('reliefChildCount')} value={trace ? trace.childCount : <NotRecorded />} />
           </Block>
 
-          {/* ── P and its components (requirement 5) ──
-              P₁ HAS NO Yₜ LEG. §D.1 projects the year on normal remuneration alone; the bonus enters
-              only through §D.2's separate P₂, which ALSO re-estimates the projected EPF leg (K₂ₜ rather
-              than K₂, because the bonus has already consumed part of the same annual relief cap). They
-              are two expressions landing on two stored numbers, so they are printed as two. ── */}
+          {/* ── Step 1 [B] — P, and P₂ when a bonus was paid ──
+              ONE PUBLISHED FORMULA, TWO CALCULATIONS. The specification prints a single P formula whose
+              (Yₜ − Kₜ) limb its own worked examples annotate "Where (Yt – Kt ) = 0" in a month with no
+              additional pay, so the limb is now ALWAYS printed — as that zero. It is not `trace.Yt`:
+              §D.1 excludes additional remuneration entirely, in a bonus month too, and substituting the
+              bonus here would overshoot the P beside it by the whole bonus. The bonus enters through the
+              second calculation below, which ALSO re-estimates the projected EPF leg as K₂ₜ because the
+              EPF on the bonus has consumed part of the same annual relief cap. Two expressions, two
+              stored results, one formula — and `formulas.ts` assembles both for this screen and the PDF. ── */}
           <Block title={t('pHeading')}>
-            <Formula
-              formulaLabel={t('formulaLabel')}
-              formula={t('pFormula')}
-              substitutedLabel={t('substitutedLabel')}
-              substituted={
-                trace ? (
-                  `${b2(explanation.ytdNetRemuneration)} + ( ${b2(trace.Y1)} − ${b2(trace.K1)} ) + ( ${b2(trace.Y2)} − ${b2(trace.K2)} ) × ${explanation.remainingMonths} − ${b2(explanation.reliefs.total)} − ${b2(explanation.reliefs.lp)}`
-                ) : (
-                  <NotRecorded />
-                )
-              }
-              resultLabel={t('pResult')}
-              result={rm(explanation.chargeableIncome)}
-            />
-            {trace && trace.Yt > 0 && explanation.chargeableIncomeWithAdditional != null && (
+            {fb.p1 && (
+              <Formula
+                formulaLabel={t('formulaLabel')}
+                formula={t(fb.p1.formula)}
+                legend={fb.p1.legend ? t(fb.p1.legend) : undefined}
+                substitutedLabel={t('substitutedLabel')}
+                substituted={fb.p1.substituted ?? <NotRecorded />}
+                calculationLabel={fb.p1.calculation === undefined ? undefined : t('calculationLabel')}
+                calculation={fb.p1.calculation}
+                resultLabel={t(fb.p1.resultLabel)}
+                result={fb.p1.result === null ? <NotRecorded /> : rm(fb.p1.result)}
+              />
+            )}
+            {fb.p2 && (
               <div className="mt-3">
                 <Formula
                   formulaLabel={t('formulaLabel')}
-                  formula={t('p2Formula')}
+                  formula={t(fb.p2.formula)}
+                  legend={fb.p2.legend ? t(fb.p2.legend) : undefined}
                   substitutedLabel={t('substitutedLabel')}
-                  substituted={`${b2(explanation.ytdNetRemuneration)} + ( ${b2(trace.Y1)} − ${b2(trace.K1)} ) + ( ${b2(trace.Y2)} − ${b2(trace.K2t)} ) × ${explanation.remainingMonths} + ( ${b2(trace.Yt)} − ${b2(trace.Kt)} ) − ${b2(explanation.reliefs.total)} − ${b2(explanation.reliefs.lp)}`}
-                  resultLabel={t('p2Result')}
-                  result={rm(explanation.chargeableIncomeWithAdditional)}
+                  substituted={fb.p2.substituted ?? <NotRecorded />}
+                  calculationLabel={fb.p2.calculation === undefined ? undefined : t('calculationLabel')}
+                  calculation={fb.p2.calculation}
+                  resultLabel={t(fb.p2.resultLabel)}
+                  result={fb.p2.result === null ? <NotRecorded /> : rm(fb.p2.result)}
                 />
-                <p className="pt-2 text-xs text-muted-foreground">{t('p2Note')}</p>
+                {fb.p2.notes.map((k) => (
+                  <p key={k} className="pt-2 text-xs text-muted-foreground">
+                    {t(k)}
+                  </p>
+                ))}
               </div>
             )}
             <div className="mt-3">
@@ -647,10 +680,116 @@ export async function PcbDetailView({
                 <Row label={t('pWithAdditional')} value={rm(explanation.chargeableIncomeWithAdditional)} />
               )}
             </div>
-            <p className="pt-2 text-xs text-muted-foreground">{t('grossYNote')}</p>
+            {(fb.p1?.notes ?? []).map((k) => (
+              <p key={k} className="pt-2 text-xs text-muted-foreground">
+                {t(k)}
+              </p>
+            ))}
           </Block>
 
-          {/* ── Tax relief (requirement 6) ── */}
+          {/* ── Step 1 [C] — the monthly tax deduction on net normal remuneration ──
+              THE FORMULA ROW IS THE AGENCY'S, FLOOR-FREE; THE SUBSTITUTION IS THE ARITHMETIC THAT RAN.
+              The two are not the same shape and that is deliberate: the specification's headline formula
+              prints no clamp, while its own rules treat a negative deduction as 0.00. B carries the
+              RM400 / RM800 rebate as a NEGATIVE amount, so for a small P the bracket line falls below
+              zero, and a month whose accumulated Z + X already exceeds the year's tax falls below zero
+              again. Printing the bare bracket would show a low earner a negative expression beside a
+              RM 0.00 answer — so the clamps stay in the substitution and the flooring is a VISIBLE step
+              of its own immediately below, rather than a difference a reader has to notice unaided. ── */}
+          {fb.mtd && (
+            <Block title={t('formulaHeading')}>
+              <Formula
+                formulaLabel={t('formulaLabel')}
+                formula={t(fb.mtd.formula)}
+                substitutedLabel={t('substitutedLabel')}
+                substituted={fb.mtd.substituted ?? <NotRecorded />}
+                calculationLabel={fb.mtd.calculation === undefined ? undefined : t('calculationLabel')}
+                calculation={fb.mtd.calculation}
+                resultLabel={t(fb.mtd.resultLabel)}
+                result={fb.mtd.result === null ? <NotRecorded /> : rm(fb.mtd.result)}
+              />
+              {fb.mtd.notes.map((k) => (
+                <p key={k} className="pt-2 text-xs text-muted-foreground">
+                  {t(k)}
+                </p>
+              ))}
+            </Block>
+          )}
+
+          {/* ── §E — rounding, the zero floors and the RM10 rule, as a step a reader can see ──
+              These four rows are the whole distance between "what the formula produced" and A and E, and
+              until r351 they were a sentence in a footnote. Both calculated amounts are stored and so are
+              both post-rule amounts, so the rule is shown as two before/after pairs and nothing is
+              derived here. ── */}
+          <Block title={t('floorHeading')}>
+            <Row label={t('mtdNormal')} value={trace ? rm(trace.mtdNormalCalc) : <NotRecorded />} />
+            <Row label={t('netA')} value={trace ? rm(trace.mtdNormalFloored) : <NotRecorded />} />
+            <Row label={t('mtdAdditional')} value={trace ? rm(trace.mtdAdditionalCalc) : <NotRecorded />} />
+            <Row label={t('netE')} value={trace ? rm(trace.mtdAdditionalFloored) : <NotRecorded />} />
+            <p className="pt-2 text-xs text-muted-foreground">{t('floorNote')}</p>
+          </Block>
+
+          {/* ── Step 1 [D] — the NET monthly tax deduction for the current month ──
+              The agency's own [D] is "Step [C] − zakat for the current month, if any", and the arithmetic
+              that runs is that sentence plus §E.5's cascade: zakat takes the normal amount first and only
+              its remainder reaches the additional one, each clamped at zero. Every figure in it is stored
+              (`zakatOffsetWorking`), so the expression lands on the figure the payslip carries. ── */}
+          {fb.net && (
+            <Block title={t('netHeading')}>
+              <Row label={t('netA')} value={trace ? rm(trace.mtdNormalFloored) : <NotRecorded />} />
+              <Row label={t('netE')} value={trace ? rm(trace.mtdAdditionalFloored) : <NotRecorded />} />
+              <Row label={t('netZ1')} value={trace ? rm(trace.zakatCurrent) : rm(explanation.zakat)} muted />
+              <Row label={t('netLeftover')} value={trace ? rm(trace.zakatLeftover) : <NotRecorded />} muted />
+              <div className="mt-3">
+                <Formula
+                  formulaLabel={t('formulaLabel')}
+                  formula={t(fb.net.formula)}
+                  substitutedLabel={t('substitutedLabel')}
+                  substituted={fb.net.substituted ?? <NotRecorded />}
+                  calculationLabel={fb.net.calculation === undefined ? undefined : t('calculationLabel')}
+                  calculation={fb.net.calculation}
+                  resultLabel={t(fb.net.resultLabel)}
+                  result={fb.net.result === null ? <NotRecorded /> : rm(fb.net.result)}
+                />
+              </div>
+              {fb.net.notes.map((k) => (
+                <p key={k} className="pt-2 text-xs text-muted-foreground">
+                  {t(k)}
+                </p>
+              ))}
+              <p className="pt-2 text-xs text-muted-foreground">{t('currencyNote', { currency: cur ?? '—' })}</p>
+            </Block>
+          )}
+
+          {/* ── Step 1 [E] — the total monthly tax deduction for the year ──
+              ⚠️ THE SUBSTITUTION IS ABSENT IN A MONTH WITH NO ADDITIONAL PAY, AND IS NOT DERIVED. `pcbMonth`
+              stamps `totalMtdYear` only inside its `Yt > 0` branch, because Step 1[E] exists to feed §D.2
+              Step 4 and nothing else reads it. Every term of X + [ [C] × (n + 1) ] is on this page, so
+              multiplying them here would be easy — and it is the one thing this screen must never do, since
+              a figure it computed could disagree with the payslip. The formula is shown either way; the
+              answer is shown only when the engine recorded one. ── */}
+          {fb.year && (
+            <Block title={t(fb.year.heading)}>
+              <Row label={t('yearTotalTax')} value={trace && trace.totalTaxYear != null ? rm(trace.totalTaxYear) : <NotRecorded />} />
+              <div className="mt-3">
+                <Formula
+                  formulaLabel={t('formulaLabel')}
+                  formula={t(fb.year.formula)}
+                  substitutedLabel={t('substitutedLabel')}
+                  substituted={fb.year.substituted ?? <NotRecorded />}
+                  resultLabel={t(fb.year.resultLabel)}
+                  result={fb.year.result === null ? <NotRecorded /> : rm(fb.year.result)}
+                />
+              </div>
+              {fb.year.notes.map((k) => (
+                <p key={k} className="pt-2 text-xs text-muted-foreground">
+                  {t(k)}
+                </p>
+              ))}
+            </Block>
+          )}
+
+          {/* ── Tax relief (requirement 6) — the terms of [B]'s second bracket ── */}
           <Block title={t('reliefsHeading')}>
             <Row label={t('reliefIndividual')} value={rm(explanation.reliefs.individual)} />
             <Row label={t('reliefSpouse')} value={rm(explanation.reliefs.spouse)} />
@@ -676,17 +815,13 @@ export async function PcbDetailView({
             </p>
           </Block>
 
-          {/* ── Tax bracket (requirement 7) ── */}
+          {/* ── Tax bracket (requirement 7) — M, R and B, the terms of [C]. The category that CHOSE the B
+              column is step [A] above and is not repeated here. ── */}
           <Block title={t('bracketHeading')}>
             <Row label={t('bracketM')} value={trace ? rm(trace.M) : <NotRecorded />} />
             <Row label={t('bracketR')} value={trace ? pct(trace.R) : <NotRecorded />} />
             <Row label={t('bracketB')} value={trace ? rm(trace.B) : <NotRecorded />} />
             <Row label={t('bracketTaxOnP')} value={trace ? rm(trace.taxOnP1) : <NotRecorded />} />
-            <Row
-              label={t('bracketCategory')}
-              value={trace && CATEGORY_LABEL[trace.category] ? t(CATEGORY_LABEL[trace.category]) : <NotRecorded />}
-              muted
-            />
             <p className="pt-2 text-xs text-muted-foreground">{t('bracketNote')}</p>
           </Block>
 
@@ -702,7 +837,9 @@ export async function PcbDetailView({
           </Block>
 
           {/* ── Additional remuneration (requirements 10, 12). Shown ALWAYS: the reporter asked for an
-              explicit zero rather than an absent section, because absence reads as "not handled". ── */}
+              explicit zero rather than an absent section, because absence reads as "not handled". The
+              year totals that used to hang off the foot of this block are step [E] above, where the
+              specification puts them. ── */}
           <Block title={t('additionalHeading')}>
             <Row label={t('additionalAmount')} value={trace ? rm(trace.Yt) : <NotRecorded />} />
             <Row label={t('additionalEpf')} value={trace ? rm(trace.Kt) : <NotRecorded />} />
@@ -724,54 +861,31 @@ export async function PcbDetailView({
               label={wholeMonth ? t('additionalMtdMonth') : t('additionalMtdDeducted')}
               value={rm(explanation.pcbAdditional)}
             />
-            <div className="mt-3 border-t border-border pt-3">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {t('yearHeading')}
-              </h3>
-              {trace && trace.totalTaxYear != null && trace.totalMtdYear != null ? (
-                <>
-                  <Row label={t('yearTotalTax')} value={rm(trace.totalTaxYear)} />
-                  <Row label={t('yearTotalMtd')} value={rm(trace.totalMtdYear)} />
-                </>
-              ) : (
-                <p className="text-sm text-muted-foreground">{trace ? t('yearNoAdditional') : t('notRecordedShort')}</p>
-              )}
-            </div>
           </Block>
 
-          {/* ── The step-by-step trace (requirement 13) ──
-              IT HAS TO REACH THE FINAL FIGURE. A chain that stopped at the normal leg and then printed
-              the deducted PCB underneath was skipping the bonus leg, the RM10 rule and the zakat offset —
-              three steps that between them can move the answer by the whole amount. ── */}
+          {/* ── The five steps of the specification's own monthly calculation, and the figure each lands on ──
+              THIRTEEN STEPS OF OUR OWN BECAME THE AGENCY'S FIVE. The old chain was numbered 1–13 and
+              grouped the way this file happened to be written; the specification letters the same
+              calculation [A]–[E] and a reader holding its worked example could not follow ours down the
+              page. The thirteen captions are RETIRED in all six catalogues rather than deleted — a key
+              deleted and later re-added is the MISSING_MESSAGE trap this repo has hit before. ── */}
           <Block title={t('stepsHeading')}>
             <ol className="space-y-0">
               {(
                 [
-                  ['step1', rm(explanation.ytdNetRemuneration)],
-                  ['step2', rm(explanation.epfClaimedYtd)],
-                  ['step3', trace ? `${rm(trace.Y1)} − ${rm(trace.K1)}` : null],
-                  ['step4', trace ? `(${rm(trace.Y2)} − ${rm(trace.K2)}) × ${explanation.remainingMonths}` : null],
-                  ['step5', rm(explanation.reliefs.total)],
-                  ['step6', rm(explanation.chargeableIncome)],
-                  ['step7', trace ? `${t('bracketM')} ${rm(trace.M)} · ${t('bracketR')} ${pct(trace.R)} · ${t('bracketB')} ${rm(trace.B)}` : null],
-                  ['step8', trace ? rm(trace.taxOnP1) : null],
-                  ['step9', trace ? `${rm(trace.Z)} + ${rm(explanation.pcbPaidYtd)}` : null],
-                  ['step10', trace ? rm(trace.mtdNormalCalc) : null],
-                  ['step11', trace ? rm(trace.mtdAdditionalCalc) : null],
-                  ['step12', trace ? `${rm(trace.mtdNormalFloored)} · ${rm(trace.mtdAdditionalFloored)}` : null],
-                  ['step13', trace ? rm(trace.zakatCurrent) : rm(explanation.zakat)],
-                ] as [
-                  | 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7'
-                  | 'step8' | 'step9' | 'step10' | 'step11' | 'step12' | 'step13',
-                  string | null,
-                ][]
-              ).map(([key, value], i) => (
+                  ['A', 'stepA', trace && CATEGORY_LABEL[trace.category] ? t(CATEGORY_LABEL[trace.category]) : null],
+                  ['B', 'stepB', rm(explanation.chargeableIncome)],
+                  ['C', 'stepC', trace ? rm(trace.mtdNormalCalc) : null],
+                  ['D', 'stepD', trace ? rm(sys) : null],
+                  ['E', 'stepE', trace && trace.totalMtdYear != null ? rm(trace.totalMtdYear) : null],
+                ] as [string, 'stepA' | 'stepB' | 'stepC' | 'stepD' | 'stepE', React.ReactNode][]
+              ).map(([letter, key, value]) => (
                 <li
                   key={key}
                   className="flex items-baseline justify-between gap-4 border-b border-border/60 py-1.5 text-sm last:border-0"
                 >
                   <span>
-                    <span className="me-2 text-xs text-muted-foreground">{i + 1}</span>
+                    <span className="me-2 font-mono text-xs font-semibold text-primary">{letter}</span>
                     {t(key)}
                   </span>
                   <span className="tabular-nums">{value ?? <NotRecorded />}</span>
