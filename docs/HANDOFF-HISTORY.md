@@ -1,3 +1,26 @@
+## r357 (2026-09-29) — the command the last round had to do by hand. `main@5b653e47`, **no migration**.
+
+Closed: nothing on the board — `fda53352` is planned and awaiting approval, `70294f7a` is parked on an unanswered question, and everything else is deployed. Gate: **1050 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, `tsc` 0, `next build` 0. No render check: this round changes no screen, no key and no figure — `scripts/improve/`, one guard and CLAUDE.md. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=489`.
+
+### A ROUND THAT CLOSES NO BOARD ITEM IS A REAL CASE, AND IT HAD NO COMMAND
+
+r356 fixed three defects found by reading rather than reported, so there was no item to hand `releaseBuiltItem` — which takes one, and marks it deployed. It was shipped by typing the rsync and the detached launch out by hand over ssh. That worked, and cost two things worth not paying again:
+
+- **The ANNOUNCE step was forgotten.** `buildPendingCommand` writes the ref to the box BEFORE a byte moves, and `deploy-state.sh` copies it into its record. Without it the box recorded `built_ref=unknown`, so its own `stale_build` check lost the sha it compares against. It still reported `stale_build=0` correctly — `ref` and `built_ref` were both `unknown`, so they matched — and arrival was proved instead by the §3 dry-run, which compares files rather than labels and is the stronger evidence. What was lost is the box's ability to NAME what it is running.
+- **`rsync --delete` against production was retyped from memory.** That is the shape `scripts/improve/` exists to remove: one mistyped `--exclude` deletes files on the server.
+
+Steps 1-4 of a release — final gate, announce, rsync, detached `deploy.sh`, poll — are now `deployWorktree({ worktree })`, and `releaseBuiltItem` is that plus the board write. `pnpm improve:deploy <worktree>` exposes it. CLAUDE.md §7 and §9 record it, and **this round shipped through it**, which is the only test of a deploy command that means anything.
+
+### THE GUARD IS ABOUT DRIFT, NOT ABOUT THE HAPPY PATH
+
+`test/r291-detached-deploy.test.ts` owns this area and now pins that the two paths are ONE: `releaseBuiltItem` must ship THROUGH `deployWorktree` and keep no rsync, launch or follow of its own; the shared path must still perform all four steps; and the announce must come BEFORE the rsync — the step the hand-rolled deploy forgot is now inside the path a no-item deploy takes. Two copies of an `rsync --delete` is how the board path and the no-board path come to differ in which excludes they carry. NON-VACUITY: giving `releaseBuiltItem` its own `run('rsync', …)` back fails with "release ships through the shared path".
+
+### NOT DONE
+
+- **`fda53352` and `70294f7a` both need the reporter**, not a build: an approval and an answer respectively. Nothing on the board is buildable.
+- **No production read was possible in this session.** The local tooling refuses a read-only `psql` SELECT on the box, which is why `fda53352`'s Employee A was diagnosed from code alone. The request stands.
+- The remainder of `4011903e` (the PCB-detail TP1 schedule re-deriving from today's declarations) is still unbuilt, as r354, r355 and r356 each recorded.
+
 ## r356 (2026-09-29) — a second opinion about the kernel's own arithmetic, and two guards that were watching dead files. `main@a95f1445`, **no migration**.
 
 Closed: nothing on the board — **every open item is waiting on the reporter** (`fda53352` planned, `70294f7a` parked on a question). This round is three defects found by reading, not reported. Gate: **1050 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, `tsc` 0, `next build` 0. **The first gate was RED on one real assertion** — see the last section. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=489`.
