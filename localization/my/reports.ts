@@ -23,7 +23,7 @@ import {
 // ea54fe6e — read the itemised lines STRUCTURALLY (by shape), which is what lets this file consume the
 // kernel's stamp without importing core/payroll and dragging the whole engine into every EA caller.
 import { storedComponentLines } from '../../core/payslip-earning-lines';
-import { MY_STATUTORY_VERSION, DEFAULT_MY_STATUTORY } from './statutory-tables';
+import { MY_STATUTORY_VERSION, DEFAULT_MY_STATUTORY, childReliefTableHeadCount } from './statutory-tables';
 import { coordinatedPcbForPerson } from './payroll';
 // 8ca344bf — Borang 8A's read lives in its own file (it needs hire/termination dates and the employer
 // header, which no other report on this shelf reads) but registers here like every other form.
@@ -1058,9 +1058,18 @@ export type EaField = (typeof EA_FIELDS)[number];
  *  drift apart: a new Part B box is added to THIS list or it silently fails to reach the total.
  *
  *  TWO DECISIONS ARE RECORDED IN THIS LIST, NOT JUST A SUM.
- *  1. `exemptAllowances` is deliberately ABSENT. It is the tax-exempt PORTION of `allowances`, already
- *     inside that line — adding it would double-count, which is why the form prints it muted and says
- *     "(included above)".
+ *  1. `exemptAllowances` is deliberately ABSENT, AND THE REASON CHANGED IN r353.
+ *
+ *     ⚠️ THIS ENTRY USED TO READ: "It is the tax-exempt PORTION of `allowances`, already inside that
+ *     line — adding it would double-count, which is why the form prints it muted and says '(included
+ *     above)'." The arithmetic was right and the premise was wrong. Section B is headed "(EXCLUDING Tax
+ *     Exempt Allowances / Perquisites / Gifts / Benefits)" — the exempt portion was never supposed to be
+ *     inside `allowances`, and while it was, the same ringgit printed twice on one form: once under a
+ *     caption forbidding it, once in Section F, which is the box the agency provides for it.
+ *
+ *     `allowances` now carries the TAXABLE excess only (see `taxableAllowances` in `eaStatement`), so
+ *     this list is the Section B total the agency's own heading describes. `exemptAllowances` stays out
+ *     because it is not Section B income at all — not because it is already counted here.
  *  2. The NON-CASH boxes (benefitsInKind, livingAccommodation) and the terminal ones
  *     (unapprovedFundRefund, compensation) ARE included, even though the section used to be titled
  *     "employment income (cash)". The alternative was a manual box HR can fill that changes no total,
@@ -1089,14 +1098,21 @@ export const EA_PART_B_COMPONENTS = [
  * `payslip.allowance` into one lump and no EA surface looked at pay_component at all.
  *
  * `allowance_exempt` IS DELIBERATELY ABSENT, AND THAT IS A STATUTORY DECISION, NOT AN OMISSION.
- * The exempt figure is a MEMO line — the tax-exempt PORTION of `allowances`, printed muted as "(included
- * above)" and excluded from EA_PART_B_COMPONENTS so it cannot double-count. It already has ONE defined
- * derivation: the PCB exemption ledger (`statutory.exemptionUsed`, PCB_* codes). Feeding it a SECOND
- * source would mean an item counted by both mechanisms is reported twice on a tax form, and neither
- * source knows about the other. So mapping a pay item to `allowance_exempt` marks it as mapped (it stops
- * being flagged unmapped) and leaves its money in `allowances` where the kernel put it. AGENTS 28: a memo
- * box that overstates exempt income is a confident wrong number, which is worse than the lump it replaced.
- * Reported to the reporter as the one line of their fourteen that does not move a figure.
+ * The exempt figure has ONE defined derivation: the PCB exemption ledger (`statutory.exemptionUsed`,
+ * PCB_* codes). Feeding it a SECOND source would mean an item counted by both mechanisms is reported
+ * twice on a tax form, and neither source knows about the other. So mapping a pay item to
+ * `allowance_exempt` marks it as mapped (it stops being flagged unmapped) and moves no money.
+ * AGENTS 28: a memo box that overstates exempt income is a confident wrong number, which is worse than
+ * the lump it replaced. Reported to the reporter as the one line of their fourteen that does not move a
+ * figure. THAT ARGUMENT IS UNCHANGED AND STILL BINDING — do not give this box a second derivation.
+ *
+ * ⚠️ r353 CORRECTED THE SENTENCE AROUND IT. This header used to call the exempt figure "a MEMO line —
+ * the tax-exempt PORTION of `allowances`, printed muted as '(included above)'", and said an unmapped
+ * `allowance_exempt` item "leaves its money in `allowances` where the kernel put it". It is not a memo
+ * line: Section F is a box of the form in its own right, and Section B is headed "(EXCLUDING Tax Exempt
+ * Allowances / Perquisites / Gifts / Benefits)", so the exempt part must NOT sit in `allowances`. It no
+ * longer does — `eaStatement` subtracts it (see `taxableAllowances`). What routing does here is
+ * unchanged; only the claim about where the money ends up was wrong.
  */
 export const EA_LINE_TO_FIELD = {
   gross_salary: 'grossSalary',
@@ -1206,8 +1222,13 @@ export type EaStatement = {
     passport: string | null;
   };
   /** Part B — employment income. `exemptAllowances` (feedback 09b554e9) — the year's TAX-EXEMPT allowance
-   *  portions (the PCB_* exemption amounts each slip stamps as statutory.exemptionUsed), reported in the
-   *  EA's exempt-allowances section; it is a PORTION of `allowances`, not an addition to it.
+   *  portions (the PCB_* exemption amounts each slip stamps as statutory.exemptionUsed), reported in
+   *  Section F, which is the box the agency provides for them.
+   *
+   *  ⚠️ r353 — IT IS NOT A PORTION OF `allowances`, AND THIS SENTENCE USED TO SAY IT WAS. `allowances`
+   *  is Section B 1(c), whose section heading reads "(EXCLUDING Tax Exempt Allowances / Perquisites /
+   *  Gifts / Benefits)", so it carries the TAXABLE excess only. The two figures are disjoint: 1(c) + F
+   *  is the allowance money paid, and neither box double-reports the other's ringgit.
    *
    *  6036dab7 — the ten fields after it are the customer's mapped Part B boxes. Every one has a derived
    *  baseline of 0 and becomes non-zero only through an ea_override (see EA_FIELDS). They are REQUIRED on
@@ -1397,6 +1418,38 @@ export async function eaStatement(
         socsoNo: employeeStatutoryMy.socsoNumber,
         category: employeeStatutoryMy.taxCategory,
         children: employeeStatutoryMy.numChildren,
+        /**
+         * r353 (item fda53352, point 1) — ITEM 8 IS MODE-DEPENDENT, AND r351 RULED ON ONLY ONE MODE.
+         *
+         * r351 answered the reporter that A.8 is "correct as a count" without distinguishing the three
+         * child-relief modes, and that is right for 'auto' and wrong for 'auto_table':
+         *
+         *   'auto'       — `syncChildReliefFromFamily` writes `eligibleChildReliefCount` into
+         *                  `num_children`, so the column IS the qualifying head count. Nothing to do; a
+         *                  head count rather than s.48 units is the right answer for this box and
+         *                  core/dependents.ts argues why on `eligibleChildReliefCount`.
+         *   'auto_table' — the KEYED grid is what the PCB calculation prices
+         *                  (`pricesChildReliefFromGrid`), and `num_children` is a separate stored figure
+         *                  that only this employee's Identification & Tax card keeps level with it, on
+         *                  save. So a corrected s.48 grid could drive the payslip while item 8 printed a
+         *                  stale hand-keyed number. Item 8 now reads the grid, which is the source that
+         *                  priced the tax.
+         *   'manual'     — a typed figure BY DESIGN. Rail (a) of the sync exists so a human keeps control
+         *                  of their own tax figure, so nothing here overwrites it.
+         *
+         * ⚠️ THE FIX IS A READ, NOT A WRITE, AND THAT IS DELIBERATE. The approved plan's build note said
+         * to extend `syncChildReliefFromFamily`'s gate (core/dependents.ts) from `!== 'auto'` to include
+         * 'auto_table', on the stated grounds that "its grid already derives". IT DOES NOT: the sync
+         * writes `childReliefTable: state.grid` derived FROM THE FAMILY REGISTER and hardcodes
+         * `childReliefMode: 'auto'`, while core/dependents.ts (`pricingTable`) records that 'auto_table'
+         * "keeps the KEYED grid, because that mode exists precisely for the case where the employee's
+         * DECLARED relief differs from what the Family tab holds and there is no register behind it to
+         * re-derive from". Widening that gate would therefore have overwritten the declared grid with the
+         * register's and silently flipped the employee out of 'auto_table' — moving real tax on the same
+         * rail that exists to stop exactly that. Reported back on the item.
+         */
+        childReliefMode: employeeStatutoryMy.childReliefMode,
+        childReliefTable: employeeStatutoryMy.childReliefTable,
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,
         companyId: employment.companyId,
@@ -1413,6 +1466,26 @@ export async function eaStatement(
       .where(eq(employment.id, p.employmentId))
       .limit(1);
     if (!info) return null;
+    /**
+     * r353 — EA ITEM 8, "Number of children qualified for tax relief", PER MODE. See the long note on
+     * the `childReliefMode` column in the SELECT above for the evidence and for the plan's build note
+     * this deliberately does not follow.
+     *
+     * ⚠️ A HEAD COUNT IN EVERY BRANCH. `childReliefTableHeadCount` sums the grid's per-category COUNTS
+     * of children, never their s.48 units, so the box stays the count the agency rules it for in all
+     * three modes and CP8D's column (which reads `num_children` directly, unchanged) still agrees with
+     * it for the two modes where `num_children` is maintained.
+     *
+     * ⚠️ AN 'auto_table' EMPLOYEE WITH NO GRID KEYED PRINTS 0, AND THAT IS THE HONEST FIGURE, not a
+     * fallback to the stored column. `pricesChildReliefFromGrid` returns true for 'auto_table'
+     * unconditionally, so an unkeyed grid claims NO child relief — the employee's PCB was computed with
+     * none. Printing the stale `num_children` beside a D.6 of nothing would put two contradictory answers
+     * on one page; CLAUDE.md §8, the count follows the money.
+     */
+    const eaQualifyingChildren =
+      info.childReliefMode === 'auto_table'
+        ? childReliefTableHeadCount(info.childReliefTable as Record<string, { full?: unknown; half?: unknown }> | null)
+        : (info.children ?? 0);
     // ── Part A's Jawatan — r209 fix: IT MUST SURVIVE TERMINATION ─────────────────────────────────────
     // 6036dab7 read this off the OPEN assignment (`valid_to IS NULL`), copying cp39FormExtras, which asks
     // about a serving preparer. An EA is chiefly issued to LEAVERS, and terminateEmploymentTx closes the
@@ -1706,10 +1779,54 @@ export async function eaStatement(
     }
     const withRouting = (field: EaField, base: number) => round2(base + (routed[field] ?? 0));
 
+    /**
+     * ⚠️ r353 (item fda53352, point 3) — B.1(c) IS THE TAXABLE ALLOWANCE, NOT THE ALLOWANCE PAID.
+     * THE REPORTER WAS RIGHT AND THIS FILE ARGUED THE OPPOSITE IN WRITING. See EA_PART_B_COMPONENTS
+     * and EA_LINE_TO_FIELD above for the two comments this reverses, and what in them still stands.
+     *
+     * THE AGENCY'S OWN WORDS. Section B is headed
+     *   "(Tidak Termasuk Elaun / Perkuisit / Pemberian / Manfaat Yang Dikecualikan Cukai)"
+     *   — EXCLUDING tax-exempt allowances / perquisites / gifts / benefits
+     * (`docs/forms/ea-cp8a-pin-2023-transcription.txt:99-100`), and `lib/ea-pdf.ts` PRINTS that
+     * sub-caption directly above this column. The exempt total has its own box — Section F, whose title
+     * IS the item (transcription :153). And the PCB specification says the same in the other direction
+     * (`docs/forms/pcb-spec-2026-extracts.txt`, rule 9, printed p.20):
+     *
+     *   "All the tax exemption on allowances, benefit-in-kind and perquisites shall be EXCLUDED FROM
+     *    THE REMUNERATION for MTD purposes. Any amount exceed the restricted amount shall be taxable."
+     *
+     * Until this line existed, the exempt ringgit was printed TWICE on one form: inside 1(c), under a
+     * caption saying it must not be, and again in Section F, where it belongs.
+     *
+     * WHY THE SUBTRACTION IS THE WHOLE FIX, AND WHY THE LIMIT IS NOT RE-APPLIED HERE. `payslip.allowance`
+     * is `allowanceApplied + reimburse + otConvertAmount` (core/payroll.ts) and the kernel already carved
+     * the exempt slice into `reimburse` — capped at the code's ANNUAL headroom by `roomFor()`, so the
+     * OVER-LIMIT remainder ("any amount exceed the restricted amount shall be taxable") is already in
+     * `allowanceApplied` and already in this column. Re-deriving `max(total − limit, 0)` here would be a
+     * second derivation of the same statutory limit, disagreeing with the payslips already issued the
+     * first time a cap changed mid-year. The EA's only job is to stop adding the exempt part back.
+     *
+     * ⚠️ `exemptAllowances` KEEPS ITS SINGLE DERIVATION — the PCB exemption ledger, PCB_* codes only,
+     * summed in the loop above. LP_* codes are optional DEDUCTIONS, not exempt income, and stay out.
+     *
+     * NON-NEGATIVE BY CONSTRUCTION, so there is no clamp to hide behind: every PCB_* ringgit counted in
+     * `exemptAllowances` was added to that month's `reimburse`, which is inside that month's
+     * `s.allowance`. A clamp would turn a kernel disagreement into a silent zero on a tax form.
+     *
+     * WHAT IS DELIBERATELY LEFT IN 1(c) (decision taken in the approved plan, revision 5): genuine
+     * non-exempt reimbursements and the overtime-conversion excess, both of which also ride
+     * `s.allowance`. Whether the agency's "elaun-elaun lain" is meant to carry them is UNKNOWN from
+     * anything in this repo, and guessing is how a tax form acquires a confident wrong number.
+     *
+     * `tp3_exemption_used` is NOT an input: that exemption was consumed against a PREVIOUS employer's
+     * pay and belongs on THEIR EA. `eaStatement` does not read it and must not start.
+     */
+    const taxableAllowances = round2(allowances - exemptAllowances);
+
     const derived: Record<EaField, number> = {
       grossSalary: withRouting('grossSalary', grossSalary),
       bonus: withRouting('bonus', bonus),
-      allowances: withRouting('allowances', allowances),
+      allowances: withRouting('allowances', taxableAllowances),
       gross: round2(gross),
       mtd: round2(mtd),
       cp38: round2(cp38),
@@ -1805,7 +1922,9 @@ export async function eaStatement(
         epfNo: info.epfNo,
         socsoNo: info.socsoNo,
         category: info.category ?? 1,
-        children: info.children ?? 0,
+        // r353 — item 8, "Number of children qualified for tax relief", read from whichever source the
+        // employee's child-relief mode makes authoritative. See the note on the `childReliefMode` select.
+        children: eaQualifyingChildren,
         hiredOn: info.hiredOn,
         terminatedOn: info.terminatedOn,
         employeeNo: info.employeeNo ?? null,

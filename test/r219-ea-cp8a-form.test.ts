@@ -361,12 +361,49 @@ describe('r219 — the boxes the C.P.8A does not have stay OFF the drawn page', 
   it('1(b) and 1(c) each print ONE figure covering both of our boxes', async () => {
     const printed = await textsOf(BASE);
     expect(printed).toContain('9,000.00'); // 1(b) = bonus 5,000 + director's fees 4,000
-    expect(printed).toContain('7,500.00'); // 1(c) = allowances 6,000 + tips/perquisites 1,500
+    // ⚠️ r353 — THE NUMBER DID NOT MOVE AND ITS MEANING DID. `partB.allowances` is now the TAXABLE
+    // allowance (localization/my/reports.ts subtracts the exempt portion before this renderer sees it),
+    // so 6,000 + 1,500 is still 7,500 — but the 1,200 of exempt money in this fixture is no longer
+    // inside that 6,000. The renderer does no exemption arithmetic of its own; the case below is what
+    // pins that.
+    expect(printed).toContain('7,500.00'); // 1(c) = taxable allowances 6,000 + tips/perquisites 1,500
     // …and neither half is ALSO printed on its own, which would double the money on the page.
     expect(printed.filter((s) => s === '5,000.00')).toEqual([]);
     expect(printed.filter((s) => s === '4,000.00')).toEqual(['4,000.00']); // D6 child relief only
     expect(printed.filter((s) => s === '6,000.00')).toEqual([]);
     expect(printed.filter((s) => s === '1,500.00')).toEqual(['1,500.00']); // B6 compensation only
+  });
+
+  /**
+   * r353 (item fda53352 point 3) — THE EXEMPT RINGGIT IS PRINTED ONCE, AND 1(c) IS NOT WHERE.
+   *
+   * Section B's own sub-caption is "(Excluding Tax Exempt Allowances / Perquisites / Gifts / Benefits)"
+   * and Section F's title IS the exempt total, so the two boxes are disjoint. Until this round the exempt
+   * amount was inside `partB.allowances` AND printed in F, so the same money appeared twice on one page
+   * under a caption forbidding one of them.
+   *
+   * ⚠️ THIS ALSO PINS WHICH FILE OWNS THE SUBTRACTION. The renderer is a pure printer: 1(c) is exactly
+   * `allowances + tipsPerquisites`, with no exemption arithmetic. The subtraction belongs in
+   * `localization/my/reports.ts`, because `partB.gross` is recomputed there from EA_PART_B_COMPONENTS —
+   * a renderer-side subtraction would print a 1(c) that no longer adds up to the JUMLAH above it, and
+   * would put `exemptAllowances` back inside Section B's code, which test/r217-ea-sections.test.ts
+   * refuses. The amounts here are chosen so each figure is unique on the page.
+   */
+  it('r353 — the exempt total prints in F only, and the renderer does no exemption arithmetic in 1(c)', async () => {
+    const withExempt: EaPdfData = {
+      ...BASE,
+      partB: { ...BASE.partB, allowances: 1000, tipsPerquisites: 0, exemptAllowances: 6543.21 },
+    };
+    const printed = await textsOf(withExempt);
+    // 1(c) is the figures it is given, untouched: no 7,543.21 (added back) and no -5,543.21 (re-subtracted).
+    expect(printed.filter((s) => s === '1,000.00'), '1(c) must print allowances + tips, unaltered').toEqual([
+      '1,000.00',
+    ]);
+    expect(printed).not.toContain('7,543.21');
+    // …and the exempt total appears EXACTLY ONCE on the whole page — Section F's line.
+    expect(printed.filter((s) => s === '6,543.21'), 'the exempt total is printed once, in Section F').toEqual([
+      '6,543.21',
+    ]);
   });
 
   it('r351 — EIS is on NO printed EA, because the reporter had our strip removed', async () => {

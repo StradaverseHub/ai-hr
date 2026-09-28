@@ -407,9 +407,18 @@ export default async function EaStatementPage({
           <Row label={t('esos')} value={rm(ea.partB.esos)} amended={ovByField.has('esos')} amendedLabel={amendedBadge} />
           <Row label={t('gratuity')} value={rm(ea.partB.gratuity)} amended={ovByField.has('gratuity')} amendedLabel={amendedBadge} />
           <Row label={t('arrears')} value={rm(ea.partB.arrears)} amended={ovByField.has('arrears')} amendedLabel={amendedBadge} />
-          {/* Feedback 09b554e9 — the year's tax-exempt allowance portions (informational: already inside
-              the allowances line; LHDN's EA reports exempt allowances in their own section). */}
-          <Row label={t('exemptAllowances')} value={rm(ea.partB.exemptAllowances ?? 0)} muted />
+          {/* ⚠️ r353 (item fda53352 point 3) — THE EXEMPT ROW IS GONE FROM SECTION B, AND THAT IS THE
+              POINT OF THE ROUND. It used to print here, muted, under the label "Tax-exempt allowances
+              (included above)" — a sentence that was true of the old arithmetic and false of the form.
+              Section B's own heading is "(Excluding Tax Exempt Allowances / Perquisites / Gifts /
+              Benefits)" and the exempt total is Section F's whole item, so it was reported twice on one
+              statement. `partB.allowances` now carries the taxable excess only
+              (localization/my/reports.ts, `taxableAllowances`) and the figure appears ONCE, in Section F
+              below.
+
+              The `payroll.ea.exemptAllowances` key is RETIRED IN PLACE, not deleted — its wording in all
+              six catalogues still says "(included above)", so anything reinstating it reinstates the
+              defect. Section F uses `taxExemptAllowances`. */}
           {/* 6036dab7 — BIK and living accommodation were the words "not tracked"; they are manual boxes
               now, filled from the same amend panel as every other amended figure. */}
           <Row label={t('benefitsInKind')} value={rm(ea.partB.benefitsInKind)} amended={ovByField.has('benefitsInKind')} amendedLabel={amendedBadge} />
@@ -486,7 +495,11 @@ export default async function EaStatementPage({
           <Row label={t('fundName')} value={ea.partE.fundName} />
           <Row label={t('epfKwsp')} value={rm(ea.partE.epf)} amended={ovByField.has('epf')} amendedLabel={amendedBadge} />
           <Row label={t('socso')} value={rm(ea.partE.socso)} amended={ovByField.has('socso')} amendedLabel={amendedBadge} />
-          <Row label={t('sectionFExemptAllowances')} value={rm(ea.partB.exemptAllowances ?? 0)} />
+          {/* ⚠️ r353 — SECTION F'S FIGURE NO LONGER BORROWS SECTION E'S BLOCK. It was printed here, under
+              Section E's heading and with Section F's own caption, while the real Section F block below
+              printed the words "not tracked" — one figure, two places, neither of them the section the
+              agency puts it in. Section E now carries exactly what its heading says: the fund, the two
+              contributions, and EIS below them (which the printed form has no box for at all). */}
           <Row label={t('eisSip')} value={rm(ea.partE.eis)} amended={ovByField.has('eis')} amendedLabel={amendedBadge} />
         </section>
 
@@ -494,15 +507,21 @@ export default async function EaStatementPage({
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {t('sectionFTaxExempt')}
           </h2>
-          {/* 6036dab7 — LEFT SAYING "not tracked", DELIBERATELY, and it is the only line on this form that
-              still does. Section F on the C.P.8A is the total of tax reliefs and deductions APPROVED by
-              LHDN (the TP1 items), which is not the same thing as the tax-exempt allowance portions Part B
-              already reports — and this screen's own label for it ("Total tax-exempt allowances") may
-              itself be wrong. We hold no copy of the official artwork to settle which it is, so wiring
-              `partB.exemptAllowances` in here would be attaching a real number to a box we cannot name.
-              An honest blank beats a confident wrong figure on a tax document; see MY_STATUTORY_LINKS on
-              why this catalogue never claims `fidelity: 'official'` without the agency's own page. */}
-          <Row label={t('taxExemptAllowances')} value={t('notTracked')} muted />
+          {/* ⚠️ r353 — "NOT TRACKED" IS GONE, AND THE COMMENT THAT DEFENDED IT WAS STALE WHEN IT WAS READ.
+              6036dab7 left this line reading "not tracked" on the grounds that "Section F on the C.P.8A is
+              the total of tax reliefs and deductions APPROVED by LHDN (the TP1 items)" and that "we hold
+              no copy of the official artwork to settle which it is". Both official files are now on disk
+              (docs/forms/ea-cp8a-pin-2023-official-en.pdf and …-official-bm.xlsx, read by lib/ea-pdf.ts)
+              and our own transcription settles it outright at
+              docs/forms/ea-cp8a-pin-2023-transcription.txt:153 — Section F is one line whose title IS the
+              item: "JUMLAH ELAUN / PERKUISIT / PEMBERIAN / MANFAAT YANG DIKECUALIKAN CUKAI", the total of
+              tax-EXEMPT allowances / perquisites / gifts / benefits. The TP1 total is Section D.5, which
+              this screen already prints separately.
+
+              So the box gets its figure, the same one the PDF's Section F prints from the same field, and
+              this statement and the printed form stop describing one form two ways (lib/ea-pdf.ts:7-10).
+              `payroll.ea.notTracked` is retired in place, not deleted. */}
+          <Row label={t('taxExemptAllowances')} value={rm(ea.partB.exemptAllowances ?? 0)} />
         </section>
 
         {/* 6036dab7 — the boxes with no payroll source say so in one place, rather than each printing a

@@ -275,6 +275,26 @@ describe('09b554e9 — engine: declared classification drives the PCB/EPF stream
     // EA: the exempt portions accumulate to the exempt-allowances figure (2,000 + 1,000).
     const ea = await eaStatement(a, { employmentId: e.employmentId, year: '2026' });
     expect(ea?.partB.exemptAllowances).toBeCloseTo(3000, 2);
+    /**
+     * r353 (item fda53352 point 3) — AND B.1(c) CARRIES THE TAXABLE EXCESS ONLY.
+     *
+     * RM4,000 was paid across the two months and RM3,000 of it was exempt, so the employment-income
+     * line reports RM1,000. Section B's own sub-caption is "(EXCLUDING Tax Exempt Allowances /
+     * Perquisites / Gifts / Benefits)" (docs/forms/ea-cp8a-pin-2023-transcription.txt:99-100) and the
+     * exempt total has its own box, Section F (:153) — before this assertion existed the same RM3,000
+     * was printed in both places.
+     *
+     * ⚠️ THE EXCESS IS NOT RE-DERIVED HERE AND MUST NOT BE. `roomFor()` already capped the exemption at
+     * the annual headroom, so February's over-limit RM1,000 is already in the taxable wage; this case is
+     * exactly the one that tells a subtraction apart from a `max(total − limit, 0)` recomputation.
+     */
+    expect(ea?.partB.allowances, 'B.1(c) must report the TAXABLE allowance only').toBeCloseTo(1000, 2);
+    // …and the form's own total moves with it: the printed Part B lines sum to the printed JUMLAH, so a
+    // net 1(c) with a gross total would be a page that does not add up.
+    expect(ea?.partB.gross).toBeCloseTo(
+      (ea?.partB.grossSalary ?? 0) + (ea?.partB.bonus ?? 0) + 1000,
+      2,
+    );
   });
 
   it('EPF Bonus 2012 on an epf+socso code routes the amount down the additional-remuneration EPF path', async () => {

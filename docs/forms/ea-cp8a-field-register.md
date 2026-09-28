@@ -65,7 +65,7 @@ the reader has chosen.
 | B |  | RM | heading (takes no value) | The form itself — printed on every copy, nothing goes in it | Printed ONCE, over the right-hand money column, for the whole form. | `form.rm` |
 | B | 1(a) | Gaji kasar, upah atau gaji cuti (termasuk gaji lebih masa) | amount (RM) | Payroll, and amendable under “Amend EA figures” (partB.grossSalary) |  | `payroll.ea.grossSalary` |
 | B | 1(b) | Fi (termasuk fi pengarah), komisen atau bonus | amount (RM) | Payroll, and amendable under “Amend EA figures” (partB.bonus, partB.directorFee) | ONE agency box over TWO of our figures: bonus (payroll) plus director’s fees / commission (amendment only). Prints only when the sum is non-zero, because half of it has no payroll source. | `payroll.ea.feesCommissionBonus` |
-| B | 1(c) | Tip kasar, perkuisit, penerimaan sagu hati atau elaun-elaun lain | amount (RM) | Payroll, and amendable under “Amend EA figures” (partB.allowances, partB.tipsPerquisites) | ONE agency box over TWO of our figures: allowances (payroll) plus tips / perquisites (amendment only). Same rule as 1(b). | `payroll.ea.tipsPerquisitesOther` |
+| B | 1(c) | Tip kasar, perkuisit, penerimaan sagu hati atau elaun-elaun lain | amount (RM) | Payroll, and amendable under “Amend EA figures” (partB.allowances, partB.tipsPerquisites) | ONE agency box over TWO of our figures: allowances (payroll) plus tips / perquisites (amendment only). Same rule as 1(b). r353 — the allowances half is the TAXABLE allowance only: Section B is headed “Excluding Tax Exempt Allowances / Perquisites / Gifts / Benefits”, so the exempt portion is subtracted here and reported in Section F instead of twice. | `payroll.ea.tipsPerquisitesOther` |
 | B | 1(c) | Perihal pembayaran: | free text the form asks for | nothing feeds this yet | The description rule inside 1(c). Writing a description we do not hold would be inventing a fact about somebody’s pay, so the rule stays empty. | `payroll.ea.paymentDetail` |
 | B | 1(d) | Cukai pendapatan yang dibayar oleh majikan bagi pihak pekerja | amount (RM) | Only “Amend EA figures” — no payroll source exists (partB.taxBorneByEmployer) |  | `payroll.ea.taxBorneByEmployer` |
 | B | 1(e) | Manfaat Skim Opsyen Saham Pekerja (ESOS) | amount (RM) | Only “Amend EA figures” — no payroll source exists (partB.esos) |  | `payroll.ea.esos` |
@@ -117,7 +117,7 @@ the reader has chosen.
 
 | Section | Box | Official wording (C.P.8A Pin. 2023) | Value | Fed by | Notes | Caption |
 | --- | --- | --- | --- | --- | --- | --- |
-| F | F | JUMLAH ELAUN / PERKUISIT / PEMBERIAN / MANFAAT YANG DIKECUALIKAN CUKAI | amount (RM) | Payroll — the year’s payslips (partB.exemptAllowances) | ONE line: the section title IS the item. The figure is the year’s tax-exempt allowance portions, which are a PART of 1(c) and not an addition to it. | `payroll.ea.sectionFExemptAllowances` |
+| F | F | JUMLAH ELAUN / PERKUISIT / PEMBERIAN / MANFAAT YANG DIKECUALIKAN CUKAI | amount (RM) | Payroll — the year’s payslips (partB.exemptAllowances) | ONE line: the section title IS the item. The figure is the year’s tax-exempt allowance portions. ⚠️ r353 — this note used to end “which are a PART of 1(c) and not an addition to it”, and that was the defect: 1(c) is EXCLUDING tax-exempt money by its own section heading, so F and 1(c) are disjoint and F is the only box on the form that reports this ringgit. | `payroll.ea.sectionFExemptAllowances` |
 
 ## The foot — signing date and officer box
 

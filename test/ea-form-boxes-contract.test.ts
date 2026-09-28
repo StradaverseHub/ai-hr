@@ -208,6 +208,32 @@ describe('6036dab7 — every EA box reaches every surface', () => {
     expect(src, "the form's 1(c) is allowances + tips/perquisites, printed as one box").toContain(
       'mixed(d.partB.allowances, d.partB.tipsPerquisites)',
     );
+    /**
+     * ⚠️ r353 (item fda53352 point 3) — AND `d.partB.allowances` IS THE TAXABLE ALLOWANCE, WHICH THIS
+     * EXPRESSION CANNOT SHOW ON ITS OWN. The line above is unchanged on purpose: the renderer stays a
+     * pure printer and the subtraction lives one file upstream, because `partB.gross` is recomputed
+     * there from EA_PART_B_COMPONENTS (so a renderer-side subtraction would print a 1(c) that no longer
+     * sums to the JUMLAH) and because test/r217-ea-sections.test.ts refuses `exemptAllowances` anywhere
+     * inside Section B's drawing code.
+     *
+     * So the guard follows the decision to where it is taken. Section B's heading is "(EXCLUDING Tax
+     * Exempt Allowances / Perquisites / Gifts / Benefits)" and Section F is the exempt total's own box;
+     * before r353 the same ringgit was printed in both. The worked money case is
+     * test/pcb-classification.test.ts (RM4,000 paid, RM3,000 exempt ⇒ 1(c) = RM1,000).
+     */
+    const reports = read('localization/my/reports.ts');
+    expect(reports, 'B.1(c) no longer subtracts the exempt portion').toContain(
+      'const taxableAllowances = round2(allowances - exemptAllowances);',
+    );
+    expect(reports, "B.1(c)'s derived baseline is the TAXABLE allowance").toContain(
+      "allowances: withRouting('allowances', taxableAllowances)",
+    );
+    // …and it must not be a SECOND derivation of the statutory limit. `roomFor()` already capped the
+    // exemption at the annual headroom, so the over-limit remainder is already taxable and already in the
+    // wage. Re-deriving it here would disagree with the payslips already issued.
+    expect(reports, 'the EA is re-deriving the exemption limit instead of reading the ledger').not.toMatch(
+      /Math\.max\(\s*(?:allowances|total)\s*-\s*\w*[Ll]imit/,
+    );
     // …and the pair may not go back to printing a derived zero over a box half of which has no source.
     expect(src, '1(b) is drawn as a derived figure again').not.toContain('derived(d.partB.bonus + d.partB.directorFee)');
     expect(src, '1(c) is drawn as a derived figure again').not.toContain('derived(d.partB.allowances + d.partB.tipsPerquisites)');

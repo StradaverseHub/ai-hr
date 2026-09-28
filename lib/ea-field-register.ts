@@ -154,7 +154,7 @@ export const EA_REGISTER: EaRegisterRow[] = [
   { section: 'B', box: '1(b)', wording: 'Fi (termasuk fi pengarah), komisen atau bonus', caption: label('feesCommissionBonus'), value: 'money', sources: ['partB.bonus', 'partB.directorFee'], feed: 'payroll+amendment',
     note: 'ONE agency box over TWO of our figures: bonus (payroll) plus director’s fees / commission (amendment only). Prints only when the sum is non-zero, because half of it has no payroll source.' },
   { section: 'B', box: '1(c)', wording: 'Tip kasar, perkuisit, penerimaan sagu hati atau elaun-elaun lain', caption: label('tipsPerquisitesOther'), value: 'money', sources: ['partB.allowances', 'partB.tipsPerquisites'], feed: 'payroll+amendment',
-    note: 'ONE agency box over TWO of our figures: allowances (payroll) plus tips / perquisites (amendment only). Same rule as 1(b).' },
+    note: 'ONE agency box over TWO of our figures: allowances (payroll) plus tips / perquisites (amendment only). Same rule as 1(b). r353 — the allowances half is the TAXABLE allowance only: Section B is headed “Excluding Tax Exempt Allowances / Perquisites / Gifts / Benefits”, so the exempt portion is subtracted here and reported in Section F instead of twice.' },
   { section: 'B', box: '1(c)', wording: 'Perihal pembayaran:', caption: label('paymentDetail'), value: 'description', sources: [], feed: 'none',
     note: 'The description rule inside 1(c). Writing a description we do not hold would be inventing a fact about somebody’s pay, so the rule stays empty.' },
   { section: 'B', box: '1(d)', wording: 'Cukai pendapatan yang dibayar oleh majikan bagi pihak pekerja', caption: label('taxBorneByEmployer'), value: 'money', sources: ['partB.taxBorneByEmployer'], feed: 'amendment' },
@@ -206,7 +206,7 @@ export const EA_REGISTER: EaRegisterRow[] = [
 
   // ── F — Jumlah Elaun / Perkuisit / Pemberian / Manfaat yang Dikecualikan Cukai ────────────────────
   { section: 'F', box: 'F', wording: 'JUMLAH ELAUN / PERKUISIT / PEMBERIAN / MANFAAT YANG DIKECUALIKAN CUKAI', caption: label('sectionFExemptAllowances'), value: 'money', sources: ['partB.exemptAllowances'], feed: 'payroll',
-    note: 'ONE line: the section title IS the item. The figure is the year’s tax-exempt allowance portions, which are a PART of 1(c) and not an addition to it.' },
+    note: 'ONE line: the section title IS the item. The figure is the year’s tax-exempt allowance portions. ⚠️ r353 — this note used to end “which are a PART of 1(c) and not an addition to it”, and that was the defect: 1(c) is EXCLUDING tax-exempt money by its own section heading, so F and 1(c) are disjoint and F is the only box on the form that reports this ringgit.' },
 
   // ── The foot — the signing date and the ruled officer box ─────────────────────────────────────────
   { section: 'FOOT', box: '', wording: EA_FORM_WORDS.date, caption: agency('date'), value: 'date', sources: [], feed: 'none',

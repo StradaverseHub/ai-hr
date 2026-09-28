@@ -271,6 +271,41 @@ export const CHILD_RELIEF_CATEGORY_KEYS = [
 ] as const;
 export type ChildReliefCategoryKey = (typeof CHILD_RELIEF_CATEGORY_KEYS)[number];
 
+/**
+ * r353 (item fda53352, point 1) — THE NUMBER OF CHILDREN A KEYED s.48 GRID CLAIMS RELIEF FOR.
+ *
+ * ONE PER CHILD, NEVER THE s.48 WEIGHT. The grid's cells are COUNTS of children (`full` = claimed at
+ * 100%, `half` = claimed at 50%), so their sum is a head count: a disabled child in higher education is
+ * ONE child here and EIGHT relief units in `childReliefAmountFor`. The two must never be confused — EA
+ * item 8 and CP8D's children column are ruled for a count, and printing the weighted figure there would
+ * declare an employee with one disabled child in higher education as having eight.
+ *
+ * WHY IT IS HERE. In 'auto_table' mode the KEYED grid — not `num_children` — is what the PCB calculation
+ * prices (`pricesChildReliefFromGrid`, core/dependents.ts), so the grid is the authoritative answer to
+ * "how many children qualified" for those employees, and `eaStatement` reads item 8 through this function
+ * rather than off a stored column that only a save of the Identification & Tax card keeps level with it.
+ * This module has no imports at all, which is what lets a report and a screen share the arithmetic.
+ *
+ * `components/identity-tax-card.tsx` still sums the same cells inline: it has to recount LIVE as the
+ * admin types and is a client island that deliberately imports no server module. Same keys, same rule.
+ */
+export function childReliefTableHeadCount(
+  table: Record<string, { full?: unknown; half?: unknown } | null | undefined> | null | undefined,
+): number {
+  if (!table) return 0;
+  const whole = (v: unknown) => {
+    const x = Number(v);
+    return Number.isFinite(x) && x > 0 ? Math.floor(x) : 0;
+  };
+  let n = 0;
+  for (const key of CHILD_RELIEF_CATEGORY_KEYS) {
+    const cell = table[key];
+    if (!cell) continue;
+    n += whole(cell.full) + whole(cell.half);
+  }
+  return n;
+}
+
 /** PCB tax categories (LHDN). */
 export type TaxCategory = 1 | 2 | 3;
 //  1 = single; 2 = married, spouse not working; 3 = married+spouse working / divorced / widowed.

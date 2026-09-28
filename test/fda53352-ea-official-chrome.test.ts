@@ -174,8 +174,13 @@ describe('fda53352 · (c) no caption is drawn in white without a block beneath i
   it('the fill is drawn BEFORE the text, or the caption is painted over', () => {
     const s = src('lib/ea-pdf.ts');
     const fillAt = s.indexOf('fill(L, EA_FORM.bannerT[0], R, EA_FORM.bannerT[1]);');
-    const textAt = s.indexOf('putC(W.banner, CX, 86.5, 8, bold, white);');
+    // ⚠️ r353 — RE-POINTED, NOT LOOSENED. The caption's baseline was the literal 86.5; the banner moved
+    // 3.4 pt up (EA_FORM.bannerT, see `sectionGapUnderBanner`) and the caption now follows the strip
+    // instead of naming its own absolute position, so the pair cannot drift apart. The ORDER is what
+    // this case is for and it is unchanged: fill first, text second, or the caption is painted over.
+    const textAt = s.indexOf('putC(W.banner, CX, EA_FORM.bannerT[0] + 9.2, 8, bold, white);');
     expect(fillAt).toBeGreaterThan(0);
+    expect(textAt, 'the banner caption is no longer drawn where this guard can see it').toBeGreaterThan(0);
     expect(textAt).toBeGreaterThan(fillAt);
   });
 });
