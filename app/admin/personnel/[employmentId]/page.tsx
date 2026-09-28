@@ -396,6 +396,13 @@ export default async function EmployeePage({
   const qualifyingChildRelief = admin
     ? await qualifyingChildReliefFor(s, { personId: emp.personId, country: 'MY', asOf: today })
     : null;
+  // r351 — THE ONE INSTANT THE FAMILY TAB'S AGE AND RELIEF COLUMNS ARE TAKEN AT, and it is the same date the
+  // figure above was priced at. `childAgeYears` parses a DOB as `${dob}T00:00:00Z`, so the other endpoint is
+  // built the same way (the reasoning core/dependents.ts and core/child-relief-review.ts both record): an
+  // eight-hour offset would otherwise flip a child's whole-year age on their birthday — the one day the
+  // eligibility rule turns on — and make the Family tab disagree with the Bank & Statutory tab for eight
+  // hours out of every twenty-four.
+  const familyAsOf = new Date(`${today}T00:00:00Z`);
   // 7ee14bbc — the duplicate income-tax-reference warning AT THE POINT OF ENTRY. The CP39 preview warns
   // at filing time; the approved plan asks for the same warning on the screen where the number is typed,
   // because five of the reporter's numbers are each filed against two or three different people and they
@@ -2015,10 +2022,22 @@ export default async function EmployeePage({
                   </td>
                   <td className="py-2 pr-3">{familyRelationshipLabel(d.relationship)}</td>
                   <td className="whitespace-nowrap py-2 pr-3">{d.dateOfBirth ?? '—'}</td>
-                  <td className="py-2 pr-3">{childAgeYears(d.dateOfBirth) ?? '—'}</td>
+                  {/* r351 — BOTH TAKEN AT THE PAGE'S OWN KUALA LUMPUR DATE, not at real UTC now.
+                      `childAgeYears` and `isChildReliefEligible` both default `asOf` to `new Date()`, and
+                      this page resolves `todayInKualaLumpur()` for everything else it prints — including the
+                      qualifying-children figure on the Bank & Statutory tab, computed a few hundred lines
+                      above from the SAME predicate. Between 00:00 and 08:00 Kuala Lumpur the two are
+                      different calendar dates, so on a child's 18th birthday the two tabs contradicted each
+                      other about that child for eight hours every day. CLAUDE.md §8: a date from an instant
+                      goes through todayInKualaLumpur(). One date, one answer, both tabs. */}
+                  <td className="py-2 pr-3">{childAgeYears(d.dateOfBirth, familyAsOf) ?? '—'}</td>
                   <td className="py-2 pr-3">{d.phone ?? '—'}</td>
                   <td className="py-2 pr-3">
-                    {d.relationship === 'child' ? (isChildReliefEligible(d) ? t('family.yes') : t('family.no')) : '—'}
+                    {d.relationship === 'child'
+                      ? isChildReliefEligible(d, familyAsOf)
+                        ? t('family.yes')
+                        : t('family.no')
+                      : '—'}
                   </td>
                   <td className="py-2">
                     <div className="flex items-center justify-end gap-2">

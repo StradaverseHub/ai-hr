@@ -310,16 +310,29 @@ describe('04b88724 · provenance — derived or typed, and never dressed up as t
 });
 
 /* ══════════════════════════════════════════════════════════════════════════════════════════════════════
- * r340 FIX PASS — THE STORED FIGURE, THE FAMILY REGISTER, AND ONE INSTANT
+ * r340 FIX PASS → r351 REVERSAL — THE STORED FIGURE, THE FAMILY REGISTER, AND ONE INSTANT
  *
- * The blocking defect this pass exists for was not in the arithmetic: it was in WHICH NUMBER the screen
- * multiplied. In 'auto' mode the kernel's child leg is the STORED `num_children`, and the server-side sync
- * that maintains it fires only on a dependent add / edit / archive — so a child simply ageing past 18 moves
- * the eligible count and leaves the tax figure where it was. Both numbers have to come back from here, at
- * ONE instant, or the screen has to choose between them without knowing they differ.
+ * The r340 blocking defect was not in the arithmetic: it was in WHICH NUMBER the screen multiplied. The
+ * screen worked the relief out from its own count of eligible children while the payslip multiplied the
+ * STORED `num_children`, and printed a figure RM2,000 short of the payslip with nothing saying so. r340
+ * settled that by making this function report the STORED figure, and the case below pinned it.
+ *
+ * ⚠️ r351 REVERSES WHICH FIGURE IS REPORTED, AND KEEPS THE RULE THAT r340 WAS ENFORCING. Reporting the
+ * stored column made the screen agree with the payslip, but it also meant the figure under the caption
+ * "Qualifying children (PCB)" described a column that only an unrelated family edit ever moves —
+ * `syncChildReliefFromFamily` fires on a family add / materialise / update / archive and a backfill script,
+ * and on NOTHING ELSE. Nothing fires on the passage of time. A child who turned 18 and is not in further
+ * education therefore stayed in the figure indefinitely; the Family tab, which recomputes eligibility on
+ * every render, said the opposite about the same child; and the card's own working printed one row worth 1
+ * under a total of 2.
+ *
+ * So the figure now follows the register as of `asOf`, and the r340 rule — never print a figure the kernel
+ * contradicts without naming what the kernel does — is kept by returning BOTH: `reliefRM` is what the
+ * records support and `storedReliefRM` is what payroll deducts until the record is saved. The card prints
+ * the first and states the second in amber. One instant, one list, two disclosed figures.
  * ═════════════════════════════════════════════════════════════════════════════════════════════════════ */
 describe('04b88724 · the stored head count and the eligible children, from one instant', () => {
-  it("a child who has aged out: the relief stays the KERNEL's flat stored count, and the gap is reported", async () => {
+  it('a child who has aged out: the figure follows the REGISTER, and the stored figure payroll still uses is reported beside it', async () => {
     const E = await hire('AgedOut');
     // Eligible on ASOF (2026-06-30).
     await addDependent(adminCtx(base), {
@@ -348,15 +361,170 @@ describe('04b88724 · the stored head count and the eligible children, from one 
     expect(q!.mode).toBe('auto');
     expect(q!.familyChildren, 'two children are on the Family register').toBe(2);
     expect(q!.eligibleChildren, 'but only one of them is eligible on this date').toBe(1);
-    expect(q!.physicalChildren, 'and the stored head count is untouched by the birthday').toBe(2);
-    // THE FIGURE THE PAYSLIP DEDUCTS. core/payroll.ts uses `num_children × perChild` for this mode, so it
-    // is TWO children of relief — not the one eligible child a render-time count would find.
-    expect(q!.reliefRM).toBeCloseTo(2 * RELIEFS.perChild, 2);
-    expect(q!.qualifyingChildren).toBe(2);
+    // `num_children` IS NOT REPURPOSED AND IS NOT REWRITTEN BY A READ. Form E, CP8D and the EA statement
+    // read that column as a head count (r343), so it comes back exactly as stored — the birthday did not
+    // touch it and neither does this function.
+    expect(q!.physicalChildren, 'the stored head count is untouched by the birthday and by this read').toBe(2);
+
+    // ── THE REVERSAL. The figure is the ONE eligible child, priced from the register's own category. ──
+    // The surviving child carries `under_18`, so the derived grid is complete and the figure is priced by
+    // category — which for that category is 1 unit, RM2,000. What it is NOT is the stored head count of 2.
+    expect(q!.qualifyingChildren, 'one eligible child on this date, so one qualifying child').toBe(1);
+    expect(q!.reliefRM).toBeCloseTo(kernelRM({ under_18: { full: 1, half: 0 } }), 2);
+    expect(q!.pricedFromGrid, 'the register can be priced by category, so it is').toBe(true);
+    expect(q!.derivedGrid, 'and the grid handed to the card is the register, not the stored column').toEqual({
+      under_18: { full: 1, half: 0 },
+    });
+
+    // ── AND THE OTHER HALF, WHICH IS WHAT KEEPS r340's RULE. What payroll deducts TODAY, from the stored
+    // columns, in the kernel's own expression: `num_children × perChild`, because no grid is stored. The
+    // card is required to state this beside the figure above, so no screen prints one without the other.
+    expect(q!.storedQualifyingChildren, 'payroll is still on the stored head count').toBe(2);
+    expect(q!.storedReliefRM).toBeCloseTo(2 * RELIEFS.perChild, 2);
+
+    // NON-VACUITY, IN THE DIRECTION THE REVERSAL RUNS. The two figures must be distinguishable or nothing
+    // above is proved — and it is the pair, not either one, that this case exists to pin.
     expect(
       q!.reliefRM,
-      'the eligible-child figure must be distinguishable from the stored one, or nothing here is proved',
-    ).not.toBeCloseTo(q!.eligibleChildren * RELIEFS.perChild, 2);
+      'the register figure must differ from the stored one, or this fixture proves nothing',
+    ).not.toBeCloseTo(q!.storedReliefRM, 2);
+    expect(q!.reliefRM, 'and it is the eligible-child figure, not the stored one').toBeCloseTo(
+      q!.eligibleChildren * RELIEFS.perChild,
+      2,
+    );
+
+    // THE WORKING SUMS TO THE FIGURE PRINTED ABOVE IT. This is the defect the reporter could see: one row
+    // worth 1 under a total of 2. Both now come from the same `eligible` list at the same date.
+    expect(q!.breakdown.length, 'one line per eligible child').toBe(1);
+    expect(q!.breakdown.reduce((s, r) => s + r.units, 0)).toBeCloseTo(q!.qualifyingChildren, 6);
+    expect(q!.breakdown.reduce((s, r) => s + r.amountRM, 0)).toBeCloseTo(q!.reliefRM, 2);
+  });
+
+  it('a register whose children ALL aged out claims nothing, and says what payroll is still deducting', async () => {
+    // The reporter's exact scenario, taken to its end: every child 18 or over and not in education. The
+    // rules give no relief; the stored column still has payroll giving two children of it. Both facts have
+    // to come back, because the screen has to print the first and disclose the second.
+    const E = await hire('AllAgedOut');
+    for (const [name, dob] of [
+      ['GrownA', '2006-04-01'],
+      ['GrownB', '2004-04-01'],
+    ] as const) {
+      await addDependent(adminCtx(base), {
+        personId: E.personId,
+        fullName: name,
+        relationship: 'child',
+        dateOfBirth: dob,
+      });
+    }
+    await setTaxProfileMY(adminCtx(base), {
+      personId: E.personId,
+      numChildren: 2,
+      childReliefMode: 'auto',
+      childReliefTable: null,
+    });
+
+    const q = await qualifyingChildReliefFor(adminCtx(base), { personId: E.personId, asOf: ASOF });
+    expect(q!.familyChildren, 'the children ARE recorded — the retired message claimed they were not').toBe(2);
+    expect(q!.eligibleChildren).toBe(0);
+    expect(q!.qualifyingChildren, 'nothing the rules support').toBe(0);
+    expect(q!.reliefRM).toBe(0);
+    expect(q!.derivedGrid, 'no eligible children ⇒ no grid, rather than an empty one that prices at zero').toBeNull();
+    expect(q!.pricedFromGrid, 'so the head-count branch decides, over ZERO eligible children').toBe(false);
+    // …and the money that is nonetheless still going out, which the card must not deny.
+    expect(q!.storedReliefRM).toBeCloseTo(2 * RELIEFS.perChild, 2);
+    expect(q!.storedReliefRM, 'or this case cannot distinguish the two figures at all').toBeGreaterThan(0);
+  });
+
+  it('a child with NO date of birth is NAMED, not silently counted zero', async () => {
+    const E = await hire('NoDob');
+    await addDependent(adminCtx(base), {
+      personId: E.personId,
+      fullName: 'Undated Child',
+      relationship: 'child',
+      dateOfBirth: null,
+    });
+    await addDependent(adminCtx(base), {
+      personId: E.personId,
+      fullName: 'Dated Child',
+      relationship: 'child',
+      dateOfBirth: '2016-04-01',
+      childReliefCategory: 'under_18',
+    });
+    await setTaxProfileMY(adminCtx(base), {
+      personId: E.personId,
+      numChildren: 2,
+      childReliefMode: 'auto',
+      childReliefTable: null,
+    });
+
+    const q = await qualifyingChildReliefFor(adminCtx(base), { personId: E.personId, asOf: ASOF });
+    expect(q!.familyChildren).toBe(2);
+    expect(q!.eligibleChildren, 'an unconfirmable age is not eligible — that rule is unchanged').toBe(1);
+    expect(
+      q!.undatedChildren,
+      'the name, because a count sends an administrator through the whole register to find which',
+    ).toEqual(['Undated Child']);
+  });
+
+  it('…but a child recorded as a STUDENT with no date of birth is eligible, and is not reported as undated', async () => {
+    // The eligibility rule makes a full-time student eligible at any age, so no date of birth is needed and
+    // nothing is being dropped. Reporting that child as "not counted" would be the opposite of the truth.
+    const E = await hire('StudentNoDob');
+    await addDependent(adminCtx(base), {
+      personId: E.personId,
+      fullName: 'Student No Dob',
+      relationship: 'child',
+      dateOfBirth: null,
+      isStudent: true,
+    });
+    await setTaxProfileMY(adminCtx(base), {
+      personId: E.personId,
+      numChildren: 1,
+      childReliefMode: 'auto',
+      childReliefTable: null,
+    });
+
+    const q = await qualifyingChildReliefFor(adminCtx(base), { personId: E.personId, asOf: ASOF });
+    expect(q!.eligibleChildren).toBe(1);
+    expect(q!.undatedChildren, 'eligible without a date of birth ⇒ nothing was dropped').toEqual([]);
+  });
+
+  it('the date every figure was taken at is echoed back, so a screen can say which day it describes', async () => {
+    const E = await hire('AsOfEcho');
+    await setTaxProfileMY(adminCtx(base), {
+      personId: E.personId,
+      numChildren: 0,
+      childReliefMode: 'auto',
+      childReliefTable: null,
+    });
+    const q = await qualifyingChildReliefFor(adminCtx(base), { personId: E.personId, asOf: ASOF });
+    expect(q!.asOf).toBe(ASOF);
+  });
+
+  it("'manual' mode short-circuits exactly as before: the typed figure is reported, register untouched", async () => {
+    // r351 changes the AUTO modes only. A manual record has nothing to derive from — locking its figure to a
+    // register the admin has not opted into would move somebody's tax without being asked.
+    const E = await hire('ManualUnmoved');
+    await addDependent(adminCtx(base), {
+      personId: E.personId,
+      fullName: 'Grown',
+      relationship: 'child',
+      dateOfBirth: '2006-04-01',
+    });
+    await setTaxProfileMY(adminCtx(base), {
+      personId: E.personId,
+      numChildren: 3,
+      childReliefMode: 'manual',
+      childReliefTable: null,
+    });
+
+    const q = await qualifyingChildReliefFor(adminCtx(base), { personId: E.personId, asOf: ASOF });
+    expect(q!.mode).toBe('manual');
+    expect(q!.qualifyingChildren, 'the number somebody typed, unchanged by the register').toBe(3);
+    expect(q!.reliefRM).toBeCloseTo(3 * RELIEFS.perChild, 2);
+    expect(q!.eligibleChildren, 'the register is still REPORTED — that is the disagreement the card shows').toBe(0);
+    // In manual mode the two figures are one figure: there is no gap to disclose, so the card shows none.
+    expect(q!.storedReliefRM).toBeCloseTo(q!.reliefRM, 2);
   });
 
   it('ONE INSTANT: the eligible count and the breakdown lines are the same list, filtered once', async () => {

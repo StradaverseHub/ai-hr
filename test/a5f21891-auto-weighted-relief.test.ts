@@ -148,7 +148,17 @@ describe('a5f21891 · (c) the payslip, the preview and the worksheet widened tog
     const s = src('core/dependents.ts');
     // The sync writes the head count, never the weighting, into that column.
     expect(s).toContain('numChildren: state.derived');
-    expect(s, 'and `derived` is the plain count').toContain('derived: eligibleChildReliefCount(rows)');
+    // ⚠️ r351 — `eligibleChildReliefCount(rows)` became `eligibleChildReliefCount(rows, asOf)`. The sync used
+    // to take its date through the parameter default, `new Date()`, which is real UTC now and therefore
+    // YESTERDAY between 00:00 and 08:00 Kuala Lumpur — a day behind the Identification & Tax card and the
+    // Family tab, which both resolve `todayInKualaLumpur()`, on the one day the eligibility rule turns on.
+    // The DECISION this case pins is unchanged: the column is fed the PLAIN head count and never the
+    // weighted figure, or Form E / CP8D / EA would declare one disabled child in higher education as eight.
+    // Both halves are asserted, so a swap to the weighted function cannot pass on a looser literal.
+    expect(s, 'and `derived` is the plain count').toContain('derived: eligibleChildReliefCount(');
+    expect(s, 'never the weighted one — the three annual readers take that column as a head count').not.toContain(
+      'derived: eligibleChildReliefUnits(',
+    );
   });
 });
 

@@ -5922,11 +5922,30 @@ export async function generatePayslips(
       // Item d64d0df4 — `disabled` is the employee's CIRCUMSTANCE; the deduction it entitles them to is a
       // figure in the pack's ruleset, applied inside pcbMonth. `?? false` keeps a row that predates
       // migration 0341 (or a person with no statutory row at all) computing exactly as it does today.
-      // Item d64d0df4 — the CHILD leg. Only an employee in 'auto_table' mode supplies a worked-out
-      // amount: the pack turns their keyed category grid into RM using the resolved ruleset's
-      // per-category figures (halving any 50%-share child). 'manual' and 'auto' employees supply
-      // `undefined`, and pcbMonth then computes `children × perChild` — the identical expression it used
-      // before this item, so their projection of P is unchanged to the cent.
+      // Item d64d0df4 — the CHILD leg.
+      //
+      // ⚠️ r351 — THIS COMMENT CONTRADICTED THE LINE DIRECTLY BELOW IT AND HAD DONE SINCE r344. It read
+      // "Only an employee in 'auto_table' mode supplies a worked-out amount … 'manual' and 'auto' employees
+      // supply `undefined`". a5f21891 (r344) widened the gate to `pricesChildReliefFromGrid`, so an 'auto'
+      // employee whose grid IS derived has supplied a worked-out amount ever since — which is the whole
+      // point of that round. A comment beside a money gate that describes the gate it replaced is worse than
+      // no comment: it is the first thing the next reader trusts. (CLAUDE.md: prose outlives the kernel.)
+      //
+      // WHAT THE GATE ACTUALLY DOES, as it stands today: an employee supplies a worked-out amount when
+      // `pricesChildReliefFromGrid` says their relief comes from the s.48 grid — 'auto_table' always, and
+      // 'auto' whenever a grid is stored (the sync derives one from the Family register, and stores NULL
+      // rather than a partial grid when any eligible child is unclassified). The pack turns that grid into
+      // RM using the resolved ruleset's per-category figures, halving any 50%-share child. Everyone else
+      // supplies `undefined` and pcbMonth computes `children × perChild`.
+      //
+      // ⚠️ AND `children` BELOW IS THE STORED `num_children`, WHICH NOTHING RE-DERIVES ON THE PASSAGE OF
+      // TIME. `syncChildReliefFromFamily` fires on a family add / materialise / update / archive and on a
+      // backfill script — never on a birthday. So a child who turned 18 and is not in further education
+      // stays in this figure until the next family edit or a save of the Identification & Tax card. r351
+      // made the SCREEN follow the register as of its own date and made the card DISCLOSE the gap in
+      // ringgit (core/dependents.ts `storedReliefRM`); it deliberately did not move this expression, for
+      // the same reason r343 did not move it and r344 was raised as its own item — three money-path
+      // consumers change together or not at all.
       const childReliefAmount =
       // a5f21891 — 'auto' PRICES ITS GRID TOO, and all three gates widen together. The sync derives that
       // grid from the Family register (core/dependents.ts), so on 'auto' the categories decide the money

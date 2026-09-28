@@ -48,57 +48,93 @@ const kernelFlatRM = (children: number) => children * RELIEFS.perChild;
 const rm = (n: number) =>
   new Intl.NumberFormat('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
+const FLAT_ROW = (name: string, category: string | null, sharePercent = 100) => ({
+  kind: 'child' as const,
+  name,
+  category,
+  sharePercent,
+  children: 1,
+  units: 1,
+  amountRM: kernelFlatRM(1),
+});
+
 /**
- * ONE employee stored 'auto' with ONE disabled child in higher education. The head count is 1, so the kernel
- * relieves one child; s.48 prices that child at EIGHT. Every figure is taken from the PACK — a literal here
- * would drift the day a relief figure is corrected, as two of the five were in r339.
+ * ONE employee stored 'auto' whose register CANNOT be priced by category, with a disabled child in higher
+ * education among it. The head count decides, so that child is relieved as ONE; s.48 prices it at EIGHT.
+ * Every figure is taken from the PACK — a literal here would drift the day a relief figure is corrected, as
+ * two of the five were in r339.
+ *
+ * ⚠️ r351 — THE FIXTURE GREW A SECOND CHILD, AND THAT IS WHAT MAKES IT A REACHABLE STATE AGAIN. It used to
+ * hold ONE fully-categorised child with `pricedFromGrid: false`, which was reachable while the card read the
+ * STORED `child_relief_table` (the sync simply had not run since the category was keyed). r351 derives the
+ * grid from the register instead, so a register whose every eligible child is classified is ALWAYS priced by
+ * category — and this file's whole subject, a weighting gap in the head-count branch, only exists when the
+ * register cannot be classified. One uncategorised child is exactly what puts it there, and it is the shape
+ * r344 measured on production: 2 eligible children, 1 categorised. The asserted sentences are unchanged; the
+ * head count they are asserted against is now 2, because there are two eligible children.
  */
 const GAP_PRICING: ChildReliefPricing = {
   perChild: RELIEFS.perChild,
   categories: PRICES,
   statutoryVersion: '2026.9',
-  familyChildren: 1,
-  uncategorisedChildren: 0,
+  familyChildren: 2,
+  uncategorisedChildren: 1,
   pricedFromGrid: false,
   mode: 'auto',
   derived: true,
-  physicalChildren: 1,
-  eligibleChildren: 1,
-  qualifyingChildren: 1,
-  reliefRM: kernelFlatRM(1),
-  breakdown: [
-    {
-      kind: 'child',
-      name: 'Nurul',
-      category: 'disabled_study',
-      sharePercent: 100,
-      children: 1,
-      units: 1,
-      amountRM: kernelFlatRM(1),
-    },
-  ],
+  physicalChildren: 2,
+  eligibleChildren: 2,
+  qualifyingChildren: 2,
+  reliefRM: kernelFlatRM(2),
+  // r351 — the record is IN STEP with the register (two eligible children, head count two, no grid stored
+  // because one child cannot be classified), so the stored figures equal the derived ones. That keeps this
+  // file about the WEIGHTING gap — categories versus head count — and not about a stale record, which is a
+  // different disclosure with its own guard.
+  storedQualifyingChildren: 2,
+  storedReliefRM: kernelFlatRM(2),
+  derivedGrid: null,
+  undatedChildren: [],
+  asOf: '2026-06-30',
+  breakdown: [FLAT_ROW('Nurul', 'disabled_study'), FLAT_ROW('Amir', null)],
   ruleUnits: unitsOf('disabled_study'),
   ruleReliefRM: childReliefAmountFor({ disabled_study: { full: 1, half: 0 } }, RELIEFS),
 };
 
-/** The same employee with an under-18 child: the rule and the head count AGREE, so there is no gap. */
+/**
+ * The same employee with ONE under-18 child and nothing missing: the register IS priced by category, and for
+ * that category the weighting and the head count agree at one. So there is no gap to name.
+ */
 const NO_GAP_PRICING: ChildReliefPricing = {
   ...GAP_PRICING,
-  breakdown: [{ ...GAP_PRICING.breakdown[0], category: 'under_18' }],
+  familyChildren: 1,
+  uncategorisedChildren: 0,
+  pricedFromGrid: true,
+  physicalChildren: 1,
+  eligibleChildren: 1,
+  qualifyingChildren: unitsOf('under_18'),
+  reliefRM: childReliefAmountFor({ under_18: { full: 1, half: 0 } }, RELIEFS),
+  storedQualifyingChildren: unitsOf('under_18'),
+  storedReliefRM: childReliefAmountFor({ under_18: { full: 1, half: 0 } }, RELIEFS),
+  derivedGrid: { under_18: { full: 1, half: 0 } },
+  breakdown: [FLAT_ROW('Nurul', 'under_18')],
   ruleUnits: unitsOf('under_18'),
   ruleReliefRM: childReliefAmountFor({ under_18: { full: 1, half: 0 } }, RELIEFS),
 };
 
 /**
- * THE OTHER DIRECTION. The same 'auto' employee with ONE under-18 child recorded at a 50% CLAIM SHARE — the
- * other parent claims the other half. The head count is still 1, so the kernel relieves a whole child; the
+ * THE OTHER DIRECTION. The same unclassifiable register, with the classified child an under-18 recorded at a
+ * 50% CLAIM SHARE — the other parent claims the other half. The head count relieves TWO whole children; the
  * categories support HALF a qualifying child. This employee is OVER-relieved and their PCB UNDER-deducted,
  * and until the r343 fix pass the card printed nothing. Every figure is the pack's: the half share is priced
  * by `childReliefAmountFor` through the grid's own `half` column, not by dividing a literal here.
+ *
+ * r351 — this direction is only reachable through the head-count branch, and therefore only through an
+ * unclassifiable register: once the grid is derived, the figure IS the weighting and the two cannot differ.
+ * Keeping the uncategorised child is what keeps this case real.
  */
 const OVER_PRICING: ChildReliefPricing = {
   ...GAP_PRICING,
-  breakdown: [{ ...GAP_PRICING.breakdown[0], category: 'under_18', sharePercent: 50 }],
+  breakdown: [FLAT_ROW('Nurul', 'under_18', 50), FLAT_ROW('Amir', null)],
   ruleUnits: unitsOf('under_18') / 2,
   ruleReliefRM: childReliefAmountFor({ under_18: { full: 0, half: 1 } }, RELIEFS),
 };
@@ -141,14 +177,14 @@ describe('04b88724 · the weighting gap is named in Auto mode', () => {
     expect(t).toContain(String(unitsOf('disabled_study')));
     expect(t).toContain(rm(GAP_PRICING.ruleReliefRM));
     // And what the calculation actually gives, so nobody can read the first figure as the amount deducted.
-    expect(t).toContain(rm(kernelFlatRM(1)));
+    expect(t).toContain(rm(kernelFlatRM(GAP_PRICING.physicalChildren)));
     expect(t).not.toMatch(/\{[a-zA-Z]/);
   });
 
   it('the TOTAL the card prints is still the kernel’s own — the gap note did not move the money', () => {
     renderCard(GAP_PRICING);
-    expect(text('[data-child-breakdown-total-rm]')).toBe(rm(kernelFlatRM(1)));
-    expect(text('[data-child-breakdown-total-units]')).toBe('1');
+    expect(text('[data-child-breakdown-total-rm]')).toBe(rm(kernelFlatRM(GAP_PRICING.physicalChildren)));
+    expect(text('[data-child-breakdown-total-units]')).toBe(String(GAP_PRICING.qualifyingChildren));
   });
 
   it('an under-18 register shows NO gap note: the rule and the head count agree', () => {
@@ -179,10 +215,10 @@ describe('04b88724 · the gap is disclosed in BOTH directions, with a different 
     const t = gap()?.textContent ?? '';
     // What the categories support (half a child), and what the calculation actually gives (a whole one).
     expect(t).toContain(rm(OVER_PRICING.ruleReliefRM));
-    expect(t).toContain(rm(kernelFlatRM(1)));
+    expect(t).toContain(rm(kernelFlatRM(OVER_PRICING.physicalChildren)));
     expect(t).not.toMatch(/\{[a-zA-Z]/);
     // The money on the card is STILL the kernel's — this direction discloses, it does not deduct either.
-    expect(text('[data-child-breakdown-total-rm]')).toBe(rm(kernelFlatRM(1)));
+    expect(text('[data-child-breakdown-total-rm]')).toBe(rm(kernelFlatRM(OVER_PRICING.physicalChildren)));
   });
 
   it('the two directions are not the same sentence, and neither states the other’s conclusion', () => {

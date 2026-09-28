@@ -36,6 +36,10 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { company, employeeDependent, employeeStatutoryMy, employment, payrollBatch, profileOption } from '../db/schema';
 import { packFor, requirePackFor } from '../localization/registry';
+// r351 — the sync's own "today". It used `new Date()`, which is real UTC now: between 00:00 and 08:00
+// Kuala Lumpur that names YESTERDAY, so the stored figure aged a child a day later than the two screens
+// that already resolve `todayInKualaLumpur()`. CLAUDE.md §8: a date from an instant goes through this.
+import { todayInKualaLumpur } from '../lib/hr-date';
 // Type-only (ADR-0080 D7): the child-relief COUNT/AMOUNT contract shapes, so the weighted derivation
 // below can take the pack's own functions as parameters without this module naming a MY figure.
 import type { ChildReliefFigure, ChildReliefInput, ChildReliefPrice } from '../localization/country-pack';
@@ -254,8 +258,13 @@ export function isChildReliefEligible(r: ChildReliefEligibilityRow, asOf: Date =
  *     column of `CP8D_COLS`;
  *   · the EA statement — the same select inside `eaStatement`, printed into EA item 8 by lib/ea-pdf.ts
  *     (`String(d.employee.children)`);
- *   · and localization/my/statutory.ts states it in words: "Payroll always reads num_children as the head
- *     count regardless of mode."
+ *   · and localization/my/statutory.ts states it in words on CHILD_RELIEF_MODES.
+ *     ⚠️ r351 — that sentence used to read "Payroll always reads num_children as the head count regardless
+ *     of mode", and this block cited it as its authority. It stopped being true at a5f21891 (r344), which
+ *     taught the payslip to price a DERIVED grid on 'auto' as well as a keyed one on 'auto_table'. The
+ *     sentence has been corrected there; what survives, and is what this block actually needs, is that the
+ *     three ANNUAL readers below read the column as a head count. A comment is worth the day it was
+ *     written; the statutory documents are worth more.
  * Making this function return the s.48 WEIGHTED count would make those statutory documents print a weighted
  * figure as a head count — an employee with one disabled child in higher education would be declared as
  * having eight children. The approved plan named that as the decision the item turns on and recommended
@@ -347,6 +356,35 @@ export function childReliefGridFromFamily(
     else cell.full += 1;
   }
   return { grid, eligible, categorised };
+}
+
+/**
+ * ═══ r351, item 04b88724 — THE COMPLETENESS GATE, AS ONE FUNCTION INSTEAD OF ONE EXPRESSION COPIED ═══
+ *
+ * `childReliefGridFromFamily` BUILDS the grid; this decides whether that grid may PRICE anything. The rule
+ * has existed since a5f21891 (r344) but only inside `syncChildReliefFromFamily`, which is why the screen
+ * could disagree with it: `qualifyingChildReliefFor` did not re-derive the grid at all, it read
+ * `child_relief_table` back out of the column. A column is not a derivation — it holds whatever the last
+ * unrelated family edit wrote there, at whatever date that edit happened. Both callers now apply this one
+ * rule to the register in front of them, so "which grid" can no longer depend on WHEN somebody last saved.
+ *
+ * ⚠️ NULL, NEVER A PARTIAL GRID AND NEVER A STALE ONE. `childReliefGridFromFamily` SKIPS a child it cannot
+ * classify — it must not price what it cannot classify — while that same child DOES count towards the head
+ * count. Pricing an incomplete grid would therefore relieve FEWER children than the employee has: measured
+ * on production 2026-09-26, one 'auto' employee has 2 eligible children and 1 categorised, and would have
+ * dropped from RM4,000 of relief to RM2,000. Incomplete ⇒ null ⇒ every consumer falls back to
+ * `headCount × perChild`, which is the behaviour `test/9653472a-child-relief-category-gap.test.ts` (e) pins.
+ *
+ * `eligible > 0` is part of it: an empty register has `categorised === eligible === 0`, and an empty grid
+ * prices at RM0, so without this an employee with no children on file would claim nothing where the head
+ * count path claims what their record says.
+ */
+export function derivedChildReliefGrid(
+  rows: ChildReliefCategorisedRow[],
+  asOf: Date,
+): ChildReliefGrid | null {
+  const built = childReliefGridFromFamily(rows, asOf);
+  return built.categorised === built.eligible && built.eligible > 0 ? built.grid : null;
 }
 
 /**
@@ -513,9 +551,17 @@ export async function syncChildReliefFromFamily(
       // clears any stale grid and drops the kernel back to `num_children × perChild` — exactly today's
       // behaviour, so nobody loses relief while a category is missing. Never carry a stale grid forward:
       // a grid that no longer describes the family is the one thing worse than no grid.
-      const built = childReliefGridFromFamily(rows, new Date());
-      const grid = built.categorised === built.eligible && built.eligible > 0 ? built.grid : null;
-      return { statutory, derived: eligibleChildReliefCount(rows), grid, gridComplete: grid != null };
+      //
+      // r351 — ONE INSTANT, AND IT IS THE TENANT'S CALENDAR DAY, NOT THE HOST'S. Both derivations used to
+      // take their own `new Date()` (the count through the parameter default), which is real UTC now:
+      // between 00:00 and 08:00 Kuala Lumpur that names YESTERDAY. So a sync run in that window aged a
+      // child a day behind the Identification & Tax card and the Family tab, which both resolve
+      // `todayInKualaLumpur()` — and the one day the eligibility rule turns on is a birthday.
+      // The completeness gate itself now lives in `derivedChildReliefGrid`, shared with the screen's own
+      // derivation, so the stored grid and the screen's grid cannot be built by two different rules.
+      const asOf = new Date(`${todayInKualaLumpur()}T00:00:00Z`);
+      const grid = derivedChildReliefGrid(rows, asOf);
+      return { statutory, derived: eligibleChildReliefCount(rows, asOf), grid, gridComplete: grid != null };
     });
 
     if (!state) return NO_SYNC('no_statutory_row');
@@ -1148,17 +1194,42 @@ export type QualifyingChildRelief = {
   /** true for 'auto' and 'auto_table' — the figure was WORKED OUT. false for 'manual' — it was TYPED.
    *  The screen shows this as provenance, and read-only applies only where it is true. */
   derived: boolean;
-  /** num_children — the head count Form E / CP8D / EA read. Unchanged by this item. */
+  /** num_children — the head count Form E / CP8D / EA read. STILL THE STORED COLUMN, still a head count.
+   *
+   *  r351 — what changed is its STANDING, not its meaning. It is a PROJECTION of the Family register now,
+   *  not the thing the qualifying figure below is worked out from: in 'auto' mode that figure follows the
+   *  register as of `asOf`, and this is the copy the last write happened to leave in the column. The two
+   *  agree whenever the record is in step and disagree the moment time passes (see `storedReliefRM`). */
   physicalChildren: number;
   /** Live 'child' rows on the Family register (archived and deceased excluded), whether or not any of
    *  them is eligible. This is the "physical children" the reporter means, and it can legitimately differ
    *  from `physicalChildren` on a manual-mode record — which is itself worth seeing. */
   familyChildren: number;
   /** C — the qualifying-children count the projection of P counts in. Fractional when a 50%-shared child
-   *  is priced by category; see the note on rounding below. */
+   *  is priced by category; see the note on rounding below.
+   *
+   *  r351 — IN THE AUTO MODES THIS IS WORKED OUT FROM THE FAMILY REGISTER AS OF `asOf`, not from the
+   *  stored columns. It used to be priced from `physicalChildren` (or the stored grid), which is a figure
+   *  `syncChildReliefFromFamily` last wrote on an unrelated family edit — nothing fires on the passage of
+   *  time, so a child who turned 18 and is not in further education stayed in it indefinitely. */
   qualifyingChildren: number;
-  /** The child deduction in ringgit, from the same expression the kernel uses for this employee. */
+  /** The child deduction in ringgit, for `qualifyingChildren`, through the kernel's own expression. */
   reliefRM: number;
+  /** r351 — WHAT PAYROLL DEDUCTS RIGHT NOW, from the STORED columns, in the kernel's own expression
+   *  (`pricesChildReliefFromGrid` over `child_relief_table`, else `num_children × perChild`).
+   *
+   *  It exists so the screen can show the register-derived figure WITHOUT printing a number this repo's
+   *  own kernel contradicts (CLAUDE.md §8, and the r340 blocking defect this card was rebuilt to stop).
+   *  When it differs from `reliefRM` the card says so in amber and names both, because the difference is
+   *  real money on the next payslip and saying nothing is the worst of the options. Saving the card writes
+   *  the derived head count AND the derived grid back, which is what closes it.
+   *
+   *  ⚠️ NOTHING STILL FIRES ON THE PASSAGE OF TIME FOR THE PAYSLIP ITSELF. The three kernel consumers
+   *  (core/payroll.ts, core/payroll-view.ts, localization/my/multicycle-worksheet.ts) read the stored
+   *  columns, exactly as they did before r351 — money out of the tail of a display round is the split
+   *  r343/r344 already made once for this same item. This field is the DISCLOSURE of that gap, not its fix. */
+  storedQualifyingChildren: number;
+  storedReliefRM: number;
   /** The flat per-child figure from the resolved ruleset (RM2,000 in 2026) — the divisor above. */
   perChild: number;
   /** What the resolved ruleset prices each s.48 category at, in canonical order: the ringgit AND the
@@ -1171,13 +1242,20 @@ export type QualifyingChildRelief = {
    *
    *  IT IS NOT NECESSARILY `physicalChildren`, and the gap is the r340 blocking defect's whole cause:
    *  `syncChildReliefFromFamily` fires only on a dependent add / edit / archive, so a child simply ageing
-   *  past 18 moves this and leaves the stored head count — the figure the payslip uses — where it was. The
-   *  screen shows BOTH and says which one the tax calculation counts in.
+   *  past 18 moves this and leaves the stored head count where it was. The screen shows BOTH.
+   *
+   *  r351 — AND SINCE r351 THIS, NOT `physicalChildren`, IS WHAT 'auto' MODE'S FIGURE IS PRICED FROM. The
+   *  earlier rounds showed the stored figure because it was the one the payslip multiplied and CLAUDE.md §8
+   *  forbids printing a figure this repo's own kernel contradicts. That posture is kept — `storedReliefRM`
+   *  carries the payslip's figure and the card names it in amber whenever the two differ — but the number
+   *  under the caption "Qualifying children (PCB)" is now the one the Family register actually supports,
+   *  because a figure that describes a register has to be taken from the register.
    *
    *  ONE INSTANT. This is `breakdown.length` in 'auto' mode by construction (both come from the same
    *  `eligible` list, filtered once at `asOf`), which is why the card's total and its own rows can no
    *  longer differ by a row on a child's 18th birthday — they used to be taken at two different instants,
-   *  this one at KL midnight and the card's at real UTC now. */
+   *  this one at KL midnight and the card's at real UTC now. Since r351 the TOTAL is that list's price too,
+   *  so the footer of the working can no longer disagree with the rows above it either. */
   eligibleChildren: number;
   /** The ruleset version that priced it, so the reader knows which schedule they are looking at. */
   statutoryVersion: string | null;
@@ -1187,6 +1265,21 @@ export type QualifyingChildRelief = {
   /** Eligible children on the Family register carrying NO relief category. They would contribute nothing
    *  to a category-priced figure, so a total computed without them would be understated. */
   uncategorisedChildren: number;
+  /** r351 — the NAMES of child records whose age cannot be confirmed, because they carry no usable date of
+   *  birth, and which nothing else makes eligible (no explicit per-child decision, not recorded as a
+   *  student). `isChildReliefEligible` does not count them — it cannot confirm the age the rule turns on —
+   *  and until now nothing said so: the child simply contributed zero to a figure that claimed to describe
+   *  the register. NAMES, not a count: "1 child was not counted" sends an administrator through the whole
+   *  register to find which one. Ordered by the query's own ORDER BY (dob, then name), like the breakdown. */
+  undatedChildren: string[];
+  /** r351 — the s.48 grid the Family register SUPPORTS as of `asOf`, or null when it cannot price (a child
+   *  with no category, or no eligible children at all — see `derivedChildReliefGrid`). It is what 'auto'
+   *  mode's figure above is priced from, and what the card posts back so a save brings the stored record
+   *  into step instead of re-posting the stale grid verbatim out of its own hidden inputs. */
+  derivedGrid: ChildReliefGrid | null;
+  /** The Kuala Lumpur calendar day every age, eligibility test and price above was taken against — echoed
+   *  back so a screen can SAY which date it is describing rather than implying "now". */
+  asOf: string;
   /** r347 — true when the figure above was priced from the s.48 grid, false when it is the head count.
    *  The card used to infer this from `mode`, which stopped being sufficient when r344 made an 'auto'
    *  employee's relief depend on whether the grid is DERIVED as well as on the mode. */
@@ -1219,13 +1312,14 @@ export type QualifyingChildRelief = {
  *   auto_table — one line per grid cell that holds anything, priced by `childByCategory`. There are no
  *                individual child records behind the grid, so these are CATEGORY lines; fabricating child
  *                rows to fill a table would be inventing people.
- *   auto       — one line per ELIGIBLE child on the Family register, each contributing ONE unit. That is
- *                not an oversight: in 'auto' mode the kernel's child leg is `num_children × perChild`, so
- *                one eligible child is worth exactly one unit whatever category is recorded against it.
- *                The category and share are still shown on the line, as information, and the screen says
- *                out loud that they price the relief only in 'auto (from table)' mode. Printing "4 units"
- *                against a tertiary-study child in a mode where the payslip gives it 1 would be printing a
- *                figure this repo's own kernel contradicts (CLAUDE.md §8).
+ *   auto       — one line per ELIGIBLE child on the Family register, AS OF `asOf`, priced the way that
+ *                child is actually priced. ⚠️ THIS PARAGRAPH USED TO SAY "each contributing ONE unit …
+ *                because in 'auto' mode the kernel's child leg is `num_children × perChild`", and it
+ *                stopped being true at a5f21891 (r344), which taught the payslip to price a DERIVED grid
+ *                on 'auto'. A child now carries its category's own weight whenever the register can be
+ *                priced by category at all (every eligible child classified — `derivedChildReliefGrid`),
+ *                and one unit each when it cannot. Both the rows and the total come from this one list at
+ *                this one date, so the working sums to its own footer.
  *   manual     — empty. Nothing was worked out.
  *
  * ── ROUNDING, AND WHAT IS NOT KNOWN ───────────────────────────────────────────────────────────────────
@@ -1307,6 +1401,16 @@ export async function qualifyingChildReliefFor(
     const children = family.filter((d) => d.relationship === 'child' && !d.isDeceased);
     const eligible = children.filter((d) => isChildReliefEligible(d, asOfDate));
     const uncategorisedChildren = eligible.filter((d) => !d.childReliefCategory).length;
+    // r351 — THE CHILDREN THAT WERE BEING COUNTED ZERO WITHOUT A WORD. `isChildReliefEligible` returns
+    // false for a child whose date of birth is missing or unparseable: it cannot confirm the age the rule
+    // turns on, and inventing an age would be inventing a relief. That is the right answer and it was
+    // INVISIBLE — the child sat on the Family tab with an empty Age column and contributed nothing to a
+    // figure captioned as describing the register. Named here so the screen can name them.
+    // A child with an explicit `childTaxRelief` decision, or recorded as a full-time student, IS eligible
+    // without a date of birth, so it is not listed: nothing eligible is being reported as dropped.
+    const undatedChildren = children
+      .filter((d) => childAgeYears(d.dateOfBirth, asOfDate) == null && !isChildReliefEligible(d, asOfDate))
+      .map((d) => d.fullName);
 
     // The pack's own prices, and the ONLY place ringgit and qualifying children are converted into each
     // other. The screen receives this list verbatim: it has to price a grid the admin is still typing into,
@@ -1321,6 +1425,32 @@ export async function qualifyingChildReliefFor(
       childReliefFor,
       asOf: asOfDate,
     });
+
+    // ══ r351 — WHICH HEAD COUNT AND WHICH GRID PRICE THE FIGURE, AND WHY IT IS NO LONGER THE COLUMN ══
+    //
+    // THE DEFECT THIS REVERSES. Both branches below used to read STORED columns: the head-count branch
+    // multiplied `num_children`, the grid branch priced `child_relief_table`. Both are written by
+    // `syncChildReliefFromFamily`, which fires on a family add / materialise / update / archive and on a
+    // manual backfill script — AND ON NOTHING ELSE. Nothing fires on the passage of time. So a child who
+    // turned 18 and is not in further education stayed in the tax figure indefinitely, the Family tab (which
+    // recomputes eligibility on every render) and this card disagreed about the same child, and the card
+    // was the one asserting a figure while the register beside it said otherwise.
+    //
+    // In the AUTO modes the figure now follows the register as of `asOf` — the same date the Family tab's
+    // "Counts toward tax relief" column and the ages beside it are taken at, so the two surfaces answer one
+    // question once. 'auto' derives BOTH halves (the count of eligible children, and the grid through the
+    // shared `derivedChildReliefGrid` completeness gate); 'auto_table' keeps the KEYED grid, because that
+    // mode exists precisely for the case where the employee's DECLARED relief differs from what the Family
+    // tab holds and there is no register behind it to re-derive from. 'manual' keeps the typed head count.
+    //
+    // `num_children` IS NOT REPURPOSED (the r343 decision, and the warning block on
+    // `eligibleChildReliefCount`): it remains the stored head count Form E, CP8D and the EA statement read,
+    // it is still what this returns as `physicalChildren`, and `storedReliefRM` below still reports the
+    // money the kernel makes of it. It is a projection now, not the source.
+    const derivedGrid = derivedChildReliefGrid(family, asOfDate);
+    const pricingTable = mode === 'auto' ? derivedGrid : statutory.childReliefTable;
+    const pricingHeadCount = mode === 'auto' ? eligible.length : physicalChildren;
+    const pricedFromGrid = pricesChildReliefFromGrid({ childReliefMode: mode, childReliefTable: pricingTable });
 
     // ── THE FIGURE. ONE CALL, TWO FIELDS, AND IT IS THE KERNEL'S OWN ─────────────────────────────────
     //
@@ -1338,7 +1468,19 @@ export async function qualifyingChildReliefFor(
     //
     // An empty / unkeyed grid still claims NOTHING — the count follows the money to zero rather than
     // optimistically reporting the head count.
-    const figure = pricesChildReliefFromGrid({ childReliefMode: mode, childReliefTable: statutory.childReliefTable })
+    const figure = pricedFromGrid
+      ? childReliefFor({ from: 'table', table: pricingTable, prices: categories })
+      : childReliefFor({ from: 'headCount', children: pricingHeadCount, perChild });
+
+    // ── WHAT PAYROLL DEDUCTS TODAY, FROM THE STORED COLUMNS, IN THE KERNEL'S OWN EXPRESSION ───────────
+    // Not a second arithmetic: the SAME predicate and the SAME pack call, over `child_relief_table` and
+    // `num_children` instead of the register. core/payroll.ts ~5886 and core/payroll-view.ts ~1493 are this
+    // expression, so when this differs from `figure` the difference is the gap between the screen and the
+    // next payslip — and a screen that shows a figure without naming that gap is the r340 defect again.
+    const stored = pricesChildReliefFromGrid({
+      childReliefMode: mode,
+      childReliefTable: statutory.childReliefTable,
+    })
       ? childReliefFor({ from: 'table', table: statutory.childReliefTable, prices: categories })
       : childReliefFor({ from: 'headCount', children: physicalChildren, perChild });
 
@@ -1392,10 +1534,15 @@ export async function qualifyingChildReliefFor(
           }))
         : mode === 'auto'
           ? // 'auto' HAS the actual children, so its lines are children. Each is priced by its own
-            // category when the grid is live, and at one unit when it is not — which is exactly what the
-            // payslip does for the same employee, because both now read `pricesChildReliefFromGrid`.
+            // category when the derived grid is live, and at one unit when it is not.
+            //
+            // ⚠️ r351 — THE LINES AND THE TOTAL ABOVE THEM ARE NOW THE SAME ARITHMETIC OVER THE SAME LIST,
+            // so they cannot disagree. They could before: the total was priced from `num_children` (or the
+            // stored grid) while these lines were built from `eligible`, so a child who aged out left ONE
+            // row worth 1 under a printed total of 2 — a table whose own working contradicted its footer.
+            // `pricedFromGrid` is loop-invariant here for the same reason: one decision, one list, one date.
             eligible.map((d) =>
-              pricesChildReliefFromGrid({ childReliefMode: mode, childReliefTable: statutory.childReliefTable })
+              pricedFromGrid
                 ? oneChildRow(d)
                 : {
                     kind: 'child' as const,
@@ -1422,6 +1569,10 @@ export async function qualifyingChildReliefFor(
       categories,
       qualifyingChildren: figure.units,
       reliefRM: figure.amountRM,
+      // r351 — the money the STORED columns come to, so the screen can print the derived figure and name
+      // the gap in the same breath rather than choosing one and hiding the other.
+      storedQualifyingChildren: stored.units,
+      storedReliefRM: stored.amountRM,
       /**
        * r347 — is this figure priced from the s.48 grid, or from the plain head count?
        *
@@ -1429,15 +1580,18 @@ export async function qualifyingChildReliefFor(
        * relief depend on whether the grid is DERIVED as well as on the mode. Returning it means the
        * screen and the kernel cannot disagree about which rule produced the number they are both
        * describing — and the notes under the table say the right thing without re-deriving anything.
+       *
+       * r351 — it is the flag for `pricingTable`, the table the figure was actually priced from, which in
+       * 'auto' is the grid DERIVED from the register and no longer the stored column.
        */
-      pricedFromGrid: pricesChildReliefFromGrid({
-        childReliefMode: mode,
-        childReliefTable: statutory.childReliefTable,
-      }),
+      pricedFromGrid,
       perChild,
       statutoryVersion: rules.version ?? null,
       breakdown,
       uncategorisedChildren,
+      undatedChildren,
+      derivedGrid,
+      asOf: p.asOf,
       ruleUnits: rule.units,
       ruleReliefRM: rule.amountRM,
     };

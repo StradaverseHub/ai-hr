@@ -104,10 +104,25 @@ describe('Personnel — consolidated Family & Dependents Information (ea36b7fa)'
     }
     // The tax-relief column reflects the number actually reaching payroll: the SAME per-row predicate
     // eligibleChildReliefCount counts (core/dependents.ts isChildReliefEligible).
-    expect(PAGE.includes('isChildReliefEligible(d)')).toBe(true);
+    //
+    // ⚠️ REWORDED IN r351 — BOTH CALLS NOW CARRY AN EXPLICIT `asOf`, AND THAT IS THE POINT OF THE CHANGE.
+    // They used to be `isChildReliefEligible(d)` and `childAgeYears(d.dateOfBirth)`, taking the `new Date()`
+    // parameter default — real UTC now. The card a few hundred lines above resolves `todayInKualaLumpur()`
+    // for the SAME predicate, so between 00:00 and 08:00 Kuala Lumpur the Family tab and the Bank &
+    // Statutory tab were answering about two different calendar dates, and on a child's 18th birthday they
+    // contradicted each other for eight hours. `familyAsOf` is the page's own KL date, built the way
+    // `childAgeYears` parses a DOB (`T00:00:00Z`) so both endpoints share one convention.
+    // The DECISION this case pins is unchanged and is asserted more tightly than before: the column is the
+    // kernel's own per-row predicate, not a private re-derivation, and the age is server-derived.
+    expect(PAGE.includes('isChildReliefEligible(d, familyAsOf)')).toBe(true);
     // Age is SERVER-derived via the ONE shared rule (no client Date.now() derivation for the table).
-    expect(PAGE.includes('childAgeYears(d.dateOfBirth)')).toBe(true);
+    expect(PAGE.includes('childAgeYears(d.dateOfBirth, familyAsOf)')).toBe(true);
     expect(PAGE.includes('const dobAgeYears')).toBe(false);
+    // …and neither may fall back to the implicit instant again. A bare call is the eight-hour defect.
+    expect(PAGE.includes('isChildReliefEligible(d)'), 'no bare call — it would read real UTC now').toBe(false);
+    expect(PAGE.includes('childAgeYears(d.dateOfBirth)'), 'no bare call — same instant defect').toBe(false);
+    // The one date the whole tab is taken at, derived from the page's own todayInKualaLumpur().
+    expect(PAGE.includes('const familyAsOf = new Date(`${today}T00:00:00Z`)')).toBe(true);
     // Wide table scrolls inside its own container; empty state reuses the shared key.
     expect(PAGE.includes('overflow-x-auto')).toBe(true);
     expect(PAGE.includes("t('family.none')")).toBe(true);
