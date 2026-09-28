@@ -441,8 +441,12 @@ export async function blockFeedback(
   if (!reason) throw new FeedbackError('Please say what this item is waiting on.');
   await withTenant(ctx, async (tx) => {
     const fb = await loadDecidable(tx, p.feedbackId);
-    if (fb.status !== 'approved') {
-      throw new FeedbackError(`Only an approved item can be blocked (it is ${fb.status}).`);
+    // `building` too, since r355: the question that stops a build is usually the one you find WHILE
+    // building it. The rule was `approved` only, and the only ways out of a build you had to abandon were
+    // to lie with build-complete or to leave the item reading `building` with no question on it. Releasing
+    // it returns it to `approved` (see unblockFeedback), so a parked build restarts from the answer.
+    if (fb.status !== 'approved' && fb.status !== 'building') {
+      throw new FeedbackError(`Only an approved or building item can be blocked (it is ${fb.status}).`);
     }
     // Self-blocking would strand the item: nothing could ever resolve it, since resolving it is what
     // unblocks it. Cheap to check here, and the alternative is an item no status change can rescue.

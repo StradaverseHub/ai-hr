@@ -38,22 +38,62 @@ const dq = (s: string): string => {
 };
 
 /**
- * Wrap SQL that touches a table which may not exist on the server yet.
+ * Wrap a plpgsql body in a DO block, picking a tag the body does not contain (as dq does for its own).
  *
- * The improvement loop runs the repo's CURRENT code against the DEPLOYED database, so any statement
- * naming a table introduced by an undeployed migration fails at PARSE time and aborts the whole
- * transaction — taking the block/unblock it was riding along with it. EXECUTE defers parsing to run time,
- * and to_regclass takes the table name as text, so neither is parsed until the guard has already said the
- * table is there. `body` must therefore be a single-quoted SQL string plus its USING arguments.
+ * Block and unblock need ROW_COUNT: their UPDATE is status-guarded, so "did anything move?" is the only
+ * honest basis for writing the episode and the event, and for what the CLI tells the operator. A DO block
+ * is also a single statement, which is where the atomicity the old BEGIN/COMMIT provided now comes from.
  *
- * The dollar-quote tag is chosen the same way dq() chooses its own — a payload containing the tag would
- * otherwise end the block early.
+ * WHY THE BODIES BELOW REACH feedback_block THROUGH `to_regclass` + `EXECUTE`, AND MUST KEEP DOING SO:
+ * the improvement loop runs the repo's CURRENT code against the DEPLOYED database, so a statement naming
+ * a table introduced by an undeployed migration fails at PARSE time and takes the block or unblock it was
+ * riding along with it. EXECUTE defers parsing to run time and to_regclass takes the name as text, so
+ * neither is parsed until the guard has already said the table is there. This replaced a guardedOn()
+ * helper that wrapped each such statement in its own DO block; the hazard it existed for is unchanged.
  */
-const guardedOn = (table: string, body: string): string => {
-  let tag = 'blk';
+const doBlock = (body: string): string => {
+  let tag = 'mv';
   while (body.includes(`$${tag}$`)) tag += 'x';
-  return `DO $${tag}$ BEGIN IF to_regclass('public.${table}') IS NOT NULL THEN EXECUTE ${body}; END IF; END $${tag}$;`;
+  return `DO $${tag}$\n${body}\n$${tag}$;`;
 };
+
+/**
+ * The outcome protocol shared by the two status mutators that report back.
+ *
+ * `moved` is ROW_COUNT from the guarded UPDATE; `status` is re-read after it. The final SELECT renders one
+ * line for the caller: the new status when the row moved, `unchanged:<status>` when the guard held, and
+ * nothing at all for an id that is not on this board. It is a temp table rather than a NOTICE because
+ * psql writes notices to stderr and only stdout comes back over ssh.
+ */
+const OUTCOME_SETUP = [
+  'DROP TABLE IF EXISTS pg_temp._improve_outcome;',
+  'CREATE TEMP TABLE _improve_outcome (moved boolean NOT NULL, status text);',
+].join('\n');
+const outcomeRecord = (id: string) =>
+  `  INSERT INTO _improve_outcome (moved, status) SELECT n = 1, status FROM feedback_request WHERE id = '${id}';`;
+const OUTCOME_READ = [
+  "SELECT CASE WHEN moved THEN status ELSE 'unchanged:' || coalesce(status, '?') END FROM _improve_outcome;",
+  'DROP TABLE IF EXISTS pg_temp._improve_outcome;',
+].join('\n');
+
+/**
+ * Read the line the script printed back, and refuse to call a no-op a success.
+ *
+ * Every mutator here guards its UPDATE on the status it expects, so an item someone else already moved is
+ * silently left alone — that part is right. What was wrong is that the CLI then printed its cheerful
+ * "blocked <id>" anyway and the operator moved on believing the reporter had been asked something. On
+ * 2026-09-29 a park of 70294f7a matched no row (it was `building`), printed success, and the question was
+ * never asked. Exported for a unit test: this is the half of that fix that has no database in it.
+ */
+export function assertMoved(id: string, want: string, out: string, why: string): void {
+  const got = out.trim().split('\n').filter(Boolean).pop() ?? '';
+  if (got === want) return;
+  const state = got.startsWith('unchanged:') ? `still ${got.slice('unchanged:'.length)}` : got || 'not on this board';
+  throw new Error(
+    `${id} was NOT moved to ${want} — it is ${state}. ${why}. ` +
+      'Nothing was recorded: no status change, no episode, no event.',
+  );
+}
 
 /** Run a remote shell command (psql sources the server's own .env.production). `stdin` feeds `psql -f -`. */
 function remote(cmd: string, stdin?: string): string {
@@ -342,14 +382,16 @@ export function pushPlan(p: {
 }
 
 /**
- * Park an approved item on an unanswered question (status → blocked + a feedback.blocked event).
+ * Park an approved or in-build item on an unanswered question (status → blocked + a feedback.blocked event).
  *
  * This exists so parking an item is a COMMAND rather than hand-written SQL over SSH. The board learned
  * about blocked items before this did, and the gap was filled by ad-hoc UPDATEs — which append no event,
  * so the reason for the park lived only in whichever session ran them.
  *
- * The `AND status = 'approved'` guard is the same one every mutator here carries: a no-op beats
- * clobbering an item someone already moved on.
+ * `building` IS parkable (r355). The guard was `approved` only, which reads tidy and is wrong: the question
+ * that stops a build is usually the one you find WHILE building, and the only ways out were to lie with
+ * build-complete or to leave the item reading `building` with no question attached to it. Unblock returns
+ * the item to `approved`, so a parked build restarts from the answer.
  */
 export function markBlocked(p: {
   id: string;
@@ -358,7 +400,12 @@ export function markBlocked(p: {
   reason: string;
   blockedById?: string | null;
 }): void {
-  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, markBlockedSql(p));
+  assertMoved(
+    p.id,
+    'blocked',
+    remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -qtA -f -`, markBlockedSql(p)),
+    'Only an approved or building item can be parked on a question',
+  );
 }
 
 /**
@@ -383,27 +430,42 @@ export function markBlockedSql(p: {
   if (!p.reason?.trim()) throw new Error('A reason is required — say what the item is waiting on.');
   const blocker = p.blockedById ? `'${p.blockedById}'` : 'NULL';
   const sql = [
-    'BEGIN;',
-    `UPDATE feedback_request SET status = 'blocked', blocked_reason = ${dq(p.reason)}, blocked_by_id = ${blocker}, updated_at = now() WHERE id = '${p.id}' AND status = 'approved';`,
-    // Open the block episode (0323) in the same transaction, so the QUESTION survives the unblock that
-    // will later clear blocked_reason — and so the reporter's in-app answer has a row to close. The
-    // EXISTS re-checks the guard above: if the item was not `approved` nothing was parked, and an episode
-    // for a park that did not happen would be a fabricated question.
-    guardedOn(
-      'feedback_block',
-      `'INSERT INTO feedback_block (tenant_id, feedback_request_id, question, blocked_by_id) ` +
-        `SELECT $1, $2, $3, $4 WHERE EXISTS (SELECT 1 FROM feedback_request WHERE id = $2 AND status = ''blocked'') ` +
-        `ON CONFLICT DO NOTHING' USING '${p.tenantId}'::uuid, '${p.id}'::uuid, ${dq(p.reason.trim())}::text, ${blocker}::uuid`,
+    OUTCOME_SETUP,
+    doBlock(
+      [
+        'DECLARE n int;',
+        'BEGIN',
+        // `approved` OR `building` — see markBlocked. ROW_COUNT, not a re-read of the status, is what the
+        // episode and the event hang off: an item that was ALREADY blocked reads the same afterwards, and
+        // an episode or event for a park that did not happen is a fabricated question in the history.
+        `  UPDATE feedback_request SET status = 'blocked', blocked_reason = ${dq(p.reason)}, blocked_by_id = ${blocker}, updated_at = now() WHERE id = '${p.id}' AND status IN ('approved', 'building');`,
+        '  GET DIAGNOSTICS n = ROW_COUNT;',
+        '  IF n = 1 THEN',
+        // The episode (0323) carries the QUESTION, which has to be copied here because blocked_reason is
+        // cleared on the way out — an answer recorded later would otherwise have nothing to attach to.
+        // EXECUTE + to_regclass because this code runs against a database that may predate the table — see doBlock.
+        "    IF to_regclass('public.feedback_block') IS NOT NULL THEN",
+        `      EXECUTE 'INSERT INTO feedback_block (tenant_id, feedback_request_id, question, blocked_by_id) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING' USING '${p.tenantId}'::uuid, '${p.id}'::uuid, ${dq(p.reason.trim())}::text, ${blocker}::uuid;`,
+        '    END IF;',
+        `    INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.blocked', 'agent', '${p.reporterEmploymentId}', ${dq(JSON.stringify({ reason: p.reason, blockedById: p.blockedById ?? null, via: 'improvement-loop' }))}::jsonb);`,
+        '  END IF;',
+        outcomeRecord(p.id),
+        'END',
+      ].join('\n'),
     ),
-    `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.blocked', 'agent', '${p.reporterEmploymentId}', ${dq(JSON.stringify({ reason: p.reason, blockedById: p.blockedById ?? null, via: 'improvement-loop' }))}::jsonb);`,
-    'COMMIT;',
+    OUTCOME_READ,
   ].join('\n');
   return sql;
 }
 
 /** The question was answered — return the item to the build queue (status → approved). */
 export function markUnblocked(p: { id: string; tenantId: string; reporterEmploymentId: string; note?: string | null }): void {
-  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, markUnblockedSql(p));
+  assertMoved(
+    p.id,
+    'approved',
+    remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -qtA -f -`, markUnblockedSql(p)),
+    'Only a blocked item can be released',
+  );
 }
 
 /** The SQL markUnblocked sends — separated for the same reason as markBlockedSql. */
@@ -417,19 +479,30 @@ export function markUnblockedSql(p: {
   assertUuid(p.tenantId, 'tenant id');
   assertUuid(p.reporterEmploymentId, 'reporter employment id');
   const sql = [
-    'BEGIN;',
-    `UPDATE feedback_request SET status = 'approved', blocked_reason = NULL, blocked_by_id = NULL, updated_at = now() WHERE id = '${p.id}' AND status = 'blocked';`,
-    // End the episode (0323). The note, where there is one, IS the answer — this is the operator-side twin
-    // of the reporter answering in the app. nullif(btrim(...)) keeps a whitespace-only note out: an
-    // episode released with nothing said must record NULL, not a blank pretending to be an answer.
-    guardedOn(
-      'feedback_block',
-      `'UPDATE feedback_block SET answer = nullif(btrim($1), ''''), resolved_at = now() ` +
-        `WHERE feedback_request_id = $2 AND resolved_at IS NULL' ` +
-        `USING ${p.note ? dq(p.note) : 'NULL'}::text, '${p.id}'::uuid`,
+    OUTCOME_SETUP,
+    doBlock(
+      [
+        'DECLARE n int;',
+        'BEGIN',
+        `  UPDATE feedback_request SET status = 'approved', blocked_reason = NULL, blocked_by_id = NULL, updated_at = now() WHERE id = '${p.id}' AND status = 'blocked';`,
+        // ROW_COUNT matters even more on the way out than on the way in: an item that is already
+        // `approved` looks identical AFTER a release that never happened, so a status re-read here would
+        // close somebody else's episode and write an unblocked event for nothing.
+        '  GET DIAGNOSTICS n = ROW_COUNT;',
+        '  IF n = 1 THEN',
+        // End the episode (0323). The note, where there is one, IS the answer — the operator-side twin of
+        // the reporter answering in the app. nullif(btrim(...)) keeps a whitespace-only note out: an
+        // episode released with nothing said must record NULL, not a blank pretending to be an answer.
+        "    IF to_regclass('public.feedback_block') IS NOT NULL THEN",
+        `      EXECUTE 'UPDATE feedback_block SET answer = nullif(btrim($1), ''''), resolved_at = now() WHERE feedback_request_id = $2 AND resolved_at IS NULL' USING ${p.note ? dq(p.note) : 'NULL'}::text, '${p.id}'::uuid;`,
+        '    END IF;',
+        `    INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.unblocked', 'agent', '${p.reporterEmploymentId}', ${dq(JSON.stringify({ note: p.note ?? null, via: 'improvement-loop' }))}::jsonb);`,
+        '  END IF;',
+        outcomeRecord(p.id),
+        'END',
+      ].join('\n'),
     ),
-    `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.unblocked', 'agent', '${p.reporterEmploymentId}', ${dq(JSON.stringify({ note: p.note ?? null, via: 'improvement-loop' }))}::jsonb);`,
-    'COMMIT;',
+    OUTCOME_READ,
   ].join('\n');
   return sql;
 }

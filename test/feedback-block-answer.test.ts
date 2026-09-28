@@ -35,7 +35,7 @@ import {
   submitFeedback,
   unblockFeedback,
 } from '../core/feedback';
-import { blockTrailSql, feedbackSelectSql, markBlockedSql, markUnblockedSql } from '../scripts/improve/remote';
+import { assertMoved, blockTrailSql, feedbackSelectSql, markBlockedSql, markUnblockedSql } from '../scripts/improve/remote';
 import { adminCtx, closeAll, createAppUser, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let base: Base;
@@ -111,10 +111,10 @@ async function episodes(feedbackId: string) {
  * socket. `psql -f -` is one connection start to finish, so reserving one is what actually reproduces it —
  * splitting the script or letting the driver own the transaction would be testing something else.
  */
-async function runScript(text: string): Promise<void> {
+async function runScript(text: string): Promise<unknown> {
   const c = await owner.client.reserve();
   try {
-    await c.unsafe(text).simple();
+    return await c.unsafe(text).simple();
   } finally {
     c.release();
   }
@@ -421,15 +421,62 @@ describe('answering a blocked item (0323)', () => {
       expect(ep.answer).toBeNull();
     });
 
-    it('improve:block opens NOTHING when the status guard did not park the item', async () => {
-      // markBlocked's UPDATE carries `AND status = 'approved'`; if it matches nothing, no park happened,
-      // and an episode written anyway would be a question that was never asked.
-      const { id, employmentId } = await approvedItem();
+    /**
+     * REVERSED IN r355. This case used to read "improve:block opens NOTHING when the status guard did not
+     * park the item", and it proved that with a `building` item — because markBlocked's UPDATE carried
+     * `AND status = 'approved'`. That is the bug, not the rule: on 2026-09-29 a park of item 70294f7a,
+     * abandoned mid-build for a question only building it revealed, matched no row, printed success, and
+     * the reporter was never asked. `building` is parkable now. The no-op half of the old claim still
+     * holds and is pinned below with a status that genuinely cannot be parked.
+     */
+    it('improve:block parks an item abandoned mid-build, with the question and the event', async () => {
+      const { id, rctx, employmentId } = await approvedItem();
       await owner.db.execute(sql`UPDATE feedback_request SET status = 'building' WHERE id = ${id}::uuid`);
+
+      await runScript(
+        markBlockedSql({ id, tenantId: base.tenantId, reporterEmploymentId: employmentId, reason: QUESTION }),
+      );
+
+      expect((await getFeedback(rctx, id))!.status).toBe('blocked');
+      const [opened] = await episodes(id);
+      expect(opened.question).toBe(QUESTION);
+      expect(opened.resolvedAt).toBeNull();
+      expect(await latestEventPayload(base.tenantId, id, 'feedback.blocked')).toMatchObject({ reason: QUESTION });
+    });
+
+    it('improve:block records NOTHING AT ALL when the status cannot be parked', async () => {
+      // A park that did not happen must leave no question, no event and no status change: all three are
+      // history the reporter is shown, and a fabricated one is worse than a missing one. `done` is the
+      // real case — an item already built, where the operator meant a different id.
+      const { id, rctx, employmentId } = await approvedItem();
+      await owner.db.execute(sql`UPDATE feedback_request SET status = 'done' WHERE id = ${id}::uuid`);
       await runScript(
         markBlockedSql({ id, tenantId: base.tenantId, reporterEmploymentId: employmentId, reason: 'never asked' }),
       );
       expect(await episodes(id)).toHaveLength(0);
+      expect(await latestEventPayload(base.tenantId, id, 'feedback.blocked')).toBeNull();
+      expect((await getFeedback(rctx, id))!.status).toBe('done');
+    });
+
+    it('improve:unblock records NOTHING when the item was never parked', async () => {
+      // The asymmetric one, and the reason the script reads ROW_COUNT instead of re-reading the status: an
+      // already-`approved` item looks EXACTLY the same after a release that never happened. A status
+      // re-read would have closed an unrelated open episode and written an unblocked event for nothing.
+      const { id, rctx, employmentId } = await approvedItem();
+      await runScript(markUnblockedSql({ id, tenantId: base.tenantId, reporterEmploymentId: employmentId, note: ANSWER }));
+      expect(await latestEventPayload(base.tenantId, id, 'feedback.unblocked')).toBeNull();
+      expect((await getFeedback(rctx, id))!.status).toBe('approved');
+    });
+
+    it('the script reports back whether anything moved, so the CLI cannot call a no-op a success', () => {
+      // assertMoved is what turns that report into an error. No database in it: the outcome line is the
+      // last non-empty line psql printed.
+      expect(() => assertMoved('id-1', 'blocked', 'blocked\n', 'why')).not.toThrow();
+      expect(() => assertMoved('id-1', 'blocked', 'unchanged:building\n', 'only approved or building')).toThrow(
+        /was NOT moved to blocked — it is still building\. only approved or building/,
+      );
+      expect(() => assertMoved('id-1', 'approved', '', 'only a blocked item')).toThrow(/not on this board/);
+      expect(() => assertMoved('id-1', 'blocked', 'unchanged:?\n', 'why')).toThrow(/Nothing was recorded/);
     });
 
     it('survives a question containing the dollar-quote tags the script itself uses', async () => {
