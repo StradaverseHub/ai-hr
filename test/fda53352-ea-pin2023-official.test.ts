@@ -27,7 +27,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { eaFormWords, EA_FORM_WORDS } from '../lib/ea-pdf';
+import { eaFormWords, EA_FORM, EA_FORM_WORDS } from '../lib/ea-pdf';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const src = (p: string) => readFileSync(new URL(p, `file://${root}`), 'utf8');
@@ -254,5 +254,57 @@ describe('fda53352 · (f) the English heading wraps instead of running through t
     expect(src('lib/ea-pdf.ts'), 'the renderer still sizes to the edition').toContain(
       'const lines = W.privateStatement2 ?',
     );
+  });
+});
+
+// ─── (g) r353 — Section A's two coordinates, and the black blocks that nearly touched ───────────────
+
+/**
+ * r353 (point 2) — SECTION A WAS TWO BARE LITERALS WITH NO CONSTANT AND NO TEST, AND THE MEASUREMENT
+ * CONTRADICTED THE COMPLAINT.
+ *
+ * The reporter asked for "breathing room between the heading and the first field". Measured off the
+ * agency's own file with the script this round finally COMMITS
+ * (`node --import tsx scripts/measure-ea-official-pdf.ts`; r346's and r349's were never committed, so every
+ * round since had to take `EA_FORM` on trust):
+ *
+ *   · the banner strip is tt 78.4 → 92.6;
+ *   · Section A's heading row and its black letter square begin at tt 96.6 — 4.0 pt BELOW the banner;
+ *   · the heading caption's baseline is 105.9 and item 1's is 119.7, a pitch of 13.8 pt.
+ *
+ * Ours was 14.5 pt between heading and first field — ALREADY WIDER than the agency's, so there was no
+ * breathing room to add there. What was too tight is the gap the plan noticed in passing: our Section A
+ * square started 0.6 pt under the banner where the agency leaves 4.0, and two solid black blocks 0.6 pt
+ * apart read as one merged block at any print resolution.
+ *
+ * So the banner rose 3.4 pt into clearance we have and the agency does not, and the two literals became
+ * arithmetic off the banner and the agency's two measured gaps. This pins the measurements and the
+ * derivation — not the outputs, which are what the derivation is for.
+ */
+describe('fda53352 · (g) Section A is spaced off the agency’s page, not off a literal', () => {
+  it('the agency’s two measured gaps are named constants, and the measuring script is committed', () => {
+    const s = src('lib/ea-pdf.ts');
+    expect(s, 'the banner→section gap measured off the agency’s PDF').toContain('sectionGapUnderBanner: 4.0');
+    expect(s, 'the agency’s heading→first-field pitch in Section A').toContain('sectionAFieldPitch: 13.8');
+    // The two bare literals are gone from the drawing code…
+    expect(s, 'Section A’s heading is a literal again').not.toContain('sectionHeading(t.sectionAEmployeeParticulars, 99.5)');
+    expect(s, 'the banner caption is pinned to an absolute baseline again').not.toContain('putC(W.banner, CX, 86.5,');
+    // …and replaced by the derivation, so moving the banner moves Section A with it.
+    expect(s).toContain('A.bannerT[1] + A.sectionGapUnderBanner + SQUARE_ASCENT');
+    expect(s).toContain('aHeading + A.sectionAFieldPitch');
+    expect(existsSync(new URL('scripts/measure-ea-official-pdf.ts', `file://${root}`)), 'the measuring script was not committed — again').toBe(true);
+  });
+
+  it('the derivation reproduces the agency’s clearance under the banner, with room left above it', () => {
+    // The square `sectionHeading` draws hangs 8.2 pt above the caption's baseline, so the agency's 4.0 pt
+    // clearance is between the banner's bottom and that square's top. Asserted as arithmetic on EA_FORM so
+    // it follows the constants rather than repeating their values.
+    const squareTop = EA_FORM.bannerT[1] + EA_FORM.sectionGapUnderBanner;
+    expect(squareTop - EA_FORM.bannerT[1], 'two black blocks nearly touching again').toBeCloseTo(4.0, 1);
+    // 0.6 pt was the shipped gap, and it is what this case exists to refuse coming back.
+    expect(EA_FORM.sectionGapUnderBanner).toBeGreaterThan(0.6);
+    // The banner still clears the header rules above it (the "Employer's No. E" / "LHDNM State" rules sit
+    // at tt 68.5) by MORE than the 5.4 pt the agency leaves above its own banner.
+    expect(EA_FORM.bannerT[0] - 68.5, 'the banner has been pushed into the header rules').toBeGreaterThan(5.4);
   });
 });

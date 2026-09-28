@@ -134,6 +134,44 @@ describe('da4fc817 — Sections E and F match the published form', () => {
     expect(b).not.toContain('exemptAllowances');
   });
 
+  /**
+   * r353 (item fda53352 point 3) — AND THE HTML STATEMENT DESCRIBES THE SAME FORM, WHICH IT DID NOT.
+   *
+   * The screen printed the exempt figure THREE ways at once: a muted row inside Section B labelled
+   * "(included above)", the same figure again under Section E's heading carrying Section F's caption, and
+   * then a real Section F block whose row read the words "not tracked". The comment defending that said
+   * "we hold no copy of the official artwork to settle which it is" — stale: both official files are on
+   * disk and `docs/forms/ea-cp8a-pin-2023-transcription.txt:153` settles it outright (Section F is one
+   * line whose title IS the item, the total of tax-EXEMPT allowances; the TP1 total is D.5, which this
+   * screen prints separately).
+   *
+   * lib/ea-pdf.ts's own header exists to stop two surfaces describing one form two ways, so this pins the
+   * shape rather than the wording: the figure is read ONCE on the screen, in Section F, and Section B's
+   * block does not mention it — exactly as the printed form is pinned above.
+   */
+  it('r353 — the HTML statement reports the exempt total once, in Section F', () => {
+    const page = read('app/payroll/reports/ea/[employmentId]/page.tsx');
+    const reads = [...page.matchAll(/ea\.partB\.exemptAllowances/g)];
+    expect(reads.length, 'the exempt figure is read more than once on one screen').toBe(1);
+    // It is the Section F block that reads it, and that block no longer says "not tracked".
+    const f = page.slice(page.indexOf("t('sectionFTaxExempt')"));
+    expect(f, "Section F is still printing the words 'not tracked'").not.toContain("value={t('notTracked')}");
+    expect(f).toContain('rm(ea.partB.exemptAllowances ?? 0)');
+    /**
+     * Section B's rows must not carry it: 1(c) is EXCLUDING tax-exempt money by the form's own heading.
+     *
+     * ⚠️ MATCHED ON WHAT IS RENDERED, NOT ON THE WORD. Section B's block carries a comment naming the
+     * retired `payroll.ea.exemptAllowances` key on purpose — its wording in all six catalogues still says
+     * "(included above)", so anything reinstating it reinstates the defect, and the comment is what tells
+     * the next reader that. A bare substring check reads that warning as the defect it warns about.
+     */
+    const bBlock = page.slice(page.indexOf("t('sectionBEmploymentIncome')"), page.indexOf("t('sectionCPensionOther')"));
+    expect(bBlock, 'an exempt-allowances Row is back inside Section B').not.toMatch(/<Row[^>]*exemptAllowances/);
+    expect(bBlock, "Section B renders the retired '(included above)' label again").not.toMatch(
+      /\{t\('exemptAllowances'\)\}/,
+    );
+  });
+
   it('the fund name is a pack constant, not a per-employee column invented for one form', () => {
     expect(read('localization/my/reports.ts')).toContain("export const EA_FUND_NAME = 'KWSP'");
   });

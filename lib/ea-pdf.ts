@@ -404,10 +404,62 @@ export const EA_FORM = {
   /** Section B/C/D/E item captions, and the sub-items indented under them. */
   itemLabel: 42,
   subLabel: 55,
+  /**
+   * r353 (item fda53352, point 4) — WHERE AN INLINE DESCRIPTION RULE STOPS, AND ITS CLOSING BRACKET WITH IT.
+   *
+   * ⚠️ THIS FIXES AN OVERPRINT THAT WAS LIVE ON EVERY FILLED FORM. B.1(c), B.3 and B.4 each carry the
+   * agency's cue in brackets with a dotted rule inside the caption, and all three passed `ruleTo = 481`
+   * — a magic literal, written when the money column started at 504.5 and never revisited when r346
+   * moved it to `moneyLeft` (482.3). `captionWithInlineRule` draws the closing ')' at `ruleTo + 2`, i.e.
+   * 483, which is INSIDE the money column, and the glyph runs ~2.7 pt further still. pdf-lib does not
+   * clip (the r205 Borang A lesson), so on a form with money on those lines the bracket printed over the
+   * first digit of the amount — on three lines, in both editions, and no test could see it.
+   *
+   * So the rule now ENDS this far short of `moneyLeft`, and the gap is sized for what is drawn after it:
+   * 2 pt to the bracket + the bracket's own ~2.7 pt at 8 pt Helvetica + clearance. `test/ea-pdf.test.ts`
+   * measures the drawn glyph rather than trusting this arithmetic.
+   */
+  inlineRuleGap: 8,
+  /**
+   * r353 (point 2) — SECTION A'S TWO COORDINATES, MEASURED OFF THE AGENCY'S PDF INSTEAD OF GUESSED.
+   *
+   * Both were BARE LITERALS in the drawing code (the heading at 99.5, the first field at 114) with no
+   * constant and no test, and the reporter asked for "breathing room" between them. Run
+   * `node --import tsx scripts/measure-ea-official-pdf.ts` — committed this round, because r346's and
+   * r349's measuring scripts were not — against `docs/forms/ea-cp8a-pin-2023-official-en.pdf`:
+   *
+   *   · the banner strip is tt 78.4 → 92.6;
+   *   · Section A's heading row (and its black letter square) begins at tt 96.6, i.e. 4.0 pt BELOW the
+   *     banner, and its caption's baseline is 105.9;
+   *   · item 1's row begins at 109.8 and its baseline is 119.7 — 13.8 pt under the heading's.
+   *
+   * ⚠️ AND THE MEASUREMENT CONTRADICTED THE COMPLAINT, WHICH IS WHY IT WAS WORTH TAKING. Our gap between
+   * the heading and the first field was 14.5 pt where the agency's is 13.8: already the wider of the two,
+   * so there was no breathing room to add there. What WAS too tight is the gap the plan noticed in
+   * passing: our Section A square began 0.6 pt under the banner where the agency leaves 4.0, and two
+   * solid black blocks 0.6 pt apart read as one merged block at any print resolution.
+   *
+   * The fix is the banner, not Section A: it rises by 3.4 pt into clearance we have and the agency does
+   * not (11.3 pt above ours to its last header rule, against the agency's 5.4), which buys the agency's
+   * 4.0 pt gap while leaving the heading exactly where it already was — and therefore moves NOTHING else
+   * in a section band that is 28.6 pt tighter than the agency's to begin with. r349's own note records
+   * that this banner's coordinate is ours and only its treatment is the agency's.
+   */
+  sectionGapUnderBanner: 4.0,
+  /** The agency's own heading-baseline → first-field-baseline pitch in Section A (105.9 → 119.7). */
+  sectionAFieldPitch: 13.8,
   /** D5(a)/(b) print their own RM and rule at MID-PAGE; the right-hand column stays empty there. */
   midMoney: [323, 390.7] as const,
-  /** The banner, the officer box and the strip of ours below them. */
-  bannerT: [77.3, 90.7] as const,
+  /**
+   * The banner, the officer box and the strip of ours below them.
+   *
+   * ⚠️ r353 — THE BANNER ROSE 3.4 pt (it was [77.3, 90.7]) TO BUY SECTION A THE AGENCY'S OWN CLEARANCE.
+   * See `sectionGapUnderBanner` for the measurement and for why the banner moved rather than the section.
+   * Its HEIGHT (13.4) and its caption's position inside it are unchanged, so the block itself looks
+   * exactly as it did; only where it sits on the page moved. The clearance above it is still 7.9 pt to
+   * the "Employer's No. E" / "LHDNM State" rules at 68.5, where the agency leaves 5.4 pt above its own.
+   */
+  bannerT: [73.9, 87.3] as const,
   /**
    * The officer box at the foot. `ruleX[0]` is where the writing lines START, and it must clear the
    * LONGEST caption in EITHER edition.
@@ -696,11 +748,41 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   /** A caption, then the form's own cue word in brackets and an inline dotted rule for a description the
    *  agency asks for and this system does not hold. The rule stays empty — writing a description we do
    *  not have is inventing a fact about somebody's pay. */
-  const captionWithInlineRule = (caption: string, cue: string, x: number, tt: number, ruleTo: number, size = 8) => {
+  /**
+   * ⚠️ r353 (item fda53352, point 4) — `ruleTo` IS NO LONGER THE CALLER'S TO GET WRONG, AND IT WAS.
+   *
+   * All three callers (B.1(c), B.3, B.4) passed the literal 481, which predates r346 moving the money
+   * column to `EA_FORM.moneyLeft` = 482.3. The closing bracket lands at `ruleTo + 2` = 483 and its glyph
+   * runs ~2.7 pt beyond that, so it printed INSIDE the money column, over the first digit of the amount,
+   * on three lines of every filled form in both editions. pdf-lib does not clip and the page still
+   * rendered, still returned 200 and still downloaded — the r205 Borang A failure mode exactly.
+   *
+   * The rule now ends `EA_FORM.inlineRuleGap` short of the column by default, so the bracket cannot cross
+   * it, and a caller that overrides `ruleTo` is refused rather than trusted: the assertion is cheap, runs
+   * on every render and cannot be forgotten the way a comment can. `test/ea-pdf.test.ts` measures the
+   * DRAWN bracket against `moneyLeft` as well, because this arithmetic is only as good as its estimate
+   * of the glyph.
+   */
+  const CLOSE_BRACKET_OFFSET = 2;
+  const captionWithInlineRule = (
+    caption: string,
+    cue: string,
+    x: number,
+    tt: number,
+    ruleTo: number = MX - EA_FORM.inlineRuleGap,
+    size = 8,
+  ) => {
+    const bracketEnd = ruleTo + CLOSE_BRACKET_OFFSET + font.widthOfTextAtSize(')', size);
+    if (bracketEnd > MX) {
+      throw new Error(
+        `ea-pdf: an inline description rule ending at ${ruleTo} puts its ')' at ${bracketEnd.toFixed(1)}, ` +
+          `inside the money column (moneyLeft ${MX}). Widen EA_FORM.inlineRuleGap instead of moving one caller.`,
+      );
+    }
     const capEnd = putFit(caption, x, 300, tt, size);
     const cueEnd = putFit(`(${cue}`, capEnd + 4, 140, tt, size);
     dotted(cueEnd + 3, ruleTo, tt + 2.5);
-    put(')', ruleTo + 2, tt, size);
+    put(')', ruleTo + CLOSE_BRACKET_OFFSET, tt, size);
   };
 
   /**
@@ -784,13 +866,28 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // spanning its body width (39.8 -> 555.8). We keep OUR margins (L -> R) so the banner stays flush with
   // the rest of our page; what is adopted is the treatment, not the coordinate.
   fill(L, EA_FORM.bannerT[0], R, EA_FORM.bannerT[1]);
-  putC(W.banner, CX, 86.5, 8, bold, white);
+  // r353 — the caption's 9.2 pt drop inside the strip is unchanged; it follows the strip instead of
+  // repeating its old absolute baseline (86.5), so the two can no longer be moved apart by accident.
+  putC(W.banner, CX, EA_FORM.bannerT[0] + 9.2, 8, bold, white);
 
   // ── A — BUTIRAN PEKERJA ────────────────────────────────────────────────────────────────────────────
   const A = EA_FORM;
-  sectionHeading(t.sectionAEmployeeParticulars, 99.5);
-  putFit(t.name, L + 6, 165, 114, 7.5);
-  valueOrRule(d.employee.name, 197.3, R, 114);
+  /**
+   * r353 (point 2) — DERIVED FROM THE BANNER AND THE AGENCY'S MEASURED GAPS, not typed in.
+   *
+   * `sectionHeading` hangs its black square from `tt - 8.2`, so putting the square the agency's
+   * `sectionGapUnderBanner` below the banner fixes the caption's baseline. `SQUARE_ASCENT` is that same
+   * 8.2 named once here rather than being the third copy of a number the heading already owns.
+   * With the banner at 87.3 this lands on 99.5 — where the heading already was — so Section A does not
+   * move; what changed is that the number is now the agency's arithmetic and not a literal.
+   */
+  const SQUARE_ASCENT = 8.2;
+  const round1 = (n: number) => Math.round(n * 10) / 10; // 87.3 + 4 + 8.2 must be 99.5, not 99.50000000000001
+  const aHeading = round1(A.bannerT[1] + A.sectionGapUnderBanner + SQUARE_ASCENT);
+  const aFirstField = round1(aHeading + A.sectionAFieldPitch);
+  sectionHeading(t.sectionAEmployeeParticulars, aHeading);
+  putFit(t.name, L + 6, 165, aFirstField, 7.5);
+  valueOrRule(d.employee.name, 197.3, R, aFirstField);
 
   /** One two-column Section A row: item on the left, item on the right, each with its own rule. */
   const aRow = (tt: number, leftLabel: string, leftValue: string, rightLabel: string, rightValue: string) => {
@@ -845,7 +942,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // taxable money off the line the agency asks for it on. The finer split stays visible where it is
   // useful: the HTML statement and the amend panel keep a row each.
   moneyLine(t.feesCommissionBonus, A.itemLabel, 234.2, mixed(d.partB.bonus, d.partB.directorFee));
-  captionWithInlineRule(t.tipsPerquisitesOther, t.paymentDetail, A.itemLabel, 248.2, 481);
+  captionWithInlineRule(t.tipsPerquisitesOther, t.paymentDetail, A.itemLabel, 248.2);
   amountOrRule(mixed(d.partB.allowances, d.partB.tipsPerquisites), MX, MR, 248.2);
   moneyLine(t.taxBorneByEmployer, A.itemLabel, 261.6, manual(d.partB.taxBorneByEmployer));
   moneyLine(t.esos, A.itemLabel, 275, manual(d.partB.esos));
@@ -868,9 +965,9 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   put('(b)', 128, 326.6, 8);
   dotted(146, 291.4, 329.1);
   amountOrRule(manual(d.partB.arrears), MX, MR, 326.6);
-  captionWithInlineRule(t.benefitsInKind, t.stateWhat, A.itemLabel, 339.8, 481);
+  captionWithInlineRule(t.benefitsInKind, t.stateWhat, A.itemLabel, 339.8);
   amountOrRule(manual(d.partB.benefitsInKind), MX, MR, 339.8);
-  captionWithInlineRule(t.livingAccommodation, t.addressCue, A.itemLabel, 353.2, 481);
+  captionWithInlineRule(t.livingAccommodation, t.addressCue, A.itemLabel, 353.2);
   amountOrRule(manual(d.partB.livingAccommodation), MX, MR, 353.2);
   moneyLine(t.unapprovedFundRefund, A.itemLabel, 366.6, manual(d.partB.unapprovedFundRefund));
   moneyLine(t.compensation, A.itemLabel, 380, manual(d.partB.compensation));
@@ -953,10 +1050,32 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   };
   officerRow(W.officerName, 655, d.employer.officerName ?? '');
   officerRow(W.officerPosition, 672, d.employer.officerPosition ?? '');
-  // "Nama dan Alamat Majikan" gets TWO rules, for two address lines. The employer's NAME takes the first;
-  // whatever address is on file is folded onto the second, because a third rule is not on the form.
-  officerRow(W.employerNameAddress, 689, d.employer.name);
-  valueOrRule(d.employer.address.join(', '), O.ruleX[0], O.ruleX[1], 706, 8);
+  /**
+   * "Nama dan Alamat Majikan" — TWO writing rules, and the name and address FLOW ACROSS BOTH (r353).
+   *
+   * ⚠️ WHAT THE MEASUREMENT SETTLED, AND IT IS NOT WHAT THE PLAN EXPECTED. The approved plan proposed a
+   * THIRD rule here. `node --import tsx scripts/measure-ea-official-pdf.ts --rects` says the agency's own
+   * officer box has exactly FIVE rows (tt 739.8 / 753 / 766.2 / 779.4 / 792.6, 13.2 pt each): Name of
+   * Officer, Designation, "Name and Address of Employer", ONE unlabelled continuation rule, and
+   * Telephone No. Two writing lines for the name and address, which is what this box already has. A
+   * third would be our redesign of a box the item exists to stop redesigning.
+   *
+   * ⚠️ THE DEFECT WAS NEVER THE RULE COUNT — IT WAS THAT THE SECOND RULE WAS WASTED. The employer's name
+   * took the whole of rule one and the ENTIRE address was crushed onto rule two through `fitSize`, which
+   * shrinks rather than wraps and is floored at 1 pt. A four-part Kuala Lumpur address is about 440 pt of
+   * 8 pt Helvetica against a 269 pt rule, so it printed at 4.8 pt — legible-ish on screen, gone on paper,
+   * and silent: no overflow, no warning, a 200 and a downloadable file (r205's Borang A lesson again).
+   *
+   * So the two lines are filled the way a typesetter fills them: greedy-wrap the name and address
+   * together at full size across rule one, put the remainder on rule two, and let `valueOrRule`'s
+   * shrink-to-fit apply ONLY to a remainder that still will not fit. An address that fits now prints at
+   * 8 pt on both lines instead of 8 pt on one and 4.8 pt on the other.
+   */
+  const employerBlock = [d.employer.name, ...d.employer.address].map((s) => (s ?? '').trim()).filter(Boolean).join(', ');
+  const officerRuleW = O.ruleX[1] - O.ruleX[0] - 6; // the width valueOrRule actually writes into
+  const employerLines = wrapped(employerBlock, 8, officerRuleW);
+  officerRow(W.employerNameAddress, 689, employerLines[0] ?? '');
+  valueOrRule(employerLines.slice(1).join(' '), O.ruleX[0], O.ruleX[1], 706, 8);
   officerRow(W.employerPhone, 723, d.employer.phone ?? '');
   // Tarikh is the date the employer SIGNS the statement, which is theirs to write and not ours to invent.
   // It prints the blank form's rule.

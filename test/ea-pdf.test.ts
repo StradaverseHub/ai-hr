@@ -6,8 +6,8 @@
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
-import { blankEaPdfData, renderEaPdf, type EaPdfData, type EaPdfLabels, eaFormWords } from '../lib/ea-pdf';
+import { PDFArray, PDFDocument, PDFRawStream, StandardFonts, decodePDFRawStream } from 'pdf-lib';
+import { EA_FORM, blankEaPdfData, renderEaPdf, type EaPdfData, type EaPdfLabels, eaFormWords } from '../lib/ea-pdf';
 
 /**
  * 6036dab7 — READ THE DRAWN TEXT BACK OUT OF THE PDF, WITH ITS COORDINATES.
@@ -202,6 +202,97 @@ describe('EA PDF renderer', () => {
     expect(head(bytes)).toBe('%PDF-'); // WinAnsi safe-encode guard → no crash on the CJK name
     expect(bytes.length).toBeGreaterThan(1000);
   });
+
+  /**
+   * r353 (item fda53352, point 4) — THE GUARD THAT DID NOT EXIST, FOR A DEFECT THAT WAS LIVE.
+   *
+   * B.1(c), B.3 and B.4 each print the agency's cue in brackets with an inline dotted rule, and all
+   * three passed `ruleTo = 481` — a literal left behind when r346 moved the money column to
+   * `EA_FORM.moneyLeft` = 482.3. `captionWithInlineRule` puts the closing ')' at `ruleTo + 2` = 483 and
+   * the glyph runs further still, so the bracket printed INSIDE the money column, over the first digit
+   * of the amount, on three lines of every filled form. pdf-lib does not clip: the page rendered, the
+   * route returned 200 and the file downloaded (r205's Borang A lesson).
+   *
+   * This MEASURES THE DRAWN GLYPH rather than the arithmetic that placed it, which is the only version
+   * of this check that can catch the next font or size change too.
+   */
+  it('r353 — no inline caption bracket is drawn into the money column', async () => {
+    const font = await (await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
+    // A form WITH money on those three lines: an overprint on a blank rule is invisible.
+    const { items, pageHeights } = await drawnText(await renderEaPdf(fullForm, labels));
+    const brackets = items.filter((i) => i.text === ')');
+    expect(brackets.length, 'the three inline description rules lost their closing bracket').toBe(3);
+    for (const b of brackets) {
+      const right = b.x + font.widthOfTextAtSize(')', 8);
+      expect(
+        right,
+        `a ')' at x=${b.x} (tt ${(pageHeights[b.page] - b.y).toFixed(1)}) ends at ${right.toFixed(1)}, ` +
+          `inside the money column at ${EA_FORM.moneyLeft}`,
+      ).toBeLessThanOrEqual(EA_FORM.moneyLeft);
+    }
+    // …and it used to. 481 + 2 + the glyph is 485.7, which is 3.4 pt into the column.
+    expect(481 + 2 + font.widthOfTextAtSize(')', 8)).toBeGreaterThan(EA_FORM.moneyLeft);
+  });
+
+  /**
+   * r353 (item fda53352, point 5) — A LONG EMPLOYER ADDRESS USES BOTH OF THE AGENCY'S RULES AT FULL SIZE.
+   *
+   * The officer box gives "Name and Address of Employer" TWO writing lines. Measured off the agency's own
+   * file with `node --import tsx scripts/measure-ea-official-pdf.ts --rects`: five rows of 13.2 pt at
+   * tt 739.8 / 753 / 766.2 / 779.4 / 792.6 — Name of Officer, Designation, the captioned name-and-address
+   * row, ONE unlabelled continuation rule, and Telephone No. Two lines, which is what this box has.
+   *
+   * ⚠️ THE DEFECT WAS NEVER THE RULE COUNT — THE SECOND RULE WAS BEING WASTED. The employer's name took
+   * all of rule one and the WHOLE address was pushed onto rule two through `fitSize`, which shrinks
+   * instead of wrapping and is floored at 1 pt. This fixture's address is 340 pt of 8 pt Helvetica against
+   * a 269 pt rule, so it printed at about 6.3 pt — and with a longer one, smaller still, silently: no
+   * overflow, no error, a valid downloadable PDF (r205's Borang A lesson).
+   *
+   * ⚠️ MEASURED, NOT EYEBALLED, AND IN BOTH EDITIONS — the officer box's captions are per-edition and the
+   * English ones are the wider. The property asserted is the one that decides whether a printed form is
+   * readable: every run drawn on those two rules FITS its rule at the full 8 pt, which is true only if the
+   * text was wrapped rather than squeezed.
+   */
+  it.each(['en', 'ms'] as const)(
+    'r353 — %s: a four-part employer address wraps across both officer rules instead of shrinking',
+    async (locale) => {
+      const font = await (await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
+      const address = [
+        'Unit 27-3A, Menara Perdana',
+        'No. 8, Jalan Tun Razak',
+        '50400 Kuala Lumpur',
+        'Wilayah Persekutuan',
+      ];
+      const long: EaPdfData = {
+        ...fullForm,
+        employer: { ...fullForm.employer, name: 'Isedecor Bina Konstruksi Sdn Bhd', address },
+      };
+      const { items, pageHeights } = await drawnText(await renderEaPdf(long, labels, { locale }));
+      const O = EA_FORM.officerBox;
+      const ruleW = O.ruleX[1] - O.ruleX[0] - 6; // what valueOrRule actually writes into
+      // The runs written ON the two employer rules. `valueOrRule` writes at ruleX[0] + 3.
+      const onRule = items.filter(
+        (i) =>
+          Math.abs(i.x - (O.ruleX[0] + 3)) < 0.5 &&
+          [689, 706].some((tt) => Math.abs(pageHeights[i.page] - i.y - tt) < 0.5),
+      );
+      expect(onRule.length, 'the employer name/address block is not on the officer box\'s two rules').toBe(2);
+      for (const run of onRule) {
+        expect(
+          font.widthOfTextAtSize(run.text, 8),
+          `"${run.text}" is ${font.widthOfTextAtSize(run.text, 8).toFixed(0)}pt on a ${ruleW}pt rule, so it was SHRUNK`,
+        ).toBeLessThanOrEqual(ruleW);
+      }
+      // Nothing was dropped on the way: every part of the address reached one of the two rules.
+      const printed = onRule.map((r) => r.text).join(' ');
+      for (const part of ['Menara Perdana', 'Jalan Tun Razak', '50400 Kuala Lumpur', 'Wilayah Persekutuan']) {
+        expect(printed, `${part} is missing from the officer box`).toContain(part);
+      }
+      // …AND THE OLD SHAPE WOULD HAVE FAILED IT. The address alone, joined onto the second rule the way it
+      // was until r353, is wider than that rule — which is precisely the shrink this case forbids.
+      expect(font.widthOfTextAtSize(address.join(', '), 8)).toBeGreaterThan(ruleW);
+    },
+  );
 
   it('does not throw when tax category falls outside the 1/2/3 map (String fallback)', async () => {
     const bytes = await renderEaPdf({ ...data, employee: { ...data.employee, category: 4 } }, labels);
@@ -518,13 +609,29 @@ describe('r220 — the blank C.P.8A', () => {
       fullForm.employer.lhdnState!,
       fullForm.employer.officerName!,
       fullForm.employer.officerPosition!,
-      fullForm.employer.address.join(', '),
       fullForm.partE.fundName,
       `${eaFormWords('ms').masthead4} ${fullForm.year}`,
     ]);
+    /**
+     * ⚠️ r353 — THE EMPLOYER'S NAME AND ADDRESS ARE NO LONGER TWO WHOLE FIELDS ON TWO RULES.
+     *
+     * This set used to name `employer.name` and `employer.address.join(', ')` because that is exactly what
+     * was drawn: the name on the officer box's first rule and the entire address squeezed onto the second.
+     * The block is now greedy-wrapped across the agency's two rules, so each run is a SLICE of it and
+     * neither is any one field. Recomputing the wrap here would duplicate the renderer's rule, so the
+     * predicate asks the question that actually matters — is this run part of the employer's own
+     * name-and-address block? — which still refuses a caption or a stray string.
+     */
+    const employerBlock = [fullForm.employer.name, ...fullForm.employer.address].join(', ');
+    const isEmployerBlockLine = (t: string) => t.length > 0 && employerBlock.includes(t);
     const disclaimerLines = new Set(filled.slice(filled.indexOf(winAnsi(real.amendedNote)) + 1));
     const unexplained = onlyOnFilled.filter(
-      (t) => !isFigureOrDetail(t) && !fixtureDetails.has(t) && !disclaimerLines.has(t) && t !== winAnsi(real.amendedNote),
+      (t) =>
+        !isFigureOrDetail(t) &&
+        !fixtureDetails.has(t) &&
+        !isEmployerBlockLine(t) &&
+        !disclaimerLines.has(t) &&
+        t !== winAnsi(real.amendedNote),
     );
     expect(unexplained, `these are drawn on the filled form and missing from the blank: ${unexplained.join(' | ')}`).toEqual(
       [],
