@@ -7339,7 +7339,18 @@
       "removedToast": "已移除",
       "archivedToast": "公司已归档",
       "unarchivedToast": "公司已取消归档",
-      "deletedToast": "公司已删除"
+      "deletedToast": "公司已删除",
+      "statutoryColBody": "法定机构",
+      "statutoryColPaymentSetup": "缴款设置",
+      "statutoryColStatus": "状态",
+      "statutoryColAction": "操作",
+      "authorityView": "查看",
+      "authorityStatusActive": "生效中",
+      "authorityStatusInactive": "未生效",
+      "backToStatutorySetup": "返回法定缴款设置",
+      "statutoryIdentityHint": "本公司在各法定机构的身份。请在修改下方任何内容前先确认。这些号码在法定标签页及各机构自己的页面上编辑。",
+      "statutoryBodyViewCaption": "该机构的存档内容。点击编辑以修改。",
+      "statutoryBodyEditCaption": "此处只编辑该机构。保存后将写入并返回列表。"
     },
     "systemLabels": {
       "pageTitle": "系统标签",

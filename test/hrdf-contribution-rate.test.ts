@@ -335,18 +335,27 @@ describe('HRDF Contribution Rate — Organization form layout', () => {
   });
 
   /**
-   * ⚠️ RE-POINTED BY 15e5bd93 REVISION 2 (r353), NOT WEAKENED. This read `components/company-panel.tsx`,
-   * where the HRD Corp card's rate select lived. The reporter contested r352's in-tab editing and asked for
-   * "a dedicated full-width screen", so the eight body editors — including this select — are now
-   * components/statutory-setup-screen.tsx. Same three values, same rate order, same label keys; the only
-   * thing that changed is which file renders them, and it is asserted that the panel renders NO second copy
-   * (two controls over one column is the fault r226 removed).
+   * ⚠️ RE-POINTED TWICE, NEVER WEAKENED. This read `components/company-panel.tsx`, where the HRD Corp card's
+   * rate select lived. r353 was the reporter contesting r352's in-tab editing and asking for "a dedicated
+   * full-width screen", so the eight body editors — including this select — moved to
+   * components/statutory-setup-screen.tsx. r355 is the reporter contesting THAT shape: the list is a table of
+   * rows and ONE body's fields are a screen of their own, so the select is now
+   * components/statutory-body-screen.tsx.
+   *
+   * Same three values, same rate order, same label keys through both moves; the only thing that changed is
+   * which file renders them. And it is asserted that NEITHER the panel NOR the list renders a second copy —
+   * two controls over one column is the fault r226 removed, and a copy on a screen that cannot save would be
+   * worse than the first.
    */
   it('keeps the stored option values (no data migration) in rate order: none, 1.0%, 0.5%', () => {
-    const SCREEN = read('components/statutory-setup-screen.tsx');
+    const SCREEN = read('components/statutory-body-screen.tsx');
     const start = SCREEN.indexOf('name="hrdfStatus"');
-    expect(start, 'the rate select is on the dedicated setup screen').toBeGreaterThan(-1);
+    expect(start, 'the rate select is on the per-body screen').toBeGreaterThan(-1);
     expect(PANEL, 'and there is no second copy on the company panel').not.toContain('name="hrdfStatus"');
+    expect(
+      read('components/statutory-setup-screen.tsx'),
+      'nor on the list, which holds no field at all',
+    ).not.toContain('name="hrdfStatus"');
     const select = SCREEN.slice(start, SCREEN.indexOf('</select>', start));
     const none = select.indexOf('value="not_registered"');
     const one = select.indexOf('value="mandatory"');

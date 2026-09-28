@@ -59,7 +59,9 @@ const actions = {
   // 15e5bd93 rev 2 (r353) — `saveStatutoryTab` STOOD HERE and the consolidated statutory Save it named is
   // retired: the reporter contested the in-tab editing it existed to consolidate. The Statutory tab's
   // registrations card submits itself again, and the body editors are a dedicated screen with its own
-  // render guard (test/statutory-setup-screen-render.test.tsx).
+  // render guard. ⚠️ TWO FILES SINCE r355, and the names were also written with the wrong extension here —
+  // a `.test.tsx` that is not `.dom.` matches NEITHER vitest project: test/statutory-setup-screen-render.test.ts
+  // (the list) and test/statutory-body-screen-render.test.ts (one body's editor).
   updateCompany: noop,
   archiveCompany: noop,
   deleteCompany: noop,
@@ -306,7 +308,9 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
      * NEGATIVELY HERE. It counted one payment form per authority — first to keep the card's Open/Edit
      * honest (collapsed with CSS, never unmounted), then because r352's one Save read every body out of
      * the DOM. Neither reason survives the reporter's contest: the bodies are edited on a dedicated screen
-     * now, and test/statutory-setup-screen-render.test.tsx counts the cards there.
+     * now, and r355 split that screen again on the reporter's own drawing — so the forms are counted in
+     * test/statutory-body-screen-render.test.ts, and the LIST is asserted to have none in
+     * test/statutory-setup-screen-render.test.ts.
      *
      * What this file must still prove is that the fields did not get left behind in BOTH places. Two
      * screens writing `company_statutory_authority`, one of which has no Save, is worse than the fold ever
@@ -362,7 +366,8 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
    * "renders the statutory tab Save bar, with the registrations card inside its scope" both described a tab
    * that EDITED the bodies. The reporter contested that ("Do not expand the statutory settings directly
    * within the existing Statutory tab"), so the workspace and the scope are gone from this panel and their
-   * successors are counted in test/statutory-setup-screen-render.test.tsx.
+   * successors are counted in test/statutory-setup-screen-render.test.ts (the list) and
+   * test/statutory-body-screen-render.test.ts (one body's editor).
    *
    * Asserted on the RENDER rather than at source because "is this form inside that scope?" and "is this
    * field on this screen?" are DOM questions, and because the failure this replaces is not a missing
@@ -500,13 +505,13 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
    * signatory who has since left is injected as an option so the hidden input keeps POSTING their id,
    * because `EmployeeSearchField` drops a value it cannot find in its own list and "edit the phone number"
    * would otherwise become "clear the authorised signatory" — is now asserted where the picker is:
-   * test/statutory-setup-screen-render.test.tsx and test/15e5bd93-statutory-screen.dom.test.tsx.
+   * test/statutory-body-screen-render.test.ts and test/15e5bd93-statutory-screen.dom.test.tsx.
    *
    * What this file keeps is the half that belongs to THIS panel: the departed signatory must not be
    * rendered here at all, because there is no control here to post them from. `richProps` still pins
    * `gone-person`, so a picker that crept back onto the panel fails.
    */
-  it('renders no signatory control at all — the picker is on the dedicated setup screen', () => {
+  it('renders no signatory control at all — the picker is on the per-body screen', () => {
     const html = render('en', richProps);
     expect(html).not.toContain('name="signatoryPersonId"');
     expect(html, 'not even as a value left behind').not.toContain('gone-person');

@@ -7339,7 +7339,18 @@
       "removedToast": "Đã xóa",
       "archivedToast": "Đã lưu trữ công ty",
       "unarchivedToast": "Đã bỏ lưu trữ công ty",
-      "deletedToast": "Đã xóa công ty"
+      "deletedToast": "Đã xóa công ty",
+      "statutoryColBody": "Cơ quan luật định",
+      "statutoryColPaymentSetup": "Thiết lập thanh toán",
+      "statutoryColStatus": "Trạng thái",
+      "statutoryColAction": "Hành động",
+      "authorityView": "Xem",
+      "authorityStatusActive": "Đang hoạt động",
+      "authorityStatusInactive": "Không hoạt động",
+      "backToStatutorySetup": "Quay lại Thiết lập thanh toán theo luật định",
+      "statutoryIdentityHint": "Danh tính của công ty này với từng cơ quan. Hãy xác nhận trước khi sửa bất kỳ nội dung nào bên dưới. Các số này được sửa ở tab Theo luật định và ở màn hình của từng cơ quan.",
+      "statutoryBodyViewCaption": "Những gì đang lưu cho cơ quan này. Nhấn Sửa để thay đổi.",
+      "statutoryBodyEditCaption": "Ở đây chỉ sửa cơ quan này. Lưu sẽ ghi lại và đưa bạn về danh sách."
     },
     "systemLabels": {
       "pageTitle": "Nhãn hệ thống",

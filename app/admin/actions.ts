@@ -166,6 +166,7 @@ import {
   failCompany,
   // 15e5bd93 rev 2 (r353) — the dedicated Statutory Payment Setup screen's own pair. See the note on
   // `fromStatutorySetupScreen` below for why the destination is chosen per FORM and not per action.
+  failStatutoryBody,
   failStatutorySetup,
   ok,
   okCompany,
@@ -218,17 +219,24 @@ function fromCompanyScreen(fd: FormData): boolean {
  * The second marker of exactly the shape above, and it exists for the same reason: two actions are now
  * bound in two places. `setCompanyStatutoryAuthorityAction` and `removeCompanyStatutoryAuthorityAction`
  * are reached from the company panel's Statutory tab (where the reader must return to that tab) and from
- * `/admin/organization/<id>/statutory` (where the reader must stay on that screen, which is the
- * reporter's fourth approved point in their own words: "Saving keeps the user on this page… Never
- * redirected to the Organization company list").
+ * the dedicated Statutory Payment Setup flow (where the reader must stay inside it, which is the reporter's
+ * fourth approved point in their own words: "Saving keeps the user on this page… Never redirected to the
+ * Organization company list").
+ *
+ * ⚠️ ONE MARKER FOR A FLOW THAT IS NOW TWO ROUTES (15e5bd93 rev 3, r355). The reporter's rev-3 sketch splits
+ * the setup into a LIST of rows (`…/statutory`) and a ONE-BODY screen (`…/statutory/<body>`), and the marker
+ * did NOT gain a second value for the second route. It means "this came from the statutory payment setup",
+ * and the two call sites below then choose by OUTCOME rather than by origin: a save is finished with the
+ * body and goes to the list; a refusal is not and goes back to the body's own edit screen. A second literal
+ * would have had to be kept in step with the first for no fact that either one carries.
  *
  * ⚠️ THE DESTINATION COMES FROM THE FORM, NOT FROM THE ACTION, and repointing the actions instead would
- * have been the wrong fix: the panel's rail links out to the new screen rather than editing in place
- * today, but "Clear this authority" and any future in-panel binding would then land on a screen the
- * reader did not press a button on.
+ * have been the wrong fix: the panel's list links into the flow rather than editing in place today, but any
+ * future in-panel binding would then land on a screen the reader did not press a button on.
  *
  * A FIXED VALUE COMPARED AGAINST A LITERAL, never a path echoed into a redirect — the one rule
- * `companyTab` above exists to state. `okStatutorySetup` builds the address from `companyId` alone.
+ * `companyTab` above exists to state. `okStatutorySetup` builds its address from `companyId` alone, and
+ * `failStatutoryBody` takes a body only after `isStatutoryAuthority` has accepted it.
  */
 const STATUTORY_SETUP_RETURN = 'statutory-setup';
 function fromStatutorySetupScreen(fd: FormData): boolean {
@@ -573,14 +581,30 @@ export async function setCompanyStatutoryAuthorityAction(formData: FormData) {
       await pack.companyStatutory.set(s, { companyId, ...filing });
     }
   } catch (e) {
-    // 15e5bd93 rev 2 (r353) — a refusal returns to the screen that holds the form. From the dedicated
-    // setup screen that is the setup screen, not the company panel: `failCompany` would have shown
-    // "Choose a signatory who is an active employee of this company" on a page with no such box on it.
-    if (fromStatutorySetupScreen(formData)) failStatutorySetup(e, companyId);
+    // 15e5bd93 rev 2 (r353) — a refusal returns to the screen that holds the form, never to the company
+    // panel: `failCompany` would have shown "Choose a signatory who is an active employee of this company"
+    // on a page with no such box on it.
+    //
+    // ⚠️ REV 3 (r355) — AND THE SCREEN THAT HOLDS THE FORM IS NOW THE PER-BODY ROUTE. The reporter's own
+    // sketch splits the setup into a list of rows plus a one-body edit screen, so the boxes this refusal is
+    // about exist only at `…/statutory/<body>?mode=edit`. The SUCCESS half below is unchanged and still goes
+    // to the list, because a save and a refusal want opposite things: the save is finished with this body,
+    // the refusal is not.
+    if (fromStatutorySetupScreen(formData)) {
+      // THE BODY IS RESOLVED THROUGH THE CONTROLLED SET BEFORE IT REACHES A PATH, never echoed. An
+      // unrecognised one falls back to the list, which is a real screen for this company, rather than
+      // building an address out of whatever was posted.
+      const body = String(formData.get('authority') ?? '');
+      if (isStatutoryAuthority(body)) failStatutoryBody(e, companyId, body);
+      failStatutorySetup(e, companyId);
+    }
     failCompany(e, companyId, companyTab(formData));
   }
-  // 15e5bd93 rev 2 — "Saving keeps the user on this page and shows a confirmation naming what was
-  // saved." Eight cards are on screen at once, so a bare "Saved" cannot say which one took.
+  // 15e5bd93 rev 2 — "Saving keeps the user on this page and shows a confirmation naming what was saved."
+  // rev 3 — the page it keeps you on is the LIST, in the reporter's own words: "Save writes only that body
+  // and returns you to the list with its row refreshed." The confirmation still NAMES the body, and that
+  // matters more rather than less now: the list shows eight rows and a bare "Saved" cannot say which one
+  // took.
   if (fromStatutorySetupScreen(formData)) {
     okStatutorySetup(companyId, await statutoryBodySavedToast(String(formData.get('authority') ?? '')));
   }
@@ -595,13 +619,22 @@ export async function removeCompanyStatutoryAuthorityAction(formData: FormData) 
   try {
     await removeCompanyStatutoryAuthority(s, { id: String(formData.get('id')) });
   } catch (e) {
-    if (fromStatutorySetupScreen(formData)) failStatutorySetup(e, companyId);
+    // 15e5bd93 rev 3 (r355) — same split as the save above: a refused Clear lands back on the ONE BODY's
+    // edit screen, where the button was pressed, and `authority` rides on that form for exactly this reason
+    // (the delete itself is keyed off the row `id`, not off the body). Resolved through the controlled set
+    // before it reaches a path.
+    if (fromStatutorySetupScreen(formData)) {
+      const body = String(formData.get('authority') ?? '');
+      if (isStatutoryAuthority(body)) failStatutoryBody(e, companyId, body);
+      failStatutorySetup(e, companyId);
+    }
     failCompany(e, companyId, companyTab(formData));
   }
   const t = await getTranslations('admin.organization');
   // 15e5bd93 rev 2 — Clear is the one control on the setup screen that is NOT a field edit: it DELETES
-  // the body's row. It stays on the screen like everything else there, but it keeps the generic
-  // "Removed" — naming a body that no longer has a record would read as a confirmation that it was saved.
+  // the body's row. rev 3 — a SUCCESSFUL clear returns to the LIST like every other save in this flow,
+  // where the row now reads Not Configured, which is the visible proof the clear took. It keeps the generic
+  // "Removed": naming a body that no longer has a record would read as a confirmation that it was saved.
   if (fromStatutorySetupScreen(formData)) okStatutorySetup(companyId, t('removedToast'));
   okCompany(companyId, t('removedToast'), companyTab(formData));
 }

@@ -66,10 +66,13 @@ import {
   type CompanyListInput,
 } from '../app/admin/organization/company-rows';
 import CompanyMaintenancePage from '../app/admin/organization/[companyId]/page';
-// 15e5bd93 rev 2 (r353) — the SECOND guarded route onto one company's data. A second door must not be an
-// easier door, so the refusal this file runs for the detail page is run for it too.
+// 15e5bd93 rev 2 (r353) — the SECOND guarded route onto one company's data, and rev 3 (r355) adds a THIRD.
+// A second and third door must not be easier doors, so the refusal this file runs for the detail page is run
+// for both of them.
 import CompanyStatutorySetupPage from '../app/admin/organization/[companyId]/statutory/page';
+import CompanyStatutoryBodyPage from '../app/admin/organization/[companyId]/statutory/[authority]/page';
 import { StatutorySetupScreen } from '../components/statutory-setup-screen';
+import { StatutoryBodyScreen } from '../components/statutory-body-screen';
 import NewCompanyPage from '../app/admin/organization/new/page';
 import { createCompanyAction } from '../app/admin/actions';
 
@@ -201,11 +204,17 @@ describe('/admin/organization/[companyId] — the scope refusal and the parent p
       params: Promise.resolve({ companyId }),
       searchParams: Promise.resolve({}),
     });
-  /** The dedicated Statutory Payment Setup screen, whose guard mirrors the detail page's line for line. */
+  /** The Statutory Payment Setup LIST, whose guard mirrors the detail page's line for line. */
   const renderStatutory = (companyId: string) =>
     CompanyStatutorySetupPage({
       params: Promise.resolve({ companyId }),
       searchParams: Promise.resolve({}),
+    });
+  /** ONE body's screen (15e5bd93 rev 3), which validates TWO reader-supplied values rather than one. */
+  const renderBody = (companyId: string, authority: string, mode?: string) =>
+    CompanyStatutoryBodyPage({
+      params: Promise.resolve({ companyId, authority }),
+      searchParams: Promise.resolve(mode === undefined ? {} : { mode }),
     });
 
   beforeAll(async () => {
@@ -248,7 +257,7 @@ describe('/admin/organization/[companyId] — the scope refusal and the parent p
    * ⚠️ RUN, NOT SCANNED: `page.tsx` calling `scopedAdmin()` proves nothing about the 404. The refusal is the
    * `companies.find(...)` miss, which only executing the page can show.
    */
-  it('REFUSES the same companies on the dedicated Statutory Payment Setup screen', async () => {
+  it('REFUSES the same companies on the Statutory Payment Setup list', async () => {
     scope.s = await scopedAdminCtx(ids['Beta Sdn Bhd']);
     scope.scopeIds = [];
     await expect(renderStatutory(ids['Gamma Sdn Bhd'])).rejects.toThrow(NOT_FOUND);
@@ -256,7 +265,20 @@ describe('/admin/organization/[companyId] — the scope refusal and the parent p
     await expect(renderStatutory(randomUUID()), 'and a non-company id').rejects.toThrow(NOT_FOUND);
   });
 
-  it('renders the setup screen for the company it DOES administer, with the two writers wired', async () => {
+  /**
+   * ⚠️ REVERSED BY 15e5bd93 REVISION 3 (r355), AND THE REVERSAL IS THE SAFER DIRECTION.
+   *
+   * r353's version of this case was "renders the setup screen … WITH THE TWO WRITERS WIRED", and it asserted
+   * `typeof props.actions.setStatutoryAuthority === 'function'` because that screen held eight editors. The
+   * reporter contested that shape: the list is a table of rows with "no fields, no forms, nothing expanded",
+   * so the writers belong to the per-body route and this page must not hold them at all. A `'use server'`
+   * action passed to a screen that never submits it is a second door onto `company_statutory_authority` that
+   * nothing is watching — the hazard r353 itself deleted `statutory-tab-actions.ts` over.
+   *
+   * The two writers are asserted PRESENT on the per-body route in the next case, so the capability is pinned
+   * where it lives rather than merely un-pinned here.
+   */
+  it('renders the LIST for the company it DOES administer, and hands it no writer at all', async () => {
     scope.s = await scopedAdminCtx(ids['Beta Sdn Bhd']);
     scope.scopeIds = [];
     const tree = await renderStatutory(ids['Beta East Sdn Bhd']);
@@ -264,14 +286,76 @@ describe('/admin/organization/[companyId] — the scope refusal and the parent p
     expect(screens, 'exactly one setup screen — this page maintains ONE company').toHaveLength(1);
     const props = screens[0].props;
     expect(props.companyId).toBe(ids['Beta East Sdn Bhd']);
-    // Both bucket-(a) and bucket-(b) writers reach it: without the second, "Clear this authority" would
-    // have no home in the product at all.
-    expect(typeof props.actions.setStatutoryAuthority).toBe('function');
-    expect(typeof props.actions.removeStatutoryAuthority).toBe('function');
-    // The signatory candidates are COMPANY-scoped: the service refuses to newly appoint anyone who is not
-    // an active employee of this company, so a tenant-wide list would only offer choices that fail on save.
-    for (const sg of props.signatories ?? []) {
+    expect(props.actions, 'the list cannot write, so it is given nothing to write with').toBeUndefined();
+    expect(props.signatories, 'and no signatory candidates it has no picker for').toBeUndefined();
+  });
+
+  /**
+   * 15e5bd93 REVISION 3 (r355) — THE THIRD GUARDED ROUTE, AND IT HAS TWO REFUSALS RATHER THAN ONE.
+   *
+   * ⚠️ RUN, NOT SCANNED. `page.tsx` calling `scopedAdmin()` and `isStatutoryAuthority()` proves nothing about
+   * either 404; the refusals are the `companies.find(...)` miss and the controlled-set miss, which only
+   * executing the page can show. The company half matters for the same reason it did for the list: this screen
+   * reads the same company, the same `company_statutory_my` row and the same bank accounts.
+   */
+  it('REFUSES an out-of-scope company on the per-body screen too', async () => {
+    scope.s = await scopedAdminCtx(ids['Beta Sdn Bhd']);
+    scope.scopeIds = [];
+    await expect(renderBody(ids['Gamma Sdn Bhd'], 'epf')).rejects.toThrow(NOT_FOUND);
+    await expect(renderBody(ids['Acme Sdn Bhd'], 'epf')).rejects.toThrow(NOT_FOUND);
+    await expect(renderBody(randomUUID(), 'epf'), 'and a non-company id').rejects.toThrow(NOT_FOUND);
+  });
+
+  /**
+   * AN UNKNOWN BODY 404s, AND THE POSTED STRING IS NEVER REACHED AT ALL.
+   *
+   * `koperasi` is the case that proves the controlled set is really consulted rather than a regex: efe424b0
+   * REMOVED it from `STATUTORY_AUTHORITIES`, so it is a plausible-looking body this product no longer has. The
+   * path-shaped and case-shifted values are the ones that would matter if the value ever reached a redirect.
+   *
+   * ⚠️ THE COMPANY IS IN SCOPE IN EVERY CASE HERE, so a pass cannot be the company guard firing instead.
+   */
+  it('REFUSES a body outside the controlled set, for a company it CAN administer', async () => {
+    scope.s = await scopedAdminCtx(ids['Beta Sdn Bhd']);
+    scope.scopeIds = [];
+    const mine = ids['Beta East Sdn Bhd'];
+    for (const bogus of ['koperasi', 'EPF', 'epf ', '../../evil', '', 'epf/../socso']) {
+      await expect(renderBody(mine, bogus), `authority=${JSON.stringify(bogus)}`).rejects.toThrow(NOT_FOUND);
+    }
+    // …and the control: a real body on the same company renders.
+    await expect(renderBody(mine, 'epf')).resolves.toBeTruthy();
+  });
+
+  /**
+   * THE MODE IS A CLOSED LIST OF TWO WHOSE FALLBACK IS THE READ-ONLY SHAPE. `edit` opens the form; absent,
+   * misspelt or crafted gets `view`. A wrong mode therefore degrades to the SAFER half rather than to an error
+   * page, and nothing about it is echoed. Asserted on the PROP the route resolved, because that is the value
+   * the screen branches on.
+   */
+  it('renders one body, with both writers wired and the mode resolved from a closed list', async () => {
+    scope.s = await scopedAdminCtx(ids['Beta Sdn Bhd']);
+    scope.scopeIds = [];
+    const mine = ids['Beta East Sdn Bhd'];
+    const modeOf = async (m?: string) => {
+      const found = findByType(await renderBody(mine, 'socso', m), StatutoryBodyScreen);
+      expect(found, 'exactly one body screen — this page maintains ONE body').toHaveLength(1);
+      return found[0].props;
+    };
+    const edit = await modeOf('edit');
+    expect(edit.mode).toBe('edit');
+    expect(edit.authority, 'the body from the address, already validated').toBe('socso');
+    expect(edit.companyId).toBe(mine);
+    // Both bucket-(a) and bucket-(b) writers reach it: without the second, "Clear this authority" would have
+    // no home in the product at all.
+    expect(typeof edit.actions.setStatutoryAuthority).toBe('function');
+    expect(typeof edit.actions.removeStatutoryAuthority).toBe('function');
+    // The signatory candidates are COMPANY-scoped: the service refuses to newly appoint anyone who is not an
+    // active employee of this company, so a tenant-wide list would only offer choices that fail on save.
+    for (const sg of edit.signatories ?? []) {
       expect(sg.personId, 'a candidate is a person of this company').toBeTruthy();
+    }
+    for (const m of [undefined, 'view', 'Edit', 'edit ', 'delete', '', 'view&mode=edit']) {
+      expect((await modeOf(m)).mode, `mode=${JSON.stringify(m)} degrades to the read-only shape`).toBe('view');
     }
   });
 
