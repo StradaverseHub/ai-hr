@@ -13,25 +13,36 @@
  * WHAT IT MAKES, chosen to exercise every arm of `planSharedGroupCeilings` at once:
  *
  *   Group "Pooled Leave (dev fixture)"  ·  10.00 days shared, at most 3.00 per application, Secondary
- *     · HOSPITALIZATION — the POOL. Another type's ledger routes to it, so core/read.ts gives its card a
+ *     · SICK — the POOL. Another type's ledger routes to it, so core/read.ts gives its card a
  *       `sharedBalance` whose `sourceLeaveTypeId` is its own id. That is what makes it the MERGED host: the
  *       group's ceiling, membership, per-application cap and (r355) used-this-year line land on this card
  *       and the group draws no tile of its own. THIS IS THE CARD THE ITEM IS ABOUT.
- *     · PATERNITY — a folded BORROWER. `balance_source_type_id` points at HOSPITALIZATION, so a day of it
- *       spends the pool's ledger and it holds nothing of its own; the a0b90c81 gate in core/read.ts drops
- *       its card entirely. Production's CPL and NDL are this shape.
- *     · SICK — an ALSO-COUNTS member. It holds its own granted days, so it keeps its card and gains one
+ *
+ *       ⚠️ AND IT MUST BE A TYPE THAT HOLDS ITS OWN GRANTED DAYS. r355's first cut of this fixture made
+ *       HOSPITALIZATION the pool and produced no merged card at all: the demo seed's standing grants land
+ *       on ANNUAL and SICK only, so HOSPITALIZATION holds 0.00, and a member of a PLACED group that holds
+ *       nothing of its own draws no card (the a0b90c81 gate in core/read.ts). No card ⇒ no host ⇒
+ *       `planSharedGroupCeilings` sends the group down the STANDALONE arm, and the screen the item is about
+ *       never renders. It looked exactly like a working fixture. SICK carries 14.00 granted days in the
+ *       seed, which is why it is the pool here.
+ *     · HOSPITALIZATION — a folded BORROWER. `balance_source_type_id` points at SICK, so a day of it spends
+ *       the pool's ledger and it holds nothing of its own; the same gate drops its card entirely.
+ *       Production's CPL and NDL are this shape.
+ *     · ANNUAL — an ALSO-COUNTS member. It holds its own granted days, so it keeps its card and gains one
  *       line naming the ceiling it counts towards. Production's Marriage Leave is this shape, and it is the
  *       half of the original ticket that was argued back: folding it would hide days people can spend.
+ *       (It is also the RING card, so this covers the ceiling line on both card shapes in one render.)
  *
  *   Group "Standalone Pool (dev fixture)"  ·  6.00 days shared, no cap, Secondary
  *     · MATERNITY, and no pooled member anywhere in the group. There is nothing to merge onto, so this one
  *       keeps drawing its OWN tile — the out-of-the-box shape every tenant without a pooled type is on, and
  *       the arm a fixture that only built the merge would leave unrendered.
  *
- *   One approved 2.00-day HOSPITALIZATION request per open employment, dated inside the current calendar
+ *   One approved 2.00-day request on the pool type per open employment, dated inside the current calendar
  *   year, so the group's `usedDays` is a NON-ZERO figure. Without it the used-this-year line renders 0.00,
- *   which proves the line exists but not that it carries the pool's arithmetic.
+ *   which proves the line exists but not that it carries the pool's arithmetic. The run PRINTS the figure
+ *   each employment should then see, because the seed's own member-type requests count towards it too and
+ *   a fixture that promised one number for everybody would be wrong for most of them.
  *
  * SAFETY. Every write is scoped to `tenant_id = DEMO_TENANT_ID` and the run refuses outright on a
  * deployment with real WorkOS keys or an undeclared production NODE_ENV (`demoSeedRefusal`, shared with
@@ -49,10 +60,15 @@ import { DEMO_TENANT_ID, demoSeedRefusal } from '../db/seed-guard';
 
 const POOLED_GROUP = 'Pooled Leave (dev fixture)';
 const STANDALONE_GROUP = 'Standalone Pool (dev fixture)';
-/** The pool's own code, the borrower routed onto it, and the member that keeps its own card. */
-const POOL_CODE = 'HOSPITALIZATION';
-const BORROWER_CODE = 'PATERNITY';
-const ALSO_COUNTS_CODE = 'SICK';
+/**
+ * The pool's own code, the borrower routed onto it, and the member that keeps its own card.
+ * ⚠️ POOL_CODE and ALSO_COUNTS_CODE must both be types the demo seed GRANTS days on (db/seed.ts's
+ * `standingGrants`: ANNUAL, SICK, HOSPITALIZATION — and only the first two actually land on a ledger).
+ * A pool holding 0.00 is folded away and the merged card never appears. See the header.
+ */
+const POOL_CODE = 'SICK';
+const BORROWER_CODE = 'HOSPITALIZATION';
+const ALSO_COUNTS_CODE = 'ANNUAL';
 const STANDALONE_MEMBER_CODE = 'MATERNITY';
 
 const refusal = demoSeedRefusal(process.env);
@@ -183,16 +199,57 @@ async function main() {
     );
   }
 
+  /**
+   * ⚠️ THE CHECK THAT THE FIXTURE ACTUALLY BUILT THE MERGED CASE, not a silently standalone one.
+   *
+   * A pool type holding no granted days is folded away by the a0b90c81 gate, and then the group renders as a
+   * plain tile — the arm the item is NOT about — with no error anywhere. That is precisely how this fixture's
+   * first cut wasted a render check, so the condition is asserted here rather than left to the reader's eye.
+   */
+  const [grant] = await owner.db
+    .select({ days: sql<string>`coalesce(sum(${schema.leaveLedger.days}), 0)` })
+    .from(schema.leaveLedger)
+    .where(and(eq(schema.leaveLedger.tenantId, tenantId), eq(schema.leaveLedger.leaveTypeId, pool.id)));
+  if (Number(grant?.days ?? 0) <= 0) {
+    console.error(
+      `\nREFUSING TO CLAIM SUCCESS: no employment holds any ${pool.code} days, so its card is folded by the\n` +
+        `a0b90c81 gate in core/read.ts and "${POOLED_GROUP}" will draw a STANDALONE tile instead of merging.\n` +
+        `Pick a POOL_CODE the seed grants days on, or grant some, and re-run.`,
+    );
+    process.exit(1);
+  }
+
+  // What each employment's merged card should then read for "used this year": the fixture's own 2.00 PLUS
+  // whatever the seed already committed on a member type inside the cycle. Printed per employment because
+  // one promised number would be wrong for most of them.
+  const used = await owner.db
+    .select({
+      employmentId: schema.leaveRequest.employmentId,
+      days: sql<string>`coalesce(sum(${schema.leaveRequest.days}), 0)`,
+    })
+    .from(schema.leaveRequest)
+    .where(
+      and(
+        eq(schema.leaveRequest.tenantId, tenantId),
+        inArray(schema.leaveRequest.leaveTypeId, [pool.id, borrower.id, alsoCounts.id]),
+        inArray(schema.leaveRequest.status, ['pending', 'approved']),
+        sql`${schema.leaveRequest.startDate} between ${`${year}-01-01`} and ${`${year}-12-31`}`,
+      ),
+    )
+    .groupBy(schema.leaveRequest.employmentId);
+
   console.log(`Pooled-leave dev fixture applied to tenant ${tenantId}.`);
-  console.log(`  ${POOLED_GROUP}  id=${pooled.id}`);
+  console.log(`  ${POOLED_GROUP}  id=${pooled.id}  ·  10.00 shared, max 3.00 per application, Secondary`);
   console.log(`    MERGED host      ${pool.code} (${pool.name}) — expect ONE card, carrying the ceiling`);
   console.log(`    folded borrower  ${borrower.code} (${borrower.name}) — expect NO card`);
   console.log(`    also-counts      ${alsoCounts.code} (${alsoCounts.name}) — expect its card + a ceiling line`);
-  console.log(`  ${STANDALONE_GROUP}  id=${standalone.id}`);
+  console.log(`  ${STANDALONE_GROUP}  id=${standalone.id}  ·  6.00 shared, no cap, Secondary`);
   console.log(`    member           ${standaloneMember.code} — expect the group's OWN tile, not a merge`);
-  console.log(`  usage: 2.00 approved ${pool.code} day(s) on ${employments.length} employment(s) at ${start} (${year})`);
-  console.log(`  so the merged card must read: used this year 2.00, of 10.00 shared, up to 3.00 per application`);
-  console.log(`  and NO "View details" link — r355 deleted /leave/shared/[groupId]; expect a 404 there.`);
+  console.log(`  usage: 2.00 approved ${pool.code} day(s) written on ${employments.length} employment(s) at ${start}`);
+  console.log(`  "used this year" per employment, for the ${year} cycle:`);
+  for (const u of used) console.log(`    ${u.employmentId}  ${Number(u.days).toFixed(2)}`);
+  console.log(`  and the merged card must carry NO "View details" link — r355 deleted`);
+  console.log(`  /leave/shared/[groupId], so GET /leave/shared/${pooled.id} must 404.`);
   await owner.client.end();
 }
 
