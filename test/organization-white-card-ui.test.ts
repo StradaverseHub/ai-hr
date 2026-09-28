@@ -63,12 +63,31 @@ describe('3783fd87 — the Organization screens paint white cards, not grey bloc
     expect(filled(PANEL), 'a filled grey ground came back into components/company-panel.tsx').toEqual([]);
   });
 
+  /**
+   * 15e5bd93 REVISION 2 (r353) — AND NEITHER DOES THE SCREEN THE STATUTORY EDITORS MOVED TO.
+   *
+   * 3783fd87's complaint was the "excessive grey background" on the Organization screens. Half of that
+   * screen is now a route of its own (/admin/organization/[companyId]/statutory), and a new file is exactly
+   * where the old habit comes back: nothing in this file was watching it. Extended rather than re-pointed,
+   * because the panel still has grounds of its own to keep clean.
+   */
+  it('and the dedicated statutory setup screen paints none either', () => {
+    const SCREEN = read('components/statutory-setup-screen.tsx');
+    expect(filled(SCREEN), 'a filled grey ground appeared on the new statutory screen').toEqual([]);
+  });
+
   it('…and its sections are white cards with a LINE, which is what replaced each grey block', () => {
     // The section blocks. `bg-card` is #ffffff; the border is the separation the fill used to provide.
     expect(PANEL).toContain('rounded-lg border border-border bg-card p-3');
     expect(PANEL, 'the old filled block must not come back').not.toContain('rounded-lg bg-background p-3');
-    // The three sub-blocks inside a statutory editor: a line, no fill.
-    expect(PANEL).toContain('rounded-md border border-border/60 p-2.5');
+    /**
+     * The three sub-blocks inside a statutory editor: a line, no fill. ⚠️ RE-POINTED BY r353 — the editor
+     * is on the dedicated setup screen now, so the claim reads that file. The negative half is asserted on
+     * BOTH: the filled block must not come back anywhere.
+     */
+    const SCREEN = read('components/statutory-setup-screen.tsx');
+    expect(SCREEN).toContain('rounded-md border border-border/60 p-2.5');
+    expect(SCREEN).not.toContain('rounded-md bg-muted/40 p-2.5');
     expect(PANEL).not.toContain('rounded-md bg-muted/40 p-2.5');
     // The tab shell keeps its separator and loses its wash.
     expect(PANEL).toContain('border-t border-border px-4 py-4');

@@ -66,6 +66,10 @@ import {
   type CompanyListInput,
 } from '../app/admin/organization/company-rows';
 import CompanyMaintenancePage from '../app/admin/organization/[companyId]/page';
+// 15e5bd93 rev 2 (r353) — the SECOND guarded route onto one company's data. A second door must not be an
+// easier door, so the refusal this file runs for the detail page is run for it too.
+import CompanyStatutorySetupPage from '../app/admin/organization/[companyId]/statutory/page';
+import { StatutorySetupScreen } from '../components/statutory-setup-screen';
 import NewCompanyPage from '../app/admin/organization/new/page';
 import { createCompanyAction } from '../app/admin/actions';
 
@@ -197,6 +201,12 @@ describe('/admin/organization/[companyId] — the scope refusal and the parent p
       params: Promise.resolve({ companyId }),
       searchParams: Promise.resolve({}),
     });
+  /** The dedicated Statutory Payment Setup screen, whose guard mirrors the detail page's line for line. */
+  const renderStatutory = (companyId: string) =>
+    CompanyStatutorySetupPage({
+      params: Promise.resolve({ companyId }),
+      searchParams: Promise.resolve({}),
+    });
 
   beforeAll(async () => {
     await migrateTestDb();
@@ -224,6 +234,45 @@ describe('/admin/organization/[companyId] — the scope refusal and the parent p
     scope.s = await scopedAdminCtx(null);
     scope.scopeIds = [];
     await expect(render(randomUUID())).rejects.toThrow(NOT_FOUND);
+  });
+
+  /**
+   * 15e5bd93 REVISION 2 (r353) — THE SAME REFUSAL ON THE SECOND ROUTE, AND IT IS NOT A FORMALITY.
+   *
+   * The reporter's approved redesign puts the statutory bodies on `/admin/organization/<id>/statutory`. That
+   * screen reads the same company, the same `company_statutory_my` row and the same bank accounts as the
+   * detail page — so a guard that was merely COPIED rather than run is a guard nobody has checked. The
+   * writes are independently refused by RLS, but a screen that renders another company's bank accounts has
+   * already leaked them whether or not the save would have failed.
+   *
+   * ⚠️ RUN, NOT SCANNED: `page.tsx` calling `scopedAdmin()` proves nothing about the 404. The refusal is the
+   * `companies.find(...)` miss, which only executing the page can show.
+   */
+  it('REFUSES the same companies on the dedicated Statutory Payment Setup screen', async () => {
+    scope.s = await scopedAdminCtx(ids['Beta Sdn Bhd']);
+    scope.scopeIds = [];
+    await expect(renderStatutory(ids['Gamma Sdn Bhd'])).rejects.toThrow(NOT_FOUND);
+    await expect(renderStatutory(ids['Acme Sdn Bhd'])).rejects.toThrow(NOT_FOUND);
+    await expect(renderStatutory(randomUUID()), 'and a non-company id').rejects.toThrow(NOT_FOUND);
+  });
+
+  it('renders the setup screen for the company it DOES administer, with the two writers wired', async () => {
+    scope.s = await scopedAdminCtx(ids['Beta Sdn Bhd']);
+    scope.scopeIds = [];
+    const tree = await renderStatutory(ids['Beta East Sdn Bhd']);
+    const screens = findByType(tree, StatutorySetupScreen);
+    expect(screens, 'exactly one setup screen — this page maintains ONE company').toHaveLength(1);
+    const props = screens[0].props;
+    expect(props.companyId).toBe(ids['Beta East Sdn Bhd']);
+    // Both bucket-(a) and bucket-(b) writers reach it: without the second, "Clear this authority" would
+    // have no home in the product at all.
+    expect(typeof props.actions.setStatutoryAuthority).toBe('function');
+    expect(typeof props.actions.removeStatutoryAuthority).toBe('function');
+    // The signatory candidates are COMPANY-scoped: the service refuses to newly appoint anyone who is not
+    // an active employee of this company, so a tenant-wide list would only offer choices that fail on save.
+    for (const sg of props.signatories ?? []) {
+      expect(sg.personId, 'a candidate is a person of this company').toBeTruthy();
+    }
   });
 
   it('renders the company it DOES administer, with the panel open and the actions wired', async () => {

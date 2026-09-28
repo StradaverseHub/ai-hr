@@ -193,6 +193,58 @@ export function failCompany(e: unknown, companyId: string, tab = ''): never {
 }
 
 /**
+ * ─── 15e5bd93 rev 2 (r353) · STAY ON THE STATUTORY PAYMENT SETUP SCREEN ──────────────────────────────
+ *
+ * The reporter contested what r352 shipped and asked for the eight bodies to live on a DEDICATED
+ * full-width screen, `/admin/organization/<companyId>/statutory`, with each card read-only until its own
+ * Edit is pressed. Their fourth approved point is about what happens next: "Saving keeps the user on
+ * this page and shows a confirmation naming what was saved. Never redirected to the Organization company
+ * list."
+ *
+ * `okCompany` CANNOT SERVE THAT, and the reason is the whole of why these two exist. Its destination is
+ * the company PANEL, and the `?tab=` it carries is read by the panel's client tab state — the
+ * capture-phase tracker at components/company-panel.tsx that injects the active tab into every form it
+ * hosts. The dedicated screen is not the panel, hosts none of that, and is a different address: a save
+ * made there and routed through okCompany would land the operator back on the company detail page,
+ * looking at the read-only rail, wondering whether the card they just edited took.
+ *
+ * Everything else is okCompany's contract, unchanged and for its reasons:
+ *   · the toast rides as the FIRST query key and nothing is ever concatenated in front of it (the
+ *     r287 → r301 defect), so ToastFromQuery still parses it;
+ *   · LOCALISE BEFORE CALLING — ToastFromQuery renders the raw string;
+ *   · AN EMPTY companyId DEGRADES TO THE LIST rather than emitting `/admin/organization//statutory`;
+ *   · BOTH the list and the company are revalidated as well as this screen. The screen reads
+ *     `company_statutory_authority` and `company_statutory_my`, and the company detail page's read-only
+ *     rail reads the SAME two — so a save that revalidated only this path would leave the rail on the
+ *     Statutory tab showing yesterday's employer number until something else invalidated it.
+ */
+export function companyStatutoryPath(companyId: string): string {
+  return companyId ? `${ORGANIZATION}/${companyId}/statutory` : ORGANIZATION;
+}
+
+export function okStatutorySetup(companyId: string, msg: string): never {
+  const path = companyStatutoryPath(companyId);
+  revalidatePath(ORGANIZATION);
+  if (path !== ORGANIZATION) {
+    revalidatePath(path);
+    revalidatePath(companyPath(companyId));
+  }
+  redirect(`${path}?toast=${encodeURIComponent(msg)}`);
+}
+
+/**
+ * okStatutorySetup's failure twin, and it matters more than the success half does.
+ *
+ * Every refusal reachable from these cards is real — "Choose a signatory who is an active employee of
+ * this company" (core/statutory-authority.ts), a bank profile that belongs to another company, an
+ * unknown authority code. Routed through `failCompany` the message would surface on the company panel,
+ * about a form the reader can no longer see, with their typing gone.
+ */
+export function failStatutorySetup(e: unknown, companyId: string): never {
+  redirect(`${companyStatutoryPath(companyId)}?error=${encodeURIComponent((e as Error).message)}`);
+}
+
+/**
  * ─── 665de026 · STAY ON THE SCHEDULE GROUP, AND THE SECTION IT WAS SAVED FROM ────────────────────────
  *
  * The reporter's words: "Saving KEEPS YOU WHERE YOU ARE with a confirmation — it does not throw you back

@@ -126,15 +126,28 @@ classification confirms the plan's buckets.** What it does not confirm is that t
 
 ### Finding 1 — the four (a) forms are NOT on one tab, so "one Save for the whole screen" cannot be built as written
 
-> **SETTLED BY 15e5bd93 (r352), and the record below is kept as the reasoning that led there.** This
-> finding's two refusals both still hold: `TabSaveScope` still cannot span two tab panes, and the
-> Company Registrations card still must not move off the Statutory tab. What it could not foresee is the
-> third answer — the reporter's approved statutory redesign put the eight bodies in one permanent rail
-> with one workspace and took the Save button off every body editor, so a scope on the Statutory tab now
-> owns every card under its bar instead of claiming eight it did not. The Statutory tab therefore has a
-> consolidated Save of its own (`lib/company-statutory-tab-sections.ts`), the registrations card is in
-> it, and it did not move. The "one-card scope would be worse than none" paragraph below was correct
-> about a one-card scope; it is simply no longer the choice on offer.
+> **SETTLED BY 15e5bd93 (r352), THEN UNSETTLED BY 15e5bd93 REVISION 2 (r353) — AND THIS FINDING IS NOW
+> LIVE AGAIN, EXACTLY AS WRITTEN.** The record of both turns is kept, because the second one is the
+> reporter correcting us and not us changing our minds.
+>
+> r352 said: this finding's two refusals both still hold (`TabSaveScope` cannot span two tab panes, and
+> the Company Registrations card must not move off the Statutory tab), but a third answer had appeared —
+> the approved statutory redesign put the eight bodies in one permanent rail with one workspace and took
+> the Save button off every body editor, so a scope on the Statutory tab owned every card under its bar
+> instead of claiming eight it did not. The tab therefore had a consolidated Save of its own
+> (`lib/company-statutory-tab-sections.ts`), the registrations card was in it, and it did not move.
+>
+> r353 says: **the reporter contested that redesign.** Their words are "Do not expand the statutory
+> settings directly within the existing Statutory tab" and "The preferred approach is a dedicated
+> full-width screen". So the eight body editors are
+> `/admin/organization/[companyId]/statutory` now, each card with its own Save and Cancel, and the third
+> answer is withdrawn with the premise it rested on. `lib/company-statutory-tab-sections.ts` and
+> `app/admin/organization/statutory-tab-actions.ts` are DELETED.
+>
+> That leaves the Company Registrations card alone on the Statutory tab — which is the one-card scope the
+> paragraph below calls "worse than none", and that paragraph was right both times. **The card keeps its
+> own Save button, on the Statutory tab, exactly where this finding left it.** Nothing about the finding
+> was wrong; r352 had simply found a way around it that the reporter did not want.
 
 The panel is three tabs: **General | Bank Account | Statutory**. The (a) forms sit like this:
 
@@ -280,6 +293,16 @@ a change to a component four other tabs depend on and is not this item's to make
 | archiving a LIST row still stays on the list | the closed-list `returnTo` marker | §3 |
 | one Save for the General tab's three field edits | `TabSaveScope` + `saveCompanyGeneralTabAction` + `lib/company-tab-sections.ts` | `test/organization-general-tab-save.test.ts` §1–§2 |
 | every bucket (b) control still stands on its own | the marker set, read off the RENDERED panel | §3 |
+| a save made on the DEDICATED statutory screen stays THERE, naming the body | `okStatutorySetup` / `failStatutorySetup` + the closed-list `returnTo` marker (15e5bd93 rev 2, r353) | `test/organization-stay-on-save.test.ts` §6 and `test/organization-statutory-card-save.test.ts` §3 |
+
+> **15e5bd93 REVISION 2 (r353) ADDED A THIRTEENTH DESTINATION, and the row above is it.** The reporter
+> asked for the eight statutory bodies on a dedicated full-width screen, so
+> `setCompanyStatutoryAuthorityAction` and `removeCompanyStatutoryAuthorityAction` are each bound in TWO
+> places now — the company panel and `/admin/organization/<id>/statutory`. That is a different ROUTE, not a
+> different tab, so the capture-phase `?tab=` listener in the second row of this table does not reach them
+> there and `okCompany` cannot serve it. The destination comes from the FORM, exactly as `archiveCompany`'s
+> does and for the same reason: repointing the action would have broken the binding that is still on the
+> panel.
 
 ### The correction owed to the reporter, in the words it should be said in
 
