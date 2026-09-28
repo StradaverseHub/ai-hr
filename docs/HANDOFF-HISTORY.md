@@ -1,3 +1,59 @@
+## r355 (2026-09-29) — four items shipped, one parked mid-build, and the board command that hid the parking. `main@98617c8b`, **no migration**.
+
+Closed: `77e882f5`, `4c63b37e`, `8d3a7bff`, `15e5bd93` (revision 3). Parked on a question: `70294f7a`. Gate: **1049 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=489`.
+
+### `77e882f5` — THE TICK IS CONSENT, NOT AN OVERRIDE, AND IT MOVES MONEY
+
+The owner reversed item `6c635212`'s precedence in their own words: the checkbox states an intention to claim and must not override the statutory eligibility validation. The ladder is now tick → date of birth → age → applicable relief condition. A ticked child over 18 carrying no qualifying category stops counting — the outcome the reporter asked for twice, on a child born 2004 whose category reads `under_18`.
+
+`childReliefCategory` therefore stops being a pricing field and becomes an eligibility input. Which categories justify a claim past 18 was read off the catalogue rather than inferred from the price: `study_preu` is defined in this repo as "18+ in full-time pre-university study", so it is in the set with `study_tertiary`, `disabled` and `disabled_study`; `under_18` is the only one that asserts the opposite and so the only one excluded.
+
+**That reading now has primary-source footing it did not have when it shipped.** LHDN's PCB 2026 specification, printed page 26, allows RM2,000 "per child … if the child is unmarried, 18 years of age and above, and is receiving full-time education" — pre-university study at 18+ is inside that sentence. The build note had flagged `study_preu` as UNKNOWN and told the builder to resolve it against the spec; the builder resolved it from the catalogue instead and reached the same answer.
+
+Two things deliberately unchanged, both asserted: an explicit `false` still refuses at any age, and a NULL tick keeps the pre-r355 inference. Null is most legacy rows, and reading it as "not claimed" would drop every never-ticked child out of relief in one nightly resync — a mass relief loss from a rule nobody asked for.
+
+### `4c63b37e` — AVAILABLE BALANCE AS A COLUMN, AND TWO FIGURES IT IS NOT
+
+The figure was already on every row and readable one Explain popup at a time. It is now a column on the screen and in both exports, named through `lib/leave-figure-labels.ts` so the screen, the file and My Leave's card cannot call one figure three things.
+
+It is **not** `leaveTypeApplySummary`, which the ticket asked for by description: that takes no date on purpose, so it agrees with the submit guard, and printing it here would have shown today's figure whatever As-at date HR typed — item `3ddae357` exactly. It is **not** the literal `Balance − Pending Approval − Pending Share` either: on a pooled borrower's row that arithmetic yields −2.00, because `core/read.ts` zeroes a borrower's balance and the row zeroes its pending while `pendingShare` carries the days. The pooled figure prints, and the Explain panel says why the row's three cells do not reach it.
+
+`leaveBalances().available` is now rounded at the point of computation, as its twin in `core/leave.ts` already was: `0.30 − 0.10` is 0.19999999999999998.
+
+### `8d3a7bff` — THE POOLED-LEAVE DETAIL PAGE IS DELETED
+
+The contest moved the complaint off the two Special Leave cards (fixed in r341, live) and onto the page behind the surviving card's View details link: it repeated the heading just clicked, led with policy limits, offered no way back, and read as a configuration screen.
+
+The one figure the page held that the card did not (`usedThisYear`) moved onto the card in the page's own key. The link's `detailsHref`/`detailsLabel` are gone from the types, so a reinstated link fails `tsc` before it fails a grep. The six keys the page owned are **retired in place in all six locales** — `i18n/request.ts` deep-merges each locale over English, so dropping them from `en.json` alone would leave a Malay reader the old sentence. Applying is unaffected and was re-proved rather than assumed: every pooled reason is in the Request Leave picker under the pool's `<optgroup>`, and the deleted page's Apply buttons pointed into that same form.
+
+`scripts/dev-fixture-pooled-leave.ts` is **committed**, because `pnpm db:seed` configures no shared group and no pooled type and none of this renders locally without one. r341 wrote such a fixture and left it uncommitted, which is why this was still unverifiable a round later.
+
+### `15e5bd93` REVISION 3 — THE THIRD SHAPE FOR ONE SCREEN, AND THIS TIME IT IS THEIR DRAWING
+
+r352 shipped a rail and workspace inside the tab; contested. r353 shipped a dedicated screen of eight always-visible cards; contested again. The reporter then drew it themselves in the ticket, and this round is that sketch: the eight bodies become a four-column table, and Edit opens a screen carrying one body.
+
+- The eight cards became one table with **nothing filtered**. r353's `STATUTORY_AUTHORITIES.filter(a => !(perkeso && a === 'eis'))` existed only because a two-column grid put the third card under the first; a table is one column, so the one shape that can silently drop a statutory body is gone.
+- **Status and Payment Setup are two facts, not one.** HRD Corp derives Status from `hrdf_status` (`not_registered | mandatory | optional`, and `core/payroll.ts` charges the levy only when it is not `not_registered`); the other seven derive it from the record's existence. "Configured + Inactive" is a real reachable row. No enable/disable switch was invented, because no such column exists.
+- **Four guards the brief did not name would have gone red in the full gate** — `hrdf-contribution-rate`, `organization-white-card-ui`, `organization-general-tab-save`, and a second case in `organization-stay-on-save`. Two of them also carried comments naming `test/statutory-setup-screen-render.test.tsx` — the wrong extension, a filename matching **neither** vitest project — and one named a file that has never existed. All corrected.
+- **One promised thing was deliberately not built:** the plan said the empty-state `colSpan` row moves with the layout. It is unreachable — the table maps a non-empty compile-time constant — and the one real empty case (a non-MY company) is handled above the table. Markup asserting a state that cannot exist is not an improvement.
+
+### `70294f7a` — PARKED, AND THE PARK SILENTLY DID NOT HAPPEN THE FIRST TIME
+
+The approved rule — rest days, off days and public holidays use the same time fields as an ordinary working day — cannot be built as written. `app/leave/page.tsx:401` only offers `extendedHoursTiers` when the company's extended-hours switch is on, and the switch is off for every company; `leave-credit-request-table.tsx:175` turns that absence into `ordinaryEarnsNothing`, and `:328`/`:334` make every affected row block submission. Widening the day-type predicate would have stopped Leave Credit being submittable on every default tenant, including rest-day claims that work today. `core/leave-credit-request.ts:113-115` keys `sourceTypeForDayType` off the same predicate, so widening it would also relabel stored rest-day credits as `extended_hours`. The item is parked with the two options and a recommendation; the worktree carries no changes.
+
+**The first park did nothing and said it had.** `markBlockedSql`'s UPDATE carried `AND status = 'approved'` and the item was already `building`, so it matched no row — and the CLI printed `blocked 70294f7a` regardless, while the unguarded event insert wrote a `feedback.blocked` recording a question the reporter was never asked. Both halves are fixed:
+
+- **`building` is parkable**, in the CLI and in `core/feedback.ts`, which owns the rule. The question that stops a build is usually the one you find while building it; the alternatives were to lie with `build-complete` or leave the item reading `building` with nothing attached to it. Unblock still returns it to `approved`.
+- **A no-op is now an error.** Both scripts run their UPDATE inside a DO block, read `GET DIAGNOSTICS ROW_COUNT`, write the episode and the event only if the row moved, and report the outcome back through a temp table; `assertMoved` throws on anything but the wanted status. ROW_COUNT rather than a status re-read, because unblock is asymmetric: an item that is already `approved` looks identical after a release that never happened.
+
+The guard case that pinned "improve:block opens NOTHING when the status guard did not park the item" — which proved it with a `building` item — is reversed with its old claim quoted, and its no-op half re-pinned on `done`, now asserting no episode **and** no event **and** no status change.
+
+### NOT DONE
+
+- **`localization/my/multicycle-worksheet.ts` is a second derivation of the kernel's PCB accumulators and it has now drifted twice.** `loadPriorAccumulators` still folds `payslip.gross_pay` into `netRemuneration` where `core/payroll.ts` folds `statutory.bases.pcb` (r354's money fix), and still omits `zakatRebateTp1` from `zakatPaid` where the kernel adds it (r352). Its `zakat_or_lp_present` exclusion also does not consider a rebate-only month. The map is fed straight into `pack.payroll.statutory`, so an employee with tax-exempt allowances gets a worksheet that does not reconcile with their own payslips — on the document an accountant signs. Verified by reading both folds this round; not fixed, because r355 was already gated. The fix is one fold, owned by the pack beside `PcbAccumulators`, called by both.
+- **`fda53352` is contested a third time** and re-planned but not yet approved: the reporter wants EA item 8 to print the s.48-weighted figure (9) rather than the number of children (2). Item 8 is "Bilangan anak yang layak untuk pelepasan cukai", and the same form already carries the weighting as money in D.6. The plan holds the count, with the agency's own sentence — "relief to be given as if the employee has this number of children" (PCB 2026 spec, printed p.27) — and fixes what actually misleads: the employee card captions "Physical children" (which is not the physical count in either automatic mode) and "Qualifying children (PCB)" (which is not a count at all).
+- **No production read was possible this session.** The local tooling refused it, so `fda53352`'s Employee A was diagnosed from the code alone. The conclusion holds in every reachable mode; which mode produced it is UNKNOWN.
+- The remainder of `4011903e` (the PCB-detail TP1 schedule re-deriving from today's declarations) is still unbuilt, as r354 recorded.
 ## r354 (2026-09-28) — the accumulated figure was right to distrust, and wrong about why. `main@026d7d9e`, **no migration**.
 
 Closed: `4011903e`. Gate: **1047 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=489`.

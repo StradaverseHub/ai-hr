@@ -1,0 +1,195 @@
+<meta charset="utf-8">
+<title>fda53352 — EA item 8: the number of children, and the weighting that is not a number of children</title>
+<!--
+  Mockup for fda53352 REVISION 6, after the reporter contested r353 a third time on ONE point:
+  "Form C.P.8A (EA) item 8 shows 2, but Qualifying children (PCB) on the employee's screen is 9.
+   Item 8 must display 9."
+
+  WHAT THIS DRAWING IS FOR. It is not a new screen. It is the two numbers put side by side with the
+  form's own two boxes, because the argument is entirely about which of them belongs where, and prose
+  has already failed at it twice (r351 and r353 both answered "item 8 is a count").
+
+  THE EVIDENCE DRAWN HERE, ALL PRIMARY:
+  · C.P.8A Pin. 2023 item 8 reads "Bilangan anak yang layak untuk pelepasan cukai" — BILANGAN ANAK,
+    the NUMBER OF CHILDREN who qualify (docs/forms/ea-cp8a-pin-2023-transcription.txt line 94).
+  · The same form's item D.6 reads "Jumlah pelepasan bagi anak yang layak" — the RELIEF AMOUNT for
+    those children. The form already carries both facts, in two boxes.
+  · LHDN's PCB 2026 computerised-calculation specification, printed page 27, prices a child by category
+    under the column heading "Relief to be given AS IF THE EMPLOYEE HAS THIS NUMBER OF CHILDREN":
+    over 18 in higher education = 4, disabled = 4, disabled and in higher education = 8.
+    That is the 9. It is an "as if" for computing money, and the money it computes is D.6.
+
+  THE WORKED EXAMPLE IS NOT INVENTED: 9 is only reachable from 2 children one way in this system —
+  one disabled child in higher education (counted as 8) plus one child under 18 (counted as 1).
+  9 x RM2,000 = RM18,000, which is what D.6 prints. Drawn, so the reporter can check it against their
+  own employee's record.
+
+  HONESTY NOTES — a mockup is a promise:
+  · The BEFORE panel is what the screen says today (components/identity-tax-card.tsx:514 and :556) and
+    what the form prints today. Nothing in it is a proposal.
+  · The AFTER panel changes CAPTIONS AND ONE NEW READ-ONLY LINE. No figure moves, no money changes, and
+    the form's item 8 is not touched. If the reporter wants item 8 to print 9 after reading this, that
+    is a different change and the plan says so in words rather than drawing it.
+  · "Physical children" is drawn as renamed because that caption is ALSO wrong today: in the two
+    automatic modes the box holds the number of children being CLAIMED (the eligible ones), not the
+    number of children the employee has. The Family register's own count already appears beside it when
+    the two disagree, and that line is kept.
+  · Colours, spacing and exact wording will differ.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .h1{font-size:19px;font-weight:700;margin:0 0 3px}
+  .h1s{font-size:12px;color:var(--mf);margin:0 0 18px;max-width:1060px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  .card.after{border-color:color-mix(in srgb,var(--primary) 45%,white);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 8%,white)}
+  h2{font-size:13.5px;margin:0 0 2px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.45}
+  .tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;margin-left:7px;vertical-align:2px}
+  .tag.now{background:var(--muted);color:var(--mf)}
+  .tag.new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .legend{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mf);
+          margin:2px 0 9px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+  .field{margin:0 0 13px}
+  .lab{display:block;font-size:11.5px;font-weight:650;margin:0 0 4px}
+  .box{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--border);
+       border-radius:9px;padding:7px 11px;background:#fff;font-size:14px;font-weight:650}
+  .box.ro{background:var(--muted);color:var(--mf)}
+  .box .unit{font-size:10.5px;font-weight:600;color:var(--mf)}
+  .hint{display:block;font-size:10.5px;color:var(--mf);margin:4px 0 0;line-height:1.45}
+  .hint.amber{color:var(--warn)}
+  .hint.good{color:var(--good)}
+  .clash{border:1px dashed var(--bad);border-radius:10px;padding:9px 11px;margin:2px 0 0;background:color-mix(in srgb,var(--bad) 5%,white)}
+  .clash b{color:var(--bad)}
+  .clash p{margin:0;font-size:11px;line-height:1.5}
+  .form{background:#fff;border:1px solid var(--border);border-radius:12px;padding:0;overflow:hidden}
+  .formhead{background:var(--muted);padding:8px 12px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--mf)}
+  .row{display:flex;gap:10px;padding:9px 12px;border-top:1px solid var(--border);align-items:baseline}
+  .row .no{width:26px;font-weight:700;font-size:11.5px;color:var(--mf);flex:none}
+  .row .cap{flex:1;font-size:11.5px}
+  .row .val{font-variant-numeric:tabular-nums;font-weight:700;font-size:14px;min-width:92px;text-align:right}
+  .row .val.em{color:var(--primary)}
+  .rule{display:block;border-bottom:1px dotted #b9bac6;margin-top:3px}
+  .note{font-size:11px;color:var(--mf);line-height:1.5;margin:10px 0 0}
+  .quote{border-left:3px solid var(--primary);padding:7px 11px;margin:12px 0 0;background:color-mix(in srgb,var(--primary) 5%,white);
+         font-size:11px;line-height:1.55}
+  .quote b{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--primary);margin-bottom:3px}
+  .kids{width:100%;border-collapse:collapse;margin:4px 0 0;font-size:11.5px}
+  .kids th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+           font-weight:700;padding:0 8px 5px 0;border-bottom:1px solid var(--border)}
+  .kids td{padding:6px 8px 6px 0;border-bottom:1px solid var(--border);vertical-align:top}
+  .kids td.n{text-align:right;font-variant-numeric:tabular-nums;font-weight:650;padding-right:0}
+  .kids tr.tot td{border-bottom:none;font-weight:700;padding-top:8px}
+  .sketch{margin:16px 0 0;font-size:10.5px;color:var(--mf);text-align:center}
+</style>
+
+<p class="h1">Form EA item 8 — “Bilangan anak yang layak untuk pelepasan cukai”</p>
+<p class="h1s">Employee A (A00001), year of assessment 2026. Two children: one disabled and in higher
+  education, one under 18. Left is exactly what the system says today. Right is what we propose to
+  change — captions on the employee’s screen, and one new line. The form itself is not changed.</p>
+
+<div class="cols">
+
+  <!-- ══════════════ BEFORE ══════════════ -->
+  <div>
+    <div class="card">
+      <h2>Employee Management → Bank &amp; Statutory → Income Tax (PCB)<span class="tag now">Today</span></h2>
+      <p class="sub">The two fields the contest is about, as they read now.</p>
+
+      <div class="field">
+        <span class="lab">Physical children</span>
+        <div class="box ro"><span>2</span><span class="unit">from the Family records</span></div>
+        <span class="hint">Worked out from the Family records: 2 eligible child(ren).</span>
+      </div>
+
+      <div class="field">
+        <span class="lab">Qualifying children (PCB)</span>
+        <div class="box ro"><span>9</span><span class="unit">child relief: RM 18,000</span></div>
+        <span class="hint">Each child is counted at the weight its relief category carries.</span>
+      </div>
+
+      <div class="clash">
+        <p><b>Two captions, two different facts.</b> The form’s item 8 asks for the number of children
+          who qualify. The screen’s “Qualifying children (PCB)” is not a number of children — it is what
+          those children are worth, expressed in whole-child units. Nothing on the screen says which of
+          them the form prints.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Form C.P.8A (EA) 2026 — what prints today</h2>
+      <p class="sub">Both boxes already appear on the form, in different sections.</p>
+      <div class="form">
+        <div class="formhead">A — Butir-butir Pekerja</div>
+        <div class="row"><span class="no">8.</span>
+          <span class="cap">Bilangan anak yang layak untuk pelepasan cukai<span class="rule"></span></span>
+          <span class="val">2</span></div>
+        <div class="formhead" style="border-top:1px solid var(--border)">D — Jumlah Pelepasan</div>
+        <div class="row"><span class="no">6.</span>
+          <span class="cap">Jumlah pelepasan bagi anak yang layak<span class="rule"></span></span>
+          <span class="val">RM 18,000.00</span></div>
+      </div>
+      <p class="note">The 9 is not missing from the form. It is in item D.6, as the money it produces:
+        9 × RM2,000 = RM18,000.</p>
+    </div>
+  </div>
+
+  <!-- ══════════════ AFTER ══════════════ -->
+  <div>
+    <div class="card after">
+      <h2>Employee Management → Bank &amp; Statutory → Income Tax (PCB)<span class="tag new">Proposed</span></h2>
+      <p class="sub">Same figures. Captions that say which is which, and a line that names the form.</p>
+
+      <div class="field">
+        <span class="lab">Children claimed for relief</span>
+        <div class="box ro"><span>2</span><span class="unit">printed on Form EA item 8</span></div>
+        <span class="hint good">This is the number Form C.P.8A (EA) item 8 prints for this employee.</span>
+        <span class="hint">Worked out from the Family records: 2 children qualify. The Family register
+          holds 2 children in total.</span>
+      </div>
+
+      <div class="field">
+        <span class="lab">Counted as, for relief (PCB)</span>
+        <div class="box ro"><span>9</span><span class="unit">child relief: RM 18,000</span></div>
+        <span class="hint">LHDN prices a qualifying child by category and gives “relief to be given as if
+          the employee has this number of children”. It is a weighting, not a head count, and it is what
+          Form EA item D.6 prints as money.</span>
+      </div>
+
+      <div class="legend">How the 9 is reached</div>
+      <table class="kids">
+        <tr><th>Child</th><th>Relief category</th><th style="text-align:right">Counted as</th></tr>
+        <tr><td>Child 1</td><td>Disabled child in full-time higher education</td><td class="n">8</td></tr>
+        <tr><td>Child 2</td><td>Child under 18</td><td class="n">1</td></tr>
+        <tr class="tot"><td>2 children</td><td>Total relief RM 18,000</td><td class="n">9</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Form C.P.8A (EA) 2026 — unchanged</h2>
+      <p class="sub">Item 8 keeps the number of children; item D.6 keeps the weighted relief.</p>
+      <div class="form">
+        <div class="formhead">A — Butir-butir Pekerja</div>
+        <div class="row"><span class="no">8.</span>
+          <span class="cap">Bilangan anak yang layak untuk pelepasan cukai<span class="rule"></span></span>
+          <span class="val em">2</span></div>
+        <div class="formhead" style="border-top:1px solid var(--border)">D — Jumlah Pelepasan</div>
+        <div class="row"><span class="no">6.</span>
+          <span class="cap">Jumlah pelepasan bagi anak yang layak<span class="rule"></span></span>
+          <span class="val em">RM 18,000.00</span></div>
+      </div>
+      <div class="quote"><b>LHDN, PCB 2026 specification, page 27</b>
+        “Relief to be given as if the employee has this number of children” — disabled child in higher
+        education: 8. The employee has one such child, not eight.</div>
+      <p class="note">Item 8 is the only box on the whole form that states a number of children. If it
+        printed 9, the statement the employee signs and files would say they have nine children.</p>
+    </div>
+  </div>
+</div>
+
+<p class="sketch">Sketch of the change. Wording, spacing and colour will differ.</p>
