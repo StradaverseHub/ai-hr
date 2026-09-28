@@ -1,3 +1,49 @@
+## r356 (2026-09-29) — a second opinion about the kernel's own arithmetic, and two guards that were watching dead files. `main@a95f1445`, **no migration**.
+
+Closed: nothing on the board — **every open item is waiting on the reporter** (`fda53352` planned, `70294f7a` parked on a question). This round is three defects found by reading, not reported. Gate: **1050 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, `tsc` 0, `next build` 0. **The first gate was RED on one real assertion** — see the last section. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=489`.
+
+### THE MULTICYCLE WORKSHEET WAS RE-DERIVING THE PCB ACCUMULATORS, AND HAD FALLEN BEHIND THREE TIMES
+
+`core/payroll.ts` replays the year's earlier payslips into Y, Σ(Y−K), K, X, Z and ∑LP to feed the month it is paying. `localization/my/multicycle-worksheet.ts` `loadPriorAccumulators` replayed the same six to MODEL an already-paid month. Two implementations of one arithmetic, and the copy was behind on all three of the changes made to the original:
+
+- **∑LP seeded from a hard `0`** where the kernel seeds from `tp3_lp`. That is item `20837372`'s defect verbatim — ∑LP is the fourth variable a TP3 feeds (spec printed p.22) and it is SUBTRACTED inside P — still live in the copy a round after being fixed in the kernel. The column was never even SELECTed here.
+- **Z summed `zakat` without `zakatRebateTp1`** (r352 / `72d1a390`).
+- **Σ(Y−K) folded `payslip.gross_pay`** after the kernel moved onto the stamped `bases.pcb` (r354 / `4011903e`) — the difference being every ringgit that is tax-exempt, docked as unpaid leave, or deducted before tax.
+
+**Why that is worse here than a cosmetic divergence.** These accumulators are fed straight into `statutory(...)`, and the whole worksheet IS the comparison between what that models and what the payslips actually paid. An inflated Σ(Y−K) moves the modelled PCB, both readings then fail to match, and a correctly computed month prints `unexplained` — "paid matches neither reading" — on the document ADR-0024 asks an accountant to sign. The figures were right; the second opinion about them was wrong.
+
+**The fix is one seed and one fold, owned by the pack**: `openingAccumulatorsFromTp3` and `foldPriorSlipIntoAccumulators`, beside `PcbAccumulators`, which is the pack's own type. The kernel reaches both through the pack seam and still names no jurisdiction; the worksheet imports them directly. The kernel's side-maps (`lpFedByEmp`, `rebateFedByEmp`, `exemptionUsed`) deliberately stay in the kernel: they answer what THIS employer has fed, which the worksheet must not see. `openingAccumulatorsFromTp3` returns `Required<PcbAccumulators>` so the kernel's stricter `Acc` needs no cast — a cast there would silence the one check protecting that shape.
+
+**Same family, also fixed:** the worksheet's `zakat_or_lp_present` refusal tested `zakat !== 0 || lp !== 0`, so a month whose ONLY offset was a TP1 rebate walked past it and was then modelled with no offset at all — the very thing the refusal exists to prevent, reachable since r352.
+
+**NON-VACUITY, and the obvious method does not work.** Reverting the shared fold leaves both sides agreeing, because the kernel writes the payslips through the same function the worksheet replays them with. Four unit cases fail on a revert by name; the two database cases need the worksheet's OWN copy restored, and then both fail with `expected 'unexplained' not to be 'unexplained'`. The test file records that so the next verifier does not repeat the first attempt.
+
+### TWO GUARDS WERE READING FILES NOTHING RENDERS
+
+`<SharedLeaveGroupCards>` has had no render site since r302 folded both group placements into the one dashboard grid — and `test/shared-leave-group-display.test.ts` says so itself, asserting `leavePage.match(/<SharedLeaveGroupCards/g)` is empty. Two cases in that same file were nevertheless reading the dead component for the invariants the item exists to protect: "prints the pooled figure through the shared day formatter, never a private toFixed" and "the ceiling is printed BESIDE the figure, never in place of it". Green over markup no screen uses, while the live tile went unguarded.
+
+The component is deleted, `shared-leave-group-cards.tsx` becomes `shared-leave-group-entry.ts` (the name stopped being true at r302, and a `.tsx` with no JSX is its own small lie), and the two cases are re-pointed at `my-leave-dashboard.tsx` with the old claims quoted. One half **cannot** transfer: "server-safe, not `'use client'`" was true of the dead file and is false of the live tile, which sits inside a client island — so what it protected is asserted directly instead, that the labels arrive pre-translated as fields of the entry and the tile resolves none itself. Swapping `{formatDays(g.available)}` for `{g.limitLabel}` in the live tile — the exact overpromise `46afcc48` exists to prevent — now fails; against the old file it stayed green.
+
+### THE COLUMN COUNT IN A SCREEN'S COMMENTS HAD OUTLIVED THREE ROUNDS
+
+`app/leave/employee-balances/page.tsx` kept a running tally in prose — "a screen that already carries thirteen columns", "now a thirteen-column one", "thirteen columns already overflow this table" — while the table has had **sixteen** since r355 added Available Balance. `026e16b9`'s own measurement (eleven columns, the last 23px of the header) is history and stays exactly as written; what was corrected is the sentences asserting a CURRENT count. One annotation now records the count once, measured rather than incremented, and says why a tally is the wrong thing to keep: it is wrong the moment someone forgets it, and silently.
+
+### DECISIONS THIS ROUND MAKES THAT NO TICKET SETTLED
+
+- **A derivation the kernel owns is not copied into a pack module; it is moved INTO the pack and called from both.** `PcbAccumulators` is the pack's type, so its fold belongs beside it, on the seam. The alternative — a `core/` helper the pack imports — is the dependency direction the drift ratchet forbids.
+- **A guard that reads a file is only as good as that file being rendered.** Re-pointing one is not loosening it. When a sub-claim cannot survive the move (here, `'use client'`), assert what it was protecting rather than dropping it or keeping a spelling that no longer means anything.
+
+### THE FIRST GATE WAS RED, AND THE LESSON IS ABOUT GREPPING
+
+One AssertionError in chunk 15 (`grep -c AssertionError` first, per §4: exactly one, so the code and not the environment). `test/df35d60d-tp3-form.test.ts` matched `/netRemuneration: tp3Applies/` against `core/payroll.ts`, and this round moved that expression into the object handed to `openingAccumulatorsFromTp3`. The guard's claim still held, so it was updated rather than loosened — in two halves, because that is where the claim lives: the YEAR still gates whether a TP3 is read at all, and the FIGURES still come from the five columns and nowhere else. Both old regexes are quoted with the reason they moved.
+
+**"Grep every reference before the 40-minute gate" has to include source-text guards over the EXPRESSIONS being moved, not only the files being renamed.** I greped for the renamed file and missed two regexes reading a function body. Every test that reads `core/payroll.ts`, `my/payroll.ts`, `multicycle-worksheet.ts`, `country-pack.ts` or `my/index.ts` as text was then run as one batch — 18 files, 363 tests — before the gate was restarted. The same class caught `20837372`'s seed guard earlier in the round, which is why that one was found by reading rather than by a red chunk.
+
+### NOT DONE
+
+- **No production read was possible in this session**, so `fda53352`'s Employee A was diagnosed from code alone. The conclusion holds in every reachable mode; which mode produced their figure is UNKNOWN. The local tooling refuses a read-only `psql` SELECT on the box.
+- **`fda53352` is planned (revision 6) and unapproved**; `70294f7a` is parked and unanswered. Both need the reporter, not a build.
+- The remainder of `4011903e` (the PCB-detail TP1 schedule re-deriving from today's declarations) is still unbuilt, as r354 and r355 both recorded.
 ## r355 (2026-09-29) — four items shipped, one parked mid-build, and the board command that hid the parking. `main@98617c8b`, **no migration**.
 
 Closed: `77e882f5`, `4c63b37e`, `8d3a7bff`, `15e5bd93` (revision 3). Parked on a question: `70294f7a`. Gate: **1049 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=489`.
