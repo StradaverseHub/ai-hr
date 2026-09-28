@@ -4,7 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Trash2 } from 'lucide-react';
 import { Button, Field, btnPrimary, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from '../ui';
-import { eligibleExtendedMinutes, extendedHoursCreditDays, type ExtendedHoursTiers } from '@/lib/extended-hours';
+import { assessExtendedClaim, extendedHoursCreditDays, type ExtendedHoursTiers } from '@/lib/extended-hours';
 // 4a1abc4a — every day figure a leave surface prints goes through ONE formatter, so 0.5 and 0.50 cannot
 // appear on two screens for the same balance.
 import { DAY_DASH, formatDays } from '@/lib/day-format';
@@ -19,10 +19,19 @@ export type LeaveCreditLeaveTypeView = { id: string; name: string };
 
 /** The read-only facts the roster and Attendance own for one date, as the server action returns them. */
 export type LeaveCreditDayFacts = {
-  /** What the ROSTER holds. The adjudication compares it with what the employee chose. */
+  /** What the ROSTER holds. The adjudication compares it with what the employee chose — and since r353 it
+   *  also FILLS the Day Type cell when the employee picks a date and has not chosen one. */
   kind: LeaveCreditDayType;
   shiftEnd: string | null;
+  /** NULL when the day has no attendance row or was never clocked out; the two are one absence here. */
   actualClockOut: string | null;
+  /**
+   * The attendance engine's own measurement past the shift end. ⚠️ r353 cbfa8b0b — NO LONGER AN INPUT TO
+   * THE CREDIT. It used to CAP the claimed window; the owner reversed that rule (lib/extended-hours.ts's
+   * header records the whole argument), so nothing on this screen or in the kernel reads it any more. Kept
+   * because it is the engine's answer to "how long did this person work past their shift end" and a screen
+   * may yet want to print it — never as a ceiling.
+   */
   measuredExtendedMinutes: number;
 };
 
@@ -100,6 +109,27 @@ const emptyRow = (key: number): Row => ({ key, workedDate: '', dayType: '', days
  * arithmetic is IMPORTED from lib/extended-hours.ts rather than written twice, for the reason that file's
  * header gives: two implementations of "240 minutes is half a day" agree until a company moves a threshold,
  * and then the screen promises a credit the approval refuses.
+ *
+ * ── ⚠️ r353 cbfa8b0b · THE CLAIMED WINDOW IS THE CLAIM, AND THE CLOCK-OUT IS NOW A WARNING ──────────────
+ * The owner reversed the rule this screen was built on. Until r353 the eligible minutes were clipped to the
+ * actual clock-out and capped at the attendance engine's measured figure, so the reporter's own example —
+ * shift ending 18:00, clocked out 18:00, nothing measured, 18:00–23:51 typed — showed ZERO and no credit.
+ * The window the employee types is now the claim in full (floored at the scheduled shift end, which is a
+ * definition rather than a check). The two read-only time cells did not become decoration: the row prints an
+ * AMBER WARNING when the claimed end runs past the recorded clock-out, and says "No record" when there is no
+ * clock-out at all, from the SAME `assessExtendedClaim` call that produced the minutes — and the approvals
+ * queue renders that same result from that same function, so the employee and their manager cannot be shown
+ * two different readings of one row. ⚠️ This loosens a money control: replacement leave blocks overtime pay
+ * for the same hours and converts to cash on expiry, so the approver is now the only check.
+ *
+ * ── r353 · THE DAY TYPE FILLS ITSELF, AND NEVER OVERWRITES A CHOICE ─────────────────────────────────────
+ * The roster kind is already fetched for the mismatch check, so making the employee re-type what the system
+ * already knows was pure friction. Picking a date fills the Day Type cell from `facts[workedDate].kind`
+ * while the cell is still empty and the employee has not touched it. `touchedDayType` is why it is safe: the
+ * moment the employee chooses anything — INCLUDING choosing the blank placeholder back — the row is theirs
+ * and the fill never runs on it again, so the roster cannot reach in and undo a deliberate mismatch the
+ * employee is about to be warned about. The adjudication still runs on every row: a filled value agrees with
+ * the roster by construction, and a changed one is marked exactly as before.
  */
 export function LeaveCreditRequestTable({
   replacementType,
@@ -155,6 +185,33 @@ export function LeaveCreditRequestTable({
     }
   }, [datesKey, dayFactsAction, facts]);
 
+  /**
+   * r353 · WHICH ROWS THE EMPLOYEE HAS SPOKEN FOR. Keyed by row key, set the first time the Day Type cell is
+   * changed by hand — including to the blank placeholder, which is why this is a separate record rather than
+   * a `dayType !== ''` test. The auto-fill below never touches a row that is in here.
+   */
+  const [touchedDayType, setTouchedDayType] = useState<Record<number, true>>({});
+
+  /**
+   * r353 · THE DAY TYPE FILLS ITSELF FROM THE ROSTER. The kind arrives with the facts the mismatch check
+   * already needed, so the employee does not retype what the system knows. Functional update, and `rows` is
+   * deliberately NOT a dependency: the effect must run when a FACT lands, not on every keystroke, and
+   * reading `prev` inside the updater is what makes that correct rather than stale.
+   */
+  useEffect(() => {
+    setRows((prev) => {
+      let changed = false;
+      const next = prev.map((r) => {
+        if (r.dayType !== '' || touchedDayType[r.key] || !r.workedDate) return r;
+        const kind = facts[r.workedDate]?.kind;
+        if (!kind) return r;
+        changed = true;
+        return { ...r, dayType: kind };
+      });
+      return changed ? next : prev;
+    });
+  }, [facts, touchedDayType]);
+
   const dayTypeLabel = (d: LeaveCreditDayType) =>
     d === 'rest_day'
       ? t('dayKind.restDay')
@@ -167,9 +224,19 @@ export function LeaveCreditRequestTable({
   const addRow = () => setRows((r) => [...r, emptyRow((r[r.length - 1]?.key ?? 0) + 1)]);
   // Never remove the last row: an empty table has no "add" affordance attached to anything and reads as a
   // broken form. The service refuses a request with no rows anyway.
-  const removeRow = (key: number) => setRows((r) => (r.length <= 1 ? r : r.filter((x) => x.key !== key)));
+  const removeRow = (key: number) => {
+    setRows((r) => (r.length <= 1 ? r : r.filter((x) => x.key !== key)));
+    // `addRow` can reuse the key of the row that was last removed, so a stale flag here would silently
+    // switch the auto-fill off for a brand-new row.
+    setTouchedDayType(({ [key]: _gone, ...rest }) => rest);
+  };
   const patch = (key: number, field: keyof Row, value: string) =>
     setRows((r) => r.map((x) => (x.key === key ? { ...x, [field]: value } : x)));
+  /** The Day Type cell, changed BY HAND. Marks the row so the roster fill leaves it alone from now on. */
+  const chooseDayType = (key: number, value: string) => {
+    setTouchedDayType((t) => ({ ...t, [key]: true }));
+    patch(key, 'dayType', value);
+  };
 
   /**
    * One row's derived figures and its row-level problem, through the SAME two functions the service runs.
@@ -178,6 +245,10 @@ export function LeaveCreditRequestTable({
    * It is reported for ALL FOUR day types, which is what makes it more than the service's own
    * working/non-working check — a row typed "Public Holiday" on a date the roster calls a rest day is a
    * mismatch the layer below cannot see, because both produce the same claim path.
+   *
+   * r353 · `exceedsClockOut` / `hasClockOut` come back from the SAME assessment as the minutes and do NOT
+   * block the submit — they are what the owner's reversal left for a human to judge, so they warn on the row
+   * here and again on the approvals queue, and the claim still goes through and still credits.
    */
   const derive = useCallback(
     (r: Row) => {
@@ -192,16 +263,32 @@ export function LeaveCreditRequestTable({
             null)
           : null;
       if (!wantsWindow || !view || !extendedHoursTiers || !r.claimStart || !r.claimEnd)
-        return { view, rosterMismatch, minutes: null as number | null, credit: null as number | null };
-      const minutes = eligibleExtendedMinutes({
+        return {
+          view,
+          rosterMismatch,
+          minutes: null as number | null,
+          credit: null as number | null,
+          exceedsClockOut: false,
+          hasClockOut: view != null && view.actualClockOut != null,
+        };
+      // ⚠️ r353 — ONE CALL. The minutes the employee reads and the warning their approver reads come out of
+      // the same `assessExtendedClaim`, because computing the figure here and the discrepancy somewhere else
+      // is how the two screens would start disagreeing about one row.
+      const assessed = assessExtendedClaim({
         claimStart: r.claimStart,
         claimEnd: r.claimEnd,
         shiftEnd: view.shiftEnd,
         actualClockOut: view.actualClockOut,
-        measuredExtendedMinutes: view.measuredExtendedMinutes,
       });
-      const { countedMinutes, days } = extendedHoursCreditDays(minutes, extendedHoursTiers);
-      return { view, rosterMismatch, minutes: countedMinutes, credit: days };
+      const { countedMinutes, days } = extendedHoursCreditDays(assessed.minutes, extendedHoursTiers);
+      return {
+        view,
+        rosterMismatch,
+        minutes: countedMinutes,
+        credit: days,
+        exceedsClockOut: assessed.exceedsClockOut,
+        hasClockOut: assessed.hasClockOut,
+      };
     },
     [facts, extendedHoursTiers],
   );
@@ -320,7 +407,7 @@ export function LeaveCreditRequestTable({
                     <td className="px-3 py-2">
                       <select
                         value={r.dayType}
-                        onChange={(e) => patch(r.key, 'dayType', e.target.value)}
+                        onChange={(e) => chooseDayType(r.key, e.target.value)}
                         aria-label={t('sectionA.dayType')}
                         data-testid="leave-credit-day-type"
                         className={inputCls}
@@ -354,8 +441,17 @@ export function LeaveCreditRequestTable({
                       </div>
                     </td>
                     <td className="px-3 py-2">
+                      {/* r353 · TWO DIFFERENT SILENCES, TOLD APART. The em dash used to mean both "this cell
+                          does not apply to this day type" and "there is no clock-out on record", which on an
+                          Ordinary Day row is the difference between nothing to say and something an approver
+                          has to look at. Still the dash while the facts are in flight: not knowing yet is a
+                          third state and must not read as an answer. */}
                       <div className={disabledCell} data-testid="leave-credit-clock-out">
-                        {wantsWindow ? (hhmm(d?.view?.actualClockOut ?? null) ?? DAY_DASH) : DAY_DASH}
+                        {wantsWindow
+                          ? d?.view == null
+                            ? DAY_DASH
+                            : (hhmm(d.view.actualClockOut) ?? t('table.noClockOutRecord'))
+                          : DAY_DASH}
                       </div>
                     </td>
                     <td className="px-3 py-2">
@@ -405,6 +501,25 @@ export function LeaveCreditRequestTable({
                       </Button>
                     </td>
                   </tr>
+                  {/* ⚠️ r353 · THE WARNING THAT REPLACED A REDUCER, AND IT DOES NOT BLOCK THE SUBMIT.
+                      The claim used to be clipped to the clock-out and capped at the measured figure; the
+                      owner reversed both, so what is left is to SAY so — amber rather than the destructive
+                      red above, because this row is valid and will credit. Its own <tr>, so a row can be
+                      both under the threshold and past the clock-out without one message hiding the other. */}
+                  {windowLive && d?.view != null && (!d.hasClockOut || d.exceedsClockOut) && (
+                    <tr>
+                      <td colSpan={10} className="px-3 pb-2">
+                        <p
+                          className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+                          data-testid="leave-credit-clock-out-warning"
+                        >
+                          {!d.hasClockOut
+                            ? t('table.clockOutMissing')
+                            : t('table.clockOutEarlier', { claimEnd: r.claimEnd, clockOut: hhmm(d.view.actualClockOut) ?? '' })}
+                        </p>
+                      </td>
+                    </tr>
+                  )}
                   {(mismatch != null || ordinaryUnavailable || below) && (
                     <tr>
                       <td colSpan={10} className="px-3 pb-2 text-[11px] font-medium text-destructive">

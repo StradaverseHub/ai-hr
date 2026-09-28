@@ -475,12 +475,15 @@ export async function submitReplacementLeaveRequest(
         const day = await extendedHoursDayForEmploymentTx(tx, p.employmentId, l.workedDate);
         // A rest day, off day or public holiday belongs in Section A, and the message says which.
         if (day.kind !== 'workday') throw new LeaveCreditSectionMismatchError('B', [l.workedDate]);
+        // r353 cbfa8b0b — NO CAP OF ITS OWN, and that is checked rather than assumed: the shared function
+        // is the whole of the arithmetic now that the owner has reversed the measured cap and the clock-out
+        // clip, so anything this file added on top would make the submit screen and the approval disagree
+        // about the same window. The two stored times below are the approver's reference, not a ceiling.
         const minutes = eligibleExtendedMinutes({
           claimStart: l.fromTime!,
           claimEnd: l.toTime!,
           shiftEnd: day.shiftEnd,
           actualClockOut: day.actualClockOut,
-          measuredExtendedMinutes: day.measuredExtendedMinutes,
         });
         const { countedMinutes, days } = extendedHoursCreditDays(minutes, extended);
         if (days <= 0)

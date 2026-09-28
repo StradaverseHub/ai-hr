@@ -3645,7 +3645,10 @@
     "creditSourceExtended": "நீட்டிக்கப்பட்ட மணிநேரம்",
     "creditShiftEnd": "பணிநேர முடிவு",
     "creditClockOut": "வெளியேறியது",
-    "creditEligibleMinutes": "{minutes} தகுதி நிமிடம்"
+    "creditEligibleMinutes": "{minutes} தகுதி நிமிடம்",
+    "creditClockOutNone": "வெளியேறும் நேரப் பதிவு இல்லை",
+    "creditWarnPastClockOut": "{claimEnd} வரை கோரப்பட்டது, வெளியேறியது {clockOut} — கோரிக்கை பதிவான வெளியேறும் நேரத்தைத் தாண்டுகிறது.",
+    "creditWarnNoClockOut": "{date} அன்று வெளியேறும் நேரம் பதிவாகவில்லை. இந்த நேரம் பணியாளரின் சொந்த அறிவிப்பு."
   },
   "performance": {
     "list": {
@@ -12996,14 +12999,17 @@
       "belowThreshold": "{minutes} நிமிடங்களுக்குக் குறைவு. வரவுக்குத் தகுதியில்லை."
     },
     "table": {
-      "help": "Add one row for each date you worked and choose its day type. An ordinary working day earns a credit only for the hours worked after your scheduled shift end, so those rows ask for the hours claimed; the other three day types do not. Nothing is credited until your manager approves.",
+      "help": "Add one row for each date you worked. The day type fills in from your roster when you pick the date, and you can change it. An ordinary working day earns a credit for the hours you claim after your scheduled shift end, so those rows ask for those hours; the other three day types are claimed as a whole day or half a day. Your recorded clock-out is shown for reference and no longer limits what you can claim — where the two differ, your manager sees it and checks it before approving. Nothing is credited until your manager approves.",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "Claimed hours apply to an ordinary working day only.",
       "myRequests": "My Leave Credit requests",
       "noRequests": "You have not submitted a Leave Credit request yet.",
       "statusHeading": "Status",
-      "submittedOn": "Submitted"
+      "submittedOn": "Submitted",
+      "noClockOutRecord": "பதிவு இல்லை",
+      "clockOutMissing": "இந்த தேதிக்கு வெளியேறும் நேரம் பதிவாகவில்லை. ஒப்புதல் அளிக்கும் முன் உங்கள் மேலாளர் இந்த நேரத்தைச் சரிபார்ப்பார்.",
+      "clockOutEarlier": "நீங்கள் {claimEnd} வரை கோரியுள்ளீர்கள், ஆனால் பதிவான வெளியேறும் நேரம் {clockOut}. ஒப்புதல் அளிக்கும் முன் உங்கள் மேலாளர் இதைச் சரிபார்ப்பார்."
     }
   },
   "notices": {
