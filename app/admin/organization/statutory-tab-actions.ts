@@ -30,7 +30,12 @@
  */
 import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/session';
-import { upsertCompanyStatutoryAuthority } from '@/core/statutory-authority';
+// ADR-0080 D9/D11 — through the PACK FACADE, not `core/statutory-authority` directly. The pack-drift
+// ratchet (test/payroll-pack-drift.test.ts) only ever shrinks, and app/admin/actions.ts is on its
+// allowlist as audited kernel-contract debt; a NEW file must not add an entry. The facade re-exports the
+// same function, so the service, its cross-entity checks and its events are identical — this is the same
+// import site app/admin/organization/[companyId]/page.tsx already uses for the matching read.
+import { upsertCompanyStatutoryAuthority } from '@/packs/payroll/service';
 import { packFor } from '@/localization/registry';
 import {
   COMPANY_STATUTORY_TAB_SECTION_ORDER,
