@@ -17,6 +17,8 @@
  * the VALUES cannot disagree with the server, but a copy of the RULES could.
  */
 
+import { completedYearsAt } from './completed-years';
+
 /**
  * The BUILT-IN relationship values. A tenant may add custom types through the `dependentRelationship`
  * profile-option catalog; these five are ALWAYS valid server-side because spouse-only fields and child
@@ -72,12 +74,34 @@ export function dependentPanelOf(relationship: string): 'spouse' | 'child' | 'ot
  * there. `core/dependents.ts` re-exports this name, so the eligibility predicate and the Personnel screen
  * keep calling the identical function.
  *
- * The 365.25-day divisor is preserved exactly as it was; this is a move, not a change. Null when there is
- * no date of birth or it does not parse.
+ * ⚠️ b25e421e (r352) — THE 365.25-DAY DIVISOR IS GONE, AND IT WAS WRONG ON THE ONE DAY THAT DECIDES.
+ *
+ * It used to read `floor((asOf - dob) / (365.25 days))`, which is an APPROXIMATION of a calendar year, and
+ * the approximation lands on the wrong side of a birthday. A child born 2008-06-15 is 6,574 days old on
+ * 2026-06-15 — their eighteenth birthday — and 18 × 365.25 is 6,574.5, so the old expression floored to
+ * SEVENTEEN on the very day they turned eighteen. Whether it erred at all, and by how long, depended on how
+ * many 29-Februaries happened to fall inside the span, so the Family tab's Age column could read 17 to one
+ * child on their birthday and 18 to another.
+ *
+ * That is not cosmetic here: `isChildReliefEligible` turns on `age < 18`, so the approximation kept an
+ * ineligible child inside the PCB child-relief figure for up to an extra day, and b25e421e exists precisely
+ * to make a birthday move that figure by itself. A nightly job that re-derives relief is only as accurate as
+ * this comparison.
+ *
+ * It now delegates to `completedYearsAt`, which lib/completed-years.ts already describes as
+ * "calendar-accurate, not /365.25" and whose own header asks future age consumers to reuse it rather than
+ * reinvent the arithmetic. This function is the reinvention that header was warning about. Delegating also
+ * makes a dependent's Age and an employee's Age one counter rather than two that agree by coincidence: the
+ * count increments ON the anniversary itself and never before, and a 29-February birthday increments on
+ * 1 March in a common year.
+ *
+ * BEHAVIOUR THAT DID NOT CHANGE: null for a missing or unparseable date of birth. A date of birth in the
+ * FUTURE now clamps to 0 where it used to go negative — both are below 18, so no eligibility answer moves.
  */
 export function childAgeYears(dob: string | null | undefined, asOf: Date = new Date()): number | null {
   if (!dob) return null;
-  const ms = Date.parse(`${dob}T00:00:00Z`);
-  if (Number.isNaN(ms)) return null;
-  return Math.floor((asOf.getTime() - ms) / (365.25 * 24 * 60 * 60 * 1000));
+  if (Number.isNaN(Date.parse(`${dob}T00:00:00Z`))) return null;
+  // `asOf` is an instant; the calendar helper takes a date-only string. Callers build that instant from
+  // `todayInKualaLumpur()` (core/dependents.ts:557 records why), so its UTC calendar date IS the tenant's.
+  return completedYearsAt(dob, asOf.toISOString().slice(0, 10));
 }
