@@ -355,6 +355,139 @@ export type PcbAccumulators = {
 
 export const PCB_ZERO_ACC: PcbAccumulators = { netRemuneration: 0, epfClaimed: 0, pcbPaid: 0 };
 
+/**
+ * A TP3 Section C/D declaration, as both replays read it: the five stored columns and the year they
+ * belong to. `year` is compared with the payroll year by the caller's own rule, so this takes the
+ * already-decided `applies`.
+ */
+export type Tp3OpeningBalances = {
+  netRemuneration: number;
+  epfClaimed: number;
+  pcbPaid: number;
+  zakatPaid: number;
+  lpAccumulated: number;
+};
+
+/**
+ * ═══ THE YEAR'S OPENING BALANCES FROM A PREVIOUS EMPLOYER'S TP3 (r356) ═══════════════════════════
+ *
+ * The twin of `foldPriorSlipIntoAccumulators`, and separated out for the same reason: the kernel and
+ * the multicycle worksheet each built this, and the worksheet's copy was already behind. It seeds
+ * `lpAccumulated` from nothing at all — a hard 0 — where the kernel seeds it from `tp3_lp`; that is item
+ * 20837372's defect verbatim, still live in the second copy. The specification's printed p.22 names ∑LP
+ * as one of the FOUR variables a TP3 feeds ("(Y–K*), X, Z and ∑LP"), and ∑LP is SUBTRACTED inside P, so
+ * a zero makes P too high and over-deducts every new joiner who handed in a Section D.
+ *
+ * ONE CAPPED EPF FIGURE FEEDS BOTH SEEDS (4011903e). `tp3_epf_claimed` holds what the employee CLAIMED;
+ * core/tp3.ts subtracted `min(claimed, cap)` when it computed `tp3_net`. Seeding Y from the uncapped
+ * figure would break the invariant Y − K = Σ(Y−K) for anyone over the cap, silently, on the one screen
+ * that exists to reconcile the two.
+ *
+ * Y IS RECONSTRUCTED, NOT STORED A THIRD TIME. core/tp3.ts computes `netRemuneration = gross +
+ * excessTotal − epfAllowable`, so the remuneration before EPF is that figure plus the allowable EPF it
+ * subtracted. Derived from the two stored columns, so a TP3 correction moves all of them together.
+ */
+export function openingAccumulatorsFromTp3(
+  tp3: Tp3OpeningBalances | null,
+  epfReliefCap: number,
+): Required<PcbAccumulators> {
+  if (!tp3) {
+    return {
+      netRemuneration: 0,
+      epfClaimed: 0,
+      pcbPaid: 0,
+      zakatPaid: 0,
+      lpAccumulated: 0,
+      grossRemuneration: 0,
+      legacyBaseSlips: 0,
+    };
+  }
+  const epfAllowed = Math.min(Number(tp3.epfClaimed ?? 0), epfReliefCap);
+  return {
+    netRemuneration: Number(tp3.netRemuneration ?? 0),
+    epfClaimed: epfAllowed,
+    pcbPaid: Number(tp3.pcbPaid ?? 0),
+    zakatPaid: Number(tp3.zakatPaid ?? 0),
+    lpAccumulated: Number(tp3.lpAccumulated ?? 0),
+    grossRemuneration: round2(Number(tp3.netRemuneration ?? 0) + epfAllowed),
+    legacyBaseSlips: 0,
+  };
+}
+
+/** One prior payslip, as both replays read it: the gross the row stored, and its statutory blob. */
+export type PriorSlipForAccumulators = {
+  gross: number | string;
+  statutory: unknown;
+};
+
+/**
+ * ═══ FOLD ONE PRIOR PAYSLIP INTO THE PCB ACCUMULATORS. ONE DERIVATION, TWO CALLERS ═══════════════
+ *
+ * WHY THIS EXISTS (r356). There were two implementations of this replay: `core/payroll.ts`, which feeds
+ * the month being paid, and `localization/my/multicycle-worksheet.ts` `loadPriorAccumulators`, which
+ * feeds the worksheet's model of an already-paid month. The second was a copy, and it drifted from the
+ * first TWICE inside two rounds:
+ *
+ *   · r352 (72d1a390) stamped `zakatRebateTp1` beside `zakat` and added it to Z in the kernel. The
+ *     worksheet kept summing `zakat` alone, so an employee who claimed a TP1 zakat rebate carried a
+ *     short Z into every later month of the worksheet.
+ *   · r354 (4011903e) moved Σ(Y−K) off `payslip.gross_pay` and onto the stamped `bases.pcb`, because
+ *     PCB is charged on that and the difference is real money (tax-exempt allowances, unpaid leave, any
+ *     pay item deducted before tax). The worksheet kept folding `gross_pay`.
+ *
+ * Neither drift is cosmetic: the worksheet MODELS the month from these accumulators and compares the
+ * model against what the payslips actually paid. A wrong Σ(Y−K) moves the modelled PCB, the comparison
+ * fails under BOTH readings, and a correctly-computed month is reported as `unexplained` on the
+ * document an accountant is being asked to sign — or, worse, a month that really does differ is given
+ * the wrong delta. The figures were right; the second opinion about them was wrong.
+ *
+ * So the fold lives HERE, beside `PcbAccumulators`, which is the pack's own type. The kernel reaches it
+ * through the pack seam (`pack.payroll.foldPriorSlipIntoAccumulators`) like every other statutory
+ * derivation; the worksheet is in this pack and imports it directly.
+ *
+ * MUTATES `acc`, because both callers hold one accumulator per employee and walk their slips in order.
+ * `epfReliefCap` is passed in rather than read from a ruleset here: the kernel has the year's cap in
+ * hand and the worksheet takes it from `rules.pcb.reliefs.epfReliefCap` — one figure, no second lookup.
+ *
+ * WHAT IT DELIBERATELY DOES NOT DO: the caller's side-maps. `lpFedByEmp`, `rebateFedByEmp` and
+ * `exemptionUsed` answer different questions (what THIS employer has fed, versus what the year holds)
+ * and only the kernel asks them. Folding them in here would hand the worksheet balances it must not use.
+ */
+export function foldPriorSlipIntoAccumulators(
+  acc: PcbAccumulators,
+  slip: PriorSlipForAccumulators,
+  epfReliefCap: number,
+): void {
+  const st = (slip.statutory ?? {}) as {
+    epfEmployee?: number;
+    pcb?: number;
+    lp?: number;
+    zakat?: number;
+    zakatRebateTp1?: number;
+    bases?: { pcb?: number };
+  };
+  const claimed = Math.min(Number(st.epfEmployee ?? 0), Math.max(0, epfReliefCap - acc.epfClaimed));
+  // ── Σ(Y−K) ACCUMULATES WHAT THE ENGINE CHARGED, NOT WHAT THE PAYSLIP PAID (4011903e) ──────────────
+  // `bases.pcb` is the figure PCB was charged on; `gross_pay` is the figure the employee was paid. They
+  // differ by every ringgit that is exempt, deducted before tax, or docked as unpaid leave — spec rule 9,
+  // printed p.20: "All the tax exemption … shall be EXCLUDED FROM THE REMUNERATION for MTD purposes."
+  // A slip predating the r187 stamp has no base and falls back to gross: a DIFFERENT figure, not a
+  // rounding difference, so it is COUNTED and disclosed rather than absorbed.
+  const stampedBase = st.bases?.pcb;
+  const y = stampedBase == null ? Number(slip.gross) : Number(stampedBase);
+  if (stampedBase == null) acc.legacyBaseSlips = (acc.legacyBaseSlips ?? 0) + 1;
+  acc.grossRemuneration = round2((acc.grossRemuneration ?? 0) + y);
+  acc.netRemuneration = round2(acc.netRemuneration + y - claimed);
+  acc.epfClaimed = round2(acc.epfClaimed + claimed);
+  acc.pcbPaid = round2(acc.pcbPaid + Number(st.pcb ?? 0));
+  // §E.5 / rule 5: the FULL amount accrues to Z, spent or not — the spec's column (d) equals its column
+  // (b) in every printed row. 72d1a390: column (b) is "Zakat AND DEPARTURE LEVY for current month", so
+  // the TP1-claimed rebate accrues here too. It is stamped separately because rule 15 keeps it off the
+  // payslip's zakat line; Z is an accumulator, not a disclosure, so both belong in it.
+  acc.zakatPaid = round2((acc.zakatPaid ?? 0) + Number(st.zakat ?? 0) + Number(st.zakatRebateTp1 ?? 0));
+  acc.lpAccumulated = round2((acc.lpAccumulated ?? 0) + Number(st.lp ?? 0));
+}
+
 /** Spec §E.1: calculations are limited to two decimals — TRUNCATE, do not round. */
 const trunc2 = (n: number) => Math.trunc(n * 100 + (n >= 0 ? 1e-7 : -1e-7)) / 100;
 /** Spec §E.2: the MTD amount rounds UP to the next 5 sen (287.02 → 287.05, 152.06 → 152.10). */

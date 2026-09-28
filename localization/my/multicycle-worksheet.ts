@@ -50,7 +50,15 @@ import {
   payslip,
   person,
 } from '../../db/schema';
-import { childReliefAmountFor, epf, statutory, type PcbAccumulators, type TaxProfile } from './payroll';
+import {
+  childReliefAmountFor,
+  epf,
+  foldPriorSlipIntoAccumulators,
+  openingAccumulatorsFromTp3,
+  statutory,
+  type PcbAccumulators,
+  type TaxProfile,
+} from './payroll';
 import { pricesChildReliefFromGrid } from '../../core/dependents';
 import { computeMonthlyRuns, type MonthRunInput, type RunType } from './multicycle';
 import { getActiveStatutoryMY } from './statutory-config';
@@ -129,7 +137,8 @@ export const WORKSHEET_SKIP_REASONS = [
   'base_carve_outs',
   /** The runs of this month were charged on DIFFERENT normal wages — a mid-month change the model cannot express. */
   'inconsistent_run_bases',
-  /** Zakat or a TP1 optional deduction rode this month; the run inputs alone do not reproduce its MTD. */
+  /** Zakat — deducted from salary OR claimed back through TP1 Section D — or a TP1 optional deduction
+   *  rode this month; the run inputs alone do not reproduce its MTD. */
   'zakat_or_lp_present',
   /** No Malaysian statutory profile for this person, so the tax category and scheme eligibility are unknown. */
   'no_statutory_profile',
@@ -479,7 +488,13 @@ function replayEmployeeMonth(p: {
   }
   if (first.runType !== 'regular') return { reason: 'first_run_not_regular', excluded: false };
   if (!p.profile) return { reason: 'no_statutory_profile', excluded: false };
-  if (runs.some((r) => num(r.statutory.zakat) !== 0 || num(r.statutory.lp) !== 0)) {
+  // r356 — `zakatRebateTp1` BELONGS IN THIS TEST AND WAS MISSING FROM IT. The month's TP1 Section D
+  // zakat rebate offsets the month's MTD exactly as salary-deducted zakat does (spec rule 5, printed
+  // p.19: the column is "Zakat AND DEPARTURE LEVY for current month"), but it is stamped SEPARATELY
+  // because rule 15 keeps it off the payslip's zakat line. So a month whose only offset was a rebate has
+  // `zakat` of 0, passed this test, and was then modelled with no offset at all — the very thing this
+  // refusal exists to prevent. It has been reachable since r352 (72d1a390) introduced the stamp.
+  if (runs.some((r) => num(r.statutory.zakat) !== 0 || num(r.statutory.zakatRebateTp1) !== 0 || num(r.statutory.lp) !== 0)) {
     return { reason: 'zakat_or_lp_present', excluded: false };
   }
   const bases = runs.map((r) => basesOf(r.statutory));
@@ -823,6 +838,10 @@ async function loadPriorAccumulators(
       tp3Epf: employeeStatutoryMy.tp3EpfClaimed,
       tp3Pcb: employeeStatutoryMy.tp3PcbPaid,
       tp3Zakat: employeeStatutoryMy.tp3ZakatPaid,
+      // r356 — ∑LP was never SELECTED here, so the seed below could not have carried it even in
+      // principle. Item 20837372 added the column and taught the kernel to seed from it; this replay
+      // kept a hard 0.
+      tp3Lp: employeeStatutoryMy.tp3Lp,
     })
     .from(payslip)
     .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
@@ -833,7 +852,7 @@ async function loadPriorAccumulators(
   // (employment, tax year) → its months, each month → the slips written in it (a multi-run month has
   // several, and they all belong to the SAME monthly accumulator step).
   const byEmpYear = new Map<string, Map<string, typeof rows>>();
-  const tp3 = new Map<string, { year: number | null; net: number; epf: number; pcb: number; zakat: number }>();
+  const tp3 = new Map<string, { year: number | null; net: number; epf: number; pcb: number; zakat: number; lp: number }>();
   for (const r of rows) {
     const year = r.period.slice(0, 4);
     if (!years.includes(year)) continue;
@@ -848,6 +867,9 @@ async function loadPriorAccumulators(
         epf: Number(r.tp3Epf ?? 0),
         pcb: Number(r.tp3Pcb ?? 0),
         zakat: Number(r.tp3Zakat ?? 0),
+        // r356 — ∑LP was never even SELECTED here, so the worksheet could not have seeded it. Item
+        // 20837372 added the column and fixed the kernel; this copy kept a hard 0.
+        lp: Number(r.tp3Lp ?? 0),
       });
     }
   }
@@ -856,24 +878,28 @@ async function loadPriorAccumulators(
     const [employmentId, year] = ky.split('|');
     const seed = tp3.get(employmentId);
     const applies = seed?.year != null && String(seed.year) === year;
-    const acc: PcbAccumulators = {
-      netRemuneration: applies ? (seed?.net ?? 0) : 0,
-      epfClaimed: applies ? Math.min(seed?.epf ?? 0, cap) : 0,
-      pcbPaid: applies ? (seed?.pcb ?? 0) : 0,
-      zakatPaid: applies ? (seed?.zakat ?? 0) : 0,
-      lpAccumulated: 0,
-    };
+    // ══ r356 — THE SEED AND THE FOLD ARE THE KERNEL'S OWN, NOT A SECOND OPINION ABOUT THEM ══════════
+    //
+    // This function used to build both itself, and both had fallen behind core/payroll.ts:
+    //   · the seed hardcoded `lpAccumulated: 0`, which is item 20837372's defect verbatim — ∑LP is the
+    //     fourth variable a TP3 feeds and it is SUBTRACTED inside P, so a zero over-deducts a new joiner;
+    //   · the fold added `payslip.gross_pay` to Σ(Y−K) where the kernel had moved to the stamped
+    //     `bases.pcb` (r354), and summed `zakat` without `zakatRebateTp1` (r352).
+    //
+    // That matters MORE here than anywhere else: these accumulators feed `statutory(...)` below, and the
+    // whole worksheet is the comparison between what that model produces and what the payslips actually
+    // paid. A Σ(Y−K) that is too high by an employee's tax-exempt allowances puts the modelled PCB out,
+    // both readings then fail to match what was paid, and a perfectly correct month is printed as
+    // `unexplained` on a document an accountant is being asked to sign off.
+    const acc: PcbAccumulators = openingAccumulatorsFromTp3(
+      applies && seed ? { netRemuneration: seed.net, epfClaimed: seed.epf, pcbPaid: seed.pcb, zakatPaid: seed.zakat, lpAccumulated: seed.lp } : null,
+      cap,
+    );
     for (const period of [...months.keys()].sort()) {
       // Stamp BEFORE folding this month in: what a run in `period` reads is everything before it.
       out.set(`${employmentId}|${period}`, { ...acc });
       for (const slip of months.get(period) ?? []) {
-        const st = (slip.statutory ?? {}) as StatBlob;
-        const claimed = Math.min(num(st.epfEmployee), Math.max(0, cap - acc.epfClaimed));
-        acc.netRemuneration = round2(acc.netRemuneration + Number(slip.gross) - claimed);
-        acc.epfClaimed = round2(acc.epfClaimed + claimed);
-        acc.pcbPaid = round2(acc.pcbPaid + num(st.pcb));
-        acc.zakatPaid = round2((acc.zakatPaid ?? 0) + num(st.zakat));
-        acc.lpAccumulated = round2((acc.lpAccumulated ?? 0) + num(st.lp));
+        foldPriorSlipIntoAccumulators(acc, { gross: slip.gross, statutory: slip.statutory }, cap);
       }
     }
   }

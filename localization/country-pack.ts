@@ -399,6 +399,15 @@ export interface CountryPack {
      * signature on the pack — MY-derived until rung 5 splits its options into contract vocabulary.
      */
     statutory: MyPayrollModule['statutory'];
+    /**
+     * r356 — fold ONE prior payslip into the year's PCB accumulators (Y, Sigma(Y-K), K, X, Z, sum-LP).
+     * On the seam because the kernel's replay and the MY worksheet's replay must be the SAME arithmetic:
+     * they were two copies and the copy drifted twice. See the function's header in my/payroll.ts.
+     */
+    foldPriorSlipIntoAccumulators: MyPayrollModule['foldPriorSlipIntoAccumulators'];
+    /** r356 — its twin: the year's opening balances from a previous employer's TP3, on the seam for the
+     *  same reason. */
+    openingAccumulatorsFromTp3: MyPayrollModule['openingAccumulatorsFromTp3'];
     epf: (
       wage: number,
       additional?: number,

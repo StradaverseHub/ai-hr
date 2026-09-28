@@ -224,7 +224,18 @@ describe('20837372 · the Section-D → ∑LP mapping', () => {
         .replace(/\/\*[\s\S]*?\*\//g, '')
         .replace(/^[ \t]*\/\/.*$/gm, '');
     // The kernel must seed from the COLUMN, not re-derive the payload in a second place.
-    expect(strip('core/payroll.ts')).toMatch(/lpAccumulated:\s*tp3Applies\s*\?\s*Number\(e\.tp3Lp/);
+    //
+    // r356 — SAME CLAIM, MOVED SPELLING. This read
+    //     /lpAccumulated:\s*tp3Applies\s*\?\s*Number\(e\.tp3Lp/
+    // when the kernel built the opening balances inline. It now hands the five TP3 columns to the pack's
+    // `openingAccumulatorsFromTp3`, because the multicycle worksheet was building the same seed and its
+    // copy still hardcoded `lpAccumulated: 0` — THIS defect, verbatim, a round after it was fixed here.
+    // What is pinned is unchanged: ∑LP reaches the accumulator from `tp3_lp` and from nowhere else.
+    expect(strip('core/payroll.ts')).toMatch(/lpAccumulated:\s*Number\(e\.tp3Lp/);
+    expect(strip('core/payroll.ts')).toMatch(/pack\.payroll\.openingAccumulatorsFromTp3\(/);
+    // …and the pack's seed carries it through rather than zeroing it, which is the half that was wrong
+    // in the copy. A unit case in test/r356-one-accumulator-replay.test.ts pins the value.
+    expect(strip('localization/my/payroll.ts')).toMatch(/lpAccumulated:\s*Number\(tp3\.lpAccumulated/);
     // And the gate must count a Section-D-only form as money, or it guards less than the kernel seeds.
     expect(strip('core/payroll.ts')).toMatch(/seed\.lpDeclared !== 0/);
   });

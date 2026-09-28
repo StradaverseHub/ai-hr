@@ -4356,34 +4356,28 @@ export async function generatePayslips(
     priorSlips.sort((a, b) => a.period.localeCompare(b.period));
     const accByEmp = new Map<string, Acc>();
     for (const e of emps) {
+      // r356 — the opening balances come from the pack, beside the fold below, because the multicycle
+      // worksheet builds the same seed and its copy still hardcoded ∑LP to 0 — item 20837372's defect,
+      // verbatim, a round after the kernel fixed it. `openingAccumulatorsFromTp3` carries the argument
+      // for every column: the one capped EPF figure that keeps Y − K = Σ(Y−K), ∑LP as the fourth
+      // variable a TP3 feeds (spec printed p.22), and Y reconstructed from the two stored columns rather
+      // than stored a third time.
       const tp3Applies = e.tp3Year === pYear;
-      // 4011903e — ONE capped figure, used by BOTH seeds. `tp3_epf_claimed` holds what the employee
-      // CLAIMED; core/tp3.ts subtracted `min(claimed, cap)` when it computed `tp3_net`. Seeding Y from
-      // the uncapped figure would break the invariant Y − K = Σ(Y−K) for anyone over the cap, and it
-      // would break it silently, on the one screen that exists to reconcile the two.
-      const tp3EpfAllowed = tp3Applies ? Math.min(Number(e.tp3Epf ?? 0), EPF_RELIEF_CAP) : 0;
-      accByEmp.set(e.employmentId, {
-        netRemuneration: tp3Applies ? Number(e.tp3Net ?? 0) : 0,
-        epfClaimed: tp3EpfAllowed,
-        pcbPaid: tp3Applies ? Number(e.tp3Pcb ?? 0) : 0,
-        zakatPaid: tp3Applies ? Number(e.tp3Zakat ?? 0) : 0,
-        // ∑LP — item 20837372. This was a hard `0` until migration 0488, which is the whole defect: the
-        // specification's printed page 22 names ∑LP as one of the FOUR variables a TP3 feeds ("(Y–K*),
-        // X, Z and ∑LP") and printed page 11 defines it as "Accumulated allowable deductions in the
-        // current year, INCLUDING FROM PREVIOUS EMPLOYMENT, if any". ∑LP is SUBTRACTED inside P, so a
-        // zero here made P too high and over-deducted every new joiner who handed in a Section D.
-        //
-        // The prior-payslip replay below then ADDS this employer's own months on top, exactly as it does
-        // for the other four: previous employment opens the balance, this employment accumulates onto it.
-        lpAccumulated: tp3Applies ? Number(e.tp3Lp ?? 0) : 0,
-        // 4011903e — Y from the TP3 is its own arithmetic run backwards. core/tp3.ts computes
-        // `netRemuneration = gross + excessTotal − epfAllowable` (Section C: C1 plus each C2's
-        // over-limit excess, less C3), so Y — the remuneration before EPF — is that figure plus the
-        // allowable EPF it subtracted. Reconstructed from the two stored columns rather than stored a
-        // third time, so a TP3 correction moves all of them together.
-        grossRemuneration: tp3Applies ? round2(Number(e.tp3Net ?? 0) + tp3EpfAllowed) : 0,
-        legacyBaseSlips: 0,
-      });
+      accByEmp.set(
+        e.employmentId,
+        pack.payroll.openingAccumulatorsFromTp3(
+          tp3Applies
+            ? {
+                netRemuneration: Number(e.tp3Net ?? 0),
+                epfClaimed: Number(e.tp3Epf ?? 0),
+                pcbPaid: Number(e.tp3Pcb ?? 0),
+                zakatPaid: Number(e.tp3Zakat ?? 0),
+                lpAccumulated: Number(e.tp3Lp ?? 0),
+              }
+            : null,
+          EPF_RELIEF_CAP,
+        ),
+      );
     }
     // LHDN PCB 2026 (feedback 09b554e9) — per-code YTD exemption usage, DERIVED like the PCB accumulators:
     // each slip stamps the month's per-code exempt/claimed amounts as statutory.exemptionUsed, and the
@@ -4439,47 +4433,27 @@ export async function generatePayslips(
     for (const s of priorSlips) {
       const acc = accByEmp.get(s.employmentId);
       if (!acc) continue;
-      const st = (s.statutory ?? {}) as { epfEmployee?: number; pcb?: number; lp?: number; zakat?: number; zakatRebateTp1?: number; exemptionUsed?: Record<string, number>; lpDetail?: { tp1?: number }; bases?: { pcb?: number } };
-      const claimed = Math.min(Number(st.epfEmployee ?? 0), Math.max(0, EPF_RELIEF_CAP - acc.epfClaimed));
-      // ══ 4011903e — Σ(Y−K) ACCUMULATES WHAT THE ENGINE CHARGED, NOT WHAT THE PAYSLIP PAID ═══════════
+      const st = (s.statutory ?? {}) as { zakatRebateTp1?: number; exemptionUsed?: Record<string, number>; lpDetail?: { tp1?: number } };
+      // ══ THE FOLD IS THE PACK'S, AND THAT IS THE POINT (r356) ═══════════════════════════════════════
       //
-      // THE DEFECT. This line read `Number(s.gross)`. `payslip.gross_pay` is what the employee was PAID;
-      // the figure PCB is charged on is a different one, and the kernel stamps it as `bases.pcb`:
-      //     bases.pcb = max(0, wagesExOt + statOvertime − pcbWageDeduction) + statAdditional
-      //     grossPay  = basic + allowanceApplied + reimburse + otConvertAmount + overtime + bonus
-      // Three kinds of money sit in the second and are deliberately absent from the first, in the very
-      // month they are paid: TAX-EXEMPT ALLOWANCES (carved into `reimburse` at the exemption ledger),
-      // UNPAID LEAVE / ABSENCE (subtracted from `wagesExOt`, never from gross, because it is a deduction
-      // LINE), and any pay item configured to come off before tax (`pcbWageDeduction`).
+      // Y, Σ(Y−K), K, X, Z and ∑LP used to be accumulated by this loop AND, separately, by
+      // localization/my/multicycle-worksheet.ts `loadPriorAccumulators`, which models an already-paid
+      // month and compares the model against what was actually paid. Two copies of one arithmetic — and
+      // the copy drifted twice inside two rounds: it never learned about `zakatRebateTp1` (r352), and it
+      // kept folding `payslip.gross_pay` after this one moved onto the stamped `bases.pcb` (r354). A
+      // worksheet built on a wrong Σ(Y−K) models a different PCB from the one that was paid, so a
+      // correctly-computed month is reported as `unexplained` on the document an accountant signs.
       //
-      // So every prior month inflated Σ(Y−K) by whatever the employee had of those, P came out too high,
-      // and the employee was OVER-DEDUCTED — which is the direction 4011903e reports. It also contradicts
-      // the specification this repo now holds: docs/forms/pcb-spec-2026-extracts.txt, rule 9, printed
-      // p.20 — "All the tax exemption on allowances, benefit-in-kind and perquisites shall be EXCLUDED
-      // FROM THE REMUNERATION for MTD purposes. Any amount exceed the restricted amount shall be taxable."
+      // `foldPriorSlipIntoAccumulators` carries the whole argument for WHAT it folds: the 4011903e
+      // Σ(Y−K) reasoning (PCB is charged on `bases.pcb`, not on what was paid), the COUNTED fallback for
+      // a slip predating the r187 stamp, and rule 5's "zakat AND departure levy" reading of Z. It sits on
+      // the pack seam because `PcbAccumulators` is the pack's own type; the kernel still names no
+      // jurisdiction.
       //
-      // ⚠️ THE REPORTER'S OWN DIAGNOSIS WAS DIFFERENT AND IS REFUTED IN THEIR PLAN: they believed prior
-      // months' TP1 relief was being applied again. LP never enters this figure — it is a separate
-      // subtrahend inside P — and double-applying a SUBTRAHEND would make tax LOWER, not higher. The
-      // figure they pointed at was wrong; the mechanism they named could not produce it.
-      //
-      // THE FALLBACK IS COUNTED, NOT SILENT. `bases` has been stamped since r187; a slip older than that
-      // has none, and for it `grossPay` remains the only figure available. That is a DIFFERENT number,
-      // so the count is carried on the accumulator and disclosed on the snapshot rather than quietly
-      // producing a figure nobody can account for.
-      const stampedBase = st.bases?.pcb;
-      const y = stampedBase == null ? Number(s.gross) : Number(stampedBase);
-      if (stampedBase == null) acc.legacyBaseSlips += 1;
-      acc.grossRemuneration = round2(acc.grossRemuneration + y);
-      acc.netRemuneration = round2(acc.netRemuneration + y - claimed);
-      acc.epfClaimed = round2(acc.epfClaimed + claimed);
-      acc.pcbPaid = round2(acc.pcbPaid + Number(st.pcb ?? 0));
-      // §E.5 / rule 5: the FULL amount accrues to Z, spent or not — the spec's column (d) equals its
-      // column (b) in every printed row. 72d1a390: column (b) is "Zakat AND DEPARTURE LEVY for current
-      // month", so the TP1-claimed rebate accrues here too. It is a separate stamp because rule 15 keeps
-      // it off the payslip's zakat line; Z is an accumulator, not a disclosure, so both belong in it.
-      acc.zakatPaid = round2(acc.zakatPaid + Number(st.zakat ?? 0) + Number(st.zakatRebateTp1 ?? 0));
-      acc.lpAccumulated = round2(acc.lpAccumulated + Number(st.lp ?? 0));
+      // THE SIDE-MAPS BELOW STAY HERE, deliberately. They answer a different question from the
+      // accumulators — what THIS employer has already fed, rather than what the year holds — and only
+      // this loop asks it.
+      pack.payroll.foldPriorSlipIntoAccumulators(acc, { gross: s.gross, statutory: s.statutory }, EPF_RELIEF_CAP);
       // Item 3fa088fb — THE SAME MONEY, COUNTED SEPARATELY, AND THE SEPARATION IS THE POINT. `acc
       // .lpAccumulated` above opens with the TP3 Section D balance (a PREVIOUS employer's accumulated
       // deductions) and is what the PCB formula's ∑LP must be. The TP1 delta below must NOT see that

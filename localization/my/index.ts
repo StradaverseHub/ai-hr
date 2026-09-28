@@ -5,7 +5,19 @@
 import { correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, isValidIC, normalizeIC, setBankProfileMY, setIcProfileMY, setOthersStatutoryMY, setPassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
-import { childReliefAmountFor, eis, epf, hrdfLevy, hrdfSubject, overtimePay, pcbMonth, socso, statutory } from './payroll';
+import {
+  childReliefAmountFor,
+  eis,
+  epf,
+  foldPriorSlipIntoAccumulators,
+  hrdfLevy,
+  hrdfSubject,
+  openingAccumulatorsFromTp3,
+  overtimePay,
+  pcbMonth,
+  socso,
+  statutory,
+} from './payroll';
 // 04b88724 — the child-relief derivation's own leaf (db-free, so the client slice can serve it too).
 import { childReliefFor, childReliefPrices } from './child-relief';
 import {
@@ -108,6 +120,15 @@ export const myPack: CountryPack = {
   holidays: MY_HOLIDAYS_2026,
   payroll: {
     statutory,
+    // r356 — ONE replay of the prior months' PCB accumulators, for the kernel AND for the multicycle
+    // worksheet's model of an already-paid month. They were two copies and the copy drifted twice in two
+    // rounds (zakatRebateTp1, then Sigma(Y-K) moving off gross_pay onto bases.pcb); the fold's own header
+    // carries what each drift cost. The type it fills, PcbAccumulators, is this pack's, so the fold is too.
+    foldPriorSlipIntoAccumulators,
+    // r356 — and its twin: the year's opening balances from a previous employer's TP3. Same story, and
+    // the worksheet's copy was already a round behind (a hard 0 for sum-LP, which is item 20837372's
+    // defect verbatim).
+    openingAccumulatorsFromTp3,
     epf,
     socso,
     eis,
