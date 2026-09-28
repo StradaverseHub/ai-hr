@@ -472,9 +472,13 @@ export default async function LeavePage({
             ? null
             : tMe('sharedLeaveGroups.maxPerApplication', { days: formatDays(g.maxDaysPerApplication) }),
         membersLabel: tMe('sharedLeaveGroups.sharedAcross', { types: g.memberNames.join(', ') }),
-        // 76dbcaa1 — the way in to the reasons and their Apply actions.
-        detailsHref: `/leave/shared/${g.id}`,
-        detailsLabel: tMe('sharedLeaveGroups.viewDetails'),
+        // ⚠️ r355 (8d3a7bff) — NO `detailsHref` / `detailsLabel` ANY MORE. 76dbcaa1 built them here as the
+        // way in to /leave/shared/[groupId]; that page is deleted (it read as a configuration screen and,
+        // after r341 folded the tile onto the leave-type card, repeated three of its five figures). The
+        // fourth — how much of the pool has gone this year — moved onto the merged card below, which is
+        // where the link used to be. These entries are the STANDALONE tiles and never carried a rendered
+        // link at all (the tile at components/leave/my-leave-dashboard.tsx has no <Link>), so nothing that
+        // was reachable from them is lost and their shape is otherwise untouched.
       }));
   const sharedGroupsPrimary = sharedGroupEntriesAt('primary');
   const sharedGroupsSecondary = sharedGroupEntriesAt('secondary');
@@ -524,8 +528,19 @@ export default async function LeavePage({
               limitLabel: tMe('sharedLeaveGroups.ofLimit', { limit: formatDays(merged.totalLimitDays) }),
               membersLine: entry.membersLabel,
               capLine: entry.capLabel,
-              detailsHref: entry.detailsHref,
-              detailsLabel: entry.detailsLabel,
+              // r355 (8d3a7bff) — THE ONE FIGURE THE DELETED PAGE HELD ALONE, so deleting it loses nothing.
+              // /leave/shared/[groupId] printed five things: the drawable pooled figure, the ceiling, the
+              // per-application cap, the membership and this. The first four were already on this card
+              // (r341); `usedDays` was not on any other employee surface — `sharedLeaveGroupBalances` has
+              // exactly two callers, this page and the deleted one, and this page never read the field. So
+              // it comes here, in the SAME key the page used (`usedThisYear`, translated in all six
+              // catalogues) rather than a new English-until-translated sentence.
+              //
+              // ⚠️ `merged.usedDays`, NOT `entry` — the pre-translated entry carries only what the tile
+              // needed. The figure is the whole cycle's pending + approved across every member type, the
+              // same measure `enforceSharedLeaveGroupLimit` takes, so `availableLabel` and this line cannot
+              // disagree about the same pot.
+              usedLine: tMe('sharedLeaveGroups.usedThisYear', { days: formatDays(merged.usedDays) }),
             },
       ceilingLines: also.map((g) => tMe('sharedLeaveGroups.alsoCountsToward', { group: g.name })),
     };

@@ -20,6 +20,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "node --env-file=.env.local --import tsx db/seed.ts",
+    "dev:fixture-pooled-leave": "node --env-file=.env.local --import tsx scripts/dev-fixture-pooled-leave.ts",
     "leave:accrue": "node --env-file=.env.local --import tsx scripts/accrue-earned.ts",
     "leave:expire-carry": "node --env-file=.env.local --import tsx scripts/expire-carry.ts",
     "review:sweep": "node --env-file=.env.local --import tsx scripts/review-sweep.ts",

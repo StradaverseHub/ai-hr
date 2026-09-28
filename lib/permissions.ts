@@ -116,16 +116,22 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/leave',
     labelKey: 'nav.myAbsence',
     guard: 'scopedSession',
-    // 76dbcaa1 (r318) — '/leave/shared/[groupId]' rides THIS column rather than minting its own. It is
-    // the same audience, the same scope and the same guard: the employee's own pooled Special Leave
-    // figure, opened from the card on this very screen. The 570fd56e precedent, and the reason it
-    // matters here in particular is that a second column would carry the SAME label — two rows reading
-    // "My Absence" in the access grid describe one function as if it were two.
-    // r343 (cbfa8b0b) — '/leave/credit' rides THIS column too, on the 76dbcaa1 precedent directly above:
-    // the same audience, the same scope and the same guard, reached from this very screen. It is the
-    // employee's own Leave Credit request table, so a second column would carry the same label and describe
-    // one function as if it were two.
-    routes: ['/leave', '/leave/shared/[groupId]', '/leave/credit'],
+    // ⚠️ r355 (8d3a7bff) — '/leave/shared/[groupId]' IS GONE FROM THIS LIST BECAUSE THE PAGE IS GONE, and
+    // the removal is not optional. test/function-access.test.ts is bidirectional: "reverse completeness"
+    // fails a guarded page.tsx with no column, and "no stale routes" fails a registered route with no file.
+    // Deleting the page without deleting this entry trips the second. r318 (76dbcaa1) added it when the
+    // employee's pooled Special Leave figure had a screen of its own, opened from the card on /leave; r355
+    // removed that screen at the reporter's request — it read as a configuration page, and after r341 folded
+    // the group's tile onto the leave-type card the only figure it still held alone (`usedThisYear`) moved
+    // onto that card. Nothing in the employee flow reaches a route under /leave/shared any more.
+    //
+    // THE PRECEDENT ITSELF SURVIVES ITS FIRST USER, and '/leave/credit' below still rests on it: a
+    // sub-route with the same audience, the same scope and the same guard rides the parent's column rather
+    // than minting a second one, because a second column would carry the SAME label — two rows reading
+    // "My Absence" in the access grid describe one function as if it were two (570fd56e).
+    // r343 (cbfa8b0b) — '/leave/credit' rides THIS column on exactly that argument: the employee's own
+    // Leave Credit request table, reached from this very screen.
+    routes: ['/leave', '/leave/credit'],
     hasScopeNote: true,
   },
   {
