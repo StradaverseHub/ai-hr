@@ -158,10 +158,15 @@ describe('4c63b37e · (a) the column is on the screen and in the export, immedia
     const tbody = page.slice(page.indexOf('<tbody'), page.indexOf('</tbody>'));
     const numeric = [...tbody.matchAll(/\{num\(r\.(\w+)\)\}/g)].map((m) => m[1]);
     expect(numeric.indexOf('available'), 'the cell follows the Balance cell').toBe(numeric.indexOf('balance') + 1);
-    // The figure is the ROW's own `available` — not a subtraction performed in the view.
-    expect(code('app/leave/employee-balances/page.tsx'), 'no arithmetic in the cell').not.toMatch(
-      /r\.balance\s*-\s*r\.pending/,
+  });
+
+  /** Its OWN case, because an assertion sitting after a failing one in the same `it` is never reached — and a
+   *  guard that cannot be reached is not a guard. */
+  it('the view performs no arithmetic: the figure is the row’s own `available`', () => {
+    expect(code('app/leave/employee-balances/page.tsx'), 'no subtraction in the cell').not.toMatch(
+      /r\.balance\s*[-!]/,
     );
+    expect(code('app/leave/employee-balances/page.tsx'), 'the cell reads the row').toContain('{num(r.available)}');
   });
 
   /**
