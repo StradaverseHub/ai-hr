@@ -1,3 +1,61 @@
+## r354 (2026-09-28) — the accumulated figure was right to distrust, and wrong about why. `main@026d7d9e`, **no migration**.
+
+Closed: `4011903e`. Gate: **1047 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=489`.
+
+### THE REPORTER FOUND A REAL DEFECT AND NAMED A CAUSE THAT CANNOT EXIST
+
+They reported October's Σ(Y−K) RM1,500 too high and attributed it to July/August/September's TP1 relief being deducted again. Both halves of that are refuted, and both refutations are now pinned:
+
+- **LP never enters Σ(Y−K).** It is a separate subtrahend inside P; the replay adds it to `acc.lpAccumulated` alone.
+- **The sign is wrong.** Relief is SUBTRACTED, so applying it twice makes tax LOWER. Their symptom is an over-deduction.
+
+The figure they pointed at was nevertheless wrong.
+
+### WHAT WAS ACTUALLY WRONG
+
+`core/payroll.ts` accumulated `payslip.gross_pay` per prior month. PCB is charged on `statutory.bases.pcb`:
+
+    bases.pcb = max(0, wagesExOt + statOvertime − pcbWageDeduction) + statAdditional
+    grossPay  = basic + allowanceApplied + reimburse + otConvertAmount + overtime + bonus
+
+Three kinds of money sit in the second and are deliberately absent from the first **in the month they are paid**: tax-exempt allowances (carved into `reimburse` by the exemption ledger), unpaid leave (subtracted from `wagesExOt`, never from gross, because it is a deduction LINE), and any pay item configured to come off before tax.
+
+So every prior month inflated Σ(Y−K), P came out too high, and the employee was **over-deducted** — the direction reported. It contradicts the specification this repo took delivery of in r352: rule 9, printed p.20, *"All the tax exemption ... shall be EXCLUDED FROM THE REMUNERATION for MTD purposes."*
+
+### Y IS WRITTEN DOWN, AND THE GUARD THAT FORBADE IT IS INVERTED RATHER THAN DELETED
+
+LHDN's Y was never stored, so the worksheet printed a labelled *"not recorded separately"* row and `test/7f251381` refused any row equal to `Σ(Y−K) + K`. That was right: the sum is arithmetically Y, and printing it would have been a figure this system never produced.
+
+The same replay now accumulates Y over the same per-month figure, so **Y − K = Σ(Y−K) by construction**. The old value-sweep could not survive that — a correctly stamped Y *equals* the sum — so the protection moved from the VALUE to the SOURCE: Y prints only when the engine stamped one, and a slip predating this item still says the figure is not recorded. The old claim is kept as that fallback case.
+
+### TWO FAULTS IN MY OWN WORK, CAUGHT BEFORE THEY SHIPPED
+
+- **The Y seed was wrong.** `tp3_epf_claimed` holds the CLAIMED EPF; `tp3_net` was computed with `min(claimed, cap)`. Seeding Y from the uncapped column would have broken `Y − K = Σ(Y−K)` for anyone over the cap — silently, on the one screen whose purpose is to reconcile those two numbers. Both seeds now derive from one capped value.
+- **My first test was vacuous.** On a plain salary gross and the PCB base are EQUAL, so every assertion passed with the fix reverted. The money assertion moved onto `test/pcb-classification.test.ts`'s exempt-allowance fixture — the only place in the suite where the two genuinely differ. Reverting now fails with `expected 12000 to be close to 9000`, and the RM3,000 gap is exactly the exempt total the same test already asserts.
+- **And a third, in the test itself:** I first inserted the March run BEFORE the EA assertions, which were written for two months; the RM3,000 cap is spent by February, so March's whole allowance is taxable and B.1(c) became 3,000 against the 1,000 those lines pin. Order is what keeps both claims true, and the file now says so.
+
+### THE FALLBACK IS COUNTED, NOT SILENT
+
+`bases` has been stamped since r187. A slip older than that has none, and `grossPay` remains the only figure available for it — a DIFFERENT number, not a rounding difference. `acc.legacyBaseSlips` counts them and the snapshot carries the count, so a figure nobody can account for is disclosed rather than absorbed.
+
+### NOT DONE
+
+- **The three other points of `4011903e`'s plan.** The Y row now prints, but the PCB-detail screen's TP1 schedule still re-derives from TODAY's declarations (`app/payroll/pcb-detail/slip-data.ts:215-235`), printing the declared annual beside an `LP1` of 0.00 — which is very likely what the reporter read as "applied again". That is point 4 and it is unbuilt. Two further re-derivations on the same screen (`currentPcbReliefs`, `previousEmploymentForPayslip` reading LIVE `tp3_*`) are disclosed in-code and untouched.
+- **`localization/my/multicycle-worksheet.ts` still misses `zakatRebateTp1`** — a divergence **r352 introduced** and r354 did not fix.
+- **No production verification.** We never obtained Employee A's records, so which of four candidate causes produced their specific RM1,500 is UNKNOWN. This fix addresses one of them; the plan asked for the records and the request stands.
+- Five items are planned and unbuilt: `d323c224`, `70294f7a`, `4c63b37e`, `8d3a7bff`, and the remainder of `4011903e`.
+
+### THE MACHINE, AND WHY THE FIRST GATE ATTEMPT WAS RED
+
+16 failed files on the first run: **one real, fifteen environmental**, and separating them was the work.
+
+The real one was `test/00e28308`, an exact-shape `toEqual` over the whole stored payslip payload. `ytdGross` legitimately joined it, which is precisely what that guard exists to force someone to notice.
+
+The other fifteen were hook timeouts, and the cause is structural rather than random: **the gate rebuilds the cluster per chunk, and each rebuild queues a background `rm -rf` of the one it moved aside.** Sixteen chunks queue sixteen drains, and they accumulate ACROSS ROUNDS — 19 had built up over r352–r354, 56G, of which **52G was `pg_wal`**. With this box's endpoint-security agent inspecting every unlink, `apfsd` and CoreServices went hot too and load hit 15.79/31.56. Chunk 1 took **2164s**.
+
+§5's remedy, applied: clear the `pg_wal` directories inside the moved-aside clusters first (the data directories are what the slow drain is for). **56G → 3.3G in 5 seconds, load 15.79 → 1.57, chunk 1 2164s → 79s — a 27× speedup.** The live cluster is a symlink to the RAM disk and matched none of the 19 targets, which was checked before anything was deleted.
+
+**Worth a standing note:** a gate leaves 16 moved-aside clusters behind. Sweeping their `pg_wal` before a gate, not after a problem, would have avoided this entirely.
 ## r353 (2026-09-28) — four items, and three of my own instructions were wrong. `main@373cd3af`, **no migration**.
 
 Closed: `cbfa8b0b`, `fda53352`, `15e5bd93`, `77e882f5`. Gate: **1046 files — equal to the suite file count**, 16 chunks, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=489`.
