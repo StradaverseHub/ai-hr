@@ -2796,7 +2796,16 @@ export function leaveBalances(
         pending,
         balance,
         // What the employee can still book: ledger balance minus not-yet-decided requests.
-        available: balance - pending,
+        // r355 (4c63b37e) — ROUNDED TO 2dp AT THE SOURCE, which is where core/leave.ts's twin already rounds
+        // (`availableLeaveBalance` :1744 and `leaveTypeApplySummary` :1843, both `round2(balance - pending)`).
+        // The two terms are each exact — `Number()` of a Postgres `numeric` sum — but their DIFFERENCE is
+        // binary floating point: 0.30 − 0.10 is 0.19999999999999998 here. That is not a rendering nit.
+        // lib/day-format.ts states as its first rule that it "MUST NOT ROUND ANYTHING THE ENGINE COMPUTED …
+        // every value that reaches it is already 2dp", so an unrounded figure makes `formatDays` narrow rather
+        // than widen — the one thing it says it may not do — and `deriveBalanceRow` derives Overutilized as
+        // `Math.max(0, -available)`, which turns a −1e-16 residue into a non-zero overdraw. Rounded HERE, not
+        // at a column, so every consumer of `leaveBalances().available` reads the digits the guard would.
+        available: Math.round((balance - pending) * 100) / 100,
         // Employee Leave View Configuration (65dec703): per-component ESS visibility for this leave type,
         // resolved (missing key ⇒ visible). Placeholder = all-visible; overwritten in the final pass once
         // the active-type configs are fetched below, so render sites gate without a second query.
@@ -3084,7 +3093,9 @@ export function leaveBalances(
             m.balance = 0;
           }
           // What this person can still BOOK against this code is the pool's, for every member.
-          m.available = source.balance - pooledPending;
+          // r355 (4c63b37e) — rounded for the same reason the unpooled expression above is: `pooledPending`
+          // is a sum over every member, so it accumulates residue faster than the single-type case.
+          m.available = Math.round((source.balance - pooledPending) * 100) / 100;
           m.sharedBalance = info;
         }
       }

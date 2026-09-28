@@ -263,7 +263,12 @@ describe('r303 — Full Entitlement: the table, why it applies, the service leng
     expect(keysOf(lines, 'taken')).toEqual(['takenNone']);
     expect(keysOf(lines, 'pendingApproval')).toEqual(['pendingNone']);
     expect(keysOf(lines, 'forfeited')).toEqual(['forfeitNone']);
-    expect(keysOf(lines, 'available')).toEqual(['availableFormula']);
+    // r355 (4c63b37e) UPDATED THIS EXACT ARRAY, IT DID NOT LOOSEN IT. Available Balance now carries a SECOND
+    // decomposition of the same figure — Balance − Pending Approval − Pending Share, the row as Employee
+    // Balances prints it now that the figure has a column there. It JOINS `availableFormula` (which
+    // decomposes from Total) rather than replacing it: both are true of the one number, and this array is
+    // still the whole of what the line emits.
+    expect(keysOf(lines, 'available')).toEqual(['availableFormula', 'availableFromBalance']);
   });
 
   it('tables exist and none reaches this employee: the no_eligibility_match sentence', async () => {
@@ -519,9 +524,71 @@ describe('r303 — a shared pool: the sentences name the pool, and Available say
     expect(explained.eligible[0].key).toBe('poolFigures');
     expect(keysOf(explained, 'taken')).toContain('takenPool');
     expect(keysOf(explained, 'pendingApproval')).toContain('pendingOwnOnly');
-    expect(keysOf(explained, 'available')).toEqual(['availablePool']);
+    // r355 (4c63b37e) — AND THE SECOND DECOMPOSITION, WHICH THIS CALL CANNOT PLACE AS A BORROWER'S. The
+    // figures handed in are the POOL's (`balanceStoryTypeId`), so Balance − Pending Approval − Pending Share
+    // does close onto the pooled Available Balance — 7.00 − 1.00 − 2.00 = 4.00 — and with no borrower marker
+    // passed the module has nothing to tell this row apart from the pool's own row. That is the point of the
+    // case below, which passes the marker THE SCREEN passes.
+    expect(keysOf(explained, 'available')).toEqual(['availablePool', 'availableFromBalance']);
     // Without the pool descriptor the difference is still stated, never papered over with a formula.
-    expect(keysOf(lines, 'available')).toEqual(['availableDiffers']);
+    expect(keysOf(lines, 'available')).toEqual(['availableDiffers', 'availableFromBalanceDiffers']);
+  });
+
+  /**
+   * r355 (4c63b37e) — THE SAME ROW, EXPLAINED THE WAY THE SCREEN EXPLAINS IT.
+   *
+   * The case above calls `explainLeaveSummary` with `{ available, sharedBalance }`, which is what r303 shipped;
+   * since 2a57a007 (r340) the screen also passes `entitlementFromPool`, and it is the ONLY field that can tell
+   * a borrower's row from the pool's own (both halves carry the identical `sharedBalance`, and the figures
+   * handed in are the pool's on both). It matters to the reporter's decomposition because a borrower's GRID row
+   * reads Balance 0.00 and Pending Approval 0.00 — the days and the pending belong to the pool — so printing
+   * "7.00 Balance − 1.00 Pending Approval" under it would contradict the two cells beside the button.
+   */
+  it('a borrower row, explained with the marker the screen passes, states the pooled answer instead of a formula', async () => {
+    const pool = await mkType('SPECIALY', 'Special Leave 2');
+    const borrower = await mkType('MARRIAGEY', 'Marriage Leave 2', { balanceSourceTypeId: pool });
+    const emp = await hire('2025-01-01');
+    await post(emp.employmentId, pool, 'accrual', 10, '2026-01-01');
+    const used = await request(emp.employmentId, borrower, 'approved', '2026-02-02', '2026-02-04', 3);
+    await post(emp.employmentId, pool, 'debit', -3, '2026-02-02', { sourceRequestId: used });
+    await request(emp.employmentId, borrower, 'pending', '2026-06-01', '2026-06-02', 2);
+    await request(emp.employmentId, pool, 'pending', '2026-06-10', '2026-06-10', 1);
+
+    const rows = await employeeBalanceRows(adminCtx(b), emp.employmentId, '2026-06-30', 'en');
+    const borrowerRow = rows.find((r) => r.leaveTypeId === borrower)!;
+    const poolRow = rows.find((r) => r.leaveTypeId === pool)!;
+    // The grid cells the reporter's formula would be read off, on the borrower's row.
+    expect([borrowerRow.balance, borrowerRow.pending, borrowerRow.pendingShare]).toEqual([0, 0, 2]);
+    expect(borrowerRow.available, 'and the pooled figure the new column prints').toBe(4);
+    expect(borrowerRow.hrExplanation.entitlementFromPool).toBe('Special Leave 2');
+
+    const asScreenExplains = (r: typeof borrowerRow) =>
+      explainLeaveSummary(r.breakdown!, {
+        available: r.available,
+        sharedBalance: r.hrExplanation.sharedBalance,
+        entitlementFromPool: r.hrExplanation.entitlementFromPool,
+      });
+
+    const borrowerSteps = asScreenExplains(borrowerRow);
+    expect(keysOf(borrowerSteps, 'available')).toEqual(['availablePool', 'availableFromBalancePool']);
+    const pooledArgs = borrowerSteps.available.find((s) => s.key === 'availableFromBalancePool')!.args!;
+    expect(pooledArgs.available, 'the pooled figure, not a subtraction of the row').toEqual({ days: 4 });
+    expect(pooledArgs.source).toEqual({ text: 'Special Leave 2' });
+    // No sentence on this line may state the pool's Balance as if it were this row's.
+    expect(Object.keys(pooledArgs)).not.toContain('balance');
+
+    // THE POOL'S OWN ROW, where the three columns ARE its own and the subtraction is the reporter's formula.
+    expect([poolRow.balance, poolRow.pending, poolRow.pendingShare]).toEqual([7, 1, 2]);
+    expect(poolRow.available).toBe(4);
+    expect(poolRow.hrExplanation.entitlementFromPool, 'the marker is a borrower-only fact').toBeNull();
+    const poolSteps = asScreenExplains(poolRow);
+    expect(keysOf(poolSteps, 'available')).toEqual(['availablePool', 'availableFromBalance']);
+    expect(poolSteps.available.find((s) => s.key === 'availableFromBalance')!.args).toEqual({
+      balance: { days: 7 },
+      pending: { days: 1 },
+      pendingShare: { days: 2 },
+      available: { days: 4 },
+    });
   });
 });
 
@@ -609,8 +676,9 @@ describe('r303 — the sum-guard is load-bearing, not decorative', () => {
     expect(keysOf(lines, 'taken')).toEqual(['itemsDoNotAddUp']);
     // An EMPTY list against a non-zero figure is guarded too: "no applications waiting" beside 1.00 would be false.
     expect(keysOf(lines, 'pendingApproval')).toEqual(['itemsDoNotAddUp']);
-    // The untouched lines still explain themselves.
-    expect(keysOf(lines, 'available')).toEqual(['availableFormula']);
+    // The untouched lines still explain themselves — both decompositions of Available Balance, since the
+    // tampering above moves no figure this one reads (r355).
+    expect(keysOf(lines, 'available')).toEqual(['availableFormula', 'availableFromBalance']);
     expect(keysOf(lines, 'forfeited')).toEqual(['forfeitNone']);
   });
 });

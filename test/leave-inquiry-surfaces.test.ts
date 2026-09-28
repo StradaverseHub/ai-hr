@@ -197,13 +197,18 @@ describe('20c699f8: Employee Balances', () => {
       "tMe('leaveBalanceTable.colOverutilized')",
       "tInq('colForfeitedBf')",
       "tMe('leaveBalanceTable.colBalance')",
+      // r355 (4c63b37e) — the SIXTEENTH column, immediately after Balance, named from the shared figure
+      // dictionary (7da0a4e7) so the screen and the export cannot call one figure two things. It is a column
+      // over a figure the row already carried, not a new read: the pin below on the single `leaveBalances`
+      // call is untouched and is what keeps it that way.
+      'tf(LEAVE_FIGURE_LABEL_KEY.available)',
       "tInq('colDate')",
       // r242 — the Explanation column, LAST, so no numeric column is pushed around by it.
       "tInq('colExplanation')",
     ]) {
       expect(balancesPage.includes(col), col).toBe(true);
     }
-    expect(balancesPage).toContain('colSpan={15}');
+    expect(balancesPage).toContain('colSpan={16}');
   });
 
   /**

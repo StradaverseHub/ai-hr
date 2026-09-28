@@ -465,6 +465,19 @@ export default async function EmployeeBalancesPage({
                     <th className={thNum}>{tMe('leaveBalanceTable.colOverutilized')}</th>
                     <th className={thNum}>{tInq('colForfeitedBf')}</th>
                     <th className={thNum}>{tMe('leaveBalanceTable.colBalance')}</th>
+                    {/* r355 (4c63b37e) — AVAILABLE BALANCE, IMMEDIATELY AFTER BALANCE, AND IT IS A COLUMN
+                        RATHER THAN A CALCULATION. The figure was already on every row (`r.available`, the
+                        `available` leaveBalances computed AS AT `asOf`) and was readable only one Explain
+                        popup at a time. The reporter asked for "the function My Leave uses"; My Leave's
+                        `leaveTypeApplySummary` takes NO date (core/leave.ts) because it must agree with the
+                        submit guard, so calling it here would have re-created 3ddae357 — a column echoing
+                        today whatever date is typed above. See this file's AS-AT note: a new column takes its
+                        figure from one of the SAME TWO READS, never a third source. This one takes it from
+                        `leaveBalances`, the dated read, through the row.
+                        ⚠️ ITS NAME COMES FROM THE SHARED DICTIONARY (7da0a4e7), not from this screen: it is
+                        the same words My Leave's card uses for the same figure. `available` and `balance` stay
+                        two keys on purpose — they are two different figures, and both are now on this row. */}
+                    <th className={thNum}>{tf(LEAVE_FIGURE_LABEL_KEY.available)}</th>
                     <th className={th}>{tInq('colDate')}</th>
                     {/* r242 — the LAST column, and the only one that is not a figure. It is last on
                         purpose: 026e16b9 measured this table to the pixel, and a control column at the end
@@ -476,7 +489,7 @@ export default async function EmployeeBalancesPage({
                 <tbody className="divide-y divide-border">
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={15} className="px-4 py-6 text-center text-muted-foreground">
+                      <td colSpan={16} className="px-4 py-6 text-center text-muted-foreground">
                         {tInq('noRows')}
                       </td>
                     </tr>
@@ -557,6 +570,16 @@ export default async function EmployeeBalancesPage({
                       <td className={tdNum}>{num(r.overutilized)}</td>
                       <td className={tdNum}>{num(r.forfeitedBf)}</td>
                       <td className={`${tdNum} font-medium`}>{num(r.balance)}</td>
+                      {/* r355 (4c63b37e) — the row's own `available`, styled like Balance beside it. NOT
+                          `r.balance - r.pending`: on a pooled BORROWER row those two are 0.00 (the days and
+                          the pending both belong to the pool and print under Share / Pending Share), so the
+                          literal subtraction reads −2.00 there while the pool's Available Balance — the very
+                          figure the employee's own Emergency Leave card shows, and the one the submit guard
+                          measures — is what this person can still book. core/read.ts says the rule in as many
+                          words: "`available` STAYS POOLED FOR EVERY MEMBER". The Explain panel one column
+                          right spells the same figure out, and on a borrower row it says why the three
+                          columns on that row do not add up to it. */}
+                      <td className={`${tdNum} font-medium`}>{num(r.available)}</td>
                       <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">{asOf}</td>
                       {/* r242 — "how was this figure arrived at", answered from the row HR is already
                           looking at. `data={r.breakdown}` is the object the row's own figures came out of
