@@ -1,3 +1,82 @@
+## r350 (2026-09-28) — the TP3's C1 holds only TAXABLE pay, so ΣC2 is added, not subtracted. `main@13d24b37`, **no migration**.
+
+Closed: `20837372`. Gate: **1034 files — equal to the suite file count**, 16 chunks, **15 green on the first pass and chunk 11 green on a re-run**, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=488`.
+
+### THE REPORTER WAS RIGHT FIVE TIMES AND r348 TOLD THEM THEY WERE NOT
+
+r348's entry is titled *"THE PREMISE WAS FALSE AND THE REPORTER WAS STILL RIGHT"*. The premise was ours. It verified the kernel *"with C1 = 60,000 gross and the allowance inside it"* — an **assumption about what C1 contains, never read off the form** — concluded the arithmetic was correct, and shipped a caption defending it. `localization/my/statutory-tables.ts` had **already written the question down as a live UNKNOWN** and said only `Nota Penerangan Borang TP3 (2026)` could settle it, both of whose URLs 404.
+
+The notes were never needed. **The form settles it**, and the wording is identical in the 2026 and 2023 editions:
+
+    C1  "…termasuk elaun / perkuisit / pemberian / Manfaat YANG DIKENAKAN CUKAI"   ← SUBJECT to tax
+    C2  "Jumlah elaun/perkuisit/pemberian/manfaat YANG DIKECUALIKAN CUKAI"         ← EXEMPT from tax
+
+C1 carries **only the taxable items**. The exempt allowances were never in it, so `C1 − ΣC2` removed money that was not there. Every TP3 employee with a C2 figure had their ∑(Y−K) understated by the whole of it, and their **MTD under-deducted every month**.
+
+### FOUR MORE SOURCES, BECAUSE ONE CAPTION IS NOT A FINDING
+
+- the specification's **own worked example**, printed page 21: normal 5,000 + car 800 + meal 300 *(exempt)* + childcare 250 *(exempt)* = 6,350, and *"To determine MTD amount, taxable income as follow: … Total taxable remuneration : RM5,800"*. The exempt items are simply **not in it**;
+- printed page 20 item 9: *"MTD is to be deducted from the employee's TAXABLE REMUNERATION ONLY. All the tax exemption … shall be EXCLUDED FROM THE REMUNERATION … Any amount exceed the restricted amount shall be taxable."*;
+- Form C.P.8A (EA) Pin. 2023 — Section B is headed *"(EXCLUDING Tax Exempt Allowances / Perquisites / Gifts / Benefits)"* and the exempt total gets its own Section F. **Same architecture on a second prescribed form**;
+- our **own** current-employment path (`localization/my/reports.ts:1084-1091`) has always treated the exempt portion as a memo line off the PCB exemption ledger, never a second subtraction. The TP3 path was the only place in the codebase that subtracted it.
+
+### THE ARITHMETIC
+
+    netRemuneration (∑(Y−K)) = C1 + Σ max(C2ₖ − limitₖ, 0) − C3allowable
+
+The within-limit part is genuinely exempt and contributes nothing. The part **above** a limit is taxable and, because C1 holds only taxable pay, is not in C1 either — so it is **added**. The reporter's own two examples are now named assertions with a non-vacuity guard beside them:
+
+    C1 60,000, C2(i) 3,600 (limit 6,000), C3 4,000  →  56,000   (was 52,400)
+    C1 60,000, C2(i) 7,000 (limit 6,000), C3 4,000  →  57,000   (was 50,000)
+
+C2(iii) and C2(v) carry no sourced limit, so **no excess can be proven for them and none is asserted** — the screen says "no limit is published" rather than printing 0.00.
+
+### THE PROSE SWEEP FOUND SIX SITES, WHICH IS WHY THE GATE WAS GREEN
+
+CLAUDE.md §8's recurring failure, applied as a checklist before the gate rather than after it. Six places still asserted the old rule: the seed's header, the file header, `tp3ExemptionOverLimits`' comment, the Section C catalogue note, `core/pcb-explain.ts`'s `netRemuneration` doc, and two comments on the TP3 page. **`tp3ExemptionOverLimits`' comment has now been wrong twice in opposite directions and both versions are recorded on it**, because the next reader needs to see that the argument, not the arithmetic, was what kept failing.
+
+The **warning changed with the rule**. It used to end "the FORM was filled wrong". An over-limit box is not a keying error — the previous employer may lawfully pay more than the exempt limit — so `tp3.exemptOverLimit` now names the tax consequence. `totalLessExempt` and `totalExcessNote` are **retired, not deleted**, in all six locales.
+
+### FOUR FIXTURES MOVED, AND EACH SAYS WHY
+
+Every one pinned a decision this round reverses, so each was **updated with its reasoning, never loosened**:
+
+- the negative-accumulator guard: a negative now needs C3 to exceed C1 plus the excess, which is still exactly the shape of a mis-keyed form;
+- the "does not add up" refusal, **plus a new non-vacuity case** proving the formerly-refused boxes are now a valid +500 form;
+- the non-invertibility pair: it used to coincide via a different *exempt total*; it now coincides via a different *taxable excess* (C1 55,000 with C2(i) 11,000);
+- the r342 decision assertion, which now carries **all three** of its values — 46,021 → 53,000 → 58,000 — so the history is readable from the test.
+
+### THE TOOLING THIS ROUND HAD TO BUILD FIRST
+
+`pnpm improve:attachments <feedbackId> [--save <dir>]`. CLAUDE.md §8 makes reading `feedback_attachment` mandatory and **there was no command for it**, so every session hand-rolled an ssh+psql one-liner — unreviewable, and the exact shape a sandbox classifier refuses. Listing and fetching are separate calls: `content` is a bytea holding whole PNGs and docx files and one item carries several MB, so the metadata query must not drag the bytes. It paid for itself immediately on `fda53352`.
+
+### THE GATE, HONESTLY
+
+Chunk 11 failed once with a single AssertionError in `test/r304-approval-template-drawer.dom.test.tsx`
+— an approval-drawer DOM test asserting a button re-enables after a rejected save. **Nothing in this
+round's diff reaches it** (`grep -c "taxRelief\|tp3" ` on that file returns 0), and it passed both in
+isolation and on a full re-run of chunk 11's own 64-file list against a freshly rebuilt cluster (935
+tests, 0 AssertionErrors). Recorded as a load-sensitive flake, not a regression — three build agents
+were running alongside the gate. It is *not* being called a first-pass green.
+
+### THE RENDER CHECK, WITH THE DATA PLANTED
+
+The Section C block renders only for an employee with a saved form, and the seed plants none — r345 and
+r346 both shipped checks that were green because the block never rendered. A form was planted with the
+reporter's example 2 (C1 60,000, C2(i) 7,000 over its 6,000 limit, C2(iii) 5,000 with no limit, C3 8,979
+over the 4,000 cap) and all six locales read:
+
+    60,000.00  +  1,000.00  −  4,000.00  =  57,000.00
+
+with the exempt note and the no-limit note in **real translations** (not English fallback — the six
+payloads differ in size and content), **0 intl errors**, and **no retired key anywhere in the visible
+HTML**. Locale comes from the `NEXT_LOCALE` cookie, which is r346's lesson.
+
+### NOT DONE
+
+- **`scripts/resync-tp3-projections.ts` MUST run on the box.** The one production row goes 47,421 (pre-r342) → 52,400 (r342) → **56,000**. `deploy.sh` runs migrations, not scripts, so this round is not finished until it has run and its rows are verified.
+- Issued payslips are **not re-cut**. This changes what future runs compute; re-cutting moves money already paid and reported, and that is the reporter's call. Stated in the plan.
+- `1785b766`, `04b88724` and `ad7bc503` are approved and **not built**. `fda53352` is planned and awaiting approval.
 ## r349 (2026-09-27) — the form's own chrome: solid black blocks, white lettering. `main@f1163aed`, **no migration**.
 
 Closed: `fda53352`. Gate: **1034 files — equal to the suite file count**, 16 chunks, first pass, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched.
