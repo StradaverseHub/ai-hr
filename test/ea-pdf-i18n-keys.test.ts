@@ -35,10 +35,17 @@ describe('EA PDF labels — payroll.ea key coverage', () => {
     expect(keys.length).toBeGreaterThan(10); // sanity: the bundle does dereference the namespace
     const missing = [...new Set(keys)].filter((k) => get(en, `payroll.ea.${k}`) === undefined);
     expect(missing, `missing payroll.ea keys: ${missing.join(', ')}`).toEqual([]);
-    // r220 — the blank form's own footnote. It is resolved on ONE branch of the bundle, so a plain
-    // "does every key exist" sweep would still pass if the branch were deleted; name it.
-    expect(src).toContain("t('blankDisclaimer')");
-    expect(get(en, 'payroll.ea.blankDisclaimer')).toBeTypeOf('string');
+    // ⚠️ r351 — INVERTED. r220 named the blank form's own footnote here because it is resolved on ONE
+    // branch of the bundle, so a plain "does every key exist" sweep would still pass if that branch were
+    // deleted. The branch is now gone on purpose: the reporter had the whole strip removed from the form
+    // ("Remove this part from the EA Form"), so neither a filled nor a blank copy carries a disclaimer.
+    // Asserted as ABSENT rather than dropped, so the bundle cannot start resolving it again unnoticed —
+    // and the key is RETIRED rather than deleted, because i18n/request.ts deep-merges each locale over
+    // English and a key removed from en.json alone still resolves for every other reader.
+    expect(src, 'the blank disclaimer is back in the bundle').not.toContain("t('blankDisclaimer')");
+    expect(get(en, 'payroll.ea.blankDisclaimer'), 'the key was deleted instead of retired').toMatch(
+      /^\[retired r351/,
+    );
   });
 
   /**

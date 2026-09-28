@@ -4245,7 +4245,7 @@
       "sectionFTaxExempt": "F · Tổng phụ cấp / bổng lộc miễn thuế",
       "taxExemptAllowances": "Phụ cấp miễn thuế",
       "disclaimer": "Được tạo từ bảng lương cho YA {year} (bảng pháp lý {version}). Lương, thưởng, phụ cấp, EPF, SOCSO/EIS, MTD, CP38 và zakat lấy từ bảng lương. Thù lao, tiền boa và bổng lộc, thuế do người sử dụng lao động chịu, ESOS, trợ cấp thâm niên, truy lĩnh, lợi ích bằng hiện vật, chỗ ở, hoàn trả từ quỹ chưa được phê duyệt, bồi thường mất việc làm, lương hưu và niên kim không có nguồn từ bảng lương và hiển thị 0.00 cho đến khi HR nhập. Đây là bố cục các trường biểu mẫu của chúng tôi, không phải trang chính thức của LHDN — hãy đối chiếu với hồ sơ của bạn trước khi nộp.",
-      "blankDisclaimer": "Đây là mẫu EA TRỐNG. Không có số liệu lương và không có thông tin nhân viên nào được in trên đó — mọi dòng kẻ đều để trống cho người điền. Mẫu được vẽ theo bố cục C.P.8A (Pin. 2023) nhưng in trên giấy của chúng tôi: chúng tôi không có mẫu C.P.8A trắng của LHDN, nên đây là bản dựng bố cục đó của chúng tôi chứ không phải bản in gốc của cơ quan. Hãy đối chiếu với mẫu của cơ quan trước khi tin vào bố cục.",
+      "blankDisclaimer": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A carries no disclaimer on a filled OR a blank copy]",
       "formEUnaffectedNote": "Sửa đổi EA chỉ ảnh hưởng đến biểu mẫu EA này. Các con số Form E / CP8D được tính từ bảng lương và không bị ảnh hưởng.",
       "readiness": {
         "ready": "Sẵn sàng để rà soát",

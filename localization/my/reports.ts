@@ -392,11 +392,6 @@ async function loadBatchRows(ctx: SessionContext, params: ReportParams): Promise
         socsoNo: employeeStatutoryMy.socsoNumber,
         gross: payslip.grossPay,
         statutory: payslip.statutory,
-        // r351 — the period, and with it an ORDER BY. D.6 below needs "the LAST month's figure", and
-        // CLAUDE.md §8 forbids reading that off an unordered result: "no [length-1], no 'the last entry'
-        // … any asserted array from a query needs ORDER BY". Every other figure here is a SUM and did
-        // not care; this one does, so the ordering is now explicit rather than whatever the planner gave.
-        payPeriod: payrollBatch.payPeriod,
       })
       .from(payslip)
       .innerJoin(employment, eq(employment.id, payslip.employmentId))
@@ -1523,6 +1518,11 @@ export async function eaStatement(
           eq(payrollBatch.companyId, employerId),
         ),
       )
+      // r351 — AN EXPLICIT ORDERING, because D.6 below takes "the LAST month's relief snapshot" and
+      // CLAUDE.md §8 forbids reading that off an unordered result ("no [length-1], no 'the last entry'
+      // … any asserted array from a query needs ORDER BY"). Every other figure this feeds is a SUM and
+      // did not care; that one does. The column itself is NOT selected — ordering by a joined table's
+      // column needs no projection, and adding one here would be a field nothing reads.
       .orderBy(payrollBatch.payPeriod);
 
     /**

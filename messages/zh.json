@@ -4245,7 +4245,7 @@
       "sectionFTaxExempt": "F · 免税津贴 / 额外补贴合计",
       "taxExemptAllowances": "免税津贴",
       "disclaimer": "由 YA {year} 的薪资生成（法定税表 {version}）。工资、奖金、津贴、EPF、SOCSO/EIS、MTD、CP38 和天课取自薪资系统。费用、小费与额外补贴、雇主承担的所得税、ESOS、服务金、往年拖欠款、实物福利、居住住宿、未获批准基金退款、失去雇佣的赔偿金、退休金与年金没有薪资来源，在 HR 填写前显示为 0.00。本表是我们对表格字段的排版，并非 LHDN 官方页面 — 申报前请对照您的记录核实。",
-      "blankDisclaimer": "这是一份空白 EA 表格。表上不打印任何薪资数字或员工资料——每一条填写线均留空，供填表人填写。表格依照 C.P.8A (Pin. 2023) 的版式绘制，但印在我们自己的纸张上：我们并未持有 LHDN 的空白 C.P.8A，因此这是我们对该版式的呈现，而非机构的正式表格。使用前请与机构表格核对版式。",
+      "blankDisclaimer": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A carries no disclaimer on a filled OR a blank copy]",
       "formEUnaffectedNote": "EA 修订仅影响此 EA 表格。Form E / CP8D 的数字由薪资计算得出，不受影响。",
       "readiness": {
         "ready": "可供审核",

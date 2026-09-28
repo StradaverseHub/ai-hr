@@ -4245,7 +4245,7 @@
       "sectionFTaxExempt": "F · Jumlah elaun / perkuisit dikecualikan cukai",
       "taxExemptAllowances": "Elaun dikecualikan cukai",
       "disclaimer": "Dijana daripada gaji untuk YA {year} (jadual berkanun {version}). Gaji, bonus, elaun, EPF, SOCSO/EIS, MTD, CP38 dan zakat datang daripada sistem gaji. Fi, tip dan perkuisit, cukai ditanggung majikan, ESOS, ganjaran, tunggakan, manfaat berupa barangan, tempat kediaman, bayaran balik kumpulan wang tidak diluluskan, pampasan kehilangan pekerjaan, pencen dan anuiti tiada sumber gaji dan dimasukkan oleh HR; sehingga itu borang bercetak membiarkan garisan itu kosong dan bukan mencetak 0.00. Borang bercetak mengikut susunan C.P.8A (Pin. 2023) tetapi dicetak di atas kertas kami sendiri — kami tidak menyimpan sebarang borang C.P.8A kosong daripada LHDN — jadi semak setiap angka dengan rekod anda sebelum memfailkan.",
-      "blankDisclaimer": "Ini ialah borang EA KOSONG. Tiada angka gaji dan tiada butiran pekerja dicetak padanya — setiap garisan dibiarkan kosong untuk diisi. Ia mengikut susun atur C.P.8A (Pin. 2023) tetapi dicetak di atas kertas kami sendiri: kami tidak menyimpan borang C.P.8A kosong daripada LHDN, jadi ini ialah lukisan susun atur tersebut oleh kami dan bukan cetakan rasmi agensi. Semak dengan borang agensi sebelum bergantung pada susun aturnya.",
+      "blankDisclaimer": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A carries no disclaimer on a filled OR a blank copy]",
       "formEUnaffectedNote": "Pindaan EA hanya menjejaskan borang EA ini. Angka Borang E / CP8D dikira daripada penggajian dan tidak terjejas.",
       "readiness": {
         "ready": "Sedia untuk semakan",

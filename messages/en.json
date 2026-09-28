@@ -4616,7 +4616,7 @@
       "sectionFTaxExempt": "F · Total tax-exempt allowances / perquisites",
       "taxExemptAllowances": "Tax-exempt allowances",
       "disclaimer": "Generated from payroll for YA {year} (statutory tables {version}). Salary, bonus, allowances, EPF, SOCSO/EIS, MTD, CP38 and zakat come from payroll. Fees, tips and perquisites, tax borne by the employer, ESOS, gratuity, arrears, benefits in kind, living accommodation, unapproved fund refunds, compensation for loss of employment, pension and annuity have no payroll source and are entered by HR; until then the printed form leaves those rules empty rather than printing 0.00. The printed form follows the C.P.8A (Pin. 2023) arrangement but is printed on paper of ours — we hold no blank C.P.8A from LHDN — so check every figure against your records before filing.",
-      "blankDisclaimer": "This is a BLANK EA. No payroll figures and no employee details are printed on it — every rule is left empty for whoever completes it. It follows the C.P.8A (Pin. 2023) arrangement but is printed on paper of ours: we hold no blank C.P.8A from LHDN, so this is our rendering of that layout and not the agency’s own artwork. Check it against the agency’s form before relying on the layout.",
+      "blankDisclaimer": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A carries no disclaimer on a filled OR a blank copy]",
       "formEUnaffectedNote": "EA amendments affect only this EA form. Form E / CP8D figures are computed from payroll and are unaffected.",
       "readiness": {
         "ready": "Ready for review",

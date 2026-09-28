@@ -24,11 +24,14 @@ import type { EaPdfLabels } from './ea-pdf';
  * What the footnote strip beneath the form says, which is the ONE caption that differs between a filled
  * statement and a blank one.
  *
- * A filled statement's disclaimer names the year of assessment and the statutory table version it was
- * produced from, and tells the reader which boxes payroll fed and which HR must enter. A BLANK form was
- * produced from no payroll at all, so every clause of that is false on it — "Generated from payroll for YA
- * 2026" on a page with nothing in it is an assertion about a payroll run that did not happen (AGENTS 28).
- * `payroll.ea.blankDisclaimer` says what the blank copy actually is instead.
+ * ⚠️ r351 — NEITHER COPY CARRIES A DISCLAIMER ANY MORE, so this paragraph describes a distinction the
+ * bundle no longer makes. It is kept because the distinction was real and the reasoning still binds
+ * anything that ever prints prose on this form: a filled statement's disclaimer named the year of
+ * assessment and the statutory table version, and a BLANK form was produced from no payroll at all, so
+ * every clause of it was false there — "Generated from payroll for YA 2026" on an empty page asserts a
+ * payroll run that did not happen (AGENTS 28). The reporter has since had the whole strip removed from
+ * the form, so `disclaimer` and `blankDisclaimer` are both retired and `mode` now varies nothing in the
+ * bundle. It is left in place because the renderer still takes it and a future caption may need it.
  */
 export type EaLabelMode =
   | { blank: true }
