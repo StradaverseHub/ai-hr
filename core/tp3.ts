@@ -12,7 +12,11 @@
  *
  * `core/payroll.ts` seeds the PCB accumulators from `employee_statutory_my.tp3_*` — `tp3Applies =
  * e.tp3Year === pYear`, then netRemuneration / epfClaimed / pcbPaid / zakatPaid / lp, LHDN's ∑(Y−K), K,
- * X, Z and ∑LP. ⚠️ ∑LP IS NEW IN ITEM 20837372 and it is the reason to re-read this header: stage 2 of
+ * X, Z and ∑LP — AND, since item 1785b766, the per-code EXEMPTION LEDGER (`tp3_exemption_used`,
+ * migration 0489), which is not a formula variable at all: it is how much of each ANNUAL PER-EMPLOYEE
+ * exemption cap the previous employer already spent, so this employer's pay items draw only on the
+ * headroom that is left. Before it, a July joiner who had used their whole RM6,000 travel exemption
+ * elsewhere was handed a fresh RM6,000 here and too little tax was taken. ⚠️ ∑LP IS NEW IN ITEM 20837372 and it is the reason to re-read this header: stage 2 of
  * item 1bb09a73 wired three of the four variables the specification's printed page 22 names, SECTION D
  * was the missing fourth, and a new joiner who declared their previous employer's reliefs was deducted
  * MORE than they owed because ∑LP is subtracted inside P. Migration 0488 adds the column and backfills
@@ -24,7 +28,7 @@
  * ══ WHICH SIDE OWNS THE ACCUMULATOR SEED — THE DECISION STAGE 1 DEFERRED ════════════════════════════
  *
  * THE FORM OWNS IT FOR A PERSON-YEAR THAT HAS A FORM. `employee_tp3.payload` is the authoritative record
- * and the five columns become its DERIVED PROJECTION for that person; for a person with NO form they
+ * and the SIX columns become its DERIVED PROJECTION for that person; for a person with NO form they
  * stay exactly what they are today, a hand-keyed opening balance (migration / pre-system months) that
  * nothing here touches. That is the only reading that leaves one authoritative owner per fact
  * (CLAUDE.md §1) without taking the migration case away from HR.
@@ -38,8 +42,9 @@
  *
  * ══ THE OVERLAP IS STILL SHOWN, BECAUSE A LATER HAND EDIT IS STILL ALLOWED ══════════════════════════
  *
- * `deriveAccumulatorSeed` computes the seed from the form's own boxes — C1 + Σ max(C2ₖ − limitₖ, 0) − C3, C3, C5, C4(i)
- * and, since item 20837372, ∑D1…D17 — and it is the ONE place that mapping exists: the reconciliation strip on the screen and the write below
+ * `deriveAccumulatorSeed` computes the seed from the form's own boxes — C1 + Σ max(C2ₖ − limitₖ, 0) − C3, C3, C5, C4(i),
+ * since item 20837372 ∑D1…D17, and since item 1785b766 the C2 sub-lines split by the PCB exemption code
+ * each one draws on — and it is the ONE place that mapping exists: the reconciliation strip on the screen and the write below
  * read the same function, so the figure an operator is shown is the figure that lands. The Payroll tab's
  * `setTp3Action` still edits the columns by hand afterwards and this file does not fight it; the strip
  * shows the difference. What is NOT tolerated is the YEAR diverging, which `core/payroll.ts` refuses at
@@ -163,6 +168,57 @@ function excessLineTotal(payload: Tp3Payload, code: string): number {
       return sum + (limit == null ? 0 : Math.max(keyed - limit, 0));
     }, 0),
   );
+}
+
+/**
+ * ΣC2 SPLIT BY THE PCB EXEMPTION CODE EACH SUB-LINE DRAWS ON (item 1785b766) — the previous employer's
+ * usage of this employee's ANNUAL, PER-EMPLOYEE exemption caps.
+ *
+ * ══ WHY THIS EXISTS ═════════════════════════════════════════════════════════════════════════════════
+ *
+ * `MY_PCB_EXEMPTION_CODES`'s own header states the grain: "Caps are ANNUAL, tracked per employee per
+ * code". `core/payroll.ts` tracked them per EMPLOYER — it replays this employer's issued payslips
+ * (`statutory.exemptionUsed`) and nothing else — so a person who joined in July having already spent
+ * the whole RM6,000 travel exemption at their old job arrived here with a fresh RM6,000. The exemption
+ * was given twice in one year and too little tax was taken. The TP3 is the record that says how much
+ * was spent; this function is the mapping from its boxes onto the codes that cap them.
+ *
+ * ══ WHAT COUNTS AGAINST THE CAP IS THE EXEMPT PART, NOT THE KEYED AMOUNT ════════════════════════════
+ *
+ * `min(keyed, limit)` — the same figure `cappedLineTotal` totals, per code instead of in one sum. The
+ * part ABOVE the limit was never exempt: r350 established that it is taxable and is ADDED to ∑(Y−K)
+ * (`excessLineTotal`), so it is already being taxed and must not ALSO eat exemption headroom, which
+ * would tax it a second time by denying this employer's own allowance.
+ *
+ * ══ A SUB-LINE WITH NO MAPPED CODE CONTRIBUTES NOTHING, AND THAT IS AN ANSWER ═══════════════════════
+ *
+ * C2(iii) and C2(v) map to no code (see `MY_TP3_2026_SECTION_C`: (iii) has no entry in the
+ * specification's printed-page-21 table, (v) is a remainder over entries with different limit shapes).
+ * Money keyed there spends no code's cap. Inventing a code for them — `PCB_COMPANY_PROD` is the
+ * tempting one and its RM1,000 is verified against nothing — would take a real exemption away from a
+ * real employee on an unverified figure.
+ *
+ * ⚠️ NO SUB-LINES STORED ⇒ AN EMPTY MAP, for the same reason `excessLineTotal` returns 0 there: a
+ * hand-built or legacy payload carrying an `amount` with no `subItems` behind it says nothing about
+ * WHICH exemption the money used, and attributing it to a code by guess would net a cap off on a guess.
+ */
+function exemptionUsedByCode(payload: Tp3Payload): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const line of TP3_SECTION_C) {
+    const stored = (payload.sectionC ?? {})[line.code];
+    if (stored?.subItems == null) continue;
+    for (const sub of line.subItems) {
+      const code = sub.exemptionCode;
+      const limit = sub.exemptionLimit;
+      if (code == null || limit == null) continue;
+      const keyed = Number(stored.subItems?.[sub.code] ?? 0);
+      const used = Math.min(keyed, limit);
+      // Zero is not recorded: an absent key means "this exemption was not used", which is what the
+      // payroll ledger reads a missing code as. Writing 0.00 would assert a measurement nobody made.
+      if (used > 0) out[code] = round2((out[code] ?? 0) + used);
+    }
+  }
+  return out;
 }
 
 function cappedLineTotal(payload: Tp3Payload, code: string): number {
@@ -453,6 +509,22 @@ export type Tp3AccumulatorSeed = {
    */
   excessTotal: number;
   /**
+   * ΣC2 SPLIT BY PCB EXEMPTION CODE — how much of each ANNUAL, PER-EMPLOYEE exemption cap the previous
+   * employer already spent (item 1785b766). `{}` when the form claims no mapped exemption.
+   *
+   * ⚠️ IT IS THE OPENING BALANCE OF A LEDGER, NOT A REPORTING FIGURE. `core/payroll.ts` seeds
+   * `priorUsed` from it under the SAME `tp3Applies = tp3Year === pYear` gate as the other five columns,
+   * and `roomFor(code, cap) = cap − priorUsed[code] − exemptionUsed[code]` then hands this employer's
+   * pay items only the REMAINING headroom. Before this existed the TP3 contributed nothing to that
+   * ledger and a mid-year joiner was handed a second full set of annual exemptions.
+   *
+   * ⚠️ IT MUST NOT REACH THE EA FORM. `localization/my/reports.ts` builds the EA's exempt-allowances
+   * figure by replaying THIS employer's payslips' `statutory.exemptionUsed`, and that is correct: the EA
+   * reports what this employer paid. The previous employer's exempt money belongs on THEIR EA, and
+   * adding it to ours would overstate our own. Nothing in the reports path reads this field.
+   */
+  exemptionUsed: Record<string, number>;
+  /**
    * C3 held to the EPF relief cap — LHDN's K, which the specification DEFINES as capped. `epfClaimed`
    * above is the raw box, and it stays raw because the form prints it.
    */
@@ -473,6 +545,9 @@ export function deriveAccumulatorSeed(payload: Tp3Payload | null | undefined): T
   const exemptEntered = Number(c.c2?.amount ?? 0);
   const exemptTotal = cappedLineTotal(payload, 'c2');
   const excessTotal = excessLineTotal(payload, 'c2');
+  // Item 1785b766 — the same capped money as `exemptTotal`, split by the exemption code each sub-line
+  // draws on, so this employer's ledger opens where the previous employer left it. See the accessor.
+  const exemptionUsed = exemptionUsedByCode(payload);
   const epfClaimed = Number(c.c3?.amount ?? 0);
   const epfCap = tp3EpfReliefCap();
   const epfAllowable = epfCap == null ? epfClaimed : Math.min(epfClaimed, epfCap);
@@ -490,6 +565,7 @@ export function deriveAccumulatorSeed(payload: Tp3Payload | null | undefined): T
     exemptTotal,
     exemptEntered,
     excessTotal,
+    exemptionUsed,
     epfClaimed,
     epfAllowable,
     pcbPaid,
@@ -630,7 +706,7 @@ export function listTp3YearsForPerson(ctx: SessionContext, p: { personId: string
 }
 
 /**
- * The B1–B3 identity the form prints, and the five stored accumulator columns the screen reconciles
+ * The B1–B3 identity the form prints, and the five stored MONEY columns the screen reconciles
  * against. ONE read rather than two, because the screen always wants both together.
  *
  * ⚠️ THE STORED COLUMNS ARE RETURNED AS-READ. They are the PCB kernel's input, and since item 1bb09a73
@@ -695,11 +771,12 @@ export function getTp3Identity(ctx: SessionContext, p: { personId: string }): Pr
 // ── The write ───────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * What the save did to the four figures the payroll run reads. Returned so the caller can SAY so: a
+ * What the save did to the figures the payroll run reads — SIX since item 1785b766 added the per-code
+ * exemption ledger's opening balance. Returned so the caller can SAY so: a
  * projection that quietly did not happen is the defect this item exists to remove, one level up.
  */
 export type Tp3SeedOutcome =
-  /** The four columns and `tp3_year` now hold this form's figures. */
+  /** The six projected columns and `tp3_year` now hold this form's figures. */
   | { applied: true; seed: Tp3AccumulatorSeed }
   /** A LATER assessment year holds the columns; this form is recorded and the columns are untouched. */
   | { applied: false; reason: 'laterYearHoldsColumns'; heldBy: number }
@@ -707,7 +784,7 @@ export type Tp3SeedOutcome =
   | { applied: false; reason: 'noStatutoryProfile' };
 
 /**
- * `employee_statutory_my` is UNIQUE ON `person_id` (`employee_statutory_my_person_uq`), so the four
+ * `employee_statutory_my` is UNIQUE ON `person_id` (`employee_statutory_my_person_uq`), so the projected
  * figures are a PERSON-level fact and always have been — `core/payroll.ts` joins
  * employment → person → this row, and a person holding two concurrent employments already seeds both
  * runs from the one row. This projection inherits that grain and changes nothing about it; it is stated
@@ -717,13 +794,13 @@ export type Tp3SeedOutcome =
 /**
  * Re-derive every stored TP3 projection from the form it came from (item 20837372, r342).
  *
- * ⚠️ WHY A RESYNC IS OWED AT ALL. `employee_statutory_my`'s five TP3 columns are a PROJECTION, written
+ * ⚠️ WHY A RESYNC IS OWED AT ALL. `employee_statutory_my`'s TP3 columns are a PROJECTION, written
  * only when the form is saved. r342 changed the arithmetic that produces them — Section C is now
  * counted to its statutory limits — so every row stored before this round holds a figure derived by the
  * old rule and will keep seeding PCB with it until somebody re-saves that form. On the reporter's
  * system that is one row, and it is wrong by RM4,979.
  *
- * ⚠️ IT REUSES `projectSeedOntoStatutory`, WHICH IS THE POINT. A script that wrote the five columns
+ * ⚠️ IT REUSES `projectSeedOntoStatutory`, WHICH IS THE POINT. A script that wrote the six columns
  * itself would be a second author of the same projection, and the two would drift the first time one of
  * them changed. This walks the forms and hands each freshly-derived seed to the SAME function the save
  * path uses, so the resynced row is byte-identical to what a re-save would have produced — including
@@ -775,6 +852,7 @@ async function projectSeedOntoStatutory(
       pcb: employeeStatutoryMy.tp3PcbPaid,
       zakat: employeeStatutoryMy.tp3ZakatPaid,
       lp: employeeStatutoryMy.tp3Lp,
+      exemptionUsed: employeeStatutoryMy.tp3ExemptionUsed,
     })
     .from(employeeStatutoryMy)
     .where(eq(employeeStatutoryMy.personId, p.personId))
@@ -801,8 +879,32 @@ async function projectSeedOntoStatutory(
     tp3PcbPaid: money(p.seed.pcbPaid),
     tp3ZakatPaid: money(p.seed.zakatPaid),
     // ∑LP — Section D (item 20837372). Written in the SAME statement as the other four and governed by
-    // the SAME `tp3_year`, so the five can never describe different forms.
+    // the SAME `tp3_year`, so they can never describe different forms.
     tp3Lp: money(p.seed.lpDeclared),
+    // ── THE PER-CODE EXEMPTION LEDGER'S OPENING BALANCE (item 1785b766) ─────────────────────────────
+    //
+    // SIXTH, IN THE SAME STATEMENT, UNDER THE SAME `tp3_year`, for the reason the ∑LP comment above
+    // gives: six figures describing one form must be written once or they can describe two.
+    //
+    // ⚠️ AND THIS IS WHY POINTS 5, 9 AND 10 OF THE REPORTER'S EXPECTED FUNCTION NEED NO MECHANISM.
+    // "Amending the form recalculates", "reprocessing must not double-count" and "a cancelled form stops
+    // counting" all fall out of the SHAPE of this write and are not implemented anywhere:
+    //
+    //   · there is exactly ONE `employee_tp3` row per person per year (`employee_tp3_person_year_uq`), so
+    //     there is one payload to derive from and no history to sum;
+    //   · this column is DERIVED from that payload and REWRITTEN WHOLE on every save. It is not a ledger
+    //     that is appended to, so amending C2(i) from 2,000 to 2,500 REPLACES 2,000 with 2,500 — it can
+    //     never accumulate to 4,500. `test/1785b766-tp3-exemption-headroom.test.ts` pins that number;
+    //   · a payroll run READS this column and writes nothing back to it, so running the same month five
+    //     times consumes the previous employer's exemption exactly once;
+    //   · deleting the form clears it through `clearProjectionForYear`, by the same single path.
+    //
+    // A future reader looking for a reconciliation or de-duplication step should stop here: adding one
+    // would be a second author of a derived figure, which is the drift this whole item exists to remove.
+    //
+    // EMPTY ⇒ NULL, not `{}`. "No mapped exemption on this form" and "no form" must read identically in
+    // `core/payroll.ts`, and null is what the column already means everywhere else.
+    tp3ExemptionUsed: Object.keys(p.seed.exemptionUsed).length ? p.seed.exemptionUsed : null,
   };
   await tx
     .update(employeeStatutoryMy)
@@ -830,6 +932,7 @@ async function projectSeedOntoStatutory(
         tp3PcbPaid: stat.pcb,
         tp3ZakatPaid: stat.zakat,
         tp3Lp: stat.lp,
+        tp3ExemptionUsed: stat.exemptionUsed,
       },
       after,
     },
@@ -856,6 +959,7 @@ async function clearProjectionForYear(
       pcb: employeeStatutoryMy.tp3PcbPaid,
       zakat: employeeStatutoryMy.tp3ZakatPaid,
       lp: employeeStatutoryMy.tp3Lp,
+      exemptionUsed: employeeStatutoryMy.tp3ExemptionUsed,
     })
     .from(employeeStatutoryMy)
     .where(eq(employeeStatutoryMy.personId, p.personId))
@@ -871,6 +975,11 @@ async function clearProjectionForYear(
     // deduction from a Section D on a form that no longer exists — the same half of the production
     // defect this function was written for, pointing the other way.
     tp3Lp: null,
+    // The per-code exemption ledger's opening balance goes with them (item 1785b766). Left behind it
+    // would keep DENYING this employer's own exemption headroom on the strength of a form that no longer
+    // exists — the reporter's Expected Function point 10, and it needs no mechanism beyond this line
+    // because the column is derived from the deleted row and is written whole, never appended to.
+    tp3ExemptionUsed: null,
   };
   await tx
     .update(employeeStatutoryMy)
@@ -894,6 +1003,7 @@ async function clearProjectionForYear(
         tp3PcbPaid: stat.pcb,
         tp3ZakatPaid: stat.zakat,
         tp3Lp: stat.lp,
+        tp3ExemptionUsed: stat.exemptionUsed,
       },
       after,
     },
@@ -908,6 +1018,9 @@ async function clearProjectionForYear(
  * it against a person with no statutory profile would recreate exactly the defect item 1bb09a73 closed
  * — a form whose figures reach no calculation — in the one section that used to be harmless.
  */
+// ⚠️ `exemptionUsed` IS DELIBERATELY NOT TESTED HERE, and it is not an omission: every ringgit in that
+// map is part of `exemptTotal` by construction (it is the same `min(keyed, limit)` money, split by code),
+// so a non-empty map already implies `exemptTotal !== 0`. Adding it would be a second test of one fact.
 const seedCarriesMoney = (s: Tp3AccumulatorSeed) =>
   s.gross !== 0 ||
   s.exemptTotal !== 0 ||
@@ -1024,7 +1137,7 @@ export async function saveTp3(ctx: SessionContext, p: Tp3WriteInput): Promise<{ 
       },
     });
 
-    // ── The projection onto the four figures the payroll run reads (item 1bb09a73) ──────────────────
+    // ── The projection onto the figures the payroll run reads (item 1bb09a73; six of them since 1785b766) ──
     //
     // AFTER the form row and INSIDE the same transaction. `deriveAccumulatorSeed` cannot return null
     // here — the payload is built two lines above with `form: 'tp3-2026'` — but the non-null assertion
@@ -1056,7 +1169,7 @@ export async function saveTp3(ctx: SessionContext, p: Tp3WriteInput): Promise<{ 
  * statutory meaning of its own — the paper form the employee handed in is the record, and the employer
  * keeps it for seven years as the form's own note says. The event log carries the before-image.
  *
- * ⚠️ IT ALSO CLEARS THE PROJECTION IT PUT THERE (item 1bb09a73), and only that one: the four columns are
+ * ⚠️ IT ALSO CLEARS THE PROJECTION IT PUT THERE (item 1bb09a73), and only that one: the six columns are
  * cleared when `tp3_year` equals the year being deleted, and left alone otherwise. Since `saveTp3` for
  * year Y sets `tp3_year = Y`, that equality is what says "these figures came from the form now being
  * withdrawn". Leaving them behind would leave payroll seeding from a form that no longer exists, which
