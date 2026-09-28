@@ -1,0 +1,182 @@
+<meta charset="utf-8">
+<title>15e5bd93 rev 3 — Statutory Payment Setup: identity on top, rows, one body at a time</title>
+<!--
+  Mockup for 15e5bd93 REVISION 3, after the reporter contested what r353 shipped.
+
+  WHY A THIRD DRAWING. r352 shipped a rail + workspace inside the tab; contested. r353 shipped a
+  dedicated screen with eight always-visible cards; contested again. The reporter has now drawn the
+  layout themselves, in the ticket, as an ASCII sketch. This mockup is that sketch, rendered in the
+  product's own idiom — not another interpretation of it.
+
+  THEIR SKETCH, TRANSCRIBED (contest rev 2, section 5 "Option A"):
+      Statutory Identity (MY)  — company / statutory registration information   [TOP]
+      Statutory Payment Setup  — EPF / SOCSO & EIS / EIS (SIP) / LHDN / HRD Corp /
+                                 Zakat / PTPTN / Tabung Haji, each: Active|Inactive  View  Edit
+      Selecting Edit → EPF opens a screen containing ONLY the EPF fields, with Cancel / Save.
+
+  HONESTY NOTES — a mockup is a promise:
+  · THE ROW TABLE follows their columns exactly: Statutory | Payment Setup | Status | Action.
+    "Payment Setup" is Configured / Not Configured; "Status" is Active / Inactive. Those are TWO
+    different facts in their sketch and are drawn as two, even though the system currently derives only
+    the first — see the build notes. Nothing is invented to fill the second column: where the system
+    cannot yet say, it is drawn from the same configured/not-configured fact and the plan says so.
+  · WHAT IS ALREADY LIVE from r353 and is KEPT: the dedicated route, the guard and its 404, the
+    per-body Save posting to the existing action, and EIS staying its own record indented under SOCSO
+    (components/company-panel.tsx:84-104 carries the production evidence for that).
+  · THE EDIT SCREEN draws the REAL EPF fields in the real order (components/company-panel.tsx:702-854):
+    filing number, account/reference, paid-from, signatory, then the address block, phone, email.
+  · NOT PROMISED: exact colours, spacing, the icon set, or whether Edit is a page or a modal — their
+    section 5 accepts either and the plan picks the page for EPF-sized forms.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;vertical-align:2px;margin-left:6px}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .crumb{font-size:11.5px;color:var(--mf);margin:0 0 8px}
+  .crumb b{color:var(--fg)}
+  .back{display:inline-block;font-size:11.5px;color:var(--primary);font-weight:650;margin:0 0 10px}
+  .h1{font-size:18px;font-weight:700;margin:0}
+  .h1s{font-size:11.5px;color:var(--mf);margin:2px 0 14px}
+  .idcard{border:1px solid var(--border);border-radius:12px;background:#fff;padding:13px;margin:0 0 14px}
+  .idhead{font-weight:700;font-size:13px;margin:0 0 2px}
+  .idsub{font-size:10.5px;color:var(--mf);margin:0 0 10px}
+  .idgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 14px}
+  .idf{display:flex;flex-direction:column}
+  .idf .cap{font-size:10px;color:var(--mf);font-weight:600}
+  .idf .val{font-size:12px;font-variant-numeric:tabular-nums}
+  .sect{font-weight:700;font-size:13px;margin:0 0 8px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  thead th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mf);
+           font-weight:700;padding:0 10px 7px;border-bottom:1px solid var(--border)}
+  thead th.r{text-align:right}
+  tbody td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+  tbody tr:last-child td{border-bottom:0}
+  td.r{text-align:right;white-space:nowrap}
+  .bname{font-weight:650}
+  .bsub{font-size:10.5px;color:var(--mf)}
+  .ind{padding-left:26px!important}
+  .badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10.5px;font-weight:600}
+  .ok{background:color-mix(in srgb,var(--good) 12%,white);color:var(--good)}
+  .no{background:var(--muted);color:var(--mf)}
+  .act{font-size:11.5px;color:var(--primary);font-weight:650;margin-left:10px}
+  .arrow{text-align:center;font-size:20px;color:var(--mf);margin:2px 0 14px}
+  .fgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 10px}
+  .f{display:flex;flex-direction:column;gap:2px}
+  .f .cap{font-size:10px;color:var(--mf);font-weight:600}
+  .f .box{border:1px solid var(--border);border-radius:7px;background:#fff;height:23px}
+  .f.wide{grid-column:span 3}.f.two{grid-column:span 2}
+  .grp{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--mf);margin:12px 0 6px}
+  .btn{display:inline-block;background:var(--primary);color:#fff;border-radius:8px;padding:6px 16px;font-size:11.5px;font-weight:650}
+  .btn.ghost{background:var(--muted);color:var(--mf)}
+  .cap2{font-size:11px;color:var(--mf);margin:10px 0 0}
+</style>
+
+<div class="card">
+  <h2>Statutory Payment Setup <span class="chip new">PROPOSED — your layout</span></h2>
+  <p class="sub">Open Settings lands here directly. Identity on top so you can confirm whose setup this is,
+    then one row per body. Nothing else is expanded.</p>
+
+  <a class="back">&larr; Back to Company</a>
+  <p class="crumb">Organization &rsaquo; <b>Tanjung Manufacturing Sdn Bhd</b> &rsaquo; Statutory &rsaquo; <b>Statutory Payment Setup</b></p>
+  <p class="h1">Statutory Payment Setup</p>
+  <p class="h1s">Tanjung Manufacturing Sdn Bhd</p>
+
+  <div class="idcard">
+    <p class="idhead">Statutory Identity (MY)</p>
+    <p class="idsub">Who this company is to each authority. Confirm this before editing anything below.</p>
+    <div class="idgrid">
+      <div class="idf"><span class="cap">SSM registration no.</span><span class="val">201901234567</span></div>
+      <div class="idf"><span class="cap">MyInvois TIN</span><span class="val">C12345678900</span></div>
+      <div class="idf"><span class="cap">EPF employer no.</span><span class="val">E 1234567890</span></div>
+      <div class="idf"><span class="cap">SOCSO employer code</span><span class="val">B1234567890</span></div>
+      <div class="idf"><span class="cap">LHDN E number</span><span class="val">E 9876543210</span></div>
+      <div class="idf"><span class="cap">HRDF status</span><span class="val">No Contribution</span></div>
+    </div>
+  </div>
+
+  <p class="sect">Statutory Payment Setup</p>
+  <table>
+    <thead><tr>
+      <th>Statutory</th><th>Payment Setup</th><th>Status</th><th class="r">Action</th>
+    </tr></thead>
+    <tbody>
+      <tr><td><span class="bname">EPF (KWSP)</span><div class="bsub">Provident fund</div></td>
+          <td><span class="badge ok">Configured</span></td><td><span class="badge ok">Active</span></td>
+          <td class="r"><span class="act">View</span><span class="act">Edit</span></td></tr>
+      <tr><td><span class="bname">SOCSO &amp; EIS (PERKESO)</span><div class="bsub">Social security</div></td>
+          <td><span class="badge ok">Configured</span></td><td><span class="badge ok">Active</span></td>
+          <td class="r"><span class="act">View</span><span class="act">Edit</span></td></tr>
+      <tr><td class="ind"><span class="bname">EIS (SIP)</span><div class="bsub">Employment insurance &mdash; its own registration</div></td>
+          <td><span class="badge ok">Configured</span></td><td><span class="badge ok">Active</span></td>
+          <td class="r"><span class="act">View</span><span class="act">Edit</span></td></tr>
+      <tr><td><span class="bname">Income Tax (LHDN)</span><div class="bsub">Monthly tax deduction</div></td>
+          <td><span class="badge ok">Configured</span></td><td><span class="badge ok">Active</span></td>
+          <td class="r"><span class="act">View</span><span class="act">Edit</span></td></tr>
+      <tr><td><span class="bname">HRD Corp</span><div class="bsub">Training levy</div></td>
+          <td><span class="badge no">Not Configured</span></td><td><span class="badge no">Inactive</span></td>
+          <td class="r"><span class="act">View</span><span class="act">Edit</span></td></tr>
+      <tr><td><span class="bname">Zakat</span><div class="bsub">Religious contribution</div></td>
+          <td><span class="badge ok">Configured</span></td><td><span class="badge ok">Active</span></td>
+          <td class="r"><span class="act">View</span><span class="act">Edit</span></td></tr>
+      <tr><td><span class="bname">PTPTN</span><div class="bsub">Study loan deduction</div></td>
+          <td><span class="badge ok">Configured</span></td><td><span class="badge ok">Active</span></td>
+          <td class="r"><span class="act">View</span><span class="act">Edit</span></td></tr>
+      <tr><td><span class="bname">Tabung Haji</span><div class="bsub">Pilgrimage savings</div></td>
+          <td><span class="badge no">Not Configured</span></td><td><span class="badge no">Inactive</span></td>
+          <td class="r"><span class="act">View</span><span class="act">Edit</span></td></tr>
+    </tbody>
+  </table>
+  <p class="cap2">Eight rows, no fields. SOCSO and EIS stay two separate registrations, with EIS indented
+    under SOCSO &mdash; they cannot be merged.</p>
+</div>
+
+<div class="arrow">&#8595; &nbsp; Edit &rarr; EPF (KWSP)</div>
+
+<div class="card">
+  <h2>Edit Statutory Setting <span class="chip new">ONE BODY ONLY</span></h2>
+  <p class="sub">Only EPF. No SOCSO, no LHDN, no Zakat. Save writes this body alone and returns you to the
+    list with its row refreshed.</p>
+
+  <a class="back">&larr; Back to Statutory Payment Setup</a>
+  <p class="h1">EPF (KWSP)</p>
+  <p class="h1s">Employees Provident Fund &middot; Tanjung Manufacturing Sdn Bhd</p>
+
+  <div class="idcard">
+    <p class="grp" style="margin-top:0">Filing identity</p>
+    <div class="fgrid"><div class="f"><span class="cap">EPF employer no.</span><span class="box"></span></div></div>
+
+    <p class="grp">Payment setup</p>
+    <div class="fgrid">
+      <div class="f two"><span class="cap">Employer account / reference no.</span><span class="box"></span></div>
+      <div class="f"><span class="cap">Paid from</span><span class="box"></span></div>
+      <div class="f wide"><span class="cap">Authorised signatory</span><span class="box"></span></div>
+    </div>
+
+    <p class="grp">Correspondence address</p>
+    <div class="fgrid">
+      <div class="f wide"><span class="cap">Address line 1</span><span class="box"></span></div>
+      <div class="f wide"><span class="cap">Address line 2</span><span class="box"></span></div>
+      <div class="f wide"><span class="cap">Address line 3</span><span class="box"></span></div>
+      <div class="f"><span class="cap">City</span><span class="box"></span></div>
+      <div class="f"><span class="cap">State</span><span class="box"></span></div>
+      <div class="f"><span class="cap">Postcode</span><span class="box"></span></div>
+      <div class="f"><span class="cap">Country</span><span class="box"></span></div>
+      <div class="f"><span class="cap">Phone</span><span class="box"></span></div>
+      <div class="f"><span class="cap">Email</span><span class="box"></span></div>
+    </div>
+
+    <div style="margin-top:14px;display:flex;justify-content:flex-end;gap:8px">
+      <span class="btn ghost">Cancel</span><span class="btn">Save</span>
+    </div>
+  </div>
+  <p class="cap2">View is the same screen with the fields read-only and no Save. Cancel discards and goes
+    back; Save writes only EPF and goes back.</p>
+</div>
