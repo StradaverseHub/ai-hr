@@ -71,9 +71,14 @@ describe('3783fd87 — the Organization screens paint white cards, not grey bloc
    * where the old habit comes back: nothing in this file was watching it. Extended rather than re-pointed,
    * because the panel still has grounds of its own to keep clean.
    */
-  it('and the dedicated statutory setup screen paints none either', () => {
-    const SCREEN = read('components/statutory-setup-screen.tsx');
-    expect(filled(SCREEN), 'a filled grey ground appeared on the new statutory screen').toEqual([]);
+  it('and the dedicated statutory setup screens paint none either', () => {
+    // ⚠️ TWO FILES SINCE r355, NOT ONE. The reporter contested r353's eight-cards shape and drew a table of
+    // rows plus a one-body screen, so the statutory surface is components/statutory-setup-screen.tsx (the
+    // list) and components/statutory-body-screen.tsx (the editor). A new file is exactly where the old habit
+    // comes back: nothing was watching the second one until this line named it.
+    for (const rel of ['components/statutory-setup-screen.tsx', 'components/statutory-body-screen.tsx']) {
+      expect(filled(read(rel)), `a filled grey ground appeared in ${rel}`).toEqual([]);
+    }
   });
 
   it('…and its sections are white cards with a LINE, which is what replaced each grey block', () => {
@@ -85,9 +90,15 @@ describe('3783fd87 — the Organization screens paint white cards, not grey bloc
      * is on the dedicated setup screen now, so the claim reads that file. The negative half is asserted on
      * BOTH: the filled block must not come back anywhere.
      */
-    const SCREEN = read('components/statutory-setup-screen.tsx');
-    expect(SCREEN).toContain('rounded-md border border-border/60 p-2.5');
-    expect(SCREEN).not.toContain('rounded-md bg-muted/40 p-2.5');
+    // ⚠️ RE-POINTED AGAIN BY r355: the three sub-blocks are in the EDITOR, which is its own file now. The
+    // negative half is asserted on all three files, because the filled block must not come back anywhere.
+    const BODY = read('components/statutory-body-screen.tsx');
+    const LIST = read('components/statutory-setup-screen.tsx');
+    expect(BODY).toContain('rounded-md border border-border/60 p-2.5');
+    expect(BODY).not.toContain('rounded-md bg-muted/40 p-2.5');
+    expect(LIST).not.toContain('rounded-md bg-muted/40 p-2.5');
+    // The list's identity card is a white card with a LINE, the same treatment as every other section.
+    expect(LIST, 'the identity card is a lined white card').toContain('rounded-lg border border-border bg-card p-3');
     expect(PANEL).not.toContain('rounded-md bg-muted/40 p-2.5');
     // The tab shell keeps its separator and loses its wash.
     expect(PANEL).toContain('border-t border-border px-4 py-4');

@@ -128,3 +128,54 @@ export const MY_FILING_FIELD: Record<string, { name: MyFilingKey; labelKey: stri
   socso: { name: 'socsoEmployerCode', labelKey: 'socsoEmployerCode' },
   lhdn: { name: 'lhdnEmployerNo', labelKey: 'lhdnENumber' },
 };
+
+/**
+ * ═══ 15e5bd93 REVISION 3 (r355) — "PAYMENT SETUP" AND "STATUS" ARE TWO FACTS, DERIVED IN ONE PLACE ══
+ *
+ * The reporter drew the list themselves and their table has BOTH columns. They are not the same fact, and
+ * the approved plan says so to them in plain words rather than printing a column that looks like
+ * information and is really an echo:
+ *
+ *     Payment Setup  =  we hold a payment record for that body  (a `company_statutory_authority` row)
+ *     Status         =  it is actually contributing
+ *
+ * ⚠️ FOR SEVEN BODIES THESE COINCIDE, AND SAYING SO IS THE HONEST VERSION. There is no per-body
+ * enable/disable column in the schema — `company_statutory_authority` holds an account, a bank profile, an
+ * address and a signatory, and nothing that switches a body off — so for those seven the only checkable
+ * answer to "is it contributing" is whether the setup exists at all. INVENTING a switch to make the second
+ * column independent is what CLAUDE.md §8 forbids ("a shared caption may say only what is true of every
+ * member and checkable from this repo"), and it would also be a rule change the plan did not ask for.
+ *
+ * ⚠️ FOR HRD CORP THEY GENUINELY DIFFER, AND THAT IS WHY THE COLUMN IS WORTH DRAWING. `hrdf_status` on
+ * `company_statutory_my` is not_registered | mandatory | optional, and it is what decides whether the levy
+ * is charged at all. So "Configured + Inactive" — payment details on file, no contribution — is a real,
+ * reachable state, and a company in it must not be told its HRD Corp levy is Active.
+ *
+ * THE HRDF HALF IS PAYROLL'S OWN RULE, NOT A UI GUESS, and this is the evidence:
+ *   · core/payroll.ts:3430   `const hrdfStatus = coStat?.hrdfStatus ?? 'not_registered'` — a MISSING
+ *                            identity row resolves to not_registered.
+ *   · core/payroll.ts:5995   `const hrdfChargeable = hrdfStatus !== 'not_registered'`.
+ * So "contributing" here is exactly "payroll would charge the levy", including for a company with no
+ * identity row at all — which is a statement about what the system WILL DO, not about a registration
+ * decision somebody made. (The identity card's HRDF caption is the other half and says "Not set" for that
+ * company, because an absent box asserts nothing about a DECISION.)
+ *
+ * A pure function in lib/ so the screen, the guards and any future reader all derive it the same way; a
+ * second derivation is how the two columns would drift into one.
+ */
+export type StatutoryRowStatus = {
+  /** A `company_statutory_authority` row exists for this body. */
+  configured: boolean;
+  /** This body is actually contributing. */
+  contributing: boolean;
+};
+export function statutoryRowStatus(
+  authority: string,
+  hasRecord: boolean,
+  hrdfStatus: 'not_registered' | 'mandatory' | 'optional' | null | undefined,
+): StatutoryRowStatus {
+  return {
+    configured: hasRecord,
+    contributing: authority === 'hrdf' ? (hrdfStatus ?? 'not_registered') !== 'not_registered' : hasRecord,
+  };
+}

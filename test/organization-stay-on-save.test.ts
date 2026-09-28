@@ -380,10 +380,27 @@ describe('§4 delete is the one that must NOT stay (classification finding 2)', 
  * screen is a defect in how a path and a query string MEET, and only parsing the target the way a browser
  * does can see it.
  */
-describe('§6 the dedicated Statutory Payment Setup screen keeps its own saves (15e5bd93 rev 2)', () => {
+describe('§6 the Statutory Payment Setup flow keeps its own saves (15e5bd93 rev 2, split by rev 3)', () => {
   const SETUP = (id: string) => `${LIST}/${id}/statutory`;
+  /**
+   * 15e5bd93 REVISION 3 (r355) — THE FOURTEENTH DESTINATION, and the one this section gained.
+   *
+   * The reporter contested r353's eight-cards screen and drew the layout themselves: a table of rows plus a
+   * screen holding ONE body with Cancel and Save. So the flow is two routes, and a save and a REFUSAL want
+   * opposite things out of it:
+   *
+   *   SUCCESS  →  the LIST, unchanged from r353. Their words: "Save writes only that body and returns you to
+   *               the list with its row refreshed."
+   *   REFUSAL  →  the BODY's own edit screen. Every refusal reachable from that form is about a box that
+   *               exists only there, and sending it to the list would re-commit the mistake `failCompany`'s
+   *               own note records: "a refused save … showed the refusal on a screen that no longer held the
+   *               form it was about."
+   *
+   * ONE marker still chooses the flow (`returnTo=statutory-setup`); the OUTCOME chooses the screen.
+   */
+  const BODY = (id: string, a: string) => `${SETUP(id)}/${a}`;
 
-  it('a card save returns to the setup screen with a parseable toast, and no stray tab', async () => {
+  it('a card save returns to the LIST with a parseable toast, and no stray tab', async () => {
     const { pathname, q } = parse(
       await redirectOf(() =>
         setCompanyStatutoryAuthorityAction(
@@ -399,7 +416,14 @@ describe('§6 the dedicated Statutory Payment Setup screen keeps its own saves (
     expect(q.get('tab'), 'this screen has no tabs, so it carries none').toBeNull();
   });
 
-  it('a REFUSED card save lands on the setup screen too, with the message the service gave', async () => {
+  /**
+   * ⚠️ REVERSED BY REVISION 3, AND THE OLD CLAIM IS QUOTED BECAUSE IT WAS RIGHT FOR ITS SHAPE. r353 asserted
+   * `expect(pathname, 'the refusal reaches the form it is about').toBe(SETUP(b.companyId))` — the setup screen
+   * WAS the form, because the eight editors were on it. They are not: the reporter asked for one body per
+   * screen, so "the form it is about" is now `…/statutory/<body>`, and it must arrive in EDIT mode or the
+   * reader lands on a read-only page holding a message about boxes they cannot see.
+   */
+  it('a REFUSED card save lands on the BODY’s own edit screen, with the message the service gave', async () => {
     const { pathname, q } = parse(
       await redirectOf(() =>
         setCompanyStatutoryAuthorityAction(
@@ -412,12 +436,40 @@ describe('§6 the dedicated Statutory Payment Setup screen keeps its own saves (
         ),
       ),
     );
-    expect(pathname, 'the refusal reaches the form it is about').toBe(SETUP(b.companyId));
+    expect(pathname, 'the refusal reaches the form it is about').toBe(BODY(b.companyId, 'epf'));
     expect(q.get('error')).toBeTruthy();
+    expect(q.get('mode'), 'and it arrives with the form open, not read-only').toBe('edit');
     expect(q.get('toast'), 'a refusal is not a success').toBeNull();
   });
 
-  it('Clear this authority stays on the screen as well', async () => {
+  /**
+   * THE BODY IN THE REFUSAL PATH IS RESOLVED THROUGH THE CONTROLLED SET, NEVER ECHOED. This value ends up in a
+   * redirect PATH — the one place a path and a query string meet, which is the rule `companyTab` exists to
+   * state — so a body outside `STATUTORY_AUTHORITIES` must fall back to the list rather than build an address
+   * out of what was posted. Run rather than scanned, because only the parsed target can show it.
+   */
+  it('a refused save for an UNKNOWN body falls back to the list instead of echoing it into the path', async () => {
+    for (const bogus of ['koperasi', '../../evil', 'epf?mode=edit&x=1', 'EPF']) {
+      const { pathname, q } = parse(
+        await redirectOf(() =>
+          setCompanyStatutoryAuthorityAction(
+            fd({
+              companyId: b.companyId,
+              authority: bogus,
+              bankProfileId: '00000000-0000-4000-8000-000000000000',
+              returnTo: 'statutory-setup',
+            }),
+          ),
+        ),
+      );
+      expect(pathname, bogus).toBe(SETUP(b.companyId));
+      expect(pathname, 'nothing posted reached the path').not.toContain('evil');
+      expect(q.get('mode'), 'and no mode is bolted onto the list, which has none').toBeNull();
+      expect(q.get('error'), 'the refusal is still shown').toBeTruthy();
+    }
+  });
+
+  it('Clear this authority returns to the list on success, and to the body on a refusal', async () => {
     await setCompanyStatutoryAuthorityAction(
       fd({ companyId: b.companyId, authority: 'socso', accountNo: 'S-1' }),
     ).catch((e) => {
@@ -432,8 +484,33 @@ describe('§6 the dedicated Statutory Payment Setup screen keeps its own saves (
         ),
       ),
     );
-    expect(pathname).toBe(SETUP(b.companyId));
+    expect(pathname, 'a successful clear returns to the LIST, where the row now reads Not Configured').toBe(
+      SETUP(b.companyId),
+    );
     expect(q.get('toast')).toBe('Removed');
+
+    /**
+     * AND THE REFUSAL HALF, which is why `authority` rides on the Clear form at all: the delete is keyed off
+     * the row ID, so the body is carried ONLY so that a refusal can be returned to the screen the button is on.
+     *
+     * ⚠️ AND THE FIRST WRITING OF THIS CASE WAS WRONG ABOUT WHAT IS REACHABLE, WHICH IS WORTH RECORDING.
+     * "Clear a row that is already gone" is NOT a refusal: `core/statutory-authority.ts`
+     * `removeCompanyStatutoryAuthority` returns `{ id: null }` for a missing row and does not throw, so that
+     * path redirects as a success. What DOES throw is an `id` that is not a uuid, which Postgres refuses when
+     * it casts the predicate — a crafted request rather than anything the form can post, and therefore the only
+     * refusal this action has. A guard that cannot name a reachable refusal is a guard pinning nothing.
+     */
+    const refused = parse(
+      await redirectOf(() =>
+        removeCompanyStatutoryAuthorityAction(
+          fd({ id: 'not-a-uuid', companyId: b.companyId, authority: 'socso', returnTo: 'statutory-setup' }),
+        ),
+      ),
+    );
+    expect(refused.pathname, 'the refusal reaches the screen the button is on').toBe(BODY(b.companyId, 'socso'));
+    expect(refused.q.get('mode')).toBe('edit');
+    expect(refused.q.get('error')).toBeTruthy();
+    expect(refused.q.get('toast'), 'a refusal is not a success').toBeNull();
   });
 
   /**
@@ -593,10 +670,13 @@ describe('§5 the panel posts what the actions read, and says it in six language
    * the ROW id. If the hidden field is ever dropped the action still SUCCEEDS — the delete works — and
    * silently lands the reader on the list again. §1 runs the actions; this pins the other half.
    *
-   * ⚠️ SPLIT ACROSS TWO SCREENS BY 15e5bd93 REVISION 2 (r353), NOT WEAKENED. "Clear this authority" moved to
-   * the dedicated Statutory Payment Setup screen with the editor it belongs to, so the authority half of this
-   * case reads that component. Both halves are still asserted, and the authority form now has a THIRD hidden
-   * field to carry — `returnTo` — because its destination is a different route rather than a different tab.
+   * ⚠️ SPLIT ACROSS TWO SCREENS BY 15e5bd93 REVISION 2 (r353) AND RE-POINTED AGAIN BY REVISION 3 (r355),
+   * NEVER WEAKENED. "Clear this authority" moved to the dedicated Statutory Payment Setup screen with the
+   * editor it belongs to (r353), and then to the per-body screen when the reporter asked for one body at a
+   * time (r355) — so the authority half of this case reads components/statutory-body-screen.tsx. Both halves
+   * are still asserted, and the authority form now carries FOUR hidden fields: the row id, the company, the
+   * `returnTo` marker (its destination is a different route rather than a different tab) and — new in r355 —
+   * the `authority`, so a REFUSED clear can be returned to the screen the button is on.
    */
   it('the remove forms carry the company id, not only the row id', () => {
     const html = markup('en');
@@ -606,11 +686,16 @@ describe('§5 the panel posts what the actions read, and says it in six language
     expect(ids.length, 'every form that posts a row id also posts the company').toBeGreaterThanOrEqual(4);
     // The authority half, where it lives now. Source rather than render because the form only exists once a
     // card is in edit mode — which test/15e5bd93-statutory-screen.dom.test.tsx drives for real.
-    const screen = read('components/statutory-setup-screen.tsx');
+    const screen = read('components/statutory-body-screen.tsx');
     const clear = screen.slice(screen.indexOf('action={actions.removeStatutoryAuthority}'), screen.indexOf('</form>', screen.indexOf('action={actions.removeStatutoryAuthority}')));
     expect(clear, 'the authority ROW id').toContain('name="id" value={r.id}');
     expect(clear, 'and the company it returns to').toContain('name="companyId" value={companyId}');
-    expect(clear, 'and WHICH of that company\'s two screens').toContain('name="returnTo" value={RETURN_TO_SETUP}');
+    expect(clear, 'and WHICH flow it belongs to').toContain('name="returnTo" value={RETURN_TO_SETUP}');
+    expect(clear, 'and which BODY, so a refusal can return to this screen').toContain(
+      'name="authority" value={authority}',
+    );
+    // The LIST has no remove form at all: it cannot write.
+    expect(read('components/statutory-setup-screen.tsx')).not.toContain('removeStatutoryAuthority');
   });
 
   it('renders the archive marker for a company in use', () => {

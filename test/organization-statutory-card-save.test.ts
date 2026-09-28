@@ -329,7 +329,15 @@ describe('§2 the fence on the server', () => {
    * because the screen the refusal lands on is the screen with that card open. The reachable refusal used
    * here is the same one the old case used: a bank profile reference belonging to nobody.
    */
-  it('a refused save reaches the setup screen with the message, and leaves no row behind', async () => {
+  /**
+   * ⚠️ RE-POINTED BY REVISION 3 (r355). r353 asserted
+   * `expect(pathname).toBe(`${LIST}/${b.companyId}/statutory`)` — the setup screen WAS the form, because the
+   * eight editors were on it. The reporter contested that shape and asked for one body per screen, so "the
+   * screen with that card open" is now `…/statutory/<body>?mode=edit`. Sending the refusal to the list would
+   * put the message on a page with no such box on it, which is the mistake app/admin/_redirects.ts records
+   * `failCompany` as having made before.
+   */
+  it('a refused save reaches the BODY’s edit screen with the message, and leaves no row behind', async () => {
     const { pathname, q } = parse(
       await redirectOf(() =>
         setCompanyStatutoryAuthorityAction(
@@ -337,7 +345,8 @@ describe('§2 the fence on the server', () => {
         ),
       ),
     );
-    expect(pathname).toBe(`${LIST}/${b.companyId}/statutory`);
+    expect(pathname).toBe(`${LIST}/${b.companyId}/statutory/lhdn`);
+    expect(q.get('mode'), 'with the form open, not read-only').toBe('edit');
     expect(q.get('error')).toBeTruthy();
     expect(await authorityRow(b.companyId, 'lhdn'), 'the refused body has no row').toBeUndefined();
   });
@@ -359,7 +368,7 @@ describe('§2 the fence on the server', () => {
 
 // ── §3 ─────────────────────────────────────────────────────────────────────────────────────────────
 describe('§3 the reporter’s fourth approved point: stay here, and say what was saved', () => {
-  it('a save from the setup screen returns to the setup screen, naming the body', async () => {
+  it('a save from the body screen returns to the LIST, naming the body', async () => {
     const { pathname, q } = parse(
       await redirectOf(() => setCompanyStatutoryAuthorityAction(cardPost('epf', { accountNo: 'A-1' }))),
     );
@@ -399,15 +408,18 @@ describe('§3 the reporter’s fourth approved point: stay here, and say what wa
    * everything else, and it keeps the GENERIC confirmation: naming a body that no longer has a record
    * would read as a confirmation that it was saved.
    */
-  it('Clear this authority also stays on the screen, and says Removed rather than naming the body', async () => {
+  it('Clear this authority returns to the list, and says Removed rather than naming the body', async () => {
     await redirectOf(() => setCompanyStatutoryAuthorityAction(cardPost('zakat', { accountNo: 'Z-1' })));
     const row = await authorityRow(b.companyId, 'zakat');
     expect(row, 'fixture').toBeTruthy();
     const f = new FormData();
     f.set('id', row.id);
     f.set('companyId', b.companyId);
+    f.set('authority', 'zakat');
     f.set('returnTo', RETURN_TO_SETUP);
     const { pathname, q } = parse(await redirectOf(() => removeCompanyStatutoryAuthorityAction(f)));
+    // rev 3 — the LIST, where the row the operator just cleared now reads Not Configured. That visible change
+    // is the confirmation the toast cannot give, which is why the generic "Removed" is enough here.
     expect(pathname).toBe(`${LIST}/${b.companyId}/statutory`);
     expect(q.get('toast')).toBe('Removed');
     expect(await authorityRow(b.companyId, 'zakat'), 'and it really cleared the row').toBeUndefined();

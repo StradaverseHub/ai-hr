@@ -26,28 +26,30 @@ const orgOf = (loc: string) =>
     .organization;
 
 /**
- * ⚠️ UPDATED BY 15e5bd93 (r352) AND AGAIN BY 15e5bd93 REVISION 2 (r353), AND BOTH TIMES THE SLICES MOVED
- * WITH THE CODE RATHER THAN WIDENING TO "the whole panel" — an assertion that cannot say which half it
+ * ⚠️ UPDATED THREE TIMES NOW — r352, REVISION 2 (r353) AND REVISION 3 (r355) — AND EVERY TIME THE SLICES
+ * MOVED WITH THE CODE RATHER THAN WIDENING TO "the whole panel". An assertion that cannot say which half it
  * means is not a structure guard.
  *
  * r352 split `StatutoryAuthorityCard` (one component, one fold) into a rail ROW and a workspace EDITOR,
- * both in components/company-panel.tsx. r353 is the reporter contesting that: the editor is not in the
- * panel at all any more, because the bodies are edited on a DEDICATED SCREEN
- * (/admin/organization/[companyId]/statutory). So the slices are:
+ * both in components/company-panel.tsx. r353 was the reporter contesting that: the editor left the panel for
+ * a DEDICATED SCREEN, as one of eight always-visible cards. r355 IS THE REPORTER CONTESTING THAT TOO, and
+ * this time they drew the layout themselves — a table of rows, and one body's fields on a screen of their
+ * own. So the slices are:
  *
  *   ROW_SRC    components/company-panel.tsx — the body's read-only row on the Statutory tab. Text, a
- *              summary of what is on file, and ONE link out. Never a field.
- *   CARD_SRC   components/statutory-setup-screen.tsx — one body's card on the dedicated screen: the
- *              read-only face, the edit form behind its own Edit, and its Clear button.
- *   SCREEN     that whole file, for claims about the screen rather than about one card.
- *   DISPLAY    lib/statutory-authority-display.ts — the marks and the r226 filing-field map, which both
- *              components now read so the two screens cannot disagree about a body.
+ *              summary of what is on file, and ONE link out. Never a field. UNCHANGED by r355.
+ *   SCREEN     components/statutory-setup-screen.tsx — the LIST: the identity card and the four-column
+ *              table. It holds no field, no form and no server action at all.
+ *   CARD_SRC   components/statutory-body-screen.tsx — ONE body's screen: the read-only `<dl>`, the edit
+ *              form, and its Clear button. It is one component, so the slice is the whole file.
+ *   DISPLAY    lib/statutory-authority-display.ts — the marks, the r226 filing-field map and (new in r355)
+ *              `statutoryRowStatus`, all read by more than one screen so they cannot disagree about a body.
  *
  * ⚠️ NOTHING HERE WAS DELETED BECAUSE ITS SUBJECT MOVED. Every claim r352 made about EDITOR_SRC is made
  * about CARD_SRC below, and the reasoning that went with it is carried across verbatim wherever the rule
- * is unchanged. Where a claim's TRUTH reversed (the per-body Save button, the "Open settings" caption)
- * the case asserts the new fact and records the old one — CLAUDE.md §8: a guard pinning a decision you
- * are reversing is updated, not deleted.
+ * is unchanged. Where a claim's TRUTH reversed (the per-body Save button, the "Open settings" caption, the
+ * eight always-visible cards, the one-card-at-a-time lock) the case asserts the new fact and QUOTES the old
+ * one — CLAUDE.md §8: a guard pinning a decision you are reversing is updated, not deleted.
  */
 const screen = read('components/statutory-setup-screen.tsx');
 const SCREEN = screen;
@@ -58,10 +60,14 @@ const ROW_SRC = panel.slice(
   panel.indexOf('function StatutoryBodyRow'),
   panel.indexOf('export function CompanyPanel'),
 );
-const CARD_SRC = screen.slice(
-  screen.indexOf('function StatutoryBodyCard'),
-  screen.indexOf('export function StatutorySetupScreen'),
-);
+/**
+ * ⚠️ RE-POINTED BY r355 AND NO LONGER A SLICE. The editor was a `StatutoryBodyCard` inside the setup screen;
+ * it is now the whole of its own file, so slicing it to a component boundary would only be a way for the
+ * slice to stop matching silently. The absence assertions below still run through `stripComments`, because
+ * that file's header comment NAMES the markup some of them assert the absence of (the r331 aec53564 lesson).
+ */
+const BODY_SCREEN_FILE = 'components/statutory-body-screen.tsx';
+const CARD_SRC = read(BODY_SCREEN_FILE);
 
 /**
  * COMMENTS STRIPPED — the r331 aec53564 lesson, and it still bites: these slices run to the next
@@ -141,32 +147,54 @@ describe('an opened company has nothing left to unfold (3c2f55d7)', () => {
   });
 
   /**
-   * ⚠️ REVERSED BY 15e5bd93 REVISION 2 (r353), DELIBERATELY, AND THE OLD CLAIM'S REASON IS WHY.
+   * ⚠️ REVERSED TWICE, AND EACH OLD CLAIM'S OWN REASON IS WHY IT COULD BE REVERSED. Both are quoted here
+   * rather than paraphrased, because this is the third round to touch the same mechanism.
    *
-   * r352 asserted `!selected && 'hidden'`: all eight body panes stayed MOUNTED and were hidden with CSS,
-   * never unmounted. That was load-bearing for exactly one reason, which that case stated — "the tab's ONE
-   * Save reads every body's fields out of the DOM, so an unmounted pane would be a body whose edits cannot
-   * be saved at all". There is no such reader now: the reporter asked for Save and Cancel on each card, so
-   * each card posts its own form and nothing walks the DOM for another card's fields.
+   *   · r352 ASSERTED `!selected && 'hidden'` — all eight body panes stayed MOUNTED and were hidden with
+   *     CSS. Load-bearing for exactly one reason, which that case stated: "the tab's ONE Save reads every
+   *     body's fields out of the DOM, so an unmounted pane would be a body whose edits cannot be saved at
+   *     all."
+   *   · r353 REVERSED that to `{editing ? (` plus `disabled={locked}` plus
+   *     `const [editing, setEditing] = useState<string | null>(null)`, because with a Save on each card
+   *     nothing walked the DOM any more, so a mounted-but-closed form would have made Cancel a lie — and
+   *     the disabled Edit buttons stopped one card's Edit unmounting another's dirty form.
    *
-   * With that reason gone, leaving a closed form mounted becomes a DEFECT rather than a safeguard: Cancel
-   * would toggle a class and leave the operator's typing in the DOM, to reappear the next time Edit was
-   * pressed on that card. A control that says Cancel and discards nothing is a control lying about what it
-   * does. So `viewing` renders a `<dl>` and `editing` renders the `<form>`, and this case asserts THAT.
+   * ⚠️ r355 REMOVES THE STATE AND THE LOCK ENTIRELY, AND THE REASON IS THE SAME ONE, SPENT. The reporter's
+   * sketch puts ONE body on a screen of its own, so there is no second form anywhere near the first: nothing
+   * to lock, nothing to discard by accident, and no client state to hold. `?mode=` decides the shape, Cancel
+   * is a LINK, and leaving the route is the discard. Every r353 spelling is asserted GONE rather than merely
+   * unused, because `useState` left behind on a screen that no longer branches on it is how the next round
+   * re-adds half a feature.
    */
-  it('a card that is not being edited renders no form at all (Cancel really discards)', () => {
-    // The r352 spelling must not come back: it now describes a Cancel that does not cancel.
-    expect(SCREEN, "the CSS-hidden pane is gone").not.toContain("!selected && 'hidden'");
+  it('view/edit is the URL, not client state, and the list holds no form at all', () => {
+    // The r352 spelling must not come back on either screen: it describes a Cancel that does not cancel.
+    expect(SCREEN, 'the CSS-hidden pane is gone').not.toContain("!selected && 'hidden'");
+    expect(CARD_SRC).not.toContain("!selected && 'hidden'");
     expect(panel, 'no statutory workspace survives on the tab').not.toContain('data-statutory-workspace');
-    // The form is CONDITIONAL on this card being the one open — which is what makes a remount re-read
-    // `defaultValue` and therefore what makes Cancel a real discard.
+
+    // THE LIST. No form, no field, no action prop, and no state deciding which body is open.
+    const list = stripComments(SCREEN);
+    expect(list, 'the list cannot write').not.toMatch(/<form\b/);
+    expect(list, 'and holds no box').not.toMatch(/<input\b/);
+    expect(list, 'nor a select').not.toMatch(/<select\b/);
+    expect(list, 'the r353 open-card state is gone, not merely unused').not.toContain('useState');
+    expect(list, 'and so is the lock it fed').not.toContain('locked=');
+    expect(SCREEN, 'the screen takes no server action at all').not.toContain('actions.setStatutoryAuthority');
+
+    // THE BODY SCREEN. The mode arrives as a prop the ROUTE resolved from a closed list; the form is
+    // conditional on it, so a remount re-reads `defaultValue` and Cancel really is a discard.
+    expect(CARD_SRC, 'the mode is given, not held').toContain("const editing = mode === 'edit';");
     expect(CARD_SRC, 'edit mode is a mount, not a class').toContain('{editing ? (');
     expect(CARD_SRC, 'and view mode is a definition list, not disabled inputs').toMatch(/\) : \(\s*<dl/);
-    // ONE card at a time, as both the requirement and the data guard: a second open form is a second
-    // unsaved scope, which is the problem r352 recorded.
-    expect(SCREEN).toContain('const [editing, setEditing] = useState<string | null>(null)');
-    expect(CARD_SRC, "another card's Edit is refused while one is open").toContain('disabled={locked}');
-    expect(SCREEN).toContain('locked={editing !== null}');
+    expect(stripComments(CARD_SRC), 'no client state decides the shape').not.toContain('useState');
+    expect(stripComments(CARD_SRC), 'and no Edit is ever refused, because there is no second form').not.toContain(
+      'disabled={locked}',
+    );
+    // Cancel is a LINK, and it has to be: a <button> where it sits would SUBMIT the form it is inside.
+    expect(CARD_SRC, 'Cancel leaves the route').toContain('data-statutory-cancel-link');
+    const cancel = CARD_SRC.slice(CARD_SRC.indexOf('data-statutory-cancel-link') - 400, CARD_SRC.indexOf('data-statutory-cancel-link'));
+    expect(cancel, 'as an <a href>, not an onClick').toContain('href={listHref}');
+    expect(stripComments(CARD_SRC), 'nothing resets client state on Cancel').not.toContain('onCancel');
   });
 
   it('drops the fold-only labels rather than leaving them to rot in six catalogues', () => {
@@ -311,30 +339,74 @@ describe('Statutory tab: per-authority payment setup', () => {
    * Both maps still run over `STATUTORY_AUTHORITIES` itself — never over a filtered or sliced copy, which
    * is how a body would quietly leave one screen.
    */
-  it('renders one read-only row per authority on the tab, and one card per authority on the screen', () => {
+  it('renders one read-only row per authority on the tab, and one TABLE row per authority on the list', () => {
     expect(
       panel.match(/STATUTORY_AUTHORITIES\.map\(\(a\) => \(\s*<StatutoryBodyRow/g) ?? [],
       "the tab's read-only list",
     ).toHaveLength(1);
     /**
-     * THE SCREEN'S ONE DELIBERATE EXCEPTION, AND IT IS APPROVED POINT 6. EIS is pulled out of the top-level
-     * map so it can be drawn INSIDE SOCSO's grid cell — indented beneath it, which in a two-column grid is
-     * the only way "EIS under SOCSO" is true of the picture and not merely of the reading order. It is a
-     * LAYOUT move: `cardFor('eis', true)` renders the same card with the same form and the same record.
-     * Asserted explicitly, because `.filter(...)` over the controlled set is exactly the shape that would
-     * otherwise let a body be dropped altogether.
+     * ⚠️ REVERSED BY REVISION 3, AND THE REVERSAL IS STRICTLY TIGHTER THAN WHAT IT REPLACES.
+     *
+     * r353 ASSERTED `STATUTORY_AUTHORITIES.filter(`, `cardFor('socso')`, `cardFor('eis', true)` and
+     * `!(perkesoGroup && a === 'eis')`. That filter existed for ONE reason, which that case stated: the cards
+     * were laid out in a TWO-COLUMN GRID, where the third card lands under the FIRST, so EIS had to be pulled
+     * out of the map and re-drawn inside SOCSO's own grid cell to be "under SOCSO" in the picture rather than
+     * only in the reading order.
+     *
+     * A TABLE is one column of rows and `STATUTORY_AUTHORITIES` already orders EIS immediately after SOCSO, so
+     * the whole controlled set maps straight through and EIS is merely INDENTED. That removes the one shape
+     * that can silently drop a body: a `.filter()` over the controlled set. Hence the assertion is now that
+     * there is no filter at all, which no previous version of this case could make.
      */
-    expect(SCREEN, 'the cards run over the controlled set').toContain('STATUTORY_AUTHORITIES.filter(');
-    expect(SCREEN, 'and EIS is pulled out only to be re-drawn under SOCSO').toContain("cardFor('socso')");
-    expect(SCREEN).toContain("cardFor('eis', true)");
-    expect(SCREEN, 'nothing else is excluded from the map').toContain("!(perkesoGroup && a === 'eis')");
+    // ⚠️ COMMENTS STRIPPED, AND THIS IS THE r331 aec53564 LESSON LANDING ON THE ROUND THAT CITES IT. The
+    // screen's own header QUOTES the r353 spellings this case asserts the absence of — that record is exactly
+    // what CLAUDE.md §12 asks to survive, and a bare `toContain` would read it as the code still being there.
+    const listCode = stripComments(SCREEN);
+    expect(listCode, 'the rows run over the controlled set itself').toContain('STATUTORY_AUTHORITIES.map((a) => (');
+    expect(listCode, 'nothing is filtered out of it any more').not.toContain('STATUTORY_AUTHORITIES.filter(');
+    expect(listCode, 'and nothing is sliced').not.toContain('STATUTORY_AUTHORITIES.slice(');
+    expect(listCode, 'the r353 re-draw is gone with the grid that needed it').not.toContain("cardFor('eis', true)");
+    expect(SCREEN, 'while the note recording what it replaced is KEPT').toContain("cardFor('eis', true)");
+    expect(SCREEN, 'EIS is marked subordinate, not pulled out').toContain("subordinate={perkesoGroup && a === 'eis'}");
     // The old one-component shape must not come back with the fold in it. Comments stripped: the current
     // components' doc comments NAME what they replaced, and that record is exactly what must survive
     // (the r331 aec53564 lesson).
     expect(stripComments(panel), 'the folding card is retired').not.toContain('StatutoryAuthorityCard');
-    expect(stripComments(screen), 'and it did not come back on the new screen').not.toContain(
-      'StatutoryAuthorityCard',
+    expect(stripComments(screen), 'and it did not come back on the list').not.toContain('StatutoryAuthorityCard');
+    expect(stripComments(CARD_SRC), 'nor on the body screen').not.toContain('StatutoryAuthorityCard');
+  });
+
+  /**
+   * ⚠️ THE PER-BODY ROUTE, WHICH IS WHAT REVISION 3 ADDS, AND THE TRAP r353 RECORDED FOR THE LIST ROUTE.
+   *
+   * A guarded `page.tsx` on disk with no `SCREENS` column fails test/function-access.test.ts (reverse
+   * completeness) — a FULL-GATE-only failure, easy to ship and hard to notice, which is why it is also pinned
+   * here where the person adding a route is reading.
+   *
+   * And the TWO reader-supplied values are validated rather than echoed. `authority` goes into a heading, a
+   * message key and (through `failStatutoryBody`) a redirect PATH, so an unknown one must 404 before any of
+   * those happen; `mode` is a closed list of two whose fallback is the READ-ONLY shape, so a crafted value
+   * degrades to the safer half rather than to an error page.
+   */
+  it('registers the per-body route and validates both values out of the address', () => {
+    const bodyPage = read('app/admin/organization/[companyId]/statutory/[authority]/page.tsx');
+    // The SCREENS column, without which the full gate fails and nothing else does.
+    expect(read('lib/permissions.ts'), 'the route has a matrix column').toContain(
+      "'/admin/organization/[companyId]/statutory/[authority]'",
     );
+    // The same scope guard as the other two doors onto this company's data.
+    expect(bodyPage, 'the company guard').toContain('await scopedAdmin()');
+    expect(bodyPage).toContain("listCompanies(s, { includeArchived: true, adminOnly: true })");
+    expect(bodyPage, 'and its refusal').toContain('if (!c) notFound();');
+    // The BODY is checked against the controlled set — the same predicate the service uses — and 404s.
+    expect(bodyPage).toContain("import { isStatutoryAuthority } from '@/lib/statutory-authorities';");
+    expect(bodyPage, 'an unknown body is not a body').toContain('if (!isStatutoryAuthority(authority)) notFound();');
+    // The MODE is a closed list whose fallback is the read-only shape.
+    expect(bodyPage).toContain("const mode = rawMode === 'edit' ? 'edit' : 'view';");
+    // NOTHING READER-SUPPLIED IS ECHOED. The only interpolations of `authority` are inside `t(...)` keys
+    // resolved from the catalogue AFTER the check above, never into a message argument or a raw string.
+    expect(bodyPage, 'the body is never printed as itself').not.toMatch(/\{\s*authority\s*\}</);
+    expect(bodyPage, 'and the mode is never printed at all').not.toContain('{rawMode}');
   });
 
   it('keeps the statutory IDENTITY form on the tab, alongside the list (the two are different things)', () => {
@@ -479,11 +551,21 @@ describe('Statutory tab: one body, one card, both of its numbers (r226)', () => 
      * gets a card and neither gets an input there, because neither is a body an employer pays a
      * contribution to. One owner, one editor — which is the whole reason they never got a card in r226.
      */
+    /**
+     * ⚠️ RE-POINTED BY REVISION 3. r353 asserted these two on the setup PAGE, because that round printed them
+     * in the PageHeader's description. The reporter's rev-3 sketch puts them in a "Statutory Identity (MY)"
+     * CARD at the top of the screen body, beside the four filing identifiers, so the claim moves to the
+     * component that now prints them — and the page is asserted NOT to, so the two cannot both do it.
+     */
     const setupPage = read('app/admin/organization/[companyId]/statutory/page.tsx');
-    expect(setupPage, 'the heading prints SSM').toContain('statutory?.ssmRegistrationNo');
-    expect(setupPage, 'and MyInvois').toContain('statutory?.myinvoisTin');
-    expect(screen, 'but the screen has no SSM input').not.toContain('name="ssmRegistrationNo"');
+    expect(screen, 'the identity card prints SSM').toContain('statutory?.ssmRegistrationNo');
+    expect(screen, 'and MyInvois').toContain('statutory?.myinvoisTin');
+    expect(setupPage, 'and the page heading no longer repeats them').not.toContain('statutory?.ssmRegistrationNo');
+    expect(setupPage, 'nor MyInvois').not.toContain('statutory?.myinvoisTin');
+    expect(screen, 'but the list has no SSM input').not.toContain('name="ssmRegistrationNo"');
     expect(screen, 'and no MyInvois input').not.toContain('name="myinvoisTin"');
+    expect(CARD_SRC, 'nor does the body screen').not.toContain('name="ssmRegistrationNo"');
+    expect(CARD_SRC).not.toContain('name="myinvoisTin"');
     // The reason SSM may not be filed under a payment card: two statutory files read it.
     expect(read('localization/my/borang-8a.ts')).toContain('companyStatutoryMy.ssmRegistrationNo');
     expect(read('localization/my/socso-eis-file.ts')).toContain('companyStatutoryMy.ssmRegistrationNo');
@@ -537,12 +619,13 @@ describe('Statutory tab: one body, one card, both of its numbers (r226)', () => 
     expect(map, 'EIS gets no second input on the same column').not.toMatch(/\beis:/);
   });
 
-  it('HRD Corp keeps its rate select — on its card, and nowhere else in the product', () => {
-    expect(CARD_SRC).toContain('name="hrdfStatus"');
-    // EXACTLY ONE hrdfStatus control, and after r353 it is on the dedicated screen. The panel must not
-    // still carry one: two controls over one column is the fault r226 removed, and the second copy would
-    // now be on a screen whose only statutory writer is the registrations card.
-    expect(screen.match(/name="hrdfStatus"/g) ?? [], 'one HRDF control, on the HRD Corp card').toHaveLength(1);
+  it('HRD Corp keeps its rate select — on its own screen, and nowhere else in the product', () => {
+    // EXACTLY ONE hrdfStatus control. r353 asserted the count on components/statutory-setup-screen.tsx,
+    // where the editors were; r355 moved the editors to their own file, so the count moves with them and the
+    // LIST is asserted to carry none. Two controls over one column is the fault r226 removed, and a second
+    // copy on a screen that cannot save would be worse than the first.
+    expect(CARD_SRC.match(/name="hrdfStatus"/g) ?? [], 'one HRDF control, on the HRD Corp screen').toHaveLength(1);
+    expect(screen, 'the list carries none').not.toContain('name="hrdfStatus"');
     expect(panel, 'and the panel carries none').not.toContain('name="hrdfStatus"');
   });
 
@@ -683,15 +766,82 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
     // is also how a wide FIELD lays out inside the three-column form, and that is untouched.
     expect(ROW_SRC, 'the row no longer spans grid columns').not.toContain('xl:col-span-3');
     /**
-     * ⚠️ 15e5bd93 rev 2 — THE GRID CAME BACK, ON THE DEDICATED SCREEN, AND IT IS THE APPROVED DRAWING.
-     * efe424b0's objection was to "individual large boxes" you had to scroll past to find a body; the
-     * drawing for rev 2 shows two columns of cards, all visible at once, which is the opposite complaint
-     * answered. The LIST on this tab is still a list — both shapes are asserted, so neither round's
-     * decision can be undone by a later tidy-up of the other screen.
+     * ⚠️ REVERSED BY REVISION 3, AND IT PUTS efe424b0 BACK IN CHARGE OF BOTH SCREENS.
+     *
+     * r353 ASSERTED `'grid items-start gap-3 lg:grid-cols-2'` on the dedicated screen, with this reasoning:
+     * "THE GRID CAME BACK… efe424b0's objection was to 'individual large boxes' you had to scroll past to find
+     * a body; the drawing for rev 2 shows two columns of cards, all visible at once, which is the opposite
+     * complaint answered."
+     *
+     * The reporter contested that drawing and drew a TABLE. So efe424b0's words — "displayed as a structured
+     * list rather than individual large boxes" — now describe BOTH surfaces, and the grid is asserted gone
+     * from the one screen it had come back on. The house table constants are used rather than a hand-written
+     * class string, which is the drift lib/../components/ui.tsx `tableWrapCls` exists to prevent.
      */
-    expect(SCREEN, 'the screen lays the cards out in a responsive grid').toContain(
-      'grid items-start gap-3 lg:grid-cols-2',
+    expect(SCREEN, 'the grid of cards is gone').not.toContain('grid items-start gap-3 lg:grid-cols-2');
+    expect(SCREEN, 'the list is a real table').toMatch(/<table\b/);
+    expect(SCREEN, 'in the house table look, not a hand-copied class string').toContain(
+      "from './ui'",
     );
+    for (const cls of ['tableWrapCls', 'theadCls', 'thCls', 'tbodyCls']) {
+      expect(SCREEN, `the shared ${cls}`).toContain(cls);
+    }
+  });
+
+  /**
+   * ⚠️ THE TWO STATUS COLUMNS ARE TWO FACTS, DERIVED IN ONE PLACE — new in revision 3, and the plan promised
+   * the reporter this precisely rather than printing a column that looks like information and is really an
+   * echo:
+   *
+   *     Payment Setup = a `company_statutory_authority` row exists for that body
+   *     Status        = it is actually contributing
+   *
+   * For seven bodies these coincide, because there is no per-body enable/disable fact in the schema and
+   * INVENTING one is what CLAUDE.md §8 forbids. For HRD Corp they genuinely differ: `hrdf_status` decides
+   * whether the levy is charged at all, so "Configured + Inactive" is a real reachable state.
+   *
+   * Pinned at SOURCE as well as on the render (test/statutory-setup-screen-render.test.ts) because the failure
+   * mode is a later round "simplifying" the second column into the first — which would pass every render
+   * assertion on a fixture where the two happen to agree.
+   */
+  it('derives Payment Setup and Status in ONE place, and only HRD Corp reads the band', () => {
+    // ONE derivation, in lib/ so the screen and the guards read the same function.
+    expect(DISPLAY, 'the shared derivation exists').toContain('export function statutoryRowStatus(');
+    expect(DISPLAY, 'Payment Setup is the record, for every body').toContain('configured: hasRecord');
+    expect(DISPLAY, 'and Status diverges for HRD Corp alone').toContain(
+      "contributing: authority === 'hrdf' ? (hrdfStatus ?? 'not_registered') !== 'not_registered' : hasRecord",
+    );
+    /**
+     * THE ROW READS THE DERIVATION AND DOES NOT RE-DERIVE EITHER COLUMN.
+     *
+     * ⚠️ SLICED TO THE ROW COMPONENT, AND THE FIRST WRITING OF THIS CASE GOT IT WRONG IN A WAY WORTH
+     * RECORDING: asserted against the whole file, "the screen never tests `=== 'not_registered'`" FAILED, and
+     * correctly. The IDENTITY CARD does test it, legitimately — it prints HRD Corp's band as a CAPTION ("No
+     * Contribution" / "1.0%" / "0.5%"), which is a different fact from the Status column and must say "Not set"
+     * where the Status column says Inactive. So the claim is about the ROW, which is the thing that must not
+     * grow a second derivation of a column it is handed.
+     */
+    const rowCode = SCREEN.slice(
+      SCREEN.indexOf('function StatutoryBodyTableRow'),
+      SCREEN.indexOf('export function StatutorySetupScreen'),
+    );
+    expect(rowCode, 'the row is found').toBeTruthy();
+    expect(rowCode, 'and it READS the derivation').toContain('statutoryRowStatus(authority, !!row,');
+    expect(stripComments(rowCode), 'rather than re-testing the band itself').not.toContain("=== 'not_registered'");
+    // The HRDF half is payroll's own rule, not a UI guess. Both lines are what make it checkable.
+    const payroll = read('core/payroll.ts');
+    expect(payroll, 'a missing identity row resolves to not_registered').toContain(
+      "coStat?.hrdfStatus ?? 'not_registered'",
+    );
+    expect(payroll, 'and the levy is charged only when it is not').toContain(
+      "hrdfChargeable = hrdfStatus !== 'not_registered'",
+    );
+    // ⚠️ NO SWITCH WAS INVENTED. There is no per-body enable/disable column, so nothing may post one.
+    for (const src of [SCREEN, CARD_SRC]) {
+      expect(src, 'no enable/disable control').not.toContain('name="enabled"');
+      expect(src).not.toContain('name="active"');
+      expect(src).not.toContain('role="switch"');
+    }
   });
 
   /**
@@ -812,18 +962,35 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
     expect(ROW_SRC).toContain("subordinate && 'pl-6'");
     expect(ROW_SRC).toContain('{subordinate ? (');
     /**
-     * ⚠️ THE DEDICATED SCREEN, WHERE "UNDER SOCSO" HAD TO BE EARNED (r353, approved point 6). The drawing
-     * is a two-column grid; in a plain two-column grid the THIRD card lands under the FIRST, so EIS would
-     * have been indented under EPF. It is drawn inside SOCSO's grid cell instead, which makes "indented
-     * under SOCSO" true of the picture as well as of the reading order.
+     * ⚠️ RE-POINTED BY REVISION 3, AND THE MECHANISM GOT SIMPLER RATHER THAN WEAKER.
+     *
+     * r353 ASSERTED `subordinate && 'ml-6'` on the card plus
+     * `/cardFor\('socso'\)[\s\S]{0,120}cardFor\('eis', true\)/` on the screen, because the drawing was a
+     * TWO-COLUMN GRID: the third card lands under the FIRST, so EIS had to be re-drawn inside SOCSO's own grid
+     * cell or it would have been indented under EPF.
+     *
+     * The rev-3 list is a TABLE. `STATUTORY_AUTHORITIES` already orders EIS immediately after SOCSO, so ROW
+     * ADJACENCY carries the relationship — asserted here on the controlled set itself, which is a stronger
+     * claim than a class string — and the indent only shows it.
+     *
+     * The BODY SCREEN has no subordinate case at all, on purpose: EIS is the only body on its own screen, so
+     * there is no group head above it to carry the PERKESO mark once, and indenting a page against nothing
+     * would be decoration. The relationship lives on the list, which is where it is legible.
      */
-    expect(CARD_SRC, 'the card is indented too').toContain("subordinate && 'ml-6'");
-    expect(CARD_SRC).toContain('{subordinate ? (');
-    expect(SCREEN, 'and it sits in SOCSO\'s own cell').toMatch(
-      /cardFor\('socso'\)[\s\S]{0,120}cardFor\('eis', true\)/,
-    );
-    // TWO RECORDS, NOT ONE: its own authority value still posts, so its own row is what the form writes.
+    expect(
+      STATUTORY_AUTHORITIES[STATUTORY_AUTHORITIES.indexOf('socso') + 1],
+      'the controlled set puts EIS immediately after SOCSO, which is what a table row order means',
+    ).toBe('eis');
+    expect(SCREEN, "the list indents EIS's first cell").toContain("subordinate && 'pl-6'");
+    expect(SCREEN, 'and marks it rather than pulling it out').toContain("subordinate={perkesoGroup && a === 'eis'}");
+    expect(stripComments(CARD_SRC), 'the body screen has no subordinate case').not.toContain('subordinate');
+    expect(CARD_SRC, 'though the note saying WHY it has none is kept').toContain('subordinate');
+    // TWO RECORDS, NOT ONE: its own authority value still posts, so its own row is what the form writes, and
+    // its own row of the list links to its own screen.
     expect(CARD_SRC).toContain('<input type="hidden" name="authority" value={authority} />');
+    expect(SCREEN, 'and each row links to its OWN body').toContain(
+      'bodyHref={`/admin/organization/${companyId}/statutory/${a}`}',
+    );
   });
 
   it('gives every authority in the controlled set its own icon', () => {
@@ -835,9 +1002,13 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
     for (const a of STATUTORY_AUTHORITIES) {
       expect(map, `AUTHORITY_ICON.${a}`).toMatch(new RegExp(`\\b${a}:`));
     }
-    // The fallback is applied on BOTH screens, which is what makes adding an authority safe in either.
+    // The fallback is applied wherever a MARK is drawn, which is what makes adding an authority safe.
     expect(ROW_SRC).toContain('AUTHORITY_ICON[authority] ?? Landmark');
     expect(CARD_SRC).toContain('AUTHORITY_ICON[authority] ?? Landmark');
+    // ⚠️ THE rev-3 LIST DRAWS NO MARK AT ALL, and that is the reporter's own sketch rather than an omission:
+    // their table is four text columns. So it needs no fallback, and asserting one would be asserting
+    // something they did not ask for. The two surfaces that DO draw a mark are pinned above.
+    expect(SCREEN, 'the table is text, per the sketch').not.toContain('AUTHORITY_ICON');
   });
 
   /**
@@ -882,14 +1053,29 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
     expect(face, 'the summary is rendered on the rail row').toContain('summary.map(');
     // …and it is NOT quietly relocated into the workspace, where only one body is ever visible.
     /**
-     * ⚠️ r352 ASSERTED THE SUMMARY WAS NOT MOVED INTO THE WORKSPACE (which showed one body at a time).
-     * r353's screen shows ALL EIGHT bodies at once, so the summary lives on both surfaces — and that is the
-     * promise 3783fd87 made, not a violation of it. What is still forbidden, and asserted, is the summary
-     * appearing ONLY where a body has been opened: on the screen the `<dl>` is what a card shows BEFORE
-     * Edit is pressed, not after.
+     * ⚠️ THE ONE ASSERTION IN THIS FILE MOST AT RISK FROM REVISION 3, PINNED IN THREE PLACES.
+     *
+     * r352 asserted the summary was NOT moved into the workspace (which showed one body at a time). r353's
+     * screen showed all eight bodies at once, so the summary lived on both surfaces.
+     *
+     * ⚠️ THE rev-3 LIST HAS FOUR COLUMNS AND THE SUMMARY IS NOT ONE OF THEM — that is the reporter's own
+     * sketch, and it is the thing that could quietly undo 3783fd87. It does not, and this is where that is
+     * argued rather than assumed:
+     *   · THE PANEL'S STATUTORY TAB still carries the whole summary on every row's face, which is where
+     *     3783fd87's promise was made and where it is asserted above. Untouched by r355.
+     *   · THE IDENTITY CARD at the top of the list carries the three FILING numbers and HRD Corp's band for
+     *     every body at once — the half of the summary the reporter specifically asked to see before editing.
+     *   · THE BODY SCREEN carries the full `<dl>` in VIEW mode, before Edit, not after.
+     * What is still forbidden is the summary being reachable ONLY by opening a body, and all three pin that.
      */
-    expect(CARD_SRC, 'the screen derives the same summary').toContain('const summary:');
+    expect(CARD_SRC, 'the body screen derives the same summary').toContain('const summary:');
     expect(CARD_SRC, 'and renders it in VIEW mode, not inside the form').toMatch(/\) : \(\s*<dl[\s\S]*summary\.map\(/);
+    // The identity card, which is what puts the filing numbers of EVERY body on one screen with no click.
+    expect(SCREEN, 'the list has an identity card').toContain('data-statutory-identity');
+    expect(SCREEN, 'built from the SHARED filing map, so it cannot omit a body that has a number').toContain(
+      'MY_FILING_FIELD[a]',
+    );
+    expect(SCREEN, 'and it reads the same hrdf band rather than inventing a caption').toContain('hrdfBandKey');
     // The FILING number, under the body's own caption (epfEmployerNo / socsoEmployerCode / lhdnENumber).
     expect(ROW_SRC).toContain('label: t(filing.labelKey as never)');
     expect(ROW_SRC).toContain('value: statutory?.[filing.name] || null');
@@ -926,14 +1112,22 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
       // that owns what the card says, and a reader adding an authority reads this list, not that one.
       //
       // ⚠️ 15e5bd93 rev 2 — `authorityOpen` IS IN SERVICE AGAIN (the tab's "Open settings" link) and
-      // `authoritySave` / `saveStatutoryIdentity` ARE TOO (the card's Save and the registrations card's).
+      // `authoritySave` / `saveStatutoryIdentity` ARE TOO (the editor's Save and the registrations card's).
       // All three were RETIRED by r352 and kept in all six catalogues rather than deleted, the way
       // `tabOther`, `tabPayroll` and `tabBankAccount` each were — and this is the second round in a row
       // where a kept key came back. The list stays as a presence check either way: a string this screen has
       // needed, stopped needing, and needed again must not be tidied away between rounds.
-      // `authorityClose` is the one still unrendered; it is asserted present for exactly that reason.
-      for (const k of ['authorityOpen', 'authorityClose', 'authorityValueNotSet']) {
-        expect(org[k], `${loc}: ${k}`).toBeTruthy();
+      //
+      // ⚠️ REVISION 3 (r355) RETIRES TWO MORE AND KEEPS THEM FOR THE SAME REASON.
+      // `statutoryScreenEditingHint` and `authorityEditing` explained r353's one-card-at-a-time lock — the
+      // disabled Edit buttons that stopped one card's Edit unmounting another card's dirty form. One body per
+      // ROUTE means there is no second form to discard, so the lock is gone and both strings are unrendered.
+      // Asserted PRESENT here and asserted UNRENDERED in the two render guards, which is the pair
+      // `authorityClose` has carried since r352. Retire a key, never delete it: three of the five kept this
+      // way have already come back.
+      for (const k of ['authorityOpen', 'authorityClose', 'authorityValueNotSet', 'statutoryScreenEditingHint',
+        'authorityEditing']) {
+        expect(org[k], `${loc}: ${k} is kept, in service or retired`).toBeTruthy();
       }
       // 15e5bd93 — the three group headings, which moved to the dedicated screen with the form.
       for (const k of ['authorityAddressSection', 'authorityAddressHint', 'authorityPaymentHint']) {
@@ -942,9 +1136,9 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
       for (const k of ['authoritySave', 'saveStatutoryIdentity']) {
         expect(org[k], `${loc}: ${k} is in service again`).toBeTruthy();
       }
-      // 15e5bd93 rev 2 — the SEVEN NEW STRINGS the dedicated screen needs. Static keys, so
+      // 15e5bd93 rev 2 — the strings the dedicated screen needed. Static keys, so
       // test/i18n-coverage.test.ts check C sees them too; listed here because this is the file that owns
-      // what these cards say, and `authoritySavedToast` carries an ICU argument that must survive
+      // what these screens say, and `authoritySavedToast` carries an ICU argument that must survive
       // translation (a locale that dropped `{body}` would show a confirmation naming nothing).
       for (const k of [
         'statutoryScreenTitle',
@@ -958,6 +1152,33 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
         expect(org[k], `${loc}: ${k}`).toBeTruthy();
       }
       expect(org.authoritySavedToast, `${loc}: the confirmation names the body`).toContain('{body}');
+      /**
+       * 15e5bd93 REVISION 3 (r355) — THE ELEVEN NEW STRINGS the reporter's own layout needs: their four column
+       * headers, View, the two Status values, the Back link on the per-body screen, the identity card's hint,
+       * and the two per-body captions. Static keys, so check C sees them as well; listed here because this is
+       * the file that owns what these screens say, and because a column HEADER missing in one locale is a
+       * table with a blank heading behind a 200 and a green suite.
+       */
+      for (const k of [
+        'statutoryColBody',
+        'statutoryColPaymentSetup',
+        'statutoryColStatus',
+        'statutoryColAction',
+        'authorityView',
+        'authorityStatusActive',
+        'authorityStatusInactive',
+        'backToStatutorySetup',
+        'statutoryIdentityHint',
+        'statutoryBodyViewCaption',
+        'statutoryBodyEditCaption',
+      ]) {
+        expect(org[k], `${loc}: ${k}`).toBeTruthy();
+      }
+      // ⚠️ THE TWO STATUS VALUES MUST NOT BE THE TWO PAYMENT-SETUP VALUES. They answer different questions and
+      // a translator handed one pair twice would make the two columns look like one fact in that locale, which
+      // is the exact impression the plan promised the reporter we would not create.
+      expect(org.authorityStatusActive, `${loc}: Active is not Configured`).not.toBe(org.authorityConfigured);
+      expect(org.authorityStatusInactive, `${loc}: Inactive is not Not-set-up`).not.toBe(org.authorityNotConfigured);
     }
   });
 });
@@ -973,9 +1194,11 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
  */
 describe('Statutory tab: the signatory picker', () => {
   it('is the shared searchable employee field, not a plain select', () => {
-    // ⚠️ ON THE DEDICATED SCREEN NOW (r353). The panel no longer imports it, which is asserted rather than
-    // assumed: a leftover import would mean a second signatory control on a screen that cannot save one.
-    expect(screen).toContain("from './employee-search-field'");
+    // ⚠️ ON THE BODY SCREEN NOW (r353 moved it off the panel; r355 moved it off the list). Both the panel and
+    // the LIST are asserted not to import it, rather than assumed: a leftover import would mean a second
+    // signatory control on a screen that cannot save one.
+    expect(CARD_SRC).toContain("from './employee-search-field'");
+    expect(screen, 'the list does not import it').not.toContain('employee-search-field');
     expect(CARD_SRC).toContain('<EmployeeSearchField');
     expect(CARD_SRC).toContain('name="signatoryPersonId"');
     // The old control, gone: a bare <select> over every candidate.

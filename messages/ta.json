@@ -7343,7 +7343,18 @@
       "removedToast": "அகற்றப்பட்டது",
       "archivedToast": "நிறுவனம் காப்பகப்படுத்தப்பட்டது",
       "unarchivedToast": "நிறுவனம் காப்பகத்திலிருந்து மீட்டெடுக்கப்பட்டது",
-      "deletedToast": "நிறுவனம் நீக்கப்பட்டது"
+      "deletedToast": "நிறுவனம் நீக்கப்பட்டது",
+      "statutoryColBody": "சட்டப்பூர்வ அமைப்பு",
+      "statutoryColPaymentSetup": "கட்டண அமைப்பு",
+      "statutoryColStatus": "நிலை",
+      "statutoryColAction": "செயல்",
+      "authorityView": "பார்க்க",
+      "authorityStatusActive": "செயலில்",
+      "authorityStatusInactive": "செயலில் இல்லை",
+      "backToStatutorySetup": "சட்டப்பூர்வ கட்டண அமைப்புக்குத் திரும்பு",
+      "statutoryIdentityHint": "ஒவ்வொரு அதிகார அமைப்பிலும் இந்த நிறுவனத்தின் அடையாளம். கீழே எதையும் திருத்தும் முன் இதை உறுதிப்படுத்தவும். இவை சட்டப்பூர்வ தாவலிலும் ஒவ்வொரு அமைப்பின் திரையிலும் திருத்தப்படுகின்றன.",
+      "statutoryBodyViewCaption": "இந்த அமைப்புக்குப் பதிவில் உள்ளவை. மாற்ற திருத்து என்பதை அழுத்தவும்.",
+      "statutoryBodyEditCaption": "இங்கு இந்த அமைப்பு மட்டுமே திருத்தப்படுகிறது. சேமித்தால் இது எழுதப்பட்டு பட்டியலுக்குத் திரும்பும்."
     },
     "systemLabels": {
       "pageTitle": "அமைப்பு லேபிள்கள்",

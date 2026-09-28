@@ -148,6 +148,18 @@ classification confirms the plan's buckets.** What it does not confirm is that t
 > paragraph below calls "worse than none", and that paragraph was right both times. **The card keeps its
 > own Save button, on the Statutory tab, exactly where this finding left it.** Nothing about the finding
 > was wrong; r352 had simply found a way around it that the reporter did not want.
+>
+> **r355 says: the reporter contested r353 TOO, and one sentence above has stopped being true.** "So the
+> eight body editors are `/admin/organization/[companyId]/statutory` now, each card with its own Save and
+> Cancel" described eight always-visible cards on ONE screen. The reporter drew the layout themselves
+> instead — a table of one row per body, and "Selecting Edit → EPF opens a screen containing ONLY the EPF
+> fields, with Cancel / Save" — so that route is now a LIST with no form on it at all, and the editor is
+> `/admin/organization/[companyId]/statutory/[authority]` with `?mode=view|edit`. Both earlier turns stay
+> written down, because all three are the reporter correcting us rather than us changing our minds.
+>
+> ⚠️ NOTHING IN THIS FINDING MOVES WITH IT. The Company Registrations card is still alone on the Statutory
+> tab with its own Save; a one-card scope is still worse than none; and the body editors are still outside
+> any scope, one form per request. The split changed which ROUTE holds the form, not who owns what.
 
 The panel is three tabs: **General | Bank Account | Statutory**. The (a) forms sit like this:
 
@@ -293,16 +305,33 @@ a change to a component four other tabs depend on and is not this item's to make
 | archiving a LIST row still stays on the list | the closed-list `returnTo` marker | §3 |
 | one Save for the General tab's three field edits | `TabSaveScope` + `saveCompanyGeneralTabAction` + `lib/company-tab-sections.ts` | `test/organization-general-tab-save.test.ts` §1–§2 |
 | every bucket (b) control still stands on its own | the marker set, read off the RENDERED panel | §3 |
-| a save made on the DEDICATED statutory screen stays THERE, naming the body | `okStatutorySetup` / `failStatutorySetup` + the closed-list `returnTo` marker (15e5bd93 rev 2, r353) | `test/organization-stay-on-save.test.ts` §6 and `test/organization-statutory-card-save.test.ts` §3 |
+| a save made in the statutory setup flow returns to its LIST, naming the body | `okStatutorySetup` + the closed-list `returnTo` marker (15e5bd93 rev 2, r353) | `test/organization-stay-on-save.test.ts` §6 and `test/organization-statutory-card-save.test.ts` §3 |
+| …and a REFUSAL there returns to the ONE BODY's edit screen, where the form is | `failStatutoryBody` (15e5bd93 rev 3, r355), the body resolved through `isStatutoryAuthority` before it reaches a path | `test/organization-stay-on-save.test.ts` §6 and `test/organization-statutory-card-save.test.ts` §2 |
 
-> **15e5bd93 REVISION 2 (r353) ADDED A THIRTEENTH DESTINATION, and the row above is it.** The reporter
-> asked for the eight statutory bodies on a dedicated full-width screen, so
+> **15e5bd93 REVISION 2 (r353) ADDED A THIRTEENTH DESTINATION, and the first of the two rows above is it.**
+> The reporter asked for the eight statutory bodies on a dedicated full-width screen, so
 > `setCompanyStatutoryAuthorityAction` and `removeCompanyStatutoryAuthorityAction` are each bound in TWO
 > places now — the company panel and `/admin/organization/<id>/statutory`. That is a different ROUTE, not a
 > different tab, so the capture-phase `?tab=` listener in the second row of this table does not reach them
 > there and `okCompany` cannot serve it. The destination comes from the FORM, exactly as `archiveCompany`'s
 > does and for the same reason: repointing the action would have broken the binding that is still on the
 > panel.
+>
+> **15e5bd93 REVISION 3 (r355) ADDED A FOURTEENTH, and it is the second row.** The reporter contested r353's
+> eight-cards screen and drew a table of rows plus a screen holding ONE body, so the flow is two routes and a
+> save and a refusal want opposite things out of it. Their words for the save: "Save writes only that body
+> and returns you to the list with its row refreshed" — so SUCCESS is unchanged, and still `okStatutorySetup`.
+> A REFUSAL is not a save: the message is about boxes that exist only on the per-body route, and sending it to
+> the list would re-commit the mistake `failCompany`'s own note in `app/admin/_redirects.ts` records ("a
+> refused save … showed the refusal on a screen that no longer held the form it was about").
+>
+> ⚠️ ONE MARKER, TWO DESTINATIONS, CHOSEN BY OUTCOME. `returnTo=statutory-setup` did NOT gain a second value
+> for the second route: it means "this came from the statutory setup flow", and the action then picks the
+> screen by whether the write succeeded. A second literal would have had to be kept in step with the first
+> for no fact that either one carries. The body in the refusal path goes through `isStatutoryAuthority`
+> before it reaches `failStatutoryBody`, because that value ends up in a redirect PATH — the one place a path
+> and a query string meet, which is the rule `companyTab` exists to state — and an unknown body falls back to
+> the list rather than building an address out of what was posted.
 
 ### The correction owed to the reporter, in the words it should be said in
 

@@ -7343,7 +7343,18 @@
       "removedToast": "ลบแล้ว",
       "archivedToast": "เก็บบริษัทเข้าถาวรแล้ว",
       "unarchivedToast": "ยกเลิกเก็บบริษัทถาวรแล้ว",
-      "deletedToast": "ลบบริษัทแล้ว"
+      "deletedToast": "ลบบริษัทแล้ว",
+      "statutoryColBody": "หน่วยงานตามกฎหมาย",
+      "statutoryColPaymentSetup": "การตั้งค่าการชำระเงิน",
+      "statutoryColStatus": "สถานะ",
+      "statutoryColAction": "การดำเนินการ",
+      "authorityView": "ดู",
+      "authorityStatusActive": "ใช้งานอยู่",
+      "authorityStatusInactive": "ไม่ใช้งาน",
+      "backToStatutorySetup": "กลับไปที่การตั้งค่าการชำระเงินตามกฎหมาย",
+      "statutoryIdentityHint": "ข้อมูลประจำตัวของบริษัทนี้ต่อแต่ละหน่วยงาน โปรดยืนยันก่อนแก้ไขสิ่งใดด้านล่าง แก้ไขได้ที่แท็บตามกฎหมายและที่หน้าจอของแต่ละหน่วยงาน",
+      "statutoryBodyViewCaption": "ข้อมูลที่บันทึกไว้สำหรับหน่วยงานนี้ กด แก้ไข เพื่อเปลี่ยนแปลง",
+      "statutoryBodyEditCaption": "ที่นี่แก้ไขเฉพาะหน่วยงานนี้ การบันทึกจะเขียนข้อมูลและพากลับไปที่รายการ"
     },
     "systemLabels": {
       "pageTitle": "ป้ายระบบ",

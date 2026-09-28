@@ -20,6 +20,15 @@
     different facts in their sketch and are drawn as two, even though the system currently derives only
     the first — see the build notes. Nothing is invented to fill the second column: where the system
     cannot yet say, it is drawn from the same configured/not-configured fact and the plan says so.
+
+    ⚠️ WHAT r355 ACTUALLY BUILT, WHICH IS ONE STEP BETTER THAN THAT SENTENCE PROMISED. "The system
+    currently derives only the first" turned out to be true of seven bodies and FALSE of HRD Corp:
+    `company_statutory_my.hrdf_status` is not_registered | mandatory | optional and core/payroll.ts
+    charges the levy only when it is not `not_registered`, so Status is derived from THAT for HRD Corp
+    and from the record's existence for the rest (lib/statutory-authority-display.ts
+    `statutoryRowStatus`). "Configured + Inactive" and "Not Configured + Active" are therefore both real
+    reachable rows, and the picture above happens to draw HRD Corp in neither of them. Still nothing
+    invented: no enable/disable switch was added, because no such fact exists.
   · WHAT IS ALREADY LIVE from r353 and is KEPT: the dedicated route, the guard and its 404, the
     per-body Save posting to the existing action, and EIS staying its own record indented under SOCSO
     (components/company-panel.tsx:84-104 carries the production evidence for that).

@@ -328,18 +328,26 @@ export const SCREENS: readonly ScreenEntry[] = [
     // administrative capability, which is why they share one column — the /admin/notice-board and
     // /admin/personnel entries below collapse their own new/detail routes for the same reason.
     //
-    // 15e5bd93 rev 2 (r353) — FOUR routes now. The reporter contested r352's in-tab redesign and asked
+    // 15e5bd93 rev 2 (r353) — FOUR routes. The reporter contested r352's in-tab redesign and asked
     // for the statutory bodies on "a dedicated full-width screen", so
     // /admin/organization/[companyId]/statutory exists and calls the same scopedAdmin() the company's
     // maintenance page does. It joins this column rather than getting one of its own for the reason above:
     // maintaining a company's statutory payment setup is not a different administrative capability from
     // maintaining the company, and splitting it would mean a tenant could grant one without the other and
     // reach a Back link to a screen it may not see.
+    //
+    // 15e5bd93 rev 3 (r355) — FIVE. The reporter contested r353's eight-cards-on-one-screen shape too and
+    // drew the layout themselves: a table of rows, and "Selecting Edit → EPF opens a screen containing ONLY
+    // the EPF fields". That screen is /admin/organization/[companyId]/statutory/[authority] and it calls the
+    // same scopedAdmin(). Same column, same reasoning, and the same trap r353 recorded: a guarded page.tsx
+    // on disk with no entry here fails test/function-access.test.ts (reverse completeness) — which is a
+    // FULL-GATE-only failure, so it is easy to ship and hard to notice.
     routes: [
       '/admin/organization',
       '/admin/organization/new',
       '/admin/organization/[companyId]',
       '/admin/organization/[companyId]/statutory',
+      '/admin/organization/[companyId]/statutory/[authority]',
     ],
   },
   {

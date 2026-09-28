@@ -11,6 +11,10 @@
  */
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+// 15e5bd93 rev 3 (r355) — TYPE-ONLY, and the type is the point: `failStatutoryBody` builds a redirect PATH
+// out of a statutory body, so its parameter may not be a bare `string`. The caller validates through
+// `isStatutoryAuthority` and the signature refuses to let it forget.
+import type { StatutoryAuthority } from '@/lib/statutory-authorities';
 
 /**
  * The Leave Type configuration workspace.
@@ -242,6 +246,45 @@ export function okStatutorySetup(companyId: string, msg: string): never {
  */
 export function failStatutorySetup(e: unknown, companyId: string): never {
   redirect(`${companyStatutoryPath(companyId)}?error=${encodeURIComponent((e as Error).message)}`);
+}
+
+/**
+ * ─── 15e5bd93 rev 3 (r355) · A REFUSAL GOES BACK TO THE ONE BODY'S EDIT SCREEN ──────────────────────
+ *
+ * ⚠️ THIS IS THE ONE THING r355 ADDS TO r353's REDIRECT CONTRACT, AND THE SUCCESS HALF IS UNCHANGED.
+ *
+ * The reporter's rev-3 sketch splits the setup in two: a list of rows, and a screen holding ONE body with
+ * Cancel and Save. The approved plan says what a SAVE does — "Save writes only that body and returns you to
+ * the list with its row refreshed" — so a successful save still goes through `okStatutorySetup` above,
+ * byte for byte as it did in r353.
+ *
+ * A REFUSAL IS NOT A SAVE, and sending it to the list would re-commit the exact mistake `failCompany`'s note
+ * fifty lines up exists to record: "a refused save … showed the refusal on a screen that no longer held the
+ * form it was about". Every refusal reachable from this form is real — "Choose a signatory who is an active
+ * employee of this company" (core/statutory-authority.ts), a bank profile belonging to another company, an
+ * unknown authority code — and all three are about boxes that exist only on THIS route. So the refusal
+ * returns here, in `?mode=edit`, where those boxes are.
+ *
+ * ⚠️ THE BODY IS VALIDATED BY THE CALLER, NOT BY THIS FUNCTION, AND THE CALLER IS WHERE IT BELONGS.
+ * `authority` arrives from a form, and this value goes into a redirect PATH — the one place a path and a
+ * query string meet, which is the whole reason `companyTab` and the `returnTo` closed list exist.
+ * app/admin/actions.ts checks `isStatutoryAuthority` before calling this and falls back to
+ * `failStatutorySetup` (the list) otherwise, so a crafted body cannot reach the path at all. The type here
+ * says so: it takes a `StatutoryAuthority`, not a `string`.
+ *
+ * Everything else is `okStatutorySetup`'s contract: the error rides as the FIRST query key with nothing
+ * concatenated in front of it, the message is already localised by the service, and an empty companyId
+ * degrades to the list rather than emitting `/admin/organization//statutory/epf`.
+ */
+export function companyStatutoryBodyPath(companyId: string, authority: StatutoryAuthority): string {
+  return companyId ? `${companyStatutoryPath(companyId)}/${authority}` : ORGANIZATION;
+}
+
+export function failStatutoryBody(e: unknown, companyId: string, authority: StatutoryAuthority): never {
+  const path = companyStatutoryBodyPath(companyId, authority);
+  // An empty company id degraded to the LIST, which has no mode: do not bolt one on.
+  if (path === ORGANIZATION) redirect(`${path}?error=${encodeURIComponent((e as Error).message)}`);
+  redirect(`${path}?error=${encodeURIComponent((e as Error).message)}&mode=edit`);
 }
 
 /**

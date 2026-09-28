@@ -7343,7 +7343,18 @@
       "removedToast": "Removed",
       "archivedToast": "Company archived",
       "unarchivedToast": "Company restored",
-      "deletedToast": "Company deleted"
+      "deletedToast": "Company deleted",
+      "statutoryColBody": "Statutory",
+      "statutoryColPaymentSetup": "Payment Setup",
+      "statutoryColStatus": "Status",
+      "statutoryColAction": "Action",
+      "authorityView": "View",
+      "authorityStatusActive": "Active",
+      "authorityStatusInactive": "Inactive",
+      "backToStatutorySetup": "Back to Statutory Payment Setup",
+      "statutoryIdentityHint": "Who this company is to each authority. Confirm this before editing anything below. Edit these on the Statutory tab and on each body’s own screen.",
+      "statutoryBodyViewCaption": "What is on file for this body. Press Edit to change it.",
+      "statutoryBodyEditCaption": "Only this body is edited here. Save writes it and returns you to the list."
     },
     "systemLabels": {
       "pageTitle": "System Labels",

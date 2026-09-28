@@ -332,10 +332,13 @@ function BankAccountForm({
  * directly within the existing Statutory tab" and "The preferred approach is a dedicated full-width
  * screen" — plus a view/edit distinction that round did not attempt at all.
  *
- * So the FIELDS are gone from this tab. They live on `/admin/organization/<companyId>/statutory`
- * (components/statutory-setup-screen.tsx), which draws every body as its own card, read-only until that
- * card's Edit is pressed. `StatutoryBodyEditor` was not deleted so much as MOVED there — group headings,
- * field order, the `filingCountry` flag and the signatory tolerance all intact.
+ * So the FIELDS are gone from this tab. They live under `/admin/organization/<companyId>/statutory`, and
+ * ⚠️ REVISION 3 (r355) MOVED THEM ONE STEP FURTHER: r353 drew every body as its own card on that one
+ * screen, read-only until that card's Edit was pressed, and the reporter contested that too. The list is a
+ * TABLE of one row per body now (components/statutory-setup-screen.tsx) and ONE body's fields are a screen
+ * of their own (components/statutory-body-screen.tsx). Through both moves `StatutoryBodyEditor` was not
+ * deleted so much as relocated — group headings, field order, the `filingCountry` flag and the signatory
+ * tolerance all intact.
  *
  * WHAT IS LEFT HERE IS THE LIST, AND IT IS THE REPORTER'S FIRST APPROVED POINT: "Open Settings" becomes a
  * link to a real page. Each body is one row of a read-only list — mark, name, description, Configured /
@@ -353,14 +356,24 @@ function BankAccountForm({
  * (company_statutory_authority). They are not duplicates, and summarising them into one anonymous
  * "employer number" is the exact fault r226 was raised for.
  *
- * ⚠️ NO ROUTE *PER AUTHORITY* — REWORDED, NOT DROPPED, AND THE DISTINCTION IS THE POINT. r352 argued here
- * against `/admin/organization/<id>/<body>`: it "would put a page load between 'which body do I mean' and
- * 'here are its fields'". That argument is still correct and still binding, and it is NOT an argument
- * against what r353 built. There is ONE route for the whole setup, it shows all eight bodies at once, and
- * moving between them costs no navigation — so the objection the old sentence raised does not apply to it.
- * Left as written, that sentence would have read as forbidding the screen the reporter approved. (The
- * route IS registered in lib/permissions.ts under screenKey 'organization', which is the other half the
- * old note named; test/function-access.test.ts requires exactly that.)
+ * ⚠️ THERE IS A ROUTE PER AUTHORITY NOW, AND THE ARGUMENT AGAINST ONE IS RETIRED BY THE REPORTER
+ * (15e5bd93 rev 3, r355). This paragraph has been rewritten twice and both of its earlier versions are
+ * recorded here, because the sentence that stood here is the sentence a future round would have built on.
+ *
+ *   · r352 WROTE: no route `/admin/organization/<id>/<body>`, because it "would put a page load between
+ *     'which body do I mean' and 'here are its fields'".
+ *   · r353 KEPT that and narrowed it: the objection was about a route PER AUTHORITY, and r353 built ONE
+ *     route showing all eight bodies at once, so "the objection the old sentence raised does not apply".
+ *   · r355 REVERSES it. The reporter contested r353 as well and drew the layout themselves: a table of one
+ *     row per body, where "Selecting Edit → EPF opens a screen containing ONLY the EPF fields, with Cancel /
+ *     Save". The page load between the list and the fields is the thing they asked for, twice refused by us
+ *     on their behalf. `/admin/organization/<id>/statutory/<body>` exists
+ *     (components/statutory-body-screen.tsx) and r352's objection is no longer binding on anything.
+ *
+ * WHAT DID NOT CHANGE: this TAB still has no per-body route and no per-body fields. Every row here links to
+ * the LIST, which is one address for all eight, and the reporter's first approved point ("Open Settings
+ * becomes a link to a real page") is satisfied by that link. Both statutory routes ARE registered in
+ * lib/permissions.ts under screenKey 'organization'; test/function-access.test.ts requires exactly that.
  */
 
 /**
@@ -405,10 +418,16 @@ function StatutoryBodyRow({
   filingCountry: string;
   bankProfiles: PanelBankProfile[];
   /**
-   * 15e5bd93 rev 2 — WHERE "Open settings" GOES. The dedicated Statutory Payment Setup screen for this
-   * company, built by the pane below from the company id it already holds. Every row links to the SAME
-   * address: there is no route per authority (see the note above this component), and the screen shows
-   * every body at once, so a row does not need to say which body it means.
+   * 15e5bd93 rev 2 — WHERE "Open settings" GOES. The Statutory Payment Setup screen for this company, built
+   * by the pane below from the company id it already holds. Every row links to the SAME address.
+   *
+   * ⚠️ rev 3 (r355) — AND IT STILL DOES, EVEN THOUGH A PER-BODY ROUTE NOW EXISTS. The earlier version of
+   * this note gave "there is no route per authority" as the reason one address served every row; that reason
+   * has stopped being true (see the note above this component). The address is still one because the screen
+   * it opens is the LIST, which is where the reporter's sketch starts: identity on top, then the rows, each
+   * offering its own View and Edit. Pointing each row here straight at its own body would skip the identity
+   * card the reporter asked to see BEFORE touching anything, and would make this tab a second list of the
+   * same eight links.
    */
   setupHref: string;
 }) {
@@ -565,8 +584,9 @@ function StatutoryBodyRow({
  * fourteen-field editor, behind its card's Open/Edit — because the card face already stated the body's
  * name, purpose and configured status without a click. 15e5bd93 (r352) retired even that: the reporter
  * asked for the "tab/expand-style interface" to go. 15e5bd93 REVISION 2 (r353) went further on the same
- * instruction and took the statutory FIELDS off this panel altogether — they are a dedicated screen now
- * (components/statutory-setup-screen.tsx) — so the Statutory tab holds the company's own registrations
+ * instruction and took the statutory FIELDS off this panel altogether — they are dedicated screens now
+ * (components/statutory-setup-screen.tsx lists the bodies; components/statutory-body-screen.tsx edits one,
+ * which is where REVISION 3 (r355) put them) — so the Statutory tab holds the company's own registrations
  * and a read-only list of the eight bodies that LINKS there. See StatutoryBodyRow.
  *
  * DO NOT reintroduce a details/summary disclosure here — the source guard in

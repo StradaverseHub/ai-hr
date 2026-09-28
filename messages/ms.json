@@ -7343,7 +7343,18 @@
       "removedToast": "Dibuang",
       "archivedToast": "Syarikat diarkibkan",
       "unarchivedToast": "Syarikat dinyaharkib",
-      "deletedToast": "Syarikat dipadam"
+      "deletedToast": "Syarikat dipadam",
+      "statutoryColBody": "Statutori",
+      "statutoryColPaymentSetup": "Tetapan Pembayaran",
+      "statutoryColStatus": "Status",
+      "statutoryColAction": "Tindakan",
+      "authorityView": "Lihat",
+      "authorityStatusActive": "Aktif",
+      "authorityStatusInactive": "Tidak aktif",
+      "backToStatutorySetup": "Kembali ke Tetapan Pembayaran Statutori",
+      "statutoryIdentityHint": "Identiti syarikat ini bagi setiap pihak berkuasa. Sahkan maklumat ini sebelum menyunting apa-apa di bawah. Sunting di tab Berkanun dan di skrin setiap badan.",
+      "statutoryBodyViewCaption": "Maklumat dalam rekod bagi badan ini. Tekan Sunting untuk mengubahnya.",
+      "statutoryBodyEditCaption": "Hanya badan ini disunting di sini. Simpan akan menulisnya dan membawa anda kembali ke senarai."
     },
     "systemLabels": {
       "pageTitle": "Label Sistem",

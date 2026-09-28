@@ -341,8 +341,10 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
     const ids = marked.map((f) => /data-save-section="([^"]+)"/.exec(f.attrs)?.[1]);
     expect(ids).toEqual([...COMPANY_GENERAL_TAB_SECTION_ORDER]);
     // The statutory bodies still exist and are still eight; what changed is where they are EDITED. Their
-    // read-only rows are on this panel and their cards are on the dedicated screen, and neither is a
-    // section of a scope here. test/statutory-setup-screen.test.ts owns that half.
+    // read-only rows are on this panel, the dedicated list is a table of rows, and ONE body's fields are a
+    // screen of their own (15e5bd93 rev 3, r355) — none of which is a section of a scope here.
+    // test/company-panel-bank-statutory-layout.test.ts and test/statutory-body-screen-render.test.ts own that
+    // half. (This comment named test/statutory-setup-screen.test.ts, a file that has never existed.)
     expect(STATUTORY_AUTHORITIES.length, 'the controlled set is untouched by this move').toBe(8);
     for (const a of STATUTORY_AUTHORITIES) {
       expect(ids, `no statutory section marker survives on this screen: ${a}`).not.toContain(a);
