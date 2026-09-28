@@ -117,6 +117,12 @@ export async function GET(req: Request) {
       tMe('colOverutilized'),
       tInq('colForfeitedBf'),
       tf(LEAVE_FIGURE_LABEL_KEY.balance),
+      // r355 (4c63b37e) — AVAILABLE BALANCE, AFTER BALANCE, which on this side is NOT "before Date": the file
+      // carries eighteen columns to the screen's sixteen, and colEntitlementStatus sits between Balance and
+      // Date here. "Immediately after Balance" is the instruction the screen's order gives, and it is the one
+      // followed — this route's header states the invariant it serves (the file exports the table that was on
+      // screen). Same dictionary key as the screen's header, so the two cannot call one figure two things.
+      tf(LEAVE_FIGURE_LABEL_KEY.available),
       // 31e39d74 — the screen captions an ungenerated 0.00 and the export must too, or the file and the
       // screen disagree about the one thing the reporter asked to be told (this route's own header states
       // that invariant). It is a COLUMN here rather than a note under a cell because a spreadsheet has no
@@ -143,6 +149,11 @@ export async function GET(req: Request) {
       cell(r.overutilized),
       cell(r.forfeitedBf),
       cell(r.balance),
+      // r355 — the SAME index as the header above. lib/report-export.ts does not check that a header array
+      // and a row tuple are the same length, so a column added to one list only shifts every figure after it
+      // under the wrong heading, silently, in a file HR forwards. Rounded at the source (core/read.ts) so the
+      // cell cannot carry a float residue a spreadsheet would show at more than two decimals.
+      cell(r.available),
       // 2a57a007 (r340) — THE SAME DECISION THE SCREEN'S CAPTION MAKES, through the same function. It matters
       // most in this column: `statusNotConfigured` and `statusNoEntitlementTable` are THE SAME SENTENCE
       // ("No entitlement table"), so a borrower row printed, in a file HR forwards, the one instruction that

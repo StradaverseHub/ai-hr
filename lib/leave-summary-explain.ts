@@ -22,6 +22,12 @@
  * does not, the line says the records could not be itemised instead of printing a list that claims to add up
  * to a number it does not reach. Available Balance prints its formula only when `summary.available` equals the
  * breakdown's own `totalAvailable` and the column closes onto it; otherwise a sentence says why they differ.
+ * r355 (4c63b37e): Available Balance carries a SECOND decomposition beside that one — Balance − Pending
+ * Approval − Pending Share, the row as Employee Balances now prints it — under the same discipline. It is
+ * emitted as the literal subtraction only when the three terms reach `summary.available` exactly, and never on
+ * a pooled BORROWER's row, whose own Balance and Pending Approval are 0.00 while the figures handed in here are
+ * the pool's: there a sentence states the pooled answer instead. Nothing is recomputed for it — Pending Share
+ * is the sum of the contributions core/read.ts itemised beside the column they add up to.
  *
  * ═══ NO PROSE, NO FORMATTING ═══
  *
@@ -279,6 +285,15 @@ export const LEAVE_SUMMARY_EXPLAIN_KEYS = [
   'availableFormula',
   'availablePool',
   'availableDiffers',
+  // r355 (4c63b37e) — THE SECOND DECOMPOSITION OF THE SAME FIGURE, and it JOINS the three above rather than
+  // replacing them. `availableFormula` spells Available Balance out of TOTAL (Total − Taken − Pending −
+  // Forfeited); the reporter asked for it spelled out of BALANCE (Balance − Pending Approval − Pending Share),
+  // which is the row he is reading on Employee Balances now that the figure has a column there. Both are true
+  // of the same number and the first is pinned, so both are printed. The three-way branch is the same one
+  // above it, for the same reason: the literal subtraction does not close on a pooled BORROWER's row.
+  'availableFromBalance',
+  'availableFromBalancePool',
+  'availableFromBalanceDiffers',
 ] as const;
 export type LeaveSummaryExplainKey = (typeof LEAVE_SUMMARY_EXPLAIN_KEYS)[number];
 
@@ -663,6 +678,58 @@ export function explainLeaveSummary(
     });
   } else {
     available.push({ key: 'availableDiffers', args: { available: days(p.available), column: days(f.totalAvailable) } });
+  }
+  /**
+   * r355 (4c63b37e) — AND THE SAME FIGURE OUT OF THE COLUMNS THE READER IS LOOKING AT, which is what the
+   * reporter asked for when Available Balance gained a column on Employee Balances.
+   *
+   * The block above decomposes from TOTAL; this one decomposes from BALANCE — Balance − Pending Approval −
+   * Pending Share — which is the grid row read left to right. Both are true of the same number, so this is
+   * APPENDED rather than substituted (the block above is pinned by test/r303-leave-summary-explain.test.ts and
+   * is the arithmetic the reconciliation partition guarantees).
+   *
+   * ⚠️ PENDING SHARE IS NOT A SCALAR ON `LeaveSummaryFigures`, AND IS NOT PLUMBED AS ONE. It is the sum of the
+   * contributions core/read.ts already itemised beside the column they add up to — the very list
+   * `sharedBreakdown` above prints on the Pending Approval line — so the figure printed here is the figure
+   * printed there by construction, and 0.00 for a type in no pool, which is the honest 0.00 the grid's own
+   * Pending Share column shows for it.
+   *
+   * ⚠️ THE BORROWER BRANCH IS NOT OPTIONAL, AND `borrowed` IS THE ONLY THING THAT CAN SPOT IT. The figures
+   * handed in for a borrower's row are the POOL's (`balanceStoryTypeId`, app/leave/employee-balances/rows.ts),
+   * so the subtraction closes numerically — on figures the row itself does not show. The grid row for that
+   * borrower reads Balance 0.00 and Pending Approval 0.00, because the days and the pending both belong to the
+   * pool; printing "7.00 balance − 1.00 pending approval" under a row that says 0.00 twice is exactly the
+   * cross-surface contradiction 2a57a007 was raised about. `p.entitlementFromPool` is set ONLY on a borrower's
+   * row (both halves of a pool carry the same `sharedBalance`, so that cannot tell them apart), so it is what
+   * this branches on, and the sentence states the pooled answer instead of a formula that is not the reader's.
+   */
+  const pendingShareMoved = poolBadges(pool, 'pendingShare');
+  const pendingShareTotal = r2(pendingShareMoved.reduce((n, c) => n + c.pendingShare, 0));
+  if (borrowed) {
+    available.push({
+      key: 'availableFromBalancePool',
+      args: { available: days(p.available), source: text(borrowed) },
+    });
+  } else if (r2(f.balance - f.pendingApproval - pendingShareTotal) === r2(p.available)) {
+    available.push({
+      key: 'availableFromBalance',
+      args: {
+        balance: days(f.balance),
+        pending: days(f.pendingApproval),
+        pendingShare: days(pendingShareTotal),
+        available: days(p.available),
+      },
+    });
+  } else {
+    available.push({
+      key: 'availableFromBalanceDiffers',
+      args: {
+        available: days(p.available),
+        balance: days(f.balance),
+        pending: days(f.pendingApproval),
+        pendingShare: days(pendingShareTotal),
+      },
+    });
   }
 
   return {

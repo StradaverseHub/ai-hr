@@ -227,7 +227,15 @@ describe('r303: the HR mount shows a sentence under every line, and no icon', ()
     expect(text('taken')).toContain('2026-10-01: 0.50 — an expired Leave Credit');
     expect(text('pendingApproval')).toContain('2026-12-01 to 2026-12-02: 2.00');
     expect(text('forfeited')).toContain('2026-03-31: 1.00 — carried days expired');
-    expect(text('available')).toBe('14.50 total − 4.00 taken − 2.00 pending − 1.00 forfeited = 7.50.');
+    // r355 (4c63b37e) UPDATED THIS, IT DID NOT LOOSEN IT: still one exact string, still `toBe`. Available
+    // Balance now carries TWO decompositions of the one figure — out of Total (r303) and out of Balance, the
+    // row as Employee Balances prints it now that the figure has a column there — and both close onto 7.50.
+    // The two paragraphs concatenate in `textContent` with no separator, which is why the string reads as it
+    // does; asserting the whole of it is what catches a sentence quietly disappearing.
+    expect(text('available')).toBe(
+      '14.50 total − 4.00 taken − 2.00 pending − 1.00 forfeited = 7.50.' +
+        '9.50 Balance − 2.00 Pending Approval − 0.00 Pending Share = 7.50.',
+    );
     // Each list is a list, under the sentence that introduces it.
     expect(within(panel.getByTestId('leave-explain-ytdEntitled')).getAllByRole('listitem')).toHaveLength(3);
   });
@@ -259,8 +267,13 @@ describe('r303: the HR mount shows a sentence under every line, and no icon', ()
     expect(text('eligible')).toContain('These are the Annual Leave figures. The same balance is also used by Emergency Leave.');
     expect(text('taken')).toContain('Includes leave taken on every leave type that shares this balance: Annual Leave and Emergency Leave.');
     expect(text('pendingApproval')).toContain('Counts Annual Leave applications only.');
+    // r355 (4c63b37e) — AND THE SECOND DECOMPOSITION REFUSES TO PRINT A FORMULA HERE TOO, for the same reason
+    // the first one does: this fixture's `summary.available` (5.50) is the POOL's, reduced by applications
+    // waiting on every member, while Balance and Pending Approval on this panel are Annual Leave's own. Three
+    // terms that do not reach the figure are stated as not reaching it rather than subtracted anyway.
     expect(text('available')).toBe(
-      '5.50 is the Annual Leave balance of 9.50 less applications waiting on every leave type that shares it (Annual Leave and Emergency Leave). Pending Approval above counts Annual Leave applications only, so the lines above come to 7.50.',
+      '5.50 is the Annual Leave balance of 9.50 less applications waiting on every leave type that shares it (Annual Leave and Emergency Leave). Pending Approval above counts Annual Leave applications only, so the lines above come to 7.50.' +
+        "Balance 9.50, Pending Approval 2.00 and Pending Share 0.00 do not account for 5.50, which is the leave balance record's own figure.",
     );
     expect(errors).toEqual([]);
   });
@@ -291,7 +304,15 @@ describe('r303: the HR mount shows a sentence under every line, and no icon', ()
     const data = { ...HR_DATA, derivation: { ...DERIVATION, entitlement: { ...DERIVATION.entitlement, via: 'default_table' as const, schemeName: null, winReason: null } } };
     const lines = explainLeaveSummary(data, { available: 6 });
     expect(lines.eligible.map((s) => s.key)).toEqual(['eligibleViaDefault', 'eligibleService', 'eligibleBand', 'eligibleFullYear']);
-    expect(lines.available).toEqual([{ key: 'availableDiffers', args: { available: { days: 6 }, column: { days: 7.5 } } }]);
+    // r355 (4c63b37e) — the same claim, now over BOTH decompositions: neither is allowed to print a
+    // subtraction that misses the authoritative figure, and each says so in its own terms.
+    expect(lines.available).toEqual([
+      { key: 'availableDiffers', args: { available: { days: 6 }, column: { days: 7.5 } } },
+      {
+        key: 'availableFromBalanceDiffers',
+        args: { available: { days: 6 }, balance: { days: 9.5 }, pending: { days: 2 }, pendingShare: { days: 0 } },
+      },
+    ]);
   });
 });
 
@@ -315,6 +336,9 @@ const ARGS = {
   method: 'none', start: '2026-01-01', end: '2026-12-31', kind: 'grant', date: '2026-03-31', max: '5.00', percent: 50,
   bf: '3.00', earned: '10.50', adj: '1.00', asOf: '2026-12-31', types: 'Annual Leave and Emergency Leave',
   type: 'Annual Leave', available: '7.50', taken: '4.00', pending: '2.00', forfeited: '1.00', balance: '9.50', column: '7.50',
+  // r355 (4c63b37e) — the reporter's own decomposition of Available Balance names the Pending Share column.
+  // Registered here for the reason the note below gives: a placeholder with no value listed throws at render.
+  pendingShare: '2.00',
   // 845903a3 (r313) — the Entitlement proration working. Registered HERE rather than at the emit site
   // because this map is what proves a new sentence cannot ship as a FORMATTING_ERROR: a placeholder with
   // no value listed makes the message throw at render, which tsc, the suite and `next build` are all

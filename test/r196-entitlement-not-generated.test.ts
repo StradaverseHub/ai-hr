@@ -717,13 +717,13 @@ describe('31e39d74: every surface that shows the figure also shows the reason', 
     const src = read('app/leave/employee-balances/page.tsx');
     expect(src).toContain('entitlementStatusNeedsNotice(r.entitlementStatus)');
     expect(src).toContain('{num(r.ytdEntitled)}');
-    // ⚠️ FIFTEEN SINCE 39136455, AND THE CLAIM THIS PINS IS UNCHANGED: the header row and the empty-state
+    // ⚠️ SIXTEEN SINCE r355, AND THE CLAIM THIS PINS IS UNCHANGED: the header row and the empty-state
     // colSpan must agree, whatever the count is. 1ff969ed added the Explanation column, r279 added the Full
-    // Entitlement figure and 39136455 added Share / Pending Share, so the number has moved three times and
-    // this assertion moved with it (a guard that pins the arrangement being replaced gets UPDATED, never
-    // deleted). It caught exactly the defect it exists for on the r306 gate: the page's empty state was
-    // still spanning 13 of 15 columns.
-    expect(src).toContain('colSpan={15}');
+    // Entitlement figure, 39136455 added Share / Pending Share and 4c63b37e added Available Balance, so the
+    // number has moved four times and this assertion moved with it (a guard that pins the arrangement being
+    // replaced gets UPDATED, never deleted). It caught exactly the defect it exists for on the r306 gate:
+    // the page's empty state was still spanning 13 of 15 columns.
+    expect(src).toContain('colSpan={16}');
   });
 
   it('the export carries it as a column, so the file cannot disagree with the screen', () => {
