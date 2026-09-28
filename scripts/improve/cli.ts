@@ -23,8 +23,12 @@
  */
 import { basename, extname } from 'node:path';
 import { readFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   boardStatus,
+  fetchAttachment,
+  listAttachments,
   markBlocked,
   markBuildCompleted,
   markBuildStarted,
@@ -81,6 +85,34 @@ async function main() {
       for (const row of boardStatus()) {
         const ids = closed.has(row.status) ? '' : row.ids.slice(0, 12).join(' ') + (row.ids.length > 12 ? ` +${row.ids.length - 12}` : '');
         process.stdout.write(`${row.status.padEnd(10)} ${String(row.count).padStart(4)}  ${ids}\n`);
+      }
+      break;
+    }
+    case 'attachments': {
+      // CLAUDE.md §8 — READ WHAT THE REPORTER SENT. `attachments <feedbackId>` lists them;
+      // `attachments <feedbackId> --save <dir>` also writes each one to <dir>/<attachmentId>-<fileName>
+      // and prints the path, so the next step is a plain Read (images) or `unzip` (a docx).
+      const feedbackId = process.argv[3];
+      if (!feedbackId) throw new Error('usage: improve:attachments <feedbackId> [--save <dir>]');
+      const saveAt = process.argv.indexOf('--save');
+      const dir = saveAt > 0 ? process.argv[saveAt + 1] : null;
+      const rows = listAttachments(feedbackId);
+      if (rows.length === 0) {
+        console.log(`no attachments on ${feedbackId}`);
+        break;
+      }
+      for (const r of rows) {
+        const kb = (r.size_bytes / 1024).toFixed(1);
+        const rev = r.plan_revision == null ? '-' : `r${r.plan_revision}`;
+        let line = `${r.id}  ${r.stage.padEnd(9)} ${rev.padEnd(4)} ${kb.padStart(8)} KB  ${r.mime_type.padEnd(24)} ${r.file_name}`;
+        if (dir) {
+          // The id prefixes the name: two attachments on one item routinely share a screenshot filename,
+          // and a silent overwrite would lose the one the plan is about.
+          const out = join(dir, `${r.id}-${r.file_name}`);
+          writeFileSync(out, fetchAttachment(r.id));
+          line += `\n    saved: ${out}`;
+        }
+        console.log(line);
       }
       break;
     }

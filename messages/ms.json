@@ -11785,7 +11785,7 @@
       "deductionMonthBlank": "Tidak dinyatakan",
       "colExemptionLimit": "Had pengecualian",
       "exemptLimitNote": "Had pengecualian di bawah datang daripada spesifikasi potongan cukai bulanan LHDN, bukan daripada Borang TP3 — borang itu tidak mencetak lajur had dalam bahagian ini. Apa sahaja yang anda masukkan direkodkan tepat seperti yang dimasukkan dan tidak sekali-kali dipotong. Amaun melebihi had kekal bercukai, jadi hanya bahagian sehingga had dikira ke dalam Saraan Bersih Terkumpul.",
-      "exemptOverLimit": "Melebihi had pengecualian RM {limit} sebanyak RM {excess}. Jumlah yang melebihi had dikenakan cukai dan sepatutnya sudah dikira dalam C1, jadi sila semak borang.",
+      "exemptOverLimit": "Melebihi had pengecualian RM {limit} sebanyak RM {excess}. Lebihan itu dikenakan cukai dan ditambah kepada Saraan Bersih Terkumpul di bawah.",
       "downloadPdf": "Muat turun Borang TP3 (Bahasa Inggeris)",
       "downloadPdfMs": "Muat turun Borang TP3 (Bahasa Malaysia)",
       "deleteRecord": "Padam rekod",
@@ -11805,9 +11805,12 @@
       "totalNetRemuneration": "Saraan Bersih Terkumpul",
       "totalCappedNote": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
       "totalGross": "Saraan kasar (C1)",
-      "totalLessExempt": "Tolak elaun dikecualikan cukai (C2)",
+      "totalLessExempt": "[retired r350 — replaced by totalPlusExcess / totalExemptNote; C1 holds only taxable pay, so the C2 excess is ADDED, not subtracted]",
       "totalLessEpf": "Tolak KWSP dan kumpulan wang diluluskan (C3)",
-      "totalExcessNote": "Daripada RM {entered} yang dimasukkan bagi C2 dan C3, RM {exempt} berada dalam had berkanun dan ditolak daripada angka di atas. Baki RM {excess} melebihi had, kekal dalam Saraan Bersih Terkumpul dan dikenakan cukai sekali sahaja."
+      "totalExcessNote": "[retired r350 — replaced by totalPlusExcess / totalExemptNote; C1 holds only taxable pay, so the C2 excess is ADDED, not subtracted]",
+      "totalPlusExcess": "Campur lebihan bercukai melebihi pengecualian (C2)",
+      "totalExemptNote": "Daripada RM {entered} yang dikunci masuk ke dalam kotak C2, RM {exempt} berada dalam had pengecualian berkanun dan tidak dikenakan cukai. C1 hanya mengandungi saraan yang dikenakan cukai, jadi amaun yang dikecualikan tidak pernah ditolak daripadanya — hanya RM {excess} yang melebihi had ditambah.",
+      "totalNoLimitNote": "Tiada had pengecualian tahunan diterbitkan bagi C2(iii) atau C2(v), jadi tiada bahagian kotak tersebut boleh ditunjukkan sebagai dikenakan cukai dan tiada apa-apa daripadanya ditambah."
     }
   },
   "payRule": {

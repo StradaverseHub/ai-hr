@@ -1,0 +1,118 @@
+<meta charset="utf-8">
+<title>TP3 Accumulated Net Remuneration — today, and corrected</title>
+<!--
+  20837372 (contested, 5th). The reporter was right; r348's correction of them was wrong.
+
+  READ OFF THE AGENCY'S OWN PRESCRIBED FORM, two editions (bm-borang-tp3-2026.pdf and
+  Borang_TP_3_2023.pdf, pdftotext -layout), BAHAGIAN C:
+    C1 "...termasuk elaun / perkuisit / pemberian / Manfaat YANG DIKENAKAN CUKAI"   (SUBJECT to tax)
+    C2 "Jumlah elaun/perkuisit/pemberian/manfaat YANG DIKECUALIKAN CUKAI"           (EXEMPT from tax)
+  C1 therefore carries only the TAXABLE items; C1 - sum(C2) double-subtracts. This settles the UNKNOWN
+  written down in the MY_TP3_2026_SECTION_C header in localization/my/statutory-tables.ts.
+
+  BEFORE figures MEASURED by running core/tp3.ts deriveAccumulatorSeed on the reporter's own examples.
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--border:#c9cad6;--ok:#1f7a52;--warn:#b54708;--bad:#a8453a}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1010px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 6px;font-size:12.5px;color:var(--mf)}
+ .sketch{display:inline-block;margin:0 0 18px;font-size:10.5px;color:var(--mf);border:1px dashed var(--border);border-radius:99px;padding:2px 10px}
+ .sec{margin-bottom:16px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .bd{padding:14px}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+ .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf);margin:0 0 7px}
+ .calc{border:1px solid var(--rule);border-radius:9px;padding:12px;font-size:12px;background:#fff}
+ .calc.now{border-color:#e3bdb7;background:#fdf7f6}
+ .calc.next{border-color:#b7d8c6;background:#f6fbf8}
+ .calc .row{display:flex;justify-content:space-between;gap:12px;padding:3px 0}
+ .calc .row span:last-child{font-variant-numeric:tabular-nums;white-space:nowrap}
+ .calc .row.t{border-top:2px solid var(--rule);margin-top:6px;padding-top:7px;font-weight:700}
+ .calc .row.m{color:var(--mf)}
+ .calc .row.info{color:var(--mf);font-size:11px;border-top:1px dashed var(--rule);margin-top:6px;padding-top:6px}
+ .bad{color:var(--bad)} .good{color:var(--ok)}
+ .verdict{margin-top:9px;font-size:11.5px;font-weight:600}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ table{border-collapse:collapse;width:100%;font-size:11px;margin-top:2px}
+ th,td{border:1px solid var(--rule);padding:5px 9px;text-align:left}
+ th{background:#f6f7fb;font-size:9.5px;color:var(--mf);text-transform:uppercase;letter-spacing:.05em}
+ td.n{text-align:right;font-variant-numeric:tabular-nums}
+ .quote{border-left:3px solid var(--border);padding:2px 0 2px 11px;margin:8px 0 0;font-size:11.5px;color:var(--mf)}
+ .quote b{color:var(--fg)}
+</style>
+<div class="wrap">
+<h1>Accumulated Net Remuneration — how the total is reached</h1>
+<p class="sub">Payroll &gt; Transactions &gt; Form TP3 &gt; foot of Section C</p>
+<p class="sketch">Sketch — wording, spacing and colour will differ in the real screen.</p>
+
+<div class="sec"><h2>Why the total moves: the form's own wording</h2><div class="bd">
+<p class="quote">Box C1 &nbsp;&ldquo;Total monthly gross remuneration and additional remuneration including allowances / perquisites / gifts / benefits <b>that are SUBJECT TO TAX</b>&rdquo;</p>
+<p class="quote">Box C2 &nbsp;&ldquo;Total allowances / perquisites / gifts / benefits <b>that are EXEMPT FROM TAX</b>&rdquo;</p>
+<p class="note">The tax-exempt amounts are <b>never inside C1</b>. Today we subtract them from C1 anyway. Only the part of a box that goes <b>above</b> its yearly exemption limit is taxable — and because C1 holds only taxable pay, that excess is missing from C1 and has to be <b>added</b>.</p>
+</div></div>
+
+<div class="sec"><h2>Your example 1 &nbsp;— C2(i) keyed 3,600, yearly exemption 6,000</h2><div class="bd">
+<div class="two">
+ <div><p class="lbl">Today</p>
+  <div class="calc now">
+   <div class="row"><span>Gross remuneration (C1)</span><span>60,000.00</span></div>
+   <div class="row m"><span>Less tax-exempt allowances (C2)</span><span>&minus; 3,600.00</span></div>
+   <div class="row m"><span>Less EPF and approved funds (C3)</span><span>&minus; 4,000.00</span></div>
+   <div class="row t"><span>Accumulated Net Remuneration</span><span class="bad">52,400.00</span></div>
+  </div>
+  <p class="verdict bad">Understated by 3,600.00</p>
+ </div>
+ <div><p class="lbl">After this change</p>
+  <div class="calc next">
+   <div class="row"><span>Gross remuneration (C1)</span><span>60,000.00</span></div>
+   <div class="row m"><span>Plus taxable excess over exemption (C2)</span><span>+ 0.00</span></div>
+   <div class="row m"><span>Less EPF and approved funds (C3)</span><span>&minus; 4,000.00</span></div>
+   <div class="row t"><span>Accumulated Net Remuneration</span><span class="good">56,000.00</span></div>
+   <div class="row info"><span>Tax-exempt, so not taxed at all</span><span>3,600.00</span></div>
+   <div class="row info"><span>Exemption still unused</span><span>2,400.00</span></div>
+  </div>
+  <p class="verdict good">Matches your figure: 56,000.00</p>
+ </div>
+</div></div></div>
+
+<div class="sec"><h2>Your example 2 &nbsp;— C2(i) keyed 7,000, yearly exemption 6,000</h2><div class="bd">
+<div class="two">
+ <div><p class="lbl">Today</p>
+  <div class="calc now">
+   <div class="row"><span>Gross remuneration (C1)</span><span>60,000.00</span></div>
+   <div class="row m"><span>Less tax-exempt allowances (C2)</span><span>&minus; 6,000.00</span></div>
+   <div class="row m"><span>Less EPF and approved funds (C3)</span><span>&minus; 4,000.00</span></div>
+   <div class="row t"><span>Accumulated Net Remuneration</span><span class="bad">50,000.00</span></div>
+  </div>
+  <p class="verdict bad">Understated by 7,000.00</p>
+ </div>
+ <div><p class="lbl">After this change</p>
+  <div class="calc next">
+   <div class="row"><span>Gross remuneration (C1)</span><span>60,000.00</span></div>
+   <div class="row m"><span>Plus taxable excess over exemption (C2)</span><span>+ 1,000.00</span></div>
+   <div class="row m"><span>Less EPF and approved funds (C3)</span><span>&minus; 4,000.00</span></div>
+   <div class="row t"><span>Accumulated Net Remuneration</span><span class="good">57,000.00</span></div>
+   <div class="row info"><span>Tax-exempt, so not taxed at all</span><span>6,000.00</span></div>
+   <div class="row info"><span>Exemption still unused</span><span>0.00</span></div>
+  </div>
+  <p class="verdict good">Matches your figure: 57,000.00</p>
+ </div>
+</div></div></div>
+
+<div class="sec"><h2>Each of the five boxes is judged against its own exemption limit</h2><div class="bd">
+<table>
+ <tr><th>Tax-exempt box</th><th class="n">Yearly exemption</th><th>What is added to the total</th></tr>
+ <tr><td>C2(i) &nbsp; Travel, petrol card or petrol allowance, and toll, on official duties</td><td class="n">6,000.00</td><td>anything above 6,000.00</td></tr>
+ <tr><td>C2(ii) &nbsp; Child-care allowance</td><td class="n">3,000.00</td><td>anything above 3,000.00</td></tr>
+ <tr><td>C2(iii) &nbsp; Products of the employer's own business, free or discounted</td><td class="n">not published</td><td>nothing — no limit is published</td></tr>
+ <tr><td>C2(iv) &nbsp; Long-service, excellent-service, innovation and productivity awards</td><td class="n">2,000.00</td><td>anything above 2,000.00</td></tr>
+ <tr><td>C2(v) &nbsp; Other tax-exempt allowances</td><td class="n">not published</td><td>nothing — no limit is published</td></tr>
+</table>
+<p class="note">For the two boxes with no published limit the screen will say <b>no limit is published</b> rather than printing 0.00, because a zero would read as a figure we had checked. <b>The exemption limits are shown and never enforced</b> — the form is captured as keyed, exactly as it is today; nothing you type is altered or refused.</p>
+</div></div>
+</div>

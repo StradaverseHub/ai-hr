@@ -429,18 +429,22 @@ describe('20837372 (c) · each C2 sub-item carries its own sourced exemption lim
       sectionC: { c1: { amount: 60000 }, c2: { subItems: { ii: 5000 } }, c3: { amount: 8979 } },
     });
     const row = await statRow(e.personId);
-    // ⚠️⚠️ THIS ASSERTION IS THE DECISION, AND THE DECISION WAS REVERSED (20837372, r342, after the
-    // reporter contested). It used to read 46021 — 60000 − 5000 − 8979, both boxes counted whole — and
-    // its comment said a capped ΣC2 "would tax the RM2,000 a second time: the previous employer already
-    // moved the over-limit part into C1 as taxable pay".
+    // ⚠️⚠️ THIS ASSERTION IS THE DECISION, AND IT HAS NOW BEEN REVERSED TWICE. Both are recorded here
+    // because the second reversal is the one that finally agreed with the reporter.
     //
-    // That was wrong, and the arithmetic shows it. C1 is GROSS, so the excess is in C1 either way, and
-    // C1 − ΣC2 is where it is either taxed or not: counting ΣC2 whole SUBTRACTS the excess again and
-    // lets it escape entirely. Capping taxes it exactly ONCE, which is what the specification's printed
-    // page 20 item 9 requires — "Any amount exceed the restricted amount shall be taxable".
+    //   before r342  46021 = 60000 − 5000 − 8979, both boxes counted whole
+    //   r342         53000 = 60000 − min(5000,3000) − min(8979,4000), each box counted to its limit
+    //   r350         58000 = 60000 + max(5000−3000,0) − min(8979,4000)
     //
-    //   60000 − min(5000, 3000) − min(8979, 4000) = 60000 − 3000 − 4000 = 53000
-    expect(Number(row.tp3NetRemuneration)).toBe(53000);
+    // r342's comment argued that C1 is GROSS, so the exempt money sits in C1 and subtracting a CAPPED
+    // ΣC2 taxes the excess exactly once. C1 is not gross. The agency's form calls it "…YANG DIKENAKAN
+    // CUKAI", the items SUBJECT TO TAX, and C2 is "…YANG DIKECUALIKAN CUKAI", the items exempt from it.
+    // The exempt money was never in C1, so subtracting any part of it removed money that was not there
+    // and understated this employee's accumulated pay. The part ABOVE the limit IS taxable (printed
+    // page 20 item 9) and is also not in C1, so it is ADDED.
+    //
+    //   60000 + max(5000 − 3000, 0) − min(8979, 4000) = 60000 + 2000 − 4000 = 58000
+    expect(Number(row.tp3NetRemuneration)).toBe(58000);
     // THE INPUT IS STILL NEVER REFUSED (ADR-0008) — the form stores exactly what was keyed, and only
     // what the ARITHMETIC may use is limited. Collapsing those two is the mistake this pair guards.
     const saved = (await owner.db

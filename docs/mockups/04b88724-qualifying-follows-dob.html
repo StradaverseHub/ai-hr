@@ -1,0 +1,115 @@
+<meta charset="utf-8">
+<title>Qualifying children — follows the Family register</title>
+<!--
+  04b88724 (contested, 5th). The reporter is right that the count does not follow the DOB; their
+  rule "18+ = 0" is refused because the page THEY cite says the opposite.
+
+  Verified this session from spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf, printed p.26-27
+  (PDF p.27-28, pdftotext -layout):
+    "A relief of RM2,000 per child is allowed if the child is unmarried, 18 years of age and above,
+     and is receiving full-time education"
+    p.27 table: 18+ diploma+ in MY = 4 children; 18+ degree+ outside MY = 4; disabled = 4;
+                disabled + diploma/degree+ = 8
+    footnote:   RM2,000 / RM8,000 / RM8,000 / RM16,000
+
+  STALE TOOLTIP, verified in ALL SIX locales this session (en ms zh ta vi th):
+    people.detail.family.childReliefGuidance says "disabled child - RM6,000; disabled child in
+    full-time higher education - RM6,000 plus RM8,000". Shipped ruleset
+    localization/my/statutory-tables.ts:248-249 is disabled 8000 / disabled_study 16000.
+    6,000 and 14,000 are the ANNUAL ASSESSMENT figures, not the MTD ones. No test pins it.
+
+  Tokens from app/globals.css; nothing external.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--mf:#63636f;--rule:#d9dae6;--border:#c9cad6;--ok:#1f7a52;--warn:#b54708;--bad:#a8453a}
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .wrap{max-width:1020px;margin:0 auto}
+ h1{font-size:17px;margin:0 0 4px}
+ .sub{margin:0 0 6px;font-size:12.5px;color:var(--mf)}
+ .sketch{display:inline-block;margin:0 0 18px;font-size:10.5px;color:var(--mf);border:1px dashed var(--border);border-radius:99px;padding:2px 10px}
+ .sec{margin-bottom:16px;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ .sec>h2{margin:0;padding:9px 14px;background:#eef0f7;border-bottom:1px solid var(--border);font-size:12px}
+ .bd{padding:14px}
+ .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+ .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--mf);margin:0 0 7px}
+ .card{border:1px solid var(--rule);border-radius:9px;padding:12px;background:#fff}
+ .card.now{border-color:#e3bdb7;background:#fdf7f6}
+ .card.next{border-color:#b7d8c6;background:#f6fbf8}
+ .kv{display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:12px}
+ .kv span:last-child{font-variant-numeric:tabular-nums;font-weight:600}
+ table{border-collapse:collapse;width:100%;font-size:11px;margin-top:8px;background:#fff}
+ th,td{border:1px solid var(--rule);padding:5px 8px;text-align:left}
+ th{background:#f6f7fb;font-size:9.5px;color:var(--mf);text-transform:uppercase;letter-spacing:.04em}
+ td.n{text-align:right;font-variant-numeric:tabular-nums}
+ tr.tot td{font-weight:700;background:#f9fafd}
+ .bad{color:var(--bad)} .good{color:var(--ok)} .warnc{color:var(--warn)}
+ .msg{margin-top:9px;border-radius:8px;padding:8px 10px;font-size:11.5px}
+ .msg.err{border:1px solid #e3bdb7;background:#fdf3f1;color:var(--bad)}
+ .msg.ok{border:1px solid #b7d8c6;background:#f2faf5;color:var(--ok)}
+ .note{font-size:11.5px;color:var(--mf);margin-top:11px;line-height:1.55}
+ .note b{color:var(--fg)}
+ .quote{border-left:3px solid var(--border);padding:2px 0 2px 11px;margin:8px 0 0;font-size:11.5px;color:var(--mf)}
+ .quote b{color:var(--fg)}
+ .strike{text-decoration:line-through;color:var(--bad)}
+</style>
+<div class="wrap">
+<h1>Children (PCB relief) — the count follows the Family register</h1>
+<p class="sub">Personnel Management &gt; Employee &gt; Bank &amp; Statutory &gt; Income Tax (PCB)</p>
+<p class="sketch">Sketch — wording, spacing and colour will differ in the real screen.</p>
+
+<div class="sec"><h2>The case you described: one child, born 2007, turned 18 in March, not studying</h2><div class="bd">
+<div class="two">
+ <div><p class="lbl">Today</p>
+  <div class="card now">
+   <div class="kv"><span>Physical children (live from Family)</span><span>0</span></div>
+   <div class="kv"><span>Qualifying children (PCB)</span><span class="bad">1</span></div>
+   <div class="kv"><span>Relief claimed</span><span class="bad">RM2,000.00</span></div>
+   <div class="msg err">&ldquo;No children are recorded in the Family register.&rdquo; &nbsp;&mdash; but one is.</div>
+  </div>
+  <p class="note">The Family tab already says this child no longer counts. This figure was last worked out when someone edited a family record, and a birthday is not an edit. <b>The payslip uses this figure.</b></p>
+ </div>
+ <div><p class="lbl">After this change</p>
+  <div class="card next">
+   <div class="kv"><span>Physical children (live from Family)</span><span>0</span></div>
+   <div class="kv"><span>Qualifying children (PCB)</span><span class="good">0</span></div>
+   <div class="kv"><span>Relief claimed</span><span class="good">RM0.00</span></div>
+   <div class="msg ok">One child is recorded. None qualifies today: Aiman turned 18 on 14 March and is not in full-time further education.</div>
+  </div>
+  <p class="note">Worked out from the date of birth on the payroll date. <b>No edit needed, and both tabs agree.</b></p>
+ </div>
+</div></div></div>
+
+<div class="sec"><h2>&ldquo;How the qualifying count was reached&rdquo; will always add up</h2><div class="bd">
+<table>
+ <tr><th>Child</th><th>Relief category</th><th>Share</th><th class="n">Qualifying children</th><th class="n">Relief (RM)</th></tr>
+ <tr><td>Aiman &nbsp;<span style="color:var(--mf)">b. 14 Mar 2007, age 19</span></td><td>Not in further education</td><td>100%</td><td class="n">0</td><td class="n">0.00</td></tr>
+ <tr><td>Nur &nbsp;<span style="color:var(--mf)">b. 2 Sep 2012, age 14</span></td><td>Under 18</td><td>100%</td><td class="n">1</td><td class="n">2,000.00</td></tr>
+ <tr><td>Farah &nbsp;<span style="color:var(--mf)">b. 8 Jan 2005, age 21</span></td><td>Disabled, in degree study</td><td>100%</td><td class="n">8</td><td class="n">16,000.00</td></tr>
+ <tr><td>Iman &nbsp;<span style="color:var(--mf)">date of birth missing</span></td><td class="warnc">Needs a date of birth</td><td>&mdash;</td><td class="n">0</td><td class="n">0.00</td></tr>
+ <tr class="tot"><td colspan="3">Total</td><td class="n">9</td><td class="n">18,000.00</td></tr>
+</table>
+<p class="note">Today this table can show rows worth one while the total above it prints two. After the change the rows always sum to the total, and a child with no date of birth is <b>named</b> rather than silently dropped.</p>
+</div></div>
+
+<div class="sec"><h2>Why an 18-plus child is not set to zero — from the page you sent us</h2><div class="bd">
+<p class="quote">HASiL PCB specification 2026, page 26: &ldquo;A relief of RM2,000 per child is allowed if the child is unmarried, <b>18 years of age and above, and is receiving full-time education</b>.&rdquo;</p>
+<table>
+ <tr><th>Page 27 — where a child falls within these conditions, the employee is treated as having</th><th class="n">Children</th><th class="n">Relief</th></tr>
+ <tr><td>Child over 18 in full-time diploma-level study or above, in Malaysia</td><td class="n">4</td><td class="n">RM8,000</td></tr>
+ <tr><td>Child over 18 in full-time degree-level study or above, outside Malaysia</td><td class="n">4</td><td class="n">RM8,000</td></tr>
+ <tr><td>Disabled child certified by the Department of Social Welfare</td><td class="n">4</td><td class="n">RM8,000</td></tr>
+ <tr><td>Disabled child in diploma-level study or above</td><td class="n">8</td><td class="n">RM16,000</td></tr>
+</table>
+<p class="note">Setting every 18-plus child to zero would remove all four of these. A parent with one disabled child in university would lose <b>RM16,000</b> of relief and be taxed on it every month.</p>
+</div></div>
+
+<div class="sec"><h2>The help text people read while entering a child quotes the wrong money</h2><div class="bd">
+<table>
+ <tr><th>Guidance badge on the Family tab says</th><th>HASiL and our own calculation say</th></tr>
+ <tr><td>disabled child &mdash; <span class="strike">RM6,000</span></td><td class="good">RM8,000</td></tr>
+ <tr><td>disabled child in full-time higher education &mdash; <span class="strike">RM6,000 plus RM8,000</span></td><td class="good">RM16,000</td></tr>
+</table>
+<p class="note">Wrong in <b>all six languages</b>. The calculation is already correct; only the guidance is wrong. Anyone reading it while classifying a child would conclude our relief is understated &mdash; which may be part of why this keeps coming back.</p>
+</div></div>
+</div>

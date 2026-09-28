@@ -224,37 +224,45 @@ describe('df35d60d · Section C, and the arithmetic that could not be run backwa
     expect(seed.gross).toBe(60000);
     expect(seed.exemptTotal, 'the server sums C2, the client never sends a total').toBe(4000);
     expect(seed.epfClaimed, 'the RAW box, because the form prints it').toBe(6600);
-    // ⚠️ UPDATED BY 20837372 (r342), not loosened. C3 is 6,600 against an EPF relief cap of 4,000, and
-    // LHDN DEFINES K as capped — `core/payroll.ts` already capped K and this subtracted the raw box, so
-    // the two disagreed about the same figure. (Y−K) is now struck against the allowable K. The C2
-    // sub-lines here are all UNDER their own limits (2,400 + 1,200 + 400, against 6,000 / 3,000 / none),
-    // so ΣC2 is untouched at 4,000 — this case moves for the EPF reason ALONE, which is why it is worth
-    // asserting both legs separately.
+    // ⚠️ UPDATED TWICE BY 20837372, not loosened. r342: C3 is 6,600 against an EPF relief cap of 4,000
+    // and LHDN DEFINES K as capped, so (Y−K) is struck against the allowable K rather than the raw box.
+    // r350: ΣC2 is no longer subtracted at all — C1 carries only the taxable items, so the exempt
+    // allowances were never in it. The C2 sub-lines here are all UNDER their own limits (2,400 + 1,200
+    // + 400 against 6,000 / 3,000 / none), so there is no taxable excess to add either and ANR is
+    // simply C1 − K. Both legs are asserted separately on purpose.
     expect(seed.epfAllowable, 'K as the specification defines it: min(6600, 4000)').toBe(4000);
-    expect(seed.netRemuneration, '60000 − 4000 − 4000').toBe(52000);
+    expect(seed.excessTotal, 'every C2 box is within its limit').toBe(0);
+    expect(seed.netRemuneration, '60000 + 0 − 4000').toBe(56000);
     expect(seed.pcbPaid, 'C5, the form’s own “excluding CP38”').toBe(3120.5);
     expect(seed.zakatPaid, 'C4(i)').toBe(500);
 
-    // ⚠️ THE POINT OF THE WHOLE ITEM, AND IT SURVIVES THE CAP: the ONE stored figure cannot be taken
-    // apart again. A second set of boxes with a different gross and a different exempt total still
-    // lands on the SAME figure — 52000 now rather than 49400, for the EPF reason above.
+    // ⚠️ THE POINT OF THE WHOLE ITEM, AND IT SURVIVES BOTH CORRECTIONS: the ONE stored figure cannot be
+    // taken apart again. A second set of boxes with a different gross and a different exempt total
+    // still lands on the SAME figure — 56000 after r350, 52000 after r342, 49400 before either.
+    // r350 — the coinciding pair had to be re-chosen. Before r350 a different gross coincided by
+    // having a different EXEMPT total; now the exempt total does not enter the sum at all, so the
+    // second form coincides by having a different TAXABLE EXCESS instead: C1 55,000 with C2(i) keyed
+    // 11,000 is 5,000 over its 6,000 limit, and 55,000 + 5,000 − 4,000 is the same 56,000.
     await saveTp3(adminCtx(b), {
       personId,
       assessmentYear: YEAR + 1,
-      sectionC: { c1: { amount: 56000 }, c2: { subItems: { i: 0, ii: 0, iii: 0, iv: 0, v: 0 } }, c3: { amount: 6600 } },
+      sectionC: { c1: { amount: 55000 }, c2: { subItems: { i: 11000, ii: 0, iii: 0, iv: 0, v: 0 } }, c3: { amount: 6600 } },
     });
     const other = (await getTp3ForPersonYear(adminCtx(b), { personId, assessmentYear: YEAR + 1 }))!;
-    expect(deriveAccumulatorSeed(other.payload)!.netRemuneration).toBe(52000);
-    expect(deriveAccumulatorSeed(other.payload)!.gross, 'but the gross differs — hence seven boxes').toBe(56000);
+    expect(deriveAccumulatorSeed(other.payload)!.excessTotal, '11,000 against a 6,000 limit').toBe(5000);
+    expect(deriveAccumulatorSeed(other.payload)!.netRemuneration).toBe(56000);
+    expect(deriveAccumulatorSeed(other.payload)!.gross, 'but the gross differs — hence seven boxes').toBe(55000);
   });
 
   it('returns a NEGATIVE net rather than clamping it, because a clamp hides the keying error', () => {
+    // r350 — ΣC2 no longer comes off, so a negative now needs a C3 that exceeds C1 plus any taxable
+    // excess. That is still exactly the shape of a mis-keyed form, and it must still be visible.
     const seed = deriveAccumulatorSeed({
       form: 'tp3-2026',
-      sectionC: { c1: { amount: 1000 }, c2: { amount: 900 }, c3: { amount: 500 } },
+      sectionC: { c1: { amount: 1000 }, c2: { amount: 900 }, c3: { amount: 4000 } },
       sectionD: {},
     })!;
-    expect(seed.netRemuneration).toBe(-400);
+    expect(seed.netRemuneration, '1000 + 0 − 4000').toBe(-3000);
   });
 
   it('has no seed at all for a record with no payload — null, never a row of zeroes', () => {
