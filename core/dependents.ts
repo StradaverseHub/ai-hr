@@ -208,6 +208,13 @@ export type ChildReliefEligibilityRow = Pick<
   // Optional so legacy callers (that don't carry the R45 per-child flag) still type-check; an absent flag
   // (undefined) falls through to the DOB/student inference exactly like a null.
   childTaxRelief?: boolean | null;
+  /** 77e882f5 (r355) — THE CATEGORY IS NOW AN ELIGIBILITY INPUT, NOT ONLY A PRICE.
+   *  Until r355 this field decided how much a qualifying child was worth and nothing else; the tick
+   *  decided WHETHER. The owner reversed that — a tick is consent, and for a child over 18 the category
+   *  is what justifies the claim (`disabled`, `disabled_study`, `study_tertiary`, `study_preu`). So it
+   *  has to travel with the row the predicate sees. Optional, like the tick, so a legacy caller that
+   *  does not carry it still type-checks and still gets the pre-r355 inference. */
+  childReliefCategory?: string | null;
 };
 
 /**

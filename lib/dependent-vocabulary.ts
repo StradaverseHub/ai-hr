@@ -135,14 +135,61 @@ export type ChildReliefRow = {
  *   - a full-time student is eligible regardless of age (the 18+ in-education case);
  *   - otherwise eligible only when under 18; no/invalid DOB ⇒ cannot confirm age ⇒ not auto-counted.
  */
+/**
+ * 77e882f5 (r355) — THE CATEGORIES THAT JUSTIFY A CLAIM PAST 18.
+ *
+ * Read off this module's own definitions and the catalogue, not inferred from the price:
+ *   study_preu      "18+ in full-time pre-university study"        (line ~41 above; messages en :915)
+ *   study_tertiary  "18+ in diploma/degree study (and above)"
+ *   disabled        a disabled child — claimable at any age
+ *   disabled_study  a disabled child in full-time study
+ * `under_18` is the only category that asserts the child is NOT over 18, so it is the only one that
+ * cannot justify an over-18 claim. That is the whole of the set, and why `study_preu` is in it despite
+ * pricing at one unit like `under_18` — the price is not the rule.
+ */
+const QUALIFIES_OVER_18: ReadonlySet<string> = new Set(['study_preu', 'study_tertiary', 'disabled', 'disabled_study']);
+
+/**
+ * ⚠️ 77e882f5 (r355) — THE TICK NO LONGER OVERRIDES THE AGE TEST. THIS IS AN OWNER DECISION AND IT
+ * MOVES MONEY.
+ *
+ * ── WHAT THIS REVERSED, AND WHY THE OLD RULE WAS NOT SILLY ─────────────────────────────────────────
+ * This function used to open with `if (r.childTaxRelief != null) return r.childTaxRelief;` — an
+ * explicit per-child decision won outright, in BOTH directions. Item 6c635212 put it there, and it was
+ * load-bearing: it was the only way to claim a disabled child over 18, or one in full-time study,
+ * because nothing else in the row could justify the claim.
+ *
+ * The owner reversed it in their own words: "The Claim tax relief checkbox should indicate the user's
+ * intention to claim the relief, but it must not override the statutory eligibility validation." Their
+ * sequence: Claim Tax Relief = Yes → check date of birth → calculate age → check applicable relief
+ * conditions → determine qualifying children. So the tick is CONSENT, and the record must then justify
+ * it. The over-18 cases the old rule protected are now carried by `childReliefCategory`, which is why
+ * that field stops being pricing-only and becomes an eligibility input.
+ *
+ * ── AN EXPLICIT NO STILL WINS, AND A BLANK IS STILL A BLANK ────────────────────────────────────────
+ * `false` is unchanged: HR saying "do not claim this child" is honoured whatever the age.
+ *
+ * `null` — never ticked either way — KEEPS TODAY'S BEHAVIOUR EXACTLY, and that is a deliberate refusal
+ * to widen the change. Most legacy rows are null. Reading null as "not claimed" would drop every child
+ * never explicitly ticked out of relief in a single nightly resync — a mass relief loss and a mass tax
+ * rise, from a rule change nobody asked for. The owner was told this and it is theirs to reverse.
+ * Note the asymmetry this creates and that it is correct: a ticked over-18 disabled child qualifies, an
+ * UNticked one does not, because without consent there is no claim to validate.
+ */
 export function childReliefEligible(r: ChildReliefRow, asOf: Date = new Date()): boolean {
   if (r.relationship !== 'child') return false;
   if (r.isDeceased) return false;
   if (r.archivedAt) return false;
-  if (r.childTaxRelief != null) return r.childTaxRelief;
-  if (r.isStudent) return true;
+  // An explicit refusal is final, at any age.
+  if (r.childTaxRelief === false) return false;
   const age = childAgeYears(r.dateOfBirth, asOf);
-  return age != null && age < 18;
+  const underEighteen = age != null && age < 18;
+  // Never decided: the pre-77e882f5 inference, untouched. See the header.
+  if (r.childTaxRelief == null) return r.isStudent === true || underEighteen;
+  // Consent given — now the record has to justify it.
+  if (r.isStudent) return true;
+  if (underEighteen) return true;
+  return QUALIFIES_OVER_18.has(r.childReliefCategory ?? '');
 }
 
 /**
@@ -158,12 +205,16 @@ export function childReliefEligible(r: ChildReliefRow, asOf: Date = new Date()):
  * disagree with the "whether" is worse than no "why". `null` means not eligible, so no caller can print
  * a reason for a child that does not count.
  */
-export type ChildEligibilityReason = 'explicit' | 'student' | 'under_18';
+export type ChildEligibilityReason = 'category' | 'student' | 'under_18';
 export function childEligibilityReason(r: ChildReliefRow, asOf: Date = new Date()): ChildEligibilityReason | null {
   if (!childReliefEligible(r, asOf)) return null;
-  if (r.childTaxRelief != null) return 'explicit';
+  // 77e882f5 — re-walks the NEW ladder in the new order. 'explicit' no longer means "the tick decided
+  // it"; the tick is only consent now, so the reason is whatever actually justified the claim. A ticked
+  // child who qualifies on a category gets 'category' — the case the screen most needs to explain.
   if (r.isStudent) return 'student';
-  return 'under_18';
+  const age = childAgeYears(r.dateOfBirth, asOf);
+  if (age != null && age < 18) return 'under_18';
+  return 'category';
 }
 
 /**

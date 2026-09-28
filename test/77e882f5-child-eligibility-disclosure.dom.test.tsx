@@ -21,6 +21,18 @@
  *
  * ═══ WHAT THIS FILE PINS ═══
  *
+ * ⚠️ r355 — THE RULE THIS FILE PINNED IS NOW REVERSED, BY THE OWNER, AND THE OLD CLAIM IS QUOTED BELOW
+ * RATHER THAN DELETED. r353 asserted "eligible BECAUSE OF THE TICK, not the age" — the tick overrode
+ * the age test outright. The owner's contest: "The Claim tax relief checkbox should indicate the user's
+ * intention to claim the relief, but it must not override the statutory eligibility validation." So a
+ * ticked child is now VALIDATED: under 18, or a student, or a relief category that allows a claim past
+ * 18. The production child (born 2004, ticked, category `under_18`) now counts ZERO, which is the
+ * outcome the reporter asked for twice.
+ *
+ * What did NOT change, and both are asserted below: an explicit FALSE still refuses at any age, and a
+ * NULL tick still falls through to the pre-77e882f5 inference — because null is most legacy rows and
+ * reading it as "not claimed" would drop every one of them in a single nightly resync.
+ *
  * That the reason is DERIVED FROM THE SAME LADDER as the decision (a "why" that can disagree with the
  * "whether" is worse than no "why" at all), that only the EXPLICIT case is annotated, and that the
  * contradiction is reported WITHOUT moving a figure. It changes no money and asserts that it does not.
@@ -66,21 +78,45 @@ afterEach(cleanup);
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
 describe('77e882f5 · childEligibilityReason re-walks the same ladder', () => {
-  it("the reporter's own child: eligible, and eligible BECAUSE OF THE TICK, not the age", () => {
-    expect(isChildReliefEligible(PROD_ROW, ASOF), 'the count of 1 is correct for this data').toBe(true);
-    expect(childEligibilityReason(PROD_ROW, ASOF)).toBe('explicit');
+  it("the reporter's own child: NOT eligible — the tick is consent, the record must justify it", () => {
+    // r353 asserted the opposite here: `toBe(true)` and reason 'explicit', because the tick overrode
+    // the age test. r355 reverses that on the owner's instruction. Born 2004, not a student, category
+    // `under_18` — which is the one category that cannot justify an over-18 claim.
+    expect(isChildReliefEligible(PROD_ROW, ASOF), 'a ticked 22-year-old with no qualifying category').toBe(false);
+    expect(childEligibilityReason(PROD_ROW, ASOF), 'not eligible ⇒ no reason to print').toBeNull();
+  });
+
+  it('a ticked over-18 child WITH a qualifying category still counts, and says why', () => {
+    // The case the old override existed to protect. It must survive the reversal or we have broken the
+    // only route by which a disabled or studying child over 18 is claimable at all.
+    for (const childReliefCategory of ['disabled', 'disabled_study', 'study_tertiary', 'study_preu']) {
+      const row = { ...PROD_ROW, childReliefCategory };
+      expect(isChildReliefEligible(row, ASOF), `${childReliefCategory} justifies a claim past 18`).toBe(true);
+      expect(childEligibilityReason(row, ASOF)).toBe('category');
+    }
+  });
+
+  it('a NULL tick keeps the pre-77e882f5 inference — legacy rows do not silently drop out', () => {
+    // THE INCIDENT THIS PREVENTS: null is most legacy rows. Reading it as "not claimed" would remove
+    // every never-ticked child from relief in one nightly resync.
+    const legacyYoung = { ...PROD_ROW, childTaxRelief: null, dateOfBirth: '2015-01-01' };
+    const legacyOld = { ...PROD_ROW, childTaxRelief: null };
+    expect(isChildReliefEligible(legacyYoung, ASOF), 'under 18, never ticked — unchanged').toBe(true);
+    expect(isChildReliefEligible(legacyOld, ASOF), 'over 18, never ticked — unchanged').toBe(false);
+    const legacyStudent = { ...PROD_ROW, childTaxRelief: null, isStudent: true };
+    expect(isChildReliefEligible(legacyStudent, ASOF), 'student, never ticked — unchanged').toBe(true);
   });
 
   it('an explicit FALSE is honoured too, and then there is no reason to print', () => {
     const optedOut = { ...PROD_ROW, dateOfBirth: '2015-01-01', childTaxRelief: false };
-    expect(isChildReliefEligible(optedOut, ASOF), 'an explicit no wins over being under 18').toBe(false);
+    expect(isChildReliefEligible(optedOut, ASOF), 'an explicit no wins over being under 18 — unchanged by r355').toBe(false);
     expect(childEligibilityReason(optedOut, ASOF), 'not eligible ⇒ no reason, so nothing can be printed').toBeNull();
   });
 
-  it('a student over 18 reports student; a plain under-18 reports under_18', () => {
-    const student = { ...PROD_ROW, childTaxRelief: null, isStudent: true, childReliefCategory: 'study_tertiary' };
+  it('a student reports student; a plain under-18 reports under_18', () => {
+    const student = { ...PROD_ROW, isStudent: true, childReliefCategory: 'study_tertiary' };
     expect(childEligibilityReason(student, ASOF)).toBe('student');
-    const young = { ...PROD_ROW, childTaxRelief: null, dateOfBirth: '2015-01-01' };
+    const young = { ...PROD_ROW, dateOfBirth: '2015-01-01' };
     expect(childEligibilityReason(young, ASOF)).toBe('under_18');
   });
 
@@ -164,7 +200,7 @@ const TICKED: ChildReliefPricing = {
       children: 1,
       units: 1,
       amountRM: RELIEFS.perChild,
-      why: 'explicit',
+      why: 'category',
       categoryContradictsDob: true,
     },
   ],
@@ -218,8 +254,8 @@ const txt = (sel: string) => (document.querySelector(sel)?.textContent ?? '').tr
 describe('77e882f5 · the card says WHY, and flags a record that disproves itself', () => {
   it('names the tick as the reason, on the child’s own line', () => {
     renderCard(TICKED);
-    expect(q('[data-child-why-explicit]'), 'the reason must reach the screen').not.toBeNull();
-    expect(txt('[data-child-why-explicit]')).toBe(D.childQualifyingWhyExplicit);
+    expect(q('[data-child-why-category]'), 'the reason must reach the screen').not.toBeNull();
+    expect(txt('[data-child-why-category]')).toBe(D.childQualifyingWhyCategory);
   });
 
   it('flags the category that the date of birth disproves', () => {
@@ -235,7 +271,7 @@ describe('77e882f5 · the card says WHY, and flags a record that disproves itsel
   // NON-VACUITY: if the labels were unconditional, every case above would pass on any fixture.
   it('an ordinary under-18 child gets NEITHER label', () => {
     renderCard(ORDINARY);
-    expect(q('[data-child-why-explicit]'), 'only an explicit tick is worth a line').toBeNull();
+    expect(q('[data-child-why-category]'), 'only an explicit tick is worth a line').toBeNull();
     expect(q('[data-child-category-contradicts]'), 'nothing contradicts anything here').toBeNull();
     expect(txt('[data-child-breakdown-total-units]')).toBe('1');
   });
@@ -244,7 +280,7 @@ describe('77e882f5 · the card says WHY, and flags a record that disproves itsel
 describe('77e882f5 · both sentences are translated, not copied', () => {
   it.each(Object.keys(LOCALES) as (keyof typeof LOCALES)[])('%s carries both keys, non-empty', (loc) => {
     const d = (LOCALES[loc].people.detail as unknown as Record<string, string>);
-    for (const k of ['childQualifyingWhyExplicit', 'childQualifyingCategoryContradictsDob']) {
+    for (const k of ['childQualifyingWhyCategory', 'childQualifyingCategoryContradictsDob']) {
       expect(typeof d[k], `${loc}.${k} missing`).toBe('string');
       expect(d[k].length, `${loc}.${k} empty`).toBeGreaterThan(0);
       expect(d[k], `${loc}.${k} must not be marked retired`).not.toMatch(/^\[retired/);
@@ -254,7 +290,7 @@ describe('77e882f5 · both sentences are translated, not copied', () => {
   it('the five other locales are not the English string verbatim', () => {
     for (const loc of ['ms', 'ta', 'th', 'vi', 'zh'] as const) {
       const d = LOCALES[loc].people.detail as unknown as Record<string, string>;
-      expect(d.childQualifyingWhyExplicit, `${loc} left English in place`).not.toBe(D.childQualifyingWhyExplicit);
+      expect(d.childQualifyingWhyCategory, `${loc} left English in place`).not.toBe(D.childQualifyingWhyCategory);
     }
   });
 

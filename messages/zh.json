@@ -1623,8 +1623,9 @@
       "childQualifyingWeightingGap": "这些子女已记录的减免类别合计为 {ruleUnits} 名符合条件的子女，即 {ruleAmount} 的减免，但目前只给予 {amount}，因为至少有一名符合条件的子女未记录类别，而加权无法套用于填写不完整的记录。因此该员工的每月税款被多扣（over-deducted）。补上缺少的类别即可释放其余部分。",
       "childQualifyingWeightingGapOver": "这些子女已记录的减免类别合计为 {ruleUnits} 名符合条件的子女，即 {ruleAmount} 的减免，低于目前给予的 {amount}。系统目前将每名子女都按一整名计算，因此申报比例记录为 50%（另一半由另一位家长申报）的子女仍被完整计入。该员工的每月税款因此扣减不足，差额将在年度评税时结清。",
       "childQualifyingAutoWeightedNote": "每名子女按其减免类别的权重计算：年满 18 岁且就读文凭或学位课程的子女，以及残疾子女，各计为四名；就读该等课程的残疾子女计为八名。此数字与薪资单所用者相同。",
-      "childQualifyingWhyExplicit": "计入原因：此子女记录已勾选“申报税务减免”，该设定优先于年龄检查。",
-      "childQualifyingCategoryContradictsDob": "此子女的减免类别为18岁以下，但出生日期并非如此。请核对记录。"
+      "childQualifyingWhyExplicit": "[retired r355 — the tick is consent, not eligibility (77e882f5); replaced by childQualifyingWhyCategory]",
+      "childQualifyingCategoryContradictsDob": "此子女的减免类别为18岁以下，但出生日期并非如此。请核对记录。",
+      "childQualifyingWhyCategory": "计入原因：此子女的减免类别允许在18岁后申报。仅勾选并不使子女符合资格。"
     },
     "import": {
       "title": "导入员工",

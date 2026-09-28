@@ -1623,8 +1623,9 @@
       "childQualifyingWeightingGap": "Các nhóm miễn giảm đã ghi cho những người con này tương đương {ruleUnits} người con đủ điều kiện — {ruleAmount} miễn giảm — nhưng chỉ {amount} đang được áp dụng, vì có ít nhất một người con đủ điều kiện chưa có nhóm và không thể áp trọng số lên hồ sơ điền dở. Do đó thuế hằng tháng của nhân viên này bị khấu trừ thừa (over-deducted). Bổ sung nhóm còn thiếu sẽ mở phần còn lại.",
       "childQualifyingWeightingGapOver": "Các nhóm miễn giảm đã ghi cho những người con này tương đương {ruleUnits} người con đủ điều kiện — {ruleAmount} miễn giảm — THẤP HƠN mức {amount} đang được áp dụng. Mỗi người con đang được tính trọn vẹn, nên người con có tỷ lệ kê khai 50% (nửa còn lại do người kia kê khai) vẫn được tính đủ. Thuế hằng tháng của nhân viên này vì vậy bị khấu trừ thiếu, và phần chênh lệch sẽ được quyết toán khi kê khai năm.",
       "childQualifyingAutoWeightedNote": "Mỗi người con được tính theo trọng số của nhóm miễn giảm: con từ 18 tuổi đang học cao đẳng hoặc đại học, và con khuyết tật, mỗi trường hợp tính bằng bốn; con khuyết tật đang theo học như vậy tính bằng tám. Đây chính là con số phiếu lương đang dùng.",
-      "childQualifyingWhyExplicit": "Được tính vì ô “Yêu cầu miễn giảm thuế” đã được đánh dấu trên hồ sơ của trẻ này, điều này ưu tiên hơn kiểm tra độ tuổi.",
-      "childQualifyingCategoryContradictsDob": "Loại miễn giảm của trẻ này ghi dưới 18 tuổi, nhưng ngày sinh thì không. Vui lòng kiểm tra hồ sơ."
+      "childQualifyingWhyExplicit": "[retired r355 — the tick is consent, not eligibility (77e882f5); replaced by childQualifyingWhyCategory]",
+      "childQualifyingCategoryContradictsDob": "Loại miễn giảm của trẻ này ghi dưới 18 tuổi, nhưng ngày sinh thì không. Vui lòng kiểm tra hồ sơ.",
+      "childQualifyingWhyCategory": "Được tính vì loại miễn giảm của trẻ này cho phép yêu cầu sau 18 tuổi. Chỉ đánh dấu thôi không làm trẻ đủ điều kiện."
     },
     "import": {
       "title": "Nhập nhân viên",
