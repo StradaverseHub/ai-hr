@@ -1,3 +1,69 @@
+## r351 (2026-09-28) — four statutory items in one gate, and the gate earned its keep. `main@cc2f165c`, **migration 0489**.
+
+Closed: `1785b766`, `ad7bc503`, `fda53352`, `04b88724` (screen half — see below). Gate: **1037 files — equal to the suite file count**, 16 chunks, GREEN FIRST PASS on the final tree, `tsc` 0, `next build` 0, `gate:shadow` **PASS 402/402**.
+
+### HOW IT WAS BUILT, AND THE CONSTRAINT THAT SHAPED IT
+
+Three agents plus the parent, in four worktrees, concurrently — and **none of them could run a single test**, because a full gate held the shared cluster and `scripts/gate-chunked.sh` does not take a `testlock.sh` slot. So four branches arrived typechecked, `next build`-clean, and never executed. Every defect below is one that only running them could find, and there were four.
+
+### `1785b766` — THE EXEMPTION IS THE EMPLOYEE'S FOR THE YEAR, NOT EACH EMPLOYER'S
+
+`core/payroll.ts` computed per-code headroom as `cap − priorUsed − used`, and `priorUsed` was replayed from **this employer's** payslips only. A joiner who had already spent the RM6,000 travel exemption elsewhere arrived with a full RM6,000 again. The TP3's Section C now seeds that ledger through a new `tp3_exemption_used` projection (migration **0489**, allocated from `max(idx)=488`, never from `entries.length=401`).
+
+**It also removed a duplicate source of truth**: `MY_TP3_2026_SECTION_C` carried its own copies of 6,000 / 3,000 / 2,000, the same three numbers `MY_PCB_EXEMPTION_CODES` owns. The TP3 limits are now derived from the mapped code and a test pins the equality.
+
+**Idempotence is by construction, and the code says so**: one row per person-year, derived and rewritten whole, never appended. The reporter's points about amendment, reprocessing and cancellation need no mechanism.
+
+### `ad7bc503` — THE AGENCY PRINTS ONE P FORMULA, AND WE PRINTED OUR OWN
+
+Read off the specification: the P formula appears **seven times, always identically**, always carrying `(Yₜ − Kₜ)`, and the worked examples print *"Where (Yt – Kt ) = 0"* beneath it. Step 1 is lettered `[A]`–`[E]` **by the document**. The glossary defines `Q` and `C` separately while the formula prints `QC` — so r340's note was half right and the reporter was right: our figure already holds the product.
+
+`(Yₜ − Kₜ)` is now always shown — **and the guard it reverses was substantively right**: in a bonus month the correct EPF term is `K₂ₜ`, not `K₂`, so the zero limb is rendered from figures, not from `trace.Yt`, and the bonus still reaches the page only through P₂.
+
+**A live defect found by reading the PDF back**: `safe()` mapped anything outside WinAnsi to `?`, so every downloaded statutory explanation printed `?(Y - K)` and `?LP`. There was **no PDF content test at all**; there is one now, and it restates the old fold to prove itself non-vacuous.
+
+### `fda53352` — THE REPORTER'S OWN HANDWRITING, READABLE FOR THE FIRST TIME
+
+`pnpm improve:attachments` (shipped in r350) made their marked-up comparison readable. On it, in their hand: **"Remove this part from the EA Form"**, red-boxing the strip. That **reverses r349**, whose own plan had offered exactly that option. The printed C.P.8A now ends at the officer's box.
+
+- **The EIS figure is on NO printed EA.** That was the cost `da4fc817` and r349 declined to pay; the owner has now paid it. It stays on the HTML statement.
+- **The amended marker STAYS.** Not in the red box, not in the approved plan, and different in kind: it discloses that HR overwrote a figure on a tax document.
+- **D.6 carries the ringgit.** We never printed a count there — we printed nothing. The count they were reading is A.8, a different box that is correct as a count. D.6 is now `pcbMeta.reliefs.children`, the kernel's own annual s.48-weighted figure, already on the slips `eaStatement` selects. **The LAST month's**, not the sum — the relief is annual and restated monthly, so summing twelve prints twelve times the relief — **which required an ORDER BY**, because §8 forbids reading "the last" off an unordered query.
+
+### `04b88724` — THE SCREEN HALF ONLY, AND THE PLAN PROMISED BOTH
+
+The card now shows what the Family register supports and **names the payslip's figure in amber beside it** whenever they differ. The eight-hour KL/UTC mismatch is closed. The false *"No children are recorded in the Family register"* is replaced. A child with no date of birth is named.
+
+**The payroll kernel is unchanged, and the approved plan said it would follow the register.** The builder declined to move it: three money-path consumers, no test runs available, and this repo already split this exact item once for that reason (r343 the card, r344 the payslip). I accept the split. **`b25e421e` is raised with the correction owed to the reporter at the top of it**, and `scripts/resync-child-relief-grid.ts` already exists and is simply not on cron.
+
+**A WRONG STATUTORY FIGURE WAS LIVE ON SCREEN, unreported and untested**: the guidance badge read *disabled child RM6,000, in higher education RM6,000 plus RM8,000* where HASiL and our own kernel say **RM8,000 and RM16,000** — in all six locales. Verified corrected in what the browser receives.
+
+### WHAT THE GATE CAUGHT THAT NOTHING ELSE DID
+
+Four red chunks on the first pass, three of them **one bug of mine**. D.6's `ORDER BY` landed correctly; the accompanying column insert matched an **earlier, identically-shaped select in a function that does not join `payroll_batch`**, breaking CP39, statutory-forms-scope and slice0.
+
+- **`tsc` passed.** Drizzle accepts a column from an unjoined table and fails only at query-build time — so typecheck, `next build` and 26 files of targeted EA tests were green while CP39 was broken.
+- **Those chunks reported ZERO AssertionErrors**, which §4 says normally means the environment. It did not. One file per chunk died on a thrown error — the import/setup signature. **Reading the chunk log instead of trusting the heuristic is what found it.**
+
+The fourth was real and separate: removing the strip orphaned `blankDisclaimer`, the one caption resolved on the blank branch of the label bundle. **r220 had named it in a guard precisely because a key-existence sweep cannot see a deleted branch**, and that guard did its job.
+
+Also caught by running them: a child-relief case still pinned the flat head count and commented that anything more *"would print a figure the payslip denies"* — **that flat figure was the reported defect**. Now pinned as the pair with a non-vacuity assertion that the two must differ. And two defects in the new exemption test, one of which **narrowed the claim the widened `tp3YearMismatch` blocker rests on**: a C2-only form scores zero on the five older money figures only when C1 is also zero.
+
+### GUARDS: FOURTEEN UPDATED, NONE LOOSENED
+
+Every one pinned a decision this round reverses, so each was inverted or re-pointed **with its reasoning written in**. The contract's "every EA field is DRAWN by the PDF" gained ONE explicit exception, `eis`, as a single-member list rather than a relaxed regex — **plus a new case asserting the excepted field is still on the HTML and still amendable**, so the exception cannot become a hole.
+
+### VERIFICATION
+
+TP3 screen, six locales, data planted: `60,000.00 + 1,000.00 − 4,000.00 = 57,000.00`, real translations, 0 intl errors, no retired key visible. Blank EA, both editions: the strip gone in all three of its parts, `5(a)` gone, bare `(a)` present. Guidance figures corrected in the shipped payload.
+
+### NOT DONE
+
+- **`04b88724`'s payroll half** — raised as `b25e421e`. Until it ships, a birthday does not reach the payslip on its own.
+- **TP1 zakat and the departure levy are captured and never offset against MTD**, against the specification's own rule 5 — an over-deduction. Raised as `72d1a390`; it needs the levy stamped on the payslip and the Z replay extended, or it creates an opposite error.
+- **`fda53352` layout**: B.1's sub-items still read `1(a)`…`1(f)` (the plan over-promised — the agency prints `1.` once, which needs a geometry change); the Section A square and the `)` on B.3/B.4 are unmeasured, because r349's dark-fraction measuring script was never committed, only its method; `EA_FORM.right` is still the tracing's 571.3 where the agency's body edge is 556.6.
+- **D.6's FILLED render is unverified.** The blank form correctly shows an empty rule; a filled one needs payslips carrying a `pcbMeta.reliefs` snapshot, which the seed does not produce.
+- `localization/my/multicycle-worksheet.ts` hardcodes `lpAccumulated: 0` while the kernel has read `tp3_lp` since 0488 — a **pre-existing** divergence in a file whose own header claims it mirrors the kernel term for term.
 ## r350 (2026-09-28) — the TP3's C1 holds only TAXABLE pay, so ΣC2 is added, not subtracted. `main@13d24b37`, **no migration**.
 
 Closed: `20837372`. Gate: **1034 files — equal to the suite file count**, 16 chunks, **15 green on the first pass and chunk 11 green on a re-run**, `tsc` 0, `next build` 0. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=488`.
