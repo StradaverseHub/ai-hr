@@ -334,10 +334,20 @@ describe('HRDF Contribution Rate — Organization form layout', () => {
     expect(PANEL).not.toContain("t('hrdfHint')");
   });
 
+  /**
+   * ⚠️ RE-POINTED BY 15e5bd93 REVISION 2 (r353), NOT WEAKENED. This read `components/company-panel.tsx`,
+   * where the HRD Corp card's rate select lived. The reporter contested r352's in-tab editing and asked for
+   * "a dedicated full-width screen", so the eight body editors — including this select — are now
+   * components/statutory-setup-screen.tsx. Same three values, same rate order, same label keys; the only
+   * thing that changed is which file renders them, and it is asserted that the panel renders NO second copy
+   * (two controls over one column is the fault r226 removed).
+   */
   it('keeps the stored option values (no data migration) in rate order: none, 1.0%, 0.5%', () => {
-    const start = PANEL.indexOf('name="hrdfStatus"');
-    expect(start).toBeGreaterThan(-1);
-    const select = PANEL.slice(start, PANEL.indexOf('</select>', start));
+    const SCREEN = read('components/statutory-setup-screen.tsx');
+    const start = SCREEN.indexOf('name="hrdfStatus"');
+    expect(start, 'the rate select is on the dedicated setup screen').toBeGreaterThan(-1);
+    expect(PANEL, 'and there is no second copy on the company panel').not.toContain('name="hrdfStatus"');
+    const select = SCREEN.slice(start, SCREEN.indexOf('</select>', start));
     const none = select.indexOf('value="not_registered"');
     const one = select.indexOf('value="mandatory"');
     const half = select.indexOf('value="optional"');

@@ -49,9 +49,10 @@ import { adminCtx, closeAll, owner, resetDb, seedBase, type Base } from './harne
 import * as schema from '../db/schema';
 import { saveCompanyGeneralTabAction } from '../app/admin/actions';
 import { COMPANY_GENERAL_TAB_SECTION_ORDER } from '../lib/company-tab-sections';
-// 15e5bd93 — the second vocabulary on this screen. Imported rather than hand-listed, so the exact-set
-// marker assertion below cannot drift from the list the server actually validates against.
-import { COMPANY_STATUTORY_TAB_SECTION_ORDER } from '../lib/company-statutory-tab-sections';
+// 15e5bd93 rev 2 (r353) — `COMPANY_STATUTORY_TAB_SECTION_ORDER` WAS IMPORTED HERE and the module is
+// retired: the reporter contested r352's consolidated statutory Save along with the in-tab editing it
+// depended on, so this screen is back to ONE scope. The exact-set marker assertion below is therefore
+// back to General's three, which is what it asserted before r352 — tightened, not loosened.
 import { STATUTORY_AUTHORITIES } from '../lib/statutory-authorities';
 import { SECTION_FIELD_PREFIX, SECTIONS_FIELD } from '../lib/tab-save-sections';
 import { CompanyPanel, type PanelCompany } from '../components/company-panel';
@@ -207,9 +208,6 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
   const noop = () => undefined;
   const actions = {
     saveGeneralTab: async () => ({ ok: true, saved: [] }),
-    // 15e5bd93 — the STATUTORY tab got a consolidated Save of its own, so the panel this file renders has
-    // two. Its own sections are declared in lib/company-statutory-tab-sections.ts and asserted below.
-    saveStatutoryTab: async () => ({ ok: true, saved: [] }),
     updateCompany: noop,
     archiveCompany: noop,
     deleteCompany: noop,
@@ -321,26 +319,35 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
   };
 
   /**
-   * ⚠️ UPDATED BY 15e5bd93 (r352) — THE EXACT SET GREW, AND IT IS STILL AN EXACT SET.
+   * ⚠️ UPDATED TWICE AND IT IS AN EXACT SET AGAIN — THE SAME EXACT SET IT STARTED AS.
    *
-   * This asserted that the ONLY marked forms on the screen are General's three. That was the whole screen's
-   * marker set because the Statutory tab had no scope — 65b22c00's finding 1 refused it one. The reporter's
-   * approved statutory redesign gave that tab a consolidated Save, so the marker set is now General's three
-   * followed by Statutory's nine, in document order, and it is asserted against the two DECLARED
-   * vocabularies rather than a hand-written list. A marked form belonging to neither tab still fails.
+   * 65b22c00: the ONLY marked forms on this screen are General's three, because the Statutory tab had no
+   * scope (finding 1 refused it one). r352: the reporter's approved redesign gave that tab a consolidated
+   * Save, so the set grew to General's three plus Statutory's nine. 15e5bd93 REVISION 2 (r353): the
+   * reporter contested that redesign — "Do not expand the statutory settings directly within the existing
+   * Statutory tab" — the eight body editors moved to a dedicated screen, and the registrations card left
+   * alone on the tab took its own Save button back. So the set is General's three once more.
    *
-   * Bucket (b) has not moved: nothing that DELETES or ARCHIVES anything gained a marker (the case below).
+   * ⚠️ THE ASSERTION IS `toEqual`, NOT A SUPERSET CHECK, and the return to three is a TIGHTENING: a marked
+   * form belonging to neither vocabulary fails here, and so would a statutory section marker that came
+   * back without a scope to own it. Bucket (b) has not moved through any of the three rounds: nothing
+   * that DELETES or ARCHIVES anything has a marker (the case below).
    */
-  it('EXACTLY the declared sections of the two tabs carry a marker, and nothing else does', () => {
+  it('EXACTLY the declared General sections carry a marker, and nothing else on the screen does', () => {
     const all = formsIn(markup(FULL));
     // A company with one bank account and one configured body renders every kind of form this screen has.
-    expect(all.length, 'the whole screen is in this markup').toBeGreaterThanOrEqual(11);
+    expect(all.length, 'the whole screen is in this markup').toBeGreaterThanOrEqual(8);
     const marked = all.filter((f) => f.attrs.includes('data-save-section'));
     const ids = marked.map((f) => /data-save-section="([^"]+)"/.exec(f.attrs)?.[1]);
-    expect(ids).toEqual([...COMPANY_GENERAL_TAB_SECTION_ORDER, ...COMPANY_STATUTORY_TAB_SECTION_ORDER]);
-    // The Statutory tab's sections are the identity card plus ONE PER BODY, so a partial failure can name
-    // the body that failed rather than "the statutory tab".
-    expect(COMPANY_STATUTORY_TAB_SECTION_ORDER).toEqual(['identity', ...STATUTORY_AUTHORITIES]);
+    expect(ids).toEqual([...COMPANY_GENERAL_TAB_SECTION_ORDER]);
+    // The statutory bodies still exist and are still eight; what changed is where they are EDITED. Their
+    // read-only rows are on this panel and their cards are on the dedicated screen, and neither is a
+    // section of a scope here. test/statutory-setup-screen.test.ts owns that half.
+    expect(STATUTORY_AUTHORITIES.length, 'the controlled set is untouched by this move').toBe(8);
+    for (const a of STATUTORY_AUTHORITIES) {
+      expect(ids, `no statutory section marker survives on this screen: ${a}`).not.toContain(a);
+    }
+    expect(ids, 'and neither does the registrations card\'s old section id').not.toContain('identity');
   });
 
   /**
@@ -348,33 +355,44 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
    * unarchive, delete, bank save, bank remove, authority clear — must still stand on its own with its own
    * submit control. A future round folding one of them in fails here.
    *
-   * ⚠️ UPDATED BY 15e5bd93 (r352), AND THE BOUND IS NOW EXACT RATHER THAN A FLOOR. Two kinds of form left
-   * this set and both left it legitimately: the eight authority-save forms and the statutory registrations
-   * card joined the Statutory tab's consolidated Save. `>= 8` would now be satisfied by nothing at all
-   * (there are five), so the case names the five it expects BY THE FIELD THAT IDENTIFIES EACH — which is
+   * ⚠️ UPDATED BY 15e5bd93 (r352), AND THE BOUND IS EXACT RATHER THAN A FLOOR. `>= 8` would be satisfied
+   * by nothing at all, so the case names the forms it expects BY THE FIELD THAT IDENTIFIES EACH — which is
    * stronger than the count it replaces, because a bucket (b) form that lost its marker-free standing can
    * no longer hide behind a loose inequality.
+   *
+   * ⚠️ UPDATED AGAIN BY 15e5bd93 REVISION 2 (r353), AND THE SET IS STILL EXACT. Two forms came BACK to
+   * this panel unmarked, and one left it entirely:
+   *   · the SSM / MyInvois registrations card is `statutoryIdentity` again — marker gone, own Save back,
+   *     because it is alone on the Statutory tab and a sticky bar over one two-field card is the "worse
+   *     than none" 65b22c00's finding 1 named;
+   *   · "Clear this authority" is no longer rendered by this panel at all — it moved with the editor to
+   *     /admin/organization/[companyId]/statutory, so one of the two `remove` signatures is gone.
+   * Both changes are asserted here rather than absorbed, because a bucket (b) form that silently stopped
+   * being rendered ANYWHERE is a capability lost, and this exact list is what would catch it.
    */
   it('every OTHER form still has its own submit control and no marker', () => {
     const forms = formsIn(markup(FULL));
     const unmarked = forms.filter((f) => !f.attrs.includes('data-save-section'));
     // Identified by a field only that form carries. `archived` is the archive/unarchive marker,
-    // `debitAccountNo` a bank-account editor (one saved + one blank "add"), and a lone `id`+`companyId`
-    // pair is a REMOVE form — one for the bank profile, one for "Clear this authority".
+    // `debitAccountNo` a bank-account editor (one saved + one blank "add"), `ssmRegistrationNo` the
+    // registrations card, and a lone `id`+`companyId` pair is a REMOVE form (the bank profile's; the
+    // authority's went to the dedicated statutory screen with the editor it belongs to).
     const signature = (body: string) =>
       /name="archived"/.test(body)
         ? 'archive'
         : /name="debitAccountNo"/.test(body)
           ? 'bankEditor'
-          : /name="id"/.test(body) && /name="companyId"/.test(body)
-            ? 'remove'
-            : 'other';
+          : /name="ssmRegistrationNo"/.test(body)
+            ? 'statutoryIdentity'
+            : /name="id"/.test(body) && /name="companyId"/.test(body)
+              ? 'remove'
+              : 'other';
     expect(unmarked.map((f) => signature(f.body)).sort(), 'the bucket (b) bindings, rendered').toEqual([
       'archive',
       'bankEditor',
       'bankEditor',
       'remove',
-      'remove',
+      'statutoryIdentity',
     ]);
     for (const f of unmarked) expect(f.body, f.attrs.slice(0, 80)).toMatch(/<button\b/);
     // …and the three that ARE marked lost theirs: that is what "one Save" means.
@@ -414,38 +432,54 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
   });
 
   /**
-   * FINDING 1 OF THE AUDIT — ⚠️ THE ONE CASE IN THIS FILE THAT 15e5bd93 (r352) REVERSES, AND IT IS
-   * REWRITTEN RATHER THAN REMOVED, BECAUSE HALF OF IT IS STILL THE POINT.
+   * FINDING 1 OF THE AUDIT — ⚠️ THE ONE CASE IN THIS FILE THAT HAS NOW BEEN REWRITTEN TWICE, AND BOTH
+   * TIMES REWRITTEN RATHER THAN REMOVED, BECAUSE THE HALF IT WAS WRITTEN FOR NEVER STOPPED BEING THE POINT.
    *
-   * WHAT IT SAID: the SSM / MyInvois registrations form is bucket (a) and keeps its OWN button, because it
-   * is drawn on the Statutory tab and a scope cannot span two panes; folding it in would mean moving the
-   * card off a tab r226 put it on for a reason, and that is a decision for the reporter.
+   * 65b22c00 SAID: the SSM / MyInvois registrations form is bucket (a) and keeps its OWN button, because it
+   * is drawn on the Statutory tab, a scope cannot span two panes, and folding it in would mean moving the
+   * card off a tab r226 put it on for a reason — a decision for the reporter.
    *
-   * WHAT IS TRUE NOW: the reporter made a decision that settles it, and it is not the one this case feared.
-   * Their approved statutory redesign put the eight bodies in a permanent rail with one workspace and one
-   * Save for the tab, so the Statutory tab has its own scope — and the registrations card is consolidated
-   * INTO THAT, without moving. `saveStatutoryIdentity` is therefore gone from the screen.
+   * r352 SAID: the reporter settled it the other way. Their approved redesign put the eight bodies in a
+   * rail with one workspace and one Save for the tab, so the tab had a scope the card could join without
+   * moving, and `saveStatutoryIdentity` left the screen.
    *
-   * WHAT THIS CASE STILL GUARDS, unchanged and asserted harder: the card is on the STATUTORY tab. The
-   * failure this was written against was the card drifting onto General as a side effect of a save-button
-   * change, and that is still forbidden — so it is now pinned by POSITION relative to the General pane's
-   * end marker, not merely by the absence of a marker it no longer lacks.
+   * r353 SAYS: the reporter CONTESTED that redesign — "Do not expand the statutory settings directly
+   * within the existing Statutory tab" — and the eight editors went to a dedicated screen. That takes the
+   * scope with them: a sticky Save/Discard bar above ONE two-field card is exactly the "worse than none"
+   * finding 1 named. So the card has its own Save button again and 65b22c00's original sentence is true
+   * once more, by the reporter's own instruction rather than by us reverting them.
+   *
+   * WHAT THIS CASE HAS GUARDED THROUGH ALL THREE, unchanged and asserted by POSITION: the card is on the
+   * STATUTORY tab. The failure it was written against is the card drifting onto General as a side effect
+   * of a save-button change, and every round has had a save-button change in it.
    */
-  it('the statutory registrations card is consolidated on the STATUTORY tab, not moved to General', () => {
+  it('the statutory registrations card keeps its own Save, on the STATUTORY tab, never moved to General', () => {
     const html = markup({ statutory: null });
     const en = JSON.parse(read('messages/en.json')).admin.organization as Record<string, string>;
-    expect(html, 'the tab Save replaced its own button').not.toContain(en.saveStatutoryIdentity);
+    // Its OWN button is back — the retired caption returning to service, not a new string.
+    expect(html, 'bucket (a) with its own control, as finding 1 left it').toContain(en.saveStatutoryIdentity);
     const form = formsIn(html).find((f) => f.body.includes('name="ssmRegistrationNo"'));
     expect(form, 'the registrations form is rendered').toBeTruthy();
-    expect(form!.attrs, 'and it IS a section of a consolidated Save now').toContain('data-save-section="identity"');
-    // It is under the STATUTORY scope, not the General one. Both are in the markup, so the test is which.
-    const general = html.indexOf('data-tab-save-scope="general"');
-    const statutory = html.indexOf('data-tab-save-scope="statutory"');
-    const ssm = html.indexOf('name="ssmRegistrationNo"');
-    expect(general).toBeGreaterThan(-1);
-    expect(statutory).toBeGreaterThan(general);
-    expect(ssm, 'the card did not drift onto General').toBeGreaterThan(statutory);
-    // And General's own vocabulary did not grow an identity section on the way past.
+    expect(form!.attrs, 'and it is NOT a section of a consolidated Save any more').not.toContain('data-save-section');
+    expect(form!.body, 'it submits itself').toMatch(/<button[^>]*type="submit"/);
+    // THERE IS ONE SCOPE ON THIS SCREEN AGAIN, and the card is outside it — which is the position claim.
+    // Pinned against the General pane's own end marker so it cannot be satisfied by ordering luck.
+    const panel = read('components/company-panel.tsx');
+    const generalPane = panel.slice(
+      panel.indexOf("cn('space-y-4', tab === 'general'"),
+      panel.indexOf('{/* end General tab */}'),
+    );
+    expect(generalPane, 'the card did not drift onto General').not.toContain('name="ssmRegistrationNo"');
+    const statutoryPane = panel.slice(
+      panel.indexOf("cn('space-y-4', tab === 'statutory'"),
+      panel.indexOf('{/* end Statutory tab */}'),
+    );
+    expect(statutoryPane, 'it is still where r226 put it').toContain('name="ssmRegistrationNo"');
+    expect(html.indexOf('data-tab-save-scope="general"'), 'the General scope is rendered').toBeGreaterThan(-1);
+    expect(html, 'and the statutory scope is gone with the editors it owned').not.toContain(
+      'data-tab-save-scope="statutory"',
+    );
+    // And General's own vocabulary never grew an identity section on the way past.
     expect(COMPANY_GENERAL_TAB_SECTION_ORDER as readonly string[]).not.toContain('identity');
   });
 });

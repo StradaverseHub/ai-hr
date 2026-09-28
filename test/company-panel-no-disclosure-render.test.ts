@@ -56,9 +56,10 @@ const noop = () => undefined;
 const saveTab = async () => ({ ok: true, saved: [] });
 const actions = {
   saveGeneralTab: saveTab,
-  // 15e5bd93 — the Statutory tab's own consolidated Save. Present on the fixture so this file renders the
-  // screen the page really mounts; nothing here presses it.
-  saveStatutoryTab: saveTab,
+  // 15e5bd93 rev 2 (r353) — `saveStatutoryTab` STOOD HERE and the consolidated statutory Save it named is
+  // retired: the reporter contested the in-tab editing it existed to consolidate. The Statutory tab's
+  // registrations card submits itself again, and the body editors are a dedicated screen with its own
+  // render guard (test/statutory-setup-screen-render.test.tsx).
   updateCompany: noop,
   archiveCompany: noop,
   deleteCompany: noop,
@@ -246,13 +247,16 @@ const inMarkup = (s: string) =>
  * that renders nothing at all, and it finds "No Contribution" inside the HRD Corp band picker of a
  * company that has no identity row. So assertions about the face are made on the face SLICE.
  *
- * ⚠️ UPDATED BY 15e5bd93 (r352) — THE SLICE NO LONGER STOPS AT AN "Open settings" CONTROL, because there
- * is no longer one to stop at: the approved redesign replaced the per-body fold with a permanent rail
- * beside a workspace. The rail row IS the face, end to end, and it is now identified by
+ * ⚠️ UPDATED BY 15e5bd93 (r352) — THE SLICE NO LONGER STOPS AT AN "Open settings" CONTROL, because the
+ * per-body fold it stopped at was replaced. The row IS the face, end to end, and it is identified by
  * `data-statutory-body="<key>"` rather than by a Tailwind class string — a stronger handle, since a class
- * string changes whenever the row is restyled while the attribute says what the element IS. The face slice
- * is therefore that `<li>`, and it can no longer accidentally include anything from the editor pane,
- * which lives in a different column of the DOM entirely.
+ * string changes whenever the row is restyled while the attribute says what the element IS.
+ *
+ * ⚠️ 15e5bd93 REVISION 2 (r353) MAKES THE SLICE EXACT RATHER THAN MERELY TIGHT. The body's fields are not
+ * on this panel at all any more — they are a dedicated screen — so the row cannot include anything from an
+ * editor even in principle, and the `<script>` strip below stops being the load-bearing half of the helper
+ * for the STATUTORY rows (it still is for the rest of the panel, where every tab stays mounted). The row
+ * does now contain one control: the "Open settings" link, which is the reporter's first approved point.
  */
 function cardFaces(html: string): string[] {
   const clean = html.replace(/<script\b[\s\S]*?<\/script>/g, '');
@@ -262,14 +266,6 @@ function cardFaces(html: string): string[] {
     'one rail row per statutory body, in the controlled set’s own order',
   ).toEqual([...STATUTORY_AUTHORITIES]);
   return rows.map((m) => m[2]);
-}
-
-/** The eight workspace panes, keyed by body, with the class string that says whether one is on screen. */
-function workspacePanes(html: string): { body: string; cls: string }[] {
-  return [...html.matchAll(/<div\s+data-statutory-workspace="([^"]+)"\s+class="([^"]*)"/g)].map((m) => ({
-    body: m[1],
-    cls: m[2],
-  }));
 }
 
 /**
@@ -305,14 +301,21 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
     expect(html).toContain('value="512345678901"');
     // The blank add-an-account form (was fold #3) — a second Corporate ID box, empty.
     expect(html.match(/name="corporateId"/g) ?? []).toHaveLength(3); // 2 saved + 1 blank
-    // Statutory-authority payment setup (was fold #1) — one form per authority in the controlled set.
-    // 3c2f55d7 rev 2 — this is now the assertion that keeps the card's Open/Edit HONEST. The editor is
-    // collapsed on arrival, but it is collapsed with CSS: every one of the nine forms is still rendered,
-    // so a half-typed address survives a collapse and this count cannot be satisfied by unmounting.
-    // 15e5bd93 — the same count, and it means MORE than it did: with one Save for the whole tab, a body
-    // whose pane were unmounted would be a body whose edits cannot be packed into the payload at all.
-    expect(html.match(/name="signatoryPersonId"/g) ?? []).toHaveLength(STATUTORY_AUTHORITIES.length);
-    expect(html).toContain('value="ACC-1"');
+    /**
+     * ⚠️ THE STATUTORY HALF OF THIS CASE MOVED WITH ITS SUBJECT (15e5bd93 rev 2, r353) AND IS ASSERTED
+     * NEGATIVELY HERE. It counted one payment form per authority — first to keep the card's Open/Edit
+     * honest (collapsed with CSS, never unmounted), then because r352's one Save read every body out of
+     * the DOM. Neither reason survives the reporter's contest: the bodies are edited on a dedicated screen
+     * now, and test/statutory-setup-screen-render.test.tsx counts the cards there.
+     *
+     * What this file must still prove is that the fields did not get left behind in BOTH places. Two
+     * screens writing `company_statutory_authority`, one of which has no Save, is worse than the fold ever
+     * was — so the panel is asserted to carry none of them.
+     */
+    expect(html.match(/name="signatoryPersonId"/g) ?? [], 'no signatory control on the panel').toHaveLength(0);
+    expect(html, 'and no payment reference input').not.toContain('name="accountNo"');
+    // The VALUE is still on screen, as text on the row's summary — which is 3783fd87's promise, unchanged.
+    expect(html).toContain('ACC-1');
   });
 
   /**
@@ -320,84 +323,81 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
    * (`authorityDesc_epf`, …) which no static check can see; the six-locale loop above would catch a
    * MISSING_MESSAGE, and this catches the other failure: a row that renders no description at all.
    *
-   * ⚠️ UPDATED BY 15e5bd93 — the second half of this case used to count the "Open settings" controls, one
-   * per body. There are none: the reporter asked for the expand-style interface to go. So it asserts the
-   * OPPOSITE, plus the two things that replaced it — one rail row per body, and one workspace pane per
-   * body. That is strictly more than the old case checked, on the same rendered markup.
+   * ⚠️ THE "Open settings" HALF OF THIS CASE HAS NOW BEEN WRITTEN THREE WAYS, AND THE THIRD IS THE FIRST
+   * AGAIN. 3c2f55d7 rev 2 counted one Open control per body (the fold). r352 asserted there were NONE (the
+   * fold was gone). r353 counts one per body again — but as a LINK to the dedicated screen, which is the
+   * reporter's first approved point in their own words: "Open Settings" becomes a link to a real page.
+   *
+   * The count matters and so does the ELEMENT. A row per body with one link each is the claim; a single
+   * link somewhere on the tab would leave seven rows with no way out of them, and a toggle would be the
+   * disclosure the last two rounds removed. So both are asserted, on the rendered markup.
    */
-  it('every statutory body shows its name and its description on its rail row', () => {
+  it('every statutory body shows its name, its description and its own way through to the setup screen', () => {
     const en = messagesFor('en').admin.organization as Record<string, string>;
     const html = render('en', richProps);
     const faces = cardFaces(html);
     for (const [i, a] of STATUTORY_AUTHORITIES.entries()) {
       expect(faces[i], `authority_${a}`).toContain(inMarkup(en[`authority_${a}`]));
       expect(faces[i], `authorityDesc_${a}`).toContain(inMarkup(en[`authorityDesc_${a}`]));
+      // ONE LINK PER ROW, to the ONE route for the whole setup — there is no route per authority.
+      expect(faces[i], `${a}: Open settings`).toContain(inMarkup(en.authorityOpen));
+      expect(faces[i], `${a}: links to the dedicated screen`).toContain('href="/admin/organization/c1/statutory"');
+      expect(faces[i], `${a}: as a link, not a toggle`).not.toContain('aria-expanded');
     }
-    // NOTHING expands: the Open/Close captions do not reach the screen at all any more.
-    expect(html, 'no Open-settings control survives').not.toContain(inMarkup(en.authorityOpen));
-    expect(html, 'and no Close either').not.toContain(inMarkup(en.authorityClose));
-    // NOT asserted here: "no aria-expanded in the markup". The panel itself declares none (pinned in
-    // test/company-panel-bank-statutory-layout.test.ts), but the eight searchable signatory fields are
-    // comboboxes and each renders its own `aria-expanded` — a rendered-markup ban would fail on a control
-    // that is not a disclosure at all. The source guard is the right instrument for that claim.
+    expect(
+      (html.match(/data-statutory-setup-link="/g) ?? []).length,
+      'one per body, and no stray extras',
+    ).toBe(STATUTORY_AUTHORITIES.length);
+    // `authorityClose` only ever captioned a fold, so it must not reach the screen.
+    expect(html, 'no Close survives').not.toContain(inMarkup(en.authorityClose));
+    // NOT asserted here: "no aria-expanded anywhere in the markup". The panel declares none (pinned in
+    // test/company-panel-bank-statutory-layout.test.ts), but other comboboxes on the General tab render
+    // their own — a blanket rendered-markup ban would fail on a control that is not a disclosure at all.
   });
 
   /**
-   * 15e5bd93 — THE WORKSPACE, RENDERED: one pane per body, exactly ONE of them on screen, and the other
-   * seven hidden rather than absent.
+   * ⚠️ REPLACES TWO r352 CASES, AND IT IS THE SAME QUESTION ASKED OF THE OPPOSITE ANSWER.
    *
-   * Both halves need a render to prove. A source guard can see `!selected && 'hidden'` and still miss a
-   * pane that renders with no fields in it, or eight panes all visible at once (which is the old
-   * scroll-forever screen with extra steps), or a "hidden" that was spelled as an unmount.
-   */
-  it('fills the workspace with exactly one body, and keeps the other seven mounted but hidden', () => {
-    const html = render('en', richProps);
-    const panes = workspacePanes(html);
-    expect(
-      panes.map((p) => p.body),
-      'one pane per body',
-    ).toEqual([...STATUTORY_AUTHORITIES]);
-    const visible = panes.filter((p) => !p.cls.split(/\s+/).includes('hidden'));
-    expect(
-      visible.map((p) => p.body),
-      'the rail opens on the first body of the controlled set, and only that one is on screen',
-    ).toEqual([STATUTORY_AUTHORITIES[0]]);
-    // The seven hidden ones are hidden, not gone: every field is in the DOM for the tab Save to read.
-    expect(panes.length - visible.length).toBe(STATUTORY_AUTHORITIES.length - 1);
-    // And the visible pane really carries its fields, already open — no expander between the reader and
-    // the boxes. `E123` is EPF's filing number and `ACC-1` its payment reference, both on the EPF pane.
-    const epf = html.slice(html.indexOf('data-statutory-workspace="epf"'));
-    const epfPane = epf.slice(0, epf.indexOf('data-statutory-workspace="socso"'));
-    expect(epfPane).toContain('name="epfEmployerNo" value="E123"');
-    expect(epfPane).toContain('value="ACC-1"');
-    expect(epfPane).toContain('name="addressLine1"');
-    expect(epfPane).toContain('name="signatoryPersonId"');
-  });
-
-  /**
-   * 15e5bd93 — ONE SAVE FOR THE TAB, and the SSM / MyInvois card is under it.
+   * "fills the workspace with exactly one body, and keeps the other seven mounted but hidden" and
+   * "renders the statutory tab Save bar, with the registrations card inside its scope" both described a tab
+   * that EDITED the bodies. The reporter contested that ("Do not expand the statutory settings directly
+   * within the existing Statutory tab"), so the workspace and the scope are gone from this panel and their
+   * successors are counted in test/statutory-setup-screen-render.test.tsx.
    *
-   * 65b22c00's finding 1 left that card with a Save button of its own because a scope here would have sat
-   * above eight body editors it did not own. It is now inside the tab's scope, on the tab r226 put it on,
-   * and the assertion is made on the RENDER because "is this form inside that scope?" is a DOM question.
+   * Asserted on the RENDER rather than at source because "is this form inside that scope?" and "is this
+   * field on this screen?" are DOM questions, and because the failure this replaces is not a missing
+   * feature — it is a HALF-REMOVED one: a workspace pane left mounted with no Save above it, or a section
+   * marker with no scope to read it, renders fine, passes tsc and quietly cannot save.
    */
-  it('renders the statutory tab Save bar, with the registrations card inside its scope', () => {
+  it('the Statutory tab renders NO body editor and NO consolidated Save — only the registrations card', () => {
     const en = messagesFor('en').admin.organization as Record<string, string>;
     const html = render('en', richProps);
-    const scope = html.indexOf('data-tab-save-scope="statutory"');
-    expect(scope, 'the statutory scope is rendered').toBeGreaterThan(-1);
-    const ssm = html.indexOf('name="ssmRegistrationNo"');
-    const bar = html.indexOf('data-tab-save-bar', scope);
-    expect(ssm, 'the registrations card is inside the scope').toBeGreaterThan(scope);
-    expect(ssm, '…and above its bar').toBeLessThan(bar);
-    // The one Save replaced the per-card buttons, so neither caption reaches the screen.
-    expect(html, 'the registrations card lost its own Save').not.toContain(inMarkup(en.saveStatutoryIdentity));
-    expect(html, 'and so did every body').not.toContain(inMarkup(en.authoritySave));
-    // "Clear this authority" is bucket (b) and keeps its own control.
-    expect(html).toContain(inMarkup(en.authorityClear));
-    // The bar says what it covers, by name, through the real catalogues.
-    const covers = html.slice(html.indexOf('data-tab-save-covers', scope));
-    expect(covers.slice(0, covers.indexOf('</p>'))).toContain(en.authoritiesTitle);
+    // The workspace is gone, not hidden: no pane, no marker, no scope.
+    expect(html, 'no workspace pane survives').not.toContain('data-statutory-workspace');
+    expect(html, 'and no statutory scope').not.toContain('data-tab-save-scope="statutory"');
+    expect(html, 'nor any section marker for one to own').not.toContain('data-save-section="identity"');
+    for (const a of STATUTORY_AUTHORITIES) {
+      expect(html, `no section marker for ${a}`).not.toContain(`data-save-section="${a}"`);
+    }
+    // The General tab's scope is untouched: this round removed one scope, not the pattern.
+    expect(html, "General's Save bar stays").toContain('data-tab-save-scope="general"');
+
+    // THE REGISTRATIONS CARD IS STILL HERE, still editable, and it has its own Save again.
+    expect(html).toContain('name="ssmRegistrationNo"');
+    expect(html).toContain('name="myinvoisTin"');
+    expect(html, 'the retired caption, back in service').toContain(inMarkup(en.saveStatutoryIdentity));
+    // …and it did NOT drift onto General. Pinned by position against the General scope's own bar, which is
+    // the failure 65b22c00 wrote its version of this case against.
+    const generalBar = html.indexOf('data-tab-save-bar');
+    expect(html.indexOf('name="ssmRegistrationNo"'), 'after the General bar, i.e. on another tab').toBeGreaterThan(
+      generalBar,
+    );
+
+    // NO PER-BODY SAVE ON THIS TAB EITHER: the bodies are not edited here at all.
+    expect(html, 'no per-body Save reached the tab').not.toContain(inMarkup(en.authoritySave));
+    expect(html, 'and no Clear, which moved with the editor it belongs to').not.toContain(
+      inMarkup(en.authorityClear),
+    );
   });
 
   /**
@@ -496,13 +496,19 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
   });
 
   /**
-   * The signatory picker is legacy-tolerant: richProps pins a signatory (`gone-person`) who is NOT among
-   * the candidates. The searchable field drops a value it cannot find in its own list, which would have
-   * turned "edit the phone number" into "clear the authorised signatory" — so the former employee is
-   * injected as an option and the hidden input keeps posting the stored id.
+   * ⚠️ MOVED, NOT DROPPED (15e5bd93 rev 2, r353). The signatory picker's legacy tolerance — a stored
+   * signatory who has since left is injected as an option so the hidden input keeps POSTING their id,
+   * because `EmployeeSearchField` drops a value it cannot find in its own list and "edit the phone number"
+   * would otherwise become "clear the authorised signatory" — is now asserted where the picker is:
+   * test/statutory-setup-screen-render.test.tsx and test/15e5bd93-statutory-screen.dom.test.tsx.
+   *
+   * What this file keeps is the half that belongs to THIS panel: the departed signatory must not be
+   * rendered here at all, because there is no control here to post them from. `richProps` still pins
+   * `gone-person`, so a picker that crept back onto the panel fails.
    */
-  it('keeps a departed signatory posted rather than silently clearing them', () => {
+  it('renders no signatory control at all — the picker is on the dedicated setup screen', () => {
     const html = render('en', richProps);
-    expect(html).toContain('name="signatoryPersonId" value="gone-person"');
+    expect(html).not.toContain('name="signatoryPersonId"');
+    expect(html, 'not even as a value left behind').not.toContain('gone-person');
   });
 });

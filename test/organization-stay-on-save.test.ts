@@ -8,7 +8,7 @@
  *
  * WHAT IS RUN, NOT SCANNED. Every one of the twelve company actions is EXECUTED against a real database
  * and the address it redirected to is read and parsed, success path and refusal path. A source scan
- * asserting `okCompany(` appears would pass over the two defects this file is actually about:
+ * asserting `okCompany(` appears would pass over the three defects this file is actually about:
  *
  *   · THE CONCATENATION DEFECT. `ok()`/`fail()` build `${path}?error=…` by plain concatenation, so a
  *     path already carrying `?tab=` yields `…?tab=statutory?toast=Saved` — `tab` read as
@@ -17,6 +17,13 @@
  *     a browser does and asserts BOTH parameters come back, which a scan cannot.
  *   · THE SHARED ACTION. `archiveCompanyAction` is bound on the company panel AND on every row of the
  *     company LIST. §3 runs it both ways and asserts the two destinations differ.
+ *   · THE SECOND SHARED PAIR (15e5bd93 rev 2, r353). `setCompanyStatutoryAuthorityAction` and
+ *     `removeCompanyStatutoryAuthorityAction` are now bound on the company panel AND on the dedicated
+ *     Statutory Payment Setup screen, which is a DIFFERENT ROUTE rather than a different tab — so the
+ *     capture-phase `?tab=` tracker the panel injects does not reach them there. §6 runs both bindings and
+ *     asserts the two destinations differ, exactly as §3 does for archive. Getting this wrong is not a
+ *     404: it is a save that works and drops the operator on a page with no card on it, which is the
+ *     reporter's own words for what must stop happening.
  *
  * FILE-LEVEL MOCKS — the house pattern (test/r301-schedule-general.test.ts): getSession returns the
  * module-level ADMIN, redirect() throws a recognisable error carrying its path, revalidatePath is inert,
@@ -359,14 +366,134 @@ describe('§4 delete is the one that must NOT stay (classification finding 2)', 
   });
 });
 
+// ── §6 ───────────────────────────────────────────────────────────────────────────────────
+/**
+ * 15e5bd93 REVISION 2 (r353) — THE THIRTEENTH DESTINATION.
+ *
+ * The reporter's fourth approved point, in their words: "Saving keeps the user on this page and shows a
+ * confirmation naming what was saved. Never redirected to the Organization company list." The page is
+ * `/admin/organization/<companyId>/statutory`, which is NOT the company panel — so the capture-phase
+ * tracker at components/company-panel.tsx that injects `?tab=` into every form it hosts does not apply, and
+ * `okCompany` cannot serve it (see the note on `okStatutorySetup` in app/admin/_redirects.ts).
+ *
+ * RUN, NOT SCANNED, for this file's own reason: the concatenation defect that shipped twice on the schedule
+ * screen is a defect in how a path and a query string MEET, and only parsing the target the way a browser
+ * does can see it.
+ */
+describe('§6 the dedicated Statutory Payment Setup screen keeps its own saves (15e5bd93 rev 2)', () => {
+  const SETUP = (id: string) => `${LIST}/${id}/statutory`;
+
+  it('a card save returns to the setup screen with a parseable toast, and no stray tab', async () => {
+    const { pathname, q } = parse(
+      await redirectOf(() =>
+        setCompanyStatutoryAuthorityAction(
+          fd({ companyId: b.companyId, authority: 'epf', accountNo: 'A-1', returnTo: 'statutory-setup' }),
+        ),
+      ),
+    );
+    expect(pathname, 'the screen the form is on').toBe(SETUP(b.companyId));
+    // THE CONCATENATION DEFECT, on a new path: `…/statutory?toast=X` must parse as a toast, and nothing may
+    // ever be appended in FRONT of the query key.
+    expect(q.get('toast'), 'and it NAMES what was saved').toBe('EPF (KWSP) saved');
+    expect(q.get('error')).toBeNull();
+    expect(q.get('tab'), 'this screen has no tabs, so it carries none').toBeNull();
+  });
+
+  it('a REFUSED card save lands on the setup screen too, with the message the service gave', async () => {
+    const { pathname, q } = parse(
+      await redirectOf(() =>
+        setCompanyStatutoryAuthorityAction(
+          fd({
+            companyId: b.companyId,
+            authority: 'epf',
+            bankProfileId: '00000000-0000-4000-8000-000000000000',
+            returnTo: 'statutory-setup',
+          }),
+        ),
+      ),
+    );
+    expect(pathname, 'the refusal reaches the form it is about').toBe(SETUP(b.companyId));
+    expect(q.get('error')).toBeTruthy();
+    expect(q.get('toast'), 'a refusal is not a success').toBeNull();
+  });
+
+  it('Clear this authority stays on the screen as well', async () => {
+    await setCompanyStatutoryAuthorityAction(
+      fd({ companyId: b.companyId, authority: 'socso', accountNo: 'S-1' }),
+    ).catch((e) => {
+      if (!(e instanceof RedirectError)) throw e;
+    });
+    const [auth] = await listCompanyStatutoryAuthorities(ADMIN, b.companyId);
+    expect(auth, 'fixture').toBeTruthy();
+    const { pathname, q } = parse(
+      await redirectOf(() =>
+        removeCompanyStatutoryAuthorityAction(
+          fd({ id: auth.id, companyId: b.companyId, returnTo: 'statutory-setup' }),
+        ),
+      ),
+    );
+    expect(pathname).toBe(SETUP(b.companyId));
+    expect(q.get('toast')).toBe('Removed');
+  });
+
+  /**
+   * THE SAME SHAPE §3 GUARDS FOR ARCHIVE: two bindings, two destinations, and the marker is what chooses.
+   * Without it the panel's behaviour is byte-identical to what §1 already asserts — which is the whole
+   * reason the destination comes from the FORM rather than from a repointed action.
+   */
+  it('without the marker the very same action still returns to the company panel and its tab', async () => {
+    const { pathname, q } = parse(
+      await redirectOf(() =>
+        setCompanyStatutoryAuthorityAction(
+          fd({ companyId: b.companyId, authority: 'epf', accountNo: 'A-2', tab: 'statutory' }),
+        ),
+      ),
+    );
+    expect(pathname, 'the panel, not the setup screen').toBe(`${LIST}/${b.companyId}`);
+    expect(q.get('tab')).toBe('statutory');
+    expect(q.get('toast'), 'and the panel keeps the generic confirmation').toBe('Saved');
+  });
+
+  /**
+   * THE MARKER IS A CLOSED-LIST LITERAL, NEVER A PATH. It decides which of two screens a redirect goes to,
+   * so an arbitrary posted value must not be echoed anywhere — the same rule `companyTab` exists for, in the
+   * one place a path and a query string meet. `okStatutorySetup` builds the address from the company id.
+   */
+  it('a returnTo that is not the closed-list value is ignored rather than echoed into the URL', async () => {
+    for (const bogus of ['statutory-setup?toast=Pwned', '../../evil', 'company', 'STATUTORY-SETUP']) {
+      const { pathname, q } = parse(
+        await redirectOf(() =>
+          setCompanyStatutoryAuthorityAction(
+            fd({ companyId: b.companyId, authority: 'epf', accountNo: 'A-3', returnTo: bogus }),
+          ),
+        ),
+      );
+      expect(pathname, bogus).toBe(`${LIST}/${b.companyId}`);
+      expect(q.get('toast'), bogus).toBe('Saved');
+      expect(pathname, 'nothing posted reached the path').not.toContain('evil');
+    }
+  });
+
+  /** An empty company id degrades to the LIST rather than emitting `/admin/organization//statutory`. */
+  it('an empty company id degrades to the list rather than building a broken address', async () => {
+    const { pathname } = parse(
+      await redirectOf(() =>
+        setCompanyStatutoryAuthorityAction(fd({ companyId: '', authority: 'epf', returnTo: 'statutory-setup' })),
+      ),
+    );
+    expect(pathname).toBe(LIST);
+  });
+});
+
 // ── §5 ─────────────────────────────────────────────────────────────────────────────────────────────
 describe('§5 the panel posts what the actions read, and says it in six languages', () => {
   const noop = () => undefined;
   const actions = {
     saveGeneralTab: async () => ({ ok: true, saved: [] }),
-    // 15e5bd93 — the Statutory tab's consolidated Save. It does NOT redirect (it returns a TabSaveResult),
-    // which is why §1's twelve redirect cases are unchanged: there is no thirteenth destination to pin.
-    saveStatutoryTab: async () => ({ ok: true, saved: [] }),
+    // 15e5bd93 rev 2 (r353) — `saveStatutoryTab` STOOD HERE. The note beside it said "there is no thirteenth
+    // destination to pin", because the consolidated statutory Save RETURNED a result instead of redirecting.
+    // There IS one now: the reporter contested that Save and asked for a dedicated screen, so the two
+    // authority actions carry a second destination, and §6 below pins it.
     updateCompany: noop,
     archiveCompany: noop,
     deleteCompany: noop,
@@ -462,17 +589,28 @@ describe('§5 the panel posts what the actions read, and says it in six language
 
   /**
    * THE CONTRACT ACROSS TWO FILES. `removeCompanyBankProfileAction` and
-   * `removeCompanyStatutoryAuthorityAction` read `companyId` to decide where to return, and their forms
-   * post the ROW id. If the hidden field is ever dropped the action still SUCCEEDS — the delete works —
-   * and silently lands the reader on the list again. §1 runs the action; this pins the other half.
+   * `removeCompanyStatutoryAuthorityAction` read `companyId` to decide where to return, and their forms post
+   * the ROW id. If the hidden field is ever dropped the action still SUCCEEDS — the delete works — and
+   * silently lands the reader on the list again. §1 runs the actions; this pins the other half.
+   *
+   * ⚠️ SPLIT ACROSS TWO SCREENS BY 15e5bd93 REVISION 2 (r353), NOT WEAKENED. "Clear this authority" moved to
+   * the dedicated Statutory Payment Setup screen with the editor it belongs to, so the authority half of this
+   * case reads that component. Both halves are still asserted, and the authority form now has a THIRD hidden
+   * field to carry — `returnTo` — because its destination is a different route rather than a different tab.
    */
   it('the remove forms carry the company id, not only the row id', () => {
     const html = markup('en');
-    expect(html).toContain('value="bp1"');
-    expect(html).toContain('value="sa1"');
-    // One company-id input per form that needs one, across the whole rendered panel.
+    expect(html, "the bank profile's row id").toContain('value="bp1"');
+    // One company-id input per form on the panel that needs one.
     const ids = html.match(/name="companyId" value="c1"/g) ?? [];
-    expect(ids.length, 'every form that posts a row id also posts the company').toBeGreaterThanOrEqual(6);
+    expect(ids.length, 'every form that posts a row id also posts the company').toBeGreaterThanOrEqual(4);
+    // The authority half, where it lives now. Source rather than render because the form only exists once a
+    // card is in edit mode — which test/15e5bd93-statutory-screen.dom.test.tsx drives for real.
+    const screen = read('components/statutory-setup-screen.tsx');
+    const clear = screen.slice(screen.indexOf('action={actions.removeStatutoryAuthority}'), screen.indexOf('</form>', screen.indexOf('action={actions.removeStatutoryAuthority}')));
+    expect(clear, 'the authority ROW id').toContain('name="id" value={r.id}');
+    expect(clear, 'and the company it returns to').toContain('name="companyId" value={companyId}');
+    expect(clear, 'and WHICH of that company\'s two screens').toContain('name="returnTo" value={RETURN_TO_SETUP}');
   });
 
   it('renders the archive marker for a company in use', () => {
