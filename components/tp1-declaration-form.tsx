@@ -9,6 +9,18 @@ import {
 } from '@/core/tax-relief';
 import { isTp1Categories2026, TP1_CATEGORY_KEYS, type Tp1ItemAmounts, type Tp1LegacyCategories } from '@/db/schema';
 import { Button, Card, inputCls } from '@/components/ui';
+// The four client islands (r352, item 0df7dd44). THIS FILE STAYS A SERVER COMPONENT and stays the shell —
+// see its own header for why, and components/tp1-form-client.tsx for what each island is for. Only PLAIN
+// DATA crosses into them (numbers, strings, nulls and arrays of those) plus the one server action, which
+// is the form's own submit target; r123's 500 was a FUNCTION prop crossing into a client island.
+import {
+  Tp1DeclarationTick,
+  Tp1EditableForm,
+  Tp1ItemBoxes,
+  Tp1RemarksField,
+  type Tp1AmountBox,
+} from '@/components/tp1-form-client';
+import type { Tp1FormAction } from '@/lib/tp1-form-state';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -125,6 +137,17 @@ export type Tp1Employee = { name: string; idNumber: string | null; tin: string |
  * record is never accumulated against itself, so correcting an approved month is measured against the
  * rest of the year rather than against the figure it replaces.
  *
+ * ── THE REFUSAL STAYS ON THIS FORM, AND AN OVER-CLAIM IS CORRECTED BEFORE SUBMIT (r352, 0df7dd44) ───
+ * The editable half of this component is wrapped in `Tp1EditableForm` — a client island owning one
+ * `useActionState` — so a refused Save / Submit / Submit-and-approve returns a message into a banner at
+ * the top of THIS form instead of redirecting to the TP1 Relief list and discarding forty keyed boxes.
+ * Every field a reader can type into is a controlled client island for the same reason: React resets an
+ * uncontrolled field once a form action resolves, even when nothing navigates.
+ * And the amount boxes clamp DOWN — visibly, in front of the reader, before submit — to
+ * `limit − already` for the line that would refuse them. NOT to the limit: an employee with RM 5,000 of
+ * an RM 8,000 line already approved this year may claim RM 3,000, and clamping to 8,000 would hand them
+ * a relief the server refuses and the PCB should never see. See components/tp1-form-client.tsx.
+ *
  * ── RULE 17, SECTION E ──────────────────────────────────────────────────────────────────────────────
  * The declaration tick is NEVER read by presence. A hidden `declarationAccepted=no` is rendered FIRST and
  * the checkbox carries `value="yes"`; the action reads every value for the name and asks whether 'yes' is
@@ -158,9 +181,8 @@ export async function Tp1DeclarationForm({
   employer,
   employee,
   consent,
-  saveDraftAction,
-  submitAction,
-  submitApproveAction,
+  formAction,
+  canSubmitApprove,
   discardDraftAction,
   hiddenFields,
 }: {
@@ -183,15 +205,33 @@ export async function Tp1DeclarationForm({
     approvedByName: string | null;
     hiddenFields?: Record<string, string>;
   };
-  saveDraftAction: Tp1Action;
-  submitAction: Tp1Action;
   /**
-   * 27605faa — SUBMIT AND APPROVE IN ONE PRESS. Admin-only, like Section F itself: it is supplied ONLY by
-   * the HR screen, so an employee cannot reach it even though they render the same editable form. Absent
-   * ⇒ the button is not drawn, which is what keeps /me/tax-relief unchanged.
+   * ONE action for the whole editable form (r352, item 0df7dd44). It replaces the four separate server
+   * actions this component used to take, because `useActionState` gives a form ONE action and therefore
+   * ONE error state: the pressed button carries `name="intent"` and a submitter's name and value are part
+   * of the FormData the browser posts. That is the same shape claims uses (e7eb5d83), for the same reason.
+   *
+   * IT RETURNS `{ error }` RATHER THAN REDIRECTING WHEN IT REFUSES, which is the whole point: the form is
+   * never unmounted, nothing keyed is lost, and the message appears on the screen being filled in instead
+   * of on the TP1 Relief list the reader was previously thrown back to.
    */
-  submitApproveAction?: Tp1Action;
-  /** 27605faa — discard a DRAFT. Admin-only for the same reason, and drawn only while it IS a draft. */
+  formAction: Tp1FormAction;
+  /**
+   * 27605faa — SUBMIT AND APPROVE IN ONE PRESS. Admin-only, like Section F itself: it is enabled ONLY by
+   * the HR screen, so an employee cannot reach it even though they render the same editable form. Absent
+   * ⇒ the button is not drawn, which is what keeps /me/tax-relief unchanged. (Since r352 this is a flag
+   * rather than an action, because there is one action; the gate is unchanged — `requireAdmin` at the
+   * door of the admin action and `requireAdminTarget` + `refuseSelfApproval` in the service.)
+   */
+  canSubmitApprove?: boolean;
+  /**
+   * 27605faa — discard a DRAFT. Admin-only for the same reason, and drawn only while it IS a draft.
+   *
+   * STILL ITS OWN ACTION, and deliberately left outside `formAction`'s `useActionState` (r352). Discard
+   * keys nothing and loses nothing: it throws the draft away, so there is no form state worth preserving
+   * across its refusal and no reason to change a path this item was not raised about. A button's
+   * `formAction` overrides the form's own action, which is what lets the two live in one `<form>`.
+   */
   discardDraftAction?: Tp1Action;
   /** Extra hidden inputs rendered inside the editable form (e.g. { employmentId } for the HR screen). */
   hiddenFields?: Record<string, string>;
@@ -254,6 +294,41 @@ export async function Tp1DeclarationForm({
    * measure again. That is what keeps a phone no taller than it was before this round — see
    * `reliefGridCls` for the measurements that forced it.
    */
+  /**
+   * The amount boxes of ONE item, as plain data for the client island.
+   *
+   * A SINGLE-BOX item carries `limit: null, already: 0` on its box and NOT the item's figures. That is
+   * deliberate rather than lossy: the box IS the item there, so its ceiling is the item's own remaining,
+   * which the island already has in `limit` / `already`. Duplicating the pair onto the box would be two
+   * places for one number, and the day they disagreed the screen would clamp to a figure the server
+   * refuses.
+   */
+  const boxesFor = (
+    def: Tp1CatalogueItem,
+    group: 'items' | 'rebates',
+    entry: Tp1ItemAmounts | undefined,
+    priorSubs: Record<string, number>,
+  ): Tp1AmountBox[] =>
+    def.subItems.length === 0
+      ? [
+          {
+            name: `tp1_${group}_${def.code}_amount`,
+            sub: null,
+            limit: null,
+            already: 0,
+            frequency: null,
+            value: num(entry?.amount),
+          },
+        ]
+      : def.subItems.map((sub) => ({
+          name: `tp1_${group}_${def.code}_sub_${sub.code}`,
+          sub: sub.code,
+          limit: sub.limit ?? null,
+          already: priorSubs[sub.code] ?? 0,
+          frequency: sub.frequency ?? null,
+          value: num(entry?.subItems?.[sub.code]),
+        }));
+
   const itemBlock = (def: Tp1CatalogueItem, group: 'items' | 'rebates') => {
     const entry = entryOf(def.code);
     const priorItem = accumulated.items[def.code] ?? 0;
@@ -272,57 +347,51 @@ export async function Tp1DeclarationForm({
           <p className="mt-0.5 text-xs italic text-muted-foreground">{t(`frequency.${def.frequency}`)}</p>
         )}
 
-        {def.subItems.length === 0 ? (
-          <>
-            {strip(def.limit, priorItem)}
-            {readOnly ? (
+        {readOnly ? (
+          def.subItems.length === 0 ? (
+            <>
+              {strip(def.limit, priorItem)}
               <p className="mt-1 text-sm tabular-nums">{rm(entry?.amount ?? 0)}</p>
-            ) : (
-              <input
-                type="number"
-                name={`tp1_${group}_${def.code}_amount`}
-                min="0"
-                step="0.01"
-                defaultValue={num(entry?.amount)}
-                placeholder="0.00"
-                aria-label={`${code} ${t('colCurrent')}`}
-                className={`${inputCls} mt-1 max-w-[14rem]`}
-              />
-            )}
-          </>
-        ) : (
-          <>
-            {/* A group limit belongs to the ITEM; a `perSubLimit` item (C16) has none and each band
-                carries its own — so the item-level strip is skipped there rather than printing a "—". */}
-            {!def.perSubLimit && strip(def.limit, priorItem)}
-            <div className="mt-1 space-y-2">
-              {def.subItems.map((sub) => (
-                <div key={sub.code} className="rounded-md border border-border/60 px-3 py-2">
-                  <p className="text-xs">
-                    <span className="font-medium">({sub.code})</span> {t(`${group}.${def.code}.sub.${sub.code}`)}
-                  </p>
-                  {sub.frequency && (
-                    <p className="mt-0.5 text-xs italic text-muted-foreground">{t(`frequency.${sub.frequency}`)}</p>
-                  )}
-                  {(sub.limit != null || def.perSubLimit) && strip(sub.limit, priorSubs[sub.code] ?? 0)}
-                  {readOnly ? (
+            </>
+          ) : (
+            <>
+              {/* A group limit belongs to the ITEM; a `perSubLimit` item (C16) has none and each band
+                  carries its own — so the item-level strip is skipped there rather than printing a "—". */}
+              {!def.perSubLimit && strip(def.limit, priorItem)}
+              <div className="mt-1 space-y-2">
+                {def.subItems.map((sub) => (
+                  <div key={sub.code} className="rounded-md border border-border/60 px-3 py-2">
+                    <p className="text-xs">
+                      <span className="font-medium">({sub.code})</span> {t(`${group}.${def.code}.sub.${sub.code}`)}
+                    </p>
+                    {sub.frequency && (
+                      <p className="mt-0.5 text-xs italic text-muted-foreground">{t(`frequency.${sub.frequency}`)}</p>
+                    )}
+                    {(sub.limit != null || def.perSubLimit) && strip(sub.limit, priorSubs[sub.code] ?? 0)}
                     <p className="mt-1 text-sm tabular-nums">{rm(entry?.subItems?.[sub.code] ?? 0)}</p>
-                  ) : (
-                    <input
-                      type="number"
-                      name={`tp1_${group}_${def.code}_sub_${sub.code}`}
-                      min="0"
-                      step="0.01"
-                      defaultValue={num(entry?.subItems?.[sub.code])}
-                      placeholder="0.00"
-                      aria-label={`${code}(${sub.code}) ${t('colCurrent')}`}
-                      className={`${inputCls} mt-1 max-w-[14rem]`}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-          </>
+                  </div>
+                ))}
+              </div>
+            </>
+          )
+        ) : (
+          /*
+            ── THE EDITABLE BOXES ARE A CLIENT ISLAND (r352, item 0df7dd44) ────────────────────────────
+            They carry the visible clamp, so they have to be. PER ITEM rather than per box, because the
+            ceiling of C5(b) depends on what is currently sitting in C5(a): the group's annual limit caps
+            their SUM, and no server render can know a figure the reader has not submitted yet.
+            EVERY PROP IS PLAIN DATA — numbers, strings, nulls and an array of those. The four figures the
+            strip prints and the number the clamp targets are the SAME accumulation the server refuses
+            against (`accumulated`, from `getTp1Accumulated*`), never a second count of it.
+          */
+          <Tp1ItemBoxes
+            group={group}
+            code={def.code}
+            limit={def.limit}
+            already={priorItem}
+            perSubLimit={def.perSubLimit === true}
+            boxes={boxesFor(def, group, entry, priorSubs)}
+          />
         )}
       </div>
     );
@@ -478,8 +547,11 @@ export async function Tp1DeclarationForm({
       ) : (
         <>
           {/* ONE editable form, reused by Save-draft and Submit. The server always recomputes the total
-              from the items — the client never sends it, at item level or at form level. */}
-          <form id="tp1-form" className="space-y-4">
+              from the items — the client never sends it, at item level or at form level.
+              r352 — the `<form>` element itself is now a CLIENT island (`Tp1EditableForm`) because it owns
+              the action: `useActionState` returns WITHOUT navigating, so a refusal lands in a banner at
+              the top of this form and the reader keeps every box they keyed. Success still redirects. */}
+          <Tp1EditableForm action={formAction} formId="tp1-form" className="space-y-4">
             <input type="hidden" name="assessmentYear" value={selectedYear} />
             <input type="hidden" name="tp1Form" value="tp1-2026" />
             {deductionMonth != null && <input type="hidden" name="deductionMonth" value={deductionMonth} />}
@@ -506,32 +578,16 @@ export async function Tp1DeclarationForm({
               <Card className="space-y-3 p-5">
                 <h2 className="text-sm font-semibold">{t('sectionE')}</h2>
                 <p className="text-xs text-muted-foreground">{t('declarationText')}</p>
-                {/* RULE 17: the 'no' is rendered FIRST and always submitted; the tick adds a 'yes'. The
-                    action reads the VALUES, never whether the field arrived. */}
-                <input type="hidden" name="declarationAccepted" value="no" />
-                <label className="flex items-start gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    name="declarationAccepted"
-                    value="yes"
-                    defaultChecked={latest?.declaredAt != null}
-                    className="mt-0.5"
-                  />
-                  <span>{t('declarationTick')}</span>
-                </label>
+                {/* RULE 17 is unchanged and lives inside the island: the 'no' is rendered FIRST and always
+                    submitted; the tick adds a 'yes'. It is CONTROLLED for the r352 reason — React resets an
+                    uncontrolled field once a form action resolves, so a refused submit would silently
+                    untick a declaration the reader had accepted. */}
+                <Tp1DeclarationTick defaultChecked={latest?.declaredAt != null} />
               </Card>
 
               <Card className="p-5">
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium">{t('remarksLabel')}</span>
-                  <textarea
-                    name="remarks"
-                    rows={3}
-                    defaultValue={cats?.remarks ?? ''}
-                    placeholder={t('remarksPlaceholder')}
-                    className={inputCls}
-                  />
-                </label>
+                {/* Controlled for the same reason as the tick: a refusal must not erase the note. */}
+                <Tp1RemarksField defaultValue={cats?.remarks ?? ''} />
                 <p className="mt-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
                   {t('totalNote')}
                 </p>
@@ -547,22 +603,26 @@ export async function Tp1DeclarationForm({
             {/* THE ACTION ROW IS INSIDE THE FORM ON PURPOSE — see `actionRowCls`. `position: sticky` is
                 resolved against the nearest block ancestor, so being the form's last child is what gives
                 it a range that ENDS with the fields it submits: Section F, which follows, is never
-                covered once the page is scrolled to the bottom. The buttons still carry `form="tp1-form"`
-                and their own `formAction`, so which action runs is unchanged by the move, and Save is
-                still first in tree order and so still the implicit-submission default. */}
+                covered once the page is scrolled to the bottom. The buttons still carry `form="tp1-form"`,
+                so which form they submit is unchanged by the move, and Save is still first in tree order
+                and so still the implicit-submission default.
+                r352 — WHICH action runs is now chosen by `name="intent"` rather than by a per-button
+                `formAction`: one `useActionState` form has one action and therefore one error state, and a
+                submitter's name and value ride in the FormData the browser posts. Same shape as claims
+                (e7eb5d83). The intents are read in the surface's own action. */}
             <div className={actionRowCls}>
-              <Button type="submit" variant="secondary" formAction={saveDraftAction} form="tp1-form">
+              <Button type="submit" variant="secondary" name="intent" value="draft" form="tp1-form">
                 {t('saveDraft')}
               </Button>
               {/* A correction is just another submitted row for the same month; latest-submitted wins. */}
-              <Button type="submit" formAction={submitAction} form="tp1-form">
+              <Button type="submit" name="intent" value="submit" form="tp1-form">
                 {t(isSubmitted || isDecided ? 'submitCorrection' : 'submit')}
               </Button>
               {/* 27605faa — one press instead of two passes. Same form, same fields; the action behind it
                   composes submit-then-approve rather than writing a status itself (see the action's own
-                  note). Rendered only for an admin, because only the HR screen passes it. */}
-              {submitApproveAction && (
-                <Button type="submit" formAction={submitApproveAction} form="tp1-form">
+                  note). Rendered only for an admin, because only the HR screen enables it. */}
+              {canSubmitApprove && (
+                <Button type="submit" name="intent" value="submitApprove" form="tp1-form">
                   {tp1t('submitApproveButton')}
                 </Button>
               )}
@@ -581,7 +641,7 @@ export async function Tp1DeclarationForm({
                 </Button>
               )}
             </div>
-          </form>
+          </Tp1EditableForm>
         </>
       )}
 

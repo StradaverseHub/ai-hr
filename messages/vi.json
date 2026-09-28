@@ -11574,7 +11574,7 @@
     "sectionA": "Phần A — Thông tin người sử dụng lao động",
     "sectionB": "Phần B — Thông tin người lao động",
     "sectionC": "Phần C — Thông tin khấu trừ",
-    "sectionCHelp": "Nhập số tiền bạn kê khai lần này. Mỗi mục hiển thị hạn mức năm và số đã được duyệt trong năm; kê khai vượt hạn mức sẽ bị từ chối.",
+    "sectionCHelp": "Nhập số tiền bạn kê khai lần này. Mỗi mục hiển thị hạn mức năm và số đã được duyệt trong năm; nếu bạn nhập nhiều hơn phần còn lại, ô đó sẽ được giảm về phần còn lại và lý do hiển thị ngay bên cạnh.",
     "sectionD": "Phần D — Hoàn thuế",
     "sectionE": "Phần E — Cam kết của người lao động",
     "sectionF": "Phần F — Chấp thuận của người sử dụng lao động",
@@ -11587,6 +11587,13 @@
     "colAccumulated": "Lũy kế",
     "colRemaining": "Còn lại",
     "noLimit": "—",
+    "limit": {
+      "lineLimit": "{label}: số tiền đã nhập ({claim}) vượt hạn mức in trên dòng này của tờ khai ({limit}). Vui lòng giảm xuống.",
+      "itemLimit": "{label}: tổng số đã nhập cho mục này ({claim}) vượt hạn mức năm ({limit}). Vui lòng giảm xuống.",
+      "annualRemaining": "{label}: kê khai này làm năm tính thuế vượt hạn mức năm {limit} thêm {over}. Năm nay đã được duyệt {already}, nên hiện chỉ có thể kê khai tối đa {remaining}.",
+      "clampedLine": "{label}: hạn mức năm {limit}, đã được duyệt trong năm tính thuế này {already}, còn lại {remaining}. Số tiền nhập cao hơn mức đó nên đã được giảm về {remaining}.",
+      "clampedItem": "{label}: hạn mức năm {limit}, đã được duyệt trong năm tính thuế này {already}. Các dòng khác đã nhập cho mục này chỉ để lại {remaining} cho ô này, nên số tiền đã được giảm về {remaining}."
+    },
     "countedHeading": "Đã tính cho năm {year}",
     "countedNote": "Mọi tờ khai KHÁC đã được duyệt cho năm tính thuế này — mục trên biểu mẫu này được loại trừ, để một điều chỉnh không bao giờ bị từ chối bởi chính con số mà nó thay thế. Đây là tổng của cả năm, không phải số dùng cho bất kỳ tháng đơn lẻ nào: bảng lương chỉ lấy phần có hiệu lực tính đến tháng đang chạy.",
     "countedNone": "Chưa có tờ khai nào khác được duyệt cho năm tính thuế này.",

@@ -11574,7 +11574,7 @@
     "sectionA": "Bahagian A — Maklumat majikan",
     "sectionB": "Bahagian B — Maklumat pekerja",
     "sectionC": "Bahagian C — Maklumat potongan",
-    "sectionCHelp": "Masukkan tuntutan anda sekarang. Had tahunan dan jumlah yang telah diluluskan tahun ini ditunjukkan bagi setiap perkara; tuntutan yang melebihi had akan ditolak.",
+    "sectionCHelp": "Masukkan tuntutan anda sekarang. Had tahunan dan jumlah yang telah diluluskan tahun ini ditunjukkan bagi setiap perkara; jika anda memasukkan lebih daripada baki, ruang itu akan dikurangkan kepada baki dan sebabnya ditunjukkan di sebelahnya.",
     "sectionD": "Bahagian D — Rebat",
     "sectionE": "Bahagian E — Perakuan pekerja",
     "sectionF": "Bahagian F — Persetujuan majikan",
@@ -11587,6 +11587,13 @@
     "colAccumulated": "Terkumpul",
     "colRemaining": "Baki",
     "noLimit": "—",
+    "limit": {
+      "lineLimit": "{label}: jumlah yang dimasukkan ({claim}) melebihi had yang dicetak pada baris ini dalam borang ({limit}). Sila kurangkan.",
+      "itemLimit": "{label}: jumlah keseluruhan yang dimasukkan bagi perkara ini ({claim}) melebihi had tahunannya ({limit}). Sila kurangkan.",
+      "annualRemaining": "{label}: tuntutan ini melebihi had tahunan {limit} sebanyak {over} bagi tahun taksiran ini. {already} telah diluluskan bagi tahun ini, jadi tuntutan maksimum sekarang ialah {remaining}.",
+      "clampedLine": "{label}: had tahunan {limit}, {already} telah diluluskan tahun taksiran ini, {remaining} masih ada. Jumlah yang dimasukkan melebihi baki itu, jadi ia telah dikurangkan kepada {remaining}.",
+      "clampedItem": "{label}: had tahunan {limit}, {already} telah diluluskan tahun taksiran ini. Baris lain yang telah dimasukkan bagi perkara ini hanya meninggalkan {remaining} untuk ruang ini, jadi jumlahnya telah dikurangkan kepada {remaining}."
+    },
     "countedHeading": "Telah dikira untuk {year}",
     "countedNote": "Setiap perakuan LAIN yang diluluskan bagi tahun taksiran ini — yang ada pada borang ini dikecualikan, supaya pembetulan tidak pernah ditolak oleh angka yang digantikannya. Ini jumlah setahun, bukan amaun untuk mana-mana bulan tunggal: penggajian hanya mengambil apa yang berkuat kuasa menjelang bulan yang dijalankan.",
     "countedNone": "Tiada perakuan lain yang diluluskan bagi tahun taksiran ini lagi.",

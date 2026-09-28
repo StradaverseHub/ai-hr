@@ -11574,7 +11574,7 @@
     "sectionA": "A 部分 — 雇主资料",
     "sectionB": "B 部分 — 雇员资料",
     "sectionC": "C 部分 — 扣除资料",
-    "sectionCHelp": "填写您此次申报的金额。每个项目均显示年度上限及本年度已获批准的金额；超出上限的申报将被拒绝。",
+    "sectionCHelp": "填写您此次申报的金额。每个项目均显示年度上限及本年度已获批准的金额；若填写超过剩余可用额度，该栏将被调整为剩余额度，并在旁边说明原因。",
     "sectionD": "D 部分 — 回扣",
     "sectionE": "E 部分 — 雇员声明",
     "sectionF": "F 部分 — 雇主同意",
@@ -11587,6 +11587,13 @@
     "colAccumulated": "累计",
     "colRemaining": "剩余",
     "noLimit": "—",
+    "limit": {
+      "lineLimit": "{label}：输入的金额（{claim}）超过表格在此行印明的上限（{limit}）。请调低。",
+      "itemLimit": "{label}：此项目输入的总额（{claim}）超过其年度上限（{limit}）。请调低。",
+      "annualRemaining": "{label}：此项申报使本评估年度超出年度上限 {limit}，超额 {over}。本年度已获批准 {already}，因此现在最多只能申报 {remaining}。",
+      "clampedLine": "{label}：年度上限 {limit}，本评估年度已获批准 {already}，尚可申报 {remaining}。输入的金额高于该余额，已调整为 {remaining}。",
+      "clampedItem": "{label}：年度上限 {limit}，本评估年度已获批准 {already}。此项目其他行已输入的金额使本栏仅剩 {remaining}，金额已调整为 {remaining}。"
+    },
     "countedHeading": "{year} 年度已计入的金额",
     "countedNote": "本课税年度所有其他已批准的申报——本表单上的这一项不计入，因此更正绝不会被它所取代的数字拒绝。这是全年总额，而非任何单月使用的金额：薪资只采用其运行月份之前已生效的部分。",
     "countedNone": "本课税年度尚无其他已批准的申报。",

@@ -25,9 +25,7 @@ import {
   adminCancelTp1,
   adminRejectTp1,
   adminDiscardTp1Draft,
-  adminSaveTp1Draft,
-  adminSubmitAndApproveTp1,
-  adminSubmitTp1,
+  adminTp1FormAction,
 } from '../../../deductions-actions';
 
 /**
@@ -52,9 +50,14 @@ import {
  * a 404 rather than a cross-company read of a tax declaration. A year outside 2000–2100 or a month
  * outside 1–12 is a 404 rather than a query.
  *
- * EVERY PROP CROSSING INTO THE FORM IS PLAIN DATA except the five server actions, which are the form's
- * own submit targets and cross into a SERVER component. r123's 500 was a function prop crossing into a
- * CLIENT island while tsc, the suite and `next build` all stayed green — there is no client island here.
+ * EVERY PROP CROSSING INTO THE FORM IS PLAIN DATA except the server actions, which are the form's own
+ * submit targets. r123's 500 was a function prop crossing into a CLIENT island while tsc, the suite and
+ * `next build` all stayed green.
+ * ⚠️ AND SINCE r352 THERE ARE CLIENT ISLANDS BELOW THIS PAGE — `components/tp1-form-client.tsx`, reached
+ * through the still-SERVER `<Tp1DeclarationForm>`. The rule therefore matters more, not less: what
+ * crosses into them is numbers, strings, nulls and arrays of those, plus the one server action the form
+ * posts to. A server action is a serialisable reference and is the supported way across; an ordinary
+ * function or a closure over `t` is not, and `test/server-client-boundary.test.ts` is the guard.
  *
  * ONE NAMESPACE ON PURPOSE (`payroll.transactions`), so check C of test/i18n-coverage.test.ts validates
  * every caption on this page key by key. The form's own labels come from `taxRelief`, resolved inside the
@@ -160,7 +163,7 @@ export default async function Tp1DeclarationMonthPage({
 
       {/* The SHARED declaration form — identical to the employee's own screen, writing on-behalf, plus
           Section F, which only an admin session ever gets. */}
-      {/* 27605faa — `submitApproveAction` and `discardDraftAction` are ADMIN-ONLY and passed ONLY here.
+      {/* 27605faa — `canSubmitApprove` and `discardDraftAction` are ADMIN-ONLY and passed ONLY here.
           /me/tax-relief renders this same component and omits both, so an employee never sees either
           button; and if one were posted by hand, `requireAdmin` in the action and `requireAdminTarget` in
           the service refuse it, with `refuseSelfApproval` behind those. Three layers, same as Section F. */}
@@ -187,9 +190,8 @@ export default async function Tp1DeclarationMonthPage({
               }
             : undefined
         }
-        saveDraftAction={adminSaveTp1Draft}
-        submitAction={adminSubmitTp1}
-        submitApproveAction={adminSubmitAndApproveTp1}
+        formAction={adminTp1FormAction}
+        canSubmitApprove
         discardDraftAction={adminDiscardTp1Draft}
         hiddenFields={hidden}
       />

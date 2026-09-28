@@ -48,6 +48,16 @@ vi.mock('next-intl/server', () => ({
 }));
 
 import { Tp1DeclarationForm } from '../components/tp1-declaration-form';
+// r352 (item 0df7dd44) — the editable half of the form is now three CLIENT islands, so the guards below
+// look through them by TYPE rather than for a bare `<input>`. Their MEANING is unchanged: every ringgit
+// box still keeps its own measure, and the editable fields still belong to the one form the buttons
+// submit. What changed is where the element lives, not what is asserted about it.
+import {
+  Tp1DeclarationTick,
+  Tp1EditableForm,
+  Tp1ItemBoxes,
+  Tp1RemarksField,
+} from '../components/tp1-form-client';
 import { pageWideCls } from '../components/ui';
 import type { Tp1Counted, Tp1Row } from '../core/tax-relief';
 
@@ -94,7 +104,14 @@ const reliefGridOf = (tree: unknown): any | undefined =>
     (e) =>
       typeof e.props?.className === 'string' &&
       /\bgrid-cols-/.test(e.props.className) &&
-      walk(e.props?.children).some((d) => /^tp1_items_c\d/.test(String(d.props?.name ?? ''))),
+      // The EDITABLE grid holds `<Tp1ItemBoxes group="items" code="c…">` islands (r352); the READ-ONLY one
+      // still renders its figures inline and has no island, so both spellings are accepted here and the
+      // question asked is the same one: is this the grid the Section C items are laid out on?
+      walk(e.props?.children).some(
+        (d) =>
+          /^tp1_items_c\d/.test(String(d.props?.name ?? '')) ||
+          (d.type === Tp1ItemBoxes && d.props?.group === 'items' && /^c\d/.test(String(d.props?.code ?? ''))),
+      ),
   );
 
 /** All string-literal className values in a source file — the module-wide guard's own extractor. */
@@ -160,8 +177,8 @@ const renderAdminForm = (latest: Tp1Row | null, readOnly = false) =>
           hiddenFields: { employmentId: 'e1', tp1ReliefId: latest.id, assessmentYear: '2026' },
         }
       : undefined,
-    saveDraftAction: noop,
-    submitAction: noop,
+    formAction: noop,
+    canSubmitApprove: true,
     hiddenFields: { employmentId: 'e1' },
   } as any);
 
@@ -175,8 +192,7 @@ const renderEmployeeForm = (latest: Tp1Row | null, readOnly = false) =>
     readOnly,
     employer: { name: 'Acme Sdn Bhd', tin: 'C1234567890' },
     employee: { name: 'Aisha', idNumber: '900101-01-1234', tin: 'IG9999' },
-    saveDraftAction: noop,
-    submitAction: noop,
+    formAction: noop,
   } as any);
 
 // ─────────────────── A. the page is no longer a column down the middle ───────────────────
@@ -300,13 +316,31 @@ describe('7ad37961 · C — the amount boxes keep their own measure', () => {
     // This is the half of the request that a naive "make it full width" breaks: `w-full` on a number
     // field inside a 1600px container draws a box for 4 digits across half a monitor. The cap is on the
     // FIELD, so it survives the container getting wider.
+    //
+    // r352 — the Section C/D boxes are rendered INSIDE `Tp1ItemBoxes` (a client island) so that the
+    // over-limit clamp can be shown before submit, which means the cap is applied one file further in.
+    // The assertion is therefore split rather than dropped: the TREE still has to carry every amount
+    // box the reader keys (by name, through the island), and the island's own source still has to cap
+    // the `<input>` it draws. Asserting only the first would let the cap be deleted; asserting only the
+    // second would let the boxes disappear.
+    const island = read('components/tp1-form-client.tsx');
+    const amountInput = island.slice(island.indexOf('const amountInput ='), island.indexOf('const single ='));
+    expect(amountInput, 'the island no longer renders the amount box').toContain('type="number"');
+    expect(amountInput, 'the amount box in the island lost its width cap').toContain('max-w-[14rem]');
+
     for (const [surface, tree] of [
       ['admin', await renderAdminForm(null)],
       ['employee', await renderEmployeeForm(null)],
     ] as const) {
-      const amounts = fields(tree).filter((f) => f.name?.startsWith('tp1_'));
-      expect(amounts.length, `${surface}: Section C/D render their amount boxes`).toBeGreaterThan(10);
-      for (const f of amounts) {
+      const boxes = walk(tree)
+        .filter((e) => e.type === Tp1ItemBoxes)
+        .flatMap((e) => (e.props?.boxes ?? []) as { name: string }[]);
+      expect(boxes.length, `${surface}: Section C/D render their amount boxes`).toBeGreaterThan(10);
+      for (const b of boxes) {
+        expect(b.name, `${surface}: an amount box is not a tp1_ field`).toMatch(/^tp1_(items|rebates)_/);
+      }
+      // Nothing else on the surface may quietly go back to an uncapped ringgit box.
+      for (const f of fields(tree).filter((f) => f.name?.startsWith('tp1_'))) {
         expect(f.cls, `${surface}: ${f.name} lost its width cap`).toContain('max-w-[14rem]');
       }
     }
@@ -343,17 +377,34 @@ describe('7ad37961 · D — a layout round changed the layout and nothing else',
     // Section E's card and the remarks card are now siblings inside a grid rather than of the <form>
     // itself. They are still INSIDE it — a card lifted out of the form element would submit a
     // declaration with no tick and no remarks, silently, with every test of the action still green.
+    //
+    // r352 — the <form> element itself is drawn by `Tp1EditableForm` (the island that owns the action, so
+    // that a refusal returns a message instead of navigating away with forty keyed boxes), and the tick
+    // and the remarks box are islands too, because React resets an UNCONTROLLED field once a form action
+    // resolves and a refusal would otherwise blank them. So the shapes looked for changed; the question
+    // did not: is every field the reader fills in inside the one element that submits them?
     const tree = await renderAdminForm(null);
-    const form = walk(tree).find((e) => e.type === 'form' && e.props?.id === 'tp1-form');
+    const form = walk(tree).find((e) => e.type === Tp1EditableForm && e.props?.formId === 'tp1-form');
     expect(form, 'the editable form is rendered').toBeTruthy();
-    const inside = new Set(
-      walk(form.props.children)
-        .filter((e) => e.type === 'input' || e.type === 'textarea')
-        .map((e) => e.props?.name),
+    const inside = walk(form.props.children);
+    const plain = new Set(
+      inside.filter((e) => e.type === 'input' || e.type === 'textarea').map((e) => e.props?.name),
     );
-    for (const name of ['declarationAccepted', 'remarks', 'assessmentYear', 'tp1Form']) {
-      expect(inside.has(name), `${name} escaped the form element it is submitted with`).toBe(true);
+    for (const name of ['assessmentYear', 'tp1Form']) {
+      expect(plain.has(name), `${name} escaped the form element it is submitted with`).toBe(true);
     }
+    expect(
+      inside.some((e) => e.type === Tp1DeclarationTick),
+      'the Section E tick escaped the form element it is submitted with',
+    ).toBe(true);
+    expect(
+      inside.some((e) => e.type === Tp1RemarksField),
+      'the remarks box escaped the form element it is submitted with',
+    ).toBe(true);
+    expect(
+      inside.filter((e) => e.type === Tp1ItemBoxes).length,
+      'the Section C/D amount boxes escaped the form element they are submitted with',
+    ).toBeGreaterThan(10);
   });
 
   it('the read-only view renders the same items through the same block', async () => {
@@ -428,7 +479,7 @@ describe('7ad37961 · E — the narrow container keeps the list it had, and Save
     // the page. And the stick is container-gated: a bare `sticky` parks ~60px, about 9% of a phone
     // viewport, permanently on top of whatever field is being keyed.
     const tree = await renderAdminForm(null);
-    const form = walk(tree).find((e) => e.type === 'form' && e.props?.id === 'tp1-form');
+    const form = walk(tree).find((e) => e.type === Tp1EditableForm && e.props?.formId === 'tp1-form');
     expect(form, 'the editable form is rendered').toBeTruthy();
 
     const row = walk(form.props.children).find(
@@ -441,8 +492,18 @@ describe('7ad37961 · E — the narrow container keeps the list it had, and Save
       /@\w+:sticky\b/,
     );
 
-    const actions = walk(row.props.children).filter((e) => e.props?.type === 'submit' && e.props?.formAction);
-    expect(actions.length, 'Save and Submit both live in the action row').toBe(2);
+    // r352 — a button no longer carries its own `formAction`: one `useActionState` form has ONE action, so
+    // the pressed button names the operation with `name="intent"` instead (the claims pattern, e7eb5d83).
+    // Counted by intent rather than by formAction, and the values are pinned, because a button that lost
+    // its intent would silently fall through to plain Submit and save nothing as a draft.
+    const actions = walk(row.props.children).filter(
+      (e) => e.props?.type === 'submit' && e.props?.name === 'intent',
+    );
+    expect(actions.map((a) => a.props.value), 'the action row lost a button or an intent').toEqual([
+      'draft',
+      'submit',
+      'submitApprove',
+    ]);
     // The move must not have changed WHICH form they submit — they are still explicitly owned.
     for (const a of actions) expect(a.props.form, 'an action button lost its form owner').toBe('tp1-form');
   });

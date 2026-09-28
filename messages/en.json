@@ -11574,7 +11574,7 @@
     "sectionA": "Section A — Employer information",
     "sectionB": "Section B — Employee information",
     "sectionC": "Section C — Deduction information",
-    "sectionCHelp": "Enter what you are claiming now. The annual limit and what has already been approved this year are shown against each item; a claim that would take you past the limit is refused.",
+    "sectionCHelp": "Enter what you are claiming now. The annual limit and what has already been approved this year are shown against each item; if you key more than is left, the box is reduced to what remains and the reason is shown beside it.",
     "sectionD": "Section D — Rebate",
     "sectionE": "Section E — Employee declaration",
     "sectionF": "Section F — Employer consent",
@@ -11587,6 +11587,13 @@
     "colAccumulated": "Accumulated",
     "colRemaining": "Remaining",
     "noLimit": "—",
+    "limit": {
+      "lineLimit": "{label}: the amount keyed ({claim}) is more than the limit this line is printed with on the form ({limit}). Please reduce it.",
+      "itemLimit": "{label}: the total keyed for this item ({claim}) is more than its annual limit ({limit}). Please reduce it.",
+      "annualRemaining": "{label}: this claim takes the assessment year {over} past the annual limit of {limit}. {already} has already been approved for this year, so at most {remaining} can be claimed now.",
+      "clampedLine": "{label}: annual limit {limit}, {already} already approved this assessment year, {remaining} still available. More than that was keyed, so the amount has been reduced to {remaining}.",
+      "clampedItem": "{label}: annual limit {limit}, {already} already approved this assessment year. The other lines keyed on this item leave {remaining} for this box, so the amount has been reduced to {remaining}."
+    },
     "countedHeading": "Already counted for {year}",
     "countedNote": "Every OTHER approved declaration for this assessment year — the one on this form is left out, so a correction is never refused by the figure it replaces. This is the year's total, not the amount used for any single month: payroll takes only what is effective by the month it is running.",
     "countedNone": "Nothing else has been approved for this assessment year yet.",

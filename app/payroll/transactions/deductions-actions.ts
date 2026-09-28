@@ -12,8 +12,11 @@ import {
   rejectTp1ForPerson,
   saveTp1DraftForPerson,
   submitTp1ForPerson,
+  Tp1LimitError,
 } from '@/core/tax-relief';
 import { readTp1FormInput } from '@/lib/tp1-form-input';
+import type { Tp1FormState } from '@/lib/tp1-form-state';
+import { tp1RefusalMessage } from '@/lib/tp1-refusal';
 
 /**
  * TP1 Relief transaction screen (approved plan, ADR-0050 §0.4). The dedicated screen edits ONE deduction
@@ -62,7 +65,7 @@ export async function saveTp1Action(formData: FormData) {
 //
 // These write the employee's SINGLE tp1_relief master row — the SAME record the employee edits on
 // /me/tax-relief — so there is exactly one declaration per employee per assessment year (no duplicate
-// store). They mirror mySaveTp1Draft / mySubmitTp1 (app/me/actions.ts) field-for-field: the per-category
+// store). They mirror `myTp1FormAction` (app/me/actions.ts) field-for-field: the per-category
 // `cat_<key>` inputs + `remarks` + `assessmentYear`, with the server recomputing the authoritative total
 // (the client's total is never trusted). The target personId is resolved SERVER-SIDE from the selected
 // employment via employmentSubject (RLS-scoped) — never a raw personId form field — and the write is
@@ -84,34 +87,116 @@ async function resolveTarget(
 const backToTp1 = (employmentId: string, year: number, qs: string): never =>
   redirect(`/payroll/transactions/tp1?employmentId=${encodeURIComponent(employmentId)}&year=${year}&${qs}`) as never;
 
-export async function adminSaveTp1Draft(formData: FormData) {
+/**
+ * ══ THE ONE ACTION BEHIND THE EDITABLE TP1 FORM (r352, item 0df7dd44) ═══════════════════════════════
+ *
+ * ⚠️ IT REPLACES THREE ACTIONS THAT EACH `redirect()`ED ON REFUSAL — AND THAT REDIRECT WAS THE BUG.
+ * `adminSaveTp1Draft`, `adminSubmitTp1` and `adminSubmitAndApproveTp1` all sent a refusal to
+ * `/payroll/transactions/tp1` — the TP1 Relief LIST — with `?error=`. The list drew the banner; the form
+ * the reader had been filling in was unmounted with its forty-odd amount boxes in it; and the month
+ * page's own ErrorBanner, which has existed all along, was never the target of anything. The reporter
+ * described it as being sent back with no explanation. The message was never missing: the SCREEN was.
+ *
+ * So this is `useActionState`-shaped: on REFUSAL it RETURNS `{ error }` and nothing navigates, which is
+ * what keeps every keyed figure where the reader put it (the rationale is recorded verbatim in
+ * components/claim-form.tsx). On SUCCESS it still redirects to the list with a toast — unchanged, because
+ * that was never what was reported.
+ *
+ * ONE ACTION, THREE BUTTONS, chosen by the submitter's `name="intent"`. A `useActionState` form has one
+ * action and therefore one error state; three hooks would leave three stale errors and no answer to
+ * "which one is current". Claims made the same call for the same reason (e7eb5d83).
+ *
+ * THE GATE IS UNCHANGED AND STILL THREE DEEP: `requireAdmin()` here, `requireAdminTarget` in every
+ * service it calls, and the `tp1_relief` RLS policy under those. `intent` chooses between admin
+ * operations; it can never reach a non-admin one.
+ */
+export async function adminTp1FormAction(_prev: Tp1FormState, formData: FormData): Promise<Tp1FormState> {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
-  // ONE reader, shared with mySaveTp1Draft / mySubmitTp1 (lib/tp1-form-input.ts). See its header for why
+  const intent = String(formData.get('intent') ?? 'submit');
+  // ONE reader, shared with `myTp1FormAction` (lib/tp1-form-input.ts). See its header for why
   // two copies of seventeen items' field names is not a plan.
   const input = readTp1FormInput(formData);
+  // OUTSIDE the try: this one redirects when the employment is not visible to this admin, and catching a
+  // NEXT_REDIRECT would turn a 404 into an error banner on a page that should not have rendered.
   const personId = await resolveTarget(s, employmentId, input.assessmentYear);
-  try {
-    await saveTp1DraftForPerson(s, { personId, ...input });
-  } catch (e) {
-    backToTp1(employmentId, input.assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
-  }
-  revalidatePath('/payroll/transactions/tp1');
-  backToTp1(employmentId, input.assessmentYear, 'toast=Draft+saved');
-}
 
-export async function adminSubmitTp1(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
-  const input = readTp1FormInput(formData);
-  const personId = await resolveTarget(s, employmentId, input.assessmentYear);
+  if (intent === 'draft') {
+    try {
+      await saveTp1DraftForPerson(s, { personId, ...input });
+    } catch (e) {
+      return { error: await tp1RefusalMessage(e) };
+    }
+    revalidatePath('/payroll/transactions/tp1');
+    // `backToTp1` returns `never` (it redirects); returned so this function's exhaustiveness is visible.
+    return backToTp1(employmentId, input.assessmentYear, 'toast=Draft+saved');
+  }
+
+  if (intent === 'submitApprove') return adminSubmitAndApproveTp1(s, employmentId, personId, input, formData);
+
   try {
     await submitTp1ForPerson(s, { personId, ...input });
   } catch (e) {
-    backToTp1(employmentId, input.assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
+    return { error: await tp1RefusalMessage(e) };
   }
   revalidatePath('/payroll/transactions/tp1');
-  backToTp1(employmentId, input.assessmentYear, 'toast=TP1+submitted');
+  return backToTp1(employmentId, input.assessmentYear, 'toast=TP1+submitted');
+}
+
+/**
+ * 27605faa — SUBMIT AND APPROVE IN ONE PRESS.
+ *
+ * The reporter asked not to reopen a second screen to approve what they had just keyed. What they should
+ * not have to do is make a second pass; what nobody skips is the record.
+ *
+ * ⚠️ IT COMPOSES THE SAME TWO SERVICES, IN ORDER, AND WRITES NO STATUS ITSELF. `submitTp1ForPerson` then
+ * `approveTp1ForPerson` — never a direct update — for the reason dae7a10f (r322) records about the
+ * attendance correction: `decide()` is what stamps the event, the approver and the approved month, and a
+ * second write path is how a money-affecting figure changes with no trail.
+ *
+ * ⚠️ AND WHEN THE APPROVAL IS REFUSED, THE SUBMISSION SURVIVES. An administrator approving their own
+ * declaration is refused by `approveTp1ForPerson` (see `refuseSelfApproval`), and at that point the row
+ * is already SUBMITTED. That is the correct outcome rather than an error to roll back: the work is not
+ * lost, it simply needs a second person — exactly what the two-step screen would have produced. The
+ * refusal is surfaced; it is never swallowed, because an administrator quietly approving their own tax
+ * relief is the one thing this press must not be able to do.
+ *
+ * r352 — the admin gate now sits on `adminTp1FormAction`, which is the only caller, and the refusal comes
+ * back to the form instead of redirecting to the list. Neither the composition nor its order changed.
+ */
+async function adminSubmitAndApproveTp1(
+  s: Awaited<ReturnType<typeof requireAdmin>>,
+  employmentId: string,
+  personId: string,
+  input: ReturnType<typeof readTp1FormInput>,
+  formData: FormData,
+): Promise<Tp1FormState> {
+  let submitted: { id: string };
+  try {
+    submitted = await submitTp1ForPerson(s, { personId, ...input });
+  } catch (e) {
+    return { error: await tp1RefusalMessage(e) };
+  }
+
+  try {
+    await approveTp1ForPerson(s, {
+      personId,
+      id: submitted.id,
+      // The consent fields ride the same form; absent ones fall back inside the service to the
+      // declaration's own deduction month and assessment year rather than being invented here.
+      approvedMonth: formData.get('approvedMonth') as string | null,
+      approvedYear: formData.get('approvedYear') as string | null,
+      approverPosition: formData.get('approverPosition') as string | null,
+    });
+  } catch (e) {
+    // SUBMITTED, NOT APPROVED — and the message says which, so the operator knows the work is safe. The
+    // path is revalidated because the submission DID happen: the form re-renders around the message.
+    revalidatePath('/payroll/transactions/tp1');
+    return { error: await tp1RefusalMessage(e) };
+  }
+
+  revalidatePath('/payroll/transactions/tp1');
+  return backToTp1(employmentId, input.assessmentYear, 'toast=TP1+submitted+and+approved');
 }
 
 // ── Section F — employer consent (7ad37961) ────────────────────────────────────────────────────────
@@ -160,57 +245,6 @@ export async function adminRejectTp1(formData: FormData) {
   }
   revalidatePath('/payroll/transactions/tp1');
   backToTp1(employmentId, assessmentYear, 'toast=TP1+rejected');
-}
-
-/**
- * 27605faa — SUBMIT AND APPROVE IN ONE PRESS.
- *
- * The reporter asked not to reopen a second screen to approve what they had just keyed. What they should
- * not have to do is make a second pass; what nobody skips is the record.
- *
- * ⚠️ IT COMPOSES THE SAME TWO SERVICES, IN ORDER, AND WRITES NO STATUS ITSELF. `submitTp1ForPerson` then
- * `approveTp1ForPerson` — never a direct update — for the reason dae7a10f (r322) records about the
- * attendance correction: `decide()` is what stamps the event, the approver and the approved month, and a
- * second write path is how a money-affecting figure changes with no trail.
- *
- * ⚠️ AND WHEN THE APPROVAL IS REFUSED, THE SUBMISSION SURVIVES. An administrator approving their own
- * declaration is refused by `approveTp1ForPerson` (see `refuseSelfApproval`), and at that point the row
- * is already SUBMITTED. That is the correct outcome rather than an error to roll back: the work is not
- * lost, it simply needs a second person — exactly what the two-step screen would have produced. The
- * refusal is surfaced; it is never swallowed, because an administrator quietly approving their own tax
- * relief is the one thing this press must not be able to do.
- */
-export async function adminSubmitAndApproveTp1(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
-  const input = readTp1FormInput(formData);
-  const personId = await resolveTarget(s, employmentId, input.assessmentYear);
-
-  let submitted: { id: string };
-  try {
-    submitted = await submitTp1ForPerson(s, { personId, ...input });
-  } catch (e) {
-    backToTp1(employmentId, input.assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
-  }
-
-  try {
-    await approveTp1ForPerson(s, {
-      personId,
-      id: submitted!.id,
-      // The consent fields ride the same form; absent ones fall back inside the service to the
-      // declaration's own deduction month and assessment year rather than being invented here.
-      approvedMonth: formData.get('approvedMonth') as string | null,
-      approvedYear: formData.get('approvedYear') as string | null,
-      approverPosition: formData.get('approverPosition') as string | null,
-    });
-  } catch (e) {
-    // SUBMITTED, NOT APPROVED — and the message says which, so the operator knows the work is safe.
-    revalidatePath('/payroll/transactions/tp1');
-    backToTp1(employmentId, input.assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
-  }
-
-  revalidatePath('/payroll/transactions/tp1');
-  backToTp1(employmentId, input.assessmentYear, 'toast=TP1+submitted+and+approved');
 }
 
 /**
