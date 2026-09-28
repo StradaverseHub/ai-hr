@@ -434,3 +434,81 @@ describe('04b88724 · the ruleset version moved with the figures', () => {
     expect(doc).toContain('RM8,000');
   });
 });
+
+// ─── (g) r351 — THE SCREEN'S OWN PROSE CARRIES THE SAME FIGURES, IN ALL SIX LOCALES ─────────────────
+
+/**
+ * ⚠️ WHY THIS SECTION HAD TO EXIST, AND WHAT IT CAUGHT.
+ *
+ * r339 corrected `childByCategory` from 6,000 / 14,000 to 8,000 / 16,000 and the whole suite went green.
+ * What nobody corrected was the SENTENCE the Family tab prints beside the category dropdown — the info
+ * badge an administrator reads at the exact moment they classify a child. `people.detail.family
+ * .childReliefGuidance` went on saying "disabled child — RM6,000; disabled child in full-time higher
+ * education — RM6,000 plus RM8,000" in ALL SIX locales for two rounds, because NO TEST PINNED ITS FIGURES.
+ * A figure that only prose states is a figure nothing is checking — the same reasoning that created this
+ * file, applied to the half of the product a human actually reads.
+ *
+ * HOW IT IS PINNED, AND WHY THE SET RATHER THAN THE SENTENCE. Asserting the wording would break on every
+ * translation improvement and teach the next reader to edit the test. What must hold is narrower and
+ * absolute: THE SET OF RINGGIT FIGURES THE SENTENCE NAMES IS EXACTLY THE SET `childByCategory` PRICES. A
+ * figure appearing there that the ruleset does not price is a statutory claim the kernel would contradict;
+ * a priced figure missing from there is guidance that understates somebody's relief.
+ *
+ * It works across all six because a ringgit amount is written with Latin digits and comma grouping in
+ * every one of these catalogues — that is checked below rather than assumed, so a future locale that
+ * localises its digits fails loudly here instead of silently dropping out of the guard.
+ */
+const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
+const guidanceOf = (loc: string): string => {
+  const m = JSON.parse(readFileSync(`${root}messages/${loc}.json`, 'utf8')) as Record<string, any>;
+  const s = m?.people?.detail?.family?.childReliefGuidance;
+  expect(typeof s, `${loc}: people.detail.family.childReliefGuidance must be a string`).toBe('string');
+  return s as string;
+};
+/** Every `RM<digits>` token in a sentence, as NUMBERS, so formatting is not what is being compared. */
+const ringgitIn = (s: string): number[] =>
+  [...s.matchAll(/RM\s?([\d,]+)/g)].map((m) => Number(m[1].replace(/,/g, '')));
+
+describe('04b88724 · (g) the Family tab guidance names the ruleset’s own figures', () => {
+  it.each(LOCALES)('%s: the set of amounts is exactly what childByCategory prices', (loc) => {
+    const priced = [...new Set(Object.values(BUILT_IN!))].sort((a, b) => a - b);
+    const named = [...new Set(ringgitIn(guidanceOf(loc)))].sort((a, b) => a - b);
+    expect(named, `${loc}: the guidance names an amount the ruleset does not price, or omits one it does`).toEqual(
+      priced,
+    );
+  });
+
+  it.each(LOCALES)('%s: every one of the five categories is accounted for', (loc) => {
+    // The set test above cannot tell a sentence that lists four categories from one that lists five, since
+    // two of them share RM2,000. Count the tokens as well: five categories, five amounts.
+    expect(ringgitIn(guidanceOf(loc)).length, `${loc}: five categories, five amounts`).toBe(
+      CHILD_RELIEF_CATEGORY_KEYS.length,
+    );
+  });
+
+  it.each(LOCALES)('%s: neither figure r339 corrected survives in the prose', (loc) => {
+    // NON-VACUITY, and the actual regression: these are the two amounts that were printed for two rounds
+    // after the ruleset stopped agreeing with them. RM6,000 is a real MY relief figure (disabled spouse), so
+    // this is asserted on THIS sentence only, never on the catalogue at large.
+    const named = ringgitIn(guidanceOf(loc));
+    for (const wrong of Object.values(WRONG_2026_7)) {
+      expect(named, `${loc}: the guidance still prints the pre-r339 figure RM${wrong}`).not.toContain(wrong);
+    }
+  });
+
+  it.each(LOCALES)('%s: the amounts are written in Latin digits, which is what makes this guard work', (loc) => {
+    // If a catalogue ever localises its numerals the regex above would find nothing and every assertion in
+    // this section would pass vacuously. Fail here instead, with the reason.
+    expect(ringgitIn(guidanceOf(loc)).length, `${loc}: no RM amount was parseable at all`).toBeGreaterThan(0);
+  });
+
+  it('and the guidance agrees with the grid caption the same screen prints for each category', () => {
+    // The badge is prose; `childByCategory` is what the kernel deducts. Stated once more as ringgit, from
+    // the spec table at the top of this file, so section (g) cannot drift from sections (a)-(c).
+    for (const key of CHILD_RELIEF_CATEGORY_KEYS) {
+      expect(BUILT_IN![key], `${key}`).toBe(SPEC[key as keyof typeof SPEC].rm);
+    }
+    expect(ringgitIn(guidanceOf('en')), 'the English sentence, category by category, in the canonical order')
+      .toEqual(CHILD_RELIEF_CATEGORY_KEYS.map((k) => SPEC[k as keyof typeof SPEC].rm));
+  });
+});

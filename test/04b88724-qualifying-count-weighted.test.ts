@@ -128,7 +128,19 @@ describe('04b88724 · (b) the screen cannot disagree with the payslip again', ()
 describe('04b88724 · (c) the notes under the table branch on what happened, not on the mode', () => {
   it('the breakdown reports whether it was priced from the grid', () => {
     const s = src('core/dependents.ts');
-    expect(s, 'the flag is returned').toContain('pricedFromGrid: pricesChildReliefFromGrid(');
+    // ⚠️ REWORDED IN r351, AND THE REASON IS WHAT THE FLAG IS NOW A FLAG ABOUT. It used to be asserted as
+    // the literal `pricedFromGrid: pricesChildReliefFromGrid(` in the returned object, because the predicate
+    // was called inline there over `statutory.childReliefTable`. r351 prices the auto modes from
+    // `pricingTable` — the grid DERIVED from the Family register in 'auto', the stored one in 'auto_table' —
+    // so the flag is computed ONCE, beside the figure, from the same table the figure was priced from. That
+    // is a stronger property than "the predicate appears in the return", and it is the one that matters: a
+    // flag taken from a different table than the money is a screen note that contradicts its own number,
+    // which is exactly the r347 defect this case was written for. So it is pinned instead.
+    expect(s, 'the flag is returned').toContain('pricedFromGrid,');
+    expect(
+      s,
+      'and it is decided by the SAME table the figure is priced from, not by a second read of the column',
+    ).toContain('pricesChildReliefFromGrid({ childReliefMode: mode, childReliefTable: pricingTable })');
     expect(s, 'and declared on the type').toMatch(/pricedFromGrid: boolean;/);
   });
 
@@ -173,7 +185,17 @@ describe('04b88724 · (d) the head count is not replaced by the weighted count',
   it('num_children remains the head count — Form E, CP8D and the EA read it as one', () => {
     const s = src('core/dependents.ts');
     expect(s).toContain('numChildren: state.derived');
-    expect(s).toContain('derived: eligibleChildReliefCount(rows)');
+    // ⚠️ r351 — THE ARGUMENT LIST GREW AND THE DECISION DID NOT. The sync now passes its own KL `asOf` into
+    // the count (it used to take `new Date()` through the parameter default, which is real UTC now and
+    // therefore YESTERDAY between 00:00 and 08:00 Kuala Lumpur — a day behind the two screens that already
+    // resolve `todayInKualaLumpur()`, on the one day the eligibility rule turns on). Pinning the literal
+    // `eligibleChildReliefCount(rows)` would have made that correction look like a regression. What this
+    // case is actually for is that the value written to `num_children` is the plain HEAD COUNT and never the
+    // weighted one, so that is what is asserted — with the weighted function named, so a swap cannot pass.
+    expect(s, 'the head-count function is what feeds the column').toContain('derived: eligibleChildReliefCount(');
+    expect(s, 'and the WEIGHTED figure never does — Form E / CP8D / EA would print 8 children for one').not.toContain(
+      'derived: eligibleChildReliefUnits(',
+    );
   });
 
   it('one physical disabled child is 1 physical and 4 qualifying — the reporter’s stated requirement', () => {

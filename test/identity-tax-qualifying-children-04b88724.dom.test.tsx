@@ -82,6 +82,13 @@ const PRICING: ChildReliefPricing = {
   qualifyingChildren: 0,
   reliefRM: 0,
   breakdown: [],
+  // r351 — what payroll deducts from the STORED columns. Equal to the figure above on an in-step record,
+  // which every fixture here is unless it says otherwise; the AGED_OUT one is where they part company.
+  storedQualifyingChildren: 0,
+  storedReliefRM: 0,
+  derivedGrid: null,
+  undatedChildren: [],
+  asOf: '2026-06-30',
   // r343 04b88724 — the s.48 WEIGHTED figure from the children on file. Zero here because this fixture's
   // Family register carries no relief categories; the gap note is asserted from its own fixture.
   ruleUnits: 0,
@@ -252,12 +259,22 @@ describe('auto_table — DERIVED from the relief table, and read-only', () => {
 
 describe('auto — DERIVED from the Family records, and it is the PAYSLIP\'s figure that is shown', () => {
   /**
-   * THE SHAPE THAT BROKE, as a fixture. A child had a birthday: `num_children` still holds 2 (the sync only
-   * fires on a dependent add / edit / archive, so nothing rewrote it), while the Family register now holds
-   * ONE eligible child. The payslip deducts 2 × RM2,000. The card used to print the ONE, in ringgit.
+   * THE SHAPE THAT BROKE, as a fixture. A child had a birthday: `num_children` still holds 2 (the sync fires
+   * on a dependent add / edit / archive and on nothing else, so nothing rewrote it), while the Family
+   * register now holds ONE eligible child. Payroll deducts 2 × RM2,000; the records support 1 × RM2,000.
+   *
+   * ⚠️ r351 — WHICH OF THOSE TWO THE CARD PRINTS IS REVERSED, AND THE RULE BEHIND IT IS NOT. r340 made the
+   * card print the stored figure because the card had been printing the eligible-child figure while saying
+   * nothing about the payslip. r351 prints the eligible-child figure again — it is the one the caption
+   * "Qualifying children (PCB)" claims to describe, and the total has to sum to the rows beneath it — and
+   * keeps r340's rule by requiring the stored figure to be NAMED in the same fieldset. `storedReliefRM` is
+   * what makes that possible; the assertions below pin BOTH numbers, so the card cannot go back to showing
+   * one and hiding the other in either direction.
    *
    * Everything in here is what core/dependents.ts `qualifyingChildReliefFor` returns for that record, with
-   * the money taken from the kernel's own expression rather than typed out.
+   * the money taken from the kernel's own expression rather than typed out. The surviving child carries a
+   * category, so the derived grid is complete and the figure is priced by category — which for `under_18`
+   * is one unit, the same RM2,000 the head-count branch would give it.
    */
   const AGED_OUT: ChildReliefPricing = {
     ...PRICING,
@@ -267,9 +284,14 @@ describe('auto — DERIVED from the Family records, and it is the PAYSLIP\'s fig
     eligibleChildren: 1,
     familyChildren: 2,
     uncategorisedChildren: 0,
-    pricedFromGrid: false,
-    qualifyingChildren: 2,
-    reliefRM: kernelFlatRM(2),
+    pricedFromGrid: true,
+    qualifyingChildren: 1,
+    reliefRM: kernelTableRM({ under_18: { full: 1, half: 0 } }),
+    storedQualifyingChildren: 2,
+    storedReliefRM: kernelFlatRM(2),
+    derivedGrid: { under_18: { full: 1, half: 0 } },
+    ruleUnits: 1,
+    ruleReliefRM: kernelTableRM({ under_18: { full: 1, half: 0 } }),
     breakdown: [
       {
         kind: 'child',
@@ -283,7 +305,9 @@ describe('auto — DERIVED from the Family records, and it is the PAYSLIP\'s fig
     ],
   };
 
-  /** An in-step 'auto' record: two eligible children, head count two, nothing stale. */
+  /** An in-step 'auto' record: two eligible children, head count two, nothing stale. One child carries no
+   *  category, so the register cannot be priced by category and the head-count branch decides — which is
+   *  what keeps `pricedFromGrid: false` a reachable state after r351 derives the grid from the register. */
   const FAMILY: ChildReliefPricing = {
     ...PRICING,
     mode: 'auto',
@@ -295,6 +319,9 @@ describe('auto — DERIVED from the Family records, and it is the PAYSLIP\'s fig
     pricedFromGrid: false,
     qualifyingChildren: 2,
     reliefRM: kernelFlatRM(2),
+    storedQualifyingChildren: 2,
+    storedReliefRM: kernelFlatRM(2),
+    derivedGrid: null,
     breakdown: [
       { kind: 'child', name: 'Bala', category: 'study_tertiary', sharePercent: 50, children: 1, units: 1, amountRM: RELIEFS.perChild },
       { kind: 'child', name: 'Ain', category: null, sharePercent: 100, children: 1, units: 1, amountRM: RELIEFS.perChild },
@@ -320,6 +347,10 @@ describe('auto — DERIVED from the Family records, and it is the PAYSLIP\'s fig
     pricedFromGrid: true,
     qualifyingChildren: 9,
     reliefRM: RELIEFS.childByCategory!.under_18 + RELIEFS.childByCategory!.disabled_study,
+    // In step: the grid on file IS the grid the register derives, so payroll and the card agree to the cent.
+    storedQualifyingChildren: 9,
+    storedReliefRM: RELIEFS.childByCategory!.under_18 + RELIEFS.childByCategory!.disabled_study,
+    derivedGrid: { under_18: { full: 1, half: 0 }, disabled_study: { full: 1, half: 0 } },
     ruleUnits: 9,
     ruleReliefRM: RELIEFS.childByCategory!.under_18 + RELIEFS.childByCategory!.disabled_study,
     breakdown: [
@@ -374,22 +405,44 @@ describe('auto — DERIVED from the Family records, and it is the PAYSLIP\'s fig
     expect(document.querySelector('[data-child-uncategorised]')).not.toBeNull();
   });
 
-  // ── THE r340 BLOCKING DEFECT, PINNED ───────────────────────────────────────────────────────────────
-  it("BLOCKING: the relief on screen is the KERNEL's — the STORED head count × perChild, not a count of eligible children", () => {
+  // ── THE r340 BLOCKING DEFECT, AND THE r351 REVERSAL OF WHICH FIGURE IS PRINTED ─────────────────────
+  //
+  // ⚠️ THIS CASE USED TO READ: "BLOCKING: the relief on screen is the KERNEL's — the STORED head count ×
+  // perChild, not a count of eligible children". That was r340's decision and r351 reverses it, because the
+  // stored column is written only by a family edit — nothing fires on the passage of time — so a figure
+  // captioned "Qualifying children (PCB)" was describing whatever an unrelated edit last left there, could
+  // contradict the Family tab about the same child, and printed a total its own rows did not sum to.
+  //
+  // WHAT r340 WAS PROTECTING IS NOT REVERSED AND IS ASSERTED HERE, HARDER THAN BEFORE: the card may not
+  // print a relief figure without naming what payroll actually deducts. It used to satisfy that by printing
+  // only the payslip's figure. It now satisfies it by printing BOTH and labelling each, so this case pins
+  // the pair — the register figure in the field, the stored figure in the amber line — and a card that
+  // showed either one alone would fail it whichever one it chose.
+  it('BLOCKING: the field shows what the REGISTER supports, and the fieldset names what payroll deducts', () => {
     renderCard({ mode: 'auto', numChildren: 2, pricing: AGED_OUT });
     const payslip = kernelFlatRM(AGED_OUT.physicalChildren); // what core/payroll.ts deducts: 2 × RM2,000
-    const wrong = kernelFlatRM(AGED_OUT.eligibleChildren); // what the card used to print: 1 × RM2,000
-    expect(payslip, 'the fixture must actually distinguish the two, or this test proves nothing').not.toBe(wrong);
+    const records = kernelTableRM({ under_18: { full: 1, half: 0 } }); // what the register supports: RM2,000
+    expect(payslip, 'the fixture must actually distinguish the two, or this test proves nothing').not.toBe(records);
+
+    // (a) THE FIGURE IN THE FIELD IS THE REGISTER'S, to the cent, from the pack's own call.
     expect(
       text('[data-child-relief-amount]'),
-      'the screen must state the relief the payslip deducts, to the cent',
-    ).toContain(rm(payslip));
-    expect(
-      text('[data-child-relief-amount]'),
-      'and must NOT state the figure a render-time count of eligible children would give',
-    ).not.toContain(rm(wrong));
-    expect(qualifyingText(), 'QC is that money at the ruleset rate').toBe(String(payslip / RELIEFS.perChild));
-    expect(text('[data-child-breakdown-total-rm]')).toBe(rm(payslip));
+      'the screen states the relief the Family records support',
+    ).toContain(rm(records));
+    expect(qualifyingText(), 'QC is that money at the ruleset rate').toBe(String(records / RELIEFS.perChild));
+    expect(text('[data-child-breakdown-total-rm]')).toBe(rm(records));
+
+    // (b) AND THE WORKING SUMS TO IT. This is the defect the reporter could see: one row worth 1 under a
+    // stated total of 2. Both come from one eligible-child list at one date now.
+    expect(breakdownRows()).toHaveLength(AGED_OUT.eligibleChildren);
+    expect(text('[data-child-breakdown-total-units]')).toBe(String(AGED_OUT.eligibleChildren));
+
+    // (c) r340's RULE, KEPT: the money payroll is still deducting is named in the same fieldset. Without
+    // this the reversal would be the r340 defect with the two figures swapped.
+    const stale = text('[data-child-stale-figure]');
+    expect(stale, 'a screen that prints one figure and hides the other is r340 in either direction').not.toBe('');
+    expect(stale, 'it names what payroll deducts until the record is saved').toContain(rm(payslip));
+    expect(stale, 'and what the records support, so the reader can see which is which').toContain(rm(records));
   });
 
   // ── THE r340 FIX-PASS REGRESSION, PINNED ─────────────────────────────────────────────────────────
@@ -400,7 +453,16 @@ describe('auto — DERIVED from the Family records, and it is the PAYSLIP\'s fig
   // and, four elements below, "Nothing is keyed yet, so no child relief is claimed". One fieldset, two
   // incompatible statements about the same money, on a screen whose whole purpose this round is to stop
   // two child numbers being confused. Production has three employees stored 'auto', so it is reachable.
-  /** Stored 'auto', head count 5, Family register EMPTY — relief is claimed, nothing can itemise it. */
+  /**
+   * Stored 'auto', head count 5, Family register EMPTY — relief is claimed, nothing can itemise it.
+   *
+   * ⚠️ r351 — THE FIGURE THE CARD SHOWS IS NOW NOTHING, AND THE CONTRADICTION ARRIVES FROM THE OTHER SIDE.
+   * Before r351 the card printed the stored 5 × RM2,000 and the danger was an empty box saying "no child
+   * relief is claimed" under it. Now the card prints what the register supports — RM0 — while `num_children`
+   * still has payroll deducting RM10,000, so the same false sentence is reachable by reading the OTHER
+   * figure. The card therefore tests the LARGER of the two, and this case is what would notice it going back
+   * to testing one.
+   */
   const EMPTY_REGISTER: ChildReliefPricing = {
     ...PRICING,
     mode: 'auto',
@@ -410,23 +472,31 @@ describe('auto — DERIVED from the Family records, and it is the PAYSLIP\'s fig
     familyChildren: 0,
     uncategorisedChildren: 0,
     pricedFromGrid: false,
-    qualifyingChildren: 5,
-    reliefRM: kernelFlatRM(5),
+    qualifyingChildren: 0,
+    reliefRM: 0,
+    storedQualifyingChildren: 5,
+    storedReliefRM: kernelFlatRM(5),
+    derivedGrid: null,
     breakdown: [],
   };
 
-  it('an empty register under a CLAIMED relief never says "no child relief is claimed"', () => {
+  it('an empty register whose STORED head count still claims relief never says "no child relief is claimed"', () => {
     renderCard({ mode: 'auto', numChildren: 5, pricing: EMPTY_REGISTER });
     const claimed = kernelFlatRM(EMPTY_REGISTER.physicalChildren);
     expect(claimed, 'the fixture must actually claim money, or this test proves nothing').toBeGreaterThan(0);
-    expect(text('[data-child-relief-amount]'), 'the payslip deducts it').toContain(rm(claimed));
+    expect(
+      EMPTY_REGISTER.reliefRM,
+      'and the two figures must differ, or the "larger of the two" rule is not being exercised',
+    ).not.toBe(claimed);
     expect(breakdownRows(), 'and there is genuinely nothing to itemise').toHaveLength(0);
-    // THE CONTRADICTION ITSELF: the box may not deny the money the line above it states.
+    // THE CONTRADICTION ITSELF: the box may not deny money that either figure is spending.
     expect(
       text('[data-child-breakdown-empty]'),
       'one fieldset cannot both claim the relief and deny it',
     ).not.toBe(D.childQualifyingBreakdownEmpty);
     expect(text('[data-child-breakdown-empty]'), 'it names the amount that IS claimed').toContain(rm(claimed));
+    // …and the amber line states which figure is which, so "RM0" on screen is never read as "nothing owed".
+    expect(text('[data-child-stale-figure]'), 'payroll is behind, and the card says so').toContain(rm(claimed));
   });
 
   it('…while an unkeyed grid, which really does claim nothing, still says so', () => {
@@ -436,17 +506,158 @@ describe('auto — DERIVED from the Family records, and it is the PAYSLIP\'s fig
     );
   });
 
-  it("…and SAYS the Family records no longer support it, instead of leaving the disagreement silent", () => {
+  it("…and SAYS what payroll is still deducting, instead of leaving the disagreement silent", () => {
+    // ⚠️ REWORDED IN r351: this used to assert the two HEAD COUNTS appeared in the sentence. Head counts
+    // cannot see the case that costs the most — a stale relief GRID moves RM2,000 to RM16,000 with the
+    // counts unmoved, and since r344 the payslip prices that grid. The sentence, and this case, are about
+    // the RINGGIT on both sides, which is what actually lands on a payslip.
     renderCard({ mode: 'auto', numChildren: 2, pricing: AGED_OUT });
     const stale = text('[data-child-stale-figure]');
-    expect(stale, 'a screen that prints the stale figure without a word is the worst of the options').not.toBe('');
-    expect(stale).toContain(String(AGED_OUT.physicalChildren));
-    expect(stale).toContain(String(AGED_OUT.eligibleChildren));
+    expect(stale, 'a screen that prints one figure without a word about the other is the worst option').not.toBe('');
+    expect(stale, 'what payroll deducts').toContain(rm(AGED_OUT.storedReliefRM));
+    expect(stale, 'and what the records support').toContain(rm(AGED_OUT.reliefRM));
+    expect(stale, 'no unsubstituted ICU placeholders').not.toMatch(/\{[a-zA-Z]/);
   });
 
   it('…and says nothing when the stored figure and the records agree, so the warning means something when it appears', () => {
     renderCard({ mode: 'auto', numChildren: 2, pricing: FAMILY });
     expect(document.querySelector('[data-child-stale-figure]')).toBeNull();
+  });
+
+  it('⚠️ a stale GRID is caught too, though the head counts are identical — the case r351 widened the test for', () => {
+    // Two eligible children either way. The stored grid still says both are under 18 (RM4,000); the register
+    // now says one of them is a disabled child in higher education (RM2,000 + RM16,000). The old head-count
+    // comparison saw 2 === 2 and said nothing while RM14,000 of relief sat on the wrong side of a save.
+    const storedGrid = { under_18: { full: 2, half: 0 } };
+    const derived = { under_18: { full: 1, half: 0 }, disabled_study: { full: 1, half: 0 } };
+    const STALE_GRID: ChildReliefPricing = {
+      ...PRICING,
+      mode: 'auto',
+      derived: true,
+      physicalChildren: 2,
+      eligibleChildren: 2,
+      familyChildren: 2,
+      uncategorisedChildren: 0,
+      pricedFromGrid: true,
+      qualifyingChildren: kernelTableRM(derived) / RELIEFS.perChild,
+      reliefRM: kernelTableRM(derived),
+      storedQualifyingChildren: kernelTableRM(storedGrid) / RELIEFS.perChild,
+      storedReliefRM: kernelTableRM(storedGrid),
+      derivedGrid: derived,
+      ruleUnits: kernelTableRM(derived) / RELIEFS.perChild,
+      ruleReliefRM: kernelTableRM(derived),
+      breakdown: [
+        { kind: 'child', name: 'Ain', category: 'under_18', sharePercent: 100, children: 1, units: 1, amountRM: RELIEFS.childByCategory!.under_18 },
+        { kind: 'child', name: 'Bala', category: 'disabled_study', sharePercent: 100, children: 1, units: 8, amountRM: RELIEFS.childByCategory!.disabled_study },
+      ],
+    };
+    expect(
+      STALE_GRID.physicalChildren,
+      'the head counts MUST be equal, or this case is not testing what it says it tests',
+    ).toBe(STALE_GRID.eligibleChildren);
+    expect(STALE_GRID.storedReliefRM, 'and the money must differ').not.toBe(STALE_GRID.reliefRM);
+
+    renderCard({ mode: 'auto', numChildren: 2, grid: storedGrid, pricing: STALE_GRID });
+    const stale = text('[data-child-stale-figure]');
+    expect(stale, 'the gap is real money and must be named').not.toBe('');
+    expect(stale).toContain(rm(STALE_GRID.storedReliefRM));
+    expect(stale).toContain(rm(STALE_GRID.reliefRM));
+  });
+
+  it('in auto mode the hidden grid inputs POST THE DERIVED GRID, so a Save really does bring payroll in step', () => {
+    // The amber line promises that saving closes the gap. For the head count that was already true — the
+    // Physical children box posts `eligibleChildren`. For a record priced from a GRID it was FALSE: these
+    // hidden inputs re-posted the stale grid verbatim out of `defaults.childReliefTable`, so the save wrote
+    // the old grid straight back and the payslip did not move. This is the contract between the card and
+    // `collectChildReliefTable` in actions.ts, so it is pinned on the posted fields.
+    const derived = { under_18: { full: 1, half: 0 }, disabled_study: { full: 1, half: 0 } };
+    renderCard({
+      mode: 'auto',
+      numChildren: 2,
+      grid: { under_18: { full: 2, half: 0 } }, // the STALE stored grid the card was rendered with
+      pricing: { ...FAMILY, pricedFromGrid: true, derivedGrid: derived },
+    });
+    const posted = (key: string, share: 'full' | 'half') =>
+      (document.querySelector(`input[name="childRelief_${key}_${share}"]`) as HTMLInputElement | null)?.value;
+    expect(posted('under_18', 'full'), 'the DERIVED grid, not the stored 2').toBe('1');
+    expect(posted('disabled_study', 'full'), 'the category the register actually holds').toBe('1');
+    expect(posted('disabled', 'full'), 'a category the register does not hold posts zero').toBe('0');
+    expect(posted('under_18', 'half'), 'and the half column follows the derivation too').toBe('0');
+  });
+
+  it('…but MANUAL mode still posts the stored grid verbatim, so a keyed grid is never wiped by a save', () => {
+    // 'manual' short-circuits the sync (NO_SYNC('manual_mode')), so nothing there is machine-maintained and
+    // the grid must survive a save untouched. Posting a derivation here would silently change somebody's tax.
+    renderCard({
+      mode: 'manual',
+      numChildren: 3,
+      grid: { disabled: { full: 2, half: 1 } },
+      pricing: { ...PRICING, derivedGrid: { under_18: { full: 9, half: 0 } } },
+    });
+    const posted = (key: string, share: 'full' | 'half') =>
+      (document.querySelector(`input[name="childRelief_${key}_${share}"]`) as HTMLInputElement | null)?.value;
+    expect(posted('disabled', 'full')).toBe('2');
+    expect(posted('disabled', 'half')).toBe('1');
+    expect(posted('under_18', 'full'), 'the derivation must NOT leak into a manual save').toBe('0');
+  });
+
+  it('children ARE recorded and none of them qualifies — said in those words, not "the register is empty"', () => {
+    // The reporter's exact scenario, and the sentence they were shown was that their Family register held no
+    // children, which they could see with their own eyes to be false. `childQualifyingBreakdownUnsupported`
+    // is retired for it.
+    const NONE_ELIGIBLE: ChildReliefPricing = {
+      ...PRICING,
+      mode: 'auto',
+      derived: true,
+      physicalChildren: 2,
+      eligibleChildren: 0,
+      familyChildren: 2,
+      uncategorisedChildren: 0,
+      pricedFromGrid: false,
+      qualifyingChildren: 0,
+      reliefRM: 0,
+      storedQualifyingChildren: 2,
+      storedReliefRM: kernelFlatRM(2),
+      derivedGrid: null,
+      breakdown: [],
+    };
+    renderCard({ mode: 'auto', numChildren: 2, pricing: NONE_ELIGIBLE });
+    const said = text('[data-child-none-eligible]');
+    expect(said, 'the card must explain why nothing qualifies').not.toBe('');
+    expect(said, 'and name how many children ARE on file').toContain(String(NONE_ELIGIBLE.familyChildren));
+    expect(said, 'no unsubstituted ICU placeholders').not.toMatch(/\{[a-zA-Z]/);
+    expect(said, 'and it must not claim the register is empty').not.toMatch(/no children are recorded/i);
+    // The retired sentence must not render anywhere on the card, in any branch.
+    expect(document.body.textContent).not.toContain('No children are recorded in the Family register');
+    expect(document.body.textContent, 'a retired key must never reach a screen').not.toMatch(/\[retired r351/);
+  });
+
+  it('…and says nothing in auto_table, where the keyed grid decides and the register does not', () => {
+    // Telling an administrator on the category grid that their children do not qualify would be the next
+    // false sentence: in that mode the register is not what is being priced.
+    renderCard({
+      mode: 'auto_table',
+      numChildren: 2,
+      grid: { under_18: { full: 2, half: 0 } },
+      pricing: { ...PRICING, mode: 'auto_table', derived: true, familyChildren: 2, eligibleChildren: 0, physicalChildren: 2 },
+    });
+    expect(document.querySelector('[data-child-none-eligible]')).toBeNull();
+  });
+
+  it('a child with no date of birth is NAMED, rather than counted zero in silence', () => {
+    renderCard({
+      mode: 'auto',
+      numChildren: 2,
+      pricing: { ...FAMILY, undatedChildren: ['Undated Child'] },
+    });
+    const said = text('[data-child-no-dob]');
+    expect(said, 'the name is the actionable part — one field on one child fixes it').toContain('Undated Child');
+    expect(said).not.toMatch(/\{[a-zA-Z]/);
+  });
+
+  it('…and nothing is said when every child has one, so the line means something when it appears', () => {
+    renderCard({ mode: 'auto', numChildren: 2, pricing: FAMILY });
+    expect(document.querySelector('[data-child-no-dob]')).toBeNull();
   });
 
   it('a mode the admin has just PICKED and not saved is not called stale — nothing is on file to be stale', () => {
