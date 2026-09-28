@@ -4321,6 +4321,14 @@ export async function generatePayslips(
       pcbPaid: number;
       zakatPaid: number;
       lpAccumulated: number;
+      /** 4011903e — Y: accumulated REMUNERATION FOR MTD PURPOSES, before EPF. Σ(Y−K) is this less
+       *  `epfClaimed`, so the two are now one arithmetic over one list and cannot disagree. LHDN's Y was
+       *  never stored, which is why the explanation screen has a row saying so; it is stored now. */
+      grossRemuneration: number;
+      /** 4011903e — how many prior payslips had no `bases.pcb` stamp and fell back to `grossPay`. A
+       *  fallback is a DIFFERENT figure, not a rounding difference, so it is counted and disclosed
+       *  rather than silently absorbed. Zero for any employee whose slips all postdate r187. */
+      legacyBaseSlips: number;
     };
     const empIds = emps.map((e) => e.employmentId);
     // 1.2.3 CP38 Deduction — the LHDN/court instalment in effect for THIS payroll month, per employment
@@ -4349,9 +4357,14 @@ export async function generatePayslips(
     const accByEmp = new Map<string, Acc>();
     for (const e of emps) {
       const tp3Applies = e.tp3Year === pYear;
+      // 4011903e — ONE capped figure, used by BOTH seeds. `tp3_epf_claimed` holds what the employee
+      // CLAIMED; core/tp3.ts subtracted `min(claimed, cap)` when it computed `tp3_net`. Seeding Y from
+      // the uncapped figure would break the invariant Y − K = Σ(Y−K) for anyone over the cap, and it
+      // would break it silently, on the one screen that exists to reconcile the two.
+      const tp3EpfAllowed = tp3Applies ? Math.min(Number(e.tp3Epf ?? 0), EPF_RELIEF_CAP) : 0;
       accByEmp.set(e.employmentId, {
         netRemuneration: tp3Applies ? Number(e.tp3Net ?? 0) : 0,
-        epfClaimed: tp3Applies ? Math.min(Number(e.tp3Epf ?? 0), EPF_RELIEF_CAP) : 0,
+        epfClaimed: tp3EpfAllowed,
         pcbPaid: tp3Applies ? Number(e.tp3Pcb ?? 0) : 0,
         zakatPaid: tp3Applies ? Number(e.tp3Zakat ?? 0) : 0,
         // ∑LP — item 20837372. This was a hard `0` until migration 0488, which is the whole defect: the
@@ -4363,6 +4376,13 @@ export async function generatePayslips(
         // The prior-payslip replay below then ADDS this employer's own months on top, exactly as it does
         // for the other four: previous employment opens the balance, this employment accumulates onto it.
         lpAccumulated: tp3Applies ? Number(e.tp3Lp ?? 0) : 0,
+        // 4011903e — Y from the TP3 is its own arithmetic run backwards. core/tp3.ts computes
+        // `netRemuneration = gross + excessTotal − epfAllowable` (Section C: C1 plus each C2's
+        // over-limit excess, less C3), so Y — the remuneration before EPF — is that figure plus the
+        // allowable EPF it subtracted. Reconstructed from the two stored columns rather than stored a
+        // third time, so a TP3 correction moves all of them together.
+        grossRemuneration: tp3Applies ? round2(Number(e.tp3Net ?? 0) + tp3EpfAllowed) : 0,
+        legacyBaseSlips: 0,
       });
     }
     // LHDN PCB 2026 (feedback 09b554e9) — per-code YTD exemption usage, DERIVED like the PCB accumulators:
@@ -4419,9 +4439,39 @@ export async function generatePayslips(
     for (const s of priorSlips) {
       const acc = accByEmp.get(s.employmentId);
       if (!acc) continue;
-      const st = (s.statutory ?? {}) as { epfEmployee?: number; pcb?: number; lp?: number; zakat?: number; zakatRebateTp1?: number; exemptionUsed?: Record<string, number>; lpDetail?: { tp1?: number } };
+      const st = (s.statutory ?? {}) as { epfEmployee?: number; pcb?: number; lp?: number; zakat?: number; zakatRebateTp1?: number; exemptionUsed?: Record<string, number>; lpDetail?: { tp1?: number }; bases?: { pcb?: number } };
       const claimed = Math.min(Number(st.epfEmployee ?? 0), Math.max(0, EPF_RELIEF_CAP - acc.epfClaimed));
-      acc.netRemuneration = round2(acc.netRemuneration + Number(s.gross) - claimed);
+      // ══ 4011903e — Σ(Y−K) ACCUMULATES WHAT THE ENGINE CHARGED, NOT WHAT THE PAYSLIP PAID ═══════════
+      //
+      // THE DEFECT. This line read `Number(s.gross)`. `payslip.gross_pay` is what the employee was PAID;
+      // the figure PCB is charged on is a different one, and the kernel stamps it as `bases.pcb`:
+      //     bases.pcb = max(0, wagesExOt + statOvertime − pcbWageDeduction) + statAdditional
+      //     grossPay  = basic + allowanceApplied + reimburse + otConvertAmount + overtime + bonus
+      // Three kinds of money sit in the second and are deliberately absent from the first, in the very
+      // month they are paid: TAX-EXEMPT ALLOWANCES (carved into `reimburse` at the exemption ledger),
+      // UNPAID LEAVE / ABSENCE (subtracted from `wagesExOt`, never from gross, because it is a deduction
+      // LINE), and any pay item configured to come off before tax (`pcbWageDeduction`).
+      //
+      // So every prior month inflated Σ(Y−K) by whatever the employee had of those, P came out too high,
+      // and the employee was OVER-DEDUCTED — which is the direction 4011903e reports. It also contradicts
+      // the specification this repo now holds: docs/forms/pcb-spec-2026-extracts.txt, rule 9, printed
+      // p.20 — "All the tax exemption on allowances, benefit-in-kind and perquisites shall be EXCLUDED
+      // FROM THE REMUNERATION for MTD purposes. Any amount exceed the restricted amount shall be taxable."
+      //
+      // ⚠️ THE REPORTER'S OWN DIAGNOSIS WAS DIFFERENT AND IS REFUTED IN THEIR PLAN: they believed prior
+      // months' TP1 relief was being applied again. LP never enters this figure — it is a separate
+      // subtrahend inside P — and double-applying a SUBTRAHEND would make tax LOWER, not higher. The
+      // figure they pointed at was wrong; the mechanism they named could not produce it.
+      //
+      // THE FALLBACK IS COUNTED, NOT SILENT. `bases` has been stamped since r187; a slip older than that
+      // has none, and for it `grossPay` remains the only figure available. That is a DIFFERENT number,
+      // so the count is carried on the accumulator and disclosed on the snapshot rather than quietly
+      // producing a figure nobody can account for.
+      const stampedBase = st.bases?.pcb;
+      const y = stampedBase == null ? Number(s.gross) : Number(stampedBase);
+      if (stampedBase == null) acc.legacyBaseSlips += 1;
+      acc.grossRemuneration = round2(acc.grossRemuneration + y);
+      acc.netRemuneration = round2(acc.netRemuneration + y - claimed);
       acc.epfClaimed = round2(acc.epfClaimed + claimed);
       acc.pcbPaid = round2(acc.pcbPaid + Number(st.pcb ?? 0));
       // §E.5 / rule 5: the FULL amount accrues to Z, spent or not — the spec's column (d) equals its

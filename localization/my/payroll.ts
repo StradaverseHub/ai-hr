@@ -342,6 +342,15 @@ export type PcbAccumulators = {
   zakatPaid?: number;
   /** ∑LP: accumulated TP1 optional deductions claimed in prior months (replayed from payslips). */
   lpAccumulated?: number;
+  /** 4011903e — Y: accumulated remuneration FOR MTD PURPOSES in prior months, before EPF.
+   *  `netRemuneration` is this less `epfClaimed`; the caller derives both from ONE list over ONE figure
+   *  so the pair cannot disagree. Optional: a caller that omits it simply gets no Y row, which is what
+   *  every caller had before this item — LHDN's Y was never stored and the worksheet said so. */
+  grossRemuneration?: number;
+  /** 4011903e — prior payslips carrying no `bases.pcb` stamp, which fell back to `gross_pay`. Non-zero
+   *  means Y and Σ(Y−K) include a month measured a different way; the explanation discloses it rather
+   *  than printing a figure nobody can reconcile. */
+  legacyBaseSlips?: number;
 };
 
 export const PCB_ZERO_ACC: PcbAccumulators = { netRemuneration: 0, epfClaimed: 0, pcbPaid: 0 };
@@ -445,6 +454,11 @@ export type PcbMonthResult = {
     month: number;
     n: number;
     ytdNet: number;
+    /** 4011903e — Y: accumulated remuneration for MTD purposes, before EPF. Absent on a slip stamped
+     *  before this item, which is why every reader treats it as optional. */
+    ytdGross?: number;
+    /** 4011903e — prior months that fell back to `gross_pay` for want of a `bases.pcb` stamp. */
+    ytdLegacyBaseSlips?: number;
     epfClaimed: number;
     pcbPaid: number;
     P1: number;
@@ -674,6 +688,14 @@ export function pcbMonth(p: {
       month,
       n,
       ytdNet: round2(acc.netRemuneration),
+      // 4011903e — Y, STORED rather than reconstructed. core/pcb-explain.ts printed a labelled
+      // "not recorded separately" row because adding `ytdNet + epfClaimed` back together would have been
+      // correct arithmetic producing a figure this system never wrote down, and a guard in
+      // test/7f251381-pcb-lhdn-worksheet.test.ts refuses exactly that sum. It is written down now, by the
+      // same replay that produced ytdNet, so the row can print a figure instead of an apology.
+      // Undefined when the caller did not supply it — the old row still renders in that case.
+      ...(acc.grossRemuneration == null ? {} : { ytdGross: round2(acc.grossRemuneration) }),
+      ...(acc.legacyBaseSlips ? { ytdLegacyBaseSlips: acc.legacyBaseSlips } : {}),
       epfClaimed: round2(K),
       pcbPaid: round2(X),
       P1,

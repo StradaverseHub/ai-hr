@@ -201,10 +201,32 @@ describe('7f251381 — each LHDN symbol prints the figure the run recorded under
     expect(byCaption(w, 'worksheetC')!.value).toEqual({ kind: 'count', count: x.trace!.childCount });
   });
 
-  it('LHDN’s gross Y is reported as not recorded separately — never Σ(Y − K) + K', () => {
-    // THE ONE PLACE A PLAUSIBLE DERIVATION WOULD BE ARITHMETICALLY CORRECT AND STILL WRONG. Σ(Y − K) + K
-    // is exactly LHDN's Y, and it is a number this system has never written down. The row says so.
+  // ⚠️ 4011903e — THIS CASE IS INVERTED, AND WHAT IT WAS PROTECTING IS ASSERTED HARDER BELOW.
+  //
+  // It used to read: "LHDN's gross Y is reported as not recorded separately — never Σ(Y − K) + K", and
+  // it swept every money row refusing any figure equal to that sum. That was right: Σ(Y − K) + K IS
+  // arithmetically LHDN's Y, and printing it would have been a number this system never produced.
+  //
+  // The engine now ACCUMULATES Y itself (core/payroll.ts `grossRemuneration`), from the same list and the
+  // same per-month figure as Σ(Y−K), and stamps it as `pcbMeta.ytdGross`. So the row prints a stored
+  // figure. The old value-sweep cannot survive that, because a correctly stamped Y EQUALS the sum by
+  // construction — keeping it would forbid the right answer.
+  //
+  // The protection therefore moves from the VALUE to the SOURCE: Y may be printed only when the engine
+  // stamped one, and a slip that carries none must still say so rather than have one computed for it.
+  it('prints Y when the engine stamped it — the figure is the stamp, not a reconstruction', () => {
     const { x } = richRun();
+    const w = pcbWorksheet({ ...x, ytdGross: 120000 }, SEED);
+    const y = bySymbol(w, 'Y')[0];
+    expect(y.value.kind).toBe('money');
+    expect(y.value.kind === 'money' && y.value.amount, 'the stamped figure, verbatim').toBe(120000);
+  });
+
+  it('a slip with NO stamped Y still says the figure is not recorded — it is never reconstructed', () => {
+    // THE OLD BEHAVIOUR, KEPT AS THE FALLBACK. Every payslip written before 4011903e carries no
+    // `ytdGross`, and for those the honest answer is still that we did not write the figure down.
+    const { x } = richRun();
+    expect(x.ytdGross, 'the fixture must genuinely lack a stamp, or this proves nothing').toBeUndefined();
     const w = pcbWorksheet(x, SEED);
     const y = bySymbol(w, 'Y')[0];
     expect(y.value.kind).toBe('notSeparatelyRecorded');

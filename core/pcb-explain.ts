@@ -191,6 +191,10 @@ export type PcbExplanation =
       /** Accumulators the month was computed against, all as stored. */
       ytdNetRemuneration: number;
       epfClaimedYtd: number;
+      /** 4011903e — LHDN's Y, stamped by the engine. Undefined on a slip that predates the stamp. */
+      ytdGross?: number;
+      /** 4011903e — prior months that fell back to gross pay for want of a `bases.pcb` stamp. */
+      ytdLegacyBaseSlips?: number;
       pcbPaidYtd: number;
       /** This month's employee EPF — the K₁ leg, capped inside pcbMonth against the annual relief cap. */
       epfThisMonth: number;
@@ -221,6 +225,10 @@ const r2 = (x: number) => Math.round(x * 100) / 100;
 
 type FlatMeta = { nonResident?: unknown; flatRate?: unknown; rate?: unknown; trace?: unknown; delta?: unknown };
 type SnapshotMeta = {
+  /** 4011903e — Y and its fallback count, as the engine stamped them. Both optional: a payslip
+   *  written before this item carries neither, and the Y row says so rather than guessing. */
+  ytdGross?: unknown;
+  ytdLegacyBaseSlips?: unknown;
   month?: unknown;
   n?: unknown;
   ytdNet?: unknown;
@@ -416,6 +424,11 @@ export function explainPcb(
     remainingMonths: n(m.n),
     ytdNetRemuneration: n(m.ytdNet),
     epfClaimedYtd: n(m.epfClaimed),
+    // 4011903e — Y as the ENGINE STAMPED IT, or undefined on a slip written before this item. Never
+    // defaulted to a number: an absent Y must stay absent so the row can say so, and the one thing this
+    // row must never print is a figure reconstructed on the reader's behalf.
+    ytdGross: m.ytdGross == null ? undefined : n(m.ytdGross),
+    ytdLegacyBaseSlips: m.ytdLegacyBaseSlips == null ? undefined : n(m.ytdLegacyBaseSlips),
     pcbPaidYtd: n(m.pcbPaid),
     epfThisMonth: n(st.epfEmployee),
     chargeableIncome: n(m.P1),
@@ -655,9 +668,20 @@ export function pcbWorksheet(x: PcbExplanation, previous: PcbPreviousEmployment 
 
   const t = x.trace;
   const income: PcbWorksheetRow[] = [
-    // LHDN's Y is the GROSS accumulated remuneration for the year. We store Σ(Y − K) and K; the gross is
-    // never written down. Said as a row, not reconstructed. See the header.
-    { symbol: 'Y', caption: 'worksheetY', value: { kind: 'notSeparatelyRecorded' } },
+    // ⚠️ 4011903e — Y IS WRITTEN DOWN NOW, AND THE OLD SENTENCE HERE IS WHY THIS ROW EXISTED AT ALL.
+    // It used to read: "LHDN's Y is the GROSS accumulated remuneration for the year. We store Σ(Y − K)
+    // and K; the gross is never written down." That was true and it was the right call — Σ(Y−K) + K is
+    // arithmetically exactly Y, and printing it would have been a figure this system never produced.
+    // The engine now accumulates Y itself, from the same list and the same per-month figure as Σ(Y−K)
+    // (core/payroll.ts, `grossRemuneration`), so the row prints what was stamped.
+    // THE OLD BEHAVIOUR IS NOT DELETED, IT IS THE FALLBACK: a payslip written before this item carries no
+    // `ytdGross`, and for it the row still says the figure is not recorded separately. It must never be
+    // reconstructed for those — that is the case the guard in 7f251381 still refuses.
+    {
+      symbol: 'Y',
+      caption: 'worksheetY',
+      value: x.ytdGross == null ? { kind: 'notSeparatelyRecorded' } : money(x.ytdGross),
+    },
     { symbol: 'Σ(Y−K)', caption: 'worksheetSumYK', value: money(x.ytdNetRemuneration) },
     { symbol: 'K', caption: 'worksheetK', value: money(x.epfClaimedYtd) },
     { symbol: 'Y1', caption: 'worksheetY1', value: fromTrace(t, (v) => v.Y1) },
