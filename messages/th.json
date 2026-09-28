@@ -11785,7 +11785,7 @@
       "deductionMonthBlank": "ไม่ได้ระบุ",
       "colExemptionLimit": "เพดานยกเว้นภาษี",
       "exemptLimitNote": "เพดานการยกเว้นด้านล่างมาจากข้อกำหนดการหักภาษีรายเดือนของ LHDN ไม่ใช่จากแบบฟอร์ม TP3 ซึ่งไม่ได้พิมพ์คอลัมน์เพดานในส่วนนี้ จำนวนที่คุณกรอกจะถูกบันทึกตามจริงและไม่ถูกตัดทอน จำนวนที่เกินเพดานยังต้องเสียภาษี จึงนำเฉพาะส่วนที่ไม่เกินเพดานไปคำนวณเป็นค่าตอบแทนสุทธิสะสม",
-      "exemptOverLimit": "เกินเพดานยกเว้น RM {limit} อยู่ RM {excess} ส่วนที่เกินเพดานต้องเสียภาษีและควรรวมอยู่ใน C1 แล้ว กรุณาตรวจสอบแบบฟอร์ม",
+      "exemptOverLimit": "เกินวงเงินยกเว้น RM {limit} อยู่ RM {excess} ส่วนเกินนี้ต้องเสียภาษี และถูกบวกเข้าในค่าตอบแทนสุทธิสะสมด้านล่าง",
       "downloadPdf": "ดาวน์โหลดแบบฟอร์ม TP3 (อังกฤษ)",
       "downloadPdfMs": "ดาวน์โหลดแบบฟอร์ม TP3 (มลายู)",
       "deleteRecord": "ลบบันทึก",
@@ -11805,9 +11805,12 @@
       "totalNetRemuneration": "ค่าตอบแทนสุทธิสะสม",
       "totalCappedNote": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
       "totalGross": "ค่าตอบแทนรวม (C1)",
-      "totalLessExempt": "หัก เงินช่วยเหลือที่ได้รับยกเว้นภาษี (C2)",
+      "totalLessExempt": "[retired r350 — replaced by totalPlusExcess / totalExemptNote; C1 holds only taxable pay, so the C2 excess is ADDED, not subtracted]",
       "totalLessEpf": "หัก EPF และกองทุนที่ได้รับอนุมัติ (C3)",
-      "totalExcessNote": "จากจำนวน RM {entered} ที่กรอกใน C2 และ C3 มี RM {exempt} ที่อยู่ในเพดานตามกฎหมายและถูกหักออกจากตัวเลขด้านบน ส่วนที่เหลือ RM {excess} เกินเพดาน จะยังคงอยู่ในค่าตอบแทนสุทธิสะสมและเสียภาษีเพียงครั้งเดียว"
+      "totalExcessNote": "[retired r350 — replaced by totalPlusExcess / totalExemptNote; C1 holds only taxable pay, so the C2 excess is ADDED, not subtracted]",
+      "totalPlusExcess": "บวก ส่วนเกินวงเงินยกเว้นที่ต้องเสียภาษี (C2)",
+      "totalExemptNote": "จากจำนวน RM {entered} ที่บันทึกในช่อง C2 นั้น RM {exempt} อยู่ภายในวงเงินยกเว้นตามกฎหมายและไม่ต้องเสียภาษี ช่อง C1 บรรจุเฉพาะค่าตอบแทนที่ต้องเสียภาษี จึงไม่มีการหักจำนวนที่ได้รับยกเว้นออกจาก C1 — มีเพียงส่วนเกิน RM {excess} เท่านั้นที่ถูกบวกเพิ่ม",
+      "totalNoLimitNote": "ไม่มีการประกาศวงเงินยกเว้นรายปีสำหรับ C2(iii) หรือ C2(v) จึงไม่สามารถระบุได้ว่าส่วนใดของช่องเหล่านั้นต้องเสียภาษี และไม่มีการบวกจำนวนใดจากช่องเหล่านั้น"
     }
   },
   "payRule": {

@@ -1055,7 +1055,8 @@ export const MY_TP1_2026 = {
 //
 // The five Section C lines have no TP1 counterpart: they are the previous employment's accumulated
 // money. `employee_statutory_my` already holds a `tp3_net_remuneration`, but that column is
-// (C1 − ΣC2) − C3 already combined, and that combination is NOT INVERTIBLE — which is precisely why the
+// C1, the C2 excess and C3 already combined into one figure, and that combination is NOT INVERTIBLE —
+// which is precisely why the
 // form could not be rendered from what was stored. These are the form's own separate boxes.
 //
 // NO `limit` ON ANY SECTION C LINE, and that is the form's own answer: its Section C prints a single
@@ -1116,15 +1117,23 @@ export type Tp3MoneyLine = {
  * Hence: print the limit beside the box, WARN when the keyed figure exceeds it (which means the form was
  * filled wrong and the operator should fix the form), and never silently move the money.
  *
- * ⚠️ UNKNOWN, AND DELIBERATELY NOT RESOLVED HERE — DOES C1 ALREADY EXCLUDE C2? The Malay caption on C1
- * is "Jumlah saraan kasar bulanan dan saraan tambahan termasuk elaun / perkuisit / pemberian / Manfaat
- * YANG DIKENAKAN CUKAI" ("…including allowances / perquisites / gifts / benefits THAT ARE SUBJECT TO
- * TAX"), which reads as though the exempt amounts were never in C1; C2's caption is the mirror image,
- * "…YANG DIKECUALIKAN CUKAI". On that reading `C1 − ΣC2` double-subtracts. `core/tp3.ts`'s
- * `deriveAccumulatorSeed` has subtracted ΣC2 since item 1bb09a73 and this round does NOT change it: the
- * question is a live UNKNOWN that only `Nota Penerangan Borang TP3 (2026)` can settle, and that document
- * was not reachable (both of the agency's published URLs for it return 404). Moving a statutory figure
- * on an unresolved reading is the one thing that must not happen quietly, so it is written down instead.
+ * ✅ RESOLVED IN r350 — C1 EXCLUDES C2, AND `C1 − ΣC2` WAS DOUBLE-SUBTRACTING. This paragraph used to
+ * record the question as a live UNKNOWN that "only `Nota Penerangan Borang TP3 (2026)` can settle", and
+ * that document is still unreachable today (every published URL 404s, including the newer
+ * `media/us3p0vuu/` path). It did not need to be reachable. THE FORM SETTLES IT, in its own captions:
+ *
+ *     C1  "…termasuk elaun / perkuisit / pemberian / Manfaat YANG DIKENAKAN CUKAI"   ← SUBJECT to tax
+ *     C2  "Jumlah elaun/perkuisit/pemberian/manfaat YANG DIKECUALIKAN CUKAI"         ← EXEMPT from tax
+ *
+ * Identical in `bm-borang-tp3-2026.pdf` and `Borang_TP_3_2023.pdf`. C1 carries only the taxable items,
+ * so the exempt money was never in it and subtracting it removed money that was not there. Corroborated
+ * by the specification's own worked example (printed page 21: 6,350 gross less an exempt 300 meal and an
+ * exempt 250 childcare gives "Total taxable remuneration : RM5,800"), by printed page 20 item 9, by the
+ * EA's Section B/F split, and by our own current-employment exemption ledger.
+ *
+ * `core/tp3.ts`'s `deriveAccumulatorSeed` now computes `C1 + Σ max(C2ₖ − limitₖ, 0) − C3` — the excess
+ * over a limit is taxable and is NOT in C1, so it is ADDED. The full evidence and the reporter's two
+ * worked examples are on that function; do not restate the arithmetic here, there is one owner of it.
  */
 export const MY_TP3_2026_SECTION_C: readonly Tp3MoneyLine[] = [
   // C1 — total monthly gross remuneration AND additional remuneration, including allowances /

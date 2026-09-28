@@ -481,7 +481,8 @@ export type PcbPreviousEmployment = {
   /** `declaredYear === the payslip's tax year` — the exact gate `core/payroll.ts` seeds on
    *  (`tp3Applies = e.tp3Year === pYear`). False ⇒ the run seeded all four accumulators with zero. */
   applies: boolean;
-  /** LHDN C1 − ΣC2 − C3: previous-employment remuneration already net of its EPF, as declared. */
+  /** LHDN ∑(Y − K) from the TP3: C1 + Σ max(C2ₖ − limitₖ, 0) − C3 (r350 — C1 holds only the TAXABLE
+   *  items, so the exempt boxes are not subtracted and only their over-limit excess is added). */
   netRemuneration: number;
   /** C3 — EPF claimed in the previous employment, as declared. NOT clamped to the annual relief cap
    *  here: the cap is applied by the engine and its effect is visible on the K row, and clamping a

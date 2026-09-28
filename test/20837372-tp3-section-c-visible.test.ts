@@ -126,12 +126,13 @@ describe('20837372 · (d) the section total is the seed’s own figure', () => {
       6_000 + 3_000,
     );
     expect(seed.epfAllowable).toBe(4_000);
-    expect(seed.gross - seed.exemptTotal - seed.epfAllowable).toBeCloseTo(seed.netRemuneration, 2);
+    expect(seed.excessTotal, 'C2(i) is 1,000 over and C2(ii) is 600 over').toBe(1_000 + 600);
+    expect(seed.gross + seed.excessTotal - seed.epfAllowable).toBeCloseTo(seed.netRemuneration, 2);
   });
 
   it('the page prints the seed’s fields and does not sum the lines a second time', () => {
     const s = src(PAGE);
-    for (const f of ['derived.gross', 'derived.exemptTotal', 'derived.epfAllowable', 'derived.netRemuneration']) {
+    for (const f of ['derived.gross', 'derived.excessTotal', 'derived.epfAllowable', 'derived.netRemuneration']) {
       expect(s, `${f} is read off the seed`).toContain(f);
     }
     // Two call sites each working the caps out is the duplicate source of truth CLAUDE.md §1 forbids —
@@ -161,13 +162,15 @@ describe('20837372 · (e) the screen actually carries the columns', () => {
       'colTaxExempt',
       'colExcess',
       'colRemaining',
-      // r348 — the total block is now the subtraction itself. `totalExemptCounted`,
-      // `totalEpfCounted` and `totalCappedNote` are RETIRED (see the r348 case below).
+      // r350 — the total block is gross PLUS the taxable excess LESS C3. `totalLessExempt` and
+      // `totalExcessNote` join `totalExemptCounted` / `totalEpfCounted` / `totalCappedNote` as RETIRED
+      // (see the r348 and r350 cases below).
       'totalGross',
-      'totalLessExempt',
+      'totalPlusExcess',
       'totalLessEpf',
       'totalNetRemuneration',
-      'totalExcessNote',
+      'totalExemptNote',
+      'totalNoLimitNote',
     ];
     for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
       const m = JSON.parse(src(`messages/${loc}.json`)) as Record<string, any>;
@@ -198,23 +201,23 @@ describe('20837372 · (f) the limits reach the screen and never the paper', () =
   });
 });
 
-// ─── (g) r348 — THE TOTAL IS THE SUBTRACTION, BECAUSE A CAPTION COULD BE READ BACKWARDS ─────────────
+// ─── (g) r350 — THE TOTAL IS THE SUM THE FORM DESCRIBES: GROSS, PLUS THE TAXABLE EXCESS, LESS C3 ────
 
 describe('20837372 · (g) Accumulated Net Remuneration shows its own working', () => {
   /**
-   * ⚠️ r345 SHIPPED A SENTENCE THAT SAID THE OPPOSITE OF WHAT THE KERNEL DOES, AND THE REPORTER
-   * CONTESTED THE ARITHMETIC BECAUSE OF IT. `totalCappedNote` read "RM {counted} counts towards
-   * Accumulated Net Remuneration" where `counted` was `exemptTotal + epfAllowable` — the figure
-   * SUBTRACTED from gross to reach it. The rows above it were labelled "counted", equally ambiguous.
+   * ⚠️ THIS SCREEN HAS NOW BEEN CORRECTED THREE ROUNDS RUNNING AND ONLY r350 CHANGED THE ARITHMETIC.
    *
-   * The figures were right throughout. Verified against the shipped kernel with C1 = 60,000 gross and
-   * the allowance inside it: keyed 3,600 under a 6,000 limit contributes 0 to `netRemuneration`
-   * against a no-allowance baseline, and keyed 7,000 contributes exactly 1,000 — which is the
-   * reporter's own MAX(keyed − limit, 0), reached from the other direction because C1 is gross.
+   * r345 shipped `totalCappedNote` reading "RM {counted} counts towards Accumulated Net Remuneration"
+   * where `counted` was the figure SUBTRACTED to reach it. r348 corrected the words, drew the
+   * subtraction with explicit minus signs, and told the reporter their contest was mistaken — on the
+   * premise that "C1 is gross with the allowance inside it". That premise was never read off the form.
    *
-   * This is the SECOND wording defect on this screen in two rounds (r345 also had to correct
-   * `exemptLimitNote`, false since r342). Shipping kernel behaviour and leaving prose behind that
-   * asserts the old behaviour is the recurring failure here — not the arithmetic.
+   * The form says otherwise, in both its 2026 and 2023 editions: C1 is "…YANG DIKENAKAN CUKAI", the
+   * items SUBJECT to tax, and C2 is "…YANG DIKECUALIKAN CUKAI", the items EXEMPT from it. The exempt
+   * money was never in C1, so subtracting it understated ∑(Y−K) — and under-deducted MTD — for every
+   * TP3 employee. The excess above a limit is taxable and is also not in C1, so it is ADDED.
+   *
+   * The reporter was right at every one of their five contests. The cases below are theirs.
    */
   const seedOf = (keyed: number, c3 = 0, c1 = 60_000) =>
     deriveAccumulatorSeed({
@@ -224,37 +227,42 @@ describe('20837372 · (g) Accumulated Net Remuneration shows its own working', (
     })!;
 
   it('the reporter’s scenario 1: keyed 3,600 under a 6,000 limit adds NOTHING to ANR', () => {
-    const s = seedOf(3_600);
-    const baseline = s.gross - 3_600; // the same pay with no allowance at all
-    expect(s.netRemuneration - baseline, 'contribution to Accumulated Net Remuneration').toBe(0);
+    const s = seedOf(3_600, 4_000);
+    expect(s.excessTotal).toBe(0);
+    expect(s.netRemuneration, 'their figure: 60,000 + 0 − 4,000').toBe(56_000);
   });
 
   it('the reporter’s scenario 2: keyed 7,000 adds exactly the 1,000 excess', () => {
-    const s = seedOf(7_000);
-    const baseline = s.gross - 7_000;
-    expect(s.netRemuneration - baseline).toBe(1_000);
+    const s = seedOf(7_000, 4_000);
+    expect(s.excessTotal).toBe(1_000);
+    expect(s.netRemuneration, 'their figure: 60,000 + 1,000 − 4,000').toBe(57_000);
   });
 
-  it('and it is never deducted twice — the contribution is never negative, at any keyed value', () => {
+  it('the exempt part is never subtracted — ANR never falls below C1 − C3, at any keyed value', () => {
+    // The defect r350 fixes, stated as an invariant: an exempt allowance can only ever ADD to ANR
+    // (when it is over its limit) or leave it alone. It can never reduce it, because it was never in C1.
     for (const k of [0, 1_000, 5_999, 6_000, 6_001, 7_000, 50_000]) {
-      const s = seedOf(k);
-      expect(s.netRemuneration - (s.gross - k), `keyed ${k}`).toBeGreaterThanOrEqual(0);
+      const s = seedOf(k, 4_000);
+      expect(s.netRemuneration, `keyed ${k}`).toBeGreaterThanOrEqual(s.gross - s.epfAllowable);
     }
   });
 
-  it('the screen renders the sum: gross, less C2, less C3, equals ANR', () => {
+  it('the screen renders the sum: gross, plus the taxable excess, less C3, equals ANR', () => {
     const s = src(PAGE);
-    for (const k of ['tp3.totalGross', 'tp3.totalLessExempt', 'tp3.totalLessEpf', 'tp3.totalNetRemuneration']) {
+    for (const k of ['tp3.totalGross', 'tp3.totalPlusExcess', 'tp3.totalLessEpf', 'tp3.totalNetRemuneration']) {
       expect(s, `${k} is a row`).toContain(k);
     }
-    // The minus signs are what make it unreadable backwards.
-    expect(s, 'the deductions are drawn as deductions').toContain('&minus; {money(derived.exemptTotal)}');
-    expect(s).toContain('&minus; {money(derived.epfAllowable)}');
+    // The SIGNS are what make the sum unreadable backwards — and the sign on C2 is the whole item.
+    expect(s, 'the excess is drawn as an addition').toContain('+ {money(derived.excessTotal)}');
+    expect(s, 'C3 is still drawn as a deduction').toContain('&minus; {money(derived.epfAllowable)}');
+    expect(s, 'the exempt total is no longer part of the arithmetic').not.toContain(
+      '&minus; {money(derived.exemptTotal)}',
+    );
   });
 
-  it('gross − exempt − epf equals the printed ANR, to the cent', () => {
+  it('gross + excess − epf equals the printed ANR, to the cent', () => {
     const s = seedOf(7_000, 8_979);
-    expect(s.gross - s.exemptTotal - s.epfAllowable).toBeCloseTo(s.netRemuneration, 2);
+    expect(s.gross + s.excessTotal - s.epfAllowable).toBeCloseTo(s.netRemuneration, 2);
   });
 
   it('NOTHING on that screen still claims the exempt amount counts TOWARDS ANR', () => {
@@ -263,10 +271,14 @@ describe('20837372 · (g) Accumulated Net Remuneration shows its own working', (
       for (const k of ['totalExemptCounted', 'totalEpfCounted', 'totalCappedNote']) {
         expect(tp3[k], `${loc}.${k} must be retired, not live`).toMatch(/^\[retired r348/);
       }
+      // r350 — the subtraction itself was the defect, so the two keys that drew it are retired too.
+      for (const k of ['totalLessExempt', 'totalExcessNote']) {
+        expect(tp3[k], `${loc}.${k} must be retired, not live`).toMatch(/^\[retired r350/);
+      }
     }
     // …and the page must not render a retired key.
     const page = src(PAGE);
-    for (const k of ['totalExemptCounted', 'totalEpfCounted', 'totalCappedNote']) {
+    for (const k of ['totalExemptCounted', 'totalEpfCounted', 'totalCappedNote', 'totalLessExempt', 'totalExcessNote']) {
       expect(page, `the page still renders the retired ${k}`).not.toContain(`tp3.${k}`);
     }
   });
@@ -276,7 +288,9 @@ describe('20837372 · (g) Accumulated Net Remuneration shows its own working', (
     // old sentence rendering for a Malay reader, which is the worst possible half-fix here.
     for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
       const tp3 = (JSON.parse(src(`messages/${loc}.json`)) as Record<string, any>).taxRelief.tp3;
-      expect(Object.keys(tp3), `${loc} dropped a retired key instead of marking it`).toContain('totalCappedNote');
+      for (const k of ['totalCappedNote', 'totalLessExempt', 'totalExcessNote']) {
+        expect(Object.keys(tp3), `${loc} dropped retired ${k} instead of marking it`).toContain(k);
+      }
     }
   });
 });

@@ -43,7 +43,7 @@ import { deleteTp3Action, saveTp3Action } from './actions';
  *
  * A new joiner who worked elsewhere earlier in the same year hands in a TP3. Until this screen, the only
  * place to key any of it was the four opening-balance boxes on the employee's Payroll tab — and those
- * four hold `(C1 − ΣC2) − C3` as ONE already-combined figure. The form asks for C1, C2(i)…(v) and C3 as
+ * four hold C1, the C2 excess and C3 as ONE already-combined figure. The form asks for C1, C2(i)…(v) and C3 as
  * seven separate boxes, and no arithmetic recovers seven numbers from one. That is why the reporter
  * found the Previous Employment section insufficient, and it is the whole of why this screen exists.
  *
@@ -143,6 +143,15 @@ export default async function Tp3Page({
   const derived: Tp3AccumulatorSeed | null = deriveAccumulatorSeed(record?.payload);
   const c = record?.payload?.sectionC ?? {};
   const d = record?.payload?.sectionD ?? {};
+  /**
+   * r350 — is anything keyed into a C2 sub-line that has NO sourced exemption limit?
+   *
+   * Read off TP3_SECTION_C, never a hardcoded ['iii','v']: the catalogue is the one owner of which
+   * lines carry a limit, and a second list here would keep naming C2(iii) after LHDN published one.
+   */
+  const unlimitedC2Keyed = (TP3_SECTION_C.find((l) => l.code === 'c2')?.subItems ?? []).some(
+    (sub) => sub.exemptionLimit == null && Number(c.c2?.subItems?.[sub.code] ?? 0) > 0,
+  );
   /** Item 20837372 — the C2 boxes keyed ABOVE their statutory exemption limit. Shown, never enforced. */
   const overLimits = tp3ExemptionOverLimits(record?.payload);
   /**
@@ -459,19 +468,20 @@ export default async function Tp3Page({
                                 {sub.frequency ? (
                                   <p className="text-xs text-muted-foreground">{t(`frequency.${sub.frequency}`)}</p>
                                 ) : null}
-                                {/* ⚠️ A WARNING, AND THE KEYED FIGURE IS STILL LEFT EXACTLY AS IT IS —
-                                    but since item 20837372 the CALCULATION no longer uses all of it.
-                                    `deriveAccumulatorSeed` holds each sub-line to this same limit, so
-                                    the part above it stays taxable, which is what the specification's
+                                {/* ⚠️ A WARNING, AND THE KEYED FIGURE IS STILL LEFT EXACTLY AS IT IS.
+                                    Since r350 the part ABOVE this limit is ADDED to Accumulated Net
+                                    Remuneration as taxable pay, which is what the specification's
                                     printed page 20 item 9 requires ("Any amount exceed the restricted
-                                    amount shall be taxable"). This comment used to say trimming it would
-                                    "tax the same ringgit twice"; see core/tp3.ts `tp3ExemptionOverLimits`
-                                    for why that was wrong — C1 is gross, so C1 − ΣC2 taxes the excess
-                                    exactly once. The INPUT is still never refused (ADR-0008); only what
-                                    the arithmetic may use is limited. An over-limit box still usually
-                                    means the FORM was filled wrong, and this still says so with the
-                                    figure — the message the operator reads is unchanged and remains
-                                    true in all six locales. */}
+                                    amount shall be taxable"). C1 holds only the TAXABLE items — the
+                                    form's own caption says so — so the excess was never in C1 and
+                                    cannot be reached by subtracting less; see core/tp3.ts
+                                    `deriveAccumulatorSeed` for the full evidence.
+                                    THE MESSAGE CHANGED WITH THE RULE. It used to end by telling the
+                                    operator the form was probably filled wrong. An over-limit box is
+                                    not a keying error — the previous employer may pay more than the
+                                    exempt limit — so `tp3.exemptOverLimit` now names the tax
+                                    consequence instead, retired key and all, in six locales. The INPUT
+                                    is still never refused (ADR-0008). */}
                                 {over ? (
                                   <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
                                     {t('tp3.exemptOverLimit', {
@@ -505,21 +515,25 @@ export default async function Tp3Page({
                     );
                   })}
 
-                  {/* ── HOW ACCUMULATED NET REMUNERATION IS REACHED, WRITTEN AS THE SUBTRACTION ──
-                      ⚠️ THIS BLOCK USED TO SAY THE OPPOSITE OF WHAT THE KERNEL DOES (r348, item 20837372).
-                      r345 printed two rows labelled "counted" above the total, under a sentence reading
-                      "RM {counted} counts towards Accumulated Net Remuneration" — where that figure is
-                      `exemptTotal + epfAllowable`, which is SUBTRACTED from gross to reach it. The numbers
-                      were right and the words described a different system, so the reporter read the
-                      screen and contested the arithmetic. They were right to; the sentence was ours.
+                  {/* ── HOW ACCUMULATED NET REMUNERATION IS REACHED ──────────────────────────────
+                      ⚠️ THIS BLOCK HAS NOW BEEN WRONG TWICE, IN OPPOSITE DIRECTIONS, AND BOTH ARE RECORDED.
 
-                      It is now the sum itself — gross, less C2, less C3, equals ANR — with explicit minus
-                      signs, because a subtraction cannot be read backwards the way a caption can.
+                      r345 printed two rows labelled "counted" under a sentence saying the exempt amount
+                      "counts towards" ANR, when it was being SUBTRACTED. r348 corrected the words and
+                      drew the subtraction with explicit minus signs — and the subtraction itself was the
+                      defect. C1 holds only the TAXABLE items ("…YANG DIKENAKAN CUKAI" on the agency's own
+                      form), so the exempt allowances were never in C1 and taking them off removed money
+                      that was not there. The reporter said so five times; see core/tp3.ts
+                      `deriveAccumulatorSeed` for the five independent sources that settle it.
 
-                      Every figure is still READ OFF THE SEED and never recomputed: `gross`, `exemptTotal`
+                      It is now the sum the form actually describes: gross, PLUS the part of C2 above its
+                      statutory limit (taxable, and not in C1), LESS C3. The exempt total moves out of the
+                      arithmetic and into a note, because it explains the figure without being part of it.
+
+                      Every figure is still READ OFF THE SEED and never recomputed: `gross`, `excessTotal`
                       and `epfAllowable` are the same fields `core/tp3.ts` strikes `netRemuneration`
                       against, so these rows cannot drift from the arithmetic they report. Two call sites
-                      each working the caps out is the duplicate source of truth §1 forbids.
+                      each working the limits out is the duplicate source of truth §1 forbids.
 
                       Absent when nothing is keyed yet: a form with no figures has no total, and printing
                       0.00 would assert one. */}
@@ -530,9 +544,9 @@ export default async function Tp3Page({
                         <span className="tabular-nums" data-anr-gross>{money(derived.gross)}</span>
                       </div>
                       <div className="flex flex-wrap justify-between gap-2 border-t border-border pt-1">
-                        <span className="text-muted-foreground">{t('tp3.totalLessExempt')}</span>
-                        <span className="tabular-nums text-muted-foreground" data-anr-less-exempt>
-                          &minus; {money(derived.exemptTotal)}
+                        <span className="text-muted-foreground">{t('tp3.totalPlusExcess')}</span>
+                        <span className="tabular-nums text-muted-foreground" data-anr-plus-excess>
+                          + {money(derived.excessTotal)}
                         </span>
                       </div>
                       <div className="flex flex-wrap justify-between gap-2">
@@ -545,18 +559,25 @@ export default async function Tp3Page({
                         <span>{t('tp3.totalNetRemuneration')}</span>
                         <span className="tabular-nums" data-anr-net>{money(derived.netRemuneration)}</span>
                       </div>
-                      {derived.exemptEntered > derived.exemptTotal || derived.epfClaimed > derived.epfAllowable ? (
-                        <p className="pt-1 text-xs text-muted-foreground" data-anr-capped-note>
-                          {t('tp3.totalExcessNote', {
-                            entered: money(derived.exemptEntered + derived.epfClaimed),
-                            exempt: money(derived.exemptTotal + derived.epfAllowable),
-                            excess: money(
-                              derived.exemptEntered +
-                                derived.epfClaimed -
-                                derived.exemptTotal -
-                                derived.epfAllowable,
-                            ),
+                      {/* THE EXEMPT TOTAL EXPLAINS THE SUM WITHOUT BEING PART OF IT. It is the money
+                          that is genuinely exempt, so it is neither added nor subtracted — saying that
+                          in words is the whole point, because for five contests running this screen
+                          implied otherwise. Shown only when something is keyed in C2. */}
+                      {derived.exemptTotal > 0 ? (
+                        <p className="pt-1 text-xs text-muted-foreground" data-anr-exempt-note>
+                          {t('tp3.totalExemptNote', {
+                            entered: money(derived.exemptEntered),
+                            exempt: money(derived.exemptTotal),
+                            excess: money(derived.excessTotal),
                           })}
+                        </p>
+                      ) : null}
+                      {/* C2(iii) and C2(v) have no sourced limit, so no excess can be PROVEN for them.
+                          Named only when one of them actually carries a figure — CLAUDE.md §8: an absent
+                          box asserts nothing, and a caption about a box nobody used asserts something. */}
+                      {unlimitedC2Keyed ? (
+                        <p className="pt-1 text-xs text-muted-foreground" data-anr-nolimit-note>
+                          {t('tp3.totalNoLimitNote')}
                         </p>
                       ) : null}
                     </div>

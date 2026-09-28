@@ -11785,7 +11785,7 @@
       "deductionMonthBlank": "未填写",
       "colExemptionLimit": "免税上限",
       "exemptLimitNote": "以下免税上限来自马来西亚内陆税收局的每月扣税规范，而非 TP3 表格本身——该表格在此部分不印上限栏。您输入的金额会原样记录，绝不会被删减。超出上限的金额仍需纳税，因此只有上限以内的部分会计入累计净薪酬。",
-      "exemptOverLimit": "超出 RM {limit} 的免税上限 RM {excess}。超出部分须课税，理应已计入 C1，请核对表格。",
+      "exemptOverLimit": "超出 RM {limit} 免税限额 RM {excess}。超出部分应课税，已加入下方的累计净薪酬。",
       "downloadPdf": "下载 TP3 表格（英文）",
       "downloadPdfMs": "下载 TP3 表格（马来文）",
       "deleteRecord": "删除记录",
@@ -11805,9 +11805,12 @@
       "totalNetRemuneration": "累计净薪酬",
       "totalCappedNote": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
       "totalGross": "薪酬总额（C1）",
-      "totalLessExempt": "减：免税津贴（C2）",
+      "totalLessExempt": "[retired r350 — replaced by totalPlusExcess / totalExemptNote; C1 holds only taxable pay, so the C2 excess is ADDED, not subtracted]",
       "totalLessEpf": "减：公积金及核准基金（C3）",
-      "totalExcessNote": "在 C2 与 C3 共输入的 RM {entered} 当中，RM {exempt} 在法定上限以内，已从上方数字中扣除。其余 RM {excess} 超出上限，仍保留在累计净薪酬内并计税一次。"
+      "totalExcessNote": "[retired r350 — replaced by totalPlusExcess / totalExemptNote; C1 holds only taxable pay, so the C2 excess is ADDED, not subtracted]",
+      "totalPlusExcess": "加：超出免税限额的应税部分（C2）",
+      "totalExemptNote": "在 C2 各栏录入的 RM {entered} 之中，RM {exempt} 在法定免税限额之内，不课税。C1 仅包含应税薪酬，因此免税金额从不从中扣除——只有超出限额的 RM {excess} 会被加入。",
+      "totalNoLimitNote": "C2(iii) 与 C2(v) 没有公布的年度免税限额，因此无法认定其中任何部分应课税，也不会加入任何金额。"
     }
   },
   "payRule": {

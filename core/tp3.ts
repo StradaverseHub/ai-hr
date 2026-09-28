@@ -38,7 +38,7 @@
  *
  * ══ THE OVERLAP IS STILL SHOWN, BECAUSE A LATER HAND EDIT IS STILL ALLOWED ══════════════════════════
  *
- * `deriveAccumulatorSeed` computes the seed from the form's own boxes — (C1 − ΣC2) − C3, C3, C5, C4(i)
+ * `deriveAccumulatorSeed` computes the seed from the form's own boxes — C1 + Σ max(C2ₖ − limitₖ, 0) − C3, C3, C5, C4(i)
  * and, since item 20837372, ∑D1…D17 — and it is the ONE place that mapping exists: the reconciliation strip on the screen and the write below
  * read the same function, so the figure an operator is shown is the figure that lands. The Payroll tab's
  * `setTp3Action` still edits the columns by hand afterwards and this file does not fight it; the strip
@@ -135,6 +135,36 @@ export function tp3EpfReliefCap(): number | null {
  * describe different rules. A sub-line with no sourced limit contributes in full; a line with no
  * sub-lines has nothing to cap and contributes its stored amount.
  */
+/**
+ * ΣC2's TAXABLE EXCESS — the part of each sub-line ABOVE its own statutory exemption limit (r350).
+ *
+ * The mirror of `cappedLineTotal` and deliberately a SECOND walk rather than a tuple out of the first:
+ * the two totals answer different questions (what is exempt / what is taxable) and are printed in
+ * different places, and one of them is struck against the money while the other is not.
+ *
+ * ⚠️ A SUB-LINE WITH NO SOURCED LIMIT CONTRIBUTES 0, WHICH IS NOT THE SAME AS "NOTHING IS OVER".
+ * C2(iii) and C2(v) carry no limit anywhere in the specification's printed-page-21 table, so no excess
+ * can be PROVEN for them and none is asserted. The screen says "no limit is published" rather than
+ * printing 0.00 — CLAUDE.md §8: an absent box asserts nothing, `0.00` asserts the money does not exist.
+ *
+ * ⚠️ THE NO-SUB-LINES BRANCH RETURNS 0 for the same reason `cappedLineTotal` returns the amount there:
+ * a hand-built or legacy payload carrying an `amount` with no `subItems` behind it has nothing to apply
+ * a PER-SUB limit to, so there is no excess to compute and a recomputed guess would be invented money.
+ */
+function excessLineTotal(payload: Tp3Payload, code: string): number {
+  const line = TP3_SECTION_C.find((l) => l.code === code);
+  const stored = (payload.sectionC ?? {})[code];
+  if (line == null || line.subItems.length === 0) return 0;
+  if (stored?.subItems == null) return 0;
+  return round2(
+    line.subItems.reduce((sum, sub) => {
+      const keyed = Number(stored.subItems?.[sub.code] ?? 0);
+      const limit = sub.exemptionLimit;
+      return sum + (limit == null ? 0 : Math.max(keyed - limit, 0));
+    }, 0),
+  );
+}
+
 function cappedLineTotal(payload: Tp3Payload, code: string): number {
   const line = TP3_SECTION_C.find((l) => l.code === code);
   const stored = (payload.sectionC ?? {})[code];
@@ -341,14 +371,54 @@ function readRemarks(raw: unknown): string | null {
  *
  * The arithmetic is LHDN's own, and it is the arithmetic that could not be run backwards:
  *
- *     netRemuneration (∑(Y − K)) = C1 − (C2i + C2ii + C2iii + C2iv + C2v) − C3
+ *     netRemuneration (∑(Y − K)) = C1 + Σ max(C2ₖ − limitₖ, 0) − C3
  *     epfClaimed      (K)        = C3
  *     pcbPaid         (X)        = C5          (the form's own "excluding CP38")
  *     zakatPaid       (Z)        = C4(i)
  *
- * NEGATIVE IS RETURNED AS NEGATIVE, not clamped to zero. A negative (Y − K) means the exempt and EPF
- * boxes exceed the gross box, which is a keying error the operator must see — clamping it would hide the
- * one thing this function exists to surface.
+ * ═══ r350 — ΣC2 IS ADDED, NOT SUBTRACTED, AND THE REPORTER WAS RIGHT FIVE TIMES RUNNING ═══
+ *
+ * This line read `C1 − ΣC2 − C3` from item 1bb09a73 until r350. It was wrong, it understated every
+ * TP3 employee's chargeable income by the whole of their exempt allowances, and it therefore
+ * UNDER-DEDUCTED their MTD every month. The premise it rested on — "C1 is GROSS, so the exempt money is
+ * in C1 and must come off" — was an ASSUMPTION about C1 that nobody had read off the form. r348 went
+ * further and told the reporter their contest was mistaken ON THAT ASSUMPTION. It was not.
+ *
+ * WHAT THE FORM ITSELF SAYS. `bm-borang-tp3-2026.pdf` and `Borang_TP_3_2023.pdf`, BAHAGIAN C, identical
+ * wording in both editions:
+ *
+ *     C1  "Jumlah saraan kasar bulanan dan saraan tambahan termasuk elaun / perkuisit /
+ *          pemberian / Manfaat YANG DIKENAKAN CUKAI"          ← subject to tax
+ *     C2  "Jumlah elaun/perkuisit/pemberian/manfaat YANG DIKECUALIKAN CUKAI"   ← exempt from tax
+ *
+ * C1 carries ONLY the taxable items. The exempt allowances were never in it, so subtracting them
+ * removed money that was not there. This settles the UNKNOWN written down in the
+ * `MY_TP3_2026_SECTION_C` header in localization/my/statutory-tables.ts, which said only the
+ * `Nota Penerangan Borang TP3` could decide it — the form decides it, and the notes are still 404.
+ *
+ * FOUR MORE SOURCES AGREE, so this is not one reading of one caption:
+ *   · the specification's OWN WORKED EXAMPLE, printed page 21 — normal 5,000 + car 800 + meal 300
+ *     (exempt) + childcare 250 (exempt) = 6,350, and "To determine MTD amount, taxable income as
+ *     follow: … Total taxable remuneration : RM5,800". The exempt items are simply not in it;
+ *   · printed page 20 item 9 — "MTD is to be deducted from the employee's TAXABLE REMUNERATION ONLY.
+ *     All the tax exemption … shall be EXCLUDED FROM THE REMUNERATION for MTD purposes. Any amount
+ *     exceed the restricted amount shall be taxable.";
+ *   · Form C.P.8A (EA) Pin. 2023 — Section B is headed "(EXCLUDING Tax Exempt Allowances / Perquisites
+ *     / Gifts / Benefits)" and the exempt total gets its own Section F. Same architecture;
+ *   · our OWN current-employment path already works this way (localization/my/reports.ts:1084-1091):
+ *     the exempt portion is a memo line off the PCB exemption ledger, never a second subtraction.
+ *
+ * SO THE EXCESS IS ADDED. Anything above a sub-line's limit is taxable (page 20 item 9) and is
+ * therefore NOT in C1, because C1 holds only taxable pay. `excessTotal` is that part and nothing else;
+ * the within-limit part is genuinely exempt and contributes zero. The reporter's two worked examples,
+ * now pinned in test/20837372-tp3-section-c-limits.test.ts:
+ *
+ *     C1 60,000, C2(i) 3,600 (limit 6,000), C3 4,000  →  60,000 + 0     − 4,000 = 56,000
+ *     C1 60,000, C2(i) 7,000 (limit 6,000), C3 4,000  →  60,000 + 1,000 − 4,000 = 57,000
+ *
+ * NEGATIVE IS RETURNED AS NEGATIVE, not clamped to zero. A negative (Y − K) now means the EPF box alone
+ * exceeds C1 plus any taxable excess, which is a keying error the operator must see — clamping it would
+ * hide the one thing this function exists to surface.
  */
 export type Tp3AccumulatorSeed = {
   netRemuneration: number;
@@ -376,6 +446,13 @@ export type Tp3AccumulatorSeed = {
   /** ΣC2 exactly as keyed, so the form can print what was entered beside what counts. */
   exemptEntered: number;
   /**
+   * ΣC2's TAXABLE EXCESS — Σ max(keyed − limit, 0) over the sub-lines that HAVE a sourced limit (r350).
+   *
+   * This is the only part of Section C2 that reaches `netRemuneration`, and it is ADDED to C1, not
+   * subtracted from it. See the arithmetic note on `deriveAccumulatorSeed` below for why.
+   */
+  excessTotal: number;
+  /**
    * C3 held to the EPF relief cap — LHDN's K, which the specification DEFINES as capped. `epfClaimed`
    * above is the raw box, and it stays raw because the form prints it.
    */
@@ -395,6 +472,7 @@ export function deriveAccumulatorSeed(payload: Tp3Payload | null | undefined): T
   // the earlier reading of this file was wrong.
   const exemptEntered = Number(c.c2?.amount ?? 0);
   const exemptTotal = cappedLineTotal(payload, 'c2');
+  const excessTotal = excessLineTotal(payload, 'c2');
   const epfClaimed = Number(c.c3?.amount ?? 0);
   const epfCap = tp3EpfReliefCap();
   const epfAllowable = epfCap == null ? epfClaimed : Math.min(epfClaimed, epfCap);
@@ -411,6 +489,7 @@ export function deriveAccumulatorSeed(payload: Tp3Payload | null | undefined): T
     gross,
     exemptTotal,
     exemptEntered,
+    excessTotal,
     epfClaimed,
     epfAllowable,
     pcbPaid,
@@ -420,7 +499,7 @@ export function deriveAccumulatorSeed(payload: Tp3Payload | null | undefined): T
     // (Y−K) must subtract the capped K — `core/payroll.ts` already caps K itself, and until this round
     // the two disagreed about the same box: on the one production form C3 was 8,979 against a 4,000
     // cap, so K was 4,000 while this subtracted 8,979 and understated accumulated pay by 4,979.
-    netRemuneration: round2(gross - exemptTotal - epfAllowable),
+    netRemuneration: round2(gross + excessTotal - epfAllowable),
   };
 }
 
@@ -434,25 +513,23 @@ export function deriveAccumulatorSeed(payload: Tp3Payload | null | undefined): T
  * stores exactly what the operator keyed, and this function's job is to tell them when a box looks
  * wrong. That is unchanged.
  *
- * ⚠️⚠️ WHAT DID CHANGE — IT NOW ALSO CAPS, IN THE ARITHMETIC ONLY (item 20837372, after the reporter
- * contested). This comment used to argue the opposite, and the argument was wrong, so it is recorded
- * here rather than quietly deleted. It said: the over-limit part "is therefore already sitting in C1 as
- * taxable pay by the time the form is filled in, and capping C2 here would tax the same ringgit twice."
+ * ⚠️⚠️ THIS COMMENT HAS BEEN WRONG TWICE AND BOTH VERSIONS ARE RECORDED RATHER THAN DELETED.
  *
- * It does not. C1 is GROSS — this file's own header says C1 "is LHDN's Y before anything is taken off
- * it" — so the excess is in C1 either way, and `C1 − ΣC2` is precisely where it is either taxed or not:
+ * (1) Before r345 it argued the excess needed no treatment at all, because it "is therefore already
+ *     sitting in C1 as taxable pay by the time the form is filled in".
+ * (2) r345 replaced that with "C1 is GROSS … so the excess is in C1 either way", and had the capping
+ *     SUBTRACT less from C1.
  *
- *     C1 57,000 (including a 7,000 travel allowance), C2(i) keyed 7,000, limit 6,000
- *       uncapped →  net 50,000  — the whole allowance escapes tax
- *       capped   →  net 51,000  — the 1,000 excess is taxed, ONCE
+ * Both rested on the same unread assumption about what C1 contains. C1 contains only the TAXABLE items
+ * — the form says so in its own caption, "…YANG DIKENAKAN CUKAI" — so the excess is NOT in C1 and
+ * cannot be reached by subtracting less. r350 adds it: `deriveAccumulatorSeed` now computes
+ * `C1 + Σ max(keyed − limit, 0) − C3`. The full evidence is on that function.
  *
- * Capping taxes the excess exactly once, which is what printed page 20 item 9 requires of it. NOT
- * capping is what let it escape. The two things ADR-0008 governs and this now does are different:
- * nothing here refuses an entry, and `deriveAccumulatorSeed` limits only what the CALCULATION may use.
- * Keep them separate — a later reader must not collapse "never blocked" into "never capped".
- *
- * A figure over the limit still usually means the FORM was filled wrong, and this is still what tells
- * the operator so.
+ * ⚠️ AN OVER-LIMIT BOX IS NO LONGER A KEYING ERROR. This function used to end by saying a figure over
+ * the limit "usually means the FORM was filled wrong". It does not. The previous employer is entitled
+ * to pay more than the exempt limit; the part above it is simply taxable, and from r350 it IS taxed.
+ * This still reports — the operator should see which boxes are over and by how much — but the warning
+ * now explains a tax consequence rather than accusing the form of being mis-keyed.
  */
 export type Tp3ExemptionOverLimit = {
   /** 'c2' — the Section C line. */

@@ -4,14 +4,19 @@
  * ═══ WHY THIS SCRIPT IS OWED ═══
  *
  * `employee_statutory_my`'s five TP3 columns are a PROJECTION of the form, written only when the form is
- * saved. r342 changed the arithmetic that produces them — Section C is now counted to its statutory
- * limits, so C2's sub-lines contribute at most their own exemption and C3 contributes at most the EPF
- * relief cap. Every row stored before r342 therefore holds a figure derived by the old rule, and payroll
- * will keep seeding PCB with it until somebody re-saves that form by hand.
+ * saved. TWO rounds have now changed the arithmetic that produces them, so a stored row can be wrong in
+ * two different ways and neither corrects itself until somebody re-saves that form by hand.
  *
- * Measured on production 2026-09-26: ONE form, C1 60,000 / C2 3,600 / C3 8,979, projecting
- * `tp3_net_remuneration` = 47,421. Under the corrected rule it is 52,400. The row is wrong by RM4,979
- * and that employee's PCB is light by the tax on it.
+ *   r342 — Section C is counted to its statutory limits: C3 contributes at most the EPF relief cap.
+ *   r350 — ΣC2 is no longer SUBTRACTED at all. C1 carries only the items subject to tax (the form's own
+ *          caption, "…YANG DIKENAKAN CUKAI"), so the exempt allowances were never in it; only the part
+ *          of a C2 box ABOVE its limit is taxable, and that part is ADDED.
+ *
+ * Measured on production 2026-09-26: ONE form, C1 60,000 / C2(i) 3,600 / C3 8,979, projecting
+ * `tp3_net_remuneration` = 47,421. r342 made that 52,400. Under r350 it is 56,000 — the 3,600 is within
+ * its RM6,000 limit, so there is no taxable excess and the exempt allowance is not deducted. The stored
+ * row understates that employee's accumulated pay by RM8,579 in total, and their PCB is light by the tax
+ * on it.
  *
  * ═══ WHAT IT DOES NOT DO ═══
  *

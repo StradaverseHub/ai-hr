@@ -11785,7 +11785,7 @@
       "deductionMonthBlank": "Not stated",
       "colExemptionLimit": "Exemption limit",
       "exemptLimitNote": "The exemption limits below come from LHDN's monthly tax deduction specification, not from the TP3 form — the form prints no limit column in this section. Whatever you key is recorded exactly as it is and is never trimmed. An amount above a limit stays taxable, so only the part up to the limit counts towards Accumulated Net Remuneration.",
-      "exemptOverLimit": "Above the RM {limit} exemption limit by RM {excess}. Anything over the limit is taxable and should already be counted in C1, so please check the form.",
+      "exemptOverLimit": "Above the RM {limit} exemption limit by RM {excess}. The excess is taxable, and it is added to Accumulated Net Remuneration below.",
       "downloadPdf": "Download Form TP3 (English)",
       "downloadPdfMs": "Download Form TP3 (Bahasa Malaysia)",
       "deleteRecord": "Delete record",
@@ -11805,9 +11805,12 @@
       "totalNetRemuneration": "Accumulated Net Remuneration",
       "totalCappedNote": "[retired r348 — replaced by totalGross / totalLessExempt / totalLessEpf / totalExcessNote]",
       "totalGross": "Gross remuneration (C1)",
-      "totalLessExempt": "Less tax-exempt allowances (C2)",
+      "totalLessExempt": "[retired r350 — replaced by totalPlusExcess / totalExemptNote; C1 holds only taxable pay, so the C2 excess is ADDED, not subtracted]",
       "totalLessEpf": "Less EPF and approved funds (C3)",
-      "totalExcessNote": "Of the RM {entered} keyed across C2 and C3, RM {exempt} is within the statutory limits and comes off the figure above. The remaining RM {excess} is above the limits, stays in Accumulated Net Remuneration and is taxed once."
+      "totalExcessNote": "[retired r350 — replaced by totalPlusExcess / totalExemptNote; C1 holds only taxable pay, so the C2 excess is ADDED, not subtracted]",
+      "totalPlusExcess": "Plus taxable excess over exemption (C2)",
+      "totalExemptNote": "Of the RM {entered} keyed across the C2 boxes, RM {exempt} is within the statutory exemption limits and is not taxed. C1 carries only taxable pay, so the exempt amount is never deducted from it — only the RM {excess} above the limits is added.",
+      "totalNoLimitNote": "No annual exemption limit is published for C2(iii) or C2(v), so no part of those boxes can be shown to be taxable and nothing from them is added."
     }
   },
   "payRule": {

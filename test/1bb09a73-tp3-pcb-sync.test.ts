@@ -73,12 +73,18 @@ const PRODUCTION_SECTION_C = {
 /**
  * (C1 − ΣC2) − K = 60000 − 3600 − min(8979, 4000).
  *
- * ⚠️ UPDATED BY 20837372 (r342), and this row is WHY the item was raised. It used to read 47421 — the
- * whole 8,979 subtracted — while `core/payroll.ts` capped K at 4,000 for the same box. The two
- * disagreed, this employee's accumulated pay was recorded RM4,979 too low, and their PCB came out
- * correspondingly light. C2(i) is 3,600, inside its RM6,000 limit, so ΣC2 does not move here.
+ * ⚠️ UPDATED TWICE BY 20837372, AND THIS ONE ROW IS THE WHOLE ITEM'S HISTORY.
+ *
+ * r342: it read 47421 — the whole 8,979 subtracted — while `core/payroll.ts` capped K at 4,000 for the
+ * same box. The two disagreed, this employee's accumulated pay was RM4,979 too low and their PCB came
+ * out light. Capping K took it to 52400.
+ *
+ * r350: it becomes 56000. C2(i) is 3,600 and INSIDE its RM6,000 limit, so there is no taxable excess —
+ * and the exempt 3,600 is no longer subtracted at all, because C1 carries only the items that are
+ * subject to tax ("…YANG DIKENAKAN CUKAI" on the agency's own form) and the exempt allowance was never
+ * in it. 60,000 + 0 − 4,000. Their accumulated pay was a further RM3,600 too low until now.
  */
-const PRODUCTION_NET = 52400;
+const PRODUCTION_NET = 56000;
 
 beforeAll(async () => {
   await migrateTestDb();
@@ -162,6 +168,9 @@ describe('1bb09a73 · the Section-C → payroll-column mapping', () => {
       // starts trimming an in-limit box has to disagree with one of them.
       exemptTotal: 3600,
       exemptEntered: 3600,
+      // r350 — nothing is over its limit, so nothing is taxable and nothing is added. The pair above
+      // says what is exempt; this says what reaches the calculation, and here it is nil.
+      excessTotal: 0,
       netRemuneration: PRODUCTION_NET,
       // THE RAW BOX, because the form prints it — and the ALLOWABLE figure beside it, which is what
       // (Y−K) is struck against. Before r342 only the first existed and the arithmetic used it.
@@ -478,16 +487,32 @@ describe('1bb09a73 · when the projection does not apply, it SAYS so', () => {
   });
 
   it('refuses a Section C that does not add up rather than writing a negative accumulator', async () => {
+    // ⚠️ THE GUARD IS UNCHANGED; ITS FIXTURE HAD TO MOVE (r350). C1 1,000 / C2(i) 900 / C3 500 used to
+    // reach −400 because ΣC2 was subtracted. It no longer is — C1 carries only taxable pay, so an
+    // exempt allowance cannot push the accumulator negative and that combination is now a valid +500.
+    // A negative now needs C3 to exceed C1 plus any taxable excess, which is still exactly the shape of
+    // a mis-keyed form and must still be refused rather than stored.
     const e = await payableEmployee('Negative Net');
     await expect(
       saveTp3(adminCtx(b), {
         personId: e.personId,
         assessmentYear: YEAR,
-        sectionC: { c1: { amount: 1000 }, c2: { subItems: { i: 900 } }, c3: { amount: 500 } },
+        sectionC: { c1: { amount: 1000 }, c2: { subItems: { i: 900 } }, c3: { amount: 4000 } },
       }),
     ).rejects.toBeInstanceOf(Tp3Error);
     const row = await statRow(e.personId);
     expect(row.tp3Year).toBeNull();
+  });
+
+  it('and the SAME boxes that used to be refused are now a valid form — the rule moved, not the guard', async () => {
+    // Non-vacuity for the case above: if the refusal were still firing on the old shape, this fails.
+    const e = await payableEmployee('Formerly Negative');
+    await saveTp3(adminCtx(b), {
+      personId: e.personId,
+      assessmentYear: YEAR,
+      sectionC: { c1: { amount: 1000 }, c2: { subItems: { i: 900 } }, c3: { amount: 500 } },
+    });
+    expect(Number((await statRow(e.personId)).tp3NetRemuneration), '1,000 + 0 − 500').toBe(500);
   });
 
   it('deleting the form withdraws the projection it put there, and only for its own year', async () => {
