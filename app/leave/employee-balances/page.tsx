@@ -150,7 +150,7 @@ export default async function EmployeeBalancesPage({
    * named by its own Leave Code cell; a badge there would say "EL" beside the Emergency Leave row.
    *
    * The tooltip is a native `title`, so it is IN THE HTML of a plain GET — the render check can read it, and
-   * it needs no hover, no JavaScript and no client island on a screen that already carries thirteen columns.
+   * it needs no hover, no JavaScript and no client island on a screen that already carries sixteen columns.
    * `cat` SELECTS the plural and `v` PRINTS the figure — see lib/day-format.ts `dayPluralCategory` for why
    * those are two arguments and not one.
    */
@@ -512,9 +512,16 @@ export default async function EmployeeBalancesPage({
                             rather than a number — but a live comment asserting the opposite of the file
                             three lines below it is how the next reader is misled. It is also, on its own,
                             the plan's "rule that applied": this caption is already on the row.
+                            ⚠️ r356 — THE RUNNING COUNT IN THESE COMMENTS STOPPED BEING MAINTAINED, so here
+                            it is once, measured rather than incremented: SIXTEEN columns today (r355 added
+                            Available Balance after Balance). Every figure below that is attributed to
+                            026e16b9 is that measurement's own — eleven columns, the last 23px — and stays
+                            as written; what was corrected is the sentences that asserted a CURRENT count
+                            they had outlived. Prefer naming the item that added a column to keeping a
+                            tally: a tally is wrong the moment someone forgets it, and silently.
                             ⚠️ r279 ADDED A THIRTEENTH, AND IT IS A FIGURE. Full Entitlement is the first
                             numeric column added since that measurement, so the twelve-column overflow this
-                            comment describes is now a thirteen-column one. It was accepted deliberately:
+                            comment describes was then a thirteen-column one. It was accepted deliberately:
                             the reporter asked for the full-year allowance ON the grid, and the alternative —
                             a column three places from the earned figure it explains — is what the item
                             exists to close. The resolved-table caption still belongs here, not beside the
@@ -557,8 +564,9 @@ export default async function EmployeeBalancesPage({
                       <td className={tdNum}>{num(r.adjustment)}</td>
                       {/* 2a57a007 — the figure, and under it one badge per contributing leave type. Same
                           shape as the YTD Entitled cell three columns left: a caption UNDER the figure, in
-                          the existing column, because thirteen columns already overflow this table on a
-                          laptop (026e16b9 measured the last 23px out of the header). */}
+                          the existing column, because the columns already overflow this table on a
+                          laptop (026e16b9 measured the last 23px out of the header, over eleven of them;
+                          r356 counts sixteen). */}
                       <td className={tdNum}>
                         <div>{num(r.share)}</div>
                         {poolBadgeCells(r, 'share', 'shareBadgeTip')}

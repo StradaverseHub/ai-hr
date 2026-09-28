@@ -40,7 +40,7 @@ import { essViewHasAnyVisibleRow } from '@/core/ess-view';
 import { LeaveDetailsPanel } from './LeaveDetailsPanel';
 import { ReplacementLeavePanel, type ReplacementPanelData } from './ReplacementLeavePanel';
 import { LeaveBalanceRing, RING_COLORS, ringDrawable, ringSegments, type RingSegmentKey } from './leave-balance-ring';
-import type { SharedLeaveGroupEntry } from './shared-leave-group-cards';
+import type { SharedLeaveGroupEntry } from './shared-leave-group-entry';
 
 export type MyLeaveDashboardCard = MyLeaveCard & {
   /** Replacement Leave only: the per-credit table its Details opens instead of the summary side-sheet. */

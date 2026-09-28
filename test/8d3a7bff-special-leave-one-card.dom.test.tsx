@@ -52,7 +52,7 @@ import {
   type MyLeaveDashboardCard,
   type PooledCeilingLines,
 } from '../components/leave/my-leave-dashboard';
-import type { SharedLeaveGroupEntry } from '../components/leave/shared-leave-group-cards';
+import type { SharedLeaveGroupEntry } from '../components/leave/shared-leave-group-entry';
 import type { LeaveEntitlementBreakdown } from '../core/read';
 import type { SharedLeaveBalanceInfo } from '../lib/shared-leave-balance';
 import { formatDays } from '../lib/day-format';

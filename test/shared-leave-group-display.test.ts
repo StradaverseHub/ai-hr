@@ -416,7 +416,14 @@ describe('46afcc48 · HIDING EVERY MEMBER CHANGES NEITHER THE POT NOR THE VERDIC
 
 describe('46afcc48 · the Leave tab draws the group at its placement', () => {
   const leavePage = read('../app/leave/page.tsx');
-  const cardsCmp = read('../components/leave/shared-leave-group-cards.tsx');
+  // ⚠️ r356 — THESE TWO CASES WERE READING A FILE NOTHING RENDERED. `cardsCmp` was
+  // `components/leave/shared-leave-group-cards.tsx`, whose <SharedLeaveGroupCards> had no render site
+  // after r302 folded both placements into the one dashboard grid — the case below this one asserts
+  // exactly that, `toHaveLength(0)` on the page. So "prints through the shared formatter" and "the
+  // ceiling beside the figure" were being checked against dead markup while the live tile went
+  // unguarded. They read the live tile now; the component is deleted and the file, renamed
+  // `shared-leave-group-entry.ts`, keeps the type and the rules in its header.
+  const cardsCmp = read('../components/leave/my-leave-dashboard.tsx');
 
   it('the page reads the placed groups and renders BOTH placements', () => {
     expect(leavePage).toContain("import { sharedLeaveGroupBalances } from '@/core/leave-shared-group'");
@@ -459,8 +466,12 @@ describe('46afcc48 · the Leave tab draws the group at its placement', () => {
     expect(cardsCmp).toContain("from '@/lib/day-format'");
     expect(cardsCmp).toContain('{formatDays(g.available)}');
     expect(cardsCmp, 'no second precision beside the shared formatter').not.toContain('toFixed(');
-    // Server-safe: the page is an RSC and hands it pre-translated strings.
-    expect(cardsCmp.trimStart().startsWith("'use client'")).toBe(false);
+    // The old claim here was "server-safe: the page is an RSC and hands it pre-translated strings", and
+    // it was asserted as `not 'use client'` ON THE DEAD FILE. The live tile is inside the dashboard,
+    // which IS a client island, so that spelling cannot transfer. What it was protecting still can: the
+    // labels arrive PRE-TRANSLATED as fields of the entry, so the tile never resolves one itself.
+    expect(cardsCmp).toMatch(/\{g\.limitLabel\}/);
+    expect(cardsCmp, 'the tile prints the labels it is given').not.toMatch(/t\(['`]leave\.shared/);
   });
 
   it('the ceiling is printed BESIDE the figure, never in place of it', () => {
