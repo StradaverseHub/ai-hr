@@ -44,6 +44,16 @@
  *   each employment should then see, because the seed's own member-type requests count towards it too and
  *   a fixture that promised one number for everybody would be wrong for most of them.
  *
+ * ⚠️ `pnpm db:seed` DOES NOT UNDO THIS, AND THE HALF IT UNDOES IS THE DANGEROUS HALF. `leave_shared_group`
+ * is NOT in db/seed.ts's TRUNCATE list, but `leave_type` is — so a reseed cascades the MEMBER rows away and
+ * leaves the two group rows standing with zero members each and placement 'secondary'. They are still
+ * returned by `sharedLeaveGroupBalances`, so /leave then draws two tiles captioned "Shared across: " with
+ * nothing after the colon, for every employee, on what looks like a freshly seeded database. Measured, not
+ * predicted: it happened at the end of r355's own render check.
+ *
+ *   After every `pnpm db:seed`, either re-run this fixture (which replaces its groups) or clear it:
+ *       pnpm dev:fixture-pooled-leave --clear
+ *
  * SAFETY. Every write is scoped to `tenant_id = DEMO_TENANT_ID` and the run refuses outright on a
  * deployment with real WorkOS keys or an undeclared production NODE_ENV (`demoSeedRefusal`, shared with
  * db/seed.ts). It does NOT truncate anything: unlike the seeder it only adds, and re-running replaces its
@@ -96,6 +106,40 @@ async function main() {
   if (demo.length === 0) {
     console.error(`No demo tenant ${tenantId} in this database. Run \`pnpm db:seed\` first.`);
     process.exit(1);
+  }
+
+  /**
+   * `--clear`: put the tenant back to the seeded shape. Needed because a reseed removes the fixture's MEMBER
+   * rows and not its GROUP rows (see the header), which is a state no sequence of documented commands
+   * reaches on purpose. Deletes only what this file creates, by name and by the codes it names.
+   */
+  if (process.argv.includes('--clear')) {
+    const cleared = await owner.db
+      .delete(schema.leaveSharedGroup)
+      .where(
+        and(
+          eq(schema.leaveSharedGroup.tenantId, tenantId),
+          inArray(schema.leaveSharedGroup.name, [POOLED_GROUP, STANDALONE_GROUP]),
+        ),
+      )
+      .returning({ name: schema.leaveSharedGroup.name });
+    // The ledger route is a column on a SEEDED type, so it has to be nulled by hand — dropping the group
+    // does not reach it, and a borrower still pointing at a pool is a pooled card with no ceiling on it.
+    const routed = await owner.db
+      .update(schema.leaveType)
+      .set({ balanceSourceTypeId: null })
+      .where(and(eq(schema.leaveType.tenantId, tenantId), eq(schema.leaveType.code, BORROWER_CODE)))
+      .returning({ code: schema.leaveType.code });
+    const { start } = usageWindow();
+    await owner.db
+      .delete(schema.leaveRequest)
+      .where(and(eq(schema.leaveRequest.tenantId, tenantId), eq(schema.leaveRequest.startDate, start)));
+    console.log(
+      `Cleared: ${cleared.length} fixture group(s) [${cleared.map((g) => g.name).join(', ') || 'none'}], ` +
+        `${routed.length} ledger route(s) on ${BORROWER_CODE}, and any fixture leave request dated ${start}.`,
+    );
+    await owner.client.end();
+    return;
   }
 
   const types = await owner.db
