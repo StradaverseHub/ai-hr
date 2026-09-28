@@ -1622,7 +1622,9 @@
       "childQualifyingNoDob": "{count} child record(s) carry no date of birth, so their age cannot be confirmed and they are not counted: {names}. Add the date of birth on the Family tab.",
       "childQualifyingWeightingGap": "The relief categories recorded against these children come to {ruleUnits} qualifying children — {ruleAmount} of relief — but only {amount} is being given, because at least one qualifying child has no category recorded and the weighting cannot be applied to a partly-filled record. This employee's monthly tax is therefore over-deducted. Adding the missing category releases the rest.",
       "childQualifyingWeightingGapOver": "The relief categories recorded against these children come to {ruleUnits} qualifying children — {ruleAmount} of relief — which is LESS than the {amount} currently being given. Every child is being counted as one whole child, so a child whose claim share is recorded as 50% (the other half claimed by the other parent) is still counted in full. This employee's monthly tax is therefore under-deducted, and the shortfall is settled at the annual assessment.",
-      "childQualifyingAutoWeightedNote": "Each child is counted at the weight its relief category carries: a child 18+ in diploma or degree study, and a disabled child, each count as four, and a disabled child in that study as eight. This is the same figure the payslip uses."
+      "childQualifyingAutoWeightedNote": "Each child is counted at the weight its relief category carries: a child 18+ in diploma or degree study, and a disabled child, each count as four, and a disabled child in that study as eight. This is the same figure the payslip uses.",
+      "childQualifyingWhyExplicit": "Counted because “Claim tax relief” is ticked on this child’s record, which overrides the age check.",
+      "childQualifyingCategoryContradictsDob": "This child’s relief category says under 18, but their date of birth does not. Check the record."
     },
     "import": {
       "title": "Import employees",

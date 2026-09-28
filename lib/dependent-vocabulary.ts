@@ -105,3 +105,81 @@ export function childAgeYears(dob: string | null | undefined, asOf: Date = new D
   // `todayInKualaLumpur()` (core/dependents.ts:557 records why), so its UTC calendar date IS the tenant's.
   return completedYearsAt(dob, asOf.toISOString().slice(0, 10));
 }
+
+/**
+ * 77e882f5 (r353) — THE CHILD-RELIEF ELIGIBILITY RULE, MOVED HERE FOR THE SAME REASON `childAgeYears` WAS.
+ *
+ * It lived in core/dependents.ts, which pulls the pg driver through db/client, so nothing in a browser
+ * bundle could import it — and the two disclosures this round adds are rendered by a CLIENT card. The
+ * alternative was a second copy of the predicate in the browser, which is precisely what this module
+ * exists to prevent (see the header). core/dependents.ts re-exports all three names, so every existing
+ * caller and every existing import specifier is untouched.
+ *
+ * The row is typed STRUCTURALLY rather than as a Pick<DependentRow,…>: DependentRow lives in the
+ * server-only module, and naming it here would drag the import back across the wall this move opened.
+ */
+export type ChildReliefRow = {
+  relationship: string;
+  dateOfBirth: string | null;
+  isStudent: boolean | null;
+  isDeceased: boolean | null;
+  archivedAt: Date | string | null;
+  childTaxRelief?: boolean | null;
+  childReliefCategory?: string | null;
+};
+
+/**
+ * Behaviour is r351's, unchanged:
+ *   - relationship must be 'child'; deceased and archived rows are excluded;
+ *   - an EXPLICIT per-child decision (childTaxRelief non-null) wins over inference, BOTH directions;
+ *   - a full-time student is eligible regardless of age (the 18+ in-education case);
+ *   - otherwise eligible only when under 18; no/invalid DOB ⇒ cannot confirm age ⇒ not auto-counted.
+ */
+export function childReliefEligible(r: ChildReliefRow, asOf: Date = new Date()): boolean {
+  if (r.relationship !== 'child') return false;
+  if (r.isDeceased) return false;
+  if (r.archivedAt) return false;
+  if (r.childTaxRelief != null) return r.childTaxRelief;
+  if (r.isStudent) return true;
+  const age = childAgeYears(r.dateOfBirth, asOf);
+  return age != null && age < 18;
+}
+
+/**
+ * WHICH LIMB OF THAT LADDER COUNTED THE CHILD.
+ *
+ * The reporter raised one child TWICE as an age-check failure. Production holds them as: born
+ * 2004-01-01 (so 22), not a student, **`child_tax_relief` TRUE**, category `under_18`. The count of 1 is
+ * CORRECT — the explicit decision is tested before the age, deliberately, because that precedence is the
+ * only way a disabled or studying child over 18 is claimable. The screen printed the 1 and never said a
+ * manual tick produced it, so the only available reading was "the age check is broken".
+ *
+ * Derived by RE-WALKING THE SAME LADDER IN THE SAME ORDER, never by re-deciding: a "why" that can
+ * disagree with the "whether" is worse than no "why". `null` means not eligible, so no caller can print
+ * a reason for a child that does not count.
+ */
+export type ChildEligibilityReason = 'explicit' | 'student' | 'under_18';
+export function childEligibilityReason(r: ChildReliefRow, asOf: Date = new Date()): ChildEligibilityReason | null {
+  if (!childReliefEligible(r, asOf)) return null;
+  if (r.childTaxRelief != null) return 'explicit';
+  if (r.isStudent) return 'student';
+  return 'under_18';
+}
+
+/**
+ * A RECORDED CATEGORY THE REGISTER ITSELF DISPROVES — `under_18` on a child who is 18 or over.
+ *
+ * The third case in this family and the only one that misleads: r351 named `uncategorisedChildren` (a
+ * child priced at nothing) and `undatedChildren` (a child counted zero for want of a date of birth), and
+ * both of those produce an ABSENT figure, which reads as absent. This one produces a CONFIDENT figure
+ * that looks wrong, which is what the reporter saw.
+ *
+ * DELIBERATELY NARROW. A disabled child is claimable at any age and a studying child past 18, so neither
+ * category contradicts a date of birth; a child with no date of birth is `undatedChildren`'s business.
+ * Flagging a pair we cannot prove wrong would be inventing a fault. It reports and prices nothing.
+ */
+export function childCategoryContradictsDob(r: ChildReliefRow, asOf: Date = new Date()): boolean {
+  if (r.childReliefCategory !== 'under_18') return false;
+  const age = childAgeYears(r.dateOfBirth, asOf);
+  return age != null && age >= 18;
+}

@@ -1622,7 +1622,9 @@
       "childQualifyingNoDob": "{count} rekod anak tiada tarikh lahir, jadi umurnya tidak dapat dipastikan dan ia tidak dikira: {names}. Tambah tarikh lahir pada tab Keluarga.",
       "childQualifyingWeightingGap": "Kategori pelepasan yang direkodkan bagi anak-anak ini berjumlah {ruleUnits} anak layak — {ruleAmount} pelepasan — tetapi hanya {amount} diberikan, kerana sekurang-kurangnya seorang anak yang layak tiada kategori direkodkan dan pemberat tidak boleh digunakan pada rekod yang separuh lengkap. Oleh itu cukai bulanan pekerja ini terlebih potong (over-deducted). Menambah kategori yang tiada akan melepaskan bakinya.",
       "childQualifyingWeightingGapOver": "Kategori pelepasan yang direkodkan bagi anak-anak ini berjumlah {ruleUnits} anak layak — {ruleAmount} pelepasan — iaitu KURANG daripada {amount} yang sedang diberikan. Setiap anak dikira sebagai satu anak penuh, jadi anak yang bahagian tuntutannya direkodkan sebagai 50% (separuh lagi dituntut oleh ibu atau bapa yang seorang lagi) masih dikira penuh. Cukai bulanan pekerja ini oleh itu terkurang potong, dan kekurangan itu diselesaikan pada taksiran tahunan.",
-      "childQualifyingAutoWeightedNote": "Setiap anak dikira mengikut pemberat kategori pelepasannya: anak berumur 18+ dalam pengajian diploma atau ijazah, dan anak kurang upaya, masing-masing dikira sebagai empat, manakala anak kurang upaya dalam pengajian tersebut sebagai lapan. Ini angka yang sama digunakan oleh slip gaji."
+      "childQualifyingAutoWeightedNote": "Setiap anak dikira mengikut pemberat kategori pelepasannya: anak berumur 18+ dalam pengajian diploma atau ijazah, dan anak kurang upaya, masing-masing dikira sebagai empat, manakala anak kurang upaya dalam pengajian tersebut sebagai lapan. Ini angka yang sama digunakan oleh slip gaji.",
+      "childQualifyingWhyExplicit": "Dikira kerana “Tuntut pelepasan cukai” ditanda pada rekod anak ini, yang mengatasi semakan umur.",
+      "childQualifyingCategoryContradictsDob": "Kategori pelepasan anak ini menyatakan bawah 18 tahun, tetapi tarikh lahirnya tidak. Sila semak rekod."
     },
     "import": {
       "title": "Import pekerja",
