@@ -668,6 +668,8 @@ describe('45df860a — an additional run’s working is the WHOLE MONTH, and the
 describe('45df860a — the shared screen, and the two entry points that reach it', () => {
   const PAGE = 'app/payroll/pcb-detail/page.tsx';
   const VIEW = 'app/payroll/pcb-detail/pcb-detail-view.tsx';
+  /** r351 — where the substituted expressions live now. See the guard that reads it. */
+  const FORMULAS = 'app/payroll/pcb-detail/formulas.ts';
   const PAYSLIP = 'app/payroll/individual-payslip/page.tsx';
   const HISTORY = 'app/payroll/transaction-view/history-table.tsx';
 
@@ -745,9 +747,32 @@ describe('45df860a — the shared screen, and the two entry points that reach it
     const computed = [
       'cycleRegular', 'cycleOffCycle', 'cycleBonus', 'cycleAdjustment',
       'category1', 'category2', 'category3',
-      // THIRTEEN, not eleven. The chain used to stop at the normal leg and then print the deducted PCB
-      // underneath it, silently skipping the bonus leg, the RM10 rule and the zakat offset.
+      /**
+       * r351 — THE THIRTEEN ARE RETIRED AND THE AGENCY'S FIVE REPLACE THEM.
+       *
+       * The old chain was numbered 1–13 and grouped the way the component happened to be written; it
+       * reached the final figure, which is the point the earlier note was making and which the five keep
+       * (step [D] IS the deducted figure and step [E] the year's total). What it did not do was match the
+       * specification, which letters the same monthly calculation Step 1 [A]–[E] — so a reader holding the
+       * agency's worked example could not follow ours down the page. Two orderings of one calculation is
+       * the drift this screen exists to remove.
+       *
+       * Both sets are pinned: the five because they are computed t() keys the coverage scan cannot see, and
+       * the thirteen because they must still RESOLVE in all six catalogues. A key deleted and re-added
+       * later is the MISSING_MESSAGE trap this repo has hit before, and the assertion below requires each
+       * of the thirteen to carry the retirement marker rather than a live caption — so nothing can quietly
+       * start rendering one again.
+       */
+      'stepA', 'stepB', 'stepC', 'stepD', 'stepE',
       ...Array.from({ length: 13 }, (_, i) => `step${i + 1}`),
+      // r351 — the captions the four-row Formula blocks and the lettered steps resolve through
+      // `formulas.ts`, every one of them a COMPUTED key and therefore invisible to the coverage scan.
+      'stepAHeading', 'pHeading', 'formulaHeading', 'netHeading', 'yearHeading', 'floorHeading',
+      'pFormula', 'p2Formula', 'formulaMtd', 'formulaNet', 'yearFormula', 'flatFormula',
+      'pLegNormal', 'pLegAdditional', 'calculationLabel',
+      'pResult', 'p2Result', 'resultLabel', 'yearTotalMtd',
+      'pFormulaNote', 'grossYNote', 'p2Note', 'roundingNote', 'netFormulaNote', 'floorNote',
+      'yearNote', 'yearNoAdditional', 'flatNote', 'flatRoundingNote',
       // The banner, the two summary lines and the two final lines are chosen by `basis.kind` through a
       // lookup, for the same reason and with the same blind spot.
       'overrideHeading', 'overrideBanner', 'deltaHeading', 'deltaBanner', 'deltaOverrideHeading', 'deltaOverrideBanner',
@@ -781,6 +806,25 @@ describe('45df860a — the shared screen, and the two entry points that reach it
         else expect(v, `payroll.pcbDetail.${k} in ${loc} must take no ICU argument`).not.toMatch(/[{}]/);
       }
     }
+    // r351 — RETIRED, NOT LIVE. The thirteen must resolve (above) AND must not be a caption any more, or
+    // the next reader of the catalogue cannot tell which set the screen actually renders.
+    for (const loc of LOCALES) {
+      const blk = (JSON.parse(read(`messages/${loc}.json`)) as {
+        payroll: { pcbDetail: Record<string, string> };
+      }).payroll.pcbDetail;
+      for (let i = 1; i <= 13; i += 1) {
+        expect(blk[`step${i}`], `${loc}.step${i} must be retired, not live`).toMatch(/^\[retired r351/);
+      }
+    }
+    // …and the screen must not render one.
+    const view = code(VIEW);
+    for (let i = 1; i <= 13; i += 1) {
+      expect(view, `the screen still renders the retired step${i}`).not.toContain(`'step${i}'`);
+    }
+    for (const k of ['stepA', 'stepB', 'stepC', 'stepD', 'stepE']) {
+      expect(view, `the screen must render ${k}`).toContain(`'${k}'`);
+    }
+
     // The Transaction Detail caption lives in ITS screen's namespace, not this one.
     for (const loc of LOCALES) {
       const h = (JSON.parse(read(`messages/${loc}.json`)) as {
@@ -802,50 +846,162 @@ describe('45df860a — the shared screen, and the two entry points that reach it
     for (const sym of ['P', 'M', 'R', 'B', 'Z', 'X', 'n']) {
       expect(en.formulaMtd, `the symbolic formula must name ${sym}`).toContain(sym);
     }
-    expect(en.pFormula).toContain('Σ(Y − K)');
-    expect(en.pFormula).toContain('LP₁');
+    /**
+     * r351 — THE SHAPE IS NOW PINNED WHOLE, NOT BY TWO SUBSTRINGS.
+     *
+     * The specification prints ONE P formula, seven times identically, and its own bracketing is part of
+     * what a reader matches against their copy:
+     *
+     *   P = [∑(Y – K*) + (Y1 – K1*) + [(Y2 – K2*) n] + (Yt – Kt*)**]
+     *       – [D + S + DU + SU + QC + (∑LP + LP1)]
+     *
+     * Ours had TWO trailing brackets where the agency has one, and printed Q where it prints QC. Both were
+     * changed in r351, so the old two-substring assertion (`Σ(Y − K)` and `LP₁`) is replaced by a
+     * term-by-term pin of every symbol the agency's bracket contains — strictly more than it asserted, and
+     * it is what would catch the next well-meant re-wording.
+     *
+     * ⚠️ QC, NOT Q, AND THE REASON IS NOT A TYPO. The glossary defines Q ("deduction for qualifying
+     * children") and C ("number of qualifying children") separately; the FORMULA prints QC, their product.
+     * `reliefs.children` already holds the product (pcbMonth multiplies before it stamps the snapshot), so
+     * the product is what the formula term names. The worksheet keeps separate Q and C rows for the two
+     * factors — both are true, and r340's note in docs/HANDOFF-HISTORY.md is true of the glossary only.
+     *
+     * The sigma is U+03A3 and not the specification's U+2211 on purpose: `core/pcb-explain.ts` emits
+     * `Σ(Y−K)` and `ΣLP` as the worksheet's symbols, and a formula naming a row with a DIFFERENT sigma
+     * would break the row-matching the whole sheet exists for. The two glyphs are visually identical and
+     * the PDF fold now maps both to "Sum".
+     */
+    for (const term of ['Σ(Y − K*)', '(Y₁ − K₁*)', '(Y₂ − K₂*)', '(Yₜ − Kₜ*)', 'D', 'S', 'DU', 'SU', 'QC', 'ΣLP', 'LP₁']) {
+      expect(en.pFormula, `the agency's formula names ${term}`).toContain(term);
+    }
+    expect(en.pFormula, 'ONE trailing bracket, as the agency prints it').toBe(
+      'P = [ Σ(Y − K*) + (Y₁ − K₁*) + [ (Y₂ − K₂*) n ] + (Yₜ − Kₜ*)** ] − [ D + S + DU + SU + QC + (ΣLP + LP₁) ]',
+    );
+    expect(en.pFormula, 'Q alone would name the per-child amount, not the product the formula uses')
+      .not.toMatch(/\+ Q \+/);
+    // P₂ is the same published formula with the projected EPF leg re-estimated — K₂ₜ, not K₂.
+    expect(en.p2Formula, 'the second calculation re-estimates the projected EPF').toContain('(Y₂ − K₂ₜ*)');
+    expect(en.p2Formula, 'and carries the additional-remuneration limb for real').toContain('(Yₜ − Kₜ*)');
+    // The agency's [C] and [D] print NO clamp. The clamps live in the substitution and in their own
+    // visible step; see the count assertions in the next case.
+    expect(en.formulaMtd, "the agency's headline formula carries no floor").not.toContain('max(');
+    expect(en.formulaNet, 'nor does [D]').not.toContain('max(');
+    // Every step letter the specification uses must resolve, and the thirteen we invented must not.
+    for (const k of ['stepA', 'stepB', 'stepC', 'stepD', 'stepE']) {
+      expect(en[k], `payroll.pcbDetail.${k}`).toBeTruthy();
+    }
   });
 
   it('each substituted expression is built from the terms the engine actually used', () => {
     // NOTHING ON THIS SCREEN EVALUATES — every "= RM x" is a stored engine figure — so a term that does
     // not belong in an expression cannot be caught by any assertion about numbers. It can only be caught
-    // by reading the string that gets assembled. These three slices are the three places the screen got
-    // it wrong: a bonus leg glued onto P₁, a net line that skipped §E.3/§E.5, and a zero floor dropped
-    // from a bracket line whose B is negative for every employee claiming the RM400 rebate.
-    const view = code(VIEW);
+    // by reading the string that gets assembled. These slices are the places the screen got it wrong: a
+    // bonus leg glued onto P₁, a net line that skipped §E.3/§E.5, and a zero floor dropped from a bracket
+    // line whose B is negative for every employee claiming the RM400 rebate.
+    //
+    // ⚠️ r351 MOVED THE ASSEMBLY, SO THIS GUARD MOVED WITH IT — it was NOT satisfied by a leftover literal
+    // in the view. The expressions used to be built inline in pcb-detail-view.tsx, which is why the
+    // DOWNLOADED PDF carried none of them; they now live in `app/payroll/pcb-detail/formulas.ts`, which
+    // both the screen and `shared.ts` paint. Every assertion below is the one it was, read out of the file
+    // that now owns the string, plus the new per-ROW clamp counts the fourth row made necessary.
+    const src = code(FORMULAS);
     const between = (from: string, to: string) => {
-      const a = view.indexOf(from);
-      const b = view.indexOf(to, a);
+      const a = src.indexOf(from);
+      const b = src.indexOf(to, a);
       expect(a, `marker not found: ${from}`).toBeGreaterThan(-1);
       expect(b, `marker not found after ${from}: ${to}`).toBeGreaterThan(a);
-      return view.slice(a, b);
+      return src.slice(a, b);
+    };
+    /** The `substituted:` row of a block, and separately its `calculation:` row. Counting clamps over a
+     *  whole block would let a clamp move from one row to the other unnoticed, which is exactly the kind
+     *  of silent change this file's assertions exist to catch. */
+    const row = (block: string, field: 'substituted' | 'calculation') => {
+      const b = between(`key: '${block}'`, 'resultLabel:');
+      const a = b.indexOf(`${field}:`);
+      expect(a, `${block} has no ${field} row`).toBeGreaterThan(-1);
+      const nextAt = ['substituted:', 'calculation:'].map((f) => b.indexOf(f, a + 1)).filter((i) => i > -1);
+      return b.slice(a, nextAt.length ? Math.min(...nextAt) : b.length);
     };
 
     // P₁ — §D.1 projects normal remuneration ONLY. No Yₜ, no Kₜ, and the plain K₂.
-    const p1 = between("formula={t('pFormula')}", "resultLabel={t('pResult')}");
+    const p1 = between("key: 'p1'", "key: 'p2'");
     expect(p1, 'the bonus leg belongs to P₂, not to P₁').not.toContain('trace.Yt');
-    expect(p1).not.toContain('trace.Kt');
-    expect(p1).not.toContain('trace.K2t');
-    expect(p1).toContain('trace.K2');
+    expect(p1, 'the bonus leg belongs to P₂, not to P₁').not.toContain('t.Yt');
+    expect(p1).not.toContain('t.Kt');
+    expect(p1).not.toContain('t.K2t');
+    expect(p1).toContain('t.K2');
+    // …AND THE LIMB IS PRINTED ANYWAY, AS THE AGENCY'S OWN ZERO. This is the half of the decision r351
+    // added: hiding the limb made the P line stop looking like the published formula. `f.b2(0)` is the
+    // formatter applied to §D.1's own zero, not a figure read from anywhere, and it is a positive
+    // assertion so that "always show (Yₜ − Kₜ)" cannot regress to the old `trace.Yt > 0` gate in silence.
+    expect(p1, "the (Yₜ − Kₜ) limb is printed as §D.1's zero").toContain('( ${f.b2(0)} − ${f.b2(0)} )');
+    expect(src, 'and the limb is not gated on the bonus').not.toContain('trace.Yt > 0');
 
     // P₂ — §D.2, with the bonus leg AND the re-estimated EPF leg. K₂ₜ was stored and never rendered.
-    const p2 = between("formula={t('p2Formula')}", "resultLabel={t('p2Result')}");
-    expect(p2).toContain('trace.Yt');
-    expect(p2).toContain('trace.Kt');
-    expect(p2, 'P₂ re-estimates the projected EPF because the bonus ate into the same cap').toContain('trace.K2t');
-    expect(view, 'and it lands on the stored P₂, never on P₁').toMatch(
-      /resultLabel=\{t\('p2Result'\)\}\s*\n\s*result=\{rm\(explanation\.chargeableIncomeWithAdditional\)\}/,
-    );
+    const p2 = between("key: 'p2'", "key: 'mtd'");
+    expect(p2).toContain('t.Yt');
+    expect(p2).toContain('t.Kt');
+    expect(p2, 'P₂ re-estimates the projected EPF because the bonus ate into the same cap').toContain('t.K2t');
+    expect(p2, 'and it lands on the stored P₂, never on P₁').toContain('result: x.chargeableIncomeWithAdditional');
 
-    // The bracket line — both zero floors, because B carries the rebate as a negative number.
-    const mtd = between("formula={t('formulaMtd')}", "resultLabel={t('resultLabel')}");
-    expect((mtd.match(/max\( 0,/g) ?? []).length, 'annualTaxFor floors, and pcbMonth floors again').toBe(2);
+    // The bracket line — both zero floors in the substitution, because B carries the rebate as a negative
+    // number. The FORMULA row above it is the agency's and prints none (asserted in the case above), and
+    // the flooring is a visible step of its own; these two counts are what keep the substitution honest.
+    expect((row('mtd', 'substituted').match(/max\( 0,/g) ?? []).length,
+      'annualTaxFor floors, and pcbMonth floors again').toBe(2);
+    // The `calculation` row resolves the inner bracket to the STORED `taxOnP1`, which annualTaxFor has
+    // already floored — so one clamp disappears with it and exactly the outer one remains.
+    expect((row('mtd', 'calculation').match(/max\( 0,/g) ?? []).length,
+      'taxOnP1 is already floored, so only pcbMonth’s outer clamp is left').toBe(1);
+    expect(row('mtd', 'calculation'), 'and it is the stored bracket tax, not (P − M) × R recomputed here')
+      .toContain('t.taxOnP1');
 
     // The last line — §E.3 legs, not the calculated ones, and the zakat cascade with its clamps.
-    const net = between("formula={t('formulaNet')}", "resultLabel={t('resultLabel')}");
+    const net = between("key: 'net'", "key: 'year'");
     expect(net, 'A is the leg AFTER the RM10 rule').toContain('mtdNormalFloored');
     expect(net, 'and so is E').toContain('mtdAdditionalFloored');
-    expect((net.match(/max\( 0,/g) ?? []).length, 'zero-clamped twice, plus the leftover').toBe(3);
+    expect((row('net', 'substituted').match(/max\( 0,/g) ?? []).length,
+      'zero-clamped twice, plus the leftover').toBe(3);
+    // The `calculation` row substitutes the STORED `zakatLeftover` for the innermost clamp, so two remain.
+    expect((row('net', 'calculation').match(/max\( 0,/g) ?? []).length,
+      'the leftover is stored, so the innermost clamp resolves to a figure').toBe(2);
+    expect(row('net', 'calculation')).toContain('t.zakatLeftover');
+
+    /**
+     * NO ARITHMETIC, ANYWHERE IN THE ASSEMBLY — checked where arithmetic could actually enter.
+     *
+     * A flat "the file contains no '+'" is not available here and would be a lie if it passed: the
+     * expressions themselves are full of ' + ', inside template literals, because that is what the
+     * agency's formula looks like. Every VALUE in this file arrives through a `${…}` interpolation, so the
+     * interpolations are what must be free of an operator — an added term, a scaled figure or a rounded
+     * one could only reach a string through one of them, or through a helper this file called. Both are
+     * asserted.
+     */
+    const interpolations = [...src.matchAll(/\$\{([^{}]*)\}/g)].map((m) => m[1]);
+    expect(interpolations.length, 'the file interpolates stored figures').toBeGreaterThan(30);
+    for (const expr of interpolations) {
+      expect(expr, `an interpolation must read a figure, not compute one: ${expr}`).not.toMatch(/[+*/]|\s-\s/);
+    }
+    for (const op of ['Math.', 'toFixed', 'reduce(', 'parseFloat', 'Number(']) {
+      expect(src, `formulas.ts must not use ${op}`).not.toContain(op);
+    }
+  });
+
+  it('Step 1[E] is READ or absent — never multiplied out on the page', () => {
+    // `pcbMonth` stamps `totalMtdYear` only inside its `Yt > 0` branch, because Step 1[E] feeds §D.2 Step 4
+    // and nothing else reads it. Every term of X + [ [C] × (n + 1) ] is on the screen, so deriving the
+    // answer would be trivial — and it is the one thing this screen may never do, since a figure it
+    // computed could disagree with the payslip. The formula is shown either way; the answer is not.
+    const src = code(FORMULAS);
+    const year = src.slice(src.indexOf("key: 'year'"));
+    expect(year, 'the substitution is gated on the engine having recorded the answer').toContain(
+      't.totalMtdYear !== null',
+    );
+    expect(year, 'and the result is the stored figure').toContain('result: t ? t.totalMtdYear : null');
+    const en = (JSON.parse(read('messages/en.json')) as { payroll: { pcbDetail: Record<string, string> } })
+      .payroll.pcbDetail;
+    expect(en.yearFormula, "the agency's Step 1[E]").toBe('[E] = X + ( [C] × ( n + 1 ) )');
+    expect(en.yearNoAdditional.toLowerCase(), 'and an unrecorded step says so').toContain('did not run');
   });
 
   it('a hand-set PCB is announced, and the working lands on the figure it actually explains', () => {
