@@ -258,7 +258,6 @@ crontab -e
 0 3 1 4 * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/expire-carry.ts >> /home/ubuntu/aihr-cron-logs/expire-carry.log 2>&1
 0 1 * * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/capture-usage.ts >> /home/ubuntu/aihr-cron-logs/capture-usage.log 2>&1
 30 2 * * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/anomaly-sweep.ts >> /home/ubuntu/aihr-cron-logs/anomaly-sweep.log 2>&1
-15 1 * * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/resync-child-relief-grid.ts >> /home/ubuntu/aihr-cron-logs/child-relief.log 2>&1
 ```
 
 `capture-usage` runs FIRST, at 01:00, because it meters the day before the other sweeps mutate anything.
@@ -267,6 +266,15 @@ every PROCESSED payroll run for anomalies so the exceptions queue is already fil
 opens it. It is **read-only with respect to money** and idempotent — a re-run supersedes its previous
 verdicts rather than duplicating them — so a missed night costs nothing and needs no backfill. Add
 `--dry-run` to see what it would evaluate without writing.
+
+**The block above is the ORIGINAL plain form and is NOT what the box runs.** Every live job was routed
+through `deploy/cron-alert.sh` in r295 so a non-zero exit reaches cron's mail path instead of being
+swallowed by a redirect. `crontab -l` is the truth (CLAUDE.md §7); this file has already drifted from it
+once. The child-relief job below is written in the wrapper form because that is what was installed.
+
+```cron
+15 1 * * * cd /opt/ai-hr && deploy/cron-alert.sh child-relief /home/ubuntu/aihr-cron-logs/child-relief.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/resync-child-relief-grid.ts
+```
 
 `resync-child-relief-grid` (b25e421e, r352) runs at 01:15, between metering and the anomaly sweep, and it
 is the reason a child's birthday reaches the payslip at all. `employee_statutory_my.num_children` and
@@ -282,6 +290,12 @@ the working day rather than during it. It is safe to run more than once — a se
 reports `unchanged` for everyone — and it does not recompute issued payslips; it changes what FUTURE runs
 compute. Add `--dry-run` to print whose relief would move without writing, and **read that output before
 the first real run**: on a register that has never been resynced, relief moves in both directions.
+
+Installed and verified on 2026-09-28 (r352). The first production run moved nothing — 4 employees on
+`auto` across 2 tenants, all four `unchanged`, 0 payroll alerts — so the stored figures already agreed
+with the register that day. ⚠️ **`--dry-run` lists who would be examined; it does NOT compute the delta**
+(it counts every row as `unchanged` and writes nothing). To see what a run would actually move, read
+`num_children` and `child_relief_table` before and after.
 
 First `mkdir -p /home/ubuntu/aihr-cron-logs`. Keep the logs **outside** `/opt/ai-hr`: `improve:release`
 rsyncs with `--delete` and would wipe anything it doesn't exclude.

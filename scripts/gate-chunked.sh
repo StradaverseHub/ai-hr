@@ -20,12 +20,32 @@
 #   ./scripts/gate-chunked.sh          3 chunks (default)
 #   CHUNKS=4 ./scripts/gate-chunked.sh
 #
+# RUNNING A RANGE, AND WHY IT EXISTS (r352). CLAUDE.md section 4 records that on this machine the
+# harness KILLS a long background command when memory runs low — a six-chunk background gate died in
+# chunk 3 twice — and that what runs clean is every chunk in the FOREGROUND, inside its own tool call.
+# A foreground call is time-bounded, so a 16-chunk gate cannot fit in one. CHUNK_FROM/CHUNK_TO run a
+# CONTIGUOUS SLICE of the same chunking, so the documented reliable workflow is actually executable:
+#
+#   CHUNKS=16 CHUNK_FROM=1  CHUNK_TO=4  ./scripts/gate-chunked.sh
+#   CHUNKS=16 CHUNK_FROM=5  CHUNK_TO=8  ./scripts/gate-chunked.sh     # …and so on to 16
+#
+# CHUNKS must be IDENTICAL across the slices or they do not partition the suite: the split is
+# `i = c; i < TOTAL; i += CHUNKS`, so a chunk's membership is a function of CHUNKS. Changing it
+# mid-gate silently reruns some files and skips others, and the counts would still add up.
+#
+# A RANGE IS NOT A GATE. The footer says PARTIAL and the summary names the slice, because the one
+# thing a reader must never do is read a green slice as a green gate. The gate is green when every
+# slice reported exit 0 AND the counted files sum to the whole suite.
+#
 # Reading the result: this prints a per-chunk summary and a FINAL total. A chunk that reports a
 # non-zero exit, or a file count that does not add up to the whole suite, is a failed gate — read the
 # per-chunk log named in the output, exactly as you would read one vitest run.
 set -uo pipefail
 
 CHUNKS="${CHUNKS:-3}"
+# 1-based, inclusive, and defaulting to the whole run so every existing invocation is byte-identical.
+CHUNK_FROM="${CHUNK_FROM:-1}"
+CHUNK_TO="${CHUNK_TO:-$CHUNKS}"
 OUT="${GATE_OUT:-/tmp/aihr-gate}"
 mkdir -p "$OUT"
 
@@ -43,12 +63,20 @@ while IFS= read -r f; do ALL+=("$f"); done < <(
   { find test -name '*.test.ts'; find test -name '*.dom.test.tsx'; } | sort
 )
 TOTAL=${#ALL[@]}
+PARTIAL=0
+if [ "$CHUNK_FROM" != "1" ] || [ "$CHUNK_TO" != "$CHUNKS" ]; then PARTIAL=1; fi
+if [ "$CHUNK_FROM" -lt 1 ] || [ "$CHUNK_TO" -gt "$CHUNKS" ] || [ "$CHUNK_FROM" -gt "$CHUNK_TO" ]; then
+  echo "CHUNK_FROM=$CHUNK_FROM CHUNK_TO=$CHUNK_TO is not a slice of 1..$CHUNKS"; exit 2
+fi
 echo "▸ $TOTAL test files across $CHUNKS chunks"
+[ "$PARTIAL" = "1" ] && echo "▸ PARTIAL RUN — chunks $CHUNK_FROM..$CHUNK_TO of $CHUNKS only"
 
 FAILED=0
+RAN=0
+COUNTED_TOTAL=0
 declare -a SUMMARY
 
-for ((c = 0; c < CHUNKS; c++)); do
+for ((c = CHUNK_FROM - 1; c < CHUNK_TO; c++)); do
   FILES=()
   for ((i = c; i < TOTAL; i += CHUNKS)); do FILES+=("${ALL[$i]}"); done
   LOG="$OUT/chunk$((c + 1)).log"
@@ -79,11 +107,21 @@ for ((c = 0; c < CHUNKS; c++)); do
   echo "  $TESTS"
   echo "  $DUR"
   SUMMARY+=("chunk $((c + 1)): exit=$RC ${LINE:-<no summary>}")
+  RAN=$((RAN + 1))
+  [ -n "$COUNTED" ] && COUNTED_TOTAL=$((COUNTED_TOTAL + COUNTED))
   [ "$RC" != "0" ] && FAILED=1
 done
 
 echo
 echo "════ FINAL ════"
 for s in "${SUMMARY[@]}"; do echo "  $s"; done
-if [ "$FAILED" = "0" ]; then echo "  GATE GREEN across all $CHUNKS chunks"; else echo "  GATE RED — read the chunk logs in $OUT"; fi
+echo "  chunks run: $RAN   files counted: $COUNTED_TOTAL of $TOTAL in the suite"
+if [ "$FAILED" != "0" ]; then
+  echo "  GATE RED — read the chunk logs in $OUT"
+elif [ "$PARTIAL" = "1" ]; then
+  echo "  SLICE GREEN — chunks $CHUNK_FROM..$CHUNK_TO of $CHUNKS. THIS IS NOT A GATE."
+  echo "  The gate is green only when every slice reported exit 0 and the counted files sum to $TOTAL."
+else
+  echo "  GATE GREEN across all $CHUNKS chunks"
+fi
 exit "$FAILED"

@@ -57,7 +57,14 @@ Not a missing message: a `redirect()` to the TP1 **list**, while the **form** ha
 - **`fda53352` point 3 is now provable and unbuilt**: Section B's own heading in our transcription reads *"EXCLUDING Tax Exempt Allowances"*, we print that caption and put the exempt money under it, and the same money is printed again in Section F. `B1(c) = allowances − exemptAllowances`.
 - **The EA's A.8 count**: correct on `'auto'`, unenforced on `'manual'`, and **never synced on `'auto_table'`** — the gate is `!== 'auto'`, so a mode whose name promises derivation keeps a hand-keyed count beside a correct s.48 grid.
 - **The `')'` on EA lines 1(c), 3 and 4 overprints the money column** — drawn at `ruleTo + 2 = 483` where `moneyLeft` is 482.3. Unguarded.
-- **The nightly resync has not run on the box yet** — `deploy.sh` runs migrations, not scripts. Dry run first; relief moves in both directions.
+- ~~The nightly resync has not run on the box yet~~ **DONE**: installed at 01:15 in the crontab and run on
+  production. 4 employees on `auto` across 2 tenants, **all four `unchanged`, 0 payroll alerts** — the
+  stored figures already agreed with the register, so no tax moved. ⚠️ Two things learned doing it:
+  `--dry-run` does NOT compute a delta (it lists who would be examined and counts everyone `unchanged`),
+  so the preview the plan promised the reporter is weaker than described — the before/after must be read
+  off the columns. And the crontab routes every job through `deploy/cron-alert.sh` since r295 while
+  `DEPLOY.md` still documented the plain `>> log 2>&1` form; the line was installed in the wrapper form
+  and `DEPLOY.md` corrected. `crontab -l` is the truth, again.
 - Discard on the TP1 month form has never worked (`id: ''` → invalid uuid); left byte-identical.
 - Two dirty `TabSaveScope`s on one screen open two unsaved-changes dialogs. Pre-existing shape (personnel mounts five).
 ## r351 (2026-09-28) — four statutory items in one gate, and the gate earned its keep. `main@cc2f165c`, **migration 0489**.

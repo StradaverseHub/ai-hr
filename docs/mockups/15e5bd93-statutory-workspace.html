@@ -1,0 +1,231 @@
+<meta charset="utf-8">
+<title>15e5bd93 — Statutory payment setup: today, and the proposed workspace</title>
+<!--
+  Mockup for 15e5bd93 ("Organization - Statutory Payment Setup UIUX Improvement").
+
+  HONESTY NOTES — a mockup is a promise, so read these before changing anything here:
+
+  · NOW is the real screen, read from source, not imagined.
+    - Route /admin/organization/<companyId>?tab=statutory. Tabs are ['general','bank','statutory']
+      (lib/company-panel-tabs.ts:16), drawn at components/company-panel.tsx:1086-1098.
+    - "Open settings" is NOT a link or a drawer. It is a per-authority CSS accordion:
+      the button is components/company-panel.tsx:683-694 (label key authorityOpen / authorityClose),
+      and the panel it reveals is :698-701, always mounted and hidden with `hidden`.
+    - The eight bodies and their order are STATUTORY_AUTHORITIES (lib/statutory-authorities.ts:14-30):
+      epf, socso, eis, lhdn, hrdf, zakat, ptptn, tabung_haji. EIS renders indented under SOCSO
+      (components/company-panel.tsx:1543, :626-629) and that is deliberate — the reasoning, with
+      production evidence, is at :84-104. It is drawn indented here and stays indented in the proposal.
+    - Each opened body posts 14 fields, plus one filing number on epf/socso/lhdn or the HRDF rate select
+      on hrdf. Field list: components/company-panel.tsx:702-854. The BEFORE panel below draws the real
+      ones in the real order.
+    - The "Statutory identity (MY)" card (SSM registration no., MyInvois TIN) is a SEPARATE form above
+      the list, :1483-1508, and deliberately not part of any body. It stays where it is.
+
+  · PROPOSED is drawn from patterns THAT ALREADY EXIST IN THIS REPO, not invented:
+    - The left rail + right workspace is components/leave-type-workspace.tsx, used by
+      app/admin/leave-config/types/page.tsx. Eight statutory bodies map onto it the same way leave
+      types do.
+    - The single sticky Save bar is components/tab-save-scope.tsx (sticky bar at :652), already
+      wrapping the General tab of this very file at components/company-panel.tsx:1038-1046.
+    - Card / SectionHeader / Field / inputCls are components/ui/card.tsx and components/ui.tsx:61,:221.
+
+  · WHAT THE PICTURE DELIBERATELY DOES NOT PROMISE:
+    - No field is added, removed, renamed or re-validated. Every box in the AFTER panel is a box that
+      exists today. The three group headings (Filing identity / Payment setup / Correspondence address)
+      are the EXISTING ones at :727, :759 plus a name for the address block that is currently unheaded.
+    - The status column on the left rail is the existing Configured / Not set up chip (:660), not a new
+      completeness score.
+    - Colours, spacing and exact wording will differ. This is a sketch of the LAYOUT.
+
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px}
+  h2{font-size:14px;margin:0 0 3px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 13px;line-height:1.45}
+  .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;
+        vertical-align:2px;margin-left:6px}
+  .now{background:var(--muted);color:var(--mf)}
+  .new{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin:0 0 14px}
+  .tab{padding:7px 14px;font-size:12.5px;border-radius:9px 9px 0 0;color:var(--mf)}
+  .tab.on{background:var(--muted);color:var(--fg);font-weight:650;box-shadow:inset 0 -2px 0 var(--primary)}
+  .rows{border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;
+       border-bottom:1px solid var(--border);font-size:12.5px}
+  .row:last-child{border-bottom:0}
+  .row .lbl{font-weight:600}
+  .row .note{font-size:11px;color:var(--mf)}
+  .ind{padding-left:30px}
+  .badge{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:600}
+  .ok{background:color-mix(in srgb,var(--good) 12%,white);color:var(--good)}
+  .no{background:var(--muted);color:var(--mf)}
+  .openbtn{font-size:11px;color:var(--primary);font-weight:600;white-space:nowrap}
+  .panel{border:1px dashed var(--primary);border-radius:10px;margin:0 12px 10px;padding:11px 12px;
+         background:color-mix(in srgb,var(--primary) 3%,white)}
+  .ph{font-size:10.5px;font-weight:700;color:var(--mf);text-transform:uppercase;letter-spacing:.04em;margin:0 0 6px}
+  .fgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px 10px}
+  .f{display:flex;flex-direction:column;gap:2px}
+  .f .cap{font-size:10px;color:var(--mf);font-weight:600}
+  .f .box{border:1px solid var(--border);border-radius:7px;background:#fff;height:23px}
+  .f.wide{grid-column:span 3}
+  .f.two{grid-column:span 2}
+  .stack{display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start}
+  .rail{border:1px solid var(--border);border-radius:11px;overflow:hidden;background:#fff}
+  .rr{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 11px;
+      border-bottom:1px solid var(--border);font-size:12px}
+  .rr:last-child{border-bottom:0}
+  .rr.sel{background:color-mix(in srgb,var(--primary) 8%,white);
+          box-shadow:inset 3px 0 0 var(--primary);font-weight:650}
+  .rr .rn{display:flex;flex-direction:column;gap:1px}
+  .rr .rd{font-size:10px;color:var(--mf);font-weight:400}
+  .work{border:1px solid var(--border);border-radius:11px;background:#fff;padding:14px}
+  .wh{display:flex;align-items:center;justify-content:space-between;margin:0 0 4px}
+  .wt{font-size:13.5px;font-weight:700}
+  .wd{font-size:11px;color:var(--mf);margin:0 0 12px}
+  .sect{border-top:1px solid var(--border);padding-top:10px;margin-top:12px}
+  .sect:first-of-type{border-top:0;padding-top:0;margin-top:0}
+  .sh{font-size:11px;font-weight:700;margin:0 0 2px}
+  .shd{font-size:10.5px;color:var(--mf);margin:0 0 8px}
+  .savebar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:14px;
+           border:1px solid var(--border);border-radius:12px;padding:9px 12px;background:#fff;
+           box-shadow:0 2px 10px rgba(20,20,40,.06)}
+  .savenote{font-size:11px;color:var(--mf)}
+  .btn{background:var(--primary);color:#fff;border-radius:8px;padding:5px 14px;font-size:11.5px;font-weight:650}
+  .btn.ghost{background:var(--muted);color:var(--mf)}
+  .cap2{font-size:11px;color:var(--mf);margin:8px 0 0}
+  .arrow{text-align:center;font-size:20px;color:var(--mf);margin:2px 0 14px}
+</style>
+
+<div class="card">
+  <h2>Statutory payment setup <span class="chip now">TODAY</span></h2>
+  <p class="sub">Organization &rsaquo; company &rsaquo; Statutory. Eight bodies in a list; each one hides
+    fourteen boxes behind its own &ldquo;Open settings&rdquo;. Only EPF is drawn opened below &mdash; the other
+    seven look identical when you open them.</p>
+
+  <div class="tabs"><div class="tab">General</div><div class="tab">Bank Account</div><div class="tab on">Statutory</div></div>
+
+  <div class="rows" style="margin-bottom:12px">
+    <div class="row"><span class="lbl">Statutory identity (MY)</span>
+      <span class="note">SSM registration no. &middot; MyInvois TIN &mdash; its own Save</span></div>
+  </div>
+
+  <div class="rows">
+    <div class="row"><span><span class="lbl">EPF (KWSP)</span>
+        <span class="badge ok">Configured</span>
+        <div class="note">Employer no. E 1234567890 &middot; Paid from Maybank &middot;&middot;&middot;4471</div></span>
+      <span class="openbtn">Close &#9652;</span></div>
+  </div>
+  <div class="panel">
+    <p class="ph">the fourteen boxes behind one &ldquo;Open settings&rdquo;</p>
+    <div class="fgrid">
+      <div class="f"><span class="cap">EPF employer no.</span><span class="box"></span></div>
+      <div class="f two"><span class="cap">Employer account / reference no.</span><span class="box"></span></div>
+      <div class="f"><span class="cap">Paid from</span><span class="box"></span></div>
+      <div class="f two"><span class="cap">Authorised signatory</span><span class="box"></span></div>
+      <div class="f wide"><span class="cap">Address line 1</span><span class="box"></span></div>
+      <div class="f wide"><span class="cap">Address line 2</span><span class="box"></span></div>
+      <div class="f wide"><span class="cap">Address line 3</span><span class="box"></span></div>
+      <div class="f"><span class="cap">City</span><span class="box"></span></div>
+      <div class="f"><span class="cap">State</span><span class="box"></span></div>
+      <div class="f"><span class="cap">Postcode</span><span class="box"></span></div>
+      <div class="f"><span class="cap">Country</span><span class="box"></span></div>
+      <div class="f"><span class="cap">Phone</span><span class="box"></span></div>
+      <div class="f"><span class="cap">Email</span><span class="box"></span></div>
+    </div>
+    <p class="cap2">&hellip; and its own Save button, and its own Clear. Eight times over.</p>
+  </div>
+
+  <div class="rows" style="margin-top:2px">
+    <div class="row"><span><span class="lbl">SOCSO &amp; EIS (PERKESO)</span> <span class="badge ok">Configured</span></span><span class="openbtn">Open settings &#9662;</span></div>
+    <div class="row ind"><span><span class="lbl">EIS</span> <span class="badge no">Not set up</span></span><span class="openbtn">Open settings &#9662;</span></div>
+    <div class="row"><span><span class="lbl">LHDN</span> <span class="badge ok">Configured</span></span><span class="openbtn">Open settings &#9662;</span></div>
+    <div class="row"><span><span class="lbl">HRDF (HRD Corp)</span> <span class="badge no">Not set up</span></span><span class="openbtn">Open settings &#9662;</span></div>
+    <div class="row"><span><span class="lbl">Zakat</span> <span class="badge no">Not set up</span></span><span class="openbtn">Open settings &#9662;</span></div>
+    <div class="row"><span><span class="lbl">PTPTN</span> <span class="badge no">Not set up</span></span><span class="openbtn">Open settings &#9662;</span></div>
+    <div class="row"><span><span class="lbl">Tabung Haji</span> <span class="badge no">Not set up</span></span><span class="openbtn">Open settings &#9662;</span></div>
+  </div>
+  <p class="cap2"><strong>The problem in one line:</strong> the page can show you eight collapsed rows, or one
+    body&rsquo;s fourteen boxes pushed down the page by the rows above it &mdash; never a body&rsquo;s details and
+    where you are in the list at the same time.</p>
+</div>
+
+<div class="arrow">&#8595;</div>
+
+<div class="card">
+  <h2>Statutory payment setup <span class="chip new">PROPOSED</span></h2>
+  <p class="sub">Every body stays on the left, always visible with its status. The one you pick fills the
+    workspace on the right, grouped under headings, with nothing collapsed. One Save for the whole tab.</p>
+
+  <div class="tabs"><div class="tab">General</div><div class="tab">Bank Account</div><div class="tab on">Statutory</div></div>
+
+  <div class="stack">
+    <div>
+      <div class="rail">
+        <div class="rr sel"><span class="rn"><span>EPF (KWSP)</span><span class="rd">Provident fund</span></span><span class="badge ok">Set</span></div>
+        <div class="rr"><span class="rn"><span>SOCSO (PERKESO)</span><span class="rd">Social security</span></span><span class="badge ok">Set</span></div>
+        <div class="rr ind"><span class="rn"><span>EIS</span><span class="rd">Employment insurance</span></span><span class="badge no">Not set</span></div>
+        <div class="rr"><span class="rn"><span>LHDN</span><span class="rd">Income tax</span></span><span class="badge ok">Set</span></div>
+        <div class="rr"><span class="rn"><span>HRDF (HRD Corp)</span><span class="rd">Training levy</span></span><span class="badge no">Not set</span></div>
+        <div class="rr"><span class="rn"><span>Zakat</span><span class="rd">Religious contribution</span></span><span class="badge no">Not set</span></div>
+        <div class="rr"><span class="rn"><span>PTPTN</span><span class="rd">Study loan</span></span><span class="badge no">Not set</span></div>
+        <div class="rr"><span class="rn"><span>Tabung Haji</span><span class="rd">Pilgrimage savings</span></span><span class="badge no">Not set</span></div>
+      </div>
+      <div class="rows" style="margin-top:12px">
+        <div class="row"><span class="lbl">Statutory identity (MY)</span></div>
+        <div class="row"><span class="note">SSM registration no.</span><span class="note">201901234567</span></div>
+        <div class="row"><span class="note">MyInvois TIN</span><span class="note">C12345678900</span></div>
+      </div>
+    </div>
+
+    <div class="work">
+      <div class="wh"><span class="wt">EPF (KWSP)</span><span class="badge ok">Configured</span></div>
+      <p class="wd">Employees Provident Fund. Monthly contribution filing and payment.</p>
+
+      <div class="sect">
+        <p class="sh">Filing identity</p>
+        <p class="shd">The number this body knows the company by on its returns.</p>
+        <div class="fgrid"><div class="f"><span class="cap">EPF employer no.</span><span class="box"></span></div></div>
+      </div>
+
+      <div class="sect">
+        <p class="sh">Payment setup</p>
+        <p class="shd">Where the money is paid from, and the reference it is paid against.</p>
+        <div class="fgrid">
+          <div class="f two"><span class="cap">Employer account / reference no.</span><span class="box"></span></div>
+          <div class="f"><span class="cap">Paid from</span><span class="box"></span></div>
+          <div class="f two"><span class="cap">Authorised signatory</span><span class="box"></span></div>
+        </div>
+      </div>
+
+      <div class="sect">
+        <p class="sh">Correspondence address</p>
+        <p class="shd">Printed on this body&rsquo;s forms and payment advice.</p>
+        <div class="fgrid">
+          <div class="f wide"><span class="cap">Address line 1</span><span class="box"></span></div>
+          <div class="f wide"><span class="cap">Address line 2</span><span class="box"></span></div>
+          <div class="f wide"><span class="cap">Address line 3</span><span class="box"></span></div>
+          <div class="f"><span class="cap">City</span><span class="box"></span></div>
+          <div class="f"><span class="cap">State</span><span class="box"></span></div>
+          <div class="f"><span class="cap">Postcode</span><span class="box"></span></div>
+          <div class="f"><span class="cap">Country</span><span class="box"></span></div>
+          <div class="f"><span class="cap">Phone</span><span class="box"></span></div>
+          <div class="f"><span class="cap">Email</span><span class="box"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="savebar">
+    <span class="savenote">2 bodies changed &mdash; EPF, LHDN</span>
+    <span><span class="btn ghost">Discard</span> <span class="btn">Save statutory</span></span>
+  </div>
+
+  <p class="cap2">Same fourteen boxes, same rules, same permissions. What changes is that you can see where you
+    are, what is still unset, and what you have edited &mdash; without opening and closing anything.</p>
+</div>
