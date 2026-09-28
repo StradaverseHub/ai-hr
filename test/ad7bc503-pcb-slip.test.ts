@@ -76,6 +76,8 @@ const SHARED = 'app/payroll/pcb-detail/shared.ts';
 const ROUTE = 'app/payroll/pcb-detail/download/route.ts';
 const PDF = 'app/payroll/pcb-detail/slip-pdf.ts';
 const READS = 'app/payroll/pcb-detail/slip-data.ts';
+/** r351 — the one assembly of the substituted expressions, painted by the screen AND by the document. */
+const FORMULAS = 'app/payroll/pcb-detail/formulas.ts';
 
 const CURRENT: PcbReliefBreakdown = {
   individual: 9000, spouse: 0, children: 6000, disabledIndividual: 0, disabledSpouse: 0, lp: 0, total: 15000,
@@ -648,6 +650,35 @@ describe('ad7bc503 — the download is the screen’s own model, behind the scre
     expect(shared).toContain('model.worksheet.sections');
     expect(shared).toContain('model.slip');
     expect(shared).toContain("t('identificationHeading')");
+
+    /**
+     * r351 — AND THE ARITHMETIC, WHICH IT DID NOT CARRY.
+     *
+     * Up to r351 the document pushed every FIGURE and not one formula: no P line, no bracket line, no net
+     * line, no calculation summary, no step chain and not even the deducted total on a labelled line. A
+     * reader could see every input and still not see how they became a deduction, which is the one thing a
+     * person disputing their tax needs — and requirement 11 is "the same calculation details displayed on
+     * screen". Each of the five is pinned by NAME, because "the PDF has some sections" is exactly the
+     * assertion that would keep passing while one of them was dropped.
+     */
+    for (const key of ['summaryHeading', 'stepAHeading', 'floorHeading', 'netHeading', 'stepsHeading', 'finalPcb']) {
+      expect(shared, `the document must carry ${key}`).toContain(`t('${key}')`);
+    }
+    for (const label of ['formulaLabel', 'substitutedLabel', 'calculationLabel']) {
+      expect(shared, `the document must carry the ${label} row`).toContain(`t('${label}')`);
+    }
+    // The five figures the reporter's own requirement named, which had no line on the document at all.
+    for (const member of ['mtdNormalCalc', 'mtdAdditionalCalc', 'zakatLeftover', 'totalTaxYear', 'totalMtdYear']) {
+      expect(shared, `the document must carry trace.${member}`).toContain(member);
+    }
+    // ⚠️ AND IT IS THE SCREEN'S OWN ASSEMBLY, NOT A SECOND COPY. Both surfaces call `pcbFormulaBlocks`; an
+    // expression written out a second time in shared.ts is the drift this file's header refuses.
+    expect(shared, 'one assembly').toContain('pcbFormulaBlocks(');
+    expect(code(VIEW), 'and the screen paints the same one').toContain('pcbFormulaBlocks(');
+    // Neither surface may assemble an expression of its own: the four substituted strings live in one file.
+    for (const f of [VIEW, SHARED]) {
+      expect(code(f), `${f} must not assemble an expression of its own`).not.toContain('max( 0,');
+    }
   });
 
   it('the screen offers the download, as a GET and not as an action', () => {
@@ -663,8 +694,11 @@ describe('ad7bc503 — the download is the screen’s own model, behind the scre
     for (const forbidden of ['db/client', 'db/schema', 'drizzle-orm', 'withTenant', 'localization/my/payroll']) {
       expect(explain, `core/pcb-explain.ts must not import ${forbidden}`).not.toContain(`from '${forbidden}`);
     }
-    // …and the screen's own files still cannot reach the engine or the statutory tables.
-    for (const f of [PAGE, VIEW, READS, SHARED]) {
+    // …and the screen's own files still cannot reach the engine or the statutory tables. r351 adds
+    // `formulas.ts` to the list rather than leaving a new file in this directory outside it: it is the file
+    // that decides which stored figure lands in which term, which is exactly the place a shortcut to the
+    // engine would be tempting.
+    for (const f of [PAGE, VIEW, READS, SHARED, FORMULAS]) {
       const imports = read(f).split('\n').filter((l) => l.trimStart().startsWith('import '));
       for (const forbidden of ['pcbMonth', 'localization/my/payroll', 'statutory-tables', 'packFor']) {
         expect(imports.join('\n'), `${f} must not import ${forbidden}`).not.toContain(forbidden);

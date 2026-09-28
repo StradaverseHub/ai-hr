@@ -230,7 +230,10 @@ export function pcbFormulaBlocks(x: PcbExplanation, f: PcbFormulaFormat): PcbFor
         : null,
     resultLabel: 'yearTotalMtd',
     result: t ? t.totalMtdYear : null,
-    notes: t && t.totalMtdYear !== null ? ['yearNote'] : ['stepENotRecorded'],
+    // `yearNoAdditional` is the sentence this screen has carried since 45df860a for exactly this case —
+    // "the yearly-total step of the calculation did not run" — so it is reused rather than a second
+    // wording of one fact being minted. See the catalogue sweep in test/r351-pcb-detail-pdf.test.ts.
+    notes: t && t.totalMtdYear !== null ? ['yearNote'] : ['yearNoAdditional'],
   });
 
   return blocks;
