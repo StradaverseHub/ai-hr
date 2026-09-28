@@ -4297,7 +4297,7 @@
       },
       "downloadPdf": "ดาวน์โหลดแบบฟอร์ม EA",
       "previewNotice": "หน้านี้เป็นตัวอย่างสำหรับตรวจสอบตัวเลขก่อนยื่นแบบ กด “ดาวน์โหลดแบบฟอร์ม EA” เพื่อรับ C.P.8A ตัวจริง ในรูปแบบเดียวกับแบบฟอร์มที่พิมพ์",
-      "notOfficialStrip": "ไม่ใช่ส่วนหนึ่งของแบบฟอร์ม C.P.8A ทางการ — เพิ่มโดย AI HR"
+      "notOfficialStrip": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A now ends at the officer's box and this line has no reader]"
     },
     "cp22": {
       "download": "ดาวน์โหลด CP22",

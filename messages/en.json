@@ -4600,8 +4600,8 @@
       "zakatViaSalary": "3. Zakat paid via salary deduction",
       "donations": "4. Approved donations / gifts / contributions via salary deduction",
       "tp1ClaimHeading": "5. Total claim for deduction by employee via Form TP1 in respect of:",
-      "tp1Relief": "5(a) Relief",
-      "zakatOther": "5(b) Zakat other than that paid via monthly salary deduction",
+      "tp1Relief": "(a) Relief",
+      "zakatOther": "(b) Zakat other than that paid via monthly salary deduction",
       "childRelief": "6. Total qualifying child relief",
       "sectionEContributions": "E  CONTRIBUTIONS PAID BY EMPLOYEE TO APPROVED PROVIDENT / PENSION FUND AND SOCSO",
       "fundName": "1. Name of Provident Fund",
@@ -4668,7 +4668,7 @@
       },
       "downloadPdf": "Download the EA form",
       "previewNotice": "This screen is a preview, for checking the figures before you file. “Download the EA form” gives you the C.P.8A itself, laid out as the printed form.",
-      "notOfficialStrip": "Not part of the official C.P.8A — added by AI HR."
+      "notOfficialStrip": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A now ends at the officer's box and this line has no reader]"
     },
     "cp22": {
       "download": "Download CP22",

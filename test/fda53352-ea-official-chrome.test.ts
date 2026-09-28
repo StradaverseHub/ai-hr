@@ -207,32 +207,55 @@ describe('fda53352 · (d) the officer captions clear their writing lines, in BOT
   });
 });
 
-// ─── (e) Our own strip, named as ours ───────────────────────────────────────────────────────────────
+// ─── (e) r351 — THE PRINTED FORM ENDS WHERE THE AGENCY'S ENDS ───────────────────────────────────────
 
-describe('fda53352 · (e) the strip below the form says whose it is', () => {
-  it('every locale carries the line, and it names the form it is NOT part of', () => {
+describe('fda53352 · (e) nothing of ours is printed below the officer box', () => {
+  /**
+   * ⚠️ THIS BLOCK ASSERTED THE OPPOSITE UNTIL r351, AND THE REVERSAL IS THE REPORTER'S OWN.
+   *
+   * r349 pinned the strip's presence and its draw order, and its third case was titled "the EIS figure
+   * STAYS — the reporter approved the plan that keeps it". That plan explicitly offered to remove the
+   * strip if they preferred. They have now looked at the shipped page and written, in their own hand on
+   * the comparison image, "Remove this part from the EA Form", red-boxing the "Not part of the official
+   * C.P.8A" line, the EIS / SIP figure and the disclaimer paragraph together.
+   *
+   * So the cases are inverted rather than deleted: the old ones would silently stop protecting anything
+   * if they were simply removed, and this is the guard that stops the strip creeping back.
+   *
+   * THE COST IS REAL AND IS RECORDED: the EIS figure is now on NO printed EA. It remains on the HTML
+   * statement, which is why `eisSip` and `disclaimer` are still live keys.
+   */
+  it('the strip is gone from the renderer — no rule, no label, no EIS figure, no disclaimer', () => {
+    const s = src('lib/ea-pdf.ts');
+    expect(s, 'the heavier strip rule is still drawn').not.toContain('hRule(L, R, y - 7, 1.2, ink);');
+    expect(s, 'the "not official" line is still drawn').not.toContain('t.notOfficialStrip');
+    expect(s, 'the EIS figure is still drawn on the form').not.toContain('t.eisSip');
+    expect(s, 'the disclaimer paragraph is still drawn on the form').not.toContain('t.disclaimer');
+  });
+
+  it('the amended marker is NOT removed with it — it was not in the red box, and it is an audit line', () => {
+    // Different in kind from the strip: it discloses that HR overwrote a figure on a tax document. An
+    // amended statement that looks identical to an unamended one is an audit hole. Removing it is a
+    // decision for the reporter to make explicitly, and they have not been asked.
+    expect(src('lib/ea-pdf.ts')).toContain('t.amendedNote');
+  });
+
+  it('EIS and the disclaimer survive on the HTML statement, so their keys stay live', () => {
+    const page = src('app/payroll/reports/ea/[employmentId]/page.tsx');
+    expect(page).toContain("t('eisSip')");
+    expect(page).toContain("t('disclaimer'");
     for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
-      const v = cat(loc).notOfficialStrip as string;
-      expect(v, `${loc}.payroll.ea.notOfficialStrip`).toBeTruthy();
-      expect(v, `${loc} does not name the form`).toContain('C.P.8A');
+      expect(cat(loc).eisSip, `${loc}.payroll.ea.eisSip`).toBeTruthy();
     }
   });
 
-  it('it is drawn above the EIS figure, under a heavier rule', () => {
-    const s = src('lib/ea-pdf.ts');
-    const rule = s.indexOf('hRule(L, R, y - 7, 1.2, ink);');
-    const label = s.indexOf('put(t.notOfficialStrip, L, y - 1, 6.5, font, muted);');
-    const eis = s.indexOf('put(t.eisSip, L, y, 7, font, muted);');
-    expect(rule).toBeGreaterThan(0);
-    expect(label).toBeGreaterThan(rule);
-    expect(eis).toBeGreaterThan(label);
-  });
-
-  it('the EIS figure STAYS — the reporter approved the plan that keeps it', () => {
-    // da4fc817 established that the official Section E carries exactly two amounts and EIS is not one of
-    // them. The figure is an employee's own deduction and this is their only annual statement, so it is
-    // kept OUTSIDE the form rather than dropped. The plan offered to remove it; approval kept it.
-    expect(src('lib/ea-pdf.ts')).toContain('t.eisSip');
-    for (const loc of ['en', 'ms']) expect(cat(loc).eisSip).toBeTruthy();
+  it('notOfficialStrip lost its only reader and is RETIRED, not deleted, in all six locales', () => {
+    // i18n/request.ts deep-merges each locale over English, so dropping it from en.json alone would leave
+    // the sentence resolvable — and re-renderable — for every other reader.
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const v = cat(loc).notOfficialStrip as string;
+      expect(v, `${loc} dropped the key instead of marking it`).toBeTruthy();
+      expect(v, `${loc}.notOfficialStrip must be retired, not live`).toMatch(/^\[retired r351/);
+    }
   });
 });
