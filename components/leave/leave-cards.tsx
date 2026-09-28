@@ -30,7 +30,7 @@ import { leaveVisual } from '@/lib/leave-visual';
 import { formatDays } from '@/lib/day-format';
 import { LeaveDetailsPanel } from './LeaveDetailsPanel';
 import { ReplacementLeavePanel, type ReplacementPanelData } from './ReplacementLeavePanel';
-import type { SharedLeaveGroupEntry } from './shared-leave-group-cards';
+import type { SharedLeaveGroupEntry } from './shared-leave-group-entry';
 import type { EntitlementBreakdownData } from './EntitlementBreakdown';
 import type { PanelSummary } from './entitlement-panel-config';
 
@@ -77,8 +77,10 @@ export function LeaveCards({
   // 46afcc48 — shared leave groups placed PRIMARY render as NON-clickable tiles appended to this same grid,
   // so a pooled balance shows INSIDE the "My Leave Balance" row instead of a separate "Shared leave
   // balances" category. Presentation only: the figures arrive pre-computed (sharedGroupAvailableDays) and
-  // are the same numbers SharedLeaveGroupCards prints at the secondary site. A group is a pooled ceiling,
-  // not a ledger, so it has nothing to open — hence a static tile, never a button.
+  // are the same numbers my-leave-dashboard.tsx draws for a group placed SECONDARY. (That sentence used
+  // to name <SharedLeaveGroupCards>; r302 folded both placements into the one dashboard grid and r356
+  // deleted the component, which had rendered nowhere since.) A group is a pooled ceiling, not a ledger,
+  // so it has nothing to open — hence a static tile, never a button.
   sharedGroups,
 }: {
   entries: LeaveCardEntry[];
@@ -141,7 +143,8 @@ export function LeaveCards({
           );
         })}
         {/* 46afcc48 — PRIMARY shared leave groups, appended to the same grid as static (non-clickable)
-            tiles. Same visual as SharedLeaveGroupCards' tile: Layers icon, the drawable pooled figure,
+            tiles. Same visual as the dashboard's own pooled tile (my-leave-dashboard.tsx; it was
+            <SharedLeaveGroupCards> until r356 deleted that dead component): Layers icon, the drawable figure,
             the "of N shared" ceiling as context BESIDE it (never in place of it), the group name, its
             member list and the per-application cap when set. Nothing to open — a group is a pooled
             ceiling, not a ledger — so it is a plain div, not a button. */}

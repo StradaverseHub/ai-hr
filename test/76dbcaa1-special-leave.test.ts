@@ -109,7 +109,9 @@ describe('r355 · the details screen and its route are gone, and nothing points 
   });
 
   it('no employee surface links to /leave/shared any more', () => {
-    for (const f of ['app/leave/page.tsx', 'components/leave/my-leave-dashboard.tsx', 'components/leave/shared-leave-group-cards.tsx']) {
+    // r356 — the third file was `shared-leave-group-cards.tsx`; it is `shared-leave-group-entry.ts` now
+    // and holds only the type, the dead component beside it having rendered nowhere since r302.
+    for (const f of ['app/leave/page.tsx', 'components/leave/my-leave-dashboard.tsx', 'components/leave/shared-leave-group-entry.ts']) {
       expect(codeOnly(read(f)), `${f} must not build a /leave/shared href`).not.toContain('/leave/shared');
     }
     // The card's link was the ONE runtime entry point, so the two fields that carried it are off the type.
