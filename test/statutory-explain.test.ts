@@ -622,6 +622,43 @@ describe('208beb8b — a figure a payroll officer typed is not the schedule’s'
     }
   });
 
+  it('the SCREEN and the DOWNLOADED COPY word each source identically, and cover the whole union', () => {
+    // 70b14723 — the rule labels already had this problem and solved it by being exhaustive by TYPE in both
+    // files; the two per-SOURCE maps need the same treatment for a sharper reason. A file that credits
+    // Payroll › Statutory Adjustment for a figure that came from the employee's EPF Category sends an
+    // auditor to the wrong screen to check it, and "the file disagrees with the screen it was taken from"
+    // is the one failure the export route's own header calls unacceptable on a statutory reconciliation.
+    // So: same keys, same values, and every member of the union mapped — read out of SOURCE, because tsc
+    // proves exhaustiveness but cannot prove the two files AGREE.
+    const maps = (rel: string) => {
+      const src = code(rel);
+      const out: Record<string, Record<string, string>> = {};
+      for (const name of ['SOURCE_BODY', 'SOURCE_REASON_LABEL']) {
+        const m = new RegExp(`const ${name}: Record<StatutoryProvenanceSource, string> = \\{([^}]*)\\}`).exec(src);
+        expect(m, `${rel} must declare ${name} exhaustively over StatutoryProvenanceSource`).not.toBeNull();
+        out[name] = Object.fromEntries([...m![1].matchAll(/(\w+):\s*'([^']+)'/g)].map((x) => [x[1], x[2]]));
+      }
+      return out;
+    };
+    const view = maps('app/payroll/statutory-detail/statutory-detail-view.tsx');
+    const file = maps('app/payroll/statutory-detail/export/route.ts');
+    // Every member of the union, named in the type's own declaration, is mapped in BOTH files.
+    const union = [
+      ...code('core/statutory-explain.ts')
+        .slice(code('core/statutory-explain.ts').indexOf('export type StatutoryProvenanceSource'))
+        .split(';')[0]
+        .matchAll(/'([a-zA-Z]+)'/g),
+    ].map((m) => m[1]);
+    expect(union, 'the union must still be a readable literal list').toContain('epfManualAmount');
+    for (const name of ['SOURCE_BODY', 'SOURCE_REASON_LABEL']) {
+      expect(Object.keys(view[name]).sort(), `${name}: the view covers the whole union`).toEqual([...union].sort());
+      expect(file[name], `${name}: the download says the same thing the screen says`).toEqual(view[name]);
+    }
+    // …and the two sources really are worded DIFFERENTLY, or the maps exist without doing their job.
+    expect(view.SOURCE_BODY.epfManualAmount).not.toBe(view.SOURCE_BODY.statutoryAdjustment);
+    expect(view.SOURCE_REASON_LABEL.epfManualAmount).not.toBe(view.SOURCE_REASON_LABEL.statutoryAdjustment);
+  });
+
   describe('70b14723 — the standing manual EPF amount joins the seam without a second implementation', () => {
     const REASON = 'Pre-1998 member — contribution agreed at the grandfathered rate';
     const MANUAL_BASES = { ...STAMPED.bases, epf: 3000, epfAdditional: 0 };
