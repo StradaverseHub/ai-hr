@@ -485,7 +485,10 @@ export default async function SelfOvertimePage({
                               no Tooltip component in this codebase. */}
                           <td
                             className="max-w-[28rem] truncate px-3 py-2"
-                            title={[category, p.reason].filter(Boolean).join(' — ')}
+                            // The note is inside the truncating cell, so it has to be inside the title
+                            // too — the plan's promise is that anything shortened on screen can be read
+                            // by resting on it, and that is the whole cell, not the first line of it.
+                            title={[[category, p.reason].filter(Boolean).join(' — '), p.remark].filter(Boolean).join('\n')}
                           >
                             {category && <span className="font-medium">{category}</span>}
                             {category && p.reason ? ' — ' : ''}
