@@ -52,7 +52,7 @@ import { TP1_ITEMS, TP1_REBATES } from '../core/tax-relief';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
-import { createBatch, generatePayslips } from '../core/payroll';
+import { createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
 import { currentPcbReliefs, listProcessedPayslipsAcross, payslipForReview } from '../core/payroll-view';
 import { pcbSlipData } from '../app/payroll/pcb-detail/slip-data';
 import { foldWinAnsi } from '../app/payroll/pcb-detail/slip-pdf';
@@ -502,9 +502,25 @@ describe('r361 — against a real run, end to end', () => {
     return e;
   };
 
-  const runMonth = async (payPeriod: string) => {
+  /**
+   * ⚠️ THE BONUS AND THE ZAKAT ARE NOT DECORATION. On a plain regular month with neither, the net MTD,
+   * the normal leg and the deduction are all the SAME number, and a case written over one cannot tell
+   * the three apart — it would pass just as happily against a band that printed a leg where the
+   * deduction belongs. `bonusAmount` forces the additional leg into existence and `zakat` moves the net
+   * figure off the calculated one, so the three cells under test are three distinct amounts.
+   */
+  const runMonth = async (payPeriod: string, p: { employmentId?: string; bonus?: number; zakat?: number } = {}) => {
     const a = adminCtx(base);
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod });
+    if (p.employmentId && (p.bonus || p.zakat)) {
+      await setPayrollInput(a, {
+        batchId,
+        employmentId: p.employmentId,
+        overtimeAmount: 0,
+        bonusAmount: p.bonus ?? 0,
+        zakat: p.zakat ?? 0,
+      });
+    }
     await generatePayslips(a, { batchId });
   };
 
@@ -515,7 +531,7 @@ describe('r361 — against a real run, end to end', () => {
     // chain the screen uses, and compares the printed cell with the stored deduction.
     const a = adminCtx(base);
     const e = await employee('Results Band', 'results.band@acme.test');
-    await runMonth('2026-03');
+    await runMonth('2026-03', { employmentId: e.employmentId, bonus: 30000, zakat: 40 });
 
     const rows = await listProcessedPayslipsAcross(a, { companyIds: [base.companyId], employmentId: e.employmentId });
     const row = await payslipForReview(a, { companyIds: [base.companyId], payslipId: rows[0].id });
@@ -530,11 +546,18 @@ describe('r361 — against a real run, end to end', () => {
     const x = explainPcb(row!.statutory, fallback);
     if (x.kind !== 'mtd') throw new Error('unreachable');
     const res = pcbCalculationResultsSection(x);
+    const leg = (k: string) => (captionOf(res, k).first as { amount: number }).amount;
+    // THE PREMISE THAT MAKES THIS CASE ABLE TO FAIL: the three cells are three DIFFERENT amounts, so a
+    // band that printed a leg where the deduction belongs could not pass by coincidence.
+    expect(leg('slipResultAdditional'), 'the bonus produced an additional leg').toBeGreaterThan(0);
+    expect(leg('slipResultNetMtd'), 'so the normal leg is not the whole deduction').not.toBe(stored);
+    expect(x.trace!.mtdNormalCalc, 'and the zakat moved the net figure off the calculated one')
+      .not.toBe(leg('slipResultNetMtd'));
+
     expect(captionOf(res, 'slipResultFinal').first).toEqual({ kind: 'money', amount: stored });
     expect(pcbMtdStep2Section(x).rows.at(-1)!.first).toEqual({ kind: 'money', amount: stored });
-    // …and the two legs the band opens with add back to the same figure on an ordinary regular run,
-    // which is the reconciliation a reader will do with their finger.
-    const leg = (k: string) => (captionOf(res, k).first as { amount: number }).amount;
+    // …and the two legs the band opens with add back to that figure on an ordinary regular run, which is
+    // the reconciliation a reader will do with their finger down the agency's page 7.
     expect(Math.round((leg('slipResultNetMtd') + leg('slipResultAdditional')) * 100) / 100).toBe(stored);
   });
 
