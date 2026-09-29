@@ -32,7 +32,7 @@ import { DEFAULT_MY_STATUTORY } from '../localization/my/statutory-tables';
 import { explainStatutory, isSetByHand } from '../core/statutory-explain';
 import { reportPreview } from '../core/reporting';
 import { borangAFrom } from '../lib/borang-a';
-import { buildBorangAFile, parseBorangAFileTotals } from '../lib/kwsp-borang-a-file';
+import { borangAFileEmployeesFrom, buildBorangAFile, parseBorangAFileTotals } from '../lib/kwsp-borang-a-file';
 import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 const CFG = DEFAULT_MY_STATUTORY;
@@ -105,7 +105,22 @@ describe('70b14723 (pure) — the typed amount replaces the Third Schedule readi
       const typed = epfContribution(SALARY, 0, CFG.epf, el, c.sel);
       expect([typed.employee, typed.employer], `${label} honours the typed figure`).toEqual([500, 650]);
       expect(typed.employeeOnBonus, label).toBe(0);
+      // ⚠️ WITH A BONUS, AND THIS IS THE HALF THAT NEEDS ITS OWN ASSERTION. On the Part A path Kₜ comes out
+      // at 0 through `epf()`'s own substitution — the difference of two identical lookups — so the wrapper's
+      // explicit zero is redundant THERE. It is NOT redundant on the other three branches, which never call
+      // `epf()`: a non-citizen's rule figure for a RM2,000 bonus is ceil(2% × 2,000) = RM40, and left in
+      // place beside a typed employee total of RM500 it would make K₁ = 460 and break K₁ + Kₜ = the
+      // employee EPF for exactly the employees a hand-set figure is most often agreed for.
+      const bonusRule = epfContribution(SALARY, 2000, CFG.epf, undefined, c.sel);
+      const bonusTyped = epfContribution(SALARY, 2000, CFG.epf, el, c.sel);
+      expect(bonusTyped.employee, `${label} + bonus: still the typed figure`).toBe(500);
+      expect(bonusTyped.employeeOnBonus, `${label} + bonus: Kₜ = 0 (rule figure was ${bonusRule.employeeOnBonus})`).toBe(0);
+      expect(bonusTyped.employee - bonusTyped.employeeOnBonus, `${label} + bonus: K₁`).toBe(TYPED_EMPLOYEE);
     }
+    // …and the rule figures the assertions above displace are genuinely non-zero on two of the four, so the
+    // loop is not passing on branches that had nothing to zero.
+    expect(epfContribution(SALARY, 2000, CFG.epf, undefined, { age: 30, citizenship: 'non_citizen' }).employeeOnBonus).toBe(40);
+    expect(epfContribution(SALARY, 2000, CFG.epf, undefined, { age: 35, citizenship: 'citizen' }).employeeOnBonus).toBe(220);
   });
 
   it('a MONTHLY amount is charged ONCE across a regular + bonus pair — ADR-0046 objection #2', () => {
@@ -335,15 +350,11 @@ describe('70b14723 — the submission file and the screen', () => {
     const rows = form.pages.flatMap((p) => p.rows);
     const text = buildBorangAFile({
       employer: { epfRefNo: form.employerRef, code: 'DSK', periodMonth: 8, periodYear: 2026 },
-      employees: rows.map((x) => ({
-        epfMemberNo: x.memberNo,
-        icNumber: x.ic,
-        name: x.name,
-        staffNo: x.staffNo,
-        employerContribution: x.employer,
-        employeeContribution: x.employee,
-        wages: x.wage,
-      })),
+      // THROUGH `borangAFileEmployeesFrom`, which is the ONE copy of which share goes into which nine-wide
+      // digit field and is what app/payroll/borang-a/shared.ts calls. Spelling the mapping out again here
+      // would have made this test assert against a restatement of the production path rather than the path
+      // — and it did, until a defect that zeroed the employee box left this case green.
+      employees: borangAFileEmployeesFrom(rows),
     });
     // Read back OUT of the emitted characters, in CENTS, from the header, the trailer and the 02 records —
     // three independent places the figure has to be, and all three have to be the typed one.
