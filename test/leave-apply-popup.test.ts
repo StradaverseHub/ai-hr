@@ -468,8 +468,10 @@ describe('5570c6a2: no document-required badge in the employee leave-type dropdo
       .join('\n')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^\s*\/\/.*$/gm, '');
-    // The selects in that form are the four-option Day Type and the 1-or-0.5 day count, neither of which is
-    // a leave type. A `<select name="leaveTypeId">` is the list coming back, and nothing else here can be.
+    // r358 removed the 1-or-0.5 day count and r360 the four-option Day Type, so THERE IS NO <select> LEFT in
+    // that form at all — this is stricter than when it was written, not weaker: `<select name="leaveTypeId">`
+    // is the list coming back, and it is now the only select that could appear. The exact-set of the form's
+    // selects is pinned in test/r332-leave-credit-fixed-type.dom.test.tsx, which is where it belongs.
     expect(dialogCode).not.toMatch(/<select[\s\S]{0,300}name="leaveTypeId"/);
     expect(dialogCode).toContain('<input type="hidden" name="leaveTypeId" value={replacementType.id} />');
     expect(dialogCode).not.toContain('documentRequiredBadge');

@@ -11,7 +11,7 @@ import { DAY_DASH, formatDays } from '@/lib/day-format';
 // The pure vocabulary and the per-row conditional, from the module BOTH sides read — never from
 // packs/leave/service, which is server-only (it drags db/client). lib/extended-hours.ts's precedent.
 import {
-  LEAVE_CREDIT_DAY_TYPES,
+  // r360 — `LEAVE_CREDIT_DAY_TYPES` left this import with the option list it built. See the note below.
   adjudicateDayTypes,
   claimsTimeWindow,
   flooredByScheduledShiftEnd,
@@ -25,8 +25,9 @@ export type LeaveCreditLeaveTypeView = { id: string; name: string };
 
 /** The read-only facts the roster and Attendance own for one date, as the server action returns them. */
 export type LeaveCreditDayFacts = {
-  /** What the ROSTER holds. The adjudication compares it with what the employee chose — and since r353 it
-   *  also FILLS the Day Type cell when the employee picks a date and has not chosen one. */
+  /** What the ROSTER holds. Since r353 it FILLS the Day Type cell when the employee picks a date, and since
+   *  r360 that is the cell's only writer — the adjudication still compares it with the POSTED value, which is
+   *  a form field and so still tamperable however this screen renders it. */
   kind: LeaveCreditDayType;
   shiftEnd: string | null;
   /** NULL when the day has no attendance row or was never clocked out; the two are one absence here. */
@@ -78,29 +79,34 @@ const emptyRow = (key: number): Row => ({ key, workedDate: '', dayType: '', clai
  * claimed-time cells and the four derived cells on the other three — so the employee never has to work out
  * which section they are in, and an approver reads one table.
  *
- * ── DAY TYPE IS AN INPUT NOW. ⚠️ DELIBERATE CHANGE FROM r336, WHICH MADE IT READ-ONLY ───────────────────
- * The dropdown carries EXACTLY FOUR OPTIONS AND ALWAYS THE SAME FOUR — Rest Day, Off Day, Public Holiday,
- * Ordinary Day — whatever the company has switched on. The roster then ADJUDICATES: a row whose chosen type
- * is not what the roster holds is marked here, with the roster's own answer named on the row, and refused
- * again by the service (`adjudicateDayTypes`, core/leave-credit-request.ts) because this component is one
- * `curl` away from being irrelevant.
+ * ── ⚠️⚠️ DAY TYPE: READ-ONLY (r336) → AN INPUT OF FOUR (r343) → READ-ONLY AGAIN (r360 cbfa8b0b) ──────────
+ * THE ROUND TRIP IS RECORDED HERE ON PURPOSE, because the third state is not an undo of the second.
+ *   r336 drew the cell read-only, arguing "the kind of day a date is is not the employee's to assert".
+ *   r343 the reporter contested that and asked for a dropdown of EXACTLY FOUR OPTIONS AND ALWAYS THE SAME
+ *        FOUR — Rest Day, Off Day, Public Holiday, Ordinary Day — whatever the company has switched on, PLUS
+ *        a roster check. Both were built. (And the fourth option had to be un-filtered in the fix pass: the
+ *        first cut dropped Ordinary Day when the company had no extended-hours tiers, a switch that is
+ *        `NOT NULL DEFAULT false` on migration 0486, so the reporter would have counted three. A day type is
+ *        a fact about the DATE, not a feature flag.)
+ *   r360 the reporter asks for read-only again, with a caption saying where the value came from.
+ * WHAT SETTLES IT IS THE CHECK r343 ITSELF ADDED. `leaveCreditRosterKinds` resolves EVERY date, so
+ * `adjudicateDayTypes` never skips a row and `submitLeaveCreditRequest` throws on ANY disagreement: the
+ * dropdown offered a choice the server would refuse unless it happened to match the roster already. Read-only
+ * removes no capability that existed — it removes a way to fail. The value is still POSTED and still
+ * adjudicated server side, because this component is one `curl` away from being irrelevant.
  *
- * ⚠️ FIXED IN r343's FIX PASS: THE FOURTH OPTION USED TO DISAPPEAR, AND IT DISAPPEARED ON EVERY COMPANY.
- * The first cut filtered Ordinary Day out of the list when the company had no extended-hours tiers. That
- * switch is `NOT NULL DEFAULT false` (migration 0486), so the reporter — who asked for "exactly four
- * options" — would have been shown three. A day type is a fact about the DATE, not a feature flag: a
- * company that cannot yet CREDIT an ordinary day still has ordinary days, and an option that vanishes
- * teaches the employee nothing. So the option stays and the ROW explains what it earns, through
- * `workingDayRefused` ("An ordinary working day cannot earn a credit") — a key translated in all six
- * locales that r336 left without a renderer when it moved to sections. The submit is blocked while such a
- * row is present, and `submitReplacementLeaveRequest` refuses the same row server-side
- * (`ReplacementRequestDisabledError`): the message is the courtesy, the refusal is the control.
+ * What the extended-hours switch still decides is what an ORDINARY DAY row EARNS, not whether the date can be
+ * one: the row says so through `workingDayRefused` ("An ordinary working day cannot earn a credit"), a key
+ * translated in all six locales. The submit is blocked while such a row is present, and
+ * `submitReplacementLeaveRequest` refuses the same row server-side (`ReplacementRequestDisabledError`).
  *
  * ── WHAT THIS SCREEN'S WORDS COST IN TRANSLATION, SAID PLAINLY RATHER THAN ARGUED AWAY ──────────────────
- * The four option LABELS are the existing `dayKind.*` keys, translated in all six locales, so no new string
- * was minted for "Ordinary Day" and none is needed for the refusal above. The eight `table.*` keys this
- * screen introduced (`help`, `dayTypeChoose`, `rosterMismatch`, `windowNotClaimed`, `myRequests`,
- * `noRequests`, `statusHeading`, `submittedOn`) DO ship English in all six catalogues — like the fourteen
+ * The four day-type LABELS are the existing `dayKind.*` keys, translated in all six locales, so no new string
+ * was minted for "Ordinary Day" and none is needed for the refusal above. r360's four new keys
+ * (`dayTypeLookupFailed`, `dayTypeRetry`, `dayTypeFromRoster`, `dayTypeFromHolidays`) ARE translated in all
+ * six. The eight `table.*` keys this screen introduced at r343 (`help`, `dayTypeChoose`, `rosterMismatch`,
+ * `windowNotClaimed`, `myRequests`, `noRequests`, `statusHeading`, `submittedOn`) DO ship English in all six
+ * catalogues — like the fourteen
  * other English `replacementRequest.*` keys this form already rendered before them (`workedDate`, `days`,
  * `addRow`, `reason`, `unit`, `totalDays`, …). That is the debt stated, not hidden:
  * test/r343-leave-credit-single-table.test.ts pins the English set EXACTLY, so it cannot grow by accident
@@ -133,14 +139,15 @@ const emptyRow = (key: number): Row => ({ key, workedDate: '', dayType: '', clai
  * two different readings of one row. ⚠️ This loosens a money control: replacement leave blocks overtime pay
  * for the same hours and converts to cash on expiry, so the approver is now the only check.
  *
- * ── r353 · THE DAY TYPE FILLS ITSELF, AND NEVER OVERWRITES A CHOICE ─────────────────────────────────────
- * The roster kind is already fetched for the mismatch check, so making the employee re-type what the system
- * already knows was pure friction. Picking a date fills the Day Type cell from `facts[workedDate].kind`
- * while the cell is still empty and the employee has not touched it. `touchedDayType` is why it is safe: the
- * moment the employee chooses anything — INCLUDING choosing the blank placeholder back — the row is theirs
- * and the fill never runs on it again, so the roster cannot reach in and undo a deliberate mismatch the
- * employee is about to be warned about. The adjudication still runs on every row: a filled value agrees with
- * the roster by construction, and a changed one is marked exactly as before.
+ * ── r353, REWRITTEN BY r360 · THE DAY TYPE IS A MIRROR OF THE ROSTER, NOT A REMEMBERED CHOICE ───────────
+ * r353's rule was "the cell fills itself while it is empty and the employee has not touched it", protected by
+ * a `touchedDayType` record so the roster could never reach in and undo a deliberate mismatch. r360 removed
+ * the control, and with it the only thing that record existed to protect — so both are gone and the rule is
+ * simply: the cell IS `facts[workedDate].kind`. Two lines carry that. The fill still runs when a FACT lands
+ * (never on a keystroke), and `changeWorkedDate` clears the day type whenever the DATE moves, because a value
+ * filled from one date and captioned "From your roster" under another is a false statement the employee has
+ * no control left to correct. The adjudication still runs on every row and is still the control, because the
+ * posted value is a form field and a form field can be tampered with whatever this screen renders.
  */
 export function LeaveCreditRequestTable({
   replacementType,
@@ -190,44 +197,86 @@ export function LeaveCreditRequestTable({
   const [rows, setRows] = useState<Row[]>([emptyRow(1)]);
 
   /**
-   * EXACTLY FOUR OPTIONS, ALWAYS — the whole list, unfiltered, with no company switch in front of it. See
-   * the header for why the earlier filter was a defect rather than a courtesy. `ordinaryEarnsNothing` is
-   * what the switch actually decides: whether an Ordinary Day row can earn anything here.
+   * ⚠️ r360 — `const dayTypeOptions = LEAVE_CREDIT_DAY_TYPES;` STOOD HERE, and r343 pinned that exact line
+   * ("EXACTLY FOUR OPTIONS, ALWAYS — the whole list, unfiltered, with no company switch in front of it"),
+   * because the first cut of r343 filtered the list by the extended-hours switch and rendered THREE options
+   * to a reporter who had asked for four. There is no option list to filter now: the cell renders the one
+   * kind the roster answered. The vocabulary itself is still guarded, at the only place it still decides
+   * anything — set-equal to `toil_worked_day_kind` in test/r343-leave-credit-single-table.test.ts, so a fifth
+   * roster kind still fails by name rather than arriving as a silent `workday` through `dayTypeLabel`.
    */
-  const dayTypeOptions = LEAVE_CREDIT_DAY_TYPES;
   // r358 — was `extendedHoursTiers == null`, which conflated "this company cannot credit an ordinary day"
   // with "there is no tier ladder". Every day type uses the ladder now, so those had to come apart.
   const ordinaryEarnsNothing = !ordinaryDayAllowed;
 
   // One fetch per distinct date, marked as asked (null) at once so a re-render mid-flight does not re-ask.
   const [facts, setFacts] = useState<Record<string, LeaveCreditDayFacts | null>>({});
+  /**
+   * ⚠️ r360 cbfa8b0b — THE FAILED LOOKUP USED TO BE SILENT, AND IT IS THE REPORTED FAULT.
+   *
+   * This read `void dayFactsAction(d).then(...)` with NO `.catch()`. A rejected server action left
+   * `facts[d]` at null for ever: `d in facts` is already true by the line above, so the date is never
+   * re-asked, and nothing on the screen said anything. The employee saw a Day Type that would not fill
+   * in, and — because all three come from this one call — a blank scheduled shift end and a blank
+   * clock-out beside it. That is exactly the row in the reporter's screenshot.
+   *
+   * It could not be read as "the system has no answer", either: `resolveWorkedDayKindTx` always returns
+   * one of the four kinds and `leaveCreditDayFactsAction` returns null only for a malformed date or no
+   * employment. So a blank Day Type after a date is picked IS a failed or in-flight lookup and nothing
+   * else — which is why the row now says which of the two it is.
+   */
+  const [factError, setFactError] = useState<Record<string, true>>({});
+  const [retryTick, setRetryTick] = useState(0);
   const datesKey = rows.map((r) => r.workedDate).join('|');
   useEffect(() => {
     for (const d of new Set(datesKey.split('|').filter(Boolean))) {
       if (d in facts) continue;
       setFacts((prev) => (d in prev ? prev : { ...prev, [d]: null }));
-      void dayFactsAction(d).then((v) => setFacts((prev) => ({ ...prev, [d]: v })));
+      void dayFactsAction(d)
+        .then((v) => {
+          setFacts((prev) => ({ ...prev, [d]: v }));
+          setFactError((prev) => {
+            if (!(d in prev)) return prev;
+            const next = { ...prev };
+            delete next[d];
+            return next;
+          });
+        })
+        // The whole point: a rejection is RECORDED rather than swallowed, so the row can say so and
+        // offer the retry. `facts[d]` stays null, which is what keeps the cells reading "not known".
+        .catch(() => setFactError((prev) => ({ ...prev, [d]: true })));
     }
-  }, [datesKey, dayFactsAction, facts]);
+  }, [datesKey, dayFactsAction, facts, retryTick]);
 
-  /**
-   * r353 · WHICH ROWS THE EMPLOYEE HAS SPOKEN FOR. Keyed by row key, set the first time the Day Type cell is
-   * changed by hand — including to the blank placeholder, which is why this is a separate record rather than
-   * a `dayType !== ''` test. The auto-fill below never touches a row that is in here.
-   */
-  const [touchedDayType, setTouchedDayType] = useState<Record<number, true>>({});
+  /** Ask again for the dates whose lookup failed. Clearing `facts` is what lets the effect re-fire. */
+  const retryFacts = useCallback(() => {
+    const failed = Object.keys(factError);
+    if (failed.length === 0) return;
+    setFacts((prev) => {
+      const next = { ...prev };
+      for (const d of failed) delete next[d];
+      return next;
+    });
+    setFactError({});
+    setRetryTick((n) => n + 1);
+  }, [factError]);
 
   /**
    * r353 · THE DAY TYPE FILLS ITSELF FROM THE ROSTER. The kind arrives with the facts the mismatch check
    * already needed, so the employee does not retype what the system knows. Functional update, and `rows` is
    * deliberately NOT a dependency: the effect must run when a FACT lands, not on every keystroke, and
    * reading `prev` inside the updater is what makes that correct rather than stale.
+   *
+   * ⚠️ r360 — `touchedDayType[r.key]` WAS A THIRD CONDITION HERE, and a `Record<number, true>` above held it:
+   * "the moment the employee chooses anything the row is theirs and the fill never runs on it again". Nothing
+   * can choose any more, so the record could never be written and the condition could never be true. It is
+   * gone rather than left reading as live protection — and `chooseDayType`, the only writer, with it.
    */
   useEffect(() => {
     setRows((prev) => {
       let changed = false;
       const next = prev.map((r) => {
-        if (r.dayType !== '' || touchedDayType[r.key] || !r.workedDate) return r;
+        if (r.dayType !== '' || !r.workedDate) return r;
         const kind = facts[r.workedDate]?.kind;
         if (!kind) return r;
         changed = true;
@@ -235,7 +284,7 @@ export function LeaveCreditRequestTable({
       });
       return changed ? next : prev;
     });
-  }, [facts, touchedDayType]);
+  }, [facts]);
 
   const dayTypeLabel = (d: LeaveCreditDayType) =>
     d === 'rest_day'
@@ -249,19 +298,29 @@ export function LeaveCreditRequestTable({
   const addRow = () => setRows((r) => [...r, emptyRow((r[r.length - 1]?.key ?? 0) + 1)]);
   // Never remove the last row: an empty table has no "add" affordance attached to anything and reads as a
   // broken form. The service refuses a request with no rows anyway.
-  const removeRow = (key: number) => {
-    setRows((r) => (r.length <= 1 ? r : r.filter((x) => x.key !== key)));
-    // `addRow` can reuse the key of the row that was last removed, so a stale flag here would silently
-    // switch the auto-fill off for a brand-new row.
-    setTouchedDayType(({ [key]: _gone, ...rest }) => rest);
-  };
+  // r360 — this used to also drop the removed row's `touchedDayType` flag, because `addRow` reuses the key of
+  // the row last removed and a stale flag would have switched the auto-fill off for a brand-new row. There is
+  // no flag to drop now (see the fill above), so the reuse is harmless and the line is gone rather than inert.
+  const removeRow = (key: number) => setRows((r) => (r.length <= 1 ? r : r.filter((x) => x.key !== key)));
   const patch = (key: number, field: keyof Row, value: string) =>
     setRows((r) => r.map((x) => (x.key === key ? { ...x, [field]: value } : x)));
-  /** The Day Type cell, changed BY HAND. Marks the row so the roster fill leaves it alone from now on. */
-  const chooseDayType = (key: number, value: string) => {
-    setTouchedDayType((t) => ({ ...t, [key]: true }));
-    patch(key, 'dayType', value);
-  };
+
+  /**
+   * ⚠️ r360 — CHANGING THE DATE CLEARS THE DAY TYPE, AND THAT IS LOAD-BEARING NOW RATHER THAN TIDY.
+   *
+   * While the cell was a dropdown the fill ran once per row and a stale value after a date change was the
+   * employee's own to correct. With the control gone there is nothing to correct it with, and the row was a
+   * DEAD END: filled "Rest day" from 2026-09-13, re-dated to 2026-09-16, the cell still read "Rest day" under
+   * the caption "From your roster" — the PREVIOUS date's roster — `leave-credit-roster-mismatch` said "Your
+   * roster has Working day for this date", the submit was disabled, and the only way out was deleting the row.
+   * Measured on the built component before this existed, not reasoned about. Clearing here is what makes the
+   * cell a mirror of `facts[workedDate]` instead of a memory of the first date the row ever held.
+   *
+   * `patch(key, 'workedDate', …)` would not do: the date and the day type have to move in ONE update, or the
+   * render between them paints the old kind against the new date.
+   */
+  const changeWorkedDate = (key: number, value: string) =>
+    setRows((r) => r.map((x) => (x.key === key ? { ...x, workedDate: value, dayType: '' } : x)));
 
   /**
    * One row's derived figures and its row-level problem, through the SAME two functions the service runs.
@@ -438,26 +497,46 @@ export function LeaveCreditRequestTable({
                         type="date"
                         max={today}
                         value={r.workedDate}
-                        onChange={(e) => patch(r.key, 'workedDate', e.target.value)}
+                        onChange={(e) => changeWorkedDate(r.key, e.target.value)}
                         aria-label={t('workedDate')}
                         className={inputCls}
                       />
                     </td>
                     <td className="px-3 py-2">
-                      <select
-                        value={r.dayType}
-                        onChange={(e) => chooseDayType(r.key, e.target.value)}
-                        aria-label={t('sectionA.dayType')}
-                        data-testid="leave-credit-day-type"
-                        className={inputCls}
-                      >
-                        <option value="">{t('table.dayTypeChoose')}</option>
-                        {dayTypeOptions.map((o) => (
-                          <option key={o} value={o}>
-                            {dayTypeLabel(o)}
-                          </option>
-                        ))}
-                      </select>
+                      {/* ⚠️ r360 cbfa8b0b — THE DROPDOWN WAS A CHOICE THE SERVER ALWAYS REFUSED.
+                          `leaveCreditRosterKinds` resolves EVERY date it is given, so `adjudicateDayTypes`
+                          never skips a row, and `submitLeaveCreditRequest` throws
+                          LeaveCreditDayTypeMismatchError on ANY disagreement. An employee who picked a day
+                          type by hand was therefore turned away at submit unless they happened to pick the
+                          one the roster already held. Making the cell read-only removes no capability that
+                          existed — it removes a way to fail. The reporter asked for exactly this.
+                          The value is still POSTED (the hidden input above) and still adjudicated server
+                          side: the screen is the courtesy, the refusal is the control. */}
+                      {r.dayType === '' ? (
+                        <div className={`${disabledCell} gap-2`} data-testid="leave-credit-day-type">
+                          <span>{factError[r.workedDate] ? t('table.dayTypeLookupFailed') : t('table.dayTypeChoose')}</span>
+                          {factError[r.workedDate] && (
+                            <button
+                              type="button"
+                              onClick={retryFacts}
+                              className="underline underline-offset-2 hover:no-underline"
+                              data-testid="leave-credit-day-type-retry"
+                            >
+                              {t('table.dayTypeRetry')}
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className={`${disabledCell} flex-col !items-start`} data-testid="leave-credit-day-type">
+                          <span className="text-foreground">{dayTypeLabel(r.dayType)}</span>
+                          {/* WHERE IT CAME FROM, which is the other half of the reporter's ask. A public
+                              holiday outranks the roster in `scheduleFor`, so the two provenances are
+                              genuinely different facts and the caption may not merge them. */}
+                          <span className="text-[11px]" data-testid="leave-credit-day-type-source">
+                            {r.dayType === 'holiday' ? t('table.dayTypeFromHolidays') : t('table.dayTypeFromRoster')}
+                          </span>
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <div className={disabledCell} data-testid="leave-credit-shift-end">

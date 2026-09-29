@@ -5,7 +5,8 @@
  *   · + Add Leave Credit tells HR the day kind, refuses an ordinary working day, says overtime on the date
  *     will not also be paid, pre-fills the expiry from the rule, and asks for the First Schedule agreement;
  *   · Reverse asks for a reason and says overtime becomes payable again;
- *   · the employee's Leave Credit request names the kind of each date worked and states the rule.
+ *   · the employee's Leave Credit request names the kind of each date worked and states the rule (r360: as a
+ *     read-only cell with its provenance again, after r343 made it a chosen value the roster corrected).
  */
 import { describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -222,23 +223,31 @@ describe('Reverse', () => {
 
 describe('The employee’s Leave Credit request', () => {
   /*
-   * ⚠️ UPDATED BY r343's FIX PASS — THE CLAIM SURVIVES, ITS MECHANISM WAS REVERSED BY THE REPORTER.
+   * ⚠️⚠️ UPDATED TWICE — AND r360 PUTS THE CLAIM BACK ALMOST EXACTLY WHERE r299 WROTE IT.
    *
    * r299 pinned that the request NAMES THE KIND OF EACH DATE WORKED, flags a working day and states the
-   * rule — with the day kind as a read-only chip resolved from the roster (`leave-credit-day-kind`) and a
-   * refusal pointing at the other section. The contest on cbfa8b0b reverses the input side: the employee now
-   * CHOOSES the day type from exactly four options and the roster ADJUDICATES the choice. So the kind of the
-   * date is still named from the roster — but on the row, as the correction to a chosen type that disagrees
-   * with it (`leave-credit-roster-mismatch`), which is strictly more than the chip ever did: it also catches
-   * rest day vs off day vs public holiday, three kinds the old chip and the old sections could not tell apart
-   * because all three were one claim path.
+   *      rule — the day kind a READ-ONLY CHIP resolved from the roster (`leave-credit-day-kind`), with a
+   *      refusal pointing at the other section.
+   * r343 the reporter contested the input side: the employee CHOSE the day type from four options and the
+   *      roster ADJUDICATED the choice, so this case asserted the kind through the CORRECTION
+   *      (`leave-credit-roster-mismatch`) to a deliberately wrong choice — strictly more than the chip did,
+   *      because it also caught rest day vs off day vs public holiday, three kinds the chip and the sections
+   *      could not tell apart (all three were one claim path).
+   * r360 the reporter asks for read-only again. So the kind is a read-only cell once more
+   *      (`leave-credit-day-type`) — with a caption saying whether it came from the roster or from the public
+   *      holiday calendar, which the r299 chip never said — and the wrong choice this case used to make can no
+   *      longer be made. It is NOT the same design by a round trip: the adjudication r343 added stayed, and it
+   *      is what settles the question (`submitLeaveCreditRequest` refuses any posted day type that disagrees
+   *      with the roster, so the dropdown offered a choice the server would always refuse).
    *
    * CLAUDE.md §8 — a guard pinning a decision you are reversing is updated, not deleted. Both halves of
-   * r299's claim are asserted below, in all six locales: the rule sentence (`description`) and the roster's
-   * own answer named on the offending row.
+   * r299's claim are asserted below, in all six locales: the rule sentence (`description`) and the roster's own
+   * answer named on the row, for TWO dates the roster answers differently. The refusal of a disagreeing row is
+   * still pinned, against the tampered post that no screen can prevent, in
+   * test/r343-leave-credit-single-table.test.ts.
    */
   for (const locale of LOCALES) {
-    it(`[${locale}] states the rule, and names what the ROSTER holds when the chosen day type disagrees`, async () => {
+    it(`[${locale}] states the rule, and names what the ROSTER holds for each date worked`, async () => {
       const dayFactsAction = vi.fn(async (d: string) => ({
         kind: (d === '2026-08-03' ? 'workday' : 'off_day') as 'workday' | 'off_day',
         shiftEnd: d === '2026-08-03' ? '18:00:00' : null,
@@ -277,25 +286,39 @@ describe('The employee’s Leave Credit request', () => {
       const dayKindCopy = rr.dayKind as Record<string, string>;
       const sectionACopy = rr.sectionA as Record<string, string>;
       const date = screen.getAllByLabelText(rr.workedDate as string)[0] as HTMLInputElement;
-      const dayType = screen.getAllByLabelText(sectionACopy.dayType)[0] as HTMLSelectElement;
+      const tableCopy = rr.table as Record<string, string>;
+      /** The cell's label span. Read EXACTLY: `Ngày nghỉ` is a prefix of `Ngày nghỉ hằng tuần` in vi. */
+      const dayTypeLabel = () =>
+        (screen.getAllByTestId('leave-credit-day-type')[0].querySelector('span')?.textContent ?? '').trim();
 
-      // (a) A rest-day claim on a date the roster calls an OFF day — the mix-up no section could see.
+      // ⚠️ r360 — the day type used to be driven here:
+      //     const dayType = screen.getAllByLabelText(sectionACopy.dayType)[0] as HTMLSelectElement;
+      //     fireEvent.change(dayType, { target: { value: 'rest_day' } });
+      // There is no such control. The COLUMN keeps its heading, and that is all the label addresses now.
+      expect(dialog.textContent, 'the Day Type column is still named').toContain(sectionACopy.dayType);
+      expect(screen.queryAllByLabelText(sectionACopy.dayType), 'and addresses no control').toHaveLength(0);
+
+      // (a) A date the roster calls an OFF day — the kind the r299 chip could not tell from a rest day.
       await act(async () => {
         fireEvent.change(date, { target: { value: '2026-08-08' } });
       });
-      await act(async () => {
-        fireEvent.change(dayType, { target: { value: 'rest_day' } });
-      });
-      await waitFor(() => expect(screen.getByTestId('leave-credit-roster-mismatch').textContent).toContain(dayKindCopy.offDay));
+      await waitFor(() => expect(dayTypeLabel()).toBe(dayKindCopy.offDay));
+      expect(dayTypeLabel(), 'an off day is not a rest day, and r299 could not say so').not.toBe(dayKindCopy.restDay);
+      expect(screen.getAllByTestId('leave-credit-day-type-source')[0].textContent).toBe(tableCopy.dayTypeFromRoster);
+      expect(screen.queryByTestId('leave-credit-roster-mismatch'), 'nothing for the roster to correct').toBeNull();
 
-      // (b) …and the same row on a date the roster calls an ORDINARY WORKING day names that instead. This is
-      // where r299's "flags a working day" lives now: the date is not refused (extended hours can earn a
-      // credit on it) — the employee's DESCRIPTION of it is.
+      // (b) …and re-dating the row to an ORDINARY WORKING day names that instead. This is where r299's "flags
+      // a working day" lives now: the date is not refused — extended hours can earn a credit on it — and with
+      // no description for the employee to give, what the row does is REPORT the kind for the date it holds.
       await act(async () => {
         fireEvent.change(date, { target: { value: '2026-08-03' } });
       });
-      await waitFor(() => expect(screen.getByTestId('leave-credit-roster-mismatch').textContent).toContain(dayKindCopy.workday));
+      await waitFor(() => expect(dayTypeLabel()).toBe(dayKindCopy.workday));
+      expect(screen.queryByTestId('leave-credit-roster-mismatch'), 'the re-date re-asked; it did not keep (a)').toBeNull();
+      // Still not submittable — but for the honest reason: `ordinaryDayAllowed={false}` on this fixture, so an
+      // ordinary working day earns nothing here. Not because the row is in an unfixable disagreement.
       expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByTestId('leave-credit-ordinary-earns-nothing'), 'and the row says why').toBeTruthy();
       expect(unresolved(dialog.textContent ?? '')).toBe(false);
     });
   }

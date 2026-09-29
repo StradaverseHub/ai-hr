@@ -55,7 +55,6 @@ export async function submitLeaveCreditRequestAction(formData: FormData) {
   const session = await getSession();
   const dates = formData.getAll('workedDate').map(String);
   const dayTypes = formData.getAll('dayType').map(String);
-  const days = formData.getAll('days').map(String);
   const starts = formData.getAll('claimStart').map(String);
   const ends = formData.getAll('claimEnd').map(String);
 
@@ -66,7 +65,12 @@ export async function submitLeaveCreditRequestAction(formData: FormData) {
         workedDate: workedDate.trim(),
         // Narrowed here; an unrecognised value reaches the service as a non-day-type and is refused there.
         dayType: (isLeaveCreditDayType(raw) ? raw : '') as LeaveCreditRowInput['dayType'],
-        days: (days[i] ?? '').trim() === '' ? undefined : Number(days[i]),
+        // r360 — `days` WAS READ AND ASSIGNED HERE AND HAD BEEN DEAD SINCE r358, which removed the field
+        // from the form and from `LeaveCreditRowInput`. It survived `tsc` because an object literal
+        // inside `.map()` is not "fresh" at the point the result is assigned to a typed array, so excess
+        // property checking never fires — the same blind spot that silently dropped a `workedDayKind` I
+        // added during r358 itself. `getAll('days')` returned [] against a form that emits no such input,
+        // so every row carried `days: undefined` and nothing read it. Inert, but it read as live code.
         claimStart: (starts[i] ?? '').trim() || undefined,
         claimEnd: (ends[i] ?? '').trim() || undefined,
       };
