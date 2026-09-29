@@ -13229,7 +13229,7 @@
       "belowThreshold": "Under {minutes} minutes. Not eligible for credit."
     },
     "table": {
-      "help": "Add one row for each date you worked. Enter the start and end time you worked; the credit follows the hours — four eligible hours earn half a day, eight earn a full day. Use View to check your attendance record for that date; it is for reference only and does not limit what you can claim. Nothing is credited until your manager approves.",
+      "help": "Add one row for each date you worked, with the times. Four eligible hours earn half a day, eight a full day. View shows the attendance on record; it does not limit what you can claim. Nothing is credited until your manager approves.",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "An ordinary working day cannot earn a credit at this company.",

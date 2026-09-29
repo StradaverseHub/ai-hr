@@ -13229,7 +13229,7 @@
       "belowThreshold": "Dưới {minutes} phút. Không đủ điều kiện nhận tín dụng."
     },
     "table": {
-      "help": "Thêm một dòng cho mỗi ngày bạn đã làm việc. Nhập giờ bắt đầu và giờ kết thúc bạn đã làm; tín dụng được tính theo số giờ — bốn giờ hợp lệ được nửa ngày, tám giờ được trọn ngày. Dùng nút Xem để kiểm tra dữ liệu chấm công của bạn cho ngày đó; đây chỉ để tham khảo và không giới hạn những gì bạn có thể yêu cầu. Sẽ không có gì được ghi có cho đến khi quản lý của bạn phê duyệt.",
+      "help": "Thêm một dòng cho mỗi ngày bạn đã làm, kèm giờ làm. Bốn giờ hợp lệ được nửa ngày, tám giờ được trọn ngày. Nút Xem hiển thị dữ liệu chấm công đã ghi nhận; nó không giới hạn những gì bạn yêu cầu. Chưa có gì được ghi có cho đến khi quản lý phê duyệt.",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "Ngày làm việc bình thường không thể nhận tín dụng tại công ty này.",

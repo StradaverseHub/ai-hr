@@ -13229,7 +13229,7 @@
       "belowThreshold": "Kurang daripada {minutes} minit. Tidak layak mendapat kredit."
     },
     "table": {
-      "help": "Tambah satu baris bagi setiap tarikh yang anda bekerja. Masukkan waktu mula dan waktu tamat anda bekerja; kredit mengikut jam — empat jam yang layak memperoleh setengah hari, lapan jam memperoleh satu hari penuh. Gunakan butang Lihat untuk menyemak rekod kehadiran anda bagi tarikh itu; ia untuk rujukan sahaja dan tidak mengehadkan apa yang boleh anda tuntut. Tiada apa-apa dikreditkan sehingga pengurus anda meluluskannya.",
+      "help": "Tambah satu baris bagi setiap tarikh anda bekerja, dengan waktunya. Empat jam layak memperoleh setengah hari, lapan jam satu hari penuh. Lihat menunjukkan kehadiran yang direkodkan; ia tidak mengehadkan tuntutan anda. Tiada kredit sehingga pengurus meluluskannya.",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "Hari bekerja biasa tidak boleh memperoleh kredit di syarikat ini.",

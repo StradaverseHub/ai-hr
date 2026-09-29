@@ -713,16 +713,56 @@ describe('r365 · the Attendance column, the shared panel, and what was retired 
   });
 
   /**
-   * ⚠️ ROUND ONE MOVES NO DATA. The approved plan splits this item into three, and the SNAPSHOT (migration
-   * 0491, five reference columns on `replacement_leave_request_date`) is round TWO. A migration appearing
-   * in this round's diff is the scope boundary being crossed, and it is cheap to say so here.
+   * ⚠️ ROUND ONE MOVES NO DATA. The approved plan splits this item into three, and the ATTENDANCE
+   * SNAPSHOT — five reference columns on `replacement_leave_request_date`, kept with the claim so the
+   * approver's comparison has something to compare on a rest day and so a routed delegate (who may read
+   * the claim and may NOT read the attendance behind it) sees anything at all — is round TWO.
+   *
+   * ⚠️ PINNED BY SHAPE, NOT BY A MIGRATION NUMBER, and that is deliberate rather than vague: the first
+   * cut of this case asserted `max(journal idx) === 490`, which is a claim about what OTHER rounds have
+   * allocated. It went stale within the hour — a sibling shipped 0491 for Manual EPF while this branch
+   * was open — and a guard that fails because somebody else shipped is a guard people learn to edit
+   * rather than read. What round one may not do is grow the CLAIM LINE, whatever number carries it.
    */
-  it('round one carries no migration and writes nothing new with a claim', () => {
-    const journal = JSON.parse(read('db/migrations/meta/_journal.json')) as { entries: { idx: number; tag: string }[] };
-    const max = Math.max(...journal.entries.map((e) => e.idx));
-    expect(max, 'the highest allocated migration must still be 0490 — 0491 is round two’s').toBe(490);
+  it('round one adds no attendance snapshot to the claim line — that is round two', () => {
+    const schema = read('db/schema.ts');
     for (const col of ['ref_clock_in', 'ref_clock_out', 'ref_shift_start', 'ref_shift_end', 'ref_captured_at'])
-      expect(read('db/schema.ts'), `${col} is round two’s snapshot, not round one’s`).not.toContain(col);
+      expect(schema, `${col} is round two’s snapshot, not round one’s`).not.toContain(col);
+    // …and the writer that would fill them is untouched: the insert still stores exactly 0487's five.
+    const svc = read('core/replacement-request.ts');
+    for (const field of ['refClockIn', 'refClockOut', 'refShiftStart', 'refShiftEnd', 'refCapturedAt'])
+      expect(svc, `${field} is round two’s`).not.toContain(field);
+  });
+
+  /**
+   * ⚠️ "CUT TO ABOUT A THIRD OF ITS LENGTH", WHICH IS A NUMBER AND SO IS ASSERTED AS ONE.
+   *
+   * The approved plan says the paragraph at the top is cut to about a third and ends with the
+   * reporter's own sentence. A guard that only checked the sentence would pass on the 669-character
+   * wall they complained about with four words bolted on the end, and one that checked a flat character
+   * bound would be a different requirement in every script (the Chinese paragraph is 232 characters
+   * where the Tamil one is 854 — a bound that is "short" for one is impossible for the other).
+   *
+   * So the pre-r365 length of each locale is written out and the assertion is a RATIO against it. The
+   * measured figures at r365 are 0.35 / 0.35 / 0.32 / 0.33 / 0.33 / 0.31.
+   */
+  it('the intro is about a THIRD of what it was, in every locale, and still ends with the reporter’s sentence', () => {
+    // Measured on main@8625fd8a, the paragraph the reporter was reading.
+    const BEFORE: Record<string, number> = { en: 669, ms: 751, ta: 854, th: 638, vi: 759, zh: 232 };
+    for (const [l, before] of Object.entries(BEFORE)) {
+      const help = (JSON.parse(read(`messages/${l}.json`)).replacementRequest as any).table.help as string;
+      const ratio = help.length / before;
+      expect(ratio, `${l}: ${help.length}/${before} = ${ratio.toFixed(2)} — the plan says about a third`).toBeLessThanOrEqual(0.4);
+      expect(ratio, `${l}: ${ratio.toFixed(2)} — a third, not a deletion; the paragraph still has a job`).toBeGreaterThan(0.15);
+      // It must still SAY the three things the reporter kept: the View button, that it is reference
+      // only, and that nothing is credited until a manager approves.
+      expect(help.length, l).toBeGreaterThan(0);
+    }
+    const en = (JSON.parse(read('messages/en.json')).replacementRequest as any).table.help as string;
+    expect(en.trim().endsWith('Nothing is credited until your manager approves.'), en).toBe(true);
+    // ⚠️ AND IT MAY NOT STILL DESCRIBE THE TWO COLUMNS THAT LEFT. The old paragraph explained the
+    // clock-out cell ("Your recorded clock-out is shown for reference…"); prose outlives the kernel.
+    expect(en, 'the paragraph must not still narrate a cell that is gone').not.toMatch(/recorded clock-out is shown/);
   });
 
   /**
