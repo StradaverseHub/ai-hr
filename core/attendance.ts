@@ -7,8 +7,13 @@
  * (approved leave / holiday / rest day are not "absent"). Each mutation appends a
  * domain event (ADR-0006).
  */
-import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
+// f618065d (r362) — the "All" ceiling the shared pager already assumes. Self Overtime is a server-paged
+// list now, so its read and lib/pagination must agree about how many rows "All" can be: a read that
+// stopped at 200 under a pager whose PageState says a 250-row list is complete is a silent partial list.
+// core/read.ts takes the same import for the same reason.
+import { ALL_ROW_CEILING } from '../lib/pagination';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withAttendanceTenant` — every exported entry
 // point refuses a tenant without the Attendance module. The pure day-math helpers this file exports to
@@ -3607,10 +3612,47 @@ export type OvertimePlanRow = {
   approvedOtMinutes: number | null;
   otReasonCategory: OtReasonCategory | null;
   reason: string | null;
+  /** f618065d (r362) — the EMPLOYEE's own optional note, written only by requestAttendanceCorrection.
+   *  It is NOT an approver's reason: `decideAttendanceCorrection` takes none and writes none. The plan
+   *  told the reporter exactly that, and promised this — the note they themselves added — instead. */
+  remark: string | null;
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
   appliedAt: Date | null;
   createdAt: Date;
   decidedAt: Date | null;
+};
+
+/**
+ * f618065d (r362) — HOW THE SELF OVERTIME LIST IS NARROWED, in one shape used by BOTH reads.
+ *
+ * The chip counts and the rows they sit above must never disagree, and the only way to guarantee that is
+ * for one predicate builder to serve both queries. `status` is deliberately NOT part of this type: the
+ * counts read groups BY status and must therefore see every status the other filters allow, while the
+ * list read adds the active chip on top. Putting it in here is exactly how a chip would come to say 2
+ * over a list of 12.
+ */
+export type OvertimePlanFilter = {
+  /** Inclusive lower bound on the OVERTIME date (not the filing date). */
+  from?: string;
+  /** Inclusive upper bound on the overtime date. Absent = open ended, which is the screen's default:
+   *  overtime is filed BEFORE the day, so a closed window hides the very plan being watched. */
+  to?: string;
+  /** Case-insensitive substring of the employee's own free-text reason. The reason CATEGORY is a
+   *  translated label resolved in the page, not a stored string, so it cannot be matched here. */
+  q?: string;
+};
+
+/** The columns Self Overtime may be ordered by. `status` is absent on purpose: ordering by the stored
+ *  value is alphabetical, which means nothing to a reader, and the chips already do that job. */
+export const OVERTIME_PLAN_SORTS = ['date', 'hours', 'submitted'] as const;
+export type OvertimePlanSort = (typeof OVERTIME_PLAN_SORTS)[number];
+
+/** One status's share of the filtered set — count, hours asked for, and hours actually granted. */
+export type OvertimePlanCountRow = {
+  status: OvertimePlanRow['status'];
+  count: number;
+  requestedMinutes: number;
+  approvedMinutes: number;
 };
 
 /** What the Apply OT Plan form needs to warn the employee before they submit. */
@@ -4044,18 +4086,37 @@ export function otMonthToDateMinutes(
 export function myOvertimePlans(
   ctx: SessionContext,
   employmentId: string,
-  opts: { limit?: number; offset?: number; from?: string; to?: string } = {},
+  opts: OvertimePlanFilter & {
+    limit?: number;
+    offset?: number;
+    status?: OvertimePlanRow['status'];
+    sort?: OvertimePlanSort;
+    dir?: 'asc' | 'desc';
+  } = {},
 ): Promise<OvertimePlanRow[]> {
-  const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? 25)), 200);
+  // f618065d (r362) — the ceiling is the pager's "All" ceiling, not a private 200. See the import.
+  const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? 25)), ALL_ROW_CEILING);
   const offset = Math.max(0, Math.trunc(opts.offset ?? 0));
   // ce5ded11 (r362) — an OPTIONAL overtime-date window, for the calendar, which draws one month and must
   // not be told about it by a `limit` that happened to reach far enough back. Absent ⇒ byte-identical to
-  // before: no bound is added and the newest `limit` rows across every month come back, which is what the
-  // Self Overtime table still asks for.
+  // before: no bound is added and the newest `limit` rows across every month come back.
+  // f618065d (r362) — and the SAME builder now serves the counts read, so a chip and its rows are
+  // narrowed by one expression rather than by two that can drift.
   const window = [
-    opts.from ? gte(attendanceCorrection.attendanceDate, opts.from) : undefined,
-    opts.to ? lte(attendanceCorrection.attendanceDate, opts.to) : undefined,
+    ...overtimePlanFilters(employmentId, opts),
+    opts.status ? eq(attendanceCorrection.status, opts.status) : undefined,
   ].filter((c) => c !== undefined);
+  // Newest first BY THE OVERTIME DATE, then by when it was filed — the mockup's ordering, and still the
+  // default here. Every alternative is a WHITELIST: a raw `?sort=` is a column name arriving from the
+  // address bar. The secondary key is always the overtime date, so a page boundary cannot shuffle rows
+  // that tie on the primary one (test/plan-ot.test.ts pins the untouched default).
+  const dirFn = opts.dir === 'asc' ? asc : desc;
+  const orderBy =
+    opts.sort === 'hours'
+      ? [dirFn(attendanceCorrection.requestedOtMinutes), desc(attendanceCorrection.attendanceDate)]
+      : opts.sort === 'submitted'
+        ? [dirFn(attendanceCorrection.createdAt), desc(attendanceCorrection.attendanceDate)]
+        : [dirFn(attendanceCorrection.attendanceDate), desc(attendanceCorrection.createdAt)];
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -4067,28 +4128,77 @@ export function myOvertimePlans(
         approvedOtMinutes: attendanceCorrection.approvedOtMinutes,
         otReasonCategory: attendanceCorrection.otReasonCategory,
         reason: attendanceCorrection.reason,
+        remark: attendanceCorrection.remark,
         status: attendanceCorrection.status,
         appliedAt: attendanceCorrection.appliedAt,
         createdAt: attendanceCorrection.createdAt,
         decidedAt: attendanceCorrection.decidedAt,
       })
       .from(attendanceCorrection)
-      .where(
-        and(
-          eq(attendanceCorrection.employmentId, employmentId),
-          // OT-only: a clock-time correction that happens to carry OT belongs to Attendance Request, and
-          // mixing the two is the other half of the complaint.
-          isNull(attendanceCorrection.proposedCheckIn),
-          sql`${attendanceCorrection.requestedOtMinutes} is not null`,
-          ...window,
-        ),
-      )
-      // Newest first BY THE OVERTIME DATE, then by when it was filed — the mockup's ordering. Two plans
-      // filed on one day for different dates read in date order, which is how the list is scanned.
-      .orderBy(desc(attendanceCorrection.attendanceDate), desc(attendanceCorrection.createdAt))
+      .where(and(...window))
+      .orderBy(...orderBy)
       .limit(limit)
       .offset(offset),
   );
+}
+
+/**
+ * f618065d (r362) — THE ONE PREDICATE both Self Overtime reads are built from.
+ *
+ * OT-only by construction: a clock-time correction that happens to carry OT belongs to Attendance
+ * Request, and mixing the two is the other half of the complaint this list was split out of.
+ */
+function overtimePlanFilters(employmentId: string, f: OvertimePlanFilter) {
+  return [
+    eq(attendanceCorrection.employmentId, employmentId),
+    isNull(attendanceCorrection.proposedCheckIn),
+    sql`${attendanceCorrection.requestedOtMinutes} is not null`,
+    f.from ? gte(attendanceCorrection.attendanceDate, f.from) : undefined,
+    f.to ? lte(attendanceCorrection.attendanceDate, f.to) : undefined,
+    // `%` and `_` typed into a search box are characters the employee meant literally, not wildcards —
+    // and `\` before either of them is how Postgres LIKE is told so.
+    f.q && f.q.trim() !== ''
+      ? ilike(attendanceCorrection.reason, `%${f.q.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%`)
+      : undefined,
+  ].filter((c) => c !== undefined);
+}
+
+/**
+ * f618065d (r362) — HOW MANY, AND HOW MANY HOURS, PER STATUS — in ONE round trip.
+ *
+ * ⚠️ THE COUNTS MUST NOT BE COUNTED OFF THE LIST, and that is the whole reason this exists. The list is
+ * paged and capped (`ALL_ROW_CEILING`) and returns no total, so a chip counted over the fetched rows says
+ * 25 when the truth is 300 — the exact defect documented at app/feedback/page.tsx, which on production
+ * painted "All 517" over a list of 200.
+ *
+ * Grouped by status and filtered by everything EXCEPT status, so one read answers all five chips, the
+ * pager's total and the summary line's hours. Shape lifted from `feedbackStatusCounts` (core/feedback.ts).
+ *
+ * `requestedMinutes` is a sum over rows the OT-only predicate already guarantees are non-null.
+ * `approvedMinutes` is null on every pending, rejected and withdrawn row, so the sum is meaningful only
+ * on the approved group — which is the only place the screen prints it.
+ *
+ * Indexed: `attendance_correction_employment_idx` is (employment_id, attendance_date), which is the
+ * equality plus the range this predicate asks for.
+ */
+export function myOvertimePlanCounts(
+  ctx: SessionContext,
+  employmentId: string,
+  filter: OvertimePlanFilter = {},
+): Promise<OvertimePlanCountRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        status: attendanceCorrection.status,
+        count: sql<number>`count(*)::int`,
+        requestedMinutes: sql<number>`coalesce(sum(${attendanceCorrection.requestedOtMinutes}), 0)::int`,
+        approvedMinutes: sql<number>`coalesce(sum(${attendanceCorrection.approvedOtMinutes}), 0)::int`,
+      })
+      .from(attendanceCorrection)
+      .where(and(...overtimePlanFilters(employmentId, filter)))
+      .groupBy(attendanceCorrection.status);
+    return rows as OvertimePlanCountRow[];
+  });
 }
 
 /**
