@@ -1,3 +1,53 @@
+## r365 (2026-09-30) — a standing manual EPF amount, and the Leave Credit row gets its space back. `main@9cb50181`, **migration 0491**.
+
+Closed: `70b14723`, `cbfa8b0b` (**round one of three**). Gate: **1060 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, zero AssertionErrors, first attempt on a machine verified quiet. `tsc` 0, `next build` 0, `i18n-check` PASS, `gate:shadow` PASS 404/404.
+
+### 70b14723 — AND THE ANSWER BEGAN WITH "YOU CAN ALREADY DO MOST OF THIS"
+
+Payroll → Statutory Adjustment already lets an operator type an exact employee AND employer EPF amount with a mandatory reason, and it already survives every reprocess — because it is stored as an INPUT the generator reads, not as an output it overwrites. **It was not rebuilt.** What was missing is a STANDING per-employee amount: the adjustment's window is `status === 'processed'` only, so the order is process-then-adjust and the figure is re-keyed every month.
+
+Where both exist the adjustment still wins, because it runs after the pack's computation — and its own "system" leg now records the standing amount it displaced, so the screen can say which of the two produced the figure.
+
+**THE AMOUNT IS SUBSTITUTED INSIDE THE PACK'S EPF COMPUTATION, and the arithmetic is why.** Applying it after the statutory core would charge the full monthly amount onto a bonus run as well — the mis-application ADR-0046 predicted — and would need an `isAdditionalRun` special case. Inside, it telescopes for free: `deltaStat` charges the month with this run's additional minus the month without, so for a constant M the additional run charges `max(0, M − M) = 0` and a regular run restating a bonus month charges `M − (M − M) = M`. Charged once, in any order, with no special case anywhere. And Kₜ is defined as the month's lookup minus the same lookup on the normal wage alone, so through the **same function** Kₜ = 0 by subtraction and K₁ + Kₜ = the employee EPF exactly.
+
+Four rules needed it, not one: `epf()` is reached only by Part A, so the non-citizen flat rate, Part E and the age ≥ 75 short-circuit were substituted at `epfContribution` too. **No round-up** (a typed figure is not a schedule reading) and **no floor** — this is the only EPF mode that can go down, which is the point.
+
+**It extended r364's provenance seam rather than building beside it**: one member on the source union, one arm, no second banner and no second label. One shape change was needed and is the right one — the seam's single `reason` string became one note per source, because two sources can sit on one payslip and a single string silently attaches one decision's justification to the other.
+
+Surfaces that would otherwise have failed silently and are in: the **multi-cycle worksheet**, which re-derives EPF from wages and would have verdicted every manual employee-month "unexplained" on a document an accountant signs; the **audit event**, which recorded the mode after-only while the block beside it had proper before/after; and the **zakat election's read-modify-write**, which would have nulled the amounts and then thrown.
+
+**TWO DEVIATIONS FROM THE APPROVED PLAN, BOTH BECAUSE THE PLAN ASKED FOR SOMETHING THAT CANNOT EXIST.**
+
+- The plan said to offer the three categories in the create-employee wizard with no amount boxes. That combination is unreachable: the resolver refuses a manual category with no amount, and it runs inside a step the draft reaches only AFTER the employee has been committed. The choice would either fail an activation that had already created a person, or be silently downgraded to Auto — a wrong payslip on a money field. It downgrades **explicitly**, with a hint pointing at the card that has the boxes.
+- "Refused if you leave its amount blank" is narrowed to "no amount on EITHER side". The three categories ARE the three combinations of two nullable amounts — nothing stores a category — so an employee amount with a blank employer amount IS "Manual (Employee by Amount)", and the employer side keeping the schedule is what a blank side means.
+
+**THE VACUITY TRAP CAUGHT THE BUILDER TWICE, AND IT FIXED BOTH RATHER THAN CLAIMING THEM.** The KWSP submission-file case spelled the seven-field mapping out inline instead of calling the mapper the production route uses, so zeroing the employee contribution left it **green**. And "Kₜ = 0" is two claims: on Part A the zero falls out of the substitution itself, so removing the wrapper's explicit zero changed nothing. The branch case now runs all four rules with a bonus and asserts the rule figures it displaces are non-zero, so it cannot pass on branches with nothing to zero.
+
+### cbfa8b0b ROUND ONE — and the reporter's complaint was arithmetic
+
+"The row is too crowded, with text overlapping under Day Type" was not a matter of taste. The filled cell stacks a 16px line and an 11px line that inherits the same 16px line-height inside a fixed 36px box with 8px of padding — **40px of content in 36px**, on every filled row. Dropping the two reference columns for one Attendance column with a View button is what gives the row its space back, and the browser run now measures the caption ending at 355.8 inside a cell running to 362.8.
+
+**No popover primitive existed** — neither Radix popover nor tooltip is installed. Rather than add one, the working anchored panel that had lived inline in the attendance figure cells since 7c834696 was extracted to `components/ui/anchored-panel.tsx` and BOTH callers moved onto it, with the below-`lg` sheet handled by the Drawer this product already has. The reporter asked for a bottom sheet; there is no bottom sheet, and the plan said so rather than inventing one.
+
+**THE EXTRACTION WAS UNFALSIFIABLE UNTIL THIS ROUND.** `AttendanceFigureCells` had no DOM test at all, so "behaviour preserved" could not be checked. It now has one — with **stubbed rects**, because jsdom has no layout and every unstubbed placement assertion would pass identically whatever the code did.
+
+**Approved Plan OT moved to the EMPLOYEE's panel**, because the case the reporter asked for on the approver's side cannot arise: the OT/credit overlap check blocks in both directions, so a claim sitting in a queue can never carry an approved plan for the same date. On the employee's panel it pre-explains a refusal they would otherwise hit at submit.
+
+### A GUARD THAT PASSED WITH ITS OWN DEFECT APPLIED
+
+The source guard for "the panel must not block the claim" scanned the `blocked` expression for forbidden words and **went green** with the blocking predicate in place — because the predicate was defined three lines above and reached by an innocuous name inside. Replaced with an exact-set assertion over the gate's operands, which then failed naming the intruder. That is the second guard in two rounds found vouching for nothing, after r364's layout guard counting a tag inside a comment.
+
+### VERIFICATION, STATED AS A CHAIN
+
+Both items' screens were driven in a real browser by their builders, under `devdb-lock.sh`, with fixtures the seed cannot produce. On the merged tree the six files they rendered are **byte-identical by git object hash**, so that evidence carries; on top of it, this round's own merged-tree check confirms both screens serve 200 with zero i18n errors, the retired Leave Credit cells are gone from the markup, all three EPF categories reach the client island, and **the Statutory Detail export was opened and read** — a real spreadsheet whose two "system calculated" columns are correctly ABSENT on unadjusted data, which is the evidence that an ordinary export is unchanged.
+
+### NOT DONE, AND NAMED
+
+- **The status dot cannot see a clock-out that reads as next day.** `actualClockOut` is a time with no date, so someone who clocked out at 17:00 and claims 18:00–23:51 produces no dot. It needs a dated clock-out from the attendance engine, and **a test now pins the wrong answer** so a later round cannot paper over it with a better guess.
+- **The panel pre-explains only an APPROVED overtime plan, while submit is refused by pending OR approved.** The mockup said approved and that is what shipped; closing the gap is a line and a sentence in six locales — a copy decision the reporter has not been asked.
+- Rounds two (the attendance snapshot, migration **0492**) and three (the approver's View with the Claimed/Recorded comparison) are deliberately unbuilt. The guard pinning that is written **by shape** rather than by a journal number, after a first cut asserting `max(idx) === 490` went stale within the hour.
+- The create-employee wizard does not offer the manual categories, for the reason above; the Statutory Detail export's *positive* case (columns present with an adjustment) is held by a guard proven to bite rather than by a downloaded file.
+
 ## r364 (2026-09-29) — the EA form says how many children again, and three screens stop asserting things that were not true. `main@d5a2697a`, **no migration**.
 
 Closed: `fda53352`, `c36e1ae6`, `ec30b2e9`, `208beb8b`. Gate: **1058 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, zero AssertionErrors, first attempt. `tsc` 0, `next build` 0, `scripts/i18n-check.mjs` PASS.
