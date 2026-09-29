@@ -55,6 +55,7 @@ import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
 import { currentPcbReliefs, listProcessedPayslipsAcross, payslipForReview } from '../core/payroll-view';
 import { pcbSlipData } from '../app/payroll/pcb-detail/slip-data';
+import { pcbDetailModel } from '../app/payroll/pcb-detail/shared';
 import { foldWinAnsi } from '../app/payroll/pcb-detail/slip-pdf';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
@@ -398,6 +399,24 @@ describe('r361 — the screen and the downloaded document cannot disagree about 
     expect(shared.indexOf('pushSlipSections(model.closing)')).toBeGreaterThan(
       shared.indexOf('pushSlipSections(model.slip)'),
     );
+  });
+
+  it('the document MODEL carries the trio, behaviourally and not merely by a source match', () => {
+    // ⚠️ `pcbDetailModel` was named in prose across three files as the thing a test drives over both
+    // paths, and no test drove it — the claim outlived the code (CLAUDE.md §8 on prose). The source
+    // matches above would survive a `closing` that came back empty, so the model is actually CALLED here
+    // and its trio compared, field for field, with the one the screen is handed.
+    const x = richRun();
+    const model = pcbDetailModel({
+      statutory: { pcb: x.pcb, pcbBonus: x.pcbAdditional, epfEmployee: 1540, zakat: 60, lp: 570, pcbMeta: run().snapshot },
+      fallbackReliefs: CURRENT,
+      previousEmployment: null,
+      slipData: null,
+    });
+    expect(model.closing.map((s) => s.heading)).toEqual([
+      'slipStep1Heading', 'slipStep2Heading', 'slipResultHeading',
+    ]);
+    expect(model.closing).toEqual(pcbClosingSections(model.explanation));
   });
 
   it('the new bands hold no arithmetic, and the read that sums payslips is not in core/', () => {
