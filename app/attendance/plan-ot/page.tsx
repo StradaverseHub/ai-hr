@@ -76,10 +76,17 @@ import { CATEGORY_KEY, Pill, REQUEST_STATUSES, statusLabel, type RequestStatus }
  *    anything filed before 08:00 MYT; its own comment calls that a real pre-existing defect. This column
  *    is right from the start. Fixing that screen is deliberately not in this round.
  *
+ *  · WHAT WE DO HOLD, IN PLACE OF THE REASON WE DO NOT. The ticket asked for the approver's remark on a
+ *    rejected row. There is no such data — `decideAttendanceCorrection` takes no reason argument, the
+ *    update writes status/decidedBy/decidedAt only, and the event payload carries none — so the plan
+ *    said so to the reporter and promised the two things that DO exist: the employee's own note (the
+ *    `remark` column, which only `requestAttendanceCorrection` ever writes) and the date the request was
+ *    answered. Both render here; neither is dressed up as an approver's explanation.
+ *
  * NOT IN THIS ROUND, and the reporter was told each one in the approved plan: an approver's rejection
- * remark (`decideAttendanceCorrection` takes no reason and the event payload carries none — there is no
- * such data to show), a confirm dialog on Withdraw (no My Attendance screen has one), a narrow-screen
- * block face, and 20 rows a page (`lib/pagination.ts` is a product-wide contract starting at 25).
+ * remark (see above — there is no such data to show), a confirm dialog on Withdraw (no My Attendance
+ * screen has one), a narrow-screen block face, and 20 rows a page (`lib/pagination.ts` is a product-wide
+ * contract starting at 25).
  *
  * ⚠️ DAY TYPE AND ACTUAL HOURS ARE DELIBERATELY NOT COLUMNS HERE, and the ticket asked for both. This
  * list holds plans across arbitrary months; a day type is one scheduling resolution per row and actual
@@ -483,6 +490,10 @@ export default async function SelfOvertimePage({
                             {category && <span className="font-medium">{category}</span>}
                             {category && p.reason ? ' — ' : ''}
                             <span className="text-muted-foreground">{p.reason ?? ''}</span>
+                            {/* The EMPLOYEE's own optional note, which the plan promised on a rejected row
+                                in place of the approver's reason the system does not hold. Same shape as
+                                the sibling screen: italic, underneath, never mistaken for the reason. */}
+                            {p.remark && <span className="block text-[11px] italic text-muted-foreground">{p.remark}</span>}
                           </td>
                           {/* ⚠️ ONLY WHILE IT IS STILL TRUE — see the header. */}
                           <td className="px-3 py-2 text-muted-foreground">{p.status === 'pending' ? approver : '—'}</td>
@@ -502,6 +513,16 @@ export default async function SelfOvertimePage({
                                 {p.appliedAt
                                   ? t('otCountedOnDay', { date: p.appliedAt.toISOString().slice(0, 10) })
                                   : t('otNotWorkedYet')}
+                              </div>
+                            )}
+                            {/* WHEN it was turned down. The approved plan owed the reporter a reason on a
+                                rejected row and could not give one — decideAttendanceCorrection takes no
+                                reason and the event payload carries none — so it promised what we DO
+                                hold. `decidedOn` is an existing caption ("answered on {date}"), read in
+                                MYT like the Submitted on column beside it. */}
+                            {p.status === 'rejected' && p.decidedAt && (
+                              <div className="mt-0.5 text-[11px] text-muted-foreground">
+                                {t('decidedOn', { date: todayInKualaLumpur(p.decidedAt) })}
                               </div>
                             )}
                           </td>

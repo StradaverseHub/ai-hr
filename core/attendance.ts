@@ -3612,6 +3612,10 @@ export type OvertimePlanRow = {
   approvedOtMinutes: number | null;
   otReasonCategory: OtReasonCategory | null;
   reason: string | null;
+  /** f618065d (r362) — the EMPLOYEE's own optional note, written only by requestAttendanceCorrection.
+   *  It is NOT an approver's reason: `decideAttendanceCorrection` takes none and writes none. The plan
+   *  told the reporter exactly that, and promised this — the note they themselves added — instead. */
+  remark: string | null;
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
   appliedAt: Date | null;
   createdAt: Date;
@@ -4124,6 +4128,7 @@ export function myOvertimePlans(
         approvedOtMinutes: attendanceCorrection.approvedOtMinutes,
         otReasonCategory: attendanceCorrection.otReasonCategory,
         reason: attendanceCorrection.reason,
+        remark: attendanceCorrection.remark,
         status: attendanceCorrection.status,
         appliedAt: attendanceCorrection.appliedAt,
         createdAt: attendanceCorrection.createdAt,

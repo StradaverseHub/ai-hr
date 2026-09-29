@@ -379,13 +379,24 @@ describe('C · the screen: what the approved plan changed, and what it deliberat
     );
   });
 
-  it('the approver’s rejection remark is NOT invented — there is no such data', () => {
+  it('the approver’s rejection remark is NOT invented — but what we DO hold is shown', () => {
     // decideAttendanceCorrection takes no reason, the update writes status/decidedBy/decidedAt only, and
-    // the event payload carries none. `attendance_correction.remark` is the EMPLOYEE's own note. The
-    // approved plan tells the reporter this in plain words rather than quietly leaving it out.
+    // the event payload carries none. The approved plan says so to the reporter in plain words AND
+    // promises the two things that exist instead — so a screen that quietly showed neither would have
+    // kept the refusal and dropped the compensation.
     const core = code(read('core/attendance.ts'));
     expect(core.includes('rejectReason'), 'attendance has no stored approver reason').toBe(false);
     expect(code(LIST).toLowerCase().includes('rejectreason')).toBe(false);
+    // The EMPLOYEE's own note — the `remark` column, written only by requestAttendanceCorrection.
+    expect(core, 'the read carries it').toContain('remark: attendanceCorrection.remark,');
+    expect(flat(LIST), 'and the row prints it, underneath and italic, never as the reason').toContain(
+      '{p.remark && <span className="block text-[11px] italic text-muted-foreground">{p.remark}</span>}',
+    );
+    // …and WHEN it was answered, on the rejected rows the reason was asked for.
+    expect(flat(LIST)).toContain("{p.status === 'rejected' && p.decidedAt && (");
+    expect(flat(LIST), 'in MYT, like the Submitted on column beside it').toContain(
+      "t('decidedOn', { date: todayInKualaLumpur(p.decidedAt) })",
+    );
   });
 });
 
