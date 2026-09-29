@@ -82,10 +82,18 @@ const WIDE_LIST_SCREENS = [
   // r227 — Attendance Irregularity, the EMPLOYEE's own list. Not an admin screen and deliberately in the
   // same list anyway: it is a list screen that was capped, and the reporter raised it as the same fault.
   'app/attendance/requests/page.tsx',
-  // f3e6c36e (r287) — My Records, the employee's own attendance. Added on the SAME reasoning r227 gave:
-  // the full-width property belongs to the SCREEN, not to who may open it, and this one carries the same
-  // seventeen-column day table the Individual tab does. Listed from the start rather than after somebody
-  // complains, so a `mx-auto max-w-*xl` can never quietly arrive on it.
+  /**
+   * f3e6c36e (r287) — the employee's own attendance screen, added on the SAME reasoning r227 gave: the
+   * full-width property belongs to the SCREEN, not to who may open it. Listed from the start rather than
+   * after somebody complains, so a `mx-auto max-w-*xl` can never quietly arrive on it.
+   *
+   * ⚠️ 2aef3cd8 (r362) — THE OLD REASON WAS "this one carries the same seventeen-column day table the
+   * Individual tab does". IT DOES NOT ANY MORE: the row is "Attendance Overview" and the screen is blank
+   * below its title, by the reporter's instruction. The entry STAYS, and that is a decision rather than
+   * inertia — this is now the assertion that the blank page keeps `pageWideCls` and acquires no reading-
+   * width cap, so whatever content arrives here later starts full width instead of being born capped and
+   * re-raised as the same complaint r227 and r319 already cost two rounds.
+   */
   'app/attendance/my-records/page.tsx',
   /**
    * dde08629 (r319) — EMPLOYEE ATTENDANCE and its two sibling tabs, added on the same reasoning every

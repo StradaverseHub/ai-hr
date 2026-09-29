@@ -317,7 +317,7 @@
     "attendanceAllowance": "เบี้ยขยันการเข้างาน",
     "attendanceClock": "ลงเวลาผ่านเว็บ",
     "attendanceRecords": "บันทึก",
-    "myRecords": "บันทึกของฉัน",
+    "myRecords": "ภาพรวมการลงเวลา",
     "attendanceRequest": "ความผิดปกติของการเข้างาน",
     "planOvertime": "ล่วงเวลาด้วยตนเอง",
     "myTravel": "การเดินทางของฉัน",
@@ -2955,10 +2955,10 @@
       "recentNote": "ทุกครั้งที่ดำเนินการจะถูกเก็บไว้ถาวร — ใครเป็นผู้ดำเนินการ พนักงานและวันที่ใด รวมถึงตัวเลขก่อนและหลังของแต่ละวันที่เปลี่ยนไป แต่ละครั้งจะปรากฏใน Audit Trail ภายใต้การลงเวลาด้วย"
     },
     "myRecords": {
-      "title": "บันทึกของฉัน",
-      "intro": "การลงเวลาของคุณเอง แบบวันต่อวัน แสดงเฉพาะบันทึกของคุณเท่านั้น",
-      "notLinked": "บัญชีของคุณไม่ได้เชื่อมกับการจ้างงานที่ใช้งานอยู่ จึงไม่มีบันทึกการเข้างานให้แสดง",
-      "correctionNote": "มีวันใดไม่ถูกต้องหรือไม่ โปรดยื่นเรื่องที่คำขอด้านการลงเวลา หน้าจอนี้เป็นบันทึก ไม่ใช่ที่สำหรับแก้ไข"
+      "title": "ภาพรวมการลงเวลา",
+      "intro": "[retired r362 — the helper line above the day table on /attendance/my-records. Item 2aef3cd8 emptied that screen: the table, the two month arrows, the pager and the closing note went with it and the page is blank below its title, so nothing renders this sentence any more]",
+      "notLinked": "[retired r362 — the “your login is not linked to an active employment” branch on /attendance/my-records. The page resolves no employment and makes no attendance read now (item 2aef3cd8), so it has nothing to say about one]",
+      "correctionNote": "[retired r362 — the footer on /attendance/my-records pointing at Attendance Request. It described a record the screen no longer shows (item 2aef3cd8); the Attendance Request row under My Attendance is untouched and is still where a wrong day is raised]"
     },
     "dayViewEdit": "ดู/แก้ไข",
     "dayTitle": "รายละเอียดการลงเวลา",
@@ -8399,7 +8399,7 @@
         "leave": "ทุกคนเปิดได้ คุณเห็นการลาของตนเอง ผู้จัดการและผู้ดูแลเห็นของผู้ใต้บังคับบัญชา",
         "leaveTracker": "ทุกคนเปิดได้ คุณเห็นการลาของตนเอง ผู้จัดการเห็นของผู้ใต้บังคับบัญชา และผู้ดูแลจะได้การค้นหาพนักงานแทนปฏิทิน",
         "attendance": "ทุกคนเปิดได้ คุณเห็นการเข้างานของตนเอง ผู้จัดการและผู้ดูแลเห็นของผู้ใต้บังคับบัญชา",
-        "myAttendanceRecords": "ทุกคนเปิดได้ ไม่ว่าคุณจะเป็นใคร หน้านี้แสดงเฉพาะการเข้างานของคุณเองเท่านั้น",
+        "myAttendanceRecords": "ทุกคนเปิดได้ แต่หน้านี้ไม่แสดงข้อมูลการลงเวลาใด ๆ เลย — ด้านล่างของหัวเรื่องจะว่างเปล่าจนกว่าจะมีการเพิ่มเนื้อหาใหม่",
         "approvals": "ผู้จัดการขึ้นไป สิ่งที่แสดงเป็นไปตามสายการรายงานจริงของคุณ",
         "roster": "ผู้จัดการขึ้นไป สิ่งที่แสดงเป็นไปตามสายการรายงานจริงของคุณ",
         "performance": "ผู้จัดการขึ้นไป สิ่งที่แสดงเป็นไปตามสายการรายงานจริงของคุณ",

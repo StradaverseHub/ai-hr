@@ -317,7 +317,7 @@
     "attendanceAllowance": "出勤津贴",
     "attendanceClock": "网页打卡",
     "attendanceRecords": "记录",
-    "myRecords": "我的记录",
+    "myRecords": "考勤概览",
     "attendanceRequest": "考勤异常",
     "planOvertime": "自助加班",
     "myTravel": "我的出差",
@@ -2955,10 +2955,10 @@
       "recentNote": "每次重新计算都会永久保留 — 执行人、涉及的员工和日期，以及每个变动日的前后数字。每次重新计算也会出现在审计记录的考勤栏目下。"
     },
     "myRecords": {
-      "title": "我的记录",
-      "intro": "您本人的考勤，按天列出。此处仅显示您的记录。",
-      "notLinked": "您的登录账号未关联在职雇佣记录，因此没有可显示的考勤记录。",
-      "correctionNote": "某一天有误？请到考勤申请页面提交——本页面是记录，不是修改记录的地方。"
+      "title": "考勤概览",
+      "intro": "[retired r362 — the helper line above the day table on /attendance/my-records. Item 2aef3cd8 emptied that screen: the table, the two month arrows, the pager and the closing note went with it and the page is blank below its title, so nothing renders this sentence any more]",
+      "notLinked": "[retired r362 — the “your login is not linked to an active employment” branch on /attendance/my-records. The page resolves no employment and makes no attendance read now (item 2aef3cd8), so it has nothing to say about one]",
+      "correctionNote": "[retired r362 — the footer on /attendance/my-records pointing at Attendance Request. It described a record the screen no longer shows (item 2aef3cd8); the Attendance Request row under My Attendance is untouched and is still where a wrong day is raised]"
     },
     "dayViewEdit": "查看/编辑",
     "dayTitle": "考勤明细",
@@ -8399,7 +8399,7 @@
         "leave": "所有人都可打开；你查看自己的假期，经理和管理员查看下属的假期。",
         "leaveTracker": "所有人都可打开；你查看自己的假期，经理查看下属的假期，管理员看到的是员工查询而非日历。",
         "attendance": "所有人都可打开；你查看自己的考勤，经理和管理员查看下属的考勤。",
-        "myAttendanceRecords": "所有人都可打开；无论你是谁，此页面只显示你自己的考勤。",
+        "myAttendanceRecords": "所有人都可打开。此页面不显示任何考勤数据——在添加新内容之前，标题下方为空白。",
         "approvals": "经理及以上；显示内容取决于你实际的汇报线。",
         "roster": "经理及以上；显示内容取决于你实际的汇报线。",
         "performance": "经理及以上；显示内容取决于你实际的汇报线。",

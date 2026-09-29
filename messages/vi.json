@@ -317,7 +317,7 @@
     "attendanceAllowance": "Phụ cấp chuyên cần",
     "attendanceClock": "Chấm công trên web",
     "attendanceRecords": "Hồ sơ",
-    "myRecords": "Hồ sơ của tôi",
+    "myRecords": "Tổng quan chấm công",
     "attendanceRequest": "Bất thường chấm công",
     "planOvertime": "Tự đăng ký làm thêm giờ",
     "myTravel": "Công tác của tôi",
@@ -2955,10 +2955,10 @@
       "recentNote": "Mọi lần chạy đều được giữ vĩnh viễn — ai đã chạy, những nhân viên và ngày nào, cùng các con số trước và sau cho mỗi ngày đã thay đổi. Mỗi lần chạy cũng xuất hiện trong Nhật ký kiểm toán ở mục Chấm công."
     },
     "myRecords": {
-      "title": "Hồ sơ của tôi",
-      "intro": "Chấm công của chính bạn, theo từng ngày. Chỉ hồ sơ của bạn được hiển thị ở đây.",
-      "notLinked": "Tài khoản của bạn chưa được liên kết với một hợp đồng lao động đang hoạt động nên không có hồ sơ chấm công để hiển thị.",
-      "correctionNote": "Có ngày nào chưa đúng? Hãy gửi tại Yêu cầu chấm công — màn hình này là hồ sơ, không phải nơi để sửa."
+      "title": "Tổng quan chấm công",
+      "intro": "[retired r362 — the helper line above the day table on /attendance/my-records. Item 2aef3cd8 emptied that screen: the table, the two month arrows, the pager and the closing note went with it and the page is blank below its title, so nothing renders this sentence any more]",
+      "notLinked": "[retired r362 — the “your login is not linked to an active employment” branch on /attendance/my-records. The page resolves no employment and makes no attendance read now (item 2aef3cd8), so it has nothing to say about one]",
+      "correctionNote": "[retired r362 — the footer on /attendance/my-records pointing at Attendance Request. It described a record the screen no longer shows (item 2aef3cd8); the Attendance Request row under My Attendance is untouched and is still where a wrong day is raised]"
     },
     "dayViewEdit": "Xem/Sửa",
     "dayTitle": "Chi tiết chấm công",
@@ -8399,7 +8399,7 @@
         "leave": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý và quản trị viên thấy của cấp dưới.",
         "leaveTracker": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý thấy của cấp dưới, còn quản trị viên nhận phần tra cứu nhân viên thay cho lịch.",
         "attendance": "Mọi người đều có thể mở; bạn thấy chấm công của mình, quản lý và quản trị viên thấy của cấp dưới.",
-        "myAttendanceRecords": "Mọi người đều có thể mở; dù bạn là ai, màn hình này chỉ hiển thị chấm công của chính bạn.",
+        "myAttendanceRecords": "Mọi người đều có thể mở. Trang này không hiển thị bất kỳ dữ liệu chấm công nào — bên dưới tiêu đề là trống cho đến khi có nội dung mới.",
         "approvals": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "roster": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "performance": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",

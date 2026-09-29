@@ -128,9 +128,13 @@ import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../r
  *
  * f3e6c36e (r287) — the `attendanceRecords` row that this paragraph and the one above used to name is
  * gone from here. It pointed at `/attendance`, the screen both audiences shared; it is now `myRecords`
- * pointing at `/attendance/my-records`, the employee's own screen, and `/attendance` belongs to the
- * Administration row alone. The reasoning is on the row itself. `nav.attendanceRecords` is NOT retired —
- * app/reports/page.tsx still labels its `/attendance` link with it, and that link is the admin screen.
+ * pointing at `/attendance/my-records`, and `/attendance` belongs to the Administration row alone. The
+ * reasoning is on the row itself. `nav.attendanceRecords` is NOT retired — app/reports/page.tsx still
+ * labels its `/attendance` link with it, and that link is the admin screen.
+ *
+ * 2aef3cd8 (r362) — that row reads "Attendance Overview" now, and the screen behind it is BLANK below its
+ * title. The KEY `myRecords` is unchanged (label-only rename, the a324a4b3 pattern); only the six strings
+ * moved. Read the note on the row before assuming the route is spare.
  */
 const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
   labelKey: 'myAttendance',
@@ -157,9 +161,23 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      *     which is the one way both things can be true at once. Their own point 7 (employee-facing
      *     attendance functions stay under My Attendance) is what the new screen honours.
      *
-     * UNGATED, like every sibling in this node: `/attendance/my-records` resolves the caller's own
-     * employment (`myEmployment(s)`) and can show nobody else's rows. A gate here would take an employee's
-     * own record away from them, which is the opposite of what the item asked for.
+     * UNGATED, like every sibling in this node. THE OLD REASON, kept because it is why the gate must not
+     * arrive later: `/attendance/my-records` resolved the caller's own employment and could show nobody
+     * else's rows, so a gate here would have taken an employee's own record away from them.
+     *
+     * ⚠️ 2aef3cd8 (r362) — THAT SCREEN IS NOW EMPTY, and the row reads "Attendance Overview". The reporter
+     * asked for the rename and for everything under the row to be removed; the approved plan says "Below
+     * the title the page is blank." So the sentence above describes a read that no longer happens. The row
+     * stays exactly where it is, ungated, and the route stays registered, because the plan's own next
+     * sentence is that new content arrives here later.
+     *
+     * WHAT THE READER MUST NOT DO WITH THAT: this route is not spare, and it is not a candidate for
+     * deletion just because it renders nothing. It is the ONLY employee-reachable address under My
+     * Attendance that is free to hold an attendance view — the five siblings are clocking, requests,
+     * plan-ot, travel and request-status, and everything under ATTENDANCE_NAV is invisible to staff behind
+     * the group-level admin gate. Until content returns, an employee has nowhere in the product to look up
+     * their own attendance day by day; that consequence was stated at the top of the approved plan, the
+     * reporter approved it, and it is recorded on the page and in the r362 round entry.
      *
      * Clock rather than a new glyph: the collapsed rail renders glyphs only, and this is the same row the
      * reporter has always known as Records — it is the address and the audience that changed, not the job.
@@ -342,7 +360,10 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      *
      * So this row is no longer a duplicate href, it is simply THE Employee Attendance row: the
      * administrative reading of everybody's attendance, admin-gated, in the Administration menu where the
-     * reporter asked for it twice. The employee keeps their own record next door, which is their point 7.
+     * reporter asked for it twice. The employee kept their own record next door, which was their point 7 —
+     * ⚠️ and since 2aef3cd8 (r362) that next-door screen is blank by their own later instruction, so this
+     * row is the ONLY place in the product where an attendance record is read day by day. It is
+     * admin-gated, so staff do not reach it.
      */
     { href: '/attendance', labelKey: 'employeeAttendance', icon: Clock, adminOnly: true },
     // 22d67223 — ATTENDANCE BREAKDOWN DETAIL. The audit surface: every figure the engine recorded, day by
