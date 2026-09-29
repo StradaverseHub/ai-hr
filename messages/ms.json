@@ -13037,7 +13037,11 @@
       "submittedOn": "Submitted",
       "noClockOutRecord": "Tiada rekod",
       "clockOutMissing": "Tiada waktu keluar direkodkan untuk tarikh ini. Pengurus anda akan menyemak jam ini sebelum meluluskannya.",
-      "clockOutEarlier": "Anda menuntut sehingga {claimEnd}, tetapi waktu keluar yang direkodkan ialah {clockOut}. Pengurus anda akan menyemaknya sebelum meluluskan."
+      "clockOutEarlier": "Anda menuntut sehingga {claimEnd}, tetapi waktu keluar yang direkodkan ialah {clockOut}. Pengurus anda akan menyemaknya sebelum meluluskan.",
+      "dayTypeLookupFailed": "Tidak dapat mencari tarikh ini",
+      "dayTypeRetry": "Cuba lagi",
+      "dayTypeFromRoster": "Daripada roster anda",
+      "dayTypeFromHolidays": "Daripada kalendar cuti umum"
     }
   },
   "notices": {

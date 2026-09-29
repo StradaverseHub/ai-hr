@@ -201,14 +201,55 @@ export function LeaveCreditRequestTable({
 
   // One fetch per distinct date, marked as asked (null) at once so a re-render mid-flight does not re-ask.
   const [facts, setFacts] = useState<Record<string, LeaveCreditDayFacts | null>>({});
+  /**
+   * ⚠️ r360 cbfa8b0b — THE FAILED LOOKUP USED TO BE SILENT, AND IT IS THE REPORTED FAULT.
+   *
+   * This read `void dayFactsAction(d).then(...)` with NO `.catch()`. A rejected server action left
+   * `facts[d]` at null for ever: `d in facts` is already true by the line above, so the date is never
+   * re-asked, and nothing on the screen said anything. The employee saw a Day Type that would not fill
+   * in, and — because all three come from this one call — a blank scheduled shift end and a blank
+   * clock-out beside it. That is exactly the row in the reporter's screenshot.
+   *
+   * It could not be read as "the system has no answer", either: `resolveWorkedDayKindTx` always returns
+   * one of the four kinds and `leaveCreditDayFactsAction` returns null only for a malformed date or no
+   * employment. So a blank Day Type after a date is picked IS a failed or in-flight lookup and nothing
+   * else — which is why the row now says which of the two it is.
+   */
+  const [factError, setFactError] = useState<Record<string, true>>({});
+  const [retryTick, setRetryTick] = useState(0);
   const datesKey = rows.map((r) => r.workedDate).join('|');
   useEffect(() => {
     for (const d of new Set(datesKey.split('|').filter(Boolean))) {
       if (d in facts) continue;
       setFacts((prev) => (d in prev ? prev : { ...prev, [d]: null }));
-      void dayFactsAction(d).then((v) => setFacts((prev) => ({ ...prev, [d]: v })));
+      void dayFactsAction(d)
+        .then((v) => {
+          setFacts((prev) => ({ ...prev, [d]: v }));
+          setFactError((prev) => {
+            if (!(d in prev)) return prev;
+            const next = { ...prev };
+            delete next[d];
+            return next;
+          });
+        })
+        // The whole point: a rejection is RECORDED rather than swallowed, so the row can say so and
+        // offer the retry. `facts[d]` stays null, which is what keeps the cells reading "not known".
+        .catch(() => setFactError((prev) => ({ ...prev, [d]: true })));
     }
-  }, [datesKey, dayFactsAction, facts]);
+  }, [datesKey, dayFactsAction, facts, retryTick]);
+
+  /** Ask again for the dates whose lookup failed. Clearing `facts` is what lets the effect re-fire. */
+  const retryFacts = useCallback(() => {
+    const failed = Object.keys(factError);
+    if (failed.length === 0) return;
+    setFacts((prev) => {
+      const next = { ...prev };
+      for (const d of failed) delete next[d];
+      return next;
+    });
+    setFactError({});
+    setRetryTick((n) => n + 1);
+  }, [factError]);
 
   /**
    * r353 · WHICH ROWS THE EMPLOYEE HAS SPOKEN FOR. Keyed by row key, set the first time the Day Type cell is
@@ -444,20 +485,40 @@ export function LeaveCreditRequestTable({
                       />
                     </td>
                     <td className="px-3 py-2">
-                      <select
-                        value={r.dayType}
-                        onChange={(e) => chooseDayType(r.key, e.target.value)}
-                        aria-label={t('sectionA.dayType')}
-                        data-testid="leave-credit-day-type"
-                        className={inputCls}
-                      >
-                        <option value="">{t('table.dayTypeChoose')}</option>
-                        {dayTypeOptions.map((o) => (
-                          <option key={o} value={o}>
-                            {dayTypeLabel(o)}
-                          </option>
-                        ))}
-                      </select>
+                      {/* ⚠️ r360 cbfa8b0b — THE DROPDOWN WAS A CHOICE THE SERVER ALWAYS REFUSED.
+                          `leaveCreditRosterKinds` resolves EVERY date it is given, so `adjudicateDayTypes`
+                          never skips a row, and `submitLeaveCreditRequest` throws
+                          LeaveCreditDayTypeMismatchError on ANY disagreement. An employee who picked a day
+                          type by hand was therefore turned away at submit unless they happened to pick the
+                          one the roster already held. Making the cell read-only removes no capability that
+                          existed — it removes a way to fail. The reporter asked for exactly this.
+                          The value is still POSTED (the hidden input above) and still adjudicated server
+                          side: the screen is the courtesy, the refusal is the control. */}
+                      {r.dayType === '' ? (
+                        <div className={`${disabledCell} gap-2`} data-testid="leave-credit-day-type">
+                          <span>{factError[r.workedDate] ? t('table.dayTypeLookupFailed') : t('table.dayTypeChoose')}</span>
+                          {factError[r.workedDate] && (
+                            <button
+                              type="button"
+                              onClick={retryFacts}
+                              className="underline underline-offset-2 hover:no-underline"
+                              data-testid="leave-credit-day-type-retry"
+                            >
+                              {t('table.dayTypeRetry')}
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className={`${disabledCell} flex-col !items-start`} data-testid="leave-credit-day-type">
+                          <span className="text-foreground">{dayTypeLabel(r.dayType)}</span>
+                          {/* WHERE IT CAME FROM, which is the other half of the reporter's ask. A public
+                              holiday outranks the roster in `scheduleFor`, so the two provenances are
+                              genuinely different facts and the caption may not merge them. */}
+                          <span className="text-[11px]" data-testid="leave-credit-day-type-source">
+                            {r.dayType === 'holiday' ? t('table.dayTypeFromHolidays') : t('table.dayTypeFromRoster')}
+                          </span>
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <div className={disabledCell} data-testid="leave-credit-shift-end">

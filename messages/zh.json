@@ -13037,7 +13037,11 @@
       "submittedOn": "Submitted",
       "noClockOutRecord": "无记录",
       "clockOutMissing": "此日期没有打卡下班记录。您的经理会在批准前核对这些工时。",
-      "clockOutEarlier": "您申报至 {claimEnd}，但记录的打卡下班时间为 {clockOut}。您的经理会在批准前核对。"
+      "clockOutEarlier": "您申报至 {claimEnd}，但记录的打卡下班时间为 {clockOut}。您的经理会在批准前核对。",
+      "dayTypeLookupFailed": "无法查询此日期",
+      "dayTypeRetry": "重试",
+      "dayTypeFromRoster": "来自您的排班表",
+      "dayTypeFromHolidays": "来自公共假期日历"
     }
   },
   "notices": {

@@ -13037,7 +13037,11 @@
       "submittedOn": "Submitted",
       "noClockOutRecord": "Không có dữ liệu",
       "clockOutMissing": "Không có giờ ra được ghi nhận cho ngày này. Quản lý của bạn sẽ kiểm tra số giờ này trước khi phê duyệt.",
-      "clockOutEarlier": "Bạn khai đến {claimEnd}, nhưng giờ ra được ghi nhận là {clockOut}. Quản lý của bạn sẽ kiểm tra trước khi phê duyệt."
+      "clockOutEarlier": "Bạn khai đến {claimEnd}, nhưng giờ ra được ghi nhận là {clockOut}. Quản lý của bạn sẽ kiểm tra trước khi phê duyệt.",
+      "dayTypeLookupFailed": "Không thể tra cứu ngày này",
+      "dayTypeRetry": "Thử lại",
+      "dayTypeFromRoster": "Từ lịch trực của bạn",
+      "dayTypeFromHolidays": "Từ lịch ngày lễ công cộng"
     }
   },
   "notices": {

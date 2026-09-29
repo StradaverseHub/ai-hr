@@ -13037,7 +13037,11 @@
       "submittedOn": "Submitted",
       "noClockOutRecord": "ไม่มีบันทึก",
       "clockOutMissing": "ไม่มีบันทึกเวลาออกงานสำหรับวันนี้ ผู้จัดการของคุณจะตรวจสอบชั่วโมงเหล่านี้ก่อนอนุมัติ",
-      "clockOutEarlier": "คุณแจ้งถึง {claimEnd} แต่เวลาออกงานที่บันทึกไว้คือ {clockOut} ผู้จัดการของคุณจะตรวจสอบก่อนอนุมัติ"
+      "clockOutEarlier": "คุณแจ้งถึง {claimEnd} แต่เวลาออกงานที่บันทึกไว้คือ {clockOut} ผู้จัดการของคุณจะตรวจสอบก่อนอนุมัติ",
+      "dayTypeLookupFailed": "ไม่สามารถค้นหาวันที่นี้ได้",
+      "dayTypeRetry": "ลองอีกครั้ง",
+      "dayTypeFromRoster": "จากตารางเวรของคุณ",
+      "dayTypeFromHolidays": "จากปฏิทินวันหยุดนักขัตฤกษ์"
     }
   },
   "notices": {

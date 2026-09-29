@@ -13037,7 +13037,11 @@
       "submittedOn": "Submitted",
       "noClockOutRecord": "No record",
       "clockOutMissing": "No clock-out is on record for this date. Your manager will check these hours before approving.",
-      "clockOutEarlier": "You claimed to {claimEnd}, but the clock-out on record is {clockOut}. Your manager will check this before approving."
+      "clockOutEarlier": "You claimed to {claimEnd}, but the clock-out on record is {clockOut}. Your manager will check this before approving.",
+      "dayTypeLookupFailed": "Could not look this date up",
+      "dayTypeRetry": "Try again",
+      "dayTypeFromRoster": "From your roster",
+      "dayTypeFromHolidays": "From the public holiday calendar"
     }
   },
   "notices": {

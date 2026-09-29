@@ -17,8 +17,10 @@
  *   · "a non-working day typed into Section B" / "Section A refuses a working day" → BOTH are now the ROSTER
  *     MISMATCH, which is strictly stronger: it also catches rest day vs off day vs public holiday, which
  *     neither section could ever see (all three were one code path);
- *   · "the day type is read-only, never an input"                      → REVERSED BY THE REPORTER: it is an
- *     input, with exactly four options, and the assertion is now that the four are offered and adjudicated;
+ *   · "the day type is read-only, never an input"                      → reversed by the reporter in r343
+ *     to an input of four options with adjudication, and reversed BACK in r360 to a read-only fact with a
+ *     provenance caption. The adjudication r343 added is what settled it: the server refuses any day type
+ *     that disagrees with the roster, so the dropdown could never be accepted on its own terms;
  *   · "the grand total is both sections added"                         → ONE total over one table's rows.
  *
  * WHY A DOM TEST AND NOT A PAGE FETCH. The modal is a `Dialog.Portal`: it MOUNTS ON OPEN, so it is not in
@@ -173,17 +175,36 @@ describe('r343 · ⚠️ THE TWO SECTIONS ARE GONE FROM THE SURFACE THE EMPLOYEE
     }
   });
 
-  it('⚠️ REVERSED BY THE REPORTER: the day type is an INPUT of exactly four options, not a read-only chip', async () => {
+  /**
+   * ⚠️⚠️ REVERSED A SECOND TIME, BACK TO WHERE r336 STARTED — AND THE ROUND TRIP IS THE POINT.
+   *
+   *   r336 built the day type READ-ONLY, arguing "the kind of day a date is is not the employee's to
+   *        assert".
+   *   r343 the reporter contested that and asked for an INPUT of four options PLUS a roster check. Both
+   *        were built, and this case asserted `select.tagName === 'SELECT'` with the four options.
+   *   r360 (cbfa8b0b) the reporter asks for read-only again, with a caption saying where the value came
+   *        from.
+   *
+   * SO WE ARE BACK AT r336's DESIGN, BUT NOT BY r336's ARGUMENT — and that distinction is why this is a
+   * reversal rather than an undo. The roster check r343 added is what settles it: `leaveCreditRosterKinds`
+   * resolves EVERY date, so `adjudicateDayTypes` never skips a row, and `submitLeaveCreditRequest` throws
+   * on ANY disagreement. The dropdown therefore offered a choice the server would always refuse unless it
+   * happened to match. Making it read-only removes no capability that existed; it removes a way to fail.
+   *
+   * Both earlier claims are kept above so a fourth round can see the whole path rather than the last step.
+   */
+  it('the day type is a READ-ONLY fact with its provenance, not a dropdown', async () => {
     const user = userEvent.setup();
     mount('en', { facts: WORKING_DAY });
     await openModal(user, 'en');
-    // r336 asserted `select[name="aDayType"]` was absent and a read-only `leave-credit-day-kind` div present,
-    // on the argument that "the kind of day a date is is not the employee's to assert". The contest asks for
-    // the opposite, plus adjudication — so the control exists and the ROSTER is what checks it.
-    const select = dayTypeSelect('en');
-    expect(select.tagName).toBe('SELECT');
-    expect([...select.options].map((o) => o.value)).toEqual(['', 'rest_day', 'off_day', 'holiday', 'workday']);
-    expect(screen.queryAllByTestId('leave-credit-day-kind')).toHaveLength(0);
+    await user.type(dateInput('en'), '2026-09-16');
+    // No control at all: not a select, not an input, nothing the employee can change.
+    await waitFor(() => expect(screen.queryAllByRole('combobox', { name: copy('en').sectionA.dayType })).toHaveLength(0));
+    const cell = screen.getAllByTestId('leave-credit-day-type')[0];
+    expect(cell.tagName).not.toBe('SELECT');
+    expect(cell.querySelector('select'), 'no select survives inside the cell either').toBeNull();
+    // …and it says where the value came from, which is the other half of the ask.
+    await waitFor(() => expect(screen.getAllByTestId('leave-credit-day-type-source')[0]).toBeTruthy());
   });
 
   it('the four options are offered on a company WITHOUT extended hours too — exactly four, always', async () => {
