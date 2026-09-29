@@ -214,16 +214,42 @@ describe('r353 · EA item 8 reads the source its child-relief mode makes authori
       numChildren: 5,
       childReliefTable: GRID,
     });
-    const printed = await item8(E.employmentId);
     const weighted = unitsOf('under_18') + unitsOf('disabled_study');
+    // ⚠️ THE RUN IS HERE ON PURPOSE, AND IT IS WHAT MAKES THE TWO ANSWERS DISTINGUISHABLE. With the relief
+    // stamped at RM18,000, r359's derivation returns 9 and this reversal returns 2, so reverting the fix
+    // fails the next assertion with "expected 9 to be 2" rather than with an absence. The companion case
+    // below asserts the same 2 with NO run at all; the pair is the whole claim.
+    await payOneMonth(E.employmentId);
+    const ea = (await employeeEaStatement(adminCtx(base), { employmentId: E.employmentId, year: '2026' }))!;
+    const printed = ea.employee.children;
     expect(printed, "A.8 is the count of children — LHDN's own slip prints 1 + 1 for this employee").toBe(
       childReliefTableHeadCount(GRID),
     );
     expect(printed, 'and it is NOT the s.48-weighted figure, which is what D.6 prices').not.toBe(weighted);
     expect(printed, 'and it is NOT the stale stored column, which the grid supersedes in this mode').not.toBe(5);
+    // The run really did weight the relief, so "not the weighted figure" is not passing for want of one.
+    expect(ea.partD.childRelief, 'the relief the run allowed is the weighted RM18,000').toBeCloseTo(
+      weighted * DEFAULT_MY_STATUTORY.pcb.reliefs.perChild,
+      2,
+    );
     // The three really are three different numbers, so none of the above can pass by coincidence.
     expect(childReliefTableHeadCount(GRID)).toBe(2);
     expect(weighted).toBe(9);
+  });
+
+  it("'auto_table' — the same 2 with NO payroll run, because the grid is the source", async () => {
+    // The companion to the case above, and the half r359 could not do: the keyed grid is the employee's
+    // declared child-relief position, so it answers item 8 on its own. A form for a year nobody has run
+    // payroll for still states how many children qualify.
+    const E = await hire('tablenopay@acme.test');
+    await setTaxProfileMY(adminCtx(base), {
+      personId: E.personId,
+      childReliefMode: 'auto_table',
+      numChildren: 5,
+      childReliefTable: GRID,
+    });
+    // deliberately no payOneMonth
+    expect(await item8(E.employmentId), 'A.8 needs no payroll run to be true').toBe(2);
   });
 
   /**
