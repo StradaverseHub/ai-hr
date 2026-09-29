@@ -167,6 +167,17 @@ const ADDED_AFTER_GENERATE: readonly { href: string; labelKey: string }[] = [
  * gated on a module (`toil`): components/sidebar.tsx maps it by hand, pinned in test/r299-leave-credit-screens.
  */
 const ADDED_AFTER_ADJUSTMENTS: readonly { href: string; labelKey: string }[] = [
+  /**
+   * 3f15ffdb (r362) — LEAVE HISTORY DATA IMPORT, spliced in BEFORE Leave Credit, and the order within
+   * this list is the answer to a question the reporter asked directly.
+   *
+   * They asked for an import function under Leave Config and could not find one, because the importer
+   * that exists is the hidden second TAB of the Leave Adjustments row above — and it loads BALANCES,
+   * not records, so it would not have answered them anyway. This row is the record half, and it sits
+   * immediately behind the row that owns the balance half: a migration loads the balances, then the
+   * records, and this node's header says the order of the menu is the order of the work.
+   */
+  { href: '/admin/leave-config/history-import', labelKey: 'leaveHistoryImport' },
   { href: '/admin/leave-config/leave-credit', labelKey: 'leaveCredit' },
 ] as const;
 
@@ -240,6 +251,12 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
       // 3fb1a611 (r299) — Leave Credit is on `leaveConfig`, like every Leave Config destination (the map guard
       // requires it). It replaces the retired `toilPolicy` column, whose only route (/admin/toil) is a redirect
       // stub to this page now; both were requireAdmin, so no role gained or lost reach.
+      // 3f15ffdb (r362) — Leave History Data Import is on `leaveConfig` like every other Leave Config
+      // destination, and NOT on a key of its own. A screen key "may key stored role configs"
+      // (lib/permissions.ts head), so minting one for a sibling of the balance importer would create a
+      // permission nobody has been granted and split one area's access in two. Same requireAdmin guard,
+      // and the run log is admin-only at the row level by RLS (migration 0490) on top of it.
+      '/admin/leave-config/history-import': 'leaveConfig',
       '/admin/leave-config/leave-credit': 'leaveConfig',
       '/admin/leave-config/generate': 'leaveConfig',
         // r281 (09386e29) — Run earned accrual is on `leaveConfig` ON PURPOSE: it WAS a section of the

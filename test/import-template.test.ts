@@ -15,11 +15,14 @@ import {
   attendancePunchTemplate,
   buildTemplateCsv,
   employeeTemplate,
+  leaveHistoryImportTemplate,
   leaveImportTemplate,
   payrollComponentTemplate,
+  LEAVE_HISTORY_XLSX_HEADERS,
   type TemplateSpec,
 } from '../lib/import-template';
 import { LEAVE_IMPORT_COLUMNS } from '../lib/leave-import-schema';
+import { LEAVE_HISTORY_COLUMNS, canonicalColumnKey } from '../lib/leave-history-import-schema';
 
 describe('import templates', () => {
   describe('employee (the real desync lock)', () => {
@@ -48,14 +51,51 @@ describe('import templates', () => {
     });
   });
 
+  /**
+   * 3f15ffdb (r362) — LEAVE HISTORY (the third real desync lock).
+   *
+   * Two directions, and the second is the one that earns the case. Forward: the template's columns ARE
+   * the enforced contract, in the contract's order, so a column added to one appears in the other. And
+   * the .xlsx template's HUMAN headings — the reporter's own spellings — must canonicalise back to the
+   * very same keys, because that workbook is what HR actually fills in and uploads. Get that wrong and
+   * the file the product handed out is a file the product rejects, behind a green everything.
+   */
+  describe('leave-history (the desync lock, both directions)', () => {
+    it('the template columns are the enforced contract, in order', () => {
+      expect(leaveHistoryImportTemplate.columns).toEqual(
+        LEAVE_HISTORY_COLUMNS.map((c) => ({ key: c.key, required: c.required })),
+      );
+      // Non-vacuity: the contract is the reporter's twelve, and six of them are required.
+      expect(leaveHistoryImportTemplate.columns).toHaveLength(12);
+      expect(leaveHistoryImportTemplate.columns.filter((c) => c.required)).toHaveLength(6);
+    });
+
+    it('every .xlsx heading canonicalises back to its own contract key (the round trip HR actually uses)', () => {
+      expect(LEAVE_HISTORY_XLSX_HEADERS).toEqual(LEAVE_HISTORY_COLUMNS.map((c) => c.header));
+      for (const c of LEAVE_HISTORY_COLUMNS) {
+        // The two-step the real upload takes: parseCsvRecords lower-cases and underscores the header
+        // (keeping punctuation, which is why "Employee No." arrives as `employee_no.`), then the
+        // service canonicalises it. Both steps, in order, or this case proves nothing about the file.
+        const asParsed = c.header.trim().toLowerCase().replace(/\s+/g, '_');
+        expect(canonicalColumnKey(asParsed), `${c.header} must reach ${c.key}`).toBe(c.key);
+      }
+      // …and the one that would otherwise pass silently: the period in "Employee No." is real.
+      expect('Employee No.'.trim().toLowerCase().replace(/\s+/g, '_')).toBe('employee_no.');
+      expect(canonicalColumnKey('employee_no.')).toBe('employee_no');
+    });
+  });
+
   const specs: TemplateSpec[] = [
     employeeTemplate,
     attendancePunchTemplate,
     payrollComponentTemplate,
     leaveImportTemplate,
+    // 3f15ffdb (r362) — the CSV form of the leave-history template takes the same round-trip and
+    // required-cell guarantees as its four siblings.
+    leaveHistoryImportTemplate,
   ];
 
-  describe.each(specs.map((s) => [s.id, s] as const))('all three: %s', (_id, spec) => {
+  describe.each(specs.map((s) => [s.id, s] as const))('all five: %s', (_id, spec) => {
     it('round-trips through parseCsvRecords to the same headers (toCsv ↔ parseCsvRecords, incl. CRLF)', () => {
       const csv = buildTemplateCsv(spec);
       expect(csv).toContain('\r\n'); // toCsv emits CRLF line endings

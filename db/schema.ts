@@ -2352,8 +2352,75 @@ export const leaveRequest = pgTable(
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt: createdAt(),
+    // ── Leave History Data Import (3f15ffdb, migration 0490). Four additive nullable facts a MIGRATED
+    //    record carries that a request applied for in this product does not. Every pre-existing row is
+    //    NULL / false, so nothing on any screen, sweep or balance changes on the day they ship.
+    //
+    //    ⚠️ AN IMPORTED RECORD WRITES NO leave_ledger DEBIT, deliberately: the migrated opening balance
+    //    already has those days removed, so debiting again would deduct them twice from a figure that is
+    //    encashed at termination. Consequences, by design: an imported record is NOT in the "Taken"
+    //    figure (derived from ledger debits carrying a source_request_id), and cancelling one credits
+    //    nothing back (chargedDays is a sum over that same ledger link, guarded by `> 0`).
+    /** The ORIGINATING system's leave reference ("LV/2025/00418"). NULL for every request applied for
+     *  here — what those show on screen is a prefix of this row's own uuid, which cannot carry someone
+     *  else's number. Unique per tenant where present (partial index, migration 0490): it is the
+     *  cross-run duplicate key a re-uploaded migration file is caught by. */
+    externalReference: text('external_reference'),
+    /** The leave year the record was charged against IN THE OLD SYSTEM. Not derivable from startDate —
+     *  a leave period is configurable — so it is stored as stated; a disagreement with the start date's
+     *  year is a non-blocking import warning, never a rejection. */
+    entitlementYear: integer('entitlement_year'),
+    /** When the employee SUBMITTED: a third fact distinct from createdAt (entered) and decidedAt
+     *  (approved). NULL for every row created here, where submission and entry are one moment. */
+    submittedOn: date('submitted_on'),
+    /** TRUE only for a row loaded by Leave History Data Import. The marker exists so a reader or sweep
+     *  that must exclude migrated history can do it by construction, rather than inferring it from a
+     *  missing row in another table. */
+    importedHistory: boolean('imported_history').notNull().default(false),
   },
   (t) => [index('leave_request_employment_idx').on(t.employmentId)],
+);
+
+// 3f15ffdb (migration 0490) — one row per Leave History Data Import RUN: the audit trail the ticket's
+// point 10 asks for. Modelled on `employee_import_run` (0341) down to the reasoning — the event log stays
+// the audit spine and keeps its summary event; this is the READ MODEL for the log on the import screen,
+// queried by (tenant, recency) and holding a jsonb error detail that would bloat every event-log scan.
+//
+// THE UPLOADED FILE IS NEVER STORED. A leave-history file names who was absent, for how long and why
+// ("Remark") for the whole workforce. Correcting a rejected row needs the row's IDENTITY (row number,
+// employee no., leave reference) and the REASON, which is all `errors` holds — never the row's data.
+//
+// FOUR counts, not three, because a duplicate is not a failure: on a re-upload of an already-loaded file
+// "already there" is the expected answer, not a correction. imported + failed + duplicate = total, and the
+// screen's outcome is DERIVED from them — a stored status would be a fifth fact that can disagree.
+// RLS (0490) is admin-only: a run is not "about" one person, and its error detail names employees the
+// uploader may be the only one entitled to see.
+export const leaveHistoryImportRun = pgTable(
+  'leave_history_import_run',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** Who ran it — the person for the display name, the user id so an admin with no person row
+     *  (operator / support login) is still attributable. Pinned at write time, not resolved on read. */
+    createdByPersonId: uuid('created_by_person_id').references(() => person.id),
+    createdByUserId: text('created_by_user_id'),
+    /** The uploaded file's name; '' when the rows were pasted rather than uploaded. Not the file. */
+    fileName: text('file_name').notNull().default(''),
+    totalRows: integer('total_rows').notNull().default(0),
+    importedRows: integer('imported_rows').notNull().default(0),
+    /** Rows that did not become a leave record for a reason the customer must correct. */
+    failedRows: integer('failed_rows').notNull().default(0),
+    /** Rows rejected because the leave reference already exists — in this file or in the system. */
+    duplicateRows: integer('duplicate_rows').notNull().default(0),
+    /** [{ rowNum, employeeNo, leaveReference, errors: [...] }] — identity + reason only. Capped by
+     *  core/leave-history-import.ts LEAVE_HISTORY_ERROR_CAP. */
+    errors: jsonb('errors').notNull().default([]),
+    /** True when more rows were rejected than `errors` holds. The screen says so rather than letting HR
+     *  believe a truncated report is the whole story. */
+    errorsTruncated: boolean('errors_truncated').notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [index('leave_history_import_run_tenant_created_idx').on(t.tenantId, t.createdAt)],
 );
 
 // Wave 2 (ADR-0038 2A-2): supporting documents for leave (e.g. MC). Mirrors claim_attachment:

@@ -1362,6 +1362,14 @@ export async function unpaidDaysByEmployment(
           eq(leaveRequest.allowanceEligible, false),
           sql`${leaveRequest.unpaidDays} > 0`,
         ),
+        // 3f15ffdb (r362) — A MIGRATED HISTORICAL RECORD NEVER MOVES PAY. Leave History Data Import
+        // writes approved leave_request rows for absences the PREVIOUS system already paid (or already
+        // deducted for); the payslips for those months come in through core/payroll-history-import.ts,
+        // not from re-deriving them here. Without this line, importing one unpaid-type record dated
+        // inside a period this system has not yet run would silently cut that employee's salary — a
+        // data-migration tool moving money, which is the one thing it must never do. The marker column
+        // (migration 0490) exists precisely so the exclusion is by construction rather than inferred.
+        eq(leaveRequest.importedHistory, false),
         gte(leaveRequest.startDate, periodStart),
         lte(leaveRequest.startDate, periodEnd),
         employmentIds && employmentIds.length > 0 ? inArray(leaveRequest.employmentId, employmentIds) : undefined,
@@ -4168,7 +4176,12 @@ export async function generatePayslips(
         .select({ employmentId: leaveRequest.employmentId, d: leaveRequest.startDate, days: perDateDays })
         .from(leaveRequest)
         .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
-        .where(and(eq(leaveRequest.status, 'approved'), or(eq(leaveType.paid, false), eq(leaveRequest.allowanceEligible, false)), gte(leaveRequest.startDate, wStart), lte(leaveRequest.startDate, wEnd)));
+        // 3f15ffdb (r362) — `importedHistory` excluded here TOO. This is the multi-cycle copy of
+        // unpaidDaysByEmployment's rule and the two must not disagree about which rows are unpaid days:
+        // a migrated historical record is a record, never a deduction. (The pre-existing divergence
+        // between the two — this copy omits the `unpaid_days > 0` arm — is left exactly as it was; it is
+        // not this round's to change.)
+        .where(and(eq(leaveRequest.status, 'approved'), or(eq(leaveType.paid, false), eq(leaveRequest.allowanceEligible, false)), eq(leaveRequest.importedHistory, false), gte(leaveRequest.startDate, wStart), lte(leaveRequest.startDate, wEnd)));
       for (const r of lvCycleRows) {
         const ci = cycleIndexOf(r.d);
         if (ci < 0) continue;

@@ -9,7 +9,8 @@
  *
  * The reporter's instruction for that round was that the left submenu IS the navigation and that each
  * function has exactly one home. Import loads balance MOVEMENTS (opening balances, carry-forward,
- * historical leave, ad-hoc credits — leave_ledger rows), so it is a tab of Leave Adjustments now, and
+ * ad-hoc credits — leave_ledger rows; NOT leave records, which are r362's Leave History Data Import),
+ * so it is a tab of Leave Adjustments now, and
  * the + Import button left the Entitlements header with the three links beside it. e8f2398f's real
  * property — "the way into the importer is ONE deliberate entry, never a standalone signpost Card" —
  * still holds and is what is pinned: one entry in the module (the tab), zero on the leave type screen,
