@@ -110,6 +110,16 @@ function timeToMinutes(t: string | null | undefined): number {
  * reversed pair is the ordinary case rather than the mistake — unlike `minutesBetween` in
  * core/replacement-request.ts, which is a same-day hours claim and refuses one.
  *
+ * ⚠️ r362 58424c7f — THE ROLL'S CONDITION IS NOW A NAMED, EXPORTED PREDICATE (`claimCrossesMidnight`), AND
+ * THE ROLL ASKS IT RATHER THAN RE-SPELLING IT. The reporter asked for an end-before-start REFUSAL and did
+ * not get one, for the reason above; what they get instead is the Leave Credit row SAYING how the window
+ * was read. A screen that decided when to print that by parsing the two times a second time would be a
+ * second implementation of this rule, and the note and the minutes printed beside it would disagree the
+ * first time either moved. So there is ONE comparison in the codebase and both readers call it. Nothing
+ * about the arithmetic changed: the predicate is `end0 < start` on `timeToMinutes`, exactly as it was, so
+ * 18:00→18:00 is still zero minutes rather than 1440 (the money fix below) and still not a cross-midnight
+ * row.
+ *
  * ⚠️ AND THE ROLL NOW TESTS `<` RATHER THAN `<=`, WHICH IS A FIX THE CAP WAS HIDING. `end === start` is
  * ambiguous — zero minutes or twenty-four hours — and this file used to roll it, producing 1440. That was
  * harmless only because the measured cap then cut it back; with the cap gone, 18:00→18:00 typed by mistake
@@ -140,6 +150,26 @@ export type ExtendedClaimAssessment = {
 };
 
 /**
+ * r362 58424c7f · DOES THIS CLAIMED WINDOW RUN PAST MIDNIGHT? — the roll's own condition, named once so a
+ * screen can say what the arithmetic did without deriving it a second time.
+ *
+ * ⚠️ NOT A VALIDATION, AND NOTHING READS IT AS ONE. A reversed pair is the ORDINARY way a night shift is
+ * entered (see the header), so this answers "how was it read", never "is it wrong". The Leave Credit row
+ * prints a MUTED note off this — not amber, not red — because an amber note here would teach employees
+ * that a correctly entered night shift is a problem.
+ *
+ * `false` for an unparseable time, which matches `assessExtendedClaim` below: it returns zero minutes for
+ * the same input, so there is no reading to describe.
+ */
+export function claimCrossesMidnight(claimStart: string | null | undefined, claimEnd: string | null | undefined): boolean {
+  const start = timeToMinutes(claimStart);
+  const end0 = timeToMinutes(claimEnd);
+  if (!Number.isFinite(start) || !Number.isFinite(end0)) return false;
+  // STRICTLY LESS THAN, and the `<`/`<=` distinction is the money fix r353 hand-made: see the header.
+  return end0 < start;
+}
+
+/**
  * THE ONE COMPUTATION. `eligibleExtendedMinutes` below is a projection of this, so the figure an approver
  * sees and the warning beside it can never come from two different readings of the same row.
  *
@@ -166,7 +196,9 @@ export function assessExtendedClaim(p: {
   if (!Number.isFinite(start) || !Number.isFinite(end0)) return { minutes: 0, hasClockOut, exceedsClockOut: false };
   // Cross-midnight: an end BEFORE the start belongs to the following day. `end === start` is zero, not 1440
   // — see the header; the measured cap used to hide that and its removal exposed a full day of free credit.
-  const end = end0 < start ? end0 + 1440 : end0;
+  // r362 — asked of `claimCrossesMidnight` rather than re-spelled, so the note the Leave Credit row prints
+  // and the minutes printed beside it cannot come from two readings of one row. Same comparison, same result.
+  const end = claimCrossesMidnight(p.claimStart, p.claimEnd) ? end0 + 1440 : end0;
   const shiftEnd = timeToMinutes(p.shiftEnd);
   // The clock-out is read on the same day-rolled axis as the claim, so a 00:30 clock-out after an 18:00
   // shift end does not read as 30 minutes past midnight ON THE MORNING OF the worked date.

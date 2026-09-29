@@ -441,6 +441,109 @@ describe('r360 · the lookup failure is recorded, and the action reads no dead f
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// (2b3) ⚠️ r362 · THE TWO SOURCE SHAPES THIS ROUND TURNS ON, NEITHER OF THEM VISIBLE AT RUNTIME.
+//
+// 5c72039e: a retired key is only retired if NOTHING renders it and it is STILL in every catalogue — two
+// claims a DOM test cannot make (it can only see what one render happened to paint). 58424c7f: the
+// night-shift note must come from the roll's OWN condition, and "it agrees today" is what a second parse
+// also does; what has to be pinned is that there is no second parse.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+describe('r362 · the retired placeholder, the settled record, and the note that reads the roll', () => {
+  const LOCALES6 = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
+  const stripped = (rel: string) =>
+    read(rel)
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+
+  /**
+   * ⚠️ RETIRED, NEVER DELETED (CLAUDE.md §8). `table.dayTypeChoose` was the read-only cell's "not known
+   * yet" text and it said "Choose a day type" — an instruction to use a control r360 removed, with nothing
+   * in the box to click. Deleting the key would be the other error: a catalogue key is a value, and a
+   * deletion propagates through a naive locale merge as a resurrection or a MISSING_MESSAGE somewhere
+   * nobody looked. So BOTH halves are asserted, and they fail for opposite mistakes.
+   */
+  it('`table.dayTypeChoose` is rendered by nothing, and still present in all six catalogues', () => {
+    for (const f of ['components/leave/leave-credit-request-table.tsx', 'components/leave/replacement-leave-request-dialog.tsx', 'app/leave/credit/page.tsx'])
+      expect(stripped(f), `${f} must not render the retired placeholder`).not.toContain("t('table.dayTypeChoose')");
+    for (const l of LOCALES6) {
+      const v = (JSON.parse(read(`messages/${l}.json`)).replacementRequest as any).table.dayTypeChoose;
+      expect(typeof v, `${l} lost the retired key — retired is not deleted`).toBe('string');
+    }
+  });
+
+  /**
+   * ⚠️ THE THIRD RECORD IS THE ROUND, AND NEW COPY WITHOUT IT WOULD HAVE BEEN A LIE IN NEW WORDS.
+   *
+   * `facts[d]` is written `null` BEFORE the call (so a re-render mid-flight does not re-ask) and
+   * `leaveCreditDayFactsAction` ALSO resolves `null` for a malformed date or no employment. "Asked, still
+   * in flight" and "answered with nothing" were therefore the same stored value, and no wording can tell
+   * them apart from it. `factsSettled` written in the settle path is what separates them; without the
+   * clear on retry, a retried date would read "Not found — pick the date again" while it was being asked
+   * again. Both halves pinned here, because a component that dropped either still compiles and still
+   * renders something plausible.
+   */
+  it('a second record settles a date in BOTH directions, and the retry un-settles it', () => {
+    const code = stripped(TABLE_TSX);
+    expect(code).toContain('const [factsSettled, setFactsSettled] = useState<Record<string, true>>({});');
+    // Settled however it ended: `.finally` is the one place a resolve-with-null and a reject are one event.
+    expect(code, 'the settle must cover the rejection too, or a failed date reads "reading" for ever').toMatch(
+      /\.finally\(\(\) => setFactsSettled/,
+    );
+    // …and the cell reads "in facts, not settled" rather than guessing from a timer.
+    expect(code).toContain('r.workedDate in factsSettled');
+    expect(code, 'no timer may stand in for the server having answered').not.toMatch(/setTimeout|Date\.now\(\)/);
+    // The retry path drops the settled mark with the cached facts entry.
+    const retry = code.slice(code.indexOf('const retryFacts'), code.indexOf('const retryFacts') + 900);
+    expect(retry, 'retryFacts must un-settle the dates it re-asks').toContain('setFactsSettled((prev) => {');
+  });
+
+  /**
+   * ⚠️ 58424c7f · ONE COMPARISON, AND THE COLOUR IS PART OF THE CLAIM.
+   *
+   * The reporter asked for an end-before-start REFUSAL; it is deliberately not built, because that is how a
+   * shift across midnight is entered and refusing it would take r353's `<`-not-`<=` money fix with it. The
+   * note that lands instead must read the SAME condition the roll rolls on — a second `split(':')` in the
+   * component would agree today and disagree the first time either moved — and it must be MUTED: the amber
+   * clock-out warning and the destructive-red refusal row are both beside it, and either colour would teach
+   * employees that a correctly entered night shift is a problem.
+   */
+  it('the cross-midnight note reads `claimCrossesMidnight`, is muted, and refuses nothing', () => {
+    const code = stripped(TABLE_TSX);
+    expect(code, 'the roll’s own condition, imported').toContain('claimCrossesMidnight');
+    expect(code, 'and NOT a second parse of the two times in the component').not.toMatch(/claimStart\.split|claimEnd\.split/);
+    // The note's OWN element, not a window of source around it — the amber warning is a few lines up and a
+    // sloppy slice would pass or fail on how the file happens to be laid out.
+    const el = code.match(/className="([^"]*)"\s+data-testid="leave-credit-crosses-midnight"/);
+    expect(el, 'the note must exist, with its class on the same element').not.toBeNull();
+    const cls = el![1];
+    expect(cls, `muted, not amber — an amber note teaches that a night shift is a problem (got "${cls}")`).not.toMatch(/amber/);
+    expect(cls, `muted, not destructive red (got "${cls}")`).not.toMatch(/destructive/);
+    expect(cls, `the note is muted (got "${cls}")`).toMatch(/text-muted-foreground/);
+    // It is a NOTE: the note's condition may not reach the list of things that stop the submit.
+    const blocked = code.slice(code.indexOf('const blocked ='), code.indexOf('const blocked =') + 300);
+    expect(blocked, 'nothing new is refused').not.toMatch(/crossesMidnight/i);
+  });
+
+  /**
+   * AND THE ROLL ITSELF IS UNTOUCHED — the half of this item that is a promise rather than a change.
+   * `claimCrossesMidnight` is `end0 < start` on `timeToMinutes`, and `assessExtendedClaim` asks it instead
+   * of re-spelling it. 18:00→18:00 must stay OUT of the cross-midnight set: that is the `<=`→`<` fix r353
+   * hand-made after a zero-length window rolled to 1440 minutes and, through the tier ladder, a full day of
+   * credit. The arithmetic is asserted by execution in test/r336-leave-credit-request-screen.test.ts; this
+   * is the source shape, because "it happens to agree" is what a divergent copy also does.
+   */
+  it('`assessExtendedClaim` asks the predicate rather than re-spelling the roll', () => {
+    const lib = stripped('lib/extended-hours.ts');
+    expect(lib).toContain('export function claimCrossesMidnight(');
+    expect(lib).toContain('const end = claimCrossesMidnight(p.claimStart, p.claimEnd) ? end0 + 1440 : end0;');
+    // The old inline form must be GONE, or there are two conditions again and only one of them is exported.
+    expect(lib, 'exactly one comparison decides the roll').not.toMatch(/const end = end0 < start \?/);
+    // And the predicate is strict: `<=` here is the money defect r353 removed.
+    expect(lib).not.toMatch(/return end0 <= start;/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
 // (2c) WHAT THIS SCREEN SAYS IN SIX LOCALES — COUNTED, NOT ASSERTED AGAINST ITSELF.
 //
 // ⚠️ THE GUARD THIS REPLACES COULD NOT FAIL. The six-locale DOM test compares the rendered text with the
@@ -476,15 +579,25 @@ describe('r343 · the translated keys are translated, and the English ones are n
   };
 
   /**
-   * THE ENGLISH DEBT OF THIS SCREEN, NAMED. Nineteen keys read the same in all six catalogues: the eight
-   * `table.*` keys r343 added, and eleven this form already rendered in English before it. They are listed
-   * here so the number is a decision rather than an accident — the report for this round claimed the screen
-   * "composed from existing translated keys", and for the four day-type LABELS that is true, but these
-   * nineteen are English on the ms, ta, th, vi and zh screens and saying so is the honest half.
+   * THE ENGLISH DEBT OF THIS SCREEN, NAMED. The keys listed here read the same in all six catalogues, so
+   * the number is a decision rather than an accident — the report for r343 claimed the screen was
+   * "composed from existing translated keys", and for the four day-type LABELS that is true, but these are
+   * English on the ms, ta, th, vi and zh screens and saying so is the honest half.
+   *
+   * ⚠️ THE ARITHMETIC IN THIS COMMENT HAD BEEN WRONG SINCE r358 AND r362 IS CORRECTING IT RATHER THAN
+   * INHERITING IT (CLAUDE.md §8 — prose outlives the kernel). It read: "Nineteen keys … the eight `table.*`
+   * keys r343 added, and eleven this form already rendered in English before it", then "r358 — EIGHTEEN,
+   * not nineteen: `days` was the column header over the 1-or-0.5 dropdown, and both are gone". But the same
+   * round also took `table.help` and `table.windowNotClaimed` out (the note inside the list says so), which
+   * left SIXTEEN entries under a comment claiming eighteen. The LIST was always right and the case title
+   * always matched it; only the running total above drifted. `days` is still NOT retired in the catalogues
+   * — it is a generic label other leave surfaces render — what changed is that this screen stopped
+   * reaching for it.
    */
-  // r358 — EIGHTEEN, not nineteen: `days` was the column header over the 1-or-0.5 dropdown, and both are
-  // gone. The key itself is NOT retired in the catalogues, because `days` is a generic label other leave
-  // surfaces still render; what changed is that this screen no longer reaches for it.
+  // r362 5c72039e — FIFTEEN. `table.dayTypeChoose` ("Choose a day type") is RETIRED: it was the read-only
+  // cell's "not known yet" text and it told the employee to make a choice the cell has not permitted since
+  // r360. The key stays in all six catalogues — retired, never deleted — it is simply no longer rendered,
+  // so `renderedKeys()` cannot see it and it may not sit on a list of keys this screen RENDERS in English.
   const ENGLISH_EVERYWHERE = [
     'addRow',
     'cancel',
@@ -492,7 +605,6 @@ describe('r343 · the translated keys are translated, and the English ones are n
     'leaveType',
     'reason',
     'removeRow',
-    'table.dayTypeChoose',
     // r358 — `table.help` and `table.windowNotClaimed` LEFT this list, and that is a gain rather than a
     // loss: both had to be rewritten for the owner's new rule, and both were translated into all six
     // locales while they were being rewritten. A key leaving the English-everywhere set is the set doing
@@ -508,7 +620,10 @@ describe('r343 · the translated keys are translated, and the English ones are n
     'workedDate',
   ];
 
-  it('the keys that ship English are EXACTLY the sixteen named above — a seventeenth fails this case', () => {
+  // r362 — the title said "the sixteen … a seventeenth", which was true of the list as it stood. Retiring
+  // `table.dayTypeChoose` takes it to fifteen. The number is in the title on purpose: it is the one place a
+  // reader sees the size of the debt without counting, so it moves with the list.
+  it('the keys that ship English are EXACTLY the fifteen named above — a sixteenth fails this case', () => {
     const english = renderedKeys().filter((k) => {
       const en = at('en', k);
       return typeof en === 'string' && LOCALES.slice(1).every((l) => at(l, k) === en);
@@ -522,10 +637,27 @@ describe('r343 · the translated keys are translated, and the English ones are n
     for (const k of ['dayKind.restDay', 'dayKind.offDay', 'dayKind.holiday', 'dayKind.workday', 'workingDayRefused'])
       expect(shouldBeTranslated, k).toContain(k);
     // ⚠️ r360's four new keys are named here rather than left to the filter to notice. They are TRANSLATED in
-    // all six catalogues, which is a decision: `table.dayTypeChoose` beside them is English everywhere, so a
-    // new `table.*` key on this screen going either way has to be argued, not defaulted. Naming them also
-    // means a key quietly dropped from the component fails this case instead of silently leaving the set.
-    for (const k of ['table.dayTypeLookupFailed', 'table.dayTypeRetry', 'table.dayTypeFromRoster', 'table.dayTypeFromHolidays'])
+    // all six catalogues, which is a decision: `table.dayTypeChoose` used to sit beside them English
+    // everywhere, so a new `table.*` key on this screen going either way has to be argued, not defaulted.
+    // Naming them also means a key quietly dropped from the component fails this case instead of silently
+    // leaving the set — which is the whole reason to name r362's three as well.
+    //
+    // ⚠️ r362's THREE, and the argument for each. `dayTypeReading` and `dayTypeNotFound` (5c72039e) REPLACE
+    // `table.dayTypeChoose` in two of the three states it was covering, and replacing an English-everywhere
+    // key with two more English-everywhere keys would have paid the reporter's copy complaint while leaving
+    // five locales reading English — so they are translated. `crossesMidnight` (58424c7f) is the night-shift
+    // note, and an employee reading a Tamil screen is exactly who needs to be told how their window was
+    // read. The filter below would catch an English copy anyway; naming them is what catches the OTHER
+    // failure, a key that stops being rendered and quietly leaves the set with nothing going red.
+    for (const k of [
+      'table.dayTypeLookupFailed',
+      'table.dayTypeRetry',
+      'table.dayTypeFromRoster',
+      'table.dayTypeFromHolidays',
+      'table.dayTypeReading',
+      'table.dayTypeNotFound',
+      'table.crossesMidnight',
+    ])
       expect(shouldBeTranslated, `${k} must be rendered by this surface AND translated`).toContain(k);
     for (const k of shouldBeTranslated) {
       const en = at('en', k);

@@ -13123,7 +13123,10 @@
       "dayTypeLookupFailed": "无法查询此日期",
       "dayTypeRetry": "重试",
       "dayTypeFromRoster": "来自您的排班表",
-      "dayTypeFromHolidays": "来自公共假期日历"
+      "dayTypeFromHolidays": "来自公共假期日历",
+      "dayTypeReading": "正在读取您的排班表...",
+      "dayTypeNotFound": "未找到 - 请重新选择日期",
+      "crossesMidnight": "此时段被视为在次日早晨结束。"
     }
   },
   "notices": {
