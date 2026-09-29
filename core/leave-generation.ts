@@ -109,6 +109,7 @@ import {
 } from './leave';
 import { resolveOrgCriteriaTargets, type OrgCriteria } from './org-criteria';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { csvSafeCell } from '../lib/csv';
 
 /** What the screen posts. `criteria` and `employmentIds` are alternatives, chosen by `targetMode`. */
 export type LeaveGenerationRequest = {
@@ -690,7 +691,12 @@ export async function listLeaveGenerationRuns(
 }
 
 /** RFC 4180 enough for a spreadsheet: quote everything, double the quotes inside. */
-const csvCell = (v: unknown): string => `"${String(v ?? '').replace(/"/g, '""')}"`;
+// Security (assessment 2026-09, finding M6). Route every cell through csvSafeCell first: quote-doubling
+// alone does NOT stop CSV/formula injection (the spreadsheet strips the transport quotes and still
+// evaluates a leading =,+,-,@). employeeName/leaveTypeName come from imported/self-service data, so a
+// name like =HYPERLINK(...) would otherwise execute when HR opens the run report. Matches every other
+// export, which uses lib/csv toCsv.
+const csvCell = (v: unknown): string => `"${csvSafeCell(String(v ?? '')).replace(/"/g, '""')}"`;
 
 /**
  * THE DOWNLOADABLE PROCESSING LOG.
