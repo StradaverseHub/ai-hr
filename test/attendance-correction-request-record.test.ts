@@ -338,8 +338,20 @@ describe('2166ef79 — the status filter, and cancelling your own request', () =
       reason: 'r',
     });
     await decideAttendanceCorrection(a, { correctionId: decided.correctionId, decision: 'approved' });
+    // r363 — THE REFUSAL NO LONGER NAMES THE PRIOR STATE, and that is the point rather than a
+    // loosening. It used to interpolate the stored enum: `This request has already been ${status}…`.
+    // 4c8aae68 made `cancelled` read "Withdrawn" everywhere the employee can see it, so on a
+    // taken-back row that sentence became "already been cancelled, so it can no longer be withdrawn"
+    // — two words for one state, in one sentence, created by the round that unified them. Naming the
+    // state is not what the sentence is for; "no longer waiting for a decision" is true of approved,
+    // rejected and withdrawn alike, and leaks no enum.
     await expect(cancelOwnAttendanceCorrection(me, { correctionId: decided.correctionId })).rejects.toThrow(
-      'This request has already been approved, so it can no longer be withdrawn.',
+      'This request is no longer waiting for a decision, so it can no longer be withdrawn.',
+    );
+    // And it must not name it by accident either — this is the assertion that would catch a future
+    // edit reinstating the interpolation.
+    await expect(cancelOwnAttendanceCorrection(me, { correctionId: decided.correctionId })).rejects.not.toThrow(
+      /approved|cancelled|rejected|pending/,
     );
 
     // An OT plan has its own state rule (approved-but-not-yet-counted may still be withdrawn), so it is

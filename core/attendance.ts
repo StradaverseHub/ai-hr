@@ -4601,7 +4601,16 @@ export async function cancelOwnAttendanceCorrection(
       throw new Error('This is an overtime plan — withdraw it from the Self Overtime list.');
     }
     if (req.status !== 'pending') {
-      throw new Error(`This request has already been ${req.status}, so it can no longer be withdrawn.`);
+      // r363 — DO NOT INTERPOLATE `req.status` HERE. It is the stored enum, and 4c8aae68 made
+      // `cancelled` read "Withdrawn" everywhere the employee can see it; naming the raw value produced
+      // "This request has already been cancelled, so it can no longer be withdrawn." — two words for
+      // one state in one sentence, created by the very round that unified them.
+      //
+      // The alternative was a status-to-word map, which is presentation and does not belong in the
+      // kernel. Naming the state is not what the sentence is for: the reader needs to know the request
+      // is no longer pending and why that ends it, and "no longer waiting for a decision" is true of
+      // approved, rejected and withdrawn alike. So it says that, and names nothing.
+      throw new Error('This request is no longer waiting for a decision, so it can no longer be withdrawn.');
     }
     await tx
       .update(attendanceCorrection)
