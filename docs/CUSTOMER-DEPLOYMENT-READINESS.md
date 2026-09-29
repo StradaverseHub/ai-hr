@@ -720,13 +720,17 @@ employees × every date of the month · `components/loan-list.tsx:100` every loa
 `app/payroll/transactions/zakat/elections-list.tsx:110` · `components/tp1-declarations-list.tsx:120` ·
 `app/feedback/bulk-table.tsx:76`.
 
-*Class B — grows with time only, or already bounded (7 sites).* `app/payroll/page.tsx:185` payroll runs (~12–24
-per company per year; 29 today) · `app/performance/page.tsx:47` review cycles · `app/attendance/my-records/page.tsx:134`
-and `app/attendance/individual/page.tsx:69` one employee over a chosen range (≤ 366 rows by construction) ·
+*Class B — grows with time only, or already bounded (6 sites).* `app/payroll/page.tsx:185` payroll runs (~12–24
+per company per year; 29 today) · `app/performance/page.tsx:47` review cycles ·
+`app/attendance/individual/page.tsx:69` one employee over a chosen range (≤ 366 rows by construction) ·
 `components/salary-history-table.tsx:115` one employment's salary history · `app/claims/page.tsx:82` the signed-in
 person's OWN claims · `app/payroll/transaction-view/history-table.tsx:107`, already bounded at the QUERY by
 `HISTORY_ROW_CAP = 200` (862ed0ad) — the precedent for the right fix, and its own comment names this item as the
 carried debt.
+
+`app/attendance/my-records/page.tsx:134` stood in Class B until item 2aef3cd8 (r362) emptied that screen at the
+reporter's instruction: it reads no attendance at all now, so the site is gone rather than fixed. If an attendance
+view returns to `/attendance/my-records`, its read returns to this class with it.
 
 *Class C — bounded by configuration, fine forever (11 sites).* `app/admin/organization/page.tsx:133` companies (12) ·
 `app/admin/settings/employee-id/page.tsx:44` · `app/admin/settings/hiring-defaults/page.tsx:117` ·

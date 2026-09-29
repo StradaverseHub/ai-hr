@@ -239,18 +239,33 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/attendance/breakdown'],
   },
   /**
-   * f3e6c36e (r287) — MY RECORDS: the employee's own attendance, and the employee half of the split that
-   * took the administrative Record function out of My Attendance.
+   * f3e6c36e (r287) — the employee's own attendance, and the employee half of the split that took the
+   * administrative Record function out of My Attendance.
    *
    * `scopedSession`, so every authenticated role reaches it — which is the honest coarse answer, because
-   * the screen refuses nobody. What it shows is narrower than the guard implies and narrower than every
-   * other scopedSession row in this file: the page resolves the CALLER'S OWN employment
-   * (`myEmployment(s)`) and keys its single attendance read on that employment id, so an administrator
-   * opening this screen sees their own record and nobody else's. That is what the scope note says.
+   * the screen refuses nobody.
+   *
+   * ⚠️ 2aef3cd8 (r362) — THE OLD CLAIM WAS: "what it shows is narrower than the guard implies and narrower
+   * than every other scopedSession row in this file: the page resolves the CALLER'S OWN employment and
+   * keys its single attendance read on that employment id, so an administrator opening this screen sees
+   * their own record and nobody else's. That is what the scope note says." The reporter has since had the
+   * screen EMPTIED and the row renamed "Attendance Overview": the page reads nothing at all and is blank
+   * below its title. So the sentence above was true and is now moot, and the SCOPE NOTE has been reworded
+   * in all six locales to match — it used to read "Everyone can open this; whoever you are, it shows only
+   * your own attendance", which stopped being true the moment the table went.
+   *
+   * `hasScopeNote` stays TRUE rather than flipping to false. A column on the access grid with nothing
+   * beside it reads as "we did not say", where the honest answer is "everyone, and it shows nothing yet";
+   * and test/function-access.test.ts asserts the note resolves whenever the flag is set, so keeping the
+   * flag keeps the note under guard for whatever content arrives here later.
+   *
+   * The route, the column and the `scopedSession` guard all STAY. The page still calls `scopedSession()`
+   * in its body — that is both the authentication boundary and what keeps "no stale routes" in
+   * test/function-access.test.ts satisfied for this registered route.
    *
    * A NEW screenKey rather than a route added to the `attendance` column above: they are two screens for
-   * two audiences, which is the point of the round. The key is new, so it revokes nothing — no stored role
-   * config can reference a column that did not exist.
+   * two audiences, which is the point of the r287 round. The key is new, so it revokes nothing — no stored
+   * role config can reference a column that did not exist.
    */
   {
     screenKey: 'myAttendanceRecords',

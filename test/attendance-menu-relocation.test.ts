@@ -349,7 +349,9 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
 
     // …and it is still reachable somewhere ungated.
     const mine = attendancePack.navNodes!.find((n) => n.labelKey === 'myAttendance')!;
-    expect(mine.children.some((c) => c.href === EMPLOYEE_RECORDS), 'My Records is self-service').toBe(true);
+    expect(mine.children.some((c) => c.href === EMPLOYEE_RECORDS), 'the employee’s own row is self-service').toBe(
+      true,
+    );
     expect(mine.children.find((c) => c.href === EMPLOYEE_RECORDS)?.adminOnly).toBeUndefined();
     const manageLinks = (attendancePack.navLinks ?? []).filter((l) => l.group === 'manage');
     // r317 (1661123d) — ONE Manage row, not two. Import's was removed: it was managerUp in front of a
@@ -416,17 +418,20 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
     ]);
     // plan-ot joins the loop this round: until c6bb5f5a it was a one-line redirect with nothing to guard,
     // and it now renders the employee's own overtime plans like the two beside it.
-    // f3e6c36e (r287) — `/attendance/my-records` joins this loop, and that is the point of adding it here
-    // rather than only pinning the nav row: the employee's own record is now a SCREEN of its own, so it
-    // has to prove the same two things its siblings do — no admin page guard (which would lock an
-    // employee out of their own attendance), and the caller's own employment resolved server-side (which
-    // is what makes it incapable of showing anybody else's rows).
-    for (const href of [
-      '/attendance/my-records',
-      '/attendance/plan-ot',
-      '/attendance/travel',
-      '/attendance/request-status',
-    ]) {
+    // f3e6c36e (r287) — `/attendance/my-records` was added to this loop rather than only pinning its nav
+    // row, because the employee's own record had become a SCREEN of its own. It has since been EMPTIED
+    // (2aef3cd8, r362) and now stands in its own block below the loop; the note there says what changed.
+    /**
+     * ⚠️ 2aef3cd8 (r362) — '/attendance/my-records' USED TO BE IN THIS LOOP, and the claim it carried was
+     *   expect(src, `${href} resolves the caller’s own employment`).toContain('myEmployment(s)');
+     * The reporter had everything under that row removed (the row itself is "Attendance Overview" now), so
+     * the screen resolves no employment and reads no attendance. It is moved OUT of the loop rather than
+     * having the loop's assertion weakened for all four routes — the other three still resolve the
+     * caller's own employment and that is exactly what must not silently stop being checked — and it gets
+     * its own case below asserting the inverse. The half of the rule that still applies to it (no admin or
+     * manager page guard, ungated row) is asserted there too.
+     */
+    for (const href of ['/attendance/plan-ot', '/attendance/travel', '/attendance/request-status']) {
       const added = mine.children.find((c) => c.href === href)!;
       expect({ adminOnly: added.adminOnly, managerUp: added.managerUp }, `${href} stays ungated`).toEqual({
         adminOnly: undefined,
@@ -437,6 +442,25 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
       const src = read(`app${href}/page.tsx`);
       expect(src, `${href} carries no page guard`).not.toMatch(/requireAdmin\(|scopedAdmin\(/);
       expect(src, `${href} resolves the caller’s own employment`).toContain('myEmployment(s)');
+    }
+    {
+      // The employee's own row, now that its screen is blank: still in this node, still ungated, still no
+      // admin page guard — and reading nothing, which is the state the reporter asked for.
+      const href = '/attendance/my-records';
+      const added = mine.children.find((c) => c.href === href)!;
+      expect({ adminOnly: added.adminOnly, managerUp: added.managerUp }, `${href} stays ungated`).toEqual({
+        adminOnly: undefined,
+        managerUp: undefined,
+      });
+      // Comments stripped: the page's header explains the reversal and so necessarily names the calls it no
+      // longer makes. Same idiom as test/attendance-my-records-split.test.ts, for the same reason.
+      const src = read(`app${href}/page.tsx`)
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+      expect(src, `${href} carries no page guard`).not.toMatch(/requireAdmin\(|scopedAdmin\(/);
+      expect(src, `${href} resolves no employment (2aef3cd8 emptied the screen)`).not.toContain('myEmployment');
+      expect(src, `${href} reads no attendance`).not.toContain('attendanceForEmploymentRange');
+      expect(src, `${href} is still an authenticated page`).toContain('await scopedSession()');
     }
     const row = mine.children.find((c) => c.href === '/attendance/requests')!;
     expect({ adminOnly: row.adminOnly, managerUp: row.managerUp }).toEqual({

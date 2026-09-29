@@ -352,12 +352,30 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     const line = mine.split('\n').find((l) => l.includes(EMPLOYEE_ROW));
     expect(line, 'the employee’s record row exists').toBeDefined();
     expect(line, 'it stays visible to every employee').not.toMatch(/adminOnly|managerUp/);
-    // The screen itself must stay the employee's own: keyed on their employment, with no admin page guard.
-    // Without this the row could point at a screen that shows everybody and the assertions above would
-    // still pass — the row is not what protects the data.
-    const page = fs.readFileSync(path.resolve(__dirname, '../app/attendance/my-records/page.tsx'), 'utf8');
-    expect(page, 'the employee screen resolves the caller’s own employment').toContain('myEmployment(s)');
+    /**
+     * ⚠️ 2aef3cd8 (r362) — THE OLD CLAIM WAS:
+     *   expect(page, 'the employee screen resolves the caller’s own employment').toContain('myEmployment(s)');
+     * with the reasoning "the screen itself must stay the employee's own: keyed on their employment …
+     * without this the row could point at a screen that shows everybody and the assertions above would
+     * still pass — the row is not what protects the data."
+     *
+     * The reporter had everything under this row removed, so the screen reads NOTHING and there is no
+     * employment to resolve. The concern that sentence was really about — that an ungated row must not
+     * point at a screen showing everybody — is asserted MORE directly now: no employment read, no
+     * attendance read, and still no admin page guard. Kept as an assertion rather than dropped, because
+     * this is the row's only protection if content comes back keyed on something wider.
+     *
+     * Read off the CODE, not the raw file: the page's header comment necessarily names the calls it no
+     * longer makes (it explains the reversal), which is the same reason
+     * test/attendance-my-records-split.test.ts strips comments before every absence assertion.
+     */
+    const pageSrc = fs.readFileSync(path.resolve(__dirname, '../app/attendance/my-records/page.tsx'), 'utf8');
+    const page = pageSrc.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    expect(page, 'the employee screen resolves no employment at all now').not.toContain('myEmployment');
+    expect(page, 'and reads no attendance').not.toContain('attendanceForEmploymentRange');
     expect(page, 'and carries no admin page guard').not.toMatch(/requireAdmin\(|scopedAdmin\(/);
+    // …and it is still an authenticated page, which is what keeps the route registered and reachable.
+    expect(page, 'the session is still resolved').toContain('await scopedSession()');
   });
 
   it('keeps Import (/attendance/import) last in the merged node, still manager-gated', () => {
@@ -414,14 +432,16 @@ describe('sidebar Attendance group — Clock in/out and Records are the staff no
   // Attendance Request joined them (declared in its own `it` below).
   const node = nodeBlock('MY_ATTENDANCE_NAV');
 
-  it('keeps Clock in/out first, with My Records beside it and neither in the config node', () => {
+  it('keeps Clock in/out first, with Attendance Overview beside it and neither in the config node', () => {
     const clockIdx = node.indexOf(`'/attendance/clock'`);
     // f3e6c36e (r287) — the employee's Records row points at its OWN screen now, not at the shared
     // `/attendance`. Position and gate are unchanged; only the address is. Matching on the old href here
     // would silently stop measuring anything, because the string is no longer in this node.
     const recordsIdx = node.indexOf(`{ href: '/attendance/my-records',`);
     expect(clockIdx, 'Clock in/out is a child of My Attendance').toBeGreaterThan(-1);
-    expect(recordsIdx, 'My Records is a child of My Attendance').toBeGreaterThan(-1);
+    expect(recordsIdx, 'Attendance Overview (r362; My Records until then) is a child of My Attendance').toBeGreaterThan(
+      -1,
+    );
     expect(clockIdx, 'Clock in/out is still first (5249d43f)').toBeLessThan(recordsIdx);
     // Clock in/out appears in ONE node only — listed twice is its own bug, and a self-service row inside
     // the admin-gated node would render for nobody but administrators.
@@ -468,7 +488,7 @@ describe('sidebar Attendance group — Clock in/out and Records are the staff no
     const requestsIdx = node.indexOf(`'/attendance/requests'`);
     expect(requestsIdx, 'Attendance Request is a child of My Attendance').toBeGreaterThan(-1);
     expect(clockIdx, 'Clock in/out still precedes it').toBeLessThan(requestsIdx);
-    expect(recordsIdx, 'My Records still precedes it').toBeLessThan(requestsIdx);
+    expect(recordsIdx, 'the employee’s own record row still precedes it').toBeLessThan(requestsIdx);
 
     // NOT in the config node: that node sits in the group-gated Administration section, where a
     // self-service row renders for administrators and nobody else — which for a request form staff are
@@ -527,7 +547,12 @@ describe('sidebar Attendance labels (f60cd403 rename)', () => {
     // key. Asserted here so the split is written down beside the rename it grew out of: one key for the
     // administrator's reading of everybody, one for the employee's reading of themselves, and the two
     // must not read the same, in any locale, or the rail says the same word twice for different things.
-    expect(en.nav.myRecords).toBe('My Records');
+    // ⚠️ 2aef3cd8 (r362) — THE OLD CLAIM WAS `expect(en.nav.myRecords).toBe('My Records')`. The reporter
+    // asked for the row to read "Attendance Overview"; the KEY is deliberately unchanged, which is the
+    // same label-only split a324a4b3 established and lib/permissions.ts states for nav.attendance — a key
+    // may back stored role configuration, so a rename churns the pack row, the permissions row and four
+    // test files for no gain. The distinctness assertions below are why keeping the key costs nothing.
+    expect(en.nav.myRecords).toBe('Attendance Overview');
     expect(en.nav.myRecords).not.toBe(en.nav.attendanceRecords);
   });
 
