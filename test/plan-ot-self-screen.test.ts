@@ -388,7 +388,13 @@ describe('C · the screen: what the approved plan changed, and what it deliberat
     expect(core.includes('rejectReason'), 'attendance has no stored approver reason').toBe(false);
     expect(code(LIST).toLowerCase().includes('rejectreason')).toBe(false);
     // The EMPLOYEE's own note — the `remark` column, written only by requestAttendanceCorrection.
-    expect(core, 'the read carries it').toContain('remark: attendanceCorrection.remark,');
+    // ⚠️ THE OBVIOUS ASSERTION HERE IS VACUOUS AND A MUTATION PROVED IT: `myAttendanceCorrections`
+    // selects `remark: attendanceCorrection.remark,` too, so a plain `toContain` of that line passes
+    // with THIS read's copy deleted. The neighbours are what tell the two selects apart — the other one
+    // has `requestKind` between the remark and the status.
+    expect(flat(read('core/attendance.ts')), 'myOvertimePlans selects the remark').toContain(
+      'remark: attendanceCorrection.remark, status: attendanceCorrection.status, appliedAt: attendanceCorrection.appliedAt,',
+    );
     expect(flat(LIST), 'and the row prints it, underneath and italic, never as the reason').toContain(
       '{p.remark && <span className="block text-[11px] italic text-muted-foreground">{p.remark}</span>}',
     );
