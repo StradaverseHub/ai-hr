@@ -15,6 +15,8 @@
  * Both typed figures are BELOW the schedule, which is also the case the approved plan spends most of its
  * words on: it is allowed, recorded and warned about in prose, never refused. See ADR-0087.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -430,6 +432,25 @@ describe('70b14723 — the submission file and the screen', () => {
     // …and it never masks a real movement: `would_change` and the ringgit totals are untouched by it.
     expect(w.verdicts.would_change).toBe(0);
     expect(w.movement.epfEmployee).toBe(0);
+  });
+});
+
+describe('70b14723 — the stamp is a STAMP, not a tenth money line', () => {
+  it('`epfManual` is neither a DELTA_KEY nor a STATUTORY_LINE_KEY', async () => {
+    // The same fence `statutory.adjustment` sits behind. A stamp inside DELTA_KEYS would have `deltaStat`
+    // subtract objects and write 0 onto every payslip in the product; a stamp inside STATUTORY_LINE_KEYS
+    // would make the reprocess disclosure report "the EPF stamp moved" as a money movement on the Review
+    // step. Read out of SOURCE rather than asserted from memory, so a future addition to either list is
+    // caught here.
+    const { STATUTORY_LINE_KEYS } = await import('../core/payslip-recompute');
+    expect(STATUTORY_LINE_KEYS as readonly string[]).not.toContain('epfManual');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'core/payroll.ts'), 'utf8');
+    const delta = /const DELTA_KEYS = \[([^\]]*)\] as const;/.exec(src);
+    expect(delta, 'DELTA_KEYS must still be a readable literal list').not.toBeNull();
+    expect(delta![1]).not.toContain('epfManual');
+    // …and it IS written into the payslip blob, so this is a fence rather than a statement about a key that
+    // does not exist.
+    expect(src).toContain('{ epfManual: epfManualStamp }');
   });
 });
 

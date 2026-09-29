@@ -227,9 +227,18 @@ export type EmployeeDraftStatutory = {
    * ITEM a72610af — THE EPF CATEGORY (`people.detail.epfMode`), the five-name election ADR-0046 defines.
    *
    * THE VALUE STORED HERE IS THE UI CATEGORY, not the lawful KWSP enum: 'auto' | 'manual_percentage' |
-   * 'semi_auto' | 'none'. `lib/epf-mode-map.ts` `mapEpfUiMode` maps the five names down to the three
-   * lawful enum values AT THE SERVER BOUNDARY, and `completeEmployeeDraft` calls the SAME mapper the
+   * 'semi_auto' | 'none'. `lib/epf-mode-map.ts` `mapEpfUiMode` maps the names down to the lawful enum
+   * values AT THE SERVER BOUNDARY, and `completeEmployeeDraft` calls the SAME mapper the
    * Personnel action calls — the client never decides the persisted enum.
+   *
+   * ⚠️ ITEM 70b14723 ADDED THREE MORE CATEGORIES AND THIS LIST OF FOUR IS STILL RIGHT. Manual (Employee by
+   * Amount), Manual (Employer by Amount) and Manual (Employee and Employer by Amount) are NOT offered on a
+   * draft, for a STRONGER version of the reason the rates are not (below): a manual category with no figure
+   * elects nothing and `resolveEpfElection` REFUSES it outright, so unlike a rateless `voluntary_excess` it
+   * is not a lawful election that cannot throw — it is one that WILL throw, inside a writer that only runs
+   * after `hireEmployee` has committed. `completeEmployeeDraft` therefore maps any stray manual value to
+   * 'auto' explicitly (`epfUiModeNeedsAmount`), and the wizard's own hint names the card that has the
+   * boxes. See docs/adr/0087-epf-manual-amount-categories.md §12.
    *
    * THE TWO ELECTED RATES ARE DELIBERATELY NOT HERE, and it is a narrowing worth naming rather than
    * hiding: `resolveEpfElection` REFUSES a rate below the statutory floor, and it runs inside
