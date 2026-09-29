@@ -30,9 +30,16 @@ export default async function LeaveConfigImportPage() {
   const t = await getTranslations('admin.leave.import');
   await requireAdmin();
   // 10b59703 — a TAB of Leave Adjustments. What the importer loads is balance MOVEMENTS (opening
-  // balances, carry-forward, historical leave, ad-hoc credits — leave_ledger rows), the same kind of
-  // entry an adjustment writes, so it moved out of the Entitlements header and under this row. The
-  // heading and description are the row's; the back-link is gone with the header button that fed it.
+  // balances, carry-forward, ad-hoc credits — leave_ledger rows), the same kind of entry an adjustment
+  // writes, so it moved out of the Entitlements header and under this row. The heading and description
+  // are the row's; the back-link is gone with the header button that fed it.
+  //
+  // 3f15ffdb (r362) — THIS TAB IS CALLED "LEAVE BALANCE IMPORT" NOW, and the wording above used to say
+  // it loaded "historical leave" too. That sentence is retired because it is no longer the whole truth
+  // and was never quite the right one: this tool moves the BALANCE and leaves no record behind. Past
+  // leave RECORDS are loaded by its sibling row, Leave History Data Import
+  // (app/admin/leave-config/history-import), which writes leave_request rows and moves no balance.
+  // Only the LABEL changed here — the screen id, the route and every stored role config are untouched.
   const header = await leaveConfigPageHeader('importLeaveData');
 
   return (

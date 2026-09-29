@@ -29,6 +29,7 @@ import { toCsv } from './csv';
 import { IMPORT_COLUMNS } from './import-schema';
 import { PAYROLL_HISTORY_COLUMNS, PAYROLL_HISTORY_SAMPLE_ROWS } from './payroll-history-import-schema';
 import { LEAVE_IMPORT_COLUMNS } from './leave-import-schema';
+import { LEAVE_HISTORY_COLUMNS } from './leave-history-import-schema';
 
 export type TemplateSpec = {
   id: string;
@@ -196,6 +197,40 @@ export const leaveImportTemplate: TemplateSpec = {
     ['E1001', 'ANNUAL', 'debit', '-2', '2026-03-14'],
   ],
 };
+
+/**
+ * 3f15ffdb (r362) — LEAVE HISTORY DATA IMPORT: the twelve columns of the reporter's own table, in the
+ * reporter's own order, DERIVED from `LEAVE_HISTORY_COLUMNS` so the template and the validator cannot
+ * drift — the employee / payroll-history desync lock, applied to the third contract that has one.
+ *
+ * ⚠️ THE CSV FORM CARRIES THE snake_case KEYS, NOT THE HUMAN HEADERS, and that is not an oversight.
+ * `buildTemplateCsv` writes `columns[].key` and test/import-template.test.ts asserts the file round-trips
+ * back through `parseCsvRecords` to exactly those keys — which the human spellings cannot do, because
+ * "Employee No." normalises to `employee_no.` (the period survives). The .xlsx template is where HR gets
+ * the human headings; the importer accepts BOTH, because `canonicalColumnKey` maps either form onto the
+ * same contract key. That is the whole reason that function exists.
+ *
+ * SAMPLE ROWS are worked examples of the two shapes the ticket names, on the demo seed's E1001 / ANNUAL
+ * so an unmodified download → upload round-trips clean: a multi-day full-day record with the Session
+ * column deliberately BLANK (the ticket: "do not force AM/PM where it is not applicable"), and a
+ * single-day half-day AM record. Their Leave References are obviously synthetic so a template uploaded
+ * by mistake is caught as sample data rather than mistaken for a real transaction.
+ */
+export const leaveHistoryImportTemplate: TemplateSpec = {
+  id: 'leave-history-import',
+  filename: 'leave-history-import-template.csv',
+  columns: LEAVE_HISTORY_COLUMNS.map((c) => ({ key: c.key, required: c.required })),
+  sampleRows: [
+    // employee_no, leave_reference, leave_code, entitlement_year, start, end, days, session,
+    // entry_date, submit_date, approved_date, remark
+    ['E1001', 'SAMPLE/2025/0001', 'ANNUAL', '2025', '2025-03-10', '2025-03-12', '3', '', '2025-03-05', '2025-03-05', '2025-03-06', 'Data Migration'],
+    ['E1001', 'SAMPLE/2025/0002', 'ANNUAL', '2025', '2025-06-02', '2025-06-02', '0.5', 'AM', '2025-05-30', '2025-05-30', '2025-06-01', 'Data Migration'],
+  ],
+};
+
+/** The .xlsx template's header row: the reporter's own spellings, in the same order as the contract.
+ *  Derived, so a column added to the contract appears in the workbook without a second edit. */
+export const LEAVE_HISTORY_XLSX_HEADERS: string[] = LEAVE_HISTORY_COLUMNS.map((c) => c.header);
 
 const ATTENDANCE_SAMPLE = `staff_id,timestamp
 E1001,2026-07-01 08:02:00

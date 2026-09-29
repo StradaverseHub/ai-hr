@@ -122,6 +122,23 @@ export type LeaveConfigScreenId =
   | 'leaveCredit'
   | 'leaveCreditRules'
   | 'importLeaveData'
+  /**
+   * 3f15ffdb (r362) — `leaveHistoryImport` (`/admin/leave-config/history-import`), the RECORD half of a
+   * migration, a row and a group of its own directly after Leave Adjustments.
+   *
+   * A GROUP OF ONE, not a third tab of the `adjustments` group, and the distinction is the item. A tab
+   * there would inherit that row's heading and description — "adjust balances" — which is precisely
+   * what this tool must never be read as doing: an imported record moves no balance at all. Taking a
+   * group of its own is also what this component's own rule requires (every fly-out row whose
+   * destination lives under app/admin/leave-config IS a group, one for one, in order), and it is what
+   * makes `leaveConfigPageHeader` give the page its OWN row heading. The tab strip draws nothing for a
+   * group of one — Balance Health, Run earned accrual and Special Setting are the precedents.
+   *
+   * Its sibling `importLeaveData` keeps its id, its route and its stored role configs and changes only
+   * its LABEL, to "Leave Balance Import": two near-identical names for two tools that do opposite
+   * things is the confusion the pair would otherwise create.
+   */
+  | 'leaveHistoryImport'
   | 'entitlementArchive'
   | 'ledgerArchive'
   /**
@@ -187,6 +204,9 @@ export type LeaveConfigGroupId =
   // through the same helper every other Leave Config page does.
   | 'balanceHealth'
   | 'adjustments'
+  // 3f15ffdb (r362) — a one-screen row directly after Leave Adjustments (see the screen id's note
+  // above for why it is a group of its own rather than a third tab of `adjustments`).
+  | 'leaveHistoryImport'
   // 3fb1a611 (r299) — a one-screen row directly after Leave Adjustments (see the screen id's note above).
   | 'leaveCredit'
   | 'generate'
@@ -206,6 +226,7 @@ export type LeaveConfigRowNavKey =
   | 'leaveEntitlements'
   | 'leaveBalanceHealth'
   | 'leaveAdjustments'
+  | 'leaveHistoryImport'
   | 'leaveCredit'
   | 'leaveGenerate'
   | 'leaveEarnedAccrual'
@@ -249,11 +270,26 @@ export const LEAVE_CONFIG_MAP: Group[] = [
       // balance record is the Balances sub-tab of the Reset records sub-screen, reached from one small
       // link at the foot of Adjust balances — still one click away on the day somebody needs a figure
       // from before a reset, and out of the way every other day.
-      // 10b59703 — Import loads balance MOVEMENTS (opening balances, carry-forward, historical leave,
-      // ad-hoc credits — core/leave-import.ts writes leave_ledger rows). That is an adjustment by
-      // file, so it moved out of the Entitlements header and under this row.
+      // 10b59703 — Import loads balance MOVEMENTS (opening balances, carry-forward, ad-hoc credits —
+      // core/leave-import.ts writes leave_ledger rows). That is an adjustment by file, so it moved out
+      // of the Entitlements header and under this row.
+      // 3f15ffdb (r362) — the phrase "historical leave" STOOD IN THAT LIST and is deliberately gone,
+      // along with the tab's old label: past leave RECORDS are the job of the Leave History Data Import
+      // row below, which writes leave_request rows and moves no balance. Two tools, one job each.
       { id: 'importLeaveData', href: '/admin/leave-config/import' },
     ],
+  },
+  // 3f15ffdb (r362) — LEAVE HISTORY DATA IMPORT, ONE SCREEN, ITS OWN ROW, DIRECTLY AFTER LEAVE
+  // ADJUSTMENTS. The tab row renders nothing for a group of one (see `LeaveConfigMap` below), so this
+  // entry buys the same two things Balance Health's does: the page's heading is its ROW's `nav` label
+  // through `leaveConfigPageHeader`, and the row↔group agreement stays 1:1 in both directions. The
+  // alternative — a third tab of the group above — was the wrong shape and is the whole point of the
+  // item: that row is called Leave Adjustments and describes itself as adjusting balances, and this
+  // tool adjusts none. Immediately after it because a migration loads the balances, then the records.
+  {
+    id: 'leaveHistoryImport',
+    navKey: 'leaveHistoryImport',
+    items: [{ id: 'leaveHistoryImport', href: '/admin/leave-config/history-import' }],
   },
   // 3fb1a611 (r299) — LEAVE CREDIT, ITS OWN ROW, DIRECTLY AFTER LEAVE ADJUSTMENTS, with two tabs: Credits and
   // Rules. The row is gated on the `toil` module in the sidebar (MODULE_OF_HREF); both pages also check it.
@@ -386,6 +422,10 @@ const ROW_DESCRIPTION_KEY: Record<LeaveConfigGroupId, [namespace: string, key: s
   entitlements: ['admin.leaveConfigTypes', 'rowDescription'],
   balanceHealth: ['admin.leaveConfigBalanceHealth', 'pageDescription'],
   adjustments: ['admin.leaveConfigAdjustments', 'pageDescription'],
+  // 3f15ffdb (r362) — its own namespace, the house shape (`admin.leaveConfig<Row>.pageDescription`).
+  // It must NOT borrow the Leave Adjustments sentence: that row's sentence is about changing balances,
+  // and the one thing this row does not do is change a balance.
+  leaveHistoryImport: ['admin.leaveConfigHistoryImport', 'pageDescription'],
   leaveCredit: ['admin.leaveConfigLeaveCredit', 'pageDescription'],
   generate: ['admin.leaveConfigGenerate', 'pageDescription'],
   earnedAccrual: ['admin.leaveConfigEarnedAccrual', 'pageDescription'],

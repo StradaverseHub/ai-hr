@@ -6620,6 +6620,34 @@ async function applyLeaveCancellationApprovalTx(
     .from(leaveLedger)
     .where(eq(leaveLedger.sourceRequestId, req.id));
   const chargedDays = round2(-Number(netRow?.net ?? 0));
+  /**
+   * 3f15ffdb (r362) — DID THIS ROW EVER COST A BALANCE DAY? The whole re-debit dance below assumed it
+   * always did, and the assumption is now false.
+   *
+   * THE SHAPE THAT BROKE IT, verified: an IMPORTED HISTORICAL RECORD (Leave History Data Import,
+   * migration 0490). It is an approved `leave_request` carrying NO ledger debit, by design — the
+   * migrated opening balance already has those days removed, so debiting again would deduct them
+   * twice. A migration legitimately carries an approved FUTURE leave (someone booked next month's
+   * holiday in the system being replaced), which is what puts such a row inside the notice window and
+   * makes this path reachable by an ordinary employee (`requestLeaveCancellation` auto-approves on a
+   * type with `employee_cancel_approved`).
+   *
+   * WHAT WENT WRONG. The whole-span reversal above is guarded on `chargedDays > 0` and so correctly
+   * wrote nothing. The per-segment loop below then inserted a BRAND-NEW debit for each SURVIVING
+   * segment — so giving one day back out of five took four days off a balance that had never been
+   * charged for this leave at all. The loop's own comment claims "survivors unchanged", and that
+   * claim holds only under the premise that a whole-span debit existed to be reversed.
+   *
+   * THE FIX IS THE PREMISE, NOT THE SYMPTOM: re-debit a survivor only when the row was charged in the
+   * first place, and report as restored only what actually came back. Both halves move together
+   * (nothing reversed ⇒ nothing re-debited ⇒ nothing restored), which is what keeps the ledger sum
+   * over the split equal to the sum before it — for this shape and for any other that reaches here
+   * with no sourced debit. `finalizeLeaveApproval` writes `-(approvedDays - unpaidDays)`, so a
+   * request whose covered portion rounds to zero is written as a `-0.00` row and sums to zero here
+   * too; that arithmetic is stated rather than claimed to be reachable today, and the guard covers it
+   * either way because it tests the ledger rather than guessing at the reason.
+   */
+  const wasCharged = chargedDays > 0;
   if (chargedDays > 0) {
     await tx.insert(leaveLedger).values({
       tenantId: ctx.tenantId,
@@ -6717,22 +6745,33 @@ async function applyLeaveCancellationApprovalTx(
     // Each segment gets its OWN debit sourced to its own row (mirrors the EL per-row sourcing). A cancelled
     // segment is NOT debited (its days were restored by the whole-span reversal above), so the net effect is
     // exactly: balance up + taken down by the cancelled days, survivors unchanged.
+    //
+    // 3f15ffdb (r362) — …AND ONLY WHEN THE ROW WAS CHARGED. `wasCharged` is false for an unpaid type and
+    // for an imported historical record, and on those the whole-span reversal above wrote nothing; a
+    // survivor debit here would then be a deduction with no matching credit anywhere. See `wasCharged`.
     if (!isCancelled) {
-      await tx.insert(leaveLedger).values({
-        tenantId: ctx.tenantId,
-        employmentId: req.employmentId,
-        leaveTypeId: cancelBalanceTypeId,
-        entryType: 'debit',
-        days: (-segDays).toFixed(2),
-        sourceRequestId: rowId,
-        effectiveOn: seg.from,
-      });
+      if (wasCharged) {
+        await tx.insert(leaveLedger).values({
+          tenantId: ctx.tenantId,
+          employmentId: req.employmentId,
+          leaveTypeId: cancelBalanceTypeId,
+          entryType: 'debit',
+          days: (-segDays).toFixed(2),
+          sourceRequestId: rowId,
+          effectiveOn: seg.from,
+        });
+      }
       remainingDates.push(...eachDate(seg.from, seg.to).filter((d) => isDeductibleDay(d, sched, hols, decIncl)));
       remainingDays += segDays;
       if (i > 0) survivingNewRowIds.push(rowId); // a survivor that is NOT the reused segment[0] row
     } else {
       cancelledRowIds.push(rowId);
-      restoredDays += segDays;
+      // 3f15ffdb (r362) — what came BACK, not what was given up. On an uncharged row the ledger did not
+      // move, so reporting days restored (to the caller, to the cancellation event, and to the
+      // Replacement-Leave credit restore keyed off this figure) would claim a balance movement that did
+      // not happen. The two must agree, so this follows the same premise as the debit above.
+      const segRestored = wasCharged ? segDays : 0;
+      restoredDays += segRestored;
       await appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType: 'leave-request',
@@ -6740,7 +6779,7 @@ async function applyLeaveCancellationApprovalTx(
         eventType: 'leave-request.cancelled',
         actor: p.actor,
         subjectEmploymentId: req.employmentId,
-        payload: { cancelDate: seg.from, restoredDays: segDays, parentGroupId },
+        payload: { cancelDate: seg.from, restoredDays: segRestored, parentGroupId },
       });
     }
   }

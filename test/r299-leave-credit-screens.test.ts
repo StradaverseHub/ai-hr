@@ -37,9 +37,22 @@ const COMPANY_RULES = 'app/admin/leave-config/company-rules/page.tsx';
 describe('Leave Config › Leave Credit — the row, the tabs, the registry', () => {
   const node = leavePack.navNodes!.find((n) => n.group === 'admin')!;
 
-  it('is a row directly after Leave Adjustments, owning its Rules tab', () => {
+  it('is a row in the adjustment family, after Leave Adjustments, owning its Rules tab', () => {
     const labels = node.children.map((c) => c.labelKey);
-    expect(labels[labels.indexOf('leaveAdjustments') + 1]).toBe('leaveCredit');
+    // 3f15ffdb (r362) — UPDATED, NOT LOOSENED, and the old claim is quoted so the change is legible:
+    // this read `expect(labels[labels.indexOf('leaveAdjustments') + 1]).toBe('leaveCredit')`.
+    //
+    // r299's PROPERTY was "Leave Credit is the adjustment screen FOR Replacement Leave, so it sits with
+    // the adjustment rows rather than off on its own" — and that is untouched and asserted below. What
+    // moved is the row IMMEDIATELY behind Leave Adjustments: r362's Leave History Data Import went
+    // there, because the reporter's own approved mockup draws it there, between the row that owns the
+    // BALANCE importer (as its hidden second tab) and Leave Credit. Adjacency to Leave Adjustments was
+    // never Leave Credit's property; membership of that family, in that order, was.
+    //
+    // Spelled as ORDER rather than as an index, so the next row inserted in this family does not have to
+    // rewrite the claim — but a Leave Credit moved out of the family, or above Leave Adjustments, fails.
+    const family = labels.slice(labels.indexOf('leaveAdjustments'), labels.indexOf('leaveGenerate'));
+    expect(family).toEqual(['leaveAdjustments', 'leaveHistoryImport', 'leaveCredit']);
     const row = node.children.find((c) => c.labelKey === 'leaveCredit')!;
     expect(row.href).toBe('/admin/leave-config/leave-credit');
     expect(row.ownedSubpaths).toEqual(['/admin/leave-config/leave-credit/rules']);

@@ -285,6 +285,12 @@ describe('7f69bd71 — the map: two tabs per row, the record ids excluded by typ
       '/admin/leave-config/types',
       '/admin/leave-config/balance-health',
       '/admin/leave-config/adjustments',
+      // 3f15ffdb (r362) — UPDATED, NOT LOOSENED, and for the same reason a fourth time: a later,
+      // unrelated item gave Leave History Data Import a row of its own, directly after Leave
+      // Adjustments. This case's property is untouched — that round added no tab and no sub-screen, and
+      // the Reset records sub-screen is STILL owned by the Leave Adjustments row alone (asserted below)
+      // — so the list is restated exactly rather than turned into a count or a "contains".
+      '/admin/leave-config/history-import',
       // 3fb1a611 (r299) — UPDATED, NOT LOOSENED, for the same reason as the r281 note below: a later, unrelated
       // item gave Leave Credit a row directly after Leave Adjustments. The Reset records sub-screen is still
       // owned by the Leave Adjustments row alone.
@@ -596,7 +602,13 @@ describe('7f69bd71 — Leave Adjustments and Entitlements render two tabs; the f
     const strip = html.slice(at(html, 'data-testid="leave-config-tabs"'), html.indexOf('</nav>'));
     expect(count(strip, '<li ')).toBe(2);
     expect(strip).toMatch(/<span aria-current="page"[^>]*>Adjust balances<\/span>/);
-    expect(strip).toMatch(/<a[^>]*href="\/admin\/leave-config\/import"[^>]*>Import leave data<\/a>/);
+    // 3f15ffdb (r362) — UPDATED, NOT LOOSENED, and the old claim is quoted so the change is legible:
+    // this expected `>Import leave data</a>`. The TAB'S LABEL was renamed to "Leave Balance Import" in
+    // r362, because a second importer joined the menu and "leave data" is what BOTH of them load — this
+    // one loads the BALANCES, the new Leave History Data Import row loads the RECORDS. The href in this
+    // very assertion is what makes the rename safe to read: the route did not move, so this is a label
+    // change and nothing else, and a tab that had actually MOVED would still fail here.
+    expect(strip).toMatch(/<a[^>]*href="\/admin\/leave-config\/import"[^>]*>Leave Balance Import<\/a>/);
     expect(count(html, 'Balance record')).toBe(0);
     expect(count(html, 'Configuration record')).toBe(0);
     expect(html).toMatch(/<a[^>]*href="\/admin\/leave-config\/records"[^>]*>Records of past resets<\/a>/);

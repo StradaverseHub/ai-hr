@@ -37,6 +37,13 @@ export * from '../../core/leave-encashment';
 export * from '../../core/leave-escalation';
 export * from '../../core/leave-formula';
 export * from '../../core/leave-import';
+// 3f15ffdb (r362) — LEAVE HISTORY DATA IMPORT, the RECORD half of a migration (the line above is the
+// BALANCE half). Re-exported here, and registered in BOTH BOUNDARIES and ALWAYS_ALLOWED in
+// test/leave-pack-drift.test.ts, for the reason the 241817ef note above gives: a new leave-pack module
+// that is not a BOUNDARY is simply unguarded, and silencing the guard with a pack-drift-allowlist entry
+// would grow a list documented to only ever shrink. No allowlist entry is added — its only outside
+// consumer is app/admin/leave-config/, which is already always-allowed.
+export * from '../../core/leave-history-import';
 // 56910869 — the Override Leave Application rule vocabulary. Re-exported here (and registered in BOTH
 // BOUNDARIES and ALWAYS_ALLOWED in test/leave-pack-drift.test.ts) for the reason the 241817ef note above
 // gives: a new leave-pack module that is not a BOUNDARY is simply unguarded, and silencing the guard with

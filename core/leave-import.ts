@@ -1,6 +1,7 @@
 /**
- * Leave Data Import & Migration Tool — bulk-load leave ledger transactions (opening balances,
- * carry-forward amounts, historical leave taken, ad-hoc credits) from a paste-CSV, mirroring the
+ * LEAVE BALANCE IMPORT ("Leave Data Import & Migration Tool") — bulk-load leave ledger transactions
+ * (opening balances, carry-forward amounts, ad-hoc credits and correcting adjustments) from a
+ * paste-CSV, mirroring the
  * dry-run/commit shape of core/import.ts (employee), core/attendance.ts importAttendancePunches, and
  * core/pay-components.ts importBatchComponents.
  *

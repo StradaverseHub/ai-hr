@@ -117,7 +117,11 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
     // Health did, so the two lists moved together and no exception was needed anywhere in this file.
     // r281 (a73d1e14) — EIGHT: Special Setting took a row and a group in the same commit too.
     // 3fb1a611 (r299) — NINE: Leave Credit took a row and a group in the same commit, like each before it.
-    expect(ROWS).toHaveLength(9);
+    // 3f15ffdb (r362) — TEN: Leave History Data Import took a row and a group in the same commit too, so
+    // the two `toEqual`s above moved together and no exception was needed anywhere in this file. It is a
+    // group of ONE — a third tab of Leave Adjustments would have inherited that row's "change a balance"
+    // heading, which is exactly what an importer that moves no balance must not be read as doing.
+    expect(ROWS).toHaveLength(10);
   });
 
   it('5ca446db — the Leave Inquiry door is the only child with no map group, and it is where r269 put it', () => {
@@ -176,6 +180,9 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
       '/admin/leave-config/balance-health',
       '/admin/leave-config/adjustments',
       '/admin/leave-config/import',
+      // 3f15ffdb (r362) — its row is directly after Leave Adjustments, so its one screen follows that
+      // row's two tabs and precedes Leave Credit's.
+      '/admin/leave-config/history-import',
       // 3fb1a611 (r299) — its row is directly after Leave Adjustments; its two tabs follow Adjustments' two.
       '/admin/leave-config/leave-credit',
       '/admin/leave-config/leave-credit/rules',
@@ -241,6 +248,9 @@ describe('§B · no Leave Config page renders the nine-screen pill row', () => {
     const withTabs = LEAVE_CONFIG_MAP.filter((g) => g.items.length > 1).map((g) => [g.id, g.items.length]);
     // 3fb1a611 (r299) — UPDATED, NOT LOOSENED: Leave Credit is the third row with tabs (Credits · Rules), each
     // its own route, drawn by the map like the two above — so no page draws a strip of its own.
+    // 3f15ffdb (r362) — STILL THREE, and that is the assertion doing its job rather than a gap in it:
+    // Leave History Data Import took a group of ONE, so it draws no strip and this list did not grow.
+    // Had it been built as a third tab of `adjustments` that entry would read `['adjustments', 3]` here.
     expect(withTabs).toEqual([
       ['entitlements', 2],
       ['adjustments', 2],
@@ -260,7 +270,9 @@ describe('§C · every page\'s heading is its submenu row, and its description i
       // this helper exactly like every other, which is the whole reason it was given a group.
       // r281 (a73d1e14) — ten, with `specialSetting`.
       // 3fb1a611 (r299) — twelve, with Leave Credit's two tabs.
-      expect(ids).toHaveLength(12);
+      // 3f15ffdb (r362) — THIRTEEN, with `leaveHistoryImport`: the one screen of its own row, resolving
+      // through this helper exactly like every other, which is the whole reason it was given a group.
+      expect(ids).toHaveLength(13);
     for (const id of ids) {
       const group = leaveConfigGroupOf(id);
       const header = await leaveConfigPageHeader(id);
@@ -304,6 +316,11 @@ describe('§C · every page\'s heading is its submenu row, and its description i
       // rather than borrowing the Entitlements sentence.
       balanceHealth: 'admin.leaveConfigBalanceHealth.pageDescription',
       adjustments: 'admin.leaveConfigAdjustments.pageDescription',
+      // 3f15ffdb (r362) — its own namespace, the house shape. It must NOT borrow the Leave Adjustments
+      // sentence ("Change an employee's balance by hand… and load balances from a file"): that row is
+      // about changing balances and this one changes none, so sharing the sentence would tell an
+      // administrator the opposite of what the tool does.
+      leaveHistoryImport: 'admin.leaveConfigHistoryImport.pageDescription',
       // 3fb1a611 (r299) — its own namespace, the house shape.
       leaveCredit: 'admin.leaveConfigLeaveCredit.pageDescription',
       generate: 'admin.leaveConfigGenerate.pageDescription',
@@ -335,6 +352,8 @@ describe('§C · every page\'s heading is its submenu row, and its description i
     expect(en.nav.leaveEntitlements).toBe('Entitlements');
     expect(en.nav.leaveBalanceHealth).toBe('Leave Balance Health');
     expect(en.nav.leaveAdjustments).toBe('Leave Adjustments');
+    // 3f15ffdb (r362) — the reporter's own words for the row they asked for, kept verbatim.
+    expect(en.nav.leaveHistoryImport).toBe('Leave History Data Import');
     expect(en.nav.leaveGenerate).toBe('Generate Entitlement');
     expect(en.nav.leaveEarnedAccrual).toBe('Run Earned Accrual');
     expect(en.nav.leaveApprovalWorkflow).toBe('Approval Workflow');
@@ -529,6 +548,13 @@ describe('§E · the strings, six locales', () => {
     'admin.leaveConfigMap.item.specialSetting',
     'admin.leaveConfigSpecialSetting.pageDescription',
     'admin.entitlementArchive.pageDescription',
+    // 3f15ffdb (r362) — Leave History Data Import's own row: the nav label, the map item label and the
+    // row description, PLUS the RENAMED label of its sibling tab. Every one of them can ship
+    // English-only behind a green 200, which is what this list is for.
+    'nav.leaveHistoryImport',
+    'admin.leaveConfigMap.item.leaveHistoryImport',
+    'admin.leaveConfigHistoryImport.pageDescription',
+    'admin.leaveConfigMap.item.importLeaveData',
   ];
   it('every key exists in all six catalogues and is not left in English outside en', () => {
     for (const key of NEW_OR_RENAMED) {
@@ -548,7 +574,18 @@ describe('§E · the strings, six locales', () => {
     expect(en.admin.leaveConfigMap.item.adjustments).toBe('Adjust balances');
     expect(en.admin.leaveConfigMap.item.leaveTypes).toBe('Leave types');
     expect(en.admin.leaveConfigMap.item.entitlementTables).toBe('Entitlement tables');
-    expect(en.admin.leaveConfigMap.item.importLeaveData).toBe('Import leave data');
+    // 3f15ffdb (r362) — UPDATED, NOT LOOSENED, and the old claim is quoted so the change is legible:
+    // this read `expect(en.admin.leaveConfigMap.item.importLeaveData).toBe('Import leave data')`.
+    // That name became ambiguous the moment a second importer joined the menu, because "leave data" is
+    // exactly what BOTH of them load — this one loads the BALANCES and the new row loads the RECORDS.
+    // The LABEL is all that changed: the screen id `importLeaveData`, the route
+    // `/admin/leave-config/import` and every stored role config are untouched, and both are asserted
+    // below so a rename that quietly moved the screen would fail here.
+    expect(en.admin.leaveConfigMap.item.importLeaveData).toBe('Leave Balance Import');
+    expect(en.admin.leaveConfigMap.item.leaveHistoryImport).toBe('Leave History Data Import');
+    expect(LEAVE_CONFIG_MAP.flatMap((g) => g.items).find((i) => i.id === 'importLeaveData')!.href).toBe(
+      '/admin/leave-config/import',
+    );
     // The record's stale description no longer names the Benefit Scheme layer release three removed.
     expect(en.admin.entitlementArchive.pageDescription).not.toMatch(/Benefit Scheme/);
     expect(en.admin.entitlementArchive.pageDescription).toMatch(/reset/);

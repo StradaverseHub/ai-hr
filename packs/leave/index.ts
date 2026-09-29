@@ -113,6 +113,7 @@ import {
   CalendarPlus,
   CalendarRange,
   ClipboardList,
+  FileUp,
   GitBranch,
   HeartPulse,
   Play,
@@ -288,6 +289,27 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
       icon: SlidersHorizontal,
       ownedSubpaths: ['/admin/leave-config/import', '/admin/leave-config/records'],
     },
+    // 3f15ffdb (r362) — LEAVE HISTORY DATA IMPORT, A ROW OF ITS OWN, DIRECTLY AFTER LEAVE ADJUSTMENTS.
+    //
+    // The reporter asked for an import function "under the Leave Config menu" and could not find one,
+    // because the importer that exists is not a row: it is the second TAB of the row above (its
+    // `ownedSubpaths` line, immediately overhead). That was half the answer. The other half is that the
+    // hidden tab does a DIFFERENT job — it loads balance movements into leave_ledger — so pointing the
+    // reporter at it would have answered a question they did not ask. This row loads the RECORDS.
+    //
+    // ⚠️ A ROW, NOT A THIRD TAB OF LEAVE ADJUSTMENTS, and the distinction is the whole item. A tab of
+    // that row would inherit its heading and its description ("adjust balances"), which is precisely
+    // what this tool must never be understood to do: it moves no balance. The two importers sit beside
+    // each other as siblings, one row each, and the older one's TAB LABEL is renamed to say "Leave
+    // Balance Import" in the same round so the pair reads as a pair rather than as two spellings of one
+    // thing. Renaming a label changes no route, no screen id and no stored role config.
+    //
+    // IMMEDIATELY AFTER the balance importer's row, not at the bottom: a migration loads the balances
+    // and then the records, and the order of the menu is the order of the work (this node's header).
+    //
+    // NO `ownedSubpaths`: one page, no tabs, no sub-screen — nothing for the row to stay lit on beyond
+    // its own href. NOT module-gated: leave is core, like every row here except Leave Credit.
+    { href: '/admin/leave-config/history-import', labelKey: 'leaveHistoryImport', icon: FileUp },
     // 3fb1a611 (r299) — LEAVE CREDIT, DIRECTLY AFTER LEAVE ADJUSTMENTS, where the approved plan puts it.
     //
     // Every Replacement Leave credit in one list (earned through a request, added by HR, used, reversed,

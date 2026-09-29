@@ -2815,6 +2815,13 @@
       "when": 1789980199344,
       "tag": "0489_tp3_exemption_used",
       "breakpoints": true
+    },
+    {
+      "idx": 490,
+      "version": "7",
+      "when": 1789980200344,
+      "tag": "0490_leave_history_import",
+      "breakpoints": true
     }
   ]
 }

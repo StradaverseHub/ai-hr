@@ -330,7 +330,14 @@ export async function adjustEncashment(
 /** Approved Annual Leave days for an employment dated AFTER the last working day — already debited at
  *  approval, but never to be taken (the employee's last working day has passed). Powers the "N day(s) fall
  *  after the last working day" hint on the people-page card; the correction path is unfreeze -> cancel
- *  those requests -> adjust (re-locks). Read-only, no events.append (CLAUDE.md skip rule). */
+ *  those requests -> adjust (re-locks). Read-only, no events.append (CLAUDE.md skip rule).
+ *
+ *  3f15ffdb (r362) — MIGRATED HISTORY IS EXCLUDED, because this hint's premise ("already debited at
+ *  approval") is false for it: a record loaded by Leave History Data Import carries no ledger debit by
+ *  design (migration 0490). Counting one here would raise a hint whose own documented remedy does not
+ *  work — cancelling such a request gives back nothing, correctly, since nothing was ever charged — and
+ *  would send an HR admin round a loop that cannot close. The hint keeps naming exactly the rows it can
+ *  still fix. */
 export async function approvedLeaveDaysAfter(
   tx: Tx,
   employmentId: string,
@@ -345,6 +352,7 @@ export async function approvedLeaveDaysAfter(
         eq(leaveRequest.employmentId, employmentId),
         eq(leaveRequest.leaveTypeId, leaveTypeId),
         eq(leaveRequest.status, 'approved'),
+        eq(leaveRequest.importedHistory, false),
         gt(leaveRequest.startDate, lastWorkingDay),
       ),
     );

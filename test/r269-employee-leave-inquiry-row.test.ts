@@ -151,6 +151,11 @@ describe('5ca446db — six rows in the Leave Config fly-out, the new one last', 
       'leaveEntitlements',
       'leaveBalanceHealth',
       'leaveAdjustments',
+      // 3f15ffdb (r362) — UPDATED, NOT LOOSENED: Leave History Data Import joined between Leave
+      // Adjustments and Leave Credit, which is where the reporter's approved mockup draws it. It is the
+      // RECORD importer and Leave Adjustments owns the BALANCE importer as a tab, so the two halves of a
+      // migration sit together and the row order is the order the work is done in.
+      'leaveHistoryImport',
       // 3fb1a611 (r299) — UPDATED, NOT LOOSENED: Leave Credit joined directly after Leave Adjustments.
       'leaveCredit',
       'leaveGenerate',
