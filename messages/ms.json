@@ -13071,7 +13071,10 @@
       "dayTypeLookupFailed": "Tidak dapat mencari tarikh ini",
       "dayTypeRetry": "Cuba lagi",
       "dayTypeFromRoster": "Daripada roster anda",
-      "dayTypeFromHolidays": "Daripada kalendar cuti umum"
+      "dayTypeFromHolidays": "Daripada kalendar cuti umum",
+      "dayTypeReading": "Membaca roster anda...",
+      "dayTypeNotFound": "Tidak dijumpai - pilih tarikh itu semula",
+      "crossesMidnight": "Tempoh ini dibaca sebagai berakhir pada pagi keesokan harinya."
     }
   },
   "notices": {

@@ -13071,7 +13071,10 @@
       "dayTypeLookupFailed": "Không thể tra cứu ngày này",
       "dayTypeRetry": "Thử lại",
       "dayTypeFromRoster": "Từ lịch trực của bạn",
-      "dayTypeFromHolidays": "Từ lịch ngày lễ công cộng"
+      "dayTypeFromHolidays": "Từ lịch ngày lễ công cộng",
+      "dayTypeReading": "Đang đọc lịch trực của bạn...",
+      "dayTypeNotFound": "Không tìm thấy - hãy chọn lại ngày",
+      "crossesMidnight": "Khoảng thời gian này được hiểu là kết thúc vào sáng hôm sau."
     }
   },
   "notices": {

@@ -13071,7 +13071,10 @@
       "dayTypeLookupFailed": "Could not look this date up",
       "dayTypeRetry": "Try again",
       "dayTypeFromRoster": "From your roster",
-      "dayTypeFromHolidays": "From the public holiday calendar"
+      "dayTypeFromHolidays": "From the public holiday calendar",
+      "dayTypeReading": "Reading your roster...",
+      "dayTypeNotFound": "Not found - pick the date again",
+      "crossesMidnight": "This window reads as ending the next morning."
     }
   },
   "notices": {

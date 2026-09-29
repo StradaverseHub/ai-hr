@@ -38,7 +38,7 @@ import { assignDefaultShift, assignShift, createShift, setRestDay } from '../cor
 import { createBatch, generatePayslips, prefillOvertimeFromAttendance } from '../core/payroll';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { setToilPolicy, LeaveCreditSectionMismatchError, ToilExtendedHoursBelowThresholdError, type ToilPolicyInput } from '../core/toil';
-import { assessExtendedClaim, eligibleExtendedMinutes, extendedHoursCreditDays } from '../lib/extended-hours';
+import { assessExtendedClaim, claimCrossesMidnight, eligibleExtendedMinutes, extendedHoursCreditDays } from '../lib/extended-hours';
 import {
   decideReplacementLeaveRequest,
   extendedHoursOfferForEmployment,
@@ -293,6 +293,46 @@ describe('r336 · the derived figures, as pure arithmetic', () => {
     const a = assessExtendedClaim({ claimStart: '18:00', claimEnd: '18:00', shiftEnd: '18:00:00', actualClockOut: '18:00:00' });
     expect(a.minutes).toBe(0);
     expect(extendedHoursCreditDays(a.minutes, TIERS).days).toBe(0);
+  });
+
+  /**
+   * ⚠️ r362 58424c7f · THE ROLL IS UNCHANGED, AND ITS CONDITION IS NOW A NAMED EXPORT.
+   *
+   * The reporter asked Leave Credit to REFUSE an end earlier than the start. It is deliberately allowed —
+   * that is how a shift across midnight is entered — and what shipped instead is the request row SAYING how
+   * the window was read. The screen must not decide that by parsing the two times a second time, or the
+   * note and the minutes printed beside it disagree the first time either moves, so `claimCrossesMidnight`
+   * IS the roll's condition and `assessExtendedClaim` asks it.
+   *
+   * THIS CASE IS THE "NOTHING MOVED" HALF. Every pair is checked BOTH ways: the predicate's answer, and the
+   * minutes the roll produced for the same pair. A predicate that drifted from the roll would pass one and
+   * fail the other. ⚠️ 18:00→18:00 is in the table on purpose: `<` rather than `<=` is r353's money fix
+   * (a zero-length window used to roll to 1440 and earn a whole day), and a predicate that called it a
+   * cross-midnight row would be that defect coming back through the screen.
+   */
+  it('⚠️ `claimCrossesMidnight` IS the roll’s condition — same answer, same minutes, zero-length excluded', () => {
+    const CASES: { start: string; end: string; crosses: boolean; minutesNoFloor: number }[] = [
+      { start: '22:00', end: '02:00', crosses: true, minutesNoFloor: 240 },
+      { start: '18:00', end: '00:30', crosses: true, minutesNoFloor: 390 },
+      { start: '14:00', end: '09:00', crosses: true, minutesNoFloor: 1140 },
+      { start: '09:00', end: '14:00', crosses: false, minutesNoFloor: 300 },
+      { start: '18:00', end: '23:51', crosses: false, minutesNoFloor: 351 },
+      { start: '18:00', end: '18:00', crosses: false, minutesNoFloor: 0 },
+      { start: '00:00', end: '23:59', crosses: false, minutesNoFloor: 1439 },
+    ];
+    for (const c of CASES) {
+      expect(claimCrossesMidnight(c.start, c.end), `${c.start}→${c.end}`).toBe(c.crosses);
+      // No shift end, so the floor is the start and the span IS the roll's output — which is what makes
+      // this an assertion about the roll rather than about the floor.
+      const m = eligibleExtendedMinutes({ claimStart: c.start, claimEnd: c.end, shiftEnd: null, actualClockOut: null });
+      expect(m, `${c.start}→${c.end} minutes`).toBe(c.minutesNoFloor);
+      // The two must agree: a rolled pair is one that produced MORE minutes than the plain difference.
+      const plain = Number(c.end.slice(0, 2)) * 60 + Number(c.end.slice(3)) - (Number(c.start.slice(0, 2)) * 60 + Number(c.start.slice(3)));
+      expect(m > plain, `${c.start}→${c.end}: the predicate and the roll must agree`).toBe(c.crosses);
+    }
+    // An unparseable time describes no reading at all, and `assessExtendedClaim` returns zero for the same.
+    expect(claimCrossesMidnight('', '02:00')).toBe(false);
+    expect(claimCrossesMidnight('22:00', '')).toBe(false);
   });
 
   /**

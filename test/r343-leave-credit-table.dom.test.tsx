@@ -156,7 +156,10 @@ describe('r343 · the single table renders in all six locales, with no unresolve
     // ONE table. Two would be the two sections coming back under another name.
     expect(first.container.querySelectorAll('table')).toHaveLength(1);
     // Nothing is known before a date is picked, and there is nothing to pick a day type WITH.
-    expect(dayTypeText()).toBe(c.table.dayTypeChoose);
+    // ⚠️ r362 5c72039e — the old claim was `expect(dayTypeText()).toBe(c.table.dayTypeChoose)`, i.e. the
+    // cell said "Choose a day type" before any date existed. It is BLANK now: nothing has been asked, so
+    // the cell asserts nothing, and it may not instruct the employee to use a control r360 removed.
+    expect(dayTypeText(), 'the cell is blank before a date is picked').toBe('');
     expect(dayTypeCell().querySelector('select'), 'no select in the cell').toBeNull();
     expect(screen.queryAllByTestId('leave-credit-day-type-source'), 'and no provenance for an unknown kind').toHaveLength(0);
     expect(looksUnresolved(first.container.textContent ?? '')).toBe(false);
@@ -199,7 +202,15 @@ describe('r343 · the same screen, rendered in two locales, DIFFERS where it cla
       const user = userEvent.setup();
       const { unmount } = mount(locale, { facts: { ...REST_DAY, kind } });
       await user.type(dateInput(locale), '2026-09-16');
-      await waitFor(() => expect(dayTypeText()).not.toBe(copy(locale).table.dayTypeChoose));
+      // ⚠️ r362 — was `not.toBe(copy(locale).table.dayTypeChoose)`: one placeholder covered every
+      // unresolved state, so "not the placeholder" meant "filled". There are three unresolved states now,
+      // and the one this render passes through is `dayTypeReading`. The blank is excluded too, or this
+      // could settle on the frame BEFORE the date change commits and push an empty string into the set.
+      await waitFor(() => {
+        const txt = dayTypeText();
+        expect(txt, 'the cell has not been reached yet').not.toBe('');
+        expect(txt, 'the roster has not answered yet').not.toBe(copy(locale).table.dayTypeReading);
+      });
       dayTypes.push(dayTypeText());
       unmount();
     }
@@ -216,15 +227,35 @@ describe('r343 · the same screen, rendered in two locales, DIFFERS where it cla
     const fromHolidays = dayTypeSource().textContent?.trim() ?? '';
     holiday.unmount();
 
+    // r362 5c72039e — the two sentences that replaced the one placeholder, read from renders that differ
+    // only in what the server did. `reading` needs a call that never settles; `notFound` a call that
+    // resolves with nothing, which is what `facts: null` mounts.
+    const reading = mount(locale, { action: () => new Promise<LeaveCreditDayFacts | null>(() => {}) });
+    await userEvent.setup().type(dateInput(locale), '2026-09-13');
+    await waitFor(() => expect(dayTypeText()).not.toBe(''));
+    const readingText = dayTypeText();
+    reading.unmount();
+    const empty = mount(locale, { facts: null });
+    await userEvent.setup().type(dateInput(locale), '2026-09-13');
+    await waitFor(() => expect(dayTypeText()).not.toBe(copy(locale).table.dayTypeReading));
+    const notFoundText = dayTypeText();
+    empty.unmount();
+
     const shell = mount(locale);
     const out = {
       dayTypes,
       fromRoster,
       fromHolidays,
+      readingText,
+      notFoundText,
       submit: screen.getByTestId('leave-credit-submit').textContent?.trim() ?? '',
       totalLabel: screen.getByTestId('leave-credit-total-label').textContent?.trim() ?? '',
-      /** Knowingly English on all six screens: the empty cell's own line and the "+ Add date" button. */
-      placeholder: dayTypeText(),
+      /**
+       * ⚠️ r362 — this was `placeholder: dayTypeText()`, captioned "knowingly English on all six screens:
+       * the empty cell's own line and the '+ Add date' button". The empty cell has no line any more, so
+       * what is read here is the BLANK itself; the English-sameness claim below rests on `addRow` alone.
+       */
+      emptyCell: dayTypeText(),
       addRow: screen.getByTestId('leave-credit-add-row').textContent?.trim() ?? '',
     };
     shell.unmount();
@@ -246,16 +277,26 @@ describe('r343 · the same screen, rendered in two locales, DIFFERS where it cla
     expect(other.fromHolidays.length, `${locale}: the holiday caption is empty`).toBeGreaterThan(0);
     expect(other.submit, `${locale}: the submit button still reads English`).not.toBe(english.submit);
     expect(other.totalLabel, `${locale}: the total label still reads English`).not.toBe(english.totalLabel);
+    // r362's two new unresolved-state sentences, compared between renders rather than against the
+    // catalogue they came from — the same claim made for r360's captions above.
+    expect(other.readingText, `${locale}: "reading your roster" still reads English`).not.toBe(english.readingText);
+    expect(other.notFoundText, `${locale}: "not found" still reads English`).not.toBe(english.notFoundText);
+    expect(other.readingText.length, `${locale}: the reading sentence is empty`).toBeGreaterThan(0);
+    expect(other.notFoundText.length, `${locale}: the not-found sentence is empty`).toBeGreaterThan(0);
   });
 
-  it.each(LOCALES.filter((l) => l !== 'en'))('%s — and the two strings this screen ships in English are the same words', async (locale) => {
-    // NOT an accident and not hidden: `table.dayTypeChoose` and `addRow` are English in all six catalogues,
-    // with the whole English set named in test/r343-leave-credit-single-table.test.ts. Asserting the sameness
-    // is what keeps this case honest — it fails if the debt is paid off without the list being updated.
+  it.each(LOCALES.filter((l) => l !== 'en'))('%s — and the one string this screen still ships in English is the same words', async (locale) => {
+    // ⚠️ r362 — the old claim was "the TWO strings this screen ships in English are the same words", and the
+    // two were `table.dayTypeChoose` and `addRow`. `dayTypeChoose` is retired and rendered by nothing, so
+    // one is left. NOT an accident and not hidden: the whole English set is named in
+    // test/r343-leave-credit-single-table.test.ts, and asserting the sameness is what keeps this case
+    // honest — it fails if the debt is paid off without the list being updated.
     const english = await spoken('en');
     const other = await spoken(locale);
-    expect(other.placeholder).toBe(english.placeholder);
     expect(other.addRow).toBe(english.addRow);
+    // …and the cell that used to carry the second English string is blank on every screen, not English.
+    expect(other.emptyCell, `${locale}: the unasked cell must claim nothing`).toBe('');
+    expect(english.emptyCell).toBe('');
   });
 });
 
@@ -638,7 +679,9 @@ describe('r353 · the Day Type fills in from the roster when the date is picked'
     const user = userEvent.setup();
     mount('en', { facts });
     // r360 — was `expect(dayTypeSelect('en').value).toBe('')`. Nothing is known before a date is picked.
-    expect(dayTypeText(), 'nothing is filled before a date is picked').toBe(en.replacementRequest.table.dayTypeChoose);
+    // r362 — and was `.toBe(en.replacementRequest.table.dayTypeChoose)` between r360 and now: the cell is
+    // BLANK before a date exists rather than telling the employee to choose.
+    expect(dayTypeText(), 'nothing is filled before a date is picked').toBe('');
     await user.type(dateInput('en'), '2026-09-16');
     await awaitDayType('en', kind);
     const caption = dayTypeSource().textContent?.trim();
@@ -708,7 +751,9 @@ describe('r353 · the Day Type fills in from the roster when the date is picked'
     await user.type(dateInput('en'), '2026-09-13');
     await awaitDayType('en', 'rest_day');
     await user.clear(dateInput('en'));
-    await waitFor(() => expect(dayTypeText()).toBe(en.replacementRequest.table.dayTypeChoose));
+    // r362 — was `.toBe(en.replacementRequest.table.dayTypeChoose)`. Clearing the date returns the row to
+    // "nothing has been asked", which is the blank cell, not an instruction to choose.
+    await waitFor(() => expect(dayTypeText()).toBe(''));
     expect(screen.queryAllByTestId('leave-credit-day-type-source'), 'and no provenance for a kind that is gone').toHaveLength(0);
     expect((document.querySelector('input[name="dayType"]') as HTMLInputElement).value).toBe('');
     expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(true);
@@ -744,8 +789,15 @@ describe('r360 · a failed day-facts lookup is SAID, and the retry re-asks', () 
 
     // (a) THE SENTENCE, in the cell itself rather than somewhere else on the form.
     await waitFor(() => expect(dayTypeText()).toBe(en.replacementRequest.table.dayTypeLookupFailed));
-    // …and it is NOT the placeholder: "we have not asked yet" and "we asked and it failed" must differ.
-    expect(dayTypeText()).not.toBe(en.replacementRequest.table.dayTypeChoose);
+    // …and it is NOT any of the other three states. The old line here was
+    // `expect(dayTypeText()).not.toBe(en.replacementRequest.table.dayTypeChoose)` — "we have not asked yet"
+    // and "we asked and it failed" must differ — which was the whole distinction r360 could draw. r362
+    // splits the placeholder into three, so the failed cell must now differ from ALL of them, and the one
+    // that matters is `dayTypeReading`: without the `.finally` that settles a REJECTED date, a failed row
+    // would still be "in flight" and this case would be the only thing that noticed.
+    expect(dayTypeText(), 'r360’s claim, against the retired placeholder').not.toBe(en.replacementRequest.table.dayTypeChoose);
+    expect(dayTypeText(), '"we asked and it failed" is not "we are still asking"').not.toBe(en.replacementRequest.table.dayTypeReading);
+    expect(dayTypeText(), 'nor is it "the roster had nothing"').not.toBe(en.replacementRequest.table.dayTypeNotFound);
     // …and no provenance is claimed for a kind that was never learnt.
     expect(screen.queryAllByTestId('leave-credit-day-type-source')).toHaveLength(0);
     expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled, 'nothing is submittable').toBe(true);
@@ -771,5 +823,220 @@ describe('r360 · a failed day-facts lookup is SAID, and the retry re-asks', () 
     await waitFor(() => expect(dayTypeText()).toBe(copy(locale).table.dayTypeLookupFailed));
     expect(screen.getByTestId('leave-credit-day-type-retry').textContent).toBe(copy(locale).table.dayTypeRetry);
     expect(looksUnresolved(dayTypeCell().textContent ?? '')).toBe(false);
+  });
+});
+
+/**
+ * ⚠️⚠️ r362 5c72039e · THE DAY TYPE CELL SAYS WHICH MOMENT IT IS IN, AND NEVER ASKS FOR A CHOICE.
+ *
+ * WHAT WAS WRONG. `table.dayTypeChoose` — "Choose a day type" — was the cell's text in THREE different
+ * states: no date picked, lookup in flight, lookup resolved with nothing. It is an instruction, and r360
+ * had already removed the control that could obey it, so the cell was telling the employee to do something
+ * the screen no longer permits with nothing in the box to click.
+ *
+ * ⚠️ WHY NEW COPY ALONE COULD NOT DO IT, which is the real content of this round. The effect marks a date
+ * as asked by writing `facts[d] = null` BEFORE the call, and `leaveCreditDayFactsAction` ALSO resolves
+ * `null` for a malformed date or no employment. "In flight" and "answered with nothing" were the same
+ * stored value: no wording can separate states the state shape has already merged. `factsSettled`, written
+ * in the settle path of BOTH outcomes, is what separates them — in flight is "asked and not settled".
+ *
+ * ⚠️ AND A ROW WITH NO DATE CANNOT FAIL THESE. A day-type assertion on an empty row passes whatever the
+ * component does, because nothing is ever asked for it. Every case below types a date first, except the
+ * one whose subject IS the dateless row.
+ */
+describe('r362 · the four moments of the Day Type cell, told apart', () => {
+  /** A call that never settles: the ONLY honest way to hold the screen in the in-flight state. */
+  const pending = () => new Promise<LeaveCreditDayFacts | null>(() => {});
+
+  it('(a) no date picked — the cell is blank and claims nothing, on a row that has a control-free cell', async () => {
+    mount('en');
+    expect(dayTypeText(), 'blank, not "Choose a day type"').toBe('');
+    expect(dayTypeCell().querySelector('select'), 'and there is still nothing to choose with').toBeNull();
+    expect(dayTypeCell().textContent?.trim(), 'no retry, no caption, no sentence').toBe('');
+    expect(screen.queryAllByTestId('leave-credit-day-type-source')).toHaveLength(0);
+  });
+
+  it('(b) the roster is being read — the cell says so, and it is NOT the not-found sentence', async () => {
+    const user = userEvent.setup();
+    mount('en', { action: pending });
+    await user.type(dateInput('en'), '2026-09-13');
+    await waitFor(() => expect(dayTypeText()).toBe(en.replacementRequest.table.dayTypeReading));
+    // The three it must not be. The middle one is the whole point of `factsSettled`.
+    expect(dayTypeText()).not.toBe(en.replacementRequest.table.dayTypeChoose);
+    expect(dayTypeText(), 'in flight is not "the roster had nothing"').not.toBe(en.replacementRequest.table.dayTypeNotFound);
+    expect(dayTypeText()).not.toBe(en.replacementRequest.table.dayTypeLookupFailed);
+    // Nothing is offered to retry while the first ask is still running.
+    expect(screen.queryByTestId('leave-credit-day-type-retry')).toBeNull();
+    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('(c) the roster answered with nothing — the cell says THAT, not "reading" and not "choose"', async () => {
+    const user = userEvent.setup();
+    mount('en', { facts: null }); // the action RESOLVES, with null
+    await user.type(dateInput('en'), '2026-09-13');
+    await waitFor(() => expect(dayTypeText()).toBe(en.replacementRequest.table.dayTypeNotFound));
+    expect(dayTypeText(), 'a settled null is not still in flight').not.toBe(en.replacementRequest.table.dayTypeReading);
+    expect(dayTypeText()).not.toBe(en.replacementRequest.table.dayTypeChoose);
+    // A resolved-empty lookup is NOT a failure: no failure sentence and nothing to retry.
+    expect(dayTypeText()).not.toBe(en.replacementRequest.table.dayTypeLookupFailed);
+    expect(screen.queryByTestId('leave-credit-day-type-retry'), 'nothing failed, so nothing is offered to retry').toBeNull();
+    expect(screen.queryAllByTestId('leave-credit-day-type-source'), 'no provenance for a kind nobody has').toHaveLength(0);
+    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('(d) the failed lookup is UNCHANGED — r360’s sentence and its retry, still told apart from the other three', async () => {
+    const user = userEvent.setup();
+    mount('en', { action: async () => { throw new Error('rejected'); } });
+    await user.type(dateInput('en'), '2026-09-13');
+    await waitFor(() => expect(dayTypeText()).toBe(en.replacementRequest.table.dayTypeLookupFailed));
+    expect(screen.getByTestId('leave-credit-day-type-retry').textContent).toBe(en.replacementRequest.table.dayTypeRetry);
+    for (const k of ['dayTypeReading', 'dayTypeNotFound', 'dayTypeChoose'] as const)
+      expect(dayTypeText(), `a failure is not ${k}`).not.toBe((en.replacementRequest.table as Record<string, string>)[k]);
+  });
+
+  /**
+   * ⚠️ THE SETTLED MARK MUST COME OFF ON RETRY, AND THIS IS THE ONLY CASE THAT CAN SEE IT.
+   *
+   * The first ask FAILS, which settles the date. The retry re-asks and that second call never returns. If
+   * `retryFacts` left the settled mark in place, the cell would read "Not found - pick the date again"
+   * while the server was being asked again — the same lie the old placeholder told, in new words. The
+   * failure path can only be distinguished from the in-flight path by state, so a screenshot of either
+   * would not catch this.
+   */
+  it('a RETRIED date is in flight again, not "not found"', async () => {
+    const user = userEvent.setup();
+    let calls = 0;
+    mount('en', {
+      action: () => {
+        calls += 1;
+        if (calls === 1) return Promise.reject(new Error('rejected'));
+        return pending();
+      },
+    });
+    await user.type(dateInput('en'), '2026-09-13');
+    await waitFor(() => expect(dayTypeText()).toBe(en.replacementRequest.table.dayTypeLookupFailed));
+    await user.click(screen.getByTestId('leave-credit-day-type-retry'));
+    await waitFor(() => expect(dayTypeText()).toBe(en.replacementRequest.table.dayTypeReading));
+    expect(calls, 'the retry asked the server again').toBe(2);
+    expect(dayTypeText(), 'a date being re-asked has not answered with nothing').not.toBe(
+      en.replacementRequest.table.dayTypeNotFound,
+    );
+  });
+
+  it.each(LOCALES)('%s — both new sentences resolve in this locale, with no MISSING_MESSAGE', async (locale) => {
+    const reading = mount(locale, { action: pending });
+    await userEvent.setup().type(dateInput(locale), '2026-09-13');
+    await waitFor(() => expect(dayTypeText()).toBe(copy(locale).table.dayTypeReading));
+    expect(looksUnresolved(dayTypeCell().textContent ?? '')).toBe(false);
+    reading.unmount();
+
+    mount(locale, { facts: null });
+    await userEvent.setup().type(dateInput(locale), '2026-09-13');
+    await waitFor(() => expect(dayTypeText()).toBe(copy(locale).table.dayTypeNotFound));
+    expect(looksUnresolved(dayTypeCell().textContent ?? '')).toBe(false);
+  });
+});
+
+/**
+ * ⚠️⚠️ r362 58424c7f · A WINDOW THAT CROSSES MIDNIGHT SAYS SO — AND NOTHING ABOUT THE CREDIT MOVES.
+ *
+ * THE DEVIATION THIS DISCHARGES. The reporter's Leave Credit request listed "if Extended End is earlier
+ * than Extended Start, display an error". It was NOT built, deliberately: an end before the start is how a
+ * shift across midnight is entered (`assessExtendedClaim` rolls it +1440), and refusing it would switch
+ * night-shift claims off and take r353's `<`-not-`<=` money fix with them.
+ *
+ * ⚠️ SO THE MONEY HALF IS THE POINT OF THESE CASES, not the sentence. A note that appeared while the
+ * minutes or the credit moved would be a regression wearing an explanation, so every case that asserts the
+ * note also asserts the figures beside it: 22:00→02:00 on a rest day is 240 eligible minutes and 0.5 day,
+ * which is exactly what it was before this round. And 18:00→18:00 must NOT be a cross-midnight row, because
+ * the strictness of that comparison IS the money fix.
+ */
+describe('r362 · the night-shift note, and the credit it must not change', () => {
+  const note = () => screen.queryByTestId('leave-credit-crosses-midnight');
+  const minutes = () => screen.getByTestId('leave-credit-eligible-minutes').textContent?.trim();
+  const rowCredit = () => screen.getByTestId('leave-credit-row-credit').textContent?.trim();
+
+  it('22:00 → 02:00 on a rest day: the note appears AND the row is still 240 minutes / 0.5 day', async () => {
+    const user = userEvent.setup();
+    mount('en', { facts: REST_DAY });
+    await user.type(dateInput('en'), '2026-09-13');
+    await awaitDayType('en', 'rest_day');
+    await user.type(startInput('en'), '22:00');
+    await user.type(endInput('en'), '02:00');
+    // THE SENTENCE.
+    await waitFor(() => expect(note()).not.toBeNull());
+    expect(note()!.textContent?.trim()).toBe(en.replacementRequest.table.crossesMidnight);
+    // ⚠️ AND THE MONEY, UNCHANGED. A rest day has no scheduled shift end, so the whole rolled window counts.
+    expect(minutes(), 'the rolled window is four hours, as it was before this round').toBe('240');
+    expect(rowCredit()).toBe(en.replacementRequest.totalDays.replace('{days}', '0.50'));
+    expect(screen.getByTestId('leave-credit-total').textContent?.trim()).toBe(
+      en.replacementRequest.totalDays.replace('{days}', '0.50'),
+    );
+    // NOT A REFUSAL. Nothing new is blocked, nothing new is red.
+    expect(screen.queryByTestId('leave-credit-below-threshold')).toBeNull();
+    expect(screen.queryByTestId('leave-credit-roster-mismatch')).toBeNull();
+    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled, 'a night shift is submittable').toBe(false);
+  });
+
+  it('09:00 → 14:00 is an ordinary same-day window: no note, and the credit is untouched', async () => {
+    const user = userEvent.setup();
+    mount('en', { facts: REST_DAY });
+    await user.type(dateInput('en'), '2026-09-13');
+    await awaitDayType('en', 'rest_day');
+    await user.type(startInput('en'), '09:00');
+    await user.type(endInput('en'), '14:00');
+    await waitFor(() => expect(minutes()).toBe('300'));
+    expect(note(), 'a forward window does not cross midnight').toBeNull();
+    expect(rowCredit()).toBe(en.replacementRequest.totalDays.replace('{days}', '0.50'));
+  });
+
+  /**
+   * ⚠️ THE `<` RATHER THAN `<=`, FROM THE SCREEN'S SIDE. r353 hand-fixed the roll after `claimEnd ===
+   * claimStart` rolled to 1440 minutes and, through the tier ladder, a FULL DAY of credit. The note must
+   * not resurrect that reading by calling a zero-length window a night shift: if this row said "reads as
+   * ending the next morning" the screen would be describing 1440 minutes while printing 0.
+   */
+  it('18:00 → 18:00 is a zero-length window, not a night shift: no note, no credit, submit blocked', async () => {
+    const user = userEvent.setup();
+    mount('en', { facts: WORKING_DAY });
+    await user.type(dateInput('en'), '2026-09-16');
+    await awaitDayType('en', 'workday');
+    await user.type(startInput('en'), '18:00');
+    await user.type(endInput('en'), '18:00');
+    await waitFor(() => expect(minutes()).toBe('0'));
+    expect(note(), 'end === start is zero minutes, not twenty-four hours').toBeNull();
+    expect(rowCredit()).toBe(en.replacementRequest.totalDays.replace('{days}', '0.00'));
+    expect(screen.getByTestId('leave-credit-below-threshold')).not.toBeNull();
+    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  /**
+   * THE REVERSAL THE REPORTER'S RULE WAS REALLY AIMING AT, made visible instead of refused: someone who
+   * meant 09:00–14:00 and typed it backwards sees the row say how it was read, the moment they type it.
+   */
+  it('a reversed 14:00 → 09:00 is not refused — it is EXPLAINED, and the figure follows the explanation', async () => {
+    const user = userEvent.setup();
+    mount('en', { facts: REST_DAY });
+    await user.type(dateInput('en'), '2026-09-13');
+    await awaitDayType('en', 'rest_day');
+    await user.type(startInput('en'), '14:00');
+    await user.type(endInput('en'), '09:00');
+    await waitFor(() => expect(note()).not.toBeNull());
+    // 14:00 → 09:00 the next morning is nineteen hours, and the tier ladder still caps the day at 1.0.
+    expect(minutes()).toBe('1140');
+    expect(rowCredit()).toBe(en.replacementRequest.totalDays.replace('{days}', '1.00'));
+    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled, 'explained, not blocked').toBe(false);
+  });
+
+  it.each(LOCALES)('%s — the note resolves in this locale, with no MISSING_MESSAGE', async (locale) => {
+    const user = userEvent.setup();
+    mount(locale, { facts: REST_DAY });
+    await user.type(dateInput(locale), '2026-09-13');
+    await awaitDayType(locale, 'rest_day');
+    await user.type(startInput(locale), '22:00');
+    await user.type(endInput(locale), '02:00');
+    await waitFor(() => expect(note()).not.toBeNull());
+    expect(note()!.textContent?.trim()).toBe(copy(locale).table.crossesMidnight);
+    expect(looksUnresolved(note()!.textContent ?? '')).toBe(false);
   });
 });

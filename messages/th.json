@@ -13071,7 +13071,10 @@
       "dayTypeLookupFailed": "ไม่สามารถค้นหาวันที่นี้ได้",
       "dayTypeRetry": "ลองอีกครั้ง",
       "dayTypeFromRoster": "จากตารางเวรของคุณ",
-      "dayTypeFromHolidays": "จากปฏิทินวันหยุดนักขัตฤกษ์"
+      "dayTypeFromHolidays": "จากปฏิทินวันหยุดนักขัตฤกษ์",
+      "dayTypeReading": "กำลังอ่านตารางเวรของคุณ...",
+      "dayTypeNotFound": "ไม่พบข้อมูล - กรุณาเลือกวันที่อีกครั้ง",
+      "crossesMidnight": "ช่วงเวลานี้ถูกอ่านว่าสิ้นสุดในเช้าวันถัดไป"
     }
   },
   "notices": {

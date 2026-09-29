@@ -4,7 +4,10 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Trash2 } from 'lucide-react';
 import { Button, Field, btnPrimary, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from '../ui';
-import { assessExtendedClaim, extendedHoursCreditDays, type ExtendedHoursTiers } from '@/lib/extended-hours';
+// r362 58424c7f — `claimCrossesMidnight` is the ROLL'S OWN CONDITION, exported rather than re-parsed here:
+// the note this row prints and the minutes printed beside it come from one comparison, or they disagree the
+// first time either moves. See that file's header for why a reversed pair is not refused.
+import { assessExtendedClaim, claimCrossesMidnight, extendedHoursCreditDays, type ExtendedHoursTiers } from '@/lib/extended-hours';
 // 4a1abc4a — every day figure a leave surface prints goes through ONE formatter, so 0.5 and 0.50 cannot
 // appear on two screens for the same balance.
 import { DAY_DASH, formatDays } from '@/lib/day-format';
@@ -104,11 +107,15 @@ const emptyRow = (key: number): Row => ({ key, workedDate: '', dayType: '', clai
  * The four day-type LABELS are the existing `dayKind.*` keys, translated in all six locales, so no new string
  * was minted for "Ordinary Day" and none is needed for the refusal above. r360's four new keys
  * (`dayTypeLookupFailed`, `dayTypeRetry`, `dayTypeFromRoster`, `dayTypeFromHolidays`) ARE translated in all
- * six. The eight `table.*` keys this screen introduced at r343 (`help`, `dayTypeChoose`, `rosterMismatch`,
- * `windowNotClaimed`, `myRequests`, `noRequests`, `statusHeading`, `submittedOn`) DO ship English in all six
- * catalogues — like the fourteen
- * other English `replacementRequest.*` keys this form already rendered before them (`workedDate`, `days`,
- * `addRow`, `reason`, `unit`, `totalDays`, …). That is the debt stated, not hidden:
+ * six, and so are r362's three (`dayTypeReading`, `dayTypeNotFound`, `crossesMidnight`). Of the eight
+ * `table.*` keys this screen introduced at r343, the ones it STILL renders in English in all six catalogues
+ * are `rosterMismatch`, `myRequests`, `noRequests`, `statusHeading` and `submittedOn` — like the other
+ * English `replacementRequest.*` keys this form already rendered before them (`workedDate`,
+ * `addRow`, `reason`, `unit`, `totalDays`, …). ⚠️ THE OTHER THREE OF THE EIGHT LEFT THAT SET RATHER THAN
+ * BEING PAID OFF IN PLACE, and the distinction is the point of naming them: `help` and `windowNotClaimed`
+ * were rewritten for the owner's new rule at r358 and translated while they were being rewritten;
+ * `dayTypeChoose` is RETIRED by r362 — still in all six catalogues, no longer rendered by anything, because
+ * a read-only cell may not tell an employee to choose. That is the debt stated, not hidden:
  * test/r343-leave-credit-single-table.test.ts pins the English set EXACTLY, so it cannot grow by accident
  * and a key that is translated today fails the guard the day it turns English.
  *
@@ -148,6 +155,20 @@ const emptyRow = (key: number): Row => ({ key, workedDate: '', dayType: '', clai
  * filled from one date and captioned "From your roster" under another is a false statement the employee has
  * no control left to correct. The adjudication still runs on every row and is still the control, because the
  * posted value is a form field and a form field can be tampered with whatever this screen renders.
+ *
+ * ── r362 5c72039e · THE CELL SAYS WHICH OF THE FOUR MOMENTS IT IS IN, AND NEVER ASKS FOR A CHOICE ───────
+ * r360 left one sentence — `table.dayTypeChoose`, "Choose a day type" — serving three states: no date
+ * picked, lookup in flight, lookup answered with nothing. It instructed the employee to do something the
+ * read-only cell had stopped permitting, with nothing in the box to click. The three come apart here:
+ * BLANK before a date is picked (nothing has been asked, so nothing is claimed), `dayTypeReading` while the
+ * roster is being read, `dayTypeNotFound` when it came back with nothing — r360's `dayTypeLookupFailed` and
+ * its retry unchanged beside them. The split needed STATE, not copy: see `factsSettled` below.
+ *
+ * ── r362 58424c7f · A WINDOW THAT CROSSES MIDNIGHT SAYS SO, AND NOTHING ABOUT THE CREDIT CHANGES ────────
+ * The reporter asked for an end-earlier-than-start REFUSAL. It was deliberately not built, because that is
+ * how a night shift is entered; the deviation is reported on item 58424c7f rather than buried. What lands
+ * instead is a MUTED per-row note (`table.crossesMidnight`) driven by `claimCrossesMidnight`, the roll's own
+ * condition in lib/extended-hours.ts. Nothing is refused, nothing is coloured, no figure moves.
  */
 export function LeaveCreditRequestTable({
   replacementType,
@@ -222,10 +243,25 @@ export function LeaveCreditRequestTable({
    *
    * It could not be read as "the system has no answer", either: `resolveWorkedDayKindTx` always returns
    * one of the four kinds and `leaveCreditDayFactsAction` returns null only for a malformed date or no
-   * employment. So a blank Day Type after a date is picked IS a failed or in-flight lookup and nothing
-   * else — which is why the row now says which of the two it is.
+   * employment.
+   *
+   * ⚠️ r362 5c72039e — AND THAT LAST SENTENCE IS WHY THE CELL NEEDED A THIRD RECORD, not just new copy.
+   * The sentence that stood here — "a blank Day Type after a date is picked IS a failed or in-flight lookup
+   * and nothing else, which is why the row now says which of the two it is" — was only half true. r360 told
+   * FAILED apart; in-flight and "resolved with nothing" were still one value, because `facts[d]` is written
+   * `null` BEFORE the call (the line above) and `leaveCreditDayFactsAction` ALSO resolves null for a
+   * malformed date or no employment. `factsSettled` below is what separates them: a date is in flight when
+   * it is in `facts` and NOT in `factsSettled`. Written in BOTH the `.then` and the `.catch`, never from a
+   * timer — a timer would be a guess about the server dressed up as a state.
    */
   const [factError, setFactError] = useState<Record<string, true>>({});
+  /**
+   * r362 5c72039e · THE DATES THE SERVER HAS ANSWERED FOR, however it answered. NOT "the dates that
+   * succeeded": a rejection settles a date too, and the failed row's own sentence is `factError`'s job.
+   * Without this, "Reading your roster…" and "Not found" are the same stored value and the cell has to
+   * pick one and be wrong half the time — which is what `dayTypeChoose` was doing for all three states.
+   */
+  const [factsSettled, setFactsSettled] = useState<Record<string, true>>({});
   const [retryTick, setRetryTick] = useState(0);
   const datesKey = rows.map((r) => r.workedDate).join('|');
   useEffect(() => {
@@ -244,7 +280,12 @@ export function LeaveCreditRequestTable({
         })
         // The whole point: a rejection is RECORDED rather than swallowed, so the row can say so and
         // offer the retry. `facts[d]` stays null, which is what keeps the cells reading "not known".
-        .catch(() => setFactError((prev) => ({ ...prev, [d]: true })));
+        .catch(() => setFactError((prev) => ({ ...prev, [d]: true })))
+        // r362 — SETTLED IN BOTH DIRECTIONS, and `.finally` is the only place that can be said once.
+        // A resolve that answered `null` and a reject are both "the server has spoken"; which of the two
+        // it was is `factError`'s to say. Leaving this out of the reject path would leave a failed date
+        // reading "Reading your roster…" for ever behind its own failure sentence.
+        .finally(() => setFactsSettled((prev) => (prev[d] ? prev : { ...prev, [d]: true })));
     }
   }, [datesKey, dayFactsAction, facts, retryTick]);
 
@@ -253,6 +294,14 @@ export function LeaveCreditRequestTable({
     const failed = Object.keys(factError);
     if (failed.length === 0) return;
     setFacts((prev) => {
+      const next = { ...prev };
+      for (const d of failed) delete next[d];
+      return next;
+    });
+    // r362 — AND THE SETTLED MARK GOES WITH IT. A retried date is in flight again; leaving it settled
+    // would have the cell read "Not found - pick the date again" while the second request is running,
+    // which is the same lie in new words.
+    setFactsSettled((prev) => {
       const next = { ...prev };
       for (const d of failed) delete next[d];
       return next;
@@ -484,6 +533,24 @@ export function LeaveCreditRequestTable({
               const mismatch = d?.rosterMismatch ?? null;
               const below = !!(wantsWindow && r.claimStart && r.claimEnd && d?.view != null && d.credit === 0);
               const credit = rowCredit(r);
+              /**
+               * r362 5c72039e — "THE ROSTER ANSWERED, AND IT HAD NOTHING", told apart from "still asking".
+               * Settled AND no facts. The second half matters: between the `.then` that lands the facts and
+               * the effect that copies the kind into the row there is one committed render where the date is
+               * settled and `r.dayType` is still '' — reading `factsSettled` alone would flash "Not found"
+               * on a row that found its answer. A settled date WITH facts is a fill in progress, so it keeps
+               * reading "Reading your roster…" for that one frame.
+               */
+              const factsNotFound =
+                r.workedDate !== '' && !factError[r.workedDate] && r.workedDate in factsSettled && facts[r.workedDate] == null;
+              /**
+               * r362 58424c7f — THE NIGHT SHIFT, SAID OUT LOUD. `claimCrossesMidnight` is the condition
+               * `assessExtendedClaim` rolls on, imported rather than re-parsed here (see the import). It is
+               * NOT a validation: an end before the start is how a shift across midnight is entered, which
+               * is exactly the refusal the reporter asked for and did not get (item 58424c7f). The row says
+               * how the window was READ so an accidental 14:00→09:00 is visible the moment it is typed.
+               */
+              const crossesMidnight = windowLive && !!r.claimStart && !!r.claimEnd && claimCrossesMidnight(r.claimStart, r.claimEnd);
               return (
                 <Fragment key={r.key}>
                   <tr data-testid="leave-credit-row">
@@ -514,7 +581,26 @@ export function LeaveCreditRequestTable({
                           side: the screen is the courtesy, the refusal is the control. */}
                       {r.dayType === '' ? (
                         <div className={`${disabledCell} gap-2`} data-testid="leave-credit-day-type">
-                          <span>{factError[r.workedDate] ? t('table.dayTypeLookupFailed') : t('table.dayTypeChoose')}</span>
+                          {/* ⚠️ r362 5c72039e — FOUR STATES, FOUR SENTENCES. This read
+                              `factError[…] ? t('table.dayTypeLookupFailed') : t('table.dayTypeChoose')`,
+                              and `table.dayTypeChoose` ("Choose a day type") was therefore the catch-all
+                              for THREE of them: no date picked, lookup in flight, lookup answered with
+                              nothing. It told the employee to do something this read-only cell has not
+                              permitted since r360, and there is nothing in the box to click. The key is
+                              RETIRED, not deleted — it stays in all six catalogues, it is simply no longer
+                              rendered here.
+                              THE BLANK IS DELIBERATE and it is not the dash the shift-end and clock-out
+                              cells print. A dash is an answer ("nothing applies here"); before a date is
+                              picked nothing has been ASKED, so the cell asserts nothing at all. */}
+                          <span>
+                            {!r.workedDate
+                              ? ''
+                              : factError[r.workedDate]
+                                ? t('table.dayTypeLookupFailed')
+                                : factsNotFound
+                                  ? t('table.dayTypeNotFound')
+                                  : t('table.dayTypeReading')}
+                          </span>
                           {factError[r.workedDate] && (
                             <button
                               type="button"
@@ -619,6 +705,25 @@ export function LeaveCreditRequestTable({
                           {!d.hasClockOut
                             ? t('table.clockOutMissing')
                             : t('table.clockOutEarlier', { claimEnd: r.claimEnd, clockOut: hhmm(d.view.actualClockOut) ?? '' })}
+                        </p>
+                      </td>
+                    </tr>
+                  )}
+                  {/* ⚠️ r362 58424c7f · MUTED, AND THE COLOUR IS THE DECISION.
+                      The reporter asked Leave Credit to REFUSE an end earlier than the start. It is
+                      deliberately allowed — lib/extended-hours.ts's header has the argument — because that
+                      is the only way a shift across midnight is entered, and refusing it would switch
+                      night-shift claims off and take r353's `<`-not-`<=` money fix with them. What the rule
+                      was protecting is that nobody could see HOW the window was read, and that is what this
+                      note supplies. It is NEITHER the amber above NOR the destructive red below: nothing is
+                      wrong here, and an amber note would teach employees that a correctly entered night
+                      shift is a problem. Its own <tr> for the same reason as the amber one: a row can be
+                      past its clock-out AND cross midnight without one message hiding the other. */}
+                  {crossesMidnight && (
+                    <tr>
+                      <td colSpan={10} className="px-3 pb-2">
+                        <p className="text-[11px] text-muted-foreground" data-testid="leave-credit-crosses-midnight">
+                          {t('table.crossesMidnight')}
                         </p>
                       </td>
                     </tr>
