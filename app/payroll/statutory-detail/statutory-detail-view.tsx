@@ -22,7 +22,8 @@
  *      OF THE LINE, not only by the caption under it. A schedule item prints `wage → amount`, never
  *      `wage × rate = amount`: the amount is the figure its band prescribes, so a multiplication would
  *      be a working that does not evaluate. Only the HRD Corp levy gets a `base × rate` line, because it
- *      alone is a percentage of the wage. EPF IS A SCHEDULE ITEM — the KWSP Third Schedule bands every
+ *      alone is a percentage of the wage — and only when the LEVY ITSELF produced the amount; a levy typed
+ *      by hand loses the multiplication too (refusal #5). EPF IS A SCHEDULE ITEM — the KWSP Third Schedule bands every
  *      monthly wage up to RM20,000 (localization/my/payroll.ts:126) — and the first cut of this screen
  *      called it "Percentage of wage", which is exactly the sin this paragraph refuses, committed on the
  *      largest deduction on the slip.
@@ -34,11 +35,24 @@
  *      statutory rate (RM5,000 basic plus a RM10,000 bonus gives 1,100 ÷ 15,000 = 7.33%, an EPF rate
  *      that does not exist). `explainStatutory` returns both rates as null there, and the working line
  *      prints the amount alone under a note that says which figure is which.
+ *   5. IT DOES NOT CREDIT A RULE WITH A FIGURE A PERSON TYPED (208beb8b). Payroll › Statutory Adjustment
+ *      can set any of nine statutory lines to an exact amount. This screen used to divide that amount by
+ *      the recorded wage and print the quotient as an effective rate UNDER THE NAME OF THE SCHEDULE —
+ *      RM500 on RM3,000 became "3,000.00 → 500.00 (16.67%), KWSP Third Schedule", three false statements
+ *      in one line, on the screen a payroll officer hands an auditor. A hand-set item now names itself
+ *      (`ruleKind: 'manual'`), prints the amount ALONE with no rate at all, shows the figure the system
+ *      had calculated beside it, and the reason the officer recorded rides at the top in its own banner.
+ *      WHERE THAT ANSWER COMES FROM: `statutoryProvenance` in core/statutory-explain.ts, through
+ *      `item.provenance` and `explanation.setByHand`. This file never reads `statutory.adjustment`
+ *      itself — item 70b14723 extends that one function and this screen follows it.
  */
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { Card } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
+// `isSetByHand` is the derivation's OWN predicate over `provenance` — imported rather than re-spelled as
+// `source !== 'computed'` here, so 70b14723's second source is recognised by this screen automatically.
+import { isSetByHand } from '@/core/statutory-explain';
 import type { StatutoryExplainKey, StatutoryExplanation, StatutoryItemExplanation } from '@/core/statutory-explain';
 
 export type StatutoryDetailContext = {
@@ -79,10 +93,15 @@ const CYCLE_LABEL: Record<string, string> = {
   bonus: 'cycleBonus',
   adjustment: 'cycleAdjustment',
 };
+/** ⚠️ EXHAUSTIVE BY TYPE, ON PURPOSE. A new `StatutoryRuleKind` breaks tsc HERE and in the export route,
+ *  which is how 208beb8b's 'manual' could not reach production labelled on the screen and unlabelled in
+ *  the file an auditor is emailed. Never widen this to `Partial<…>` or `Record<string, string>`. */
 const RULE_LABEL: Record<StatutoryItemExplanation['ruleKind'], string> = {
   rate: 'ruleRate',
   schedule: 'ruleSchedule',
   mtd: 'ruleMtd',
+  // NOT a rule at all, and the label says so rather than naming an instrument: nothing looked this up.
+  manual: 'ruleManual',
 };
 /**
  * The rule NAMES the schedule, because there are two of them and they are different instruments: EPF is
@@ -107,6 +126,10 @@ const pct = (r: number) =>
  *   additional run → the amount ALONE. The wage above it is the cumulative month's and this figure is
  *                    the run's increment (refusal #4), so any expression relating the two would assert
  *                    an arithmetic that is not there.
+ *   'manual'       → the amount ALONE, for the same reason one step further along: a person typed it, so
+ *                    NO expression relating it to the wage is true (refusal #5). This is the arm the HRD
+ *                    Corp levy most needed — it is the only `base × rate = amount` line on the screen,
+ *                    and a typed levy made it a product that does not evaluate.
  *   'schedule'     → `wage → amount`, the effective percentage in brackets as a check figure. The
  *                    amount is the one its band prescribes, so an `=` between a product and it would
  *                    simply not hold: EPF wage 2,990 pays the 3,000 band's 330, and 11.04% × 2,990 is
@@ -123,15 +146,26 @@ function workingExpression(
 ): string {
   // `totalBase == null` is already caught by `workingNotRecorded` upstream; kept total anyway, because a
   // formula box that throws on a hand-edited blob takes the whole payslip screen down with it.
-  if (incremental || i.totalBase == null) return b2(amount);
+  // 'manual' is tested through `ruleKind` rather than through `provenance` so there is ONE decision:
+  // core/statutory-explain.ts decided it, and the label, the rates and this shape all follow that decision.
+  if (incremental || i.ruleKind === 'manual' || i.totalBase == null) return b2(amount);
   if (i.ruleKind === 'schedule') {
     return `${b2(i.totalBase)} → ${b2(amount)}${rate == null ? '' : `  (${pct(rate)})`}`;
   }
   return rate == null ? b2(amount) : `${b2(i.totalBase)} × ${pct(rate)} = ${b2(amount)}`;
 }
 
-/** WHICH caveat sits under the working. Static keys, all four literal in this file for the coverage scan. */
+/**
+ * WHICH caveat sits under the working. Static keys, all five literal in this file for the coverage scan.
+ *
+ * 'manual' WINS OVER 'incremental' WHEN BOTH HOLD, and that is not an oversight. `incrementalNote` says
+ * the amount IS the increase this run added — true of a figure the engine produced, FALSE of one somebody
+ * typed, which is neither the increment nor anything derived from the wage above. `manualNote` denies any
+ * relation between the two figures, which is the stronger true statement; the cumulative-wage half is
+ * still disclosed by the whole-month banner at the top of the screen, where both banners sit together.
+ */
 function workingNoteKey(i: StatutoryItemExplanation, incremental: boolean): string {
+  if (i.ruleKind === 'manual') return 'manualNote';
   if (incremental) return 'incrementalNote';
   if (i.ruleKind !== 'schedule') return 'effectiveRateNote';
   // Two different instruments: the KWSP Third Schedule bands EPF, PERKESO's schedule bands the rest.
@@ -219,6 +253,30 @@ export async function StatutoryDetailView({
         </Card>
       )}
 
+      {/* ── 208beb8b: A PERSON DECIDED ONE OF THESE FIGURES, SAID BEFORE ANY NUMBER IS READ.
+          Its own banner beside the other two rather than folded into either, because the three disclose
+          three unrelated things and any of them can be true at once — a pre-r187 slip, an additional run,
+          and a line typed by hand. Each says only its own half. The amber styling and the classes are the
+          `basesNotRecorded` card's, so the family reads as one.
+          It names WHICH items and carries the one reason the officer recorded: without the reason a reader
+          knows a figure was overridden and still cannot defend it, which is the whole job of this screen.
+          Read off `explanation.setByHand` — `statutoryProvenance`'s answer — never from a second read. ── */}
+      {explanation.setByHand && (
+        <Card className="border-amber-500/40 bg-amber-500/5 p-4">
+          <p className="text-sm font-medium">{t('manualBannerHeading')}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t('manualBannerBody')}</p>
+          <div className="mt-2">
+            <Row
+              label={t('manualBannerItems')}
+              value={explanation.setByHand.keys.map((k) => t(ITEM_LABEL[k])).join(' · ')}
+            />
+            {/* The reason is mandatory at the point of entry, so '' here means a pre-2961a7ae stamp, not
+                an officer who declined to say. Named as unrecorded rather than rendered as a blank row. */}
+            <Row label={t('manualReason')} value={explanation.setByHand.reason || notRecorded} />
+          </div>
+        </Card>
+      )}
+
       {/* ── The summary: all six with their employee and employer amounts, so the totals can be checked
           at a glance before any single working is opened. The request asked for this at the top. ── */}
       <Card className="overflow-hidden">
@@ -302,7 +360,15 @@ export async function StatutoryDetailView({
             {i.workingNotRecorded ? (
               <p className="text-sm text-muted-foreground">{t('workingNotRecorded')}</p>
             ) : i.ruleKind === 'mtd' ? (
-              <p className="text-sm text-muted-foreground">{t('workingMtd')}</p>
+              <>
+                <p className="text-sm text-muted-foreground">{t('workingMtd')}</p>
+                {/* PCB alone keeps `ruleKind: 'mtd'` — one MTD display, and its own screen discloses the
+                    override in full. But "worked out from the tax table" left standing beside an amount
+                    somebody typed is refusal #5 committed by omission, so the caveat is printed here too. */}
+                {isSetByHand(i.provenance) && (
+                  <p className="text-xs text-muted-foreground">{t('manualNote')}</p>
+                )}
+              </>
             ) : (
               <>
                 {i.employeeReported > 0 && (
@@ -332,13 +398,25 @@ export async function StatutoryDetailView({
             )}
           </div>
 
+          {/* THE SYSTEM FIGURE BESIDE THE TYPED ONE, per leg and only for a leg that was typed. The rows
+              below already carry the APPLIED figures — they are what the payslip charged — so what was
+              missing was the one the rule produced, and the difference a reader can then see for
+              themselves. A leg nobody touched grows no row: its figure is the system's already, and a
+              second identical line would read as a discrepancy. `system` comes off the stamp the run
+              wrote, never from re-running the rule (core/statutory-explain.ts's one rule). */}
           <div className="mt-3">
+            {i.provenance.employee && (
+              <Row label={t('fieldSystemEmployeeShare')} value={rm(i.provenance.employee.system)} muted />
+            )}
             <Row label={t('fieldEmployeeShare')} value={rm(i.employeeReported)} />
             {i.employerBorne > 0 && (
               <>
                 <Row label={t('fieldEmployerBorne')} value={rm(i.employerBorne)} muted />
                 <Row label={t('fieldTakeHome')} value={rm(i.employeeTakeHome)} />
               </>
+            )}
+            {i.provenance.employer && (
+              <Row label={t('fieldSystemEmployerShare')} value={rm(i.provenance.employer.system)} muted />
             )}
             <Row label={t('fieldEmployerShare')} value={rm(i.employer)} />
           </div>

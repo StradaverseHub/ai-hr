@@ -19,6 +19,21 @@
  * AN UNRECORDED WAGE BASE EXPORTS AS AN EMPTY CELL, NEVER 0.00. A spreadsheet is where a wrong zero does
  * the most damage: it sums, it charts, and nothing on the sheet says it was a guess. Same rule the grid
  * export already applies to its unrecorded months.
+ *
+ * 208beb8b — A HAND-SET FIGURE IS DISCLOSED HERE OR IT IS NOT DISCLOSED AT ALL. This is the copy that
+ * leaves the product: an explanation that tells the truth on screen and credits the KWSP Third Schedule in
+ * the file somebody emails to an auditor is not a fix, it is the same defect with a longer fuse. So the
+ * file carries all four parts the screen shows — the 'Set by hand' rule name (through the SAME
+ * `RULE_LABEL` map, which tsc keeps exhaustive in both files), the reason, the banner's heading, and two
+ * extra columns holding the figure the system had calculated.
+ *
+ * THOSE TWO COLUMNS APPEAR ONLY WHEN SOMETHING WAS SET BY HAND, and the reason is the same one that keeps
+ * an unrecorded base empty: a column of blanks on every ordinary payslip is noise that teaches a reader to
+ * skip the one file where it is filled in. Columns and rows are built from the one flag so they cannot go
+ * ragged.
+ *
+ * It reads `explanation.setByHand` and `item.provenance` — `statutoryProvenance`'s answer — and never
+ * `statutory.adjustment` itself. Item 70b14723 extends that function; this route follows with no change.
  */
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -42,10 +57,14 @@ const ITEM_LABEL: Record<StatutoryExplainKey, string> = {
   hrdf: 'itemHrdf',
   pcb: 'itemPcb',
 };
+/** ⚠️ EXHAUSTIVE BY TYPE, and that is load-bearing: adding a `StatutoryRuleKind` breaks tsc HERE as well
+ *  as in the view, which is what forces the downloaded copy to be updated in the same pass as the screen.
+ *  Never widen it to `Partial<…>` or `Record<string, string>` to make the error go away. */
 const RULE_LABEL: Record<StatutoryRuleKind, string> = {
   rate: 'ruleRate',
   schedule: 'ruleSchedule',
   mtd: 'ruleMtd',
+  manual: 'ruleManual',
 };
 /** EPF and PERKESO are BOTH schedule items but they are not the same schedule — EPF is banded by the
  *  KWSP Third Schedule, SOCSO/EIS/SKBBK by PERKESO's. The view carries the identical override, and the
@@ -88,6 +107,8 @@ export async function GET(req: Request) {
   // leaks nothing about whether the id existed.
   const explanation = row ? explainStatutory(row.statutory, row.runType) : null;
   const money = (v: number) => v.toFixed(2);
+  // ONE flag decides the two extra columns AND the two extra cells per row, so the sheet cannot go ragged.
+  const setByHand = explanation?.setByHand ?? null;
 
   const data: ReportData = {
     filename: `statutory-explanation-${row?.employeeCode ?? 'employee'}-${row?.payPeriod ?? ''}`.replace(/-$/, ''),
@@ -100,6 +121,9 @@ export async function GET(req: Request) {
       t('colEmployerBorne'),
       t('colTakeHome'),
       t('colEmployer'),
+      // The system's own figures, headed with the SAME captions the screen puts on its two extra rows —
+      // a file that renames what the screen showed is a file that has to be reconciled against it.
+      ...(setByHand ? [t('fieldSystemEmployeeShare'), t('fieldSystemEmployerShare')] : []),
     ],
     rows: (explanation?.items ?? []).map((i) => [
       t(ITEM_LABEL[i.key]),
@@ -110,6 +134,15 @@ export async function GET(req: Request) {
       money(i.employerBorne),
       money(i.employeeTakeHome),
       money(i.employer),
+      // EMPTY for a leg nobody typed — including on an item whose other leg was. In this pair a 0.00 would
+      // assert "the rule produced nothing", which is the wrong-zero failure the header forbids, aimed at
+      // the one figure a reader is checking the typed amount against.
+      ...(setByHand
+        ? [
+            i.provenance.employee ? money(i.provenance.employee.system) : '',
+            i.provenance.employer ? money(i.provenance.employer.system) : '',
+          ]
+        : []),
     ]),
     layout: {
       orientation: 'landscape',
@@ -128,6 +161,18 @@ export async function GET(req: Request) {
             // it is not stated at all.
             ...(explanation?.basesNotRecorded ? [t('basesNotRecordedHeading')] : []),
             ...(explanation?.basesCoverWholeMonth ? [t('wholeMonthNote')] : []),
+            // 208beb8b — the hand-set disclosure travels WITH the file, heading and reason together. A
+            // reader who opens this workbook has no banner beside it, so this is the only place it is said.
+            ...(setByHand
+              ? [
+                  t('manualBannerHeading'),
+                  // COMMA inside, because the description's own separator is ' · ': a nested ' · ' list
+                  // would leave "EPF (KWSP) · HRD Corp levy" indistinguishable from two caveats. The
+                  // screen keeps ' · ' — it has a row of its own and nothing to be confused with.
+                  `${t('manualBannerItems')}: ${setByHand.keys.map((k) => t(ITEM_LABEL[k])).join(', ')}`,
+                  `${t('manualReason')}: ${setByHand.reason || t('notRecordedShort')}`,
+                ]
+              : []),
           ].join('  ·  ')
         : undefined,
     },

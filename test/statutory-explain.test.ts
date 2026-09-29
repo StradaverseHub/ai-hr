@@ -24,6 +24,13 @@
  *   4. ONE DISPLAY, TWO DOORS. /payroll/statutory-detail and Transaction View's ?tab=statutory must both
  *      mount the SAME component. Two displays of one calculation are free to drift, which is the reason
  *      45df860a gave for consolidating the PCB working, and it applies identically here.
+ *
+ *   5. A HAND-SET FIGURE IS NEVER CREDITED TO A RULE (208beb8b). `applyStatutoryAdjustment` can set any of
+ *      NINE statutory lines by hand; this module never read the stamp, so RM500 typed onto a RM3,000 EPF
+ *      base was reported as the KWSP Third Schedule at an effective 16.67%. Every case below comes in a
+ *      PAIR — the stamped blob and the SAME blob without the stamp — because an assertion that a rate is
+ *      null passes on any broken read, including one that lost the figures altogether. The partner proves
+ *      the rate is exactly what the code would otherwise have printed.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -31,6 +38,8 @@ import { describe, expect, it } from 'vitest';
 import {
   STATUTORY_EXPLAIN_KEYS,
   explainStatutory,
+  isSetByHand,
+  statutoryProvenance,
   type StatutoryExplainKey,
 } from '../core/statutory-explain';
 
@@ -395,6 +404,207 @@ describe('6b4ca488 — the explanation STRUCTURALLY cannot recompute', () => {
   });
 });
 
+describe('208beb8b — a figure a payroll officer typed is not the schedule’s', () => {
+  /**
+   * THE REPRODUCTION FROM THE ITEM, to the ringgit: EPF employee set by hand to RM500 on a recorded base
+   * of RM3,000, where the KWSP Third Schedule had produced RM330. `adjustment` is the shape
+   * `applyStatutoryAdjustment` (core/payroll.ts) stamps: one reason for the whole adjustment, and
+   * `{system, applied}` for each line that was set.
+   */
+  const REASON = 'KWSP letter 2026/118 — arrears agreed with the member';
+  const MANUAL_BASES = { ...STAMPED.bases, epf: 3000, epfAdditional: 0 };
+  const stamped = (lines: Record<string, { system: number; applied: number }>, reason = REASON) => ({
+    ...STAMPED,
+    epfEmployee: 500,
+    bases: MANUAL_BASES,
+    adjustment: { reason, lines },
+  });
+  /** The SAME payslip with the stamp removed. Every case below is asserted against this partner. */
+  const UNSTAMPED_TWIN = { ...STAMPED, epfEmployee: 500, bases: MANUAL_BASES };
+
+  it('reports ruleKind "manual" and NO effective rate — and the twin proves what it replaced', () => {
+    const hand = byKey(stamped({ epfEmployee: { system: 330, applied: 500 } }));
+    // ── THE NON-VACUITY PARTNER FIRST. Without it, "the rate is null" also passes on a read that lost
+    // the amount, lost the base, or lost the whole item. This is the sentence the screen used to print.
+    const twin = byKey(UNSTAMPED_TWIN);
+    expect(twin.epf.ruleKind, 'unstamped, EPF is still the KWSP Third Schedule').toBe('schedule');
+    expect(twin.epf.effectiveEmployeeRate!, 'and 500 ÷ 3,000 is the 16.67% the screen printed').toBeCloseTo(
+      500 / 3000,
+      9,
+    );
+    // ── AND NOW THE STAMPED ONE. Same amount, same base, same run type — only the stamp differs.
+    expect(hand.epf.ruleKind, 'no rule produced this amount, so none may be named').toBe('manual');
+    expect(hand.epf.effectiveEmployeeRate, 'a typed amount over a wage is not a rate').toBeNull();
+    expect(hand.epf.effectiveEmployerRate, 'and the untouched leg’s goes too — see the header').toBeNull();
+    // The figures themselves all survive: the amount deducted, the wage it was charged against, and the
+    // figure the RULE had produced, which is the one a reader is checking the typed amount against.
+    expect(hand.epf.employeeReported, 'what the payslip charged').toBe(500);
+    expect(hand.epf.totalBase, 'the wage the rule would have used, still reported').toBe(3000);
+    expect(hand.epf.provenance.source).toBe('statutoryAdjustment');
+    expect(hand.epf.provenance.employee).toEqual({ system: 330, applied: 500 });
+    expect(hand.epf.provenance.employer, 'the employer leg was NOT typed and must not claim to be').toBeNull();
+    expect(hand.epf.provenance.reason).toBe(REASON);
+    expect(isSetByHand(hand.epf.provenance)).toBe(true);
+    expect(isSetByHand(twin.epf.provenance), 'the twin’s provenance is "computed"').toBe(false);
+  });
+
+  it('THE HRD CORP LEVY loses its multiplication, which is the one working that stops evaluating', () => {
+    // hrdf is the ONLY 'rate' item, so it is the only one whose working is printed as `base × rate =
+    // amount`. Type the amount and that equation is a product that does not come out — the plan calls this
+    // the worse case than EPF, because the false statement is arithmetic rather than a caption.
+    const twin = byKey({ ...STAMPED, hrdf: 90 });
+    expect(twin.hrdf.ruleKind, 'unstamped, the levy really is a percentage of the wage').toBe('rate');
+    expect(twin.hrdf.effectiveEmployerRate!, '90 ÷ 5,100 = 1.76%, which the screen multiplied by').toBeCloseTo(
+      90 / 5100,
+      9,
+    );
+    const hand = byKey({ ...STAMPED, hrdf: 90, adjustment: { reason: REASON, lines: { hrdf: { system: 51, applied: 90 } } } });
+    expect(hand.hrdf.ruleKind).toBe('manual');
+    expect(hand.hrdf.effectiveEmployerRate, 'no rate means the view cannot print a product').toBeNull();
+    expect(hand.hrdf.provenance.employer).toEqual({ system: 51, applied: 90 });
+    expect(hand.hrdf.provenance.employee, 'the levy has no employee leg to type').toBeNull();
+  });
+
+  it('PCB keeps "mtd" and its own screen, and is still flagged as set by hand', () => {
+    // Deliberate (plan §4): PCB has no rate to suppress here, its own screen already discloses the
+    // override in full, and one MTD display is what 45df860a settled. What it gains is the flag.
+    const hand = byKey({ ...STAMPED, pcb: 999, adjustment: { reason: REASON, lines: { pcb: { system: 320, applied: 999 } } } });
+    expect(hand.pcb.ruleKind, 'the tax working is on its own screen and is still a true account').toBe('mtd');
+    expect(hand.pcb.provenance.employee).toEqual({ system: 320, applied: 999 });
+    expect(explainStatutory({ ...STAMPED, pcb: 999, adjustment: { reason: REASON, lines: { pcb: { system: 320, applied: 999 } } } }, 'regular').setByHand?.keys).toEqual(['pcb']);
+  });
+
+  it('NO CASCADE, and the screen must not imply one: only the typed item changes', () => {
+    // `applyStatutoryAdjustment` deliberately does not re-derive PCB from a new EPF figure
+    // (core/payroll.ts). So every OTHER item must go on naming the rule that really produced it — a
+    // banner on all six would train a reader to ignore it on the payslip where it matters.
+    const e = explainStatutory(stamped({ epfEmployee: { system: 330, applied: 500 } }), 'regular');
+    const i = Object.fromEntries(e.items.map((x) => [x.key, x])) as Record<StatutoryExplainKey, (typeof e.items)[number]>;
+    for (const k of ['socso', 'skbbk', 'eis'] as const) {
+      expect(i[k].ruleKind, `${k} was not touched`).toBe('schedule');
+      expect(i[k].effectiveEmployeeRate, `${k} keeps its genuinely derived rate`).not.toBeNull();
+      expect(isSetByHand(i[k].provenance)).toBe(false);
+    }
+    expect(i.hrdf.ruleKind).toBe('rate');
+    expect(i.pcb.employeeReported, 'the tax figure did not move').toBe(320);
+    expect(e.setByHand?.keys, 'and the banner names only what was typed').toEqual(['epf']);
+    expect(e.setByHand?.reason).toBe(REASON);
+  });
+
+  it('every one of the NINE overridable lines lands on exactly one item', () => {
+    // The nine line names are core/payroll.ts's. core/statutory-explain.ts may not IMPORT them (the
+    // no-recompute fence below forbids reaching the kernel), so they are spelled out there — which means
+    // the two lists could drift. This reads the kernel's own declaration out of SOURCE and pins the map
+    // behaviourally: stamp one line, exactly one item goes manual, and it is the right one.
+    const decl = /export const STATUTORY_ADJUSTMENT_LINES = \[([^\]]*)\] as const;/.exec(read('core/payroll.ts'));
+    const nine = [...decl![1].matchAll(/'([A-Za-z]+)'/g)].map((m) => m[1]);
+    expect(nine, 'nine lines, employee side first — core/payroll.ts’s own order').toHaveLength(9);
+    const ITEM_OF_LINE: Record<string, StatutoryExplainKey> = {
+      pcb: 'pcb',
+      epfEmployee: 'epf',
+      socsoEmployee: 'socso',
+      socsoSkbbk: 'skbbk',
+      eisEmployee: 'eis',
+      hrdf: 'hrdf',
+      epfEmployer: 'epf',
+      socsoEmployer: 'socso',
+      eisEmployer: 'eis',
+    };
+    expect(Object.keys(ITEM_OF_LINE).sort(), 'every kernel line is mapped, and nothing else is').toEqual(
+      [...nine].sort(),
+    );
+    for (const [line, key] of Object.entries(ITEM_OF_LINE)) {
+      const e = explainStatutory({ ...STAMPED, adjustment: { reason: 'r', lines: { [line]: { system: 1, applied: 2 } } } }, 'regular');
+      expect(e.setByHand?.keys, `${line} must flag ${key} and nothing else`).toEqual([key]);
+      const it2 = e.items.find((x) => x.key === key)!;
+      const leg = line.endsWith('Employer') || line === 'hrdf' ? 'employer' : 'employee';
+      expect(it2.provenance[leg], `${line} is the ${leg} leg of ${key}`).toEqual({ system: 1, applied: 2 });
+    }
+  });
+
+  it('a HALF-WRITTEN stamp is not a stamp — it must never assert that the system calculated 0.00', () => {
+    // `n()` turns `undefined` into 0, so a stamp missing `system` would otherwise hand the banner
+    // "the system calculated RM 0.00" as a fact. The same gate readOverride / readDelta already use.
+    for (const half of [{ applied: 500 }, { system: 330 }, {}, null, 0, 'x', [] as unknown]) {
+      const e = explainStatutory({ ...UNSTAMPED_TWIN, adjustment: { reason: REASON, lines: { epfEmployee: half } } }, 'regular');
+      const epf = e.items.find((i) => i.key === 'epf')!;
+      expect(epf.ruleKind, `half stamp ${JSON.stringify(half)} is not a stamp`).toBe('schedule');
+      expect(epf.provenance.source).toBe('computed');
+      expect(epf.provenance.employee).toBeNull();
+      expect(e.setByHand, 'and no banner is raised on it').toBeNull();
+      expect(JSON.stringify(e), 'no invented system figure anywhere').not.toContain('"system"');
+    }
+  });
+
+  it('a garbage `adjustment` degrades to "computed" rather than throwing on a payslip screen', () => {
+    for (const bad of [null, undefined, 0, 'x', [] as unknown, { reason: 1 }, { lines: 'x' }, { lines: [] }]) {
+      expect(() => explainStatutory({ ...STAMPED, adjustment: bad }, 'regular')).not.toThrow();
+      const e = explainStatutory({ ...STAMPED, adjustment: bad }, 'regular');
+      expect(e.setByHand, `adjustment=${JSON.stringify(bad)}`).toBeNull();
+      expect(e.items.every((i) => i.provenance.source === 'computed')).toBe(true);
+    }
+    // A stamp with a real line but a non-string reason keeps the flag and drops the reason to ''. The
+    // screen names it as unrecorded; it must not print `1` or `undefined` as somebody's justification.
+    const e = explainStatutory({ ...STAMPED, adjustment: { reason: 1, lines: { epfEmployee: { system: 1, applied: 2 } } } }, 'regular');
+    expect(e.setByHand?.reason).toBe('');
+  });
+
+  it('an UNSTAMPED payslip is item-for-item what it was before 208beb8b', () => {
+    // THE REGRESSION HALF. Every payslip in the product carries no adjustment, so the whole change must be
+    // invisible on them: the same rule kinds, the same rates, and a provenance that says "computed".
+    const e = explainStatutory(STAMPED, 'regular');
+    expect(e.setByHand).toBeNull();
+    expect(e.items.map((i) => i.ruleKind)).toEqual(['schedule', 'schedule', 'schedule', 'schedule', 'rate', 'mtd']);
+    for (const i of e.items) {
+      expect(i.provenance, `${i.key}`).toEqual({ source: 'computed', employee: null, employer: null, reason: '' });
+      expect(i.effectiveEmployeeRate, `${i.key} keeps its derived employee rate`).not.toBeNull();
+    }
+    expect(e.items.find((i) => i.key === 'epf')!.effectiveEmployeeRate!).toBeCloseTo(0.11, 6);
+  });
+
+  it('both banners can be true at once, and each says only its own half', () => {
+    // A hand-set line ON an additional run. `basesCoverWholeMonth` already nulls the rates, so the stamp
+    // must not be the only thing keeping them null, and neither disclosure may swallow the other.
+    const e = explainStatutory(stamped({ epfEmployee: { system: 330, applied: 500 } }), 'bonus');
+    expect(e.basesCoverWholeMonth, 'the wages are still the cumulative month’s').toBe(true);
+    expect(e.setByHand?.keys, 'and a person still decided the EPF figure').toEqual(['epf']);
+    expect(e.items.find((i) => i.key === 'epf')!.ruleKind).toBe('manual');
+    // The untouched items on the same run keep the additional-run story and gain no manual one.
+    const socso = e.items.find((i) => i.key === 'socso')!;
+    expect(socso.ruleKind).toBe('schedule');
+    expect(socso.effectiveEmployeeRate, 'nulled by the run, not by a stamp').toBeNull();
+    expect(isSetByHand(socso.provenance)).toBe(false);
+  });
+
+  it('the seam is ONE exported function, and it is the only reader of the stamp', () => {
+    // 70b14723 (Manual EPF categories) adds a SECOND source of a hand-set EPF figure. It must extend this
+    // function, not add a second banner — so the surfaces are pinned as NON-readers of the stamp.
+    const src = code('core/statutory-explain.ts');
+    expect(src).toMatch(/export function statutoryProvenance\(statutory: unknown, key: StatutoryExplainKey\)/);
+    expect(src, 'and the predicate every surface asks instead of re-spelling the union').toContain(
+      'export const isSetByHand',
+    );
+    for (const rel of [
+      'app/payroll/statutory-detail/statutory-detail-view.tsx',
+      'app/payroll/statutory-detail/export/route.ts',
+    ]) {
+      const src = code(rel);
+      // Not a bare 'adjustment' — both files legitimately carry `adjustment: 'cycleAdjustment'`, the
+      // payroll CYCLE of that name, which has nothing to do with the stamp. What is forbidden is a READ.
+      for (const forbidden of ['.adjustment', "['adjustment']", '"adjustment"']) {
+        expect(src, `${rel} must not read the stamp for itself (${forbidden})`).not.toContain(forbidden);
+      }
+      // …and positively: each surface consumes the seam's answer through the explanation.
+      expect(src, `${rel} must read the provenance the derivation returned`).toMatch(/provenance|setByHand/);
+    }
+    // Direct call, outside explainStatutory: the seam is usable on its own, which is what 70b14723 needs.
+    expect(statutoryProvenance(null, 'epf')).toEqual({ source: 'computed', employee: null, employer: null, reason: '' });
+    expect(
+      statutoryProvenance({ adjustment: { reason: 'r', lines: { epfEmployer: { system: 390, applied: 400 } } } }, 'epf'),
+    ).toEqual({ source: 'statutoryAdjustment', employee: null, employer: { system: 390, applied: 400 }, reason: 'r' });
+  });
+});
+
 describe('6b4ca488 — the screen’s captions exist, and are translated', () => {
   type Msgs = {
     payroll: {
@@ -442,6 +652,16 @@ describe('6b4ca488 — the screen’s captions exist, and are translated', () =>
       'ruleScheduleEpf',
       'ruleMtd',
       'pcbViewCalculation',
+      // 208beb8b — the hand-set disclosure: the rule name that names no rule, the third banner, the
+      // working note that replaces every rate caption, and the two rows/columns holding the system figure.
+      'ruleManual',
+      'manualBannerHeading',
+      'manualBannerBody',
+      'manualBannerItems',
+      'manualReason',
+      'manualNote',
+      'fieldSystemEmployeeShare',
+      'fieldSystemEmployerShare',
       // The export's two extra columns — the file splits what the screen shows as a disclosure.
       'colEmployerBorne',
       'colTakeHome',
@@ -484,6 +704,8 @@ describe('6b4ca488 — the screen’s captions exist, and are translated', () =>
         'incrementalNote',
         'wholeMonthNote',
         'employerBorneNote',
+        'manualBannerBody',
+        'manualNote',
       ];
       for (const k of LONG_SENTENCES) {
         expect(m.payroll.statutoryDetail[k], `${loc}: payroll.statutoryDetail.${k} is still English`).not.toBe(en[k]);
