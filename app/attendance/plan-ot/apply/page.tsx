@@ -411,9 +411,17 @@ export default async function ApplyOtPlanPage({
                 unconditionally, with no query behind it, so a brand-new employee opening this form for the
                 first time was told they already had a plan and should withdraw it. The real refusal is
                 delivered: myRequestOvertime rejects the second plan and the ErrorBanner above prints it
-                with the actual date. The key me.otAlreadyApprovedForDate is kept for that path; it must
-                never be rendered unguarded. What IS rendered now is the CONDITIONAL "already filed" block
-                on the day card above, which is a query result rather than a standing sentence. */}
+                with the actual date. What IS rendered now is the CONDITIONAL "already filed" block on the
+                day card above, which is a query result rather than a standing sentence.
+
+                ec30b2e9 (r364) — THE SENTENCE ABOVE USED TO END "The key me.otAlreadyApprovedForDate is
+                kept for that path; it must never be rendered unguarded." HALF OF THAT IS NOW WRONG. It is
+                no longer kept "for that path": that key names no date, and the action needs one. The
+                refusal the ErrorBanner prints is now one of TWO dated keys — me.otPlanApprovedNotCounted
+                (approved, not yet counted → withdraw it) and me.otAlreadyCountedForDate (already counted →
+                that is a correction) — resolved in app/me/actions.ts, which is where the typed error is
+                caught. me.otAlreadyApprovedForDate is RETIRED, not deleted: every catalogue still carries
+                it (test/plan-ot-calendar-screen.test.ts §E) and this screen must still never render it. */}
           </Card>
         </div>
       </div>

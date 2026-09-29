@@ -3431,6 +3431,8 @@
     "otWarnNotBlockHeading": "这两项只是提醒，都不会阻止您提交。",
     "otWarnNotBlockBody": "提交按钮始终可用，真正的月末工作仍可申报。您的上级也会看到日子类型，以及长时数计划的标记。",
     "otAlreadyApprovedForDate": "该日期已有一份已批准的加班计划。同一日期不能同时存在两份计划，因此无法再提交。若第一份有误，请先撤回。",
+    "otPlanApprovedNotCounted": "{date} 已有一份已批准的加班计划。同一日期不能同时存在两份计划，因此无法再提交。若第一份有误，请先撤回。",
+    "otAlreadyCountedForDate": "{date} 的加班已获批准，并已计入当天。第二份加班申请无法取代它。若要更改工时，请提交一份同时填写当天上班和下班时间的出勤更正申请——该途径会记录原本的数字和更改后的数字。",
     "overtimeMovedHeading": "加班 — 已移至自助加班。",
     "overtimeMovedBody": "事前申请与事后申报的加班都集中在自助加班中，两份清单不会各自漂移。",
     "otNothingSavedUntilSubmit": "在您提交之前不会保存任何内容。计划送达时会通知您的上级，批准或驳回时会通知您。",

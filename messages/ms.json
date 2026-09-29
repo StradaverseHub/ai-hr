@@ -3431,6 +3431,8 @@
     "otWarnNotBlockHeading": "Kedua-duanya memberi amaran. Tiada satu pun menghalang anda.",
     "otWarnNotBlockBody": "Butang hantar kekal tersedia, jadi akhir bulan yang tulen masih boleh difailkan. Penyelia anda turut melihat jenis hari itu, serta penanda apabila rancangan itu panjang.",
     "otAlreadyApprovedForDate": "Anda sudah mempunyai rancangan lebih masa yang diluluskan untuk tarikh ini. Dua rancangan bagi satu tarikh tidak boleh wujud bersama, jadi yang kedua tidak boleh difailkan. Tarik balik yang pertama jika ia salah.",
+    "otPlanApprovedNotCounted": "Anda sudah mempunyai rancangan lebih masa yang diluluskan untuk {date}. Dua rancangan bagi satu tarikh tidak boleh wujud bersama, jadi yang kedua tidak boleh difailkan. Tarik balik yang pertama jika ia salah.",
+    "otAlreadyCountedForDate": "Lebih masa untuk {date} sudah diluluskan dan dikira pada hari tersebut. Permohonan lebih masa kedua tidak boleh menggantikannya. Untuk menukar jam tersebut, failkan permohonan kehadiran yang turut menyatakan waktu masuk dan waktu keluar hari itu — laluan itu merekodkan angka asal dan angka barunya.",
     "overtimeMovedHeading": "Lebih masa — dipindahkan ke Kerja Lebih Masa Sendiri.",
     "overtimeMovedBody": "Lebih masa yang dipohon sebelum hari itu dan yang dituntut selepasnya kedua-duanya berada di Kerja Lebih Masa Sendiri, jadi kedua-dua senarai tidak boleh menyimpang.",
     "otNothingSavedUntilSubmit": "Tiada apa disimpan sehingga anda menghantar. Penyelia anda diberitahu sebaik ia tiba, dan anda diberitahu apabila ia diluluskan atau ditolak.",

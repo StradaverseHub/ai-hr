@@ -25,6 +25,8 @@
  * The framework edges are faked the way test/r299-leave-credit-cancel.test.ts fakes them.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -45,6 +47,35 @@ vi.mock('next/navigation', () => ({
   },
   notFound: vi.fn(() => undefined),
 }));
+/**
+ * ec30b2e9 (r364) — THE REAL CATALOGUE, NOT A KEY-ECHOING STUB. Two of this action's refusals are now
+ * localized (`me.otPlanApprovedNotCounted`, `me.otAlreadyCountedForDate`), and the whole point of §2 is
+ * that it reads the SENTENCE the employee reads. A stub returning the key would have let a missing key, a
+ * wrong key or a dropped `{date}` through, which is exactly the class of defect this file exists for.
+ *
+ * ⚠️ `onError` THROWS, deliberately: next-intl swallows MISSING_MESSAGE and FORMATTING_ERROR and hands
+ * back the key, so a silently-broken message would read as a pass. (Same reasoning as
+ * test/r292-anomaly-threshold-disclosure.ts.) `getLocale` is mocked too because app/me/actions.ts imports
+ * it — an un-mocked named export of a mocked module is an error, not a fallback.
+ */
+vi.mock('next-intl/server', async () => {
+  const { createTranslator: make } = await import('next-intl');
+  const { readFileSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const messages = JSON.parse(readFileSync(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8'));
+  return {
+    getLocale: async () => 'en',
+    getTranslations: async (ns: string | { namespace?: string }) =>
+      make({
+        locale: 'en',
+        messages,
+        namespace: (typeof ns === 'string' ? ns : ns?.namespace) as never,
+        onError: (e) => {
+          throw e;
+        },
+      }),
+  };
+});
 
 import { myRequestOvertime } from '../app/me/actions';
 
@@ -54,6 +85,9 @@ let employmentId: string;
 const FUTURE = '2027-06-02'; // a Wednesday under the default Mon–Fri policy
 const FUTURE_2 = '2027-06-03';
 const FUTURE_3 = '2027-06-09';
+// r364 — a date in the past, where an approved plan's hours are COUNTED at approval time rather than
+// waiting for the day. 2025-06-04 is a Wednesday, an ordinary working day under the policy above.
+const PAST = '2025-06-04';
 
 const uniq = () => `otapply_${Math.random().toString(36).slice(2)}@t.local`;
 
@@ -82,6 +116,14 @@ function form(fields: Record<string, string>, file?: File): FormData {
   if (file) fd.set('attachment', file);
   return fd;
 }
+
+/** r364 — the English catalogue the action resolves its refusals from. Read from the FILE rather than
+ *  restated here: a copy of the sentence in the test is a second source of truth for the wording, and the
+ *  two drift the first time somebody improves one of them. What the assertions pin is the SUBSTANCE (the
+ *  date is interpolated, the route is named), which a copied string cannot check. */
+const MESSAGES: { me: Record<string, string> } = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8'),
+);
 
 const planFor = async (date: string) =>
   (
@@ -205,7 +247,47 @@ describe('2 · the refusals the employee reads are the ones that are TRUE of wha
       .set({ status: 'approved', approvedOtMinutes: 120 })
       .where(eq(schema.attendanceCorrection.id, first.id));
     const url = await redirectOf(() => myRequestOvertime(form({ date: FUTURE, otHours: '1', reason: 'Second plan' })));
-    expect(errorOf(url)).toBe(`You already have an approved overtime plan for ${FUTURE}. Withdraw it first if it is wrong.`);
+    // ── ec30b2e9 (r364) · THIS ASSERTION IS UPDATED, NOT LOOSENED ──────────────────────────────────────
+    // IT USED TO READ, and was right to:
+    //   expect(errorOf(url)).toBe(
+    //     `You already have an approved overtime plan for ${FUTURE}. Withdraw it first if it is wrong.`,
+    //   );
+    // That was a RAW ENGLISH Error.message travelling through `?error=` into ErrorBanner — so a Tamil,
+    // Thai, Malay, Vietnamese or Chinese employee read English on a screen with six catalogues. The refusal
+    // is now a typed error the action maps to `me.otPlanApprovedNotCounted`. What is pinned is the same
+    // two things it always pinned, and one more: the sentence names the DATE, it says to WITHDRAW the
+    // first, and it now comes out of the catalogue rather than out of a throw.
+    expect(errorOf(url)).toBe(MESSAGES.me.otPlanApprovedNotCounted.replace('{date}', FUTURE));
+    expect(errorOf(url)).toContain(FUTURE);
+    expect(errorOf(url)).toContain('Withdraw the first');
+  });
+
+  it('r364 — once the hours are COUNTED the sentence changes: this is a correction, not a new request', async () => {
+    // THE TWO REFUSALS ARE DIFFERENT SENTENCES BECAUSE THE WAY OUT IS DIFFERENT. Above, the plan is still
+    // waiting and can be withdrawn. Here the hours are on the attendance day and in what payroll reads, so
+    // withdrawal is refused by design and the only route is an attendance correction.
+    //
+    // The stored state is set directly, the way the case above sets `approved`: this file's subject is the
+    // ACTION and the sentence it produces. That the SERVICE reaches this state by itself — and that a clock
+    // correction is still accepted here — is pinned against the real engine in test/plan-ot.test.ts §4.
+    await redirectOf(() => myRequestOvertime(form({ date: PAST, otHours: '3', reason: 'Last Wednesday' })));
+    const first = await planFor(PAST);
+    await owner.db
+      .update(schema.attendanceCorrection)
+      .set({ status: 'approved', approvedOtMinutes: 180, appliedAt: new Date(), decidedAt: new Date() })
+      .where(eq(schema.attendanceCorrection.id, first.id));
+    // The premise in its own right: this fixture is in the COUNTED window, not the unapplied one.
+    expect((await planFor(PAST)).appliedAt, 'counted means applied_at is stamped').not.toBeNull();
+
+    const url = await redirectOf(() => myRequestOvertime(form({ date: PAST, otHours: '0.5', reason: 'The half hour I forgot' })));
+    expect(errorOf(url)).toBe(MESSAGES.me.otAlreadyCountedForDate.replace('{date}', PAST));
+    // It must name the day and point somewhere real, or the refusal is a dead end.
+    expect(errorOf(url)).toContain(PAST);
+    expect(errorOf(url)).toContain('attendance request');
+    // And it must NOT be the withdraw sentence: withdrawal is refused in this state.
+    expect(errorOf(url)).not.toContain('Withdraw');
+    // Refused at the door — the second request was never written.
+    expect(await plansCount()).toBe(1);
   });
 });
 
