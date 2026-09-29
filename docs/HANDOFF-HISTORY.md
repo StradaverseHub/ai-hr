@@ -1,3 +1,46 @@
+## r364 (2026-09-29) — the EA form says how many children again, and three screens stop asserting things that were not true. `main@d5a2697a`, **no migration**.
+
+Closed: `fda53352`, `c36e1ae6`, `ec30b2e9`, `208beb8b`. Gate: **1058 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, zero AssertionErrors, first attempt. `tsc` 0, `next build` 0, `scripts/i18n-check.mjs` PASS.
+
+### fda53352 — WE PUT A WRONG FIGURE ON A FORM EMPLOYEES SIGN, AND THE REPORTER CAUGHT IT
+
+r359 made EA item 8 the s.48-**weighted** child figure — 9 for an employee with two children, and **fractional** for a shared-custody child, so the live form could print "4.5 children". It is a count. `Bilangan anak yang layak untuk pelepasan cukai`; the agency's own English is "Number of children qualified for tax relief".
+
+**The evidence was inside the document r359 cited.** `pcb-calculation-slip-official-2026-12.pdf` prints a child grid on **page 1** showing one child under 18 and one disabled child still studying — **two children** — and `C = Number of eligible children 9.00` on **page 6**. LHDN prints 2 where it means children and 9 where it means C, in one file. r359 read half of it and reasoned from the MTD specification, which governs the monthly tax calculation and not this form. **This repo's own field register said so at r351 and r359 overrode it.**
+
+- A.8 is a count again, per mode, and **a 50% shared child counts as ONE** — both branches return integers, so a fraction is now unreachable.
+- The false invariant is gone. r359 asserted `A.8 × per-child deduction IS D.6`; the weighting is exactly why that is false, and the case now asserts its negation with r359's claim quoted under a REVERSED banner.
+- **One behaviour is deliberately not r353's**: a missing count in a column-reading mode now prints the agency's empty rule rather than `0`, because `0` asserts that no child qualifies.
+- **The part r359 got RIGHT is untouched** and was confirmed green: on the MTD worksheet Q is the per-child deduction and C is the weighted number, because LHDN's slip prints exactly that.
+
+### 208beb8b — a screen that credited a typed figure to a government schedule
+
+Overriding EPF through Statutory Adjustment left the Statutory Detail screen dividing the amount by the wage and printing the result as an effective rate **captioned as the KWSP Third Schedule**. The money was right; the explanation was false, on the one screen whose job is defending a figure to an auditor.
+
+Fixed across **all nine** adjustment lines, not the one the ticket named — and the sharpest was HRD levy, the only line printing `base × rate = amount`, an equation that stops evaluating the moment somebody types the amount.
+
+**The compile-time guard did the work it exists for.** `RULE_LABEL` is exhaustive by type in the view *and in the export route*, so adding `'manual'` broke `tsc` in both — which is the mechanism that forces the file an auditor downloads to be updated in the same pass. It was not widened to silence it, and the export was demonstrated failing with the banner absent: truth on screen, schedule in the file.
+
+### c36e1ae6 + ec30b2e9
+
+The Leave Credit amber warning fired on **every** rest-day, off-day and holiday row whether or not a clock-out existed, because `derive`'s two exits disagreed and the assessed one asked about an argument it had deliberately nulled. Display-only, and proved so: with the fix reverted, minutes, credit and total are byte-identical while the warning returns.
+
+The OT overwrite is refused — and **the trap was real**. The obvious guard sits inside `if (hasOt)`, which is also true for the clock correction the refusal message recommends; the naive version was demonstrated refusing the remedy in the same breath as suggesting it. The refusal is now a typed error resolved through the catalogue, and the Malay banner was read off the DOM, which a raw English throw cannot produce.
+
+### THREE INSTRUMENTS THAT WERE NOT MEASURING
+
+- **`<input>` is not permitted as a child of `<tr>`.** Four hidden fields sat directly under the Leave Credit row, so the parser foster-parented them out of the table and this screen logged a hydration error on every load. It had not corrupted a submission — foster-parenting preserves relative order and the action zips by index — but that is a coincidence, not a contract, and by-index zipping is the only contract that form has.
+- **A layout guard counted a tag inside a comment.** Explaining the above pushed `expect(src.match(/<table/g)).toBe(1)` to 2. A tag in a comment is not a tag, exactly as a guard name in a comment is not a call — the same blind spot r362 fixed in the auth guard, inverted.
+- **A test asserted a rest-day row must HIDE a clock-out the system holds.** Not one of the two guards the brief named; the builder found the real one and inverted it with the old claim quoted.
+
+### NOT DONE
+
+- **One door is still open on the OT overwrite**, raised as `d16237da`: the refusal recognises a day counted by an earlier plan, not one counted by an attendance request — the route the refusal itself recommends. One line, but widening what the system refuses is the reporter's decision, not something to slip in under an item approved for something else.
+- For a hand-set PCB the summary column still reads "LHDN monthly tax deduction calculation" — the plan's explicit choice, and the one place a reviewer should push back.
+- **A.8 reads the employee's position today, not as at the year on the form.** True before r359 as well; no per-year snapshot exists.
+- Five non-English strings across two items are ours, not native-speaker reviewed. Only en and ms were read on a rendered screen.
+- **`ai_hr_dev` was truncated three times by sibling agents mid-round**, destroying two render checks before a warning reached them. Both re-ran under `devdb-lock.sh`; one discovered its original evidence had been a grep of the RSC catalogue rather than a rendered banner. Any render check on this machine that is not inside that lock is reading somebody else's rows.
+
 ## r363 (2026-09-29) — one word for one state, one name per field, and two sentences that contradicted themselves. `main@4493a096`, **no migration**.
 
 Closed: `4c8aae68`, `e0b6e3b8`. Gate: **1058 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`. Chunks 2–16 green in the full run; **chunk 1 went red on contention I caused and green on a quiet re-run** (67/67 files, 912/912 tests). See the note at the foot, `tsc` 0, `next build` 0, `scripts/i18n-check.mjs` PASS.
