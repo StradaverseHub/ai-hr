@@ -1208,10 +1208,19 @@ export type EaStatement = {
     socsoNo: string | null;
     category: number;
     /**
-     * A.8 — C, the NUMBER OF QUALIFYING CHILDREN in LHDN's own sense: the s.48-weighted figure, not a
-     * count of child records (r359, reversing r351/r353 — see the derivation in `eaStatement`). NULL
-     * when the year's slips carry no stamped relief, which is the same condition that leaves D.6 empty:
-     * the two boxes are one fact and are absent together.
+     * A.8 — "Number of children qualified for tax relief". A COUNT OF CHILDREN, resolved per
+     * child-relief mode (r364, reversing r359 — see the derivation in `eaStatement`).
+     *
+     * ⚠️ r359 SAID THE OPPOSITE AND SHIPPED IT. Its sentence here read: "A.8 — C, the NUMBER OF
+     * QUALIFYING CHILDREN in LHDN's own sense: the s.48-weighted figure, not a count of child records
+     * … NULL when the year's slips carry no stamped relief, which is the same condition that leaves
+     * D.6 empty: the two boxes are one fact and are absent together." Both halves are reversed: A.8 is
+     * a count again, and it no longer depends on D.6's stamp. C is a term in LHDN's MONTHLY tax
+     * formula; it is not what this box asks for. D.6 carries the weighted ringgit on the same page.
+     *
+     * NULL means UNRECORDED, not zero: no `employee_statutory_my` row, or a null `num_children`, in a
+     * mode that reads that column. `0` is a claim that no child qualifies, which is why an 'auto_table'
+     * employee with no grid keyed prints 0 and an employee with nothing on file prints an empty rule.
      */
     children: number | null;
     hiredOn: string;
@@ -1484,10 +1493,48 @@ export async function eaStatement(
      *
      * ⚠️ AN 'auto_table' EMPLOYEE WITH NO GRID KEYED PRINTS 0, AND THAT IS THE HONEST FIGURE, not a
      * fallback to the stored column. `pricesChildReliefFromGrid` returns true for 'auto_table'
-     * unconditionally, so an unkeyed grid claims NO child relief — the employee's PCB was computed with
-     * none. Printing the stale `num_children` beside a D.6 of nothing would put two contradictory answers
-     * on one page; CLAUDE.md §8, the count follows the money.
+     * unconditionally, so an unkeyed grid DECLARES no child relief for anybody: zero children qualify,
+     * and that is a fact about what this employee's tax record says, readable without any payroll run.
+     *   ⚠️ r364 — THIS ANSWER IS KEPT AND ITS REASON IS RE-ARGUED. The sentence here used to end
+     *   "Printing the stale `num_children` beside a D.6 of nothing would put two contradictory answers
+     *   on one page; CLAUDE.md §8, the count follows the money." The 0 survives; "the count follows the
+     *   money" does not, and that slogan is what r359 rode all the way to printing a price in a box
+     *   ruled for a number of people. A.8 answers "how many children qualify"; D.6 answers "what is the
+     *   relief worth". They are different questions, so the two boxes cannot contradict each other and
+     *   neither one is evidence about the other.
+     *
+     * ══ r364 (fda53352 rev 8) · REVERSES r359. A.8 IS THE COUNT AGAIN, AND THE AGENCY'S OWN OUTPUT
+     *    SETTLES IT INSIDE ONE DOCUMENT ═══════════════════════════════════════════════════════════════
+     *
+     * r359 replaced the expression below with `childReliefFromPayroll / perChild` — the s.48-weighted C
+     * — reasoning from the MTD specification's variable list and from LHDN's PCB Calculation Slip. Those
+     * govern the MONTHLY TAX CALCULATION. Nothing in either speaks to Form EA, and the slip itself
+     * distinguishes the two figures on its own pages:
+     *
+     *   docs/forms/pcb-calculation-slip-official-2026-12.pdf page 1 — a grid headed "Number of children
+     *   / Qualification rate 100% 50%", printing (a) Under 18 = 1 and (e) Disabled and still studying
+     *   = 1. TWO children, each a whole child, for this very employee;
+     *   the same file, page 6 — "Q = Deduction for eligible children 2,000.00" and "C = Number of
+     *   eligible children 9.00".
+     *
+     * LHDN prints 2 where it means children and 9.00 where it means C, in one document. r359 read half
+     * of it. And the form's own English is unambiguous: docs/forms/ea-cp8a-pin-2023-official-en.pdf
+     * prints "8. Number of children qualified for tax relief" among New I.C. No., Passport No., EPF No.
+     * and SOCSO No. — the left column of particulars, no RM heading over it — while the weighted money
+     * has its own box in the RM column, "6. Total qualifying child relief". *Bilangan* is a count.
+     *
+     * DELIBERATELY NOT SOURCED FROM THE PAYSLIP TRACE. `trace.childCount` changed meaning at r359
+     * (record count before, weighted after), so a slip written in August and one written in October
+     * disagree about what that field is. A.8 reads the employee's tax record, which is one thing.
+     *
+     * KNOWN AND NAMED RATHER THAN QUIETLY WIDENED: this is the employee's position TODAY, not as at the
+     * year the form covers. No per-year head-count snapshot exists. That was true before r359 as well
+     * and is not fixed here; it is recorded on the item instead.
      */
+    const eaQualifyingChildren =
+      info.childReliefMode === 'auto_table'
+        ? childReliefTableHeadCount(info.childReliefTable as Record<string, { full?: unknown; half?: unknown }> | null)
+        : info.children;
     // ── Part A's Jawatan — r209 fix: IT MUST SURVIVE TERMINATION ─────────────────────────────────────
     // 6036dab7 read this off the OPEN assignment (`valid_to IS NULL`), copying cp39FormExtras, which asks
     // about a serving preparer. An EA is chiefly issued to LEAVERS, and terminateEmploymentTx closes the
@@ -1695,39 +1742,6 @@ export async function eaStatement(
       }
     }
 
-    // ══ r359 fda53352 rev 7 · A.8 IS C, AND C IS NOT A HEAD COUNT. TWO OF OUR ROUNDS SAID OTHERWISE ══
-    //
-    // ⚠️ THE CLAIM ABOVE IS REVERSED, AND THE REPORTER WAS RIGHT BOTH TIMES THEY SAID SO. r351 answered
-    // "A.8 is correct as a count" and r353 refined that per mode; the reasoning in the block above reads
-    // "Bilangan anak" as a count of child records. LHDN's own specification settles it the other way:
-    //
-    //   printed p.10 — the variable list for the P formula: "Q  Deduction for qualifying children" and
-    //   "C  Number of qualifying children", with the formula carrying the term QC (that is Q x C);
-    //   printed p.11 — "Value of C = Number of qualifying children", restated per category;
-    //   printed p.27 — the category table's OWN column heading: "Relief to be given AS IF THE EMPLOYEE
-    //   HAS THIS NUMBER OF CHILDREN", 4 / 4 / 4 / 8.
-    //
-    // So the agency's "number of qualifying children" IS the weighted figure, and A.8 asks for it in the
-    // same words. For one disabled child in higher education plus one child under 18, C is 9, not 2.
-    //
-    // DERIVED FROM THE MONEY THE KERNEL ACTUALLY ALLOWED, WHICH IS WHAT MAKES THE FORM CHECKABLE.
-    // `childReliefFromPayroll` below is `pcbMeta.reliefs.children` off the year's last stamped slip — the
-    // annual, s.48-weighted relief that was netted off P, and the figure D.6 prints. C is that over the
-    // per-child deduction, so A.8 x RM2,000 === D.6 BY CONSTRUCTION rather than by two derivations
-    // agreeing. It is also why this is not a second reading of the family register: the register can have
-    // moved since the year was paid, and the form is about the year.
-    //
-    // ⚠️ ABSENT WHEN D.6 IS ABSENT, and that is the coherent answer rather than a missing feature. A slip
-    // written before item 169e3c24 carries no `reliefs`, and a flat-rate snapshot has none by
-    // construction; D.6 already leaves the box empty in both cases. Printing a head count beside an empty
-    // D.6 is exactly the "two contradictory answers on one page" the reversed block above warned about —
-    // the warning was right even though its conclusion was not. CLAUDE.md §8: an absent box asserts
-    // nothing.
-    //
-    // `childReliefTableHeadCount` is no longer read HERE. It is still exported and still used by the
-    // screens that legitimately want a head count; A.8 is not one of them.
-    const eaQualifyingChildren =
-      childReliefFromPayroll == null ? null : round2(childReliefFromPayroll / DEFAULT_MY_STATUTORY.pcb.reliefs.perChild);
     // ── 1.2.6 EA Data Overwrite — overlay HR's EA-only amendments onto the payroll-derived figures ──
     // EA-ONLY: nothing above touched payroll; this only rewrites the figures the EA form renders. Read the
     // override rows for (employment, year), apply each to its field, then recompute partB.gross from the
@@ -1958,8 +1972,10 @@ export async function eaStatement(
         epfNo: info.epfNo,
         socsoNo: info.socsoNo,
         category: info.category ?? 1,
-        // r353 — item 8, "Number of children qualified for tax relief", read from whichever source the
-        // employee's child-relief mode makes authoritative. See the note on the `childReliefMode` select.
+        // r353, restored by r364 — item 8, "Number of children qualified for tax relief", read from
+        // whichever source the employee's child-relief mode makes authoritative. A COUNT of children in
+        // every mode; r359's weighted C is D.6's business, not this box's. See the note above the
+        // `eaQualifyingChildren` expression and the one on the `childReliefMode` select.
         children: eaQualifyingChildren,
         hiredOn: info.hiredOn,
         terminatedOn: info.terminatedOn,

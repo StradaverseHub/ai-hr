@@ -390,7 +390,10 @@ export default async function EaStatementPage({
           <Row label={t('epfNo')} value={ea.employee.epfNo || '—'} />
           <Row label={t('socsoNo')} value={ea.employee.socsoNo || '—'} />
           <Row label={t('mtdCategory')} value={CATEGORY[ea.employee.category] ?? ea.employee.category} />
-          <Row label={t('childrenTaxRelief')} value={ea.employee.children} />
+          {/* r364 — A.8 is nullable (unrecorded), and a bare `null` renders as an EMPTY cell that reads
+              as "zero children" beside the em-dashes every other absent particular on this screen
+              prints. Same distinction the PDF draws with its empty rule. */}
+          <Row label={t('childrenTaxRelief')} value={ea.employee.children ?? '—'} />
           <Row label={t('employmentPeriod')} value={period} />
         </section>
 

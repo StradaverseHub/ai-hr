@@ -1595,13 +1595,13 @@
       "photoView": "View photo",
       "photoViewClose": "Close",
       "photoViewTitle": "{name} — profile photo",
-      "childrenPhysical": "บุตรที่บันทึกไว้",
-      "childrenQualifying": "บุตรที่มีสิทธิ์ (C)",
+      "childrenPhysical": "บุตรที่มีสิทธิ์ลดหย่อนภาษี",
+      "childrenQualifying": "นับเป็น สำหรับภาษีรายเดือน (C)",
       "childProvenanceEntered": "Entered by hand",
       "childProvenanceFromFamily": "Worked out from the Family records",
       "childProvenanceFromTable": "Worked out from the relief table below",
       "childFamilyCountHint": "The Family records hold {count} child record(s).",
-      "childReliefAmountHint": "Child relief: RM {amount}",
+      "childReliefAmountHint": "Child relief: RM {amount} — Form EA Section D item 6 prints this figure.",
       "childQualifyingManualNote": "Manual mode uses the number entered above as the qualifying count, at RM {amount} per child. Switch to a derived mode to work it out from each child's own category.",
       "childQualifyingBreakdown": "How the qualifying count was reached",
       "childQualifyingBreakdownEmpty": "Nothing is keyed yet, so no child relief is claimed.",
@@ -1627,8 +1627,8 @@
       "childQualifyingWhyExplicit": "[retired r355 — the tick is consent, not eligibility (77e882f5); replaced by childQualifyingWhyCategory]",
       "childQualifyingCategoryContradictsDob": "หมวดหมู่ลดหย่อนของบุตรคนนี้ระบุว่าต่ำกว่า 18 ปี แต่วันเกิดไม่สอดคล้อง โปรดตรวจสอบข้อมูล",
       "childQualifyingWhyCategory": "นับรวมเนื่องจากหมวดหมู่ลดหย่อนของบุตรคนนี้อนุญาตให้ขอลดหย่อนได้หลังอายุ 18 ปี การติ๊กเพียงอย่างเดียวไม่ทำให้มีสิทธิ์",
-      "childrenPhysicalDoc": "จำนวนที่จัดเก็บไว้ แบบฟอร์ม E และ CP8D อ่านค่านี้",
-      "childrenQualifyingDoc": "C ของ LHDN — บุตรแต่ละคนนับตามน้ำหนักของประเภทค่าลดหย่อน แบบฟอร์ม EA ข้อ 8 และใบคำนวณ PCB อ่านค่านี้ และค่าลดหย่อนบุตรคือ RM{perChild} × C"
+      "childrenPhysicalDoc": "จำนวนบุตรที่มีสิทธิ์ แบบฟอร์ม EA ข้อ 8 แบบฟอร์ม E และ CP8D อ่านค่านี้",
+      "childrenQualifyingDoc": "C ของ LHDN — เป็นค่าน้ำหนัก ไม่ใช่จำนวนคน: บุตรแต่ละคนนับเป็นหน่วยตามมาตรา 48 ของประเภทค่าลดหย่อนนั้น การคำนวณ PCB รายเดือนและใบคำนวณอ่านค่านี้ ไม่มีช่องใดในแบบฟอร์ม EA ที่พิมพ์ค่านี้ ค่าลดหย่อนที่ได้ RM{perChild} × C คือค่าที่แบบฟอร์ม EA ส่วน D ข้อ 6 พิมพ์"
     },
     "import": {
       "title": "นำเข้าพนักงาน",

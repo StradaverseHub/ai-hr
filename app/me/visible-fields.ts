@@ -417,6 +417,14 @@ export const ME_VISIBLE_FIELD_LABEL_KEYS: Record<MeTabKey, readonly string[]> = 
     // what `num_children` is and what Form E / CP8D / EA read) and Qualifying children (PCB). My Profile
     // follows the HEAD COUNT under Personnel's new caption; the qualifying figure is accounted for in
     // ME_UNRENDERED_PERSONNEL_FIELDS below.
+    //   ⚠️ r364 — "and what Form E / CP8D / EA read" WAS FALSE FOR A DAY and is true again. r359 moved EA
+    //   item 8 onto the s.48-weighted C; the reporter reversed it, because A.8 asks for the "Number of
+    //   children qualified for tax relief" and that is a count. Precisely: Form E and CP8D read this
+    //   column directly; the EA reads it in 'auto' and 'manual' and reads the keyed grid's head count in
+    //   'auto_table', which is the same count. The weighted figure is not a number of people and no box
+    //   on the EA prints it — what it produces is the ringgit in Section D item 6. The caption this
+    //   manifest follows changed with it: "Children on record" became "Children qualifying for tax
+    //   relief". The key did not, so nothing here moves.
     'childrenPhysical',
     'disabledIndividualLabel',
     'disabledSpouseLabel',
