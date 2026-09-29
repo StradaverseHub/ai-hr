@@ -43,10 +43,14 @@ vi.mock('next-intl/server', () => ({
   getLocale: vi.fn(async () => 'en'),
 }));
 
+import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createAdditionalRun, createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
+// r360 — the company's own Pay Cycle catalogue, so a run can be opened under a REAL configured cycle
+// instead of a hand-inserted payroll_cycle row.
+import { listPayrollCycles, seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { createMovementEvent } from '../core/movement';
 import { listProcessedPayslipsAcross } from '../core/payroll-view';
 import IndividualPayslipPage from '../app/payroll/individual-payslip/page';
@@ -411,6 +415,99 @@ describe('5a29686c — a bonus run beside a regular one is reachable from the cy
       }),
     });
     expect(selectNamed(tree, 'cycle').value, 'the old link resolves to the run it meant').toBe('bonus:2');
+  });
+});
+
+// ─────────────────── r360: the letterhead and the Pay Cycle field ───────────────────
+
+/**
+ * r360 (feedback 1fe55a23) — WHAT THE SCREEN ACTUALLY HANDS THE BROWSER for the two display requests.
+ *
+ * Asserted on the rendered tree rather than on the page's source for the reason the header of this file
+ * gives: a screen that prints an unlabelled number, or the kernel's run-type word, renders perfectly,
+ * returns 200 and passes tsc. The shared-rule and catalogue halves are in test/individual-payslip.test.ts;
+ * the DOCUMENT half is in test/payslip-pdf.test.ts. This is the SCREEN half.
+ *
+ * The translator mock echoes keys, so `admin.organization.regNo` arrives as the string 'regNo' — which is
+ * what makes "is the caption there at all?" checkable without asserting an English word.
+ */
+describe('r360 — the payslip letterhead labels its registration number, and names the real Pay Cycle', () => {
+  /** The `value` prop of the one `<Info label={…}>` pair on the page — the employee-information grid. */
+  const infoValue = (tree: unknown, label: string): unknown => {
+    const hits: unknown[] = [];
+    const walk = (node: unknown) => {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) {
+        for (const n of node) walk(n);
+        return;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const p = (node as any).props ?? {};
+      if (p.label === label && 'value' in p) hits.push(p.value);
+      for (const k of Object.keys(p)) if (p[k] && typeof p[k] === 'object') walk(p[k]);
+    };
+    walk(tree);
+    expect(hits, `exactly one field labelled ${label}`).toHaveLength(1);
+    return hits[0];
+  };
+
+  /** Open a regular run under a named cycle from the company's own seeded catalogue. */
+  async function payUnderCycle(period: string, cycleName: string) {
+    await seedPayrollCycleCatalog(admin, base.companyId);
+    const cycles = await listPayrollCycles(admin, base.companyId, { activeOnly: true });
+    const cycle = cycles.find((c) => c.name === cycleName);
+    expect(cycle, `the default catalogue must carry a "${cycleName}" cycle`).toBeTruthy();
+    const { batchId } = await createBatch(admin, {
+      companyId: base.companyId,
+      payPeriod: period,
+      payrollCycleId: cycle!.id,
+    });
+    await generatePayslips(admin, { batchId });
+  }
+
+  it('prints "Reg. no." with the number, and the CYCLE NAME rather than the run-type word', async () => {
+    await owner.db
+      .update(schema.company)
+      .set({ registrationNo: '201901024512' })
+      .where(eq(schema.company.id, base.companyId));
+    const me = await hire(admin, 'Labelled Reg', 'labelled.reg@acme.test');
+    await payUnderCycle('2026-03', 'Monthly');
+
+    const tree = await IndividualPayslipPage({ searchParams: Promise.resolve({ employmentId: me.employmentId }) });
+    expect(renderedPayslipId(tree), 'a payslip must be on screen, or nothing below is about anything').toBeTruthy();
+
+    const words = textOf(tree);
+    // 1. THE CAPTION AND THE NUMBER. Before r360 the number was drawn alone, so a reader met a bare
+    //    "201901024512" under the company name with nothing saying what it was.
+    expect(words, 'the registration number must be on the letterhead').toContain('201901024512');
+    expect(words, 'and it must be captioned — this is the whole of requirement 1').toContain('regNo');
+
+    // 2. THE PAY CYCLE FIELD NAMES THE CONFIGURED CYCLE. 'Monthly' is `payroll_cycle.name`; the echoed key
+    //    'individual.cycle.regular' is the run-type word it replaces.
+    expect(infoValue(tree, 'fieldCycle'), 'the field must name the company’s own cycle').toBe('Monthly');
+    expect(
+      infoValue(tree, 'fieldCycle'),
+      'and must NOT fall back to the kernel’s run-type word when a cycle is named',
+    ).not.toBe('individual.cycle.regular');
+  });
+
+  it('a company with NO registration number prints no caption, and a run with NO cycle keeps the run-type word', async () => {
+    // BOTH FALLBACKS ON ONE SCREEN, and both are the reachable production state rather than a defensive
+    // branch: `seedBase` leaves `company.registration_no` null (most companies on production carry none)
+    // and `createBatch` with no `payrollCycleId` is how every batch before migration 0441 exists.
+    const me = await hire(admin, 'Bare Slip', 'bare.slip@acme.test');
+    await payRegular(admin, '2026-03');
+
+    const tree = await IndividualPayslipPage({ searchParams: Promise.resolve({ employmentId: me.employmentId }) });
+    expect(renderedPayslipId(tree)).toBeTruthy();
+
+    const words = textOf(tree);
+    // NO LINE AT ALL — not an empty caption, not a dash. The caption is only printed beside a number.
+    expect(words, 'no "Reg. no." caption when the company has no number').not.toContain('regNo');
+    // …and the cycle field prints exactly what it printed before r360.
+    expect(infoValue(tree, 'fieldCycle'), 'a run that named no cycle keeps the run-type word').toBe(
+      'individual.cycle.regular',
+    );
   });
 });
 

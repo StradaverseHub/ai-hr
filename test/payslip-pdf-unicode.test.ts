@@ -359,18 +359,36 @@ describe('5b2a7f0f — the en document is untouched, and that is the regression 
 
   /**
    * THE REGRESSION GUARD. These three digests were taken from main@fbe66e35 — the commit BEFORE any of
-   * this round's changes — by rendering the same three fixtures through the pre-change `renderPayslipPdf`
+   * 5b2a7f0f's changes — by rendering the same three fixtures through the pre-change `renderPayslipPdf`
    * and hashing them the same way. They are the claim "an English payslip is the document it always was",
    * made on the whole file rather than on its size.
    *
    * IF ONE OF THESE HAS TO MOVE, THE ENGLISH PAYSLIP HAS CHANGED AND SOMEONE MUST SAY SO ON PURPOSE.
    * That is what makes it a guard. It is also what fails the moment a face is embedded unconditionally:
    * the smallest subset on this document is 13 KB and it changes every offset in the file.
+   *
+   * ─── r360 (feedback 1fe55a23) SAYS SO ON PURPOSE, AND THE NUMBERS BELOW DID NOT HAVE TO MOVE ───
+   *
+   * r360 puts the company registration number back on the letterhead WITH the caption "Reg. no.", which
+   * changes the document for a company that HAS one — the fixture is such a company. So these three
+   * digests now name the fixture rendered with `companyReg: null`, and that is not a dodge: the plan's
+   * promise to the reporter is that a company with NO registration number prints NO line and reserves no
+   * space for one, and this is that promise stated to the byte. All three values are UNCHANGED from
+   * main@fbe66e35 — the unregistered payslip is not merely the same height, it is the same file.
+   *
+   * The registered document's own digests are pinned beside them, so "the letterhead grew by one line" is
+   * a claim about the whole file as well as about the rule's y (test/payslip-pdf.test.ts measures that).
    */
   const MAIN_FBE66E35 = {
     plain: 'ef4286f210d2fe7359babd927e353cc261e7a793419d547ec3a96da9443f3d75',
     logo: '2313b1d75eca5d2b059b131094bac4201d83c5dac617ab8774e36bd20aba4747',
     multipage: 'a8d82f9485a909e3fc25cde3b969e5e0484a0260cdf7d8f79d83d4e371943651',
+  };
+  /** r360 — the same three fixtures WITH the labelled registration line the reporter asked for. */
+  const WITH_REG_R360 = {
+    plain: 'b320d0ae3f1df2394e3c87480e16fa5be688e163b252b7a84c48237005c65b65',
+    logo: 'e20b0afe847cd55942e1e8842cc415b752c653c267e382edd006e6748170ec0f',
+    multipage: 'a6c07537806118b3321e69729f5069ba72ef10c4e0f357416935e9fd729393ae',
   };
   const PNG_1x1 = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -382,18 +400,40 @@ describe('5b2a7f0f — the en document is untouched, and that is the regression 
     amount: 10,
   }));
 
-  it('an en payslip is the document it was before the faces existed — plain, with a logo, and over two sheets', async () => {
-    expect(await documentDigest(await renderPayslipPdf(data, labels))).toBe(MAIN_FBE66E35.plain);
+  it('an en payslip for a company with NO registration number is the SAME FILE it was — plain, with a logo, and over two sheets', async () => {
+    // r360 — `companyReg: null` is the reporter's own fallback case, and every digest here is the
+    // main@fbe66e35 value: no line, no reserved band, no byte moved. A change that "only" reserved space
+    // for the missing line, or that printed a dash in its place, fails all three.
+    const noReg = { ...data, companyReg: null };
+    expect(await documentDigest(await renderPayslipPdf(noReg, labels))).toBe(MAIN_FBE66E35.plain);
     expect(
       await documentDigest(
-        await renderPayslipPdf({ ...data, logo: { bytes: new Uint8Array(PNG_1x1), mimeType: 'image/png' } }, labels),
+        await renderPayslipPdf({ ...noReg, logo: { bytes: new Uint8Array(PNG_1x1), mimeType: 'image/png' } }, labels),
       ),
     ).toBe(MAIN_FBE66E35.logo);
     expect(
       await documentDigest(
-        await renderPayslipPdf({ ...data, allowance: 400, earningLines: manyLines, detailNotRecorded: false }, labels),
+        await renderPayslipPdf({ ...noReg, allowance: 400, earningLines: manyLines, detailNotRecorded: false }, labels),
       ),
     ).toBe(MAIN_FBE66E35.multipage);
+  });
+
+  it('r360 — and a company WITH one gets a different, equally pinned document', async () => {
+    // NON-VACUITY FOR THE CASE ABOVE: the fixture really carries a registration number, so `companyReg:
+    // null` there is a suppression and not a field that was never set.
+    expect(data.companyReg).toBeTruthy();
+    expect(await documentDigest(await renderPayslipPdf(data, labels))).toBe(WITH_REG_R360.plain);
+    expect(WITH_REG_R360.plain, 'the two documents are not the same file').not.toBe(MAIN_FBE66E35.plain);
+    expect(
+      await documentDigest(
+        await renderPayslipPdf({ ...data, logo: { bytes: new Uint8Array(PNG_1x1), mimeType: 'image/png' } }, labels),
+      ),
+    ).toBe(WITH_REG_R360.logo);
+    expect(
+      await documentDigest(
+        await renderPayslipPdf({ ...data, allowance: 400, earningLines: manyLines, detailNotRecorded: false }, labels),
+      ),
+    ).toBe(WITH_REG_R360.multipage);
   });
 
   it('…and the guard above is a guard: the same fixture in Chinese does NOT hash to it', async () => {

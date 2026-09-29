@@ -9725,6 +9725,13 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
         companyId: payrollBatch.companyId,
         company: company.legalName,
         companyReg: company.registrationNo,
+        // r360 — the NAME of the configured Pay Cycle this run was opened under, so the EMPLOYEE's own
+        // copy of the document says what the reviewer's copy says. The two PDF routes render one document
+        // (`renderPayslipPdf` through `payslipPdfStrings`); feeding the cycle name to only one of them
+        // would print "Monthly" on the review copy and "Regular" on the issued copy of the same payslip.
+        // Null on a batch that names no cycle (nullable since migration 0441) ⇒ the run-type word, exactly
+        // as today. See core/payslip-cycle-label.ts for the one rule both routes apply.
+        cycleName: payrollCycle.name,
         currency: company.currency,
         payPeriod: payrollBatch.payPeriod,
         payDate: payrollBatch.batchDate,
@@ -9774,6 +9781,9 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
       .innerJoin(person, eq(person.id, employment.personId))
       // LEFT, every one of them. An employee with no current assignment, no grade or no MY statutory row
       // would lose their payslip entirely behind an inner join — the one real risk in widening this read.
+      // r360 adds the Pay Cycle to that list for the same reason: `payroll_cycle_id` is nullable and most
+      // batches on production carry null, so an inner join here would hide their payslips outright.
+      .leftJoin(payrollCycle, eq(payrollCycle.id, payrollBatch.payrollCycleId))
       .leftJoin(
         assignment,
         and(

@@ -45,6 +45,10 @@ export const labels: PayslipPdfLabels = {
   employerBorneTotal: 'Total borne by employer',
   employerBorneNote: 'Reported in full to the authorities; not deducted from your pay.',
   documentSubtitle: 'Payroll payslip',
+  // r360 — the caption the letterhead now prints in front of the registration number. This fixture says
+  // what the REAL caller says: `payslipPdfStrings` resolves `admin.organization.regNo`, whose en value is
+  // "Reg. no." (pinned across all six catalogues in test/individual-payslip.test.ts).
+  companyReg: 'Reg. no.',
   // a96d320c — the shape the REAL caller now passes. `payslipPdfStrings` interpolates the localized
   // `payDateLine` with `englishLongDate(payDate)`, so the fixture says what the document says.
   paymentDate: 'Payment date: 30 June 2026',

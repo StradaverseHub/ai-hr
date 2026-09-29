@@ -30,7 +30,17 @@ import { isUnsupportedTaxableComponent } from '../core/pay-components';
 // 6b4ca488 — the derivation behind the Total Deductions line on all three payslip surfaces. Imported so
 // the sign of the VALUE and the absence of a sign in the MARKUP are pinned against each other.
 import { deriveHistoryBreakdown } from '../app/payroll/transaction-view/history-breakdown';
-import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+// r360 — the ONE rule that decides whether a payslip's cycle reads "Monthly" or "Regular". Imported as a
+// function rather than grepped for, so the fallback is pinned as behaviour and not as a source shape.
+import { payslipCycleLabel } from '../core/payslip-cycle-label';
+// r360 — the cycle catalogue, so the DB cases below open a run under a real configured cycle instead of
+// inserting a payroll_cycle row by hand.
+import { listPayrollCycles, seedPayrollCycleCatalog } from '../core/payroll-cycle';
+// r360 — the migration-role handle and the schema, to set `company.registration_no` on the seeded company
+// (the seed leaves it null, which is itself one of the two fallbacks under test).
+import { eq } from 'drizzle-orm';
+import * as schema from '../db/schema';
+import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -271,10 +281,14 @@ describe('5c198931 — one document, printed by both routes', () => {
     const core = read('core/payroll.ts');
     const from = core.indexOf('export function payslipDetail');
     const body = core.slice(from, core.indexOf('export function', from + 10));
-    for (const j of ['assignment', 'department', 'position', 'jobGrade', 'employeeStatutoryMy']) {
+    // r360 adds `payrollCycle` to the list for exactly the same reason: `payroll_batch.payroll_cycle_id`
+    // is nullable and most batches on production carry null, so an inner join would 404 their payslips.
+    for (const j of ['assignment', 'department', 'position', 'jobGrade', 'employeeStatutoryMy', 'payrollCycle']) {
       expect(body, `${j} must be joined LEFT in payslipDetail`).toMatch(new RegExp(`leftJoin\\(\\s*${j}\\b`));
     }
-    expect(body).not.toMatch(/innerJoin\(\s*(assignment|department|position|jobGrade|employeeStatutoryMy)\b/);
+    expect(body).not.toMatch(
+      /innerJoin\(\s*(assignment|department|position|jobGrade|employeeStatutoryMy|payrollCycle)\b/,
+    );
   });
 
   it('the renderer refuses a PNG it cannot trust BEFORE pdf-lib is handed it', () => {
@@ -511,6 +525,112 @@ describe('f35f758a note 8 — the pay item master save refuses the combination t
   });
 });
 
+/**
+ * ─── r360 (feedback 1fe55a23) — THE LETTERHEAD SAYS WHAT ITS NUMBER IS, AND WHAT THE CYCLE IS CALLED ───
+ *
+ * Two display requests on one payslip:
+ *   1. the company registration number, LABELLED "Reg. no.", directly below the company name;
+ *   2. "Payroll payslip · Regular" replaced by the company's OWN Pay Cycle name ("· Monthly") — "Regular"
+ *      is `payroll_batch.run_type`, kernel vocabulary nobody in the company chose.
+ *
+ * THE RISK THIS FILE IS FOR IS NOT "does it print". It is that the SCREEN, the preview and the downloaded
+ * file each resolve the cycle from a different read, so a second copy of the rule "the cycle name, or the
+ * run-type word if there is none" is one edit away from a downloaded payslip disagreeing with the screen
+ * its Download button sits on. So the rule is `payslipCycleLabel`, and what is pinned below is that there
+ * is exactly ONE of it and that every surface goes through it.
+ *
+ * BOTH FALLBACKS ARE THE PLAN'S PROMISE, and both are the REACHABLE PRODUCTION STATE rather than a
+ * defensive branch: `company.registration_no` is nullable (most companies on production carry none) and
+ * `payroll_batch.payroll_cycle_id` is nullable (every batch created before migration 0441 carries null).
+ * They are pinned by name here, in the document test, and in the screen render test.
+ */
+describe('r360 — the cycle name and the registration label are decided in ONE place', () => {
+  const PAGE = 'app/payroll/individual-payslip/page.tsx';
+  const STRINGS = 'lib/payslip-pdf-strings.ts';
+  const ESS_PDF = 'app/me/payslip/[payslipId]/pdf/route.ts';
+  const ADMIN_PDF = 'app/payroll/individual-payslip/[payslipId]/pdf/route.ts';
+
+  it('the configured cycle NAME wins, and a batch with no cycle keeps the run-type word', () => {
+    expect(payslipCycleLabel({ cycleName: 'Monthly', runTypeLabel: 'Regular' })).toBe('Monthly');
+    // THE FALLBACK, BY NAME. A batch opened under no cycle prints exactly the word it prints today.
+    expect(
+      payslipCycleLabel({ cycleName: null, runTypeLabel: 'Regular' }),
+      'a batch with NO cycle keeps the run-type word',
+    ).toBe('Regular');
+    expect(payslipCycleLabel({ cycleName: undefined, runTypeLabel: 'Bonus' })).toBe('Bonus');
+    // `payroll_cycle.name` is NOT NULL but it is free text an admin typed. A name of spaces would print a
+    // blank where a word belongs, which reads as a rendering fault rather than as a missing label.
+    expect(payslipCycleLabel({ cycleName: '   ', runTypeLabel: 'Regular' }), 'whitespace is not a name').toBe(
+      'Regular',
+    );
+    expect(payslipCycleLabel({ cycleName: '  Advance Salary  ', runTypeLabel: 'Off-cycle' })).toBe(
+      'Advance Salary',
+    );
+    // Neither ⇒ null, and the letterhead subtitle drops the segment as it already does for a null label.
+    expect(payslipCycleLabel({ cycleName: null, runTypeLabel: null })).toBeNull();
+  });
+
+  it('ONE resolution: the screen and the document both call it, and neither re-implements the fallback', () => {
+    for (const f of [PAGE, STRINGS]) {
+      expect(read(f), `${f} must resolve the cycle label through the shared rule`).toContain('payslipCycleLabel(');
+      expect(read(f), `${f} must import it rather than copy it`).toContain('payslip-cycle-label');
+    }
+    // THE SECOND COPY THIS EXISTS TO PREVENT. A hand-written `cycleName ?? runTypeWord` on either surface
+    // is how the downloaded file starts disagreeing with the screen it came from.
+    for (const f of [PAGE, STRINGS]) {
+      expect(read(f), `${f} must not write the fallback by hand`).not.toMatch(/cycleName\s*(\?\?|\|\|)/);
+    }
+    // BOTH PDF routes feed the cycle name in. The two print ONE document through one strings module; only
+    // one of them fed would print "Monthly" on the reviewer's copy and "Regular" on the employee's.
+    for (const r of [ESS_PDF, ADMIN_PDF]) {
+      expect(read(r), `${r} must pass the cycle name to payslipPdfStrings`).toContain('cycleName: p.cycleName');
+    }
+  });
+
+  it('reuses admin.organization.regNo — the caption the screen that OWNS the field already carries', () => {
+    // NOT a new key. One company registration number, one word for it, already translated six ways.
+    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const m = JSON.parse(read(`messages/${loc}.json`)) as {
+        admin: { organization: Record<string, string> };
+      };
+      expect(m.admin.organization.regNo, `admin.organization.regNo in ${loc}`).toBeTruthy();
+      // Resolved with a bare t(…) on both surfaces, so an ICU placeholder would throw at render behind
+      // a 200 and paint the key path onto a payslip.
+      expect(m.admin.organization.regNo, `regNo in ${loc} must take no ICU argument`).not.toMatch(/[{}]/);
+    }
+    expect(JSON.parse(read('messages/en.json')).admin.organization.regNo).toBe('Reg. no.');
+    // Both surfaces bind that namespace and resolve THAT key — a second key under `me.` or `payroll.`
+    // would be a seventh translation to keep in step for a number that already has a name.
+    for (const f of [PAGE, STRINGS]) {
+      expect(read(f), `${f} must bind admin.organization`).toContain("getTranslations('admin.organization')");
+      expect(read(f), `${f} must resolve regNo from it`).toMatch(/tOrg\(\s*'regNo'\s*\)/);
+    }
+  });
+
+  it('composes the caption as "Reg. no.: <number>" — the line the approved mockup shows', () => {
+    // THE MOCKUP IS THE PROMISE. docs/mockups/1fe55a23-payslip-header.html draws "Reg. no.: 1234567-X" and
+    // spells the fallback out as "not 'Reg. no.: —' and not an empty label", so the colon is part of what
+    // the reporter approved rather than a detail left to the build. It is a LITERAL beside the catalogue
+    // label on both surfaces — the same shape `drawEmployeePanel` already uses for the employee code — so
+    // no seventh translation exists for a piece of punctuation.
+    //
+    // The DOCUMENT half of this is behavioural (test/payslip-pdf.test.ts reads the line back out of the
+    // rendered PDF). The SCREEN half is a source shape on purpose: React separates adjacent text children
+    // with `<!-- -->` comments, so the composed string is not one node in the markup and cannot be matched
+    // as a substring — verified on a real render, where the <p> reads "Reg. no.: 201901024512".
+    expect(read(PAGE), 'the screen composes label, colon, value').toMatch(/\{tOrg\('regNo'\)\}: \{row\.companyReg\}/);
+    expect(read('lib/payslip-pdf.ts'), 'and so does the document').toContain(
+      '`${t.companyReg}: ${d.companyReg}`',
+    );
+  });
+
+  it('the registration line on the SCREEN is still conditional — no empty caption, no dash', () => {
+    // `company.registration_no` is nullable and most companies on production carry none. An absent line
+    // asserts nothing; "Reg. no. —" asserts that we looked and there is none.
+    expect(read(PAGE)).toMatch(/\{row\.companyReg && \(/);
+  });
+});
+
 // ───────────────────────────── Behavioural: the admin read ─────────────────────────────
 
 let base: Base;
@@ -548,12 +668,29 @@ async function hire(name: string, email: string, ic: string, basic = 5000) {
   return e;
 }
 
-/** Run one regular payroll for the whole company in `period`. */
+/** Run one regular payroll for the whole company in `period`. NO cycle is named — which is the state every
+ *  batch created before migration 0441 is in, and the r360 fallback case. */
 async function pay(period: string) {
   const a = adminCtx(base);
   const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: period });
   await generatePayslips(a, { batchId });
   return batchId;
+}
+
+/** r360 — the same run, opened under a REAL configured Pay Cycle from the company's own catalogue. */
+async function payUnderCycle(period: string, cycleName: string) {
+  const a = adminCtx(base);
+  await seedPayrollCycleCatalog(a, base.companyId);
+  const cycles = await listPayrollCycles(a, base.companyId, { activeOnly: true });
+  const cycle = cycles.find((c) => c.name === cycleName);
+  if (!cycle) throw new Error(`no seeded cycle named ${cycleName}`);
+  const { batchId } = await createBatch(a, {
+    companyId: base.companyId,
+    payPeriod: period,
+    payrollCycleId: cycle.id,
+  });
+  await generatePayslips(a, { batchId });
+  return { batchId, cycleId: cycle.id };
 }
 
 /** The one payslip this employee holds (after a single run). */
@@ -626,6 +763,59 @@ describe('169e3c24 — the admin review read', () => {
       expect(read(route), `${route} must print the whole account number`).toContain('bankAccountFull');
       expect(read(route), `${route} must not fall back to the mask`).not.toContain('bankAccountMasked');
     }
+  });
+
+  it('r360 — returns the configured Pay Cycle NAME, and null for a run that named no cycle', async () => {
+    const a = adminCtx(base);
+    // A run opened under the company's own "Monthly" cycle (DEFAULT_PAYROLL_CYCLES maps it to run_type
+    // 'regular'), which is the reporter's own example: "Payroll payslip · Monthly".
+    const named = await hire('Cycle Named', 'cycle.named@acme.test', '900101011409');
+    await payUnderCycle('2026-03', 'Monthly');
+    const withCycle = await payslipForReview(a, {
+      companyIds: [base.companyId],
+      payslipId: await slipIdOf(named.employmentId),
+    });
+    expect(withCycle!.cycleName, 'the read must carry the configured cycle’s own name').toBe('Monthly');
+    // …and the run type is UNCHANGED underneath it. This item is display only: the label the reader sees
+    // moved, the value the kernel gates on did not.
+    expect(withCycle!.runType, 'run_type is untouched — the kernel still gates on it').toBe('regular');
+    expect(
+      payslipCycleLabel({ cycleName: withCycle!.cycleName, runTypeLabel: 'Regular' }),
+      'so the shared rule prints Monthly for this payslip',
+    ).toBe('Monthly');
+
+    // THE FALLBACK, ON A REAL ROW. `pay()` opens the run through the same service naming no cycle, which is
+    // how every batch created before migration 0441 and by the legacy create form exists on production.
+    const bare = await hire('Cycle None', 'cycle.none@acme.test', '900101011410');
+    await pay('2026-04');
+    const noCycle = await payslipForReview(a, {
+      companyIds: [base.companyId],
+      payslipId: await slipIdOf(bare.employmentId),
+    });
+    expect(noCycle!.cycleName, 'a batch that named no cycle carries null, and that is not a defect').toBeNull();
+    expect(
+      payslipCycleLabel({ cycleName: noCycle!.cycleName, runTypeLabel: 'Regular' }),
+      'so that payslip keeps printing the run-type word exactly as today',
+    ).toBe('Regular');
+  });
+
+  it('r360 — the registration number reaches the read, and is null when the company has none', async () => {
+    const a = adminCtx(base);
+    const { payslipId } = await hireWithPayslip('No Reg', 'no.reg@acme.test', '900101011411');
+    // THE SEEDED COMPANY HAS NO REGISTRATION NUMBER, which is the fallback case the plan promised: the
+    // letterhead prints no "Reg. no." line at all. Asserted on the read so the screen's `&&` and the
+    // document's `if` are both guarding against a value that really can be null.
+    const before = await payslipForReview(a, { companyIds: [base.companyId], payslipId });
+    expect(before!.companyReg, 'a company with no registration number reads null').toBeNull();
+
+    await owner.db
+      .update(schema.company)
+      .set({ registrationNo: '201901024512' })
+      .where(eq(schema.company.id, base.companyId));
+    const after = await payslipForReview(a, { companyIds: [base.companyId], payslipId });
+    expect(after!.companyReg, 'and company.registration_no is what it reads — not the SSM column').toBe(
+      '201901024512',
+    );
   });
 
   it('reports the IC as the identity, and marks a passport as a passport', async () => {

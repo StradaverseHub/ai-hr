@@ -44,6 +44,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ payslip
     payDate: p.payDate,
     ytdYear: year,
     runType: p.runType,
+    // r360 — the configured Pay Cycle's name, fed here TOO and not only to the admin review route. The two
+    // routes print ONE document (same builder, same renderer, same strings module); handing the cycle name
+    // to one of them would print "Monthly" on the reviewer's copy and "Regular" on the employee's copy of
+    // the very same payslip, which is the drift this module was created to prevent.
+    cycleName: p.cycleName,
     employmentType: p.employmentType,
     paymentMethod: p.paymentMethod,
     // 1b0943d5 — derived from the slip's COVERAGE window (see the admin PDF route for the full note).
