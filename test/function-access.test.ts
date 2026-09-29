@@ -31,14 +31,52 @@ import en from '../messages/en.json';
 const APP = path.resolve(__dirname, '../app');
 const GUARD_RE = /requireAdmin|requirePayrollAccess|requirePerfCompAccess|scopedAdmin|scopedSession/;
 
-/** Recursively collect every `page.tsx` under app/ whose source calls a page guard, as a normalized route. */
+/**
+ * r362 — THIS USED TO TEST THE RAW SOURCE, SO A COMMENT COUNTED AS A GUARD.
+ *
+ * `GUARD_RE.test(readFileSync(p))` matched the guard name anywhere in the file, including inside the
+ * header comment that EXPLAINS the guard. A page could therefore lose `await scopedSession()` from its
+ * code and stay "guarded" here for as long as its comment still named it — the two assertions below are
+ * the repo's only page-boundary authentication check, so that is a false assurance about auth, which is
+ * the one class of guard that must not be satisfiable by prose.
+ *
+ * Found while reviewing r362: a deliberate defect that deleted `await scopedSession()` AND its import
+ * from a page left this file green, while the two page-level guards in
+ * test/attendance-my-records-split.test.ts (which do strip comments) caught it. Measured before
+ * changing: of every `page.tsx` under app/, exactly ONE is classified differently once comments are
+ * stripped, and it is the documented redirect-only segment below.
+ *
+ * Comments are stripped, so `guardedRoutes()` now means "calls a guard IN CODE". The exemption is named
+ * and exact rather than a subset check, so this is stronger than before in both directions: delete a
+ * real guard and the stale set grows and names the route; give the redirect a guard and the exemption
+ * goes unmatched and says so.
+ */
+function codeWithoutComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
+}
+
+/**
+ * Route segments that are REGISTERED but call no guard, because they read nothing and only redirect.
+ *
+ * `/payroll/transactions/tp1/[year]` is kept as a segment because 3e3d3fb2's year-grained URLs are in
+ * the wild (7ad37961 moved the record's grain to the month when the official TP1 (1/2026) turned out to
+ * have a DEDUCTION MONTH box). It resolves no session and touches no data; it forwards, and the
+ * destination applies the full `scopedAdmin` guard and 404s an employment outside the admin's scope, so
+ * forwarding an id proves nothing about it. It stays in the matrix because REGISTERED_ROUTES is an
+ * exact-set check over page.tsx files.
+ *
+ * A route belongs here ONLY if it reads no session and no data. Anything that reads gets a real guard.
+ */
+const REDIRECT_ONLY_ROUTES = ['/payroll/transactions/tp1/[year]'] as const;
+
+/** Recursively collect every `page.tsx` under app/ whose CODE calls a page guard, as a normalized route. */
 function guardedRoutes(): string[] {
   const out: string[] = [];
   const walk = (dir: string) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) walk(p);
-      else if (e.name === 'page.tsx' && GUARD_RE.test(fs.readFileSync(p, 'utf8'))) {
+      else if (e.name === 'page.tsx' && GUARD_RE.test(codeWithoutComments(fs.readFileSync(p, 'utf8')))) {
         // app/foo/bar/page.tsx -> /foo/bar ; app/page.tsx -> /
         const rel = path.relative(APP, p).replace(/\\/g, '/'); // e.g. "foo/bar/page.tsx" or "page.tsx"
         const route = rel.replace(/(^|\/)page\.tsx$/, '');
@@ -76,10 +114,16 @@ describe('function-access registry (lib/permissions)', () => {
     expect(missing, `guarded routes with no matrix column:\n${missing.join('\n')}`).toEqual([]);
   });
 
-  it('no stale routes: every REGISTERED_ROUTES entry exists on disk as a guarded route', () => {
+  it('no stale routes: every REGISTERED_ROUTES entry calls a guard in code, or is a named redirect-only segment', () => {
     const onDisk = new Set(guardedRoutes());
-    const stale = [...REGISTERED_ROUTES].filter((r) => !onDisk.has(r));
-    expect(stale, `registered routes not found on disk:\n${stale.join('\n')}`).toEqual([]);
+    const unguarded = [...REGISTERED_ROUTES].filter((r) => !onDisk.has(r)).sort();
+    // EXACT, not a subset: a page that loses its guard lands here and is named, and a redirect-only
+    // segment that gains one stops matching and is named too. Before r362 a comment naming the guard
+    // was enough to keep a route out of this list.
+    expect(
+      unguarded,
+      `registered routes that call no guard in code.\nExpected exactly the documented redirect-only segments.\nGot:\n${unguarded.join('\n')}`,
+    ).toEqual([...REDIRECT_ONLY_ROUTES].sort());
   });
 
   it('screenKeys are unique (no duplicate columns)', () => {
