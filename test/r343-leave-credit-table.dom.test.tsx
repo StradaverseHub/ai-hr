@@ -35,7 +35,11 @@
  *   · ⚠️ r353 — the Day Type FILLS ITSELF from the roster, the clock-out cell tells "No record" apart from
  *     "this cell does not apply", and a claim past the recorded clock-out shows an amber warning and STILL
  *     CREDITS (the owner's reversal: the check moved to the approver, so the screen's job is to say so rather
- *     than to refuse).
+ *     than to refuse);
+ *   · ⚠️ r362 — the Day Type cell's FOUR unresolved moments told apart (blank · reading · not found ·
+ *     failed), which is a claim about client STATE and so has no static form at all; and the night-shift
+ *     note, asserted together with the minutes and the credit beside it, because a note that appeared while
+ *     the money moved would be a regression wearing an explanation.
  *
  * ── ⚠️⚠️ r360 cbfa8b0b · THE DAY TYPE STOPPED BEING A CONTROL, AND ABOUT 34 CASES IN THIS SUITE DROVE IT ──
  * Every case below that read `user.selectOptions(dayTypeSelect('en'), 'workday')` now sets the DATE and waits
@@ -126,7 +130,12 @@ type Kind = keyof typeof DAY_KIND_KEY;
 const KINDS = Object.keys(DAY_KIND_KEY) as Kind[];
 const dayKindLabel = (locale: Locale, kind: Kind) => copy(locale).dayKind[DAY_KIND_KEY[kind]] as string;
 const dayTypeCell = (n = 0) => screen.getAllByTestId('leave-credit-day-type')[n] as HTMLElement;
-/** The cell's first span: the label, or the placeholder / failure sentence while no kind is known. */
+/**
+ * The cell's first span: the day-type label once the roster has answered, and otherwise whichever of the
+ * four unresolved moments the row is in — r362 — the EMPTY STRING before a date is picked, the reading
+ * sentence, the not-found sentence, or r360's failure sentence. It said "the placeholder / failure
+ * sentence" while one placeholder covered the first three; there is no placeholder now.
+ */
 const dayTypeText = (n = 0) => dayTypeCell(n).querySelector('span')?.textContent?.trim() ?? '';
 const dayTypeSource = (n = 0) => screen.getAllByTestId('leave-credit-day-type-source')[n] as HTMLElement;
 /** The replacement for `user.selectOptions(dayTypeSelect(locale), kind)`: the ROSTER fills it, so we WAIT. */
