@@ -759,11 +759,17 @@
       "epfModeVoluntary": "自愿额外缴纳（i-Topup）",
       "epfModeManualPercentage": "手动（按百分比）",
       "epfModeSemiAuto": "半自动（仅雇员比率）",
-      "epfModeManualFixed": "手动（固定金额）— 即将推出",
+      "epfModeManualEmployeeAmount": "手动（雇员按金额）",
+      "epfModeManualEmployerAmount": "手动（雇主按金额）",
+      "epfModeManualBothAmount": "手动（雇员与雇主按金额）",
+      "epfModeManualFixed": "手动（按固定金额）—— 已停用，由三个「手动（按金额）」类别取代",
       "epfModeExempt": "豁免（不缴纳）",
       "epfEmployeeRate": "员工费率 %",
       "epfEmployerRate": "雇主费率 %",
-      "epfElectionHint": "自愿额外缴纳（i-Topup，KWSP 表格 17A/18A）设定不低于法定 11%/13% 的费率；留空的一方维持法定费率。仅限费率——KWSP 无固定金额选项。豁免仅适用于确实可豁免的员工。",
+      "epfEmployeeAmount": "雇员金额（每月 RM）",
+      "epfEmployerAmount": "雇主金额（每月 RM）",
+      "epfManualReason": "固定金额的原因",
+      "epfElectionHint": "自愿额外缴纳（i-Topup，KWSP 表格 17A/18A）设定不低于法定 11%/13% 的费率；留空的一方维持法定费率。手动（按金额）类别改用确切的马币金额而非费率，并且必须填写原因。豁免仅适用于确实可豁免的员工。",
       "terminationType": "离职类型",
       "terminationTypeUnspecified": "— 未指定 —",
       "terminationVoluntary": "自愿（辞职）",
@@ -1628,7 +1634,9 @@
       "childQualifyingCategoryContradictsDob": "此子女的减免类别为18岁以下，但出生日期并非如此。请核对记录。",
       "childQualifyingWhyCategory": "计入原因：此子女的减免类别允许在18岁后申报。仅勾选并不使子女符合资格。",
       "childrenPhysicalDoc": "符合资格的子女人数。EA 表格第 8 项、E 表格和 CP8D 读取此项。",
-      "childrenQualifyingDoc": "LHDN 的 C——这是权重，不是人数：每名子女按其减免类别的第 48 条单位计算。月度 PCB 计算及其计算单读取此项；EA 表格不会打印它。由此得出的减免额 RM{perChild} × C，才是 EA 表格 D 部分第 6 项打印的数字。"
+      "childrenQualifyingDoc": "LHDN 的 C——这是权重，不是人数：每名子女按其减免类别的第 48 条单位计算。月度 PCB 计算及其计算单读取此项；EA 表格不会打印它。由此得出的减免额 RM{perChild} × C，才是 EA 表格 D 部分第 6 项打印的数字。",
+      "epfManualAmountHint": "请输入每月确切的 EPF 缴纳金额（马币）。自第一次薪资处理起即采用，并在每次重新处理时沿用。留空的一方维持法定计算。低于 EPF 法令附表的金额会被接受并记录——KWSP 提交文件将以真实薪资搭配您输入的金额，由该机构自行核查。",
+      "epfManualDraftHint": "固定金额类别（手动按金额）需在员工建立后，于该员工的「银行与法定」卡上设定，因为此处不收集金额本身。"
     },
     "import": {
       "title": "导入员工",
@@ -6327,7 +6335,9 @@
       "workingLabel": "计算过程",
       "workingMtd": "所得税并非工资的百分比。它依据全年预估收入、雇员的税务减免和税率表计算得出。完整计算过程见 PCB 计算页面。",
       "workingNilCharge": "本次薪资运算中该项目没有任何收费。",
-      "workingNotRecorded": "本批次未记录计算所依据的工资，因此无法显示计算过程。下方金额是实际扣除并缴纳的数额。"
+      "workingNotRecorded": "本批次未记录计算所依据的工资，因此无法显示计算过程。下方金额是实际扣除并缴纳的数额。",
+      "manualBannerBodyElection": "此员工的 EPF 类别为固定月额，在「人事管理 — 银行与法定」中于其本人记录上输入——因此此数字并非由任何缴纳附表得出。在该类别更改之前，每次薪资处理与重新处理都会采用它。系统不会为其显示百分比，因为手动输入的金额没有对应费率；系统原本会计算的数字会显示在实际采用的数字旁边。更改该金额会影响之后重新处理且尚未结帐的任何薪资批次。",
+      "manualReasonElection": "固定 EPF 金额所记录的原因"
     },
     "txnImport": {
       "title": {
@@ -6961,7 +6971,7 @@
       "yearHint": "留空则涵盖记录中的所有年度。",
       "apply": "套用",
       "headline": "在 {periods} 个有多次发薪的公司月份中，{compared} 个员工月份里有 {changed} 个会发生变化。",
-      "verdictBreakdown": "已按整月计算：{aggregated}。两种算法一致：{agree}。两种算法都不吻合：{unexplained}。",
+      "verdictBreakdown": "已按单一月份计算：{aggregated}。两种解读一致：{agree}。EPF 金额由人工设定：{manualEpf}。与两种解读均不符：{unexplained}。",
       "replayVersion": "依据法定规则版本 {version} 重算。",
       "totalsTitle": "各法定项目合计",
       "totalsHint": "“已支付”是薪资单上存储金额的合计。“各次单独计算”把每次发薪都从税阶最低处重新计算。“整月合一”把该月视为一次法定计算。“变动额”是会改变的金额，仅统计已支付金额与“各次单独计算”吻合的员工月份。",
@@ -7029,7 +7039,8 @@
         "agree": "两种算法都得出已支付金额",
         "already_aggregated": "已按整月计算",
         "would_change": "会发生变化",
-        "unexplained": "两种算法都不吻合"
+        "unexplained": "两种算法都不吻合",
+        "manual_epf_amount": "EPF 金额由人工设定"
       },
       "disposition": {
         "excluded": "已排除",

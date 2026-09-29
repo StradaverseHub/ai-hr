@@ -56,6 +56,7 @@ import {
   foldPriorSlipIntoAccumulators,
   openingAccumulatorsFromTp3,
   statutory,
+  type EpfMode,
   type PcbAccumulators,
   type TaxProfile,
 } from './payroll';
@@ -156,6 +157,25 @@ export const WORKSHEET_VERDICTS = [
   'would_change',
   /** Paid matches neither reading. Reported, never counted. */
   'unexplained',
+  /**
+   * ── Item 70b14723 — THE EPF FIGURE WAS TYPED BY A PERSON, AND THE REPLAY REPRODUCES IT ──────────────
+   *
+   * This employee is on a MANUAL EPF AMOUNT (`employee_statutory_my.epf_mode = 'manual_amount'`), so their
+   * month's EPF is a ringgit figure somebody entered on their record, not a Third Schedule reading. The
+   * replay is told that figure — `statutoryOptsOf` carries it, exactly as it carries the elected rates —
+   * so the month RECONCILES; without it every such employee-month matched neither reading and printed
+   * `unexplained` with a fabricated ringgit difference, near the top of a document an accountant signs.
+   *
+   * IT IS ITS OWN VERDICT RATHER THAN `already_aggregated`, and that distinction is the point. Both mean
+   * "nothing would change", but an accountant reading "Already computed as one month" is entitled to
+   * conclude the CONTRIBUTION SCHEDULE produced the figure, and here it did not. A replay that silently
+   * reproduces a number it was handed is not evidence that any statute was followed.
+   *
+   * IT NEVER MASKS `would_change` OR `unexplained`. It replaces only the two reconciling outcomes — see
+   * the verdict expression in `compareEmployeeMonth` — so a month that really would move, or that the
+   * replay really cannot explain, keeps saying so and keeps its place in the ringgit totals.
+   */
+  'manual_epf_amount',
 ] as const;
 export type WorksheetVerdict = (typeof WORKSHEET_VERDICTS)[number];
 
@@ -300,9 +320,14 @@ type ProfileRow = {
   subjectToSocso: boolean;
   subjectToSkbbk: boolean;
   epfCitizenship: 'citizen' | 'pr' | 'non_citizen';
-  epfMode: 'auto' | 'voluntary_excess' | 'exempt';
+  /** The lawful EPF enum, taken from the PACK's own type rather than restated — item 70b14723 added a
+   *  fourth label and a local copy of the list is how a replay silently models a manual employee as auto. */
+  epfMode: EpfMode;
   epfEmployeeRate: number | null;
   epfEmployerRate: number | null;
+  /** Item 70b14723 — the typed monthly EPF amounts (RM), null when that side keeps the rule. */
+  epfEmployeeAmount: number | null;
+  epfEmployerAmount: number | null;
   tp3Year: number | null;
   tp3Net: number | null;
   tp3Epf: number | null;
@@ -416,7 +441,7 @@ export async function multiCycleWorksheetMY(
     // 3. Totals. Movement counts ONLY the months whose paid figures match the per-run reading — the
     //    months the change would actually move. A month already computed the aggregated way moves
     //    nothing, and an unexplained month is not evidence of anything.
-    const verdicts: Record<WorksheetVerdict, number> = { agree: 0, already_aggregated: 0, would_change: 0, unexplained: 0 };
+    const verdicts: Record<WorksheetVerdict, number> = { agree: 0, already_aggregated: 0, would_change: 0, unexplained: 0, manual_epf_amount: 0 };
     let paid = ZERO;
     let perRun = ZERO;
     let monthAsOne = ZERO;
@@ -432,6 +457,8 @@ export async function multiCycleWorksheetMY(
     for (const s of skips) skipCounts[s.reason] = (skipCounts[s.reason] ?? 0) + 1;
 
     // Differing months first — that is what the sign-off is looking at — then unexplained, then the rest.
+    // …then unexplained, then the rest — item 70b14723's `manual_epf_amount` is one of "the rest": it is a
+    // month that reconciles, so it does not belong above the ones that do not.
     const rank = (v: WorksheetVerdict) => (v === 'would_change' ? 0 : v === 'unexplained' ? 1 : 2);
     rows.sort(
       (a, b) =>
@@ -572,8 +599,22 @@ function replayEmployeeMonth(p: {
 
   const matchesRuns = isZero(sub(perRun, paid));
   const matchesMonth = isZero(sub(monthAsOne, paid));
+  // Item 70b14723 — a typed EPF amount refines the two RECONCILING outcomes and neither of the other two.
+  // `would_change` is the figure the whole worksheet exists to count and `unexplained` is its honest
+  // refusal; a manual amount is a statement about WHY the month reconciles, not a reason to stop counting.
+  const epfTyped = opts.epfElection?.employeeAmount != null || opts.epfElection?.employerAmount != null;
   const verdict: WorksheetVerdict =
-    matchesRuns && matchesMonth ? 'agree' : matchesMonth ? 'already_aggregated' : matchesRuns ? 'would_change' : 'unexplained';
+    matchesRuns && matchesMonth
+      ? epfTyped
+        ? 'manual_epf_amount'
+        : 'agree'
+      : matchesMonth
+        ? epfTyped
+          ? 'manual_epf_amount'
+          : 'already_aggregated'
+        : matchesRuns
+          ? 'would_change'
+          : 'unexplained';
 
   return {
     row: {
@@ -654,7 +695,17 @@ function statutoryOptsOf(e: ProfileRow, period: string): NonNullable<Parameters<
     flatTaxRate: residency === 'non_resident' ? 0.3 : residency === 'rep' || residency === 'knowledge_worker' ? 0.15 : null,
     epfAge: age,
     epfCitizenship: citizenship,
-    epfElection: { mode: e.epfMode ?? 'auto', employeeRate: e.epfEmployeeRate, employerRate: e.epfEmployerRate },
+    // Item 70b14723 — THE TYPED AMOUNTS TRAVEL WITH THE ELECTION. `localization/my/multicycle.ts` re-derives
+    // every statutory figure from wages and never reads the payslip, so an amount left out here is an amount
+    // the replay does not know about, and the month comes back matching neither reading. That is what made
+    // this a surface rather than a nicety: the failure is silent and lands on a sign-off document.
+    epfElection: {
+      mode: e.epfMode ?? 'auto',
+      employeeRate: e.epfEmployeeRate,
+      employerRate: e.epfEmployerRate,
+      employeeAmount: e.epfEmployeeAmount,
+      employerAmount: e.epfEmployerAmount,
+    },
   };
 }
 
@@ -768,6 +819,9 @@ async function loadProfiles(tx: Tx, employmentIds: string[]): Promise<Map<string
       epfMode: employeeStatutoryMy.epfMode,
       epfEmployeeRate: employeeStatutoryMy.epfEmployeeRate,
       epfEmployerRate: employeeStatutoryMy.epfEmployerRate,
+      // Item 70b14723 — read, or the replay models a manual employee on the Third Schedule.
+      epfEmployeeAmount: employeeStatutoryMy.epfEmployeeAmount,
+      epfEmployerAmount: employeeStatutoryMy.epfEmployerAmount,
       tp3Year: employeeStatutoryMy.tp3Year,
       tp3Net: employeeStatutoryMy.tp3NetRemuneration,
       tp3Epf: employeeStatutoryMy.tp3EpfClaimed,
@@ -798,6 +852,8 @@ async function loadProfiles(tx: Tx, employmentIds: string[]): Promise<Map<string
       epfMode: r.epfMode,
       epfEmployeeRate: r.epfEmployeeRate == null ? null : Number(r.epfEmployeeRate),
       epfEmployerRate: r.epfEmployerRate == null ? null : Number(r.epfEmployerRate),
+      epfEmployeeAmount: r.epfEmployeeAmount == null ? null : Number(r.epfEmployeeAmount),
+      epfEmployerAmount: r.epfEmployerAmount == null ? null : Number(r.epfEmployerAmount),
       tp3Year: r.tp3Year,
       tp3Net: r.tp3Net == null ? null : Number(r.tp3Net),
       tp3Epf: r.tp3Epf == null ? null : Number(r.tp3Epf),
@@ -938,7 +994,7 @@ function emptyWorksheet(rules: StatutoryRuleset): MultiCycleWorksheet {
     employeeMonthsExcluded: 0,
     employeeMonthsFlagged: 0,
     employeeMonthsCompared: 0,
-    verdicts: { agree: 0, already_aggregated: 0, would_change: 0, unexplained: 0 },
+    verdicts: { agree: 0, already_aggregated: 0, would_change: 0, unexplained: 0, manual_epf_amount: 0 },
     totals: { paid: ZERO, perRun: ZERO, monthAsOne: ZERO },
     movement: ZERO,
     rows: [],

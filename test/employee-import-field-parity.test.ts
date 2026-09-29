@@ -361,6 +361,15 @@ const REGISTRY: Record<string, RegistryTable> = {
           'epfMode',
           'epfEmployeeRate',
           'epfEmployerRate',
+          // Item 70b14723 — the TYPED monthly EPF amounts and the operator's reason for them. They belong to
+          // this block's reason more sharply than anything else in it: a spreadsheet cell nobody reads would
+          // decide, per employee, a contribution figure that OVERRULES the KWSP Third Schedule and can lawfully
+          // sit below it. The approved plan says so in as many words ("No column for this in the employee
+          // spreadsheet import"). It is a known gap, stated rather than papered over: an employer onboarding a
+          // hundred grandfathered members keys them one at a time on the Statutory card.
+          'epfEmployeeAmount',
+          'epfEmployerAmount',
+          'epfManualReason',
           'taxResidency',
         ],
       },

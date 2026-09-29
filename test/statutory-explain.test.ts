@@ -488,7 +488,9 @@ describe('208beb8b — a figure a payroll officer typed is not the schedule’s'
     expect(i.hrdf.ruleKind).toBe('rate');
     expect(i.pcb.employeeReported, 'the tax figure did not move').toBe(320);
     expect(e.setByHand?.keys, 'and the banner names only what was typed').toEqual(['epf']);
-    expect(e.setByHand?.reason).toBe(REASON);
+    // 70b14723 — `reason` became `notes`, one entry per SOURCE, because two sources can sit on one payslip
+    // and a single string silently attaches one decision's justification to the other.
+    expect(e.setByHand?.notes).toEqual([{ source: 'statutoryAdjustment', reason: REASON }]);
   });
 
   it('every one of the NINE overridable lines lands on exactly one item', () => {
@@ -546,7 +548,7 @@ describe('208beb8b — a figure a payroll officer typed is not the schedule’s'
     // A stamp with a real line but a non-string reason keeps the flag and drops the reason to ''. The
     // screen names it as unrecorded; it must not print `1` or `undefined` as somebody's justification.
     const e = explainStatutory({ ...STAMPED, adjustment: { reason: 1, lines: { epfEmployee: { system: 1, applied: 2 } } } }, 'regular');
-    expect(e.setByHand?.reason).toBe('');
+    expect(e.setByHand?.notes).toEqual([{ source: 'statutoryAdjustment', reason: '' }]);
   });
 
   it('an UNSTAMPED payslip is item-for-item what it was before 208beb8b', () => {
@@ -602,6 +604,147 @@ describe('208beb8b — a figure a payroll officer typed is not the schedule’s'
     expect(
       statutoryProvenance({ adjustment: { reason: 'r', lines: { epfEmployer: { system: 390, applied: 400 } } } }, 'epf'),
     ).toEqual({ source: 'statutoryAdjustment', employee: null, employer: { system: 390, applied: 400 }, reason: 'r' });
+    // 70b14723 — AND THE SECOND SOURCE CAME IN THROUGH THE SAME DOOR. Its stamp is `statutory.epfManual`, and
+    // the two surfaces are pinned as non-readers of it too, exactly as they are of `statutory.adjustment`.
+    expect(statutoryProvenance({ epfManual: { reason: 'grandfathered', employee: { system: 330, applied: 500 } } }, 'epf')).toEqual({
+      source: 'epfManualAmount',
+      employee: { system: 330, applied: 500 },
+      employer: null,
+      reason: 'grandfathered',
+    });
+    for (const rel of [
+      'app/payroll/statutory-detail/statutory-detail-view.tsx',
+      'app/payroll/statutory-detail/export/route.ts',
+    ]) {
+      const src = code(rel);
+      for (const forbidden of ['.epfManual', "['epfManual']", '"epfManual"'])
+        expect(src, `${rel} must not read 70b14723's stamp for itself (${forbidden})`).not.toContain(forbidden);
+    }
+  });
+
+  it('the SCREEN and the DOWNLOADED COPY word each source identically, and cover the whole union', () => {
+    // 70b14723 — the rule labels already had this problem and solved it by being exhaustive by TYPE in both
+    // files; the two per-SOURCE maps need the same treatment for a sharper reason. A file that credits
+    // Payroll › Statutory Adjustment for a figure that came from the employee's EPF Category sends an
+    // auditor to the wrong screen to check it, and "the file disagrees with the screen it was taken from"
+    // is the one failure the export route's own header calls unacceptable on a statutory reconciliation.
+    // So: same keys, same values, and every member of the union mapped — read out of SOURCE, because tsc
+    // proves exhaustiveness but cannot prove the two files AGREE.
+    const maps = (rel: string) => {
+      const src = code(rel);
+      const out: Record<string, Record<string, string>> = {};
+      for (const name of ['SOURCE_BODY', 'SOURCE_REASON_LABEL']) {
+        const m = new RegExp(`const ${name}: Record<StatutoryProvenanceSource, string> = \\{([^}]*)\\}`).exec(src);
+        expect(m, `${rel} must declare ${name} exhaustively over StatutoryProvenanceSource`).not.toBeNull();
+        out[name] = Object.fromEntries([...m![1].matchAll(/(\w+):\s*'([^']+)'/g)].map((x) => [x[1], x[2]]));
+      }
+      return out;
+    };
+    const view = maps('app/payroll/statutory-detail/statutory-detail-view.tsx');
+    const file = maps('app/payroll/statutory-detail/export/route.ts');
+    // Every member of the union, named in the type's own declaration, is mapped in BOTH files.
+    const union = [
+      ...code('core/statutory-explain.ts')
+        .slice(code('core/statutory-explain.ts').indexOf('export type StatutoryProvenanceSource'))
+        .split(';')[0]
+        .matchAll(/'([a-zA-Z]+)'/g),
+    ].map((m) => m[1]);
+    expect(union, 'the union must still be a readable literal list').toContain('epfManualAmount');
+    for (const name of ['SOURCE_BODY', 'SOURCE_REASON_LABEL']) {
+      expect(Object.keys(view[name]).sort(), `${name}: the view covers the whole union`).toEqual([...union].sort());
+      expect(file[name], `${name}: the download says the same thing the screen says`).toEqual(view[name]);
+    }
+    // …and the two sources really are worded DIFFERENTLY, or the maps exist without doing their job.
+    expect(view.SOURCE_BODY.epfManualAmount).not.toBe(view.SOURCE_BODY.statutoryAdjustment);
+    expect(view.SOURCE_REASON_LABEL.epfManualAmount).not.toBe(view.SOURCE_REASON_LABEL.statutoryAdjustment);
+  });
+
+  describe('70b14723 — the standing manual EPF amount joins the seam without a second implementation', () => {
+    const REASON = 'Pre-1998 member — contribution agreed at the grandfathered rate';
+    const MANUAL_BASES = { ...STAMPED.bases, epf: 3000, epfAdditional: 0 };
+    /** A payslip whose EPF EMPLOYEE leg came from the employee's own category, not the Third Schedule. */
+    const elected = (extra: Record<string, unknown> = {}) => ({
+      ...STAMPED,
+      epfEmployee: 500,
+      bases: MANUAL_BASES,
+      epfMode: 'manual_amount',
+      epfManual: { reason: REASON, employee: { system: 330, applied: 500 } },
+      ...extra,
+    });
+    /** The SAME payslip with the stamp removed — the non-vacuity partner for every assertion below. */
+    const TWIN = { ...STAMPED, epfEmployee: 500, bases: MANUAL_BASES };
+
+    it('reports ruleKind manual, NO rate, and names the source — with the twin proving what it replaced', () => {
+      const twin = byKey(TWIN);
+      expect(twin.epf.ruleKind, 'unstamped, EPF is still the KWSP Third Schedule').toBe('schedule');
+      expect(twin.epf.effectiveEmployeeRate, 'and prints a rate of 500/3000 that no schedule ever produced').toBeCloseTo(
+        0.16667,
+        4,
+      );
+      const hand = byKey(elected());
+      expect(hand.epf.ruleKind).toBe('manual');
+      expect(hand.epf.effectiveEmployeeRate).toBeNull();
+      expect(hand.epf.effectiveEmployerRate).toBeNull();
+      expect(hand.epf.provenance.source).toBe('epfManualAmount');
+      expect(hand.epf.provenance.employee).toEqual({ system: 330, applied: 500 });
+      expect(hand.epf.provenance.employer, 'the employer side was NOT typed, so it has no leg').toBeNull();
+      expect(isSetByHand(hand.epf.provenance)).toBe(true);
+      const e = explainStatutory(elected(), 'regular');
+      expect(e.setByHand?.keys).toEqual(['epf']);
+      expect(e.setByHand?.notes).toEqual([{ source: 'epfManualAmount', reason: REASON }]);
+    });
+
+    it('says nothing about the other five items — an election exists for EPF and for nothing else', () => {
+      const i = byKey(elected());
+      for (const k of ['socso', 'skbbk', 'eis'] as const) {
+        expect(i[k].ruleKind, `${k} was not elected`).toBe('schedule');
+        expect(i[k].effectiveEmployeeRate, `${k} keeps its genuinely derived rate`).not.toBeNull();
+        expect(isSetByHand(i[k].provenance)).toBe(false);
+      }
+      expect(i.hrdf.ruleKind).toBe('rate');
+      expect(i.pcb.ruleKind).toBe('mtd');
+      // …and a stamp under a non-EPF key is not read at all, however well-formed it looks.
+      expect(statutoryProvenance({ epfManual: { reason: 'x', employee: { system: 1, applied: 2 } } }, 'socso').source).toBe('computed');
+    });
+
+    it('BOTH sources on one payslip: the adjustment wins EPF, and each source keeps its own reason', () => {
+      // A standing manual amount AND a per-run adjustment on the same slip. `applyStatutoryAdjustment` runs
+      // after the kernel composed `stComputed`, so the adjustment IS the figure the payslip carries — and its
+      // own `system` leg records the 500 it replaced, which is the honest account of that payslip.
+      const ADJ = 'Correction agreed with the member for this run only';
+      const both = elected({
+        epfEmployee: 700,
+        socsoEmployee: 60,
+        adjustment: { reason: ADJ, lines: { epfEmployee: { system: 500, applied: 700 }, socsoEmployee: { system: 18.75, applied: 60 } } },
+      });
+      const i = byKey(both);
+      expect(i.epf.provenance.source, 'the figure on the slip came from the adjustment').toBe('statutoryAdjustment');
+      expect(i.epf.provenance.employee, 'and its system leg is the standing amount it replaced').toEqual({ system: 500, applied: 700 });
+      expect(i.socso.provenance.source).toBe('statutoryAdjustment');
+      const e = explainStatutory(both, 'regular');
+      expect(e.setByHand?.keys).toEqual(['epf', 'socso']);
+      expect(e.setByHand?.notes, 'ONE note per source, so neither reason is attached to the other decision').toEqual([
+        { source: 'statutoryAdjustment', reason: ADJ },
+      ]);
+      // …and with the adjustment naming SOCSO alone, the EPF item falls through to the election and the
+      // banner carries BOTH sentences with BOTH reasons.
+      const split = elected({ socsoEmployee: 60, adjustment: { reason: ADJ, lines: { socsoEmployee: { system: 18.75, applied: 60 } } } });
+      const es = explainStatutory(split, 'regular');
+      expect(es.setByHand?.keys).toEqual(['epf', 'socso']);
+      expect(es.setByHand?.notes).toEqual([
+        { source: 'epfManualAmount', reason: REASON },
+        { source: 'statutoryAdjustment', reason: ADJ },
+      ]);
+    });
+
+    it('a garbage or half-written `epfManual` degrades to "computed" rather than inventing a zero', () => {
+      for (const bad of [null, 0, 'x', [], {}, { reason: 'r' }, { employee: {} }, { employee: { system: 1 } }, { employee: { applied: 2 } }]) {
+        expect(() => explainStatutory({ ...STAMPED, epfManual: bad }, 'regular')).not.toThrow();
+        const e = explainStatutory({ ...STAMPED, epfManual: bad }, 'regular');
+        expect(e.setByHand, `epfManual=${JSON.stringify(bad)}`).toBeNull();
+        expect(JSON.stringify(e), 'no invented system figure anywhere').not.toContain('"system"');
+      }
+    });
   });
 });
 
@@ -660,6 +803,11 @@ describe('6b4ca488 — the screen’s captions exist, and are translated', () =>
       'manualBannerItems',
       'manualReason',
       'manualNote',
+      // 70b14723 — the second source's own two captions. Both are looked up through the exhaustive STATIC
+      // per-source maps in the view AND the export route, so a missing one is a MISSING_MESSAGE on the amber
+      // banner of the one payslip whose EPF a person decided.
+      'manualBannerBodyElection',
+      'manualReasonElection',
       'fieldSystemEmployeeShare',
       'fieldSystemEmployerShare',
       // The export's two extra columns — the file splits what the screen shows as a disclosure.
@@ -706,6 +854,9 @@ describe('6b4ca488 — the screen’s captions exist, and are translated', () =>
         'employerBorneNote',
         'manualBannerBody',
         'manualNote',
+        // 70b14723 — the longest new sentence in the catalogue, and exactly the kind a rushed round leaves
+        // in English on a screen whose whole job is to be trusted about where a number came from.
+        'manualBannerBodyElection',
       ];
       for (const k of LONG_SENTENCES) {
         expect(m.payroll.statutoryDetail[k], `${loc}: payroll.statutoryDetail.${k} is still English`).not.toBe(en[k]);

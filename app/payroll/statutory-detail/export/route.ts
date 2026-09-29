@@ -42,6 +42,7 @@ import {
   explainStatutory,
   type StatutoryExplainKey,
   type StatutoryItemExplanation,
+  type StatutoryProvenanceSource,
   type StatutoryRuleKind,
 } from '@/core/statutory-explain';
 import { toXlsxReport, type ReportData } from '@/lib/report-export';
@@ -65,6 +66,19 @@ const RULE_LABEL: Record<StatutoryRuleKind, string> = {
   schedule: 'ruleSchedule',
   mtd: 'ruleMtd',
   manual: 'ruleManual',
+};
+/** 70b14723 — the same two per-source maps the view carries, kept in step for the same reason the rule
+ *  labels are: a file that words the disclosure differently from the screen it was taken from has to be
+ *  reconciled against it. Exhaustive by type in BOTH files, so a third source breaks tsc here too. */
+const SOURCE_BODY: Record<StatutoryProvenanceSource, string> = {
+  computed: 'manualBannerBody',
+  statutoryAdjustment: 'manualBannerBody',
+  epfManualAmount: 'manualBannerBodyElection',
+};
+const SOURCE_REASON_LABEL: Record<StatutoryProvenanceSource, string> = {
+  computed: 'manualReason',
+  statutoryAdjustment: 'manualReason',
+  epfManualAmount: 'manualReasonElection',
 };
 /** EPF and PERKESO are BOTH schedule items but they are not the same schedule — EPF is banded by the
  *  KWSP Third Schedule, SOCSO/EIS/SKBBK by PERKESO's. The view carries the identical override, and the
@@ -170,7 +184,13 @@ export async function GET(req: Request) {
                   // would leave "EPF (KWSP) · HRD Corp levy" indistinguishable from two caveats. The
                   // screen keeps ' · ' — it has a row of its own and nothing to be confused with.
                   `${t('manualBannerItems')}: ${setByHand.keys.map((k) => t(ITEM_LABEL[k])).join(', ')}`,
-                  `${t('manualReason')}: ${setByHand.reason || t('notRecordedShort')}`,
+                  // 70b14723 — one sentence and one reason PER SOURCE, the same pairs the screen prints.
+                  // A workbook that names only the per-run adjustment on a payslip whose EPF came from the
+                  // employee's own category sends an auditor to the wrong screen to check it.
+                  ...setByHand.notes.flatMap((n) => [
+                    t(SOURCE_BODY[n.source]),
+                    `${t(SOURCE_REASON_LABEL[n.source])}: ${n.reason || t('notRecordedShort')}`,
+                  ]),
                 ]
               : []),
           ].join('  ·  ')

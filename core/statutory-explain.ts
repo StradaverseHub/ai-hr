@@ -51,6 +51,13 @@
  * than a special one: it is the only item whose working is printed as a multiplication, so a typed levy
  * printed `wage × percentage = an amount that is not their product`.
  *
+ * 70b14723 — AND A SECOND WAY IN, WITH THE SAME CONSEQUENCE. A standing Manual EPF category does to the
+ * KWSP Third Schedule exactly what a per-run adjustment does: RM500 against a recorded base of RM3,000 is
+ * not 16.67% of anything and the schedule did not produce it. So the EPF item reports `ruleKind: 'manual'`
+ * and both rates null there too, off `statutory.epfManual` instead of `statutory.adjustment`. Note what this
+ * does NOT change: a manual EMPLOYER amount alone still nulls the employee rate as well, under the same
+ * blunt rule and the same recorded reversal below.
+ *
  * DELIBERATE, WITH ITS REVERSAL WRITTEN IN. When only ONE leg was typed, nulling both rates suppresses
  * the untouched leg's genuinely-derived rate, which loses a true statement. It is chosen anyway: one
  * item telling two stories — "KWSP Third Schedule, 13.00%" on one line and "entered by hand" on the line
@@ -64,10 +71,21 @@
  * `statutoryProvenance(statutory, key)` IS that answer and the only place that decides it. The
  * explanation carries what it returns on every item (`provenance`) and once for the payslip
  * (`setByHand`); the screen, its amber banner and the Excel export all read those two and never re-read
- * `statutory.adjustment` for themselves. That is the point: item 70b14723 (Manual EPF categories) adds a
- * SECOND way an EPF figure can be set by hand, and it extends `StatutoryProvenanceSource` and this one
- * function. The banner, the rule labels, the suppressed rates and the downloaded copy then follow with no
- * second implementation to keep in step, and two sources cannot end up disagreeing about one payslip.
+ * `statutory.adjustment` for themselves.
+ *
+ * ⚠️ THE SECOND SOURCE HAS LANDED (70b14723), AND IT CAME IN THROUGH HERE — which is the evidence that the
+ * seam was the right shape rather than a hope. `manual_amount` is a STANDING per-employee EPF figure typed
+ * on the employee's record (`employee_statutory_my.epf_employee_amount` / `epf_employer_amount`), stamped by
+ * the kernel as `statutory.epfManual` and read by `readEpfManualProvenance` below. The whole extension was
+ * one member of `StatutoryProvenanceSource`, one arm of this function, and per-source wording on the one
+ * banner. No second banner, no second label set, no second suppression rule: `isSetByHand` already made
+ * every call site recognise it, `ruleKind: 'manual'` already suppressed both rates, and the Excel export
+ * already carried the disclosure. A THIRD source should be the same size of change; if it is not, the seam
+ * has been worked around rather than extended.
+ *
+ * THE ONE THING THAT DID CHANGE SHAPE: `StatutorySetByHand.reason` became `notes`, one entry per source.
+ * Two sources can sit on one payslip, each with its own operator's words, and a single reason field
+ * silently attaches one decision's justification to the other.
  *
  * ══ WHAT AN OLD PAYSLIP GETS ══
  *
@@ -114,11 +132,15 @@ export type StatutoryExplainKey = (typeof STATUTORY_EXPLAIN_KEYS)[number];
  *                expressible as a rate at all. The whole working already lives at /payroll/pcb-detail
  *                off the same payslip's `pcbMeta`, and this module deliberately does NOT reimplement it
  *                — one PCB display, which is exactly what 45df860a's plan settled.
- *   'manual'   — NO RULE PRODUCED THIS AMOUNT (208beb8b). A payroll officer typed it into Payroll ›
- *                Statutory Adjustment, so there is nothing to name: not the KWSP Third Schedule, not
- *                PERKESO's, not a percentage of the wage. It takes the seat the produced rule would have
- *                had precisely so every surface that prints a rule name prints this instead, and so both
- *                effective rates go null with it.
+ *   'manual'   — NO RULE PRODUCED THIS AMOUNT (208beb8b). A person typed it, so there is nothing to name:
+ *                not the KWSP Third Schedule, not PERKESO's, not a percentage of the wage. It takes the seat
+ *                the produced rule would have had precisely so every surface that prints a rule name prints
+ *                this instead, and so both effective rates go null with it.
+ *                TWO WAYS TO GET HERE SINCE 70b14723, and the rule name is deliberately the SAME for both:
+ *                Payroll › Statutory Adjustment (one run) and the employee's own Manual EPF category (every
+ *                run). "No rule produced this amount" is equally true of each, and a second rule label would
+ *                be a distinction the WORKING does not have. WHO decided it — and why — is `provenance`'s
+ *                job, and the banner's wording follows that instead.
  *                PCB IS THE ONE EXCEPTION AND KEEPS 'mtd': it has no rate to suppress here, its own
  *                screen already discloses the override in full, and the link across is the product's one
  *                MTD display. A hand-set PCB is still flagged — through `provenance` and the banner.
@@ -131,8 +153,19 @@ export type StatutoryRuleKind = 'rate' | 'schedule' | 'mtd' | 'manual';
  * so" are different sentences, and only one of them names an adjustment with a reason attached.
  *   · 'computed'            — the run's own rule produced it. The overwhelming majority.
  *   · 'statutoryAdjustment' — Payroll › Statutory Adjustment, `applyStatutoryAdjustment`'s stamp.
+ *   · 'epfManualAmount'    — 70b14723: the EMPLOYEE'S OWN EPF CATEGORY says so. A standing per-employee
+ *                             ringgit figure (`employee_statutory_my.epf_employee_amount` /
+ *                             `epf_employer_amount`, mode 'manual_amount'), read live by every run and
+ *                             stamped on the payslip as `statutory.epfManual`. EPF ONLY — no other item has
+ *                             such an election, which is why the arm below is gated on the key.
+ *
+ * WHEN BOTH ARE TRUE OF ONE PAYSLIP, 'statutoryAdjustment' WINS AND THAT IS NOT A PREFERENCE. A per-run
+ * adjustment is applied AFTER the kernel's `stComputed` (core/payroll.ts `applyStatutoryAdjustment`), so it
+ * IS the figure the payslip carries; its own `system` leg happens to record the standing amount it
+ * replaced, which is the honest account of that payslip. Reporting the election instead would name a figure
+ * that is not on the slip.
  */
-export type StatutoryProvenanceSource = 'computed' | 'statutoryAdjustment';
+export type StatutoryProvenanceSource = 'computed' | 'statutoryAdjustment' | 'epfManualAmount';
 
 /** One leg of one item, as the run's stamp recorded it: what the engine produced, and what was used. */
 export type StatutoryManualLeg = {
@@ -155,11 +188,21 @@ export type StatutoryProvenance = {
   reason: string;
 };
 
-/** The payslip-level answer the banner needs: WHICH items a person decided, and the one reason given. */
+/**
+ * The payslip-level answer the banner needs: WHICH items a person decided, and WHY — per SOURCE.
+ *
+ * 70b14723 — `notes` REPLACED a single `reason: string`, because a second source made that field capable of
+ * a quiet misattribution: with a hand-set SOCSO line and a standing manual EPF amount on one payslip, the
+ * banner printed the first item's reason under one heading and left a reader to attach it to both. One entry
+ * per distinct source, in `STATUTORY_EXPLAIN_KEYS` order, each carrying the reason recorded for THAT source
+ * — so the screen and the export say "a payroll officer typed it, because X" and "the employee's EPF
+ * category says so, because Y" as the two different sentences they are.
+ */
 export type StatutorySetByHand = {
   /** In `STATUTORY_EXPLAIN_KEYS` order, so the banner lists them the way the screen lists them. */
   keys: StatutoryExplainKey[];
-  reason: string;
+  /** One per distinct non-'computed' source on this payslip, in the order the items appear. */
+  notes: { source: StatutoryProvenanceSource; reason: string }[];
 };
 
 /**
@@ -288,6 +331,9 @@ type Blob = {
   pcbMeta?: unknown;
   /** `applyStatutoryAdjustment`'s stamp — read ONLY through `statutoryProvenance`. */
   adjustment?: unknown;
+  /** 70b14723 — the kernel's standing-manual-EPF stamp (`epfManualStamp`, core/payroll.ts). Read ONLY
+   *  through `statutoryProvenance`, for the same reason and under the same guard as `adjustment`. */
+  epfManual?: unknown;
 };
 
 /**
@@ -366,17 +412,28 @@ function readAdjustedLine(lines: Record<string, unknown>, line: string | null): 
 export function statutoryProvenance(statutory: unknown, key: StatutoryExplainKey): StatutoryProvenance {
   const none: StatutoryProvenance = { source: 'computed', employee: null, employer: null, reason: '' };
   const st = (statutory ?? {}) as Blob;
+  const adjustment = readAdjustmentProvenance(st, key);
+  // ORDER IS THE ANSWER, NOT A PREFERENCE: `applyStatutoryAdjustment` runs after the kernel composed
+  // `stComputed`, so where both a per-run adjustment and a standing manual amount exist, the adjustment IS
+  // the figure on the payslip — and its own `system` leg already records the standing amount it replaced.
+  // See the note on `StatutoryProvenanceSource`.
+  if (adjustment) return adjustment;
+  return readEpfManualProvenance(st, key) ?? none;
+}
+
+/** `applyStatutoryAdjustment`'s stamp, or null when it says nothing about this item. */
+function readAdjustmentProvenance(st: Blob, key: StatutoryExplainKey): StatutoryProvenance | null {
   const stamp = st.adjustment;
-  if (!stamp || typeof stamp !== 'object' || Array.isArray(stamp)) return none;
+  if (!stamp || typeof stamp !== 'object' || Array.isArray(stamp)) return null;
   const lines = (stamp as { lines?: unknown }).lines;
-  if (!lines || typeof lines !== 'object' || Array.isArray(lines)) return none;
+  if (!lines || typeof lines !== 'object' || Array.isArray(lines)) return null;
   const map = ADJUSTMENT_LINES[key];
   const employee = readAdjustedLine(lines as Record<string, unknown>, map.employee);
   const employer = readAdjustedLine(lines as Record<string, unknown>, map.employer);
   // A stamp naming only OTHER lines says nothing about this item. `applyStatutoryAdjustment` deliberately
   // does not cascade, so an EPF override leaves SOCSO exactly as the schedule produced it and SOCSO must
   // go on saying so — a banner on every line of the payslip would train readers to ignore it.
-  if (!employee && !employer) return none;
+  if (!employee && !employer) return null;
   const reason = (stamp as { reason?: unknown }).reason;
   return {
     source: 'statutoryAdjustment',
@@ -384,6 +441,33 @@ export function statutoryProvenance(statutory: unknown, key: StatutoryExplainKey
     employer,
     reason: typeof reason === 'string' ? reason : '',
   };
+}
+
+/**
+ * 70b14723 — THE STANDING PER-EMPLOYEE EPF AMOUNT's stamp (`statutory.epfManual`), or null.
+ *
+ * EPF AND NOTHING ELSE, gated on the key rather than on a map: `employee_statutory_my` carries a manual
+ * amount for EPF alone and no other agency has such an election, so a SOCSO item must go on reporting the
+ * PERKESO schedule even on a payslip whose EPF was typed. Returning the same shape as the adjustment arm is
+ * the whole point of the seam — `isSetByHand`, the rule label, the suppressed rates, the amber banner and
+ * the Excel export all follow with no second implementation and no second decision.
+ *
+ * Shape-defensive in exactly the way `readAdjustedLine` is, and for the same reason: `{system, applied}` is
+ * gated on the PRESENCE of both numbers, so a half-written stamp cannot hand the screen a banner asserting
+ * as fact that the system had calculated RM 0.00. "This side was not typed" and "the rule produced nothing"
+ * are different statements. A side the operator left blank has no member here at all, because that side is
+ * still the schedule's and saying otherwise would suppress a rate that is genuinely derivable.
+ */
+function readEpfManualProvenance(st: Blob, key: StatutoryExplainKey): StatutoryProvenance | null {
+  if (key !== 'epf') return null;
+  const stamp = st.epfManual;
+  if (!stamp || typeof stamp !== 'object' || Array.isArray(stamp)) return null;
+  const o = stamp as Record<string, unknown>;
+  const employee = readAdjustedLine(o, 'employee');
+  const employer = readAdjustedLine(o, 'employer');
+  if (!employee && !employer) return null;
+  const reason = o.reason;
+  return { source: 'epfManualAmount', employee, employer, reason: typeof reason === 'string' ? reason : '' };
 }
 
 /**
@@ -488,7 +572,18 @@ export function explainStatutory(statutory: unknown, runType: string): Statutory
     setByHand:
       handSet.length === 0
         ? null
-        : { keys: handSet.map((i) => i.key), reason: handSet[0].provenance.reason },
+        : {
+            keys: handSet.map((i) => i.key),
+            // ONE NOTE PER DISTINCT SOURCE, first occurrence wins the reason — 70b14723. A payslip can carry
+            // a per-run adjustment AND a standing manual EPF amount at once, and each carries its own
+            // operator's words; collapsing them to one string is how a reason gets attached to the decision
+            // that did not produce it. `keys` stays the flat item list the banner heads itself with.
+            notes: handSet.reduce<StatutorySetByHand['notes']>((acc, i) => {
+              if (!acc.some((n) => n.source === i.provenance.source))
+                acc.push({ source: i.provenance.source, reason: i.provenance.reason });
+              return acc;
+            }, []),
+          },
     // Read through the kernel's OWN accessor rather than a second copy of `st.version` — two readers of
     // one stamp is how a screen starts reporting a different ruleset from the reprocess diff.
     rulesetVersion: payslipProvenance(statutory).rulesetVersion,

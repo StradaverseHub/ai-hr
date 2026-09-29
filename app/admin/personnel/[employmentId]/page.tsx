@@ -3082,11 +3082,17 @@ export default async function EmployeePage({
               epfNumber={statutory?.epfNumber}
               epfCitizenship={statutory?.epfCitizenship}
             />
-            {/* EPF election (1C): rate fields appear only for voluntary_excess (client island). */}
+            {/* EPF election (1C): rate fields appear only for voluntary_excess, and the ringgit fields only
+                for the three fixed-amount categories (item 70b14723) — client island. The amounts are
+                RINGGIT and pass through UNSCALED, unlike the rates, which are stored as decimals and are
+                ×100'd here into the percent the box shows. */}
             <EpfElection
               mode={statutory?.epfMode ?? null}
               employeeRate={statutory?.epfEmployeeRate ? Number(statutory.epfEmployeeRate) * 100 : null}
               employerRate={statutory?.epfEmployerRate ? Number(statutory.epfEmployerRate) * 100 : null}
+              employeeAmount={statutory?.epfEmployeeAmount != null ? Number(statutory.epfEmployeeAmount) : null}
+              employerAmount={statutory?.epfEmployerAmount != null ? Number(statutory.epfEmployerAmount) : null}
+              manualReason={statutory?.epfManualReason ?? null}
             />
           </div>
           {/* Item 0d9bb2da — "Employer bears EPF Contribution". Mirrors the employer-bears SOCSO/EIS/tax

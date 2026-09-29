@@ -52,7 +52,7 @@ import { Card } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
 // `isSetByHand` is the derivation's OWN predicate over `provenance` — imported rather than re-spelled as
 // `source !== 'computed'` here, so 70b14723's second source is recognised by this screen automatically.
-import { isSetByHand } from '@/core/statutory-explain';
+import { isSetByHand, type StatutoryProvenanceSource } from '@/core/statutory-explain';
 import type { StatutoryExplainKey, StatutoryExplanation, StatutoryItemExplanation } from '@/core/statutory-explain';
 
 export type StatutoryDetailContext = {
@@ -112,6 +112,27 @@ const RULE_LABEL: Record<StatutoryItemExplanation['ruleKind'], string> = {
  */
 const ruleLabelKey = (i: StatutoryItemExplanation) =>
   i.key === 'epf' && i.ruleKind === 'schedule' ? 'ruleScheduleEpf' : RULE_LABEL[i.ruleKind];
+/**
+ * ⚠️ EXHAUSTIVE BY TYPE for the same reason `RULE_LABEL` is — 70b14723 added a source and this is where a
+ * new one has to be worded, in both files, or the banner explains one decision and attributes it to another.
+ *
+ * ONE BANNER, TWO SENTENCES. The heading, the styling, the item list and the suppressed rates are shared:
+ * these two maps carry only the part that genuinely differs — WHO decided the figure and what their recorded
+ * words are called. "A payroll officer entered this under Payroll, Statutory Adjustment" and "this
+ * employee's EPF Category is a fixed amount" are different facts about where a reader should go to change
+ * it, and a shared sentence would have to be vague about both. 'computed' never reaches here (`isSetByHand`
+ * is the gate) but is mapped rather than omitted so tsc stays the enforcement.
+ */
+const SOURCE_BODY: Record<StatutoryProvenanceSource, string> = {
+  computed: 'manualBannerBody',
+  statutoryAdjustment: 'manualBannerBody',
+  epfManualAmount: 'manualBannerBodyElection',
+};
+const SOURCE_REASON_LABEL: Record<StatutoryProvenanceSource, string> = {
+  computed: 'manualReason',
+  statutoryAdjustment: 'manualReason',
+  epfManualAmount: 'manualReasonElection',
+};
 
 /** Bare 2-decimal number for use INSIDE a working expression, where a currency prefix on every term is
  *  noise. The unit is stated once, on the line above the expression — the pcb-detail convention. */
@@ -264,15 +285,26 @@ export async function StatutoryDetailView({
       {explanation.setByHand && (
         <Card className="border-amber-500/40 bg-amber-500/5 p-4">
           <p className="text-sm font-medium">{t('manualBannerHeading')}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{t('manualBannerBody')}</p>
+          {/* 70b14723 — ONE paragraph per SOURCE, in `notes` order. Still one banner: a payslip can carry a
+              per-run adjustment AND a standing manual EPF amount, and a reader who is told only one of them
+              will look for the figure in the wrong place. */}
+          {explanation.setByHand.notes.map((n) => (
+            <p key={`body-${n.source}`} className="mt-1 text-xs text-muted-foreground">
+              {t(SOURCE_BODY[n.source])}
+            </p>
+          ))}
           <div className="mt-2">
             <Row
               label={t('manualBannerItems')}
               value={explanation.setByHand.keys.map((k) => t(ITEM_LABEL[k])).join(' · ')}
             />
-            {/* The reason is mandatory at the point of entry, so '' here means a pre-2961a7ae stamp, not
-                an officer who declined to say. Named as unrecorded rather than rendered as a blank row. */}
-            <Row label={t('manualReason')} value={explanation.setByHand.reason || notRecorded} />
+            {/* The reason is mandatory at the point of entry — for both sources — so '' here means a
+                pre-2961a7ae stamp, not an officer who declined to say. Named as unrecorded rather than
+                rendered as a blank row. Each reason is labelled with ITS OWN source's caption, because
+                "reason recorded for the adjustment" is false of an EPF-category figure. */}
+            {explanation.setByHand.notes.map((n) => (
+              <Row key={`reason-${n.source}`} label={t(SOURCE_REASON_LABEL[n.source])} value={n.reason || notRecorded} />
+            ))}
           </div>
         </Card>
       )}

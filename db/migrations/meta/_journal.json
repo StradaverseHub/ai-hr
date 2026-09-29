@@ -2822,6 +2822,13 @@
       "when": 1789980200344,
       "tag": "0490_leave_history_import",
       "breakpoints": true
+    },
+    {
+      "idx": 491,
+      "version": "7",
+      "when": 1789980201344,
+      "tag": "0491_epf_manual_amount",
+      "breakpoints": true
     }
   ]
 }

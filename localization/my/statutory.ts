@@ -100,17 +100,94 @@ const EPF_EMPLOYER_FLOOR = Math.min(
   DEFAULT_MY_STATUTORY.epf.employerRateHigh,
 );
 
-/** Resolve + validate the per-side EPF election (Wave 2B). i-Topup can only RAISE a rate, never
- *  lower it below statutory; rates outside [floor, 1] are rejected. Rates are kept only for
- *  'voluntary_excess'; 'auto'/'exempt' carry no rates. */
+/** What `resolveEpfElection` persists: the lawful mode plus the four figures and the reason, every one of
+ *  them nulled for a mode that does not use it. The setter is a FULL-ROW OVERWRITE, so "nulled" is the
+ *  mechanism that makes changing category actually clear the previous category's figures rather than
+ *  leaving them behind for a future reader to apply. */
+type ResolvedEpfElection = {
+  epfMode: EpfMode;
+  epfEmployeeRate: string | null;
+  epfEmployerRate: string | null;
+  epfEmployeeAmount: string | null;
+  epfEmployerAmount: string | null;
+  epfManualReason: string | null;
+};
+
+/**
+ * Resolve + validate the per-side EPF election (Wave 2B; item 70b14723 adds 'manual_amount').
+ *
+ * RATES ('voluntary_excess'): i-Topup can only RAISE a rate, never lower it below statutory; rates
+ * outside [floor, 1] are rejected. Rates are kept only for 'voluntary_excess'.
+ *
+ * ══ AMOUNTS ('manual_amount', item 70b14723) — WHAT IS REFUSED, AND THE ONE THING THAT IS NOT ══
+ *
+ * REFUSED: a manual category with NO amount on either side (it elects nothing — the row would compute
+ * exactly as 'auto' while the screen said a person had decided it); a negative; a non-finite figure; and a
+ * blank reason. The reason is mandatory for the same purpose it is mandatory on the per-run override
+ * (`saveStatutoryAdjustment`): a figure that overrules a contribution schedule has to carry somebody's
+ * words or an auditor is left with an unexplained number.
+ *
+ * ⚠️ NOT REFUSED: AN AMOUNT BELOW THE THIRD SCHEDULE. Decided, with evidence, and it is the one decision
+ * in this function worth reading twice:
+ *   · the product's own precedent on the IDENTICAL figure — `saveStatutoryAdjustment` (core/payroll.ts)
+ *     lets an operator type any EPF employee/employer amount for a run and refuses only a NEGATIVE. A
+ *     floor here and none there would be incoherent about the same money;
+ *   · a lawful below-schedule case this system cannot compute at all, which its OWN sources document
+ *     already flags as unhandled: "pre-1998 legacy (5.5% / 6-6.5%) is NOT auto-applied (rare - flag if any
+ *     such grandfathered member exists)" (docs/architecture/STATUTORY-SOURCES.md §2). Those legacy figures
+ *     are RATES and the rate election still cannot carry them, because `voluntary_excess` is
+ *     max(elected, statutory) and can only RAISE. A typed amount is the only affordance, and a floor here
+ *     would close it;
+ *   · the ticket asked in so many words that the automatic calculation must not override the amount.
+ * The consequence is real and it is the operator's: the KWSP submission file carries the employee's TRUE
+ * wage in the Upah column and this amount in the contribution column, and if the two disagree with the
+ * schedule the agency is the one who notices. We have not tested KWSP's own validation and do not guess.
+ *
+ * ⚠️ ONE-OF-TWO IS NOT AN ERROR EITHER, and the reason is the existing model rather than leniency. The
+ * ticket's three categories ARE the three combinations of (employee amount set, employer amount set) —
+ * nothing stores the category — so an employee amount with a blank employer amount IS "Manual (Employee by
+ * Amount)", and the employer side keeping the schedule is exactly what a blank side means. It is the same
+ * rule a `voluntary_excess` row with a null employer RATE already follows, and it is why no stored row can
+ * carry a category that disagrees with its own figures. The visible amount boxes are `required` in the
+ * form, so the browser asks before a side is left blank by accident.
+ */
 function resolveEpfElection(p: {
   epfMode?: EpfMode;
   epfEmployeeRate?: number | null;
   epfEmployerRate?: number | null;
-}): { epfMode: EpfMode; epfEmployeeRate: string | null; epfEmployerRate: string | null } {
+  epfEmployeeAmount?: number | null;
+  epfEmployerAmount?: number | null;
+  epfManualReason?: string | null;
+}): ResolvedEpfElection {
   const mode: EpfMode =
-    p.epfMode === 'voluntary_excess' || p.epfMode === 'exempt' ? p.epfMode : 'auto';
-  if (mode !== 'voluntary_excess') return { epfMode: mode, epfEmployeeRate: null, epfEmployerRate: null };
+    p.epfMode === 'voluntary_excess' || p.epfMode === 'exempt' || p.epfMode === 'manual_amount' ? p.epfMode : 'auto';
+  const NO_AMOUNT = { epfEmployeeAmount: null, epfEmployerAmount: null, epfManualReason: null };
+  if (mode === 'manual_amount') {
+    const amount = (v: number | null | undefined, label: string): string | null => {
+      if (v == null) return null; // null = that side keeps the rule ("a blank side stays statutory")
+      const n = Number(v);
+      if (!Number.isFinite(n))
+        throw new InvalidEpfElectionError(`${label} EPF amount is not a number — enter a figure in ringgit or leave it blank.`);
+      if (n < 0)
+        throw new InvalidEpfElectionError(
+          `${label} EPF amount ${n} cannot be negative. A KWSP Borang A upload file has no way to express a negative contribution.`,
+        );
+      return n.toFixed(2);
+    };
+    const employeeAmount = amount(p.epfEmployeeAmount, 'Employee');
+    const employerAmount = amount(p.epfEmployerAmount, 'Employer');
+    if (employeeAmount == null && employerAmount == null)
+      throw new InvalidEpfElectionError(
+        'A manual EPF category needs an employee amount, an employer amount, or both. Enter the figure, or choose Auto to have it calculated.',
+      );
+    const reason = (p.epfManualReason ?? '').trim();
+    if (reason === '')
+      throw new InvalidEpfElectionError('A reason is required for a manual EPF amount — say why this employee\'s EPF is a fixed figure.');
+    // Rates are nulled: a manual amount and an elected rate are two different elections and a row carrying
+    // both would leave the next reader to guess which one payroll honoured.
+    return { epfMode: mode, epfEmployeeRate: null, epfEmployerRate: null, epfEmployeeAmount: employeeAmount, epfEmployerAmount: employerAmount, epfManualReason: reason };
+  }
+  if (mode !== 'voluntary_excess') return { epfMode: mode, epfEmployeeRate: null, epfEmployerRate: null, ...NO_AMOUNT };
   const side = (rate: number | null | undefined, floor: number, label: string): string | null => {
     if (rate == null || Number.isNaN(Number(rate))) return null; // null = that side stays statutory
     const r = Number(rate);
@@ -124,6 +201,7 @@ function resolveEpfElection(p: {
     epfMode: mode,
     epfEmployeeRate: side(p.epfEmployeeRate, EPF_EMPLOYEE_FLOOR, 'Employee'),
     epfEmployerRate: side(p.epfEmployerRate, EPF_EMPLOYER_FLOOR, 'Employer'),
+    ...NO_AMOUNT,
   };
 }
 
@@ -207,6 +285,14 @@ export type StatutoryInput = {
   epfMode?: EpfMode;
   epfEmployeeRate?: number | null;
   epfEmployerRate?: number | null;
+  /** Item 70b14723 — 'manual_amount' uses these instead of the rates: the exact monthly EPF figure in RM,
+   *  per side. A null side keeps that side on the rule ("a blank side stays statutory"), which is what makes
+   *  the ticket's three named categories the three combinations of the two. `epfManualReason` is MANDATORY
+   *  for the mode and nulled for every other one. Amounts below the Third Schedule are accepted and
+   *  recorded — see `resolveEpfElection`. A negative is refused here rather than at file-generation time. */
+  epfEmployeeAmount?: number | null;
+  epfEmployerAmount?: number | null;
+  epfManualReason?: string | null;
   bankName?: string;
   bankAccountNo?: string;
   /** TP3 / opening balances for the PCB accumulators (ADR-0014) — YTD figures from a previous
@@ -287,6 +373,12 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
     epfMode: epf.epfMode,
     epfEmployeeRate: epf.epfEmployeeRate,
     epfEmployerRate: epf.epfEmployerRate,
+    // Item 70b14723 — the typed amounts + reason. `resolveEpfElection` has already nulled whatever the
+    // chosen category does not use, exactly as it already nulls the rates, so this full-row overwrite
+    // CLEARS a previous category's figures instead of leaving them for a future reader to apply.
+    epfEmployeeAmount: epf.epfEmployeeAmount,
+    epfEmployerAmount: epf.epfEmployerAmount,
+    epfManualReason: epf.epfManualReason,
     bankName: p.bankName ?? null,
     bankAccountNo: p.bankAccountNo ?? null,
     tp3Year: p.tp3Year ?? null,
@@ -318,6 +410,14 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
         employerBearsEis: employeeStatutoryMy.employerBearsEis,
         employerBearsSkbbk: employeeStatutoryMy.employerBearsSkbbk,
         employerBearsEpf: employeeStatutoryMy.employerBearsEpf,
+        // Item 70b14723 — the EPF election's BEFORE side. Read here (not derived, not guessed) so the event
+        // below can carry a before/after for the mode, the rates and the typed amounts together.
+        epfMode: employeeStatutoryMy.epfMode,
+        epfEmployeeRate: employeeStatutoryMy.epfEmployeeRate,
+        epfEmployerRate: employeeStatutoryMy.epfEmployerRate,
+        epfEmployeeAmount: employeeStatutoryMy.epfEmployeeAmount,
+        epfEmployerAmount: employeeStatutoryMy.epfEmployerAmount,
+        epfManualReason: employeeStatutoryMy.epfManualReason,
       })
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
@@ -348,9 +448,42 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
       // percent/fixed are config rates, not per-payslip cleartext pay (ADR-0030), so they may be recorded.
       payload: {
         personId: p.personId,
+        // AFTER-ONLY, AND KEPT. These three were the whole EPF record on this event before item 70b14723,
+        // and `test/epf-modes.test.ts` pins them as the substrate-discipline claim; a reader of the event
+        // stream would break if they moved. The reconstructable before/after lives in `epfElection` below —
+        // added beside them rather than replacing them, the same "retire, never delete" rule the message
+        // catalogues follow.
         epfMode: epf.epfMode,
         epfEmployeeRate: epf.epfEmployeeRate,
         epfEmployerRate: epf.epfEmployerRate,
+        // ── Item 70b14723 — THE EPF ELECTION, BEFORE AND AFTER ─────────────────────────────────────────
+        // The three keys above are after-only, so until now "was auto, now voluntary_excess at 15%" could
+        // NOT be reconstructed from the log: the event recorded where the employee ended up and nothing
+        // about where they started. That was tolerable while the election was a rate; it is not once it can
+        // be a ringgit figure that decides a payslip. The typed amounts and the reason therefore land in a
+        // proper before/after block — the shape `statutoryControls` beside this has always had — and the
+        // mode and rates come WITH them rather than being described twice in two different ways.
+        // Rates are decimal strings ('0.1500'); amounts are 2dp strings ('500.00'); both null when unset.
+        epfElection: {
+          before: existing
+            ? {
+                epfMode: existing.epfMode,
+                epfEmployeeRate: existing.epfEmployeeRate,
+                epfEmployerRate: existing.epfEmployerRate,
+                epfEmployeeAmount: existing.epfEmployeeAmount,
+                epfEmployerAmount: existing.epfEmployerAmount,
+                epfManualReason: existing.epfManualReason,
+              }
+            : null,
+          after: {
+            epfMode: values.epfMode,
+            epfEmployeeRate: values.epfEmployeeRate,
+            epfEmployerRate: values.epfEmployerRate,
+            epfEmployeeAmount: values.epfEmployeeAmount,
+            epfEmployerAmount: values.epfEmployerAmount,
+            epfManualReason: values.epfManualReason,
+          },
+        },
         zakatActive: zakat.zakatActive,
         zakatState: zakat.zakatState,
         zakatMethod: zakat.zakatMethod,

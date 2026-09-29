@@ -57,7 +57,7 @@ import { resolveEmployeeIdMode, type EmployeeIdRule } from '../lib/employee-id-m
 // a72610af — the EPF category the draft stores is the five-name UI value; this is the SAME mapper the
 // Personnel statutory action calls to turn it into one of the three lawful KWSP enum values. The client
 // never decides the persisted enum, on either screen.
-import { mapEpfUiMode } from '../lib/epf-mode-map';
+import { epfUiModeNeedsAmount, mapEpfUiMode } from '../lib/epf-mode-map';
 import {
   draftFamily,
   draftLabel,
@@ -679,11 +679,24 @@ export async function completeEmployeeDraft(
       isResident: boolOrUndef(s.isResident),
       epfCitizenship: citizenship(s.epfCitizenship),
       // a72610af — the EPF CATEGORY, through the same mapper the Personnel statutory action uses. The
-      // draft stores the five-name UI value ('auto' | 'manual_percentage' | 'semi_auto' | 'none'); the
-      // three lawful KWSP enum values are decided HERE, server-side. No rates: the draft does not
+      // draft stores the four-name UI value ('auto' | 'manual_percentage' | 'semi_auto' | 'none'); the
+      // lawful KWSP enum values are decided HERE, server-side. No rates: the draft does not
       // collect them (see EmployeeDraftStatutory.epfMode for why), and `mapEpfUiMode` nulls both sides
       // for every category, so 'a blank side stays statutory' is exactly what is stored.
-      ...mapEpfUiMode(str(s.epfMode), null, null),
+      //
+      // ⚠️ AND NO AMOUNTS EITHER, item 70b14723 — for a STRONGER version of the same reason, which is why
+      // `EpfCategoryField` does not offer the three fixed-amount categories at all. A manual category with
+      // no figure elects nothing and `resolveEpfElection` REFUSES it; this call site runs after
+      // `hireEmployee` has committed, so such a draft would fail an activation that had already created the
+      // employee. So a stray manual value from a stale tab is mapped to `auto` HERE and the draft activates
+      // instead of dying — HR then sets the figure on Bank & Statutory, where the boxes exist.
+      // `epfManualReason` is likewise never written from a draft.
+      //
+      // THE DOWNGRADE IS EXPLICIT HERE rather than hidden inside `mapEpfUiMode`, because that mapper is also
+      // the Personnel form's boundary and THERE a manual category with a blank box must be REFUSED, not
+      // quietly turned into Auto. One function, two callers; the caller that cannot carry the figure is the
+      // one that says so.
+      ...mapEpfUiMode(epfUiModeNeedsAmount(str(s.epfMode)) ? 'auto' : str(s.epfMode), null, null, null, null, null),
       // a72610af — the four employer-bears switches. Absent ⇒ undefined ⇒ the writer's `?? false`, which
       // is the column default, so a draft saved before this change creates a byte-identical employee.
       employerBearsEpf: boolOrUndef(s.employerBearsEpf),

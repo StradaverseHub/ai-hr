@@ -759,11 +759,17 @@
       "epfModeVoluntary": "Đóng vượt tự nguyện (i-Topup)",
       "epfModeManualPercentage": "Thủ công (theo phần trăm)",
       "epfModeSemiAuto": "Bán tự động (chỉ tỷ lệ người lao động)",
-      "epfModeManualFixed": "Thủ công (số tiền cố định) — sắp ra mắt",
+      "epfModeManualEmployeeAmount": "Thủ công (Nhân viên theo số tiền)",
+      "epfModeManualEmployerAmount": "Thủ công (Người sử dụng lao động theo số tiền)",
+      "epfModeManualBothAmount": "Thủ công (Nhân viên và người sử dụng lao động theo số tiền)",
+      "epfModeManualFixed": "Thủ công (theo số tiền cố định) — ĐÃ NGỪNG DÙNG, được thay bằng ba loại Thủ công (theo số tiền)",
       "epfModeExempt": "Miễn (không đóng)",
       "epfEmployeeRate": "Tỷ lệ nhân viên %",
       "epfEmployerRate": "Tỷ lệ người sử dụng lao động %",
-      "epfElectionHint": "Đóng vượt tự nguyện (i-Topup, Mẫu KWSP 17A/18A) đặt tỷ lệ bằng hoặc cao hơn mức luật định 11%/13%; bên để trống giữ mức luật định. Chỉ theo tỷ lệ — KWSP không có lựa chọn số tiền cố định. Miễn chỉ dành cho nhân viên thực sự được miễn.",
+      "epfEmployeeAmount": "Số tiền nhân viên (RM mỗi tháng)",
+      "epfEmployerAmount": "Số tiền người sử dụng lao động (RM mỗi tháng)",
+      "epfManualReason": "Lý do cho số tiền cố định",
+      "epfElectionHint": "Đóng vượt tự nguyện (i-Topup, Mẫu KWSP 17A/18A) đặt tỷ lệ bằng hoặc cao hơn mức luật định 11%/13%; bên để trống giữ mức luật định. Các loại Thủ công (theo số tiền) dùng một số tiền ringgit chính xác thay cho tỷ lệ, và bắt buộc phải có lý do. Miễn chỉ dành cho nhân viên thực sự được miễn.",
       "terminationType": "Loại chấm dứt",
       "terminationTypeUnspecified": "— Không xác định —",
       "terminationVoluntary": "Tự nguyện (từ chức)",
@@ -1628,7 +1634,9 @@
       "childQualifyingCategoryContradictsDob": "Loại miễn giảm của trẻ này ghi dưới 18 tuổi, nhưng ngày sinh thì không. Vui lòng kiểm tra hồ sơ.",
       "childQualifyingWhyCategory": "Được tính vì loại miễn giảm của trẻ này cho phép yêu cầu sau 18 tuổi. Chỉ đánh dấu thôi không làm trẻ đủ điều kiện.",
       "childrenPhysicalDoc": "Số con đủ điều kiện. Mẫu EA mục 8, Mẫu E và CP8D đọc mục này.",
-      "childrenQualifyingDoc": "C của LHDN — một trọng số, không phải số người: mỗi con được tính bằng số đơn vị theo mục 48 của loại giảm trừ tương ứng. Phép tính PCB hàng tháng và phiếu tính của nó đọc mục này; không có ô nào trên Mẫu EA in ra nó. Khoản giảm trừ thu được, RM{perChild} × C, là con số mà Mẫu EA Phần D mục 6 in ra."
+      "childrenQualifyingDoc": "C của LHDN — một trọng số, không phải số người: mỗi con được tính bằng số đơn vị theo mục 48 của loại giảm trừ tương ứng. Phép tính PCB hàng tháng và phiếu tính của nó đọc mục này; không có ô nào trên Mẫu EA in ra nó. Khoản giảm trừ thu được, RM{perChild} × C, là con số mà Mẫu EA Phần D mục 6 in ra.",
+      "epfManualAmountHint": "Nhập chính xác số tiền đóng EPF hằng tháng bằng ringgit. Số tiền này được dùng ngay từ lần tính lương đầu tiên và trong mọi lần tính lại. Bên để trống vẫn giữ cách tính theo luật định. Số tiền thấp hơn biểu của Luật EPF vẫn được chấp nhận và ghi nhận — tệp gửi KWSP sẽ mang mức lương thực tế cùng số tiền bạn nhập, và cơ quan quản lý là bên đối chiếu.",
+      "epfManualDraftHint": "Các loại số tiền cố định (Thủ công theo số tiền) được đặt trên thẻ Ngân hàng & Luật định của nhân viên sau khi nhân viên được tạo, vì số tiền không được thu thập ở đây."
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -6327,7 +6335,9 @@
       "workingLabel": "Phép tính",
       "workingMtd": "Thuế thu nhập không phải là một tỷ lệ phần trăm của tiền lương. Nó được tính từ thu nhập ước tính cả năm, các khoản giảm trừ của người lao động và biểu thuế. Phép tính đầy đủ nằm ở màn hình tính PCB.",
       "workingNilCharge": "Lần chạy lương này không phát sinh khoản nào cho mục này.",
-      "workingNotRecorded": "Lần chạy này không ghi lại tiền lương làm căn cứ nên không thể hiển thị phép tính. Các số tiền dưới đây là những gì đã thực sự khấu trừ và nộp."
+      "workingNotRecorded": "Lần chạy này không ghi lại tiền lương làm căn cứ nên không thể hiển thị phép tính. Các số tiền dưới đây là những gì đã thực sự khấu trừ và nộp.",
+      "manualBannerBodyElection": "Loại EPF của nhân viên này là một số tiền cố định hằng tháng, được nhập trên hồ sơ của chính họ trong Quản lý nhân sự, Ngân hàng và Luật định — nên không có biểu đóng góp nào tạo ra con số này. Nó được áp dụng cho mọi lần tính lương và tính lại cho đến khi loại này được thay đổi. Không hiển thị phần trăm cho nó, vì một số tiền được nhập tay không có tỷ lệ phía sau, và con số hệ thống lẽ ra sẽ tính được hiển thị bên cạnh con số đã dùng. Thay đổi số tiền sẽ làm dịch chuyển bất kỳ đợt nào được tính lại sau đó và chưa được chốt.",
+      "manualReasonElection": "Lý do đã ghi nhận cho số tiền EPF cố định"
     },
     "txnImport": {
       "title": {
@@ -6961,7 +6971,7 @@
       "yearHint": "Để trống để bao gồm mọi năm có trong hồ sơ.",
       "apply": "Áp dụng",
       "headline": "{changed} trong {compared} tháng-nhân viên sẽ thay đổi, trên {periods} tháng-công ty có nhiều hơn một kỳ trả lương.",
-      "verdictBreakdown": "Đã tính như một tháng: {aggregated}. Hai cách đọc trùng nhau: {agree}. Không khớp cách đọc nào: {unexplained}.",
+      "verdictBreakdown": "Đã tính như một tháng: {aggregated}. Cả hai cách đọc đều khớp: {agree}. Số tiền EPF do người nhập: {manualEpf}. Không khớp cách đọc nào: {unexplained}.",
       "replayVersion": "Tính lại theo bộ quy tắc pháp định phiên bản {version}.",
       "totalsTitle": "Tổng theo khoản pháp định",
       "totalsHint": "“Đã trả” là tổng các số liệu lưu trên phiếu lương. “Từng kỳ riêng lẻ” tính lại mỗi kỳ từ bậc thấp nhất của biểu. “Cả tháng là một” coi tháng đó là một phép tính pháp định duy nhất. “Chênh lệch” là phần sẽ thay đổi, chỉ tính cho những tháng-nhân viên có số đã trả khớp với “từng kỳ riêng lẻ”.",
@@ -7029,7 +7039,8 @@
         "agree": "Cả hai cách đọc đều ra số đã trả",
         "already_aggregated": "Đã tính như một tháng",
         "would_change": "Sẽ thay đổi",
-        "unexplained": "Không khớp cách đọc nào"
+        "unexplained": "Không khớp cách đọc nào",
+        "manual_epf_amount": "Số tiền EPF do người nhập"
       },
       "disposition": {
         "excluded": "Bị loại",

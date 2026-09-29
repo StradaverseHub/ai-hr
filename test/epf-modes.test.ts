@@ -13,7 +13,7 @@ import type { SessionContext } from '../db/client';
 import { DEFAULT_MY_STATUTORY } from '../localization/my/statutory-tables';
 import { epf, resolveEpfRates } from '../localization/my/payroll';
 import { getStatutoryProfileMY, setStatutoryProfileMY, InvalidEpfElectionError } from '../localization/my/statutory';
-import { mapEpfUiMode } from '../lib/epf-mode-map';
+import { EPF_UI_AMOUNT_MODES, epfUiModeNeedsAmount, mapEpfUiMode } from '../lib/epf-mode-map';
 import { setCompensation } from '../core/comp';
 import { createBatch, generatePayslips } from '../core/payroll';
 import { hireEmployee } from '../core/org';
@@ -187,16 +187,81 @@ describe('Wave 2B — EPF election service + kernel', () => {
   });
 });
 
-describe('ADR-0046 — EPF 5-category UI → 3-enum mapping (pure)', () => {
-  // The mapper is pure (no DB); covers every UI category → enum value + the rates to persist.
-  it('maps each of the 5 UI selections onto a lawful enum value', () => {
-    expect(mapEpfUiMode('auto', null, null)).toEqual({ epfMode: 'auto', epfEmployeeRate: null, epfEmployerRate: null });
-    expect(mapEpfUiMode('manual_percentage', '15', '13')).toEqual({ epfMode: 'voluntary_excess', epfEmployeeRate: 0.15, epfEmployerRate: 0.13 });
+describe('ADR-0046 — EPF UI-category → lawful-enum mapping (pure)', () => {
+  // The mapper is pure (no DB); covers every UI category → enum value + the figures to persist.
+  const NO_AMOUNT = { epfEmployeeAmount: null, epfEmployerAmount: null, epfManualReason: null };
+  it('maps each UI selection onto a lawful enum value', () => {
+    expect(mapEpfUiMode('auto', null, null)).toEqual({ epfMode: 'auto', epfEmployeeRate: null, epfEmployerRate: null, ...NO_AMOUNT });
+    expect(mapEpfUiMode('manual_percentage', '15', '13')).toEqual({ epfMode: 'voluntary_excess', epfEmployeeRate: 0.15, epfEmployerRate: 0.13, ...NO_AMOUNT });
     // Semi-Auto: employee rate elected, employer side forced statutory (null) even if a value is sent.
-    expect(mapEpfUiMode('semi_auto', '15', '99')).toEqual({ epfMode: 'voluntary_excess', epfEmployeeRate: 0.15, epfEmployerRate: null });
-    expect(mapEpfUiMode('none', '15', '13')).toEqual({ epfMode: 'exempt', epfEmployeeRate: null, epfEmployerRate: null });
-    // Manual fixed is deferred (ADR-0046) → coerced to auto; an unknown value also falls through to auto.
-    expect(mapEpfUiMode('manual_fixed', '15', '13')).toEqual({ epfMode: 'auto', epfEmployeeRate: null, epfEmployerRate: null });
-    expect(mapEpfUiMode('garbage', '15', '13')).toEqual({ epfMode: 'auto', epfEmployeeRate: null, epfEmployerRate: null });
+    expect(mapEpfUiMode('semi_auto', '15', '99')).toEqual({ epfMode: 'voluntary_excess', epfEmployeeRate: 0.15, epfEmployerRate: null, ...NO_AMOUNT });
+    expect(mapEpfUiMode('none', '15', '13')).toEqual({ epfMode: 'exempt', epfEmployeeRate: null, epfEmployerRate: null, ...NO_AMOUNT });
+    // An unknown value falls through to auto.
+    expect(mapEpfUiMode('garbage', '15', '13')).toEqual({ epfMode: 'auto', epfEmployeeRate: null, epfEmployerRate: null, ...NO_AMOUNT });
+  });
+
+  /**
+   * ══ ITEM 70b14723 — THIS ASSERTION PINNED A DECISION THAT HAS NOW BEEN REVERSED ══
+   *
+   * WHAT IT USED TO SAY, quoted so the reversal is auditable rather than invisible in a diff:
+   *
+   *     // Manual fixed is deferred (ADR-0046) → coerced to auto; an unknown value also falls through to auto.
+   *     expect(mapEpfUiMode('manual_fixed', '15', '13')).toEqual({ epfMode: 'auto', … });
+   *
+   * The DEFERRAL is reversed (ADR-0087): a fixed ringgit EPF amount is now a lawful stored election,
+   * `manual_amount`, reached through three named UI categories. The COERCION of the literal string
+   * 'manual_fixed' is NOT reversed and is asserted below for the reason it was written — it was the disabled
+   * "coming soon" option that feedback 127dffba removed from the dropdown, it names no side and carries no
+   * figure, and a stale browser tab or an old draft can still post it. Retired, not deleted.
+   */
+  it('70b14723: the retired `manual_fixed` value still coerces to auto, and the three named categories do not', () => {
+    expect(mapEpfUiMode('manual_fixed', '15', '13', '500', '650', 'why')).toEqual({
+      epfMode: 'auto',
+      epfEmployeeRate: null,
+      epfEmployerRate: null,
+      ...NO_AMOUNT,
+    });
+    expect(mapEpfUiMode('manual_employee_amount', '15', '13', '500', '650', ' agreed  ')).toEqual({
+      epfMode: 'manual_amount',
+      epfEmployeeRate: null,
+      epfEmployerRate: null,
+      // The EMPLOYER amount is nulled although one was posted: the form is a full-row overwrite with every
+      // input mounted, so a figure left in a hidden box by a previous category must not be persisted.
+      epfEmployeeAmount: 500,
+      epfEmployerAmount: null,
+      epfManualReason: 'agreed',
+    });
+    expect(mapEpfUiMode('manual_employer_amount', '15', '13', '500', '650', 'why')).toEqual({
+      epfMode: 'manual_amount',
+      epfEmployeeRate: null,
+      epfEmployerRate: null,
+      epfEmployeeAmount: null,
+      epfEmployerAmount: 650,
+      epfManualReason: 'why',
+    });
+    expect(mapEpfUiMode('manual_both_amount', '15', '13', '500', '650', 'why')).toEqual({
+      epfMode: 'manual_amount',
+      epfEmployeeRate: null,
+      epfEmployerRate: null,
+      epfEmployeeAmount: 500,
+      epfEmployerAmount: 650,
+      epfManualReason: 'why',
+    });
+    // Rates are nulled for a manual category even when the percentage boxes posted values, and vice versa.
+    expect(mapEpfUiMode('manual_percentage', '15', '13', '500', '650', 'why').epfEmployeeAmount).toBeNull();
+    // A blank box on a manual category is null here and refused by `resolveEpfElection`, not silently 0.
+    expect(mapEpfUiMode('manual_employee_amount', null, null, '', null, 'why').epfEmployeeAmount).toBeNull();
+    // A non-blank non-number survives as NaN so the server can refuse it BY NAME rather than read it as blank.
+    expect(Number.isNaN(mapEpfUiMode('manual_employee_amount', null, null, 'abc', null, 'why').epfEmployeeAmount!)).toBe(true);
+    // A blank reason is null, which `resolveEpfElection` refuses.
+    expect(mapEpfUiMode('manual_both_amount', null, null, '500', '650', '   ').epfManualReason).toBeNull();
+  });
+
+  it('70b14723: the three named categories are the ones a DRAFT cannot carry, and the draft path knows it', () => {
+    // `completeEmployeeDraft` runs after `hireEmployee` has committed and the draft collects no figure, so it
+    // asks this question and downgrades to auto rather than being refused by a writer it cannot recover from.
+    for (const m of EPF_UI_AMOUNT_MODES) expect(epfUiModeNeedsAmount(m), m).toBe(true);
+    for (const m of ['auto', 'manual_percentage', 'semi_auto', 'none', 'manual_fixed', 'garbage', null, undefined])
+      expect(epfUiModeNeedsAmount(m), String(m)).toBe(false);
   });
 });
