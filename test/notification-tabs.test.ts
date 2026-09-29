@@ -9,6 +9,7 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base, harnessSnapshot } from './harness';
 import type { SessionContext } from '../db/client';
@@ -75,31 +76,55 @@ describe('listPendingTasks (Task tab)', () => {
     expect(await pendingApprovalsCount(mgrCtx, undefined, { attendance: true, claims: true })).toBe(tasks.length);
   });
 
-  it('self-exclusion: your own pending travel request is a task for others, never for you', async () => {
+  /**
+   * ⚠️ b833a077 (r362) — RE-POINTED, NOT DELETED. This was
+   *   it('self-exclusion: your own pending travel request is a task for others, never for you')
+   * and it built a pending `travel_request` for the viewer, then asserted
+   *   expect(own.some((t) => t.kind === 'travel')).toBe(false);
+   * with an admin seeing the same row as a task. My Travel was removed completely, so `travel` is no
+   * longer a PendingTaskKind and that fixture cannot be built through any product path.
+   *
+   * It was the ONLY test covering the bell's self-exclusion rule, so deleting it would have dropped that
+   * coverage silently. Leave CANCELLATION self-excludes by exactly the same mechanism — the requester's
+   * own pending item is never their own task — so the case is re-pointed at it and the rule stays pinned.
+   */
+  it('self-exclusion: your own pending leave cancellation is a task for others, never for you', async () => {
     const M = await hire('Self Mgr');
     const uM = await createAppUser(b.tenantId, M.personId, 'manager');
     const mgrCtx: SessionContext = { tenantId: b.tenantId, userId: uM, personId: M.personId, roles: ['manager'], entitlements: adminCtx(b).entitlements };
-    const [travel] = await owner.db
-      .insert(schema.travelRequest)
+    // An approved leave request of the viewer's own, then a pending cancellation of it.
+    const lr = await requestLeave(adminCtx(b), {
+      employmentId: M.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      startDate: '2026-09-01',
+      endDate: '2026-09-02',
+    });
+    await owner.db
+      .update(schema.leaveRequest)
+      .set({ status: 'approved' })
+      .where(eq(schema.leaveRequest.id, lr.leaveRequestId));
+    const [cancellation] = await owner.db
+      .insert(schema.leaveCancellationRequest)
       .values({
         tenantId: b.tenantId,
+        leaveRequestId: lr.leaveRequestId,
         employmentId: M.employmentId,
-        travelFrom: '2026-09-01',
-        travelTo: '2026-09-03',
-        remarks: 'Client visit',
+        cancelDates: ['2026-09-01'],
+        requestedDays: '1.00',
+        reason: 'Plans changed',
         status: 'pending',
       })
-      .returning({ id: schema.travelRequest.id });
+      .returning({ id: schema.leaveCancellationRequest.id });
 
     // The requester never sees their own item in their Task tab…
     const own = await listPendingTasks(mgrCtx, undefined, { attendance: true, claims: true });
-    expect(own.some((t) => t.kind === 'travel')).toBe(false);
+    expect(own.some((t) => t.id === cancellation.id)).toBe(false);
     // …but an admin (a different person) does, linked to the approvals page.
     const adminTasks = await listPendingTasks(adminCtx(b), undefined, { attendance: true, claims: true });
-    const travelTask = adminTasks.find((t) => t.kind === 'travel' && t.id === travel.id);
-    expect(travelTask).toBeDefined();
-    expect(travelTask!.linkPath).toBe('/approvals');
-    expect(travelTask!.subjectName).toBe('Self Mgr');
+    const task = adminTasks.find((t) => t.kind === 'leaveCancellation' && t.id === cancellation.id);
+    expect(task).toBeDefined();
+    expect(task!.linkPath).toBe('/approvals#approvals-leave-cancellation');
+    expect(task!.subjectName).toBe('Self Mgr');
   });
 
   it('a plain employee (no roles, no assigned reviews) has an empty task list and a zero count', async () => {

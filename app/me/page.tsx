@@ -32,7 +32,9 @@ import { ME_TABS, ME_TAB_LABEL_KEY, type MeTabKey } from './visible-fields';
 
 // a7cbd895: the Leave tab (and its dialogs/forms/reads) moved wholesale to /leave — "My Absence" in the
 // left nav. ?tab=leave deep-links are forwarded (see the redirect below).
-// 0bb0e303 rev2: myRequestCorrection / myRequestOvertime / myRequestTravel are bound on
+// 0bb0e303 rev2: myRequestCorrection / myRequestOvertime are bound on
+// (b833a077, r362: myRequestTravel stood in this list and is gone with the My Travel feature — its
+//  screen, its form and its approvals section were removed; the travel_request rows are kept.)
 // /attendance/requests now (the actions themselves did not move; the forms did).
 import {
   myCheckIn,

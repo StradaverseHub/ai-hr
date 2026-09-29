@@ -2197,6 +2197,10 @@ export function holidayDatesForEmployment(
  *   attendance→ attendance            leave → leave_request · leave_cancellation_request · non-hire leave_ledger
  *   claims    → claim_request         overtime → toil_accrual        loans → employee_loan
  *   travel    → travel_request        roster   → roster_assignment   performance → performance_review
+ *     ⚠️ b833a077 (r362): the travel MODULE is retired — My Travel's row, screen, form and approvals
+ *     section are gone — but its head STAYS and the sub-select below MUST NOT be removed. The reporter
+ *     kept every travel_request row for audit, so an employment can still carry travel history that a
+ *     company change would orphan. test/employee-company-change.test.ts pins it with a real INSERT.
  *   offboarding → resignation_request probation → employment_review  compensation → compensation (a saved salary)
  *
  * Runs inside the caller's tx so the company-change writer can re-run the gate as its server-side source of

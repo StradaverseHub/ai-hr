@@ -91,26 +91,19 @@ describe('2dec6406 — decidedStatusCounts', () => {
     expect(mgrCounts).toEqual({ approved: 1, rejected: 0, cancelled: 1 });
   });
 
-  it("travel: decided buckets exclude the viewer's own rows; cancelled has no bucket (dash)", async () => {
-    await owner.db.insert(schema.travelRequest).values([
-      { tenantId: base.tenantId, employmentId: M.employmentId, travelFrom: '2026-06-01', travelTo: '2026-06-02', remarks: 'own trip', status: 'approved' as const },
-      { tenantId: base.tenantId, employmentId: E.employmentId, travelFrom: '2026-06-03', travelTo: '2026-06-04', remarks: 'report trip', status: 'approved' as const },
-      { tenantId: base.tenantId, employmentId: E.employmentId, travelFrom: '2026-06-05', travelTo: '2026-06-06', remarks: 'report trip 2', status: 'rejected' as const },
-    ]);
-
-    // Manager: own approved travel is excluded (same rule as the pending list's self-exclusion).
-    expect(await decidedStatusCounts(mgrCtx, [base.companyId], 'travel')).toEqual({
-      approved: 1,
-      rejected: 1,
-      cancelled: null,
-    });
-    // Admin (no linked person): nothing is "own", counts everything in scope.
-    expect(await decidedStatusCounts(adminCtx(base), [base.companyId], 'travel')).toEqual({
-      approved: 2,
-      rejected: 1,
-      cancelled: null,
-    });
-  });
+  /**
+   * ⚠️ b833a077 (r362) — A WHOLE CASE LEFT THIS FILE. It was
+   *   it("travel: decided buckets exclude the viewer's own rows; cancelled has no bucket (dash)")
+   * and it inserted three `travel_request` rows, then asserted
+   *   expect(await decidedStatusCounts(mgrCtx, [base.companyId], 'travel')).toEqual({ approved: 1, … })
+   * against the manager's own row being excluded, and everything in scope for an admin.
+   *
+   * My Travel was removed completely, so 'travel' is no longer an ApprovalCategory, `travelCounts` is
+   * deleted and the call above would not type-check. The PROPERTY it covered — a decided bucket excludes
+   * the viewer's own rows, and a category with no cancelled state renders a dash — is NOT lost with it:
+   * the leave-cancellation case immediately below pins exactly the same two things on the other category
+   * that self-excludes. That is why this is a deletion rather than a re-point.
+   */
 
   it("leave cancellations: decided buckets exclude the viewer's own rows", async () => {
     const [lrM] = await owner.db.insert(schema.leaveRequest).values(leaveRow(M.employmentId, 'approved')).returning({ id: schema.leaveRequest.id });

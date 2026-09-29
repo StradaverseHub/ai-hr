@@ -413,7 +413,13 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
       // 2166ef79 had stacked Travel Request and the request history onto /attendance/requests; the
       // reporter has since asked for each function to have its own row and its own screen, and confirmed
       // it. Both new rows are ungated for the same reason as the four above — the caller's own requests.
-      '/attendance/travel',
+      //
+      // ⚠️ b833a077 (r362) — FIVE ROWS NOW. The line above said "SIX rows, not four" and '/attendance/travel'
+      // stood on the line below this one, immediately before request-status. The reporter asked for My
+      // Travel to be removed completely, so the row is gone with the screen it opened. The case is updated
+      // rather than loosened: this is still an exact set, and travel's own obligations (the address still
+      // forwards, the route stays unregistered) are asserted in test/attendance-pack.test.ts REMOVED and
+      // in the dedicated case below.
       '/attendance/request-status',
     ]);
     // plan-ot joins the loop this round: until c6bb5f5a it was a one-line redirect with nothing to guard,
@@ -431,7 +437,18 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
      * its own case below asserting the inverse. The half of the rule that still applies to it (no admin or
      * manager page guard, ungated row) is asserted there too.
      */
-    for (const href of ['/attendance/plan-ot', '/attendance/travel', '/attendance/request-status']) {
+    /**
+     * ⚠️ b833a077 (r362) — '/attendance/travel' USED TO BE IN THIS LOOP, between plan-ot and
+     * request-status, and the claims it carried were
+     *   expect(src, `${href} carries no page guard`).not.toMatch(/requireAdmin\(|scopedAdmin\(/);
+     *   expect(src, `${href} resolves the caller’s own employment`).toContain('myEmployment(s)');
+     * The second one is now FALSE by design: My Travel was removed and that address is a bare redirect,
+     * which resolves no employment because it reads nothing at all. It is moved OUT of the loop rather
+     * than having the loop's assertion weakened for all three routes — the other two still resolve the
+     * caller's own employment and that is exactly what must not silently stop being checked — and it gets
+     * its own case below asserting the inverse.
+     */
+    for (const href of ['/attendance/plan-ot', '/attendance/request-status']) {
       const added = mine.children.find((c) => c.href === href)!;
       expect({ adminOnly: added.adminOnly, managerUp: added.managerUp }, `${href} stays ungated`).toEqual({
         adminOnly: undefined,
@@ -461,6 +478,22 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
       expect(src, `${href} resolves no employment (2aef3cd8 emptied the screen)`).not.toContain('myEmployment');
       expect(src, `${href} reads no attendance`).not.toContain('attendanceForEmploymentRange');
       expect(src, `${href} is still an authenticated page`).toContain('await scopedSession()');
+    }
+    {
+      // b833a077 (r362) — the INVERSE case for the row that left. My Travel is not a child of this node
+      // any more, and its address is a bare redirect. Both halves are asserted positively so "remove the
+      // row" can never quietly mean "leave a 404" or "leave the screen reachable by URL".
+      const href = '/attendance/travel';
+      expect(mine.children.find((c) => c.href === href), `${href} is no longer a row in My Attendance`).toBeUndefined();
+      // Comments stripped: the page's header explains what was removed and so necessarily names what it
+      // no longer does. Same idiom as the my-records block above, for the same reason.
+      const src = read(`app${href}/page.tsx`)
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+      expect(src, `${href} forwards to Clock in/out`).toContain("redirect('/attendance/clock')");
+      expect(src, `${href} resolves no employment — it reads nothing at all`).not.toContain('myEmployment');
+      expect(src, `${href} no longer reads the travel service`).not.toContain('travel-request');
+      expect(src, `${href} renders no form`).not.toContain('myRequestTravel');
     }
     const row = mine.children.find((c) => c.href === '/attendance/requests')!;
     expect({ adminOnly: row.adminOnly, managerUp: row.managerUp }).toEqual({

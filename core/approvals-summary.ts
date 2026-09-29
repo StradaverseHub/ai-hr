@@ -9,14 +9,14 @@
  *
  * One grouped count query per table (the feedbackStatusCounts pattern — core/feedback.ts). Scoping mirrors
  * each PENDING list loader exactly, so a card always describes the same population as its badge:
- *   - leave / cancellations / corrections / travel / profile changes filter by the company scope like
- *     their loaders; claims and resignations are plain RLS with NO company filter (their loaders take none).
- *   - cancellations and travel EXCLUDE rows requested by the viewer (their pending lists self-exclude);
- *     leave, claims, corrections and profile changes INCLUDE the viewer's own rows (their lists render
- *     them, just with disabled actions).
+ *   - leave / cancellations / corrections / profile changes filter by the company scope like their
+ *     loaders; claims and resignations are plain RLS with NO company filter (their loaders take none).
+ *   - cancellations EXCLUDE rows requested by the viewer (their pending list self-excludes); leave,
+ *     claims, corrections and profile changes INCLUDE the viewer's own rows (their lists render them,
+ *     just with disabled actions).
  * Status mapping per category:
  *   - leave: native approved / rejected / cancelled.
- *   - leave cancellation, replacement leave, travel, profile changes: approved / rejected only → cancelled
+ *   - leave cancellation, replacement leave, profile changes: approved / rejected only → cancelled
  *     renders a dash.
  *   - corrections: split Attendance vs Overtime by the ONE shared isOvertimeCorrection predicate;
  *     approved / rejected only.
@@ -26,6 +26,11 @@
  *     (reviewStatusEnum pending_manager/pending_hr/completed/cancelled), so all three cards show a dash and
  *     Pending comes from the same in-memory queue as the badge.
  * Read-only — no DomainEvent (counting mutates nothing).
+ *
+ * b833a077 (r362) — TRAVEL IS NO LONGER A CATEGORY HERE. My Travel was removed completely, so `travelCounts`,
+ * the `case 'travel'` and travel's summand inside the 'all' aggregate are gone with it, and the 'all'
+ * decided totals on /approvals drop by whatever travel used to contribute. The travel_request rows are
+ * kept for audit; nothing in the product counts or shows them.
  */
 import { and, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
@@ -41,7 +46,6 @@ import {
   profileChangeRequest,
   replacementLeaveRequest,
   resignationRequest,
-  travelRequest,
 } from '../db/schema';
 
 /** null = this category has no such bucket → the card renders a dash. */
@@ -117,21 +121,6 @@ async function correctionCounts(
     return { approved: m.get('approved') ?? 0, rejected: m.get('rejected') ?? 0, cancelled: null };
   };
   return { attendance: pick(false), overtime: pick(true) };
-}
-
-async function travelCounts(
-  tx: Tx,
-  ctx: SessionContext,
-  scopeIds: string[] | undefined,
-): Promise<DecidedStatusCounts> {
-  const rows = await tx
-    .select({ status: travelRequest.status, count })
-    .from(travelRequest)
-    .innerJoin(employment, eq(employment.id, travelRequest.employmentId))
-    .where(and(companyScope(scopeIds), notMine(ctx)))
-    .groupBy(travelRequest.status);
-  const m = toMap(rows);
-  return { approved: m.get('approved') ?? 0, rejected: m.get('rejected') ?? 0, cancelled: null };
 }
 
 async function claimCounts(tx: Tx): Promise<DecidedStatusCounts> {
@@ -213,8 +202,6 @@ export async function decidedStatusCounts(
         return (await correctionCounts(tx, scopeIds)).overtime;
       case 'claim':
         return claimCounts(tx);
-      case 'travel':
-        return travelCounts(tx, ctx, scopeIds);
       case 'profileChanges':
         return profileChangeCounts(tx, scopeIds);
       case 'resignations':
@@ -230,7 +217,6 @@ export async function decidedStatusCounts(
           await replacementLeaveCounts(tx, scopeIds),
           ...(Object.values(await correctionCounts(tx, scopeIds)) as DecidedStatusCounts[]),
           await claimCounts(tx),
-          await travelCounts(tx, ctx, scopeIds),
           ...(admin ? [await profileChangeCounts(tx, scopeIds), await resignationCounts(tx)] : []),
         ];
         return parts.reduce<DecidedStatusCounts>(

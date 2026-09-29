@@ -19,7 +19,6 @@ import { hireEmployee, setReportingLine } from '../core/org';
 import { requestLeave, decideLeave } from '../core/leave';
 import { createClaimType, submitClaim, decideClaim } from '../core/claims';
 import { requestAttendanceCorrection, decideAttendanceCorrection } from '../core/attendance';
-import { decideTravelRequest } from '../core/travel-request';
 import { decideLeaveCancellation } from '../core/leave';
 import {
   computeBulkBreakdown,
@@ -33,6 +32,8 @@ import {
 // A faithful copy of the server action's dispatcher (app/approvals/actions.ts dispatchBulkItem). The action
 // is a 'use server' module wired to cookies/redirect/next-intl, so we exercise the same core services +
 // runBulkDecide loop here with an explicit manager session.
+// b833a077 (r362) — `case 'travel'` stood in this copy too and is gone with My Travel. The copy is
+// faithful only if it shrinks with the real dispatcher; a stale `case` would no longer type-check.
 function bulkDispatch(
   s: SessionContext,
   decision: 'approved' | 'rejected',
@@ -52,9 +53,6 @@ function bulkDispatch(
         return;
       case 'attendance':
         await decideAttendanceCorrection(s, { correctionId: item.id, decision, deciderEmploymentId: decider });
-        return;
-      case 'travel':
-        await decideTravelRequest(s, { travelRequestId: item.id, decision, deciderEmploymentId: decider });
         return;
     }
   };
@@ -96,8 +94,10 @@ describe('bulk approval — pure helpers', () => {
 
   it('bulkRowKey is (type,id) — index-independent so it survives a re-sort', () => {
     expect(bulkRowKey({ type: 'attendance', id: 'z' })).toBe('attendance:z');
-    // Same id under two kinds never collides.
-    expect(bulkRowKey({ type: 'leave', id: 'x' })).not.toBe(bulkRowKey({ type: 'travel', id: 'x' }));
+    // Same id under two kinds never collides. b833a077 (r362): this line used 'travel' as the
+    // contrasting kind until My Travel was removed from BulkDecideType; 'claim' carries the assertion
+    // now — the property being pinned (two different kinds, one id, two keys) is unchanged.
+    expect(bulkRowKey({ type: 'leave', id: 'x' })).not.toBe(bulkRowKey({ type: 'claim', id: 'x' }));
   });
 
   it('runBulkDecide isolates each item: one throw does not abort the rest', async () => {

@@ -94,7 +94,9 @@ describe('sectionVisible', () => {
     'claims',
     'replacementLeave',
     'corrections',
-    'travel',
+    // b833a077 (r362) — 'travel' stood here. My Travel was removed completely, so ApprovalSection lost
+    // the member, PANEL_GROUPS lost the whole `{ group: 'travel', categories: ['travel'] }` entry and
+    // SECTION_FOR_CATEGORY lost its row. Listing it here would no longer type-check.
     'profileChanges',
     'resignations',
     'managerReviews',

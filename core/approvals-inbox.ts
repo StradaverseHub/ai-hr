@@ -2,8 +2,11 @@
  * Pending-approvals inbox for the topbar notification bell. Originally a bare COUNT (consultant
  * feedback #11); feedback 1514d366 (3-tab bell) turned it into a LIST API — `listPendingTasks`
  * returns the individual items awaiting THIS user's decision (pending leave from others + leave
- * cancellations + attendance corrections + travel + profile changes + claims + resignations +
+ * cancellations + attendance corrections + profile changes + claims + resignations +
  * manager and HR employment reviews), each with a deep-link to the page where the user acts on it.
+ * b833a077 (r362) — TRAVEL LEFT THIS LIST. My Travel was removed completely, so no travel request can be
+ * created and none can be decided; the `travel` PendingTaskKind, its queue, its self-exclusion and its
+ * bell label went with it. The travel_request rows are kept for audit and are reachable from no screen.
  * `pendingApprovalsCount` stays as the length of that list, so the dashboard card and every
  * existing caller keep their exact semantics. The viewer's own pending requests are excluded —
  * a task means "things needing your action", not "your own requests in flight".
@@ -18,7 +21,6 @@ import { APPROVAL_SECTION_ID } from '../lib/approvals-focus';
 import type { SessionContext } from '../db/client';
 import { listLeaveRequests, listPendingLeaveCancellations } from './read';
 import { listAttendanceCorrections } from './attendance';
-import { listTravelRequests } from './travel-request';
 import { listProfileChangeRequests } from './profile';
 import { listPendingClaims } from './claims';
 import { listResignationRequests } from './offboarding';
@@ -30,7 +32,6 @@ export type PendingTaskKind =
   | 'leave'
   | 'leaveCancellation'
   | 'attendance'
-  | 'travel'
   | 'profile'
   | 'claim'
   | 'resignation'
@@ -86,7 +87,7 @@ export async function listPendingTasks(
 
   if (!admin && !manager && managerReviews.length === 0) return [];
 
-  const [leave, leaveCancellations, corrections, travel, profileChanges, claims, resignations, hrReviews] = await Promise.all([
+  const [leave, leaveCancellations, corrections, profileChanges, claims, resignations, hrReviews] = await Promise.all([
     listLeaveRequests(ctx, scopeIds, 200, { status: 'pending' }),
     // Partial Leave Cancellation (ADR-0065): pending cancellation requests need the same manager/admin
     // decision as a leave request, so they belong in the inbox — with the same self-exclusion below.
@@ -98,10 +99,6 @@ export async function listPendingTasks(
     // Attendance has no corrections awaiting anyone. The `...OrFalse` form is used for the reason its
     // header gives — a resolver outage must cost one queue, not the whole inbox.
     modules.attendance ? listAttendanceCorrections(ctx, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
-    // ADR-0069 Travel Request: same request→decide workflow, same inbox. An employee CAN self-file a travel
-    // request (unlike a correction, which is blocked upstream), so it needs explicit self-exclusion below or
-    // the requester's own item would leak into their own task list.
-    listTravelRequests(ctx, { companyIds: scopeIds, status: 'pending' }),
     admin ? listProfileChangeRequests(ctx, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
     modules.claims ? listPendingClaims(ctx) : Promise.resolve([]),
     // Resignations are HR-decided (the service requires admin), so only admins carry them in the inbox.
@@ -115,10 +112,6 @@ export async function listPendingTasks(
   );
   // Self-exclusion: an employee's own cancellation request is not "awaiting your action".
   const actionableCancellations = leaveCancellations.filter(
-    (r) => ctx.personId == null || r.personId !== ctx.personId,
-  );
-  // Self-exclusion for travel (see note above).
-  const actionableTravel = travel.filter(
     (r) => ctx.personId == null || r.personId !== ctx.personId,
   );
 
@@ -141,13 +134,6 @@ export async function listPendingTasks(
     ...corrections.map((r) => ({
       id: r.id,
       kind: 'attendance' as const,
-      subjectName: r.employee,
-      createdAt: iso(r.createdAt),
-      linkPath: '/approvals',
-    })),
-    ...actionableTravel.map((r) => ({
-      id: r.id,
-      kind: 'travel' as const,
       subjectName: r.employee,
       createdAt: iso(r.createdAt),
       linkPath: '/approvals',

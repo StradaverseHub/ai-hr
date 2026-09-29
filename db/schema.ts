@@ -4052,9 +4052,19 @@ export const attendanceCorrectionAttachment = pgTable(
 
 // ADR-0069 Attendance Request Management — Travel Request. An approved date-range record marking that an
 // employee was working off-site for that window. Scoped to an AUDIT MARKER only: this codebase's geofencing
-// (ADR-0070) is a separate enforcement path; travel is surfaced as a badge via activeTravelRequestFor and is
-// NOT wired into DayContext/attendanceForDate (so it cannot silently change month-summary absence counting).
+// (ADR-0070) is a separate enforcement path, and travel was never wired into DayContext/attendanceForDate
+// (so it could not silently change month-summary absence counting).
 // Reuses attendance_correction_status (pending/approved/rejected) and the same request→decide workflow.
+//
+// ⚠️ b833a077 (r362) — THE TABLE IS KEPT AND NOTHING WRITES IT ANY MORE. My Travel was removed completely
+// at the reporter's request: the menu row, the screen, the form, the approvals section, the bell task and
+// core/travel-request.ts (which held requestTravel / decideTravelRequest / activeTravelRequestFor —
+// referenced in the sentence above and now deleted) are gone. The rows, the RLS policy, the grant and
+// migration 0146 stay, deliberately, so the history survives for audit. Two readers of this table remain
+// and must NOT be tidied away as dead code: core/read.ts employmentCompanyBlockedTx (the company-change
+// gate — deleting it would let HR re-company an employment that still carries travel history) and
+// test/harness.ts's TRUNCATE list. Historic travel-request domain events are still labelled by
+// lib/approval-history.ts, because migrations 0288 and 0320 name them in an immutable allowlist.
 export const travelRequest = pgTable(
   'travel_request',
   {

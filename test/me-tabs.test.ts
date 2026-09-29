@@ -60,6 +60,12 @@ const PLAN_OT_APPLY_PAGE = fs.readFileSync(
 // c6bb5f5a — the three screens the shared My Attendance page was split into. Each is read for the same
 // reason PLAN_OT_APPLY_PAGE is: a relocation must be provable as a MOVE, never as a disappearance.
 const PLAN_OT_LIST_SRC = fs.readFileSync(path.resolve(__dirname, '../app/attendance/plan-ot/page.tsx'), 'utf8');
+// b833a077 (r362) — MY TRAVEL WAS REMOVED, and this read is kept deliberately, now pointed at the
+// redirect stub. The reporter asked for the feature to go, so this file no longer proves a MOVE; it
+// proves the opposite, at the foot of this file: the screen is gone, the form is gone, and the address
+// still forwards rather than 404-ing a bookmark. Keeping the readFileSync at module scope is also what
+// makes a future deletion of that file a visible failure here instead of a whole-suite import error with
+// zero AssertionErrors — the signature CLAUDE.md §4 warns reads as an environment fault.
 const TRAVEL_SRC = fs.readFileSync(path.resolve(__dirname, '../app/attendance/travel/page.tsx'), 'utf8');
 const REQUEST_STATUS_SRC = fs.readFileSync(
   path.resolve(__dirname, '../app/attendance/request-status/page.tsx'),
@@ -154,9 +160,13 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
   //   • myRequestCorrection — /attendance/requests, the Attendance Irregularity screen (a pop-up from
   //     every flagged row AND from "Correct another day"; the inline panel survives only for a legacy
   //     `?fix=` link. ONE form component serves every face — r227).
-  //   • myRequestTravel — /attendance/travel, its own screen since c6bb5f5a.
   //   • myRequestOvertime — /attendance/plan-ot/apply, its own screen since 1e9145d4.
-  const MOVED_ACTIONS = ['myRequestCorrection', 'myRequestTravel'];
+  //   • myRequestTravel — WAS /attendance/travel, its own screen since c6bb5f5a, and is GONE. b833a077
+  //     (r362) removed My Travel completely at the reporter's request: the action, the form and the
+  //     approvals section went with the screen, so there is no capability left to prove a home for. It is
+  //     the one entry that left this list by REMOVAL rather than by relocation, and the case at the foot
+  //     of this describe asserts that removal positively rather than simply dropping the coverage.
+  const MOVED_ACTIONS = ['myRequestCorrection'];
 
   /**
    * Where each moved action is BOUND today, and how. `myRequestCorrection` is not bound with a literal
@@ -172,11 +182,11 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
    */
   const BINDINGS: [string, string, string][] = [
     ['myRequestCorrection', 'app/attendance/requests/page.tsx', 'submitAction={myRequestCorrection}'],
-    ['myRequestTravel', 'app/attendance/travel/page.tsx', 'action={myRequestTravel}'],
+    // b833a077 (r362) — ['myRequestTravel', 'app/attendance/travel/page.tsx', 'action={myRequestTravel}']
+    // stood here. The action and the form are removed, not moved, so the binding is asserted ABSENT below.
   ];
   const SRC_OF: Record<string, string> = {
     'app/attendance/requests/page.tsx': REQUESTS_PAGE,
-    'app/attendance/travel/page.tsx': TRAVEL_SRC,
   };
 
   it('binds each moved request action on the page that now carries it', () => {
@@ -193,6 +203,45 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
     // a screen that no longer shows the rows it acts on.
     expect(REQUEST_STATUS_SRC.includes('action={myCancelAttendanceRequest}'), 'cancel is on the list').toBe(true);
     expect(REQUESTS_PAGE.includes('myCancelAttendanceRequest'), 'and only there').toBe(false);
+  });
+
+  /**
+   * b833a077 (r362) — TRAVEL DID NOT MOVE, IT WAS REMOVED, and this case is what keeps that from being a
+   * silent loss of coverage. Every other entry in this describe proves a relocation. This one proves the
+   * opposite, in the three places the capability used to live, and one thing that must still be true:
+   *
+   *   • no page binds `myRequestTravel` — the action does not exist;
+   *   • the old address still ANSWERS, as a redirect to Clock in/out, because travel bookmarks are in the
+   *     wild and a 404 on a shipped URL is worse than a useful screen. It deliberately does not go to
+   *     /attendance/my-records, which item 2aef3cd8 empties;
+   *   • the screen renders no form and reads no travel service.
+   *
+   * The reporter kept every travel_request row for audit. This case says nothing about the data, only
+   * about reachability — which is exactly the line the approved plan drew.
+   */
+  it('b833a077: My Travel was REMOVED — no form anywhere, and the old address forwards', () => {
+    // Comments stripped: the stub's header explains what was removed, and why the destination is Clock
+    // in/out rather than the emptied Attendance Overview, so it necessarily names both. Judging the
+    // source text would let a comment stand in for a redirect — the same trap test/function-access.test.ts
+    // closed in r362.
+    const code = TRAVEL_SRC.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    expect(code, 'the travel screen forwards to Clock in/out').toContain("redirect('/attendance/clock')");
+    expect(code, 'and deliberately not to the emptied Attendance Overview').not.toContain(
+      '/attendance/my-records',
+    );
+    expect(code, 'no travel form survives on that screen').not.toContain('myRequestTravel');
+    expect(code, 'the travel service is not imported there').not.toContain('travel-request');
+    // …and nowhere else either. The three pages that carried ESS request forms are the places a rebuilt
+    // travel form would plausibly land.
+    for (const [name, src] of [
+      ['app/attendance/requests/page.tsx', REQUESTS_PAGE],
+      ['app/attendance/plan-ot/apply/page.tsx', PLAN_OT_APPLY_PAGE],
+      ['app/attendance/request-status/page.tsx', REQUEST_STATUS_SRC],
+    ] as const) {
+      expect(src.includes('myRequestTravel'), `${name} must not have picked up the removed travel form`).toBe(
+        false,
+      );
+    }
   });
 
   it('overtime moved on to Plan OT — the form is bound there, and only there', () => {
@@ -287,7 +336,8 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
     // banner on a screen with no form on it.
     const actions = fs.readFileSync(path.resolve(__dirname, '../app/me/actions.ts'), 'utf8');
     expect(actions).toContain("const REQUESTS_PAGE = '/attendance/requests'");
-    // Travel LEFT this list at c6bb5f5a — it has its own screen now, and is asserted against it below.
+    // Travel LEFT this list at c6bb5f5a for a screen of its own, and b833a077 (r362) then removed that
+    // screen and the action with it — so there is no travel redirect to check here or anywhere.
     // The correction form did not move, so it still answers to the requests page.
     for (const marker of ['Attendance+request+submitted']) {
       const line = actions.split('\n').find((l) => l.includes(marker));
@@ -306,10 +356,16 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
     // screen they posted from. Travel and the request list are no longer on /attendance/requests, so an
     // untouched redirect would have bounced them off the screen they were reading onto one that no longer
     // shows what they just did.
-    expect(actions).toContain("const TRAVEL_PAGE = '/attendance/travel'");
+    // b833a077 (r362) — THIS LINE USED TO READ
+    //   expect(actions).toContain("const TRAVEL_PAGE = '/attendance/travel'");
+    // and the loop below led with ['Travel+requested', '${TRAVEL_PAGE}']. My Travel was removed
+    // completely, so the constant, the action and the redirect are gone. The claim is INVERTED rather
+    // than dropped: a TRAVEL_PAGE reappearing in this file would mean the form had been rebuilt.
+    expect(actions, 'TRAVEL_PAGE went with the removed My Travel screen').not.toContain('TRAVEL_PAGE');
+    expect(actions, 'no travel redirect survives').not.toContain('Travel+requested');
+    expect(actions, 'the travel service is not imported any more').not.toContain('core/travel-request');
     expect(actions).toContain("const REQUEST_STATUS_PAGE = '/attendance/request-status'");
     for (const [marker, target] of [
-      ['Travel+requested', '${TRAVEL_PAGE}'],
       ['Attendance+request+cancelled', '${REQUEST_STATUS_PAGE}'],
     ] as const) {
       const line = actions.split('\n').find((l) => l.includes(marker));

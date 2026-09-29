@@ -9,7 +9,6 @@ import { parseBulkItems, runBulkDecide, type BulkDecideItem } from '@/lib/approv
 import { approvalsReturnUrl } from '@/lib/approvals-categories';
 import { localizeLeaveError } from '@/app/me/actions';
 import { decideAttendanceCorrection } from '@/core/attendance';
-import { decideTravelRequest } from '@/core/travel-request';
 import { decideProfileChange } from '@/core/profile';
 import { decideClaim } from '@/core/claims';
 import { decideResignation } from '@/core/offboarding';
@@ -160,18 +159,6 @@ export async function approveCorrectionAction(formData: FormData) {
   done(`Correction ${decision}`, nav);
 }
 
-export async function approveTravelAction(formData: FormData) {
-  const s = await getSession();
-  const nav = navOf(formData);
-  const decision = String(formData.get('decision')) as 'approved' | 'rejected';
-  try {
-    await decideTravelRequest(s, { travelRequestId: String(formData.get('id')), decision });
-  } catch (e) {
-    fail(e, nav);
-  }
-  done(`Travel ${decision}`, nav);
-}
-
 /**
  * r260 stage two (9583deac) — a rejection carries the approver's REASON, and the employee is shown it
  * on their own screen. `decideProfileChange` throws ProfileChangeReasonRequiredError when a rejection
@@ -249,8 +236,10 @@ export async function decideReviewAction(formData: FormData) {
 // path — so assertCanDecide + the per-record DomainEvent fire once per request (audit unchanged; bulk never
 // approves anything a one-by-one click couldn't). Each item runs in its own try/catch AND its own service
 // transaction (every decide* opens its own withTenant), so one failure/permission-skip never aborts the
-// rest. We collect approved vs skipped and report both. v1 scope: leave, leave cancellations, claims,
-// attendance/OT, travel — reviews / profile changes / resignations are excluded (richer per-item flows).
+// rest. We collect approved vs skipped and report both. v1 scope: leave, leave cancellations, claims and
+// attendance/OT — reviews / profile changes / resignations are excluded (richer per-item flows).
+// b833a077 (r362): `case 'travel'` stood in this switch and is gone with the My Travel feature. The
+// BulkDecideType union lost 'travel' in the same change, which is what keeps this switch exhaustive.
 async function dispatchBulkItem(
   s: Awaited<ReturnType<typeof getSession>>,
   item: BulkDecideItem,
@@ -275,9 +264,6 @@ async function dispatchBulkItem(
       return;
     case 'attendance':
       await decideAttendanceCorrection(s, { correctionId: item.id, decision, deciderEmploymentId });
-      return;
-    case 'travel':
-      await decideTravelRequest(s, { travelRequestId: item.id, decision, deciderEmploymentId });
       return;
   }
 }

@@ -508,10 +508,16 @@ describe('sidebar Attendance group — Clock in/out and Records are the staff no
   // arrives without a line here is still a failure. Both are reversals of 2166ef79, which had folded
   // Travel Request and the request history onto the Attendance Irregularity screen; the reporter asked
   // for each function to have its own row and its own screen, and confirmed it.
-  it('carries My Travel and My Attendance Request Status, ungated, exactly once across the rail', () => {
+  //
+  // ⚠️ b833a077 (r362) — THIS CASE COVERED TWO ROWS AND NOW COVERS ONE. Its old title was
+  //   'carries My Travel and My Attendance Request Status, ungated, exactly once across the rail'
+  // and its loop led with the pair `['/attendance/travel', 'myTravel']`. The reporter asked for My Travel
+  // to be removed completely, so that row is gone from the rail. The case is UPDATED, not loosened: the
+  // surviving row keeps every assertion it had, and the removed one gains the STRICTER statement below —
+  // zero occurrences anywhere in the rail's combined sources, not merely "not in this node".
+  it('carries My Attendance Request Status, ungated, exactly once across the rail', () => {
     const requestsIdx = node.indexOf(`'/attendance/requests'`);
     for (const [href, labelKey] of [
-      ['/attendance/travel', 'myTravel'],
       ['/attendance/request-status', 'myAttendanceRequestStatus'],
     ] as const) {
       const idx = node.indexOf(`'${href}'`);
@@ -529,6 +535,21 @@ describe('sidebar Attendance group — Clock in/out and Records are the staff no
 
       expect(countQuoted(SRC, href), `${href} appears exactly once across the rail`).toBe(1);
     }
+  });
+
+  // b833a077 (r362) — the other half of the case above, stated positively.
+  it('b833a077: My Travel has no row anywhere in the rail, and its address still forwards', () => {
+    const href = '/attendance/travel';
+    // Nowhere in the rail's COMBINED sources — not in My Attendance, not smuggled into the config node,
+    // not into Manage. countQuoted is the same instrument the "exactly once" assertions use, read at 0.
+    expect(countQuoted(SRC, href), `${href} must have no row anywhere in the rail`).toBe(0);
+    // nav.myTravel is RETIRED rather than deleted (the repo convention), so the KEY still resolves — which
+    // is exactly why a row could come back unnoticed. This is what stops it.
+    expect(node.indexOf(`labelKey: 'myTravel'`), 'no row may carry the retired myTravel key').toBe(-1);
+    // And the address must still answer, because travel bookmarks are in the wild. /attendance/clock is
+    // the destination on purpose; /attendance/my-records is blank (item 2aef3cd8).
+    const page = fs.readFileSync(path.resolve(__dirname, '..', `app${href}`, 'page.tsx'), 'utf8');
+    expect(page, `${href} must forward to Clock in/out, not 404`).toContain("redirect('/attendance/clock')");
   });
 });
 

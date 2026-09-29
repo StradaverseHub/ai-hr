@@ -64,7 +64,6 @@ import {
   type AttendanceRequestKind,
   type OtReasonCategory,
 } from '@/db/schema';
-import { requestTravel } from '@/core/travel-request';
 import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
 // 9583deac stage two — the ONE declaration of which fields an employee may ask to change. This action
 // reads it instead of naming seven fields by hand; see that file's header.
@@ -527,10 +526,12 @@ const REQUESTS_PAGE = '/attendance/requests';
  * • The request LIST — and the Cancel control on it — moved to /attendance/request-status. A cancel that
  *   still redirected to REQUESTS_PAGE would bounce the employee off the list they were reading, onto a
  *   screen that no longer shows the row they just cancelled.
- * • Travel moved to /attendance/travel, form and history together.
+ * • Travel USED TO BE the third case here — myRequestTravel, answering to /attendance/travel. b833a077
+ *   (r362) removed My Travel completely: the row, the screen, the form and the approvals section are
+ *   gone, so there is no travel action and no travel page to land on. The travel_request rows are kept
+ *   for audit and no new one can be created. /attendance/travel is now a redirect to /attendance/clock.
  */
 const REQUEST_STATUS_PAGE = '/attendance/request-status';
-const TRAVEL_PAGE = '/attendance/travel';
 
 // R45 3707cba9 — "Attendance Request": a PURE clock-in/out correction (date + optional check-in/out +
 // mandatory reason). Overtime moved to its own myRequestOvertime request; the OT field is gone from here.
@@ -752,22 +753,6 @@ export async function myWithdrawOvertimePlan(formData: FormData) {
   }
   revalidatePath(PLAN_OT_PAGE);
   redirect(`${PLAN_OT_PAGE}?toast=Overtime+plan+withdrawn`);
-}
-
-/** ADR-0069: submit a Travel Request (off-site work window). Same approvals inbox, same decide flow — only
- *  the screen it answers to moved (c6bb5f5a: My Travel is its own page now, form and history together). */
-export async function myRequestTravel(formData: FormData) {
-  const { s, employmentId } = await resolveMe();
-  const travelFrom = String(formData.get('travelFrom') || '');
-  const travelTo = String(formData.get('travelTo') || '');
-  const remarks = String(formData.get('remarks') || '').trim();
-  try {
-    await requestTravel(s, { employmentId, travelFrom, travelTo, remarks: remarks || undefined });
-  } catch (e) {
-    redirect(`${TRAVEL_PAGE}?error=${encodeURIComponent((e as Error).message)}`);
-  }
-  revalidatePath(TRAVEL_PAGE);
-  redirect(`${TRAVEL_PAGE}?toast=Travel+requested`);
 }
 
 export async function myUpdateContact(formData: FormData) {

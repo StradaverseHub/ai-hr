@@ -6,18 +6,24 @@
  * RSC-boundary guard (test/rsc-boundary-guard.test.ts) stays satisfied. Nothing here touches React/DOM.
  *
  * v1 scope (approved as recommended in the plan): bulk covers the request kinds that today have a single
- * one-click approve/reject on /approvals — leave (ordinary), leave cancellations, claims, attendance
- * corrections (which also carry OT), and travel. Multi-level manager/HR reviews, profile-change requests,
- * per-date leave and resignations are EXCLUDED (they need per-item data), and the UI says so.
+ * one-click approve/reject on /approvals — leave (ordinary), leave cancellations, claims and attendance
+ * corrections (which also carry OT). Multi-level manager/HR reviews, profile-change requests, per-date
+ * leave and resignations are EXCLUDED (they need per-item data), and the UI says so.
+ *
+ * b833a077 (r362) — TRAVEL WAS THE FIFTH MEMBER OF BOTH UNIONS AND IS GONE. My Travel was removed
+ * completely: no travel request can be created and none can be decided, so there is no travel row to
+ * select. Both unions and both ordered lists lose 'travel' in ONE change, because the dispatcher switch
+ * in app/approvals/actions.ts and the category switch in core/approvals-summary.ts are keyed off them —
+ * shrink a union without dropping its case (or the reverse) and tsc fails.
  */
 
 /** Which core decide* service a selected row is dispatched to (the bulk server action switches on this). */
-export type BulkDecideType = 'leave' | 'leaveCancellation' | 'claim' | 'attendance' | 'travel';
+export type BulkDecideType = 'leave' | 'leaveCancellation' | 'claim' | 'attendance';
 
 /** Confirmation-dialog breakdown bucket. Attendance corrections split into Attendance vs Overtime: an
  *  attendance correction that carries `requestedOtMinutes` is an OT request, otherwise a clock correction.
  *  Both dispatch to the SAME decideAttendanceCorrection service (type stays 'attendance'). */
-export type BulkCategory = 'leave' | 'leaveCancellation' | 'attendance' | 'overtime' | 'claim' | 'travel';
+export type BulkCategory = 'leave' | 'leaveCancellation' | 'attendance' | 'overtime' | 'claim';
 
 /** A selectable pending row handed from the server page to the client island. `id` is the request id — the
  *  selection is keyed by (type,id) so it is index-independent and survives a re-sort (sort item 09cda965). */
@@ -31,7 +37,6 @@ export const BULK_DECIDE_TYPES: readonly BulkDecideType[] = [
   'leaveCancellation',
   'claim',
   'attendance',
-  'travel',
 ];
 
 /** Stable display order of the by-type breakdown lines in the confirmation dialog. */
@@ -41,7 +46,6 @@ export const BULK_CATEGORY_ORDER: readonly BulkCategory[] = [
   'attendance',
   'overtime',
   'claim',
-  'travel',
 ];
 
 /** Composite selection key. Request ids are UUIDs (globally unique) but prefixing with the type keeps the

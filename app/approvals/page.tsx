@@ -9,7 +9,6 @@ import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreak
 // cross-module substrate awaiting an approvals contract, ADR-0080 open decision 6) — this widens no
 // allowlist and copies no new pattern.
 import { dayTypesForPairs, listAttendanceCorrections, type PlanOtDayType } from '@/core/attendance';
-import { listTravelRequests } from '@/core/travel-request';
 import { listProfileChangeRequests } from '@/core/profile';
 // r261 stage three — the tenant's answer to "who approves a profile change?" (ess.profile_change_approver),
 // read the quiet page way and resolved by the one shared interpretation.
@@ -37,7 +36,6 @@ import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inp
 import {
   approveClaimAction,
   approveCorrectionAction,
-  approveTravelAction,
   approveProfileChangeAction,
   decideLeaveCancellationAction,
   decideResignationAction,
@@ -217,7 +215,10 @@ export default async function ApprovalsPage({
   const attendanceOn = isModuleEnabledOrFalse(s, 'attendance');
   const claimsOn = isModuleEnabledOrFalse(s, 'claims');
 
-  const [leave, leaveCancellations, replacementRequests, corrections, travel, profileChanges, claims, resignations] = await Promise.all([
+  // b833a077 (r362) — `travel` stood between `corrections` and `profileChanges` in this destructuring and
+  // `listTravelRequests` in the Promise.all below. My Travel was removed completely: no form can create a
+  // travel request any more, so there is no queue to decide. The travel_request rows are kept for audit.
+  const [leave, leaveCancellations, replacementRequests, corrections, profileChanges, claims, resignations] = await Promise.all([
     // 8cb7b089 pre-fix: cap the 200-row limit over PENDING rows only. Without the status filter, a pending
     // request older than the 200 most recent rows of ANY status silently never reached this inbox — quietly
     // incomplete before, actively misleading once calendar pills deep-link straight to this section.
@@ -233,8 +234,6 @@ export default async function ApprovalsPage({
     // used rather than the throwing one for the reason its header gives — a resolver outage must degrade
     // one queue, not the whole inbox.
     attendanceOn ? listAttendanceCorrections(s, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
-    // ADR-0069 Travel Request: same inbox, same decide flow.
-    listTravelRequests(s, { companyIds: scopeIds, status: 'pending' }),
     profileChangeDecider ? listProfileChangeRequests(s, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
     claimsOn ? listPendingClaims(s) : Promise.resolve([]),
     admin ? listResignationRequests(s, { status: 'pending' }) : Promise.resolve([]),
@@ -308,8 +307,6 @@ export default async function ApprovalsPage({
   const HR_ONLY_STEP_KINDS = new Set(['hr_admin', 'hr_manager', 'custom_role']);
   const stageLabel = (kind: string | null) =>
     kind === 'direct_manager' ? t('stageManager') : t('stageHr');
-  // ADR-0069: travel can be self-filed, so self-exclude the viewer's own from the actionable count.
-  const pendingTravel = travel.filter((tr) => !mine(tr.personId));
   const rm = (n: number) => `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`;
 
   // Category panel (2dec6406) — ONE population per category, taken from the SAME in-memory lists the
@@ -323,7 +320,6 @@ export default async function ApprovalsPage({
     attendance: corrections.filter((c) => !isOvertimeCorrection(c)).length,
     overtime: corrections.filter(isOvertimeCorrection).length,
     claim: claims.length,
-    travel: pendingTravel.length,
     profileChanges: profileChanges.length,
     resignations: resignations.length,
     managerReviews: managerReviews.length,
@@ -351,7 +347,6 @@ export default async function ApprovalsPage({
   const sortedReplacement = sortApprovalRows(replacementRequests, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt.toISOString() });
   const sortedClaims = sortApprovalRows(claims, sort, { id: (r) => r.id, name: (r) => r.claimantName, createdAt: (r) => r.createdAt });
   const sortedCorrections = sortApprovalRows(corrections, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
-  const sortedTravel = sortApprovalRows(pendingTravel, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
   const sortedProfileChanges = sortApprovalRows(profileChanges, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
   const sortedResignations = sortApprovalRows(resignations, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
   const sortedManagerReviews = sortApprovalRows(managerReviews, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
@@ -370,7 +365,6 @@ export default async function ApprovalsPage({
     (visible('replacementLeave') ? replacementRequests.length : 0) +
     (visible('claims') ? claims.length : 0) +
     (visible('corrections') ? visibleCorrections.length : 0) +
-    (visible('travel') ? pendingTravel.length : 0) +
     (visible('profileChanges') ? profileChanges.length : 0) +
     (visible('resignations') ? resignations.length : 0) +
     (visible('managerReviews') ? managerReviews.length : 0) +
@@ -408,9 +402,6 @@ export default async function ApprovalsPage({
             type: 'attendance' as const,
             category: (isOvertimeCorrection(c) ? 'overtime' : 'attendance') as BulkCategory,
           }))
-      : []),
-    ...(visible('travel')
-      ? sortedTravel.map((tr) => ({ id: tr.id, type: 'travel' as const, category: 'travel' as const }))
       : []),
   ];
 
@@ -1042,56 +1033,6 @@ export default async function ApprovalsPage({
       </Card>
       )}
 
-      {/* ADR-0069 Travel Requests */}
-      {visible('travel') && (
-      <Card className="overflow-hidden" data-tour="approvals-travel">
-        <SectionHeader title={t('travelRequests')} count={pendingTravel.length} />
-        {pendingTravel.length === 0 ? (
-          <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingTravel')}</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="w-8 px-4 py-2">
-                  <BulkSectionSelectAll type="travel" />
-                </th>
-                <th className="px-4 py-2 font-medium">{t('employee')}</th>
-                <th className="px-4 py-2 font-medium">{t('dates')}</th>
-                <th className="px-4 py-2 font-medium">{t('reason')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('action')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {sortedTravel.map((tr) => (
-                <tr key={tr.id}>
-                  <td className="px-4 py-2.5">
-                    <BulkRowCheckbox id={tr.id} type="travel" />
-                  </td>
-                  <td className="px-4 py-2.5 font-medium">
-                    {/* Employee ID left-of-name (feedback 38668d9b) */}
-                    <EmployeeCode code={tr.employeeCode} className="mr-1.5" />
-                    {tr.employee}
-                  </td>
-                  <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
-                    {tr.travelFrom} → {tr.travelTo}
-                  </td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{tr.remarks}</td>
-                  <td className="px-4 py-2.5">
-                    <DecideButtons
-                      action={approveTravelAction}
-                      id={tr.id}
-                      disabled={mine(tr.personId)}
-                      labels={decideLabels}
-                      nav={nav}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
-      )}
 
       {profileChangeDecider && visible('profileChanges') && (
         <Card className="overflow-hidden">

@@ -279,7 +279,8 @@ describe('org-scope enforcement', () => {
     });
     const standCtx = await userCtx(stand.personId, 'manager');
 
-    // The NULL-module 3-arg path (what every scope-less decide caller — travel/profile/review — runs).
+    // The NULL-module 3-arg path (what every scope-less decide caller — profile/review/offboarding — runs;
+    // travel was one until b833a077 (r362) removed My Travel and its decide service).
     expect(await canDecide(standCtx, subA.employmentId, null, null)).toBe(true);
     expect(await canDecide(standCtx, subB.employmentId, null, null)).toBe(false);
 

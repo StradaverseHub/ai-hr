@@ -45,7 +45,9 @@ import {
  * then. They have since asked for the opposite, in writing and confirmed, and each of the three now has
  * its own menu row and its own page:
  *   • Self Overtime → /attendance/plan-ot (the route that used to forward HERE now renders the list)
- *   • Travel Request → /attendance/travel
+ *   • Travel Request → its own screen at the time; b833a077 (r362) then removed My Travel completely
+ *     (row, screen, form and approvals section). Its address redirects to Clock in/out and no travel
+ *     request can be filed from anywhere. The travel_request rows are kept for audit.
  *   • "My attendance requests" → /attendance/request-status
  * What is left is what the screen is named after: genuine attendance EXCEPTIONS. `?section=overtime`, the
  * address the old tab and every stale link use, forwards to Self Overtime rather than 404-ing on a tab

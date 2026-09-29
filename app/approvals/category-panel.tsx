@@ -7,7 +7,6 @@ import {
   Clock,
   History,
   ListChecks,
-  MapPin,
   MessageSquareText,
   Receipt,
   ScrollText,
@@ -44,7 +43,6 @@ const ICONS: Record<PanelCategory, LucideIcon> = {
   attendance: Clock,
   overtime: Timer,
   claim: Receipt,
-  travel: MapPin,
   profileChanges: UserRound,
   resignations: ScrollText,
   managerReviews: MessageSquareText,
@@ -59,7 +57,6 @@ const LABEL_KEY: Record<PanelCategory, string> = {
   attendance: 'attendanceCorrections',
   overtime: 'categoryOvertime',
   claim: 'claims',
-  travel: 'travelRequests',
   profileChanges: 'profileChanges',
   resignations: 'resignations',
   managerReviews: 'managerReviews',
@@ -70,7 +67,6 @@ const GROUP_LABEL_KEY: Record<ApprovalCategoryGroup, string> = {
   leave: 'categoryGroupLeave',
   attendance: 'categoryGroupAttendance',
   claims: 'categoryGroupClaims',
-  travel: 'categoryGroupTravel',
   people: 'categoryGroupPeople',
 };
 
