@@ -106,7 +106,10 @@ function mount(
         dayFactsAction={vitestVi.fn(async (d: string) =>
           opts.factsFor ? opts.factsFor(d) : opts.facts === undefined ? REST_DAY_VIEW : opts.facts,
         )}
-        extendedHoursTiers={opts.tiers === undefined ? TIERS : opts.tiers}
+        // r358 — opts.tiers === null used to mean "extended hours off"; it is the SWITCH now, and
+        // the ladder is always present because every day type uses it.
+        tiers={TIERS}
+        ordinaryDayAllowed={opts.tiers !== null}
       />
     </NextIntlClientProvider>,
   );
@@ -120,7 +123,6 @@ const openModal = async (user: ReturnType<typeof userEvent.setup>, locale: Local
 /** The row controls, addressed the way the employee sees them: by their labels. */
 const dateInput = (locale: Locale) => screen.getAllByLabelText(copy(locale).workedDate)[0] as HTMLInputElement;
 const dayTypeSelect = (locale: Locale) => screen.getAllByLabelText(copy(locale).sectionA.dayType)[0] as HTMLSelectElement;
-const daysSelect = (locale: Locale) => screen.getAllByLabelText(copy(locale).days)[0] as HTMLSelectElement;
 const startInput = (locale: Locale) => screen.getAllByLabelText(copy(locale).sectionB.extendedStart)[0] as HTMLInputElement;
 const endInput = (locale: Locale) => screen.getAllByLabelText(copy(locale).sectionB.extendedEnd)[0] as HTMLInputElement;
 const submitButton = () => screen.getByTestId('leave-credit-submit') as HTMLButtonElement;
@@ -230,8 +232,10 @@ describe('r343 · the ordinary-day row derives its figures and never offers them
     // The two read-only facts are shown, trimmed to HH:MM.
     expect(screen.getByTestId('leave-credit-shift-end')).toHaveTextContent('18:00');
     expect(screen.getByTestId('leave-credit-clock-out')).toHaveTextContent('02:00');
-    // …and the Days cell is dead on this row, which is what used to be "a different section".
-    expect(daysSelect('en').disabled).toBe(true);
+    // r358 — this read `expect(daysSelect('en').disabled).toBe(true)`, "the Days cell is dead on this
+    // row, which is what used to be a different section". There is no Days cell on any row now: the
+    // owner replaced the declared figure with the claimed window for every day type.
+    expect(screen.queryAllByTestId('leave-credit-days')).toHaveLength(0);
   });
 
   it('under the half-day threshold prints the exact sentence and BLOCKS the submit', async () => {
@@ -246,6 +250,9 @@ describe('r343 · the ordinary-day row derives its figures and never offers them
     // assertion passes on an empty form, where the button is disabled because nothing is claimed.
     await user.type(dateInput('en'), '2026-09-20');
     await user.selectOptions(dayTypeSelect('en'), 'rest_day');
+    // r358 — the valid first row needs its window now; it used to inherit 1.00 from the Days default.
+    await user.type(startInput('en'), '09:00');
+    await user.type(endInput('en'), '17:00');
     await waitFor(() => expect(screen.getByTestId('leave-credit-total')).toHaveTextContent('1'));
     expect(submitButton().disabled).toBe(false);
 
@@ -291,16 +298,24 @@ describe('r343 · what the two sections used to refuse, the ROSTER now adjudicat
     expect(submitButton().disabled).toBe(true);
   });
 
-  it('the Days cell offers exactly 1 day and 0.5 day, and nothing else', async () => {
+  /**
+   * ⚠️ REVERSED IN r358. This read "the Days cell offers exactly 1 day and 0.5 day, and nothing else",
+   * asserting `[...daysSelect('en').options].map(o => o.value)` equalled `['1', '0.5']`. The owner's
+   * answer removed the choice: "The system should calculate the credit based on the actual eligible
+   * hours worked, regardless of the Day Type." What is pinned instead is that the cell is GONE — an
+   * assertion the old one could not make, and the one that fails if the dropdown is ever reinstated.
+   */
+  it('there is no Days cell on any row — the credit is derived, never chosen', async () => {
     const user = userEvent.setup();
     mount('en');
     await openModal(user, 'en');
-    expect([...daysSelect('en').options].map((o) => o.value)).toEqual(['1', '0.5']);
+    expect(screen.queryAllByTestId('leave-credit-days')).toHaveLength(0);
+    expect(screen.queryAllByLabelText(copy('en').days)).toHaveLength(0);
   });
 });
 
 describe('r343 · ONE total, over rows of different day types in ONE table', () => {
-  it('adds a declared rest-day credit to a derived ordinary-day credit', async () => {
+  it('adds a rest-day credit to an ordinary-day credit — both derived, one ladder', async () => {
     const user = userEvent.setup();
     // Two different roster answers, so the two rows are genuinely different day types in one table.
     mount('en', { factsFor: (d) => (d === '2026-09-16' ? WORKING_DAY : REST_DAY_VIEW) });
@@ -308,6 +323,9 @@ describe('r343 · ONE total, over rows of different day types in ONE table', () 
 
     await user.type(dateInput('en'), '2026-09-20');
     await user.selectOptions(dayTypeSelect('en'), 'rest_day');
+    // r358 — eight hours on the rest day earns the full day the picker used to default to.
+    await user.type(startInput('en'), '09:00');
+    await user.type(endInput('en'), '17:00');
     await user.click(screen.getByTestId('leave-credit-add-row'));
 
     const dates = screen.getAllByLabelText(en.replacementRequest.workedDate);
@@ -316,7 +334,8 @@ describe('r343 · ONE total, over rows of different day types in ONE table', () 
     await user.type(screen.getAllByLabelText(en.replacementRequest.sectionB.extendedStart)[1], '18:00');
     await user.type(screen.getAllByLabelText(en.replacementRequest.sectionB.extendedEnd)[1], '22:00');
 
-    // 1 + 0.5. Not an independent arithmetic: the same two figures the employee can read on the rows.
+    // 1 + 0.5, both derived from a window now. Not an independent arithmetic: the same two figures the
+    // employee can read on the rows.
     await waitFor(() => expect(screen.getByTestId('leave-credit-total')).toHaveTextContent('1.5'));
     expect(submitButton().disabled).toBe(false);
   });

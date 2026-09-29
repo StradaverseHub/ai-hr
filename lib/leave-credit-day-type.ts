@@ -33,15 +33,54 @@ export function isLeaveCreditDayType(v: unknown): v is LeaveCreditDayType {
 }
 
 /**
- * Does this day type claim a time window?
+ * Does this day type claim a time window? EVERY ONE OF THEM DOES, since r358.
  *
- * ONLY AN ORDINARY DAY DOES, and that asymmetry is the one thing the single table has to express. A rest
- * day, off day or public holiday is claimed as a whole day or half of one; an ordinary day earns a credit
- * only for the hours worked AFTER the scheduled shift end, so it needs the claimed start and end. The
- * contest is explicit that this must not become a second section — the screen renders the same row for all
- * four types and DISABLES the cells that mean nothing on the chosen type.
+ * ⚠️ REVERSED BY THE OWNER, IN WRITING, AND THE OLD RULE IS QUOTED HERE BECAUSE IT WAS ARGUED FOR AT
+ * LENGTH (CLAUDE.md §8: a sentence pinning a decision you are reversing is updated, not deleted). This
+ * function used to return `dayType === 'workday'` under this reasoning:
+ *
+ *     "ONLY AN ORDINARY DAY DOES, and that asymmetry is the one thing the single table has to express. A
+ *      rest day, off day or public holiday is claimed as a whole day or half of one; an ordinary day earns
+ *      a credit only for the hours worked AFTER the scheduled shift end, so it needs the claimed start and
+ *      end."
+ *
+ * The owner's answer on item 70294f7a (2026-09-29, released from the block) replaces it:
+ *
+ *     "Whether the employee works on a Normal Working Day, Rest Day, Off Day, or Public Holiday, the Leave
+ *      Credit calculation rule is the same. 4 hours of eligible work = 0.5 day … The system should
+ *      calculate the credit based on the actual eligible hours worked, regardless of the Day Type. … Day
+ *      Type is only for identifying whether the employee worked on a Normal Working Day / Rest Day / Off
+ *      Day / Public Holiday. It must not change the 4-hour = 0.5 day and 8-hour = 1 day calculation rule."
+ *
+ * So the asymmetry the old rule expressed is gone: the declared "1 or 0.5 days" dropdown is gone with it,
+ * and every row is claimed as a window. WHAT STILL DIFFERS PER DAY TYPE IS ONE THING ONLY, and it is
+ * `flooredByScheduledShiftEnd` below — not this.
+ *
+ * KEPT AS A FUNCTION RATHER THAN DELETED even though it now answers the same for every input: it is the
+ * name the screen, the service and their guards all reach for, and a reader who greps it has to land on
+ * this reversal rather than on nothing. It will read as dead weight to someone who does not know that.
  */
-export function claimsTimeWindow(dayType: LeaveCreditDayType): boolean {
+export function claimsTimeWindow(_dayType: LeaveCreditDayType): boolean {
+  return true;
+}
+
+/**
+ * Does the SCHEDULED SHIFT END floor the claimed window? Only on an ordinary working day.
+ *
+ * THIS IS WHAT THE DAY TYPE STILL DECIDES, and it is the honest remainder of the rule reversed above. On a
+ * working day the employee was already being paid to be there until the shift ended, so only the hours
+ * AFTER it are extra — `assessExtendedClaim` floors the window at `max(claimStart, shiftEnd)`. On a rest
+ * day, an off day or a public holiday there is no scheduled work at all, so there is nothing to be "after":
+ * the whole entered window is the claim, which is exactly what the owner asked for —
+ * "Extended End – Extended Start = Eligible Hours".
+ *
+ * ⚠️ IT IS DECIDED HERE AND NOT BY "the roster happens to hold no shift end". A roster CAN carry a shift on
+ * a rest day (a swapped day, a correction, a pattern that was edited after the fact), and if it does, the
+ * floor would silently eat the first hours of a rest-day claim — the one day type where the employee was
+ * never scheduled to be there. Passing `shiftEnd: null` on those three types is a statement of the rule,
+ * not a convenience.
+ */
+export function flooredByScheduledShiftEnd(dayType: LeaveCreditDayType): boolean {
   return dayType === 'workday';
 }
 

@@ -51,7 +51,11 @@ function openDialog(locale: Locale) {
         submitAction={vi.fn()}
         today="2026-09-17"
         dayFactsAction={NO_FACTS}
-        extendedHoursTiers={null}
+        // r358 — `extendedHoursTiers={null}` used to mean BOTH "no tier ladder" and "an ordinary
+        // day earns nothing here". Those are two facts now: the ladder applies to every day type,
+        // and the switch governs the ordinary one alone.
+        tiers={{ extendedHalfDayMinutes: 240, extendedFullDayMinutes: 480, extendedBreakMinutes: 0, extendedGraceMinutes: 0 }}
+        ordinaryDayAllowed={false}
       />
     </NextIntlClientProvider>,
   );
@@ -92,7 +96,11 @@ describe('2a237f5f: the Leave Credit request names one leave type and offers no 
        */
       const selects = Array.from(dialog.querySelectorAll('select'));
       const dayTypeLabel = (rr as unknown as { sectionA: Record<string, string> }).sectionA.dayType;
-      expect(selects.map((el) => el.getAttribute('aria-label'))).toEqual([dayTypeLabel, rr.days]);
+      // r358 — ONE select per row, not two. This read `[dayTypeLabel, rr.days]`: the second was the
+      // 1-or-0.5 day picker, which the owner's answer replaced with the claimed window ("4 hours of
+      // eligible work = 0.5 day … regardless of the Day Type"). The claim this case makes is unchanged
+      // and is not about the count — it is that NO select here offers a leave type.
+      expect(selects.map((el) => el.getAttribute('aria-label'))).toEqual([dayTypeLabel]);
       expect(dialog.querySelector('select[name="leaveTypeId"]')).toBeNull();
       expect(dialog.querySelector('select[name="unit"]'), 'the unit stopped being a choice').toBeNull();
 
@@ -140,7 +148,11 @@ describe('2a237f5f: the Leave Credit request names one leave type and offers no 
           submitAction={vi.fn()}
           today="2026-09-17"
           dayFactsAction={NO_FACTS}
-          extendedHoursTiers={null}
+          // r358 — `extendedHoursTiers={null}` used to mean BOTH "no tier ladder" and "an ordinary
+          // day earns nothing here". Those are two facts now: the ladder applies to every day type,
+          // and the switch governs the ordinary one alone.
+          tiers={{ extendedHalfDayMinutes: 240, extendedFullDayMinutes: 480, extendedBreakMinutes: 0, extendedGraceMinutes: 0 }}
+          ordinaryDayAllowed={false}
         />
       </NextIntlClientProvider>,
     );

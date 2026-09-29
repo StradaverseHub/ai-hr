@@ -43,6 +43,7 @@ import {
   LEAVE_CREDIT_DAY_TYPE_LABEL,
   adjudicateDayTypes,
   claimsTimeWindow,
+  flooredByScheduledShiftEnd,
   dayTypeMismatchMessage,
   isLeaveCreditDayType,
   type LeaveCreditDayType,
@@ -68,9 +69,22 @@ describe('r343 · the four options and the per-row conditional', () => {
     expect([...LEAVE_CREDIT_DAY_TYPES]).toEqual(['rest_day', 'off_day', 'holiday', 'workday']);
   });
 
-  it('ONLY an ordinary day claims a time window — the other three do not', () => {
-    expect(claimsTimeWindow('workday')).toBe(true);
-    for (const d of ['rest_day', 'off_day', 'holiday'] as const) expect(claimsTimeWindow(d), d).toBe(false);
+  /**
+   * ⚠️ REVERSED IN r358 BY THE OWNER, IN WRITING. This case read "ONLY an ordinary day claims a time
+   * window — the other three do not", and asserted `claimsTimeWindow(d) === false` for rest_day, off_day
+   * and holiday. The owner's answer on 70294f7a: "Whether the employee works on a Normal Working Day,
+   * Rest Day, Off Day, or Public Holiday, the Leave Credit calculation rule is the same … regardless of
+   * the Day Type." So every type claims one, and what still differs per type moved to the case below.
+   */
+  it('EVERY day type claims a time window now — the declared 1-or-0.5 is gone', () => {
+    for (const d of LEAVE_CREDIT_DAY_TYPES) expect(claimsTimeWindow(d), d).toBe(true);
+  });
+
+  it('the scheduled shift end floors the window on an ordinary day ONLY', () => {
+    // The honest remainder of the rule reversed above, and the reason a rest-day claim counts the whole
+    // entered window: there was no scheduled work for it to be "after".
+    expect(flooredByScheduledShiftEnd('workday')).toBe(true);
+    for (const d of ['rest_day', 'off_day', 'holiday'] as const) expect(flooredByScheduledShiftEnd(d), d).toBe(false);
   });
 
   it('the claim path is DERIVED from the day type: three kinds are one path, the ordinary day is the other', () => {
@@ -148,9 +162,12 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
     expect(src).not.toContain('<section');
   });
 
-  it('every one of the five row values is posted from a HIDDEN input, so a disabled cell cannot shorten the zip', () => {
+  // r358 — FOUR values, not five: `days` is gone with the dropdown that fed it. The old list is quoted in
+  // the constant below so the removal is visible rather than looking like a shortened assertion.
+  it('every one of the four row values is posted from a HIDDEN input, so a disabled cell cannot shorten the zip', () => {
     const src = read(TABLE_TSX);
-    for (const name of ['workedDate', 'dayType', 'days', 'claimStart', 'claimEnd']) {
+    // was ['workedDate', 'dayType', 'days', 'claimStart', 'claimEnd'] before r358
+    for (const name of ['workedDate', 'dayType', 'claimStart', 'claimEnd']) {
       expect(src, name).toContain(`type="hidden" name="${name}"`);
     }
   });
@@ -161,7 +178,8 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
     // the hidden row fields plus the three whole-form fields, none of which is ever disabled.
     const named = [...src.matchAll(/name="([a-zA-Z]+)"/g)].map((m) => m[1]);
     expect([...new Set(named)].sort()).toEqual(
-      ['claimEnd', 'claimStart', 'dayType', 'days', 'firstScheduleConsent', 'leaveTypeId', 'reason', 'workedDate'].sort(),
+      // r358 — `days` left this set with the dropdown that posted it.
+      ['claimEnd', 'claimStart', 'dayType', 'firstScheduleConsent', 'leaveTypeId', 'reason', 'workedDate'].sort(),
     );
   });
 
@@ -176,9 +194,10 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
    * input deleted, name moved onto the visible input) passed the set assertion and was caught only by the
    * `type="hidden"` case. COUNTING is what closes both directions at once.
    */
-  it('each of the five row fields is posted EXACTLY ONCE, and that one occurrence is the hidden input', () => {
+  it('each of the four row fields is posted EXACTLY ONCE, and that one occurrence is the hidden input', () => {
     const src = read(TABLE_TSX);
-    for (const name of ['workedDate', 'dayType', 'days', 'claimStart', 'claimEnd']) {
+    // was ['workedDate', 'dayType', 'days', 'claimStart', 'claimEnd'] before r358
+    for (const name of ['workedDate', 'dayType', 'claimStart', 'claimEnd']) {
       const all = (src.match(new RegExp(`name="${name}"`, 'g')) ?? []).length;
       const hidden = (src.match(new RegExp(`type="hidden" name="${name}"`, 'g')) ?? []).length;
       expect(all, `${name}: one posted occurrence, not ${all} — two would post two values per row`).toBe(1);
@@ -192,7 +211,11 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
     // cells are live only when the row wants a window AND the company can credit one (`windowLive`) — the
     // fix-pass split, because the Ordinary Day option is now offered to companies that cannot credit it.
     expect(src).toContain('disabled={!windowLive}');
-    expect(src).toContain('disabled={!declaresDays}');
+    // r358 — `declaresDays` is gone with the days dropdown. What the chosen day type still drives is the
+    // window's liveness and the two reference cells, so those are what this pins now.
+    expect(src).not.toContain('declaresDays');
+    expect(src).toContain('disabled={!windowLive}');
+    expect(src).toContain('flooredByScheduledShiftEnd(chosen)');
     expect(src).toContain('const windowLive = wantsWindow && !ordinaryUnavailable;');
     expect(src).toContain('claimsTimeWindow');
   });
@@ -209,7 +232,9 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
     expect(src).toContain('const dayTypeOptions = LEAVE_CREDIT_DAY_TYPES;');
     expect(src).not.toMatch(/LEAVE_CREDIT_DAY_TYPES\s*\.\s*filter/);
     // What the switch DOES decide, stated once: whether an Ordinary Day row can earn anything here.
-    expect(src).toContain('const ordinaryEarnsNothing = extendedHoursTiers == null;');
+    // r358 — the switch and the ladder came apart: `extendedHoursTiers == null` meant both "no ladder"
+    // and "an ordinary day earns nothing", and every day type needs the ladder now.
+    expect(src).toContain('const ordinaryEarnsNothing = !ordinaryDayAllowed;');
     expect(src).toContain('ordinaryUnavailableRows.length > 0');
   });
 
@@ -344,29 +369,33 @@ describe('r343 · the translated keys are translated, and the English ones are n
    * "composed from existing translated keys", and for the four day-type LABELS that is true, but these
    * nineteen are English on the ms, ta, th, vi and zh screens and saying so is the honest half.
    */
+  // r358 — EIGHTEEN, not nineteen: `days` was the column header over the 1-or-0.5 dropdown, and both are
+  // gone. The key itself is NOT retired in the catalogues, because `days` is a generic label other leave
+  // surfaces still render; what changed is that this screen no longer reaches for it.
   const ENGLISH_EVERYWHERE = [
     'addRow',
     'cancel',
-    'days',
     'firstScheduleConsent',
     'leaveType',
     'reason',
     'removeRow',
     'table.dayTypeChoose',
-    'table.help',
+    // r358 — `table.help` and `table.windowNotClaimed` LEFT this list, and that is a gain rather than a
+    // loss: both had to be rewritten for the owner's new rule, and both were translated into all six
+    // locales while they were being rewritten. A key leaving the English-everywhere set is the set doing
+    // its job — it exists to make the English-only count a decision rather than an accident.
     'table.myRequests',
     'table.noRequests',
     'table.rosterMismatch',
     'table.statusHeading',
     'table.submittedOn',
-    'table.windowNotClaimed',
     'totalDays',
     'unit',
     'unitDay',
     'workedDate',
   ];
 
-  it('the keys that ship English are EXACTLY the nineteen named above — a twentieth fails this case', () => {
+  it('the keys that ship English are EXACTLY the sixteen named above — a seventeenth fails this case', () => {
     const english = renderedKeys().filter((k) => {
       const en = at('en', k);
       return typeof en === 'string' && LOCALES.slice(1).every((l) => at(l, k) === en);
@@ -603,14 +632,14 @@ describe('r343 · the roster adjudicates the employee’s chosen Day Type', () =
     await expect(
       submitLeaveCreditRequest(ctx, {
         employmentId,
-        rows: [{ workedDate: OFF_DAY, dayType: 'rest_day', days: 1 }],
+        rows: [{ workedDate: OFF_DAY, dayType: 'rest_day', claimStart: '09:00', claimEnd: '17:00' }],
         today: TODAY,
       }),
     ).rejects.toThrow(LeaveCreditDayTypeMismatchError);
     await expect(
       submitLeaveCreditRequest(ctx, {
         employmentId,
-        rows: [{ workedDate: OFF_DAY, dayType: 'rest_day', days: 1 }],
+        rows: [{ workedDate: OFF_DAY, dayType: 'rest_day', claimStart: '09:00', claimEnd: '17:00' }],
         today: TODAY,
       }),
     ).rejects.toThrow(/roster has Off day/);
@@ -641,8 +670,9 @@ describe('r343 · the roster adjudicates the employee’s chosen Day Type', () =
     const res = await submitLeaveCreditRequest(ctx, {
       employmentId,
       rows: [
-        { workedDate: REST_DAY, dayType: 'rest_day', days: 1 },
-        { workedDate: OFF_DAY, dayType: 'off_day', days: 0.5 },
+        // r358 — a window, not a declared figure: eight hours is the full-day tier, four is the half.
+        { workedDate: REST_DAY, dayType: 'rest_day', claimStart: '09:00', claimEnd: '17:00' },
+        { workedDate: OFF_DAY, dayType: 'off_day', claimStart: '09:00', claimEnd: '13:00' },
         { workedDate: WORKDAY, dayType: 'workday', claimStart: '14:00', claimEnd: '22:00' },
       ],
       today: TODAY,
@@ -675,7 +705,7 @@ describe('r343 · the roster adjudicates the employee’s chosen Day Type', () =
     await expect(
       submitLeaveCreditRequest(ctx, {
         employmentId,
-        rows: [{ workedDate: REST_DAY, dayType: 'weekend' as unknown as LeaveCreditDayType, days: 1 }],
+        rows: [{ workedDate: REST_DAY, dayType: 'weekend' as unknown as LeaveCreditDayType, claimStart: '09:00', claimEnd: '17:00' }],
         today: TODAY,
       }),
     ).rejects.toThrow(/Choose a day type/);

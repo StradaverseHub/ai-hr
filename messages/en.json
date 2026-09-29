@@ -13004,8 +13004,8 @@
       "title": "Non-working-day work",
       "help": "A rest day, off day or public holiday that you worked.",
       "dayType": "Day type",
-      "fullDay": "1 day",
-      "halfDay": "0.5 day",
+      "fullDay": "[retired r358 — the 1-or-0.5 day picker was replaced by the claimed window (70294f7a); the credit is derived from the hours on every day type]",
+      "halfDay": "[retired r358 — the 1-or-0.5 day picker was replaced by the claimed window (70294f7a); the credit is derived from the hours on every day type]",
       "total": "Section total",
       "workingDayRefused": "This date is a working day. Use Extended ordinary-day work instead."
     },
@@ -13023,10 +13023,10 @@
       "belowThreshold": "Under {minutes} minutes. Not eligible for credit."
     },
     "table": {
-      "help": "Add one row for each date you worked. The day type fills in from your roster when you pick the date, and you can change it. An ordinary working day earns a credit for the hours you claim after your scheduled shift end, so those rows ask for those hours; the other three day types are claimed as a whole day or half a day. Your recorded clock-out is shown for reference and no longer limits what you can claim — where the two differ, your manager sees it and checks it before approving. Nothing is credited until your manager approves.",
+      "help": "Add one row for each date you worked. The day type fills in from your roster when you pick the date, and you can change it. Every day type is claimed the same way: enter the start and end time you worked, and the credit follows the hours — four eligible hours earn half a day, eight earn a full day. On an ordinary working day the hours count from your scheduled shift end; on a rest day, off day or public holiday there is no scheduled shift, so the whole window you enter counts. Your recorded clock-out is shown for reference on an ordinary working day and does not limit what you can claim — where the two differ, your manager sees it and checks it before approving. Nothing is credited until your manager approves.",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
-      "windowNotClaimed": "Claimed hours apply to an ordinary working day only.",
+      "windowNotClaimed": "An ordinary working day cannot earn a credit at this company.",
       "myRequests": "My Leave Credit requests",
       "noRequests": "You have not submitted a Leave Credit request yet.",
       "statusHeading": "Status",

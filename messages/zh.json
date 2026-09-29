@@ -13004,8 +13004,8 @@
       "title": "非工作日工作",
       "help": "您工作过的休息日、休假日或公共假期。",
       "dayType": "日期类型",
-      "fullDay": "1 天",
-      "halfDay": "0.5 天",
+      "fullDay": "[retired r358 — the 1-or-0.5 day picker was replaced by the claimed window (70294f7a); the credit is derived from the hours on every day type]",
+      "halfDay": "[retired r358 — the 1-or-0.5 day picker was replaced by the claimed window (70294f7a); the credit is derived from the hours on every day type]",
       "total": "本节合计",
       "workingDayRefused": "此日期为工作日。请改用工作日延长工时。"
     },
@@ -13023,10 +13023,10 @@
       "belowThreshold": "少于 {minutes} 分钟，不符合额度资格。"
     },
     "table": {
-      "help": "Add one row for each date you worked. The day type fills in from your roster when you pick the date, and you can change it. An ordinary working day earns a credit for the hours you claim after your scheduled shift end, so those rows ask for those hours; the other three day types are claimed as a whole day or half a day. Your recorded clock-out is shown for reference and no longer limits what you can claim — where the two differ, your manager sees it and checks it before approving. Nothing is credited until your manager approves.",
+      "help": "为您工作的每个日期添加一行。选择日期后，日期类型会从您的排班表中自动填入，您也可以更改。所有日期类型的申报方式相同：输入您工作的开始和结束时间，积分按小时计算——四个符合条件的小时可获得半天，八个小时可获得一整天。在普通工作日，小时数从您排定的轮班结束时间开始计算；在休息日、非工作日或公共假日没有排定的轮班，因此您输入的整个时段都计入。您的打卡下班记录仅在普通工作日作为参考显示，不会限制您的申报——如果两者不一致，您的经理会看到并在批准前进行核查。在您的经理批准之前，不会记入任何积分。",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
-      "windowNotClaimed": "Claimed hours apply to an ordinary working day only.",
+      "windowNotClaimed": "在本公司，普通工作日无法获得积分。",
       "myRequests": "My Leave Credit requests",
       "noRequests": "You have not submitted a Leave Credit request yet.",
       "statusHeading": "Status",

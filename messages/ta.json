@@ -13004,8 +13004,8 @@
       "title": "வேலை அல்லாத நாள் பணி",
       "help": "நீங்கள் வேலை செய்த ஓய்வு நாள், விடுமுறை நாள் அல்லது பொது விடுமுறை.",
       "dayType": "நாள் வகை",
-      "fullDay": "1 நாள்",
-      "halfDay": "0.5 நாள்",
+      "fullDay": "[retired r358 — the 1-or-0.5 day picker was replaced by the claimed window (70294f7a); the credit is derived from the hours on every day type]",
+      "halfDay": "[retired r358 — the 1-or-0.5 day picker was replaced by the claimed window (70294f7a); the credit is derived from the hours on every day type]",
       "total": "பிரிவு மொத்தம்",
       "workingDayRefused": "இந்த தேதி ஒரு வேலை நாள். அதற்குப் பதிலாக நீட்டிக்கப்பட்ட வழக்கமான நாள் பணியைப் பயன்படுத்தவும்."
     },
@@ -13023,10 +13023,10 @@
       "belowThreshold": "{minutes} நிமிடங்களுக்குக் குறைவு. வரவுக்குத் தகுதியில்லை."
     },
     "table": {
-      "help": "Add one row for each date you worked. The day type fills in from your roster when you pick the date, and you can change it. An ordinary working day earns a credit for the hours you claim after your scheduled shift end, so those rows ask for those hours; the other three day types are claimed as a whole day or half a day. Your recorded clock-out is shown for reference and no longer limits what you can claim — where the two differ, your manager sees it and checks it before approving. Nothing is credited until your manager approves.",
+      "help": "நீங்கள் பணிபுரிந்த ஒவ்வொரு தேதிக்கும் ஒரு வரிசையைச் சேர்க்கவும். தேதியைத் தேர்ந்தெடுக்கும்போது நாள் வகை உங்கள் ரோஸ்டரிலிருந்து நிரப்பப்படும், அதை நீங்கள் மாற்றலாம். ஒவ்வொரு நாள் வகையும் ஒரே முறையில் கோரப்படுகிறது: நீங்கள் பணிபுரிந்த தொடக்க மற்றும் முடிவு நேரத்தை உள்ளிடவும், வரவு மணிநேரங்களைப் பொறுத்தது — தகுதியான நான்கு மணிநேரம் அரை நாளையும், எட்டு மணிநேரம் ஒரு முழு நாளையும் பெறும். சாதாரண வேலை நாளில், உங்கள் திட்டமிடப்பட்ட ஷிப்ட் முடிவிலிருந்து மணிநேரங்கள் கணக்கிடப்படும்; ஓய்வு நாள், விடுமுறை நாள் அல்லது பொது விடுமுறையில் திட்டமிடப்பட்ட ஷிப்ட் இல்லை, எனவே நீங்கள் உள்ளிடும் முழு காலமும் கணக்கிடப்படும். உங்கள் பதிவு செய்யப்பட்ட வெளியேறும் நேரம் சாதாரண வேலை நாளில் குறிப்புக்காகக் காட்டப்படுகிறது, அது உங்கள் கோரிக்கையை வரம்பிடாது — இரண்டும் வேறுபட்டால், உங்கள் மேலாளர் அதைப் பார்த்து ஒப்புதல் அளிப்பதற்கு முன் சரிபார்ப்பார். உங்கள் மேலாளர் ஒப்புதல் அளிக்கும் வரை எதுவும் வரவு வைக்கப்படாது.",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
-      "windowNotClaimed": "Claimed hours apply to an ordinary working day only.",
+      "windowNotClaimed": "இந்த நிறுவனத்தில் சாதாரண வேலை நாள் வரவு பெற முடியாது.",
       "myRequests": "My Leave Credit requests",
       "noRequests": "You have not submitted a Leave Credit request yet.",
       "statusHeading": "Status",

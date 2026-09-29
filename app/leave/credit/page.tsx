@@ -8,7 +8,7 @@ import { listLeaveTypes, myEmployment } from '@/core/read';
 import { pickReplacementLeaveType } from '@/core/ess-view';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import {
-  extendedHoursOfferForEmployment,
+  leaveCreditOfferForEmployment,
   listReplacementLeaveRequests,
   replacementRequestAvailability,
   type LeaveCreditDayType,
@@ -64,9 +64,9 @@ export default async function LeaveCreditRequestPage({
   // twin of core/toil.ts's findReplacementLeaveTypeIdTx, matched BY ROLE with the seeded code as fallback.
   const replacementType = pickReplacementLeaveType(leaveTypes);
   const availability = moduleOn && me ? await replacementRequestAvailability(session, me.employmentId, today) : { allowed: false as const };
-  // r334's switch, false on every company at release. Null ⇒ the Ordinary Day option is not offered; the
-  // service refuses such a row for the same company anyway.
-  const tiers = availability.allowed && me ? await extendedHoursOfferForEmployment(session, me.employmentId) : null;
+  // r358 — the ladder and the ordinary-day switch as two facts; see app/leave/page.tsx for why the old
+  // single nullable offer could not carry the owner's rule.
+  const offer = availability.allowed && me ? await leaveCreditOfferForEmployment(session, me.employmentId) : null;
   const requests = me && moduleOn ? await listReplacementLeaveRequests(session, me.employmentId) : [];
 
   const dayTypeLabel = (d: LeaveCreditDayType | null) =>
@@ -115,7 +115,8 @@ export default async function LeaveCreditRequestPage({
             today={today}
             requiresFirstScheduleConsent={availability.requiresFirstScheduleConsent}
             dayFactsAction={leaveCreditDayFactsAction}
-            extendedHoursTiers={tiers}
+            tiers={offer?.tiers ?? null}
+            ordinaryDayAllowed={offer?.ordinaryDayAllowed ?? false}
           />
         </Card>
       )}

@@ -61,7 +61,6 @@ import {
 // carries one Leave Credit surface rather than two.
 import {
   adjudicateDayTypes,
-  claimsTimeWindow,
   dayTypeMismatchMessage,
   isLeaveCreditDayType,
   type LeaveCreditDayType,
@@ -72,6 +71,7 @@ export {
   LEAVE_CREDIT_DAY_TYPE_LABEL,
   adjudicateDayTypes,
   claimsTimeWindow,
+  flooredByScheduledShiftEnd,
   dayTypeMismatchMessage,
   isLeaveCreditDayType,
   type LeaveCreditDayType,
@@ -109,18 +109,35 @@ void _DAY_TYPES_MATCH_THE_ROSTER_VOCABULARY;
  *
  * `LEGACY_CLAIM_SOURCE_TYPE` is referenced rather than spelled as a literal so the three non-working kinds
  * and every pre-r336 stored row keep answering the same way if that constant ever moves.
+ *
+ * ⚠️ r358 — THIS NOW TESTS THE DAY TYPE DIRECTLY, AND THE CHANGE IS THE WHOLE POINT OF WRITING IT OUT. It
+ * read `claimsTimeWindow(dayType) ? …`, which was the same answer while only a workday claimed a window.
+ * r358 made every day type claim one, so leaving it keyed on that predicate would have routed a rest-day
+ * claim into `accrueExtendedWorkdayToilTx` — a function that refuses anything whose day kind is not
+ * `workday` (its Gate 2), banks `workedDayKind: 'workday'` unconditionally, and is gated on the
+ * extended-hours company switch. A rest day would have been refused at approval, or worse, banked as a
+ * working day.
+ *
+ * THE SOURCE TYPE IS THE CREDITING ROUTE, NOT THE SHAPE OF THE CLAIM. That distinction did not exist while
+ * the two coincided; it does now. The route still splits on "was this an ordinary working day, whose credit
+ * is re-derived from the attendance record" versus "was this a non-working day the employee declared".
  */
 export function sourceTypeForDayType(dayType: LeaveCreditDayType): ReplacementClaimSourceType {
-  return claimsTimeWindow(dayType) ? 'extended_hours' : LEGACY_CLAIM_SOURCE_TYPE;
+  return dayType === 'workday' ? 'extended_hours' : LEGACY_CLAIM_SOURCE_TYPE;
 }
 
 /** One row of the single table, exactly as the screen posts it. */
 export type LeaveCreditRowInput = {
   workedDate: string;
   dayType: LeaveCreditDayType;
-  /** 1 or 0.5 — a non-working-day row only. Ignored on an Ordinary Day row, whose credit is derived. */
-  days?: number;
-  /** The claimed window — an Ordinary Day row only. */
+  /**
+   * ⚠️ r358 — `days` IS GONE FROM THE POSTED ROW, and its absence is the item. It carried the employee's
+   * chosen "1 or 0.5" on a rest day, off day or public holiday. The owner's answer on 70294f7a replaced
+   * the choice with the arithmetic: "4 hours of eligible work = 0.5 day. 8 hours of eligible work = 1.0
+   * day … regardless of the Day Type." A field the form no longer offers is removed rather than left
+   * optional, so a caller that still sends one fails to compile instead of being quietly ignored.
+   */
+  /** The claimed window. EVERY day type carries one since r358. */
   claimStart?: string;
   claimEnd?: string;
 };
@@ -187,8 +204,19 @@ export async function submitLeaveCreditRequest(
   if (p.rows.length === 0) throw new ReplacementRequestInvalidError('Add at least one worked date.');
   for (const r of p.rows) {
     if (!isLeaveCreditDayType(r.dayType)) throw new ReplacementRequestInvalidError('Choose a day type for every date worked.');
-    if (claimsTimeWindow(r.dayType) && (!r.claimStart || !r.claimEnd))
-      throw new ReplacementRequestInvalidError(`Enter the hours claimed after your scheduled shift end for ${r.workedDate}.`);
+    // r358 — EVERY day type, not just an ordinary one. The message no longer says "after your scheduled
+    // shift end", because on the other three there is no scheduled end to be after: the whole entered
+    // window is the claim.
+    if (!r.claimStart || !r.claimEnd)
+      throw new ReplacementRequestInvalidError(`Enter the start and end time claimed for ${r.workedDate}.`);
+    // The owner's validation rule, and the one place it can be stated for all four types. An EMPTY window
+    // is refused here; a window whose end reads earlier than its start is NOT, because that is how a shift
+    // across midnight is entered and `assessExtendedClaim` has rolled it to the following day since r353.
+    // Refusing it would delete the night-shift claim this item exists to make possible. Reported back on
+    // the item as a deviation from the letter of "if Extended End is earlier than Extended Start, display
+    // an error", with this reason.
+    if (r.claimStart === r.claimEnd)
+      throw new ReplacementRequestInvalidError(`The start and end time claimed for ${r.workedDate} are the same.`);
   }
 
   const mismatches = adjudicateDayTypes(
@@ -200,12 +228,17 @@ export async function submitLeaveCreditRequest(
   // The unit is DERIVED and always 'day'. Both halves of the table credit in days — a non-working day
   // because it is claimed as a day, an ordinary day because r334's tier ladder answers 0.5 or 1.0 and never
   // a proportion — so there is nothing left for an Hour request to mean. r336's reasoning, unchanged.
+  // r358 — ONE SHAPE FOR ALL FOUR TYPES: a window, and no declared days. The credit for a non-working day
+  // is derived from the window by the same tier ladder an ordinary day uses, inside
+  // `submitReplacementLeaveRequest`, which is where the company's thresholds are already in hand. The day
+  // type still picks the crediting ROUTE through `sourceTypeForDayType` — see its header for why those are
+  // two different questions now.
   const lines: ReplacementRequestLineInput[] = p.rows.map((r) => ({
     workedDate: r.workedDate,
     sourceType: sourceTypeForDayType(r.dayType),
-    days: claimsTimeWindow(r.dayType) ? undefined : r.days,
-    fromTime: claimsTimeWindow(r.dayType) ? r.claimStart : undefined,
-    toTime: claimsTimeWindow(r.dayType) ? r.claimEnd : undefined,
+    workedDayKind: r.dayType,
+    fromTime: r.claimStart,
+    toTime: r.claimEnd,
   }));
 
   return submitReplacementLeaveRequest(ctx, {
