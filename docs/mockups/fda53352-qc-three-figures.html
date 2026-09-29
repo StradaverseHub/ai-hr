@@ -1,0 +1,181 @@
+<meta charset="utf-8">
+<title>fda53352 rev 7 — Q, C and the three figures that shared two names</title>
+<!--
+  Mockup for fda53352 REVISION 7. THE REPORTER WAS RIGHT AND TWO OF OUR ROUNDS WERE WRONG.
+
+  r351 and r353 both answered "EA item 8 is a count of children and stays a count", reading
+  "Bilangan anak" as a head count. The reporter's latest contest cites LHDN's own formula letters,
+  and checking them settles it against us:
+
+    · printed p.10 (PDF 11) — the variable list: "Q  Deduction for qualifying children",
+      "C  Number of qualifying children", and the P formula carries the term QC.
+    · printed p.11 — "Value of C = Number of qualifying children", per category.
+    · printed p.27 (PDF 28) — the category table's OWN column heading: "Relief to be given as if the
+      employee has this number of children" — 4 / 4 / 4 / 8.
+
+  So C is the WEIGHTED number, and for the reporter's Employee A it is 9.
+
+  WHAT CHECKING OUR OWN SLIP THEN TURNED UP, which neither side was looking at: we print Q = RM18,000
+  (the total) and C = 2 (the child-record count). Both are wrong against p.10, and they do not
+  multiply to the relief on the same slip. The MONEY is right — payroll already deducts RM18,000,
+  priced category by category — so this is a disclosure defect, not a tax defect, and the drawing
+  says so rather than implying anyone's tax moves.
+
+  HONESTY NOTES — a mockup is a promise:
+  · Every figure drawn for Employee A is derived, not invented: one disabled child in higher
+    education (8) plus one child under 18 (1) = 9; 9 x RM2,000 = RM18,000, which is what
+    childReliefFor already returns for that grid.
+  · The "today" column is what the code prints now (components/identity-tax-card.tsx:514 and :556,
+    core/pcb-explain.ts:703-704, localization/my/reports.ts eaStatement).
+  · The half-child line is drawn because it is REAL and cannot be hidden: a 50%-shared child makes C
+    fractional, and the spec has no half child. It is drawn as a note, not as a promise of a feature.
+  · Wording, spacing and colour will differ.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d;--warn:#b45309}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .h1{font-size:19px;font-weight:700;margin:0 0 3px}
+  .h1s{font-size:12px;color:var(--mf);margin:0 0 6px;max-width:1120px}
+  .src{font-size:11px;color:var(--mf);margin:0 0 18px;max-width:1120px;border-left:3px solid var(--primary);
+       padding:6px 11px;background:color-mix(in srgb,var(--primary) 5%,white)}
+  .src b{color:var(--primary);text-transform:uppercase;letter-spacing:.05em;font-size:10.5px;display:block;margin-bottom:2px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+  h2{font-size:13.5px;margin:0 0 2px}
+  .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+  table.g{width:100%;border-collapse:collapse;font-size:12px}
+  table.g th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+             font-weight:700;padding:0 10px 6px 0;border-bottom:1px solid var(--border)}
+  table.g td{padding:9px 10px 9px 0;border-bottom:1px solid var(--border);vertical-align:top}
+  table.g td.n{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;padding-right:22px;white-space:nowrap}
+  table.g th:nth-child(2){text-align:right;padding-right:22px}
+  .bad{color:var(--bad);font-weight:700}
+  .good{color:var(--good);font-weight:700}
+  .tag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:700}
+  .tnow{background:var(--muted);color:var(--mf)}
+  .tnew{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .slip{border:1px solid var(--border);border-radius:11px;overflow:hidden}
+  .sliphead{background:var(--muted);padding:7px 12px;font-size:10.5px;font-weight:700;letter-spacing:.04em;
+            text-transform:uppercase;color:var(--mf)}
+  .row{display:flex;gap:10px;padding:8px 12px;border-top:1px solid var(--border);align-items:baseline}
+  .row .sym{width:34px;font-weight:700;font-size:12px;color:var(--mf);flex:none}
+  .row .cap{flex:1;font-size:11.5px}
+  .row .val{font-variant-numeric:tabular-nums;font-weight:700;min-width:96px;text-align:right}
+  .note{font-size:11px;color:var(--mf);line-height:1.55;margin:10px 0 0}
+  .eq{font-size:12px;font-weight:700;margin:10px 0 0;padding:8px 11px;border-radius:9px;
+      background:color-mix(in srgb,var(--good) 8%,white);color:var(--good)}
+  .eqbad{background:color-mix(in srgb,var(--bad) 6%,white);color:var(--bad)}
+  .sketch{margin:16px 0 0;font-size:10.5px;color:var(--mf);text-align:center}
+</style>
+
+<p class="h1">Q, C, and the three figures that were sharing two names</p>
+<p class="h1s">Employee A (A00001): two children — one disabled and in higher education, one under 18.
+  You were right, and our two earlier answers were wrong. Nobody's tax changes; what changes is the
+  figures our documents print to describe it.</p>
+<p class="src"><b>LHDN, monthly-tax specification 2026, printed page 10</b>
+  “Q — Deduction for qualifying children. C — Number of qualifying children.” The formula subtracts
+  Q × C. Printed page 27: “Relief to be given <i>as if the employee has this number of children</i>” —
+  disabled child in higher education: 8; child under 18: 1.</p>
+
+<div class="card">
+  <h2>The three figures, and which document prints each</h2>
+  <p class="sub">They are three different facts. Today two of them share a name and one is mislabelled.</p>
+  <table class="g">
+    <tr><th>What it is</th><th>Employee A</th><th>Called today</th><th>Will be called</th><th>Printed on</th></tr>
+    <tr>
+      <td>Number of child records in Family</td>
+      <td class="n">2</td>
+      <td>“Physical children” <span class="bad">(but this box does not hold it)</span></td>
+      <td>Child records</td>
+      <td>—</td>
+    </tr>
+    <tr>
+      <td><b>C</b> — number of qualifying children, weighted the way LHDN weights them</td>
+      <td class="n">9</td>
+      <td>“Qualifying children (PCB)”</td>
+      <td>Qualifying children (C)</td>
+      <td>EA item 8 · PCB slip line C</td>
+    </tr>
+    <tr>
+      <td><b>Q</b> — deduction for one qualifying child</td>
+      <td class="n">RM 2,000</td>
+      <td class="bad">not shown anywhere</td>
+      <td>Deduction per qualifying child (Q)</td>
+      <td>PCB slip line Q</td>
+    </tr>
+    <tr>
+      <td><b>Q × C</b> — the child relief actually deducted</td>
+      <td class="n">RM 18,000</td>
+      <td>“Child relief”</td>
+      <td>Child relief (Q × C)</td>
+      <td>PCB slip · EA item D.6</td>
+    </tr>
+  </table>
+  <p class="note">8 for the disabled child in higher education, 1 for the child under 18 — that is the 9.
+    9 × RM2,000 = RM18,000, which is the relief the payroll run already applied.</p>
+</div>
+
+<div class="cols">
+  <div class="card">
+    <h2>PCB calculation slip <span class="tag tnow">Today</span></h2>
+    <p class="sub">Two letters from the agency's formula, printing two things it does not mean.</p>
+    <div class="slip">
+      <div class="sliphead">Deductions applied</div>
+      <div class="row"><span class="sym">Q</span><span class="cap">Child relief</span><span class="val bad">RM 18,000.00</span></div>
+      <div class="row"><span class="sym">C</span><span class="cap">Children claimed</span><span class="val bad">2</span></div>
+    </div>
+    <p class="eq eqbad">Q × C = RM 36,000 — which is not the relief, and not what was deducted.</p>
+    <p class="note">The deduction itself was right: RM18,000, priced category by category. Only the
+      description was wrong.</p>
+  </div>
+
+  <div class="card">
+    <h2>PCB calculation slip <span class="tag tnew">Proposed</span></h2>
+    <p class="sub">The same two letters, meaning what the specification says they mean.</p>
+    <div class="slip">
+      <div class="sliphead">Deductions applied</div>
+      <div class="row"><span class="sym">Q</span><span class="cap">Deduction per qualifying child</span><span class="val good">RM 2,000.00</span></div>
+      <div class="row"><span class="sym">C</span><span class="cap">Number of qualifying children</span><span class="val good">9</span></div>
+      <div class="row"><span class="sym">Q×C</span><span class="cap">Child relief applied</span><span class="val">RM 18,000.00</span></div>
+    </div>
+    <p class="eq">Q × C = RM 2,000 × 9 = RM 18,000 — the figure on the same slip, checkable by multiplying.</p>
+  </div>
+</div>
+
+<div class="cols">
+  <div class="card">
+    <h2>Form C.P.8A (EA) item 8 <span class="tag tnow">Today</span></h2>
+    <div class="slip">
+      <div class="sliphead">A — Butir-butir Pekerja</div>
+      <div class="row"><span class="sym">8.</span><span class="cap">Bilangan anak yang layak untuk pelepasan cukai</span><span class="val bad">2</span></div>
+      <div class="sliphead" style="border-top:1px solid var(--border)">D — Jumlah Pelepasan</div>
+      <div class="row"><span class="sym">6.</span><span class="cap">Jumlah pelepasan bagi anak yang layak</span><span class="val">RM 18,000.00</span></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Form C.P.8A (EA) item 8 <span class="tag tnew">Proposed</span></h2>
+    <div class="slip">
+      <div class="sliphead">A — Butir-butir Pekerja</div>
+      <div class="row"><span class="sym">8.</span><span class="cap">Bilangan anak yang layak untuk pelepasan cukai</span><span class="val good">9</span></div>
+      <div class="sliphead" style="border-top:1px solid var(--border)">D — Jumlah Pelepasan</div>
+      <div class="row"><span class="sym">6.</span><span class="cap">Jumlah pelepasan bagi anak yang layak</span><span class="val">RM 18,000.00</span></div>
+    </div>
+    <p class="note">Item 8 becomes C, the same figure the calculation slip prints and the same one the
+      employee's screen shows. One question, answered once.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>One wrinkle we will not tidy away</h2>
+  <p class="note">Where a child's relief is shared 50/50 with the other parent, C comes out as a half —
+    4.5, for example. LHDN's table has no half child, because a shared claim is settled at the annual
+    assessment rather than monthly. We will print the figure we actually used. Rounding it to 4 or 5
+    would make it stop multiplying to the relief printed beside it, and a slip whose own arithmetic
+    does not check out is worse than an unusual number on it.</p>
+</div>
+
+<p class="sketch">Sketch of the change. Wording, spacing and colour will differ.</p>

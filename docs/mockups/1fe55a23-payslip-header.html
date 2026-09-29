@@ -1,0 +1,153 @@
+<meta charset="utf-8">
+<title>1fe55a23 — Payslip header: Reg. no. and the pay cycle's own name</title>
+<!--
+  Mockup for 1fe55a23. The reporter attached a screenshot of the live payslip header with a red box
+  drawn where the ROC number belongs, and an arrow labelled "ROC Number". This is that header as it
+  reads today beside the header as proposed.
+
+  BOTH PREMISES REPRODUCED IN THE CODE BEFORE DRAWING THIS:
+  · `company.registration_no` (db/schema.ts:230, nullable) is the Organization General tab's field, and
+    its label key `admin.organization.regNo` is ALREADY "Reg. no." in all six catalogues — the exact
+    label the reporter asked for. It is NOT `company_statutory_my.ssm_registration_no`, which is a
+    different column in a different format; the plan says which was chosen and offers the other.
+  · `payroll_batch.payroll_cycle_id -> payroll_cycle.name` exists and is NULLABLE, and the column's own
+    header records why: batches created before the column, or by a caller that names no cycle, carry
+    null. Those keep printing the run type.
+
+  HONESTY NOTES — a mockup is a promise:
+  · The "today" panel is the reporter's own screenshot transcribed, not a redesign of it: same company
+    name, same "Payroll payslip · Regular", same month and payment date on the right.
+  · The two FALLBACKS are drawn, because they are the reachable production state and a picture that
+    only shows the happy path is the overpromise this file exists to avoid. A company with no
+    registration number prints NO line — not an empty label; a run with no cycle keeps "Regular".
+  · Nothing else on the payslip moves. The earnings and deductions blocks below the header are
+    unchanged and are drawn greyed to say so.
+  · Wording, spacing and colour will differ.
+  Everything inline: render.ts blocks every non-file:/data: request.
+-->
+<style>
+  :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;
+        --border:#e7e8f1;--bad:#dc2626;--good:#15803d}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
+       font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  .h1{font-size:19px;font-weight:700;margin:0 0 3px}
+  .h1s{font-size:12px;color:var(--mf);margin:0 0 18px;max-width:1100px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:16px}
+  .card.after{border-color:color-mix(in srgb,var(--primary) 45%,white);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 8%,white)}
+  h2{font-size:13.5px;margin:0 0 12px}
+  .tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700;margin-left:7px;vertical-align:2px}
+  .tnow{background:var(--muted);color:var(--mf)}
+  .tnew{background:color-mix(in srgb,var(--primary) 12%,white);color:var(--primary)}
+  /* the payslip header itself */
+  .ps{border:1px solid var(--border);border-radius:11px;padding:16px 18px;background:#fff}
+  .pshead{display:flex;gap:14px;align-items:flex-start}
+  .logo{width:46px;height:46px;border-radius:9px;flex:none;
+        background:conic-gradient(from 210deg,#0f766e,#14b8a6,#0e7490,#0f766e)}
+  .co{flex:1;min-width:0}
+  .coname{font-size:20px;font-weight:800;letter-spacing:-.01em;margin:0}
+  .regline{font-size:11.5px;color:var(--fg);margin:3px 0 0;font-weight:600}
+  .cycle{font-size:11.5px;color:var(--mf);margin:3px 0 0}
+  .right{text-align:right;flex:none}
+  .month{font-size:17px;font-weight:800;margin:0}
+  .paid{font-size:11px;color:var(--mf);margin:2px 0 0}
+  .rule{border:0;border-top:1px solid var(--border);margin:14px 0 0}
+  .ghost{opacity:.33;pointer-events:none}
+  .gblock{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+  .gbox{border:1px solid var(--border);border-radius:9px;padding:9px 11px;font-size:11px;color:var(--mf)}
+  .gbox b{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+  .missing{outline:2px dashed var(--bad);outline-offset:3px;border-radius:3px}
+  .callout{font-size:11px;line-height:1.55;margin:12px 0 0;padding:9px 11px;border-radius:9px}
+  .cbad{background:color-mix(in srgb,var(--bad) 5%,white);color:var(--bad);border:1px dashed var(--bad)}
+  .cgood{background:color-mix(in srgb,var(--good) 7%,white);color:var(--good)}
+  .note{font-size:11px;color:var(--mf);line-height:1.55;margin:10px 0 0}
+  .fallbacks{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}
+  .fb{border:1px solid var(--border);border-radius:10px;padding:12px 13px}
+  .fbh{font-size:11px;font-weight:700;margin:0 0 7px}
+  .sketch{margin:16px 0 0;font-size:10.5px;color:var(--mf);text-align:center}
+</style>
+
+<p class="h1">Payslip header — the registration number, and the cycle's own name</p>
+<p class="h1s">Left is the header from your screenshot, as it prints today. Right is what we propose.
+  Both figures already exist in the system and neither is being read by the payslip.</p>
+
+<div class="cols">
+  <div class="card">
+    <h2>Today <span class="tag tnow">from your screenshot</span></h2>
+    <div class="ps">
+      <div class="pshead">
+        <div class="logo"></div>
+        <div class="co">
+          <p class="coname">STRADAVERSE SDN. BHD.</p>
+          <p class="cycle missing">Payroll payslip · Regular</p>
+        </div>
+        <div class="right">
+          <p class="month">July 2026</p>
+          <p class="paid">Payment date: 31 July 2026</p>
+        </div>
+      </div>
+      <hr class="rule">
+      <div class="gblock ghost">
+        <div class="gbox"><b>Earnings</b>Basic salary · Travel allowance</div>
+        <div class="gbox"><b>Deductions (your share)</b>EPF · SOCSO · EIS · PCB · Zakat</div>
+      </div>
+    </div>
+    <p class="callout cbad">No registration number anywhere in the header — the gap your red box marks.
+      And “Regular” is the run type the system uses internally, not the cycle your payroll team named.</p>
+  </div>
+
+  <div class="card after">
+    <h2>Proposed <span class="tag tnew">two lines</span></h2>
+    <div class="ps">
+      <div class="pshead">
+        <div class="logo"></div>
+        <div class="co">
+          <p class="coname">STRADAVERSE SDN. BHD.</p>
+          <p class="regline">Reg. no.: 1234567-X</p>
+          <p class="cycle">Payroll payslip · Monthly</p>
+        </div>
+        <div class="right">
+          <p class="month">July 2026</p>
+          <p class="paid">Payment date: 31 July 2026</p>
+        </div>
+      </div>
+      <hr class="rule">
+      <div class="gblock ghost">
+        <div class="gbox"><b>Earnings</b>Basic salary · Travel allowance</div>
+        <div class="gbox"><b>Deductions (your share)</b>EPF · SOCSO · EIS · PCB · Zakat</div>
+      </div>
+    </div>
+    <p class="callout cgood">“Reg. no.” is the label the Organization screen already uses for this field,
+      so the payslip and the company record call it the same thing. “Monthly” is the pay cycle’s own
+      name, read from the run the payslip belongs to.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>The two cases we will NOT invent our way around</h2>
+  <div class="fallbacks">
+    <div class="fb">
+      <p class="fbh">A company with no registration number recorded</p>
+      <div class="ps" style="padding:12px 14px">
+        <p class="coname" style="font-size:16px">ABC ENTERPRISE</p>
+        <p class="cycle">Payroll payslip · Monthly</p>
+      </div>
+      <p class="note">No line at all — not “Reg. no.: —” and not an empty label. A blank label reads as a
+        company with no registration; no line reads as a field nobody has filled in, which is the truth.</p>
+    </div>
+    <div class="fb">
+      <p class="fbh">A payroll run that names no pay cycle</p>
+      <div class="ps" style="padding:12px 14px">
+        <p class="coname" style="font-size:16px">STRADAVERSE SDN. BHD.</p>
+        <p class="regline">Reg. no.: 1234567-X</p>
+        <p class="cycle">Payroll payslip · Regular</p>
+      </div>
+      <p class="note">Keeps “Regular”. The link from a run to a cycle was added part way through the
+        product’s life, so older runs genuinely have no cycle name to print. These read exactly as they
+        do today.</p>
+    </div>
+  </div>
+</div>
+
+<p class="sketch">Sketch of the change. Wording, spacing and colour will differ.</p>
