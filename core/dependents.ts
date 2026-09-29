@@ -269,6 +269,12 @@ export type { ChildEligibilityReason } from '../lib/dependent-vocabulary';
  *     column of `CP8D_COLS`;
  *   · the EA statement — the same select inside `eaStatement`, printed into EA item 8 by lib/ea-pdf.ts
  *     (`String(d.employee.children)`);
+ *     ⚠️ r364 — THIS READER WAS TAKEN AWAY FOR A DAY AND GIVEN BACK. r359 pointed EA item 8 at the
+ *     s.48-weighted C, which is exactly the outcome the paragraph below calls out ("an employee with one
+ *     disabled child in higher education would be declared as having eight children") — it reached a live
+ *     statutory form and was reversed the same week. Precisely, since r353: item 8 reads THIS column in
+ *     'auto' and 'manual', and the KEYED grid's own head count in 'auto_table', which is the same kind of
+ *     figure from the source that priced that employee's tax. Neither is ever the weighted units.
  *   · and localization/my/statutory.ts states it in words on CHILD_RELIEF_MODES.
  *     ⚠️ r351 — that sentence used to read "Payroll always reads num_children as the head count regardless
  *     of mode", and this block cited it as its authority. It stopped being true at a5f21891 (r344), which

@@ -87,10 +87,19 @@ export type EaPdfData = {
     socsoNo: string | null;
     category: number;
     /**
-     * A.8 — C, the number of qualifying children in LHDN's weighted sense (r359). NULL prints an EMPTY
-     * rule, which is what the blank form carries and what D.6 does under the same condition: a year
-     * whose slips stamped no relief has nothing to say here either, and a head count printed beside an
-     * empty D.6 would be two contradictory answers on one page.
+     * A.8 — "Number of children qualified for tax relief": a COUNT of children, never the s.48-weighted
+     * figure (r364, reversing r359). NULL prints an EMPTY rule, which is what the blank form carries and
+     * what an employee with no recorded number of children deserves — `String(0)` would assert that no
+     * child qualifies.
+     *
+     * ⚠️ r359's SENTENCE HERE WAS THE PROSE THAT OUTLIVED NOTHING — IT WAS THE KERNEL. It read: "A.8 —
+     * C, the number of qualifying children in LHDN's weighted sense (r359). NULL prints an EMPTY rule …
+     * a head count printed beside an empty D.6 would be two contradictory answers on one page." Both
+     * halves are reversed. C belongs to the MONTHLY tax formula; LHDN's own calculation slip prints a
+     * child grid of 2 whole children on page 1 and "C = Number of eligible children 9.00" on page 6, so
+     * the agency itself does not use one figure for both. And A.8 no longer depends on D.6's payroll
+     * stamp at all: A.8 is a fact about the employee, D.6 is a fact about the year's payroll, and two
+     * answers to two different questions are not a contradiction.
      */
     children: number | null;
     hiredOn: string;
@@ -912,6 +921,10 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // r220 — a COUNT, not an amount, so it does not pass through `amountOrRule` and has to say for itself
   // that a blank form carries no number here. `String(0)` is "0", and "0 children qualifying for tax
   // relief" is a claim about a person the blank form does not have.
+  //
+  // r364 — THE EXPRESSION IS UNCHANGED AND ITS REASON IS NOT. r359 read the `== null` arm as "absent
+  // because D.6 is absent — the two boxes are one fact". It now means UNRECORDED: no statutory row, or a
+  // null `num_children` in a mode that reads it. Nothing about D.6 reaches this box any more.
   valueOrRule(blank || d.employee.children == null ? '' : String(d.employee.children), 135, A.aLeftRule[1], 173.2);
 
   /**

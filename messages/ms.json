@@ -1595,13 +1595,13 @@
       "photoView": "View photo",
       "photoViewClose": "Close",
       "photoViewTitle": "{name} — profile photo",
-      "childrenPhysical": "Anak dalam rekod",
-      "childrenQualifying": "Anak yang layak (C)",
+      "childrenPhysical": "Anak yang layak untuk pelepasan cukai",
+      "childrenQualifying": "Dikira sebagai, untuk cukai bulanan (C)",
       "childProvenanceEntered": "Entered by hand",
       "childProvenanceFromFamily": "Worked out from the Family records",
       "childProvenanceFromTable": "Worked out from the relief table below",
       "childFamilyCountHint": "The Family records hold {count} child record(s).",
-      "childReliefAmountHint": "Child relief: RM {amount}",
+      "childReliefAmountHint": "Child relief: RM {amount} — Form EA Section D item 6 prints this figure.",
       "childQualifyingManualNote": "Manual mode uses the number entered above as the qualifying count, at RM {amount} per child. Switch to a derived mode to work it out from each child's own category.",
       "childQualifyingBreakdown": "How the qualifying count was reached",
       "childQualifyingBreakdownEmpty": "Nothing is keyed yet, so no child relief is claimed.",
@@ -1627,8 +1627,8 @@
       "childQualifyingWhyExplicit": "[retired r355 — the tick is consent, not eligibility (77e882f5); replaced by childQualifyingWhyCategory]",
       "childQualifyingCategoryContradictsDob": "Kategori pelepasan anak ini menyatakan bawah 18 tahun, tetapi tarikh lahirnya tidak. Sila semak rekod.",
       "childQualifyingWhyCategory": "Dikira kerana kategori pelepasan anak ini membenarkan tuntutan selepas umur 18. Tanda sahaja tidak melayakkan seseorang anak.",
-      "childrenPhysicalDoc": "Kiraan asal yang disimpan. Borang E dan CP8D membaca yang ini.",
-      "childrenQualifyingDoc": "C LHDN — setiap anak dikira mengikut berat kategori pelepasannya. Borang EA item 8 dan slip PCB membaca yang ini, dan pelepasan anak ialah RM{perChild} × C."
+      "childrenPhysicalDoc": "Bilangan anak yang layak. Borang EA item 8, Borang E dan CP8D membaca yang ini.",
+      "childrenQualifyingDoc": "C LHDN — satu pemberat, bukan bilangan orang: setiap anak dikira sebagai unit s.48 yang dibawa oleh kategori pelepasannya. Pengiraan PCB bulanan dan slipnya membaca yang ini; tiada apa-apa pada Borang EA mencetaknya. Pelepasan yang terhasil, RM{perChild} × C, ialah apa yang dicetak oleh Borang EA Seksyen D item 6."
     },
     "import": {
       "title": "Import pekerja",

@@ -60,6 +60,28 @@ describe('da4fc817 — Section D carries all six of the official form lines', ()
     // The LAST month's figure, so the query it is read from must be ordered. CLAUDE.md §8 forbids
     // reading "the last" off an unordered result, and every other figure here is a sum that did not care.
     expect(reports, 'the slips query must ORDER BY the pay period').toContain('.orderBy(payrollBatch.payPeriod)');
+    // ══ REVERSED AGAIN IN r364 (fda53352 rev 8). THE THIRD TURN OF THIS BOX, AND THE LAST ONE THAT
+    //    SHOULD BE NEEDED, BECAUSE THE DECIDING DOCUMENT IS NOW QUOTED AT BOTH ENDS ══════════════════
+    //
+    // ⚠️ THE TRAP THIS BLOCK ALREADY DOCUMENTED IS STILL LIVE, SO READ IT FIRST. The r359 text below is
+    // kept verbatim. Note its own admission: the pre-r359 assertion greps `String(d.employee.children)`,
+    // which is in the file whichever way this decision goes, so an assertion HERE can keep passing while
+    // its message says the opposite of what the code does. That is why the two assertions at the bottom
+    // of this case now pin the DERIVATION's shape in reports.ts and assert the reversed shape ABSENT —
+    // an absence cannot silently keep passing after someone puts the division back.
+    //
+    // WHAT r359 GOT WRONG. Its citations are real and they are about the MTD FORMULA, not about Form EA.
+    // The agency's own generated output separates the two figures inside ONE document:
+    //   docs/forms/pcb-calculation-slip-official-2026-12.pdf page 1 — "Number of children / Qualification
+    //   rate 100% 50%", printing (a) Under 18 = 1 and (e) Disabled and still studying = 1: TWO children;
+    //   the same file page 6 — "Q = Deduction for eligible children 2,000.00", "C = Number of eligible
+    //   children 9.00".
+    // LHDN prints 2 where it means children and 9.00 where it means C. And the form itself
+    // (docs/forms/ea-cp8a-pin-2023-official-en.pdf) asks at A.8 for the "Number of children qualified for
+    // tax relief", in the left column of particulars with no RM heading, while the weighted ringgit has
+    // its own box at D.6, "Total qualifying child relief". *Bilangan* is a count.
+    //
+    // ── r359's TEXT, KEPT (CLAUDE.md §8: a guard pinning a decision you are reversing is updated) ──────
     // ⚠️ REVERSED IN r359 (fda53352 rev 7), AND IT WOULD HAVE GONE ON PASSING WHILE SAYING THE OPPOSITE.
     // This line read:
     //     // A.8 is the COUNT and must stay one — the r343 head-count decision is not touched by this.
@@ -74,15 +96,28 @@ describe('da4fc817 — Section D carries all six of the official form lines', ()
     // printed p.27's table is headed "Relief to be given AS IF THE EMPLOYEE HAS THIS NUMBER OF
     // CHILDREN". So A.8 is C, the weighted figure. It is derived from the SAME stamped relief D.6
     // prints, which is what makes A.8 x RM2,000 === D.6 by construction rather than by agreement.
+    // ── end of r359's text ────────────────────────────────────────────────────────────────────────────
     const reportsSrc = read('localization/my/reports.ts');
-    expect(reportsSrc, 'A.8 is derived from the relief, not from num_children').toMatch(
-      /eaQualifyingChildren\s*=\s*\n?\s*childReliefFromPayroll == null \? null :/,
+    expect(reportsSrc, 'A.8 must read the source the child-relief MODE makes authoritative').toMatch(
+      /eaQualifyingChildren\s*=\s*\n\s*info\.childReliefMode === 'auto_table'\s*\n\s*\? childReliefTableHeadCount\(/,
     );
-    expect(reportsSrc, 'and it divides by the ruleset per-child figure, never a literal 2000').toContain(
-      'DEFAULT_MY_STATUTORY.pcb.reliefs.perChild',
+    expect(reportsSrc, "and the other modes read num_children, not a derived figure").toMatch(
+      /\n\s*: info\.children;\n/,
     );
-    // Absent when D.6 is absent — the two boxes are one fact.
-    expect(read('lib/ea-pdf.ts'), 'a null C prints an empty rule, not a zero').toContain(
+    // The reversed shape, asserted ABSENT. r359 divided the stamped annual relief by the ruleset's
+    // per-child figure; that expression is what turned A.8 into a price, and a division cannot creep
+    // back in while this line stands. (`DEFAULT_MY_STATUTORY.pcb.reliefs.perChild` itself is NOT asserted
+    // absent from the file — the Form E/CP8D block legitimately reads the ruleset.)
+    expect(reportsSrc, 'A.8 must NOT be derived from the D.6 relief stamp again').not.toMatch(
+      /eaQualifyingChildren\s*=\s*\n?\s*childReliefFromPayroll/,
+    );
+    expect(reportsSrc, 'A.8 must not divide the relief by the per-child deduction').not.toMatch(
+      /childReliefFromPayroll \/ DEFAULT_MY_STATUTORY\.pcb\.reliefs\.perChild/,
+    );
+    // The empty rule STAYS, and its meaning changed: not "absent because D.6 is absent" but "unrecorded".
+    // An employee with no statutory row has no number of children on file, and `String(0)` there would
+    // assert that no child qualifies. CLAUDE.md §8: an absent box asserts nothing.
+    expect(read('lib/ea-pdf.ts'), 'an UNRECORDED count prints an empty rule, never a zero').toContain(
       "blank || d.employee.children == null ? '' : String(d.employee.children)",
     );
   });

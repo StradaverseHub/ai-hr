@@ -1595,13 +1595,13 @@
       "photoView": "View photo",
       "photoViewClose": "Close",
       "photoViewTitle": "{name} — profile photo",
-      "childrenPhysical": "Children on record",
-      "childrenQualifying": "Qualifying children (C)",
+      "childrenPhysical": "Children qualifying for tax relief",
+      "childrenQualifying": "Counted as, for monthly tax (C)",
       "childProvenanceEntered": "Entered by hand",
       "childProvenanceFromFamily": "Worked out from the Family records",
       "childProvenanceFromTable": "Worked out from the relief table below",
       "childFamilyCountHint": "The Family records hold {count} child record(s).",
-      "childReliefAmountHint": "Child relief: RM {amount}",
+      "childReliefAmountHint": "Child relief: RM {amount} — Form EA Section D item 6 prints this figure.",
       "childQualifyingManualNote": "Manual mode uses the number entered above as the qualifying count, at RM {amount} per child. Switch to a derived mode to work it out from each child's own category.",
       "childQualifyingBreakdown": "How the qualifying count was reached",
       "childQualifyingBreakdownEmpty": "Nothing is keyed yet, so no child relief is claimed.",
@@ -1627,8 +1627,8 @@
       "childQualifyingWhyExplicit": "[retired r355 — the tick is consent, not eligibility (77e882f5); replaced by childQualifyingWhyCategory]",
       "childQualifyingCategoryContradictsDob": "This child’s relief category says under 18, but their date of birth does not. Check the record.",
       "childQualifyingWhyCategory": "Counted because this child’s relief category allows a claim past 18. The tick alone does not qualify a child.",
-      "childrenPhysicalDoc": "The stored head count. Form E and CP8D read this one.",
-      "childrenQualifyingDoc": "LHDN’s C — each child counted at the weight its relief category carries. Form EA item 8 and the PCB slip read this one, and the child relief is RM{perChild} × C."
+      "childrenPhysicalDoc": "The number of children who qualify. Form EA item 8, Form E and CP8D read this one.",
+      "childrenQualifyingDoc": "LHDN’s C — a weighting, not a number of people: each child counted as the s.48 units its relief category carries. The monthly PCB calculation and its slip read this one; nothing on Form EA prints it. The relief it produces, RM{perChild} × C, is what Form EA Section D item 6 prints."
     },
     "import": {
       "title": "Import employees",

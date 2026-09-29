@@ -1595,13 +1595,13 @@
       "photoView": "View photo",
       "photoViewClose": "Close",
       "photoViewTitle": "{name} — profile photo",
-      "childrenPhysical": "பதிவில் உள்ள குழந்தைகள்",
-      "childrenQualifying": "தகுதியான குழந்தைகள் (C)",
+      "childrenPhysical": "வரி நிவாரணத்திற்குத் தகுதியான குழந்தைகள்",
+      "childrenQualifying": "மாதாந்திர வரிக்கு கணக்கிடப்படும் அளவு (C)",
       "childProvenanceEntered": "Entered by hand",
       "childProvenanceFromFamily": "Worked out from the Family records",
       "childProvenanceFromTable": "Worked out from the relief table below",
       "childFamilyCountHint": "The Family records hold {count} child record(s).",
-      "childReliefAmountHint": "Child relief: RM {amount}",
+      "childReliefAmountHint": "Child relief: RM {amount} — Form EA Section D item 6 prints this figure.",
       "childQualifyingManualNote": "Manual mode uses the number entered above as the qualifying count, at RM {amount} per child. Switch to a derived mode to work it out from each child's own category.",
       "childQualifyingBreakdown": "How the qualifying count was reached",
       "childQualifyingBreakdownEmpty": "Nothing is keyed yet, so no child relief is claimed.",
@@ -1627,8 +1627,8 @@
       "childQualifyingWhyExplicit": "[retired r355 — the tick is consent, not eligibility (77e882f5); replaced by childQualifyingWhyCategory]",
       "childQualifyingCategoryContradictsDob": "இந்தக் குழந்தையின் வரிச்சலுகை வகை 18 வயதுக்குட் என்கிறது, ஆனால் பிறந்த தேதி அவ்வாறு கூறவில்லை. பதிவைச் சரிபார்க்கவும்.",
       "childQualifyingWhyCategory": "இந்தக் குழந்தையின் வரிச்சலுகை வகை 18 வயதுக்குப் பிறகும் கோர அனுமதிக்கிறது. டிக் மட்டும் தகுதி அளிக்காது.",
-      "childrenPhysicalDoc": "சேமிக்கப்பட்ட எண்ணிக்கை. படிவம் E மற்றும் CP8D இதைப் படிக்கின்றன.",
-      "childrenQualifyingDoc": "LHDN இன் C — ஒவ்வொரு குழந்தையும் அதன் நிவாரண வகையின் எடையில் கணக்கிடப்படுகிறது. படிவம் EA உருப்படி 8 மற்றும் PCB சீட்டு இதைப் படிக்கின்றன, குழந்தை நிவாரணம் RM{perChild} × C ஆகும்."
+      "childrenPhysicalDoc": "தகுதியான குழந்தைகளின் எண்ணிக்கை. படிவம் EA உருப்படி 8, படிவம் E மற்றும் CP8D இதைப் படிக்கின்றன.",
+      "childrenQualifyingDoc": "LHDN இன் C — இது ஒரு நிறையளவு, நபர்களின் எண்ணிக்கை அல்ல: ஒவ்வொரு குழந்தையும் அதன் நிவாரண வகை கொண்டுவரும் s.48 அலகுகளாகக் கணக்கிடப்படுகிறது. மாதாந்திர PCB கணக்கீடும் அதன் சீட்டும் இதைப் படிக்கின்றன; படிவம் EA இதை அச்சிடுவதில்லை. இதனால் கிடைக்கும் நிவாரணம், RM{perChild} × C, படிவம் EA பிரிவு D உருப்படி 6 அச்சிடுவது ஆகும்."
     },
     "import": {
       "title": "பணியாளர்களை இறக்குமதி செய்",

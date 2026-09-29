@@ -1595,13 +1595,13 @@
       "photoView": "View photo",
       "photoViewClose": "Close",
       "photoViewTitle": "{name} — profile photo",
-      "childrenPhysical": "在册子女人数",
-      "childrenQualifying": "符合资格子女 (C)",
+      "childrenPhysical": "符合税务减免资格的子女人数",
+      "childrenQualifying": "月度税务计入权重 (C)",
       "childProvenanceEntered": "Entered by hand",
       "childProvenanceFromFamily": "Worked out from the Family records",
       "childProvenanceFromTable": "Worked out from the relief table below",
       "childFamilyCountHint": "The Family records hold {count} child record(s).",
-      "childReliefAmountHint": "Child relief: RM {amount}",
+      "childReliefAmountHint": "Child relief: RM {amount} — Form EA Section D item 6 prints this figure.",
       "childQualifyingManualNote": "Manual mode uses the number entered above as the qualifying count, at RM {amount} per child. Switch to a derived mode to work it out from each child's own category.",
       "childQualifyingBreakdown": "How the qualifying count was reached",
       "childQualifyingBreakdownEmpty": "Nothing is keyed yet, so no child relief is claimed.",
@@ -1627,8 +1627,8 @@
       "childQualifyingWhyExplicit": "[retired r355 — the tick is consent, not eligibility (77e882f5); replaced by childQualifyingWhyCategory]",
       "childQualifyingCategoryContradictsDob": "此子女的减免类别为18岁以下，但出生日期并非如此。请核对记录。",
       "childQualifyingWhyCategory": "计入原因：此子女的减免类别允许在18岁后申报。仅勾选并不使子女符合资格。",
-      "childrenPhysicalDoc": "存储的人数。E 表格和 CP8D 读取此项。",
-      "childrenQualifyingDoc": "LHDN 的 C——每名子女按其减免类别的权重计算。EA 表格第 8 项和 PCB 计算单读取此项，子女减免为 RM{perChild} × C。"
+      "childrenPhysicalDoc": "符合资格的子女人数。EA 表格第 8 项、E 表格和 CP8D 读取此项。",
+      "childrenQualifyingDoc": "LHDN 的 C——这是权重，不是人数：每名子女按其减免类别的第 48 条单位计算。月度 PCB 计算及其计算单读取此项；EA 表格不会打印它。由此得出的减免额 RM{perChild} × C，才是 EA 表格 D 部分第 6 项打印的数字。"
     },
     "import": {
       "title": "导入员工",

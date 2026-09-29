@@ -510,7 +510,9 @@ export function IdentityTaxCard({
                 back to 'manual' restores the editable stored value. */}
             {/* 04b88724 — PHYSICAL CHILDREN: the head count, and the ONE field that posts `numChildren`.
                 The caption changed, the contract did not — Form E, CP8D and the EA statement all read this
-                column and it is not being repurposed. */}
+                column and it is not being repurposed. (r364 — still true, and true again: r359 moved EA
+                item 8 off this column for a day. On 'auto_table' the EA reads the keyed grid's head count
+                instead, which is the same number this read-only box displays.) */}
             <Field label={t('childrenPhysical')}>
               <input
                 name="numChildren"
@@ -539,7 +541,15 @@ export function IdentityTaxCard({
               {/* r359 fda53352 — WHICH DOCUMENT PRINTS THIS ONE. The reporter read the EA's item 8 off
                   this box for two rounds, because nothing on the screen said which figure each form
                   takes and the caption said "Physical children" over a number that is not the physical
-                  count in either automatic mode. EA item 8 takes the WEIGHTED figure below. */}
+                  count in either automatic mode.
+                  ⚠️ r364 fda53352 rev 8 — r359's LAST SENTENCE SAID "EA item 8 takes the WEIGHTED figure
+                  below", AND IT WAS WRONG. EA item 8 takes THIS figure: it asks for the "Number of
+                  children qualified for tax relief", a count. The caption is now
+                  "Children qualifying for tax relief" rather than "Children on record", because in both
+                  automatic modes this box already holds the QUALIFYING count (the eligibility ladder in
+                  lib/dependent-vocabulary.ts on 'auto', the keyed grid's head count on 'auto_table'), and
+                  "on record" invited the same confusion from the other side. The weighted figure beside it
+                  is a price, and the box that prints it is Form EA Section D item 6. */}
               <span className="text-xs text-muted-foreground" data-child-physical-doc>
                 {t('childrenPhysicalDoc')}
               </span>
@@ -582,7 +592,11 @@ export function IdentityTaxCard({
               <span className="text-xs text-muted-foreground" data-child-qualifying-provenance>
                 {provenance}
               </span>
-              {/* …and this is C, in LHDN's own sense. */}
+              {/* …and this is C, in LHDN's own sense: a WEIGHTING, not a number of people. r364 — the
+                  caption no longer calls it a number of children ("Qualifying children (C)" became
+                  "Counted as, for monthly tax (C)"), and its hint no longer claims Form EA item 8 reads
+                  it, because item 8 reads the box on the left. Nothing on the EA prints C; the relief it
+                  produces is what Form EA Section D item 6 prints. */}
               <span className="text-xs text-muted-foreground" data-child-qualifying-doc>
                 {t('childrenQualifyingDoc', { perChild: childRelief?.perChild ?? 0 })}
               </span>

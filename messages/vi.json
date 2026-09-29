@@ -1595,13 +1595,13 @@
       "photoView": "View photo",
       "photoViewClose": "Close",
       "photoViewTitle": "{name} — profile photo",
-      "childrenPhysical": "Số con trong hồ sơ",
-      "childrenQualifying": "Con đủ điều kiện (C)",
+      "childrenPhysical": "Số con đủ điều kiện giảm trừ thuế",
+      "childrenQualifying": "Được tính là, cho thuế hàng tháng (C)",
       "childProvenanceEntered": "Entered by hand",
       "childProvenanceFromFamily": "Worked out from the Family records",
       "childProvenanceFromTable": "Worked out from the relief table below",
       "childFamilyCountHint": "The Family records hold {count} child record(s).",
-      "childReliefAmountHint": "Child relief: RM {amount}",
+      "childReliefAmountHint": "Child relief: RM {amount} — Form EA Section D item 6 prints this figure.",
       "childQualifyingManualNote": "Manual mode uses the number entered above as the qualifying count, at RM {amount} per child. Switch to a derived mode to work it out from each child's own category.",
       "childQualifyingBreakdown": "How the qualifying count was reached",
       "childQualifyingBreakdownEmpty": "Nothing is keyed yet, so no child relief is claimed.",
@@ -1627,8 +1627,8 @@
       "childQualifyingWhyExplicit": "[retired r355 — the tick is consent, not eligibility (77e882f5); replaced by childQualifyingWhyCategory]",
       "childQualifyingCategoryContradictsDob": "Loại miễn giảm của trẻ này ghi dưới 18 tuổi, nhưng ngày sinh thì không. Vui lòng kiểm tra hồ sơ.",
       "childQualifyingWhyCategory": "Được tính vì loại miễn giảm của trẻ này cho phép yêu cầu sau 18 tuổi. Chỉ đánh dấu thôi không làm trẻ đủ điều kiện.",
-      "childrenPhysicalDoc": "Số lượng đã lưu. Mẫu E và CP8D đọc mục này.",
-      "childrenQualifyingDoc": "C của LHDN — mỗi con được tính theo trọng số của loại giảm trừ. Mẫu EA mục 8 và phiếu tính PCB đọc mục này, và giảm trừ cho con là RM{perChild} × C."
+      "childrenPhysicalDoc": "Số con đủ điều kiện. Mẫu EA mục 8, Mẫu E và CP8D đọc mục này.",
+      "childrenQualifyingDoc": "C của LHDN — một trọng số, không phải số người: mỗi con được tính bằng số đơn vị theo mục 48 của loại giảm trừ tương ứng. Phép tính PCB hàng tháng và phiếu tính của nó đọc mục này; không có ô nào trên Mẫu EA in ra nó. Khoản giảm trừ thu được, RM{perChild} × C, là con số mà Mẫu EA Phần D mục 6 in ra."
     },
     "import": {
       "title": "Nhập nhân viên",

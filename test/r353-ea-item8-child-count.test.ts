@@ -1,4 +1,49 @@
 /**
+ * ⚠️⚠️ REVERSED AGAIN IN r364 (fda53352 rev 8). READ THIS BEFORE THE r359 BANNER BELOW.
+ *
+ * EA ITEM 8 IS A COUNT OF CHILDREN. r353 said so, r359 overturned it to LHDN's s.48-weighted C, and the
+ * reporter reversed that within a day. r359's whole header is kept verbatim underneath (CLAUDE.md §8: a
+ * guard pinning a decision you are reversing is updated, not deleted) — including its own citations,
+ * because they are real and they are about the wrong document.
+ *
+ * WHAT SETTLES IT, AND IT IS INSIDE THE VERY FILE r359 CITED. docs/forms/pcb-calculation-slip-official-
+ * 2026-12.pdf is LHDN's own generated slip for this exact employee. Page 1 prints a child grid headed
+ * "Number of children / Qualification rate 100% 50%" with "(a) Under 18 years old  1" and "(e) Disabled
+ * and still studying in Malaysia or abroad  1" — TWO children, each a whole child. Page 6 of the SAME
+ * document prints "Q = Deduction for eligible children  2,000.00" and "C = Number of eligible children
+ * 9.00". The agency prints 2 where it means children and 9.00 where it means C. r359 read page 6 and not
+ * page 1, and carried a rule out of the MONTHLY TAX specification onto an ANNUAL statement it does not
+ * speak to.
+ *
+ * AND THE FORM'S OWN ENGLISH. docs/forms/ea-cp8a-pin-2023-official-en.pdf, section A: "8. Number of
+ * children qualified for tax relief", printed in the left column of particulars between "6. EPF No." and
+ * "9. If the period of employment is less than a year", with a short rule and no RM heading over it. The
+ * weighted ringgit has its own box in the money column: "6. Total qualifying child relief". The Bahasa
+ * Malaysia sheet agrees — "Bilangan anak yang layak untuk pelepasan cukai"; *bilangan* is a count.
+ *
+ * WHAT THE CASES BELOW PIN NOW.
+ *   · 'manual' 3 and 'auto' 2 — the SAME answers r359 printed, from a different source. Their fixtures no
+ *     longer run payroll at all, and that is the point: A.8 is a fact about the employee's tax record, so
+ *     a fixture with no payroll still has one. Under r359 these two passed only by arithmetic accident
+ *     (an unweighted relief divided by the per-child figure returns the count).
+ *   · 'auto_table' with the reporter's own grid — 2, the grid's head count, NOT 9 and NOT the stored
+ *     column. REVERSED.
+ *   · a 50%-shared child — ONE child. So 1 full + 2 half prints 3. REVERSED.
+ *   · no payroll at all — A.8 still prints the count while D.6 is empty. REVERSED: r359 made A.8 absent
+ *     whenever D.6 was, on the grounds that "the two boxes are one fact". They are two facts.
+ *   · A.8 x the per-child deduction is NOT D.6, asserted as the FALSE invariant it is. This case replaces
+ *     r359's identity assertion, quoted in full where it stood.
+ *   · 'auto_table' with no grid keyed — 0, unchanged, re-argued without the slogan that caused r359.
+ *   · no statutory row at all — NULL, an empty rule. Unrecorded is not zero.
+ *
+ * ⚠️ THE 50% SHARE AFFECTS THE RELIEF, NOT THE HEAD COUNT, AND THREE IN-TREE SOURCES SAY SO.
+ * `childReliefTableHeadCount` (localization/my/statutory-tables.ts) floors and sums `full` + `half` as
+ * whole children; `eligibleChildReliefCount`'s header in core/dependents.ts states that one eligible child
+ * is ONE whatever category is recorded against it; and LHDN's slip counts its own 50% column in whole
+ * children. r359 made this box fractional, so a live form could read "4.5 children". It cannot again:
+ * both branches return integers.
+ *
+ * ── r359's HEADER, KEPT VERBATIM ─────────────────────────────────────────────────────────────────────
  * ⚠️⚠️ REVERSED IN r359 BY THE OWNER, AND BY LHDN'S OWN OUTPUT. READ THIS BEFORE THE BLOCK BELOW.
  *
  * Everything from "r353 · item fda53352 point 1" down to the end of this header was the previous
@@ -58,6 +103,8 @@
  * prices rather than typed, and asserted ABSENT — printing it here would declare that employee as having
  * eight children (core/dependents.ts `eligibleChildReliefCount`, and r343's decision).
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee } from '../core/org';
@@ -103,10 +150,18 @@ describe('r353 · EA item 8 reads the source its child-relief mode makes authori
   }
 
   /**
-   * r359 — RUN THE PAYROLL, because A.8 is now derived from the relief the run applied rather than read
-   * off a stored column. Before this round the fixtures needed no payroll at all: the box came straight
-   * from `num_children` or the keyed grid, so a configured employee was enough. That is precisely what
-   * changed — the box follows the money now, and a fixture with no money has nothing to follow.
+   * ⚠️ r364 — PAYROLL IS NO LONGER A PRECONDITION OF A.8, AND ONLY THE D.6 CASES CALL THIS.
+   *
+   * r359's version of this helper was called by every case, with the header: "RUN THE PAYROLL, because
+   * A.8 is now derived from the relief the run applied rather than read off a stored column. Before this
+   * round the fixtures needed no payroll at all: the box came straight from `num_children` or the keyed
+   * grid, so a configured employee was enough. That is precisely what changed — the box follows the money
+   * now, and a fixture with no money has nothing to follow."
+   *
+   * That is what is reversed. A.8 answers "how many children qualify for relief", which the employee's
+   * tax record answers on its own; D.6 answers "what was the relief worth", which only a payroll run can.
+   * The cases that assert D.6 run this; the cases that assert only A.8 deliberately do not, and the fact
+   * that they still get an answer is itself the reversal.
    */
   async function payOneMonth(employmentId: string) {
     void employmentId;
@@ -117,40 +172,39 @@ describe('r353 · EA item 8 reads the source its child-relief mode makes authori
   const item8 = async (employmentId: string) =>
     (await employeeEaStatement(adminCtx(base), { employmentId, year: '2026' }))!.employee.children;
 
-  it("'manual' — three typed children are three qualifying children (SAME answer, new source)", async () => {
+  it("'manual' — three typed children are three qualifying children (SAME answer, source restored)", async () => {
     // Rail (a) exists so a human keeps control of their own tax figure; 71 of 75 employees on production
-    // are on this mode, so it is the common case and not the edge. r359: the answer does not move here,
-    // because a manual employee's relief is `num_children x perChild` and dividing it back by perChild
-    // returns the count. What changed is WHERE the 3 comes from — the relief, not the column.
+    // are on this mode, so it is the common case and not the edge. r364: the answer does not move from
+    // r359 here, but its source does — the stored column again, and NO payroll run is needed to read it.
     const E = await hire('manual@acme.test');
     await setTaxProfileMY(adminCtx(base), { personId: E.personId, childReliefMode: 'manual', numChildren: 3 });
-    await payOneMonth(E.employmentId);
     expect(await item8(E.employmentId)).toBe(3);
   });
 
-  it("'auto' — two unweighted children are two qualifying children (SAME answer, new source)", async () => {
-    // r351's ruling on this mode survives r359 by arithmetic rather than by exception: with no grid the
-    // relief is 2 x perChild, so C comes back 2 either way.
+  it("'auto' — two unweighted children are two qualifying children (SAME answer, source restored)", async () => {
+    // r351's ruling on this mode is right for the reason r351 gave: `syncChildReliefFromFamily` writes
+    // `eligibleChildReliefCount` — a head count over the one eligibility ladder in
+    // lib/dependent-vocabulary.ts `childReliefEligible` — into `num_children`, so the column IS the
+    // qualifying count. Under r359 this case passed by arithmetic accident instead: with no grid the
+    // relief was 2 x perChild, so dividing it back gave 2 whatever the box meant.
     const E = await hire('auto@acme.test');
     await setTaxProfileMY(adminCtx(base), { personId: E.personId, childReliefMode: 'auto', numChildren: 2 });
-    await payOneMonth(E.employmentId);
     expect(await item8(E.employmentId)).toBe(2);
   });
 
   /**
-   * ⚠️ THE REVERSAL ITSELF, AND IT IS THE REPORTER'S OWN EMPLOYEE. This case read "'auto_table' — the
-   * KEYED grid decides, not the stale stored count" and asserted:
+   * ⚠️ THE REVERSAL ITSELF, AND IT IS THE REPORTER'S OWN EMPLOYEE. r359 turned this case into
+   * "'auto_table' — C is the WEIGHTED figure, 9, not the two child records" and asserted:
    *
-   *     expect(printed, 'item 8 is still printing the stale stored head count').toBe(2);
-   *     expect(printed, 'item 8 is printing the s.48 WEIGHTED figure as a count')
-   *       .not.toBe(unitsOf('under_18') + unitsOf('disabled_study'));
+   *     expect(printed, "A.8 is C — LHDN's own slip prints 9.00 for this employee").toBe(weighted);
+   *     expect(printed, 'and it is NOT the grid head count either').not.toBe(childReliefTableHeadCount(GRID));
    *
-   * — the head count 2, with the weighted figure asserted ABSENT. LHDN's own PCB Calculation Slip for
-   * this exact shape (one child under 18, one disabled and still studying) prints "C = Number of
-   * eligible children  9.00". The assertion that the weighted figure must NOT appear is now the
-   * assertion that it MUST, and the two lines above are kept here so that is legible.
+   * Page 1 of that same slip prints the employee's children as 1 + 1. The assertion that the head count
+   * must NOT appear is again the assertion that it MUST, and both lines are kept here so that is legible.
+   * This is the case that goes vacuous if the fixture is simplified: an employee with no children, or
+   * with no weighted category, gives the same number either way and proves nothing.
    */
-  it("⚠️ 'auto_table' — C is the WEIGHTED figure, 9, not the two child records", async () => {
+  it("⚠️ 'auto_table' — the KEYED grid's HEAD COUNT, 2, not the weighted 9 and not the stored column", async () => {
     const E = await hire('table@acme.test');
     // num_children says 5, the grid claims relief for two children, and those two children are worth
     // nine qualifying children between them. All three numbers are different on purpose.
@@ -160,20 +214,57 @@ describe('r353 · EA item 8 reads the source its child-relief mode makes authori
       numChildren: 5,
       childReliefTable: GRID,
     });
-    await payOneMonth(E.employmentId);
-    const printed = await item8(E.employmentId);
     const weighted = unitsOf('under_18') + unitsOf('disabled_study');
-    expect(printed, "A.8 is C — LHDN's own slip prints 9.00 for this employee").toBe(weighted);
-    expect(printed, 'and it is NOT the stored column').not.toBe(5);
-    expect(printed, 'and it is NOT the grid head count either').not.toBe(childReliefTableHeadCount(GRID));
+    // ⚠️ THE RUN IS HERE ON PURPOSE, AND IT IS WHAT MAKES THE TWO ANSWERS DISTINGUISHABLE. With the relief
+    // stamped at RM18,000, r359's derivation returns 9 and this reversal returns 2, so reverting the fix
+    // fails the next assertion with "expected 9 to be 2" rather than with an absence. The companion case
+    // below asserts the same 2 with NO run at all; the pair is the whole claim.
+    await payOneMonth(E.employmentId);
+    const ea = (await employeeEaStatement(adminCtx(base), { employmentId: E.employmentId, year: '2026' }))!;
+    const printed = ea.employee.children;
+    expect(printed, "A.8 is the count of children — LHDN's own slip prints 1 + 1 for this employee").toBe(
+      childReliefTableHeadCount(GRID),
+    );
+    expect(printed, 'and it is NOT the s.48-weighted figure, which is what D.6 prices').not.toBe(weighted);
+    expect(printed, 'and it is NOT the stale stored column, which the grid supersedes in this mode').not.toBe(5);
+    // The run really did weight the relief, so "not the weighted figure" is not passing for want of one.
+    expect(ea.partD.childRelief, 'the relief the run allowed is the weighted RM18,000').toBeCloseTo(
+      weighted * DEFAULT_MY_STATUTORY.pcb.reliefs.perChild,
+      2,
+    );
     // The three really are three different numbers, so none of the above can pass by coincidence.
     expect(childReliefTableHeadCount(GRID)).toBe(2);
     expect(weighted).toBe(9);
   });
 
-  it('A.8 x the per-child deduction IS D.6 — the two boxes are one fact', async () => {
-    // What makes the form checkable by multiplying, and the reason A.8 is derived from the relief
-    // rather than from a second reading of the family register.
+  it("'auto_table' — the same 2 with NO payroll run, because the grid is the source", async () => {
+    // The companion to the case above, and the half r359 could not do: the keyed grid is the employee's
+    // declared child-relief position, so it answers item 8 on its own. A form for a year nobody has run
+    // payroll for still states how many children qualify.
+    const E = await hire('tablenopay@acme.test');
+    await setTaxProfileMY(adminCtx(base), {
+      personId: E.personId,
+      childReliefMode: 'auto_table',
+      numChildren: 5,
+      childReliefTable: GRID,
+    });
+    // deliberately no payOneMonth
+    expect(await item8(E.employmentId), 'A.8 needs no payroll run to be true').toBe(2);
+  });
+
+  /**
+   * ⚠️ THE FALSE INVARIANT, ASSERTED FALSE. This case replaces r359's, which read "A.8 x the per-child
+   * deduction IS D.6 — the two boxes are one fact" and asserted:
+   *
+   *     expect(ea.employee.children).not.toBeNull();
+   *     expect(ea.employee.children! * DEFAULT_MY_STATUTORY.pcb.reliefs.perChild)
+   *       .toBeCloseTo(ea.partD.childRelief ?? 0, 2);
+   *
+   * The s.48 weighting is exactly why that identity is false: two children really can be worth RM18,000.
+   * Deleting the case would leave nothing standing where it stood, so it is inverted instead — the
+   * invariant is now pinned FALSE and cannot come back silently.
+   */
+  it('A.8 x the per-child deduction is NOT D.6 — the weighting is why, and two children are RM18,000', async () => {
     const E = await hire('identity@acme.test');
     await setTaxProfileMY(adminCtx(base), {
       personId: E.personId,
@@ -183,25 +274,54 @@ describe('r353 · EA item 8 reads the source its child-relief mode makes authori
     });
     await payOneMonth(E.employmentId);
     const ea = (await employeeEaStatement(adminCtx(base), { employmentId: E.employmentId, year: '2026' }))!;
-    expect(ea.employee.children).not.toBeNull();
-    expect(ea.employee.children! * DEFAULT_MY_STATUTORY.pcb.reliefs.perChild).toBeCloseTo(ea.partD.childRelief ?? 0, 2);
+    const perChild = DEFAULT_MY_STATUTORY.pcb.reliefs.perChild;
+    // ⚠️ THE NEGATION GOES FIRST, so that a reversal fails on THIS line and not on a figure assertion
+    // beneath it. Restoring r359's derivation makes the identity hold again, and this is the line that
+    // says out loud that holding is the defect.
+    expect(ea.employee.children! * perChild, 'A.8 x perChild must NOT equal D.6 — the s.48 weighting is why').not.toBeCloseTo(
+      ea.partD.childRelief ?? 0,
+      2,
+    );
+    // Both boxes are filled, and they answer different questions.
+    expect(ea.employee.children, 'A.8 — the number of children qualified for tax relief').toBe(2);
+    expect(ea.partD.childRelief, 'D.6 — the s.48-weighted ringgit the kernel actually allowed').toBeCloseTo(18000, 2);
+    expect(ea.employee.children! * perChild, 'RM4,000 is what the false invariant would have claimed').toBeCloseTo(
+      4000,
+      2,
+    );
   });
 
-  it('no stamped relief means NO A.8 — absent, never a stale count', async () => {
-    // r359 — the new case. A year whose slips carry no relief snapshot (written before the stamp, or a
-    // flat-rate non-resident) leaves D.6 empty already; A.8 is absent with it, because a head count
-    // printed beside an empty D.6 is the two-contradictory-answers-on-one-page problem the reversed
-    // block above warned about. That warning was right even though its conclusion was not.
+  it('r364 — A.8 prints the count even when NO payroll ran, because it is not a fact about payroll', async () => {
+    /**
+     * ⚠️ REVERSES r359's ONE NEW CASE. It read "no stamped relief means NO A.8 — absent, never a stale
+     * count", with the reason: "A year whose slips carry no relief snapshot (written before the stamp, or
+     * a flat-rate non-resident) leaves D.6 empty already; A.8 is absent with it, because a head count
+     * printed beside an empty D.6 is the two-contradictory-answers-on-one-page problem."
+     *
+     * There is no contradiction, because the two boxes do not answer the same question. "This employee has
+     * three children who qualify for relief" and "this year's payroll recorded no relief figure" can both
+     * be true — a flat-rate non-resident is precisely that person. Withholding a true particular because
+     * a different box is empty is not caution, it is a second wrong answer.
+     */
     const E = await hire('nopayroll@acme.test');
     await setTaxProfileMY(adminCtx(base), { personId: E.personId, childReliefMode: 'manual', numChildren: 3 });
     // deliberately no payOneMonth
-    expect(await item8(E.employmentId)).toBeNull();
+    const ea = (await employeeEaStatement(adminCtx(base), { employmentId: E.employmentId, year: '2026' }))!;
+    expect(ea.employee.children, 'A.8 stands on its own').toBe(3);
+    // D.6 has nothing to state: no slip stamped a relief, so the figure is 0 here and lib/ea-pdf.ts's
+    // `manual()` suppresses a zero to the agency's empty rule rather than printing "RM 0.00".
+    expect(ea.partD.childRelief, 'and D.6 is empty, which is honest and unrelated').toBe(0);
   });
 
-  it("'auto_table' with no grid keyed prints 0, because that is what the calculation relieved", async () => {
+  it("'auto_table' with no grid keyed prints 0, because the grid declares relief for nobody", async () => {
     // `pricesChildReliefFromGrid` returns true for 'auto_table' unconditionally, so an unkeyed grid claims
-    // NO child relief and the employee's PCB was computed with none. Falling back to `num_children` here
-    // would print a count above a D.6 of nothing — two contradictory answers on one statutory page.
+    // NO child relief: zero children qualify, and that is a fact about this employee's tax record rather
+    // than about any payroll run — which is why this case no longer runs payroll either.
+    //
+    // ⚠️ r364 — THE ANSWER IS r353's AND THE REASON IS NOT r359's. r359 kept the 0 and re-justified it as
+    // "now true by construction … the relief was zero, so C is zero. The count follows the money, which is
+    // what this case always said." The 0 stays; "the count follows the money" is retired. It is the slogan
+    // that turned a count into a price.
     const E = await hire('emptytable@acme.test');
     await setTaxProfileMY(adminCtx(base), {
       personId: E.personId,
@@ -209,35 +329,83 @@ describe('r353 · EA item 8 reads the source its child-relief mode makes authori
       numChildren: 4,
       childReliefTable: null,
     });
-    await payOneMonth(E.employmentId);
-    // r359 — unchanged, and now true by construction rather than by a deliberate refusal to fall back:
-    // the relief was zero, so C is zero. The count follows the money, which is what this case always said.
     expect(await item8(E.employmentId)).toBe(0);
+    // 0 is a claim ("no child qualifies"), so it must NOT be the stale stored column that a save of the
+    // Identification & Tax card left behind.
+    expect(await item8(E.employmentId)).not.toBe(4);
   });
 
   /**
-   * ⚠️ ALSO REVERSED, AND THIS ONE IS A JUDGEMENT THE OWNER NOW OWNS. It read "a half-share child is
-   * still ONE child on this box", asserting 3 for one full child and two half-share children, with the
-   * reason: "Counting it as 0.5 would print a fraction in a box ruled for a number of people."
+   * ⚠️ ALSO REVERSED, AND THE TREE AGREED WITH r353 IN THREE PLACES WHILE r359 SHIPPED THE OPPOSITE. r359
+   * read "a half-share child is HALF a qualifying child, because the money says so" and asserted 2 for one
+   * full child and two half-share children, reasoning: "the box is not ruled for people any more — it is
+   * ruled for C … A half-share child is half a qualifying child in the money, so it must be half a
+   * qualifying child here or A.8 x RM2,000 stops reaching D.6 … the fraction is ours to print honestly
+   * rather than round away."
    *
-   * That reason is still a fair objection and the answer is that the box is not ruled for people any
-   * more — it is ruled for C, and C is what multiplies with Q to give the relief. A half-share child is
-   * half a qualifying child in the money, so it must be half a qualifying child here or A.8 x RM2,000
-   * stops reaching D.6. The specification has no half child because it settles a shared claim at the
-   * annual assessment; this system supports the share monthly, so the fraction is ours to print
-   * honestly rather than round away.
+   * The box IS ruled for people, so r353's original objection stands: "Counting it as 0.5 would print a
+   * fraction in a box ruled for a number of people." A live EA could read "4.5 children". LHDN's own slip
+   * counts its 50% column in whole children, `childReliefTableHeadCount` floors and sums full + half, and
+   * `eligibleChildReliefCount`'s header says a shared eligible child is still one eligible child. The
+   * share changes what the relief is WORTH, which is D.6's box.
    */
-  it('a half-share child is HALF a qualifying child, because the money says so', async () => {
+  it('a 50%-shared child is ONE child — 1 full + 2 half prints 3, never a fraction', async () => {
     const E = await hire('half@acme.test');
+    const halfGrid = { under_18: { full: 1, half: 2 } };
     await setTaxProfileMY(adminCtx(base), {
       personId: E.personId,
       childReliefMode: 'auto_table',
       numChildren: 0,
-      childReliefTable: { under_18: { full: 1, half: 2 } },
+      childReliefTable: halfGrid,
     });
-    await payOneMonth(E.employmentId);
-    // One whole child (1 unit) plus two children at half share (0.5 each) = 2.
-    expect(await item8(E.employmentId)).toBe(2);
-    expect(childReliefTableHeadCount({ under_18: { full: 1, half: 2 } }), 'the head count is still 3').toBe(3);
+    const printed = await item8(E.employmentId);
+    expect(printed, 'three children qualify; two of them at a 50% share').toBe(3);
+    expect(childReliefTableHeadCount(halfGrid), 'the head count is the same 3').toBe(3);
+    // The figure r359 printed here, and the class of value this box can no longer hold.
+    expect(printed, 'A.8 must not be the s.48 units of a shared claim').not.toBe(2);
+    expect(Number.isInteger(printed), 'A.8 is always a whole number of children').toBe(true);
+  });
+
+  it('r364 — no statutory row at all means UNRECORDED, which prints an empty rule rather than 0', async () => {
+    // The one behaviour that is not literally r353's: r353 coerced a missing `num_children` to 0. An
+    // employee with no MY statutory record has no number of children on file, and 0 asserts that no child
+    // qualifies. CLAUDE.md §8 — an absent box asserts nothing; lib/ea-pdf.ts prints the agency's empty
+    // rule for null, exactly as the blank form carries it.
+    const a = adminCtx(base);
+    const E = await hireEmployee(a, {
+      person: { fullName: 'No Statutory Row', primaryEmail: 'norow@acme.test' },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    expect(await item8(E.employmentId)).toBeNull();
+  });
+
+  /**
+   * r364 — THE SCREEN'S OWN CLAIM ABOUT WHICH DOCUMENT READS WHICH FIGURE, PINNED.
+   *
+   * The Identification & Tax card's two hints name the forms each box feeds, and r359 pointed the WEIGHTED
+   * box's hint at "Form EA item 8". That sentence is how an administrator would check the form, so it is a
+   * statutory claim on a screen and it was false. It cannot be pinned through the component (the DOM tests
+   * read the same dictionary the card does, so they agree with whatever it says), so it is pinned against
+   * the catalogue itself. No database, no render: just the two sentences.
+   */
+  it('the card says Form EA item 8 reads the COUNT, and never says it reads the weighting', () => {
+    const en = JSON.parse(readFileSync(resolve(__dirname, '../messages/en.json'), 'utf8')) as {
+      people: { detail: Record<string, string> };
+    };
+    const d = en.people.detail;
+    expect(d.childrenPhysicalDoc, 'the count box must name Form EA item 8').toMatch(/Form EA item 8/);
+    expect(d.childrenQualifying, 'the weighted box must not be captioned as a number of children').not.toMatch(
+      /children/i,
+    );
+    expect(d.childrenQualifyingDoc, 'the weighted box must NOT claim Form EA item 8 reads it').not.toMatch(
+      /Form EA item 8/,
+    );
+    // …and it must still name the document that DOES read it, and the box the relief lands in.
+    expect(d.childrenQualifyingDoc, 'the PCB slip half of r359 stays true and stays said').toMatch(/PCB/);
+    expect(d.childrenQualifyingDoc, 'the relief belongs to Section D item 6').toMatch(/Section D item 6/);
+    expect(d.childReliefAmountHint, 'the ringgit names its own box too').toMatch(/Section D item 6/);
   });
 });
