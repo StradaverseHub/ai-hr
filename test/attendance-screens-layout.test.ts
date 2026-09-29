@@ -48,6 +48,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { attendanceCorrectionStatusEnum } from '../db/schema';
+// r363 — the wording cases at the foot of this file RUN the labeller rather than reading its source.
+// "Three places on one screen agree" is a relation between three resolved strings; no source check can
+// see it, and a source check that pinned the English word would pass on a screen where they had drifted
+// apart and somebody had edited the catalogue instead.
+import { statusLabel } from '../app/attendance/request-ui';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -466,13 +471,21 @@ describe('r239 — My Attendance Request Status: table on a wide screen, blocks 
     for (const marker of ['askedFor(r, t)', 'r.reason', 'r.remark', "t('maColSubmitted')", 'maAttachmentOnRequest']) {
       expect(rest.includes(marker), `the block face must carry ${marker} BELOW the first line`).toBe(true);
     }
-    // The overtime wording rule now has TWO render sites (ADR-free but load-bearing: a cancelled overtime
-    // plan reads "Withdrawn", not "Cancelled", and request-ui.tsx's comment says that wording has already
-    // survived two relocations). A verifier mutated the block face's third argument to `false` and NOTHING
-    // failed. Both sites must pass the real predicate.
+    // ⚠️ r363 — THIS IS A SHAPE CHECK NOW, NOT A BEHAVIOUR TEST, AND THE COMMENT SAYS SO RATHER THAN
+    // LEAVING A RETIRED CLAIM STANDING. It used to read:
+    //   "The overtime wording rule now has TWO render sites (ADR-free but load-bearing: a cancelled
+    //    overtime plan reads 'Withdrawn', not 'Cancelled', and request-ui.tsx's comment says that wording
+    //    has already survived two relocations). A verifier mutated the block face's third argument to
+    //    `false` and NOTHING failed. Both sites must pass the real predicate."
+    // The split it described is retired: `cancelled` reads "Withdrawn" for BOTH kinds, because only the
+    // subject can ever write that status (see request-ui.tsx). So mutating the third argument SHOULD now
+    // have no effect, and this count no longer detects the mutation it was written for. It is kept
+    // deliberately — the call shape is what the follow-up round would change, and dropping the parameter
+    // must be a decision somebody takes rather than a silent drift — but the PROPERTY it was reaching for
+    // is pinned by "one word for one state" below, which compares the two kinds' labels to each other.
     expect(
       code(PAGE).match(/statusLabel\(r\.status, t, isOvertime\(r\)\)/g) ?? [],
-      'both faces label the status through isOvertime — otherwise a withdrawn OT plan reads "Cancelled"',
+      'both faces label the status through the same call shape — see "one word for one state" below',
     ).toHaveLength(2);
   });
 
@@ -558,5 +571,142 @@ describe('r239 — My Attendance Request Status: table on a wide screen, blocks 
         "r.status === 'pending'",
       );
     }
+  });
+
+  /**
+   * 4c8aae68 (r363) — ONE WORD FOR ONE STATE, and it is pinned as a RELATION, not as a word.
+   *
+   * What the reporter saw: a filter chip reading "Cancelled" a few centimetres above an overtime row
+   * reading "Withdrawn". Three places on this one screen render the stored `cancelled` — the chip, an
+   * overtime plan's pill and a clock correction's pill — and they disagreed. The premise for unifying
+   * rather than splitting harder is that only the SUBJECT can ever write that status: exactly two
+   * functions do (cancelPlannedOvertime and cancelOwnAttendanceCorrection, core/attendance.ts) and both
+   * refuse anybody else in code, so `cancelled` on this screen means one thing.
+   *
+   * ⚠️ WHY THE ASSERTIONS COMPARE THE THREE TO EACH OTHER AND NOT TO "Withdrawn". A case pinning the
+   * literal would pass on a screen where the three had drifted apart again and somebody had simply
+   * retranslated one key — the defect is disagreement, and disagreement is a relation. And ⚠️ WHY IT
+   * BUILDS A REAL ROW OF EACH KIND: an equality between two calls that take the same branch is true for
+   * free, so the kinds are asserted to be genuinely different before their labels are compared.
+   *
+   * This is also the case that inherits what A2 above was reaching for. A2 was written because a
+   * verifier mutated `isOvertime` at one render site and nothing failed; after this round that argument
+   * is read by no branch, so A2 can only pin the call SHAPE. The behaviour lives here.
+   */
+  const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
+  const catalogue = (locale: string) => (JSON.parse(read(`messages/${locale}.json`)) as { me: Record<string, unknown> }).me;
+  /** One `me` message by dotted key, exactly as next-intl would walk it — or undefined. */
+  const msg = (locale: string, key: string): unknown =>
+    key.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], catalogue(locale));
+  /** A `t` for the `me` namespace. THROWS on a missing key rather than echoing it back: a labeller that
+   *  quietly returned "otStatusWithdrawn" would satisfy an equality case while rendering gibberish. */
+  const translator = (locale: string) => {
+    const me = catalogue(locale);
+    const t = (key: string): string => {
+      const hit = key.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], me);
+      if (typeof hit !== 'string') throw new Error(`messages/${locale}.json has no me.${key}`);
+      return hit;
+    };
+    return t as unknown as Parameters<typeof statusLabel>[1];
+  };
+
+  it('r363 — the chip, a cancelled OVERTIME row and a cancelled CORRECTION row read the SAME word', () => {
+    // The kind predicate is re-run here rather than imported (it is the page's own const), so it is
+    // pinned verbatim first — otherwise this case could go on asserting a rule the screen had stopped
+    // using, which is precisely how case D was once defeated.
+    const ISOVERTIME =
+      'const isOvertime = (r: RequestRow) => r.proposedCheckIn == null && r.requestedOtMinutes != null;';
+    expect(PAGE, 'the kind predicate this case re-runs must still be the one the screen ships').toContain(ISOVERTIME);
+    const isOvertime = (r: { proposedCheckIn: string | null; requestedOtMinutes: number | null }) =>
+      r.proposedCheckIn == null && r.requestedOtMinutes != null;
+
+    // A real row of each kind, as myAttendanceCorrections returns them: an overtime plan carries minutes
+    // and no proposed clock-in; a clock correction is the other way round.
+    const plan = { status: 'cancelled', proposedCheckIn: null, requestedOtMinutes: 120 };
+    const correction = { status: 'cancelled', proposedCheckIn: '09:00', requestedOtMinutes: null };
+    expect(isOvertime(plan), 'the overtime row really is one').toBe(true);
+    expect(
+      isOvertime(correction),
+      'and the correction row really is not — otherwise both halves of the equality take one branch and it is free',
+    ).toBe(false);
+
+    // The chip's OWN third argument, read off the screen rather than assumed, so this case compares what
+    // the screen would actually render if somebody flipped it.
+    const chipCall = code(PAGE).match(/statusLabel\(f, t, (true|false)\)/);
+    expect(chipCall, 'the filter chip must resolve through the shared labeller, not a word of its own').not.toBeNull();
+    const chipIsOvertime = chipCall![1] === 'true';
+
+    for (const locale of LOCALES) {
+      const t = translator(locale);
+      const planWord = statusLabel(plan.status, t, isOvertime(plan));
+      const correctionWord = statusLabel(correction.status, t, isOvertime(correction));
+      const chipWord = statusLabel('cancelled', t, chipIsOvertime);
+      expect(planWord.trim(), `${locale}: the label resolves to a real word, not a blank`).not.toBe('');
+      expect(
+        correctionWord,
+        `${locale}: a taken-back correction and a taken-back overtime plan must read the SAME word`,
+      ).toBe(planWord);
+      expect(chipWord, `${locale}: and the filter chip above them must read that same word`).toBe(planWord);
+    }
+
+    // It is Self Overtime's own key that they agree on — which is why nothing had to be written or
+    // translated. Asserted through the catalogue rather than against "Withdrawn", so a retranslation of
+    // that key moves all of them together.
+    for (const locale of LOCALES) {
+      expect(
+        statusLabel('cancelled', translator(locale), true),
+        `${locale}: the shared word is me.otStatusWithdrawn`,
+      ).toBe(msg(locale, 'otStatusWithdrawn'));
+    }
+
+    // …and me.leaveStatus.cancelled is NOT touched. It lost its literal call site here, but two computed
+    // call sites outside attendance still reach it (app/admin/personnel/[employmentId]/page.tsx and
+    // app/me/request-change-card.tsx build `leaveStatus.${status}` as a template), and "Cancelled" is the
+    // right word there. Deleting or rewording it is the regression this line exists to catch.
+    for (const locale of LOCALES) {
+      const v = msg(locale, 'leaveStatus.cancelled');
+      expect(typeof v === 'string' && v.trim() !== '', `me.leaveStatus.cancelled must stay in ${locale}.json`).toBe(
+        true,
+      );
+    }
+    expect(msg('en', 'leaveStatus.cancelled'), 'and it still says Cancelled in English').toBe('Cancelled');
+  });
+
+  it('r363 — the take-back control resolves the SAME KEY as Self Overtime’s withdraw control', () => {
+    // ⚠️ BY KEY IDENTITY, NOT BY THE ENGLISH STRING. Two screens can both read "Withdraw" in English and
+    // disagree in Tamil; what makes them unable to drift is resolving ONE key. So neither key is named
+    // as a literal here — the case reads both off their screens and compares them.
+    const labels = [...code(PAGE).matchAll(/<CancelRequest\b[^>]*label=\{t\('([^']+)'\)\}/g)].map((m) => m[1]);
+    expect(labels, 'both faces of the list draw the control').toHaveLength(2);
+    expect(new Set(labels).size, 'and both faces resolve one key, not two').toBe(1);
+
+    const OT = code(read('app/attendance/plan-ot/page.tsx'));
+    const at = OT.indexOf('{canWithdraw ?');
+    expect(at, 'Self Overtime still draws a withdraw control').toBeGreaterThan(-1);
+    const control = OT.slice(at, OT.indexOf(') : null}', at));
+    const otKeys = [...new Set([...control.matchAll(/t\('([^']+)'\)/g)].map((m) => m[1]))];
+    expect(otKeys, 'Self Overtime’s control names exactly one label key').toHaveLength(1);
+    expect(labels[0], 'and this screen’s take-back control must be that same key').toBe(otKeys[0]);
+
+    // RETIRED, NOT DELETED. me.maCancelRequest is no longer rendered anywhere; it stays in all six
+    // catalogues, because a key that is removed cannot be put back by anyone reading a translation memory.
+    expect(code(PAGE).includes('maCancelRequest'), 'maCancelRequest is no longer rendered on this screen').toBe(false);
+    for (const locale of LOCALES) {
+      const retired = msg(locale, 'maCancelRequest');
+      expect(
+        typeof retired === 'string' && retired.trim() !== '',
+        `me.maCancelRequest must stay in ${locale}.json — retired, never deleted`,
+      ).toBe(true);
+      const shared = msg(locale, otKeys[0]);
+      expect(
+        typeof shared === 'string' && (shared as string).trim() !== '',
+        `me.${otKeys[0]} missing or blank in ${locale}.json`,
+      ).toBe(true);
+    }
+
+    // me.maCancel is a DIFFERENT key — the "never mind, close this" button beside a confirm in the
+    // correction dialog on app/attendance/requests/page.tsx. It is not a take-back and is deliberately
+    // left saying Cancel; a sweep that took it with this change would be the regression.
+    expect(msg('en', 'maCancel'), 'the dialog dismiss button is untouched').toBe('Cancel');
   });
 });

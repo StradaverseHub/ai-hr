@@ -339,7 +339,7 @@ describe('2166ef79 — the status filter, and cancelling your own request', () =
     });
     await decideAttendanceCorrection(a, { correctionId: decided.correctionId, decision: 'approved' });
     await expect(cancelOwnAttendanceCorrection(me, { correctionId: decided.correctionId })).rejects.toThrow(
-      'This request has already been approved, so it can no longer be cancelled.',
+      'This request has already been approved, so it can no longer be withdrawn.',
     );
 
     // An OT plan has its own state rule (approved-but-not-yet-counted may still be withdrawn), so it is

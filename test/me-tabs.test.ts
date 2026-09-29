@@ -365,8 +365,13 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
     expect(actions, 'no travel redirect survives').not.toContain('Travel+requested');
     expect(actions, 'the travel service is not imported any more').not.toContain('core/travel-request');
     expect(actions).toContain("const REQUEST_STATUS_PAGE = '/attendance/request-status'");
+    // r363 — THIS MARKER USED TO READ 'Attendance+request+cancelled'. The screen it lands on calls the
+    // act "Withdraw" for a correction as well as for an overtime plan now, so the toast says withdrawn.
+    // What this case pins is unchanged and is the reason the marker is read literally: the action must
+    // return the employee to the screen they posted from. The string is HARDCODED ENGLISH, not a message
+    // key — a pre-existing gap shared by every `?toast=` in that file, recorded here rather than fixed.
     for (const [marker, target] of [
-      ['Attendance+request+cancelled', '${REQUEST_STATUS_PAGE}'],
+      ['Attendance+request+withdrawn', '${REQUEST_STATUS_PAGE}'],
     ] as const) {
       const line = actions.split('\n').find((l) => l.includes(marker));
       expect(line, `redirect for ${marker}`).toBeDefined();
