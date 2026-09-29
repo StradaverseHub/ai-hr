@@ -578,10 +578,25 @@ describe('ad7bc503 — the relief schedules, itemised', () => {
 
 describe('ad7bc503 — the screen and the document render each absence as its own sentence', () => {
   it('the view resolves every caption through a catalogue and formats no figure of its own', () => {
+    // r361 — THE BLOCK BECAME A FUNCTION, AND THE GUARD FOLLOWED IT RATHER THAN BEING RELAXED. There are
+    // now TWO lists of slip-shaped sections on this screen — the detail behind the totals (`slip`) and
+    // the official's closing trio (`closing`, item bf3c9712) — and the view paints both through ONE
+    // `slipSections` helper. A second copy of that JSX is how one list quietly loses an absence wording
+    // the other keeps, so the copy does not exist and this guard now covers both lists at once.
     const view = code(VIEW);
-    const at = view.indexOf('slip.map((sec)');
+    const at = view.indexOf('sections.map((sec)');
     expect(at, 'the slip block').toBeGreaterThan(-1);
-    const block = view.slice(at, view.indexOf('))}', view.indexOf('sec.note', at)));
+    // Bounded at the helper's own closer. The block used to end at a `))}` inside the JSX; now that it is
+    // a function the slice must stop at `));` or it runs on into the rest of the screen and the
+    // prohibitions below would be asserted about code they were never written for.
+    const close = view.indexOf('\n    ));', view.indexOf('sec.note', at));
+    expect(close, 'the helper’s closer').toBeGreaterThan(at);
+    const block = view.slice(at, close);
+    // …and BOTH lists go through it. A list painted inline again would escape every assertion below.
+    expect(view, 'the detail sections are painted by the helper').toContain('{slipSections(slip)}');
+    expect(view, 'and so is the closing trio').toContain('{slipSections(closing)}');
+    expect(view.indexOf('{slipSections(closing)}'), 'the closing trio comes last, as on the agency’s slip')
+      .toBeGreaterThan(view.indexOf('{slipSections(slip)}'));
     expect(block, 'values go through the same switch the worksheet uses').toContain('wsValue(r.first)');
     expect(block, 'and the second column likewise').toContain('wsValue(r.second)');
     expect(block, 'the caption is resolved, never minted').toContain("r.ns === 'taxRelief' ? tr(r.caption) : t(r.caption)");

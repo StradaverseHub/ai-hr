@@ -595,7 +595,19 @@ describe('7f251381 — every caption the sheet resolves exists in all six catalo
       const blk = JSON.parse(read(`messages/${loc}.json`)).payroll.pcbDetail as Record<string, string>;
       // The long prose keys are the ones a copy-paste would hide in; short captions can legitimately
       // coincide across languages, so the check is scoped to the sentences.
-      for (const k of ['worksheetNote', 'worksheetPreviousNote', 'worksheetIncomeNote', 'worksheetFlatNote']) {
+      //
+      // ⚠️ THIS LIST IS EXTENDED DELIBERATELY, NEVER LEFT TO DRIFT. It is the one place on this screen
+      // that says which sentences must actually have been translated, and `i18n/request.ts` deep-merges
+      // each locale over English — so an untranslated key renders as fluent English rather than as
+      // MISSING_MESSAGE and no render check can ever catch it. r361 (item bf3c9712) adds four sentences:
+      // the accumulated-remuneration note, which is what keeps the printed 0.00 against benefit-in-kind
+      // and value of living accommodation honest (CLAUDE.md §8), its unread counterpart, and the two
+      // notes under the agency's numbered steps. They live under the `slip` prefix rather than the
+      // `worksheet` one, so the EXHAUSTIVE builder sweep above does not reach them and this does.
+      for (const k of [
+        'worksheetNote', 'worksheetPreviousNote', 'worksheetIncomeNote', 'worksheetFlatNote',
+        'slipAccNote', 'slipAccNoteUnread', 'slipStep1Note', 'slipResultNote',
+      ]) {
         expect(blk[k], `${loc}.${k} is still the English sentence`).not.toBe(en[k]);
       }
     }

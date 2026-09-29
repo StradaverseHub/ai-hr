@@ -306,6 +306,7 @@ export async function PcbDetailView({
   explanation,
   worksheet,
   slip,
+  closing,
 }: {
   ctx: PcbDetailContext;
   explanation: PcbExplanation;
@@ -315,6 +316,11 @@ export async function PcbDetailView({
   /** ad7bc503 — the reporter's sections 2, 4, 5, 6, 7 and 8, assembled in core/ from reads the page did.
    *  An EMPTY list only when the explanation carries no working to itemise. */
   slip: readonly PcbSlipSection[];
+  /** r361 — the official's closing trio: its two numbered steps (page 6) and its CALCULATION RESULTS
+   *  band (page 7), in its own order, assembled in core/ and iterated by the downloaded document too.
+   *  EMPTY for a flat-rate payee and for a run with no recorded working — neither has a monthly MTD
+   *  calculation whose steps could be numbered, and three bands of "not recorded" would claim one does. */
+  closing: readonly PcbSlipSection[];
 }) {
   const t = await getTranslations('payroll.pcbDetail');
   /**
@@ -367,6 +373,56 @@ export async function PcbDetailView({
         return <NotRecorded />;
     }
   };
+
+  /**
+   * r361 — ONE PAINTER FOR EVERY SLIP-SHAPED SECTION, AND THERE ARE NOW TWO LISTS OF THEM.
+   *
+   * `slip` is the reporter's detail behind the totals (ad7bc503); `closing` is the official's two
+   * numbered steps and its CALCULATION RESULTS band (bf3c9712), which land at the FOOT of the page
+   * because that is where the agency prints them. Both are `PcbSlipSection[]` built by
+   * `core/pcb-explain.ts`, and both must render identically — a second copy of this JSX is how one list
+   * quietly acquires a column, an absence wording or a caption resolver the other does not have, on a
+   * document about somebody's tax.
+   *
+   * ⚠️ IT PAINTS AND DECIDES NOTHING. Every value goes through `wsValue`, which is a formatter chooser
+   * with no arithmetic in it; every caption is resolved through the catalogue the ROW names; the line
+   * marker is passed through untranslated. `test/ad7bc503-pcb-slip.test.ts` reads this function's own
+   * source and refuses `explanation.`, `trace.`, `'0.00'` and `Number(` anywhere inside it.
+   */
+  const slipSections = (sections: readonly PcbSlipSection[]) =>
+    sections.map((sec) => (
+      <Block key={sec.heading} title={t(sec.heading)}>
+        <div className="flex items-baseline gap-3 border-b border-border pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <span className="inline-block w-10 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1" />
+          {sec.limitColumn && <span className="w-24 shrink-0 text-end">{t(sec.limitColumn)}</span>}
+          <span className="w-32 shrink-0 text-end">{t(sec.firstColumn)}</span>
+          {sec.secondColumn && <span className="w-32 shrink-0 text-end">{t(sec.secondColumn)}</span>}
+          {sec.thirdColumn && <span className="w-32 shrink-0 text-end">{t(sec.thirdColumn)}</span>}
+        </div>
+        {sec.rows.map((r) => (
+          <SlipRow
+            key={`${r.line}-${r.caption}`}
+            line={r.line}
+            label={r.ns === 'taxRelief' ? tr(r.caption) : t(r.caption)}
+            limit={
+              sec.limitColumn === undefined
+                ? undefined
+                : r.limit === undefined || r.limit === null
+                  ? t('slipNoLimit')
+                  : rm(r.limit)
+            }
+            first={wsValue(r.first)}
+            second={r.second ? wsValue(r.second) : t('slipNoColumn')}
+            third={r.third ? wsValue(r.third) : t('slipNoColumn')}
+            sub={r.sub}
+            dual={sec.secondColumn !== undefined}
+            triple={sec.thirdColumn !== undefined}
+          />
+        ))}
+        {sec.note && <p className="pt-2 text-xs text-muted-foreground">{t(sec.note)}</p>}
+      </Block>
+    ));
 
   const cycleKey = CYCLE_LABEL[ctx.runType];
   const taxYear = /^\d{4}/.exec(ctx.payPeriod)?.[0] ?? ctx.payPeriod;
@@ -487,39 +543,7 @@ export async function PcbDetailView({
           ⚠️ NOT ONE OF THESE CELLS IS A ZERO STANDING IN FOR A MISSING BOX. `wsValue` renders the three
           absences as three different sentences, and the reference's own 0.00 columns are the one place
           this page deliberately reads differently from it — see core/pcb-explain.ts and the plan. ── */}
-      {slip.map((sec) => (
-        <Block key={sec.heading} title={t(sec.heading)}>
-          <div className="flex items-baseline gap-3 border-b border-border pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <span className="inline-block w-10 shrink-0" aria-hidden="true" />
-            <span className="min-w-0 flex-1" />
-            {sec.limitColumn && <span className="w-24 shrink-0 text-end">{t(sec.limitColumn)}</span>}
-            <span className="w-32 shrink-0 text-end">{t(sec.firstColumn)}</span>
-            {sec.secondColumn && <span className="w-32 shrink-0 text-end">{t(sec.secondColumn)}</span>}
-            {sec.thirdColumn && <span className="w-32 shrink-0 text-end">{t(sec.thirdColumn)}</span>}
-          </div>
-          {sec.rows.map((r) => (
-            <SlipRow
-              key={`${r.line}-${r.caption}`}
-              line={r.line}
-              label={r.ns === 'taxRelief' ? tr(r.caption) : t(r.caption)}
-              limit={
-                sec.limitColumn === undefined
-                  ? undefined
-                  : r.limit === undefined || r.limit === null
-                    ? t('slipNoLimit')
-                    : rm(r.limit)
-              }
-              first={wsValue(r.first)}
-              second={r.second ? wsValue(r.second) : t('slipNoColumn')}
-              third={r.third ? wsValue(r.third) : t('slipNoColumn')}
-              sub={r.sub}
-              dual={sec.secondColumn !== undefined}
-              triple={sec.thirdColumn !== undefined}
-            />
-          ))}
-          {sec.note && <p className="pt-2 text-xs text-muted-foreground">{t(sec.note)}</p>}
-        </Block>
-      ))}
+      {slipSections(slip)}
 
       {/* ── The working was never recorded at all (imported history, or a run predating the stamp). ── */}
       {explanation.kind === 'unavailable' && (
@@ -909,6 +933,19 @@ export async function PcbDetailView({
           </Block>
         </>
       )}
+
+      {/* ── r361 / bf3c9712: THE OFFICIAL'S CLOSING TRIO, WHERE THE OFFICIAL PUTS IT ──
+          The agency's slip ends "1. MTD excess of annual year net remuneration excluding additional
+          remuneration" → "2. MTD must be deducted" → CALCULATION RESULTS, and our page ended one band
+          early: a reader holding their copy ran out of ours before reaching the line the two documents
+          are supposed to meet on. The three bands come from `pcbClosingSections` in core/ and are painted
+          by the SAME function the detail sections above use, so the downloaded document cannot carry a
+          different set or a different order.
+
+          ⚠️ THE LAST FIGURE IS THE PAYSLIP'S OWN STAMP, never a rounding performed here — see the block
+          comment above `pcbMtdStep1Section`. Where the working does not explain the deduction, the two
+          figures keep the two separately captioned rows the rest of this screen gives them. ── */}
+      {slipSections(closing)}
 
       {/* ── Calculation source (requirement 15) ── */}
       <Block title={t('sourceHeading')}>
