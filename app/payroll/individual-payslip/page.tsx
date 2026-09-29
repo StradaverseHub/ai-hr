@@ -101,7 +101,12 @@
  * way to reach a bonus run sitting beside a regular one.
  *
  * SO: A FOURTH ROUND MUST NOT RE-ADD IT AS A "missing history list". Everything it did is now in the
- * Payroll-cycle dropdown, and every option in all four dropdowns leads to a payslip.
+ * RUN-TYPE dropdown, and every option in all four dropdowns leads to a payslip.
+ *   [r363 (e0b6e3b8) REWORDED THIS SENTENCE. It read "Everything it did is now in the Payroll-cycle
+ *   dropdown", and that name was the defect this round closes: the identical words also labelled the
+ *   field INSIDE the payslip, which since r360 prints the company's configured cycle NAME. The dropdown
+ *   never offered cycles — it offers the four fixed run types — and it is labelled "Run type" now. What
+ *   the sentence ASSERTS is unchanged: the card's whole job lives in that dropdown.]
  *
  * The rules — the hierarchy, the dropping of a stale lower choice, and the run-number fold — live in
  * ./period-options.ts with the reasoning for each. This screen also stopped reading
@@ -176,9 +181,13 @@ export const PAYSLIP_PANEL_COOKIE = 'payslip_panel';
 // 5a29686c — the twelve-month literal that used to sit here now lives in ./period-options.ts as the
 // no-periods FALLBACK. Keeping a second copy on this screen is how the dropdown and the rule behind it
 // would drift.
-// r210 — and it is now ONLY a validator. The Payroll-cycle dropdown is built from the employee's own
+// r210 — and it is now ONLY a validator. The RUN-TYPE dropdown is built from the employee's own
 // runs (`payslipRunChoices`), so this list no longer decides what is offered; it decides what a `?cycle=`
 // in the URL is allowed to mean, which is the `payroll_run_type` enum and nothing else.
+// [r363 (e0b6e3b8) REWORDED THE FIRST LINE. It said "The Payroll-cycle dropdown is built from the
+//  employee's own runs" — the control carries the label "Run type" from this round on, because
+//  "Payroll cycle" was ALSO the label of the payslip field below it. The claim is unchanged and true;
+//  only the name this comment calls the control by moved.]
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
 
 /** Parse an optional positive-int query param within [min, max]; anything else ⇒ undefined. */
@@ -559,7 +568,21 @@ export default async function IndividualPayslipPage({
               ))}
             </select>
           </Field>
-          <Field label={t('filterCycle')}>
+          {/* r363 (e0b6e3b8) — THIS CHOOSER IS LABELLED "Run type", NOT "Payroll cycle", AND THAT IS THE
+              WHOLE OF THE CHANGE. `filterCycle` and `fieldCycle` held the IDENTICAL string in all six
+              catalogues ("Payroll cycle" / "Kitaran gaji" / 薪资周期 / …), and since r360 the two answer
+              differently for the SAME run: this control narrows by `payroll_batch.run_type`, the four
+              fixed behavioural types the kernel gates on; the field inside the payslip below prints
+              `payroll_cycle.name`, the label the company's own payroll team chose. One label, two
+              answers, one screen — which is what the reporter read as the page contradicting itself.
+              WHAT DID NOT MOVE: the options and their order (still `payslipRunChoices`, still the runs
+              this employee actually holds), the `?cycle=` parameter, `runOptionValue`,
+              `parseRunOption`, the CYCLES validator, and `fieldCycle`'s own label. `filterRunType` is a
+              NEW KEY in the namespace this page already binds, carrying the wording
+              `payrollCycleConfig.colRunType` already uses in all six locales — the screen that owns the
+              run-type concept — so the product says one thing for one concept. `filterCycle` is retired
+              in place, never deleted: it had exactly ONE render site repo-wide, this one. */}
+          <Field label={t('filterRunType')}>
             {/* THE OPTION VALUE CARRIES THE RUN NUMBER, and that is what retired the run-picker card.
                 A run number is unique within a pay period, so company + year + month + this value names
                 exactly one payslip. The number is shown only when it is above 1 — "Bonus run 2" beside
