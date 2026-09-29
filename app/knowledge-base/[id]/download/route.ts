@@ -1,6 +1,7 @@
 import { getLocale } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { getDownload } from '@/core/knowledge-base';
+import { inlineDisposition } from '@/lib/attachment-response';
 
 /** Stream a KB document: an article as `.md`, a file with its original type. Re-checks the session,
  *  and getDownload runs under RLS (tenant member) — the only read that touches the file bytes. */
@@ -13,7 +14,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const safe = (name: string) => name.replace(/[^a-zA-Z0-9._ -]/g, '_').slice(0, 120) || 'document';
   // `?inline=1` renders in the browser (image/PDF preview); default forces a download.
-  const disposition = new URL(req.url).searchParams.get('inline') === '1' ? 'inline' : 'attachment';
+  const disposition = inlineDisposition(req, doc.kind === 'article' ? 'text/markdown' : doc.mimeType);
 
   if (doc.kind === 'article') {
     const filename = `${safe(doc.title)}.md`;
@@ -21,6 +22,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       headers: {
         'Content-Type': 'text/markdown; charset=utf-8',
         'Content-Disposition': `attachment; filename="${filename}"`,
+        'X-Content-Type-Options': 'nosniff',
       },
     });
   }
@@ -32,6 +34,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   return new Response(bytes, {
     headers: {
       'Content-Type': doc.mimeType || 'application/octet-stream',
+      'X-Content-Type-Options': 'nosniff',
       'Content-Disposition': `${disposition}; filename="${filename}"`,
       'Content-Length': String(bytes.byteLength),
     },
