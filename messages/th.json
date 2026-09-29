@@ -13004,8 +13004,8 @@
       "title": "การทำงานในวันที่ไม่ใช่วันทำงาน",
       "help": "วันหยุดประจำสัปดาห์ วันหยุด หรือวันหยุดนักขัตฤกษ์ที่คุณมาทำงาน",
       "dayType": "ประเภทวัน",
-      "fullDay": "1 วัน",
-      "halfDay": "0.5 วัน",
+      "fullDay": "[retired r358 — the 1-or-0.5 day picker was replaced by the claimed window (70294f7a); the credit is derived from the hours on every day type]",
+      "halfDay": "[retired r358 — the 1-or-0.5 day picker was replaced by the claimed window (70294f7a); the credit is derived from the hours on every day type]",
       "total": "รวมส่วนนี้",
       "workingDayRefused": "วันที่นี้เป็นวันทำงาน กรุณาใช้การทำงานต่อในวันทำงานปกติแทน"
     },
@@ -13023,10 +13023,10 @@
       "belowThreshold": "น้อยกว่า {minutes} นาที ไม่เข้าเกณฑ์รับเครดิต"
     },
     "table": {
-      "help": "Add one row for each date you worked. The day type fills in from your roster when you pick the date, and you can change it. An ordinary working day earns a credit for the hours you claim after your scheduled shift end, so those rows ask for those hours; the other three day types are claimed as a whole day or half a day. Your recorded clock-out is shown for reference and no longer limits what you can claim — where the two differ, your manager sees it and checks it before approving. Nothing is credited until your manager approves.",
+      "help": "เพิ่มหนึ่งแถวสำหรับแต่ละวันที่คุณทำงาน ประเภทวันจะถูกกรอกจากตารางเวรของคุณเมื่อคุณเลือกวันที่ และคุณสามารถเปลี่ยนได้ ทุกประเภทวันใช้วิธีเรียกร้องแบบเดียวกัน: กรอกเวลาเริ่มต้นและเวลาสิ้นสุดที่คุณทำงาน และเครดิตจะเป็นไปตามชั่วโมง — สี่ชั่วโมงที่มีสิทธิ์ได้รับครึ่งวัน แปดชั่วโมงได้รับเต็มวัน ในวันทำงานปกติ ชั่วโมงจะนับจากเวลาสิ้นสุดกะที่กำหนดไว้ ส่วนในวันหยุดประจำสัปดาห์ วันหยุด หรือวันหยุดนักขัตฤกษ์ไม่มีกะที่กำหนดไว้ ดังนั้นช่วงเวลาทั้งหมดที่คุณกรอกจะถูกนับ เวลาออกงานที่บันทึกไว้ของคุณจะแสดงเพื่อการอ้างอิงในวันทำงานปกติ และไม่จำกัดสิ่งที่คุณเรียกร้องได้ — หากทั้งสองต่างกัน ผู้จัดการของคุณจะเห็นและตรวจสอบก่อนอนุมัติ จะไม่มีการให้เครดิตใด ๆ จนกว่าผู้จัดการของคุณจะอนุมัติ",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
-      "windowNotClaimed": "Claimed hours apply to an ordinary working day only.",
+      "windowNotClaimed": "วันทำงานปกติไม่สามารถรับเครดิตได้ที่บริษัทนี้",
       "myRequests": "My Leave Credit requests",
       "noRequests": "You have not submitted a Leave Credit request yet.",
       "statusHeading": "Status",

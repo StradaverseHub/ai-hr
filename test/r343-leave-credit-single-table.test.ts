@@ -380,20 +380,22 @@ describe('r343 · the translated keys are translated, and the English ones are n
     'reason',
     'removeRow',
     'table.dayTypeChoose',
-    'table.help',
+    // r358 — `table.help` and `table.windowNotClaimed` LEFT this list, and that is a gain rather than a
+    // loss: both had to be rewritten for the owner's new rule, and both were translated into all six
+    // locales while they were being rewritten. A key leaving the English-everywhere set is the set doing
+    // its job — it exists to make the English-only count a decision rather than an accident.
     'table.myRequests',
     'table.noRequests',
     'table.rosterMismatch',
     'table.statusHeading',
     'table.submittedOn',
-    'table.windowNotClaimed',
     'totalDays',
     'unit',
     'unitDay',
     'workedDate',
   ];
 
-  it('the keys that ship English are EXACTLY the eighteen named above — a nineteenth fails this case', () => {
+  it('the keys that ship English are EXACTLY the sixteen named above — a seventeenth fails this case', () => {
     const english = renderedKeys().filter((k) => {
       const en = at('en', k);
       return typeof en === 'string' && LOCALES.slice(1).every((l) => at(l, k) === en);

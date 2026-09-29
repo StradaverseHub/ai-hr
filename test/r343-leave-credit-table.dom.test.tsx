@@ -84,7 +84,6 @@ function mount(locale: Locale, opts: { facts?: LeaveCreditDayFacts | null; tiers
 }
 
 const dayTypeSelect = (locale: Locale) => screen.getAllByLabelText(copy(locale).sectionA.dayType)[0] as HTMLSelectElement;
-const daysSelect = (locale: Locale) => screen.getAllByLabelText(copy(locale).days)[0] as HTMLSelectElement;
 const dateInput = (locale: Locale) => screen.getAllByLabelText(copy(locale).workedDate)[0] as HTMLInputElement;
 const startInput = (locale: Locale) => screen.getAllByLabelText(copy(locale).sectionB.extendedStart)[0] as HTMLInputElement;
 const endInput = (locale: Locale) => screen.getAllByLabelText(copy(locale).sectionB.extendedEnd)[0] as HTMLInputElement;
@@ -158,24 +157,52 @@ describe('r343 · the same screen, rendered in two locales, DIFFERS where it cla
 });
 
 describe('r343 · the per-row conditional, as disabled cells on ONE row', () => {
-  it('an Ordinary Day row takes the claimed window and NOT the Days figure', async () => {
+  it('an Ordinary Day row takes the claimed window, and there is no Days figure anywhere', async () => {
+    // r358 — the last line read `expect(daysSelect('en').disabled).toBe(true)`. The picker is gone for
+    // every type now, so the assertion is its absence rather than its disabled state.
     const user = userEvent.setup();
     mount('en', { facts: WORKING_DAY });
     await user.type(dateInput('en'), '2026-09-16');
     await user.selectOptions(dayTypeSelect('en'), 'workday');
     expect(startInput('en').disabled).toBe(false);
     expect(endInput('en').disabled).toBe(false);
-    expect(daysSelect('en').disabled).toBe(true);
+    expect(screen.queryAllByTestId('leave-credit-days')).toHaveLength(0);
   });
 
-  it('a Rest Day row takes the Days figure and NOT the claimed window — same row, same table', async () => {
+  /**
+   * ⚠️ REVERSED IN r358 BY THE OWNER. This case read "a Rest Day row takes the Days figure and NOT the
+   * claimed window — same row, same table", and asserted `daysSelect.disabled === false` with both time
+   * inputs disabled. The owner's answer on 70294f7a is the opposite:
+   *
+   *     "The Extended Start and Extended End fields must be editable by the employee when submitting a
+   *      Leave Credit request. Do not make these fields display-only … The employee should enter the
+   *      actual time period being claimed."
+   *
+   * The Days select is gone entirely, so there is nothing left to assert about it — which is why the
+   * case below also pins its ABSENCE rather than only the times being live.
+   */
+  it('a Rest Day row takes the claimed WINDOW, like every other day type', async () => {
     const user = userEvent.setup();
     mount('en', { facts: REST_DAY });
     await user.type(dateInput('en'), '2026-09-13');
     await user.selectOptions(dayTypeSelect('en'), 'rest_day');
-    expect(daysSelect('en').disabled).toBe(false);
-    expect(startInput('en').disabled).toBe(true);
-    expect(endInput('en').disabled).toBe(true);
+    expect(startInput('en').disabled, 'the employee types the start').toBe(false);
+    expect(endInput('en').disabled, 'and the end').toBe(false);
+    expect(screen.queryAllByTestId('leave-credit-days'), 'the 1-or-0.5 picker is gone').toHaveLength(0);
+  });
+
+  it('a rest day counts the WHOLE window — there is no scheduled shift end to be after', async () => {
+    // The reporter's own worked example, on the day type the item is about: 18:00 to 22:00 is four hours,
+    // and four hours is the half-day tier. On an ordinary day the same window would be floored at the
+    // scheduled shift end; on a rest day the employee was never scheduled, so there is nothing to floor.
+    const user = userEvent.setup();
+    mount('en', { facts: REST_DAY });
+    await user.type(dateInput('en'), '2026-09-13');
+    await user.selectOptions(dayTypeSelect('en'), 'rest_day');
+    await user.type(startInput('en'), '18:00');
+    await user.type(endInput('en'), '22:00');
+    expect(screen.getAllByTestId('leave-credit-eligible-minutes')[0].textContent).toContain('240');
+    expect(screen.getAllByTestId('leave-credit-row-credit')[0].textContent).toMatch(/0\.5/);
   });
 
   it('the derived cells are not inputs: the employee cannot type an eligible-minutes figure or a credit', () => {
@@ -239,10 +266,15 @@ describe('r343 · the roster adjudicates, on the row, and blocks the submit', ()
   });
 
   it('a row that AGREES with the roster shows no mismatch and unblocks the submit', async () => {
+    // r358 — the window is what earns the credit on an off day too, so the row has to carry one before
+    // the submit can open. Before this round the day type alone was enough, because the 1-or-0.5 picker
+    // defaulted to a whole day; that default was the thing the owner replaced.
     const user = userEvent.setup();
     mount('en', { facts: OFF_DAY });
     await user.type(dateInput('en'), '2026-09-12');
     await user.selectOptions(dayTypeSelect('en'), 'off_day');
+    await user.type(startInput('en'), '09:00');
+    await user.type(endInput('en'), '17:00');
     await waitFor(() => expect(screen.queryByTestId('leave-credit-roster-mismatch')).toBeNull());
     expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(false);
   });
@@ -275,13 +307,19 @@ describe('r343 · the roster adjudicates, on the row, and blocks the submit', ()
     );
     await user.type(dateInput('en'), '2026-09-13');
     await user.selectOptions(dayTypeSelect('en'), 'rest_day');
+    // r358 — eight hours on the rest day, which is the full-day tier. It used to inherit 1.00 from the
+    // Days picker's default; the credit is derived from the window now, on this day type as on the other
+    // three, so the window has to be typed.
+    await user.type(startInput('en'), '09:00');
+    await user.type(endInput('en'), '17:00');
     await user.click(screen.getByRole('button', { name: en.replacementRequest.addRow }));
     const dates = screen.getAllByLabelText(en.replacementRequest.workedDate);
     await user.type(dates[1], '2026-09-16');
     await user.selectOptions(screen.getAllByLabelText(en.replacementRequest.sectionA.dayType)[1], 'workday');
     await user.type(screen.getAllByLabelText(en.replacementRequest.sectionB.extendedStart)[1], '18:00');
     await user.type(screen.getAllByLabelText(en.replacementRequest.sectionB.extendedEnd)[1], '02:00');
-    // 1 day for the rest day + 1 day for eight hours past the shift end (the cap, not a proportion).
+    // 1 day for eight hours on the rest day + 1 day for eight hours past the shift end on the working
+    // day. One ladder, two day types — which is the whole of what r358 changed.
     await waitFor(() => expect(screen.getByTestId('leave-credit-total').textContent).toBe('2.00 day(s)'));
   });
 });

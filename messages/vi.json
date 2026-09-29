@@ -13004,8 +13004,8 @@
       "title": "Làm việc vào ngày không phải ngày làm việc",
       "help": "Ngày nghỉ hằng tuần, ngày nghỉ hoặc ngày lễ mà bạn đã làm việc.",
       "dayType": "Loại ngày",
-      "fullDay": "1 ngày",
-      "halfDay": "0,5 ngày",
+      "fullDay": "[retired r358 — the 1-or-0.5 day picker was replaced by the claimed window (70294f7a); the credit is derived from the hours on every day type]",
+      "halfDay": "[retired r358 — the 1-or-0.5 day picker was replaced by the claimed window (70294f7a); the credit is derived from the hours on every day type]",
       "total": "Tổng phần này",
       "workingDayRefused": "Ngày này là ngày làm việc. Hãy dùng Làm thêm trong ngày làm việc thường thay thế."
     },
@@ -13023,10 +13023,10 @@
       "belowThreshold": "Dưới {minutes} phút. Không đủ điều kiện nhận tín dụng."
     },
     "table": {
-      "help": "Add one row for each date you worked. The day type fills in from your roster when you pick the date, and you can change it. An ordinary working day earns a credit for the hours you claim after your scheduled shift end, so those rows ask for those hours; the other three day types are claimed as a whole day or half a day. Your recorded clock-out is shown for reference and no longer limits what you can claim — where the two differ, your manager sees it and checks it before approving. Nothing is credited until your manager approves.",
+      "help": "Thêm một dòng cho mỗi ngày bạn đã làm việc. Loại ngày được điền từ lịch trực của bạn khi bạn chọn ngày, và bạn có thể thay đổi. Mọi loại ngày đều được kê khai theo cùng một cách: nhập giờ bắt đầu và giờ kết thúc bạn đã làm việc, và tín dụng theo số giờ — bốn giờ đủ điều kiện được nửa ngày, tám giờ được trọn một ngày. Vào ngày làm việc bình thường, số giờ được tính từ giờ kết thúc ca đã xếp lịch của bạn; vào ngày nghỉ, ngày không làm việc hoặc ngày lễ thì không có ca đã xếp lịch, nên toàn bộ khoảng thời gian bạn nhập đều được tính. Giờ chấm công ra của bạn được hiển thị để tham khảo vào ngày làm việc bình thường và không giới hạn những gì bạn có thể kê khai — nếu hai giờ này khác nhau, quản lý của bạn sẽ thấy và kiểm tra trước khi phê duyệt. Không có gì được ghi có cho đến khi quản lý của bạn phê duyệt.",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
-      "windowNotClaimed": "Claimed hours apply to an ordinary working day only.",
+      "windowNotClaimed": "Ngày làm việc bình thường không thể nhận tín dụng tại công ty này.",
       "myRequests": "My Leave Credit requests",
       "noRequests": "You have not submitted a Leave Credit request yet.",
       "statusHeading": "Status",
