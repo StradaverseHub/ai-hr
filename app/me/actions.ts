@@ -644,6 +644,13 @@ export async function myRequestOvertime(formData: FormData) {
   const plannedStart = String(formData.get('plannedStart') || '').trim();
   const plannedEnd = String(formData.get('plannedEnd') || '').trim();
   const categoryRaw = String(formData.get('otReasonCategory') || '').trim();
+  // ce5ded11 — the optional note and the optional supporting file. Both are EXISTING capability that the
+  // overtime form simply never offered: `attendance_correction.remark` is a column
+  // requestAttendanceCorrection already accepts, and the attachment is the same table, the same 5 MB /
+  // jpeg-png-webp-heic-pdf guard and the same download route myRequestCorrection above uses.
+  const remark = String(formData.get('remark') || '').trim();
+  const file = formData.get('attachment');
+  const hasFile = file instanceof File && file.size > 0;
   // Never trust the posted category: an unknown value would be refused by the DB CHECK with a constraint
   // name in the message. Anything not in the vocabulary is simply dropped (the mandatory free text carries
   // the meaning regardless).
@@ -654,27 +661,82 @@ export async function myRequestOvertime(formData: FormData) {
   if (otHoursRaw.length > 0) {
     const hrs = Number(otHoursRaw);
     if (!Number.isFinite(hrs) || hrs < 0) {
-      redirect(`${PLAN_OT_PAGE}/apply?error=${encodeURIComponent('Overtime hours must be a non-negative number.')}`);
+      // ce5ded11 — CARRYING THE DATE. This redirect used to drop it, so a mistyped figure threw the
+      // employee back to a form reset to tomorrow and they lost the day they had picked. The generic
+      // catch below always preserved it; this one now does too.
+      redirect(
+        `${PLAN_OT_PAGE}/apply?date=${encodeURIComponent(date)}&error=${encodeURIComponent('Overtime hours must be a non-negative number.')}`,
+      );
     }
     requestedOtMinutes = Math.round(hrs * 60);
+  } else if (plannedStart || plannedEnd) {
+    /**
+     * ce5ded11 — THE HOURS, DERIVED FROM THE WINDOW WHEN THE FORM DID NOT DERIVE THEM.
+     *
+     * `otHours` is a hidden field the island fills in as the two times are typed. It arrives blank in
+     * exactly two situations, and both of them used to end in the wrong refusal:
+     *
+     *   · JAVASCRIPT IS OFF. The island never ran, so nothing computed the figure and the request was
+     *     refused with "Provide at least one of a clock-in time, a clock-out time, or overtime hours."
+     *     — about the one thing the employee could not fill in, on a screen where the two boxes they DID
+     *     fill in say exactly how many hours they mean.
+     *   · THE WINDOW IS INVERTED. The island treats an end at or before the start as a typo and yields
+     *     nothing, so the figure was blank and the employee got the same generic message instead of
+     *     "The planned end time must be after the planned start time." — the refusal that is actually
+     *     true of what they typed, and which was therefore UNREACHABLE from this screen.
+     *
+     * Handing the service a ZERO rather than a null is what fixes the second one: `hasOt` in
+     * requestAttendanceCorrection is `!= null`, so zero satisfies the at-least-one test and the window
+     * checks downstream of it — both-or-neither, then end-after-start — get to run and refuse in their
+     * own words. THE RULE IS STILL THE SERVICE'S; this only stops swallowing the question before it is
+     * asked. A window that is genuinely valid can never derive zero.
+     */
+    const mins = (t: string) => {
+      const [h, m] = t.split(':').map(Number);
+      return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+    };
+    const a = plannedStart ? mins(plannedStart) : null;
+    const b = plannedEnd ? mins(plannedEnd) : null;
+    requestedOtMinutes = a != null && b != null ? Math.max(0, b - a) : 0;
   }
   try {
-    await requestAttendanceCorrection(s, {
+    // Orphan-prevention, the leave path's lesson (myRequestCorrection above): a bad file is refused
+    // BEFORE the request row and its event commit, so a rejected upload never leaves a pending request
+    // behind that the employee then has to withdraw.
+    if (hasFile) {
+      assertAttendanceAttachmentAcceptable(file);
+    }
+    const { correctionId } = await requestAttendanceCorrection(s, {
       employmentId,
       date,
       requestedOtMinutes,
       reason: reason || undefined,
+      remark: remark || null,
       plannedStartTime: plannedStart || null,
       plannedEndTime: plannedEnd || null,
       otReasonCategory,
     });
+    if (hasFile) {
+      await addAttendanceCorrectionAttachment(s, {
+        correctionId,
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        content: Buffer.from(await file.arrayBuffer()),
+      });
+    }
   } catch (e) {
     // Back to the FORM, not the list: a refusal (a duplicate approved plan for the date, a bad time window)
     // is something the employee has to fix in the fields they just filled in.
     redirect(`${PLAN_OT_PAGE}/apply?date=${encodeURIComponent(date)}&error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath(PLAN_OT_PAGE);
-  redirect(`${PLAN_OT_PAGE}?toast=Overtime+plan+submitted`);
+  revalidatePath(`${PLAN_OT_PAGE}/apply`);
+  // ce5ded11 — STAY ON THE CALENDAR. The rule this file states everywhere else is "land the employee back
+  // on the page they posted from", and they posted from the calendar, not the list. Coming back to it with
+  // the same date still selected means the dot they just created is visible on the grid and the next day
+  // is one click away; being thrown to the table meant navigating back in to plan a second day. The date
+  // rides along so the month, the summary and the day card are the ones they were looking at.
+  redirect(`${PLAN_OT_PAGE}/apply?date=${encodeURIComponent(date)}&toast=Overtime+plan+submitted`);
 }
 
 /** 1e9145d4 — withdraw an overtime plan. The service enforces subject-only and the allowed states (pending,

@@ -3669,6 +3669,246 @@ export async function workedDayKindForTx(tx: Tx, employmentId: string, date: str
 }
 
 /**
+ * ce5ded11 (r362) · THE OT CALENDAR'S MONTH — one batched read, for the calendar-first Apply OT Plan screen.
+ *
+ * WHAT IT ANSWERS, per date of one month for ONE employment: which kind of day it is (the four
+ * `WorkedDayKind` answers), WHICH RUNG of the scheduling ladder answered, the resolved shift's code and
+ * name, the schedule's start and end, and the first break window. That is what the day panel prints and
+ * what the calendar shades, and none of it is stored — it is all resolved.
+ *
+ * ⚠️ WHY IT IS NOT 31 × `scheduleFor`. `scheduleFor` is per (employee, date) and makes six or seven round
+ * trips of its own (policy, holiday set, rule, employment row, roster join, OT windows, the arrangement
+ * ladder). A month of it is ~200 queries to draw one self-service screen. This is the same ladder over
+ * BATCHED inputs — one roster query, one holiday set, one arrangement ladder, one shift query, one policy
+ * — which is exactly the shape `attendanceForEmploymentRange` already uses for the Records table.
+ *
+ * ⚠️ AND WHY IT CANNOT DRIFT FROM THE ENGINE. The precedence is NOT restated here: `classifyScheduleDay`
+ * (this file, ~line 2100) is the one written statement of "rostered shift → rostered rest → default shift's
+ * working week → default-shift rest → company policy", and it is what both `resolveShiftDisplay` and
+ * `isScheduledOffDay` already read. This function adds exactly two things on top of it, in the order
+ * `scheduleFor` adds them:
+ *   · the PUBLIC HOLIDAY overlay — a rostered shift still defines the schedule on a holiday (the day is
+ *     classified 'holiday' so the premium is right), and every no-shift rung falls to policyBranch('holiday'),
+ *     which is why `source` reads 'policy' on a holiday that lands on a rest or off day. That is not a
+ *     rounding of the answer, it is the rung `scheduleFor` actually returns.
+ *   · the REST-vs-OFF split on the default-shift branch, which `classifyScheduleDay` folds into one
+ *     'default_rest' because the DISPLAY ladder does not care. `workedDayKindForTx` reads it off
+ *     `source === 'default-shift-rest'`; the four-way weekly row (`shiftDayKindFor`) is what says which of
+ *     the two it is, and an OFF day is only ever the default shift's own `off_pattern`. A ROSTERED day can
+ *     never be an off day — `roster_assignment` holds `shift_id` and `is_rest_day` and nothing else
+ *     (db/schema.ts) — so the calendar must not draw one there, and this cannot.
+ *
+ * test/ot-plan-calendar.test.ts pins the agreement DATE BY DATE against `dayTypeFor` over a seeded month,
+ * so "the same ladder" is a checked property rather than a comment.
+ *
+ * `scheduleStart` / `scheduleEnd` are the SCHEDULE's own times, mirroring ResolvedSchedule's
+ * `scheduledStart` / `scheduledEnd`: the shift's on a shift rung, the company's standard hours on a policy
+ * WORKING day, and NULL wherever no work is scheduled. They are deliberately not the company's hours on a
+ * rest or off day — `policyBranch` carries them there for the lateness measurement, and printing them on
+ * the screen would tell an employee they are scheduled to work on their day off.
+ */
+export type OtPlanDaySource = 'roster-shift' | 'roster-rest' | 'default-shift' | 'default-shift-rest' | 'policy';
+
+export type OtPlanCalendarDay = {
+  date: string;
+  kind: WorkedDayKind;
+  source: OtPlanDaySource;
+  /** The resolved shift's code and name. NULL on every rung that resolves no shift. */
+  shiftCode: string | null;
+  shiftName: string | null;
+  /** HH:MM. NULL where no work is scheduled (see the header). */
+  scheduleStart: string | null;
+  scheduleEnd: string | null;
+  /** The resolved shift's FIRST break window, HH:MM. NULL when the shift declares no windows. */
+  breakStart: string | null;
+  breakEnd: string | null;
+  /** The shift's (or the policy's) canonical break minutes; NULL where no work is scheduled. */
+  breakMinutes: number | null;
+};
+
+export function otPlanCalendarMonth(
+  ctx: SessionContext,
+  employmentId: string,
+  month: string,
+): Promise<OtPlanCalendarDay[]> {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return Promise.resolve([]);
+  const [y, m] = [Number(month.slice(0, 4)), Number(month.slice(5, 7))];
+  const from = `${month}-01`;
+  const to = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  return withTenant(ctx, async (tx) => {
+    const pol = await policyFor(tx, employmentId);
+    const workDays = unionWorkingDays(pol.workingDays, pol.halfWorkingDays);
+
+    const [holidays, rosterRows, empRow, periods] = await Promise.all([
+      holidayDatesFor(tx, { employmentId, startDate: from, endDate: to }),
+      tx
+        .select({
+          shiftDate: rosterAssignment.shiftDate,
+          isRestDay: rosterAssignment.isRestDay,
+          code: shift.code,
+          name: shift.name,
+          start: shift.startTime,
+          end: shift.endTime,
+          brk: shift.breakMinutes,
+          periods: shift.breakPeriods,
+          crosses: shift.crossesMidnight,
+          rounding: shift.normalHoursRoundingMinutes,
+        })
+        .from(rosterAssignment)
+        .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
+        .where(
+          and(
+            eq(rosterAssignment.employmentId, employmentId),
+            gte(rosterAssignment.shiftDate, from),
+            lte(rosterAssignment.shiftDate, to),
+          ),
+        ),
+      tx
+        .select({ ruleId: employment.attendanceRuleId, defShiftId: employment.defaultShiftId })
+        .from(employment)
+        .where(eq(employment.id, employmentId))
+        .limit(1),
+      arrangementsForEmploymentTx(tx, employmentId),
+    ]);
+    // RLS-fenced, or no such employment: an empty month is the honest answer, not a fabricated policy week.
+    if (!empRow[0]) return [];
+
+    const rosterByDate = new Map(rosterRows.map((r) => [r.shiftDate, r]));
+
+    // 18504ca6 — the default shift is resolved PER DATE off the dated arrangement ladder, exactly as
+    // attendanceForEmploymentRange does it: two batched queries (the ladder, then the shifts it names),
+    // falling back to employment.default_shift_id only when the employment has no ladder row at all.
+    const monthShiftCols = {
+      id: shift.id,
+      code: shift.code,
+      name: shift.name,
+      start: shift.startTime,
+      end: shift.endTime,
+      brk: shift.breakMinutes,
+      periods: shift.breakPeriods,
+      crosses: shift.crossesMidnight,
+      pattern: shift.weeklyPattern,
+      halfPattern: shift.halfPattern,
+      offPattern: shift.offPattern,
+      ruleId: shift.ruleId,
+      rounding: shift.normalHoursRoundingMinutes,
+    };
+    const periodShiftIds = [...new Set(periods.map((p) => p.shiftId))];
+    const periodShifts =
+      periodShiftIds.length > 0 ? await tx.select(monthShiftCols).from(shift).where(inArray(shift.id, periodShiftIds)) : [];
+    const [cachedRow] =
+      periods.length === 0 && empRow[0].defShiftId
+        ? await tx.select(monthShiftCols).from(shift).where(eq(shift.id, empRow[0].defShiftId)).limit(1)
+        : [];
+    // 07ebd04d — the SCHEDULE GROUP's working week when the employee (or the shift) is in one, resolved
+    // through the same chain scheduleFor's `ruleFor` uses. Without it the calendar would say OFF on a day
+    // the engine pays as work.
+    const week = await weekLookupTx(
+      tx,
+      empRow[0].ruleId,
+      [...periodShifts, ...(cachedRow ? [cachedRow] : [])].map((r) => r.ruleId),
+    );
+    type MonthShift = Omit<(typeof periodShifts)[number], 'pattern' | 'halfPattern' | 'offPattern'> & WeekPattern;
+    const shiftById = new Map<string, MonthShift>();
+    for (const sr of periodShifts) shiftById.set(sr.id, { ...sr, ...week(sr.ruleId, sr) });
+    const cachedDefault: MonthShift | undefined = cachedRow ? { ...cachedRow, ...week(cachedRow.ruleId, cachedRow) } : undefined;
+    const defaultOn = (d: string): MonthShift | undefined => {
+      const p = pickArrangementOn(periods, d);
+      return p ? shiftById.get(p.shiftId) : cachedDefault;
+    };
+
+    const hhmm = (t: string | null | undefined): string | null => (t == null ? null : t.slice(0, 5));
+    /** The FIRST break window of a shift, which is what the day card shows. A shift may declare several;
+     *  naming one and calling it "your break" would be false, so more than one falls back to the scalar. */
+    const firstBreak = (ps: BreakPeriod[] | null | undefined): { start: string | null; end: string | null } =>
+      ps && ps.length === 1 && ps[0]?.start && ps[0]?.end ? { start: hhmm(ps[0].start), end: hhmm(ps[0].end) } : { start: null, end: null };
+
+    const out: OtPlanCalendarDay[] = [];
+    for (let d = from; d <= to; d = new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10)) {
+      const roster = rosterByDate.get(d);
+      const def = defaultOn(d);
+      const isWorkingDay = workDays.includes(isoWeekday(d));
+      const isHoliday = holidays.has(d);
+      const cls = classifyScheduleDay(d, roster, def, isWorkingDay);
+      const noShift = { shiftCode: null, shiftName: null, scheduleStart: null, scheduleEnd: null, breakStart: null, breakEnd: null, breakMinutes: null };
+
+      if (cls === 'roster_shift') {
+        const b = firstBreak(roster!.periods);
+        out.push({
+          date: d,
+          kind: isHoliday ? 'holiday' : 'workday',
+          source: 'roster-shift',
+          shiftCode: roster!.code ?? null,
+          shiftName: roster!.name ?? null,
+          scheduleStart: hhmm(roster!.start),
+          scheduleEnd: hhmm(roster!.end),
+          breakStart: b.start,
+          breakEnd: b.end,
+          breakMinutes: roster!.brk ?? null,
+        });
+        continue;
+      }
+      if (cls === 'roster_rest') {
+        // scheduleFor: `if (isHoliday) return policyBranch('holiday')` — the holiday premium beats the
+        // rest-day one, and the rung it returns from IS the policy branch.
+        out.push({ date: d, kind: isHoliday ? 'holiday' : 'rest_day', source: isHoliday ? 'policy' : 'roster-rest', ...noShift });
+        continue;
+      }
+      if (cls === 'default_shift') {
+        const kindOfDay = shiftDayKindFor(def!, d);
+        // A HALF day ENDS halfway through the shift's clock span — scheduleFor halves the effective
+        // shift end, and that end is what workday overtime is measured past. The screen prefills the
+        // overtime start from this figure, so it must be the engine's, not the full shift's.
+        const end =
+          kindOfDay === 'half'
+            ? fmtTime((toMinutes(def!.start) + Math.floor(shiftSpan(def!.start, def!.end, def!.crosses) / 2)) % MINS_PER_DAY)
+            : def!.end;
+        const b = firstBreak(def!.periods);
+        out.push({
+          date: d,
+          kind: isHoliday ? 'holiday' : 'workday',
+          source: 'default-shift',
+          shiftCode: def!.code ?? null,
+          shiftName: def!.name ?? null,
+          scheduleStart: hhmm(def!.start),
+          scheduleEnd: hhmm(end),
+          breakStart: b.start,
+          breakEnd: b.end,
+          breakMinutes: def!.brk ?? null,
+        });
+        continue;
+      }
+      if (cls === 'default_rest') {
+        if (isHoliday) {
+          out.push({ date: d, kind: 'holiday', source: 'policy', ...noShift });
+          continue;
+        }
+        // The ONLY place an off day is representable: the default shift's own four-way weekly row.
+        out.push({
+          date: d,
+          kind: shiftDayKindFor(def!, d) === 'off' ? 'off_day' : 'rest_day',
+          source: 'default-shift-rest',
+          ...noShift,
+        });
+        continue;
+      }
+      // The company-policy rung. A working day carries the company's standard hours (which is what
+      // scheduleFor's policyBranch schedules); a rest day carries none.
+      out.push({
+        date: d,
+        kind: isHoliday ? 'holiday' : isWorkingDay ? 'workday' : 'rest_day',
+        source: 'policy',
+        ...noShift,
+        ...(!isHoliday && isWorkingDay
+          ? { scheduleStart: hhmm(pol.workStart), scheduleEnd: hhmm(pol.workEnd), breakMinutes: pol.breakMinutes }
+          : {}),
+      });
+    }
+    return out;
+  });
+}
+
+/**
  * r336 cbfa8b0b · THE FOUR READ-ONLY FACTS SECTION B OF THE LEAVE CREDIT REQUEST SHOWS FOR ONE DATE.
  *
  * The reporter's Section B row is: date worked, SCHEDULED SHIFT END (read-only), ACTUAL CLOCK-OUT
@@ -3804,10 +4044,18 @@ export function otMonthToDateMinutes(
 export function myOvertimePlans(
   ctx: SessionContext,
   employmentId: string,
-  opts: { limit?: number; offset?: number } = {},
+  opts: { limit?: number; offset?: number; from?: string; to?: string } = {},
 ): Promise<OvertimePlanRow[]> {
   const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? 25)), 200);
   const offset = Math.max(0, Math.trunc(opts.offset ?? 0));
+  // ce5ded11 (r362) — an OPTIONAL overtime-date window, for the calendar, which draws one month and must
+  // not be told about it by a `limit` that happened to reach far enough back. Absent ⇒ byte-identical to
+  // before: no bound is added and the newest `limit` rows across every month come back, which is what the
+  // Self Overtime table still asks for.
+  const window = [
+    opts.from ? gte(attendanceCorrection.attendanceDate, opts.from) : undefined,
+    opts.to ? lte(attendanceCorrection.attendanceDate, opts.to) : undefined,
+  ].filter((c) => c !== undefined);
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -3832,6 +4080,7 @@ export function myOvertimePlans(
           // mixing the two is the other half of the complaint.
           isNull(attendanceCorrection.proposedCheckIn),
           sql`${attendanceCorrection.requestedOtMinutes} is not null`,
+          ...window,
         ),
       )
       // Newest first BY THE OVERTIME DATE, then by when it was filed — the mockup's ordering. Two plans
