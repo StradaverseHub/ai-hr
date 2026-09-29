@@ -642,10 +642,28 @@ export type PcbMonthResult = {
       R: number;
       B: number;
       taxOnP1: number;
-      /** The s.48 category the B column was read from, and the child COUNT behind the child relief —
-       *  the relief AMOUNT is `reliefs.children` above; the count is what the screen shows as "× C". */
+      /**
+       * The s.48 category the B column was read from, and THE SPEC'S OWN Q AND C.
+       *
+       * ⚠️ r359 fda53352 — `childCount` WAS `num_children`, THE COUNT OF CHILD RECORDS, AND THAT IS NOT
+       * WHAT C MEANS. LHDN's specification, printed p.10, defines the two letters of the QC term:
+       * "Q  Deduction for qualifying children" and "C  Number of qualifying children"; printed p.27
+       * decides C under the heading "Relief to be given AS IF THE EMPLOYEE HAS THIS NUMBER OF CHILDREN"
+       * (4 / 4 / 4 / 8). So C is the WEIGHTED figure. The slip printed Q as the RM total and C as the
+       * record count, and the two did not multiply to the relief on the same slip — for a disabled child
+       * in higher education plus a child under 18 it read Q RM18,000 and C 2, whose product is RM36,000.
+       *
+       * THE MONEY DID NOT MOVE AND DOES NOT MOVE HERE. `reliefs.children` is and was the relief that was
+       * netted off P; these two are what the slip CALLS it, and they now satisfy `q * c === reliefs
+       * .children` by construction rather than by coincidence.
+       */
       category: TaxCategory;
+      /** C — the number of qualifying children in the spec's weighted sense. Fractional where a child's
+       *  relief is shared 50/50, because `childReliefFor` halves such a child and the product must still
+       *  reach the relief. The spec has no half child; a shared claim settles at the annual assessment. */
       childCount: number;
+      /** Q — the deduction FOR ONE qualifying child, straight off the ruleset. */
+      childDeductionPerChild: number;
       /** The remuneration legs exactly as they entered P₁. Y₂ IS Y₁ by construction — the projection
        *  assumes each remaining month repeats the current one — and is stored rather than left implied,
        *  because a reader checking `(Y₂−K₂)·n` cannot otherwise tell which figure was projected. */
@@ -852,7 +870,11 @@ export function pcbMonth(p: {
         B: bracket.B,
         taxOnP1: round2(bracket.tax),
         category,
-        childCount: children,
+        // r359 — C from the money, not from `children` (which is `num_children`, the record count).
+        // `childRelief` is what was actually deducted, weighted by the s.48 grid where one applies, so
+        // dividing by the per-child figure gives the spec's C and keeps Q x C === the relief exactly.
+        childCount: round2(childRelief / pcb.reliefs.perChild),
+        childDeductionPerChild: pcb.reliefs.perChild,
         Y1,
         K1: round2(K1),
         // Y₂ = Y₁: the projection repeats the current month across the balance of the year.

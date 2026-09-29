@@ -536,6 +536,13 @@ export function IdentityTaxCard({
               <span className="text-xs text-muted-foreground" data-child-physical-provenance>
                 {provenance}
               </span>
+              {/* r359 fda53352 — WHICH DOCUMENT PRINTS THIS ONE. The reporter read the EA's item 8 off
+                  this box for two rounds, because nothing on the screen said which figure each form
+                  takes and the caption said "Physical children" over a number that is not the physical
+                  count in either automatic mode. EA item 8 takes the WEIGHTED figure below. */}
+              <span className="text-xs text-muted-foreground" data-child-physical-doc>
+                {t('childrenPhysicalDoc')}
+              </span>
               {/* The Family register's own count, shown ONLY when it disagrees with the stored head count.
                   On production 71 of 75 employees are on a typed figure, so this is the line that tells an
                   administrator their tax field and their family records are saying different things. */}
@@ -574,6 +581,10 @@ export function IdentityTaxCard({
               )}
               <span className="text-xs text-muted-foreground" data-child-qualifying-provenance>
                 {provenance}
+              </span>
+              {/* …and this is C, in LHDN's own sense. */}
+              <span className="text-xs text-muted-foreground" data-child-qualifying-doc>
+                {t('childrenQualifyingDoc', { perChild: childRelief?.perChild ?? 0 })}
               </span>
               {childRelief && (
                 <span className="text-xs text-muted-foreground" data-child-relief-amount>

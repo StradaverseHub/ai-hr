@@ -1594,8 +1594,8 @@
       "photoView": "View photo",
       "photoViewClose": "Close",
       "photoViewTitle": "{name} — profile photo",
-      "childrenPhysical": "Physical children",
-      "childrenQualifying": "Qualifying children (PCB)",
+      "childrenPhysical": "பதிவில் உள்ள குழந்தைகள்",
+      "childrenQualifying": "தகுதியான குழந்தைகள் (C)",
       "childProvenanceEntered": "Entered by hand",
       "childProvenanceFromFamily": "Worked out from the Family records",
       "childProvenanceFromTable": "Worked out from the relief table below",
@@ -1625,7 +1625,9 @@
       "childQualifyingAutoWeightedNote": "ஒவ்வொரு குழந்தையும் அதன் சலுகைப் பிரிவின் எடைக்கேற்பக் கணக்கிடப்படுகிறது: 18 வயதுக்கு மேற்பட்ட டிப்ளோமா அல்லது பட்டப் படிப்பில் உள்ள குழந்தை, மற்றும் மாற்றுத்திறனாளிக் குழந்தை, தலா நான்காகவும், அப்படிப்பில் உள்ள மாற்றுத்திறனாளிக் குழந்தை எட்டாகவும் கணக்கிடப்படும். ஊதியச் சீட்டு பயன்படுத்தும் அதே எண் இதுதான்.",
       "childQualifyingWhyExplicit": "[retired r355 — the tick is consent, not eligibility (77e882f5); replaced by childQualifyingWhyCategory]",
       "childQualifyingCategoryContradictsDob": "இந்தக் குழந்தையின் வரிச்சலுகை வகை 18 வயதுக்குட் என்கிறது, ஆனால் பிறந்த தேதி அவ்வாறு கூறவில்லை. பதிவைச் சரிபார்க்கவும்.",
-      "childQualifyingWhyCategory": "இந்தக் குழந்தையின் வரிச்சலுகை வகை 18 வயதுக்குப் பிறகும் கோர அனுமதிக்கிறது. டிக் மட்டும் தகுதி அளிக்காது."
+      "childQualifyingWhyCategory": "இந்தக் குழந்தையின் வரிச்சலுகை வகை 18 வயதுக்குப் பிறகும் கோர அனுமதிக்கிறது. டிக் மட்டும் தகுதி அளிக்காது.",
+      "childrenPhysicalDoc": "சேமிக்கப்பட்ட எண்ணிக்கை. படிவம் E மற்றும் CP8D இதைப் படிக்கின்றன.",
+      "childrenQualifyingDoc": "LHDN இன் C — ஒவ்வொரு குழந்தையும் அதன் நிவாரண வகையின் எடையில் கணக்கிடப்படுகிறது. படிவம் EA உருப்படி 8 மற்றும் PCB சீட்டு இதைப் படிக்கின்றன, குழந்தை நிவாரணம் RM{perChild} × C ஆகும்."
     },
     "import": {
       "title": "பணியாளர்களை இறக்குமதி செய்",
@@ -6706,7 +6708,7 @@
       "worksheetAdditionalHeading": "கூடுதல் ஊதியம்",
       "worksheetB": "தள்ளுபடிக்குப் பிறகு M மீதான வரி",
       "worksheetBracketHeading": "வரி விதிக்கத்தக்க வருமானமும் வரிப் படியும்",
-      "worksheetC": "கோரப்பட்ட குழந்தைகளின் எண்ணிக்கை",
+      "worksheetC": "தகுதியான குழந்தைகளின் எண்ணிக்கை",
       "worksheetD": "தனிநபர் விலக்கு",
       "worksheetDidNotRun": "இந்தப் படி இயங்கவில்லை",
       "worksheetDu": "மாற்றுத்திறனாளி தனிநபர்",
@@ -6747,7 +6749,7 @@
       "worksheetPrevLp": "முந்தைய பணியிடம் வழியாக ஏற்கெனவே கோரப்பட்ட விலக்குகள் — ΣLP-இன் ஒரு பகுதி",
       "worksheetPreviousHeading": "முந்தைய பணியிடம் — TP3 படிவம்",
       "worksheetPreviousNote": "LHDN-இன் தாளில் முந்தைய முதலாளிக்குத் தனி வரி கிடையாது — அந்த எண்கள் கீழுள்ள Y, K, X மற்றும் Z-இல் சேர்க்கப்பட்டுள்ளன. ஆண்டின் நடுவில் சேர்ந்த ஊழியரின் பிடித்தம் பெரும்பாலும் இவற்றையே சார்ந்திருப்பதால் இங்கு அவை தனியாகக் காட்டப்படுகின்றன. இவை ஊதியச் சீட்டிலிருந்து அல்ல, ஊழியரின் இன்றைய TP3 படிவப் பதிவிலிருந்து படிக்கப்படுகின்றன; எனவே இந்தச் செயலாக்கத்திற்குப் பிறகு அந்தப் பதிவு மாற்றப்பட்டிருந்தால், செயலாக்கம் பயன்படுத்திய எண்களிலிருந்து இவை வேறுபடலாம்.",
-      "worksheetQ": "குழந்தை விலக்கு",
+      "worksheetQ": "தகுதியான ஒவ்வொரு குழந்தைக்கும் கழிவு",
       "worksheetR": "வரிப் படிக்கான வரி விகிதம்",
       "worksheetReliefHeading": "கழிவுகளும் விலக்குகளும்",
       "worksheetResultHeading": "ஏற்கனவே பிடித்தம் செய்யப்பட்ட தொகைகளும், இந்த மாதத்தின் தொகையும்",
@@ -6789,8 +6791,8 @@
       "slipChildStudyTertiary": "Unmarried child over 18 in full-time tertiary study",
       "slipChildDisabled": "Unmarried child with a disability",
       "slipChildDisabledStudy": "Unmarried child with a disability in full-time tertiary study",
-      "slipChildCount": "Number of children the calculation applied",
-      "slipChildRelief": "Child deduction the calculation applied",
+      "slipChildCount": "தகுதியான குழந்தைகளின் எண்ணிக்கை",
+      "slipChildRelief": "தகுதியான ஒவ்வொரு குழந்தைக்கும் கழிவு",
       "slipDisabledIndividual": "Disabled individual",
       "slipDisabledSpouse": "Disabled spouse",
       "slipChildNoteTable": "The counts above are the category grid recorded against this employee today, not a stamp taken when this payroll ran. A child claimed at the half rate is one the parents split the claim on. The deduction and the count beneath them are the figures the run itself applied.",
@@ -6829,7 +6831,9 @@
       "slipAddCompensation": "Compensation for loss of employment",
       "slipAddDirectorFee": "Director's fee",
       "slipAddTaxBorne": "Tax borne by the employer",
-      "slipAddOther": "Other additional remuneration"
+      "slipAddOther": "Other additional remuneration",
+      "worksheetQc": "குழந்தை நிவாரணம் (Q × C)",
+      "slipChildReliefTotal": "பயன்படுத்தப்பட்ட குழந்தை நிவாரணம் (Q × C)"
     },
     "multiCycleWorksheet": {
       "title": "பல சுழற்சி சட்டப்பூர்வ பணித்தாள்",

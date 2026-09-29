@@ -1594,8 +1594,8 @@
       "photoView": "View photo",
       "photoViewClose": "Close",
       "photoViewTitle": "{name} — profile photo",
-      "childrenPhysical": "Physical children",
-      "childrenQualifying": "Qualifying children (PCB)",
+      "childrenPhysical": "在册子女人数",
+      "childrenQualifying": "符合资格子女 (C)",
       "childProvenanceEntered": "Entered by hand",
       "childProvenanceFromFamily": "Worked out from the Family records",
       "childProvenanceFromTable": "Worked out from the relief table below",
@@ -1625,7 +1625,9 @@
       "childQualifyingAutoWeightedNote": "每名子女按其减免类别的权重计算：年满 18 岁且就读文凭或学位课程的子女，以及残疾子女，各计为四名；就读该等课程的残疾子女计为八名。此数字与薪资单所用者相同。",
       "childQualifyingWhyExplicit": "[retired r355 — the tick is consent, not eligibility (77e882f5); replaced by childQualifyingWhyCategory]",
       "childQualifyingCategoryContradictsDob": "此子女的减免类别为18岁以下，但出生日期并非如此。请核对记录。",
-      "childQualifyingWhyCategory": "计入原因：此子女的减免类别允许在18岁后申报。仅勾选并不使子女符合资格。"
+      "childQualifyingWhyCategory": "计入原因：此子女的减免类别允许在18岁后申报。仅勾选并不使子女符合资格。",
+      "childrenPhysicalDoc": "存储的人数。E 表格和 CP8D 读取此项。",
+      "childrenQualifyingDoc": "LHDN 的 C——每名子女按其减免类别的权重计算。EA 表格第 8 项和 PCB 计算单读取此项，子女减免为 RM{perChild} × C。"
     },
     "import": {
       "title": "导入员工",
@@ -6706,7 +6708,7 @@
       "worksheetAdditionalHeading": "额外报酬",
       "worksheetB": "M 的税额，已扣回扣",
       "worksheetBracketHeading": "应课税收入与税级",
-      "worksheetC": "申报的子女人数",
+      "worksheetC": "符合资格子女人数",
       "worksheetD": "个人减免",
       "worksheetDidNotRun": "此步骤未执行",
       "worksheetDu": "残疾个人",
@@ -6747,7 +6749,7 @@
       "worksheetPrevLp": "前雇主受雇期间已申请的扣除——ΣLP 的一部分",
       "worksheetPreviousHeading": "前雇主受雇期间 — TP3 表格",
       "worksheetPreviousNote": "LHDN 的表格没有为前雇主另设一行——这些数字被并入下方的 Y、K、X 和 Z。这里把它们单独列出，因为年中入职员工的扣税额通常取决于它们。这些数字取自员工今天的 TP3 表格记录，而非薪资单，因此若该记录在这次运算之后被修改过，它们可能与运算当时所用的数字不同。",
-      "worksheetQ": "子女减免",
+      "worksheetQ": "每名符合资格子女的扣除额",
       "worksheetR": "该税级的税率",
       "worksheetReliefHeading": "扣除与减免",
       "worksheetResultHeading": "已扣除的金额，以及本月的金额",
@@ -6789,8 +6791,8 @@
       "slipChildStudyTertiary": "Unmarried child over 18 in full-time tertiary study",
       "slipChildDisabled": "Unmarried child with a disability",
       "slipChildDisabledStudy": "Unmarried child with a disability in full-time tertiary study",
-      "slipChildCount": "Number of children the calculation applied",
-      "slipChildRelief": "Child deduction the calculation applied",
+      "slipChildCount": "符合资格子女人数",
+      "slipChildRelief": "每名符合资格子女的扣除额",
       "slipDisabledIndividual": "Disabled individual",
       "slipDisabledSpouse": "Disabled spouse",
       "slipChildNoteTable": "The counts above are the category grid recorded against this employee today, not a stamp taken when this payroll ran. A child claimed at the half rate is one the parents split the claim on. The deduction and the count beneath them are the figures the run itself applied.",
@@ -6829,7 +6831,9 @@
       "slipAddCompensation": "Compensation for loss of employment",
       "slipAddDirectorFee": "Director's fee",
       "slipAddTaxBorne": "Tax borne by the employer",
-      "slipAddOther": "Other additional remuneration"
+      "slipAddOther": "Other additional remuneration",
+      "worksheetQc": "子女税务减免（Q × C）",
+      "slipChildReliefTotal": "已适用的子女税务减免（Q × C）"
     },
     "multiCycleWorksheet": {
       "title": "多次发薪法定核对表",

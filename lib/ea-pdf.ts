@@ -86,7 +86,13 @@ export type EaPdfData = {
     epfNo: string | null;
     socsoNo: string | null;
     category: number;
-    children: number;
+    /**
+     * A.8 — C, the number of qualifying children in LHDN's weighted sense (r359). NULL prints an EMPTY
+     * rule, which is what the blank form carries and what D.6 does under the same condition: a year
+     * whose slips stamped no relief has nothing to say here either, and a head count printed beside an
+     * empty D.6 would be two contradictory answers on one page.
+     */
+    children: number | null;
     hiredOn: string;
     terminatedOn: string | null;
     /** 6036dab7 — Part A's three added particulars. REQUIRED, not optional-and-additive like
@@ -206,7 +212,7 @@ export function blankEaPdfData(): EaPdfData {
       epfNo: null,
       socsoNo: null,
       category: 0,
-      children: 0,
+      children: null,
       hiredOn: '',
       terminatedOn: null,
       employeeNo: null,
@@ -906,7 +912,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // r220 — a COUNT, not an amount, so it does not pass through `amountOrRule` and has to say for itself
   // that a blank form carries no number here. `String(0)` is "0", and "0 children qualifying for tax
   // relief" is a claim about a person the blank form does not have.
-  valueOrRule(blank ? '' : String(d.employee.children), 135, A.aLeftRule[1], 173.2);
+  valueOrRule(blank || d.employee.children == null ? '' : String(d.employee.children), 135, A.aLeftRule[1], 173.2);
 
   /**
    * ⚠️ ITEM 9 IS CONDITIONAL ON THE YEAR, NOT ON A DATE EXISTING — and that distinction is the whole
