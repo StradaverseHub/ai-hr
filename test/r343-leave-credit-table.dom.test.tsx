@@ -74,7 +74,10 @@ function mount(locale: Locale, opts: { facts?: LeaveCreditDayFacts | null; tiers
         submitAction={() => {}}
         today="2026-09-24"
         dayFactsAction={vitestVi.fn(async () => (opts.facts === undefined ? REST_DAY : opts.facts))}
-        extendedHoursTiers={opts.tiers === undefined ? TIERS : opts.tiers}
+        // r358 — opts.tiers === null used to mean "extended hours off"; it is the SWITCH now, and
+        // the ladder is always present because every day type uses it.
+        tiers={TIERS}
+        ordinaryDayAllowed={opts.tiers !== null}
       />
     </NextIntlClientProvider>,
   );
@@ -265,7 +268,8 @@ describe('r343 · the roster adjudicates, on the row, and blocks the submit', ()
           submitAction={() => {}}
           today="2026-09-24"
           dayFactsAction={vitestVi.fn(async (d: string) => (d === '2026-09-16' ? WORKING_DAY : REST_DAY))}
-          extendedHoursTiers={TIERS}
+          tiers={TIERS}
+          ordinaryDayAllowed
         />
       </NextIntlClientProvider>,
     );

@@ -106,7 +106,10 @@ function mount(
         dayFactsAction={vitestVi.fn(async (d: string) =>
           opts.factsFor ? opts.factsFor(d) : opts.facts === undefined ? REST_DAY_VIEW : opts.facts,
         )}
-        extendedHoursTiers={opts.tiers === undefined ? TIERS : opts.tiers}
+        // r358 — opts.tiers === null used to mean "extended hours off"; it is the SWITCH now, and
+        // the ladder is always present because every day type uses it.
+        tiers={TIERS}
+        ordinaryDayAllowed={opts.tiers !== null}
       />
     </NextIntlClientProvider>,
   );

@@ -67,7 +67,8 @@ export function ReplacementLeaveRequestDialog({
   today,
   requiresFirstScheduleConsent,
   dayFactsAction,
-  extendedHoursTiers,
+  tiers,
+  ordinaryDayAllowed,
 }: {
   /**
    * 2a237f5f — the tenant's Replacement Leave type, already resolved by the page. Required and singular:
@@ -86,7 +87,9 @@ export function ReplacementLeaveRequestDialog({
    * release. The Day Type dropdown still offers all four options then (r343 fix pass); what null changes is
    * that an Ordinary Day row says it cannot earn a credit and blocks the submit.
    */
-  extendedHoursTiers: ExtendedHoursTiers | null;
+  /** r358 — the ladder applies to every day type; the switch below governs the ordinary one only. */
+  tiers: ExtendedHoursTiers | null;
+  ordinaryDayAllowed: boolean;
   /** Today in the tenant's zone, resolved on the server — the max selectable worked date. */
   today: string;
   /**
@@ -128,7 +131,8 @@ export function ReplacementLeaveRequestDialog({
               today={today}
               requiresFirstScheduleConsent={requiresFirstScheduleConsent}
               dayFactsAction={dayFactsAction}
-              extendedHoursTiers={extendedHoursTiers}
+              tiers={tiers}
+              ordinaryDayAllowed={ordinaryDayAllowed}
               // The dialog closes as the submission leaves; the action redirects to /leave/credit, where the
               // new request is listed. A modal still standing over that navigation is the defect.
               onSubmitted={() => setOpen(false)}

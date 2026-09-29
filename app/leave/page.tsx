@@ -73,7 +73,7 @@ import { leaveCreditDayFactsAction, submitLeaveCreditRequestAction } from './cre
 // carried a discriminated reason; this page rendered the boolean and dropped it, so the reporter spent a
 // round changing Leave config settings against a cause that sits above Leave config.
 import { ReplacementAvailabilityNotice } from '@/components/leave/replacement-availability-notice';
-import { extendedHoursOfferForEmployment, listReplacementLeaveRequests, replacementRequestAvailability } from '@/packs/leave/service';
+import { leaveCreditOfferForEmployment, listReplacementLeaveRequests, replacementRequestAvailability } from '@/packs/leave/service';
 import { LeaveDateOutcome } from '@/components/leave/leave-date-outcome';
 // My Leave History — tabs, one row per request, and the slide-out View panel (657962ec, reshaped by r302).
 import { LeaveHistoryCards, type LeaveHistoryEntry } from '@/components/leave/leave-history-cards';
@@ -395,11 +395,15 @@ export default async function LeavePage({
   // read exists so the button is not offered where the submission would be refused. Hiding it is the
   // courtesy, refusing the POST is the control.
   const replacementRequest = ess && me ? await replacementRequestAvailability(session, me.employmentId, today) : { allowed: false };
-  // r336 cbfa8b0b — Section B of the Leave Credit request is offered only where the company has switched
-  // extended hours on (r334's switch, false on every company at release). Null ⇒ the dialog draws Section A
-  // alone; the service refuses an extended-hours line for such a company anyway.
-  const extendedHoursTiers =
-    ess && me && replacementRequest.allowed ? await extendedHoursOfferForEmployment(session, me.employmentId) : null;
+  // ⚠️ r358 70294f7a — THE TIERS NO LONGER DEPEND ON THE SWITCH, AND THAT IS THE ITEM. This read
+  // `extendedHoursOfferForEmployment`, which returns null when the company has not switched extended
+  // hours on — false on EVERY company — and the table read that null as "no tier ladder exists" and
+  // blocked every row that claimed a window. Since the owner's answer makes every day type claim one,
+  // keeping it would have switched Leave Credit off for every company. `leaveCreditOfferForEmployment`
+  // returns the ladder and the switch as two separate facts; the switch now governs only whether an
+  // ORDINARY working day may earn a credit.
+  const leaveCreditOffer =
+    ess && me && replacementRequest.allowed ? await leaveCreditOfferForEmployment(session, me.employmentId) : null;
   // r219 — WHO IS SHOWN THE REASON, and why it is not simply everyone whose read said no.
   //
   // A tenant that has never had a Replacement Leave type in its catalogue has nothing to explain: the
@@ -1147,9 +1151,10 @@ export default async function LeavePage({
                   // Type is adjudicated against) plus the scheduled shift end and the actual clock-out. It
                   // replaces r336's pair of actions, one of which answered only for ordinary-day rows.
                   dayFactsAction={leaveCreditDayFactsAction}
-                  // NULL on a company without extended hours — every company at release. The dropdown still
-                  // offers all four day types; an Ordinary Day row then says it cannot earn a credit here.
-                  extendedHoursTiers={extendedHoursTiers}
+                  // r358 — the ladder applies to every day type; `ordinaryDayAllowed` is the switch, and
+                  // it now decides one thing only: whether an Ordinary Day row can earn a credit here.
+                  tiers={leaveCreditOffer?.tiers ?? null}
+                  ordinaryDayAllowed={leaveCreditOffer?.ordinaryDayAllowed ?? false}
                 />
               )}
               {/* ⚠️ THE WAY BACK. Without this the employee could reach /leave/credit only by submitting

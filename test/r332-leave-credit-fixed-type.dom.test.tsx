@@ -51,7 +51,11 @@ function openDialog(locale: Locale) {
         submitAction={vi.fn()}
         today="2026-09-17"
         dayFactsAction={NO_FACTS}
-        extendedHoursTiers={null}
+        // r358 — `extendedHoursTiers={null}` used to mean BOTH "no tier ladder" and "an ordinary
+        // day earns nothing here". Those are two facts now: the ladder applies to every day type,
+        // and the switch governs the ordinary one alone.
+        tiers={{ extendedHalfDayMinutes: 240, extendedFullDayMinutes: 480, extendedBreakMinutes: 0, extendedGraceMinutes: 0 }}
+        ordinaryDayAllowed={false}
       />
     </NextIntlClientProvider>,
   );
@@ -140,7 +144,11 @@ describe('2a237f5f: the Leave Credit request names one leave type and offers no 
           submitAction={vi.fn()}
           today="2026-09-17"
           dayFactsAction={NO_FACTS}
-          extendedHoursTiers={null}
+          // r358 — `extendedHoursTiers={null}` used to mean BOTH "no tier ladder" and "an ordinary
+          // day earns nothing here". Those are two facts now: the ladder applies to every day type,
+          // and the switch governs the ordinary one alone.
+          tiers={{ extendedHalfDayMinutes: 240, extendedFullDayMinutes: 480, extendedBreakMinutes: 0, extendedGraceMinutes: 0 }}
+          ordinaryDayAllowed={false}
         />
       </NextIntlClientProvider>,
     );

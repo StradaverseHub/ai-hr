@@ -10,7 +10,13 @@ import { assessExtendedClaim, extendedHoursCreditDays, type ExtendedHoursTiers }
 import { DAY_DASH, formatDays } from '@/lib/day-format';
 // The pure vocabulary and the per-row conditional, from the module BOTH sides read — never from
 // packs/leave/service, which is server-only (it drags db/client). lib/extended-hours.ts's precedent.
-import { LEAVE_CREDIT_DAY_TYPES, adjudicateDayTypes, claimsTimeWindow, type LeaveCreditDayType } from '@/lib/leave-credit-day-type';
+import {
+  LEAVE_CREDIT_DAY_TYPES,
+  adjudicateDayTypes,
+  claimsTimeWindow,
+  flooredByScheduledShiftEnd,
+  type LeaveCreditDayType,
+} from '@/lib/leave-credit-day-type';
 
 type Action = (fd: FormData) => void | Promise<void>;
 
@@ -35,11 +41,16 @@ export type LeaveCreditDayFacts = {
   measuredExtendedMinutes: number;
 };
 
+/**
+ * ⚠️ r358 70294f7a — `days: '1' | '0.5'` IS GONE FROM THE ROW. It was the employee's declared credit on a
+ * rest day, off day or public holiday. The owner's answer replaced the choice with the arithmetic —
+ * "4 hours of eligible work = 0.5 day, 8 hours … 1.0 day … regardless of the Day Type" — so every row is
+ * now a window and every credit is derived from it.
+ */
 type Row = {
   key: number;
   workedDate: string;
   dayType: LeaveCreditDayType | '';
-  days: '1' | '0.5';
   claimStart: string;
   claimEnd: string;
 };
@@ -47,7 +58,7 @@ type Row = {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 /** `18:30:00` → `18:30`. A time column comes back with seconds; nobody claims a shift end to the second. */
 const hhmm = (t: string | null) => (t ? t.slice(0, 5) : null);
-const emptyRow = (key: number): Row => ({ key, workedDate: '', dayType: '', days: '1', claimStart: '', claimEnd: '' });
+const emptyRow = (key: number): Row => ({ key, workedDate: '', dayType: '', claimStart: '', claimEnd: '' });
 
 /**
  * r343 cbfa8b0b · THE LEAVE CREDIT REQUEST, AS ONE TABLE.
@@ -137,7 +148,8 @@ export function LeaveCreditRequestTable({
   today,
   requiresFirstScheduleConsent,
   dayFactsAction,
-  extendedHoursTiers,
+  tiers,
+  ordinaryDayAllowed,
   onSubmitted,
 }: {
   replacementType: LeaveCreditLeaveTypeView;
@@ -151,7 +163,18 @@ export function LeaveCreditRequestTable({
    * that an Ordinary Day row says it cannot earn a credit here and blocks the submit, and the service
    * refuses it regardless.
    */
-  extendedHoursTiers: ExtendedHoursTiers | null;
+  /**
+   * The tier ladder. r358: it applies to EVERY day type, so it is no longer the thing a company switch
+   * can withhold — null means only that no policy resolved for this employment at all.
+   */
+  tiers: ExtendedHoursTiers | null;
+  /**
+   * Whether an ORDINARY WORKING DAY may earn a credit here — the extended-hours switch, and after r358
+   * the whole of what it governs. The Ordinary Day OPTION is still offered when it is false (see the
+   * header: exactly four options, always); such a row then says it cannot earn a credit and blocks the
+   * submit, and the service refuses it regardless.
+   */
+  ordinaryDayAllowed: boolean;
   /** Today in the tenant's zone, resolved on the server — the max selectable worked date. */
   today: string;
   requiresFirstScheduleConsent?: boolean;
@@ -172,7 +195,9 @@ export function LeaveCreditRequestTable({
    * what the switch actually decides: whether an Ordinary Day row can earn anything here.
    */
   const dayTypeOptions = LEAVE_CREDIT_DAY_TYPES;
-  const ordinaryEarnsNothing = extendedHoursTiers == null;
+  // r358 — was `extendedHoursTiers == null`, which conflated "this company cannot credit an ordinary day"
+  // with "there is no tier ladder". Every day type uses the ladder now, so those had to come apart.
+  const ordinaryEarnsNothing = !ordinaryDayAllowed;
 
   // One fetch per distinct date, marked as asked (null) at once so a re-render mid-flight does not re-ask.
   const [facts, setFacts] = useState<Record<string, LeaveCreditDayFacts | null>>({});
@@ -253,7 +278,11 @@ export function LeaveCreditRequestTable({
   const derive = useCallback(
     (r: Row) => {
       const view = r.workedDate ? (facts[r.workedDate] ?? null) : null;
+      // r358 — true for every chosen day type now. `claimsTimeWindow` is kept rather than inlined as
+      // `r.dayType !== ''` so a reader lands on the reversal in lib/leave-credit-day-type.ts.
       const wantsWindow = r.dayType !== '' && claimsTimeWindow(r.dayType);
+      // …and this is the one thing the day type still decides. See `flooredByScheduledShiftEnd`.
+      const floored = r.dayType !== '' && flooredByScheduledShiftEnd(r.dayType);
       // THE SAME FUNCTION THE SERVICE RUNS, not a second comparison that happens to agree today. One row in,
       // one row out: `adjudicateDayTypes` is where "chosen is not what the roster holds" is decided, for the
       // screen and for `submitLeaveCreditRequest` alike, so a change to the rule cannot land on one of them.
@@ -262,7 +291,7 @@ export function LeaveCreditRequestTable({
           ? (adjudicateDayTypes([{ workedDate: r.workedDate, dayType: r.dayType }], new Map([[r.workedDate, view.kind]]))[0]?.roster ??
             null)
           : null;
-      if (!wantsWindow || !view || !extendedHoursTiers || !r.claimStart || !r.claimEnd)
+      if (!wantsWindow || !view || !tiers || !r.claimStart || !r.claimEnd)
         return {
           view,
           rosterMismatch,
@@ -277,10 +306,13 @@ export function LeaveCreditRequestTable({
       const assessed = assessExtendedClaim({
         claimStart: r.claimStart,
         claimEnd: r.claimEnd,
-        shiftEnd: view.shiftEnd,
-        actualClockOut: view.actualClockOut,
+        // r358 — NULL on the three non-working types, and it is the rule rather than missing data: the
+        // employee was never scheduled to be there, so the whole entered window is the claim. The service
+        // passes the same null for the same reason, so the figure here is the figure that gets banked.
+        shiftEnd: floored ? view.shiftEnd : null,
+        actualClockOut: floored ? view.actualClockOut : null,
       });
-      const { countedMinutes, days } = extendedHoursCreditDays(assessed.minutes, extendedHoursTiers);
+      const { countedMinutes, days } = extendedHoursCreditDays(assessed.minutes, tiers);
       return {
         view,
         rosterMismatch,
@@ -290,15 +322,18 @@ export function LeaveCreditRequestTable({
         hasClockOut: assessed.hasClockOut,
       };
     },
-    [facts, extendedHoursTiers],
+    [facts, tiers],
   );
 
   const derived = useMemo(() => new Map(rows.map((r) => [r.key, derive(r)])), [rows, derive]);
 
-  /** The credit one row contributes to the total — declared for three day types, derived for the fourth. */
+  /**
+   * The credit one row contributes to the total. r358 — DERIVED FOR ALL FOUR TYPES. It used to read
+   * `if (!claimsTimeWindow(r.dayType)) return Number(r.days)`, taking the employee's declared 1 or 0.5 on
+   * the three non-working types; there is no declared figure any more.
+   */
   const rowCredit = (r: Row): number | null => {
     if (r.dayType === '' || !r.workedDate) return null;
-    if (!claimsTimeWindow(r.dayType)) return Number(r.days);
     return derived.get(r.key)?.credit ?? null;
   };
 
@@ -321,11 +356,16 @@ export function LeaveCreditRequestTable({
     (r) =>
       r.workedDate !== '' &&
       (r.dayType === '' ||
-        (claimsTimeWindow(r.dayType as LeaveCreditDayType) && !ordinaryEarnsNothing && (!r.claimStart || !r.claimEnd))),
+        // r358 — a window is wanted on every type, so the only row exempted is an Ordinary Day one on a
+        // company that cannot credit it at all (that row is blocked below rather than asked to fill in
+        // times it can do nothing with).
+        (!(r.dayType === 'workday' && ordinaryEarnsNothing) && (!r.claimStart || !r.claimEnd))),
   );
-  // An Ordinary Day row on a company without extended hours. The option is offered (the header says why),
-  // the row says it earns nothing, and the submit waits for the row to go — the service refuses it anyway.
-  const ordinaryUnavailableRows = rows.filter((r) => r.dayType !== '' && claimsTimeWindow(r.dayType) && ordinaryEarnsNothing);
+  // An ORDINARY DAY row on a company without extended hours — and only that. The option is offered (the
+  // header says why), the row says it earns nothing, and the submit waits for the row to go; the service
+  // refuses it anyway. r358: this used to catch every row that claimed a window, which after the owner's
+  // answer is every row there is.
+  const ordinaryUnavailableRows = rows.filter((r) => r.dayType === 'workday' && ordinaryEarnsNothing);
   const blocked =
     totalCredit <= 0 ||
     mismatchRows.length > 0 ||
@@ -333,7 +373,7 @@ export function LeaveCreditRequestTable({
     incompleteRows.length > 0 ||
     ordinaryUnavailableRows.length > 0;
 
-  const belowThresholdText = t('sectionB.belowThreshold', { minutes: extendedHoursTiers?.extendedHalfDayMinutes ?? 240 });
+  const belowThresholdText = t('sectionB.belowThreshold', { minutes: tiers?.extendedHalfDayMinutes ?? 240 });
   const disabledCell = `${inputCls} flex items-center bg-muted text-xs text-muted-foreground`;
 
   return (
@@ -361,7 +401,6 @@ export function LeaveCreditRequestTable({
             <tr>
               <th className={thCls}>{t('workedDate')}</th>
               <th className={thCls}>{t('sectionA.dayType')}</th>
-              <th className={thCls}>{t('days')}</th>
               <th className={thCls}>{t('sectionB.shiftEnd')}</th>
               <th className={thCls}>{t('sectionB.actualClockOut')}</th>
               <th className={thCls}>{t('sectionB.extendedStart')}</th>
@@ -376,11 +415,12 @@ export function LeaveCreditRequestTable({
               const d = derived.get(r.key);
               const chosen = r.dayType;
               const wantsWindow = chosen !== '' && claimsTimeWindow(chosen);
-              // A chosen day type is what decides which cells are live — NOT which section a row sits in.
-              const declaresDays = chosen !== '' && !claimsTimeWindow(chosen);
+              // r358 — the shift end and the clock-out are an ORDINARY DAY's references. On the other three
+              // the employee was not scheduled, so there is nothing to print and nothing to compare.
+              const floored = chosen !== '' && flooredByScheduledShiftEnd(chosen);
               // Ordinary Day chosen on a company that cannot credit one: the option was still offered, so
               // the row is where that is explained. Its claimed-window cells are dead, not merely empty.
-              const ordinaryUnavailable = wantsWindow && ordinaryEarnsNothing;
+              const ordinaryUnavailable = chosen === 'workday' && ordinaryEarnsNothing;
               const windowLive = wantsWindow && !ordinaryUnavailable;
               const mismatch = d?.rosterMismatch ?? null;
               const below = !!(wantsWindow && r.claimStart && r.claimEnd && d?.view != null && d.credit === 0);
@@ -391,7 +431,6 @@ export function LeaveCreditRequestTable({
                     {/* The five posted values, always present whatever the row's day type. See the header. */}
                     <input type="hidden" name="workedDate" value={r.workedDate} />
                     <input type="hidden" name="dayType" value={r.dayType} />
-                    <input type="hidden" name="days" value={declaresDays ? r.days : ''} />
                     <input type="hidden" name="claimStart" value={wantsWindow ? r.claimStart : ''} />
                     <input type="hidden" name="claimEnd" value={wantsWindow ? r.claimEnd : ''} />
                     <td className="px-3 py-2">
@@ -421,23 +460,8 @@ export function LeaveCreditRequestTable({
                       </select>
                     </td>
                     <td className="px-3 py-2">
-                      {/* 1 or 0.5 — the only two answers a non-working day has. DISABLED on an Ordinary Day
-                          row, whose credit is derived from the hours, not declared. */}
-                      <select
-                        value={r.days}
-                        onChange={(e) => patch(r.key, 'days', e.target.value)}
-                        disabled={!declaresDays}
-                        aria-label={t('days')}
-                        data-testid="leave-credit-days"
-                        className={declaresDays ? inputCls : `${inputCls} bg-muted`}
-                      >
-                        <option value="1">{t('sectionA.fullDay')}</option>
-                        <option value="0.5">{t('sectionA.halfDay')}</option>
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
                       <div className={disabledCell} data-testid="leave-credit-shift-end">
-                        {wantsWindow ? (hhmm(d?.view?.shiftEnd ?? null) ?? DAY_DASH) : DAY_DASH}
+                        {floored ? (hhmm(d?.view?.shiftEnd ?? null) ?? DAY_DASH) : DAY_DASH}
                       </div>
                     </td>
                     <td className="px-3 py-2">
@@ -447,7 +471,7 @@ export function LeaveCreditRequestTable({
                           has to look at. Still the dash while the facts are in flight: not knowing yet is a
                           third state and must not read as an answer. */}
                       <div className={disabledCell} data-testid="leave-credit-clock-out">
-                        {wantsWindow
+                        {floored
                           ? d?.view == null
                             ? DAY_DASH
                             : (hhmm(d.view.actualClockOut) ?? t('table.noClockOutRecord'))

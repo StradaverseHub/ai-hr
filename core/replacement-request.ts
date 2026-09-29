@@ -358,6 +358,50 @@ export function extendedHoursOfferForEmployment(
   });
 }
 
+/** What the Leave Credit table needs to draw itself: the ladder, and whether an ordinary day may claim. */
+export type LeaveCreditOffer = {
+  /**
+   * The tier ladder. ALWAYS PRESENT since r358, for every day type — "4 hours … 0.5 day, 8 hours … 1.0
+   * day, regardless of the Day Type". The company's own thresholds, so a company that moved them moves
+   * the figure the employee is shown and the figure the approval banks together.
+   */
+  tiers: ExtendedHoursTiers;
+  /**
+   * Whether an ORDINARY WORKING DAY may earn a credit at all — the extended-hours switch, which is what
+   * its name always said and, after r358, the whole of what it governs.
+   *
+   * ⚠️ THIS SEPARATION IS THE ITEM. `extendedHoursOfferForEmployment` above returns null when the switch
+   * is off, and the Leave Credit table read that null as "no tiers exist", which made every row that
+   * claimed a window unsubmittable. The switch is off on every company, so building the approved rule on
+   * top of it would have switched Leave Credit off for all of them — which is why 70294f7a was parked
+   * rather than shipped. Two facts, two fields.
+   */
+  ordinaryDayAllowed: boolean;
+};
+
+/**
+ * r358 — the tiers AND the ordinary-day switch, as two separate facts.
+ *
+ * Null only when there is no resolved policy for the employment at all, which is the one case in which
+ * the table cannot be drawn.
+ */
+export function leaveCreditOfferForEmployment(ctx: SessionContext, employmentId: string): Promise<LeaveCreditOffer | null> {
+  return withTenant(ctx, async (tx) => {
+    const resolved = await resolvePolicyForTx(tx, employmentId);
+    if (!resolved) return null;
+    const policy = await extendedHoursPolicyForCompanyTx(tx, resolved.companyId);
+    return {
+      tiers: {
+        extendedHalfDayMinutes: policy.extendedHalfDayMinutes,
+        extendedFullDayMinutes: policy.extendedFullDayMinutes,
+        extendedBreakMinutes: policy.extendedBreakMinutes,
+        extendedGraceMinutes: policy.extendedGraceMinutes,
+      },
+      ordinaryDayAllowed: policy.extendedHoursEnabled,
+    };
+  });
+}
+
 export type SubmitReplacementRequestResult = { requestId: string; totalDays: number; totalHours: number };
 
 /**
@@ -398,8 +442,21 @@ export async function submitReplacementLeaveRequest(
   // downstream may treat the list as homogeneous. An untagged row is Section A, which is what every row
   // written before this round is (migration 0487's header).
   const sectionOf = (l: ReplacementRequestLineInput): ReplacementClaimSourceType => l.sourceType ?? LEGACY_CLAIM_SOURCE_TYPE;
-  const aLines = p.lines.filter((l) => sectionOf(l) === 'non_working_day');
+  const aAll = p.lines.filter((l) => sectionOf(l) === 'non_working_day');
   const bLines = p.lines.filter((l) => sectionOf(l) === 'extended_hours');
+  // ── r358 70294f7a · A NON-WORKING DAY IS CLAIMED AS A WINDOW NOW, AND BOTH SHAPES REACH THIS FUNCTION ──
+  //
+  // The owner's answer: "Whether the employee works on a Normal Working Day, Rest Day, Off Day, or Public
+  // Holiday, the Leave Credit calculation rule is the same. 4 hours of eligible work = 0.5 day. 8 hours of
+  // eligible work = 1.0 day … regardless of the Day Type." So the Leave Credit form no longer offers the
+  // "1 or 0.5" dropdown on those three types; it posts the same start and end it posts for a working day.
+  //
+  // THE DECLARED SHAPE IS NOT REMOVED, because this function has callers the form does not own: the
+  // HR-side paths and every row written before this round, all of which carry `days` and no window. A line
+  // is read as declared or as a window by WHAT IT CARRIES, never by a flag, so neither caller has to be
+  // taught about the other.
+  const aWindowLines = aAll.filter((l) => l.fromTime != null && l.toTime != null);
+  const aLines = aAll.filter((l) => !(l.fromTime != null && l.toTime != null));
 
   // "Unit is always Day and is derived, not selectable" — r333's precedent for the leave TYPE, applied to
   // the unit. Enforced HERE rather than only by the form, because an Hour-unit request carrying a Section B
@@ -415,9 +472,19 @@ export async function submitReplacementLeaveRequest(
   // approved plan specifies and what the form offers. Deliberately NOT applied to an UNTAGGED row: that is
   // the pre-r336 contract (any figure above zero), it is what production rows carry, and tightening it here
   // would refuse a claim the HR-side paths still create. A tagged row can only come from this round's form.
-  for (const l of p.lines) {
+  // ⚠️ r358 — REVERSED FOR A WINDOW LINE, AND THE OLD CLAIM IS QUOTED BECAUSE IT WAS THE RULE. This read
+  // `l.sourceType === 'non_working_day' && l.days !== 1 && l.days !== 0.5` over EVERY line, under the
+  // comment "A Section A row the NEW screen tagged is a whole non-working day or half of one, which is
+  // what the approved plan specifies and what the form offers." The owner replaced the choice with the
+  // arithmetic, so the form offers no such figure any more. It still holds for a DECLARED line — the
+  // HR-side callers that post `days` — which is why the test moved onto `aLines` rather than being dropped.
+  for (const l of aLines) {
     if (l.sourceType === 'non_working_day' && l.days !== 1 && l.days !== 0.5)
       throw new ReplacementRequestInvalidError('A rest day, off day or public holiday earns either 1 day or 0.5 day.');
+  }
+  for (const l of aWindowLines) {
+    if (p.unit !== 'day')
+      throw new ReplacementRequestInvalidError('A claimed window is always credited in days.');
   }
 
   // Throws on a bad row (zero days, reversed times) before anything is written. Section B rows are absent
@@ -467,6 +534,49 @@ export async function submitReplacementLeaveRequest(
       actualClockOut: string | null;
     };
     const bDerived: DerivedB[] = [];
+    /**
+     * r358 — THE SAME DERIVATION FOR A NON-WORKING DAY, THROUGH THE SAME TWO FUNCTIONS.
+     *
+     * `eligibleExtendedMinutes` and `extendedHoursCreditDays` are the ladder the owner described
+     * ("4 hours … 0.5 day, 8 hours … 1.0 day"), and running a second copy of it here is what the whole of
+     * lib/extended-hours.ts exists to prevent.
+     *
+     * ⚠️ `shiftEnd: null` AND `actualClockOut: null` ARE THE RULE, NOT MISSING DATA. On these three day
+     * types the employee was never scheduled to be there, so there is nothing for the window to be "after"
+     * — the whole of it is the claim, which is exactly what was asked for: "Extended End – Extended Start
+     * = Eligible Hours". `flooredByScheduledShiftEnd` in lib/leave-credit-day-type.ts is where that is
+     * stated, and its header explains why this is decided by the day type rather than left to whether the
+     * roster happens to hold a shift: a roster CAN carry one on a rest day, and the floor would then
+     * silently eat the first hours of the claim.
+     *
+     * NO `extendedHoursEnabled` GATE. That switch decides whether an ORDINARY working day can earn a
+     * credit at all — which is what its name says and, after this round, all it governs. Gating a rest-day
+     * claim on it is what made the approved rule unbuildable as written and is why the item was parked.
+     * The thresholds still come from the company's own policy, so a company that moved them moves both.
+     */
+    type DerivedA = { workedDate: string; claimStart: string; claimEnd: string; days: number; eligibleMinutes: number };
+    const aDerived: DerivedA[] = [];
+    if (aWindowLines.length > 0) {
+      const tiers = await extendedHoursPolicyForCompanyTx(tx, resolved.companyId);
+      for (const l of aWindowLines) {
+        const minutes = eligibleExtendedMinutes({
+          claimStart: l.fromTime!,
+          claimEnd: l.toTime!,
+          shiftEnd: null,
+          actualClockOut: null,
+        });
+        const { countedMinutes, days } = extendedHoursCreditDays(minutes, tiers);
+        if (days <= 0)
+          throw new ToilExtendedHoursBelowThresholdError(l.workedDate, countedMinutes, tiers.extendedHalfDayMinutes);
+        aDerived.push({
+          workedDate: l.workedDate,
+          claimStart: l.fromTime!,
+          claimEnd: l.toTime!,
+          days,
+          eligibleMinutes: countedMinutes,
+        });
+      }
+    }
     if (bLines.length > 0) {
       const extended = await extendedHoursPolicyForCompanyTx(tx, resolved.companyId);
       if (!extended.extendedHoursEnabled)
@@ -503,8 +613,12 @@ export async function submitReplacementLeaveRequest(
     // The grand total the employee saw: both sections summed, in days. `totalHours` stays the same
     // convention it has always had (minutes over 60) so the stored pair cannot disagree with itself.
     const bMinutes = bDerived.reduce((s, b) => s + b.eligibleMinutes, 0);
-    const totalDays = round2(aTotals.totalDays + bDerived.reduce((s, b) => s + b.days, 0));
-    const totalHours = round2(aTotals.totalHours + bMinutes / 60);
+    // r358 — three terms now: declared Section A lines, DERIVED Section A windows, and Section B.
+    const aWindowMinutes = aDerived.reduce((s, a) => s + a.eligibleMinutes, 0);
+    const totalDays = round2(
+      aTotals.totalDays + aDerived.reduce((s, a) => s + a.days, 0) + bDerived.reduce((s, b) => s + b.days, 0),
+    );
+    const totalHours = round2(aTotals.totalHours + (aWindowMinutes + bMinutes) / 60);
     if (totalDays <= 0) throw new ReplacementRequestInvalidError('The total must be greater than zero.');
 
     // The double-bank guard, applied EARLY as a courtesy. `toil_accrual`'s unique index is the real one and
@@ -541,7 +655,11 @@ export async function submitReplacementLeaveRequest(
     const aKinds = new Map<string, ToilWorkedDayKind>();
     const taggedWorkingDays: string[] = [];
     const untaggedWorkingDays: string[] = [];
-    for (const l of aLines) {
+    // r358 — BOTH SHAPES. A window-claimed rest day still has to be resolved and still has to be refused
+    // if the roster calls it a working day: that check is not about how the credit is worked out, and
+    // leaving the new shape out of it would have let an ordinary day in through the non-working route
+    // with no attendance behind it. The stored `workedDayKind` comes from the same map.
+    for (const l of [...aLines, ...aWindowLines]) {
       const kind = await resolveWorkedDayKindTx(tx, p.employmentId, l.workedDate);
       aKinds.set(l.workedDate, kind);
       if (kind === 'workday') (l.sourceType ? taggedWorkingDays : untaggedWorkingDays).push(l.workedDate);
@@ -576,6 +694,7 @@ export async function submitReplacementLeaveRequest(
       .returning({ id: replacementLeaveRequest.id });
 
     const aPerLine = new Map(aTotals.perLine.map((l) => [l.workedDate, l]));
+    const aDerivedByDate = new Map(aDerived.map((a) => [a.workedDate, a]));
     const bByDate = new Map(bDerived.map((b) => [b.workedDate, b]));
     await tx.insert(replacementLeaveRequestDate).values(
       p.lines.map((l) => {
@@ -595,6 +714,27 @@ export async function submitReplacementLeaveRequest(
             shiftEnd: b.shiftEnd,
             actualClockOut: b.actualClockOut,
             eligibleMinutes: b.eligibleMinutes,
+          };
+        }
+        // r358 — a non-working day claimed as a WINDOW stores the window, the eligible minutes and the
+        // derived credit, exactly as a Section B line does. The approver was asked for this by name:
+        // "The employee's submitted Extended Start and Extended End should be shown to the manager for
+        // verification." `workedDayKind` still comes from the roster below, so the row says WHICH kind of
+        // non-working day it was as well as what was claimed on it.
+        const aw = aDerivedByDate.get(l.workedDate);
+        if (aw) {
+          return {
+            ...base,
+            days: aw.days.toFixed(2),
+            fromTime: aw.claimStart,
+            toTime: aw.claimEnd,
+            hours: round2(aw.eligibleMinutes / 60).toFixed(2),
+            sourceType: l.sourceType ?? null,
+            workedDayKind: aKinds.get(l.workedDate) ?? null,
+            // No scheduled shift and no attendance row to compare against — see the derivation above.
+            shiftEnd: null,
+            actualClockOut: null,
+            eligibleMinutes: aw.eligibleMinutes,
           };
         }
         const a = aPerLine.get(l.workedDate);
