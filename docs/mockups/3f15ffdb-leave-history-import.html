@@ -1,0 +1,244 @@
+<meta charset="utf-8">
+<title>3f15ffdb — Leave History Data Import (sketch)</title>
+<!--
+  Mockup for board item 3f15ffdb "Leave History Data Import", plan revision 1.
+
+  EVERYTHING IS INLINE (scripts/mockup/README.md): no external CSS, font, script or image. Nothing is
+  fetched. Render with:  pnpm mockup <this file> <out>.png --width 1280   (NOT rendered here — the
+  machine is running a full gate).
+
+  DRAWN ONLY WHAT THE PLAN PROMISES (README: "a mockup is a PROMISE, and a picture cannot hedge"):
+    - the Leave Config menu before/after, because the reporter's own attachment is a screenshot of it;
+    - the six-step rail exactly as the ticket's section 12 lists it;
+    - the preview table: the four counts, the Status column with Valid / Error / Duplicate, and the
+      reporter's OWN example error reasons (ticket section 5), nothing invented;
+    - the import log columns named in ticket section 10.
+
+  DELIBERATELY NOT DRAWN:
+    - the template's own Excel sheet (it is the ticket's twelve columns verbatim; drawing a spreadsheet
+      adds no information and invites pixel arguments);
+    - any balance figure. The plan's whole point is that no balance moves, and a picture of a balance
+      would imply one does;
+    - exact counts, wording, spacing and colour. The board prints the sketch caveat under this image.
+
+  MEASURED 2026-09-29 from main in ~/Projects/ai-hr/.claude/worktrees/mainwt:
+    menu rows  = packs/leave/index.ts LEAVE_ADMIN_NAV children (matches the reporter's screenshot);
+    hidden tab = components/leave-config-map.tsx:255 importLeaveData, inside the `adjustments` group.
+-->
+<style>
+ :root{--bg:#f5f6fa;--fg:#1a1a22;--card:#fff;--primary:#4f46e5;--muted:#f0f1f7;--mf:#63636f;--border:#e7e8f1;
+       --goodbg:#f0fdf4;--goodfg:#15803d;--goodbd:#bbf7d0;
+       --badbg:#fef2f2;--badfg:#b91c1c;--badbd:#fecaca;
+       --amberbg:#fffbeb;--amber:#b45309;--amberbd:#fcd34d;
+       --newbg:#eef2ff;--newfg:#312e81;--newbd:#c7d2fe;--rail:#fafbff}
+ *{box-sizing:border-box}
+ body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1240px;
+      font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .sketch{display:inline-block;background:#fff7ed;border:1px solid #fdba74;color:#9a3412;border-radius:999px;
+         padding:3px 11px;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-bottom:14px}
+ .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px}
+ h1{font-size:17px;margin:0 0 4px} h2{font-size:14px;margin:0 0 4px} h3{font-size:12px;margin:0 0 6px}
+ .sub{font-size:11.5px;color:var(--mf);margin:0 0 12px}
+ .row2{display:flex;gap:16px;align-items:flex-start}
+ .half{flex:1;min-width:0}
+ .gt{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:700;margin-bottom:6px}
+ .rail{background:var(--rail);border:1px solid var(--border);border-radius:10px;padding:8px}
+ .rl{display:flex;align-items:center;gap:8px;padding:5px 9px;border-radius:7px;font-size:12px}
+ .rl .ic{width:13px;height:13px;border:1.5px solid #b9bacb;border-radius:3px;flex:none}
+ .rl.sel{background:var(--newbg);color:var(--newfg);font-weight:700}
+ .rl.sel .ic{border-color:var(--newfg)}
+ .rl.add{background:var(--goodbg);color:var(--goodfg);font-weight:700;border:1px dashed #86efac}
+ .rl.add .ic{border-color:var(--goodfg)}
+ .rl.sub{margin-left:20px;font-size:11.5px;color:var(--mf)}
+ .rl.sub.chg{background:var(--amberbg);color:var(--amber);border:1px dashed var(--amberbd)}
+ .tagnew{margin-left:auto;font-size:9.5px;font-weight:800;letter-spacing:.04em;background:var(--goodfg);color:#fff;
+         border-radius:999px;padding:1px 7px}
+ .tagchg{margin-left:auto;font-size:9.5px;font-weight:800;letter-spacing:.04em;background:var(--amber);color:#fff;
+         border-radius:999px;padding:1px 7px}
+ .taghid{margin-left:auto;font-size:9.5px;font-weight:700;color:var(--mf);font-style:italic}
+ .steps{display:flex;gap:6px;margin:2px 0 14px}
+ .st{flex:1;background:var(--muted);border:1px solid var(--border);border-radius:9px;padding:7px 9px}
+ .st .n{font-size:9.5px;font-weight:800;color:var(--mf);letter-spacing:.05em}
+ .st .l{font-size:11.5px;font-weight:600;margin-top:1px}
+ .st.on{background:var(--newbg);border-color:var(--newbd)}
+ .st.on .n{color:var(--newfg)} .st.on .l{color:var(--newfg)}
+ .tiles{display:flex;gap:10px;margin-bottom:12px}
+ .tile{flex:1;border:1px solid var(--border);border-radius:10px;padding:9px 12px;background:#fff}
+ .tile .k{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);font-weight:700}
+ .tile .v{font-size:20px;font-weight:800;line-height:1.25;margin-top:1px}
+ .tile.ok{background:var(--goodbg);border-color:var(--goodbd)} .tile.ok .v{color:var(--goodfg)}
+ .tile.err{background:var(--badbg);border-color:var(--badbd)} .tile.err .v{color:var(--badfg)}
+ .tile.dup{background:var(--amberbg);border-color:var(--amberbd)} .tile.dup .v{color:var(--amber)}
+ table{width:100%;border-collapse:collapse;font-size:12px}
+ th{text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--mf);
+    font-weight:700;padding:6px 8px;background:var(--muted);white-space:nowrap}
+ td{padding:6px 8px;border-top:1px solid var(--border);vertical-align:top}
+ tr.bad td{background:#fffafa} tr.dup td{background:#fffdf6}
+ .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:800;white-space:nowrap}
+ .p-ok{background:var(--goodbg);color:var(--goodfg);border:1px solid var(--goodbd)}
+ .p-er{background:var(--badbg);color:var(--badfg);border:1px solid var(--badbd)}
+ .p-du{background:var(--amberbg);color:var(--amber);border:1px solid var(--amberbd)}
+ .why{color:var(--badfg);font-size:11.5px}
+ .whyd{color:var(--amber);font-size:11.5px}
+ .mf{color:var(--mf)} .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+ .btn{display:inline-block;border-radius:8px;padding:6px 13px;font-size:12px;font-weight:700;border:1px solid var(--border);background:#fff}
+ .btn.pri{background:var(--primary);border-color:var(--primary);color:#fff}
+ .btn.gho{background:#fff;color:var(--fg)}
+ .bar{display:flex;gap:8px;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+ .note{background:var(--amberbg);border:1px solid var(--amberbd);border-radius:10px;padding:11px 13px;font-size:12px;color:#7c4a03}
+ .note.good{background:var(--goodbg);border-color:var(--goodbd);color:#14532d}
+ .note b{font-weight:800}
+ .drop{border:1.5px dashed #c3c5d8;border-radius:10px;padding:14px;text-align:center;color:var(--mf);font-size:12px;background:#fcfcff}
+</style>
+
+<div class="sketch">Sketch — layout and wording will differ in the built screen</div>
+
+<div class="card">
+  <h1>1 · Where it goes in the menu</h1>
+  <p class="sub">Your screenshot is on the left: the Leave Config menu as it is today. There is no import row, which is
+     why you could not find one. There <i>is</i> an importer — it is hidden as a second tab behind Leave Adjustments,
+     and it loads balances, not records.</p>
+  <div class="row2">
+    <div class="half">
+      <div class="gt">Today — what you sent us</div>
+      <div class="rail">
+        <div class="rl"><span class="ic"></span>Entitlements</div>
+        <div class="rl"><span class="ic"></span>Leave Balance Health</div>
+        <div class="rl"><span class="ic"></span>Leave Adjustments</div>
+        <div class="rl sub"><span class="ic"></span>Import leave data <span class="taghid">hidden tab — loads balances</span></div>
+        <div class="rl"><span class="ic"></span>Leave Credit</div>
+        <div class="rl"><span class="ic"></span>Generate Entitlement</div>
+        <div class="rl"><span class="ic"></span>Run Earned Accrual</div>
+        <div class="rl"><span class="ic"></span>Approval Workflow</div>
+        <div class="rl"><span class="ic"></span>Company rules</div>
+        <div class="rl"><span class="ic"></span>Employee Leave Inquiry</div>
+        <div class="rl"><span class="ic"></span>Special Setting</div>
+      </div>
+    </div>
+    <div class="half">
+      <div class="gt">Proposed</div>
+      <div class="rail">
+        <div class="rl"><span class="ic"></span>Entitlements</div>
+        <div class="rl"><span class="ic"></span>Leave Balance Health</div>
+        <div class="rl"><span class="ic"></span>Leave Adjustments</div>
+        <div class="rl sub chg"><span class="ic"></span>Leave Balance Import <span class="tagchg">renamed</span></div>
+        <div class="rl add"><span class="ic"></span>Leave History Data Import <span class="tagnew">new</span></div>
+        <div class="rl"><span class="ic"></span>Leave Credit</div>
+        <div class="rl"><span class="ic"></span>Generate Entitlement</div>
+        <div class="rl"><span class="ic"></span>Run Earned Accrual</div>
+        <div class="rl"><span class="ic"></span>Approval Workflow</div>
+        <div class="rl"><span class="ic"></span>Company rules</div>
+        <div class="rl"><span class="ic"></span>Employee Leave Inquiry</div>
+        <div class="rl"><span class="ic"></span>Special Setting</div>
+      </div>
+      <div class="note" style="margin-top:10px">
+        The old tab is <b>renamed, not moved or removed</b> — anyone who has bookmarked it still lands on it.
+        Renaming it is what stops two near-identical names sitting in one menu for two tools that do opposite jobs.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h1>2 · The screen, at the step that matters — Preview</h1>
+  <p class="sub">Six steps, in the order you set out. Nothing is written to the system until you press Confirm Import.</p>
+
+  <div class="steps">
+    <div class="st"><div class="n">STEP 1</div><div class="l">Download Template</div></div>
+    <div class="st"><div class="n">STEP 2</div><div class="l">Upload Excel</div></div>
+    <div class="st"><div class="n">STEP 3</div><div class="l">Validate</div></div>
+    <div class="st on"><div class="n">STEP 4</div><div class="l">Preview Results</div></div>
+    <div class="st"><div class="n">STEP 5</div><div class="l">Confirm Import</div></div>
+    <div class="st"><div class="n">STEP 6</div><div class="l">Import Summary</div></div>
+  </div>
+
+  <div class="drop" style="margin-bottom:12px">
+    Loaded <b>leave-history-2025.xlsx</b> &nbsp;·&nbsp; 1,284 rows read &nbsp;·&nbsp;
+    <span class="mf">drag another file here, or</span> <span class="btn gho" style="padding:2px 9px">Choose file</span>
+  </div>
+
+  <div class="tiles">
+    <div class="tile"><div class="k">Total records</div><div class="v">1,284</div></div>
+    <div class="tile ok"><div class="k">Valid</div><div class="v">1,251</div></div>
+    <div class="tile err"><div class="k">Error</div><div class="v">26</div></div>
+    <div class="tile dup"><div class="k">Duplicate</div><div class="v">7</div></div>
+  </div>
+
+  <table>
+    <tr>
+      <th>Row</th><th>Status</th><th>Employee No.</th><th>Leave Reference</th><th>Code</th>
+      <th>Ent. Year</th><th>Start</th><th>End</th><th>Days</th><th>Session</th><th>Reason it was rejected</th>
+    </tr>
+    <tr><td class="mf">1</td><td><span class="pill p-ok">Valid</span></td><td class="mono">EMP-0004</td>
+        <td class="mono">LV/2025/00418</td><td class="mono">AL</td><td>2025</td><td>2025-03-10</td><td>2025-03-12</td>
+        <td>3.00</td><td class="mf">—</td><td class="mf">—</td></tr>
+    <tr><td class="mf">2</td><td><span class="pill p-ok">Valid</span></td><td class="mono">EMP-0004</td>
+        <td class="mono">LV/2025/00502</td><td class="mono">AL</td><td>2025</td><td>2025-06-02</td><td>2025-06-02</td>
+        <td>0.50</td><td>AM</td><td class="mf">—</td></tr>
+    <tr class="bad"><td class="mf">3</td><td><span class="pill p-er">Error</span></td><td class="mono">EMP-9931</td>
+        <td class="mono">LV/2025/00511</td><td class="mono">AL</td><td>2025</td><td>2025-06-09</td><td>2025-06-10</td>
+        <td>2.00</td><td class="mf">—</td><td class="why">Employee No. not found</td></tr>
+    <tr class="bad"><td class="mf">4</td><td><span class="pill p-er">Error</span></td><td class="mono">EMP-0011</td>
+        <td class="mono">LV/2025/00519</td><td class="mono">XX</td><td>2025</td><td>2025-06-16</td><td>2025-06-16</td>
+        <td>1.00</td><td class="mf">—</td><td class="why">Leave Code not found</td></tr>
+    <tr class="dup"><td class="mf">5</td><td><span class="pill p-du">Duplicate</span></td><td class="mono">EMP-0004</td>
+        <td class="mono">LV/2025/00418</td><td class="mono">AL</td><td>2025</td><td>2025-03-10</td><td>2025-03-12</td>
+        <td>3.00</td><td class="mf">—</td><td class="whyd">Duplicate Leave Reference — already appears on row 1</td></tr>
+    <tr class="bad"><td class="mf">6</td><td><span class="pill p-er">Error</span></td><td class="mono">EMP-0027</td>
+        <td class="mono">LV/2025/00533</td><td class="mono">MC</td><td>2025</td><td>2025-07-04</td><td>2025-07-01</td>
+        <td>4.00</td><td class="mf">—</td><td class="why">Leave Start Date cannot be later than Leave End Date</td></tr>
+    <tr class="bad"><td class="mf">7</td><td><span class="pill p-er">Error</span></td><td class="mono">EMP-0031</td>
+        <td class="mono">LV/2025/00540</td><td class="mono">AL</td><td>2025</td><td class="why">14/08/2025</td><td>2025-08-15</td>
+        <td>2.00</td><td class="mf">—</td><td class="why">Invalid Leave Start Date</td></tr>
+    <tr class="bad"><td class="mf">8</td><td><span class="pill p-er">Error</span></td><td class="mono">EMP-0033</td>
+        <td class="mono">LV/2025/00547</td><td class="mono">AL</td><td>2025</td><td>2025-09-01</td><td>2025-09-02</td>
+        <td class="why">0</td><td class="mf">—</td><td class="why">Number of Day is invalid</td></tr>
+    <tr><td class="mf">9</td><td><span class="pill p-ok">Valid</span></td><td class="mono">EMP-0040</td>
+        <td class="mono">LV/2025/00551</td><td class="mono">AL</td><td>2025</td><td>2025-09-15</td><td>2025-09-19</td>
+        <td>5.00</td><td class="mf">—</td>
+        <td class="whyd">Checked: our calendar makes this 4 days. Kept as 5 — flagged, not rejected</td></tr>
+  </table>
+
+  <div class="bar">
+    <span class="btn pri">Confirm Import — 1,251 valid records</span>
+    <span class="btn gho">Download Error Report (33 rows)</span>
+    <span class="mf" style="margin-left:auto">Errors and duplicates are <b>not</b> imported, and never silently dropped.</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="row2">
+    <div class="half">
+      <h2>3 · Import log — kept on the same page</h2>
+      <p class="sub">Every run, so you can answer "who loaded this, and when" months later.</p>
+      <table>
+        <tr><th>When</th><th>File</th><th>By</th><th>Records</th><th>Imported</th><th>Failed</th><th>Dup.</th><th></th></tr>
+        <tr><td>29 Sep 2026, 10:14</td><td class="mono">leave-history-2025.xlsx</td><td>Siti (HR Admin)</td>
+            <td>1,284</td><td class="mono" style="color:var(--goodfg)">1,251</td><td class="mono" style="color:var(--badfg)">26</td>
+            <td class="mono" style="color:var(--amber)">7</td><td><span class="btn gho" style="padding:2px 8px;font-size:11px">Errors</span></td></tr>
+        <tr><td>26 Sep 2026, 16:40</td><td class="mono">leave-history-2024.xlsx</td><td>Siti (HR Admin)</td>
+            <td>1,102</td><td class="mono" style="color:var(--goodfg)">1,102</td><td class="mono mf">0</td>
+            <td class="mono mf">0</td><td class="mf" style="font-size:11px">—</td></tr>
+      </table>
+      <p class="sub" style="margin-top:8px">The failed rows and their reasons stay downloadable afterwards.
+         The uploaded file itself is <b>not</b> kept.</p>
+    </div>
+    <div class="half">
+      <h2>4 · What this does <i>not</i> do</h2>
+      <p class="sub">The single most important thing on this page.</p>
+      <div class="note good" style="margin-bottom:10px">
+        <b>No leave balance moves.</b> An imported record is history — it appears in the employee's leave history with
+        its original reference, dates, session and remark, and it is already approved so nobody has to re-apply.
+        It does not take a single day off anyone's balance.
+      </div>
+      <div class="note">
+        <b>Why not.</b> When you migrate a customer you also bring across their balance as it stands, and that figure
+        already has the past leave removed from it. Deducting the imported records as well would take the same days
+        off twice — from a number that gets paid out when someone leaves.
+        <br><br>
+        Loading balances is the <b>other</b> tool's job — the one renamed Leave Balance Import in section 1. One file
+        of records here, one file of balances there, nothing counted twice.
+      </div>
+    </div>
+  </div>
+</div>

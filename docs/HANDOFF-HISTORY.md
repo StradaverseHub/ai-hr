@@ -1,3 +1,61 @@
+## r359 (2026-09-29) — EA item 8 is C, and the slip's Q and C mean what the specification says. `main@3e4963f5`, **no migration**.
+
+Closed: `fda53352` (revision 7). Gate: **1050 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, `tsc` 0, `next build` 0. Shipped together with r358 in one deploy.
+
+### THE REPORTER WAS RIGHT AND TWO OF OUR ROUNDS WERE WRONG
+
+r351 answered "A.8 is correct as a count" and r353 refined that per mode, both reading "Bilangan anak" as a count of child records. The third contest cited LHDN's own formula letters, and checking them settles it against us: printed p.10 defines "Q  Deduction for qualifying children" and "C  Number of qualifying children" with the P formula carrying the term QC; p.11 restates C per category; and p.27's table is headed **"Relief to be given AS IF THE EMPLOYEE HAS THIS NUMBER OF CHILDREN"**, 4 / 4 / 4 / 8. So C is the weighted figure, and A.8 asks for it in the same words.
+
+**Then the agency's own output confirmed it.** The attachment on item `bf3c9712` is LHDN's generated PCB Calculation Slip for the very employee in dispute; its page 6 prints `Q = Deduction for eligible children 2,000.00` and `C = Number of eligible children 9.00`, with `(2000.00 x 9)` inside the P line, for an employee whose page 1 child table shows one child under 18 and one disabled child still studying — 1 + 8 = 9.
+
+### AND CHECKING OUR OWN SLIP AGAINST THAT DEFINITION FOUND A SECOND DEFECT
+
+The PCB slip printed Q as the RM total and C as the record count — two letters from the agency's formula, neither meaning what the formula says, and not multiplying to the relief beside them (Q RM18,000 × C 2 implies RM36,000). Q is now the per-child deduction, C the weighted number, and their product is printed as its own row.
+
+- `localization/my/reports.ts` — A.8 derives from `childReliefFromPayroll`, the same stamped annual relief D.6 prints, over the ruleset's per-child figure. **A.8 × RM2,000 === D.6 by construction.** ABSENT when that stamp is absent, because D.6 is absent then too.
+- `localization/my/payroll.ts` — the trace carries C (from the money) and Q (from the ruleset). `reliefs.children` is untouched: **no money moves**, only what the slip calls it.
+- the employee card — "Children on record" and "Qualifying children (C)", each naming the document that reads it. The reporter read EA item 8 off the wrong box for two rounds and nothing on the screen said which figure each form takes.
+
+### TWO GUARDS THAT WOULD HAVE PASSED WHILE ASSERTING THE OPPOSITE
+
+- `test/r217-ea-sections` greps for `String(d.employee.children)` and only that expression's SOURCE changed, so the reversal left it green with "A.8 must still print the head count" in its own message. That is the prose-outlives-the-kernel trap inside a test rather than a comment.
+- My first Q×C identity assertion was **vacuous**: `richRun` gives the profile three children and no grid, so C equals the record count whatever the code does. Caught by reverting. The decisive case is the reporter's own employee — two children weighted to RM18,000 — which fails with `expected 2 to be 9`.
+
+### WHAT THE FULL GATE CAUGHT THAT MY GREP DID NOT
+
+`test/r353-ea-item8-child-count.test.ts` — five AssertionErrors in one chunk, a whole file pinning the old head-count rule that my pre-gate grep missed. Rewritten rather than re-pointed, because the fixtures' shape was part of the old decision: the box used to come from a stored column, so a configured employee sufficed; it follows the money now, and a fixture with no payroll has nothing to follow. Two answers unchanged (and each says why), two reversed with the old claims quoted, and two new cases (no stamped relief ⇒ no A.8; A.8 × RM2,000 IS D.6).
+
+### NOT DONE
+
+- No production read was possible: the auto-mode classifier refuses read-only `psql` SELECTs on the box, so the specific employee's child-relief mode is UNKNOWN. The conclusion holds in every reachable mode.
+
+## r358 (2026-09-29) — every day type is claimed as a window, and the credit follows the hours. `main@3e4963f5`, **no migration**.
+
+Closed: `70294f7a`. Gate: as above, shipped in the same deploy.
+
+### THE OWNER RELEASED THE BLOCK WITH THE RULE WRITTEN OUT
+
+"Whether the employee works on a Normal Working Day, Rest Day, Off Day, or Public Holiday, the Leave Credit calculation rule is the same. 4 hours of eligible work = 0.5 day. 8 hours = 1.0 day … regardless of the Day Type. … Day Type is only for identifying whether the employee worked on a Normal Working Day / Rest Day / Off Day / Public Holiday." That is Option A of the park, spelled out further.
+
+**What the park was about, and how it is resolved.** Building this on the old shape would have switched Leave Credit off for every company: the table read `extendedHoursTiers == null` as "no tier ladder" and blocked every row claiming a window — and that null is what the extended-hours switch produces, false on every company. The ladder and the switch are two facts now (`leaveCreditOfferForEmployment` → `{ tiers, ordinaryDayAllowed }`), and the switch governs exactly one thing: whether an ORDINARY day can earn a credit.
+
+- `claimsTimeWindow` returns true for every type, old rule quoted. What still varies has its own name: `flooredByScheduledShiftEnd`, true for a workday only — and it is decided by the DAY TYPE, not by whether the roster happens to hold a shift end, because a roster can carry one on a rest day and the floor would then eat the first hours of the claim.
+- `sourceTypeForDayType` now tests the day type DIRECTLY. Leaving it keyed on `claimsTimeWindow` would have routed rest-day claims into `accrueExtendedWorkdayToilTx`, which refuses any day whose kind is not `workday` and banks `workedDayKind: 'workday'` regardless.
+- `days` is GONE from the posted row (removed, not left optional); the declared 1-or-0.5 shape REMAINS for the HR-side callers that post it.
+
+### A DEVIATION FROM THE LETTER OF THE RULE, OWED TO THE REPORTER
+
+"If Extended End is earlier than Extended Start, display an error" is **not** implemented as written: an end before a start is how a shift across midnight is entered, and r353 fixed a money bug to make that roll to the following day. Refusing it would delete the night-shift claim this item exists to enable. An EMPTY window is refused instead. **This must be said on the item.**
+
+### THE SUITE CAUGHT ME ASSUMING TIMES MEAN A WINDOW
+
+An Hour-unit Section A claim has carried `fromTime`/`toTime` since long before this round — `ReplacementClaimLineView`'s own header says so — and reading those as r358 windows refused three existing behaviours. A window line is a DAY-unit line with times and no declared figure.
+
+### NOT DONE
+
+- `app/leave/credit/actions.ts` still reads `formData.getAll('days')` and assigns `days` on the row. It is INERT — the form emits no such input and nothing reads `row.days` — but it is dead code left by this round's own cleanup, and it survived `tsc` through the same excess-property blind spot in `.map()` that hid `workedDayKind` earlier in the build. Being removed in r360.
+- The Day Type cell is still an editable dropdown offering a choice the server always refuses, and `dayFactsAction` has no `.catch()` so a failed lookup leaves the row blank forever. Both found while re-planning `cbfa8b0b`; both are r360.
+
 ## r357 (2026-09-29) — the command the last round had to do by hand. `main@5b653e47`, **no migration**.
 
 Closed: nothing on the board — `fda53352` is planned and awaiting approval, `70294f7a` is parked on an unanswered question, and everything else is deployed. Gate: **1050 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, `tsc` 0, `next build` 0. No render check: this round changes no screen, no key and no figure — `scripts/improve/`, one guard and CLAUDE.md. No `gate:shadow`: `db/` untouched, watermark unchanged at `max(idx)=489`.
