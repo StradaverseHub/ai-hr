@@ -379,9 +379,14 @@ export function LeaveCreditRequestTable({
    * working/non-working check — a row typed "Public Holiday" on a date the roster calls a rest day is a
    * mismatch the layer below cannot see, because both produce the same claim path.
    *
-   * r353 · `exceedsClockOut` / `hasClockOut` come back from the SAME assessment as the minutes and do NOT
-   * block the submit — they are what the owner's reversal left for a human to judge, so they warn on the row
-   * here and again on the approvals queue, and the claim still goes through and still credits.
+   * r353 · `exceedsClockOut` comes back from the SAME assessment as the minutes and does NOT block the
+   * submit — it is what the owner's reversal left for a human to judge, so it warns on the row here and again
+   * on the approvals queue, and the claim still goes through and still credits.
+   *
+   * ⚠️ r364 c36e1ae6 — THAT SENTENCE USED TO SAY "`exceedsClockOut` / `hasClockOut` come back from the SAME
+   * assessment as the minutes", and the second name in it was the defect. `hasClockOut` is read off the day
+   * FACTS, in both exits below; see the note on it in the assessed exit for why the assessment cannot answer
+   * it here.
    */
   const derive = useCallback(
     (r: Row) => {
@@ -427,7 +432,18 @@ export function LeaveCreditRequestTable({
         minutes: countedMinutes,
         credit: days,
         exceedsClockOut: assessed.exceedsClockOut,
-        hasClockOut: assessed.hasClockOut,
+        /**
+         * ⚠️ r364 c36e1ae6 — FROM THE VIEW, NOT FROM THE ASSESSMENT. This one line was the reported defect.
+         * `assessed.hasClockOut` is `Number.isFinite(timeToMinutes(actualClockOut))`: it answers about the
+         * argument it was HANDED, and three lines up we hand it `null` on the three non-working day types
+         * deliberately, because that is the money rule. So it came back false on every rest day, off day and
+         * public holiday however many clock-outs were on record, and the amber row fired the moment the
+         * employee filled BOTH time boxes — which is why it read as though they had caused it by typing.
+         * The early exit above has always read this off the day facts; the two exits disagreed about one fact
+         * of one row, and this is the line that made them agree. `lib/extended-hours.ts`'s own doc for
+         * `hasClockOut` is correct and unchanged: it describes what that function can assert from ITS inputs.
+         */
+        hasClockOut: view.actualClockOut != null,
       };
     },
     [facts, tiers],
@@ -523,8 +539,13 @@ export function LeaveCreditRequestTable({
               const d = derived.get(r.key);
               const chosen = r.dayType;
               const wantsWindow = chosen !== '' && claimsTimeWindow(chosen);
-              // r358 — the shift end and the clock-out are an ORDINARY DAY's references. On the other three
-              // the employee was not scheduled, so there is nothing to print and nothing to compare.
+              // ⚠️ r364 c36e1ae6 — SPLIT, because half of what stood here stopped being true. It read:
+              // "r358 — the shift end and the clock-out are an ORDINARY DAY's references. On the other three
+              //  the employee was not scheduled, so there is nothing to print and nothing to compare."
+              // The SHIFT END half stands: the employee was not scheduled on the other three, so that cell has
+              // nothing to print and the claimed window has nothing to be floored at. The CLOCK-OUT half was
+              // wrong — a clock-out is a fact the system holds on all four day types and is printed on all
+              // four. `floored` governs the shift-end cell and the assessment ONLY, never the clock-out cell.
               const floored = chosen !== '' && flooredByScheduledShiftEnd(chosen);
               // Ordinary Day chosen on a company that cannot credit one: the option was still offered, so
               // the row is where that is explained. Its claimed-window cells are dead, not merely empty.
@@ -630,17 +651,19 @@ export function LeaveCreditRequestTable({
                       </div>
                     </td>
                     <td className="px-3 py-2">
-                      {/* r353 · TWO DIFFERENT SILENCES, TOLD APART. The em dash used to mean both "this cell
-                          does not apply to this day type" and "there is no clock-out on record", which on an
-                          Ordinary Day row is the difference between nothing to say and something an approver
-                          has to look at. Still the dash while the facts are in flight: not knowing yet is a
-                          third state and must not read as an answer. */}
+                      {/* ⚠️ r364 c36e1ae6 · ONE SILENCE LEFT IN THIS CELL. r353 wrote here: "TWO DIFFERENT
+                          SILENCES, TOLD APART. The em dash used to mean both 'this cell does not apply to this
+                          day type' and 'there is no clock-out on record', which on an Ordinary Day row is the
+                          difference between nothing to say and something an approver has to look at." The first
+                          of those two meanings is gone: the clock-out APPLIES to all four day types — it is a
+                          fact the system holds, the approver's screen already prints it, and a row that warned
+                          about a missing clock-out while showing a dash where the time should be was telling
+                          the reader two things at once. So the time on every day type, the named absence when
+                          we looked and held nothing, and the dash ONLY while the facts are in flight: not
+                          knowing yet is a third state and must not read as an answer. The SHIFT END cell above
+                          keeps its day-type dash — there genuinely was no scheduled shift to print. */}
                       <div className={disabledCell} data-testid="leave-credit-clock-out">
-                        {floored
-                          ? d?.view == null
-                            ? DAY_DASH
-                            : (hhmm(d.view.actualClockOut) ?? t('table.noClockOutRecord'))
-                          : DAY_DASH}
+                        {d?.view == null ? DAY_DASH : (hhmm(d.view.actualClockOut) ?? t('table.noClockOutRecord'))}
                       </div>
                     </td>
                     <td className="px-3 py-2">
@@ -694,7 +717,11 @@ export function LeaveCreditRequestTable({
                       The claim used to be clipped to the clock-out and capped at the measured figure; the
                       owner reversed both, so what is left is to SAY so — amber rather than the destructive
                       red above, because this row is valid and will credit. Its own <tr>, so a row can be
-                      both under the threshold and past the clock-out without one message hiding the other. */}
+                      both under the threshold and past the clock-out without one message hiding the other.
+                      ⚠️ r364 c36e1ae6 — IT NOW SPEAKS ONLY WHEN WE LOOKED AND FOUND NOTHING. `d.hasClockOut`
+                      comes off the day facts rather than off the assessment, so this no longer fires on every
+                      rest day, off day and public holiday row the moment both time boxes are filled. The
+                      condition is unchanged; the answer it reads is. */}
                   {windowLive && d?.view != null && (!d.hasClockOut || d.exceedsClockOut) && (
                     <tr>
                       <td colSpan={10} className="px-3 pb-2">
