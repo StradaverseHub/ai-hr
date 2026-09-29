@@ -1297,13 +1297,17 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     // unlabelled and took it off. That order is also the order the Individual Payslip SCREEN's letterhead
     // uses (name → registration → period), so the document and the screen read the same way down the page.
     //
-    // LABEL AND VALUE ON ONE LINE, drawn as one string: the caption is a two-word noun, not a field in a
-    // grid, and `at` resolves ONE face for the whole string — which is what keeps a Tamil or Thai caption
-    // and a Latin-digit number from being measured in one font and drawn in another.
+    // LABEL, COLON, VALUE, drawn as ONE string: `Reg. no.: 201901024512`, which is the line the approved
+    // mockup (docs/mockups/1fe55a23-payslip-header.html) shows the reporter, down to the colon. The
+    // separator is a literal beside the catalogue label, exactly as `${t.employeeCode}: …` already is in
+    // `drawEmployeePanel` — a second message key for a colon is a translation to keep in step for nothing.
+    // One string also means `at` resolves ONE face for the whole line, which is what keeps a Tamil or Thai
+    // caption and a Latin-digit number from being measured in one font and drawn in another.
     //
     // ABSENT ⇒ NOTHING DRAWN AND NOTHING RESERVED (see `textH` below). The fallback the plan promised: a
-    // company with no registration number gets the letterhead it gets today, not an empty band.
-    const regLine = d.companyReg ? `${t.companyReg} ${d.companyReg}` : null;
+    // company with no registration number gets the letterhead it gets today, not an empty band. The mockup
+    // spells that out too — "not 'Reg. no.: —' and not an empty label".
+    const regLine = d.companyReg ? `${t.companyReg}: ${d.companyReg}` : null;
     if (regLine) at(pg, regLine, textX, below - 12, 8.5, font, MUTED);
     const sub = [t.documentSubtitle, d.cycleLabel].filter(Boolean).join(' · ');
     at(pg, sub, textX, below - (regLine ? 25 : 13), 9, font, MUTED);

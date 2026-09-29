@@ -618,7 +618,7 @@ export default async function IndividualPayslipPage({
                     assert that we looked and there is none. */}
                 {row.companyReg && (
                   <p className="text-xs text-muted-foreground">
-                    {tOrg('regNo')} {row.companyReg}
+                    {tOrg('regNo')}: {row.companyReg}
                   </p>
                 )}
                 <p className="mt-1 text-sm text-muted-foreground">

@@ -386,9 +386,9 @@ describe('5b2a7f0f — the en document is untouched, and that is the regression 
   };
   /** r360 — the same three fixtures WITH the labelled registration line the reporter asked for. */
   const WITH_REG_R360 = {
-    plain: '2988fbf65e44b8287c5e1c44f0a71c8347926dae7073d7ee7f4a7a063dd05322',
-    logo: '1103b6cbb2043b4822fb4806888e40150b380877db0dad86c3c56ff876c57adc',
-    multipage: '4c542b63eaad34eb2fbb3ba593c81cf4f972f211867201d61968149c29179eb5',
+    plain: 'b320d0ae3f1df2394e3c87480e16fa5be688e163b252b7a84c48237005c65b65',
+    logo: 'e20b0afe847cd55942e1e8842cc415b752c653c267e382edd006e6748170ec0f',
+    multipage: 'a6c07537806118b3321e69729f5069ba72ef10c4e0f357416935e9fd729393ae',
   };
   const PNG_1x1 = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',

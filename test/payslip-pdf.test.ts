@@ -1758,7 +1758,7 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
     const text = drawnText(withReg);
     // The caption and the number, on one line, in that order — `Reg. no. 202301000001 (1400001-A)`.
     expect(text, 'the number must be captioned, never bare').toContain(
-      `${labels.companyReg} ${data.companyReg}`,
+      `${labels.companyReg}: ${data.companyReg}`,
     );
 
     // …AND IT IS BELOW THE NAME AND ABOVE THE SUBTITLE. "Directly below the company name" is a claim about
@@ -1766,7 +1766,7 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
     // same words. The subtitle is what used to sit immediately under the name.
     const p = drawnPlacements(withReg);
     const name = placed(p, data.company)!;
-    const reg = placed(p, `${labels.companyReg} ${data.companyReg}`)!;
+    const reg = placed(p, `${labels.companyReg}: ${data.companyReg}`)!;
     const sub = placed(p, labels.documentSubtitle)!;
     expect(reg.y, 'the registration line sits BELOW the company name').toBeLessThan(name.y);
     expect(reg.y, 'and ABOVE the document subtitle').toBeGreaterThan(sub.y);
@@ -1820,7 +1820,7 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
     expect(
       drawnText(await renderPayslipPdf(built, labels)),
       'and the document prints it captioned',
-    ).toContain('Reg. no. 201901024512');
+    ).toContain('Reg. no.: 201901024512');
   });
 
   /**

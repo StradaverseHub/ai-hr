@@ -607,6 +607,23 @@ describe('r360 — the cycle name and the registration label are decided in ONE 
     }
   });
 
+  it('composes the caption as "Reg. no.: <number>" — the line the approved mockup shows', () => {
+    // THE MOCKUP IS THE PROMISE. docs/mockups/1fe55a23-payslip-header.html draws "Reg. no.: 1234567-X" and
+    // spells the fallback out as "not 'Reg. no.: —' and not an empty label", so the colon is part of what
+    // the reporter approved rather than a detail left to the build. It is a LITERAL beside the catalogue
+    // label on both surfaces — the same shape `drawEmployeePanel` already uses for the employee code — so
+    // no seventh translation exists for a piece of punctuation.
+    //
+    // The DOCUMENT half of this is behavioural (test/payslip-pdf.test.ts reads the line back out of the
+    // rendered PDF). The SCREEN half is a source shape on purpose: React separates adjacent text children
+    // with `<!-- -->` comments, so the composed string is not one node in the markup and cannot be matched
+    // as a substring — verified on a real render, where the <p> reads "Reg. no.: 201901024512".
+    expect(read(PAGE), 'the screen composes label, colon, value').toMatch(/\{tOrg\('regNo'\)\}: \{row\.companyReg\}/);
+    expect(read('lib/payslip-pdf.ts'), 'and so does the document').toContain(
+      '`${t.companyReg}: ${d.companyReg}`',
+    );
+  });
+
   it('the registration line on the SCREEN is still conditional — no empty caption, no dash', () => {
     // `company.registration_no` is nullable and most companies on production carry none. An absent line
     // asserts nothing; "Reg. no. —" asserts that we looked and there is none.
