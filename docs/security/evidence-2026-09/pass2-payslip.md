@@ -1,0 +1,8 @@
+# Pass2 verify — Z1 manager reads subordinate payslip/PII. VERDICT: CONFIRMED, MED->MED-HIGH (broader than pass1).
+SQL RLS proof (ai_hr_app NOBYPASSRLS, GUCs set as non-admin manager grants=[]):
+- Aisyah->Wei Jie (direct) & Daniel->Wei Jie (INDIRECT via Aisyah): is_admin=false, can_see_employment=TRUE, can_see_person=TRUE.
+- As Daniel (non-admin), SELECT employee_statutory_my for subordinate returned LIVE bank_account_no, ic_number, epf/socso/tax. CONTRAST: compensation rows = 0 (0060 correctly blocks) => proves inconsistency.
+Root: 0060 admin-or-self governs ONLY compensation table. payslip_rls (0099:70) + employee_statutory_my_rls (0016 via can_see_person) + payroll_batch_rls still route through can_see_employment/can_see_person (widened by 0109 indirect-manager + HOD down-walk). payslipDetail core/payroll.ts:9717 no code narrowing (only release gate). Route/docstrings falsely say "own-or-admin".
+BROADER than pass1: subordinate bank/IC/EPF/SOCSO/tax readable by any manager via employee_statutory_my INDEPENDENT of payslip route. myPayslips core/read.ts:5745 "self-scoping" comment false post-0109 => if any endpoint takes subordinate employmentId, payslip id+gross/net enumerable (managers can get employmentId via org chart). Follow-up: check myPayslips callers.
+Repro limit: seed has 0 payslip rows => /me/payslip/<uuid>/pdf 404 for all; SQL predicate + statutory-table leak are conclusive.
+FIX (new migration, append-only rule 22): redefine payslip_rls to admin-or-self (drop can_see_employment branch): USING tenant AND (can_admin_payroll_employment(employment_id) OR EXISTS(employment e WHERE e.id=payslip.employment_id AND is_self_person(e.person_id))). ALSO narrow employee_statutory_my_rls + payroll_batch_rls the same way. Fix stale docstrings.

@@ -1,0 +1,9 @@
+# Pass3 — Next.js CVE reachability + client/edge controls
+ARCH: 2 auth layers. L1 SHARE_PASSWORD middleware gate. L2 WorkOS getSession+requireAdmin/scopedAdmin per route. demoSwitcherEnabled (NODE_ENV!=prod || ALLOW_DEMO_SESSION) true => /login/as = anyone past gate assumes any identity => L2 effectively OFF, gate is sole boundary. worktree .env.local has ALLOW_DEMO_SESSION+SHARE_PASSWORD, server next-server 16.2.7 => demo box likely runs flag on (confirm live env).
+(b) middleware/proxy bypass: version-vuln YES (16.2.7<16.2.11). Class = crafted header (x-middleware-subrequest) skips middleware => skips SHARE_PASSWORD. Real tenant (flag off): L2 holds => LOW/MED. Demo (flag on): no L2 => HIGH (all seeded data + /login/as any admin). Matcher middleware.ts:159 excludes /_next/image.
+(a) image-opt RCE: version-CRITICAL but reachability LOW-MED. /_next/image mounted+unauth (curl favicon =>200) but next/image used NOWHERE; no images config => remote fetch default-DENY (curl remote =>400) => remote RCE/SSRF CLOSED. Residual: local same-origin url= attacker bytes + CVE (needs auth). 
+(c) SSRF server actions/rewrites: NO rewrites/redirects/headers in next.config => NOT reachable. redirect() all internal relative.
+(d) sharp libvips/libheif: transitive only (0.34.5 via next), no direct import/upload-resize; only via /_next/image => LOW. Bumping Next may not refresh; add sharp override.
+postcss/nanoid/browserslist: build-time => LOW.
+Open redirect NONE; CORS same-origin OK; NEXT_PUBLIC only APP_URL (no secret).
+FIX #1: upgrade Next 16.2.7 -> >=16.3.3 (closes b+a+c one bump) + re-resolve lock for sharp. Interim: if demo over, UNSET ALLOW_DEMO_SESSION (restores L2). Post-upgrade (AGENTS.md): full gate + §8 render check + Chinese payslip PDF (fontkit CJS/ESM) + re-verify middleware 401/503//_next/image.
