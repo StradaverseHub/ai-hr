@@ -124,6 +124,19 @@ const WIDE_LIST_SCREENS = [
    * it cannot drift back, the same reasoning r319 used for the three screens above.
    */
   'app/attendance/individual/[date]/page.tsx',
+  /**
+   * f618065d (r362) — SELF OVERTIME, the employee's own overtime list. The reporter raised it as the
+   * identical complaint r227 and r319 already cost two rounds each: `mx-auto max-w-6xl`, so roughly a
+   * third of a wide monitor was empty margin and Reason — the column most likely to be cut off — was the
+   * one that paid for it. It is the eleventh list screen in this menu to take the property, and it is
+   * listed here in the round that gives it rather than after somebody complains a fourth time.
+   *
+   * ⚠️ THE NOT-LINKED BRANCH IS WHY THIS ENTRY NEEDS A NOTE. That branch was `mx-auto max-w-2xl`, which
+   * the second case below reads as a page-level cap. It is `mx-auto max-w-md` now — the same choice
+   * app/attendance/requests/page.tsx made and for the same stated reason — so the one-sentence notice
+   * stays centred and narrow while the SCREEN is full width.
+   */
+  'app/attendance/plan-ot/page.tsx',
 ];
 
 // The form pages that are one column of boxes, and keep a comfortable reading width on purpose.
