@@ -1508,14 +1508,20 @@ async function applyStatutorySection(
       const c = String(formData.get('epfCitizenship') ?? 'citizen');
       return c === 'pr' || c === 'non_citizen' ? c : 'citizen';
     })(),
-    // EPF contribution mode (Wave 2B, ADR-0046). The UI surfaces five named categories; mapEpfUiMode
-    // maps them down to the three lawful KWSP enum values + the rates to persist HERE (never trust the
-    // client to send a clean enum). resolveEpfElection() additionally nulls rates for any
-    // non-voluntary_excess mode, so auto/none always persist with both rates null.
+    // EPF contribution mode (Wave 2B, ADR-0046; item 70b14723 / ADR-0087 adds the three fixed-amount
+    // categories). The UI surfaces named categories; mapEpfUiMode maps them down to the FOUR lawful KWSP
+    // enum values plus the rates or amounts to persist HERE (never trust the client to send a clean enum).
+    // It also NULLS whatever the chosen category does not use, which is load-bearing on this form: it is a
+    // full-row overwrite with every input mounted, so a hidden box still posts whatever the previous
+    // category left in it. resolveEpfElection() re-asserts the same nulling server-side and is the only
+    // place that validates (blank-for-a-manual-category, negative, missing reason).
     ...mapEpfUiMode(
       formData.get('epfMode') as string | null,
       formData.get('epfEmployeeRate') as string | null,
       formData.get('epfEmployerRate') as string | null,
+      formData.get('epfEmployeeAmount') as string | null,
+      formData.get('epfEmployerAmount') as string | null,
+      formData.get('epfManualReason') as string | null,
     ),
     // Bank fields RELOCATED to their own Bank Information card with a dedicated partial save (setBankAction,
     // item ef720d3a). This form no longer carries them, but setStatutoryProfileMY is a FULL overwrite of the

@@ -37,6 +37,17 @@ rate is `null` (`payroll.ts` honours that at calculation time). The UI simply na
 
 ### Manual (By Fixed Amount) — DEFERRED
 
+> ⚠️ **REVERSED by [ADR-0087](0087-epf-manual-amount-categories.md) (item 70b14723, r365, migration 0491).**
+> This section is left standing verbatim below rather than edited, so the reversal is auditable. What is now
+> false: that KWSP having no fixed-amount FORM means the system must not be able to state a fixed amount
+> (a pre-1998 grandfathered member's lawful contribution is below today's schedule and nothing here can
+> compute it), and both engineering objections. Kₜ has not been `rate × bonus` since item bdf7d248 — it is
+> the month's lookup minus the same lookup on the normal wage alone, which is 0 for a constant — and the
+> multicycle mis-application is avoided by substituting the amount INSIDE the pack's EPF computation rather
+> than after the kernel's `stComputed`. What remains TRUE: KWSP recognises no below-statutory *rate*
+> election, and `voluntary_excess` still cannot go below the Third Schedule. ADR-0087 carries the working.
+
+
 ADR-0035 §4 already ruled that a fixed RM amount is expressible as the i-Topup *excess* (a **rate**
 election); KWSP has no fixed-amount election. Beyond the legal point, a fixed monthly RM amount has
 real correctness holes in the current kernel: `epfContribution` returns `employeeOnBonus` computed as

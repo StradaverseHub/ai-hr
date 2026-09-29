@@ -79,6 +79,15 @@ export async function saveZakatElectionAction(formData: FormData) {
       epfMode: current.epfMode,
       epfEmployeeRate: num(current.epfEmployeeRate),
       epfEmployerRate: num(current.epfEmployerRate),
+      // Item 70b14723 — AND THE TYPED EPF AMOUNTS + REASON, or this election-only save is a wrong payslip
+      // twice over. `setStatutoryProfileMY` is a FULL-ROW OVERWRITE, so omitting them would (a) null an
+      // employee's standing manual EPF figure, silently putting them back on the Third Schedule from the next
+      // payroll run, and (b) fail outright before it got there — `resolveEpfElection` REFUSES a
+      // 'manual_amount' row with no amount and no reason, so a zakat save would throw for exactly the
+      // employees this round exists for. Same trap the SOCSO/EIS/TP3/bank pass-throughs above guard against.
+      epfEmployeeAmount: num(current.epfEmployeeAmount),
+      epfEmployerAmount: num(current.epfEmployerAmount),
+      epfManualReason: current.epfManualReason,
       bankName: current.bankName ?? undefined,
       bankAccountNo: current.bankAccountNo ?? undefined,
       tp3Year: current.tp3Year,

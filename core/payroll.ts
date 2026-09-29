@@ -3710,6 +3710,14 @@ export async function generatePayslips(
         epfMode: employeeStatutoryMy.epfMode,
         epfEmployeeRate: employeeStatutoryMy.epfEmployeeRate,
         epfEmployerRate: employeeStatutoryMy.epfEmployerRate,
+        // Item 70b14723 — the TYPED monthly EPF amounts, read LIVE on every Process and Reprocess exactly
+        // as every other field in this select is (this config class is not effective-dated). There is no
+        // snapshot to defeat, so a manual amount survives reprocess by construction — and the hazard is the
+        // mirror image: editing an employee's amount and reprocessing a run you had already reviewed WILL
+        // move that run's figures. Only CLOSED runs are protected, by trigger.
+        epfEmployeeAmount: employeeStatutoryMy.epfEmployeeAmount,
+        epfEmployerAmount: employeeStatutoryMy.epfEmployerAmount,
+        epfManualReason: employeeStatutoryMy.epfManualReason,
         dateOfBirth: person.dateOfBirth,
         tp3Year: employeeStatutoryMy.tp3Year,
         tp3Net: employeeStatutoryMy.tp3NetRemuneration,
@@ -6072,10 +6080,17 @@ export async function generatePayslips(
         epfAge: age,
         epfCitizenship: e.epfCitizenship ?? 'citizen',
         // EPF contribution mode (Wave 2B): i-Topup excess / exempt. Rates are decimals; null = statutory.
+        // Item 70b14723 — and 'manual_amount', whose two AMOUNTS (RM, null = that side keeps the rule) the
+        // pack substitutes INSIDE its own EPF computation. That placement is the whole design: read
+        // `manualEpfSide`'s block in localization/my/payroll.ts before moving it. It is what makes the
+        // monthly figure charge ONCE across a regular + bonus pair through `deltaStat` below, with no
+        // `isAdditionalRun` special case here, and what keeps K₁ + Kₜ equal to the employee EPF.
         epfElection: {
           mode: e.epfMode ?? 'auto',
           employeeRate: e.epfEmployeeRate != null ? Number(e.epfEmployeeRate) : null,
           employerRate: e.epfEmployerRate != null ? Number(e.epfEmployerRate) : null,
+          employeeAmount: e.epfEmployeeAmount != null ? Number(e.epfEmployeeAmount) : null,
+          employerAmount: e.epfEmployerAmount != null ? Number(e.epfEmployerAmount) : null,
         },
         // Feedback 017d9c25 (r187) — the pay-item EPF / SOCSO-EIS ticks, carried through as base carve-outs.
         // `wagesExOt` already has `unpaidDeduction` taken off it, so a carve-out can in principle exceed the
@@ -6151,11 +6166,25 @@ export async function generatePayslips(
         zakatOffsetTotal = round2(effectiveZakat + tp1Rebate);
       }
       const earlierRun = earlierRunByEmp.get(e.employmentId) ?? { additional: 0, overtime: 0 };
-      // The baseline option bag for either delta: THIS run's additional-stream carve-outs are dropped,
-      // because the baseline means "the month WITHOUT this run's additional remuneration" and a carve-out
-      // describing money this run is paying must not sit on that side (017d9c25). The wage-side carve-outs
-      // stay on both sides — both calls re-fold the same recurring components.
-      const additionalBaseline = { ...stOpts, epfAdditionalExcluded: 0, socsoWageExtra: 0 };
+      /**
+       * ── Item 70b14723 — THE SAME OPTION BAG WITH THE TYPED EPF AMOUNTS REMOVED ─────────────────────
+       *
+       * `null`, and therefore never built, for every employee who is not on a manual EPF amount — which is
+       * every employee in the product today. When it IS built, `coreFor` is run a second time with it to
+       * get "what would this run have charged if nobody had typed a figure", which is the `system` half of
+       * the payslip stamp the Statutory Detail screen prints beside the applied one.
+       *
+       * IT GOES THROUGH THE SAME DELTA MACHINERY ON PURPOSE. `system` and `applied` have to be the SAME
+       * KIND OF NUMBER or the screen puts a cumulative month beside an increment and calls the pair a
+       * comparison: on a bonus run the applied EPF is 0 (the monthly amount was already charged) and the
+       * system figure has to be that run's own increment, 176, not the month's 1,001. Re-deriving the
+       * schedule figure here by hand would also put the pack's age/citizenship branch selection into the
+       * kernel, which the ADR-0080 ratchet forbids and which would drift the first time Part E moved.
+       */
+      const epfSystemOpts =
+        stOpts.epfElection.employeeAmount != null || stOpts.epfElection.employerAmount != null
+          ? { ...stOpts, epfElection: { ...stOpts.epfElection, employeeAmount: null, employerAmount: null } }
+          : null;
       /**
        * ADR-0085 step 5 — WHAT THE MONTH'S EARLIER RUNS HAVE ALREADY BEEN CHARGED.
        *
@@ -6181,20 +6210,67 @@ export async function generatePayslips(
         for (const k of DELTA_KEYS) out[k] = round2(Number(earlierCum[k] ?? 0) - Number(baseMonth[k] ?? 0));
         return out;
       };
-      const stCore = isAdditionalRun
-        ? deltaStat(
-            computeMonth(earlierRun.additional + bonus, earlierRun.overtime),
-            computeMonth(earlierRun.additional, earlierRun.overtime, effectiveZakat, additionalBaseline),
-          )
-        : restatesMonth
+      /**
+       * THIS RUN'S STATUTORY CHARGE, for a given option bag. Item 70b14723 turned the one expression into a
+       * function of `bases` so the typed-EPF `system` figure is produced by the IDENTICAL arithmetic rather
+       * than by a second copy of it — a copy of three delta shapes is exactly the kind of duplication that
+       * drifts silently on a money path. Called once with `stOpts`, which reproduces the previous
+       * expression call for call and argument for argument.
+       */
+      const coreFor = (bases: typeof stOpts) => {
+        // The baseline option bag for either delta: THIS run's additional-stream carve-outs are dropped,
+        // because the baseline means "the month WITHOUT this run's additional remuneration" and a carve-out
+        // describing money this run is paying must not sit on that side (017d9c25). The wage-side carve-outs
+        // stay on both sides — both calls re-fold the same recurring components. (Item 70b14723 moved this
+        // one line inside `coreFor` when the expression became a function of `bases`; for `bases === stOpts`
+        // it is the identical object the previous `additionalBaseline` const built.)
+        const baseline = { ...bases, epfAdditionalExcluded: 0, socsoWageExtra: 0 };
+        return isAdditionalRun
           ? deltaStat(
-              computeMonth(earlierRun.additional + bonus, round2(earlierRun.overtime + otStat)),
-              chargedByEarlierRuns(
-                computeMonth(earlierRun.additional, earlierRun.overtime, effectiveZakat, additionalBaseline),
-                computeMonth(0, 0, effectiveZakat, additionalBaseline),
-              ),
+              computeMonth(earlierRun.additional + bonus, earlierRun.overtime, undefined, bases),
+              computeMonth(earlierRun.additional, earlierRun.overtime, effectiveZakat, baseline),
             )
-          : computeMonth(bonus, otStat);
+          : restatesMonth
+            ? deltaStat(
+                computeMonth(earlierRun.additional + bonus, round2(earlierRun.overtime + otStat), undefined, bases),
+                chargedByEarlierRuns(
+                  computeMonth(earlierRun.additional, earlierRun.overtime, effectiveZakat, baseline),
+                  computeMonth(0, 0, effectiveZakat, baseline),
+                ),
+              )
+            : computeMonth(bonus, otStat, undefined, bases);
+      };
+      const stCore = coreFor(stOpts);
+      /**
+       * ── Item 70b14723 — THE MANUAL-EPF STAMP: what a person typed, and what the rule would have said ──
+       *
+       * Additive key on the payslip's `statutory` jsonb; no DDL, no amount moves, and a payslip written
+       * before this round simply has no stamp. Present ONLY for an employee actually on a typed amount, and
+       * ONLY for the sides they typed: a `{ system: 0, applied: 0 }` on an untouched side would assert AS
+       * FACT that the rule had produced nothing, which is the wrong-zero the Statutory Detail screen's
+       * header forbids on the one figure a reader is checking the typed amount against.
+       *
+       * A DISTINCT MEMBER FROM `statutory.adjustment`, NOT A SHARED ONE, even though the `{system, applied}`
+       * shape is deliberately the same. A per-run Statutory Adjustment can sit on the SAME payslip as a
+       * standing manual amount — `applyStatutoryAdjustment` runs after this and wins the figure — and the
+       * two must not merge into one stamp that can no longer say which decision produced the number. The
+       * seam that reconciles them for every surface is `statutoryProvenance` (core/statutory-explain.ts).
+       *
+       * NOT a DELTA_KEY and NOT in STATUTORY_LINE_KEYS, for the same reason the adjustment stamp is neither:
+       * `diffPayslipVersions` must go on reporting exactly the nine money lines and never start reporting a
+       * stamp as a movement.
+       */
+      const epfManualStamp = epfSystemOpts
+        ? (() => {
+            const sys = coreFor(epfSystemOpts);
+            const leg = (applied: unknown, system: unknown) => ({ system: round2(Number(system ?? 0)), applied: round2(Number(applied ?? 0)) });
+            return {
+              reason: e.epfManualReason ?? '',
+              ...(stOpts.epfElection.employeeAmount != null ? { employee: leg(stCore.epfEmployee, sys.epfEmployee) } : {}),
+              ...(stOpts.epfElection.employerAmount != null ? { employer: leg(stCore.epfEmployer, sys.epfEmployer) } : {}),
+            };
+          })()
+        : null;
       // ── Feedback 017d9c25 (r187) — THE WORKING BETWEEN the pay items and the answers ──
       // "Today you can see the pay items and you can see the answers, but not the working in between."
       // These are the four figures each agency was actually charged on, for THIS computation (on an
@@ -6233,6 +6309,9 @@ export async function generatePayslips(
       const stComputed = {
         ...stCore,
         bases: statBases,
+        // Item 70b14723 — see `epfManualStamp` above. Key absent for every employee not on a typed amount,
+        // so every other payslip is byte-identical.
+        ...(epfManualStamp ? { epfManual: epfManualStamp } : {}),
         // Stamped so future months' replay can accumulate Z and ∑LP (spec §E.5 / §D.1).
         lp,
         // ── Item 3fa088fb — WHERE LP₁ CAME FROM ────────────────────────────────────────────────────

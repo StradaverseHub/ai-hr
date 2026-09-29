@@ -759,11 +759,17 @@
       "epfModeVoluntary": "Voluntary excess (i-Topup)",
       "epfModeManualPercentage": "Manual (by percentage)",
       "epfModeSemiAuto": "Semi-Auto (employee rate only)",
-      "epfModeManualFixed": "Manual (by fixed amount) — coming soon",
+      "epfModeManualEmployeeAmount": "Manual (Employee by Amount)",
+      "epfModeManualEmployerAmount": "Manual (Employer by Amount)",
+      "epfModeManualBothAmount": "Manual (Employee and Employer by Amount)",
+      "epfModeManualFixed": "Manual (by fixed amount) — RETIRED, replaced by the three Manual (by Amount) categories (item 70b14723)",
       "epfModeExempt": "Exempt (no contribution)",
       "epfEmployeeRate": "Employee rate %",
       "epfEmployerRate": "Employer rate %",
-      "epfElectionHint": "Voluntary excess (i-Topup, KWSP Form 17A/18A) sets a rate at or above the statutory 11%/13%; a blank side stays statutory. Rates only — KWSP has no fixed-amount election. Exempt is for legitimately-exempt employees only.",
+      "epfEmployeeAmount": "Employee amount (RM per month)",
+      "epfEmployerAmount": "Employer amount (RM per month)",
+      "epfManualReason": "Reason for the fixed amount",
+      "epfElectionHint": "Voluntary excess (i-Topup, KWSP Form 17A/18A) sets a rate at or above the statutory 11%/13%; a blank side stays statutory. The Manual (by Amount) categories use an exact ringgit figure instead of a rate, and a reason is required for them. Exempt is for legitimately-exempt employees only.",
       "terminationType": "Termination type",
       "terminationTypeUnspecified": "— Unspecified —",
       "terminationVoluntary": "Voluntary (resignation)",
@@ -1628,7 +1634,9 @@
       "childQualifyingCategoryContradictsDob": "This child’s relief category says under 18, but their date of birth does not. Check the record.",
       "childQualifyingWhyCategory": "Counted because this child’s relief category allows a claim past 18. The tick alone does not qualify a child.",
       "childrenPhysicalDoc": "The number of children who qualify. Form EA item 8, Form E and CP8D read this one.",
-      "childrenQualifyingDoc": "LHDN’s C — a weighting, not a number of people: each child counted as the s.48 units its relief category carries. The monthly PCB calculation and its slip read this one; nothing on Form EA prints it. The relief it produces, RM{perChild} × C, is what Form EA Section D item 6 prints."
+      "childrenQualifyingDoc": "LHDN’s C — a weighting, not a number of people: each child counted as the s.48 units its relief category carries. The monthly PCB calculation and its slip read this one; nothing on Form EA prints it. The relief it produces, RM{perChild} × C, is what Form EA Section D item 6 prints.",
+      "epfManualAmountHint": "Enter the exact monthly EPF contribution in ringgit. It is used from the very first payroll run and on every reprocess. A side left blank keeps the statutory calculation. An amount below the EPF Act schedule is accepted and recorded — the KWSP submission file will carry the true wage against your amount, and the agency is the one who checks them.",
+      "epfManualDraftHint": "The fixed-amount categories (Manual by Amount) are set on the employee’s Bank & Statutory card after the employee is created, because the amount itself is not collected here."
     },
     "import": {
       "title": "Import employees",
@@ -6327,7 +6335,9 @@
       "workingLabel": "Working",
       "workingMtd": "Income tax is not a percentage of the wage. It is worked out from the year's estimated income, the employee's reliefs and the tax table. The full working is on the PCB calculation screen.",
       "workingNilCharge": "Nothing was charged for this item on this payroll run.",
-      "workingNotRecorded": "This run did not record the wage this was charged on, so the working cannot be shown. The amounts below are what was actually deducted and paid."
+      "workingNotRecorded": "This run did not record the wage this was charged on, so the working cannot be shown. The amounts below are what was actually deducted and paid.",
+      "manualBannerBodyElection": "This employee's EPF Category is a fixed monthly amount, entered on their own record under Personnel Management, Bank and Statutory — so no contribution schedule produced this figure. It is applied by every payroll run and reprocess until the category is changed. No percentage is shown for it, because a typed amount has no rate behind it, and the figure the system would have calculated is shown beside the figure that was used. Changing the amount will move any run that is reprocessed afterwards and is not yet closed.",
+      "manualReasonElection": "Reason recorded for the fixed EPF amount"
     },
     "txnImport": {
       "title": {
@@ -6961,7 +6971,7 @@
       "yearHint": "Leave blank to cover every year on file.",
       "apply": "Apply",
       "headline": "{changed} of {compared} employee-months would change, across {periods} company-months that had more than one payroll run.",
-      "verdictBreakdown": "Already computed as one month: {aggregated}. Both readings agree: {agree}. Matched neither reading: {unexplained}.",
+      "verdictBreakdown": "Already computed as one month: {aggregated}. Both readings agree: {agree}. EPF amount set by hand: {manualEpf}. Matched neither reading: {unexplained}.",
       "replayVersion": "Replayed against statutory ruleset version {version}.",
       "totalsTitle": "Totals by statutory item",
       "totalsHint": "“Paid” is the sum of the figures stored on the payslips. “Each run alone” recomputes every run from the bottom of the bands. “Month as one” treats the month as a single statutory computation. “Movement” is what would change, counted only for the employee-months whose paid figures match “each run alone”.",
@@ -7029,7 +7039,8 @@
         "agree": "Both readings give the paid figure",
         "already_aggregated": "Already computed as one month",
         "would_change": "Would change",
-        "unexplained": "Matches neither reading"
+        "unexplained": "Matches neither reading",
+        "manual_epf_amount": "EPF amount set by hand"
       },
       "disposition": {
         "excluded": "Excluded",

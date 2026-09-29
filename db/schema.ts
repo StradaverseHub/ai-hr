@@ -3061,7 +3061,19 @@ export const compensation = pgTable(
 // voluntary_excess = i-Topup election (KWSP Form 17A/18A) at a rate AT OR ABOVE statutory, per side;
 // exempt = no contribution, valid ONLY for legitimately-exempt employees (never to drop a mandatory
 // employee below the s.43 floor). Sourced in docs/wave2-payroll-design.md.
-export const epfModeEnum = pgEnum('epf_mode', ['auto', 'voluntary_excess', 'exempt']);
+//
+// manual_amount (item 70b14723, migration 0491) — the employee's EPF is an exact RINGGIT FIGURE typed on
+// their record, in `epf_employee_amount` / `epf_employer_amount`, used by every Process and Reprocess.
+// THE THREE CATEGORIES THE TICKET NAMES ARE THE THREE COMBINATIONS of (employee amount set, employer
+// amount set) and are DERIVED at render time — the same rule that makes a `voluntary_excess` row with a
+// null employer rate "Semi-Auto" without storing the word. One label, not three.
+//
+// ⚠️ ADR-0046 SAID THERE WAS NO SUCH ELECTION AND THAT CLAIM IS NOW RETIRED, not deleted: it read "KWSP
+// has no fixed-amount election", which is true of what KWSP's FORMS offer and was taken to mean the
+// system must not be able to state one. It cannot survive the pre-1998 grandfathered member, whose lawful
+// contribution is below today's schedule and which nothing in this system can compute
+// (docs/architecture/STATUTORY-SOURCES.md). See docs/adr/0087-epf-manual-amount-categories.md.
+export const epfModeEnum = pgEnum('epf_mode', ['auto', 'voluntary_excess', 'exempt', 'manual_amount']);
 
 // ───────────── Employee statutory profile — Malaysia pack (per-person) ─────────────
 // Pack-owned (localization/my). Statutory identity is per Person, not per Employment.
@@ -3168,6 +3180,32 @@ export const employeeStatutoryMy = pgTable(
     epfMode: epfModeEnum('epf_mode').notNull().default('auto'),
     epfEmployeeRate: numeric('epf_employee_rate', { precision: 5, scale: 4 }),
     epfEmployerRate: numeric('epf_employer_rate', { precision: 5, scale: 4 }),
+    // Item 70b14723 (migration 0491) — THE TYPED MONTHLY EPF AMOUNTS, in RM, read ONLY when epf_mode is
+    // 'manual_amount'. NULL on a side ⇒ that side is still computed by the rule ('a blank side stays
+    // statutory', the rule the elected rates above already follow), which is what makes the ticket's three
+    // categories the three combinations of these two columns rather than three enum labels.
+    //
+    // THE AMOUNT IS APPLIED INSIDE THE PACK'S EPF COMPUTATION (localization/my/payroll.ts `epf` /
+    // `epfContribution`), never after the kernel's `stComputed`. That placement is what makes a MONTHLY
+    // amount charge ONCE across a regular + bonus pair: `deltaStat` takes the month with and without this
+    // run's additional remuneration, and for a constant M both sides are M, so an additional run charges
+    // max(0, M − M) = 0. It also keeps K₁ + Kₜ = the employee EPF exactly, because Kₜ is defined as the
+    // month's lookup minus the same lookup on the normal wage alone and for a constant that difference is
+    // 0 by construction.
+    //
+    // BELOW THE STATUTORY SCHEDULE IS ALLOWED, RECORDED AND WARNED IN WORDS — not refused. The precedent
+    // is the product's own on the identical figure (`saveStatutoryAdjustment` refuses only a negative),
+    // and the lawful case is the pre-1998 grandfathered member. A NEGATIVE is refused at entry, because
+    // `lib/kwsp-borang-a-file.ts`'s `cents()` throws on one at file-generation time — far too late.
+    epfEmployeeAmount: numeric('epf_employee_amount', { precision: 12, scale: 2 }),
+    epfEmployerAmount: numeric('epf_employer_amount', { precision: 12, scale: 2 }),
+    // Item 70b14723 — the operator's MANDATORY words for why this employee's EPF is a fixed figure.
+    // Required by `resolveEpfElection` for a manual_amount row, exactly as `saveStatutoryAdjustment`
+    // requires one per per-run override: a figure that overrules a contribution schedule has to carry
+    // somebody's reasons or an auditor is left with an unexplained number. Nullable in the DDL because it
+    // is meaningless for the other three modes, and because how a row is decided belongs in the service
+    // that decides it (CLAUDE.md §6: keep the column nullable, enforce in the writer).
+    epfManualReason: text('epf_manual_reason'),
     bankName: text('bank_name'),
     bankAccountNo: text('bank_account_no'),
     // Custom payment holder (item ef720d3a). Where a banking restriction requires an employee's salary to be

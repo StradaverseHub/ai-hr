@@ -26,6 +26,15 @@
  *    added a straight percentage of the bonus beside it, which on a RM7,413 + RM1,650.71 month gave
  *    RM1,007/RM1,099 against the schedule's own RM1,001/RM1,092. Item bdf7d248 made the claim true.
  *
+ * ⚠️ IT READS NO PAYSLIP, AND THAT IS WHY `opts` HAS TO BE COMPLETE (item 70b14723). Every figure here is
+ * RE-DERIVED from wages through `statutory()`; nothing consults what a run actually wrote. So any
+ * per-employee election missing from `opts` is an election this module models as absent — and the result is
+ * not an error, it is a plausible wrong number. A manual EPF AMOUNT is the sharpest case: leave
+ * `epfElection.employeeAmount` out and the replay produces the Third Schedule figure, the worksheet finds it
+ * matches neither reading, and `localization/my/multicycle-worksheet.ts` prints a fabricated ringgit
+ * difference as `unexplained` on a document its own header calls one an accountant signs. `statutoryOptsOf`
+ * there is the one builder of this bag and carries the amounts; keep the two moving together.
+ *
  * v1 requires runs[0] to be the regular run (it supplies Y1); later runs are additional remuneration.
  * Reversals/negative deltas are out of scope (clamped ≥ 0) — see ADR-0024 §6.
  *

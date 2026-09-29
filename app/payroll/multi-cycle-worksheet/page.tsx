@@ -120,6 +120,10 @@ export default async function MultiCycleWorksheetPage({
                 {t('verdictBreakdown', {
                   agree: worksheet.verdicts.agree,
                   aggregated: worksheet.verdicts.already_aggregated,
+                  // Item 70b14723 — the fifth verdict is counted here too, or the four numbers on this line
+                  // stop adding up to `employeeMonthsCompared` and a reader has to guess where the rest went.
+                  // On a document an accountant signs, a count that does not reconcile is the whole problem.
+                  manualEpf: worksheet.verdicts.manual_epf_amount,
                   unexplained: worksheet.verdicts.unexplained,
                 })}
               </p>

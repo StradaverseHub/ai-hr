@@ -78,9 +78,68 @@ export type TaxProfile = {
  *                         rate on a side keeps that side statutory (this is the "semi-auto" case).
  *  - 'exempt'           — no contribution, for legitimately-exempt employees ONLY (never a way to
  *                         drop a mandatory employee below the floor).
+ *  - 'manual_amount'     — item 70b14723: an exact RINGGIT FIGURE per side, typed on the employee's own
+ *                         record and used by every Process and Reprocess. A null side is NOT a zero: it
+ *                         keeps that side on the rule this function would otherwise apply, which is the
+ *                         same "a blank side stays statutory" rule the elected rates follow. That is what
+ *                         makes the ticket's three categories — employee only, employer only, both — the
+ *                         three combinations of two nullable amounts rather than three modes.
+ *
+ * ⚠️ 'manual_amount' REVERSES A DEFERRAL, TWICE MADE. ADR-0035 §4 and ADR-0046 both refused it, and
+ * ADR-0046's words were "no KWSP fixed-amount election". RETIRED, NOT DELETED, and the reasoning is in
+ * docs/adr/0087-epf-manual-amount-categories.md: the old claim is true of what KWSP's FORMS offer and
+ * false as a statement about what a lawful contribution can be. A member grandfathered on the pre-1998
+ * rates (docs/architecture/STATUTORY-SOURCES.md) contributes BELOW today's schedule, and nothing in this
+ * system can compute that figure — a typed amount is the only way to state it. So this mode does NOT
+ * floor at statutory; it is the one EPF mode that can go down.
  */
-export type EpfMode = 'auto' | 'voluntary_excess' | 'exempt';
-export type EpfElection = { mode: EpfMode; employeeRate?: number | null; employerRate?: number | null };
+export type EpfMode = 'auto' | 'voluntary_excess' | 'exempt' | 'manual_amount';
+export type EpfElection = {
+  mode: EpfMode;
+  employeeRate?: number | null;
+  employerRate?: number | null;
+  /** Item 70b14723 — the typed monthly employee share in RM. Read ONLY when `mode === 'manual_amount'`;
+   *  null ⇒ that side keeps the rule. */
+  employeeAmount?: number | null;
+  /** Item 70b14723 — the typed monthly employer share in RM. Same reading as `employeeAmount`. */
+  employerAmount?: number | null;
+};
+
+/**
+ * ══ ITEM 70b14723 — THE TYPED AMOUNT, SUBSTITUTED PER SIDE. THE ONE PLACE IT HAPPENS. ══
+ *
+ * Applied INSIDE the EPF computation, on the figures the rule produced, and NOT after the kernel has
+ * composed a payslip from them. Three consequences follow from the placement alone, and only the first is
+ * obvious:
+ *
+ *  1. A MONTHLY AMOUNT IS CHARGED ONCE ACROSS A REGULAR + BONUS PAIR. `deltaStat` (core/payroll.ts) takes
+ *     the month WITH and WITHOUT this run's additional remuneration. For a constant M both sides are M, so
+ *     an additional run charges `max(0, M − M) = 0` and a restating regular run charges `M − 0 = M`. Any
+ *     order, charged once, with no `isAdditionalRun` special case anywhere. Applying it after `stCore`
+ *     instead would slap the whole monthly amount onto the bonus run too — the mis-application ADR-0046
+ *     predicted, and the reason that objection is answered by WHERE this sits rather than by an exception.
+ *  2. K₁ + Kₜ STILL EQUALS THE EMPLOYEE EPF, EXACTLY. Kₜ is not a rate times a bonus (ADR-0046's other
+ *     objection): `epfContribution` defines it as the month's lookup MINUS the same lookup on the normal
+ *     wage alone. Both are M here, through the SAME function, so Kₜ = 0 by construction and K₁ = M.
+ *  3. SAME-MONTH PCB IS COMPUTED ON THE REAL EPF. `statutory()` hands `pcbMonth` the employee EPF as the
+ *     relief leg. After-the-fact substitution would leave month N's PCB on the schedule figure while month
+ *     N+1's accumulator replay folded the typed one, and would make the PCB 2(II) cross-employer report
+ *     (localization/my/reports.ts) manufacture a divergence against the filed PCB.
+ *
+ * NO ROUND-UP TO THE RINGGIT. Every computed EPF figure here is `ceilRinggit`'d because the KWSP Third
+ * Schedule prescribes it; a typed figure is not a schedule reading, and rounding somebody's 500.50 up to
+ * 501 would silently file a number they did not type. `Math.max(0, …)` is defence only — `resolveEpfElection`
+ * refuses a negative at SAVE time, which is where it has to be refused because
+ * `lib/kwsp-borang-a-file.ts`'s `cents()` only throws on one when the submission file is being written.
+ *
+ * NO STATUTORY FLOOR, DELIBERATELY. See the note on `EpfMode` above and the ADR.
+ */
+function manualEpfSide(election: EpfElection | undefined, side: 'employeeAmount' | 'employerAmount'): number | null {
+  if ((election?.mode ?? 'auto') !== 'manual_amount') return null;
+  const v = election?.[side];
+  if (v == null || Number.isNaN(Number(v))) return null;
+  return Math.max(0, round2(Number(v)));
+}
 
 /**
  * Effective EPF rates for a wage given an election, enforcing the statutory FLOOR: an elected rate
@@ -165,6 +224,17 @@ export function epf(
     if (election?.employerRate != null) employer = Math.max(employer, ceilRinggit(base * employerRate));
   }
 
+  // Item 70b14723 — THE TYPED AMOUNT REPLACES THE SCHEDULE READING, per side, last. `max` is deliberately
+  // NOT used: this is the one EPF mode that can go BELOW the Third Schedule, which is the whole point of
+  // it (the pre-1998 grandfathered member). Read `manualEpfSide`'s block for why the substitution lives
+  // here and not after `stComputed` — it is what makes a monthly amount charge once across a bonus pair
+  // and what keeps Kₜ = 0 by construction rather than by a special case. Null on a side ⇒ that side keeps
+  // whatever the lines above produced.
+  const mEmployee = manualEpfSide(election, 'employeeAmount');
+  const mEmployer = manualEpfSide(election, 'employerAmount');
+  if (mEmployee != null) employee = mEmployee;
+  if (mEmployer != null) employer = mEmployer;
+
   return { employee, employer };
 }
 
@@ -187,6 +257,43 @@ function epfFlatSide(base: number, statRate: number, electedRate: number | null 
  * Source: KWSP Jadual Ketiga (1 Oct 2025) + YiWei Law statutory deck (10 Jun 2026, slides 7–9).
  */
 export function epfContribution(
+  wage: number,
+  additional = 0,
+  cfg: StatutoryRuleset['epf'] = DEFAULT_MY_STATUTORY.epf,
+  election?: EpfElection,
+  sel?: { age?: number | null; citizenship?: EpfCitizenship },
+): { employee: number; employer: number; employeeOnBonus: number } {
+  const byRule = epfContributionByRule(wage, additional, cfg, election, sel);
+  // ── Item 70b14723 — THE TYPED AMOUNT, APPLIED ACROSS EVERY RULE BRANCH ──────────────────────────────
+  // `epf()` already substitutes for the Part A path (citizen/PR under 60), which is why the Kₜ difference
+  // below comes out at 0 through the SAME function rather than by a rule written here. This covers the
+  // three branches that never reach `epf()` at all — the non-citizen flat 2%/2%, the citizen 60–<75
+  // Part E, and the age ≥ 75 no-contribution short-circuit. Leaving them out would have made the feature
+  // silently inert for exactly the employees a hand-set figure is most often agreed for, and the
+  // substitution is idempotent, so applying it twice on the Part A path changes nothing.
+  //
+  // ⚠️ IT OVERRIDES THE AGE ≥ 75 ZERO TOO, and that is a decision rather than an oversight. The mode says
+  // "this employee's EPF is this figure"; an admin who typed one for a 76-year-old meant it, and silently
+  // paying 0 against a typed 500 is the half-built-feature failure. The mode is never reached by accident
+  // — it requires a category, an amount and a written reason.
+  const mEmployee = manualEpfSide(election, 'employeeAmount');
+  const mEmployer = manualEpfSide(election, 'employerAmount');
+  if (mEmployee == null && mEmployer == null) return byRule;
+  return {
+    employee: mEmployee ?? byRule.employee,
+    employer: mEmployer ?? byRule.employer,
+    // Kₜ, the employee EPF attributable to the bonus, is "the month's figure minus the same figure on the
+    // normal wage alone". For a CONSTANT M those are the same number, so this is 0 — not a convention, the
+    // subtraction. Which also means K₁ = M: the whole typed amount is claimed as the month's normal-wage
+    // EPF relief in PCB, once, and `employee − employeeOnBonus` still equals it exactly.
+    employeeOnBonus: mEmployee != null ? 0 : byRule.employeeOnBonus,
+  };
+}
+
+/** The contribution the RULE produces — Third Schedule Part A / Part E / the non-citizen flat rate — with
+ *  no typed-amount substitution. Split out of `epfContribution` by item 70b14723 so the typed amount is
+ *  applied in ONE place across all four branches; this is the function `epfContribution` was before it. */
+function epfContributionByRule(
   wage: number,
   additional = 0,
   cfg: StatutoryRuleset['epf'] = DEFAULT_MY_STATUTORY.epf,

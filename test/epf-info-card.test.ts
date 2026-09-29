@@ -16,26 +16,66 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 describe('EPF Info Card (127dffba)', () => {
-  it('mapEpfUiMode still yields only the three lawful enum values (mapping unchanged)', () => {
-    const lawful = new Set(['auto', 'voluntary_excess', 'exempt']);
-    for (const ui of ['auto', 'manual_percentage', 'semi_auto', 'manual_fixed', 'none', 'garbage', null, undefined]) {
+  /**
+   * ══ ITEM 70b14723 — WHAT THIS TEST USED TO CLAIM, AND WHICH HALF IS NOW FALSE ══
+   *
+   * Quoted so the reversal is auditable rather than invisible in a diff. The name was:
+   *
+   *     it('mapEpfUiMode still yields only the three lawful enum values (mapping unchanged)', …)
+   *         const lawful = new Set(['auto', 'voluntary_excess', 'exempt']);
+   *         // Deferred fixed-amount coerces defensively to auto.
+   *         expect(mapEpfUiMode('manual_fixed', 500, 500).epfMode).toBe('auto');
+   *
+   * THERE ARE FOUR LAWFUL VALUES NOW, not three: migration 0491 added `manual_amount` and ADR-0087 reverses
+   * the deferral ADR-0035 §4 and ADR-0046 made. 127dffba's OWN invariant — that the mapper can never produce
+   * a value the enum cannot store — is what this test was really for, and it is unchanged and still pinned;
+   * it is the LIST that moved. The `manual_fixed` coercion stays asserted, for the reason 127dffba wrote it:
+   * that literal was the disabled "coming soon" option, names no side and carries no figure.
+   */
+  it('mapEpfUiMode still yields only LAWFUL enum values (four of them since 0491)', () => {
+    const lawful = new Set(['auto', 'voluntary_excess', 'exempt', 'manual_amount']);
+    for (const ui of [
+      'auto',
+      'manual_percentage',
+      'semi_auto',
+      'manual_fixed',
+      'manual_employee_amount',
+      'manual_employer_amount',
+      'manual_both_amount',
+      'none',
+      'garbage',
+      null,
+      undefined,
+    ]) {
       const { epfMode } = mapEpfUiMode(ui, null, null);
       expect(lawful.has(epfMode), `${String(ui)} -> ${epfMode}`).toBe(true);
     }
-    // Spot-check the three canonical shapes are preserved.
+    // …and the list is the DB enum's own, read from the schema, so the two cannot drift apart.
+    const schemaSrc = read('db/schema.ts');
+    const decl = schemaSrc.slice(schemaSrc.indexOf("pgEnum('epf_mode'"));
+    for (const v of lawful) expect(decl.slice(0, 200), `${v} is a stored epf_mode label`).toContain(`'${v}'`);
+    // Spot-check the canonical shapes are preserved.
     expect(mapEpfUiMode('auto', null, null).epfMode).toBe('auto');
-    expect(mapEpfUiMode('manual_percentage', 11, 13)).toEqual({ epfMode: 'voluntary_excess', epfEmployeeRate: 0.11, epfEmployerRate: 0.13 });
-    expect(mapEpfUiMode('semi_auto', 11, null)).toEqual({ epfMode: 'voluntary_excess', epfEmployeeRate: 0.11, epfEmployerRate: null });
+    expect(mapEpfUiMode('manual_percentage', 11, 13)).toMatchObject({ epfMode: 'voluntary_excess', epfEmployeeRate: 0.11, epfEmployerRate: 0.13 });
+    expect(mapEpfUiMode('semi_auto', 11, null)).toMatchObject({ epfMode: 'voluntary_excess', epfEmployeeRate: 0.11, epfEmployerRate: null });
     expect(mapEpfUiMode('none', null, null).epfMode).toBe('exempt');
-    // Deferred fixed-amount coerces defensively to auto.
+    // The RETIRED literal still coerces defensively to auto — see the block above.
     expect(mapEpfUiMode('manual_fixed', 500, 500).epfMode).toBe('auto');
   });
 
-  it('EPF Category dropdown no longer offers the manual_fixed option', () => {
+  it('EPF Category dropdown no longer offers the manual_fixed option, and does offer the three named ones', () => {
     const src = read('components/epf-election.tsx');
     expect(src).not.toMatch(/<option[^>]*value="manual_fixed"/);
-    // The other four categories remain.
-    for (const v of ['auto', 'manual_percentage', 'semi_auto', 'none']) {
+    // The other four categories remain, plus 70b14723's three.
+    for (const v of [
+      'auto',
+      'manual_percentage',
+      'semi_auto',
+      'none',
+      'manual_employee_amount',
+      'manual_employer_amount',
+      'manual_both_amount',
+    ]) {
       expect(src, v).toMatch(new RegExp(`<option value="${v}"`));
     }
   });

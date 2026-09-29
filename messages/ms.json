@@ -759,11 +759,17 @@
       "epfModeVoluntary": "Lebihan sukarela (i-Topup)",
       "epfModeManualPercentage": "Manual (mengikut peratusan)",
       "epfModeSemiAuto": "Separa-Auto (kadar pekerja sahaja)",
-      "epfModeManualFixed": "Manual (jumlah tetap) — akan datang",
+      "epfModeManualEmployeeAmount": "Manual (Pekerja mengikut Jumlah)",
+      "epfModeManualEmployerAmount": "Manual (Majikan mengikut Jumlah)",
+      "epfModeManualBothAmount": "Manual (Pekerja dan Majikan mengikut Jumlah)",
+      "epfModeManualFixed": "Manual (mengikut jumlah tetap) — DIBERSARAKAN, digantikan oleh tiga kategori Manual (mengikut Jumlah)",
       "epfModeExempt": "Dikecualikan (tiada caruman)",
       "epfEmployeeRate": "Kadar pekerja %",
       "epfEmployerRate": "Kadar majikan %",
-      "epfElectionHint": "Lebihan sukarela (i-Topup, Borang KWSP 17A/18A) menetapkan kadar pada atau melebihi kadar berkanun 11%/13%; bahagian kosong kekal berkanun. Kadar sahaja — KWSP tiada pilihan jumlah tetap. Pengecualian untuk pekerja yang benar-benar dikecualikan sahaja.",
+      "epfEmployeeAmount": "Jumlah pekerja (RM sebulan)",
+      "epfEmployerAmount": "Jumlah majikan (RM sebulan)",
+      "epfManualReason": "Sebab bagi jumlah tetap",
+      "epfElectionHint": "Lebihan sukarela (i-Topup, Borang KWSP 17A/18A) menetapkan kadar pada atau melebihi kadar berkanun 11%/13%; bahagian kosong kekal berkanun. Kategori Manual (mengikut Jumlah) menggunakan jumlah ringgit yang tepat dan bukan kadar, dan sebab adalah wajib bagi kategori tersebut. Pengecualian untuk pekerja yang benar-benar dikecualikan sahaja.",
       "terminationType": "Jenis penamatan",
       "terminationTypeUnspecified": "— Tidak dinyatakan —",
       "terminationVoluntary": "Sukarela (peletakan jawatan)",
@@ -1628,7 +1634,9 @@
       "childQualifyingCategoryContradictsDob": "Kategori pelepasan anak ini menyatakan bawah 18 tahun, tetapi tarikh lahirnya tidak. Sila semak rekod.",
       "childQualifyingWhyCategory": "Dikira kerana kategori pelepasan anak ini membenarkan tuntutan selepas umur 18. Tanda sahaja tidak melayakkan seseorang anak.",
       "childrenPhysicalDoc": "Bilangan anak yang layak. Borang EA item 8, Borang E dan CP8D membaca yang ini.",
-      "childrenQualifyingDoc": "C LHDN — satu pemberat, bukan bilangan orang: setiap anak dikira sebagai unit s.48 yang dibawa oleh kategori pelepasannya. Pengiraan PCB bulanan dan slipnya membaca yang ini; tiada apa-apa pada Borang EA mencetaknya. Pelepasan yang terhasil, RM{perChild} × C, ialah apa yang dicetak oleh Borang EA Seksyen D item 6."
+      "childrenQualifyingDoc": "C LHDN — satu pemberat, bukan bilangan orang: setiap anak dikira sebagai unit s.48 yang dibawa oleh kategori pelepasannya. Pengiraan PCB bulanan dan slipnya membaca yang ini; tiada apa-apa pada Borang EA mencetaknya. Pelepasan yang terhasil, RM{perChild} × C, ialah apa yang dicetak oleh Borang EA Seksyen D item 6.",
+      "epfManualAmountHint": "Masukkan caruman KWSP bulanan yang tepat dalam ringgit. Ia digunakan dari proses gaji yang pertama dan pada setiap proses semula. Bahagian yang dibiarkan kosong kekal menggunakan pengiraan berkanun. Jumlah di bawah jadual Akta KWSP diterima dan direkodkan — fail penghantaran KWSP akan membawa upah sebenar berserta jumlah anda, dan pihak agensi yang akan menyemaknya.",
+      "epfManualDraftHint": "Kategori jumlah tetap (Manual mengikut Jumlah) ditetapkan pada kad Bank & Statutori pekerja selepas pekerja dicipta, kerana jumlah itu sendiri tidak dikumpulkan di sini."
     },
     "import": {
       "title": "Import pekerja",
@@ -6327,7 +6335,9 @@
       "workingLabel": "Kiraan",
       "workingMtd": "Cukai pendapatan bukan peratusan daripada upah. Ia dikira daripada anggaran pendapatan setahun, pelepasan pekerja dan jadual cukai. Kiraan penuh ada pada skrin kiraan PCB.",
       "workingNilCharge": "Tiada caj bagi item ini pada larian gaji ini.",
-      "workingNotRecorded": "Larian ini tidak merekodkan upah yang dikenakan, jadi kiraannya tidak dapat ditunjukkan. Jumlah di bawah ialah apa yang benar-benar dipotong dan dibayar."
+      "workingNotRecorded": "Larian ini tidak merekodkan upah yang dikenakan, jadi kiraannya tidak dapat ditunjukkan. Jumlah di bawah ialah apa yang benar-benar dipotong dan dibayar.",
+      "manualBannerBodyElection": "Kategori KWSP pekerja ini ialah jumlah bulanan tetap, dimasukkan pada rekod mereka sendiri di bawah Pengurusan Personel, Bank dan Statutori — jadi tiada jadual caruman menghasilkan angka ini. Ia digunakan oleh setiap proses gaji dan proses semula sehingga kategori itu ditukar. Tiada peratusan ditunjukkan untuknya, kerana jumlah yang ditaip tidak mempunyai kadar di belakangnya, dan angka yang sepatutnya dikira oleh sistem ditunjukkan di sebelah angka yang digunakan. Menukar jumlah itu akan mengubah mana-mana proses yang diproses semula selepas itu dan belum ditutup.",
+      "manualReasonElection": "Sebab yang direkodkan bagi jumlah KWSP tetap"
     },
     "txnImport": {
       "title": {
@@ -6961,7 +6971,7 @@
       "yearHint": "Biarkan kosong untuk merangkumi setiap tahun dalam rekod.",
       "apply": "Guna",
       "headline": "{changed} daripada {compared} bulan-pekerja akan berubah, merentasi {periods} bulan-syarikat yang mempunyai lebih daripada satu larian gaji.",
-      "verdictBreakdown": "Sudah dikira sebagai satu bulan: {aggregated}. Kedua-dua bacaan sepadan: {agree}. Tidak sepadan dengan mana-mana bacaan: {unexplained}.",
+      "verdictBreakdown": "Telah dikira sebagai satu bulan: {aggregated}. Kedua-dua bacaan sepadan: {agree}. Jumlah KWSP ditetapkan secara manual: {manualEpf}. Tidak sepadan dengan mana-mana bacaan: {unexplained}.",
       "replayVersion": "Dimainkan semula terhadap versi set peraturan berkanun {version}.",
       "totalsTitle": "Jumlah mengikut item berkanun",
       "totalsHint": "“Dibayar” ialah jumlah angka yang tersimpan pada slip gaji. “Setiap larian berasingan” mengira semula setiap larian dari bawah jadual. “Sebulan sekali kira” menganggap bulan itu sebagai satu pengiraan berkanun. “Perubahan” ialah apa yang akan berubah, dikira hanya untuk bulan-pekerja yang angka dibayarnya sepadan dengan “setiap larian berasingan”.",
@@ -7029,7 +7039,8 @@
         "agree": "Kedua-dua bacaan memberi angka yang dibayar",
         "already_aggregated": "Sudah dikira sebagai satu bulan",
         "would_change": "Akan berubah",
-        "unexplained": "Tidak sepadan dengan mana-mana bacaan"
+        "unexplained": "Tidak sepadan dengan mana-mana bacaan",
+        "manual_epf_amount": "Jumlah KWSP ditetapkan secara manual"
       },
       "disposition": {
         "excluded": "Dikecualikan",
