@@ -1207,7 +1207,13 @@ export type EaStatement = {
     epfNo: string | null;
     socsoNo: string | null;
     category: number;
-    children: number;
+    /**
+     * A.8 — C, the NUMBER OF QUALIFYING CHILDREN in LHDN's own sense: the s.48-weighted figure, not a
+     * count of child records (r359, reversing r351/r353 — see the derivation in `eaStatement`). NULL
+     * when the year's slips carry no stamped relief, which is the same condition that leaves D.6 empty:
+     * the two boxes are one fact and are absent together.
+     */
+    children: number | null;
     hiredOn: string;
     terminatedOn: string | null;
     /** 6036dab7 — three Part A particulars the customer's field mapping asks for. All three already
@@ -1482,10 +1488,6 @@ export async function eaStatement(
      * none. Printing the stale `num_children` beside a D.6 of nothing would put two contradictory answers
      * on one page; CLAUDE.md §8, the count follows the money.
      */
-    const eaQualifyingChildren =
-      info.childReliefMode === 'auto_table'
-        ? childReliefTableHeadCount(info.childReliefTable as Record<string, { full?: unknown; half?: unknown }> | null)
-        : (info.children ?? 0);
     // ── Part A's Jawatan — r209 fix: IT MUST SURVIVE TERMINATION ─────────────────────────────────────
     // 6036dab7 read this off the OPEN assignment (`valid_to IS NULL`), copying cp39FormExtras, which asks
     // about a serving preparer. An EA is chiefly issued to LEAVERS, and terminateEmploymentTx closes the
@@ -1692,6 +1694,40 @@ export async function eaStatement(
         }
       }
     }
+
+    // ══ r359 fda53352 rev 7 · A.8 IS C, AND C IS NOT A HEAD COUNT. TWO OF OUR ROUNDS SAID OTHERWISE ══
+    //
+    // ⚠️ THE CLAIM ABOVE IS REVERSED, AND THE REPORTER WAS RIGHT BOTH TIMES THEY SAID SO. r351 answered
+    // "A.8 is correct as a count" and r353 refined that per mode; the reasoning in the block above reads
+    // "Bilangan anak" as a count of child records. LHDN's own specification settles it the other way:
+    //
+    //   printed p.10 — the variable list for the P formula: "Q  Deduction for qualifying children" and
+    //   "C  Number of qualifying children", with the formula carrying the term QC (that is Q x C);
+    //   printed p.11 — "Value of C = Number of qualifying children", restated per category;
+    //   printed p.27 — the category table's OWN column heading: "Relief to be given AS IF THE EMPLOYEE
+    //   HAS THIS NUMBER OF CHILDREN", 4 / 4 / 4 / 8.
+    //
+    // So the agency's "number of qualifying children" IS the weighted figure, and A.8 asks for it in the
+    // same words. For one disabled child in higher education plus one child under 18, C is 9, not 2.
+    //
+    // DERIVED FROM THE MONEY THE KERNEL ACTUALLY ALLOWED, WHICH IS WHAT MAKES THE FORM CHECKABLE.
+    // `childReliefFromPayroll` below is `pcbMeta.reliefs.children` off the year's last stamped slip — the
+    // annual, s.48-weighted relief that was netted off P, and the figure D.6 prints. C is that over the
+    // per-child deduction, so A.8 x RM2,000 === D.6 BY CONSTRUCTION rather than by two derivations
+    // agreeing. It is also why this is not a second reading of the family register: the register can have
+    // moved since the year was paid, and the form is about the year.
+    //
+    // ⚠️ ABSENT WHEN D.6 IS ABSENT, and that is the coherent answer rather than a missing feature. A slip
+    // written before item 169e3c24 carries no `reliefs`, and a flat-rate snapshot has none by
+    // construction; D.6 already leaves the box empty in both cases. Printing a head count beside an empty
+    // D.6 is exactly the "two contradictory answers on one page" the reversed block above warned about —
+    // the warning was right even though its conclusion was not. CLAUDE.md §8: an absent box asserts
+    // nothing.
+    //
+    // `childReliefTableHeadCount` is no longer read HERE. It is still exported and still used by the
+    // screens that legitimately want a head count; A.8 is not one of them.
+    const eaQualifyingChildren =
+      childReliefFromPayroll == null ? null : round2(childReliefFromPayroll / DEFAULT_MY_STATUTORY.pcb.reliefs.perChild);
     // ── 1.2.6 EA Data Overwrite — overlay HR's EA-only amendments onto the payroll-derived figures ──
     // EA-ONLY: nothing above touched payroll; this only rewrites the figures the EA form renders. Read the
     // override rows for (employment, year), apply each to its field, then recompute partB.gross from the

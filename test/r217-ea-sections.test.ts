@@ -60,8 +60,31 @@ describe('da4fc817 — Section D carries all six of the official form lines', ()
     // The LAST month's figure, so the query it is read from must be ordered. CLAUDE.md §8 forbids
     // reading "the last" off an unordered result, and every other figure here is a sum that did not care.
     expect(reports, 'the slips query must ORDER BY the pay period').toContain('.orderBy(payrollBatch.payPeriod)');
-    // A.8 is the COUNT and must stay one — the r343 head-count decision is not touched by this.
-    expect(read('lib/ea-pdf.ts'), 'A.8 must still print the head count').toContain('String(d.employee.children)');
+    // ⚠️ REVERSED IN r359 (fda53352 rev 7), AND IT WOULD HAVE GONE ON PASSING WHILE SAYING THE OPPOSITE.
+    // This line read:
+    //     // A.8 is the COUNT and must stay one — the r343 head-count decision is not touched by this.
+    //     expect(read('lib/ea-pdf.ts'), 'A.8 must still print the head count')
+    //       .toContain('String(d.employee.children)');
+    // The expression it greps for is still in the file — only its SOURCE changed — so the assertion
+    // survived the reversal untouched and kept asserting a head count in its message. That is the
+    // "prose outlives the kernel" trap in a test rather than a comment.
+    //
+    // The reporter was right and two of our rounds were wrong. LHDN's specification, printed p.10:
+    // "Q  Deduction for qualifying children", "C  Number of qualifying children", formula term QC; and
+    // printed p.27's table is headed "Relief to be given AS IF THE EMPLOYEE HAS THIS NUMBER OF
+    // CHILDREN". So A.8 is C, the weighted figure. It is derived from the SAME stamped relief D.6
+    // prints, which is what makes A.8 x RM2,000 === D.6 by construction rather than by agreement.
+    const reportsSrc = read('localization/my/reports.ts');
+    expect(reportsSrc, 'A.8 is derived from the relief, not from num_children').toMatch(
+      /eaQualifyingChildren\s*=\s*\n?\s*childReliefFromPayroll == null \? null :/,
+    );
+    expect(reportsSrc, 'and it divides by the ruleset per-child figure, never a literal 2000').toContain(
+      'DEFAULT_MY_STATUTORY.pcb.reliefs.perChild',
+    );
+    // Absent when D.6 is absent — the two boxes are one fact.
+    expect(read('lib/ea-pdf.ts'), 'a null C prints an empty rule, not a zero').toContain(
+      "blank || d.employee.children == null ? '' : String(d.employee.children)",
+    );
   });
 
   it('the TP1 line is DERIVED through the one counting rule, not summed a second time', () => {

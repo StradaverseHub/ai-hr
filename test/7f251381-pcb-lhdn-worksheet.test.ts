@@ -150,7 +150,12 @@ describe('7f251381 — each LHDN symbol prints the figure the run recorded under
     ['S', (x) => x.reliefs.spouse],
     ['Du', (x) => x.reliefs.disabledIndividual],
     ['Su', (x) => x.reliefs.disabledSpouse],
-    ['Q', (x) => x.reliefs.children],
+    // ⚠️ r359 fda53352 — Q IS NO LONGER THE TOTAL. It mapped to `x.reliefs.children`, the RM child
+    // relief; LHDN's specification, printed p.10, defines "Q  Deduction for qualifying children" and
+    // "C  Number of qualifying children" with the formula carrying Q x C, so Q is the PER-CHILD figure
+    // and the total is their product. The product has its own row, asserted below.
+    ['Q', (x) => (x.kind === 'mtd' && x.trace != null ? x.trace.childDeductionPerChild : 0)],
+    ['QC', (x) => x.reliefs.children],
     ['ΣLP', (x) => x.trace!.lpAccumulated],
     ['LP1', (x) => x.trace!.lpCurrent],
     ['P', (x) => x.chargeableIncome],
@@ -549,7 +554,7 @@ describe('7f251381 — every caption the sheet resolves exists in all six catalo
     'worksheetIncomeHeading', 'worksheetIncomeNote', 'worksheetY', 'worksheetSumYK', 'worksheetK',
     'worksheetY1', 'worksheetK1', 'worksheetY2', 'worksheetK2', 'worksheetN',
     'worksheetAdditionalHeading', 'worksheetYt', 'worksheetKt', 'worksheetK2t',
-    'worksheetReliefHeading', 'worksheetD', 'worksheetS', 'worksheetDu', 'worksheetSu', 'worksheetQ',
+    'worksheetReliefHeading', 'worksheetD', 'worksheetS', 'worksheetDu', 'worksheetSu', 'worksheetQ', 'worksheetQc',
     'worksheetC', 'worksheetLpAccumulated', 'worksheetLpCurrent',
     'worksheetBracketHeading', 'worksheetP', 'worksheetP2', 'worksheetM', 'worksheetR', 'worksheetB',
     'worksheetTaxOnP',

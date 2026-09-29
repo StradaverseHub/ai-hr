@@ -82,6 +82,7 @@ export type PcbTrace = {
   /** s.48 category the B column came from, and the child COUNT behind the child-relief amount. */
   category: number;
   childCount: number;
+  childDeductionPerChild: number;
   /** The remuneration legs of P. Y₂ = Y₁ by construction (the projection repeats the current month). */
   Y1: number;
   K1: number;
@@ -269,6 +270,7 @@ function readTrace(raw: unknown): PcbTrace | null {
     taxOnP1: n(t.taxOnP1),
     category: n(t.category),
     childCount: n(t.childCount),
+    childDeductionPerChild: n(t.childDeductionPerChild),
     Y1: n(t.Y1),
     K1: n(t.K1),
     Y2: n(t.Y2),
@@ -700,8 +702,14 @@ export function pcbWorksheet(x: PcbExplanation, previous: PcbPreviousEmployment 
     { symbol: 'S', caption: 'worksheetS', value: money(x.reliefs.spouse) },
     { symbol: 'Du', caption: 'worksheetDu', value: money(x.reliefs.disabledIndividual) },
     { symbol: 'Su', caption: 'worksheetSu', value: money(x.reliefs.disabledSpouse) },
-    { symbol: 'Q', caption: 'worksheetQ', value: money(x.reliefs.children) },
+    // ⚠️ r359 fda53352 — Q AND C NOW MEAN WHAT THE SPECIFICATION SAYS THEY MEAN. Q printed
+    // `reliefs.children`, the RM TOTAL, and C printed the count of child records; printed p.10 defines
+    // "Q  Deduction for qualifying children" and "C  Number of qualifying children" with the formula
+    // carrying Q x C, so the slip's own two letters did not multiply to the relief beside them. The
+    // product is printed too, because a reader checking the arithmetic should not have to do it.
+    { symbol: 'Q', caption: 'worksheetQ', value: t ? money(t.childDeductionPerChild) : { kind: 'notRecorded' } },
     { symbol: 'C', caption: 'worksheetC', value: t ? { kind: 'count', count: t.childCount } : { kind: 'notRecorded' } },
+    { symbol: 'QC', caption: 'worksheetQc', value: money(x.reliefs.children) },
     { symbol: 'ΣLP', caption: 'worksheetLpAccumulated', value: fromTrace(t, (v) => v.lpAccumulated) },
     { symbol: 'LP1', caption: 'worksheetLpCurrent', value: fromTrace(t, (v) => v.lpCurrent) },
   ];
@@ -893,6 +901,8 @@ export function pcbChildSection(
   p: PcbChildProfile | null,
   reliefChildren: PcbWorksheetValue,
   childCount: PcbWorksheetValue,
+  /** r359 — Q, the deduction for ONE qualifying child. See the Q/C note on the worksheet rows. */
+  childDeductionPerChild: PcbWorksheetValue,
 ): PcbSlipSection {
   const grid = p != null && p.mode === 'auto_table' ? p.table : null;
   const rows: PcbSlipRow[] = PCB_CHILD_CATEGORIES.map((c) => {
@@ -916,8 +926,11 @@ export function pcbChildSection(
     third: { kind: 'count', count: c.qc },
     };
   });
+  // r359 — the same correction as the worksheet: Q is the per-child deduction, C is the weighted number
+  // of qualifying children, and the product is the relief that was applied. Q used to print the total.
   rows.push({ line: 'C', caption: 'slipChildCount', ns: 'pcbDetail', first: childCount });
-  rows.push({ line: 'Q', caption: 'slipChildRelief', ns: 'pcbDetail', first: reliefChildren });
+  rows.push({ line: 'Q', caption: 'slipChildRelief', ns: 'pcbDetail', first: childDeductionPerChild });
+  rows.push({ line: 'QC', caption: 'slipChildReliefTotal', ns: 'pcbDetail', first: reliefChildren });
   rows.push({ line: '', caption: 'slipDisabledIndividual', ns: 'pcbDetail', first: slipYesNo(p?.disabledIndividual) });
   rows.push({ line: '', caption: 'slipDisabledSpouse', ns: 'pcbDetail', first: slipYesNo(p?.disabledSpouse) });
   return {
@@ -1209,6 +1222,7 @@ export function pcbSlipSections(
       p.profile,
       slipMoney(x.reliefs.children),
       t ? { kind: 'count', count: t.childCount } : SLIP_ABSENT,
+      t ? slipMoney(t.childDeductionPerChild) : SLIP_ABSENT,
     ),
     // 4 — what a previous employer already deducted, itemised. The ACCUMULATED side of the reporter's
     // section 4: TP3 Section D, keyed exactly as `tp1_relief.categories.items` is.

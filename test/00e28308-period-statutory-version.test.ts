@@ -93,6 +93,10 @@ const GOLDEN_STATUTORY = {
       Z: 0,
       category: 1,
       childCount: 0,
+      // r359 — Q joined the trace when the slip's Q and C were corrected to the spec's meanings. This
+      // exact-shape guard is what forces that to be noticed rather than absorbed, which is the same
+      // service it did for `ytdGross` in r354.
+      childDeductionPerChild: 2000,
       lpAccumulated: 0,
       lpCurrent: 0,
       mtdAdditionalCalc: 0,
