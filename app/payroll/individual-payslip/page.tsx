@@ -136,6 +136,9 @@ import { payslipSkbbkLineShown, payslipSkbbkSubject } from '@/core/payslip-skbbk
 // 3c88d593 — the part of the month THIS employer employed the person for, when a mid-month entity
 // transfer split it. Null on every other payslip ⇒ this screen renders exactly as it did before.
 import { payslipSegmentOf } from '@/core/payslip-segment';
+// r360 — the ONE rule that decides whether a payslip's cycle reads "Monthly" or "Regular", shared with
+// lib/payslip-pdf-strings.ts so the screen, the preview and the downloaded file all print one answer.
+import { payslipCycleLabel } from '@/core/payslip-cycle-label';
 import { payrollPublicationState, PAYROLL_PUBLICATION_PILL } from '@/lib/payroll-publication';
 import { payslipProvenance } from '@/core/payslip-recompute';
 import { payrollProcessBack } from '../back';
@@ -258,6 +261,10 @@ export default async function IndividualPayslipPage({
   // 6b4ca488 — the Statutory Explanation's own namespace, shared with /payroll/statutory-detail, its
   // export route and Transaction View's ?tab=statutory. One catalogue block per display.
   const tStat = await getTranslations('payroll.statutoryDetail');
+  // r360 — the "Reg. no." caption for the letterhead, from the namespace that OWNS the company
+  // registration number (Organization → General). The same key `lib/payslip-pdf-strings.ts` resolves for
+  // the document, so the screen and the file cannot label one number two different ways.
+  const tOrg = await getTranslations('admin.organization');
   const locale = await getLocale();
   const sp = await searchParams;
   // 9066bd6c — Back to the Payroll Process list, as it was left (year, months, company, cycle, status
@@ -599,7 +606,21 @@ export default async function IndividualPayslipPage({
                   />
                 )}
                 <h1 className="text-lg font-semibold tracking-tight">{row.company}</h1>
-                {row.companyReg && <p className="text-xs text-muted-foreground">{row.companyReg}</p>}
+                {/* r360 (1fe55a23) — THE REGISTRATION NUMBER NOW SAYS WHAT IT IS.
+                    It has always been drawn here, directly under the legal name, but with no caption at
+                    all: the reader met a bare "201901024512" under a company name, which is how an
+                    unidentified number on a payroll document gets read as an amount. (The DOCUMENT had the
+                    same line and a96d320c rev 3 removed it rather than label it; r360 labels both, so the
+                    screen and the file it downloads now agree.) `admin.organization.regNo` is the caption
+                    the screen that owns the field already uses — not a new key.
+                    ABSENT ⇒ NO LINE, not an empty caption and not a dash: `company.registration_no` is
+                    nullable and most companies on production carry none, and a printed "Reg. no. —" would
+                    assert that we looked and there is none. */}
+                {row.companyReg && (
+                  <p className="text-xs text-muted-foreground">
+                    {tOrg('regNo')} {row.companyReg}
+                  </p>
+                )}
                 <p className="mt-1 text-sm text-muted-foreground">
                   {t('payPeriodLine', { period: monthYear(row.payPeriod, locale) })}
                   {row.payDate ? ` · ${t('payDateLine', { date: row.payDate })}` : ''}
@@ -687,7 +708,22 @@ export default async function IndividualPayslipPage({
               />
               <Info label={t('fieldCurrency')} value={row.currency} />
               <Info label={t('fieldDaysWorked')} value={row.daysWorked ?? '—'} />
-              <Info label={t('fieldCycle')} value={tTxn(`individual.cycle.${row.runType}`)} />
+              {/* r360 (1fe55a23) — THE COMPANY'S OWN PAY CYCLE NAME, not the kernel's run-type word.
+                  "Regular" is `payroll_batch.run_type`, one of four fixed behavioural types the kernel
+                  gates on and nobody in the company chose; "Monthly" is `payroll_cycle.name`, the label the
+                  Payroll Process wizard offered when this run was opened (ADR-0069). The reporter asked for
+                  the second one on the payslip.
+                  RESOLVED THROUGH THE SHARED RULE, not inline: `payslipCycleLabel` is the same function
+                  lib/payslip-pdf-strings.ts calls for the letterhead subtitle, so the downloaded file and
+                  this screen can never disagree about which word a payslip's cycle is called.
+                  NO CYCLE ⇒ the run-type word, exactly as this field printed before r360. */}
+              <Info
+                label={t('fieldCycle')}
+                value={payslipCycleLabel({
+                  cycleName: row.cycleName,
+                  runTypeLabel: tTxn(`individual.cycle.${row.runType}`),
+                })}
+              />
             </dl>
           </Block>
 

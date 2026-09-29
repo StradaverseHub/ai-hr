@@ -53,6 +53,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ payslipI
     payDate: p.payDate,
     ytdYear: year,
     runType: p.runType,
+    // r360 — the configured Pay Cycle's NAME, so the letterhead reads "Payroll payslip · Monthly" instead
+    // of the kernel's run-type word. `payslipPdfStrings` runs it through the ONE shared rule
+    // (core/payslip-cycle-label.ts) that the Individual Payslip screen also calls, and falls back to the
+    // run-type word for a batch that names no cycle — which is most batches on production.
+    cycleName: p.cycleName,
     employmentType: p.employmentType,
     paymentMethod: p.paymentMethod,
     // 3c88d593 — when a mid-month entity transfer split the month, the document says which days it paid.

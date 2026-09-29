@@ -1738,35 +1738,73 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
     return rules[0].y1;
   };
 
-  it('prints NO unidentified number in the header — and the letterhead is the SAME HEIGHT without one', async () => {
-    // `data.companyReg` is '202301000001 (1400001-A)'. It used to be drawn under the subtitle with no
-    // label at all, so the reader met a bare figure under the company name and nothing said what it was.
-    // Production carries one on 2 of 5 companies, so it appeared on some payslips and not others.
+  /**
+   * ─── REWRITTEN BY r360 (feedback 1fe55a23), NOT RELAXED — READ THIS BEFORE CHANGING IT BACK ───
+   *
+   * This case used to assert that the registration number was OFF the document entirely, and that the
+   * letterhead was the same height either way. Both halves were right on a96d320c's own terms and neither
+   * survives r360, because what the reporter objected to then was an UNIDENTIFIED number: `201901024512`
+   * drawn under the company name with no caption, on 2 of 5 production companies, so the same document
+   * printed a bare figure for some employees and not for others. a96d320c's own note ended "do not re-add
+   * it to the letterhead without a label beside it" — and the reporter has now asked for exactly that,
+   * labelled "Reg. no." and directly below the company name.
+   *
+   * So the assertion becomes the LABEL, and the height rule inverts in the one direction that is honest:
+   * the band is 12pt taller only when something is drawn in it. The no-registration document is still
+   * byte-identical in height to today's, which is the fallback the plan promised.
+   */
+  it('prints the registration number WITH its label, directly below the company name', async () => {
     const withReg = await renderPayslipPdf(data, labels);
-    expect(drawnText(withReg), 'the bare registration number is off the document').not.toContain('202301000001');
-    expect(drawnText(withReg), 'and so is its bracketed half').not.toContain('1400001-A');
+    const text = drawnText(withReg);
+    // The caption and the number, on one line, in that order — `Reg. no. 202301000001 (1400001-A)`.
+    expect(text, 'the number must be captioned, never bare').toContain(
+      `${labels.companyReg} ${data.companyReg}`,
+    );
 
-    // THE HALF WITH NO VISIBLE CAUSE. `drawLetterhead` reserved 46pt when a registration number was
-    // present and 34pt when it was not. Removing the text and leaving the arithmetic would keep a 12pt
-    // hole for a string nothing draws — and only on payslips from a registered company, so the same
-    // document would print in two shapes for a difference the reader can no longer see.
-    const withoutReg = await renderPayslipPdf({ ...data, companyReg: null }, labels);
-    expect(letterheadRuleY(withoutReg), 'the letterhead rule is at the same y either way').toBeCloseTo(
-      letterheadRuleY(withReg),
+    // …AND IT IS BELOW THE NAME AND ABOVE THE SUBTITLE. "Directly below the company name" is a claim about
+    // coordinates: a document that draws the same three strings in any vertical order contains exactly the
+    // same words. The subtitle is what used to sit immediately under the name.
+    const p = drawnPlacements(withReg);
+    const name = placed(p, data.company)!;
+    const reg = placed(p, `${labels.companyReg} ${data.companyReg}`)!;
+    const sub = placed(p, labels.documentSubtitle)!;
+    expect(reg.y, 'the registration line sits BELOW the company name').toBeLessThan(name.y);
+    expect(reg.y, 'and ABOVE the document subtitle').toBeGreaterThan(sub.y);
+    expect(reg.x, 'left-aligned with the company name, not indented into the period column').toBeCloseTo(
+      name.x,
       3,
     );
-    // …and so is everything the letterhead pushes down, or the hole moved instead of closing.
+
+    // THE FALLBACK, BY NAME: a company with NO registration number prints NO line at all — not an empty
+    // caption, not a dash — and the letterhead is exactly the height it is today for that company.
+    const withoutReg = await renderPayslipPdf({ ...data, companyReg: null }, labels);
+    const bare = drawnText(withoutReg);
+    expect(bare, 'no caption is printed when there is no number').not.toContain(labels.companyReg);
+    expect(bare, 'and no dash or placeholder stands in for it').not.toContain('202301000001');
+    expect(placed(drawnPlacements(withoutReg), labels.documentSubtitle)!.y, 'the subtitle moves back up')
+      .toBeCloseTo(placed(drawnPlacements(withoutReg), data.company)!.y - 13, 3);
+
+    // THE HEIGHT RULE, INVERTED ON PURPOSE. a96d320c collapsed `(companyReg ? 46 : 34)` to a flat 34
+    // because nothing was drawn in the 12pt the ternary reserved, which left a hole on a registered
+    // company's payslip and none on an unregistered one. The ternary is back, and the difference is now
+    // EXACTLY the one line that is drawn in it — so a future change cannot reserve the band again without
+    // printing something there.
+    expect(
+      letterheadRuleY(withoutReg) - letterheadRuleY(withReg),
+      'the letterhead grows by exactly the one 12pt line it draws',
+    ).toBeCloseTo(12, 3);
     const a = placed(drawnPlacements(withReg), 'EARNINGS')!;
     const b = placed(drawnPlacements(withoutReg), 'EARNINGS')!;
-    expect(b.y, 'the whole page flow is unmoved').toBeCloseTo(a.y, 3);
+    expect(b.y - a.y, 'and everything the letterhead pushes down moves by the same 12pt, not more').toBeCloseTo(
+      12,
+      3,
+    );
 
-    // NON-VACUITY, TWO WAYS.
-    // 1. The fixture really does carry a registration number, so `not.toContain` above is a defect that
-    //    is absent and not a field that was never set.
+    // NON-VACUITY. The fixture really carries a number, so the `withReg` assertions are about a line that
+    // is drawn and the `withoutReg` ones about one that is suppressed — not about a field never set.
     expect(data.companyReg).toBe('202301000001 (1400001-A)');
-    // 2. The DATA still carries it. This item takes the number off the LETTERHEAD; it does not stop the
-    //    builder resolving it, because the admin Individual Payslip screen prints it and a LABELLED
-    //    registration line is the obvious next request.
+    expect(labels.companyReg).toBe('Reg. no.');
+    // …and the builder still resolves it from the read, which is where the value comes from.
     const built = buildPayslipPdfData(
       {
         employee: 'Ismail', employeeCode: 'TEST0005', company: 'Isedecor Bina Sdn Bhd',
@@ -1776,12 +1814,34 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
       },
       { epf: 'EPF', socso: 'SOCSO', skbbk: 'SKBBK', eis: 'EIS', tax: 'PCB' },
     );
-    expect(built.companyReg, 'the builder still resolves it — it is the DOCUMENT that stopped printing it').toBe(
+    expect(built.companyReg, 'the builder is the one place that resolves it for the document').toBe(
       '201901024512',
     );
-    expect(drawnText(await renderPayslipPdf(built, labels)), 'and the document still does not').not.toContain(
-      '201901024512',
-    );
+    expect(
+      drawnText(await renderPayslipPdf(built, labels)),
+      'and the document prints it captioned',
+    ).toContain('Reg. no. 201901024512');
+  });
+
+  /**
+   * r360 — THE SUBTITLE NAMES THE COMPANY'S OWN PAY CYCLE.
+   *
+   * "Payroll payslip · Regular" was `payroll_batch.run_type`, one of four fixed behavioural types the
+   * kernel gates on and which nobody in the company chose; the reporter wants the configured Pay Cycle name
+   * ("Monthly"). The RESOLUTION lives in core/payslip-cycle-label.ts and is pinned as behaviour in
+   * test/individual-payslip.test.ts — this renderer prints the string it is handed, which is exactly the
+   * property that keeps the screen and the file from answering the question differently.
+   */
+  it('prints whatever cycle name it is handed beside the subtitle, and drops the segment when handed none', async () => {
+    const named = drawnText(await renderPayslipPdf({ ...data, cycleLabel: 'Monthly' }, labels));
+    expect(named, 'the reporter’s own example').toContain(`${labels.documentSubtitle} · Monthly`);
+    expect(named, 'and the run-type word it replaces is nowhere on the document').not.toContain('Regular');
+
+    // A batch that named no cycle AND no recognised run type: the subtitle is the document name alone,
+    // never "Payroll payslip · " with nothing after the separator.
+    const none = drawnText(await renderPayslipPdf({ ...data, cycleLabel: null }, labels));
+    expect(none).toContain(labels.documentSubtitle);
+    expect(none, 'no orphaned separator').not.toContain(`${labels.documentSubtitle} ·`);
   });
 
   it('lands the two totals on ONE baseline whatever the row counts are', async () => {

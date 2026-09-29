@@ -1264,6 +1264,20 @@ export function listPayrollRegisterAcross(
 /** Everything the Individual Payslip screen and its PDF need for ONE payslip, beyond the figures. */
 export type PayslipReviewRow = ProcessedPayslipViewRow & {
   companyReg: string | null;
+  /**
+   * r360 — the NAME of the configured Pay Cycle this run was opened under (`payroll_cycle.name` via
+   * `payroll_batch.payroll_cycle_id`), for the screen and the document to print instead of the run-type
+   * word. Resolved through `payslipCycleLabel` (core/payslip-cycle-label.ts) by both, never by hand.
+   *
+   * NULL IS A REACHABLE PRODUCTION STATE, not a defect: the column is nullable, and every batch created
+   * before migration 0441 or by a caller that names no cycle carries null (db/schema.ts records both
+   * cases on the column itself). A LEFT join, therefore — an inner one would make those payslips vanish
+   * from the review screen entirely.
+   *
+   * NOT filtered on `archived_at`: an archived cycle still named the run, and hiding its name would drop
+   * a payslip back to the run-type word for a run that really did name a cycle.
+   */
+  cycleName: string | null;
   currency: string;
   department: string | null;
   position: string | null;
@@ -1335,6 +1349,8 @@ export function payslipForReview(
         companyId: payrollBatch.companyId,
         company: company.legalName,
         companyReg: company.registrationNo,
+        // r360 — the configured cycle's NAME, off the LEFT join below. See `PayslipReviewRow.cycleName`.
+        cycleName: payrollCycle.name,
         currency: company.currency,
         // 417d4937 — the run id (see ProcessedPayslipViewRow.batchId).
         batchId: payslip.batchId,
@@ -1375,6 +1391,9 @@ export function payslipForReview(
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      // r360 — LEFT, because `payroll_cycle_id` is nullable on a reachable production state and an inner
+      // join would make every pre-0441 payslip disappear from the review screen.
+      .leftJoin(payrollCycle, eq(payrollCycle.id, payrollBatch.payrollCycleId))
       .innerJoin(employment, eq(employment.id, payslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(

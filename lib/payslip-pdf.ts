@@ -76,14 +76,21 @@ export type PayslipPdfData = {
   employeeCode: string | null;
   company: string;
   /**
-   * The company registration number — CARRIED, AND DELIBERATELY NOT PRINTED (a96d320c rev 3).
+   * The company registration number, PRINTED UNDER THE COMPANY NAME WITH ITS LABEL (r360).
    *
-   * `drawLetterhead` used to draw it, unlabelled, under the document subtitle. The reporter asked for it
-   * off: a bare `201901024512` under a company name identifies nothing, and only 2 of the 5 production
-   * companies have one, so it appeared on some payslips and not others. It stays on this type because
-   * `buildPayslipPdfData` is the ONE place that resolves it for the document, because the admin
-   * Individual Payslip screen still shows it, and because "print it WITH a label" is a live possibility.
-   * Do not re-add it to the letterhead without a label beside it.
+   * ─── THE HISTORY MATTERS, because this field has been on and off the document once already ───
+   *
+   * a96d320c rev 3 took it OFF. `drawLetterhead` drew it under the document subtitle with NO LABEL AT ALL,
+   * so the reader met a bare `201901024512` under a company name with nothing saying what it was — and
+   * only 2 of the 5 production companies carry one, so the same document printed an unexplained figure for
+   * some employees and not for others. That comment ended "do not re-add it to the letterhead without a
+   * label beside it", and this is the labelled version the reporter then asked for (1fe55a23): `Reg. no.`
+   * comes from `PayslipPdfLabels.companyReg`, resolved from the catalogue key the Organization screen owns.
+   *
+   * NULL ⇒ NO LINE AT ALL, and no space reserved for one. Not an empty caption, not a dash: a company with
+   * no registration number has nothing to disclose, and an absent box asserts nothing while a printed
+   * "Reg. no. —" asserts that we looked and found none. The letterhead is exactly the height it is today
+   * for such a company (`drawLetterhead`, and the test that renders both and compares the rule's y).
    */
   companyReg: string | null;
   payPeriod: string;
@@ -146,7 +153,14 @@ export type PayslipPdfData = {
   currency?: string | null;
   /** The batch's payment date, already formatted by the caller. */
   payDate?: string | null;
-  /** "Payroll payslip · Regular cycle" — the cycle half resolved from i18n by the caller. */
+  /**
+   * The cycle half of the letterhead subtitle — "Payroll payslip · Monthly".
+   *
+   * r360 — the COMPANY'S OWN Pay Cycle name, resolved by the caller through `payslipCycleLabel`
+   * (core/payslip-cycle-label.ts), which falls back to the run-type word ("Regular") for a batch that names
+   * no cycle. This module neither reads the cycle nor chooses the fallback: it prints the string it is
+   * given, so the screen and the document cannot decide the question differently.
+   */
   cycleLabel?: string | null;
   identityNumber?: string | null;
   /** True when `identityNumber` is a PASSPORT (a non-Malaysian employee), so the label says so rather
@@ -261,6 +275,14 @@ export type PayslipPdfLabels = {
   // ─── 5c198931 — the labels the full document needs. REQUIRED, not optional: tsc is what keeps the two
   // PDF routes printing the same document rather than one of them quietly losing a block. ───
   documentSubtitle: string;
+  /**
+   * r360 — the caption in front of the company registration number on the letterhead ("Reg. no.").
+   *
+   * REQUIRED, like every label on this type, and for the reason stated above: tsc is what stops one of the
+   * two PDF routes printing a line the other one does not. Resolved from `admin.organization.regNo`, the
+   * key the Organization screen that owns the field already uses in all six catalogues.
+   */
+  companyReg: string;
   paymentDate: string; // already interpolated with the date by the caller
   employmentInfo: string;
   department: string;
@@ -1268,33 +1290,39 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     const nameLines = wrap(d.company, nameFont, 16, A4_W - M - textX - 150);
     nameLines.forEach((line, i) => at(pg, line, textX, top - 16 - i * 18, 16, nameFont));
     const below = top - 16 - (nameLines.length - 1) * 18;
+    // ─── r360 — THE REGISTRATION NUMBER IS BACK ON THE LETTERHEAD, THIS TIME WITH ITS NAME ───
+    //
+    // The reporter asked for it "directly below the company name, labelled Reg. no.", so it sits between
+    // the legal name and the document subtitle rather than under the subtitle where a96d320c rev 3 found it
+    // unlabelled and took it off. That order is also the order the Individual Payslip SCREEN's letterhead
+    // uses (name → registration → period), so the document and the screen read the same way down the page.
+    //
+    // LABEL AND VALUE ON ONE LINE, drawn as one string: the caption is a two-word noun, not a field in a
+    // grid, and `at` resolves ONE face for the whole string — which is what keeps a Tamil or Thai caption
+    // and a Latin-digit number from being measured in one font and drawn in another.
+    //
+    // ABSENT ⇒ NOTHING DRAWN AND NOTHING RESERVED (see `textH` below). The fallback the plan promised: a
+    // company with no registration number gets the letterhead it gets today, not an empty band.
+    const regLine = d.companyReg ? `${t.companyReg} ${d.companyReg}` : null;
+    if (regLine) at(pg, regLine, textX, below - 12, 8.5, font, MUTED);
     const sub = [t.documentSubtitle, d.cycleLabel].filter(Boolean).join(' · ');
-    at(pg, sub, textX, below - 13, 9, font, MUTED);
-    // a96d320c rev 3 — THE COMPANY REGISTRATION NUMBER IS OFF THE LETTERHEAD.
-    //
-    // It was drawn here, under the subtitle, WITH NO LABEL: `company.registrationNo` (core/payroll.ts),
-    // so a reader met "201901024512" on its own under the company name with nothing saying what it was.
-    // Two of the five production companies carry one, so the same document printed a bare unexplained
-    // figure for some employees and not for others — which is how an unidentified number on a payroll
-    // document gets read as an amount. The reporter asked for it off and this is that.
-    //
-    // `d.companyReg` IS STILL CARRIED on PayslipPdfData and still populated by `buildPayslipPdfData`,
-    // deliberately: the admin Individual Payslip screen prints it (app/payroll/individual-payslip
-    // /page.tsx) off its own read, the builder is the one place that resolves it, and a LABELLED
-    // registration line is the obvious next request. What may not survive is the SPACE it reserved —
-    // see the height below, which is the half of this change that has no visible cause.
+    at(pg, sub, textX, below - (regLine ? 25 : 13), 9, font, MUTED);
     // "August 2026", not "2026-08" (f35f758a). Resolved by the caller; English on the document by choice
     // now that the font no longer forces it — see PayslipPdfLabels.periodLabel.
     atR(pg, t.periodLabel, A4_W - M, top - 16, 13, bold);
     if (d.payDate) atR(pg, t.paymentDate, A4_W - M, top - 29, 8.5, font, MUTED);
-    // a96d320c rev 3 — ONE height, not two. This read `(d.companyReg ? 46 : 34)`: 46 when a registration
-    // number was drawn on the third line, 34 when it was not. With the number gone, leaving the ternary
-    // would reserve a 12pt line for a string nothing draws — an empty band between the subtitle and the
-    // letterhead rule on a payslip from a registered company, and no band on one from a company without a
-    // number. The same document in two shapes, for a difference the reader can no longer see. The
-    // letterhead is now the SAME HEIGHT whether the payslip carries a registration number or not, and
-    // `test/payslip-pdf.test.ts` renders both and compares the rule's y to keep it that way.
-    const textH = (nameLines.length - 1) * 18 + 34;
+    // r360 — TWO heights again, and THIS time the taller one has a visible cause.
+    //
+    // a96d320c rev 3 collapsed this to a single 34, and its note is worth keeping rather than deleting: it
+    // read `(d.companyReg ? 46 : 34)` while nothing drew the number, so a registered company's payslip
+    // carried a 12pt hole where the missing line had been and an unregistered company's did not — the same
+    // document in two shapes for a difference the reader could not see. The ternary is only honest when
+    // something is drawn in the space it reserves, which is now the case: 46 when the `Reg. no.` line is
+    // printed, and 34 — byte-for-byte today's letterhead — when there is nothing to print.
+    //
+    // `test/payslip-pdf.test.ts` renders both and asserts the difference is exactly the one line, so a
+    // future change cannot reserve the band again without drawing in it.
+    const textH = (nameLines.length - 1) * 18 + (regLine ? 46 : 34);
     const h = Math.max(logo ? 58 : 0, textH);
     pg.drawLine({ start: { x: M, y: top - h }, end: { x: A4_W - M, y: top - h }, thickness: 1.6, color: RULE });
     return top - h - GAP;

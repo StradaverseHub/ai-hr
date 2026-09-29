@@ -19,6 +19,10 @@ import { getTranslations } from 'next-intl/server';
 
 import type { PayslipPdfLabels } from './payslip-pdf';
 import type { EmployerBorneKey } from '../core/payslip-employer-borne';
+// r360 — the ONE rule that decides whether a payslip says "Monthly" or "Regular". The Individual Payslip
+// SCREEN calls the same function with its own read's cycle name, so the downloaded file and the screen it
+// came from cannot answer that question differently.
+import { payslipCycleLabel } from '../core/payslip-cycle-label';
 
 /**
  * f35f758a — "August 2026", not "2026-08".
@@ -121,7 +125,14 @@ const PAYMENT_METHODS = ['bank_transfer', 'cheque', 'cash'] as const;
 export type PayslipPdfStrings = {
   labels: PayslipPdfLabels;
   borneLabels: Record<EmployerBorneKey, string>;
-  /** "Regular" / "Bonus" — the cycle half of the letterhead subtitle. */
+  /**
+   * The cycle half of the letterhead subtitle.
+   *
+   * r360 — "Monthly" / "Bonus run", the COMPANY'S OWN Pay Cycle name, falling back to the run-type word
+   * ("Regular" / "Bonus") for a batch that names no cycle. Decided by `payslipCycleLabel`, which the
+   * Individual Payslip screen also calls — the reporter asked for the configured name because "Regular" is
+   * kernel vocabulary nobody in the company chose.
+   */
   cycleLabel: string | null;
   /** The stored enums, resolved to display text. Null when the record does not carry one. */
   employmentType: string | null;
@@ -141,6 +152,16 @@ export async function payslipPdfStrings(p: {
   payDate: string | null;
   ytdYear: string;
   runType: string | null;
+  /**
+   * r360 — the NAME of the configured Pay Cycle the run was opened under (`payroll_cycle.name`, reached
+   * through `payroll_batch.payroll_cycle_id`). Both reads that feed a PDF route return it
+   * (`payslipForReview`, `payslipDetail`).
+   *
+   * OPTIONAL, and null/absent is the pre-0441 production state, not a caller's mistake: the letterhead then
+   * prints the run-type word exactly as it does today. It is NOT run through the closed-list check below —
+   * it is free text an admin typed, not a stored enum being used as a message key.
+   */
+  cycleName?: string | null;
   employmentType: string | null;
   paymentMethod: string | null;
   /**
@@ -153,6 +174,11 @@ export async function payslipPdfStrings(p: {
   const t = await getTranslations('me.payslip');
   const tIp = await getTranslations('payroll.individualPayslip');
   const tTxn = await getTranslations('payroll.transactions');
+  // r360 — the "Reg. no." caption, REUSED from the Organization screen that owns the field rather than
+  // minted again under `me.` or `payroll.`: one company registration number, one word for it, already
+  // translated in all six catalogues. A fourth namespace, on the same reasoning as the three above — a
+  // namespace here is deduplication, not a permission boundary.
+  const tOrg = await getTranslations('admin.organization');
 
   const known = <T extends string>(list: readonly T[], v: string | null): T | null =>
     v != null && (list as readonly string[]).includes(v) ? (v as T) : null;
@@ -162,7 +188,13 @@ export async function payslipPdfStrings(p: {
 
   return {
     borneLabels: { epf: t('epf'), socso: t('socso'), skbbk: t('skbbk'), eis: t('eis'), tax: t('pcb') },
-    cycleLabel: cycle ? tTxn(`individual.cycle.${cycle}`) : null,
+    // r360 — the configured cycle's name, or the run-type word when the batch named no cycle. ONE rule,
+    // shared with the screen (core/payslip-cycle-label.ts); resolving it here as well as there is how the
+    // downloaded file starts disagreeing with the screen the Download button sits on.
+    cycleLabel: payslipCycleLabel({
+      cycleName: p.cycleName,
+      runTypeLabel: cycle ? tTxn(`individual.cycle.${cycle}`) : null,
+    }),
     employmentType: empType ? tIp(`employmentType_${empType}`) : null,
     paymentMethod: payMethod ? tIp(`paymentMethod_${payMethod}`) : null,
     labels: {
@@ -201,6 +233,11 @@ export async function payslipPdfStrings(p: {
       employerBorneTotal: t('employerBorneTotal'),
       employerBorneNote: t('employerBorneNote'),
       documentSubtitle: tIp('pdfSubtitle'),
+      // r360 — the caption for the company registration number the letterhead prints again, this time WITH
+      // a word in front of it. `admin.organization.regNo` is the label the Organization screen that OWNS
+      // the field already uses, in all six catalogues; a second key would be a translation to keep in step
+      // for one number that already has a name.
+      companyReg: tOrg('regNo'),
       // a96d320c — the DATE is resolved to words here (see `englishLongDate`); the sentence around it is
       // still `payDateLine` in the reader's own language, unchanged in all six locales.
       paymentDate: p.payDate ? tIp('payDateLine', { date: englishLongDate(p.payDate) }) : '',
