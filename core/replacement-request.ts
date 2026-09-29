@@ -455,8 +455,17 @@ export async function submitReplacementLeaveRequest(
   // HR-side paths and every row written before this round, all of which carry `days` and no window. A line
   // is read as declared or as a window by WHAT IT CARRIES, never by a flag, so neither caller has to be
   // taught about the other.
-  const aWindowLines = aAll.filter((l) => l.fromTime != null && l.toTime != null);
-  const aLines = aAll.filter((l) => !(l.fromTime != null && l.toTime != null));
+  //
+  // ⚠️ TIMES ALONE DO NOT MAKE A WINDOW LINE, AND THE SUITE CAUGHT ME ASSUMING THEY DID. An HOUR-unit
+  // Section A claim has carried `fromTime`/`toTime` since long before this round — the header of
+  // `ReplacementClaimLineView` says so in as many words ("not inferable anyway, because an Hour-unit
+  // Section A claim also carries times"). Reading those as r358 windows refused three existing
+  // behaviours outright. A window line is a DAY-unit line with times and no declared figure; everything
+  // else is the shape this function already had.
+  const isWindow = (l: ReplacementRequestLineInput) =>
+    p.unit === 'day' && l.days == null && l.fromTime != null && l.toTime != null;
+  const aWindowLines = aAll.filter(isWindow);
+  const aLines = aAll.filter((l) => !isWindow(l));
 
   // "Unit is always Day and is derived, not selectable" — r333's precedent for the leave TYPE, applied to
   // the unit. Enforced HERE rather than only by the form, because an Hour-unit request carrying a Section B
@@ -482,10 +491,10 @@ export async function submitReplacementLeaveRequest(
     if (l.sourceType === 'non_working_day' && l.days !== 1 && l.days !== 0.5)
       throw new ReplacementRequestInvalidError('A rest day, off day or public holiday earns either 1 day or 0.5 day.');
   }
-  for (const l of aWindowLines) {
-    if (p.unit !== 'day')
-      throw new ReplacementRequestInvalidError('A claimed window is always credited in days.');
-  }
+  // `isWindow` already requires the day unit, so this cannot fire from the form; it is here for a caller
+  // that builds lines by hand, and it says which of the two shapes it thinks it is sending.
+  if (aWindowLines.length > 0 && p.unit !== 'day')
+    throw new ReplacementRequestInvalidError('A claimed window is always credited in days.');
 
   // Throws on a bad row (zero days, reversed times) before anything is written. Section B rows are absent
   // from this call on purpose: their credit is not a figure the employee typed, so there is nothing here to
