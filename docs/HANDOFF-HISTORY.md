@@ -1,3 +1,36 @@
+## r363 (2026-09-29) — one word for one state, one name per field, and two sentences that contradicted themselves. `main@4493a096`, **no migration**.
+
+Closed: `4c8aae68`, `e0b6e3b8`. Gate: **1058 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`. Chunks 2–16 green in the full run; **chunk 1 went red on contention I caused and green on a quiet re-run** (67/67 files, 912/912 tests). See the note at the foot, `tsc` 0, `next build` 0, `scripts/i18n-check.mjs` PASS.
+
+### 4c8aae68 — the screen stopped using two words for one state
+
+My Attendance Request Status lists overtime plans AND attendance corrections, and `cancelled` rendered "Withdrawn" on one and "Cancelled" on the other, with a filter chip that had to pick one and therefore disagreed with half its own rows.
+
+**Revision 1 of this plan was a half-measure and was rejected as one.** It changed only the chip, which relocates the mismatch onto the correction rows. What settled it is who can write the state: exactly two callers exist in the whole tree, `cancelPlannedOvertime` and `cancelOwnAttendanceCorrection`, and **both are subject-only**. Nobody but the employee can put a row there, so "the employee took their own request back" is the only thing it can mean — and the comment defending the split ("'Cancelled' would read as somebody else having called it off") was arguing from a premise true of both branches.
+
+- Display text only. The stored enum, `REQUEST_STATUSES`, `?status=cancelled` and every function name are untouched, and **`attendance-screens-layout` cases C, A2 and D passed with zero edits** — which is the evidence, not a claim.
+- The new guard compares the chip, a cancelled OVERTIME row and a cancelled CORRECTION row **to each other in all six locales**, never to the literal "Withdrawn", and asserts the two row kinds really take different branches before comparing. Pinning the English would pass against a screen that had drifted apart again.
+
+**And the round created one inconsistency of its own, fixed here rather than logged.** The refusal interpolated the stored enum, so a taken-back row read "already been **cancelled**, so it can no longer be **withdrawn**". A status-to-word map is presentation and does not belong in the kernel; naming the state is not what the sentence is for. It now says "no longer waiting for a decision" — true of approved, rejected and withdrawn alike, and it leaks no enum. The guard gained an assertion that the message must not match `/approved|cancelled|rejected|pending/`.
+
+### e0b6e3b8 — the filter and the field beside it had the same name
+
+r360 made the payslip body print the configured cycle name; the chooser above it still narrows by run TYPE, and **both labels were the identical string in all six catalogues**. One code line changed — the label — proven by filtering comments out of `git diff -U0`. The five tests that prove the change is display-only passed **untouched**. The translations reuse the term a human translator already approved for the same concept on the Payroll Cycle configuration screen: a new key, not new wording.
+
+**THE EXISTING i18n GUARD STRUCTURALLY CANNOT SEE THIS CLASS OF BUG.** `i18n-coverage`'s Check C skips any file binding more than one namespace, and that screen binds five — so Check C gives ZERO signal there. Only Check A applies, and Check A is presence-in-every-locale, which passed happily for however long the two labels were identical. Demonstrated: with one locale's new label set equal to the old one, **`i18n-coverage` passed** while the new value-level case failed. Two labels being the same words is not a missing key, and nothing in this repo was looking for it.
+
+### THE GATE WENT RED ONCE, AND IT WAS MINE
+
+Chunk 1 reported 10 failed files and **zero AssertionErrors**: 9 hook timeouts, 2 Postgres deadlocks (`40P01`, `AccessExclusiveLock` on TRUNCATE) and one test timeout, with an `import` phase of **897s against ~30s in every other chunk**. I had merged and launched the gate within a couple of minutes of a build agent finishing its render check, without confirming its dev server and Postgres connections had been released — and `dev-db-rebuild.sh` rebuilds the cluster once per chunk.
+
+**It was diagnosed rather than assumed**, because §4 warns that the same zero-AssertionError signature is what a file failing to IMPORT looks like. Three things separated them: none of the 10 failing files reads any file this round changed; two of them had run green in a builder's own 29-file run on this code minutes earlier; and the re-run on a quiet machine came back 67/67 in 95s with import at 44s. Only then was it called contention.
+
+### NOT DONE
+
+- **`pnpm db:seed` produces a database that cannot be paid.** One seeded employee is hired with no compensation row while every other one gets one, so `generatePayslips` over that scope fails closed with `PreProcessBlockedError` — which blocks the §8 render check on every payroll screen. One line to fix, but 10+ tests read the seeder and the gate was already running, so it is recorded rather than slipped in.
+- **The same concept now has two names across screens.** Transaction View's filter also narrows by run type and is still labelled "Payroll cycle". No collision there — that screen has no cycle-name field beside it — but the product is inconsistent until it is renamed.
+- `statusLabel`'s `isOvertime` parameter is now dead on every branch. Kept deliberately, because dropping it forces an edit to case A2, which exists precisely because a verifier once mutated that argument and nothing failed. The cost is recorded: A2 has degraded from a behaviour test to a shape check, and the new equality case is what actually pins the property now.
+
 ## r362 (2026-09-29) — seven board items, two repo-wide guards that were not guarding, and three money paths a new record shape would have broken. `main@8d8396bf`, **migration 0490**.
 
 Closed: `2aef3cd8`, `ce5ded11`, `5c72039e`, `58424c7f`, `3f15ffdb`, `b833a077`, `f618065d`. Gate: **1057 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, zero AssertionErrors, `tsc` 0, `next build` 0. Shipped together with r361 in one deploy.
