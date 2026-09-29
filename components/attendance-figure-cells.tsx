@@ -1,8 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useId, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { AttendanceExplanation, ExplainStep } from '@/core/attendance-explain';
+// r365 cbfa8b0b — THE POSITIONING LEFT THIS FILE AND CAME BACK AS AN IMPORT. The `position: fixed` rect
+// maths, the flip-up rule, the capture-phase scroll/resize re-place and Escape were all written here
+// first; they now live in components/ui/anchored-panel.tsx so the Leave Credit request row can open the
+// same panel without a second copy. Nothing about this file's behaviour changed — which is exactly what
+// test/r365-anchored-panel.dom.test.tsx drives through this caller to prove.
+import { AnchoredPanel, useAnchoredPanel } from '@/components/ui/anchored-panel';
 /**
  * NO IMPORT FROM core/attendance-derive, DELIBERATELY, and the alternatives are both worse.
  *
@@ -108,56 +114,28 @@ export function AttendanceFigureCells({
   // The open CELL, not the open section: all six OT columns explain the same section, so keying the panel
   // on the section alone would open six identical panels at once, stacked on one another.
   const [open, setOpen] = useState<{ cell: string; section: Section } | null>(null);
-  const [at, setAt] = useState<{ top: number; left: number; flip: boolean } | null>(null);
-  const anchor = useRef<HTMLElement | null>(null);
 
   /**
-   * `position: fixed`, from the trigger's own rect — NOT `absolute`. The table sits inside
-   * `<div className="overflow-x-auto">`, and a CSS box that sets one overflow axis computes the other to
-   * `auto` too, so an absolutely-positioned panel would be clipped by the scroller it is trying to escape.
-   * A fixed box is laid out against the viewport and is not clipped by a plain scroll container.
+   * ⚠️ r365 — `place`, `at`, `anchor` AND THE SCROLL/RESIZE/ESCAPE EFFECT STOOD HERE, and the comment that
+   * stood with them is now the header of components/ui/anchored-panel.tsx: `position: fixed` from the
+   * trigger's own rect rather than `absolute`, because this table sits inside `overflow-x-auto` and a CSS
+   * box that sets one overflow axis computes the other to `auto` too, so an absolute panel is clipped by
+   * the scroller it is trying to escape. Every number is unchanged (360 wide, flip above 340, 6px gap),
+   * and the listeners are still capture-phase for the same reason.
    */
-  const place = useCallback((el: HTMLElement) => {
-    const r = el.getBoundingClientRect();
-    const PANEL_W = 360;
-    const flip = r.bottom + 340 > window.innerHeight && r.top > 340;
-    setAt({
-      top: flip ? r.top - 6 : r.bottom + 6,
-      left: Math.min(Math.max(8, r.right - PANEL_W), window.innerWidth - PANEL_W - 8),
-      flip,
-    });
+  const hide = useCallback(() => {
+    setOpen(null);
   }, []);
+  const { at, anchorTo, release } = useAnchoredPanel({ open: open != null, onClose: hide });
 
   const show = (cell: string, section: Section) => (e: React.SyntheticEvent<HTMLElement>) => {
-    anchor.current = e.currentTarget;
-    place(e.currentTarget);
+    anchorTo(e.currentTarget);
     setOpen({ cell, section });
   };
-  const hide = () => {
-    anchor.current = null;
-    setOpen(null);
+  const dismiss = () => {
+    release();
+    hide();
   };
-
-  // A fixed panel does not travel with the page, so follow the anchor rather than leaving the working
-  // stranded beside the wrong row. Capture phase: the scroll that matters is the table's own container's,
-  // and a scroll event does not bubble.
-  useEffect(() => {
-    if (!open) return;
-    const sync = () => {
-      if (anchor.current) place(anchor.current);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') hide();
-    };
-    window.addEventListener('scroll', sync, { capture: true, passive: true });
-    window.addEventListener('resize', sync, { passive: true });
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('scroll', sync, { capture: true });
-      window.removeEventListener('resize', sync);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [open, place]);
 
   /** One step, rendered through next-intl with its numbers turned into the units a human reads. */
   const line = (step: ExplainStep) => {
@@ -250,7 +228,7 @@ export function AttendanceFigureCells({
 
   /** A figure that carries its working: the number, plus the panel while it is open. */
   const explainable = (cell: string, section: Section, text: string) => (
-    <span className="relative inline-block" onMouseEnter={show(cell, section)} onMouseLeave={hide}>
+    <span className="relative inline-block" onMouseEnter={show(cell, section)} onMouseLeave={dismiss}>
       <button
         type="button"
         className={TRIGGER}
@@ -258,20 +236,15 @@ export function AttendanceFigureCells({
         aria-describedby={open?.cell === cell ? panelId : undefined}
         aria-label={`${text} — ${te('openLabel')}`}
         onFocus={show(cell, section)}
-        onBlur={hide}
+        onBlur={dismiss}
         onClick={show(cell, section)}
       >
         {text}
       </button>
-      {open?.cell === cell && at && (
-        <div
-          id={panelId}
-          role="tooltip"
-          className="fixed z-50 w-[22.5rem] max-w-[calc(100vw-1rem)] rounded-lg border border-border bg-popover p-3 text-left shadow-lg"
-          style={{ top: at.top, left: at.left, transform: at.flip ? 'translateY(-100%)' : undefined }}
-        >
+      {open?.cell === cell && (
+        <AnchoredPanel at={at} id={panelId} role="tooltip">
           {panel(section)}
-        </div>
+        </AnchoredPanel>
       )}
     </span>
   );

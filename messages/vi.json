@@ -13229,7 +13229,7 @@
       "belowThreshold": "Dưới {minutes} phút. Không đủ điều kiện nhận tín dụng."
     },
     "table": {
-      "help": "Thêm một dòng cho mỗi ngày bạn đã làm việc. Loại ngày được điền từ lịch trực của bạn khi bạn chọn ngày. Mọi loại ngày đều được kê khai theo cùng một cách: nhập giờ bắt đầu và giờ kết thúc bạn đã làm việc, và tín dụng theo số giờ — bốn giờ đủ điều kiện được nửa ngày, tám giờ được trọn một ngày. Vào ngày làm việc bình thường, số giờ được tính từ giờ kết thúc ca đã xếp lịch của bạn; vào ngày nghỉ, ngày không làm việc hoặc ngày lễ thì không có ca đã xếp lịch, nên toàn bộ khoảng thời gian bạn nhập đều được tính. Giờ chấm công ra của bạn được hiển thị để tham khảo và không giới hạn những gì bạn có thể kê khai — nếu hai giờ này khác nhau, quản lý của bạn sẽ thấy và kiểm tra trước khi phê duyệt. Không có gì được ghi có cho đến khi quản lý của bạn phê duyệt.",
+      "help": "Thêm một dòng cho mỗi ngày bạn đã làm việc. Nhập giờ bắt đầu và giờ kết thúc bạn đã làm; tín dụng được tính theo số giờ — bốn giờ hợp lệ được nửa ngày, tám giờ được trọn ngày. Dùng nút Xem để kiểm tra dữ liệu chấm công của bạn cho ngày đó; đây chỉ để tham khảo và không giới hạn những gì bạn có thể yêu cầu. Sẽ không có gì được ghi có cho đến khi quản lý của bạn phê duyệt.",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "Ngày làm việc bình thường không thể nhận tín dụng tại công ty này.",
@@ -13246,7 +13246,23 @@
       "dayTypeFromHolidays": "Từ lịch ngày lễ công cộng",
       "dayTypeReading": "Đang đọc lịch trực của bạn...",
       "dayTypeNotFound": "Không tìm thấy - hãy chọn lại ngày",
-      "crossesMidnight": "Khoảng thời gian này được hiểu là kết thúc vào sáng hôm sau."
+      "crossesMidnight": "Khoảng thời gian này được hiểu là kết thúc vào sáng hôm sau.",
+      "attendanceColumn": "Chấm công",
+      "attendanceView": "Xem",
+      "attendanceViewDisabled": "Hãy chọn ngày trước",
+      "attendanceHeading": "Chấm công cho ngày này",
+      "attendanceScheduledShift": "Ca theo lịch",
+      "attendanceClockIn": "Giờ vào thực tế",
+      "attendanceClockInOut": "Giờ vào / giờ ra",
+      "attendanceNoShift": "Không có ca theo lịch",
+      "attendanceNothingRecorded": "Không ghi nhận gì",
+      "attendanceNoRecordNote": "Không có giờ vào hoặc giờ ra được ghi nhận cho ngày này. Bạn vẫn có thể gửi yêu cầu.",
+      "attendanceReferenceOnly": "Chỉ để tham khảo. Nó không giới hạn những gì bạn có thể yêu cầu.",
+      "attendanceOtPlan": "Kế hoạch tăng ca đã duyệt",
+      "attendanceOtPlanNone": "Không có cho ngày này",
+      "attendanceOtPlanApproved": "Đã duyệt cho ngày này",
+      "dotReasonNoRecord": "Không có giờ ra được ghi nhận cho ngày này.",
+      "dotReasonPastClockOut": "Bạn khai đến {claimEnd}; giờ ra được ghi nhận là {clockOut}."
     }
   },
   "notices": {

@@ -13229,7 +13229,7 @@
       "belowThreshold": "Kurang daripada {minutes} minit. Tidak layak mendapat kredit."
     },
     "table": {
-      "help": "Tambah satu baris bagi setiap tarikh anda bekerja. Jenis hari diisi daripada roster anda apabila anda memilih tarikh. Setiap jenis hari dituntut dengan cara yang sama: masukkan masa mula dan masa tamat anda bekerja, dan kredit mengikut jam — empat jam layak memperoleh setengah hari, lapan jam memperoleh satu hari penuh. Pada hari bekerja biasa, jam dikira dari waktu tamat syif berjadual anda; pada hari rehat, hari cuti atau cuti umum tiada syif berjadual, jadi keseluruhan tempoh yang anda masukkan dikira. Rekod waktu keluar anda ditunjukkan sebagai rujukan dan tidak mengehadkan tuntutan anda — jika kedua-duanya berbeza, pengurus anda akan melihat dan menyemaknya sebelum meluluskan. Tiada apa-apa dikreditkan sehingga pengurus anda meluluskan.",
+      "help": "Tambah satu baris bagi setiap tarikh yang anda bekerja. Masukkan waktu mula dan waktu tamat anda bekerja; kredit mengikut jam — empat jam yang layak memperoleh setengah hari, lapan jam memperoleh satu hari penuh. Gunakan butang Lihat untuk menyemak rekod kehadiran anda bagi tarikh itu; ia untuk rujukan sahaja dan tidak mengehadkan apa yang boleh anda tuntut. Tiada apa-apa dikreditkan sehingga pengurus anda meluluskannya.",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "Hari bekerja biasa tidak boleh memperoleh kredit di syarikat ini.",
@@ -13246,7 +13246,23 @@
       "dayTypeFromHolidays": "Daripada kalendar cuti umum",
       "dayTypeReading": "Membaca roster anda...",
       "dayTypeNotFound": "Tidak dijumpai - pilih tarikh itu semula",
-      "crossesMidnight": "Tempoh ini dibaca sebagai berakhir pada pagi keesokan harinya."
+      "crossesMidnight": "Tempoh ini dibaca sebagai berakhir pada pagi keesokan harinya.",
+      "attendanceColumn": "Kehadiran",
+      "attendanceView": "Lihat",
+      "attendanceViewDisabled": "Pilih tarikh dahulu",
+      "attendanceHeading": "Kehadiran bagi tarikh ini",
+      "attendanceScheduledShift": "Syif dijadualkan",
+      "attendanceClockIn": "Waktu masuk sebenar",
+      "attendanceClockInOut": "Waktu masuk / waktu keluar",
+      "attendanceNoShift": "Tiada syif dijadualkan",
+      "attendanceNothingRecorded": "Tiada apa-apa direkodkan",
+      "attendanceNoRecordNote": "Tiada waktu masuk atau waktu keluar direkodkan untuk tarikh ini. Anda masih boleh membuat tuntutan.",
+      "attendanceReferenceOnly": "Untuk rujukan sahaja. Ia tidak mengehadkan apa yang boleh anda tuntut.",
+      "attendanceOtPlan": "Rancangan OT yang diluluskan",
+      "attendanceOtPlanNone": "Tiada bagi tarikh ini",
+      "attendanceOtPlanApproved": "Diluluskan bagi tarikh ini",
+      "dotReasonNoRecord": "Tiada waktu keluar direkodkan untuk tarikh ini.",
+      "dotReasonPastClockOut": "Anda menuntut sehingga {claimEnd}; waktu keluar yang direkodkan ialah {clockOut}."
     }
   },
   "notices": {

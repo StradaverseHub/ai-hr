@@ -17,7 +17,7 @@ const PAGE = '/leave/credit';
 
 /**
  * r343 cbfa8b0b · One date's read-only facts for the single table: what the ROSTER holds for it, the
- * scheduled shift end and the actual clock-out.
+ * scheduled shift, the clock-in and clock-out on record, and any approved overtime for the date.
  *
  * The roster kind is what the adjudication compares the employee's chosen Day Type against, so this action
  * answers for EVERY row — not only the Ordinary Day ones, which is all r336's equivalent was asked for.
@@ -29,11 +29,18 @@ export async function leaveCreditDayFactsAction(workedDate: string) {
   const me = await myEmployment(session);
   if (!me) return null;
   const day = await extendedHoursDayForEmployment(session, me.employmentId, workedDate);
+  // r365 cbfa8b0b — the shift START, the clock-IN and the approved overtime joined the row's facts, for
+  // the Attendance panel behind the row's View button. Listed one by one rather than spread, deliberately:
+  // this is the server→client boundary and every field crossing it has to be a value somebody chose to
+  // send (test/server-client-boundary.test.ts). None of the three is read by any arithmetic.
   return {
     kind: day.kind,
+    shiftStart: day.shiftStart,
     shiftEnd: day.shiftEnd,
+    actualClockIn: day.actualClockIn,
     actualClockOut: day.actualClockOut,
     measuredExtendedMinutes: day.measuredExtendedMinutes,
+    approvedOtPlan: day.approvedOtPlan,
   };
 }
 

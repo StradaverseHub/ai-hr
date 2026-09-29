@@ -1281,7 +1281,17 @@ export async function extendedHoursDayForEmploymentTx(
   tx: Tx,
   employmentId: string,
   date: string,
-): Promise<{ kind: ToilWorkedDayKind; shiftEnd: string | null; actualClockOut: string | null; measuredExtendedMinutes: number }> {
+): Promise<{
+  kind: ToilWorkedDayKind;
+  // r365 — `shiftStart` and `actualClockIn` are DISPLAY-ONLY additions for the Leave Credit request's
+  // Attendance panel; nothing in this file or in lib/extended-hours.ts reads either. See the view's own
+  // doc in core/attendance.ts for why the SHIFT pair is printed and never the SCHEDULED pair.
+  shiftStart: string | null;
+  shiftEnd: string | null;
+  actualClockIn: string | null;
+  actualClockOut: string | null;
+  measuredExtendedMinutes: number;
+}> {
   const { extendedHoursDayForTx } = await import('../packs/attendance/service');
   return extendedHoursDayForTx(tx, employmentId, date);
 }

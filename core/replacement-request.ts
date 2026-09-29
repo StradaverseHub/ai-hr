@@ -79,7 +79,11 @@ import {
 } from './toil';
 // r336 cbfa8b0b — DIRECTION 1 of the double-claim check, from the ONE module that also serves direction 2
 // (core/attendance.ts's overtime request). See core/credit-ot-overlap.ts for why it is not two queries.
-import { assertNoOvertimeClaimForDatesTx } from './credit-ot-overlap';
+import {
+  approvedOvertimeForDateTx,
+  assertNoOvertimeClaimForDatesTx,
+  type ApprovedOvertimeOnDate,
+} from './credit-ot-overlap';
 // r219 — the reason union lives in lib/ so the service and the screens that EXPLAIN it share one list. A
 // reason this file can return that the notice map has no entry for fails to typecheck; see that file's
 // header for why that mattered enough to move the type out. Same arrangement as lib/entitlement-status.ts.
@@ -313,11 +317,35 @@ export function workedDayKindForEmployment(ctx: SessionContext, employmentId: st
  * resolve their own schedule and their own attendance), and NOT the control: submission and approval both
  * re-resolve every one of these and refuse a date that no longer qualifies.
  */
+/**
+ * ⚠️ r365 cbfa8b0b — THIS IS THE **SCREEN's** READ, AND IT IS WIDER THAN THE KERNEL's ON PURPOSE.
+ *
+ * `extendedHoursDayForEmploymentTx` (core/toil.ts → the attendance pack) is on the SUBMIT and ACCRUAL
+ * paths, once per row. This function is on neither: its only callers are the two server actions that feed
+ * the Leave Credit request table. So the approved-overtime lookup — one extra indexed query per date the
+ * employee picks — is added HERE rather than inside the shared kernel read, where it would have cost a
+ * query per row on every submission to answer a question no kernel path asks.
+ *
+ * Nothing this returns is an input to any figure. `shiftStart`, `actualClockIn` and `approvedOtPlan` are
+ * what the row's Attendance panel prints; the credit is still derived from `shiftEnd` and
+ * `actualClockOut` through `assessExtendedClaim`, with NULL passed for both on the three non-working day
+ * types. Read-only and RLS-scoped, and NOT the control: submission and approval re-resolve all of it.
+ */
 export type LeaveCreditExtendedDayView = {
   kind: ToilWorkedDayKind;
+  /** Display only — the shift WINDOW's start. Null on the company-policy branch (no assigned shift). */
+  shiftStart: string | null;
   shiftEnd: string | null;
+  /** Display only — the clock-IN. Null when the day has no attendance row or was never clocked in. */
+  actualClockIn: string | null;
   actualClockOut: string | null;
   measuredExtendedMinutes: number;
+  /**
+   * The APPROVED overtime already on this date, or null. It pre-explains the refusal
+   * `assertNoOvertimeClaimForDatesTx` hands this employee at submit; see core/credit-ot-overlap.ts for
+   * why the pending half of that block is deliberately not shown here.
+   */
+  approvedOtPlan: ApprovedOvertimeOnDate | null;
 };
 
 export function extendedHoursDayForEmployment(
@@ -325,7 +353,10 @@ export function extendedHoursDayForEmployment(
   employmentId: string,
   date: string,
 ): Promise<LeaveCreditExtendedDayView> {
-  return withTenant(ctx, (tx) => extendedHoursDayForEmploymentTx(tx, employmentId, date));
+  return withTenant(ctx, async (tx) => {
+    const day = await extendedHoursDayForEmploymentTx(tx, employmentId, date);
+    return { ...day, approvedOtPlan: await approvedOvertimeForDateTx(tx, employmentId, date) };
+  });
 }
 
 /**

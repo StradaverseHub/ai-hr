@@ -77,25 +77,36 @@ const TIERS = {
   extendedGraceMinutes: 0,
 };
 
+// r365 cbfa8b0b — `shiftStart`, `actualClockIn` and `approvedOtPlan` joined LeaveCreditDayFacts for the
+// Attendance panel behind the row's View button. None of the three is an input to any figure.
 /** A working day with eight hours measured past an 18:00 shift end. */
 const WORKING_DAY: LeaveCreditDayFacts = {
   kind: 'workday',
+  shiftStart: '09:00:00',
   shiftEnd: '18:00:00',
+  actualClockIn: '08:52:00',
   actualClockOut: '02:00:00',
   measuredExtendedMinutes: 480,
+  approvedOtPlan: null,
 };
 const REST_DAY_VIEW: LeaveCreditDayFacts = {
   kind: 'rest_day',
+  shiftStart: null,
   shiftEnd: null,
+  actualClockIn: '08:00:00',
   actualClockOut: '17:00:00',
   measuredExtendedMinutes: 0,
+  approvedOtPlan: null,
 };
 /** r360 — a public holiday, whose provenance caption is the one that must NOT name the roster. */
 const HOLIDAY_VIEW: LeaveCreditDayFacts = {
   kind: 'holiday',
+  shiftStart: null,
   shiftEnd: null,
+  actualClockIn: '08:00:00',
   actualClockOut: '17:00:00',
   measuredExtendedMinutes: 0,
+  approvedOtPlan: null,
 };
 
 function mount(
@@ -323,9 +334,23 @@ describe('r343 · the ordinary-day row derives its figures and never offers them
     expect(dialog.querySelector('input[name="eligibleMinutes"]')).toBeNull();
     expect(dialog.querySelector('input[name="credit"]')).toBeNull();
 
-    // The two read-only facts are shown, trimmed to HH:MM.
-    expect(screen.getByTestId('leave-credit-shift-end')).toHaveTextContent('18:00');
-    expect(screen.getByTestId('leave-credit-clock-out')).toHaveTextContent('02:00');
+    /**
+     * ⚠️ r365 cbfa8b0b — THIS READ, AND THE CLAIM IS KEPT RATHER THAN DROPPED:
+     *
+     *     // The two read-only facts are shown, trimmed to HH:MM.
+     *     expect(screen.getByTestId('leave-credit-shift-end')).toHaveTextContent('18:00');
+     *     expect(screen.getByTestId('leave-credit-clock-out')).toHaveTextContent('02:00');
+     *
+     * The two cells left the row for the panel behind the Attendance › View button, so the facts are still
+     * shown and still trimmed to HH:MM — one click away. The dialog's job here is that it renders the SAME
+     * component as /leave/credit, so the panel's own contents are asserted once, against that component, in
+     * test/r343-leave-credit-table.dom.test.tsx. What this case can still say from inside the dialog is
+     * that the control reached it and is live, which is the half a missing column would break.
+     */
+    expect(screen.getByTestId('leave-credit-attendance-view')).toBeTruthy();
+    expect((screen.getByTestId('leave-credit-attendance-view') as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryAllByTestId('leave-credit-shift-end')).toHaveLength(0);
+    expect(screen.queryAllByTestId('leave-credit-clock-out')).toHaveLength(0);
     // r358 — this read `expect(daysSelect('en').disabled).toBe(true)`, "the Days cell is dead on this
     // row, which is what used to be a different section". There is no Days cell on any row now: the
     // owner replaced the declared figure with the claimed window for every day type.

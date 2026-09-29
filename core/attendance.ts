@@ -4009,10 +4009,32 @@ export function otPlanCalendarMonth(
  * apply to this day type"; the REFUSAL for a day that cannot earn anything comes from the minutes, never
  * from a missing time.
  */
+/**
+ * ⚠️ r365 cbfa8b0b — TWO REFERENCE-ONLY FIELDS JOINED THIS VIEW, AND NEITHER IS AN INPUT TO ANY FIGURE.
+ *
+ * The Leave Credit request row moved its attendance figures behind one `View` button, and that panel shows
+ * the employee the whole record for the date: the scheduled shift as a WINDOW (not just its end), and the
+ * clock-IN beside the clock-out. `shiftStart` and `actualClockIn` exist for that panel and for nothing
+ * else — no arithmetic in this repo reads either of them, and `assessExtendedClaim`'s inputs are unchanged
+ * (`lib/extended-hours.ts` still takes `shiftEnd` and `actualClockOut`, and the Leave Credit table still
+ * passes NULL for both on the three non-working day types, which is the money rule).
+ *
+ * ⚠️ `s.shiftStart` / `s.shiftEnd`, NEVER `s.scheduledStart` / `s.scheduledEnd`. The two pairs are not
+ * synonyms: `scheduledStart`/`scheduledEnd` resolve on EVERY branch including company-policy, while
+ * `shiftStart`/`shiftEnd` are NULL on that branch (see ResolvedSchedule above) — and `shiftEnd` is what the
+ * credit is actually floored at. Printing the scheduled pair would show the employee one number while the
+ * credit used another, which is the class of defect this whole round is about.
+ *
+ * NO EXTRA QUERY. `checkInAt` is a column on the row already being selected for the clock-out.
+ */
 export type ExtendedHoursDayView = {
   kind: WorkedDayKind;
+  /** The resolved schedule's shift START (HH:MM:SS), or null on the company-policy branch. Display only. */
+  shiftStart: string | null;
   /** The resolved schedule's shift end (HH:MM:SS), or null on the company-policy branch. */
   shiftEnd: string | null;
+  /** The attendance row's clock-IN (HH:MM:SS), or null when the day has no row or no clock-in. Display only. */
+  actualClockIn: string | null;
   /** The attendance row's clock-out (HH:MM:SS), or null when the day has no row or no clock-out. */
   actualClockOut: string | null;
   /** r334's measured extended figure for the day: `ot_minutes` less any folded pre-shift minutes. */
@@ -4024,13 +4046,20 @@ export async function extendedHoursDayForTx(tx: Tx, employmentId: string, date: 
   const kind: WorkedDayKind =
     s.dayType === 'holiday' ? 'holiday' : s.dayType === 'rest_day' ? 'rest_day' : s.source === 'default-shift-rest' ? 'off_day' : 'workday';
   const [row] = await tx
-    .select({ checkOutAt: attendance.checkOutAt, otMinutes: attendance.otMinutes, calcTrace: attendance.calcTrace })
+    .select({
+      checkInAt: attendance.checkInAt,
+      checkOutAt: attendance.checkOutAt,
+      otMinutes: attendance.otMinutes,
+      calcTrace: attendance.calcTrace,
+    })
     .from(attendance)
     .where(and(eq(attendance.employmentId, employmentId), eq(attendance.attendanceDate, date)))
     .limit(1);
   return {
     kind,
+    shiftStart: s.shiftStart ?? null,
     shiftEnd: s.shiftEnd ?? null,
+    actualClockIn: row?.checkInAt ?? null,
     actualClockOut: row?.checkOutAt ?? null,
     measuredExtendedMinutes: row ? extendedMinutesAfterShiftEnd({ otMinutes: row.otMinutes, calcTrace: row.calcTrace }) : 0,
   };

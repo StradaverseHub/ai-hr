@@ -248,11 +248,16 @@ describe('The employee’s Leave Credit request', () => {
    */
   for (const locale of LOCALES) {
     it(`[${locale}] states the rule, and names what the ROSTER holds for each date worked`, async () => {
+      // r365 cbfa8b0b — `shiftStart`, `actualClockIn` and `approvedOtPlan` joined LeaveCreditDayFacts for
+      // the Attendance panel behind the row's View button. None of the three is an input to any figure.
       const dayFactsAction = vi.fn(async (d: string) => ({
         kind: (d === '2026-08-03' ? 'workday' : 'off_day') as 'workday' | 'off_day',
+        shiftStart: d === '2026-08-03' ? '09:00:00' : null,
         shiftEnd: d === '2026-08-03' ? '18:00:00' : null,
+        actualClockIn: '08:00:00',
         actualClockOut: '19:00:00',
         measuredExtendedMinutes: 0,
+        approvedOtPlan: null,
       }));
       render(
         <NextIntlClientProvider locale={locale} messages={CATALOGUES[locale]}>

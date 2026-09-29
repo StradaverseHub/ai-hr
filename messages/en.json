@@ -13229,7 +13229,7 @@
       "belowThreshold": "Under {minutes} minutes. Not eligible for credit."
     },
     "table": {
-      "help": "Add one row for each date you worked. The day type fills in from your roster when you pick the date. Every day type is claimed the same way: enter the start and end time you worked, and the credit follows the hours — four eligible hours earn half a day, eight earn a full day. On an ordinary working day the hours count from your scheduled shift end; on a rest day, off day or public holiday there is no scheduled shift, so the whole window you enter counts. Your recorded clock-out is shown for reference and does not limit what you can claim — where the two differ, your manager sees it and checks it before approving. Nothing is credited until your manager approves.",
+      "help": "Add one row for each date you worked. Enter the start and end time you worked; the credit follows the hours — four eligible hours earn half a day, eight earn a full day. Use View to check your attendance record for that date; it is for reference only and does not limit what you can claim. Nothing is credited until your manager approves.",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "An ordinary working day cannot earn a credit at this company.",
@@ -13246,7 +13246,23 @@
       "dayTypeFromHolidays": "From the public holiday calendar",
       "dayTypeReading": "Reading your roster...",
       "dayTypeNotFound": "Not found - pick the date again",
-      "crossesMidnight": "This window reads as ending the next morning."
+      "crossesMidnight": "This window reads as ending the next morning.",
+      "attendanceColumn": "Attendance",
+      "attendanceView": "View",
+      "attendanceViewDisabled": "Pick a date first",
+      "attendanceHeading": "Attendance for this date",
+      "attendanceScheduledShift": "Scheduled shift",
+      "attendanceClockIn": "Actual clock-in",
+      "attendanceClockInOut": "Clock-in / clock-out",
+      "attendanceNoShift": "No scheduled shift",
+      "attendanceNothingRecorded": "Nothing recorded",
+      "attendanceNoRecordNote": "No clock-in or clock-out was recorded for this date. You can still make the claim.",
+      "attendanceReferenceOnly": "For reference only. It does not limit what you can claim.",
+      "attendanceOtPlan": "Approved OT plan",
+      "attendanceOtPlanNone": "None for this date",
+      "attendanceOtPlanApproved": "Approved for this date",
+      "dotReasonNoRecord": "No clock-out is on record for this date.",
+      "dotReasonPastClockOut": "You claimed to {claimEnd}; the clock-out on record is {clockOut}."
     }
   },
   "notices": {
