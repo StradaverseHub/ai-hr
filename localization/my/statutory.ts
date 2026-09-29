@@ -132,9 +132,12 @@ type ResolvedEpfElection = {
  *   · the product's own precedent on the IDENTICAL figure — `saveStatutoryAdjustment` (core/payroll.ts)
  *     lets an operator type any EPF employee/employer amount for a run and refuses only a NEGATIVE. A
  *     floor here and none there would be incoherent about the same money;
- *   · a lawful below-schedule case this system cannot compute at all: a member grandfathered on the
- *     pre-1998 rates (docs/architecture/STATUTORY-SOURCES.md). A typed amount is the only way to state it,
- *     and a floor would close it;
+ *   · a lawful below-schedule case this system cannot compute at all, which its OWN sources document
+ *     already flags as unhandled: "pre-1998 legacy (5.5% / 6-6.5%) is NOT auto-applied (rare - flag if any
+ *     such grandfathered member exists)" (docs/architecture/STATUTORY-SOURCES.md §2). Those legacy figures
+ *     are RATES and the rate election still cannot carry them, because `voluntary_excess` is
+ *     max(elected, statutory) and can only RAISE. A typed amount is the only affordance, and a floor here
+ *     would close it;
  *   · the ticket asked in so many words that the automatic calculation must not override the amount.
  * The consequence is real and it is the operator's: the KWSP submission file carries the employee's TRUE
  * wage in the Upah column and this amount in the contribution column, and if the two disagree with the

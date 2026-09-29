@@ -88,10 +88,12 @@ export type TaxProfile = {
  * ⚠️ 'manual_amount' REVERSES A DEFERRAL, TWICE MADE. ADR-0035 §4 and ADR-0046 both refused it, and
  * ADR-0046's words were "no KWSP fixed-amount election". RETIRED, NOT DELETED, and the reasoning is in
  * docs/adr/0087-epf-manual-amount-categories.md: the old claim is true of what KWSP's FORMS offer and
- * false as a statement about what a lawful contribution can be. A member grandfathered on the pre-1998
- * rates (docs/architecture/STATUTORY-SOURCES.md) contributes BELOW today's schedule, and nothing in this
- * system can compute that figure — a typed amount is the only way to state it. So this mode does NOT
- * floor at statutory; it is the one EPF mode that can go down.
+ * false as a statement about what a lawful contribution can be. docs/architecture/STATUTORY-SOURCES.md §2
+ * records the case, in its own words: "pre-1998 legacy (5.5% / 6-6.5%) is NOT auto-applied (rare - flag if
+ * any such grandfathered member exists)". Those legacy figures ARE rates, and the rate election still cannot
+ * carry them: `voluntary_excess` is max(elected, statutory) by design, so i-Topup can only RAISE. No table
+ * produces 5.5% and no election expresses it. So this mode does NOT floor at statutory; it is the one EPF
+ * mode that can go down, and it is the only affordance the system has for that member.
  */
 export type EpfMode = 'auto' | 'voluntary_excess' | 'exempt' | 'manual_amount';
 export type EpfElection = {

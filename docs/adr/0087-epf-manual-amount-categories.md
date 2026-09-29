@@ -28,10 +28,21 @@ system cannot be told once, on the employee, that this is how their EPF is alway
 ADR-0046 refused a fixed amount on a legal point and two engineering ones.
 
 **The legal point does not survive contact with the Act.** "KWSP has no fixed-amount election" is true of
-what KWSP's **forms** offer and was read as a statement about what a lawful contribution can **be**. A member
-grandfathered on the **pre-1998 rates** (`docs/architecture/STATUTORY-SOURCES.md`) lawfully contributes
-**below today's Third Schedule**, and nothing in this system can compute that figure: there is no table for
-it, no rate that produces it, and no election that expresses it. A typed amount is the only way to state it.
+what KWSP's **forms** offer and was read as a statement about what a lawful contribution can **be**.
+
+The case it cannot survive is quoted verbatim from this repo's own sources document
+(`docs/architecture/STATUTORY-SOURCES.md` §2, EPF sign-off):
+
+> pre-1998 legacy (5.5% / 6–6.5%) is **not** auto-applied (rare — flag if any such grandfathered member
+> exists).
+
+A member on those legacy rates lawfully contributes **below today's Third Schedule**. Note the precise
+shape of the gap, because it matters: the legacy figures **are** rates, so one might expect the existing
+rate election to carry them. It cannot. `voluntary_excess` is `max(elected, statutory)` by design — i-Topup
+can only **raise** a rate, which is correct and stays correct — so no election in the system can express
+5.5%, no table produces it, and the sources document's own instruction ("flag if any such member exists") is
+an admission that the case is unhandled. A typed **amount** is the only affordance the system has for it.
+
 The product also already contradicts the old position on the identical figure — `saveStatutoryAdjustment`
 accepts any EPF amount and refuses only a **negative** — so a floor here and none there would be incoherent
 about the same money on the same payslip.

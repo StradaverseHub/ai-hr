@@ -3070,9 +3070,11 @@ export const compensation = pgTable(
 //
 // ⚠️ ADR-0046 SAID THERE WAS NO SUCH ELECTION AND THAT CLAIM IS NOW RETIRED, not deleted: it read "KWSP
 // has no fixed-amount election", which is true of what KWSP's FORMS offer and was taken to mean the
-// system must not be able to state one. It cannot survive the pre-1998 grandfathered member, whose lawful
-// contribution is below today's schedule and which nothing in this system can compute
-// (docs/architecture/STATUTORY-SOURCES.md). See docs/adr/0087-epf-manual-amount-categories.md.
+// system must not be able to state one. It cannot survive the pre-1998 grandfathered member, whom
+// docs/architecture/STATUTORY-SOURCES.md §2 already flags as unhandled ("pre-1998 legacy (5.5% / 6-6.5%)
+// is NOT auto-applied"): those legacy figures are RATES, yet the rate election cannot carry them either
+// because voluntary_excess is max(elected, statutory) and can only raise. A typed amount is the only
+// affordance there is. See docs/adr/0087-epf-manual-amount-categories.md.
 export const epfModeEnum = pgEnum('epf_mode', ['auto', 'voluntary_excess', 'exempt', 'manual_amount']);
 
 // ───────────── Employee statutory profile — Malaysia pack (per-person) ─────────────
