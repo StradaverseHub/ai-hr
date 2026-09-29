@@ -166,7 +166,10 @@ export async function GET(req: Request) {
             ...(setByHand
               ? [
                   t('manualBannerHeading'),
-                  `${t('manualBannerItems')}: ${setByHand.keys.map((k) => t(ITEM_LABEL[k])).join(' · ')}`,
+                  // COMMA inside, because the description's own separator is ' · ': a nested ' · ' list
+                  // would leave "EPF (KWSP) · HRD Corp levy" indistinguishable from two caveats. The
+                  // screen keeps ' · ' — it has a row of its own and nothing to be confused with.
+                  `${t('manualBannerItems')}: ${setByHand.keys.map((k) => t(ITEM_LABEL[k])).join(', ')}`,
                   `${t('manualReason')}: ${setByHand.reason || t('notRecordedShort')}`,
                 ]
               : []),
