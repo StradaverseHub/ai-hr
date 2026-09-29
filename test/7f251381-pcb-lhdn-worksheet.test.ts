@@ -154,7 +154,10 @@ describe('7f251381 — each LHDN symbol prints the figure the run recorded under
     // relief; LHDN's specification, printed p.10, defines "Q  Deduction for qualifying children" and
     // "C  Number of qualifying children" with the formula carrying Q x C, so Q is the PER-CHILD figure
     // and the total is their product. The product has its own row, asserted below.
-    ['Q', (x) => (x.kind === 'mtd' && x.trace != null ? x.trace.childDeductionPerChild : 0)],
+    // r362 — Q and C are `number | null` now, absent on any run stamped before r359. This table runs
+    // over a CURRENT fixture, which stamps both; the absent case has its own case in
+    // test/ad7bc503-pcb-slip.test.ts, where it must read notRecorded rather than RM0.00.
+    ['Q', (x) => (x.kind === 'mtd' && x.trace?.childDeductionPerChild != null ? x.trace.childDeductionPerChild : 0)],
     ['QC', (x) => x.reliefs.children],
     ['ΣLP', (x) => x.trace!.lpAccumulated],
     ['LP1', (x) => x.trace!.lpCurrent],
@@ -177,6 +180,41 @@ describe('7f251381 — each LHDN symbol prints the figure the run recorded under
       expect(rows.length, `exactly one ${symbol} row`).toBe(1);
       expect(amountOf(rows[0]), `${symbol} must be the stored figure, to the sen`).toBe(source(x));
     }
+  });
+
+  it('A RUN STAMPED BEFORE r359 HAS NO Q AND NO C, AND THE WORKSHEET SAYS SO INSTEAD OF PRINTING ZERO', () => {
+    // r362 — THIS DEFECT WAS LIVE ON EVERY HISTORIC PAYSLIP. r359 added `childDeductionPerChild` and
+    // redefined `childCount`, and `readTrace` put both through `n()`, which turns `undefined` into 0.
+    // A payslip stamped before 2026-09-29 therefore rendered Q = RM0.00 and C = 0 beside a QC holding
+    // the real relief — three cells that visibly do not multiply, on the screen a payroll officer uses
+    // to defend a figure, with nothing saying the split was simply never recorded for that run.
+    //
+    // `explainPcb`'s own doc states the rule that was broken: a member a run predates is "not recorded
+    // for this run", and it "does NOT render the legs as zeroes". Absence now stays absent.
+    const { statutory } = richRun();
+    const snap = JSON.parse(JSON.stringify(statutory.pcbMeta)) as { trace?: Record<string, unknown> };
+    if (!snap.trace) throw new Error('the fixture must carry a trace to strip fields from');
+    delete snap.trace.childCount;
+    delete snap.trace.childDeductionPerChild;
+
+    const x = explainPcb({ ...statutory, pcbMeta: snap }, CURRENT);
+    if (x.kind !== 'mtd' || x.trace == null) throw new Error('stripping two fields must not lose the trace');
+    // The premise, asserted so this case cannot pass by accidentally having no trace at all.
+    expect(x.trace.M, 'the bracket survived — this is the "old stamp" case, not the "no trace" case').toBeGreaterThan(0);
+
+    const w = pcbWorksheet(x, SEED);
+    expect(bySymbol(w, 'Q')[0].value, 'Q is not recorded for this run — RM0.00 would be a false figure').toEqual({
+      kind: 'notRecorded',
+    });
+    expect(bySymbol(w, 'C')[0].value, 'and neither is C — a count of 0 children would be a false figure').toEqual({
+      kind: 'notRecorded',
+    });
+    // QC still prints: the RELIEF was on the old stamp, only the split into Q and C was not. That
+    // asymmetry is the reason the guard is on the FIELD rather than on the trace.
+    expect(bySymbol(w, 'QC')[0].value, 'the relief itself IS recorded and still prints').toEqual({
+      kind: 'money',
+      amount: x.reliefs.children,
+    });
   });
 
   it('…and the figures it is matched against are actually different from one another', () => {

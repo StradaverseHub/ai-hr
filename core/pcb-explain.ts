@@ -81,8 +81,18 @@ export type PcbTrace = {
   taxOnP1: number;
   /** s.48 category the B column came from, and the child COUNT behind the child-relief amount. */
   category: number;
-  childCount: number;
-  childDeductionPerChild: number;
+  /**
+   * NULL ON EVERY RUN STAMPED BEFORE r359, which introduced both fields — and that is the whole point
+   * of the type. r362: they were read through `n()`, which turns `undefined` into 0, so a payslip from
+   * before 2026-09-29 rendered `Q = RM0.00` beside a QC holding the real relief and a C still meaning
+   * the old record count: three cells that visibly do not multiply, on the screen a payroll officer
+   * uses to DEFEND a figure. The header on `trace` a few lines below already states the rule this
+   * broke — "it does NOT back-derive the bracket and it does NOT render the legs as zeroes" — so the
+   * fix is to let absence stay absent and let the worksheet say `notRecorded`, exactly as it already
+   * does for a run with no trace at all.
+   */
+  childCount: number | null;
+  childDeductionPerChild: number | null;
   /** The remuneration legs of P. Y₂ = Y₁ by construction (the projection repeats the current month). */
   Y1: number;
   K1: number;
@@ -269,8 +279,9 @@ function readTrace(raw: unknown): PcbTrace | null {
     B: n(t.B),
     taxOnP1: n(t.taxOnP1),
     category: n(t.category),
-    childCount: n(t.childCount),
-    childDeductionPerChild: n(t.childDeductionPerChild),
+    // NOT `n()` — see the field's own note. `n(undefined)` is 0, and 0 is a lie here.
+    childCount: t.childCount === undefined ? null : n(t.childCount),
+    childDeductionPerChild: t.childDeductionPerChild === undefined ? null : n(t.childDeductionPerChild),
     Y1: n(t.Y1),
     K1: n(t.K1),
     Y2: n(t.Y2),
@@ -707,8 +718,18 @@ export function pcbWorksheet(x: PcbExplanation, previous: PcbPreviousEmployment 
     // "Q  Deduction for qualifying children" and "C  Number of qualifying children" with the formula
     // carrying Q x C, so the slip's own two letters did not multiply to the relief beside them. The
     // product is printed too, because a reader checking the arithmetic should not have to do it.
-    { symbol: 'Q', caption: 'worksheetQ', value: t ? money(t.childDeductionPerChild) : { kind: 'notRecorded' } },
-    { symbol: 'C', caption: 'worksheetC', value: t ? { kind: 'count', count: t.childCount } : { kind: 'notRecorded' } },
+    // r362 — the guard is on the FIELD, not on the trace. A run stamped before r359 has a trace and no
+    // Q or C in it; keying off `t` alone printed RM0.00 and a count of 0 for every one of them.
+    {
+      symbol: 'Q',
+      caption: 'worksheetQ',
+      value: t && t.childDeductionPerChild != null ? money(t.childDeductionPerChild) : { kind: 'notRecorded' },
+    },
+    {
+      symbol: 'C',
+      caption: 'worksheetC',
+      value: t && t.childCount != null ? { kind: 'count', count: t.childCount } : { kind: 'notRecorded' },
+    },
     { symbol: 'QC', caption: 'worksheetQc', value: money(x.reliefs.children) },
     { symbol: 'ΣLP', caption: 'worksheetLpAccumulated', value: fromTrace(t, (v) => v.lpAccumulated) },
     { symbol: 'LP1', caption: 'worksheetLpCurrent', value: fromTrace(t, (v) => v.lpCurrent) },
@@ -1334,8 +1355,10 @@ export function pcbSlipSections(
     pcbChildSection(
       p.profile,
       slipMoney(x.reliefs.children),
-      t ? { kind: 'count', count: t.childCount } : SLIP_ABSENT,
-      t ? slipMoney(t.childDeductionPerChild) : SLIP_ABSENT,
+      // r362 — guarded on the FIELD, not the trace, for the same reason as the worksheet's Q and C
+      // rows: a run stamped before r359 has a trace with neither, and SLIP_ABSENT is the truthful cell.
+      t && t.childCount != null ? { kind: 'count', count: t.childCount } : SLIP_ABSENT,
+      t && t.childDeductionPerChild != null ? slipMoney(t.childDeductionPerChild) : SLIP_ABSENT,
     ),
     // 3 — r361: the accumulated remuneration block, which the official prints on page 1 immediately
     // under the child grid and above the accumulated deductions. It goes HERE, and not at the foot with

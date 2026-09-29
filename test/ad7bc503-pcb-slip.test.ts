@@ -269,13 +269,18 @@ describe('ad7bc503 — the children grid, and the split that was never recorded'
     // makes Q the deduction for ONE qualifying child and the total their product with C. Both are
     // pinned, and the identity between them is pinned below — which is the assertion the old single
     // row could not make.
-    expect(byCaption(sec, 'slipChildRelief')!.first).toEqual({ kind: 'money', amount: x.trace!.childDeductionPerChild });
+    // r362 — both are nullable now (absent on a run stamped before r359), so a CURRENT run stamping
+    // them is itself worth asserting: if we ever stop, these rows go to notRecorded and the three
+    // assertions below would otherwise pass vacuously against nulls.
+    expect(x.trace!.childDeductionPerChild, 'a current run stamps Q').not.toBeNull();
+    expect(x.trace!.childCount, 'a current run stamps C').not.toBeNull();
+    expect(byCaption(sec, 'slipChildRelief')!.first).toEqual({ kind: 'money', amount: x.trace!.childDeductionPerChild! });
     expect(byCaption(sec, 'slipChildReliefTotal')!.first).toEqual({ kind: 'money', amount: x.reliefs.children });
     expect(
-      x.trace!.childDeductionPerChild * x.trace!.childCount,
+      x.trace!.childDeductionPerChild! * x.trace!.childCount!,
       'Q x C is the relief on the same slip — the whole point of printing the letters',
     ).toBeCloseTo(x.reliefs.children, 2);
-    expect(byCaption(sec, 'slipChildCount')!.first).toEqual({ kind: 'count', count: x.trace!.childCount });
+    expect(byCaption(sec, 'slipChildCount')!.first).toEqual({ kind: 'count', count: x.trace!.childCount! });
     expect(byCaption(sec, 'slipDisabledIndividual')!.first).toEqual({ kind: 'caption', caption: 'slipYes' });
     expect(byCaption(sec, 'slipDisabledSpouse')!.first).toEqual({ kind: 'caption', caption: 'slipNo' });
   });
@@ -306,12 +311,63 @@ describe('ad7bc503 — the children grid, and the split that was never recorded'
     expect(x.reliefs.children, 'the relief the kernel applied is unchanged by this item').toBe(18000);
     expect(x.trace.childDeductionPerChild, 'Q — the deduction for ONE qualifying child').toBe(2000);
     expect(x.trace.childCount, "C — LHDN's weighted number, NOT the two child records").toBe(9);
-    expect(x.trace.childDeductionPerChild * x.trace.childCount).toBeCloseTo(x.reliefs.children, 2);
+    expect(x.trace.childDeductionPerChild! * x.trace.childCount!).toBeCloseTo(x.reliefs.children, 2);
     // …and the slip prints that C, not the record count.
     const sec2 = byHeading(sections(x, { profile: GRID }), 'slipChildHeading');
     expect(byCaption(sec2, 'slipChildCount')!.first).toEqual({ kind: 'count', count: 9 });
     expect(byCaption(sec2, 'slipChildRelief')!.first).toEqual({ kind: 'money', amount: 2000 });
     expect(byCaption(sec2, 'slipChildReliefTotal')!.first).toEqual({ kind: 'money', amount: 18000 });
+  });
+
+  it('A PAYSLIP OLDER THAN r359 HAS NO Q AND NO C, AND MUST SAY SO RATHER THAN PRINT RM0.00', () => {
+    // r362 — THE DEFECT THIS PINS WAS LIVE. r359 introduced `childDeductionPerChild` and redefined
+    // `childCount`, and both were read through `n()`, which turns `undefined` into 0. So every payslip
+    // stamped before 2026-09-29 rendered `Q = RM0.00` and `C = 0` beside a QC holding the real relief:
+    // three cells on a statutory explanation screen that visibly do not multiply, with nothing saying
+    // the two were simply never recorded for that run.
+    //
+    // `explainPcb`'s own `trace` doc has said the rule all along — "it does NOT back-derive the bracket
+    // and it does NOT render the legs as zeroes" — so the fix was to stop coercing absence, not to
+    // invent a new display. A trace WITH a bracket and WITHOUT these two fields is the exact shape an
+    // old `pcbMeta` has, so that is what this builds.
+    const r = pcbMonth({
+      monthlyWage: 14000,
+      epfMonthly: 1540,
+      month: 7,
+      profile: { category: 2, children: 2, childReliefAmount: 18000 },
+      acc: { netRemuneration: 63000, epfClaimed: 800, pcbPaid: 4100, zakatPaid: 250, lpAccumulated: 480 },
+    });
+    const snap = JSON.parse(JSON.stringify(r.snapshot)) as { trace?: Record<string, unknown> };
+    if (!snap.trace) throw new Error('the fixture must carry a trace to strip fields from');
+    delete snap.trace.childCount;
+    delete snap.trace.childDeductionPerChild;
+
+    const x = explainPcb({ pcb: r.total, epfEmployee: 1540, pcbMeta: snap }, CURRENT);
+    expect(x.kind).toBe('mtd');
+    if (x.kind !== 'mtd' || x.trace == null) throw new Error('stripping two fields must not lose the trace');
+
+    // The premise: this is a real trace, not a null one — the rest of the working still prints.
+    expect(x.trace.M, 'the bracket survived, so this is the "old stamp" case and not "no trace"').toBeGreaterThan(0);
+    expect(x.trace.childCount, 'absent, not zero').toBeNull();
+    expect(x.trace.childDeductionPerChild, 'absent, not zero').toBeNull();
+
+    // The slip's own child section. The worksheet's Q and C rows are asserted in
+    // test/7f251381-pcb-lhdn-worksheet.test.ts, which owns that builder.
+    const sec = byHeading(sections(x, { profile: GRID }), 'slipChildHeading');
+    expect(
+      byCaption(sec, 'slipChildRelief')!.first,
+      'Q is not recorded for this run — RM0.00 would be a false figure',
+    ).toEqual({ kind: 'notRecorded' });
+    expect(
+      byCaption(sec, 'slipChildCount')!.first,
+      'and neither is C — a count of 0 children would be a false figure',
+    ).toEqual({ kind: 'notRecorded' });
+    // The TOTAL still prints, because the RELIEF was on the old stamp. That asymmetry is the point:
+    // the run recorded what the children were worth and never recorded how it split them.
+    expect(
+      byCaption(sec, 'slipChildReliefTotal')!.first,
+      'the relief itself IS on the old stamp and still prints',
+    ).toEqual({ kind: 'money', amount: 18000 });
   });
 
   it('a MANUAL employee gets "not recorded" per category — never five zeroes', () => {
