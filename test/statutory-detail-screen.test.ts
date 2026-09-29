@@ -39,12 +39,13 @@ import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from 
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
-import { createBatch, generatePayslips } from '../core/payroll';
+import { createBatch, generatePayslips, saveStatutoryAdjustment } from '../core/payroll';
 import { listProcessedPayslipsAcross } from '../core/payroll-view';
 import { explainStatutory } from '../core/statutory-explain';
 import StatutoryDetailPage from '../app/payroll/statutory-detail/page';
 import TransactionViewPage from '../app/payroll/transaction-view/page';
 import { StatutoryDetailView } from '../app/payroll/statutory-detail/statutory-detail-view';
+import { GET as statutoryExportGET } from '../app/payroll/statutory-detail/export/route';
 
 /** Depth-first walk collecting every node whose `type` identity matches. Same helper as the panel guard;
  *  `panel` is walked as well as `children` because Transaction View mounts its tabs inside one. */
@@ -86,6 +87,8 @@ function textOf(node: unknown, acc: string[] = []): string[] {
 let base: Base;
 let mine: { employmentId: string; personId: string };
 let payslipId: string;
+/** 208beb8b — the export case applies a real statutory adjustment to this batch and reprocesses it. */
+let batchId: string;
 
 beforeAll(async () => {
   await migrateTestDb();
@@ -121,7 +124,7 @@ beforeEach(async () => {
     bankName: 'Maybank',
     bankAccountNo: '512345678901',
   });
-  const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-06' });
+  ({ batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-06' }));
   await generatePayslips(a, { batchId });
   const rows = await listProcessedPayslipsAcross(a, {
     companyIds: [base.companyId],
@@ -340,5 +343,207 @@ describe('6b4ca488 — what the display prints for a payslip whose working was n
     // The figures themselves both survive — the increment in the working, the cumulative wage above it.
     expect(text, 'the increment is still shown').toContain('1,100.00');
     expect(text, 'and so is the wage it was assessed against').toContain('MYR 15,000.00');
+  });
+});
+
+/**
+ * 208beb8b — WHAT THE SCREEN AND THE DOWNLOAD SAY ABOUT A FIGURE SOMEBODY TYPED.
+ *
+ * test/statutory-explain.test.ts pins the derivation. These pin the two things it cannot see: the SHAPE of
+ * the working line (a rate can be null and the line can still print a multiplication of its own), and the
+ * file an auditor actually receives.
+ *
+ * ⚠️ EVERY CASE ASSERTS THE ADJUSTMENT EXISTS BEFORE IT ASSERTS WHAT IS RENDERED. A fixture with no
+ * statutory adjustment makes "no percentage is printed" and "the caption is not the schedule's" pass
+ * whatever the code does, because there is nothing to attribute. The precondition is the test.
+ */
+describe('208beb8b — a hand-set figure on the screen and in the download', () => {
+  const CTX = {
+    payslipId: '00000000-0000-0000-0000-0000000000b2',
+    employeeCode: 'E002',
+    employeeName: 'Hand Set',
+    company: 'Acme Sdn Bhd',
+    periodLabel: 'June 2026',
+    payPeriod: '2026-06',
+    runType: 'regular',
+    runSeq: 1,
+    currency: 'MYR',
+  };
+  const REASON = 'KWSP letter 2026/118 — arrears agreed with the member';
+  /** The item's own reproduction: EPF employee typed to RM500 where the Third Schedule produced RM330. */
+  const HAND_SET_EPF = {
+    version: '2026.5',
+    epfEmployee: 500,
+    epfEmployer: 390,
+    socsoEmployee: 24.75,
+    socsoEmployer: 86.65,
+    eisEmployee: 9.9,
+    eisEmployer: 9.9,
+    hrdf: 48,
+    pcb: 320,
+    bases: { epf: 3000, epfAdditional: 0, socsoEis: 5000, pcb: 3000, hrdf: 4800 },
+    adjustment: { reason: REASON, lines: { epfEmployee: { system: 330, applied: 500 } } },
+  };
+
+  it('prints NO invented percentage and credits NO schedule for the typed line', async () => {
+    const explanation = explainStatutory(HAND_SET_EPF, 'regular');
+    // ── THE PRECONDITION. Without this the three refusals below are vacuous.
+    expect(explanation.setByHand?.keys, 'the fixture must actually carry an adjustment').toEqual(['epf']);
+    expect(explanation.items.find((i) => i.key === 'epf')!.provenance.employee).toEqual({
+      system: 330,
+      applied: 500,
+    });
+    const rendered = textOf(await StatutoryDetailView({ ctx: CTX, explanation }));
+    const text = rendered.join(' ');
+
+    // 500 ÷ 3,000 = 16.67%. This is the number the screen printed, and the reason the item was raised.
+    expect(text, 'a rate that does not exist must not appear').not.toContain('16.67%');
+    expect(text, 'nor the mapping arrow that claims the wage produced the amount').not.toContain('3,000.00 →');
+    expect(text).not.toContain('3,000.00 ×');
+    // …and the KWSP caption goes with it. Both the summary column and the item's "Rule applied" row.
+    expect(rendered.filter((x) => x === 'ruleScheduleEpf'), 'the schedule is no longer credited').toHaveLength(0);
+    expect(rendered.filter((x) => x === 'ruleManual'), 'it names itself instead, in both places').toHaveLength(2);
+    expect(text, 'and the caption asserting the band lookup is gone').not.toContain('effectiveRateEpfNote');
+    expect(text, 'replaced by one that says a person entered it').toContain('manualNote');
+
+    // THE BANNER, above every working, with the items it covers and the reason the officer recorded.
+    expect(text).toContain('manualBannerHeading');
+    expect(text).toContain('manualBannerBody');
+    expect(text).toContain('manualBannerItems');
+    expect(text).toContain('manualReason');
+    expect(text, 'the recorded reason is DISPLAYED, not merely stored').toContain(REASON);
+
+    // THE SYSTEM FIGURE BESIDE THE TYPED ONE — both, or the reader cannot see the difference.
+    expect(text, 'what the rule produced').toContain('MYR 330.00');
+    expect(text, 'what the payslip charged').toContain('MYR 500.00');
+    expect(text).toContain('fieldSystemEmployeeShare');
+    // The untouched EMPLOYER leg grows no system row: its figure IS the system's, and a second identical
+    // line would read as a discrepancy. (It loses its derived rate — the deliberate choice, header.)
+    expect(text).not.toContain('fieldSystemEmployerShare');
+
+    // The three UNTOUCHED items still name the rules that really produced them — no cascade implied.
+    expect(rendered.filter((x) => x === 'ruleSchedule'), 'SOCSO, SKBBK and EIS, twice each').toHaveLength(6);
+    expect(text, 'and a genuine percentage still gets its multiplication').toContain('4,800.00 × 1.00% = 48.00');
+  });
+
+  it('THE HRD CORP LEVY: a typed amount no longer prints a product that does not evaluate', async () => {
+    // The only `base × rate = amount` line on the screen. 4,800 × 1.00% = 48; type 90 and the shipped code
+    // printed "4,800.00 × 1.88% = 90.00" — a false caption AND false arithmetic.
+    const blob = {
+      ...HAND_SET_EPF,
+      hrdf: 90,
+      adjustment: { reason: REASON, lines: { hrdf: { system: 48, applied: 90 } } },
+    };
+    const explanation = explainStatutory(blob, 'regular');
+    expect(explanation.setByHand?.keys, 'the precondition: the levy really is stamped').toEqual(['hrdf']);
+    const text = textOf(await StatutoryDetailView({ ctx: CTX, explanation })).join(' ');
+    expect(text, 'no multiplication may be printed for a typed amount').not.toContain('4,800.00 ×');
+    expect(text, 'and no derived percentage either').not.toContain('1.88%');
+    expect(text, 'the amount stands alone').toContain('90.00');
+    expect(text, 'with the levy’s own system figure beside it').toContain('MYR 48.00');
+    expect(text).toContain('fieldSystemEmployerShare');
+    // EPF is untouched in this fixture, so it goes back to naming the KWSP schedule — the non-vacuity
+    // partner inside the render test: the caption is suppressed per ITEM, not screen-wide.
+    expect(text, 'an untouched EPF still names its schedule').toContain('ruleScheduleEpf');
+  });
+
+  it('the working line refuses an expression for a manual item EVEN IF a rate reached it', async () => {
+    // DEFENCE IN DEPTH, pinned so it cannot be tidied away as dead code. Two independent guards stop the
+    // levy printing a product it cannot evaluate: the derivation nulls both rates for a manual item, and
+    // `workingExpression` refuses the `wage × rate` SHAPE for one. The second is unreachable through
+    // `explainStatutory` today — which is exactly why it needs a test of its own, or a future change that
+    // restores a rate (the named reversal in core/statutory-explain.ts's header does precisely that, per
+    // leg) silently restores "4,800.00 × 1.88% = 90.00" on a figure nobody computed.
+    const explanation = explainStatutory(
+      { ...HAND_SET_EPF, hrdf: 90, adjustment: { reason: REASON, lines: { hrdf: { system: 48, applied: 90 } } } },
+      'regular',
+    );
+    const doctored = {
+      ...explanation,
+      items: explanation.items.map((i) =>
+        i.key === 'hrdf' ? { ...i, effectiveEmployerRate: 90 / 4800 } : i,
+      ),
+    };
+    // ── THE PRECONDITIONS: a manual item that DOES carry a rate. Without both, this is vacuous.
+    const hrdf = doctored.items.find((i) => i.key === 'hrdf')!;
+    expect(hrdf.ruleKind).toBe('manual');
+    expect(hrdf.effectiveEmployerRate, 'the rate is present, and must still not be printed').not.toBeNull();
+    const text = textOf(await StatutoryDetailView({ ctx: CTX, explanation: doctored })).join(' ');
+    expect(text, 'the SHAPE refuses the multiplication, not just the missing rate').not.toContain('4,800.00 ×');
+    expect(text, 'and no percentage rides along either').not.toContain('1.88%');
+    expect(text, 'the amount still stands alone').toContain('90.00');
+  });
+
+  it('a payslip with NO adjustment renders exactly as it did — no banner, no extra rows', async () => {
+    const explanation = explainStatutory({ ...HAND_SET_EPF, adjustment: undefined, epfEmployee: 330 }, 'regular');
+    expect(explanation.setByHand, 'the precondition, inverted').toBeNull();
+    const text = textOf(await StatutoryDetailView({ ctx: CTX, explanation })).join(' ');
+    expect(text).not.toContain('manualBannerHeading');
+    expect(text).not.toContain('manualNote');
+    expect(text).not.toContain('fieldSystemEmployeeShare');
+    expect(text, 'and the schedule is credited again, because it did produce this amount').toContain(
+      'ruleScheduleEpf',
+    );
+    expect(text).toContain('effectiveRateEpfNote');
+    expect(text, '330 ÷ 3,000 = 11.00%, a rate the schedule really did apply').toContain('(11.00%)');
+  });
+
+  it('THE DOWNLOAD an auditor receives carries the same disclosure as the screen', async () => {
+    // Through the REAL route, against a REAL payslip carrying a REAL adjustment written by the product's
+    // own service and reprocessed by the kernel — not a hand-built blob. A screen that tells the truth and
+    // a file that credits the schedule is the same defect wearing a spreadsheet.
+    const a = adminCtx(base);
+    await saveStatutoryAdjustment(a, {
+      batchId,
+      employmentId: mine.employmentId,
+      values: { epfEmployee: 500 },
+      reason: REASON,
+    });
+    await generatePayslips(a, { batchId, reprocessSubset: { employmentIds: [mine.employmentId] } });
+    const rows = await listProcessedPayslipsAcross(a, {
+      companyIds: [base.companyId],
+      employmentId: mine.employmentId,
+    });
+    const slipId = rows[0].id;
+
+    // ── THE PRECONDITION, read off the payslip the route will read. If the adjustment did not land, every
+    // assertion below passes on any code at all.
+    const explanation = explainStatutory(rows[0].statutory, rows[0].runType);
+    expect(explanation.setByHand?.keys, 'the reprocessed payslip must carry the stamp').toEqual(['epf']);
+    const epf = explanation.items.find((i) => i.key === 'epf')!;
+    expect(epf.employeeReported, 'and the typed amount must be what it charged').toBe(500);
+    expect(epf.provenance.employee!.system, 'with the kernel’s own figure recorded beside it').toBeGreaterThan(0);
+
+    const res = await statutoryExportGET(new Request(`http://t/export?payslipId=${slipId}`));
+    expect(res.status).toBe(200);
+    // toXlsxReport emits a SpreadsheetML-flavoured HTML workbook, so the file an auditor opens is readable
+    // here as text — the assertions are on the bytes that leave the product, not on a ReportData object.
+    const file = Buffer.from(await res.arrayBuffer()).toString('utf8');
+    expect(file, 'the rule column must not credit the KWSP schedule').not.toContain('ruleScheduleEpf');
+    expect(file, 'it names the figure as set by hand').toContain('ruleManual');
+    expect(file, 'the banner’s heading travels with the file').toContain('manualBannerHeading');
+    expect(file, 'and so does the reason — a file with no reason cannot be defended').toContain(REASON);
+    expect(file, 'the system figure gets its own column, headed as the screen heads its row').toContain(
+      'fieldSystemEmployeeShare',
+    );
+    expect(file).toContain('fieldSystemEmployerShare');
+    expect(file, 'and the column is FILLED with the kernel’s figure').toContain(
+      epf.provenance.employee!.system.toFixed(2),
+    );
+    expect(file, 'beside the amount that was charged').toContain('500.00');
+  });
+
+  it('…and an export with NO adjustment grows neither column nor caveat', async () => {
+    const res = await statutoryExportGET(new Request(`http://t/export?payslipId=${payslipId}`));
+    const file = Buffer.from(await res.arrayBuffer()).toString('utf8');
+    // The precondition, inverted: this payslip has no adjustment, which is why the columns must be absent.
+    const rows = await listProcessedPayslipsAcross(adminCtx(base), {
+      companyIds: [base.companyId],
+      employmentId: mine.employmentId,
+    });
+    expect(explainStatutory(rows[0].statutory, rows[0].runType).setByHand).toBeNull();
+    expect(file).not.toContain('fieldSystemEmployeeShare');
+    expect(file).not.toContain('manualBannerHeading');
+    expect(file, 'and EPF is credited to the schedule that did produce it').toContain('ruleScheduleEpf');
   });
 });
