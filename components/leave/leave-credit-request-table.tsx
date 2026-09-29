@@ -575,12 +575,23 @@ export function LeaveCreditRequestTable({
               return (
                 <Fragment key={r.key}>
                   <tr data-testid="leave-credit-row">
-                    {/* The five posted values, always present whatever the row's day type. See the header. */}
-                    <input type="hidden" name="workedDate" value={r.workedDate} />
-                    <input type="hidden" name="dayType" value={r.dayType} />
-                    <input type="hidden" name="claimStart" value={wantsWindow ? r.claimStart : ''} />
-                    <input type="hidden" name="claimEnd" value={wantsWindow ? r.claimEnd : ''} />
                     <td className="px-3 py-2">
+                      {/* The four posted values, always present whatever the row's day type. See the header.
+                          ⚠️ r364 — THEY LIVE INSIDE THIS CELL, NOT DIRECTLY UNDER THE `<tr>`, and that is not
+                          a tidying preference. `<input>` is not permitted as a child of `<tr>`: the HTML
+                          parser's "in row" insertion mode FOSTER-PARENTS anything that is not a `<td>`/`<th>`,
+                          moving it out to just before the `<table>`. So the server's markup and React's tree
+                          disagreed on where these four live, which is the hydration error this screen logged
+                          on every load.
+                          It had not corrupted a submission, because foster-parenting preserves relative order
+                          and `submitLeaveCreditRequestAction` zips the four lists BY INDEX — but "the browser
+                          silently relocates our inputs and the order happens to survive" is not a contract,
+                          and this form has no other one. Inside the cell they are valid, ordered, and the
+                          parser leaves them where they were written. */}
+                      <input type="hidden" name="workedDate" value={r.workedDate} />
+                      <input type="hidden" name="dayType" value={r.dayType} />
+                      <input type="hidden" name="claimStart" value={wantsWindow ? r.claimStart : ''} />
+                      <input type="hidden" name="claimEnd" value={wantsWindow ? r.claimEnd : ''} />
                       <input
                         type="date"
                         max={today}

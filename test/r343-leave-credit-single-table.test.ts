@@ -166,7 +166,20 @@ describe('r343 · adjudicateDayTypes', () => {
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 describe('r343 · ONE table, no sections, and five posted values per row', () => {
   it('the request form is ONE table and carries no section container of its own', () => {
-    const src = read(TABLE_TSX);
+    // ⚠️ r364 — COMMENTS ARE STRIPPED FIRST, and that is a correction rather than a convenience. These
+    // are source-text counts, and they were run over the RAW file: a comment that merely NAMED the tag
+    // it was guarding pushed the count to 2 and failed the case. It happened the first time anyone
+    // wrote a comment explaining why the hidden inputs must sit inside a cell, because explaining it
+    // requires saying where the parser would otherwise move them — to just before the table.
+    //
+    // A tag inside a comment is not a tag, exactly as a guard name inside a comment is not a call; the
+    // same blind spot in test/function-access.test.ts was fixed for the opposite reason, where a
+    // comment made an UNGUARDED page look guarded. Four other helpers in this very file already strip
+    // before matching. Nothing is loosened: a real second <table> or <section> still fails.
+    const src = read(TABLE_TSX)
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
     expect((src.match(/<table/g) ?? []).length, 'exactly one <table> in the request form').toBe(1);
     // r336's two sections were `<section data-testid="leave-credit-section-a|b">`. Neither may come back.
     expect(src).not.toContain('leave-credit-section-a');
