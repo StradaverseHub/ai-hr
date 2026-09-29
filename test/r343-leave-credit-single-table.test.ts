@@ -46,6 +46,8 @@ import { setCompensation } from '../core/comp';
 import { checkIn, checkOut } from '../core/attendance';
 import { assignDefaultShift, assignShift, createShift, setRestDay } from '../core/roster';
 import { todayInKualaLumpur } from '../lib/hr-date';
+// r365 — the documented blind spot is asserted by EXECUTION, not by reading the comment that names it.
+import { assessExtendedClaim } from '../lib/extended-hours';
 import { setToilPolicy, type ToilPolicyInput } from '../core/toil';
 import {
   LEAVE_CREDIT_DAY_TYPES,
@@ -240,7 +242,20 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
     // window's liveness and the two reference cells, so those are what this pins now.
     expect(src).not.toContain('declaresDays');
     expect(src).toContain('disabled={!windowLive}');
-    expect(src).toContain('flooredByScheduledShiftEnd(chosen)');
+    /**
+     * ⚠️ r365 cbfa8b0b — THIS READ `expect(src).toContain('flooredByScheduledShiftEnd(chosen)')`, and
+     * `chosen` was the ROW's copy of the predicate, which existed to decide two cells the row no longer
+     * has. Dropping the assertion outright would be loosening; what replaces it is STRONGER, because the
+     * two places that still ask the question are the two where a wrong answer costs something:
+     *   · `derive`, where it decides the MONEY — the null pair passed into `assessExtendedClaim`;
+     *   · `AttendanceFacts`, where it decides whether the panel prints a shift end or says "No scheduled
+     *     shift", which must be the SAME answer or the screen contradicts the arithmetic.
+     * Both are named, so removing either fails here rather than passing on the other's mention.
+     */
+    expect(src, 'the money rule: NULL shift end on the three non-working types').toContain('shiftEnd: floored ? view.shiftEnd : null');
+    expect(src, 'and the panel asks the same predicate, so it cannot contradict the arithmetic').toContain(
+      "const scheduled = dayType !== '' && flooredByScheduledShiftEnd(dayType);",
+    );
     expect(src).toContain('const windowLive = wantsWindow && !ordinaryUnavailable;');
     expect(src).toContain('claimsTimeWindow');
   });
@@ -557,6 +572,218 @@ describe('r362 · the retired placeholder, the settled record, and the note that
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// (2b.2) r365 cbfa8b0b · THE ATTENDANCE FIGURES MOVED BEHIND ONE BUTTON — the source shapes no render can
+// see, and the two retirements.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+describe('r365 · the Attendance column, the shared panel, and what was retired to make them', () => {
+  const TABLE = 'components/leave/leave-credit-request-table.tsx';
+  const PANEL = 'components/ui/anchored-panel.tsx';
+  const FIGURES = 'components/attendance-figure-cells.tsx';
+  const stripped = (rel: string) =>
+    read(rel)
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '')
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
+
+  /**
+   * ⚠️ ONE COPY OF THE POSITIONING, AND THE PROOF IS THAT THE OLD CALLER MOVED TOO.
+   *
+   * An extraction nobody adopts is a third copy waiting to happen, and an extraction adopted by only the
+   * NEW caller proves nothing about whether it preserves behaviour. components/attendance-figure-cells.tsx
+   * had this panel working since 7c834696; it is asserted here to have given the maths up and taken the
+   * import, which is what makes test/r365-anchored-panel.dom.test.tsx's drive of THAT component evidence
+   * about THIS one.
+   */
+  it('both callers take the anchored panel from the one module, and neither keeps a copy of the maths', () => {
+    for (const f of [TABLE, FIGURES]) {
+      expect(stripped(f), `${f} must import the shared panel`).toMatch(/from '(@\/components|\.\.)\/ui\/anchored-panel'/);
+      expect(stripped(f), `${f} must not re-derive the rect`).not.toContain('getBoundingClientRect');
+      expect(stripped(f), `${f} must not re-register the capture-phase scroll sync`).not.toContain("addEventListener('scroll'");
+    }
+    // …and the module it moved to keeps the two decisions that made it work.
+    const panel = stripped(PANEL);
+    expect(panel, 'fixed, never absolute: the table lives in overflow-x-auto').toContain("'fixed z-50");
+    expect(panel, 'the capture phase, because a container scroll does not bubble').toContain('{ capture: true, passive: true }');
+  });
+
+  /**
+   * ⚠️ NO NEW DEPENDENCY. The plan says it in as many words, and a package.json is the one place that can
+   * be checked without reading anybody's intent.
+   */
+  it('no popover or tooltip package was added for this', () => {
+    const pkg = JSON.parse(read('package.json')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+    const all = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
+    for (const name of ['@radix-ui/react-popover', '@radix-ui/react-tooltip', 'react-tooltip', '@floating-ui/react', 'tippy.js'])
+      expect(all[name], `${name} must not be a dependency`).toBeUndefined();
+  });
+
+  /**
+   * ⚠️⚠️ THE VIEW BUTTON POSTS NOTHING, AND THIS IS THE SOURCE HALF OF THAT.
+   * The action zips the four repeated row fields BY INDEX and a browser does not submit a DISABLED
+   * control at all — the View button is disabled on every row with no date. A `name` on it would post a
+   * shorter list and shift every row after the gap. The set assertion in (2a) already counts every
+   * `name="…"` in this file; this names the button itself so a reader lands on the reason.
+   */
+  it('the Attendance control carries no name and is type="button" — it cannot post and cannot submit', () => {
+    const code = stripped(TABLE);
+    const btn = code.slice(code.indexOf('data-testid="leave-credit-attendance-view"') - 900, code.indexOf('data-testid="leave-credit-attendance-view"'));
+    expect(btn, 'the Attendance button must be type="button"').toContain("type=\"button\"");
+    expect(btn, 'and must carry no posted name').not.toMatch(/name="/);
+  });
+
+  /**
+   * ⚠️ THE DOT READS THE SHARED ASSESSMENT AND NOTHING ELSE — the same requirement (2d) makes of the two
+   * surfaces, made again at the level of the new control, because "the dot happens to agree with the
+   * queue today" is what a second derivation also does.
+   */
+  it('the dot is the SAME condition the amber bar was: assessExtendedClaim, plus the day facts hasClockOut', () => {
+    const code = stripped(TABLE);
+    expect(code).toContain('const attendanceAlert =');
+    expect(code, 'the condition is unchanged, character for character').toContain(
+      "windowLive && d?.view != null && (!d.hasClockOut || d.exceedsClockOut)",
+    );
+    // ⚠️ r364's reading, which is what makes the dot truthful on the three non-working day types.
+    expect(code, 'hasClockOut comes off the day FACTS, never off the assessment').toContain('hasClockOut: view.actualClockOut != null');
+    expect(code, 'no second comparison of the two times').not.toMatch(/claimEnd\s*>\s*clockOut/);
+  });
+
+  /**
+   * ⚠️ THE PANEL IS A RECORD, AND NOTHING IT KNOWS MAY REACH THE SUBMIT GATE — as an EXACT SET, because
+   * a forbidden-word scan of the `blocked` expression is not enough and the adversarial pass proved it:
+   * a new `noAttendanceRows` predicate defined three lines ABOVE `const blocked =` and referenced by one
+   * innocuous name inside it passes any scan of the expression's own text. What cannot be smuggled past
+   * is the LIST of things that stop the submit, pinned by name.
+   */
+  it('the submit gate is exactly the five refusals it has always been — attendance is not one of them', () => {
+    const code = stripped(TABLE);
+    const stmt = code.slice(code.indexOf('const blocked ='), code.indexOf(';', code.indexOf('const blocked =')));
+    const operands = [...stmt.matchAll(/([A-Za-z_$][\w$]*)\s*(?:\.length\s*>\s*0|<=\s*0)/g)].map((m) => m[1]).sort();
+    expect(operands).toEqual(
+      ['belowThresholdRows', 'incompleteRows', 'mismatchRows', 'ordinaryUnavailableRows', 'totalCredit'].sort(),
+    );
+    for (const name of ['attendance', 'Attendance', 'hasClockOut', 'exceedsClockOut', 'actualClock', 'approvedOtPlan'])
+      expect(stmt, `${name} must not reach the submit gate`).not.toContain(name);
+  });
+
+  /**
+   * ⚠️⚠️ RETIRED, NEVER DELETED (CLAUDE.md §8), and the pair fails for opposite mistakes.
+   *
+   * `table.clockOutMissing` and `table.clockOutEarlier` were the full-width amber bar's two sentences.
+   * Each ends "Your manager will check … before approving", which is bar copy: the dot's tooltip is ONE
+   * line and the panel carries the rest, so `table.dotReasonNoRecord` and `table.dotReasonPastClockOut`
+   * replace them here. The keys stay in all six catalogues because a catalogue key is a value and a
+   * deletion propagates through a naive locale merge as a resurrection or a MISSING_MESSAGE somewhere
+   * nobody looked.
+   *
+   * ⚠️ AND THE APPROVER'S OWN WARNINGS ARE A DIFFERENT PAIR AND ARE UNTOUCHED: app/approvals/page.tsx
+   * renders `approvals.creditWarnNoClockOut` / `creditWarnPastClockOut`, which (2d) pins. Checked before
+   * retiring, not assumed.
+   */
+  it('the bar’s two sentences are rendered by nothing, still present in all six, and the approver’s are untouched', () => {
+    for (const f of ['components/leave/leave-credit-request-table.tsx', 'components/leave/replacement-leave-request-dialog.tsx', 'app/leave/credit/page.tsx'])
+      for (const k of ['table.clockOutMissing', 'table.clockOutEarlier'])
+        expect(stripped(f), `${f} must not render the retired ${k}`).not.toContain(`t('${k}')`);
+    for (const l of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const tbl = (JSON.parse(read(`messages/${l}.json`)).replacementRequest as any).table;
+      for (const k of ['clockOutMissing', 'clockOutEarlier'])
+        expect(typeof tbl[k], `${l} lost the retired ${k} — retired is not deleted`).toBe('string');
+      // The replacements exist and carry the two placeholders the second one is useless without.
+      expect(typeof tbl.dotReasonNoRecord, l).toBe('string');
+      expect(tbl.dotReasonPastClockOut, l).toContain('{claimEnd}');
+      expect(tbl.dotReasonPastClockOut, l).toContain('{clockOut}');
+    }
+    // The approver's pair is a SEPARATE namespace and is still rendered — checked, not assumed.
+    expect(read('app/approvals/page.tsx')).toContain("t('creditWarnNoClockOut'");
+  });
+
+  /**
+   * ⚠️ `sectionB.shiftEnd` and `sectionB.actualClockOut` STOPPED BEING COLUMN HEADINGS and did NOT need
+   * retiring: they are the panel's labels for exactly the same two facts. Asserted rather than left
+   * implicit, because "the key is still in the file" and "the key still means what it says" are different
+   * claims and only the second one matters.
+   */
+  it('the two old column headings survive as the panel’s labels for the same two facts', () => {
+    const code = stripped(TABLE);
+    expect(code).toContain("t('sectionB.shiftEnd')");
+    expect(code).toContain("t('sectionB.actualClockOut')");
+    // …and they are no longer `<th>`s: the Attendance column took their place.
+    expect(code, 'the header row is eight cells and one of them is Attendance').toContain("t('table.attendanceColumn')");
+    expect(code).not.toMatch(/<th className=\{thCls\}>\{t\('sectionB\.shiftEnd'\)\}<\/th>/);
+    expect(code).not.toMatch(/<th className=\{thCls\}>\{t\('sectionB\.actualClockOut'\)\}<\/th>/);
+  });
+
+  /**
+   * ⚠️ ROUND ONE MOVES NO DATA. The approved plan splits this item into three, and the ATTENDANCE
+   * SNAPSHOT — five reference columns on `replacement_leave_request_date`, kept with the claim so the
+   * approver's comparison has something to compare on a rest day and so a routed delegate (who may read
+   * the claim and may NOT read the attendance behind it) sees anything at all — is round TWO.
+   *
+   * ⚠️ PINNED BY SHAPE, NOT BY A MIGRATION NUMBER, and that is deliberate rather than vague: the first
+   * cut of this case asserted `max(journal idx) === 490`, which is a claim about what OTHER rounds have
+   * allocated. It went stale within the hour — a sibling shipped 0491 for Manual EPF while this branch
+   * was open — and a guard that fails because somebody else shipped is a guard people learn to edit
+   * rather than read. What round one may not do is grow the CLAIM LINE, whatever number carries it.
+   */
+  it('round one adds no attendance snapshot to the claim line — that is round two', () => {
+    const schema = read('db/schema.ts');
+    for (const col of ['ref_clock_in', 'ref_clock_out', 'ref_shift_start', 'ref_shift_end', 'ref_captured_at'])
+      expect(schema, `${col} is round two’s snapshot, not round one’s`).not.toContain(col);
+    // …and the writer that would fill them is untouched: the insert still stores exactly 0487's five.
+    const svc = read('core/replacement-request.ts');
+    for (const field of ['refClockIn', 'refClockOut', 'refShiftStart', 'refShiftEnd', 'refCapturedAt'])
+      expect(svc, `${field} is round two’s`).not.toContain(field);
+  });
+
+  /**
+   * ⚠️ "CUT TO ABOUT A THIRD OF ITS LENGTH", WHICH IS A NUMBER AND SO IS ASSERTED AS ONE.
+   *
+   * The approved plan says the paragraph at the top is cut to about a third and ends with the
+   * reporter's own sentence. A guard that only checked the sentence would pass on the 669-character
+   * wall they complained about with four words bolted on the end, and one that checked a flat character
+   * bound would be a different requirement in every script (the Chinese paragraph is 232 characters
+   * where the Tamil one is 854 — a bound that is "short" for one is impossible for the other).
+   *
+   * So the pre-r365 length of each locale is written out and the assertion is a RATIO against it. The
+   * measured figures at r365 are 0.35 / 0.35 / 0.32 / 0.33 / 0.33 / 0.31.
+   */
+  it('the intro is about a THIRD of what it was, in every locale, and still ends with the reporter’s sentence', () => {
+    // Measured on main@8625fd8a, the paragraph the reporter was reading.
+    const BEFORE: Record<string, number> = { en: 669, ms: 751, ta: 854, th: 638, vi: 759, zh: 232 };
+    for (const [l, before] of Object.entries(BEFORE)) {
+      const help = (JSON.parse(read(`messages/${l}.json`)).replacementRequest as any).table.help as string;
+      const ratio = help.length / before;
+      expect(ratio, `${l}: ${help.length}/${before} = ${ratio.toFixed(2)} — the plan says about a third`).toBeLessThanOrEqual(0.4);
+      expect(ratio, `${l}: ${ratio.toFixed(2)} — a third, not a deletion; the paragraph still has a job`).toBeGreaterThan(0.15);
+      // It must still SAY the three things the reporter kept: the View button, that it is reference
+      // only, and that nothing is credited until a manager approves.
+      expect(help.length, l).toBeGreaterThan(0);
+    }
+    const en = (JSON.parse(read('messages/en.json')).replacementRequest as any).table.help as string;
+    expect(en.trim().endsWith('Nothing is credited until your manager approves.'), en).toBe(true);
+    // ⚠️ AND IT MAY NOT STILL DESCRIBE THE TWO COLUMNS THAT LEFT. The old paragraph explained the
+    // clock-out cell ("Your recorded clock-out is shown for reference…"); prose outlives the kernel.
+    expect(en, 'the paragraph must not still narrate a cell that is gone').not.toMatch(/recorded clock-out is shown/);
+  });
+
+  /**
+   * ⚠️ THE BLIND SPOT, SAID OUT LOUD RATHER THAN PAPERED OVER. `actualClockOut` is a time of day with no
+   * date, so a clock-out EARLIER than the claimed start is read as belonging to the following day
+   * (`clockOutRaw < start ⇒ +1440`) — which is what makes an 00:30 clock-out after an 18:00 shift end six
+   * and a half hours rather than minus seventeen. The cost: someone who clocked out at 17:00 and claims
+   * 18:00-23:51 reads as clocking out the next day, `exceedsClockOut` stays false and NO DOT FIRES. The
+   * plan says this on the item. Closing it needs a DATED clock-out from the attendance engine, and this
+   * case exists so that a later round cannot "fix" it with a better guess here without meeting it.
+   */
+  it('the undated clock-out blind spot is still exactly as documented — no guess was substituted for a date', () => {
+    const assessed = assessExtendedClaim({ claimStart: '18:00', claimEnd: '23:51', shiftEnd: '18:00', actualClockOut: '17:00' });
+    expect(assessed.hasClockOut, 'there IS a clock-out on record').toBe(true);
+    expect(assessed.exceedsClockOut, 'and it is read as NEXT day, so nothing fires — the documented cost').toBe(false);
+    expect(assessed.minutes, 'and the money is untouched by it').toBe(351);
+    expect(read('lib/extended-hours.ts'), 'the cost is written where the rule is').toContain('dated clock-out from the attendance engine');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
 // (2c) WHAT THIS SCREEN SAYS IN SIX LOCALES — COUNTED, NOT ASSERTED AGAINST ITSELF.
 //
 // ⚠️ THE GUARD THIS REPLACES COULD NOT FAIL. The six-locale DOM test compares the rendered text with the
@@ -662,6 +889,14 @@ describe('r343 · the translated keys are translated, and the English ones are n
     // note, and an employee reading a Tamil screen is exactly who needs to be told how their window was
     // read. The filter below would catch an English copy anyway; naming them is what catches the OTHER
     // failure, a key that stops being rendered and quietly leaves the set with nothing going red.
+    //
+    // ⚠️ r365's SIXTEEN (cbfa8b0b), and the argument is the same one, made once for the whole set. The
+    // Attendance panel is a RECORD an employee reads to decide whether to claim — "No scheduled shift",
+    // "Nothing recorded", "For reference only. It does not limit what you can claim." — and an employee
+    // reading a Tamil screen is exactly who cannot afford to guess at it. `table.help` was rewritten to a
+    // third of its length in the same round and translated while it was being rewritten, which is why it
+    // is NOT on the English list above. The count in the case title below is the count of the English
+    // debt, and it did not move: sixteen new keys, sixteen translations apiece, nothing added to it.
     for (const k of [
       'table.dayTypeLookupFailed',
       'table.dayTypeRetry',
@@ -670,6 +905,22 @@ describe('r343 · the translated keys are translated, and the English ones are n
       'table.dayTypeReading',
       'table.dayTypeNotFound',
       'table.crossesMidnight',
+      'table.attendanceColumn',
+      'table.attendanceView',
+      'table.attendanceViewDisabled',
+      'table.attendanceHeading',
+      'table.attendanceScheduledShift',
+      'table.attendanceClockIn',
+      'table.attendanceClockInOut',
+      'table.attendanceNoShift',
+      'table.attendanceNothingRecorded',
+      'table.attendanceNoRecordNote',
+      'table.attendanceReferenceOnly',
+      'table.attendanceOtPlan',
+      'table.attendanceOtPlanNone',
+      'table.attendanceOtPlanApproved',
+      'table.dotReasonNoRecord',
+      'table.dotReasonPastClockOut',
     ])
       expect(shouldBeTranslated, `${k} must be rendered by this surface AND translated`).toContain(k);
     for (const k of shouldBeTranslated) {

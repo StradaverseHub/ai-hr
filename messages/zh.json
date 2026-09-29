@@ -13240,7 +13240,7 @@
       "belowThreshold": "少于 {minutes} 分钟，不符合额度资格。"
     },
     "table": {
-      "help": "为您工作的每个日期添加一行。选择日期后，日期类型会从您的排班表中自动填入。所有日期类型的申报方式相同：输入您工作的开始和结束时间，积分按小时计算——四个符合条件的小时可获得半天，八个小时可获得一整天。在普通工作日，小时数从您排定的轮班结束时间开始计算；在休息日、非工作日或公共假日没有排定的轮班，因此您输入的整个时段都计入。您的打卡下班记录仅作为参考显示，不会限制您的申报——如果两者不一致，您的经理会看到并在批准前进行核查。在您的经理批准之前，不会记入任何积分。",
+      "help": "为每个工作日添加一行并填写时间。四个合格小时可得半天，八个小时可得一整天。查看按钮显示已记录的考勤，不会限制您的申报。经理批准后才会记入积分。",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "在本公司，普通工作日无法获得积分。",
@@ -13257,7 +13257,23 @@
       "dayTypeFromHolidays": "来自公共假期日历",
       "dayTypeReading": "正在读取您的排班表...",
       "dayTypeNotFound": "未找到 - 请重新选择日期",
-      "crossesMidnight": "此时段被视为在次日早晨结束。"
+      "crossesMidnight": "此时段被视为在次日早晨结束。",
+      "attendanceColumn": "考勤",
+      "attendanceView": "查看",
+      "attendanceViewDisabled": "请先选择日期",
+      "attendanceHeading": "此日期的考勤记录",
+      "attendanceScheduledShift": "排定班次",
+      "attendanceClockIn": "实际打卡上班时间",
+      "attendanceClockInOut": "上班 / 下班打卡",
+      "attendanceNoShift": "无排定班次",
+      "attendanceNothingRecorded": "没有任何记录",
+      "attendanceNoRecordNote": "此日期没有上班或下班打卡记录。您仍然可以提出申请。",
+      "attendanceReferenceOnly": "仅供参考，不会限制您可以申报的内容。",
+      "attendanceOtPlan": "已批准的加班计划",
+      "attendanceOtPlanNone": "此日期没有",
+      "attendanceOtPlanApproved": "此日期已批准",
+      "dotReasonNoRecord": "此日期没有打卡下班记录。",
+      "dotReasonPastClockOut": "您申报至 {claimEnd}；记录的打卡下班时间为 {clockOut}。"
     }
   },
   "notices": {

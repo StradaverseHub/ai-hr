@@ -1,9 +1,17 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Trash2 } from 'lucide-react';
+import { Eye, Trash2 } from 'lucide-react';
 import { Button, Field, btnPrimary, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from '../ui';
+// r365 cbfa8b0b — ONE anchored panel in this repo, and ONE sheet. Neither is new: the panel is the
+// positioning components/attendance-figure-cells.tsx has used since 7c834696, extracted so this row can
+// open the same thing; the sheet is components/ui/drawer.tsx, which is FULL SCREEN below `lg` and is the
+// product's answer to "a bottom sheet on a phone". No dependency was added for either (the plan says so
+// plainly: @radix-ui/react-popover and react-tooltip are not installed and are not being installed).
+import { AnchoredPanel, useAnchoredPanel, useBelowLg } from '../ui/anchored-panel';
+import { Drawer } from '../ui/drawer';
+import { cn } from '@/lib/utils';
 // r362 58424c7f — `claimCrossesMidnight` is the ROLL'S OWN CONDITION, exported rather than re-parsed here:
 // the note this row prints and the minutes printed beside it come from one comparison, or they disagree the
 // first time either moves. See that file's header for why a reversed pair is not refused.
@@ -32,7 +40,17 @@ export type LeaveCreditDayFacts = {
    *  r360 that is the cell's only writer — the adjudication still compares it with the POSTED value, which is
    *  a form field and so still tamperable however this screen renders it. */
   kind: LeaveCreditDayType;
+  /**
+   * r365 cbfa8b0b — THE SHIFT **START** AND THE CLOCK-**IN** ARE NEW, AND NEITHER IS AN INPUT TO ANYTHING.
+   * They exist for the Attendance panel behind this row's View button, which shows the employee the whole
+   * record for the date rather than two figures in two grey cells. What `assessExtendedClaim` is handed is
+   * unchanged — `shiftEnd` and `actualClockOut`, and NULL for both on the three non-working day types,
+   * which is the money rule (`derive` below, and lib/extended-hours.ts's header).
+   */
+  shiftStart: string | null;
   shiftEnd: string | null;
+  /** NULL when the day has no attendance row or was never clocked in. Display only. */
+  actualClockIn: string | null;
   /** NULL when the day has no attendance row or was never clocked out; the two are one absence here. */
   actualClockOut: string | null;
   /**
@@ -43,6 +61,14 @@ export type LeaveCreditDayFacts = {
    * may yet want to print it — never as a ceiling.
    */
   measuredExtendedMinutes: number;
+  /**
+   * r365 · THE APPROVED OVERTIME ALREADY ON THIS DATE, or null. It goes in the EMPLOYEE's panel and not the
+   * approver's, and the reason is a fact rather than a preference: core/credit-ot-overlap.ts refuses a
+   * Leave Credit whose date carries a live overtime claim AND refuses an overtime claim whose date carries
+   * a live Leave Credit, so a claim sitting in an approver's queue can never carry one — the case cannot
+   * arise there. Here it pre-explains the refusal the employee would otherwise meet at submit.
+   */
+  approvedOtPlan: { start: string | null; end: string | null; minutes: number } | null;
 };
 
 /**
@@ -63,6 +89,281 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 /** `18:30:00` → `18:30`. A time column comes back with seconds; nobody claims a shift end to the second. */
 const hhmm = (t: string | null) => (t ? t.slice(0, 5) : null);
 const emptyRow = (key: number): Row => ({ key, workedDate: '', dayType: '', claimStart: '', claimEnd: '' });
+
+/** The four day-type labels, at module scope so the row AND the panel read one mapping. */
+const dayTypeLabelOf = (t: (k: string) => string, d: LeaveCreditDayType) =>
+  d === 'rest_day'
+    ? t('dayKind.restDay')
+    : d === 'off_day'
+      ? t('dayKind.offDay')
+      : d === 'holiday'
+        ? t('dayKind.holiday')
+        : t('dayKind.workday');
+
+/**
+ * r365 cbfa8b0b · WHAT ATTENDANCE HOLDS FOR ONE DATE, AS A RECORD RATHER THAN AS TWO GREY BOXES.
+ *
+ * ── WHY THIS EXISTS AT ALL, AND WHY IT IS NOT A THIRD AND FOURTH COLUMN ────────────────────────────────
+ * The row used to carry SCHEDULED SHIFT END and ACTUAL CLOCK-OUT as two disabled cells. Two things were
+ * wrong with that and the reporter named both.
+ *   · They read as fields waiting to be filled in — same grey box, same size, same place in the row as the
+ *     boxes that ARE inputs — while nobody can type into either, and on three of the four day types the
+ *     shift end is permanently blank by design.
+ *   · The row had no space for them. `disabledCell` is `inputCls` + flex, and `inputCls` fixes `h-9`
+ *     (36px) with 8px of padding; the filled Day Type cell stacks a `text-xs` line (16px line-height) over
+ *     a `text-[11px]` line that INHERITS that same 16px. 16 + 16 + 8 = 40px of content in a 36px box, on
+ *     every filled row — which is the "text overlapping" in the reporter's screenshot, arithmetic rather
+ *     than taste. Two columns leaving is what gives the row its width back; the box is made tall enough
+ *     for its own caption in the same round, below.
+ *
+ * ── THE DOT IS THE WHOLE WARNING NOW ───────────────────────────────────────────────────────────────────
+ * A full-width amber `<tr>` used to appear and disappear under the row as the two times were typed,
+ * pushing everything below it up and down. What replaces it is a dot on this button, its one-line reason
+ * on hover, and the detail inside the panel. ⚠️ The CONDITION is untouched — it is still
+ * `!hasClockOut || exceedsClockOut` off the ONE `assessExtendedClaim` the row and the approvals queue
+ * share — and it is truthful only because r364 (c36e1ae6) made `hasClockOut` read the day FACTS instead of
+ * the assessment: the assessment is handed `null` on the three non-working day types because that is the
+ * money rule, so it used to answer "no clock-out" on every rest day, off day and public holiday. A dot
+ * built on the old reading would have been the same wrong answer in a quieter shape.
+ *
+ * ── IT NEVER BLOCKS THE CLAIM, AND IT NEVER POSTS ANYTHING ─────────────────────────────────────────────
+ * ⚠️ THE BUTTON CARRIES NO `name`, AND THAT IS LOAD-BEARING RATHER THAN TIDY: `submitLeaveCreditRequestAction`
+ * zips the repeated row fields BY INDEX, a browser does not submit a DISABLED control at all, and this one
+ * is disabled on every row that has no date yet. A `name` here would post a list SHORTER than the row list
+ * and silently shift every row after the gap. The five hidden inputs remain the only posted row state.
+ * Nothing this component renders reaches `blocked` either: an employee with no attendance record for the
+ * date reads that plainly and still submits.
+ *
+ * ── BELOW `lg` IT IS THE PRODUCT'S SHEET, NOT A NEW ONE ────────────────────────────────────────────────
+ * The reporter asked for a bottom sheet. components/ui/drawer.tsx is full screen below `lg` and is what
+ * every other sheet in this product is; a second sheet style for one button is one more thing to maintain
+ * and one more thing to look inconsistent. Said on the item rather than quietly substituted.
+ */
+function AttendanceViewCell({
+  workedDate,
+  dayType,
+  view,
+  /** The one-line dot reason, or null when there is nothing to flag. Its presence IS the dot. */
+  alert,
+}: {
+  workedDate: string;
+  dayType: LeaveCreditDayType | '';
+  view: LeaveCreditDayFacts | null;
+  alert: string | null;
+}) {
+  const t = useTranslations('replacementRequest');
+  const panelId = useId();
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+  const { at, anchorTo, release } = useAnchoredPanel({ open, onClose: close });
+  const belowLg = useBelowLg();
+  const root = useRef<HTMLDivElement>(null);
+
+  // No date ⇒ nothing to look up. The button is off rather than opening an empty panel.
+  const enabled = workedDate !== '';
+
+  /**
+   * Outside-click dismissal, the idiom components/ui/multi-select-popover.tsx records: a document
+   * `mousedown` listener and NO `fixed inset-0` backdrop. A backdrop over a table swallows the click that
+   * was meant for the next row's own View button, so every dismissal would cost two clicks.
+   * The panel is rendered INSIDE `root` (it escapes visually through `position: fixed`, not through the
+   * DOM), so one `contains` check covers both the trigger and the panel.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (root.current && e.target instanceof Node && !root.current.contains(e.target)) {
+        release();
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open, release]);
+
+  const toggle = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (open) {
+      release();
+      setOpen(false);
+      return;
+    }
+    anchorTo(e.currentTarget);
+    setOpen(true);
+  };
+
+  const body = <AttendanceFacts workedDate={workedDate} dayType={dayType} view={view} alert={alert} />;
+
+  return (
+    <div ref={root} className="relative inline-block">
+      <Button
+        type="button"
+        size="sm"
+        variant="secondary"
+        disabled={!enabled}
+        onClick={toggle}
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        // A native `title` rather than a hand-rolled hover card: it is the one-LINE reason, the detail is
+        // inside the panel, and a tooltip primitive would be the dependency this round is not adding.
+        title={enabled ? (alert ?? undefined) : t('table.attendanceViewDisabled')}
+        data-testid="leave-credit-attendance-view"
+      >
+        <Eye className="size-4" aria-hidden />
+        {t('table.attendanceView')}
+        {alert != null && (
+          <>
+            <span
+              aria-hidden
+              data-testid="leave-credit-attendance-dot"
+              className="ml-0.5 inline-block size-2 shrink-0 rounded-full bg-amber-500 dark:bg-amber-400"
+            />
+            {/* The dot is a colour, and a colour is not a message. The reason is in the tree for a screen
+                reader whether or not the pointer ever rests on the button. */}
+            <span className="sr-only">{alert}</span>
+          </>
+        )}
+      </Button>
+
+      {open &&
+        (belowLg ? (
+          <Drawer
+            open={open}
+            onOpenChange={(v) => {
+              if (!v) {
+                release();
+                setOpen(false);
+              }
+            }}
+            width="narrow"
+            title={t('table.attendanceHeading')}
+            description={workedDate}
+          >
+            {body}
+          </Drawer>
+        ) : (
+          <AnchoredPanel at={at} id={panelId} role="dialog" aria-label={t('table.attendanceHeading')}>
+            {body}
+          </AnchoredPanel>
+        ))}
+    </div>
+  );
+}
+
+/**
+ * The panel's CONTENTS, shared by the anchored panel and the sheet so the two can never say different
+ * things about one date.
+ *
+ * ⚠️ "NO SCHEDULED SHIFT" IS DECIDED BY THE SAME PREDICATE THE CREDIT IS, not by whether the roster
+ * happens to hold times. `flooredByScheduledShiftEnd` is workday-only, and a roster CAN carry a shift on a
+ * rest day (a swap, a correction, a pattern edited after the fact) — `derive` passes `shiftEnd: null` on
+ * the three non-working types precisely so that floor cannot eat the first hours of the claim. Printing
+ * "18:00" here on a rest day would tell the employee a floor applies that the arithmetic does not apply.
+ *
+ * ⚠️ AND THE DASH IS "NOT KNOWN YET", NEVER "NOTHING". While the day facts are in flight `view` is null and
+ * every value is the dash; the named absences ("No record", "Nothing recorded") are only ever printed
+ * against an answer that came back. That distinction is r364's, kept.
+ */
+function AttendanceFacts({
+  workedDate,
+  dayType,
+  view,
+  alert,
+}: {
+  workedDate: string;
+  dayType: LeaveCreditDayType | '';
+  view: LeaveCreditDayFacts | null;
+  alert: string | null;
+}) {
+  const t = useTranslations('replacementRequest');
+  const noShift = t('table.attendanceNoShift');
+  const scheduled = dayType !== '' && flooredByScheduledShiftEnd(dayType);
+  const start = hhmm(view?.shiftStart ?? null);
+  const end = hhmm(view?.shiftEnd ?? null);
+  const clockIn = hhmm(view?.actualClockIn ?? null);
+  const clockOut = hhmm(view?.actualClockOut ?? null);
+  // Only ever asserted about an answer that came back. `view == null` is "still asking", not "nothing".
+  const nothingRecorded = view != null && clockIn == null && clockOut == null;
+  const ot = view?.approvedOtPlan ?? null;
+
+  const line = (label: string, value: string, testid: string) => (
+    <div className="flex items-baseline justify-between gap-3 py-0.5" data-testid={testid}>
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dd className="text-right font-medium text-foreground">{value}</dd>
+    </div>
+  );
+
+  return (
+    <div data-testid="leave-credit-attendance-panel">
+      <p className="text-sm font-semibold text-foreground">{t('table.attendanceHeading')}</p>
+      <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground" data-testid="leave-credit-attendance-date">
+        {workedDate || DAY_DASH}
+      </p>
+
+      <dl className="mt-3 space-y-0 text-xs">
+        {line(t('sectionA.dayType'), dayType === '' ? DAY_DASH : dayTypeLabelOf(t, dayType), 'leave-credit-attendance-day-type')}
+        {line(
+          t('table.attendanceScheduledShift'),
+          view == null ? DAY_DASH : !scheduled || start == null || end == null ? noShift : `${start} - ${end}`,
+          'leave-credit-attendance-shift',
+        )}
+        {line(
+          t('sectionB.shiftEnd'),
+          view == null ? DAY_DASH : !scheduled || end == null ? noShift : end,
+          'leave-credit-attendance-shift-end',
+        )}
+        {nothingRecorded
+          ? line(t('table.attendanceClockInOut'), t('table.attendanceNothingRecorded'), 'leave-credit-attendance-clocking')
+          : (
+            <>
+              {line(
+                t('table.attendanceClockIn'),
+                view == null ? DAY_DASH : (clockIn ?? t('table.noClockOutRecord')),
+                'leave-credit-attendance-clock-in',
+              )}
+              {line(
+                t('sectionB.actualClockOut'),
+                view == null ? DAY_DASH : (clockOut ?? t('table.noClockOutRecord')),
+                'leave-credit-attendance-clock-out',
+              )}
+            </>
+          )}
+        {line(
+          t('table.attendanceOtPlan'),
+          view == null
+            ? DAY_DASH
+            : ot == null
+              ? t('table.attendanceOtPlanNone')
+              : ot.start && ot.end
+                ? `${hhmm(ot.start)} - ${hhmm(ot.end)}`
+                : t('table.attendanceOtPlanApproved'),
+          'leave-credit-attendance-ot-plan',
+        )}
+      </dl>
+
+      {nothingRecorded && (
+        <p
+          className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+          data-testid="leave-credit-attendance-no-record"
+        >
+          {t('table.attendanceNoRecordNote')}
+        </p>
+      )}
+      {alert != null && (
+        <p
+          className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+          data-testid="leave-credit-attendance-alert"
+        >
+          {alert}
+        </p>
+      )}
+
+      {/* The reporter's own footnote, and it stays: the panel is a record, never a ceiling. */}
+      <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground" data-testid="leave-credit-attendance-footnote">
+        {t('table.attendanceReferenceOnly')}
+      </p>
+    </div>
+  );
+}
 
 /**
  * r343 cbfa8b0b · THE LEAVE CREDIT REQUEST, AS ONE TABLE.
@@ -335,14 +636,9 @@ export function LeaveCreditRequestTable({
     });
   }, [facts]);
 
-  const dayTypeLabel = (d: LeaveCreditDayType) =>
-    d === 'rest_day'
-      ? t('dayKind.restDay')
-      : d === 'off_day'
-        ? t('dayKind.offDay')
-        : d === 'holiday'
-          ? t('dayKind.holiday')
-          : t('dayKind.workday');
+  // r365 — ONE mapping, at module scope, because the Attendance panel prints the same four labels and two
+  // copies of a four-way conditional is how a fifth roster kind reaches one of them and not the other.
+  const dayTypeLabel = (d: LeaveCreditDayType) => dayTypeLabelOf(t, d);
 
   const addRow = () => setRows((r) => [...r, emptyRow((r[r.length - 1]?.key ?? 0) + 1)]);
   // Never remove the last row: an empty table has no "add" affordance attached to anything and reads as a
@@ -499,6 +795,23 @@ export function LeaveCreditRequestTable({
 
   const belowThresholdText = t('sectionB.belowThreshold', { minutes: tiers?.extendedHalfDayMinutes ?? 240 });
   const disabledCell = `${inputCls} flex items-center bg-muted text-xs text-muted-foreground`;
+  /**
+   * ⚠️⚠️ r365 cbfa8b0b · THE REPORTER'S "TEXT OVERLAPPING" IS ARITHMETIC, AND THIS IS THE ARITHMETIC.
+   *
+   * `disabledCell` is `inputCls` plus flex, and `inputCls` fixes `h-9` — 36px, a HEIGHT and not a
+   * `min-height` — with `py-1`, 8px. The FILLED Day Type cell stacks two lines inside it: the label at
+   * `text-xs` (line-height 1rem = 16px) and the provenance caption at `text-[11px]`, which sets the FONT
+   * SIZE only and inherits that same 16px line-height. 16 + 16 + 8 = 40px of content in a 36px box, so the
+   * caption spilled past the bottom edge into the row beneath — on EVERY filled row, worst under the
+   * longest caption (`dayTypeFromHolidays`, "From the public holiday calendar").
+   *
+   * Two changes, both needed: the box grows (`h-auto` with `min-h-9`, so an empty row is unchanged) and the
+   * caption stops claiming a full 16px line (`leading-tight`). Built through `cn` rather than a template
+   * string BECAUSE `h-9` AND `h-auto` ARE THE SAME CSS PROPERTY AT THE SAME SPECIFICITY: concatenated, which
+   * one wins is decided by the order Tailwind happens to emit them in, not by the order written here.
+   * tailwind-merge drops the loser.
+   */
+  const filledDayTypeCell = cn(disabledCell, 'h-auto min-h-9 flex-col !items-start py-1.5');
 
   return (
     <form action={submitAction} onSubmit={() => onSubmitted?.()} className="space-y-4" data-testid="leave-credit-request-form">
@@ -520,17 +833,20 @@ export function LeaveCreditRequestTable({
       </div>
 
       <div className={tableWrapCls}>
-        <table className="w-full min-w-[60rem] text-sm" data-testid="leave-credit-table">
+        {/* r365 — EIGHT columns, not nine. Scheduled shift end and Actual clock-out left the row for the
+            Attendance panel; `min-w` came down with them, which is the other half of the reporter's
+            crowding complaint (a 60rem minimum inside `overflow-x-auto` made a laptop scroll sideways to
+            reach the delete button). */}
+        <table className="w-full min-w-[52rem] text-sm" data-testid="leave-credit-table">
           <thead className={theadCls}>
             <tr>
               <th className={thCls}>{t('workedDate')}</th>
               <th className={thCls}>{t('sectionA.dayType')}</th>
-              <th className={thCls}>{t('sectionB.shiftEnd')}</th>
-              <th className={thCls}>{t('sectionB.actualClockOut')}</th>
               <th className={thCls}>{t('sectionB.extendedStart')}</th>
               <th className={thCls}>{t('sectionB.extendedEnd')}</th>
               <th className={thCls}>{t('sectionB.eligibleMinutes')}</th>
               <th className={thCls}>{t('sectionB.credit')}</th>
+              <th className={thCls}>{t('table.attendanceColumn')}</th>
               <th className={thCls} />
             </tr>
           </thead>
@@ -539,14 +855,19 @@ export function LeaveCreditRequestTable({
               const d = derived.get(r.key);
               const chosen = r.dayType;
               const wantsWindow = chosen !== '' && claimsTimeWindow(chosen);
-              // ⚠️ r364 c36e1ae6 — SPLIT, because half of what stood here stopped being true. It read:
-              // "r358 — the shift end and the clock-out are an ORDINARY DAY's references. On the other three
-              //  the employee was not scheduled, so there is nothing to print and nothing to compare."
-              // The SHIFT END half stands: the employee was not scheduled on the other three, so that cell has
-              // nothing to print and the claimed window has nothing to be floored at. The CLOCK-OUT half was
-              // wrong — a clock-out is a fact the system holds on all four day types and is printed on all
-              // four. `floored` governs the shift-end cell and the assessment ONLY, never the clock-out cell.
-              const floored = chosen !== '' && flooredByScheduledShiftEnd(chosen);
+              // ⚠️ r365 — `const floored = chosen !== '' && flooredByScheduledShiftEnd(chosen);` STOOD HERE,
+              // and its history is worth keeping because it is the money rule twice re-argued:
+              //   r358 "the shift end and the clock-out are an ORDINARY DAY's references. On the other three
+              //         the employee was not scheduled, so there is nothing to print and nothing to compare."
+              //   r364 SPLIT that: the SHIFT END half stands (nothing was scheduled, so nothing to print and
+              //        nothing to floor at), the CLOCK-OUT half was wrong — a clock-out is a fact the system
+              //        holds on all four day types — so `floored` governed the shift-end cell and the
+              //        assessment ONLY, never the clock-out cell.
+              // Neither cell is in the row any more, so the ROW no longer needs the predicate. The two places
+              // that do still ask it are unchanged and are the two that matter: `derive` above, which is
+              // where it decides the MONEY (`shiftEnd: floored ? view.shiftEnd : null`), and `AttendanceFacts`,
+              // which prints "No scheduled shift" off the same question so the panel and the arithmetic
+              // cannot say different things about one date.
               // Ordinary Day chosen on a company that cannot credit one: the option was still offered, so
               // the row is where that is explained. Its claimed-window cells are dead, not merely empty.
               const ordinaryUnavailable = chosen === 'workday' && ordinaryEarnsNothing;
@@ -572,6 +893,38 @@ export function LeaveCreditRequestTable({
                * how the window was READ so an accidental 14:00→09:00 is visible the moment it is typed.
                */
               const crossesMidnight = windowLive && !!r.claimStart && !!r.claimEnd && claimCrossesMidnight(r.claimStart, r.claimEnd);
+              /**
+               * ⚠️⚠️ r365 cbfa8b0b · THE FULL-WIDTH AMBER ROW BECAME THIS STRING, AND ITS CONDITION DID NOT
+               * MOVE. What stood below the row, in its own `<tr>` spanning the whole table, was:
+               *
+               *   windowLive && d?.view != null && (!d.hasClockOut || d.exceedsClockOut)
+               *     ⇒ an amber paragraph reading `table.clockOutMissing` or `table.clockOutEarlier`
+               *
+               * r353 put it there ("the warning that replaced a reducer, and it does not block the submit":
+               * the claim used to be clipped to the clock-out and capped at the measured figure, the owner
+               * reversed both, so all that is left is to SAY so) and r364 c36e1ae6 made it honest by reading
+               * `hasClockOut` off the day FACTS rather than off the assessment — which is handed `null` on
+               * the three non-working day types BECAUSE THAT IS THE MONEY RULE, and so used to answer "no
+               * clock-out" on every rest day, off day and public holiday however many were on record.
+               *
+               * THE CONDITION HERE IS THAT CONDITION, CHARACTER FOR CHARACTER, and r364's reading is the
+               * reason the dot can be trusted at all. What the reporter contested is the SHAPE: a full-width
+               * bar that appeared and disappeared as the two time boxes were typed, shoving every row below
+               * it up and down. It is now a dot on the View button, this sentence on hover, and the same
+               * sentence inside the panel.
+               *
+               * `table.clockOutMissing` and `table.clockOutEarlier` are RETIRED, NOT DELETED (CLAUDE.md §8):
+               * they are two-sentence bar copy and a dot's tooltip wants one line, so `table.dotReasonNoRecord`
+               * and `table.dotReasonPastClockOut` replace them here while both stay in all six catalogues.
+               * The approvals queue's warnings are SEPARATE keys (`creditWarnNoClockOut` /
+               * `creditWarnPastClockOut`) rendered by app/approvals/page.tsx and are untouched by this round.
+               */
+              const attendanceAlert =
+                windowLive && d?.view != null && (!d.hasClockOut || d.exceedsClockOut)
+                  ? !d.hasClockOut
+                    ? t('table.dotReasonNoRecord')
+                    : t('table.dotReasonPastClockOut', { claimEnd: r.claimEnd, clockOut: hhmm(d.view.actualClockOut) ?? '' })
+                  : null;
               return (
                 <Fragment key={r.key}>
                   <tr data-testid="leave-credit-row">
@@ -645,38 +998,30 @@ export function LeaveCreditRequestTable({
                           )}
                         </div>
                       ) : (
-                        <div className={`${disabledCell} flex-col !items-start`} data-testid="leave-credit-day-type">
-                          <span className="text-foreground">{dayTypeLabel(r.dayType)}</span>
+                        <div className={filledDayTypeCell} data-testid="leave-credit-day-type">
+                          <span className="leading-tight text-foreground">{dayTypeLabel(r.dayType)}</span>
                           {/* WHERE IT CAME FROM, which is the other half of the reporter's ask. A public
                               holiday outranks the roster in `scheduleFor`, so the two provenances are
                               genuinely different facts and the caption may not merge them. */}
-                          <span className="text-[11px]" data-testid="leave-credit-day-type-source">
+                          <span className="text-[11px] leading-tight" data-testid="leave-credit-day-type-source">
                             {r.dayType === 'holiday' ? t('table.dayTypeFromHolidays') : t('table.dayTypeFromRoster')}
                           </span>
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-2">
-                      <div className={disabledCell} data-testid="leave-credit-shift-end">
-                        {floored ? (hhmm(d?.view?.shiftEnd ?? null) ?? DAY_DASH) : DAY_DASH}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      {/* ⚠️ r364 c36e1ae6 · ONE SILENCE LEFT IN THIS CELL. r353 wrote here: "TWO DIFFERENT
-                          SILENCES, TOLD APART. The em dash used to mean both 'this cell does not apply to this
-                          day type' and 'there is no clock-out on record', which on an Ordinary Day row is the
-                          difference between nothing to say and something an approver has to look at." The first
-                          of those two meanings is gone: the clock-out APPLIES to all four day types — it is a
-                          fact the system holds, the approver's screen already prints it, and a row that warned
-                          about a missing clock-out while showing a dash where the time should be was telling
-                          the reader two things at once. So the time on every day type, the named absence when
-                          we looked and held nothing, and the dash ONLY while the facts are in flight: not
-                          knowing yet is a third state and must not read as an answer. The SHIFT END cell above
-                          keeps its day-type dash — there genuinely was no scheduled shift to print. */}
-                      <div className={disabledCell} data-testid="leave-credit-clock-out">
-                        {d?.view == null ? DAY_DASH : (hhmm(d.view.actualClockOut) ?? t('table.noClockOutRecord'))}
-                      </div>
-                    </td>
+                    {/* ⚠️⚠️ r365 cbfa8b0b — THE SCHEDULED-SHIFT-END AND ACTUAL-CLOCK-OUT CELLS STOOD HERE, AND
+                        BOTH CLAIMS THEY CARRIED ARE KEPT BECAUSE THEY WERE EARNED.
+                          r353: "TWO DIFFERENT SILENCES, TOLD APART" — the em dash meant both "this cell does
+                            not apply to this day type" and "there is no clock-out on record".
+                          r364 (c36e1ae6): the clock-out APPLIES on all four day types, so the cell printed
+                            the time on every one of them, the named absence when we looked and held nothing,
+                            and the dash ONLY while the facts were in flight; the SHIFT END cell kept its
+                            day-type dash because there genuinely was no scheduled shift to print.
+                        Neither claim is being reversed — both MOVED, into the Attendance panel, where the
+                        shift end reads "No scheduled shift" instead of a dash the employee has to decode and
+                        the clock-out keeps its three states exactly. What the reporter contested is that two
+                        read-only references sat in the row wearing input boxes, on a row that had 40px of
+                        content in a 36px cell. See `AttendanceViewCell` above for the arithmetic. */}
                     <td className="px-3 py-2">
                       <input
                         type="time"
@@ -712,6 +1057,9 @@ export function LeaveCreditRequestTable({
                       </div>
                     </td>
                     <td className="px-3 py-2">
+                      <AttendanceViewCell workedDate={r.workedDate} dayType={chosen} view={d?.view ?? null} alert={attendanceAlert} />
+                    </td>
+                    <td className="px-3 py-2">
                       <Button
                         type="button"
                         size="sm"
@@ -724,29 +1072,6 @@ export function LeaveCreditRequestTable({
                       </Button>
                     </td>
                   </tr>
-                  {/* ⚠️ r353 · THE WARNING THAT REPLACED A REDUCER, AND IT DOES NOT BLOCK THE SUBMIT.
-                      The claim used to be clipped to the clock-out and capped at the measured figure; the
-                      owner reversed both, so what is left is to SAY so — amber rather than the destructive
-                      red above, because this row is valid and will credit. Its own <tr>, so a row can be
-                      both under the threshold and past the clock-out without one message hiding the other.
-                      ⚠️ r364 c36e1ae6 — IT NOW SPEAKS ONLY WHEN WE LOOKED AND FOUND NOTHING. `d.hasClockOut`
-                      comes off the day facts rather than off the assessment, so this no longer fires on every
-                      rest day, off day and public holiday row the moment both time boxes are filled. The
-                      condition is unchanged; the answer it reads is. */}
-                  {windowLive && d?.view != null && (!d.hasClockOut || d.exceedsClockOut) && (
-                    <tr>
-                      <td colSpan={10} className="px-3 pb-2">
-                        <p
-                          className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
-                          data-testid="leave-credit-clock-out-warning"
-                        >
-                          {!d.hasClockOut
-                            ? t('table.clockOutMissing')
-                            : t('table.clockOutEarlier', { claimEnd: r.claimEnd, clockOut: hhmm(d.view.actualClockOut) ?? '' })}
-                        </p>
-                      </td>
-                    </tr>
-                  )}
                   {/* ⚠️ r362 58424c7f · MUTED, AND THE COLOUR IS THE DECISION.
                       The reporter asked Leave Credit to REFUSE an end earlier than the start. It is
                       deliberately allowed — lib/extended-hours.ts's header has the argument — because that
@@ -759,7 +1084,7 @@ export function LeaveCreditRequestTable({
                       past its clock-out AND cross midnight without one message hiding the other. */}
                   {crossesMidnight && (
                     <tr>
-                      <td colSpan={10} className="px-3 pb-2">
+                      <td colSpan={8} className="px-3 pb-2">
                         <p className="text-[11px] text-muted-foreground" data-testid="leave-credit-crosses-midnight">
                           {t('table.crossesMidnight')}
                         </p>
@@ -768,7 +1093,7 @@ export function LeaveCreditRequestTable({
                   )}
                   {(mismatch != null || ordinaryUnavailable || below) && (
                     <tr>
-                      <td colSpan={10} className="px-3 pb-2 text-[11px] font-medium text-destructive">
+                      <td colSpan={8} className="px-3 pb-2 text-[11px] font-medium text-destructive">
                         {mismatch != null ? (
                           <span data-testid="leave-credit-roster-mismatch">
                             {t('table.rosterMismatch', { roster: dayTypeLabel(mismatch) })}

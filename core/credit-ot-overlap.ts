@@ -35,7 +35,7 @@
  * still owns "this date already has a credit". This owns "this date already has a live claim on the other
  * side of the cash/time-in-lieu choice", which is a different question with a different answer set.
  */
-import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client';
 import { attendanceCorrection, replacementLeaveRequest, replacementLeaveRequestDate } from '../db/schema';
 
@@ -139,4 +139,67 @@ export async function assertNoOvertimeClaimForDatesTx(tx: Tx, employmentId: stri
 export async function assertNoCreditClaimForDatesTx(tx: Tx, employmentId: string, dates: string[]): Promise<void> {
   const clash = await liveCreditClaimDatesTx(tx, employmentId, dates);
   if (clash.length > 0) throw new ClaimOverlapError(CREDIT_BLOCKS_OT_MESSAGE(clash), clash);
+}
+
+/**
+ * r365 cbfa8b0b · THE APPROVED OVERTIME ON ONE DATE, FOR THE EMPLOYEE'S OWN ATTENDANCE PANEL.
+ *
+ * ── WHY IT LIVES IN THIS FILE AND NOT BESIDE THE OTHER OVERTIME READS ──────────────────────────────────
+ * This is not a report. It exists so the Leave Credit request row can PRE-EXPLAIN the refusal
+ * `assertNoOvertimeClaimForDatesTx` above is about to hand the employee at submit — "you already have
+ * overtime approved for this date, so this credit is going to be turned away". A read that explains a
+ * refusal has to agree with the refusal, so it is built from the SAME shape as
+ * `liveOvertimeClaimDatesTx`: `requested_ot_minutes IS NOT NULL` and `> 0` is what makes a row an
+ * OVERTIME request rather than a plain clock-time correction, and it is deliberately not narrowed by
+ * `proposed_check_in IS NULL` (which is the Self-Overtime LIST's filter, in core/attendance.ts) — the
+ * block does not narrow that way either, and a panel that showed "none" against a date the submit then
+ * refuses would be worse than showing nothing at all.
+ *
+ * ⚠️ IT SHOWS ONLY THE **APPROVED** HALF OF WHAT BLOCKS, AND THAT IS THE APPROVED PLAN'S WORDING, NOT AN
+ * OVERSIGHT. `BLOCKING_STATUSES` is pending AND approved; the panel line the reporter approved says
+ * "Approved OT plan". So a PENDING overtime claim still blocks the credit and is NOT pre-explained here.
+ * Said out loud rather than papered over: closing it means a second line on the panel and a second
+ * sentence in six locales, which is a copy decision the reporter has not been asked.
+ *
+ * Returns the PLANNED WINDOW when the row carries one (`planned_start_time` / `planned_end_time` are
+ * nullable — an OT figure can be requested without a window) plus the figure itself, so the panel can
+ * print the window when it exists and fall back to naming the approval when it does not.
+ *
+ * ORDERED, because a date can carry more than one approved row and `[0]` off an unordered query is the
+ * position-dependence CLAUDE.md §8 forbids. Earliest planned start first, then the oldest row.
+ */
+export type ApprovedOvertimeOnDate = {
+  start: string | null;
+  end: string | null;
+  /** `approved_ot_minutes` when the approval stamped one, else the requested figure. Never null here. */
+  minutes: number;
+};
+
+export async function approvedOvertimeForDateTx(
+  tx: Tx,
+  employmentId: string,
+  date: string,
+): Promise<ApprovedOvertimeOnDate | null> {
+  const rows = await tx
+    .select({
+      start: attendanceCorrection.plannedStartTime,
+      end: attendanceCorrection.plannedEndTime,
+      approved: attendanceCorrection.approvedOtMinutes,
+      requested: attendanceCorrection.requestedOtMinutes,
+      createdAt: attendanceCorrection.createdAt,
+    })
+    .from(attendanceCorrection)
+    .where(
+      and(
+        eq(attendanceCorrection.employmentId, employmentId),
+        eq(attendanceCorrection.attendanceDate, date),
+        eq(attendanceCorrection.status, 'approved'),
+        isNotNull(attendanceCorrection.requestedOtMinutes),
+        sql`${attendanceCorrection.requestedOtMinutes} > 0`,
+      ),
+    )
+    .orderBy(asc(attendanceCorrection.plannedStartTime), asc(attendanceCorrection.createdAt));
+  const row = rows[0];
+  if (!row) return null;
+  return { start: row.start, end: row.end, minutes: row.approved ?? row.requested ?? 0 };
 }
