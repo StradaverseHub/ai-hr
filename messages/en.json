@@ -13227,7 +13227,7 @@
       "belowThreshold": "Under {minutes} minutes. Not eligible for credit."
     },
     "table": {
-      "help": "Add one row for each date you worked. The day type fills in from your roster when you pick the date. Every day type is claimed the same way: enter the start and end time you worked, and the credit follows the hours — four eligible hours earn half a day, eight earn a full day. On an ordinary working day the hours count from your scheduled shift end; on a rest day, off day or public holiday there is no scheduled shift, so the whole window you enter counts. Your recorded clock-out is shown for reference on an ordinary working day and does not limit what you can claim — where the two differ, your manager sees it and checks it before approving. Nothing is credited until your manager approves.",
+      "help": "Add one row for each date you worked. The day type fills in from your roster when you pick the date. Every day type is claimed the same way: enter the start and end time you worked, and the credit follows the hours — four eligible hours earn half a day, eight earn a full day. On an ordinary working day the hours count from your scheduled shift end; on a rest day, off day or public holiday there is no scheduled shift, so the whole window you enter counts. Your recorded clock-out is shown for reference and does not limit what you can claim — where the two differ, your manager sees it and checks it before approving. Nothing is credited until your manager approves.",
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "An ordinary working day cannot earn a credit at this company.",

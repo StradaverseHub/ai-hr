@@ -71,6 +71,9 @@ import vi from '../messages/vi.json';
 import zh from '../messages/zh.json';
 
 import { LeaveCreditRequestTable, type LeaveCreditDayFacts } from '../components/leave/leave-credit-request-table';
+// r364 c36e1ae6 — the dash is asserted, so it is read from where the component reads it: a literal '—'
+// here would pass if the component started printing a hyphen-minus.
+import { DAY_DASH } from '../lib/day-format';
 
 const CATALOGUES = { en, ms, ta, th, vi, zh } as const;
 type Locale = keyof typeof CATALOGUES;
@@ -86,6 +89,19 @@ const TIERS = { extendedHalfDayMinutes: 240, extendedFullDayMinutes: 480, extend
 const WORKING_DAY: LeaveCreditDayFacts = { kind: 'workday', shiftEnd: '18:00:00', actualClockOut: '02:00:00', measuredExtendedMinutes: 480 };
 const OFF_DAY: LeaveCreditDayFacts = { kind: 'off_day', shiftEnd: null, actualClockOut: '17:00:00', measuredExtendedMinutes: 0 };
 const REST_DAY: LeaveCreditDayFacts = { kind: 'rest_day', shiftEnd: null, actualClockOut: '17:00:00', measuredExtendedMinutes: 0 };
+/**
+ * r364 c36e1ae6 · a rest day the employee worked with NO clock-out on record. Without this fixture every
+ * "the rest-day row does not warn" assertion below would pass on a screen that had simply stopped warning.
+ */
+const REST_DAY_NO_CLOCK_OUT: LeaveCreditDayFacts = { kind: 'rest_day', shiftEnd: null, actualClockOut: null, measuredExtendedMinutes: 0 };
+/**
+ * ⚠️ r364 c36e1ae6 · A REST DAY WHOSE ROSTER CARRIES A SHIFT END, which lib/leave-credit-day-type.ts says can
+ * happen (a swapped day, a correction, a pattern edited after the fact) and is the reason `shiftEnd: null` is
+ * passed on the three non-working types as a STATEMENT OF THE RULE rather than as missing data. It is what
+ * makes the "the shift end keeps its dash" assertion non-vacuous, and it is the money guard: if the floor ever
+ * applied here, a 09:00→17:00 rest-day claim would be floored at 18:00 and credit NOTHING.
+ */
+const REST_DAY_ROSTERED_SHIFT: LeaveCreditDayFacts = { kind: 'rest_day', shiftEnd: '18:00:00', actualClockOut: '17:00:00', measuredExtendedMinutes: 0 };
 /** r360 — the fourth kind, which needed no fixture while the employee could pick it from a list. Its caption
  *  is the one that must NOT say "from your roster": a public holiday outranks the roster in `scheduleFor`. */
 const HOLIDAY: LeaveCreditDayFacts = { kind: 'holiday', shiftEnd: null, actualClockOut: '17:00:00', measuredExtendedMinutes: 0 };
@@ -637,13 +653,134 @@ describe('r353 · the claimed window is the claim, and the clock-out is drawn as
     expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('the em dash still means "this cell does not apply": a Rest Day row prints no "No record"', async () => {
+  /**
+   * ⚠️⚠️ r364 c36e1ae6 · INVERTED, NOT LOOSENED, AND THE OLD CLAIM IS QUOTED BECAUSE IT WAS PINNING THE DEFECT.
+   *
+   * This case stood as:
+   *
+   *     it('the em dash still means "this cell does not apply": a Rest Day row prints no "No record"', …
+   *       mount('en', { facts: REST_DAY }); // has a 17:00 clock-out, but the cell is not applicable
+   *       expect(getByTestId('leave-credit-clock-out').textContent).not.toContain('17:00');
+   *       expect(getByTestId('leave-credit-clock-out').textContent).not.toContain(table.noClockOutRecord);
+   *
+   * It asserted that a rest-day row HIDES a clock-out the system holds — the other half of the reported
+   * defect, because the cell showed a dash while the amber row underneath warned that no clock-out was on
+   * record. The clock-out is a fact on all four day types, so the assertion is reversed rather than relaxed.
+   * The SHIFT END is asserted in the same case, still a dash: there genuinely was no scheduled shift, and the
+   * reversal must not spread to the one cell where the day-type dash is right.
+   */
+  it('a Rest Day row PRINTS the clock-out on record, and the SHIFT END keeps its day-type dash', async () => {
     const user = userEvent.setup();
-    mount('en', { facts: REST_DAY }); // has a 17:00 clock-out, but the cell is not applicable
+    mount('en', { facts: REST_DAY }); // a 17:00 clock-out the screen used to hide
     await user.type(dateInput('en'), '2026-09-13');
     await awaitDayType('en', 'rest_day'); // r360 — was selectOptions(…, 'rest_day').
-    await waitFor(() => expect(screen.getByTestId('leave-credit-clock-out').textContent).not.toContain('17:00'));
+    await waitFor(() => expect(screen.getByTestId('leave-credit-clock-out')).toHaveTextContent('17:00'));
     expect(screen.getByTestId('leave-credit-clock-out').textContent).not.toContain(en.replacementRequest.table.noClockOutRecord);
+    // The other cell of the pair, and it must NOT have followed: no shift was scheduled on a rest day.
+    expect(screen.getByTestId('leave-credit-shift-end').textContent?.trim()).toBe(DAY_DASH);
+    expect(screen.queryByTestId('leave-credit-clock-out-warning')).toBeNull();
+  });
+
+  /**
+   * r364 c36e1ae6 · THE REPORTED DEFECT ITSELF. The row was fine until BOTH time boxes were filled and the
+   * amber line appeared at that moment — so it did not look like a property of the day type, it looked like
+   * the employee had caused it by typing their hours. Both times are typed here for exactly that reason: the
+   * same assertion made before them passed on the broken build, because the early exit read the day facts and
+   * was always right. Only the assessed exit was wrong, and only a complete window reaches it.
+   */
+  it('a Rest Day row WITH a clock-out stays silent once BOTH times are typed', async () => {
+    const user = userEvent.setup();
+    mount('en', { facts: REST_DAY }); // clocked out 17:00
+    await user.type(dateInput('en'), '2026-09-13');
+    await awaitDayType('en', 'rest_day');
+    expect(screen.queryByTestId('leave-credit-clock-out-warning'), 'silent before the window is typed').toBeNull();
+    await user.type(startInput('en'), '09:00');
+    await user.type(endInput('en'), '17:00');
+    // The figures prove the ASSESSED exit was taken — the exit that used to answer hasClockOut false. Without
+    // them the case could pass on a row whose window never went live at all.
+    await waitFor(() => expect(screen.getByTestId('leave-credit-eligible-minutes')).toHaveTextContent('480'));
+    expect(screen.queryByTestId('leave-credit-clock-out-warning')).toBeNull();
+  });
+
+  it('…and a Rest Day row with NO clock-out still warns — the non-vacuity partner of the case above', async () => {
+    const user = userEvent.setup();
+    mount('en', { facts: REST_DAY_NO_CLOCK_OUT });
+    await user.type(dateInput('en'), '2026-09-13');
+    await awaitDayType('en', 'rest_day');
+    await user.type(startInput('en'), '09:00');
+    await user.type(endInput('en'), '17:00');
+    await waitFor(() => expect(screen.getByTestId('leave-credit-eligible-minutes')).toHaveTextContent('480'));
+    // The same row, the same window, the same day type. Only the fact differs — and now the screen speaks.
+    expect(screen.getByTestId('leave-credit-clock-out-warning').textContent).toBe(en.replacementRequest.table.clockOutMissing);
+    expect(screen.getByTestId('leave-credit-clock-out')).toHaveTextContent(en.replacementRequest.table.noClockOutRecord);
+    // Still a warning and not a refusal, on this day type as on an ordinary day.
+    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  /**
+   * ⚠️ r364 c36e1ae6 · THE MONEY DID NOT MOVE, and this case is the whole of that claim.
+   *
+   * The fix reads hasClockOut off the day FACTS instead of off the assessment. What is passed INTO
+   * assessExtendedClaim is deliberately unchanged: shiftEnd null and actualClockOut null on the three
+   * non-working day types is the money rule (lib/leave-credit-day-type.ts) — a roster CAN carry a shift on a
+   * rest day, and if the floor applied there it would silently eat the first hours of the claim. So two
+   * rest-day rows differing ONLY in whether a clock-out exists must produce the SAME minutes and the SAME
+   * credit. The figures are asserted absolutely as well as against each other: two identical em dashes would
+   * otherwise satisfy the comparison.
+   */
+  it('the figures on a Rest Day row are identical with a clock-out and without: nothing was recalculated', async () => {
+    const figuresFor = async (facts: LeaveCreditDayFacts) => {
+      const user = userEvent.setup();
+      const { unmount } = mount('en', { facts });
+      await user.type(dateInput('en'), '2026-09-13');
+      await awaitDayType('en', 'rest_day');
+      await user.type(startInput('en'), '09:00');
+      await user.type(endInput('en'), '17:00');
+      await waitFor(() => expect(screen.getByTestId('leave-credit-eligible-minutes').textContent?.trim()).not.toBe(DAY_DASH));
+      const figures = {
+        minutes: screen.getByTestId('leave-credit-eligible-minutes').textContent?.trim(),
+        credit: screen.getByTestId('leave-credit-row-credit').textContent?.trim(),
+        total: screen.getByTestId('leave-credit-total').textContent?.trim(),
+      };
+      unmount();
+      return figures;
+    };
+    const withClockOut = await figuresFor(REST_DAY);
+    const without = await figuresFor(REST_DAY_NO_CLOCK_OUT);
+    // 09:00→17:00 on a rest day: the whole window is the claim (no shift-end floor), 480 minutes ⇒ one day.
+    expect(withClockOut.minutes).toBe('480');
+    expect(withClockOut.credit).toBe('1.00 day(s)');
+    expect(withClockOut.total).toBe('1.00 day(s)');
+    // …and the clock-out changes none of it. This is the proof that the round is display-only.
+    expect(without).toEqual(withClockOut);
+  });
+
+  /**
+   * ⚠️⚠️ r364 c36e1ae6 · THE ONE THING THIS ROUND WAS FORBIDDEN TO TOUCH, PINNED SO A LATER ROUND CANNOT.
+   *
+   * The obvious-looking "fix" for this item is to stop special-casing the day type and pass the view's own
+   * shiftEnd and actualClockOut into `assessExtendedClaim` on all four types. That MOVES MONEY. A roster can
+   * carry a shift end on a rest day, and the floor is `max(claimStart, shiftEnd)` — so this row, claiming
+   * 09:00→17:00 against a rostered 18:00 end, would be floored past its own end and credit NOTHING at all.
+   * The rule is that on a rest day, an off day or a public holiday the employee was never scheduled to be
+   * there, so the whole entered window is the claim; the service passes the same null pair for the same
+   * reason. Asserted with the shift-end CELL in the same case, because the dash there is the same rule shown.
+   */
+  it('a Rest Day whose roster carries a shift end is NOT floored by it, and still shows a dash for it', async () => {
+    const user = userEvent.setup();
+    mount('en', { facts: REST_DAY_ROSTERED_SHIFT }); // rostered 18:00 end, clocked out 17:00
+    await user.type(dateInput('en'), '2026-09-13');
+    await awaitDayType('en', 'rest_day');
+    await user.type(startInput('en'), '09:00');
+    await user.type(endInput('en'), '17:00');
+    // 480 and a full day — the whole window. A floored row would read 0 here and credit 0.00.
+    await waitFor(() => expect(screen.getByTestId('leave-credit-eligible-minutes').textContent?.trim()).toBe('480'));
+    expect(screen.getByTestId('leave-credit-row-credit').textContent?.trim()).toBe('1.00 day(s)');
+    // The rostered shift end is NOT printed: the cell says "no scheduled shift on this day type", and that
+    // is the same statement as the null passed into the assessment.
+    expect(screen.getByTestId('leave-credit-shift-end').textContent?.trim()).toBe(DAY_DASH);
+    // …while the clock-out IS printed, and there is nothing to warn about.
+    expect(screen.getByTestId('leave-credit-clock-out')).toHaveTextContent('17:00');
     expect(screen.queryByTestId('leave-credit-clock-out-warning')).toBeNull();
   });
 
