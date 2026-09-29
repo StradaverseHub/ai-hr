@@ -20,7 +20,7 @@ import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { currentPcbReliefs, payslipForReview, previousEmploymentForPayslip } from '@/core/payroll-view';
-import { explainPcb, pcbSlipSections, pcbWorksheet } from '@/core/pcb-explain';
+import { explainPcb, pcbClosingSections, pcbSlipSections, pcbWorksheet } from '@/core/pcb-explain';
 import { payslipProvenance } from '@/core/payslip-recompute';
 import { Card, PageHeader } from '@/components/ui';
 import { PcbDetailView } from './pcb-detail-view';
@@ -126,8 +126,13 @@ export default async function PcbDetailPage({
           previousDeduction: slipData.previousDeduction,
           currentRebate: slipData.currentRebate,
           accumulatedRebate: slipData.accumulatedRebate,
+          accumulatedRemuneration: slipData.accumulatedRemuneration,
         })
       : [];
+  // r361 — the official's two numbered steps and its CALCULATION RESULTS band, assembled in core/ and
+  // iterated by BOTH surfaces, so the screen and the downloaded document cannot carry a different set or
+  // a different order. Empty for a flat-rate payee and for a run with no recorded working.
+  const closing = explanation ? pcbClosingSections(explanation) : [];
 
   const backHref = row
     ? `/payroll/individual-payslip?${new URLSearchParams({
@@ -195,6 +200,7 @@ export default async function PcbDetailPage({
           explanation={explanation}
           worksheet={worksheet}
           slip={slip}
+          closing={closing}
         />
       )}
     </div>

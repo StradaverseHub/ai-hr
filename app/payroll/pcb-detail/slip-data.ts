@@ -47,9 +47,9 @@
  * — which is the identical posture, and carries the identical warning, as `reliefSource: 'current'` and
  * as `previousEmploymentForPayslip`.
  */
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, like, lt } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '@/db/client';
-import { employment, employeeStatutoryMy, tp1Relief } from '@/db/schema';
+import { employment, employeeStatutoryMy, payrollBatch, payslip, tp1Relief } from '@/db/schema';
 import { listEmployees } from '@/core/read';
 import {
   TP1_COUNTABLE_COLUMNS,
@@ -62,7 +62,12 @@ import {
   type Tp1Counted,
 } from '@/core/tax-relief';
 import { getTp3ForPersonYear } from '@/core/tp3';
-import type { PcbChildProfile, PcbSlipCatalogueItem, PcbSlipSide } from '@/core/pcb-explain';
+import type {
+  PcbAccumulatedRemuneration,
+  PcbChildProfile,
+  PcbSlipCatalogueItem,
+  PcbSlipSide,
+} from '@/core/pcb-explain';
 
 /** Everything the four new sections need, resolved. Every member is independently nullable, because a
  *  missing declaration and a missing child grid are different absences and the screen says which. */
@@ -78,6 +83,10 @@ export type PcbSlipData = {
   /** The same two sides again for the Section D rebate lines (reporter section 8). */
   currentRebate: PcbSlipSide | null;
   accumulatedRebate: PcbSlipSide | null;
+  /** r361 — the year's PRIOR payslips, itemised by the payslip's own component columns. NULL when the
+   *  employment could not be resolved in scope; an employee with no prior month this year yields zeroes,
+   *  which is a true statement about a real, readable year and not the same thing. */
+  accumulatedRemuneration: PcbAccumulatedRemuneration | null;
 };
 
 /** The agency's schedule as the pack declares it, narrowed to what the row builder reads. */
@@ -91,6 +100,7 @@ const EMPTY: PcbSlipData = {
   previousDeduction: null,
   currentRebate: null,
   accumulatedRebate: null,
+  accumulatedRemuneration: null,
 };
 
 /**
@@ -153,6 +163,82 @@ function countableDeclarations(
   );
 }
 
+/**
+ * r361 / bf3c9712 — THE YEAR'S PRIOR PAYSLIPS, SUMMED BY THE PAYSLIP'S OWN FOUR MONEY COLUMNS.
+ *
+ * ⚠️ THE PREDICATE IS `core/payroll.ts`'s OWN, CHARACTER FOR CHARACTER, AND THAT IS THE POINT. The
+ * accumulators this itemisation sits beside (Y, K, X, Z) are replayed by `priorSlips` in core/payroll.ts
+ * over `employment_id = … AND pay_period LIKE '<year>-%' AND pay_period < '<this month>'` — no company
+ * predicate, because an employment belongs to one company and a transfer does not rewrite which batch
+ * paid a month. Adding a company filter here (which `localization/my/reports.ts` eaStatement needs,
+ * because an EA speaks FOR one employer) would itemise a different set of slips from the one the totals
+ * were built from, and the block would silently under-report a transferred employee's year.
+ *
+ * ⚠️ AND IT IS `<`, NOT `<=`. The agency's block is headed "for previous month's in the current year";
+ * this payroll month's own remuneration is the CURRENT MONTH'S REMUNERATION section, further down the
+ * same document. An off-by-one here double-counts the month being explained.
+ *
+ * ⚠️ WHAT IT IS NOT. These are the PAID figures — the four columns, as issued. Y accumulates `bases.pcb`,
+ * the figure PCB is CHARGED on, which excludes every exempt ringgit (spec rule 9); and the accumulators
+ * are additionally seeded by the Form TP3, which this query cannot see. So the itemisation and the
+ * totals beneath it are two different measures of the year and need not add up. `core/pcb-explain.ts`
+ * prints them in two separate columns for that reason and its section note says so in words.
+ *
+ * NO NEW DOOR: `employmentId` has already come out of the scope-fenced roster in `pcbSlipData`, and the
+ * read runs under `withTenant`, so RLS confines it exactly as it confines every other read in this file.
+ */
+function priorRemuneration(
+  s: SessionContext,
+  p: { employmentId: string; taxYear: number; month: number },
+): Promise<PcbAccumulatedRemuneration> {
+  const boundary = `${p.taxYear}-${String(p.month).padStart(2, '0')}`;
+  return withTenant(s, async (tx) => {
+    const slips = await tx
+      .select({
+        basic: payslip.basicSalary,
+        allowance: payslip.allowance,
+        overtime: payslip.overtimePay,
+        bonus: payslip.bonus,
+      })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .where(
+        and(
+          eq(payslip.employmentId, p.employmentId),
+          like(payrollBatch.payPeriod, `${p.taxYear}-%`),
+          lt(payrollBatch.payPeriod, boundary),
+        ),
+      )
+      // CLAUDE.md §8: any asserted array out of a query carries an ORDER BY. The three sums below do not
+      // depend on it — addition does not care — but the test that pins WHICH slips were counted reads the
+      // list, and an unordered result makes that assertion about nothing in particular.
+      .orderBy(payrollBatch.payPeriod);
+    const num = (v: unknown) => {
+      const x = Number(v ?? 0);
+      return Number.isFinite(x) ? x : 0;
+    };
+    let grossSalary = 0;
+    let allowances = 0;
+    let additional = 0;
+    for (const sl of slips) {
+      // The agency's "gross salary, wages or leave pay (INCLUDING OVERTIME PAY)" is one line, and it is
+      // the same pairing `eaStatement` makes for the EA's Part B 1(a).
+      grossSalary = round2(grossSalary + num(sl.basic) + num(sl.overtime));
+      allowances = round2(allowances + num(sl.allowance));
+      // `bonus` IS the Yt additional-remuneration stream (core/payroll.ts: "`allowanceApplied` (the Y1
+      // wage stream) and `bonus` (the Yt additional stream)"), so it is the agency's ACCUMULATED
+      // ADDITIONAL REMUNERATION line and not part of the normal-remuneration lines above it.
+      additional = round2(additional + num(sl.bonus));
+    }
+    return { grossSalary, allowances, additional };
+  });
+}
+
+/** Two decimals, because a running total of numeric(12,2) columns otherwise drifts into binary dust and
+ *  prints RM 1,234.5600000000001 on a tax document. Not a tax rule and not a rounding of any figure the
+ *  engine produced — only the sum of figures it already wrote down. */
+const round2 = (v: number) => Math.round(v * 100) / 100;
+
 /** A declaration's per-line figures, or the "counts but carries no attribution" signal. */
 const side = (attributed: boolean, amounts: PcbSlipSide['amounts'], total: unknown): PcbSlipSide => ({
   attributed,
@@ -205,12 +291,16 @@ export async function pcbSlipData(
   if (!emp) return { ...EMPTY, profile };
   const personId = emp.personId;
 
-  const [, rows, tp3] = await Promise.all([
+  const [, rows, tp3, accumulatedRemuneration] = await Promise.all([
     // THE ADMIN GATE on this person, kept as the existing door it has always been. Its rows are not used:
     // it does not carry `categories`, which is why the countable read below exists.
     listTp1DeclarationsForPersonYear(s, { personId, assessmentYear: p.taxYear }),
     countableDeclarations(s, { personId, assessmentYear: p.taxYear }),
     getTp3ForPersonYear(s, { personId, assessmentYear: p.taxYear }),
+    // r361 — the itemisation of the accumulated block. Keyed on the EMPLOYMENT, not the person: the
+    // accumulators it sits beside are replayed per employment, and a person holding two concurrent
+    // employments has two separate MTD calculations to explain.
+    priorRemuneration(s, { employmentId: p.employmentId, taxYear: p.taxYear, month: p.month }),
   ]);
 
   // ⚠️ THE FEED'S OWN REDUCTION, ASKED THE AGENCY'S TWO QUESTIONS. `throughMonth: p.month` is character
@@ -246,5 +336,6 @@ export async function pcbSlipData(
     previousDeduction,
     currentRebate,
     accumulatedRebate,
+    accumulatedRemuneration,
   };
 }

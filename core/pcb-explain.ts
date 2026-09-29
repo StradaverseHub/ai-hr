@@ -1082,6 +1082,10 @@ const SLIP_COMBINED: PcbWorksheetValue = { kind: 'notSeparatelyRecorded' };
 /** A box the declaration COVERED and left empty. See `slipSubValue` for why that is a figure and not an
  *  absence, and why it is the only zero this file will print. */
 const SLIP_NIL: PcbWorksheetValue = { kind: 'money', amount: 0 };
+/** r361 — this row's figure belongs in the section's OTHER column. The cell is ruled empty with the same
+ *  dash the view already prints for the mirror case, so it asserts nothing at all — it is not an absence
+ *  and it is certainly not a zero. */
+const SLIP_NO_COLUMN: PcbWorksheetValue = { kind: 'caption', caption: 'slipNoColumn' };
 
 /** One numbered line's own stored entry, as the two writers persist it. */
 type SlipEntry = NonNullable<PcbSlipAmounts['items'][string]>;
@@ -1190,6 +1194,112 @@ export function pcbReliefScheduleSection(p: {
 }
 
 /**
+ * r361 / bf3c9712 — THE YEAR'S PRIOR PAYSLIPS, ITEMISED BY THE PAYSLIP'S OWN COMPONENT COLUMNS.
+ *
+ * The agency's page 1 prints the accumulated block as an itemised list and then a set of accumulator
+ * totals. WE HOLD THOSE TWO THINGS ON DIFFERENT MEASURES, and the block says so rather than implying
+ * they reconcile:
+ *
+ *   · THE ITEMISATION is what the employee was PAID, summed off the four money columns of this tax
+ *     year's payslips before the payroll month being explained (`app/payroll/pcb-detail/slip-data.ts`,
+ *     the same shape `localization/my/reports.ts` eaStatement uses for the EA's Part B).
+ *   · THE TOTALS (Y, K, Σ(Y−K), X, Z) are the ACCUMULATORS the run itself was computed against, read
+ *     off the payslip's own stamp. Y accumulates `bases.pcb` — the figure PCB is CHARGED on — which
+ *     differs from what was paid by every exempt ringgit and every unpaid-leave deduction
+ *     (`localization/my/payroll.ts` foldPriorSlipIntoAccumulators, spec rule 9). They are also seeded
+ *     by the Form TP3, so they carry the previous employer's money and the itemisation cannot.
+ *
+ * Taking the totals from the trace rather than re-summing them here is the whole point: the block and
+ * the working above it read the SAME numbers, so they cannot disagree about what the year holds. The
+ * note states both gaps in words; it is the only thing that makes the column pair honest.
+ */
+export type PcbAccumulatedRemuneration = {
+  /** Σ `basic_salary` and `overtime_pay` over the year's payslips BEFORE this payroll month. */
+  grossSalary: number;
+  /** Σ `allowance` over the same slips. */
+  allowances: number;
+  /** Σ `bonus` — the Yt additional-remuneration stream — over the same slips. */
+  additional: number;
+};
+
+/**
+ * REPORTER SECTION 3 (official page 1) — ACCUMULATED REMUNERATION / MTD / REBATE / OTHER DEDUCTIONS FOR
+ * THE PREVIOUS MONTHS OF THE CURRENT YEAR.
+ *
+ * ⚠️ THREE LINES DELIBERATELY DO NOT CARRY A FIGURE, AND EACH SAYS A DIFFERENT THING.
+ *
+ *   · FEES / COMMISSION reads "recorded only in combination". There is no such payroll column: a
+ *     director's fee or a commission is configured as a pay item and lands inside `allowance` or
+ *     `bonus`. Splitting it out here would be a figure this system never wrote down.
+ *   · THE DEPARTURE LEVY likewise. Z is the spec's own combined column — rule 5 heads it "zakat AND
+ *     departure levy" and `foldPriorSlipIntoAccumulators` accumulates `zakat` together with the TP1
+ *     rebate that carries the levy — so no separate accumulated levy figure exists to print. The
+ *     zakat row is captioned as the combined figure it is, and the levy row says so.
+ *   · Y reads "recorded only in combination" on a payslip written before the engine stamped it
+ *     (4011903e), exactly as the worksheet's own Y row does. It is never reconstructed.
+ *
+ * ⚠️ BIK AND VOLA ARE PRINTED AS 0.00, WHICH IS THE ONE PLACE THIS FILE PRINTS A ZERO IT DID NOT READ,
+ * AND THE APPROVED PLAN PROMISES IT IN WRITING. Neither is a payroll component in this system, so the
+ * agency's two lines would otherwise be absent from a document a payroll officer lays beside the
+ * agency's own. CLAUDE.md §8 is that a printed 0.00 asserts the money does not exist — so the note
+ * says, in the reader's own language, that the zero means WE HOLD NO SUCH FIGURE and not that anybody
+ * has checked there is none. The note is the load-bearing half of that decision; do not drop it.
+ */
+export function pcbAccumulatedRemunerationSection(
+  x: Extract<PcbExplanation, { kind: 'mtd' }>,
+  paid: PcbAccumulatedRemuneration | null,
+): PcbSlipSection {
+  const t = x.trace;
+  const rows: PcbSlipRow[] = [
+    { line: '', caption: 'slipAccGrossSalary', ns: 'pcbDetail', first: slipMoney(paid?.grossSalary) },
+    { line: '', caption: 'slipAccFeesCommission', ns: 'pcbDetail', first: SLIP_COMBINED },
+    { line: '', caption: 'slipAccTipsAllowances', ns: 'pcbDetail', first: slipMoney(paid?.allowances) },
+    { line: '', caption: 'slipAccBik', ns: 'pcbDetail', first: SLIP_NIL },
+    { line: '', caption: 'slipAccVola', ns: 'pcbDetail', first: SLIP_NIL },
+    { line: '', caption: 'slipAccAdditional', ns: 'pcbDetail', first: slipMoney(paid?.additional) },
+    {
+      line: 'Y',
+      caption: 'slipAccGross',
+      ns: 'pcbDetail',
+      first: SLIP_NO_COLUMN,
+      second: x.ytdGross == null ? SLIP_COMBINED : slipMoney(x.ytdGross),
+    },
+    { line: 'K', caption: 'slipAccEpf', ns: 'pcbDetail', first: slipMoney(x.epfClaimedYtd) },
+    {
+      line: 'Σ(Y−K)',
+      caption: 'slipAccNet',
+      ns: 'pcbDetail',
+      first: SLIP_NO_COLUMN,
+      second: slipMoney(x.ytdNetRemuneration),
+    },
+    {
+      line: 'X',
+      caption: 'slipAccMtd',
+      ns: 'pcbDetail',
+      first: SLIP_NO_COLUMN,
+      second: slipMoney(x.pcbPaidYtd),
+    },
+    {
+      line: 'Z',
+      caption: 'slipAccZakat',
+      ns: 'pcbDetail',
+      first: SLIP_NO_COLUMN,
+      second: t ? slipMoney(t.Z) : SLIP_ABSENT,
+    },
+    { line: '', caption: 'slipAccLevy', ns: 'pcbDetail', first: SLIP_NO_COLUMN, second: SLIP_COMBINED },
+  ];
+  return {
+    heading: 'slipAccHeading',
+    firstColumn: 'slipColAmount',
+    secondColumn: 'slipColTotal',
+    rows,
+    // The accumulator totals are the run's own; the itemisation is this employer's payslips only. Which
+    // is which, and why the two columns need not add up, is the note's whole job.
+    note: paid ? 'slipAccNote' : 'slipAccNoteUnread',
+  };
+}
+
+/**
  * ad7bc503 — THE REPORTER'S SECTIONS 2, 4, 5, 6, 7 AND 8, IN THEIR OWN ORDER, ASSEMBLED ONCE.
  *
  * Sections 1, 3, 9 and 10 are NOT here: 1 is the identification block at the top of the screen, and 3, 9
@@ -1212,6 +1322,9 @@ export function pcbSlipSections(
     previousDeduction: PcbSlipSide | null;
     currentRebate: PcbSlipSide | null;
     accumulatedRebate: PcbSlipSide | null;
+    /** r361 — the year's prior payslips, itemised. NULL ⇒ they were not read (or could not be), which
+     *  is a DIFFERENT statement from a year with nothing in it and the section's note says which. */
+    accumulatedRemuneration?: PcbAccumulatedRemuneration | null;
   },
 ): PcbSlipSection[] {
   if (x.kind !== 'mtd') return [];
@@ -1224,6 +1337,10 @@ export function pcbSlipSections(
       t ? { kind: 'count', count: t.childCount } : SLIP_ABSENT,
       t ? slipMoney(t.childDeductionPerChild) : SLIP_ABSENT,
     ),
+    // 3 — r361: the accumulated remuneration block, which the official prints on page 1 immediately
+    // under the child grid and above the accumulated deductions. It goes HERE, and not at the foot with
+    // the results, because the whole point of the item is that the two documents read down in step.
+    pcbAccumulatedRemunerationSection(x, p.accumulatedRemuneration ?? null),
     // 4 — what a previous employer already deducted, itemised. The ACCUMULATED side of the reporter's
     // section 4: TP3 Section D, keyed exactly as `tp1_relief.categories.items` is.
     pcbReliefScheduleSection({
@@ -1381,6 +1498,139 @@ export function pcbBasisSection(x: PcbExplanation): PcbSlipSection | null {
     });
   }
   return { heading: L.bannerHeading, firstColumn: 'slipColAmount', rows, note: L.banner };
+}
+
+// ═══════════════════ r361 / bf3c9712 — THE OFFICIAL'S TWO NUMBERED STEPS, AND ITS RESULTS ═══════════════════
+//
+// The agency's own slip closes with three bands, in this order (official pages 6 and 7):
+//
+//     MTD CALCULATION
+//       1.  MTD excess of annual year net remuneration excluding additional remuneration :
+//             … every letter, then "Current Month's MTD = …" and "Net MTD = Current Month's MTD − (zakat)"
+//       2.  MTD must be deducted :
+//             MTD = …
+//     CALCULATION RESULTS
+//             Net MTD / MTD additional remuneration / MTD for the month to be deducted, then two notes.
+//
+// OUR PAGE CARRIED THE WORKING AND NONE OF THE THREE BANDS, so a reader holding the agency's slip ran
+// out of our page one band early and could not find the line the two documents were supposed to meet on.
+//
+// ⚠️ THE REPETITION IS THE AGENCY'S, NOT OURS. Net MTD appears under step 1 and again under the results;
+// the deducted figure appears under step 2 and again under the results. That is how the slip is printed
+// and reproducing it is the entire request ("the sequence on our page matches the sequence on theirs").
+// Every one of those cells is the SAME stored figure read twice, never a second derivation of it, so the
+// repetition cannot become a disagreement.
+//
+// ⚠️ AND THE LAST LINE IS THE STAMP. `x.pcb` is `statutory.pcb` — what the payslip actually deducted,
+// already truncated, already rounded up to the nearest 5 sen and already RM10-floored by the engine
+// (`localization/my/payroll.ts` §E.1–E.3). Nothing here re-applies any of that: a figure this file
+// produced could differ from the payslip by a sen, and a statutory explanation that differs from the
+// deduction it explains is worse than no explanation. Where the working does NOT explain the deduction
+// (a hand-set PCB, or an additional run that deducted only the month's increase) the two figures get
+// two separately captioned rows through `pcbBasisLabels`, exactly as every other block on this screen
+// does — the deduction is never the quiet answer to a working that did not produce it.
+
+/**
+ * Official page 6, item 1 — the step the whole working above belongs to, landing on the two figures the
+ * agency prints under it.
+ *
+ * `Net MTD` is `pcbNormal`: the normal-remuneration leg of the figure the engine produced, already net
+ * of this month's zakat through §E.5's cascade. It is READ (`explainPcb` splits `pcbSystem` against the
+ * engine's own stamped additional leg) and not the subtraction the agency's line describes.
+ */
+export function pcbMtdStep1Section(x: Extract<PcbExplanation, { kind: 'mtd' }>): PcbSlipSection {
+  const t = x.trace;
+  return {
+    heading: 'slipStep1Heading',
+    firstColumn: 'slipColTotal',
+    rows: [
+      { line: '1', caption: 'slipStep1CurrentMtd', ns: 'pcbDetail', first: t ? slipMoney(t.mtdNormalCalc) : SLIP_ABSENT },
+      { line: '', caption: 'slipStep1NetMtd', ns: 'pcbDetail', first: slipMoney(x.pcbNormal) },
+    ],
+    note: 'slipStep1Note',
+  };
+}
+
+/** Official page 6, item 2 — "MTD must be deducted". One line, and it is the payslip's own figure. */
+export function pcbMtdStep2Section(x: Extract<PcbExplanation, { kind: 'mtd' }>): PcbSlipSection {
+  const L = pcbBasisLabels(x.basis);
+  const rows: PcbSlipRow[] = [];
+  if (x.basis) rows.push({ line: '', caption: L.finalSystem, ns: 'pcbDetail', first: slipMoney(x.pcbSystem) });
+  rows.push({
+    line: '2',
+    caption: x.basis ? L.finalDeducted : 'slipStep2Mtd',
+    ns: 'pcbDetail',
+    first: slipMoney(x.pcb),
+  });
+  return {
+    heading: 'slipStep2Heading',
+    firstColumn: 'slipColTotal',
+    rows,
+    note: x.basis ? L.note : 'slipStep2Note',
+  };
+}
+
+/**
+ * Official page 7 — CALCULATION RESULTS.
+ *
+ * The three figures the agency highlights, then the two figures its two closing notes are about. The
+ * notes themselves are prose and live in `slipResultNote`: every caption in this namespace is resolved
+ * with a bare `t()` and a stray brace throws at render, so nothing here interpolates.
+ *
+ *   · `slipResultProjected` is the agency's "MTD from <this month> to DECEMBER is RM x if there are no
+ *     changes to the salary, deductions and rebates" — its figure is the current month's MTD, which is
+ *     `mtdNormalCalc` and is already on this page. Printed rather than left in the sentence because the
+ *     sentence cannot carry an argument.
+ *   · `slipResultAnnualTax` is its "Total MTD / Annual Tax RM x" — the tax the bracket yields on P,
+ *     `taxOnP1`, which the engine stored and which the specification's own worked example prints at the
+ *     foot of page 6.
+ *
+ * Both are ABSENT rather than zero on a run that recorded no trace, like every other trace-fed row.
+ */
+export function pcbCalculationResultsSection(x: Extract<PcbExplanation, { kind: 'mtd' }>): PcbSlipSection {
+  const t = x.trace;
+  const L = pcbBasisLabels(x.basis);
+  const rows: PcbSlipRow[] = [
+    { line: '', caption: 'slipResultNetMtd', ns: 'pcbDetail', first: slipMoney(x.pcbNormal) },
+    { line: '', caption: 'slipResultAdditional', ns: 'pcbDetail', first: slipMoney(x.pcbAdditional) },
+  ];
+  if (x.basis) rows.push({ line: '', caption: L.finalSystem, ns: 'pcbDetail', first: slipMoney(x.pcbSystem) });
+  rows.push({
+    line: '',
+    caption: x.basis ? L.finalDeducted : 'slipResultFinal',
+    ns: 'pcbDetail',
+    first: slipMoney(x.pcb),
+  });
+  rows.push({
+    line: '',
+    caption: 'slipResultProjected',
+    ns: 'pcbDetail',
+    first: t ? slipMoney(t.mtdNormalCalc) : SLIP_ABSENT,
+  });
+  rows.push({
+    line: '',
+    caption: 'slipResultAnnualTax',
+    ns: 'pcbDetail',
+    first: t ? slipMoney(t.taxOnP1) : SLIP_ABSENT,
+  });
+  return { heading: 'slipResultHeading', firstColumn: 'slipColTotal', rows, note: 'slipResultNote' };
+}
+
+/**
+ * The closing trio, in the official's order, for a surface that renders them as one run of sections.
+ *
+ * ONE LIST, TWO SURFACES. The screen and the downloaded document both iterate this, so neither can carry
+ * a band the other does not and neither can put them in a different order — the identical device, and
+ * the identical reason, as `pcbFormulaBlocks` for the substituted expressions.
+ *
+ * Empty for a flat-rate payee and for a payslip with no recorded working: there is no monthly MTD
+ * calculation to number the steps of, and three bands of "not recorded" would assert that one exists
+ * and merely went unsaved. `flatWorksheet` and the screen's own unavailable card already say what is
+ * true for those two, in sentences.
+ */
+export function pcbClosingSections(x: PcbExplanation): PcbSlipSection[] {
+  if (x.kind !== 'mtd') return [];
+  return [pcbMtdStep1Section(x), pcbMtdStep2Section(x), pcbCalculationResultsSection(x)];
 }
 
 /**

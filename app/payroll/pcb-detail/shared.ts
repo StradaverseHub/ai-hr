@@ -37,7 +37,7 @@
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { currentPcbReliefs, payslipForReview, previousEmploymentForPayslip } from '@/core/payroll-view';
-import { CATEGORY_LABEL, CYCLE_LABEL, explainPcb, pcbBasisLabels, pcbBasisSection, pcbSlipSections, pcbWorksheet } from '@/core/pcb-explain';
+import { CATEGORY_LABEL, CYCLE_LABEL, explainPcb, pcbBasisLabels, pcbBasisSection, pcbClosingSections, pcbSlipSections, pcbWorksheet } from '@/core/pcb-explain';
 import type { PcbExplanation, PcbSlipSection, PcbWorksheet, PcbWorksheetValue } from '@/core/pcb-explain';
 import { payslipProvenance } from '@/core/payslip-recompute';
 import { formatMoney } from '@/lib/money';
@@ -70,6 +70,9 @@ export type PcbDetailModel = {
   explanation: PcbExplanation;
   worksheet: PcbWorksheet;
   slip: PcbSlipSection[];
+  /** r361 — the official's two numbered steps and its CALCULATION RESULTS band, in its own order. It is
+   *  part of the MODEL and not of either renderer, so the screen and this document iterate one list. */
+  closing: PcbSlipSection[];
 };
 
 /**
@@ -98,8 +101,10 @@ export function pcbDetailModel(p: {
           previousDeduction: p.slipData.previousDeduction,
           currentRebate: p.slipData.currentRebate,
           accumulatedRebate: p.slipData.accumulatedRebate,
+          accumulatedRemuneration: p.slipData.accumulatedRemuneration,
         })
       : [],
+    closing: pcbClosingSections(explanation),
   };
 }
 
@@ -244,31 +249,42 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
     }
   }
 
-  // ── Reporter sections 2, 4, 5, 6, 7 and 8 — the detail behind the totals ──────────────────────────
-  for (const sec of model.slip) {
-    const columns = [
-      ...(sec.limitColumn ? [t(sec.limitColumn)] : []),
-      t(sec.firstColumn),
-      ...(sec.secondColumn ? [t(sec.secondColumn)] : []),
-      ...(sec.thirdColumn ? [t(sec.thirdColumn)] : []),
-    ];
-    sections.push({
-      heading: t(sec.heading),
-      columns,
-      rows: sec.rows.map((r) => ({
-        line: r.line,
-        label: r.ns === 'taxRelief' ? tr(r.caption) : t(r.caption),
-        sub: r.sub,
-        cells: [
-          ...(sec.limitColumn ? [r.limit == null ? t('slipNoLimit') : formatMoney(r.limit, cur)] : []),
-          cell(r.first),
-          ...(sec.secondColumn ? [r.second ? cell(r.second) : ''] : []),
-          ...(sec.thirdColumn ? [r.third ? cell(r.third) : ''] : []),
-        ],
-      })),
-      note: sec.note ? t(sec.note) : undefined,
-    });
-  }
+  /**
+   * ONE MAPPING FOR EVERY SLIP-SHAPED SECTION, because as of r361 there are TWO lists of them — the
+   * reporter's detail behind the totals (`model.slip`) and the official's closing trio (`model.closing`),
+   * which is pushed further down where the agency prints it. The screen has the same split and the same
+   * single painter (`slipSections` in pcb-detail-view.tsx); a second copy of this mapping here is how one
+   * list quietly loses a column or an absence wording that the other keeps.
+   */
+  const pushSlipSections = (list: readonly PcbSlipSection[]) => {
+    for (const sec of list) {
+      const columns = [
+        ...(sec.limitColumn ? [t(sec.limitColumn)] : []),
+        t(sec.firstColumn),
+        ...(sec.secondColumn ? [t(sec.secondColumn)] : []),
+        ...(sec.thirdColumn ? [t(sec.thirdColumn)] : []),
+      ];
+      sections.push({
+        heading: t(sec.heading),
+        columns,
+        rows: sec.rows.map((r) => ({
+          line: r.line,
+          label: r.ns === 'taxRelief' ? tr(r.caption) : t(r.caption),
+          sub: r.sub,
+          cells: [
+            ...(sec.limitColumn ? [r.limit == null ? t('slipNoLimit') : formatMoney(r.limit, cur)] : []),
+            cell(r.first),
+            ...(sec.secondColumn ? [r.second ? cell(r.second) : ''] : []),
+            ...(sec.thirdColumn ? [r.third ? cell(r.third) : ''] : []),
+          ],
+        })),
+        note: sec.note ? t(sec.note) : undefined,
+      });
+    }
+  };
+
+  // ── Reporter sections 2, 3, 4, 5, 6, 7 and 8 — the detail behind the totals ───────────────────────
+  pushSlipSections(model.slip);
 
   /**
    * ── r351: THE WORKING ITSELF, WHICH THIS DOCUMENT DID NOT CARRY ────────────────────────────────────
@@ -411,6 +427,19 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
       });
     }
   }
+
+  /**
+   * ── r361 / bf3c9712: THE OFFICIAL'S CLOSING TRIO, LAST, WHERE THE OFFICIAL PUTS IT ────────────────
+   *
+   * "1. MTD excess of annual year net remuneration excluding additional remuneration", then "2. MTD must
+   * be deducted", then CALCULATION RESULTS. The document ended at the lettered steps above, one band
+   * before the figure the whole thing is about is stated the way the agency states it — and requirement
+   * 10 on this item is expressly "the PDF must not omit the final deducted amount".
+   *
+   * Built in core/ and pushed through the SAME mapping as every other slip section, so the page and the
+   * paper cannot differ about the order or about a single cell.
+   */
+  pushSlipSections(model.closing);
 
   const bytes = await renderPcbDetailPdf({
     title: t('title'),
