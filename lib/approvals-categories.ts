@@ -71,7 +71,14 @@ export function parseApprovalCategory(
 }
 
 /** Panel group headings, in display order (item order within derives from BULK_CATEGORY_ORDER). */
-export type ApprovalCategoryGroup = 'leave' | 'attendance' | 'claims' | 'travel' | 'people';
+/**
+ * b833a077 (r362) — 'travel' WAS A GROUP OF ITS OWN HERE AND IS GONE, together with its PANEL_GROUPS entry
+ * `{ group: 'travel', categories: ['travel'] }`, its ApprovalSection member and its SECTION_FOR_CATEGORY
+ * row. My Travel was removed completely, and a group left behind would render a heading with nothing
+ * under it. 'travel' also left BulkCategory (lib/approvals-bulk.ts), which is what takes it out of
+ * APPROVAL_CATEGORIES below.
+ */
+export type ApprovalCategoryGroup = 'leave' | 'attendance' | 'claims' | 'people';
 
 export const PANEL_GROUPS: readonly {
   group: ApprovalCategoryGroup;
@@ -80,7 +87,6 @@ export const PANEL_GROUPS: readonly {
   { group: 'leave', categories: ['leave', 'leaveCancellation', 'replacementLeave'] },
   { group: 'attendance', categories: ['attendance', 'overtime'] },
   { group: 'claims', categories: ['claim'] },
-  { group: 'travel', categories: ['travel'] },
   { group: 'people', categories: PEOPLE_CATEGORIES },
 ];
 
@@ -95,7 +101,6 @@ export type ApprovalSection =
   | 'replacementLeave'
   | 'claims'
   | 'corrections'
-  | 'travel'
   | 'profileChanges'
   | 'resignations'
   | 'managerReviews'
@@ -108,7 +113,6 @@ const SECTION_FOR_CATEGORY: Record<Exclude<ApprovalCategory, 'all'>, ApprovalSec
   attendance: 'corrections',
   overtime: 'corrections',
   claim: 'claims',
-  travel: 'travel',
   profileChanges: 'profileChanges',
   resignations: 'resignations',
   managerReviews: 'managerReviews',

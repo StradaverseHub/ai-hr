@@ -185,7 +185,6 @@ const CATEGORY_LABEL_KEY: Record<BulkCategory, string> = {
   attendance: 'bulkBreakdownAttendance',
   overtime: 'bulkBreakdownOvertime',
   claim: 'bulkBreakdownClaim',
-  travel: 'bulkBreakdownTravel',
 };
 
 /** Sticky bar + confirmation dialog. Rendered once by the provider; returns null when nothing is selected. */

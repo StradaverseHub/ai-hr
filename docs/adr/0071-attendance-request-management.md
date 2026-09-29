@@ -76,6 +76,20 @@ table, no `core/replacement-leave-request.ts`.
 
 ### E. Travel Request — audit marker only
 
+> **⚠️ SUPERSEDED IN PART — r362, board item `b833a077`.** The reporter asked for My Travel to be removed
+> completely from the employee portal, and the approved plan takes the menu row, the `/attendance/travel`
+> screen and its form, the Travel Requests section on `/approvals`, the bell's travel task and the travel
+> lines in the bulk-approve tools. `core/travel-request.ts` (all five exports, `activeTravelRequestFor`
+> included) is deleted and `/attendance/travel` is a redirect to `/attendance/clock`. **The data decision
+> below is UNCHANGED and deliberate:** `travel_request`, every row in it, its RLS policy, its grant and
+> migration `0146` stay untouched, because the records are kept for audit. Two readers of the table stay
+> with them — `core/read.ts` `employmentCompanyBlockedTx` (the company-change gate) and
+> `lib/approval-history.ts` (historic `travel-request.approved|rejected` events are named in a hard-coded
+> allowlist inside the immutable migrations `0288` and `0320`). A request still pending on the day this
+> shipped stays pending for good: recorded, but no longer decidable. Everything below describes the
+> feature as it was built and is kept as the record of that decision, not as a description of today.
+
+
 `travel_request` (migration `0145`): `travel_from`, `travel_to` (CHECK `to >= from`), `remarks NOT NULL`,
 status reuses `attendance_correction_status`, decided-by/decided-at, RLS mirroring `attendance_correction`
 verbatim, plus the explicit `GRANT … TO ai_hr_app` (a new table does not inherit prior grants — ADR-0002 fails

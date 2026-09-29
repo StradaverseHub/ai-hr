@@ -227,6 +227,12 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // screen, which is why the reporter read them as missing. Declared here for the same reason every row
     // above is: growth has to be deliberate, and an undeclared row still fails the parity assertions.
     // Ungated like their four siblings — each screen shows the caller their OWN requests.
+    //
+    // b833a077 (r362) — MY TRAVEL'S DECLARATION STAYS HERE AND THE ROW IS GONE. It is declared REMOVED
+    // below rather than deleted from this list, for exactly the reason the RETIRED block gives: deleting
+    // the line would switch off coverage for the row instead of recording what happened to it, and the
+    // subtraction in the count assertion would stop being legible. Its obligation is stated and asserted
+    // below — the row is gone, the address still answers as a redirect, and it stays unregistered.
     { href: '/attendance/travel', labelKey: 'myTravel', icon: Plane },
     { href: '/attendance/request-status', labelKey: 'myAttendanceRequestStatus', icon: ClipboardList },
     // 1c5602cc (r263) — Schedule: the tabbed configuration screen for an employee's working pattern
@@ -343,8 +349,38 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     },
   ] as const;
   const foldedHrefs: string[] = FOLDED.map((r) => r.href);
+
+  /**
+   * b833a077 (r362) — rows whose FEATURE WAS REMOVED OUTRIGHT. A FIFTH list, and it is deliberately none
+   * of the four above.
+   *
+   *   MOVED_OUT  = the row hangs off a different menu now. Travel hangs off no menu.
+   *   RETIRED    = the row went, the SCREEN stayed and stays REGISTERED. Travel's screen is gone and the
+   *                route never was registered, so RETIRED's own obligation would fail against it — and
+   *                passing it by registering the route would invent a permission identity for a screen
+   *                that no longer exists.
+   *   FOLDED     = the content moved to `into` and the old address forwards there. Nothing about travel
+   *                moved anywhere; FOLDED's obligation that `into` be a registered route would also fail,
+   *                because the destination is the ungated employee screen /attendance/clock.
+   *
+   * So the obligation is its own, and it is the honest one for a removal: the row is gone, the FILE still
+   * exists and forwards to a usable screen (a shipped URL must not 404 on a bookmark), and the route stays
+   * OUT of lib/permissions.ts. `keptFor` records what was deliberately NOT deleted, because "remove the
+   * feature" here explicitly did not mean "delete the data".
+   */
+  const REMOVED = [
+    {
+      href: '/attendance/travel',
+      to: '/attendance/clock',
+      why: 'My Travel — the reporter asked for the feature to be removed completely (row, screen, form, approvals section, bell task, bulk-approve lines). The destination is Clock in/out and deliberately NOT /attendance/my-records, because the separate approved item 2aef3cd8 empties Attendance Overview and an old travel bookmark would land on a blank screen.',
+      keptFor:
+        'travel_request, its rows, its RLS policy, its grant and migration 0146 are untouched — the records stay for audit. core/read.ts employmentCompanyBlockedTx still reads the table (the company-change gate) and lib/approval-history.ts still labels historic travel-request events, because migrations 0288 and 0320 name them in an immutable allowlist.',
+    },
+  ] as const;
+  const removedHrefs: string[] = REMOVED.map((r) => r.href);
+
   /** Every href that is no longer expected in this pack's nav, whatever the reason. */
-  const goneHrefs = [...movedOutHrefs, ...retiredHrefs, ...foldedHrefs];
+  const goneHrefs = [...movedOutHrefs, ...retiredHrefs, ...foldedHrefs, ...removedHrefs];
 
   /**
    * The My Attendance node's rows, in order — stated ONCE and asserted from two cases below, which used
@@ -361,8 +397,13 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
    * POINTS. It was `/attendance`, the screen shared with the administrator's Employee Attendance row; it
    * is now `/attendance/my-records`, the employee's own. The reporter asked twice for the administrative
    * Record function to leave this menu and reaffirmed after being told why it could not simply be moved,
-   * so the approved plan splits the screen instead of moving the row. The membership rule this list has
-   * always guarded is unchanged: six rows, written down, none of them gated.
+   * so the approved plan splits the screen instead of moving the row.
+   *
+   * ⚠️ b833a077 (r362) — FIVE ROWS NOW, NOT SIX, AND THE ORDER OF THE OTHER FIVE IS UNCHANGED. The line
+   * this block used to end with was "six rows, written down, none of them gated". My Travel was the FIFTH
+   * of the six, at `/attendance/travel`, and the reporter asked for the feature to be removed completely.
+   * The membership rule itself is untouched — the count is written down, nothing gated slipped in, and the
+   * removed row is declared in REMOVED above rather than quietly dropped.
    */
   const SELF_SERVICE_ROWS = [
     '/attendance/clock',
@@ -370,8 +411,8 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     '/attendance/requests',
     // 1e9145d4 — Plan OT lands after Attendance Request, exactly where the reporter's screenshot put it.
     '/attendance/plan-ot',
-    // c6bb5f5a — the two rows this round added, after the four that were already here.
-    '/attendance/travel',
+    // c6bb5f5a — the request-history row, after the four that were already here. Its sibling from that
+    // round, `/attendance/travel`, stood immediately above it until b833a077 (r362) removed My Travel.
     '/attendance/request-status',
   ];
 
@@ -462,7 +503,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       // requireAdmin(), and the reporter chose to remove it. Import itself did not leave the pack — its
       // adminOnly row in the node is still declared in ADDED_SINCE, which is why this is a lone -1 and
       // not a RETIRED entry (RETIRED means the FUNCTION left).
-      EXPECTED.length + ADDED_SINCE.length - MOVED_OUT.length - RETIRED.length - FOLDED.length - 1,
+      EXPECTED.length + ADDED_SINCE.length - MOVED_OUT.length - RETIRED.length - FOLDED.length - REMOVED.length - 1,
     );
     /**
      * r274 — MATCHED ON href + labelKey, not href alone, because `/attendance` was then listed twice on
@@ -584,6 +625,39 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
       expect(page, `${row.href} must redirect to ${row.into}. ${row.why}`).toContain(`redirect(\`${row.into}`);
       expect(REGISTERED_ROUTES.has(row.href), `${row.href} is a stub and must not stay registered`).toBe(false);
       expect(REGISTERED_ROUTES.has(row.into), `${row.into} must be a registered route. ${row.why}`).toBe(true);
+    }
+  });
+
+  /**
+   * b833a077 (r362) — REMOVING A FEATURE IS AN OBLIGATION TOO, and a different one from retiring a row.
+   *
+   * "Declare it removed" must never become a way to leave a 404 on a shipped URL, nor a way to invent a
+   * permission identity for a screen that is gone. So each entry owes four things: the row really is gone
+   * from the pack, the page file still exists, that file forwards to the stated destination, and the route
+   * is NOT registered in lib/permissions.ts. The last one is the inverse of RETIRED's obligation and is
+   * deliberate — a redirect that reads no session and no data is not a guarded screen, and
+   * test/function-access.test.ts asserts its registered-but-unguarded set EXACTLY, so registering this
+   * route would fail there instead.
+   */
+  it('b833a077: a REMOVED row is gone, its old address still forwards, and its route stays unregistered', () => {
+    for (const row of REMOVED) {
+      expect(
+        flattened.filter((c) => c.href === row.href),
+        `${row.href} still has a nav row. ${row.why}`,
+      ).toHaveLength(0);
+      const file = path.resolve(__dirname, '..', `app${row.href}`, 'page.tsx');
+      expect(
+        fs.existsSync(file),
+        `${row.href} must keep its page.tsx as a redirect — deleting it 404s a shipped URL. ${row.why}`,
+      ).toBe(true);
+      const page = fs.readFileSync(file, 'utf8');
+      expect(page, `${row.href} must redirect to ${row.to}. ${row.why}`).toContain(`redirect('${row.to}')`);
+      expect(
+        REGISTERED_ROUTES.has(row.href),
+        `${row.href} is a redirect stub that reads no session and no data — registering it would put it ` +
+          `in test/function-access.test.ts's exact registered-but-unguarded set. ${row.why}`,
+      ).toBe(false);
+      expect(row.keptFor.length, `${row.href} must record what was deliberately kept`).toBeGreaterThan(0);
     }
   });
 

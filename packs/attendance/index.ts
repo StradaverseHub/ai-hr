@@ -79,7 +79,6 @@ import {
   HandCoins,
   Hourglass,
   MapPin,
-  Plane,
   Table2,
   Users,
 } from 'lucide-react';
@@ -173,9 +172,9 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      *
      * WHAT THE READER MUST NOT DO WITH THAT: this route is not spare, and it is not a candidate for
      * deletion just because it renders nothing. It is the ONLY employee-reachable address under My
-     * Attendance that is free to hold an attendance view — the five siblings are clocking, requests,
-     * plan-ot, travel and request-status, and everything under ATTENDANCE_NAV is invisible to staff behind
-     * the group-level admin gate. Until content returns, an employee has nowhere in the product to look up
+     * Attendance that is free to hold an attendance view — the four siblings are clocking, requests,
+     * plan-ot and request-status (b833a077 took the fifth, My Travel, out of this node entirely), and
+     * everything under ATTENDANCE_NAV is invisible to staff behind the group-level admin gate. Until content returns, an employee has nowhere in the product to look up
      * their own attendance day by day; that consequence was stated at the top of the approved plan, the
      * reporter approved it, and it is recorded on the page and in the r362 round entry.
      *
@@ -209,30 +208,37 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // the two side by side. (It is also the right picture: time set aside in advance.)
     { href: '/attendance/plan-ot', labelKey: 'planOvertime', icon: Hourglass },
     /**
-     * c6bb5f5a — the FIFTH and SIXTH self-service rows, and a DELIBERATE REVERSAL of what the row above
-     * them says. 2166ef79 folded Self Overtime, Travel Request and the request-history list onto ONE
-     * screen (/attendance/requests) as tabs and a stack of cards, because that is what the reporter asked
-     * for then; /attendance/plan-ot became a redirect into a tab. They have since asked for the opposite,
-     * in writing and confirmed: four functions, four rows, four screens. So plan-ot renders its own list
-     * again and these two give Travel and the request history the homes they never had — Travel Request
-     * has been complete since ADR-0069 with no menu entry at all, and the history sat below four tabs
-     * about something else.
+     * c6bb5f5a — the FIFTH self-service row, and a DELIBERATE REVERSAL of what the row above it says.
+     * 2166ef79 folded Self Overtime, Travel Request and the request-history list onto ONE screen
+     * (/attendance/requests) as tabs and a stack of cards, because that is what the reporter asked for
+     * then; /attendance/plan-ot became a redirect into a tab. They have since asked for the opposite, in
+     * writing and confirmed: four functions, four rows, four screens. So plan-ot renders its own list
+     * again and this row gives the request history the home it never had — it sat below four tabs about
+     * something else.
      *
-     * UNGATED, like their four siblings, and for the same reason: every one of these is the caller's OWN
-     * request. A gate here would take the screens away from precisely the staff they exist for.
+     * ⚠️ b833a077 (r362) — THERE WERE SIX ROWS HERE AND THERE ARE FIVE. c6bb5f5a added My Travel beside
+     * this one, at /attendance/travel, carrying the Plane glyph; the reporter has since asked for My
+     * Travel to be removed completely, and the approved plan takes the row, the screen, the form and the
+     * approvals section with it. What did NOT go: the travel_request table, its rows, its RLS policy, its
+     * grant, migration 0146, the company-change gate that reads the table (core/read.ts
+     * employmentCompanyBlockedTx) and the approval-history label for historic travel decisions
+     * (lib/approval-history.ts). The records are kept for audit and are simply no longer reachable from
+     * any screen. The old address still answers — it is a redirect to /attendance/clock, so a bookmark
+     * lands somewhere an employee can use rather than on a 404. DO NOT re-add the row without re-adding
+     * the screen: the redirect is not a hidden page waiting to be re-linked.
+     *
+     * UNGATED, like its four siblings, and for the same reason: every one of these is the caller's OWN
+     * request. A gate here would take the screen away from precisely the staff it exists for.
      *
      * Glyphs, not decoration: the collapsed rail renders icons ONLY, so no row may repeat a sibling's.
-     * Plane (travel) and ClipboardList (a list of requests and their outcomes) are unused elsewhere in
-     * this node. The map-pin glyph was the obvious pick for travel and is deliberately NOT used: it is the
-     * Physical Work Location row (Administration, components/sidebar.tsx — 639bf4a5 moved it out of this
-     * pack), and "off-site work window" and "where you may clock in" are exactly the two things that must
-     * not read as one thing. The glyph is no longer imported here at all, which is why it is described
-     * rather than named — this pack renders no row that uses it.
+     * ClipboardList (a list of requests and their outcomes) is unused elsewhere in this node. Plane left
+     * with the travel row and is no longer imported. The map-pin glyph is still deliberately NOT used
+     * here: it is the Physical Work Location row (Administration, components/sidebar.tsx — 639bf4a5 moved
+     * it out of this pack), and "where you may clock in" must not read as anything else.
      *
      * ⚠️ ONE LEVEL ONLY. NavChildDescriptor has no `children` field and components/nav-flyout.tsx renders
-     * a single level, so these are six rows side by side — not rows with sub-rows underneath.
+     * a single level, so these are five rows side by side — not rows with sub-rows underneath.
      */
-    { href: '/attendance/travel', labelKey: 'myTravel', icon: Plane },
     { href: '/attendance/request-status', labelKey: 'myAttendanceRequestStatus', icon: ClipboardList },
   ],
 };

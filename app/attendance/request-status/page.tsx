@@ -274,8 +274,9 @@ const canCancel = (r: RequestRow) => !isOvertime(r) && r.status === 'pending';
  *
  * ⚠️ IT IS A UTC SLICE RENDERED TO A UTC+8 AUDIENCE, and that is a REAL pre-existing defect, not a style:
  * a request filed at 07:00 in Kuala Lumpur prints the previous day. `lib/hr-date.ts` already has
- * `todayInKualaLumpur` for it, and `app/attendance/travel/page.tsx` has the same bug. Fixing it changes
- * what people see and belongs to a round that says so, together with travel — not to this one.
+ * `todayInKualaLumpur` for it. Fixing it changes what people see and belongs to a round that says so —
+ * not to this one. (The My Travel page carried the identical bug; b833a077 (r362) removed that screen
+ * entirely, so this is the only place left with it.)
  */
 const submittedOn = (r: RequestRow) => r.createdAt.toISOString().slice(0, 10);
 

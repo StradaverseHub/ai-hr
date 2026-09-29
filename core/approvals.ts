@@ -19,7 +19,7 @@ export async function assertCanDecide(
   label: string,
   // R44 delegation (Phase 2): the module/task this decision belongs to. When supplied, a SCOPED delegation
   // only authorises the delegate if it covers this (module, taskType) — a whole-scope (no scope rows)
-  // delegation still covers everything. When OMITTED (legacy callers: travel, profile, performance, …) the
+  // delegation still covers everything. When OMITTED (legacy callers: profile, performance, …) the
   // 1-arg helper runs → whole-scope behaviour, unchanged.
   scope?: { module: string; taskType: string },
 ): Promise<void> {
@@ -69,8 +69,9 @@ export async function assertCanDecide(
   // already blocked a delegate who is the subject.
   //
   // R51 (baf56348, migration 0286): ALWAYS the 3-arg overload. NULL module/task = no module filter
-  // (byte-identical to the old 1-arg decide behaviour), so the legacy scope-less callers (travel, profile,
-  // performance, offboarding, employment review) keep their whole-scope semantics — while the new ORG gate
+  // (byte-identical to the old 1-arg decide behaviour), so the legacy scope-less callers (profile,
+  // performance, offboarding, employment review — travel was one until b833a077/r362 removed it) keep
+  // their whole-scope semantics — while the new ORG gate
   // inside the function now applies to every decide path through this one chokepoint.
   if (ctx.personId) {
     const res = scope

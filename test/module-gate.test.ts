@@ -282,16 +282,34 @@ describe('r292 — every optional pack route segment carries a layout guard', ()
     }
   });
 
-  it('`/attendance/travel` is deliberately NOT gated — travel is spine, not the Attendance pack', () => {
-    // packs/attendance/index.ts declares ten satellite tables and `travel_request` is not among them;
-    // no pack declares it. The screen reads core/travel-request.ts only, and the approvals inbox lists
-    // travel requests for every tenant. Gating the whole `app/attendance` segment would have taken the
-    // filing screen away while leaving its approval queue live — the asymmetry is the bug, which is why
-    // the guards are per child segment and this one is stated rather than merely absent.
+  /**
+   * ⚠️ b833a077 (r362) — THIS CASE IS UPDATED, NOT DELETED, AND THE HALF THAT SURVIVES IS THE IMPORTANT
+   * HALF. It used to read:
+   *
+   *   it('`/attendance/travel` is deliberately NOT gated — travel is spine, not the Attendance pack')
+   *     … expect(src).toContain("from '@/core/travel-request'");
+   *
+   * and its reasoning was that gating the whole `app/attendance` segment would have taken the travel
+   * FILING screen away while leaving its approval queue live — the asymmetry being the bug.
+   *
+   * My Travel is removed now, so the travel half of that claim is simply false: the screen is a redirect,
+   * it imports no service, and there is no approval queue on the other side. What is NOT false, and is
+   * what this case actually protects, is the second assertion it always carried: there must be NO
+   * `app/attendance/layout.tsx`. A segment layout there would gate clock, requests, plan-ot and
+   * request-status — four self-service screens — behind the optional Attendance pack, which is the same
+   * over-reach under a different name. Deleting the case outright would have taken that with it.
+   */
+  it('`app/attendance` has NO segment layout — its self-service children are not pack-gated', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'app/attendance/layout.tsx')),
+      'a layout here would gate clock, requests, plan-ot and request-status behind the Attendance pack',
+    ).toBe(false);
     expect(fs.existsSync(path.join(ROOT, 'app/attendance/travel/layout.tsx'))).toBe(false);
-    expect(fs.existsSync(path.join(ROOT, 'app/attendance/layout.tsx'))).toBe(false);
+    // b833a077 — the removed screen is a bare redirect: no service import of any kind, so there is
+    // nothing left here for a module gate to be right or wrong about.
     const src = fs.readFileSync(path.join(ROOT, 'app/attendance/travel/page.tsx'), 'utf8');
-    expect(src).toContain("from '@/core/travel-request'");
+    expect(src, 'My Travel is removed; the address only forwards').toContain("redirect('/attendance/clock')");
+    expect(src, 'the travel service was deleted with the feature').not.toContain("from '@/core/travel-request'");
     expect(src).not.toContain("from '@/core/attendance'");
     for (const p of MODULE_CATALOG) {
       if (p.code !== 'attendance') continue;

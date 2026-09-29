@@ -28,7 +28,16 @@ import { decideAttendanceCorrection, requestAttendanceCorrection } from '../core
 import { decideResignation, submitResignation } from '../core/offboarding';
 import { setEncashmentPolicy } from '../core/leave-encashment';
 import { approvalHistoryCount, listApprovalHistory } from '../core/read';
-import { actionKeyOf } from '../lib/approval-history';
+import fs from 'node:fs';
+import path from 'node:path';
+import {
+  APPROVAL_HISTORY_MODULES,
+  actionKeyOf,
+  aggregateTypesOfModule,
+  moduleOfAggregate,
+  shapeApprovalHistoryItems,
+} from '../lib/approval-history';
+import en from '../messages/en.json';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -395,5 +404,105 @@ describe('Approval activity history (44a89810)', () => {
     expect(inWindow!.onBehalfOfName).toBe('TMgr');
     expect(outOfWindow).toBeTruthy();
     expect(outOfWindow!.onBehalfOfName).toBeNull();
+  });
+});
+
+/**
+ * b833a077 (r362) — THE TRAVEL MAPPING IS KEPT ALTHOUGH THE FEATURE IS REMOVED, AND NOTHING PINNED IT.
+ *
+ * My Travel was removed completely this round: the menu row, the screen, the form, the approvals section,
+ * the bell task and core/travel-request.ts are gone. `lib/approval-history.ts` KEEPS its travel mapping,
+ * and that is a deliberate decision, not leftover dead code — but it was a decision held only by a
+ * comment. Measured before writing this: deleting `'travel'` from APPROVAL_HISTORY_MODULES and both maps
+ * passes `tsc --noEmit` and leaves every test in this file green.
+ *
+ * WHAT THE DELETION WOULD ACTUALLY DO. `shapeApprovalHistoryItems` resolves the label with
+ * `moduleOfAggregate[r.aggregateType] ?? 'leave'`. So a historic travel decision would not render blank —
+ * it would render as **Leave**, in the bell's History tab and on /approvals/history, for every tenant.
+ * A silent mislabel of an audit record is worse than a gap, and the fallback is why no type and no test
+ * noticed.
+ *
+ * WHY THE ROWS ARE STILL THERE TO MISLABEL. The read model's event allowlist is hard-coded inside
+ * IMMUTABLE migrations — `0288_approval_history.sql` and `0320_approval_history_count.sql` both name
+ * `travel-request.approved` and `travel-request.rejected`. A migration cannot be edited, so those rows
+ * keep arriving whatever the application does. This guard reads the migrations rather than restating
+ * them, so it stays true by derivation: if a LATER migration ever drops travel from the allowlist, the
+ * first case here fails and says the mapping may be retired.
+ *
+ * Source-static, no DB.
+ */
+describe('b833a077: approval history keeps its travel mapping because the migrations still emit travel rows', () => {
+  const MIGRATIONS = ['0288_approval_history.sql', '0320_approval_history_count.sql'];
+  const allowlistOf = (file: string): string[] => {
+    const sql = fs.readFileSync(path.resolve(__dirname, '../db/migrations', file), 'utf8');
+    const m = sql.match(/de\.event_type IN \(([\s\S]*?)\)/);
+    expect(m, `${file} must still carry a de.event_type IN (...) allowlist`).toBeTruthy();
+    return [...m![1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+  };
+
+  it('both immutable migrations still name the two travel decision events', () => {
+    for (const file of MIGRATIONS) {
+      const types = allowlistOf(file);
+      expect(types, `${file} allowlist`).toContain('travel-request.approved');
+      expect(types, `${file} allowlist`).toContain('travel-request.rejected');
+    }
+  });
+
+  it('so the client-side mapping for travel-request MUST stay, or historic rows render as "Leave"', () => {
+    expect(
+      moduleOfAggregate['travel-request'],
+      'dropping this entry makes shapeApprovalHistoryItems fall back to `leave` and MISLABEL every ' +
+        'historic travel decision — the fallback is `?? \'leave\'`, not undefined, so nothing would throw',
+    ).toBe('travel');
+    expect(
+      (APPROVAL_HISTORY_MODULES as readonly string[]).includes('travel'),
+      'the travel module must stay in the filter vocabulary, or the History tab offers no way to see ' +
+        'the kept records',
+    ).toBe(true);
+    expect(aggregateTypesOfModule.travel, 'the module filter must still resolve to its aggregate').toEqual([
+      'travel-request',
+    ]);
+    expect(typeof en.approvalHistory.module.travel, 'approvalHistory.module.travel is LIVE, not retired').toBe(
+      'string',
+    );
+    expect(en.approvalHistory.module.travel, 'and must not carry a retirement marker').not.toMatch(
+      /^\[retired/,
+    );
+  });
+
+  it('the end-to-end consequence: a travel-request row shapes to the travel module, never to leave', () => {
+    const [item] = shapeApprovalHistoryItems([
+      {
+        id: 'row-1',
+        aggregateType: 'travel-request',
+        eventType: 'travel-request.approved',
+        occurredAt: new Date('2026-06-01T02:00:00Z'),
+        subjectName: 'Someone',
+        deciderName: 'Approver',
+        isAuto: false,
+        onBehalfOfName: null,
+        payload: null,
+      },
+    ]);
+    expect(item.moduleKey, 'a kept travel record must still say "Travel" in the History tab').toBe('travel');
+  });
+
+  /**
+   * The general form, so the next removal cannot repeat this. Every aggregate the client maps must land
+   * on a module that exists, carries at least one aggregate back, and has a LIVE label.
+   */
+  it('every mapped aggregate resolves to a real, labelled, non-empty module', () => {
+    for (const [aggregate, moduleKey] of Object.entries(moduleOfAggregate)) {
+      expect(
+        (APPROVAL_HISTORY_MODULES as readonly string[]).includes(moduleKey),
+        `${aggregate} maps to the unknown module ${moduleKey}`,
+      ).toBe(true);
+      expect(aggregateTypesOfModule[moduleKey], `${moduleKey} has no aggregate list`).toContain(aggregate);
+      const label = (en.approvalHistory.module as Record<string, string>)[moduleKey];
+      expect(typeof label, `approvalHistory.module.${moduleKey}`).toBe('string');
+      expect(label, `approvalHistory.module.${moduleKey} must not be retired while rows still map to it`).not.toMatch(
+        /^\[retired/,
+      );
+    }
   });
 });

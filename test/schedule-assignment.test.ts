@@ -1182,7 +1182,17 @@ describe('6448574f + 0bade264 — every renamed label is renamed in every locale
       expect(c.nav.planOvertime, `${loc}: Self Overtime row vs the list heading`).toBe(c.me.maSectionOvertime);
       expect(c.nav.attendanceRequest, `${loc}: nav row vs the screen title key`).toBe(c.me.attendanceRequest);
       // c6bb5f5a's two new rows, held to the same rule from the day they shipped.
-      expect(c.nav.myTravel, `${loc}: My Travel row vs its page title`).toBe(c.me.myTravel);
+      //
+      // ⚠️ b833a077 (r362) — ONE OF THE PAIR IS GONE AND THE OTHER IS UNCHANGED. The line that stood here
+      //   expect(c.nav.myTravel, `${loc}: My Travel row vs its page title`).toBe(c.me.myTravel);
+      // pinned a LIVE row against a LIVE page title. My Travel was removed completely: there is no row
+      // and no page title, so the claim it made is no longer about anything. Both keys are RETIRED rather
+      // than deleted (the repo convention), and the rule is restated at the level that still applies to a
+      // retired pair — they must carry the SAME retirement marker. Left as it was, the assertion would
+      // still have passed on two identical markers while asserting something false; asserted this way it
+      // fails if either key is quietly revived, or revived on one side only, which is the real hazard.
+      expect(c.nav.myTravel, `${loc}: nav.myTravel must stay retired`).toMatch(/^\[retired r362 —/);
+      expect(c.me.myTravel, `${loc}: me.myTravel must stay retired`).toMatch(/^\[retired r362 —/);
       expect(c.nav.myAttendanceRequestStatus, `${loc}: request-status row vs its page title`).toBe(
         c.me.myAttendanceRequestStatus,
       );
