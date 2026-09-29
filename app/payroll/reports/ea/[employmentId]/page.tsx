@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { employeeEaCompanies, employeeEaStatement } from '@/core/reporting';
+import { myEmploymentIdsAll } from '@/core/read';
 import { isAdmin, canManagePayroll } from '@/lib/authz';
 import { Card } from '@/components/ui';
 import { eaReadiness, type EaBoxCaption } from '@/lib/ea-readiness';
@@ -68,6 +69,16 @@ export default async function EaStatementPage({
   const eaLang = lang === 'en' || lang === 'ms' ? lang : null;
   const yr = /^\d{4}$/.test(year ?? '') ? (year as string) : String(new Date().getFullYear());
   const s = await getSession(); // RLS-scopes the read to what this user may see
+
+  // Security (assessment 2026-09, H4): an EA form carries a person's IC, tax number and full
+  // remuneration. Viewing it must be payroll-staff-or-self — never gated by RLS row-visibility alone,
+  // which admits a line manager/HOD. A manager opening a subordinate's EA by direct URL previously
+  // returned 200 with the subordinate's IC + tax number. Payroll admins keep access (company-scoped by
+  // RLS underneath); the employee keeps their own; everyone else gets 404.
+  if (!(isAdmin(s) || canManagePayroll(s))) {
+    const ownEmployments = await myEmploymentIdsAll(s);
+    if (!ownEmployments.some((e) => e.employmentId === employmentId)) notFound();
+  }
 
   // b7b22514 — AN EA FORM BELONGS TO ONE EMPLOYER, and after an Entity Transfer a year can span two. The
   // page renders one employer's form at a time (which is how it is printed and filed) and offers a
