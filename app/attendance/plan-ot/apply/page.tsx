@@ -400,7 +400,7 @@ export default async function ApplyOtPlanPage({
 
               {/* On a phone Submit is pinned to the bottom of the screen with the date beside it, which is
                   what the approved picture draws; from `md` up it is an ordinary footer row again. */}
-              <div className="sticky bottom-0 -mx-4 -mb-4 flex items-center justify-between gap-3 border-t border-border bg-card px-4 py-3 md:static md:mx-0 md:mb-0 md:border-0 md:bg-transparent md:px-0 md:pb-0">
+              <div className="sticky bottom-0 -mx-4 -mb-4 flex items-center justify-between gap-3 rounded-b-[1.25rem] border-t border-border bg-card px-4 py-3 md:static md:mx-0 md:mb-0 md:rounded-none md:border-0 md:bg-transparent md:px-0 md:pb-0">
                 <p className="text-[11px] text-muted-foreground">{t('otStaysOnCalendarHelp')}</p>
                 <Button type="submit" size="sm" className="shrink-0">
                   {t('otSubmitPlan')}

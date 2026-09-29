@@ -304,6 +304,19 @@ describe('F · the contract between the form and the server action', () => {
     expect(redirects.some((r) => r.includes('toast=Overtime+plan+submitted'))).toBe(true);
   });
 
+  it('on a phone Submit is pinned to the bottom of the screen, and is an ordinary footer row from md up', () => {
+    // The approved picture draws it pinned, with the hours and the date beside it. `sticky bottom-0`
+    // only works because nothing between this row and `main` clips overflow — components/ui/card.tsx
+    // carries no overflow-hidden, and the scroll container is main itself (app/layout.tsx).
+    expect(APPLY).toContain('sticky bottom-0');
+    expect(APPLY).toContain('md:static');
+    expect(read('components/ui/card.tsx').includes('overflow-hidden'), 'a clipping Card would strand the sticky bar').toBe(
+      false,
+    );
+    // Single column below md, two from md up — the calendar on top, the day panel and the form under it.
+    expect(APPLY).toContain('grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]');
+  });
+
   it('the overtime start is prefilled from the scheduled finish on a working day, and nowhere else', () => {
     // A rest day, a public holiday and an off day have no scheduled finishing time; guessing one would
     // put a figure in front of the approver that nobody chose.
