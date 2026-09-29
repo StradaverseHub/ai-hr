@@ -647,12 +647,22 @@ describe('r365 · the Attendance column, the shared panel, and what was retired 
     expect(code, 'no second comparison of the two times').not.toMatch(/claimEnd\s*>\s*clockOut/);
   });
 
-  /** The panel is a RECORD. Nothing it knows may reach the list of things that stop the submit. */
-  it('nothing about attendance blocks the submit', () => {
+  /**
+   * ⚠️ THE PANEL IS A RECORD, AND NOTHING IT KNOWS MAY REACH THE SUBMIT GATE — as an EXACT SET, because
+   * a forbidden-word scan of the `blocked` expression is not enough and the adversarial pass proved it:
+   * a new `noAttendanceRows` predicate defined three lines ABOVE `const blocked =` and referenced by one
+   * innocuous name inside it passes any scan of the expression's own text. What cannot be smuggled past
+   * is the LIST of things that stop the submit, pinned by name.
+   */
+  it('the submit gate is exactly the five refusals it has always been — attendance is not one of them', () => {
     const code = stripped(TABLE);
-    const blocked = code.slice(code.indexOf('const blocked ='), code.indexOf('const blocked =') + 400);
-    for (const name of ['attendanceAlert', 'hasClockOut', 'exceedsClockOut', 'actualClockOut', 'approvedOtPlan'])
-      expect(blocked, `${name} must not reach the submit gate`).not.toContain(name);
+    const stmt = code.slice(code.indexOf('const blocked ='), code.indexOf(';', code.indexOf('const blocked =')));
+    const operands = [...stmt.matchAll(/([A-Za-z_$][\w$]*)\s*(?:\.length\s*>\s*0|<=\s*0)/g)].map((m) => m[1]).sort();
+    expect(operands).toEqual(
+      ['belowThresholdRows', 'incompleteRows', 'mismatchRows', 'ordinaryUnavailableRows', 'totalCredit'].sort(),
+    );
+    for (const name of ['attendance', 'Attendance', 'hasClockOut', 'exceedsClockOut', 'actualClock', 'approvedOtPlan'])
+      expect(stmt, `${name} must not reach the submit gate`).not.toContain(name);
   });
 
   /**
