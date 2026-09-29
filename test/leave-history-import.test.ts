@@ -26,7 +26,8 @@ import {
 import { listLeaveRequests } from '../core/read';
 import { parseCsvRecords } from '../lib/csv';
 import type { SessionContext } from '../db/client';
-import { buildTemplateCsv, leaveHistoryImportTemplate } from '../lib/import-template';
+import { buildTemplateCsv, leaveHistoryImportTemplate, LEAVE_HISTORY_XLSX_HEADERS } from '../lib/import-template';
+import { buildXlsx, workbookToCsvTexts } from '../lib/spreadsheet';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   adminCtx,
@@ -547,6 +548,70 @@ describe('authority — a company-scoped admin cannot import for a company they 
     });
     expect(res).toMatchObject({ total: 2, imported: 1, failed: 1 });
     expect(await requestRows(), 'nothing may be written for the out-of-authority employee').toEqual([]);
+  });
+});
+
+// ── A REAL WORKBOOK, end to end (ticket section 3) ───────────────────────────────────────────────
+describe('a real .xlsx round-trips through the encoder, the decoder and the importer', () => {
+  it('build the template as Excel, fill it with a good row and two bad ones, decode, validate, import', async () => {
+    // THE WHOLE CHAIN, not a stand-in for it: `buildXlsx` is the encoder the Download Excel template
+    // button calls, `workbookToCsvTexts` is the ONLY workbook decoder in this repo and the one
+    // `readImportFile` uses in the browser, and `parseCsvRecords` is what the server action runs on the
+    // text it receives. Only the File wrapper is absent, because a File is a browser object.
+    const rows = [
+      [emp.code, `LV/${YEAR}/XLSX1`, 'ANNUAL', YEAR, P_MON, P_WED, '3', '', P_ENTRY, P_ENTRY, P_APPROVED, 'Data Migration'],
+      // A leave code this tenant does not have: reported, never silently dropped.
+      [emp.code, `LV/${YEAR}/XLSX2`, 'NOSUCHCODE', YEAR, P_MON, P_MON, '1', 'AM', P_ENTRY, P_ENTRY, P_APPROVED, 'Data Migration'],
+      // A purely numeric employee number with a leading zero. The harness's own codes look like
+      // `EMP-0007`, so without this row nothing here would exercise a cell that COULD be read as a
+      // number. This tenant has no such employee, so the row must fail on "not found" — not on a
+      // reference that arrived mangled.
+      ['0012', `LV/${YEAR}/XLSX3`, 'ANNUAL', YEAR, P_MON, P_MON, '1', '', P_ENTRY, P_ENTRY, P_APPROVED, ''],
+    ];
+    const bytes = await buildXlsx(LEAVE_HISTORY_XLSX_HEADERS, rows, {
+      sheetName: 'Leave History',
+      // ⚠️ WHAT THIS OPTION DOES AND DOES NOT DO, measured rather than assumed. Removing it from this
+      // call leaves every assertion below GREEN, so this test does not prove it: `aoa_to_sheet` writes
+      // a JS string as a string cell whatever the column format is. The option earns its place on the
+      // real screen for the case no Node test can reach — HR TYPING `0012` into the downloaded
+      // template, where a General-formatted column is what turns it into the number 12. It is passed
+      // here so the bytes under test are the bytes the button produces, not to be tested by this case.
+      textColumns: [0, 1],
+    });
+    const decoded = await workbookToCsvTexts(
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+      [],
+    );
+    const { headers, records } = parseCsvRecords(decoded.first);
+    // The headers really are the HUMAN ones, punctuation and all — so `canonicalColumnKey` is
+    // load-bearing on the file HR actually uploads, not merely on a hand-typed one.
+    expect(headers[0]).toBe('employee_no.');
+    expect(records).toHaveLength(3);
+    expect(records[0]['employee_no.']).toBe(emp.code);
+    expect(records[0]['leave_reference']).toBe(`LV/${YEAR}/XLSX1`);
+    expect(records[2]['employee_no.'], 'the decoder must return the cell as written').toBe('0012');
+
+    const preview = await validateLeaveHistoryImport(adminCtx(b), { records });
+    expect(preview.missingColumns).toEqual([]);
+    expect(preview).toMatchObject({ total: 3, validCount: 1, errorCount: 2, duplicateCount: 0 });
+    expect(preview.rows[1].errors).toContain('Leave Code not found');
+    expect(preview.rows[2].errors).toEqual(['Employee No. not found']);
+    expect(preview.rows[2].employeeNo).toBe('0012');
+
+    const res = await commitLeaveHistoryImport(adminCtx(b), {
+      records,
+      source: { kind: 'file', name: 'leave-history-2025.xlsx', format: 'xlsx' },
+    });
+    expect(res).toMatchObject({ total: 3, imported: 1, failed: 2, duplicates: 0 });
+
+    const [stored] = await requestRows();
+    expect(stored.externalReference).toBe(`LV/${YEAR}/XLSX1`);
+    // THE DATES SURVIVED THE WORKBOOK. This is the assertion that catches a date cell that came back
+    // as an Excel serial number and was then read as an unparseable string.
+    expect(stored.startDate).toBe(P_MON);
+    expect(stored.endDate).toBe(P_WED);
+    expect(Number(stored.days)).toBe(3);
+    expect(stored.status).toBe('approved');
   });
 });
 
