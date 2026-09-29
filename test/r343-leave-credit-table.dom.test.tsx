@@ -191,6 +191,42 @@ describe('r343 · the per-row conditional, as disabled cells on ONE row', () => 
     expect(screen.queryAllByTestId('leave-credit-days'), 'the 1-or-0.5 picker is gone').toHaveLength(0);
   });
 
+  /**
+   * ⚠️ THIS IS THE CASE THE PARK WAS ABOUT, AND NOTHING PINNED IT UNTIL NOW (r358).
+   *
+   * `extended_hours_enabled` is FALSE on every company — r334 shipped the switch defaulting off and
+   * nobody has turned it on. Before this round the table read that as "no tier ladder exists" and
+   * blocked every row that claimed a window, so building the owner's rule on the old shape would have
+   * made Leave Credit unsubmittable for all of them. Item 70294f7a was parked rather than shipped for
+   * exactly this reason.
+   *
+   * So: switch OFF, rest-day row, and the claim must still work end to end. A render check cannot reach
+   * this — the fields are disabled until a day type is chosen, which is one interaction away — which is
+   * why it is pinned here rather than left to the dev server.
+   */
+  it('THE PRODUCTION CASE: with extended hours OFF, a rest-day claim is still live and submittable', async () => {
+    const user = userEvent.setup();
+    mount('en', { facts: REST_DAY, tiers: null }); // tiers: null ⇒ ordinaryDayAllowed false
+    await user.type(dateInput('en'), '2026-09-13');
+    await user.selectOptions(dayTypeSelect('en'), 'rest_day');
+    expect(startInput('en').disabled, 'the switch does not reach a rest day').toBe(false);
+    expect(endInput('en').disabled).toBe(false);
+    await user.type(startInput('en'), '09:00');
+    await user.type(endInput('en'), '17:00');
+    await waitFor(() => expect(screen.getAllByTestId('leave-credit-row-credit')[0].textContent).toMatch(/1/));
+    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('…and an ORDINARY day on that same company still says it earns nothing, and blocks', async () => {
+    // The other half, so the case above cannot pass by the switch having stopped doing anything at all.
+    const user = userEvent.setup();
+    mount('en', { facts: WORKING_DAY, tiers: null });
+    await user.type(dateInput('en'), '2026-09-16');
+    await user.selectOptions(dayTypeSelect('en'), 'workday');
+    expect(startInput('en').disabled, 'an ordinary day IS gated by the switch').toBe(true);
+    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('a rest day counts the WHOLE window — there is no scheduled shift end to be after', async () => {
     // The reporter's own worked example, on the day type the item is about: 18:00 to 22:00 is four hours,
     // and four hours is the half-day tier. On an ordinary day the same window would be floored at the
