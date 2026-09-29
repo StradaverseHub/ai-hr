@@ -1,3 +1,40 @@
+## r360 (2026-09-29) — the payslip names the real Pay Cycle, and the Day Type is read off the roster rather than asked for. `main@0166e01d`, **no migration**.
+
+Closed: `1fe55a23` (payslip header), `cbfa8b0b` (leave credit Day Type). Gate: **1050 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, `tsc` 0, `next build` 0.
+
+**Round number:** a second session was building `build/r360-security-fixes` concurrently. This entry takes r360 because it shipped first; that work takes the next free number. Round ids belong to the history entry, not the branch name.
+
+### 1fe55a23 — "Payroll payslip · Regular" was the enum, not the cycle
+
+The reporter asked why the document called their monthly run "Regular". `Regular` is `payroll_batch.run_type`, one of the four fixed behavioural types the kernel gates on; the label they configured is `payroll_cycle.name`, and the batch has recorded which cycle opened it since migration 0441.
+
+- `core/payslip-cycle-label.ts` (NEW) — "the cycle name, or the run-type word when the run named no cycle", **decided once**. Three surfaces print this string from three different reads (the screen, the preview and the downloaded file — the last two are one route), and written out twice the rule is one edit away from a download disagreeing with the screen it came from. Pure and DB-free, like `core/payslip-segment.ts` beside it.
+- The fallback is not theoretical: `payroll_cycle_id` is nullable, every batch created before 0441 carries null, and so does every batch opened by a caller that names no cycle. **Those payslips keep printing exactly the word they print today.** Whitespace is not a name and falls back too — a blank where a word belongs is worse than the enum, because the reader cannot tell it from a rendering fault.
+- The letterhead also labels the registration number (`Reg. no.: <number>`) instead of printing a bare 12-digit string under the legal name, which is what the approved mockup shows.
+
+### cbfa8b0b — a dropdown that asked the employee for something the roster already knows
+
+Day Type was a `<select>` the employee had to set on every row, and the adjudication then compared their answer against the roster and refused the row when they disagreed. The column is now a read-only cell filled from the roster when the date is picked.
+
+- `components/leave/leave-credit-request-table.tsx` — no control, provenance caption, and the lookup's failure is **caught and retryable**: an unhandled rejection left the cell permanently empty with no way forward.
+- **A bug of my own, found by measuring rather than reading.** Removing the control but leaving r353's `touchedDayType` condition meant a re-dated row kept the FIRST date's kind — a false provenance caption over a dead end the employee could not clear. `changeWorkedDate` now sets the date and clears the derived kind in one update.
+- `app/leave/credit/actions.ts` — the `days` read has been dead since r358 removed the field, and survived `tsc` because an object literal inside `.map()` is not "fresh" where the result is assigned to a typed array, so excess-property checking never fires. **The same blind spot silently dropped a `workedDayKind` during r358 itself.** Removed, with the reason left in place of the code.
+
+### THE §8 RENDER CHECK, BOTH BRANCHES OF THE LABEL
+
+A 200 is not a render check, so both surfaces were read. One batch was wired to a cycle renamed `Monthly (Main)` and the next month's left with a null cycle:
+
+- screen — `Payroll cycle  Monthly (Main)` and `Payroll cycle  Regular`, and the field is the payslip body's, not the filter row's dropdown that also carries the word.
+- document (`?inline=1`) — the drawn text decoded out of the content stream: `Reg. no.: 201901024512  Payroll payslip · Monthly (Main)` and `… · Regular`. Zero `?` glyphs.
+- `/leave/credit` — the day-type cell is not a `select`, and the helper no longer says the employee can change it.
+- MISSING_MESSAGE / FORMATTING_ERROR / IntlError: **0** across every fetch.
+
+### TOLD TO THE REPORTER, NOT HIDDEN IN A COMMIT
+
+- r358 does **not** implement "if Extended End is earlier than Extended Start, display an error" as written, because that is how a night shift is entered. An empty window is refused instead.
+- The payslip cycle **filter dropdown** still offers the run-type word while the Pay Cycle field now shows the cycle name. It filters by behaviour and one cycle name can cover several runs, so it was left alone deliberately rather than quietly half-changed.
+- `table.dayTypeChoose` ("Choose a day type") is now the read-only cell's "not known yet" text, and it tells the employee to do something they cannot. Retired keys are never deleted, so the replacement wording is a copy decision for the reporter.
+
 ## r359 (2026-09-29) — EA item 8 is C, and the slip's Q and C mean what the specification says. `main@3e4963f5`, **no migration**.
 
 Closed: `fda53352` (revision 7). Gate: **1050 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, `tsc` 0, `next build` 0. Shipped together with r358 in one deploy.
