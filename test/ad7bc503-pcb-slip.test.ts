@@ -264,10 +264,54 @@ describe('ad7bc503 — the children grid, and the split that was never recorded'
     expect(byCaption(sec, 'slipChildStudyTertiary')!.first).toEqual({ kind: 'count', count: 1 });
     // Q and C are the figures the RUN applied, not a re-derivation from the grid: two children at the
     // full rate plus one at half is not what this section may compute, and the screen must not try.
-    expect(byCaption(sec, 'slipChildRelief')!.first).toEqual({ kind: 'money', amount: x.reliefs.children });
+    // ⚠️ r359 fda53352 — Q AND ITS PRODUCT ARE TWO ROWS NOW. `slipChildRelief` was asserted to be
+    // `x.reliefs.children`, the RM total, under the line marker 'Q'; the specification's printed p.10
+    // makes Q the deduction for ONE qualifying child and the total their product with C. Both are
+    // pinned, and the identity between them is pinned below — which is the assertion the old single
+    // row could not make.
+    expect(byCaption(sec, 'slipChildRelief')!.first).toEqual({ kind: 'money', amount: x.trace!.childDeductionPerChild });
+    expect(byCaption(sec, 'slipChildReliefTotal')!.first).toEqual({ kind: 'money', amount: x.reliefs.children });
+    expect(
+      x.trace!.childDeductionPerChild * x.trace!.childCount,
+      'Q x C is the relief on the same slip — the whole point of printing the letters',
+    ).toBeCloseTo(x.reliefs.children, 2);
     expect(byCaption(sec, 'slipChildCount')!.first).toEqual({ kind: 'count', count: x.trace!.childCount });
     expect(byCaption(sec, 'slipDisabledIndividual')!.first).toEqual({ kind: 'caption', caption: 'slipYes' });
     expect(byCaption(sec, 'slipDisabledSpouse')!.first).toEqual({ kind: 'caption', caption: 'slipNo' });
+  });
+
+  /**
+   * ⚠️ THE CASE ABOVE IS VACUOUS ON ITS OWN AND THIS IS WHY IT HAS A TWIN. `richRun` gives the profile
+   * three children and NO keyed grid, so the relief is `children x perChild` and C equals the record
+   * count whatever the code does — reverting r359's derivation leaves it green. C and the record count
+   * only diverge when a grid weights the children, which is the reporter's own employee: two children,
+   * one of them disabled and in higher education, relieved at RM18,000.
+   *
+   * THE REPORTER'S NUMBERS, VERBATIM, AS THE SLIP MUST PRINT THEM: C = 9, Q = RM2,000, Q x C = RM18,000
+   * — against a record count of 2.
+   */
+  it('C IS NOT THE RECORD COUNT: two children weighted to RM18,000 print C = 9, not C = 2', () => {
+    const r = pcbMonth({
+      monthlyWage: 14000,
+      epfMonthly: 1540,
+      month: 7,
+      // Two child records; the grid prices them at RM18,000 (a disabled child in higher education at
+      // RM16,000 plus a child under 18 at RM2,000).
+      profile: { category: 2, children: 2, childReliefAmount: 18000 },
+      acc: { netRemuneration: 63000, epfClaimed: 800, pcbPaid: 4100, zakatPaid: 250, lpAccumulated: 480 },
+    });
+    const x = explainPcb({ pcb: r.total, epfEmployee: 1540, pcbMeta: r.snapshot }, CURRENT);
+    expect(x.kind).toBe('mtd');
+    if (x.kind !== 'mtd' || x.trace == null) throw new Error('the fixture must produce an MTD trace');
+    expect(x.reliefs.children, 'the relief the kernel applied is unchanged by this item').toBe(18000);
+    expect(x.trace.childDeductionPerChild, 'Q — the deduction for ONE qualifying child').toBe(2000);
+    expect(x.trace.childCount, "C — LHDN's weighted number, NOT the two child records").toBe(9);
+    expect(x.trace.childDeductionPerChild * x.trace.childCount).toBeCloseTo(x.reliefs.children, 2);
+    // …and the slip prints that C, not the record count.
+    const sec2 = byHeading(sections(x, { profile: GRID }), 'slipChildHeading');
+    expect(byCaption(sec2, 'slipChildCount')!.first).toEqual({ kind: 'count', count: 9 });
+    expect(byCaption(sec2, 'slipChildRelief')!.first).toEqual({ kind: 'money', amount: 2000 });
+    expect(byCaption(sec2, 'slipChildReliefTotal')!.first).toEqual({ kind: 'money', amount: 18000 });
   });
 
   it('a MANUAL employee gets "not recorded" per category — never five zeroes', () => {
