@@ -1043,9 +1043,16 @@ export function listProcessedPayslipsAcross(
  *
  * r209 SHIPPED THIS AS `listPayslipPeriodsFor`, returning the distinct 'YYYY-MM' and nothing else, which
  * was enough while only Year and Month were derived from it. r210 widened it because the same screen's
- * Company and Payroll-cycle lists were still offering combinations the employee had never been paid
- * under, and because two runs sharing company + year + month + cycle need `runSeq` to be told apart at
+ * Company and run-type lists were still offering combinations the employee had never been paid
+ * under, and because two runs sharing company + year + month + run type need `runSeq` to be told apart at
  * all. Four small columns instead of one, from the SAME single indexed read.
+ *   [r363 (e0b6e3b8) REWORDED THAT SENTENCE, which said "Company and Payroll-cycle lists" and "two runs
+ *   sharing company + year + month + cycle". On Individual Payslip that chooser is labelled "Run type"
+ *   from r363 on: "Payroll cycle" was ALSO the label of the field inside the payslip, and that field has
+ *   printed the company's configured `payroll_cycle.name` since r360. THIS READ IS UNCHANGED by r363 —
+ *   it returns the same four columns for the same runs. Only the name the prose calls the chooser by
+ *   moved. Transaction View's own run-type filter is still labelled "Payroll cycle"; that screen was not
+ *   in item e0b6e3b8's scope and has no cycle-name field beside it.]
  *
  * IT CARRIES THE PAYSLIP ID, and that is what makes it an index rather than a lookup table: with it the
  * screen resolves a fully specified selection straight to one payslip and reads that one row, instead of

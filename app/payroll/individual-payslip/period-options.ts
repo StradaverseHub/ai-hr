@@ -163,7 +163,11 @@ export type PayslipSelection = {
   runSeq?: number;
 };
 
-/** One entry in the Payroll-cycle list. `value` is what the form posts and the links carry. */
+/** One entry in the RUN-TYPE list — the chooser at the top of the screen. `value` is what the form
+ *  posts and the links carry.
+ *  [r363 (e0b6e3b8) REWORDED THIS LINE, which read "One entry in the Payroll-cycle list". The control is
+ *  labelled "Run type" now; "Payroll cycle" was also the label of the payslip field below it, and since
+ *  r360 that field prints the configured cycle NAME. Nothing about this type or its producer changed.] */
 export type PayslipRunChoice = { value: string; runType: string; runSeq: number };
 
 /** The cycle option's value: the run type AND the run number, because the type alone does not name a run.
@@ -261,8 +265,14 @@ export function payslipCompanyIds(runs: readonly PayslipRun[], selectedCompanyId
 }
 
 /**
- * The Payroll-cycle list for the company, year and month now showing — the levels ABOVE it. Ascending by
+ * The RUN-TYPE list for the company, year and month now showing — the levels ABOVE it. Ascending by
  * run number, which is the order the runs happened in.
+ *
+ * [r363 (e0b6e3b8) REWORDED THE FIRST LINE, which read "The Payroll-cycle list for the company, year and
+ * month now showing". The chooser this feeds is labelled "Run type" from r363 on, because "Payroll cycle"
+ * was ALSO the label of the field inside the payslip, and that field has printed the company's own
+ * configured cycle name since r360. THIS FUNCTION IS UNCHANGED — what it offers, in what order, is
+ * exactly what it offered before, and r363 deliberately did not touch it.]
  *
  * Deduped by value because two companies can each hold a run of the same type and number in one month
  * (run_seq is unique per pay period, and a transferred employee has two pay periods). The Company box is
