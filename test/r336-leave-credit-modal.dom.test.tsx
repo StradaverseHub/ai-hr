@@ -14,9 +14,12 @@
  *
  *   · "Section B derives its figures and never offers them as inputs"  → the ORDINARY DAY ROW does;
  *   · "under the half-day threshold prints the sentence and blocks"    → unchanged, on that same row;
- *   · "a non-working day typed into Section B" / "Section A refuses a working day" → BOTH are now the ROSTER
- *     MISMATCH, which is strictly stronger: it also catches rest day vs off day vs public holiday, which
- *     neither section could ever see (all three were one code path);
+ *   · "a non-working day typed into Section B" / "Section A refuses a working day" → became the ROSTER
+ *     MISMATCH in r343, which was strictly stronger: it also caught rest day vs off day vs public holiday,
+ *     which neither section could ever see (all three were one code path). ⚠️ r360 then removed the input, so
+ *     the mismatch is UNPRODUCIBLE from this screen and both directions are pinned here as "the cell reads the
+ *     roster's answer for the date"; the refusal itself stays guarded against a tampered post, in
+ *     test/r343-leave-credit-single-table.test.ts;
  *   · "the day type is read-only, never an input"                      → reversed by the reporter in r343
  *     to an input of four options with adjudication, and reversed BACK in r360 to a read-only fact with a
  *     provenance caption. The adjudication r343 added is what settled it: the server refuses any day type
@@ -87,6 +90,13 @@ const REST_DAY_VIEW: LeaveCreditDayFacts = {
   actualClockOut: '17:00:00',
   measuredExtendedMinutes: 0,
 };
+/** r360 — a public holiday, whose provenance caption is the one that must NOT name the roster. */
+const HOLIDAY_VIEW: LeaveCreditDayFacts = {
+  kind: 'holiday',
+  shiftEnd: null,
+  actualClockOut: '17:00:00',
+  measuredExtendedMinutes: 0,
+};
 
 function mount(
   locale: Locale,
@@ -124,7 +134,21 @@ const openModal = async (user: ReturnType<typeof userEvent.setup>, locale: Local
 
 /** The row controls, addressed the way the employee sees them: by their labels. */
 const dateInput = (locale: Locale) => screen.getAllByLabelText(copy(locale).workedDate)[0] as HTMLInputElement;
-const dayTypeSelect = (locale: Locale) => screen.getAllByLabelText(copy(locale).sectionA.dayType)[0] as HTMLSelectElement;
+/**
+ * ⚠️ r360 — `dayTypeSelect` STOOD HERE (`getAllByLabelText(copy(locale).sectionA.dayType)[0] as
+ * HTMLSelectElement`). The cell is read-only, so it is READ rather than driven, and the label is compared
+ * EXACTLY: `Ngày nghỉ` is a prefix of `Ngày nghỉ hằng tuần` in vi, so `toContain` would call an off day a
+ * rest day.
+ */
+const DAY_KIND_KEY = { rest_day: 'restDay', off_day: 'offDay', holiday: 'holiday', workday: 'workday' } as const;
+type Kind = keyof typeof DAY_KIND_KEY;
+const dayKindLabel = (locale: Locale, kind: Kind) => copy(locale).dayKind[DAY_KIND_KEY[kind]] as string;
+const dayTypeCell = (n = 0) => screen.getAllByTestId('leave-credit-day-type')[n] as HTMLElement;
+const dayTypeText = (n = 0) => dayTypeCell(n).querySelector('span')?.textContent?.trim() ?? '';
+const dayTypeSource = (n = 0) => screen.getAllByTestId('leave-credit-day-type-source')[n] as HTMLElement;
+/** The replacement for `user.selectOptions(dayTypeSelect(locale), kind)`: the ROSTER fills it, so we WAIT. */
+const awaitDayType = (locale: Locale, kind: Kind, n = 0) =>
+  waitFor(() => expect(dayTypeText(n)).toBe(dayKindLabel(locale, kind)));
 const startInput = (locale: Locale) => screen.getAllByLabelText(copy(locale).sectionB.extendedStart)[0] as HTMLInputElement;
 const endInput = (locale: Locale) => screen.getAllByLabelText(copy(locale).sectionB.extendedEnd)[0] as HTMLInputElement;
 const submitButton = () => screen.getByTestId('leave-credit-submit') as HTMLButtonElement;
@@ -207,11 +231,57 @@ describe('r343 · ⚠️ THE TWO SECTIONS ARE GONE FROM THE SURFACE THE EMPLOYEE
     await waitFor(() => expect(screen.getAllByTestId('leave-credit-day-type-source')[0]).toBeTruthy());
   });
 
-  it('the four options are offered on a company WITHOUT extended hours too — exactly four, always', async () => {
+  /**
+   * ⚠️ REVERSED IN r360. THE OLD CLAIM: `the four options are offered on a company WITHOUT extended hours too
+   * — exactly four, always`, asserting `[...dayTypeSelect('en').options].map((o) => o.value)` equalled
+   * `['', 'rest_day', 'off_day', 'holiday', 'workday']` with the tier figures absent. It existed because
+   * r343's first cut filtered Ordinary Day out on a company with no tiers — which is every company, since
+   * `extended_hours_enabled` is `NOT NULL DEFAULT false` (migration 0486).
+   *
+   * There is no list to count. The requirement underneath it — an Ordinary Day is a fact about the DATE and
+   * not a feature flag — is asserted as the thing it now is: on a company with extended hours OFF, a date the
+   * roster calls an ordinary working day still READS as one, captioned, with no control anywhere near it.
+   * (Four kinds × two switch states is pinned in test/r343-leave-credit-table.dom.test.tsx; this is the same
+   * claim reached through the dialog, which is what this file owns.)
+   */
+  it('a company WITHOUT extended hours still reads an ordinary working day back — and offers no control for it', async () => {
     const user = userEvent.setup();
-    mount('en', { tiers: null });
+    mount('en', { tiers: null, facts: WORKING_DAY });
     await openModal(user, 'en');
-    expect([...dayTypeSelect('en').options].map((o) => o.value)).toEqual(['', 'rest_day', 'off_day', 'holiday', 'workday']);
+    await user.type(dateInput('en'), '2026-09-16');
+    await awaitDayType('en', 'workday');
+    expect(dayTypeSource().textContent).toBe(en.replacementRequest.table.dayTypeFromRoster);
+    const dialog = screen.getByTestId('leave-credit-request-dialog');
+    expect(dialog.querySelectorAll('select'), 'no select survives anywhere in the dialog').toHaveLength(0);
+    expect(dialog.querySelectorAll('option'), 'and no option either').toHaveLength(0);
+    expect(screen.queryAllByLabelText(copy('en').sectionA.dayType), 'the Day Type label addresses no control').toHaveLength(0);
+  });
+
+  /**
+   * ⚠️ r360 — NEW, AND IT BELONGS HERE RATHER THAN ONLY ON THE COMPONENT: the caption is what the reporter
+   * asked for alongside the read-only cell, and this file owns what the employee finds when they open the
+   * button they already know. A public holiday outranks the roster in `scheduleFor`, so the two provenances
+   * are different facts; a component that printed one string for both would pass every other case in this file.
+   */
+  it('the provenance names the PUBLIC HOLIDAY CALENDAR for a holiday and the ROSTER for the other kinds', async () => {
+    for (const [kind, facts] of [
+      ['holiday', HOLIDAY_VIEW],
+      ['rest_day', REST_DAY_VIEW],
+      ['workday', WORKING_DAY],
+    ] as const) {
+      const user = userEvent.setup();
+      const { unmount } = mount('en', { facts });
+      await openModal(user, 'en');
+      await user.type(dateInput('en'), '2026-09-16');
+      await awaitDayType('en', kind);
+      const expected =
+        kind === 'holiday' ? en.replacementRequest.table.dayTypeFromHolidays : en.replacementRequest.table.dayTypeFromRoster;
+      const other =
+        kind === 'holiday' ? en.replacementRequest.table.dayTypeFromRoster : en.replacementRequest.table.dayTypeFromHolidays;
+      expect(dayTypeSource().textContent, kind).toBe(expected);
+      expect(dayTypeSource().textContent, `${kind}: the two captions must not be merged`).not.toBe(other);
+      unmount();
+    }
   });
 
   it('the unit is still derived and still not a choice — and nothing posts it any more', async () => {
@@ -234,7 +304,10 @@ describe('r343 · the ordinary-day row derives its figures and never offers them
     mount('en', { facts: WORKING_DAY });
     await openModal(user, 'en');
     await user.type(dateInput('en'), '2026-09-16');
-    await user.selectOptions(dayTypeSelect('en'), 'workday');
+    // r360 — was `await user.selectOptions(dayTypeSelect('en'), 'workday')`. WORKING_DAY's own `kind` makes
+    // this the ordinary-day row, and the wait is load-bearing: the two time cells are disabled until the day
+    // type is known and `user.type` into a disabled input does nothing at all.
+    await awaitDayType('en', 'workday');
     await user.type(startInput('en'), '18:00');
     await user.type(endInput('en'), '22:00');
 
@@ -270,7 +343,7 @@ describe('r343 · the ordinary-day row derives its figures and never offers them
     // so the total is above zero and the button would be enabled but for the offending one. Without it the
     // assertion passes on an empty form, where the button is disabled because nothing is claimed.
     await user.type(dateInput('en'), '2026-09-20');
-    await user.selectOptions(dayTypeSelect('en'), 'rest_day');
+    await awaitDayType('en', 'rest_day'); // r360 — was selectOptions(…, 'rest_day').
     // r358 — the valid first row needs its window now; it used to inherit 1.00 from the Days default.
     await user.type(startInput('en'), '09:00');
     await user.type(endInput('en'), '17:00');
@@ -280,7 +353,9 @@ describe('r343 · the ordinary-day row derives its figures and never offers them
     await user.click(screen.getByTestId('leave-credit-add-row'));
     const dates = screen.getAllByLabelText(en.replacementRequest.workedDate);
     await user.type(dates[1], '2026-09-16');
-    await user.selectOptions(screen.getAllByLabelText(en.replacementRequest.sectionA.dayType)[1], 'workday');
+    // r360 — was `selectOptions(getAllByLabelText(sectionA.dayType)[1], 'workday')`. The SECOND row fills from
+    // its own date, which is what keeps this two genuinely different day types in one table.
+    await awaitDayType('en', 'workday', 1);
     await user.type(screen.getAllByLabelText(en.replacementRequest.sectionB.extendedStart)[1], '18:00');
     await user.type(screen.getAllByLabelText(en.replacementRequest.sectionB.extendedEnd)[1], '21:00'); // 180 min
 
@@ -290,33 +365,52 @@ describe('r343 · the ordinary-day row derives its figures and never offers them
   });
 });
 
-describe('r343 · what the two sections used to refuse, the ROSTER now adjudicates — in both directions', () => {
-  it('Ordinary Day chosen on a date the roster calls a REST day is refused, naming the rest day', async () => {
+describe('r343 · what the two sections used to refuse — and why r360 leaves nothing HERE to refuse', () => {
+  /**
+   * ⚠️⚠️ BOTH DIRECTIONS WENT STRUCTURALLY UNREACHABLE IN r360, AND ARE REPLACED RATHER THAN DELETED.
+   *
+   * THE TWO OLD CLAIMS, in full, because this is the third design this one requirement has had:
+   *
+   *   r336 drew two sections and refused across them. `sectionB.nonWorkingDayRefused` said "This date is not a
+   *        working day. Use Non-working-day work instead." and `sectionA.workingDayRefused` was its mirror.
+   *   r343 replaced both with the ROSTER MISMATCH, and these two cases were:
+   *          `Ordinary Day chosen on a date the roster calls a REST day is refused, naming the rest day`
+   *            — selectOptions(…, 'workday') on REST_DAY_VIEW, then `leave-credit-roster-mismatch` contains
+   *              `dayKind.restDay`, submit disabled;
+   *          `Rest Day chosen on a date the roster calls an ORDINARY WORKING day is refused, naming it`
+   *            — selectOptions(…, 'rest_day') on WORKING_DAY, then the message contains `dayKind.workday`.
+   *        The comment on the second one is worth keeping verbatim, because it is still the reason the
+   *        adjudication exists at all: "an ordinary working day CAN earn a credit now (for the hours past the
+   *        shift end), so what is refused is not the date, it is the employee's DESCRIPTION of it."
+   *   r360 the employee has no description to give. The cell is filled from the roster and cleared when the
+   *        date moves, so neither direction can be built on this screen.
+   *
+   * ⚠️ AND THE REFUSAL IS STILL PINNED WHERE IT IS STILL A CONTROL — not here. A screen cannot close the
+   * tampered-post path, and test/r343-leave-credit-single-table.test.ts posts the mismatching row STRAIGHT
+   * into `submitLeaveCreditRequest` ("⚠️ a row typed 'Rest Day' on a date the roster calls an OFF day is
+   * REFUSED, naming the off day", plus "THE VACUITY CONTROL — the layer below ACCEPTS the very same claim").
+   * What is left for this file is the positive half of both directions: the row shows the ROSTER's answer for
+   * the date, whichever kind that is, so the two mix-ups have nowhere to start.
+   */
+  it.each([
+    ['a REST day', REST_DAY_VIEW, 'rest_day', '2026-09-20'],
+    ['an ORDINARY WORKING day', WORKING_DAY, 'workday', '2026-09-16'],
+  ] as const)('a date the roster calls %s reads back as exactly that, and no row disagrees with it', async (_name, facts, kind, date) => {
     const user = userEvent.setup();
-    mount('en', { facts: REST_DAY_VIEW });
+    mount('en', { facts });
     await openModal(user, 'en');
-    // r336's `sectionB.nonWorkingDayRefused` ("This date is not a working day. Use Non-working-day work
-    // instead.") pointed at the other SECTION. There is no other section to point at, and the employee does
-    // not need one: the row says what the roster holds, which is the correction itself.
-    await user.type(dateInput('en'), '2026-09-20');
-    await user.selectOptions(dayTypeSelect('en'), 'workday');
-    const problem = await waitFor(() => screen.getByTestId('leave-credit-roster-mismatch'));
-    expect(problem).toHaveTextContent(en.replacementRequest.dayKind.restDay);
-    expect(submitButton().disabled).toBe(true);
-  });
-
-  it('Rest Day chosen on a date the roster calls an ORDINARY WORKING day is refused, naming it', async () => {
-    const user = userEvent.setup();
-    mount('en', { facts: WORKING_DAY });
-    await openModal(user, 'en');
-    // The mirror of r336's `sectionA.workingDayRefused`. NOT the same claim any more, and deliberately so:
-    // an ordinary working day CAN earn a credit now (for the hours past the shift end), so what is refused
-    // is not the date, it is the employee's description of it.
-    await user.type(dateInput('en'), '2026-09-16');
-    await user.selectOptions(dayTypeSelect('en'), 'rest_day');
-    const problem = await waitFor(() => screen.getByTestId('leave-credit-roster-mismatch'));
-    expect(problem).toHaveTextContent(en.replacementRequest.dayKind.workday);
-    expect(submitButton().disabled).toBe(true);
+    await user.type(dateInput('en'), date);
+    await awaitDayType('en', kind);
+    // The other three kinds are NOT what the cell says — the assertion that a single hardcoded label would fail.
+    for (const other of ['rest_day', 'off_day', 'holiday', 'workday'] as const) {
+      if (other === kind) continue;
+      expect(dayTypeText(), `${date} must not read as ${other}`).not.toBe(dayKindLabel('en', other));
+    }
+    expect(screen.queryByTestId('leave-credit-roster-mismatch'), 'nothing to adjudicate: the cell IS the roster').toBeNull();
+    // …and the posted value is the roster's, which is what the service re-checks.
+    expect(
+      (screen.getByTestId('leave-credit-request-dialog').querySelector('input[name="dayType"]') as HTMLInputElement).value,
+    ).toBe(kind);
   });
 
   /**
@@ -343,7 +437,7 @@ describe('r343 · ONE total, over rows of different day types in ONE table', () 
     await openModal(user, 'en');
 
     await user.type(dateInput('en'), '2026-09-20');
-    await user.selectOptions(dayTypeSelect('en'), 'rest_day');
+    await awaitDayType('en', 'rest_day'); // r360 — was selectOptions(…, 'rest_day').
     // r358 — eight hours on the rest day earns the full day the picker used to default to.
     await user.type(startInput('en'), '09:00');
     await user.type(endInput('en'), '17:00');
@@ -351,7 +445,7 @@ describe('r343 · ONE total, over rows of different day types in ONE table', () 
 
     const dates = screen.getAllByLabelText(en.replacementRequest.workedDate);
     await user.type(dates[1], '2026-09-16');
-    await user.selectOptions(screen.getAllByLabelText(en.replacementRequest.sectionA.dayType)[1], 'workday');
+    await awaitDayType('en', 'workday', 1); // r360 — was selectOptions(…[1], 'workday').
     await user.type(screen.getAllByLabelText(en.replacementRequest.sectionB.extendedStart)[1], '18:00');
     await user.type(screen.getAllByLabelText(en.replacementRequest.sectionB.extendedEnd)[1], '22:00');
 

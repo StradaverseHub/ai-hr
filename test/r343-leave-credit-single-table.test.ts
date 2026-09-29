@@ -1,10 +1,19 @@
 /**
- * r343 · cbfa8b0b — THE LEAVE CREDIT REQUEST AS ONE TABLE, WITH DAY TYPE AS AN INPUT.
+ * r343 · cbfa8b0b — THE LEAVE CREDIT REQUEST AS ONE TABLE. ⚠️ r360: THE DAY TYPE IS NO LONGER AN INPUT.
  *
  * The reporter's contest REVERSED the design r336 shipped: "Do not create separate sections/screens for
  * these day types. All four types must be submitted from the same screen and displayed in the same request
- * table", and the Day Type becomes a four-option dropdown the employee fills in, validated against their own
+ * table", and the Day Type became a four-option dropdown the employee filled in, validated against their own
  * work calendar / roster.
+ *
+ * ⚠️⚠️ r360 REVERSED THE DROPDOWN AND PROMOTED THIS FILE. The reporter asked for the cell to be read-only
+ * again (r336's design, but NOT by r336's argument — the roster check r343 added is what settles it: the
+ * server refuses any day type that disagrees, so the dropdown offered a choice it would always refuse). The
+ * screen can no longer be made to post a disagreeing row, which means EVERY assertion below about a refused
+ * mismatch is now the ONLY place that refusal is pinned: the DOM guards in
+ * test/r343-leave-credit-table.dom.test.tsx and test/r336-leave-credit-modal.dom.test.tsx say the mismatch is
+ * unproducible from the screen and point here for the refusal itself. A posted form field is tamperable
+ * whatever the screen renders, so this is not a hypothetical path — it is the only one left.
  *
  * WHAT THIS FILE DEFENDS, in the order the risk sits:
  *
@@ -64,8 +73,11 @@ const TABLE_TSX = 'components/leave/leave-credit-request-table.tsx';
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 // (1) THE PURE HALF — the vocabulary, the per-row conditional and the adjudication, with no roster at all.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
-describe('r343 · the four options and the per-row conditional', () => {
-  it('the dropdown is exactly the reporter’s four options, in the order they were listed', () => {
+describe('r343 · the four day types and the per-row conditional', () => {
+  // r360 — was "the dropdown is exactly the reporter's four options, in the order they were listed". There is
+  // no dropdown; the vocabulary is unchanged and is still what the cell's label function must cover and what
+  // the column's enum must match, so the assertion stands and only the sentence around it moved.
+  it('the vocabulary is exactly the reporter’s four day types, in the order they were listed', () => {
     expect([...LEAVE_CREDIT_DAY_TYPES]).toEqual(['rest_day', 'off_day', 'holiday', 'workday']);
   });
 
@@ -221,21 +233,59 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
   });
 
   /**
-   * ⚠️ THE FIX-PASS PIN FOR THE FOURTH OPTION. The first cut filtered `LEAVE_CREDIT_DAY_TYPES` by the
-   * company's extended-hours switch, which is false by default on every company (migration 0486) — so the
-   * reporter's "exactly four options" rendered as three. The runtime proof is in
-   * test/r343-leave-credit-table.dom.test.tsx (four options with the tiers and without); this is the source
-   * shape, because a filter is easy to reintroduce and reads as a courtesy while it removes a requirement.
+   * ⚠️⚠️ REVERSED IN r360, AND THE OLD ASSERTION IS QUOTED BECAUSE IT WAS EARNED.
+   *
+   * THE OLD CLAIM: `the dropdown is built from the WHOLE vocabulary — no company switch filters the option
+   * list`, asserting `expect(src).toContain('const dayTypeOptions = LEAVE_CREDIT_DAY_TYPES;')` and
+   * `expect(src).not.toMatch(/LEAVE_CREDIT_DAY_TYPES\s*\.\s*filter/)`. It existed because r343's first cut
+   * DID filter, by a switch that is false on every company (migration 0486), so the reporter's "exactly four
+   * options" would have rendered as three.
+   *
+   * r360 removed the control, and `dayTypeOptions` with it — keeping the line would have pinned dead code, and
+   * a guard on dead code reads as protection while protecting nothing. What replaces it is the assertion the
+   * old one could not make: THERE IS NO OPTION LIST AND NO CONTROL, in source, on the file that would have to
+   * grow one. The requirement the old guard defended ("all four kinds reach the screen, whatever the company
+   * has switched on") is pinned at runtime, per kind × per switch state, in
+   * test/r343-leave-credit-table.dom.test.tsx; the vocabulary is pinned set-equal to `toil_worked_day_kind`
+   * above, which is what still catches a fifth roster kind.
    */
-  it('the dropdown is built from the WHOLE vocabulary — no company switch filters the option list', () => {
+  it('the Day Type is not a control at all — no select, no option, no change handler on that cell', () => {
     const src = read(TABLE_TSX);
-    expect(src).toContain('const dayTypeOptions = LEAVE_CREDIT_DAY_TYPES;');
-    expect(src).not.toMatch(/LEAVE_CREDIT_DAY_TYPES\s*\.\s*filter/);
-    // What the switch DOES decide, stated once: whether an Ordinary Day row can earn anything here.
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
+    expect(code, 'a <select> anywhere in this form is the dropdown coming back').not.toMatch(/<select/);
+    expect(code, 'and an <option> is the same thing arriving in pieces').not.toMatch(/<option/);
+    // The two writers r353 needed for a hand-made choice. Both are gone; a `chooseDayType` here again means
+    // something can write the cell that is not the roster.
+    expect(code).not.toContain('chooseDayType');
+    expect(code).not.toContain('touchedDayType');
+    // The cell and its caption, by testid, so the reporter's two halves are findable by test not by position.
+    expect(src).toContain('data-testid="leave-credit-day-type"');
+    expect(src).toContain('data-testid="leave-credit-day-type-source"');
+    // What the extended-hours switch DOES decide, stated once: whether an Ordinary Day row earns anything.
     // r358 — the switch and the ladder came apart: `extendedHoursTiers == null` meant both "no ladder"
     // and "an ordinary day earns nothing", and every day type needs the ladder now.
     expect(src).toContain('const ordinaryEarnsNothing = !ordinaryDayAllowed;');
     expect(src).toContain('ordinaryUnavailableRows.length > 0');
+  });
+
+  /**
+   * ⚠️ r360 — THE CELL MUST FOLLOW THE DATE, AND THIS IS THE SOURCE HALF OF A MEASURED DEFECT.
+   *
+   * 2466c3c9 removed the control but left r353's fill condition (`dayType === '' && !touchedDayType`), written
+   * to protect a hand-made choice. With nothing able to make one, a re-dated row KEPT the first date's kind:
+   * "Rest day / From your roster" over a date the roster calls a working day, the mismatch raised, the submit
+   * disabled, and no control left to correct it. The runtime guard is in
+   * test/r343-leave-credit-table.dom.test.tsx ("⚠️ RE-DATING a filled row re-asks the roster"); this pins the
+   * one line that makes it true, because `patch(r.key, 'workedDate', …)` is the obvious thing to write here and
+   * it is the defect.
+   */
+  it('changing the DATE clears the day type in the same update — the cell cannot outlive its date', () => {
+    const src = read(TABLE_TSX);
+    expect(src).toContain("{ ...x, workedDate: value, dayType: '' }");
+    expect(src, 'the date input must go through it, not through the generic patch').toContain(
+      'onChange={(e) => changeWorkedDate(r.key, e.target.value)}',
+    );
+    expect(src).not.toContain("patch(r.key, 'workedDate'");
   });
 
   it('the screen composes its day-type labels from the dayKind keys that already exist in all six locales', () => {
@@ -328,6 +378,69 @@ describe('r343 · the employee has ONE Leave Credit surface, and it is the singl
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// (2b2) ⚠️ r360 cbfa8b0b · THE FAILED LOOKUP, AND THE DEAD FORM FIELD THE ACTION WAS STILL READING.
+//
+// Two source shapes that no runtime assertion on this side of the wire can see. The first is the reported
+// defect's mechanism; the second is a field that had been dead for two rounds and still read as live code.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+describe('r360 · the lookup failure is recorded, and the action reads no dead field', () => {
+  const ACTIONS = 'app/leave/credit/actions.ts';
+
+  /**
+   * ⚠️ THE REPORTED DEFECT WAS AN ABSENT `.catch()`. The effect read
+   * `void dayFactsAction(d).then((v) => setFacts(...))` — a rejected server action was swallowed, `facts[d]`
+   * stayed null for ever (the date is marked as asked BEFORE the call, so it is never re-asked), and the row
+   * showed a blank Day Type, a blank shift end and a blank clock-out with nothing to say why. The round trip is
+   * pinned at runtime in test/r343-leave-credit-table.dom.test.tsx; this pins the shape, because `void p.then()`
+   * with no catch is exactly what gets written back in and it is invisible to tsc, to the linter and to a render.
+   */
+  it('the day-facts fetch has a catch, and the retry clears the failed dates so the effect can re-ask', () => {
+    const src = read(TABLE_TSX);
+    expect(src, 'a rejection must be recorded, not swallowed').toMatch(/\.catch\(\(\) => setFactError/);
+    // The state the catch writes and the cell reads. Without the first, the catch has nowhere to put the news.
+    expect(src).toContain('const [factError, setFactError] = useState<Record<string, true>>({});');
+    expect(src).toContain("t('table.dayTypeLookupFailed')");
+    expect(src).toContain('data-testid="leave-credit-day-type-retry"');
+    // ⚠️ AND THE RETRY MUST DELETE THE CACHED `facts` ENTRY. `d in facts` is the effect's own guard, so a retry
+    // that only cleared `factError` would repaint the row and never ask the server again — the defect wearing
+    // a control. `retryTick` is what makes a second failure re-runnable rather than a one-shot.
+    expect(src).toMatch(/for \(const d of failed\) delete next\[d\];/);
+    expect(src).toContain('setRetryTick((n) => n + 1);');
+  });
+
+  /**
+   * ⚠️ `days` WAS STILL BEING READ OFF THE FORM, AND HAD BEEN DEAD SINCE r358.
+   *
+   * r358 removed the 1-or-0.5 picker: the field left the form and `days` left `LeaveCreditRowInput`. The action
+   * went on doing `formData.getAll('days')` and assigning `days: … Number(days[i])` into each row, and TSC
+   * PASSED — an object literal inside `.map()` is not "fresh" at the point the result is assigned to a typed
+   * array, so excess-property checking never fires. (The same blind spot silently dropped a `workedDayKind`
+   * added during r358 itself.) `getAll` on a form that emits no such input returns `[]`, so every row carried
+   * `days: undefined` and nothing read it: inert, but it read as live code, and the next person to touch the
+   * zip would have counted five row fields where the form posts four.
+   *
+   * §8 — when a defect lives in the contract between two files, pin it across both: the form's posted names
+   * are pinned above, and this is the reader's end.
+   */
+  it('the action reads no `days` field — the form stopped posting one at r358 and tsc could not say so', () => {
+    const src = read(ACTIONS);
+    // ⚠️ COMMENTS STRIPPED FIRST, AND THIS IS NOT a formality: the note that records the removal quotes both
+    // `getAll('days')` and `days: undefined`, so a source-text assertion made against the raw file would fail
+    // on the very comment explaining why it passes. (The pack-drift ratchet reads comments for the opposite
+    // reason; here they are prose about the past.)
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(code, 'the dead read').not.toMatch(/getAll\('days'\)/);
+    expect(code, 'and the dead assignment into the row').not.toMatch(/\bdays\s*:/);
+    // NON-VACUITY: the four fields it DOES read, so this cannot pass on a file that reads nothing at all.
+    for (const name of ['workedDate', 'dayType', 'claimStart', 'claimEnd']) {
+      expect(code, `${name} is still read`).toContain(`getAll('${name}')`);
+    }
+    // …and the whole-form field, which is `get` not `getAll`.
+    expect(code).toContain("get('leaveTypeId')");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
 // (2c) WHAT THIS SCREEN SAYS IN SIX LOCALES — COUNTED, NOT ASSERTED AGAINST ITSELF.
 //
 // ⚠️ THE GUARD THIS REPLACES COULD NOT FAIL. The six-locale DOM test compares the rendered text with the
@@ -408,6 +521,12 @@ describe('r343 · the translated keys are translated, and the English ones are n
     // Non-vacuity: the four day-type labels and the ordinary-day refusal are in this set by construction.
     for (const k of ['dayKind.restDay', 'dayKind.offDay', 'dayKind.holiday', 'dayKind.workday', 'workingDayRefused'])
       expect(shouldBeTranslated, k).toContain(k);
+    // ⚠️ r360's four new keys are named here rather than left to the filter to notice. They are TRANSLATED in
+    // all six catalogues, which is a decision: `table.dayTypeChoose` beside them is English everywhere, so a
+    // new `table.*` key on this screen going either way has to be argued, not defaulted. Naming them also
+    // means a key quietly dropped from the component fails this case instead of silently leaving the set.
+    for (const k of ['table.dayTypeLookupFailed', 'table.dayTypeRetry', 'table.dayTypeFromRoster', 'table.dayTypeFromHolidays'])
+      expect(shouldBeTranslated, `${k} must be rendered by this surface AND translated`).toContain(k);
     for (const k of shouldBeTranslated) {
       const en = at('en', k);
       expect(typeof en, k).toBe('string');

@@ -87,22 +87,35 @@ describe('2a237f5f: the Leave Credit request names one leave type and offers no 
        * NO CHOICE OF LEAVE TYPE IS ON OFFER — pinned by NAMING every dropdown the form has, which is the
        * only form of this assertion that cannot rot.
        *
-       * ⚠️ UPDATED TWICE, AND BOTH TIMES THE SUBJECT SURVIVED. r332 asserted "the one <select> left is the
-       * day/hour unit". cbfa8b0b (r336) made the unit a fixed field, so the one select became Section A's
-       * 1-or-0.5 day picker. r343's contest then made the DAY TYPE an input, so the row has TWO selects: the
-       * four-option day type and the day count. Counting them is not the claim — the claim is that NEITHER
-       * offers a leave type, and it is asserted by aria-label, by `select[name="leaveTypeId"]` and by the
-       * option labels below.
+       * ⚠️ UPDATED FOUR TIMES NOW, AND EVERY TIME THE SUBJECT SURVIVED — the exact-set is the point, not the
+       * count (CLAUDE.md §8: an exact-set guard is UPDATED, not loosened):
+       *   r332 "the one <select> left is the day/hour unit"                          → `[rr.unit]`
+       *   r336 made the unit a fixed field, so the one select was Section A's picker → `[rr.days]`
+       *   r343 made the DAY TYPE an input, so the row had two                        → `[dayTypeLabel, rr.days]`
+       *   r358 removed the 1-or-0.5 picker                                           → `[dayTypeLabel]`
+       *   r360 removed the day-type dropdown                                         → `[]`
+       * The claim is unchanged through all five: NO select on this form offers a leave type. `[]` is the
+       * strongest reading of it this form has ever supported and the emptiest — which is why the three
+       * assertions after it, which do not depend on there being any select at all, matter more than before.
        */
       const selects = Array.from(dialog.querySelectorAll('select'));
       const dayTypeLabel = (rr as unknown as { sectionA: Record<string, string> }).sectionA.dayType;
-      // r358 — ONE select per row, not two. This read `[dayTypeLabel, rr.days]`: the second was the
-      // 1-or-0.5 day picker, which the owner's answer replaced with the claimed window ("4 hours of
-      // eligible work = 0.5 day … regardless of the Day Type"). The claim this case makes is unchanged
-      // and is not about the count — it is that NO select here offers a leave type.
-      expect(selects.map((el) => el.getAttribute('aria-label'))).toEqual([dayTypeLabel]);
+      expect(selects.map((el) => el.getAttribute('aria-label'))).toEqual([]);
       expect(dialog.querySelector('select[name="leaveTypeId"]')).toBeNull();
       expect(dialog.querySelector('select[name="unit"]'), 'the unit stopped being a choice').toBeNull();
+
+      /*
+       * ⚠️ r360 — AND THE DAY TYPE IS STILL ON THE FORM, as a read-only cell with its provenance. Asserting
+       * its PRESENCE is what stops `[]` above from being satisfiable by a broken row that renders no day type
+       * at all: an empty select list has two causes and only one of them is this round.
+       */
+      const dayTypeCell = dialog.querySelector('[data-testid="leave-credit-day-type"]') as HTMLElement;
+      expect(dayTypeCell, 'the Day Type cell is still drawn, read-only').toBeTruthy();
+      expect(dayTypeCell.tagName).not.toBe('SELECT');
+      expect(dayTypeCell.querySelector('select'), 'and holds no select of its own').toBeNull();
+      expect(dayTypeCell.querySelector('input'), 'nor an input').toBeNull();
+      // It is still LABELLED in the header row — the employee must still be told what the column is.
+      expect(dialog.textContent, 'the Day Type column keeps its heading').toContain(dayTypeLabel);
 
       /*
        * …AND THE UNIT IS NOT POSTED AT ALL ANY MORE. r336 posted `<input type="hidden" name="unit"
@@ -114,7 +127,15 @@ describe('2a237f5f: the Leave Credit request names one leave type and offers no 
       expect(dialog.querySelector('input[name="unit"]'), 'nothing posts a unit; the service derives it').toBeNull();
       expect(dialog.querySelector('select[name="aDays"]'), 'r336’s section field names are gone').toBeNull();
 
+      /*
+       * ⚠️ r360 — THESE TWO ARE NOW TRUE BY CONSTRUCTION, AND SAYING SO IS THE HONEST HALF. There is not an
+       * `<option>` left on this form, so "the option labels do not include the tenant's type name" and "no
+       * leftover Hour option" cannot fail any more. They are kept because they are the assertions that fail
+       * the day an option list comes back for any reason, and the count is asserted FIRST so the two below
+       * are never mistaken for evidence about a list that exists.
+       */
       const optionLabels = Array.from(dialog.querySelectorAll('option')).map((o) => o.textContent);
+      expect(optionLabels, 'no option list of any kind survives on this form').toEqual([]);
       expect(optionLabels).not.toContain(TENANT_TYPE.name);
       expect(optionLabels, 'no leftover Hour option now that nothing credits in hours').not.toContain(rr.unitHour);
     });
