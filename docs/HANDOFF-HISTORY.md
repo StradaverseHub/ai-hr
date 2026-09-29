@@ -1,3 +1,100 @@
+## r362 (2026-09-29) — seven board items, two repo-wide guards that were not guarding, and three money paths a new record shape would have broken. `main@8d8396bf`, **migration 0490**.
+
+Closed: `2aef3cd8`, `ce5ded11`, `5c72039e`, `58424c7f`, `3f15ffdb`, `b833a077`, `f618065d`. Gate: **1057 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, zero AssertionErrors, `tsc` 0, `next build` 0. Shipped together with r361 in one deploy.
+
+**Round number:** a concurrent session holds `build/r360-security-fixes`; r360 and r361 were taken here first, so that work takes the next free number. Round ids belong to the history entry, not the branch name.
+
+### TWO REPO-WIDE GUARDS WERE GREEN WITHOUT CHECKING ANYTHING
+
+Both were found by reading, not reported, and both are the same failure: **an instrument everybody trusts, quietly measuring nothing.**
+
+- **`test/function-access.test.ts` accepted a comment as an authentication guard.** It tested RAW source, so `GUARD_RE` matched the guard name inside the header comment that EXPLAINS the guard. A page could lose `await scopedSession()` and stay "guarded" for as long as its comment still named it — and this is the repo's ONLY page-boundary auth check. Measured before changing: of every `page.tsx` under `app/`, **exactly one** is classified differently once comments are stripped, and it is a documented redirect-only segment that reads nothing. Comments are now stripped and the exemption is EXACT, so it is stronger in both directions: lose a real guard and the set grows and names the route; give the redirect a guard and the exemption goes unmatched. The old assertion passed with the first defect applied.
+- **`scripts/i18n-check.mjs` printed FAIL on a clean tree**, on placeholder drift in all five non-English locales. It was not drift. The extractor could not tell an ICU argument from a one-word branch body — they are spelled identically — so `other {applies}` read as a placeholder named `applies`, while the translations say `terpakai` / `适用` and matched nothing. That one word was the entire "drift", in every locale. **A gate that always fails is worse than no gate**: a real drift arrives as one more line in noise everyone has learned to skip. It now walks the message instead of matching it, and PASSES across 12,376 keys × 5 locales — with a renamed and a deleted placeholder both still caught.
+
+### 3f15ffdb — AN APPROVED LEAVE RECORD WITH NO LEDGER DEBIT IS A SHAPE THIS SYSTEM HAD NEVER HAD
+
+Leave History Import writes `leave_request` rows (status approved, no approval steps, **no ledger row**) because Leave History IS `leave_request`. Every consumer was swept, and three of them were wrong for the new shape. **All three are money.**
+
+- **`applyLeaveCancellationApprovalTx` — phantom deduction.** The whole-span reversal was guarded on `chargedDays > 0`; the **per-segment re-debit was not**. Giving back 1 day of a 5-day uncharged record reversed 0.00 and then inserted a fresh **−4.00** — days taken off a balance that was never charged. **Reachable by an ordinary employee**, because a migration legitimately carries approved future leave. The guard tests the LEDGER, not the import marker, and is pinned by a case using a non-imported uncharged row.
+- **`unpaidDaysByEmployment` — salary cut.** It reads `leave_request`, not the ledger. One imported unpaid record in a not-yet-run period would have cut that person's pay.
+- **`approvedLeaveDaysAfter` — false final-pay hint**, whose premise ("already debited at approval") is false for these rows.
+
+The existing importer was NOT duplicated: it is the **balance** importer (ledger-only), and it was renamed "Leave Balance Import" so the two stop reading as the same thing. Migration **0490**, allocated from `max(idx)`, never `entries.length`; a PARTIAL unique index so ordinary rows stay unconstrained; GRANTed.
+
+### ce5ded11 — THE OT PLAN CALENDAR, BUILT FROM THE REPORTER'S PROSE RATHER THAN THEIR SCREENSHOTS
+
+Sections 1–12 of that ticket transcribe two photographs of a rival product. The approved plan was built around the reporter's own sentence instead, and every refusal in its OUT list is now held by a test. The month read calls the existing `classifyScheduleDay` rather than restating the precedence ladder, and the grid reuses `lib/roster-month.ts`, so the OT calendar cannot disagree with the roster screen. Every shade carries a word — in the cell, in the `aria-label` and in the legend.
+
+**A claim in the build brief was wrong and the builder caught it**: `<ToastFromQuery />` is already mounted in the root layout, so "render the toast nothing reads" would have shown the confirmation twice. The stale comment was corrected instead.
+
+### b833a077 — A REMOVAL WHOSE KEPT PIECES WERE HELD BY A COMMENT
+
+My Travel is gone from the menu, the page, the approvals screen and the bell; the table and every row stay. **Four of the ticket's removal targets did not exist** — the command palette never had a travel entry, the Mobile App Preview has no travel screen, no dashboard tile points at it, and `core/notifications.ts` has no travel event key at all: travel notified nobody, ever. They were re-verified rather than "removed".
+
+**The find that justified the round.** The `lib/approval-history.ts` travel mapping was kept deliberately — and deleting it was GREEN: `tsc` 0, `test/approval-history.test.ts` and `i18n-coverage` both passing. The decision was held by a comment. And the consequence is worse than "blank": `moduleOfAggregate[r.aggregateType] ?? 'leave'` means every historic travel decision would have rendered as **"Leave"** in the approval history, for every tenant — a silent mislabel of the audit record that "keep it for audit" was supposed to buy. It is now guarded, and the obligation is **derived from the immutable migrations** (0288 / 0320) that still emit those events rather than restated, so if a later migration ever drops them the case fails and says the mapping may be retired.
+
+**A brief of mine was wrong and the builder checked instead of complying.** I said the new redirect page would land in `function-access`'s registered-but-unguarded set and should be added to `REDIRECT_ONLY_ROUTES`. `/attendance/travel` is not in `REGISTERED_ROUTES` at all, and the assertion iterates that set — so adding it would have failed the exact-set check I had just tightened. Neither file was touched, and the fact is now pinned positively (`expect(REGISTERED_ROUTES.has(row.href)).toBe(false)`).
+
+### f618065d — THREE OF THE ASKS WERE ALREADY TRUE, AND TWO MORE SHIPPED EARLIER TODAY
+
+Already correct before the round and left alone: the list sorted by OT date descending, the screen reading "Withdrawn" and never "Cancelled", and Withdraw appearing only where it works. Already built by `ce5ded11` hours earlier: the Approved hours column, the Table/Calendar toggle and the date window on `myOvertimePlans` — so the table is nine columns, not the plan's eight.
+
+Counts come from a **second GROUP BY aggregate**, never from the list, because the list is capped: chips computed over a capped page say "Pending 25" when there are 30, which is the defect `app/feedback/page.tsx` already documents. One predicate builder feeds both reads, so a chip and its rows cannot be narrowed differently. The behavioural fixture files **30 plans against a 25-row page** precisely so that case can fail.
+
+**The build corrected itself against the plan's prose.** Its first cut shipped the refusal (we hold no approver's remark) and dropped the compensation the plan promised — the employee's own note and the decided date. Caught by re-reading the plan, not by a test.
+
+### TWO MORE LIVE DEFECTS FIXED, NEITHER REPORTED
+
+- **Every payslip older than r359 printed `Q = RM0.00` and `C = 0`** beside a QC holding the real relief — three cells that visibly do not multiply, on the screen used to defend a figure to an auditor. r359 added both fields and read them through a coercion that turns absence into zero, while `explainPcb`'s own doc already forbade exactly that ("it does NOT render the legs as zeroes"). Absence now stays absent; the asymmetry is asserted, because the old stamp DID record the relief and never recorded the split. Restoring the coercion fails with `expected { kind: 'money', amount: +0 } to deeply equal { kind: 'notRecorded' }`.
+- **Self Overtime printed two dates by two different rules.** The new Submitted on column used `todayInKualaLumpur`; the "counted on" sub-line two rows below kept a UTC slice, naming the previous day for anything counted before 08:00 MYT. `today-in-myt-drift` does not catch it, and that is deliberate: it matches only the argless "what date is NOW" form, because date-only arithmetic is correct in UTC. **A stored instant rendered as a calendar day is neither, and falls in the gap** — so the screen pins both of its dates by name.
+
+### THE SEED DOES NOT COVER EVERY SCREEN, AND NO OVERRIDE FIXES IT
+
+Two rounds hit this independently. `/leave/credit` cannot be rendered from a seeded database at all — `toil` is deliberately excluded from `LEGACY_ENABLED_MODULE_CODES`, so **`TOIL_ENABLED=true pnpm db:seed` produces nothing**, and `DEV_USER_ID` is the HR Admin, who has no employment, so the employee form never renders. `/attendance/plan-ot/apply` seeds with zero shifts and zero roster rows, so a seed-only month proves nothing about the states the check exists for. Both were rendered by seeding and then adding the minimum on top through the product's own service functions. **The dev database is left carrying that state.** A committed per-screen fixture is the standing fix; three rounds have now paid this cost.
+
+### 5c72039e + 58424c7f — ONE BUILDER, BECAUSE THEY ARE ONE FILE
+
+The Day Type cell was serving three states with one sentence, and two of them were **indistinguishable in the state shape**: `facts[d]` is written `null` before the call and the action also resolves `null` for a malformed date. A third record settled in `.finally` tells them apart. One subtlety the plan missed: "resolved empty" is `settled && facts == null`, not `settled` alone — there is one committed render where the date is settled and the row's kind is still blank, and keying off `settled` flashes "Not found" on a row that found its answer.
+
+58424c7f is a DEVIATION NOTICE discharged: we do not refuse an end time earlier than the start, because that is how a night shift is entered. `claimCrossesMidnight` is the roll's own condition lifted out, so the note and the arithmetic cannot drift. **Two money defects were demonstrated through it**: loosening `<` to `<=` brings back r353's full-day-of-free-credit (`expected 1440 to be +0`), and removing the roll turns a four-hour window into nothing (`expected '0' to be '240'`).
+
+### NOT DONE, AND SAID OUT LOUD
+
+- **`fda53352` was contested again during this round, and the reporter is right.** r359 changed EA item 8 to the s.48-weighted figure on the strength of the MTD specification and LHDN's PCB slip — **two documents that do not govern the EA form**. Item A.8 is `Bilangan anak yang layak untuk pelepasan cukai`; *bilangan* is a count. This repo's own field register said so at r351 and r359 overrode it. The wrong value is LIVE on a form employees sign. The r359 PCB-slip Q/C fix is correct and separate and must NOT be swept up in the reversal.
+- Raised from findings, not reported: a second OT plan on a date whose hours already landed silently rewrites them (**payroll-affecting**, no test covers it); the Leave Credit clock-out warning fires on every non-workday row whether or not a clock-out exists; and two label inconsistencies.
+- `approvedLeaveDates` is not narrowed against imported history, so an imported record suppresses an absence on its dates. Defensible and inert for a migration; named rather than done.
+
+## r361 (2026-09-29) — the PCB detail reads down beside LHDN's own slip, end to end. `main@8d8396bf`, **no migration**.
+
+Closed: `bf3c9712`. Shipped together with r362 in one deploy.
+
+### THE ATTACHMENT WAS THE AGENCY'S OWN OUTPUT, AND IT SET THE STRUCTURE
+
+The reporter attached LHDN's generated PCB Calculation Slip for one employee, 7 pages. Our screen already carried the whole MTD working — every letter the official p.6 defines — but not the two blocks that bracket it. Those are now built from the same run the working reads, so the two documents can be held side by side and read down in the same order.
+
+- **Accumulated remuneration** (official p.1), itemised. The AMOUNT column is summed from the year's prior payslips over `core/payroll.ts`'s own predicate; the TOTAL column is read off the trace (Y, K, Σ(Y−K), X, Z) rather than re-summed, **so the block and the working cannot disagree**.
+- **Calculation results** (official p.7) — Net MTD, MTD on additional remuneration, and the rounded figure the payslip actually paid, which is READ from the stamp and never re-rounded here.
+- The working is presented as the official's two numbered steps.
+
+### THREE LINES CARRY NO FIGURE, AND THAT IS THE HONEST ANSWER
+
+Fees and commission (no such payroll column — such a pay item lands inside allowance or bonus), the accumulated departure levy (Z is the specification's own COMBINED zakat-and-levy accumulator, so no separate figure exists), and Y on a slip predating its stamp. **The approved plan said the block would carry "accumulated zakat AND levy". It cannot, and printing 0.00 there would deny money that may exist** — so that row says it is not recorded separately. BIK and VOLA do print 0.00, with a note saying the zero means we hold no such figure rather than that the agency has checked there is none.
+
+### THE ITEMISATION AND THE TOTALS ARE TWO COLUMNS BECAUSE THEY ARE TWO MEASURES
+
+The itemisation is what was PAID; Y accumulates what tax is CHARGED on, excluding exempt amounts, and the totals additionally carry the previous employer's TP3 seed. A reader adding the first six lines will not reach Y. The agency's own p.1 has both columns; the section note states both gaps in words.
+
+### A GUARD THAT PASSED WITH THE DEFECT IN PLACE
+
+Re-rounding the deducted figure (`nearestUpperFiveSen(x.pcb)`) left `7f251381`'s "the builder contains no arithmetic at all" **green** — the helper sits above its marker and the call site contains none of the tokens it refuses. The new case is the only thing between that defect and production: `expected { amount: 1234.6 } to deeply equal { amount: 1234.56 }`.
+
+**And one case was vacuous until it was fixed rather than claimed.** The end-to-end results case was first written over a plain regular month, where Net MTD, the normal leg and the deduction are all the same number — the defect produced `Tests 1 passed`. That month now carries a bonus and a zakat so the three cells are three distinct figures, and the case asserts that premise before it asserts the figure.
+
+### NOT DONE
+
+- `pcbDetailModel` is described in three files' prose as the thing a test drives over both paths — and **no test was driving it**. The prose outlived the code. A behavioural assertion was added for the new `closing` field only; the rest of that claim is still unbacked.
+- The additional-remuneration leg renders as a zero on the dev fixture (a bonus set on the fixture did not reach the payslip). The non-zero leg IS exercised by the end-to-end vitest case, so the reconciliation is proven with both legs alive — just not on the rendered page.
+
 ## r360 (2026-09-29) — the payslip names the real Pay Cycle, and the Day Type is read off the roster rather than asked for. `main@0166e01d`, **no migration**.
 
 Closed: `1fe55a23` (payslip header), `cbfa8b0b` (leave credit Day Type). Gate: **1050 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, `tsc` 0, `next build` 0.
