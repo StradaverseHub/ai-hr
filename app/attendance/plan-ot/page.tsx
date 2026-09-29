@@ -508,13 +508,21 @@ export default async function SelfOvertimePage({
                             {p.status === 'approved' && (
                               <div className="mt-0.5 text-[11px] text-muted-foreground">
                                 {/* ⚠️ LEFT AS IT WAS, AND IT IS THE SAME UTC-SLICE DEFECT the Submitted on
-                                    column above deliberately does not have: a plan counted before 08:00
-                                    MYT prints the previous day here. It is a PRE-EXISTING printed date on
-                                    a row nobody asked about, the approved plan scoped the fix to the new
-                                    column, and changing what a shipped date says is not presentational.
-                                    Raised separately rather than slipped in. */}
+                                    column above already avoids. `appliedAt` is an INSTANT, and naming it
+                                    in UTC for a UTC+8 reader prints the previous day for anything counted
+                                    before 08:00 MYT. It was left in the f618065d build on the reasoning
+                                    that changing a shipped date is not presentational — but the stored
+                                    timestamp does not move, only which calendar day we name it, and the
+                                    day it named was wrong for a third of every day. Two dates on one
+                                    screen resolved by two different rules is the worse outcome.
+
+                                    test/today-in-myt-drift.test.ts does NOT catch this: it is scoped, on
+                                    purpose, to the argless `new Date().toISOString()` "what date is NOW"
+                                    form, because `new Date(iso).toISOString()` date-only ARITHMETIC is
+                                    correct in UTC and must stay there. A stored instant rendered as a
+                                    calendar day is neither, and falls in the gap between them. */}
                                 {p.appliedAt
-                                  ? t('otCountedOnDay', { date: p.appliedAt.toISOString().slice(0, 10) })
+                                  ? t('otCountedOnDay', { date: todayInKualaLumpur(p.appliedAt) })
                                   : t('otNotWorkedYet')}
                               </div>
                             )}

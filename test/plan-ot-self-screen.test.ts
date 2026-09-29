@@ -335,13 +335,23 @@ describe('C · the screen: what the approved plan changed, and what it deliberat
     );
   });
 
-  it('Submitted on is the MALAYSIAN day, not a UTC slice', () => {
+  it('EVERY date this screen prints is the MALAYSIAN day — neither of them is a UTC slice', () => {
     const src = flat(LIST);
-    expect(src, 'the new column is right from the start').toContain('todayInKualaLumpur(p.createdAt)');
-    // The sibling screen's column is `createdAt.toISOString().slice(0,10)` and its own comment calls that
-    // a real pre-existing defect: anything filed before 08:00 MYT prints the previous day. Fixing that
-    // screen is deliberately not in this round; repeating its bug here would have been.
-    expect(src.includes('p.createdAt.toISOString()'), 'no UTC slice of the filing time on this screen').toBe(false);
+    expect(src, 'the Submitted on column').toContain('todayInKualaLumpur(p.createdAt)');
+    // r362 — `appliedAt` TOO. This screen printed its "counted on" sub-line as
+    // `p.appliedAt.toISOString().slice(0, 10)`, so a plan counted before 08:00 MYT named the previous
+    // day, on the same screen whose other date was correct. Two dates resolved by two different rules
+    // is the state this case exists to prevent; it was fixed rather than left as the odd one out.
+    expect(src, 'and the counted-on sub-line, which was a UTC slice until r362').toContain(
+      'todayInKualaLumpur(p.appliedAt)',
+    );
+    // ⚠️ THE GUARD THAT DOES NOT COVER THIS. test/today-in-myt-drift.test.ts matches only the ARGLESS
+    // `new Date().toISOString()` form, on purpose — `new Date(iso).toISOString()` date-only arithmetic
+    // is correct in UTC and must stay there, and over-broad source guards have cost this repo whole
+    // gate runs. A STORED INSTANT rendered as a calendar day is neither of those two things and falls
+    // in the gap, so this screen pins it by name.
+    expect(src.includes('p.createdAt.toISOString()'), 'no UTC slice of the filing time').toBe(false);
+    expect(src.includes('p.appliedAt.toISOString()'), 'no UTC slice of the counted-on time').toBe(false);
   });
 
   it('the chips are the DATABASE’s statuses, and a withdrawn plan’s chip reads "Withdrawn"', () => {
