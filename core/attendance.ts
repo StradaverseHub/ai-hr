@@ -7,7 +7,7 @@
  * (approved leave / holiday / rest day are not "absent"). Each mutation appends a
  * domain event (ADR-0006).
  */
-import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 // f618065d (r362) — the "All" ceiling the shared pager already assumes. Self Overtime is a server-paged
 // list now, so its read and lib/pagination must agree about how many rows "All" can be: a read that
@@ -2995,12 +2995,37 @@ export async function requestAttendanceCorrection(
     // unapplied rows while "find the approved, not-yet-applied plan" has no defined answer. Refused here at
     // the application layer with a message a human can act on, rather than by a second partial unique index
     // — that index would also have to exclude cancelled AND applied rows, which is more fragile.
+    //
+    // ec30b2e9 (r364) — AND THE SENTENCE ABOVE WAS ONLY HALF THE RULE. It said the first request stops a
+    // second one "once the first is approved"; what it actually built stops one only while the first is
+    // approved AND UNAPPLIED. It read as though approved-and-applied were unreachable here. It is the
+    // COMMON case: every past-dated approval lands and stamps applied_at at approval time. The second
+    // check below closes that, and the rest of the reasoning — application layer, not a second partial
+    // index — is unchanged and is why there is still no migration.
     if (hasOt) {
       const live = await liveOtPlanTx(tx, p.employmentId, p.date);
       if (live) {
-        throw new Error(
-          `You already have an approved overtime plan for ${p.date}. Withdraw it first if it is wrong.`,
-        );
+        // r364 — WAS a raw English `throw new Error(...)` whose message reached the screen verbatim through
+        // `?error=`. Same refusal, same wording, now typed so the action can print it in the employee's own
+        // language (`me.otPlanApprovedNotCounted`). The sentence is not a guard being loosened: it still
+        // names the date and still says to withdraw the first plan.
+        throw new OvertimePlanAlreadyApprovedError(p.date);
+      }
+      // ── ec30b2e9 (r364) · AND THE HOLE THAT LEFT: APPROVED **AND ALREADY COUNTED** ──────────────────
+      // The guard above only closes the window in which an approved plan is still waiting for its day. For
+      // a date that is today or past — which is every date on which a first plan can already have landed —
+      // approval LANDS the hours and stamps `applied_at` in the same transaction, so that window is never
+      // open and a second plan was accepted. Approving it then REPLACED ot_minutes outright.
+      //
+      // ⚠️ `checkIn == null` IS LOAD-BEARING AND MUST NOT BE DROPPED. This block is `hasOt`, and `hasOt` is
+      // ALSO true of a CLOCK CORRECTION that carries an OT figure — which is precisely the route the refusal
+      // below tells the employee to use. Widening this to every OT-bearing request would refuse the remedy
+      // in the same breath as recommending it, and the message would be a lie. An OT-ONLY request (no
+      // proposed clock-in) is a PLAN; anything carrying punches is a correction and passes straight through.
+      // Pinned by test/plan-ot.test.ts §4, whose (b) case exists for no other purpose.
+      if (checkIn == null) {
+        const counted = await countedOtPlanTx(tx, p.employmentId, p.date);
+        if (counted) throw new OvertimeAlreadyCountedError(p.date);
       }
       // ── r336 cbfa8b0b · DIRECTION 2 OF THE DOUBLE-CLAIM CHECK ────────────────────────────────────────
       // The same worked day is cash XOR time in lieu. core/payroll.ts already enforces that once a credit
@@ -4256,6 +4281,41 @@ async function liveOtPlanTx(tx: Tx, employmentId: string, date: string) {
 }
 
 /**
+ * ec30b2e9 (r364) · The approved OT plan for one (employment, date) whose hours HAVE ALREADY LANDED, if
+ * there is one. `liveOtPlanTx` with `applied_at IS NULL` flipped to `IS NOT NULL` — deliberately the same
+ * predicate otherwise, so "is there a plan on this date" is asked ONE way and the two guards cannot drift.
+ *
+ * WHY IT IS NEEDED AT ALL. `liveOtPlanTx` stops a second plan only while the first is APPROVED AND
+ * UNAPPLIED. For a date that is today or past the immediate branch of decideAttendanceCorrection lands the
+ * hours and stamps `applied_at` in the same transaction as the approval, so the first plan stops being
+ * "live" the instant it is approved and the window `liveOtPlanTx` guards is never open at all. From that
+ * moment a second plan was ACCEPTED, and approving it did a bare `update attendance set ot_minutes = …`:
+ * REPLACE, not add, with nothing on any screen saying a figure had been displaced.
+ *
+ * ONLY A PLAN COUNTS HERE (`proposed_check_in IS NULL`), which is the boundary of this item: what is
+ * refused is a second PLAN on a counted day. A clock correction carrying OT is the sanctioned way to
+ * change a counted day and is never refused by this — see the caller.
+ */
+async function countedOtPlanTx(tx: Tx, employmentId: string, date: string) {
+  const [row] = await tx
+    .select()
+    .from(attendanceCorrection)
+    .where(
+      and(
+        eq(attendanceCorrection.employmentId, employmentId),
+        eq(attendanceCorrection.attendanceDate, date),
+        eq(attendanceCorrection.status, 'approved'),
+        isNotNull(attendanceCorrection.appliedAt),
+        isNull(attendanceCorrection.proposedCheckIn),
+        sql`${attendanceCorrection.requestedOtMinutes} is not null`,
+      ),
+    )
+    .orderBy(desc(attendanceCorrection.createdAt))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
  * APPLY an approved OT plan to the attendance day that has just been written. Called from every path that
  * finalises a day's figures: clock-out, the terminal punch import, and an approved clock correction.
  *
@@ -4273,6 +4333,11 @@ async function liveOtPlanTx(tx: Tx, employmentId: string, date: string) {
  *      approved_ot_minutes is written back. This is NOT a second landing: nothing is re-resolved, no event
  *      is appended and no second replacement-leave credit is minted.
  *
+ *      ec30b2e9 (r364) — WHOSE approved_ot_minutes. The LATEST APPROVED OT-BEARING DECISION for the day, by
+ *      DECISION TIME, and a clock correction carrying an OT figure IS one. It used to be "the newest OT-only
+ *      plan by creation time", which meant a correction that revised a counted day's overtime was reverted
+ *      to the plan's figure by the next punch. See the long note at the query.
+ *
  * Returns the OT minutes now standing on the day, or null when there was no plan to apply.
  */
 async function applyApprovedOtPlanTx(
@@ -4287,8 +4352,24 @@ async function applyApprovedOtPlanTx(
     systemOtMinutes: number | null;
   },
 ): Promise<number | null> {
-  // The plan for this day, landed or not. Cancelled and rejected rows are excluded; a clock correction that
-  // merely carries OT is not a plan (proposed_check_in is set) and is not eligible either.
+  // ── ec30b2e9 (r364) · WHICH DECISION THIS RE-ASSERTS, AND WHY THE OLD ANSWER WAS WRONG ──────────────
+  //
+  // THE OLD COMMENT HERE SAID: "The plan for this day, landed or not. Cancelled and rejected rows are
+  // excluded; a clock correction that merely carries OT is not a plan (proposed_check_in is set) and is not
+  // eligible either." — and the query said the same, filtering `proposed_check_in IS NULL` and ordering by
+  // `created_at desc`. That is true of LANDING and FALSE of RE-ASSERTION, and the two share one query.
+  //
+  // What it cost: an approved CLOCK CORRECTION that revised a counted day's overtime was invisible here, so
+  // the next clock-out or terminal re-import re-asserted the OLDER PLAN's figure and the correction's number
+  // silently went back. The correction is the route the new request-time refusal points employees at, so
+  // that defect is what made the remedy unsafe — it is fixed with it.
+  //
+  // THE RULE NOW: the decision that stands on a day is the LATEST APPROVED DECISION CARRYING AN OT FIGURE,
+  // ordered by DECISION TIME (`decided_at`), and a clock correction is such a decision. `created_at` is the
+  // wrong order for this: it says when the employee typed, not when a human agreed, and a correction filed
+  // before a plan can be decided after it.
+  //
+  // LANDING still belongs to a PLAN ONLY — see the guard below the applied_at branch.
   const [plan] = await tx
     .select()
     .from(attendanceCorrection)
@@ -4297,11 +4378,13 @@ async function applyApprovedOtPlanTx(
         eq(attendanceCorrection.employmentId, p.employmentId),
         eq(attendanceCorrection.attendanceDate, p.date),
         eq(attendanceCorrection.status, 'approved'),
-        isNull(attendanceCorrection.proposedCheckIn),
         sql`${attendanceCorrection.requestedOtMinutes} is not null`,
       ),
     )
-    .orderBy(desc(attendanceCorrection.createdAt))
+    // decided_at is non-null on every approved row (decideAttendanceCorrection stamps it in the same
+    // statement as the status), and created_at breaks a tie so the order is total rather than arbitrary —
+    // "pin invariants, not positions" cuts both ways when a query feeds an assertion.
+    .orderBy(desc(attendanceCorrection.decidedAt), desc(attendanceCorrection.createdAt))
     .limit(1);
   if (!plan) return null;
 
@@ -4323,6 +4406,12 @@ async function applyApprovedOtPlanTx(
   }
 
   // ── 1 · LANDING ─────────────────────────────────────────────────────────────────────────────────────
+  // ONLY A PLAN CAN LAND. The selection above deliberately no longer filters out clock corrections — that
+  // is what fixed re-assertion — so the filter the LANDING branch needs is restated here, where it is the
+  // rule rather than an accident of one shared query. Unreachable today by construction (every approved
+  // clock correction carrying OT is stamped applied_at in the same transaction as its approval, so it can
+  // only arrive at the branch above), and it is here so that stops being a thing a reader has to re-derive.
+  if (plan.proposedCheckIn != null) return null;
   // Claim first. The conditional WHERE is the concurrency guard AND the "at most once" guarantee: if
   // another writer got here first, no row comes back and we do nothing at all (their figure stands).
   const claimed = await tx
@@ -4385,6 +4474,38 @@ async function applyApprovedOtPlanTx(
   });
 
   return otMinutes;
+}
+
+/**
+ * ec30b2e9 (r364) · THE TWO REFUSALS OF A SECOND OVERTIME REQUEST FOR ONE DATE, AND WHY THEY ARE TYPED.
+ *
+ * They must read DIFFERENTLY, because the way out of each one is different:
+ *
+ *  · OvertimePlanAlreadyApprovedError — an approved plan is still waiting for the day. Nothing has reached
+ *    payroll, so the way out is to WITHDRAW it (cancelPlannedOvertime allows exactly that state).
+ *  · OvertimeAlreadyCountedError — the hours are already ON the attendance day and in what payroll reads.
+ *    Withdrawal is refused at that point by design, so the way out is an attendance CORRECTION that also
+ *    states the day's clock times: the route that records what the figure was and what it became.
+ *
+ * TYPED, not raw English `throw`s, because app/me/actions.ts surfaces `Error.message` straight into
+ * `?error=` and ErrorBanner prints it verbatim — so a raw throw is English for a Tamil, Thai, Malay,
+ * Vietnamese or Chinese employee. Each carries `date` so the action can interpolate it into the
+ * localized sentence (`me.otPlanApprovedNotCounted` / `me.otAlreadyCountedForDate`).
+ */
+export class OvertimePlanAlreadyApprovedError extends Error {
+  constructor(readonly date: string) {
+    super(`You already have an approved overtime plan for ${date}. Withdraw it first if it is wrong.`);
+    this.name = 'OvertimePlanAlreadyApprovedError';
+  }
+}
+
+export class OvertimeAlreadyCountedError extends Error {
+  constructor(readonly date: string) {
+    super(
+      `Overtime for ${date} has already been approved and counted on that day. A second overtime request cannot replace it — file an attendance request with that day's clock-in and clock-out times instead.`,
+    );
+    this.name = 'OvertimeAlreadyCountedError';
+  }
 }
 
 /** Raised when a withdrawal is not allowed — the caller is not the subject, or the plan is in a state that

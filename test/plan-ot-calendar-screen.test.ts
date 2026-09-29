@@ -232,6 +232,27 @@ describe('E · the two right-hand panels, and what happened to their keys', () =
     expect(APPLY).toContain('monthPlans.filter((p) => p.attendanceDate === date)');
   });
 
+  it('ec30b2e9 (r364) — the refusal the ErrorBanner prints comes from the CATALOGUE, in two dated flavours', () => {
+    // THE CLAIM THIS REPLACES, which stood in a comment on APPLY and was half wrong:
+    //   "The key me.otAlreadyApprovedForDate is kept for that path".
+    // It was not kept for that path — it names no date, and the action needs one. There are now TWO
+    // refusals, they read differently because the way out of each differs, and both are resolved in
+    // app/me/actions.ts where the typed error is caught. me.otAlreadyApprovedForDate is RETIRED, not
+    // deleted (asserted above), and this screen must still never render it.
+    for (const key of ['otPlanApprovedNotCounted', 'otAlreadyCountedForDate']) {
+      keyEverywhere(key);
+      for (const l of LOCALES) {
+        expect(MESSAGES[l].me[key], `me.${key} must interpolate the date in ${l}.json`).toContain('{date}');
+      }
+    }
+    // Statically resolvable keys — a computed t(`me.${x}`) is invisible to test/i18n-coverage.test.ts.
+    expect(code(ACTIONS)).toContain("t('otPlanApprovedNotCounted', { date: e.date })");
+    expect(code(ACTIONS)).toContain("t('otAlreadyCountedForDate', { date: e.date })");
+    // And the localizer runs BEFORE the one refusal redirect rather than adding a second one — the
+    // redirect count and the date-carrying rule are pinned by §F below.
+    expect(code(ACTIONS)).toContain('const msg = await localizeOvertimeRequestError(e);');
+  });
+
   it('the footer no longer promises the superior is told "the moment" it arrives', () => {
     // Notifications materialise when dispatchNotifications runs, which is triggered on an ADMIN page
     // load — so "the moment it arrives" is optimistic. The replacement sentence says "when it arrives".

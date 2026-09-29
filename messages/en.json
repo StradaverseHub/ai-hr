@@ -3431,6 +3431,8 @@
     "otWarnNotBlockHeading": "Both of these warn you. Neither of them stops you.",
     "otWarnNotBlockBody": "Submit stays available, so a genuine month-end can still be filed. Your superior sees the kind of day on their side too, and a marker when a plan is a long one.",
     "otAlreadyApprovedForDate": "You already have an approved overtime plan for this date. Two plans for one date cannot both stand, so a second cannot be filed. Withdraw the first if it is wrong.",
+    "otPlanApprovedNotCounted": "You already have an approved overtime plan for {date}. Two plans for one date cannot both stand, so a second cannot be filed. Withdraw the first if it is wrong.",
+    "otAlreadyCountedForDate": "Overtime for {date} has already been approved and counted on that day. A second overtime request cannot replace it. To change the hours, file an attendance request that also states that day's clock-in and clock-out times — that route records what the figure was before and what it became.",
     "overtimeMovedHeading": "Overtime — moved to Self Overtime.",
     "overtimeMovedBody": "Overtime asked for before the day and overtime claimed after it both live on Self Overtime, so the two lists cannot drift apart.",
     "otNothingSavedUntilSubmit": "Nothing is saved until you submit. Your superior is told the moment it arrives, and you are told when it is approved or rejected.",

@@ -60,6 +60,11 @@ import {
   myOvertimePlans,
   otMonthToDateMinutes,
   OT_CAP_MINUTES,
+  // ec30b2e9 (r364) — the two typed refusals of a second overtime figure for one date. Asserted by CLASS,
+  // not only by message text: the action layer branches on the class to pick which localized sentence the
+  // employee reads, so a test that only matched the English words would pass with the wrong branch wired.
+  OvertimeAlreadyCountedError,
+  OvertimePlanAlreadyApprovedError,
   requestAttendanceCorrection,
   resolveApprovedOt,
   setAttendancePolicy,
@@ -79,6 +84,10 @@ const FUTURE_2 = '2027-06-03';
 const FUTURE_REST = '2027-06-05';
 const FUTURE_HOLIDAY = '2027-06-04';
 const PAST = '2025-06-04';
+// ec30b2e9 (r364) — the Saturday of the same past week, made an explicit rostered rest day where the
+// replacement-leave case needs one. PAST is a Wednesday; 2025-06-07 is the Saturday, derived once here
+// rather than computed from the clock (the deferral discriminator is the real calendar day, §header).
+const PAST_REST = '2025-06-07';
 
 const uniqEmail = () => `planot_${Math.random().toString(36).slice(2)}@t.local`;
 
@@ -478,6 +487,206 @@ describe('4 · one approved plan per date', () => {
     await expect(
       requestAttendanceCorrection(a, { employmentId, date: FUTURE, checkIn: '09:00', reason: 'forgot' }),
     ).resolves.toBeTruthy();
+  });
+
+  // ── ec30b2e9 (r364) · THE WINDOW THE FOUR CASES ABOVE DID NOT COVER ────────────────────────────────
+  //
+  // THE EXISTING FIRST CASE IN THIS BLOCK PINS "approved, unapplied" AND NOTHING ELSE, and that state is
+  // reachable only for a FUTURE date. For a date that is today or past — which is every date on which a
+  // first plan can already have LANDED — approval writes the hours and stamps applied_at in the same
+  // transaction, so the plan is never "approved and unapplied" and `liveOtPlanTx` never sees it. A second
+  // plan was therefore accepted, and approving it ran a bare `update attendance set ot_minutes = …`:
+  // REPLACE, not add, at approval time, with nothing on any screen saying a figure had been displaced.
+  //
+  // EVERY ASSERTION BELOW IS A MONEY ASSERTION, so each one first asserts ITS OWN PREMISE — that the day
+  // really does carry a non-zero approved figure. A fixture whose day has no overtime on it makes the
+  // whole block pass whatever the service does.
+  //
+  // (b) IS NOT A COURTESY CASE. It is (a)'s non-vacuity partner: the guard (a) needs sits inside
+  // `if (hasOt)`, and `hasOt` is ALSO true of the clock correction the refusal tells the employee to use.
+  // Without (b), widening the guard to every OT-bearing request would pass (a) and would refuse the remedy
+  // in the same breath as recommending it.
+  describe('once the hours have been COUNTED (r364)', () => {
+    /** A past day worked 09:00→20:00 (engine OT = 120) with a 180-minute plan approved and LANDED on it. */
+    async function countedPastDay() {
+      const { a, employmentId } = await hire();
+      await setAttendancePolicy(a, { ...BASE_POLICY(b.companyId), otApprovalCalculation: 'requested' });
+      await checkIn(a, { employmentId, date: PAST, time: '09:00' });
+      await checkOut(a, { employmentId, date: PAST, time: '20:00' });
+      const { correctionId } = await filePlan(a, employmentId, PAST, 180, {
+        plannedStartTime: null,
+        plannedEndTime: null,
+      });
+      await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+      // THE PREMISE, ASSERTED IN ITS OWN RIGHT — not as a by-product of the case under test.
+      expect((await attendanceRow(employmentId, PAST)).otMinutes, 'the first plan must really have counted').toBe(180);
+      expect(
+        (await correctionRow(correctionId)).appliedAt,
+        '"counted" means applied_at is stamped — without it this fixture is testing the wrong window',
+      ).not.toBeNull();
+      return { a, employmentId, planId: correctionId };
+    }
+
+    it('(a) REFUSES a second OT-ONLY plan on a date whose overtime has already been counted', async () => {
+      const { a, employmentId } = await countedPastDay();
+
+      await expect(
+        filePlan(a, employmentId, PAST, 30, { plannedStartTime: null, plannedEndTime: null }),
+      ).rejects.toThrow(OvertimeAlreadyCountedError);
+      // The sentence has to say which day and has to point at the correction route, or the refusal is a
+      // dead end. The employee reads a LOCALIZED version of this (me.otAlreadyCountedForDate); the raw
+      // message is what any other caller sees.
+      await expect(
+        filePlan(a, employmentId, PAST, 30, { plannedStartTime: null, plannedEndTime: null }),
+      ).rejects.toThrow(new RegExp(`${PAST}.*already been approved and counted`));
+
+      // Refused AT THE DOOR: no second row, and the counted figure did not move.
+      expect((await attendanceRow(employmentId, PAST)).otMinutes).toBe(180);
+      const rows = await owner.db
+        .select({ id: schema.attendanceCorrection.id })
+        .from(schema.attendanceCorrection)
+        .where(
+          and(
+            eq(schema.attendanceCorrection.employmentId, employmentId),
+            eq(schema.attendanceCorrection.attendanceDate, PAST),
+          ),
+        );
+      expect(rows.length, 'a refused request writes nothing').toBe(1);
+    });
+
+    it('(b) *** but a CLOCK CORRECTION carrying overtime is STILL ACCEPTED on that same counted date ***', async () => {
+      // ⚠️ (a)'s NON-VACUITY PARTNER. If this one ever goes red the refusal message has become a lie: it
+      // recommends exactly this route. The distinguishing fact is the proposed clock-in, which is why the
+      // service tests `checkIn == null` and not `hasOt`.
+      const { a, employmentId } = await countedPastDay();
+
+      await expect(
+        requestAttendanceCorrection(a, {
+          employmentId,
+          date: PAST,
+          checkIn: '09:00',
+          checkOut: '21:00',
+          requestedOtMinutes: 300,
+          reason: 'Stayed later than the plan said; correcting the punches and the hours together',
+        }),
+        'the correction route the refusal points at must stay open on a counted date',
+      ).resolves.toBeTruthy();
+
+      // And a PLAIN clock fix carrying no overtime at all is untouched by any of this.
+      await expect(
+        requestAttendanceCorrection(a, { employmentId, date: FUTURE, checkIn: '09:00', reason: 'forgot' }),
+      ).resolves.toBeTruthy();
+    });
+
+    it("(c) an approved correction's overtime survives a later clock-out — it is not reverted to the plan's", async () => {
+      // THE SECOND DEFECT, and the one that made (b) unsafe. applyApprovedOtPlanTx re-asserts a day's
+      // approved overtime after any re-derivation (a second clock-out, a terminal re-import). Its selection
+      // used to exclude rows with a proposed clock-in and order by created_at, so a CORRECTION that revised
+      // a counted day was invisible to it and the next punch put the OLDER PLAN's figure back.
+      //
+      // THREE DISTINCT NUMBERS, deliberately: 180 is the plan's (what the defect produces), 240 is what the
+      // engine derives from 09:00→22:00, and 300 is the correction's (the only right answer). A fixture in
+      // which any two of them coincided would pass either way.
+      const { a, employmentId } = await countedPastDay();
+      const { correctionId } = await requestAttendanceCorrection(a, {
+        employmentId,
+        date: PAST,
+        checkIn: '09:00',
+        checkOut: '21:00',
+        requestedOtMinutes: 300,
+        reason: 'Stayed later than the plan said',
+      });
+      await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+      expect(
+        (await attendanceRow(employmentId, PAST)).otMinutes,
+        "the correction's figure must be on the day before anything can revert it",
+      ).toBe(300);
+
+      // The re-derivation: one more clock-out of the same day.
+      await checkOut(a, { employmentId, date: PAST, time: '22:00' });
+
+      expect(
+        (await attendanceRow(employmentId, PAST)).otMinutes,
+        'the LATEST approved decision about the day stands — 180 here is the older plan winning',
+      ).toBe(300);
+      // The plan is not re-landed either: a re-assertion resolves nothing and stamps nothing.
+      expect((await correctionRow(correctionId)).approvedOtMinutes).toBe(300);
+    });
+
+    it('(d) the replacement-leave register still holds EXACTLY ONE credit for the date', async () => {
+      // On a rest day the first approval also MINTS a replacement-leave day, and toil_accrual_emp_date_uq
+      // stops a second one for the same date. That index is why the business note on the item is true: when
+      // a second figure replaced the hours, the credit silently kept the FIRST figure's size. Refusing the
+      // second plan removes the disagreement; the index is NOT relaxed, here or anywhere.
+      const { employmentId } = await hire();
+      await setModule(b.tenantId, 'toil', 'active');
+      const a = await entitledCtx(b);
+      await setAttendancePolicy(a, { ...BASE_POLICY(b.companyId), otApprovalCalculation: 'requested' });
+      await setToilPolicy(a, toilPolicyInput(b.companyId));
+      await setRestDay(a, { employmentId, shiftDate: PAST_REST });
+      await checkIn(a, { employmentId, date: PAST_REST, time: '08:00' });
+      await checkOut(a, { employmentId, date: PAST_REST, time: '17:00' });
+
+      const first = await filePlan(a, employmentId, PAST_REST, 240, {
+        plannedStartTime: null,
+        plannedEndTime: null,
+        reason: 'Weekend cut-over cover',
+      });
+      await decideAttendanceCorrection(a, { correctionId: first.correctionId, decision: 'approved' });
+      // THE PREMISE: a non-zero counted figure AND a credit that actually exists. 240 approved minutes over
+      // a 480-minute standard day is 0.5 of a day on the hours_worked basis.
+      expect((await attendanceRow(employmentId, PAST_REST)).otMinutes).toBe(240);
+      expect(await replacementBalance(employmentId)).toBe(0.5);
+
+      // A second PLAN cannot be filed at all now, so it can neither move the hours nor be blamed for the
+      // credit standing still.
+      await expect(
+        filePlan(a, employmentId, PAST_REST, 480, { plannedStartTime: null, plannedEndTime: null }),
+      ).rejects.toThrow(OvertimeAlreadyCountedError);
+
+      // The route that IS open moves the hours — and the register still holds one credit, at the first
+      // figure's size, because the unique index refuses a second. That disagreement is NAMED on the item
+      // rather than fixed here: correcting it changes what a credit is worth, which is a separate decision.
+      const { correctionId } = await requestAttendanceCorrection(a, {
+        employmentId,
+        date: PAST_REST,
+        checkIn: '08:00',
+        checkOut: '20:00',
+        requestedOtMinutes: 480,
+        reason: 'Worked longer than the plan; correcting punches and hours together',
+      });
+      await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+      expect((await attendanceRow(employmentId, PAST_REST)).otMinutes).toBe(480);
+
+      const credits = await owner.db
+        .select({ id: schema.toilAccrual.id, days: schema.toilAccrual.daysCredited })
+        .from(schema.toilAccrual)
+        .where(
+          and(
+            eq(schema.toilAccrual.employmentId, employmentId),
+            eq(schema.toilAccrual.workedDate, PAST_REST),
+          ),
+        );
+      expect(credits.length, 'exactly one replacement-leave credit for the date').toBe(1);
+      expect(Number(credits[0].days)).toBe(0.5);
+      expect(await replacementBalance(employmentId)).toBe(0.5);
+    });
+
+    it('a FUTURE-dated plan is still refused by the UNAPPLIED guard, with its own distinct error', async () => {
+      // The two refusals are not interchangeable: one says "withdraw it", the other says "that is a
+      // correction". Withdrawal is possible in exactly the first state and refused in the second, so a
+      // screen that showed the wrong one would send the employee somewhere that cannot help them.
+      const { a, employmentId } = await hire();
+      const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
+      await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+      await expect(filePlan(a, employmentId, FUTURE, 60)).rejects.toThrow(OvertimePlanAlreadyApprovedError);
+      await expect(filePlan(a, employmentId, FUTURE, 60)).rejects.toThrow(/Withdraw it first/i);
+      const err = await filePlan(a, employmentId, FUTURE, 60).catch((e: unknown) => e);
+      expect(
+        err instanceof OvertimeAlreadyCountedError,
+        'the two refusals must not collapse into one — they send the employee to different places',
+      ).toBe(false);
+    });
   });
 });
 

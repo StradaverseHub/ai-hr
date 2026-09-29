@@ -57,6 +57,10 @@ import {
   OutsideGeofenceError,
   DeviceNotRegisteredError,
   OvertimePlanWithdrawNotAllowedError,
+  // ec30b2e9 (r364) — the two refusals of a second overtime request for one date. Typed so this file can
+  // print them in the employee's own language; see localizeOvertimeRequestError below.
+  OvertimePlanAlreadyApprovedError,
+  OvertimeAlreadyCountedError,
 } from '@/packs/attendance/service';
 import {
   ATTENDANCE_REQUEST_KINDS,
@@ -636,6 +640,33 @@ function assertAttendanceAttachmentAcceptable(file: File) {
 // actions answer to it rather than to the Attendance Request screen the Overtime card moved off.
 const PLAN_OT_PAGE = '/attendance/plan-ot';
 
+/**
+ * ec30b2e9 (r364) · THE TWO "one overtime figure per date" REFUSALS, IN THE EMPLOYEE'S OWN LANGUAGE.
+ *
+ * This whole file hands `Error.message` to `?error=` and ErrorBanner prints it verbatim, so every refusal
+ * the service raises reaches a Tamil, Thai, Malay, Vietnamese or Chinese employee in English. That gap is
+ * pre-existing and wide, and it is NOT fixed wholesale here (the same note sits on `?toast=`). What is
+ * fixed is the two refusals this round is about — one of them brand new — because shipping a NEW English
+ * throw on a screen that has six catalogues is how the gap gets wider.
+ *
+ * `me.otAlreadyApprovedForDate` is the key that used to be intended for this and is RETIRED rather than
+ * deleted: it named no date, and app/attendance/plan-ot/apply/page.tsx is guarded against ever rendering
+ * it again (it once told brand-new employees they had a plan to withdraw). The two keys used here carry
+ * `{date}`, which is the whole point of showing the sentence at all.
+ *
+ * Anything else falls through to its raw message, exactly as before — the shape localizeClockError and
+ * localizeLeaveError already use in this file.
+ */
+async function localizeOvertimeRequestError(e: unknown): Promise<string> {
+  if (e instanceof OvertimePlanAlreadyApprovedError || e instanceof OvertimeAlreadyCountedError) {
+    const t = await getTranslations('me');
+    return e instanceof OvertimeAlreadyCountedError
+      ? t('otAlreadyCountedForDate', { date: e.date })
+      : t('otPlanApprovedNotCounted', { date: e.date });
+  }
+  return (e as Error).message;
+}
+
 // R45 3707cba9 — "Overtime Request": OT-only, reusing the proven correction engine (requestedOtMinutes set,
 // no punch edits — no new schema). Date + overtime hours + mandatory reason. Planned (before the shift) or
 // actual (after) is up to the employee; the approver compares Actual (system) vs Approved on their screen.
@@ -736,7 +767,14 @@ export async function myRequestOvertime(formData: FormData) {
   } catch (e) {
     // Back to the FORM, not the list: a refusal (a duplicate approved plan for the date, a bad time window)
     // is something the employee has to fix in the fields they just filled in.
-    redirect(`${PLAN_OT_PAGE}/apply?date=${encodeURIComponent(date)}&error=${encodeURIComponent((e as Error).message)}`);
+    //
+    // r364 — STILL EXACTLY ONE REFUSAL REDIRECT HERE. The localizer runs BEFORE it rather than beside it,
+    // deliberately: test/plan-ot-calendar-screen.test.ts counts the redirects out of this action (three:
+    // bad figure, refusal, success) and asserts every one of them carries the date. A second refusal
+    // redirect for the localized case would have been the easy shape and would have broken that guard —
+    // and the guard is right, because a refusal that loses the date resets the form to tomorrow.
+    const msg = await localizeOvertimeRequestError(e);
+    redirect(`${PLAN_OT_PAGE}/apply?date=${encodeURIComponent(date)}&error=${encodeURIComponent(msg)}`);
   }
   revalidatePath(PLAN_OT_PAGE);
   revalidatePath(`${PLAN_OT_PAGE}/apply`);

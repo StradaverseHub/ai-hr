@@ -4082,9 +4082,16 @@ export const attendanceCorrection = pgTable(
     uniqueIndex('attendance_correction_one_pending_uq')
       .on(t.employmentId, t.attendanceDate)
       .where(sql`status = 'pending'`),
-    // 1e9145d4 (migration 0424) — the application step's lookup: "the approved, not-yet-applied OT plan for
-    // this employee on this day", run on every clock-out and every imported day. Partial, so it indexes the
-    // handful of live plans rather than every correction ever decided.
+    // 1e9145d4 (migration 0424) — "the approved, not-yet-applied OT plan for this employee on this day".
+    // Partial, so it indexes the handful of live plans rather than every correction ever decided.
+    //
+    // ec30b2e9 (r364) — IT USED TO SAY "the application step's lookup … run on every clock-out and every
+    // imported day", AND THAT NAMED THE WRONG CALLER. applyApprovedOtPlanTx has never filtered on
+    // applied_at (it decides LAND vs RE-ASSERT from the row it reads), and after r364 it does not filter on
+    // proposed_check_in either — it orders by decided_at over every approved OT-bearing decision for the day
+    // and rides attendance_correction_employment_idx above. What this partial index actually serves is
+    // liveOtPlanTx, the REQUEST-TIME guard. Recorded rather than corrected silently, because "nothing calls
+    // the query this index was built for" is how an index gets dropped and a guard gets slow.
     index('attendance_correction_unapplied_plan_idx')
       .on(t.employmentId, t.attendanceDate)
       .where(sql`status = 'approved' AND applied_at IS NULL AND requested_ot_minutes IS NOT NULL`),

@@ -3431,6 +3431,8 @@
     "otWarnNotBlockHeading": "Cả hai chỉ cảnh báo. Không cái nào chặn bạn.",
     "otWarnNotBlockBody": "Nút gửi vẫn dùng được, nên công việc cuối tháng thật sự vẫn khai được. Cấp trên của bạn cũng thấy loại ngày và dấu hiệu khi kế hoạch dài.",
     "otAlreadyApprovedForDate": "Bạn đã có một kế hoạch làm thêm được duyệt cho ngày này. Hai kế hoạch cho cùng một ngày không thể cùng tồn tại, nên không thể gửi cái thứ hai. Hãy rút lại cái đầu nếu nó sai.",
+    "otPlanApprovedNotCounted": "Bạn đã có một kế hoạch làm thêm được duyệt cho {date}. Hai kế hoạch cho cùng một ngày không thể cùng tồn tại, nên không thể gửi cái thứ hai. Hãy rút lại cái đầu nếu nó sai.",
+    "otAlreadyCountedForDate": "Giờ làm thêm cho {date} đã được duyệt và đã được tính vào ngày đó. Một đề nghị làm thêm thứ hai không thể thay thế nó. Để đổi số giờ, hãy gửi đề nghị điều chỉnh chuyên cần có kèm giờ vào và giờ ra của ngày đó — cách đó ghi lại con số trước và con số sau.",
     "overtimeMovedHeading": "Làm thêm giờ — đã chuyển sang Tự đăng ký làm thêm giờ.",
     "overtimeMovedBody": "Giờ làm thêm đề nghị trước ngày và giờ khai sau ngày đều nằm ở Tự đăng ký làm thêm giờ, nên hai danh sách không thể lệch nhau.",
     "otNothingSavedUntilSubmit": "Không có gì được lưu cho đến khi bạn gửi. Cấp trên được báo ngay khi nhận, và bạn được báo khi duyệt hoặc từ chối.",
