@@ -591,9 +591,17 @@ export async function myRequestCorrection(formData: FormData) {
   redirect(`${REQUESTS_PAGE}?section=${section}&toast=Attendance+request+submitted`);
 }
 
-/** 2166ef79 — the employee CANCELS their own pending clock-time request. Overtime is withdrawn from the
+/** 2166ef79 — the employee WITHDRAWS their own pending clock-time request. Overtime is withdrawn from the
  *  Self Overtime list instead (myWithdrawOvertimePlan): approving a plan does not touch a day, approving a
- *  correction rewrites one, so the two states are not the same and the service refuses the cross-over. */
+ *  correction rewrites one, so the two states are not the same and the service refuses the cross-over.
+ *
+ *  r363 — THE TOAST SAYS "withdrawn" NOW, and it is a HARDCODED ENGLISH STRING, not a message key: it is
+ *  handed to the screen through the URL and rendered as-is, so a Tamil or Thai employee reads English here
+ *  whichever word it carries. That gap is PRE-EXISTING and is deliberately not fixed in this wording round
+ *  — every `?toast=` in this file has it. Reported rather than patched, so the fix is a decision somebody
+ *  takes for all of them at once rather than one string quietly becoming the odd one out.
+ *  The function's NAME does not move: the stored status is still `cancelled` and renaming the action, the
+ *  service and the control is a separate decision (test/attendance-screens-layout.test.ts case D). */
 export async function myCancelAttendanceRequest(formData: FormData) {
   const { s } = await resolveMe();
   try {
@@ -602,7 +610,7 @@ export async function myCancelAttendanceRequest(formData: FormData) {
     redirect(`${REQUEST_STATUS_PAGE}?error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath(REQUEST_STATUS_PAGE);
-  redirect(`${REQUEST_STATUS_PAGE}?toast=Attendance+request+cancelled`);
+  redirect(`${REQUEST_STATUS_PAGE}?toast=Attendance+request+withdrawn`);
 }
 
 /** The section the form was posted from, shape-checked. Anything unrecognised falls back to the section a

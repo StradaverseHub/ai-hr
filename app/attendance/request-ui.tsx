@@ -7,8 +7,15 @@ import type { getTranslations } from 'next-intl/server';
  * Status and the Attendance Irregularity screen that keeps the exceptions). Three of the four render a
  * status pill, and two of them render a request's type or reason category. Left in
  * app/attendance/requests/page.tsx these would have been copied three times — and the FIRST thing a copy
- * does is drift: `cancelled` reading "Cancelled" on one screen and "Withdrawn" on another for the same
- * row is exactly the confusion the wording below exists to prevent.
+ * does is drift.
+ *
+ * r363 — THAT SENTENCE USED TO CONTINUE: "`cancelled` reading 'Cancelled' on one screen and 'Withdrawn'
+ * on another for the same row is exactly the confusion the wording below exists to prevent." Right about
+ * the danger, wrong about the cure. The wording below did not prevent that confusion, it WAS that
+ * confusion: the split it carried put both words on ONE screen — My Attendance Request Status, whose
+ * filter chip read "Cancelled" a few centimetres above an overtime row reading "Withdrawn" — which is
+ * exactly what the reporter then saw. One module is still the answer; one WORD is now what it holds.
+ * See `statusLabel`.
  *
  * MOVED, NOT REWRITTEN. Every value here is lifted verbatim from the single screen that carried them
  * (2166ef79 / 1e9145d4). Same colours, same labels, same overtime-vs-correction split.
@@ -20,12 +27,35 @@ import type { getTranslations } from 'next-intl/server';
 export type T = Awaited<ReturnType<typeof getTranslations<'me'>>>;
 
 /**
- * `cancelled` is the STORED status; on an overtime plan the employee WITHDREW it, and "Cancelled" would
+ * `cancelled` is the STORED status, and on every screen this module serves it reads "Withdrawn" —
+ * overtime plan and clock correction alike.
+ *
+ * r363 — THE SPLIT THIS COMMENT USED TO DEFEND IS RETIRED, AND ITS OWN PREMISE IS WHY. It read:
+ * "`cancelled` is the STORED status; on an overtime plan the employee WITHDREW it, and 'Cancelled' would
  * read as somebody else having called it off. That wording shipped with Plan OT and has survived two
- * relocations — it must survive this one.
+ * relocations — it must survive this one." The middle sentence is an argument for unifying, not for
+ * splitting: nobody else called a CORRECTION off either. Exactly two writers put this value on
+ * `attendance_correction` — `cancelPlannedOvertime` and `cancelOwnAttendanceCorrection`
+ * (core/attendance.ts) — and both refuse anybody but the subject, in code rather than by RLS. So on
+ * these screens `cancelled` has one meaning: the employee took their own request back.
+ *
+ * WHAT IS NOT MERGED, AND MUST NOT BE. The STATE rules stay genuinely different, and they live in the
+ * service, not here: an overtime plan may be withdrawn after approval while the hours have not landed;
+ * a correction only while it is still pending. This round changes the word, never the rule.
+ *
+ * `isOvertime` IS NOW READ BY NO BRANCH, and that is stated rather than hidden. It is kept because two
+ * call sites pin the call shape (test/attendance-screens-layout.test.ts case A2) and dropping a
+ * parameter is a decision of its own. Note the cost: A2 exists because a verifier mutated that argument
+ * and nothing failed — after this round mutating it SHOULD have no effect, so A2 is a shape check, not a
+ * behaviour test. The behaviour A2 was reaching for is pinned instead by the equality case beside it,
+ * which compares the two kinds' cancelled labels against EACH OTHER. RECOMMENDED FOR A LATER ROUND, not
+ * taken here: drop the parameter and retire A2 in favour of that case.
  */
 export function statusLabel(status: string, t: T, isOvertime: boolean): string {
-  if (status === 'cancelled') return isOvertime ? t('otStatusWithdrawn') : t('leaveStatus.cancelled');
+  // Deliberately unread — see above. The statement is here so "nothing reads it" is visible in the CODE
+  // and not only in a comment, and so the unused-argument lint does not have to be silenced.
+  void isOvertime;
+  if (status === 'cancelled') return t('otStatusWithdrawn');
   if (status === 'approved') return t('leaveStatus.approved');
   if (status === 'rejected') return t('leaveStatus.rejected');
   return t('leaveStatus.pending');
@@ -63,6 +93,11 @@ const REQUEST_STATUS: Record<RequestStatus, string> = {
  * characters; the Tamil `leaveStatus.approved` is 20 and `otStatusWithdrawn` is 21. Without these the
  * chip is a flex item that shrinks and wraps its own label inside its rounded background — the one place
  * on this screen a long locale would visibly break, and the one an English-only check cannot see.
+ *
+ * r363 WIDENED WHICH ROWS CARRY THE LONGEST LABEL: `cancelled` resolves to `otStatusWithdrawn` for a
+ * clock CORRECTION too now, not only for an overtime plan, so the 21-character Tamil word can appear on
+ * any taken-back row on this list. Nothing here changes — the classes were already sized for it — but a
+ * phone-width check of this chip must be run against a cancelled correction row, not only an overtime one.
  */
 export function Pill({ status, label }: { status: string; label: string }) {
   return (

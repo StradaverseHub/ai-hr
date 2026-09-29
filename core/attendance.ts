@@ -4567,7 +4567,13 @@ export function myAttendanceCorrections(
 }
 
 /**
- * 2166ef79 — the employee CANCELS their own clock-time attendance request.
+ * 2166ef79 — the employee WITHDRAWS their own clock-time attendance request.
+ *
+ * r363 — THAT FIRST LINE USED TO READ "the employee CANCELS their own clock-time attendance request",
+ * and only the VERB moved. The screen calls this act "Withdraw" for a correction as well as for an
+ * overtime plan now, because only the subject can ever reach this state (see `assertOwnCorrectionTx`
+ * below and `statusLabel` in app/attendance/request-ui.tsx), and the refusal below follows the screen.
+ * The NAMES are untouched: the stored status is still `cancelled` and so is this function.
  *
  * WHY THIS IS NOT cancelPlannedOvertime. The subject rule is identical and is shared below, but the STATE
  * rule is genuinely different and must not be blurred into one. An overtime plan may be withdrawn after
@@ -4595,7 +4601,7 @@ export async function cancelOwnAttendanceCorrection(
       throw new Error('This is an overtime plan — withdraw it from the Self Overtime list.');
     }
     if (req.status !== 'pending') {
-      throw new Error(`This request has already been ${req.status}, so it can no longer be cancelled.`);
+      throw new Error(`This request has already been ${req.status}, so it can no longer be withdrawn.`);
     }
     await tx
       .update(attendanceCorrection)

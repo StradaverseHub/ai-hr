@@ -49,8 +49,15 @@ import { KIND_LABEL, Pill, REQUEST_STATUSES, askedFor, statusLabel } from '../re
  *
  * ONE DEFINITION OF THE CANCEL RULE (`canCancel` below). Two faces drawing the same control is exactly how
  * a state rule ends up written twice and then differing — and this one is a real rule, not styling: an
- * overtime plan is withdrawn from Self Overtime under its own condition (see above), so Cancel appears
- * here only on a NON-overtime request that is still pending.
+ * overtime plan is withdrawn from Self Overtime under its own condition (see above), so the take-back
+ * control appears here only on a NON-overtime request that is still pending.
+ *
+ * r363 — ONE WORD FOR ONE STATE ON THIS SCREEN, AND ONLY THE WORD CHANGED. The reporter read a filter chip
+ * saying "Cancelled" directly above an overtime row saying "Withdrawn". Both kinds of row, the chip and the
+ * take-back button now resolve "Withdrawn" / "Withdraw" — Self Overtime's own words, already translated in
+ * all six catalogues — because only the employee can ever put one of these requests into `cancelled`
+ * (see the comment above `statusLabel` in ../request-ui). The stored value, the URL (`?status=cancelled`),
+ * the reads, the two state rules above and every name in this file are untouched.
  */
 export default async function MyRequestStatusPage({
   searchParams,
@@ -179,7 +186,7 @@ export default async function MyRequestStatusPage({
                       </td>
                       <td className="px-3 py-2.5 text-right">
                         {canCancel(r) ? (
-                          <CancelRequest id={r.id} label={t('maCancelRequest')} on={r.attendanceDate} />
+                          <CancelRequest id={r.id} label={t('otWithdraw')} on={r.attendanceDate} />
                         ) : null}
                       </td>
                     </tr>
@@ -233,7 +240,7 @@ export default async function MyRequestStatusPage({
                   </div>
                   {canCancel(r) ? (
                     <div className="pt-1">
-                      <CancelRequest id={r.id} label={t('maCancelRequest')} on={r.attendanceDate} />
+                      <CancelRequest id={r.id} label={t('otWithdraw')} on={r.attendanceDate} />
                     </div>
                   ) : null}
                 </li>
@@ -284,18 +291,27 @@ const submittedOn = (r: RequestRow) => r.createdAt.toISOString().slice(0, 10);
 const kindKey = (r: RequestRow) => KIND_LABEL[r.requestKind ?? (isOvertime(r) ? 'self_overtime' : 'other')];
 
 /**
- * Cancel, as a BUTTON — the module's standard small outline button (the one every other My Attendance
- * screen submits with), not the bare underlined word it used to be. Still the same server-action form:
- * only the styling changed, and the decision to draw it at all stays with `canCancel`.
+ * The take-back control, as a BUTTON — the module's standard small outline button (the one every other
+ * My Attendance screen submits with), not the bare underlined word it used to be. Still the same
+ * server-action form, and the decision to draw it at all still stays with `canCancel`.
+ *
+ * r363 — THE WORD ON IT IS `me.otWithdraw`, WHICH IS SELF OVERTIME'S. It used to be `me.maCancelRequest`
+ * ("Cancel"), and the reporter read two words for one act on one screen. The KEY is what matters here,
+ * not the English: Self Overtime's withdraw control resolves the same key, so the two screens cannot
+ * drift into different words again without someone editing both. `maCancelRequest` is retired, not
+ * deleted — it stays in all six catalogues and is simply no longer rendered.
+ *
+ * THE NAMES ARE DELIBERATELY NOT SWEPT. `CancelRequest`, `canCancel` and `myCancelAttendanceRequest`
+ * keep their names: the stored status is still `cancelled`, renaming them is a separate decision, and
+ * test/attendance-screens-layout.test.ts case D pins each of them verbatim.
  */
 function CancelRequest({ id, label, on }: { id: string; label: string; on: string }) {
   return (
     <form action={myCancelAttendanceRequest}>
       <input type="hidden" name="correctionId" value={id} />
       {/* `aria-label` carries the DATE as well as the verb. Every pending row draws this control, so
-          without it a screen reader hears "Cancel, Cancel, Cancel" down the list with nothing to say
-          which request each one takes back. The visible word is unchanged, and the date needs no
-          translation. */}
+          without it a screen reader hears the same one word down the whole list with nothing to say
+          which request each one takes back. The date needs no translation. */}
       <Button type="submit" size="sm" variant="outline" aria-label={`${label} · ${on}`}>
         {label}
       </Button>

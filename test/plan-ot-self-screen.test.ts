@@ -359,10 +359,14 @@ describe('C · the screen: what the approved plan changed, and what it deliberat
       'const STATUS_FILTERS = [null, ...REQUEST_STATUSES] as const',
     );
     expect(LIST, 'and the URL whitelist is that same tuple').toContain('REQUEST_STATUSES.includes(');
-    // ⚠️ `true`, NOT `false`. The overtime flag is the whole naming point the reporter raised: the
-    // sibling screen's chips call statusLabel(f, t, false) and therefore read "Cancelled" beside rows
-    // whose pill reads "Withdrawn". On a screen that is overtime and nothing else, the chip must match
-    // the pill.
+    // ⚠️ `true`, NOT `false` — and r363 CHANGED WHY, so the reason is restated rather than left wrong.
+    // It used to read: "The overtime flag is the whole naming point the reporter raised: the sibling
+    // screen's chips call statusLabel(f, t, false) and therefore read 'Cancelled' beside rows whose pill
+    // reads 'Withdrawn'." That is no longer true of the sibling screen: 4c8aae68 made `cancelled` read
+    // "Withdrawn" for BOTH kinds there, so statusLabel now ignores its third argument entirely and the
+    // sibling's chip reads "Withdrawn" too. This case therefore pins the CALL SHAPE this screen ships,
+    // not a difference between the two screens — and the shape is what a follow-up round that drops the
+    // parameter would have to come here and change deliberately.
     expect(flat(LIST)).toContain('statusLabel(f, t, true)');
     expect(flat(LIST)).toContain('statusLabel(p.status, t, true)');
   });
