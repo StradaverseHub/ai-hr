@@ -348,7 +348,18 @@ describe('r372 — an employer the agency’s own box cannot hold', () => {
       ),
       0,
     );
-    const foot = (g: { runs: PdfRun[] }) => g.runs.filter((r) => r.tt > EA_FORM.officerBox.t0).map((r) => `${r.tt}/${r.x}`);
+    /**
+     * The box's own FURNITURE — its four captions and the Date beside the telephone. Not every run
+     * below `t0`: an employer block that fills only one of the agency's two rules leaves the second
+     * one blank, and a blank rule draws no text, so the two documents legitimately differ by one run
+     * there. What must not differ is where the box and its captions are.
+     */
+    const O = EA_FORM.officerBox;
+    const foot = (g: { runs: PdfRun[] }) =>
+      g.runs
+        .filter((r) => r.tt > O.t0 && (near(r.x, O.captionX) || near(r.x, EA_FORM.dateX)))
+        .map((r) => `${r.tt}/${r.x}/${r.text}`);
+    expect(foot(short).length, 'the box lost its captions').toBe(5);
     expect(foot(long), 'a long address moved the agency’s own rows').toEqual(foot(short));
   });
 });

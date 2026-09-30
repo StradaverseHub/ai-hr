@@ -636,7 +636,11 @@ describe('EA PDF renderer', () => {
     // and the title beside it, so the heading reaches the page as two pieces, not one string.
     expect(printed).toContain(labels.sectionCPensionOther.replace(/^\s*[A-F]\s+/, ''));
     expect(printed, 'the boxed section letter').toContain('C');
-    expect(printed).toContain(labels.pension);
+    // ⚠️ r372 — AND A NUMBERED CAPTION IS TWO PIECES FOR THE SAME REASON THE HEADING IS. The agency
+    // sets the item number in its own column (62.5) and the words in another (80.2), so C.1 reaches
+    // the page as "1." and "Pension", not as "1. Pension". Both halves are asserted.
+    expect(printed).toContain(eaCaptionWords(labels.pension, EA_FORM_NUMBERING.pension));
+    expect(printed, 'C.1’s item number').toContain('1.');
     // r219 — THE FIGURES ARE UNCHANGED; ONLY THE FORMAT MOVED. The C.P.8A prints ONE bold "RM" at the
     // head of its money column and bare figures down it, so an amount in that column no longer carries
     // its own "RM " prefix. The assertion that matters is that the FIGURE is on the document, and it

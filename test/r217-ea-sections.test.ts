@@ -183,9 +183,20 @@ describe('da4fc817 — Sections E and F match the published form', () => {
   it('Section E names the fund first, and its second amount is all three PERKESO legs', () => {
     const pdf = read('lib/ea-pdf.ts');
     const e = pdf.slice(pdf.indexOf('sectionHeading(t.sectionEContributions'), pdf.indexOf('sectionHeading(t.sectionFExemptAllowances'));
-    // The fund is NAMED before it is quantified, exactly as the form asks ("Nama Kumpulan Wang" first).
-    expect(e).toContain('putFit(t.fundName');
+    /**
+     * The fund is NAMED before it is quantified, exactly as the form asks ("Nama Kumpulan Wang" first).
+     *
+     * ⚠️ r372 — PINNED AS THE ORDER, NOT AS A CALL SHAPE. This read `expect(e).toContain('putFit(t.fundName')`,
+     * and the grid redraw made the caption `putFit(eaCaptionWords(t.fundName, n), …)` because the form's
+     * item number now leaves the caption and is drawn in the agency's own column. The literal stopped
+     * matching while the property it stood for — name first, amount second — was untouched. So the
+     * property is what is asserted: the caption is drawn, and it is drawn BEFORE the first amount.
+     */
+    expect(e, 'Section E no longer draws the fund’s name').toMatch(/\bt\.fundName\b/);
     expect(e).toContain('d.partE.fundName');
+    expect(e.indexOf('t.fundName'), 'the fund is quantified before it is named').toBeLessThan(
+      e.indexOf('derived(d.partE.epf)'),
+    );
     expect(e).toContain('derived(d.partE.epf)');
     // E(2) — the SOCSO leg it always stated, plus the two the caption's own scope covers.
     expect(e, 'E(2) no longer states the SOCSO leg').toContain('d.partE.socso');

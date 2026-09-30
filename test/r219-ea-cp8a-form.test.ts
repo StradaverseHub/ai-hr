@@ -191,10 +191,14 @@ describe('r219 — item 9 is conditional on the YEAR, not on a date existing', (
       FOOT,
     ]);
     // The blank form prints these captions whether or not there is anything to write beside them.
+    // r372 — the form's own numbering is drawn in its own column, so what reaches the page is the
+    // caption's WORDS plus a separate "9." / "(a)" / "(b)". Both halves are asserted.
     const ms = bundleFor('ms');
-    expect(printed).toContain(ms.partYearNote);
-    expect(printed).toContain(ms.startedOn);
-    expect(printed).toContain(ms.leftOn);
+    const N = EA_FORM_NUMBERING;
+    expect(printed).toContain(eaCaptionWords(ms.partYearNote, N.partYearNote));
+    expect(printed).toContain(eaCaptionWords(ms.startedOn, N.startedOn));
+    expect(printed).toContain(eaCaptionWords(ms.leftOn, N.leftOn));
+    for (const piece of ['9.', '(a)', '(b)']) expect(printed, `item 9's ${piece}`).toContain(piece);
   });
 
   it('a person hired INSIDE the tax year gets 9(a) only', async () => {
@@ -288,8 +292,13 @@ describe('r219 — the agency’s own page furniture reaches the paper, in both 
       for (const [key, w] of Object.entries(W)) {
         if (w === '') continue; // privateStatement2 — a line the Malay edition does not use
         // masthead4 is COMPLETED rather than merely printed: the year of assessment is filled in.
-        const hit = key === 'masthead4' ? printed.some((t) => t.startsWith(w)) : printed.includes(w);
+        // ⚠️ r372 — `perkeso` ("2. PERKESO :" / "2. SOCSO:") carries the FORM'S OWN item number, and
+        // the agency draws that number in its own column (62.5) with the word at 80.2. So it reaches
+        // the page as two runs and is checked as two: the words here, and the "2." below.
+        const expected = key === 'perkeso' ? eaCaptionWords(w, EA_FORM_NUMBERING.perkeso) : w;
+        const hit = key === 'masthead4' ? printed.some((t) => t.startsWith(w)) : printed.includes(expected);
         expect(hit, `${locale}: ${w}`).toBe(true);
+        if (key === 'perkeso') expect(printed, `${locale}: Section E item 2's own number`).toContain('2.');
       }
     }
     // …and the two editions really are different pages, not the same one twice.
