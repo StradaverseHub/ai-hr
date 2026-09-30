@@ -211,7 +211,18 @@ describe('db55d08a — THE LEDGER ROW IS AN ADJUSTMENT AND NEVER AN ACCRUAL', ()
    * `already_open` and the whole of that year's entitlement is silently skipped.
    */
   it('openLeaveYear does not treat the imported figure as the prior year’s open marker', async () => {
-    await commitLeaveBfImport(adminCtx(b), { records: recs([good()]) });
+    const r = await commitLeaveBfImport(adminCtx(b), { records: recs([good()]) });
+    /**
+     * ⚠️ THE ROW MUST EXIST BEFORE THE CLAIM BELOW MEANS ANYTHING, and this guard was added because the
+     * non-vacuity run PROVED it. Flipping `LEAVE_BF_ENTRY_TYPE` to 'accrual' makes the DB CHECK
+     * `leave_ledger_bf_import_is_adjustment_check` refuse every insert, so the run imports nothing — and
+     * a `not.toBe('already_open')` over an EMPTY ledger passed, green, over precisely the defect it exists
+     * to catch. "Green over a ledger row that was never written" is the exact failure CLAUDE.md §8 names.
+     */
+    expect(r.imported, 'the run must have written something, or the claim below is vacuous').toBe(1);
+    const written = await ledgerRows();
+    expect(written).toHaveLength(1);
+    expect(written[0].effectiveOn).toBe(EXPECTED_EFFECTIVE_ON);
     const run = await openLeaveYear(adminCtx(b), {
       year: PRIOR_YEAR,
       employmentIds: [emp.employmentId],
@@ -628,13 +639,23 @@ describe('db55d08a — the run log, and the rollback the reporter asked for', ()
     const rows = await ledgerRows();
     expect(rows).toHaveLength(2);
     // Nothing deleted; the negation is a new row, and it is an adjustment too.
-    expect(rows.map((x) => Number(x.days))).toEqual([3.5, -3.5]);
+    expect(rows.map((x) => Number(x.days)).sort((x, y) => x - y)).toEqual([-3.5, 3.5]);
     expect(new Set(rows.map((x) => x.entryType))).toEqual(new Set(['adjustment']));
-    // ⚠️ ON ITS OWN DATE. A reversal dated today would leave the prior-cycle sum wrong forever AND credit
-    // the current cycle by the same amount — two wrong figures from one convenience.
-    expect(rows[1].effectiveOn).toBe(EXPECTED_EFFECTIVE_ON);
-    expect(rows[1].reason?.startsWith(LEAVE_BF_REVERSAL_REASON_PREFIX)).toBe(true);
-    expect(rows[1].reason?.startsWith('sys:')).toBe(false);
+    /**
+     * ⚠️ ON ITS OWN DATE, and the negation is found BY ITS REASON rather than by its position (CLAUDE.md
+     * §8: pin invariants, not positions). The non-vacuity run proved why: dating every reversal today
+     * changes the ORDER as well as the date, so a positional assertion failed for the wrong reason and
+     * would have gone on passing whenever today happened to sort after the original.
+     *
+     * A reversal dated today leaves the prior-cycle sum wrong forever AND credits whichever cycle today
+     * falls in by the same amount — two wrong figures from one convenience.
+     */
+    const negation = rows.find((x) => x.reason?.startsWith(LEAVE_BF_REVERSAL_REASON_PREFIX))!;
+    expect(negation, 'the rollback must write a row carrying the reversal reason').toBeDefined();
+    expect(Number(negation.days)).toBe(-3.5);
+    expect(negation.effectiveOn).toBe(EXPECTED_EFFECTIVE_ON);
+    expect(negation.reason?.startsWith('sys:')).toBe(false);
+    expect(negation.runId).toBe(r.runId);
 
     const bd = await leaveEntitlementBreakdown(
       adminCtx(b),
