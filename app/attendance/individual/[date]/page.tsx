@@ -302,7 +302,13 @@ export default async function IndividualAttendanceDayPage({
             <Button type="submit" variant="outline" size="sm">
               {t('dayCorrectSave')}
             </Button>
-            <p className="w-full text-[11px] text-muted-foreground">{t('dayCorrectTrailNote')}</p>
+            {/* r368 c8282468 — THIS CAPTION IS AN AUDIT PROMISE, ON THE SCREEN WHERE A FIGURE THAT FEEDS
+              * PAY IS CHANGED, SO IT MAY SAY ONLY WHAT THE SYSTEM ACTUALLY KEEPS. `dayCorrectTrailNote`
+              * (retired in place, not deleted) claimed "the previous value" as well; nothing anywhere
+              * stored it. This key is the truth fix, shipped ahead of the recording so the screen stops
+              * overclaiming on its own. Item 67268d83 round 2 renders this same key on
+              * /attendance/my-records/<date> and must CONSUME it, never re-edit it. */}
+            <p className="w-full text-[11px] text-muted-foreground">{t('dayCorrectAuditNote')}</p>
           </form>
         ) : (
           <div className="border-t border-border px-4 py-2 text-xs">
