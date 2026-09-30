@@ -7,7 +7,16 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { PDFArray, PDFDocument, PDFRawStream, StandardFonts, decodePDFRawStream, type PDFFont } from 'pdf-lib';
-import { EA_FORM, blankEaPdfData, renderEaPdf, type EaPdfData, type EaPdfLabels, eaFormWords } from '../lib/ea-pdf';
+import {
+  EA_FORM,
+  EA_FORM_NUMBERING,
+  blankEaPdfData,
+  eaCaptionWords,
+  eaFormWords,
+  renderEaPdf,
+  type EaPdfData,
+  type EaPdfLabels,
+} from '../lib/ea-pdf';
 
 /**
  * 6036dab7 — READ THE DRAWN TEXT BACK OUT OF THE PDF, WITH ITS COORDINATES.
@@ -852,6 +861,14 @@ describe('r220 — the blank C.P.8A', () => {
       const m = /^\s*([A-F])\s+(.*)$/.exec(label);
       return m ? m[2] : label;
     };
+    /**
+     * ⚠️ AND A NUMBERED CAPTION IS NO LONGER ONE DRAWN STRING EITHER (r372, item 795c470c). The agency
+     * sets the item number at 62.5, the sub-item letter at 80.2 and the words at 94.3, so the renderer
+     * draws "1.", "(a)" and "Gross salary…" where it used to draw "1(a) Gross salary…". The catalogue
+     * is unchanged — the HTML statement still prints the number — and the PAGE draws the pieces.
+     * Asserting the joined string here would fail on a page that is correct.
+     */
+    const N = EA_FORM_NUMBERING;
     for (const caption of [
       titleOf(real.sectionAEmployeeParticulars),
       titleOf(real.sectionBEmploymentIncome),
@@ -860,12 +877,12 @@ describe('r220 — the blank C.P.8A', () => {
       titleOf(real.sectionEContributions),
       titleOf(real.sectionFExemptAllowances),
       real.formTotal,
-      real.grossSalary,
-      real.gratuity,
-      real.compensation,
-      real.childRelief,
+      eaCaptionWords(real.grossSalary, N.grossSalary),
+      eaCaptionWords(real.gratuity, N.gratuity),
+      eaCaptionWords(real.compensation, N.compensation),
+      eaCaptionWords(real.childRelief, N.childRelief),
       real.contributionAmount,
-      real.partYearNote,
+      eaCaptionWords(real.partYearNote, N.partYearNote),
     ]) {
       expect(blank, `the blank form is missing: ${caption}`).toContain(winAnsi(caption));
     }

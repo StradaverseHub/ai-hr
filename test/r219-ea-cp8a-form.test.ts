@@ -17,7 +17,16 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
-import { EA_FORM, EA_FORM_WORDS, renderEaPdf, type EaPdfData, type EaPdfLabels, eaFormWords } from '../lib/ea-pdf';
+import {
+  EA_FORM,
+  EA_FORM_NUMBERING,
+  EA_FORM_WORDS,
+  eaCaptionWords,
+  eaFormWords,
+  renderEaPdf,
+  type EaPdfData,
+  type EaPdfLabels,
+} from '../lib/ea-pdf';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => readFileSync(path.join(ROOT, rel), 'utf8');
@@ -601,9 +610,24 @@ describe('r219 — an unsourced box prints the blank form’s rule, never 0.00',
     // those three, and none of the eleven manual boxes contributes one.
     expect(printed.filter((s) => s === '0.00').length).toBe(3);
     // The captions are all still there: the form prints them whether or not it has a figure.
+    //
+    // ⚠️ r372 — WHAT REACHES THE PAGE IS THE CAPTION'S WORDS, NOT THE CATALOGUE STRING. The agency sets
+    // the item number, the sub-item letter and the words in three separate columns, so the renderer
+    // draws "1.", "(f)" and "Ganjaran bagi tempoh" rather than one run reading "1(f) Ganjaran bagi
+    // tempoh". `eaCaptionWords` is the renderer's own rule, imported rather than re-implemented here.
     const ms = bundleFor('ms');
-    for (const caption of [ms.gratuity, ms.esos, ms.compensation, ms.pension, ms.annuity, ms.childRelief]) {
-      expect(printed, caption).toContain(caption);
+    const N = EA_FORM_NUMBERING;
+    for (const [caption, n] of [
+      [ms.gratuity, N.gratuity],
+      [ms.esos, N.esos],
+      [ms.compensation, N.compensation],
+      [ms.pension, N.pension],
+      [ms.annuity, N.annuity],
+      [ms.childRelief, N.childRelief],
+    ] as const) {
+      expect(printed, caption).toContain(eaCaptionWords(caption, n));
+      // …and the number really is drawn, separately — otherwise stripping it would be losing it.
+      expect(printed, `the form's own number for "${caption}"`).toContain(`${n.item}.`);
     }
   });
 });

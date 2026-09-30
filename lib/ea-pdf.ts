@@ -776,6 +776,106 @@ export const eaFormWords = (locale: string) => (locale === 'ms' ? EA_FORM_WORDS_
 /** Back-compat for callers that predate the split; the Malay edition is what they were getting. */
 export const EA_FORM_WORDS = EA_FORM_WORDS_MS;
 
+/**
+ * ── THE FORM'S OWN NUMBERING IS STRUCTURE, NOT WORDING (r372, item 795c470c) ───────────────────────
+ *
+ * The agency sets every numbered line in THREE columns: the item number at 62.5, the sub-item letter
+ * at 80.2 and the words at 94.3. Our catalogues carry the number inside the caption — `payroll.ea`
+ * `grossSalary` is "1(a) Gross salary, wages or leave pay (including overtime pay)" — and the renderer
+ * drew that one string at one x. That is why the item numbers and sub-items sat ~20 pt too far left:
+ * there was only ever one column to put them in. This table is where the numbering lives now.
+ *
+ * ⚠️ THE NUMBER DRAWN IS ALWAYS THIS TABLE'S, NEVER THE STRING'S. `eaCaptionWords` only ever asks a
+ * caption to give up a prefix the renderer already composed — it removes "1(a)" from the front because
+ * it is about to draw "1." and "(a)" itself, and removes nothing when the caption does not start with
+ * it. So a catalogue that numbers differently, or not at all, cannot put a WRONG number on a tax
+ * document; the worst it can do is leave its own number in the words, which `test/ea-agency-grid.test.ts`
+ * refuses for the two editions that reach this renderer.
+ *
+ * ⚠️ AND THE PLAN'S REASON FOR DOING THIS THROUGH NEW MESSAGE KEYS WAS WRONG ON THE FACTS, WHICH IS
+ * WHY IT IS DONE HERE INSTEAD. The build note said "Do NOT parse the number off the front of a
+ * localized string — six locales, and messages/ms.json numbers differently in places." `ms.json`
+ * numbers IDENTICALLY to `en.json` on every caption this renderer draws ("1(a) Gaji kasar…",
+ * "3. Manfaat berupa barangan"), and en/ms are the only two editions either route renders. The other
+ * four locales belong to the HTML statement, which reads these same keys and PRINTS the number — so
+ * retiring the combined keys would have changed a screen the item says must not change ("No caption
+ * shall change"), in four languages, to fix a column those languages never reach.
+ */
+export type EaNumbering = {
+  /** The form's item number, e.g. "1" or "5". Drawn unless `itemDrawn` is false. */
+  item?: string;
+  /** The form's sub-item letter, e.g. "(a)". */
+  sub?: string;
+  /** False where the agency prints the item number ONCE, against its first sub-item only. */
+  itemDrawn?: boolean;
+};
+
+/** What the C.P.8A numbers each box, by the label key that carries its words. */
+export const EA_FORM_NUMBERING = {
+  // Section A
+  name: { item: '1' },
+  jobTitle: { item: '2' },
+  employeeNo: { item: '3' },
+  icNo: { item: '4' },
+  passportNo: { item: '5' },
+  epfNo: { item: '6' },
+  socsoNo: { item: '7' },
+  childrenTaxRelief: { item: '8' },
+  partYearNote: { item: '9' },
+  startedOn: { item: '9', sub: '(a)', itemDrawn: false },
+  leftOn: { item: '9', sub: '(b)', itemDrawn: false },
+  // Section B — the agency prints "1." once, against (a) only.
+  grossSalary: { item: '1', sub: '(a)' },
+  feesCommissionBonus: { item: '1', sub: '(b)', itemDrawn: false },
+  tipsPerquisitesOther: { item: '1', sub: '(c)', itemDrawn: false },
+  taxBorneByEmployer: { item: '1', sub: '(d)', itemDrawn: false },
+  esos: { item: '1', sub: '(e)', itemDrawn: false },
+  gratuity: { item: '1', sub: '(f)', itemDrawn: false },
+  arrears: { item: '2' },
+  benefitsInKind: { item: '3' },
+  livingAccommodation: { item: '4' },
+  unapprovedFundRefund: { item: '5' },
+  compensation: { item: '6' },
+  // Section C
+  pension: { item: '1' },
+  annuity: { item: '2' },
+  // Section D — 5(a) and 5(b) likewise carry the sub-letter only.
+  monthlyTaxDeduction: { item: '1' },
+  cp38Deductions: { item: '2' },
+  zakatViaSalary: { item: '3' },
+  donations: { item: '4' },
+  tp1ClaimHeading: { item: '5' },
+  tp1Relief: { item: '5', sub: '(a)', itemDrawn: false },
+  zakatOther: { item: '5', sub: '(b)', itemDrawn: false },
+  childRelief: { item: '6' },
+  // Section E — item 2's lead-in is agency FURNITURE (`perkeso`), not a catalogue caption.
+  fundName: { item: '1' },
+  perkeso: { item: '2' },
+} as const satisfies Record<string, EaNumbering>;
+
+/** Every prefix the renderer would itself compose for `n`, longest first. */
+function drawnPrefixes(n: EaNumbering): string[] {
+  const out: string[] = [];
+  if (n.item && n.sub) out.push(`${n.item}${n.sub}`, `${n.item}.${n.sub}`, `${n.item} ${n.sub}`, `${n.item}. ${n.sub}`);
+  if (n.sub) out.push(n.sub);
+  if (n.item) out.push(`${n.item}.`, n.item);
+  return out.sort((a, b) => b.length - a.length);
+}
+
+/**
+ * A caption's WORDS: the localized string with the numbering this renderer draws itself removed from
+ * the front, if it is there. Exported because the guards that check a caption reached the page have to
+ * look for what was DRAWN, and what is drawn is the words without the number.
+ */
+export function eaCaptionWords(caption: string, n: EaNumbering | undefined): string {
+  const s = (caption ?? '').trimStart();
+  if (!n) return s;
+  for (const prefix of drawnPrefixes(n)) {
+    if (s.startsWith(prefix)) return s.slice(prefix.length).replace(/^[\s.:]+/, '');
+  }
+  return s;
+}
+
 export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOptions = {}): Promise<Uint8Array> {
   /** r220 — see `EaRenderOptions`. Read once, so every suppression below reads off one name. */
   const blank = opts.blank === true;
@@ -1053,68 +1153,16 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   };
 
   /**
-   * ── THE FORM'S OWN NUMBERING IS STRUCTURE, NOT WORDING (r372, item 795c470c) ───────────────────────
-   *
-   * The agency sets every numbered line in THREE columns: the item number at 62.5, the sub-item letter
-   * at 80.2 and the words at 94.3. Our catalogues carry the number inside the caption — `payroll.ea`
-   * `grossSalary` is "1(a) Gross salary, wages or leave pay (including overtime pay)" — and the renderer
-   * drew that one string at one x. That is why the item numbers and sub-items sat ~20 pt too far left:
-   * there was only ever one column to put them in.
-   *
-   * ⚠️ THE NUMBER DRAWN IS ALWAYS THIS TABLE'S, NEVER THE STRING'S. `Numbering` is the renderer's own
-   * record of what the form numbers each box, and `put` draws it from there. The caption is only ever
-   * asked to give up a prefix THIS renderer already composed — `stripDrawnNumbering` removes "1(a)" from
-   * the front of the caption because it is about to draw "1." and "(a)" itself, and removes nothing when
-   * the caption does not start with it. So a catalogue that numbers differently, or not at all, cannot
-   * put a wrong number on a tax document; the worst it can do is leave its own number in the words.
-   *
-   * ⚠️ AND THE PLAN'S REASON FOR DOING THIS THROUGH NEW MESSAGE KEYS WAS WRONG ON THE FACTS, WHICH IS
-   * WHY IT IS DONE HERE INSTEAD. The build note said "Do NOT parse the number off the front of a
-   * localized string — six locales, and messages/ms.json numbers differently in places." `ms.json`
-   * numbers IDENTICALLY to `en.json` on every caption this renderer draws ("1(a) Gaji kasar…",
-   * "3. Manfaat berupa barangan"), and en/ms are the only two editions either route will render. The
-   * other four locales are the HTML statement's, which reads these same keys and prints the number —
-   * so retiring the combined keys would have changed a screen the item says must not change ("No caption
-   * shall change"), in four languages, to fix a column on a page they never reach.
-   */
-  type Numbering = {
-    /** The form's item number, e.g. "1" or "5". Drawn unless `itemDrawn` is false. */
-    item?: string;
-    /** The form's sub-item letter, e.g. "(a)". */
-    sub?: string;
-    /** False where the agency prints the item number ONCE, against its first sub-item only. */
-    itemDrawn?: boolean;
-  };
-
-  /** Every prefix this renderer would itself compose for `n`, longest first. */
-  const drawnPrefixes = (n: Numbering): string[] => {
-    const out: string[] = [];
-    if (n.item && n.sub) out.push(`${n.item}${n.sub}`, `${n.item}.${n.sub}`, `${n.item} ${n.sub}`, `${n.item}. ${n.sub}`);
-    if (n.sub) out.push(n.sub);
-    if (n.item) out.push(`${n.item}.`, n.item);
-    return out.sort((a, b) => b.length - a.length);
-  };
-
-  /** The caption with the numbering this renderer is about to draw removed from its front, if present. */
-  const stripDrawnNumbering = (caption: string, n: Numbering): string => {
-    const s = (caption ?? '').trimStart();
-    for (const prefix of drawnPrefixes(n)) {
-      if (s.startsWith(prefix)) return s.slice(prefix.length).replace(/^[\s.:]+/, '');
-    }
-    return s;
-  };
-
-  /**
    * Draw a numbered line's number and sub-letter in the agency's own columns and return the x its WORDS
    * start at — 94.3 under a sub-letter, 80.2 under a bare item number, and the caller's own column where
    * the agency indents differently (D5's sub-items sit at 98.2).
    */
-  const numbering = (n: Numbering, tt: number, size = 8, textX?: number): number => {
+  const N = EA_FORM_NUMBERING;
+  const numbering = (n: EaNumbering, tt: number, size = 8, textX?: number): number => {
     if (n.item && n.itemDrawn !== false) put(`${n.item}.`, A.itemLabel, tt, size);
     if (n.sub) put(n.sub, A.subLabel, tt, size);
     return textX ?? (n.sub ? A.subText : A.subLabel);
   };
-
   const W = eaFormWords(opts.locale ?? 'en');
 
   // ── THE HEADER BAND — three blocks and the ruled banner under them ──────────────────────────────────
@@ -1199,45 +1247,39 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
 
   /** Item 1 spans the agency's whole table width (its cell is 74.8 → 556.6), so it is not an `aRow`. */
   {
-    const n: Numbering = { item: '1' };
+    const n: EaNumbering = N.name;
     const x = numbering(n, A.rowsA.name, 7.5);
-    putFit(stripDrawnNumbering(t.name, n), x, A.aNameRule[0] - x - 4, A.rowsA.name, 7.5);
+    putFit(eaCaptionWords(t.name, n), x, A.aNameRule[0] - x - 4, A.rowsA.name, 7.5);
     valueOrRule(d.employee.name, A.aNameRule[0], A.aNameRule[1], A.rowsA.name);
   }
 
   /** One two-column Section A row: item on the left, item on the right, each numbered and ruled. */
   const aRow = (
     tt: number,
-    leftItem: string,
+    left: EaNumbering,
     leftLabel: string,
     leftValue: string,
-    rightItem: string,
+    right: EaNumbering,
     rightLabel: string,
     rightValue: string,
   ) => {
-    put(`${leftItem}.`, A.itemLabel, tt, 7.5);
-    putFit(stripDrawnNumbering(leftLabel, { item: leftItem }), A.aLeftLabel, A.aLeftRule[0] - A.aLeftLabel - 4, tt, 7.5);
+    put(`${left.item}.`, A.itemLabel, tt, 7.5);
+    putFit(eaCaptionWords(leftLabel, left), A.aLeftLabel, A.aLeftRule[0] - A.aLeftLabel - 4, tt, 7.5);
     valueOrRule(leftValue, A.aLeftRule[0], A.aLeftRule[1], tt);
-    put(`${rightItem}.`, A.aRightNumber, tt, 7.5);
-    putFit(
-      stripDrawnNumbering(rightLabel, { item: rightItem }),
-      A.aRightLabel,
-      A.aRightRule[0] - A.aRightLabel - 4,
-      tt,
-      7.5,
-    );
+    put(`${right.item}.`, A.aRightNumber, tt, 7.5);
+    putFit(eaCaptionWords(rightLabel, right), A.aRightLabel, A.aRightRule[0] - A.aRightLabel - 4, tt, 7.5);
     valueOrRule(rightValue, A.aRightRule[0], A.aRightRule[1], tt);
   };
-  aRow(A.rowsA.row2, '2', t.jobTitle, d.employee.jobTitle ?? '', '3', t.employeeNo, d.employee.employeeNo ?? '');
-  aRow(A.rowsA.row4, '4', t.icNo, d.employee.ic ?? '', '5', t.passportNo, d.employee.passport ?? '');
-  aRow(A.rowsA.row6, '6', t.epfNo, d.employee.epfNo ?? '', '7', t.socsoNo, d.employee.socsoNo ?? '');
+  aRow(A.rowsA.row2, N.jobTitle, t.jobTitle, d.employee.jobTitle ?? '', N.employeeNo, t.employeeNo, d.employee.employeeNo ?? '');
+  aRow(A.rowsA.row4, N.icNo, t.icNo, d.employee.ic ?? '', N.passportNo, t.passportNo, d.employee.passport ?? '');
+  aRow(A.rowsA.row6, N.epfNo, t.epfNo, d.employee.epfNo ?? '', N.socsoNo, t.socsoNo, d.employee.socsoNo ?? '');
 
   // Item 8's caption wraps to a second line on the agency's form, and its rule sits on that second line
   // (measured: caption 80.2 on tt 175.9 and 187.6, rule 174.1 → 298.9 on the second).
   {
-    const n: Numbering = { item: '8' };
+    const n: EaNumbering = N.childrenTaxRelief;
     put(`${n.item}.`, A.itemLabel, A.rowsA.children, 7.5);
-    const childLines = wrapped(stripDrawnNumbering(t.childrenTaxRelief, n), 7.5, A.aChildrenRule[0] - A.aLeftLabel - 4).slice(0, 2);
+    const childLines = wrapped(eaCaptionWords(t.childrenTaxRelief, n), 7.5, A.aChildrenRule[0] - A.aLeftLabel - 4).slice(0, 2);
     childLines.forEach((line, i) => put(line, A.aLeftLabel, i ? A.rowsA.childrenLine2 : A.rowsA.children, 7.5));
     // r220 — a COUNT, not an amount, so it does not pass through `amountOrRule` and has to say for itself
     // that a blank form carries no number here. `String(0)` is "0", and "0 children qualifying for tax
@@ -1270,13 +1312,13 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
    */
   const inYear = (iso: string | null) => (iso && iso.slice(0, 4) === d.year ? formDate(iso) : '');
   {
-    const n: Numbering = { item: '9' };
+    const n: EaNumbering = N.partYearNote;
     put(`${n.item}.`, A.aRightNumber, A.rowsA.partYear, 7.5);
-    putFit(stripDrawnNumbering(t.partYearNote, n), A.aRightLabel, R - A.aRightLabel, A.rowsA.partYear, 7.5);
+    putFit(eaCaptionWords(t.partYearNote, n), A.aRightLabel, R - A.aRightLabel, A.rowsA.partYear, 7.5);
     const aSub = (sub: string, caption: string, tt: number, value: string) => {
       put(sub, A.aRightLabel, tt, 7.5);
       putFit(
-        stripDrawnNumbering(caption, { item: '9', sub, itemDrawn: false }),
+        eaCaptionWords(caption, sub === '(a)' ? N.startedOn : N.leftOn),
         A.aRightSubLabel,
         A.aRightRule[0] - A.aRightSubLabel - 4,
         tt,
@@ -1296,13 +1338,13 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   put(W.rm, A.rmHeading, A.rowsB.excluding, 9, bold);
 
   /** One numbered money line, drawn in the agency's three columns with its amount on the RM rule. */
-  const itemLine = (n: Numbering, caption: string, tt: number, value: string, size = 8) => {
+  const itemLine = (n: EaNumbering, caption: string, tt: number, value: string, size = 8) => {
     const x = numbering(n, tt, size);
-    putFit(stripDrawnNumbering(caption, n), x, MX - x - 14, tt, size);
+    putFit(eaCaptionWords(caption, n), x, MX - x - 14, tt, size);
     amountOrRule(value, MX, MR, tt);
   };
 
-  itemLine({ item: '1', sub: '(a)' }, t.grossSalary, A.rowsB.grossSalary, derived(d.partB.grossSalary));
+  itemLine(N.grossSalary, t.grossSalary, A.rowsB.grossSalary, derived(d.partB.grossSalary));
   // 1(b) and 1(c) are ONE box each on the agency's form over TWO of our figures. The form's own captions
   // say so — "Fi (termasuk fi pengarah), komisen atau bonus" and "Tip kasar, perkuisit, penerimaan sagu
   // hati atau elaun-elaun lain" — so the box carries the sum, and printing only half of it would leave
@@ -1311,24 +1353,24 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   //
   // ⚠️ AND THE AGENCY PRINTS "1." ONCE, against (a) only — `itemDrawn: false` is that, not a shortcut.
   itemLine(
-    { item: '1', sub: '(b)', itemDrawn: false },
+    N.feesCommissionBonus,
     t.feesCommissionBonus,
     A.rowsB.feesCommissionBonus,
     mixed(d.partB.bonus, d.partB.directorFee),
   );
   {
-    const n: Numbering = { item: '1', sub: '(c)', itemDrawn: false };
+    const n: EaNumbering = N.tipsPerquisitesOther;
     const x = numbering(n, A.rowsB.tipsPerquisitesOther);
-    captionWithInlineRule(stripDrawnNumbering(t.tipsPerquisitesOther, n), t.paymentDetail, x, A.rowsB.tipsPerquisitesOther);
+    captionWithInlineRule(eaCaptionWords(t.tipsPerquisitesOther, n), t.paymentDetail, x, A.rowsB.tipsPerquisitesOther);
     amountOrRule(mixed(d.partB.allowances, d.partB.tipsPerquisites), MX, MR, A.rowsB.tipsPerquisitesOther);
   }
   itemLine(
-    { item: '1', sub: '(d)', itemDrawn: false },
+    N.taxBorneByEmployer,
     t.taxBorneByEmployer,
     A.rowsB.taxBorneByEmployer,
     manual(d.partB.taxBorneByEmployer),
   );
-  itemLine({ item: '1', sub: '(e)', itemDrawn: false }, t.esos, A.rowsB.esos, manual(d.partB.esos));
+  itemLine(N.esos, t.esos, A.rowsB.esos, manual(d.partB.esos));
   // 1(f) — "Ganjaran bagi tempoh dari … hingga …". The period is not a fact this system holds, so both
   // rules stay empty; the AMOUNT is a manual box like the rest.
   //
@@ -1338,9 +1380,9 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // words in one of them. They are description rules, not a column — the columns this round measured are
   // the ones the caption itself sits on, and those ARE absolute.
   {
-    const n: Numbering = { item: '1', sub: '(f)', itemDrawn: false };
+    const n: EaNumbering = N.gratuity;
     const x = numbering(n, A.rowsB.gratuity);
-    const cap = putFit(stripDrawnNumbering(t.gratuity, n), x, 200, A.rowsB.gratuity, 8);
+    const cap = putFit(eaCaptionWords(t.gratuity, n), x, 200, A.rowsB.gratuity, 8);
     const from = putFit(t.periodFrom, cap + 4, 40, A.rowsB.gratuity, 8);
     dotted(from + 4, from + 92, A.rowsB.gratuity + 2.5);
     const to = putFit(t.periodTo, from + 98, 40, A.rowsB.gratuity, 8);
@@ -1353,9 +1395,9 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // ⚠️ ITS OWN ROW CARRIES NO MONEY RULE. The agency's leader on this row is absent and reappears on
   // the (b) line below — `--all` shows nothing at 487.7 on tt 339.4 and a leader at 487.7 on 367.7.
   {
-    const n: Numbering = { item: '2' };
+    const n: EaNumbering = N.arrears;
     const x = numbering(n, A.rowsB.arrears);
-    putFit(stripDrawnNumbering(t.arrears, n), x, MX - x - 14, A.rowsB.arrears, 8);
+    putFit(eaCaptionWords(t.arrears, n), x, MX - x - 14, A.rowsB.arrears, 8);
   }
   putFit(t.incomeType, A.subLabel, A.incomeTypeX.letter - A.subLabel - 4, A.rowsB.incomeTypeA, 8);
   put('(a)', A.incomeTypeX.letter, A.rowsB.incomeTypeA, 8);
@@ -1364,24 +1406,24 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   dotted(A.incomeTypeX.rule[0], A.incomeTypeX.rule[1], A.rowsB.incomeTypeB + 2.5);
   amountOrRule(manual(d.partB.arrears), MX, MR, A.rowsB.incomeTypeB);
   {
-    const n: Numbering = { item: '3' };
+    const n: EaNumbering = N.benefitsInKind;
     const x = numbering(n, A.rowsB.benefitsInKind);
-    captionWithInlineRule(stripDrawnNumbering(t.benefitsInKind, n), t.stateWhat, x, A.rowsB.benefitsInKind);
+    captionWithInlineRule(eaCaptionWords(t.benefitsInKind, n), t.stateWhat, x, A.rowsB.benefitsInKind);
     amountOrRule(manual(d.partB.benefitsInKind), MX, MR, A.rowsB.benefitsInKind);
   }
   {
-    const n: Numbering = { item: '4' };
+    const n: EaNumbering = N.livingAccommodation;
     const x = numbering(n, A.rowsB.livingAccommodation);
-    captionWithInlineRule(stripDrawnNumbering(t.livingAccommodation, n), t.addressCue, x, A.rowsB.livingAccommodation);
+    captionWithInlineRule(eaCaptionWords(t.livingAccommodation, n), t.addressCue, x, A.rowsB.livingAccommodation);
     amountOrRule(manual(d.partB.livingAccommodation), MX, MR, A.rowsB.livingAccommodation);
   }
-  itemLine({ item: '5' }, t.unapprovedFundRefund, A.rowsB.unapprovedFundRefund, manual(d.partB.unapprovedFundRefund));
-  itemLine({ item: '6' }, t.compensation, A.rowsB.compensation, manual(d.partB.compensation));
+  itemLine(N.unapprovedFundRefund, t.unapprovedFundRefund, A.rowsB.unapprovedFundRefund, manual(d.partB.unapprovedFundRefund));
+  itemLine(N.compensation, t.compensation, A.rowsB.compensation, manual(d.partB.compensation));
 
   // ── C — PENCEN DAN LAIN-LAIN, closed by the form's single JUMLAH ───────────────────────────────────
   sectionHeading(t.sectionCPensionOther, A.sectionT.c);
-  itemLine({ item: '1' }, t.pension, A.rowsC.pension, manual(d.partC.pension));
-  itemLine({ item: '2' }, t.annuity, A.rowsC.annuity, manual(d.partC.annuity));
+  itemLine(N.pension, t.pension, A.rowsC.pension, manual(d.partC.pension));
+  itemLine(N.annuity, t.annuity, A.rowsC.annuity, manual(d.partC.annuity));
   /**
    * THE JUMLAH TOTALS B AND C TOGETHER, and it is the ONLY total the form has.
    *
@@ -1412,22 +1454,22 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
 
   // ── D — JUMLAH POTONGAN ────────────────────────────────────────────────────────────────────────────
   sectionHeading(t.sectionDTotalDeductions, A.sectionT.d);
-  itemLine({ item: '1' }, t.monthlyTaxDeduction, A.rowsD.mtd, derived(d.partD.mtd));
-  itemLine({ item: '2' }, t.cp38Deductions, A.rowsD.cp38, derived(d.partD.cp38));
-  itemLine({ item: '3' }, t.zakatViaSalary, A.rowsD.zakat, derived(d.partD.zakat));
-  itemLine({ item: '4' }, t.donations, A.rowsD.donations, manual(d.partD.donations));
+  itemLine(N.monthlyTaxDeduction, t.monthlyTaxDeduction, A.rowsD.mtd, derived(d.partD.mtd));
+  itemLine(N.cp38Deductions, t.cp38Deductions, A.rowsD.cp38, derived(d.partD.cp38));
+  itemLine(N.zakatViaSalary, t.zakatViaSalary, A.rowsD.zakat, derived(d.partD.zakat));
+  itemLine(N.donations, t.donations, A.rowsD.donations, manual(d.partD.donations));
   // D5 is a heading over two sub-amounts that print their own RM at MID-PAGE — the right-hand column
   // stays empty on those two lines, which is how the agency sets them (its "RM" is at 342.6). Its two
   // sub-items are indented 3.9 pt further than Section B's, at 98.2, which is the agency's own number.
   {
-    const n: Numbering = { item: '5' };
+    const n: EaNumbering = N.tp1ClaimHeading;
     const x = numbering(n, A.rowsD.tp1Heading);
-    putFit(stripDrawnNumbering(t.tp1ClaimHeading, n), x, MX - x - 14, A.rowsD.tp1Heading, 8);
+    putFit(eaCaptionWords(t.tp1ClaimHeading, n), x, MX - x - 14, A.rowsD.tp1Heading, 8);
   }
   const midAmount = (sub: string, label: string, tt: number, value: string) => {
-    const n: Numbering = { item: '5', sub, itemDrawn: false };
+    const n: EaNumbering = sub === '(a)' ? N.tp1Relief : N.zakatOther;
     const x = numbering(n, tt, 8, A.subTextD5);
-    putFit(stripDrawnNumbering(label, n), x, A.midRm - x - 6, tt, 8);
+    putFit(eaCaptionWords(label, n), x, A.midRm - x - 6, tt, 8);
     put(W.rm, A.midRm, tt, 8);
     amountOrRule(value, A.midMoney[0], A.midMoney[1], tt);
   };
@@ -1439,7 +1481,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // document asserts the money does not exist. So the box takes `manual`'s zero-suppression while taking
   // `derived`'s source: a real RM0.00 relief and an unknown one are indistinguishable here, and the
   // honest output for both is the agency's own empty rule.
-  itemLine({ item: '6' }, t.childRelief, A.rowsD.childRelief, manual(d.partD.childRelief));
+  itemLine(N.childRelief, t.childRelief, A.rowsD.childRelief, manual(d.partD.childRelief));
 
   // ── E — CARUMAN ... KUMPULAN WANG SIMPANAN / PENCEN YANG DILULUSKAN DAN PERKESO ────────────────────
   //
@@ -1449,9 +1491,9 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // and the shared caption beside it.
   sectionHeading(t.sectionEContributions, A.sectionT.e);
   {
-    const n: Numbering = { item: '1' };
+    const n: EaNumbering = N.fundName;
     const x = numbering(n, A.rowsE.fundName);
-    const end = putFit(stripDrawnNumbering(t.fundName, n), x, 120, A.rowsE.fundName, 8);
+    const end = putFit(eaCaptionWords(t.fundName, n), x, 120, A.rowsE.fundName, 8);
     valueOrRule(d.partE.fundName, Math.max(171.4, end + 6), MR, A.rowsE.fundName, 8);
   }
   /** E's money row: the shared caption, the agency's own "RM" at 467.1, then the column's rule. */
@@ -1465,9 +1507,9 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // scope. `derived` prints even at 0.00, which is right here: a contributing employee's E(2) is a figure
   // the employer withheld and can stand behind.
   {
-    const n: Numbering = { item: '2' };
+    const n: EaNumbering = N.perkeso;
     put(`${n.item}.`, A.itemLabel, A.rowsE.perkeso, 8);
-    const lead = putFit(stripDrawnNumbering(W.perkeso, n), A.subLabel, 70, A.rowsE.perkeso, 8) + 4;
+    const lead = putFit(eaCaptionWords(W.perkeso, n), A.subLabel, 70, A.rowsE.perkeso, 8) + 4;
     eContribution(A.rowsE.perkeso, lead, derived(d.partE.socso + d.partE.eis + d.partE.skbbk));
   }
 
