@@ -1,3 +1,74 @@
+## r371 — 2026-09-30 · main@96afa7cf · no migration
+
+**Next.js 16.2.7 to 16.3.6, and nothing else.** The sixth and last fix from
+`build/r360-security-fixes`, which sat unmerged from 2026-09-29 until r369 while production ran exposed.
+r369 shipped the other five; this one needed `pnpm install` and every r369 worktree symlinked one shared
+`node_modules` that agents were reading, so it could not be done then. Shipped alone rather than held
+behind four unrelated builds.
+
+**Closes:** an **unauthenticated RCE in Image Optimization** (fixed 16.3.3); the **App Router
+middleware/proxy bypass** (16.2.11); the **Server-Action / rewrites SSRF** (16.2.11). `sharp` resolves to
+**0.35.5** (patched libvips/libheif).
+
+**The middleware bypass is the load-bearing one, and I had its target wrong.** I first told a peer session
+that their `/api/mobile` routes sat behind it. They corrected me: `mobileRoute()` to `getMobileSession()`
+requires a verified WorkOS bearer and refuses everything while `WORKOS_CLIENT_ID` is unset, middleware
+lets those paths past the Basic challenge *deliberately*, and `test/mobile-api-routes.test.ts` pins that
+every mobile route file goes through `mobileRoute`. So the bypass bought nothing there. **What it exposed
+is every OTHER route, whose only outer protection is the SHARE_PASSWORD gate — and that gate IS
+middleware.** Their framing is worse than mine was, and correct: the exposure was the whole web app. The
+`GET / → 401` this round's own deploy verifies was, until now, enforced by the component with the
+published bypass.
+
+### THE GATE
+`CHUNKS=16 VITEST_MAX_WORKERS=3`: **1085 of 1085 files counted, zero AssertionErrors, GATE GREEN across
+all 16 chunks, first attempt, no red chunk to reconcile.** `tsc` 0. `next build` 0 — 226 static pages on
+16.3.6. `i18n-check` PASS, 12798 leaf keys, six locales parity and placeholders clean. No migration, so no
+`gate:shadow`.
+
+`test/share-gate.test.ts` is in that suite and the count is the whole suite, so the contract it pins —
+the `/api/mobile` bypass, the look-alike paths still being challenged, and the 503 refusal staying above
+the bypass — survives 16.3. **If the `middleware` to `proxy` rename is ever done, the bypass moves with
+the function body and that test follows it rather than being loosened.** "The test was adjusted" is how a
+security property quietly stops being one.
+
+### DECISIONS AND CHECKED CLAIMS
+- **The lockfile was REGENERATED against today's main**, not cherry-picked from the day-old stranded
+  branch, so the resolution is fresh. Both targets confirmed in it: `next@16.3.6`, `sharp@0.35.5`.
+- **The audit claim was checked, not inherited.** `pnpm audit --prod` reports 4 vulnerabilities, 2 moderate
+  and **2 high**, where the original commit claimed "0 runtime-high". That claim survives: both highs are
+  `browserslist`, reachable only through `next > styled-jsx > @babel/core >
+  @babel/helper-compilation-targets` — the build-time toolchain, not a request path. The moderates are
+  `protobufjs` (via `@google/genai`) and `baseline-browser-mapping` (via next). All four predate this round.
+- `next dev` on 16.3 auto-appends a `nextjs-agent-rules` block to `CLAUDE.md`. **Not committed**, and
+  verified absent from this round's diff.
+
+### WHAT I GOT WRONG, TWICE, ON NUMBERING
+**This round is r371 and it nearly was not.** I named four build branches `r370-*` without checking either
+place a concurrent session takes a number — `HANDOFF-HISTORY`'s top entry (r370, the mobile app) and
+`.gate-receipt.json`'s note (also r370). **Two separate agents caught it independently**, one noting that a
+wrong round id in a code comment sends the next reader to the wrong history entry, which is the same
+failure mode as the left-margin note retired in the same hour.
+
+Then I made it worse: having told four agents "the round is r371", I decided to ship this bump alone, which
+took r371 and pushed their work to r372 — so they swept their markers twice. **Both mistakes have one root
+cause: I allocated numbers before settling the shipping order.** Branch renames were done by me so no agent
+would collide with them. Commit subjects on the r372 branches still say r370 and r371; the final sweep
+commit on each carries a decoder ring rather than pretending otherwise.
+
+### WHAT IS NOT DONE
+- **Four r372 branches are built and parked**, each with a completed code phase and no test run, waiting on
+  the cluster this gate held: `d4f6848f` (the EPF/PERKESO wage column), `15e5bd93` (the statutory setup
+  screen, contested three times), `450f443f` (the EA employer address box), `db1e7b9d` (the PCB ten
+  sequences). Each will need main merged again now that this has landed.
+- **The worktree DIRECTORIES are still named `r370-*` while their branches are `build/r372-*`.** Flagged by
+  an agent as the §2 hazard it is — a later session can `cd` to a plausible path and get a stale answer
+  without being told. Not renamed because three agents were live in them; rename after their phase two.
+  Paths: `.claude/worktrees/r370-{wage,statutory,eabox,pcbseq}`.
+- **The peer session's on-box checks are outstanding and I cannot do them:** `/api/mobile/v1/me` with no
+  token and with a bogus bearer, `/api/mobilex` still challenged. Their route's behaviour under 16.3 is the
+  half I cannot speak for, and "it compiled" is not "it still refuses".
+
 ## r370 — 2026-09-30 · main@a5064c68 · no migration
 
 The mobile app begins. ADR-0088 (Accepted) plus phase 1 slice 1: the server's mobile API foundation
