@@ -185,6 +185,22 @@ export type ScopeEmployee = {
   status: 'active' | 'ended';
 };
 
+/**
+ * 9949f91a (r369) — `preserve` as a query string, with a REPEATED param staying repeated.
+ *
+ * `new URLSearchParams({ ...preserve })` was what stood in `select()` and `clearSelection()`. It is right
+ * for single-valued filters and silently wrong for a multi-select: an array value becomes `a,b`, which the
+ * server reads as ONE unknown id, so the filter survives the switch in the URL and matches nothing on the
+ * screen. Appending per entry is the only shape that round-trips `?type=a&type=b`.
+ */
+function preservedParams(preserve?: Record<string, string | string[]>): URLSearchParams {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(preserve ?? {})) {
+    for (const one of Array.isArray(v) ? v : [v]) qs.append(k, one);
+  }
+  return qs;
+}
+
 /** Same cap Fixed Transaction has always used: the list is a picker, not a report. */
 const SCOPE_PANEL_CAP = 25;
 
@@ -229,8 +245,17 @@ export function EmployeeScopePanel({
   basePath: string;
   /** Query param carrying the selection. Defaults to the convention every screen already uses. */
   selectParam?: string;
-  /** Other query params to carry across the switch (the screen's own filters), already scope-guarded. */
-  preserve?: Record<string, string>;
+  /**
+   * Other query params to carry across the switch (the screen's own filters), already scope-guarded.
+   *
+   * 9949f91a (r369) — A VALUE MAY BE AN ARRAY, and that is why this widened. It was `Record<string, string>`
+   * while every consumer's filters were single-valued. Leave Inquiry's are not: `?type=a&type=b` and
+   * `?status=approved&status=pending` are REPEATED params, and spreading an array into `URLSearchParams`
+   * stringifies it into one comma-joined value the server then reads as a single unknown id — a filter that
+   * looks preserved and silently matches nothing. See `preservedParams`. Every existing caller passes a
+   * `Record<string, string>`, which is assignable to this, so nothing else changes.
+   */
+  preserve?: Record<string, string | string[]>;
   /**
    * bd14b7e2 — an "All employees" row at the HEAD of the list that CLEARS the selection (navigates with
    * `preserve` and no `selectParam`).
@@ -309,7 +334,8 @@ export function EmployeeScopePanel({
   const select = (id: string) => {
     // The screen's own filters ride along; anything it did NOT list is dropped on purpose, because a
     // param scoped to the PREVIOUS employee (a payslip id, a page number) is wrong for the next one.
-    const qs = new URLSearchParams({ ...(preserve ?? {}), [selectParam]: id });
+    const qs = preservedParams(preserve);
+    qs.set(selectParam, id);
     startTransition(() => router.push(`${basePath}?${qs.toString()}`));
   };
   /**
@@ -319,7 +345,7 @@ export function EmployeeScopePanel({
    * URL a reader can bookmark should say what it means.
    */
   const clearSelection = () => {
-    const qs = new URLSearchParams({ ...(preserve ?? {}) }).toString();
+    const qs = preservedParams(preserve).toString();
     startTransition(() => router.push(qs ? `${basePath}?${qs}` : basePath));
   };
   const resetFilters = () => {

@@ -84,6 +84,24 @@ describe('026e16b9 · the three inquiry tabs use the page width, consistently', 
     }
   });
 
+  it('9949f91a — the two tabs mount the SHARED employee panel, and Employee Details does not', () => {
+    // The reporter's request, as a property rather than a screenshot: the picker on these two tabs is the same
+    // component nine other screens mount, not a tenth slightly different one. Asserted here because this is
+    // the file that owns their layout — and asserted NEGATIVELY on the third tab, which the ticket did not
+    // cover and which is itself a paged employee listing.
+    for (const p of [BALANCES, RECORDS]) {
+      const src = read(p);
+      expect(src.includes('<CollapsibleEmployeePanel'), `${p} mounts the shared shell`).toBe(true);
+      expect(src.includes('<EmployeeScopePanel'), `${p} mounts the shared list`).toBe(true);
+      // The shell owns the grid. A page that hand-rolled a two-column grid of its own is the drift this
+      // guards — and `sm:flex-row` (the retired rail's mechanism) must still be absent, which the case above
+      // asserts for the same two files.
+      const cls = (src.match(/className="[^"]*"/g) ?? []).join('\n');
+      expect(cls.includes('grid-cols-['), `${p} must not hand-roll the panel grid`).toBe(false);
+    }
+    expect(read(DETAILS).includes('<CollapsibleEmployeePanel'), 'Employee Details is out of scope').toBe(false);
+  });
+
   it('the calendar keeps its OWN, narrower cap — it is not an inquiry tab', () => {
     // The other half of the same claim, and the reason the assertion above is scoped rather than dropped.
     // A month grid does not want a 100rem line length, and the reporter asked for the entry point to move,
@@ -112,7 +130,26 @@ describe('026e16b9 · the three inquiry tabs use the page width, consistently', 
    * The arithmetic that justified it: sm:w-44 is 11rem = 176px, plus the gap-4 beside it = 192px, against
    * the 9px of overflow 026e16b9's own measurement left behind at a 1512px window.
    */
-  it('there is NO rail: the tab list carries no width and takes no column', () => {
+  /**
+   * ⚠️ 9949f91a (r369) — READ THIS BEFORE THE CASE BELOW. There IS a left-hand column on the two tabs again,
+   * and it is NOT the tab rail this case is about. The reporter asked for Employee Balances and Employee Leave
+   * Record to take the shared employee panel every Attendance and Payroll screen already has.
+   *
+   * THE CLAIM THAT IS NOW FALSE, quoted from the two pages this file reads, so a reader of the assertion
+   * below is not misled by it: "NO RAIL. The tab bar is rendered below, between the filters and the table, so
+   * the table gets the whole width of THE PAGE instead of the 192px the rail and its gap were taking." The
+   * table now gets the whole width of the CONTENT COLUMN, and the whole width of the page only while the panel
+   * is folded away — which is the answer to the reporter's own earlier complaint, since the strip they had
+   * removed was always-on and could not be put away. Both pages' comments have been reworded to say so.
+   *
+   * THE CLAIM THAT STANDS, and is what the case below actually pins: the TAB LIST is never a vertical rail
+   * again. It is a horizontal strip, rendered between the filters and the table, and it costs the table no
+   * width. 026e16b9's complaint was about the tab list, not about an employee picker, and reintroducing an
+   * `sm:w-44` column of tabs must still fail here. The panel's own grid classes live in
+   * components/collapsible-employee-panel.tsx, which this file does not read — deliberately, because one
+   * shared component's layout is not a per-screen decision.
+   */
+  it('there is NO TAB rail: the tab list carries no width and takes no column', () => {
     // SCOPED TO className VALUES, for the reason this file's header already gives about max-w-7xl: the nav
     // now carries prose recording that it USED to be sm:w-44 beside a gap-4, and a whole-file search finds
     // the width in the explanation of why it is gone.
