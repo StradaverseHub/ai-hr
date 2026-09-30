@@ -2418,9 +2418,33 @@ export type AttendanceRangeRow = {
 } & ShiftDisplay;
 
 /**
+ * THE HARD CEILING ON attendanceForEmploymentRange's DAY LOOP — now a named export, and that is the whole
+ * point of it (67268d83, r367).
+ *
+ * The number was already here as a bare `400` inside the loop below, with a comment saying a
+ * first-of-month → today window is at most 31 days. That reasoning held while every caller chose the range
+ * itself: `/attendance/individual` defaults to month-to-date and only an administrator can widen it.
+ * 67268d83 puts a From / To pair in an EMPLOYEE's hands on /attendance/my-records, so a range longer than
+ * this ceiling became reachable by anybody — and the loop's behaviour past it is to stop, silently, with a
+ * short array that looks exactly like "you have no attendance after that date".
+ *
+ * THE LOOP IS NOT CHANGED. Removing the cap would trade a silent truncation for an unbounded read, which
+ * is worse; raising it would move the cliff without removing it. What was wrong is that no caller could
+ * SEE the cliff, so the fix is to publish it: a caller that lets a human pick the range bounds the range
+ * against THIS constant and refuses politely, rather than issuing a read it knows will be cut short.
+ * app/attendance/my-records/range.ts does exactly that, and test/attendance-overview-round1.test.ts pins
+ * the two halves together — that the loop really does truncate at this number, and that the screen refuses
+ * before it can.
+ */
+export const ATTENDANCE_RANGE_MAX_DAYS = 400;
+
+/**
  * One row per calendar day in [from, to] for a SINGLE employment (Attendance>Records Individual tab,
  * 314ea061). The range analogue of attendanceForDate: an attendance row when present, else the context
  * (approved full-day leave > public holiday > rest day) that explains its absence. Read-only.
+ *
+ * ⚠️ TRUNCATES at ATTENDANCE_RANGE_MAX_DAYS calendar days and says nothing about it. A caller whose range
+ * comes from a human must bound it against that constant first (see its comment).
  */
 export function attendanceForEmploymentRange(
   ctx: SessionContext,
@@ -2581,8 +2605,10 @@ export function attendanceForEmploymentRange(
 
     const out: AttendanceRangeRow[] = [];
     let d = from;
-    // Guard against a pathological range; a first-of-month → today window is ≤ 31 days.
-    for (let i = 0; i < 400 && d <= to; i++) {
+    // Guard against a pathological range; a first-of-month → today window is ≤ 31 days. The literal moved
+    // to the exported ATTENDANCE_RANGE_MAX_DAYS above so a caller can bound its own range against the same
+    // number instead of discovering the cliff as a short array (67268d83).
+    for (let i = 0; i < ATTENDANCE_RANGE_MAX_DAYS && d <= to; i++) {
       const row = byDate.get(d);
       const isWorkingDay = workDays.includes(isoWeekday(d));
       let context: DayContext = null;

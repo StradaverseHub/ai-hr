@@ -92,12 +92,19 @@ const WIDE_LIST_SCREENS = [
    * full-width property belongs to the SCREEN, not to who may open it. Listed from the start rather than
    * after somebody complains, so a `mx-auto max-w-*xl` can never quietly arrive on it.
    *
-   * ⚠️ 2aef3cd8 (r362) — THE OLD REASON WAS "this one carries the same seventeen-column day table the
-   * Individual tab does". IT DOES NOT ANY MORE: the row is "Attendance Overview" and the screen is blank
-   * below its title, by the reporter's instruction. The entry STAYS, and that is a decision rather than
-   * inertia — this is now the assertion that the blank page keeps `pageWideCls` and acquires no reading-
-   * width cap, so whatever content arrives here later starts full width instead of being born capped and
-   * re-raised as the same complaint r227 and r319 already cost two rounds.
+   * ⚠️ 2aef3cd8 (r362) — THE REASON BEFORE LAST WAS "this one carries the same seventeen-column day table
+   * the Individual tab does". It stopped being true when the row became "Attendance Overview" and the screen
+   * went blank below its title, and the entry STAYED anyway as a decision rather than inertia: the assertion
+   * that the blank page keeps `pageWideCls` and acquires no reading-width cap, "so whatever content arrives
+   * here later starts full width instead of being born capped and re-raised as the same complaint r227 and
+   * r319 already cost two rounds".
+   *
+   * ⚠️ 67268d83 (r367) — THAT IS EXACTLY WHAT HAPPENED, and keeping the entry is what paid off: round one's
+   * ten-column day list was born full width, so there is no third round of this complaint. The original
+   * reason is live again in its new shape — a ten-column table, not seventeen — and the entry now also
+   * guards the one legitimate inner cap on the page: the `mx-auto max-w-md` notice for a login with no
+   * active employment, which `capsPage` deliberately does not count (`max-w-md` is not `max-w-…xl`), the
+   * same arrangement app/attendance/requests/page.tsx uses one entry above for the same sentence.
    */
   'app/attendance/my-records/page.tsx',
   /**

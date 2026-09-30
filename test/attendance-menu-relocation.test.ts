@@ -461,22 +461,39 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
       expect(src, `${href} resolves the caller’s own employment`).toContain('myEmployment(s)');
     }
     {
-      // The employee's own row, now that its screen is blank: still in this node, still ungated, still no
-      // admin page guard — and reading nothing, which is the state the reporter asked for.
+      /**
+       * The employee's own row. It is OUT of the loop above rather than back in it, and that is deliberate:
+       * the loop pins the COMMENT idiom `myEmployment(s)` on raw source, and this file's page necessarily
+       * discusses the calls it makes and does not make in its header, so it is read with comments stripped
+       * (the idiom of test/attendance-my-records-split.test.ts, for the same reason). Weakening the loop to
+       * suit one member would have stopped checking the other two.
+       *
+       * ⚠️ 2aef3cd8 (r362) — THE OLD CLAIM WAS:
+       *   expect(src, `${href} resolves no employment (2aef3cd8 emptied the screen)`).not.toContain('myEmployment');
+       *   expect(src, `${href} reads no attendance`).not.toContain('attendanceForEmploymentRange');
+       * with the note that the screen was blank below its title because the reporter asked for everything
+       * under the row to be removed.
+       *
+       * ⚠️ 67268d83 (r367) ROUND ONE PUT THE DAY LIST BACK — the same reporter cleared the page in order to
+       * have it rebuilt — so both absences are reversed to the presences they were before r362, and the
+       * half of the rule that never changed (ungated row, no admin page guard, still an authenticated page)
+       * is asserted alongside exactly as it was. The row's gating is what this file is FOR, and r367 does
+       * not touch it: an employee must still reach their own record with no gate at all.
+       */
       const href = '/attendance/my-records';
       const added = mine.children.find((c) => c.href === href)!;
       expect({ adminOnly: added.adminOnly, managerUp: added.managerUp }, `${href} stays ungated`).toEqual({
         adminOnly: undefined,
         managerUp: undefined,
       });
-      // Comments stripped: the page's header explains the reversal and so necessarily names the calls it no
-      // longer makes. Same idiom as test/attendance-my-records-split.test.ts, for the same reason.
       const src = read(`app${href}/page.tsx`)
         .replace(/\/\*[\s\S]*?\*\//g, ' ')
         .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
       expect(src, `${href} carries no page guard`).not.toMatch(/requireAdmin\(|scopedAdmin\(/);
-      expect(src, `${href} resolves no employment (2aef3cd8 emptied the screen)`).not.toContain('myEmployment');
-      expect(src, `${href} reads no attendance`).not.toContain('attendanceForEmploymentRange');
+      expect(src, `${href} resolves the caller's own employment (67268d83)`).toMatch(/myEmployment\(\s*s\s*\)/);
+      expect(src, `${href} reads that employment's attendance, and only that employment's`).toMatch(
+        /attendanceForEmploymentRange\(\s*s,\s*me\.employmentId/,
+      );
       expect(src, `${href} is still an authenticated page`).toContain('await scopedSession()');
     }
     {
