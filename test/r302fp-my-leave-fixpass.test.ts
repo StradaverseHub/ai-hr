@@ -354,8 +354,17 @@ describe('D6 · anniversary cycles: each selection is its own cycle, none repeat
       .insert(schema.leaveType)
       .values({ tenantId: b.tenantId, code: `A2A_${randomUUID().slice(0, 6).toUpperCase()}`, name: 'Anniv type', paid: true, counting: 'calendar_days', visibleToEmployee: true, yearCycleOverride: 'a2a' })
       .returning({ id: schema.leaveType.id });
-    await ledger(emp.employmentId, lt.id, 'accrual', 10, `${YEAR - 1}-01-15`);
-    await ledger(emp.employmentId, lt.id, 'accrual', 10, `${YEAR - 2}-01-15`);
+    // Seed INSIDE the two cycles this test selects, not in January. The selector offers
+    // `currentYear − N` for each N whose cycle holds a ledger row (offeredLeaveYears), and a row's
+    // CALENDAR year does not name its cycle: for an October type a January row sits in the cycle that
+    // opened the PREVIOUS October, and which N that is FLIPS on the anniversary itself. With January
+    // rows this test passed on 30 September 2026 and failed on 1 October — `resolveSelectedLeaveYear`
+    // found no such year and silently fell back to the current one, so c1 came back equal to c0
+    // ("expected '2027-09-30' to be '2026-09-30'"). A row dated `${Y}-${hireMonth}-15` is always
+    // inside the cycle opening `${Y}-${hireMonth}-01`, which makes the seeding date-independent.
+    const openYear = TODAY >= `${YEAR}-${hireMonth}-01` ? YEAR : YEAR - 1; // cycle in force today
+    await ledger(emp.employmentId, lt.id, 'accrual', 10, `${openYear - 1}-${hireMonth}-15`);
+    await ledger(emp.employmentId, lt.id, 'accrual', 10, `${openYear - 2}-${hireMonth}-15`);
     const pick = async (year?: string) => {
       const d = await myLeaveDashboard(emp.ctx, emp.employmentId, { today: TODAY, year });
       return d.cards.find((c) => c.leaveTypeId === lt.id)!;
