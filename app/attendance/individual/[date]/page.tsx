@@ -302,7 +302,23 @@ export default async function IndividualAttendanceDayPage({
             <Button type="submit" variant="outline" size="sm">
               {t('dayCorrectSave')}
             </Button>
-            <p className="w-full text-[11px] text-muted-foreground">{t('dayCorrectTrailNote')}</p>
+            {/* r368 c8282468 — THIS CAPTION IS AN AUDIT PROMISE, ON THE SCREEN WHERE A FIGURE THAT FEEDS
+              * PAY IS CHANGED, SO IT MAY SAY ONLY WHAT THE SYSTEM ACTUALLY KEEPS. `dayCorrectTrailNote`
+              * (retired in place, not deleted) claimed "the previous value" as well; nothing anywhere
+              * stored it. Step 1 of this round dropped the clause; step 2 made the recording real, and
+              * this is the sentence that states it — every figure the correction moves, old value and new
+              * value, plus the on-site location check it clears, on the `attendance.amended` event and
+              * rendered by /admin/audit (core/attendance.ts AMENDED_FIGURE_COLUMNS).
+              *
+              * ⚠️ IT NAMES THE AUDIT TRAIL AND NOT THIS SCREEN, DELIBERATELY. This page renders no
+              * history, and `core/read.ts` `employeeAudit` filters on an aggregate-id set that excludes
+              * attendance — so the personnel Change History card will NOT show a correction. /admin/audit,
+              * filtered to Attendance, is the only surface. Widen the sentence only after widening one of
+              * those two, or it starts overclaiming again.
+              *
+              * Item 67268d83 round 2 renders this same key on /attendance/my-records/<date> and must
+              * CONSUME it, never re-edit it. CAPTION OWNERSHIP IS c8282468's. */}
+            <p className="w-full text-[11px] text-muted-foreground">{t('dayCorrectAuditNote')}</p>
           </form>
         ) : (
           <div className="border-t border-border px-4 py-2 text-xs">
