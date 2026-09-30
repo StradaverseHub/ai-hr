@@ -70,7 +70,7 @@
     "fontkit": "^1.9.0",
     "leaflet": "1.9.4",
     "lucide-react": "^1.17.0",
-    "next": "16.3.6",
+    "next": "16.3.3",
     "next-intl": "^4.13.0",
     "next-themes": "^0.4.6",
     "openai": "^6.43.0",
