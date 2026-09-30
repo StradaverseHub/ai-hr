@@ -1,3 +1,141 @@
+## r369 — 2026-09-30 · main@c7a4f89c · migrations 0492, 0497
+
+Ten board items, plus a stranded security branch, plus two defects found by reading. Ten build
+branches merged through an integration branch (`build/r369`) and gated once.
+
+**Items closed:** `cac9a3a1` (My Leave donut centre) · `9949f91a` (Leave Inquiry employee panel) ·
+`7709ffd1` (My Request rename, full width, and the 200-row cliff) · `c7c69a18` round 1 (Apply OT width
+and field names) · `034a5080` (Create New Employee dialog) · `db55d08a` (Leave B/F Data Import) ·
+`eb949191` (a zero basic is allowed; a regular run SKIPS a period with nothing payable) · `b2713800`
+(the import warning that fires on the damaging case) · `3a4efe9f` (Entitlements leave-type filter, then
+the create move) · `6948727a` (My Roster).
+
+### THE THING THAT SHOULD NOT HAVE NEEDED THIS ROUND
+`build/r360-security-fixes` had been sitting UNMERGED since 2026-09-29 — six fixes, two HIGH. Production
+ran main exactly, so all six were live while nine feature rounds shipped past them. §3's unmerged-branch
+sweep is what found it; it is not optional and "an old branch is not a pending round" cuts both ways.
+
+Migration renumbered **0490 → 0492** because main took 0490 for `0490_leave_history_import` while the
+branch sat. **The branch shipped NO TESTS**, so nothing pinned any of it — and writing the missing one
+found the remediation INCOMPLETE: only the EA *page* was guarded, not `app/me/ea/[employmentId]/pdf`.
+Same document, same IC and tax number, one URL away. 0492 could not close it either, because the EA read
+resolves through `employment` and the pack's aggregates, not `payslip_rls`. Gate now sits at the seam
+(`eaReadableBy` in `core/reporting.ts`), applied by `employeeEaStatement` AND `employeeEaCompanies`.
+
+H1 (Next 16.2.7 → 16.3.6) is **DEFERRED**: package.json + pnpm-lock only, but it needs `pnpm install`
+against a shared symlinked `node_modules`. It gets its own pass. **It is still unshipped.**
+
+### THE GATE
+Full chunked gate on the merged tree, `CHUNKS=16 VITEST_MAX_WORKERS=4`: **1082 of 1082 files counted,
+zero AssertionErrors**. It went RED first and **the background notification said exit 0** — read the log,
+never the notification. Two red chunks, reconciled rather than re-run wholesale (946 files from the 14
+green chunks + 68 + 68 from the two re-runs = 1082, each file counted exactly once):
+
+- **chunk 2, ONE REAL FAILURE, and the only one of the round.** A cross-branch interaction no per-branch
+  run could see: `9949f91a` mounted the `'use client'` `CollapsibleEmployeePanel` (which calls
+  `useRouter`) on a screen whose node test mocks `next/navigation` with only `redirect`/`notFound`. The
+  branch that mounted it never touched that test; the branch that touched that test had not yet mounted
+  it. Underneath the mock error sat a real AssertionError — the case proved "there is a picker" by finding
+  `name="emp"` on a GET form, and the panel now selects by pushing through the router. Repointed with the
+  old lines quoted, not relaxed. **I got the repoint wrong once:** I asserted `pickEmployeeBalances` and
+  it failed because that fixture has no employees in scope, so the page correctly says `noEmployees`. The
+  page was right; my assertion pinned the wrong branch.
+- **chunk 6, ENVIRONMENTAL**, and it explained the arithmetic: five `Hook timed out`, two `Test timed
+  out`, one `[vitest-pool]: Failed to start forks worker` and one worker-response timeout, with
+  `peak-disk=79-82%` so not disk. A worker that never spawns is not counted — the chunk announced 68 and
+  counted 67, which is exactly the "1081 of 1082". Re-run at `VITEST_MAX_WORKERS=3`: 68/68.
+
+`env -u MIGRATION_DATABASE_URL -u DATABASE_URL pnpm gate:shadow` → **SHADOW_RESULT=PASS (406/406 applied
+against live-shaped schema)**, `applied 404 -> 406`. Both migrations apply; neither is a silent skip.
+`tsc --noEmit` 0, `next build` 0 (226 static pages, 300 routes), `i18n-check` PASS at 12798 leaf keys with
+parity and placeholders clean in all five non-English locales, and **zero key deletions on any of the ten
+branches**, so the catalogue union merge could not resurrect anything.
+
+### DECISIONS THE TICKETS DID NOT SETTLE
+- **`eb949191` supersedes `7dbaf677`'s round ONE in full.** The reporter's contest rejected the refusal we
+  proposed; 7dbaf677's approved plan still describes a tick box, a `no_monthly_basic` column and a
+  migration, and building it as written would ship the rejected thing. It was deliberately NOT re-pushed
+  (a push resets approved → planned and costs a re-approval), so **the board still shows the superseded
+  plan.** Its round TWO (Payroll tab, wizard, activation) is untouched and still right.
+- **A deduction never keeps an employee in a regular run; an unresolved ruled EARNING does.** The plan
+  ruled on deductions only. Chosen so the predicate cannot lose somebody money.
+- **The legacy `monthly_allowance` leg is a money door.** Not in the plan's list; without it an employee
+  with a zero basic and a RM500 standing allowance would be skipped and lose it.
+- **A subset reprocess REFUSES by name rather than skipping**, before the snapshot and the payslip delete
+  — r226's own rule that taking somebody off a processed run is `removeEmployeesFromBatch`'s job.
+- **`zeroBasic` keeps its identifier** (renaming churns the 4ca06dea bitmask parity guard across three
+  files); its message narrowed to the daily/hourly leg, which stays a blocker.
+- **Badge legend keys are per-namespace, not shared** — `ta` and `th` already spell the blocker badge
+  differently on the two screens, so one string would be wrong in two locales.
+- **My Roster does not print the supervisor's name.** `can_see_person` resolves through
+  `can_see_employment`, which walks DOWNWARD only, so an employee cannot read their own manager. The
+  approved mockup shows the name. Raised as `7c972a40` for the reporter to decide; the screen prints a
+  name-free sentence meanwhile. A screen must not query with more authority than its viewer holds.
+- **The B/F importer validates on the WRITE path's carry rule, not the READ path's**, which surfaced a
+  divergence: `carryAllowanceFrom` ignores `carryForwardEnabled` while `openLeaveYear` honours it. Raised
+  as `ed6f7a7b`.
+- **The PCB detail's child count: guard the FIELD, not the trace.** r364 fixed the kernel and left both
+  render sites carrying it — the PDF printed the literal `null`, the screen drew an empty cell.
+
+### CORRECTIONS OWED TO THE REPORTER
+1. **The negative net is −0.15 by default, not −0.35.** `subject_to_skbbk` defaults FALSE, so the default
+   is SOCSO 0.10 + EIS 0.05; −0.35 only where SKBBK applies. `eb949191`'s plan said "roughly 35 sen".
+   Both are below zero and the test asserts both. **Say this when the item is closed.**
+2. **Four facts in the two items WE raised were wrong**, corrected at the top of their pushed plans:
+   the "a second run that pays nothing still adds a month's wage" claim is overstated (r226/r227 skip such
+   an employee); "cumulative" was the wrong word for `bases.epf` (it is the whole month re-derived every
+   run — a builder reading "cumulative" would take a difference); the EA's "one deliberate departure"
+   margin is BACKWARDS (the 16.8pt is the tracing's, the agency's body table is at 39.8pt against our 24,
+   so the agency is WIDER); and Section C `TOTAL` belongs in the sub-item column (80.5), not description.
+3. **Four of the five "EA Form design V1–V5" references are another vendor's EA** — V2 stamps `Pin. 2026`
+   and captions `Employer's TIN E` where LHDN publishes `Pin. 2023` / `Employer's No. E`; V1/V3/V4 print
+   `NONE` in empty money boxes. **Only V5 is LHDN's.** Third recurrence of this trap.
+4. **`c7c69a18`'s plan was wrong that `app/approvals/page.tsx` shares `me.otHoursLabel`** — that file
+   opens `getTranslations('approvals')`, so the key had exactly one consumer.
+5. **EA Section E(2) already changed on 30 September** — statements downloaded before then carry the SOCSO
+   leg only and should be replaced if issued.
+
+### WHAT WAS NOT DONE
+- **Security H1**, above. Still live.
+- **`7dbaf677`** held, not built, and its board plan still describes the superseded round one.
+- **`c7c69a18` round 2** (OT 1 / OT 2 rate segments) — forbidden by
+  `test/plan-ot-calendar-screen.test.ts` and reverses a refusal this reporter approved two days earlier.
+- **`011c5b7f` round 2** (the rejection remark — no column, no service argument, and the bulk approvals
+  path silently drops a collected `rejectReason` for attendance items) and the phone layout.
+- **`db1e7b9d` round 2** (MTD steps 9.7 and 9.8, which need `pcbMonth` to stamp `totalMtdYear`
+  unconditionally).
+- **`core/employee-draft.ts`** also calls `setCompensation` with no remarks field, so a zero-basic draft
+  activated through the hire wizard hits the same refusal the importer now handles. That is 7dbaf677's
+  round two.
+- **`app/attendance/requests/page.tsx`** reads corrections by COUNT (`limit: 200`) on a DATE-ranged screen,
+  so past 200 a date can lose its "already requested" marker and the duplicate is refused as a raw
+  Postgres unique-violation. The user-visible half is covered by `011c5b7f`'s plan.
+- **`assignShift` does not clear `roster_assignment.note`**, so a noted rest day that later gets a shift
+  keeps a stale note. A write-path change; its own round.
+- **⚠️ WE DELETE THE REPORTER'S CONTEST WORDING WHEN WE ANSWER IT.** `push-plan` runs
+  `contest_reason = NULL` and `setFeedbackPlan` sets `contestReason: null`. Measured: `15e5bd93` is on plan
+  revision 4 — contested THREE times — with `contest_reason` GONE and no block trail. **That is the
+  mechanism behind its triple miss**: each answer deleted the words that said what was wrong. Until it is
+  fixed, a plan's opening paragraph is the only surviving record of the contest it answers. The fix is an
+  append-only contest trail and needs a migration; allocate from `max(idx)` = 497.
+- **A defect raised, not fixed: `d4f6848f`** — a multi-run month overstates the WAGE column on Borang A and
+  the PERKESO file by one month per extra run. Contributions are CORRECT; CP39 is correct. The repo's own
+  guards already assert `oneMonth * 2` and say "PINNED, NOT A FIX".
+- **`795c470c`** — the EA grid is still r219's tracing of another vendor's 150 dpi PNG; r346 re-measured
+  only the money column. Vertical compression ~87%, label columns ~20pt left of the agency. Must ship
+  AFTER `450f443f`'s officer-box round, never concurrently.
+
+### PROCESS FAILURES WORTH NOT REPEATING
+- **`build-start` fired before dispatch stranded four builders from their own approved plans**
+  (`pull-approved` filters `approved`). Fixed by adding **`improve:pull-item <id>`** this round; the
+  discipline is to capture the plan, dispatch, THEN write the board.
+- **Two agents in one worktree.** A follow-up was sent into `r369-zerobasic` while its builder was still
+  there; a `git checkout --` destroyed the other's uncommitted Thai translation. `i18n-check` caught it
+  (`parity ✗ · missing 1`). A follow-up on a finished branch gets its OWN worktree.
+- **`testlock.sh` only ever guarded vitest.** Two unlocked `next build` runs put the machine at 0.05 GB
+  free with 28 GB of swap in use, each taking 12 minutes against a normal one. Lock all three of vitest,
+  `next build` and `tsc`.
+
 ## r368 (2026-09-30) — two documents stopped saying things that were not true. `main@149ef06f`, **no migration**.
 
 Closed: `970e4143`, `c8282468`. Gate: **1069 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, zero AssertionErrors, first attempt. `tsc` 0, `next build` 0, `i18n-check` PASS.
