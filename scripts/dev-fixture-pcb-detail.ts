@@ -71,9 +71,16 @@ import { DEMO_TENANT_ID, demoSeedRefusal } from '../db/seed-guard';
 import { resolveEntitlementsTx } from '../core/entitlements';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { setStatutoryProfileMY, setTaxProfileMY } from '../localization/my/statutory';
-import { createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
-import { listProcessedPayslipsAcross } from '../core/payroll-view';
+// ADR-0080 D9 and D7/D4: `scripts/` is scanned by both import ratchets, so a fixture consumes payroll
+// through the pack FACADE and jurisdiction through the REGISTRY, exactly as app code does. Importing
+// ../core/payroll or ../localization/my directly here is a gate failure, and the allowlists only shrink.
+import { requirePackFor } from '../localization/registry';
+import {
+  createBatch,
+  generatePayslips,
+  setPayrollInput,
+  listProcessedPayslipsAcross,
+} from '../packs/payroll/service';
 
 const refusal = demoSeedRefusal(process.env);
 if (refusal) {
@@ -165,13 +172,17 @@ async function main() {
     monthlyAllowance: 800,
     effectiveFrom: '2026-01-01',
   });
+  // The MY statutory setters come off the resolved pack, not a direct localization/my import:
+  // `pack.statutory.set`/`.setTax` ARE setStatutoryProfileMY/setTaxProfileMY (localization/country-pack.ts),
+  // so this is the same function through the seam every other caller uses.
+  const pack = requirePackFor('MY');
   // Trap 2: a unique IC per run, keeping the reference's date-of-birth prefix.
-  await setStatutoryProfileMY(ctx, {
+  await pack.statutory.set(ctx, {
     personId: e.personId,
     icNumber: `850302${String(stamp).slice(-6)}`,
     taxCategory: 2,
   });
-  await setTaxProfileMY(ctx, {
+  await pack.statutory.setTax(ctx, {
     personId: e.personId,
     taxCategory: 2,
     numChildren: 2,
