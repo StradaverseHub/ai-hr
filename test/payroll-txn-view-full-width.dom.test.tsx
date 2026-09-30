@@ -186,6 +186,9 @@ const historyRow: ProcessedPayslipViewRow = {
   bonus: '584.13',
   gross: '5984.13',
   statutory: {},
+  // 970e4143 — ProcessedPayslipViewRow now carries the payslip's stored "Other deductions" column
+  // (the two Transaction History surfaces could not reconcile without it). 0 on this baseline.
+  otherDeductions: '0.00',
   totalDeductions: '700.00',
   net: '5284.13',
 };

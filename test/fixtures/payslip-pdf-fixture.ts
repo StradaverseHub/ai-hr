@@ -126,7 +126,12 @@ export const data: PayslipPdfData = {
   zakatCountedInTotal: true,
   otherDeductions: 0,
   // e2632276 — no stamp on this fixture ⇒ the pre-feature path: no named lines, residual === otherDeductions.
-  absence: { unpaidLeave: null, absent: null, residual: 0, showResidual: false, any: false },
+  // 970e4143 — and no CP38, so no CP38 row. ⚠️ A CASE THAT RAISES `cp38` MUST RAISE `otherDeductions` WITH
+  // IT and leave `totalDeductions` alone: the kernel folds the applied CP38 INTO other_deductions
+  // (core/payroll.ts `slipExtraDeduct`), so `cp38: 50` beside `otherDeductions: 0` and a total bumped by 50
+  // encodes the OPPOSITE model and is how the one arithmetic assertion over this document stayed blind to a
+  // double count that was on every affected payslip.
+  absence: { unpaidLeave: null, absent: null, cp38: { amount: 0, show: false }, residual: 0, showResidual: false, any: false },
   totalDeductions: 1099.65,
   net: 6020.35,
   epfEmployer: 925,

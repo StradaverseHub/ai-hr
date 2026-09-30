@@ -86,8 +86,16 @@ const FIXED_COLUMNS: { label: string; align: ColAlign }[] = [
   { label: 'Covered From', align: 'left' },
   { label: 'Covered To', align: 'left' },
   { label: 'Status', align: 'left' },
-  // ── Summary + employee-borne deductions. SKBBK, CP38 and Zakat are carried even though they are nil on
-  //    most runs, so the deduction columns visibly reconcile against Total Deductions.
+  // ── Summary + employee-borne deductions. SKBBK, CP38, Zakat and Other Deductions are carried even though
+  //    they are nil on most runs, so the deduction columns visibly reconcile against Total Deductions.
+  //
+  //    ⚠️ 970e4143 — THAT SENTENCE WAS ASSERTED AND WAS NOT TRUE, and it is worth recording why rather than
+  //    quietly editing it. There was NO Other Deductions column at all, so on any run where
+  //    `other_deductions` held something — unpaid leave, a manual deduction, a staff loan, a carry-forward
+  //    recovery — the columns fell SHORT of Total Deductions and the sheet could not be reconciled. And the
+  //    CP38 column carried `statutory.cp38`, the PRE-CLAMP instalment, which on a clamped slip is MORE than
+  //    was deducted. Both are fixed below; the sentence is now checkable, and test/history-export.test.ts
+  //    checks it on kernel-produced figures.
   { label: 'Gross', align: 'right' },
   { label: 'EPF', align: 'right' },
   { label: 'SOCSO', align: 'right' },
@@ -96,6 +104,13 @@ const FIXED_COLUMNS: { label: string; align: ColAlign }[] = [
   { label: 'PCB', align: 'right' },
   { label: 'CP38', align: 'right' },
   { label: 'Zakat', align: 'right' },
+  // 970e4143 — the rest of `other_deductions` once the CP38 above is taken out of it. It STILL carries the
+  // unpaid-leave, absence, manual-deduction, loan and carry-forward money as one figure: this sheet prints
+  // no column for any of those, so lumping them here is what makes the block add up. The panel this sheet
+  // is downloaded from names the two absence halves because it has rows for them — same decider
+  // (core/payslip-cp38-line.ts `payslipCp38Carve`), different row set, and `cp38Lumped`/`otherDeductionsLumped`
+  // on the breakdown are the PAIR computed for THIS one — read together, never mixed with `absence.cp38`.
+  { label: 'Other Deductions', align: 'right' },
   { label: 'Total Deductions', align: 'right' },
   { label: 'Nett Wage', align: 'right' },
   // ── The earnings lines from the expanded panel, mirrored line for line.
@@ -278,8 +293,11 @@ export function buildHistoryExport(input: HistoryExportInput): ReportData {
       money(emp.skbbk),
       money(emp.eis),
       money(emp.pcb),
-      money(num(st.cp38)),
+      // 970e4143 — the APPLIED instalment (0 when it could not be carved out of the column, in which case
+      // its money stays in Other Deductions beside it), never the pre-clamp `st.cp38`.
+      money(b.cp38Lumped.show ? b.cp38Lumped.amount : 0),
       money(num(st.zakat)),
+      money(b.otherDeductionsLumped),
       money(b.totalDeductions),
       money(b.net),
       money(b.basic),

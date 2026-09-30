@@ -6857,6 +6857,27 @@ export async function generatePayslips(
           // stamp and cannot answer). A conditional stamp would collapse those two into one silence, and
           // the renderers fall back to the amount test on the second of them.
           skbbkSubject: stOpts.subjectToSkbbk,
+          // ── 970e4143 — WHAT THE CP38 INSTALMENT ACTUALLY RECOVERED THIS MONTH ────────────────────────
+          //
+          // `st.cp38` above is stamped from the PRE-CLAMP figure: the amount the LHDN/court direction asked
+          // for. The EA s.24 net-floor chain then takes only what the headroom allows (`cp38Applied`), and
+          // it is the APPLIED amount — not the request — that is folded into `otherDeductions` and into
+          // `total_deductions`. Until this stamp existed the applied figure was recorded NOWHERE on the
+          // slip: only in a batch-level `s24.deduction.clamped` domain event. So every payslip renderer
+          // printed the request, and a 9,000 instalment against 6,500 of pay printed "CP38 9,000.00" beside
+          // a total of 6,500.00 when 5,606.65 had been taken. A money document overstating what was
+          // deducted from an employee, with no way for any reader to tell.
+          //
+          // STAMPED WHENEVER THERE IS A CP38 AT ALL, not only when the two differ — the a96d320c
+          // `skbbkSubject` argument. A reader must be able to tell "this run recovered the whole
+          // instalment" from "this slip predates the stamp and cannot answer", and a conditional stamp
+          // collapses those two into one silence. `core/payslip-cp38-line.ts` is the only reader, and it
+          // tests for the KEY, not for a difference.
+          //
+          // Additive key on plain jsonb with no allow-list validator, so NO MIGRATION. It is NOT a
+          // DELTA_KEY: `cp38` is not one either (an additional run charges no CP38 at all — `cp38` is 0
+          // there, so this key is absent on every additional slip, exactly like `cp38` itself).
+          ...(cp38 > 0 ? { cp38Applied } : {}),
           // Item 5a461b99 — snapshot the "Employer bears" decision + the amounts the employer absorbed for
           // provenance, ONLY when at least one flag is set (absent ⇒ byte-identical to today). The reported
           // socso/eis/skbbk figures above are unchanged; this records that their EMPLOYEE share was not deducted.

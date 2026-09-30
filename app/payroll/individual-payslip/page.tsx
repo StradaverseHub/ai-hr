@@ -854,7 +854,11 @@ export default async function IndividualPayslipPage({
                 </a>
               }
             />
-            {Number(b.st.cp38) > 0 && <Row label={tSlip('cp38')} value={rm(b.st.cp38)} />}
+            {/* 970e4143 — the APPLIED instalment, and only when it could be carved out of "Other
+                deductions". Never `b.st.cp38` (the pre-clamp figure the direction asked for); the row and
+                the residual are ONE decision and it is made in core/payslip-absence-lines.ts, shared with
+                the employee's own payslip and the printed document. */}
+            {absence.cp38.show && <Row label={tSlip('cp38')} value={rm(absence.cp38.amount)} />}
             {/* 3a092cf0 — a real deduction line now, un-muted, with the amount alone in the figure column
                 and the offset note on the label. See app/me/payslip/[payslipId]/page.tsx for the full
                 note; the two surfaces render one payslip and must not print it differently. */}

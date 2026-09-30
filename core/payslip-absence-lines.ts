@@ -17,9 +17,19 @@
  *     the 67 already-issued payslips are byte-identical.
  *
  *  2. THE SECTION MUST STILL SUM TO `totalDeductions`. The named lines come OUT of the "Other deductions"
- *     figure, they are not added beside it — `residual = otherDeductions − unpaidLeave − absent`. A slip
- *     whose whole other-deductions figure was the absence nets the residual to zero, and `showResidual`
- *     then says not to print it (it currently renders on `> 0`, so a zero row would be a new, empty line).
+ *     figure, they are not added beside it — `residual = otherDeductions − unpaidLeave − absent − cp38`.
+ *     A slip whose whole other-deductions figure was the absence nets the residual to zero, and
+ *     `showResidual` then says not to print it (it renders on `> 0`, so a zero row would be an empty line).
+ *
+ *     ── 970e4143 added the CP38 term, and it is the same defect a second time ──────────────────────────
+ *     The applied CP38 is folded into `other_deductions` by the kernel (`slipExtraDeduct`), exactly as the
+ *     unpaid-leave amount is, and every renderer printed a CP38 row BESIDE the residual that still
+ *     contained it. Measured on a real run: EPF 715.00 · SOCSO 29.75 · EIS 11.90 · PCB 136.70 ·
+ *     CP38 450.00 · Other deductions 450.00 above a printed TOTAL DEDUCTIONS of 1,343.35 — the rows add to
+ *     1,793.35, over by exactly the instalment. So the CP38 is a THIRD claim on one column and is carved
+ *     out here with the other two, and this module — not any renderer — decides whether its row prints.
+ *     Zakat is NOT a claim on this column: `slipZakat` is its own term in the kernel, outside
+ *     `other_deductions`, which is why a zakat row beside the residual has always been safe.
  *
  *  3. A ZERO HALF PRINTS NOTHING. Zero unpaid days and zero absent days ⇒ neither line appears, which is
  *     the ordinary month for almost every employee.
@@ -27,6 +37,8 @@
  * Defensive about shape throughout: the blob is plain jsonb with no validator, so a garbage stamp degrades
  * to the pre-feature path rather than throwing on a payslip screen.
  */
+
+import { payslipCp38Carve, type PayslipCp38Snapshot } from './payslip-cp38-line';
 
 export type PayslipAbsenceLine = {
   /** Day count as recorded on the payslip. May be fractional (a half-day unpaid request contributes 0.5). */
@@ -40,7 +52,19 @@ export type PayslipAbsenceLines = {
   unpaidLeave: PayslipAbsenceLine | null;
   /** The absence half (no attendance record, or explicitly marked Absent), or null. */
   absent: PayslipAbsenceLine | null;
-  /** What is LEFT of "Other deductions" once the named lines are taken out of it. Never negative. */
+  /**
+   * 970e4143 — THE CP38 ROW, decided here because it competes for the same column.
+   *
+   * `amount` is what was ACTUALLY deducted (core/payslip-cp38-line.ts `applied`), never the instalment the
+   * direction asked for. `show` is false whenever the amount could not be carved out of
+   * `other_deductions` — on that slip the residual still contains it, so a CP38 row beside the residual
+   * would double-count it, and a document that adds up matters more than a breakdown.
+   *
+   * EVERY SURFACE MUST READ THE ROW FROM HERE and not from `statutory.cp38`: the carve decision and the
+   * row are one answer, and seven surfaces got it wrong independently by each deciding for itself.
+   */
+  cp38: { amount: number; show: boolean };
+  /** What is LEFT of "Other deductions" once the named lines AND the applied CP38 are taken out. Never negative. */
   residual: number;
   /** Whether the residual "Other deductions" row should be printed at all (it renders on > 0 today). */
   showResidual: boolean;
@@ -85,9 +109,27 @@ export function payslipAbsenceLines(statutory: unknown, otherDeductions: unknown
   const st = (statutory ?? {}) as { unpaidLeave?: unknown; absent?: unknown };
   const unpaidLeave = lineOf(st.unpaidLeave);
   const absent = lineOf(st.absent);
+  const named = r2((unpaidLeave?.amount ?? 0) + (absent?.amount ?? 0));
+  // 970e4143 — the third claim on this column, read off the slip's own blob (its applied figure when the
+  // slip records one, else the requested figure, which is all a pre-970e4143 slip knows) and put through
+  // THE SAME carve rule the register and the detail report use, with the absence lines this surface names
+  // passed in. REFUSE TO CARVE OUT MORE THAN WE WERE GIVEN, which is the rule already stated below.
+  //
+  // A LEGACY CLAMPED slip is exactly the case that does not fit: no `cp38Applied` stamp, so `applied` is
+  // the 9,000 the direction asked for while the column holds only the 5,606.65 that was recovered. Carving
+  // it out would print a negative residual; printing the row beside an uncarved residual would double-count
+  // it. Neither document adds up, so the CP38 row is withheld and its money stays inside the lumped figure
+  // — internally consistent, and the only honest answer available from a slip that never recorded what it
+  // took.
+  const carve = payslipCp38Carve(st as PayslipCp38Snapshot, other, named);
+  const cp38Carved = carve.carved;
+  const cp38Row = { amount: carve.line.applied, show: carve.show };
   if (!unpaidLeave && !absent) {
-    // Pre-feature (or a slip with nothing to name): render exactly as before.
-    return { unpaidLeave: null, absent: null, residual: other, showResidual: other > 0, any: false };
+    // Pre-feature (or a slip with nothing to name): the absence half renders exactly as before, and the
+    // residual still loses whatever CP38 could be carved out of it (0 on every slip without one ⇒ byte-
+    // identical for every payslip that has no CP38, which is all but a handful).
+    const residual = Math.max(0, r2(other - cp38Carved));
+    return { unpaidLeave: null, absent: null, cp38: cp38Row, residual, showResidual: residual > 0, any: false };
   }
   // THE STAMPS ARE NOT ALWAYS A SUBSET OF otherDeductions, which an earlier version of this comment
   // asserted. core/payroll.ts builds otherDeductions as slipUnpaid + extras PLUS
@@ -101,10 +143,14 @@ export function payslipAbsenceLines(statutory: unknown, otherDeductions: unknown
   // So: REFUSE TO CARVE OUT MORE THAN WE WERE GIVEN. When the named lines exceed the column, fall back
   // to the pre-feature single lumped row, which is always internally consistent. Losing the breakdown
   // on a deferred-shortfall slip is strictly better than printing a document that contradicts itself.
-  const named = r2((unpaidLeave?.amount ?? 0) + (absent?.amount ?? 0));
   if (named > r2(other) + 0.005) {
-    return { unpaidLeave: null, absent: null, residual: other, showResidual: other > 0, any: false };
+    // The named lines alone exceed the column. Everything lumps — including the CP38, whose row must go
+    // with it for the same reason (`cp38Carved` is already 0 here by construction: named alone is over).
+    return {
+      unpaidLeave: null, absent: null, cp38: { amount: carve.line.applied, show: false },
+      residual: other, showResidual: other > 0, any: false,
+    };
   }
-  const residual = Math.max(0, r2(other - (unpaidLeave?.amount ?? 0) - (absent?.amount ?? 0)));
-  return { unpaidLeave, absent, residual, showResidual: residual > 0, any: true };
+  const residual = Math.max(0, r2(other - named - cp38Carved));
+  return { unpaidLeave, absent, cp38: cp38Row, residual, showResidual: residual > 0, any: true };
 }

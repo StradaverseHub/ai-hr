@@ -610,6 +610,9 @@ describe('e2632276 — the payslip lines are derived from the slip, never from t
     expect(payslipAbsenceLines({ epfEmployee: 660 }, '250.00')).toEqual({
       unpaidLeave: null,
       absent: null,
+      // 970e4143 — the CP38 row is decided here too (it is a third claim on the same column). No CP38 on
+      // this slip ⇒ no row and nothing carved out ⇒ the residual is the whole column, exactly as before.
+      cp38: { amount: 0, show: false },
       residual: 250,
       showResidual: true,
       any: false,

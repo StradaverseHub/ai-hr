@@ -279,6 +279,11 @@ const PAYROLL_REGISTER: ReportDataset = {
     { id: 'socsoSkbbk', label: 'SOCSO SKBBK (Employee)', type: 'currency', group: 'Deductions' },
     { id: 'eisEmployee', label: 'EIS (Employee)', type: 'currency', group: 'Deductions' },
     { id: 'pcb', label: 'PCB (Tax)', type: 'currency', group: 'Deductions' },
+    // 970e4143 — CP38 and Other Deductions are ONE answer and neither is the raw payslip figure: the
+    // applied CP38 is folded into the stored `other_deductions` column, so an operator who added both
+    // columns to a register saw the instalment twice. `listPayrollRegisterAcross` carves it out (see
+    // PayrollRegisterRow.cp38 / .otherDeductions); these two definitions stay a straight pass-through and
+    // must NOT learn the arithmetic — two report definitions doing it is how they start to disagree.
     { id: 'cp38', label: 'CP38', type: 'currency', group: 'Deductions' },
     { id: 'zakat', label: 'Zakat', type: 'currency', group: 'Deductions' },
     { id: 'otherDeductions', label: 'Other Deductions', type: 'currency', group: 'Deductions' },

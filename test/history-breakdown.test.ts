@@ -35,6 +35,9 @@ function row(overrides: Partial<ProcessedPayslipViewRow> = {}): ProcessedPayslip
     bonus: '0.00',
     gross: '3620.00',
     statutory: {},
+    // 970e4143 — ProcessedPayslipViewRow now carries the payslip's stored "Other deductions" column
+    // (the two Transaction History surfaces could not reconcile without it). 0 on this baseline.
+    otherDeductions: '0.00',
     totalDeductions: '430.00',
     net: '3190.00',
     ...overrides,

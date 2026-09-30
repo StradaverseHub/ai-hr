@@ -378,7 +378,24 @@ function cellsFor(row: ProcessedPayslipViewRow, payItemNames?: PayItemNames): {
   // the unpaid-leave / manual / loan / carry-forward money plus any policy rounding applied to the total.
   // Left unclamped on purpose: a carry-forward DEFERRAL is legitimately negative, and hiding that behind a
   // Math.max would make the column stop adding up in the one case worth seeing.
-  const cp38 = num(st.cp38);
+  // ── 970e4143 — THE CP38 ROW HERE PRINTED WHAT WAS DEMANDED, NOT WHAT WAS TAKEN ─────────────────────
+  //
+  // ⚠️ THIS FILE WAS DECLARED CLEAN OF CP38 BY A GREP THAT COULD NOT SEE IT. `pKey` below joins its
+  // composite key with a literal NUL byte, which makes `grep` classify this source file as BINARY and skip
+  // it in a recursive search — silently, exit 0. That is how a survey of "every surface that prints a CP38
+  // beside a total" missed the reconciliation GRID. Use `grep -a` on this directory.
+  //
+  // The double count fault never applied here: OTHER_DED is a residual struck from `totalDeductions` less
+  // the named lines, so whatever is subtracted on the CP38 row comes straight back out of the residual and
+  // the column adds up either way. The OVERSTATEMENT fault did apply, and this is a money screen: on a
+  // clamped instalment `st.cp38` is the pre-clamp figure, so a 9,000 direction against 6,500 of pay printed
+  // CP38 9,000.00 — and drove OTHER_DED to -3,393.35, a negative "Other deductions" that survives
+  // hide-zero and reaches the operator.
+  //
+  // `cp38Lumped` is the shared answer for a row set with no named absence lines, which is this one. Read as
+  // a pair with the subtraction below: a legacy clamped slip answers `show: false`, the row prints nothing
+  // and its money stays inside OTHER_DED, exactly as the payslip surfaces degrade it.
+  const cp38 = b.cp38Lumped.show ? b.cp38Lumped.amount : 0;
   // 3a092cf0 — ZAKAT COMES OUT OF THE RESIDUAL TOO, and leaving it in was the second half of the same
   // defect. `totalDeductions` now includes the zakat, so a residual that did not subtract it would carry
   // the zakat into OTHER_DED while the ZAKAT row printed it again beside it: the same 30.00 on two lines,

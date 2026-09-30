@@ -71,6 +71,9 @@ function slip(overrides: Partial<ProcessedPayslipViewRow> = {}): ProcessedPaysli
     gross: '3620.00',
     // 330 + 18.65 + 7.90 + 73.45 = 430.00 ⇒ OTHER_DED is 0 for this baseline slip.
     statutory: { epfEmployee: 330, socsoEmployee: 18.65, eisEmployee: 7.9, pcb: 73.45 },
+    // 970e4143 — ProcessedPayslipViewRow now carries the payslip's stored "Other deductions" column
+    // (the two Transaction History surfaces could not reconcile without it). 0 on this baseline.
+    otherDeductions: '0.00',
     totalDeductions: '430.00',
     net: '3190.00',
     ...overrides,

@@ -270,7 +270,18 @@ describe('ADR-0036 — payslip PDF', () => {
   });
 
   it('renders a distinct CP38 deduction line when cp38 > 0 (web/PDF parity)', async () => {
-    const withCp38 = drawnText(await renderPayslipPdf({ ...data, cp38: 200 }, labels));
+    // 970e4143 — the fixture now encodes the kernel's model (the instalment is INSIDE other_deductions and
+    // is carved back out of the residual), so this case cannot pass on a document that double-counts it.
+    const withCp38 = drawnText(
+      await renderPayslipPdf(
+        {
+          ...data,
+          cp38: 200, otherDeductions: 200, totalDeductions: 1299.65, net: 5820.35,
+          absence: { unpaidLeave: null, absent: null, cp38: { amount: 200, show: true }, residual: 0, showResidual: false, any: false },
+        },
+        labels,
+      ),
+    );
     expect(withCp38).toContain('CP38');
     expect(withCp38).toContain('MYR 200.00');
     // And a zero CP38 omits the row entirely rather than printing a 0.00 line nobody asked about.
@@ -313,10 +324,62 @@ describe('ADR-0036 — payslip PDF', () => {
 
     expect(amountBeside('Zakat')).toBe(30);
     // Every employee-side deduction line the box prints, added up the way the reporter added them up.
-    const lines = ['EPF', 'SOCSO', 'EIS', 'PCB', 'Zakat'].map(amountBeside);
-    expect(Math.round(lines.reduce((a, b) => a + b, 0) * 100) / 100).toBe(466.25);
+    //
+    // ⚠️ 970e4143 — CP38 AND "OTHER DEDUCTIONS" JOIN THIS LIST, and their absence is why the only drawn-page
+    // arithmetic assertion in the repo was blind to a double count present on every affected payslip. The
+    // list was hard-coded to EPF/SOCSO/EIS/PCB/Zakat over a fixture pinning `cp38: 0, otherDeductions: 0`,
+    // so the two rows that failed to reconcile were neither drawn nor summed. A label with no row on the
+    // page is skipped, so listing them costs the zakat case nothing.
+    const DEDUCTION_LABELS = ['EPF', 'SOCSO', 'EIS', 'PCB', 'CP38', 'Zakat', 'Other deductions'] as const;
+    const sumOfRows = (pls: ReturnType<typeof drawnPlacements>) => {
+      const beside = (label: string) => {
+        const row = placed(pls, label);
+        if (!row) return null;
+        const amt = pls.find(
+          (r) => r.page === row.page && Math.abs(r.y - row.y) < 1.5 && r.x > row.x && r.text.startsWith('MYR'),
+        );
+        if (!amt) throw new Error(`row ${label} drew no amount`);
+        return Number(amt.text.replace(/^MYR\s*/, '').replace(/,/g, ''));
+      };
+      const drawn = DEDUCTION_LABELS.map((l) => [l, beside(l)] as const).filter(([, v]) => v != null);
+      return { drawn, sum: Math.round(drawn.reduce((a, [, v]) => a + v!, 0) * 100) / 100 };
+    };
+    expect(sumOfRows(pl).sum).toBe(466.25);
     // …and that is the total the box itself prints, so the column reconciles on the page.
     expect(amountBeside('TOTAL DEDUCTIONS')).toBe(466.25);
+
+    // ── 970e4143's OWN CASE, on the same assertion: a CP38 inside "Other deductions" ──────────────────
+    //
+    // THE TRAP THIS CASE EXISTS TO AVOID: with `cp38: 0` or `otherDeductions: 0` the sum reconciles however
+    // the renderer behaves, so both are asserted NON-ZERO and MUTUALLY DISTINCT before the sum is asserted
+    // at all. Distinct matters on its own — the reproduction had `cp38 === otherDeductions === 450`, and a
+    // renderer that printed the instalment twice and a renderer that printed it once plus a residual of the
+    // same size are indistinguishable on those figures.
+    //
+    // Figures: the 466.25 slip above plus a CP38 of 120 and a further 80 of other deductions ⇒ the column
+    // holds 200, the residual after carving the instalment out is 80, and the total rises by the whole 200.
+    const withCp38: PayslipPdfData = {
+      ...sig01,
+      cp38: 120,
+      otherDeductions: 200,
+      absence: { unpaidLeave: null, absent: null, cp38: { amount: 120, show: true }, residual: 80, showResidual: true, any: false },
+      totalDeductions: 666.25,
+      net: 3641.75,
+    };
+    expect(withCp38.cp38, 'NON-VACUITY: a zero CP38 makes this case reconcile whatever the code does').toBeGreaterThan(0);
+    expect(withCp38.otherDeductions, 'NON-VACUITY: and so does a zero Other deductions').toBeGreaterThan(0);
+    expect(withCp38.cp38, 'NON-VACUITY: the two must differ, or one printed twice looks like one plus a residual')
+      .not.toBe(withCp38.absence.residual);
+    const cp38Pl = drawnPlacements(await renderPayslipPdf(withCp38, labels));
+    const cp38Rows = sumOfRows(cp38Pl);
+    expect(cp38Rows.drawn.map(([l]) => l), 'both rows really are on the page').toEqual(
+      expect.arrayContaining(['CP38', 'Other deductions']),
+    );
+    expect(cp38Rows.sum, 'the drawn deduction rows sum to the total drawn beneath them').toBe(666.25);
+    expect(
+      cp38Pl.find((r) => r.page === placed(cp38Pl, 'TOTAL DEDUCTIONS')!.page && r.text === 'MYR 666.25'),
+      'and that IS the printed total',
+    ).toBeDefined();
 
     // No election ⇒ no row, so every payslip for an employee without zakat prints exactly the document
     // it printed before this line existed.
@@ -1497,6 +1560,7 @@ describe('a96d320c — payment date in words, ruled boxes, no internal pay codes
           absence: {
             unpaidLeave: { days: 2, amount: 420 },
             absent: null,
+            cp38: { amount: 0, show: false },
             residual: 0,
             showResidual: false,
             any: true,
@@ -1851,12 +1915,26 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
     const cases: [string, Partial<PayslipPdfData>][] = [
       ['3 earnings / 4 deductions', {}],
       ['4 earnings / 4 deductions', { bonus: 800, gross: 7920 }],
-      ['3 earnings / 5 deductions', { cp38: 50, totalDeductions: 1149.65, net: 5970.35 }],
+      // 970e4143 — ⚠️ THESE TWO FIXTURES USED TO ENCODE THE OPPOSITE OF WHAT THE KERNEL DOES: `cp38: 50`
+      // with `otherDeductions: 0` and the total bumped by 50, i.e. CP38 sitting OUTSIDE other_deductions.
+      // The kernel folds the APPLIED CP38 INTO that column (core/payroll.ts `slipExtraDeduct`), so a
+      // correct fixture raises `otherDeductions` by the instalment and takes it back out of `residual`.
+      // Corrected because a misleading fixture is what a reader copies the next time.
+      [
+        '3 earnings / 5 deductions',
+        {
+          cp38: 50, otherDeductions: 50, totalDeductions: 1149.65, net: 5970.35,
+          absence: { unpaidLeave: null, absent: null, cp38: { amount: 50, show: true }, residual: 0, showResidual: false, any: false },
+        },
+      ],
       [
         '3 earnings / 6 deductions',
         {
-          cp38: 50, otherDeductions: 200, totalDeductions: 1349.65, net: 5770.35,
-          absence: { unpaidLeave: { days: 2, amount: 200 }, absent: null, residual: 0, showResidual: false, any: true },
+          cp38: 50, otherDeductions: 250, totalDeductions: 1349.65, net: 5770.35,
+          absence: {
+            unpaidLeave: { days: 2, amount: 200 }, absent: null,
+            cp38: { amount: 50, show: true }, residual: 0, showResidual: false, any: true,
+          },
         },
       ],
       ['5 earnings / 4 deductions', { bonus: 800, claim: 120, gross: 8040 }],
@@ -1876,7 +1954,16 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
     // The mechanism holds the shorter body open. It must not do anything else — in particular it must not
     // be able to swallow a row by capping a body instead of extending it.
     const text = drawnText(
-      await renderPayslipPdf({ ...data, cp38: 50, totalDeductions: 1149.65, net: 5970.35 }, labels),
+      await renderPayslipPdf(
+        {
+          ...data,
+          // 970e4143 — the kernel's model: the instalment is INSIDE other_deductions and comes back out of
+          // the residual. See the corrected case table above.
+          cp38: 50, otherDeductions: 50, totalDeductions: 1149.65, net: 5970.35,
+          absence: { unpaidLeave: null, absent: null, cp38: { amount: 50, show: true }, residual: 0, showResidual: false, any: false },
+        },
+        labels,
+      ),
     );
     for (const row of ['Basic salary', 'Allowances', 'Overtime', 'EPF', 'SOCSO', 'EIS', 'PCB', 'CP38']) {
       expect(text, `the padded pair still prints ${row}`).toContain(row);

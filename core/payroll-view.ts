@@ -52,6 +52,9 @@ import {
 } from './payroll';
 // 3c473773 — pure, db-free: which payslip box each earning belongs in, from the payslip's own stamp.
 import { payslipDisplayEarnings } from './pay-display-category';
+// 970e4143 — the CP38 carve rule, shared with the two payslip screens and the printed document so the
+// register cannot disagree with a payslip about how much of an instalment was recovered.
+import { payslipCp38Carve } from './payslip-cp38-line';
 // 169e3c24 — the PCB drill-down's relief fallback (pure type; the explainer itself lives beside it).
 import type { PcbPreviousEmployment, PcbReliefBreakdown } from './pcb-explain';
 // 510f4bd1 — "is this one-off transaction in the employee's latest payslip?", pure and db-free so this
@@ -941,6 +944,20 @@ export type ProcessedPayslipViewRow = {
   bonus: string;
   gross: string;
   statutory: unknown; // { epfEmployee, socsoEmployee, eisEmployee, pcb, ... }
+  /**
+   * 970e4143 — the payslip's stored "Other deductions" column, added because two surfaces over this read
+   * (the Transaction History breakdown panel and its spreadsheet export) printed deduction rows beside a
+   * Total Deductions and had NO WAY to account for this figure at all: their rows fell short of the total
+   * by whatever it held — unpaid leave, a manual deduction, a staff loan, a carry-forward recovery — and
+   * the export's own header asserted that its "deduction columns visibly reconcile against Total
+   * Deductions", which they did not. One column off a table already selected from.
+   *
+   * RAW, as stored. The applied CP38 is folded INSIDE it (core/payroll.ts `slipExtraDeduct`), so no reader
+   * may print it beside a CP38 row without carving that out first — `core/payslip-cp38-line.ts`
+   * (`payslipCp38Carve`) and `core/payslip-absence-lines.ts` are the only two places allowed to do the
+   * arithmetic, and `deriveHistoryBreakdown` reads the answer from them.
+   */
+  otherDeductions: string;
   totalDeductions: string;
   net: string;
 };
@@ -1013,6 +1030,8 @@ export function listProcessedPayslipsAcross(
         bonus: payslip.bonus,
         gross: payslip.grossPay,
         statutory: payslip.statutory,
+        // 970e4143 — see the field docs. The two Transaction History surfaces could not reconcile without it.
+        otherDeductions: payslip.otherDeductions,
         totalDeductions: payslip.totalDeductions,
         net: payslip.netPay,
       })
@@ -1140,8 +1159,33 @@ export type PayrollRegisterRow = {
   socsoSkbbk: number;
   eisEmployee: number;
   pcb: number;
+  /**
+   * 970e4143 — WHAT THE CP38 INSTALMENT ACTUALLY RECOVERED, not what the direction asked for.
+   *
+   * `statutory.cp38` is the PRE-CLAMP figure: on a slip where the EA s.24 net floor could not recover the
+   * whole instalment it is larger than what was deducted (measured: 9,000 asked, 5,606.65 taken), and this
+   * column reported it as a deduction. Read through `core/payslip-cp38-line.ts`, which answers off the
+   * slip's own `cp38Applied` stamp and falls back to the request on a slip written before the stamp.
+   *
+   * 0 when the amount could not be carved out of `otherDeductions` below — a legacy clamped slip, whose
+   * CP38 money therefore stays inside the lumped figure. The two columns are ONE answer and must be read
+   * together; that is why the residual is derived here and not in the two report definitions that print it.
+   */
   cp38: number;
   zakat: number;
+  /**
+   * 970e4143 — "Other deductions" WITH THE CP38 TAKEN OUT, so the deduction columns stop double-counting it.
+   *
+   * The kernel folds the applied CP38 into the payslip's stored `other_deductions` column, so the raw
+   * column beside a CP38 column counted the instalment twice — on the Transaction Detail report, whose
+   * columns are always emitted, that was a run-wide reconciliation sheet that could not be reconciled.
+   *
+   * ⚠️ STILL CARRIES the unpaid-leave and absence amounts, unlike the residual the payslip screens print.
+   * That is deliberate and it is the correct answer for THIS row set: the register prints no unpaid-leave or
+   * absence column, so taking them out here would make its deduction columns fall SHORT of Total Deductions
+   * instead of over-adding. `payslipCp38Carve` takes the caller's own named rows as a parameter for exactly
+   * this reason.
+   */
   otherDeductions: string;
   // Total deductions & nett wage
   totalDeductions: string;
@@ -1244,6 +1288,7 @@ export function listPayrollRegisterAcross(
       // and is also what is remitted to KWSP / PERKESO / LHDN — an employer-bears setting funds a share, it
       // does not reduce it.
       const disp = payslipDisplayEarnings(r);
+      const cp38Carve = payslipCp38Carve(r.statutory as Parameters<typeof payslipCp38Carve>[0], r.otherDeductions);
       return {
         ...rest,
         basic: disp.basic.toFixed(2),
@@ -1255,7 +1300,11 @@ export function listPayrollRegisterAcross(
         socsoSkbbk: n('socsoSkbbk'),
         eisEmployee: n('eisEmployee'),
         pcb: n('pcb'),
-        cp38: n('cp38'),
+        // 970e4143 — the CP38 and the residual are ONE answer, derived here rather than in each of the two
+        // report definitions that render them (Transaction Detail and the payroll_register dataset). The
+        // register names no absence rows, so nothing is carved out for them — see the field docs.
+        cp38: cp38Carve.show ? cp38Carve.line.applied : 0,
+        otherDeductions: cp38Carve.residual.toFixed(2),
         zakat: n('zakat'),
         epfEmployer: n('epfEmployer'),
         socsoEmployer: n('socsoEmployer'),
