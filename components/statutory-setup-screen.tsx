@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * ═══ 15e5bd93 REVISION 4 (r371) — ONE SCREEN, EVERY BODY OPEN, ONE SAVE ════════════════════════════
+ * ═══ 15e5bd93 REVISION 4 (r372) — ONE SCREEN, EVERY BODY OPEN, ONE SAVE ════════════════════════════
  *
  * ⚠️ FOURTH SHAPE FOR ONE ITEM, AND THE FIRST ONE BUILT AFTER SOMEBODY MEASURED THE LIVE SCREEN.
  * r352 built a rail plus a workspace INSIDE the company panel's Statutory tab; contested. r353 built a
@@ -362,11 +362,13 @@ function StatutoryBodyCard({
         {/* `filingCountry` is the hidden flag that tells the writer a filing control was on this card at
             all, and it is deliberately NOT called `country`: that name is already taken further down by
             the body's postal address, and a collision there would post a country NAME into the
-            statutory-pack lookup (`No statutory pack for Malaysia`). It matters MORE on this screen than
-            it did on the per-body page — lib/tab-save-dom.ts `syncCarriedValues` copies a VISIBLE
-            control's value into any hidden input of the same name, and there are now EIGHT visible
-            postal `country` selects in one scope. Emitted once, for whichever of the two controls is
-            present; a body with neither posts nothing towards the identity row. */}
+            statutory-pack lookup (`No statutory pack for Malaysia`). r226 COINED the name for the same
+            collision one file over; r352 APPLIED it to these forms, and KEPT THROUGH r353, r355 AND r372
+            because the condition never went away. It matters MORE on this screen than it did on the
+            per-body page — lib/tab-save-dom.ts `syncCarriedValues` copies a VISIBLE control's value into
+            any hidden input of the same name, and there are now EIGHT visible postal `country` selects in
+            one scope. Emitted once, for whichever of the two controls is present; a body with neither
+            posts nothing towards the identity row. */}
         {(filing || showHrdf) && <input type="hidden" name="filingCountry" value={filingCountry} />}
 
         {/* ── GROUP 1 · THE FILING IDENTITY (r226) ─────────────────────────────────────────────── */}

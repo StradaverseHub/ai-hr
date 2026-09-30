@@ -342,7 +342,7 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
     expect(ids).toEqual([...COMPANY_GENERAL_TAB_SECTION_ORDER]);
     // The statutory bodies still exist and are still eight; what changed is where they are EDITED. Their
     // read-only rows are on this panel, and every body's FIELDS are a card on the dedicated statutory
-    // screen, under a save scope of that screen's own (15e5bd93 rev 4, r371 — r355's per-body page was
+    // screen, under a save scope of that screen's own (15e5bd93 rev 4, r372 — r355's per-body page was
     // contested as "an unnecessary intermediate page" and is deleted). None of that is a section of a
     // scope HERE, which is all this case claims: the General tab's scope owns three sections and no more.
     // test/company-panel-bank-statutory-layout.test.ts and test/statutory-body-screen-render.test.ts own

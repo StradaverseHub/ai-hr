@@ -385,7 +385,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     // /admin/organization/[companyId]/statutory/[authority], a screen holding ONE body, reached by a View
     // or Edit link on a table of rows.
     //
-    // 15e5bd93 rev 4 (r371) — BACK TO FOUR, and the removal is the change this round shipped. The reporter
+    // 15e5bd93 rev 4 (r372) — BACK TO FOUR, and the removal is the change this round shipped. The reporter
     // contested the drill-in as "an unnecessary intermediate page"; every statutory body is now a card on
     // /admin/organization/[companyId]/statutory itself, with one Save. The per-body route and its page.tsx
     // are DELETED, so its entry is REMOVED from this exact set rather than left behind: REGISTERED_ROUTES

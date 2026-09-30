@@ -166,7 +166,7 @@ import {
   failCompany,
   // 15e5bd93 rev 2 (r353) — the dedicated Statutory Payment Setup screen's own refusal. See the note on
   // `fromStatutorySetupScreen` below for why the destination is chosen per FORM and not per action.
-  // rev 4 (r371) — `failStatutoryBody` went with the per-body page: there is one statutory screen again,
+  // rev 4 (r372) — `failStatutoryBody` went with the per-body page: there is one statutory screen again,
   // it holds every body's form, and so it is the screen a refusal belongs on.
   failStatutorySetup,
   ok,
@@ -224,7 +224,7 @@ function fromCompanyScreen(fd: FormData): boolean {
  * fourth approved point in their own words: "Saving keeps the user on this page… Never redirected to the
  * Organization company list").
  *
- * ⚠️ ONE MARKER FOR ONE FLOW, AND AS OF 15e5bd93 rev 4 (r371) FOR ONE ROUTE AGAIN. r355 split the setup
+ * ⚠️ ONE MARKER FOR ONE FLOW, AND AS OF 15e5bd93 rev 4 (r372) FOR ONE ROUTE AGAIN. r355 split the setup
  * into a LIST of rows (`…/statutory`) and a ONE-BODY screen (`…/statutory/<body>`), and recorded that the
  * marker did not gain a second value for the second route. The reporter contested that per-body page as
  * "an unnecessary intermediate page" and it is deleted: every body is a card on `…/statutory` itself.
@@ -587,7 +587,7 @@ export async function setCompanyStatutoryAuthorityAction(formData: FormData) {
     // panel: `failCompany` would have shown "Choose a signatory who is an active employee of this company"
     // on a page with no such box on it.
     //
-    // ⚠️ REV 4 (r371) — AND THE SCREEN THAT HOLDS THE FORM IS `…/statutory` ITSELF AGAIN. r355 sent this
+    // ⚠️ REV 4 (r372) — AND THE SCREEN THAT HOLDS THE FORM IS `…/statutory` ITSELF AGAIN. r355 sent this
     // refusal to `…/statutory/<body>?mode=edit` because that was the only page with the boxes on it; the
     // reporter contested that page and it is deleted. Every body's form is on the one statutory screen
     // now, so the rule is satisfied by the simpler address and no posted body reaches a path.
@@ -614,7 +614,7 @@ export async function removeCompanyStatutoryAuthorityAction(formData: FormData) 
   try {
     await removeCompanyStatutoryAuthority(s, { id: String(formData.get('id')) });
   } catch (e) {
-    // 15e5bd93 rev 4 (r371) — same as the save above: a refused Clear lands back on the statutory screen,
+    // 15e5bd93 rev 4 (r372) — same as the save above: a refused Clear lands back on the statutory screen,
     // which is where the button was pressed and where the body's card still is. r355 sent it to the
     // per-body page; that page is deleted.
     if (fromStatutorySetupScreen(formData)) failStatutorySetup(e, companyId);

@@ -15,7 +15,7 @@ import {
 } from '../../../actions';
 
 /**
- * Admin → Organization → one company → STATUTORY PAYMENT SETUP (item 15e5bd93 revision 4, r371).
+ * Admin → Organization → one company → STATUTORY PAYMENT SETUP (item 15e5bd93 revision 4, r372).
  *
  * ── WHY THIS IS A ROUTE AND NOT A TAB ─────────────────────────────────────────────────────────────
  * r352 built the eight bodies as a rail plus a workspace INSIDE the company panel's Statutory tab. The
@@ -23,7 +23,7 @@ import {
  * Statutory tab… The preferred approach is a dedicated full-width screen." This is that screen, and the
  * Statutory tab now lists the bodies read-only and links here (components/company-panel.tsx).
  *
- * ── AND WHY THE ROUTE PER BODY THAT SAT BESIDE IT IS GONE (r371) ──────────────────────────────────
+ * ── AND WHY THE ROUTE PER BODY THAT SAT BESIDE IT IS GONE (r372) ──────────────────────────────────
  * r353 answered "dedicated screen" with eight always-visible cards, each read-only until its own Edit was
  * pressed; contested. r355 answered the reporter's own ASCII sketch with a TABLE of one row per body and
  * `./[authority]/page.tsx` holding one body at a time; the reporter called that page "an unnecessary

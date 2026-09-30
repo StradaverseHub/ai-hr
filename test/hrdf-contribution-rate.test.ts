@@ -339,7 +339,7 @@ describe('HRDF Contribution Rate — Organization form layout', () => {
    * card's rate select lived. r353 moved the eight body editors — including this select — to
    * components/statutory-setup-screen.tsx, because the reporter asked for "a dedicated full-width screen".
    * r355 moved it again, to components/statutory-body-screen.tsx, because the reporter drew a table of rows
-   * with one body's fields on a page of their own. r371 is the reporter contesting THAT page as "an
+   * with one body's fields on a page of their own. r372 is the reporter contesting THAT page as "an
    * unnecessary intermediate page": every body is a card on the dedicated screen, so the select is back in
    * components/statutory-setup-screen.tsx, inside `StatutoryBodyCard`.
    *

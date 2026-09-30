@@ -161,7 +161,7 @@ classification confirms the plan's buckets.** What it does not confirm is that t
 > tab with its own Save; a one-card scope is still worse than none; and the body editors are still outside
 > any scope, one form per request. The split changed which ROUTE holds the form, not who owns what.
 >
-> **r371 says: the reporter contested r355 too, and this time somebody rendered the screen and measured
+> **r372 says: the reporter contested r355 too, and this time somebody rendered the screen and measured
 > it.** That table laid out 42–322px wider than its container — the body description carried `truncate`,
 > whose `white-space: nowrap` fixes a cell's min-content at the whole 132-character string — so the Action
 > column, both its links and its heading, was never painted. The reporter called the page it drilled into
@@ -344,7 +344,7 @@ a change to a component four other tabs depend on and is not this item's to make
 > the list would re-commit the mistake `failCompany`'s own note in `app/admin/_redirects.ts` records ("a
 > refused save … showed the refusal on a screen that no longer held the form it was about").
 >
-> **15e5bd93 REVISION 4 (r371) REMOVES THE FOURTEENTH AGAIN, and the reasoning above is what removes it.**
+> **15e5bd93 REVISION 4 (r372) REMOVES THE FOURTEENTH AGAIN, and the reasoning above is what removes it.**
 > The reporter contested the per-body route as "an unnecessary intermediate page"; every body's form is on
 > `…/statutory` itself, so THAT is now "the screen that holds the form the refusal is about" and both
 > outcomes land there. `failStatutoryBody` and `companyStatutoryBodyPath` are deleted from

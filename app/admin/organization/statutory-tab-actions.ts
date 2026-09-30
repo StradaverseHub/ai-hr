@@ -1,7 +1,7 @@
 'use server';
 
 /**
- * 15e5bd93 REVISION 4 (r371) — ONE "Save all changes" for the dedicated Statutory Payment Setup screen.
+ * 15e5bd93 REVISION 4 (r372) — ONE "Save all changes" for the dedicated Statutory Payment Setup screen.
  *
  * ── RESTORED FROM r352 (d991c149), RE-POINTED, NOT REINVENTED ─────────────────────────────────────
  * r352 built exactly this writer for a rail-plus-workspace inside the company panel's Statutory tab and
@@ -111,10 +111,11 @@ async function applyAuthoritySection(s: Session, authority: string, fd: FormData
 
   // `filingCountry` is deliberately NOT called `country`: that name is taken on this same card by the
   // body's postal address (a country NAME from the ISO list), and reusing it would post "Malaysia" into
-  // packFor(). The rename is r352's, it is the fix for a real defect that killed every identity save, and
-  // it matters MORE on this screen than on the per-body one — there are eight visible postal `country`
-  // selects here, and lib/tab-save-dom.ts `syncCarriedValues` copies a visible control's value into any
-  // hidden input of the same name.
+  // packFor(). r226 COINED the name, for the same collision one file over; r352 APPLIED it here, and that
+  // application is the fix for a real defect that killed every identity save. It matters MORE on this
+  // screen than on the per-body page — there are eight visible postal `country` selects in one scope
+  // here, and lib/tab-save-dom.ts `syncCarriedValues` copies a visible control's value into any hidden
+  // input of the same name.
   const filingCountry = String(fd.get('filingCountry') ?? '');
   const filing = {
     epfEmployerNo: postedField(fd, 'epfEmployerNo'),

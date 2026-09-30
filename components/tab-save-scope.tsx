@@ -80,7 +80,7 @@
  * show a stale field, it wrote one back. See the note over `discard` — the discard now waits for the
  * payload it restores from.
  *
- * 15e5bd93 REVISION 4 (r371) — AND IT NOW SERVES A SCREEN AS WELL AS A TAB. The dedicated Statutory
+ * 15e5bd93 REVISION 4 (r372) — AND IT NOW SERVES A SCREEN AS WELL AS A TAB. The dedicated Statutory
  * Payment Setup screen is eight statutory bodies with every field open under ONE Save, which is the
  * reporter's own expected_function and the one combination this product has never built. Everything a
  * SCREEN needs and a tab does not — the same two actions repeated above the cards, a Cancel that LEAVES
@@ -206,7 +206,7 @@ export function TabSaveScope({
    */
   sectionLabels?: Record<string, string>;
   /**
-   * 15e5bd93 REVISION 4 (r371) — THE SCREEN SHAPE. Absent on every scope that came before it, and the
+   * 15e5bd93 REVISION 4 (r372) — THE SCREEN SHAPE. Absent on every scope that came before it, and the
    * bar renders byte-identically there; this is `sectionLabels`' pattern, one round on.
    *
    * A TAB's scope lives inside a screen that has its own header, its own Back link and other tabs below

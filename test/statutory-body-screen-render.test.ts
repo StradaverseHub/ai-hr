@@ -1,5 +1,5 @@
 /**
- * Item 15e5bd93 REVISION 4 (r371) — ONE STATUTORY BODY'S CARD, RENDERED FOR REAL, IN ALL SIX LOCALES.
+ * Item 15e5bd93 REVISION 4 (r372) — ONE STATUTORY BODY'S CARD, RENDERED FOR REAL, IN ALL SIX LOCALES.
  *
  * ⚠️ THIS FILE'S SUBJECT HAS MOVED ONCE AND NONE OF ITS CLAIMS WAS DROPPED. r353 put the eight body
  * editors on the setup screen as cards and checked them in test/statutory-setup-screen-render.test.ts.

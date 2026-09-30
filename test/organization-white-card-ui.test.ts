@@ -72,7 +72,7 @@ describe('3783fd87 — the Organization screens paint white cards, not grey bloc
    * because the panel still has grounds of its own to keep clean.
    */
   it('and the dedicated statutory setup screen paints none either', () => {
-    // ⚠️ ONE FILE AGAIN (15e5bd93 rev 4, r371). r355 split the statutory surface into a list and a
+    // ⚠️ ONE FILE AGAIN (15e5bd93 rev 4, r372). r355 split the statutory surface into a list and a
     // one-body screen and this loop named both. The reporter contested the per-body page as "an
     // unnecessary intermediate page"; it is deleted and its editor is folded back into the screen as the
     // per-body CARD, so there is one file to watch. Named as a list rather than inlined, because the
@@ -92,7 +92,7 @@ describe('3783fd87 — the Organization screens paint white cards, not grey bloc
      * BOTH: the filled block must not come back anywhere.
      */
     /**
-     * ⚠️ RE-POINTED A THIRD TIME BY r371, AND ONE HALF IS REVERSED FOR A MEASURED REASON.
+     * ⚠️ RE-POINTED A THIRD TIME BY r372, AND ONE HALF IS REVERSED FOR A MEASURED REASON.
      *
      * r353 moved the three sub-blocks (Filing identity / Payment setup / Correspondence address) onto the
      * dedicated screen as `rounded-md border border-border/60 p-2.5`; r355 moved them to the per-body
