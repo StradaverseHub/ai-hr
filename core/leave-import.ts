@@ -16,6 +16,16 @@
  * SCOPE BOUNDARY: this NEVER touches leave_policy or entitlement config. An 'accrual'-type row from the
  * file is a plain ledger accrual against an existing leave type, not an edit to the policy engine.
  *
+ * ⚠️ …BUT AN IMPORTED 'accrual' ROW IS STILL READ BY THE ENTITLEMENT ENGINE, AND THAT IS ITEM b2713800.
+ * `yearOpenMarkerCond` (core/leave.ts) treats ANY accrual row inside a leave year as that year's own
+ * "already opened" marker, with no filter on `reason` — so an imported accrual dated in a year that has NOT
+ * yet been generated makes the next Generate Entitlement skip that (employment, leave type) entirely and
+ * grant nothing. One import line, and the employee's whole year of entitlement is gone, silently; balances
+ * are encashed at resignation, so it is a wrong payment. The importer cannot fix the kernel's marker (two
+ * engines depend on it — see that predicate's header), so it SAYS SO at preview time: see the year-open
+ * marker if/else in `analyze()`. The message names `adjustment`, which moves the balance identically and is
+ * not a marker.
+ *
  * TOIL DECISION (v1): in_lieu_accrual (TOIL) is rejected with a clear message. A bare in_lieu_accrual
  * ledger row would have no companion toil_accrual row (db/migrations/0076_toil.sql) and would be
  * invisible to the TOIL expiry sweep — a silent data-integrity gap. TOIL import is a named follow-up.
@@ -25,8 +35,14 @@
  * for that employee can retroactively change what a prior openLeaveYear computed. We do NOT block such
  * rows (final-pay reconciliation legitimately needs backdated history), but flag them as a non-blocking
  * 'rolled-over year' warning so HR is told to re-run openLeaveYear for the affected year if needed.
+ *
+ * b2713800 corrected that warning's KEY. It read "an accrual row dated at 1 January" — exact only until
+ * r193 moved the grant to max(1 January, entitlement-table start, join date). It now asks the kernel's own
+ * question (any accrual row inside the leave year), which is also what makes its new `else` branch honest.
  */
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+// `and` and `sql` left with the 1-January marker query b2713800 removed (the marker set is now derived in
+// memory from the one ledger read). `inArray` / `isNull` were already unused before it.
+import { eq, inArray, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
@@ -87,7 +103,8 @@ type ResolvedRow = {
  *  - sign-vs-entryType invariant
  *  - date format, mandatory fields, finite non-zero days
  *  - in-file duplicate (error) + already-in-ledger duplicate (warning + skip-on-commit)
- *  - rolled-over-year warning (non-blocking)
+ *  - the year-open marker, BOTH WAYS: rolled-over-year warning where a marker exists, and the
+ *    cancelled-entitlement warning on an 'accrual' row where one does NOT (b2713800). Both non-blocking.
  */
 async function analyze(
   ctx: SessionContext,
@@ -114,7 +131,7 @@ async function analyze(
   // NOT active-only: leave history migration routinely includes people who have since left (their final
   // unconsumed balance matters for final-pay reconciliation). Match ALL employments; terminated ones are
   // flagged, never conflated with "not found".
-  const { emps, existingKeys } = await withTenant(ctx, async (tx) => {
+  const { emps, existingKeys, openedYears } = await withTenant(ctx, async (tx) => {
     const rows = await tx
       .select({
         id: employment.id,
@@ -141,7 +158,27 @@ async function analyze(
     const existingKeys = new Set(
       ledger.map((l) => `${l.employmentId}|${l.leaveTypeId}|${l.entryType}|${l.effectiveOn}|${round2(Number(l.days)).toFixed(2)}`),
     );
-    return { emps: rows, existingKeys };
+    // ⚠️ THE YEAR-OPEN MARKER, KEYED THE WAY THE KERNEL KEYS IT. `yearOpenMarkerCond` (core/leave.ts,
+    // read its header) is `entryType = 'accrual' AND effective_on BETWEEN <year>-01-01 AND <year>-12-31`:
+    // ANY accrual row inside the leave year, deliberately WITHOUT a filter on `reason`. Two kernel engines
+    // consume it — `openLeaveYear` (do not grant twice) and `expireCarriedLeave` (only sweep a year that
+    // was opened) — so (employment, leave type, calendar year of effective_on) is the key here too.
+    //
+    // OLD CLAIM, NOW RETIRED: "an 'accrual' row dated at Jan-1 is openLeaveYear's own open-marker", which
+    // is what this set used to select on (`extract(month…) = 1 and extract(day…) = 1`). That was true only
+    // until r193 moved the grant to max(1 January, entitlement-table start, join date) — a March joiner's
+    // hire grant IS the marker for their first year and is not dated 1 January. A Jan-1-only key made the
+    // rolled-over warning below MISS those years, and would have made the new accrual warning beside it
+    // fire on rows that cancel nothing.
+    //
+    // Derived from the ledger read above rather than from a second query: that read is already unfiltered,
+    // so the marker set costs nothing extra and cannot drift from the rows the dedupe key is built from.
+    const openedYears = new Set(
+      ledger
+        .filter((l) => l.entryType === 'accrual')
+        .map((l) => `${l.employmentId}|${l.leaveTypeId}|${l.effectiveOn.slice(0, 4)}`),
+    );
+    return { emps: rows, existingKeys, openedYears };
   });
 
   const byRef = new Map<string, MatchedEmp>();
@@ -154,20 +191,9 @@ async function analyze(
   const matchRef = (ref: string): MatchedEmp | undefined =>
     byRef.get(ref.toLowerCase()) ?? (onlyDigits(ref) ? byRef.get(onlyDigits(ref)) : undefined);
 
-  // Years already rolled over per employment+leaveType: an 'accrual' row dated at Jan-1 is openLeaveYear's
-  // own open-marker (core/leave.ts openLeaveYear). Used ONLY for the non-blocking rolled-over-year warning.
-  const openedYears = new Set<string>(); // `${employmentId}|${leaveTypeId}|${year}`
-  await withTenant(ctx, async (tx) => {
-    const markers = await tx
-      .select({
-        employmentId: leaveLedger.employmentId,
-        leaveTypeId: leaveLedger.leaveTypeId,
-        effectiveOn: leaveLedger.effectiveOn,
-      })
-      .from(leaveLedger)
-      .where(and(eq(leaveLedger.entryType, 'accrual'), sql`extract(month from ${leaveLedger.effectiveOn}) = 1 and extract(day from ${leaveLedger.effectiveOn}) = 1`));
-    for (const m of markers) openedYears.add(`${m.employmentId}|${m.leaveTypeId}|${m.effectiveOn.slice(0, 4)}`);
-  });
+  // `openedYears` — which (employment, leave type, leave year) pairs already carry a year-open marker — is
+  // built from the single ledger read above. It used to be a SECOND query with a 1-January filter; see the
+  // retired claim recorded there.
 
   const presentColumns = new Set(records.length ? Object.keys(records[0]) : []);
   const missingColumns = LEAVE_IMPORT_COLUMNS.required.filter((c) => !presentColumns.has(c));
@@ -252,9 +278,40 @@ async function analyze(
         seenInFile.add(dedupeKey);
         if (existingKeys.has(dedupeKey)) warnings.push('Already imported — will be skipped');
       }
-      // Rolled-over-year warning: a row dated in a year already opened for this employment+leave type.
+      /**
+       * ── THE YEAR-OPEN MARKER, BOTH WAYS ROUND (item b2713800) ──────────────────────────────────────
+       *
+       * One question — "does a year-open marker already exist for this employment, this leave type and
+       * this leave year?" — with a different consequence per answer, so the two warnings are one if/else
+       * and can never both fire.
+       *
+       * YES ⇒ the row lands in a year that has ALREADY been granted. Backdated history can retroactively
+       * change what that year's openLeaveYear computed, so HR is told to re-run it. Non-blocking: final-pay
+       * reconciliation legitimately needs backdated rows (see this file's YEAR-BOUNDARY DECISION).
+       *
+       * NO, AND THE ROW IS ITSELF AN ACCRUAL ⇒ THE DAMAGING CASE, AND IT IS THE ONE WITH NO PRE-EXISTING
+       * ACCRUAL AT ALL. The imported row is what lands FIRST, and by landing it BECOMES the marker: the next
+       * Generate Entitlement for that year reads `yearOpenMarkerCond` (core/leave.ts), finds this row, logs
+       * `already_open`, and posts NOTHING. The employee's whole year of entitlement is cancelled by an import
+       * line, with no error anywhere — and leave balances are encashed at resignation, so the missing days are
+       * missing money. A warning conditioned on FINDING an existing accrual is green on exactly these rows,
+       * which is why the condition is the absence, not the presence.
+       *
+       * `adjustment` is the answer the message names because it moves the balance by the same signed days and
+       * is NOT a marker — the same reason Leave History Data Import writes `adjustment` and never `accrual`.
+       *
+       * Only when the row would actually be written: a row with errors is never imported, so telling HR what
+       * it will do to the year would be false. The non-damaging accrual (a marker already exists) takes the
+       * rolled-over branch instead.
+       */
       if (openedYears.has(`${emp.id}|${leaveTypeId}|${dateRaw.slice(0, 4)}`)) {
         warnings.push('Effective date falls in an already-rolled-over leave year');
+      } else if (entryType === 'accrual' && errors.length === 0) {
+        warnings.push(
+          `Entitlement for ${dateRaw.slice(0, 4)} will NOT be generated for this leave type — ` +
+            'Generate Entitlement reads an imported accrual row as the leave year already being opened and ' +
+            'grants nothing. Use transaction_type "adjustment" for an opening balance or a carry-forward.',
+        );
       }
     }
 
