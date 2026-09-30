@@ -26,10 +26,26 @@ const MAX_CSV_BYTES = 900_000;
 
 const ACCEPT = '.csv,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
+/**
+ * b2713800 — THE SAMPLE MUST NOT DEMONSTRATE THE ROW THAT CANCELS A LEAVE YEAR.
+ *
+ * Its third line used to read `E1002,ANNUAL,accrual,14,2026-01-01`. An imported `accrual` inside a leave
+ * year satisfies the kernel's year-open marker (`yearOpenMarkerCond`, core/leave.ts), so Generate
+ * Entitlement reads that year as already opened and grants NOTHING — one imported day can cancel a whole
+ * year's entitlement, and balances are encashed at resignation. This round added a warning for exactly
+ * that row, and leaving the screen's own Load sample button handing an operator the pattern the warning
+ * exists to catch would have been the product teaching its own defect.
+ *
+ * `adjustment` moves the balance by the same signed days and is NOT a year-open marker, which is why the
+ * new warning recommends it and why the downloadable template (lib/import-template.ts) has only ever
+ * used `adjustment` and `debit`. The sample now agrees with the template: two employees, an opening
+ * balance and a historical debit. `accrual` is still a VALID value the importer accepts — the column
+ * reference still lists it — it is simply no longer the thing we hand people as an example.
+ */
 const SAMPLE = `employee_id,leave_type,transaction_type,days,effective_date
 E1001,ANNUAL,adjustment,5,2026-01-01
 E1001,ANNUAL,debit,-2,2026-03-14
-E1002,ANNUAL,accrual,14,2026-01-01`;
+E1002,ANNUAL,adjustment,14,2026-01-01`;
 
 type Phase = 'idle' | 'previewed' | 'done';
 
