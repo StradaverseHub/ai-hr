@@ -459,6 +459,69 @@ describe('the balance-impact preview, which is what nobody had before Confirm im
   });
 });
 
+describe('a POOLED record spends the pool’s ledger, not its own', () => {
+  /**
+   * Balance Deduction Source (cdf9ca48): an Emergency Leave application draws on Annual Leave's balance and
+   * the borrowing type keeps none of its own. The import has to debit the SAME ledger `finalizeLeaveApproval`
+   * would, or the pool's figure is wrong in one direction and the borrower's in the other — and the borrower
+   * has no entitlement to be wrong about, so the days would simply vanish from every balance screen.
+   *
+   * This is also what `LeaveHistoryBalanceImpact.filedCodes` exists for: the preview line is headed by the
+   * ledger that MOVES, and the code the record was filed under is named beside it rather than hidden by the
+   * grouping.
+   */
+  let elId: string;
+  let elCode: string;
+
+  beforeEach(async () => {
+    elCode = `EL${randomUUID().slice(0, 4).toUpperCase()}`;
+    const created = await createLeaveType(adminCtx(b), { code: elCode, name: 'Emergency Leave', paid: true });
+    elId = created.id;
+    await updateLeaveType(adminCtx(b), {
+      id: elId,
+      name: 'Emergency Leave',
+      balanceSourceTypeId: b.annualLeaveTypeId,
+    });
+  });
+
+  it('the debit lands on the POOL, and the preview line is headed by the pool with the filed code beside it', async () => {
+    // The premise, asserted: the borrower really is configured to spend Annual Leave's ledger.
+    const [lt] = await owner.db
+      .select({ src: schema.leaveType.balanceSourceTypeId })
+      .from(schema.leaveType)
+      .where(eq(schema.leaveType.id, elId));
+    expect(lt.src).toBe(b.annualLeaveTypeId);
+
+    const p = await validateLeaveHistoryImport(adminCtx(b), { records: pastAnnual({ leave_code: elCode }) });
+    expect(p.balanceImpact).toHaveLength(1);
+    expect(p.balanceImpact[0].leaveCode, 'the line names the ledger that MOVES').toBe('ANNUAL');
+    expect(p.balanceImpact[0].filedCodes, 'and the code it was filed under is not hidden').toEqual([elCode]);
+    expect(p.balanceImpact[0].balanceBefore).toBe(OPENING);
+    expect(p.balanceImpact[0].balanceAfter).toBe(OPENING - IMPORTED);
+
+    await commitLeaveHistoryImport(adminCtx(b), { records: pastAnnual({ leave_code: elCode }) });
+
+    // The pool is debited…
+    expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBe(OPENING - IMPORTED);
+    // …and the borrower's own ledger is untouched, which is what "keeps none of its own" means.
+    expect(await ledgerRowCount(subject.employmentId, elId)).toBe(0);
+    const sourced = await sourcedRows();
+    expect(sourced).toHaveLength(1);
+    expect(sourced[0].leaveTypeId).toBe(b.annualLeaveTypeId);
+
+    // …and Taken still attributes to the code the leave was FILED under, because `source_request_id` is set:
+    // that attribution (core/read.ts `takenFiled`) is the reason the column is useful to HR at all.
+    const rows = await leaveBalances(adminCtx(b), subject.employmentId);
+    expect(Number(rows.find((r) => r.leaveTypeId === elId)!.taken)).toBe(IMPORTED);
+  });
+
+  it('a line whose filed code IS the ledger names no second code — the caption is not noise', async () => {
+    const p = await validateLeaveHistoryImport(adminCtx(b), { records: pastAnnual() });
+    expect(p.balanceImpact[0].leaveCode).toBe('ANNUAL');
+    expect(p.balanceImpact[0].filedCodes).toEqual([]);
+  });
+});
+
 describe('the entitlement year is filled from the cycle the start date falls in', () => {
   it('a blank Entitlement Year column is stored as the cycle year, and the preview shows it', async () => {
     const p = await validateLeaveHistoryImport(adminCtx(b), { records: pastAnnual({ entitlement_year: '' }) });
