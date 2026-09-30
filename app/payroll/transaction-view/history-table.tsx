@@ -103,6 +103,10 @@ export function HistoryTable({
   const tList = useTranslations('payroll.list');
   const tBatch = useTranslations('payroll.batch');
   const tSlip = useTranslations('me.payslip'); // reuse the itemized-payslip section/line labels
+  // r367 — the employer-contributions note. It lives under `payroll.individualPayslip`, where the
+  // payslip DOCUMENT already resolves it (lib/payslip-pdf-strings.ts), so this panel reads the one
+  // existing sentence rather than minting a sixth translation of it under `me.` or `payroll.`.
+  const tIp = useTranslations('payroll.individualPayslip');
   const [open, setOpen] = useState<Set<string>>(new Set());
   const q = useClientPageQuery();
   const { rows: pageRows, state } = paginateRows(rows, q);
@@ -384,6 +388,16 @@ export function HistoryTable({
                             <span>{t('view.history.totalEmployerContributions')}</span>
                             <span className="tabular-nums">{rm(b.employerContributions.total)}</span>
                           </div>
+                          {/* r367 — THE SENTENCE THAT NOW CARRIES WHAT THE HEADING'S BRACKET USED TO.
+                              The heading above read "Employer contributions (not deducted from you)". The
+                              bracket was load-bearing here for the same reason it was on the two payslip
+                              screens: the row labels in this section and in Deductions above are THE SAME
+                              KEYS — `me.payslip.epf`, `socso`, `eis` render in both — so the heading was the
+                              only thing in this breakdown separating employee money from employer money.
+                              The printed document has carried this sentence under the same box all along
+                              (lib/payslip-pdf.ts `empSpec.note`) and no screen resolved the key until now.
+                              Already translated in all six catalogues; nothing is added. */}
+                          <p className="mt-2 text-xs text-muted-foreground">{tIp('employerContributionsNote')}</p>
                         </section>
 
                         {/* ── Itemised payroll items ──

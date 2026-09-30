@@ -697,8 +697,16 @@ export default async function IndividualPayslipPage({
             </div>
           </Card>
 
-          {/* ── Employee information ── */}
-          <Block title={t('employeeHeading')}>
+          {/* ── Employment info ──
+              r367 — THE SCREEN AND THE FILE NOW CALL THIS BLOCK ONE THING. This heading was
+              `employeeHeading` ("Employee information") while the payslip DOCUMENT downloaded from the
+              button a few lines above has always headed the same fields "Employment info". The reporter
+              named the document's wording, so the SCREEN moves: `employmentInfoHeading` already exists and
+              is already translated in all six catalogues (lib/payslip-pdf-strings.ts resolves it for the
+              file), so this is a render-site change and not a new key. `employeeHeading` is retired IN
+              PLACE in all six — re-adding a deleted key later is the MISSING_MESSAGE trap.
+              ⚠️ payroll.statutoryAdjustment.employeeHeading is a DIFFERENT key on a different screen. */}
+          <Block title={t('employmentInfoHeading')}>
             <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <Info label={t('fieldEmployeeCode')} value={row.employeeCode} />
               <Info label={t('fieldEmployeeName')} value={row.employeeName} />
@@ -941,6 +949,17 @@ export default async function IndividualPayslipPage({
               muted
             />
             <Row label={tSlip('totalEmployerCost')} value={rm(row.employerCost)} muted />
+            {/* r367 — THE SENTENCE THAT NOW CARRIES WHAT THE HEADING'S BRACKET USED TO.
+                The heading above read "Employer contributions (not deducted from you)" and the bracket was
+                load-bearing: the ROW LABELS in this block and in Deductions above are THE SAME KEYS —
+                `me.payslip.epf`, `socso`, `eis` render in both — so the heading was the only thing on the
+                page separating the employee's money from the company's. Dropping the bracket without this
+                sentence would delete that statement outright.
+                The printed document has carried it under this box all along (lib/payslip-pdf.ts
+                `empSpec.note`); until this round `payroll.individualPayslip.employerContributionsNote` had
+                exactly ONE call site in the tree, that one, and none of the three screens resolved it. It
+                is already translated in all six catalogues, so no key is added here either. */}
+            <p className="mt-2 text-xs text-muted-foreground">{t('employerContributionsNote')}</p>
 
             {eb.any && (
               <div className="mt-4 border-t border-border pt-3">

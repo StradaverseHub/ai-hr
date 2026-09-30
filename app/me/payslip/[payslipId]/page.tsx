@@ -151,6 +151,12 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
       ? Object.fromEntries((await listPayComponents(s, { includeArchived: true })).map((c) => [c.code, c.name]))
       : {};
   const t = await getTranslations('me.payslip');
+  // r367 — the employer-contributions note lives under `payroll.individualPayslip`, where the payslip
+  // DOCUMENT already resolves it (lib/payslip-pdf-strings.ts). Bound here rather than copied under
+  // `me.` because a second key would be a seventh translation to keep in step for one sentence; a
+  // namespace on this page is deduplication, not a permission boundary, exactly as the admin payslip
+  // screen and the two PDF routes already treat it.
+  const tIp = await getTranslations('payroll.individualPayslip');
   const locale = await getLocale();
 
   return (
@@ -314,6 +320,15 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
           <Row label={t('socso')} value={rm(st.socsoEmployer)} muted />
           <Row label={t('eis')} value={rm(st.eisEmployer)} muted />
           <Row label={t('totalEmployerCost')} value={rm(p.employerCost)} muted />
+          {/* r367 — THE SENTENCE THAT NOW CARRIES WHAT THE HEADING'S BRACKET USED TO.
+              This heading read "Employer contributions (not deducted from you)". The bracket was
+              load-bearing on the EMPLOYEE'S OWN copy above all: the row labels here and in Deductions
+              further up are THE SAME KEYS — `epf`, `socso`, `eis` render in both blocks — so the heading was
+              the only thing on this page telling the reader which of the two figures came out of their pay.
+              The printed document has carried this sentence under the same box all along
+              (lib/payslip-pdf.ts `empSpec.note`), and until this round no screen resolved the key at all.
+              Already translated in all six catalogues; nothing is added. */}
+          <p className="mt-2 text-xs text-muted-foreground">{tIp('employerContributionsNote')}</p>
         </section>
 
         {st.recordLines && st.recordLines.length > 0 && (

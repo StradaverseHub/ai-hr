@@ -378,18 +378,47 @@ describe('5b2a7f0f — the en document is untouched, and that is the regression 
    *
    * The registered document's own digests are pinned beside them, so "the letterhead grew by one line" is
    * a claim about the whole file as well as about the rule's y (test/payslip-pdf.test.ts measures that).
+   *
+   * ─── r367 (feedback e0b6e3b8) SAYS SO ON PURPOSE TOO, AND THIS TIME ALL SIX MOVED ───
+   *
+   * r367 gives the employee band ONE `EMPLOYMENT INFO` heading over both halves and puts the employee's
+   * name and code on one line. That changes the panel on EVERY payslip, registered or not, so unlike r360
+   * there is no fixture left that hashes to its pre-change value — which is exactly what this guard is for
+   * and why the old digests are kept below rather than deleted. They are now asserted NOT to match, so the
+   * round's claim ("the English payslip changed, here is the whole file") is made in both directions.
+   *
+   * WHAT THE READER SHOULD CHECK IF ONE OF THESE FAILS AGAIN: the band is 90pt where it was 92 and every
+   * block below it moved UP two points (test/payslip-pdf.test.ts measures that against the produced
+   * document at one, three and four identity cells). The page COUNTS did not change — 1, 1 and 2 before
+   * and after — and they are asserted below, because a moved page break is the one change a digest cannot
+   * describe and the one that would matter most.
    */
+  /** The pre-5b2a7f0f values, superseded by r367. Kept as the record of what the document used to be. */
   const MAIN_FBE66E35 = {
     plain: 'ef4286f210d2fe7359babd927e353cc261e7a793419d547ec3a96da9443f3d75',
     logo: '2313b1d75eca5d2b059b131094bac4201d83c5dac617ab8774e36bd20aba4747',
     multipage: 'a8d82f9485a909e3fc25cde3b969e5e0484a0260cdf7d8f79d83d4e371943651',
   };
-  /** r360 — the same three fixtures WITH the labelled registration line the reporter asked for. */
+  /** r360's values, also superseded by r367. Kept for the same reason. */
   const WITH_REG_R360 = {
     plain: 'b320d0ae3f1df2394e3c87480e16fa5be688e163b252b7a84c48237005c65b65',
     logo: 'e20b0afe847cd55942e1e8842cc415b752c653c267e382edd006e6748170ec0f',
     multipage: 'a6c07537806118b3321e69729f5069ba72ef10c4e0f357416935e9fd729393ae',
   };
+  /** r367 — the LIVE pins: one heading over the whole employee band, name and code on one line. */
+  const NO_REG_R367 = {
+    plain: 'a7dd9bd81f1800cfcb8753200896a6dd46a87bcd1186f7c83f05784f21d106fa',
+    logo: '1a42278cf9fc3c5bd8e3c8a55f001d3b76b9c729bf8d72d2529a83c23f656c4c',
+    multipage: '4a525a6cff48518da9be18b65950e75a61723ce63a5c042573186e3bbb81dc23',
+  };
+  /** r367 — and the same three fixtures for a company that HAS a registration number. */
+  const WITH_REG_R367 = {
+    plain: 'b2caffe02a93ce71e2d322bd7845f50b9688329ff79f14a9ddd0a6a3efc36d07',
+    logo: 'a5166c42460c495f38dbaa352090965432afd8e6e6c5d51db2ac23cf427072f0',
+    multipage: 'c8d0f6a2d209f39bf7c938f05bc9861c773e0ada02319dee6065ccc6547cf033',
+  };
+  /** The sheet count is part of the pin: a digest cannot say where a page BROKE. */
+  const pageCountOf = async (b: Uint8Array) => (await PDFDocument.load(b)).getPageCount();
   const PNG_1x1 = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
     'base64',
@@ -400,45 +429,61 @@ describe('5b2a7f0f — the en document is untouched, and that is the regression 
     amount: 10,
   }));
 
-  it('an en payslip for a company with NO registration number is the SAME FILE it was — plain, with a logo, and over two sheets', async () => {
-    // r360 — `companyReg: null` is the reporter's own fallback case, and every digest here is the
-    // main@fbe66e35 value: no line, no reserved band, no byte moved. A change that "only" reserved space
-    // for the missing line, or that printed a dash in its place, fails all three.
+  it('an en payslip for a company with NO registration number is pinned to the byte — plain, with a logo, and over two sheets', async () => {
+    // r360 — `companyReg: null` is the reporter's own fallback case: no line, no reserved band. A change
+    // that "only" reserved space for the missing line, or that printed a dash in its place, fails all three.
+    // r367 — these are r367 values, not main@fbe66e35's: the employee band changed on every payslip.
     const noReg = { ...data, companyReg: null };
-    expect(await documentDigest(await renderPayslipPdf(noReg, labels))).toBe(MAIN_FBE66E35.plain);
-    expect(
-      await documentDigest(
-        await renderPayslipPdf({ ...noReg, logo: { bytes: new Uint8Array(PNG_1x1), mimeType: 'image/png' } }, labels),
-      ),
-    ).toBe(MAIN_FBE66E35.logo);
-    expect(
-      await documentDigest(
-        await renderPayslipPdf({ ...noReg, allowance: 400, earningLines: manyLines, detailNotRecorded: false }, labels),
-      ),
-    ).toBe(MAIN_FBE66E35.multipage);
+    const plain = await renderPayslipPdf(noReg, labels);
+    const withLogo = await renderPayslipPdf(
+      { ...noReg, logo: { bytes: new Uint8Array(PNG_1x1), mimeType: 'image/png' } },
+      labels,
+    );
+    const long = await renderPayslipPdf(
+      { ...noReg, allowance: 400, earningLines: manyLines, detailNotRecorded: false },
+      labels,
+    );
+    expect(await documentDigest(plain)).toBe(NO_REG_R367.plain);
+    expect(await documentDigest(withLogo)).toBe(NO_REG_R367.logo);
+    expect(await documentDigest(long)).toBe(NO_REG_R367.multipage);
+    // THE SHEET COUNT, SEPARATELY. r367 took 2pt off the employee band and every block below it moved up;
+    // a digest cannot tell "two points higher" from "the page broke somewhere else", and the second would
+    // be a real change to an official document.
+    expect([await pageCountOf(plain), await pageCountOf(withLogo), await pageCountOf(long)]).toEqual([1, 1, 2]);
+    // r367 CHANGED THE DOCUMENT ON PURPOSE, stated in both directions so the round cannot be read as an
+    // accident: none of the three still hashes to what it hashed to before.
+    expect(await documentDigest(plain), 'r367 changed the unregistered payslip too').not.toBe(
+      MAIN_FBE66E35.plain,
+    );
   });
 
   it('r360 — and a company WITH one gets a different, equally pinned document', async () => {
     // NON-VACUITY FOR THE CASE ABOVE: the fixture really carries a registration number, so `companyReg:
     // null` there is a suppression and not a field that was never set.
     expect(data.companyReg).toBeTruthy();
-    expect(await documentDigest(await renderPayslipPdf(data, labels))).toBe(WITH_REG_R360.plain);
-    expect(WITH_REG_R360.plain, 'the two documents are not the same file').not.toBe(MAIN_FBE66E35.plain);
-    expect(
-      await documentDigest(
-        await renderPayslipPdf({ ...data, logo: { bytes: new Uint8Array(PNG_1x1), mimeType: 'image/png' } }, labels),
-      ),
-    ).toBe(WITH_REG_R360.logo);
-    expect(
-      await documentDigest(
-        await renderPayslipPdf({ ...data, allowance: 400, earningLines: manyLines, detailNotRecorded: false }, labels),
-      ),
-    ).toBe(WITH_REG_R360.multipage);
+    const plain = await renderPayslipPdf(data, labels);
+    const withLogo = await renderPayslipPdf(
+      { ...data, logo: { bytes: new Uint8Array(PNG_1x1), mimeType: 'image/png' } },
+      labels,
+    );
+    const long = await renderPayslipPdf(
+      { ...data, allowance: 400, earningLines: manyLines, detailNotRecorded: false },
+      labels,
+    );
+    expect(await documentDigest(plain)).toBe(WITH_REG_R367.plain);
+    expect(await documentDigest(withLogo)).toBe(WITH_REG_R367.logo);
+    expect(await documentDigest(long)).toBe(WITH_REG_R367.multipage);
+    expect(WITH_REG_R367.plain, 'the registered and unregistered documents are not the same file').not.toBe(
+      NO_REG_R367.plain,
+    );
+    expect([await pageCountOf(plain), await pageCountOf(withLogo), await pageCountOf(long)]).toEqual([1, 1, 2]);
+    // r367, stated in both directions here too.
+    expect(await documentDigest(plain), 'r367 changed the registered payslip').not.toBe(WITH_REG_R360.plain);
   });
 
   it('…and the guard above is a guard: the same fixture in Chinese does NOT hash to it', async () => {
     expect(await documentDigest(await renderPayslipPdf(data, localizeLabels('zh')))).not.toBe(
-      MAIN_FBE66E35.plain,
+      WITH_REG_R367.plain,
     );
   });
 
