@@ -1,3 +1,50 @@
+## r368 (2026-09-30) — two documents stopped saying things that were not true. `main@149ef06f`, **no migration**.
+
+Closed: `970e4143`, `c8282468`. Gate: **1069 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, zero AssertionErrors, first attempt. `tsc` 0, `next build` 0, `i18n-check` PASS.
+
+### 970e4143 — A PAYSLIP THAT STATED RM99,999 TAKEN FROM RM11,000 OF PAY
+
+Two faults, both reproduced on real generated documents before anything was changed.
+
+**The rows over-added.** CP38 is folded into stored `other_deductions`, and the renderers printed a CP38 row *and* a residual that still contained it — so the lines exceeded the total printed beneath them by exactly the instalment.
+
+**And the stamped figure was the PRE-CLAMP one.** On a clamped instalment the document overstated what was taken:
+
+```
+BEFORE   CP38 99,999.00 · Other deductions 9,748.35     rows = 111,000.00
+         TOTAL DEDUCTIONS 11,000.00
+AFTER    CP38  9,623.35 · Other deductions    125.00     rows =  11,000.00
+```
+
+`99,999` now appears nowhere — zero occurrences in both PDFs and both screens.
+
+**⚠️ EIGHT SURFACES, NOT SEVEN — AND `grep` IS WHY WE THOUGHT OTHERWISE.** `app/payroll/transaction-view/history-pivot.ts` joins a composite key on a literal NUL (`` `${companyId}\x00${runType}` ``). `file` reports it as **`data`**, and plain `grep -c` prints **nothing at all and exits 0** — not "Binary file … matches", nothing. `grep -ac` finds six. The plan, built on a repo-wide grep, asserted the file "contains NO cp38 … do not go looking for a correct residual there, there isn't one." It contained both, printed the pre-clamp figure, and drove a column to **−3,393.35** on a clamped slip. Found only because the builder read the directory rather than trusting the search. **Use `grep -ra` for any sweep whose completeness you are about to rely on.**
+
+Two of the eight did not double-count — they fell SHORT, having no residual row at all, and one of them carried a header asserting "the deduction columns visibly reconcile against Total Deductions". They didn't. Prose fixed with the code.
+
+**The fixture was built so the test could fail.** With a CP38 alone, `other_deductions` IS the instalment, the residual nets to zero, and a double-counting renderer draws exactly what a correct one draws. A keyed deduction item makes the two figures differ, and the vacuity guard refuses that shape — plus a zero CP38, a zero column and a zero residual — before any sum is asserted.
+
+### c8282468 — THE CORRECTION SCREEN PROMISED A PREVIOUS VALUE NOTHING STORED
+
+The caption told HR the system records "who changed it, when, the previous value and this reason". Who, when and why were kept; **the previous value was not stored anywhere** — a blind upsert with no read of the existing row, and an after-only event payload.
+
+It now records a top-level `{before, after}` pair over one named 33-column projection used for both sides, so they cannot carry different key sets. `after` is **re-read from the row**, never assembled from the inputs, because the OT path can re-assert minutes after the upsert and an assembled value would report a figure not on the row.
+
+**The 14 geo/method columns are in the pair.** A correction nulls them today and nothing said so; that clearing now shows as a loss instead of vanishing — which matters, because it is the evidence the punch happened where it claims.
+
+The key was **renamed** rather than reworded, so `67268d83` round 2 cannot compile against the stale caption. Fourteen real `old → new` lines were read out of the live audit markup in both locales, with no UI work — the renderer already handled the convention.
+
+### JUDGEMENT CALLS
+
+- `calcTrace` is in the pair, so one line of the audit entry is truncated JSON among thirteen clean ones. **Kept**: it is destroyed data and the old figures' working cannot be re-derived. Narrowing how object values render is a separate display item.
+- Zakat was left alone by instruction. An OBSERVATION stands unreproduced: the three screens print a zakat row on `zakat > 0` without consulting `countedInTotal`, unlike the PDF, so a pre-3a092cf0 slip's screen and its own PDF can disagree.
+
+### NOT DONE
+
+- **No production was read.** Whether any live employee holds a CP38 instalment, and so whether any issued payslip is affected, remains UNKNOWN and was offered rather than assumed.
+- The register and detail report state the full employee statutory share, so on a slip with an "employer bears" flag their columns still will not sum to the total. Pre-existing, uncovered by the new fixtures.
+- The CP38-plus-absence three-way carve is asserted at unit and DOM level but not reproduced end to end through a run with real unpaid leave.
+
 ## r367 (2026-09-30) — four items, and three of them were about a figure the product could not justify. `main@0c735980`, **no migration**.
 
 Closed: `073233bb` (round A of B), `fda53352` (round A of C), `67268d83` (round 1 of 3), `e0b6e3b8`. Gate: **1065 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, zero AssertionErrors, first attempt. `tsc` 0, `next build` 0, `i18n-check` PASS, `gate:shadow` PASS 404/404.
