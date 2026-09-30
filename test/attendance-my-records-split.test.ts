@@ -12,6 +12,25 @@
  * consequence of the emptying (no employee-reachable screen shows a person their own attendance day by
  * day until content returns) is recorded on the page itself and in the r362 round entry.
  *
+ * ⚠️ AND THEN READ THIS — 67268d83 (r367) ROUND ONE PUT THE DAY LIST BACK, so THREE of those four r362
+ * inversions are themselves reversed here, each one again quoting what it reverses: the data fence
+ * (`myEmployment` + `attendanceForEmploymentRange` are back, and the fence is the employment id again),
+ * the shared-derivation reuse (the figures are back, so they must come back THROUGH the shared modules,
+ * which is exactly what r362's own comment instructed the next round to re-state), and the retired-key
+ * loop (`intro` and `notLinked` have their subjects back; `correctionNote` does not and stays retired).
+ * The read-only case is widened rather than inverted: the screen gained a Date From / Date To GET filter,
+ * which navigates and writes nothing, so "no form at all" becomes the stronger "no form that writes".
+ *
+ * The r362 cases that are NOT reversed, and why: the tab trap, every absent administrative affordance, the
+ * no-hidden-controls rule, the label collision and the WHERE/WHO of the row are all unchanged by r367 —
+ * round one adds a list of the reader's own days and nothing administrative — and the scope note is
+ * REWORDED a second time rather than restored, because the r362 sentence is now false in the other
+ * direction while the sentence r287 wrote stays forbidden.
+ *
+ * NEW in r367, and the reason they are here rather than in a file of their own: the two axes (six statuses
+ * the kernel can produce, three flags it reports separately) and the bounded date range are properties of
+ * THIS page's source, asserted beside the fence they share a file with.
+ *
  * ── WHY THE ITEM EXISTS, INCLUDING THE PART THAT WAS REFUSED FIRST ──────────────────────────────────
  * The reporter asked for "My Attendance › Record" to be relocated to Administration › Attendance and
  * renamed Employee Attendance. Revision 1 of the plan REFUSED, and the refusal was correct: `/attendance`
@@ -205,70 +224,120 @@ describe('f3e6c36e — the administrative affordances are ABSENT from the employ
     expect(src, 'and nothing is hidden by inline style either').not.toMatch(/display:\s*['"]?none/);
   });
 
-  it('THE DATA FENCE, INVERTED (r362): the page makes no attendance read at all', () => {
+  it('THE DATA FENCE, RE-STATED (r367): the one read is keyed on the caller’s own employment', () => {
     /**
-     * ⚠️ 2aef3cd8 (r362) — THE OLD CLAIM WAS:
+     * ⚠️ 2aef3cd8 (r362) — THE CLAIM BEFORE LAST WAS:
      *   expect(src, 'the caller’s own employment is resolved server-side').toContain('myEmployment(s)');
      *   expect(src, 'and the range read is keyed on it')
      *     .toMatch(/attendanceForEmploymentRange\(\s*s,\s*me\.employmentId/);
-     * It was TRUE, and it is now MOOT rather than wrong: the reporter asked for everything under this row
-     * to be removed, so there is no read left to fence. Rewritten rather than deleted, for two reasons.
-     * The replacement invariant is STRICTLY STRONGER — a page that reads nothing cannot show anybody's
-     * rows, whoever opens it — and a later round that puts content back has to walk past this comment and
-     * consciously re-state which fence it is choosing, instead of finding no assertion here at all.
+     * r362 emptied the screen, so it became MOOT rather than wrong and was inverted to "no employment is
+     * resolved here any more" / "no attendance range read remains", with the standing instruction that a
+     * later round putting content back must walk past that comment and consciously re-state which fence it
+     * chooses.
+     *
+     * ⚠️ 67268d83 (r367) ROUND ONE IS THAT ROUND, AND THIS IS THAT RE-STATEMENT. The fence chosen is the
+     * one r287 chose, for the reason r287 gave: the single attendance read is keyed on the EMPLOYMENT ID
+     * resolved server-side from the session, so the screen is structurally incapable of showing another
+     * person's rows whoever opens it — a stronger fence than a company scope narrowed by a filter. An
+     * administrator opening it sees their own record and nobody else's.
+     *
+     * The idiom `myEmployment(s)` that the r362 comment quotes is a COMMENT idiom (the sibling loop in
+     * test/attendance-menu-relocation.test.ts reads it off raw source). This file strips comments, so the
+     * CALL is what is matched here — which is the stronger reading anyway: a comment cannot fence data.
      */
-    expect(src, 'no employment is resolved here any more').not.toContain('myEmployment');
-    expect(src, 'and no attendance range read remains').not.toContain('attendanceForEmploymentRange');
-    // The two calls that MUST survive the emptying, or the route stops being an authenticated page and
-    // test/function-access.test.ts's "no stale routes" fails on a registered route with no guarded file.
+    expect(src, 'the caller’s own employment is resolved server-side').toMatch(/myEmployment\(\s*s\s*\)/);
+    expect(src, 'and the range read is keyed on it, not on a company scope').toMatch(
+      /attendanceForEmploymentRange\(\s*s,\s*me\.employmentId/,
+    );
+    // The two calls that survived the emptying and must keep surviving, or the route stops being an
+    // authenticated page and test/function-access.test.ts's "no stale routes" fails on a registered route.
     expect(src, 'the authentication boundary is still crossed').toContain('await scopedSession()');
     expect(src, 'and the module courtesy redirect is still in place').toContain("requireModule('attendance')");
-    // Unchanged from r287 and still worth stating: `scopeIds` here would mean the page had started
-    // answering a question about other people.
+    // Unchanged from r287 and r362, and the assertion that keeps the fence the EMPLOYMENT and not the
+    // company: `scopeIds` here would mean the page had started answering a question about other people.
     expect(src, 'no company scope is resolved here').not.toContain('scopeIds');
   });
 
-  it('it is read-only: no form, no server action, no write', () => {
-    // Zero attendance rows may be created, deleted or recomputed by this round. A screen with no writer
-    // cannot do any of the three, so that is what is asserted rather than a count nobody re-runs.
+  it('it is read-only: no server action, no write, and the only form navigates', () => {
+    /**
+     * ⚠️ 2aef3cd8 (r362) — THE OLD CLAIM WAS:
+     *   expect(src, 'no form posts from this screen').not.toMatch(/<form\b/);
+     * Correct for a blank page and WRONG as a rule: 67268d83 round one gives the employee a Date From /
+     * Date To / Apply filter, and the house idiom for a filter (app/attendance/individual/page.tsx) is a
+     * plain `method="GET"` form that NAVIGATES. Forbidding the element would have pushed the filter into a
+     * client island or a server action — more machinery, and a real writer where there was none.
+     *
+     * So the invariant is stated as what it was always about: this screen creates, deletes and recomputes
+     * zero attendance rows. A GET form cannot; a POST form or an `action={…}` binding could.
+     */
     expect(src, 'no server action is imported').not.toMatch(/from '\.\/actions'|from '\.\.\/actions'/);
-    expect(src, 'no form posts from this screen').not.toMatch(/<form\b/);
+    const forms = [...src.matchAll(/<form\b[^>]*>/g)].map((m) => m[0]);
+    for (const f of forms) {
+      expect(f, 'every form on this screen submits by navigating (method="GET")').toContain('method="GET"');
+      // `action={…}` is how a server action binds to a form; `action="/path"` would be a POST target.
+      expect(f, 'and none of them binds a server action or a post target').not.toMatch(/\saction[=\s]/);
+    }
   });
 });
 
 describe('f3e6c36e — the employee screen says the same thing the admin screen does', () => {
-  it('imports no figure module it no longer renders — and none of them was deleted (r362)', () => {
+  it('the figures came back THROUGH the shared modules, and the two round-two ones are still untouched', () => {
     /**
-     * ⚠️ 2aef3cd8 (r362) — THE OLD CLAIM WAS: "reuses the shared formatters, derivations and explanation
-     * island", i.e. the employee screen MUST import '@/components/attendance-format',
+     * ⚠️ 2aef3cd8 (r362) — THE CLAIM BEFORE LAST WAS: "reuses the shared formatters, derivations and
+     * explanation island", i.e. the employee screen MUST import '@/components/attendance-format',
      * '@/components/attendance-figure-cells', '@/core/attendance-derive' and '@/core/attendance-explain',
      * so that it and the administrator's screen could not describe one day two different ways. All four
-     * imports went with the table this round.
+     * imports went with the table in r362, and the case was inverted to "must NOT be imported by a screen
+     * that renders no figure" plus "must still EXIST", carrying this standing instruction: the rule is
+     * SUSPENDED WITH ITS SUBJECT, and "the moment an attendance figure returns to this screen it must
+     * return through those same four modules rather than through a private copy".
      *
-     * The rule is not withdrawn, it is SUSPENDED WITH ITS SUBJECT: nothing can be duplicated while nothing
-     * is rendered, and the moment an attendance figure returns to this screen it must return through those
-     * same four modules rather than through a private copy. So the case is inverted AND made to assert the
-     * other half of the plan's promise, which is the half a reader is most likely to doubt: "delete the
-     * frontend code used only by this page" had no subject, because every import was shared. None of the
-     * four files was deleted and zero files were orphaned.
+     * ⚠️ 67268d83 (r367) — THE FIGURES ARE BACK, so the instruction is discharged, and it splits two ways
+     * because the two pairs of modules serve two different screens:
+     *
+     *   • attendance-format + attendance-derive render the LIST — the hour columns, the status and the
+     *     flag. Asserted as REQUIRED again, which is the reversal.
+     *   • attendance-figure-cells + attendance-explain render the eight figure cells WITH THEIR STORED
+     *     WORKING, which is the day DETAIL screen (app/attendance/individual/[date]/page.tsx is the
+     *     specification, and its employee twin is round TWO of this item). 570fd56e took those eight
+     *     columns off HR's own list for the same reason they are off this one: six of them hold 0.00 on an
+     *     ordinary day. So they stay absent here AND stay existing — the r362 half of the case that is
+     *     still true, kept rather than dropped, with the round it is waiting for named.
+     *
+     * The derive module is reached through the pack facade `@/packs/attendance/service`, which re-exports
+     * core/attendance-derive verbatim (packs/attendance/service.ts) — ADR-0080 D11's door for a screen that
+     * also needs the DB-backed range read. Either specifier satisfies the anti-duplication rule, because
+     * both resolve to the one implementation; a private copy satisfies neither, which is what is checked.
      */
     const src = stripComments(read(EMPLOYEE_PAGE));
-    for (const shared of [
-      '@/components/attendance-format',
-      '@/components/attendance-figure-cells',
-      '@/core/attendance-derive',
-      '@/core/attendance-explain',
-    ]) {
-      expect(src, `${shared} must not be imported by a screen that renders no figure`).not.toContain(shared);
-      const base = path.join(ROOT, shared.replace('@/', ''));
+
+    expect(src, 'the shared formatters render the hour columns').toContain('@/components/attendance-format');
+    // statusOf and flagOf must be IMPORTED from the shared derivation module (directly or through the pack
+    // facade that re-exports it), never redefined. The specifier is pinned so a hand-rolled `statusOf` in a
+    // local helper file cannot pass by exporting the same name.
+    expect(src, 'statusOf/flagOf come from the shared derivation module').toMatch(
+      /import\s*\{[^}]*\bstatusOf\b[^}]*\}\s*from\s*'(?:@\/core\/attendance-derive|@\/packs\/attendance\/service)'/,
+    );
+    expect(src, 'and so does flagOf').toMatch(
+      /import\s*\{[^}]*\bflagOf\b[^}]*\}\s*from\s*'(?:@\/core\/attendance-derive|@\/packs\/attendance\/service)'/,
+    );
+
+    for (const roundTwo of ['@/components/attendance-figure-cells', '@/core/attendance-explain']) {
+      expect(src, `${roundTwo} renders the day DETAIL figures — round two, not this list`).not.toContain(roundTwo);
+      const base = path.join(ROOT, roundTwo.replace('@/', ''));
       expect(
         fs.existsSync(`${base}.ts`) || fs.existsSync(`${base}.tsx`),
-        `${shared} must still EXIST — it has other callers and was NOT deleted with the table`,
+        `${roundTwo} must still EXIST — it has other callers and was NOT deleted with the table`,
       ).toBe(true);
     }
-    // …and no locally redefined formatter, which is exactly how the two would drift. The only way this can
-    // fail now is a hand-rolled formatter arriving with new content, which is precisely the case to catch.
+
+    // …and no locally redefined formatter or derivation, which is exactly how the two screens would drift.
     expect(src, 'no private fmtMin copy').not.toMatch(/const\s+fmtMin\s*=/);
+    expect(src, 'no private statusOf copy').not.toMatch(/(?:const|function)\s+statusOf\b/);
+    expect(src, 'no private flagOf copy').not.toMatch(/(?:const|function)\s+flagOf\b/);
+    // r287's private `const dayName = …` (an en-GB weekday, hardcoded) is exactly the drift this forbids:
+    // fmtDayName takes the viewer's locale, and the old copy printed an English weekday in a Thai screen.
+    expect(src, 'no private weekday formatter').not.toMatch(/const\s+dayName\s*=/);
   });
 
   it('its labels resolve in all six locales, with the three dead strings retired in place', () => {
@@ -286,20 +355,55 @@ describe('f3e6c36e — the employee screen says the same thing the admin screen 
         '[retired',
       );
       /**
-       * ⚠️ 2aef3cd8 (r362) — THE OLD CLAIM WAS that `intro`, `notLinked` and `correctionNote` are LIVE
-       * strings, asserted beside `title` as non-blank in every locale, because the page rendered all four.
-       * The page renders only the title now. The keys are RETIRED IN PLACE and NOT deleted: i18n/request.ts
-       * deep-merges each locale over English, so dropping a key from en.json alone leaves the Malay and
-       * Chinese sentences still rendering while the English one vanishes. The marker is what stops a
-       * retired key being read as live copy, and it is the r355 convention
-       * (test/76dbcaa1-special-leave.test.ts) applied here rather than a second convention invented.
+       * ⚠️ 2aef3cd8 (r362) — THE CLAIM BEFORE LAST WAS that `intro`, `notLinked` and `correctionNote` are
+       * LIVE strings, asserted beside `title` as non-blank in every locale, because the page rendered all
+       * four. r362 rendered only the title, so all three were RETIRED IN PLACE and NOT deleted —
+       * i18n/request.ts deep-merges each locale over English, so dropping a key from en.json alone leaves
+       * the Malay and Chinese sentences still rendering while the English one vanishes — and the loop
+       * asserted that each one starts with the `[retired r362 —` marker.
+       *
+       * ⚠️ 67268d83 (r367) ROUND ONE SPLITS THE THREE, because their subjects came back separately:
+       *
+       *   • `intro` — the helper line above the day table. The table is back, so it is REVIVED.
+       *   • `notLinked` — the "your login is not linked to an active employment" branch. The page resolves
+       *     an employment again, so that branch is back and so is its sentence.
+       *   • `correctionNote` — the footer pointing at Attendance Request. NOT revived: the per-row
+       *     correction marker is round THREE and needs a date-filtered correction read that does not exist
+       *     (myAttendanceCorrections is capped at 100/500 with no date filter — using it over a range is
+       *     the capped-list defect f618065d found). Reviving the sentence now would promise a marker the
+       *     screen does not draw, so it stays retired and is asserted as retired.
+       *
+       * Revived keys are checked for the marker's ABSENCE as well as non-blankness: a half-applied revival
+       * that changed en.json and left five locales reading "[retired r362 — …" is exactly the failure the
+       * deep-merge makes invisible.
        */
-      for (const k of ['intro', 'notLinked', 'correctionNote']) {
-        expect(typeof m.attendance.myRecords[k], `${loc}: attendance.myRecords.${k} must still EXIST`).toBe('string');
-        expect(
-          String(m.attendance.myRecords[k]),
-          `${loc}: ${k} must be marked retired, not left reading as live copy`,
-        ).toMatch(/^\[retired r362 —/);
+      for (const k of ['intro', 'notLinked']) {
+        const v = String(m.attendance.myRecords[k]);
+        expect(typeof m.attendance.myRecords[k], `${loc}: attendance.myRecords.${k} must exist`).toBe('string');
+        expect(v.trim(), `${loc}: ${k} is live again (r367) and must not be blank`).not.toBe('');
+        expect(v, `${loc}: ${k} is rendered again — it must not still read as a retirement marker`).not.toContain(
+          '[retired',
+        );
+      }
+      {
+        const v = String(m.attendance.myRecords.correctionNote);
+        expect(typeof m.attendance.myRecords.correctionNote, `${loc}: correctionNote must still EXIST`).toBe('string');
+        expect(v, `${loc}: correctionNote stays retired until round three draws the marker`).toMatch(
+          /^\[retired r362 —/,
+        );
+      }
+      // The r367 strings, in every locale: the refusal the bounded range needs and the leave-type limit the
+      // screen states out loud. A missing one is a MISSING_MESSAGE on a screen a person is reading.
+      for (const k of ['rangeTooLong', 'rangeInverted', 'leaveTypeNote']) {
+        const v = m.attendance.myRecords[k];
+        expect(typeof v, `${loc}: attendance.myRecords.${k} must resolve`).toBe('string');
+        expect(String(v).trim(), `${loc}: ${k} must not be blank`).not.toBe('');
+      }
+      // Both ICU arguments must survive translation, or the refusal prints without the numbers that make it
+      // actionable. (scripts/i18n-check.mjs checks placeholder parity globally; this names the two that
+      // carry the ceiling, because a refusal that cannot say the limit is not a refusal.)
+      for (const arg of ['{days}', '{max}']) {
+        expect(String(m.attendance.myRecords.rangeTooLong), `${loc}: rangeTooLong keeps ${arg}`).toContain(arg);
       }
       // The rail must not say the same word for the employee's screen and the administrator's, in ANY
       // locale — translating one half and not the other re-creates the collision in that language alone,
@@ -328,12 +432,28 @@ describe('f3e6c36e — the employee screen says the same thing the admin screen 
  * copy-paste — and the check spans the whole `admin.users.scope` bag rather than this one key, because
  * moving the claim to a neighbouring column's note would otherwise pass while the grid still printed it.
  * The shape is 639bf4a5 (g)'s, in test/work-location-organization-relocation.test.ts.
+ *
+ * ⚠️ 67268d83 (r367) — THE SCREEN SHOWS ATTENDANCE AGAIN, SO THE r362 SENTENCE IS NOW THE FALSE ONE, and
+ * the note is reworded A SECOND TIME. Both retired sentences are quoted below and both are forbidden,
+ * which is the only arrangement that is honest about this key's history:
+ *
+ *   • r287's sentence is still forbidden. It is not merely stale — "it shows only your own attendance" was
+ *     written for a month-at-a-time screen and says nothing about the reader CHOOSING the range, which is
+ *     the new thing an administrator reading the grid needs to know. Restoring it by copy-paste is what
+ *     r362 built this case to stop, and reversing the screen does not make a copy-paste correct.
+ *   • r362's sentence is forbidden from today, for the same reason r362 forbade r287's: it is a FALSE
+ *     sentence on the one grid an administrator goes to for what a role can see, and it is false in the
+ *     more dangerous direction — it under-promises, so nobody chasing a leak would look here.
+ *
+ * And the positive half, which is what makes this more than a blacklist: the note must state that the
+ * reader's OWN attendance is what the screen shows. A sentence that forgets the fence is the failure this
+ * key exists to prevent, and neither forbidden string would catch it.
  */
-describe('2aef3cd8 — the retired scope-note claim is gone from all six locales', () => {
+describe('2aef3cd8 / 67268d83 — both retired scope-note claims are gone from all six locales', () => {
   const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
   /** What `admin.users.scope.myAttendanceRecords` said until r362 emptied the screen. */
-  const RETIRED_CLAIM: Record<(typeof LOCALES)[number], string> = {
+  const RETIRED_R287: Record<(typeof LOCALES)[number], string> = {
     en: 'Everyone can open this; whoever you are, it shows only your own attendance.',
     ms: 'Semua orang boleh membukanya; sesiapa pun anda, ia hanya memaparkan kehadiran anda sendiri.',
     ta: 'அனைவரும் இதைத் திறக்கலாம்; நீங்கள் யாராக இருந்தாலும், உங்கள் சொந்த வருகையை மட்டுமே இது காட்டுகிறது.',
@@ -342,17 +462,184 @@ describe('2aef3cd8 — the retired scope-note claim is gone from all six locales
     zh: '所有人都可打开；无论你是谁，此页面只显示你自己的考勤。',
   };
 
-  it.each(LOCALES)('%s: the note still resolves, and no longer promises an attendance record', (loc) => {
+  /** What it said between r362 and r367, while the screen was blank below its title. */
+  const RETIRED_R362: Record<(typeof LOCALES)[number], string> = {
+    en: 'It shows no attendance data at all',
+    ms: 'Ia tidak memaparkan apa-apa data kehadiran',
+    ta: 'இது எந்த வருகைத் தரவையும் காட்டுவதில்லை',
+    th: 'แต่หน้านี้ไม่แสดงข้อมูลการลงเวลาใด ๆ เลย',
+    vi: 'Trang này không hiển thị bất kỳ dữ liệu chấm công nào',
+    zh: '此页面不显示任何考勤数据',
+  };
+
+  /**
+   * The word for the reader's OWN attendance, per locale — the fence the sentence must still carry. Kept
+   * short on purpose: pinning a whole sentence would forbid the next legitimate rewording, while pinning
+   * the one concept that must never drop out does not.
+   */
+  const OWN: Record<(typeof LOCALES)[number], string> = {
+    en: 'own attendance',
+    ms: 'kehadiran pembaca itu sendiri',
+    ta: 'சொந்த வருகை',
+    th: 'การเข้างานของผู้อ่านเอง',
+    vi: 'chấm công của chính người đọc',
+    zh: '本人',
+  };
+
+  it.each(LOCALES)('%s: the note resolves, says whose attendance it is, and repeats neither retired claim', (loc) => {
     const scope = JSON.parse(read(`messages/${loc}.json`)).admin.users.scope as Record<string, unknown>;
     const note = scope.myAttendanceRecords;
     // Still present and non-empty: `hasScopeNote` is true, so an absent note is a blank cell on the grid.
     expect(typeof note, `${loc}: admin.users.scope.myAttendanceRecords must resolve`).toBe('string');
     expect(String(note).trim(), `${loc}: and must not be blank`).not.toBe('');
+    // The positive claim (r367): the screen shows the READER'S OWN attendance and nobody else's.
+    expect(String(note), `${loc}: the note must still say whose attendance this screen shows`).toContain(OWN[loc]);
+
     const strings = Object.values(scope).filter((v): v is string => typeof v === 'string');
-    const offenders = strings.filter((v) => v.includes(RETIRED_CLAIM[loc]));
     expect(
-      offenders,
-      `${loc}: /attendance/my-records shows no attendance at all since r362 — the grid must not say it does`,
+      strings.filter((v) => v.includes(RETIRED_R287[loc])),
+      `${loc}: the r287 sentence is retired — the range the reader chooses is now part of the answer`,
     ).toEqual([]);
+    expect(
+      strings.filter((v) => v.includes(RETIRED_R362[loc])),
+      `${loc}: /attendance/my-records shows a day list again since r367 — the grid must not say it shows nothing`,
+    ).toEqual([]);
+  });
+});
+
+/**
+ * 67268d83 (r367) ROUND ONE — THE TWO AXES, AND THE RANGE THAT CANNOT TRUNCATE.
+ *
+ * ── WHY THIS IS A GUARD AND NOT A DETAIL ────────────────────────────────────────────────────────────
+ * The reporter listed EIGHT states and called all eight statuses: Present, Absent, Off Day, Rest Day,
+ * Public Holiday, Late, Incomplete and Leave. The kernel makes SIX (`statusOf`) and reports the other two
+ * on a separate axis (`flagOf` → late · under · odd). Drawing Late as a status would assert a choice the
+ * kernel never makes — a late day IS a present day — and would put this screen's account of a day at odds
+ * with HR's, which is the one thing the whole item exists to avoid. The plan told the reporter so in as
+ * many words, so it is a promise and not a preference.
+ *
+ * The six are read OFF THE KERNEL rather than typed out here, so a seventh status added to
+ * core/attendance-derive.ts fails this case and forces a decision about the screen instead of quietly
+ * rendering `undefined` in a cell.
+ *
+ * ── AND THE HAZARD ──────────────────────────────────────────────────────────────────────────────────
+ * `attendanceForEmploymentRange` walks at most `ATTENDANCE_RANGE_MAX_DAYS` days and then STOPS, returning a
+ * short array that reads as "you have no attendance after that date". Unreachable while administrators
+ * chose ranges; one address-bar edit away now that an employee does. The behavioural half — that the loop
+ * really truncates, and that the resolver refuses before it can — is in
+ * test/attendance-overview-round1.test.ts against real seeded days. THIS half is the part a later round
+ * could undo with every other guard staying green: the page bounding its range against the kernel's own
+ * constant, and not issuing the read at all when it refuses.
+ */
+describe('67268d83 — six statuses, three flags, and a bounded range', () => {
+  const src = stripComments(read(EMPLOYEE_PAGE));
+
+  /** The literal members of a `export type X = 'a' | 'b' | null;` union, read off the kernel's source. */
+  const unionMembers = (source: string, typeName: string): string[] => {
+    const m = source.match(new RegExp(`export type ${typeName} =([^;]+);`));
+    expect(m, `core/attendance-derive.ts must declare ${typeName}`).not.toBeNull();
+    return [...m![1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+  };
+
+  /** The keys of a `const name: … = { a: …, b: … };` object literal in the page source. */
+  const literalKeys = (name: string): string[] => {
+    const at = src.indexOf(`const ${name}`);
+    expect(at, `${EMPLOYEE_PAGE} must declare ${name}`).toBeGreaterThan(-1);
+    const open = src.indexOf('{', at);
+    const close = src.indexOf('};', open);
+    expect(close, `${name} must be a closed object literal`).toBeGreaterThan(open);
+    return [...src.slice(open, close).matchAll(/(\w+)\s*:/g)].map((x) => x[1]);
+  };
+
+  const derive = read('core/attendance-derive.ts');
+
+  it('the Status column offers EXACTLY the statuses the kernel can produce — no Late, no Incomplete', () => {
+    const kernel = unionMembers(derive, 'AttendanceStatus');
+    expect(kernel.sort(), 'the kernel’s v1 status set').toEqual(
+      ['absent', 'off', 'on_leave', 'ph', 'present', 'rest'].sort(),
+    );
+    expect(
+      literalKeys('statusText').sort(),
+      'the screen’s Status labels must be exactly the kernel’s statuses: a seventh is a state the kernel ' +
+        'never returns, and a missing one renders undefined in a cell',
+    ).toEqual(kernel.sort());
+    // Named explicitly, because these two are the ones the reporter asked for AS statuses and the plan
+    // promised as notes instead. `late` is flagOf's word; `incomplete` is the reporter's word for `odd`.
+    for (const notAStatus of ['late', 'incomplete', 'odd', 'under']) {
+      expect(literalKeys('statusText'), `${notAStatus} is not a status the kernel produces`).not.toContain(
+        notAStatus,
+      );
+    }
+  });
+
+  it('the three flags are the kernel’s three, in their own Note column', () => {
+    const kernelFlags = unionMembers(derive, 'AttendanceFlag');
+    expect(kernelFlags.sort(), 'late · under · odd (null is the absence of a flag, not a fourth)').toEqual(
+      ['late', 'odd', 'under'].sort(),
+    );
+    expect(literalKeys('flagText').sort(), 'the screen’s Note labels are exactly those three').toEqual(
+      kernelFlags.sort(),
+    );
+    // `under` is the flag the reporter did not ask for and gets anyway (the plan says so in as many words),
+    // so it is named here: dropping it would be a silent walk-back of a stated promise.
+    expect(literalKeys('flagText'), 'the short-hours flag is shown, as promised').toContain('under');
+  });
+
+  it('status and note are two COLUMNS, not one cell that mixes the axes', () => {
+    expect(src, 'the Status header is rendered').toContain("t('colStatus')");
+    expect(src, 'and the Note header beside it').toContain("t('colNote')");
+    // The failure this is really about: a single cell printing "Present · Late" (or a Late chip where the
+    // status belongs) collapses the two axes back into one and re-asserts the choice the kernel refuses.
+    const cells = src.split(/<td\b/);
+    const mixed = cells.filter((c) => c.includes('statusText[') && c.includes('flagText['));
+    expect(mixed.length, 'no single cell renders both a status and a flag').toBe(0);
+    expect(cells.filter((c) => c.includes('statusText[')).length, 'exactly one Status cell').toBe(1);
+    expect(cells.filter((c) => c.includes('flagText[')).length, 'exactly one Note cell').toBe(1);
+  });
+
+  it('the date range is bounded by the KERNEL’s ceiling, and a refused range issues no read', () => {
+    // The number is the kernel's, imported — not a second 400 typed here, which is how the screen's limit
+    // and the loop's limit would drift apart and the cliff would come back.
+    expect(src, 'the kernel’s published ceiling is what bounds the range').toContain('ATTENDANCE_RANGE_MAX_DAYS');
+    expect(src, 'and it is what the resolver is given').toMatch(
+      /resolveMyAttendanceRange\(\s*sp,\s*\w+,\s*ATTENDANCE_RANGE_MAX_DAYS\s*\)/,
+    );
+    /**
+     * …and no SECOND copy of the number, which is how the screen's limit and the loop's limit would drift
+     * apart after somebody raised one of them.
+     *
+     * Numeric TOKENS, not a `\b400\b` substring sweep: this page's status chips carry Tailwind colour
+     * ramps (`dark:text-emerald-400`, `text-rose-400`), and a substring check matched those and failed on a
+     * shade of green. A hyphen before the digits is what distinguishes a colour ramp from a day count, so
+     * the token scan requires a non-word, non-hyphen character in front — the same reasoning the `hidden`
+     * class-token check in this file already uses for `overflow-hidden`.
+     */
+    const numericTokens = [...src.matchAll(/(?:^|[^\w-])(\d+)(?![\w-])/g)].map((m) => m[1]);
+    expect(numericTokens, 'the ceiling is imported, never re-typed as a bare 400').not.toContain('400');
+    // THE REFUSAL IS A REFUSAL, NOT A CLAMP. A clamped range would show a record the reader did not ask
+    // for while looking exactly like the one they did — the truncation defect moved one step later. So the
+    // read must be conditional on there being no refusal.
+    expect(src, 'the range read is skipped entirely when the range was refused').toMatch(
+      /range\.refusal\s*\?\s*\[\]\s*:\s*await attendanceForEmploymentRange\(/,
+    );
+    expect(src, 'and the reader is told why, with the limit in the sentence').toContain(
+      "t('myRecords.rangeTooLong'",
+    );
+    expect(src, 'an inverted range says so rather than reading as an empty record').toContain(
+      "t('myRecords.rangeInverted')",
+    );
+  });
+
+  it('the one thing the screen cannot say is said out loud, and only where it applies', () => {
+    // approvedLeaveDates returns no leave-type code, so On Leave is all a leave day can be told. The plan
+    // committed to stating that rather than letting the reporter discover it; the note renders only when a
+    // leave day is on screen, because a caption printed over a month with no leave in it is noise.
+    expect(src, 'the leave-type limit is stated').toContain("t('myRecords.leaveTypeNote')");
+    expect(src, 'and only when a leave day is actually shown').toMatch(/statusOf\(r\)\s*===\s*'on_leave'/);
+    // …and the limit is NOT worked around by inventing a sub-code. AL / ML / EL / RL are the codes
+    // core/attendance-derive.ts documents as a follow-up; printing one here would be a fabricated fact.
+    for (const invented of ["'AL'", "'ML'", "'EL'", "'RL'"]) {
+      expect(src, `${invented} is a leave sub-code the read does not carry`).not.toContain(invented);
+    }
   });
 });

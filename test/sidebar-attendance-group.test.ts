@@ -353,26 +353,35 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     expect(line, 'the employee’s record row exists').toBeDefined();
     expect(line, 'it stays visible to every employee').not.toMatch(/adminOnly|managerUp/);
     /**
-     * ⚠️ 2aef3cd8 (r362) — THE OLD CLAIM WAS:
+     * ⚠️ 2aef3cd8 (r362) — THE CLAIM BEFORE LAST WAS:
      *   expect(page, 'the employee screen resolves the caller’s own employment').toContain('myEmployment(s)');
      * with the reasoning "the screen itself must stay the employee's own: keyed on their employment …
      * without this the row could point at a screen that shows everybody and the assertions above would
      * still pass — the row is not what protects the data."
      *
-     * The reporter had everything under this row removed, so the screen reads NOTHING and there is no
-     * employment to resolve. The concern that sentence was really about — that an ungated row must not
-     * point at a screen showing everybody — is asserted MORE directly now: no employment read, no
-     * attendance read, and still no admin page guard. Kept as an assertion rather than dropped, because
-     * this is the row's only protection if content comes back keyed on something wider.
+     * r362 had everything under this row removed, so the screen read NOTHING and there was no employment to
+     * resolve. The concern the sentence was really about — that an ungated row must not point at a screen
+     * showing everybody — was asserted as no employment read, no attendance read, and still no admin page
+     * guard, explicitly kept "because this is the row's only protection if content comes back keyed on
+     * something wider".
      *
-     * Read off the CODE, not the raw file: the page's header comment necessarily names the calls it no
-     * longer makes (it explains the reversal), which is the same reason
-     * test/attendance-my-records-split.test.ts strips comments before every absence assertion.
+     * ⚠️ 67268d83 (r367) ROUND ONE IS CONTENT COMING BACK, AND THIS IS THAT CHECK DOING ITS JOB. The
+     * original sentence is restored in the stronger form: not merely that an employment is resolved, but
+     * that the attendance read is KEYED ON IT — `attendanceForEmploymentRange(s, me.employmentId, …)`. A
+     * screen keyed on a company scope would satisfy "resolves an employment" and still show everybody,
+     * which is precisely the wider-key failure this case was left here to catch.
+     *
+     * Read off the CODE, not the raw file: the page's header comment necessarily names the calls it makes
+     * and the ones it does not (it explains two reversals), which is the same reason
+     * test/attendance-my-records-split.test.ts strips comments before every source assertion.
      */
     const pageSrc = fs.readFileSync(path.resolve(__dirname, '../app/attendance/my-records/page.tsx'), 'utf8');
     const page = pageSrc.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
-    expect(page, 'the employee screen resolves no employment at all now').not.toContain('myEmployment');
-    expect(page, 'and reads no attendance').not.toContain('attendanceForEmploymentRange');
+    expect(page, 'the employee screen resolves the caller’s own employment').toMatch(/myEmployment\(\s*s\s*\)/);
+    expect(page, 'and the attendance read is keyed on that employment, not on a company scope').toMatch(
+      /attendanceForEmploymentRange\(\s*s,\s*me\.employmentId/,
+    );
+    expect(page, 'and it resolves no company scope at all').not.toContain('scopeIds');
     expect(page, 'and carries no admin page guard').not.toMatch(/requireAdmin\(|scopedAdmin\(/);
     // …and it is still an authenticated page, which is what keeps the route registered and reachable.
     expect(page, 'the session is still resolved').toContain('await scopedSession()');
