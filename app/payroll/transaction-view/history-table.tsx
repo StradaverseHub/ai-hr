@@ -19,6 +19,8 @@ import { payItemLabel, recordLineIdentity, type PayItemNames } from '@/core/pays
 import { payslipSegmentOf } from '@/core/payslip-segment';
 import type { EmployerBorneKey } from '@/core/payslip-employer-borne';
 import { payslipSkbbkLineShown, payslipSkbbkSubject } from '@/core/payslip-skbbk-line';
+// 970e4143 — the day-count composer the other three payslip surfaces already use for these rows.
+import { absenceDaysLabel } from '@/core/payslip-absence-lines';
 // 417d4937 request 10 — the one-off transactions behind this run's recorded items, listed BESIDE them
 // (never matched to them: see the component's own note on why a (code, amount) join would be worse).
 import type { PayslipSourceTxnRow } from '@/core/payroll-view';
@@ -323,12 +325,41 @@ export function HistoryTable({
                               </a>
                             }
                           />
-                          {Number(st.cp38) > 0 && <Row label={tSlip('cp38')} value={rm(st.cp38)} />}
+                          {/* 970e4143 — the APPLIED instalment, from the shared decider, never the
+                              pre-clamp `st.cp38`. See app/me/payslip/[payslipId]/page.tsx. */}
+                          {b.absence.cp38.show && (
+                            <Row label={tSlip('cp38')} value={rm(b.absence.cp38.amount)} />
+                          )}
                           {/* 3a092cf0 — a real deduction line now, un-muted, with the amount alone in the
                               figure column and the offset note on the label. Third of the three surfaces
                               that render this payslip section; see app/me/payslip/[payslipId]/page.tsx. */}
                           {Number(st.zakat) > 0 && (
                             <Row label={`${tSlip('zakat')} · ${tSlip('zakatOffsetNote')}`} value={rm(st.zakat)} />
+                          )}
+                          {/* ── 970e4143 — THE ROWS THAT WERE MISSING ENTIRELY ────────────────────────────
+                              This panel printed EPF / SOCSO / SKBBK / EIS / PCB / CP38 / Zakat above a
+                              TOTAL DEDUCTIONS and had NO other-deductions row at all, so an operator
+                              reconciling a run column-wise found the rows falling SHORT of the total by
+                              whatever `other_deductions` held: unpaid leave, a manual deduction, a staff
+                              loan, a carry-forward recovery. Measured as part of item 970e4143, whose
+                              other half was the opposite failure on the payslip surfaces.
+
+                              Same three rows, same decider and same order as the employee's own payslip
+                              and the printed document, so one slip reads the same on all four. */}
+                          {b.absence.unpaidLeave && (
+                            <Row
+                              label={`${tSlip('unpaidLeaveLine')} · ${absenceDaysLabel(b.absence.unpaidLeave.days, tSlip('dayUnit'), tSlip('daysUnit'))}`}
+                              value={rm(b.absence.unpaidLeave.amount)}
+                            />
+                          )}
+                          {b.absence.absent && (
+                            <Row
+                              label={`${tSlip('absentLine')} · ${absenceDaysLabel(b.absence.absent.days, tSlip('dayUnit'), tSlip('daysUnit'))}`}
+                              value={rm(b.absence.absent.amount)}
+                            />
+                          )}
+                          {b.absence.showResidual && (
+                            <Row label={tSlip('otherDeductions')} value={rm(b.absence.residual)} />
                           )}
                           {/* 6b4ca488 — no minus prefix; see the note on the same line in
                               app/payroll/individual-payslip/page.tsx. `b.totalDeductions` is a positive

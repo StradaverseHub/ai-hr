@@ -5,6 +5,11 @@ import { payslipDisplayEarnings } from '@/core/pay-display-category';
 import { payItemLinesReconcile } from '@/core/payslip-earning-lines';
 import { payslipEmployerBorne, type EmployerBorneView } from '@/core/payslip-employer-borne';
 import { payslipStatutoryBases, type StatutoryBases } from '@/core/payslip-recompute';
+// 970e4143 — the one decider for how "Other deductions" is split into its named parts and what the CP38
+// row may say. Shared with the printed document and both payslip screens, so the four surfaces that render
+// a deductions block cannot disagree about one slip.
+import { payslipAbsenceLines, type PayslipAbsenceLines } from '@/core/payslip-absence-lines';
+import { payslipCp38Carve } from '@/core/payslip-cp38-line';
 
 /**
  * Pure derivation of the itemized History breakdown (feedback 5f8d8395) from a processed-payslip view row.
@@ -59,7 +64,11 @@ export type BreakdownStat = {
   eisEmployee?: number;
   eisEmployer?: number;
   pcb?: number;
+  /** The instalment the LHDN/court direction ASKED for — PRE-CLAMP. Never render it: 970e4143. */
   cp38?: number;
+  /** 970e4143 — what the EA s.24 chain actually recovered. ABSENT on every slip written before that round,
+   *  which is why `core/payslip-cp38-line.ts` reads it through a function that tells absent from 0. */
+  cp38Applied?: number;
   /** HRD Corp levy, employer-only. Persisted on every payslip as `statutory.hrdf` (efece4ce). */
   hrdf?: number;
   zakat?: number;
@@ -84,6 +93,35 @@ export type HistoryBreakdown = {
   claim: number;
   gross: number;
   totalDeductions: number;
+  /** The payslip's stored "Other deductions" column, RAW. `absence` below is how it may be rendered. */
+  otherDeductions: number;
+  /**
+   * 970e4143 — HOW THIS SLIP'S "OTHER DEDUCTIONS" FIGURE BREAKS DOWN, and what its CP38 row may say.
+   *
+   * The History breakdown panel and its spreadsheet export printed deduction rows above a Total Deductions
+   * and had NO other-deductions row at all, so their rows fell SHORT of the total by whatever that column
+   * held — unpaid leave, a manual deduction, a staff loan, a carry-forward recovery. The export's own header
+   * asserted the opposite ("the deduction columns visibly reconcile against Total Deductions").
+   *
+   * Derived, never recomputed: `payslipAbsenceLines` reads this slip's own stamps and its own stored column.
+   * `absence.cp38` is the row the panel prints — the amount ACTUALLY deducted, and only when it could be
+   * carved out of the column, because the applied CP38 is folded inside it.
+   */
+  absence: PayslipAbsenceLines;
+  /**
+   * 970e4143 — THE PAIR FOR A SURFACE THAT PRINTS NO NAMED ABSENCE ROWS: the History GRID pivot and the
+   * spreadsheet export. Their single "Other deductions" figure has to carry the unpaid-leave and absence
+   * money as well, so it is a DIFFERENT residual from the one the breakdown panel prints — and the CP38
+   * row that goes beside it has to be decided against that same figure.
+   *
+   * ⚠️ READ THESE TWO TOGETHER OR NEITHER. Mixing `absence.cp38` with `otherDeductionsLumped` is a real
+   * failure mode, not a tidiness point: on a slip where the named absence lines plus the instalment exceed
+   * the column (a carry-forward deferral) `absence.cp38.show` is false while the lumped carve still fits,
+   * so the surface would print CP38 0.00 beside a residual that had the instalment taken out of it and its
+   * columns would fall short by exactly that amount.
+   */
+  cp38Lumped: { amount: number; show: boolean };
+  otherDeductionsLumped: number;
   net: number;
   /** Employer statutory contributions plus their sum (display total). HRDF joins the set in feedback
    *  efece4ce — it was computed and STORED on every payslip (`statutory.hrdf`) but shown nowhere, so an
@@ -190,6 +228,9 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
   // rewrite what January's payslip said. `allowance` still carries otConvert inside it, so `allowanceNet`
   // below is the identical expression it always was.
   const disp = payslipDisplayEarnings(row);
+  // 970e4143 — the CP38 carve for the row sets that name no absence lines. One call, so the CP38 figure and
+  // the residual those surfaces print can never be decided against different columns.
+  const lumped = payslipCp38Carve(row.statutory as Parameters<typeof payslipCp38Carve>[0], row.otherDeductions);
   const byBucket = groupByBucket(componentLines);
   // Hoisted so the reconciliation gate below can compare against the SAME expression the field carries —
   // computing it twice is how the figure and the guard on the figure start to disagree.
@@ -204,6 +245,12 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
     claim: disp.claim,
     gross: num(row.gross),
     totalDeductions: num(row.totalDeductions),
+    otherDeductions: num(row.otherDeductions),
+    // 970e4143 — ASKED, not answered here. All three come out of the shared deciders so this panel, its
+    // download, the grid, the employee's payslip and the printed document give one slip one answer.
+    absence: payslipAbsenceLines(row.statutory, row.otherDeductions),
+    cp38Lumped: { amount: lumped.line.applied, show: lumped.show },
+    otherDeductionsLumped: lumped.residual,
     net: num(row.net),
     // HRDF is added to the TOTAL as well as shown as its own line. Adding the row without the total
     // would leave the section's own arithmetic wrong — the failure this kind of change invites.

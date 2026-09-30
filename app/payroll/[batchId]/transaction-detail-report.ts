@@ -55,6 +55,11 @@ export const TRANSACTION_DETAIL_COLUMNS: { key: keyof PayrollRegisterRow; label:
   { key: 'socsoSkbbk', label: 'SOCSO SKBBK (Employee)' },
   { key: 'eisEmployee', label: 'EIS (Employee)' },
   { key: 'pcb', label: 'PCB (Tax)' },
+  // 970e4143 — these two are ONE answer, and this report is where the double count was worst: unlike the
+  // payslip screens its columns are ALWAYS emitted, so every reconciliation sheet for every run carried an
+  // instalment twice. `listPayrollRegisterAcross` now reports the APPLIED CP38 and an Other Deductions with
+  // that amount taken out (see PayrollRegisterRow). This projection stays what it was — a pass-through —
+  // because a report that recomputes what the register already decided is how the two start to disagree.
   { key: 'cp38', label: 'CP38' },
   { key: 'zakat', label: 'Zakat' },
   { key: 'otherDeductions', label: 'Other Deductions' },

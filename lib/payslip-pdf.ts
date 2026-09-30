@@ -114,6 +114,26 @@ export type PayslipPdfData = {
   socsoSkbbkSubject?: boolean | null;
   eisEmployee: number;
   pcb: number;
+  /**
+   * 970e4143 — THE CP38 FIGURE THIS DOCUMENT PRINTS, which is what was ACTUALLY DEDUCTED and is already
+   * carved out of `absence.residual`. It is NOT `statutory.cp38`.
+   *
+   * Two things were wrong with reading the blob directly. The applied CP38 is folded into the payslip's
+   * `other_deductions` column by the kernel, so a CP38 row printed beside the residual of that column
+   * counted the instalment twice among the drawn lines (measured: six rows adding to 1,793.35 above a
+   * printed TOTAL DEDUCTIONS of 1,343.35, over by exactly the 450.00 instalment). And `statutory.cp38` is
+   * the PRE-CLAMP instalment — the amount the direction asked for — so a 9,000 instalment against 6,500 of
+   * pay printed "CP38 9,000.00" when 5,606.65 had been taken.
+   *
+   * `buildPayslipPdfData` fills this from `core/payslip-absence-lines.ts`, which owns the carve decision
+   * for all three payslip renderers. 0 ⇒ no row: either there was no CP38, or nothing was recovered, or it
+   * could not be carved out of the column and the money stays inside the lumped "Other deductions" row.
+   *
+   * ⚠️ A HAND-BUILT FIXTURE MUST SET THIS AND `otherDeductions`/`absence.residual` CONSISTENTLY. A fixture
+   * pinning `cp38: 50` with `otherDeductions: 0` and the total bumped by 50 encodes CP38 as sitting OUTSIDE
+   * `other_deductions`, which is the opposite of what the kernel does, and it is how this defect went
+   * unnoticed by the one arithmetic assertion this renderer had.
+   */
   cp38: number;
   /**
    * 3a092cf0 — THE DOCUMENT HAD NO ZAKAT LINE AT ALL, and until the kernel was fixed that was invisibly
@@ -379,6 +399,10 @@ export function buildPayslipPdfData(
   const disp = payslipDisplayEarnings(p);
   const eb = payslipEmployerBorne(p.statutory);
   const componentLines = storedComponentLines(p.statutory);
+  // 970e4143 — hoisted, because `cp38` below is read OUT of it. The carve decision (which of the three
+  // claims on `other_deductions` fit inside it, and therefore which rows may print) is made once, in
+  // core/payslip-absence-lines.ts, and this document reads the answer rather than deciding for itself.
+  const absence = payslipAbsenceLines(p.statutory, p.otherDeductions);
   return {
     employee: p.employee,
     employeeCode: p.employeeCode,
@@ -401,14 +425,17 @@ export function buildPayslipPdfData(
     socsoSkbbkSubject: payslipSkbbkSubject(st),
     eisEmployee: eb.employee.eis,
     pcb: eb.employee.pcb,
-    cp38: n(st.cp38),
+    // 970e4143 — WHAT WAS DEDUCTED, not what was demanded, and 0 when the row may not print at all.
+    // Never `st.cp38`: that is the PRE-CLAMP instalment, and printing it made this document state that
+    // 9,000.00 had been taken from an employee whose whole month's pay was 6,500.00.
+    cp38: absence.cp38.show ? absence.cp38.amount : 0,
     // 3a092cf0 — read straight off the payslip's own snapshot, like every other deduction here. NOT
     // employer-borne-adjusted: there is no "Employer bears zakat" control, so `eb.employee` has no zakat
     // leg and the figure the employee paid is the figure the slip stamped.
     zakat: n(st.zakat),
     zakatCountedInTotal: payslipZakatLine(st).countedInTotal,
     otherDeductions: n(p.otherDeductions),
-    absence: payslipAbsenceLines(p.statutory, p.otherDeductions),
+    absence,
     totalDeductions: n(p.totalDeductions),
     net: n(p.net),
     epfEmployer: n(st.epfEmployer),
@@ -928,6 +955,8 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
       : []),
     { label: t.eis, amount: d.eisEmployee },
     { label: t.pcb, amount: d.pcb },
+    // 970e4143 — the APPLIED instalment, already taken OUT of `d.absence.residual` below so the box adds
+    // up, and 0 (no row) on a slip whose CP38 could not be carved out of its own column. See the field.
     ...(d.cp38 > 0 ? [{ label: t.cp38, amount: d.cp38 }] : []),
     // 3a092cf0 — the zakat line, so the box adds up to the TOTAL DEDUCTIONS it prints. It sits after the
     // tax lines because that is where it sits on both screens and because that is the order it is

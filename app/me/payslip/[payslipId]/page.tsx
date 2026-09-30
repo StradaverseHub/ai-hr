@@ -250,7 +250,12 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
           )}
           <Row label={t('eis')} value={rm(eb.employee.eis)} />
           <Row label={t('pcb')} value={rm(eb.employee.pcb)} />
-          {Number(st.cp38) > 0 && <Row label={t('cp38')} value={rm(st.cp38)} />}
+          {/* 970e4143 — WHAT WAS DEDUCTED, and only when it could be carved out of "Other deductions".
+              Never `st.cp38`: that is the PRE-CLAMP instalment (a 9,000 direction against 6,500 of pay
+              printed 9,000.00 when 5,606.65 was taken), and the applied figure is folded INTO the
+              other-deductions column, so a row beside an uncarved residual counted it twice. One decider
+              for all three payslip surfaces — core/payslip-absence-lines.ts. */}
+          {absence.cp38.show && <Row label={t('cp38')} value={rm(absence.cp38.amount)} />}
           {/* 3a092cf0 — A REAL DEDUCTION LINE, not an informational aside. This row used to be MUTED with
               the amount and the offset note crammed into the value column, because the total below it
               genuinely excluded the zakat: the kernel never charged it, so a full-strength row would have

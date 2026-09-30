@@ -64,6 +64,9 @@ function slip(overrides: Partial<ProcessedPayslipViewRow> = {}): ProcessedPaysli
         { code: 'HANDPHONE', name: 'Handphone Allowance', amount: 100, buckets: [{ bucket: 'wage', amount: 100 }] },
       ],
     },
+    // 970e4143 — ProcessedPayslipViewRow now carries the payslip's stored "Other deductions" column
+    // (the two Transaction History surfaces could not reconcile without it). 0 on this baseline.
+    otherDeductions: '0.00',
     totalDeductions: '2334.85',
     net: '3265.15',
     ...overrides,

@@ -66,6 +66,9 @@ function slip(over: Partial<ProcessedPayslipViewRow> = {}): ProcessedPayslipView
     bonus: '0.00',
     gross: '1000.00',
     statutory: { epfEmployee: 110 },
+    // 970e4143 — ProcessedPayslipViewRow now carries the payslip's stored "Other deductions" column
+    // (the two Transaction History surfaces could not reconcile without it). 0 on this baseline.
+    otherDeductions: '0.00',
     totalDeductions: '110.00',
     net: '890.00',
     ...over,
