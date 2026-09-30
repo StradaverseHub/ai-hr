@@ -185,11 +185,34 @@ const REDIRECT_STUBS: [string, string][] = [
   ['app/admin/attendance-policy/schedule/page.tsx', 'WORK_SCHEDULE_OVERTIME_ANCHOR'],
 ];
 
-// 6340aecb — the one form page that is full width ON PURPOSE (see B above). It gets the SAME pair of
-// assertions the list screens get, so the reversal is a pinned decision rather than an absence of one:
-// putting `mx-auto max-w-3xl` back on this screen must fail here, exactly as taking it off rule-form.tsx
-// would fail the case below.
-const WIDE_FORM_SCREENS = ['app/admin/attendance/shift-form.tsx'];
+// 6340aecb — the form pages that are full width ON PURPOSE (see B above). They get the SAME pair of
+// assertions the list screens get, so each reversal is a pinned decision rather than an absence of one:
+// putting `mx-auto max-w-3xl` back on the shift form must fail here, exactly as taking it off
+// rule-form.tsx would fail the case below.
+//
+// ⚠️ c7c69a18 (r369) ADDED THE SECOND ENTRY, and the const was `['app/admin/attendance/shift-form.tsx']`
+// — "the ONE form page that is full width on purpose" — until then. Apply OT Plan is the second, on the
+// same reasoning and from the same kind of request, so the sentence is now plural. The reason moved onto
+// each entry rather than into the case title, because the title used to cite 6340aecb's request point 3
+// and that citation is true of the shift form only.
+//
+// Apply OT Plan is deliberately HERE and not in WIDE_LIST_SCREENS (which the approved plan's build note
+// suggested): it is a form page, and B above exists precisely so a form going full width is recorded as a
+// decision about a FORM rather than smuggled in as a list. Its pair of assertions is identical either way.
+const WIDE_FORM_SCREENS: [string, string][] = [
+  [
+    'app/admin/attendance/shift-form.tsx',
+    'The reporter asked for this screen edge to edge (6340aecb, request point 3) and its sections are ' +
+      '4-up grids: Working Times alone puts four times on one line.',
+  ],
+  [
+    'app/attendance/plan-ot/apply/page.tsx',
+    'c7c69a18 asked for this screen edge to edge in as many words — "Remove the max-width/centred ' +
+      'container so the page uses the full width of the content area" — and it is a month calendar ' +
+      'beside a form, not one column of boxes. It was in NEITHER list before, so the width was ' +
+      'unguarded in both directions while Self Overtime, the list it opens from, was pinned wide in r362.',
+  ],
+];
 
 describe('af7a8eb4 — Attendance screen layout', () => {
   it.each(WIDE_LIST_SCREENS)('%s uses pageWideCls', (file) => {
@@ -220,15 +243,14 @@ describe('af7a8eb4 — Attendance screen layout', () => {
     expect(classNameLiterals(src), 'a redirect stub has no markup, so no width to get wrong').toEqual([]);
   });
 
-  it.each(WIDE_FORM_SCREENS)('%s is full width on purpose (6340aecb, request point 3)', (file) => {
+  it.each(WIDE_FORM_SCREENS)('%s is full width on purpose', (file, why) => {
     const src = read(file);
     expect(src, `${file} must use the named pageWideCls constant, not a hand-written width`).toContain('pageWideCls');
     const capped = classNameLiterals(src).filter(capsPage);
     expect(
       capped,
-      `${file} re-acquires a page-level width cap: ${capped.join(' | ')}. The reporter asked for this ` +
-        `screen edge to edge (request point 3) and its sections are 4-up grids — a reading-width cap here ` +
-        `is the regression, not the guard.`,
+      `${file} re-acquires a page-level width cap: ${capped.join(' | ')}. ${why} A reading-width cap ` +
+        `here is the regression, not the guard.`,
     ).toEqual([]);
   });
 

@@ -9,7 +9,7 @@ import {
   otPlanCalendarMonth,
   type OtPlanCalendarDay,
 } from '@/packs/attendance/service';
-import { Button, Card, ErrorBanner, Field, PageHeader, inputCls } from '@/components/ui';
+import { Button, Card, ErrorBanner, Field, PageHeader, inputCls, pageWideCls } from '@/components/ui';
 import { OtPlanCalendar, type OtCalendarCell, type OtCalendarPlanStatus } from '@/components/ot-plan-calendar';
 import { addMonths, monthDates, monthRange } from '@/lib/roster-month';
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -68,8 +68,12 @@ export default async function ApplyOtPlanPage({
   const me = await myEmployment(s);
 
   if (!me) {
+    // `max-w-md`, not `max-w-2xl`: the screen itself is full width now, and the layout guard reads this
+    // file for `mx-auto` + `max-w-…xl` — the very shape c7c69a18 took off the page. The one-sentence
+    // notice still wants a reading width, so it caps itself without centring the PAGE, exactly as
+    // app/attendance/plan-ot/page.tsx and app/attendance/my-records/page.tsx already do.
     return (
-      <div className="mx-auto max-w-2xl">
+      <div className="mx-auto max-w-md">
         <Card className="p-8 text-center">
           <h1 className="text-lg font-semibold">{t('applyOtPlan')}</h1>
           <p className="mt-2 text-sm text-muted-foreground">{t('notLinked')}</p>
@@ -199,7 +203,12 @@ export default async function ApplyOtPlanPage({
   const plannedStartPrefill = day?.kind === 'workday' ? (day.scheduleEnd ?? '') : '';
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
+    /* c7c69a18 — FULL WIDTH. `mx-auto max-w-6xl` left about a third of a wide monitor as empty margin
+       beside the menu, which is the complaint r227, r319 and f618065d already answered for the list
+       screens in this menu; Self Overtime, the list this screen opens from, was widened in r362 and the
+       Apply screen was not. Through the named constant, never a hand-written width — which also carries
+       the shared `space-y-6` rhythm, so this page stops being the one screen in the menu at `space-y-4`. */
+    <div className={pageWideCls}>
       <div>
         {/* c6bb5f5a — back to Self Overtime, which is a screen of its own again. */}
         <Link
@@ -213,7 +222,7 @@ export default async function ApplyOtPlanPage({
 
       <ErrorBanner message={sp.error} />
 
-      <div className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         {/* ── LEFT: the month, and what the month adds up to ─────────────────────────────────────── */}
         <div className="space-y-4">
           <Card className="p-4">
@@ -399,8 +408,12 @@ export default async function ApplyOtPlanPage({
               <p className="text-[11px] text-muted-foreground">{t('otGoesToHelp')}</p>
 
               {/* On a phone Submit is pinned to the bottom of the screen with the date beside it, which is
-                  what the approved picture draws; from `md` up it is an ordinary footer row again. */}
-              <div className="sticky bottom-0 -mx-4 -mb-4 flex items-center justify-between gap-3 rounded-b-[1.25rem] border-t border-border bg-card px-4 py-3 md:static md:mx-0 md:mb-0 md:rounded-none md:border-0 md:bg-transparent md:px-0 md:pb-0">
+                  what the approved picture draws; from `lg` up it is an ordinary footer row again.
+                  c7c69a18 MOVED THIS FROM `md` WITH THE COLUMNS ABOVE, not separately: below the column
+                  breakpoint the form is a single full-width column and the pinned bar is what the picture
+                  draws for it, so a footer that un-pinned at `md` while the form was still stacked would
+                  disagree with the layout for the 768–1023px band. */}
+              <div className="sticky bottom-0 -mx-4 -mb-4 flex items-center justify-between gap-3 rounded-b-[1.25rem] border-t border-border bg-card px-4 py-3 lg:static lg:mx-0 lg:mb-0 lg:rounded-none lg:border-0 lg:bg-transparent lg:px-0 lg:pb-0">
                 <p className="text-[11px] text-muted-foreground">{t('otStaysOnCalendarHelp')}</p>
                 <Button type="submit" size="sm" className="shrink-0">
                   {t('otSubmitPlan')}
