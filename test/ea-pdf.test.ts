@@ -7,7 +7,16 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { PDFArray, PDFDocument, PDFRawStream, StandardFonts, decodePDFRawStream, type PDFFont } from 'pdf-lib';
-import { EA_FORM, blankEaPdfData, renderEaPdf, type EaPdfData, type EaPdfLabels, eaFormWords } from '../lib/ea-pdf';
+import {
+  EA_FORM,
+  EA_FORM_NUMBERING,
+  blankEaPdfData,
+  eaCaptionWords,
+  eaFormWords,
+  renderEaPdf,
+  type EaPdfData,
+  type EaPdfLabels,
+} from '../lib/ea-pdf';
 
 /**
  * 6036dab7 — READ THE DRAWN TEXT BACK OUT OF THE PDF, WITH ITS COORDINATES.
@@ -276,13 +285,24 @@ describe('EA PDF renderer', () => {
       const { items, pageHeights } = await drawnText(await renderEaPdf(long, labels, { locale }));
       const O = EA_FORM.officerBox;
       const ruleW = O.ruleX[1] - O.ruleX[0] - 6; // what valueOrRule actually writes into
-      // The runs written ON the two employer rules. `valueOrRule` writes at ruleX[0] + 3.
+      /**
+       * ⚠️ r372 — THE ROWS AND THE RULE WIDTH ARE THE AGENCY'S NOW, AND THE BLOCK MAY REACH A SECOND
+       * SHEET. This used to name `[689, 706]`, the traced box's third and fourth rows, and assert
+       * exactly two runs. The agency's box is 99 pt lower at a 13.2 pt pitch and its writing rule is
+       * 218.6 pt rather than 269, so the same address wraps further and what does not fit continues on
+       * a continuation sheet. The PROPERTY is unchanged and is what this case was always for: every run
+       * of the block is set at a FULL 8 pt and fits its rule, i.e. it was wrapped and not squeezed.
+       */
+      const employerRows = [0, 1].map((k) => O.rowT0 + (2 + k) * O.rowPitch);
+      const tt = (i: (typeof items)[number]) => pageHeights[i.page] - i.y;
       const onRule = items.filter(
         (i) =>
-          Math.abs(i.x - (O.ruleX[0] + 3)) < 0.5 &&
-          [689, 706].some((tt) => Math.abs(pageHeights[i.page] - i.y - tt) < 0.5),
+          (i.page === 0 &&
+            Math.abs(i.x - (O.ruleX[0] + 3)) < 0.5 &&
+            employerRows.some((row) => Math.abs(tt(i) - row) < 0.5)) ||
+          (i.page > 0 && Math.abs(i.x - (EA_FORM.left + 3)) < 0.5),
       );
-      expect(onRule.length, 'the employer name/address block is not on the officer box\'s two rules').toBe(2);
+      expect(onRule.length, "the employer name/address block did not reach the officer box's rules").toBeGreaterThanOrEqual(2);
       for (const run of onRule) {
         expect(
           font.widthOfTextAtSize(run.text, 8),
@@ -359,6 +379,10 @@ describe('EA PDF renderer', () => {
     const O = EA_FORM.officerBox;
     const ruleW = O.ruleX[1] - O.ruleX[0] - 6;
     const writeX = O.ruleX[0] + 3;
+    /** Row `n` of the agency's own box. Re-pitching the box re-points every case below with it. */
+    const rowT = (n: number) => Math.round((O.rowT0 + n * O.rowPitch) * 10) / 10;
+    /** The rules the employer's name and address is written on: the box's third row onwards. */
+    const employerRowT = (k: number) => rowT(2 + k);
     /** Greedy word-wrap at 8 pt into `ruleW` — the renderer's own `wrapped`, re-derived here. */
     const wrapAt8 = (s: string, font: PDFFont) => {
       const out: string[] = [];
@@ -374,8 +398,9 @@ describe('EA PDF renderer', () => {
       return out;
     };
 
-    // Long enough to need four rules, and a real Malaysian name-and-address rather than filler: it is
-    // the shape the reporter's own attachment shows (item 450f443f, "EA Form design V1.png").
+    // Long enough to outgrow the agency's own two writing rules, and a real Malaysian name-and-address
+    // rather than filler: it is the shape the reporter's own attachment shows (item 450f443f,
+    // "EA Form design V1.png").
     const LONG_NAME = 'Perbadanan Pembangunan Infrastruktur dan Teknologi Maklumat Semenanjung Malaysia Berhad';
     const LONG_ADDRESS = [
       'Aras 27, Menara Tabung Haji, Jalan Tun Razak',
@@ -383,8 +408,24 @@ describe('EA PDF renderer', () => {
       '52200 Kuala Lumpur, Wilayah Persekutuan',
     ];
 
+    /**
+     * ⚠️ r372 (item 795c470c) — WHERE THE GROWTH GOES NOW, AND WHY THIS CASE CHANGED.
+     *
+     * Round one grew the box downwards, because at the TRACED geometry it ended at tt 730.6 and five
+     * more 17 pt rules fitted above `EA_FORM.bottom`. The agency's box ends at 817.9 and `bottom` is
+     * 830 — twelve points against a 13.2 pt pitch — so not one more rule fits and the growth has
+     * nowhere to go on the form's own page.
+     *
+     * The three ways out are not equal, and the one taken is the only one that keeps round one's
+     * result: shrinking reinstates the 3.4 pt line round one exists to prevent, truncating reads as a
+     * complete address, and raising `bottom` spends the paper's own 4 mm margin. So the remainder
+     * continues on a second sheet at a FULL 8 pt. The properties this case has always asserted are
+     * unchanged — (a) nothing below `minSize`, (b) one rule per wrapped line rather than one shrunk
+     * line, (c) the whole block reaches the paper in order — and only (d) moved: the box's foot no
+     * longer travels, because the box no longer grows.
+     */
     it.each(['en', 'ms'] as const)(
-      '%s: a four-rule employer block is set at full size on four rules, and the box grows to hold them',
+      '%s: an employer block past the agency’s two rules is set at full size, and the rest continues on a sheet',
       async (locale) => {
         const font = await (await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
         const block = [LONG_NAME, ...LONG_ADDRESS].join(', ');
@@ -394,17 +435,18 @@ describe('EA PDF renderer', () => {
         const long: EaPdfData = { ...fullForm, employer: { ...fullForm.employer, name: LONG_NAME, address: LONG_ADDRESS } };
         const items = await drawnSized(await renderEaPdf(long, labels, { locale }));
 
-        // (b) one rule per wrapped line — not the two the ceiling gave, and not a rule per address part.
-        // The employer's rules are the box's third row onwards; the telephone writes at the SAME x one
-        // row further down, so the baselines are named rather than taken as "everything below 689".
-        const employerRows = expected.map((_, k) => 689 + k * O.rowPitch);
-        const employerRuns = items.filter(
-          (i) => Math.abs(i.x - writeX) < 0.5 && employerRows.some((tt) => Math.abs(i.tt - tt) < 0.5),
+        // (b) one rule per wrapped line — not one shrunk line, and not a rule per address part. The
+        // rules on the form's own page are named; the continuation sheet writes at the left margin.
+        const onForm = items.filter(
+          (i) => i.page === 0 && Math.abs(i.x - writeX) < 0.5 && [0, 1].some((k) => Math.abs(i.tt - employerRowT(k)) < 0.5),
         );
+        const onSheet = items.filter((i) => i.page > 0 && Math.abs(i.x - (EA_FORM.left + 3)) < 0.5);
+        const employerRuns = [...onForm, ...onSheet];
         expect(
           employerRuns.map((i) => i.text),
           'the employer block was not given one rule per wrapped line',
         ).toEqual(expected);
+        expect(onForm.length, 'the form’s own box did not use the agency’s two rules').toBe(O.employerRules);
 
         // (a) and the point of the whole round: nothing was shrunk to fit. Full size, every line.
         for (const run of employerRuns) {
@@ -418,83 +460,81 @@ describe('EA PDF renderer', () => {
         // (c) nothing lost at the joins — the rules, read in order, are the block itself.
         expect(employerRuns.map((i) => i.text).join(' ')).toBe(block);
 
-        // (d) the foot row followed the box down by exactly the growth, and the two halves of that row
-        // (the telephone inside the box, the date outside it) are still on ONE baseline, which is how
-        // LHDN prints them: --rects puts both on tt 802.
-        const growth = (expected.length - O.employerRules) * O.rowPitch;
+        // (d) the box's foot row is the AGENCY's last row and does not move, because the box does not
+        // grow: the telephone inside the box and the date outside it are on ONE baseline, which is how
+        // LHDN prints them (--rects puts both on tt 802).
         const phone = items.find((i) => i.text === fullForm.employer.phone);
-        const date = items.find((i) => /^\d{2}\/\d{2}\/\d{4}$/.test(i.text) && i.x < 200);
+        const date = items.find((i) => /^\d{2}\/\d{2}\/\d{4}$/.test(i.text) && i.x < 200 && i.page === 0);
         expect(phone, 'the telephone number left the page').toBeDefined();
-        expect(phone!.tt, 'the telephone row did not follow the box down').toBeCloseTo(723 + growth, 2);
+        expect(phone!.tt, 'the telephone row left the agency’s own last row').toBeCloseTo(rowT(4), 1);
         if (date) expect(date.tt, 'the date came off the telephone’s row').toBeCloseTo(phone!.tt, 2);
 
         // …and everything is still on the paper. pdf-lib does not clip.
         for (const i of items) {
           expect(i.tt, `"${i.text}" is drawn below the page floor`).toBeLessThanOrEqual(EA_FORM.bottom);
         }
-        expect(new Set(items.map((i) => i.page)).size, 'the growth spilled onto a second page').toBe(1);
       },
     );
 
     /**
-     * THE FLOOR, AT AN ADDRESS LONG ENOUGH TO EXHAUST THE PAPER.
+     * THE PAPER IS THE ONLY LIMIT, AND IT IS A SHEET COUNT NOW RATHER THAN A SHRINK.
      *
-     * The box may only grow until its bottom edge would cross `EA_FORM.bottom`. Past that the leftover
-     * is joined onto the last rule and shrink-to-fit applies again — but clamped at `O.minSize`, so the
-     * failure mode is an OVERPRINT somebody queries rather than a 2 pt line nobody can see. That is
-     * r205's Borang A trade taken deliberately, and `minSize` is not round two's to lower.
+     * Before r372 the box grew until its bottom edge would cross `bottom`, and past that the leftover
+     * was joined onto the last rule and shrunk — clamped at `O.minSize`, so the failure mode was an
+     * overprint somebody queries rather than a 2 pt line nobody can see. On the agency's geometry there
+     * is no room to grow at all, so the shrink path is gone from the employer block entirely: the
+     * remainder takes as many sheets as it needs, at a full 8 pt, and nothing is joined or squeezed.
      */
-    it('an address longer than the page can hold stops at the floor instead of vanishing', async () => {
+    it('an address longer than a sheet can hold takes another sheet instead of shrinking', async () => {
       const absurd = Array.from({ length: 24 }, (_, i) => `Bangunan Tabung Amanah Pekerja Bersatu Blok ${i} Aras Lapan Belas`);
       const items = await drawnSized(
         await renderEaPdf({ ...fullForm, employer: { ...fullForm.employer, name: 'Koperasi', address: absurd } }, labels),
       );
-      // The cap, re-derived from the page rather than read off the renderer: however many rules fit
-      // between the ungrown box's foot and `bottom`. At the cap the telephone sits one row lower still,
-      // so naming the rows keeps it out of the set.
-      const maxRules = O.employerRules + Math.floor((EA_FORM.bottom - O.t1) / O.rowPitch);
-      const rows = Array.from({ length: maxRules }, (_, k) => 689 + k * O.rowPitch);
-      const onRules = items.filter(
-        (i) => Math.abs(i.x - writeX) < 0.5 && rows.some((tt) => Math.abs(i.tt - tt) < 0.5),
+      const onForm = items.filter(
+        (i) => i.page === 0 && Math.abs(i.x - writeX) < 0.5 && [0, 1].some((k) => Math.abs(i.tt - employerRowT(k)) < 0.5),
       );
-      expect(onRules.length, 'the box did not grow past the agency’s two rules at all').toBeGreaterThan(2);
-      expect(onRules.length, 'the box grew past the page floor').toBeLessThanOrEqual(maxRules);
-      for (const run of onRules) {
-        expect(run.size, `"${run.text.slice(0, 40)}…" was set at ${run.size}pt`).toBeGreaterThanOrEqual(O.minSize);
+      const onSheets = items.filter((i) => i.page > 0 && Math.abs(i.x - (EA_FORM.left + 3)) < 0.5);
+      expect(onForm.length, 'the agency’s own two rules were not used').toBe(O.employerRules);
+      expect(onSheets.length, 'the remainder never reached a continuation sheet').toBeGreaterThan(10);
+      for (const run of [...onForm, ...onSheets]) {
+        expect(run.size, `"${run.text.slice(0, 40)}…" was set at ${run.size}pt`).toBe(8);
       }
       // The whole block is still printed: a truncated address reads as a complete one, which is the
       // failure this renderer refuses for captions (r219) and refuses here for values.
-      expect(onRules.map((i) => i.text).join(' ')).toContain('Blok 23 Aras Lapan Belas');
-      // …and the box's own foot is still on the paper.
-      const phone = items.find((i) => i.text === fullForm.employer.phone);
-      expect(phone!.tt, 'the telephone row was pushed off the page').toBeLessThanOrEqual(EA_FORM.bottom);
+      expect([...onForm, ...onSheets].map((i) => i.text).join(' ')).toContain('Blok 23 Aras Lapan Belas');
+      // …and nothing, on any sheet, is below the page floor.
+      for (const i of items) expect(i.tt, `"${i.text}" is below the page floor`).toBeLessThanOrEqual(EA_FORM.bottom);
     });
 
     /**
-     * THE FLOOR COVERS THE THREE SINGLE-VALUE ROWS TOO, AND THEY CANNOT WRAP TO MEET IT.
+     * THE FLOOR COVERS THE THREE SINGLE-VALUE ROWS, AND THEY CANNOT WRAP OR SPILL TO MEET IT.
      *
      * Name of Officer, Designation and Employer's Telephone No. are one value on one rule with no
-     * continuation, so the box cannot grow for them: past 8 pt they shrink, and at `O.minSize` they
-     * overprint instead of shrinking further. Smaller exposure than the employer block (one field each
-     * rather than four concatenated) and the SAME defect class, which is the only thing that matters on
-     * a form somebody signs and files.
+     * continuation and no sheet, so past the point where 8 pt will not fit they shrink to `O.minSize`
+     * and then OVERPRINT to the right — they never disappear, and they are never set smaller than 6 pt.
      *
-     * ⚠️ AND `fitSize`'s 1 pt CLAMP WAS NEVER EVEN BUYING A FIT. Measured on HEAD, a 599-character
-     * designation was set at 1.0 pt AND still ran 288 pt over a 269 pt rule — illegible and out of its
-     * box at the same time. The clamp is not a floor, it is the absence of one; it just stops dividing.
+     * ⚠️ AND `fitSize`'s 1 pt CLAMP WAS NEVER EVEN BUYING A FIT. Measured before round one, a
+     * 599-character designation was set at 1.0 pt AND still ran 288 pt over its rule — illegible and
+     * out of its box at the same time. The clamp is not a floor, it is the absence of one.
+     *
+     * ⚠️ r372 — THE THREE BASELINES ARE DERIVED FROM THE BOX'S OWN TWO CONSTANTS RATHER THAN TYPED.
+     * They used to read `[['officerName', 655], ['officerPosition', 672], ['phone', 723]]`, the traced
+     * box's rows; re-pitching the box onto the agency's would have left this case looking for text on
+     * empty paper, which is a false green rather than a red.
      */
     it.each([
-      ['officerName' as const, 655],
-      ['officerPosition' as const, 672],
-      ['phone' as const, 723],
-    ])('a very long %s is never set below the floor', async (field, tt) => {
+      ['officerName' as const, 0],
+      ['officerPosition' as const, 1],
+      ['phone' as const, 4],
+    ])('a very long %s is never set below the floor', async (field, row) => {
+      const tt = rowT(row);
       // ~600 characters: far past anything real, and past the point where even 1 pt would fit.
       const absurd = Array(6).fill('Senior General Manager, Group Human Resources, Corporate Services and Statutory Compliance Division').join('; ');
       const items = await drawnSized(
         await renderEaPdf({ ...fullForm, employer: { ...fullForm.employer, [field]: absurd } }, labels),
       );
       const run = items.find((i) => Math.abs(i.x - writeX) < 0.5 && Math.abs(i.tt - tt) < 0.5);
-      expect(run, `nothing was drawn on the ${field} rule`).toBeDefined();
+      expect(run, `nothing was drawn on the ${field} rule at tt ${tt}`).toBeDefined();
       expect(run!.text, 'the value was truncated rather than printed').toBe(absurd);
       expect(run!.size, `${field} was set at ${run!.size}pt`).toBeGreaterThanOrEqual(O.minSize);
       // …and an ordinary value is untouched by the floor: it still sets at a full 8 pt.
@@ -504,9 +544,14 @@ describe('EA PDF renderer', () => {
     });
 
     /**
-     * THE AMENDED MARKER FOLLOWS THE BOX. It draws at `EA_FORM.footStripT` (742), which is only 11.4 pt
-     * below the UNGROWN box — so a grown box would print straight through it, and pdf-lib does not clip.
-     * This is the case that will matter most to round two (item 795c470c), which drops this box 99 pt.
+     * THE AMENDED MARKER HAS A NEW HOME, ABOVE THE BOX (r372).
+     *
+     * It drew at `EA_FORM.footStripT` (742), in the band the TRACED box left empty beneath itself. The
+     * agency's box ENDS at 817.9 — 75 pt past 742 — so on the agency's rows the marker would print
+     * inside the box, over the telephone rule, on every amended form in both editions; pdf-lib does not
+     * clip. There is no empty band below the agency's foot, and a second sheet would turn every amended
+     * statement into two pages. It goes in the 11.1 pt the agency leaves between Section F's row and
+     * the box's top rule.
      */
     it('the amended marker is never drawn inside the officer box', async () => {
       const long: EaPdfData = {
@@ -517,11 +562,12 @@ describe('EA PDF renderer', () => {
       const items = await drawnSized(await renderEaPdf(long, labels));
       const marker = items.find((i) => i.text === labels.amendedNote);
       expect(marker, 'the amended marker is not on the document').toBeDefined();
-      const font = await (await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
-      const growth = (wrapAt8([LONG_NAME, ...LONG_ADDRESS].join(', '), font).length - O.employerRules) * O.rowPitch;
-      // On page 0 it must clear the box's own bottom edge; the renderer may also have moved it to a new
-      // page, which is the existing overflow path and equally not-inside-the-box.
-      if (marker!.page === 0) expect(marker!.tt).toBeGreaterThan(O.t1 + growth);
+      expect(marker!.page, 'the amended marker left the form’s own page').toBe(0);
+      expect(marker!.tt, 'the amended marker is inside the officer box').toBeLessThan(O.t0);
+      // …and it clears Section F's row above it rather than printing through the form.
+      expect(marker!.tt, 'the amended marker is printed through Section F').toBeGreaterThan(EA_FORM.sectionT.f);
+      // It is also clear of the box HORIZONTALLY, so a grown box could never reach it sideways either.
+      expect(marker!.x, 'the amended marker starts inside the officer box’s column').toBeLessThan(O.x0);
     });
   });
 
@@ -590,7 +636,11 @@ describe('EA PDF renderer', () => {
     // and the title beside it, so the heading reaches the page as two pieces, not one string.
     expect(printed).toContain(labels.sectionCPensionOther.replace(/^\s*[A-F]\s+/, ''));
     expect(printed, 'the boxed section letter').toContain('C');
-    expect(printed).toContain(labels.pension);
+    // ⚠️ r372 — AND A NUMBERED CAPTION IS TWO PIECES FOR THE SAME REASON THE HEADING IS. The agency
+    // sets the item number in its own column (62.5) and the words in another (80.2), so C.1 reaches
+    // the page as "1." and "Pension", not as "1. Pension". Both halves are asserted.
+    expect(printed).toContain(eaCaptionWords(labels.pension, EA_FORM_NUMBERING.pension));
+    expect(printed, 'C.1’s item number').toContain('1.');
     // r219 — THE FIGURES ARE UNCHANGED; ONLY THE FORMAT MOVED. The C.P.8A prints ONE bold "RM" at the
     // head of its money column and bare figures down it, so an amount in that column no longer carries
     // its own "RM " prefix. The assertion that matters is that the FIGURE is on the document, and it
@@ -815,6 +865,14 @@ describe('r220 — the blank C.P.8A', () => {
       const m = /^\s*([A-F])\s+(.*)$/.exec(label);
       return m ? m[2] : label;
     };
+    /**
+     * ⚠️ AND A NUMBERED CAPTION IS NO LONGER ONE DRAWN STRING EITHER (r372, item 795c470c). The agency
+     * sets the item number at 62.5, the sub-item letter at 80.2 and the words at 94.3, so the renderer
+     * draws "1.", "(a)" and "Gross salary…" where it used to draw "1(a) Gross salary…". The catalogue
+     * is unchanged — the HTML statement still prints the number — and the PAGE draws the pieces.
+     * Asserting the joined string here would fail on a page that is correct.
+     */
+    const N = EA_FORM_NUMBERING;
     for (const caption of [
       titleOf(real.sectionAEmployeeParticulars),
       titleOf(real.sectionBEmploymentIncome),
@@ -823,12 +881,12 @@ describe('r220 — the blank C.P.8A', () => {
       titleOf(real.sectionEContributions),
       titleOf(real.sectionFExemptAllowances),
       real.formTotal,
-      real.grossSalary,
-      real.gratuity,
-      real.compensation,
-      real.childRelief,
+      eaCaptionWords(real.grossSalary, N.grossSalary),
+      eaCaptionWords(real.gratuity, N.gratuity),
+      eaCaptionWords(real.compensation, N.compensation),
+      eaCaptionWords(real.childRelief, N.childRelief),
       real.contributionAmount,
-      real.partYearNote,
+      eaCaptionWords(real.partYearNote, N.partYearNote),
     ]) {
       expect(blank, `the blank form is missing: ${caption}`).toContain(winAnsi(caption));
     }

@@ -1206,14 +1206,28 @@ describe('what the shelves say about the forms that are not built', () => {
     // …and the blank copy allowlists the SAME two languages, off the same one renderer.
     expect(read('app/payroll/ea/blank/route.ts')).toContain("EA_LANGS = ['en', 'ms']");
 
-    // The half that has NOT changed, and is what this case is for: exactly ONE file draws an EA. r220 puts
-    // a LABEL module beside it, which draws nothing — so the check is now "which of these files exports a
-    // renderer" rather than "which files are named ea-*pdf", which is the stronger question anyway.
+    /**
+     * The half that has NOT changed, and is what this case is for: exactly ONE file draws an EA. r220
+     * put a LABEL module beside it, which draws nothing — so the check is "which of these files exports
+     * a renderer" as well as "which files are named ea-*pdf", and the first is the stronger question.
+     *
+     * ⚠️ r372 — THE SET GAINS A THIRD NAME AND STAYS EXACT. `ea-pdf-labels-file.ts` resolves the same
+     * bundle from `messages/<locale>.json` ON DISK, for the measuring script and the grid guard, which
+     * have no request to resolve a locale against. It draws nothing and it must never serve a page: it
+     * has no fallback chain, no ICU formatting and no locale negotiation, and it THROWS on a missing
+     * key rather than degrading. So the three assertions below are: the set is exactly these three, only
+     * one of them renders, and NO ROUTE reaches the file one.
+     */
     const eaPdfFiles = fs.readdirSync(path.join(ROOT, 'lib')).filter((f) => /^ea-.*pdf/.test(f)).sort();
-    expect(eaPdfFiles).toEqual(['ea-pdf-labels.ts', 'ea-pdf.ts']);
+    expect(eaPdfFiles).toEqual(['ea-pdf-labels-file.ts', 'ea-pdf-labels.ts', 'ea-pdf.ts']);
     expect(eaPdfFiles.filter((f) => read(`lib/${f}`).includes('export async function renderEaPdf'))).toEqual([
       'ea-pdf.ts',
     ]);
+    for (const route of ['app/me/ea/[employmentId]/pdf/route.ts', 'app/payroll/ea/blank/route.ts']) {
+      expect(read(route), `${route} resolves its captions off disk instead of through next-intl`).not.toContain(
+        'ea-pdf-labels-file',
+      );
+    }
 
     // …and the override has somewhere to land. i18n/request.ts used to ignore the requested locale and
     // read the cookie unconditionally, which would have made `lang=ms` return a 200 in the wrong language.

@@ -173,12 +173,15 @@ describe('fda53352 · (c) no caption is drawn in white without a block beneath i
 
   it('the fill is drawn BEFORE the text, or the caption is painted over', () => {
     const s = src('lib/ea-pdf.ts');
-    const fillAt = s.indexOf('fill(L, EA_FORM.bannerT[0], R, EA_FORM.bannerT[1]);');
     // ⚠️ r353 — RE-POINTED, NOT LOOSENED. The caption's baseline was the literal 86.5; the banner moved
-    // 3.4 pt up (EA_FORM.bannerT, see `sectionGapUnderBanner`) and the caption now follows the strip
-    // instead of naming its own absolute position, so the pair cannot drift apart. The ORDER is what
+    // 3.4 pt up and the caption followed the strip instead of naming its own absolute position.
+    // ⚠️ r372 — RE-POINTED AGAIN, for the same reason and to the agency's own numbers: the strip is
+    // `A.bannerT` (tt 78.4 → 92.6, measured) and the caption `A.bannerCaptionT` (88.6), both read off
+    // LHDN's file, and `A` is the short alias the whole drawing section now uses. The ORDER is what
     // this case is for and it is unchanged: fill first, text second, or the caption is painted over.
-    const textAt = s.indexOf('putC(W.banner, CX, EA_FORM.bannerT[0] + 9.2, 8, bold, white);');
+    // Both `indexOf`s are asserted > 0, so a marker that goes stale FAILS rather than passing on -1.
+    const fillAt = s.indexOf('fill(L, A.bannerT[0], R, A.bannerT[1]);');
+    const textAt = s.indexOf('putC(W.banner, CX, A.bannerCaptionT, 8, bold, white);');
     expect(fillAt).toBeGreaterThan(0);
     expect(textAt, 'the banner caption is no longer drawn where this guard can see it').toBeGreaterThan(0);
     expect(textAt).toBeGreaterThan(fillAt);
@@ -191,7 +194,8 @@ describe('fda53352 · (d) the officer captions clear their writing lines, in BOT
   it('the longest caption in either language ends before the rule starts', async () => {
     const doc = await PDFDocument.create();
     const font = await doc.embedFont(StandardFonts.Helvetica);
-    const x0 = EA_FORM.officerBox.x0 + 8;
+    // r372 — the agency's own caption column (196.9), not `x0 + 8`: the box moved and so did its text.
+    const x0 = EA_FORM.officerBox.captionX;
     for (const locale of ['en', 'ms']) {
       const w = eaFormWords(locale);
       for (const c of [w.officerName, w.officerPosition, w.employerNameAddress, w.employerPhone]) {
@@ -206,7 +210,7 @@ describe('fda53352 · (d) the officer captions clear their writing lines, in BOT
     // fit with 11pt to spare, which is why it was never seen — the form was only ever read in Malay.
     const doc = await PDFDocument.create();
     const font = await doc.embedFont(StandardFonts.Helvetica);
-    const end = EA_FORM.officerBox.x0 + 8 + font.widthOfTextAtSize(eaFormWords('en').employerNameAddress, 8);
+    const end = EA_FORM.officerBox.captionX + font.widthOfTextAtSize(eaFormWords('en').employerNameAddress, 8);
     expect(end).toBeGreaterThan(272);
     expect(EA_FORM.officerBox.ruleX[0], 'the rule start was not moved').toBeGreaterThan(end);
   });

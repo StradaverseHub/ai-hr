@@ -282,29 +282,56 @@ describe('fda53352 · (f) the English heading wraps instead of running through t
  * derivation — not the outputs, which are what the derivation is for.
  */
 describe('fda53352 · (g) Section A is spaced off the agency’s page, not off a literal', () => {
+  /**
+   * ⚠️ r372 — THIS CASE IS UPDATED, NOT LOOSENED, AND THE DERIVATION IT PINNED IS GONE BECAUSE THE
+   * CONSTRAINT IT WORKED AROUND IS GONE. What it asserted, quoted:
+   *
+   *     expect(s).toContain('A.bannerT[1] + A.sectionGapUnderBanner + SQUARE_ASCENT');
+   *     expect(s).toContain('aHeading + A.sectionAFieldPitch');
+   *
+   * r353 could not put Section A on the agency's baseline, because everything below it was a traced
+   * ~87% compression of the agency's page and moving one heading would have opened a gap it could not
+   * close. So it derived Section A's heading FROM the banner and bought the agency's 4.0 pt clearance
+   * by moving the banner instead. r372 re-measured the whole page: the banner strip, Section A's letter
+   * block and every section baseline are now the agency's own absolute coordinates, so the derivation
+   * has nothing left to derive and the two gaps it computed are properties of the measurement.
+   *
+   * THE PROPERTY IS THE SAME AND IS STILL ASSERTED, on the drawn page rather than on the source text:
+   * the two solid black blocks (the banner strip and Section A's letter block) must not read as one,
+   * which is what 0.6 pt of clearance did, and the heading→first-field pitch must be the agency's.
+   */
   it('the agency’s two measured gaps are named constants, and the measuring script is committed', () => {
     const s = src('lib/ea-pdf.ts');
     expect(s, 'the banner→section gap measured off the agency’s PDF').toContain('sectionGapUnderBanner: 4.0');
     expect(s, 'the agency’s heading→first-field pitch in Section A').toContain('sectionAFieldPitch: 13.8');
-    // The two bare literals are gone from the drawing code…
+    // The two bare literals are still gone from the drawing code…
     expect(s, 'Section A’s heading is a literal again').not.toContain('sectionHeading(t.sectionAEmployeeParticulars, 99.5)');
     expect(s, 'the banner caption is pinned to an absolute baseline again').not.toContain('putC(W.banner, CX, 86.5,');
-    // …and replaced by the derivation, so moving the banner moves Section A with it.
-    expect(s).toContain('A.bannerT[1] + A.sectionGapUnderBanner + SQUARE_ASCENT');
-    expect(s).toContain('aHeading + A.sectionAFieldPitch');
+    // …and every one of them is now a MEASURED coordinate carrying the agency's own name.
+    expect(s).toContain('sectionHeading(t.sectionAEmployeeParticulars, A.sectionT.a)');
+    expect(s).toContain('putC(W.banner, CX, A.bannerCaptionT');
     expect(existsSync(new URL('scripts/measure-ea-official-pdf.ts', `file://${root}`)), 'the measuring script was not committed — again').toBe(true);
   });
 
   it('the derivation reproduces the agency’s clearance under the banner, with room left above it', () => {
-    // The square `sectionHeading` draws hangs 8.2 pt above the caption's baseline, so the agency's 4.0 pt
-    // clearance is between the banner's bottom and that square's top. Asserted as arithmetic on EA_FORM so
-    // it follows the constants rather than repeating their values.
-    const squareTop = EA_FORM.bannerT[1] + EA_FORM.sectionGapUnderBanner;
-    expect(squareTop - EA_FORM.bannerT[1], 'two black blocks nearly touching again').toBeCloseTo(4.0, 1);
+    // `sectionHeading` hangs the agency's own letter block `letterBlockAscent` above the caption's
+    // baseline, so the clearance between the two black blocks is the banner's foot to that block's top.
+    // Asserted as arithmetic on EA_FORM so it follows the constants rather than repeating their values.
+    const blockTop = EA_FORM.sectionT.a - EA_FORM.letterBlockAscent;
+    expect(blockTop - EA_FORM.bannerT[1], 'two black blocks nearly touching again').toBeCloseTo(
+      EA_FORM.sectionGapUnderBanner,
+      1,
+    );
     // 0.6 pt was the shipped gap, and it is what this case exists to refuse coming back.
     expect(EA_FORM.sectionGapUnderBanner).toBeGreaterThan(0.6);
-    // The banner still clears the header rules above it (the "Employer's No. E" / "LHDNM State" rules sit
-    // at tt 68.5) by MORE than the 5.4 pt the agency leaves above its own banner.
-    expect(EA_FORM.bannerT[0] - 68.5, 'the banner has been pushed into the header rules').toBeGreaterThan(5.4);
+    // The heading→first-field pitch is the agency's own, now read off two measured baselines.
+    expect(EA_FORM.rowsA.name - EA_FORM.sectionT.a, 'Section A’s pitch left the agency’s').toBeCloseTo(
+      EA_FORM.sectionAFieldPitch,
+      1,
+    );
+    // The banner still clears the header rules above it ("Employer's No. E" / "LHDNM State" at tt 72.5).
+    expect(EA_FORM.bannerT[0] - EA_FORM.headerT.employerNo, 'the banner has been pushed into the header rules').toBeGreaterThan(
+      4,
+    );
   });
 });
