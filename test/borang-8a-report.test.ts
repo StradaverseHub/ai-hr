@@ -13,7 +13,7 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
@@ -23,6 +23,11 @@ import { setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { createAdditionalRun, createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
 import { reportPreview } from '../core/reporting';
 import { BORANG_8A_HEADER_KEYS, borang8AFrom } from '../lib/borang-8a';
+// r372 — THE THIRD SURFACE, COVERED BY ITS OWN TEST AND NOT BY INFERENCE. `socsoEisFileForBatch` is an
+// INDEPENDENT resolution of the same PERKESO population as the read above — its own batch query, its own
+// accumulator, its own download route — and r296 is what happened the last time the two resolved one field
+// separately. So the corrected wage is asserted on the FILE'S OWN BYTES here, not deduced from the report.
+import { socsoEisFileForBatch } from '../localization/my/socso-eis-file';
 
 let b: Base;
 
@@ -231,23 +236,39 @@ describe('the Borang 8A read', () => {
 
 
 /**
- * ─────────────── r227 — WHAT AN ADDITIONAL RUN DOES TO THE SALARY (UPAH) COLUMN ───────────────
+ * ─── r227, CORRECTED IN r372 — WHAT AN ADDITIONAL RUN DOES TO THE SALARY (UPAH) COLUMN ───────────
  *
  * THE SAME DEFECT AS THE BORANG A ONE, THROUGH THE OTHER AGENCY'S BASE, AND THE SAME REASON IT WAS
  * INVISIBLE: `createAdditionalRun` appeared ZERO times in this repository's statutory-form guards, so
  * every one of them ran a single regular run and the suite was green whatever a second run did to a
  * filed figure.
  *
+ * ── THE CLAIM THIS BLOCK USED TO PIN, QUOTED SO IT CANNOT COME BACK BY ACCIDENT ──────────────────
+ * Between r227 and r372 the two cases below asserted the DEFECT as a deliberately recorded fact, under
+ * this header:
+ *
+ *     "Pinned, not fixed: nothing in r226/r227 changes the stamp or the sum. The reporter sees the change
+ *      to their own filed figures before it is filed, and the number can no longer move unobserved."
+ *
+ * and their assertions read:
+ *
+ *     expect(wageOf(after, 'AAA KEPT')).toBeCloseTo(oneMonth * 2, 2);
+ *     expect(wageOf(await preview(a, '2026-07'), 'AAA PAID')).toBeCloseTo(oneMonth * 2, 2);
+ *
+ * THE REPORTER MADE THAT DECISION (item d4f6848f, approved 2026-09-30): report the month's wage ONCE and
+ * move no contribution amount. The claim above is RETIRED, not deleted.
+ *
+ * ── THE MECHANISM, WHICH DID NOT CHANGE, BECAUSE THE FIX IS NOT IN THE KERNEL ────────────────────
  * `statutory.bases.socsoEis` is stamped from `wagesExOt + statOvertime` (core/payroll.ts) on EVERY
  * payslip, and on an additional run those are the CUMULATIVE month figures by design (r187 — they must
- * match the `now` side of the delta the run charges). This read then SUMS `bases.socsoEis` across the
- * period's runs (ADR-0024). Summing cumulative bases counts the month once per run, so a bonus run's
- * zero-value payslip puts a second full month's wage in the salary box the PERKESO upload file requires.
+ * match the `now` side of the delta the run charges). It is IDENTICAL on each run of the month, not
+ * accumulating. This read used to SUM it across the period's runs (ADR-0024), which counts the month once
+ * per run; it now takes it ONCE, from the greatest `run_seq` (localization/my/statutory-month-wage.ts).
  *
- * Pinned, not fixed: nothing in r226/r227 changes the stamp or the sum. The reporter sees the change to
- * their own filed figures before it is filed, and the number can no longer move unobserved.
+ * NOTHING PRINTED ON THE PAPER BORANG 8A MOVED AT ALL. The salary base has no column on the agency's page;
+ * it rides on the row for the PERKESO ASSIST upload file, which is where the overstated figure was filed.
  */
-describe('r227 — an additional run and the SOCSO salary column', () => {
+describe('r372 — an additional run and the SOCSO salary column', () => {
   const salary = 4000;
 
   async function twoRuns(period: string) {
@@ -264,6 +285,26 @@ describe('r227 — an additional run and the SOCSO salary column', () => {
     reportPreview(a, { companyId: b.companyId, reportId: 'my.borang-8a', periodKey: period });
   const wageOf = (r: Awaited<ReturnType<typeof preview>>, name: string) =>
     Number(r.rows.find((row) => row.name === name)!.wage);
+  const contribOf = (r: Awaited<ReturnType<typeof preview>>, name: string) =>
+    Number(r.rows.find((row) => row.name === name)!.contribution);
+  /**
+   * The month's PERKESO legs added straight off the payslips — INDEPENDENTLY of the report — so "the
+   * contributions did not move" is measured against the stored figures and not the report's own
+   * arithmetic. They are deltas (ADR-0024) and summing them is correct; that is the half that must stay.
+   */
+  async function perkesoPaidInMonth(employmentId: string, batchIds: string[]) {
+    const slips = await owner.db
+      .select({ statutory: schema.payslip.statutory })
+      .from(schema.payslip)
+      .where(and(eq(schema.payslip.employmentId, employmentId), inArray(schema.payslip.batchId, batchIds)));
+    const t = { socso: 0, eis: 0 };
+    for (const s of slips) {
+      const st = (s.statutory ?? {}) as Record<string, number>;
+      t.socso += Number(st.socsoEmployee ?? 0) + Number(st.socsoEmployer ?? 0);
+      t.eis += Number(st.eisEmployee ?? 0) + Number(st.eisEmployer ?? 0);
+    }
+    return { socso: Math.round(t.socso * 100) / 100, eis: Math.round(t.eis * 100) / 100 };
+  }
 
   /**
    * Two employees identical in every respect except whether the bonus run processed them. KEPT is held in
@@ -271,15 +312,16 @@ describe('r227 — an additional run and the SOCSO salary column', () => {
    * never false) and that an additional run does not PAY (`slipOvertime` is forced to 0), which is how
    * the kernel itself produces a genuine zero-value payslip with no surgery on any row.
    */
-  it('a zero-value bonus payslip adds a SECOND month’s wage to the salary box — the skip removes it', async () => {
+  it('a zero-value bonus payslip leaves the salary box at ONE month, and moves no contribution', async () => {
     const kept = await hire({ name: 'AAA KEPT', hiredOn: '2024-03-01', salary, ic: '900101015555' });
     await hire({ name: 'BBB SKIPPED', hiredOn: '2024-03-01', salary, ic: '880808085555' });
-    const { a, extra } = await twoRuns('2026-07');
+    const { a, reg, extra } = await twoRuns('2026-07');
 
     const before = await preview(a, '2026-07');
     const oneMonth = wageOf(before, 'AAA KEPT');
     expect(oneMonth).toBeGreaterThan(0);
     expect(wageOf(before, 'BBB SKIPPED')).toBe(oneMonth);
+    const keptContribBefore = contribOf(before, 'AAA KEPT');
 
     await setPayrollInput(a, { batchId: extra.batchId, employmentId: kept.employmentId, overtimeAmount: 500 });
     const gen = await generatePayslips(a, { batchId: extra.batchId });
@@ -293,24 +335,34 @@ describe('r227 — an additional run and the SOCSO salary column', () => {
       .where(eq(schema.payslip.batchId, extra.batchId));
     expect(extraSlips).toHaveLength(1);
     expect(Number(extraSlips[0].gross)).toBe(0);
-
-    const after = await preview(a, '2026-07');
-    // The person the bonus run kept: TWO months' wage in a one-month salary box.
-    expect(wageOf(after, 'AAA KEPT')).toBeCloseTo(oneMonth * 2, 2);
-    // The person it skipped: untouched.
-    expect(wageOf(after, 'BBB SKIPPED')).toBeCloseTo(oneMonth, 2);
-    // …and the second count is that zero-value payslip's own SOCSO/EIS basis.
+    // The zero-value payslip DOES carry a full month's wage in its own SOCSO/EIS basis. That has not
+    // changed and is why the old SUM was wrong; the read no longer adds it to the earlier run's.
     const bases = (extraSlips[0].statutory as { bases?: Record<string, number> }).bases!;
     expect(Number(bases.socsoEis)).toBeCloseTo(oneMonth, 2);
+
+    const after = await preview(a, '2026-07');
+    // ── THE FIX, STATED AS A NUMBER (item d4f6848f). The retired assertion read `oneMonth * 2`.
+    expect(wageOf(after, 'AAA KEPT')).toBeCloseTo(oneMonth, 2);
+    expect(wageOf(after, 'AAA KEPT')).toBeLessThan(oneMonth * 2);
+    expect(wageOf(after, 'BBB SKIPPED')).toBeCloseTo(oneMonth, 2);
+    // ── AND THE CONTRIBUTIONS DID NOT MOVE. In the SAME test as the wage, on purpose.
+    expect(contribOf(after, 'AAA KEPT')).toBeCloseTo(keptContribBefore, 2);
+    const paid = await perkesoPaidInMonth(kept.employmentId, [reg.batchId, extra.batchId]);
+    expect(contribOf(after, 'AAA KEPT')).toBeCloseTo(paid.socso, 2);
+    // Nobody is held: the two runs agree about the wage, so the document is still downloadable.
+    expect(after.readiness.flatMap((x) => x.missing).filter((m) => m.includes('DIFFERENT wages'))).toEqual([]);
   });
 
   /**
-   * The half the skip does NOT fix: the doubling belongs to the bases, not to the zero-value payslip, so
-   * anybody the additional run has something to pay keeps both counts.
+   * The half the r226 skip never fixed: the doubling belonged to the bases, not to the zero-value payslip,
+   * so anybody the additional run had something to pay kept both counts. A bonus is outside the SOCSO/EIS
+   * base by law, so the corrected answer here is EXACTLY one month with nothing of the bonus in it — which
+   * makes this the cleanest of the three cases, and the one where "one month" and "two months" are
+   * unmistakably different numbers.
    */
-  it('the doubling is NOT removed for somebody the bonus run actually pays', async () => {
+  it('reports exactly one month for somebody the bonus run actually pays', async () => {
     const paid = await hire({ name: 'AAA PAID', hiredOn: '2024-03-01', salary, ic: '900101015555' });
-    const { a, extra } = await twoRuns('2026-07');
+    const { a, reg, extra } = await twoRuns('2026-07');
     const oneMonth = wageOf(await preview(a, '2026-07'), 'AAA PAID');
 
     await setPayrollInput(a, {
@@ -321,8 +373,105 @@ describe('r227 — an additional run and the SOCSO salary column', () => {
     });
     await generatePayslips(a, { batchId: extra.batchId });
 
-    // A bonus is outside the SOCSO/EIS base by law, so this one is EXACTLY twice — the month's wage,
-    // counted once per run, with nothing of the bonus in it.
-    expect(wageOf(await preview(a, '2026-07'), 'AAA PAID')).toBeCloseTo(oneMonth * 2, 2);
+    const after = await preview(a, '2026-07');
+    expect(wageOf(after, 'AAA PAID')).toBeCloseTo(oneMonth, 2);
+    expect(wageOf(after, 'AAA PAID')).toBeLessThan(oneMonth * 2);
+    const paidLegs = await perkesoPaidInMonth(paid.employmentId, [reg.batchId, extra.batchId]);
+    expect(contribOf(after, 'AAA PAID')).toBeCloseTo(paidLegs.socso, 2);
+  });
+
+  /**
+   * ── THE THIRD SURFACE, ON ITS OWN BYTES (r372) ───────────────────────────────────────────────────
+   *
+   * `socsoEisFileForBatch` resolves the same PERKESO population through its OWN query and its OWN
+   * accumulator, behind /payroll/reports/socso-eis-file. It carried the identical defect and it must now
+   * carry the identical correction — not a copy of it. Asserted on `totals.salaryCents`, which
+   * `perkesoFileTotals` reads back OUT OF THE EMITTED RECORD rather than adding up from the rows, so this
+   * is the number that would actually reach PERKESO ASSIST.
+   *
+   * AND THE TWO PERKESO SURFACES ARE COMPARED TO EACH OTHER, which is the r296 lesson: one writer is not
+   * enough if two reads disagree about what to hand it.
+   */
+  it('the PERKESO upload file carries one month in its salary box, from the same derivation', async () => {
+    const kept = await hire({ name: 'AAA KEPT', hiredOn: '2024-03-01', salary, ic: '900101015555' });
+    const { a, reg, extra } = await twoRuns('2026-07');
+
+    const before = await socsoEisFileForBatch(a, { companyId: b.companyId, periodKey: '2026-07' });
+    const oneMonthCents = before.totals.salaryCents;
+    expect(oneMonthCents).toBeGreaterThan(0);
+    expect(before.totals.records).toBe(1);
+
+    await setPayrollInput(a, { batchId: extra.batchId, employmentId: kept.employmentId, overtimeAmount: 500 });
+    await generatePayslips(a, { batchId: extra.batchId });
+
+    const after = await socsoEisFileForBatch(a, { companyId: b.companyId, periodKey: '2026-07' });
+    // ONE record for the month, whatever number of runs it held, and ONE month in the salary box.
+    expect(after.totals.records).toBe(1);
+    expect(after.totals.salaryCents).toBe(oneMonthCents);
+    expect(after.totals.salaryCents).not.toBe(oneMonthCents * 2);
+    // The contribution boxes are byte-identical to the month's own stored legs.
+    const paidLegs = await perkesoPaidInMonth(kept.employmentId, [reg.batchId, extra.batchId]);
+    expect(after.totals.socsoCents).toBe(Math.round(paidLegs.socso * 100));
+    expect(after.totals.eisCents).toBe(Math.round(paidLegs.eis * 100));
+    // AND THE TWO PERKESO SURFACES AGREE about the month's wage — the r296 property, on the field r296 was
+    // about. One employee in this month, so the file's total IS that employee's salary box.
+    const report = await preview(a, '2026-07');
+    expect(after.totals.salaryCents).toBe(Math.round(wageOf(report, 'AAA KEPT') * 100));
+  });
+
+  /**
+   * ── AND WHERE ONE FIGURE IS NOT THE TRUTH, BOTH PERKESO SURFACES REFUSE ──────────────────────────
+   *
+   * A mid-month pay change makes the month's runs disagree about `bases.socsoEis`, and then no single
+   * salary figure is the month's wage. `localization/my/multicycle-worksheet.ts` already refuses this exact
+   * shape as `inconsistent_run_bases`; printing whichever run happened to be last would be a figure nobody
+   * can stand behind (CLAUDE.md §8).
+   *
+   * THE SALARY IS RAISED BETWEEN THE TWO RUNS, which is the reporter's own case ("somebody's pay changed
+   * part way through the month") and is produced by the kernel rather than by editing a stored row: the
+   * regular run is charged on the old wage and the bonus run re-derives the new one.
+   */
+  it('names the person and holds both PERKESO surfaces when the month’s runs disagree about the wage', async () => {
+    const e = await hire({ name: 'AAA CHANGED', hiredOn: '2024-03-01', salary, ic: '900101015555' });
+    await setModule(b.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(b);
+    const reg = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
+    await generatePayslips(a, { batchId: reg.batchId });
+    // The raise, effective inside the month, AFTER the regular run was charged on the old figure.
+    await setCompensation(adminCtx(b), {
+      employmentId: e.employmentId,
+      basicSalary: salary + 1500,
+      effectiveFrom: '2026-07-16',
+    });
+    const extra = await createAdditionalRun(a, { companyId: b.companyId, payPeriod: '2026-07', runType: 'bonus' });
+    await setPayrollInput(a, { batchId: extra.batchId, employmentId: e.employmentId, overtimeAmount: 500 });
+    await generatePayslips(a, { batchId: extra.batchId });
+
+    // The two runs really were charged on different SOCSO/EIS wages, or this test asserts nothing.
+    const stamped = await owner.db
+      .select({ statutory: schema.payslip.statutory, runSeq: schema.payrollBatch.runSeq })
+      .from(schema.payslip)
+      .innerJoin(schema.payrollBatch, eq(schema.payrollBatch.id, schema.payslip.batchId))
+      .where(and(eq(schema.payslip.employmentId, e.employmentId), inArray(schema.payslip.batchId, [reg.batchId, extra.batchId])));
+    const socsoBases = stamped
+      .map((r) => Number((r.statutory as { bases?: Record<string, number> }).bases?.socsoEis ?? 0))
+      .sort((x, y) => x - y);
+    expect(socsoBases).toHaveLength(2);
+    expect(Math.abs(socsoBases[1] - socsoBases[0])).toBeGreaterThan(0.005);
+
+    // SURFACE ONE — the Borang 8A read NAMES them, with a reason that says the runs disagree rather than
+    // that nothing was recorded, and the existing gate holds every download off that list.
+    const report = await preview(a, '2026-07');
+    const named = report.readiness.find((x) => x.name === 'AAA CHANGED');
+    expect(named, 'the person whose month has no single wage must be NAMED').toBeTruthy();
+    expect(named!.missing.join(' ')).toContain('SOCSO/EIS wage basis');
+    expect(named!.missing.join(' ')).toContain('DIFFERENT wages');
+    // …and they are NOT dropped from the schedule, which would produce a form reconciling to nothing.
+    expect(report.rows.map((r) => r.name)).toContain('AAA CHANGED');
+
+    // SURFACE TWO — the independent upload-file read refuses by name, and says why in its own words.
+    await expect(socsoEisFileForBatch(a, { companyId: b.companyId, periodKey: '2026-07' })).rejects.toThrow(
+      /DIFFERENT SOCSO\/EIS wages[\s\S]*AAA CHANGED/,
+    );
   });
 });

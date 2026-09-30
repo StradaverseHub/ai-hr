@@ -24,6 +24,16 @@
  * therefore always agrees with what was actually paid, and a change to the PERKESO bands cannot make a
  * re-printed past month disagree with the month that was filed.
  *
+ * ⚠️ r372 — THE SALARY BASE IS THE MONTH'S WAGE ONCE, AND IS NOT SUMMED ACROSS THE MONTH'S RUNS. It used
+ * to be, and in a month that held more than one run that overstated it by about a month's wage per extra
+ * run (item d4f6848f). `bases.socsoEis` is the WHOLE month's figure, re-derived on EVERY run and identical
+ * on each of them, so summing it multiplies the month by the run count. It is now resolved by
+ * `monthWagesFrom` (localization/my/statutory-month-wage.ts) — ONE derivation, shared with the Borang A
+ * read and with the PERKESO upload-file read, taking the greatest `run_seq`. THE CONTRIBUTIONS ARE STILL
+ * SUMMED and none of their figures moved: they are deltas (ADR-0024) and summing them is correct. Nothing
+ * printed on the paper Borang 8A changed at all — the salary base has no column on it and rides here only
+ * for the PERKESO ASSIST upload file.
+ *
  * EIS IS NOT FOLDED IN. Employment insurance is its own PERKESO filing (Borang SIP), and adding it to this
  * column would inflate every line against the payroll it is supposed to reconcile to. SKBBK / Lindung 24
  * Jam is likewise excluded and, because that is a judgement somebody may want to revisit, both figures are
@@ -61,6 +71,9 @@ import {
   type Borang8ARow,
 } from '../../lib/borang-8a';
 import { MY_STATUTORY_VERSION } from './statutory-tables';
+// r372 — the month's wage, once, for all three statutory read paths. See that module's header for why
+// summing `bases` across the month's runs was wrong and why the per-payslip stamp is not touched.
+import { SOCSO_WAGE_INCONSISTENT_REASON, monthWageFor, monthWagesFrom } from './statutory-month-wage';
 import type { ReportColumn, ReportResult, ReportRow, ReportParams } from './reports';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -160,7 +173,7 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
     };
 
     const batches = await tx
-      .select({ id: payrollBatch.id, status: payrollBatch.status })
+      .select({ id: payrollBatch.id, status: payrollBatch.status, runSeq: payrollBatch.runSeq })
       .from(payrollBatch)
       .where(and(eq(payrollBatch.companyId, params.companyId), eq(payrollBatch.payPeriod, periodKey)));
 
@@ -194,13 +207,25 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,
         statutory: payslip.statutory,
+        // r372 — WHICH RUN OF THE MONTH WROTE THIS PAYSLIP. Joined rather than mapped off `batches` so the
+        // pairing is an invariant of the query and cannot acquire a "?? 1" fallback that silently decides
+        // a wage. `run_seq` is NOT NULL DEFAULT 1 and unique per (pay_period_id, run_seq).
+        runSeq: payrollBatch.runSeq,
       })
       .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
       .innerJoin(employment, eq(employment.id, payslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
       .where(inArray(payslip.batchId, batchIds))
       .orderBy(person.fullName);
+
+    // THE MONTH'S SALARY BASE, ONCE. Resolved from the whole month BEFORE the accumulation loop, because
+    // "which run stamped the wage the file carries" is a property of the month and not of a row the loop
+    // happens to be standing on. The fold is order-independent, so the `orderBy` above is presentation.
+    const monthWages = monthWagesFrom(
+      slips.map((s) => ({ employmentId: s.employmentId, runSeq: s.runSeq, statutory: s.statutory })),
+    );
 
     type Acc = {
       employmentId: string;
@@ -222,8 +247,10 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
       eisEmployer: number;
       eisEmployee: number;
       /**
-       * The SOCSO/EIS WAGE the contributions were worked out from (`statutory.bases.socsoEis`), summed
-       * across the period's runs like every figure here.
+       * The SOCSO/EIS WAGE the contributions were worked out from (`statutory.bases.socsoEis`) — the
+       * MONTH'S figure ONCE, from the month's greatest `run_seq`, NOT a sum across the runs. r372 / item
+       * d4f6848f: it used to be summed like the contributions beside it, and because the base is the whole
+       * month's figure on every run of the month that put one extra month in the salary box per extra run.
        *
        * ⚠️ NULL WHEN NO RUN IN THE PERIOD STAMPED A BASE. `bases` arrived in r187 and 34 of the 109
        * payslips on production predate it. The upload file has a mandatory salary box, so a missing base
@@ -231,6 +258,13 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
        * different number, and never write zero, which asserts the employee earned nothing.
        */
       wage: number | null;
+      /**
+       * r372 — the month's runs were charged on DIFFERENT SOCSO/EIS wages (a mid-month change), so no
+       * single salary figure is the month's. Named on the review screen and the document is HELD; see the
+       * readiness list below. A `null` would be the wrong refusal: it says "no base was recorded", and
+       * `lib/perkeso-socso-file.ts` words its message that way. Two bases WERE recorded; they disagree.
+       */
+      wageInconsistent: boolean;
     };
     const byEmp = new Map<string, Acc>();
     const versions = new Set<string>();
@@ -244,6 +278,7 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
       runSocso = round2(runSocso + num(st.socsoEmployee) + num(st.socsoEmployer));
       let r = byEmp.get(s.employmentId);
       if (!r) {
+        const w = monthWageFor(monthWages, s.employmentId);
         r = {
           employmentId: s.employmentId,
           name: s.name,
@@ -259,7 +294,9 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
           socsoEmployee: 0,
           eisEmployer: 0,
           eisEmployee: 0,
-          wage: null,
+          // THE WAGE IS ASSIGNED ONCE, HERE, AND NEVER ACCUMULATED. See the Acc comment above.
+          wage: w.socsoEis,
+          wageInconsistent: w.socsoEisInconsistent,
         };
         byEmp.set(s.employmentId, r);
       }
@@ -276,12 +313,11 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
       r.socsoEmployee = round2(r.socsoEmployee + num(st.socsoEmployee));
       r.eisEmployer = round2(r.eisEmployer + num(st.eisEmployer));
       r.eisEmployee = round2(r.eisEmployee + num(st.eisEmployee));
-      // `bases.socsoEis` (r187 onward). Absent ⇒ stays null and the upload file refuses this employee by
-      // name; present on ANY run of the period ⇒ summed across the period's runs like everything else.
-      const socsoBase = (st as { bases?: Record<string, number> }).bases?.socsoEis;
-      if (socsoBase !== undefined && socsoBase !== null) {
-        r.wage = round2((r.wage ?? 0) + num(socsoBase));
-      }
+      // NOTHING TOUCHES `r.wage` HERE, AND THAT IS THE ROUND (r372 / item d4f6848f). `bases.socsoEis` is
+      // the WHOLE MONTH'S figure on every run of the month, so adding it up put one extra month in the
+      // salary box per extra run. Absent on EVERY run ⇒ still null, and the upload file still refuses this
+      // employee by name; present on ANY run ⇒ the month's figure from the greatest `run_seq`. Both rules
+      // live in `monthWagesFrom` and are read in at `byEmp` init above.
     }
 
     const accs = [...byEmp.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -319,10 +355,22 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
       columns: BORANG_8A_COLUMNS,
       rows,
       totals: { contribution: total },
-      // The ONE identifier this form needs. Named before the download, not discovered after it.
+      // WHAT STOPS A ROW GOING ON A FILED RETURN. Named before the download, not discovered after it.
+      //
+      // r372 ADDED THE SECOND REASON, AND IT IS NOT AN ABSENCE. The IC is something we do not have; an
+      // inconsistent wage is a month whose own runs disagree, where we have TWO figures and neither is the
+      // month's. The existing gate (app/payroll/borang-8a/shared.ts) blocks the PDF, the text export and
+      // the PERKESO upload file on ANY entry in this list, so naming it here is what holds the document —
+      // and the review screen still renders the table, which is the only way the person gets named.
       readiness: accs
-        .filter((a) => !a.ic)
-        .map((a) => ({ employmentId: a.employmentId, name: a.name, missing: ['IC'] })),
+        .map((a) => ({
+          employmentId: a.employmentId,
+          name: a.name,
+          missing: [!a.ic ? 'IC' : null, a.wageInconsistent ? SOCSO_WAGE_INCONSISTENT_REASON : null].filter(
+            (m): m is string => m !== null,
+          ),
+        }))
+        .filter((r) => r.missing.length > 0),
       meta: {
         hasBatch: true,
         batchStatus,

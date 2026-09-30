@@ -29,6 +29,14 @@
  * them, so the form always agrees with what was actually paid and a change to the KWSP table cannot make a
  * re-printed past month disagree with the month that was filed.
  *
+ * ⚠️ r372 — UPAH IS THE MONTH'S WAGE ONCE, AND IS NOT SUMMED ACROSS THE MONTH'S RUNS. It used to be, and
+ * in a month that held more than one run that overstated it by about a month's wage per extra run
+ * (item d4f6848f). `bases.epf` is the WHOLE month's figure, re-derived from compensation on EVERY run and
+ * identical on each of them, so summing it multiplies the month by the run count. The month's wage is now
+ * resolved by `monthWagesFrom` (localization/my/statutory-month-wage.ts) — ONE derivation, shared with the
+ * Borang 8A read and the PERKESO upload-file read, taking the greatest `run_seq`. THE CONTRIBUTIONS BELOW
+ * ARE STILL SUMMED and their figures did not move: they are deltas (ADR-0024) and summing them is correct.
+ *
  * ⚠️ 61 OF 121 PRODUCTION PAYSLIPS PREDATE THAT STAMP. There is no fallback to gross pay and there must
  * not be: gross includes overtime, which EPF excludes, so a "close enough" wage would under- or
  * over-report a statutory figure. Such a row is marked `wageRecorded: false`, named on the review screen,
@@ -69,6 +77,9 @@ import {
 } from '../../lib/borang-a';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { MY_STATUTORY_VERSION } from './statutory-tables';
+// r372 — the month's wage, once, for all three statutory read paths. See that module's header for why
+// summing `bases` across the month's runs was wrong and why the per-payslip stamp is not touched.
+import { EPF_WAGE_INCONSISTENT_REASON, monthWageFor, monthWagesFrom } from './statutory-month-wage';
 import type { ReportColumn, ReportResult, ReportRow, ReportParams } from './reports';
 
 const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
@@ -93,8 +104,9 @@ const NOTE_PLUS_ONE =
   'rules are different on purpose.) You can change the month; we warn you and still let you through.';
 const NOTE_WAGE =
   'Upah is the wage EPF was actually charged on — basic plus the EPF-liable allowances, commission and ' +
-  'bonus, never gross pay and never a fresh calculation. A payroll run from before this figure was ' +
-  'recorded shows the person as not ready rather than borrowing gross pay.';
+  'bonus, never gross pay and never a fresh calculation. It is the month’s wage ONCE, whatever number of ' +
+  'payroll runs the month held. A payroll run from before this figure was recorded shows the person as ' +
+  'not ready rather than borrowing gross pay.';
 
 /** Employer address as printed: three free lines plus a postcode/town, state tail. */
 function addressLines(c: {
@@ -207,7 +219,7 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
     };
 
     const batches = await tx
-      .select({ id: payrollBatch.id, status: payrollBatch.status })
+      .select({ id: payrollBatch.id, status: payrollBatch.status, runSeq: payrollBatch.runSeq })
       .from(payrollBatch)
       .where(and(eq(payrollBatch.companyId, params.companyId), eq(payrollBatch.payPeriod, params.periodKey)));
 
@@ -235,13 +247,25 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
         staffNo: employment.employeeCode,
         gross: payslip.grossPay,
         statutory: payslip.statutory,
+        // r372 — WHICH RUN OF THE MONTH WROTE THIS PAYSLIP. Joined rather than mapped off `batches` so the
+        // pairing is an invariant of the query and cannot acquire a "?? 1" fallback that silently decides
+        // a wage. `run_seq` is NOT NULL DEFAULT 1 and unique per (pay_period_id, run_seq).
+        runSeq: payrollBatch.runSeq,
       })
       .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
       .innerJoin(employment, eq(employment.id, payslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
       .where(inArray(payslip.batchId, batchIds))
       .orderBy(person.fullName);
+
+    // THE MONTH'S WAGE, ONCE. Resolved BEFORE the accumulation loop and from the whole month at once,
+    // because "which run stamped the wage we print" is a property of the month and not of a row the loop
+    // happens to be standing on. The fold is order-independent, so the `orderBy` above is presentation.
+    const monthWages = monthWagesFrom(
+      slips.map((s) => ({ employmentId: s.employmentId, runSeq: s.runSeq, statutory: s.statutory })),
+    );
 
     type Acc = {
       employmentId: string;
@@ -249,11 +273,22 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
       ic: string | null;
       memberNo: string | null;
       staffNo: string | null;
+      /**
+       * UPAH — the month's EPF wage ONCE (`bases.epf + bases.epfAdditional` from the month's greatest
+       * `run_seq`), NOT a sum across the runs. Set when the employee is first seen, from the whole-month
+       * derivation above, so no branch of this loop can add a second month to it. r372 / item d4f6848f.
+       */
       wage: number;
       employer: number;
       employee: number;
       /** False as soon as ONE slip in the month carried no `bases` — the month's wage is then incomplete. */
       wageRecorded: boolean;
+      /**
+       * r372 — the month's runs were charged on DIFFERENT EPF wages (a mid-month change), so no single
+       * Upah is the month's wage. Named on the review screen and the document is HELD; see the readiness
+       * list below. Printing whichever run happened to be last would be a figure nobody can stand behind.
+       */
+      wageInconsistent: boolean;
       /** Gross across the month. Carried for the reconciliation strip ONLY; never used as a wage. */
       gross: number;
     };
@@ -269,16 +304,19 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
       runEpf = round2(runEpf + num(st.epfEmployee) + num(st.epfEmployer));
       let r = byEmp.get(s.employmentId);
       if (!r) {
+        const w = monthWageFor(monthWages, s.employmentId);
         r = {
           employmentId: s.employmentId,
           name: s.name,
           ic: s.ic,
           memberNo: s.memberNo,
           staffNo: s.staffNo,
-          wage: 0,
+          // THE WAGE IS ASSIGNED ONCE, HERE, AND NEVER ACCUMULATED. See the Acc comment above.
+          wage: w.epf,
           employer: 0,
           employee: 0,
-          wageRecorded: true,
+          wageRecorded: w.epfRecorded,
+          wageInconsistent: w.epfInconsistent,
           gross: 0,
         };
         byEmp.set(s.employmentId, r);
@@ -289,16 +327,13 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
       r.employer = round2(r.employer + num(st.epfEmployer));
       r.employee = round2(r.employee + num(st.epfEmployee));
       r.gross = round2(r.gross + num(s.gross));
-      // THE WAGE BASIS. `bases.epf` is the normal stream and `bases.epfAdditional` the bonus/off-cycle
-      // one; both are already net of the EPF exclusions. A slip with no `bases` object at all predates
-      // r187 and makes the whole month's wage unknown for this person — ONE such slip is enough.
-      const bases = st.bases;
-      if (bases && typeof bases === 'object') {
-        const b = bases as Record<string, unknown>;
-        r.wage = round2(r.wage + num(b.epf) + num(b.epfAdditional));
-      } else {
-        r.wageRecorded = false;
-      }
+      // NOTHING TOUCHES `r.wage` HERE, AND THAT IS THE ROUND (r372 / item d4f6848f). `bases.epf` is the
+      // normal stream and `bases.epfAdditional` the bonus/off-cycle one, both already net of the EPF
+      // exclusions — and `bases.epf` is the WHOLE MONTH'S figure on every run of the month, so adding it
+      // up here put one extra month in the Upah column per extra run. The month's wage, and whether it is
+      // recorded and self-consistent, are resolved once by `monthWagesFrom` and read in at `byEmp` init.
+      // A slip with no `bases` object at all predates r187 and makes the month's wage unknown for this
+      // person — ONE such slip is enough, and that rule is preserved inside the derivation.
     }
 
     const accs = [...byEmp.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -332,8 +367,14 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
       columns: BORANG_A_COLUMNS,
       rows,
       totals: { wage: totalWage, employer: totalEmployer, employee: totalEmployee },
-      // THE THREE THINGS A ROW CANNOT GO ON A FILED FORM WITHOUT. Named before the download, not
+      // THE FOUR THINGS A ROW CANNOT GO ON A FILED FORM WITHOUT. Named before the download, not
       // discovered after it. Sorted so the list reads the same way twice.
+      //
+      // r372 ADDED THE FOURTH, AND IT IS NOT AN ABSENCE. The first three are things we do not have; the
+      // fourth is a month whose own runs disagree about the wage, where we have TWO figures and neither is
+      // the month's. The existing gate (app/payroll/borang-a/shared.ts) blocks the PDF, the text export and
+      // the i-Akaun file on ANY entry in this list, so naming it here is what holds the document — and the
+      // review screen still renders the table, which is the only way the person gets named at all.
       readiness: accs
         .map((a) => ({
           employmentId: a.employmentId,
@@ -342,6 +383,7 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
             !a.memberNo ? 'EPF member no.' : null,
             !a.ic ? 'IC' : null,
             !a.wageRecorded ? 'EPF wage basis (this run predates the record of what EPF was charged on)' : null,
+            a.wageInconsistent ? EPF_WAGE_INCONSISTENT_REASON : null,
           ].filter((m): m is string => m !== null),
         }))
         .filter((r) => r.missing.length > 0),

@@ -260,9 +260,15 @@ export default async function Borang8APreviewPage({ searchParams }: { searchPara
       {missing.length > 0 && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
           <p className="font-medium">{t('missingTitle', { count: missing.length })}</p>
+          {/* r372 — THE REASON, PER PERSON, not a shared caption that names one cause. There is more than
+              one way to be unfileable now (an absent IC; a month whose runs were charged on different
+              SOCSO/EIS wages), and the pack is the only thing that knows which. Same shape as the Borang A
+              banner, which has printed its reasons this way since it had three of them. */}
           <ul className="mt-1 space-y-0.5">
             {missing.map((m) => (
-              <li key={m.employmentId}>{m.name}</li>
+              <li key={m.employmentId}>
+                {m.name} — {m.missing.join(', ')}
+              </li>
             ))}
           </ul>
           <p className="mt-1">{t('missingHint')}</p>

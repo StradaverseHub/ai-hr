@@ -62,13 +62,11 @@ export async function loadBorang8AFile(p: {
     if (loaded.reason === 'no-batch') {
       return { ok: false, status: 422, message: 'No payroll run for this month — run payroll first.' };
     }
-    const why = [
-      loaded.headerMissing.length ? `the company is missing: ${loaded.headerMissing.join(', ')}` : null,
-      loaded.missing.length ? `no identity card number on file for ${loaded.missing.map((m) => m.name).join(', ')}` : null,
-    ]
-      .filter(Boolean)
-      .join('; ');
-    return { ok: false, status: 422, message: `Cannot produce a PERKESO upload file: ${why}.` };
+    return {
+      ok: false,
+      status: 422,
+      message: `Cannot produce a PERKESO upload file: ${describeGaps(loaded)}.`,
+    };
   }
 
   const form = loaded.form;
@@ -109,13 +107,37 @@ export const BORANG_8A_REPORT_ID = 'my.borang-8a';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 
+/**
+ * r372 — WHO CANNOT GO ON A FILED RETURN, AND WHY, carried as the pack's own reasons.
+ *
+ * IT USED TO BE `{ employmentId, name }` AND THREE PLACES SPELLED THE REASON OUT AS "no identity card
+ * number on file". That was true while an absent IC was the only per-employee gap; r372 gave the read a
+ * second one (a month whose payroll runs were charged on different SOCSO/EIS wages), and a caption that
+ * names a cause it cannot know is exactly the assurance CLAUDE.md §8 forbids. The reasons come from the
+ * pack, which is the only thing that knows them, and every surface prints the SAME ones — the Borang A
+ * side already worked this way (`describeGaps` in app/payroll/borang-a/shared.ts).
+ */
+export type Borang8AMissing = { employmentId: string; name: string; missing: string[] };
+
+/** The two kinds of gap, named, for a route that has to answer in plain text. One copy, three callers. */
+export function describeGaps(loaded: { missing: Borang8AMissing[]; headerMissing: string[] }): string {
+  return [
+    loaded.headerMissing.length ? `the company is missing: ${loaded.headerMissing.join(', ')}` : null,
+    loaded.missing.length
+      ? loaded.missing.map((m) => `${m.name} (${m.missing.join(', ')})`).join('; ')
+      : null,
+  ]
+    .filter(Boolean)
+    .join('; ');
+}
+
 export type Borang8ALoad =
   | { ok: false; reason: 'not-found' }
   | { ok: false; reason: 'no-batch' }
   | {
       ok: false;
       reason: 'not-ready';
-      missing: { employmentId: string; name: string }[];
+      missing: Borang8AMissing[];
       /** Employer-level header fields the form cannot be filed without. See `missingBorang8AHeader`. */
       headerMissing: string[];
     }
@@ -123,11 +145,11 @@ export type Borang8ALoad =
       ok: true;
       form: Borang8AForm;
       /**
-       * Who has no IC on file. ALWAYS EMPTY unless `includeIncomplete` was set — the download routes
-       * never reach `ok: true` with anybody in here, which is what makes the gate a property of this
-       * function rather than of each caller's discipline.
+       * Who cannot go on a filed return, and WHY. ALWAYS EMPTY unless `includeIncomplete` was set — the
+       * download routes never reach `ok: true` with anybody in here, which is what makes the gate a
+       * property of this function rather than of each caller's discipline.
        */
-      missing: { employmentId: string; name: string }[];
+      missing: Borang8AMissing[];
       /** The employer-level gaps, same rule and same guarantee as `missing` above. */
       headerMissing: string[];
       /** Reconciliation tiles: the run's own figures beside the form's. */
@@ -174,11 +196,12 @@ export async function loadBorang8A(p: {
   }
   if (!result.meta.hasBatch) return { ok: false, reason: 'no-batch' };
 
-  const missing = result.readiness.map((r) => ({ employmentId: r.employmentId, name: r.name }));
-  // TWO KINDS OF GAP, ONE GATE. `missing` is per-employee (no identity card number); `headerMissing` is
-  // employer-level (no SOCSO employer code) and gaps EVERY page at once. Either one means the document
-  // cannot be filed, so either one blocks the download — and the review screen shows both, which is the
-  // entire reason it must still render when they exist.
+  const missing = result.readiness.map((r) => ({ employmentId: r.employmentId, name: r.name, missing: r.missing }));
+  // TWO KINDS OF GAP, ONE GATE. `missing` is per-employee (no identity card number, or — r372 — a month
+  // whose runs were charged on different SOCSO/EIS wages); `headerMissing` is employer-level (no SOCSO
+  // employer code) and gaps EVERY page at once. Either one means the document cannot be filed, so either
+  // one blocks the download — and the review screen shows both, which is the entire reason it must still
+  // render when they exist.
   const headerMissing = missingBorang8AHeader(result.meta.formHeader);
   if ((missing.length > 0 || headerMissing.length > 0) && !p.includeIncomplete) {
     return { ok: false, reason: 'not-ready', missing, headerMissing };
