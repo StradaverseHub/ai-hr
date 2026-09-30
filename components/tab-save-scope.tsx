@@ -75,6 +75,11 @@
  * place (see `rebaselineSections`), because remounting there would race `router.refresh()` and could show
  * the reader the pre-save value under a "Changes saved" toast.
  *
+ * …WHICH IS ONLY TRUE ONCE THE REFRESH HAS COME BACK, and r257 measured what happens before it does: the
+ * server-rendered default is then the PRE-save value, so a Discard pressed in that window did not just
+ * show a stale field, it wrote one back. See the note over `discard` — the discard now waits for the
+ * payload it restores from.
+ *
  * 15e5bd93 REVISION 4 (r370) — AND IT NOW SERVES A SCREEN AS WELL AS A TAB. The dedicated Statutory
  * Payment Setup screen is eight statutory bodies with every field open under ONE Save, which is the
  * reporter's own expected_function and the one combination this product has never built. Everything a
@@ -82,11 +87,6 @@
  * rather than reverting in place, and a leave prompt worded for leaving — arrives through the single
  * optional `screenActions` prop below. Every scope that came before it omits the prop and renders
  * byte-identically; `sectionLabels` set that precedent one round earlier.
- *
- * …WHICH IS ONLY TRUE ONCE THE REFRESH HAS COME BACK, and r257 measured what happens before it does: the
- * server-rendered default is then the PRE-save value, so a Discard pressed in that window did not just
- * show a stale field, it wrote one back. See the note over `discard` — the discard now waits for the
- * payload it restores from.
  */
 
 import {
