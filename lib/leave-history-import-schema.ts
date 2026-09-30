@@ -10,8 +10,16 @@
  * the contract for the BALANCE importer (`core/leave-import.ts` → leave_ledger rows: opening balances,
  * carry-forward, ad-hoc credits). This one is the contract for the RECORD importer
  * (`core/leave-history-import.ts` → leave_request rows). A migration needs both and they count
- * different things; see core/leave-history-import.ts's header for why an imported RECORD deliberately
- * moves no balance.
+ * different things; see core/leave-history-import.ts's header for what an imported RECORD does to a
+ * balance and who decides it.
+ *
+ * r367 - THE BALANCE DECISION IS NOW THE UPLOADER'S, ONCE PER RUN (`LeaveHistoryImportOptions`).
+ * r362 asserted, in prose the product showed the user, that a migrated opening balance already has the
+ * imported leave removed from it. That is a claim about the CUSTOMER'S DATA which this product never
+ * asked about and cannot verify, and it is false whenever entitlement is generated from the entitlement
+ * tables with nothing brought forward - the leave was then recorded and never deducted. So the question
+ * is asked instead of assumed, it defaults to NO (deduct), and `LeaveHistoryBalanceImpact` is what shows
+ * the answer's consequence BEFORE Confirm import rather than days afterwards.
  *
  * THE TWELVE COLUMNS ARE THE REPORTER'S, IN THE REPORTER'S ORDER. `header` is what the downloadable
  * template writes and what HR sees in Excel; `key` is what the validator reads. They are paired here so
@@ -91,6 +99,76 @@ export function canonicalColumnKey(raw: string): string {
 export type LeaveHistoryRecord = Record<string, string>;
 
 /**
+ * r367 - THE ONE THING THE UPLOADER IS ASKED ABOUT THEIR FILE, and it decides whether money moves.
+ *
+ * `openingBalancesAreNet` answers: "are the balances you are starting from already net of this leave?"
+ *
+ *   false (THE DEFAULT) - the balances in this system are whole-year allowances generated from the
+ *     entitlement tables, so the imported leave has NOT been taken off them yet. The import writes the
+ *     matching `leave_ledger` debit, exactly as an ordinary approval does. This is the reporter's case
+ *     and it is the default because it is the safe one: a missing debit overstates a balance, and an
+ *     overstated Annual Leave balance is PAID OUT at resignation (core/leave-encashment.ts).
+ *   true - the customer arrived with their own closing balances, which already have this leave removed.
+ *     Deducting again would take the same days twice, so no ledger row is written. This is r362's
+ *     behaviour, kept intact rather than removed: it is a genuine migration shape, and r362 shipped one
+ *     day before the report against it.
+ *
+ * PER RUN, not per tenant and not per row: it is a property of the FILE and of the balances it arrives
+ * beside, and the same tenant can legitimately answer differently for two uploads.
+ *
+ * DEFAULTED, NEVER INFERRED. `resolveLeaveHistoryImportOptions` is the single place the default lives, so
+ * the validate action, the commit action and the screen cannot disagree - and an omitted option means
+ * DEDUCT, so a caller that forgets the field gets the arithmetic that cannot overpay anybody.
+ */
+export type LeaveHistoryImportOptions = {
+  openingBalancesAreNet?: boolean;
+};
+
+/** The resolved options, with every default applied exactly once. */
+export type ResolvedLeaveHistoryImportOptions = {
+  openingBalancesAreNet: boolean;
+};
+
+export function resolveLeaveHistoryImportOptions(
+  o?: LeaveHistoryImportOptions,
+): ResolvedLeaveHistoryImportOptions {
+  return { openingBalancesAreNet: o?.openingBalancesAreNet === true };
+}
+
+/**
+ * r367 - WHAT CONFIRM IMPORT IS ABOUT TO DO TO A BALANCE, one line per employee and per LEDGER.
+ *
+ * Grouped by the ledger that actually MOVES (the resolved Balance Deduction Source), not by the code the
+ * record was filed under, because that is the figure the reader will go and check afterwards: a pooled
+ * Emergency Leave record spends Annual Leave's balance, and a preview line headed "EL" promising a change
+ * to an EL balance would be a false statement about a row that is about to be written. `filedCodes`
+ * carries the codes the records were filed under when any of them differs, so the grouping hides nothing.
+ *
+ * `balanceBefore` is the running ledger total (`sum(leave_ledger.days)`), which is what every balance
+ * surface in this product means by Balance - NOT the additive column formula, which 6574c6b4 removed for
+ * double-counting. `balanceAfter` = before - days, and `goesNegative` is the flag the plan promised the
+ * reporter: an employee who has earned nothing yet this cycle goes below zero, and the screen says so
+ * rather than doing it quietly.
+ */
+export type LeaveHistoryBalanceImpact = {
+  employeeNo: string;
+  employeeName: string;
+  /** The code of the leave type whose LEDGER moves - the resolved balance source. */
+  leaveCode: string;
+  /** Codes the records were filed under, ascending, when any differs from `leaveCode`; else empty. */
+  filedCodes: string[];
+  /** Entitlement years the records fall in, ascending. Context for the reader; not part of the sum. */
+  entitlementYears: string[];
+  /** How many records in this run land on this ledger. */
+  records: number;
+  /** Days this run will take off it - always positive; 0 is possible, and is shown rather than hidden. */
+  days: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  goesNegative: boolean;
+};
+
+/**
  * The ticket's Status column, and there are exactly three values because the ticket names exactly three.
  * `duplicate` is NOT a kind of `error`: on a re-upload of an already-loaded file it is the expected
  * answer, and the counts the reporter asked for keep it separate. Neither is imported.
@@ -129,6 +207,19 @@ export type LeaveHistoryImportPreview = {
   rows: LeaveHistoryRowResult[];
   /** Required contract columns the file's header row does not carry, canonicalised. */
   missingColumns: string[];
+  /**
+   * r367 - WILL THIS RUN DEDUCT? The resolved answer to `openingBalancesAreNet`, inverted, echoed back
+   * from the SERVER so the screen states what the server is actually about to do rather than what the
+   * control it drew happens to be showing. The commit re-resolves it from its own argument, so this is a
+   * readout and never an instruction.
+   */
+  deducts: boolean;
+  /**
+   * The balance movement Confirm import will make, per employee and per ledger. EMPTY when `deducts` is
+   * false - there is no movement to preview - and that emptiness is the screen's cue to say so in words.
+   * Only rows the run would actually write are counted: an error row and a duplicate row move nothing.
+   */
+  balanceImpact: LeaveHistoryBalanceImpact[];
 };
 
 /** A row that did not go in, as the downloadable error report and the run log carry it. */

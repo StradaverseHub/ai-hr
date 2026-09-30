@@ -1,5 +1,10 @@
 import type { SessionContext } from '@/db/client';
 import { leaveBalances, leaveEntitlementBreakdown } from '@/core/read';
+// r367 — the leave YEAR this row's figures belong to, as a WINDOW rather than as a four-digit label. The
+// Taken drill-down needs both ends of it (Employee Leave Record filters on a leave-date window), and
+// `leaveCycleEnd` is the one definition of where a cycle closes — see its header in core/leave.ts for the
+// 147-row incident that exists because a cycle once had a start and no end.
+import { leaveCycleEnd } from '@/core/leave';
 import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
 // r242 — TYPE ONLY. The import is erased at compile time, so this server module pulls in no client runtime
 // (the same reason `leave-cards.tsx` names this type rather than the component). It is the side-sheet's
@@ -31,6 +36,15 @@ export type EmployeeBalanceRow = {
   code: string;
   /** Leave-year/cycle the breakdown reconstructed against; null when no breakdown resolved. */
   entitlementYear: string | null;
+  /**
+   * r367 — THE SAME CYCLE, AS ITS TWO DATES. `entitlementYear` above is this window's opening year and is
+   * what the grid PRINTS; these are what a link can filter on. Carried rather than re-derived so the
+   * records the drill-down lists are the records the figure beside it was computed from — the whole point
+   * of the item (Employee Balances and Employee Leave Record must agree for one employee, code and year).
+   * Both null exactly when `entitlementYear` is null: no breakdown resolved, so there is no cycle to name.
+   */
+  cycleStart: string | null;
+  cycleEnd: string | null;
   /** r279 — the EARNED TO DATE column. Field name unchanged (it is a stored ESS component key); only the
    *  label moved, and the carry it used to include came out. See components/leave/leave-balance-row.ts. */
   ytdEntitled: number | null;
@@ -171,6 +185,8 @@ export async function employeeBalanceRows(
         leaveType: row.leaveType,
         code: b.code ?? '',
         entitlementYear: bd ? bd.cycleStart.slice(0, 4) : null,
+        cycleStart: bd ? bd.cycleStart : null,
+        cycleEnd: bd ? leaveCycleEnd(bd.cycleStart) : null,
         /**
          * 2a57a007 (r340) — A BORROWER'S ENTITLEMENT IS ITS OWN, AND IT IS NOTHING.
          *

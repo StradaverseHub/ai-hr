@@ -7,6 +7,7 @@
 import { and, eq, gt, isNull, lte, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
+import { leaveDaysAreThisSystems } from './leave-charge';
 import {
   employment,
   leaveApprovalStep,
@@ -332,12 +333,22 @@ export async function adjustEncashment(
  *  after the last working day" hint on the people-page card; the correction path is unfreeze -> cancel
  *  those requests -> adjust (re-locks). Read-only, no events.append (CLAUDE.md skip rule).
  *
- *  3f15ffdb (r362) — MIGRATED HISTORY IS EXCLUDED, because this hint's premise ("already debited at
- *  approval") is false for it: a record loaded by Leave History Data Import carries no ledger debit by
- *  design (migration 0490). Counting one here would raise a hint whose own documented remedy does not
+ *  3f15ffdb (r362) — MIGRATED HISTORY WAS EXCLUDED, because this hint's premise ("already debited at
+ *  approval") was false for it: a record loaded by Leave History Data Import carried no ledger debit by
+ *  design (migration 0490). Counting one would have raised a hint whose own documented remedy does not
  *  work — cancelling such a request gives back nothing, correctly, since nothing was ever charged — and
- *  would send an HR admin round a loop that cannot close. The hint keeps naming exactly the rows it can
- *  still fix. */
+ *  would have sent an HR admin round a loop that cannot close.
+ *
+ *  ⚠️ r367 (073233bb) — THE PREMISE IS NOW TRUE FOR MOST OF THEM, SO THE TEST MOVED TO THE LEDGER. The
+ *  import writes the matching debit by default, so a charged imported record dated after the last working
+ *  day IS a debited day that will never be taken — exactly what this hint is for — and its remedy now
+ *  works, because cancelling it reverses a real charge. Excluding it would have been the new defect:
+ *  encashment frozen off a ledger balance that includes days the employee cannot take, with nothing on
+ *  the card saying so, in the one figure this whole item exists because it is PAID OUT.
+ *
+ *  `leaveDaysAreThisSystems()` (core/leave-charge.ts) is the same predicate core/payroll.ts now uses: an
+ *  UNCHARGED imported record is still excluded — r362's reasoning above applies to it word for word, and
+ *  `openingBalancesAreNet = true` still produces it — and everything else is counted as before. */
 export async function approvedLeaveDaysAfter(
   tx: Tx,
   employmentId: string,
@@ -352,7 +363,7 @@ export async function approvedLeaveDaysAfter(
         eq(leaveRequest.employmentId, employmentId),
         eq(leaveRequest.leaveTypeId, leaveTypeId),
         eq(leaveRequest.status, 'approved'),
-        eq(leaveRequest.importedHistory, false),
+        leaveDaysAreThisSystems(),
         gt(leaveRequest.startDate, lastWorkingDay),
       ),
     );

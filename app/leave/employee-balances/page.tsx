@@ -251,6 +251,26 @@ export default async function EmployeeBalancesPage({
   // A balance row opens that leave type's transactions for the same employee (953be4b0).
   const recordsHref = (leaveTypeId: string) =>
     `/leave/employee-records?emp=${selected?.employmentId ?? ''}&type=${leaveTypeId}`;
+  /**
+   * r367 (073233bb) — THE TAKEN FIGURE OPENS THE RECORDS BEHIND IT, carrying the YEAR as well as the
+   * employee and the code. The reporter's own words: "Clicking the Taken figure in Employee Balances
+   * should open Employee Leave Record filtered to that employee, leave code and year, so HR can see
+   * exactly which records make up the number."
+   *
+   * THE YEAR IS SENT AS THE CYCLE'S TWO DATES, not as `2026`. Employee Leave Record filters on a
+   * LEAVE-DATE WINDOW with overlap semantics (core/read.ts `listLeaveRequestsPage`), and the leave year on
+   * this grid is the entitlement CYCLE — which for an anniversary company does not start on 1 January.
+   * Sending the cycle's own start and end is therefore the only filter that lists the records the figure
+   * was computed from; a January-to-December window would list a different set and quietly disagree with
+   * the number it was clicked from, which is the very complaint this item is about.
+   *
+   * `recordsHref` above is deliberately left as it is: the leave CODE cell means "every record of this
+   * type", across years, and narrowing it would remove an answer HR already relies on.
+   */
+  const takenRecordsHref = (r: { leaveTypeId: string; cycleStart: string | null; cycleEnd: string | null }) => {
+    const base = recordsHref(r.leaveTypeId);
+    return r.cycleStart && r.cycleEnd ? `${base}&from=${r.cycleStart}&to=${r.cycleEnd}` : base;
+  };
 
   // 38b94df7 — the Employee box is a SEARCH box, not a list of everyone. Captions are resolved HERE and
   // handed over as plain strings: EmployeeSearchField is a client island and a translator closure crossing
@@ -559,7 +579,24 @@ export default async function EmployeeBalancesPage({
                         {entitlementCaptionCell(r)}
                       </td>
                       <td className={tdNum}>{num(r.broughtForward)}</td>
-                      <td className={tdNum}>{num(r.taken)}</td>
+                      {/* r367 — the drill-down. A LINK ONLY WHEN THERE IS SOMETHING BEHIND IT: `taken`
+                          null means no figure at all (no breakdown resolved, or an ESS-hidden component on
+                          a future caller of this builder), and 0.00 means the records are genuinely none —
+                          a link promising a filtered list of nothing is worse than a plain figure. The
+                          number itself is untouched: same `num()`, same column, same alignment. */}
+                      <td className={tdNum}>
+                        {r.taken != null && r.taken !== 0 ? (
+                          <Link
+                            href={takenRecordsHref(r)}
+                            title={tInq('takenRecordsLink')}
+                            className="text-primary hover:underline"
+                          >
+                            {num(r.taken)}
+                          </Link>
+                        ) : (
+                          num(r.taken)
+                        )}
+                      </td>
                       <td className={tdNum}>{num(r.pending)}</td>
                       <td className={tdNum}>{num(r.adjustment)}</td>
                       {/* 2a57a007 — the figure, and under it one badge per contributing leave type. Same
