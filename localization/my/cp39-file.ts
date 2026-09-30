@@ -243,18 +243,55 @@ export class Cp39NotReadyError extends Error {
  *  with missing identifiers (ADR-0010 readiness gate). */
 export function cp39FileForBatch(
   ctx: SessionContext,
-  p: { companyId: string; periodKey: string },
+  p: {
+    companyId: string;
+    periodKey: string;
+    /**
+     * r372 (item f022dd70) — the payroll runs of this month the operator ticked, or ABSENT for all of
+     * them. See the note on the batch query below for why CP39 may filter its SQL directly where the two
+     * EPF/PERKESO reads may not.
+     */
+    runSeqs?: number[];
+  },
 ): Promise<Cp39File & { statutoryVersion: string }> {
   return withTenant(ctx, async (tx) => {
     // Wave 2C (ADR-0024): aggregate the month's MTD across ALL runs of the period — CP39 is one monthly
     // filing, so each employee's row is the SUM of their regular + bonus/off-cycle MTD. With a single
     // run this is byte-identical to before.
+    //
+    // ⚠️ r372 — AND WHEN THE OPERATOR NAMED SOME OF THOSE RUNS, ACROSS THOSE. CP39 IS THE ONLY ONE OF THE
+    // THREE STATUTORY FILES THAT MAY FILTER ITS QUERY. Every figure it carries (MTD, CP38) is a per-run
+    // DELTA that the loop below sums, so a subset of the runs sums to the subset's own total and nothing
+    // in this file is derived from a run it did not read. Borang A and Borang 8A carry a WAGE column,
+    // which is a whole-month figure stamped on every run and not a delta — they must read the whole month
+    // and scope the wage afterwards, through `scopedMonthWagesFrom` in the MY pack's month-wage module.
+    //
+    // ⚠️ THAT MODULE IS NAMED HERE IN WORDS RATHER THAN BY ITS PATH, ON PURPOSE. Its own test file
+    // carries a guard asserting that CP39 does not so much as MENTION the month-wage derivation — the
+    // standing proof that the wage defect (item d4f6848f) could never reach this file and that its
+    // correction did not either. The guard reads COMMENTS, deliberately, so spelling the specifier out
+    // here would fail it, and rewording is the remedy rather than loosening the guard.
+    // ABSENT ⇒ no predicate at all, so an unfiltered download takes the identical path it always has.
     const batches = await tx
       .select({ id: payrollBatch.id })
       .from(payrollBatch)
-      .where(and(eq(payrollBatch.companyId, p.companyId), eq(payrollBatch.payPeriod, p.periodKey)));
-    if (batches.length === 0)
-      throw new Cp39NotReadyError(`No payroll batch for ${p.periodKey} — generate payslips first.`);
+      .where(
+        and(
+          eq(payrollBatch.companyId, p.companyId),
+          eq(payrollBatch.payPeriod, p.periodKey),
+          ...(p.runSeqs === undefined ? [] : [inArray(payrollBatch.runSeq, p.runSeqs)]),
+        ),
+      );
+    if (batches.length === 0) {
+      // TWO DIFFERENT FACTS, TWO DIFFERENT SENTENCES. "No payroll run at all" sends the operator to run
+      // payroll; "none of the cycles you ticked exists in this month" sends them back to the pop-up. One
+      // message for both would send half of them to the wrong place.
+      throw new Cp39NotReadyError(
+        p.runSeqs === undefined
+          ? `No payroll batch for ${p.periodKey} — generate payslips first.`
+          : `No payroll run for ${p.periodKey} matches the payroll cycles you selected.`,
+      );
+    }
     const batchIds = batches.map((x) => x.id);
     const [co] = await tx
       .select({ eNo: companyStatutoryMy.lhdnEmployerNo })
@@ -429,9 +466,12 @@ export function cp39FileForBatch(
  */
 export async function cp39PaymentFile(
   ctx: SessionContext,
-  p: { companyId: string; periodKey: string },
+  p: { companyId: string; periodKey: string; runSeqs?: number[] },
 ): Promise<StatutoryPaymentFile> {
   try {
+    // `p` WHOLE, never field-by-field: an adapter that listed the fields would have to be edited every
+    // time the contract gained one, and the round it was not edited is the round the shelf silently
+    // stopped honouring the operator's payroll-cycle selection while still offering the control.
     const file = await cp39FileForBatch(ctx, p);
     return {
       ok: true,

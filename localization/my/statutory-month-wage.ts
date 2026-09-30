@@ -29,6 +29,12 @@
  * a shared DERIVATION and not a shared recipe: all three call `monthWagesFrom`, and none of them restates
  * what a month's wage is.
  *
+ * ⚠️ r372 (item f022dd70) ADDED A SECOND ENTRY POINT, `scopedMonthWagesFrom`, AND IT IS NOT A SECOND
+ * DERIVATION. When an operator picks which payroll cycles a statutory file covers, the month's wage is no
+ * longer the answer: the two EPF streams belong to different runs and only one of them decomposes. Read
+ * that function's own header before touching either. `monthWagesFrom` is UNCHANGED and is still what every
+ * unfiltered download takes, which is what makes "tick everything and nothing moves" true by construction.
+ *
  * ── "LATEST RUN" IS AN INVARIANT HERE, NOT A POSITION ────────────────────────────────────────────
  * The month's wage is the one stamped by the GREATEST `payroll_batch.run_seq` among the rows handed in.
  * `run_seq` is `NOT NULL DEFAULT 1` and uniquely indexed on `(pay_period_id, run_seq)`, so the maximum is
@@ -107,6 +113,18 @@ export type MonthWage = {
   epfInconsistent: boolean;
   /** The month's runs were charged on DIFFERENT SOCSO/EIS wages, so no single salary figure is the truth. */
   socsoEisInconsistent: boolean;
+  /**
+   * r372 (item f022dd70) — THE SELECTED RUNS CHARGED NO SOCSO/EIS WAGE AT ALL, and the figure beside this
+   * flag is therefore the whole month's and not the selection's.
+   *
+   * Only ever true under `scopedMonthWagesFrom`. SOCSO, EIS and SKBBK are charged ONCE for the month on the
+   * REGULAR run (ADR-0024: an additional run adds 0), so a selection holding only bonus / off-cycle runs
+   * has no PERKESO money in it — while `bases.socsoEis` is stamped on those runs anyway, because the kernel
+   * re-derives it from the month's compensation on every run. Printing it would put a full month's salary
+   * beside contributions of zero. Always false for an unfiltered month, which is every caller that passes
+   * no selection.
+   */
+  socsoEisOutsideSelection: boolean;
 };
 
 /**
@@ -123,6 +141,16 @@ export const EPF_WAGE_INCONSISTENT_REASON =
 export const SOCSO_WAGE_INCONSISTENT_REASON =
   'SOCSO/EIS wage basis (this month’s payroll runs were charged on DIFFERENT wages, so no single salary ' +
   'figure is the month’s wage — check the runs before filing)';
+/**
+ * r372 (item f022dd70) — the refusal for a payroll-cycle selection that holds no PERKESO money.
+ *
+ * DELIBERATELY NOT WORDED AS AN ABSENCE. "No SOCSO/EIS wage was recorded" is what `socsoEis: null` already
+ * says and it would send an operator to look for data that is present and correct. What is true here is
+ * narrower and actionable: the money is on a run they did not tick.
+ */
+export const SOCSO_NOT_IN_SELECTION_REASON =
+  'SOCSO and EIS are charged once for the month, on the regular payroll run, and the payroll cycles you ' +
+  'selected do not include it — there is no SOCSO or EIS in this selection to file';
 
 type Bases = { epf: number; epfAdditional: number; socsoEis: number | null };
 
@@ -179,6 +207,7 @@ export function monthWagesFrom(slips: readonly MonthWageSlip[]): Map<string, Mon
           socsoEisFromRunSeq: null,
           epfInconsistent: false,
           socsoEisInconsistent: false,
+          socsoEisOutsideSelection: false,
         },
         minEpf: Infinity,
         maxEpf: -Infinity,
@@ -241,6 +270,174 @@ export function monthWagesFrom(slips: readonly MonthWageSlip[]): Map<string, Mon
   return out;
 }
 
+/**
+ * r372 (item f022dd70) — ONE PAYSLIP OF THE MONTH WHEN THE OPERATOR HAS PICKED WHICH RUNS TO FILE.
+ *
+ * `runType` IS REQUIRED HERE AND OPTIONAL NOWHERE. It is the whole discriminator of the scoped fold below
+ * and a caller that forgot it would silently file the wrong wage, so the TYPE demands it rather than a
+ * comment asking for it. `payroll_batch.run_type` is `NOT NULL DEFAULT 'regular'`, so every caller has it.
+ */
+export type ScopedMonthWageSlip = MonthWageSlip & {
+  /** `payroll_batch.run_type` — 'regular' | 'off_cycle' | 'bonus' | 'adjustment'. */
+  runType: string;
+};
+
+/** The one place the word 'regular' means "this run paid the month's normal remuneration". */
+const REGULAR = 'regular';
+
+/**
+ * r372 (item f022dd70) — THE WAGE FOR A CHOSEN SUBSET OF THE MONTH'S RUNS.
+ *
+ * ── WHY THIS IS NOT `monthWagesFrom` WITH A SHORTER LIST ─────────────────────────────────────────
+ * Payroll Cycle selection lets an operator file ONE run of a month on its own — the bonus run before month
+ * end, the catch-up run for somebody who was overlooked. The obvious implementation is to hand
+ * `monthWagesFrom` only the selected runs' payslips. THAT PRODUCES A WRONG STATUTORY FIGURE, and it is the
+ * "right shape, wrong numbers" failure the KWSP writer's header was written about:
+ *
+ *   `bases.epf` is the WHOLE MONTH'S normal wage and the kernel stamps it on EVERY run, including a bonus
+ *   run that paid nothing but the bonus (core/payroll.ts `statBases.epf = wagesExOt − exclusions`, computed
+ *   from the month's compensation with no reference to what this run actually paid). So a Bonus-only
+ *   selection fed to the whole-month fold prints the month's full salary as Upah beside contributions that
+ *   only cover the bonus. A Borang A that says RM9,000 wage / RM120 contribution is not a partial filing;
+ *   it is a wrong one, and i-Akaun has no way to tell.
+ *
+ * ── WHAT THE SELECTION WAS ACTUALLY CHARGED ON, STREAM BY STREAM ─────────────────────────────────
+ * The kernel charges EPF on two streams and they decompose differently:
+ *
+ *   NORMAL (`bases.epf`)              — the month's ordinary remuneration, paid by the REGULAR run.
+ *                                       `isAdditionalRun = batch.runType !== 'regular'` (core/payroll.ts),
+ *                                       and an additional run pays only the bonus bucket
+ *                                       (`bonusOnlyComponentLines`). So the normal stream belongs to the
+ *                                       selection if and only if the selection holds a regular run.
+ *   ADDITIONAL (`bases.epfAdditional`)— CUMULATIVE across `run_seq`
+ *                                       (`statAdditional = earlierRun.additional + bonus`). The money one
+ *                                       run added is therefore its stamp MINUS the previous stamped run's,
+ *                                       and the selection's share is the sum of its own runs' increments.
+ *
+ * ⚠️ WHICH IS WHY THIS TAKES THE WHOLE MONTH AND A SELECTION, NOT A PRE-FILTERED LIST. An increment cannot
+ * be read off a run whose predecessor was filtered out of the query. Hand in every payslip of the month;
+ * `selection` says which of them the operator ticked. A read that filtered its SQL instead would compute
+ * the first selected run's increment against zero and hand an operator the whole month's bonus.
+ *
+ * ── AND IT AGREES WITH THE UNFILTERED FOLD WHEN EVERYTHING IS TICKED ─────────────────────────────
+ * Selecting every run telescopes the increments back to the greatest run's cumulative stamp, so the answer
+ * equals `monthWagesFrom`'s to the sen. That equality is asserted, not asserted-by-comment. It is also why
+ * the three reads still OMIT the parameter entirely for "All": the no-change guarantee then holds by
+ * construction — the old code path runs, unchanged — rather than by this function agreeing with it.
+ *
+ * ── PERKESO IS NOT EPF AND IS NOT DECOMPOSED ─────────────────────────────────────────────────────
+ * `bases.socsoEis` has no additional stream: SOCSO, EIS and SKBBK are charged ONCE for the month, on the
+ * regular run (ADR-0024 — an additional run adds 0). A selection without the regular run has no PERKESO
+ * money in it at all, so the figure is flagged `socsoEisOutsideSelection` and the document is HELD by the
+ * caller's readiness list rather than filed as a full month's salary beside zeros.
+ */
+export function scopedMonthWagesFrom(
+  slips: readonly ScopedMonthWageSlip[],
+  /** The `run_seq` values the operator ticked. Every other run of the month is context, never content. */
+  selection: ReadonlySet<number>,
+): Map<string, MonthWage> {
+  const byEmp = new Map<string, ScopedMonthWageSlip[]>();
+  for (const s of slips) {
+    const list = byEmp.get(s.employmentId);
+    if (list) list.push(s);
+    else byEmp.set(s.employmentId, [s]);
+  }
+
+  const out = new Map<string, MonthWage>();
+  for (const [employmentId, rows] of byEmp) {
+    // Only employees the SELECTION actually paid belong in the answer; a person paid solely in a run the
+    // operator unticked is absent from the file, not present with zeros.
+    if (!rows.some((r) => selection.has(r.runSeq))) continue;
+
+    const w: MonthWage = {
+      epf: 0,
+      socsoEis: null,
+      epfRecorded: true,
+      epfFromRunSeq: null,
+      socsoEisFromRunSeq: null,
+      epfInconsistent: false,
+      socsoEisInconsistent: false,
+      socsoEisOutsideSelection: false,
+    };
+
+    // ASCENDING BY run_seq, EXPLICITLY. The increments below are the one place in this module where order
+    // is load-bearing, so it is established here rather than inherited from the caller's ORDER BY (all
+    // three reads order by employee name). `run_seq` is unique per pay period, so this total order is well
+    // defined and the comparator needs no tiebreak.
+    const ordered = [...rows].sort((a, b) => a.runSeq - b.runSeq);
+
+    let previousCumulativeAdditional = 0;
+    let additionalInSelection = 0;
+    let normalBase: number | null = null;
+    let minEpf = Infinity;
+    let maxEpf = -Infinity;
+    let minSocso = Infinity;
+    let maxSocso = -Infinity;
+    let epfStampedInSelection = 0;
+    let socsoStampedInSelection = 0;
+    let selectionHasRegularRun = false;
+
+    for (const row of ordered) {
+      const picked = selection.has(row.runSeq);
+      const b = basesOf(row.statutory);
+      if (!b) {
+        // Same rule as the whole-month fold, applied to the selection: ONE unstamped payslip among the
+        // runs being filed makes their EPF wage unknown for this person. An unstamped run the operator did
+        // NOT tick says nothing about the runs they did.
+        if (picked) w.epfRecorded = false;
+        continue;
+      }
+
+      // THE INCREMENT THIS RUN ADDED to the cumulative additional stream — computed against the previous
+      // STAMPED run of the MONTH, ticked or not, which is why the whole month has to be in `slips`.
+      const increment = round2(b.epfAdditional - previousCumulativeAdditional);
+      previousCumulativeAdditional = b.epfAdditional;
+
+      if (!picked) continue;
+
+      epfStampedInSelection += 1;
+      minEpf = Math.min(minEpf, b.epf);
+      maxEpf = Math.max(maxEpf, b.epf);
+      if (row.runType === REGULAR) selectionHasRegularRun = true;
+      // A NEGATIVE INCREMENT IS A REFUSAL, NOT A SUBTRACTION. The stream is monotonically non-decreasing by
+      // construction; if it ever is not, the month is not what this derivation assumes and no Upah may be
+      // printed. Same judgement the whole-month fold makes about a regressing stream.
+      if (increment < -WAGE_BASE_TOLERANCE) w.epfInconsistent = true;
+      else additionalInSelection = round2(additionalInSelection + Math.max(0, increment));
+      // The normal stream is one figure for the month; take the greatest ticked run's copy so that "which
+      // run did this come from" is an invariant and not a position. Disagreement is caught by min/max below.
+      if (w.epfFromRunSeq === null || row.runSeq > w.epfFromRunSeq) {
+        w.epfFromRunSeq = row.runSeq;
+        normalBase = b.epf;
+      }
+
+      if (b.socsoEis !== null) {
+        socsoStampedInSelection += 1;
+        minSocso = Math.min(minSocso, b.socsoEis);
+        maxSocso = Math.max(maxSocso, b.socsoEis);
+        if (w.socsoEisFromRunSeq === null || row.runSeq > w.socsoEisFromRunSeq) {
+          w.socsoEisFromRunSeq = row.runSeq;
+          w.socsoEis = b.socsoEis;
+        }
+      }
+    }
+
+    // THE NORMAL STREAM ONLY IF THE SELECTION PAID IT. This single line is the difference between a
+    // Bonus-only Borang A that reads RM5,000 and one that reads RM14,000 — see the header.
+    w.epf = round2((selectionHasRegularRun && normalBase !== null ? normalBase : 0) + additionalInSelection);
+    if (epfStampedInSelection > 1 && maxEpf - minEpf > WAGE_BASE_TOLERANCE) w.epfInconsistent = true;
+    if (socsoStampedInSelection > 1 && maxSocso - minSocso > WAGE_BASE_TOLERANCE) {
+      w.socsoEisInconsistent = true;
+    }
+    // A selection with no regular run charged no PERKESO money. The figure stays visible on the review
+    // screen (naming the person is the only way they get named at all) and the flag is what holds the file.
+    if (!selectionHasRegularRun && w.socsoEis !== null) w.socsoEisOutsideSelection = true;
+
+    out.set(employmentId, w);
+  }
+  return out;
+}
+
 /** The month for one employee, with the all-absent answer for somebody the month has no payslip for. */
 export function monthWageFor(wages: Map<string, MonthWage>, employmentId: string): MonthWage {
   return (
@@ -252,6 +449,7 @@ export function monthWageFor(wages: Map<string, MonthWage>, employmentId: string
       socsoEisFromRunSeq: null,
       epfInconsistent: false,
       socsoEisInconsistent: false,
+      socsoEisOutsideSelection: false,
     }
   );
 }

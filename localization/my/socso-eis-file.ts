@@ -41,6 +41,14 @@
  * `monthWagesFrom` (localization/my/statutory-month-wage.ts), and neither holds a copy of it. The
  * contribution boxes are untouched: those legs are deltas (ADR-0024) and summing them is correct.
  *
+ * ⚠️ r372 (item f022dd70) — AND THIS SURFACE TAKES NO PAYROLL-CYCLE SELECTION, DELIBERATELY. Payment
+ * Submission's PERKESO row gained a Payroll Cycle multi-select and this route (`/payroll/reports/
+ * socso-eis-file`) did not: it has no such control, no caller passes one, and the whole month is what it
+ * has always produced. Do NOT read that as the two surfaces disagreeing about a filtered file — there is
+ * no filtered file here to disagree about. The day this route grows the control, it takes `runSeqs` and
+ * calls `scopedMonthWagesFrom` exactly as `borang8AReport` does; until then `monthWagesFrom` with the
+ * whole month is not a stale path, it is the only request this route can receive.
+ *
  * Source of the layouts (both revisions), sourced 2026-06-20:
  *   v2.0 (13 Feb 2026): https://www.perkeso.gov.my/images/borang/lindung24jam/formatteksfail.pdf
  *   v1.0 (22 Jul 2022): https://www.perkeso.gov.my/images/panduan/280722_-_TEXTFILE_STRUCTURE_FOR_COMBINE_CONTRIBUTION_V1.pdf

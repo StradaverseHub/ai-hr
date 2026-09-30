@@ -283,19 +283,44 @@ function statutoryCtx(ctx: SessionContext, def: { id: string; submission?: { age
 /** Generate a report for preview — pure, no artefact persisted. */
 export async function reportPreview(
   ctx: SessionContext,
-  p: { companyId: string; reportId: string; periodKey: string },
+  p: {
+    companyId: string;
+    reportId: string;
+    periodKey: string;
+    /**
+     * r372 (item f022dd70) — the payroll runs of that month the operator ticked, or ABSENT for all of
+     * them. Forwarded verbatim; this seam neither invents a default nor widens an empty one. A report
+     * that does not read it is unaffected, which is every report but the three statutory submissions.
+     */
+    runSeqs?: number[];
+  },
 ): Promise<ReportResult> {
   const def = await resolveDef(ctx, p.companyId, p.reportId);
-  return def.generate(ctx, { companyId: p.companyId, periodKey: p.periodKey });
+  return def.generate(ctx, { companyId: p.companyId, periodKey: p.periodKey, runSeqs: p.runSeqs });
 }
 
 /** Generate and RECORD a report: persist a statutory_report artefact + append a domain event. */
 export async function recordReport(
   ctx: SessionContext,
-  p: { companyId: string; reportId: string; periodKey: string },
+  p: {
+    companyId: string;
+    reportId: string;
+    periodKey: string;
+    /**
+     * r372 (item f022dd70) — the same selection `reportPreview` takes, forwarded for the same reason it
+     * exists at all: a RECORDED artefact whose `rowCount` and `totals` were built from a different
+     * population than the preview the operator looked at is worse than no artefact. Absent ⇒ every run,
+     * which is what every caller sends today (nothing on the Payment Submission shelf records anything).
+     */
+    runSeqs?: number[];
+  },
 ) {
   const def = await resolveDef(ctx, p.companyId, p.reportId);
-  const result = await def.generate(ctx, { companyId: p.companyId, periodKey: p.periodKey });
+  const result = await def.generate(ctx, {
+    companyId: p.companyId,
+    periodKey: p.periodKey,
+    runSeqs: p.runSeqs,
+  });
   const country = await companyCountry(ctx, p.companyId);
   return withTenant(statutoryCtx(ctx, def), async (tx) => {
     const [row] = await tx

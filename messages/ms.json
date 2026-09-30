@@ -7303,7 +7303,19 @@
       "selectionIntro": "Pilih syarikat dan bulan gaji yang diliputi oleh fail ini, kemudian muat turunnya.",
       "payCycle": "Kitaran gaji",
       "cancel": "Batal",
-      "payCycleMissing": "Tiada kitaran gaji tersedia untuk fail ini, jadi ia belum boleh dimuat turun — fail yang membayar pekerja perlu menyatakan pusingan gaji yang mana bagi bulan itu."
+      "payCycleMissing": "Tiada kitaran gaji tersedia untuk fail ini, jadi ia belum boleh dimuat turun — fail yang membayar pekerja perlu menyatakan pusingan gaji yang mana bagi bulan itu.",
+      "payCycleAll": "Semua kitaran gaji",
+      "payCycleSelectAll": "Pilih semua",
+      "payCycleSearch": "Cari kitaran gaji",
+      "payCycleLoading": "Mencari proses gaji bulan ini…",
+      "payCycleNoRuns": "Belum ada proses gaji yang selesai bagi syarikat dan bulan ini. Muat turun tetap menghasilkan keseluruhan bulan, dan akan memberitahu anda jika tiada apa-apa untuk difailkan.",
+      "payCycleRun": "Proses ke-{seq} bulan ini",
+      "payCyclePartialWarning": "Anda telah meninggalkan sekurang-kurangnya satu kitaran gaji. Agensi tetap membaca fail ini sebagai penyerahan sebulan penuh — tiada ruangan yang menyatakan proses gaji mana sesuatu baris itu datang. Jika anda failkan ini dan kemudian failkan bulan penuh, itu dua penyerahan bagi bulan yang sama.",
+      "payCycleNonePicked": "Tiada yang ditanda. Memuat turun sekarang menghasilkan keseluruhan bulan, sama seperti menanda semuanya.",
+      "runTypeRegular": "Biasa",
+      "runTypeOffCycle": "Luar kitaran",
+      "runTypeBonus": "Bonus",
+      "runTypeAdjustment": "Pelarasan"
     }
   },
   "admin": {

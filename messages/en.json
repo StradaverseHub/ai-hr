@@ -7303,7 +7303,19 @@
       "selectionIntro": "Choose the company and payroll month this file covers, then download it.",
       "payCycle": "Pay cycle",
       "cancel": "Cancel",
-      "payCycleMissing": "No pay cycle is available for this file, so it cannot be downloaded yet — a file that pays people must say which run of the month it pays."
+      "payCycleMissing": "No pay cycle is available for this file, so it cannot be downloaded yet — a file that pays people must say which run of the month it pays.",
+      "payCycleAll": "All payroll cycles",
+      "payCycleSelectAll": "Select all",
+      "payCycleSearch": "Search payroll cycles",
+      "payCycleLoading": "Looking up this month’s payroll runs…",
+      "payCycleNoRuns": "No completed payroll run for this company and month yet. Download still produces the whole month, and will tell you if there is nothing to file.",
+      "payCycleRun": "Run {seq} of the month",
+      "payCyclePartialWarning": "You have left out at least one payroll cycle. The agency still reads this file as the whole month’s submission — it has no box that says which payroll run a line came from. If you file this and later file the full month, that is two submissions for the same month.",
+      "payCycleNonePicked": "Nothing is ticked. Downloading now produces the whole month, the same as ticking everything.",
+      "runTypeRegular": "Regular",
+      "runTypeOffCycle": "Off-cycle",
+      "runTypeBonus": "Bonus",
+      "runTypeAdjustment": "Adjustment"
     }
   },
   "admin": {

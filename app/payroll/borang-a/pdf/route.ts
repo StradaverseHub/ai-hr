@@ -38,6 +38,15 @@ export async function GET(req: Request) {
     if (loaded.reason === 'no-batch') {
       return new Response('No payroll run for this month — run payroll first.', { status: 422 });
     }
+    // r372 (item f022dd70) — TWO MORE REFUSALS, BOTH ABOUT THE PAYROLL-CYCLE SELECTION ON THE LINK.
+    // Unreachable from this screen, which sends no run parameter, and answered here anyway: a route is
+    // not a screen, and a hand-edited link must not fall through to "somebody is missing a number".
+    if (loaded.reason === 'selection-empty') {
+      return new Response('No payroll run for this month matches the payroll cycles you selected.', {
+        status: 422,
+      });
+    }
+    if (loaded.reason === 'bad-selection') return new Response(loaded.message, { status: 422 });
     return new Response(`Cannot produce Borang A: ${describeGaps(loaded)}.`, { status: 422 });
   }
 

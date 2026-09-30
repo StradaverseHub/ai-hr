@@ -4,6 +4,7 @@ import { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { Field, btnGhost, btnPrimary, inputCls } from '@/components/ui';
+import { RunPicker } from './run-picker';
 import type { SubmissionFormat } from './registry';
 
 /**
@@ -27,24 +28,29 @@ import type { SubmissionFormat } from './registry';
  *
  * ── THE SELECTION IS DECLARED BY THE FORMAT, NOT BRANCHED ON ITS GROUP ───────────────────────────
  * `periodKind` comes off the registry entry. A `'month'` format asks for company + year + month; a
- * `'month-cycle'` format asks WHICH RUN of the month as well, because one payroll month can hold a regular
- * run, a bonus run and an advance with different payment dates. Nothing declares `'month-cycle'` today —
- * the only file that would is a bank salary payment file and the salary shelf is deliberately empty — so
- * the cycle field is unreachable in production and does not exist on any row now on the screen. It is here
- * so that adding such a format is adding a registry entry, which is the property the whole module keeps.
+ * `'month-cycle'` format asks WHICH RUN of the month as well, exactly one and required, because a file
+ * that PAYS PEOPLE has to say which of them it pays; a `'month-runs'` format (r372, item f022dd70) asks
+ * WHICH RUNS, any number of them, ALL TICKED BY DEFAULT, because a statutory return is one filing per
+ * month and the whole month is what an employer files unless they say otherwise.
  *
- * `cycles` therefore has no generic source: enumerating a month's runs is a database read, and this screen
- * deliberately reads nothing but the company list (`test/payment-submission-screen-seam.test.ts` renders it
- * with no database at all). Whoever adds the salary file supplies them.
+ * ⚠️ THE TWO CYCLE KINDS FAIL SAFE IN OPPOSITE DIRECTIONS AND ARE NOT ONE CONTROL WITH A FLAG.
  *
- * ⚠️ AND IF THEY FORGET, THIS DIALOG REFUSES RATHER THAN DEFAULTS. A `<select>` with no options submits NO
- * value at all, so a `'month-cycle'` format mounted without `cycles` would have produced a WHOLE-MONTH file
- * — every run of the month added together — from a button the operator pressed believing they had picked one
- * run. For a file that moves money that is the worst available failure: plausible, silent, and wrong by a
- * bonus run. So an empty cycle list renders the reason instead of an empty control and the Download button
- * is disabled: the file is not produced at all until the caller supplies the month's runs. Unreachable today
- * (nothing declares the kind), which is exactly why it had to be settled before the first salary format
- * inherits it rather than after.
+ * `'month-cycle'` — nothing declares it today; the only file that would is a bank salary payment file and
+ * the salary shelf is deliberately empty. `cycles` therefore has no generic source and is supplied by
+ * whoever adds that format. AND IF THEY FORGET, THIS DIALOG REFUSES RATHER THAN DEFAULTS: a `<select>`
+ * with no options submits NO value at all, so the format would have produced a WHOLE-MONTH payment — every
+ * run of the month added together — from a button the operator pressed believing they had picked one run.
+ * For a file that moves money that is the worst available failure: plausible, silent, and wrong by a bonus
+ * run. So an empty list renders the reason instead of an empty control and Download is disabled. Left
+ * exactly as it was; r372 did not touch this branch.
+ *
+ * `'month-runs'` — an empty list must NOT disable Download, and that is the deliberate difference. Sending
+ * no run parameter is the ordinary whole-month file this shelf has always produced, and the builder's own
+ * 422 is a better refusal than a greyed-out button because it says what to do about it. The list is
+ * FETCHED by `./run-picker` rather than passed in: enumerating a month's runs is a database read, this
+ * page deliberately reads nothing but the company list (`test/payment-submission-screen-seam.test.ts`
+ * renders it with no database at all), and the company, year and month are chosen inside this pop-up
+ * anyway — a server-rendered list would be the wrong month the moment a dropdown changed.
  *
  * NO FORMAT ID AND NO AGENCY NAME IS WRITTEN HERE EITHER. Everything this component knows about the file
  * arrives as a prop.
@@ -65,6 +71,7 @@ export function DownloadDialog({
   months,
   defaultMonth,
   cycles = [],
+  runsEndpoint,
 }: {
   /** The registry id, submitted as the `format` parameter. Opaque to this component. */
   formatId: string;
@@ -82,6 +89,12 @@ export function DownloadDialog({
   defaultMonth: string;
   /** Only read for a `'month-cycle'` format. See the header for why this is empty today. */
   cycles?: SelectionOption[];
+  /**
+   * r372 — the eligible-runs route, read only by a `'month-runs'` format. A STRING handed down from the
+   * server component so there is one spelling of the path, exactly like `action` above; this component
+   * still names no route, no format id and no agency of its own.
+   */
+  runsEndpoint?: string;
 }) {
   const t = useTranslations('payroll.paymentSubmission');
   const [open, setOpen] = useState(false);
@@ -94,6 +107,10 @@ export function DownloadDialog({
   // and the route keep the single spelling of a period they already had.
   const [year, setYear] = useState(defaultYear);
   const [month, setMonth] = useState(defaultMonth);
+  // r372 — CONTROLLED, where it used to be `defaultValue`. The run list is a read of ONE company's month,
+  // so the picker has to be told when the company changes; an uncontrolled select would leave it showing
+  // the first company's runs under a second company's name.
+  const [companyId, setCompanyId] = useState(defaultCompanyId);
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -113,7 +130,13 @@ export function DownloadDialog({
             <input type="hidden" name="format" value={formatId} />
             <input type="hidden" name="periodKey" value={`${year}-${month}`} />
             <Field label={t('company')}>
-              <select name="companyId" defaultValue={defaultCompanyId} className={inputCls} data-field="company">
+              <select
+                name="companyId"
+                value={companyId}
+                onChange={(e) => setCompanyId(e.target.value)}
+                className={inputCls}
+                data-field="company"
+              >
                 {companies.map((c) => (
                   <option key={c.value} value={c.value}>
                     {c.label}
@@ -155,6 +178,14 @@ export function DownloadDialog({
                 ))}
               </select>
             </Field>
+            {periodKind === 'month-runs' && runsEndpoint && (
+              // r372 (item f022dd70) — the multi-select. Mounted only because the FORMAT declared the
+              // kind; a `'month'` format renders no such control at all, which is the assertion that
+              // keeps this driven by the registry rather than by a branch on the shelf it sits on.
+              <Field label={t('payCycle')}>
+                <RunPicker companyId={companyId} periodKey={`${year}-${month}`} endpoint={runsEndpoint} />
+              </Field>
+            )}
             {periodKind === 'month-cycle' && (
               // Present ONLY because the format said it needs one. A `'month'` format renders no such
               // control at all, which is the assertion that keeps this driven by the registry.

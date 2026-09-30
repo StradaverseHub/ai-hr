@@ -33,7 +33,14 @@
  *               derives it: cc74dcb2's sample proves it is the sum of the EPF member numbers on the file.
  *               The box stays because KWSP may ask a particular employer for something else.
  * `batch`     — the batch/sequence number written identically into the 00 and 01 records. Defaults to 1.
- * None of them is persisted, and none of them reaches the pack: `ReportParams` stays {companyId, periodKey}.
+ * None of them is persisted.
+ *
+ * ⚠️ AND ONE OF THEM DOES NOW REACH THE PACK. This paragraph used to end "none of them reaches the pack:
+ * `ReportParams` stays {companyId, periodKey}", and r372 (item f022dd70) made that false: the payroll-cycle
+ * selection is read off the SAME query by `parseRunSelection` and forwarded as `runSeqs`, because it
+ * changes WHICH PAYSLIPS the figures come from and no amount of post-processing on the form can do that.
+ * The four inputs above are still form-level and still stop here; the distinction is not "per-generation
+ * input" versus "parameter", it is whether the input changes the POPULATION or the presentation.
  *
  * ⚠️ THE REQUEST'S "SUBMIT-ON PERIOD" HAS NO FIELD AND THEREFORE HAS NO INPUT. The item lists it among
  * the filters, but its own field tables — which are the specification — give it no position in any of the
@@ -42,6 +49,7 @@
  */
 import { reportPreview } from '@/core/reporting';
 import { scopedAdmin } from '@/lib/scope';
+import { parseRunSelection } from '@/lib/payroll-run-selection';
 import {
   borangAFrom,
   contributionPeriodOverridden,
@@ -71,6 +79,14 @@ export type BorangAMissing = { employmentId: string; name: string; missing: stri
 export type BorangALoad =
   | { ok: false; reason: 'not-found' }
   | { ok: false; reason: 'no-batch' }
+  /**
+   * r372 (item f022dd70) — the month has payroll runs, but none of them is a cycle the operator
+   * ticked. NOT 'no-batch': that one tells them to run payroll, and this one tells them to look at
+   * the pop-up. Reachable only from a hand-edited link, because the control offers what exists.
+   */
+  | { ok: false; reason: 'selection-empty' }
+  /** r372 — the run parameters on the link are not run numbers. Refused, never quietly widened. */
+  | { ok: false; reason: 'bad-selection'; message: string }
   | {
       ok: false;
       reason: 'not-ready';
@@ -120,6 +136,14 @@ export function borangARows(form: BorangAForm): BorangARow[] {
  * empty. `includeIncomplete` exists for the REVIEW screen alone, which must be able to render the table
  * in order to name who is missing.
  */
+/**
+ * r372 (item f022dd70) — THE PAYROLL CYCLES THIS DOWNLOAD COVERS, read off the SAME query the rest of the
+ * per-generation inputs are read from, and validated in ONE place (lib/payroll-run-selection.ts) so the
+ * three statutory formats cannot disagree about what a bad value means. NO run parameters ⇒ `undefined` ⇒
+ * the whole month, which is what every link written before this round is and what every other surface
+ * (the review screen, the PDF, the text export) still sends. An INVALID one is refused rather than
+ * dropped: dropping it would produce a file over a different population from the one the URL asked for.
+ */
 export async function loadBorangA(p: {
   companyId: string;
   periodKey: string;
@@ -130,12 +154,16 @@ export async function loadBorangA(p: {
   const { s, scopeIds } = await scopedAdmin();
   if (!scopeIds.includes(p.companyId)) return { ok: false, reason: 'not-found' };
 
+  const selection = parseRunSelection(p.query);
+  if (!selection.ok) return { ok: false, reason: 'bad-selection', message: selection.reason };
+
   let result;
   try {
     result = await reportPreview(s, {
       companyId: p.companyId,
       reportId: BORANG_A_REPORT_ID,
       periodKey: p.periodKey,
+      runSeqs: selection.runSeqs,
     });
   } catch {
     // `resolveDef` throws for a jurisdiction whose pack does not register this form. Same bare answer as
@@ -143,6 +171,9 @@ export async function loadBorangA(p: {
     return { ok: false, reason: 'not-found' };
   }
   if (!result.meta.hasBatch) return { ok: false, reason: 'no-batch' };
+  // r372 — the month ran, the ticked cycles are not in it. Answered apart from 'no-batch' so the
+  // operator is sent to the control they got wrong rather than to a payroll run that already exists.
+  if (result.meta.selectionEmpty) return { ok: false, reason: 'selection-empty' };
 
   const missing = result.readiness.map((r) => ({ employmentId: r.employmentId, name: r.name, missing: r.missing }));
   // TWO KINDS OF GAP, ONE GATE. `missing` is per-employee; `headerMissing` is employer-level (no EPF
@@ -202,6 +233,16 @@ export async function loadBorangAFile(p: {
     if (loaded.reason === 'no-batch') {
       return { ok: false, status: 422, message: 'No payroll run for this month — run payroll first.' };
     }
+    // r372 (item f022dd70) — two more refusals, both about the payroll-cycle selection and both
+    // 422 rather than 404: the operator can fix each of them from the pop-up they came from.
+    if (loaded.reason === 'selection-empty') {
+      return {
+        ok: false,
+        status: 422,
+        message: 'No payroll run for this month matches the payroll cycles you selected.',
+      };
+    }
+    if (loaded.reason === 'bad-selection') return { ok: false, status: 422, message: loaded.message };
     return { ok: false, status: 422, message: `Cannot produce a Borang A upload file: ${describeGaps(loaded)}.` };
   }
 
