@@ -182,9 +182,13 @@ describe('6948727a — My Roster shows the caller their own roster and nobody el
     const on = (iso: string) => view.days.find((d) => d.date === iso)!;
     // Wednesday 4 March — the supervisor rostered it.
     expect(on('2026-03-04').cell).toEqual({ kind: 'shift', shiftId: managerShift });
-    expect(on('2026-03-04').note, 'the supervisor’s note rides the rostered date').toBe('Swapped with Tuesday');
-    // Thursday 5 March — an explicit rest day.
+    expect(on('2026-03-04').note, 'assignShift takes no note, so a plain rostered date carries none').toBeNull();
+    // Thursday 5 March — an explicit rest day, and the ONE place a note can come from today: setRestDay
+    // is the only writer of roster_assignment.note anywhere in the kernel.
     expect(on('2026-03-05').cell).toEqual({ kind: 'rest' });
+    expect(on('2026-03-05').note, 'the supervisor’s note rides the row it was written on').toBe('Swapped with Tuesday');
+    // A ghosted date has no row at all, so it can never carry one.
+    expect(on('2026-03-02').note, 'a ghosted date has no row to carry a note').toBeNull();
     // Monday 2 March — nobody rostered it, but it is inside the usual shift's weekly pattern, so it
     // GHOSTS. This is the branch a second resolver would get wrong and the screen would read blank.
     expect(on('2026-03-02').cell).toEqual({ kind: 'usual', shiftId: managerShift });

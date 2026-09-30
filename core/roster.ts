@@ -2984,8 +2984,18 @@ export type MyRosterDay = {
   /** What this date contributes to Planned hours. 0 unless the date is a working one. */
   plannedMinutes: number;
   /**
-   * The supervisor's note on a ROSTERED date. Never present on a ghosted (usual) date — there is no row to
-   * carry one — which is why it is read off the assignment rather than derived.
+   * The supervisor's note on this date, read off the roster row rather than derived.
+   *
+   * Never present on a GHOSTED (usual) or OFF date: neither has a row to carry one. And in today's
+   * product it is in practice only ever present on a REST DAY, because `setRestDay` is the ONLY writer
+   * of `roster_assignment.note` in the kernel — `assignShift` does not take one.
+   *
+   * ⚠️ OBSERVATION, pre-existing and deliberately NOT changed here: `assignShift`'s upsert sets
+   * shiftId / isRestDay / updatedAt and does not clear `note`, so a date that was a noted rest day and
+   * is later given a shift keeps the old note. This screen renders whatever the row says, which is what
+   * every other roster surface does; hiding it here would mean My Roster silently withholding a note
+   * the supervisor can still see — the disagreement this whole design exists to prevent. Clearing it
+   * belongs in `assignShift`, is a kernel WRITE change, and is not this item's to make.
    */
   note: string | null;
 };
