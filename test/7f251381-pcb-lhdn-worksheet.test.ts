@@ -373,7 +373,7 @@ describe('7f251381 — the worksheet derives nothing', () => {
   it('the screen paints the row list and never reaches back into the figures', () => {
     const view = code(VIEW);
     /**
-     * r371 — THE ANCHOR MOVED, AND THE DECISION IT PINS GOT STRONGER RATHER THAN WEAKER.
+     * r372 — THE ANCHOR MOVED, AND THE DECISION IT PINS GOT STRONGER RATHER THAN WEAKER.
      *
      * "Absent rather than drawn empty" used to be a `worksheet.shape !== 'unavailable'` test inside this
      * component, so this guard sliced from it. The sheet is now an unnumbered APPENDIX placed by

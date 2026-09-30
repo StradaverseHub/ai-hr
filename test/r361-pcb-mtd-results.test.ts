@@ -400,14 +400,14 @@ describe('r361 — the screen and the downloaded document cannot disagree about 
     const shared = code(SHARED);
     expect(shared, 'the model carries it').toContain('closing: pcbClosingSections(explanation)');
     /**
-     * r371 — THE ORDERING CLAIM MOVED FROM TWO SOURCE MATCHES TO THE LIST ITSELF, WHICH IS WHY IT CAN NOW
+     * r372 — THE ORDERING CLAIM MOVED FROM TWO SOURCE MATCHES TO THE LIST ITSELF, WHICH IS WHY IT CAN NOW
      * FAIL. This used to compare the positions of two `pushSlipSections` calls in shared.ts and the
      * presence of one JSX expression in the view — a pair of independent claims about two independent
      * orderings, which is exactly the arrangement that let five sections drift off the paper. Both
      * surfaces now iterate `pcbDetailLayout`, so the assertion is about the ORDER THAT LIST RETURNS, once,
      * and both surfaces inherit it. The closing trio's own placement — the agency's two numbered items as
      * the last steps of sequence 9, its CALCULATION RESULTS band as sequence 10 — is asserted here and
-     * again, with the whole run of ten, in test/r371-pcb-sequence.test.ts.
+     * again, with the whole run of ten, in test/r372-pcb-sequence.test.ts.
      */
     expect(code(VIEW), 'the screen iterates the shared list').toContain('pcbDetailLayout({ explanation, worksheet, slip, closing })');
     expect(shared, 'and so does the document').toContain('pcbDetailLayout({');

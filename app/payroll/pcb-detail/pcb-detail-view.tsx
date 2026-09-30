@@ -318,7 +318,7 @@ export async function PcbDetailView({
   ctx: PcbDetailContext;
   explanation: PcbExplanation;
   /** 7f251381 — the same figures in LHDN's worksheet order, assembled in core/. NULL only when the caller
-   *  could not build one; the sheet is then simply absent rather than drawn empty. r371 places it as an
+   *  could not build one; the sheet is then simply absent rather than drawn empty. r372 places it as an
    *  unnumbered APPENDIX at the foot: every figure on it appears again in the numbered run below. */
   worksheet: PcbWorksheet | null;
   /** ad7bc503 — the reporter's sequences 2 to 8, assembled in core/ from reads the page did. An EMPTY
@@ -386,7 +386,7 @@ export async function PcbDetailView({
   };
 
   /**
-   * r361 / r371 — ONE PAINTER FOR EVERY SLIP-SHAPED SECTION, AND THE ORDER IS NO LONGER THIS FILE'S.
+   * r361 / r372 — ONE PAINTER FOR EVERY SLIP-SHAPED SECTION, AND THE ORDER IS NO LONGER THIS FILE'S.
    *
    * Every section the agency's own slip shapes as a ruled schedule — the children grid, the accumulated
    * block, the two deduction schedules, the rebate lines, the agency's two numbered steps and its
@@ -400,7 +400,7 @@ export async function PcbDetailView({
    * source and refuses `explanation.`, `trace.`, `'0.00'` and `Number(` anywhere inside it.
    *
    * ⚠️ AND WHICH SECTIONS THERE ARE, AND IN WHAT ORDER, IS `pcbDetailLayout`'s ANSWER AND NOT THIS
-   * FUNCTION'S. Until r371 the screen held the order as hand-placed JSX and the downloaded document held
+   * FUNCTION'S. Until r372 the screen held the order as hand-placed JSX and the downloaded document held
    * it as imperative pushes — two lists, which had already drifted by five whole sections.
    */
   const slipBody = (sec: PcbSlipSection) => (
@@ -465,7 +465,7 @@ export async function PcbDetailView({
     ));
 
   /**
-   * ══ r371 — ONE BODY PER SLOT, AND THE SLOT UNION IS CLOSED ══
+   * ══ r372 — ONE BODY PER SLOT, AND THE SLOT UNION IS CLOSED ══
    *
    * The switch is EXHAUSTIVE over `PcbDetailBodySlot` and so is `shared.ts`'s, which is what turns "a
    * section reached the screen and not the paper" from a review note into a compile error. A slot added to
@@ -473,7 +473,7 @@ export async function PcbDetailView({
    *
    * ⚠️ NOT ONE FIGURE IS COMPUTED HERE. Every number is read off `explanation` / `trace`, which read the
    * payslip's own `pcbMeta` stamp, and every expression comes from `./formulas.ts`. The bodies are the same
-   * ones this screen has drawn since r351/r361; what changed in r371 is that their ORDER and their NUMBERS
+   * ones this screen has drawn since r351/r361; what changed in r372 is that their ORDER and their NUMBERS
    * are read from the shared list instead of being the order they happen to be written in.
    */
   const bodyFor = (slot: PcbDetailBodySlot): React.ReactNode => {
@@ -547,7 +547,7 @@ export async function PcbDetailView({
         );
 
       // ── THE HONEST BANNER. It sits ABOVE the working, not under it, because a reader who scrolls past a
-      //    table of dashes without seeing this will read the dashes as zeroes. r371 gives it a heading and
+      //    table of dashes without seeing this will read the dashes as zeroes. r372 gives it a heading and
       //    puts it on the DOWNLOADED document too, which never carried it. ──
       case 'traceBanner':
         return <p className="text-sm">{t('traceNotRecorded')}</p>;
@@ -654,7 +654,7 @@ export async function PcbDetailView({
 
       // ── 9.3 / Step 1 [B] — K₂ and the remuneration legs. The specification's own worked example says
       //    "Firstly determine value K2" INSIDE [B] and only then substitutes P, so these figures precede
-      //    the formula rather than trailing it. Until r371 they were rows at the foot of the P block. ──
+      //    the formula rather than trailing it. Until r372 they were rows at the foot of the P block. ──
       case 'mtdK2':
         return mtd == null ? null : (
           <>
@@ -944,7 +944,7 @@ export async function PcbDetailView({
       // ── APPENDIX — 7f251381: THE SAME FIGURES, IN LHDN'S WORKSHEET ORDER, UNDER LHDN'S SYMBOLS ──
       //    Its job is to be laid beside the reporter's copy of LHDN's sheet and read down. It used to be
       //    the SECOND thing on the page, ahead of the reporter's own sequence 2, and every figure on it
-      //    appears again below — which is why r371 moves it out of the numbered run to the foot rather
+      //    appears again below — which is why r372 moves it out of the numbered run to the foot rather
       //    than deleting it. The rows come from `pcbWorksheet` in core/; this loop paints them. The
       //    previous-employment rows are marked because they are the four the reporter's case turns on and
       //    the four LHDN's own sheet gives no line of their own. ──
@@ -1001,7 +1001,7 @@ export async function PcbDetailView({
   };
 
   /**
-   * r371 — THE ORDERED LIST, READ AND NOT WRITTEN HERE.
+   * r372 — THE ORDERED LIST, READ AND NOT WRITTEN HERE.
    *
    * `pcbDetailLayout` is called with exactly the arguments `app/payroll/pcb-detail/shared.ts` passes it, so
    * the screen and the downloaded document iterate ONE list: a section added, moved or renumbered moves on

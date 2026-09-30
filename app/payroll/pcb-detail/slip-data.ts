@@ -76,7 +76,7 @@ import { PCB_CHILD_CATEGORIES } from '@/core/pcb-explain';
 export type PcbSlipData = {
   /** `employee_statutory_my` — the tax position the reporter's section 1 and section 2 ask for. */
   profile: (PcbChildProfile & { taxCategory: number | null; numChildren: number | null }) | null;
-  /** r371 — how many children are on record, and from which record. NULL ⇒ none was ever recorded. The
+  /** r372 — how many children are on record, and from which record. NULL ⇒ none was ever recorded. The
    *  SUM lives here and not in core/, for the reason `priorRemuneration` below does. */
   childHeadCount: PcbChildHeadCount | null;
   /** The relief declaration in force for THIS payroll month, itemised. */
@@ -128,7 +128,7 @@ function taxProfile(
         taxCategory: employeeStatutoryMy.taxCategory,
         childReliefMode: employeeStatutoryMy.childReliefMode,
         childReliefTable: employeeStatutoryMy.childReliefTable,
-        // r371 — the HEAD COUNT for the reporter's sequence 2, which is not C. `num_children` is NOT NULL
+        // r372 — the HEAD COUNT for the reporter's sequence 2, which is not C. `num_children` is NOT NULL
         // with a default of 0, so exactly as `disabled_individual` is treated four lines down, a PRESENT
         // row's value is a recorded answer and an ABSENT row asserts nothing.
         numChildren: employeeStatutoryMy.numChildren,
@@ -290,7 +290,7 @@ const countedSide = (c: Tp1Counted): PcbSlipSide | null => {
 };
 
 /**
- * r371 — HOW MANY CHILDREN ARE ON RECORD, AND FROM WHICH RECORD. NOT C.
+ * r372 — HOW MANY CHILDREN ARE ON RECORD, AND FROM WHICH RECORD. NOT C.
  *
  * ⚠️ IT IS THE ONLY ADDITION ON THIS SURFACE THAT IS AN ARITHMETIC OPERATION, AND IT IS HERE ON PURPOSE.
  * `core/pcb-explain.ts` holds no operator below its marker (test/7f251381-pcb-lhdn-worksheet.test.ts

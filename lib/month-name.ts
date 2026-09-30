@@ -1,5 +1,5 @@
 /**
- * r371 — ONE PAYROLL MONTH, NAMED THE SAME WAY ON EVERY SURFACE THAT NAMES IT.
+ * r372 — ONE PAYROLL MONTH, NAMED THE SAME WAY ON EVERY SURFACE THAT NAMES IT.
  *
  * The PCB / MTD Calculation Detail screen has printed `June 2026` since 45df860a and the DOWNLOADED
  * calculation slip printed the stored `2026-06`, in its masthead and in its section 1, for the same

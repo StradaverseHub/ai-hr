@@ -1029,7 +1029,7 @@ describe('45df860a — the shared screen, and the two entry points that reach it
       expect(view, `the banner must render ${k}`).toContain(k);
     }
     /**
-     * r371 — `L.bannerHeading` LEFT THIS COMPONENT AND THE CLAIM GOT STRONGER, NOT WEAKER.
+     * r372 — `L.bannerHeading` LEFT THIS COMPONENT AND THE CLAIM GOT STRONGER, NOT WEAKER.
      *
      * The banner's HEADING is now the heading of its entry in `pcbDetailLayout`, which is where the order
      * of both surfaces comes from — so it reaches the downloaded document by the same route as every other

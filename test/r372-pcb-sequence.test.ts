@@ -1,5 +1,5 @@
 /**
- * r371 / item db1e7b9d — THE PCB / MTD CALCULATION DETAIL IS ONE DOCUMENT IN TEN NUMBERED SEQUENCES,
+ * r372 / item db1e7b9d — THE PCB / MTD CALCULATION DETAIL IS ONE DOCUMENT IN TEN NUMBERED SEQUENCES,
  * AND THE SCREEN AND THE DOWNLOADED PDF ARE THE SAME DOCUMENT.
  *
  * WHAT THE DEFECT ACTUALLY WAS. Nine of the reporter's ten sections already existed with his own headings
@@ -124,7 +124,7 @@ const labelsOf = (l: PcbDetailEntry[], band: string) =>
 
 // ─────────────────────── (a) exactly ten numbered sequences, in the reporter's order ───────────────────────
 
-describe('r371 — the detail is ten numbered sequences, and the numbers are in the list', () => {
+describe('r372 — the detail is ten numbered sequences, and the numbers are in the list', () => {
   it('criteria 1 to 11: exactly ten sequences, numbered 1 to 10, in the order the reporter set out', () => {
     const l = fullLayout();
     expect(labelsOf(l, 'sequence'), 'ten, in order, with nothing missing and nothing extra').toEqual([
@@ -234,7 +234,7 @@ describe('r371 — the detail is ten numbered sequences, and the numbers are in 
 
 // ──────────── (b) the load-bearing property: ONE list, and both surfaces iterate it ────────────
 
-describe('r371 — the screen and the PDF cannot disagree about which sections there are or in what order', () => {
+describe('r372 — the screen and the PDF cannot disagree about which sections there are or in what order', () => {
   it('both surfaces iterate `pcbDetailLayout`, over the same four members, and neither owns an order', () => {
     const view = code(VIEW);
     const shared = code(SHARED);
@@ -317,7 +317,7 @@ describe('r371 — the screen and the PDF cannot disagree about which sections t
 
 // ─────────── (c) sequence 2: the count and the weighted figure are two numbers, labelled as two ───────────
 
-describe('r371 — sequence 2 shows how many children are on record AND the weighted C, never one for the other', () => {
+describe('r372 — sequence 2 shows how many children are on record AND the weighted C, never one for the other', () => {
   const childValue = (headCount: PcbChildHeadCount | null, caption: string): PcbWorksheetValue | undefined =>
     pcbChildSection(
       { mode: 'auto_table', table: { under_18: { full: 1, half: 0 }, disabled_study: { full: 1, half: 0 } }, disabledIndividual: false, disabledSpouse: false },
@@ -423,7 +423,7 @@ describe('r371 — sequence 2 shows how many children are on record AND the weig
 
 // ─────────────────────── (d) the new captions, in all six catalogues ───────────────────────
 
-describe('r371 — every caption the layout resolves exists in all six catalogues', () => {
+describe('r372 — every caption the layout resolves exists in all six catalogues', () => {
   /** The keys the LAYOUT names. They are computed `t()` keys — invisible to the i18n coverage scan — and
    *  they are not reached by the `worksheet*` or `slip*` sweeps in the two older suites. */
   const KEYS = [
