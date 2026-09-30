@@ -342,8 +342,32 @@ describe('Upah is the EPF-liable wage and never gross pay', () => {
     // from it — but it must never assign it to the wage.
     expect(READ_CODE).toContain('gross: payslip.grossPay');
     expect(READ_CODE).not.toMatch(/wage:\s*[^,\n]*gross/i);
-    expect(READ_CODE).toContain('b.epf');
-    expect(READ_CODE).toContain('b.epfAdditional');
+    /**
+     * ⚠️ r372 MOVED WHERE THE BASIS IS NAMED, SO THIS HALF OF THE GUARD IS UPDATED, NOT DELETED
+     * (CLAUDE.md §8: a guard pinning a decision you are reversing is updated, not deleted).
+     *
+     * It used to read:
+     *
+     *     expect(READ_CODE).toContain('b.epf');
+     *     expect(READ_CODE).toContain('b.epfAdditional');
+     *
+     * — because the read summed `num(b.epf) + num(b.epfAdditional)` across the month's payslips in its own
+     * loop. That SUM is the defect item d4f6848f closed: both bases are the WHOLE month's figure on every
+     * run of the month, so adding them up counted the month once per run. The arithmetic now lives in ONE
+     * place shared by all three statutory reads (localization/my/statutory-month-wage.ts), so the read no
+     * longer names the keys at all.
+     *
+     * The PROPERTY this guard exists for is unchanged — Upah is the stamped EPF basis and never gross pay —
+     * and it is now pinned ACROSS THE TWO FILES, which is what §8 asks for when a fact lives in the
+     * contract between them: the read must take its wage from the derivation, and the derivation must take
+     * it from `bases` and must not know what gross pay is.
+     */
+    expect(READ_CODE).toContain("from './statutory-month-wage'");
+    expect(READ_CODE).toMatch(/wage:\s*w\.epf\b/);
+    const DERIVATION = code('localization/my/statutory-month-wage.ts');
+    expect(DERIVATION).toContain('r.epf');
+    expect(DERIVATION).toContain('r.epfAdditional');
+    expect(DERIVATION, 'the derivation must not know what gross pay is').not.toMatch(/gross/i);
     // …and the screen prints a refusal rather than a zero for a row with no recorded basis.
     expect(PREVIEW_CODE).toContain('r.wageRecorded ?');
     expect(PREVIEW_CODE).toContain("t('wageNotRecorded')");
