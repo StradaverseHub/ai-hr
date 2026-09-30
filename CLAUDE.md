@@ -80,7 +80,25 @@ Minimize clicks, entry and searching; maximize context, defaults, visibility and
 - Build worktrees: create them yourself from `main` with an ABSOLUTE path under
   `~/Projects/ai-hr/.claude/worktrees/`. Never use an agent's `isolation: 'worktree'` (it cuts from the
   root scratch HEAD). A fresh worktree has no `.env.local` (gitignored) and no `node_modules`: copy the
-  first, symlink the second. `git -C <missing dir> status | wc -l` prints 0, indistinguishable from clean.
+  first, symlink the second — **but see the next bullet before you do, if Next has been upgraded.**
+  `git -C <missing dir> status | wc -l` prints 0, indistinguishable from clean.
+- **The `node_modules` SYMLINK IS A LANDMINE ON NEXT 16.3.x, and the upgrade is still owed** (three CVEs,
+  r371). On 16.3.x Turbopack's filesystem root is hermetic and **any symlink resolving outside the project
+  root fails both `next build` AND `pnpm dev`** — `TurbopackInternalError: Symlink [project]/node_modules is
+  invalid, it points out of the filesystem root`. It dies at entrypoint resolution before compiling
+  anything, so it reads as a code error and is not one; `pnpm dev` prints `✓ Ready in …` and *then* panics.
+  It is not a `node_modules` rule: a stray `node_modules.symlink.bak` left beside it reproduces it. On
+  16.2.7 the symlink works only because Next inferred the workspace root from the outer
+  `pnpm-workspace.yaml`, which contains every worktree. **Give a build worktree a REAL `node_modules`**
+  (`rm node_modules` — the LINK only, never `rm -rf node_modules/` — then `pnpm install`, ~4 s, ~768 MB of
+  mostly hardlinks; `cp -Rc` also works on APFS). Do NOT set `turbopack.root`: the correct root differs per
+  machine and is `/opt/ai-hr` on the box.
+- **Ask which ENVIRONMENT a green result is evidence about.** `scripts/gate-chunked.sh` does not run
+  `next build`, so a green 1085/1085 gate and a failing deploy are consistent — different claims. A build
+  that passes in a worktree with its own `node_modules` says nothing about mainwt; one that passes in
+  mainwt says nothing about the box, which is **Linux x86_64 / node 20** against this machine's **Darwin
+  arm64 / node 22**, and Turbopack ships platform-specific binaries. r371 lost three deploys to that one
+  question, asked too late each time.
 - Stack: Next.js 16 App Router (APIs differ from training data; read `node_modules/next/dist/docs`
   before framework work), Postgres 16 + drizzle, vitest 4, next-intl with six locales in `messages/`,
   WorkOS. Kernel in `core/`, installable packs in `packs/<pack>/` (ADR-0080), screens in `app/`.
