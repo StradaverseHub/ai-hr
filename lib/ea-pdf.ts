@@ -396,95 +396,108 @@ export type EaPdfLabels = {
 const A4: [number, number] = [595.28, 841.89];
 
 /**
- * ── THE FORM'S GEOMETRY, MEASURED OFF THE SPECIMEN RATHER THAN GUESSED ──────────────────────────────
+ * ── THE AGENCY'S OWN GRID, READ OFF LHDN'S FILE IN ONE PASS (r372, item 795c470c) ───────────────────
  *
  * `x` is points from the LEFT edge. `t` (and every `…T` field) is points from the TOP edge, because that
  * is how the form reads and how a form is described; `at()` inside the renderer turns one into a pdf-lib y.
  *
- * ⚠️ TWO SOURCES, AND THEY ARE NOT EQUALLY GOOD. Read this before trusting a number here.
+ * EVERY NUMBER BELOW IS MEASURED OFF `docs/forms/ea-cp8a-pin-2023-official-en.pdf`, and re-measurable:
  *
- *  · MOST of these were scanned off `docs/forms/ea-cp8a-pin-2024-specimen.png` (1240 × 1755 px at 150 dpi
- *    ⇒ 1 px = 0.48 pt) — the banner box at 77.3/90.2, the JUMLAH double rule at 425.8/435.4, the officer
- *    box at 640.8 → 730.6. That PNG is a rasterisation of ANOTHER PAYROLL VENDOR'S rendering of the form
- *    (item ece6d75d, Producer "Developer Express Inc. DXperience v23.2.5"). It is a tracing, at half-point
- *    resolution, of something that was itself a redrawing.
+ *     pnpm exec tsx scripts/measure-ea-official-pdf.ts --all     # every text run, top-down
+ *     pnpm exec tsx scripts/measure-ea-official-pdf.ts --rects    # every rectangle (the table's cells)
+ *     pnpm exec tsx scripts/measure-ea-official-pdf.ts --file <ours.pdf> --all   # …on our own output
  *
- *  · The MONEY COLUMN is different: since r346 it is measured off LHDN's OWN vector PDF,
- *    `docs/forms/ea-cp8a-pin-2023-official-en.pdf`, whose table cells give it exactly — 89 cells begin at
- *    482.3, 129 end there, 162 end at 556.6, and a width of 74.3 occurs 87 times.
+ * `test/ea-agency-grid.test.ts` renders this form, parses the bytes back with the SAME module the script
+ * uses (`lib/pdf-page-geometry.ts`), and asserts each drawn run against the table here. So a later edit
+ * is checked against the agency's document rather than against a previous round's output.
  *
- * The tracing had that column at 504.5 → 571.3: 22.2 pt too far right, 7.5 pt too narrow, and running to
- * the page frame where the agency's stops 15.3 pt inside it. Anything still on the first list is a
- * candidate for the same treatment, and the agency's file is now on disk to do it with.
+ * ⚠️ UNTIL THIS ROUND THE PAGE HAD TWO PROVENANCES AND THEY DISAGREED. r346 measured the MONEY COLUMN
+ * off the agency's own PDF; everything else — the item numbers, the sub-items, the description column,
+ * the left margin and every section baseline — was unchanged from r219, which traced
+ * `docs/forms/ea-cp8a-pin-2024-specimen.png`: a 150 dpi rasterisation of ANOTHER PAYROLL VENDOR'S
+ * rendering (Producer "Developer Express Inc. DXperience v23.2.5", item ece6d75d). The tracing put the
+ * item and sub-item columns ~20 pt too far LEFT (42 / 55 against the agency's 62.5 / 80.2) and
+ * compressed the page to ~87% of the agency's pitch, so Section F landed ~85 pt high. That is why
+ * correcting one section per request never settled: each correction was measured against a page whose
+ * grid came from the wrong document.
  *
- * ⚠️ r372 — THE "PRINTABILITY DEPARTURE" ON THE LEFT MARGIN IS RETIRED. IT WAS BACKWARDS, AND IT WAS
- * ABOUT THE TRACING'S EDGE, NOT THE AGENCY'S. The paragraph that stood here, quoted in full so the
- * claim can be recognised if it resurfaces:
+ * ⚠️ THE "PRINTABILITY DEPARTURE" ON THE LEFT MARGIN IS RETIRED IN r372 — IT WAS BACKWARDS. The
+ * paragraph that stood here, quoted so the claim can be recognised if it resurfaces:
  *
  *     "The one deliberate departure is the LEFT margin: the traced page set its rules 16.8 pt from the
  *      paper edge (under 6 mm), which is inside the unprintable margin of most office printers.
- *      Everything left-anchored is shifted to 24 pt. This sentence used to end '…the money column,
- *      which is what a reader checks against the agency's own page, is untouched' — true of the TRACING
- *      it was written about, and false of the agency's page, which is the one it named. r346 moved that
- *      column onto the agency's own coordinates; the left-margin shift is now the only departure, and
- *      it is a printability one."
+ *      Everything left-anchored is shifted to 24 pt."
  *
- * It reads as "the agency prints at 16.8 pt and we pull in to 24 pt to clear a printer's unprintable
- * margin". The agency does no such thing. `node --import tsx scripts/measure-ea-official-pdf.ts --rects`
- * counts the body table's own cell rectangles, and the same method that settled the money column settles
- * this: **150 cells begin at x = 39.8, and NOTHING on the agency's page begins left of it** (the next
- * columns in are 45.2 — the Date caption — then 57.1 with 156 cells and 74.8 with 214, which are the item
- * and sub-item indents). Its outer frame closes at ~557, where ours runs to `right` = 571.3.
+ * 16.8 pt was the TRACING's left edge, never a number LHDN published. `--rects` counts 150 of the
+ * agency's cells beginning at x = 39.8 and NOTHING left of it on its body table (the only rectangles
+ * further left are the masthead block at 32.4). The agency's page is WIDER than ours was, so adopting it
+ * moves every left-anchored coordinate to the RIGHT and makes clipping LESS likely, not more. There is
+ * no departure to keep and none to record.
  *
- * So OUR page is the wider one, by 15.8 pt on the left and ~14 pt on the right. There is no printability
- * conflict to resolve and no departure to preserve — 16.8 pt was the TRACING's left edge, measured off
- * `ea-cp8a-pin-2024-specimen.png`, and it was never a number LHDN published. `left: 24` is simply an
- * un-remeasured leftover of the tracing, like `itemLabel` and `subLabel` beside it, and it belongs on the
- * first list above: a candidate for the agency's own file, not an exception to it.
- *
- * ⚠️ ROUND TWO (item 795c470c) OWNS THE FIX AND MUST NOT INHERIT THE OLD PREMISE. Re-deriving the left
- * margin from 39.8 moves every left-anchored coordinate on the page, which is precisely the one-pass
- * redraw that item exists to do; doing it here would be this round moving the grid. Nothing is changed
- * by this note — only the reason recorded for a number that had a false one.
- *
- * Exported so test/ea-pdf.test.ts can assert against WHAT IS ACTUALLY DRAWN — the r205 Borang A lesson:
- * pdf-lib does not clip, so a caption wider than its slot prints straight through its neighbour and the
- * page still renders, still returns 200 and still downloads.
+ * ⚠️ AND THE REMAINING DEPARTURES ARE NAMED, because a grid with unstated exceptions is the state this
+ * round exists to end. They are: (1) our banner and section-letter blocks keep the agency's TREATMENT
+ * and our own type size, because the caption strings are ours and a 9 pt Malay banner overruns the
+ * strip; (2) the officer box grows downwards and then onto a SECOND SHEET for an employer name and
+ * address longer than the agency's two writing rules, which the agency's own page has no provision for
+ * at all (item 450f443f); (3) the amended-statement marker is ours and has no agency position.
  */
 export const EA_FORM = {
-  left: 24,
-  right: 571.3,
+  /** The agency's body table's own left edge: 150 of its cells begin here and none begins left of it. */
+  left: 39.8,
+  /** …and where its outer frame closes. Ours used to run to 571.3, the TRACING's frame. */
+  right: 557,
   /**
    * The RM column: every Section B/C/D6 amount is right-aligned on a rule between these.
    *
-   * ⚠️ MEASURED OFF THE AGENCY'S OWN PDF IN r346, NOT OFF THE TRACING. The C.P.8A is a Word TABLE and
-   * its geometry lives in cell rectangles, not in rules: 89 cells start at x=482.3, 129 end there, 162
-   * end at 556.6, and a cell width of 74.3 occurs 87 times. That is the money column, unambiguously.
-   *
-   * It used to be 504.5 → `right` (571.3), i.e. 22.2pt too far right and running all the way to the
-   * page frame, because it was traced from another payroll vendor's 150dpi rendering (item ece6d75d)
-   * rather than from LHDN's own file. The old comment claimed this column "is untouched" so a reader
-   * could check it against the agency's page; that was true only of the tracing.
+   * MEASURED OFF THE AGENCY'S OWN PDF IN r346 — the one column that was already the agency's when this
+   * round began. 89 cells start at x=482.3, 129 end there, 162 end at 556.6, and a cell width of 74.3
+   * occurs 87 times. UNCHANGED by r372: the item promises the money column is left exactly as it is.
    */
   moneyLeft: 482.3,
-  /**
-   * …and its RIGHT edge, which is NOT the page frame. The agency's money cells stop 15.3pt inside the
-   * outer rule; ours ran to it. Every amount, every money rule and the JUMLAH pair use this, so the
-   * column and the figures in it move together.
-   */
   moneyRight: 556.6,
-  /** Section A's two columns: caption x, then the rule the value is written on. */
-  aLeftLabel: 30,
-  aLeftRule: [92, 283.2] as const,
-  aRightLabel: 314,
-  aRightRule: [419.5, 571.3] as const,
-  /** Section B/C/D/E item captions, and the sub-items indented under them. */
-  itemLabel: 42,
-  subLabel: 55,
+  /** Where the agency writes ON that rule (the cell edge + the table's 5.4 pt cell padding). */
+  moneyLeader: 487.7,
+  /**
+   * ── THE FOUR TEXT COLUMNS THE FORM IS SET IN ──────────────────────────────────────────────────────
+   *
+   * The agency's C.P.8A is a Word TABLE. Its cells begin at 39.8 / 57.1 / 74.8 and its text sits 5.4 pt
+   * inside each, which is the table's own cell padding — so the columns a reader sees are 45.5 / 62.5 /
+   * 80.2, and those are what a renderer must draw on. (Section A's letter is at 45.5 against a 39.8 cell
+   * edge, 5.7 pt: the letter is centred in its cell rather than padded, and 45.5 is where it lands.)
+   */
+  /** The section letter, inside its filled block. */
+  sectionLetter: 45.5,
+  /** The item number — "1.", "2." … — and equally a section's TITLE, which sits in the same column. */
+  itemLabel: 62.5,
+  /** The sub-item letter — "(a)" … "(f)" — and any item caption that has no sub-letter under it. */
+  subLabel: 80.2,
+  /** A sub-item's own words, to the right of its letter (Section B and C). */
+  subText: 94.3,
+  /** …and D5's, which the agency sets 3.9 pt further in than B's. Its own number, not a rounding. */
+  subTextD5: 98.2,
+  /**
+   * The filled block behind a section letter: the agency's own cell, 39.8 → 57.1, 13.2 pt tall, with the
+   * caption's baseline 9.3 pt below its top edge and 3.9 pt above its foot.
+   */
+  letterBlockW: 17.3,
+  letterBlockAscent: 9.3,
+  letterBlockDescent: 3.9,
+  /** Section A's two columns: caption x, the rule the value is written on, then the same on the right. */
+  aLeftLabel: 80.2,
+  aLeftRule: [143.5, 298.9] as const,
+  /** Item 1 spans the whole table width — its cell is 74.8 → 556.6 — so its rule starts much later. */
+  aNameRule: [278.7, 556.6] as const,
+  /** Item 8's caption wraps, and the agency puts its rule on the SECOND line, starting further in. */
+  aChildrenRule: [174.1, 298.9] as const,
+  aRightNumber: 304.3,
+  aRightLabel: 321.9,
+  /** 9(a) / 9(b) are indented under item 9's sentence, in their own cell at 337.2. */
+  aRightSubLabel: 342.6,
+  aRightRule: [433.5, 556.6] as const,
   /**
    * r353 (item fda53352, point 4) — WHERE AN INLINE DESCRIPTION RULE STOPS, AND ITS CLOSING BRACKET WITH IT.
    *
-   * ⚠️ THIS FIXES AN OVERPRINT THAT WAS LIVE ON EVERY FILLED FORM. B.1(c), B.3 and B.4 each carry the
+   * ⚠️ THIS FIXED AN OVERPRINT THAT WAS LIVE ON EVERY FILLED FORM. B.1(c), B.3 and B.4 each carry the
    * agency's cue in brackets with a dotted rule inside the caption, and all three passed `ruleTo = 481`
    * — a magic literal, written when the money column started at 504.5 and never revisited when r346
    * moved it to `moneyLeft` (482.3). `captionWithInlineRule` draws the closing ')' at `ruleTo + 2`, i.e.
@@ -497,95 +510,154 @@ export const EA_FORM = {
    * measures the drawn glyph rather than trusting this arithmetic.
    */
   inlineRuleGap: 8,
+  /** D5(a)/(b) print their own RM and rule at MID-PAGE; the right-hand column stays empty there. */
+  midMoney: [354.6, 556.6] as const,
+  /** …with the agency's "RM" immediately before it. */
+  midRm: 342.6,
+  /** Sections E and F print an "RM" before the money column rather than relying on B's one heading. */
+  rmBeforeRule: 467.1,
+  /** The single bold "RM" heading over the money column, on Section B's sub-heading row. */
+  rmHeading: 511.7,
   /**
-   * r353 (point 2) — SECTION A'S TWO COORDINATES, MEASURED OFF THE AGENCY'S PDF INSTEAD OF GUESSED.
+   * ── THE VERTICAL GRID: EVERY BASELINE THE AGENCY SETS, IN ITS OWN ORDER ────────────────────────────
    *
-   * Both were BARE LITERALS in the drawing code (the heading at 99.5, the first field at 114) with no
-   * constant and no test, and the reporter asked for "breathing room" between them. Run
-   * `node --import tsx scripts/measure-ea-official-pdf.ts` — committed this round, because r346's and
-   * r349's measuring scripts were not — against `docs/forms/ea-cp8a-pin-2023-official-en.pdf`:
+   * ⚠️ THESE REPLACE A UNIFORM ~87% COMPRESSION OF THE AGENCY'S PAGE. Ours ran A 99.5 · B 197.5 ·
+   * C 391.5 · D 447.5 · E 567.8 · F 627.5 against the agency's 105.9 · 229.1 · 449.4 · 518.3 · 648.5 ·
+   * 712.4 (220.8 / 254.2 = 0.869; 461.3 / 531.7 = 0.868), so the page ended about 85 pt — an inch — short
+   * of where the agency's ends, and every section started higher up the page than it should.
+   */
+  headerT: {
+    formNo: 31.4,
+    masthead1: 31.4,
+    masthead2: 46.2,
+    masthead3: 60.2,
+    masthead4: 73,
+    /** The top-right block: two baselines in English, one in Malay, inside a filled rectangle. */
+    privateBlock: [18.3, 37.6] as const,
+    privateLine: [26.2, 35.2] as const,
+    ea: 38.3,
+    employeeTin: 46.9,
+    employeeTinRule: 59,
+    serialNo: 58.1,
+    employerNo: 72.5,
+    lhdnState: 72.2,
+  },
+  /** The header band's own columns. */
+  headerX: {
+    /** "Serial No." / "Employer's No. E" sit in the body table's own left column. */
+    leftLabel: 39.8,
+    leftRule: [104.4, 188] as const,
+    /** The right-hand block: the employee's TIN caption, its rule, and "LHDNM State". */
+    rightLabel: 415.7,
+    tinRule: [415.8, 557] as const,
+    stateRule: [476.1, 557] as const,
+    privateBlock: [399.1, 527] as const,
+    privateText: 405.1,
+  },
+  /** The white-on-black banner: the agency's strip, and its caption's baseline inside it. */
+  bannerT: [78.4, 92.6] as const,
+  bannerCaptionT: 88.6,
+  /** Section headings — the letter's baseline; the filled block is derived from it. */
+  sectionT: { a: 105.9, b: 229.1, c: 449.4, d: 518.3, e: 648.5, f: 712.4 },
+  /**
+   * r353 (item fda53352, point 2) — SECTION A'S TWO MEASURED GAPS, WHICH r372 DID NOT DISTURB.
    *
-   *   · the banner strip is tt 78.4 → 92.6;
-   *   · Section A's heading row (and its black letter square) begins at tt 96.6, i.e. 4.0 pt BELOW the
-   *     banner, and its caption's baseline is 105.9;
-   *   · item 1's row begins at 109.8 and its baseline is 119.7 — 13.8 pt under the heading's.
+   * Both were bare literals in the drawing code (the heading at 99.5, the first field at 114) and the
+   * reporter asked for "breathing room" between them. The measurement CONTRADICTED the complaint, which
+   * is why it was worth taking: the agency's own heading→first-field pitch is 13.8 pt (105.9 → 119.7)
+   * where ours was 14.5, already the wider of the two. What WAS too tight was the clearance above: our
+   * Section A block began 0.6 pt under the banner where the agency leaves 4.0, and two solid black
+   * blocks 0.6 pt apart read as one merged block at any print resolution.
    *
-   * ⚠️ AND THE MEASUREMENT CONTRADICTED THE COMPLAINT, WHICH IS WHY IT WAS WORTH TAKING. Our gap between
-   * the heading and the first field was 14.5 pt where the agency's is 13.8: already the wider of the two,
-   * so there was no breathing room to add there. What WAS too tight is the gap the plan noticed in
-   * passing: our Section A square began 0.6 pt under the banner where the agency leaves 4.0, and two
-   * solid black blocks 0.6 pt apart read as one merged block at any print resolution.
-   *
-   * The fix is the banner, not Section A: it rises by 3.4 pt into clearance we have and the agency does
-   * not (11.3 pt above ours to its last header rule, against the agency's 5.4), which buys the agency's
-   * 4.0 pt gap while leaving the heading exactly where it already was — and therefore moves NOTHING else
-   * in a section band that is 28.6 pt tighter than the agency's to begin with. r349's own note records
-   * that this banner's coordinate is ours and only its treatment is the agency's.
+   * ⚠️ r353 BOUGHT THAT 4.0 BY MOVING THE BANNER, BECAUSE THE SECTION COULD NOT MOVE. r372 removes the
+   * constraint rather than the fix: the banner and Section A are BOTH on the agency's own coordinates
+   * now (strip 78.4 → 92.6, letter block 96.6 → 109.8), and the two gaps below are what those absolute
+   * positions already imply. They are kept as named constants because they are the agency's own
+   * relationships and the r353 guard checks them, not because anything is derived FROM them any more.
    */
   sectionGapUnderBanner: 4.0,
   /** The agency's own heading-baseline → first-field-baseline pitch in Section A (105.9 → 119.7). */
   sectionAFieldPitch: 13.8,
-  /** D5(a)/(b) print their own RM and rule at MID-PAGE; the right-hand column stays empty there. */
-  midMoney: [323, 390.7] as const,
+  /** Section A: item 1, then the two-column rows, then item 8's second line and 9(a) / 9(b). */
+  rowsA: {
+    name: 119.7,
+    row2: 133.3,
+    row4: 147.5,
+    row6: 161.8,
+    children: 175.9,
+    childrenLine2: 187.6,
+    partYear: 175.9,
+    startedOn: 190.1,
+    leftOn: 204.4,
+  },
+  /** Section B: its bold sub-heading and the RM over the column, then the agency's thirteen rows. */
+  rowsB: {
+    excluding: 240.4,
+    grossSalary: 254.2,
+    feesCommissionBonus: 268.4,
+    tipsPerquisitesOther: 282.5,
+    taxBorneByEmployer: 296.8,
+    esos: 311,
+    gratuity: 325.1,
+    arrears: 339.4,
+    incomeTypeA: 353.6,
+    incomeTypeB: 367.7,
+    benefitsInKind: 382,
+    livingAccommodation: 396.2,
+    unapprovedFundRefund: 410.3,
+    compensation: 424.6,
+  },
+  /** Section C, closed by the form's single JUMLAH between two rules. */
+  rowsC: { pension: 463.2, annuity: 477.4, totalRuleAbove: 481.8, total: 492.4, totalRuleBelow: 497 },
+  rowsD: {
+    mtd: 531.7,
+    cp38: 544.9,
+    zakat: 558.1,
+    donations: 571.3,
+    tp1Heading: 584.5,
+    tp1Relief: 597.7,
+    zakatOther: 610.9,
+    childRelief: 624.1,
+  },
+  /** Section E: the fund's name, then its contribution on the row BELOW it, then PERKESO. */
+  rowsE: { fundName: 661.8, epf: 675, perkeso: 688.1 },
+  /** B.2's two description rules, which carry no money. */
+  incomeTypeX: { letter: 154.3, rule: [172.4, 298.9] as const },
+  /** B.1(f)'s two period rules, measured off the agency's own leaders. */
+  gratuityRule: { from: [192.3, 296] as const, to: [307.9, 411] as const, toCue: 299 },
   /**
-   * The banner, the officer box and the strip of ours below them.
+   * The officer box at the foot, on the agency's own rows.
    *
-   * ⚠️ r353 — THE BANNER ROSE 3.4 pt (it was [77.3, 90.7]) TO BUY SECTION A THE AGENCY'S OWN CLEARANCE.
-   * See `sectionGapUnderBanner` for the measurement and for why the banner moved rather than the section.
-   * Its HEIGHT (13.4) and its caption's position inside it are unchanged, so the block itself looks
-   * exactly as it did; only where it sits on the page moved. The clearance above it is still 7.9 pt to
-   * the "Employer's No. E" / "LHDNM State" rules at 68.5, where the agency leaves 5.4 pt above its own.
-   */
-  bannerT: [73.9, 87.3] as const,
-  /**
-   * The officer box at the foot. `ruleX[0]` is where the writing lines START, and it must clear the
-   * LONGEST caption in EITHER edition.
+   * ⚠️ r372 — THIS BOX MOVED 99 pt DOWN THE PAGE AND ITS PITCH CHANGED, AND BOTH ARE THE AGENCY'S.
+   * `--rects` puts its frame at tt 727.5 → 817.9 between vertical rules at x 191 and 557, with five
+   * writing rows whose baselines are 749.1 / 762.3 / 775.5 / 788.8 / 802 — a 13.2 pt pitch. Ours was
+   * 640.8 → 730.6 at a 17 pt pitch, traced. The captions sit at 196.9 and the writing rules start at
+   * 331.5; the agency's Date is OUTSIDE the box at x 45.2, on the SAME row as the telephone.
    *
-   * ⚠️ IT WAS 272 AND THE ENGLISH EDITION OVERRAN IT BY 7.9 pt (item fda53352, r349). "Name and Address
-   * of Employer" ends at 279.9 at Helvetica 8, so the caption ran into its own rule — which is the red
-   * bar the reporter drew on that box. The Malay caption ("Nama dan Alamat Majikan") ends at 260.7 and
-   * fits with 11 pt to spare, which is why it was never seen: the form was only ever read in Malay.
-   * A guard now measures both editions instead of trusting this number.
+   * ⚠️ AND THE ROOM UNDER IT IS GONE, WHICH IS WHY ROUND ONE'S GROWTH NOW SPILLS TO A SECOND SHEET.
+   * The agency's last row ends at 817.9 and `bottom` is 830: 12.1 pt against a 13.2 pt pitch, so not one
+   * more rule fits. Round one (item 450f443f) grew this box downwards for an employer name and address
+   * longer than the agency's two writing rules; at the agency's own geometry there is nowhere to grow
+   * into, and the alternatives are both refused — shrinking the type reinstates the 3.4 pt line that
+   * round one exists to prevent, and truncating reads as a complete address. So the rules that fit are
+   * drawn here and the remainder continues on a second sheet, at a full 8 pt, under the agency's own
+   * caption. `minSize` is still the floor for the three single-value rows, which cannot wrap.
    */
   officerBox: {
-    x0: 158.9,
-    t0: 640.8,
+    x0: 191,
+    t0: 727.5,
     /**
      * The box's bottom edge WHEN IT HAS NOT GROWN — i.e. for the two writing lines the agency's own
-     * box has. A name and address that needs more takes `rowPitch` per extra rule below this; the
-     * renderer computes `officerBoxT1` and nothing else reads `t1` for a grown box.
+     * box has, which is the agency's own bottom rule. A name and address that needs more takes
+     * `rowPitch` per extra rule below this; the renderer computes `officerBoxT1` and nothing else
+     * reads `t1` for a grown box.
      */
-    t1: 730.6,
-    ruleX: [288, 563] as const,
-    /**
-     * r372 — THE FOUR NUMBERS THE FOOT IS NOW DRAWN FROM, RATHER THAN THE FIVE LITERALS IT WAS.
-     *
-     * Every baseline in this box used to be typed out at its call site (655 / 672 / 689 / 706 / 723),
-     * so growing it meant editing five numbers that only a reader could tell were one arithmetic
-     * sequence. They are now `rowT0 + n * rowPitch`, and the rule count is computed from the wrapped
-     * text rather than fixed at two.
-     *
-     * ⚠️ WHAT ROUND TWO (item 795c470c, the grid) HAS TO CHANGE, AND WHAT IT MUST NOT. It re-pitches
-     * this box onto the agency's own rows: `scripts/measure-ea-official-pdf.ts --rects` puts them at
-     * tt 739.8 / 753 / 766.2 / 779.4 / 792.6, five rows of 13.2 pt, i.e. `rowT0` ≈ 749.1 and
-     * `rowPitch` 13.2. Changing those two constants re-pitches the growth with it; nothing downstream
-     * needs touching, which is the whole point of naming them.
-     *
-     * `minSize` IS NOT ROUND TWO'S TO LOWER. It is why a long employer address is legible at all (see
-     * the block comment on the employer rules below), and at 13.2 pt pitch the pressure to shrink
-     * instead of wrap goes UP, not down.
-     *
-     * ⚠️ AND THE HAZARD ROUND TWO INHERITS, MEASURED. The agency's box top is tt 739.8 against our
-     * 640.8 — 99.0 pt lower — and its own bottom edge is at 817. Dropped onto those rows this box
-     * ends 13 pt above `bottom` (830) and 75 pt BELOW `footStripT` (742), where the amended-payslip
-     * marker draws. pdf-lib does NOT clip, so that is an overprint, not a clipped box. Two
-     * consequences: the marker's baseline must keep following the box (it does — see the foot), and
-     * at 13.2 pt pitch there is room for ZERO extra rules, so round two has to reclaim vertical space
-     * from the ~87% compression above this box (our Section F sits at 627.5 against the agency's
-     * 712.4) before the growth this round adds can still fit on the page.
-     */
-    rowT0: 655,
-    rowPitch: 17,
+    t1: 817.9,
+    ruleX: [331.5, 556.1] as const,
+    captionX: 196.9,
+    /** The agency's own first writing baseline, and the pitch of its five rows. */
+    rowT0: 749.1,
+    rowPitch: 13.2,
     /** The agency's own count of writing lines for the name and address: two. The floor, never a cap. */
     employerRules: 2,
     /**
@@ -593,13 +665,37 @@ export const EA_FORM = {
      * officer's name, the designation and the telephone number. See the employer rules' own note for
      * why it is 6 and not `fitSize`'s 1, and `officerRow` for what the three single-value rows do when
      * they reach it (they overprint; they have no second rule to wrap onto).
+     *
+     * ⚠️ IT WAS NOT r372's TO LOWER AND IT HAS NOT BEEN LOWERED. At 13.2 pt the pressure to shrink
+     * rather than wrap goes UP, which is the argument for the second sheet, not against the floor.
      */
     minSize: 6,
+    /** The gap between the last writing baseline and the box's own bottom rule (802 → 817.9). */
+    footPad: 15.9,
   },
-  /** Where OUR strip starts — the ~110 pt the specimen leaves empty beneath its own foot. */
+  /** The Date, which the agency prints OUTSIDE the box, on the telephone's row. */
+  dateX: 45.2,
+  dateRule: [62.2, 185] as const,
+  /**
+   * ⚠️ `footStripT` IS RETIRED IN r372 AND KEPT SO THE NUMBER CAN BE RECOGNISED. It was 742: "where OUR
+   * strip starts — the ~110 pt the specimen leaves empty beneath its own foot". r351 removed the strip
+   * at the reporter's written instruction and left the amended marker behind on this coordinate; r372
+   * put the officer box on the agency's rows, which end at 817.9 — 75 pt PAST 742 — so the marker would
+   * have printed inside the box, over the telephone rule, and pdf-lib does not clip. There is no empty
+   * band beneath the agency's foot to put it in. Its new home is `amendedNoteT`, ABOVE the box, decided
+   * here rather than discovered on a rendered page.
+   */
   footStripT: 742,
+  /**
+   * The amended-statement marker's baseline: 4 pt above the officer box's top rule, in the 11.1 pt band
+   * the agency leaves between Section F's row (which ends at 716.4) and the box (727.5). It is OURS —
+   * the agency's page has no such line — so it is a departure, and it is named as one above.
+   */
+  amendedNoteT: 723.5,
   /** The page floor. Nothing may be drawn below it. */
   bottom: 830,
+  /** Where a continuation sheet starts, when the employer's address outgrows the agency's box. */
+  overflowT: 60,
 } as const;
 
 /**
@@ -692,6 +788,10 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
 
   const H = A4[1];
   const { left: L, right: R, moneyLeft: MX, moneyRight: MR } = EA_FORM;
+  /** The whole measured grid, under one short name, because nearly every draw below reads from it. */
+  const A = EA_FORM;
+  /** 749.1 + 5 * 13.2 must be 815.1, not 815.0999999999999 — every baseline here is a tenth of a point. */
+  const round1 = (n: number) => Math.round(n * 10) / 10;
   const CX = (L + R) / 2;
   const ink = rgb(0.09, 0.09, 0.11);
   const muted = rgb(0.42, 0.42, 0.47);
@@ -921,147 +1021,242 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   };
 
   /**
-   * ONE SECTION HEADING: the letter in a filled black square, the title beside it (r349).
+   * ONE SECTION HEADING: the letter in a filled black block, the title beside it (r349).
    *
    * The label carries its own letter ("A  PARTICULARS OF EMPLOYEE") because the form's numbering is part
    * of its wording — `lib/ea-field-register.ts` matches on it and the six catalogues own it. So the
    * letter is SPLIT OFF here rather than removed from the catalogues, which would have made the register
    * and the page disagree about what the form says.
    *
-   * ⚠️ WHICH COORDINATE THIS FOLLOWS. The agency puts its square at x 39.8, its own body column. Ours
-   * goes at `L` (24). The square's SIZE is the agency's (17.3 pt wide, measured off its page); its
-   * POSITION is ours. The transcription records both and says a build must choose per block; this is
-   * that choice, stated.
+   * ⚠️ r372 — THE BLOCK AND THE TITLE ARE BOTH ON THE AGENCY'S COLUMNS NOW, AND THE REASON RECORDED FOR
+   * THE OLD POSITION WAS FALSE. What stood here, quoted so the claim can be recognised if it resurfaces:
    *
-   * ⚠️ r372 — THE REASON GIVEN FOR THAT CHOICE WAS FALSE, AND IT CONTRADICTED THIS NOTE'S OWN FIRST
-   * SENTENCE. What stood here, quoted:
-   *
-   *     "Ours goes at `L` (24), because EA_FORM.left is already a deliberate departure — the agency's
-   *      rules start 16.8 pt from the paper edge, inside the unprintable margin of most office printers."
+   *     "The agency puts its square at x 39.8, its own body column. Ours goes at `L` (24), because
+   *      EA_FORM.left is already a deliberate departure — the agency's rules start 16.8 pt from the
+   *      paper edge, inside the unprintable margin of most office printers. The square's SIZE is the
+   *      agency's (17.3 pt wide, measured off its page); its POSITION is ours."
    *
    * It asserted the agency starts at 16.8 pt three words after correctly recording that it starts at
-   * 39.8. `--rects` counts 150 of the agency's cells beginning at 39.8 and none left of it; 16.8 pt was
-   * the left edge of the DevExpress TRACING, never a published LHDN number. The agency's page is WIDER
-   * than ours, so there is no unprintable-margin conflict and `L` = 24 is an un-remeasured leftover, not
-   * a departure. See the retirement note on `EA_FORM` for the full measurement. Round two (item
-   * 795c470c) re-derives it; nothing is moved here.
+   * 39.8. 16.8 was the DevExpress TRACING's left edge. The block is now the agency's cell exactly —
+   * 39.8 → 57.1, 13.2 pt tall, the caption's baseline 9.3 pt below its top — and the title sits in the
+   * agency's own 62.5 column, which is the same column its item numbers sit in.
    */
   const sectionHeading = (label: string, tt: number) => {
     const m = /^\s*([A-F])\s+(.*)$/.exec(label);
     // A label that does not start with a lone section letter is drawn whole, unboxed — a locale that
     // reorders it must not silently lose its title.
-    if (!m) return putFit(label, L, R - L, tt, 8.5, bold);
+    if (!m) return putFit(label, A.itemLabel, R - A.itemLabel, tt, 8.5, bold);
     const [, letter, title] = m;
-    const SQ = 17.3; // the agency's own square width, measured off its page
-    const top = tt - 8.2;
-    const bot = tt + 2.3;
-    fill(L, top, L + SQ, bot);
-    putC(letter, L + SQ / 2, tt, 8.5, bold, white);
-    return putFit(title, L + SQ + 6, R - (L + SQ + 6), tt, 8.5, bold);
+    fill(A.left, tt - A.letterBlockAscent, A.left + A.letterBlockW, tt + A.letterBlockDescent);
+    putC(letter, A.left + A.letterBlockW / 2, tt, 8.5, bold, white);
+    return putFit(title, A.itemLabel, R - A.itemLabel, tt, 8.5, bold);
+  };
+
+  /**
+   * ── THE FORM'S OWN NUMBERING IS STRUCTURE, NOT WORDING (r372, item 795c470c) ───────────────────────
+   *
+   * The agency sets every numbered line in THREE columns: the item number at 62.5, the sub-item letter
+   * at 80.2 and the words at 94.3. Our catalogues carry the number inside the caption — `payroll.ea`
+   * `grossSalary` is "1(a) Gross salary, wages or leave pay (including overtime pay)" — and the renderer
+   * drew that one string at one x. That is why the item numbers and sub-items sat ~20 pt too far left:
+   * there was only ever one column to put them in.
+   *
+   * ⚠️ THE NUMBER DRAWN IS ALWAYS THIS TABLE'S, NEVER THE STRING'S. `Numbering` is the renderer's own
+   * record of what the form numbers each box, and `put` draws it from there. The caption is only ever
+   * asked to give up a prefix THIS renderer already composed — `stripDrawnNumbering` removes "1(a)" from
+   * the front of the caption because it is about to draw "1." and "(a)" itself, and removes nothing when
+   * the caption does not start with it. So a catalogue that numbers differently, or not at all, cannot
+   * put a wrong number on a tax document; the worst it can do is leave its own number in the words.
+   *
+   * ⚠️ AND THE PLAN'S REASON FOR DOING THIS THROUGH NEW MESSAGE KEYS WAS WRONG ON THE FACTS, WHICH IS
+   * WHY IT IS DONE HERE INSTEAD. The build note said "Do NOT parse the number off the front of a
+   * localized string — six locales, and messages/ms.json numbers differently in places." `ms.json`
+   * numbers IDENTICALLY to `en.json` on every caption this renderer draws ("1(a) Gaji kasar…",
+   * "3. Manfaat berupa barangan"), and en/ms are the only two editions either route will render. The
+   * other four locales are the HTML statement's, which reads these same keys and prints the number —
+   * so retiring the combined keys would have changed a screen the item says must not change ("No caption
+   * shall change"), in four languages, to fix a column on a page they never reach.
+   */
+  type Numbering = {
+    /** The form's item number, e.g. "1" or "5". Drawn unless `itemDrawn` is false. */
+    item?: string;
+    /** The form's sub-item letter, e.g. "(a)". */
+    sub?: string;
+    /** False where the agency prints the item number ONCE, against its first sub-item only. */
+    itemDrawn?: boolean;
+  };
+
+  /** Every prefix this renderer would itself compose for `n`, longest first. */
+  const drawnPrefixes = (n: Numbering): string[] => {
+    const out: string[] = [];
+    if (n.item && n.sub) out.push(`${n.item}${n.sub}`, `${n.item}.${n.sub}`, `${n.item} ${n.sub}`, `${n.item}. ${n.sub}`);
+    if (n.sub) out.push(n.sub);
+    if (n.item) out.push(`${n.item}.`, n.item);
+    return out.sort((a, b) => b.length - a.length);
+  };
+
+  /** The caption with the numbering this renderer is about to draw removed from its front, if present. */
+  const stripDrawnNumbering = (caption: string, n: Numbering): string => {
+    const s = (caption ?? '').trimStart();
+    for (const prefix of drawnPrefixes(n)) {
+      if (s.startsWith(prefix)) return s.slice(prefix.length).replace(/^[\s.:]+/, '');
+    }
+    return s;
+  };
+
+  /**
+   * Draw a numbered line's number and sub-letter in the agency's own columns and return the x its WORDS
+   * start at — 94.3 under a sub-letter, 80.2 under a bare item number, and the caller's own column where
+   * the agency indents differently (D5's sub-items sit at 98.2).
+   */
+  const numbering = (n: Numbering, tt: number, size = 8, textX?: number): number => {
+    if (n.item && n.itemDrawn !== false) put(`${n.item}.`, A.itemLabel, tt, size);
+    if (n.sub) put(n.sub, A.subLabel, tt, size);
+    return textX ?? (n.sub ? A.subText : A.subLabel);
   };
 
   const W = eaFormWords(opts.locale ?? 'en');
 
   // ── THE HEADER BAND — three blocks and the ruled banner under them ──────────────────────────────────
-  put(W.formNo, L, 20, 7.5);
-  putC(W.masthead1, CX, 22, 9.5);
-  putC(W.masthead2, CX, 37, 13.5, bold);
-  putC(W.masthead3, CX, 50, 9);
+  //
+  // r372 — every baseline AND every size here is the agency's own (`--all`): the form number and
+  // MALAYSIA on 31.4 at 8 pt, INCOME TAX on 46.2 at 12, the long masthead line on 60.2 at 8 and the
+  // year line on 73 at 8.
+  //
+  // ⚠️ THE SIZES WERE OURS (9.5 / 13.5 / 9 / 9) AND THAT WAS NOT A HARMLESS DEPARTURE. At 9 pt
+  // "STATEMENT OF REMUNERATION FROM EMPLOYMENT" is 235 pt wide centred on the page, so it ended at
+  // 415.9 — and the employee's TIN is written from 418.8. On the rasterised page the masthead ran
+  // straight into the tax number. pdf-lib does not clip. The agency's own 8 pt clears it by 11 pt, and
+  // the only reason the collision was reachable at all is that the header band had never been measured.
+  // INCOME TAX keeps its BOLD face, which is ours; its size is the agency's.
+  const HT = A.headerT;
+  const HX = A.headerX;
+  put(W.formNo, L, HT.formNo, 7.5);
+  putC(W.masthead1, CX, HT.masthead1, 8);
+  putC(W.masthead2, CX, HT.masthead2, 12, bold);
+  putC(W.masthead3, CX, HT.masthead3, 8);
   // r220 — `.trim()` is what the BLANK form needs and what a filled one never notices: the year of
   // assessment is completed on the agency's line, so with no year there is nothing to complete and the
   // line is the agency's own caption, exactly as the specimen prints it.
-  putC(`${W.masthead4} ${d.year}`.trim(), CX, 62, 9);
+  putC(`${W.masthead4} ${d.year}`.trim(), CX, HT.masthead4, 8);
 
   // LEFT: No. Siri has NO source in this system and never will — it is the employer's own running number
   // for the statements it issues — so it prints the blank form's rule, which is what the agency's page
-  // carries there.
-  put(W.serialNo, L + 6, 52, 7.5);
-  // The rules STOP at 200, short of the centred masthead: "PENYATA SARAAN DARIPADA PENGGAJIAN" is 168 pt
-  // wide centred on 297.6, so its left edge is 213.6 and a rule run any further collides with it. The
-  // specimen's own rules stop even shorter.
-  valueOrRule('', 92, 200, 52);
-  put(W.employerTin, L + 6, 66, 7.5);
-  valueOrRule(d.employer.eNumber ?? '', 92, 200, 66);
+  // carries there. Both captions sit in the body table's own left column (39.8), where the agency puts
+  // them: r372's fixed parser is what made "Employer's" visible at all — it is set in a subset font as
+  // hex inside a TJ array, and the old parser dropped it, so this row read as starting at "No.".
+  put(W.serialNo, HX.leftLabel, HT.serialNo, 7.5);
+  // The rules STOP at 188, short of the centred masthead: "STATEMENT OF REMUNERATION FROM EMPLOYMENT"
+  // is centred on CX one baseline away (191.9 at 8 pt, in the wider of the two editions), and a rule
+  // run any further crosses it. The agency's own leaders run to ~275 because its own masthead sits at
+  // a different baseline; this end is a CLEARANCE, not a column, which is why it is not the agency's.
+  valueOrRule('', HX.leftRule[0], HX.leftRule[1], HT.serialNo);
+  put(W.employerTin, HX.leftLabel, HT.employerNo, 7.5);
+  valueOrRule(d.employer.eNumber ?? '', HX.leftRule[0], HX.leftRule[1], HT.employerNo);
 
   // RIGHT: the "EA" is the largest type on the page, and the employee's own TIN sits under it.
   const eaW = bold.widthOfTextAtSize(W.ea, 17);
   // ⚠️ TWO LINES WHEN THE EDITION NEEDS TWO. The agency's English sets this in a two-line box where the
   // Malay uses one, and the English string is 96pt wider: drawn on a single line it runs left out of its
   // own block and straight through the centred "MALAYSIA". pdf-lib does not clip, so the page still
-  // renders and still downloads — the r205 Borang A lesson, and it was live in this round until the
-  // blank form was rasterised and looked at. A caption is not proven by a green test.
-  // r349 — the agency sets this in a filled black block too (measured: x 398.9, width 133.0, height 20.2
-  // for its two English lines). ⚠️ THE BLOCK SIZES TO THE EDITION, never to a constant: English runs two
-  // lines and Malay one, so a fixed rectangle leaves the Malay page with a half-empty black box.
+  // renders and still downloads — the r205 Borang A lesson, and it was live in r346 until the blank form
+  // was rasterised and looked at. A caption is not proven by a green test.
+  // r349 — the agency sets this in a filled black block too; r372 measured it: x 399.1 → 527, tt 18.3 →
+  // 37.6, its two English lines LEFT-aligned at 405.1 on baselines 26.2 and 35.2. ⚠️ THE BLOCK SIZES TO
+  // THE EDITION, never to a constant: English runs two lines and Malay one, so a fixed rectangle leaves
+  // the Malay page with a half-empty black box. It also may never reach the "EA" to its right.
   {
-    const right = R - eaW - 6;
     const lines = W.privateStatement2 ? [W.privateStatement, W.privateStatement2] : [W.privateStatement];
-    const size = lines.length > 1 ? 8 : 8.5;
+    const two = lines.length > 1;
+    const size = two ? 8 : 8.5;
     const widest = Math.max(...lines.map((l) => bold.widthOfTextAtSize(safe(l), size)));
-    const top = lines.length > 1 ? 10.5 : 17.5;
-    const bot = lines.length > 1 ? 29.5 : 27;
-    fill(right - widest - 5, top, right + 3, bot);
-    lines.forEach((l, i) => putR(l, right, (lines.length > 1 ? 17 : 24) + i * 9, size, bold, white));
+    const x0 = HX.privateBlock[0];
+    const pad = HX.privateText - x0;
+    const x1 = Math.min(R - eaW - 6, Math.max(HX.privateBlock[1], HX.privateText + widest + pad));
+    const [t0, t1] = two ? HT.privateBlock : [HT.privateBlock[0] + 3.7, HT.privateBlock[1] - 2.7];
+    fill(x0, t0, x1, t1);
+    lines.forEach((l, i) =>
+      putFit(l, HX.privateText, x1 - HX.privateText - 2, two ? HT.privateLine[i] : 31.5, size, bold, white),
+    );
   }
-  putR(W.ea, R, 26, 17, bold);
-  putR(W.employeeTin, R, 36, 7.5);
-  valueOrRule(d.employee.taxNo ?? '', 438, R, 47);
-  put(W.lhdnState, 440, 66, 7.5);
-  valueOrRule(d.employer.lhdnState ?? '', 495, R, 66);
+  putR(W.ea, R, HT.ea, 17, bold);
+  // The agency LEFT-aligns the employee's TIN caption in its own column and rules it on the line below.
+  putFit(W.employeeTin, HX.rightLabel, R - HX.rightLabel, HT.employeeTin, 7.5);
+  valueOrRule(d.employee.taxNo ?? '', HX.tinRule[0], HX.tinRule[1], HT.employeeTinRule);
+  put(W.lhdnState, HX.rightLabel, HT.lhdnState, 7.5);
+  valueOrRule(d.employer.lhdnState ?? '', HX.stateRule[0], HX.stateRule[1], HT.lhdnState);
 
-  // r349 — SOLID, WHITE-ON-BLACK, as the agency prints it. Measured off its page: top 78.2, height 14.9,
-  // spanning its body width (39.8 -> 555.8). We keep OUR margins (L -> R) so the banner stays flush with
-  // the rest of our page; what is adopted is the treatment, not the coordinate.
-  fill(L, EA_FORM.bannerT[0], R, EA_FORM.bannerT[1]);
-  // r353 — the caption's 9.2 pt drop inside the strip is unchanged; it follows the strip instead of
-  // repeating its old absolute baseline (86.5), so the two can no longer be moved apart by accident.
-  putC(W.banner, CX, EA_FORM.bannerT[0] + 9.2, 8, bold, white);
+  // r349 — SOLID, WHITE-ON-BLACK, as the agency prints it; r372 put it on the agency's own strip
+  // (tt 78.4 → 92.6, measured) with its caption's baseline at 88.6 inside it. The agency spans 40.3 →
+  // 555.6 and we span L → R, which is the same edge to within half a point now that L is the agency's.
+  // The 8 pt caption is ours: the agency sets 9 pt, and the Malay banner is 13 characters longer than
+  // the English and would not clear the strip at 9.
+  fill(L, A.bannerT[0], R, A.bannerT[1]);
+  putC(W.banner, CX, A.bannerCaptionT, 8, bold, white);
 
   // ── A — BUTIRAN PEKERJA ────────────────────────────────────────────────────────────────────────────
-  const A = EA_FORM;
-  /**
-   * r353 (point 2) — DERIVED FROM THE BANNER AND THE AGENCY'S MEASURED GAPS, not typed in.
-   *
-   * `sectionHeading` hangs its black square from `tt - 8.2`, so putting the square the agency's
-   * `sectionGapUnderBanner` below the banner fixes the caption's baseline. `SQUARE_ASCENT` is that same
-   * 8.2 named once here rather than being the third copy of a number the heading already owns.
-   * With the banner at 87.3 this lands on 99.5 — where the heading already was — so Section A does not
-   * move; what changed is that the number is now the agency's arithmetic and not a literal.
-   */
-  const SQUARE_ASCENT = 8.2;
-  const round1 = (n: number) => Math.round(n * 10) / 10; // 87.3 + 4 + 8.2 must be 99.5, not 99.50000000000001
-  const aHeading = round1(A.bannerT[1] + A.sectionGapUnderBanner + SQUARE_ASCENT);
-  const aFirstField = round1(aHeading + A.sectionAFieldPitch);
-  sectionHeading(t.sectionAEmployeeParticulars, aHeading);
-  putFit(t.name, L + 6, 165, aFirstField, 7.5);
-  valueOrRule(d.employee.name, 197.3, R, aFirstField);
+  sectionHeading(t.sectionAEmployeeParticulars, A.sectionT.a);
 
-  /** One two-column Section A row: item on the left, item on the right, each with its own rule. */
-  const aRow = (tt: number, leftLabel: string, leftValue: string, rightLabel: string, rightValue: string) => {
-    putFit(leftLabel, A.aLeftLabel, A.aLeftRule[0] - A.aLeftLabel - 4, tt, 7.5);
+  /** Item 1 spans the agency's whole table width (its cell is 74.8 → 556.6), so it is not an `aRow`. */
+  {
+    const n: Numbering = { item: '1' };
+    const x = numbering(n, A.rowsA.name, 7.5);
+    putFit(stripDrawnNumbering(t.name, n), x, A.aNameRule[0] - x - 4, A.rowsA.name, 7.5);
+    valueOrRule(d.employee.name, A.aNameRule[0], A.aNameRule[1], A.rowsA.name);
+  }
+
+  /** One two-column Section A row: item on the left, item on the right, each numbered and ruled. */
+  const aRow = (
+    tt: number,
+    leftItem: string,
+    leftLabel: string,
+    leftValue: string,
+    rightItem: string,
+    rightLabel: string,
+    rightValue: string,
+  ) => {
+    put(`${leftItem}.`, A.itemLabel, tt, 7.5);
+    putFit(stripDrawnNumbering(leftLabel, { item: leftItem }), A.aLeftLabel, A.aLeftRule[0] - A.aLeftLabel - 4, tt, 7.5);
     valueOrRule(leftValue, A.aLeftRule[0], A.aLeftRule[1], tt);
-    putFit(rightLabel, A.aRightLabel, A.aRightRule[0] - A.aRightLabel - 4, tt, 7.5);
+    put(`${rightItem}.`, A.aRightNumber, tt, 7.5);
+    putFit(
+      stripDrawnNumbering(rightLabel, { item: rightItem }),
+      A.aRightLabel,
+      A.aRightRule[0] - A.aRightLabel - 4,
+      tt,
+      7.5,
+    );
     valueOrRule(rightValue, A.aRightRule[0], A.aRightRule[1], tt);
   };
-  aRow(125.7, t.jobTitle, d.employee.jobTitle ?? '', t.employeeNo, d.employee.employeeNo ?? '');
-  aRow(137.7, t.icNo, d.employee.ic ?? '', t.passportNo, d.employee.passport ?? '');
-  aRow(149.7, t.epfNo, d.employee.epfNo ?? '', t.socsoNo, d.employee.socsoNo ?? '');
+  aRow(A.rowsA.row2, '2', t.jobTitle, d.employee.jobTitle ?? '', '3', t.employeeNo, d.employee.employeeNo ?? '');
+  aRow(A.rowsA.row4, '4', t.icNo, d.employee.ic ?? '', '5', t.passportNo, d.employee.passport ?? '');
+  aRow(A.rowsA.row6, '6', t.epfNo, d.employee.epfNo ?? '', '7', t.socsoNo, d.employee.socsoNo ?? '');
 
-  // Item 8's caption wraps to a second line on the form, and its rule sits on that second line.
-  const childLines = wrapped(t.childrenTaxRelief, 7.5, 105).slice(0, 2);
-  childLines.forEach((line, i) => put(line, A.aLeftLabel + (i ? 6 : 0), 160.8 + i * 9.6, 7.5));
-  // r220 — a COUNT, not an amount, so it does not pass through `amountOrRule` and has to say for itself
-  // that a blank form carries no number here. `String(0)` is "0", and "0 children qualifying for tax
-  // relief" is a claim about a person the blank form does not have.
-  //
-  // r364 — THE EXPRESSION IS UNCHANGED AND ITS REASON IS NOT. r359 read the `== null` arm as "absent
-  // because D.6 is absent — the two boxes are one fact". It now means UNRECORDED: no statutory row, or a
-  // null `num_children` in a mode that reads it. Nothing about D.6 reaches this box any more.
-  valueOrRule(blank || d.employee.children == null ? '' : String(d.employee.children), 135, A.aLeftRule[1], 173.2);
+  // Item 8's caption wraps to a second line on the agency's form, and its rule sits on that second line
+  // (measured: caption 80.2 on tt 175.9 and 187.6, rule 174.1 → 298.9 on the second).
+  {
+    const n: Numbering = { item: '8' };
+    put(`${n.item}.`, A.itemLabel, A.rowsA.children, 7.5);
+    const childLines = wrapped(stripDrawnNumbering(t.childrenTaxRelief, n), 7.5, A.aChildrenRule[0] - A.aLeftLabel - 4).slice(0, 2);
+    childLines.forEach((line, i) => put(line, A.aLeftLabel, i ? A.rowsA.childrenLine2 : A.rowsA.children, 7.5));
+    // r220 — a COUNT, not an amount, so it does not pass through `amountOrRule` and has to say for itself
+    // that a blank form carries no number here. `String(0)` is "0", and "0 children qualifying for tax
+    // relief" is a claim about a person the blank form does not have.
+    //
+    // r364 — THE EXPRESSION IS UNCHANGED AND ITS REASON IS NOT. r359 read the `== null` arm as "absent
+    // because D.6 is absent — the two boxes are one fact". It now means UNRECORDED: no statutory row, or
+    // a null `num_children` in a mode that reads it. Nothing about D.6 reaches this box any more.
+    valueOrRule(
+      blank || d.employee.children == null ? '' : String(d.employee.children),
+      A.aChildrenRule[0],
+      A.aChildrenRule[1],
+      A.rowsA.childrenLine2,
+    );
+  }
 
   /**
    * ⚠️ ITEM 9 IS CONDITIONAL ON THE YEAR, NOT ON A DATE EXISTING — and that distinction is the whole
-   * defect this half of the round fixes.
+   * defect r219 fixed.
    *
    * The form says "Jika bekerja tidak genap setahun, nyatakan:" — state these ONLY if the employment did
    * not run the whole year. Until r219 the renderer printed `hiredOn → terminatedOn` whenever either was
@@ -1073,216 +1268,287 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
    * The captions and their rules are printed either way, because the blank form prints them either way —
    * a person who worked the whole year gets two empty rules, which is what the agency's page looks like.
    */
-  putFit(t.partYearNote, A.aRightLabel, 250, 160.8, 7.5);
   const inYear = (iso: string | null) => (iso && iso.slice(0, 4) === d.year ? formDate(iso) : '');
-  putFit(t.startedOn, A.aRightLabel + 14, A.aRightRule[0] - A.aRightLabel - 18, 173.2, 7.5);
-  valueOrRule(inYear(d.employee.hiredOn), A.aRightRule[0], A.aRightRule[1], 173.2);
-  putFit(t.leftOn, A.aRightLabel + 14, A.aRightRule[0] - A.aRightLabel - 18, 186.6, 7.5);
-  valueOrRule(inYear(d.employee.terminatedOn), A.aRightRule[0], A.aRightRule[1], 186.6);
+  {
+    const n: Numbering = { item: '9' };
+    put(`${n.item}.`, A.aRightNumber, A.rowsA.partYear, 7.5);
+    putFit(stripDrawnNumbering(t.partYearNote, n), A.aRightLabel, R - A.aRightLabel, A.rowsA.partYear, 7.5);
+    const aSub = (sub: string, caption: string, tt: number, value: string) => {
+      put(sub, A.aRightLabel, tt, 7.5);
+      putFit(
+        stripDrawnNumbering(caption, { item: '9', sub, itemDrawn: false }),
+        A.aRightSubLabel,
+        A.aRightRule[0] - A.aRightSubLabel - 4,
+        tt,
+        7.5,
+      );
+      valueOrRule(value, A.aRightRule[0], A.aRightRule[1], tt);
+    };
+    aSub('(a)', t.startedOn, A.rowsA.startedOn, inYear(d.employee.hiredOn));
+    aSub('(b)', t.leftOn, A.rowsA.leftOn, inYear(d.employee.terminatedOn));
+  }
 
   // ── B — PENDAPATAN PENGGAJIAN, MANFAAT DAN TEMPAT KEDIAMAN ─────────────────────────────────────────
-  sectionHeading(t.sectionBEmploymentIncome, 197.5);
-  putFit(t.sectionBExcluding, L + 6, 430, 208, 7.5, bold);
-  // The bold RM heading, printed ONCE for the whole form, over the right-hand column.
-  putC(W.rm, (MX + MR) / 2, 208, 9, bold);
+  sectionHeading(t.sectionBEmploymentIncome, A.sectionT.b);
+  putFit(t.sectionBExcluding, A.itemLabel, A.rmHeading - A.itemLabel - 10, A.rowsB.excluding, 7.5, bold);
+  // The bold RM heading, printed ONCE for the whole form, over the right-hand column — at the agency's
+  // own 511.7 rather than centred on a column of our choosing.
+  put(W.rm, A.rmHeading, A.rowsB.excluding, 9, bold);
 
-  moneyLine(t.grossSalary, A.itemLabel, 220.8, derived(d.partB.grossSalary));
+  /** One numbered money line, drawn in the agency's three columns with its amount on the RM rule. */
+  const itemLine = (n: Numbering, caption: string, tt: number, value: string, size = 8) => {
+    const x = numbering(n, tt, size);
+    putFit(stripDrawnNumbering(caption, n), x, MX - x - 14, tt, size);
+    amountOrRule(value, MX, MR, tt);
+  };
+
+  itemLine({ item: '1', sub: '(a)' }, t.grossSalary, A.rowsB.grossSalary, derived(d.partB.grossSalary));
   // 1(b) and 1(c) are ONE box each on the agency's form over TWO of our figures. The form's own captions
   // say so — "Fi (termasuk fi pengarah), komisen atau bonus" and "Tip kasar, perkuisit, penerimaan sagu
   // hati atau elaun-elaun lain" — so the box carries the sum, and printing only half of it would leave
   // taxable money off the line the agency asks for it on. The finer split stays visible where it is
   // useful: the HTML statement and the amend panel keep a row each.
-  moneyLine(t.feesCommissionBonus, A.itemLabel, 234.2, mixed(d.partB.bonus, d.partB.directorFee));
-  captionWithInlineRule(t.tipsPerquisitesOther, t.paymentDetail, A.itemLabel, 248.2);
-  amountOrRule(mixed(d.partB.allowances, d.partB.tipsPerquisites), MX, MR, 248.2);
-  moneyLine(t.taxBorneByEmployer, A.itemLabel, 261.6, manual(d.partB.taxBorneByEmployer));
-  moneyLine(t.esos, A.itemLabel, 275, manual(d.partB.esos));
+  //
+  // ⚠️ AND THE AGENCY PRINTS "1." ONCE, against (a) only — `itemDrawn: false` is that, not a shortcut.
+  itemLine(
+    { item: '1', sub: '(b)', itemDrawn: false },
+    t.feesCommissionBonus,
+    A.rowsB.feesCommissionBonus,
+    mixed(d.partB.bonus, d.partB.directorFee),
+  );
+  {
+    const n: Numbering = { item: '1', sub: '(c)', itemDrawn: false };
+    const x = numbering(n, A.rowsB.tipsPerquisitesOther);
+    captionWithInlineRule(stripDrawnNumbering(t.tipsPerquisitesOther, n), t.paymentDetail, x, A.rowsB.tipsPerquisitesOther);
+    amountOrRule(mixed(d.partB.allowances, d.partB.tipsPerquisites), MX, MR, A.rowsB.tipsPerquisitesOther);
+  }
+  itemLine(
+    { item: '1', sub: '(d)', itemDrawn: false },
+    t.taxBorneByEmployer,
+    A.rowsB.taxBorneByEmployer,
+    manual(d.partB.taxBorneByEmployer),
+  );
+  itemLine({ item: '1', sub: '(e)', itemDrawn: false }, t.esos, A.rowsB.esos, manual(d.partB.esos));
   // 1(f) — "Ganjaran bagi tempoh dari … hingga …". The period is not a fact this system holds, so both
   // rules stay empty; the AMOUNT is a manual box like the rest.
+  //
+  // ⚠️ THE TWO PERIOD RULES FLOW FROM THE CAPTION RATHER THAN SITTING ON A COLUMN, AND THAT IS
+  // DELIBERATE. The agency's own leaders start at 192.3 and 307.9, but they follow ITS caption and ITS
+  // "to"; ours are a different length in each of two editions, so an absolute start would overprint the
+  // words in one of them. They are description rules, not a column — the columns this round measured are
+  // the ones the caption itself sits on, and those ARE absolute.
   {
-    const cap = putFit(t.gratuity, A.itemLabel, 200, 288.4, 8);
-    const from = putFit(t.periodFrom, cap + 4, 40, 288.4, 8);
-    dotted(from + 4, from + 92, 290.9);
-    const to = putFit(t.periodTo, from + 98, 40, 288.4, 8);
-    dotted(to + 4, to + 92, 290.9);
-    amountOrRule(manual(d.partB.gratuity), MX, MR, 288.4);
+    const n: Numbering = { item: '1', sub: '(f)', itemDrawn: false };
+    const x = numbering(n, A.rowsB.gratuity);
+    const cap = putFit(stripDrawnNumbering(t.gratuity, n), x, 200, A.rowsB.gratuity, 8);
+    const from = putFit(t.periodFrom, cap + 4, 40, A.rowsB.gratuity, 8);
+    dotted(from + 4, from + 92, A.rowsB.gratuity + 2.5);
+    const to = putFit(t.periodTo, from + 98, 40, A.rowsB.gratuity, 8);
+    dotted(to + 4, Math.min(to + 92, MX - A.inlineRuleGap), A.rowsB.gratuity + 2.5);
+    amountOrRule(manual(d.partB.gratuity), MX, MR, A.rowsB.gratuity);
   }
   // Item 2 — the caption, then "Jenis pendapatan (a) …/(b) …" beneath it. The two description rules carry
-  // no money; the amount belongs to item 2 and sits on the (b) line, exactly as the specimen sets it.
-  putFit(t.arrears, A.itemLabel, MX - A.itemLabel - 14, 301.8, 8);
-  putFit(t.incomeType, A.subLabel, 70, 313.2, 8);
-  put('(a)', 128, 313.2, 8);
-  dotted(146, 291.4, 315.7);
-  put('(b)', 128, 326.6, 8);
-  dotted(146, 291.4, 329.1);
-  amountOrRule(manual(d.partB.arrears), MX, MR, 326.6);
-  captionWithInlineRule(t.benefitsInKind, t.stateWhat, A.itemLabel, 339.8);
-  amountOrRule(manual(d.partB.benefitsInKind), MX, MR, 339.8);
-  captionWithInlineRule(t.livingAccommodation, t.addressCue, A.itemLabel, 353.2);
-  amountOrRule(manual(d.partB.livingAccommodation), MX, MR, 353.2);
-  moneyLine(t.unapprovedFundRefund, A.itemLabel, 366.6, manual(d.partB.unapprovedFundRefund));
-  moneyLine(t.compensation, A.itemLabel, 380, manual(d.partB.compensation));
+  // no money; the amount belongs to item 2 and sits on the (b) line, exactly as the agency sets it
+  // (measured: "(a)" and "(b)" at 154.3, their leaders from 172.4, the money on the (b) row).
+  itemLine({ item: '2' }, t.arrears, A.rowsB.arrears, '');
+  amountOrRule('', MX, MR, A.rowsB.arrears);
+  putFit(t.incomeType, A.subLabel, A.incomeTypeX.letter - A.subLabel - 4, A.rowsB.incomeTypeA, 8);
+  put('(a)', A.incomeTypeX.letter, A.rowsB.incomeTypeA, 8);
+  dotted(A.incomeTypeX.rule[0], A.incomeTypeX.rule[1], A.rowsB.incomeTypeA + 2.5);
+  put('(b)', A.incomeTypeX.letter, A.rowsB.incomeTypeB, 8);
+  dotted(A.incomeTypeX.rule[0], A.incomeTypeX.rule[1], A.rowsB.incomeTypeB + 2.5);
+  amountOrRule(manual(d.partB.arrears), MX, MR, A.rowsB.incomeTypeB);
+  {
+    const n: Numbering = { item: '3' };
+    const x = numbering(n, A.rowsB.benefitsInKind);
+    captionWithInlineRule(stripDrawnNumbering(t.benefitsInKind, n), t.stateWhat, x, A.rowsB.benefitsInKind);
+    amountOrRule(manual(d.partB.benefitsInKind), MX, MR, A.rowsB.benefitsInKind);
+  }
+  {
+    const n: Numbering = { item: '4' };
+    const x = numbering(n, A.rowsB.livingAccommodation);
+    captionWithInlineRule(stripDrawnNumbering(t.livingAccommodation, n), t.addressCue, x, A.rowsB.livingAccommodation);
+    amountOrRule(manual(d.partB.livingAccommodation), MX, MR, A.rowsB.livingAccommodation);
+  }
+  itemLine({ item: '5' }, t.unapprovedFundRefund, A.rowsB.unapprovedFundRefund, manual(d.partB.unapprovedFundRefund));
+  itemLine({ item: '6' }, t.compensation, A.rowsB.compensation, manual(d.partB.compensation));
 
   // ── C — PENCEN DAN LAIN-LAIN, closed by the form's single JUMLAH ───────────────────────────────────
-  sectionHeading(t.sectionCPensionOther, 391.5);
-  moneyLine(t.pension, A.itemLabel, 405.6, manual(d.partC.pension));
-  moneyLine(t.annuity, A.itemLabel, 418.6, manual(d.partC.annuity));
+  sectionHeading(t.sectionCPensionOther, A.sectionT.c);
+  itemLine({ item: '1' }, t.pension, A.rowsC.pension, manual(d.partC.pension));
+  itemLine({ item: '2' }, t.annuity, A.rowsC.annuity, manual(d.partC.annuity));
   /**
    * THE JUMLAH TOTALS B AND C TOGETHER, and it is the ONLY total the form has.
    *
-   * The transcription says so and the specimen shows it: one bold JUMLAH at the foot of Section C, closed
-   * with a DOUBLE rule rather than a dotted one. Our own layout carried two subtotals — one for Part B
-   * and one for Part C — and the agency's page has neither. `partB.gross` is the sum of the printed Part
-   * B lines (EA_PART_B_COMPONENTS, recomputed after any override) and `partC.total` is pension + annuity,
-   * so this is those two figures added, not a third arithmetic.
+   * The transcription says so and the agency's page shows it: one bold JUMLAH at the foot of Section C,
+   * closed with a DOUBLE rule rather than a dotted one. Our own layout carried two subtotals — one for
+   * Part B and one for Part C — and the agency's page has neither. `partB.gross` is the sum of the
+   * printed Part B lines (EA_PART_B_COMPONENTS, recomputed after any override) and `partC.total` is
+   * pension + annuity, so this is those two figures added, not a third arithmetic.
+   *
+   * ⚠️ r372 — IT SITS IN THE SUB-ITEM COLUMN, NOT THE ITEM-NUMBER COLUMN, AND THE ITEM WE RAISED SAID
+   * OTHERWISE. The raised text said "In Section C, TOTAL sits in the item-number column, where the
+   * agency puts it in the DESCRIPTION column". `--all` puts it at x 80.5 — the SUB-ITEM column (80.2,
+   * plus the bold face's own side bearing), not the description column (94.3). Both the complaint and
+   * its stated remedy were wrong about which column; the measurement is what this draws on.
+   *
+   * The agency's two rules sit at 481.8 and 497 with the total's baseline at 492.4 between them, which
+   * is what is drawn here. (The agency also rules its own letter column, 40 → 57.1, on both lines; that
+   * is not drawn, because "no box shall be added" and our letter column carries nothing to close.)
    */
-  // The specimen's two rules sit at 425.8 and 435.4 with nothing between them, because the blank form has
-  // no figure to place there. Ours does, so the amount's baseline is 433.5 — 1.5 pt of clearance under the
-  // upper rule for the digits' cap height — and the lower rule moves 2 pt down to clear the commas'
-  // descenders. Drawn at the specimen's spacing, the upper rule struck straight through the total.
-  putFit(t.formTotal, A.itemLabel, 200, 433.5, 8.5, bold);
-  hRule(MX, MR, 425.8, 0.8, ink);
+  putFit(t.formTotal, A.subLabel, 200, A.rowsC.total, 8.5, bold);
+  hRule(MX, MR, A.rowsC.totalRuleAbove, 0.8, ink);
   // r220 — the JUMLAH is the one amount that does NOT go through `amountOrRule`: the form closes it with
   // its own double rule instead of a dotted one, so it is drawn directly. Both rules are still drawn on a
   // blank — they are the agency's page — and only the figure between them is withheld.
   const jumlah = derived(d.partB.gross + d.partC.total);
-  if (!blank) putR(jumlah, MR - 2, 433.5, 8.5, bold);
-  hRule(MX, MR, 437.5, 1.4, ink);
+  if (!blank) putR(jumlah, MR - 2, A.rowsC.total, 8.5, bold);
+  hRule(MX, MR, A.rowsC.totalRuleBelow, 1.4, ink);
 
   // ── D — JUMLAH POTONGAN ────────────────────────────────────────────────────────────────────────────
-  sectionHeading(t.sectionDTotalDeductions, 447.5);
-  moneyLine(t.monthlyTaxDeduction, A.itemLabel, 461.3, derived(d.partD.mtd));
-  moneyLine(t.cp38Deductions, A.itemLabel, 474.7, derived(d.partD.cp38));
-  moneyLine(t.zakatViaSalary, A.itemLabel, 487.7, derived(d.partD.zakat));
-  moneyLine(t.donations, A.itemLabel, 501.1, manual(d.partD.donations));
+  sectionHeading(t.sectionDTotalDeductions, A.sectionT.d);
+  itemLine({ item: '1' }, t.monthlyTaxDeduction, A.rowsD.mtd, derived(d.partD.mtd));
+  itemLine({ item: '2' }, t.cp38Deductions, A.rowsD.cp38, derived(d.partD.cp38));
+  itemLine({ item: '3' }, t.zakatViaSalary, A.rowsD.zakat, derived(d.partD.zakat));
+  itemLine({ item: '4' }, t.donations, A.rowsD.donations, manual(d.partD.donations));
   // D5 is a heading over two sub-amounts that print their own RM at MID-PAGE — the right-hand column
-  // stays empty on those two lines, which is how the specimen sets them.
-  putFit(t.tp1ClaimHeading, A.itemLabel, MX - A.itemLabel - 14, 512.6, 8);
-  const midAmount = (label: string, tt: number, value: string) => {
-    putFit(label, A.subLabel, EA_FORM.midMoney[0] - A.subLabel - 22, tt, 8);
-    put(W.rm, EA_FORM.midMoney[0] - 18, tt, 8);
-    amountOrRule(value, EA_FORM.midMoney[0], EA_FORM.midMoney[1], tt);
+  // stays empty on those two lines, which is how the agency sets them (its "RM" is at 342.6). Its two
+  // sub-items are indented 3.9 pt further than Section B's, at 98.2, which is the agency's own number.
+  {
+    const n: Numbering = { item: '5' };
+    const x = numbering(n, A.rowsD.tp1Heading);
+    putFit(stripDrawnNumbering(t.tp1ClaimHeading, n), x, MX - x - 14, A.rowsD.tp1Heading, 8);
+  }
+  const midAmount = (sub: string, label: string, tt: number, value: string) => {
+    const n: Numbering = { item: '5', sub, itemDrawn: false };
+    const x = numbering(n, tt, 8, A.subTextD5);
+    putFit(stripDrawnNumbering(label, n), x, A.midRm - x - 6, tt, 8);
+    put(W.rm, A.midRm, tt, 8);
+    amountOrRule(value, A.midMoney[0], A.midMoney[1], tt);
   };
-  midAmount(t.tp1Relief, 524.5, manual(d.partD.tp1Relief));
-  midAmount(t.zakatOther, 538, manual(d.partD.zakatOther));
+  midAmount('(a)', t.tp1Relief, A.rowsD.tp1Relief, manual(d.partD.tp1Relief));
+  midAmount('(b)', t.zakatOther, A.rowsD.zakatOther, manual(d.partD.zakatOther));
   // r351 — DERIVED, not manual. See localization/my/reports.ts for what reverses da4fc817's decision.
   // `derived` prints even at 0.00 … except that a year whose slips carry no relief snapshot at all
   // (pre-169e3c24, or a flat-rate non-resident) legitimately has nothing to state, and `0.00` on a tax
   // document asserts the money does not exist. So the box takes `manual`'s zero-suppression while taking
   // `derived`'s source: a real RM0.00 relief and an unknown one are indistinguishable here, and the
   // honest output for both is the agency's own empty rule.
-  moneyLine(t.childRelief, A.itemLabel, 551.4, manual(d.partD.childRelief));
+  itemLine({ item: '6' }, t.childRelief, A.rowsD.childRelief, manual(d.partD.childRelief));
 
   // ── E — CARUMAN ... KUMPULAN WANG SIMPANAN / PENCEN YANG DILULUSKAN DAN PERKESO ────────────────────
-  sectionHeading(t.sectionEContributions, 567.8);
-  putFit(t.fundName, A.itemLabel, 100, 581.5, 8);
-  valueOrRule(d.partE.fundName, 148, R, 581.5, 8);
-  const eContribution = (prefix: string, x0: number, tt: number, value: string) => {
-    const x = prefix ? putFit(prefix, x0, 70, tt, 8) + 4 : x0;
-    putFit(t.contributionAmount, x, MX - x - 24, tt, 8);
-    put(W.rm, MX - 20, tt, 8);
+  //
+  // ⚠️ E's SHAPE IS THE AGENCY'S AND IT IS NOT THE SHAPE WE HAD. LHDN gives item 1 TWO rows: the fund's
+  // name on 661.8, and the contribution caption with its own RM and money rule on 675 BELOW it. We drew
+  // the caption inline on one row. Item 2 keeps one row, with "SOCSO" / "PERKESO" in the sub-item column
+  // and the shared caption beside it.
+  sectionHeading(t.sectionEContributions, A.sectionT.e);
+  {
+    const n: Numbering = { item: '1' };
+    const x = numbering(n, A.rowsE.fundName);
+    const end = putFit(stripDrawnNumbering(t.fundName, n), x, 120, A.rowsE.fundName, 8);
+    valueOrRule(d.partE.fundName, Math.max(171.4, end + 6), MR, A.rowsE.fundName, 8);
+  }
+  /** E's money row: the shared caption, the agency's own "RM" at 467.1, then the column's rule. */
+  const eContribution = (tt: number, x0: number, value: string) => {
+    putFit(t.contributionAmount, x0, A.rmBeforeRule - x0 - 6, tt, 8);
+    put(W.rm, A.rmBeforeRule, tt, 8);
     amountOrRule(value, MX, MR, tt);
   };
-  eContribution('', A.subLabel, 594.5, derived(d.partE.epf));
+  eContribution(A.rowsE.epf, A.subLabel, derived(d.partE.epf));
   // r367 — ONE box, THREE legs. See `EaPdfData.partE` for the two LHDN documents that settle the caption's
   // scope. `derived` prints even at 0.00, which is right here: a contributing employee's E(2) is a figure
   // the employer withheld and can stand behind.
-  eContribution(W.perkeso, A.itemLabel, 608, derived(d.partE.socso + d.partE.eis + d.partE.skbbk));
+  {
+    const n: Numbering = { item: '2' };
+    put(`${n.item}.`, A.itemLabel, A.rowsE.perkeso, 8);
+    const lead = putFit(stripDrawnNumbering(W.perkeso, n), A.subLabel, 70, A.rowsE.perkeso, 8) + 4;
+    eContribution(A.rowsE.perkeso, lead, derived(d.partE.socso + d.partE.eis + d.partE.skbbk));
+  }
 
   // ── F — JUMLAH ELAUN / PERKUISIT / PEMBERIAN / MANFAAT YANG DIKECUALIKAN CUKAI ─────────────────────
-  // ONE LINE: the section title IS the item, and "RM" sits just before its rule.
-  sectionHeading(t.sectionFExemptAllowances, 627.5);
-  put(W.rm, MX - 20, 627.5, 8.5, bold);
-  amountOrRule(derived(d.partB.exemptAllowances ?? 0), MX, MR, 627.5);
+  // ONE LINE: the section title IS the item, and the agency's "RM" sits at 467.1 before its rule.
+  sectionHeading(t.sectionFExemptAllowances, A.sectionT.f);
+  put(W.rm, A.rmBeforeRule, A.sectionT.f, 8.5, bold);
+  amountOrRule(derived(d.partB.exemptAllowances ?? 0), MX, MR, A.sectionT.f);
 
-  // ── THE FOOT — the date at the left, the ruled officer box at the right ────────────────────────────
-  const O = EA_FORM.officerBox;
+  // ── THE FOOT — the ruled officer box on the agency's own rows, the date beside it ──────────────────
+  const O = A.officerBox;
   /**
-   * "Nama dan Alamat Majikan" — TWO writing rules ON THE AGENCY'S FORM, AND AS MANY AS THE NAME AND
-   * ADDRESS NEED ON OURS (r353, then r372 / item 450f443f).
+   * "Nama dan Alamat Majikan" — TWO writing rules ON THE AGENCY'S FORM, AND A CONTINUATION SHEET FOR AN
+   * EMPLOYER THE AGENCY'S BOX CANNOT HOLD (r353, then r372 / items 450f443f and 795c470c).
    *
-   * ⚠️ WHAT THE MEASUREMENT SETTLED IN r353, AND IT STILL HOLDS. `node --import tsx
-   * scripts/measure-ea-official-pdf.ts --rects` says the agency's own officer box has exactly FIVE rows
-   * (tt 739.8 / 753 / 766.2 / 779.4 / 792.6, 13.2 pt each): Name of Officer, Designation, "Name and
-   * Address of Employer", ONE unlabelled continuation rule, and Telephone No. So TWO writing lines is
-   * the agency's arrangement and `employerRules` stays 2 — it is the FLOOR, and a blank form, a short
-   * address and anything else that fits in two lines is drawn byte-for-byte as it was.
+   * ⚠️ WHAT THE MEASUREMENT SETTLED, AND IT STILL HOLDS. The agency's officer box has exactly FIVE rows
+   * (baselines 749.1 / 762.3 / 775.5 / 788.8 / 802, a 13.2 pt pitch, inside a frame at tt 727.5 → 817.9
+   * between vertical rules at x 191 and 557): Name of Officer, Designation, "Name and Address of
+   * Employer", ONE unlabelled continuation rule, and Telephone No. So TWO writing lines is the agency's
+   * arrangement and `employerRules` stays 2 — the FLOOR, and a blank form, a short address and anything
+   * else that fits in two lines is drawn exactly as the agency draws it.
    *
-   * ⚠️ r353 FIXED THE SINGLE-RULE CASE AND LEFT A TWO-RULE CEILING, WHICH IS THE DEFECT THE REPORTER
-   * IS LOOKING AT. Before r353 the name took the whole of rule one and the ENTIRE address was crushed
-   * onto rule two by `fitSize`, which shrinks rather than wraps and clamped at 1 pt. r353 made the two
-   * lines flow, so anything up to about 130 characters now sets at a full 8 pt. Past that the SAME
-   * mechanism is still there, one rule further along, and it is still silent. Measured on forms this
-   * renderer actually produced, against the 269 pt rule (`scratchpad/BEFORE-report.txt`):
+   * ⚠️ AND r372 TOOK AWAY THE ROOM ROUND ONE GREW INTO, WHICH IS A CHANGE TO ROUND ONE'S OUTCOME AND IS
+   * SAID HERE RATHER THAN DISCOVERED. Round one (item 450f443f) made the box grow a rule at a time
+   * because `fitSize` shrinks rather than wraps and used to clamp at 1 pt: measured on forms this
+   * renderer produced, a 225-character block set its last line at 3.4 pt, which is present in the file,
+   * passes every test, downloads — and is gone on the paper the employee files. At the TRACED geometry
+   * the box ended at 730.6 and five more 17 pt rules fitted above `bottom`. At the AGENCY's the box ends
+   * at 817.9 and `bottom` is 830: twelve points against a 13.2 pt pitch, so NOT ONE more rule fits.
    *
-   *      block length       140     160     180     200     225     250     300     340     380
-   *      smallest type     6.9pt   5.6pt   4.6pt   4.0pt   3.4pt   2.9pt   2.3pt   2.0pt   1.7pt
+   * The three ways out are not equal. Shrinking reinstates the exact defect round one exists to prevent.
+   * Truncating is worse, because a truncated address reads as a complete one. Raising `bottom` spends
+   * the paper's own margin — 830 already leaves 11.9 pt, about 4 mm, and most office printers cannot
+   * print the last 4-6 mm. So the rules that fit are drawn in the box and THE REMAINDER CONTINUES ON A
+   * SECOND SHEET, at a full 8 pt, under the agency's own caption and on a rule of the same width. The
+   * employer block is never shrunk and never cut; the form's own page is unchanged.
    *
-   * A 3.4 pt line is present in the file, passes every test, returns 200, downloads, is readable-ish on
-   * a bright screen — and is gone on the paper the employee files. That is r205's Borang A lesson for
-   * the third time on this form.
-   *
-   * SO THE BOX GROWS DOWNWARDS INSTEAD. One continuation rule per wrapped line at this box's own
-   * `rowPitch`, the box's bottom edge following them, and the Telephone / Date row (the agency prints
-   * those two on ONE row — its Date is at tt 802, x 45.2, beside the telephone rule at 331.5) riding
-   * down with it. Nothing ABOVE the box moves: it is the last thing on the page.
-   *
-   * THE CAP IS THE PAPER, AND ONLY THEN MAY TYPE SHRINK. `maxEmployerRules` is however many rules fit
-   * between `t1` and `bottom`; past that the remainder is joined onto the last rule and `valueOrRule`
-   * shrinks it — but never below `O.minSize` (6 pt), which is the floor this whole change exists to
-   * install. Below 6 pt the line stops being a disclosure and becomes a smudge, and a smudge on a tax
-   * document that the employee signs is worse than an overprint somebody queries.
-   *
-   * ⚠️ THE 6 pt FLOOR IS NOT ROUND TWO'S TO LOWER. Item 795c470c re-pitches this box onto the agency's
-   * 13.2 pt rows; at a tighter pitch the temptation to shrink instead of wrap is greater, not smaller,
-   * and the floor is the only thing standing between a long employer address and the 3.4 pt line above.
+   * `minSize` IS STILL THE FLOOR, for the three single-value rows which cannot wrap onto anything.
+   * It was not r372's to lower and it has not been lowered.
    */
   const employerBlock = [d.employer.name, ...d.employer.address].map((s) => (s ?? '').trim()).filter(Boolean).join(', ');
   const officerRuleW = O.ruleX[1] - O.ruleX[0] - 6; // the width valueOrRule actually writes into
   const employerLines = wrapped(employerBlock, 8, officerRuleW);
   /** How many rules fit before the box's bottom edge would cross `bottom`. Nothing may be drawn below it. */
-  const maxEmployerRules = O.employerRules + Math.floor((EA_FORM.bottom - O.t1) / O.rowPitch);
+  const maxEmployerRules = O.employerRules + Math.floor((A.bottom - O.t1) / O.rowPitch);
   const employerRules = Math.min(Math.max(employerLines.length, O.employerRules), maxEmployerRules);
-  /** How far the box reaches below where it has always ended. Zero for every address that fits two rules. */
+  /** The wrapped lines the agency's box cannot hold. Empty for every address that fits its two rules. */
+  const employerOverflow = employerLines.slice(employerRules);
+  /** How far the box reaches below where the agency ends it. Zero at the agency's own geometry today. */
   const officerBoxGrowth = (employerRules - O.employerRules) * O.rowPitch;
   /** The box's bottom edge for THIS statement. `O.t1` is the ungrown case, and the two agree at 2 rules. */
   const officerBoxT1 = O.t1 + officerBoxGrowth;
-  /** Row `n` of the box, from its first writing baseline. Round two re-pitches by changing the two constants. */
-  const officerRowT = (n: number) => O.rowT0 + n * O.rowPitch;
+  /** Row `n` of the box, from its first writing baseline. Re-pitching is these two constants. */
+  const officerRowT = (n: number) => round1(O.rowT0 + n * O.rowPitch);
 
   box(O.x0, O.t0, R, officerBoxT1);
   /**
    * ONE CAPTIONED ROW OF THE BOX — Name of Officer, Designation, Employer's Telephone No.
    *
    * ⚠️ r372 — THE FLOOR APPLIES HERE TOO, AND THESE THREE CANNOT GROW TO MEET IT. The employer's name
-   * and address wraps onto another rule; these do not. Each is ONE value on ONE rule with no
-   * continuation, so past the point where 8 pt will not fit they shrink to `O.minSize` and then
-   * OVERPRINT to the right — they never disappear, and they are never set smaller than 6 pt.
+   * and address wraps onto another rule and then onto another sheet; these do not. Each is ONE value on
+   * ONE rule with no continuation, so past the point where 8 pt will not fit they shrink to `O.minSize`
+   * and then OVERPRINT to the right — they never disappear, and they are never set smaller than 6 pt.
    *
-   * That is the same trade the employer rules take at their cap and it is chosen for the same reason:
-   * `fitSize`'s 1 pt clamp is not a floor, it is the absence of one, and a 1 pt officer's name on a
-   * document somebody signs and files is indefensible however unlikely the input. An overprint is
+   * That is the same trade the employer rules used to take at their cap and it is chosen for the same
+   * reason: `fitSize`'s 1 pt clamp is not a floor, it is the absence of one, and a 1 pt officer's name
+   * on a document somebody signs and files is indefensible however unlikely the input. An overprint is
    * queried; a 1 pt line is filed. Measured on the drawn page: 8 pt holds ~67 characters on this
-   * 269 pt rule and the floor holds ~90, so every realistic officer name, designation and telephone
+   * 219 pt rule and the floor holds ~90, so every realistic officer name, designation and telephone
    * number is unaffected and prints at a full 8 pt.
    *
    * THE DATE beside the telephone is deliberately NOT given the floor: `formDate` emits a fixed
-   * DD/MM/YYYY, ~49 pt of 8 pt Helvetica on an 82 pt rule, so it has no reachable shrink path at all.
+   * DD/MM/YYYY, ~49 pt of 8 pt Helvetica on a 110 pt rule, so it has no reachable shrink path at all.
    */
   const officerRow = (caption: string, tt: number, value: string) => {
-    put(caption, O.x0 + 8, tt, 8);
+    put(caption, O.captionX, tt, 8);
     valueOrRule(value, O.ruleX[0], O.ruleX[1], tt, 8, O.minSize);
   };
   officerRow(W.officerName, officerRowT(0), d.employer.officerName ?? '');
   officerRow(W.officerPosition, officerRowT(1), d.employer.officerPosition ?? '');
   // The caption sits on the FIRST of the employer's rules; the rest are the agency's unlabelled
-  // continuation rule and, past two, ours. The LAST rule takes whatever is left over, so a block that
-  // hit the cap is still printed in full rather than losing its tail — a truncated address reads as a
-  // complete one, which is the failure r219 refused for captions and refuses here for values.
-  put(W.employerNameAddress, O.x0 + 8, officerRowT(2), 8);
+  // continuation rule and, past two, the continuation sheet's. Nothing is joined onto a last rule and
+  // shrunk any more — the overflow has somewhere to go.
+  put(W.employerNameAddress, O.captionX, officerRowT(2), 8);
   for (let i = 0; i < employerRules; i += 1) {
-    const text = i === employerRules - 1 ? employerLines.slice(i).join(' ') : employerLines[i] ?? '';
-    valueOrRule(text, O.ruleX[0], O.ruleX[1], officerRowT(2 + i), 8, O.minSize);
+    valueOrRule(employerLines[i] ?? '', O.ruleX[0], O.ruleX[1], officerRowT(2 + i), 8, O.minSize);
   }
   const footRowT = officerRowT(2 + employerRules);
   officerRow(W.employerPhone, footRowT, d.employer.phone ?? '');
@@ -1301,66 +1567,68 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
    * `null` (the blank form, and any caller with nothing to date) still prints the agency's empty rule —
    * `valueOrRule` does that for an empty value, which is why the reversal needed no new branch here.
    *
-   * ⚠️ r372 — ITS BASELINE IS `footRowT`, NOT THE LITERAL 723 r367 PINNED, AND THAT IS THE AGENCY'S OWN
-   * ARRANGEMENT RATHER THAN A CHOICE OF OURS. `--rects` puts LHDN's Date on tt 802 at x 45.2, the SAME
-   * row as its Telephone No. rule at 331.5: one table row, the date outside the box and the telephone
-   * inside it. So the date rides down with the telephone when the box grows. It is 723 for every
-   * statement whose name and address fit the agency's two lines, which is every statement that exists
-   * today — `test/r219-ea-cp8a-form.test.ts` pins that on a RENDERED form now instead of on this line's
-   * source text, which is the stronger check and the one that survives round two's re-pitch.
+   * ⚠️ r372 — IT IS ON THE AGENCY'S OWN ROW AND COLUMN: `--rects` puts LHDN's Date at x 45.2 on tt 802,
+   * the SAME row as its Telephone No. rule at 331.5, one table row with the date OUTSIDE the box and the
+   * telephone inside it. Its rule STARTS after the drawn caption rather than at the agency's 62.2,
+   * because LHDN's caption is "Date" with the colon in the leader while ours is "Date:" / "Tarikh:" and
+   * would print through a rule pinned there.
    */
-  put(W.date, L + 6, footRowT, 8);
-  valueOrRule(formDate(d.formDate), 68, 150, footRowT, 8);
+  const dateEnd = putFit(W.date, A.dateX, A.dateRule[1] - A.dateX, footRowT, 8);
+  valueOrRule(formDate(d.formDate), Math.max(A.dateRule[0], dateEnd + 4), A.dateRule[1], footRowT, 8);
 
   // ── BELOW THE FORM ────────────────────────────────────────────────────────────────────────────────
   //
-  // ⚠️ r351 — THE STRIP IS GONE, AND THAT REVERSES r349's RECORDED DECISION. r349 wrote: "THE EIS FIGURE
+  // ⚠️ r351 — THE STRIP IS GONE, AND THAT REVERSED r349's RECORDED DECISION. r349 wrote: "THE EIS FIGURE
   // STAYS — da4fc817's decision, real money off the employee's pay, their only annual statement. The plan
-  // offered to remove it; approval kept it." The reporter has now looked at the shipped page and written,
-  // in their own hand on the comparison image (`EA Form Compare V3.png`, stage 'refuted', revision 3),
-  // **"Remove this part from the EA Form"**, with a red box around the whole strip: the "Not part of the
-  // official C.P.8A" line, the EIS / SIP figure, and the disclaimer paragraph. That is the owner
-  // exercising the option r349's own plan offered them, so all three go and the page ends where the
+  // offered to remove it; approval kept it." The reporter then looked at the shipped page and wrote, in
+  // their own hand on the comparison image (`EA Form Compare V3.png`, stage 'refuted', revision 3),
+  // **"Remove this part from the EA Form"**, with a red box around the whole strip. That is the owner
+  // exercising the option r349's own plan offered them, so all three went and the page ends where the
   // agency's page ends — at the officer's box.
-  //
-  // THE EIS FIGURE IS NOW NOWHERE ON THE PRINTED FORM. That was the cost da4fc817 and r349 were unwilling
-  // to pay, and the reporter has now decided to pay it. The figure is still on the HTML statement
-  // (app/payroll/reports/ea/[employmentId]/page.tsx), which is why `eisSip` and `disclaimer` stay LIVE
-  // message keys rather than being retired — only `notOfficialStrip` had no other reader.
   //
   // THE AMENDED MARKER STAYS. It was not in the reporter's red box and the approved plan named only the
   // three items above. It is also different in kind: it discloses that HR overwrote a figure on a tax
   // document, and an amended statement that looks identical to an unamended one is an audit hole, not a
   // cosmetic difference. Removing it is a decision for the reporter to make explicitly.
-  let y: number = EA_FORM.footStripT;
-  /**
-   * ⚠️ r372 — …AND IT FOLLOWS THE OFFICER BOX DOWN, BECAUSE THE BOX CAN NOW REACH IT. `footStripT`
-   * (742) is 11.4 pt below the UNGROWN box, so a box carrying three or more employer rules ends past
-   * it and the amended marker would print INSIDE the box, over the telephone rule. pdf-lib does NOT
-   * clip: that is an overprint on a tax document, not a line that quietly disappears.
-   *
-   * It is the box's GROWTH that is added, not a fresh clearance of its own, so the strip keeps exactly
-   * the 11.4 pt it has always had and an ungrown box leaves this line at 742 to the byte. The page
-   * break below still catches the case where the grown box leaves no room for the marker at all.
-   *
-   * ⚠️ ROUND TWO (item 795c470c) MAKES THIS LOAD-BEARING RATHER THAN DEFENSIVE. The agency's box top is
-   * 99.0 pt below ours and its bottom edge is at tt 817 — 75 pt past `footStripT` — so once the box is
-   * on the agency's rows EVERY amended form overprints unless `footStripT` moves with it.
-   */
-  y += officerBoxGrowth;
-  const noteH = d.overrides && d.overrides.length > 0 ? 11 : 0;
-  const newPage = () => {
-    page = doc.addPage(A4);
-    y = 60;
-  };
-  if (noteH && y + noteH > EA_FORM.bottom) newPage();
-
+  //
+  // ⚠️ r372 — IT HAS A NEW HOME, ABOVE THE BOX, AND THAT IS DECIDED HERE RATHER THAN DISCOVERED ON A
+  // RENDERED PAGE. It used to draw at `EA_FORM.footStripT` (742), in the band the TRACED box left empty
+  // beneath itself. The agency's box ENDS at 817.9 — 75 pt past 742 — so on the agency's rows the marker
+  // would have printed inside the box, over the telephone rule, on every amended form in both editions;
+  // pdf-lib does not clip. There is no empty band below the agency's foot to move it into, and putting
+  // it on a second sheet would turn every amended statement into two pages. It goes in the 11.1 pt the
+  // agency leaves between Section F's row (ending 716.4) and the box's top rule (727.5), at
+  // `EA_FORM.amendedNoteT`. `footStripT` is retired in place on `EA_FORM` rather than deleted.
+  //
   // 1.2.6 — "Amended" marker: a footnote when ≥1 EA field was overwritten by HR (the merge already
-  // overlaid the figures above). Disclosure of WHICH figures were amended is a compliance decision flagged
-  // in the plan; the default is this neutral marker.
-  if (noteH) {
-    put(t.amendedNote, L, y, 7.5, bold, ink);
-    y += 11;
+  // overlaid the figures above). Disclosure of WHICH figures were amended is a compliance decision
+  // flagged in the plan; the default is this neutral marker.
+  if (d.overrides && d.overrides.length > 0) {
+    putFit(t.amendedNote, L, O.x0 - L - 6, A.amendedNoteT, 7.5, bold, ink);
+  }
+
+  /**
+   * THE CONTINUATION SHEET — only when the employer's name and address outgrows the agency's own box.
+   *
+   * Nothing of the FORM is on it: it carries the form number, the year the statement is for, the
+   * agency's own "Name and Address of Employer" caption and the rules the box could not hold. A loose
+   * second sheet has to say which statement it belongs to, and those two lines are what say it. No new
+   * wording is introduced — every string here is already drawn on page one.
+   */
+  if (employerOverflow.length > 0) {
+    page = doc.addPage(A4);
+    put(W.formNo, L, A.headerT.formNo, 7.5);
+    putR(`${W.masthead4} ${d.year}`.trim(), R, A.headerT.formNo, 7.5);
+    let oy: number = A.overflowT;
+    put(W.employerNameAddress, L, oy, 8);
+    for (const line of employerOverflow) {
+      oy = round1(oy + O.rowPitch);
+      if (oy > A.bottom) {
+        page = doc.addPage(A4);
+        oy = A.overflowT;
+      }
+      valueOrRule(line, L, L + (O.ruleX[1] - O.ruleX[0]), oy, 8, O.minSize);
+    }
   }
 
   return doc.save();

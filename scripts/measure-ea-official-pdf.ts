@@ -11,10 +11,18 @@
  *   node --import tsx scripts/measure-ea-official-pdf.ts --all      # every text run, top-down
  *   node --import tsx scripts/measure-ea-official-pdf.ts --rects    # every filled/stroked rectangle
  *   node --import tsx scripts/measure-ea-official-pdf.ts --file out.pdf --all   # …on OUR output instead
+ *   node --import tsx scripts/measure-ea-official-pdf.ts --ours en --all        # …RENDERING ours first
+ *   node --import tsx scripts/measure-ea-official-pdf.ts --ours en --blank --out p.pdf --all
  *
  * `--file` is what makes it a comparison rather than a reading: point it at a form this system just
  * rendered and the same numbers come out in the same coordinate system, so the agency's page and ours
  * can be diffed line for line. §8 — when two PDF renderers disagree, the disagreement is the instrument.
+ *
+ * r372 — `--ours <locale>` RENDERS that form first, off `lib/ea-pdf.ts` and the real catalogue, so the
+ * comparison is one command and cannot be run against a stale file somebody left in a scratchpad. With
+ * `--out <path>` it also writes the PDF, for looking at. `--blank` renders the empty C.P.8A instead of
+ * the demonstration statement below. The PARSER is `lib/pdf-page-geometry.ts`, the same module the grid
+ * guard uses, so the script and the test cannot disagree about what is on a page.
  *
  * WHAT IT PRINTS, AND IN WHICH COORDINATE SYSTEM. PDF space has y growing UPWARD from the bottom left;
  * `lib/ea-pdf.ts` works TOP-DOWN in `tt` units through its `at()` helper. Everything here is reported as
@@ -32,106 +40,93 @@
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
-import { EA_FORM } from '../lib/ea-pdf';
+import { writeFileSync } from 'node:fs';
+import { type PdfRun, readPdfPageGeometry, roundPt } from '../lib/pdf-page-geometry';
+import { EA_FORM, blankEaPdfData, renderEaPdf, type EaPdfData } from '../lib/ea-pdf';
+import { eaPdfLabelsFromCatalogue } from '../lib/ea-pdf-labels-file';
 
-const AT = process.argv.indexOf('--file');
-const OFFICIAL =
-  AT > 0 && process.argv[AT + 1]
-    ? path.resolve(process.cwd(), process.argv[AT + 1])
-    : path.resolve(__dirname, '..', 'docs/forms/ea-cp8a-pin-2023-official-en.pdf');
+const arg = (flag: string): string | undefined => {
+  const at = process.argv.indexOf(flag);
+  return at > 0 ? process.argv[at + 1] : undefined;
+};
+const FILE = arg('--file');
+const OURS = arg('--ours');
+const OUT = arg('--out');
+const OFFICIAL = FILE
+  ? path.resolve(process.cwd(), FILE)
+  : path.resolve(__dirname, '..', 'docs/forms/ea-cp8a-pin-2023-official-en.pdf');
 
-type Run = { text: string; x: number; tt: number; size: number };
-type Rect = { x0: number; x1: number; tt0: number; tt1: number; op: string };
-
-/** The page's content stream as one latin1 string, with every Form XObject it draws inlined after it. */
-function streamOf(page: ReturnType<PDFDocument['getPages']>[number]): string {
-  const contents = page.node.Contents();
-  const streams =
-    contents instanceof PDFArray ? contents.asArray().map((ref) => page.node.context.lookup(ref)) : [contents];
-  let raw = '';
-  for (const stream of streams) {
-    if (stream instanceof PDFRawStream) raw += Buffer.from(decodePDFRawStream(stream).decode()).toString('latin1');
-  }
-  return raw;
-}
+type Run = PdfRun;
 
 /**
- * Text runs, with their baseline converted to top-down `tt`.
+ * A DEMONSTRATION STATEMENT, so `--ours` measures a FILLED form rather than an empty one.
  *
- * Both text-positioning forms the agency's producer emits are read: `Tm` (a full matrix) and `Td`/`TD`
- * (a move relative to the line matrix). Ignoring `Td` loses most of a Word-generated page — the producer
- * sets `Tm` once per block and then walks down it — which would silently report a section as having one
- * line in it. The size is taken from `Tf` and scaled by the matrix's vertical component.
- *
- * ⚠️ AND BOTH STRING ENCODINGS, WHICH IS WHAT MAKES `--file` WORTH HAVING. The agency's file writes
- * literal `(text) Tj` / `[…] TJ`; pdf-lib writes HEX, `<0041…> Tj`. A parser that reads only one of them
- * reports the other document as having no text at all — an empty report that reads exactly like a page
- * with nothing on it, which is the wrong answer to be given silently.
+ * ⚠️ IT IS NOT A FIXTURE AND NOTHING MAY ASSERT AGAINST ITS FIGURES. Every amount here exists to put a
+ * digit on a rule so the rule's position can be read; they are not a payroll, they are not derived from
+ * one, and `--blank` is the other half of the picture. The employer block is deliberately longer than
+ * the agency's two writing rules, because the continuation sheet is the case a short one cannot show.
  */
-function runsOf(raw: string, height: number): Run[] {
-  const out: Run[] = [];
-  let tm = { a: 1, d: 1, e: 0, f: 0 };
-  let line = { e: 0, f: 0 };
-  let size = 0;
-  const show = (s: string) => {
-    const text = s.replace(/\\([nrtbf()\\])/g, '$1').trim();
-    if (text) out.push({ text, x: round(tm.e), tt: round(height - tm.f), size: round(size * tm.d) });
+function demonstrationStatement(): EaPdfData {
+  const zero = blankEaPdfData();
+  return {
+    ...zero,
+    year: '2026',
+    employer: {
+      name: 'Perbadanan Pembangunan Infrastruktur dan Teknologi Maklumat Semenanjung Malaysia Berhad',
+      eNumber: 'E 1234567890',
+      address: ['Aras 27, Menara Tabung Haji, Jalan Tun Razak', '50400 Kuala Lumpur, Wilayah Persekutuan'],
+      phone: '03-2161 8888',
+      lhdnState: 'WP Kuala Lumpur',
+      officerName: 'Nurul Ain binti Abdullah',
+      officerPosition: 'Pengurus Sumber Manusia',
+    },
+    employee: {
+      ...zero.employee,
+      name: 'Muhammad Ariff bin Zainal Abidin',
+      ic: '900101-14-5566',
+      taxNo: 'IG 1234567890',
+      epfNo: '12345678',
+      socsoNo: 'A1234567',
+      children: 2,
+      hiredOn: '2019-04-01',
+      terminatedOn: null,
+      employeeNo: 'EMP-00042',
+      jobTitle: 'Senior Systems Engineer',
+      passport: null,
+    },
+    partB: { ...zero.partB, grossSalary: 96000, bonus: 8000, allowances: 4800, gross: 108800, exemptAllowances: 2400 },
+    partC: { pension: 0, annuity: 0, total: 0 },
+    partD: { ...zero.partD, mtd: 7320.5, cp38: 0, zakat: 0, childRelief: 8000 },
+    partE: { epf: 11880, socso: 297, eis: 118.8, skbbk: 43.45, fundName: 'KWSP' },
+    formDate: '2027-02-28',
+    statutoryVersion: 'measure-only',
+    overrides: [],
   };
-  const token =
-    /(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) Tm|(-?[\d.]+) (-?[\d.]+) T([dD])|\/[^\s/]+ (-?[\d.]+) Tf|\(((?:\\.|[^\\)])*)\) Tj|\[((?:\\.|[^\]])*)\] TJ|<([0-9A-Fa-f]*)> Tj|BT|ET/g;
-  for (const m of raw.matchAll(token)) {
-    if (m[0] === 'BT') {
-      tm = { a: 1, d: 1, e: 0, f: 0 };
-      line = { e: 0, f: 0 };
-    } else if (m[1] !== undefined) {
-      tm = { a: Number(m[1]), d: Number(m[4]), e: Number(m[5]), f: Number(m[6]) };
-      line = { e: tm.e, f: tm.f };
-    } else if (m[7] !== undefined) {
-      line = { e: line.e + Number(m[7]), f: line.f + Number(m[8]) };
-      tm = { ...tm, e: line.e, f: line.f };
-    } else if (m[10] !== undefined) {
-      size = Number(m[10]);
-    } else if (m[11] !== undefined) {
-      show(m[11]);
-    } else if (m[12] !== undefined) {
-      // A TJ array: the strings are the text, the numbers are kerning we do not need.
-      show([...m[12].matchAll(/\(((?:\\.|[^\\)])*)\)/g)].map((s) => s[1]).join(''));
-    } else if (m[13] !== undefined) {
-      // pdf-lib's own encoding: one hex byte per WinAnsi character (lib/ea-pdf.ts embeds Helvetica).
-      show(Buffer.from(m[13], 'hex').toString('latin1'));
-    }
-  }
-  return out;
 }
 
-/** Rectangles (`x y w h re`) with the operator that consumed them, converted to top-down `tt`. */
-function rectsOf(raw: string, height: number): Rect[] {
-  const out: Rect[] = [];
-  for (const m of raw.matchAll(/(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) re\s*([fFSBbn*\s]{0,6})/g)) {
-    const [x, y, w, h] = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
-    out.push({
-      x0: round(Math.min(x, x + w)),
-      x1: round(Math.max(x, x + w)),
-      tt0: round(height - Math.max(y, y + h)),
-      tt1: round(height - Math.min(y, y + h)),
-      op: (m[5] ?? '').trim() || '(deferred)',
-    });
-  }
-  return out;
-}
-
-const round = (n: number) => Math.round(n * 10) / 10;
+const round = roundPt;
 
 async function run() {
   const mode = process.argv.includes('--all') ? 'all' : process.argv.includes('--rects') ? 'rects' : 'sectionA';
-  const doc = await PDFDocument.load(readFileSync(OFFICIAL));
-  const page = doc.getPages()[0];
-  const height = page.getHeight();
-  console.log(`${path.basename(OFFICIAL)} — page 1 of ${doc.getPages().length}, ${round(page.getWidth())} × ${round(height)} pt`);
-  const raw = streamOf(page);
-  const runs = runsOf(raw, height).sort((a, b) => a.tt - b.tt || a.x - b.x);
-  const rects = rectsOf(raw, height).sort((a, b) => a.tt0 - b.tt0 || a.x0 - b.x0);
+  let bytes: Uint8Array | Buffer;
+  let label: string;
+  if (OURS) {
+    const empty = process.argv.includes('--blank');
+    const labels = eaPdfLabelsFromCatalogue(OURS);
+    bytes = empty
+      ? await renderEaPdf(blankEaPdfData(), labels, { locale: OURS, blank: true })
+      : await renderEaPdf(demonstrationStatement(), labels, { locale: OURS });
+    if (OUT) {
+      writeFileSync(path.resolve(process.cwd(), OUT), bytes);
+      console.log(`wrote ${OUT}`);
+    }
+    label = `OURS (lib/ea-pdf.ts, locale ${OURS}${empty ? ', blank' : ''})`;
+  } else {
+    bytes = readFileSync(OFFICIAL);
+    label = path.basename(OFFICIAL);
+  }
+  const { width, height, pages, runs, rects } = await readPdfPageGeometry(bytes);
+  console.log(`${label} — page 1 of ${pages}, ${width} × ${height} pt`);
 
   if (mode === 'all') {
     for (const r of runs) console.log(`tt ${String(r.tt).padStart(7)}  x ${String(r.x).padStart(6)}  ${String(r.size).padStart(4)}pt  ${r.text}`);
