@@ -1,3 +1,81 @@
+## r370 — 2026-09-30 · main@a5064c68 · no migration
+
+The mobile app begins. ADR-0088 (Accepted) plus phase 1 slice 1: the server's mobile API foundation
+and the Expo app. **Closes no board item** (shipped with `improve:deploy`). The owner asked for a mobile
+app; the round answered in the order the facts forced: benchmark, decision, API, app.
+
+### DECISIONS THE REQUEST DID NOT SETTLE
+- **Native, not a PWA.** Challenged first (production authenticated nobody, there was no API, the web
+  shell is desktop-only), then reversed by the owner's answers: store listing, anti-spoofing AND offline
+  clocking are all required, and each needs native. Audience: employees + approvers; payroll/admin stay
+  desktop. WorkOS cutover (readiness 1.3) goes first. All in ADR-0088.
+- **Expo, not bare React Native.** Owner asked twice; answered with sources. The app code is React Native
+  either way, `expo prebuild` makes the switch one-way safe, and EAS cloud builds route round this Mac's
+  Xcode 16.0 (SDK 57 needs 26.4+).
+- **A 30-vendor benchmark changed the plan** (`docs/research/hr-mobile-app-benchmark.md`). The three
+  contradictions that changed ADR text: a mock-location flag of `false` proves NOTHING (Apple's own forums;
+  a USB spoofer passes App Attest), so it adds nothing to `verified`; attestation cannot run offline, so
+  offline punches are signed with a key attested at registration; iOS `systemUptime` stops in sleep.
+  Plus: record every failed clock-in as an attempt (the lateness-penalty complaint that dominates
+  Malaysian reviews), foreground-only location, and face matching out of scope (sensitive data under
+  Act A1727).
+- **My own draft set two different rules for the same employee.** ADR-0070's web path REFUSES an out-of-fence
+  punch; the first ADR-0088 draft only flagged it on mobile. Corrected: core's geofence is the one rule,
+  the mobile evidence ledger sits beside it.
+- **WorkOS refresh needs no secret, although the reference page says it does.** WorkOS's own
+  expo-authkit-example refreshes from the device, and @workos-inc/node 10.7.0 serialises `client_secret`
+  from an absent key. Working code outranked the docs; no server-side refresh proxy.
+
+### WHAT SHIPPED
+- `lib/session.ts` `getMobileSession()`: a verified WorkOS bearer JWT → the SAME `principal_by_subject` →
+  `resolveWorkosPrincipal` → `withEntitlements`. Bearer only, never the `dev_user` cookie; refuses
+  everything while `WORKOS_CLIENT_ID` is unset — **so on production today every mobile call is a 401.**
+- `lib/mobile-api/jwt.ts`: RS256-only with `node:crypto` (jose is only transitive), client-scoped JWKS,
+  kid rotation with a rate-limited refresh, stale keys served through an outage; outage = 503, credential
+  fault = 401. `iss`/`aud` deliberately NOT checked: parity with the web's own AuthKit verifier.
+- `contract.ts` (zod, strips unlisted keys: `myEmployments`' basic/allowance cannot reach a phone),
+  `handler.ts` `mobileRoute()` (the only way a route gets a session or sends a body; no-store; bare
+  codes), `GET /api/mobile/v1/{me,payslips,leave,notifications}`.
+- `core/read.ts` `myReleasedPayslips`: the released-only rule had lived ONLY in `app/me/page.tsx`; a
+  second consumer would have shown employees their payslips before payday.
+- `middleware.ts`: `/api/mobile/*` bypasses the Basic CHALLENGE (the bearer needs the header), never the
+  unconfigured refusal.
+- `mobile/` (npm, own lockfile, excluded from root tsc/ESLint): expo-router, PKCE in the system browser,
+  SecureStore `WHEN_UNLOCKED_THIS_DEVICE_ONLY`, single-flight refresh, biometric/passcode unlock,
+  Home · Leave · Inbox · Me, en + ms (ms machine-drafted).
+- WorkOS **Staging** redirect `aihr://auth/callback` added (placeholder scheme until the store name).
+
+### THE GATE
+1085 of 1085 files, 16 chunks, `VITEST_MAX_WORKERS=3`, every chunk exit 0, counts read from the chunk
+logs. Gated tree 7d587628 (r370 + main ff3b5a1f, so 0492's payslip RLS is in the schema; the mobile
+tests re-run on it: 149/149). HEAD = gated tree + 61945dff (HANDOFF-HISTORY only; its one reader,
+`test/pcb-detail.test.ts`, re-run: 44/44). **The cluster rebuild failed in this shell with `postmaster
+became multithreaded during startup`: the shell had no LANG. `LANG=LC_ALL=en_US.UTF-8` fixed it;
+`initdb --locale` is pinned, so collation did not change.** Guards: the one-seam ratchet now expects
+three paths; three source guards strip comments (proven with a planted comment). Three protections were
+reverted on purpose and seen to fail (8 reds).
+
+### DEPLOYED, AND HOW THAT WAS CHECKED
+`improve:deploy` (absolute path; the receipt carried `result: PASS` for HEAD, so no unchunked vitest ran).
+On the box: `state=ok`, `exit_code=0`, `built_ref=a5064c68`, `stale_build=0`, service active after
+`sudo systemctl restart aihr`, `GET /` → 401, **`GET /api/mobile/v1/me` → `{"error":"auth_required"}` 401**
+with no token and with a bogus bearer (the live proof that the gate bypass lands on a refusing handler),
+`/api/mobilex` still challenged, migrations still 406. §3 dry-run: one line, `next-env.d.ts`, which is
+untracked and regenerated per environment by `next build` (`.next/types` on the box vs `.next/dev/types`
+locally) — not drift.
+
+### NOT DONE
+- **No completed sign-in.** Expo Go reached Staging AuthKit, which refused only the `exp://` redirect and
+  named `aihr://auth/callback`. A real run needs an EAS development build (the owner is logging in to Expo)
+  and a Staging user (Staging has none; I may not create accounts), linked to a dev login.
+- Android not run yet (SDK and emulator are on this Mac).
+- Mobile copy lives in `mobile/lib/i18n.ts`, not `messages/*.json`: the web's i18n guards would trip on a
+  `mobile` namespace. Named follow-up.
+- `app/me/page.tsx` still filters payslips itself instead of calling `myReleasedPayslips`.
+- Keychain wipe on reinstall (ADR §1) not built.
+- Writes (leave apply, claims, approvals), clock, evidence capture, push: later slices.
+- Production still has no HTTPS/domain and no real logins (readiness 1.3): phase 0, owner's.
+
 ## r369 — 2026-09-30 · main@c7a4f89c · migrations 0492, 0497
 
 Ten board items, plus a stranded security branch, plus two defects found by reading. Ten build
