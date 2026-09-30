@@ -109,11 +109,33 @@ describe('e78fd03d (A) — the Year / Payroll month / SHOW area is gone from the
     expect(CODE).not.toContain('governmentStatutory');
   });
 
-  it('NO format in the shipped registry declares the cycle kind — the salary shelf is still empty', () => {
+  /**
+   * ⚠️ r372 (item f022dd70) UPDATED THIS GUARD, IT DID NOT DELETE IT, AND THE DECISION IT PINS SPLIT IN
+   * TWO RATHER THAN BEING REVERSED.
+   *
+   * It used to read "NO format in the shipped registry declares the cycle kind", with `'month-cycle'`
+   * the only cycle kind there was. That kind is a MANDATORY SINGLE choice for a file that MOVES MONEY,
+   * and the thing the original decision declined was a picker with no bank file behind it. BOTH HALVES OF
+   * THAT ARE STILL TRUE and both are still asserted below.
+   *
+   * What r372 added is a DIFFERENT kind — `'month-runs'`, a multi-select that defaults to every run and
+   * sends NO parameter when everything is ticked — declared by the three GOVERNMENT statutory formats,
+   * which file a return rather than pay anybody. Asserted as an exact set, so a fourth format inheriting
+   * it by accident fails here rather than quietly growing a control.
+   */
+  it('the salary shelf is still empty, and no format declares the money-moving single-cycle kind', () => {
     expect(formatsInGroup('salary'), 'a cycle picker with no file behind it is what this plan declined').toEqual([]);
     expect(
-      SUBMISSION_FORMATS.filter((f) => f.periodKind !== 'month').map((f) => f.id),
-      'a format declaring the cycle kind needs a salary payment file behind it first',
+      SUBMISSION_FORMATS.filter((f) => f.periodKind === 'month-cycle').map((f) => f.id),
+      'a format declaring the mandatory single-cycle kind needs a salary payment file behind it first',
     ).toEqual([]);
+  });
+
+  it('the three GOVERNMENT statutory formats declare the multi-run kind, and nothing else does', () => {
+    expect(SUBMISSION_FORMATS.filter((f) => f.periodKind === 'month-runs').map((f) => f.id).sort()).toEqual(
+      formatsInGroup('governmentStatutory').map((f) => f.id).sort(),
+    );
+    // Not vacuous: the shelf has to have something on it for the equality above to say anything.
+    expect(formatsInGroup('governmentStatutory').length).toBeGreaterThan(0);
   });
 });
