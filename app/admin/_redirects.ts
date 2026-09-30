@@ -11,7 +11,7 @@
  */
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-// 15e5bd93 rev 4 (r370) — `import type { StatutoryAuthority }` STOOD HERE, for `failStatutoryBody`'s
+// 15e5bd93 rev 4 (r371) — `import type { StatutoryAuthority }` STOOD HERE, for `failStatutoryBody`'s
 // signature. That helper built a redirect PATH out of a statutory body so it could return a refused save
 // to the ONE BODY's edit screen. The reporter contested that screen as "an unnecessary intermediate
 // page"; it is deleted, there is nowhere per-body to return to, and every refusal from this flow goes to
@@ -251,7 +251,7 @@ export function failStatutorySetup(e: unknown, companyId: string): never {
 }
 
 /**
- * ─── 15e5bd93 rev 4 (r370) · `companyStatutoryBodyPath` AND `failStatutoryBody` STOOD HERE ──────────
+ * ─── 15e5bd93 rev 4 (r371) · `companyStatutoryBodyPath` AND `failStatutoryBody` STOOD HERE ──────────
  *
  * r355 split the statutory setup into a list of rows and a screen holding ONE body, and added this pair
  * so that a REFUSED save came back to the body's own edit screen rather than to a list that no longer

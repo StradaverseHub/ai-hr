@@ -308,7 +308,7 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
      * NEGATIVELY HERE. It counted one payment form per authority — first to keep the card's Open/Edit
      * honest (collapsed with CSS, never unmounted), then because r352's one Save read every body out of
      * the DOM. Neither reason survives the reporter's contest: the bodies are edited on a dedicated screen
-     * now — and r370 put every body's form back on that ONE screen, the per-body page r355 added having
+     * now — and r371 put every body's form back on that ONE screen, the per-body page r355 added having
      * been contested as "an unnecessary intermediate page". So the forms are counted in
      * test/statutory-body-screen-render.test.ts and test/statutory-setup-screen-render.test.ts.
      *

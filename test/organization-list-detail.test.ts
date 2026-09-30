@@ -68,7 +68,7 @@ import {
 import CompanyMaintenancePage from '../app/admin/organization/[companyId]/page';
 // 15e5bd93 rev 2 (r353) — the SECOND guarded route onto one company's data. A second door must not be an
 // easier door, so the refusal this file runs for the detail page is run for it too.
-// rev 3 (r355) added a THIRD, `…/statutory/[authority]`, and rev 4 (r370) DELETED it: the reporter
+// rev 3 (r355) added a THIRD, `…/statutory/[authority]`, and rev 4 (r371) DELETED it: the reporter
 // contested that per-body page as "an unnecessary intermediate page", so every body is a card on the
 // statutory screen itself. Its import, its render helper and its two cases are removed rather than
 // loosened — there is no route left to refuse anything.

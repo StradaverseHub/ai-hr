@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * ═══ 15e5bd93 REVISION 4 (r370) — ONE SCREEN, EVERY BODY OPEN, ONE SAVE ════════════════════════════
+ * ═══ 15e5bd93 REVISION 4 (r371) — ONE SCREEN, EVERY BODY OPEN, ONE SAVE ════════════════════════════
  *
  * ⚠️ FOURTH SHAPE FOR ONE ITEM, AND THE FIRST ONE BUILT AFTER SOMEBODY MEASURED THE LIVE SCREEN.
  * r352 built a rail plus a workspace INSIDE the company panel's Statutory tab; contested. r353 built a

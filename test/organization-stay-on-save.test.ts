@@ -383,7 +383,7 @@ describe('§4 delete is the one that must NOT stay (classification finding 2)', 
 describe('§6 the Statutory Payment Setup flow keeps its own saves (15e5bd93 rev 2, split by rev 3)', () => {
   const SETUP = (id: string) => `${LIST}/${id}/statutory`;
   /**
-   * ⚠️ 15e5bd93 REVISION 4 (r370) — THE FOURTEENTH DESTINATION IS REMOVED, AND THE SET IS NARROWED RATHER
+   * ⚠️ 15e5bd93 REVISION 4 (r371) — THE FOURTEENTH DESTINATION IS REMOVED, AND THE SET IS NARROWED RATHER
    * THAN LOOSENED.
    *
    * r355 added `BODY = (id, a) => `${SETUP(id)}/${a}`` and split this flow's two outcomes across two
@@ -525,7 +525,7 @@ describe('§6 the Statutory Payment Setup flow keeps its own saves (15e5bd93 rev
     );
     /**
      * ⚠️ r355 EXPECTED `BODY(b.companyId, 'socso')` WITH `?mode=edit` HERE. That per-body page is deleted
-     * (rev 4, r370) and the body's card is on `…/statutory`, so the button IS on the screen this lands
+     * (rev 4, r371) and the body's card is on `…/statutory`, so the button IS on the screen this lands
      * on — the claim is unchanged, the address is simpler, and the posted `authority` no longer reaches
      * a path at all.
      */
@@ -695,7 +695,7 @@ describe('§5 the panel posts what the actions read, and says it in six language
    * ⚠️ RE-POINTED THREE TIMES, NEVER WEAKENED. "Clear this authority" moved to the dedicated Statutory
    * Payment Setup screen with the editor it belongs to (r353), then to the per-body page when the
    * reporter asked for one body at a time (r355), and BACK to the one screen when they contested that
-   * page as "an unnecessary intermediate page" (r370) — so the authority half of this case reads
+   * page as "an unnecessary intermediate page" (r371) — so the authority half of this case reads
    * components/statutory-setup-screen.tsx again. Both halves are still asserted, and the authority form
    * still carries FOUR hidden fields: the row id, the company, the `returnTo` marker (its destination is
    * a different route rather than a different tab) and the `authority`, so a REFUSED clear can be

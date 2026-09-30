@@ -336,7 +336,7 @@ function BankAccountForm({
  * ⚠️ THEY HAVE MOVED TWICE MORE INSIDE THAT ROUTE AND ARE BACK WHERE r353 PUT THEM. r353 drew every body
  * as its own card on that one screen, read-only until that card's Edit was pressed; contested. r355 drew
  * a TABLE of one row per body with `…/statutory/<body>` holding one body at a time; the reporter called
- * that drill-in "an unnecessary intermediate page". REVISION 4 (r370) deletes it: every body is a card on
+ * that drill-in "an unnecessary intermediate page". REVISION 4 (r371) deletes it: every body is a card on
  * `…/statutory` itself, every field open, one Save for the screen
  * (components/statutory-setup-screen.tsx). Through all three moves `StatutoryBodyEditor` was relocated
  * rather than rewritten — group headings, field order, the `filingCountry` flag and the signatory
@@ -367,7 +367,7 @@ function BankAccountForm({
  *     route showing all eight bodies at once, so "the objection the old sentence raised does not apply".
  *   · r355 REVERSED it and built `/admin/organization/<id>/statutory/<body>`, on the reporter's own ASCII
  *     sketch: "Selecting Edit → EPF opens a screen containing ONLY the EPF fields, with Cancel / Save."
- *   · r370 REVERSES IT BACK, AND r352 WAS RIGHT. The reporter contested that page in their own words —
+ *   · r371 REVERSES IT BACK, AND r352 WAS RIGHT. The reporter contested that page in their own words —
  *     "an unnecessary intermediate page" — which is r352's objection almost verbatim, arrived at from the
  *     other side. The page is deleted; every body is a card on `…/statutory` with its fields already
  *     open. What r352 got wrong was not the objection but WHERE it applied: the fields do not belong on
@@ -590,7 +590,7 @@ function StatutoryBodyRow({
  * asked for the "tab/expand-style interface" to go. 15e5bd93 REVISION 2 (r353) went further on the same
  * instruction and took the statutory FIELDS off this panel altogether — they are ONE dedicated screen
  * (components/statutory-setup-screen.tsx: every body as a card, every field open, one Save; r355's
- * per-body page was contested as "an unnecessary intermediate page" and deleted in r370) — so the
+ * per-body page was contested as "an unnecessary intermediate page" and deleted in r371) — so the
  * Statutory tab holds the company's own registrations and a read-only list of the eight bodies that
  * LINKS there. See StatutoryBodyRow.
  *

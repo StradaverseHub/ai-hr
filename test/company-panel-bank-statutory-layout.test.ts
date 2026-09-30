@@ -42,7 +42,7 @@ const orgOf = (loc: string) =>
  *              every body as its own card, and one Save scope over the lot.
  *   CARD_SRC   the `StatutoryBodyCard` slice of that same file — ONE body: its three groups, its
  *              thirteen posted names and its Clear button. r355 had it as a file of its own behind a
- *              per-body route; rev 4 (r370) folds it back in because the reporter contested that route
+ *              per-body route; rev 4 (r371) folds it back in because the reporter contested that route
  *              as "an unnecessary intermediate page". A SLICE again, so a claim about the card cannot be
  *              satisfied by the identity card above it.
  *   DISPLAY    lib/statutory-authority-display.ts — the marks, the r226 filing-field map and (new in r355)
@@ -64,7 +64,7 @@ const ROW_SRC = panel.slice(
   panel.indexOf('export function CompanyPanel'),
 );
 /**
- * ⚠️ RE-POINTED TWICE AND A SLICE AGAIN (15e5bd93 rev 4, r370). r353 had the editor as a
+ * ⚠️ RE-POINTED TWICE AND A SLICE AGAIN (15e5bd93 rev 4, r371). r353 had the editor as a
  * `StatutoryBodyCard` inside the setup screen; r355 made it a file of its own behind a per-body route;
  * the reporter contested that route and it is DELETED, so the card is back inside the screen.
  *
@@ -388,7 +388,7 @@ describe('Statutory tab: per-authority payment setup', () => {
 
   /**
    * ⚠️ THE PER-BODY ROUTE IS DELETED, AND A STALE MATRIX ENTRY FAILS THE GATE EXACTLY AS A MISSING ONE
-   * DOES (15e5bd93 rev 4, r370).
+   * DOES (15e5bd93 rev 4, r371).
    *
    * r355 added `/admin/organization/[companyId]/statutory/[authority]` and this case pinned its two
    * validated inputs: the company through `scopedAdmin()` + `listCompanies({ adminOnly: true })`, and the
@@ -519,7 +519,7 @@ describe('Statutory tab: one body, one card, both of its numbers (r226)', () => 
   const ACTIONS = read('app/admin/actions.ts');
   /**
    * ⚠️ THERE ARE TWO CALLERS OF THE PARTIAL-PATCH IDENTITY WRITER AGAIN, AND THE r353 CLAIM THAT THERE
-   * MUST BE ONE IS REVERSED HERE RATHER THAN DELETED (15e5bd93 rev 4, r370).
+   * MUST BE ONE IS REVERSED HERE RATHER THAN DELETED (15e5bd93 rev 4, r371).
    *
    * r352 opened a SECOND DOOR to `company_statutory_my`: a consolidated Save reaching the partial-patch
    * writer alongside `setCompanyStatutoryAuthorityAction`. r353 deleted it and this case read, in full:
@@ -935,7 +935,7 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
     expect(CARD_SRC, 'and it READS the derivation').toContain('statutoryRowStatus(authority, !!row,');
     expect(stripComments(CARD_SRC), 'rather than re-testing the band itself').not.toContain("=== 'not_registered'");
     /**
-     * ⚠️ ONLY THE `configured` HALF IS READ NOW, AND THE OTHER HALF DID NOT VANISH (rev 4, r370). The two
+     * ⚠️ ONLY THE `configured` HALF IS READ NOW, AND THE OTHER HALF DID NOT VANISH (rev 4, r371). The two
      * COLUMNS went with the table; each card carries one word, Set up / Not set up, meaning "a
      * `company_statutory_authority` row exists" — identically for all eight bodies, which is the only
      * thing a shared caption may say (CLAUDE.md §8). HRD Corp's separate fact, whether it contributes at
@@ -1027,7 +1027,7 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
     // THE GENERAL TAB'S SCOPE IS UNTOUCHED: this round removed one scope, not the pattern.
     expect(panel, "General's Save bar stays").toContain('tabKey="general"');
     /**
-     * ⚠️ AND THE PER-CARD SAVE IS GONE AGAIN (15e5bd93 rev 4, r370). r353 gave each body its own Save and
+     * ⚠️ AND THE PER-CARD SAVE IS GONE AGAIN (15e5bd93 rev 4, r371). r353 gave each body its own Save and
      * this case asserted `t('authoritySave')` on the card; r355 kept it on the per-body page. The
      * reporter's expected_function has said the same thing throughout and we have never built it:
      * "Provide one Save button for the entire Statutory Payment Setup screen… Save all changes together…
@@ -1115,7 +1115,7 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
       'the controlled set puts EIS immediately after SOCSO, which is what a table row order means',
     ).toBe('eis');
     /**
-     * ⚠️ RE-POINTED A THIRD TIME, AND THE INDENT IS GONE WITH THE TABLE IT LIVED IN (rev 4, r370). r353
+     * ⚠️ RE-POINTED A THIRD TIME, AND THE INDENT IS GONE WITH THE TABLE IT LIVED IN (rev 4, r371). r353
      * asserted `subordinate && 'ml-6'` on a card in a two-column grid; r355 asserted `subordinate &&
      * 'pl-6'` on a table cell. There is no table and no grid: eight full-width cards in the controlled
      * set's order, so ADJACENCY alone carries the relationship — which is asserted on the controlled set
@@ -1146,7 +1146,7 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
     // The fallback is applied wherever a MARK is drawn, which is what makes adding an authority safe.
     expect(ROW_SRC).toContain('AUTHORITY_ICON[authority] ?? Landmark');
     expect(CARD_SRC).toContain('AUTHORITY_ICON[authority] ?? Landmark');
-    // ⚠️ REVERSED BY rev 4 (r370). r355's four-column TABLE drew no mark at all — "their table is four
+    // ⚠️ REVERSED BY rev 4 (r371). r355's four-column TABLE drew no mark at all — "their table is four
     // text columns" — and this case asserted `not.toContain('AUTHORITY_ICON')` on the screen. The table
     // is gone; every body is a CARD again, headed by its own mark, so the fallback has to be here too.
     // Exactly one drawing of it on the screen: the card is one component rendered eight times.
@@ -1210,7 +1210,7 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
      *   · THE BODY SCREEN carried the full `<dl>` in VIEW mode, before Edit, not after.
      * What is still forbidden is the summary being reachable ONLY by opening a body, and all three pin that.
      *
-     * ⚠️ THE THIRD BULLET IS REVERSED BY rev 4 (r370) AND THE PROMISE IS KEPT A BETTER WAY. That `<dl>`
+     * ⚠️ THE THIRD BULLET IS REVERSED BY rev 4 (r371) AND THE PROMISE IS KEPT A BETTER WAY. That `<dl>`
      * was measured: it declared `grid-cols-[auto_1fr]` and then gave every row `col-span-2 flex …
      * justify-between`, cancelling the grid — 767–926px of dead space between a caption and its value at
      * 1280, three different value edges, and the correspondence address `truncate`d to the literal "…"
@@ -1307,7 +1307,7 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
        * ⚠️ RETIRED IN PLACE, IN ALL SIX CATALOGUES, AND ASSERTED PRESENT RATHER THAN ASSERTED GONE.
        *
        * r355 introduced eleven strings for the reporter's own table layout and this loop required them.
-       * r370 removes the table, the View link and the per-body page — but NOT the strings.
+       * r371 removes the table, the View link and the per-body page — but NOT the strings.
        * i18n/request.ts deep-merges each locale over English, so dropping a key from en.json alone leaves
        * a Malay reader the OLD sentence; and a retired string costs nothing while re-translating a
        * deleted one into six languages costs a round. `authorityOpen`, `authorityClose`, `tabOther` and
@@ -1332,7 +1332,7 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
         expect(org[k], `${loc}: ${k} is retired, not deleted`).toBeTruthy();
       }
       /**
-       * 15e5bd93 REVISION 4 (r370) — THE NINE NEW STRINGS THE ONE SCREEN NEEDS: the screen-wide Save and
+       * 15e5bd93 REVISION 4 (r371) — THE NINE NEW STRINGS THE ONE SCREEN NEEDS: the screen-wide Save and
        * Cancel, the unsaved-changes prompt's title, body and three buttons, and the per-card status word.
        * Static keys, so check C sees them as well; listed here because this is the file that owns what
        * these screens say, and because FIVE of them are only rendered when the reader tries to LEAVE
@@ -1380,7 +1380,7 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
  */
 describe('Statutory tab: the signatory picker', () => {
   it('is the shared searchable employee field, not a plain select', () => {
-    // ⚠️ ON THE BODY CARD (r353 moved it off the panel; r355 onto the per-body page; r370 back onto the
+    // ⚠️ ON THE BODY CARD (r353 moved it off the panel; r355 onto the per-body page; r371 back onto the
     // one screen with that page's deletion). The PANEL is still asserted not to have it, rather than
     // assumed: a leftover control there would be a second signatory picker over one column.
     expect(SCREEN).toContain("from './employee-search-field'");
@@ -1390,7 +1390,7 @@ describe('Statutory tab: the signatory picker', () => {
     expect(CARD_SRC).not.toMatch(/<select name="signatoryPersonId"/);
     expect(panel, 'the panel has no signatory control at all').not.toContain('EmployeeSearchField');
     /**
-     * `fieldLabel` IS ON THE PROP, and as of rev 4 (r370) the reason is live again rather than defensive.
+     * `fieldLabel` IS ON THE PROP, and as of rev 4 (r371) the reason is live again rather than defensive.
      * r353 and r355 kept it while the form sat OUTSIDE any `TabSaveScope`, on the grounds that
      * lib/tab-save-dom.ts `hiddenInputIsUserFacing` and `controlDisplay` need it. This screen has a
      * consolidated Save, so the walker really does read this control: without the pair, a
@@ -1410,7 +1410,7 @@ describe('Statutory tab: the signatory picker', () => {
     // an empty string and clear the column. The former employee is therefore injected into the list.
     expect(CARD_SRC).toContain("t('authoritySignatoryFormer')");
     expect(CARD_SRC).toContain('signatoryOptions.unshift');
-    // ⚠️ THE VIEW-MODE HALF OF THIS CLAIM IS RETIRED WITH VIEW MODE (rev 4, r370). r355 asserted
+    // ⚠️ THE VIEW-MODE HALF OF THIS CLAIM IS RETIRED WITH VIEW MODE (rev 4, r371). r355 asserted
     // `signatories.find(...)?.name ?? t('authoritySignatoryFormer')` on the read-only `<dl>`, so a
     // departed signatory was NAMED rather than shown as "Not set" or as a bare person id. There is no
     // `<dl>`; the same tolerance now lives in the picker itself, where it is stronger — the injected
