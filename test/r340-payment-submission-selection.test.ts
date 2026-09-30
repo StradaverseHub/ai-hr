@@ -139,3 +139,54 @@ describe('e78fd03d (A) — the Year / Payroll month / SHOW area is gone from the
     expect(formatsInGroup('governmentStatutory').length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * r372 (item f022dd70) — THE SELECTION HAS TO REACH THE FIGURES, NOT JUST THE SCREEN.
+ *
+ * "The Payroll Cycle selection must affect the actual statutory submission data, not merely the display
+ * or download filename." That is the reporter's own Important Processing Rule and it is acceptance
+ * criterion 14. The end-to-end proof lives in the database tests; this is the STRUCTURAL half — that all
+ * three formats reach a parser and a threaded parameter rather than two of them quietly ignoring the
+ * control the screen is drawing for them. Three formats behaving differently behind one control is the
+ * r296 defect, and it is invisible from the screen.
+ */
+describe('r372 — the payroll-cycle selection reaches all three files', () => {
+  const src = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
+
+  it('all three formats declare the multi-run kind, so the control is drawn for each of them', () => {
+    const government = formatsInGroup('governmentStatutory');
+    expect(government.length).toBe(3);
+    for (const f of government) expect(f.periodKind, f.id).toBe('month-runs');
+  });
+
+  it('the CP39 builder parses the selection and hands it to the pack, not to a filename', () => {
+    const code = src('app/payroll/payment-submission/registry.ts');
+    expect(code).toContain('parseRunSelection(query)');
+    expect(code).toContain('runSeqs: selection.runSeqs');
+  });
+
+  it('the EPF and PERKESO loaders parse the same query and forward it to the read', () => {
+    for (const p of ['app/payroll/borang-a/shared.ts', 'app/payroll/borang-8a/shared.ts']) {
+      const code = src(p);
+      expect(code, p).toContain('parseRunSelection(p.query)');
+      expect(code, p).toContain('runSeqs: selection.runSeqs');
+      // A bad value REFUSES. Dropping it would build the file over a different population from the one
+      // the URL named, which is the acceptance criterion read backwards.
+      expect(code, p).toContain("reason: 'bad-selection'");
+    }
+  });
+
+  it('the generic seam forwards it rather than each caller re-deriving it', () => {
+    const code = src('core/reporting.ts');
+    // Both the preview and the RECORDED artefact: a record built from a different population than the
+    // preview the operator looked at is worse than no record.
+    expect(code.match(/runSeqs: p\.runSeqs/g) ?? []).toHaveLength(2);
+  });
+
+  it('the eligible-runs route reaches payroll through the pack FACADE, never the implementation', () => {
+    const code = src('app/payroll/payment-submission/runs/route.ts');
+    expect(code).toContain("from '@/packs/payroll/service'");
+    // ADR-0080 D9. The ratchet would catch this too; saying it here names WHY for the next reader.
+    expect(code).not.toMatch(/from '@?\/?(\.\.\/)*core\/payroll/);
+  });
+});
