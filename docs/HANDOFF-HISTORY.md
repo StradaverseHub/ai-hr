@@ -104,9 +104,22 @@ branches**, so the catalogue union merge could not resurrect anything.
   path silently drops a collected `rejectReason` for attendance items) and the phone layout.
 - **`db1e7b9d` round 2** (MTD steps 9.7 and 9.8, which need `pcbMonth` to stamp `totalMtdYear`
   unconditionally).
-- **`core/employee-draft.ts`** also calls `setCompensation` with no remarks field, so a zero-basic draft
-  activated through the hire wizard hits the same refusal the importer now handles. That is 7dbaf677's
-  round two.
+- **The hire wizard's draft activation** is `7dbaf677`'s round two. ⚠️ CORRECTED the same evening, and
+  the original wording is quoted because two separate agents inherited it from me: it read
+  "`core/employee-draft.ts` also calls `setCompensation` with no remarks field". **That is FALSE.** Line
+  888 passes `remarks: str(pay.remarks)`, `lib/employee-draft-schema.ts` carries `remarks` on
+  `EmployeeDraftPayroll`, and `wizard.tsx:1073` already renders a Remarks input in all six locales. The
+  wizard has somewhere to state the reason; what it lacks is the RULE making it compulsory and the relief
+  on the amount. The real hazard there is worse and is now in 7dbaf677's revision: `hireEmployee` commits
+  at :612 while `setCompensation` runs at :880 and the draft is deleted at :910, deliberately not in one
+  transaction — so a `SalaryRemarkRequiredError` leaves an employment created, the draft still present and
+  an untranslated message on screen.
+- **⚠️ `Number('')` IS 0, NOT NaN, and this round repeated the opposite in several places.** Measured:
+  `Number('')` and `Number('   ')` are both `0`; only a non-numeric string (`abc`, `RM500`, `-`, `.`)
+  gives NaN. So a BLANK basic salary never reaches `NonFiniteSalaryAmountError` — it reaches
+  `SalaryRemarkRequiredError`. The claim originated in `eb949191`'s own build notes and I carried it into
+  briefs and into this entry without measuring it. `assertFinite` is still correct and still worth having;
+  it simply is not the guard a blank field trips.
 - **`app/attendance/requests/page.tsx`** reads corrections by COUNT (`limit: 200`) on a DATE-ranged screen,
   so past 200 a date can lose its "already requested" marker and the duplicate is refused as a raw
   Postgres unique-violation. The user-visible half is covered by `011c5b7f`'s plan.
