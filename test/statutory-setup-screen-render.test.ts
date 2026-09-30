@@ -248,6 +248,23 @@ describe('15e5bd93 rev 4 render check — the setup SCREEN in all six locales, r
    * screen.
    */
   it('keeps the retired table captions in every catalogue and renders none of them', () => {
+    /**
+     * ⚠️ THE ABSENCE HALF IS SPLIT IN TWO, AND THE FIRST WRITING OF THIS CASE GOT IT WRONG IN A WAY
+     * WORTH RECORDING. It asserted `not.toContain(caption)` against the whole markup for all seven
+     * retired keys, and went red on two of them — correctly, because four of the captions are ORDINARY
+     * WORDS that legitimately appear elsewhere on this very screen:
+     *
+     *     statutoryColBody          "Statutory"       ⊂ "Statutory identity (MY)", and ⊂ /statutory/*.png
+     *     statutoryColPaymentSetup  "Payment Setup"   ⊂ the page title "Statutory Payment Setup"
+     *     statutoryColStatus        "Status"          a word this product uses everywhere
+     *     authorityView             "View"            likewise
+     *
+     * A substring check on a word that short is not a claim about a caption, it is a claim about the
+     * alphabet. So the four generic ones are asserted STRUCTURALLY instead — which is strictly stronger
+     * than the string check ever was, because "there is no table and no column header on this screen"
+     * cannot be satisfied by a caption that merely changed wording — and only the two DISTINCTIVE
+     * sentences are still asserted as text.
+     */
     const RETIRED = [
       'statutoryColBody',
       'statutoryColPaymentSetup',
@@ -257,13 +274,38 @@ describe('15e5bd93 rev 4 render check — the setup SCREEN in all six locales, r
       'backToStatutorySetup',
       'statutoryBodyViewCaption',
     ] as const;
+    /** Long enough that appearing in the markup can only mean this screen rendered it. */
+    const DISTINCTIVE = ['backToStatutorySetup', 'statutoryBodyViewCaption'] as const;
     for (const locale of LOCALES) {
       const org = messagesFor(locale).admin.organization as Record<string, string>;
       const html = render(locale, richProps);
+      // THE HALF THAT MATTERS: every one of them still EXISTS, in every catalogue.
       for (const k of RETIRED) {
         expect(org[k], `${locale}: ${k} is retired, not deleted`).toBeTruthy();
+      }
+      for (const k of DISTINCTIVE) {
+        /**
+         * ⚠️ DISTINCTIVENESS IS CHECKED, NOT ASSUMED — and the first version of this line checked it
+         * with `length > 20`, which is an ENGLISH assumption. zh's `backToStatutorySetup` is eight
+         * characters ("返回法定付款设置") and went red, correctly: a character count is a proxy for
+         * "specific enough that finding it can only mean the screen rendered it", and CJK says the same
+         * sentence in a third of the characters.
+         *
+         * So the property itself is asserted instead, and it is locale-independent: the retired caption
+         * is not a SUBSTRING of any other string in this namespace. If it were, the absence check below
+         * would be ambiguous — it could go green because the caption is gone, or red because some live
+         * caption happens to contain it, and the two are indistinguishable from the assertion.
+         */
+        const others = Object.entries(org).filter(([key, v]) => key !== k && typeof v === 'string');
+        const shadowing = others.filter(([, v]) => v.includes(org[k])).map(([key]) => key);
+        expect(shadowing, `${locale}: ${k} is shadowed by ${shadowing.join(', ')}, so its absence check is ambiguous`)
+          .toEqual([]);
         expect(html, `${locale}: ${k} must not be on the screen`).not.toContain(inMarkup(org[k]));
       }
+      // AND THE FOUR COLUMN CAPTIONS, STRUCTURALLY: there is no table on this screen to head.
+      expect(html, `${locale}: no table`).not.toMatch(/<table\b/);
+      expect(html, `${locale}: no column header`).not.toMatch(/<th\b/);
+      expect(html, `${locale}: no table head`).not.toMatch(/<thead\b/);
     }
   });
 
@@ -400,10 +442,27 @@ describe('15e5bd93 rev 4 render check — the setup SCREEN in all six locales, r
    */
   it('builds no address with a body in it, and offers no View or Edit', () => {
     const html = render('en', richProps);
+    /**
+     * ⚠️ ASSERTED ON ANCHOR HREFs, NOT ON THE WHOLE MARKUP, AND THE FIRST WRITING OF THIS CASE WENT RED
+     * FOR THE RIGHT REASON. `not.toContain('/statutory/lhdn')` matched `AUTHORITY_LOGO.lhdn`, which is
+     * `/statutory/lhdn.png` — the body's own MARK, served from public/statutory/ and quite correctly on
+     * the card. The claim was never about that path; it is about a LINK that navigates to a per-body
+     * route, so it reads the hrefs of anchors.
+     *
+     * The anchor set is asserted NON-EMPTY first: this screen does render one link (Cancel), and a
+     * selector that silently matched nothing would make every claim below vacuously true.
+     */
+    const anchors = [...html.matchAll(/<a\b[^>]*\shref="([^"]*)"/g)].map((m) => m[1]);
+    expect(anchors.length, 'the screen does render links, so this is not a vacuous check').toBeGreaterThan(0);
     for (const a of STATUTORY_AUTHORITIES) {
-      expect(html, `no /statutory/${a} address`).not.toContain(`/statutory/${a}`);
+      for (const href of anchors) {
+        expect(href, `no link navigates to /statutory/${a}`).not.toContain(`/statutory/${a}`);
+      }
     }
-    expect(html, 'no mode query anywhere').not.toContain('mode=');
+    // The body MARKS are still drawn, and they are images rather than addresses — the thing the first
+    // version of this case mistook for a route.
+    expect(html, 'the body marks are still on the cards').toContain('/statutory/lhdn.png');
+    for (const href of anchors) expect(href, 'no mode query on any link').not.toContain('mode=');
     expect(html, 'no View affordance').not.toContain('data-statutory-view-link');
     expect(html, 'no Edit affordance').not.toContain('data-statutory-edit-link');
     // Cancel goes to the company's Statutory TAB, which is also where the page header's Back goes.
