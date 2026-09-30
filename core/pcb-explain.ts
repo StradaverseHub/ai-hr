@@ -886,7 +886,7 @@ export type PcbChildProfile = {
 };
 
 /**
- * r370 — HOW MANY CHILDREN ARE ON RECORD, AND WHICH RECORD THAT IS.
+ * r371 — HOW MANY CHILDREN ARE ON RECORD, AND WHICH RECORD THAT IS.
  *
  * ⚠️ THIS IS NOT C, AND THE WHOLE POINT OF THE ROW IS THAT IT CANNOT BE READ AS C. LHDN's specification
  * (printed p.10) defines "C  Number of qualifying children", and printed p.27 decides C under the heading
@@ -951,7 +951,7 @@ export function pcbChildSection(
   childCount: PcbWorksheetValue,
   /** r359 — Q, the deduction for ONE qualifying child. See the Q/C note on the worksheet rows. */
   childDeductionPerChild: PcbWorksheetValue,
-  /** r370 — the HEAD COUNT, which is not C. NULL ⇒ no count was ever recorded; see `PcbChildHeadCount`. */
+  /** r371 — the HEAD COUNT, which is not C. NULL ⇒ no count was ever recorded; see `PcbChildHeadCount`. */
   headCount: PcbChildHeadCount | null,
 ): PcbSlipSection {
   const grid = p != null && p.mode === 'auto_table' ? p.table : null;
@@ -976,7 +976,7 @@ export function pcbChildSection(
     third: { kind: 'count', count: c.qc },
     };
   });
-  // r370 — THE HEAD COUNT FIRST, BESIDE C AND NEVER INSTEAD OF IT. It sits above C so a reader meets the
+  // r371 — THE HEAD COUNT FIRST, BESIDE C AND NEVER INSTEAD OF IT. It sits above C so a reader meets the
   // plain number of children before the weighted one, and its caption names which record it was read from.
   // Absent ⇒ nothing was recorded, which is not a family of nobody: see `PcbChildHeadCount`.
   rows.push({
@@ -1377,7 +1377,7 @@ export function pcbSlipSections(
   x: PcbExplanation,
   p: {
     profile: PcbChildProfile | null;
-    /** r370 — how many children are on record, and from which record. See `PcbChildHeadCount`. */
+    /** r371 — how many children are on record, and from which record. See `PcbChildHeadCount`. */
     childHeadCount?: PcbChildHeadCount | null;
     catalogue: readonly PcbSlipCatalogueItem[];
     rebateCatalogue: readonly PcbSlipCatalogueItem[];
@@ -1406,7 +1406,7 @@ export function pcbSlipSections(
     ),
     // 3 — r361: the accumulated remuneration block, which the official prints on page 1 immediately
     // under the child grid and above the accumulated deductions.
-    // ⚠️ r370 — THE ORDER OF THIS ARRAY IS NO LONGER WHAT A SURFACE RENDERS. `pcbDetailLayout` places
+    // ⚠️ r371 — THE ORDER OF THIS ARRAY IS NO LONGER WHAT A SURFACE RENDERS. `pcbDetailLayout` places
     // every one of these sections BY ITS HEADING and gives it the reporter's number, so reordering this
     // return value cannot renumber a tax document and cannot move a section on one surface only. The
     // numbers in these comments are the reporter's sequences, which is what they always meant.
@@ -1692,7 +1692,7 @@ export function pcbCalculationResultsSection(x: Extract<PcbExplanation, { kind: 
  * ONE LIST, TWO SURFACES. The screen and the downloaded document both reach these through
  * `pcbDetailLayout`, so neither can carry a band the other does not and neither can put them in a
  * different order — the identical device, and the identical reason, as `pcbFormulaBlocks` for the
- * substituted expressions. r370 — the agency prints its two numbered items UNDER its "MTD CALCULATION"
+ * substituted expressions. r371 — the agency prints its two numbered items UNDER its "MTD CALCULATION"
  * heading, so the layout places them as the closing steps of the reporter's sequence 9, and CALCULATION
  * RESULTS as his sequence 10.
  *
@@ -1733,7 +1733,7 @@ export const CATEGORY_LABEL: Record<number, 'category1' | 'category2' | 'categor
   3: 'category3',
 };
 
-// ═════════════════ r370 — ONE ORDERED SECTION LIST, AND BOTH SURFACES ITERATE IT ═════════════════
+// ═════════════════ r371 — ONE ORDERED SECTION LIST, AND BOTH SURFACES ITERATE IT ═════════════════
 //
 // WHAT WAS WRONG, AND IT WAS NOT A MISSING SECTION. Every FIGURE on this surface already had one source:
 // `page.tsx` and `pcbDetailModel` in app/payroll/pcb-detail/shared.ts call `explainPcb`, `pcbWorksheet`,

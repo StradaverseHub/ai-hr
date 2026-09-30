@@ -34,7 +34,7 @@
  * an absence. Only the plumbing is written twice, and `test/ad7bc503-pcb-slip.test.ts` drives BOTH paths
  * over one generated payslip and requires the model to be identical.
  *
- * ── r370: AND THE FIFTH FUNCTION, WHICH IS THE ONE THAT WAS MISSING ────────────────────────────────
+ * ── r371: AND THE FIFTH FUNCTION, WHICH IS THE ONE THAT WAS MISSING ────────────────────────────────
  * Those four gave the two surfaces one set of FIGURES. Nothing gave them one LAYOUT: the screen's order
  * was hand-placed JSX and this file's was a run of `sections.push` calls, and they had drifted — five
  * whole sections the screen carried were absent here, `netHeading` and `yearHeading` were each emitted
@@ -68,7 +68,7 @@ import type {
 } from '@/core/pcb-explain';
 import { payslipProvenance } from '@/core/payslip-recompute';
 import { formatMoney } from '@/lib/money';
-// r370 — ONE month formatter for the screen and the document. See lib/month-name.ts on why.
+// r371 — ONE month formatter for the screen and the document. See lib/month-name.ts on why.
 import { monthYearLabel } from '@/lib/month-name';
 import { SLIP_ITEMS, SLIP_REBATES, pcbSlipData } from './slip-data';
 // r351 — the SAME assembly the screen paints. See the block comment where it is used.
@@ -101,7 +101,7 @@ export type PcbDetailModel = {
   slip: PcbSlipSection[];
   /** r361 — the official's two numbered steps and its CALCULATION RESULTS band, in its own order. It is
    *  part of the MODEL and not of either renderer, so the screen and this document iterate one list.
-   *  r370 — and WHERE each of them goes is `pcbDetailLayout`'s answer, over this same model. */
+   *  r371 — and WHERE each of them goes is `pcbDetailLayout`'s answer, over this same model. */
   closing: PcbSlipSection[];
 };
 
@@ -124,7 +124,7 @@ export function pcbDetailModel(p: {
     slip: p.slipData
       ? pcbSlipSections(explanation, {
           profile: p.slipData.profile,
-          // r370 — the head count for sequence 2, read from the same `pcbSlipData` the screen reads.
+          // r371 — the head count for sequence 2, read from the same `pcbSlipData` the screen reads.
           childHeadCount: p.slipData.childHeadCount,
           catalogue: SLIP_ITEMS,
           rebateCatalogue: SLIP_REBATES,
@@ -231,7 +231,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
   const cycleKey = CYCLE_LABEL[row.runType];
 
   /**
-   * ⚠️ r370 — THE MONTH IS NAMED, NOT PRINTED AS A STORED STRING. This document used to carry the raw
+   * ⚠️ r371 — THE MONTH IS NAMED, NOT PRINTED AS A STORED STRING. This document used to carry the raw
    * `payPeriod` — "2026-06" — in the masthead and in section 1, where the screen says "June 2026". The
    * reporter's criterion 20 is that the two show the same values, and a reader holding both had to work out
    * that two differently-spelled things were one month. It is resolved against the DOCUMENT's own language
@@ -258,7 +258,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
   const fb = pcbFormulaByKey(pcbFormulaBlocks(x, { b2, pct: pctOf, int: (v: number) => `${v}` }));
 
   /**
-   * ⚠️ r370 — THE FOUR ROWS OF A STEP, ASSEMBLED ONCE FOR EVERY STEP THAT HAS THEM.
+   * ⚠️ r371 — THE FOUR ROWS OF A STEP, ASSEMBLED ONCE FOR EVERY STEP THAT HAS THEM.
    *
    * THE LONG EXPRESSIONS GO IN THE LABEL, NOT IN A FIGURE COLUMN. A figure column is 96 points wide and
    * right-aligned; a 200-character substituted formula placed in one would be drawn leftwards straight
@@ -284,11 +284,11 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
   const AMOUNT = [t('slipColAmount')];
 
   /**
-   * ══ r370 — ONE BODY PER SLOT, EXHAUSTIVE, AND THE SCREEN'S TWIN ══
+   * ══ r371 — ONE BODY PER SLOT, EXHAUSTIVE, AND THE SCREEN'S TWIN ══
    *
    * `pcb-detail-view.tsx` has the identical switch over the identical closed union, and both are driven by
    * `pcbDetailLayout`. That is what makes "five sections reached the screen and not the paper" — which is
-   * what this document shipped until r370 — a compile error rather than something only a render check
+   * what this document shipped until r371 — a compile error rather than something only a render check
    * could find. The `never` in the default is load-bearing: without it a missing slot would compile.
    *
    * ⚠️ AND IT IS THE SCREEN'S OWN ASSEMBLY, NOT A SECOND COPY OF IT. `pcbFormulaBlocks` is the function
@@ -297,7 +297,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
    */
   const bodyFor = (slot: PcbDetailBodySlot): { rows: PcbSlipPdfRow[]; columns?: string[]; note?: string } => {
     switch (slot) {
-      // ⚠️ THE SAME EIGHT ROWS THE SCREEN RENDERS, AND NO MORE. Until r370 this block also carried the
+      // ⚠️ THE SAME EIGHT ROWS THE SCREEN RENDERS, AND NO MORE. Until r371 this block also carried the
       // statutory table version, which on the screen belongs to the "Calculation source" footer — and that
       // footer was absent from this document altogether, so the row had nowhere else to be. It has one now.
       case 'identification':
@@ -333,7 +333,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
         };
       }
 
-      // r370 — THE HONEST BANNER, WHICH THIS DOCUMENT NEVER CARRIED. A reader holding a PDF of dashes with
+      // r371 — THE HONEST BANNER, WHICH THIS DOCUMENT NEVER CARRIED. A reader holding a PDF of dashes with
       // no sentence explaining them reads the dashes as zeroes; the screen has said so since 45df860a.
       case 'traceBanner':
         return { columns: [], rows: [wide(t('traceNotRecorded'))] };
@@ -377,7 +377,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
         };
 
       // 9.2 / Step 1 [B] — the deductions the chargeable income is reduced by. Absent from this document
-      // entirely until r370, though every term of them appears inside the substituted P expression below.
+      // entirely until r371, though every term of them appears inside the substituted P expression below.
       case 'mtdReliefs':
         return mtd == null
           ? { rows: [] }
@@ -435,7 +435,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
           ? { rows: [] }
           : { columns: AMOUNT, rows: formulaRows(fb.mtd), note: noteOf(fb.mtd) };
 
-      // 9.5 continued — M, R and B, read off Table 1 once P is known. Absent from this document until r370.
+      // 9.5 continued — M, R and B, read off Table 1 once P is known. Absent from this document until r371.
       case 'mtdBracket':
         return {
           columns: AMOUNT,
@@ -448,7 +448,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
           note: t('bracketNote'),
         };
 
-      // 9.5 continued — the accumulators [C] subtracts and its divisor. Absent from this document until r370.
+      // 9.5 continued — the accumulators [C] subtracts and its divisor. Absent from this document until r371.
       case 'mtdPrior':
         return mtd == null
           ? { rows: [] }
@@ -522,7 +522,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
         return { columns: AMOUNT, rows, note: noteOf(fb.year) };
       }
 
-      // 9.8 — additional remuneration. Absent from this document until r370.
+      // 9.8 — additional remuneration. Absent from this document until r371.
       case 'mtdAdditional':
         return mtd == null
           ? { rows: [] }
@@ -563,7 +563,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
               note: basis ? t(L.note) : undefined,
             };
 
-      // APPENDIX — LHDN's own worksheet order. Out of the numbered run since r370: every figure on it
+      // APPENDIX — LHDN's own worksheet order. Out of the numbered run since r371: every figure on it
       // appears again below, and it used to stand between the reporter's sequences 1 and 2.
       case 'lhdnWorksheet': {
         const w = model.worksheet;
@@ -577,7 +577,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
         return { columns: AMOUNT, rows, note: t(w.note) };
       }
 
-      // FOOTER — where these figures came from. Absent from this document until r370.
+      // FOOTER — where these figures came from. Absent from this document until r371.
       case 'source':
         return {
           columns: [],
@@ -601,9 +601,9 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
   };
 
   /**
-   * ══ r370 — ONE ORDERED LIST, ITERATED. THIS FILE NO LONGER OWNS AN ORDER ══
+   * ══ r371 — ONE ORDERED LIST, ITERATED. THIS FILE NO LONGER OWNS AN ORDER ══
    *
-   * Until r370 the order of this document was the sequence of `sections.push` calls written here, and the
+   * Until r371 the order of this document was the sequence of `sections.push` calls written here, and the
    * order of the screen was hand-placed JSX in `pcb-detail-view.tsx`. TWO lists, and they had drifted:
    * `reliefsHeading`, `bracketHeading`, `priorHeading`, `additionalHeading` and `sourceHeading` were absent
    * from the paper altogether, `netHeading` and `yearHeading` were each emitted TWICE and `pHeading` twice
@@ -658,7 +658,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
    *
    * The defect was eleven `sections.push` calls whose written order WAS the document's layout. A second
    * push anywhere in this file is a second ordering in prospect, so there is exactly one and
-   * test/r370-pcb-sequence.test.ts counts them.
+   * test/r371-pcb-sequence.test.ts counts them.
    */
   for (const e of layout) {
     const b = e.kind === 'section' ? slipRows(e.section) : bodyFor(e.slot);

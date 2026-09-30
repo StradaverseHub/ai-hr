@@ -22,7 +22,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { currentPcbReliefs, payslipForReview, previousEmploymentForPayslip } from '@/core/payroll-view';
 import { explainPcb, pcbClosingSections, pcbSlipSections, pcbWorksheet } from '@/core/pcb-explain';
 import { payslipProvenance } from '@/core/payslip-recompute';
-// r370 — ONE month formatter for this screen and the downloaded document. See lib/month-name.ts on why:
+// r371 — ONE month formatter for this screen and the downloaded document. See lib/month-name.ts on why:
 // the document printed the stored "2026-06" where this screen printed "June 2026", for the same payslip.
 import { monthYearLabel } from '@/lib/month-name';
 import { Card, PageHeader } from '@/components/ui';
@@ -112,7 +112,7 @@ export default async function PcbDetailPage({
     explanation && slipData
       ? pcbSlipSections(explanation, {
           profile: slipData.profile,
-          // r370 — the HEAD COUNT for sequence 2, which is NOT C. Summed in the read layer; see
+          // r371 — the HEAD COUNT for sequence 2, which is NOT C. Summed in the read layer; see
           // `childHeadCountOf` in ./slip-data.ts and `PcbChildHeadCount` in core/pcb-explain.ts.
           childHeadCount: slipData.childHeadCount,
           catalogue: SLIP_ITEMS,
