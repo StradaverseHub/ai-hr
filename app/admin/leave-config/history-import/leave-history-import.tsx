@@ -18,6 +18,8 @@ import {
   LEAVE_HISTORY_COLUMNS,
   LEAVE_HISTORY_STEPS,
   leaveHistoryRunOutcome,
+  resolveLeaveHistoryImportOptions,
+  type LeaveHistoryBalanceImpact,
   type LeaveHistoryImportError,
   type LeaveHistoryImportPreview,
   type LeaveHistoryImportResult,
@@ -63,6 +65,14 @@ export function LeaveHistoryImport({ runs }: { runs: LeaveHistoryRunRow[] }) {
   const [dragging, setDragging] = useState(false);
   const [reading, setReading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /**
+   * r367 — THE ONE QUESTION ABOUT THE FILE, and its default comes from the CONTRACT, not from a literal
+   * `false` written here. `resolveLeaveHistoryImportOptions()` is the same function the server resolves
+   * with, so the control cannot start out showing one arithmetic while the server would run the other.
+   */
+  const [openingBalancesAreNet, setOpeningBalancesAreNet] = useState(
+    resolveLeaveHistoryImportOptions().openingBalancesAreNet,
+  );
 
   const reset = () => {
     setPreview(null);
@@ -71,11 +81,16 @@ export function LeaveHistoryImport({ runs }: { runs: LeaveHistoryRunRow[] }) {
     setError(null);
   };
 
-  const runValidate = (text: string) =>
+  /**
+   * r367 — the answer is passed EXPLICITLY on every validate, and the preview is re-fetched whenever it
+   * changes (see the radio group below). A preview that was computed under one answer and then read under
+   * the other would show a balance movement that Confirm import is not going to make.
+   */
+  const runValidate = (text: string, net = openingBalancesAreNet) =>
     startTransition(async () => {
       setError(null);
       try {
-        const p = await validateLeaveHistoryImportAction(text);
+        const p = await validateLeaveHistoryImportAction(text, net);
         setPreview(p);
         setResult(null);
         setPhase('previewed');
@@ -88,7 +103,7 @@ export function LeaveHistoryImport({ runs }: { runs: LeaveHistoryRunRow[] }) {
     startTransition(async () => {
       setError(null);
       try {
-        const r = await commitLeaveHistoryImportAction(csv, source);
+        const r = await commitLeaveHistoryImportAction(csv, openingBalancesAreNet, source);
         setResult(r);
         setPhase('done');
         router.refresh();
@@ -281,6 +296,24 @@ export function LeaveHistoryImport({ runs }: { runs: LeaveHistoryRunRow[] }) {
           </div>
         </details>
 
+        {/* r367 — Step 2½: the one question about the file, ABOVE Validate, because its answer is what the
+            preview then shows the consequence of. Two radios rather than a checkbox: a checkbox makes one
+            of the two answers the unlabelled absence of the other, and the wrong answer here overstates or
+            understates a balance that is paid out at resignation. Changing it re-validates, so the balance
+            impact on screen always belongs to the answer on screen. */}
+        <BalanceQuestion
+          value={openingBalancesAreNet}
+          onChange={(next) => {
+            setOpeningBalancesAreNet(next);
+            setResult(null);
+            // Only re-validate when there is something to re-validate; `next` is passed explicitly
+            // because this state update has not been applied yet when the transition starts.
+            if (csv.trim()) runValidate(csv, next);
+            else setPreview(null);
+          }}
+          disabled={pending || reading}
+        />
+
         {/* Step 3 — validate. */}
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Button onClick={() => runValidate(csv)} disabled={pending || reading || !csv.trim()}>
@@ -373,8 +406,10 @@ export function LeaveHistoryImport({ runs }: { runs: LeaveHistoryRunRow[] }) {
         />
       )}
 
-      {/* The one thing on this page that must not be missed, so it is always rendered. */}
-      <NoBalanceNotice />
+      {/* r367 — the notice now states what the CHOSEN option does, so it can never again assert something
+          about the customer's data that this product cannot know. Always rendered, for the same reason it
+          always was: the surprise it prevents arrives days after the upload, not at upload time. */}
+      <BalanceEffectNotice net={openingBalancesAreNet} />
 
       <ImportLog runs={runs} onDownload={downloadErrors} />
     </div>
@@ -408,17 +443,182 @@ function StepRail({ current }: { current: LeaveHistoryStep }) {
 }
 
 /**
- * The single most important thing on this screen, and the reporter's own point 9 answered in their
- * own terms. Always rendered — before an import as a promise, after one as an explanation — because
- * the surprise it prevents ("why has Taken not moved?") arrives days later, not at upload time.
+ * r367 — THE QUESTION r362 ANSWERED ON THE CUSTOMER'S BEHALF, ASKED INSTEAD.
+ *
+ * r362 printed "The balances you migrate already have this leave removed from them" as a statement of
+ * fact. It is a claim about the uploader's data that this product never asked about and cannot verify, and
+ * for a tenant whose entitlement comes from the entitlement tables with nothing brought forward it is
+ * false — their leave was recorded and never deducted, and an Annual Leave balance left too high is PAID
+ * OUT at resignation. So the product asks, once per file.
+ *
+ * TWO RADIOS, NOT A CHECKBOX. A checkbox would make one of the two answers the unlabelled absence of the
+ * other, and both answers here are real, deliberate migration shapes that a reader has to be able to
+ * recognise their own file in. The default is the deducting one, because a missing debit overstates a
+ * balance and an overstated balance is money.
+ *
+ * `name` is fixed rather than generated: there is exactly one of these on the page.
  */
-function NoBalanceNotice() {
+function BalanceQuestion({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: boolean;
+  onChange: (next: boolean) => void;
+  disabled: boolean;
+}) {
   const t = useTranslations('admin.leaveHistoryImport');
+  const options: { net: boolean; label: string; hint: string }[] = [
+    { net: false, label: t('netNoLabel'), hint: t('netNoHint') },
+    { net: true, label: t('netYesLabel'), hint: t('netYesHint') },
+  ];
   return (
+    <fieldset className="mt-4 border-t border-border pt-4" data-testid="leave-history-import-net-choice">
+      <legend className="text-sm font-medium">{t('netQuestion')}</legend>
+      <p className="mt-0.5 text-xs text-muted-foreground">{t('netQuestionHint')}</p>
+      <div className="mt-2 space-y-2">
+        {options.map((o) => (
+          <label
+            key={String(o.net)}
+            className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+              value === o.net ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'
+            }`}
+          >
+            <input
+              type="radio"
+              name="openingBalancesAreNet"
+              className="mt-0.5"
+              checked={value === o.net}
+              disabled={disabled}
+              onChange={() => onChange(o.net)}
+            />
+            <span>
+              <span className="font-medium">{o.label}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">{o.hint}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+/**
+ * What the CHOSEN answer does, said in one paragraph. Always rendered — before an import as a promise,
+ * after one as an explanation — because the surprise it prevents ("why has Taken not moved?") arrives days
+ * later, not at upload time. That is r362's reasoning for the notice and it still holds; what changed is
+ * that the sentence now describes a decision the reader made rather than asserting a fact about their data.
+ *
+ * `admin.leaveHistoryImport.noBalanceBody` is RETIRED IN PLACE, never deleted (a message key is retired,
+ * because a deleted key is a runtime MISSING_MESSAGE somewhere nobody looked). It is no longer rendered
+ * anywhere, and test/leave-history-import-screen.test.ts pins that in all six catalogues.
+ */
+function BalanceEffectNotice({ net }: { net: boolean }) {
+  const t = useTranslations('admin.leaveHistoryImport');
+  return net ? (
     <Card className="border-emerald-200 bg-emerald-50/40 p-4 dark:border-emerald-500/30 dark:bg-emerald-500/5">
-      <h2 className="text-sm font-semibold">{t('noBalanceTitle')}</h2>
-      <p className="mt-1 text-sm text-muted-foreground">{t('noBalanceBody')}</p>
+      <h2 className="text-sm font-semibold">{t('effectNetTitle')}</h2>
+      <p className="mt-1 text-sm text-muted-foreground">{t('effectNetBody')}</p>
     </Card>
+  ) : (
+    <Card className="border-sky-200 bg-sky-50/40 p-4 dark:border-sky-500/30 dark:bg-sky-500/5">
+      <h2 className="text-sm font-semibold">{t('effectDeductTitle')}</h2>
+      <p className="mt-1 text-sm text-muted-foreground">{t('effectDeductBody')}</p>
+    </Card>
+  );
+}
+
+/**
+ * r367 — THE BALANCE IMPACT, ABOVE CONFIRM IMPORT. "Before you confirm an import, the screen will show
+ * what it is about to do to each person's balance, so you see the effect before it happens instead of
+ * afterwards" — the approved plan, in its own words.
+ *
+ * Every figure comes off `preview.balanceImpact`, which the SERVER computed from the rows it would write
+ * and the ledger as it stands. Nothing is recomputed here: a browser-side sum would be a second
+ * derivation of a money figure and would disagree the first time the two drifted.
+ *
+ * `preview.deducts` is the server's own answer, not the radio's, so this card states what the commit will
+ * do even if the two ever disagreed — and when it is false the card says, in words, that nothing will
+ * move. An empty table under a heading reads as a screen that failed.
+ */
+function BalanceImpactSection({ preview }: { preview: LeaveHistoryImportPreview }) {
+  const t = useTranslations('admin.leaveHistoryImport');
+  const rows = preview.balanceImpact;
+  const negatives = rows.filter((r) => r.goesNegative).length;
+  return (
+    <div className="border-b border-border" data-testid="leave-history-import-balance-impact">
+      <div className="px-4 py-3">
+        <h3 className="text-sm font-semibold">{t('impactTitle')}</h3>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {preview.deducts ? t('impactHint') : t('impactNoneHint')}
+        </p>
+      </div>
+      {preview.deducts && rows.length > 0 && (
+        <>
+          {negatives > 0 && (
+            <div className="mx-4 mb-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+              {t('impactNegativeWarning', { count: negatives })}
+            </div>
+          )}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-medium">{t('colEmployee')}</th>
+                  <th className="px-3 py-2 font-medium">{t('impactColCode')}</th>
+                  <th className="px-3 py-2 font-medium">{t('colYear')}</th>
+                  <th className="px-3 py-2 font-medium">{t('impactColRecords')}</th>
+                  <th className="px-3 py-2 font-medium">{t('impactColDays')}</th>
+                  <th className="px-3 py-2 font-medium">{t('impactColBefore')}</th>
+                  <th className="px-3 py-2 font-medium">{t('impactColAfter')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {rows.map((r) => (
+                  <ImpactRow key={`${r.employeeNo}-${r.leaveCode}`} row={r} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ImpactRow({ row }: { row: LeaveHistoryBalanceImpact }) {
+  const t = useTranslations('admin.leaveHistoryImport');
+  // 2dp everywhere a day figure is shown, so 14 and 14.00 are never both on screen for one column.
+  const n = (v: number) => v.toFixed(2);
+  return (
+    <tr className={row.goesNegative ? 'bg-amber-50/40 dark:bg-amber-500/5' : undefined}>
+      <td className="px-3 py-2">
+        <span className="font-medium">{row.employeeNo || '—'}</span>
+        {row.employeeName && (
+          <span className="ml-1.5 text-xs text-muted-foreground">{row.employeeName}</span>
+        )}
+      </td>
+      <td className="px-3 py-2">
+        {row.leaveCode || '—'}
+        {row.filedCodes.length > 0 && (
+          <span className="mt-0.5 block text-[11px] text-muted-foreground">
+            {t('impactPooledFrom', { codes: row.filedCodes.join(', ') })}
+          </span>
+        )}
+      </td>
+      <td className="px-3 py-2 tabular-nums text-muted-foreground">
+        {row.entitlementYears.length > 0 ? row.entitlementYears.join(', ') : '—'}
+      </td>
+      <td className="px-3 py-2 tabular-nums">{row.records}</td>
+      <td className="px-3 py-2 tabular-nums">{n(row.days)}</td>
+      <td className="px-3 py-2 tabular-nums">{n(row.balanceBefore)}</td>
+      <td className={`px-3 py-2 tabular-nums font-medium ${row.goesNegative ? 'text-amber-700 dark:text-amber-400' : ''}`}>
+        {n(row.balanceAfter)}
+        {row.goesNegative && (
+          <span className="mt-0.5 block text-[11px] font-normal">{t('impactNegativeFlag')}</span>
+        )}
+      </td>
+    </tr>
   );
 }
 
@@ -486,6 +686,10 @@ function PreviewCard({
           </tbody>
         </table>
       </div>
+
+      {/* r367 — ABOVE Confirm import, and that position is the requirement: the plan promised the reader
+          sees the balance effect BEFORE they press the button, not in a summary afterwards. */}
+      <BalanceImpactSection preview={preview} />
 
       <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3">
         <Button onClick={onImport} disabled={busy || preview.validCount === 0} size="sm">

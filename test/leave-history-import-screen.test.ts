@@ -34,6 +34,7 @@ import {
   LEAVE_HISTORY_REQUIRED_KEYS,
   LEAVE_HISTORY_STEPS,
   leaveHistoryRunOutcome,
+  resolveLeaveHistoryImportOptions,
 } from '../lib/leave-history-import-schema';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -172,36 +173,132 @@ describe('the six steps are the reporter’s six, in the reporter’s order', ()
   });
 });
 
-describe('the decision the reporter must not be surprised by is ON the screen', () => {
-  it('the no-balance notice is always rendered, and says both the what and the why', () => {
+describe('r367 — the decision the reporter must not be surprised by is ON the screen, and it is now a CHOICE', () => {
+  /**
+   * ⚠️ THIS BLOCK USED TO PIN THE OPPOSITE, AND IS UPDATED RATHER THAN DELETED (CLAUDE.md section 8: a
+   * guard pinning a decision you are reversing is updated, not deleted).
+   *
+   * r362 asserted `admin.leaveHistoryImport.noBalanceBody` must "carry the REASON, not only the fact",
+   * and measured it: a body-to-title length ratio above 6 in every locale, and the English one matching
+   * /twice/. Both of those were honest measurements of a sentence that should never have been printed —
+   * "the balances you migrate already have this leave removed from them" is a claim about the CUSTOMER'S
+   * DATA that this product never asked about and cannot verify, and it is false for the reporter of
+   * 073233bb. The key is RETIRED IN PLACE, never deleted, and the same measurement now applies to the two
+   * sentences that replaced it, one per answer.
+   *
+   * The two earlier drafts of the ratio case are worth keeping recorded, because each looked right until
+   * a locale disproved it:
+   *   · `body.length > 160` failed on Chinese at 127 characters while saying everything the English says
+   *     — a character count measures SCRIPT DENSITY, not content;
+   *   · counting sentence-ending punctuation failed on Thai, which does not use it at all.
+   * A ratio to the locale's own title cancels both.
+   */
+  it('the retired sentence is gone from the screen, and the key survives in all six catalogues', () => {
     const src = read(ISLAND);
-    expect(src).toContain('<NoBalanceNotice />');
+    // RETIRED IN PLACE: the key must still resolve everywhere (a deleted key is a MISSING_MESSAGE
+    // somewhere nobody looked), and it must no longer be rendered anywhere.
+    for (const [loc, cat] of Object.entries(CATALOGUES)) {
+      expect(typeof getPath(cat, 'admin.leaveHistoryImport.noBalanceBody'), loc).toBe('string');
+      expect(typeof getPath(cat, 'admin.leaveHistoryImport.noBalanceTitle'), loc).toBe('string');
+    }
+    expect(src).not.toMatch(/t\('noBalanceBody'\)/);
+    expect(src).not.toMatch(/t\('noBalanceTitle'\)/);
+    // …and the English retirement says so in words, so the next reader does not restore it.
+    expect(en.admin.leaveHistoryImport.noBalanceBody).toMatch(/RETIRED/);
+    // The claim it made about the customer's data must not survive anywhere that is rendered.
+    for (const key of ['effectDeductBody', 'effectNetBody', 'netNoHint', 'netYesHint'] as const) {
+      expect(
+        en.admin.leaveHistoryImport[key],
+        `${key} must not re-assert that the customer's migrated balances are already net`,
+      ).not.toMatch(/balances you migrate already have/);
+    }
+  });
+
+  it('the per-run choice is rendered, with BOTH answers labelled and the deducting one the default', () => {
+    const src = read(ISLAND);
+    expect(src).toContain('<BalanceQuestion');
+    // Two radios, not a checkbox: a checkbox makes one answer the unlabelled absence of the other, and
+    // both answers here are real migration shapes a reader has to recognise their own file in.
+    expect(src).toMatch(/type="radio"/);
+    expect(src).toContain("name=\"openingBalancesAreNet\"");
+    // The default comes from the CONTRACT, never from a literal `false` in the component — the server
+    // resolves through the same function, so the control cannot start out on the other arithmetic.
+    expect(src).toContain('resolveLeaveHistoryImportOptions()');
+    expect(resolveLeaveHistoryImportOptions().openingBalancesAreNet).toBe(false);
+    expect(resolveLeaveHistoryImportOptions({}).openingBalancesAreNet).toBe(false);
+    expect(resolveLeaveHistoryImportOptions({ openingBalancesAreNet: true }).openingBalancesAreNet).toBe(true);
+    for (const key of ['netQuestion', 'netNoLabel', 'netYesLabel', 'netNoHint', 'netYesHint'] as const) {
+      for (const [loc, cat] of Object.entries(CATALOGUES)) {
+        expect(typeof getPath(cat, `admin.leaveHistoryImport.${key}`), `${loc} ${key}`).toBe('string');
+      }
+    }
+  });
+
+  it('the effect notice is always rendered, states BOTH outcomes, and each carries its reason', () => {
+    const src = read(ISLAND);
+    expect(src).toContain('<BalanceEffectNotice');
     // Not conditional on a result: the surprise it prevents ("why has Taken not moved?") arrives days
     // later, so the explanation must be there before the import as well as after it.
-    expect(src).not.toMatch(/\{\s*result\s*&&\s*<NoBalanceNotice/);
+    expect(src).not.toMatch(/\{\s*result\s*&&\s*<BalanceEffectNotice/);
     for (const [loc, cat] of Object.entries(CATALOGUES)) {
-      expect(typeof getPath(cat, 'admin.leaveHistoryImport.noBalanceTitle'), loc).toBe('string');
-      const body = getPath(cat, 'admin.leaveHistoryImport.noBalanceBody');
-      expect(typeof body, loc).toBe('string');
-      // It must carry the REASON, not only the fact — the plan's own argument, which is what stops an
-      // administrator reading the behaviour as a bug and asking for it to be "fixed".
-      //
-      // MEASURED AGAINST THE TITLE IN THE SAME LOCALE, which is the only script-neutral way to ask
-      // "is this a paragraph or a restatement". Two earlier drafts of this case were wrong and both
-      // failures are worth recording, because each looked right until a locale disproved it:
-      //   · `body.length > 160` failed on Chinese at 127 characters while saying everything the
-      //     English says — a character count measures SCRIPT DENSITY, not content;
-      //   · counting sentence-ending punctuation failed on Thai, which does not use it at all.
-      // A ratio to the locale's own title cancels both. The observed spread is 10.2 (vi) to 17.4 (en),
-      // so 6 is comfortably below every real translation and far above a one-line restatement.
-      const title = getPath(cat, 'admin.leaveHistoryImport.noBalanceTitle') as string;
-      expect(
-        (body as string).length / title.length,
-        `${loc} noBalanceBody must carry the reason, not only the fact`,
-      ).toBeGreaterThan(6);
+      for (const pair of [
+        ['effectDeductTitle', 'effectDeductBody'],
+        ['effectNetTitle', 'effectNetBody'],
+      ] as const) {
+        const title = getPath(cat, `admin.leaveHistoryImport.${pair[0]}`);
+        const body = getPath(cat, `admin.leaveHistoryImport.${pair[1]}`);
+        expect(typeof title, `${loc} ${pair[0]}`).toBe('string');
+        expect(typeof body, `${loc} ${pair[1]}`).toBe('string');
+        // The r362 measurement, kept and re-aimed: a paragraph, not a restatement of its own heading.
+        expect(
+          (body as string).length / (title as string).length,
+          `${loc} ${pair[1]} must carry the reason, not only the fact`,
+        ).toBeGreaterThan(6);
+      }
     }
-    // …and the English one states the actual argument in the plan's own word.
-    expect(en.admin.leaveHistoryImport.noBalanceBody).toMatch(/twice/);
+    // The "same days twice" argument belongs to the NET answer now, and only to it — printing it beside
+    // the deducting answer is exactly the false statement this item removed.
+    expect(en.admin.leaveHistoryImport.effectNetBody).toMatch(/twice/);
+    expect(en.admin.leaveHistoryImport.effectDeductBody).not.toMatch(/twice/);
+  });
+
+  it('the balance impact is rendered ABOVE Confirm import, from the SERVER’s figures', () => {
+    const src = read(ISLAND);
+    expect(src).toContain('<BalanceImpactSection preview={preview} />');
+    // Position is the requirement: the plan promised the reader sees the effect BEFORE pressing the
+    // button, not in a summary afterwards.
+    expect(src.indexOf('<BalanceImpactSection')).toBeLessThan(src.indexOf("t('confirmImport'"));
+    // Every figure comes off the preview the server computed. A browser-side sum would be a second
+    // derivation of a money figure and would disagree the first time the two drifted.
+    expect(src).toContain('preview.balanceImpact');
+    expect(src).toContain('preview.deducts');
+    for (const key of [
+      'impactTitle',
+      'impactHint',
+      'impactNoneHint',
+      'impactNegativeWarning',
+      'impactColCode',
+      'impactColRecords',
+      'impactColDays',
+      'impactColBefore',
+      'impactColAfter',
+      'impactPooledFrom',
+      'impactNegativeFlag',
+    ] as const) {
+      for (const [loc, cat] of Object.entries(CATALOGUES)) {
+        expect(typeof getPath(cat, `admin.leaveHistoryImport.${key}`), `${loc} ${key}`).toBe('string');
+      }
+    }
+  });
+
+  it('both server actions take the answer EXPLICITLY, so it cannot be reached by omission', () => {
+    const src = read(ACTIONS);
+    expect(src).toMatch(/validateLeaveHistoryImportAction\(\s*csv: string,\s*openingBalancesAreNet: boolean,/);
+    expect(src).toMatch(/openingBalancesAreNet: boolean,/);
+    expect(src).toContain('validateLeaveHistoryImport(s, { records, openingBalancesAreNet })');
+    expect(src).toContain('commitLeaveHistoryImport(s, { records, source, openingBalancesAreNet })');
+    // The balance screens are server-rendered, so a run that deducted has to invalidate them too.
+    expect(src).toContain("revalidatePath('/leave/employee-balances')");
   });
 });
 

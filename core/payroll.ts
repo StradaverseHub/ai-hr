@@ -40,6 +40,7 @@ import {
   segmentedCoverage,
 } from './payroll-coverage';
 import { encashableDaysForEmployment } from './leave-encashment';
+import { leaveDaysAreThisSystems } from './leave-charge';
 import { packFor } from '../localization/registry';
 import {
   anomalyEvaluated,
@@ -1362,14 +1363,31 @@ export async function unpaidDaysByEmployment(
           eq(leaveRequest.allowanceEligible, false),
           sql`${leaveRequest.unpaidDays} > 0`,
         ),
-        // 3f15ffdb (r362) — A MIGRATED HISTORICAL RECORD NEVER MOVES PAY. Leave History Data Import
-        // writes approved leave_request rows for absences the PREVIOUS system already paid (or already
-        // deducted for); the payslips for those months come in through core/payroll-history-import.ts,
-        // not from re-deriving them here. Without this line, importing one unpaid-type record dated
-        // inside a period this system has not yet run would silently cut that employee's salary — a
-        // data-migration tool moving money, which is the one thing it must never do. The marker column
-        // (migration 0490) exists precisely so the exclusion is by construction rather than inferred.
-        eq(leaveRequest.importedHistory, false),
+        /**
+         * 3f15ffdb (r362) — A MIGRATED HISTORICAL RECORD NEVER MOVES PAY. Leave History Data Import
+         * writes approved leave_request rows for absences the PREVIOUS system already paid (or already
+         * deducted for); the payslips for those months come in through core/payroll-history-import.ts,
+         * not from re-deriving them here. Importing one unpaid-type record dated inside a period this
+         * system has not yet run would otherwise silently cut that employee's salary — a data-migration
+         * tool moving money, which is the one thing it must never do.
+         *
+         * ⚠️ r367 (073233bb) — AND THAT EXCLUSION INVERTED THE MOMENT AN IMPORTED ROW BECAME CHARGED.
+         * r362's premise was not "imported", it was "UNCHARGED": these rows carried no ledger debit, so
+         * nothing about them had been settled by this system and re-deriving pay from them would have
+         * invented a deduction. r367's import writes the debit by default, and for such a row the
+         * exclusion is now the defect — an approved unpaid-type record whose days really are in the
+         * ledger, silently left out of the pay it should reduce.
+         *
+         * So the test is the LEDGER (core/leave-charge.ts `leaveDaysAreThisSystems`): an imported record
+         * with no sourced debit is still excluded (r362's promise, still reachable through
+         * `openingBalancesAreNet = true`), and a charged one is counted like any other approved request.
+         * Read core/leave-charge.ts before narrowing this further: it is deliberately the CONJUNCTION,
+         * and a non-imported row's behaviour here is unchanged by design.
+         *
+         * Its multi-cycle copy below carries the same change; the two must not disagree about which rows
+         * are unpaid days.
+         */
+        leaveDaysAreThisSystems(),
         gte(leaveRequest.startDate, periodStart),
         lte(leaveRequest.startDate, periodEnd),
         employmentIds && employmentIds.length > 0 ? inArray(leaveRequest.employmentId, employmentIds) : undefined,
@@ -4189,7 +4207,11 @@ export async function generatePayslips(
         // a migrated historical record is a record, never a deduction. (The pre-existing divergence
         // between the two — this copy omits the `unpaid_days > 0` arm — is left exactly as it was; it is
         // not this round's to change.)
-        .where(and(eq(leaveRequest.status, 'approved'), or(eq(leaveType.paid, false), eq(leaveRequest.allowanceEligible, false)), eq(leaveRequest.importedHistory, false), gte(leaveRequest.startDate, wStart), lte(leaveRequest.startDate, wEnd)));
+        // ⚠️ r367 (073233bb) — AND IT MOVES WITH ITS ORIGINAL. An imported record is charged by default
+        // now, so the test is the ledger, not the marker. The reasoning is stated once, at
+        // unpaidDaysByEmployment's own copy of this line; the two must stay identical or a multi-cycle
+        // run and a single-cycle run of the same month disagree about one employee's pay.
+        .where(and(eq(leaveRequest.status, 'approved'), or(eq(leaveType.paid, false), eq(leaveRequest.allowanceEligible, false)), leaveDaysAreThisSystems(), gte(leaveRequest.startDate, wStart), lte(leaveRequest.startDate, wEnd)));
       for (const r of lvCycleRows) {
         const ci = cycleIndexOf(r.d);
         if (ci < 0) continue;

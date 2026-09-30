@@ -20,50 +20,82 @@
  * They are complements. Together you get a complete picture; either alone is half a migration.
  *
  * ══════════════════════════════════════════════════════════════════════════════════════════════════
- * ⚠️ THE LOAD-BEARING DECISION: AN IMPORTED RECORD WRITES NO LEDGER ROW
+ * ⚠️ THE LOAD-BEARING DECISION, AND r367 REVERSED ITS DEFAULT: THE UPLOADER IS ASKED, NOT ASSUMED
  * ══════════════════════════════════════════════════════════════════════════════════════════════════
  *
- * The reporter raised this themselves (ticket point 9) and the approved plan answers it: importing
- * history does NOT touch anybody's leave balance.
+ * r362 (this module, as shipped) wrote the RECORD and no ledger debit, always. The whole argument for
+ * that rested on one sentence, which the product PRINTED for the user as a statement of fact
+ * (`admin.leaveHistoryImport.noBalanceBody`):
  *
- * THE EVIDENCE, not the intuition. A normal approval writes BOTH halves — `finalizeLeaveApproval`
- * (core/leave.ts) inserts the `leave_ledger` debit AND flips the request to approved. Balances derive
- * from the ledger alone, and even "Taken" is derived from ledger debits carrying a `source_request_id`
- * (core/read.ts). A migrated OPENING BALANCE already has the past leave removed from it — that is what
- * an opening balance is — so a record-plus-debit import would deduct the same days a second time, off
- * a figure that is encashed at termination (core/leave-encashment.ts). Record-only is therefore not
- * caution; it is the only arithmetic that adds up.
+ *     "The balances you migrate already have this leave removed from them, so deducting it again would
+ *      take the same days twice."
  *
- * TWO CONSEQUENCES, disclosed to the reporter in the approved plan and true by construction here:
- *   · an imported record appears in Leave History but is NOT in the "Taken" figure on the balance
- *     screens — that figure counts what actually came off the balance, and by design nothing did;
- *   · cancelling an imported record gives nothing back, because `chargedDays` is a sum over the same
- *     ledger link, guarded by `> 0`. Correct: nothing was ever taken.
+ * THAT SENTENCE IS AN ASSUMPTION ABOUT THE CUSTOMER'S DATA, and this product never asked about it and
+ * cannot verify it. It is true of a customer who brings their own CLOSING balances across. It is false
+ * whenever the balances are generated from this system's own entitlement tables with nothing brought
+ * forward, because those are WHOLE-YEAR ALLOWANCES and not net figures. The reporter of 073233bb is the
+ * second case: 16 days Annual and 14 days Medical for 2026, brought forward 0.00. Their leave was
+ * recorded and never deducted, and nothing on any screen said so - Taken read 0.00 beside six records
+ * that plainly existed.
  *
- * WHAT THAT DECISION COST ELSEWHERE, and what r362 did about it. An approved `leave_request` with no
- * sourced ledger debit is a shape this system had never had, so three money paths were read line by
- * line before this module was written and two of them were wrong for it:
+ * AND IT REACHES MONEY, which is why r367 is a defect fix and not a preference. A missing debit leaves
+ * the ledger balance high; `core/leave-encashment.ts` freezes unused Annual Leave off that same ledger
+ * sum at resignation (`ledgerBalanceOf` -> `computeEncashableDays`), so the final payment overpays by
+ * exactly the imported days. Five read surfaces carried the overstated figure with it: app/page.tsx,
+ * core/my-leave.ts, app/admin/personnel/[employmentId]/page.tsx, app/leave/employee-balances/rows.ts
+ * and core/assistant-tools.ts.
  *
- *   1. core/leave.ts `applyLeaveCancellationApprovalTx` — the whole-span reversal is guarded on
- *      `chargedDays > 0`, but the PER-SEGMENT RE-DEBIT was not. Giving back one day of a five-day
- *      uncharged record reversed nothing and then inserted a fresh −4.00 debit: a deduction with no
- *      matching credit. FIXED in r362 (`wasCharged`), and the fix also closes the same hole for an
- *      approved UNPAID-type request, where it was already live.
- *   2. core/payroll.ts `unpaidDaysByEmployment` (and its multi-cycle copy) reads `leave_request`, not
- *      the ledger, and admits any approved request of an unpaid type starting in the period. One
- *      imported unpaid record dated inside a not-yet-run period would have cut that person's salary.
- *      FIXED in r362: `imported_history` rows are excluded. A migration tool must not move money.
- *   3. core/leave-encashment.ts `approvedLeaveDaysAfter` raises a final-pay hint whose premise
- *      ("already debited at approval") is false for these rows, and whose documented remedy (cancel
- *      the request) correctly gives back nothing — a loop that cannot close. FIXED: excluded.
+ * WHAT r367 DOES: `openingBalancesAreNet`, asked ONCE PER RUN, defaulting to NO.
+ *
+ *   NO (the default) - the import writes the matching `leave_ledger` debit INSIDE the same transaction
+ *      as the `leave_request` insert, with `source_request_id` set, exactly as `finalizeLeaveApproval`
+ *      does for an ordinary approval. One action, both halves, so cancelling an imported record gives
+ *      the days back like any other leave.
+ *   YES - no ledger row, which is r362's behaviour precisely. KEPT, NOT REMOVED: a customer arriving
+ *      with their own closing balances is a real migration shape, and r362 shipped one day before the
+ *      report against it. The option is what makes both true at once.
+ *
+ * AND THE ANSWER'S CONSEQUENCE IS SHOWN BEFORE CONFIRM, never afterwards: `analyze()` returns
+ * `preview.balanceImpact`, one line per employee and per LEDGER, with the balance before, the balance
+ * after, and a flag when it goes below zero. The import does NOT refuse a negative result - an employee
+ * who has genuinely taken more than they had earned is a fact about the past and a migration that
+ * refused it would lose real history. It is flagged instead, which is the approved plan's own wording.
+ *
+ * WHICH LEDGER THE DEBIT LANDS ON. The resolved Balance Deduction Source (cdf9ca48), not the filed type:
+ * a pooled Emergency Leave record spends Annual Leave's balance, and debiting EL's own empty ledger would
+ * make the pool's figure wrong in one direction and EL's in the other. Same resolution the submit guard
+ * and `finalizeLeaveApproval` use, so all three are talking about one balance.
+ *
+ * DAYS, AND WHY THE FILE'S FIGURE IS THE ONE DEBITED. `-days`, the figure the file states and the figure
+ * written to `leave_request.days`, so the record and the movement can never disagree. `unpaid_days` is
+ * not part of this contract (the file has no such column) and is left NULL, so there is nothing to
+ * subtract - the mirror of `finalizeLeaveApproval`'s `-(approvedDays - unpaidDays)` with the second term
+ * absent. The calendar disagreement this module already flags is deliberately NOT applied here either:
+ * the old system's rest days are not ours, and a debit derived from OUR calendar would silently move a
+ * different number of days than the record shows.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════════════════
+ * THE THREE r362 EXCLUSIONS INVERT, AND ALL THREE ARE HANDLED - SEE core/leave-charge.ts
+ * ══════════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * An approved `leave_request` with no sourced ledger debit was a shape this system had never had, so r362
+ * narrowed three money paths. Two of them narrowed on the import MARKER, and a charged imported row makes
+ * that narrowing wrong in the opposite direction:
+ *
+ *   1. core/leave.ts `applyLeaveCancellationApprovalTx` - narrowed on the LEDGER (`chargedDays > 0`), so
+ *      it was already right and needed NO change: a charged imported record now takes the live branch,
+ *      reverses its whole-span debit and re-debits only the survivors. Pinned, not assumed.
+ *   2. core/payroll.ts `unpaidDaysByEmployment` and its multi-cycle copy - excluded on the marker. Now
+ *      `leaveDaysAreThisSystems()`: an UNCHARGED imported record is still excluded (a migration tool must
+ *      not move pay), a CHARGED one is counted like any other approved unpaid request.
+ *   3. core/leave-encashment.ts `approvedLeaveDaysAfter` - same change, same reasoning. The hint's premise
+ *      ("already debited at approval") is now TRUE for a charged imported record, and its remedy - cancel
+ *      the request - now genuinely gives the days back, so the loop closes.
  *
  * KNOWN AND DELIBERATELY NOT CHANGED: `approvedLeaveDates` (core/leave.ts) is THE span authority for
- * attendance, roster and absence counting, and it will now see imported rows, so an imported record
- * suppresses an absence on its dates. That is defensible on the merits (the person WAS on leave) and
- * inert for a migration, whose dates precede go-live and have no attendance behind them. Narrowing a
- * four-pack authority for this item would be a far larger change than the item, so it is named here
- * rather than made quietly. RISK, low: importing a record into a live, unrun payroll month could
- * suppress an absent-day deduction. The tool is for history; this is not.
+ * attendance, roster and absence counting, and it sees imported rows. That is defensible on the merits
+ * (the person WAS on leave) and inert for a migration whose dates precede go-live. RISK, low: importing a
+ * record into a live, unrun payroll month could suppress an absent-day deduction. The tool is for history.
  *
  * ══════════════════════════════════════════════════════════════════════════════════════════════════
  * SHAPE, COPIED FROM THE IMPORTERS THAT ALREADY WORK
@@ -93,14 +125,16 @@
  * would throw out good history wholesale. Same call, and the same reasoning, as decision 6 of
  * core/payroll-history-import.ts.
  */
-import { and, eq, isNotNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import {
   appUser,
+  company,
   employment,
   leaveHistoryImportRun,
+  leaveLedger,
   leaveRequest,
   person,
 } from '../db/schema';
@@ -109,7 +143,10 @@ import {
   LEAVE_HISTORY_COLUMNS,
   LEAVE_HISTORY_REQUIRED_KEYS,
   canonicalColumnKey,
+  resolveLeaveHistoryImportOptions,
+  type LeaveHistoryBalanceImpact,
   type LeaveHistoryImportError,
+  type LeaveHistoryImportOptions,
   type LeaveHistoryImportPreview,
   type LeaveHistoryImportResult,
   type LeaveHistoryImportSource,
@@ -119,13 +156,16 @@ import {
   type LeaveHistoryRunRow,
 } from '../lib/leave-history-import-schema';
 import { holidayDatesByEmployment } from './holidays';
-import { resolveWorkingDaysIso, workingDays } from './leave';
+import { earnedCycleStart, resolveLeaveYearCycle, resolveWorkingDaysIso, workingDays } from './leave';
 import { listLeaveTypes } from './read';
 
 export {
   LEAVE_HISTORY_COLUMNS,
   canonicalColumnKey,
+  resolveLeaveHistoryImportOptions,
+  type LeaveHistoryBalanceImpact,
   type LeaveHistoryImportError,
+  type LeaveHistoryImportOptions,
   type LeaveHistoryImportPreview,
   type LeaveHistoryImportResult,
   type LeaveHistoryImportSource,
@@ -191,7 +231,15 @@ function startOfBusinessDay(iso: string): Date {
 type ResolvedRow = {
   result: LeaveHistoryRowResult;
   employmentId: string;
+  /** r367 - for the balance-impact preview only; the ledger rows carry ids, never names. */
+  employeeName: string;
   leaveTypeId: string;
+  /**
+   * r367 - THE LEDGER THIS ROW'S DEBIT LANDS ON: the resolved Balance Deduction Source (cdf9ca48), which
+   * is `leaveTypeId` itself for every type that borrows from nothing. Resolved in `analyze` so the
+   * PREVIEW and the WRITE cannot name two different ledgers.
+   */
+  balanceTypeId: string;
   startDate: string;
   endDate: string;
   days: number;
@@ -229,14 +277,34 @@ function canonicalise(rec: LeaveHistoryRecord): LeaveHistoryRecord {
 async function analyze(
   ctx: SessionContext,
   rawRecords: LeaveHistoryRecord[],
-): Promise<{ preview: LeaveHistoryImportPreview; resolved: ResolvedRow[] }> {
+  opts?: LeaveHistoryImportOptions,
+): Promise<{
+  preview: LeaveHistoryImportPreview;
+  resolved: ResolvedRow[];
+  /** r367 - the ONE resolution of the run's options, shared by the preview and the write. */
+  options: { openingBalancesAreNet: boolean };
+}> {
   const records = rawRecords.map(canonicalise);
+  const options = resolveLeaveHistoryImportOptions(opts);
+  const deducts = !options.openingBalancesAreNet;
   const effective = withEffectiveGrants(ctx);
   const groupAdmin = isGroupAdmin(effective);
 
   // Leave types by code, case-insensitive, non-archived (listLeaveTypes excludes archived by default).
   const types = await listLeaveTypes(ctx);
   const typeByCode = new Map(types.map((t) => [t.code.toLowerCase(), t.id]));
+  /**
+   * r367 - the two things a row needs BESIDE the id, off the read that already ran:
+   *   · `balanceSourceTypeId` - which ledger the debit lands on (cdf9ca48). One hop, never a walk:
+   *     `updateLeaveType` refuses a source that itself has a source, so the graph cannot be deeper.
+   *   · `yearCycleOverride` - the per-type Leave Year Type (e1a51aea), which decides which entitlement
+   *     year a start date falls in when the file leaves Entitlement Year blank.
+   * `listLeaveTypes` already projects both, so this is a re-index of rows in hand and not a second query.
+   */
+  const typeById = new Map(types.map((t) => [t.id, t]));
+  const codeById = new Map(types.map((t) => [t.id, t.code]));
+  const balanceTypeOf = (leaveTypeId: string): string =>
+    typeById.get(leaveTypeId)?.balanceSourceTypeId ?? leaveTypeId;
 
   const { emps, existingRefs } = await withTenant(ctx, async (tx) => {
     // Every employment the caller may see (RLS-scoped). NOT active-only: a migration's history is
@@ -247,8 +315,17 @@ async function analyze(
         companyId: employment.companyId,
         code: employment.employeeCode,
         terminatedOn: employment.terminatedOn,
+        // r367 - `hiredOn` and the company's leave cycle are what resolve the ENTITLEMENT YEAR a start
+        // date falls in (the anniversary cycle is anchored to the hire month), and `fullName` is for the
+        // balance-impact preview: HR reads a name there, not an employment id. Both ride on the select
+        // that already runs once for the whole tenant.
+        hiredOn: employment.hiredOn,
+        leaveCycle: company.leaveCycle,
+        fullName: person.fullName,
       })
-      .from(employment);
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .innerJoin(person, eq(person.id, employment.personId));
     // Leave references already in the system. `employment_employee_code_uq` (tenant_id, employee_code)
     // and `leave_request_external_reference_uq` (tenant_id, external_reference) are the DB invariants
     // behind treating both of these as maps rather than as multimaps.
@@ -262,13 +339,19 @@ async function analyze(
     };
   });
 
-  const byCode = new Map<string, { id: string; companyId: string; terminated: boolean }>();
+  const byCode = new Map<
+    string,
+    { id: string; companyId: string; terminated: boolean; hiredOn: string; leaveCycle: string | null; fullName: string }
+  >();
   for (const e of emps) {
     if (e.code) {
       byCode.set(e.code.toLowerCase(), {
         id: e.id,
         companyId: e.companyId,
         terminated: e.terminatedOn != null,
+        hiredOn: e.hiredOn,
+        leaveCycle: e.leaveCycle,
+        fullName: e.fullName,
       });
     }
   }
@@ -331,9 +414,22 @@ async function analyze(
     if (approvedRaw && !approvedDate) errors.push('Invalid Approved Date');
 
     // ── Entitlement year ────────────────────────────────────────────────────────────────────────
-    // Optional. Stored as stated; a disagreement with the start date's year is a WARNING, never a
-    // rejection, because a leave period is configurable and a January leave can legitimately belong
-    // to the previous entitlement year.
+    // Optional IN THE FILE. Stored as stated; a disagreement with the start date's year is a WARNING,
+    // never a rejection, because a leave period is configurable and a January leave can legitimately
+    // belong to the previous entitlement year.
+    //
+    // r367 - FILLED WHEN THE COLUMN IS BLANK, rather than stored as null. It is the plan's point 5 and
+    // it is FUTURE-PROOFING, not a cause of anything: the column is written today and read by nothing,
+    // because Employee Balances takes its year from the entitlement CYCLE START
+    // (app/leave/employee-balances/rows.ts: `bd.cycleStart.slice(0, 4)`), not from the request.
+    //
+    // ⚠️ FROM THE CYCLE, NOT FROM THE CALENDAR YEAR OF THE START DATE, and the difference is the point.
+    // A company on an ANNIVERSARY leave cycle (or a leave type carrying a Leave Year Type override,
+    // e1a51aea) has a leave year anchored to the hire month, so a March 2025 leave for a July joiner
+    // belongs to the year that opened in July 2024. Filling `2025` there would write a figure that
+    // DISAGREES with the year Employee Balances prints beside the same record - which is the very
+    // complaint this item is about. `earnedCycleStart` is the one definition of that boundary and is
+    // the same function the breakdown uses, so the two cannot drift.
     let entitlementYear: number | null = null;
     if (entitlementYearRaw) {
       const y = Number(entitlementYearRaw);
@@ -345,6 +441,9 @@ async function analyze(
           warnings.push(`Entitlement Year ${y} does not match the leave start year ${start.slice(0, 4)}`);
         }
       }
+    } else if (start && emp && leaveTypeId) {
+      const cycle = resolveLeaveYearCycle(typeById.get(leaveTypeId)?.yearCycleOverride ?? null, emp.leaveCycle);
+      entitlementYear = Number(earnedCycleStart(emp.hiredOn, start, cycle).slice(0, 4));
     }
 
     // ── Number of Day ───────────────────────────────────────────────────────────────────────────
@@ -410,7 +509,10 @@ async function analyze(
         employeeNo,
         leaveReference,
         leaveCode,
-        entitlementYear: entitlementYearRaw,
+        // r367 - what will be STORED, not what the file said, so the preview answers "which entitlement
+        // year will this record land in" for a blank column too. `entitlementYearRaw` is still what the
+        // validation above judged; this is its resolved outcome.
+        entitlementYear: entitlementYear != null ? String(entitlementYear) : entitlementYearRaw,
         startDate: start ?? startRaw,
         endDate: end ?? endRaw,
         days: daysRaw,
@@ -420,7 +522,9 @@ async function analyze(
         warnings,
       },
       employmentId: emp?.id ?? '',
+      employeeName: emp?.fullName ?? '',
       leaveTypeId: leaveTypeId ?? '',
+      balanceTypeId: leaveTypeId ? balanceTypeOf(leaveTypeId) : '',
       startDate: start ?? '',
       endDate: end ?? '',
       days: Number.isFinite(days) ? days : 0,
@@ -465,6 +569,9 @@ async function analyze(
   }
 
   const rows = resolved.map((r) => r.result);
+  const balanceImpact = deducts
+    ? await balanceImpactOf(ctx, resolved.filter((r) => r.result.status === 'valid'), codeById)
+    : [];
   const preview: LeaveHistoryImportPreview = {
     total: records.length,
     validCount: rows.filter((r) => r.status === 'valid').length,
@@ -472,16 +579,132 @@ async function analyze(
     duplicateCount: rows.filter((r) => r.status === 'duplicate').length,
     rows,
     missingColumns,
+    deducts,
+    balanceImpact,
   };
-  return { preview, resolved };
+  return { preview, resolved, options };
 }
 
-/** Dry run. Validates against the tenant's catalogue and existing references; writes nothing. */
+/**
+ * r367 - WHAT CONFIRM IMPORT IS ABOUT TO DO TO EACH BALANCE, computed from the rows that will actually be
+ * written and from the ledger as it stands right now.
+ *
+ * ONE QUERY for every balance involved, keyed on the pairs the run touches - not one per employee, and not
+ * a call into `leaveBalances` per row. The figure is `sum(leave_ledger.days)` over (employment, leave type),
+ * which is what BALANCE means everywhere in this product: `core/read.ts`'s `leaveBalances.balance`,
+ * `core/leave.ts`'s `leaveBalance` and `core/leave-encashment.ts`'s `ledgerBalanceOf` are all the same sum.
+ * Deliberately NOT the additive column formula the ticket proposed - 6574c6b4 removed that because it
+ * double-counted and turned a true +14.00 into -14.00.
+ *
+ * UNDATED, like the ledger balance every other surface shows: the running total, with no `effective_on`
+ * cut. An imported record is dated in the past, so a cut at today would include it in `before` anyway; a
+ * cut at the record's own date would answer a different question for every line in the table.
+ *
+ * GROUPED BY THE LEDGER THAT MOVES. See `LeaveHistoryBalanceImpact` for why, and for what `filedCodes`
+ * exists to keep visible.
+ *
+ * ORDER IS PINNED (employee number, then ledger code): this array is rendered as a table and read as a
+ * comparison, and an unordered scan is not a fact (CLAUDE.md section 8).
+ */
+async function balanceImpactOf(
+  ctx: SessionContext,
+  writable: ResolvedRow[],
+  codeById: Map<string, string>,
+): Promise<LeaveHistoryBalanceImpact[]> {
+  if (writable.length === 0) return [];
+
+  type Bucket = {
+    employmentId: string;
+    balanceTypeId: string;
+    employeeNo: string;
+    employeeName: string;
+    filed: Set<string>;
+    years: Set<string>;
+    records: number;
+    days: number;
+  };
+  const buckets = new Map<string, Bucket>();
+  for (const r of writable) {
+    const key = `${r.employmentId}\u0000${r.balanceTypeId}`;
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = {
+        employmentId: r.employmentId,
+        balanceTypeId: r.balanceTypeId,
+        employeeNo: r.result.employeeNo,
+        employeeName: r.employeeName,
+        filed: new Set(),
+        years: new Set(),
+        records: 0,
+        days: 0,
+      };
+      buckets.set(key, bucket);
+    }
+    bucket.filed.add(codeById.get(r.leaveTypeId) ?? r.result.leaveCode);
+    if (r.entitlementYear != null) bucket.years.add(String(r.entitlementYear));
+    bucket.records += 1;
+    bucket.days = round2(bucket.days + r.days);
+  }
+
+  const employmentIds = [...new Set([...buckets.values()].map((b) => b.employmentId))];
+  const typeIds = [...new Set([...buckets.values()].map((b) => b.balanceTypeId))];
+  const balances = await withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        employmentId: leaveLedger.employmentId,
+        leaveTypeId: leaveLedger.leaveTypeId,
+        balance: sql<string>`coalesce(sum(${leaveLedger.days}), 0)`,
+      })
+      .from(leaveLedger)
+      .where(
+        and(
+          inArray(leaveLedger.employmentId, employmentIds),
+          inArray(leaveLedger.leaveTypeId, typeIds),
+        ),
+      )
+      .groupBy(leaveLedger.employmentId, leaveLedger.leaveTypeId);
+    // An employment with NO ledger row for the type is absent from this result, and its balance is 0.00 -
+    // not unknown. The map's default below is what says so; a missing key must never read as an em dash on
+    // a screen whose whole job is to state a figure.
+    return new Map(rows.map((r) => [`${r.employmentId}\u0000${r.leaveTypeId}`, Number(r.balance)]));
+  });
+
+  const out = [...buckets.entries()].map(([key, b]): LeaveHistoryBalanceImpact => {
+    const balanceBefore = round2(balances.get(key) ?? 0);
+    const balanceAfter = round2(balanceBefore - b.days);
+    const ledgerCode = codeById.get(b.balanceTypeId) ?? '';
+    const filed = [...b.filed].filter((c) => c !== '').sort();
+    return {
+      employeeNo: b.employeeNo,
+      employeeName: b.employeeName,
+      leaveCode: ledgerCode,
+      // Only when the grouping actually hid something: a pooled record filed under another code.
+      filedCodes: filed.length === 1 && filed[0] === ledgerCode ? [] : filed,
+      entitlementYears: [...b.years].sort(),
+      records: b.records,
+      days: b.days,
+      balanceBefore,
+      balanceAfter,
+      goesNegative: balanceAfter < 0,
+    };
+  });
+  return out.sort(
+    (x, y) => x.employeeNo.localeCompare(y.employeeNo) || x.leaveCode.localeCompare(y.leaveCode),
+  );
+}
+
+/**
+ * Dry run. Validates against the tenant's catalogue and existing references; writes nothing.
+ *
+ * r367 - takes the run's `openingBalancesAreNet` answer, because the PREVIEW is where its consequence is
+ * shown. The returned `deducts` is the server's own resolution of it, so the screen reports what the
+ * server would do rather than what its control happens to be showing.
+ */
 export async function validateLeaveHistoryImport(
   ctx: SessionContext,
-  p: { records: LeaveHistoryRecord[] },
+  p: { records: LeaveHistoryRecord[] } & LeaveHistoryImportOptions,
 ): Promise<LeaveHistoryImportPreview> {
-  const { preview } = await analyze(ctx, p.records);
+  const { preview } = await analyze(ctx, p.records, p);
   return preview;
 }
 
@@ -493,10 +716,13 @@ export async function validateLeaveHistoryImport(
  */
 export async function commitLeaveHistoryImport(
   ctx: SessionContext,
-  p: { records: LeaveHistoryRecord[]; source?: LeaveHistoryImportSource },
+  p: { records: LeaveHistoryRecord[]; source?: LeaveHistoryImportSource } & LeaveHistoryImportOptions,
 ): Promise<LeaveHistoryImportResult> {
-  const { preview, resolved } = await analyze(ctx, p.records);
+  const { preview, resolved, options } = await analyze(ctx, p.records, p);
   const writable = resolved.filter((r) => r.result.status === 'valid');
+  // r367 - RE-RESOLVED FROM THIS CALL'S OWN ARGUMENT by `analyze`, never taken from a preview the client
+  // holds. A tampered preview can no more turn the deduction off than it can widen which rows are written.
+  const deducts = !options.openingBalancesAreNet;
 
   const rejected: LeaveHistoryImportError[] = resolved
     .filter((r) => r.result.status !== 'valid')
@@ -517,8 +743,8 @@ export async function commitLeaveHistoryImport(
   // run-log write with it — the not-atomic-by-design requirement (see the header).
   for (const r of writable) {
     try {
-      await withTenant(ctx, (tx) =>
-        tx.insert(leaveRequest).values({
+      await withTenant(ctx, async (tx) => {
+        const [created] = await tx.insert(leaveRequest).values({
           tenantId: ctx.tenantId,
           employmentId: r.employmentId,
           leaveTypeId: r.leaveTypeId,
@@ -542,8 +768,41 @@ export async function commitLeaveHistoryImport(
           entitlementYear: r.entitlementYear,
           submittedOn: r.submitDate,
           importedHistory: true,
-        }),
-      );
+        }).returning({ id: leaveRequest.id });
+        /**
+         * r367 - THE OTHER HALF, IN THE SAME TRANSACTION. This is the whole of the money fix: r362 wrote
+         * the record and stopped, so the days were recorded and never deducted.
+         *
+         * `finalizeLeaveApproval` (core/leave.ts) is the precedent and this is its shape: ONE debit over
+         * the whole span, `source_request_id` set to the row just written, `effective_on` = the start date,
+         * landing on the resolved Balance Deduction Source.
+         *
+         * `source_request_id` IS NOT OPTIONAL DETAIL - it is what makes three other things true:
+         *   · Taken attributes to the code the leave was FILED under (core/read.ts `takenFiled` joins the
+         *     ledger to the request over exactly this column), which is what the reporter asked for;
+         *   · cancelling the record reverses it, because `applyLeaveCancellationApprovalTx` sums the
+         *     ledger rows sourced to the request and only then re-debits survivors;
+         *   · core/leave-charge.ts can tell a charged imported record from an uncharged one at all.
+         *
+         * SAME TRANSACTION, deliberately, and it does NOT weaken the per-row isolation this module is
+         * built on: the transaction is still ONE ROW's, so a failure here aborts this record and its debit
+         * together and leaves every other row alone. A record without its debit is the defect being fixed;
+         * a debit without its record would be worse still.
+         *
+         * `openingBalancesAreNet = true` writes nothing here, which is r362's behaviour exactly.
+         */
+        if (deducts && created) {
+          await tx.insert(leaveLedger).values({
+            tenantId: ctx.tenantId,
+            employmentId: r.employmentId,
+            leaveTypeId: r.balanceTypeId,
+            entryType: 'debit',
+            days: (-r.days).toFixed(2),
+            sourceRequestId: created.id,
+            effectiveOn: r.startDate,
+          });
+        }
+      });
       imported += 1;
     } catch (e) {
       writeFailures.push({
@@ -586,6 +845,11 @@ export async function commitLeaveHistoryImport(
         failed,
         duplicates,
         source: p.source ?? { kind: 'paste' },
+        // r367 - WHICH ARITHMETIC RAN, in the audit trail. Two runs of the same file under the two
+        // answers do different things to a balance, and "was this import deducted?" has to be
+        // answerable months later from the record rather than from whoever was at the keyboard.
+        openingBalancesAreNet: options.openingBalancesAreNet,
+        deducted: deducts,
       },
     }),
   );
