@@ -72,6 +72,13 @@ function streamOf(page: ReturnType<PDFDocument['getPages']>[number]): string {
    * C.P.8A happens to have no Form XObject at all, so the claim was never tested by the one file the
    * script was written for. It is now true instead of documented.
    */
+  /**
+   * ⚠️ AND A FORM XOBJECT'S OWN `/Matrix` IS NOT APPLIED. A page that draws its body inside a
+   * transformed XObject would report those runs in the XObject's space, not the page's. That is still
+   * strictly better than dropping them — a wrong coordinate is visible, an absent run is not — but it
+   * is a limitation, not a feature. Neither LHDN's C.P.8A (no XObject at all) nor pdf-lib's output
+   * has one, which is why it is recorded here rather than implemented.
+   */
   const xobjects = page.node.Resources()?.lookupMaybe(PDFName.of('XObject'), PDFDict);
   for (const key of xobjects?.keys() ?? []) {
     const value = xobjects?.get(key);
@@ -94,12 +101,25 @@ function streamOf(page: ReturnType<PDFDocument['getPages']>[number]): string {
  * swallowed "Telephone" in the officer box and "(state the employee's share of contribution only)" in
  * Section E. A measuring tool that drops a caption reports a column that is not there.
  */
-function decoderFor(fontDict: PDFDict | undefined, ctx: PDFDocument['context']): Map<number, string> | null {
+function decoderFor(
+  fontDict: PDFDict | undefined,
+  ctx: PDFDocument['context'],
+): { map: Map<number, string>; codeBytes: number } | null {
   const ref = fontDict?.get(PDFName.of('ToUnicode'));
   const stream = ref instanceof PDFRef ? ctx.lookup(ref) : ref;
   if (!(stream instanceof PDFRawStream)) return null;
   const cmap = Buffer.from(decodePDFRawStream(stream).decode()).toString('latin1');
   const map = new Map<number, string>();
+  /**
+   * ⚠️ HOW WIDE A CODE IS, TAKEN FROM THE CMAP RATHER THAN ASSUMED. An Identity-H subset font (which
+   * is what LHDN's producer emits for the captions this parser exists to recover) uses TWO bytes per
+   * code; a simple font with a `/ToUnicode` uses ONE. Assuming two would silently halve a simple
+   * font's run and decode every character wrong, which is a worse answer than the blank it replaces.
+   * The `begincodespacerange` entry states it; the first `bfchar`/`bfrange` source is the fallback.
+   */
+  const range = /begincodespacerange\s*<([0-9A-Fa-f]+)>/.exec(cmap);
+  const firstSrc = /beginbf(?:char|range)\s*<([0-9A-Fa-f]+)>/.exec(cmap);
+  const codeBytes = Math.max(1, Math.round(((range ?? firstSrc)?.[1].length ?? 4) / 2));
   /** A `/ToUnicode` destination is UTF-16**BE**, and may be several code units (a ligature maps to two).
    *  ⚠️ `Buffer.toString('utf16le')` reads it backwards: [00 50] becomes U+5000, and the agency's dot
    *  leader U+2026 came out as U+2620 (retired in r372, along with the character-swap that hid it). */
@@ -120,14 +140,16 @@ function decoderFor(fontDict: PDFDict | undefined, ctx: PDFDocument['context']):
       for (let c = lo; c <= hi && c - lo < 65536; c += 1) map.set(c, String.fromCodePoint(dst + (c - lo)));
     }
   }
-  return map.size > 0 ? map : null;
+  return map.size > 0 ? { map, codeBytes } : null;
 }
 
+type Decoder = { map: Map<number, string>; codeBytes: number } | null;
+
 /** Every font resource on the page, by its content-stream name (`/F6` → `F6`). */
-function decodersOf(page: ReturnType<PDFDocument['getPages']>[number]): Map<string, Map<number, string> | null> {
+function decodersOf(page: ReturnType<PDFDocument['getPages']>[number]): Map<string, Decoder> {
   const ctx = page.node.context;
   const fonts = page.node.Resources()?.lookupMaybe(PDFName.of('Font'), PDFDict);
-  const out = new Map<string, Map<number, string> | null>();
+  const out = new Map<string, Decoder>();
   for (const key of fonts?.keys() ?? []) {
     const value = fonts?.get(key);
     const dict = value instanceof PDFRef ? ctx.lookup(value) : value;
@@ -149,7 +171,7 @@ function decodersOf(page: ReturnType<PDFDocument['getPages']>[number]): Map<stri
  * reports the other document as having no text — an empty report that reads exactly like a page with
  * nothing on it, which is the wrong answer to be given silently.
  */
-function runsOf(raw: string, height: number, decoders: Map<string, Map<number, string> | null>): PdfRun[] {
+function runsOf(raw: string, height: number, decoders: Map<string, Decoder>): PdfRun[] {
   const out: PdfRun[] = [];
   let tm = { a: 1, d: 1, e: 0, f: 0 };
   let line = { e: 0, f: 0 };
@@ -161,12 +183,14 @@ function runsOf(raw: string, height: number, decoders: Map<string, Map<number, s
   };
   /** A hex operand: through the font's own CMap when it has one, else one latin1 byte per character. */
   const hex = (h: string): string => {
-    const cmap = decoders.get(fontName) ?? null;
-    if (!cmap) return Buffer.from(h, 'hex').toString('latin1');
+    const decoder = decoders.get(fontName) ?? null;
+    // No `/ToUnicode` means a simple font with a standard encoding — which is what pdf-lib writes for
+    // an embedded StandardFont, one WinAnsi byte per character. That is this repository's own output.
+    if (!decoder) return Buffer.from(h, 'hex').toString('latin1');
+    const width = decoder.codeBytes * 2;
     let text = '';
-    for (let i = 0; i + 3 < h.length + 1; i += 4) {
-      const code = parseInt(h.slice(i, i + 4), 16);
-      text += cmap.get(code) ?? UNDECODABLE_GLYPH;
+    for (let i = 0; i + width <= h.length; i += width) {
+      text += decoder.map.get(parseInt(h.slice(i, i + width), 16)) ?? UNDECODABLE_GLYPH;
     }
     return text;
   };
