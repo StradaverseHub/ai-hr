@@ -240,6 +240,32 @@ const MY_ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      * a single level, so these are five rows side by side — not rows with sub-rows underneath.
      */
     { href: '/attendance/request-status', labelKey: 'myAttendanceRequestStatus', icon: ClipboardList },
+    /**
+     * 6948727a (r369) — the SIXTH self-service row: the employee's own roster, read only.
+     *
+     * The reporter's words on the ticket are the whole specification: "New sub menu – My Roster. This is
+     * for employee to view only the Roster that assigned by their supervisor." The function is not new —
+     * `roster_assignment` has held these rows since migration 0075 — but until now the ONLY screen over
+     * them was `/roster`, which is an administrator's grid of everybody and sits in the group-gated
+     * Administration section. So from an employee's chair their own roster did not exist, which is
+     * exactly the shape of ticket this menu keeps receiving.
+     *
+     * UNGATED, like its five siblings, and for a reason one step removed from theirs: the others are the
+     * caller's OWN REQUESTS, and this is the caller's OWN SCHEDULE. A gate here would take an employee's
+     * shift times away from the employee. What keeps it honest is not the menu — `/attendance/my-roster`
+     * resolves the caller's employment server-side and takes no employment id at all (see
+     * core/roster.ts myRosterWindow) — because a row that is merely absent from a menu is still a URL.
+     *
+     * ⚠️ THE GLYPH IS CalendarRange, WHICH `/roster` ALSO CARRIES, and that is deliberate rather than an
+     * oversight. The collapsed rail renders glyphs only, so no row may repeat a SIBLING's — and `/roster`
+     * is not a sibling: it lives in ATTENDANCE_NAV and in the flat Manage links, never in this node, so no
+     * collapsed rail ever draws the two side by side. Sharing the picture is the right answer where the
+     * two rows genuinely show the same thing to two audiences, exactly as Clock and Attendance Overview
+     * share Clock one node up.
+     *
+     * ⚠️ ONE LEVEL ONLY, as the note above says: this is a sixth row beside the five, not a child of one.
+     */
+    { href: '/attendance/my-roster', labelKey: 'myRoster', icon: CalendarRange },
   ],
 };
 
