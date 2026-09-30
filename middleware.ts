@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { isAuthRoute } from '@/lib/auth-routes';
 import { isHealthRoute } from '@/lib/health-route';
+import { isMobileApiRoute } from '@/lib/mobile-api/routes';
 
 /**
  * Demo access gate (see HOSTING.md). When SHARE_PASSWORD is set, the whole app sits behind HTTP Basic
@@ -119,6 +120,11 @@ export function middleware(req: NextRequest) {
   // alarm. A health endpoint hoisted above that refusal would report a broken deployment as healthy,
   // which is the failure mode 1.6 exists to remove. See lib/health-route.ts.
   if (isHealthRoute(req.nextUrl.pathname)) return withPathname(req);
+
+  // ADR-0088 — the mobile API bypasses the CHALLENGE (Basic auth and the app's bearer token both need the
+  // Authorization header) but, like /health, not the refusal above. Every handler behind it accepts only
+  // a verified WorkOS bearer token; see lib/mobile-api/routes.ts.
+  if (isMobileApiRoute(req.nextUrl.pathname)) return withPathname(req);
 
   // Auth routes bypass the Basic-auth challenge but STILL run through here, so x-pathname is set.
   // They used to be excluded in the matcher instead, which skipped this function entirely and left
