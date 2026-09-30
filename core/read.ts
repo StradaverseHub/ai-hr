@@ -5782,19 +5782,6 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
 }
 
 /**
- * The payslips an employee may SEE (ADR-0088): their ACTIVE employments' slips from runs that are closed
- * AND whose release instant has passed. `myPayslips` returns unreleased rows too, flagged `released:false`
- * (the admin publication screens and the tests need them), and until now the "released only" rule lived
- * in app/me/page.tsx alone. A second consumer — the mobile API — must not have to re-derive it, so it is
- * stated here once. The predicate is the web page's own, verbatim (`status === 'closed' && released`).
- */
-export async function myReleasedPayslips(ctx: SessionContext) {
-  const employments = await myEmployments(ctx);
-  const rows = await myPayslips(ctx, employments.map((e) => e.employmentId));
-  return rows.filter((p) => p.status === 'closed' && p.released);
-}
-
-/**
  * My Payroll — Self Personal Tax Relief (LHDN TP1). Read-only: no domain event (CLAUDE.md substrate
  * rule — this slice is a pure SELECT).
  *
@@ -6019,4 +6006,17 @@ export function allowancePreviewForPeriod(
   p: { policyId: string; month: string; today?: string },
 ) {
   return evaluateAllowancesForPeriod(ctx, p);
+}
+
+/**
+ * The payslips an employee may SEE (ADR-0088): their ACTIVE employments' slips from runs that are closed
+ * AND whose release instant has passed. `myPayslips` returns unreleased rows too, flagged `released:false`
+ * (the admin publication screens and the tests need them), and until now the "released only" rule lived
+ * in app/me/page.tsx alone. A second consumer — the mobile API — must not have to re-derive it, so it is
+ * stated here once. The predicate is the web page's own, verbatim (`status === 'closed' && released`).
+ */
+export async function myReleasedPayslips(ctx: SessionContext) {
+  const employments = await myEmployments(ctx);
+  const rows = await myPayslips(ctx, employments.map((e) => e.employmentId));
+  return rows.filter((p) => p.status === 'closed' && p.released);
 }

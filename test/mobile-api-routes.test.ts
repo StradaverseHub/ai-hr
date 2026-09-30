@@ -53,6 +53,10 @@ const call = async (handler: (r: Request) => Promise<Response>, path: string) =>
   return { res, text, body: JSON.parse(text) as Record<string, unknown> & { items?: Array<Record<string, unknown>> } };
 };
 
+/** Guards read CODE, not prose: a comment quoting a string must not satisfy (or trip) an assertion. */
+const stripComments = (src: string) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*$/gm, '$1');
+
 let base: Base;
 let icSeq = 0;
 const nextIc = () => `9204040${String(30000 + icSeq++).slice(-5)}`;
@@ -302,7 +306,7 @@ describe('every mobile route goes through mobileRoute (the share-gate bypass dep
   });
 
   it.each(routes.map((r) => [r.slice(root.length)]))('%s', (rel) => {
-    const src = readFileSync(join(root, rel), 'utf8');
+    const src = stripComments(readFileSync(join(root, rel), 'utf8'));
     const exportsAll = src.match(/^export\s+/gm) ?? [];
     const exportsWrapped = src.match(/^export const (GET|POST|PUT|PATCH|DELETE) = mobileRoute\(/gm) ?? [];
     expect(exportsWrapped.length, 'every export is a method handler built by mobileRoute').toBe(exportsAll.length);

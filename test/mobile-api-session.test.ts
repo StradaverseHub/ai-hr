@@ -24,6 +24,10 @@ function bearer(sub: string, ttlSeconds = 300): string {
   return `Bearer ${input}.${cryptoSign('sha256', Buffer.from(input), privateKey).toString('base64url')}`;
 }
 
+/** Guards read CODE, not prose: a comment quoting a string must not satisfy (or trip) an assertion. */
+const stripComments = (src: string) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*$/gm, '$1');
+
 let base: Base;
 const lastYear = () => `${Number(todayInKualaLumpur().slice(0, 4)) - 1}-01-01`;
 
@@ -128,7 +132,7 @@ describe('getMobileSession — bearer only, fail closed', () => {
   });
 
   it('never reads the demo cookie or the dev switcher (the share-gate bypass depends on it)', () => {
-    const src = readFileSync(new URL('../lib/session.ts', import.meta.url), 'utf8');
+    const src = stripComments(readFileSync(new URL('../lib/session.ts', import.meta.url), 'utf8'));
     const start = src.indexOf('export async function getMobileSession');
     expect(start).toBeGreaterThan(-1);
     const body = src.slice(start);

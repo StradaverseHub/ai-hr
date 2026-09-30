@@ -823,7 +823,11 @@ describe('slice 2 — isModuleEnabled', () => {
     // `next/headers` cookies and lazily imports the WorkOS SDK, so exercising it would mean faking a
     // request scope — and the property at stake is structural ("no path returns unwrapped"), which is
     // exactly what a source assertion states. Same instrument as the exemption-owners test above.
-    const src = readFileSync(new URL('../lib/session.ts', import.meta.url), 'utf8');
+    // Comments stripped first: a docblock quoting `withEntitlements(await resolveWorkosPrincipal(` would
+    // otherwise count as a wrapped call and turn this ratchet green on prose.
+    const src = readFileSync(new URL('../lib/session.ts', import.meta.url), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/[^\n]*$/gm, '$1');
     const start = src.indexOf('async function resolveSession(');
     expect(start, 'resolveSession was renamed — this ratchet must be renamed with it').toBeGreaterThan(-1);
     const body = src.slice(start);
