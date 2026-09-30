@@ -1,0 +1,47 @@
+import { Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { t } from '../lib/i18n';
+import { SessionProvider, useSession } from '../lib/session';
+import { Button, colors } from '../lib/ui';
+
+function Gate() {
+  const { status, unlock, signOut } = useSession();
+  if (status === 'loading') {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator accessibilityLabel={t('loading')} />
+      </View>
+    );
+  }
+  if (status === 'locked') {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.lockTitle}>{t('unlockTitle')}</Text>
+        <View style={styles.actions}>
+          <Button title={t('unlockButton')} onPress={() => void unlock()} />
+          <Button title={t('signOut')} onPress={() => void signOut()} kind="quiet" />
+        </View>
+      </View>
+    );
+  }
+  return <Stack screenOptions={{ headerShown: false }} />;
+}
+
+export default function RootLayout() {
+  return (
+    <SafeAreaProvider>
+      <SessionProvider>
+        <StatusBar style="dark" />
+        <Gate />
+      </SessionProvider>
+    </SafeAreaProvider>
+  );
+}
+
+const styles = StyleSheet.create({
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg, padding: 24 },
+  lockTitle: { fontSize: 20, fontWeight: '600', color: colors.text, marginBottom: 16 },
+  actions: { alignSelf: 'stretch', gap: 8 },
+});
