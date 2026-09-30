@@ -1,5 +1,5 @@
 /**
- * r370 (item d4f6848f) — THE MONTH'S STATUTORY WAGE, DERIVED ONCE FOR ALL THREE READS.
+ * r371 (item d4f6848f) — THE MONTH'S STATUTORY WAGE, DERIVED ONCE FOR ALL THREE READS.
  *
  * ── THE DEFECT THIS CLOSES ────────────────────────────────────────────────────────────────────────
  * In a month that held more than one payroll run, the WAGE column on Borang A (EPF, "Upah") and on the

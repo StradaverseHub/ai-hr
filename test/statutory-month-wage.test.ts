@@ -1,5 +1,5 @@
 /**
- * r370 (item d4f6848f) — THE MONTH'S STATUTORY WAGE, PINNED WITHOUT A DATABASE.
+ * r371 (item d4f6848f) — THE MONTH'S STATUTORY WAGE, PINNED WITHOUT A DATABASE.
  *
  * `test/borang-a-report.test.ts` and `test/borang-8a-report.test.ts` pin the corrected figure against a real
  * kernel and a real Postgres, which is the evidence that matters. This file pins the FOLD: that "the latest
