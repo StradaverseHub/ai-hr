@@ -33,7 +33,13 @@
  *               usually has the instrument in front of them when they print it. UNLIKE the preparer
  *               boxes these have no default, so an empty one means BLANK — the form prints the ruled
  *               line it always did. See `withPaymentInstrument` for why that is a separate helper.
- * None of them is persisted, and none reaches the pack: `ReportParams` stays {companyId, periodKey}.
+ * None of them is persisted, and none of them reaches the pack.
+ *
+ * ⚠️ THE SENTENCE THAT USED TO END THIS PARAGRAPH — "`ReportParams` stays {companyId, periodKey}" — IS
+ * RETIRED. r372 (item f022dd70) added an optional `runSeqs` to that type for the payroll-cycle selection
+ * on Payment Submission. THE PRINTED CP39 STATEMENT DOES NOT SEND IT and has no control that could: this
+ * screen is one month's statement, whole. The claim about THIS screen's inputs is unchanged; the claim
+ * about the type was true when it was written and is not any more.
  *
  * THE SIGNATURE IS THE ONE FIELD WITH NO INPUT, and that is not an omission: the request says to leave
  * it blank for physical signing, so the form draws a box to sign in.

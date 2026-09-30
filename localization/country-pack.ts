@@ -224,7 +224,19 @@ export type StatutoryPaymentFile =
  *  of that month's payslips, and RLS is what fences it - see `paymentFiles` on the contract. */
 export type StatutoryPaymentFileBuilder = (
   ctx: SessionContext,
-  p: { companyId: string; periodKey: string },
+  p: {
+    companyId: string;
+    periodKey: string;
+    /**
+     * r372 (item f022dd70) — WHICH PAYROLL RUNS OF THAT MONTH, when the operator picked some of them.
+     *
+     * OPTIONAL, AND ABSENT MEANS EVERY RUN. A pack that does not read it produces the whole month exactly
+     * as it always has, so this widened the contract without obliging any jurisdiction to implement a
+     * cycle selection it has no screen for. `run_seq` and not a cycle id: see lib/payroll-run-selection.ts
+     * for why the id cannot separate a month's runs and the sequence number can.
+     */
+    runSeqs?: number[];
+  },
 ) => Promise<StatutoryPaymentFile>;
 
 /**

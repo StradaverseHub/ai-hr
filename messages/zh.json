@@ -7309,7 +7309,19 @@
       "selectionIntro": "选择此文件所涵盖的公司和薪资月份，然后下载。",
       "payCycle": "薪资周期",
       "cancel": "取消",
-      "payCycleMissing": "此文件没有可用的薪资周期，因此暂时无法下载——支付员工薪酬的文件必须说明它支付的是该月的哪一次发薪。"
+      "payCycleMissing": "此文件没有可用的薪资周期，因此暂时无法下载——支付员工薪酬的文件必须说明它支付的是该月的哪一次发薪。",
+      "payCycleAll": "所有薪资周期",
+      "payCycleSelectAll": "全选",
+      "payCycleSearch": "搜索薪资周期",
+      "payCycleLoading": "正在查找本月的薪资运行…",
+      "payCycleNoRuns": "该公司和月份尚无已完成的薪资运行。下载仍会生成整个月份，如果没有可申报的内容会告知您。",
+      "payCycleRun": "本月第 {seq} 次运行",
+      "payCyclePartialWarning": "您至少遗漏了一个薪资周期。机构仍将此文件视为整月的申报 — 文件中没有字段说明某一行来自哪次薪资运行。如果您先申报此文件，稍后再申报整月，那就是同一月份的两次申报。",
+      "payCycleNonePicked": "当前未勾选任何项。现在下载将生成整个月份，与全选相同。",
+      "runTypeRegular": "常规",
+      "runTypeOffCycle": "额外周期",
+      "runTypeBonus": "奖金",
+      "runTypeAdjustment": "调整"
     }
   },
   "admin": {

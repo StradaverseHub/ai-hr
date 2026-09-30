@@ -58,6 +58,15 @@ export type ReportResult = {
   readiness: ReportReadiness[];
   meta: {
     hasBatch: boolean;
+    /**
+     * r372 (item f022dd70) — the month HAS payroll runs, but none of them is one the operator ticked.
+     *
+     * A THIRD STATE, NOT A SECOND SPELLING OF `hasBatch: false`. "Run payroll first" and "none of the
+     * payroll cycles you picked exists in this month" send an operator to two different screens, and a
+     * download that answered the first for the second would have them re-running a month that is already
+     * done. Absent on every unfiltered read, which is every read that has no cycle selector.
+     */
+    selectionEmpty?: boolean;
     batchStatus?: string;
     statutoryVersion: string;
     /** Headline counts shown above the table (e.g. Form E Part A). */
@@ -80,7 +89,33 @@ export type ReportResult = {
     formHeader?: Record<string, string>;
   };
 };
-export type ReportParams = { companyId: string; periodKey: string };
+export type ReportParams = {
+  companyId: string;
+  periodKey: string;
+  /**
+   * r372 (item f022dd70) — WHICH PAYROLL RUNS OF THAT MONTH, when the operator picked some of them.
+   *
+   * ABSENT MEANS EVERY RUN, and absent is what every caller that has no cycle selector sends. A report
+   * reading this field must take its pre-existing whole-month path when it is `undefined` rather than
+   * building a set of every run and filtering on it: that is what makes "tick all the cycles and the file
+   * does not move" true by construction instead of by comparison. See lib/payroll-run-selection.ts.
+   *
+   * ⚠️ IT IS `run_seq`, NOT `payroll_cycle_id`. The cycle id is nullable and null on most batches; run_seq
+   * is NOT NULL and unique per pay period. The cycle NAME is what the screen shows; the run is what the
+   * database can actually separate. Reports that carry no wage column (CP39) may filter their query on it
+   * directly; the two that DO carry one must read the whole month and scope the wage —
+   * `scopedMonthWagesFrom` in ./statutory-month-wage explains why.
+   *
+   * ⚠️ EXACTLY TWO GENERATORS READ THIS FIELD TODAY — `my.borang-a` and `my.borang-8a`, the two reached
+   * from Payment Submission's Payroll Cycle control. Every other entry in this catalogue IGNORES it, which
+   * is correct rather than an omission: nothing sends it to them, and a report that silently honoured a
+   * selection its own screen has no control for would hand an operator a narrower document than the one
+   * they asked for. Adding the control to another report means teaching that report the field, in the same
+   * round. The CP39 UPLOAD FILE is not in this catalogue at all — it rides `CountryPack.paymentFiles` and
+   * takes its own `runSeqs`.
+   */
+  runSeqs?: number[];
+};
 /**
  * Where a generated form actually gets submitted, and by when (feedback 956cec85).
  *

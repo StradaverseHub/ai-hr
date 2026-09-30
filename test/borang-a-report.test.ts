@@ -24,6 +24,9 @@ import { setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { upsertCompanyStatutoryAuthority } from '../core/statutory-authority';
 import { createAdditionalRun, createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
 import { reportPreview } from '../core/reporting';
+// r372 (item f022dd70) — the read behind the download pop-up's Payroll Cycle list. Exercised HERE, beside
+// the report it feeds, so "the control offers a run" and "the file contains that run" stay one claim.
+import { listFilableRunsForPeriod } from '../core/payroll-view';
 import { BORANG_A_HEADER_KEYS, borangAFrom } from '../lib/borang-a';
 import { borangAFileReadiness, buildBorangAFile, parseBorangAFileTotals } from '../lib/kwsp-borang-a-file';
 
@@ -623,5 +626,191 @@ describe('r372 — an additional run and the Upah column', () => {
     // The review screen still shows a figure beside the warning — it is real data an operator has to
     // compare the runs against. `wageRecorded` keeps its own meaning: a basis WAS recorded, twice.
     expect(after.rows.find((r) => r.name === 'AAA CHANGED')!.wageRecorded).toBe('yes');
+  });
+});
+
+/**
+ * r372 (item f022dd70) — THE PAYROLL CYCLE SELECTION, against a real kernel and a real Postgres.
+ *
+ * `test/statutory-month-wage.test.ts` pins the FOLD with no database, which is where the arithmetic
+ * belongs. This block pins the three things only a database can answer: that the selection reaches the
+ * query at all, that the figures it produces are the ones the SELECTED runs actually charged, and that
+ * omitting the parameter takes the old path and produces the old numbers.
+ *
+ * ⚠️ THE DB TEST IS THE MORE EASILY FOOLED ONE, NOT THE STRONGER ONE. r372's own wage fix had a revert
+ * test that FAILED in the pure test and PASSED here, because Postgres happened to return the rows in
+ * `run_seq` order. So nothing below asserts a position, an ordering or a row index: every assertion is an
+ * invariant about a named employee's figures, and the two that could be satisfied by luck (the wage) are
+ * paired with the contributions they are supposed to agree with.
+ */
+describe('r372 — filing one payroll cycle of a month on its own', () => {
+  const salary = 4000;
+  const BONUS = 1200;
+
+  /**
+   * July, with TWO employees and two runs: the regular run pays them both, the bonus run pays a real bonus
+   * to ONE of them.
+   *
+   * THE SECOND EMPLOYEE IS THE POINT OF THE FIXTURE, not padding. An additional run SKIPS anybody with no
+   * keyed input, so ZZZ REGULAR ONLY genuinely has no payslip on the bonus run — which is what makes
+   * "an unticked cycle contributes no employee" an assertion about the filter rather than about a person
+   * who was never in the month at all.
+   */
+  async function julyWithBonus() {
+    await setModule(b.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(b);
+    const e = await hire({
+      name: 'AAA CYCLE',
+      hiredOn: '2024-03-01',
+      salary,
+      ic: '900101015555',
+      epfNumber: '18690645',
+    });
+    await hire({
+      name: 'ZZZ REGULAR ONLY',
+      hiredOn: '2024-03-01',
+      salary,
+      ic: '880808085555',
+      epfNumber: '19807671',
+    });
+    const reg = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
+    await generatePayslips(a, { batchId: reg.batchId });
+    const bonus = await createAdditionalRun(a, {
+      companyId: b.companyId,
+      payPeriod: '2026-07',
+      runType: 'bonus',
+    });
+    await setPayrollInput(a, {
+      batchId: bonus.batchId,
+      employmentId: e.employmentId,
+      overtimeAmount: 0,
+      bonusAmount: BONUS,
+    });
+    const gen = await generatePayslips(a, { batchId: bonus.batchId });
+    // Asserted, not assumed: the fixture only means what it claims if the kernel really left the second
+    // employee out of the bonus run.
+    expect('skipped' in gen && Array.isArray(gen.skipped) ? gen.skipped.map((x) => x.name) : []).toEqual([
+      'ZZZ REGULAR ONLY',
+    ]);
+    // The run numbers are READ BACK rather than assumed to be 1 and 2 — `run_seq` is the kernel's to
+    // allocate, and a test that hard-coded them would be pinning an implementation detail of createBatch.
+    const rows = await owner.db
+      .select({ id: schema.payrollBatch.id, runSeq: schema.payrollBatch.runSeq, runType: schema.payrollBatch.runType })
+      .from(schema.payrollBatch)
+      .where(
+        and(eq(schema.payrollBatch.companyId, b.companyId), eq(schema.payrollBatch.payPeriod, '2026-07')),
+      );
+    const regularSeq = rows.find((r) => r.runType === 'regular')!.runSeq;
+    const bonusSeq = rows.find((r) => r.runType === 'bonus')!.runSeq;
+    return { a, e, regularSeq, bonusSeq, batchIds: rows.map((r) => r.id) };
+  }
+
+  const view = (a: Awaited<ReturnType<typeof entitledCtx>>, runSeqs?: number[]) =>
+    reportPreview(a, { companyId: b.companyId, reportId: 'my.borang-a', periodKey: '2026-07', runSeqs });
+  const rowOf = (r: { rows: Record<string, unknown>[] }, name: string) =>
+    r.rows.find((x) => x.name === name)!;
+
+  /**
+   * ⚠️ THE ASSERTION THE WHOLE FEATURE TURNS ON. A Bonus-only Borang A must carry the BONUS as Upah, with
+   * the bonus run's own contributions beside it. The implementation this replaced — filtering the payslip
+   * query and handing the ordinary fold a shorter list — files a full month's salary here, because the
+   * kernel stamps `bases.epf` (the whole month's normal wage) on the bonus run too.
+   */
+  it('a Bonus-only filing carries the bonus as Upah, not the month’s salary', async () => {
+    const { a, bonusSeq } = await julyWithBonus();
+    const whole = rowOf(await view(a), 'AAA CYCLE');
+    const bonusOnly = rowOf(await view(a, [bonusSeq]), 'AAA CYCLE');
+
+    expect(Number(whole.wage)).toBeCloseTo(salary + BONUS, 2);
+    expect(Number(bonusOnly.wage)).toBeCloseTo(BONUS, 2);
+    // …and it is NOT the whole month's figure, which is what the naive implementation would print.
+    expect(Number(bonusOnly.wage)).toBeLessThan(Number(whole.wage));
+
+    // THE CONTRIBUTIONS AGREE WITH THE WAGE. A wage that shrank while the contributions did not is the
+    // very mismatch this is here to prevent, so both are asserted together rather than the wage alone.
+    expect(Number(bonusOnly.employer)).toBeGreaterThan(0);
+    expect(Number(bonusOnly.employer)).toBeLessThan(Number(whole.employer));
+    expect(Number(bonusOnly.employee)).toBeLessThan(Number(whole.employee));
+  });
+
+  it('a regular-only filing carries the month’s salary and none of the bonus', async () => {
+    const { a, regularSeq } = await julyWithBonus();
+    const regularOnly = rowOf(await view(a, [regularSeq]), 'AAA CYCLE');
+    expect(Number(regularOnly.wage)).toBeCloseTo(salary, 2);
+    // The colleague the bonus run skipped is unaffected either way — their month is one run long.
+    expect(Number(rowOf(await view(a, [regularSeq]), 'ZZZ REGULAR ONLY').wage)).toBeCloseTo(salary, 2);
+    expect(Number(rowOf(await view(a), 'ZZZ REGULAR ONLY').wage)).toBeCloseTo(salary, 2);
+  });
+
+  /**
+   * THE NO-CHANGE GUARANTEE, MEASURED. Omitting the parameter must produce the identical report — not a
+   * similar one. Compared as a whole object, so a field that moved cannot hide behind the two the other
+   * tests happen to read.
+   */
+  it('omitting the selection produces exactly the report the month produced before', async () => {
+    const { a, regularSeq, bonusSeq } = await julyWithBonus();
+    const omitted = await view(a);
+    const everyRun = await view(a, [regularSeq, bonusSeq]);
+    expect(omitted.rows).toEqual(everyRun.rows);
+    expect(omitted.totals).toEqual(everyRun.totals);
+    expect(omitted.readiness).toEqual(everyRun.readiness);
+  });
+
+  it('leaves out an employee the selected cycles never paid, and keeps them for the ones that did', async () => {
+    const { a, regularSeq, bonusSeq } = await julyWithBonus();
+    // The whole month, and a regular-only filing, both carry BOTH people…
+    for (const sel of [undefined, [regularSeq]]) {
+      const names = (await view(a, sel)).rows.map((r) => r.name);
+      expect(names, String(sel)).toContain('AAA CYCLE');
+      expect(names, String(sel)).toContain('ZZZ REGULAR ONLY');
+    }
+    // …and a Bonus-only filing carries only the person the bonus run actually paid. Not "present with
+    // zeros": absent, because a statutory return names contributors and nobody else.
+    const bonusNames = (await view(a, [bonusSeq])).rows.map((r) => r.name);
+    expect(bonusNames).toEqual(['AAA CYCLE']);
+  });
+
+  it('answers a selection that names no run of this month apart from "no payroll run"', async () => {
+    const { a } = await julyWithBonus();
+    const nothing = await view(a, [97]);
+    // The month HAS runs — so `hasBatch` stays true and the third state is what says the selection missed.
+    expect(nothing.meta.hasBatch).toBe(true);
+    expect(nothing.meta.selectionEmpty).toBe(true);
+    expect(nothing.rows).toEqual([]);
+    // …and an unfiltered read of the same month says neither of those things.
+    const whole = await view(a);
+    expect(whole.meta.selectionEmpty).toBeUndefined();
+    expect(whole.rows.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * A DRAFT RUN IS NOT OFFERED AND CONTRIBUTES NOTHING. Asserted through the read that the pop-up uses,
+   * so the control and the file cannot disagree about which runs exist — the r296 shape.
+   */
+  it('the eligible-runs read offers only completed runs that actually paid somebody', async () => {
+    const { a, regularSeq, bonusSeq } = await julyWithBonus();
+    await createAdditionalRun(a, { companyId: b.companyId, payPeriod: '2026-07', runType: 'off_cycle' });
+    const offered = await listFilableRunsForPeriod(a, {
+      companyIds: [b.companyId],
+      companyId: b.companyId,
+      periodKey: '2026-07',
+    });
+    // The off-cycle run was created and never generated: draft, no payslips, and therefore not offered.
+    expect(offered.map((r) => r.runSeq).sort((x, y) => x - y)).toEqual([regularSeq, bonusSeq].sort((x, y) => x - y));
+    for (const r of offered) expect(['processed', 'closed']).toContain(r.status);
+  });
+
+  it('the eligible-runs read fails closed for a company outside the caller’s scope', async () => {
+    const { a } = await julyWithBonus();
+    expect(
+      await listFilableRunsForPeriod(a, { companyIds: [], companyId: b.companyId, periodKey: '2026-07' }),
+    ).toEqual([]);
+    expect(
+      await listFilableRunsForPeriod(a, {
+        companyIds: [randomUUID()],
+        companyId: b.companyId,
+        periodKey: '2026-07',
+      }),
+    ).toEqual([]);
   });
 });

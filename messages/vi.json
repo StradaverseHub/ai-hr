@@ -7309,7 +7309,19 @@
       "selectionIntro": "Chọn công ty và tháng lương mà tệp này bao gồm, rồi tải tệp về.",
       "payCycle": "Kỳ trả lương",
       "cancel": "Hủy",
-      "payCycleMissing": "Không có kỳ trả lương nào cho tệp này, nên chưa thể tải về — một tệp chi trả cho người lao động phải nêu rõ nó chi trả cho lần chạy nào trong tháng."
+      "payCycleMissing": "Không có kỳ trả lương nào cho tệp này, nên chưa thể tải về — một tệp chi trả cho người lao động phải nêu rõ nó chi trả cho lần chạy nào trong tháng.",
+      "payCycleAll": "Tất cả chu kỳ trả lương",
+      "payCycleSelectAll": "Chọn tất cả",
+      "payCycleSearch": "Tìm chu kỳ trả lương",
+      "payCycleLoading": "Đang tìm các đợt trả lương của tháng này…",
+      "payCycleNoRuns": "Chưa có đợt trả lương nào hoàn tất cho công ty và tháng này. Tải xuống vẫn tạo tệp cho cả tháng.",
+      "payCycleRun": "Đợt thứ {seq} của tháng",
+      "payCyclePartialWarning": "Bạn đã bỏ qua ít nhất một chu kỳ trả lương. Cơ quan vẫn đọc tệp này như bản nộp cho cả tháng — tệp không có ô nào ghi dòng đó đến từ đợt trả lương nào.",
+      "payCycleNonePicked": "Chưa chọn mục nào. Tải xuống bây giờ sẽ tạo tệp cho cả tháng, giống như chọn tất cả.",
+      "runTypeRegular": "Thường kỳ",
+      "runTypeOffCycle": "Ngoài chu kỳ",
+      "runTypeBonus": "Thưởng",
+      "runTypeAdjustment": "Điều chỉnh"
     }
   },
   "admin": {

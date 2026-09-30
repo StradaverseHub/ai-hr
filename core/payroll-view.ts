@@ -2854,3 +2854,83 @@ export function listSkippedEmployees(
       .sort((a, b) => a.name.localeCompare(b.name));
   });
 }
+
+/**
+ * r372 (item f022dd70) — THE PAYROLL RUNS OF ONE MONTH THAT A STATUTORY FILE MAY BE BUILT FROM.
+ *
+ * Payment Submission's download pop-up gained a Payroll Cycle field, and it can only offer what exists:
+ * "only payroll cycles applicable to the selected Company, Year and Payroll Month", in the reporter's own
+ * words. This is that read, and it lives INSIDE the payroll pack rather than in the route that renders the
+ * control — a route under `app/` reaching into `core/payroll*` is exactly what ADR-0080 D9's ratchet
+ * refuses, and the rule "which runs of a month can be filed" belongs beside the runs, not beside a screen.
+ *
+ * ── WHAT "ELIGIBLE" MEANS, AND WHY IT IS NOT A STATUS ALONE ──────────────────────────────────────
+ *   • `status in ('processed','closed')` — `payroll_status` is EXACTLY draft/processed/closed; there is no
+ *     `cancelled` value to exclude, whatever the request says. A draft run has no payslips at all
+ *     (`resetProcessedBatch` DELETEs them before flipping the status back, and `generatePayslips` refuses a
+ *     non-draft batch), so it could contribute nothing even if it were offered.
+ *   • AND AT LEAST ONE PAYSLIP. The status is not enough on its own: the pair above is an argument about
+ *     what the kernel does today, and this predicate is the fact. A run offered in the control and empty in
+ *     the file is a control that lies.
+ *
+ * ⚠️ IT DOES NOT GATE ON `closed_at`. `unlockClosedBatch` sets only `{ status: 'processed' }` and leaves
+ * `closed_at` and `released_at` behind, so a reopened run still looks closed by those columns. Status is
+ * the only column that answers "where is this run now".
+ *
+ * ⚠️ NOR ON `needs_recalc_at`. A run carrying the recalculation mark is 'processed' and IS in every
+ * statutory file this system produces today, silently. Offering it here changes nothing about that; hiding
+ * it would silently narrow an existing whole-month download the day somebody ticked every cycle.
+ *
+ * THE LABEL IS NOT DECIDED HERE. `payroll_cycle.name` is returned beside `run_type` and the CALLER composes
+ * them through `payslipCycleLabel` (core/payslip-cycle-label.ts) with its own translated run-type word —
+ * the same rule the payslip screen and the payslip PDF already share, rather than a third copy of it. The
+ * join is LEFT because `payroll_batch.payroll_cycle_id` is nullable and null on every batch created before
+ * migration 0441; an inner join would hide most of production's runs from the control.
+ *
+ * Company-scope fenced like every read in this file, and fails CLOSED on an empty scope.
+ */
+export type FilableRunRow = {
+  /** Unique within the pay period (`payroll_batch_period_run_uq`). This is what the download URL carries. */
+  runSeq: number;
+  /** One of the four fixed behavioural types. The caller translates it; nothing branches on it here. */
+  runType: RunType;
+  /** The configured cycle's name, or null when the run named no cycle. NEVER '' — absent is not empty. */
+  cycleName: string | null;
+  /** 'processed' | 'closed'. Shown so an operator can tell a finished month from an open one. */
+  status: string;
+};
+
+export function listFilableRunsForPeriod(
+  ctx: SessionContext,
+  p: { companyIds: string[]; companyId: string; periodKey: string },
+): Promise<FilableRunRow[]> {
+  // Fail closed twice: no scope at all, and a company outside it. An out-of-scope company answers the
+  // same empty list as a month with no runs, so the parameter cannot be used to enumerate companies.
+  if (p.companyIds.length === 0 || !p.companyIds.includes(p.companyId)) return Promise.resolve([]);
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        runSeq: payrollBatch.runSeq,
+        runType: payrollBatch.runType,
+        cycleName: payrollCycle.name,
+        status: payrollBatch.status,
+      })
+      .from(payrollBatch)
+      .leftJoin(payrollCycle, eq(payrollCycle.id, payrollBatch.payrollCycleId))
+      .where(
+        and(
+          inArray(payrollBatch.companyId, p.companyIds),
+          eq(payrollBatch.companyId, p.companyId),
+          eq(payrollBatch.payPeriod, p.periodKey),
+          inArray(payrollBatch.status, ['processed', 'closed']),
+          // THE RUN ACTUALLY PAID SOMEBODY. Correlated EXISTS rather than a join + DISTINCT: a join would
+          // multiply the run by its headcount and the DISTINCT that hid it would be one edit from being
+          // "simplified" away.
+          sql`exists (select 1 from ${payslip} where ${payslip.batchId} = ${payrollBatch.id})`,
+        ),
+      )
+      // ASCENDING BY run_seq — the order the month happened in, which is the order an operator reads the
+      // list in. Explicit, because an asserted array from a query needs one.
+      .orderBy(asc(payrollBatch.runSeq)),
+  );
+}

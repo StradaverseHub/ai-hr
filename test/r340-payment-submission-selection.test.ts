@@ -109,11 +109,84 @@ describe('e78fd03d (A) — the Year / Payroll month / SHOW area is gone from the
     expect(CODE).not.toContain('governmentStatutory');
   });
 
-  it('NO format in the shipped registry declares the cycle kind — the salary shelf is still empty', () => {
+  /**
+   * ⚠️ r372 (item f022dd70) UPDATED THIS GUARD, IT DID NOT DELETE IT, AND THE DECISION IT PINS SPLIT IN
+   * TWO RATHER THAN BEING REVERSED.
+   *
+   * It used to read "NO format in the shipped registry declares the cycle kind", with `'month-cycle'`
+   * the only cycle kind there was. That kind is a MANDATORY SINGLE choice for a file that MOVES MONEY,
+   * and the thing the original decision declined was a picker with no bank file behind it. BOTH HALVES OF
+   * THAT ARE STILL TRUE and both are still asserted below.
+   *
+   * What r372 added is a DIFFERENT kind — `'month-runs'`, a multi-select that defaults to every run and
+   * sends NO parameter when everything is ticked — declared by the three GOVERNMENT statutory formats,
+   * which file a return rather than pay anybody. Asserted as an exact set, so a fourth format inheriting
+   * it by accident fails here rather than quietly growing a control.
+   */
+  it('the salary shelf is still empty, and no format declares the money-moving single-cycle kind', () => {
     expect(formatsInGroup('salary'), 'a cycle picker with no file behind it is what this plan declined').toEqual([]);
     expect(
-      SUBMISSION_FORMATS.filter((f) => f.periodKind !== 'month').map((f) => f.id),
-      'a format declaring the cycle kind needs a salary payment file behind it first',
+      SUBMISSION_FORMATS.filter((f) => f.periodKind === 'month-cycle').map((f) => f.id),
+      'a format declaring the mandatory single-cycle kind needs a salary payment file behind it first',
     ).toEqual([]);
+  });
+
+  it('the three GOVERNMENT statutory formats declare the multi-run kind, and nothing else does', () => {
+    expect(SUBMISSION_FORMATS.filter((f) => f.periodKind === 'month-runs').map((f) => f.id).sort()).toEqual(
+      formatsInGroup('governmentStatutory').map((f) => f.id).sort(),
+    );
+    // Not vacuous: the shelf has to have something on it for the equality above to say anything.
+    expect(formatsInGroup('governmentStatutory').length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * r372 (item f022dd70) — THE SELECTION HAS TO REACH THE FIGURES, NOT JUST THE SCREEN.
+ *
+ * "The Payroll Cycle selection must affect the actual statutory submission data, not merely the display
+ * or download filename." That is the reporter's own Important Processing Rule and it is acceptance
+ * criterion 14. The end-to-end proof lives in the database tests; this is the STRUCTURAL half — that all
+ * three formats reach a parser and a threaded parameter rather than two of them quietly ignoring the
+ * control the screen is drawing for them. Three formats behaving differently behind one control is the
+ * r296 defect, and it is invisible from the screen.
+ */
+describe('r372 — the payroll-cycle selection reaches all three files', () => {
+  const src = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
+
+  it('all three formats declare the multi-run kind, so the control is drawn for each of them', () => {
+    const government = formatsInGroup('governmentStatutory');
+    expect(government.length).toBe(3);
+    for (const f of government) expect(f.periodKind, f.id).toBe('month-runs');
+  });
+
+  it('the CP39 builder parses the selection and hands it to the pack, not to a filename', () => {
+    const code = src('app/payroll/payment-submission/registry.ts');
+    expect(code).toContain('parseRunSelection(query)');
+    expect(code).toContain('runSeqs: selection.runSeqs');
+  });
+
+  it('the EPF and PERKESO loaders parse the same query and forward it to the read', () => {
+    for (const p of ['app/payroll/borang-a/shared.ts', 'app/payroll/borang-8a/shared.ts']) {
+      const code = src(p);
+      expect(code, p).toContain('parseRunSelection(p.query)');
+      expect(code, p).toContain('runSeqs: selection.runSeqs');
+      // A bad value REFUSES. Dropping it would build the file over a different population from the one
+      // the URL named, which is the acceptance criterion read backwards.
+      expect(code, p).toContain("reason: 'bad-selection'");
+    }
+  });
+
+  it('the generic seam forwards it rather than each caller re-deriving it', () => {
+    const code = src('core/reporting.ts');
+    // Both the preview and the RECORDED artefact: a record built from a different population than the
+    // preview the operator looked at is worse than no record.
+    expect(code.match(/runSeqs: p\.runSeqs/g) ?? []).toHaveLength(2);
+  });
+
+  it('the eligible-runs route reaches payroll through the pack FACADE, never the implementation', () => {
+    const code = src('app/payroll/payment-submission/runs/route.ts');
+    expect(code).toContain("from '@/packs/payroll/service'");
+    // ADR-0080 D9. The ratchet would catch this too; saying it here names WHY for the next reader.
+    expect(code).not.toMatch(/from '@?\/?(\.\.\/)*core\/payroll/);
   });
 });

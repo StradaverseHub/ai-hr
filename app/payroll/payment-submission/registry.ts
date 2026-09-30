@@ -65,6 +65,7 @@ import { borangAUploadFilename, loadBorangAFile } from '../borang-a/shared';
 import { loadBorang8AFile } from '../borang-8a/shared';
 import { perkesoUploadFilename } from '@/lib/perkeso-socso-file';
 import { scopedAdmin } from '@/lib/scope';
+import { parseRunSelection } from '@/lib/payroll-run-selection';
 import { loadPackPaymentFile } from './pack-file';
 
 /**
@@ -152,20 +153,30 @@ type FormatCommon = {
    *   'month'       — company + year + payroll month. Every format today, and every statutory return
    *                   genuinely IS one filing per month: LHDN, KWSP and PERKESO each want the month
    *                   consolidated, whatever runs it was paid in.
-   *   'month-cycle' — the same, plus WHICH RUN of that month. One payroll month can hold a regular run, a
-   *                   bonus run and an advance with different payment dates (ADR-0024 multi-cycle;
-   *                   `payroll_batch.run_seq` is the cycle's identity), so a file that pays PEOPLE has to
-   *                   say which of them it pays.
+   *   'month-cycle' — the same, plus WHICH RUN of that month, EXACTLY ONE and REQUIRED. One payroll month
+   *                   can hold a regular run, a bonus run and an advance with different payment dates
+   *                   (ADR-0024 multi-cycle; `payroll_batch.run_seq` is the cycle's identity), so a file
+   *                   that pays PEOPLE has to say which of them it pays.
+   *   'month-runs'  — the same, plus WHICH RUNS, any number of them, ALL TICKED BY DEFAULT (r372, item
+   *                   f022dd70). A statutory return is still one filing per month and the default is
+   *                   still the whole month; this exists because an employer sometimes has to hand an
+   *                   agency ONE run on its own — the catch-up run for somebody who was overlooked, or a
+   *                   bonus run filed before month end.
    *
-   * ⚠️ NOTHING DECLARES `'month-cycle'` TODAY, AND THAT IS THE HONEST STATE rather than an oversight. The
-   * only file that would need it is a bank salary payment file, and the `salary` shelf is deliberately
-   * empty — a bank payment file moves real money and every bank's layout differs (see the header). The
-   * union is widened and the MODAL reads it so that the day such a format is added it declares
-   * `'month-cycle'` and the cycle field appears with no screen change — the same property this registry
-   * already has to keep for the row itself. It is NOT a picker sitting on the screen waiting for a
-   * consumer: for a `'month'` format the control does not exist.
+   * ⚠️ THE TWO CYCLE KINDS ARE NOT ONE KIND WITH A FLAG, AND MUST NOT BE MERGED. `'month-cycle'` is a
+   * MANDATORY single choice for a file that MOVES MONEY: leaving it blank there would pay a whole month
+   * from a button somebody pressed believing they had picked one run, so an empty list disables Download.
+   * `'month-runs'` defaults to everything and its empty case is an ordinary "this month has no completed
+   * payroll run" — refused by the builder in the operator's own words, not by a disabled button. Same
+   * control, opposite failure-safe direction.
+   *
+   * ⚠️ NOTHING DECLARES `'month-cycle'` TODAY, AND THAT IS STILL THE HONEST STATE. The only file that
+   * would need it is a bank salary payment file, and the `salary` shelf is deliberately empty — a bank
+   * payment file moves real money and every bank's layout differs (see the header). The union carries it
+   * so that the day such a format is added it declares `'month-cycle'` and the field appears with no
+   * screen change.
    */
-  periodKind: 'month' | 'month-cycle';
+  periodKind: 'month' | 'month-cycle' | 'month-runs';
   /** REQUIRED. See `FormatVerification` — the registry's whole ratchet. */
   verification: FormatVerification;
 };
@@ -237,7 +248,10 @@ export const SUBMISSION_FORMATS: readonly SubmissionFormat[] = [
     rank: 10,
     labelKey: 'lhdnCp39',
     descriptionKey: 'lhdnCp39Desc',
-    periodKind: 'month',
+    // r372 (item f022dd70) — the month, plus which of its payroll runs. Defaults to all of them, and
+    // "all of them" sends NO run parameter, so an ordinary monthly submission takes the byte-identical
+    // path it always has. See `periodKind` above.
+    periodKind: 'month-runs',
     verification: 'specification-sample',
     available: true,
     /*
@@ -267,8 +281,19 @@ export const SUBMISSION_FORMATS: readonly SubmissionFormat[] = [
      * An operator-fixable refusal (no LHDN E-number on the company, a missing tax number, an identity
      * number that will not fit its fixed-width box) comes back as a 422 carrying the pack's own sentence.
      */
-    build: async ({ companyId, periodKey }) => {
-      const loaded = await loadPackPaymentFile({ companyId, periodKey, fileKey: LHDN_CP39_EDATA });
+    build: async ({ companyId, periodKey, query }) => {
+      // r372 (item f022dd70) — the payroll-cycle selection, parsed by the SHARED parser rather than read
+      // off the query here. The two entries below never touch it: their loaders hold the whole query and
+      // parse it themselves, because they also read `epfPeriod`, `code`, `control` and `batch` off it.
+      // This one has to, because `loadPackPaymentFile` crosses a pack seam that takes values, not a URL.
+      const selection = parseRunSelection(query);
+      if (!selection.ok) return { ok: false, status: 422, message: selection.reason };
+      const loaded = await loadPackPaymentFile({
+        companyId,
+        periodKey,
+        fileKey: LHDN_CP39_EDATA,
+        runSeqs: selection.runSeqs,
+      });
       if (!loaded.ok) return { ok: false, status: loaded.status, message: loaded.message };
       return {
         ok: true,
@@ -299,7 +324,7 @@ export const SUBMISSION_FORMATS: readonly SubmissionFormat[] = [
     rank: 20,
     labelKey: 'epfBorangA',
     descriptionKey: 'epfBorangADesc',
-    periodKind: 'month',
+    periodKind: 'month-runs',
     verification: 'filed-file',
     available: true,
     build: async ({ companyId, periodKey, query }) => {
@@ -335,7 +360,7 @@ export const SUBMISSION_FORMATS: readonly SubmissionFormat[] = [
     rank: 30,
     labelKey: 'socsoPerkeso',
     descriptionKey: 'socsoPerkesoDesc',
-    periodKind: 'month',
+    periodKind: 'month-runs',
     verification: 'filed-file',
     available: true,
     build: async ({ companyId, periodKey, query }) => {

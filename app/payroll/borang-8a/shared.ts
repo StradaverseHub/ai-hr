@@ -13,6 +13,7 @@
  */
 import { reportPreview } from '@/core/reporting';
 import { scopedAdmin } from '@/lib/scope';
+import { parseRunSelection } from '@/lib/payroll-run-selection';
 import {
   applyStatusOverrides,
   borang8AFrom,
@@ -62,6 +63,16 @@ export async function loadBorang8AFile(p: {
     if (loaded.reason === 'no-batch') {
       return { ok: false, status: 422, message: 'No payroll run for this month — run payroll first.' };
     }
+    // r372 (item f022dd70) — two more refusals, both about the payroll-cycle selection and both
+    // 422 rather than 404: the operator can fix each of them from the pop-up they came from.
+    if (loaded.reason === 'selection-empty') {
+      return {
+        ok: false,
+        status: 422,
+        message: 'No payroll run for this month matches the payroll cycles you selected.',
+      };
+    }
+    if (loaded.reason === 'bad-selection') return { ok: false, status: 422, message: loaded.message };
     return {
       ok: false,
       status: 422,
@@ -134,6 +145,14 @@ export function describeGaps(loaded: { missing: Borang8AMissing[]; headerMissing
 export type Borang8ALoad =
   | { ok: false; reason: 'not-found' }
   | { ok: false; reason: 'no-batch' }
+  /**
+   * r372 (item f022dd70) — the month has payroll runs, but none of them is a cycle the operator
+   * ticked. NOT 'no-batch': that one tells them to run payroll, and this one tells them to look at
+   * the pop-up. Reachable only from a hand-edited link, because the control offers what exists.
+   */
+  | { ok: false; reason: 'selection-empty' }
+  /** r372 — the run parameters on the link are not run numbers. Refused, never quietly widened. */
+  | { ok: false; reason: 'bad-selection'; message: string }
   | {
       ok: false;
       reason: 'not-ready';
@@ -171,6 +190,14 @@ export type Borang8ALoad =
  * while the route still answers 200 means a bookmarked link files a Borang 8A with somebody's IC box
  * empty. `includeIncomplete` exists for the REVIEW screen alone, which must be able to render the table
  * in order to name who is missing.
+ *
+ * ── r372 (item f022dd70): THE PAYROLL CYCLES THIS DOWNLOAD COVERS ─────────────────────────────────
+ * Read off the SAME query the rest of the per-generation inputs are read from, and validated in ONE place
+ * (lib/payroll-run-selection.ts) so the three statutory formats cannot disagree about what a bad value
+ * means. NO run parameters ⇒ `undefined` ⇒ the whole month, which is what every link written before this
+ * round is and what every other surface (the review screen, the PDF, the text export) still sends. An
+ * INVALID one is REFUSED rather than dropped: dropping it would build the file over a different population
+ * from the one the URL named, which is the reporter's acceptance criterion read backwards.
  */
 export async function loadBorang8A(p: {
   companyId: string;
@@ -182,12 +209,16 @@ export async function loadBorang8A(p: {
   const { s, scopeIds } = await scopedAdmin();
   if (!scopeIds.includes(p.companyId)) return { ok: false, reason: 'not-found' };
 
+  const selection = parseRunSelection(p.query);
+  if (!selection.ok) return { ok: false, reason: 'bad-selection', message: selection.reason };
+
   let result;
   try {
     result = await reportPreview(s, {
       companyId: p.companyId,
       reportId: BORANG_8A_REPORT_ID,
       periodKey: p.periodKey,
+      runSeqs: selection.runSeqs,
     });
   } catch {
     // `resolveDef` throws for a jurisdiction whose pack does not register this form. Same bare answer as
@@ -195,6 +226,9 @@ export async function loadBorang8A(p: {
     return { ok: false, reason: 'not-found' };
   }
   if (!result.meta.hasBatch) return { ok: false, reason: 'no-batch' };
+  // r372 — the month ran, the ticked cycles are not in it. Answered apart from 'no-batch' so the
+  // operator is sent to the control they got wrong rather than to a payroll run that already exists.
+  if (result.meta.selectionEmpty) return { ok: false, reason: 'selection-empty' };
 
   const missing = result.readiness.map((r) => ({ employmentId: r.employmentId, name: r.name, missing: r.missing }));
   // TWO KINDS OF GAP, ONE GATE. `missing` is per-employee (no identity card number, or — r372 — a month

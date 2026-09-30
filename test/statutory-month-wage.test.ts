@@ -18,12 +18,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   EPF_WAGE_INCONSISTENT_REASON,
+  SOCSO_NOT_IN_SELECTION_REASON,
   SOCSO_WAGE_INCONSISTENT_REASON,
   WAGE_BASE_TOLERANCE,
   monthWageFor,
   monthWagesFrom,
+  scopedMonthWagesFrom,
   type MonthWageSlip,
+  type ScopedMonthWageSlip,
 } from '../localization/my/statutory-month-wage';
+// r372 (item f022dd70) — the parser that decides what "all payroll cycles" means on the wire. Pinned in
+// this file because "absent, not empty" is one rule with the fold it feeds, not two.
+import { parseRunSelection, runSelectionSet } from '../lib/payroll-run-selection';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (p: string) => fs.readFileSync(path.join(ROOT, p), 'utf8');
@@ -348,5 +354,227 @@ describe('all three statutory reads consume ONE derivation, not a copy', () => {
     };
     for (const d of ['app', 'core', 'lib', 'components', 'packs']) walk(d);
     expect(hits, 'only localization/my and its tests may name the derivation').toEqual([]);
+  });
+});
+
+/**
+ * r372 (item f022dd70) — THE SAME MONTH, WHEN THE OPERATOR PICKED WHICH OF ITS RUNS TO FILE.
+ *
+ * WHY THESE ARE THE CASES. The scoped fold exists because feeding the whole-month fold a SHORTER LIST
+ * produces a wrong statutory figure, and there is exactly one way to prove that: build the month, run
+ * both, and show they disagree in the direction that matters. Everything else here pins the two streams
+ * apart (normal belongs to the regular run, additional decomposes into increments) and pins the one
+ * equality the whole no-change story leans on.
+ */
+const scoped = (
+  employmentId: string,
+  runSeq: number,
+  runType: string,
+  bases: { epf?: number; epfAdditional?: number; socsoEis?: number } | null,
+): ScopedMonthWageSlip => ({ ...slip(employmentId, runSeq, bases), runType });
+
+/** September: the regular run pays the month, a bonus run follows it. The reporter's own example. */
+const SEPTEMBER = [
+  scoped('E1', 1, 'regular', { epf: ONE_MONTH, epfAdditional: 0, socsoEis: ONE_MONTH }),
+  scoped('E1', 2, 'bonus', { epf: ONE_MONTH, epfAdditional: 5000, socsoEis: ONE_MONTH }),
+];
+
+describe('a payroll-cycle selection files what the selected runs were charged on', () => {
+  /**
+   * ⚠️ THE NON-VACUITY CASE, AND THE ONE THE FEATURE EXISTS FOR. Ticking ONLY the bonus run must file the
+   * BONUS as Upah. The obvious implementation — hand `monthWagesFrom` the selected payslips — answers
+   * 9,000 here, because `bases.epf` is the whole month's normal wage and the kernel stamps it on the
+   * bonus run too. Both numbers are asserted, so the wrong one cannot be reached by deleting a line.
+   */
+  it('a Bonus-only selection files the bonus, NOT the month’s salary plus the bonus', () => {
+    const w = monthWageFor(scopedMonthWagesFrom(SEPTEMBER, new Set([2])), 'E1');
+    expect(w.epf).toBe(5000);
+
+    // What the shorter-list implementation would have filed, spelled out rather than described:
+    const naive = monthWageFor(monthWagesFrom(SEPTEMBER.filter((s) => s.runSeq === 2)), 'E1');
+    expect(naive.epf).toBe(ONE_MONTH + 5000);
+    expect(w.epf).not.toBe(naive.epf);
+  });
+
+  it('a regular-only selection files the month’s salary and none of the bonus', () => {
+    const w = monthWageFor(scopedMonthWagesFrom(SEPTEMBER, new Set([1])), 'E1');
+    expect(w.epf).toBe(ONE_MONTH);
+  });
+
+  /**
+   * THE EQUALITY THE WHOLE NO-CHANGE STORY LEANS ON. Ticking everything telescopes the increments back to
+   * the greatest run's cumulative stamp. The three reads still OMIT the parameter for "All" — so the old
+   * path runs and the bytes are identical by construction — but if this ever stopped holding, the control
+   * would be lying about what "All" means.
+   */
+  it('ticking every run agrees with the unfiltered month, to the sen', () => {
+    const all = monthWageFor(monthWagesFrom(SEPTEMBER), 'E1');
+    const ticked = monthWageFor(scopedMonthWagesFrom(SEPTEMBER, new Set([1, 2])), 'E1');
+    expect(ticked.epf).toBe(all.epf);
+    expect(ticked.socsoEis).toBe(all.socsoEis);
+    expect(ticked.epfRecorded).toBe(all.epfRecorded);
+    expect(ticked.epfInconsistent).toBe(all.epfInconsistent);
+  });
+
+  /**
+   * THE INCREMENT IS TAKEN AGAINST THE MONTH, NOT AGAINST THE SELECTION. Three runs, two bonuses; tick
+   * only the THIRD. Its cumulative stamp is 8,000 but it only added 3,000, and the run that added the
+   * other 5,000 is not in the selection. A fold that computed the increment against the previous SELECTED
+   * run — which is what a SQL-filtered query would force — would file 8,000.
+   */
+  it('an increment is measured against the previous run of the MONTH, not the previous ticked one', () => {
+    const month = [
+      scoped('E1', 1, 'regular', { epf: ONE_MONTH, epfAdditional: 0, socsoEis: ONE_MONTH }),
+      scoped('E1', 2, 'bonus', { epf: ONE_MONTH, epfAdditional: 5000, socsoEis: ONE_MONTH }),
+      scoped('E1', 3, 'bonus', { epf: ONE_MONTH, epfAdditional: 8000, socsoEis: ONE_MONTH }),
+    ];
+    expect(monthWageFor(scopedMonthWagesFrom(month, new Set([3])), 'E1').epf).toBe(3000);
+    expect(monthWageFor(scopedMonthWagesFrom(month, new Set([2, 3])), 'E1').epf).toBe(8000);
+    expect(monthWageFor(scopedMonthWagesFrom(month, new Set([1, 2, 3])), 'E1').epf).toBe(ONE_MONTH + 8000);
+  });
+
+  it('is order-independent — the rows may arrive in any order', () => {
+    const forward = monthWageFor(scopedMonthWagesFrom(SEPTEMBER, new Set([2])), 'E1');
+    const reversed = monthWageFor(scopedMonthWagesFrom([...SEPTEMBER].reverse(), new Set([2])), 'E1');
+    expect(reversed).toEqual(forward);
+  });
+
+  it('leaves out an employee the selected runs never paid', () => {
+    const month = [
+      ...SEPTEMBER,
+      // Paid ONLY in the regular run — absent from a bonus-only filing, not present with zeros.
+      scoped('E2', 1, 'regular', { epf: 3000, epfAdditional: 0, socsoEis: 3000 }),
+    ];
+    const wages = scopedMonthWagesFrom(month, new Set([2]));
+    expect([...wages.keys()]).toEqual(['E1']);
+  });
+
+  /**
+   * THE OVERLOOKED EMPLOYEE — the reporter's headline case. Somebody missed by the regular run and paid
+   * in an off-cycle run has ONE payslip in the month, on that run. Ticking it files what it paid.
+   */
+  it('files the catch-up run on its own for somebody the regular run missed', () => {
+    const month = [
+      scoped('E1', 1, 'regular', { epf: ONE_MONTH, epfAdditional: 0, socsoEis: ONE_MONTH }),
+      scoped('E9', 2, 'off_cycle', { epf: 0, epfAdditional: 2200, socsoEis: 0 }),
+    ];
+    const wages = scopedMonthWagesFrom(month, new Set([2]));
+    expect([...wages.keys()]).toEqual(['E9']);
+    expect(monthWageFor(wages, 'E9').epf).toBe(2200);
+  });
+});
+
+describe('PERKESO is charged once a month, and a selection that misses it says so', () => {
+  /**
+   * SOCSO, EIS and SKBBK are charged on the REGULAR run; an additional run adds 0 (ADR-0024). But
+   * `bases.socsoEis` is stamped on the bonus run anyway, because the kernel re-derives it from the
+   * month's compensation on every run. A Bonus-only PERKESO file would therefore carry a full month's
+   * salary beside contributions of nothing — so the flag is raised and the document is held.
+   */
+  it('flags a selection with no regular run rather than filing a full month’s salary beside zeros', () => {
+    const w = monthWageFor(scopedMonthWagesFrom(SEPTEMBER, new Set([2])), 'E1');
+    expect(w.socsoEisOutsideSelection).toBe(true);
+    // NOT null. "No base was recorded" is a different fact and a different sentence — one was recorded.
+    expect(w.socsoEis).toBe(ONE_MONTH);
+  });
+
+  it('does not flag a selection that includes the regular run', () => {
+    for (const sel of [new Set([1]), new Set([1, 2])]) {
+      expect(monthWageFor(scopedMonthWagesFrom(SEPTEMBER, sel), 'E1').socsoEisOutsideSelection).toBe(false);
+    }
+  });
+
+  it('never raises the flag on an unfiltered month, whatever runs it held', () => {
+    for (const rows of [SEPTEMBER, [SEPTEMBER[1]]]) {
+      expect(monthWageFor(monthWagesFrom(rows), 'E1').socsoEisOutsideSelection).toBe(false);
+    }
+  });
+
+  it('names the selection in the reason, and does not call it an absence', () => {
+    expect(SOCSO_NOT_IN_SELECTION_REASON).toContain('payroll cycles you');
+    expect(SOCSO_NOT_IN_SELECTION_REASON).toContain('regular payroll run');
+    // The retired wording this must not collapse into — see the constant's own comment.
+    expect(SOCSO_NOT_IN_SELECTION_REASON).not.toMatch(/no .*wage was recorded/i);
+    expect(SOCSO_NOT_IN_SELECTION_REASON).not.toBe(SOCSO_WAGE_INCONSISTENT_REASON);
+  });
+});
+
+describe('the scoped fold keeps the two refusals the whole-month fold already made', () => {
+  it('one unstamped payslip among the TICKED runs makes the EPF wage unknown', () => {
+    const month = [
+      scoped('E1', 1, 'regular', { epf: ONE_MONTH, epfAdditional: 0, socsoEis: ONE_MONTH }),
+      scoped('E1', 2, 'bonus', null),
+    ];
+    expect(monthWageFor(scopedMonthWagesFrom(month, new Set([1, 2])), 'E1').epfRecorded).toBe(false);
+    // …and an unstamped run the operator did NOT tick says nothing about the runs they did.
+    expect(monthWageFor(scopedMonthWagesFrom(month, new Set([1])), 'E1').epfRecorded).toBe(true);
+  });
+
+  it('flags ticked runs charged on DIFFERENT normal wages', () => {
+    const month = [
+      scoped('E1', 1, 'regular', { epf: ONE_MONTH, epfAdditional: 0, socsoEis: ONE_MONTH }),
+      scoped('E1', 2, 'regular', { epf: ONE_MONTH + 500, epfAdditional: 0, socsoEis: ONE_MONTH }),
+    ];
+    expect(monthWageFor(scopedMonthWagesFrom(month, new Set([1, 2])), 'E1').epfInconsistent).toBe(true);
+    expect(monthWageFor(scopedMonthWagesFrom(month, new Set([2])), 'E1').epfInconsistent).toBe(false);
+  });
+
+  it('refuses rather than subtracts when the cumulative additional stream goes DOWN', () => {
+    const month = [
+      scoped('E1', 1, 'regular', { epf: ONE_MONTH, epfAdditional: 5000, socsoEis: ONE_MONTH }),
+      scoped('E1', 2, 'bonus', { epf: ONE_MONTH, epfAdditional: 1000, socsoEis: ONE_MONTH }),
+    ];
+    const w = monthWageFor(scopedMonthWagesFrom(month, new Set([1, 2])), 'E1');
+    expect(w.epfInconsistent).toBe(true);
+    // And it does not SUBTRACT the regression out of the figure — a negative increment adds nothing.
+    expect(w.epf).toBe(ONE_MONTH + 5000);
+  });
+});
+
+describe('"all" is absent, not a set of everything', () => {
+  it('the parser answers undefined for a URL with no run parameters', () => {
+    const r = parseRunSelection(new URLSearchParams('companyId=x&periodKey=2026-09'));
+    expect(r.ok && r.runSeqs).toBeUndefined();
+  });
+
+  it('reads repeated run parameters, de-duplicated and sorted', () => {
+    const r = parseRunSelection(new URLSearchParams('run=3&run=1&run=3'));
+    expect(r.ok && r.runSeqs).toEqual([1, 3]);
+  });
+
+  it('REFUSES a malformed run rather than dropping it', () => {
+    for (const q of ['run=0', 'run=-1', 'run=1.5', 'run=abc', 'run=1&run=x', 'run=', 'run=01']) {
+      expect(parseRunSelection(new URLSearchParams(q)).ok, q).toBe(false);
+    }
+  });
+
+  it('`runSelectionSet(undefined)` is undefined and NOT an empty set', () => {
+    // `new Set(undefined)` is empty, and an empty set used as a filter removes every row — a silently
+    // empty statutory file. This is the one line that stops that.
+    expect(runSelectionSet(undefined)).toBeUndefined();
+    expect(runSelectionSet([2, 4])).toEqual(new Set([2, 4]));
+  });
+});
+
+describe('the wage-bearing reads take the whole month and scope it; CP39 filters its query', () => {
+  /**
+   * THE ARCHITECTURAL INVARIANT, AS A SOURCE GUARD. An increment cannot be read off a run whose
+   * predecessor was filtered out in SQL, so Borang A and Borang 8A must NOT narrow their payslip query by
+   * run. CP39 has no wage column and may. A future edit that "optimises" either read by pushing the
+   * selection into the WHERE clause is the defect this whole module was written to prevent.
+   */
+  it('neither EPF nor PERKESO read narrows its SQL by run_seq', () => {
+    for (const p of ['localization/my/borang-a.ts', 'localization/my/borang-8a.ts']) {
+      const src = code(p);
+      expect(src, p).toContain('scopedMonthWagesFrom(');
+      expect(src, p).not.toMatch(/inArray\(\s*payrollBatch\.runSeq/);
+      expect(src, p).not.toMatch(/eq\(\s*payrollBatch\.runSeq/);
+    }
+  });
+
+  it('CP39 does narrow its SQL, and reaches no wage derivation', () => {
+    const src = code('localization/my/cp39-file.ts');
+    expect(src).toMatch(/inArray\(payrollBatch\.runSeq, p\.runSeqs\)/);
+    expect(src).not.toContain('statutory-month-wage');
   });
 });

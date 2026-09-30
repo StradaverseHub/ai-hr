@@ -152,6 +152,10 @@ export default async function PaymentSubmissionPage({ searchParams }: { searchPa
   // ONE spelling of the download route, handed to the dialog. The dialog builds the query as form fields
   // rather than as a string, so nothing here encodes a parameter twice.
   const DOWNLOAD_ACTION = '/payroll/payment-submission/download';
+  // r372 (item f022dd70) — and ONE spelling of the eligible-runs read, beside it. Handed to the dialog as
+  // a string for the same reason `DOWNLOAD_ACTION` is: a client component that wrote its own path would
+  // be a second place for the route to be renamed from.
+  const RUNS_ENDPOINT = '/payroll/payment-submission/runs';
 
   return (
     <div className={pageWideCls}>
@@ -215,6 +219,7 @@ export default async function PaymentSubmissionPage({ searchParams }: { searchPa
                             defaultYear={year}
                             months={monthOptions}
                             defaultMonth={month}
+                            runsEndpoint={RUNS_ENDPOINT}
                           />
                         </div>
                       ) : (

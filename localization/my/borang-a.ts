@@ -79,7 +79,15 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 import { MY_STATUTORY_VERSION } from './statutory-tables';
 // r372 — the month's wage, once, for all three statutory read paths. See that module's header for why
 // summing `bases` across the month's runs was wrong and why the per-payslip stamp is not touched.
-import { EPF_WAGE_INCONSISTENT_REASON, monthWageFor, monthWagesFrom } from './statutory-month-wage';
+import {
+  EPF_WAGE_INCONSISTENT_REASON,
+  monthWageFor,
+  monthWagesFrom,
+  scopedMonthWagesFrom,
+} from './statutory-month-wage';
+// r372 (item f022dd70) — "undefined means every run", converted in ONE place. `new Set(undefined)` is an
+// EMPTY set, and an empty set here would filter every row out of an ordinary whole-month download.
+import { runSelectionSet } from '@/lib/payroll-run-selection';
 import type { ReportColumn, ReportResult, ReportRow, ReportParams } from './reports';
 
 const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
@@ -129,7 +137,14 @@ function addressLines(c: {
  *
  * `params.periodKey` IS THE PAYROLL MONTH, always. The contribution month is derived from it here and may
  * be overridden downstream on the form (`withContributionPeriod`) — the pack never learns about the
- * operator's per-generation inputs, so `ReportParams` is untouched.
+ * operator's PRESENTATION inputs.
+ *
+ * ⚠️ r372 (item f022dd70) — IT DOES NOW LEARN ONE THING, AND THE SENTENCE THAT USED TO END THE PARAGRAPH
+ * ("so `ReportParams` is untouched") IS RETIRED. `params.runSeqs` names which payroll runs of the month
+ * the operator ticked. It had to come in here rather than be applied downstream because it changes which
+ * PAYSLIPS the figures are read from, which is a property of this query and of nothing after it. ABSENT
+ * means every run, and every caller that has no cycle selector sends nothing — so the unfiltered path
+ * below is the one it always was.
  */
 export function borangAReport(ctx: SessionContext, params: ReportParams): Promise<ReportResult> {
   // Throws on a malformed period rather than reading it as a literal batch key — "2026-13" would
@@ -218,6 +233,11 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
       repEmail: auth?.email ?? '',
     };
 
+    // ⚠️ r372 (item f022dd70) — THE WHOLE MONTH IS READ EVEN WHEN THE OPERATOR PICKED SOME OF ITS RUNS,
+    // and that is not an oversight. `bases.epfAdditional` is CUMULATIVE across `run_seq`, so the money one
+    // run added is its stamp minus the PREVIOUS stamped run's — a figure that cannot be read off a run
+    // whose predecessor was filtered out in SQL. The selection is applied below, against a complete month.
+    // CP39 has no such column and does filter its query; see its own note.
     const batches = await tx
       .select({ id: payrollBatch.id, status: payrollBatch.status, runSeq: payrollBatch.runSeq })
       .from(payrollBatch)
@@ -231,10 +251,26 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
     if (batches.length === 0) {
       return { columns: BORANG_A_COLUMNS, rows: [], totals: {}, readiness: [], meta: { hasBatch: false, ...baseMeta } };
     }
+    // ABSENT ⇒ undefined ⇒ every branch below takes the path it took before this feature existed.
+    const selection = runSelectionSet(params.runSeqs);
+    const selectedBatches = selection ? batches.filter((b) => selection.has(b.runSeq)) : batches;
+    if (selectedBatches.length === 0) {
+      // The month HAS runs; none of them is one that was ticked. A different sentence from "run payroll".
+      return {
+        columns: BORANG_A_COLUMNS,
+        rows: [],
+        totals: {},
+        readiness: [],
+        meta: { hasBatch: true, selectionEmpty: true, ...baseMeta },
+      };
+    }
     const batchIds = batches.map((b) => b.id);
-    const batchStatus = batches.every((b) => b.status === 'closed')
+    // RECOMPUTED OVER THE SELECTED RUNS, never over the month. The existing reduce reports the whole month
+    // as 'draft' when ANY run is draft — including one the operator did not tick and whose payslips are
+    // not in this form at all, which would caption a perfectly filed set of runs as a draft.
+    const batchStatus = selectedBatches.every((b) => b.status === 'closed')
       ? 'closed'
-      : batches.some((b) => b.status === 'draft')
+      : selectedBatches.some((b) => b.status === 'draft')
         ? 'draft'
         : 'processed';
 
@@ -251,6 +287,10 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
         // pairing is an invariant of the query and cannot acquire a "?? 1" fallback that silently decides
         // a wage. `run_seq` is NOT NULL DEFAULT 1 and unique per (pay_period_id, run_seq).
         runSeq: payrollBatch.runSeq,
+        // r372 (item f022dd70) — and WHICH KIND of run, because the EPF normal stream belongs to the
+        // regular one. `isAdditionalRun = batch.runType !== 'regular'` in core/payroll.ts, and an
+        // additional run pays only the bonus bucket. NOT NULL DEFAULT 'regular'.
+        runType: payrollBatch.runType,
       })
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
@@ -263,9 +303,23 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
     // THE MONTH'S WAGE, ONCE. Resolved BEFORE the accumulation loop and from the whole month at once,
     // because "which run stamped the wage we print" is a property of the month and not of a row the loop
     // happens to be standing on. The fold is order-independent, so the `orderBy` above is presentation.
-    const monthWages = monthWagesFrom(
-      slips.map((s) => ({ employmentId: s.employmentId, runSeq: s.runSeq, statutory: s.statutory })),
-    );
+    // r372 (item f022dd70) — TWO ENTRY POINTS, ONE DERIVATION. With no selection this is byte-for-byte the
+    // call it has always been. With one, the scoped fold takes the normal stream only if a regular run was
+    // ticked and sums the additional stream's own increments — see `scopedMonthWagesFrom`'s header for why
+    // handing the unfiltered fold a shorter list instead would print a full month's Upah on a bonus file.
+    const monthWages = selection
+      ? scopedMonthWagesFrom(
+          slips.map((s) => ({
+            employmentId: s.employmentId,
+            runSeq: s.runSeq,
+            runType: s.runType,
+            statutory: s.statutory,
+          })),
+          selection,
+        )
+      : monthWagesFrom(
+          slips.map((s) => ({ employmentId: s.employmentId, runSeq: s.runSeq, statutory: s.statutory })),
+        );
 
     type Acc = {
       employmentId: string;
@@ -299,6 +353,11 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
     // twice. A divergence means the grouping dropped or double-counted somebody.
     let runEpf = 0;
     for (const s of slips) {
+      // r372 (item f022dd70) — A RUN THE OPERATOR DID NOT TICK CONTRIBUTES NOTHING: not a contribution, not
+      // a statutory version, not a row. It was still READ, because the wage derivation above needs the
+      // whole month to decompose the cumulative additional stream, but it is not part of this filing.
+      // Someone paid ONLY in an unticked run therefore never reaches `byEmp` and is absent from the form.
+      if (selection && !selection.has(s.runSeq)) continue;
       const st = (s.statutory ?? {}) as Record<string, unknown> & { version?: string };
       if (st.version) versions.add(st.version);
       runEpf = round2(runEpf + num(st.epfEmployee) + num(st.epfEmployer));

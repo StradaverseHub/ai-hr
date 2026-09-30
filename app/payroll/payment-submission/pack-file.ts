@@ -60,6 +60,13 @@ export async function loadPackPaymentFile(p: {
   companyId: string;
   periodKey: string;
   fileKey: string;
+  /**
+   * r372 (item f022dd70) — the payroll runs of that month the operator ticked, or ABSENT for all of them.
+   * Passed straight to the pack's builder; nothing here interprets it, and a pack that ignores it keeps
+   * producing the whole month. Validating it is the CALLER'S job and is done once, in
+   * `lib/payroll-run-selection.ts`, so the three formats cannot disagree about what a bad value means.
+   */
+  runSeqs?: number[];
 }): Promise<PackFileLoad> {
   const notFound = { ok: false, status: 404, message: 'Not found' } as const;
   if (!UUID.test(p.companyId) || !PERIOD.test(p.periodKey)) return notFound;
@@ -86,7 +93,7 @@ export async function loadPackPaymentFile(p: {
   const build = packFor(country)?.paymentFiles?.[p.fileKey];
   if (!build) return notFound;
 
-  const file = await build(s, { companyId: p.companyId, periodKey: p.periodKey });
+  const file = await build(s, { companyId: p.companyId, periodKey: p.periodKey, runSeqs: p.runSeqs });
   // The pack's own refusal, in the operator's words, as a 422. Never a partial or patched file: a
   // fixed-width record has no way to say "this value did not fit".
   if (!file.ok) return { ok: false, status: 422, message: file.reason };

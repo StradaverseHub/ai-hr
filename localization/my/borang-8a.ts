@@ -73,7 +73,16 @@ import {
 import { MY_STATUTORY_VERSION } from './statutory-tables';
 // r372 — the month's wage, once, for all three statutory read paths. See that module's header for why
 // summing `bases` across the month's runs was wrong and why the per-payslip stamp is not touched.
-import { SOCSO_WAGE_INCONSISTENT_REASON, monthWageFor, monthWagesFrom } from './statutory-month-wage';
+import {
+  SOCSO_NOT_IN_SELECTION_REASON,
+  SOCSO_WAGE_INCONSISTENT_REASON,
+  monthWageFor,
+  monthWagesFrom,
+  scopedMonthWagesFrom,
+} from './statutory-month-wage';
+// r372 (item f022dd70) — "undefined means every run", converted in ONE place. `new Set(undefined)` is an
+// EMPTY set, and an empty set here would filter every row out of an ordinary whole-month download.
+import { runSelectionSet } from '@/lib/payroll-run-selection';
 import type { ReportColumn, ReportResult, ReportRow, ReportParams } from './reports';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -172,6 +181,9 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
       paymentDueDate: paymentDueDateFor(periodKey),
     };
 
+    // ⚠️ r372 (item f022dd70) — THE WHOLE MONTH IS READ EVEN WHEN THE OPERATOR PICKED SOME OF ITS RUNS.
+    // See the same note on `borangAReport`: the EPF additional stream is cumulative across `run_seq`, so
+    // the selection is applied below, against a complete month, and never in this query.
     const batches = await tx
       .select({ id: payrollBatch.id, status: payrollBatch.status, runSeq: payrollBatch.runSeq })
       .from(payrollBatch)
@@ -191,10 +203,25 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
         meta: { hasBatch: false, ...baseMeta },
       };
     }
+    // ABSENT ⇒ undefined ⇒ every branch below takes the path it took before this feature existed.
+    const selection = runSelectionSet(params.runSeqs);
+    const selectedBatches = selection ? batches.filter((b) => selection.has(b.runSeq)) : batches;
+    if (selectedBatches.length === 0) {
+      // The month HAS runs; none of them is one that was ticked. A different sentence from "run payroll".
+      return {
+        columns: BORANG_8A_COLUMNS,
+        rows: [],
+        totals: {},
+        readiness: [],
+        meta: { hasBatch: true, selectionEmpty: true, ...baseMeta },
+      };
+    }
     const batchIds = batches.map((b) => b.id);
-    const batchStatus = batches.every((b) => b.status === 'closed')
+    // RECOMPUTED OVER THE SELECTED RUNS, never over the month — an unticked draft run would otherwise
+    // caption a filed set of runs as a draft. r372.
+    const batchStatus = selectedBatches.every((b) => b.status === 'closed')
       ? 'closed'
-      : batches.some((b) => b.status === 'draft')
+      : selectedBatches.some((b) => b.status === 'draft')
         ? 'draft'
         : 'processed';
 
@@ -211,6 +238,10 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
         // pairing is an invariant of the query and cannot acquire a "?? 1" fallback that silently decides
         // a wage. `run_seq` is NOT NULL DEFAULT 1 and unique per (pay_period_id, run_seq).
         runSeq: payrollBatch.runSeq,
+        // r372 (item f022dd70) — and WHICH KIND of run. SOCSO, EIS and SKBBK are charged once for the
+        // month on the REGULAR run (ADR-0024: an additional run adds 0), so a selection without one has
+        // no PERKESO money in it at all. NOT NULL DEFAULT 'regular'.
+        runType: payrollBatch.runType,
       })
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
@@ -223,9 +254,22 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
     // THE MONTH'S SALARY BASE, ONCE. Resolved from the whole month BEFORE the accumulation loop, because
     // "which run stamped the wage the file carries" is a property of the month and not of a row the loop
     // happens to be standing on. The fold is order-independent, so the `orderBy` above is presentation.
-    const monthWages = monthWagesFrom(
-      slips.map((s) => ({ employmentId: s.employmentId, runSeq: s.runSeq, statutory: s.statutory })),
-    );
+    // r372 (item f022dd70) — TWO ENTRY POINTS, ONE DERIVATION. With no selection this is byte-for-byte the
+    // call it has always been; with one, the scoped fold decides whether the selected runs charged the
+    // PERKESO salary at all. See `scopedMonthWagesFrom`'s header.
+    const monthWages = selection
+      ? scopedMonthWagesFrom(
+          slips.map((s) => ({
+            employmentId: s.employmentId,
+            runSeq: s.runSeq,
+            runType: s.runType,
+            statutory: s.statutory,
+          })),
+          selection,
+        )
+      : monthWagesFrom(
+          slips.map((s) => ({ employmentId: s.employmentId, runSeq: s.runSeq, statutory: s.statutory })),
+        );
 
     type Acc = {
       employmentId: string;
@@ -265,6 +309,11 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
        * `lib/perkeso-socso-file.ts` words its message that way. Two bases WERE recorded; they disagree.
        */
       wageInconsistent: boolean;
+      /**
+       * r372 (item f022dd70) — the payroll cycles the operator ticked charged NO SOCSO/EIS, so the salary
+       * beside this flag is the month's and not the selection's. See the readiness list below.
+       */
+      wageOutsideSelection: boolean;
     };
     const byEmp = new Map<string, Acc>();
     const versions = new Set<string>();
@@ -273,6 +322,9 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
     // number twice. A divergence here means the grouping dropped or double-counted somebody.
     let runSocso = 0;
     for (const s of slips) {
+      // r372 (item f022dd70) — a run the operator did not tick contributes nothing. It was still READ,
+      // because the wage derivation above needs the whole month; it is not part of this filing.
+      if (selection && !selection.has(s.runSeq)) continue;
       const st = (s.statutory ?? {}) as Record<string, number> & { version?: string };
       if (st.version) versions.add(st.version);
       runSocso = round2(runSocso + num(st.socsoEmployee) + num(st.socsoEmployer));
@@ -297,6 +349,7 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
           // THE WAGE IS ASSIGNED ONCE, HERE, AND NEVER ACCUMULATED. See the Acc comment above.
           wage: w.socsoEis,
           wageInconsistent: w.socsoEisInconsistent,
+          wageOutsideSelection: w.socsoEisOutsideSelection,
         };
         byEmp.set(s.employmentId, r);
       }
@@ -366,9 +419,16 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
         .map((a) => ({
           employmentId: a.employmentId,
           name: a.name,
-          missing: [!a.ic ? 'IC' : null, a.wageInconsistent ? SOCSO_WAGE_INCONSISTENT_REASON : null].filter(
-            (m): m is string => m !== null,
-          ),
+          missing: [
+            !a.ic ? 'IC' : null,
+            a.wageInconsistent ? SOCSO_WAGE_INCONSISTENT_REASON : null,
+            // r372 (item f022dd70) — THE THIRD REASON, AND IT IS A SELECTION FACT RATHER THAN A DATA ONE.
+            // The salary stamped on a bonus or off-cycle run is the whole month's, because the kernel
+            // re-derives it from compensation on every run; the SOCSO and EIS charged on that run are
+            // zero. Filing it would put a full month's salary beside contributions of nothing. Held here
+            // so the person is NAMED, which is the only thing that tells the operator what to tick.
+            a.wageOutsideSelection ? SOCSO_NOT_IN_SELECTION_REASON : null,
+          ].filter((m): m is string => m !== null),
         }))
         .filter((r) => r.missing.length > 0),
       meta: {
