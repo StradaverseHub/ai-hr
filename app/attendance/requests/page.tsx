@@ -48,7 +48,8 @@ import {
  *   • Travel Request → its own screen at the time; b833a077 (r362) then removed My Travel completely
  *     (row, screen, form and approvals section). Its address redirects to Clock in/out and no travel
  *     request can be filed from anywhere. The travel_request rows are kept for audit.
- *   • "My attendance requests" → /attendance/request-status
+ *   • "My attendance requests" → /attendance/request-status, the row and page now named "My Request"
+ *     (7709ffd1, r369 — a label change only; the route is unchanged, so this pointer still holds)
  * What is left is what the screen is named after: genuine attendance EXCEPTIONS. `?section=overtime`, the
  * address the old tab and every stale link use, forwards to Self Overtime rather than 404-ing on a tab
  * that no longer exists.

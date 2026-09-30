@@ -149,6 +149,19 @@ const WIDE_LIST_SCREENS = [
    * stays centred and narrow while the SCREEN is full width.
    */
   'app/attendance/plan-ot/page.tsx',
+  /**
+   * 7709ffd1 (r369) — MY REQUEST (the row that read "My Attendance Request Status" until this round). The
+   * TWELFTH list screen in this menu to take the property, listed in the round that grants it rather than
+   * after somebody complains a fifth time — which is exactly what the entries above ask for. At
+   * `mx-auto max-w-6xl` roughly a third of a wide monitor was empty margin, and "What was asked for" — the
+   * column carrying the reason and the remark under the asked-for line — was the one paying for it.
+   *
+   * ⚠️ THE NOT-LINKED BRANCH IS WHY THIS ENTRY NEEDS A NOTE, the same note plan-ot and requests carry. That
+   * branch was `mx-auto max-w-2xl`, which the second case below reads as a page-level cap. It is
+   * `mx-auto max-w-md` now, so the one-sentence notice stays centred and narrow while the SCREEN is full
+   * width. `capsPage` deliberately does not count `max-w-md` (it is not `max-w-…xl`).
+   */
+  'app/attendance/request-status/page.tsx',
 ];
 
 // The form pages that are one column of boxes, and keep a comfortable reading width on purpose.
@@ -369,7 +382,12 @@ describe('af7a8eb4 — Attendance screen layout', () => {
 
 
 /**
- * r239 — My Attendance Request Status: two faces of ONE list, and four statuses.
+ * r239 — My Request: two faces of ONE list, and four statuses.
+ *
+ * ⚠️ 7709ffd1 (r369) — THE SCREEN IS CALLED "My Request" NOW, and every heading in this block used to say
+ * "My Attendance Request Status" (the rail truncated it to "My Attendance Request …", which is what the
+ * reporter raised). The LABELS moved and nothing else: same route, same `labelKey`, same href, so every
+ * case below reads the same file it always did.
  *
  * The reporter approved a purely presentational change: a narrow screen gets one block per request with
  * the date and the outcome on the same line and the detail underneath, while a wide monitor keeps the
@@ -395,11 +413,15 @@ describe('af7a8eb4 — Attendance screen layout', () => {
  * Limits: source-static, like the rest of this file. It cannot see a class that never reaches the browser
  * — the manual render walk at two widths is the backstop.
  */
-describe('r239 — My Attendance Request Status: table on a wide screen, blocks on a narrow one', () => {
+describe('r239 — My Request: table on a wide screen, blocks on a narrow one', () => {
   // The switch is `lg`, not `md`: the nav rail appears at `sm` and takes 232px, so a 768px viewport gives
   // this list a ~500px content column — narrower than the block face gets at 639px. See page.tsx.
   const PAGE = read('app/attendance/request-status/page.tsx');
   const UI = read('app/attendance/request-ui.tsx');
+  // 7709ffd1 (r369) — the pure module the ceiling and the `?status=` whitelist moved into, and the export
+  // route that reads both. Case C asserts across all three so the file and the tab cannot narrow differently.
+  const ROWS = read('app/attendance/request-status/rows.ts');
+  const EXPORT = read('app/attendance/request-status/export/route.ts');
 
   /** Source with comments removed. These guards read code, and a comment that spells out the very token
    *  being forbidden reads to a plain `includes()` as the thing itself (AGENTS 27). */
@@ -536,7 +558,26 @@ describe('r239 — My Attendance Request Status: table on a wide screen, blocks 
     // Both consumers DERIVE from the tuple. A second hand-written list is how the pills and the addresses
     // they link to come to disagree — the filter would look right and return nothing.
     expect(PAGE).toContain('const STATUS_FILTERS = [null, ...REQUEST_STATUSES] as const');
-    expect(PAGE, 'the URL whitelist is the same list, not a copy').toContain('REQUEST_STATUSES.includes(');
+    /**
+     * ⚠️ 7709ffd1 (r369) — THE WHITELIST MOVED UP A FILE, AND THE CLAIM IT REPLACES IS QUOTED. This read
+     *   expect(PAGE, 'the URL whitelist is the same list, not a copy').toContain('REQUEST_STATUSES.includes(');
+     * and the derivation lived in the page. The round added app/attendance/request-status/export/route.ts,
+     * which has to narrow by exactly what the pressed pill narrows by — a second copy of the derivation in
+     * the route is how a file comes to hold "every request" while the tab said "Rejected". So it lives in
+     * app/attendance/request-status/rows.ts and BOTH consumers import it. The property is unchanged and the
+     * assertion is stronger: it is still derived from the tuple, the page no longer restates it, and the
+     * route is required to use the shared one.
+     */
+    expect(ROWS, 'the URL whitelist is the same list, not a copy').toContain('REQUEST_STATUSES.includes(');
+    expect(ROWS, 'and it is derived from the shared tuple, not a local literal').toContain(
+      "import { REQUEST_STATUSES, type RequestStatus } from '../request-ui'",
+    );
+    expect(code(PAGE), 'the page reads the shared whitelist rather than keeping its own copy').not.toMatch(
+      /REQUEST_STATUSES\.includes\(/,
+    );
+    for (const consumer of [PAGE, EXPORT]) {
+      expect(consumer, 'both the screen and the export narrow through the one whitelist').toContain('parseRequestStatus');
+    }
     expect(code(PAGE).toLowerCase().includes('completed'), 'there is no completed status to render').toBe(false);
     expect(code(UI).toLowerCase().includes('completed'), 'and none in the shared vocabulary either').toBe(false);
     // The colour map is keyed by the tuple's type, so a status added without a colour is a type error

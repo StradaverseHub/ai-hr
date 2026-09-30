@@ -524,7 +524,11 @@ describe('sidebar Attendance group — Clock in/out and Records are the staff no
   // to be removed completely, so that row is gone from the rail. The case is UPDATED, not loosened: the
   // surviving row keeps every assertion it had, and the removed one gains the STRICTER statement below —
   // zero occurrences anywhere in the rail's combined sources, not merely "not in this node".
-  it('carries My Attendance Request Status, ungated, exactly once across the rail', () => {
+  // ⚠️ 7709ffd1 (r369) — THE ROW READS "My Request" NOW. This case's title said "carries My Attendance
+  // Request Status", which was the label that truncated in the rail and is what the reporter raised. Only the
+  // LABEL changed: the href and the `labelKey` below are the same two strings this case has always read, so
+  // every assertion in it is untouched.
+  it('carries My Request (labelKey myAttendanceRequestStatus), ungated, exactly once across the rail', () => {
     const requestsIdx = node.indexOf(`'/attendance/requests'`);
     for (const [href, labelKey] of [
       ['/attendance/request-status', 'myAttendanceRequestStatus'],
