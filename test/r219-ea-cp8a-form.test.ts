@@ -369,21 +369,21 @@ describe('r219 — the foot: the officer box, and the agency’s own spelling of
    * prints the agency's empty rule. The rule's ARITHMETIC is pinned against an injected clock in
    * test/r367-ea-form-date.test.ts, where it can be tested without rendering a PDF.
    *
-   * ⚠️ r370 (item 450f443f) — THE TWO SOURCE-TEXT ASSERTIONS ARE NOW MEASUREMENTS ON A RENDERED FORM,
+   * ⚠️ r371 (item 450f443f) — THE TWO SOURCE-TEXT ASSERTIONS ARE NOW MEASUREMENTS ON A RENDERED FORM,
    * AND THE CASE IS STRICTLY STRONGER FOR IT. They read, verbatim:
    *
    *     expect(src, 'the caption moved — round A changes no coordinates').toContain('put(W.date, L + 6, 723, 8)');
    *     expect(src).toMatch(/valueOrRule\(formDate\(d\.formDate\), 68, 150, 723, 8\);/);
    *
    * The intent was "round A moves no coordinates", and it was pinned by grepping for the literal 723 in
-   * the renderer's source. r370 grows the officer box downwards when the employer's name and address
+   * the renderer's source. r371 grows the officer box downwards when the employer's name and address
    * need more than the agency's two writing lines, and LHDN prints the Date on the SAME table row as
    * the Telephone No. — `scripts/measure-ea-official-pdf.ts --rects`, tt 802, the date at x 45.2 and the
    * telephone rule at 331.5 — so the date rides down with that row rather than floating above the box's
    * new foot. The literal is therefore gone from the source and the baseline is computed.
    *
    * WHAT REPLACES IT IS THE CLAIM ITSELF, measured on the page: on a statement whose employer block
-   * fits the agency's two rules — which is every statement that existed before r370 — the caption and
+   * fits the agency's two rules — which is every statement that existed before r371 — the caption and
    * its rule are drawn at EXACTLY tt 723, on the same baseline as the telephone number, at the same x
    * r219 chose. A source grep could not have told the difference between that and a coincidence; this
    * can, and it survives round two re-pitching the box (item 795c470c).

@@ -180,7 +180,7 @@ lesson. The one deliberate departure is the LEFT margin: the specimen sets its r
 paper edge, inside the unprintable margin of most office printers, so everything left-anchored moved to
 24 pt. The money column did not move.
 
-  ⚠️ CORRECTION (r370, 2026-09-30) — THE TWO SENTENCES ABOVE ABOUT THE LEFT MARGIN ARE WRONG, AND THE
+  ⚠️ CORRECTION (r371, 2026-09-30) — THE TWO SENTENCES ABOVE ABOUT THE LEFT MARGIN ARE WRONG, AND THE
   ERROR IS IN WHOSE MARGIN 16.8 IS. They are left standing because r219 really did reason that way and
   the reasoning propagated; read them as a record of a decision, not as a fact about LHDN.
 
@@ -239,7 +239,7 @@ CONSISTENCY CHECKS, and they are why these numbers can be trusted:
 than fixed. Trust the WIDTH (17.3, identical across all six) and re-check the height against the
 drawn output rather than treating the spread above as six different sizes.
 
-⚠️ AND THE LEFT MARGIN IS OURS — BUT NOT FOR THE REASON THIS NOTE USED TO GIVE (corrected r370).
+⚠️ AND THE LEFT MARGIN IS OURS — BUT NOT FOR THE REASON THIS NOTE USED TO GIVE (corrected r371).
 EA_FORM.left is 24 and the blocks above are given in the AGENCY's coordinates, so a build must still
 decide per block whether it follows the agency or our margin, and say which. That part stands.
 
