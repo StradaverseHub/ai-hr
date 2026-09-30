@@ -217,7 +217,7 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
       };
     }
     const batchIds = batches.map((b) => b.id);
-    // RECOMPUTED OVER THE SELECTED RUNS, never over the month — an untocked draft run would otherwise
+    // RECOMPUTED OVER THE SELECTED RUNS, never over the month — an unticked draft run would otherwise
     // caption a filed set of runs as a draft. r372.
     const batchStatus = selectedBatches.every((b) => b.status === 'closed')
       ? 'closed'
