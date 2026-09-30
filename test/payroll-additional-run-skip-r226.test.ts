@@ -9,9 +9,15 @@
  *
  *   1. THE SKIP. An additional run leaves out an employee it has nothing to pay in that cycle, names every
  *      one of them, and reports skipped as its OWN outcome — never as a failure.
- *   2. THE REGULAR RUN IS UNTOUCHED, which is the single most important limit on the whole change. A
- *      salaried employee has ZERO rows in the transaction tables; their money is the compensation record.
- *      "Skip anyone with no transaction" applied to a regular run would stop paying almost the company.
+ *   2. THE REGULAR RUN IS UNTOUCHED BY *THIS* PREDICATE, which is the single most important limit on the
+ *      whole change. A salaried employee has ZERO rows in the transaction tables; their money is the
+ *      compensation record. "Skip anyone with no transaction" applied to a regular run would stop paying
+ *      almost the company, and the fixtures below still prove it does not.
+ *      ⚠️ r369 (item eb949191) ADDED A STRICTLY NARROWER REGULAR-RUN PREDICATE, and the sentence above used
+ *      to read "THE REGULAR RUN IS UNTOUCHED" flat. A regular run now skips an employee whose SALARY RECORD
+ *      pays nothing AND who has no positive money on any door — the conjunct r226 was right to say is what
+ *      makes it safe. Nothing in this file's predicate or its expectations changed; the regular-run cases
+ *      (including the negative-net payslip the skip prevents) live in test/r369-zero-basic-skip.test.ts.
  *   3. THE MONEY. A skipped employee's one-off transaction is not attached to the run that skipped them,
  *      is not stamped CONSUMED by it, and is still paid by the run it belongs to. This is the sharp half:
  *      `markIndividualTxnsConsumed` is keyed off `emps`, so a skip implemented anywhere other than by

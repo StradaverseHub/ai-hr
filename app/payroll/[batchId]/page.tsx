@@ -18,7 +18,13 @@ import { payrollListReturnTo } from '@/lib/return-to';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { packFor } from '@/localization/registry';
 import { payrollPublicationState, type PayrollPublicationState } from '@/lib/payroll-publication';
-import { listSkippedEmployees, listUnattachedTxnSummary, pendingBatchMoney, unattachedHoldersOutsideBatchScope } from '@/core/payroll-view';
+import {
+  listSkippedEmployees,
+  listUnattachedTxnSummary,
+  narrowToNothingPayable,
+  pendingBatchMoney,
+  unattachedHoldersOutsideBatchScope,
+} from '@/core/payroll-view';
 import { payslipProvenance } from '@/core/payslip-recompute';
 // 3c473773 — payslip boxes + the employer-borne disclosure, both read from each payslip's own snapshot.
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
@@ -117,10 +123,13 @@ export default async function BatchPage({
   // listed them; this screen — the one an operator actually presses Generate on — did not, and a toast is
   // gone on the next navigation anyway. Read from the run's own `payroll-batch.processed` event, so it is
   // still here tomorrow. Processed runs only: a draft has no decision yet, and on a run that skipped
-  // nobody (every regular run) this is an empty list and renders nothing.
+  // nobody this is an empty list and renders nothing. (r369 — that used to read "every regular run". A
+  // regular run now skips an employee with no monthly basic and nothing payable, which is exactly why this
+  // panel matters on the ordinary monthly run and not only on a bonus one.)
   const skippedEmployees = batch.status === 'draft' ? [] : await listSkippedEmployees(s, [batchId]);
-  // Feedback 64fb5e48 — blockers are the salary-record gaps (missing/period-miss/zero); the old
-  // BASIC-pay-item existence blocker is gone. A stale BASIC pay item is a confirm-to-proceed warning.
+  // Feedback 64fb5e48 — blockers are the salary-record gaps (missing / period-miss / a daily-or-hourly
+  // employee with no pay rate); the old BASIC-pay-item existence blocker is gone, and r369 took the MONTHLY
+  // zero out of `zeroBasic` (it is `preNotices` below). A stale BASIC pay item is a confirm-to-proceed warning.
   const preSalaryBlockers = preChecks.missingCompensation.length + (preChecks.zeroBasic?.length ?? 0);
   // Item 1bb09a73 — COUNTED SEPARATELY, and that is not tidiness. `preChecksBlockerHint` says in words
   // that the named employees "have no current salary record"; folding a TP3 year mismatch into that
@@ -134,6 +143,22 @@ export default async function BatchPage({
   // — with its own red banner below. The server already refused these runs; this card just never said so.
   const prePayModeBlockers = preChecks.unpayablePayMode?.length ?? 0;
   const preBlockers = preSalaryBlockers + prePayModeBlockers + preTp3Blockers;
+  // r369 (item eb949191) — THE THIRD STATE, AND IT IS IN NEITHER COUNT ABOVE NOR THE WARNING COUNT BELOW.
+  //
+  // An employee with no monthly basic salary is a deliberate arrangement (a Director paid fees quarterly),
+  // and the run will leave them out of a month with nothing payable rather than block or pay them below zero.
+  // The badge on this card is otherwise binary blocker/warning, so folding this into either one would paint a
+  // deliberate skip red or amber and tell the operator to "fix" it — which is how somebody ends up typing a
+  // salary that is not true. It gets its own neutral group and its own count, and `preBlockers` /
+  // `preWarnings` are byte-identical to what they were (they are also extracted by name and evaluated as a
+  // bitmask by test/4ca06dea-process-blocker-parity.test.ts, which is the guard that says so).
+  //
+  // NARROWED AGAINST THE CARD TWO PANELS DOWN, not against a second reading of the same tables: a Director
+  // whose RM30,000 fee is keyed for this month WILL be paid, and naming him under "will be skipped" on the
+  // very run whose Pending money card lists that fee by name would be a lie the operator can see through.
+  // See `narrowToNothingPayable` for why the derivation lives beside `pendingBatchMoney`.
+  const preNothingPayable = narrowToNothingPayable(preChecks.nothingPayable ?? [], pendingMoney);
+  const preNotices = preNothingPayable.length;
   // 297ae65a — the non-MYR/mixed-currency salary notice counts among the confirm-to-proceed warnings.
   // r79 — an explicit "Subject to HRDF = Yes" at an unregistered company joins the confirm-to-proceed
   // warnings: the run records the employee as subject and charges nothing, and until now said so nowhere.
@@ -724,11 +749,19 @@ export default async function BatchPage({
               ? 'border-red-200 dark:border-red-500/30'
               : preWarnings > 0
                 ? 'border-amber-200 dark:border-amber-500/30'
-                : 'border-emerald-200 dark:border-emerald-500/30'
+                : // r369 — a deliberate skip is not a fault, so it does not get amber; but it is also not
+                  // "all checks passed", so it does not get the green border either. The default border is
+                  // the third state: something is listed, nothing is wrong.
+                  preNotices > 0
+                  ? 'border-border'
+                  : 'border-emerald-200 dark:border-emerald-500/30'
           }`}
         >
-          <SectionHeader title={t('preChecksTitle')} count={preBlockers + preWarnings} />
-          {preBlockers + preWarnings === 0 ? (
+          {/* r369 — the notice joins the HEADER count and the all-clear test, so a run whose only finding is
+              a deliberate skip renders the group instead of claiming "All checks passed" and saying nothing
+              about the person it is about to leave out. It stays out of the blocker/warning arithmetic. */}
+          <SectionHeader title={t('preChecksTitle')} count={preBlockers + preWarnings + preNotices} />
+          {preBlockers + preWarnings + preNotices === 0 ? (
             <p className="px-4 py-4 text-sm text-emerald-700 dark:text-emerald-400">✓ {t('preChecksAllClear')}</p>
           ) : (
             <div className="space-y-4 px-4 py-4">
@@ -750,6 +783,51 @@ export default async function BatchPage({
               {preBlockers === 0 && preWarnings > 0 && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
                   {t('preChecksWarningHint', { n: preWarnings })}
+                </div>
+              )}
+              {/* r369 (item eb949191) — the deliberate skip, NAMED BEFORE THE OPERATOR PRESSES GENERATE.
+                  A silent drop out of a payroll run is the exact defect feedback f1564110 was raised about,
+                  so this is the first of three surfaces (this panel, the run's own result afterwards, and the
+                  "eligible but not on this run" list on the correction screen). Neutral by design — see the
+                  `preNotices` note above for why neither red nor amber would be honest. Each row prints the
+                  remark whoever set the salary up typed, which is the confirmation gesture core/comp.ts now
+                  requires and the only reason the operator has for trusting the zero was deliberate. */}
+              {preNotices > 0 && (
+                <div>
+                  <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
+                    {t('preChecksNothingPayableHint', { n: preNotices })}
+                  </div>
+                  <div className="mb-1.5 mt-3 flex items-center gap-2">
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {t('preChecksNoticeBadge')}
+                    </span>
+                    <span className="text-xs font-semibold text-foreground">
+                      {t('preChecks.nothingPayable')} · {preNotices}
+                    </span>
+                  </div>
+                  <ul className="divide-y divide-border rounded-lg border border-border">
+                    {preNothingPayable.map((r) => (
+                      <li key={r.employmentId} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                        <span className="flex flex-col gap-0.5">
+                          <span className="flex items-center gap-2">
+                            <EmployeeCode code={r.employeeCode} />
+                            <span className="font-medium">{r.name}</span>
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {r.remarks?.trim()
+                              ? t('preChecksNothingPayableRemark', { remarks: r.remarks.trim() })
+                              : t('preChecksNothingPayableNoRemark')}
+                          </span>
+                        </span>
+                        <Link
+                          href={`/people/${r.employmentId}`}
+                          className="shrink-0 text-xs font-medium text-primary hover:underline"
+                        >
+                          {t('preChecksOpenProfile')} →
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
               {(

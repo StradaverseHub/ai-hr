@@ -22,6 +22,12 @@ import {
 // e2632276 — absence days (a scheduled working day with no attendance row, or one marked Absent), counted
 // by the SAME helper the Attendance month roll-up reads so the screens and the deduction cannot drift.
 import { absentDaysByEmployment, deductAbsentDaysByEmployment } from './absence-days';
+// r369 (item eb949191) — "which amount does this salary record fail to name?", as ONE predicate shared with
+// the write path. `core/comp.ts` refuses the daily/hourly leg at write time and demands a remark on the
+// no-monthly-basic leg; this file classifies the same two legs at pre-flight and reads the second one to
+// decide whether a regular run has anything to pay. Write-time and run-time therefore cannot drift, which
+// is the whole point of it living there and not being restated here. No cycle: comp.ts imports no payroll.
+import { unpayableSalaryLeg, type PayMode } from './comp';
 // 3c88d593 — "which legal entity did this person belong to on this date?", answered from the effective-dated
 // assignment spine (migration 0440). Payroll is the FIRST and, as of r197, still the ONLY reader of it:
 // the resolver has to be proven on the money before attendance, leave and reporting adopt it, and that
@@ -323,19 +329,57 @@ export class ReprocessNotOnBatchError extends Error {
  * fbcf706d — someone being ADDED to a processed run is not ready to be paid.
  *
  * An add is a FIRST processing for that person, so it gets the same readiness gate a draft→processed run
- * applies — but run over the added employments ONLY, so a correction to somebody already paid is never
+ * applies — but run over the POSTED employments only, so a correction to somebody already paid is never
  * blocked by an unrelated gap elsewhere on the run. Before this, an added employment with no open salary
  * record was dropped by the earnings inner join and the run refused with "None of the selected employees
  * are active in this period.", which named nobody and was not true.
+ *
+ * r369 WIDENED IT FROM THE ADDED IDS TO EVERY POSTED ID, which is why the sentence no longer says "add".
+ * The readiness call was scoped to `addedEmploymentIds`, so an EXISTING member of the run whose salary
+ * record became unpayable AFTER it was processed — a daily rate cleared, an open row closed — was
+ * recomputed with no check at all, on the one path where the whole-run gate is deliberately skipped. The
+ * narrowing that matters is unchanged: only what the operator POSTED is checked, so a gap belonging to
+ * somebody else on the run still cannot block this correction.
  */
 export class ReprocessAddBlockedError extends Error {
   constructor(public readonly rows: { employmentId: string; name: string; employeeCode: string | null; gap: string }[]) {
     const who = rows.map((r) => `${r.employeeCode ? `${r.employeeCode} ` : ''}${r.name} (${r.gap})`).join('; ');
     super(
-      `Cannot add ${rows.length} employee${rows.length === 1 ? '' : 's'} to this payroll run — ` +
-        `their Personnel record is not ready: ${who}. Nothing was changed.`,
+      `Cannot reprocess ${rows.length} of the selected employee${rows.length === 1 ? '' : 's'} on this ` +
+        `payroll run — their Personnel record is not ready: ${who}. Nothing was changed.`,
     );
     this.name = 'ReprocessAddBlockedError';
+  }
+}
+
+/**
+ * r369 (item eb949191) — A REPROCESS WILL NOT SKIP SOMEBODY, SO IT NAMES THEM AND STOPS.
+ *
+ * A regular run now leaves out an employee with no monthly basic and nothing payable (see the skip block
+ * in `generatePayslips`). A SUBSET REPROCESS may not do the same thing, and r226's own comment already
+ * settled why: "taking somebody OFF a processed run is `removeEmployeesFromBatch`'s job, with its own
+ * reason, audit trail and ledger release."
+ *
+ * THE MECHANICAL HALF, WHICH IS THE DECISIVE ONE. `subsetIds` is derived from `emps` and the payslip
+ * DELETE that precedes the recompute is keyed off it. Filtering a skippable person out of `emps` would
+ * therefore leave their OLD payslip on the run, unrecomputed and unexplained — the run's totals would
+ * still count it, the payment file would still carry it, and nothing anywhere would say why. The
+ * alternative, deleting it, is a removal performed by a screen the operator pressed "recalculate" on,
+ * with no removal reason, no ledger release and no audit trail of a removal.
+ *
+ * So the refusal names them and points at Remove, and nothing is written (the whole generation runs in one
+ * transaction, so the snapshot and the delete this precedes roll back with it).
+ */
+export class ReprocessNothingPayableError extends Error {
+  constructor(public readonly rows: { employmentId: string; name: string; employeeCode: string | null }[]) {
+    const who = rows.map((r) => (r.employeeCode ? `${r.employeeCode} ${r.name}` : r.name)).join(', ');
+    super(
+      `${who} ${rows.length === 1 ? 'has' : 'have'} nothing payable in this pay period, so recalculating ` +
+        `${rows.length === 1 ? 'their' : 'their'} payslip would pay ${rows.length === 1 ? 'them' : 'them'} ` +
+        'nothing and deduct statutory contributions from it. Use "Remove employees from this run" instead — ' +
+        'it records a reason, releases their transactions and keeps the audit trail. Nothing was changed.',
+    );
+    this.name = 'ReprocessNothingPayableError';
   }
 }
 
@@ -508,8 +552,30 @@ export type SkippedEmployee = {
  *                                  exists because printing the first sentence about this person
  *                                  contradicts the screen the operator just read. See the reason block
  *                                  in `generatePayslips` for why the fix is the sentence, not the skip.
+ *
+ * r369 (item eb949191) ADDS THE TWO REGULAR-RUN CAUSES. Until this round only an additional run ever
+ * skipped anybody; a REGULAR run over an employee with no monthly basic and nothing payable wrote a
+ * payslip BELOW ZERO and filed a zero wage with the agencies (see the arithmetic in the skip block).
+ *
+ *   • NOTHING_PAYABLE_THIS_PERIOD — a regular run: the salary record names no monthly basic and not one
+ *                                  of the run's money doors carries a positive line for them this period.
+ *                                  Nothing was paid, so nothing is filed and no payslip exists.
+ *   • DEDUCTION_ONLY_THIS_PERIOD  — the same, EXCEPT that a deduction WAS waiting (a loan instalment, a
+ *                                  TP1 claim, a zakat election, a one-off deduction). Its own value
+ *                                  because the sentence has to be true of the person it is printed
+ *                                  beside: "nothing was keyed for you" is false when the operator can see
+ *                                  the loan they keyed. Taking a deduction out of nothing produces a
+ *                                  payslip that owes the employee money, so the skip is the same.
+ *
+ * ⚠️ A NEW VALUE MUST ALSO BE ADDED TO `listSkippedEmployees` (core/payroll-view.ts). That reader coerces
+ * any UNRECOGNISED reason to NO_TRANSACTION_FOR_CYCLE so an event written by an older build degrades
+ * gracefully — which means a value added here and not there is SILENTLY RELABELLED on every screen.
  */
-export type PayrollSkipReason = 'NO_TRANSACTION_FOR_CYCLE' | 'NO_ADDITIONAL_PAY_THIS_RUN';
+export type PayrollSkipReason =
+  | 'NO_TRANSACTION_FOR_CYCLE'
+  | 'NO_ADDITIONAL_PAY_THIS_RUN'
+  | 'NOTHING_PAYABLE_THIS_PERIOD'
+  | 'DEDUCTION_ONLY_THIS_PERIOD';
 
 /**
  * ADR-0033 — a worked day already banked as time-in-lieu contributes NO overtime. Cash XOR leave.
@@ -829,8 +895,9 @@ export async function clearBatchRecalc(
  * they appear on it as named provenance lines. "Included" is the claim the marker makes, and the marker
  * only ever stops the SAME line being included by a DIFFERENT run, which is never right for any kind.
  *
- * r226 — AND "INCLUDED IN THE PAYSLIP THIS RUN WROTE" IS NOW LOAD-BEARING RATHER THAN DESCRIPTIVE. An
- * additional run skips an employee it has nothing to pay, so `employmentIds` is the list of people who
+ * r226 — AND "INCLUDED IN THE PAYSLIP THIS RUN WROTE" IS NOW LOAD-BEARING RATHER THAN DESCRIPTIVE. A
+ * run skips an employee it has nothing to pay — an additional run since r226, a REGULAR run over somebody
+ * with no monthly basic since r369 — so `employmentIds` is the list of people who
  * actually got a payslip, NOT the list the run selected. The caller passes `emps` and `emps` has already
  * been narrowed to the paid set — which is the entire reason the skip is implemented as a narrowing of
  * `emps` rather than as a filter at the insert. Pass this a selected-but-unpaid employment and its
@@ -3564,19 +3631,29 @@ export async function generatePayslips(
         );
       }
 
-      // READINESS, for the added employments only. preProcessChecksTx is SCOPED to exactly these
-      // employments rather than re-implemented, so what blocks an add is verbatim what blocks a first
-      // processing — and a pre-existing gap belonging to somebody else on the run still cannot block a
-      // correction (which is why the whole-run gate above stays skipped for a subset).
-      if (addedEmploymentIds.length > 0) {
+      // READINESS, for every POSTED employment. preProcessChecksTx is SCOPED to exactly these employments
+      // rather than re-implemented, so what blocks an add is verbatim what blocks a first processing — and a
+      // pre-existing gap belonging to somebody else on the run still cannot block a correction (which is why
+      // the whole-run gate above stays skipped for a subset, and that reason is unchanged).
+      //
+      // r369 WIDENED THIS FROM `addedEmploymentIds` TO `postedSubsetIds`. Scoped to the ADDED ids only, an
+      // EXISTING member of the run whose salary record became unpayable after it was processed — a daily
+      // rate cleared to zero, the open compensation row closed — was recomputed completely unchecked, on the
+      // one code path where the whole-run gate is deliberately absent. The narrowing that carries the
+      // documented reason is "what the operator posted", not "what is new", and that is what this is now.
+      if (postedSubsetIds.length > 0) {
         const addChecks = await preProcessChecksTx(
           tx,
-          { companyId: batch.companyId, payPeriod: batch.payPeriod, scope: { employmentIds: addedEmploymentIds } },
+          { companyId: batch.companyId, payPeriod: batch.payPeriod, scope: { employmentIds: postedSubsetIds } },
           isModuleEnabled(ctx, 'typed_pay_components'),
         );
         const blockedRows = [
           ...addChecks.missingCompensation.map((r) => ({ ...r, gap: 'no current salary record' })),
-          ...(addChecks.zeroBasic ?? []).map((r) => ({ ...r, gap: 'a salary record that would pay nothing' })),
+          // r369 — `zeroBasic` is now the daily/hourly-no-rate leg only, so the gap names it. The
+          // no-monthly-basic population is NOT a blocker here: whether they can be reprocessed depends on
+          // what is payable this period, which only the money doors know — `ReprocessNothingPayableError`
+          // answers that, by name, once they are read.
+          ...(addChecks.zeroBasic ?? []).map((r) => ({ ...r, gap: 'a daily or hourly pay rate of zero' })),
           ...(addChecks.unpayablePayMode ?? []).map((r) => ({ ...r, gap: 'a pay structure this system cannot calculate' })),
         ];
         if (blockedRows.length > 0) throw new ReprocessAddBlockedError(blockedRows);
@@ -5561,6 +5638,106 @@ export async function generatePayslips(
       deductions: 0, employerCost: 0,
     };
 
+    // ══════════════════════════════════════════════════════════════════════════════════════════════
+    // r369 (item eb949191) — HAS A REGULAR RUN ANYTHING TO PAY THIS PERSON THIS MONTH?
+    // ══════════════════════════════════════════════════════════════════════════════════════════════
+    //
+    // ONE CLOSURE, TWO READERS, and they answer opposite questions on purpose: the full-generation skip
+    // block below LEAVES OUT everyone it names, and the subset reprocess a few lines down REFUSES on
+    // everyone it names (see `ReprocessNothingPayableError` for why a reprocess may not skip).
+    //
+    // ── WHAT THIS IS FOR ──────────────────────────────────────────────────────────────────────────
+    // A Director paid fees quarterly has no monthly basic salary. Until this round a zero basic was a
+    // pre-flight BLOCKER, so one such employee stopped the whole company's run; the reporter rejected
+    // that (the batch is all-or-nothing, and they were right). What a zero basic must NOT become instead
+    // is a processed payslip, and this is the arithmetic that decides it — verified, not assumed:
+    //
+    //   `bandFor` (localization/my/payroll.ts) returns the FIRST band for a wage of 0 and never falls off
+    //   the bottom of the table, and `statDeductions` above is EXPLICITLY never clamped (see its own
+    //   comment: a 2,000 zakat election against a 1,000 basic produced a net of -1,116.65). At a zero
+    //   wage EPF is nil (Part A/E first bands) and PCB is 0 (the P <= 5000 short-circuit), but SOCSO
+    //   employee is RM0.10, EIS employee RM0.05, and SKBBK — where the employee is subject to it — a
+    //   further RM0.20. So processing them writes a payslip whose NET IS BELOW ZERO, and files a zero
+    //   wage with PERKESO for a month the person was not paid. test/r369-zero-basic-skip.test.ts asserts
+    //   that figure against a real processed payslip, so nobody can "simplify" this predicate later.
+    //
+    // ── THE R226 BIAS INVERTS HERE, AND THIS IS THE ONE PLACE IT DOES ─────────────────────────────
+    // The additional-run skip below records the rule "THE BIAS MUST POINT AT PROCESSING: a false 'has
+    // something' costs one zero payslip, which is exactly today's behaviour; a false 'has nothing' costs
+    // somebody their money." That reasoning is correct THERE and false HERE, and the difference is the
+    // population. For an employee whose gross would be zero a false "has something" does not cost one
+    // harmless zero payslip — it costs a payslip BELOW ZERO and a zero wage filed with an agency. So for
+    // this population the bias points at skipping, and the asymmetry is drawn on ONE line:
+    //
+    //   • A DEDUCTION NEVER KEEPS THEM IN THE RUN. `hasWork`'s door (b) counts loan, TP1 and zakat, which
+    //     are deductions; counting them here is precisely the negative-net payslip. A deduction-only case
+    //     is skipped with its own REASON so the sentence beside their name stays true.
+    //   • AN EARNING WHOSE AMOUNT IS NOT YET RESOLVED STILL DOES. A ruled pay item (per_day, percent_of)
+    //     has its amount computed later, against a scope this predicate does not build. Skipping its
+    //     owner could lose them real money, which is worse than a payslip that needs correcting — so a
+    //     ruled EARNING counts as paying, exactly as `paysOnAdditionalRun` treats one.
+    //
+    // ── AND THE CONJUNCT THAT MAKES IT SAFE AT ALL ────────────────────────────────────────────────
+    // r226's comment is right that "skip anyone with no transaction" on a regular run would stop paying
+    // almost the whole company: a salaried employee HAS no transaction rows — their money IS the
+    // compensation record. The first conjunct is what makes this safe, and it must never be dropped: the
+    // SALARY RECORD ITSELF has to pay nothing before any transaction door is even consulted.
+    //
+    // DOOR (c) IS UNTRIMMED, unlike the additional-run case. `paysOnAdditionalRun` narrows recurring pay
+    // items to the ones routing to the bonus bucket because that is all an additional run pays; a REGULAR
+    // run pays standing items in full, so any positive one keeps its owner.
+    //
+    // THE LEGACY `monthly_allowance` LEG IS READ ONLY WHEN THE KERNEL PAYS IT. `earningsOf` adds
+    // `compensation.monthly_allowance` to the wage line on the LEGACY path only (typed components off);
+    // with typed components on, allowances are pay items and `e.allowance` is ignored entirely. Mirroring
+    // that flag is not a nicety: without it, a legacy-path employee with a zero basic and a RM500 standing
+    // allowance — a run that pays 500 — would be skipped and lose it.
+    type NothingPayable = 'NOTHING_PAYABLE_THIS_PERIOD' | 'DEDUCTION_ONLY_THIS_PERIOD' | null;
+    /** Does any row in this component list put CASH IN THE EMPLOYEE'S HAND on a regular run? */
+    const paysCash = (rows: { kind: string; nonPayable: boolean; amount: number; rule: unknown }[] | undefined): boolean =>
+      (rows ?? []).some(
+        (c) =>
+          c.kind !== 'deduction' &&
+          !c.nonPayable &&
+          // A ruled item's stored amount is not its payable amount — see the one-way bias above.
+          (c.rule != null || c.amount > 0),
+      );
+    /** Is any row in this component list a deduction with a figure on it? */
+    const takesCash = (rows: { kind: string; amount: number }[] | undefined): boolean =>
+      (rows ?? []).some((c) => c.kind === 'deduction' && Math.abs(c.amount) > 0);
+    const regularRunNothingPayable = (e: (typeof emps)[number]): NothingPayable => {
+      // CONJUNCT ONE — the salary record pays nothing by itself. `missing_rate` (daily/hourly with no
+      // rate) is deliberately NOT this case: it stays a pre-flight blocker, because rate × time is the
+      // only thing that could ever pay that person and the fix is to key the rate.
+      if (unpayableSalaryLeg(e.payMode, e.basic, e.rateAmount) !== 'no_monthly_basic') return null;
+      if (!typedComponents && Number(e.allowance ?? 0) > 0) return null;
+      const id = e.employmentId;
+      // CONJUNCT TWO — no POSITIVE money on any door this run folds.
+      const positive =
+        round2(overtimeByEmp.get(id) ?? 0) > 0 ||
+        round2(bonusByEmp.get(id) ?? 0) > 0 ||
+        round2(claimAllowanceByEmp.get(id) ?? 0) > 0 ||
+        round2(txnOtByEmp.get(id) ?? 0) > 0 ||
+        paysCash(recurringByEmp.get(id)) ||
+        paysCash(batchCompByEmp.get(id)) ||
+        // A manual statutory override keyed against THIS run is an explicit instruction to it: it changes
+        // a figure on the payslip it is stamped on, so that payslip has to exist. Same reading as
+        // `hasWork`'s door (d).
+        statutoryAdjustmentByEmp.has(id);
+      if (positive) return null;
+      // WHICH SENTENCE IS TRUE OF THEM. `unpaidByEmp` is deliberately absent: unpaid DAYS are priced off a
+      // wage that is zero here, so they deduct nothing and calling them "a deduction was waiting" would be
+      // false on screen. The four below are keyed AMOUNTS the operator can see.
+      const deductionWaiting =
+        round2(loanByEmp.get(id) ?? 0) > 0 ||
+        round2(tp1ByEmp.get(id) ?? 0) > 0 ||
+        round2(zakatByEmp.get(id) ?? 0) > 0 ||
+        round2(txnUnpaidByEmp.get(id) ?? 0) > 0 ||
+        takesCash(recurringByEmp.get(id)) ||
+        takesCash(batchCompByEmp.get(id));
+      return deductionWaiting ? 'DEDUCTION_ONLY_THIS_PERIOD' : 'NOTHING_PAYABLE_THIS_PERIOD';
+    };
+
     // Selective reprocess (9bc442bc, reporter #5/#6/#8): before recomputing, snapshot + ROW-LOCK the
     // subset's existing payslips (optimistic-concurrency + before/after audit), tally their OLD
     // contribution for the delta-totals update, then delete them so the loop below re-inserts fresh
@@ -5572,6 +5749,28 @@ export async function generatePayslips(
     const beforeByEmp = new Map<string, Record<string, unknown>>();
     if (subset) {
       if (emps.length === 0) throw new Error('None of the selected employees are active in this period.');
+      // r369 — DO NOT SKIP INSIDE A SUBSET REPROCESS; NAME THEM AND STOP. Checked HERE, before the
+      // snapshot and the delete below, so the refusing path has touched nothing at all (the transaction
+      // would roll it back either way, but a guard that fires before the write is the one a reader can
+      // verify). Regular runs only: an additional-run reprocess is unchanged by this round.
+      if (!isAdditionalRun) {
+        const stuck = emps.filter((e) => regularRunNothingPayable(e) !== null).map((e) => e.employmentId);
+        if (stuck.length > 0) {
+          const named = await tx
+            .select({ id: employment.id, name: person.fullName, employeeCode: employment.employeeCode })
+            .from(employment)
+            .innerJoin(person, eq(person.id, employment.personId))
+            .where(inArray(employment.id, stuck));
+          const byId = new Map(named.map((r) => [r.id, r]));
+          throw new ReprocessNothingPayableError(
+            stuck.map((id) => ({
+              employmentId: id,
+              name: byId.get(id)?.name ?? id,
+              employeeCode: byId.get(id)?.employeeCode ?? null,
+            })),
+          );
+        }
+      }
       const subsetIds = emps.map((e) => e.employmentId);
       const existing = await tx
         .select()
@@ -5636,11 +5835,18 @@ export async function generatePayslips(
     // attach-on-generate stamped onto this run moments ago), payroll_input, and the manual statutory
     // overrides. Nothing between here and the payslip loop adds money.
     //
-    // REGULAR RUNS ARE NEVER ASKED. A salaried employee has zero rows in the transaction tables — their
-    // money IS the compensation record — so "skip anyone with no transaction" on a regular run would stop
-    // paying almost the whole company. Nor is a SUBSET reprocess asked: it recomputes payslips that
-    // already exist on a processed run, and taking somebody OFF a processed run is
-    // `removeEmployeesFromBatch`'s job, with its own reason, audit trail and ledger release.
+    // A REGULAR RUN IS NEVER ASKED *THIS* QUESTION — amended by r369, which asks it a DIFFERENT one.
+    // r226's reasoning below is unchanged and still decisive: a salaried employee has zero rows in the
+    // transaction tables (their money IS the compensation record), so "skip anyone with no transaction"
+    // on a regular run would stop paying almost the whole company. What r369 added is a strictly narrower
+    // predicate for the population whose SALARY RECORD pays nothing either — see
+    // `regularRunNothingPayable` above and the `else if (!subset)` branch below this one. Nothing in the
+    // additional-run predicate here changed.
+    // A SUBSET reprocess is asked NEITHER question: it recomputes payslips that already exist on a
+    // processed run, and taking somebody OFF a processed run is `removeEmployeesFromBatch`'s job, with its
+    // own reason, audit trail and ledger release. r369 holds that line — a reprocess over somebody with
+    // nothing payable REFUSES by name (`ReprocessNothingPayableError`) rather than dropping them, because
+    // `subsetIds` is derived from `emps` and the payslip delete is keyed off it.
     //
     // ── WHERE THE LINE IS DRAWN, AND WHY IT IS NOT DRAWN AT "WILL THIS RUN PAY A RINGGIT" ──────────
     //
@@ -5658,6 +5864,13 @@ export async function generatePayslips(
     //     is a worse failure than the zero payslip this change exists to remove.
     //   • THE BIAS MUST POINT AT PROCESSING. A false "has something" costs one zero payslip, which is
     //     exactly today's behaviour. A false "has nothing" costs somebody their money.
+    //     ⚠️ r369 — THIS RULE INVERTS FOR THE REGULAR-RUN POPULATION, and the inversion is real rather
+    //     than a preference. Here every skipped employee HAS a basic salary, so a false "has something"
+    //     really does cost only one harmless zero payslip. For an employee with NO monthly basic it costs a
+    //     payslip whose net is BELOW ZERO (SOCSO/EIS have no zero band) and a zero wage filed with the
+    //     agencies for a month nobody was paid. So the regular-run predicate points its bias the other way
+    //     and refuses to let a DEDUCTION keep somebody in the run. See `regularRunNothingPayable` above for
+    //     the arithmetic and for the one thing that does still count, an unresolved ruled earning.
     //
     // What IS trimmed is the one door every employee has and no additional run pays: the RECURRING pay
     // components (`employment_pay_component` — the Pending money card's `fixedComponent` door). Those are
@@ -5819,6 +6032,53 @@ export async function generatePayslips(
             name: row?.name ?? id,
             employeeCode: row?.employeeCode ?? null,
             reason: standingPayNotPaidHere(id) ? 'NO_ADDITIONAL_PAY_THIS_RUN' : 'NO_TRANSACTION_FOR_CYCLE',
+          });
+        }
+        skippedEmployees.sort((a, b) => a.name.localeCompare(b.name));
+      }
+    } else if (!subset) {
+      // ══════════════════════════════════════════════════════════════════════════════════════════════
+      // r369 (item eb949191) — A REGULAR RUN LEAVES OUT AN EMPLOYEE IT HAS NOTHING TO PAY EITHER
+      // ══════════════════════════════════════════════════════════════════════════════════════════════
+      //
+      // THE SAME ONE REASSIGNMENT OF `emps`, for the same reason r226 gives above and it is not a shortcut:
+      // the payslip insert, the CONSUMED marker on their one-off transactions, the claim-paid set,
+      // `employeeCount`, the processed event's `count` and the returned `payslips` are ALL keyed off `emps`,
+      // so narrowing the list is the only way to leave somebody out that cannot strand a side effect on a
+      // person with no payslip. Everything specific to this case — which doors count, why a deduction does
+      // not, and what the alternative payslip looks like — is in `regularRunNothingPayable` above.
+      //
+      // ASKED HERE AND NOWHERE EARLIER, for r226's reason verbatim: every input this run could pay has now
+      // been read (recurring and batch pay components, the one-off ledger including the rows
+      // attach-on-generate stamped onto this run moments ago, payroll_input and the manual statutory
+      // overrides), and nothing between here and the payslip loop adds money.
+      //
+      // NO `UnsupportedPayComponentError` RE-CHECK IS NEEDED HERE, and that is worth saying because the
+      // additional-run branch above needs one. That guard fires for a PCB-taxable item that is neither EPF
+      // nor SOCSO, i.e. an item that PAYS; `paysCash` keeps the owner of any such item in the run, so the
+      // per-employee loop still reaches it. The additional-run branch has the opposite problem because
+      // `paysOnAdditionalRun` answers "pays nothing" for exactly those shapes.
+      const reasonOf = new Map<string, PayrollSkipReason>();
+      for (const e of emps) {
+        const reason = regularRunNothingPayable(e);
+        if (reason) reasonOf.set(e.employmentId, reason);
+      }
+      if (reasonOf.size > 0) {
+        emps = emps.filter((e) => !reasonOf.has(e.employmentId));
+        const skippedIds = [...reasonOf.keys()];
+        const named = await tx
+          .select({ id: employment.id, name: person.fullName, employeeCode: employment.employeeCode })
+          .from(employment)
+          .innerJoin(person, eq(person.id, employment.personId))
+          .where(inArray(employment.id, skippedIds));
+        const nameById = new Map(named.map((r) => [r.id, r]));
+        for (const id of skippedIds) {
+          const row = nameById.get(id);
+          skippedEmployees.push({
+            employmentId: id,
+            name: row?.name ?? id,
+            employeeCode: row?.employeeCode ?? null,
+            reason: reasonOf.get(id)!,
           });
         }
         skippedEmployees.sort((a, b) => a.name.localeCompare(b.name));
@@ -9186,8 +9446,12 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
 //     inner-joins compensation, so these employees were previously dropped from the run with no
 //     warning at all), or no salary record covering the pay period. Generation fails closed
 //     (PreProcessBlockedError) until fixed.
-//   • zeroBasic — BLOCKER. The record would pay nothing: zero basic (monthly/custom) or zero/missing
-//     rate (daily/hourly).
+//   • zeroBasic — BLOCKER, and since r369 the DAILY/HOURLY LEG ONLY: a zero or missing rate_amount. The
+//     identifier is historical and deliberately not renamed (see `unpayableSalaryLeg` in core/comp.ts).
+//   • nothingPayable — NOTICE, neither blocker nor warning (r369, item eb949191). The salary record names
+//     no monthly basic, which used to be half of zeroBasic and used to stop the whole company's run. It is
+//     now a deliberate, supported arrangement (a Director paid fees quarterly), and payroll leaves such an
+//     employee out of a month with nothing payable rather than blocking or paying them below zero.
 //   • staleBasicComponent — WARNING. A leftover BASIC pay item disagrees with the Personnel basic;
 //     pay follows Personnel, the item should be cleaned up.
 //   • missingStatutory — WARNING. No employee_statutory_my row: EPF/SOCSO/PCB fall back to defaults.
@@ -9209,6 +9473,16 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
 
 export type PreProcessCheckRow = { employmentId: string; name: string; employeeCode: string | null };
 
+/**
+ * r369 (item eb949191) — one employee whose salary record names no monthly basic amount.
+ *
+ * Carries the REMARK off that record, because the remark is the whole point: a zero basic with no remark
+ * cannot be saved any more (core/comp.ts `SalaryRemarkRequiredError`), so every row here has a sentence
+ * from whoever set the salary up saying why — "paid by quarterly director's fees" — and the readiness panel
+ * prints it beside the name. `null` on a legacy row written before that refusal existed.
+ */
+export type NothingPayableRow = PreProcessCheckRow & { remarks: string | null };
+
 export type PreProcessAdvisory = {
   missingCompensation: PreProcessCheckRow[];
   // BLOCKER (ADR-0078 / 642ecc55). The employee's open compensation row carries pay_mode='custom_period',
@@ -9218,12 +9492,39 @@ export type PreProcessAdvisory = {
   // is all-or-nothing, so an engine throw would take down the whole company's run. OPTIONAL so pre-0290
   // literals stay valid; absent ⇒ no such employees.
   unpayablePayMode?: PreProcessCheckRow[];
-  // BLOCKER (feedback 64fb5e48, replaces the R37 62e370b0 missingBasicComponent check). The employee's
-  // authoritative Personnel Basic Salary record (the OPEN compensation row) would pay nothing: monthly /
-  // custom modes with basic_salary <= 0, or daily/hourly modes without a positive rate_amount.
-  // assertRateForMode (core/comp.ts) only guards NEW writes, so this also catches legacy rows. OPTIONAL so
-  // pre-existing advisory literals stay valid; absent ⇒ no such employees.
+  // BLOCKER (feedback 64fb5e48, replaces the R37 62e370b0 missingBasicComponent check; NARROWED by r369).
+  // The employee is paid DAILY or HOURLY and their Personnel Basic Salary record carries no positive
+  // rate_amount. Pay is rate × time, so there is nothing else that could ever pay them and the days would
+  // come out as nothing — this one still fails the run closed. assertRateForMode (core/comp.ts) only guards
+  // NEW writes, so this also catches legacy rows.
+  //
+  // r369 REMOVED THE MONTHLY LEG (item eb949191). `basic_salary <= 0` on a monthly employee used to land
+  // here and stop the whole company's run for one record; the reporter rejected that, because a Director
+  // paid fees quarterly has no monthly basic. That population is `nothingPayable` below and payroll now
+  // skips them in a month with nothing payable. THE IDENTIFIER IS DELIBERATELY UNCHANGED: three source
+  // files' blocker-count expressions are extracted BY NAME and evaluated as a bitmask by
+  // test/4ca06dea-process-blocker-parity.test.ts, so a rename churns that guard to say the same four terms.
+  // The message the operator reads (payroll.batch.preChecks.zeroBasic) was reworded instead.
+  //
+  // OPTIONAL so pre-existing advisory literals stay valid; absent ⇒ no such employees.
   zeroBasic?: PreProcessCheckRow[];
+  // NOTICE — NEITHER A BLOCKER NOR A WARNING (r369, item eb949191). The salary record names no monthly
+  // basic amount, which is a deliberate, supported arrangement and not a fault: payroll will leave this
+  // employee out of any period where nothing else is payable to them, and pay them normally in a period
+  // where something is (a quarterly director's fee keyed as a one-off transaction).
+  //
+  // ⚠️ IT MUST NOT JOIN THE BLOCKER SUM OR THE WARNING COUNT on any of the four surfaces that count them.
+  // The readiness badge is otherwise binary blocker/warning, and an operator reading a red or amber badge
+  // over a deliberate skip reads it as a fault — which is how they end up typing a salary that is not true.
+  // It renders as its own neutral group instead.
+  //
+  // FORWARD-LOOKING, AND HONEST ABOUT IT: the authoritative decision is `generatePayslips`', taken against
+  // the money doors at generate time. This list says only what is true of every member — this record names
+  // no monthly basic — and the batch screen narrows it against the "what will this run pay" card two panels
+  // up (`narrowToNothingPayable`, core/payroll-view.ts) so the notice and the card cannot contradict.
+  //
+  // OPTIONAL so pre-existing advisory literals stay valid; absent ⇒ no such employees.
+  nothingPayable?: NothingPayableRow[];
   // WARNING (feedback 64fb5e48) — typed path only: a period-active BASIC employment_pay_component exists
   // whose amount disagrees with the Personnel Basic Salary (compensation.basic_salary). The engine now
   // ALWAYS pays basic from the Personnel record (the component never supplies the amount), so this is
@@ -9295,6 +9596,11 @@ async function preProcessChecksTx(
       compValidFrom: compensation.validFrom,
       compBasic: compensation.basicSalary,
       compRate: compensation.rateAmount,
+      // r369 — the legacy `monthly_allowance` leg and the REMARK. The allowance decides whether a record
+      // with no basic still pays something (it joins the wage line on the typed-components-OFF path only,
+      // exactly as `earningsOf` reads it); the remark is the sentence the readiness panel prints.
+      compAllowance: compensation.monthlyAllowance,
+      compRemarks: compensation.remarks,
       // 297ae65a — the record's salary currency, for the non-MYR / mixed-currency warning below.
       compCurrency: compensation.currency,
       // Item 1bb09a73 — the PERSON, because `employee_tp3` is keyed on it (the statutory row is too:
@@ -9440,7 +9746,7 @@ async function preProcessChecksTx(
       .limit(1);
     hrdfUnregistered = (coStat?.hrdfStatus ?? 'not_registered') === 'not_registered';
   }
-  const out: PreProcessAdvisory = { missingCompensation: [], unpayablePayMode: [], zeroBasic: [], staleBasicComponent: [], missingStatutory: [], missingBank: [], currencyMismatch: [], hrdfSubjectUnregistered: [], tp3YearMismatch: [] };
+  const out: PreProcessAdvisory = { missingCompensation: [], unpayablePayMode: [], zeroBasic: [], nothingPayable: [], staleBasicComponent: [], missingStatutory: [], missingBank: [], currencyMismatch: [], hrdfSubjectUnregistered: [], tp3YearMismatch: [] };
   for (const r of rows) {
     const row: PreProcessCheckRow = { employmentId: r.employmentId, name: r.name, employeeCode: r.employeeCode };
     // Feedback 64fb5e48 — the OPEN row must exist (the generation employee query inner-joins it, so a
@@ -9451,15 +9757,25 @@ async function preProcessChecksTx(
     // the zero-amount gap so one row lands in exactly one blocker list (the mode gap subsumes it —
     // there is nothing to compute regardless of amounts).
     else if (r.compPayMode === 'custom_period') out.unpayablePayMode!.push(row);
-    // Feedback 64fb5e48 — zeroBasic: the Personnel record would pay nothing. Daily/hourly modes pay
-    // rate × time so the RATE must be positive (basic_salary keeps its monthly-equivalent role for
-    // statutory reads); every other mode requires basic_salary > 0. assertRateForMode only guards new
-    // writes — this covers legacy rows too.
+    // Feedback 64fb5e48 / r369 — WHICH AMOUNT THE RECORD FAILS TO NAME, and the two legs now part company.
+    // `unpayableSalaryLeg` (core/comp.ts) is the SAME predicate the write path enforces, so what blocks a
+    // run and what a salary form refuses can never drift. Daily/hourly with no positive rate stays a
+    // BLOCKER; no monthly basic is a NOTICE that payroll will skip them in a period with nothing payable.
+    // assertRateForMode only guards new writes — this covers legacy rows too.
+    else if (unpayableSalaryLeg(r.compPayMode as PayMode, r.compBasic, r.compRate) === 'missing_rate') {
+      out.zeroBasic!.push(row);
+    }
+    // THE LEGACY ALLOWANCE LEG, mirrored from `earningsOf` rather than approximated. A zero basic with a
+    // positive `monthly_allowance` DOES pay — but only on the typed-components-OFF path, where the allowance
+    // joins the wage line; with typed components on, allowances are pay items and the column is ignored
+    // entirely. Getting this wrong in the other direction would have named someone as "will be skipped" on a
+    // run that pays them their standing allowance, and then skipped them out of it.
     else if (
-      r.compPayMode === 'daily' || r.compPayMode === 'hourly'
-        ? !(Number(r.compRate ?? 0) > 0)
-        : !(Number(r.compBasic ?? 0) > 0)
-    ) out.zeroBasic!.push(row);
+      unpayableSalaryLeg(r.compPayMode as PayMode, r.compBasic, r.compRate) === 'no_monthly_basic' &&
+      !(!typedComponents && Number(r.compAllowance ?? 0) > 0)
+    ) {
+      out.nothingPayable!.push({ ...row, remarks: r.compRemarks ?? null });
+    }
     // Feedback 64fb5e48 — WARNING (never blocks): a period-active BASIC component whose amount disagrees
     // with the authoritative Personnel basic. The engine pays the Personnel record regardless; this only
     // flags the stale row for cleanup. Independent of the statutory warnings below (a row can carry both).
@@ -9619,6 +9935,18 @@ export function listPayslipLessEligible(
     push(blockerBy, flagsOf(checks.tp3YearMismatch, 'tp3YearMismatch'));
     push(warningBy, flagsOf(checks.missingStatutory, 'missingStatutory'));
     push(warningBy, flagsOf(checks.missingBank, 'missingBank'));
+    // r369 (item eb949191) — A DELIBERATE SKIP MUST NOT READ AS "YOU FORGOT THIS PERSON".
+    //
+    // Everyone a regular run skipped lands on this list automatically: they are period-eligible and have no
+    // payslip on the processed run. Before this round they carried the `zeroBasic` BLOCKER label, which at
+    // least said something; after the split they would carry NOTHING AT ALL, and a row with no label renders
+    // as "Eligible for this month and has no payslip on this run" — which reads as an oversight and invites
+    // the operator to add somebody back into a month where the run correctly paid them nothing.
+    //
+    // A NON-BLOCKER, and this is the deliberate half: it must NEVER join the `blockerBy` pushes above,
+    // because the row would then be un-tickable and the plan promises the operator can still add them by
+    // hand if they disagree with the decision for a given month. It is a labelled, addable row.
+    push(warningBy, flagsOf(checks.nothingPayable, 'nothingPayable'));
 
     const { employmentIds: scopeIds } = await resolveBatchScopeFilter(tx, (batch.scope ?? null) as BatchScope | null);
     const inScope = scopeIds ? new Set(scopeIds) : null;
@@ -9654,6 +9982,10 @@ export function preProcessAdvisoryForSelection(
       missingCompensation: [],
       unpayablePayMode: [],
       zeroBasic: [],
+      // r369 — the NOTICE class rides the same parity rule the two notes below record: a list declared on
+      // the type and rendered by the wizard but never merged here simply never reaches the Validation step,
+      // so the wizard would show all-clear for a run that is about to leave somebody out.
+      nothingPayable: [],
       staleBasicComponent: [],
       missingStatutory: [],
       missingBank: [],
@@ -9673,6 +10005,7 @@ export function preProcessAdvisoryForSelection(
       merged.missingCompensation.push(...a.missingCompensation);
       merged.unpayablePayMode!.push(...(a.unpayablePayMode ?? []));
       merged.zeroBasic!.push(...(a.zeroBasic ?? []));
+      merged.nothingPayable!.push(...(a.nothingPayable ?? []));
       merged.staleBasicComponent!.push(...(a.staleBasicComponent ?? []));
       merged.missingStatutory.push(...a.missingStatutory);
       merged.missingBank.push(...a.missingBank);

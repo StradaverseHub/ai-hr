@@ -13,13 +13,18 @@ import type { IntendedRunType } from '@/core/payroll-run-group';
  * selection via the `validatePayrollSelection` server action, which reuses the exact same core check as the
  * batch-page card — so what you see here is what the run will enforce.
  *
- * Blocker rows (no salary record covering the period / zero basic-or-rate — feedback 64fb5e48: the
- * Personnel Basic Salary record is authoritative, a BASIC pay item is never required / an uncalculable
- * custom_period pay structure — ADR-0078, item 4ca06dea / a Form TP3 this run would seed as zero) turn the panel RED
- * and the parent disables Process. Warning rows (missing statutory profile / incomplete bank / stale BASIC
- * pay item) turn it AMBER — Process is still allowed. All-clear is GREEN. Status is reported up via
- * `onStatusChange` so the wizard footer can gate the Process button (and keep it disabled while the check
- * is still loading).
+ * Blocker rows (no salary record covering the period / a DAILY OR HOURLY employee with no pay rate —
+ * feedback 64fb5e48: the Personnel Basic Salary record is authoritative, a BASIC pay item is never required
+ * / an uncalculable custom_period pay structure — ADR-0078, item 4ca06dea / a Form TP3 this run would seed
+ * as zero) turn the panel RED and the parent disables Process. Warning rows (missing statutory profile /
+ * incomplete bank / stale BASIC pay item) turn it AMBER — Process is still allowed. All-clear is GREEN.
+ * Status is reported up via `onStatusChange` so the wizard footer can gate the Process button (and keep it
+ * disabled while the check is still loading).
+ *
+ * r369 (item eb949191) ADDS A THIRD, NEUTRAL STATE. "Zero basic" used to be a blocker for EVERY pay mode,
+ * which meant one Director with no monthly basic stopped the whole company's run. It is now the rate leg
+ * only; an employee with no monthly basic is a NOTICE ("will be skipped"), rendered in both branches below
+ * and counted into neither `blockers` nor `warnings`. See `nothingPayableBanner`.
  *
  * Type-only import from '@/core/payroll' is erased at compile time (no server code pulled into the client
  * bundle), the same pattern the sibling steps use for their row types.
@@ -172,6 +177,45 @@ export function StepValidation({
   // d0d2c9d1 — the money this narrowed run is about to walk past. Rendered in BOTH branches below (a
   // run can be otherwise all-clear and still be leaving RM7,500 of somebody's bonus behind), and never
   // counted into `warnings`, which drives the blocker/warning arithmetic and the Process gate.
+  // r369 (item eb949191) — WHO THIS RUN WILL LEAVE OUT, NAMED BEFORE THE OPERATOR PRESSES PROCESS.
+  //
+  // Rendered in BOTH branches below and counted into NEITHER `blockers` nor `warnings`, exactly like
+  // `missingCycleBanner` and `unattachedBanner` above it and for the same reason: a run can be entirely
+  // ready and still be about to leave somebody out on purpose. Folding it into either count would disable
+  // Process (blockers gate the button) or paint a deliberate arrangement amber; both tell the operator to
+  // "fix" a salary record that is correct. It is also what keeps `hasBlockers` and `blockers` the same four
+  // terms the server adds up — see their own notes and test/4ca06dea-process-blocker-parity.test.ts.
+  //
+  // UNNARROWED HERE, DELIBERATELY, AND THE COPY SAYS SO. The batch screen narrows the same list against its
+  // "what will this run pay" card; this step runs BEFORE any batch exists, so four of the nine money doors
+  // have no rows to read yet and no honest narrowing is possible. The sentence is therefore the
+  // forward-looking one ("nothing is payable to them for this period"), and the authoritative decision
+  // remains the run's own.
+  const nothingPayable = advisory.nothingPayable ?? [];
+  const nothingPayableBanner =
+    nothingPayable.length > 0 ? (
+      <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+        <p className="font-medium text-foreground">{t('validationNothingPayableTitle', { n: nothingPayable.length })}</p>
+        <p className="mt-0.5 text-xs">{t('validationNothingPayableHint')}</p>
+        <ul className="mt-2 space-y-1">
+          {nothingPayable.map((r) => (
+            <li key={r.employmentId} className="flex items-center gap-2 text-xs">
+              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                {t('validationNoticeBadge')}
+              </span>
+              {r.employeeCode && (
+                <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                  {r.employeeCode}
+                </span>
+              )}
+              <span className="font-medium text-foreground">{r.name}</span>
+              <span>· {t('validationCheck.nothingPayable')}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    ) : null;
+
   const unattachedBanner =
     unattached.length > 0 ? (
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
@@ -192,6 +236,7 @@ export function StepValidation({
       <div className="space-y-4">
         {missingCycleBanner}
         {unattachedBanner}
+        {nothingPayableBanner}
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-4 dark:border-emerald-500/30 dark:bg-emerald-500/10">
           <p className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
             <span aria-hidden>✓</span> {t('validationAllClear')}
@@ -220,6 +265,7 @@ export function StepValidation({
     <div className="space-y-4">
       {missingCycleBanner}
       {unattachedBanner}
+      {nothingPayableBanner}
       {blockers > 0 ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
           <p className="font-medium">✗ {t('validationBlockerTitle', { n: blockers })}</p>

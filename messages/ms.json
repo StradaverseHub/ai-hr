@@ -4804,14 +4804,15 @@
       "preChecksWarningBadge": "Amaran",
       "preChecks": {
         "missingCompensation": "Tiada rekod gaji semasa",
-        "zeroBasic": "Gaji asas atau kadar gaji adalah sifar",
+        "zeroBasic": "Dibayar harian atau sejam tetapi tiada kadar dalam rekod — kadar × hari tidak membayar apa-apa",
         "staleBasicComponent": "Item gaji BASIC lapuk — rekod gaji Kakitangan digunakan",
         "missingStatutory": "Tiada profil statutori (KWSP/PERKESO/PCB)",
         "missingBank": "Butiran bank tidak lengkap",
         "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan",
         "hrdfSubjectUnregistered": "Tertakluk kepada HRDF, tetapi syarikat tidak berdaftar — tiada levi dikenakan",
         "unpayablePayMode": "Struktur gaji yang tidak boleh dikira — Mod Gaji Tempoh Tersuai tiada pengiraan payroll",
-        "tp3YearMismatch": "Borang TP3 tahun ini belum sampai kepada angka payroll — pekerjaan terdahulu akan dikira sebagai tiada"
+        "tp3YearMismatch": "Borang TP3 tahun ini belum sampai kepada angka payroll — pekerjaan terdahulu akan dikira sebagai tiada",
+        "nothingPayable": "Tiada gaji asas bulanan — gaji akan mengecualikan mereka pada bulan yang tiada apa-apa untuk dibayar"
       },
       "preChecksOpenProfile": "Buka profil",
       "preChecksBlockedError": "Payroll tidak boleh diproses: {n} pekerja tiada rekod gaji semasa. Selesaikan semakan pra-pemprosesan dahulu.",
@@ -4820,11 +4821,13 @@
       "generatedWithSkipped": "Slip gaji dijana — {n} pekerja dilangkau. Senarai di bawah menamakan mereka dan sebabnya.",
       "skipped": {
         "title": "Pekerja yang dilangkau oleh proses ini",
-        "note": "Ini ialah proses gaji tambahan, jadi pekerja yang tiada apa-apa untuk dibayar tidak diproses. Mereka tiada slip gaji dalam proses ini dan tiada transaksi mereka digunakan.",
+        "note": "Pekerja yang tiada apa-apa untuk dibayar oleh proses ini tidak diproses. Mereka tiada slip gaji dalam proses ini dan tiada transaksi mereka digunakan.",
         "colReason": "Sebab",
         "reason": {
           "NO_TRANSACTION_FOR_CYCLE": "Tiada catatan transaksi untuk kitaran gaji ini",
-          "NO_ADDITIONAL_PAY_THIS_RUN": "Tiada apa-apa untuk jenis proses ini — gaji bulanan tetap mereka dibayar oleh proses gaji biasa"
+          "NO_ADDITIONAL_PAY_THIS_RUN": "Tiada apa-apa untuk jenis proses ini — gaji bulanan tetap mereka dibayar oleh proses gaji biasa",
+          "NOTHING_PAYABLE_THIS_PERIOD": "Tiada gaji asas dan tiada apa-apa untuk dibayar tempoh ini — tiada bayaran dibuat, jadi tiada apa-apa dilaporkan",
+          "DEDUCTION_ONLY_THIS_PERIOD": "Hanya potongan yang menunggu dan tiada gaji untuk menolaknya — menolak daripada sifar akan menghutangi pekerja"
         }
       },
       "preChecksConfirmRequired": "Sila sahkan amaran pra-pemprosesan sebelum menjana slip gaji.",
@@ -4961,7 +4964,13 @@
       "removeHistoryNote": "Setiap pembuangan pada proses ini — siapa, bila, mengapa, dan angka yang dibuang. Ini satu-satunya salinan angka tersebut yang tinggal.",
       "reprocessSearchPlaceholder": "Cari mengikut ID atau nama pekerja",
       "reprocessNoMatches": "Tiada pekerja sepadan dengan carian anda.",
-      "reprocessHistoryToggle": "Lihat sejarah pengiraan semula"
+      "reprocessHistoryToggle": "Lihat sejarah pengiraan semula",
+      "preChecksNoticeBadge": "Akan dikecualikan",
+      "preChecksNothingPayableHint": "{n} pekerja tiada gaji asas bulanan. Ini bukan kesilapan dan tidak menghalang proses gaji: mereka dikecualikan daripada bulan yang tiada apa-apa untuk dibayar, dinamakan semula pada keputusan, dan dibayar seperti biasa pada bulan yang ada transaksi dimasukkan untuk mereka.",
+      "preChecksNothingPayableRemark": "Sebab pada rekod gaji: {remarks}",
+      "preChecksNothingPayableNoRemark": "Tiada sebab direkodkan pada rekod gaji.",
+      "reprocessGapNothingPayable": "tiada gaji asas bulanan",
+      "reprocessReasonNothingPayable": "Sengaja dikecualikan daripada proses ini — tiada gaji asas bulanan dan tiada apa-apa untuk dibayar bulan ini. Tandakan mereka hanya jika sesuatu telah dimasukkan untuk mereka selepas itu."
     },
     "transactions": {
       "title": "Kemasukan Transaksi",
@@ -5895,13 +5904,15 @@
       "colFailureReason": "Sebab Kegagalan",
       "employeeFailed": "Gagal",
       "skippedEmployeesTitle": "Pekerja yang dilangkau oleh proses ini",
-      "skippedEmployeesNote": "Ini ialah proses gaji tambahan, jadi pekerja yang tiada apa-apa untuk dibayar dalam kitaran ini tidak diproses. Mereka tiada slip gaji dan tiada rekod gaji untuk proses ini, dan tiada transaksi mereka digunakan.",
+      "skippedEmployeesNote": "Pekerja yang tiada apa-apa untuk dibayar dalam kitaran ini tidak diproses. Mereka tiada slip gaji dan tiada rekod gaji untuk proses ini, dan tiada transaksi mereka digunakan.",
       "skippedNamesUnavailable": "{n} pekerja telah dilangkau. Senarai nama tidak tersedia untuk akaun anda.",
       "colSkipReason": "Sebab",
       "employeeSkipped": "Dilangkau",
       "skipReason": {
         "NO_TRANSACTION_FOR_CYCLE": "Tiada catatan transaksi untuk kitaran gaji ini",
-        "NO_ADDITIONAL_PAY_THIS_RUN": "Tiada apa-apa untuk jenis proses ini — gaji bulanan tetap mereka dibayar oleh proses gaji biasa"
+        "NO_ADDITIONAL_PAY_THIS_RUN": "Tiada apa-apa untuk jenis proses ini — gaji bulanan tetap mereka dibayar oleh proses gaji biasa",
+        "NOTHING_PAYABLE_THIS_PERIOD": "Tiada gaji asas dan tiada apa-apa untuk dibayar tempoh ini — tiada bayaran dibuat, jadi tiada apa-apa dilaporkan",
+        "DEDUCTION_ONLY_THIS_PERIOD": "Hanya potongan yang menunggu dan tiada gaji untuk menolaknya — menolak daripada sifar akan menghutangi pekerja"
       },
       "overall": {
         "succeeded": "Berjaya",
@@ -5932,14 +5943,15 @@
       "validationWarningBadge": "Amaran",
       "validationCheck": {
         "missingCompensation": "Tiada rekod gaji semasa",
-        "zeroBasic": "Gaji asas atau kadar gaji adalah sifar",
+        "zeroBasic": "Dibayar harian atau sejam tetapi tiada kadar dalam rekod — kadar × hari tidak membayar apa-apa",
         "staleBasicComponent": "Item gaji BASIC lapuk — rekod gaji Kakitangan digunakan",
         "missingStatutory": "Tiada profil berkanun (EPF/SOCSO/PCB)",
         "missingBank": "Butiran bank tidak lengkap",
         "currencyMismatch": "Mata wang gaji bukan MYR — jumlah diproses seperti yang dimasukkan",
         "hrdfSubjectUnregistered": "Tertakluk kepada HRDF, tetapi syarikat tidak berdaftar — tiada levi dikenakan",
         "unpayablePayMode": "Struktur gaji yang tidak boleh dikira — Mod Gaji Tempoh Tersuai tiada pengiraan payroll",
-        "tp3YearMismatch": "Borang TP3 tahun ini belum sampai kepada angka payroll — pekerjaan terdahulu akan dikira sebagai tiada"
+        "tp3YearMismatch": "Borang TP3 tahun ini belum sampai kepada angka payroll — pekerjaan terdahulu akan dikira sebagai tiada",
+        "nothingPayable": "Tiada gaji asas bulanan — gaji akan mengecualikan mereka pada bulan yang tiada apa-apa untuk dibayar"
       },
       "unattachedScopeTitle": "{n} pekerja mempunyai transaksi yang tidak akan dikutip oleh proses ini",
       "unattachedScopeWarning": "Sesuatu proses hanya mengutip pekerja yang termasuk di dalamnya, dan hanya transaksi yang ditanda untuk kitaran gajinya sendiri (atau yang tidak ditanda apa-apa). Selain itu kekal tertunggak sehingga satu proses yang meliputinya dikira. Anda boleh teruskan — ini amaran, bukan sekatan.",
@@ -5949,7 +5961,10 @@
       "payrollPolicyColumn": "Dasar Gaji",
       "payrollPolicyNone": "Tiada dasar gaji ditetapkan",
       "adjustmentsTitle": "Pelarasan sebelum pemprosesan (pilihan)",
-      "adjustmentsHint": "Kerja lebih masa, bonus, pelepasan cukai dan zakat untuk larian ini, serta jambatan yang membawa masuk tuntutan diluluskan, kerja lebih masa kehadiran, ansuran pinjaman, perbezaan syif dan elaun. Ini dikenakan pada pilihan pekerja yang TELAH DISIMPAN untuk larian ini, dan menggunakannya akan memuat semula aliran ini dari Langkah 1 — jadi sebarang perubahan pada Langkah 2 yang belum diproses akan hilang."
+      "adjustmentsHint": "Kerja lebih masa, bonus, pelepasan cukai dan zakat untuk larian ini, serta jambatan yang membawa masuk tuntutan diluluskan, kerja lebih masa kehadiran, ansuran pinjaman, perbezaan syif dan elaun. Ini dikenakan pada pilihan pekerja yang TELAH DISIMPAN untuk larian ini, dan menggunakannya akan memuat semula aliran ini dari Langkah 1 — jadi sebarang perubahan pada Langkah 2 yang belum diproses akan hilang.",
+      "validationNoticeBadge": "Akan dikecualikan",
+      "validationNothingPayableTitle": "{n} pekerja akan dikecualikan daripada proses ini",
+      "validationNothingPayableHint": "Mereka tiada gaji asas bulanan dan tiada apa-apa untuk dibayar bagi tempoh ini. Proses gaji tidak dihalang: mereka dinamakan semula pada keputusan, dan dibayar seperti biasa pada tempoh yang ada transaksi dimasukkan untuk mereka."
     },
     "guide": {
       "title": "Panduan Aliran Kerja Gaji",

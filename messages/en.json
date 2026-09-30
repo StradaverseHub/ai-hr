@@ -4253,14 +4253,15 @@
       "preChecksWarningBadge": "Warning",
       "preChecks": {
         "missingCompensation": "No current salary record",
-        "zeroBasic": "Basic salary or pay rate is zero",
+        "zeroBasic": "Paid daily or hourly with no rate on record — rate × days would pay nothing",
         "staleBasicComponent": "Outdated BASIC pay item — the Personnel salary record is used",
         "missingStatutory": "No statutory profile (EPF/SOCSO/PCB)",
         "missingBank": "Bank details incomplete",
         "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered",
         "hrdfSubjectUnregistered": "Subject to HRDF, but the company is not registered — no levy is charged",
         "unpayablePayMode": "A pay structure this system cannot calculate — the Custom Period pay mode has no payroll calculation",
-        "tp3YearMismatch": "Form TP3 for this year has not reached the payroll figures — previous employment would be counted as nothing"
+        "tp3YearMismatch": "Form TP3 for this year has not reached the payroll figures — previous employment would be counted as nothing",
+        "nothingPayable": "No monthly basic salary — payroll leaves them out of a month with nothing else to pay them"
       },
       "preChecksOpenProfile": "Open profile",
       "preChecksBlockedError": "Cannot process payroll: {n} employee(s) have no current salary record. Fix the pre-processing checks first.",
@@ -4269,11 +4270,13 @@
       "generatedWithSkipped": "Payslips generated — {n} employee(s) skipped. The list below names them and says why.",
       "skipped": {
         "title": "Employees skipped by this run",
-        "note": "This is an additional run, so employees it had nothing to pay were not processed. They have no payslip on this run and none of their transactions were used up.",
+        "note": "Employees this run had nothing to pay were not processed. They have no payslip on this run and none of their transactions were used up.",
         "colReason": "Reason",
         "reason": {
           "NO_TRANSACTION_FOR_CYCLE": "No transaction entry for this payroll cycle",
-          "NO_ADDITIONAL_PAY_THIS_RUN": "Nothing for this run type — their standing monthly pay is paid by the regular run"
+          "NO_ADDITIONAL_PAY_THIS_RUN": "Nothing for this run type — their standing monthly pay is paid by the regular run",
+          "NOTHING_PAYABLE_THIS_PERIOD": "No basic salary and nothing payable this period — nothing was paid, so nothing was filed",
+          "DEDUCTION_ONLY_THIS_PERIOD": "Only a deduction was waiting and no pay to take it from — deducting from nothing would owe them money"
         }
       },
       "preChecksConfirmRequired": "Please confirm the pre-processing warnings before generating payslips.",
@@ -4410,7 +4413,13 @@
       "removeHistoryNote": "Every removal on this run — who did it, when, why, and the figures that were removed. This is the only remaining copy of those figures.",
       "reprocessSearchPlaceholder": "Search by employee ID or name",
       "reprocessNoMatches": "No employee matches your search.",
-      "reprocessHistoryToggle": "View recalculation history"
+      "reprocessHistoryToggle": "View recalculation history",
+      "preChecksNoticeBadge": "Will be skipped",
+      "preChecksNothingPayableHint": "{n} employee(s) have no monthly basic salary. This is not a fault and does not stop the run: payroll leaves them out of any month where nothing is payable to them, names them again on the result, and pays them normally in a month where a transaction is keyed for them.",
+      "preChecksNothingPayableRemark": "Reason on the salary record: {remarks}",
+      "preChecksNothingPayableNoRemark": "No reason was recorded on the salary record.",
+      "reprocessGapNothingPayable": "no monthly basic salary",
+      "reprocessReasonNothingPayable": "Deliberately left out of this run — no monthly basic salary and nothing was payable this month. Tick them only if something has been keyed for them since."
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -5895,13 +5904,15 @@
       "colFailureReason": "Failure Reason",
       "employeeFailed": "Failed",
       "skippedEmployeesTitle": "Employees skipped by this run",
-      "skippedEmployeesNote": "This is an additional run, so employees with nothing to be paid in this cycle were not processed. They have no payslip and no payroll record for this run, and none of their transactions were used up.",
+      "skippedEmployeesNote": "Employees with nothing to be paid in this cycle were not processed. They have no payslip and no payroll record for this run, and none of their transactions were used up.",
       "skippedNamesUnavailable": "{n} employee(s) were skipped. The list of names is not available to your account.",
       "colSkipReason": "Reason",
       "employeeSkipped": "Skipped",
       "skipReason": {
         "NO_TRANSACTION_FOR_CYCLE": "No transaction entry for this payroll cycle",
-        "NO_ADDITIONAL_PAY_THIS_RUN": "Nothing for this run type — their standing monthly pay is paid by the regular run"
+        "NO_ADDITIONAL_PAY_THIS_RUN": "Nothing for this run type — their standing monthly pay is paid by the regular run",
+        "NOTHING_PAYABLE_THIS_PERIOD": "No basic salary and nothing payable this period — nothing was paid, so nothing was filed",
+        "DEDUCTION_ONLY_THIS_PERIOD": "Only a deduction was waiting and no pay to take it from — deducting from nothing would owe them money"
       },
       "overall": {
         "succeeded": "Succeeded",
@@ -5932,14 +5943,15 @@
       "validationWarningBadge": "Warning",
       "validationCheck": {
         "missingCompensation": "No current salary record",
-        "zeroBasic": "Basic salary or pay rate is zero",
+        "zeroBasic": "Paid daily or hourly with no rate on record — rate × days would pay nothing",
         "staleBasicComponent": "Outdated BASIC pay item — the Personnel salary record is used",
         "missingStatutory": "No statutory profile (EPF/SOCSO/PCB)",
         "missingBank": "Bank details incomplete",
         "currencyMismatch": "Salary currency is not MYR — the amount is processed as entered",
         "hrdfSubjectUnregistered": "Subject to HRDF, but the company is not registered — no levy is charged",
         "unpayablePayMode": "A pay structure this system cannot calculate — the Custom Period pay mode has no payroll calculation",
-        "tp3YearMismatch": "Form TP3 for this year has not reached the payroll figures — previous employment would be counted as nothing"
+        "tp3YearMismatch": "Form TP3 for this year has not reached the payroll figures — previous employment would be counted as nothing",
+        "nothingPayable": "No monthly basic salary — payroll leaves them out of a month with nothing else to pay them"
       },
       "unattachedScopeTitle": "{n} employee(s) have transactions this run will not collect",
       "unattachedScopeWarning": "A run collects only the employees it includes, and only the transactions marked for its own pay cycle (or marked for none). Anything else stays outstanding until a run that covers it is calculated. You can continue — this is a warning, not a block.",
@@ -5949,7 +5961,10 @@
       "payrollPolicyColumn": "Payroll Policy",
       "payrollPolicyNone": "No payroll policy assigned",
       "adjustmentsTitle": "Adjustments before processing (optional)",
-      "adjustmentsHint": "Overtime, bonus, tax relief and zakat for this run, and the bridges that bring in approved claims, attendance overtime, loan instalments, shift differential and allowances. These apply to the run’s SAVED employee selection, and applying one reloads this flow from Step 1 — so any change you have made on Step 2 but not yet processed is lost."
+      "adjustmentsHint": "Overtime, bonus, tax relief and zakat for this run, and the bridges that bring in approved claims, attendance overtime, loan instalments, shift differential and allowances. These apply to the run’s SAVED employee selection, and applying one reloads this flow from Step 1 — so any change you have made on Step 2 but not yet processed is lost.",
+      "validationNoticeBadge": "Will be skipped",
+      "validationNothingPayableTitle": "{n} employee(s) will be left out of this run",
+      "validationNothingPayableHint": "They have no monthly basic salary and nothing is payable to them for this period. Processing is not blocked: they are named again on the result, and they are paid normally in a period where a transaction is keyed for them."
     },
     "guide": {
       "title": "Payroll Workflow Guide",
