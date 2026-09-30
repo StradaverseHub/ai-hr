@@ -182,6 +182,14 @@ export function DownloadDialog({
               // r372 (item f022dd70) — the multi-select. Mounted only because the FORMAT declared the
               // kind; a `'month'` format renders no such control at all, which is the assertion that
               // keeps this driven by the registry rather than by a branch on the shelf it sits on.
+              //
+              // ⚠️ `&& runsEndpoint` DEGRADES SILENTLY, AND THAT IS THE RIGHT DIRECTION HERE — the exact
+              // opposite of the `'month-cycle'` branch below, which REFUSES when its list is missing. A
+              // `'month-runs'` format mounted without the endpoint renders no control and submits no run
+              // parameter, which is the whole month: the file this shelf has always produced, and the one
+              // the operator pressing Download is asking for. Below, the same omission would pay a whole
+              // month from a control that looked like it had picked one run. The asymmetry is the failure
+              // mode, not the code.
               <Field label={t('payCycle')}>
                 <RunPicker companyId={companyId} periodKey={`${year}-${month}`} endpoint={runsEndpoint} />
               </Field>
