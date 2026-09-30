@@ -1,3 +1,126 @@
+## r372 — 2026-10-01 · main@ad3cac21 · no migration
+
+Four board items, built in parallel in four worktrees and integrated in one pass, plus two fixes
+found BY the integration (below). 60 files, +7148/−3029, two new suites, **no migration**. Gate **GREEN across all 16 chunks, 1087 of 1087 files counted** — on the THIRD attempt; the two red runs are recorded below because both were real.
+
+**Items closed:** `15e5bd93` statutory setup screen · `db1e7b9d` PCB/MTD page sequence and slip layout ·
+`450f443f` C.P.8A (EA) employer address box · `d4f6848f` the wage column on a multi-run month.
+
+### What each one did
+
+**`15e5bd93` — one statutory screen, every body open, one Save.** Replaces the tab/expand interface.
+Deletes `app/admin/organization/[companyId]/statutory/[authority]/page.tsx` and
+`components/statutory-body-screen.tsx`; adds `lib/company-statutory-tab-sections.ts` and
+`app/admin/organization/statutory-tab-actions.ts`. 54 new message keys across six locales. Fields,
+business logic and configuration functions unchanged, as the item required.
+
+**`db1e7b9d` — PCB/MTD viewing sequence and slip layout.** `pcbMonth` was stamping `totalMtdYear`
+outside its `Yt > 0` branch, and the §D.2 Step 4 block landed with it. Adds
+`test/r372-pcb-sequence.test.ts` and a committed dev fixture, `scripts/dev-fixture-pcb-detail.ts`.
+`localization/my/payroll.ts` and `formulas.ts` untouched.
+
+**`450f443f` — the EA employer address box.** `lib/ea-pdf.ts` reworked (+259), with two new cases that
+name the failure they prevent: *an address longer than the page can hold stops at the floor instead of
+vanishing*, and *the amended marker is never drawn inside the officer box*. The suite pins
+**invariants** — baselines via `toBeCloseTo`, and relationships such as "the date and the telephone
+number came off the same row" — rather than byte output.
+
+⚠️ **One limit, recorded because the strongest-sounding evidence for this item is not in the repo.**
+The builder reported that the blank C.P.8A served by the route is byte-identical to a harness pin
+(a 64-hex sha) and that a filled EA with a 245-character employer block drew whole-page identically,
+110 runs against 110. **That harness lived in a scratchpad and is not committed**: there is no 64-hex
+pin anywhere in `test/`, and the sha it quoted resolves to nothing in this tree. The claim may well be
+true — it is simply **not reproducible from the repository**, so do not cite it as if it were. What IS
+reproducible is the assertion set above.
+
+**`d4f6848f` — the wage column on a month with more than one payroll run.** Adds
+`localization/my/statutory-month-wage.ts`, `lib/month-name.ts` and `test/statutory-month-wage.test.ts`.
+**The defect was order-dependent**: on identical pay, a bonus-run-first month produced 10,000 and a
+regular-run-first month 9,000. A fix correct "on average" would not have been correct.
+
+### Findings that outlive this round
+
+**A dev fixture that finishes and then never exits is holding a pool it never meant to open.**
+`db/client.ts:265` creates the app singleton **at import time**, and `db/client.ts:163` caches pools by
+connection **string** — `DATABASE_URL` and `MIGRATION_DATABASE_URL` are different strings for the same
+database, so a fixture ends up with two pools. Closing its own leaves Node alive on the other's idle
+handle: **zero active queries, zero CPU, indefinite hold on the dev-DB lock.** One fixture ran 18
+minutes that way and was killed as "hung" when it had in fact finished. The discriminator is a single
+import: `core/payroll.ts` takes only *types* from `db/client` (erased, no pool), `core/comp.ts` takes a
+*value* (pool opens). End a throwaway fixture with an explicit `process.exit(0)`. Add to the bar for
+any fixture: **runs clean twice AND exits without being killed.** macOS has no `timeout`.
+
+**`pnpm db:seed` cannot support a render check on any payroll-derived document.** `db/seed.ts`
+TRUNCATEs `payroll_batch` and `payslip` and inserts **neither** (`select count(*) from payslip` → 0),
+and the demo companies have **no address columns**, so an EA employer block off a bare seed is ~12
+characters and exercises the *unchanged* path. Such a check looks green and tests nothing. Drive the
+kernel instead. This narrows the standing instruction that the seed needs no override — true for the
+seed, false for anything payroll-derived.
+
+**The scratchpad and the dev port are shared, and that can make one agent report another's evidence as
+its own.** Two agents both chose `scratchpad/render/` and port 3111. One's cleanup deleted the other's
+served PDFs mid-round. It was caught only because a `dev.log` one had just written contained
+`GET /payroll/pcb-detail?…` requests it never made. **A render check's evidence IS `dev.log`, and
+reading a sibling's is indistinguishable from reading your own.** Round-scope the output directory and
+the port, for the same reason `TEST_DB_NAMESPACE` exists.
+
+**A database test is not automatically the stronger test.** A revert that *failed* the pure test
+*passed* the database test, because Postgres happened to return rows in `run_seq` order. The DB test
+was the more easily fooled one. Pin the invariant, not the order the database happens to give you.
+
+**Absent means leave alone, never `""`.** Saving EPF blanked SOCSO's code by writing a field it had no
+value for.
+
+**"Grep before the gate" has to include positive assertions naming the expression being deleted.**
+A guard asserting `toContain('b.epf')` was invisible to searches for retired prose and retired shapes,
+because it asserted the *presence* of what was being removed rather than the absence of what was added.
+
+**A stale `.next/` reports a deleted route as a source error.** After the statutory route was removed,
+`tsc` failed in `.next/types/validator.ts` naming a `page.js` that no longer exists. `.next/` is
+gitignored; clearing it made `tsc` exit 0. Generated output is not source, and it is evidence about the
+last build, not this tree.
+
+**A committed dev fixture is bound by the pack boundaries — `scripts/` is scanned.** The first
+integration gate went red in two chunks, both on `scripts/dev-fixture-pcb-detail.ts`: ADR-0080 **D9**
+(`test/payroll-pack-drift.test.ts`) for importing `core/payroll`, and **D7/D4**
+(`test/country-pack-drift.test.ts`) for importing `localization/my/statutory`. Both allowlists say they
+only ever shrink, so an entry would have been the failure rather than the fix. The fixture keeps driving
+the kernel — raw INSERTs would fake the very thing a payroll render check exists to exercise — and goes
+through the seams instead: `packs/payroll/service` (which re-exports both modules wholesale) and
+`requirePackFor('MY').statutory.set/.setTax`, which per `localization/country-pack.ts` **are**
+`setStatutoryProfileMY`/`setTaxProfileMY`. The other committed fixture,
+`scripts/dev-fixture-pooled-leave.ts`, trips neither because it writes via drizzle; the scripts that ARE
+allowlisted are production/cron jobs. Checked after the change that the fixture still **runs and exits**
+— `tsc` alone says nothing about a facade's twenty-module `export *` graph at runtime.
+
+**A red gate is not automatically yours, and on 1 October it was the calendar.** The clock rolled over
+mid-round and `test/r302fp-my-leave-fixpass.test.ts` went red at `00:03:18` on a file this round never
+touched. Ownership was settled cheaply: the test and **every** source file it exercises are
+byte-identical to `main`, so it fails on main too. The product is right —
+`offeredLeaveYears` labels a cycle by how far BACK it is (`currentYear − N`), which r302 chose
+deliberately because "the cycle that STARTS in year Y" showed one cycle twice and skipped another. The
+TEST seeded both accruals in **January** and assumed those named years `YEAR-1`/`YEAR-2`; for an October
+type a January row sits in the cycle that opened the *previous* October, and which N that is **flips on
+the anniversary itself**. With the year unoffered, `resolveSelectedLeaveYear`'s
+`years.includes(y) ? y : currentYear` **silently fell back to the current year**, so the second
+selection came back equal to the first. Fixed by seeding inside the cycles the test selects. **When two
+selections come back equal, suspect a silent fallback before suspecting the arithmetic.**
+
+### Outstanding, carried forward
+
+- **Security H1 remains open.** Three CVEs (unauthenticated RCE in Image Optimization, App Router
+  middleware/proxy bypass, Server-Action/rewrites SSRF) are unfixed. r371 reverted to Next 16.2.7
+  because 16.3.x builds on Darwin arm64/node 22 and fails on the server's Linux x86_64/node 20. The
+  real fix is upgrading `fontkit` (direct dep at `^1.9.0`; 2.x is an API change on
+  `lib/payslip-pdf-fonts.ts`), then the framework, verified on a Linux-like environment.
+- **The `socsoWageExtra` refusal is new on a shape that used to produce a file.** Frequency is
+  **unmeasured** — it needs production access, and the auto-mode classifier refuses that.
+- **EA Section E(2) changed on 30 September**, and four of five "EA Form design V1–V5" references the
+  reporter sent are a rival vendor's rendering, not the agency's.
+- **Dark mode is unmeasured** on the new statutory screen; only light was rendered.
+- `~/.aihr-gate-state/devdb-lock.sh` has one holder and **no stale-slot reaping**, so a killed holder
+  blocks everyone. `testlock.sh` reaps; the devdb wrapper does not.
+
 ## r371 — 2026-09-30 · main@96afa7cf · no migration
 
 ⚠️ **CORRECTED BEFORE SHIPPING: this round ships 16.3.3, not 16.3.6.** The heading and the paragraphs below
