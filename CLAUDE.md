@@ -243,6 +243,32 @@ script the round depends on
   (`feedback_attachment`, base64 out, `unzip` a docx, look in `word/media/`) before calling anything
   unobtainable.
 
+- **A guard that greps a SLICE of source must first prove the slice is non-empty.** `slice(-1, n)`
+  returns `""` because a negative start is read as `length + start`, so a renamed marker turns a sweep
+  into a no-op that reports green. `test/r219-ea-cp8a-form.test.ts` asserted **nothing at all** from r346
+  to r373 this way (measured on main: `indexOf` → −1, slice length 0). Assert both markers were found
+  (`>= 0`, not truthy — `-1` is truthy) and that the slice is substantially long. A length assertion is
+  the only thing separating "no violations" from "no text". A distinctiveness check must not BE a length
+  threshold, though — that breaks on CJK.
+- **A red gate is not automatically yours.** Before debugging, check whether the round touched the file
+  (`git diff --name-only main...HEAD -- <file>`) and whether the test and every source file it imports are
+  byte-identical to main. If they are, it fails on main too and the cause is the environment — often the
+  **calendar**. A test that seeds by calendar year against an anniversary cycle is a time bomb; one fired
+  when the clock rolled to 1 October. Read the chunk log's `Start at`.
+- **A dev fixture must END, not just finish.** `db/client.ts` opens the app singleton pool AT IMPORT and
+  caches pools by connection STRING, and `DATABASE_URL`/`MIGRATION_DATABASE_URL` are different strings for
+  the same database — so closing your own pool leaves Node alive on the other's idle handle: zero queries,
+  zero CPU, indefinite hold on the dev-DB lock. **Zero `ai_hr%` connections means FINISHED, not stuck.**
+  End a throwaway fixture with `process.exit(0)`, run it under a watchdog (**macOS has no `timeout`**), and
+  require it to run clean twice AND exit without being killed.
+- **`pnpm db:seed` cannot support a render check on any payroll-derived document**: `db/seed.ts` TRUNCATEs
+  `payroll_batch`/`payslip` and inserts NEITHER (`select count(*) from payslip` → 0), and demo companies
+  have no address columns. Such a check looks green and exercises nothing. Drive the kernel instead.
+- **A committed fixture is bound by the pack boundaries** — both import ratchets scan `scripts/`. Consume
+  payroll via `packs/payroll/service` and jurisdiction via `requirePackFor()`, never `core/payroll` or
+  `localization/my` directly. **Adding yourself to an allowlist is the failure, not the fix**: both lists
+  only ever shrink.
+
 ## 9. The feedback board
 
 Statuses: open → planned → approved → building → done → deployed; plus contested (re-plan from the
@@ -282,6 +308,17 @@ which is a real case and used to be shipped by retyping `rsync --delete` against
   to HEAD, not to your working state. Merging `messages/*.json`: presence is a value, consult the merge
   base for deletions, a naive deep-merge resurrects deleted keys. When two branches touch one function,
   read what each was FOR before resolving.
+- **NEVER put two agents in one worktree**, and give each a **round-scoped scratchpad directory AND a
+  round-scoped dev port** (`scratchpad/r372-render/` + port 3131, not `scratchpad/render/` + 3111) — for
+  the same reason `TEST_DB_NAMESPACE` exists. Two agents both chose `scratchpad/render/`: one's cleanup
+  deleted the other's served PDFs mid-round. Worse, **a render check's evidence IS `dev.log`, and reading
+  a sibling's `dev.log` is indistinguishable from reading your own** — one agent caught it only because a
+  log it had just written held requests it never made. Beware a render script that kills whatever holds
+  its port; on a shared port it kills a sibling's server.
+- A build worktree needs a **REAL `node_modules`** (§2), and **every** `vitest`/`next build`/`tsc` goes
+  through `~/.aihr-gate-state/testlock.sh <slot> -- <cmd>`. The lock does NOT protect a running gate, so
+  while the parent gates, agents are **tsc-and-targeted-suites only**. `devdb-lock.sh` has ONE holder and
+  **does not reap dead holders**: if you are killed holding it, everyone blocks.
 - Worked workflow scripts: `scripts/improve/*.workflow.js`.
 
 ## 11. The code graph
