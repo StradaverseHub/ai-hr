@@ -310,6 +310,23 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
     // NO `ownedSubpaths`: one page, no tabs, no sub-screen — nothing for the row to stay lit on beyond
     // its own href. NOT module-gated: leave is core, like every row here except Leave Credit.
     { href: '/admin/leave-config/history-import', labelKey: 'leaveHistoryImport', icon: FileUp },
+    // db55d08a (r369) — LEAVE B/F DATA IMPORT, DIRECTLY AFTER THE RECORD IMPORTER, and the place is
+    // again the point.
+    //
+    // The reporter asked for a sibling of Leave History Data Import and was right to. Brought Forward
+    // is DERIVED — `sum(leave_ledger.days) where effective_on < cycleStart` — and there is no field
+    // anywhere to type it into, so the only existing route to it is the BALANCE importer, where the
+    // uploader has to know unwritten rules: the line must be dated in the PREVIOUS leave year and must
+    // be an `adjustment`. An `accrual` dated inside the year instead satisfies `yearOpenMarkerCond`
+    // (core/leave.ts) and makes Generate Entitlement grant that employee NOTHING for the whole year.
+    // This row is the tool that knows those rules so nobody else has to; see core/leave-bf-import.ts.
+    //
+    // IMMEDIATELY AFTER the record importer because the order of the menu is the order of the work, and
+    // the reporter's own go-live sequence is: generate the entitlements, load B/F, load the leave taken.
+    //
+    // NO `ownedSubpaths`: one page, no tabs, no sub-screen. NOT module-gated: leave is core, like every
+    // row here except Leave Credit.
+    { href: '/admin/leave-config/bf-import', labelKey: 'leaveBfImport', icon: FileUp },
     // 3fb1a611 (r299) — LEAVE CREDIT, DIRECTLY AFTER LEAVE ADJUSTMENTS, where the approved plan puts it.
     //
     // Every Replacement Leave credit in one list (earned through a request, added by HR, used, reversed,

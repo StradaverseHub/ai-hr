@@ -58,6 +58,14 @@ const BOUNDARIES = [
   // pack-drift-allowlist.json — that list is audited debt and only ever shrinks, and this module's only
   // outside consumer (app/admin/leave-config/) is already always-allowed below.
   'core/leave-history-import',
+  // db55d08a (r369) — LEAVE B/F DATA IMPORT: the OPENING-FIGURE third of a migration, beside the BALANCE
+  // and RECORD halves above. In BOTH lists for the reason every note here gives: as a BOUNDARY it is
+  // guarded like its siblings, so a future file importing it directly is caught; in ALWAYS_ALLOWED it may
+  // import them back, because leave implementation files import each other freely. ALWAYS_ALLOWED alone
+  // would silence the failure and leave the new module unguarded, which is the drift D9 exists to stop.
+  // It is NOT an entry in pack-drift-allowlist.json — that list is audited debt and only ever shrinks,
+  // and this module's only outside consumer (app/admin/leave-config/) is already always-allowed below.
+  'core/leave-bf-import',
   // 56910869 — the Override Leave Application rule vocabulary. In BOTH lists for the reason the 241817ef
   // note above gives: as a BOUNDARY it is guarded like its siblings, so a future file importing it directly
   // is caught; in ALWAYS_ALLOWED it may import them back. Its outside importers (core/admin, core/read,
@@ -113,6 +121,7 @@ const ALWAYS_ALLOWED = [
   'core/leave-formula.ts',
   'core/leave-import.ts',
   'core/leave-history-import.ts', // 3f15ffdb (r362) — see the BOUNDARIES note above
+  'core/leave-bf-import.ts', // db55d08a (r369) — see the BOUNDARIES note above
   'core/leave-override.ts', // 56910869 — see the BOUNDARIES note above
   'core/leave-adjustment.ts', // 491c499f — see the BOUNDARIES note above
   'core/toil.ts',

@@ -665,6 +665,17 @@ export const SCREENS: readonly ScreenEntry[] = [
       // REGISTERING IT IS NOT PAPERWORK: test/function-access.test.ts fails BOTH ways — a guarded
       // page.tsx absent from REGISTERED_ROUTES, and a registered route with no guarded page on disk.
       '/admin/leave-config/history-import',
+      // db55d08a (r369) — LEAVE B/F DATA IMPORT, the opening-figure third of a migration.
+      //
+      // A ROUTE on the EXISTING `leaveConfig` key, NOT a new screenKey, for the reason the note above
+      // gives in full: a key "may key stored role configs" (see this file's head), every other
+      // `/admin/leave-config/` screen is a route on this one, and minting a second key for a sibling
+      // screen would create a permission NOBODY HAS BEEN GRANTED and split one area's access in two.
+      // The guard is the same `requireAdmin` both sibling importers carry, and the run log is
+      // admin-only at the ROW level too, by the RLS policy in migration 0497.
+      // REGISTERING IT IS NOT PAPERWORK: test/function-access.test.ts fails BOTH ways — a guarded
+      // page.tsx absent from REGISTERED_ROUTES, and a registered route with no guarded page on disk.
+      '/admin/leave-config/bf-import',
       // 7f69bd71 — THE RESET RECORDS SUB-SCREEN: the two read-only registers as sub-tabs of one page
       // (`?record=configuration` / `?record=balances`), reached from the foot of Leave Adjustments. Same
       // requireAdmin guard, same key — no separate permission exists for the records and none is added.

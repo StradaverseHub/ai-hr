@@ -2240,6 +2240,14 @@ export const leaveLedger = pgTable(
     // for every row that predates it. A DB CHECK confines it to entry_type='adjustment': reversing a batch
     // sums its rows, and a debit swept in by mistake would be handed back as entitlement.
     adjustmentBatchId: uuid('adjustment_batch_id').references((): AnyPgColumn => leaveAdjustmentBatch.id),
+    // db55d08a (migration 0497) — the B/F IMPORT RUN this row belongs to, when it was written by Leave
+    // B/F Data Import. NULL for every other writer and for every row that predates it — the same shape,
+    // and the same reason, as `adjustmentBatchId` directly above. A DB CHECK confines it to
+    // entry_type='adjustment': undoing a run sums its rows and writes the negations, so an accrual or a
+    // debit swept in by mistake would be handed back as entitlement. It is ALSO what makes the B/F
+    // importer's Replace mode safe — Replace negates only the rows carrying a run id, never the rest of
+    // the prior-year balance, which contains real accruals, debits and adjustments.
+    bfImportRunId: uuid('bf_import_run_id').references((): AnyPgColumn => leaveBfImportRun.id),
     createdAt: createdAt(),
   },
   (t) => [index('leave_ledger_employment_idx').on(t.employmentId, t.leaveTypeId)],
@@ -2421,6 +2429,63 @@ export const leaveHistoryImportRun = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('leave_history_import_run_tenant_created_idx').on(t.tenantId, t.createdAt)],
+);
+
+// db55d08a (migration 0497) — one row per LEAVE B/F DATA IMPORT RUN, and it is a BATCH, not only a log.
+//
+// Modelled on `leave_history_import_run` above for the questions it answers (who loaded what, when, and
+// which rows did not go in and why) and on `leave_adjustment_batch` (0353) for the two columns that make
+// it a batch: `reversed_at` / `reversed_by_user_id`. That pairing is the whole reason the r362 run table
+// could not simply be reused — the reporter asked for "a Rollback batch option, which is very useful
+// during migration", and a rollback needs something for the ledger rows to point AT.
+//
+// ⚠️ WHY NOT `leave_adjustment_batch` ITSELF. Its `days` column is NOT NULL and SINGULAR — one amount
+// applied to many people, which is what the Leave Adjustments screen does. A B/F file carries a DIFFERENT
+// amount on every line, so there is no one figure to put there; forcing one in would either lie or force
+// a batch per line and make "undo the file I just loaded" unanswerable again.
+//
+// THE UPLOADED FILE IS NEVER STORED (0341's rule, 0490's restatement). Correcting a rejected row needs
+// the row's IDENTITY (row number, employee id, leave code, year) and the REASON, which is all `errors`
+// holds. The file's NAME is kept because that is what HR recognises a run by.
+//
+// THREE counts, not four: unlike the record importer there is no cross-run duplicate status, because
+// re-running a corrected file is the expected workflow and `import_mode = 'replace'` is what makes it
+// safe. imported + failed = total, always, and the screen's outcome is DERIVED from them.
+export const leaveBfImportRun = pgTable(
+  'leave_bf_import_run',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** Who ran it — person for the display name, user id so an operator / support login with no person
+     *  row is still attributable. Pinned at write time, not resolved on read (0490's rule). */
+    createdByPersonId: uuid('created_by_person_id').references(() => person.id),
+    createdByUserId: text('created_by_user_id'),
+    /** The uploaded file's name; '' when the rows were pasted rather than uploaded. Not the file. */
+    fileName: text('file_name').notNull().default(''),
+    /** 'replace' | 'add' — the reporter's own two options. Recorded because two runs of the same file
+     *  under the two modes do different things to a balance, and "which was this?" has to be answerable
+     *  months later from the record rather than from whoever was at the keyboard. */
+    importMode: text('import_mode').notNull().default('replace'),
+    totalRows: integer('total_rows').notNull().default(0),
+    importedRows: integer('imported_rows').notNull().default(0),
+    /** Rows that did not become a brought-forward figure for a reason the customer must correct. */
+    failedRows: integer('failed_rows').notNull().default(0),
+    /** LEDGER rows the run actually wrote, which is NOT `importedRows`: a Replace also writes the
+     *  negation of what a previous run put there, and a figure of 0 over nothing writes nothing at all. */
+    ledgerRows: integer('ledger_rows').notNull().default(0),
+    /** [{ rowNum, employeeId, leaveCode, entitlementYear, errors: [...] }] — identity + reason only.
+     *  Capped by core/leave-bf-import.ts LEAVE_BF_ERROR_CAP. */
+    errors: jsonb('errors').notNull().default([]),
+    /** True when more rows were rejected than `errors` holds. The screen says so rather than letting HR
+     *  believe a truncated report is the whole story. */
+    errorsTruncated: boolean('errors_truncated').notNull().default(false),
+    createdAt: createdAt(),
+    /** 0353's rule, restated: a rollback writes COMPENSATING rows and never deletes, and this pair is
+     *  what stops the screen offering the same run twice. Both halves move together (DB CHECK). */
+    reversedAt: timestamp('reversed_at', { withTimezone: true }),
+    reversedByUserId: text('reversed_by_user_id'),
+  },
+  (t) => [index('leave_bf_import_run_tenant_created_idx').on(t.tenantId, t.createdAt)],
 );
 
 // Wave 2 (ADR-0038 2A-2): supporting documents for leave (e.g. MC). Mirrors claim_attachment:
