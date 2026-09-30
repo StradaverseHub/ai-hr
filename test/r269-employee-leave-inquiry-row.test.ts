@@ -156,6 +156,12 @@ describe('5ca446db — six rows in the Leave Config fly-out, the new one last', 
       // RECORD importer and Leave Adjustments owns the BALANCE importer as a tab, so the two halves of a
       // migration sit together and the row order is the order the work is done in.
       'leaveHistoryImport',
+      // db55d08a (r369) — UPDATED, NOT LOOSENED: Leave B/F Data Import joined between the record importer
+      // and Leave Credit. It is the OPENING-FIGURE importer, so the three halves of a migration sit
+      // together and the row order is the order the work is done in. r269's own promise is restated
+      // exactly below: the inquiry row still sits immediately after Company rules. The list stays an exact
+      // set — a deletion, a rename or a re-sort still fails it.
+      'leaveBfImport',
       // 3fb1a611 (r299) — UPDATED, NOT LOOSENED: Leave Credit joined directly after Leave Adjustments.
       'leaveCredit',
       'leaveGenerate',

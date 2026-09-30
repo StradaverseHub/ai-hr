@@ -121,7 +121,12 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
     // the two `toEqual`s above moved together and no exception was needed anywhere in this file. It is a
     // group of ONE — a third tab of Leave Adjustments would have inherited that row's "change a balance"
     // heading, which is exactly what an importer that moves no balance must not be read as doing.
-    expect(ROWS).toHaveLength(10);
+    // db55d08a (r369) — ELEVEN, and UPDATED NOT LOOSENED: the old claim read `expect(ROWS).toHaveLength(10)`.
+    // Leave B/F Data Import took a row and a group in the same commit, like every row before it, so the two
+    // `toEqual`s above moved together and no exception was needed anywhere in this file. It is a group of
+    // ONE for a sharper version of the same reason: a tab of Leave History Data Import would have inherited
+    // that row's "load past leave records" description, and this tool creates no leave record at all.
+    expect(ROWS).toHaveLength(11);
   });
 
   it('5ca446db — the Leave Inquiry door is the only child with no map group, and it is where r269 put it', () => {
@@ -183,6 +188,11 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
       // 3f15ffdb (r362) — its row is directly after Leave Adjustments, so its one screen follows that
       // row's two tabs and precedes Leave Credit's.
       '/admin/leave-config/history-import',
+      // db55d08a (r369) — UPDATED, NOT LOOSENED: its row is directly after Leave History Data Import, so
+      // its one screen follows that row's one and precedes Leave Credit's two. The list is restated
+      // exactly rather than turned into a count or a "contains", so a route added under
+      // app/admin/leave-config by anything OTHER than the commit that names it here still fails.
+      '/admin/leave-config/bf-import',
       // 3fb1a611 (r299) — its row is directly after Leave Adjustments; its two tabs follow Adjustments' two.
       '/admin/leave-config/leave-credit',
       '/admin/leave-config/leave-credit/rules',
@@ -272,7 +282,9 @@ describe('§C · every page\'s heading is its submenu row, and its description i
       // 3fb1a611 (r299) — twelve, with Leave Credit's two tabs.
       // 3f15ffdb (r362) — THIRTEEN, with `leaveHistoryImport`: the one screen of its own row, resolving
       // through this helper exactly like every other, which is the whole reason it was given a group.
-      expect(ids).toHaveLength(13);
+      // db55d08a (r369) — FOURTEEN, with `leaveBfImport`. UPDATED, NOT LOOSENED: the old claim read
+      // `expect(ids).toHaveLength(13)`.
+      expect(ids).toHaveLength(14);
     for (const id of ids) {
       const group = leaveConfigGroupOf(id);
       const header = await leaveConfigPageHeader(id);
@@ -321,6 +333,11 @@ describe('§C · every page\'s heading is its submenu row, and its description i
       // about changing balances and this one changes none, so sharing the sentence would tell an
       // administrator the opposite of what the tool does.
       leaveHistoryImport: 'admin.leaveConfigHistoryImport.pageDescription',
+      // db55d08a (r369) — its own namespace, the house shape. It must NOT borrow EITHER neighbour's
+      // sentence, and the two failures would read differently: Leave History Data Import's sentence says
+      // this loads past leave records (it creates none at all), and Leave Adjustments' says it changes a
+      // balance by hand (it states the figure a leave year OPENS with, which is a different act).
+      leaveBfImport: 'admin.leaveConfigBfImport.pageDescription',
       // 3fb1a611 (r299) — its own namespace, the house shape.
       leaveCredit: 'admin.leaveConfigLeaveCredit.pageDescription',
       generate: 'admin.leaveConfigGenerate.pageDescription',
@@ -354,6 +371,9 @@ describe('§C · every page\'s heading is its submenu row, and its description i
     expect(en.nav.leaveAdjustments).toBe('Leave Adjustments');
     // 3f15ffdb (r362) — the reporter's own words for the row they asked for, kept verbatim.
     expect(en.nav.leaveHistoryImport).toBe('Leave History Data Import');
+    // db55d08a (r369) — the reporter's own words again, kept verbatim: they asked for "Leave B/F Data
+    // Import" and B/F is the abbreviation their own template uses, so it is not expanded here.
+    expect(en.nav.leaveBfImport).toBe('Leave B/F Data Import');
     expect(en.nav.leaveGenerate).toBe('Generate Entitlement');
     expect(en.nav.leaveEarnedAccrual).toBe('Run Earned Accrual');
     expect(en.nav.leaveApprovalWorkflow).toBe('Approval Workflow');
@@ -555,6 +575,13 @@ describe('§E · the strings, six locales', () => {
     'admin.leaveConfigMap.item.leaveHistoryImport',
     'admin.leaveConfigHistoryImport.pageDescription',
     'admin.leaveConfigMap.item.importLeaveData',
+    // db55d08a (r369) — Leave B/F Data Import's own row: the nav label, the map item label and the row
+    // description. Every one of them can ship English-only behind a green 200, which is what this list is
+    // for — and the row description is the one that would otherwise go unnoticed, because nothing renders
+    // it until somebody opens the page in a non-English locale.
+    'nav.leaveBfImport',
+    'admin.leaveConfigMap.item.leaveBfImport',
+    'admin.leaveConfigBfImport.pageDescription',
   ];
   it('every key exists in all six catalogues and is not left in English outside en', () => {
     for (const key of NEW_OR_RENAMED) {
@@ -583,6 +610,9 @@ describe('§E · the strings, six locales', () => {
     // below so a rename that quietly moved the screen would fail here.
     expect(en.admin.leaveConfigMap.item.importLeaveData).toBe('Leave Balance Import');
     expect(en.admin.leaveConfigMap.item.leaveHistoryImport).toBe('Leave History Data Import');
+    // db55d08a (r369) — the tab label equals the row label for a group of one, exactly as its neighbour's
+    // does: there is one screen, so there is one name for it.
+    expect(en.admin.leaveConfigMap.item.leaveBfImport).toBe('Leave B/F Data Import');
     expect(LEAVE_CONFIG_MAP.flatMap((g) => g.items).find((i) => i.id === 'importLeaveData')!.href).toBe(
       '/admin/leave-config/import',
     );

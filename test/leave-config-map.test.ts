@@ -173,6 +173,13 @@ describe('a6fe37fc — the leave configuration map', () => {
       // row's heading and its "change an employee's balance" description, which is the one thing an
       // importer that writes leave_request rows and no ledger row must never be read as doing.
       'leaveHistoryImport',
+      // db55d08a (r369) — UPDATED, NOT LOOSENED: `leaveBfImport` sits immediately after
+      // `leaveHistoryImport`, because its ROW does. It is a group of ONE rather than a tab of either
+      // importer beside it, and that is the item rather than a detail: a tab of the row above would inherit
+      // "load past leave records" and this tool creates NO leave record, while a tab of `adjustments` would
+      // inherit "change an employee's balance by hand" and this writes the dated figure a leave year OPENS
+      // with. The position is the reporter's own go-live order — entitlements, then B/F, then leave taken.
+      'leaveBfImport',
       // 3fb1a611 (r299) — UPDATED, NOT LOOSENED: `leaveCredit` sits immediately after `adjustments`, because
       // its row does — it is the adjustment screen FOR Replacement Leave (Leave Adjustments refuses that type
       // now and points here). Two tabs, Credits and Rules, each its own route (asserted below).
@@ -198,6 +205,9 @@ describe('a6fe37fc — the leave configuration map', () => {
     // 3f15ffdb (r362) — one screen, so no tab row is drawn for it (the Balance Health / earned-accrual
     // / Special Setting shape). A SECOND TAB of `adjustments` would have been the wrong shape.
     expect(byGroup.leaveHistoryImport).toEqual<LeaveConfigScreenId[]>(['leaveHistoryImport']);
+    // db55d08a (r369) — one screen, so no tab row is drawn for it. A SECOND TAB of `leaveHistoryImport`
+    // would have been the wrong shape, for the reason given at that entry above.
+    expect(byGroup.leaveBfImport).toEqual<LeaveConfigScreenId[]>(['leaveBfImport']);
     // 3fb1a611 (r299) — two tabs: Credits (the movements, Add, Reverse, sweeps) and Rules (the policy that left
     // Company rules). A row with tabs is drawn by this component, never by a page.
     expect(byGroup.leaveCredit).toEqual<LeaveConfigScreenId[]>(['leaveCredit', 'leaveCreditRules']);
