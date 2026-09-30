@@ -6,7 +6,11 @@
  * The two bands that BRACKET that working were missing, and they are the two a reader opens the document
  * for: what the year has accumulated (official page 1) and what was finally deducted (official page 7).
  *
- *   docs/forms/pcb-calculation-slip-official-2026-12.pdf — LHDN's own generated slip for "Employee A",
+ *   docs/forms/pcb-calculation-slip-specimen-2026-12.pdf — a FILLED SPECIMEN slip for "Employee A",
+ *   NOT an agency publication: its metadata is Chrome/Skia (document title "ReportEx2026"), and it is
+ *   a filled December 2026 calculation for a fictional employee. Its arithmetic reconciles and it is
+ *   useful as a layout and vocabulary reference, but where it disagrees with
+ *   docs/forms/pcb-spec-2026-computerised-calculation.pdf, THE SPECIFICATION WINS.
  *   print date 29/09/2026, committed with this round. Page 1 is the accumulated block, page 6 the two
  *   numbered steps, page 7 CALCULATION RESULTS. It is the structure these builders reproduce.
  *

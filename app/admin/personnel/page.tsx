@@ -37,6 +37,11 @@ import { ColumnPicker } from './column-picker';
 import { DraftRow } from './draft-row';
 import { EmployeeRow } from './employee-row';
 import { employmentPhotoIds } from '@/core/person-photo';
+// 034a5080 — the Create New Employee prompt over this list. Same four-question body the standalone route
+// renders, so it needs the same Employee ID rule resolution the route's page performs.
+import { listConfigs, resolveEmployeeIdRule } from '@/core/employee-id-config';
+import type { EmployeeIdRule } from '@/lib/employee-id-mode';
+import { CreateEmployeeDialog } from './create-employee-dialog';
 import {
   DRAFT_BUCKET,
   EMPLOYEE_STATUS_BUCKETS,
@@ -171,6 +176,7 @@ export default async function PeoplePage({
     allDrafts,
     allEmployees,
     savedColumns,
+    idConfigs,
   ] = await Promise.all([
     listEmployeesPage(session, {
       companyIds: scopeIds,
@@ -198,9 +204,24 @@ export default async function PeoplePage({
     // 579255c3 — this reader's own columns and their order. Per user (app_user.list_preferences through
     // the own-row seam), so one person's arrangement never changes what anybody else sees.
     getEmployeeListColumns(session),
+    // 034a5080 — the Create New Employee prompt asks the same four questions the standalone route asks,
+    // so it needs the same two things that route's page builds: the companies (already read above) and
+    // the Employee ID Auto Running Number Setup that applies to each of them. Resolved ONCE from a single
+    // read here, exactly as app/admin/personnel/new/page.tsx does it, rather than a query per company as
+    // the select is used. Admin-only, because the prompt itself is.
+    isAdmin ? listConfigs(session, scopeIds) : Promise.resolve([]),
   ]);
 
   const columns = savedColumns.selected;
+
+  // What crosses into the prompt is PLAIN DATA (booleans, strings, numbers and a pre-formatted sample
+  // code) for the reason app/admin/personnel/new/page.tsx spells out at length: both the prompt and its
+  // body are client components, and a formatter or a translator closure passed here would throw at render
+  // and take the whole employee list down — the r123 fault test/server-client-boundary.test.ts exists to
+  // catch. `sampleCode` is a PREVIEW of the next running number, not a reservation; the ID the employee
+  // actually gets is issued inside the create transaction and the prompt's confirmation reports THAT.
+  const employeeIdRules: Record<string, EmployeeIdRule> = {};
+  for (const c of companies) employeeIdRules[c.id] = resolveEmployeeIdRule(idConfigs, c.id);
 
   // ── Draft rows (item 06f0cb8f, preserved) ─────────────────────────────────────────────────────────
   // Drafts are PINNED ABOVE the employees on every page, not merged into the sort and not paged. There
@@ -504,18 +525,23 @@ export default async function PeoplePage({
             >
               {t('exportXlsx')}
             </a>
-            {/* 6d671f44 — Create New Employee is now its own step-by-step screen with Save as Draft.
-                The reporter's requirement is literal: "The current employee list screen shall not be
-                used for data entry", so this is a LINK, and the inline form that used to expand below
-                the header is gone. */}
+            {/* 6d671f44 — Create New Employee became its own step-by-step screen with Save as Draft,
+                because that reporter's requirement was literal: "The current employee list screen shall
+                not be used for data entry". The inline hire form that used to expand below this header is
+                still gone, and is not coming back.
+                034a5080 walks HALF of that back, deliberately and only for the four-question create: the
+                button now opens a PROMPT over this list. The route is untouched and still reachable — the
+                trigger is a real Link to that route whose plain left click is intercepted
+                (see the component), so ⌘-click, a JS-less browser, the tour and every draft row still get
+                the full screen. The markup, the `data-tour` anchor and the confirmation step live in
+                ./create-employee-dialog.tsx; the trigger's LABEL is resolved here so that file keeps to a
+                single message namespace. */}
             {isAdmin && (
-              <Link
-                href="/admin/personnel/new"
-                data-tour="people-hire"
-                className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-              >
-                {t('createNewEmployee')}
-              </Link>
+              <CreateEmployeeDialog
+                triggerLabel={t('createNewEmployee')}
+                companies={companies.map((c) => ({ id: c.id, label: c.name }))}
+                employeeIdRules={employeeIdRules}
+              />
             )}
           </div>
         }

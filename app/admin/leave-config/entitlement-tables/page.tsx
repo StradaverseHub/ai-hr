@@ -1,7 +1,12 @@
 import { getTranslations } from 'next-intl/server';
 
+import Link from 'next/link';
+
 import { requireAdmin } from '@/lib/authz';
-import { Card, ErrorBanner, PageHeader } from '@/components/ui';
+// 3a4efe9f — the same resolver the block scopes itself with, so this page's caption and the table under it
+// cannot disagree about whether a filter is in force.
+import { resolveViewLeaveTypeId } from '@/lib/entitlement-tables-scope';
+import { Card, ErrorBanner, Field, PageHeader, inputCls } from '@/components/ui';
 import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
 import {
   EntitlementTablesBlock,
@@ -55,6 +60,31 @@ export default async function LeaveConfigEntitlementTablesPage({
     error?: string;
     editTemplate?: string;
     editRule?: string;
+    /**
+     * 3a4efe9f (r369) — THE LEAVE TYPE FILTER, AS A QUERY PARAMETER ON THIS ADDRESS AND NOT A NEW ROUTE.
+     *
+     * A second address would break four exact-set navigation guards: `test/leave-config-map.test.ts` pins
+     * the Entitlements row as exactly `['leaveTypes', 'entitlementTables']` in that order,
+     * `test/leave-flyout-nav.test.ts` pins that row at exactly two items with `ownedSubpaths` of exactly
+     * `['/admin/leave-config/entitlement-tables']`, and `test/r266-leave-config-rows.test.ts` pins the
+     * flattened href list and its count. A filter is a view of this screen, not another screen, so it
+     * belongs in the query string — which is also what makes it linkable from the leave type screen.
+     *
+     * Absent or naming no live leave type ⇒ every leave type side by side, which is this screen's default
+     * and the one thing it does that a leave type's own tab 3 cannot.
+     */
+    leaveType?: string;
+    /** 3a4efe9f — the table a deep link came here to show: highlighted by the block, and scrolled to by the
+     *  same link's `#table-<lineageId>` fragment, which needs no JavaScript. */
+    table?: string;
+    /**
+     * 3a4efe9f — the leave type to put the operator back on after a save, set by "+ New table" on that leave
+     * type's own tab (the approved plan's step 2.4). It becomes the `embeddedLeaveTypeId` the create form
+     * posts, which `returnFor` in the templates actions already reads. An id, never a URL: `returnFor`'s
+     * header records that it is interpolated into a fixed internal path, so nothing hand-crafted can open a
+     * redirect through it.
+     */
+    returnTo?: string;
     /** r212 — the explain panel's four GET parameters, so an answer is addressable and can be sent as a
      *  link. The panel builds its own relative hrefs, so it is addressable at THIS route unchanged. */
     explainQ?: string;
@@ -75,6 +105,12 @@ export default async function LeaveConfigEntitlementTablesPage({
   // tab row below says which tab. The back-link to the leave type screen is gone with it — the first tab
   // of the same row is one click away and the submenu row stays lit here (ownedSubpaths).
   const header = await leaveConfigPageHeader('entitlementTables');
+  /** The leave type the filter is actually on — resolved through the SAME pure function the block scopes
+   *  itself with, so the caption and the table below it cannot disagree about whether a filter applied. An
+   *  id naming nothing resolves to undefined here exactly as it does there, and the caption says "all". */
+  const filteredTypeName = data.leaveTypes.find(
+    (x) => x.id === resolveViewLeaveTypeId({ typeFilter: sp.leaveType, known: data.leaveTypes }),
+  )?.name;
 
   return (
     <div className="space-y-6">
@@ -93,8 +129,60 @@ export default async function LeaveConfigEntitlementTablesPage({
         </div>
       </Card>
 
-      {/* F33 — unfiltered: no `leaveTypeId`, so the Leave type column stays and the create form keeps its
-          type picker.
+      {/* ── 3a4efe9f (r369) · THE LEAVE TYPE FILTER ───────────────────────────────────────────────────
+          A plain GET form, so this stays a server component and the filter is a URL the operator can send.
+          Submitting drops `?table=` and `?editTemplate=` on purpose: both name a record inside whatever
+          was on screen before, and carrying them across a change of filter would highlight or open a table
+          the new filter does not show.
+
+          ⚠️ THIS IS NOT THE HARDCODED FILTER RETURNING. The default — "All leave types", the empty value —
+          is this screen's every-type view, unchanged, and it is what an operator who never touches the
+          control sees. What the filter buys is a screen that KNOWS which leave type it is about, which is
+          the only condition under which the create form's reach warning can be worded at all. */}
+      <Card>
+        <form className="flex flex-wrap items-end gap-3 p-4" method="get">
+          <Field label={t('filterLeaveType')}>
+            <select className={inputCls} name="leaveType" defaultValue={sp.leaveType ?? ''}>
+              {/* An EMPTY value clears the filter — the same "no choice is a real instruction" shape the
+                  default-table picker uses, so the way out of a filter is the way into it. */}
+              <option value="">{t('filterAllTypes')}</option>
+              {data.leaveTypes
+                .filter((x) => !x.archived)
+                .map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                  </option>
+                ))}
+            </select>
+          </Field>
+          <button
+            type="submit"
+            className="h-9 rounded-md border border-input bg-card px-4 text-sm font-medium"
+          >
+            {t('filterApply')}
+          </button>
+          {/* The approved sketch puts "+ New entitlement table" at the top right of this tab, opposite the
+              filter. The create form itself has not moved — it is still at the foot of the list, where every
+              guard over this block expects it — so this is a jump to it rather than a second form. One
+              definition, two ways in. */}
+          <Link
+            href="#new-entitlement-table"
+            className="ml-auto h-9 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+          >
+            {t('newTableJump')}
+          </Link>
+          {/* ⚠️ THE LINE HAS TO FOLLOW THE FILTER, because it states what is on screen. A fixed sentence
+              reading "Showing all leave types side by side" over a filtered list would be a caption that
+              contradicts the table under it — and the sentence's job is to tell an operator who narrowed the
+              screen how to widen it again. */}
+          <p className="basis-full text-xs text-muted-foreground">
+            {filteredTypeName ? t('filterHintScoped', { type: filteredTypeName }) : t('filterHint')}
+          </p>
+        </form>
+      </Card>
+
+      {/* F33 — unfiltered BY DEFAULT: no `leaveTypeId`, so with no filter chosen the Leave type column stays
+          and the create form keeps its type picker.
 
           r270 — and two surfaces of the block are switched OFF here, both because this screen was drawing
           a second copy of something that already has one home:
@@ -102,9 +190,11 @@ export default async function LeaveConfigEntitlementTablesPage({
               types tab, drawn there at page level; this tab drew the identical card above the tables.
             · `showBenefitSchemes={false}` (995387c6) — the schemes list and its create/edit form live on
               the leave type's own "What they are entitled to" tab, and did before this item was raised.
-          Neither flag names `leaveTypeId`: this mount stays UNFILTERED, which is the one thing this screen
-          does that a leave type's own tab cannot, and two guards read the mount text to prove it. */}
-      <EntitlementTablesBlock data={data} editTemplate={sp.editTemplate} editRule={sp.editRule} showConfigHealth={false} showBenefitSchemes={false} />
+          No prop here names `leaveTypeId`, and two guards read the mount text to prove it. 3a4efe9f — that
+          property is unchanged and the claim behind it is now stated exactly: this mount carries NO
+          HARDCODED leave type, and with no query parameter it renders every leave type side by side. What
+          `typeFilter` adds is the operator's own choice, read from the URL and cleared from the URL. */}
+      <EntitlementTablesBlock data={data} typeFilter={sp.leaveType} highlightTable={sp.table} returnToType={sp.returnTo} editTemplate={sp.editTemplate} editRule={sp.editRule} showConfigHealth={false} showBenefitSchemes={false} />
 
       {/* F49 (r212 8ebf77ae) — the question the tables above cannot answer for one person: which rules
           exist, which are in force, and what about THIS employee does not match. Below the rules it

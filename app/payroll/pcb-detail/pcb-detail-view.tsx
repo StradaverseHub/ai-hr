@@ -645,7 +645,13 @@ export async function PcbDetailView({
               label={t('bracketCategory')}
               value={trace && CATEGORY_LABEL[trace.category] ? t(CATEGORY_LABEL[trace.category]) : <NotRecorded />}
             />
-            <Row label={t('reliefChildCount')} value={trace ? trace.childCount : <NotRecorded />} />
+            {/* `trace.childCount` is `number | null`; React renders null as NOTHING, so testing the
+                trace instead of the field drew a silently empty cell on a tax explanation. Same defect
+                as the PDF's, opposite symptom. See shared.ts's note at the equivalent row. */}
+            <Row
+              label={t('reliefChildCount')}
+              value={trace?.childCount != null ? trace.childCount : <NotRecorded />}
+            />
           </Block>
 
           {/* ── Step 1 [B] — P, and P₂ when a bonus was paid ──
@@ -822,7 +828,8 @@ export async function PcbDetailView({
             <Row label={t('reliefChildren')} value={rm(explanation.reliefs.children)} />
             <Row
               label={t('reliefChildCount')}
-              value={trace ? trace.childCount : <NotRecorded />}
+              // Field, not trace — see the Step 1 [A] row above.
+              value={trace?.childCount != null ? trace.childCount : <NotRecorded />}
               muted
             />
             <Row label={t('reliefLpAccumulated')} value={trace ? rm(trace.lpAccumulated) : <NotRecorded />} muted />

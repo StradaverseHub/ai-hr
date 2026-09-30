@@ -107,20 +107,46 @@ describe('feedback 64fb5e48 — stale BASIC pay item never overrides the Personn
 });
 
 describe('feedback 64fb5e48 — zeroBasic blocker (the checks that actually matter)', () => {
-  it('a monthly employee with basic 0 is a zeroBasic blocker and generation fails closed', async () => {
+  /**
+   * r369 (item eb949191) REVERSED THIS ONE ASSERTION, AND IT IS THE POINT OF THAT ROUND.
+   *
+   * This test used to read "a monthly employee with basic 0 is a zeroBasic blocker and generation fails
+   * closed" — which was true, and was the fault the reporter rejected: a Director paid fees quarterly has no
+   * monthly basic, and one such record stopped the whole company's run because the batch is all-or-nothing.
+   * The guard is UPDATED rather than deleted, because the behaviour it pins is still load-bearing in both
+   * directions: the monthly leg must NOT block, and the run must NOT pay them either (it skips the month,
+   * which test/r369-zero-basic-skip.test.ts pins together with the below-zero payslip that proves why).
+   *
+   * The daily/hourly rate leg below is untouched and still fails the run closed.
+   */
+  it('a monthly employee with basic 0 is NO LONGER a blocker — the run proceeds and leaves them out', async () => {
     const a = adminCtx(b);
     const zero = await hire(a, 'Zero Basic', '900101020003');
-    await setCompensation(a, { employmentId: zero.employmentId, basicSalary: 0, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    // r369 — a zero basic needs the reporter's own confirmation gesture at the point of entry: a remark
+    // saying why. The kernel never reads it to decide money (core/comp.ts SalaryRemarkRequiredError).
+    await setCompensation(a, {
+      employmentId: zero.employmentId,
+      basicSalary: 0,
+      monthlyAllowance: 0,
+      remarks: 'Paid by quarterly director fees',
+      effectiveFrom: '2026-01-01',
+    });
     const paid = await hire(a, 'Paid Fine', '900101020004');
     await setCompensation(a, { employmentId: paid.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
 
     const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD });
     const checks = await preProcessAdvisory(a, batchId);
-    expect((checks.zeroBasic ?? []).map((r) => r.employmentId)).toEqual([zero.employmentId]);
+    // The blocker list is empty and the NOTICE list names them — the third, neutral readiness state.
+    expect(checks.zeroBasic ?? []).toHaveLength(0);
+    expect((checks.nothingPayable ?? []).map((r) => r.employmentId)).toEqual([zero.employmentId]);
     expect(checks.missingCompensation).toHaveLength(0);
 
-    await expect(generatePayslips(a, { batchId })).rejects.toBeInstanceOf(PreProcessBlockedError);
-    expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId))).toHaveLength(0);
+    const gen = await generatePayslips(a, { batchId });
+    const slips = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
+    expect(slips.map((s) => s.employmentId), 'the company is paid; the Director is left out').toEqual([
+      paid.employmentId,
+    ]);
+    expect('skipped' in gen ? (gen.skipped ?? []).map((s) => s.employmentId) : []).toEqual([zero.employmentId]);
   });
 
   it('a legacy daily row with rate 0 blocks (write guard bypassed); a positive-rate daily employee passes', async () => {

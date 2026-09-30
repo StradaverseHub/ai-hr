@@ -194,9 +194,23 @@ export async function createEntitlementTemplateAction(formData: FormData) {
 }
 
 /**
- * An edit CLOSES the running version and INSERTS a successor, from `validFrom`. It is not an in-place
- * UPDATE and the screen says so, because the three past-date readers depend on it: overwriting the row
- * would make a closed year report today's figures.
+ * WHAT AN EDIT DOES IS DECIDED BY THE DATE IN THE BOX, not by this function — `entitlementEditMode()` in
+ * `lib/entitlement-edit-mode.ts` is the one reader, and the screen's Save button labels itself from it:
+ *
+ *   · the date is unchanged, or the open version has not started yet ⇒ IN-PLACE UPDATE of that row,
+ *     effective date included;
+ *   · the version has been in force and the new date is LATER ⇒ supersede: close the open version at the
+ *     new `validFrom` and insert a successor;
+ *   · in force and the new date is EARLIER ⇒ refused, naming the earliest allowed date.
+ *
+ * ⚠️ CORRECTED (3a4efe9f, r369). This comment read "An edit CLOSES the running version and INSERTS a
+ * successor, from `validFrom`. It is not an in-place UPDATE and the screen says so" — which r219 and r224
+ * made untrue: in-place saving was built precisely because the supersede-always behaviour made every
+ * ordinary correction mint a new version. The consequence the old sentence was reaching for is real and
+ * still holds the other way round: an in-place save DOES reach backwards, and the three past-date readers —
+ * the Carry Forward report, `expireCarriedLeave`'s year sweep, and the /me + admin balance breakdown — will
+ * report different figures for a closed leave year afterwards. That is allowed and it is said out loud
+ * before the save (`entitlementInPlaceChangesThePast` → `EntitlementSaveModeNote`), never silently.
  *
  * The LEAVE TYPE is not editable — see `updateEntitlementTemplate`'s own note. A rule pointing at "the
  * Executive ANNUAL table" that silently started handing out SICK days is not an edit anyone would spot.

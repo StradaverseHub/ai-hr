@@ -182,12 +182,31 @@ describe('6d671f44 — the wizard uses the one rule, and keeps its two behaviour
     expect((WIZARD.match(/\{t\('orgLabelsEmptyForCompany'\)\}/g) ?? []).length).toBe(4);
   });
 
-  it('the list page no longer carries a data-entry form at all', () => {
+  it('the list page carries no inline hire form, and its Create button opens the prompt', () => {
     // The reporter's requirement, asserted as an absence: "The current employee list screen shall not
     // be used for data entry."
     expect(PAGE).not.toContain('hireAction');
     expect(PAGE).not.toContain('<HireFormPanel>');
     expect(PAGE).not.toContain('id="hire-company"');
-    expect(PAGE).toContain('href="/admin/personnel/new"');
+    // ── UPDATED BY ITEM 034a5080 ─────────────────────────────────────────────────────────────────────
+    // THE OLD CLAIM, quoted rather than deleted:
+    //
+    //     expect(PAGE).toContain('href="/admin/personnel/new"');
+    //
+    // 6d671f44's way OUT of this screen was a plain Link. 034a5080's reporter asks for a prompt over the
+    // list instead ("a Create New Employee prompt/modal instead of navigating the user to a separate full
+    // screen"), so the trigger — and with it the href and the tour anchor — moved into
+    // app/admin/personnel/create-employee-dialog.tsx, where the trigger is STILL a Link to that route.
+    // The route is not deleted; see test/hire-entry-relocation.test.ts, which pins both ends.
+    //
+    // This assertion was passing for the wrong reason for one commit of this item: the list page's JSX
+    // comment quoted the old href, so the guard was satisfied by prose after the code had changed. It is
+    // now asserted against the component that replaced the Link, which cannot be satisfied by a sentence.
+    expect(PAGE).toContain('<CreateEmployeeDialog');
+    const DIALOG = fs.readFileSync(
+      path.resolve(__dirname, '../app/admin/personnel/create-employee-dialog.tsx'),
+      'utf8',
+    );
+    expect(DIALOG).toContain('href="/admin/personnel/new"');
   });
 });

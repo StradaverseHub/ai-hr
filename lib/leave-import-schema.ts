@@ -29,7 +29,12 @@ export type LeaveImportEntryType = (typeof LEAVE_IMPORT_ENTRY_TYPES)[number];
 
 /** Per-row dry-run result. `status` mirrors the ticket's Function 4 Row/Status/Message example.
  *  `warnings` carries non-blocking flags (terminated employee, already-imported duplicate,
- *  rolled-over year, oversized days) that don't demote a row to Error. */
+ *  rolled-over year, oversized days, and b2713800's cancelled-entitlement flag on an 'accrual' row in a
+ *  leave year that has not been generated yet) that don't demote a row to Error.
+ *
+ *  They are plain English SENTENCES, not message keys, and the preview table renders them verbatim — the
+ *  convention every warning in `core/leave-import.ts` has followed since v1. See that file for why the
+ *  accrual one is worded the way it is; it is the only warning here that describes lost money. */
 export type LeaveRowResult = {
   rowNum: number; // 1-based data row (header excluded)
   employeeRef: string; // employee_id exactly as given (echoed into the error report)

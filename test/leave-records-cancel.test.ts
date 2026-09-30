@@ -171,7 +171,16 @@ describe('§3 the Requests subsection is REMOVED — where each of its six capab
   it('1. the ORG-WIDE register is an ACCEPTED LOSS; Employee Leave Records stays one employee at a time', () => {
     // The destination is unchanged and still per-employee, which is exactly why it is not a replacement.
     expect(recordsPage).toContain('employmentIds: [selected.employmentId]');
-    expect(recordsPage).toContain('pickInquiryEmployee(employees, sp.emp)');
+    /**
+     * ⚠️ 9949f91a (r369) — UPDATED, with the retired call quoted: this read
+     *     expect(recordsPage).toContain('pickInquiryEmployee(employees, sp.emp)');
+     * The property this case is about — "stays one employee at a time" — is unchanged and is carried by the
+     * line above. What moved is only the FALLBACK: `pickInquiryEmployee` opened the screen on the first
+     * employee when `?emp=` was absent, and the reporter asked for "Select an employee to view their leave
+     * records" instead. `selectInquiryEmployee` is the same narrowing with no fallback; the export route still
+     * calls the original (lib/leave-inquiry.ts says why).
+     */
+    expect(recordsPage).toContain('selectInquiryEmployee(employees, sp.emp)');
     // And /leave no longer runs an UNNARROWED org-wide request read at all.
     //
     // UPDATED BY 5f2e20fb (AGENTS rule 18): the accepted loss is the org-wide REGISTER, not the read's

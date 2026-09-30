@@ -5250,6 +5250,13 @@ async function finalizeLeaveApproval(
   // column availableLeaveBalance read at submission, so the gate below and the guard the employee already
   // passed are talking about one balance. NULL ⇒ the request's own type (every type until one is switched).
   const balanceTypeId = lt?.balanceSourceTypeId ?? req.leaveTypeId;
+  // Security (assessment 2026-09, finding M3). Serialise every balance-affecting approval for one
+  // (employee, balance ledger) so two concurrent approvals cannot each read the same pre-debit balance,
+  // both pass the check below, and jointly overshoot the (allow-negative) floor. Same transaction-scoped
+  // advisory-lock pattern the claims reserve/settle path uses (core/claims.ts lockClaimLimit); released at
+  // COMMIT. Whole-request double-processing is separately prevented by the FOR UPDATE row lock the decide
+  // entry points take on the leave_request row.
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`leave-balance:${ctx.tenantId}:${req.employmentId}:${balanceTypeId}`}, 0))`);
   const balance = await leaveBalance(tx, req.employmentId, balanceTypeId);
   // Allow Unpaid Leave (a7fab30b): only the covered part is a balance movement. The unpaid excess was
   // measured against the balance at submission and is settled through payroll, so debiting it here would
@@ -5527,7 +5534,7 @@ export async function decideLeave(
   const rejectReason = p.rejectReason?.trim() || null;
   if (p.decision === 'rejected' && !rejectReason) throw new MissingRejectReasonError();
   return withTenant(ctx, async (tx) => {
-    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1).for('update');
     if (!req) throw new Error('leave request not found (or not visible)');
     if (req.status !== 'pending') throw new Error(`leave request is already ${req.status}`);
 
@@ -5674,7 +5681,7 @@ export async function decideLeaveDate(
   const rejectReason = p.rejectReason?.trim() || null;
   if (p.decision === 'rejected' && !rejectReason) throw new MissingRejectReasonError();
   return withTenant(ctx, async (tx) => {
-    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1).for('update');
     if (!req) throw new Error('leave request not found (or not visible)');
     if (req.status !== 'pending') throw new Error(`leave request is already ${req.status}`);
     // Single-step authority (§4C): per-date rows only exist for single-step companies, so the whole-request
@@ -5788,7 +5795,7 @@ export async function decideLeaveDates(
     throw new Error('duplicate leave date in batch');
   }
   return withTenant(ctx, async (tx) => {
-    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1).for('update');
     if (!req) throw new Error('leave request not found (or not visible)');
     if (req.status !== 'pending') throw new Error(`leave request is already ${req.status}`);
     // Single-step authority (§4C): per-date rows only exist for single-step companies.

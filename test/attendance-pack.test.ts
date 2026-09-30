@@ -235,6 +235,19 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // below — the row is gone, the address still answers as a redirect, and it stays unregistered.
     { href: '/attendance/travel', labelKey: 'myTravel', icon: Plane },
     { href: '/attendance/request-status', labelKey: 'myAttendanceRequestStatus', icon: ClipboardList },
+    // 6948727a (r369) — My Roster, the SIXTH self-service row. The FUNCTION is not new: roster_assignment
+    // has held these rows since migration 0075. What was new is that the only screen over them was
+    // `/roster`, an administrator's grid of everybody inside the group-gated Administration section, so
+    // from an employee's chair their own roster did not exist. Declared here for the same reason every
+    // row above is: growth has to be deliberate, and an undeclared row still fails the parity assertions.
+    // Ungated like its five siblings — the screen shows the caller their OWN roster and takes no
+    // employment id (core/roster.ts myRosterWindow).
+    //
+    // CalendarRange is shared with `/roster` ON PURPOSE and breaks no rule: the no-repeated-glyph rule is
+    // about SIBLINGS in one fly-out, and `/roster` is in the config node and the flat Manage links, never
+    // in this one. It is a DECLARED PAIR of pictures, not of rows — the two hrefs are different, so
+    // PAIRED_HREFS below is untouched.
+    { href: '/attendance/my-roster', labelKey: 'myRoster', icon: CalendarRange },
     // 1c5602cc (r263) — Schedule: the tabbed configuration screen for an employee's working pattern
     // (General built; Holiday / Overtime / Attendance / Request / Notification named and EMPTY). The
     // SCREEN is new; almost nothing it shows is — it reads the shift library and the per-company working
@@ -414,6 +427,19 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     // c6bb5f5a — the request-history row, after the four that were already here. Its sibling from that
     // round, `/attendance/travel`, stood immediately above it until b833a077 (r362) removed My Travel.
     '/attendance/request-status',
+    /**
+     * ⚠️ 6948727a (r369) — SIX ROWS NOW, NOT FIVE, AND THE ORDER OF THE OTHER FIVE IS UNCHANGED. The
+     * block above this array ends "FIVE ROWS NOW, NOT SIX … the count is written down"; that sentence is
+     * SPENT rather than wrong — it recorded My Travel's removal, which still stands — and the count it
+     * names has moved on by one for a different reason.
+     *
+     * My Roster is the employee's own roster, read only: the reporter asked for "New sub menu – My
+     * Roster … for employee to view only the Roster that assigned by their supervisor". It is LAST
+     * because it is the newest row and nothing in the reporter's order puts it above an existing one,
+     * and it is UNGATED like its five siblings — the membership rule this array exists to write down is
+     * unchanged, not loosened: still an exact set, still nothing gated in the ungated node.
+     */
+    '/attendance/my-roster',
   ];
 
   // 0bb0e303 split the node three ways and a324a4b3 rev2 merged two of the three back, so parity is

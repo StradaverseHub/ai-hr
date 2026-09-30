@@ -4826,7 +4826,7 @@ export async function cancelPlannedOvertime(
   });
 }
 
-/** One row of "My attendance requests" — every request this employee has filed, whatever it was for. */
+/** One row of "My requests" — every request this employee has filed, whatever it was for. */
 export type MyAttendanceRequestRow = {
   id: string;
   attendanceDate: string;
@@ -4848,7 +4848,31 @@ export type MyAttendanceRequestRow = {
 };
 
 /**
- * An employee's OWN attendance requests, newest first — the "My attendance requests" list on My Attendance.
+ * 7709ffd1 (r369) — THE ROW CEILING ON `myAttendanceCorrections`, PUBLISHED, on ATTENDANCE_RANGE_MAX_DAYS'
+ * reasoning (67268d83, r367).
+ *
+ * The number was a bare `500` inside the clamp below, and the ONE screen reading this list asked for 200 of
+ * it, filtered and paged the result IN MEMORY, and set its pager total to `rows.length`. So an employee with
+ * more than 200 requests was shown a total of 200 and told nothing — a short list that looks exactly like a
+ * complete one. Adding an export to that screen would have turned it into a FILE that looks complete and is
+ * not, which is why this is fixed before the export and not after it.
+ *
+ * THE CLAMP IS NOT REMOVED. Removing it trades a silent truncation for an unbounded read; raising it moves
+ * the cliff without removing it. What was wrong is that no caller could SEE the cliff. So it is published:
+ * a caller that will show or serialise the rows bounds itself against THIS constant and refuses politely
+ * rather than handing over a short answer. app/attendance/request-status/rows.ts does that, and both the
+ * screen and app/attendance/request-status/export/route.ts read it from there.
+ *
+ * ⚠️ WHY THE CLAMP IS `+ 1` AND THE CEILING IS NOT. A caller cannot tell a complete list of exactly
+ * `MY_ATTENDANCE_REQUEST_ROW_CEILING` rows from a truncated one, so it must be able to ask for ONE row past
+ * the ceiling — and getting that row back is how it learns there are more than it may show. The ceiling is
+ * therefore the most rows anybody may DISPLAY or EXPORT; the clamp is one higher so that limit is knowable
+ * rather than guessed. Anything above it is still refused by the clamp.
+ */
+export const MY_ATTENDANCE_REQUEST_ROW_CEILING = 500;
+
+/**
+ * An employee's OWN attendance requests, newest first — the "My requests" list on My Attendance.
  *
  * 2166ef79 WIDENED this read; it did not fork it. It used to return five rows and four columns, which was
  * all the collapsed list on /me needed. The stage-one screen has to show what was asked for, when it was
@@ -4868,7 +4892,7 @@ export function myAttendanceCorrections(
   employmentId: string,
   opts: { limit?: number; status?: 'pending' | 'approved' | 'rejected' | 'cancelled' } = {},
 ): Promise<MyAttendanceRequestRow[]> {
-  const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? 100)), 500);
+  const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? 100)), MY_ATTENDANCE_REQUEST_ROW_CEILING + 1);
   return withTenant(ctx, async (tx) => {
     const rows = await tx
       .select({

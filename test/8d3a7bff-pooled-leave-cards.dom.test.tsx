@@ -306,7 +306,16 @@ describe('8d3a7bff · the two halves of a shared balance read differently', () =
       const dt = within(ring).getByText(label, { selector: 'dt' });
       expect(dt.parentElement!.querySelector('dd')!.textContent, `${loc}: AL ${label}`).toBe(formatDays(value));
     }
-    expect(within(ring).getByTestId('leave-balance-ring').textContent, `${loc}: AL ring centre`).toContain(formatDays(7.5));
+    // cac9a3a1 (r369) — UPDATED, with the claim it retires quoted: this line read `toContain(formatDays(7.5))`,
+    // i.e. the pool ring card's BALANCE in the middle of the ring. Balance is gross of pending; the green arc the
+    // centre sits inside is the available figure (5.50 here), so the two disagreed. The pool's FIGURES are still
+    // byte-identical to the day this file was written — which is this arm's whole job — only which of them the
+    // middle of the ring repeats has changed.
+    expect(within(ring).getByTestId('leave-balance-ring').textContent, `${loc}: AL ring centre`).toContain(formatDays(5.5));
+    expect(
+      within(ring).getByTestId('leave-balance-ring').querySelector('div[aria-hidden="true"]')!.textContent,
+      `${loc}: AL ring centre is the available figure, not the balance`,
+    ).toBe(`${formatDays(5.5)}${(ml(loc) as unknown as Record<string, string>).centreCaption.replace('{label}', lf(loc).availableBalance)}`);
   });
 
   it.each(LOCALES)('%s — (c) an ordinary unpooled type is byte-identical to today, and says nothing about a pool', (loc) => {

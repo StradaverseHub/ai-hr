@@ -52,11 +52,15 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { EntitlementBandsEditor, type EditableBand } from '@/components/leave/entitlement-bands-editor';
 import { EligibilityRuleForm } from '@/components/leave/eligibility-rule-form';
 import { todayInKualaLumpur } from '@/lib/hr-date';
+// 3a4efe9f — the ONE address that edits entitlement tables, named where every save already returns to it.
+import { ENTITLEMENT_TEMPLATES } from '@/app/admin/_redirects';
 // r299 (3de1453a) — the engine's own predicates, so the Balance Health finding for an earned method on a type
 // that is not Annual Leave is decided exactly where the sweep decides it. Server module; plain boolean out.
 import { isEarnedAccrualType, isEarnedMethod } from '@/core/leave';
 // ee6b7c69 — "which tables and rules are this leave type's", pure and tested on its own.
-import { scopeEntitlementTables } from '@/lib/entitlement-tables-scope';
+// 3a4efe9f — and "which leave type is in view", host-bound or operator-chosen, decided in the same pure
+// module so the two kinds of scope cannot come to mean two different slices.
+import { resolveViewLeaveTypeId, scopeEntitlementTables } from '@/lib/entitlement-tables-scope';
 // 9e2a89e9 — "who does this cover", derived ONCE for both Covers columns. The scheme list had this
 // rendering inline (raw criteria keys and a count); the tables list needed the same answer, and two
 // renderings of one criteria object is how two halves of a screen come to disagree. See that file.
@@ -472,15 +476,79 @@ export function entitlementGridRows(input: {
 export async function EntitlementTablesBlock({
   data,
   leaveTypeId,
+  typeFilter,
+  highlightTable,
+  returnToType,
   editTemplate,
   editRule,
   showConfigHealth = true,
   showBenefitSchemes = true,
+  tablesReadOnly = false,
 }: {
   data: EntitlementTablesData;
   /** Absent ⇒ the standalone screen: every leave type, with the Leave type column and the type picker.
    *  Present ⇒ the Entitlement step of that type: its own tables only, and the type filled in for HR. */
   leaveTypeId?: string;
+  /**
+   * 3a4efe9f (r369) — THE OPERATOR'S OWN LEAVE TYPE FILTER, and it is a different thing from the prop above.
+   *
+   * The prop above is a HOST DECISION: the leave type screen's tab 3 is about one type and always was. This
+   * one is a READER'S CHOICE, arriving as `?leaveType=<id>` on the Entitlement tables tab, cleared by
+   * picking "All leave types" again. Default absent ⇒ every leave type side by side, exactly as before, so
+   * no existing mount changes shape.
+   *
+   * ⚠️ NAMED SO IT CANNOT READ AS THE HARDCODED FILTER. Like `showConfigHealth` and `showBenefitSchemes`,
+   * this name MAY NOT CARRY THE SUBSTRING `leaveTypeId`: `test/entitlement-tables-embed.test.ts` and
+   * `test/leave-config-round3.test.ts` both prove the standalone mount names no hardcoded leave type by
+   * looking for that substring, and the decision they pin — this screen's default view is every type at
+   * once — is NOT being reversed here, only made narrowable on request.
+   *
+   * WHAT IT UNLOCKS, AND WHY THE ITEM NEEDED IT FIRST: with one type in view the create form can name that
+   * type, which is the precondition for the create-time reach warning (see `scoped` below). The alternative
+   * — moving create to this tab unfiltered — loses the warning, and a leave type whose second table reaches
+   * nobody then looks exactly like one that is fine.
+   */
+  typeFilter?: string;
+  /**
+   * 3a4efe9f — `?table=<lineageId>`: the table a deep link from the leave type screen came here to show.
+   *
+   * Its version rows carry `id="table-<lineageId>"`, so the same link's `#table-<lineageId>` fragment does
+   * the scrolling with no client JavaScript, and this prop does the HIGHLIGHT. Held until the operator
+   * navigates rather than faded out on a timer: a highlight that expires before the reader has looked is a
+   * highlight that was never shown, and a timer would make this server component a client one.
+   *
+   * An id matching nothing on screen highlights nothing and is not an error — a stale bookmark must still
+   * render the tab.
+   */
+  highlightTable?: string;
+  /**
+   * 3a4efe9f (r369) — "+ NEW TABLE" IS A ROUND TRIP, NOT A ONE-WAY DOOR.
+   *
+   * The approved plan's step 2.4: pressing "+ New table" on a leave type opens the create form on the
+   * Entitlement tables tab with the leave type filled in and locked, and SAVING BRINGS THE OPERATOR BACK to
+   * the leave type screen with the new table visible.
+   *
+   * The mechanism already existed and needed one more caller. `returnFor` in ./actions.ts reads
+   * `embeddedLeaveTypeId` off the posted form and `saved()` / `refused()` send the operator to that leave
+   * type's tab 3 with the `#type-<id>` anchor. Until now only the EMBEDDED mount posted that field, so a
+   * create typed on the Entitlement tables tab always stayed there — correct for an operator who went to
+   * that tab directly, and wrong for one who arrived by pressing "+ New table" and expects to be put back
+   * where they were.
+   *
+   * So the link carries `?returnTo=<leaveTypeId>` and this prop turns it into the SAME hidden field, on the
+   * CREATE / EDIT FORM ONLY. Not on the row controls: a Stop or Delete pressed on the Entitlement tables tab
+   * belongs back on the Entitlement tables tab whatever brought the operator there, and bouncing a
+   * destructive save onto a different screen would hide its result.
+   *
+   * ⚠️ NOT AN OPEN REDIRECT, and `returnFor`'s own header is why: the value is a leave type id interpolated
+   * into a fixed internal path fragment, never a caller-supplied URL. An id naming nothing lands on tab 3
+   * with no panel selected, which is what a stale link deserves.
+   *
+   * ⚠️ NAMED `returnToType`, NOT `returnToLeaveTypeId`. Two guards assert the standalone mount's props name
+   * no `leaveTypeId`; the capitalised form would not match their substring today, and relying on that would
+   * be relying on a coincidence of casing.
+   */
+  returnToType?: string;
   editTemplate?: string;
   editRule?: string;
   /**
@@ -509,6 +577,41 @@ export async function EntitlementTablesBlock({
    * deletion would take the scoped mount's schemes editor with it.
    */
   showBenefitSchemes?: boolean;
+  /**
+   * 3a4efe9f (r369) — THIS MOUNT SHOWS THE TABLES BUT DOES NOT EDIT THEM.
+   *
+   * THE COMPLAINT. The same list of entitlement tables appeared on two screens, both with Edit, a date box,
+   * Stop and Delete, and both with a full create form. Underneath there is ONE stored record
+   * (`entitlement_template`), ONE component (this file) and ONE write path (`./actions.ts` → `core/`), so
+   * nothing was ever actually duplicated — but nothing on either screen said so, and HR admins updated both
+   * and worried about which one won.
+   *
+   * The agreed responsibility matrix: the Entitlement tables tab CREATES, EDITS, STOPS and DELETES; the
+   * leave type's "What are they entitled to" tab SHOWS the same tables read-only and owns the leave type's
+   * own rules — earning method, proration, rounding, the default table, the benefit schemes, and the
+   * job-grade coverage warning. So this flag suppresses the four row controls, the delete-blocked caption
+   * and the create/edit form, and puts a link to the editing screen in their place.
+   *
+   * ⚠️ GATED, NEVER FORKED, and the reason is the item itself. Two copies of a form writing one
+   * effective-dated lineage drift the first time either is touched and both still save — which is exactly
+   * the fear this item was raised about. The JSX below is the one definition both mounts share, precisely as
+   * `showConfigHealth` and `showBenefitSchemes` already are (that precedent is pinned as "GATED, not
+   * deleted" at test/r270-entitlement-tables-screen.test.ts). Deleting it would also take the editor away
+   * from the Entitlement tables tab, and `test/r210-entitlement-delete.test.ts` §D reads this file's source
+   * for every control being suppressed here.
+   *
+   * ⚠️ IT DOES NOT TOUCH THE ELIGIBILITY / BENEFIT SCHEME CONTROLS. Those stay EDITABLE on the leave type
+   * screen — the matrix says so — and they are governed by `showBenefitSchemes`, which is already true there
+   * and false on the Entitlement tables tab.
+   *
+   * ⚠️ AND IT DOES NOT TOUCH `leaveTypeId`. The leave type mount must keep passing it
+   * (`test/entitlement-tables-embed.test.ts` §1 asserts `leaveTypeId={leaveTypeId}` on that page): read-only
+   * is a SECOND property, not the removal of the filter. Nor may this name carry that substring.
+   *
+   * Default FALSE, so every existing mount keeps today's behaviour and only the caller that wants the
+   * editor gone has to say so.
+   */
+  tablesReadOnly?: boolean;
 }) {
   const t = await getTranslations('admin.entitlementTemplates');
   // r212 — the marital-status values already shipped in six locales under the leave-type screen's own
@@ -526,15 +629,50 @@ export async function EntitlementTablesBlock({
     today,
   } = data;
 
-  const scoped = leaveTypeId != null;
   const typeNameById = new Map(leaveTypes.map((x) => [x.id, x.name]));
-  const scopedTypeName = scoped ? (typeNameById.get(leaveTypeId!) ?? '') : '';
+  /**
+   * 3a4efe9f (r369) — "IS EXACTLY ONE LEAVE TYPE IN VIEW" AND "DID MY HOST BIND ME TO ONE" ARE NOW TWO
+   * QUESTIONS.
+   *
+   * Until this round they were one, because only the embedded mount ever showed a single type. The
+   * Entitlement tables tab now carries an operator-chosen Leave type filter, so a mount can be showing one
+   * leave type without its host having named one, and the two facts have different consumers:
+   *
+   *   · `scoped` — ONE TYPE IS IN VIEW. Everything that only makes sense once the screen knows which leave
+   *     type it is talking about: the heading, the dropped Leave type column, the type filled in and locked
+   *     on the create form, and — the load-bearing one — the create-time reach warning below. r224's own
+   *     comment gave the reason it could not be shown here: "the unfiltered screen cannot know which leave
+   *     type the picker below is about to name." With the filter on, it can.
+   *   · `embedded` — MY HOST BOUND ME. Only the things that are about being inside a leave type's tab: the
+   *     `#type-<id>` fragment `href()` appends, the `embeddedLeaveTypeId` return field, and the default-table
+   *     picker, which the approved matrix keeps on the leave type screen and OFF this tab.
+   *
+   * ⚠️ WHY THE ORDER OF THIS ROUND'S TWO COMMITS IS NOT COSMETIC. The reach warning is the only notice that
+   * adding a SECOND table to a leave type ends the sole-table fallback, after which neither table resolves
+   * for anybody until a rule or a default points at one. It can only be worded when the type is known. Move
+   * the create form off the leave type screen before this filter exists and the warning renders nowhere, so
+   * the screen quietly starts producing configurations that reach no one.
+   *
+   * ⚠️ `typeFilter` IS DELIBERATELY NOT NAMED AFTER WHAT IT NARROWS. Two guards prove the standalone mount
+   * carries no HARDCODED leave type by asserting its mount text names no `leaveTypeId`; a prop called
+   * `filterLeaveTypeId` would read to both as the hardcoded filter coming back. Their claim is updated in
+   * place rather than loosened — see test/entitlement-tables-embed.test.ts §1.
+   *
+   * ⚠️ AN UNKNOWN id FALLS BACK TO UNFILTERED, never to an empty screen. A stale bookmark naming a deleted
+   * leave type would otherwise produce a scoped mount with no type — the r270 edge case that rendered an
+   * empty "No active leave types" card. Resolved against the loaded list, so only a real type can filter.
+   */
+  const embedded = leaveTypeId != null;
+  const viewTypeId = resolveViewLeaveTypeId({ leaveTypeId, typeFilter, known: leaveTypes });
+  const scoped = viewTypeId != null;
+  const scopedTypeName = scoped ? (typeNameById.get(viewTypeId!) ?? '') : '';
 
   // ── The slice this mount shows ────────────────────────────────────────────────────────────────────
   // Filtered IN MEMORY off the one page-level read (see loadEntitlementTablesData's note), through the
   // shared pure scoper — which is where the "a rule has no leave type of its own" reasoning lives, and
-  // where it is tested.
-  const { templates, rules } = scopeEntitlementTables(data, leaveTypeId);
+  // where it is tested. One scoper for both kinds of scope: the operator's filter narrows by exactly the
+  // rule the embedded mount is narrowed by, so the two cannot come to mean different slices.
+  const { templates, rules } = scopeEntitlementTables(data, viewTypeId);
 
   const running = templates.filter((x) => x.validTo == null);
   const runningRules = rules.filter((x) => x.validTo == null);
@@ -595,7 +733,7 @@ export async function EntitlementTablesBlock({
    * NO EXTRA QUERY. `templates`, `rules`, `activeGrades` and the leave types' earning-method columns are
    * all in `data`, which each host page loads exactly once.
    */
-  const scopedType = scoped ? leaveTypes.find((x) => x.id === leaveTypeId) : undefined;
+  const scopedType = scoped ? leaveTypes.find((x) => x.id === viewTypeId) : undefined;
   const scopedHealth = scopedType
     ? leaveTypeConfigHealth({ leaveType: scopedType, templates, rules, grades: activeGrades, today })
     : null;
@@ -719,6 +857,23 @@ export async function EntitlementTablesBlock({
    */
   const deleteBlockText = (block: EntitlementUsageBlock | undefined): string | null =>
     !block || isDeletableLineage(block) ? null : t('deleteBlockedByRules', { rules: block.rules.join(', ') });
+  /**
+   * 3a4efe9f — THE WAY TO THE ONE SCREEN THAT EDITS TABLES, built from the redirect constant rather than a
+   * typed path.
+   *
+   * `ENTITLEMENT_TEMPLATES` is already the address every table and eligibility save returns to, so a literal
+   * here would be a second statement about where that screen lives — the exact drift that constant's own
+   * header warns about. `?leaveType=` preselects r369's filter (which is what lets the create form on that
+   * tab name a leave type at all, and therefore what keeps its reach warning wordable); `?table=` highlights
+   * the row; the `#table-<lineageId>` fragment scrolls to it with no client JavaScript.
+   *
+   * ⚠️ NOT THROUGH `href()`. That helper appends `#type-<id>`, which names a leave type PANEL on the screen
+   * we are LEAVING. These links carry their own fragment, on the screen they are going to.
+   */
+  const manageTableHref = (lineageId: string) =>
+    `${ENTITLEMENT_TEMPLATES}?leaveType=${encodeURIComponent(leaveTypeId ?? '')}&table=${encodeURIComponent(lineageId)}#table-${lineageId}`;
+  /** …and the same screen with its create form in view and this leave type already filled in. */
+  const newTableHref = `${ENTITLEMENT_TEMPLATES}?leaveType=${encodeURIComponent(leaveTypeId ?? '')}&returnTo=${encodeURIComponent(leaveTypeId ?? '')}#new-entitlement-table`;
   /** The row's date box for Stop. `inputCls` is `w-full` and full height — a row control is neither. */
   const rowDateCls =
     'h-8 w-[8.5rem] rounded-md border border-input bg-card px-2 text-xs shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
@@ -730,11 +885,26 @@ export async function EntitlementTablesBlock({
    * alphabetically while the edit form below it is showing another type's table. Soft navigation happens to
    * survive without it — the workspace is not remounted — which is exactly the kind of difference that gets
    * a missing anchor shipped. Every Edit / Cancel link this block emits carries it.
+   *
+   * 3a4efe9f — `embedded`, NOT `scoped`. The fragment names a leave type PANEL, and panels exist only on
+   * the leave type screen. The Entitlement tables tab filtered to one type has no `#type-<id>` target, so
+   * appending one there would produce links the browser cannot resolve.
    */
-  const href = (query: string) => (scoped ? `${query}#type-${leaveTypeId}` : query);
+  const href = (query: string) => (embedded ? `${query}#type-${leaveTypeId}` : query);
   /** The embedded mount posts this so the save returns to the step it was typed in, not to the standalone
-   *  screen. Absent on the standalone mount, where the actions keep their own return. */
-  const returnField = scoped ? <input type="hidden" name="embeddedLeaveTypeId" value={leaveTypeId} /> : null;
+   *  screen. Absent on the standalone mount, where the actions keep their own return.
+   *  3a4efe9f — `embedded` for the same reason as `href` above: a save typed on the Entitlement tables tab
+   *  belongs back on the Entitlement tables tab, filter and all, whether or not a filter was in force. */
+  const returnField = embedded ? <input type="hidden" name="embeddedLeaveTypeId" value={leaveTypeId} /> : null;
+  /**
+   * 3a4efe9f — the CREATE / EDIT FORM's return field. `returnField` wins wherever it exists, so the embedded
+   * mount is byte-for-byte unchanged; `returnToType` only fills the gap on the standalone tab, and only for
+   * an operator who arrived by pressing "+ New table" on a leave type. See the prop's own note for why the
+   * row controls deliberately do NOT get this.
+   */
+  const formReturnField =
+    returnField ??
+    (returnToType ? <input type="hidden" name="embeddedLeaveTypeId" value={returnToType} /> : null);
 
   /**
    * 9e2a89e9 — THE COVERS CELL, one renderer for both columns.
@@ -900,6 +1070,23 @@ export async function EntitlementTablesBlock({
         />
         {/* What this table cannot show, said before it rather than after (r270 D4). */}
         <p className="px-3 pb-2 text-xs text-muted-foreground">{t('gridOverlapNote')}</p>
+        {/* ── 3a4efe9f · THE WAY TO ADD A TABLE, ON THE SCREEN THAT ADDS THEM ──────────────────────────
+            At the TOP of the list, where the create form used to begin, so an operator looking for "New
+            entitlement table" finds the route to it in the place the form stood. The link carries this leave
+            type, so the form opens with the type already filled in and locked — which is also what makes its
+            reach warning wordable there, and the reason r369's filter had to ship before this link did.
+            The helper line above the list (`entitlementStep.tablesHint`, rendered by the host page) says the
+            other half: changes made there appear here with no second save. */}
+        {tablesReadOnly ? (
+          <div className="flex flex-wrap items-center justify-end px-3 pb-2">
+            <Link
+              href={newTableHref}
+              className="h-8 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
+            >
+              {t('newTableElsewhere')}
+            </Link>
+          </div>
+        ) : null}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
@@ -923,10 +1110,27 @@ export async function EntitlementTablesBlock({
               )}
               {gridRows.map((r) => {
                 const x = templateById.get(r.templateId);
+                /**
+                 * 3a4efe9f — THE DEEP LINK'S TARGET AND ITS HIGHLIGHT, both keyed on the LINEAGE.
+                 *
+                 * The lineage is the table's identity through time; the version id is not, so a link written
+                 * before a supersede would land on a row that no longer exists. Every row of the group is
+                 * highlighted, not just the head, because a table's service bands are what the reader was
+                 * sent here to read — highlighting one line of six would read as "this band", not "this
+                 * table". The `id` goes on the group HEAD only: one anchor per table, or the fragment would
+                 * be ambiguous.
+                 */
+                const highlighted = highlightTable != null && x != null && x.lineageId === highlightTable;
                 return (
                   <tr
                     key={r.key}
-                    className={r.firstOfTable ? 'border-t-2 border-border align-top' : 'border-t align-top'}
+                    id={r.firstOfTable && x ? `table-${x.lineageId}` : undefined}
+                    className={[
+                      r.firstOfTable ? 'border-t-2 border-border align-top' : 'border-t align-top',
+                      highlighted ? 'bg-amber-50 dark:bg-amber-950/30' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
                   >
                     {scoped ? null : (
                       <td className="px-3 py-2">{r.firstOfTable ? (typeNameById.get(r.leaveTypeId) ?? dash) : null}</td>
@@ -972,6 +1176,17 @@ export async function EntitlementTablesBlock({
                     <td className="px-3 py-2">
                       {r.firstOfTable && x ? (
                         <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+                          {/* ── 3a4efe9f · ONE SCREEN OWNS THESE FOUR CONTROLS ────────────────────────
+                              Read-only mounts send the operator to that screen instead of offering a second
+                              copy of Edit, Stop and Delete over the same stored record. GATED, NOT DELETED:
+                              the branch below is what the Entitlement tables tab renders, and
+                              test/r210-entitlement-delete.test.ts §D reads it out of this file's source. */}
+                          {tablesReadOnly ? (
+                            <Link href={manageTableHref(x.lineageId)} className="text-sm underline">
+                              {t('manageInTables')}
+                            </Link>
+                          ) : (
+                            <>
                           {x.validTo == null ? (
                             <Link
                               href={href(`?editTemplate=${encodeURIComponent(x.lineageId)}`)}
@@ -1028,6 +1243,8 @@ export async function EntitlementTablesBlock({
                               </form>
                             )
                           ) : null}
+                            </>
+                          )}
                         </div>
                       ) : null}
                     </td>
@@ -1038,8 +1255,20 @@ export async function EntitlementTablesBlock({
           </table>
         </div>
 
+        {/* ── 3a4efe9f · THE CREATE / EDIT FORM, ON ONE SCREEN ONLY ────────────────────────────────────
+            The strongest signal that the leave type screen was a second place to create tables was that it
+            carried a whole New entitlement table form. It is GATED here rather than removed: this is the one
+            definition the Entitlement tables tab renders, and eight guards read it out of this file's source
+            — the effective-date field (r219), the save-mode submit (r224), the create-time reach warning
+            (r224/r269), the bands editor's remount key (4a1abc4a) and r210 §D's 200-character panel slice
+            among them. A read-only FORK would be the second implementation this whole item exists to remove.
+            `null` and not a placeholder: the "+ New table" link at the top of the list is where an operator
+            goes instead, and a disabled form would still read as a form. */}
+        {tablesReadOnly ? null : (
         <div className="border-t p-4">
-          <h3 className="mb-3 text-sm font-medium">
+          {/* 3a4efe9f — the anchor the "+ New table" link on every read-only mount scrolls to. On the id, not
+              on the h3's text, so the fragment survives the heading being reworded or translated. */}
+          <h3 id="new-entitlement-table" className="mb-3 text-sm font-medium">
             {editingTemplate ? t('editTemplateTitle') : t('newTemplateTitle')}
           </h3>
           {/* r224 — THE DATE BOX, THE NOTE AND THE SUBMIT SHARE ONE PIECE OF STATE, so they sit under one
@@ -1055,7 +1284,7 @@ export async function EntitlementTablesBlock({
               action={editingTemplate ? updateEntitlementTemplateAction : createEntitlementTemplateAction}
               className="space-y-4"
             >
-              {returnField}
+              {formReturnField}
               {editingTemplate ? <input type="hidden" name="lineageId" value={editingTemplate.lineageId} /> : null}
               <div className="grid gap-3 sm:grid-cols-3">
                 <Field label={t('templateName')}>
@@ -1076,8 +1305,14 @@ export async function EntitlementTablesBlock({
                       aria-label={t('templateLeaveType')}
                     />
                   ) : scoped ? (
+                    /* 3a4efe9f — `viewTypeId`, NOT `leaveTypeId`, and this is the create path's whole point.
+                       Filtered by the operator on the Entitlement tables tab there IS no `leaveTypeId`: it
+                       is undefined, so posting it would submit a create with no leave type and the action
+                       would refuse a form whose visible field said "Annual Leave". `viewTypeId` is the type
+                       the reader is looking at, host-bound or filtered, which is the one the read-only field
+                       beside it names. */
                     <>
-                      <input type="hidden" name="leaveTypeId" value={leaveTypeId} />
+                      <input type="hidden" name="leaveTypeId" value={viewTypeId} />
                       <input className={inputCls} value={scopedTypeName} readOnly aria-label={t('templateLeaveType')} />
                     </>
                   ) : (
@@ -1180,6 +1415,7 @@ export async function EntitlementTablesBlock({
               several fields inside an Edit panel is the one nobody finds — which is the complaint this
               item opens with. The row carries the same date field and the same ConfirmSubmit subtitle. */}
         </div>
+        )}
       </Card>
 
       {/* ── 76ffdcf2 · THE DEFAULT ENTITLEMENT TABLE: WHO A SCHEME NEVER REACHES ────────────────────
@@ -1190,8 +1426,14 @@ export async function EntitlementTablesBlock({
           "never hand out a table nobody chose" (r193 fault 3) survives intact and no days are invented.
           SCOPED MOUNT ONLY — the default belongs to ONE leave type, and a picker per type on the
           unfiltered screen would be a column of twenty-four saves. The unfiltered list still SHOWS which
-          table is a default, on the row it belongs to. */}
-      {scoped && scopedType ? (
+          table is a default, on the row it belongs to.
+
+          3a4efe9f — `embedded`, NOT `scoped`, and this is the approved matrix rather than a technical
+          limit. "Default table and benefit schemes" is a LEAVE TYPE rule: the matrix reads "Not shown" for
+          the Entitlement tables tab and "Editable" for the leave type screen. Filtering this tab to one
+          type does now make the picker expressible here, and it still must not appear — that would put the
+          same setting on two screens, which is the duplication this whole item exists to remove. */}
+      {embedded && scopedType ? (
         <Card>
           <SectionHeader title={t('defaultTableTitle')} />
           <div className="space-y-3 p-4">

@@ -178,6 +178,21 @@ const ADDED_AFTER_ADJUSTMENTS: readonly { href: string; labelKey: string }[] = [
    * records, and this node's header says the order of the menu is the order of the work.
    */
   { href: '/admin/leave-config/history-import', labelKey: 'leaveHistoryImport' },
+  /**
+   * db55d08a (r369) — LEAVE B/F DATA IMPORT, spliced in directly behind the record importer and still
+   * BEFORE Leave Credit, and the order within this list is again the answer to the reporter's own question.
+   *
+   * They asked for a sibling of Leave History Data Import for the OPENING FIGURE, and were right to.
+   * Brought Forward is DERIVED (`sum(leave_ledger.days) where effective_on < cycleStart`) and no field
+   * holds it, so the only existing route to it is the BALANCE importer, where the uploader must know two
+   * unwritten rules — date the line in the PREVIOUS leave year, and make it an `adjustment`. An `accrual`
+   * dated inside the year instead satisfies `yearOpenMarkerCond` and makes Generate Entitlement grant that
+   * employee nothing for the whole year. This row is the tool that knows those rules.
+   *
+   * Immediately behind the record importer because the order of the menu is the order of the work, and the
+   * reporter's go-live sequence is: generate the entitlements, load B/F, load the leave taken.
+   */
+  { href: '/admin/leave-config/bf-import', labelKey: 'leaveBfImport' },
   { href: '/admin/leave-config/leave-credit', labelKey: 'leaveCredit' },
 ] as const;
 
@@ -281,6 +296,11 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
         // destination: the half-day card it holds was already behind that column on Company rules, so a
         // screen key of its own would invent a permission for a card that changed address.
         '/admin/leave-config/special-setting': 'leaveConfig',
+      // db55d08a (r369) — Leave B/F Data Import, on `leaveConfig` like both importers beside it. A
+      // screenKey of its own would invent a permission NOBODY HAS BEEN GRANTED and split one area's
+      // access in two: anyone who could open Leave Balance Import could already load balance movements,
+      // which is a strictly wider power than stating an opening figure.
+      '/admin/leave-config/bf-import': 'leaveConfig',
     };
     for (const child of NODE.children) {
       expect(exists(routeFile(child.href)), `${child.href} has no route file`).toBe(true);

@@ -19,10 +19,13 @@ import {
   leaveImportTemplate,
   payrollComponentTemplate,
   LEAVE_HISTORY_XLSX_HEADERS,
+  leaveBfImportTemplate,
+  LEAVE_BF_XLSX_HEADERS,
   type TemplateSpec,
 } from '../lib/import-template';
 import { LEAVE_IMPORT_COLUMNS } from '../lib/leave-import-schema';
 import { LEAVE_HISTORY_COLUMNS, canonicalColumnKey } from '../lib/leave-history-import-schema';
+import { LEAVE_BF_COLUMNS, canonicalBfColumnKey } from '../lib/leave-bf-import-schema';
 
 describe('import templates', () => {
   describe('employee (the real desync lock)', () => {
@@ -85,6 +88,45 @@ describe('import templates', () => {
     });
   });
 
+  /**
+   * db55d08a (r369) — LEAVE B/F (the fourth real desync lock), and the second direction is again the one
+   * that earns the case.
+   *
+   * ⚠️ THE `B/F Days` HEADING IS THE POINT. `parseCsvRecords` lower-cases a header and replaces whitespace
+   * but KEEPS punctuation, so the reporter's own "B/F Days" arrives as `b/f_days` — slash and all — and
+   * `canonicalBfColumnKey` has to strip it to reach `bf_days`. Get that wrong and the workbook the product
+   * hands out is a workbook the product rejects as missing a required column, behind a green everything.
+   * That is not hypothetical: it is the exact shape of the "Employee No." period the r362 case below pins.
+   */
+  describe('leave-bf (the desync lock, both directions)', () => {
+    it('the template columns are the enforced contract, in order', () => {
+      expect(leaveBfImportTemplate.columns).toEqual(
+        LEAVE_BF_COLUMNS.map((c) => ({ key: c.key, required: c.required })),
+      );
+      // Non-vacuity: the contract is the reporter's five, and four of them are required. The fifth is
+      // Remark; the dropped "B/F Expiry Date" would make this six and is deliberately absent (the leave
+      // type's own carry-forward expiry rule is the only rule, and there is no per-row column to hold an
+      // override) — see lib/leave-bf-import-schema.ts.
+      expect(leaveBfImportTemplate.columns).toHaveLength(5);
+      expect(leaveBfImportTemplate.columns.filter((c) => c.required)).toHaveLength(4);
+    });
+
+    it('every .xlsx heading canonicalises back to its own contract key (the round trip HR actually uses)', () => {
+      expect(LEAVE_BF_XLSX_HEADERS).toEqual(LEAVE_BF_COLUMNS.map((c) => c.header));
+      for (const c of LEAVE_BF_COLUMNS) {
+        // The two-step the real upload takes: parseCsvRecords lower-cases and underscores the header
+        // (keeping punctuation), then the service canonicalises it. Both steps, in order, or this case
+        // proves nothing about the file.
+        const asParsed = c.header.trim().toLowerCase().replace(/\s+/g, '_');
+        expect(canonicalBfColumnKey(asParsed), `${c.header} must reach ${c.key}`).toBe(c.key);
+      }
+      // …and the one that would otherwise pass silently: the slash in "B/F Days" is real and survives
+      // parseCsvRecords. Asserted on its own so a regression names the cause rather than a column count.
+      expect('B/F Days'.trim().toLowerCase().replace(/\s+/g, '_')).toBe('b/f_days');
+      expect(canonicalBfColumnKey('b/f_days')).toBe('bf_days');
+    });
+  });
+
   const specs: TemplateSpec[] = [
     employeeTemplate,
     attendancePunchTemplate,
@@ -93,9 +135,12 @@ describe('import templates', () => {
     // 3f15ffdb (r362) — the CSV form of the leave-history template takes the same round-trip and
     // required-cell guarantees as its four siblings.
     leaveHistoryImportTemplate,
+    // db55d08a (r369) — and the B/F template takes them too. UPDATED, NOT LOOSENED: the describe title
+    // below says "all five" and now covers six; the title is prose, the list is the guard.
+    leaveBfImportTemplate,
   ];
 
-  describe.each(specs.map((s) => [s.id, s] as const))('all five: %s', (_id, spec) => {
+  describe.each(specs.map((s) => [s.id, s] as const))('all six: %s', (_id, spec) => {
     it('round-trips through parseCsvRecords to the same headers (toCsv ↔ parseCsvRecords, incl. CRLF)', () => {
       const csv = buildTemplateCsv(spec);
       expect(csv).toContain('\r\n'); // toCsv emits CRLF line endings

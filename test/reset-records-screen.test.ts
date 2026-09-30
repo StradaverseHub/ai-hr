@@ -291,6 +291,12 @@ describe('7f69bd71 — the map: two tabs per row, the record ids excluded by typ
       // the Reset records sub-screen is STILL owned by the Leave Adjustments row alone (asserted below)
       // — so the list is restated exactly rather than turned into a count or a "contains".
       '/admin/leave-config/history-import',
+      // db55d08a (r369) — UPDATED, NOT LOOSENED, and for the same reason a fifth time: a later, unrelated
+      // item gave Leave B/F Data Import a row of its own, directly after the record importer. This case's
+      // property is untouched — that round added no tab and no sub-screen, and the Reset records
+      // sub-screen is STILL owned by the Leave Adjustments row alone (asserted below) — so the list is
+      // restated exactly rather than turned into a count or a "contains".
+      '/admin/leave-config/bf-import',
       // 3fb1a611 (r299) — UPDATED, NOT LOOSENED, for the same reason as the r281 note below: a later, unrelated
       // item gave Leave Credit a row directly after Leave Adjustments. The Reset records sub-screen is still
       // owned by the Leave Adjustments row alone.

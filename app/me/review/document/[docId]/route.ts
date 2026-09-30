@@ -4,6 +4,7 @@
 // null → 404 (same pattern as app/me/leave/attachment/[id]/route.ts). Read-only — NO domain event
 // (deliberate skip, like every download route).
 import { getSession } from '@/lib/session';
+import { inlineDisposition } from '@/lib/attachment-response';
 import { getReviewDocument } from '@/core/employment-review';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -17,11 +18,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ docId: s
   if (!doc) return new Response('Not found', { status: 404 });
 
   const safe = (name: string) => name.replace(/[^a-zA-Z0-9._ -]/g, '_').slice(0, 120) || 'document';
-  const disposition = new URL(req.url).searchParams.get('inline') === '1' ? 'inline' : 'attachment';
+  const disposition = inlineDisposition(req, doc.mimeType);
   const bytes = new Uint8Array(doc.content);
   return new Response(bytes, {
     headers: {
       'Content-Type': doc.mimeType || 'application/octet-stream',
+      'X-Content-Type-Options': 'nosniff',
       'Content-Disposition': `${disposition}; filename="${safe(doc.fileName)}"`,
       'Content-Length': String(bytes.byteLength),
       'Cache-Control': 'private, no-store',

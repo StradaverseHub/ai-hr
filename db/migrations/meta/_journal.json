@@ -2829,6 +2829,20 @@
       "when": 1789980201344,
       "tag": "0491_epf_manual_amount",
       "breakpoints": true
+    },
+    {
+      "idx": 492,
+      "version": "7",
+      "when": 1789980202344,
+      "tag": "0492_payslip_statutory_admin_or_self",
+      "breakpoints": true
+    },
+    {
+      "idx": 497,
+      "version": "7",
+      "when": 1789980207344,
+      "tag": "0497_leave_bf_import",
+      "breakpoints": true
     }
   ]
 }

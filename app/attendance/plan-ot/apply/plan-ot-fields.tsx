@@ -117,7 +117,12 @@ export function PlanOtFields({
         <p className="text-[11px] text-primary">{t('otStartFromShiftEnd')}</p>
       )}
 
-      <Field label={t('otHoursLabel')}>
+      {/* c7c69a18 — "Overtime duration", on a key of this screen's own. me.otHoursLabel ("Overtime hours")
+          is RETIRED IN PLACE in all six catalogues rather than reworded, so nothing that resolves it later
+          silently acquires this screen's wording. (The approved plan's build note says the approvals queue
+          shares this key; it does not — app/approvals/page.tsx opens getTranslations('approvals') and reads
+          approvals.otHoursLabel, whose value is "OT". The correction is in the round's report.) */}
+      <Field label={t('otDurationLabel')}>
         <div className="flex items-baseline gap-2">
           <span className="text-lg font-semibold tabular-nums">{fmtHours(otMinutes)}</span>
           <span className="text-[11px] text-muted-foreground">{t('otComputedHoursHelp')}</span>

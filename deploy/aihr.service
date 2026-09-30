@@ -15,6 +15,13 @@ Type=simple
 User=aihr
 WorkingDirectory=/opt/ai-hr
 EnvironmentFile=/opt/ai-hr/.env.production
+# Security (assessment 2026-09, finding M2). .env.production also carries MIGRATION_DATABASE_URL — the
+# schema-OWNER connection used only by deploy.sh / migrate / seed. The running web app uses DATABASE_URL
+# (RLS-bound) and PLATFORM_DATABASE_URL only; it must NOT hold the owner credential, or an RCE/env-leak
+# in the web process would let an attacker disable RLS and re-grant the revoked encrypted columns. systemd
+# applies UnsetEnvironment AFTER the EnvironmentFile, so deploy.sh (which sources the file in its own
+# shell) is unaffected while the long-lived service environment drops it.
+UnsetEnvironment=MIGRATION_DATABASE_URL
 # CHANGE-ME: put your Node bin dir first so the app (and any child `env node`) uses the right
 # runtime. When co-locating on a host that already has a different system Node, install an
 # ISOLATED Node (e.g. unpack the official tarball to /opt/node20) and point here — never replace

@@ -3,8 +3,13 @@
  *
  * WHAT THE ARCS ARE. Around the circle, in order: what has been TAKEN, what is PENDING approval, what is LEFT TO
  * USE — "You can apply for" in the current leave year, the year's remaining available for an earlier one — and,
- * muted, the part of the year's entitlement NOT EARNED YET when there is any. The big number in the middle is the
- * Balance, which is not an arc.
+ * muted, the part of the year's entitlement NOT EARNED YET when there is any.
+ *
+ * cac9a3a1 (r369) — THE BIG NUMBER IN THE MIDDLE IS THE AVAILABLE ARC'S OWN FIGURE. What this header said
+ * before, quoted so the old rule is not reinstated: "The big number in the middle is the Balance, which is
+ * not an arc." It was, and the card therefore printed two figures for one thing — the reporter read 11.50 in
+ * the middle and 10.50 in the Available Balance row beside it. The caller now passes `remaining` and the green
+ * arc's own label, so the centre, the arc and the legend row are one figure under one name.
  *
  * THE LEGEND IS THE RING (r302 fix pass, verifier defect 5). The legend used to carry a green "Balance 7.00" while
  * the green arc drew Balance − Pending, so Balance 7 / Pending 7 showed a green legend entry over no green arc at
@@ -81,7 +86,7 @@ export function LeaveBalanceRing({
   segments: (RingSegment & { label: string; display: string })[];
   /** One sentence naming the figures, for screen readers (pre-formatted by the caller). */
   label: string;
-  /** The printed Balance, pre-formatted. */
+  /** The available arc's own figure, pre-formatted — the same value its legend row prints (cac9a3a1). */
   centre: string;
   centreCaption: string;
   size?: number;
