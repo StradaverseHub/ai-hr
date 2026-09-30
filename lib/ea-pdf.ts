@@ -522,8 +522,15 @@ export const EA_FORM = {
    * measures the drawn glyph rather than trusting this arithmetic.
    */
   inlineRuleGap: 8,
-  /** D5(a)/(b) print their own RM and rule at MID-PAGE; the right-hand column stays empty there. */
-  midMoney: [354.6, 556.6] as const,
+  /**
+   * D5(a)/(b) print their own RM and rule at MID-PAGE; the right-hand column stays empty there.
+   *
+   * The agency draws the whole thing as ONE run at 342.6 — "RM " then 55 leader dots — so the rule
+   * starts where its "RM " ends (342.6 + 14.7 at 8 pt) and runs the width of those dots. It stops well
+   * short of the money column at 482.3, which on these two rows the agency leaves empty; a rule run to
+   * `moneyRight` would print through a column that has nothing on it.
+   */
+  midMoney: [357.3, 478] as const,
   /** …with the agency's "RM" immediately before it. */
   midRm: 342.6,
   /** Sections E and F print an "RM" before the money column rather than relying on B's one heading. */
