@@ -2,18 +2,30 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { myEmployment, reportingLinesFor } from '@/core/read';
-import { myAttendanceCorrections } from '@/packs/attendance/service';
-import { Button, Card, ErrorBanner, PageHeader, tableWrapCls, tbodyCls, theadCls, thCls } from '@/components/ui';
+import { MY_ATTENDANCE_REQUEST_ROW_CEILING, myAttendanceCorrections } from '@/packs/attendance/service';
+import { Button, Card, ErrorBanner, PageHeader, pageWideCls, tableWrapCls, tbodyCls, theadCls, thCls } from '@/components/ui';
 import { Pager } from '@/components/pager';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
+import { todayInKualaLumpur } from '@/lib/hr-date';
 import { myCancelAttendanceRequest } from '@/app/me/actions';
 import { KIND_LABEL, Pill, REQUEST_STATUSES, askedFor, statusLabel } from '../request-ui';
+import { parseRequestStatus, requestRowsProbeLimit, resolveRequestRows } from './rows';
 
 /**
- * My Attendance > My Attendance Request Status — every request the employee has filed, and what happened
- * to it.
+ * My Attendance > My Request — every request the employee has filed, and what happened to it.
  *
- * MOVED, NOT REBUILT. This card is 2166ef79's "My attendance requests" list, lifted whole off the shared
+ * 7709ffd1 (r369) — THE ROW AND THE TITLE READ "My Request", and the LABELS are all that changed about
+ * either. The rail truncated "My Attendance Request Status" to "My Attendance Request …", which is the
+ * reporter's complaint; `nav.myAttendanceRequestStatus` and `me.myAttendanceRequestStatus` carry the new
+ * words in all six catalogues and the KEY, the href and the route are untouched (the same label-only
+ * pattern r362 used when My Records became Attendance Overview), so no bookmark breaks and nothing needs
+ * redirecting. The card header is `me.maRequestsTitle`, now "My requests".
+ *
+ * ⚠️ TWO THINGS THE TICKET ASKED FOR DO NOT EXIST TO RENAME, and that is recorded rather than quietly
+ * skipped: there is no breadcrumb on any screen in this product, and the browser tab is one global title —
+ * giving this page its own would make it the only page that behaves differently.
+ *
+ * MOVED, NOT REBUILT. This card is 2166ef79's "My requests" list, lifted whole off the shared
  * screen: the same `myAttendanceCorrections` read, the same status-filter pills, the same columns (date,
  * type, what was asked for, submitted, who it went to, outcome), the same pager and the same cancel rule.
  * c6bb5f5a asked for it to have its own menu row and its own page rather than sitting under four tabs
@@ -77,7 +89,11 @@ export default async function MyRequestStatusPage({
 
   if (!me) {
     return (
-      <div className="mx-auto max-w-2xl">
+      /* `max-w-md`, not `max-w-2xl`: `capsPage` in test/attendance-screens-layout.test.ts reads
+         `mx-auto` + `max-w-…xl` as a PAGE-level cap, and this screen is now in WIDE_LIST_SCREENS. The
+         one-sentence notice stays centred and narrow while the SCREEN is full width — the same
+         arrangement app/attendance/requests/page.tsx and app/attendance/plan-ot/page.tsx use. */
+      <div className="mx-auto max-w-md">
         <Card className="p-8 text-center">
           <h1 className="text-lg font-semibold">{t('myAttendanceRequestStatus')}</h1>
           <p className="mt-2 text-sm text-muted-foreground">{t('notLinked')}</p>
@@ -86,21 +102,43 @@ export default async function MyRequestStatusPage({
     );
   }
 
-  const [requests, lines] = await Promise.all([
-    myAttendanceCorrections(s, me.employmentId, { limit: 200 }),
+  /**
+   * 7709ffd1 (r369) — THE STATUS NARROWS THE READ, AND THE READ ANSWERS ONE ROW PAST THE CEILING.
+   *
+   * What stood here was `{ limit: 200 }` followed by `requests.filter(r => r.status === statusFilter)` and
+   * a pager whose total was `shown.length`. Three things were wrong with that together: the 200 was a
+   * private number nobody could see, the filter ran over whatever the 200 happened to contain, and the
+   * total was counted off the fetched array — so an employee past the cap read "200" and was told nothing.
+   *
+   * Now the status goes INTO the query (so pressing a tab genuinely narrows what is read, which is what
+   * makes the refusal below actionable), and the limit is one past the kernel's published ceiling so the
+   * page can tell a complete answer from a cut one. Past it the screen REFUSES rather than slicing: see
+   * ./rows.ts. The pager's total is therefore always counted over a list that is known to be complete.
+   */
+  const statusFilter = parseRequestStatus(sp.status);
+  const [fetched, lines] = await Promise.all([
+    myAttendanceCorrections(s, me.employmentId, {
+      ...(statusFilter ? { status: statusFilter } : {}),
+      limit: requestRowsProbeLimit(MY_ATTENDANCE_REQUEST_ROW_CEILING),
+    }),
     reportingLinesFor(s, me.employmentId),
   ]);
   const approver = lines.managers.find((m) => m.lineType === 'administrative')?.name ?? t('otGoesToUnknown');
 
-  const statusFilter = parseStatus(sp.status);
-  const shown = statusFilter ? requests.filter((r) => r.status === statusFilter) : requests;
+  const { rows: shown, refusal } = resolveRequestRows(fetched, MY_ATTENDANCE_REQUEST_ROW_CEILING);
   const reqPage = paginateRows(shown, parsePageQuery(sp));
+  /** The file must hold what the screen holds, so it is offered only when the screen has a complete list. */
+  const exportHref = `/attendance/request-status/export?format=xlsx${statusFilter ? `&status=${statusFilter}` : ''}`;
 
   const href = (status: string | null) =>
     status ? `/attendance/request-status?status=${status}` : '/attendance/request-status';
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    /* 7709ffd1 (r369) — `pageWideCls`, the twelfth list screen in this menu to take it. At
+       `mx-auto max-w-6xl` roughly a third of a wide monitor was empty margin while "What was asked for",
+       the column carrying the most words, was the one being squeezed. Listed in
+       test/attendance-screens-layout.test.ts WIDE_LIST_SCREENS in the round that grants it. */
+    <div className={pageWideCls}>
       <PageHeader
         title={t('myAttendanceRequestStatus')}
         description={
@@ -114,7 +152,27 @@ export default async function MyRequestStatusPage({
       <ErrorBanner message={sp.error} />
 
       <Card className="overflow-hidden">
-        <div className="border-b border-border px-4 py-3 text-sm font-semibold">{t('maRequestsTitle')}</div>
+        <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3 text-sm font-semibold">
+          <span>{t('maRequestsTitle')}</span>
+          {/* THE EXPORT IS A PLAIN GET LINK, like every other download in this product: the browser shows
+              its own progress and a refusal comes back as a sentence on screen. No client island, no
+              spinner and no toast — the shell has no toast for downloads and adding one here would make
+              this the odd link out.
+              It is NOT DRAWN when the list was refused (a file cannot be more complete than the screen it
+              was asked from) and not when there is nothing in it — an export link over an empty tab is an
+              empty workbook nobody asked for, so the muted sentence says so instead. */}
+          {refusal == null && reqPage.state.total > 0 ? (
+            <Link
+              href={exportHref}
+              prefetch={false}
+              className="ml-auto font-medium text-primary underline-offset-2 hover:underline"
+            >
+              {t('maExportExcel')}
+            </Link>
+          ) : refusal == null ? (
+            <span className="ml-auto text-xs font-normal text-muted-foreground">{t('maExportNone')}</span>
+          ) : null}
+        </div>
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
           {STATUS_FILTERS.map((f) => {
             const on = (f ?? null) === statusFilter;
@@ -136,7 +194,14 @@ export default async function MyRequestStatusPage({
             );
           })}
         </div>
-        {reqPage.rows.length === 0 ? (
+        {/* REFUSED, NOT SLICED. `maNoRequests` says "you have not filed any" and would be a lie here: the
+            reader has MORE than this screen shows, not none. The status pills above stay drawn, because
+            narrowing by one of them is the way out — the status is part of the query now. */}
+        {refusal === 'too_many' ? (
+          <p className="px-4 py-8 text-center text-sm text-muted-foreground" data-testid="ma-too-many">
+            {t('maTooManyRequests', { ceiling: MY_ATTENDANCE_REQUEST_ROW_CEILING })}
+          </p>
+        ) : reqPage.rows.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('maNoRequests')}</p>
         ) : (
           <>
@@ -150,6 +215,19 @@ export default async function MyRequestStatusPage({
                 band the blocks it is actually better served by. */}
             <div className={`hidden lg:block ${tableWrapCls}`}>
               <table className="w-full text-sm">
+                {/* The page is full width now, so the room has to go somewhere deliberate: "What was asked
+                    for" carries the reason and the remark under the asked-for line and is the column the
+                    reporter said was being squeezed. Percentages on <col>, NOT `table-fixed` — fixed layout
+                    would clip those two sub-lines instead of wrapping them. */}
+                <colgroup>
+                  <col className="w-[10%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[34%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[6%]" />
+                </colgroup>
                 <thead className={theadCls}>
                   <tr>
                     <th className={thCls}>{t('maColDate')}</th>
@@ -248,7 +326,10 @@ export default async function MyRequestStatusPage({
             </ul>
           </>
         )}
-        <Pager basePath="/attendance/request-status" params={{ status: sp.status }} state={reqPage.state} />
+        {/* No pager over a refused list: its total would be 0 beside a sentence saying there are hundreds. */}
+        {refusal == null ? (
+          <Pager basePath="/attendance/request-status" params={{ status: sp.status }} state={reqPage.state} />
+        ) : null}
       </Card>
     </div>
   );
@@ -279,13 +360,20 @@ const canCancel = (r: RequestRow) => !isOvertime(r) && r.status === 'pending';
  * changing a printed date is not presentational. It is lifted here only so the two faces cannot come to
  * disagree — the build briefly carried two copies of it.
  *
- * ⚠️ IT IS A UTC SLICE RENDERED TO A UTC+8 AUDIENCE, and that is a REAL pre-existing defect, not a style:
- * a request filed at 07:00 in Kuala Lumpur prints the previous day. `lib/hr-date.ts` already has
- * `todayInKualaLumpur` for it. Fixing it changes what people see and belongs to a round that says so —
- * not to this one. (The My Travel page carried the identical bug; b833a077 (r362) removed that screen
- * entirely, so this is the only place left with it.)
+ * ⚠️ 7709ffd1 (r369) — THIS IS THE ROUND THAT SAYS SO. What stood here read: "IT IS A UTC SLICE RENDERED
+ * TO A UTC+8 AUDIENCE, and that is a REAL pre-existing defect, not a style: a request filed at 07:00 in
+ * Kuala Lumpur prints the previous day. `lib/hr-date.ts` already has `todayInKualaLumpur` for it. Fixing it
+ * changes what people see and belongs to a round that says so — not to this one." The expression was
+ * `r.createdAt.toISOString().slice(0, 10)`.
+ *
+ * THE EXPORT IS WHY IT COULD NOT WAIT. This round puts a Submitted column in a downloadable file, and the
+ * only two ways out of that were to repeat the defect in the workbook or to let the file and the screen
+ * print different days for one request — the second being precisely the "two figures for one thing" fault
+ * cac9a3a1 was raised about. So the ONE expression both faces and the export route resolve is the
+ * Malaysian calendar day, which is what `attendance_correction.created_at` is a UTC+8 event. Same class of
+ * fix as r362's on Self Overtime.
  */
-const submittedOn = (r: RequestRow) => r.createdAt.toISOString().slice(0, 10);
+const submittedOn = (r: RequestRow) => todayInKualaLumpur(r.createdAt);
 
 /** The `me` key naming the request's kind. `other` covers every request filed before migration 0434. */
 const kindKey = (r: RequestRow) => KIND_LABEL[r.requestKind ?? (isOvertime(r) ? 'self_overtime' : 'other')];
@@ -322,6 +410,12 @@ function CancelRequest({ id, label, on }: { id: string; label: string; on: strin
 /** The filter row: All, then the four stored statuses — derived from the ONE tuple, never restated. */
 const STATUS_FILTERS = [null, ...REQUEST_STATUSES] as const;
 
-/** …and so is the URL whitelist, so the pills and the addresses they link to cannot drift apart. */
-const parseStatus = (raw: string | undefined) =>
-  REQUEST_STATUSES.includes(raw as never) ? (raw as (typeof REQUEST_STATUSES)[number]) : null;
+/*
+ * …and so is the URL whitelist — LIFTED INTO ./rows.ts by 7709ffd1 (r369) rather than copied. What stood
+ * here was:
+ *   const parseStatus = (raw: string | undefined) =>
+ *     REQUEST_STATUSES.includes(raw as never) ? (raw as (typeof REQUEST_STATUSES)[number]) : null;
+ * The export route has to narrow by exactly what the pressed pill narrows by, and a second copy of this
+ * three-line derivation in the route is how a file comes to hold "every request" while the tab said
+ * "Rejected". It is still DERIVED from REQUEST_STATUSES and not restated — see `parseRequestStatus`.
+ */

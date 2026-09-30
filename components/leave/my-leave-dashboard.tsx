@@ -327,6 +327,28 @@ export function MyLeaveDashboard({
   const ringCard = (c: MyLeaveDashboardCard) => {
     // ONE list for the arcs and the legend: each legend entry is its arc's label and its arc's value.
     const segments = ringSegments(c).map((s) => ({ ...s, label: segmentLabel(s.key, c), display: fmt(s.value) }));
+    /**
+     * cac9a3a1 (r369) — THE CENTRE IS THE GREEN ARC, NOT A SECOND FIGURE.
+     *
+     * RETIRED CLAIM, quoted so it is not reinstated by accident: r302's header said "The big number in the
+     * middle is the Balance, which is not an arc", and r302's fix pass pinned it as "The big centre number
+     * stays Balance, labelled Balance". The reporter (cac9a3a1) read 11.50 in the middle and 10.50 in the
+     * Available Balance row of the same card and asked which one was theirs. Balance is GROSS of pending; the
+     * green arc the centre sits inside is `remaining`, i.e. Available Balance. So the centre disagreed with
+     * its own ring.
+     *
+     * It is now `c.remaining` — the SAME expression the Available Balance legend row below prints, not a
+     * re-derivation — and its caption is `segmentLabel('available', c)`, the green arc's own label, so the
+     * centre and the arc cannot carry two names ("Available Balance" this leave year, "Remaining" for an
+     * earlier one). `leave.myLeave.balanceDays` is RETIRED IN PLACE in all six catalogues, never deleted
+     * (i18n/request.ts deep-merges each locale over English: a key dropped from `en` but left in `ms` still
+     * renders — see the note at the top of lib/leave-figure-labels.ts).
+     *
+     * The Available Balance legend row STAYS: it is the green arc's legend entry, and deleting it would strip
+     * the arc's label. ringDrawable() is untouched, so a hidden or overdrawn figure still draws no ring and
+     * the centre can never be null or negative.
+     */
+    const centreLabel = segmentLabel('available', c);
     return (
       <article
         key={c.leaveTypeId}
@@ -337,11 +359,12 @@ export function MyLeaveDashboard({
         <div className="flex flex-col items-center self-center">
           <LeaveBalanceRing
             segments={segments}
-            centre={fmt(c.balance)}
-            centreCaption={t('balanceDays')}
+            centre={fmt(c.remaining)}
+            centreCaption={t('centreCaption', { label: centreLabel })}
             label={t('ringLabel', {
               type: c.leaveType,
-              balance: fmt(c.balance),
+              label: centreLabel,
+              available: fmt(c.remaining),
               taken: fmt(c.taken),
               pending: fmt(c.pending),
               entitlement: fmt(c.entitlement),
