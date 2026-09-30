@@ -81,8 +81,9 @@ export default async function PayrollProcessResultPage({
   // name so a multi-company bonus run reads as one list. Sorted by company then name, so two runs of the
   // same shape print in the same order.
   //
-  // Only the batches whose outcome says somebody was skipped are queried, so a run that skipped nobody —
-  // every regular run — costs no query at all.
+  // Only the batches whose outcome says somebody was skipped are queried, so a run that skipped nobody
+  // costs no query at all. (r369 — that used to say "every regular run". A regular run now skips an employee
+  // with no monthly basic and nothing payable for the period, so the outcome is what decides, not the type.)
   const skippedCompanies = result.perCompany.filter((c) => (c.employeesSkipped ?? 0) > 0 && c.batchId);
   const companyOfBatch = new Map(skippedCompanies.map((c) => [c.batchId as string, c]));
   const skippedRows = skippedCompanies.length

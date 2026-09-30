@@ -2636,6 +2636,36 @@ export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): 
   });
 }
 
+/**
+ * r369 (item eb949191) — WHICH OF THE NO-MONTHLY-BASIC EMPLOYEES THIS RUN IS ACTUALLY GOING TO LEAVE OUT.
+ *
+ * `preProcessChecksTx` produces the population whose SALARY RECORD names no monthly basic. That statement is
+ * true of every member of the list on any screen, batch or not — but on a DRAFT RUN it is not the whole
+ * answer, because a Director with no monthly basic whose RM30,000 fee is keyed for March is going to be paid
+ * in March, and naming him under "will be skipped" on that run would be a lie the operator can disprove by
+ * looking two panels up.
+ *
+ * SO THE NARROWING IS DERIVED FROM THE CARD ITSELF, not from a second reading of the same tables. `lines`
+ * already mirrors both feature flags, already reports flag-inert rows separately as a count, and already
+ * applies the run's scope and the collection rule for period-keyed transactions — so "has a positive line on
+ * this card" and "the kernel will pay them something" cannot drift, and the notice and the card cannot
+ * contradict. Re-querying the nine doors here to answer the same question is exactly the drift that would
+ * one day put "Ada Lim — RM400 allowance" on one panel and "Ada Lim — will be skipped" on the next.
+ *
+ * PURE, AND `null` MEANS "NO CARD ON THIS SCREEN". The Process wizard's Validation step runs BEFORE any
+ * batch exists, so four of the nine doors have no rows to read yet and no honest narrowing is possible
+ * there: it renders the unnarrowed list, whose sentence is the forward-looking one. The authoritative
+ * decision is `generatePayslips`' in both cases.
+ */
+export function narrowToNothingPayable<T extends { employmentId: string }>(
+  rows: readonly T[],
+  pending: PendingBatchMoney | null,
+): T[] {
+  if (!pending) return [...rows];
+  const paid = new Set(pending.lines.filter((l) => l.amount > 0).map((l) => l.employmentId));
+  return rows.filter((r) => !paid.has(r.employmentId));
+}
+
 // ───────────────────── 9. When a run was processed (dashboard "Processed date") ─────────────────────
 
 /**
@@ -2697,7 +2727,25 @@ export function listBatchProcessedDates(
 
 // ─────────────── 9b. Who an additional run left out (r227 — read from the durable event) ───────────────
 
-/** One employee an additional run did not process, resolved for a screen. */
+/**
+ * Every `PayrollSkipReason` this reader knows how to name on a screen.
+ *
+ * A SET RATHER THAN A CHAIN OF `===`, because the chain is what went wrong: the reason arrives off a jsonb
+ * event payload as `unknown`, so every value has to be recognised explicitly, and a value added to the
+ * union in core/payroll.ts but not to the check here is coerced to `NO_TRANSACTION_FOR_CYCLE` and
+ * mislabelled on every screen with no type error anywhere. Keeping the list in one named place is what makes
+ * that omission visible. `test/r369-zero-basic-skip.test.ts` asserts this set equals the union.
+ */
+const RECOGNISED_SKIP_REASONS: ReadonlySet<PayrollSkipReason> = new Set([
+  'NO_TRANSACTION_FOR_CYCLE',
+  'NO_ADDITIONAL_PAY_THIS_RUN',
+  // r369 (item eb949191) — the two REGULAR-run causes: no monthly basic and nothing payable this period,
+  // and the same with a deduction waiting (which is skipped too, and says so).
+  'NOTHING_PAYABLE_THIS_PERIOD',
+  'DEDUCTION_ONLY_THIS_PERIOD',
+]);
+
+/** One employee a run did not process, resolved for a screen. */
 export type SkippedEmployeeRow = {
   batchId: string;
   employmentId: string;
@@ -2772,7 +2820,14 @@ export function listSkippedEmployees(
           employmentId,
           // An event written by an older build carries only the one reason this union then had; anything
           // unrecognised falls back to it rather than reaching a translation lookup that has no key.
-          reason: reason === 'NO_ADDITIONAL_PAY_THIS_RUN' ? 'NO_ADDITIONAL_PAY_THIS_RUN' : 'NO_TRANSACTION_FOR_CYCLE',
+          //
+          // ⚠️ THIS IS THE TRAP FOR WHOEVER ADDS THE NEXT REASON. The fallback is what makes an old event
+          // degrade gracefully, and it is also what makes a NEW `PayrollSkipReason` that is not listed here
+          // render as "No transaction entry for this payroll cycle" on every screen — silently, correctly
+          // typed, and wrong about why somebody was not paid. r369 added the two regular-run reasons below.
+          reason: RECOGNISED_SKIP_REASONS.has(reason as PayrollSkipReason)
+            ? (reason as PayrollSkipReason)
+            : 'NO_TRANSACTION_FOR_CYCLE',
         });
       }
     }

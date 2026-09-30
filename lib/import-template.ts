@@ -94,6 +94,9 @@ export const employeeTemplate: TemplateSpec = {
       'monthly', // pay_mode (ADR-0078; blank = monthly)
       'monthly', // payment_term (blank = monthly)
       '', // rate_amount (only for daily/hourly pay modes)
+      // r369 — salary_remarks is required ONLY when basic_salary is 0 (see IMPORT_COLUMNS). This row has a
+      // basic salary, so it is blank — which is also the demonstration that the column is optional.
+      '', // salary_remarks
       // ── 2983802f — the seven new blocks. Every cell here is chosen so an UNMODIFIED download → upload
       //    still round-trips clean, which is why the catalog-backed cells (state / country / emergency
       //    contact relationship) are blank: their accepted values are per-tenant and live on the
@@ -151,6 +154,7 @@ export const employeeTemplate: TemplateSpec = {
       'daily', // pay_mode (ADR-0078) — a daily-rated worker; basic_salary above stays the monthly-equivalent
       'monthly', // payment_term
       '180', // rate_amount — RM per day (required for daily/hourly)
+      '', // salary_remarks — blank again: this row has a basic salary too
       'A12345678', // passport_number — the trio is all-or-nothing, so all three are filled
       '2023-05-10', // passport_issue_date
       '2033-05-09', // passport_expiry_date

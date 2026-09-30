@@ -169,6 +169,12 @@ export const UNSECTIONED_COLUMNS: Record<string, string> = {
   pay_mode: 'compensation is effective-dated (see basic_salary)',
   payment_term: 'compensation is effective-dated (see basic_salary)',
   rate_amount: 'compensation is effective-dated (see basic_salary)',
+  // r369 (item eb949191) — the remark belongs to ONE salary revision and says why THAT revision has
+  // no basic amount. A section file carries no effective date, so it could not name the revision it
+  // would be explaining; and on its own the column would let a file attach a reason to a record whose
+  // basic salary it cannot see. It travels with the wide template, beside the amount it explains.
+  salary_remarks:
+    'the reason ONE salary revision has no basic amount; a section file carries no effective date, so it cannot name which revision it would be explaining (see basic_salary)',
   epf_number: 'no partial writer — the only setter rewrites the whole statutory row',
   socso_number: 'no partial writer — the only setter rewrites the whole statutory row',
   eis_eligible: 'no partial writer — the only setter rewrites the whole statutory row',

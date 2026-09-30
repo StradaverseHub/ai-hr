@@ -1743,6 +1743,7 @@
       "instructionAddress": "Các cột địa chỉ là địa chỉ nhà của nhân viên. Tỉnh/Bang và Quốc gia phải khớp với một giá trị trên trang tính Tham chiếu.",
       "instructionProbation": "Ngày kết thúc thử việc chỉ áp dụng cho nhân viên toàn thời gian. Thời gian thử việc và thời gian báo trước là số nguyên tháng và ngày.",
       "instructionSuperior": "Cấp trên trực tiếp nhận Mã nhân viên hoặc email công việc. Có thể là người ở phía dưới trong tệp này, hoặc người đã đang làm việc.",
+      "instructionSalaryRemarks": "Lương cơ bản có thể là 0 — ví dụ một giám đốc được trả thù lao theo từng quý — nhưng khi đó dòng này phải nêu lý do trong {column}. Hãy để trống vối mọi ngưỡi có lương cơ bản. Bảng lương sẽ loại một nhân viên không có lương cơ bản ra khỏi bất kỳ tháng nào không còn gì khác để trả cho họ.",
       "instructionFamily": "Thành viên gia đình nằm ở trang tính Gia đình, mỗi người một hàng, liên kết với nhân viên bằng Mã nhân viên. Tệp CSV không mang được dữ liệu này — hãy dùng tệp Excel này.",
       "instructionFamilyWhole": "Nếu bất kỳ hàng nào trên trang tính Gia đình có vấn đề, sẽ không có gì được nhập — kể cả nhân viên. Hãy sửa và tải lên lại.",
       "sectionChooserStep": "Bước 1",
@@ -4868,14 +4869,15 @@
       "preChecksWarningBadge": "Cảnh báo",
       "preChecks": {
         "missingCompensation": "Không có hồ sơ lương hiện tại",
-        "zeroBasic": "Lương cơ bản hoặc mức lương bằng không",
+        "zeroBasic": "Trả theo ngày hoặc theo giờ nhưng không có mức lương trong hồ sơ — mức lương × số ngày sẽ không trả gì",
         "staleBasicComponent": "Khoản lương BASIC đã lỗi thời — hệ thống dùng hồ sơ lương Nhân sự",
         "missingStatutory": "Không có hồ sơ pháp định (EPF/SOCSO/PCB)",
         "missingBank": "Thông tin ngân hàng chưa đầy đủ",
         "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập",
         "hrdfSubjectUnregistered": "Thuộc diện HRDF nhưng công ty chưa đăng ký — không thu khoản đóng góp nào",
         "unpayablePayMode": "Cơ cấu lương không thể tính được — chế độ lương Kỳ tùy chỉnh không có công thức tính lương",
-        "tp3YearMismatch": "Mẫu TP3 của năm nay chưa vào các con số bảng lương — công việc trước đó sẽ bị tính bằng không"
+        "tp3YearMismatch": "Mẫu TP3 của năm nay chưa vào các con số bảng lương — công việc trước đó sẽ bị tính bằng không",
+        "nothingPayable": "Không có lương cơ bản hằng tháng — kỳ lương sẽ để họ ra ngoài trong tháng không có khoản nào phải trả"
       },
       "preChecksOpenProfile": "Mở hồ sơ",
       "preChecksBlockedError": "Không thể xử lý lương: {n} nhân viên không có hồ sơ lương hiện tại. Vui lòng khắc phục các mục kiểm tra trước khi xử lý.",
@@ -4884,11 +4886,13 @@
       "generatedWithSkipped": "Đã tạo phiếu lương — bỏ qua {n} nhân viên. Danh sách bên dưới nêu tên và lý do.",
       "skipped": {
         "title": "Nhân viên bị bỏ qua trong lần chạy này",
-        "note": "Đây là kỳ chạy bổ sung, nên những nhân viên không có khoản nào phải trả đã không được xử lý. Họ không có phiếu lương trong lần chạy này và không giao dịch nào của họ bị sử dụng.",
+        "note": "Những nhân viên mà lần chạy này không có khoản nào phải trả đã không được xử lý. Họ không có phiếu lương trong lần chạy này và không giao dịch nào của họ bị sử dụng.",
         "colReason": "Lý do",
         "reason": {
           "NO_TRANSACTION_FOR_CYCLE": "Không có giao dịch nào cho kỳ lương này",
-          "NO_ADDITIONAL_PAY_THIS_RUN": "Không có khoản nào cho loại kỳ chạy này — lương hằng tháng cố định của họ được trả ở kỳ chạy thường"
+          "NO_ADDITIONAL_PAY_THIS_RUN": "Không có khoản nào cho loại kỳ chạy này — lương hằng tháng cố định của họ được trả ở kỳ chạy thường",
+          "NOTHING_PAYABLE_THIS_PERIOD": "Không có lương cơ bản và không có khoản nào phải trả trong kỳ này — không chi trả gì nên không khai báo gì",
+          "DEDUCTION_ONLY_THIS_PERIOD": "Chỉ có một khoản trừ đang chờ mà không có lương để trừ — trừ từ số không sẽ thành nợ nhân viên"
         }
       },
       "preChecksConfirmRequired": "Vui lòng xác nhận các cảnh báo kiểm tra trước khi tạo phiếu lương.",
@@ -5025,7 +5029,14 @@
       "removeHistoryNote": "Mọi lần gỡ trên đợt lương này — ai thực hiện, khi nào, vì sao, và các con số đã bị gỡ. Đây là bản sao duy nhất còn lại của những con số đó.",
       "reprocessSearchPlaceholder": "Tìm theo mã hoặc tên nhân viên",
       "reprocessNoMatches": "Không có nhân viên nào khớp với tìm kiếm của bạn.",
-      "reprocessHistoryToggle": "Xem lịch sử tính lại"
+      "reprocessHistoryToggle": "Xem lịch sử tính lại",
+      "preChecksNoticeBadge": "Sẽ được để ra ngoài",
+      "preChecksNothingPayableHint": "{n} nhân viên không có lương cơ bản hằng tháng. Đây không phải lỗi và không chặn kỳ chạy: họ được để ra ngoài những tháng không có khoản nào phải trả, được nêu tên lại trong kết quả, và được trả bình thường ở tháng có giao dịch nhập cho họ.",
+      "preChecksNothingPayableRemark": "Lý do trên hồ sơ lương: {remarks}",
+      "preChecksNothingPayableNoRemark": "Không có lý do nào được ghi trên hồ sơ lương.",
+      "reprocessGapNothingPayable": "không có lương cơ bản hằng tháng",
+      "reprocessReasonNothingPayable": "Được cố ý để ra ngoài lần chạy này — không có lương cơ bản hằng tháng và không có khoản nào phải trả trong tháng. Chỉ đánh dấu nếu sau đó đã nhập khoản nào cho họ.",
+      "preChecksBadgeLegend": "Mục đánh dấu “Chặn xử lý” phải được sửa trước lần chạy này. Mục đánh dấu “Cảnh báo” vẫn xử lý được sau khi bạn xác nhận. Mục đánh dấu “Sẽ được để ra ngoài” không cần bạn làm gì cả."
     },
     "transactions": {
       "title": "Nhập liệu giao dịch",
@@ -5959,13 +5970,15 @@
       "colFailureReason": "Lý do Thất bại",
       "employeeFailed": "Thất bại",
       "skippedEmployeesTitle": "Nhân viên bị bỏ qua trong lần chạy này",
-      "skippedEmployeesNote": "Đây là kỳ chạy bổ sung, nên những nhân viên không có khoản nào phải trả trong kỳ này đã không được xử lý. Họ không có phiếu lương và không có bản ghi lương cho lần chạy này, và không giao dịch nào của họ bị sử dụng.",
+      "skippedEmployeesNote": "Những nhân viên không có khoản nào phải trả trong kỳ này đã không được xử lý. Họ không có phiếu lương và không có bản ghi lương cho lần chạy này, và không giao dịch nào của họ bị sử dụng.",
       "skippedNamesUnavailable": "Đã bỏ qua {n} nhân viên. Tài khoản của bạn không xem được danh sách tên.",
       "colSkipReason": "Lý do",
       "employeeSkipped": "Bỏ qua",
       "skipReason": {
         "NO_TRANSACTION_FOR_CYCLE": "Không có giao dịch nào cho kỳ lương này",
-        "NO_ADDITIONAL_PAY_THIS_RUN": "Không có khoản nào cho loại kỳ chạy này — lương hằng tháng cố định của họ được trả ở kỳ chạy thường"
+        "NO_ADDITIONAL_PAY_THIS_RUN": "Không có khoản nào cho loại kỳ chạy này — lương hằng tháng cố định của họ được trả ở kỳ chạy thường",
+        "NOTHING_PAYABLE_THIS_PERIOD": "Không có lương cơ bản và không có khoản nào phải trả trong kỳ này — không chi trả gì nên không khai báo gì",
+        "DEDUCTION_ONLY_THIS_PERIOD": "Chỉ có một khoản trừ đang chờ mà không có lương để trừ — trừ từ số không sẽ thành nợ nhân viên"
       },
       "overall": {
         "succeeded": "Thành công",
@@ -5996,14 +6009,15 @@
       "validationWarningBadge": "Cảnh báo",
       "validationCheck": {
         "missingCompensation": "Không có bản ghi lương hiện tại",
-        "zeroBasic": "Lương cơ bản hoặc mức lương bằng không",
+        "zeroBasic": "Trả theo ngày hoặc theo giờ nhưng không có mức lương trong hồ sơ — mức lương × số ngày sẽ không trả gì",
         "staleBasicComponent": "Khoản lương BASIC đã lỗi thời — hệ thống dùng hồ sơ lương Nhân sự",
         "missingStatutory": "Không có hồ sơ theo luật định (EPF/SOCSO/PCB)",
         "missingBank": "Thông tin ngân hàng chưa đầy đủ",
         "currencyMismatch": "Tiền tệ lương không phải MYR — số tiền được xử lý như đã nhập",
         "hrdfSubjectUnregistered": "Thuộc diện HRDF nhưng công ty chưa đăng ký — không thu khoản đóng góp nào",
         "unpayablePayMode": "Cơ cấu lương không thể tính được — chế độ lương Kỳ tùy chỉnh không có công thức tính lương",
-        "tp3YearMismatch": "Mẫu TP3 của năm nay chưa vào các con số bảng lương — công việc trước đó sẽ bị tính bằng không"
+        "tp3YearMismatch": "Mẫu TP3 của năm nay chưa vào các con số bảng lương — công việc trước đó sẽ bị tính bằng không",
+        "nothingPayable": "Không có lương cơ bản hằng tháng — kỳ lương sẽ để họ ra ngoài trong tháng không có khoản nào phải trả"
       },
       "unattachedScopeTitle": "{n} nhân viên có giao dịch mà kỳ lương này sẽ không thu thập",
       "unattachedScopeWarning": "Một kỳ lương chỉ thu thập những nhân viên nằm trong kỳ đó, và chỉ những giao dịch được đánh dấu cho chu kỳ lương của chính nó (hoặc không đánh dấu chu kỳ nào). Phần còn lại vẫn tồn đọng cho đến khi một kỳ lương bao gồm chúng được tính. Bạn có thể tiếp tục — đây là cảnh báo, không phải rào chặn.",
@@ -6013,7 +6027,11 @@
       "payrollPolicyColumn": "Chính sách bảng lương",
       "payrollPolicyNone": "Chưa gán chính sách bảng lương",
       "adjustmentsTitle": "Điều chỉnh trước khi xử lý (tùy chọn)",
-      "adjustmentsHint": "Làm thêm giờ, thưởng, giảm trừ thuế và zakat cho đợt chạy này, cùng các cầu nối đưa vào khoản hoàn ứng đã duyệt, làm thêm giờ theo chấm công, kỳ trả góp khoản vay, chênh lệch ca và phụ cấp. Chúng áp dụng cho danh sách nhân viên ĐÃ LƯU của đợt chạy, và khi áp dụng một mục thì luồng này sẽ tải lại từ Bước 1 — nên thay đổi ở Bước 2 chưa được xử lý sẽ mất."
+      "adjustmentsHint": "Làm thêm giờ, thưởng, giảm trừ thuế và zakat cho đợt chạy này, cùng các cầu nối đưa vào khoản hoàn ứng đã duyệt, làm thêm giờ theo chấm công, kỳ trả góp khoản vay, chênh lệch ca và phụ cấp. Chúng áp dụng cho danh sách nhân viên ĐÃ LƯU của đợt chạy, và khi áp dụng một mục thì luồng này sẽ tải lại từ Bước 1 — nên thay đổi ở Bước 2 chưa được xử lý sẽ mất.",
+      "validationNoticeBadge": "Sẽ được để ra ngoài",
+      "validationNothingPayableTitle": "{n} nhân viên sẽ được để ra ngoài lần chạy này",
+      "validationNothingPayableHint": "Họ không có lương cơ bản hằng tháng và không có khoản nào phải trả cho kỳ này. Việc xử lý không bị chặn: họ được nêu tên lại trong kết quả, và được trả bình thường ở kỳ có giao dịch nhập cho họ.",
+      "validationBadgeLegend": "Mục đánh dấu “Chặn xử lý” phải được sửa trước lần chạy này. Mục đánh dấu “Cảnh báo” vẫn xử lý được sau khi bạn xác nhận. Mục đánh dấu “Sẽ được để ra ngoài” không cần bạn làm gì cả."
     },
     "guide": {
       "title": "Hướng dẫn quy trình bảng lương",

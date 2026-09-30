@@ -56,7 +56,21 @@ const GAP_LABEL: Record<string, string> = {
   unpayablePayMode: 'reprocessGapPayMode',
   missingStatutory: 'reprocessGapStatutory',
   missingBank: 'reprocessGapBank',
+  // r369 (item eb949191) — a NON-BLOCKER, so it arrives in `warnings` and the row stays tickable.
+  nothingPayable: 'reprocessGapNothingPayable',
 };
+
+/**
+ * r369 (item eb949191) — the one warning code that REPLACES the row's reason sentence instead of being
+ * appended to it.
+ *
+ * Everyone a regular run deliberately skipped lands on this list: they are eligible for the month and have
+ * no payslip on the run. With no label at all the row reads "Eligible for this month and has no payslip on
+ * this run" — which is an invitation to add somebody back into a month the run correctly paid them nothing
+ * for. Appending it as "Also missing: no monthly basic salary" would be worse: nothing is missing, and the
+ * word says the operator forgot something they did not.
+ */
+const DELIBERATE_SKIP = 'nothingPayable';
 
 /**
  * e440991b — the selection half of the dedicated Reprocess screen. It replaces the panel that used to
@@ -269,6 +283,8 @@ export function ReprocessForm({
                 const on = selected.has(c.employmentId);
                 const blocked = c.blockers.length > 0;
                 const gaps = (codes: string[]) => codes.map((g) => t(GAP_LABEL[g] ?? g)).join(', ');
+                // The deliberate skip owns the sentence above, so it must not also appear in "Also missing".
+                const otherWarnings = c.warnings.filter((w) => w !== DELIBERATE_SKIP);
                 return (
                   <tr key={c.employmentId} className={on ? 'bg-primary/5' : undefined}>
                     <td className="px-3 py-2">
@@ -292,10 +308,14 @@ export function ReprocessForm({
                     <td className="px-3 py-2 text-xs text-muted-foreground">
                       {blocked
                         ? t('reprocessReasonNotReady', { gaps: gaps(c.blockers) })
-                        : c.outsideScope
-                          ? t('reprocessReasonOutsideScope')
-                          : t('reprocessReasonNew')}
-                      {!blocked && c.warnings.length > 0 && ` ${t('reprocessReasonMissing', { gaps: gaps(c.warnings) })}`}
+                        : c.warnings.includes(DELIBERATE_SKIP)
+                          ? t('reprocessReasonNothingPayable')
+                          : c.outsideScope
+                            ? t('reprocessReasonOutsideScope')
+                            : t('reprocessReasonNew')}
+                      {!blocked &&
+                        otherWarnings.length > 0 &&
+                        ` ${t('reprocessReasonMissing', { gaps: gaps(otherWarnings) })}`}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-muted-foreground tabular-nums">{c.hiredOn}</td>
                   </tr>
