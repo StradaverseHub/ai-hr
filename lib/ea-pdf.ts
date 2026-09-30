@@ -417,7 +417,7 @@ const A4: [number, number] = [595.28, 841.89];
  * the page frame where the agency's stops 15.3 pt inside it. Anything still on the first list is a
  * candidate for the same treatment, and the agency's file is now on disk to do it with.
  *
- * ⚠️ r371 — THE "PRINTABILITY DEPARTURE" ON THE LEFT MARGIN IS RETIRED. IT WAS BACKWARDS, AND IT WAS
+ * ⚠️ r372 — THE "PRINTABILITY DEPARTURE" ON THE LEFT MARGIN IS RETIRED. IT WAS BACKWARDS, AND IT WAS
  * ABOUT THE TRACING'S EDGE, NOT THE AGENCY'S. The paragraph that stood here, quoted in full so the
  * claim can be recognised if it resurfaces:
  *
@@ -558,7 +558,7 @@ export const EA_FORM = {
     t1: 730.6,
     ruleX: [288, 563] as const,
     /**
-     * r371 — THE FOUR NUMBERS THE FOOT IS NOW DRAWN FROM, RATHER THAN THE FIVE LITERALS IT WAS.
+     * r372 — THE FOUR NUMBERS THE FOOT IS NOW DRAWN FROM, RATHER THAN THE FIVE LITERALS IT WAS.
      *
      * Every baseline in this box used to be typed out at its call site (655 / 672 / 689 / 706 / 723),
      * so growing it meant editing five numbers that only a reader could tell were one arithmetic
@@ -810,7 +810,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   /** Returns the x the drawn string ENDS at, so the next run (a cue word, an inline rule) can start from
    *  what was actually drawn rather than from a guess at its width. */
   /**
-   * ⚠️ r371 — `minSize` IS A FLOOR THE CALLER MAY RAISE, AND RAISING IT TRADES AN INVISIBLE STRING FOR
+   * ⚠️ r372 — `minSize` IS A FLOOR THE CALLER MAY RAISE, AND RAISING IT TRADES AN INVISIBLE STRING FOR
    * A VISIBLE ONE. `fitSize` clamps at 1 pt, which is not a floor so much as a formality: at 3 pt the
    * string is gone on paper and still present in the file, so nothing — not a test, not a 200, not a
    * reader on a bright screen — reports it (item 450f443f; the measurement is on the employer rules
@@ -933,7 +933,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
    * POSITION is ours. The transcription records both and says a build must choose per block; this is
    * that choice, stated.
    *
-   * ⚠️ r371 — THE REASON GIVEN FOR THAT CHOICE WAS FALSE, AND IT CONTRADICTED THIS NOTE'S OWN FIRST
+   * ⚠️ r372 — THE REASON GIVEN FOR THAT CHOICE WAS FALSE, AND IT CONTRADICTED THIS NOTE'S OWN FIRST
    * SENTENCE. What stood here, quoted:
    *
    *     "Ours goes at `L` (24), because EA_FORM.left is already a deliberate departure — the agency's
@@ -1199,7 +1199,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   const O = EA_FORM.officerBox;
   /**
    * "Nama dan Alamat Majikan" — TWO writing rules ON THE AGENCY'S FORM, AND AS MANY AS THE NAME AND
-   * ADDRESS NEED ON OURS (r353, then r371 / item 450f443f).
+   * ADDRESS NEED ON OURS (r353, then r372 / item 450f443f).
    *
    * ⚠️ WHAT THE MEASUREMENT SETTLED IN r353, AND IT STILL HOLDS. `node --import tsx
    * scripts/measure-ea-official-pdf.ts --rects` says the agency's own officer box has exactly FIVE rows
@@ -1254,7 +1254,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   /**
    * ONE CAPTIONED ROW OF THE BOX — Name of Officer, Designation, Employer's Telephone No.
    *
-   * ⚠️ r371 — THE FLOOR APPLIES HERE TOO, AND THESE THREE CANNOT GROW TO MEET IT. The employer's name
+   * ⚠️ r372 — THE FLOOR APPLIES HERE TOO, AND THESE THREE CANNOT GROW TO MEET IT. The employer's name
    * and address wraps onto another rule; these do not. Each is ONE value on ONE rule with no
    * continuation, so past the point where 8 pt will not fit they shrink to `O.minSize` and then
    * OVERPRINT to the right — they never disappear, and they are never set smaller than 6 pt.
@@ -1301,7 +1301,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
    * `null` (the blank form, and any caller with nothing to date) still prints the agency's empty rule —
    * `valueOrRule` does that for an empty value, which is why the reversal needed no new branch here.
    *
-   * ⚠️ r371 — ITS BASELINE IS `footRowT`, NOT THE LITERAL 723 r367 PINNED, AND THAT IS THE AGENCY'S OWN
+   * ⚠️ r372 — ITS BASELINE IS `footRowT`, NOT THE LITERAL 723 r367 PINNED, AND THAT IS THE AGENCY'S OWN
    * ARRANGEMENT RATHER THAN A CHOICE OF OURS. `--rects` puts LHDN's Date on tt 802 at x 45.2, the SAME
    * row as its Telephone No. rule at 331.5: one table row, the date outside the box and the telephone
    * inside it. So the date rides down with the telephone when the box grows. It is 723 for every
@@ -1334,7 +1334,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // cosmetic difference. Removing it is a decision for the reporter to make explicitly.
   let y: number = EA_FORM.footStripT;
   /**
-   * ⚠️ r371 — …AND IT FOLLOWS THE OFFICER BOX DOWN, BECAUSE THE BOX CAN NOW REACH IT. `footStripT`
+   * ⚠️ r372 — …AND IT FOLLOWS THE OFFICER BOX DOWN, BECAUSE THE BOX CAN NOW REACH IT. `footStripT`
    * (742) is 11.4 pt below the UNGROWN box, so a box carrying three or more employer rules ends past
    * it and the amended marker would print INSIDE the box, over the telephone rule. pdf-lib does NOT
    * clip: that is an overprint on a tax document, not a line that quietly disappears.

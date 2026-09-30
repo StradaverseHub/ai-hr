@@ -301,7 +301,7 @@ describe('EA PDF renderer', () => {
   );
 
   /**
-   * ── r371 (item 450f443f) — r353 FIXED THE ONE-RULE CASE AND LEFT A TWO-RULE CEILING ────────────────
+   * ── r372 (item 450f443f) — r353 FIXED THE ONE-RULE CASE AND LEFT A TWO-RULE CEILING ────────────────
    *
    * The case above is the no-regression pin and it stays exactly as it is: an employer block that fits
    * the agency's two writing lines is drawn the way it has been since r353, at a full 8 pt on both.
@@ -325,7 +325,7 @@ describe('EA PDF renderer', () => {
    *   (d) the box's own foot row (telephone + date) moves down by exactly the growth, and stays inside
    *       `EA_FORM.bottom` — pdf-lib does not clip, so "off the page" here means "printed over the edge".
    */
-  describe('r371 — the employer name and address wraps onto as many rules as it needs', () => {
+  describe('r372 — the employer name and address wraps onto as many rules as it needs', () => {
     /** The same content-stream read as `drawnText`, keeping the `Tf` size that precedes each `Tm`. */
     async function drawnSized(bytes: Uint8Array) {
       const doc = await PDFDocument.load(bytes);
