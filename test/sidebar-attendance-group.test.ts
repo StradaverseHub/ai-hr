@@ -550,6 +550,59 @@ describe('sidebar Attendance group — Clock in/out and Records are the staff no
     }
   });
 
+  /**
+   * 6948727a (r369) — the SIXTH staff row. DECLARED here for exactly the reason the third, fifth and
+   * sixth before it were: this guard's whole value is that the membership of the self-service node is
+   * written down, so a row that arrives without a line here is still a failure.
+   *
+   * ⚠️ THE CASE ABOVE IS NOT LOOSENED TO MAKE ROOM FOR IT. Its claim —
+   *   'carries My Request (labelKey myAttendanceRequestStatus), ungated, exactly once across the rail'
+   * — still holds every assertion it held, over the same single href, and its "exactly once" is still
+   * read at 1. This is an ADDITIONAL exact statement about an ADDITIONAL row, which is the direction
+   * this file only ever moves in.
+   *
+   * The reporter's ask, in their own words: "New sub menu – My Roster. This is for employee to view
+   * only the Roster that assigned by their supervisor."
+   */
+  it('carries My Roster LAST, ungated, exactly once across the rail', () => {
+    const href = '/attendance/my-roster';
+    const statusIdx = node.indexOf(`'/attendance/request-status'`);
+    const idx = node.indexOf(`'${href}'`);
+    expect(idx, `${href} is a child of My Attendance`).toBeGreaterThan(-1);
+    expect(statusIdx, 'My Roster comes after My Request').toBeLessThan(idx);
+
+    // NOT in the config node: that node sits in the group-gated Administration section, where a
+    // self-service row renders for administrators and nobody else — which for an employee's own
+    // schedule would be a silent removal, not a menu tidy-up.
+    expect(nodeBlock('ATTENDANCE_NAV').indexOf(`'${href}'`), `${href} not in the config node`).toBe(-1);
+
+    const line = node.split('\n').find((l) => l.includes(`'${href}'`));
+    expect(line, `${href} row exists`).toBeDefined();
+    expect(line, `${href} carries no visibility gate`).not.toMatch(/adminOnly|managerUp/);
+    expect(line, `${href} labelled by its own nav key`).toContain(`labelKey: 'myRoster'`);
+
+    expect(countQuoted(SRC, href), `${href} appears exactly once across the rail`).toBe(1);
+  });
+
+  // The ADMINISTRATOR's roster is a different row at a different address, and it must stay that way:
+  // the employee's screen is not a second entrance to the operator's grid of everybody. Stated
+  // positively, because "they are different" is the property the whole item rests on.
+  it('does not turn the administrator’s /roster row into the employee’s screen', () => {
+    expect(node.indexOf(`'/roster'`), 'the admin roster has no row in the self-service node').toBe(-1);
+    expect(countQuoted(SRC, '/attendance/my-roster'), 'the employee row is its own address').toBe(1);
+  });
+
+  it('has its My Roster nav label in en.json, distinct from the administrator’s Roster', () => {
+    const en = JSON.parse(
+      fs.readFileSync(path.resolve(__dirname, '../messages/en.json'), 'utf8'),
+    ) as { nav: Record<string, string> };
+    expect(en.nav.myRoster).toBe('My Roster');
+    // One key for the employee's reading of themselves, one for the operator's reading of everybody.
+    // If the rail ever said the same word twice for two different screens it would be unreadable —
+    // the same distinctness rule nav.myRecords / nav.attendanceRecords are held to below.
+    expect(en.nav.myRoster).not.toBe(en.nav.roster);
+  });
+
   // b833a077 (r362) — the other half of the case above, stated positively.
   it('b833a077: My Travel has no row anywhere in the rail, and its address still forwards', () => {
     const href = '/attendance/travel';

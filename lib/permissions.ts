@@ -275,6 +275,36 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/attendance/my-records'],
     hasScopeNote: true,
   },
+  /**
+   * 6948727a (r369) — MY ROSTER: the employee's own roster, read only. The employee half of the pair
+   * whose administrative half is the `roster` column further down.
+   *
+   * A SCREEN OF ITS OWN, not a route added to `roster`, and the precedent is the column directly above:
+   * a different audience is a different screen. `/roster` is the operator's grid of everybody, gated by
+   * `scopedAdmin`; putting this route on that column would tell every reader of the access grid that
+   * ordinary staff reach the administrative roster, when they are refused at its door — the exact
+   * under-reporting failure test/function-access.test.ts exists to prevent, and worse than a wrong guard
+   * because it reads as a deliberate statement.
+   *
+   * `scopedSession`, so every authenticated role reaches it — the honest coarse answer, because the
+   * screen refuses nobody. What it SHOWS is narrower than the guard implies, and narrower than RLS would
+   * allow: `roster_assignment`'s policy is `app.can_see_employment`, which admits the recursive
+   * administrative manager chain and the HOD department tree, so the database would hand a supervisor a
+   * subordinate's roster. The page never asks — `myRosterWindow` (core/roster.ts) takes no employment id
+   * and resolves the caller's own from the session — so an administrator opening this screen sees their
+   * own roster and nobody else's. That is what the scope note says.
+   *
+   * A NEW screenKey, so it revokes nothing: no stored role config can reference a column that did not
+   * exist.
+   */
+  {
+    screenKey: 'myRoster',
+    href: '/attendance/my-roster',
+    labelKey: 'nav.myRoster',
+    guard: 'scopedSession',
+    routes: ['/attendance/my-roster'],
+    hasScopeNote: true,
+  },
   // Design-preview surface (ca2f2fef): a purely presentational mobile-app mock. scopedSession-guarded so
   // every role reaches the showcase; it fetches no data, so there is no scope note.
   {

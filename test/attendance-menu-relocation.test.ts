@@ -421,6 +421,17 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
       // forwards, the route stays unregistered) are asserted in test/attendance-pack.test.ts REMOVED and
       // in the dedicated case below.
       '/attendance/request-status',
+      /**
+       * ⚠️ 6948727a (r369) — SIX ROWS NOW, NOT FIVE. The note above says "FIVE ROWS NOW" and it is about
+       * My Travel's removal, which still stands; this is a different, later change, added here rather
+       * than letting an exact set be quietly relaxed to accommodate it.
+       *
+       * My Roster belongs in this set for the reason the describe exists: the membership of the
+       * self-service node is written down, so a row arriving without a line here is still a failure. Its
+       * own gating and data fence get a dedicated file (test/my-roster.test.ts) — ungated row, no admin
+       * page guard, and a service that takes no employment id at all.
+       */
+      '/attendance/my-roster',
     ]);
     // plan-ot joins the loop this round: until c6bb5f5a it was a one-line redirect with nothing to guard,
     // and it now renders the employee's own overtime plans like the two beside it.

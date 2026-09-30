@@ -108,6 +108,18 @@ const WIDE_LIST_SCREENS = [
    */
   'app/attendance/my-records/page.tsx',
   /**
+   * 6948727a (r369) — MY ROSTER, the employee's own roster. Added on the SAME reasoning r227 and r287
+   * gave, and LISTED FROM THE START rather than after somebody complains: the full-width property
+   * belongs to the SCREEN, not to who may open it, and this one is a seven-column calendar grid — the
+   * single widest shape in this menu. Born full width, so there is no third round of the complaint that
+   * r227 and r319 already cost two rounds each.
+   *
+   * It guards the one legitimate inner cap on the page too: the `mx-auto max-w-md` notice for a login
+   * with no active employment, which `capsPage` deliberately does not count (`max-w-md` is not
+   * `max-w-…xl`) — the same arrangement the two entries above use for the same sentence.
+   */
+  'app/attendance/my-roster/page.tsx',
+  /**
    * dde08629 (r319) — EMPLOYEE ATTENDANCE and its two sibling tabs, added on the same reasoning every
    * entry above carries and on the identical complaint: at `mx-auto max-w-6xl` a sixteen-column table sat
    * in a 72rem middle column while roughly a third of a wide monitor went unused.
