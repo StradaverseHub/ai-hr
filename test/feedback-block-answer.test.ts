@@ -35,7 +35,14 @@ import {
   submitFeedback,
   unblockFeedback,
 } from '../core/feedback';
-import { assertMoved, blockTrailSql, feedbackSelectSql, markBlockedSql, markUnblockedSql } from '../scripts/improve/remote';
+import {
+  assertMoved,
+  blockTrailSql,
+  feedbackSelectByIdSql,
+  feedbackSelectSql,
+  markBlockedSql,
+  markUnblockedSql,
+} from '../scripts/improve/remote';
 import { adminCtx, closeAll, createAppUser, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let base: Base;
@@ -518,5 +525,75 @@ describe('answering a blocked item (0323)', () => {
       owner.db.execute(sql`UPDATE feedback_block SET answer = 'half a record' WHERE feedback_request_id = ${id}::uuid`),
       /feedback_block_answer_resolves_ck/,
     );
+  });
+});
+
+/**
+ * r369 — A BUILDER MUST BE ABLE TO READ ITS OWN PLAN AFTER `build-start`.
+ *
+ * `pullApproved()` filters `status in ('approved')`, so the moment `build-start` moves an item to
+ * `building` the plan text becomes unreachable through the pull commands — and a hand-rolled psql is
+ * refused by the auto-mode classifier as a production read. Four builders on 2026-09-30 were dispatched
+ * after their `build-start` and had to work from the parent's brief rather than the approved contract.
+ *
+ * The discipline is to capture the plan BEFORE the board write. This is the safety net, and it is pinned
+ * here with the real string, not an equivalent one, for the same reason the pull query above is.
+ */
+describe('improve pull-item — one item by id, whatever its status', () => {
+  it('returns the PLAN of an item that build-start has already moved to building', async () => {
+    const PLAN = 'VERDICT: Not built yet   ·   SIZE: Quick\n\nTHE SITUATION TODAY\n\nA plan a builder must be able to read.';
+    // Walked from `open` here rather than through the file's `approvedItem` helper, because a plan can only
+    // be drafted while the item is open or contested — and the plan text has to be DISTINCTIVE or the
+    // assertion below could pass on a shared fixture's placeholder.
+    const R = await hire(`Reporter ${randomUUID().slice(0, 4)}`);
+    const rctx = await reporterCtx(R.personId);
+    const { id } = await submitFeedback(rctx, {
+      reporterEmploymentId: R.employmentId,
+      category: 'enhancement',
+      title: 'readable after build-start',
+      description: 'The plan must survive the status change.',
+    });
+    await setFeedbackPlan(adminCtx(base), { feedbackId: id, plan: PLAN });
+    await approveFeedbackPlan(rctx, { feedbackId: id });
+    await startFeedbackBuild(adminCtx(base), { feedbackId: id });
+
+    // The premise, measured rather than assumed: pull-approved can no longer see it. Without this the
+    // assertion below would pass just as well if nothing had moved.
+    const [{ coalesce: approvedJson }] = (await owner.db.execute(
+      sql.raw(feedbackSelectSql(`'approved'`)),
+    )) as unknown as { coalesce: unknown }[];
+    const approved = (typeof approvedJson === 'string' ? JSON.parse(approvedJson) : approvedJson) as { id: string }[];
+    expect(
+      approved.some((r) => r.id === id),
+      'premise: a building item is invisible to pull-approved, which is the whole reason pull-item exists',
+    ).toBe(false);
+
+    // The EXACT query `pnpm improve:pull-item <id>` issues.
+    const [{ coalesce: oneJson }] = (await owner.db.execute(
+      sql.raw(feedbackSelectByIdSql(id)),
+    )) as unknown as { coalesce: unknown }[];
+    const rows = (typeof oneJson === 'string' ? JSON.parse(oneJson) : oneJson) as {
+      id: string;
+      status: string;
+      plan: string | null;
+    }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status, 'it is fetched BECAUSE of its id, not despite its status').toBe('building');
+    expect(rows[0].plan, 'the plan text is what the builder came for').toBe(PLAN);
+  });
+
+  it('refuses anything that is not a uuid rather than interpolating it', () => {
+    // The id goes into the SQL by interpolation, so the uuid assertion is the only thing between this
+    // helper and an injected statement. A test that only checked the happy path would not notice its loss.
+    expect(() => feedbackSelectByIdSql("' or 1=1 --")).toThrow();
+    expect(() => feedbackSelectByIdSql('not-a-uuid')).toThrow();
+  });
+
+  it('returns an empty array for an unknown id, so "no such item" is not an ssh failure', async () => {
+    const [{ coalesce: json }] = (await owner.db.execute(
+      sql.raw(feedbackSelectByIdSql('11111111-2222-3333-4444-555555555555')),
+    )) as unknown as { coalesce: unknown }[];
+    const rows = (typeof json === 'string' ? JSON.parse(json) : json) as unknown[];
+    expect(rows).toEqual([]);
   });
 });

@@ -38,6 +38,7 @@ import {
   markDeployed,
   markUnblocked,
   pullApproved,
+  pullItem,
   pullBlocked,
   pullPlannable,
   pushPlanWithMockups,
@@ -78,6 +79,14 @@ async function main() {
     case 'pull':
       process.stdout.write(JSON.stringify(pullPlannable(), null, 2) + '\n');
       break;
+    case 'pull-item': {
+      // One item by id, whatever its status — the escape hatch for a builder whose item is already
+      // `building` and is therefore invisible to pull-approved. See feedbackSelectByIdSql's header.
+      const id = process.argv[3];
+      if (!id) throw new Error('usage: improve pull-item <feedback-id>');
+      process.stdout.write(JSON.stringify(pullItem(id), null, 2) + '\n');
+      break;
+    }
     case 'pull-approved':
       process.stdout.write(JSON.stringify(pullApproved(), null, 2) + '\n');
       break;
@@ -203,7 +212,7 @@ async function main() {
     }
     default:
       console.error(
-        'usage: improve <pull | pull-approved | pull-blocked | raise | push-plan | block | unblock | build-start | build-complete | release | deploy | mark-deployed>',
+        'usage: improve <pull | pull-item <id> | pull-approved | pull-blocked | raise | push-plan | block | unblock | build-start | build-complete | release | deploy | mark-deployed>',
       );
       process.exit(2);
   }
