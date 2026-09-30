@@ -1,6 +1,16 @@
 ## r371 — 2026-09-30 · main@96afa7cf · no migration
 
-**Next.js 16.2.7 to 16.3.6, and nothing else.** The sixth and last fix from
+⚠️ **CORRECTED BEFORE SHIPPING: this round ships 16.3.3, not 16.3.6.** The heading and the paragraphs below
+were written for 16.3.6, which then **failed to build on the box and in mainwt** — Turbopack 16.3.6 resolves
+`fontkit@1.9.0`'s `applyDecoratedDescriptor` import from NEXT's own `@swc/helpers` (0.5.23, which renamed it
+to `_apply_decorated_descriptor`) rather than from fontkit's correctly-pinned 0.3.17, and fails the build
+statically. The install was right on both machines; the resolution context was not. **16.3.3 closes all
+three of the same CVEs** — the RCE fix landed IN 16.3.3 and the other two in 16.2.11 — builds cleanly, and
+keeps `sharp@0.35.5`. fontkit was NOT upgraded: it is a direct dependency and 2.x is an API change on the
+payslip PDF path, which is not a change to make at speed on a money document to route around a framework
+regression. See commit `1954c06f`. Read every "16.3.6" below as "16.3.3 after that correction".
+
+**Next.js 16.2.7 to 16.3.3, and nothing else.** The sixth and last fix from
 `build/r360-security-fixes`, which sat unmerged from 2026-09-29 until r369 while production ran exposed.
 r369 shipped the other five; this one needed `pnpm install` and every r369 worktree symlinked one shared
 `node_modules` that agents were reading, so it could not be done then. Shipped alone rather than held
@@ -21,8 +31,15 @@ middleware.** Their framing is worse than mine was, and correct: the exposure wa
 published bypass.
 
 ### THE GATE
-`CHUNKS=16 VITEST_MAX_WORKERS=3`: **1085 of 1085 files counted, zero AssertionErrors, GATE GREEN across
-all 16 chunks, first attempt, no red chunk to reconcile.** `tsc` 0. `next build` 0 — 226 static pages on
+**GATED TWICE, because the framework changed under the first one.** The 16.3.6 gate was green first
+attempt — 1085 of 1085, zero AssertionErrors, all 16 chunks — and that tree never shipped. The 16.3.3
+re-gate went RED on chunk 4 with ONE failure, `test/r291-detached-deploy.test.ts` "a deploy that DIES
+partway makes the local command exit non-zero", `expected +0 to be 1`. That test spawns an external killer
+that polls for `phase=build` and kills the pid, so it is timing-sensitive, and the machine was running four
+`pnpm install`s alongside the gate. Re-run alone: **68/68 green**. Reconciled rather than re-run wholesale —
+1017 files from the 15 green chunks plus 68 from the chunk-4 re-run = **1085 of 1085, each file counted
+exactly once**. `git diff 098dcd11..HEAD` is `package.json`, `pnpm-lock.yaml` and this file; the test reads
+none of them. `tsc` 0. `next build` 0 — 226 static pages on
 16.3.6. `i18n-check` PASS, 12798 leaf keys, six locales parity and placeholders clean. No migration, so no
 `gate:shadow`.
 
