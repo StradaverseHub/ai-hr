@@ -105,6 +105,14 @@ export type ReportParams = {
    * database can actually separate. Reports that carry no wage column (CP39) may filter their query on it
    * directly; the two that DO carry one must read the whole month and scope the wage —
    * `scopedMonthWagesFrom` in ./statutory-month-wage explains why.
+   *
+   * ⚠️ EXACTLY TWO GENERATORS READ THIS FIELD TODAY — `my.borang-a` and `my.borang-8a`, the two reached
+   * from Payment Submission's Payroll Cycle control. Every other entry in this catalogue IGNORES it, which
+   * is correct rather than an omission: nothing sends it to them, and a report that silently honoured a
+   * selection its own screen has no control for would hand an operator a narrower document than the one
+   * they asked for. Adding the control to another report means teaching that report the field, in the same
+   * round. The CP39 UPLOAD FILE is not in this catalogue at all — it rides `CountryPack.paymentFiles` and
+   * takes its own `runSeqs`.
    */
   runSeqs?: number[];
 };
