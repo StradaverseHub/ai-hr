@@ -13,6 +13,9 @@
  *   (i)  leaveBalance reflects imported rows afterward (Import → Ledger → Balance chain)
  *   (j)  appendEvent 'leave.import.completed' fires after a successful commit
  *   (k)  year-boundary: a backdated adjustment before openLeaveYear does not corrupt carry/forfeit math
+ *        — and (k2) a row landing in an ALREADY-opened year is flagged. The opposite case, an imported
+ *        'accrual' row in a year with NO marker yet (which cancels that year's entitlement outright), is
+ *        item b2713800 and lives in test/b2713800-leave-import-year-open.test.ts.
  *   (l)  cross-company authority: a company-scoped admin's out-of-authority rows error in the PREVIEW
  *   (m)  in_lieu_accrual (TOIL) is rejected with a clear message (v1 scope decision)
  */
@@ -348,13 +351,21 @@ describe('leave import — year boundary interaction', () => {
   it('(k2) importing into an already-rolled-over year is flagged as a non-blocking warning', async () => {
     // fa3f4ccb: same reason as (k) — without a configured entitlement openLeaveYear grants nothing and
     // posts no open-marker, so there is no rolled-over year for the warning to detect.
+    //
+    // b2713800 — THE CLAIM THIS TEST USED TO MAKE ABOUT THE MARKER IS RETIRED, though the test still
+    // passes unchanged. It said: "Roll over 2026 first (posts a Jan-1 2026 accrual open-marker)". That is
+    // true only of THIS fixture, where the employee was hired in 2025 and the entitlement table has been in
+    // force since 2020, so `effectiveGrantStart` resolves to 1 January. Since r193 the marker is any accrual
+    // row inside the leave year (`yearOpenMarkerCond`), and for a mid-year joiner it is their hire grant.
+    // The importer now keys on the year, not on 1 January — see core/leave-import.ts — and the mid-year case
+    // is pinned in test/b2713800-leave-import-year-open.test.ts (d).
     await seedEntitlement(adminCtx(b), {
       leaveTypeId: b.annualLeaveTypeId,
       annualDays: 8,
       validFrom: '2020-01-01',
     });
     const e = await hire({ hiredOn: '2025-01-01' });
-    // Roll over 2026 first (posts a Jan-1 2026 accrual open-marker), then import a row dated in 2026.
+    // Roll over 2026 first (posts this pair's 2026 accrual open-marker), then import a row dated in 2026.
     await openLeaveYear(adminCtx(b), { year: 2026 });
     const preview = await validateLeaveImport(adminCtx(b), {
       records: toRecords([
