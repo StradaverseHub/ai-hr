@@ -264,11 +264,26 @@ export default async function EmployeeBalancesPage({
    * was computed from; a January-to-December window would list a different set and quietly disagree with
    * the number it was clicked from, which is the very complaint this item is about.
    *
+   * AND `status=approved`, WHICH THE RENDER CHECK ADDED. Without it the list carried a PENDING record
+   * beside the approved one — measured on the dev server: Taken 1.00, two rows listed. Taken counts what
+   * came OFF the balance, and a pending application has not; the Pending Approval column one cell to the
+   * right is that figure's own drill-down question. A list that answers a different question from the
+   * number it was clicked from is the item's own complaint rebuilt one screen along.
+   *
+   * ⚠️ WHAT THIS LINK STILL CANNOT PROMISE, and it is stated rather than implied. Employee Balances' Taken
+   * is CUMULATIVE to the As-at date: `leaveBalances` (core/read.ts) sums ledger debits with `effective_on
+   * <= asOf` and NO lower bound, while the Ent. year column beside it names one entitlement cycle. So for
+   * an employee who also took leave in an EARLIER cycle, this list is a subset of what Taken counts. That
+   * mismatch is pre-existing and is NOT this round's to change — narrowing Taken to the cycle would move a
+   * figure on five read surfaces (app/page.tsx, core/my-leave.ts, the personnel record, this screen and
+   * core/assistant-tools.ts), which is a separate item with its own evidence. The link matches the year
+   * the row PRINTS, which is what the reporter asked for and what a reader would check it against.
+   *
    * `recordsHref` above is deliberately left as it is: the leave CODE cell means "every record of this
-   * type", across years, and narrowing it would remove an answer HR already relies on.
+   * type", across years and statuses, and narrowing it would remove an answer HR already relies on.
    */
   const takenRecordsHref = (r: { leaveTypeId: string; cycleStart: string | null; cycleEnd: string | null }) => {
-    const base = recordsHref(r.leaveTypeId);
+    const base = `${recordsHref(r.leaveTypeId)}&status=approved`;
     return r.cycleStart && r.cycleEnd ? `${base}&from=${r.cycleStart}&to=${r.cycleEnd}` : base;
   };
 

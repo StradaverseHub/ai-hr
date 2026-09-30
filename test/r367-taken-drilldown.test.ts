@@ -77,6 +77,10 @@ describe('the link the Taken figure carries', () => {
     // The window, from the row's own cycle. `slice(0, 4)` anywhere in this link would be the calendar-year
     // version this file exists to refuse.
     expect(src).toMatch(/from=\$\{r\.cycleStart\}&to=\$\{r\.cycleEnd\}/);
+    // …and APPROVED only. The render check measured the alternative: Taken 1.00 opened a list of two rows,
+    // one of them PENDING. Taken counts what came off the balance; Pending Approval is its own column and
+    // its own question.
+    expect(src).toContain('&status=approved');
     // The leave CODE cell keeps its own, unnarrowed link: "every record of this type", across years, is a
     // different and still-wanted answer.
     expect(src).toContain('recordsHref(r.leaveTypeId)');
@@ -166,10 +170,33 @@ describe('the figure and the records behind it agree, on an ANNIVERSARY cycle', 
     expect(annual.entitlementYear).toBe(annual.cycleStart!.slice(0, 4));
     expect(annual.taken).toBe(3);
 
-    // THE AGREEMENT: the records the drill-down link lists are the records the figure is the sum of.
+    /**
+     * THE AGREEMENT: the records the drill-down link lists are the records the figure is the sum of.
+     *
+     * ⚠️ THE PREMISE IS ASSERTED, NOT ASSUMED. `leaveBalances`' Taken is CUMULATIVE to the As-at date —
+     * core/read.ts sums ledger debits with `effective_on <= asOf` and no lower bound — so the equality
+     * below holds only while this employee has NO leave before the cycle opened. That is true of this
+     * fixture and the next line measures it, rather than letting a later fixture change quietly turn this
+     * case into a false claim about the product.
+     */
+    const earlier = await owner.db
+      .select({ id: schema.leaveRequest.id })
+      .from(schema.leaveRequest)
+      .where(eq(schema.leaveRequest.employmentId, employmentId));
+    const before = await owner.db
+      .select({ d: schema.leaveLedger.effectiveOn })
+      .from(schema.leaveLedger)
+      .where(eq(schema.leaveLedger.employmentId, employmentId));
+    expect(earlier.length, 'the fixture holds exactly the two records it created').toBe(2);
+    expect(
+      before.every((r) => r.d >= annual.cycleStart!),
+      'no ledger row predates the cycle, which is what makes the equality below meaningful',
+    ).toBe(true);
+
     const page = await listLeaveRequestsPage(adminCtx(b), {
       employmentIds: [employmentId],
       leaveTypeIds: [b.annualLeaveTypeId],
+      statuses: ['approved'],
       from: annual.cycleStart!,
       to: annual.cycleEnd!,
       limit: 50,
