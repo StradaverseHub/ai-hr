@@ -471,6 +471,39 @@ describe('EA PDF renderer', () => {
     });
 
     /**
+     * THE FLOOR COVERS THE THREE SINGLE-VALUE ROWS TOO, AND THEY CANNOT WRAP TO MEET IT.
+     *
+     * Name of Officer, Designation and Employer's Telephone No. are one value on one rule with no
+     * continuation, so the box cannot grow for them: past 8 pt they shrink, and at `O.minSize` they
+     * overprint instead of shrinking further. Smaller exposure than the employer block (one field each
+     * rather than four concatenated) and the SAME defect class, which is the only thing that matters on
+     * a form somebody signs and files.
+     *
+     * ⚠️ AND `fitSize`'s 1 pt CLAMP WAS NEVER EVEN BUYING A FIT. Measured on HEAD, a 599-character
+     * designation was set at 1.0 pt AND still ran 288 pt over a 269 pt rule — illegible and out of its
+     * box at the same time. The clamp is not a floor, it is the absence of one; it just stops dividing.
+     */
+    it.each([
+      ['officerName' as const, 655],
+      ['officerPosition' as const, 672],
+      ['phone' as const, 723],
+    ])('a very long %s is never set below the floor', async (field, tt) => {
+      // ~600 characters: far past anything real, and past the point where even 1 pt would fit.
+      const absurd = Array(6).fill('Senior General Manager, Group Human Resources, Corporate Services and Statutory Compliance Division').join('; ');
+      const items = await drawnSized(
+        await renderEaPdf({ ...fullForm, employer: { ...fullForm.employer, [field]: absurd } }, labels),
+      );
+      const run = items.find((i) => Math.abs(i.x - writeX) < 0.5 && Math.abs(i.tt - tt) < 0.5);
+      expect(run, `nothing was drawn on the ${field} rule`).toBeDefined();
+      expect(run!.text, 'the value was truncated rather than printed').toBe(absurd);
+      expect(run!.size, `${field} was set at ${run!.size}pt`).toBeGreaterThanOrEqual(O.minSize);
+      // …and an ordinary value is untouched by the floor: it still sets at a full 8 pt.
+      const ordinary = await drawnSized(await renderEaPdf(fullForm, labels));
+      const plain = ordinary.find((i) => Math.abs(i.x - writeX) < 0.5 && Math.abs(i.tt - tt) < 0.5);
+      expect(plain!.size, `an ordinary ${field} stopped printing at full size`).toBe(8);
+    });
+
+    /**
      * THE AMENDED MARKER FOLLOWS THE BOX. It draws at `EA_FORM.footStripT` (742), which is only 11.4 pt
      * below the UNGROWN box — so a grown box would print straight through it, and pdf-lib does not clip.
      * This is the case that will matter most to round two (item 795c470c), which drops this box 99 pt.

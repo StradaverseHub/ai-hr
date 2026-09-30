@@ -588,7 +588,12 @@ export const EA_FORM = {
     rowPitch: 17,
     /** The agency's own count of writing lines for the name and address: two. The floor, never a cap. */
     employerRules: 2,
-    /** The smallest type this box may set. See the employer rules' own note for why it is 6 and not 1. */
+    /**
+     * The smallest type ANY row of this box may set — the employer's name and address, and equally the
+     * officer's name, the designation and the telephone number. See the employer rules' own note for
+     * why it is 6 and not `fitSize`'s 1, and `officerRow` for what the three single-value rows do when
+     * they reach it (they overprint; they have no second rule to wrap onto).
+     */
     minSize: 6,
   },
   /** Where OUR strip starts — the ~110 pt the specimen leaves empty beneath its own foot. */
@@ -1246,9 +1251,27 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   const officerRowT = (n: number) => O.rowT0 + n * O.rowPitch;
 
   box(O.x0, O.t0, R, officerBoxT1);
+  /**
+   * ONE CAPTIONED ROW OF THE BOX — Name of Officer, Designation, Employer's Telephone No.
+   *
+   * ⚠️ r370 — THE FLOOR APPLIES HERE TOO, AND THESE THREE CANNOT GROW TO MEET IT. The employer's name
+   * and address wraps onto another rule; these do not. Each is ONE value on ONE rule with no
+   * continuation, so past the point where 8 pt will not fit they shrink to `O.minSize` and then
+   * OVERPRINT to the right — they never disappear, and they are never set smaller than 6 pt.
+   *
+   * That is the same trade the employer rules take at their cap and it is chosen for the same reason:
+   * `fitSize`'s 1 pt clamp is not a floor, it is the absence of one, and a 1 pt officer's name on a
+   * document somebody signs and files is indefensible however unlikely the input. An overprint is
+   * queried; a 1 pt line is filed. Measured on the drawn page: 8 pt holds ~67 characters on this
+   * 269 pt rule and the floor holds ~90, so every realistic officer name, designation and telephone
+   * number is unaffected and prints at a full 8 pt.
+   *
+   * THE DATE beside the telephone is deliberately NOT given the floor: `formDate` emits a fixed
+   * DD/MM/YYYY, ~49 pt of 8 pt Helvetica on an 82 pt rule, so it has no reachable shrink path at all.
+   */
   const officerRow = (caption: string, tt: number, value: string) => {
     put(caption, O.x0 + 8, tt, 8);
-    valueOrRule(value, O.ruleX[0], O.ruleX[1], tt, 8);
+    valueOrRule(value, O.ruleX[0], O.ruleX[1], tt, 8, O.minSize);
   };
   officerRow(W.officerName, officerRowT(0), d.employer.officerName ?? '');
   officerRow(W.officerPosition, officerRowT(1), d.employer.officerPosition ?? '');
