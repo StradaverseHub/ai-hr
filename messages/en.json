@@ -4707,6 +4707,8 @@
       "epfKwsp": "1 EPF / KWSP",
       "socso": "2 SOCSO",
       "eisSip": "EIS / SIP",
+      "skbbk": "SKBBK / Lindung 24 Jam",
+      "perkesoE2Total": "2 SOCSO — total stated on the form (SOCSO + EIS + SKBBK)",
       "sectionFTaxExempt": "F · Total tax-exempt allowances / perquisites",
       "taxExemptAllowances": "Tax-exempt allowances",
       "disclaimer": "Generated from payroll for YA {year} (statutory tables {version}). Salary, bonus, allowances, EPF, SOCSO/EIS, MTD, CP38 and zakat come from payroll. Fees, tips and perquisites, tax borne by the employer, ESOS, gratuity, arrears, benefits in kind, living accommodation, unapproved fund refunds, compensation for loss of employment, pension and annuity have no payroll source and are entered by HR; until then the printed form leaves those rules empty rather than printing 0.00. The printed form follows the C.P.8A (Pin. 2023) arrangement but is printed on paper of ours — we hold no blank C.P.8A from LHDN — so check every figure against your records before filing.",
@@ -4751,6 +4753,7 @@
         "fieldEpf": "EPF / KWSP",
         "fieldSocso": "SOCSO",
         "fieldEis": "EIS / SIP",
+        "fieldSkbbk": "SKBBK / Lindung 24 Jam",
         "filedTotal": "Filed CP39 / agency total",
         "cp39DivergenceWarning": "This amended figure diverges from the year’s filed CP39 / agency total ({filed}; delta {delta}). The override and its delta are recorded in the audit trail."
       },

@@ -57,7 +57,11 @@ const isField = (s: string): s is EaField => (EA_FIELDS as readonly string[]).in
 // `mtd` amendment does. `zakat` deliberately does NOT: zakat-via-salary is paid to a state religious
 // authority, not remitted on the CP39, so there is no filed total on this system to reconcile it against
 // and claiming one would be the overstatement this reconciliation exists to prevent.
-const STATUTORY_FIELDS = new Set<EaField>(['mtd', 'cp38', 'epf', 'socso', 'eis']);
+// r367 (item fda53352, round A) — `skbbk` joins them for the same reason `eis` is in the set: it is a
+// compulsory employee contribution remitted to PERKESO on the same schedule as the SOCSO and EIS legs,
+// and its payroll-derived value IS what was remitted (payslip.statutory.socsoSkbbk). It is now one of the
+// three legs Section E(2) prints as a single figure, so an amendment to it moves a statutory box.
+const STATUTORY_FIELDS = new Set<EaField>(['mtd', 'cp38', 'epf', 'socso', 'eis', 'skbbk']);
 const isStatutoryField = (f: EaField): boolean => STATUTORY_FIELDS.has(f);
 const MONEY_TOL = 0.005;
 
@@ -103,6 +107,10 @@ function derivedField(ea: EaStatement, field: EaField): number {
       return ea.partE.socso;
     case 'eis':
       return ea.partE.eis;
+    // r367 — the third leg of the ONE box Section E(2) prints. Amendable separately from the other two
+    // precisely so a correction lands on the contribution it belongs to.
+    case 'skbbk':
+      return ea.partE.skbbk;
     case 'directorFee':
       return ea.partB.directorFee;
     case 'tipsPerquisites':

@@ -4336,6 +4336,8 @@
       "epfKwsp": "1 EPF / KWSP",
       "socso": "2 SOCSO",
       "eisSip": "EIS / SIP",
+      "skbbk": "SKBBK / Lindung 24 Jam",
+      "perkesoE2Total": "2 PERKESO — jumlah yang dinyatakan pada borang (PERKESO + SIP + SKBBK)",
       "sectionFTaxExempt": "F · Jumlah elaun / perkuisit dikecualikan cukai",
       "taxExemptAllowances": "Elaun dikecualikan cukai",
       "disclaimer": "Dijana daripada gaji untuk YA {year} (jadual berkanun {version}). Gaji, bonus, elaun, EPF, SOCSO/EIS, MTD, CP38 dan zakat datang daripada sistem gaji. Fi, tip dan perkuisit, cukai ditanggung majikan, ESOS, ganjaran, tunggakan, manfaat berupa barangan, tempat kediaman, bayaran balik kumpulan wang tidak diluluskan, pampasan kehilangan pekerjaan, pencen dan anuiti tiada sumber gaji dan dimasukkan oleh HR; sehingga itu borang bercetak membiarkan garisan itu kosong dan bukan mencetak 0.00. Borang bercetak mengikut susunan C.P.8A (Pin. 2023) tetapi dicetak di atas kertas kami sendiri — kami tidak menyimpan sebarang borang C.P.8A kosong daripada LHDN — jadi semak setiap angka dengan rekod anda sebelum memfailkan.",
@@ -4380,6 +4382,7 @@
         "fieldEpf": "EPF / KWSP",
         "fieldSocso": "PERKESO",
         "fieldEis": "SIP / EIS",
+        "fieldSkbbk": "SKBBK / Lindung 24 Jam",
         "filedTotal": "Jumlah CP39 / agensi difailkan",
         "cp39DivergenceWarning": "Angka pindaan ini berbeza daripada jumlah CP39 / agensi yang difailkan bagi tahun tersebut ({filed}; delta {delta}). Pindaan dan deltanya direkodkan dalam jejak audit."
       },

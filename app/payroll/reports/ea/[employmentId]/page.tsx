@@ -121,6 +121,8 @@ export default async function EaStatementPage({
     epf: t('override.fieldEpf'),
     socso: t('override.fieldSocso'),
     eis: t('override.fieldEis'),
+    // r367 — the third PERKESO leg inside Section E(2).
+    skbbk: t('override.fieldSkbbk'),
     // 6036dab7 — the manual boxes. They reuse the SECTION labels rather than getting their own amend-panel
     // wording, so the operator amends the line they can see on the form above.
     directorFee: t('directorFee'),
@@ -147,6 +149,7 @@ export default async function EaStatementPage({
     epf: ovByField.get('epf')?.original ?? ea.partE.epf,
     socso: ovByField.get('socso')?.original ?? ea.partE.socso,
     eis: ovByField.get('eis')?.original ?? ea.partE.eis,
+    skbbk: ovByField.get('skbbk')?.original ?? ea.partE.skbbk,
     directorFee: ovByField.get('directorFee')?.original ?? ea.partB.directorFee,
     tipsPerquisites: ovByField.get('tipsPerquisites')?.original ?? ea.partB.tipsPerquisites,
     taxBorneByEmployer: ovByField.get('taxBorneByEmployer')?.original ?? ea.partB.taxBorneByEmployer,
@@ -165,7 +168,8 @@ export default async function EaStatementPage({
   // 6036dab7 — `cp38` joins them (it is remitted on the same CP39 return as the MTD); `zakat` does not,
   // because it goes to a state religious authority and this system holds no filed total for it. The set
   // here MIRRORS core/ea-override.ts's STATUTORY_FIELDS — the service is the authority, this is the hint.
-  const STATUTORY_EA_FIELDS = new Set(['mtd', 'cp38', 'epf', 'socso', 'eis']);
+  // r367 — `skbbk` joins them: remitted to PERKESO on the same schedule as SOCSO and EIS.
+  const STATUTORY_EA_FIELDS = new Set(['mtd', 'cp38', 'epf', 'socso', 'eis', 'skbbk']);
   // 6036dab7 — THE ORDER IS THE FORM'S ORDER, not the vocabulary's: the panel is read against the
   // statement printed directly above it, and a box that is hard to find in the panel is a box that gets
   // left empty. Derived figures first (Part B cash, then D, then E), then the manual boxes in form order.
@@ -193,6 +197,9 @@ export default async function EaStatementPage({
       'epf',
       'socso',
       'eis',
+      // r367 — the third leg of Section E(2). Amendable in its own right so a correction lands on the
+      // contribution it belongs to rather than on a total the form prints but nothing stores.
+      'skbbk',
       // da4fc817 — Section D's four. Three have no payroll source at all, so the amend panel is the ONLY
       // way they are ever entered; `tp1Relief` is derived and amendable for the reason `mtd` is.
       'tp1Relief',
@@ -493,17 +500,34 @@ export default async function EaStatementPage({
             {t('sectionEContributions')}
           </h2>
           {/* da4fc817 — the official Section E names the fund before its amount and carries exactly two
-              figures. EIS is kept but printed below the section, exactly as the PDF does, so the two
-              surfaces cannot describe one form two ways. */}
+              figures.
+
+              ⚠️ r367 (item fda53352, round A) — THE SECOND OF THOSE TWO IS A SUM OF THREE, AND THIS SCREEN
+              SHOWS BOTH THE LEGS AND THE SUM. Until now this screen listed SOCSO and "EIS / SIP" as peers
+              while the printed form carried the SOCSO leg alone, so the two surfaces described one form two
+              ways (the r353 lesson). The legs stay, because HR amends a LEG and not a total; the E(2) row
+              below them is what the paper will actually say. The caption reasoning — LHDN's BM original
+              names PERKESO the organisation, and LHDN's own TP1 scopes contributions to it to Act 4 and
+              Act 800 — is on `EaPdfData.partE` in lib/ea-pdf.ts. */}
           <Row label={t('fundName')} value={ea.partE.fundName} />
           <Row label={t('epfKwsp')} value={rm(ea.partE.epf)} amended={ovByField.has('epf')} amendedLabel={amendedBadge} />
           <Row label={t('socso')} value={rm(ea.partE.socso)} amended={ovByField.has('socso')} amendedLabel={amendedBadge} />
           {/* ⚠️ r353 — SECTION F'S FIGURE NO LONGER BORROWS SECTION E'S BLOCK. It was printed here, under
               Section E's heading and with Section F's own caption, while the real Section F block below
               printed the words "not tracked" — one figure, two places, neither of them the section the
-              agency puts it in. Section E now carries exactly what its heading says: the fund, the two
-              contributions, and EIS below them (which the printed form has no box for at all). */}
+              agency puts it in. Section E now carries exactly what its heading says: the fund, and the
+              contributions the agency's two amounts are made of. */}
           <Row label={t('eisSip')} value={rm(ea.partE.eis)} amended={ovByField.has('eis')} amendedLabel={amendedBadge} />
+          <Row label={t('skbbk')} value={rm(ea.partE.skbbk)} amended={ovByField.has('skbbk')} amendedLabel={amendedBadge} />
+          {/* The box the FORM prints, stated as the form states it, so nobody has to add three rows in
+              their head to check the paper against the screen. Not a stored figure and not amendable — the
+              three rows above it are. */}
+          <Row
+            label={t('perkesoE2Total')}
+            value={rm(ea.partE.socso + ea.partE.eis + ea.partE.skbbk)}
+            amended={ovByField.has('socso') || ovByField.has('eis') || ovByField.has('skbbk')}
+            amendedLabel={amendedBadge}
+          />
         </section>
 
         <section>

@@ -45,6 +45,7 @@ export const EA_FUND_NAME = 'KWSP';
 // model is what refuses to print a month it cannot name. Imported here so the read degrades on the same
 // rule the model enforces, rather than on a second copy of the regex that could drift from it.
 import { isCp39PeriodKey } from '../../lib/cp39-form';
+import { todayInKualaLumpur } from '../../lib/hr-date';
 
 export type ReportColumn = { key: string; label: string; numeric?: boolean };
 export type ReportRow = Record<string, string | number | null>;
@@ -1019,7 +1020,13 @@ export const EA_FIELDS = [
   'zakat',
   'epf',
   'socso',
+  // r367 (item fda53352, round A) — SKBBK JOINS THE VOCABULARY BECAUSE IT JOINED THE FORM.
+  // Section E(2) prints SOCSO + EIS + SKBBK added together (see `partE` below for the caption reasoning).
+  // All three legs stay SEPARATE data so HR can amend the right one: a single amendable "E(2) total"
+  // would make a correction to the SOCSO leg indistinguishable from a correction to the EIS leg, and
+  // core/statutory-explain.ts would then disagree with the form about which money moved.
   'eis',
+  'skbbk',
   // Manual Part B boxes — no payroll source, derived baseline 0.
   'directorFee',
   'tipsPerquisites',
@@ -1302,14 +1309,65 @@ export type EaStatement = {
     zakatOther: number;
     childRelief: number;
   };
+  /**
+   * Section E — the employee's own compulsory contributions.
+   *
+   * ⚠️ r367 (item fda53352, round A) — `socso`, `eis` AND `skbbk` ARE THE THREE LEGS OF THE **ONE** BOX
+   * THE FORM PRINTS AT E(2). They are kept apart here and added by the renderer; nothing derives a
+   * fourth "E(2) total" field, because a stored total is a second source of truth for a sum.
+   *
+   * WHY THE BOX IS BROADER THAN THE SOCSO LEG — settled from LHDN's own paper, not from reasoning:
+   *   • docs/forms/ea-cp8a-pin-2023-official-en.pdf, Section E is headed "CONTRIBUTIONS PAID BY EMPLOYEE
+   *     TO APPROVED PROVIDENT / PENSION FUND AND SOCSO", and item 2 reads "SOCSO: Amount of compulsory
+   *     contribution paid (state the employee's share of contribution only)".
+   *   • docs/forms/ea-cp8a-pin-2023-official-bm.xlsx (sharedStrings 82 and 64) writes the SAME two
+   *     captions as "… DAN PERKESO" and "PERKESO : Amaun caruman yang wajib dibayar (nyatakan bahagian
+   *     pekerja sahaja)". The Malay original names the ORGANISATION — PERKESO — not one of its schemes;
+   *     SOCSO is simply that organisation's English name.
+   *   • LHDN's own companion form scopes a contribution to that organisation to two Acts:
+   *     docs/forms/tp1-2026-form-en.pdf item C14 — "Contributions to PERKESO under the Employees' Social
+   *     Security Act 1969 / Employment Insurance System Act 2017" — and its explanatory notes name them
+   *     as [Act 4] and [Act 800].
+   *   • EIS is Act 800. SKBBK is Act 4 as amended (Akta A1788), employee-only, MANDATORY from 1 Jun 2026
+   *     and collected on the same PERKESO schedule (localization/my/statutory-tables.ts,
+   *     core/statutory-explain.ts). It POSTDATES Pin. 2023 by three years, so its absence from the
+   *     caption is a DATING fact, not an exclusion.
+   * So E(2) asks for every compulsory PERKESO amount the employee paid, and until r367 we stated one of
+   * the three. `eis` in particular was on no printed EA at all after r351 removed our below-form strip.
+   *
+   * A payslip written before June 2026 carries no `socsoSkbbk` key and `num()` gives 0, so every closed
+   * year is byte-identical to what it printed before.
+   */
   partE: {
     epf: number;
     socso: number;
     eis: number;
+    /** Lindung 24 Jam / SKBBK — the employee-paid Act 4 leg (eff 1 Jun 2026). No employer share exists,
+     *  so there is nothing to net off. Part of E(2)'s printed sum. */
+    skbbk: number;
     /** da4fc817 — Section E asks WHICH fund before it asks how much ("Nama Kumpulan Wang"). Constant for
      *  the MY pack: the approved fund an employee contributes to here is KWSP. */
     fundName: string;
-  }; // employee's share of EPF + SOCSO/EIS
+  }; // employee's share of EPF + the three PERKESO legs
+  /**
+   * ⚠️ r367 (item fda53352, round A) — THE "Tarikh" / "Date" BOX AT THE FOOT, WHICH WAS DELIBERATELY
+   * BLANK UNTIL NOW. ISO `yyyy-mm-dd`, or null when there is no statement to date.
+   *
+   * THE RULE IS THE REPORTER'S BUSINESS RULE, NOT THE AGENCY'S: `MIN(today, 28 February of the year
+   * after the EA year)`. **Nothing in this repository or in the committed agency files sources a
+   * published LHDN furnishing deadline for the EA**, and `test/statutory-forms-page.test.ts` deliberately
+   * leaves Form E's deadline UNSET on the recorded grounds that "an invented statutory deadline is worse
+   * than an absent one: somebody files against it". So this is NOT a statutory-deadline field, is not
+   * surfaced as one, and no deadline was added to the Statutory Forms screen. r219 decided the opposite
+   * of this box ("the signing date is the employer's to write, not ours to invent"); the reporter has now
+   * told us what to write, so we write it.
+   *
+   * COMPUTED HERE AND NOT IN THE RENDERER, on purpose: a clock read inside `renderEaPdf` would make every
+   * EA test time-dependent. The clock is `todayInKualaLumpur()` — a UTC date names the WRONG DAY for the
+   * eight hours between 00:00 and 08:00 MYT, and that exact bug has been fixed twice recently. The
+   * comparison is ISO string arithmetic, so no Date maths can reintroduce a timezone.
+   */
+  formDate: string | null;
   statutoryVersion: string;
   /** EA-only amendments overlaid by HR (1.2.6). Empty = none. Additive + optional so existing consumers
    *  keep compiling; the PDF/HTML surfaces read it to badge amended lines. */
@@ -1416,9 +1474,39 @@ function eaEmployerAddressLines(c: {
   return [c.addressLine1, c.addressLine2, c.addressLine3, tail].map((s) => (s ?? '').trim()).filter(Boolean);
 }
 
+/**
+ * r367 (item fda53352, round A) — THE C.P.8A's "Tarikh" / "Date" BOX, WHICH WAS BLANK BY DECISION UNTIL NOW.
+ *
+ * `MIN(today in Kuala Lumpur, 28 February of the year AFTER the EA year)`, as ISO `yyyy-mm-dd`.
+ *
+ * ⚠️ WHOSE RULE THIS IS. The reporter's, stated by them and applied literally at their request. **There
+ * is no published LHDN rule fixing this box**, and none is sourced anywhere in this repository or in the
+ * committed agency files (docs/forms/ea-cp8a-pin-2023-official-en.pdf carries the box and no deadline).
+ * `test/statutory-forms-page.test.ts` leaves Form E's deadline UNSET for the recorded reason that "an
+ * invented statutory deadline is worse than an absent one: somebody files against it", so this function
+ * is NOT a statutory-deadline source, nothing reads it as one, and the Statutory Forms screen gained no
+ * deadline in this round. r219 pinned the opposite decision ("the signing date is the employer's to
+ * write, not ours to invent"); the reporter has now said what to write.
+ *
+ * ⚠️ MALAYSIAN TIME, AND STRING ARITHMETIC. `todayInKualaLumpur()` because a UTC date names the wrong day
+ * for the eight hours between 00:00 and 08:00 MYT, and that exact bug has been fixed twice recently. The
+ * cap is compared as ISO text — `'2027-03-10' > '2027-02-28'` — so there is no Date construction for a
+ * timezone to creep back into, and 28 February is LITERAL: a leap year does not move it to the 29th.
+ *
+ * `now` is injectable so the guards pin the rule against a chosen clock instead of a hardcoded future
+ * date (CLAUDE.md §8).
+ */
+export function eaFormDate(year: string, now?: Date): string {
+  const today = todayInKualaLumpur(now ?? new Date());
+  const cap = `${Number(year) + 1}-02-28`;
+  return today < cap ? today : cap;
+}
+
 export async function eaStatement(
   ctx: SessionContext,
-  p: { employmentId: string; year: string; companyId?: string },
+  // r367 — `now` is the injectable clock for `formDate` and nothing else. Optional, so every existing
+  // caller (core/reporting.ts, the two PDF routes, the country-pack facade) is unchanged.
+  p: { employmentId: string; year: string; companyId?: string; now?: Date },
 ): Promise<EaStatement | null> {
   return withTenant(ctx, async (tx) => {
     const [info] = await tx
@@ -1681,6 +1769,9 @@ export async function eaStatement(
     let epf = 0;
     let socso = 0;
     let eis = 0;
+    // r367 — the third PERKESO leg. Summed exactly like the other two and printed INSIDE E(2); see the
+    // `partE` type for the caption reasoning and for why the three stay apart.
+    let skbbk = 0;
     let exemptAllowances = 0;
     /**
      * ⚠️ r351, item fda53352 — D.6 "Total qualifying child relief" STOPS BEING AN EMPTY RULE.
@@ -1733,6 +1824,9 @@ export async function eaStatement(
       epf += num(st.epfEmployee);
       socso += num(st.socsoEmployee);
       eis += num(st.eisEmployee);
+      // A slip written before 1 Jun 2026 has no `socsoSkbbk` key at all and `num(undefined)` is 0, so
+      // every pre-2026 year keeps the figure it printed before this round.
+      skbbk += num(st.socsoSkbbk);
       // Feedback 09b554e9 — the exempt PCB_* allowance portions accumulate to the EA exempt-allowances
       // figure (LP_* codes are optional DEDUCTIONS, not exempt income, so they are excluded here).
       if (st.exemptionUsed) {
@@ -1884,6 +1978,7 @@ export async function eaStatement(
       epf: round2(epf),
       socso: round2(socso),
       eis: round2(eis),
+      skbbk: round2(skbbk),
       // 6036dab7 — these had NO payroll source and zero was their derived value, because inventing a
       // source for one is how a tax document acquires a figure nobody can trace.
       //
@@ -2012,7 +2107,10 @@ export async function eaStatement(
         zakatOther: merged.zakatOther,
         childRelief: merged.childRelief,
       },
-      partE: { epf: merged.epf, socso: merged.socso, eis: merged.eis, fundName: EA_FUND_NAME },
+      partE: { epf: merged.epf, socso: merged.socso, eis: merged.eis, skbbk: merged.skbbk, fundName: EA_FUND_NAME },
+      // r367 — see the `formDate` field on EaStatement for the rule, whose rule it is, and why the clock
+      // is read here rather than in the renderer.
+      formDate: eaFormDate(p.year, p.now),
       statutoryVersion: versionOf(slips.map((s) => s.statutory)),
       overrides,
       routing: {

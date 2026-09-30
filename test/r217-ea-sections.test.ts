@@ -161,24 +161,46 @@ describe('da4fc817 — Sections E and F match the published form', () => {
   // sets its section letters in filled black squares with white lettering. These cases slice the source
   // BETWEEN section markers, so the marker text had to follow — everything they assert about what lives
   // inside each slice is untouched.
-  it('Section E names the fund before its amount, and no longer carries EIS', () => {
+  /**
+   * ⚠️ r367 (item fda53352, round A) — RETITLED, AND THE ASSERTIONS NOW SAY PRECISELY WHICH HALF MOVED.
+   *
+   * ⚠️ THIS CASE WAS TITLED "Section E names the fund before its amount, and no longer carries EIS", and
+   * its comments read: "The official Section E has exactly two amounts. EIS is not one of them, and it is
+   * not inside the section" and "the EIS figure is now on no printed EA at all. It remains on the HTML
+   * statement, which is the surface that still shows it". BOTH SENTENCES HAVE STOPPED BEING TRUE, and
+   * that is the reporter's own correction: E(2)'s caption asks for compulsory contributions to PERKESO —
+   * the ORGANISATION — which LHDN's own TP1 scopes to the Employees' Social Security Act 1969 [Act 4] and
+   * the Employment Insurance System Act 2017 [Act 800]. The two source documents are cited in full on
+   * `EaPdfData.partE` in lib/ea-pdf.ts.
+   *
+   * WHAT IS UNCHANGED, AND STAYS PINNED HERE:
+   *   • the fund is NAMED before it is quantified;
+   *   • Section E has exactly TWO amounts (counted in test/ea-form-boxes-contract.test.ts);
+   *   • the `eisSip` LABEL is still absent from the whole renderer — there is no separate EIS LINE on the
+   *     form, and our below-form strip stays gone. It is the FIGURE that is now inside E(2), not a line.
+   */
+  it('Section E names the fund first, and its second amount is all three PERKESO legs', () => {
     const pdf = read('lib/ea-pdf.ts');
     const e = pdf.slice(pdf.indexOf('sectionHeading(t.sectionEContributions'), pdf.indexOf('sectionHeading(t.sectionFExemptAllowances'));
     // The fund is NAMED before it is quantified, exactly as the form asks ("Nama Kumpulan Wang" first).
     expect(e).toContain('putFit(t.fundName');
     expect(e).toContain('d.partE.fundName');
     expect(e).toContain('derived(d.partE.epf)');
-    expect(e).toContain('derived(d.partE.socso)');
-    // The official Section E has exactly two amounts. EIS is not one of them, and it is not inside the
-    // section — that half of this guard is unchanged since r219.
-    expect(e).not.toContain('eisSip');
-    // ⚠️ r351 — THE SECOND HALF IS INVERTED. It used to require the figure to be printed SOMEWHERE, in
-    // our own strip below the officer box. The reporter has had that strip removed ("Remove this part
-    // from the EA Form"), so the EIS figure is now on no printed EA at all. It remains on the HTML
-    // statement, which is the surface that still shows it, and `test/ea-form-boxes-contract.test.ts`
-    // pins that. Inverted rather than deleted, so the strip cannot return unnoticed.
-    expect(pdf, 'the EIS figure is back on the printed form').not.toContain('t.eisSip');
-    expect(pdf, 'the EIS amount is back on the printed form').not.toContain('rm(d.partE.eis)');
+    // E(2) — the SOCSO leg it always stated, plus the two the caption's own scope covers.
+    expect(e, 'E(2) no longer states the SOCSO leg').toContain('d.partE.socso');
+    expect(e, 'E(2) no longer states the EIS leg').toContain('d.partE.eis');
+    expect(e, 'E(2) no longer states the SKBBK leg').toContain('d.partE.skbbk');
+    // r367 — the three are ADDED, not printed as three lines. A `+` between them inside the section is
+    // the difference between widening one box and inventing two.
+    expect(e.replace(/\s+/g, '')).toContain('d.partE.socso+d.partE.eis+d.partE.skbbk');
+    // The official Section E has no separate EIS line, and our own below-form strip stays removed. That
+    // half of this guard is unchanged since r219/r351: it is the LABEL that must not appear.
+    expect(e, 'a separate EIS line is back inside Section E').not.toContain('eisSip');
+    expect(pdf, 'the EIS label is back on the printed form').not.toContain('t.eisSip');
+    // `rm(d.partE.eis)` was the STRIP's draw call (our own row below the officer box), not E(2)'s. E(2)
+    // reaches the figure through `derived(d.partE.socso + d.partE.eis + d.partE.skbbk)`, so this still
+    // pins the strip's absence and nothing else.
+    expect(pdf, 'the below-form EIS strip is back on the printed form').not.toContain('rm(d.partE.eis)');
   });
 
   it('Section F exists as its own section, and the exempt figure left Part B', () => {

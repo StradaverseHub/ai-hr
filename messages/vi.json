@@ -4336,6 +4336,8 @@
       "epfKwsp": "1 EPF / KWSP",
       "socso": "2 SOCSO",
       "eisSip": "EIS / SIP",
+      "skbbk": "SKBBK / Lindung 24 Jam",
+      "perkesoE2Total": "2 SOCSO — tổng số ghi trên mẫu (SOCSO + EIS + SKBBK)",
       "sectionFTaxExempt": "F · Tổng phụ cấp / bổng lộc miễn thuế",
       "taxExemptAllowances": "Phụ cấp miễn thuế",
       "disclaimer": "Được tạo từ bảng lương cho YA {year} (bảng pháp lý {version}). Lương, thưởng, phụ cấp, EPF, SOCSO/EIS, MTD, CP38 và zakat lấy từ bảng lương. Thù lao, tiền boa và bổng lộc, thuế do người sử dụng lao động chịu, ESOS, trợ cấp thâm niên, truy lĩnh, lợi ích bằng hiện vật, chỗ ở, hoàn trả từ quỹ chưa được phê duyệt, bồi thường mất việc làm, lương hưu và niên kim không có nguồn từ bảng lương và hiển thị 0.00 cho đến khi HR nhập. Đây là bố cục các trường biểu mẫu của chúng tôi, không phải trang chính thức của LHDN — hãy đối chiếu với hồ sơ của bạn trước khi nộp.",
@@ -4380,6 +4382,7 @@
         "fieldEpf": "EPF / KWSP",
         "fieldSocso": "SOCSO",
         "fieldEis": "EIS / SIP",
+        "fieldSkbbk": "SKBBK / Lindung 24 Jam",
         "filedTotal": "Tổng CP39 / cơ quan đã nộp",
         "cp39DivergenceWarning": "Con số được sửa đổi này khác với tổng CP39 / cơ quan đã nộp của năm ({filed}; chênh lệch {delta}). Việc sửa đổi và chênh lệch được ghi lại trong nhật ký kiểm toán."
       },
