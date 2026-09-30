@@ -1,3 +1,32 @@
+## r366 (2026-09-30) — the overtime overwrite's last door. `main@0bab3cf2`, **no migration**.
+
+Closed: `d16237da`. Gate: **1060 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, zero AssertionErrors, first attempt. `tsc` 0, `next build` 0, `i18n-check` PASS.
+
+### ONE LINE, AND THE PROOF IT WENT IN THE RIGHT PLACE
+
+r364 refused a second overtime request on a day whose hours had already been counted — but only when an earlier PLAN counted them. A day counted by an attendance REQUEST, the route the refusal message itself recommends, still accepted one. `countedOtPlanTx` dropped `isNull(proposed_check_in)`; the helper now answers the question its name implies.
+
+**The call-site gate `if (checkIn == null)` was NOT touched**, and that separation is the whole item: the CALL SITE asks "is the incoming request a plan?", the HELPER asks "has this day's figure already been counted, however it got there?". Both directions were demonstrated —
+
+- restore the helper's narrowing → the new case fails (`promise resolved "{ correctionId: … }" instead of rejecting`);
+- drop the call-site gate → **case (b) fails** (`promise rejected "OvertimeAlreadyCountedError" instead of resolving`), which is the demonstration that the two conditions do different jobs.
+
+Case (b) — "a clock correction carrying overtime is STILL ACCEPTED on that same counted date" — passed **untouched**, confirmed by a pure-addition diff.
+
+### A SECOND FALSE SENTENCE THE BRIEF DID NOT NAME
+
+I named one comment that this round would falsify. There were two: r364's *"deliberately the same predicate otherwise, so 'is there a plan on this date' is asked ONE way and the two guards cannot drift"* stopped being true the moment the predicates diverged. Both are quoted and superseded.
+
+`docs/HANDOFF-HISTORY.md` was correctly left alone by the build — r364's entry names this as the known remainder, history is append-only, and **this entry supersedes it**. That door is closed.
+
+### NO NEW COPY
+
+`OvertimeAlreadyCountedError` and its six catalogue entries already shipped in r364, and the sentence never named which route counted the day, so it stays true unchanged — confirmed by i18n parity and by grep: no key added, removed or reworded. The existing banner was verified rendering for the new trigger, read out of the markup with scripts stripped.
+
+### OPEN BY DESIGN, AND SAID ON THE ITEM
+
+A clock correction carrying OT is still accepted on a counted day — that is the sanctioned remedy the message names, so two successive corrections can each move the figure, each recording what it was and what it became. Forward-only: no repair of existing rows, and no production query run to find whether any real day is affected. The replacement-leave disagreement named on the item is unchanged: when the correction route moves the hours, the unique index keeps exactly one credit at the FIRST figure's size.
+
 ## r365 (2026-09-30) — a standing manual EPF amount, and the Leave Credit row gets its space back. `main@9cb50181`, **migration 0491**.
 
 Closed: `70b14723`, `cbfa8b0b` (**round one of three**). Gate: **1060 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, zero AssertionErrors, first attempt on a machine verified quiet. `tsc` 0, `next build` 0, `i18n-check` PASS, `gate:shadow` PASS 404/404.
