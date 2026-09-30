@@ -7574,7 +7574,16 @@
       "backToStatutorySetup": "Back to Statutory Payment Setup",
       "statutoryIdentityHint": "Who this company is to each authority. Confirm this before editing anything below. Edit these on the Statutory tab and on each body’s own screen.",
       "statutoryBodyViewCaption": "What is on file for this body. Press Edit to change it.",
-      "statutoryBodyEditCaption": "Only this body is edited here. Save writes it and returns you to the list."
+      "statutoryBodyEditCaption": "Only this body is edited here. Save writes it and returns you to the list.",
+      "statutoryScreenSave": "Save all changes",
+      "statutoryScreenCancel": "Cancel",
+      "statutoryUnsavedTitle": "You have unsaved changes",
+      "statutoryUnsavedBody": "Do you want to leave without saving?",
+      "statutoryUnsavedCancel": "Cancel",
+      "statutoryUnsavedDiscard": "Discard & Leave",
+      "statutoryUnsavedSave": "Save & Leave",
+      "statutoryCardSetUp": "Set up",
+      "statutoryCardNotSetUp": "Not set up"
     },
     "systemLabels": {
       "pageTitle": "System Labels",

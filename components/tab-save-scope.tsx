@@ -79,6 +79,14 @@
  * server-rendered default is then the PRE-save value, so a Discard pressed in that window did not just
  * show a stale field, it wrote one back. See the note over `discard` — the discard now waits for the
  * payload it restores from.
+ *
+ * 15e5bd93 REVISION 4 (r372) — AND IT NOW SERVES A SCREEN AS WELL AS A TAB. The dedicated Statutory
+ * Payment Setup screen is eight statutory bodies with every field open under ONE Save, which is the
+ * reporter's own expected_function and the one combination this product has never built. Everything a
+ * SCREEN needs and a tab does not — the same two actions repeated above the cards, a Cancel that LEAVES
+ * rather than reverting in place, and a leave prompt worded for leaving — arrives through the single
+ * optional `screenActions` prop below. Every scope that came before it omits the prop and renders
+ * byte-identically; `sectionLabels` set that precedent one round earlier.
  */
 
 import {
@@ -89,11 +97,12 @@ import {
   useTransition,
   type ReactNode,
 } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Button } from '@/components/ui';
+import { Button, buttonVariants } from '@/components/ui';
 import { registerUnsavedGuard, UNSAVED_GUARD_IGNORE_SELECTOR } from '@/lib/unsaved-changes';
 import {
   baselineNewSections,
@@ -147,6 +156,7 @@ export function TabSaveScope({
   saveAction,
   covers,
   sectionLabels,
+  screenActions,
   children,
 }: {
   /** The tab this scope belongs to — submitted so the action can land the reader back on it. */
@@ -195,6 +205,38 @@ export function TabSaveScope({
    * and they are printed as a plain list beside the count rather than inside a sentence.
    */
   sectionLabels?: Record<string, string>;
+  /**
+   * 15e5bd93 REVISION 4 (r372) — THE SCREEN SHAPE. Absent on every scope that came before it, and the
+   * bar renders byte-identically there; this is `sectionLabels`' pattern, one round on.
+   *
+   * A TAB's scope lives inside a screen that has its own header, its own Back link and other tabs below
+   * it. A SCREEN's scope IS the screen, and the dedicated Statutory Payment Setup screen is eight
+   * statutory bodies with every field open — long enough that the actions have to be reachable without
+   * scrolling to either end. Three things follow, and each is drawn on the approved mockup:
+   *
+   *  1. THE SAME TWO ACTIONS ABOVE THE CARDS AS WELL AS BELOW THEM. The top row is the two buttons and
+   *     nothing else: the count chip, the "what this saves" line and the change table stay in the one
+   *     sticky bar at the foot, so no marker this file emits is duplicated.
+   *
+   *  2. CANCEL LEAVES; IT DOES NOT REVERT IN PLACE. The reporter's own words are "Back returns to the
+   *     selected company's Statutory tab… If there are unsaved changes: Save & Leave / Discard & Leave /
+   *     Cancel". So on a screen scope the bar's outline button is a LINK to `leave.href`, and the
+   *     capture-phase anchor guard further down turns it into exactly that three-button prompt when the
+   *     screen is dirty. Discard-and-stay is NOT drawn on the approved mockup and is not invented here;
+   *     discarding is reachable as the prompt's middle button, which is where the reporter put it.
+   *
+   *  3. THE PROMPT SPEAKS THE SCREEN'S OWN WORDS. `components.tabSave` says "Discard Changes" /
+   *     "Save Changes", which are the right words for a tab you are staying on and the wrong ones for a
+   *     leave prompt. The five strings are passed in, already translated, so the personnel and General
+   *     scopes are untouched.
+   */
+  screenActions?: {
+    /** Where Cancel goes. A LINK, so the anchor guard below owns the unsaved case. */
+    leave: { href: string; label: string };
+    /** The Save caption on both rows ("Save all changes"), and the prompt's own Save caption. */
+    saveLabel: string;
+    prompt: { title: string; body: string; cancel: string; discard: string; save: string };
+  };
   children: ReactNode;
 }) {
   const t = useTranslations('components.tabSave');
@@ -669,8 +711,50 @@ export function TabSaveScope({
     setPromptOpen(false);
   };
 
+  /**
+   * 15e5bd93 rev 4 — the screen scope's action pair, rendered ABOVE the cards and again inside the
+   * sticky bar. One function, so the two rows cannot drift into two different Saves.
+   *
+   * Cancel is a `<Link>` and never a button: the capture-phase anchor guard above is what turns it into
+   * the Save & Leave / Discard & Leave / Cancel prompt while the screen is dirty, and it only ever sees
+   * anchors. `discardWaiting` disables Save for the same reason the bar's own Save is disabled — a
+   * discard armed and waiting for the refreshed payload must not be overwritten by the edits it is
+   * throwing away.
+   */
+  const screenActionPair = (where: 'top' | 'bar') =>
+    screenActions ? (
+      <>
+        <Link
+          href={screenActions.leave.href}
+          data-tab-save-leave={where}
+          className={buttonVariants({ variant: 'outline', size: 'sm' })}
+        >
+          {screenActions.leave.label}
+        </Link>
+        <Button
+          type="button"
+          size="sm"
+          data-tab-save-submit={where}
+          disabled={!dirty || pending || discardWaiting}
+          onClick={() => save()}
+        >
+          {pending ? t('saving') : screenActions.saveLabel}
+        </Button>
+      </>
+    ) : null;
+
   return (
     <div className="space-y-6" data-tab-save-scope={tabKey}>
+      {/* The actions repeated above the cards — the screen is eight bodies with every field open, and
+          the approved mockup draws Cancel and Save at the top as well as the foot. Deliberately NOT a
+          second copy of the bar: no covers line, no count chip, no change table, so every marker this
+          file emits still appears exactly once. */}
+      {screenActions && (
+        <div data-tab-save-bar-top className="flex flex-wrap items-center justify-end gap-2">
+          {screenActionPair('top')}
+        </div>
+      )}
+
       <div key={nonce} ref={contentRef} className="space-y-6">
         {children}
       </div>
@@ -720,18 +804,24 @@ export function TabSaveScope({
             {/* `discardWaiting` disables BOTH: a discard that is waiting for the refreshed payload has
                 already been asked for, and a save pressed on top of it would write the edits it is
                 throwing away. */}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!dirty || pending || discardWaiting}
-              onClick={discard}
-            >
-              {discardWaiting ? t('discarding') : t('discardChanges')}
-            </Button>
-            <Button type="button" size="sm" disabled={!dirty || pending || discardWaiting} onClick={() => save()}>
-              {pending ? t('saving') : t('saveChanges')}
-            </Button>
+            {screenActions ? (
+              screenActionPair('bar')
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!dirty || pending || discardWaiting}
+                  onClick={discard}
+                >
+                  {discardWaiting ? t('discarding') : t('discardChanges')}
+                </Button>
+                <Button type="button" size="sm" disabled={!dirty || pending || discardWaiting} onClick={() => save()}>
+                  {pending ? t('saving') : t('saveChanges')}
+                </Button>
+              </>
+            )}
           </div>
         </div>
 
@@ -769,13 +859,19 @@ export function TabSaveScope({
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
-            <Dialog.Title className="text-base font-semibold">{t('unsavedTitle')}</Dialog.Title>
+            {/* 15e5bd93 rev 4 — a screen scope speaks its own words here. The prompt is reached by
+                LEAVING (Back, Cancel, a nav link, browser Back), so "Discard Changes" / "Save Changes"
+                under-describe what the buttons do; the reporter listed Save & Leave / Discard & Leave /
+                Cancel by name. Every other scope falls through to `components.tabSave`, unchanged. */}
+            <Dialog.Title className="text-base font-semibold">
+              {screenActions ? screenActions.prompt.title : t('unsavedTitle')}
+            </Dialog.Title>
             <Dialog.Description className="mt-2 text-sm text-muted-foreground">
-              {t('unsavedBody')}
+              {screenActions ? screenActions.prompt.body : t('unsavedBody')}
             </Dialog.Description>
             <div className="mt-5 flex flex-wrap justify-end gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={closePrompt}>
-                {t('cancel')}
+                {screenActions ? screenActions.prompt.cancel : t('cancel')}
               </Button>
               <Button
                 type="button"
@@ -788,7 +884,7 @@ export function TabSaveScope({
                   proceed?.();
                 }}
               >
-                {t('discardChanges')}
+                {screenActions ? screenActions.prompt.discard : t('discardChanges')}
               </Button>
               <Button
                 type="button"
@@ -803,7 +899,7 @@ export function TabSaveScope({
                   save(() => proceed?.());
                 }}
               >
-                {t('saveChanges')}
+                {screenActions ? screenActions.prompt.save : t('saveChanges')}
               </Button>
             </div>
           </Dialog.Content>

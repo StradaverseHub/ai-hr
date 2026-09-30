@@ -381,18 +381,22 @@ export const SCREENS: readonly ScreenEntry[] = [
     // maintaining the company, and splitting it would mean a tenant could grant one without the other and
     // reach a Back link to a screen it may not see.
     //
-    // 15e5bd93 rev 3 (r355) — FIVE. The reporter contested r353's eight-cards-on-one-screen shape too and
-    // drew the layout themselves: a table of rows, and "Selecting Edit → EPF opens a screen containing ONLY
-    // the EPF fields". That screen is /admin/organization/[companyId]/statutory/[authority] and it calls the
-    // same scopedAdmin(). Same column, same reasoning, and the same trap r353 recorded: a guarded page.tsx
-    // on disk with no entry here fails test/function-access.test.ts (reverse completeness) — which is a
-    // FULL-GATE-only failure, so it is easy to ship and hard to notice.
+    // 15e5bd93 rev 3 (r355) — FIVE, briefly. That round added
+    // /admin/organization/[companyId]/statutory/[authority], a screen holding ONE body, reached by a View
+    // or Edit link on a table of rows.
+    //
+    // 15e5bd93 rev 4 (r372) — BACK TO FOUR, and the removal is the change this round shipped. The reporter
+    // contested the drill-in as "an unnecessary intermediate page"; every statutory body is now a card on
+    // /admin/organization/[companyId]/statutory itself, with one Save. The per-body route and its page.tsx
+    // are DELETED, so its entry is REMOVED from this exact set rather than left behind: REGISTERED_ROUTES
+    // is compared against the guarded page.tsx files actually on disk, in both directions, so a stale
+    // entry fails test/function-access.test.ts exactly as a missing one does — and that is a
+    // FULL-GATE-only failure, easy to ship and hard to notice.
     routes: [
       '/admin/organization',
       '/admin/organization/new',
       '/admin/organization/[companyId]',
       '/admin/organization/[companyId]/statutory',
-      '/admin/organization/[companyId]/statutory/[authority]',
     ],
   },
   {

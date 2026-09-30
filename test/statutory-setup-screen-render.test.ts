@@ -1,5 +1,5 @@
 /**
- * Item 15e5bd93 REVISION 3 (r355) — THE STATUTORY PAYMENT SETUP **LIST**, RENDERED FOR REAL, IN ALL SIX
+ * Item 15e5bd93 REVISION 4 (r372) — THE STATUTORY PAYMENT SETUP SCREEN, RENDERED FOR REAL, IN ALL SIX
  * LOCALES.
  *
  * ⚠️ THE SIBLING test/company-panel-no-disclosure-render.test.ts ASKED FOR, and it exists for the reason
@@ -9,19 +9,23 @@
  * one locale through jsdom. This file renders the component through the REAL `NextIntlClientProvider` with
  * each locale's actual JSON and fails on ANY IntlError.
  *
- * ⚠️ RE-POINTED BY REVISION 3, AND NARROWED ON PURPOSE. r353's version of this file rendered the eight body
- * CARDS this screen used to hold, because that screen held the editors. The reporter contested that shape and
- * drew a table of rows instead, so the editors are a route of their own and their six-locale render check is
- * test/statutory-body-screen-render.test.ts. Every claim r353 made about a card is made there; nothing was
- * dropped because its subject moved. What stays HERE is everything about the LIST, plus three claims that are
- * new because the layout is:
- *   · the reporter's four column headers, as an exact ordered list;
- *   · the identity card at the top, with the four filing identifiers, read-only;
- *   · Payment Setup and Status as TWO facts, including the HRD Corp row where they diverge.
+ * ⚠️ RE-POINTED BY REVISION 4, AND BROADENED BACK. r353 rendered eight body CARDS here. r355 narrowed this
+ * to a table of rows and moved every card claim to test/statutory-body-screen-render.test.ts, because the
+ * editors had become a route of their own. The reporter contested that route as "an unnecessary
+ * intermediate page": the editors are back on this one screen as cards, so the card claims come back with
+ * them and the two files split by SUBJECT rather than by route — this one is the screen (what is on it,
+ * in what order, in six languages), the sibling is one body's card (its groups, its fields, its absences).
  *
- * It matters more here than on the panel, not less, because this screen introduced eleven new catalogue
- * strings in six languages, and because the eight body labels and descriptions are DYNAMIC keys
- * (`authority_epf`, `authorityDesc_epf`, …) that test/i18n-coverage.test.ts cannot see at all.
+ * ⚠️ AND THREE CLAIMS ARE NEW, BECAUSE THIS IS THE ROUND THAT MEASURED THE SCREEN. r355's table laid out
+ * 42–322px wider than its container and its Action column was never painted; the body page ellipsised an
+ * ordinary address and put a label and its value 767–926px apart; the outer Card had no inset, so the
+ * first label sat on its left border. Those were SOURCE decisions — `truncate`, a `<dl>` that declared a
+ * grid and then cancelled it per row, a `<Card>` with no padding — and they are pinned at the source,
+ * with the removed class strings named, in the last describe below.
+ *
+ * It matters more here than on the panel, not less, because the eight body labels and descriptions are
+ * DYNAMIC keys (`authority_epf`, `authorityDesc_epf`, …) that test/i18n-coverage.test.ts cannot see at all,
+ * and because this round added nine more catalogue strings in six languages.
  *
  * ⚠️ `.test.ts`, NOT `.test.tsx`, AND THAT IS NOT A STYLE CHOICE. vitest.config.ts runs `test/**\/*.test.ts`
  * in the node project and `test/**\/*.dom.test.tsx` in the dom one. A `*.test.tsx` that is not `*.dom.` matches
@@ -34,12 +38,35 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextIntlClientProvider } from 'next-intl';
+
+/**
+ * `TabSaveScope` is inside this screen now, and `useRouter()` THROWS outside an App Router context
+ * ("invariant expected app router to be mounted") — it is called during render even though `refresh()` is
+ * only reached from a callback. Nothing below asserts anything about routing; the client behaviour of the
+ * bar, the prompt and the Save is driven through real events in test/15e5bd93-statutory-screen.dom.test.tsx.
+ */
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    refresh: () => undefined,
+    push: () => undefined,
+    replace: () => undefined,
+    back: () => undefined,
+    forward: () => undefined,
+    prefetch: () => undefined,
+  }),
+}));
+vi.mock('sonner', () => ({ toast: { success: () => undefined, error: () => undefined } }));
+
 import { StatutorySetupScreen } from '../components/statutory-setup-screen';
 import { STATUTORY_AUTHORITIES } from '../lib/statutory-authorities';
-import { MY_FILING_FIELD, statutoryRowStatus } from '../lib/statutory-authority-display';
+import { MY_FILING_FIELD } from '../lib/statutory-authority-display';
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 const messagesFor = (l: string) => JSON.parse(readFileSync(join(__dirname, '..', 'messages', `${l}.json`), 'utf8'));
+const read = (rel: string) => readFileSync(join(__dirname, '..', rel), 'utf8');
+
+const noop = () => undefined;
+const BACK_HREF = '/admin/organization/c1?tab=statutory';
 
 /** A fully-populated MY company: a configured body, an identity row, a bank account. */
 const richProps = {
@@ -88,6 +115,14 @@ const richProps = {
       isPrimary: true,
     },
   ],
+  signatories: [{ personId: 'p1', name: 'Aminah binti Ali', employeeCode: 'EMP-0001' }],
+  stateOptions: [{ value: 'Selangor', label: 'Selangor' }],
+  backHref: BACK_HREF,
+  actions: {
+    saveStatutoryScreen: async () => ({ ok: true, saved: [] }),
+    setStatutoryAuthority: noop,
+    removeStatutoryAuthority: noop,
+  },
 };
 
 /** The other side of every branch: nothing configured at all, and no bank account to pay from. */
@@ -127,22 +162,22 @@ function render(locale: string, props: unknown): string {
 const inMarkup = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
 
-/** One body's row, by the attribute that says what the element IS rather than by a class string. */
-function rows(html: string): Record<string, string> {
+/** One body's CARD, by the attribute that says what the element IS rather than by a class string. */
+function cards(html: string): Record<string, string> {
   const out: Record<string, string> = {};
-  const rx = /<tr[^>]*\sdata-statutory-row="([^"]+)"[\s\S]*?<\/tr>/g;
+  const rx = /<section[^>]*\sdata-statutory-card="([^"]+)"[\s\S]*?<\/section>/g;
   for (const m of html.matchAll(rx)) out[m[1]] = m[0];
   return out;
 }
-/** The identity card's markup, which is above the table. */
+/** The identity card's markup, which is above the body cards. */
 const identity = (html: string) =>
   html.slice(html.indexOf('data-statutory-identity'), html.indexOf('</section>', html.indexOf('data-statutory-identity')));
 const dtsIn = (frag: string) => [...frag.matchAll(/<dt[^>]*>([\s\S]*?)<\/dt>/g)].map((m) => m[1]);
 const ddsIn = (frag: string) => [...frag.matchAll(/<dd[^>]*>([\s\S]*?)<\/dd>/g)].map((m) => m[1]);
-const cellOf = (row: string, what: 'payment-setup' | 'status') =>
-  row.match(new RegExp(`data-statutory-${what}[^>]*>([\\s\\S]*?)</span>`))?.[1] ?? '';
+const statusOf = (card: string) =>
+  card.match(/data-statutory-card-status="[^"]*"[^>]*>([\s\S]*?)<\/span>/)?.[1] ?? '';
 
-describe('15e5bd93 rev 3 render check — the setup LIST in all six locales, real catalogues', () => {
+describe('15e5bd93 rev 4 render check — the setup SCREEN in all six locales, real catalogues', () => {
   for (const locale of LOCALES) {
     for (const [label, props] of [
       ['fully configured MY company', richProps],
@@ -154,8 +189,8 @@ describe('15e5bd93 rev 3 render check — the setup LIST in all six locales, rea
         expect(html, 'FORMATTING_ERROR in rendered output').not.toContain('FORMATTING_ERROR');
         expect(errors.join('\n'), 'next-intl logged an error').toBe('');
         // Every body is drawn, in the controlled set's order, on both shapes and in every locale.
-        expect(Object.keys(rows(html))).toEqual([...STATUTORY_AUTHORITIES]);
-        // No disclosure came with either move: this screen is a list, not a fold and not a set of cards.
+        expect(Object.keys(cards(html))).toEqual([...STATUTORY_AUTHORITIES]);
+        // No disclosure came with any of the four moves: this screen is flat.
         expect(html).not.toContain('<details');
         expect(html).not.toContain('<summary');
       });
@@ -163,57 +198,127 @@ describe('15e5bd93 rev 3 render check — the setup LIST in all six locales, rea
   }
 
   /**
-   * ⚠️ THE CLAIM THIS ITEM HAS NOW BEEN CONTESTED TWICE OVER, ASSERTED ON THE RENDER.
+   * ⚠️ THE CLAIM THIS ITEM HAS NOW BEEN CONTESTED THREE TIMES OVER, AND THIS IS THE ROUND THAT REVERSES IT.
    *
    * r352 put the eight bodies' fields inside the Statutory tab. r353 put them on this screen behind eight
-   * Edit buttons — r353's version of this very case read "opens entirely read-only: eight cards, no form, no
-   * input, and an Edit on each", and counted `data-statutory-mode="viewing"` eight times. The reporter
-   * contested that too. The approved plan for revision 3: "The eight bodies below become a plain table:
-   * Statutory, Payment Setup, Status, Action. One line each. No fields, no forms, nothing expanded."
+   * Edit buttons. r355 narrowed this very case to "renders a table of rows and nothing that can write: no
+   * form, no input, no select" and counted one `<table>` and nine `<tr>`s. The reporter contested the page
+   * that assertion pushed the fields onto, calling it "an unnecessary intermediate page".
    *
-   * So the claim is no longer "no form UNTIL you press Edit" but "no form AT ALL", which is strictly
-   * stronger: r353's screen could grow one, this one cannot. A source guard can see the absence of a
-   * `<form>` tag; only the render can see that nothing else on the page produced one either.
+   * So the claim is inverted: EIGHT forms, every body's whole posted set already in the markup, and no
+   * table at all. Asserted per body and by exact count, because a screen rendering one open card and seven
+   * closed ones would pass "there is a form on this screen".
    */
-  it('renders a table of rows and nothing that can write: no form, no input, no select', () => {
+  it('renders one open form per body, with every posted field already in the markup', () => {
     const html = render('en', richProps);
-    expect(html, 'the list cannot write').not.toContain('<form');
-    expect(html, 'and holds no box at all').not.toContain('<input');
-    expect(html, 'nor a select pretending to be read-only').not.toContain('<select');
-    expect(html, 'nor a textarea').not.toContain('<textarea');
-    expect(html, 'nothing on this screen acts in place').not.toContain('<button');
-    expect(html, 'and nothing expands').not.toContain('aria-expanded');
-    // It is a real table, and the eight rows are its <tbody>.
-    expect((html.match(/<table\b/g) ?? []).length, 'one table').toBe(1);
-    expect((html.match(/<tr\b/g) ?? []).length, 'a header row plus one row per body').toBe(
+    const byBody = cards(html);
+    expect((html.match(/<form\b/g) ?? []).length, 'eight body forms plus EPF’s Clear form').toBe(
       STATUTORY_AUTHORITIES.length + 1,
     );
+    expect(html, 'and the table that overflowed its container is gone').not.toContain('<table');
+    for (const a of STATUTORY_AUTHORITIES) {
+      expect(byBody[a], `${a} carries its save-section marker`).toContain(`data-save-section="${a}"`);
+      for (const name of [
+        'accountNo',
+        'bankProfileId',
+        'addressLine1',
+        'addressLine2',
+        'addressLine3',
+        'city',
+        'state',
+        'postcode',
+        'country',
+        'phone',
+        'email',
+        'signatoryPersonId',
+      ]) {
+        expect(byBody[a], `${a} · ${name}`).toContain(`name="${name}"`);
+      }
+    }
   });
 
-  /** The reporter's four columns, in their order, as an EXACT list — in every locale. */
-  it('carries the reporter’s four column headers, in order, in all six locales', () => {
+  /**
+   * ⚠️ THE FOUR COLUMN CAPTIONS AND THE View LINK ARE RETIRED IN PLACE, NOT DELETED. i18n/request.ts
+   * deep-merges each locale over English, so dropping a key from en.json alone leaves a Malay reader the
+   * old sentence; and a retired string costs nothing while re-translating a deleted one into six
+   * languages costs a round (`authorityOpen`, `authorityClose`, `tabOther` and `tabBankAccount` were each
+   * retired this way and two have already come back).
+   *
+   * BOTH HALVES ARE ASSERTED: the keys still EXIST in all six catalogues, and none of them REACHES the
+   * screen.
+   */
+  it('keeps the retired table captions in every catalogue and renders none of them', () => {
+    /**
+     * ⚠️ THE ABSENCE HALF IS SPLIT IN TWO, AND THE FIRST WRITING OF THIS CASE GOT IT WRONG IN A WAY
+     * WORTH RECORDING. It asserted `not.toContain(caption)` against the whole markup for all seven
+     * retired keys, and went red on two of them — correctly, because four of the captions are ORDINARY
+     * WORDS that legitimately appear elsewhere on this very screen:
+     *
+     *     statutoryColBody          "Statutory"       ⊂ "Statutory identity (MY)", and ⊂ /statutory/*.png
+     *     statutoryColPaymentSetup  "Payment Setup"   ⊂ the page title "Statutory Payment Setup"
+     *     statutoryColStatus        "Status"          a word this product uses everywhere
+     *     authorityView             "View"            likewise
+     *
+     * A substring check on a word that short is not a claim about a caption, it is a claim about the
+     * alphabet. So the four generic ones are asserted STRUCTURALLY instead — which is strictly stronger
+     * than the string check ever was, because "there is no table and no column header on this screen"
+     * cannot be satisfied by a caption that merely changed wording — and only the two DISTINCTIVE
+     * sentences are still asserted as text.
+     */
+    const RETIRED = [
+      'statutoryColBody',
+      'statutoryColPaymentSetup',
+      'statutoryColStatus',
+      'statutoryColAction',
+      'authorityView',
+      'backToStatutorySetup',
+      'statutoryBodyViewCaption',
+    ] as const;
+    /** Long enough that appearing in the markup can only mean this screen rendered it. */
+    const DISTINCTIVE = ['backToStatutorySetup', 'statutoryBodyViewCaption'] as const;
     for (const locale of LOCALES) {
       const org = messagesFor(locale).admin.organization as Record<string, string>;
-      // `(?!ead)` because `<thead …>` also matches `<th[^>]*>` and would swallow the first cell.
-      const heads = [...render(locale, richProps).matchAll(/<th(?!ead)[^>]*>([\s\S]*?)<\/th>/g)].map((m) => m[1]);
-      expect(heads, locale).toEqual(
-        [org.statutoryColBody, org.statutoryColPaymentSetup, org.statutoryColStatus, org.statutoryColAction].map(
-          inMarkup,
-        ),
-      );
+      const html = render(locale, richProps);
+      // THE HALF THAT MATTERS: every one of them still EXISTS, in every catalogue.
+      for (const k of RETIRED) {
+        expect(org[k], `${locale}: ${k} is retired, not deleted`).toBeTruthy();
+      }
+      for (const k of DISTINCTIVE) {
+        /**
+         * ⚠️ DISTINCTIVENESS IS CHECKED, NOT ASSUMED — and the first version of this line checked it
+         * with `length > 20`, which is an ENGLISH assumption. zh's `backToStatutorySetup` is eight
+         * characters ("返回法定付款设置") and went red, correctly: a character count is a proxy for
+         * "specific enough that finding it can only mean the screen rendered it", and CJK says the same
+         * sentence in a third of the characters.
+         *
+         * So the property itself is asserted instead, and it is locale-independent: the retired caption
+         * is not a SUBSTRING of any other string in this namespace. If it were, the absence check below
+         * would be ambiguous — it could go green because the caption is gone, or red because some live
+         * caption happens to contain it, and the two are indistinguishable from the assertion.
+         */
+        const others = Object.entries(org).filter(([key, v]) => key !== k && typeof v === 'string');
+        const shadowing = others.filter(([, v]) => v.includes(org[k])).map(([key]) => key);
+        expect(shadowing, `${locale}: ${k} is shadowed by ${shadowing.join(', ')}, so its absence check is ambiguous`)
+          .toEqual([]);
+        expect(html, `${locale}: ${k} must not be on the screen`).not.toContain(inMarkup(org[k]));
+      }
+      // AND THE FOUR COLUMN CAPTIONS, STRUCTURALLY: there is no table on this screen to head.
+      expect(html, `${locale}: no table`).not.toMatch(/<table\b/);
+      expect(html, `${locale}: no column header`).not.toMatch(/<th\b/);
+      expect(html, `${locale}: no table head`).not.toMatch(/<thead\b/);
     }
   });
 
   /**
    * EVERY BODY'S LABEL AND DESCRIPTION, IN EVERY LOCALE. Both are computed at render time
    * (`` t(`authority_${a}`) ``), so test/i18n-coverage.test.ts cannot see either: adding an authority means
-   * adding BOTH strings to SIX files or the row renders MISSING_MESSAGE behind a 200, a green suite and a
+   * adding BOTH strings to SIX files or the card renders MISSING_MESSAGE behind a 200, a green suite and a
    * clean build. The source guard checks the keys EXIST; this checks they reach the screen.
    */
-  it('states every body’s name and purpose, on its own row, in all six locales', () => {
+  it('states every body’s name and purpose, on its own card, in all six locales', () => {
     for (const locale of LOCALES) {
       const org = messagesFor(locale).admin.organization as Record<string, string>;
-      const byBody = rows(render(locale, richProps));
+      const byBody = cards(render(locale, richProps));
       for (const a of STATUTORY_AUTHORITIES) {
         expect(byBody[a], `${locale}: authority_${a}`).toContain(inMarkup(org[`authority_${a}`]));
         expect(byBody[a], `${locale}: authorityDesc_${a}`).toContain(inMarkup(org[`authorityDesc_${a}`]));
@@ -222,14 +327,12 @@ describe('15e5bd93 rev 3 render check — the setup LIST in all six locales, rea
   });
 
   /**
-   * ⚠️ APPROVED POINT 1 OF REVISION 3, ON THE RENDER: THE IDENTITY CARD IS AT THE TOP AND CARRIES THE FOUR
-   * FILING IDENTIFIERS. The reporter's words: "Besides the company's SSM number and MyInvois TIN it will
-   * carry the identifiers you listed - the EPF employer number, the SOCSO employer code, the LHDN E number,
-   * the HRDF status - so you can confirm whose configuration you are about to edit before you touch
-   * anything."
+   * ⚠️ THE IDENTITY CARD IS AT THE TOP AND CARRIES THE FOUR FILING IDENTIFIERS — the reporter's words,
+   * carried through every shape since r355: "so you can confirm whose configuration you are about to edit
+   * before you touch anything."
    *
    * An EXACT ordered list of captions, because a substring check would pass on a card that rendered two of
-   * the six, and the position is asserted because "moves to the top" is half the request.
+   * the six, and the position is asserted because "stays at the top" is half the request.
    */
   it('puts the six identity facts at the top, in the reporter’s order, with no input among them', () => {
     const en = messagesFor('en').admin.organization as Record<string, string>;
@@ -250,18 +353,18 @@ describe('15e5bd93 rev 3 render check — the setup LIST in all six locales, rea
       ['202301001234', 'C12345678900', 'E123', 'S123', 'L123', en.hrdfMandatory].map(inMarkup),
     );
     /**
-     * ⚠️ READ-ONLY HERE, EDITABLE PER BODY — the decision this round had to make and state. The four filing
-     * identifiers live on `company_statutory_my` and are edited inside each body's editor through
-     * MY_FILING_FIELD (r226). Two editable copies would be two doors onto one column and whichever was
-     * saved second would win. `<input` is already absent from the whole screen above; this pins the card.
+     * ⚠️ READ-ONLY HERE, EDITABLE PER BODY. The four filing identifiers live on `company_statutory_my` and
+     * are edited inside each body's card through MY_FILING_FIELD (r226). Two editable copies would be two
+     * doors onto one column and whichever was saved second would win. The rest of the screen is now full
+     * of inputs, so this claim is pinned on the CARD rather than on the document.
      */
     expect(card).not.toContain('<input');
     expect(card).not.toContain('<select');
-    // ABOVE the table, which is what "moves to the top of the page" means.
-    expect(html.indexOf('data-statutory-identity')).toBeLessThan(html.indexOf('<table'));
+    // ABOVE the first body card, which is what "stays at the top" means.
+    expect(html.indexOf('data-statutory-identity')).toBeLessThan(html.indexOf('data-statutory-card="epf"'));
   });
 
-  it('names an absent identity fact rather than rendering a gap, and never guesses HRD Corp’s band', () => {
+  it('names an absent identity fact rather than rendering a gap, and never guesses HRD Corp’s rate', () => {
     const en = messagesFor('en').admin.organization as Record<string, string>;
     const card = identity(render('en', sparseProps));
     expect(new Set(ddsIn(card)), 'every absent fact says so in words').toEqual(
@@ -276,155 +379,144 @@ describe('15e5bd93 rev 3 render check — the setup LIST in all six locales, rea
   });
 
   /**
-   * ⚠️ THE TWO STATUS COLUMNS ARE TWO FACTS, AND THE PLAN PROMISED THE REPORTER THAT PRECISELY:
+   * ⚠️ ONE STATUS WORD PER CARD, AND WHAT BECAME OF THE TWO COLUMNS.
    *
-   *     Payment Setup = a company_statutory_authority row exists for that body
-   *     Status        = it is actually contributing
+   * r355's table drew Payment Setup and Status, and the plan told the reporter exactly what each meant:
+   * "Payment Setup = we hold a payment record for that body; Status = it is actually contributing". That
+   * answer was honest and is RETIRED WITH THE TABLE rather than silently dropped. Each card now carries
+   * one word meaning the FIRST of those, identically for all eight bodies, so a shared caption says only
+   * what is true of every member (CLAUDE.md §8).
    *
-   * `richProps` is the divergence in one direction: EPF has a row (both columns agree), and HRD Corp has NO
-   * row while the identity row says `mandatory` — so payroll charges its levy. A Status column that was
-   * secretly an echo of Payment Setup would read Inactive there and this case is what catches it.
-   *
-   * Derived through `statutoryRowStatus`, the ONE derivation, so the guard and the screen cannot drift apart
-   * in opposite directions and still agree with each other.
+   * HRD Corp is the body the second column existed for, and its fact is still on the screen: not as a
+   * derived pill but as the Contribution Rate select on its own card, which is where it is CHOSEN. This
+   * case pins both halves — the one word, and the rate still being editable beneath it.
    */
-  it('reads Payment Setup off the record and Status off what is actually contributing', () => {
+  it('gives every card one status word, and keeps HRD Corp’s contributing fact as its own control', () => {
     const en = messagesFor('en').admin.organization as Record<string, string>;
-    const byBody = rows(render('en', richProps));
-    for (const a of STATUTORY_AUTHORITIES) {
-      const hasRow = richProps.statutoryAuthorities.some((r) => r.authority === a);
-      const { configured, contributing } = statutoryRowStatus(a, hasRow, richProps.statutory.hrdfStatus);
-      expect(cellOf(byBody[a], 'payment-setup'), `${a}: Payment Setup`).toBe(
-        inMarkup(configured ? en.authorityConfigured : en.authorityNotConfigured),
-      );
-      expect(cellOf(byBody[a], 'status'), `${a}: Status`).toBe(
-        inMarkup(contributing ? en.authorityStatusActive : en.authorityStatusInactive),
-      );
+    const byBody = cards(render('en', richProps));
+    expect(statusOf(byBody.epf), 'EPF has a payment record').toBe(inMarkup(en.statutoryCardSetUp));
+    for (const a of STATUTORY_AUTHORITIES.filter((x) => x !== 'epf')) {
+      expect(statusOf(byBody[a]), a).toBe(inMarkup(en.statutoryCardNotSetUp));
     }
-    // Spelled out for the one row where they differ, so the case cannot pass vacuously if the helper breaks.
-    expect(cellOf(byBody.hrdf, 'payment-setup'), 'no payment record').toBe(inMarkup(en.authorityNotConfigured));
-    expect(cellOf(byBody.hrdf, 'status'), 'yet the levy IS charged').toBe(inMarkup(en.authorityStatusActive));
-    expect(cellOf(byBody.epf, 'payment-setup')).toBe(inMarkup(en.authorityConfigured));
-    expect(cellOf(byBody.epf, 'status')).toBe(inMarkup(en.authorityStatusActive));
+    // The old Status vocabulary is gone from the screen entirely — one word, not two columns.
+    const html = render('en', richProps);
+    expect(html, 'no Active pill').not.toContain(inMarkup(en.authorityStatusActive));
+    expect(html, 'no Inactive pill').not.toContain(inMarkup(en.authorityStatusInactive));
+    // And the fact that column carried is the control on HRD Corp's own card.
+    expect(byBody.hrdf, 'the rate select').toContain('name="hrdfStatus"');
+    expect(byBody.hrdf).toContain(inMarkup(en.hrdfStatusLabel));
   });
 
-  /**
-   * THE OTHER DIRECTION, WHICH IS THE ONE THE PLAN NAMED TO THE REPORTER: "a company can have the payment
-   * details filled in and still be set to no contribution, and that row will read Configured and Inactive".
-   * `hrdf_status` is not_registered | mandatory | optional (localization/my/company-statutory.ts) and
-   * core/payroll.ts charges the levy only when it is not `not_registered`.
-   */
-  it('HRD Corp reads Configured and Inactive together, which is a real reachable state', () => {
-    const en = messagesFor('en').admin.organization as Record<string, string>;
-    const byBody = rows(
-      render('en', {
-        ...richProps,
-        statutoryAuthorities: [{ ...richProps.statutoryAuthorities[0], id: 'a9', authority: 'hrdf' }],
-        statutory: { ...richProps.statutory, hrdfStatus: 'not_registered' as const },
-      }),
-    );
-    expect(cellOf(byBody.hrdf, 'payment-setup')).toBe(inMarkup(en.authorityConfigured));
-    expect(cellOf(byBody.hrdf, 'status')).toBe(inMarkup(en.authorityStatusInactive));
-  });
-
-  /** Both column vocabularies exist in all six locales, since neither is a dynamic key the coverage test sees. */
-  it('carries Configured / Not set up and Active / Inactive in all six locales', () => {
+  /** The status vocabulary and the nine new screen strings exist, and reach the screen, in all six locales. */
+  it('carries Set up / Not set up and the screen’s own actions in all six locales', () => {
     for (const locale of LOCALES) {
       const org = messagesFor(locale).admin.organization as Record<string, string>;
       const html = render(locale, richProps);
-      for (const k of ['authorityConfigured', 'authorityNotConfigured', 'authorityStatusActive', 'authorityStatusInactive']) {
+      for (const k of ['statutoryCardSetUp', 'statutoryCardNotSetUp', 'statutoryScreenSave', 'statutoryScreenCancel']) {
         expect(org[k], `${locale}: ${k}`).toBeTruthy();
         expect(html, `${locale}: ${k} reaches the screen`).toContain(inMarkup(org[k]));
+      }
+      /**
+       * The prompt's five strings are rendered only once the reader tries to leave with something
+       * unsaved, so a render check cannot see them — but a MISSING one is still a MISSING_MESSAGE thrown
+       * at somebody mid-navigation, in the one locale nobody tested. Their EXISTENCE is checked here for
+       * all six; their wiring is driven through real events in the dom file.
+       */
+      for (const k of [
+        'statutoryUnsavedTitle',
+        'statutoryUnsavedBody',
+        'statutoryUnsavedCancel',
+        'statutoryUnsavedDiscard',
+        'statutoryUnsavedSave',
+      ]) {
+        expect(org[k], `${locale}: ${k}`).toBeTruthy();
       }
     }
   });
 
   /**
-   * VIEW AND EDIT ARE LINKS TO THE PER-BODY ROUTE, ONE PAIR PER ROW, AND EACH NAMES ITS OWN BODY. That last
-   * half is the one that matters: eight rows all linking to EPF would look perfectly correct on this screen.
+   * ⚠️ NO LINK ON THIS SCREEN ADDRESSES THE DELETED PER-BODY ROUTE. r355 gave every row a View and an
+   * Edit href built out of the body key. Both the affordances and the route are gone; a link left
+   * pointing at a deleted route is a 404 nobody notices until a reader presses it, which is exactly the
+   * class of fault this round was raised over.
    */
-  it('gives every row a View and an Edit link into that body’s own route', () => {
-    const en = messagesFor('en').admin.organization as Record<string, string>;
-    const byBody = rows(render('en', richProps));
+  it('builds no address with a body in it, and offers no View or Edit', () => {
+    const html = render('en', richProps);
+    /**
+     * ⚠️ ASSERTED ON ANCHOR HREFs, NOT ON THE WHOLE MARKUP, AND THE FIRST WRITING OF THIS CASE WENT RED
+     * FOR THE RIGHT REASON. `not.toContain('/statutory/lhdn')` matched `AUTHORITY_LOGO.lhdn`, which is
+     * `/statutory/lhdn.png` — the body's own MARK, served from public/statutory/ and quite correctly on
+     * the card. The claim was never about that path; it is about a LINK that navigates to a per-body
+     * route, so it reads the hrefs of anchors.
+     *
+     * The anchor set is asserted NON-EMPTY first: this screen does render one link (Cancel), and a
+     * selector that silently matched nothing would make every claim below vacuously true.
+     */
+    const anchors = [...html.matchAll(/<a\b[^>]*\shref="([^"]*)"/g)].map((m) => m[1]);
+    expect(anchors.length, 'the screen does render links, so this is not a vacuous check').toBeGreaterThan(0);
     for (const a of STATUTORY_AUTHORITIES) {
-      expect(byBody[a], `${a} View`).toContain(`href="/admin/organization/c1/statutory/${a}?mode=view"`);
-      expect(byBody[a], `${a} Edit`).toContain(`href="/admin/organization/c1/statutory/${a}?mode=edit"`);
-      expect(byBody[a]).toContain(inMarkup(en.authorityView));
-      expect(byBody[a]).toContain(inMarkup(en.authorityEdit));
+      for (const href of anchors) {
+        expect(href, `no link navigates to /statutory/${a}`).not.toContain(`/statutory/${a}`);
+      }
     }
-    for (const locale of LOCALES) {
-      const org = messagesFor(locale).admin.organization as Record<string, string>;
-      expect(org.authorityView, `${locale}: authorityView`).toBeTruthy();
-      expect(render(locale, richProps), `${locale}: View reaches the row`).toContain(inMarkup(org.authorityView));
-    }
+    // The body MARKS are still drawn, and they are images rather than addresses — the thing the first
+    // version of this case mistook for a route.
+    expect(html, 'the body marks are still on the cards').toContain('/statutory/lhdn.png');
+    for (const href of anchors) expect(href, 'no mode query on any link').not.toContain('mode=');
+    expect(html, 'no View affordance').not.toContain('data-statutory-view-link');
+    expect(html, 'no Edit affordance').not.toContain('data-statutory-edit-link');
+    // Cancel goes to the company's Statutory TAB, which is also where the page header's Back goes.
+    expect(html, 'Cancel leaves to the tab this screen was opened from').toContain(`href="${BACK_HREF}"`);
   });
 
   /**
-   * ⚠️ REVERSES r353's LOCK, AND THE REASON IT CAN BE REVERSED IS THE REASON IT EXISTED. r353 DISABLED the
-   * other seven Edit buttons while a card was open, and said so on screen through
-   * `statutoryScreenEditingHint`, because pressing one would unmount a dirty form and discard typing
-   * silently. Edit is a link to another route now and there is no form on this screen, so there is nothing
-   * to lock and nothing to explain. The catalogue entry is KEPT (see the layout guard); it is not RENDERED.
-   */
-  it('renders no editing lock and no advice about one, in any locale', () => {
-    for (const locale of LOCALES) {
-      const org = messagesFor(locale).admin.organization as Record<string, string>;
-      const html = render(locale, richProps);
-      expect(html, `${locale}: the lock hint is not on this screen`).not.toContain(
-        inMarkup(org.statutoryScreenEditingHint),
-      );
-      expect(html, `${locale}: nor the Editing badge`).not.toContain(inMarkup(org.authorityEditing));
-      expect(html, 'and nothing is disabled').not.toContain('disabled');
-    }
-  });
-
-  /**
-   * FILING NUMBERS APPEAR ON epf / socso / lhdn AND NOWHERE ELSE — the exact set, read off the controlled
-   * set's own answer. EIS carries none because it has none: it files under SOCSO's PERKESO employer code.
-   * HRD Corp carries a registration BAND instead of a number.
+   * FILING NUMBERS BELONG TO epf / socso / lhdn AND TO NOBODY ELSE — the exact set, read off the
+   * controlled set's own answer. EIS carries none because it has none: it files under SOCSO's PERKESO
+   * employer code. HRD Corp carries a registration RATE instead of a number.
    *
-   * ⚠️ ON THIS SCREEN THE THREE NUMBERS ARE ON THE IDENTITY CARD, NOT ON THE ROWS, and that is asserted in
-   * both directions: the card has them and a ROW has none, because a row is four columns and a filing number
-   * is not one of them.
+   * ⚠️ ASSERTED IN BOTH DIRECTIONS, AND THE SECOND HALF IS THE ONE THAT MATTERS: exactly ONE editable
+   * control exists per filing column on the whole screen. Eight cards in one save scope is eight chances
+   * to grow a second door onto one column, which is the r226 fault.
    */
-  it('shows the three filing numbers on the identity card and on no row', () => {
+  it('puts each filing number on its own body’s card and on the identity card, and nowhere else', () => {
     const en = messagesFor('en').admin.organization as Record<string, string>;
     const html = render('en', richProps);
     const withFiling = STATUTORY_AUTHORITIES.filter((a) => MY_FILING_FIELD[a]);
     expect([...withFiling], 'the controlled set’s own answer').toEqual(['epf', 'socso', 'lhdn']);
     const card = identity(html);
+    const byBody = cards(html);
     for (const a of withFiling) {
-      expect(card, `${a}'s filing caption is on the identity card`).toContain(
-        inMarkup(en[MY_FILING_FIELD[a].labelKey]),
-      );
+      expect(card, `${a}'s filing caption is on the identity card`).toContain(inMarkup(en[MY_FILING_FIELD[a].labelKey]));
+      expect(byBody[a], `${a} edits its own filing number`).toContain(`name="${MY_FILING_FIELD[a].name}"`);
+      // EXACTLY ONE writer for that column across the whole screen.
+      expect(
+        (html.match(new RegExp(`name="${MY_FILING_FIELD[a].name}"`, 'g')) ?? []).length,
+        `${a}: one owner, one editor`,
+      ).toBe(1);
     }
-    const byBody = rows(html);
-    for (const a of STATUTORY_AUTHORITIES) {
-      for (const cap of ['epfEmployerNo', 'socsoEmployerCode', 'lhdnENumber'] as const) {
-        expect(byBody[a], `${a}'s row does not repeat ${cap}`).not.toContain(inMarkup(en[cap]));
+    for (const a of STATUTORY_AUTHORITIES.filter((x) => !MY_FILING_FIELD[x])) {
+      for (const f of withFiling) {
+        expect(byBody[a], `${a} does not repeat ${f}'s filing control`).not.toContain(
+          `name="${MY_FILING_FIELD[f].name}"`,
+        );
       }
     }
   });
 
   /**
-   * ⚠️ SOCSO AND EIS ARE TWO ROWS, EIS INDENTED UNDER SOCSO, AND STILL TWO RECORDS — the reporter's sketch
-   * and efe424b0's measured reason (their payment accounts genuinely differ on this tenant, so merging them
-   * would leave EIS's account on file with no screen able to edit it).
-   *
-   * r353 needed `STATUTORY_AUTHORITIES.filter(...)` plus a re-draw inside SOCSO's grid cell to make this
-   * true, because in a two-column grid the third card lands under the FIRST. A table needs neither: the
-   * controlled set already orders EIS immediately after SOCSO, so the row order carries the relationship and
-   * the indent shows it. ADJACENCY is asserted, not merely "after".
+   * ⚠️ SOCSO AND EIS ARE TWO CARDS AND STILL TWO RECORDS — efe424b0's measured reason: their payment
+   * accounts genuinely differ on this tenant, so merging them would leave EIS's account on file with no
+   * screen able to edit it. ADJACENCY is asserted, not merely "after".
    */
-  it('draws EIS in the row immediately after SOCSO, indented, and still its own record', () => {
+  it('draws EIS in the card immediately after SOCSO, saying whose code it files under', () => {
+    const en = messagesFor('en').admin.organization as Record<string, string>;
     const html = render('en', richProps);
-    const order = Object.keys(rows(html));
-    expect(order[order.indexOf('socso') + 1], 'the very next row').toBe('eis');
-    expect(rows(html).eis, 'indented').toMatch(/class="[^"]*\bpl-6\b/);
-    expect(rows(html).socso, 'while its group head is not').not.toMatch(/class="[^"]*\bpl-6\b/);
-    // Its own record: its links name EIS, so its own screen edits its own row.
-    expect(rows(html).eis).toContain('/statutory/eis?mode=edit');
-    expect(rows(html).socso).toContain('/statutory/socso?mode=edit');
+    const order = Object.keys(cards(html));
+    expect(order[order.indexOf('socso') + 1], 'the very next card').toBe('eis');
+    expect(cards(html).eis, 'and it says so rather than showing an empty box').toContain(
+      inMarkup(en.authorityEisSharesSocso),
+    );
+    expect(cards(html).eis, 'its own record, its own payment fields').toContain('data-save-section="eis"');
   });
 
   /** A company with no bank account cannot route a statutory payment, and the screen says so up front. */
@@ -433,5 +525,94 @@ describe('15e5bd93 rev 3 render check — the setup LIST in all six locales, rea
       const org = messagesFor(locale).admin.organization as Record<string, string>;
       expect(render(locale, sparseProps), locale).toContain(inMarkup(org.authoritiesNoBankAccounts));
     }
+  });
+});
+
+/**
+ * ⚠️ THE FOUR MEASURED DEFECTS, PINNED WHERE THE DECISION LIVES.
+ *
+ * jsdom computes no layout and `renderToStaticMarkup` computes less, so nothing here claims to have
+ * measured a pixel — what these pin is the SOURCE decision each measurement traced back to, with the
+ * removed class string named so it cannot quietly return. The measurements themselves (1280 / 1024 /
+ * 820 CSS px, dark and light) are recorded in the approved plan for revision 4.
+ */
+describe('15e5bd93 rev 4 — the source decisions the measurements traced back to', () => {
+  const SCREEN = read('components/statutory-setup-screen.tsx');
+  const PAGE = read('app/admin/organization/[companyId]/statutory/page.tsx');
+  /**
+   * COMMENTS ARE STRIPPED FIRST (the r331 aec53564 lesson: a guard that reads its own explanation finds
+   * the very thing it is banning). Every removal below is recorded in a source comment that NAMES the
+   * class it removed, and that record has to survive.
+   */
+  const code = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, ' ');
+
+  /**
+   * D1 / D3 — `truncate` is `overflow:hidden; text-overflow:ellipsis; white-space:nowrap`, and BOTH
+   * halves did damage. The nowrap made the r355 table cell's min-content the whole 132-character SOCSO
+   * description, so the table laid out 42–322px wider than its container and the Action column was never
+   * painted; the ellipsis cut an ordinary Malaysian correspondence address mid-word, which is the "…" the
+   * reporter drew.
+   */
+  it('holds nothing on this screen to a single line', () => {
+    expect(code(SCREEN), 'no truncate on any label, value or description').not.toMatch(/\btruncate\b/);
+    expect(code(SCREEN), 'and no horizontal scroller to hide a control behind').not.toContain('tableWrapCls');
+    expect(code(SCREEN), 'no overflow-x-auto either').not.toContain('overflow-x-auto');
+  });
+
+  /** D2 — the pill's own text wrapped out of its rounded background at a squeezed width. */
+  it('keeps a status pill’s text inside the pill', () => {
+    const map = code(SCREEN).slice(code(SCREEN).indexOf('const badge = {'), code(SCREEN).indexOf('};', code(SCREEN).indexOf('const badge = {')));
+    expect(map, 'the emerald chip').toContain('whitespace-nowrap');
+    expect((map.match(/whitespace-nowrap/g) ?? []).length, 'both chips, not only the first').toBe(2);
+  });
+
+  /**
+   * D4 — r355's view-mode summary declared `grid-cols-[auto_1fr]` and then gave every row
+   * `col-span-2 flex … justify-between`, which CANCELS the grid outright: measured at 1280, the caption's
+   * right edge was 31–190px and its value's left edge 906–957px, i.e. 767–926px of dead space per row,
+   * with three different value edges because each was right-aligned to its own width. The whole shape is
+   * gone with view mode; the class strings are named so the pattern cannot come back.
+   */
+  it('never declares a grid and then cancels it per row', () => {
+    expect(code(SCREEN), 'the cancelled grid').not.toContain('grid-cols-[auto_1fr]');
+    expect(code(SCREEN), 'a row that opts out of the grid it is in').not.toContain('col-span-2 flex');
+    expect(code(SCREEN), 'no value right-aligned away from its own label').not.toContain('text-right');
+    /**
+     * AND THE POSITIVE HALF, ON THE RENDER: a caption is directly above the value it names. Every
+     * `<dt>`/`<dd>` pair on the identity card sits in one `flex flex-col`, which is the same column
+     * relationship every `Field` gives an input — one rule for the whole screen.
+     */
+    const card = identity(render('en', richProps));
+    expect((card.match(/<div class="flex min-w-0 flex-col">/g) ?? []).length, 'one column per fact').toBe(6);
+    expect(card, 'and no row pushes its value to the far end').not.toContain('justify-between');
+  });
+
+  /**
+   * D5 — `components/ui/card.tsx` `Card` carries no padding of its own and this page used none, so the
+   * first label sat ON the card's left border (measured x=265 with the border at 265) and the last value
+   * on the right one. The company panel gets its inset from its tab shell; this screen has no tab shell.
+   */
+  it('gives the page’s Card an inset of its own', () => {
+    expect(code(PAGE), 'the outer Card is padded').toMatch(/<Card className="p-4">/);
+    expect(
+      code(read('components/ui/card.tsx')),
+      'and the shared primitive is NOT restyled for one screen — every other Card in the product is unchanged',
+    ).toContain("'rounded-[1.25rem] border border-border bg-card text-card-foreground shadow-[var(--shadow-card)]'");
+  });
+
+  /**
+   * D6 — four widths for one kind of field at 1280 (484 / 320 / 648 / 976): the filing number in a
+   * two-column grid, the account number and postcode in a three-column one, the bank select spanning
+   * two, the signatory and the address lines spanning three. A postcode box as wide as an email box.
+   * ONE grid constant for every group on every card, and spans of 1 or 3 only.
+   */
+  it('lays every group out in one shared three-column grid', () => {
+    const src = code(SCREEN);
+    expect(src, 'one constant, declared once').toContain(
+      "const cardGridCls = 'grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-3';",
+    );
+    // No hand-written grid beside it, which is how the four widths accumulated in the first place.
+    expect(src, 'no second column count').not.toMatch(/sm:grid-cols-[124-9]/);
+    expect(src, 'and no half-width span').not.toMatch(/col-span-2(?![0-9])/);
   });
 });

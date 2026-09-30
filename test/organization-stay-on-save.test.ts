@@ -383,22 +383,27 @@ describe('§4 delete is the one that must NOT stay (classification finding 2)', 
 describe('§6 the Statutory Payment Setup flow keeps its own saves (15e5bd93 rev 2, split by rev 3)', () => {
   const SETUP = (id: string) => `${LIST}/${id}/statutory`;
   /**
-   * 15e5bd93 REVISION 3 (r355) — THE FOURTEENTH DESTINATION, and the one this section gained.
+   * ⚠️ 15e5bd93 REVISION 4 (r372) — THE FOURTEENTH DESTINATION IS REMOVED, AND THE SET IS NARROWED RATHER
+   * THAN LOOSENED.
    *
-   * The reporter contested r353's eight-cards screen and drew the layout themselves: a table of rows plus a
-   * screen holding ONE body with Cancel and Save. So the flow is two routes, and a save and a REFUSAL want
-   * opposite things out of it:
+   * r355 added `BODY = (id, a) => `${SETUP(id)}/${a}`` and split this flow's two outcomes across two
+   * routes, on this reasoning, which was right for that shape:
    *
-   *   SUCCESS  →  the LIST, unchanged from r353. Their words: "Save writes only that body and returns you to
-   *               the list with its row refreshed."
-   *   REFUSAL  →  the BODY's own edit screen. Every refusal reachable from that form is about a box that
-   *               exists only there, and sending it to the list would re-commit the mistake `failCompany`'s
-   *               own note records: "a refused save … showed the refusal on a screen that no longer held the
-   *               form it was about."
+   *   SUCCESS  →  the LIST. "Save writes only that body and returns you to the list with its row
+   *               refreshed."
+   *   REFUSAL  →  the BODY's own edit screen, because "every refusal reachable from that form is about a
+   *               box that exists only there", and sending it to the list would re-commit the mistake
+   *               `failCompany`'s own note records: "a refused save … showed the refusal on a screen
+   *               that no longer held the form it was about."
    *
-   * ONE marker still chooses the flow (`returnTo=statutory-setup`); the OUTCOME chooses the screen.
+   * The reporter has since called that per-body page "an unnecessary intermediate page" and it is
+   * deleted. THE REASONING IS UNTOUCHED AND IS WHY THE SPLIT CAN GO: `…/statutory` now holds every
+   * body's form, so it IS "the screen that holds the form the refusal is about". Both outcomes land
+   * there, `failStatutoryBody` is gone from app/admin/_redirects.ts with the page, and no posted value
+   * reaches a redirect path from this flow at all.
+   *
+   * ONE marker still chooses the flow (`returnTo=statutory-setup`); there is one screen for it to choose.
    */
-  const BODY = (id: string, a: string) => `${SETUP(id)}/${a}`;
 
   it('a card save returns to the LIST with a parseable toast, and no stray tab', async () => {
     const { pathname, q } = parse(
@@ -417,13 +422,17 @@ describe('§6 the Statutory Payment Setup flow keeps its own saves (15e5bd93 rev
   });
 
   /**
-   * ⚠️ REVERSED BY REVISION 3, AND THE OLD CLAIM IS QUOTED BECAUSE IT WAS RIGHT FOR ITS SHAPE. r353 asserted
-   * `expect(pathname, 'the refusal reaches the form it is about').toBe(SETUP(b.companyId))` — the setup screen
-   * WAS the form, because the eight editors were on it. They are not: the reporter asked for one body per
-   * screen, so "the form it is about" is now `…/statutory/<body>`, and it must arrive in EDIT mode or the
-   * reader lands on a read-only page holding a message about boxes they cannot see.
+   * ⚠️ REVERSED TWICE, AND THIS ROUND REVERSES IT BACK TO r353's ANSWER. r353 asserted
+   * `expect(pathname, 'the refusal reaches the form it is about').toBe(SETUP(b.companyId))`. r355
+   * changed it to `BODY(b.companyId, 'epf')` with `?mode=edit`, because the setup screen had become a
+   * table of rows and "the form it is about" was on the per-body page. That page is deleted and every
+   * body's form is back on `…/statutory`, so the ORIGINAL address is the one that satisfies the rule.
+   *
+   * ⚠️ AND THE MODE IS ASSERTED ABSENT, not merely unchecked: a `?mode=edit` left on this redirect would
+   * point at a query parameter the surviving page does not read, which is how a dead contract survives a
+   * deletion.
    */
-  it('a REFUSED card save lands on the BODY’s own edit screen, with the message the service gave', async () => {
+  it('a REFUSED card save lands back on the statutory screen, with the message the service gave', async () => {
     const { pathname, q } = parse(
       await redirectOf(() =>
         setCompanyStatutoryAuthorityAction(
@@ -436,19 +445,26 @@ describe('§6 the Statutory Payment Setup flow keeps its own saves (15e5bd93 rev
         ),
       ),
     );
-    expect(pathname, 'the refusal reaches the form it is about').toBe(BODY(b.companyId, 'epf'));
+    expect(pathname, 'the refusal reaches the screen that holds the form it is about').toBe(
+      SETUP(b.companyId),
+    );
     expect(q.get('error')).toBeTruthy();
-    expect(q.get('mode'), 'and it arrives with the form open, not read-only').toBe('edit');
+    expect(q.get('mode'), 'no mode survives the page that had one').toBeNull();
     expect(q.get('toast'), 'a refusal is not a success').toBeNull();
   });
 
   /**
-   * THE BODY IN THE REFUSAL PATH IS RESOLVED THROUGH THE CONTROLLED SET, NEVER ECHOED. This value ends up in a
-   * redirect PATH — the one place a path and a query string meet, which is the rule `companyTab` exists to
-   * state — so a body outside `STATUTORY_AUTHORITIES` must fall back to the list rather than build an address
-   * out of what was posted. Run rather than scanned, because only the parsed target can show it.
+   * ⚠️ NO POSTED BODY REACHES THE PATH AT ALL NOW, AND THE CASE IS KEPT RATHER THAN DELETED BECAUSE THAT
+   * IS THE CLAIM WORTH PINNING.
+   *
+   * r355 built `…/statutory/<body>` out of the posted `authority`, so this case existed to prove the
+   * value went through `isStatutoryAuthority` first — a body outside `STATUTORY_AUTHORITIES` had to fall
+   * back to the list rather than build an address out of what was posted. The per-body page is deleted,
+   * the redirect is `companyId`-only, and so the STRONGER claim is now true: a crafted body cannot reach
+   * the path even if the check were removed. Run rather than scanned, because only the parsed target can
+   * show it — and a future round re-introducing a per-body address fails here.
    */
-  it('a refused save for an UNKNOWN body falls back to the list instead of echoing it into the path', async () => {
+  it('never lets a posted body reach the redirect path, whatever is posted', async () => {
     for (const bogus of ['koperasi', '../../evil', 'epf?mode=edit&x=1', 'EPF']) {
       const { pathname, q } = parse(
         await redirectOf(() =>
@@ -464,7 +480,7 @@ describe('§6 the Statutory Payment Setup flow keeps its own saves (15e5bd93 rev
       );
       expect(pathname, bogus).toBe(SETUP(b.companyId));
       expect(pathname, 'nothing posted reached the path').not.toContain('evil');
-      expect(q.get('mode'), 'and no mode is bolted onto the list, which has none').toBeNull();
+      expect(q.get('mode'), 'and no mode is bolted on, because no screen reads one').toBeNull();
       expect(q.get('error'), 'the refusal is still shown').toBeTruthy();
     }
   });
@@ -507,8 +523,14 @@ describe('§6 the Statutory Payment Setup flow keeps its own saves (15e5bd93 rev
         ),
       ),
     );
-    expect(refused.pathname, 'the refusal reaches the screen the button is on').toBe(BODY(b.companyId, 'socso'));
-    expect(refused.q.get('mode')).toBe('edit');
+    /**
+     * ⚠️ r355 EXPECTED `BODY(b.companyId, 'socso')` WITH `?mode=edit` HERE. That per-body page is deleted
+     * (rev 4, r372) and the body's card is on `…/statutory`, so the button IS on the screen this lands
+     * on — the claim is unchanged, the address is simpler, and the posted `authority` no longer reaches
+     * a path at all.
+     */
+    expect(refused.pathname, 'the refusal reaches the screen the button is on').toBe(SETUP(b.companyId));
+    expect(refused.q.get('mode'), 'and no mode, because no screen reads one').toBeNull();
     expect(refused.q.get('error')).toBeTruthy();
     expect(refused.q.get('toast'), 'a refusal is not a success').toBeNull();
   });
@@ -670,13 +692,19 @@ describe('§5 the panel posts what the actions read, and says it in six language
    * the ROW id. If the hidden field is ever dropped the action still SUCCEEDS — the delete works — and
    * silently lands the reader on the list again. §1 runs the actions; this pins the other half.
    *
-   * ⚠️ SPLIT ACROSS TWO SCREENS BY 15e5bd93 REVISION 2 (r353) AND RE-POINTED AGAIN BY REVISION 3 (r355),
-   * NEVER WEAKENED. "Clear this authority" moved to the dedicated Statutory Payment Setup screen with the
-   * editor it belongs to (r353), and then to the per-body screen when the reporter asked for one body at a
-   * time (r355) — so the authority half of this case reads components/statutory-body-screen.tsx. Both halves
-   * are still asserted, and the authority form now carries FOUR hidden fields: the row id, the company, the
-   * `returnTo` marker (its destination is a different route rather than a different tab) and — new in r355 —
-   * the `authority`, so a REFUSED clear can be returned to the screen the button is on.
+   * ⚠️ RE-POINTED THREE TIMES, NEVER WEAKENED. "Clear this authority" moved to the dedicated Statutory
+   * Payment Setup screen with the editor it belongs to (r353), then to the per-body page when the
+   * reporter asked for one body at a time (r355), and BACK to the one screen when they contested that
+   * page as "an unnecessary intermediate page" (r372) — so the authority half of this case reads
+   * components/statutory-setup-screen.tsx again. Both halves are still asserted, and the authority form
+   * still carries FOUR hidden fields: the row id, the company, the `returnTo` marker (its destination is
+   * a different route rather than a different tab) and the `authority`, so a REFUSED clear can be
+   * returned to the screen the button is on.
+   *
+   * ⚠️ AND ONE THING IS NEW AND IS THE REASON THIS CASE MATTERS MORE THAN IT DID. That screen now has a
+   * consolidated Save. "Clear" DELETES a row — bucket (b) of
+   * docs/audits/65b22c00-organization-save-classification.md — so it must stay OUTSIDE the section
+   * marker, or a screen-wide "Save all changes" would appear to cover a deletion. Asserted below.
    */
   it('the remove forms carry the company id, not only the row id', () => {
     const html = markup('en');
@@ -686,7 +714,7 @@ describe('§5 the panel posts what the actions read, and says it in six language
     expect(ids.length, 'every form that posts a row id also posts the company').toBeGreaterThanOrEqual(4);
     // The authority half, where it lives now. Source rather than render because the form only exists once a
     // card is in edit mode — which test/15e5bd93-statutory-screen.dom.test.tsx drives for real.
-    const screen = read('components/statutory-body-screen.tsx');
+    const screen = read('components/statutory-setup-screen.tsx');
     const clear = screen.slice(screen.indexOf('action={actions.removeStatutoryAuthority}'), screen.indexOf('</form>', screen.indexOf('action={actions.removeStatutoryAuthority}')));
     expect(clear, 'the authority ROW id').toContain('name="id" value={r.id}');
     expect(clear, 'and the company it returns to').toContain('name="companyId" value={companyId}');
@@ -694,8 +722,11 @@ describe('§5 the panel posts what the actions read, and says it in six language
     expect(clear, 'and which BODY, so a refusal can return to this screen').toContain(
       'name="authority" value={authority}',
     );
-    // The LIST has no remove form at all: it cannot write.
-    expect(read('components/statutory-setup-screen.tsx')).not.toContain('removeStatutoryAuthority');
+    // ⚠️ AND IT IS NOT UNDER THE SCREEN'S SAVE. A `data-save-section` on this form would put a DELETE
+    // inside "Save all changes" and, worse, inside the Discard the leave prompt offers.
+    expect(clear, 'Clear is bucket (b) and stays outside the consolidated Save').not.toContain(
+      'data-save-section',
+    );
   });
 
   it('renders the archive marker for a company in use', () => {

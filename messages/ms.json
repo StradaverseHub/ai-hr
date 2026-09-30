@@ -7574,7 +7574,16 @@
       "backToStatutorySetup": "Kembali ke Tetapan Pembayaran Statutori",
       "statutoryIdentityHint": "Identiti syarikat ini bagi setiap pihak berkuasa. Sahkan maklumat ini sebelum menyunting apa-apa di bawah. Sunting di tab Berkanun dan di skrin setiap badan.",
       "statutoryBodyViewCaption": "Maklumat dalam rekod bagi badan ini. Tekan Sunting untuk mengubahnya.",
-      "statutoryBodyEditCaption": "Hanya badan ini disunting di sini. Simpan akan menulisnya dan membawa anda kembali ke senarai."
+      "statutoryBodyEditCaption": "Hanya badan ini disunting di sini. Simpan akan menulisnya dan membawa anda kembali ke senarai.",
+      "statutoryScreenSave": "Simpan semua perubahan",
+      "statutoryScreenCancel": "Batal",
+      "statutoryUnsavedTitle": "Anda ada perubahan yang belum disimpan",
+      "statutoryUnsavedBody": "Adakah anda mahu keluar tanpa menyimpan?",
+      "statutoryUnsavedCancel": "Batal",
+      "statutoryUnsavedDiscard": "Buang & Keluar",
+      "statutoryUnsavedSave": "Simpan & Keluar",
+      "statutoryCardSetUp": "Ditetapkan",
+      "statutoryCardNotSetUp": "Belum ditetapkan"
     },
     "systemLabels": {
       "pageTitle": "Label Sistem",

@@ -335,27 +335,27 @@ describe('HRDF Contribution Rate — Organization form layout', () => {
   });
 
   /**
-   * ⚠️ RE-POINTED TWICE, NEVER WEAKENED. This read `components/company-panel.tsx`, where the HRD Corp card's
-   * rate select lived. r353 was the reporter contesting r352's in-tab editing and asking for "a dedicated
-   * full-width screen", so the eight body editors — including this select — moved to
-   * components/statutory-setup-screen.tsx. r355 is the reporter contesting THAT shape: the list is a table of
-   * rows and ONE body's fields are a screen of their own, so the select is now
-   * components/statutory-body-screen.tsx.
+   * ⚠️ RE-POINTED THREE TIMES, NEVER WEAKENED. This read `components/company-panel.tsx`, where the HRD Corp
+   * card's rate select lived. r353 moved the eight body editors — including this select — to
+   * components/statutory-setup-screen.tsx, because the reporter asked for "a dedicated full-width screen".
+   * r355 moved it again, to components/statutory-body-screen.tsx, because the reporter drew a table of rows
+   * with one body's fields on a page of their own. r372 is the reporter contesting THAT page as "an
+   * unnecessary intermediate page": every body is a card on the dedicated screen, so the select is back in
+   * components/statutory-setup-screen.tsx, inside `StatutoryBodyCard`.
    *
-   * Same three values, same rate order, same label keys through both moves; the only thing that changed is
-   * which file renders them. And it is asserted that NEITHER the panel NOR the list renders a second copy —
-   * two controls over one column is the fault r226 removed, and a copy on a screen that cannot save would be
-   * worse than the first.
+   * Same three values, same rate order, same label keys through all three moves; the only thing that ever
+   * changed is which file renders them. And EXACTLY ONE copy is asserted — two controls over one column is
+   * the fault r226 removed, and eight cards in one save scope is eight chances to grow a second one.
    */
   it('keeps the stored option values (no data migration) in rate order: none, 1.0%, 0.5%', () => {
-    const SCREEN = read('components/statutory-body-screen.tsx');
+    const SCREEN = read('components/statutory-setup-screen.tsx');
     const start = SCREEN.indexOf('name="hrdfStatus"');
-    expect(start, 'the rate select is on the per-body screen').toBeGreaterThan(-1);
+    expect(start, 'the rate select is on the statutory screen').toBeGreaterThan(-1);
     expect(PANEL, 'and there is no second copy on the company panel').not.toContain('name="hrdfStatus"');
     expect(
-      read('components/statutory-setup-screen.tsx'),
-      'nor on the list, which holds no field at all',
-    ).not.toContain('name="hrdfStatus"');
+      (SCREEN.match(/name="hrdfStatus"/g) ?? []).length,
+      'exactly one control over the column, though the card is drawn eight times',
+    ).toBe(1);
     const select = SCREEN.slice(start, SCREEN.indexOf('</select>', start));
     const none = select.indexOf('value="not_registered"');
     const one = select.indexOf('value="mandatory"');
