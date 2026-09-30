@@ -1741,6 +1741,7 @@
       "instructionAddress": "Lajur alamat ialah alamat rumah pekerja. Negeri dan Negara mesti sepadan dengan nilai pada helaian Rujukan.",
       "instructionProbation": "Tarikh Tamat Percubaan hanya untuk pekerja sepenuh masa. Tempoh percubaan dan notis ialah nombor bulat bulan dan hari.",
       "instructionSuperior": "Penyelia Langsung menerima ID Pekerja atau e-mel kerja. Ia boleh merujuk seseorang di bawah dalam fail ini, atau seseorang yang sudah bekerja.",
+      "instructionSalaryRemarks": "Gaji Asas boleh 0 — contohnya pengarah yang dibayar fi setiap suku tahun — tetapi baris itu mesti menyatakan sebabnya dalam {column}. Biarkan kosong bagi sesiapa yang mempunyai gaji asas. Penggajian akan mengecualikan pekerja tanpa gaji asas daripada mana-mana bulan yang tiada apa-apa lagi untuk dibayar kepadanya.",
       "instructionFamily": "Ahli keluarga diletakkan pada helaian Keluarga, satu baris setiap seorang, dipautkan kepada pekerja melalui ID Pekerja. Fail CSV tidak boleh membawanya — gunakan fail Excel ini.",
       "instructionFamilyWhole": "Jika mana-mana baris pada helaian Keluarga bermasalah, tiada apa-apa akan diimport — termasuk pekerja. Betulkan dan muat naik semula.",
       "sectionChooserStep": "Langkah 1",
@@ -4970,7 +4971,8 @@
       "preChecksNothingPayableRemark": "Sebab pada rekod gaji: {remarks}",
       "preChecksNothingPayableNoRemark": "Tiada sebab direkodkan pada rekod gaji.",
       "reprocessGapNothingPayable": "tiada gaji asas bulanan",
-      "reprocessReasonNothingPayable": "Sengaja dikecualikan daripada proses ini — tiada gaji asas bulanan dan tiada apa-apa untuk dibayar bulan ini. Tandakan mereka hanya jika sesuatu telah dimasukkan untuk mereka selepas itu."
+      "reprocessReasonNothingPayable": "Sengaja dikecualikan daripada proses ini — tiada gaji asas bulanan dan tiada apa-apa untuk dibayar bulan ini. Tandakan mereka hanya jika sesuatu telah dimasukkan untuk mereka selepas itu.",
+      "preChecksBadgeLegend": "Apa-apa yang bertanda “Menghalang pemprosesan” mesti dibetulkan sebelum proses ini. Apa-apa yang bertanda “Amaran” masih boleh diproses selepas anda mengesahkannya. Apa-apa yang bertanda “Akan dikecualikan” tidak memerlukan apa-apa daripada anda."
     },
     "transactions": {
       "title": "Kemasukan Transaksi",
@@ -5964,7 +5966,8 @@
       "adjustmentsHint": "Kerja lebih masa, bonus, pelepasan cukai dan zakat untuk larian ini, serta jambatan yang membawa masuk tuntutan diluluskan, kerja lebih masa kehadiran, ansuran pinjaman, perbezaan syif dan elaun. Ini dikenakan pada pilihan pekerja yang TELAH DISIMPAN untuk larian ini, dan menggunakannya akan memuat semula aliran ini dari Langkah 1 — jadi sebarang perubahan pada Langkah 2 yang belum diproses akan hilang.",
       "validationNoticeBadge": "Akan dikecualikan",
       "validationNothingPayableTitle": "{n} pekerja akan dikecualikan daripada proses ini",
-      "validationNothingPayableHint": "Mereka tiada gaji asas bulanan dan tiada apa-apa untuk dibayar bagi tempoh ini. Proses gaji tidak dihalang: mereka dinamakan semula pada keputusan, dan dibayar seperti biasa pada tempoh yang ada transaksi dimasukkan untuk mereka."
+      "validationNothingPayableHint": "Mereka tiada gaji asas bulanan dan tiada apa-apa untuk dibayar bagi tempoh ini. Proses gaji tidak dihalang: mereka dinamakan semula pada keputusan, dan dibayar seperti biasa pada tempoh yang ada transaksi dimasukkan untuk mereka.",
+      "validationBadgeLegend": "Apa-apa yang bertanda “Menghalang pemprosesan” mesti dibetulkan sebelum proses ini. Apa-apa yang bertanda “Amaran” masih boleh diproses selepas anda mengesahkannya. Apa-apa yang bertanda “Akan dikecualikan” tidak memerlukan apa-apa daripada anda."
     },
     "guide": {
       "title": "Panduan Aliran Kerja Gaji",

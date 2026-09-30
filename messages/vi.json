@@ -1741,6 +1741,7 @@
       "instructionAddress": "Các cột địa chỉ là địa chỉ nhà của nhân viên. Tỉnh/Bang và Quốc gia phải khớp với một giá trị trên trang tính Tham chiếu.",
       "instructionProbation": "Ngày kết thúc thử việc chỉ áp dụng cho nhân viên toàn thời gian. Thời gian thử việc và thời gian báo trước là số nguyên tháng và ngày.",
       "instructionSuperior": "Cấp trên trực tiếp nhận Mã nhân viên hoặc email công việc. Có thể là người ở phía dưới trong tệp này, hoặc người đã đang làm việc.",
+      "instructionSalaryRemarks": "Lương cơ bản có thể là 0 — ví dụ một giám đốc được trả thù lao theo từng quý — nhưng khi đó dòng này phải nêu lý do trong {column}. Hãy để trống vối mọi ngưỡi có lương cơ bản. Bảng lương sẽ loại một nhân viên không có lương cơ bản ra khỏi bất kỳ tháng nào không còn gì khác để trả cho họ.",
       "instructionFamily": "Thành viên gia đình nằm ở trang tính Gia đình, mỗi người một hàng, liên kết với nhân viên bằng Mã nhân viên. Tệp CSV không mang được dữ liệu này — hãy dùng tệp Excel này.",
       "instructionFamilyWhole": "Nếu bất kỳ hàng nào trên trang tính Gia đình có vấn đề, sẽ không có gì được nhập — kể cả nhân viên. Hãy sửa và tải lên lại.",
       "sectionChooserStep": "Bước 1",
@@ -4970,7 +4971,8 @@
       "preChecksNothingPayableRemark": "Lý do trên hồ sơ lương: {remarks}",
       "preChecksNothingPayableNoRemark": "Không có lý do nào được ghi trên hồ sơ lương.",
       "reprocessGapNothingPayable": "không có lương cơ bản hằng tháng",
-      "reprocessReasonNothingPayable": "Được cố ý để ra ngoài lần chạy này — không có lương cơ bản hằng tháng và không có khoản nào phải trả trong tháng. Chỉ đánh dấu nếu sau đó đã nhập khoản nào cho họ."
+      "reprocessReasonNothingPayable": "Được cố ý để ra ngoài lần chạy này — không có lương cơ bản hằng tháng và không có khoản nào phải trả trong tháng. Chỉ đánh dấu nếu sau đó đã nhập khoản nào cho họ.",
+      "preChecksBadgeLegend": "Mục đánh dấu “Chặn xử lý” phải được sửa trước lần chạy này. Mục đánh dấu “Cảnh báo” vẫn xử lý được sau khi bạn xác nhận. Mục đánh dấu “Sẽ được để ra ngoài” không cần bạn làm gì cả."
     },
     "transactions": {
       "title": "Nhập liệu giao dịch",
@@ -5964,7 +5966,8 @@
       "adjustmentsHint": "Làm thêm giờ, thưởng, giảm trừ thuế và zakat cho đợt chạy này, cùng các cầu nối đưa vào khoản hoàn ứng đã duyệt, làm thêm giờ theo chấm công, kỳ trả góp khoản vay, chênh lệch ca và phụ cấp. Chúng áp dụng cho danh sách nhân viên ĐÃ LƯU của đợt chạy, và khi áp dụng một mục thì luồng này sẽ tải lại từ Bước 1 — nên thay đổi ở Bước 2 chưa được xử lý sẽ mất.",
       "validationNoticeBadge": "Sẽ được để ra ngoài",
       "validationNothingPayableTitle": "{n} nhân viên sẽ được để ra ngoài lần chạy này",
-      "validationNothingPayableHint": "Họ không có lương cơ bản hằng tháng và không có khoản nào phải trả cho kỳ này. Việc xử lý không bị chặn: họ được nêu tên lại trong kết quả, và được trả bình thường ở kỳ có giao dịch nhập cho họ."
+      "validationNothingPayableHint": "Họ không có lương cơ bản hằng tháng và không có khoản nào phải trả cho kỳ này. Việc xử lý không bị chặn: họ được nêu tên lại trong kết quả, và được trả bình thường ở kỳ có giao dịch nhập cho họ.",
+      "validationBadgeLegend": "Mục đánh dấu “Chặn xử lý” phải được sửa trước lần chạy này. Mục đánh dấu “Cảnh báo” vẫn xử lý được sau khi bạn xác nhận. Mục đánh dấu “Sẽ được để ra ngoài” không cần bạn làm gì cả."
     },
     "guide": {
       "title": "Hướng dẫn quy trình bảng lương",

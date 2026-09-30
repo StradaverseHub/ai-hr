@@ -1741,6 +1741,7 @@
       "instructionAddress": "地址各列为员工的住家地址。州属和国家必须与「参考」工作表上的值一致。",
       "instructionProbation": "试用期结束日期仅适用于全职员工。试用期与通知期以整数的月数和天数填写。",
       "instructionSuperior": "直属上级填写员工编号或工作邮箱。可以指向本文件中位置更靠后的人，也可以是已在职的员工。",
+      "instructionSalaryRemarks": "基本薪金可以是 0 —— 例如按季度领取董事费的董事 —— 但该行必须在 {column} 中说明原因。凡有基本薪金的人，请留空。若某个月再无其他款项需要支付，薪资运算会将没有基本薪金的员工排除在该月之外。",
       "instructionFamily": "家庭成员填在「家属」工作表，每人一行，通过员工编号与员工关联。CSV 文件无法承载——请使用此 Excel 文件。",
       "instructionFamilyWhole": "「家属」工作表只要有一行出问题，就不会导入任何内容——员工也不会导入。更正后重新上传。",
       "sectionChooserStep": "第 1 步",
@@ -4970,7 +4971,8 @@
       "preChecksNothingPayableRemark": "薪资记录上的原因：{remarks}",
       "preChecksNothingPayableNoRemark": "薪资记录上未填写原因。",
       "reprocessGapNothingPayable": "没有月度基本薪资",
-      "reprocessReasonNothingPayable": "本次运行中被有意排除 — 没有月度基本薪资，本月也没有应付款项。仅在之后为其录入了款项时才勾选。"
+      "reprocessReasonNothingPayable": "本次运行中被有意排除 — 没有月度基本薪资，本月也没有应付款项。仅在之后为其录入了款项时才勾选。",
+      "preChecksBadgeLegend": "标记为“阻止处理”的项目必须在本次运行前修正；标记为“警告”的项目在您确认后仍可继续处理；标记为“将被排除”的项目无需您做任何事。"
     },
     "transactions": {
       "title": "交易录入",
@@ -5964,7 +5966,8 @@
       "adjustmentsHint": "本次运行的加班、奖金、税务减免和天课，以及将已批准的报销、考勤加班、贷款分期、班次差额和津贴带入的通道。这些操作作用于本次运行已保存的员工名单；应用其中任一项会使本流程从第 1 步重新加载，因此第 2 步中尚未处理的改动会丢失。",
       "validationNoticeBadge": "将被排除",
       "validationNothingPayableTitle": "{n} 名员工将被排除在本次运行之外",
-      "validationNothingPayableHint": "他们没有月度基本薪资，本期也没有应付款项。这不会阻止处理：他们会在结果中再次列名，并在有交易录入的期间照常发放。"
+      "validationNothingPayableHint": "他们没有月度基本薪资，本期也没有应付款项。这不会阻止处理：他们会在结果中再次列名，并在有交易录入的期间照常发放。",
+      "validationBadgeLegend": "标记为“阻止处理”的项目必须在本次运行前修正；标记为“警告”的项目在您确认后仍可继续处理；标记为“将被排除”的项目无需您做任何事。"
     },
     "guide": {
       "title": "薪资工作流程指南",

@@ -765,6 +765,14 @@ export default async function BatchPage({
             <p className="px-4 py-4 text-sm text-emerald-700 dark:text-emerald-400">✓ {t('preChecksAllClear')}</p>
           ) : (
             <div className="space-y-4 px-4 py-4">
+              {/* r369 — WHAT THE THREE BADGES MEAN, above the groups that carry them.
+                  Structural, not decoration: this round introduced a THIRD badge state, and three badge
+                  styles with no legend make the operator infer which of them demands action — which is how
+                  a deliberate skip gets "fixed" by somebody typing a salary that is not true. The sentence
+                  QUOTES all three labels verbatim, and the wizard's Validation step carries the same
+                  legend over its own three; test/r369-zero-basic-skip.test.ts asserts each legend contains
+                  its own namespace's three badge strings, so rewording a badge without the legend fails. */}
+              <p className="text-xs text-muted-foreground">{t('preChecksBadgeLegend')}</p>
               {preSalaryBlockers > 0 && (
                 <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
                   {t('preChecksBlockerHint', { n: preSalaryBlockers })}

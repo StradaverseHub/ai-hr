@@ -5658,8 +5658,14 @@ export async function generatePayslips(
     //   wage EPF is nil (Part A/E first bands) and PCB is 0 (the P <= 5000 short-circuit), but SOCSO
     //   employee is RM0.10, EIS employee RM0.05, and SKBBK — where the employee is subject to it — a
     //   further RM0.20. So processing them writes a payslip whose NET IS BELOW ZERO, and files a zero
-    //   wage with PERKESO for a month the person was not paid. test/r369-zero-basic-skip.test.ts asserts
-    //   that figure against a real processed payslip, so nobody can "simplify" this predicate later.
+    //   wage with PERKESO for a month the person was not paid.
+    //
+    //   ⚠️ THE FIGURE IS -0.15 BY DEFAULT, NOT -0.35, and the plan told the reporter "roughly 35 sen".
+    //   `employee_statutory_my.subject_to_skbbk` DEFAULTS FALSE (db/schema.ts), so the ordinary profile
+    //   nets 0.10 + 0.05 = -0.15 and only an employee ticked subject to SKBBK reaches -0.35. Both are
+    //   below zero, which is the whole point, but do not quote 0.35 as the universal figure.
+    //   test/r369-zero-basic-skip.test.ts asserts BOTH against real processed payslips, so nobody can
+    //   "simplify" this predicate later on the belief that a zero-gross payslip costs nothing.
     //
     // ── THE R226 BIAS INVERTS HERE, AND THIS IS THE ONE PLACE IT DOES ─────────────────────────────
     // The additional-run skip below records the rule "THE BIAS MUST POINT AT PROCESSING: a false 'has

@@ -1741,6 +1741,7 @@
       "instructionAddress": "The address columns are the employee’s home address. State and Country must match a value on the Reference sheet.",
       "instructionProbation": "Probation End Date applies to full-time employees only. Probation and notice periods are whole numbers of months and days.",
       "instructionSuperior": "Direct Superior takes an Employee ID or work email. It may name someone further down this file, or someone already employed.",
+      "instructionSalaryRemarks": "Basic Salary may be 0 — a director paid by quarterly fees, for example — but the row must then say why in {column}. Leave it blank for everyone who has a basic salary. Payroll leaves an employee with no basic salary out of any month with nothing else to pay them.",
       "instructionFamily": "Family members go on the Family sheet, one row each, linked to the employee by Employee ID. A CSV file cannot carry them — use this Excel file.",
       "instructionFamilyWhole": "If any row on the Family sheet has a problem, nothing at all is imported — not the employees either. Correct it and upload again.",
       "sectionChooserStep": "Step 1",
@@ -4419,7 +4420,8 @@
       "preChecksNothingPayableRemark": "Reason on the salary record: {remarks}",
       "preChecksNothingPayableNoRemark": "No reason was recorded on the salary record.",
       "reprocessGapNothingPayable": "no monthly basic salary",
-      "reprocessReasonNothingPayable": "Deliberately left out of this run — no monthly basic salary and nothing was payable this month. Tick them only if something has been keyed for them since."
+      "reprocessReasonNothingPayable": "Deliberately left out of this run — no monthly basic salary and nothing was payable this month. Tick them only if something has been keyed for them since.",
+      "preChecksBadgeLegend": "Anything marked “Blocks processing” must be fixed before this run. Anything marked “Warning” can still be processed, after you confirm it. Anything marked “Will be skipped” needs nothing from you."
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -5964,7 +5966,8 @@
       "adjustmentsHint": "Overtime, bonus, tax relief and zakat for this run, and the bridges that bring in approved claims, attendance overtime, loan instalments, shift differential and allowances. These apply to the run’s SAVED employee selection, and applying one reloads this flow from Step 1 — so any change you have made on Step 2 but not yet processed is lost.",
       "validationNoticeBadge": "Will be skipped",
       "validationNothingPayableTitle": "{n} employee(s) will be left out of this run",
-      "validationNothingPayableHint": "They have no monthly basic salary and nothing is payable to them for this period. Processing is not blocked: they are named again on the result, and they are paid normally in a period where a transaction is keyed for them."
+      "validationNothingPayableHint": "They have no monthly basic salary and nothing is payable to them for this period. Processing is not blocked: they are named again on the result, and they are paid normally in a period where a transaction is keyed for them.",
+      "validationBadgeLegend": "Anything marked “Blocks processing” must be fixed before this run. Anything marked “Warning” can still be processed, after you confirm it. Anything marked “Will be skipped” needs nothing from you."
     },
     "guide": {
       "title": "Payroll Workflow Guide",

@@ -192,6 +192,22 @@ export function StepValidation({
   // forward-looking one ("nothing is payable to them for this period"), and the authoritative decision
   // remains the run's own.
   const nothingPayable = advisory.nothingPayable ?? [];
+  // r369 — WHAT THE THREE BADGES MEAN, wherever any of them is on screen.
+  //
+  // Structural, not decoration: this round introduced a THIRD badge state, and three badge styles with no
+  // legend make the operator infer which of them demands action — which is how a deliberate skip gets
+  // "fixed" by somebody typing a salary that is not true. The batch card carries the SAME legend over its
+  // own three labels; a legend on one of the two screens and not the other would be worse than none,
+  // because it teaches the reader that the absence means something.
+  //
+  // GATED ON ANY BADGE BEING RENDERED, which on this screen is NOT the same as "blockers or warnings":
+  // `nothingPayableBanner` below carries a notice chip per row and renders in BOTH branches, including the
+  // all-clear one. So the legend rides the same condition, and it is counted into neither `blockers` nor
+  // `warnings` — those two stay the server's exact four terms (see their own notes).
+  const badgeLegend =
+    blockers + warnings + nothingPayable.length > 0 ? (
+      <p className="text-xs text-muted-foreground">{t('validationBadgeLegend')}</p>
+    ) : null;
   const nothingPayableBanner =
     nothingPayable.length > 0 ? (
       <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
@@ -236,6 +252,7 @@ export function StepValidation({
       <div className="space-y-4">
         {missingCycleBanner}
         {unattachedBanner}
+        {badgeLegend}
         {nothingPayableBanner}
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-4 dark:border-emerald-500/30 dark:bg-emerald-500/10">
           <p className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
@@ -265,6 +282,7 @@ export function StepValidation({
     <div className="space-y-4">
       {missingCycleBanner}
       {unattachedBanner}
+      {badgeLegend}
       {nothingPayableBanner}
       {blockers > 0 ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">

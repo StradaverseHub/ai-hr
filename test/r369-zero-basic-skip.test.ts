@@ -258,6 +258,45 @@ describe('r369 · the "additional run" prose that asserted the old rule is gone'
     }
   });
 
+  it('the badge LEGEND quotes its own namespace\u2019s three labels, on both screens, in all six locales', () => {
+    // r369 introduced a THIRD badge state, so each screen carries a legend saying what the three mean.
+    // The legend quotes the labels VERBATIM, which is a drift hazard worth pinning rather than avoiding:
+    // reword a badge and the legend silently starts naming a badge that is no longer on the screen.
+    //
+    // PER NAMESPACE, NOT PER LOCALE, and that distinction is real rather than defensive: `ta` and `th`
+    // already spell the BLOCKER badge differently in payroll.batch and payroll.process
+    // ("\u0b9a\u0bc6\u0baf\u0bb2\u0bbe\u0b95\u0bcd\u0b95\u0ba4\u0bcd\u0ba4\u0bc8\u0ba4\u0bcd" vs "\u0b9a\u0bc6\u0baf\u0bb2\u0bbe\u0b95\u0bcd\u0b95\u0ba4\u0bcd\u0ba4\u0bc8"; "\u0e02\u0e27\u0e32\u0e07" vs "\u0e02\u0e31\u0e14\u0e02\u0e27\u0e32\u0e07"), so one shared legend
+    // string would be wrong on one of the two screens in two locales.
+    type Cat = {
+      payroll: {
+        batch: Record<string, string>;
+        process: Record<string, string>;
+      };
+    };
+    for (const l of LOCALES) {
+      const c = CATALOGUES[l] as unknown as Cat;
+      for (const [ns, legendKey, labelKeys] of [
+        ['payroll.batch', 'preChecksBadgeLegend', ['preChecksBlockerBadge', 'preChecksWarningBadge', 'preChecksNoticeBadge']],
+        ['payroll.process', 'validationBadgeLegend', ['validationBlockerBadge', 'validationWarningBadge', 'validationNoticeBadge']],
+      ] as const) {
+        const grp = ns === 'payroll.batch' ? c.payroll.batch : c.payroll.process;
+        const legend = grp[legendKey];
+        expect(legend, `${l} ${ns}.${legendKey}`).toBeTruthy();
+        for (const k of labelKeys) {
+          expect(legend, `${l} ${ns}.${legendKey} does not quote ${k} ("${grp[k]}")`).toContain(grp[k]);
+        }
+      }
+    }
+    // Six genuinely different sentences, not the English fallback five times over.
+    for (const pick of [
+      (c: Cat) => c.payroll.batch.preChecksBadgeLegend,
+      (c: Cat) => c.payroll.process.validationBadgeLegend,
+    ]) {
+      const values = LOCALES.map((l) => pick(CATALOGUES[l] as unknown as Cat));
+      expect(new Set(values).size, values.join(' | ')).toBe(LOCALES.length);
+    }
+  });
+
   it('the reworded zeroBasic sentence names the daily/hourly case and no longer says "basic salary … is zero"', () => {
     // The identifier is historical and stays; the SENTENCE is what an operator reads, and it must not tell
     // them a monthly basic of zero blocks the run, because it no longer does.
@@ -308,6 +347,7 @@ describe('r369 · every new message FORMATS, in every locale', () => {
       check('payroll.batch', 'preChecksNothingPayableRemark', remark);
       expect(remark).toContain(DIRECTOR_REMARK);
       for (const key of [
+        'preChecksBadgeLegend',
         'preChecksNoticeBadge',
         'preChecksNothingPayableNoRemark',
         'preChecks.nothingPayable',
@@ -320,6 +360,7 @@ describe('r369 · every new message FORMATS, in every locale', () => {
         check('payroll.batch', key, (tb as (k: never) => string)(key as never));
       }
       for (const key of [
+        'validationBadgeLegend',
         'validationNoticeBadge',
         'validationNothingPayableHint',
         'validationCheck.nothingPayable',
@@ -489,8 +530,10 @@ describe('r369 · a REGULAR run over somebody with no basic and nothing payable'
     // WHY IT IS BELOW ZERO: EPF's first band is NIL and PCB short-circuits at P <= 5000, but SOCSO's
     // employee column starts at RM0.10, EIS at RM0.05 and SKBBK at RM0.20 — `bandFor` returns the FIRST
     // band for a wage of nothing and never falls off the bottom — and `statDeductions` is explicitly never
-    // clamped. Both statutory configurations are asserted because `subject_to_skbbk` defaults FALSE: the
-    // plan quoted "roughly 35 sen below zero", which is the SKBBK-subject figure.
+    // clamped. BOTH statutory configurations are asserted because `subject_to_skbbk` DEFAULTS FALSE: the
+    // ordinary profile nets -0.15 and only an employee ticked subject to SKBBK reaches -0.35. The plan
+    // told the reporter "roughly 35 sen below zero", which is the SKBBK-subject figure and NOT the
+    // default one; both are below zero, which is what the skip exists for, but -0.35 is not universal.
     const a = adminCtx(base);
     const noSkbbk = await hire(a, 'Hourly Hana', { basicSalary: 4000, payMode: 'hourly', rateAmount: 20 });
     const withSkbbk = await hire(
