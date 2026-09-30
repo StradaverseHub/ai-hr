@@ -35,12 +35,23 @@ const nextConfig: NextConfig = {
       {
         source: '/:path*',
         headers: [
-          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'" },
-          { key: 'X-Frame-Options', value: 'DENY' },
+          // 'self', NOT 'none'. The Knowledge Base renders an in-product PDF preview as
+          // <iframe src="/knowledge-base/<id>/download?inline=1"> (app/knowledge-base/[id]/page.tsx),
+          // which is same-origin — 'none' refuses to frame our own document and the preview goes blank.
+          // 'self' still blocks every cross-origin frame, which is the clickjacking the header is for.
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'self'; object-src 'none'; base-uri 'self'" },
+          // SAMEORIGIN for the same reason: X-Frame-Options has no 'self', and DENY would break that
+          // preview in any browser that still honours this header over CSP frame-ancestors.
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
-          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+          // geolocation=(self), NOT (). ADR-0070 clock-in captures coordinates via
+          // navigator.geolocation.getCurrentPosition (components/attendance-clock-button.tsx); an empty
+          // allowlist disables the API for the whole document, so self-service clock-in would silently
+          // stop recording where the employee was — a feature loss dressed as a security header.
+          // camera and microphone stay fully denied: nothing in the product uses either.
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(self)' },
         ],
       },
     ];
