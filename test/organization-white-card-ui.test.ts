@@ -71,12 +71,13 @@ describe('3783fd87 — the Organization screens paint white cards, not grey bloc
    * where the old habit comes back: nothing in this file was watching it. Extended rather than re-pointed,
    * because the panel still has grounds of its own to keep clean.
    */
-  it('and the dedicated statutory setup screens paint none either', () => {
-    // ⚠️ TWO FILES SINCE r355, NOT ONE. The reporter contested r353's eight-cards shape and drew a table of
-    // rows plus a one-body screen, so the statutory surface is components/statutory-setup-screen.tsx (the
-    // list) and components/statutory-body-screen.tsx (the editor). A new file is exactly where the old habit
-    // comes back: nothing was watching the second one until this line named it.
-    for (const rel of ['components/statutory-setup-screen.tsx', 'components/statutory-body-screen.tsx']) {
+  it('and the dedicated statutory setup screen paints none either', () => {
+    // ⚠️ ONE FILE AGAIN (15e5bd93 rev 4, r370). r355 split the statutory surface into a list and a
+    // one-body screen and this loop named both. The reporter contested the per-body page as "an
+    // unnecessary intermediate page"; it is deleted and its editor is folded back into the screen as the
+    // per-body CARD, so there is one file to watch. Named as a list rather than inlined, because the
+    // next round that splits this surface again should have to add its file here.
+    for (const rel of ['components/statutory-setup-screen.tsx']) {
       expect(filled(read(rel)), `a filled grey ground appeared in ${rel}`).toEqual([]);
     }
   });
@@ -90,15 +91,27 @@ describe('3783fd87 — the Organization screens paint white cards, not grey bloc
      * is on the dedicated setup screen now, so the claim reads that file. The negative half is asserted on
      * BOTH: the filled block must not come back anywhere.
      */
-    // ⚠️ RE-POINTED AGAIN BY r355: the three sub-blocks are in the EDITOR, which is its own file now. The
-    // negative half is asserted on all three files, because the filled block must not come back anywhere.
-    const BODY = read('components/statutory-body-screen.tsx');
-    const LIST = read('components/statutory-setup-screen.tsx');
-    expect(BODY).toContain('rounded-md border border-border/60 p-2.5');
-    expect(BODY).not.toContain('rounded-md bg-muted/40 p-2.5');
-    expect(LIST).not.toContain('rounded-md bg-muted/40 p-2.5');
-    // The list's identity card is a white card with a LINE, the same treatment as every other section.
-    expect(LIST, 'the identity card is a lined white card').toContain('rounded-lg border border-border bg-card p-3');
+    /**
+     * ⚠️ RE-POINTED A THIRD TIME BY r370, AND ONE HALF IS REVERSED FOR A MEASURED REASON.
+     *
+     * r353 moved the three sub-blocks (Filing identity / Payment setup / Correspondence address) onto the
+     * dedicated screen as `rounded-md border border-border/60 p-2.5`; r355 moved them to the per-body
+     * page and this case followed. That page is deleted and the editor is a CARD on the one screen.
+     *
+     * The three group BORDERS are gone with it, and that is not a regression against 3783fd87: each body
+     * is now its own bordered white card, so a border around every group INSIDE it was three boxes deep
+     * — "individual large boxes" is the complaint efe424b0 raised in the first place. The groups keep a
+     * heading and spacing, which is the "lines rather than filled grey blocks" this item asked for. What
+     * is asserted unchanged, and is the whole point of the file, is that NO group grew a grey FILL.
+     */
+    const SETUP = read('components/statutory-setup-screen.tsx');
+    expect(SETUP, 'no filled grey block came back in any group').not.toContain('rounded-md bg-muted/40 p-2.5');
+    expect(SETUP, 'nor a page-grey ground').not.toContain('bg-background');
+    // Every body is a white card with a LINE, the same treatment as every other section on this module.
+    expect(SETUP, 'the body cards are lined white cards').toContain('rounded-lg border border-border bg-card p-4');
+    expect(SETUP, 'and so is the identity card').toContain(
+      '<section data-statutory-identity className="rounded-lg border border-border bg-card p-4">',
+    );
     expect(PANEL).not.toContain('rounded-md bg-muted/40 p-2.5');
     // The tab shell keeps its separator and loses its wash.
     expect(PANEL).toContain('border-t border-border px-4 py-4');

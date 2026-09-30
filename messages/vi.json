@@ -7574,7 +7574,16 @@
       "backToStatutorySetup": "Quay lại Thiết lập thanh toán theo luật định",
       "statutoryIdentityHint": "Danh tính của công ty này với từng cơ quan. Hãy xác nhận trước khi sửa bất kỳ nội dung nào bên dưới. Các số này được sửa ở tab Theo luật định và ở màn hình của từng cơ quan.",
       "statutoryBodyViewCaption": "Những gì đang lưu cho cơ quan này. Nhấn Sửa để thay đổi.",
-      "statutoryBodyEditCaption": "Ở đây chỉ sửa cơ quan này. Lưu sẽ ghi lại và đưa bạn về danh sách."
+      "statutoryBodyEditCaption": "Ở đây chỉ sửa cơ quan này. Lưu sẽ ghi lại và đưa bạn về danh sách.",
+      "statutoryScreenSave": "Lưu tất cả thay đổi",
+      "statutoryScreenCancel": "Hủy bỏ",
+      "statutoryUnsavedTitle": "Bạn có thay đổi chưa lưu",
+      "statutoryUnsavedBody": "Bạn có muốn rời đi mà không lưu không?",
+      "statutoryUnsavedCancel": "Hủy bỏ",
+      "statutoryUnsavedDiscard": "Bỏ & Rời đi",
+      "statutoryUnsavedSave": "Lưu & Rời đi",
+      "statutoryCardSetUp": "Đã thiết lập",
+      "statutoryCardNotSetUp": "Chưa thiết lập"
     },
     "systemLabels": {
       "pageTitle": "Nhãn hệ thống",

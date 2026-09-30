@@ -98,6 +98,9 @@ import {
   removeCompanyStatutoryAuthorityAction,
   setCompanyStatutoryAuthorityAction,
 } from '../app/admin/actions';
+// 15e5bd93 rev 4 (r370) — the screen-wide Save, recovered from r352 (d991c149) and re-pointed. It RETURNS
+// a TabSaveResult rather than redirecting, so §4 reads its answer instead of catching a RedirectError.
+import { saveCompanyStatutoryTabAction } from '../app/admin/organization/statutory-tab-actions';
 import { STATUTORY_AUTHORITIES } from '../lib/statutory-authorities';
 
 let b: Base;
@@ -332,12 +335,16 @@ describe('§2 the fence on the server', () => {
   /**
    * ⚠️ RE-POINTED BY REVISION 3 (r355). r353 asserted
    * `expect(pathname).toBe(`${LIST}/${b.companyId}/statutory`)` — the setup screen WAS the form, because the
-   * eight editors were on it. The reporter contested that shape and asked for one body per screen, so "the
-   * screen with that card open" is now `…/statutory/<body>?mode=edit`. Sending the refusal to the list would
-   * put the message on a page with no such box on it, which is the mistake app/admin/_redirects.ts records
-   * `failCompany` as having made before.
+   * eight editors were on it. r355 sent the refusal to `…/statutory/<body>?mode=edit`, because the list
+   * had become a table of rows and that page was the only one holding the boxes the message was about.
+   *
+   * ⚠️ REVERSED BY REVISION 4 (r370), AND THE RULE IS WHAT REVERSED IT. The reporter contested the
+   * per-body page as "an unnecessary intermediate page"; every body's form is on `…/statutory` again, so
+   * THAT is the screen that holds the boxes, and sending the refusal there satisfies exactly the
+   * requirement r355's split was built for — app/admin/_redirects.ts's own record of `failCompany`
+   * having "showed the refusal on a screen that no longer held the form it was about".
    */
-  it('a refused save reaches the BODY’s edit screen with the message, and leaves no row behind', async () => {
+  it('a refused save reaches the statutory screen with the message, and leaves no row behind', async () => {
     const { pathname, q } = parse(
       await redirectOf(() =>
         setCompanyStatutoryAuthorityAction(
@@ -345,8 +352,9 @@ describe('§2 the fence on the server', () => {
         ),
       ),
     );
-    expect(pathname).toBe(`${LIST}/${b.companyId}/statutory/lhdn`);
-    expect(q.get('mode'), 'with the form open, not read-only').toBe('edit');
+    expect(pathname).toBe(`${LIST}/${b.companyId}/statutory`);
+    expect(q.get('mode'), 'no mode survives the page that read one').toBeNull();
+    expect(pathname, 'and no posted body reaches the path any more').not.toContain('/lhdn');
     expect(q.get('error')).toBeTruthy();
     expect(await authorityRow(b.companyId, 'lhdn'), 'the refused body has no row').toBeUndefined();
   });
@@ -368,7 +376,7 @@ describe('§2 the fence on the server', () => {
 
 // ── §3 ─────────────────────────────────────────────────────────────────────────────────────────────
 describe('§3 the reporter’s fourth approved point: stay here, and say what was saved', () => {
-  it('a save from the body screen returns to the LIST, naming the body', async () => {
+  it('a card save returns to the statutory screen, naming the body', async () => {
     const { pathname, q } = parse(
       await redirectOf(() => setCompanyStatutoryAuthorityAction(cardPost('epf', { accountNo: 'A-1' }))),
     );
@@ -418,8 +426,9 @@ describe('§3 the reporter’s fourth approved point: stay here, and say what wa
     f.set('authority', 'zakat');
     f.set('returnTo', RETURN_TO_SETUP);
     const { pathname, q } = parse(await redirectOf(() => removeCompanyStatutoryAuthorityAction(f)));
-    // rev 3 — the LIST, where the row the operator just cleared now reads Not Configured. That visible change
-    // is the confirmation the toast cannot give, which is why the generic "Removed" is enough here.
+    // rev 4 — the statutory screen, where the card the operator just cleared now reads "Not set up". That
+    // visible change is the confirmation the toast cannot give, which is why the generic "Removed" is
+    // enough here.
     expect(pathname).toBe(`${LIST}/${b.companyId}/statutory`);
     expect(q.get('toast')).toBe('Removed');
     expect(await authorityRow(b.companyId, 'zakat'), 'and it really cleared the row').toBeUndefined();
@@ -435,5 +444,237 @@ describe('§3 the reporter’s fourth approved point: stay here, and say what wa
     f.set('companyId', '');
     const { pathname } = parse(await redirectOf(() => setCompanyStatutoryAuthorityAction(f)));
     expect(pathname, 'no double slash, no empty segment').toBe(LIST);
+  });
+});
+
+// ── §4 ─────────────────────────────────────────────────────────────────────────────────────────────
+/**
+ * ⚠️ THE ONE SAVE FOR THE WHOLE SCREEN, RUN AGAINST A REAL DATABASE — 15e5bd93 REVISION 4 (r370).
+ *
+ * The reporter has asked for this in every version of their request and we have never built it: "Provide
+ * one Save button for the entire Statutory Payment Setup screen… Save all changes together… remain on the
+ * same screen." `app/admin/organization/statutory-tab-actions.ts` is r352's writer, recovered from
+ * d991c149 and re-pointed at the dedicated screen.
+ *
+ * ⚠️ THE LOAD-BEARING CLAIM OF THIS ROUND IS THAT IT WRITES ONLY THE BODIES THE OPERATOR TOUCHED, AND IT
+ * IS ASSERTED HERE RATHER THAN DESCRIBED. A Save that wrote all eight would CREATE a
+ * `company_statutory_authority` row for every body and flip every "Not set up" card to "Set up" — eight
+ * statutory bodies registered because somebody fixed a postcode, with no error, a 200, and nothing on
+ * screen saying it had happened. A test that passed while all eight were written would be the worst
+ * outcome this round could ship, so the row COUNT is asserted, by body, not merely "the one I asked for
+ * is there".
+ *
+ * The client half — that the payload names only the dirty sections — is driven through real events in
+ * test/15e5bd93-statutory-screen.dom.test.tsx §2. This is the server refusing to over-reach even if that
+ * half ever regressed, which is the whole reason the check exists twice.
+ */
+describe('§4 the screen-wide Save writes only what was touched', () => {
+  /** One section's contribution to the consolidated payload, in the wire format lib/tab-save-dom.ts builds. */
+  function section(f: FormData, authority: string, fields: Record<string, string>): void {
+    for (const [k, v] of Object.entries(fields)) f.append(`section.${authority}.${k}`, v);
+  }
+  /** Everything one card posts, namespaced — including the absences, which are the r226 contract. */
+  function cardSection(f: FormData, authority: string, over: Record<string, string> = {}): void {
+    section(f, authority, {
+      companyId: b.companyId,
+      authority,
+      returnTo: RETURN_TO_SETUP,
+      accountNo: '',
+      bankProfileId: '',
+      addressLine1: '',
+      addressLine2: '',
+      addressLine3: '',
+      city: '',
+      state: '',
+      postcode: '',
+      country: '',
+      phone: '',
+      email: '',
+      signatoryPersonId: '',
+      ...over,
+    });
+  }
+  const screenPost = (sections: string[]) => {
+    const f = new FormData();
+    f.set('companyId', b.companyId);
+    f.set('tab', 'statutory');
+    f.set('sections', sections.join(','));
+    return f;
+  };
+  const allRows = async (companyId: string) =>
+    (
+      await owner.db
+        .select()
+        .from(schema.companyStatutoryAuthority)
+        .where(eq(schema.companyStatutoryAuthority.companyId, companyId))
+    )
+      .map((r) => r.authority)
+      .sort();
+
+  it('creates a row for the ONE body named, and for no other body at all', async () => {
+    const f = screenPost(['epf']);
+    cardSection(f, 'epf', { accountNo: 'EPF-ACC', filingCountry: 'MY', epfEmployerNo: 'E-1' });
+    const result = await saveCompanyStatutoryTabAction(f);
+    expect(result.ok, result.error).toBe(true);
+    expect(result.saved, 'and it reports what it wrote').toEqual(['epf']);
+    expect((await authorityRow(b.companyId, 'epf')).accountNo).toBe('EPF-ACC');
+    expect((await identityRow(b.companyId)).epfEmployerNo, 'both halves, from one Save').toBe('E-1');
+    /**
+     * ⚠️ THE ASSERTION THAT FAILS IF THE SAVE EVER WRITES EVERYTHING. Not "socso is absent" — the whole
+     * table for this company, as an exact list, so seven invented rows cannot hide behind a spot check.
+     */
+    expect(await allRows(b.companyId), 'exactly one row exists').toEqual(['epf']);
+  });
+
+  it('writes two bodies when two are named, and still creates nothing for the other six', async () => {
+    const f = screenPost(['epf', 'lhdn']);
+    cardSection(f, 'epf', { accountNo: 'EPF-ACC' });
+    cardSection(f, 'lhdn', { city: 'Putrajaya', filingCountry: 'MY', lhdnEmployerNo: 'E-777' });
+    const result = await saveCompanyStatutoryTabAction(f);
+    expect(result.ok, result.error).toBe(true);
+    expect(await allRows(b.companyId)).toEqual(['epf', 'lhdn']);
+    expect((await authorityRow(b.companyId, 'lhdn')).city).toBe('Putrajaya');
+    expect((await identityRow(b.companyId)).lhdnEmployerNo).toBe('E-777');
+  });
+
+  /**
+   * ⚠️ THE NAMED SET IS THE FENCE, NOT THE PACKED SET. A payload that CARRIES a section's fields but does
+   * not NAME it in `sections` must not write it — which is the shape a future client bug would take
+   * (packing every section, naming only the dirty ones), and the one that would silently register seven
+   * bodies.
+   */
+  it('ignores a section whose fields are present but which the client did not name', async () => {
+    const f = screenPost(['epf']);
+    cardSection(f, 'epf', { accountNo: 'EPF-ACC' });
+    cardSection(f, 'socso', { accountNo: 'SHOULD-NOT-BE-WRITTEN' });
+    const result = await saveCompanyStatutoryTabAction(f);
+    expect(result.ok, result.error).toBe(true);
+    expect(result.saved).toEqual(['epf']);
+    expect(await allRows(b.companyId), 'SOCSO was carried, not named, and not written').toEqual(['epf']);
+  });
+
+  /**
+   * THE r226 DATA LOSS, ON THE CONSOLIDATED PATH. `company_statutory_my` is ONE row holding five numbers
+   * and the writer is a PARTIAL PATCH: an ABSENT key means "leave the stored value alone". Saving EPF
+   * must not blank SOCSO's or LHDN's number, or SSM, or MyInvois — and on THIS screen that is reachable
+   * on every single Save, because all eight cards are in one payload's reach.
+   */
+  it('saving one body cannot blank another body’s filing number, or SSM, or MyInvois', async () => {
+    await owner.db.insert(schema.companyStatutoryMy).values({
+      tenantId: b.tenantId,
+      companyId: b.companyId,
+      epfEmployerNo: 'E-OLD',
+      socsoEmployerCode: 'S-KEEP',
+      lhdnEmployerNo: 'L-KEEP',
+      myinvoisTin: 'TIN-KEEP',
+      ssmRegistrationNo: 'SSM-KEEP',
+    });
+    const f = screenPost(['epf']);
+    cardSection(f, 'epf', { accountNo: 'A', filingCountry: 'MY', epfEmployerNo: 'E-NEW' });
+    expect((await saveCompanyStatutoryTabAction(f)).ok).toBe(true);
+    const row = await identityRow(b.companyId);
+    expect(row.epfEmployerNo, 'the one that was on the card').toBe('E-NEW');
+    expect(row.socsoEmployerCode, 'absent means leave alone, never ""').toBe('S-KEEP');
+    expect(row.lhdnEmployerNo).toBe('L-KEEP');
+    expect(row.myinvoisTin).toBe('TIN-KEEP');
+    expect(row.ssmRegistrationNo).toBe('SSM-KEEP');
+  });
+
+  /**
+   * THE VOCABULARY IS THE EIGHT BODIES AND NOTHING ELSE. r352's order opened with an `identity` section
+   * for the SSM / MyInvois card; this screen prints that identity READ-ONLY and those two numbers keep
+   * their one editor on the company panel, so the section id is not in the vocabulary and a crafted
+   * payload naming it is refused BEFORE anything is written.
+   */
+  it('refuses a section this screen does not own, before writing a byte', async () => {
+    for (const bogus of ['identity', 'company', 'bank', 'delete', 'koperasi', '']) {
+      const f = screenPost(['epf', bogus].filter(Boolean));
+      cardSection(f, 'epf', { accountNo: 'EPF-ACC' });
+      section(f, bogus, { companyId: b.companyId, ssmRegistrationNo: 'PWNED' });
+      const result = await saveCompanyStatutoryTabAction(f);
+      if (bogus === '') {
+        // An empty name is filtered out of the list rather than refused; EPF still writes.
+        expect(result.ok, 'an empty section name is not a section').toBe(true);
+        expect(await allRows(b.companyId)).toEqual(['epf']);
+        continue;
+      }
+      expect(result.ok, bogus).toBe(false);
+      expect(result.failedSection, bogus).toBe(bogus);
+      expect(result.saved, 'and nothing was written before the refusal').toEqual([]);
+      expect(await allRows(b.companyId), `${bogus}: no row was created`).toEqual([]);
+      expect(await identityRow(b.companyId), `${bogus}: and no identity row either`).toBeUndefined();
+    }
+  });
+
+  /**
+   * THE COMPANY IS FORCED FROM THE ONE TRUSTED TOP-LEVEL VALUE. Eight hidden `companyId` copies in one
+   * payload are eight chances for a crafted request to point one body's write at another company's row,
+   * so `statutorySectionFormData` drops every section-level copy and sets the top-level one.
+   */
+  it('writes the top-level company even when a section claims a different one', async () => {
+    const f = screenPost(['epf']);
+    cardSection(f, 'epf', { companyId: other, accountNo: 'MINE' });
+    expect((await saveCompanyStatutoryTabAction(f)).ok).toBe(true);
+    expect((await authorityRow(b.companyId, 'epf')).accountNo).toBe('MINE');
+    expect(await authorityRow(other, 'epf'), 'the other company got nothing').toBeUndefined();
+  });
+
+  /**
+   * THE BODY IS THE SECTION ID, NEVER THE FORM'S OWN HIDDEN COPY — the same move, for the same reason.
+   * The card really does carry `name="authority"` (a refused Clear needs it), so this is reachable.
+   */
+  it('writes the body the SECTION names, not the one the section’s hidden input claims', async () => {
+    const f = screenPost(['epf']);
+    cardSection(f, 'epf', { authority: 'socso', accountNo: 'EPF-ACC' });
+    expect((await saveCompanyStatutoryTabAction(f)).ok).toBe(true);
+    expect(await allRows(b.companyId), 'the section id decided it').toEqual(['epf']);
+  });
+
+  /**
+   * A REFUSAL RETURNS RATHER THAN REDIRECTING, and it NAMES the body that did not commit — which is the
+   * whole reason this action returns a `TabSaveResult`: a redirect cannot say which of eight writes
+   * failed, and the client marks exactly the committed sections clean so the rest stay edited on screen.
+   * Written as `order`-first so a body earlier in the controlled set really does commit before the one
+   * that fails.
+   */
+  it('reports which body failed, keeps what committed, and stays out of the redirect business', async () => {
+    const f = screenPost(['epf', 'socso']);
+    cardSection(f, 'epf', { accountNo: 'EPF-OK' });
+    cardSection(f, 'socso', { bankProfileId: '00000000-0000-4000-8000-000000000000' });
+    const result = await saveCompanyStatutoryTabAction(f);
+    expect(result.ok).toBe(false);
+    expect(result.failedSection).toBe('socso');
+    expect(result.saved, 'EPF committed before it').toEqual(['epf']);
+    expect(result.error, 'with the message the service gave').toBeTruthy();
+    expect(await allRows(b.companyId), 'and the refused body has no row').toEqual(['epf']);
+  });
+
+  /** A body with no filing control posts no pack flag, so no identity row may be invented for it. */
+  it('writes nothing towards the identity row for a body with no filing control', async () => {
+    const f = screenPost(['ptptn']);
+    cardSection(f, 'ptptn', { accountNo: 'PTPTN-ACC' });
+    expect((await saveCompanyStatutoryTabAction(f)).ok).toBe(true);
+    expect((await authorityRow(b.companyId, 'ptptn')).accountNo).toBe('PTPTN-ACC');
+    expect(await identityRow(b.companyId), 'no identity row was invented').toBeUndefined();
+  });
+
+  /**
+   * AND THE COLLISION THE RENAME EXISTS FOR, ON THE CONSOLIDATED PATH. The card posts a VISIBLE postal
+   * `country` ("Malaysia") and a HIDDEN `filingCountry` ("MY"). If the pack lookup ever read `country`
+   * again the Save would die with "No statutory pack for Malaysia" — which is what happened in r352,
+   * and this screen puts EIGHT visible postal `country` selects into one scope.
+   */
+  it('a postal country of "Malaysia" in the same section does not poison the pack lookup', async () => {
+    const f = screenPost(['lhdn']);
+    cardSection(f, 'lhdn', {
+      filingCountry: 'MY',
+      lhdnEmployerNo: 'E-888',
+      country: 'Malaysia',
+      city: 'Ipoh',
+    });
+    const result = await saveCompanyStatutoryTabAction(f);
+    expect(result.ok, result.error).toBe(true);
+    expect((await identityRow(b.companyId)).lhdnEmployerNo).toBe('E-888');
+    expect((await authorityRow(b.companyId, 'lhdn')).country).toBe('Malaysia');
   });
 });

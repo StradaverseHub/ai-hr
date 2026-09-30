@@ -160,6 +160,25 @@ classification confirms the plan's buckets.** What it does not confirm is that t
 > ⚠️ NOTHING IN THIS FINDING MOVES WITH IT. The Company Registrations card is still alone on the Statutory
 > tab with its own Save; a one-card scope is still worse than none; and the body editors are still outside
 > any scope, one form per request. The split changed which ROUTE holds the form, not who owns what.
+>
+> **r370 says: the reporter contested r355 too, and this time somebody rendered the screen and measured
+> it.** That table laid out 42–322px wider than its container — the body description carried `truncate`,
+> whose `white-space: nowrap` fixes a cell's min-content at the whole 132-character string — so the Action
+> column, both its links and its heading, was never painted. The reporter called the page it drilled into
+> "an unnecessary intermediate page". `/admin/organization/[companyId]/statutory/[authority]` is DELETED;
+> every body is a card on `/admin/organization/[companyId]/statutory` with its fields already open.
+>
+> ⚠️ AND ONE SENTENCE OF THIS FINDING DOES MOVE, FOR THE FIRST TIME. "The body editors are still outside
+> any scope, one form per request" has stopped being true: the eight editors are now under ONE
+> `TabSaveScope` on that screen, with `app/admin/organization/statutory-tab-actions.ts` — r352's writer,
+> recovered from d991c149 — behind it. That is the reporter's own expected_function, asked for in all
+> three of their submissions and never built until now: "Provide one Save button for the entire Statutory
+> Payment Setup screen… Save all changes together… remain on the same screen."
+>
+> ⚠️ WHAT FINDING 1 STILL SAYS, UNCHANGED. The Company Registrations card is STILL alone on the Statutory
+> TAB with its own Save, and a one-card scope there is still worse than none. The new scope is on a
+> different SCREEN, over eight cards it really owns. And "Clear this authority" is still bucket (b): its
+> own form, outside the section marker, so a screen-wide Save can never appear to cover a deletion.
 
 The panel is three tabs: **General | Bank Account | Statutory**. The (a) forms sit like this:
 
@@ -324,6 +343,14 @@ a change to a component four other tabs depend on and is not this item's to make
 > A REFUSAL is not a save: the message is about boxes that exist only on the per-body route, and sending it to
 > the list would re-commit the mistake `failCompany`'s own note in `app/admin/_redirects.ts` records ("a
 > refused save … showed the refusal on a screen that no longer held the form it was about").
+>
+> **15e5bd93 REVISION 4 (r370) REMOVES THE FOURTEENTH AGAIN, and the reasoning above is what removes it.**
+> The reporter contested the per-body route as "an unnecessary intermediate page"; every body's form is on
+> `…/statutory` itself, so THAT is now "the screen that holds the form the refusal is about" and both
+> outcomes land there. `failStatutoryBody` and `companyStatutoryBodyPath` are deleted from
+> `app/admin/_redirects.ts` with the page, and no posted value reaches a redirect path from this flow.
+> A third destination was never added: the screen-wide Save does not redirect at all, it returns a
+> `TabSaveResult` naming the bodies that committed.
 >
 > ⚠️ ONE MARKER, TWO DESTINATIONS, CHOSEN BY OUTCOME. `returnTo=statutory-setup` did NOT gain a second value
 > for the second route: it means "this came from the statutory setup flow", and the action then picks the

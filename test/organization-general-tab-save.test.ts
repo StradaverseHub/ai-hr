@@ -341,10 +341,12 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
     const ids = marked.map((f) => /data-save-section="([^"]+)"/.exec(f.attrs)?.[1]);
     expect(ids).toEqual([...COMPANY_GENERAL_TAB_SECTION_ORDER]);
     // The statutory bodies still exist and are still eight; what changed is where they are EDITED. Their
-    // read-only rows are on this panel, the dedicated list is a table of rows, and ONE body's fields are a
-    // screen of their own (15e5bd93 rev 3, r355) — none of which is a section of a scope here.
-    // test/company-panel-bank-statutory-layout.test.ts and test/statutory-body-screen-render.test.ts own that
-    // half. (This comment named test/statutory-setup-screen.test.ts, a file that has never existed.)
+    // read-only rows are on this panel, and every body's FIELDS are a card on the dedicated statutory
+    // screen, under a save scope of that screen's own (15e5bd93 rev 4, r370 — r355's per-body page was
+    // contested as "an unnecessary intermediate page" and is deleted). None of that is a section of a
+    // scope HERE, which is all this case claims: the General tab's scope owns three sections and no more.
+    // test/company-panel-bank-statutory-layout.test.ts and test/statutory-body-screen-render.test.ts own
+    // that half. (This comment once named test/statutory-setup-screen.test.ts, a file that never existed.)
     expect(STATUTORY_AUTHORITIES.length, 'the controlled set is untouched by this move').toBe(8);
     for (const a of STATUTORY_AUTHORITIES) {
       expect(ids, `no statutory section marker survives on this screen: ${a}`).not.toContain(a);
@@ -378,7 +380,8 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
     // Identified by a field only that form carries. `archived` is the archive/unarchive marker,
     // `debitAccountNo` a bank-account editor (one saved + one blank "add"), `ssmRegistrationNo` the
     // registrations card, and a lone `id`+`companyId` pair is a REMOVE form (the bank profile's; the
-    // authority's went to the dedicated statutory screen with the editor it belongs to).
+    // authority's "Clear" went to the dedicated statutory screen with the editor it belongs to, and is
+    // still outside that screen's Save — bucket (b) on both surfaces).
     const signature = (body: string) =>
       /name="archived"/.test(body)
         ? 'archive'

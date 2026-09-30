@@ -7574,7 +7574,16 @@
       "backToStatutorySetup": "กลับไปที่การตั้งค่าการชำระเงินตามกฎหมาย",
       "statutoryIdentityHint": "ข้อมูลประจำตัวของบริษัทนี้ต่อแต่ละหน่วยงาน โปรดยืนยันก่อนแก้ไขสิ่งใดด้านล่าง แก้ไขได้ที่แท็บตามกฎหมายและที่หน้าจอของแต่ละหน่วยงาน",
       "statutoryBodyViewCaption": "ข้อมูลที่บันทึกไว้สำหรับหน่วยงานนี้ กด แก้ไข เพื่อเปลี่ยนแปลง",
-      "statutoryBodyEditCaption": "ที่นี่แก้ไขเฉพาะหน่วยงานนี้ การบันทึกจะเขียนข้อมูลและพากลับไปที่รายการ"
+      "statutoryBodyEditCaption": "ที่นี่แก้ไขเฉพาะหน่วยงานนี้ การบันทึกจะเขียนข้อมูลและพากลับไปที่รายการ",
+      "statutoryScreenSave": "บันทึกการเปลี่ยนแปลงทั้งหมด",
+      "statutoryScreenCancel": "ยกเลิก",
+      "statutoryUnsavedTitle": "คุณมีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก",
+      "statutoryUnsavedBody": "ต้องการออกจากหน้านี้โดยไม่บันทึกหรือไม่",
+      "statutoryUnsavedCancel": "ยกเลิก",
+      "statutoryUnsavedDiscard": "ละทิ้งและออก",
+      "statutoryUnsavedSave": "บันทึกและออก",
+      "statutoryCardSetUp": "ตั้งค่าแล้ว",
+      "statutoryCardNotSetUp": "ยังไม่ได้ตั้งค่า"
     },
     "systemLabels": {
       "pageTitle": "ป้ายระบบ",
