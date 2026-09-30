@@ -135,14 +135,14 @@ export function borangARows(form: BorangAForm): BorangARow[] {
  * while the route still answers 200 means a bookmarked link files a Borang A with somebody's No. Ahli box
  * empty. `includeIncomplete` exists for the REVIEW screen alone, which must be able to render the table
  * in order to name who is missing.
- */
-/**
- * r372 (item f022dd70) — THE PAYROLL CYCLES THIS DOWNLOAD COVERS, read off the SAME query the rest of the
- * per-generation inputs are read from, and validated in ONE place (lib/payroll-run-selection.ts) so the
- * three statutory formats cannot disagree about what a bad value means. NO run parameters ⇒ `undefined` ⇒
- * the whole month, which is what every link written before this round is and what every other surface
- * (the review screen, the PDF, the text export) still sends. An INVALID one is refused rather than
- * dropped: dropping it would produce a file over a different population from the one the URL asked for.
+ *
+ * ── r372 (item f022dd70): THE PAYROLL CYCLES THIS DOWNLOAD COVERS ─────────────────────────────────
+ * Read off the SAME query the rest of the per-generation inputs are read from, and validated in ONE place
+ * (lib/payroll-run-selection.ts) so the three statutory formats cannot disagree about what a bad value
+ * means. NO run parameters ⇒ `undefined` ⇒ the whole month, which is what every link written before this
+ * round is and what every other surface (the review screen, the PDF, the text export) still sends. An
+ * INVALID one is REFUSED rather than dropped: dropping it would build the file over a different population
+ * from the one the URL named, which is the reporter's acceptance criterion read backwards.
  */
 export async function loadBorangA(p: {
   companyId: string;
