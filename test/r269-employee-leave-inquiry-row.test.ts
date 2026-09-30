@@ -70,6 +70,23 @@ vi.mock('next/navigation', () => ({
   notFound: () => {
     throw new Error('NEXT_NOT_FOUND');
   },
+  /**
+   * r369 (9949f91a) — THIS MOCK GREW A ROUTER BECAUSE THE SCREEN GREW A CLIENT COMPONENT.
+   *
+   * Employee Balances and Employee Leave Records now mount `CollapsibleEmployeePanel`, which is
+   * `'use client'` and calls `useRouter()` at module scope of its body. Outside an App Router context
+   * that throws "No 'useRouter' export is defined on the 'next/navigation' mock", so every case in this
+   * file went red on a render it had always been able to do — nothing about what it asserts changed.
+   *
+   * Same fix and same reasoning as test/company-panel-no-disclosure-render.test.ts, whose header records
+   * it for the same cause. The panel only ever calls `router.push`; `refresh` and `replace` are here for
+   * parity with that precedent so the next component to arrive does not need a third variant.
+   *
+   * Worth recording HOW this was found: it is a CROSS-BRANCH interaction that no per-branch targeted run
+   * could see. The branch that mounted the panel did not touch this file, and the branch that touched
+   * this file had not yet mounted the panel. Only the full gate over the merged tree fails here.
+   */
+  useRouter: () => ({ push: () => {}, refresh: () => {}, replace: () => {} }),
 }));
 vi.mock('next-intl/server', async () => {
   const { createTranslator: make } = await import('next-intl');
@@ -400,7 +417,35 @@ describe('5ca446db — the row lands somewhere usable: Employee Balances renders
       expect(html, label).toContain(CATALOGUES.en.leave.inquiry[label]);
     // With no `emp=` the page renders the picker rather than an error — which is what makes the new row a
     // legitimate destination in its own right.
-    expect(html).toContain('name="emp"');
-    expect(html).toContain(`action="${BALANCES_HREF}"`);
+    //
+    // ── r369 (9949f91a): THE PROPERTY IS UNCHANGED, THE PICKER IS NOT ───────────────────────────────────
+    // This used to read:
+    //     expect(html).toContain('name="emp"');
+    //     expect(html).toContain(`action="${BALANCES_HREF}"`);
+    // i.e. it proved "there is a picker" by finding a GET form with an `emp` field on it. 9949f91a
+    // replaced that filter-row field with the shared CollapsibleEmployeePanel, which selects by pushing
+    // `?emp=` through the router rather than by submitting a form — so the old proxy is gone while the
+    // thing it stood for is not. The assertion is REPOINTED at the new picker, not relaxed: the panel
+    // must be on screen AND the page must say what it is waiting for, which is strictly more than the
+    // old form-field check proved. `?emp=` remains the contract (test/employee-scope-panel-guard.ts
+    // pins the round trip); this file's job is only that the screen is a usable destination with no id.
+    expect(html, 'the employee panel is the picker now').toContain(CATALOGUES.en.leave.inquiry.panelHeading);
+    expect(html, 'and it says how to use it').toContain(CATALOGUES.en.leave.inquiry.panelHint);
+    // The empty state must be DRAWN — that is the property. Which sentence it carries depends on the
+    // scope, and this file's fixture has no employees in it, so the page correctly says "no employees in
+    // scope" rather than "pick one". Asserting `pickEmployeeBalances` here would have been asserting the
+    // wrong branch and would have read as a page defect; the `data-testid` hook the page carries is what
+    // makes the state itself checkable either way.
+    expect(html, 'the page draws its empty state rather than an empty table').toContain(
+      'data-testid="pick-employee"',
+    );
+    expect(
+      html.includes(CATALOGUES.en.leave.inquiry.noEmployees) ||
+        html.includes(CATALOGUES.en.leave.inquiry.pickEmployeeBalances),
+      'and that state says something from the catalogue, not a hardcoded string',
+    ).toBe(true);
+    expect(html, 'a scope with no employees says so, rather than asking for a pick that cannot be made').toContain(
+      CATALOGUES.en.leave.inquiry.noEmployees,
+    );
   });
 });
