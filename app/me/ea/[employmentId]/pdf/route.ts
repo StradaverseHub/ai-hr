@@ -1,8 +1,15 @@
 // ADR-0036 (#22 follow-up) — stream a self-serve annual EA (C.P.8A) statement as a downloadable A4 PDF.
-// ABAC is inherited from employeeEaStatement → the MY pack's eaStatement, which is RLS-gated: the read
-// returns null unless the caller may see the employment (own, a report's/subordinate's via
-// can_see_employment, or admin via is_admin_for — db/migrations 0010/0016/0017). So an employee can only
-// pull their own (or a subordinate's, or — as admin — their company's) EA. Mirrors the payslip-pdf route.
+//
+// ABAC is inherited from employeeEaStatement, which since security finding H4 gates on PAYROLL-STAFF-OR-SELF
+// before it reads anything, with RLS still fencing what that caller may reach. Null → 404 here.
+//
+// THE OLD COMMENT HERE DESCRIBED THE DEFECT AS THE DESIGN, and is retired deliberately rather than deleted.
+// It read: "the read returns null unless the caller may see the employment (own, a report's/subordinate's
+// via can_see_employment, or admin via is_admin_for — db/migrations 0010/0016/0017). So an employee can
+// only pull their own (or a subordinate's, or — as admin — their company's) EA." A subordinate's EA is
+// exactly what a line manager must NOT be able to pull: the form carries their IC or passport, their tax
+// number and the year's full remuneration. The HTML page was guarded when 0492 landed and this route was
+// not, so the guard was one URL away from being bypassed. Mirrors the payslip-pdf route.
 import { getLocale } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { employeeEaCompanies, employeeEaStatement } from '@/core/reporting';

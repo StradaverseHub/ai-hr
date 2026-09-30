@@ -9840,7 +9840,10 @@ export function paymentSummaryForBatch(ctx: SessionContext, batchId: string) {
 }
 
 /** A single payslip's full breakdown for the employee detail/print view. RLS scopes it to
- *  what the caller may see (the employee sees their own via can_see_employment).
+ *  what the caller may see: after security H4 / migration 0492 that is a company-scoped payroll admin,
+ *  or the employee themselves. THE OLD CLAIM HERE READ "the employee sees their own via
+ *  can_see_employment" — true of the self case, but `can_see_employment` also admitted the employee's
+ *  line manager and HOD to a subordinate's net pay and bank account, which is the hole 0492 closed.
  *
  *  5c198931 WIDENED IT so the employee's own downloaded payslip is the SAME document as the admin review
  *  copy — it was a thin half page carrying neither the employee's identity and statutory numbers, nor

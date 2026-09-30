@@ -38,6 +38,7 @@ import {
 } from '../db/schema';
 import { evaluateAllowancesForPeriod } from './attendance-allowance';
 import { packFor } from '../localization/registry';
+import { isAdmin, canManagePayroll } from '../lib/authz';
 // Rung 5a (ADR-0080 D1): report/EA types come from the pack CONTRACT, never from localization/my.
 import type {
   EaStatement,
@@ -708,8 +709,48 @@ async function eaEmployerCountry(
 }
 
 /**
- * Per-employee EA statement for a tax year, via the EMPLOYER'S jurisdiction pack. RLS scopes
- * visibility: an employee sees only their own (+ reports'); admins see their company scope.
+ * Security assessment 2026-09, finding H4 — WHO MAY READ AN EA STATEMENT AT ALL.
+ *
+ * ── THE OLD CLAIM, RETIRED HERE ──────────────────────────────────────────────────────────────────────
+ * Both EA seams below used to document their authorization as "RLS scopes visibility: an employee sees
+ * only their own (+ reports'); admins see their company scope", and `app/me/ea/[employmentId]/pdf/route.ts`
+ * says the same in as many words: "an employee can only pull their own (or a subordinate's, or — as admin
+ * — their company's) EA". THE SUBORDINATE CASE WAS THE DEFECT, not a feature. An EA form prints the
+ * person's IC or passport, their tax number and every ringgit the employer paid them for the year; a line
+ * manager is not entitled to any of it. The exploit was verified by direct URL.
+ *
+ * ── WHY THE GUARD IS HERE AND NOT ONLY ON THE SCREEN ─────────────────────────────────────────────────
+ * The remediation that introduced migration 0492 guarded the HTML page and nothing else. That left the PDF
+ * route — same document, same IC, same tax number, one URL away — reading through RLS alone, and
+ * `test/0492-payslip-statutory-privacy.test.ts` demonstrated that a manager still got a full statement
+ * back. Migration 0492 could not close it either: the EA read resolves through `employment` and the pack's
+ * own aggregates, not through `payslip_rls`.
+ *
+ * So the gate sits at the seam every door already goes through — one authoritative owner of the decision,
+ * which is the point. The page keeps its own check as defence in depth.
+ *
+ * Payroll-staff-or-self, deliberately the same predicate the page uses. Note this is a CEILING, not a
+ * grant: RLS still fences everything underneath, so a payroll admin for one company cannot reach another
+ * company's people by passing this.
+ */
+async function eaReadableBy(ctx: SessionContext, employmentId: string): Promise<boolean> {
+  if (isAdmin(ctx) || canManagePayroll(ctx)) return true;
+  if (!ctx.personId) return false;
+  // Self only. Read against `employment.person_id` rather than a cached list so a second concurrent
+  // employment — the case the EA itself exists to handle — is included without a second source of truth.
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ id: employment.id })
+      .from(employment)
+      .where(and(eq(employment.id, employmentId), eq(employment.personId, ctx.personId!)))
+      .limit(1);
+    return !!row;
+  });
+}
+
+/**
+ * Per-employee EA statement for a tax year, via the EMPLOYER'S jurisdiction pack. Payroll-staff-or-self
+ * (see eaReadableBy); RLS then scopes what that caller may actually reach.
  *
  * The pack comes from `p.companyId` when the caller names an employer (the EA screen's employer switcher
  * and the PDF route's `?company=` both do) — see `eaEmployerCountry`.
@@ -718,6 +759,7 @@ export async function employeeEaStatement(
   ctx: SessionContext,
   p: { employmentId: string; year: string; companyId?: string },
 ): Promise<EaStatement | null> {
+  if (!(await eaReadableBy(ctx, p.employmentId))) return null;
   const country = await eaEmployerCountry(ctx, p);
   if (country === undefined) return null;
   const pack = packFor(country);
@@ -760,6 +802,10 @@ export async function employeeEaCompanies(
   ctx: SessionContext,
   p: { employmentId: string; year: string },
 ): Promise<{ companyId: string; name: string; isCurrent: boolean }[]> {
+  // H4: this is the PDF route's `?company=` validator and the source `employeeEaStatements` fans out
+  // from, so it carries the same ceiling as employeeEaStatement. An empty list is what both callers
+  // already treat as "nothing to show", so no caller learns whether the employment exists.
+  if (!(await eaReadableBy(ctx, p.employmentId))) return [];
   const country = await eaEmployerCountry(ctx, { employmentId: p.employmentId });
   if (country === undefined) return [];
   const pack = packFor(country);
