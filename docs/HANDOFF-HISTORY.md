@@ -1,3 +1,60 @@
+## r367 (2026-09-30) — four items, and three of them were about a figure the product could not justify. `main@0c735980`, **no migration**.
+
+Closed: `073233bb` (round A of B), `fda53352` (round A of C), `67268d83` (round 1 of 3), `e0b6e3b8`. Gate: **1065 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, zero AssertionErrors, first attempt. `tsc` 0, `next build` 0, `i18n-check` PASS, `gate:shadow` PASS 404/404.
+
+### 073233bb — A MONEY DEFECT r362 SHIPPED, AND THE REPORTER'S OWN TICKET DESCRIBED IT BACKWARDS
+
+The Leave History Import wrote `leave_request` rows and **no ledger debit**, on the strength of a sentence the product shows the user and cannot verify: *"The balances you migrate already have this leave removed from them."* That is an assumption about the customer's data. It is false whenever entitlement comes from the entitlement tables with zero brought-forward — this reporter's setup — so the leave was recorded and **never deducted**, and **unused-leave encashment at resignation overpaid by exactly the imported days**.
+
+The ticket's prose says records are missing and Taken is populated. **Their own attachment shows the opposite** — six records present, Taken 0.00. The plan was built from the screenshots, not the prose.
+
+The import now writes the debit in the same per-row transaction, on the resolved deduction source. The net-opening-balance case is **preserved, not removed**, as an explicit per-run choice defaulting to deduct, resolved in one place both the screen and the server read. A balance-impact preview renders above Confirm, and a below-zero result is **flagged, never refused** — an employee who genuinely took more than they had earned is a fact about the past.
+
+**THE BUILDER OVERRULED MY INSTRUCTION, AND WAS RIGHT.** I said to gate the three inverted exclusions on "whether a sourced debit exists, not on the import marker". Taken literally that reaches far past this item: production holds approved rows from older code, data fixes and other importers, none carrying a sourced debit, and a pure ledger gate would have **silently stopped deducting unpaid days for all of them** — a salary moving on rows nobody reported. The predicate is the conjunction, scoped to exactly the set r362 created, and the difference is pinned so a future simplification fails rather than surfacing in a payslip.
+
+Forward-only. The already-imported records stay un-deducted until round B, which is a preview-then-apply screen — never a script in the deploy path. `0492` stays reserved for it.
+
+### fda53352 — THE SOURCE SETTLED IT THIS TIME, AND IT HAPPENED TO AGREE WITH THE REPORTER
+
+E(2) is `SOCSO + EIS + SKBBK` employee legs, verified **before** building: the Malay original names **PERKESO, the organisation**, not one of its schemes, and LHDN's own TP1 scopes that to Act 4 and Act 800. SKBBK is an Act 4 leg mandatory from June 2026 — the Pin. 2023 caption cannot name it, which is a dating fact, not an exclusion. On a real generated form, **89.25 → 258.90**, read out of the produced PDF in both editions.
+
+**And it closes a gap nobody reported: EIS was on NO printed EA at all**, after r351 removed the strip carrying it. Four guards asserting "Section E carries exactly two amounts and EIS is not one of them" were reworded with the old claim quoted, and one was made **stronger** — it now counts the Section E amount calls and requires exactly two, pinning the half of the old claim that is still true.
+
+The date is `MIN(today, 28 February of the following year)` in Malaysian time. **There is no published LHDN deadline** — none in this repo or the committed agency files — so it ships throughout as the reporter's **business rule**, with no statutory-deadline field and a guard asserting the cap is never presented as the agency's.
+
+⚠️ `subject_to_skbbk` defaults to **false** for employees created after migration 0198 (which backfilled existing rows to true). On such an employee E(2) correctly reads SOCSO + EIS only. That is the per-employee election working, not this change failing.
+
+### 67268d83 — the emptied screen restored, and a silent truncation closed
+
+Round 1 is ~90% a restore of what r362 cleared, in a saner column set with a From/To filter. **All three ticket screenshots are OUR OWN admin screens**, so the ask was "give the employee the screen HR already has, scoped to themselves", and those files were the specification.
+
+`attendanceForEmploymentRange` had no LIMIT and a hard 400-day loop, so a long range **silently truncated**. The ceiling is now a named export and the screen **refuses rather than clamps** — a clamped range shows a record the reader did not ask for while looking exactly like the one they did — and the read is not issued at all.
+
+Late and Incomplete are **refused as statuses**: they are flags on a separate axis, and drawing them as statuses would assert a choice the kernel never makes and put this screen at odds with HR's about the same day. Leave TYPE is refused as a fabrication — the read carries no code — and the screen states that limit in a footnote, rendered only when a leave day is on screen.
+
+**The View column was deliberately not built.** The route cannot be registered before round 2 creates the page, so it would have been a column of links that 404 for every employee who clicked one.
+
+### e0b6e3b8 — a rename that was half a rename
+
+"DEDUCTIONS (YOUR SHARE)" → "DEDUCTIONS" is safe literally. "EMPLOYER CONTRIBUTIONS (NOT DEDUCTED FROM YOU)" was **not**: the row labels inside both sections are the SAME KEYS, so the heading was the only thing on the page separating employee money from employer money — and the reassuring note existed with **exactly one call site, the PDF**. The heading changed as asked AND the note now renders on all three screens.
+
+**The plan's arithmetic hid a regression.** It assumed the employee code always shares the name's line; it does not, and with a naive rule an ordinary "Nurul Syafiqah Abdullah" measured **97 against 92** — the band growing, which is the one thing the reporter forbade. A measured ladder returns every realistic name to 90. **One pathological shape grows 5pt** — a single unbreakable ~28-character token — and it is pinned by a guard asserting exactly one shape may grow.
+
+Measured from real produced PDFs before and after: band 92 → **90**, every block below moved up exactly 2pt.
+
+### THREE INSTRUMENTS THAT WERE NOT MEASURING
+
+- A fixture guard written to protect every balance assertion in its file from vacuity **was itself vacuous** — it asserted `balance === OPENING`, which passes trivially at zero.
+- A range guard matched the Tailwind class `text-emerald-400` instead of the 400-day ceiling it was meant to pin.
+- **The render check found a defect the tests had not**: the new Taken drill-down opened a PENDING record beside a Taken figure that excludes pending.
+
+### NOT DONE
+
+- **Employee Balances' Taken is cumulative to the as-at date with no lower bound**, while the Ent. year column beside it names one cycle — so for leave in an earlier cycle the drill-down is a subset of what Taken counts. Pre-existing; narrowing it would move a figure on five read surfaces. Its test now asserts its own premise rather than quietly making a false claim. **Candidate for its own item.**
+- `leave_ledger.source_request_id` carries no index; every call site is narrowed hard first and the cost is stated rather than assumed.
+- `flagOdd` still reads "Odd" where the reporter said "Incomplete"; the status re-wording now also affects HR's four screens, which the plan offered them the chance to reject.
+- Rounds still unbuilt: leave-import B, EA B and C, Attendance Overview 2 and 3.
+
 ## r366 (2026-09-30) — the overtime overwrite's last door. `main@0bab3cf2`, **no migration**.
 
 Closed: `d16237da`. Gate: **1060 files — equal to the suite file count**, 16 chunks at `VITEST_MAX_WORKERS=4`, zero AssertionErrors, first attempt. `tsc` 0, `next build` 0, `i18n-check` PASS.
