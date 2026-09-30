@@ -6,10 +6,17 @@
  * payroll run, and until r227 nothing anywhere exercised a SECOND run of the same month against this
  * form. `createAdditionalRun` appeared zero times in this file, test/borang-8a.test.ts,
  * test/kwsp-borang-a-file.test.ts, test/socso-eis-file.test.ts and test/cp39-form.test.ts. A bonus run's
- * zero-value payslip carries a full month's wage in `bases.epf`, and the read SUMS the bases across the
- * month's runs — so an extra run puts the month's wage in the Upah column TWICE, and a fully green suite
- * said nothing. That case now lives in test/borang-a-report.test.ts ("an additional run and the Upah
- * column"), which is where it can run a kernel; it cannot live here, and that is the point of the note.
+ * zero-value payslip carries a full month's wage in `bases.epf`, and until r370 the read SUMMED the bases
+ * across the month's runs — so an extra run put the month's wage in the Upah column TWICE, and a fully
+ * green suite said nothing. That case now lives in test/borang-a-report.test.ts ("an additional run and
+ * the Upah column"), which is where it can run a kernel; it cannot live here, and that is the point of the
+ * note.
+ *
+ * ⚠️ r370 FIXED THAT, SO THE SENTENCE ABOVE IS HISTORY AND IS KEPT AS HISTORY. The read now takes the
+ * month's wage ONCE, from the greatest `run_seq` (localization/my/statutory-month-wage.ts, item d4f6848f);
+ * every contribution amount was left exactly as it was. What has NOT changed is the reason this note
+ * exists: a DB-free file still cannot see a second run of a month, so the figure this file pins is only
+ * ever one run's.
  *
  * WHAT THIS FILE IS FOR, IN ONE SENTENCE: the +1 dating rule, the carried-forward totals, the wage
  * PROVENANCE, and the places the form could quietly stop being the form. Every one of them fails SILENTLY

@@ -16,7 +16,7 @@
  * the one deliberate act that writes an artefact.
  */
 import { renderBorang8APdf, borang8AFilename } from '@/lib/borang-8a-pdf';
-import { loadBorang8A } from '../shared';
+import { describeGaps, loadBorang8A } from '../shared';
 
 export const runtime = 'nodejs';
 
@@ -36,17 +36,10 @@ export async function GET(req: Request) {
     if (loaded.reason === 'no-batch') {
       return new Response('No payroll run for this month — run payroll first.', { status: 422 });
     }
-    // Both kinds of gap, named. An employer-level gap (no SOCSO employer code) gaps every page at once
-    // and is fixed in one place; a per-employee gap is fixed on that person's record.
-    const why = [
-      loaded.headerMissing.length ? `the company is missing: ${loaded.headerMissing.join(', ')}` : null,
-      loaded.missing.length
-        ? `no identity card number on file for ${loaded.missing.map((m) => m.name).join(', ')}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join('; ');
-    return new Response(`Cannot produce Borang 8A: ${why}.`, { status: 422 });
+    // Both kinds of gap, named, THROUGH THE ONE HELPER (r370). An employer-level gap (no SOCSO employer
+    // code) gaps every page at once and is fixed in one place; a per-employee gap is fixed on that
+    // person's record, and the reason is the pack's own — this route does not guess which one it was.
+    return new Response(`Cannot produce Borang 8A: ${describeGaps(loaded)}.`, { status: 422 });
   }
 
   const pdf = await renderBorang8APdf(loaded.form);
