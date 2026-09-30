@@ -1,3 +1,136 @@
+## r373 — 2026-10-01 · main@ed9eaba8 · no migration
+
+Two board items, the phase-two halves of r372's EA and statutory work. 45 files, +4046/−683, two new
+suites, **no migration**, and **no message key removed** (all six locales at 12,825 keys after the
+merge). Gate **GREEN across all 16 chunks, 1089 of 1089 files counted**; `next build` exit 0 with
+`.next` cleared first, 231/231 static pages.
+
+**Items closed:** `795c470c` the EA grid, re-derived from LHDN's own file · `f022dd70` payroll-cycle
+multi-selection for the three statutory submission files.
+
+### `795c470c` — the EA form's grid was traced from another vendor's rendering
+
+r346 re-measured the money column against LHDN's published form. **Nothing else had ever been
+re-measured** — item numbers, sub-items, the description column and the vertical spacing of all six
+sections still came from a tracing of another payroll vendor's low-resolution image. That is why the
+reporter's alignment requests kept coming back.
+
+`EA_FORM` is now the agency's measured grid: text columns 45.5 / 62.5 / 80.2 / 94.3 (D5's 98.2), left
+margin 24 → **39.8**, frame 571.3 → **557**, section baselines A 105.9 · B 229.1 · C 449.4 · D 518.3 ·
+E 648.5 · F 712.4, and the officer box onto the agency's five 13.2 pt rows at 727.5 → 817.9. **The money
+column is untouched.** Section E item 1 correctly gets TWO rows (fund name 661.8, its contribution 675).
+
+**The form's numbering became structure rather than string-parsing.** `EA_FORM_NUMBERING` says what the
+C.P.8A numbers each box; the renderer draws "1." at 62.5 and "(a)" at 80.2 itself, and `eaCaptionWords`
+strips from the caption only the prefix the renderer already composed. **The number drawn is always the
+table's, never the string's** — and the captions themselves did not change, which the item required.
+
+**Two behaviour changes worth naming.** The amended marker moved to 723.5, into the 11.1 pt the agency
+leaves above the box; at the old `footStripT` (742) it printed *inside* the officer box, across the
+telephone rule, on every amended form in both editions. And **r372's own outcome changed**: an employer
+name and address longer than the agency's two writing rules now continues on a **continuation sheet**
+rather than growing the box. At the agency's geometry `830 − 817.9 = 12.1 pt` against a 13.2 pt pitch, so
+*zero* extra rules fit; shrinking would reinstate the 3.4 pt line r372 exists to prevent, and truncating
+would read as a complete address. A ~130-character block still fits one page.
+
+### ⚠️ The measuring script had been corrupting every measurement any round took with it
+
+`lib/pdf-page-geometry.ts` (new) lifts the parser out of `scripts/measure-ea-official-pdf.ts` so the
+script and the guard share one. Two silent defects were fixed on the way:
+
+- **Hex strings inside a `TJ` array were dropped entirely.** LHDN sets some captions in an Identity-H
+  subset font as `[<0028><0050>…] TJ`. Those matched the TJ branch, contributed no `(…)` group, and
+  **vanished without a word** — `--all` reported the "Employer's No. E" row as starting at "No.", and the
+  same hole swallowed "Employer's Telephone No." and the whole of E(1)'s caption. Now decoded through the
+  font's `/ToUnicode`, with the code width read from `begincodespacerange` rather than assumed to be 2.
+- **`streamOf`'s docstring claimed it inlined Form XObjects and the code did not.** Implemented; the
+  XObject `/Matrix` is still not applied and that limitation is now **written down instead of promised
+  away**.
+
+Every EA coordinate any earlier round quoted came through that parser. Treat pre-r373 EA measurements as
+suspect.
+
+### ⚠️ A guard had been passing on NO SOURCE AT ALL since r346
+
+`test/r219-ea-cp8a-form.test.ts`'s "every label goes through the shrink-to-fit path" sliced the renderer
+between two markers:
+
+    src.slice(src.indexOf('const W = EA_FORM_WORDS;'),      // -1  — renamed by r346
+              src.indexOf('let y: number = EA_FORM.footStripT'))   // 80870
+
+`String.prototype.slice` reads a negative start as `length + start`, so **a −1 start lands after the end
+and yields `""`**. The sweep iterated nothing, found nothing, and reported green. Verified on `main`
+before the fix: slice length **0**. Several rounds believed the EA labels were guarded. The case now
+asserts the slice was found and is >5000 characters before grepping it.
+
+**The rule this earns: any guard that greps a slice of source must first prove the slice is non-empty.**
+A length assertion is the only thing that distinguishes "no violations" from "no text".
+
+### Rasterising caught two defects no assertion did
+
+- At our 9 pt the centred masthead ended at 416.1 and the employee's TIN value starts at 418.8 — **they
+  collided on the page.** Fixed by adopting the agency's own 8 pt masthead sizes.
+- `midMoney` ran to 556.6, so D5(a)/(b)'s leader rules printed straight through the money column the
+  agency leaves empty on those two rows. Now 357.3 → 478, the agency's own leader run.
+
+### `f022dd70` — payroll-cycle multi-selection, built AGAINST its own approved plan
+
+The plan said the wage column already double-counts on a multi-run month, that this feature neither
+causes nor fixes it, and told the reporter: *"picking a single cycle will often show a smaller, more
+correct wage figure than picking All. That difference is the old fault showing, not a new one."*
+
+**That premise died inside the same branch.** r372's wage fix landed first, and with it in place the
+plan's own prescription — filter the payslip query, hand the existing fold a shorter list — produces the
+error in the **opposite** direction. `core/payroll.ts:6582` stamps `statBases.epf` as the whole month's
+normal wage, re-derived from compensation on **every** run, including a bonus run that paid only a bonus.
+So a Bonus-only Borang A built by filtering would print the full month's salary as Upah. Measured
+against a real kernel: **Upah 5200 where 1200 is correct.**
+
+So the two wage-bearing reads still read the **whole month** and apply the selection afterwards; only
+CP39, which has no wage column, filters its SQL. `scopedMonthWagesFrom` decomposes EPF by stream: the
+**normal** stream counts only if the selection holds a `run_type = 'regular'` run, and the **additional**
+stream contributes the sum of the selected runs' own increments, each measured against the previous
+stamped run **of the month** — which is precisely why the query may not be filtered: *an increment cannot
+be read off a run whose predecessor was filtered out.* Ticking everything telescopes back to the
+unfiltered answer, asserted to the sen, and `monthWagesFrom` is untouched.
+
+New: `lib/payroll-run-selection.ts` (absent ⇒ every run, which makes the no-change guarantee structural;
+a malformed value **refuses** rather than silently building the file over a different population than the
+URL named), `listFilableRunsForPeriod`, `app/payroll/payment-submission/runs/route.ts` (reaching payroll
+**through `packs/payroll/service`**), and the `run-picker`. Three new 422 refusals, all legible.
+12 keys × 6 catalogues, append-only.
+
+**A Bonus-only PERKESO file is refused, not produced.** SOCSO/EIS is charged once monthly on the regular
+run, but `bases.socsoEis` is stamped on every run, so a selection with no regular run would carry a full
+month's salary against **zero** contributions. `socsoEisOutsideSelection` holds the PDF, the text export
+and the upload file with a named reason. Raised as `99a46b4e` for the reporter to decide, rather than
+guessed at.
+
+Also: the Borang A / 8A review screens now honour a `run` parameter if one is hand-added to their URL.
+Their own filter forms never emit one, so normal use is unchanged and the screen and the file agree.
+
+### Corrections owed to the reporter
+
+- **That quoted sentence is now false in both directions** and needs retracting at the top of the next
+  statutory item.
+- **Section C's TOTAL sits in the SUB-ITEM column** (x 80.5), not the item-number column, and not the
+  description column (94.3). Our own raised item said otherwise, and so did its proposed remedy.
+- **The EA left-margin "departure" is retired — it never existed.**
+- Four of five "EA Form design V1–V5" references the reporter sent are a rival vendor's rendering. Where
+  they disagree with LHDN's own file, LHDN governs.
+
+### Outstanding, carried forward
+
+- **The Malay edition's grid is UNMEASURED.** Only LHDN's English PDF was measured;
+  `docs/forms/ea-cp8a-pin-2023-official-bm.xlsx` is a spreadsheet and carries no coordinates, so the
+  Malay page is drawn on the English edition's measured grid. Whether LHDN's BM C.P.8A shares that
+  geometry is **not checkable from this repository**. Flagged rather than assumed.
+- **Security H1 remains open** — three CVEs unfixed; upgrade `fontkit` (direct dep `^1.9.0`; 2.x is an
+  API change on `lib/payslip-pdf-fonts.ts`) before the framework, verified on a Linux-like environment.
+- `99a46b4e` (bonus-only PERKESO) and `371708bb` (narrow-width overflow, cause unestablished) are open.
+- The `socsoWageExtra` refusal frequency is still **unmeasured** — it needs production access.
+- `devdb-lock.sh` still has one holder and **no stale-slot reaping**.
+
 ## r372 — 2026-10-01 · main@ad3cac21 · no migration
 
 Four board items, built in parallel in four worktrees and integrated in one pass, plus two fixes
