@@ -2051,3 +2051,242 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
     expect(after).not.toContain('MYR 8,070.35'); // net + 2050, had it been folded into net pay
   });
 });
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════
+ * r367 (item e0b6e3b8) — ONE `EMPLOYMENT INFO` HEADING OVER THE WHOLE BAND, AND THE PAYSLIP DID NOT
+ * GET LONGER.
+ *
+ * THE DEFECT. `EMPLOYMENT INFO` headed only the RIGHT half of the employee band. The employee's name and
+ * their four statutory reference numbers — the left half — sat under no heading at all, and the two halves
+ * began at different heights, so nothing lined up across the middle. The reporter named both.
+ *
+ * WHY THE HEIGHT IS THE HARD PART, AND WHY IT IS ASSERTED RATHER THAN CLAIMED. A heading above both halves
+ * costs 15pt. It is paid for twice over: the right half loses the 17pt caption slot it used to carry, and
+ * the employee's name and code move onto ONE line, 20pt where the two stacked were 34. The band is 90pt
+ * where it was 92, so every block below it moves UP two points. "The payslip did not get longer" is the
+ * whole constraint of this request, and a constraint nobody measured is a constraint nobody kept — so the
+ * numbers below are read back out of the PRODUCED DOCUMENT and were derived from it, not from arithmetic.
+ *
+ * 525.89 is where TOTAL EARNINGS sat before this round, measured the same way on the same fixtures. Every
+ * case asserts the new y AND that it is not below that figure, which is the claim in its own terms.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+describe('r367 — the employee band carries one heading and finishes HIGHER than it did', () => {
+  /** Where TOTAL EARNINGS sat before r367, on these same fixtures. Nothing may print below it. */
+  const TOTAL_EARNINGS_Y_BEFORE_R367 = 525.89;
+  /** The band height before r367, derived from the same two rules the helper below reads. */
+  const BAND_H_BEFORE_R367 = 92;
+
+  const SIX_EMPLOYMENT_FIELDS = {
+    department: 'Finance',
+    position: 'Senior Business Analyst',
+    jobGrade: 'G5',
+    employmentType: 'Full time',
+    daysWorked: 21,
+    currency: 'MYR',
+  } as const;
+  const IDENTITY = ['900101011234', 'SG1234567890', '12345678', '900101019876'] as const;
+
+  /** The fixture with exactly `n` identity cells and all six employment fields. */
+  const withIdentityCells = (n: number, over: Partial<PayslipPdfData> = {}): PayslipPdfData => ({
+    ...data,
+    ...SIX_EMPLOYMENT_FIELDS,
+    identityNumber: n >= 1 ? IDENTITY[0] : null,
+    taxNumber: n >= 2 ? IDENTITY[1] : null,
+    epfNumber: n >= 3 ? IDENTITY[2] : null,
+    socsoNumber: n >= 4 ? IDENTITY[3] : null,
+    ...over,
+  });
+
+  /**
+   * THE BAND'S HEIGHT, DERIVED FROM THE DOCUMENT rather than from the renderer's constants.
+   *
+   * The band is bracketed by two rules the renderer really draws: the 1.6pt letterhead rule above it and
+   * the 0.8pt rule that closes it off. `GAP` (18) sits between the letterhead rule and the band's top, and
+   * the closing rule is drawn 8pt below the band's bottom — both are `lib/payslip-pdf.ts`'s own published
+   * constants and both are visible in the drawn output. The panel is the topmost thing on the sheet after
+   * the letterhead, so the HIGHEST 0.8pt line on page 1 is its closer; every other 0.8pt line (a box total
+   * rule, the YTD rules, the footer) is below it.
+   */
+  const bandHeight = (bytes: Uint8Array): number => {
+    const p1 = drawnLines(bytes).filter((l) => l.page === 1);
+    const at = (w: number) => p1.filter((l) => Math.abs(l.w - w) < 0.01).map((l) => l.y1);
+    const letterhead = at(1.6);
+    const closers = at(0.8);
+    expect(letterhead.length, 'the letterhead draws exactly one 1.6pt rule').toBe(1);
+    expect(closers.length, 'and the sheet draws at least one 0.8pt rule').toBeGreaterThan(0);
+    return letterhead[0] - 18 - (Math.max(...closers) + 8);
+  };
+
+  const totalEarningsY = (bytes: Uint8Array): number => {
+    const pt = placed(drawnPlacements(bytes), 'TOTAL EARNINGS');
+    expect(pt, 'TOTAL EARNINGS reaches the page — without it this test measures nothing').toBeDefined();
+    expect(pt!.page, 'and it is on the first sheet').toBe(1);
+    return pt!.y;
+  };
+
+  // 1, 3 and 4 identity cells: the counts where the LEFT half is shortest, odd and tallest. Production's
+  // own distribution is 0→9, 1→29, 2→2, 3→17, 4→27 employments, so these are the real shapes.
+  for (const cells of [1, 3, 4]) {
+    it(`[${cells} identity cells] the band is 90pt and TOTAL EARNINGS did not move down`, async () => {
+      const bytes = await renderPayslipPdf(withIdentityCells(cells), labels);
+      expect(bandHeight(bytes), `${cells} identity cells: the band is two points shorter than before r367`).toBe(90);
+      expect(bandHeight(bytes), 'and it is not taller than it was').toBeLessThanOrEqual(BAND_H_BEFORE_R367);
+      expect(totalEarningsY(bytes), `${cells} identity cells: TOTAL EARNINGS sits 2pt higher`).toBeCloseTo(527.89, 1);
+      expect(
+        totalEarningsY(bytes),
+        'THE CONSTRAINT IN ITS OWN TERMS: nothing prints lower than it did before r367',
+      ).toBeGreaterThanOrEqual(TOTAL_EARNINGS_Y_BEFORE_R367);
+    });
+  }
+
+  it('the single heading is drawn ONCE, at the page margin, over both halves', async () => {
+    const places = drawnPlacements(await renderPayslipPdf(withIdentityCells(4), labels));
+    const heads = places.filter((r) => r.text === 'EMPLOYMENT INFO');
+    expect(heads.length, 'one heading for the band, not one per half').toBe(1);
+    // At the page margin, so it heads the employee's NAME (the left half, which had no heading at all)
+    // and not only the employment fields it used to sit over at x = 276.
+    expect(heads[0].x, 'the heading starts at the page margin, above the name').toBeCloseTo(40, 1);
+    const name = placed(places, 'Aisyah Rahman');
+    const dept = placed(places, 'Finance');
+    expect(name, 'the name reaches the page').toBeDefined();
+    expect(dept, 'the employment fields reach the page').toBeDefined();
+    expect(heads[0].y, 'the heading sits above the name').toBeGreaterThan(name!.y);
+    expect(heads[0].y, 'and above the employment fields too').toBeGreaterThan(dept!.y);
+  });
+
+  it('BOTH HALVES NOW BEGIN AT THE SAME HEIGHT — the second half of the request', async () => {
+    // The reporter's words: the two halves began at different heights so nothing lined up across the
+    // middle. The name is 13pt and the field labels 6.5pt, so their BASELINES cannot be equal; what must
+    // be equal is where each half STARTS. The name's cap top and the first field label's top are both
+    // measured from the same band top, 15pt under the heading.
+    const places = drawnPlacements(await renderPayslipPdf(withIdentityCells(4), labels));
+    const name = placed(places, 'Aisyah Rahman')!;
+    const dept = placed(places, 'DEPARTMENT')!;
+    // 13pt name drawn at `bandTop - 13`; 6.5pt label drawn at `bandTop - 7`. Both derive from one bandTop.
+    expect(name.y + 13, 'the name is measured from the band top').toBeCloseTo(dept.y + 7, 1);
+  });
+
+  it('keeps the COLUMN WIDTHS — a four-column grid was rejected because it would WRAP', async () => {
+    // A single equal-width four-column grid across the page narrows the employment column's text width
+    // from 127.64 to 116.82, and "Senior Business Analyst" at 8.5pt bold measures ≈113: it would start
+    // wrapping, a wrapped row costs 35.5 instead of 25, and the band would GROW. So the two halves keep
+    // today's widths, and the proof is that the longest realistic job title still prints on ONE line.
+    const places = drawnPlacements(await renderPayslipPdf(withIdentityCells(4), labels));
+    const title = places.filter((r) => r.text.includes('Senior Business'));
+    expect(title.map((r) => r.text), 'the job title is not split across lines').toEqual([
+      'Senior Business Analyst',
+    ]);
+    // The right half's second column still starts where it did: rightX 276 + rightW/2 139.64.
+    expect(title[0].x, 'the employment column keeps its own x').toBeCloseTo(415.64, 1);
+  });
+
+  it('the employee CODE rides the name, and rides the LAST line when the name wraps', async () => {
+    // This is what pays for the heading. Both must be true: the code is ON the name's baseline, and it is
+    // still on the page (a layout that bought its 14pt by dropping the code would pass a height assertion
+    // and lose a field off an official document).
+    const short = drawnPlacements(await renderPayslipPdf(withIdentityCells(4), labels));
+    const name = placed(short, 'Aisyah Rahman')!;
+    const rider = short.find((r) => r.text.includes('EMP-001'));
+    expect(rider, 'the employee code reaches the page').toBeDefined();
+    expect(rider!.y, 'on the name’s own baseline, not on a line of its own').toBeCloseTo(name.y, 1);
+    expect(rider!.x, 'and to the right of the name').toBeGreaterThan(name.x);
+
+    // A WRAPPED name: the code rides the LAST line. Riding only an unwrapped name would send every
+    // wrapped one to a line of its own and the band would finish 12pt LOWER than before r367.
+    const wrapped = await renderPayslipPdf(
+      withIdentityCells(4, { employee: 'Nurul Syafiqah binti Mohd Zulkifli Abdullah Rahman' }),
+      labels,
+    );
+    const wp = drawnPlacements(wrapped);
+    const nameLines = wp.filter((r) => r.page === 1 && /Nurul|Abdullah Rahman/.test(r.text));
+    expect(nameLines.length, 'the long name really did wrap').toBeGreaterThan(1);
+    const lastLine = nameLines.reduce((lo, r) => (r.y < lo.y ? r : lo), nameLines[0]);
+    const wrider = wp.find((r) => r.text.includes('EMP-001'));
+    expect(wrider, 'the code still reaches the page on a wrapped name').toBeDefined();
+    expect(wrider!.y, 'riding the LAST line of the wrapped name').toBeCloseTo(lastLine.y, 1);
+    // …and the band is no taller than it was before r367 on the same input (it was 100 then, too).
+    expect(bandHeight(wrapped), 'a wrapped name does not make the band grow').toBeLessThanOrEqual(100);
+  });
+
+  /**
+   * THE FOUR RIDER PATHS, EACH WITH ITS MEASURED BAND HEIGHT AND THE HEIGHT IT HAD BEFORE r367.
+   *
+   * The code rides the name's last line at 8.5pt; shrinks through `fitSize` to as little as 7pt; then
+   * drops its CAPTION and rides as a bare code; and only then falls to a line of its own. Each rung exists
+   * because the one below it made the band TALLER, and each was measured, not reasoned about:
+   *
+   *   before → after
+   *      92  →  90   a short name, a CJK name, and a payslip with no code at all
+   *     100  → 100   every wrapped name — the code rides the LAST line
+   *      92  →  90   "Nurul Syafiqah Abdullah": rung 1 does not fit, rung 3 does. With rungs 1-2 only this
+   *                  measured 97, and that is why rung 3 exists — an ordinary Malaysian name must not make
+   *                  the document longer.
+   *      92  →  97   a single unbroken ~28-character token filling the whole 218pt half. THE ONE PATH THAT
+   *                  IS TALLER. The alternatives are clipping the name (this document never clips) or
+   *                  shrinking it; a 5pt taller band is the better of the three. Pinned so it cannot get
+   *                  worse, and stated rather than hidden.
+   *
+   * THE CODE IS ON THE PAGE ON EVERY PATH. A layout that bought its 14pt by dropping the employee code
+   * would satisfy every height assertion above and lose a field off an official document.
+   */
+  it('the four rider paths each land on their measured band height, code always on the page', async () => {
+    // `before` is what THIS name measured through the pre-r367 renderer, read back the same way. A single
+    // baseline constant cannot serve here: a wrapped name legitimately occupied 100pt before as well.
+    const cases: { what: string; employee: string; before: number; after: number }[] = [
+      { what: 'rides at full size', employee: 'Aisyah Rahman', before: 92, after: 90 },
+      {
+        what: 'rides as a BARE code — an ordinary long name must not cost height',
+        employee: 'Nurul Syafiqah Abdullah',
+        before: 92,
+        after: 90,
+      },
+      {
+        what: 'rides the LAST line of a wrapped name',
+        employee: 'Nurul Syafiqah binti Mohd Zulkifli Abdullah Rahman',
+        before: 100,
+        after: 100,
+      },
+      {
+        what: 'falls to its own line — THE ONE PATH THAT IS TALLER',
+        employee: 'Nurulsyafiqahbintiabdullahrahm',
+        before: 92,
+        after: 97,
+      },
+    ];
+    for (const c of cases) {
+      const bytes = await renderPayslipPdf(withIdentityCells(4, { employee: c.employee }), labels);
+      expect(bandHeight(bytes), `${c.what}: band height`).toBe(c.after);
+      expect(drawnText(bytes), `${c.what}: the employee code is still on the document`).toContain('EMP-001');
+    }
+    // THE CLAIM OF THE ROUND, over the whole table: exactly ONE shape is taller than it was, it is the
+    // pathological one, and it is taller by 5pt. A change that made a second shape grow fails here even if
+    // it happened to leave all four heights above individually plausible.
+    const grew = cases.filter((c) => c.after > c.before);
+    expect(
+      grew.map((c) => `${c.employee} ${c.before}→${c.after}`),
+      'only the unbroken ~28-character token may be taller, and only by 5pt',
+    ).toEqual(['Nurulsyafiqahbintiabdullahrahm 92→97']);
+    expect(
+      cases.filter((c) => c.after < c.before).length,
+      'and the ordinary shapes are SHORTER, which is what the request asked for',
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  it('adds NO rule, NO band and NO box to the panel — the heading is ink only', async () => {
+    // The de-boxing this panel already shipped is the reporter's own decision, contested twice and then
+    // approved (see `drawEmployeePanel`). A heading underline or a filled caption band would undo it, and
+    // would also break the exact-3 stroked-rectangle count the de-box guard above asserts.
+    for (const cells of [0, 1, 2, 3, 4]) {
+      const bytes = await renderPayslipPdf(withIdentityCells(cells), labels);
+      const rects = drawnRects(bytes);
+      const earnings = placed(drawnPlacements(bytes), 'EARNINGS')!;
+      const inPanel = rects.filter((r) => r.page === 1 && r.y > earnings.y);
+      expect(
+        inPanel.map((r) => `${r.op} x=${r.x} y=${r.y} w=${r.w} h=${r.h}`),
+        `${cells} identity cells: nothing ruled OR filled above the Earnings box`,
+      ).toEqual([]);
+      expect(bandsPaintedOverABorder(rects), `${cells} identity cells: no band over a border`).toEqual([]);
+    }
+  });
+});

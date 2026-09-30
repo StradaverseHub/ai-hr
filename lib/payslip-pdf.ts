@@ -1337,13 +1337,104 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     const rightX = M + leftW + GAP;
     const rightW = CONTENT_W - leftW - GAP;
 
+    // ─── r367 — ONE HEADING FOR THE WHOLE BAND, AND THE NAME BESIDE ITS CODE ───
+    //
+    // THE DEFECT. `EMPLOYMENT INFO` headed only the RIGHT half. The employee's name and their four
+    // statutory reference numbers — the left half — sat under no heading at all, and the two halves
+    // started at different heights, so nothing lined up across the middle of the band. The reporter named
+    // both in their own words.
+    //
+    // THE HARD CONSTRAINT IS THE HEIGHT. A heading added above both halves costs 15pt that has to come
+    // from somewhere, or the band grows and a one-page payslip stops being one page. It comes from two
+    // places, and both are measured rather than estimated:
+    //   · the 17pt heading slot INSIDE the right half is deleted — this heading replaces it, it is not
+    //     a second one, and the right half now starts where its old caption did;
+    //   · the name and the employee code share ONE line, 20pt instead of 34.
+    // leftH = 15 + 20 + 50 (four identity cells, two rows) = 85. rightH = 15 + 75 (six employment cells,
+    // three rows) = 90. `h` is 90 against the 92 this panel occupied before, so every block below it
+    // moves UP by two points. `test/payslip-pdf.test.ts` pins the y of TOTAL EARNINGS against the figure
+    // read out of the real document at one, three and four identity cells, so "it did not get longer" is
+    // a measurement and not a claim.
+    //
+    // COLUMN WIDTHS DO NOT CHANGE, and a four-equal-column grid across the full page was considered and
+    // REJECTED: it narrows the employment column's text width from 127.64 to 116.82, and "Senior Business
+    // Analyst" at 8.5pt bold measures ≈113 — it would start wrapping, a wrapped row costs 35.5 instead of
+    // 25, and the band would GROW. Same objection `drawFieldColumns` already records against three columns.
+    //
+    // INK, NOT A RULE. The heading is 7.5pt bold PRIMARY text and nothing else — no underline, no band,
+    // no rectangle. `test/payslip-pdf.test.ts` asserts EXACTLY three stroked rectangles on its fixture and
+    // none of them in this panel; a heading rule here would break both, and the de-boxing this panel
+    // already shipped (see below) is the reporter's own decision, twice contested and now approved.
+    const HEAD_H = 15;
+    at(pg, t.employmentInfo.toUpperCase(), M, top - 11.5, 7.5, bold, PRIMARY);
+    const bandTop = top - HEAD_H;
+
     // The employee's own name was clipped by the same `fit()` the pay items were. It wraps now.
     const nameFont = faceOf(d.employee, bold);
-    const nameLines = wrap(d.employee, nameFont, 14, leftW);
-    nameLines.forEach((line, i) => at(pg, line, M, top - 14 - i * 16, 14, nameFont));
-    const nameH = 27 + (nameLines.length - 1) * 16;
-    if (d.employeeCode) at(pg, `${t.employeeCode}: ${d.employeeCode}`, M, top - nameH, 9, font, MUTED);
-    const headH = nameH + 7;
+    const nameLines = wrap(d.employee, nameFont, 13, leftW);
+    nameLines.forEach((line, i) => at(pg, line, M, bandTop - 13 - i * 15, 13, nameFont));
+    const nameH = 13 + (nameLines.length - 1) * 15;
+
+    // ─── r367 — THE CODE RIDES THE NAME'S LAST LINE, AND THAT IS WHAT PAYS FOR THE HEADING ───
+    //
+    // Name and code on one line is 20pt where the two stacked were 34, which is the 15pt this band's new
+    // heading costs plus one to spare. It is the whole reason the panel finishes HIGHER than it did, and
+    // it is why the code has to ride WHENEVER IT CAN: the left half never had a heading before, so on the
+    // one path where the code falls to a line of its own the 15pt has nothing to set against it and the
+    // band grows by 5pt. With only rungs 1-2 below, that path caught a name as ordinary as "Nurul Syafiqah
+    // Abdullah" — measured, 97pt against the 92 it was — which is not a rare shape and not an acceptable
+    // answer to a request whose whole point is that the payslip must not get longer. Rung 3 is what moved
+    // that name back to 90.
+    //
+    // SO FOUR CANDIDATES ARE MEASURED, AND THE FIRST THAT FITS IS DRAWN:
+    //   1. `· Employee code: A0001` at 8.5pt.
+    //   2. the same, shrunk by `fitSize` to as little as 7pt — the same helper the box totals and the YTD
+    //      rows already use for two strings on one baseline with no wrapping available between them. 7pt is
+    //      a floor, not a target; this document already sets its field labels at 6.5pt, so a code at 7 is
+    //      inside the type scale it has.
+    //   3. `· A0001` — THE CODE WITHOUT ITS CAPTION, at 8.5pt down to 7pt. This drops a LABEL, never the
+    //      value, and only when the label provably does not fit. The number keeps its meaning: it sits
+    //      beside the employee's name, inside a band headed EMPLOYMENT INFO, which is where a reader looks
+    //      for exactly this. A caption that forced the document to grow would be the worse trade, and this
+    //      is the step that makes the approved plan's "one line" arithmetic hold for every name rather
+    //      than for short ones.
+    //   4. its own line, exactly the pre-r367 layout. THE ONE PATH ON WHICH THIS PANEL IS TALLER THAN IT
+    //      WAS — 97pt against 92 — and it is reached only by a single unbroken token of about 28 characters
+    //      or more, which fills essentially the whole 218pt half and leaves no room for even a bare code.
+    //      The alternatives there are clipping the name (this document does not clip, ever: see `wrap`) or
+    //      shrinking it, and a taller band is the better of the three. Pinned in the guard so it cannot
+    //      quietly get worse, and it is the one case a reader of this function should know about.
+    //
+    // THE LAST LINE, NOT THE FIRST. A name that wraps still usually ends in a short line ("… Abdullah
+    // Rahman") with room beside it. Riding only an UNWRAPPED name would send every wrapped one back to a
+    // line of its own and the band would finish 12pt LOWER than today — the opposite of this request.
+    //
+    // Everything is measured against the REAL face at the real size, so a Tamil or Chinese name is judged
+    // by what will be DRAWN and not by character count. `test/payslip-pdf.test.ts` pins the band height on
+    // every one of the four paths, so none of them can drift into making the document longer.
+    const codeText = d.employeeCode ? `${t.employeeCode}: ${d.employeeCode}` : '';
+    // A REAL GAP, not a leading space. An 8.5pt space is ~2.4pt against a 13pt name, and the first real
+    // render of this panel printed "Daniel Tan· Employee ID: EMP-0005" — the middot read as punctuation
+    // stuck to the surname. Measured into the fit below, so the gap cannot push the rider past its half.
+    const RIDER_GAP = 6;
+    const lastLineW = nameLines.length > 0 ? widthOf(nameLines[nameLines.length - 1], nameFont, 13) : 0;
+    const riderRoom = leftW - lastLineW - RIDER_GAP;
+    /** The largest drawable form of the code that fits `riderRoom`, or null when none does. */
+    const riderFit = (): { text: string; size: number } | null => {
+      if (d.employeeCode == null || d.employeeCode === '' || riderRoom <= 0) return null;
+      for (const text of [`\u00b7 ${codeText}`, `\u00b7 ${d.employeeCode}`]) {
+        const size = fitSize(text, font, 8.5, riderRoom);
+        if (size >= 7 && widthOf(text, font, size) <= riderRoom) return { text, size };
+      }
+      return null;
+    };
+    const rider = riderFit();
+    if (rider) {
+      at(pg, rider.text, M + lastLineW + RIDER_GAP, bandTop - nameH, rider.size, font, MUTED);
+    } else if (codeText) {
+      at(pg, codeText, M, bandTop - nameH - 12, 9, font, MUTED);
+    }
+    const headH = nameH + (rider != null || codeText === '' ? 7 : 19);
 
     const idCells: [string, string][] = [
       ...(d.identityNumber ? ([[d.identityIsPassport ? t.passport : t.ic, d.identityNumber]] as [string, string][]) : []),
@@ -1359,7 +1450,7 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     // separation". The fields are back to loose label-over-value pairs, aligned on a shared column grid.
     // DO NOT RE-RULE THIS PANEL: it was tried, it shipped, it was read by the person the document is
     // for, and it was rejected. See `drawFieldColumns` for the defect it also carried.
-    const leftH = headH + drawFieldColumns(pg, idCells, M, top - headH, leftW, 2);
+    const leftH = HEAD_H + headH + drawFieldColumns(pg, idCells, M, bandTop - headH, leftW, 2);
 
     const infoCells: [string, string][] = [
       ...(d.department ? ([[t.department, d.department]] as [string, string][]) : []),
@@ -1388,16 +1479,17 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
       //      What changes is that the identity panel stops competing with them: reference data reads
       //      light, figures read ruled, and the panel is still closed off by the single 0.8pt rule below.
       //
-      // The HEADING SURVIVES, as ink rather than as a filled band: same text, same size, same position,
-      // same PRIMARY accent — a full-width solid rectangle over a list with no border is the "visual
-      // separation" that was objected to, and 7.5pt bold PRIMARY names the column without drawing one.
-      // The 17pt it occupies is unchanged, so the flow below this panel does not move.
-      const headingH = 17;
-      at(pg, t.employmentInfo.toUpperCase(), rightX, top - 12.5, 7.5, bold, PRIMARY);
+      // The HEADING SURVIVES, as ink rather than as a filled band: same text, same size, same PRIMARY
+      // accent — a full-width solid rectangle over a list with no border is the "visual separation" that
+      // was objected to, and 7.5pt bold PRIMARY names the column without drawing one.
+      //
+      // r367 — IT IS NO LONGER DRAWN HERE. The heading moved to the top of the BAND (see the header of
+      // this function): it heads the employee's name and reference numbers as well as these fields, which
+      // is the half the reporter pointed at. Drawing it again here would print it twice. What this half
+      // keeps is the 15pt the caption used to occupy, so its first row still starts where it always did.
       // TWO columns, not three: a position title ("Senior Business Analyst") does not fit a third of this
       // panel and would print truncated on an official document.
-      const gridH = drawFieldColumns(pg, infoCells, rightX, top - headingH, rightW, 2);
-      rightH = headingH + gridH;
+      rightH = HEAD_H + drawFieldColumns(pg, infoCells, rightX, bandTop, rightW, 2);
     }
 
     const h = Math.max(leftH, rightH, 40);
