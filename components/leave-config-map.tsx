@@ -139,6 +139,23 @@ export type LeaveConfigScreenId =
    * things is the confusion the pair would otherwise create.
    */
   | 'leaveHistoryImport'
+  /**
+   * db55d08a (r369) — `leaveBfImport` (`/admin/leave-config/bf-import`), the OPENING-FIGURE third of a
+   * migration, a row and a group of its own directly after Leave History Data Import.
+   *
+   * A GROUP OF ITS OWN for the same reason its neighbour is one, and the reason is sharper here. A tab of
+   * `leaveHistoryImport` would inherit that row's heading and description — "load past leave records" —
+   * and this tool creates no leave record at all. A tab of `adjustments` would inherit "change an
+   * employee's balance by hand", which describes the wrong mechanism: this writes a dated ledger
+   * adjustment that a leave year OPENS with. The group is of one, so `LeaveConfigMap` draws no tab strip.
+   *
+   * WHY IT IS A THIRD IMPORTER AND NOT A COLUMN ON AN EXISTING ONE: Brought Forward is DERIVED, never
+   * stored (`core/read.ts`'s `priorBalance`). Producing it through the balance importer requires knowing
+   * that the line must be dated in the PREVIOUS leave year AND must be an `adjustment`; an `accrual`
+   * dated inside the year satisfies `yearOpenMarkerCond` and makes Generate Entitlement grant that
+   * employee nothing for the whole year. See core/leave-bf-import.ts.
+   */
+  | 'leaveBfImport'
   | 'entitlementArchive'
   | 'ledgerArchive'
   /**
@@ -207,6 +224,9 @@ export type LeaveConfigGroupId =
   // 3f15ffdb (r362) — a one-screen row directly after Leave Adjustments (see the screen id's note
   // above for why it is a group of its own rather than a third tab of `adjustments`).
   | 'leaveHistoryImport'
+  // db55d08a (r369) — a one-screen row directly after Leave History Data Import (see the screen id's note
+  // above for why it is a group of its own rather than a tab of either importer beside it).
+  | 'leaveBfImport'
   // 3fb1a611 (r299) — a one-screen row directly after Leave Adjustments (see the screen id's note above).
   | 'leaveCredit'
   | 'generate'
@@ -227,6 +247,7 @@ export type LeaveConfigRowNavKey =
   | 'leaveBalanceHealth'
   | 'leaveAdjustments'
   | 'leaveHistoryImport'
+  | 'leaveBfImport'
   | 'leaveCredit'
   | 'leaveGenerate'
   | 'leaveEarnedAccrual'
@@ -290,6 +311,25 @@ export const LEAVE_CONFIG_MAP: Group[] = [
     id: 'leaveHistoryImport',
     navKey: 'leaveHistoryImport',
     items: [{ id: 'leaveHistoryImport', href: '/admin/leave-config/history-import' }],
+  },
+  // db55d08a (r369) — LEAVE B/F DATA IMPORT, ONE SCREEN, ITS OWN ROW, DIRECTLY AFTER LEAVE HISTORY DATA
+  // IMPORT. The tab row renders nothing for a group of one (see `LeaveConfigMap` below), so this entry buys
+  // the same two things its neighbour's does: the page's heading is its ROW's `nav` label through
+  // `leaveConfigPageHeader`, and the row<->group agreement stays 1:1 in both directions.
+  //
+  // The alternative — a tab of the row above, or a third tab of `adjustments` — was the wrong shape twice
+  // over and that is the item rather than a detail. The row above is called Leave History Data Import and
+  // describes itself as loading past leave RECORDS; this tool creates no record at all. The `adjustments`
+  // row describes itself as changing a balance by hand; this writes the dated figure a leave year OPENS
+  // with, which is a different thing from adjusting the year in progress.
+  //
+  // IMMEDIATELY AFTER IT, not at the bottom, because the order of the menu is the order of the work — and
+  // the reporter's own go-live sequence is generate the entitlements, then load B/F, then load the leave
+  // taken. The screen prints that sequence.
+  {
+    id: 'leaveBfImport',
+    navKey: 'leaveBfImport',
+    items: [{ id: 'leaveBfImport', href: '/admin/leave-config/bf-import' }],
   },
   // 3fb1a611 (r299) — LEAVE CREDIT, ITS OWN ROW, DIRECTLY AFTER LEAVE ADJUSTMENTS, with two tabs: Credits and
   // Rules. The row is gated on the `toil` module in the sidebar (MODULE_OF_HREF); both pages also check it.
@@ -426,6 +466,10 @@ const ROW_DESCRIPTION_KEY: Record<LeaveConfigGroupId, [namespace: string, key: s
   // It must NOT borrow the Leave Adjustments sentence: that row's sentence is about changing balances,
   // and the one thing this row does not do is change a balance.
   leaveHistoryImport: ['admin.leaveConfigHistoryImport', 'pageDescription'],
+  // db55d08a (r369) — its own namespace, the house shape. It must NOT borrow either neighbour's
+  // sentence: the row above is about loading leave RECORDS (this creates none) and Leave Adjustments is
+  // about changing a balance by hand (this states the figure a leave year opens with).
+  leaveBfImport: ['admin.leaveConfigBfImport', 'pageDescription'],
   leaveCredit: ['admin.leaveConfigLeaveCredit', 'pageDescription'],
   generate: ['admin.leaveConfigGenerate', 'pageDescription'],
   earnedAccrual: ['admin.leaveConfigEarnedAccrual', 'pageDescription'],
