@@ -417,12 +417,35 @@ const A4: [number, number] = [595.28, 841.89];
  * the page frame where the agency's stops 15.3 pt inside it. Anything still on the first list is a
  * candidate for the same treatment, and the agency's file is now on disk to do it with.
  *
- * The one deliberate departure is the LEFT margin: the traced page set its rules 16.8 pt from the paper
- * edge (under 6 mm), which is inside the unprintable margin of most office printers. Everything
- * left-anchored is shifted to 24 pt. This sentence used to end "…the money column, which is what a
- * reader checks against the agency's own page, is untouched" — true of the TRACING it was written about,
- * and false of the agency's page, which is the one it named. r346 moved that column onto the agency's
- * own coordinates; the left-margin shift is now the only departure, and it is a printability one.
+ * ⚠️ r370 — THE "PRINTABILITY DEPARTURE" ON THE LEFT MARGIN IS RETIRED. IT WAS BACKWARDS, AND IT WAS
+ * ABOUT THE TRACING'S EDGE, NOT THE AGENCY'S. The paragraph that stood here, quoted in full so the
+ * claim can be recognised if it resurfaces:
+ *
+ *     "The one deliberate departure is the LEFT margin: the traced page set its rules 16.8 pt from the
+ *      paper edge (under 6 mm), which is inside the unprintable margin of most office printers.
+ *      Everything left-anchored is shifted to 24 pt. This sentence used to end '…the money column,
+ *      which is what a reader checks against the agency's own page, is untouched' — true of the TRACING
+ *      it was written about, and false of the agency's page, which is the one it named. r346 moved that
+ *      column onto the agency's own coordinates; the left-margin shift is now the only departure, and
+ *      it is a printability one."
+ *
+ * It reads as "the agency prints at 16.8 pt and we pull in to 24 pt to clear a printer's unprintable
+ * margin". The agency does no such thing. `node --import tsx scripts/measure-ea-official-pdf.ts --rects`
+ * counts the body table's own cell rectangles, and the same method that settled the money column settles
+ * this: **150 cells begin at x = 39.8, and NOTHING on the agency's page begins left of it** (the next
+ * columns in are 45.2 — the Date caption — then 57.1 with 156 cells and 74.8 with 214, which are the item
+ * and sub-item indents). Its outer frame closes at ~557, where ours runs to `right` = 571.3.
+ *
+ * So OUR page is the wider one, by 15.8 pt on the left and ~14 pt on the right. There is no printability
+ * conflict to resolve and no departure to preserve — 16.8 pt was the TRACING's left edge, measured off
+ * `ea-cp8a-pin-2024-specimen.png`, and it was never a number LHDN published. `left: 24` is simply an
+ * un-remeasured leftover of the tracing, like `itemLabel` and `subLabel` beside it, and it belongs on the
+ * first list above: a candidate for the agency's own file, not an exception to it.
+ *
+ * ⚠️ ROUND TWO (item 795c470c) OWNS THE FIX AND MUST NOT INHERIT THE OLD PREMISE. Re-deriving the left
+ * margin from 39.8 moves every left-anchored coordinate on the page, which is precisely the one-pass
+ * redraw that item exists to do; doing it here would be this round moving the grid. Nothing is changed
+ * by this note — only the reason recorded for a number that had a false one.
  *
  * Exported so test/ea-pdf.test.ts can assert against WHAT IS ACTUALLY DRAWN — the r205 Borang A lesson:
  * pdf-lib does not clip, so a caption wider than its slot prints straight through its neighbour and the
@@ -900,11 +923,23 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
    * letter is SPLIT OFF here rather than removed from the catalogues, which would have made the register
    * and the page disagree about what the form says.
    *
-   * ⚠️ WHICH COORDINATE THIS FOLLOWS, AND WHY. The agency puts its square at x 39.8, its own body column.
-   * Ours goes at `L` (24), because EA_FORM.left is already a deliberate departure — the agency's rules
-   * start 16.8 pt from the paper edge, inside the unprintable margin of most office printers. The square's
-   * SIZE is the agency's (17.3 pt wide, measured off its page); its POSITION is ours. The transcription
-   * records both and says a build must choose per block; this is that choice, stated.
+   * ⚠️ WHICH COORDINATE THIS FOLLOWS. The agency puts its square at x 39.8, its own body column. Ours
+   * goes at `L` (24). The square's SIZE is the agency's (17.3 pt wide, measured off its page); its
+   * POSITION is ours. The transcription records both and says a build must choose per block; this is
+   * that choice, stated.
+   *
+   * ⚠️ r370 — THE REASON GIVEN FOR THAT CHOICE WAS FALSE, AND IT CONTRADICTED THIS NOTE'S OWN FIRST
+   * SENTENCE. What stood here, quoted:
+   *
+   *     "Ours goes at `L` (24), because EA_FORM.left is already a deliberate departure — the agency's
+   *      rules start 16.8 pt from the paper edge, inside the unprintable margin of most office printers."
+   *
+   * It asserted the agency starts at 16.8 pt three words after correctly recording that it starts at
+   * 39.8. `--rects` counts 150 of the agency's cells beginning at 39.8 and none left of it; 16.8 pt was
+   * the left edge of the DevExpress TRACING, never a published LHDN number. The agency's page is WIDER
+   * than ours, so there is no unprintable-margin conflict and `L` = 24 is an un-remeasured leftover, not
+   * a departure. See the retirement note on `EA_FORM` for the full measurement. Round two (item
+   * 795c470c) re-derives it; nothing is moved here.
    */
   const sectionHeading = (label: string, tt: number) => {
     const m = /^\s*([A-F])\s+(.*)$/.exec(label);

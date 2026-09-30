@@ -180,6 +180,24 @@ lesson. The one deliberate departure is the LEFT margin: the specimen sets its r
 paper edge, inside the unprintable margin of most office printers, so everything left-anchored moved to
 24 pt. The money column did not move.
 
+  ⚠️ CORRECTION (r370, 2026-09-30) — THE TWO SENTENCES ABOVE ABOUT THE LEFT MARGIN ARE WRONG, AND THE
+  ERROR IS IN WHOSE MARGIN 16.8 IS. They are left standing because r219 really did reason that way and
+  the reasoning propagated; read them as a record of a decision, not as a fact about LHDN.
+
+  16.8 pt is the left edge of the SPECIMEN PNG — a rasterisation of another payroll vendor's rendering
+  (item ece6d75d, Producer "Developer Express Inc. DXperience v23.2.5"). It is not a number LHDN
+  published. Measured off the agency's own vector file with
+  `node --import tsx scripts/measure-ea-official-pdf.ts --rects`:
+
+      150 of the agency's body-table cells begin at x = 39.8, and NOTHING on its page begins left of it.
+      The next columns in are 45.2 (the Date caption), 57.1 (156 cells) and 74.8 (214 cells).
+      Its outer frame closes at ~557; ours runs to EA_FORM.right = 571.3.
+
+  So the agency's page is NARROWER in content and WIDER in margin than ours: our left edge at 24 sits
+  15.8 pt OUTSIDE the agency's, not inside it. There is no unprintable-margin conflict, and 24 is not a
+  printability departure to be preserved — it is an un-remeasured leftover of the tracing, like the
+  item and sub-item columns beside it. Re-deriving it belongs to the grid redraw (item 795c470c).
+
 WHAT THIS SYSTEM ALREADY HOLDS FOR EVERY BOX
 --------------------------------------------
 Section A comes from the staff record; B, C, D, E and F are already derived by `localization/my/reports.ts`
@@ -221,7 +239,18 @@ CONSISTENCY CHECKS, and they are why these numbers can be trusted:
 than fixed. Trust the WIDTH (17.3, identical across all six) and re-check the height against the
 drawn output rather than treating the spread above as six different sizes.
 
-⚠️ AND THE LEFT MARGIN IS OURS, DELIBERATELY. EA_FORM.left is 24 where the agency's rules start at
-16.8, because the agency's margin is inside the unprintable area of most office printers. The blocks
-above are given in the AGENCY's coordinates; a build must decide per block whether it follows the
-agency or our shifted margin, and say which.
+⚠️ AND THE LEFT MARGIN IS OURS — BUT NOT FOR THE REASON THIS NOTE USED TO GIVE (corrected r370).
+EA_FORM.left is 24 and the blocks above are given in the AGENCY's coordinates, so a build must still
+decide per block whether it follows the agency or our margin, and say which. That part stands.
+
+What this note used to say, quoted so the claim is recognisable if it comes back:
+
+    "⚠️ AND THE LEFT MARGIN IS OURS, DELIBERATELY. EA_FORM.left is 24 where the agency's rules start
+     at 16.8, because the agency's margin is inside the unprintable area of most office printers."
+
+It is backwards, and it contradicts the table immediately above it, which records every section square
+at x 39.8. The agency's rules do NOT start at 16.8 — 16.8 is the left edge of the DevExpress specimen
+PNG. `--rects` on the agency's own PDF counts 150 cells beginning at 39.8 and none left of it. Our 24 is
+therefore 15.8 pt OUTSIDE the agency's body column, not inside a margin it could not print. There is no
+printability conflict; 24 is simply un-remeasured, and item 795c470c re-derives it with the rest of
+the grid.
