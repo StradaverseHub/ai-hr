@@ -368,12 +368,45 @@ describe('r219 — the foot: the officer box, and the agency’s own spelling of
    * taken from `EaPdfData` rather than read off a clock inside the renderer, and an absent value still
    * prints the agency's empty rule. The rule's ARITHMETIC is pinned against an injected clock in
    * test/r367-ea-form-date.test.ts, where it can be tested without rendering a PDF.
+   *
+   * ⚠️ r370 (item 450f443f) — THE TWO SOURCE-TEXT ASSERTIONS ARE NOW MEASUREMENTS ON A RENDERED FORM,
+   * AND THE CASE IS STRICTLY STRONGER FOR IT. They read, verbatim:
+   *
+   *     expect(src, 'the caption moved — round A changes no coordinates').toContain('put(W.date, L + 6, 723, 8)');
+   *     expect(src).toMatch(/valueOrRule\(formDate\(d\.formDate\), 68, 150, 723, 8\);/);
+   *
+   * The intent was "round A moves no coordinates", and it was pinned by grepping for the literal 723 in
+   * the renderer's source. r370 grows the officer box downwards when the employer's name and address
+   * need more than the agency's two writing lines, and LHDN prints the Date on the SAME table row as
+   * the Telephone No. — `scripts/measure-ea-official-pdf.ts --rects`, tt 802, the date at x 45.2 and the
+   * telephone rule at 331.5 — so the date rides down with that row rather than floating above the box's
+   * new foot. The literal is therefore gone from the source and the baseline is computed.
+   *
+   * WHAT REPLACES IT IS THE CLAIM ITSELF, measured on the page: on a statement whose employer block
+   * fits the agency's two rules — which is every statement that existed before r370 — the caption and
+   * its rule are drawn at EXACTLY tt 723, on the same baseline as the telephone number, at the same x
+   * r219 chose. A source grep could not have told the difference between that and a coincidence; this
+   * can, and it survives round two re-pitching the box (item 795c470c).
    */
-  it('Tarikh is filled from the statement’s own formDate, at the position r219 put it', () => {
+  it('Tarikh is filled from the statement’s own formDate, at the position r219 put it', async () => {
     const src = read('lib/ea-pdf.ts');
-    expect(src, 'the caption moved — round A changes no coordinates').toContain('put(W.date, L + 6, 723, 8)');
-    // Same rule, same four numbers r219 pinned; only the VALUE changed from a hard-coded ''.
-    expect(src).toMatch(/valueOrRule\(formDate\(d\.formDate\), 68, 150, 723, 8\);/);
+    const items = await drawn(await renderEaPdf(BASE, bundleFor('ms'), { locale: 'ms' }));
+    const H = 841.89; // A4, and the renderer's own `at()` is H - tt.
+    const tt = (y: number) => Math.round((H - y) * 100) / 100;
+    const caption = items.find((i) => i.text === EA_FORM_WORDS.date);
+    const value = items.find((i) => i.text === '15/02/2027');
+    const phone = items.find((i) => i.text === BASE.employer.phone);
+    expect(caption, 'the Tarikh caption is not on the page').toBeDefined();
+    expect(value, 'the foot carries no date').toBeDefined();
+    expect(phone, 'the telephone number is not on the page').toBeDefined();
+    // r219's own numbers: the caption at EA_FORM.left + 6, its rule written at 68 + 3, both on tt 723.
+    expect(caption!.x).toBeCloseTo(EA_FORM.left + 6, 2);
+    expect(value!.x).toBeCloseTo(71, 2);
+    expect(tt(caption!.y), 'the Tarikh caption moved off r219’s baseline').toBeCloseTo(723, 2);
+    expect(tt(value!.y), 'the date moved off r219’s baseline').toBeCloseTo(723, 2);
+    // …and it is the agency's own arrangement that keeps them together: LHDN's Date and Telephone No.
+    // share one table row, so a change that moves one and not the other is the defect to catch.
+    expect(tt(phone!.y), 'the date and the telephone number came off the same row').toBeCloseTo(tt(value!.y), 2);
     // The renderer must not read a clock: that is what keeps every EA test time-independent.
     // Comment-proof: the renderer's own prose NAMES `todayInKualaLumpur` (to say where the value comes
     // from), so the check is on the IMPORTS — a pure renderer cannot read a clock it never imported, and

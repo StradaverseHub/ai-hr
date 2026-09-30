@@ -524,7 +524,50 @@ export const EA_FORM = {
    * fits with 11 pt to spare, which is why it was never seen: the form was only ever read in Malay.
    * A guard now measures both editions instead of trusting this number.
    */
-  officerBox: { x0: 158.9, t0: 640.8, t1: 730.6, ruleX: [288, 563] as const },
+  officerBox: {
+    x0: 158.9,
+    t0: 640.8,
+    /**
+     * The box's bottom edge WHEN IT HAS NOT GROWN — i.e. for the two writing lines the agency's own
+     * box has. A name and address that needs more takes `rowPitch` per extra rule below this; the
+     * renderer computes `officerBoxT1` and nothing else reads `t1` for a grown box.
+     */
+    t1: 730.6,
+    ruleX: [288, 563] as const,
+    /**
+     * r370 — THE FOUR NUMBERS THE FOOT IS NOW DRAWN FROM, RATHER THAN THE FIVE LITERALS IT WAS.
+     *
+     * Every baseline in this box used to be typed out at its call site (655 / 672 / 689 / 706 / 723),
+     * so growing it meant editing five numbers that only a reader could tell were one arithmetic
+     * sequence. They are now `rowT0 + n * rowPitch`, and the rule count is computed from the wrapped
+     * text rather than fixed at two.
+     *
+     * ⚠️ WHAT ROUND TWO (item 795c470c, the grid) HAS TO CHANGE, AND WHAT IT MUST NOT. It re-pitches
+     * this box onto the agency's own rows: `scripts/measure-ea-official-pdf.ts --rects` puts them at
+     * tt 739.8 / 753 / 766.2 / 779.4 / 792.6, five rows of 13.2 pt, i.e. `rowT0` ≈ 749.1 and
+     * `rowPitch` 13.2. Changing those two constants re-pitches the growth with it; nothing downstream
+     * needs touching, which is the whole point of naming them.
+     *
+     * `minSize` IS NOT ROUND TWO'S TO LOWER. It is why a long employer address is legible at all (see
+     * the block comment on the employer rules below), and at 13.2 pt pitch the pressure to shrink
+     * instead of wrap goes UP, not down.
+     *
+     * ⚠️ AND THE HAZARD ROUND TWO INHERITS, MEASURED. The agency's box top is tt 739.8 against our
+     * 640.8 — 99.0 pt lower — and its own bottom edge is at 817. Dropped onto those rows this box
+     * ends 13 pt above `bottom` (830) and 75 pt BELOW `footStripT` (742), where the amended-payslip
+     * marker draws. pdf-lib does NOT clip, so that is an overprint, not a clipped box. Two
+     * consequences: the marker's baseline must keep following the box (it does — see the foot), and
+     * at 13.2 pt pitch there is room for ZERO extra rules, so round two has to reclaim vertical space
+     * from the ~87% compression above this box (our Section F sits at 627.5 against the agency's
+     * 712.4) before the growth this round adds can still fit on the page.
+     */
+    rowT0: 655,
+    rowPitch: 17,
+    /** The agency's own count of writing lines for the name and address: two. The floor, never a cap. */
+    employerRules: 2,
+    /** The smallest type this box may set. See the employer rules' own note for why it is 6 and not 1. */
+    minSize: 6,
+  },
   /** Where OUR strip starts — the ~110 pt the specimen leaves empty beneath its own foot. */
   footStripT: 742,
   /** The page floor. Nothing may be drawn below it. */
@@ -738,9 +781,19 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   };
   /** Returns the x the drawn string ENDS at, so the next run (a cue word, an inline rule) can start from
    *  what was actually drawn rather than from a guess at its width. */
-  const putFit = (s: string, x: number, maxW: number, tt: number, size: number, f: PDFFont = font, color = ink) => {
+  /**
+   * ⚠️ r370 — `minSize` IS A FLOOR THE CALLER MAY RAISE, AND RAISING IT TRADES AN INVISIBLE STRING FOR
+   * A VISIBLE ONE. `fitSize` clamps at 1 pt, which is not a floor so much as a formality: at 3 pt the
+   * string is gone on paper and still present in the file, so nothing — not a test, not a 200, not a
+   * reader on a bright screen — reports it (item 450f443f; the measurement is on the employer rules
+   * below). Above this floor the text is shrunk to fit as before; at it, it is drawn at the floor and
+   * OVERPRINTS, which is r205's Borang A trade taken deliberately: an overprint gets queried, an
+   * invisible line does not. The default of 1 leaves every existing caller exactly as it was, because
+   * `fitSize` already returns at least 1.
+   */
+  const putFit = (s: string, x: number, maxW: number, tt: number, size: number, f: PDFFont = font, color = ink, minSize = 1) => {
     const v = safe(s);
-    const sz = fitSize(v, maxW, size, f);
+    const sz = Math.max(minSize, fitSize(v, maxW, size, f));
     page.drawText(v, { x, y: at(tt), size: sz, font: f, color });
     return x + f.widthOfTextAtSize(v, sz);
   };
@@ -768,9 +821,9 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
    * the dotted rule and nothing else — an empty rule asserts nothing, while a printed zero asserts that
    * the money does not exist.
    */
-  const valueOrRule = (v: string, x0: number, x1: number, tt: number, size = 7.5) => {
+  const valueOrRule = (v: string, x0: number, x1: number, tt: number, size = 7.5, minSize = 1) => {
     dotted(x0, x1, tt + 2.5);
-    if (v) putFit(v, x0 + 3, x1 - x0 - 6, tt, size);
+    if (v) putFit(v, x0 + 3, x1 - x0 - 6, tt, size, font, ink, minSize);
   };
   /**
    * The same, right-aligned — which is how every amount on this form sits on its rule.
@@ -1104,40 +1157,77 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
 
   // ── THE FOOT — the date at the left, the ruled officer box at the right ────────────────────────────
   const O = EA_FORM.officerBox;
-  box(O.x0, O.t0, R, O.t1);
-  const officerRow = (caption: string, tt: number, value: string) => {
-    put(caption, O.x0 + 8, tt, 8);
-    valueOrRule(value, O.ruleX[0], O.ruleX[1], tt, 8);
-  };
-  officerRow(W.officerName, 655, d.employer.officerName ?? '');
-  officerRow(W.officerPosition, 672, d.employer.officerPosition ?? '');
   /**
-   * "Nama dan Alamat Majikan" — TWO writing rules, and the name and address FLOW ACROSS BOTH (r353).
+   * "Nama dan Alamat Majikan" — TWO writing rules ON THE AGENCY'S FORM, AND AS MANY AS THE NAME AND
+   * ADDRESS NEED ON OURS (r353, then r370 / item 450f443f).
    *
-   * ⚠️ WHAT THE MEASUREMENT SETTLED, AND IT IS NOT WHAT THE PLAN EXPECTED. The approved plan proposed a
-   * THIRD rule here. `node --import tsx scripts/measure-ea-official-pdf.ts --rects` says the agency's own
-   * officer box has exactly FIVE rows (tt 739.8 / 753 / 766.2 / 779.4 / 792.6, 13.2 pt each): Name of
-   * Officer, Designation, "Name and Address of Employer", ONE unlabelled continuation rule, and
-   * Telephone No. Two writing lines for the name and address, which is what this box already has. A
-   * third would be our redesign of a box the item exists to stop redesigning.
+   * ⚠️ WHAT THE MEASUREMENT SETTLED IN r353, AND IT STILL HOLDS. `node --import tsx
+   * scripts/measure-ea-official-pdf.ts --rects` says the agency's own officer box has exactly FIVE rows
+   * (tt 739.8 / 753 / 766.2 / 779.4 / 792.6, 13.2 pt each): Name of Officer, Designation, "Name and
+   * Address of Employer", ONE unlabelled continuation rule, and Telephone No. So TWO writing lines is
+   * the agency's arrangement and `employerRules` stays 2 — it is the FLOOR, and a blank form, a short
+   * address and anything else that fits in two lines is drawn byte-for-byte as it was.
    *
-   * ⚠️ THE DEFECT WAS NEVER THE RULE COUNT — IT WAS THAT THE SECOND RULE WAS WASTED. The employer's name
-   * took the whole of rule one and the ENTIRE address was crushed onto rule two through `fitSize`, which
-   * shrinks rather than wraps and is floored at 1 pt. A four-part Kuala Lumpur address is about 440 pt of
-   * 8 pt Helvetica against a 269 pt rule, so it printed at 4.8 pt — legible-ish on screen, gone on paper,
-   * and silent: no overflow, no warning, a 200 and a downloadable file (r205's Borang A lesson again).
+   * ⚠️ r353 FIXED THE SINGLE-RULE CASE AND LEFT A TWO-RULE CEILING, WHICH IS THE DEFECT THE REPORTER
+   * IS LOOKING AT. Before r353 the name took the whole of rule one and the ENTIRE address was crushed
+   * onto rule two by `fitSize`, which shrinks rather than wraps and clamped at 1 pt. r353 made the two
+   * lines flow, so anything up to about 130 characters now sets at a full 8 pt. Past that the SAME
+   * mechanism is still there, one rule further along, and it is still silent. Measured on forms this
+   * renderer actually produced, against the 269 pt rule (`scratchpad/BEFORE-report.txt`):
    *
-   * So the two lines are filled the way a typesetter fills them: greedy-wrap the name and address
-   * together at full size across rule one, put the remainder on rule two, and let `valueOrRule`'s
-   * shrink-to-fit apply ONLY to a remainder that still will not fit. An address that fits now prints at
-   * 8 pt on both lines instead of 8 pt on one and 4.8 pt on the other.
+   *      block length       140     160     180     200     225     250     300     340     380
+   *      smallest type     6.9pt   5.6pt   4.6pt   4.0pt   3.4pt   2.9pt   2.3pt   2.0pt   1.7pt
+   *
+   * A 3.4 pt line is present in the file, passes every test, returns 200, downloads, is readable-ish on
+   * a bright screen — and is gone on the paper the employee files. That is r205's Borang A lesson for
+   * the third time on this form.
+   *
+   * SO THE BOX GROWS DOWNWARDS INSTEAD. One continuation rule per wrapped line at this box's own
+   * `rowPitch`, the box's bottom edge following them, and the Telephone / Date row (the agency prints
+   * those two on ONE row — its Date is at tt 802, x 45.2, beside the telephone rule at 331.5) riding
+   * down with it. Nothing ABOVE the box moves: it is the last thing on the page.
+   *
+   * THE CAP IS THE PAPER, AND ONLY THEN MAY TYPE SHRINK. `maxEmployerRules` is however many rules fit
+   * between `t1` and `bottom`; past that the remainder is joined onto the last rule and `valueOrRule`
+   * shrinks it — but never below `O.minSize` (6 pt), which is the floor this whole change exists to
+   * install. Below 6 pt the line stops being a disclosure and becomes a smudge, and a smudge on a tax
+   * document that the employee signs is worse than an overprint somebody queries.
+   *
+   * ⚠️ THE 6 pt FLOOR IS NOT ROUND TWO'S TO LOWER. Item 795c470c re-pitches this box onto the agency's
+   * 13.2 pt rows; at a tighter pitch the temptation to shrink instead of wrap is greater, not smaller,
+   * and the floor is the only thing standing between a long employer address and the 3.4 pt line above.
    */
   const employerBlock = [d.employer.name, ...d.employer.address].map((s) => (s ?? '').trim()).filter(Boolean).join(', ');
   const officerRuleW = O.ruleX[1] - O.ruleX[0] - 6; // the width valueOrRule actually writes into
   const employerLines = wrapped(employerBlock, 8, officerRuleW);
-  officerRow(W.employerNameAddress, 689, employerLines[0] ?? '');
-  valueOrRule(employerLines.slice(1).join(' '), O.ruleX[0], O.ruleX[1], 706, 8);
-  officerRow(W.employerPhone, 723, d.employer.phone ?? '');
+  /** How many rules fit before the box's bottom edge would cross `bottom`. Nothing may be drawn below it. */
+  const maxEmployerRules = O.employerRules + Math.floor((EA_FORM.bottom - O.t1) / O.rowPitch);
+  const employerRules = Math.min(Math.max(employerLines.length, O.employerRules), maxEmployerRules);
+  /** How far the box reaches below where it has always ended. Zero for every address that fits two rules. */
+  const officerBoxGrowth = (employerRules - O.employerRules) * O.rowPitch;
+  /** The box's bottom edge for THIS statement. `O.t1` is the ungrown case, and the two agree at 2 rules. */
+  const officerBoxT1 = O.t1 + officerBoxGrowth;
+  /** Row `n` of the box, from its first writing baseline. Round two re-pitches by changing the two constants. */
+  const officerRowT = (n: number) => O.rowT0 + n * O.rowPitch;
+
+  box(O.x0, O.t0, R, officerBoxT1);
+  const officerRow = (caption: string, tt: number, value: string) => {
+    put(caption, O.x0 + 8, tt, 8);
+    valueOrRule(value, O.ruleX[0], O.ruleX[1], tt, 8);
+  };
+  officerRow(W.officerName, officerRowT(0), d.employer.officerName ?? '');
+  officerRow(W.officerPosition, officerRowT(1), d.employer.officerPosition ?? '');
+  // The caption sits on the FIRST of the employer's rules; the rest are the agency's unlabelled
+  // continuation rule and, past two, ours. The LAST rule takes whatever is left over, so a block that
+  // hit the cap is still printed in full rather than losing its tail — a truncated address reads as a
+  // complete one, which is the failure r219 refused for captions and refuses here for values.
+  put(W.employerNameAddress, O.x0 + 8, officerRowT(2), 8);
+  for (let i = 0; i < employerRules; i += 1) {
+    const text = i === employerRules - 1 ? employerLines.slice(i).join(' ') : employerLines[i] ?? '';
+    valueOrRule(text, O.ruleX[0], O.ruleX[1], officerRowT(2 + i), 8, O.minSize);
+  }
+  const footRowT = officerRowT(2 + employerRules);
+  officerRow(W.employerPhone, footRowT, d.employer.phone ?? '');
   /**
    * ⚠️ r367 (item fda53352, round A) — TARIKH IS FILLED NOW, AND THAT REVERSES r219's RECORDED DECISION.
    *
@@ -1152,9 +1242,17 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
    *
    * `null` (the blank form, and any caller with nothing to date) still prints the agency's empty rule —
    * `valueOrRule` does that for an empty value, which is why the reversal needed no new branch here.
+   *
+   * ⚠️ r370 — ITS BASELINE IS `footRowT`, NOT THE LITERAL 723 r367 PINNED, AND THAT IS THE AGENCY'S OWN
+   * ARRANGEMENT RATHER THAN A CHOICE OF OURS. `--rects` puts LHDN's Date on tt 802 at x 45.2, the SAME
+   * row as its Telephone No. rule at 331.5: one table row, the date outside the box and the telephone
+   * inside it. So the date rides down with the telephone when the box grows. It is 723 for every
+   * statement whose name and address fit the agency's two lines, which is every statement that exists
+   * today — `test/r219-ea-cp8a-form.test.ts` pins that on a RENDERED form now instead of on this line's
+   * source text, which is the stronger check and the one that survives round two's re-pitch.
    */
-  put(W.date, L + 6, 723, 8);
-  valueOrRule(formDate(d.formDate), 68, 150, 723, 8);
+  put(W.date, L + 6, footRowT, 8);
+  valueOrRule(formDate(d.formDate), 68, 150, footRowT, 8);
 
   // ── BELOW THE FORM ────────────────────────────────────────────────────────────────────────────────
   //
@@ -1177,6 +1275,21 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // document, and an amended statement that looks identical to an unamended one is an audit hole, not a
   // cosmetic difference. Removing it is a decision for the reporter to make explicitly.
   let y: number = EA_FORM.footStripT;
+  /**
+   * ⚠️ r370 — …AND IT FOLLOWS THE OFFICER BOX DOWN, BECAUSE THE BOX CAN NOW REACH IT. `footStripT`
+   * (742) is 11.4 pt below the UNGROWN box, so a box carrying three or more employer rules ends past
+   * it and the amended marker would print INSIDE the box, over the telephone rule. pdf-lib does NOT
+   * clip: that is an overprint on a tax document, not a line that quietly disappears.
+   *
+   * It is the box's GROWTH that is added, not a fresh clearance of its own, so the strip keeps exactly
+   * the 11.4 pt it has always had and an ungrown box leaves this line at 742 to the byte. The page
+   * break below still catches the case where the grown box leaves no room for the marker at all.
+   *
+   * ⚠️ ROUND TWO (item 795c470c) MAKES THIS LOAD-BEARING RATHER THAN DEFENSIVE. The agency's box top is
+   * 99.0 pt below ours and its bottom edge is at tt 817 — 75 pt past `footStripT` — so once the box is
+   * on the agency's rows EVERY amended form overprints unless `footStripT` moves with it.
+   */
+  y += officerBoxGrowth;
   const noteH = d.overrides && d.overrides.length > 0 ? 11 : 0;
   const newPage = () => {
     page = doc.addPage(A4);
