@@ -247,11 +247,24 @@ beforeEach(async () => {
 
 describe('the fixture itself, asserted before anything is measured against it', () => {
   it('has a real, non-zero Annual Leave balance and exactly one ledger row', async () => {
-    // Guards EVERY case below from the vacuity the header warns about: with a zero opening balance, a
-    // balance assertion passes whatever the code does.
-    expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBe(OPENING);
+    /**
+     * Guards EVERY case below from the vacuity the header warns about: with a zero opening balance, a
+     * balance assertion passes whatever the code does.
+     *
+     * ⚠️ AND THE NON-ZERO IS ASSERTED IN ITS OWN RIGHT, not against the constant. An earlier draft of this
+     * case read `expect(balance).toBe(OPENING)` and nothing else — which is itself vacuous, because setting
+     * `OPENING` to 0 satisfies it. Verified by doing exactly that: the case still passed. `toBeGreaterThan`
+     * is what makes this a guard rather than a restatement of the fixture's own literal.
+     */
+    expect(OPENING, 'the fixture constant itself must be a real balance').toBeGreaterThan(0);
+    expect(IMPORTED, 'and the days imported must be a real quantity').toBeGreaterThan(0);
+    expect(OPENING, 'the opening balance must be able to absorb the import without the sign flipping').toBeGreaterThan(IMPORTED);
+    const ledger = await ledgerBalance(subject.employmentId, b.annualLeaveTypeId);
+    expect(ledger, 'the ledger really holds days, measured not assumed').toBeGreaterThan(0);
+    expect(ledger).toBe(OPENING);
     expect(await ledgerRowCount()).toBe(1);
     const row = await annualRow();
+    expect(Number(row.balance), 'and the balance SCREEN shows them too').toBeGreaterThan(0);
     expect(Number(row.balance)).toBe(OPENING);
     expect(Number(row.taken)).toBe(0);
   });
