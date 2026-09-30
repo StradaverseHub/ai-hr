@@ -72,6 +72,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ employme
     partC: ea.partC,
     partD: ea.partD,
     partE: ea.partE,
+    // r367 — the foot's Tarikh. Computed by the MY pack's eaFormDate() so the renderer stays pure; see
+    // EaPdfData.formDate in lib/ea-pdf.ts for whose rule it is.
+    formDate: ea.formDate,
     statutoryVersion: ea.statutoryVersion,
     // 1.2.6 EA Data Overwrite — pass HR's EA-only amendments through so the PDF can print the "Amended"
     // footnote. Built field-by-field here, so this line is REQUIRED or the marker silently drops.

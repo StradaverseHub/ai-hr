@@ -76,18 +76,27 @@ describe('6036dab7 — every EA box reaches every surface', () => {
   });
 
   /**
-   * ⚠️ r351 — `eis` IS THE ONE EA FIELD THE PRINTED FORM DOES NOT CARRY, AND THAT IS NOW DELIBERATE.
+   * ⚠️ r367 (item fda53352, round A) — THE LIST IS EMPTY NOW: EVERY EA FIELD IS ON THE PRINTED FORM.
    *
-   * The official C.P.8A has no EIS box: `da4fc817` established that Section E carries exactly two
-   * amounts and EIS is not one of them. It was printed in a strip of OURS below the officer box until
-   * the reporter wrote "Remove this part from the EA Form" on the shipped page, so the printed form now
-   * ends where the agency's ends. `eis` stays in the EA vocabulary because it is still a real datum on
-   * the HTML statement and HR can still amend it — it simply has no box on the paper.
+   * ⚠️ WHAT THIS BLOCK SAID UNTIL r367, QUOTED SO THE REVERSAL IS FINDABLE: "`eis` IS THE ONE EA FIELD
+   * THE PRINTED FORM DOES NOT CARRY, AND THAT IS NOW DELIBERATE. The official C.P.8A has no EIS box:
+   * `da4fc817` established that Section E carries exactly two amounts and EIS is not one of them… `eis`
+   * stays in the EA vocabulary because it is still a real datum on the HTML statement and HR can still
+   * amend it — it simply has no box on the paper." The first sentence of that was right about the BOX
+   * COUNT and wrong about the SCOPE of the second box.
    *
-   * The exception is an explicit, single-member list rather than a loosened regex, so a SECOND field
-   * quietly dropping off the form still fails this test.
+   * ⚠️ SECTION E STILL CARRIES EXACTLY TWO AMOUNTS. That half has not changed and is pinned below. What
+   * changed is that the SECOND amount is the sum of THREE employee PERKESO legs — SOCSO, EIS and SKBBK —
+   * because the box asks for "the amount of compulsory contribution paid" to PERKESO, the organisation,
+   * and LHDN scopes contributions to that organisation to Act 4 and Act 800 (the two documents are cited
+   * on `EaPdfData.partE` in lib/ea-pdf.ts). So EIS acquired a box on the paper without the paper
+   * acquiring a line, and `eis` stopped being an exception to this case.
+   *
+   * The list is KEPT rather than deleted, empty and still consulted, because it is the seam this suite
+   * uses to say "this field is amendable but deliberately unprinted". A field dropping off the form now
+   * fails outright, which is what it should always have done.
    */
-  const NOT_ON_THE_PRINTED_FORM: readonly string[] = ['eis'];
+  const NOT_ON_THE_PRINTED_FORM: readonly string[] = [];
 
   it('every field in the EA vocabulary is DRAWN by the PDF renderer', () => {
     const missing = EA_FIELDS.filter(
@@ -100,13 +109,34 @@ describe('6036dab7 — every EA box reaches every surface', () => {
     expect(RENDERER).toContain('d.partB.gross'); // the total, drawn by its own row
   });
 
-  it('the one field that is NOT on the printed form is still on the HTML statement and still amendable', () => {
+  it('any field NOT on the printed form is still on the HTML statement and still amendable', () => {
     // Otherwise the exception above would be a hole: a field could be dropped from the form AND from the
-    // screen and this suite would say nothing.
+    // screen and this suite would say nothing. r367 — the list is empty, so this loop guards the seam
+    // rather than a member; the case that stops `eis` and `skbbk` vanishing is now the one above, which
+    // no longer excuses them.
     const html = read('app/payroll/reports/ea/[employmentId]/page.tsx');
     for (const f of NOT_ON_THE_PRINTED_FORM) {
       expect(EA_FIELDS as readonly string[], `${f} left the vocabulary`).toContain(f);
       expect(html, `${f} is not rendered on the HTML statement either`).toContain(`ea.partE.${f}`);
+    }
+  });
+
+  /**
+   * ⚠️ r367 — SECTION E'S AMOUNT COUNT, WHICH IS THE HALF OF THE OLD `NOT_ON_THE_PRINTED_FORM` CLAIM THAT
+   * IS STILL TRUE. `da4fc817` established that the official Section E carries exactly TWO amounts; r367
+   * widened the second one's scope and must not have added a third line. Counted off the renderer's own
+   * `eContribution(…)` calls, which are the only thing that draws an amount inside Section E.
+   */
+  it('Section E draws exactly two amounts, and the second is all three PERKESO legs', () => {
+    const e = RENDERER.slice(
+      RENDERER.indexOf("sectionHeading(t.sectionEContributions"),
+      RENDERER.indexOf("sectionHeading(t.sectionFExemptAllowances"),
+    );
+    const amounts = [...e.matchAll(/\beContribution\(/g)];
+    expect(amounts.length, 'Section E must draw exactly two amounts, as the agency\u2019s form does').toBe(2);
+    expect(e, 'E(1) is the approved fund').toContain('derived(d.partE.epf)');
+    for (const leg of ['socso', 'eis', 'skbbk']) {
+      expect(e, `E(2) no longer states the ${leg} leg`).toContain(`d.partE.${leg}`);
     }
   });
 
@@ -305,7 +335,11 @@ describe('r220 — the field register and the drawn form describe the same page'
     const drawnPaths = new Set(
       // `[a-zA-Z0-9]` and not `[a-zA-Z]`: `partD.cp38` and `partD.tp1Relief` carry digits, and a letters-only
       // class silently drops exactly those two — a register that stopped naming CP38 would have passed.
-      [...body.matchAll(/\bd\.((?:employer|employee|partB|partC|partD|partE)\.[a-zA-Z0-9]+|year|overrides)\b/g)].map((m) => m[1]),
+      // r367 — `formDate` joins `year` and `overrides` as a TOP-LEVEL value the renderer reads (the foot's
+      // Tarikh, which stopped being an unconditionally empty rule). A path this alternation does not name is
+      // invisible to both halves of this case, so a new top-level field must be added here or the register
+      // can stay silent about it.
+      [...body.matchAll(/\bd\.((?:employer|employee|partB|partC|partD|partE)\.[a-zA-Z0-9]+|year|overrides|formDate)\b/g)].map((m) => m[1]),
     );
     expect(drawnPaths.size, 'sanity: the renderer body was found and scanned').toBeGreaterThan(30);
     const registered = new Set(EA_REGISTER.flatMap((r) => r.sources));

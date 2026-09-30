@@ -111,7 +111,10 @@ const BASE: EaPdfData = {
   },
   partC: { pension: 12000, annuity: 3000, total: 15000 },
   partD: { mtd: 4200, cp38: 600, zakat: 240, tp1Relief: 5200, donations: 350, zakatOther: 800, childRelief: 4000 },
-  partE: { epf: 7810, socso: 297, eis: 118.8, fundName: 'KWSP' },
+  // ⚠️ r367 — three non-zero, mutually distinct PERKESO legs; E(2) prints their sum, 459.25.
+  partE: { epf: 7810, socso: 297, eis: 118.8, skbbk: 43.45, fundName: 'KWSP' },
+  // r367 — Tarikh is filled now (it was an unconditional empty rule when r219 wrote this fixture).
+  formDate: '2027-02-15',
   statutoryVersion: '2026.3',
   overrides: [],
 };
@@ -156,10 +159,28 @@ describe('r219 — item 9 is conditional on the YEAR, not on a date existing', (
    * years ago must show a leaving date and NO commencement date, and the previous rule gets that wrong
    * in the one direction a single-case test would miss.
    */
-  it('a person employed for the whole year gets neither date — and both captions with empty rules', async () => {
+  /**
+   * ⚠️ r367 (item fda53352, round A) — THE FOUR CASES BELOW STILL PIN ITEM 9's CONDITION EXACTLY, BUT THE
+   * EXACT-SET ASSERTIONS HAD TO GROW ONE MEMBER, AND THE CLAIM THEY MADE IS QUOTED WHERE IT CHANGED.
+   *
+   * They collect EVERY dd/mm/yyyy string on the drawn page, which was the right way to catch item 9
+   * printing a date it should not — while the page carried no other date at all. The foot's "Tarikh" is
+   * filled now (r219's empty rule reversed at the reporter's instruction), so every one of these pages
+   * carries exactly one more date than it did. It is named in each set rather than filtered out: a
+   * filtered assertion would stop noticing if the FOOT's date disappeared.
+   *
+   * `BASE.formDate` is '2027-02-15', so the foot prints 15/02/2027 on all four.
+   */
+  const FOOT = '15/02/2027';
+
+  it('a person employed for the whole year gets neither date — only the foot’s Tarikh', async () => {
     const printed = await textsOf({ ...BASE, employee: { ...BASE.employee, hiredOn: '2019-05-06', terminatedOn: null } });
     expect(printed).not.toContain('06/05/2019');
-    expect(printed.some((s) => /^\d{2}\/\d{2}\/\d{4}$/.test(s)), 'no date at all on the form').toBe(false);
+    // ⚠️ THIS ASSERTED `'no date at all on the form'` → false UNTIL r367. Item 9 still prints neither date;
+    // the only date on the page is the one the employer signs under.
+    expect(printed.filter((s) => /^\d{2}\/\d{2}\/\d{4}$/.test(s)), 'item 9 printed a date it should not').toEqual([
+      FOOT,
+    ]);
     // The blank form prints these captions whether or not there is anything to write beside them.
     const ms = bundleFor('ms');
     expect(printed).toContain(ms.partYearNote);
@@ -170,7 +191,8 @@ describe('r219 — item 9 is conditional on the YEAR, not on a date existing', (
   it('a person hired INSIDE the tax year gets 9(a) only', async () => {
     const printed = await textsOf({ ...BASE, employee: { ...BASE.employee, hiredOn: '2026-03-01', terminatedOn: null } });
     expect(printed).toContain('01/03/2026');
-    expect(printed.filter((s) => /^\d{2}\/\d{2}\/\d{4}$/.test(s))).toEqual(['01/03/2026']);
+    // r367 — `['01/03/2026']` until the foot's Tarikh started printing.
+    expect(printed.filter((s) => /^\d{2}\/\d{2}\/\d{4}$/.test(s))).toEqual(['01/03/2026', FOOT]);
   });
 
   it('a long-serving LEAVER gets 9(b) only — the half a single-case test would miss', async () => {
@@ -180,7 +202,8 @@ describe('r219 — item 9 is conditional on the YEAR, not on a date existing', (
     });
     expect(printed).toContain('30/11/2026');
     expect(printed).not.toContain('06/05/2019');
-    expect(printed.filter((s) => /^\d{2}\/\d{2}\/\d{4}$/.test(s))).toEqual(['30/11/2026']);
+    // r367 — `['30/11/2026']` until the foot's Tarikh started printing.
+    expect(printed.filter((s) => /^\d{2}\/\d{2}\/\d{4}$/.test(s))).toEqual(['30/11/2026', FOOT]);
   });
 
   it('a person who both joined and left inside the year gets both', async () => {
@@ -188,7 +211,8 @@ describe('r219 — item 9 is conditional on the YEAR, not on a date existing', (
       ...BASE,
       employee: { ...BASE.employee, hiredOn: '2026-03-01', terminatedOn: '2026-11-30' },
     });
-    expect(printed.filter((s) => /^\d{2}\/\d{2}\/\d{4}$/.test(s))).toEqual(['01/03/2026', '30/11/2026']);
+    // r367 — `['01/03/2026', '30/11/2026']` until the foot's Tarikh started printing.
+    expect(printed.filter((s) => /^\d{2}\/\d{2}\/\d{4}$/.test(s))).toEqual(['01/03/2026', '30/11/2026', FOOT]);
   });
 
   it('the rule is the YEAR, in the source, not "a date is present"', () => {
@@ -326,10 +350,47 @@ describe('r219 — the foot: the officer box, and the agency’s own spelling of
     expect(transcription).toMatch(/THIS NOTE USED TO DEFEND A TYPO/);
   });
 
-  it('Tarikh is an empty rule — the signing date is the employer’s to write, not ours to invent', () => {
+  /**
+   * ⚠️ r367 (item fda53352, round A) — THIS CASE PINNED THE DECISION THE REPORTER HAS NOW REVERSED, SO IT
+   * IS UPDATED RATHER THAN DELETED (CLAUDE.md §8).
+   *
+   * ⚠️ ITS OLD TITLE AND CLAIM, QUOTED: "Tarikh is an empty rule — the signing date is the employer's to
+   * write, not ours to invent", asserting `valueOrRule('', 68, 150, 723, 8);` verbatim. The reporter has
+   * now told us what to write in that box, so we write it.
+   *
+   * THE RULE IS THEIRS, NOT THE AGENCY'S. `MIN(today in Kuala Lumpur, 28 February of the year after the EA
+   * year)`. **No published LHDN date for this box is sourced in this repository or in the committed agency
+   * files** — docs/forms/ea-cp8a-pin-2023-official-en.pdf carries the box and no deadline — so it is not
+   * presented as a statutory deadline anywhere, and test/statutory-forms-page.test.ts still leaves Form E's
+   * deadline unset for the reason it always did.
+   *
+   * WHAT THIS CASE PINS NOW: the box's POSITION is untouched (round A moves no coordinates), the value is
+   * taken from `EaPdfData` rather than read off a clock inside the renderer, and an absent value still
+   * prints the agency's empty rule. The rule's ARITHMETIC is pinned against an injected clock in
+   * test/r367-ea-form-date.test.ts, where it can be tested without rendering a PDF.
+   */
+  it('Tarikh is filled from the statement’s own formDate, at the position r219 put it', () => {
     const src = read('lib/ea-pdf.ts');
-    expect(src).toContain('put(W.date, L + 6, 723, 8)');
-    expect(src).toMatch(/valueOrRule\('', 68, 150, 723, 8\);/);
+    expect(src, 'the caption moved — round A changes no coordinates').toContain('put(W.date, L + 6, 723, 8)');
+    // Same rule, same four numbers r219 pinned; only the VALUE changed from a hard-coded ''.
+    expect(src).toMatch(/valueOrRule\(formDate\(d\.formDate\), 68, 150, 723, 8\);/);
+    // The renderer must not read a clock: that is what keeps every EA test time-independent.
+    // Comment-proof: the renderer's own prose NAMES `todayInKualaLumpur` (to say where the value comes
+    // from), so the check is on the IMPORTS — a pure renderer cannot read a clock it never imported, and
+    // `new Date()` is the other way in.
+    expect(src, 'lib/ea-pdf.ts imported the clock').not.toMatch(/^import .*hr-date.*$/m);
+    const body = src.slice(src.indexOf('export async function renderEaPdf'));
+    expect(body, 'the renderer constructs a Date').not.toMatch(/new Date\(/);
+    expect(body, 'the renderer calls Date.now').not.toMatch(/Date\.now\(/);
+  });
+
+  it('a statement with no formDate still prints the agency’s empty rule', async () => {
+    // r219's real invariant, kept: the blank C.P.8A and any caller with nothing to date get the form's own
+    // rule and no invented date. `blankEaPdfData()` sets formDate: null.
+    const dated = await textsOf(BASE);
+    expect(dated, 'the filled form must carry its date').toContain('15/02/2027');
+    const undated = await textsOf({ ...BASE, formDate: null });
+    expect(undated.some((x) => /^\d{2}\/\d{2}\/\d{4}$/.test(x)), 'an undated statement printed a date').toBe(false);
   });
 });
 

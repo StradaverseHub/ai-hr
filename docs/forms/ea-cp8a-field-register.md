@@ -111,7 +111,7 @@ the reader has chosen.
 | E | E | CARUMAN YANG DIBAYAR OLEH PEKERJA KEPADA KUMPULAN WANG SIMPANAN / PENCEN YANG DILULUSKAN DAN PERKESO | heading (takes no value) | The form itself — printed on every copy, nothing goes in it |  | `payroll.ea.sectionEContributions` |
 | E | 1 | Nama Kumpulan Wang | text | Payroll — the year’s payslips (partE.fundName) |  | `payroll.ea.fundName` |
 | E | 1 | Amaun caruman yang wajib dibayar (nyatakan bahagian pekerja sahaja) | amount (RM) | Payroll, and amendable under “Amend EA figures” (partE.epf) | The employee’s share only. The same caption is printed again on item 2, after the agency’s “2. PERKESO:”. | `payroll.ea.contributionAmount` |
-| E | 2 | 2. PERKESO : | amount (RM) | Payroll, and amendable under “Amend EA figures” (partE.socso) | The item number and the word PERKESO are the agency’s and are printed in Malay in both languages; the caption after them is item 1’s. | `form.perkeso` |
+| E | 2 | 2. PERKESO : | amount (RM) | Payroll, and amendable under “Amend EA figures” (partE.socso, partE.eis, partE.skbbk) | The item number and the word PERKESO are the agency’s and are printed in Malay in both languages; the caption after them is item 1’s. ⚠️ r367 — ONE BOX OVER THREE OF OUR FIGURES, which is the same shape B.1(b) and B.1(c) already have. It used to state the SOCSO leg alone. The caption is the ORGANISATION’s, not one scheme’s: LHDN’s own BM original (docs/forms/ea-cp8a-pin-2023-official-bm.xlsx, sharedStrings 82 and 64) heads the section “… DAN PERKESO” and writes the box as “PERKESO : Amaun caruman yang wajib dibayar (nyatakan bahagian pekerja sahaja)”, and LHDN scopes contributions to that organisation to two Acts on Form TP1 item C14 — the Employees’ Social Security Act 1969 [Act 4] and the Employment Insurance System Act 2017 [Act 800] (docs/forms/tp1-2026-form-en.pdf and its explanatory notes). EIS is Act 800; SKBBK is Act 4 as amended (Akta A1788), employee-only, mandatory from 1 Jun 2026 on the same PERKESO schedule, and it POSTDATES Pin. 2023 — so the caption’s silence about it is a dating fact, not an exclusion. The three legs stay SEPARATE data so HR can amend the right one; the renderer adds them. | `form.perkeso` |
 
 ## F — Jumlah Elaun … yang Dikecualikan Cukai (total exempt allowances)
 
@@ -123,7 +123,7 @@ the reader has chosen.
 
 | Section | Box | Official wording (C.P.8A Pin. 2023) | Value | Fed by | Notes | Caption |
 | --- | --- | --- | --- | --- | --- | --- |
-| FOOT |  | Tarikh: | date | nothing feeds this yet | The date the employer SIGNS the statement. Theirs to write, not ours to invent, so the rule prints empty on a filled form too. | `form.date` |
+| FOOT |  | Tarikh: | date | Filled in by this system (formDate) | ⚠️ r367 — THIS BOX IS FILLED NOW, REVERSING r219, WHOSE NOTE READ: “The date the employer SIGNS the statement. Theirs to write, not ours to invent, so the rule prints empty on a filled form too.” The reporter has told us what to write. The rule is MIN(today in Kuala Lumpur, 28 February of the year after the EA year), computed by localization/my/reports.ts eaFormDate() rather than in the renderer, so no EA test reads a clock. ⚠️ THE RULE IS THE REPORTER’S BUSINESS RULE, NOT THE AGENCY’S: no published LHDN date for this box is sourced in this repository or in the committed agency files, and it is deliberately not presented as a statutory deadline (test/statutory-forms-page.test.ts leaves Form E’s deadline unset for the same reason). 28 February is literal — a leap year does not move it. The BLANK form still prints the agency’s empty rule. | `form.date` |
 | FOOT |  | Nama Pegawai | text | The employer’s company record (employer.officerName) | “Name Pegawai” is the SPECIMEN’S own spelling — Malay would be “Nama”. Reproduced as the agency’s form has it and deliberately not corrected. | `form.officerName` |
 | FOOT |  | Jawatan | text | The employer’s company record (employer.officerPosition) |  | `form.officerPosition` |
 | FOOT |  | Nama dan Alamat Majikan | text | The employer’s company record (employer.name, employer.address) | TWO rules: the employer’s name on the first, the address folded onto the second. The form has no third rule. | `form.employerNameAddress` |
@@ -143,7 +143,7 @@ the reader has chosen.
 
 ## Boxes nothing feeds yet
 
-8 of the 69 entries in this register take a value the agency asks
+7 of the 69 entries in this register take a value the agency asks
 for and this system holds nothing for. Each prints the blank form’s own rule and nothing on it —
 never a placeholder, never `0.00`, never a plausible guess. They are listed again here because
 they are the shortest answer to “what is still missing from the EA?”.
@@ -155,4 +155,3 @@ they are the shortest answer to “what is still missing from the EA?”.
 - **B 2** — Jenis pendapatan — Item 2’s sub-line, with a rule at (a) and (b). Both carry a description and no money; the amount belongs to item 2 itself.
 - **B 3** — Nyatakan: — The description rule inside item 3.
 - **B 4** — Alamat: — The address rule inside item 4.
-- **FOOT** — Tarikh: — The date the employer SIGNS the statement. Theirs to write, not ours to invent, so the rule prints empty on a filled form too.

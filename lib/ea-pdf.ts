@@ -147,13 +147,49 @@ export type EaPdfData = {
     zakatOther: number;
     childRelief: number;
   };
+  /**
+   * ⚠️ r367 (item fda53352, round A) — `socso`, `eis` AND `skbbk` ARE THREE FIGURES FOR **ONE** PRINTED
+   * BOX. Section E still carries exactly TWO amounts, as it always did; the second of them is now the sum
+   * of all three PERKESO legs, and the renderer adds them (nothing here stores the total).
+   *
+   * WHY E(2) IS BROADER THAN THE SOCSO LEG — from LHDN's own paper, so the next reader cannot re-narrow it:
+   *   • docs/forms/ea-cp8a-pin-2023-official-en.pdf — Section E is headed "CONTRIBUTIONS PAID BY EMPLOYEE
+   *     TO APPROVED PROVIDENT / PENSION FUND AND SOCSO"; item 2 is "SOCSO: Amount of compulsory
+   *     contribution paid (state the employee's share of contribution only)".
+   *   • docs/forms/ea-cp8a-pin-2023-official-bm.xlsx, sharedStrings 82 and 64 — "… DAN PERKESO" and
+   *     "PERKESO : Amaun caruman yang wajib dibayar (nyatakan bahagian pekerja sahaja)". The Malay
+   *     ORIGINAL names the ORGANISATION, PERKESO; SOCSO is that organisation's English name, not the
+   *     name of one of its schemes.
+   *   • docs/forms/tp1-2026-form-en.pdf item C14 and docs/forms/tp1-2026-explanatory-notes-en.pdf — LHDN
+   *     scopes "Contributions to PERKESO" to the Employees' Social Security Act 1969 [Act 4] and the
+   *     Employment Insurance System Act 2017 [Act 800].
+   *   • EIS is Act 800; SKBBK is Act 4 as amended (Akta A1788), employee-only, mandatory 1 Jun 2026, on
+   *     the same PERKESO schedule. SKBBK postdates Pin. 2023, so the caption's silence about it is a
+   *     DATING fact and not an exclusion.
+   * Before r367 this box stated the SOCSO leg alone, and `eis` was on no printed EA at all after r351
+   * removed our below-form strip.
+   */
   partE: {
     epf: number;
     socso: number;
     eis: number;
+    /** Lindung 24 Jam / SKBBK — the employee-paid Act 4 leg (eff 1 Jun 2026); no employer share exists.
+     *  Printed inside E(2)'s sum, never on a line of its own: the form has no third amount. */
+    skbbk: number;
     /** da4fc817 — E1's "Nama Kumpulan Wang": the fund, named before its amount, as the form asks. */
     fundName: string;
   };
+  /**
+   * ⚠️ r367 (item fda53352, round A) — the foot's "Tarikh" / "Date", ISO `yyyy-mm-dd`, or null for the
+   * agency's empty rule (which is what the BLANK form prints, and what r219 printed on a filled one).
+   *
+   * COMPUTED BY THE CALLER, NEVER HERE. `localization/my/reports.ts` `eaFormDate()` owns the rule —
+   * `MIN(today in Kuala Lumpur, 28 February of the year after the EA year)` — because a clock read inside
+   * this pure renderer would make every EA test time-dependent. That rule is the REPORTER's business rule
+   * and not the agency's: no published LHDN deadline for this box is sourced anywhere in this repo, and it
+   * is deliberately not presented as one.
+   */
+  formDate: string | null;
   statutoryVersion: string;
   /** 1.2.6 EA Data Overwrite — EA-only amendments overlaid by HR; drives the footnote marker. Optional +
    *  defaults to [] so existing callers keep compiling. */
@@ -247,7 +283,10 @@ export function blankEaPdfData(): EaPdfData {
     },
     partC: { pension: 0, annuity: 0, total: 0 },
     partD: { mtd: 0, cp38: 0, zakat: 0, tp1Relief: 0, donations: 0, zakatOther: 0, childRelief: 0 },
-    partE: { epf: 0, socso: 0, eis: 0, fundName: '' },
+    partE: { epf: 0, socso: 0, eis: 0, skbbk: 0, fundName: '' },
+    // r367 — the BLANK C.P.8A still prints the agency's empty date rule. There is no statement to date,
+    // and a date on a blank form would be a figure the form does not have.
+    formDate: null,
     statutoryVersion: '',
     overrides: [],
   };
@@ -1052,7 +1091,10 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
     amountOrRule(value, MX, MR, tt);
   };
   eContribution('', A.subLabel, 594.5, derived(d.partE.epf));
-  eContribution(W.perkeso, A.itemLabel, 608, derived(d.partE.socso));
+  // r367 — ONE box, THREE legs. See `EaPdfData.partE` for the two LHDN documents that settle the caption's
+  // scope. `derived` prints even at 0.00, which is right here: a contributing employee's E(2) is a figure
+  // the employer withheld and can stand behind.
+  eContribution(W.perkeso, A.itemLabel, 608, derived(d.partE.socso + d.partE.eis + d.partE.skbbk));
 
   // ── F — JUMLAH ELAUN / PERKUISIT / PEMBERIAN / MANFAAT YANG DIKECUALIKAN CUKAI ─────────────────────
   // ONE LINE: the section title IS the item, and "RM" sits just before its rule.
@@ -1096,10 +1138,23 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   officerRow(W.employerNameAddress, 689, employerLines[0] ?? '');
   valueOrRule(employerLines.slice(1).join(' '), O.ruleX[0], O.ruleX[1], 706, 8);
   officerRow(W.employerPhone, 723, d.employer.phone ?? '');
-  // Tarikh is the date the employer SIGNS the statement, which is theirs to write and not ours to invent.
-  // It prints the blank form's rule.
+  /**
+   * ⚠️ r367 (item fda53352, round A) — TARIKH IS FILLED NOW, AND THAT REVERSES r219's RECORDED DECISION.
+   *
+   * r219 wrote, and `test/r219-ea-cp8a-form.test.ts` pinned verbatim: "Tarikh is the date the employer
+   * SIGNS the statement, which is theirs to write and not ours to invent. It prints the blank form's
+   * rule." The reporter has now told us what to write, so we write it.
+   *
+   * THE VALUE ARRIVES ON `EaPdfData`. `localization/my/reports.ts` `eaFormDate()` computes
+   * `MIN(todayInKualaLumpur(), 28 February of the year after the EA year)`; no clock is read here, so the
+   * renderer stays pure and every EA test stays time-independent. THE RULE IS THE REPORTER'S, NOT THE
+   * AGENCY'S: nothing in this repository sources a published LHDN date for this box.
+   *
+   * `null` (the blank form, and any caller with nothing to date) still prints the agency's empty rule —
+   * `valueOrRule` does that for an empty value, which is why the reversal needed no new branch here.
+   */
   put(W.date, L + 6, 723, 8);
-  valueOrRule('', 68, 150, 723, 8);
+  valueOrRule(formDate(d.formDate), 68, 150, 723, 8);
 
   // ── BELOW THE FORM ────────────────────────────────────────────────────────────────────────────────
   //

@@ -227,14 +227,28 @@ describe('fda53352 · (e) nothing of ours is printed below the officer box', () 
    * So the cases are inverted rather than deleted: the old ones would silently stop protecting anything
    * if they were simply removed, and this is the guard that stops the strip creeping back.
    *
-   * THE COST IS REAL AND IS RECORDED: the EIS figure is now on NO printed EA. It remains on the HTML
-   * statement, which is why `eisSip` and `disclaimer` are still live keys.
+   * ⚠️ r367 (item fda53352, round A) — THIS PARAGRAPH SAID: "THE COST IS REAL AND IS RECORDED: the EIS
+   * figure is now on NO printed EA. It remains on the HTML statement, which is why `eisSip` and
+   * `disclaimer` are still live keys." THAT COST HAS BEEN PAID OFF, and not by bringing the strip back.
+   * The EIS figure is now inside Section E(2), the box LHDN's own form gives it: E(2) asks for compulsory
+   * contributions to PERKESO — the organisation — and LHDN scopes those to Act 4 and Act 800 (sources on
+   * `EaPdfData.partE`). So the figure is on the printed EA again with no row, rule or caption of ours
+   * anywhere below the officer box. `eisSip` stays a live key because the HTML statement still names the
+   * leg; `disclaimer` stays live for the same reason it did before.
+   *
+   * THE STRIP'S ABSENCE IS STILL WHAT THIS CASE PINS, and it is now pinned more narrowly rather than less:
+   * the assertions name the strip's own draw calls, not "the EIS figure", because the figure is legitimate
+   * and the strip is not.
    */
-  it('the strip is gone from the renderer — no rule, no label, no EIS figure, no disclaimer', () => {
+  it('the strip is gone from the renderer — no rule, no label, no EIS line of ours, no disclaimer', () => {
     const s = src('lib/ea-pdf.ts');
     expect(s, 'the heavier strip rule is still drawn').not.toContain('hRule(L, R, y - 7, 1.2, ink);');
     expect(s, 'the "not official" line is still drawn').not.toContain('t.notOfficialStrip');
-    expect(s, 'the EIS figure is still drawn on the form').not.toContain('t.eisSip');
+    // The strip's EIS row was `t.eisSip` beside `rm(d.partE.eis)`. Section E(2) reaches the same figure
+    // through `derived(d.partE.socso + d.partE.eis + d.partE.skbbk)` and draws no caption of its own, so
+    // both of these still fail the moment a row of ours returns.
+    expect(s, 'an EIS caption of ours is still drawn on the form').not.toContain('t.eisSip');
+    expect(s, 'the strip\u2019s own EIS row is still drawn on the form').not.toContain('rm(d.partE.eis)');
     expect(s, 'the disclaimer paragraph is still drawn on the form').not.toContain('t.disclaimer');
   });
 

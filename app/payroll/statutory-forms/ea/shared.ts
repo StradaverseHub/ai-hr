@@ -123,6 +123,9 @@ export async function eaPdfResponse(req: Request, disposition: EaDisposition): P
       partC: ea.partC,
       partD: ea.partD,
       partE: ea.partE,
+      // r367 — the foot's Tarikh. Computed by the MY pack's eaFormDate() so the renderer stays pure; see
+      // EaPdfData.formDate in lib/ea-pdf.ts for whose rule it is.
+      formDate: ea.formDate,
       statutoryVersion: ea.statutoryVersion,
       // 1.2.6 EA Data Overwrite — HR's EA-only amendments, so the PDF prints the "Amended" footnote.
       overrides: ea.overrides,

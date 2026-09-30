@@ -137,7 +137,13 @@ const data: EaPdfData = {
   },
   partC: { pension: 0, annuity: 0, total: 0 },
   partD: { mtd: 4200, cp38: 0, zakat: 0 , tp1Relief: 0, donations: 0, zakatOther: 0, childRelief: 0 },
-  partE: { epf: 7810, socso: 297, eis: 118.8 , fundName: 'KWSP' },
+  // ⚠️ r367 — THE THREE PERKESO LEGS ARE NON-ZERO AND MUTUALLY DISTINCT, ON PURPOSE. Section E(2) now
+  // prints socso + eis + skbbk, so a fixture with skbbk at 0 (or two equal legs) would let the old
+  // one-leg renderer pass every case below. 297 + 118.80 + 43.45 = 459.25, which equals no leg and no
+  // pair of them.
+  partE: { epf: 7810, socso: 297, eis: 118.8, skbbk: 43.45, fundName: 'KWSP' },
+  // r367 — a FIXED date, not a clock read: the renderer is pure and takes this as data.
+  formDate: '2027-02-15',
   statutoryVersion: '2026.3',
 };
 
@@ -479,11 +485,26 @@ describe('EA PDF renderer — the real message bundle', () => {
     //
     // The two removals become POSITIVE assertions rather than being deleted: this is now also the guard
     // that the strip cannot come back through the renderer, from the pagination side.
+    //
+    // ⚠️ r367 (item fda53352, round A) — THE EIS ASSERTION IS REWORDED, AND ITS OLD MESSAGE IS QUOTED
+    // BELOW BECAUSE IT NAMED A CLAIM THAT HAS BEEN REVERSED. It read `${locale}: the EIS figure is back
+    // on the printed form` and looked for `RM 118.80`, the fixture's EIS leg ON ITS OWN LINE. The EIS
+    // figure IS on the printed form now — inside Section E(2)'s sum, which is the box LHDN's caption
+    // gives it (sources on `EaPdfData.partE`). What must still not appear is a LINE OF OURS carrying the
+    // leg by itself, which is what the removed strip drew, so the assertion now says that: the bare leg
+    // is absent, and the sum 297 + 118.80 + 43.45 = RM 459.25 is present. Both halves matter — the first
+    // stops the strip returning, the second stops E(2) silently narrowing back to one leg.
     expect(items.find((it) => it.text === winAnsi(real.amendedNote))?.page, `${locale}: the amended marker`).toBe(0);
     expect(
       items.find((it) => it.text.includes('RM 118.80')),
-      `${locale}: the EIS figure is back on the printed form`,
+      `${locale}: the EIS leg is printed on a line of its own again (the r351 strip is back)`,
     ).toBeUndefined();
+    // The strip drew its figure as one string, "RM 118.80"; Section E's money column draws the bare amount
+    // with its own "RM" beside it, so this looks for the amount.
+    expect(
+      items.find((it) => it.text.includes('459.25'))?.page,
+      `${locale}: Section E(2) must print SOCSO + EIS + SKBBK (297.00 + 118.80 + 43.45)`,
+    ).toBe(0);
     expect(items[items.length - 1].page, `${locale}: nothing spills to a second page`).toBe(0);
   });
 

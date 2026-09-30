@@ -4340,6 +4340,8 @@
       "epfKwsp": "1 EPF / KWSP",
       "socso": "2 SOCSO",
       "eisSip": "EIS / SIP",
+      "skbbk": "SKBBK / Lindung 24 Jam",
+      "perkesoE2Total": "2 SOCSO — 表格上申报的合计（SOCSO + EIS + SKBBK）",
       "sectionFTaxExempt": "F · 免税津贴 / 额外补贴合计",
       "taxExemptAllowances": "免税津贴",
       "disclaimer": "由 YA {year} 的薪资生成（法定税表 {version}）。工资、奖金、津贴、EPF、SOCSO/EIS、MTD、CP38 和天课取自薪资系统。费用、小费与额外补贴、雇主承担的所得税、ESOS、服务金、往年拖欠款、实物福利、居住住宿、未获批准基金退款、失去雇佣的赔偿金、退休金与年金没有薪资来源，在 HR 填写前显示为 0.00。本表是我们对表格字段的排版，并非 LHDN 官方页面 — 申报前请对照您的记录核实。",
@@ -4384,6 +4386,7 @@
         "fieldEpf": "公积金 / KWSP",
         "fieldSocso": "社险（SOCSO）",
         "fieldEis": "就业保险（EIS / SIP）",
+        "fieldSkbbk": "SKBBK / Lindung 24 Jam（24 小时保障）",
         "filedTotal": "已申报 CP39 / 机构合计",
         "cp39DivergenceWarning": "此修订金额与当年已申报的 CP39 / 机构合计不一致（{filed}；差额 {delta}）。该修订及其差额已记录在审计轨迹中。"
       },
