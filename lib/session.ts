@@ -1,9 +1,10 @@
 import { cache } from 'react';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { client, type Grant, type SessionContext } from '../db/client';
 import { TENANT_STATUS_UNRESOLVED, resolveEntitlementsInTenantTx } from '../core/entitlements';
 import { AuthRequiredError } from './auth-errors';
 import { demoSwitcherEnabled, isDemoDeployment } from './demo-mode';
+import { parseBearer, verifyAccessToken, workosJwks, type JwksSource } from './mobile-api/jwt';
 
 /**
  * Session resolution (ADR-0072). Two paths, gated by NODE_ENV:
@@ -256,4 +257,41 @@ async function resolveSession(): Promise<SessionContext> {
       select app_user_id, tenant_id, person_id, grants from app.principal_by_subject(${subject})
     `;
   return withEntitlements(await resolveWorkosPrincipal(lookup, session.subject));
+}
+
+/**
+ * The MOBILE session (ADR-0088 §1): the same resolver as the production web path, reached through a
+ * second carrier. The WorkOS subject arrives as a verified bearer JWT instead of an AuthKit cookie; from
+ * `principal_by_subject` onwards nothing differs — same SessionContext, same entitlement snapshot, same
+ * RLS, same login-block filter (0279: an offboarded or archived login resolves to no row).
+ *
+ * BEARER ONLY, IN EVERY ENVIRONMENT. It never reads the `dev_user` cookie and never consults
+ * demoSwitcherEnabled(): `/api/mobile/*` bypasses the share gate's Basic challenge (middleware.ts), so a
+ * cookie fallback here would turn that bypass into a way round the gate. With no WORKOS_CLIENT_ID the
+ * deployment cannot verify a token and every call is refused — the mobile API fails closed until the
+ * WorkOS cutover (readiness 1.3) configures it.
+ *
+ * Not memoised with cache(): route handlers resolve once per request by construction.
+ *
+ * `authorization` and `jwks` are injectable so the tests drive the real resolver, the real
+ * principal_by_subject and a locally generated signing key, without a request scope or the network.
+ */
+export async function getMobileSession(
+  opts: { authorization?: string | null; jwks?: JwksSource } = {},
+): Promise<SessionContext> {
+  const header = opts.authorization !== undefined ? opts.authorization : (await headers()).get('authorization');
+  const token = parseBearer(header);
+  if (!token) throw new AuthRequiredError('A bearer access token is required.');
+  let jwks = opts.jwks;
+  if (!jwks) {
+    const clientId = process.env.WORKOS_CLIENT_ID;
+    if (!clientId) throw new AuthRequiredError('Mobile sign-in is not configured on this deployment.');
+    jwks = workosJwks(clientId);
+  }
+  const { subject } = await verifyAccessToken(token, { jwks });
+  const lookup = (sub: string) =>
+    client<SubjectPrincipalRow[]>`
+      select app_user_id, tenant_id, person_id, grants from app.principal_by_subject(${sub})
+    `;
+  return withEntitlements(await resolveWorkosPrincipal(lookup, subject));
 }

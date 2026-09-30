@@ -147,4 +147,37 @@ describe('share gate (middleware.ts)', () => {
       expectPassedThrough(middleware(req()), '/people');
     });
   });
+
+  describe('ADR-0088 — the mobile API bypasses the CHALLENGE, never the refusal', () => {
+    const token = 'Bearer aaa.bbb.ccc';
+
+    it('lets a bearer-carrying request to /api/mobile/* through a live gate (Basic cannot share the header)', () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      process.env.SHARE_PASSWORD = 'sekret';
+      expectPassedThrough(middleware(req(token, '/api/mobile/v1/me')), '/api/mobile/v1/me');
+    });
+
+    it('passes a credential-less request through too — the handler, not the gate, refuses it', () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      process.env.SHARE_PASSWORD = 'sekret';
+      expectPassedThrough(middleware(req(undefined, '/api/mobile/v1/payslips')), '/api/mobile/v1/payslips');
+    });
+
+    it('still challenges a look-alike path and every other API route', () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      process.env.SHARE_PASSWORD = 'sekret';
+      for (const path of ['/api/mobilex', '/api/mobile-v1/me', '/api/payroll/reprocess-job/x', '/people']) {
+        const res = middleware(req(token, path));
+        expect(res.status, path).toBe(401);
+        expect(res.headers.get('www-authenticate'), path).toContain('Basic');
+      }
+    });
+
+    it('is refused with 503 like everything else when SHARE_PASSWORD is unset outside development', () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      const res = middleware(req(token, '/api/mobile/v1/me'));
+      expect(res.status).toBe(503);
+      expect(res.headers.get('x-middleware-next')).toBeNull();
+    });
+  });
 });
