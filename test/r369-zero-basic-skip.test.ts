@@ -267,6 +267,72 @@ describe('r369 · the "additional run" prose that asserted the old rule is gone'
   });
 });
 
+describe('r369 · every new message FORMATS, in every locale', () => {
+  /**
+   * THE §8 GAP THIS CLOSES, STATED RATHER THAN PAPERED OVER. A malformed ICU string throws
+   * FORMATTING_ERROR at RENDER time and returns a 200 with the block missing — invisible to tsc, to
+   * `next build` and to a key-presence assertion. The dev-server render for this round covers the payroll
+   * RUN screen (both states), but the Process wizard's Validation step is a CLIENT component reached only
+   * by walking the wizard, so its copy never reaches a server log at all. The formatter is RUN here instead.
+   */
+  it('no locale leaves a placeholder unrendered or falls back to the key', async () => {
+    const { createTranslator } = await import('next-intl');
+    // ⚠️ `onError` IS LOAD-BEARING: next-intl swallows MISSING_MESSAGE / FORMATTING_ERROR by default and
+    // hands back the key, so an assertion on the output alone would pass on a broken string.
+    const boom = (e: unknown) => {
+      throw e;
+    };
+    for (const l of LOCALES) {
+      const messages = CATALOGUES[l] as unknown as Record<string, unknown>;
+      const tb = createTranslator({ locale: l, messages, namespace: 'payroll.batch', onError: boom as never });
+      const tp = createTranslator({ locale: l, messages, namespace: 'payroll.process', onError: boom as never });
+      const check = (ns: string, key: string, out: string) => {
+        expect(out, `${l}.${ns}.${key}`).toBeTruthy();
+        expect(out, `${l}.${ns}.${key} did not resolve`).not.toContain(ns);
+        expect(out, `${l}.${ns}.${key} left ICU unrendered`).not.toMatch(/[{}]/);
+      };
+      for (const [key, n] of [
+        ['preChecksNothingPayableHint', 1],
+        ['preChecksNothingPayableHint', 7],
+      ] as const) {
+        const out = tb(key as never, { n } as never);
+        check('payroll.batch', key, out);
+        expect(out, `${l}.${key}`).toContain(String(n));
+      }
+      for (const n of [1, 7]) {
+        const out = tp('validationNothingPayableTitle' as never, { n } as never);
+        check('payroll.process', 'validationNothingPayableTitle', out);
+        expect(out).toContain(String(n));
+      }
+      const remark = tb('preChecksNothingPayableRemark' as never, { remarks: DIRECTOR_REMARK } as never);
+      check('payroll.batch', 'preChecksNothingPayableRemark', remark);
+      expect(remark).toContain(DIRECTOR_REMARK);
+      for (const key of [
+        'preChecksNoticeBadge',
+        'preChecksNothingPayableNoRemark',
+        'preChecks.nothingPayable',
+        'reprocessGapNothingPayable',
+        'reprocessReasonNothingPayable',
+        'skipped.note',
+        'skipped.reason.NOTHING_PAYABLE_THIS_PERIOD',
+        'skipped.reason.DEDUCTION_ONLY_THIS_PERIOD',
+      ] as const) {
+        check('payroll.batch', key, (tb as (k: never) => string)(key as never));
+      }
+      for (const key of [
+        'validationNoticeBadge',
+        'validationNothingPayableHint',
+        'validationCheck.nothingPayable',
+        'skippedEmployeesNote',
+        'skipReason.NOTHING_PAYABLE_THIS_PERIOD',
+        'skipReason.DEDUCTION_ONLY_THIS_PERIOD',
+      ] as const) {
+        check('payroll.process', key, (tp as (k: never) => string)(key as never));
+      }
+    }
+  });
+});
+
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
 // 2 · THE WRITE PATH — THE CONFIRMATION GESTURE AND THE NaN TRAP
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
