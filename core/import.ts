@@ -25,7 +25,9 @@ import {
 } from '../db/schema';
 import { and, desc, eq, isNotNull } from 'drizzle-orm';
 import { hireEmployee, setEmploymentInfo, setReportingLine, updatePerson } from './org';
-import { setCompensation } from './comp';
+// r369 — `unpayableSalaryLeg` is the SAME predicate `setCompensation` refuses on, imported rather than
+// re-stated, so the dry run and the write can never disagree about which rows need a reason.
+import { setCompensation, unpayableSalaryLeg } from './comp';
 import { setPersonComplianceFields } from './profile';
 // Item 2983802f — the family sheet writes through the SAME service the Family card uses, so an imported
 // dependant is indistinguishable from a hand-entered one (events, child-relief resync, catalog rules).
@@ -160,6 +162,15 @@ type ResolvedRow = {
   payMode?: 'monthly' | 'daily' | 'hourly' | 'custom_period';
   paymentTerm?: 'monthly' | 'weekly' | 'biweekly';
   rateAmount?: number;
+  /**
+   * r369 (item eb949191) — the reason this row has no basic amount, handed straight to
+   * `setCompensation`'s `remarks`. Undefined when the cell was blank or the column absent, which is
+   * byte-identical to the call this importer made before the column existed.
+   *
+   * NEVER DEFAULTED. A remark the system wrote confirms nothing, so a zero-basic row with no reason is
+   * refused in the dry run instead (see the salary block in `analyze`).
+   */
+  salaryRemarks?: string;
   effectiveFrom: string;
 };
 
@@ -578,6 +589,37 @@ async function analyze(
       errors.push(`pay_mode "${payMode}" requires a positive rate_amount`);
     }
 
+    // r369 (item eb949191) — A BASIC SALARY OF 0 IMPORTS, ONCE THE ROW SAYS WHY.
+    //
+    // `setCompensation` accepts a zero monthly basic only with a remark on the record, because that
+    // sentence is what tells a Director paid quarterly fees from a mistyped figure. Before this column
+    // existed the importer had nothing to put there, so the service threw at COMMIT and the row failed on
+    // a refusal no file could answer. Two things are fixed together and neither weakens the other:
+    //
+    //   · the reason travels with the row, straight through to the service's `remarks`; and
+    //   · a zero-basic row with NO reason fails HERE, in the dry run, naming the column to fill — which
+    //     is strictly better than failing at commit, because the file can still be corrected.
+    //
+    // NO DEFAULT IS SUPPLIED. A remark this code invented would confirm nothing, which is the entire
+    // point of the gesture. The predicate is the service's own, so the two cannot drift; the pay mode
+    // falls back to `monthly` because that is what `setCompensation` defaults a brand-new record to, and
+    // every row here is a brand-new record (`hireEmployee` runs first, so there is no prior revision to
+    // carry a mode forward from). Only asked when the amount itself parsed: a blank or unparseable
+    // basic_salary already carries its own error above, and saying two things about one cell is noise.
+    const salaryRemarks = norm(rec.salary_remarks) || undefined;
+    if (
+      salaryRaw &&
+      Number.isFinite(basicSalary) &&
+      basicSalary >= 0 &&
+      unpayableSalaryLeg(payMode ?? 'monthly', basicSalary, rateAmount ?? null) === 'no_monthly_basic' &&
+      !salaryRemarks
+    ) {
+      errors.push(
+        'basic_salary is 0, so salary_remarks must say why (for example: paid by quarterly ' +
+          "director's fees). Payroll will leave this employee out of any month with nothing payable.",
+      );
+    }
+
     // ─────────────────────────── Item 2983802f — the seven new blocks ───────────────────────────
     // Every one of them is OPTIONAL and every one of them fails HERE, in the dry run, rather than
     // half-way through a commit: the whole reason the preview exists is that a spreadsheet can still be
@@ -763,6 +805,7 @@ async function analyze(
       payMode,
       paymentTerm,
       rateAmount,
+      salaryRemarks,
       effectiveFrom: hiredOn,
     });
   });
@@ -1086,6 +1129,9 @@ export async function commitEmployeeImport(
         payMode: row.payMode,
         paymentTerm: row.paymentTerm,
         rateAmount: row.rateAmount,
+        // r369 — the reason off the row, or undefined for a blank cell. The service stores undefined as
+        // NULL and logs no `remarks` field change, so a file with no such column writes what it always did.
+        remarks: row.salaryRemarks,
         effectiveFrom: row.effectiveFrom,
       });
       // ── Item 2983802f — the new blocks, each through the SAME service its Personnel card uses, and

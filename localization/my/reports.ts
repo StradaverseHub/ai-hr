@@ -1599,7 +1599,8 @@ export async function eaStatement(
      * govern the MONTHLY TAX CALCULATION. Nothing in either speaks to Form EA, and the slip itself
      * distinguishes the two figures on its own pages:
      *
-     *   docs/forms/pcb-calculation-slip-official-2026-12.pdf page 1 — a grid headed "Number of children
+     *   docs/forms/pcb-calculation-slip-specimen-2026-12.pdf page 1 (a filled SPECIMEN, not agency artwork; the
+     *   governing document is docs/forms/pcb-spec-2026-computerised-calculation.pdf) — a grid headed "Number of children
      *   / Qualification rate 100% 50%", printing (a) Under 18 = 1 and (e) Disabled and still studying
      *   = 1. TWO children, each a whole child, for this very employee;
      *   the same file, page 6 — "Q = Deduction for eligible children 2,000.00" and "C = Number of

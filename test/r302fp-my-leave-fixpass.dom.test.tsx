@@ -18,6 +18,7 @@ import vi from '../messages/vi.json';
 import zh from '../messages/zh.json';
 
 import { MyLeaveDashboard, type MyLeaveDashboardCard } from '../components/leave/my-leave-dashboard';
+import { RING_COLORS } from '../components/leave/leave-balance-ring';
 import { LeaveHistoryCards, type LeaveHistoryEntry } from '../components/leave/leave-history-cards';
 import type { LeaveEntitlementBreakdown } from '../core/read';
 import { formatDays } from '../lib/day-format';
@@ -122,6 +123,14 @@ const hexToRgb = (hex: string) => {
 const CIRCUMFERENCE = 2 * Math.PI * 42;
 const num = (s: string | null | undefined) => (s == null ? Number.NaN : Number(s.replace(/[^\d.-]/g, '')));
 
+/** The big figure in the middle of the ring and the caption under it (the ring's own aria-hidden overlay). */
+function centreOf(ring: HTMLElement) {
+  const box = within(ring).getByTestId('leave-balance-ring').querySelector('div[aria-hidden="true"]')!;
+  const spans = [...box.querySelectorAll('span')];
+  expect(spans.length, 'the centre is a figure and a caption').toBe(2);
+  return { value: spans[0].textContent!, caption: spans[1].textContent! };
+}
+
 /**
  * Reads the ring card the way a person does: every legend row that carries a colour swatch, and every arc in the
  * SVG. Then asserts the decision — each legend entry is labelled as its arc and shows exactly the arc's value; arc
@@ -163,7 +172,25 @@ function auditRing(ring: HTMLElement) {
   });
   // No arc without a legend entry: the legend values ARE the ring total.
   for (const a of arcs) expect(legend.some((l) => l.color === a.color), 'every arc is in the legend').toBe(true);
-  return { legend, arcs, legendTotal };
+  /**
+   * cac9a3a1 (r369) — AND THE CENTRE IS THE GREEN ARC'S OWN FIGURE, UNDER THE GREEN ARC'S OWN NAME.
+   *
+   * THE RETIRED CLAIM, QUOTED: this file used to assert, in as many words, "The big centre number stays
+   * Balance, labelled Balance." It did, and Balance is GROSS of pending while the green arc it sits inside is
+   * `remaining` — so the card printed two figures for one thing and the centre disagreed with its own ring.
+   * The reporter read 11.50 in the middle and 10.50 in the Available Balance row beside it.
+   *
+   * Asserted here rather than in one arm so EVERY arm of this file, in every locale, and every future ring
+   * fixture, pins it: a change that reintroduces a second number in the middle fails on the card itself.
+   */
+  const availableRow = legend.find((l) => l.color === hexToRgb(RING_COLORS.available));
+  expect(availableRow, 'the available arc has a legend row').toBeTruthy();
+  const centre = centreOf(ring);
+  expect(centre.value, `the centre prints the available row's own figure ("${availableRow!.valueText}"), not a second one`).toBe(
+    availableRow!.valueText,
+  );
+  expect(centre.caption, `the centre carries the available arc's own name ("${availableRow!.label}")`).toContain(availableRow!.label);
+  return { legend, arcs, legendTotal, centre };
 }
 
 describe('D5 · the ring legend is the ring', () => {
@@ -177,9 +204,18 @@ describe('D5 · the ring legend is the ring', () => {
       [L.pendingApproval, formatDays(7)],
       [lf('en').availableBalance, formatDays(0)],
     ]);
-    // The big centre number stays Balance, labelled Balance.
-    const centre = within(screen.getByTestId('leave-balance-ring')).getByText(formatDays(7));
-    expect(centre.parentElement!.textContent).toContain(L.balance);
+    // cac9a3a1 (r369) — UPDATED, and the claim it replaces is quoted because the prose is what outlives the
+    // kernel: "The big centre number stays Balance, labelled Balance." On this very fixture that centre read
+    // 7.00 over a green arc of 0.00. The centre is now the available figure itself — 0.00 here — under the
+    // available arc's own name, and `auditRing` above pins the equality for every arm in this file.
+    const centre = centreOf(screen.getByTestId('leave-ring-card'));
+    expect(centre.value).toBe(formatDays(0));
+    expect(centre.caption).toContain(lf('en').availableBalance);
+    expect(centre.value, 'the retired Balance figure is no longer in the middle').not.toBe(formatDays(7));
+    // The caption is built from the ARC's name through the catalogue's own wrapper, so `leave.myLeave.balanceDays`
+    // ("Balance (days)") can no longer reach the screen. It stays in all six catalogues: retired, never deleted.
+    expect(centre.caption).toBe(L.centreCaption.replace('{label}', lf('en').availableBalance));
+    expect(centre.caption, 'and the retired Balance caption is gone with it').not.toBe(L.balanceDays);
     expect(errors, errors.join('\n')).toEqual([]);
   });
 

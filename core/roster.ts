@@ -14,6 +14,7 @@ import {
   employmentShiftArrangement,
   leaveRequest,
   person,
+  reportingLine,
   rosterAssignment,
   shift,
   shiftOtWindow,
@@ -33,7 +34,7 @@ import {
   weekPatternWorkingDayCount,
 } from './attendance';
 import { approvedLeaveDates } from './leave';
-import { listEmployees, listEmployeesPage } from './read';
+import { listEmployees, listEmployeesPage, myEmployment } from './read';
 import { isAdmin } from '../lib/authz';
 import {
   ROSTER_MAX_RANGE_DAYS,
@@ -42,7 +43,11 @@ import {
   daysInWindow,
   isIsoDate,
   monthRange,
+  cellIsWorking,
+  resolveRosterCell,
+  shiftCodeOf,
   type AssignedCell,
+  type ResolvedCell,
   type UsualShift,
 } from '../lib/roster-month';
 import { isShiftColorToken, type ShiftColorToken } from '../lib/shift-visual';
@@ -2343,6 +2348,12 @@ export function rosterForRange(ctx: SessionContext, p: { employmentIds?: string[
         shiftId: rosterAssignment.shiftId,
         isRestDay: rosterAssignment.isRestDay,
         note: rosterAssignment.note,
+        // 6948727a — WHEN the supervisor last touched this date. My Roster prints one "Last updated"
+        // stamp per window and takes the MAX of these; the grid and the export map these rows into
+        // `cells` rather than serialising them, so nothing downstream grows a byte by adding it. A
+        // separate `select max(updated_at)` would be a second round trip for a value already sitting in
+        // the row this query is fetching anyway.
+        updatedAt: rosterAssignment.updatedAt,
       })
       .from(rosterAssignment)
       .where(and(...conds))
@@ -2940,4 +2951,249 @@ export async function rosterExceptionCount(
   p: { from: string; to: string; companyIds?: string[]; today?: string },
 ): Promise<number> {
   return (await rosterVariance(ctx, p)).filter(isRosterException).length;
+}
+
+// ── 6948727a · My Roster — the employee's OWN roster, read only ────────────────────────────────────
+
+/** One shift as My Roster prints it: enough for a chip, a time range and a planned-hours figure. */
+export type MyRosterShift = {
+  id: string;
+  /** `shiftCodeOf` — the code, falling back to the name, never blank (a blank chip reads as "not scheduled"). */
+  code: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  breakMinutes: number;
+  /** Net scheduled minutes: the shift's own override, else span − break with its Normal-Hours Rounding. */
+  workingMinutes: number;
+  color: string | null;
+};
+
+/** One date on My Roster. */
+export type MyRosterDay = {
+  date: string;
+  /**
+   * Resolved by `resolveRosterCell` — THE SAME FUNCTION the supervisor's grid, the roster export and the
+   * upload analyzer resolve with. The plan's binding sentence is "Each date is worked out by the same rule
+   * the supervisor's roster uses, so the two screens cannot disagree", and a second resolver here is
+   * precisely how that promise gets broken six months from now.
+   */
+  cell: ResolvedCell;
+  /** The shift behind `cell` when there is one; null for rest / off / none. */
+  shift: MyRosterShift | null;
+  /** What this date contributes to Planned hours. 0 unless the date is a working one. */
+  plannedMinutes: number;
+  /**
+   * The supervisor's note on this date, read off the roster row rather than derived.
+   *
+   * Never present on a GHOSTED (usual) or OFF date: neither has a row to carry one. And in today's
+   * product it is in practice only ever present on a REST DAY, because `setRestDay` is the ONLY writer
+   * of `roster_assignment.note` in the kernel — `assignShift` does not take one.
+   *
+   * ⚠️ OBSERVATION, pre-existing and deliberately NOT changed here: `assignShift`'s upsert sets
+   * shiftId / isRestDay / updatedAt and does not clear `note`, so a date that was a noted rest day and
+   * is later given a shift keeps the old note. This screen renders whatever the row says, which is what
+   * every other roster surface does; hiding it here would mean My Roster silently withholding a note
+   * the supervisor can still see — the disagreement this whole design exists to prevent. Clearing it
+   * belongs in `assignShift`, is a kernel WRITE change, and is not this item's to make.
+   */
+  note: string | null;
+};
+
+export type MyRosterView = {
+  /** The caller's OWN employment. There is no parameter that could make this anybody else's — see below. */
+  employmentId: string;
+  name: string;
+  employeeCode: string | null;
+  position: string | null;
+  /**
+   * The caller's administrative manager, WHEN THE CALLER MAY SEE THAT EMPLOYMENT (RLS decides, not this
+   * function). For a plain employee `app.can_see_person` does not admit their own manager's row, so this
+   * is normally NULL and the screen says "your supervisor" rather than inventing a name. Widening RLS so
+   * an employee may read their supervisor's name is a deliberate visibility decision and is NOT made here.
+   */
+  managerName: string | null;
+  from: string;
+  to: string;
+  days: MyRosterDay[];
+  /** The distinct shifts actually on screen, for the legend. Ordered by code, so the legend is stable. */
+  legend: MyRosterShift[];
+  /** Dates the employee is scheduled to work (rostered OR usual) — "Work days". */
+  workDays: number;
+  /** Of those, the ones the supervisor actually rostered — "Rostered by supervisor". */
+  rosteredDays: number;
+  /** Dates carrying an explicit rest day — "Rest days". `off` (not scheduled) is NOT a rest day. */
+  restDays: number;
+  /** Σ `plannedMinutes` — "Planned hours". */
+  plannedMinutes: number;
+  /** MAX(roster_assignment.updated_at) inside the window; NULL when the supervisor has rostered nothing. */
+  lastUpdatedAt: Date | null;
+};
+
+/**
+ * MY ROSTER (item 6948727a) — what the caller is rostered for, and NOBODY ELSE.
+ *
+ * ── THE DATA FENCE IS STRUCTURAL, NOT A COMPARISON ──────────────────────────────────────────────────
+ * This function TAKES NO EMPLOYMENT ID. The employment is resolved from the session by `myEmployment`,
+ * which keys on `ctx.personId`, so there is no argument a caller could pass — and no query string a page
+ * could forward — that would make it return somebody else's roster. It is the r287 fence
+ * (app/attendance/my-records/page.tsx) applied to the roster, and it is deliberately not "validate the
+ * id you were given": a comparison is a thing to get wrong, an absent parameter is not.
+ *
+ * ⚠️ RLS WOULD NOT STOP A MANAGER HERE, which is exactly why the fence is in the service.
+ * `roster_assignment`'s policy is `app.can_see_employment(employment_id)` (migration 0075), and
+ * `can_see_employment` (0109) admits self, the RECURSIVE ADMINISTRATIVE MANAGER CHAIN and the HOD
+ * department tree. A supervisor asking this read for a subordinate's id would therefore be answered by
+ * the database. Nothing below asks. test/my-roster.test.ts proves both halves: that RLS hands the
+ * manager the subordinate's rows through `rosterForRange`, and that this function still returns the
+ * manager their own.
+ *
+ * Read only. No write, no DomainEvent, no server action: this screen never gets a create, edit, clear or
+ * import control (the approved plan says so in as many words).
+ */
+export async function myRosterWindow(
+  ctx: SessionContext,
+  p: { from: string; to: string },
+): Promise<MyRosterView | null> {
+  // FIRST, before any query: an over-wide window must cost nothing to refuse, and the employee's address
+  // bar can reach this read exactly as the operator's can (see assertRosterWindow's note).
+  assertRosterWindow(p.from, p.to);
+  const me = await myEmployment(ctx);
+  if (!me) return null;
+
+  const [roster, usualRows] = await Promise.all([
+    rosterForRange(ctx, { employmentIds: [me.employmentId], from: p.from, to: p.to }),
+    usualShiftsFor(ctx, [me.employmentId]),
+  ]);
+
+  return withTenant(ctx, async (tx) => {
+    const usualRow = usualRows[0] ?? null;
+    const usual: UsualShift | null = usualRow ? { shiftId: usualRow.shiftId, pattern: usualRow.pattern } : null;
+
+    // Only the shifts this window actually references — the legend names what is on screen, and a
+    // tenant-wide shift list would serialise every template the company has ever authored into the
+    // payload of a page that draws at most a handful.
+    const wantedIds = [...new Set([...roster.map((r) => r.shiftId), usualRow?.shiftId].filter((v): v is string => !!v))];
+    const shiftRows = wantedIds.length
+      ? await tx
+          .select({
+            id: shift.id,
+            code: shift.code,
+            name: shift.name,
+            startTime: shift.startTime,
+            endTime: shift.endTime,
+            breakMinutes: shift.breakMinutes,
+            normalMinutesOverride: shift.normalMinutesOverride,
+            roundingMinutes: shift.normalHoursRoundingMinutes,
+            color: shift.color,
+          })
+          .from(shift)
+          .where(inArray(shift.id, wantedIds))
+          .orderBy(asc(shift.code), asc(shift.name))
+      : [];
+
+    const shifts = new Map<string, MyRosterShift>(
+      shiftRows.map((s) => [
+        s.id,
+        {
+          id: s.id,
+          code: shiftCodeOf(s),
+          name: s.name,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          breakMinutes: s.breakMinutes,
+          // The SHARED figure (core/attendance.ts), never a second expression: the hours this screen
+          // promises and the hours the engine schedules have to be the same number.
+          workingMinutes:
+            s.normalMinutesOverride ??
+            netScheduledMinutes(
+              s.startTime,
+              s.endTime,
+              shiftCrossesMidnight(s.startTime, s.endTime),
+              s.breakMinutes,
+              s.roundingMinutes,
+            ),
+          color: s.color,
+        },
+      ]),
+    );
+
+    const assigned = new Map<string, (typeof roster)[number]>(roster.map((r) => [r.shiftDate, r]));
+
+    const days: MyRosterDay[] = datesBetween(p.from, p.to).map((date) => {
+      const row = assigned.get(date);
+      const cellIn: AssignedCell = row ? (row.isRestDay ? { kind: 'rest' } : row.shiftId ? { kind: 'shift', shiftId: row.shiftId } : null) : null;
+      const cell = resolveRosterCell(date, cellIn, usual);
+      const sh = cell.kind === 'shift' || cell.kind === 'usual' ? (shifts.get(cell.shiftId) ?? null) : null;
+      return {
+        date,
+        cell,
+        shift: sh,
+        plannedMinutes: sh ? sh.workingMinutes : 0,
+        // Only a rostered date can carry a note; a ghosted date has no row behind it.
+        note: row?.note ?? null,
+      };
+    });
+
+    const onScreen = [...new Set(days.map((d) => d.shift?.id).filter((v): v is string => !!v))];
+    const legend = onScreen
+      .map((id) => shifts.get(id)!)
+      .sort((a, b) => a.code.localeCompare(b.code));
+
+    // MAX over the window's rows, in JS rather than SQL: `roster` is already in hand and is at most 92
+    // rows (ROSTER_MAX_RANGE_DAYS), so a second round trip would buy nothing.
+    const stamps = roster.map((r) => r.updatedAt).filter((v): v is Date => v instanceof Date);
+    const lastUpdatedAt = stamps.length ? new Date(Math.max(...stamps.map((d) => d.getTime()))) : null;
+
+    return {
+      employmentId: me.employmentId,
+      name: me.name,
+      employeeCode: me.employeeCode,
+      position: me.position,
+      managerName: await administrativeManagerNameTx(tx, me.employmentId, todayInKualaLumpur()),
+      from: p.from,
+      to: p.to,
+      days,
+      legend,
+      workDays: days.filter((d) => cellIsWorking(d.cell)).length,
+      rosteredDays: days.filter((d) => d.cell.kind === 'shift').length,
+      restDays: days.filter((d) => d.cell.kind === 'rest').length,
+      plannedMinutes: days.reduce((n, d) => n + d.plannedMinutes, 0),
+      lastUpdatedAt,
+    };
+  });
+}
+
+/**
+ * The caller's administrative manager's NAME, or null.
+ *
+ * Null covers three different situations on purpose — no line, a superseded line, and a line whose
+ * manager this session may not read — because the screen does the same thing in all three: it says
+ * "your supervisor" instead of a name. Distinguishing them would only let the page print a confident
+ * sentence about a person it cannot see. `administrative` only: a functional, project or dotted line is
+ * not who plans your roster, and `delegate` is an approver stand-in rather than a supervisor at all.
+ */
+async function administrativeManagerNameTx(tx: Tx, employmentId: string, asOf: string): Promise<string | null> {
+  const rows = await tx
+    .select({ validFrom: reportingLine.validFrom, validTo: reportingLine.validTo, managerEmploymentId: reportingLine.managerEmploymentId })
+    .from(reportingLine)
+    .where(
+      and(
+        eq(reportingLine.subordinateEmploymentId, employmentId),
+        eq(reportingLine.lineType, 'administrative'),
+        isNull(reportingLine.supersededAt),
+      ),
+    )
+    // ORDER BY, because the line in force is picked off the END of this list and an unordered query
+    // would pick an arbitrary one (CLAUDE.md §8 — an asserted array from a query needs an ORDER BY).
+    .orderBy(asc(reportingLine.validFrom));
+  const line = rows.filter((r) => r.validFrom <= asOf && (r.validTo == null || r.validTo > asOf)).pop();
+  if (!line) return null;
+  const [m] = await tx
+    .select({ name: person.fullName })
+    .from(employment)
+    .innerJoin(person, eq(person.id, employment.personId))
+    .where(eq(employment.id, line.managerEmploymentId))
+    .limit(1);
+  return m?.name ?? null;
 }

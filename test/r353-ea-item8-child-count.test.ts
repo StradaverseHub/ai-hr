@@ -6,8 +6,13 @@
  * guard pinning a decision you are reversing is updated, not deleted) — including its own citations,
  * because they are real and they are about the wrong document.
  *
- * WHAT SETTLES IT, AND IT IS INSIDE THE VERY FILE r359 CITED. docs/forms/pcb-calculation-slip-official-
- * 2026-12.pdf is LHDN's own generated slip for this exact employee. Page 1 prints a child grid headed
+ * WHAT SETTLES IT, AND IT IS INSIDE THE VERY FILE r359 CITED.
+ * docs/forms/pcb-calculation-slip-specimen-2026-12.pdf is a FILLED SPECIMEN slip for this exact employee.
+ * ⚠️ r369 RENAMED IT AND CORRECTED THIS SENTENCE, which read "pcb-calculation-slip-official-2026-12.pdf
+ * is LHDN's own generated slip". It is not an agency publication: Chrome/Skia metadata, document title
+ * "ReportEx2026", a filled December 2026 calculation, and an English glossary that is not LHDN's. THIS
+ * TEST'S CONCLUSION IS UNAFFECTED — it also rests on the genuine LHDN EA artwork and the BM sheet cited
+ * below, and on the 2026 specification's own printed p.10 and p.27. Page 1 prints a child grid headed
  * "Number of children / Qualification rate 100% 50%" with "(a) Under 18 years old  1" and "(e) Disabled
  * and still studying in Malaysia or abroad  1" — TWO children, each a whole child. Page 6 of the SAME
  * document prints "Q = Deduction for eligible children  2,000.00" and "C = Number of eligible children

@@ -204,6 +204,10 @@ export function EmployeeImport({
                 t('instructionPassport'),
                 t('instructionAddress'),
                 t('instructionProbation'),
+                // r369 (item eb949191) — the one column whose rule is a CONDITION rather than a format, so
+                // it has to be said in words: a zero Basic Salary is accepted, and then the reason is not
+                // optional. Named by its workbook heading, which is the spelling on the sheet beside it.
+                t('instructionSalaryRemarks', { column: employeeColumnLabel('salary_remarks') }),
                 t('instructionSuperior'),
                 t('instructionFamily'),
                 t('instructionFamilyWhole'),
@@ -461,6 +465,12 @@ export function EmployeeImport({
             <code>ic_number</code> {t('icHint')} <code>hired_on</code> {t('hiredOnHint')}{' '}
             <code>bank_name</code> {t('bankAnd')} <code>bank_account_no</code> {t('bankHint')}{' '}
             {t('booleanHintPre')}(<code>eis_eligible</code>, <code>is_resident</code>){t('booleanHintPost')}
+          </p>
+          {/* r369 (item eb949191) — the condition on the new column, stated where the columns are listed.
+              The reference above names the column; this says the one thing about it that a spelling
+              cannot: WHEN it stops being optional. */}
+          <p className="mt-2 text-muted-foreground">
+            {t('instructionSalaryRemarks', { column: 'salary_remarks' })}
           </p>
         </details>
       </Card>

@@ -74,6 +74,11 @@ import { CollapsibleEmployeePanel } from '../components/collapsible-employee-pan
 // merge kept both copies. Keep a single import here.
 import TransactionViewPage from '../app/payroll/transaction-view/page';
 import { HistoryGrid } from '../app/payroll/transaction-view/history-grid';
+// 9949f91a (r369) — the two Leave Inquiry tabs join the file. Their fence is company SCOPE (`scopedAdmin` +
+// `listEmployees(s, scopeIds)`), the same as Zakat's, so the foreign id used against them is a real
+// employment in a real second company that scope excludes.
+import EmployeeBalancesPage from '../app/leave/employee-balances/page';
+import EmployeeRecordsPage from '../app/leave/employee-records/page';
 
 /** Depth-first walk of a rendered React element tree collecting every node whose `type` identity matches.
  *  Copied from organization-companies-unscoped.test.ts — the established way to inspect what a SERVER
@@ -677,4 +682,123 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
       ).toBe(true);
     }
   });
+
+  // ───────── 9949f91a (r369) — the two Leave Inquiry tabs ─────────
+  //
+  // They are the eleventh and twelfth screens to mount this panel, and the FIRST two whose selection rule
+  // differs from every other consumer's: `pickInquiryEmployee` (lib/leave-inquiry.ts) fell back to the FIRST
+  // employee when `?emp=` was absent, and the reporter asked for a "Select an employee" prompt instead. So
+  // there are two invisible failure modes here, not one:
+  //
+  //   · the ordinary one this whole file exists for — a foreign `?emp=` must coerce to NO selection, which a
+  //     page that dropped the guard still renders, still 200s and still passes every source grep;
+  //   · and the new one — the fallback creeping back, which would look like a working screen while showing a
+  //     real person's real leave position to somebody who never asked for them, with the panel beside it
+  //     marking nobody Selected.
+  //
+  // Both are read off what the panel is HANDED, which is this file's whole method.
+
+  const LEAVE_TABS = {
+    balances: { page: EmployeeBalancesPage, cookie: 'leave-balances-panel' },
+    records: { page: EmployeeRecordsPage, cookie: 'leave-records-panel' },
+  } as const;
+  type LeaveTab = keyof typeof LEAVE_TABS;
+  const LEAVE_TAB_NAMES = Object.keys(LEAVE_TABS) as LeaveTab[];
+  const leaveRender = (tab: LeaveTab, params: Record<string, string>) =>
+    LEAVE_TABS[tab].page({ searchParams: Promise.resolve(params) });
+
+  it.each(LEAVE_TAB_NAMES)(
+    'Leave Inquiry %s: a legitimate employee is selected, a cross-company one is not',
+    async (tab) => {
+      const ok = await leaveRender(tab, { emp: mine.employmentId });
+      expect(panelSelection(ok)).toBe(mine.employmentId);
+
+      const tampered = await leaveRender(tab, { emp: foreign.employmentId });
+      expect(panelSelection(tampered), 'a company outside scope must coerce to no selection').toBeNull();
+
+      const unknown = await leaveRender(tab, { emp: randomUUID() });
+      expect(panelSelection(unknown), 'an unknown id is refused rather than erroring').toBeNull();
+    },
+  );
+
+  it.each(LEAVE_TAB_NAMES)(
+    'Leave Inquiry %s: NO employee asked for selects NOBODY — the first-employee fallback is gone',
+    async (tab) => {
+      // THE RETIRED RULE, QUOTED: "No employee picked ⇒ the first by company then name (20c699f8 §1)."
+      // This is the assertion that catches it coming back, and it cannot be satisfied by prose: the value is
+      // what the page handed the panel.
+      const none = await leaveRender(tab, {});
+      expect(panelSelection(none), 'nothing asked for ⇒ nothing selected').toBeNull();
+      // …and the screen really does hold somebody it COULD have fallen back to, so the case is not vacuous.
+      const offered: string[] = findByType(none, EmployeeScopePanel)[0].props.employees.map(
+        (e: { employmentId: string }) => e.employmentId,
+      );
+      expect(offered.length, 'the panel is offering employees, so a fallback was available').toBeGreaterThan(0);
+      expect(offered).toContain(mine.employmentId);
+      expect(offered, 'a cross-company employee must not be offered').not.toContain(foreign.employmentId);
+      // Every row offered must survive the page's own guard — proved by feeding each back in.
+      for (const id of offered) {
+        const re = await leaveRender(tab, { emp: id });
+        expect(panelSelection(re), `the panel offered ${id} but the guard refused it`).toBe(id);
+      }
+      // A TERMINATED colleague is deliberately still offered and still selectable: their leave position is
+      // exactly what HR looks up after somebody leaves. The opposite of Zakat's rule, stated so the two are
+      // not "tidied" into one.
+      expect(offered, 'a terminated employee stays selectable on Leave Inquiry').toContain(terminated.employmentId);
+      expect(panelSelection(await leaveRender(tab, { emp: terminated.employmentId }))).toBe(
+        terminated.employmentId,
+      );
+    },
+  );
+
+  it('Leave Inquiry: each tab remembers its OWN collapse state, and the two keys are independent', async () => {
+    panelCookies.clear();
+    const keys: Record<string, string> = {};
+    for (const tab of LEAVE_TAB_NAMES) {
+      const sh = shell(await leaveRender(tab, { emp: mine.employmentId }), tab);
+      keys[tab] = sh.cookieKey;
+      expect(sh.defaultOpen, `${tab}: an absent cookie opens expanded`).toBe(true);
+    }
+    expect(keys).toEqual({ balances: 'leave-balances-panel', records: 'leave-records-panel' });
+    // Two tabs sharing a key means every move between them undoes the last answer — and Employee Balances is
+    // sixteen columns wide while Employee Leave Record is thirteen, so they are read folded differently.
+    expect(new Set(Object.values(keys)).size).toBe(LEAVE_TAB_NAMES.length);
+
+    panelCookies.set('leave-balances-panel', '0');
+    expect(shell(await leaveRender('balances', {}), 'balances').defaultOpen, 'a fold survives with nobody selected').toBe(
+      false,
+    );
+    expect(
+      shell(await leaveRender('balances', { emp: mine.employmentId }), 'balances').defaultOpen,
+      'and with somebody selected',
+    ).toBe(false);
+    expect(
+      shell(await leaveRender('records', {}), 'records').defaultOpen,
+      'folding Balances must not fold Employee Leave Record',
+    ).toBe(true);
+    panelCookies.set('leave-balances-panel', '1');
+    expect(shell(await leaveRender('balances', {}), 'balances').defaultOpen, 'reopening sticks too').toBe(true);
+  });
+
+  it.each(LEAVE_TAB_NAMES)(
+    'Leave Inquiry %s: the panel replaced the filter-row picker rather than joining it',
+    async (tab) => {
+      const tree = await leaveRender(tab, { emp: mine.employmentId });
+      expect(
+        findByType(tree, EmployeeSearchField),
+        'two pickers for one value is how they come to disagree (38b94df7 reversed)',
+      ).toHaveLength(0);
+      // The panel navigates by the screen's OWN param, so every bookmark and export link still resolves.
+      const panel = findByType(tree, EmployeeScopePanel)[0];
+      expect(panel.props.selectParam).toBe('emp');
+      expect(panel.props.basePath).toBe(`/leave/employee-${tab === 'balances' ? 'balances' : 'records'}`);
+      // No "All employees" row: `selectInquiryEmployee` has no no-employee destination to land on, and the
+      // screens draw a prompt for that state instead.
+      expect(panel.props.allowAll ?? false, 'the All-employees row stays opt-in and off here').toBe(false);
+      // EVERY PROP PLAIN DATA: a closure here is a 500 on every request that tsc and the suite stay green for.
+      for (const [k, v] of Object.entries(panel.props as Record<string, unknown>)) {
+        expect(typeof v, `EmployeeScopePanel got a function in ${k}`).not.toBe('function');
+      }
+    },
+  );
 });

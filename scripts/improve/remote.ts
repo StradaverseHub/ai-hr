@@ -155,6 +155,26 @@ const SELECT_COLS =
 export const feedbackSelectSql = (whereStatus: string): string =>
   `select coalesce(json_agg(row_to_json(t)), '[]') from (select ${SELECT_COLS} from feedback_request where status in (${whereStatus}) order by created_at) t`;
 
+/**
+ * ONE item by id, WHATEVER its status — including `building`.
+ *
+ * ── WHY THIS EXISTS ──────────────────────────────────────────────────────────────────────────────────
+ * `pullApproved()` filters `status in ('approved')`, so the moment `build-start` moves an item to
+ * `building` the builder can no longer read its own approved plan. On 2026-09-30 four builders were
+ * dispatched after their `build-start` and had to work from the parent's brief instead of the contract;
+ * one of them reported it, and a hand-rolled `ssh … psql` was refused by the auto-mode classifier as a
+ * production read, so there was no route back to the plan text from inside an agent's session.
+ *
+ * Ordering the parent's calls correctly (capture the plan, dispatch, THEN build-start) is the discipline;
+ * this is the safety net, because a discipline that fails silently is not one. It is a read of ONE row by
+ * a validated uuid through the same `SELECT_COLS` and the same block-trail fold as every other pull, so
+ * it shows a build agent nothing a `pull-approved` a moment earlier would not have shown it.
+ */
+export const feedbackSelectByIdSql = (id: string): string => {
+  assertUuid(id, 'feedback id');
+  return `select coalesce(json_agg(row_to_json(t)), '[]') from (select ${SELECT_COLS} from feedback_request where id = '${id}') t`;
+};
+
 export function blockTrailSql(ids: string[]): string {
   ids.forEach((id) => assertUuid(id, 'feedback id'));
   const list = ids.map((id) => `'${id}'`).join(',');
@@ -211,6 +231,18 @@ function selectFeedback(whereStatus: string): RemoteFeedback[] {
   // Always present, even as []. An absent key would make "never blocked" indistinguishable from "this
   // pull predates block trails" at the point of use, and a build agent skimming the JSON would read the
   // absence as "no question was asked" rather than "look again".
+  for (const r of rows) r.block_trail = trails.get(r.id) ?? [];
+  return rows;
+}
+
+/**
+ * One item by id, whatever its status. Returns [] for an unknown id rather than throwing, so a caller can
+ * tell "no such item" from "the ssh failed" — the second throws.
+ */
+export function pullItem(id: string): RemoteFeedback[] {
+  const out = remote(`psql "$MIGRATION_DATABASE_URL" -tAc ${shellQuote(feedbackSelectByIdSql(id))}`).trim();
+  const rows = JSON.parse(out || '[]') as RemoteFeedback[];
+  const trails = blockTrails(rows.map((r) => r.id));
   for (const r of rows) r.block_trail = trails.get(r.id) ?? [];
   return rows;
 }

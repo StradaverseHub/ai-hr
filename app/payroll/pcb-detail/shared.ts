@@ -344,7 +344,15 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
             t('bracketCategory'),
             trace && CATEGORY_LABEL[trace.category] ? t(CATEGORY_LABEL[trace.category]) : na,
           ),
-          figure(t('reliefChildCount'), trace ? String(trace.childCount) : na),
+          // GUARD THE FIELD, NOT THE TRACE. `childCount` is `number | null` (core/pcb-explain.ts:94,
+          // and readTrace:283 deliberately refuses to coerce absence to 0 — a payslip predating r359
+          // genuinely never recorded it). `trace ? String(trace.childCount) : na` therefore printed the
+          // literal four characters "null" onto a DOWNLOADED STATUTORY PDF for every such payslip,
+          // because the ternary tested the wrong thing. r364 fixed exactly this confusion inside the
+          // kernel and left both render sites carrying it — this one printing "null", its twin on the
+          // screen drawing an empty cell. CLAUDE.md §8: an absent box asserts nothing, 0.00 asserts the
+          // money does not exist, and "null" asserts we do not know what we are printing.
+          figure(t('reliefChildCount'), trace?.childCount != null ? String(trace.childCount) : na),
         ],
       });
     }

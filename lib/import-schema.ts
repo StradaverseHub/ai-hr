@@ -148,6 +148,24 @@ export const IMPORT_COLUMNS = {
     'pay_mode',
     'payment_term',
     'rate_amount',
+    // r369 (item eb949191) — THE CONFIRMATION GESTURE, CARRIED BY THE FILE.
+    //
+    // A basic salary of 0 is legal now: a Director paid quarterly Director Fees has no monthly basic, and
+    // `core/comp.ts` accepts such a record on ONE condition — whoever saves it types a remark saying why
+    // (`SalaryRemarkRequiredError`). That sentence is the whole thing that tells a deliberate zero from a
+    // mistyped one, months before any payroll run reads either, and the kernel never reads it to decide
+    // money.
+    //
+    // WITHOUT A COLUMN FOR IT the condition was unmeetable by anybody importing, so the reporter's own
+    // Director — onboarded by file, like the rest of their workforce — failed their row on a refusal the
+    // file had no way to answer. Nothing about the refusal is weakened here and NO remark is written on
+    // the operator's behalf: the file states the reason, or the row is refused with this column named.
+    //
+    // OPTIONAL, and that is the scope fence. A row with a positive basic never has to carry it, a file
+    // that has no such column imports exactly as it did, and a blank cell reaches `setCompensation` as
+    // `undefined` — which stores `null` and logs no `remarks` field change, byte-identical to the call
+    // this importer made before r369.
+    'salary_remarks',
     // ── Item 2983802f — the seven blocks the template had no columns for at all. EVERY ONE IS OPTIONAL,
     //    and that is the scope fence: a file that imports today imports unchanged tomorrow.
     //

@@ -72,7 +72,8 @@ describe('da4fc817 — Section D carries all six of the official form lines', ()
     //
     // WHAT r359 GOT WRONG. Its citations are real and they are about the MTD FORMULA, not about Form EA.
     // The agency's own generated output separates the two figures inside ONE document:
-    //   docs/forms/pcb-calculation-slip-official-2026-12.pdf page 1 — "Number of children / Qualification
+    //   docs/forms/pcb-calculation-slip-specimen-2026-12.pdf page 1 (a filled specimen, not agency artwork — see
+    //   the note in test/r361-pcb-mtd-results.test.ts) — "Number of children / Qualification
     //   rate 100% 50%", printing (a) Under 18 = 1 and (e) Disabled and still studying = 1: TWO children;
     //   the same file page 6 — "Q = Deduction for eligible children 2,000.00", "C = Number of eligible
     //   children 9.00".

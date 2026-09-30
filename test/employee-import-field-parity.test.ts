@@ -441,6 +441,19 @@ const REGISTRY: Record<string, RegistryTable> = {
       payMode: 'pay_mode',
       paymentTerm: 'payment_term',
       rateAmount: 'rate_amount',
+      // r369 (item eb949191) — MOVED OUT OF `excluded`, AND THE CLAIM IT USED TO CARRY IS QUOTED HERE
+      // VERBATIM so the reversal is legible rather than silent. It read:
+      //
+      //   'the reason for a salary CHANGE (87c82b18). A hire has no previous salary to explain, and
+      //    every imported row would carry the same word'
+      //
+      // Both halves were true of the field's only use at the time and are false of its second one. Since
+      // eb949191 a remark is ALSO the confirmation that a basic salary of zero is deliberate — a fact
+      // about the record being created, not about a change to a previous one, and a day-one Director paid
+      // quarterly fees has exactly that to explain. Nor would every row carry the same word: the column
+      // is optional and the sample template leaves it blank on both rows, because only a row whose basic
+      // amount is zero is refused without it.
+      remarks: 'salary_remarks',
     },
     excluded: [
       {
@@ -455,11 +468,6 @@ const REGISTRY: Record<string, RegistryTable> = {
       {
         reason: 'single-currency product today; the column exists for a later multi-currency slice',
         fields: ['currency'],
-      },
-      {
-        reason:
-          'the reason for a salary CHANGE (87c82b18). A hire has no previous salary to explain, and every imported row would carry the same word',
-        fields: ['remarks'],
       },
     ],
   },

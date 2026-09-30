@@ -181,8 +181,12 @@ describe('THE DASHBOARD, in every locale', () => {
     expect(within(ring).getAllByTestId('leave-balance-ring')).toHaveLength(1);
     // The legend is the text equivalent: every figure is printed, with its label. UPDATED BY the r302 fix pass
     // (verifier defect 5): the legend is the ring's arcs — Taken, Pending approval, You can apply for, Not earned
-    // yet — and Balance is the big number in the middle, labelled Balance (no longer a green legend row keyed to
-    // an arc that drew Balance − Pending). test/r302fp-my-leave-fixpass.dom.test.tsx measures arcs against it.
+    // yet. test/r302fp-my-leave-fixpass.dom.test.tsx measures arcs against it.
+    //
+    // UPDATED AGAIN BY cac9a3a1 (r369), and the claim it retires is quoted because the prose outlives the kernel:
+    // "Balance is the big number in the middle, labelled Balance". It was, and Balance is gross of pending while
+    // the green arc around it is the available figure — so the card stated two figures for one thing (the reporter
+    // read 11.50 in the middle and 10.50 in the Available Balance row). The middle is now that row itself.
     for (const [label, value] of [
       [L.entitlement, 14],
       [lf(loc).earnedToDate, 10.5],
@@ -194,8 +198,13 @@ describe('THE DASHBOARD, in every locale', () => {
       const dt = within(ring).getByText(label, { selector: 'dt' });
       expect(dt.parentElement!.querySelector('dd')!.textContent).toBe(formatDays(value));
     }
-    const centre = within(within(ring).getByTestId('leave-balance-ring')).getByText(formatDays(7.5));
-    expect(centre.parentElement!.textContent).toContain(L.balance);
+    // cac9a3a1 — the centre is the Available Balance row's own value (5.50 on this fixture, not the 7.50 Balance),
+    // under the green arc's own name. Read off the same overlay a person looks at, caption included.
+    const centreBox = within(ring).getByTestId('leave-balance-ring').querySelector('div[aria-hidden="true"]')!;
+    const centreSpans = [...centreBox.querySelectorAll('span')];
+    expect(centreSpans[0].textContent).toBe(formatDays(5.5));
+    expect(centreSpans[1].textContent).toBe((L.centreCaption as string).replace('{label}', lf(loc).availableBalance));
+    expect(centreSpans[0].textContent, 'the retired Balance figure is not in the middle').not.toBe(formatDays(7.5));
     // "You can apply for" prints the card's figure verbatim (the Apply popup's, on the server).
     expect(within(ring).getByTestId('can-apply-for').textContent).toContain(lf(loc).availableBalance);
     expect(within(ring).getByTestId('can-apply-for').textContent).toContain(formatDays(5.5));

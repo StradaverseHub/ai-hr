@@ -266,6 +266,18 @@ describe('§B · which mount switches what off, and what was gated rather than d
     expect(props).toContain('showConfigHealth={false}');
     expect(props).toContain('showBenefitSchemes={false}');
     expect(props).not.toContain('leaveTypeId');
+    /**
+     * 3a4efe9f (r369) — A THIRD PROP JOINED THIS MOUNT AND IT OBEYS THE SAME NAMING RULE.
+     *
+     * The old claim, quoted: "this mount is UNFILTERED", proved "by slicing the mount text to its first `/>`
+     * and asserting no `leaveTypeId` in it". Still true of what it was about — no leave type is HARDCODED
+     * here — and now stated precisely, because the tab carries an operator-chosen filter. `typeFilter` is
+     * named so it cannot read as the hardcoded filter returning: it must not contain the substring
+     * `leaveTypeId`, which the assertion above already enforces over the whole props slice.
+     */
+    expect(props, 'the filter is read from the URL, so the DEFAULT render is every leave type').toContain(
+      'typeFilter={sp.leaveType}',
+    );
   });
 
   it('the Entitlement tables tab switches both off; the leave type tab switches neither off', () => {

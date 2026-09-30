@@ -201,8 +201,27 @@ describe('§A · one vocabulary: the renamed strings say "benefit scheme", in si
         expect(v, `${loc} ${key}`).not.toMatch(/Settings, Leave, Entitlements|Tetapan, Cuti, Kelayakan|设置、假期、额度|Cài đặt, Nghỉ phép, Định mức/);
       }
     }
-    expect(en.leave.breakdown.statusNoEntitlementTableBody).toContain('on the Leave types screen');
-    expect(en.me.leaveBalanceTable.statusNoEntitlementTableTip).toContain('on the Leave types screen');
+    /**
+     * 3a4efe9f (r369) — UPDATED, NOT DELETED. What these two lines used to require, verbatim:
+     *
+     *     expect(en.leave.breakdown.statusNoEntitlementTableBody).toContain('on the Leave types screen');
+     *     expect(en.me.leaveBalanceTable.statusNoEntitlementTableTip).toContain('on the Leave types screen');
+     *
+     * …under the comment "m2 — the no-table copy names the Leave types screen, not a path that no longer
+     * exists." The PROPERTY is unchanged and is what m2 was about: this copy must name the screen that
+     * actually creates an entitlement table, rather than a stale navigation path. WHICH screen that is has
+     * changed. r369 gave entitlement-table editing to the **Entitlement tables** tab alone — the leave type
+     * screen shows the same tables read-only now — so a sentence still sending an employee's HR admin to the
+     * Leave types screen sends them somewhere with no create form on it.
+     *
+     * ⚠️ THE BENEFIT SCHEME COPY BELOW IS UNTOUCHED AND MUST STAY THAT WAY. Schemes DID stay on the Leave
+     * types screen; only the tables moved. The two cases immediately after this one still require exactly
+     * that, which is the distinction this round had to keep straight.
+     */
+    expect(en.leave.breakdown.statusNoEntitlementTableBody).toContain('on the Entitlement tables screen');
+    expect(en.me.leaveBalanceTable.statusNoEntitlementTableTip).toContain('on the Entitlement tables screen');
+    expect(en.leave.breakdown.statusNoEntitlementTableBody).not.toContain('Leave types screen');
+    expect(en.me.leaveBalanceTable.statusNoEntitlementTableTip).not.toContain('Leave types screen');
   });
 
   it('the profile note has two states and both read as derived, never as a setting', () => {

@@ -379,9 +379,27 @@ describe('04b88724 · (f) the Child Relief Review link is gone from Personnel Ma
   it('no longer renders the childReliefReview label, and the other entry points are untouched', () => {
     expect(personnelPage).not.toContain("t('childReliefReview')");
     // The screen's other neighbours on this header row.
-    for (const href of ['/admin/personnel/import', '/admin/personnel/new']) {
-      expect(personnelPage, `${href} is a different button and must not have been collateral`).toContain(href);
-    }
+    //
+    // ── UPDATED BY ITEM 034a5080 ─────────────────────────────────────────────────────────────────────
+    // THE OLD CLAIM, quoted rather than deleted:
+    //
+    //     for (const href of ['/admin/personnel/import', '/admin/personnel/new']) {
+    //       expect(personnelPage, `${href} is a different button and must not have been collateral`).toContain(href);
+    //     }
+    //
+    // Create New Employee is no longer a bare href on this page: 034a5080 turned it into a prompt, and the
+    // trigger (still a Link to that route) moved into ./create-employee-dialog.tsx. Left as written, the
+    // loop would have gone on passing because two of this file's OWN neighbouring comments mention the
+    // path in prose — a guard about a button, satisfied by a sentence. So Import keeps the href check and
+    // Create is checked by the component that now renders it.
+    expect(
+      personnelPage,
+      '/admin/personnel/import is a different button and must not have been collateral',
+    ).toContain('/admin/personnel/import');
+    expect(
+      personnelPage,
+      'Create New Employee is a different button and must not have been collateral',
+    ).toContain('<CreateEmployeeDialog');
   });
 
   it('THE ROUTE IS KEPT ON PURPOSE — page, its SCREENS column and its guard all still present', () => {

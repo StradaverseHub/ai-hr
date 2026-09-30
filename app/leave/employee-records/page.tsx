@@ -1,15 +1,20 @@
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees, listLeaveRequestsPage, listLeaveTypes } from '@/core/read';
-import { Button, Card, PageHeader, inputCls } from '@/components/ui';
+import { Button, Card, EmployeeName, PageHeader, inputCls } from '@/components/ui';
+import {
+  CollapsibleEmployeePanel,
+  EmployeeScopePanel,
+  type ScopeEmployee,
+} from '@/components/collapsible-employee-panel';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav';
 import { TableFullscreen } from '@/components/leave/table-fullscreen';
-import { EmployeeSearchField } from '@/components/employee-search-field';
 import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-dialog';
 import { adminCancelLeaveAction } from '@/app/leave/actions';
-import { pickInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
+import { selectInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
 import { durationLabel } from '@/lib/leave-duration';
 // 4a1abc4a: this screen printed the raw day count ("3") beside Employee Balances' "3.00" — the reported
 // drift, between two tabs of the same Leave Inquiry nav. One formatter for both.
@@ -48,6 +53,13 @@ import { pageState, parsePageQuery } from '@/lib/pagination';
 
 const LEAVE_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;
 
+/**
+ * 9949f91a (r369) — THIS SCREEN'S OWN PANEL COOKIE, never shared with Employee Balances. One key per
+ * collapse state a reader expects to set separately: two mounts sharing a key means every move between the
+ * two tabs undoes the last answer, so the first thing each switch does is fight the previous one.
+ */
+const PANEL_COOKIE = 'leave-records-panel';
+
 export default async function EmployeeLeaveRecordPage({
   searchParams,
 }: {
@@ -74,7 +86,32 @@ export default async function EmployeeLeaveRecordPage({
   const arr = (v?: string | string[]): string[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
 
   const employees = sortInquiryEmployees(await listEmployees(session, scopeIds), locale);
-  const selected = pickInquiryEmployee(employees, sp.emp);
+  /**
+   * 9949f91a (r369) — NO EMPLOYEE PICKED ⇒ NOBODY. The retired rule, quoted from lib/leave-inquiry.ts: "No
+   * employee picked ⇒ the first by company then name (20c699f8 §1)." The reporter asked for
+   * "Select an employee to view their leave records" instead of the screen quietly opening on whoever sorted
+   * first — which, with the panel beside it marking nobody Selected, made the two halves of the screen
+   * disagree about who was being looked at. SCREENS ONLY: the export route keeps the fallback.
+   *
+   * POST-GUARD: an id outside the fenced list selects nothing, and this is the value the panel is handed.
+   */
+  const selected = selectInquiryEmployee(employees, sp.emp);
+  /** The panel is fed from the SAME `listEmployees` read — a `.map`, never a second, wider employee source. */
+  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
+    employmentId: e.employmentId,
+    name: e.name,
+    employeeCode: e.employeeCode,
+    company: e.company,
+    companyId: e.companyId,
+    department: e.department,
+    departmentId: e.departmentId,
+    businessUnit: e.businessUnit,
+    businessUnitId: e.businessUnitId,
+    // DERIVED ON THE SERVER: the browser gets this wrong by a day across MYT midnight.
+    status: e.terminatedOn == null ? 'active' : 'ended',
+  }));
+  /** Read on the SERVER, so the first paint is already right rather than opening and folding (r320). */
+  const panelDefaultOpen = (await cookies()).get(PANEL_COOKIE)?.value !== '0';
 
   const typeIds = arr(sp.type);
   const statuses = arr(sp.status).filter((s) => (LEAVE_STATUSES as readonly string[]).includes(s));
@@ -142,26 +179,16 @@ export default async function EmployeeLeaveRecordPage({
     return `/leave/employee-records/export?${p.toString()}`;
   };
 
-  // 38b94df7 — WIDER THAN REPORTED: this page carried a byte-identical copy of the whole-list employee
-  // dropdown the ticket raised against Employee Balances, so both are converted in one change rather than
-  // leaving the reporter to re-report the same thing on the next tab. (The literal markup is deliberately
-  // NOT quoted in this comment: the guard in test/leave-inquiry-employee-search.test.ts reads the file as
-  // text and does not strip comments, so a quoted example would read as a surviving control.)
-  // Captions are resolved here and passed as plain strings —
-  // EmployeeSearchField is a client island and no translator closure may cross that boundary (r123).
-  const empSearchLabels = {
-    placeholder: tInq('empSearchPlaceholder'),
-    ariaLabel: tInq('empSearchAriaLabel'),
-    resultsLabel: tInq('empSearchResultsLabel'),
-    noMatches: tInq('empSearchNoMatches'),
-    clear: tInq('empSearchClear'),
-  };
-  const empSearchOptions = employees.map((e) => ({
-    value: e.employmentId,
-    name: e.name,
-    employeeCode: e.employeeCode,
-    secondary: e.company,
-  }));
+  /**
+   * 9949f91a (r369) — 38b94df7's EMPLOYEE SEARCH BOX IS GONE FROM THE FILTER ROW on this tab as well as on
+   * Employee Balances, replaced by the shared employee panel down the left. 38b94df7's own note said it was
+   * "WIDER THAN REPORTED: this page carried a byte-identical copy of the whole-list employee dropdown" — the
+   * same is true of this reversal, and for the same reason: leaving one tab with a filter-row picker and the
+   * other with a panel is the half-migration that guard exists to prevent.
+   *
+   * The five `leave.inquiry.empSearch*` keys are RETIRED IN PLACE in all six catalogues, never deleted, and
+   * `recordsSearchPlaceholder` beside them is the RECORD search box and is untouched.
+   */
 
   const filterFields: FilterField[] = [
     {
@@ -208,6 +235,20 @@ export default async function EmployeeLeaveRecordPage({
   };
   // Clearing every filter keeps the employee — otherwise "clear all" silently jumps to someone else.
   const chipAction = `/leave/employee-records${selected ? `?emp=${selected.employmentId}` : ''}`;
+
+  /**
+   * 9949f91a (r369) — what the EMPLOYEE PANEL carries when the reader switches person: everything this screen
+   * is narrowed and ordered by, and nothing scoped to the person being navigated away from. `page` is
+   * deliberately ABSENT — page 4 of one employee's records is not page 4 of the next one's — while `size` is
+   * a reader preference and rides along. `type` and `status` are ARRAYS and stay repeated params; flattened to
+   * `a,b` they would survive the switch in the URL and match nothing on screen.
+   */
+  const panelPreserve: Record<string, string | string[]> = { sort, dir, size: String(pq.size) };
+  if (typeIds.length) panelPreserve.type = typeIds;
+  if (statuses.length) panelPreserve.status = statuses;
+  if (q) panelPreserve.q = q;
+  if (from) panelPreserve.from = from;
+  if (to) panelPreserve.to = to;
 
   // Layout (feedback 026e16b9) — presentation only, and the SAME three moves as Employee Balances so the
   // two tabs do not read as different screens: a wider container cap, a narrower inquiry rail (in
@@ -258,24 +299,64 @@ export default async function EmployeeLeaveRecordPage({
         </div>
       )}
 
-      {/* d990f14a — NO RAIL. The tab bar is rendered below, between the filters and the table, so the
-          table gets the whole width of the page instead of the 192px the rail and its gap were taking. */}
+      {/**
+       * d990f14a — NO TAB RAIL: the tab bar is rendered below, between the filters and the table, so the table
+       * gets the whole width of the content column instead of the 192px a vertical tab rail and its gap were
+       * taking. THAT IS STILL TRUE and is what test/leave-inquiry-layout.test.ts pins.
+       *
+       * ⚠️ 9949f91a (r369) — BUT THERE IS A LEFT-HAND COLUMN AGAIN, and it is not the tab rail. The sentence
+       * here used to end "so the table gets the whole width of the PAGE". The shared employee panel sits to the
+       * left now, and Hide list gives the table the whole width back the moment the reader is not hunting for
+       * somebody — which is the answer to their own earlier complaint about an always-on strip. Remembered in
+       * `leave-records-panel`, a different cookie from the Balances tab's.
+       *
+       * EVERY PROP IS PLAIN DATA OR A ReactNode: a closure across this boundary is a 500 on every request that
+       * tsc, the suite and `next build` all stay green through.
+       */}
+      <CollapsibleEmployeePanel
+        defaultOpen={panelDefaultOpen}
+        cookieKey={PANEL_COOKIE}
+        title={tInq('recordsTitle')}
+        hideLabel={tInq('panelHide')}
+        showLabel={tInq('panelShow')}
+        detailHeader={
+          selected ? (
+            <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2">
+              <EmployeeName
+                code={selected.employeeCode}
+                name={selected.name}
+                className="text-sm font-semibold text-foreground"
+              />
+              <span className="text-xs font-normal text-muted-foreground">{selected.company}</span>
+              <span className="text-xs font-normal text-muted-foreground">
+                {t('requestsCountTotal', { count: total })}
+              </span>
+            </div>
+          ) : undefined
+        }
+        panel={
+          <Card className="p-4">
+            <h2 className="text-sm font-semibold">{tInq('panelHeading')}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">{tInq('panelHint')}</p>
+            <div className="mt-3">
+              <EmployeeScopePanel
+                employees={panelEmployees}
+                selectedId={selected?.employmentId ?? null}
+                basePath="/leave/employee-records"
+                selectParam="emp"
+                preserve={panelPreserve}
+              />
+            </div>
+          </Card>
+        }
+      >
       <div className="min-w-0 space-y-4">
           <div className="flex flex-wrap items-end gap-2">
             <form method="get" action="/leave/employee-records" className="flex flex-wrap items-end gap-2">
-            {/* 38b94df7: same searchable field as Employee Balances, posting the same `name="emp"` — the
-                submitted query string, the export links and the chip action are all unchanged. */}
-            <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-              <label htmlFor="records-emp">{tInq('employee')}</label>
-              <EmployeeSearchField
-                id="records-emp"
-                name="emp"
-                employees={empSearchOptions}
-                value={selected?.employmentId ?? null}
-                labels={empSearchLabels}
-                className="w-72"
-              />
-            </div>
+            {/* 9949f91a — THE EMPLOYEE RIDES THE URL, chosen in the panel on the left, and is carried here so
+                submitting the record search cannot silently clear the selection. Same shape as Employee
+                Balances and as app/attendance/individual/page.tsx. */}
+            {selected && <input type="hidden" name="emp" value={selected.employmentId} />}
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               {t('filters.search')}
               <input
@@ -311,16 +392,21 @@ export default async function EmployeeLeaveRecordPage({
               values={filterValues}
               labels={filterLabels}
             />
-            <div className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs">
-              <span className="text-muted-foreground">{t('filters.export')}:</span>
-              <Link href={exportHref('csv')} className="font-medium text-primary hover:underline">
-                {t('filters.exportCsv')}
-              </Link>
-              <span className="text-muted-foreground">·</span>
-              <Link href={exportHref('xlsx')} className="font-medium text-primary hover:underline">
-                {t('filters.exportExcel')}
-              </Link>
-            </div>
+            {/* 9949f91a — NOT OFFERED WITH NOBODY SELECTED: the export ROUTE keeps 20c699f8's
+                first-employee fallback, so the link would hand back a workbook about somebody the reader never
+                chose. The route is untouched; the link is not drawn. */}
+            {selected && (
+              <div className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs">
+                <span className="text-muted-foreground">{t('filters.export')}:</span>
+                <Link href={exportHref('csv')} className="font-medium text-primary hover:underline">
+                  {t('filters.exportCsv')}
+                </Link>
+                <span className="text-muted-foreground">·</span>
+                <Link href={exportHref('xlsx')} className="font-medium text-primary hover:underline">
+                  {t('filters.exportExcel')}
+                </Link>
+              </div>
+            )}
           </div>
 
           <FilterChips action={chipAction} fields={filterFields} values={filterValues} labels={filterLabels} />
@@ -329,13 +415,19 @@ export default async function EmployeeLeaveRecordPage({
               above the table. `carry` hands on the leave-code search and the leave-type filter only. */}
           <LeaveInquiryNav active="records" employmentId={selected?.employmentId} carry={{ q, type: typeIds }} />
 
+          {/* 9949f91a — THE PROMPT, in the reference mount's own shape: the filter row and the tab bar stay
+              drawn so a reader with nobody selected can still switch tabs, and only the table is replaced.
+              `tInq('noEmployees')` is a different statement — the scope holds nobody — and keeps its own case.
+              The "Name · Company" strip and the record count moved into the shell's header bar above, so the
+              identity is stated once rather than twice. */}
+          {!selected ? (
+            <Card className="overflow-hidden">
+              <p className="px-4 py-10 text-center text-sm text-muted-foreground" data-testid="pick-employee">
+                {employees.length === 0 ? tInq('noEmployees') : tInq('pickEmployeeRecords')}
+              </p>
+            </Card>
+          ) : (
           <Card className="overflow-hidden">
-            <div className="border-b border-border px-4 py-3 text-sm font-medium">
-              {selected ? `${selected.name} · ${selected.company}` : tInq('noEmployees')}
-              <span className="ml-2 font-normal text-muted-foreground">
-                {t('requestsCountTotal', { count: total })}
-              </span>
-            </div>
             <TableFullscreen
               title={tInq('employeeLeaveRecord')}
               subtitle={selected ? `${selected.name} · ${selected.company}` : undefined}
@@ -501,7 +593,9 @@ export default async function EmployeeLeaveRecordPage({
               exportHref={exportHref('csv')}
             />
           </Card>
+          )}
         </div>
+      </CollapsibleEmployeePanel>
     </div>
   );
 }

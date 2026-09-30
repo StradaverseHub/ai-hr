@@ -204,12 +204,28 @@ export default async function LeaveConfigTypesPage({
    *  cannot be shared, because the filter IS the item. */
   const entitlementTablesSectionFor = (leaveTypeId: string) => (
     <div className="space-y-1.5">
+      {/* 3a4efe9f — THE HELPER LINE IS THE SAME KEY, REWORDED, NOT A NEW ONE. `entitlementStep.tablesHint`
+          used to promise "Set this leave type's days, service ranges and who receives them below", which
+          stopped being true the moment the editor below it became read-only. It now says where tables are
+          managed and that changes made there appear here with no second save — the sentence the approved plan
+          asked for, in the place the old promise stood. Retired in place; the key is not deleted. */}
       <p className="text-xs text-muted-foreground">{t('entitlementStep.tablesHint')}</p>
       <EntitlementTablesBlock
         data={entitlementTablesData}
         leaveTypeId={leaveTypeId}
         editTemplate={editTemplate}
         editRule={editRule}
+        /* 3a4efe9f — THIS TAB SHOWS THE TABLES AND NO LONGER EDITS THEM. The approved responsibility matrix:
+           creating, editing, stopping and deleting a table happen on the Entitlement tables tab alone; this
+           tab keeps the leave type's OWN rules — earning method, proration, rounding, the default table, the
+           benefit schemes and the job-grade coverage warning — every one of which stays editable here.
+           `leaveTypeId` above is UNCHANGED and must stay: read-only is a second property, not the removal of
+           the filter. */
+        tablesReadOnly
+        /* …and `editTemplate` keeps doing what two guards require it to do here — choosing which leave type's
+           tab 3 opens — while now also highlighting the row it names, since it can no longer open an editor
+           for it. Arriving from a bookmark that pointed at a table is still an answer about that table. */
+        highlightTable={editTemplate}
       />
     </div>
   );

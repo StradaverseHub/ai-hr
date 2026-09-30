@@ -9,6 +9,11 @@
  * The reporter's requirement is literal — "The current employee list screen shall not be used for
  * data entry" — so the assertions below are mostly ABSENCES, which is the only way to pin that.
  *
+ * ITEM 034a5080 IS THE THIRD RELOCATION, and it moves the BUTTON only: Create New Employee now opens a
+ * prompt over the list instead of navigating to the route. The route, the step-by-step-replacement tab
+ * shell, the deleted inline hire form and the removed `hireAction` are all untouched by it — see the
+ * quoted old claim in the first describe for what changed and why it is not a loosening.
+ *
  * What did NOT change, and is asserted so a future edit cannot quietly drop it: the org cascade rule
  * (`hireOptionVisible`), the standing leave grants, the server-computed provisional end date, and the
  * fact that creation runs the existing writers rather than a bespoke insert.
@@ -26,13 +31,66 @@ const wizardPage = read('app/admin/personnel/new/page.tsx');
 const wizard = read('app/admin/personnel/new/wizard.tsx');
 const wizardActions = read('app/admin/personnel/new/actions.ts');
 const draftCore = read('core/employee-draft.ts');
+// 034a5080 — the prompt that now opens over the list. The href and the tour anchor moved here.
+const createDialog = read('app/admin/personnel/create-employee-dialog.tsx');
+/** Comments stripped, for the reason test/function-access.test.ts strips them: this file's assertions are
+ *  about what the code DOES, and the headers here explain the very idioms being asserted absent. */
+const codeOf = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
+const createDialogCode = codeOf(createDialog);
 
-describe('the entry point is a link to a dedicated screen', () => {
-  it('renders the Create New Employee link in the PageHeader actions, carrying the tour anchor', () => {
-    expect(listPage).toContain('href="/admin/personnel/new"');
+describe('the entry point opens a prompt, and is still a link to the dedicated screen', () => {
+  /**
+   * ── UPDATED BY ITEM 034a5080, AND THE UPDATE IS THE ITEM ───────────────────────────────────────────
+   *
+   * THE OLD CLAIM, quoted so the reversal is readable rather than merely absent:
+   *
+   *     it('renders the Create New Employee link in the PageHeader actions, carrying the tour anchor', () => {
+   *       expect(listPage).toContain('href="/admin/personnel/new"');
+   *       expect(listPage).toMatch(/\{t\('createNewEmployee'\)\}/);
+   *       // The onboarding tour's anchor appears exactly once, on the button, as it has since 5c9b73f2.
+   *       expect((listPage.match(/data-tour="people-hire"/g) ?? []).length).toBe(1);
+   *     });
+   *
+   * WHY IT CHANGED. 6d671f44's reporter wrote "The current employee list screen shall not be used for
+   * data entry", so the button became a plain Link off this page. 034a5080's reporter asks for the
+   * opposite for the four-question create: "the system shall display a Create New Employee prompt/modal
+   * instead of navigating the user to a separate full screen." Both are the same product owner and the
+   * second supersedes the first for THIS button only — the inline hire form 6d671f44 deleted is still
+   * deleted, and the list is still not a data-entry surface (the describe below is untouched).
+   *
+   * WHAT IS PINNED NOW, and it is not weaker. The href and the tour anchor did not disappear; they MOVED
+   * into app/admin/personnel/create-employee-dialog.tsx with the button they belong to, and the trigger is
+   * still a real Link so ⌘-click, middle-click and a JS-less browser still reach the full screen. So the
+   * anchor is still asserted to appear EXACTLY ONCE — counted across both files, which is stronger than
+   * counting it in one of them, because a second copy anywhere now fails.
+   */
+  it('renders the Create New Employee prompt trigger, still linking the route and carrying the tour anchor', () => {
+    // The trigger's LABEL is resolved on the server page (so the dialog file keeps to one message
+    // namespace — test/i18n-coverage.test.ts check C), and the component is rendered where the Link was.
     expect(listPage).toMatch(/\{t\('createNewEmployee'\)\}/);
-    // The onboarding tour's anchor appears exactly once, on the button, as it has since 5c9b73f2.
-    expect((listPage.match(/data-tour="people-hire"/g) ?? []).length).toBe(1);
+    expect(listPage).toContain('<CreateEmployeeDialog');
+    // The route is NOT abandoned: the trigger is an <a href>, intercepted on a plain left click only.
+    expect(createDialogCode).toContain('href="/admin/personnel/new"');
+    expect(createDialogCode).toContain('e.preventDefault()');
+    // Exactly once, across the list page and the component — 5c9b73f2's invariant, counted wider. In
+    // CODE, not in prose: the dialog's header comment names the attribute it carries, and the first draft
+    // of this count read 2 because of that sentence.
+    const anchors = [listPage, createDialog].reduce(
+      (n, src) => n + (codeOf(src).match(/data-tour="people-hire"/g) ?? []).length,
+      0,
+    );
+    expect(anchors).toBe(1);
+  });
+
+  it('the prompt renders the SHARED create body, not a second copy of the Employee ID block', () => {
+    // The whole risk of 034a5080 is two answers to "which Employee ID is this employee getting". There is
+    // one: `CreateEmployeeFields` in app/admin/personnel/new/create-form.tsx, which both surfaces render.
+    expect(createDialogCode).toContain('CreateEmployeeFields');
+    expect(createDialogCode).toContain("from './new/create-form'");
+    // And the confirmation reports the code the SERVER issued, never the previewed sample. The behaviour
+    // is pinned by rendering in test/create-employee-dialog.dom.test.tsx; this is the shape of it.
+    expect(createDialogCode).toContain('created.employeeCode');
+    expect(createDialogCode).not.toContain('sampleCode');
   });
 
   it('keeps the older relocation intact: no collapsed <details> entry point came back', () => {

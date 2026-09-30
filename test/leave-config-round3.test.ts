@@ -378,9 +378,20 @@ describe('a6fe37fc R3 · a flow that is not changing is MOUNTED, not re-implemen
     }
   });
 
-  it('the entitlement-tables page mounts the block UNFILTERED — no leaveTypeId, or it is the tab', () => {
-    // The all-types view is the only thing this screen does that a leave type's own tab 3 cannot.
+  it('the entitlement-tables page mounts the block with NO HARDCODED leaveTypeId', () => {
+    /**
+     * 3a4efe9f (r369) — UPDATED, NOT DELETED. The old claim, quoted: "the entitlement-tables page mounts
+     * the block UNFILTERED — no leaveTypeId, or it is the tab", explained as "The all-types view is the only
+     * thing this screen does that a leave type's own tab 3 cannot."
+     *
+     * That decision is NOT reversed. The screen's default view is still every leave type side by side; what
+     * r369 added on top is an operator-chosen `?leaveType=<id>` filter, so the screen can be NARROWED on
+     * request — which is what lets the create form name a leave type and therefore warn that a second table
+     * would reach nobody. The assertion below is unchanged in substance: no leave type is hardcoded here.
+     */
     expect(src.entitlementTables).not.toContain('leaveTypeId={');
+    // The other half of the restated claim: the narrowing comes from the URL, and nothing else.
+    expect(src.entitlementTables).toContain('typeFilter={sp.leaveType}');
   });
 
   it('no new server action, and no page declares one', () => {

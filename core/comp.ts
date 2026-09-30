@@ -65,6 +65,97 @@ function assertRateForMode(payMode: PayMode, rateAmount: string | null): void {
   }
 }
 
+/**
+ * r369 — WHICH AMOUNT THIS SALARY RECORD FAILS TO NAME. One predicate, three readers.
+ *
+ * `assertRateForMode` above answers the daily/hourly half of the same question and predates this; the two
+ * are siblings on purpose. This one is the whole question, as a VALUE rather than a throw, because the
+ * two legs have opposite consequences and used to share one:
+ *
+ *   • 'missing_rate'     — daily/hourly with no positive `rate_amount`. Pay IS rate × time, so there is
+ *                          nothing else that could ever pay this person and the days would come out as
+ *                          nothing. STILL A BLOCKER at pre-flight (`zeroBasic`), still a throw at write.
+ *   • 'no_monthly_basic' — every other mode with `basic_salary <= 0`. NO LONGER A BLOCKER (item
+ *                          eb949191): a Director paid fees quarterly has no monthly basic, and refusing
+ *                          the zero forced HR to invent a figure. Payroll SKIPS such a person in a period
+ *                          where nothing else is payable instead of blocking the whole company's run.
+ *
+ * FLAG-FREE AND AMOUNT-ONLY, DELIBERATELY. It reads the two columns that name money on the record and
+ * nothing else — not the module entitlements, not `monthly_allowance`, not any transaction table. That is
+ * what lets `setCompensation` (a write, no run in sight), `updateCompensation` and `preProcessChecksTx`
+ * (a read over a pay period) share it and never drift. Everything that depends on WHAT A RUN WILL PAY —
+ * the legacy `monthly_allowance` leg, the nine transaction doors — is the caller's addition, and
+ * `preProcessChecksTx` / `generatePayslips` each say in place which additions they make and why.
+ *
+ * THE IDENTIFIER `zeroBasic` IS NOT RENAMED anywhere downstream even though it now means only the rate
+ * leg: test/4ca06dea-process-blocker-parity.test.ts extracts the blocker-count expressions from three
+ * source files by name and evaluates them as a bitmask, so a rename would churn that guard across three
+ * files to say the same four terms. The SENTENCE the operator reads was reworded instead.
+ */
+export type UnpayableSalaryLeg = 'missing_rate' | 'no_monthly_basic' | null;
+export function unpayableSalaryLeg(
+  payMode: PayMode | string,
+  basicSalary: number | string | null | undefined,
+  rateAmount: number | string | null | undefined,
+): UnpayableSalaryLeg {
+  if (payMode === 'daily' || payMode === 'hourly') {
+    return Number(rateAmount ?? 0) > 0 ? null : 'missing_rate';
+  }
+  return Number(basicSalary ?? 0) > 0 ? null : 'no_monthly_basic';
+}
+
+/**
+ * r369 — A SALARY AMOUNT THAT IS NOT A FINITE NUMBER IS REFUSED AT THE SERVICE, NOT COERCED.
+ *
+ * `money()` above is `typeof n === 'number' ? n.toFixed(2) : String(n)`, so `money(NaN)` is the STRING
+ * "NaN" — and Postgres `numeric` ACCEPTS NaN. A single NaN basic therefore stores silently and poisons
+ * every figure derived from it: gross, every statutory base, the payslip, the bank file and the agency
+ * returns, with no error anywhere. `core/employee-draft.ts` already computes
+ * `Number((pay.basicSalary ?? '').replace(/[,_]/g, ''))`, which is NaN for a blank; only a schema refusal
+ * one layer up makes it unreachable today.
+ *
+ * SO THE REFUSAL SITS HERE, INSIDE THE SERVICE, and not on the five forms that reach it
+ * (core/performance.ts, core/movement.ts, core/employee-draft.ts, core/import.ts and the Personnel
+ * action). One guard covers all five regardless of which round relieves which form first, and it is a
+ * NO-OP for every caller that passes a real number.
+ */
+export class NonFiniteSalaryAmountError extends Error {
+  constructor(field: string) {
+    super(`${field} must be a number — a blank or unparseable amount cannot be stored on a salary record`);
+    this.name = 'NonFiniteSalaryAmountError';
+  }
+}
+const assertFinite = (field: string, v: number | null | undefined): void => {
+  if (v == null) return;
+  if (!Number.isFinite(v)) throw new NonFiniteSalaryAmountError(field);
+};
+
+/**
+ * r369 — THE CONFIRMATION GESTURE, AND THE ONLY THING LEFT OF THE REFUSAL THE REPORTER REJECTED.
+ *
+ * We proposed refusing a basic salary of zero outright. The reporter rejected that: a Director paid fees
+ * quarterly genuinely has no monthly basic. What they specified instead (item 7dbaf677, expected_behavior
+ * 3-5) is that saving a salary with no basic amount makes Remarks mandatory. A mistyped zero and a
+ * deliberate one are indistinguishable on the day they are saved, months before any run, and this one
+ * sentence of explanation is what tells them apart.
+ *
+ * WHY REMARKS AND NOT A COLUMN. `compensation.remarks` already exists and this service already accepts
+ * it, so there is no second source of truth to keep in step with the remark that explains it — which a
+ * `no_monthly_basic` boolean would be. And note what the kernel does with it: NOTHING. `generatePayslips`
+ * decides whether to skip somebody by reading MONEY (item eb949191's predicate), never this text. A
+ * business rule derived from free text is exactly what this is not; the text is a gesture at the point of
+ * entry and a sentence the operator reads on the readiness panel, and that is all.
+ */
+export class SalaryRemarkRequiredError extends Error {
+  constructor() {
+    super(
+      'A salary record with no basic amount needs a remark saying why (for example: paid by quarterly ' +
+        "director's fees). Payroll will leave this employee out of any month with nothing payable.",
+    );
+    this.name = 'SalaryRemarkRequiredError';
+  }
+}
+
 /** First day of the month AFTER a 'YYYY-MM' pay period — the exclusive end of its date range. */
 const nextMonthStart = (period: string): string => {
   const [y, m] = period.split('-').map(Number);
@@ -191,6 +282,16 @@ export async function setCompensation(
     const currencyProvided = p.currency !== undefined;
     const currency = currencyProvided ? normalizeCurrency(p.currency as string) : (cur?.currency ?? 'MYR');
     assertRateForMode(payMode, rateAmount);
+    // r369 — the NaN trap, refused before anything is written. See NonFiniteSalaryAmountError.
+    assertFinite('Basic salary', p.basicSalary);
+    assertFinite('Monthly allowance', effectiveAllowance);
+    assertFinite('Rate', p.rateAmount ?? null);
+    // r369 — no basic amount ⇒ Remarks is mandatory. Remarks are NOT carried forward by this service (each
+    // revision carries its own reason), so the gesture is required on the revision that removes the basic,
+    // which is exactly the moment the operator can still say why.
+    if (unpayableSalaryLeg(payMode, p.basicSalary, rateAmount) === 'no_monthly_basic' && !p.remarks?.trim()) {
+      throw new SalaryRemarkRequiredError();
+    }
     // D4 — a pay-mode CHANGE (relative to the record it supersedes) only takes effect on a period boundary.
     // The first record of an employment carries no prior mode, so it may start on any date (e.g. mid-month
     // hire of a daily worker).
@@ -334,6 +435,17 @@ export async function updateCompensation(
     const nextRate: string | null =
       p.rateAmount !== undefined ? (p.rateAmount == null ? null : money(p.rateAmount)) : row.rateAmount;
     assertRateForMode(nextPayMode, nextRate);
+    // r369 — the NaN trap and the no-basic remark rule, on the in-place edit too. Both are evaluated
+    // against the row's RESULTING state (an omitted field keeps the stored one), exactly as the rate check
+    // above is, so "edit the basic to 0 while the row already carries a remark" is accepted and "clear the
+    // remark on a row that has no basic" is refused. `assertFinite` is a no-op for an omitted field.
+    assertFinite('Basic salary', p.basicSalary ?? null);
+    assertFinite('Rate', p.rateAmount ?? null);
+    const nextBasic = p.basicSalary !== undefined ? p.basicSalary : Number(row.basicSalary);
+    const nextRemarks = p.remarks !== undefined ? (p.remarks ?? '') : (row.remarks ?? '');
+    if (unpayableSalaryLeg(nextPayMode, nextBasic, nextRate) === 'no_monthly_basic' && !nextRemarks.trim()) {
+      throw new SalaryRemarkRequiredError();
+    }
     if (p.payMode !== undefined && nextPayMode !== (row.payMode as PayMode)) {
       // D4 — the (possibly moved) effective date must be a period boundary…
       const resultingFrom = p.validFrom !== undefined ? p.validFrom : row.validFrom;

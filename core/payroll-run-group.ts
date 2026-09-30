@@ -14,7 +14,9 @@
  * reasons are Phase 2.
  *
  * r226 AMENDS THAT IN EXACTLY ONE DIRECTION, AND IT IS NOT THE FAILURE DIRECTION. The kernel now returns a
- * per-employee SKIP list from an additional run — the people it had nothing to pay in that cycle. Skipped
+ * per-employee SKIP list — the people the run had nothing to pay in that cycle. r369 widened WHICH runs
+ * produce one (a regular run now skips an employee with no monthly basic and nothing payable) and changed
+ * nothing about how it is reported: the shape, the arithmetic and the rule below are r226's. Skipped
  * is a third outcome beside succeeded and failed: it is counted separately, subtracted out of
  * `totalEmployeesFailed`, and must never be rendered as a failure. The all-or-nothing constraint on
  * FAILURE is untouched.

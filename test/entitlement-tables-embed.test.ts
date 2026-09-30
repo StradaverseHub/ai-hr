@@ -91,12 +91,33 @@ describe('§1 ee6b7c69 · one definition of the tables, two mount points', () =>
     expect(blockSrc).toContain('<EligibilityRuleForm');
   });
 
-  it('the standalone screen mounts it UNFILTERED and the step mounts it FILTERED', () => {
-    // The standalone screen is the "every leave type side by side" view the plan promised would survive,
-    // so it must not acquire a leaveTypeId; the step is the item, so it must pass one.
+  it('the standalone screen mounts it with NO HARDCODED type and the step mounts it FILTERED', () => {
+    /**
+     * 3a4efe9f (r369) — UPDATED, NOT LOOSENED, AND THE OLD CLAIM IS QUOTED BECAUSE IT IS NO LONGER THE
+     * WHOLE TRUTH.
+     *
+     * What this case used to say, verbatim: "The standalone screen is the 'every leave type side by side'
+     * view the plan promised would survive, so it must not acquire a leaveTypeId; the step is the item, so
+     * it must pass one." — and its title was "the standalone screen mounts it UNFILTERED".
+     *
+     * The Entitlement tables tab now carries an OPERATOR-CHOSEN Leave type filter (`?leaveType=<id>`), so
+     * "unfiltered" is true of its DEFAULT render and no longer of every render. The decision this case
+     * exists to pin is untouched and is restated below in two halves: the standalone mount passes no
+     * hardcoded leave type, and with no query parameter it shows every leave type. What the filter added is
+     * a reader's choice, which is the precondition for the create-time reach warning — see
+     * test/r369-entitlement-type-filter.test.ts for why that sequencing was not optional.
+     */
     const standaloneMount = standaloneCode.slice(standaloneCode.indexOf('<EntitlementTablesBlock'));
-    expect(standaloneMount.slice(0, standaloneMount.indexOf('/>'))).not.toContain('leaveTypeId');
+    const standaloneProps = standaloneMount.slice(0, standaloneMount.indexOf('/>'));
+    expect(standaloneProps, 'no HARDCODED leave type on the standalone mount').not.toContain('leaveTypeId');
+    // …and the filter it does carry is read from the URL, so the default render is still every type. A prop
+    // spelling a literal id here would be the hardcoded filter wearing a different name.
+    expect(standaloneProps, 'the filter is a URL parameter, not a constant').toContain('typeFilter={sp.leaveType}');
     expect(entitlementsCode).toContain('leaveTypeId={leaveTypeId}');
+    // The step must NOT also carry the operator filter: its type is a host decision, and a filter inside a
+    // tab already about one leave type could only contradict its own heading.
+    const stepMount = entitlementsCode.slice(entitlementsCode.indexOf('<EntitlementTablesBlock'));
+    expect(stepMount.slice(0, stepMount.indexOf('/>'))).not.toContain('typeFilter');
   });
 
   it('the reads happen ONCE per page, not once per panel', () => {
@@ -221,7 +242,21 @@ describe('§4 ee6b7c69 · embedded links carry the #type deep-link anchor', () =
     // /admin/leave/entitlements?editTemplate=… without the anchor lands on the first leave type
     // alphabetically while the edit form below shows another type's table. Soft navigation survives
     // without it, which is precisely why this needs pinning rather than trusting.
-    expect(blockSrc).toMatch(/const href = \(query: string\) =>\s*\(scoped \? `\$\{query\}#type-\$\{leaveTypeId\}` : query\)/);
+    /**
+     * 3a4efe9f (r369) — THE PIN MOVED FROM `scoped` TO `embedded`, and the old claim is quoted rather than
+     * dropped. What this line used to require, verbatim:
+     *
+     *     /const href = \(query: string\) =>\s*\(scoped \? `\$\{query\}#type-\$\{leaveTypeId\}` : query\)/
+     *
+     * `scoped` meant "my host bound me to one leave type" and now means "exactly one leave type is in
+     * view" — which the Entitlement tables tab can also be, once the operator picks one from its new Leave
+     * type filter. The FRAGMENT must not follow that widening: `#type-<id>` names a leave type PANEL, and
+     * panels exist only on the leave type screen, so a filtered standalone tab would emit links to an
+     * anchor the browser cannot find. The property this case is about — an embedded Edit / Cancel link
+     * carries the anchor, a standalone one does not — is therefore unchanged, and `embedded` is the name
+     * that still means exactly what `scoped` meant when this was written.
+     */
+    expect(blockSrc).toMatch(/const href = \(query: string\) =>\s*\(embedded \? `\$\{query\}#type-\$\{leaveTypeId\}` : query\)/);
     const hrefs = blockSrc.match(/href=\{[^}]*\}/g) ?? [];
     const paramHrefs = hrefs.filter((h) => h.includes('editTemplate=') || h.includes('editRule=') || h === "href={href('?')}");
     expect(paramHrefs.length, 'the two Edit links and the two Cancel links').toBe(4);
@@ -242,9 +277,21 @@ describe('§4 ee6b7c69 · embedded links carry the #type deep-link anchor', () =
 describe('§5 ee6b7c69 · a save from the embedded form returns to the step it was typed in', () => {
   it('the embedded mount posts the leave type it is standing in, and only the embedded one', () => {
     expect(blockSrc).toContain("name=\"embeddedLeaveTypeId\"");
-    // Guarded by `scoped`: the standalone screen must NOT post it, or every save there would redirect
-    // into a leave type panel the operator never opened.
-    expect(blockSrc).toMatch(/const returnField = scoped \? <input type="hidden" name="embeddedLeaveTypeId"/);
+    /**
+     * Guarded so the standalone screen must NOT post it, or every save there would redirect into a leave
+     * type panel the operator never opened.
+     *
+     * 3a4efe9f (r369) — THE GUARD IS NOW ON `embedded`, and the old claim is quoted rather than dropped.
+     * What this line used to require, verbatim:
+     *
+     *     /const returnField = scoped \? <input type="hidden" name="embeddedLeaveTypeId"/
+     *
+     * with the comment "Guarded by `scoped`". `scoped` has widened to mean "one leave type is in view",
+     * which the Entitlement tables tab now can be via its Leave type filter — and a save typed THERE
+     * belongs back on the Entitlement tables tab, not bounced into a leave type panel. So this case's
+     * property is untouched and the name it reads has changed to the one that still carries it.
+     */
+    expect(blockSrc).toMatch(/const returnField = embedded \? <input type="hidden" name="embeddedLeaveTypeId"/);
   });
 
   it('all eight writes honour it, so none of them can bounce HR onto the standalone screen', () => {

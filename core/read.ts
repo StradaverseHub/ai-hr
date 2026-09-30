@@ -5787,8 +5787,14 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
  *
  * Sources the relief ACTUALLY APPLIED to a payslip from `payslip.statutory.lp` (core/payroll.ts:935/986),
  * NOT the raw `payroll_input.tp1Deduction`, which is the pre-clamp input. This matches the figure the
- * employee sees on their own payslip detail page and rides the payslip's own RLS policy
- * (`app.can_see_employment`, 0010_payroll_rls.sql) — the same self-scoping `myPayslips` already relies on.
+ * employee sees on their own payslip detail page and rides the payslip's own RLS policy — the same
+ * self-scoping `myPayslips` already relies on.
+ *
+ * Security H4 / migration 0492 RETIRED THE OLD CLAIM HERE, which read "(`app.can_see_employment`,
+ * 0010_payroll_rls.sql)". `payslip_rls` no longer resolves through `can_see_employment`: its manager
+ * down-walk and HOD branch let a line manager read a subordinate's net pay. Read is now
+ * `app.can_admin_payroll_employment(employment_id)` OR the employee themselves. The self branch this
+ * comment depends on survives; the manager branch it described does not.
  *
  * Because a payslip row only exists AFTER generation, draft/voided batches are excluded by construction —
  * no batch-status predicate is needed (a reviewer should NOT "helpfully" add a status join). TP1 is a
@@ -5845,8 +5851,13 @@ export function myTaxRelief(
 /**
  * Employment ids for the current principal INCLUDING terminated employments — leaver-safe. `myEmployments`
  * filters `isNull(terminatedOn)`, but a resigned employee is exactly who needs TP1 history to file taxes,
- * and payslip RLS (`can_see_employment` self-branch, 0016) gates rows to the caller regardless of
- * termination. Used to scope My Payroll TP1 so a leaver's relief history stays visible.
+ * and payslip RLS gates rows to the caller regardless of termination. Used to scope My Payroll TP1 so a
+ * leaver's relief history stays visible.
+ *
+ * Security H4 / migration 0492 RETIRED THE OLD CITATION HERE, which read "(`can_see_employment`
+ * self-branch, 0016)". The self branch is now spelled directly in `payslip_rls` as an EXISTS over
+ * `employment` + `app.is_self_person`, not inherited from `can_see_employment` — so a leaver still reads
+ * their own rows, which is the only property this function needed.
  */
 export function myTaxReliefEmploymentIds(ctx: SessionContext): Promise<string[]> {
   return withTenant(ctx, async (tx) => {
