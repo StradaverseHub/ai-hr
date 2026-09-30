@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
-import { Card, ErrorBanner, PageHeader } from '@/components/ui';
+import { Card, ErrorBanner, Field, PageHeader, inputCls } from '@/components/ui';
 import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
 import {
   EntitlementTablesBlock,
@@ -55,6 +55,23 @@ export default async function LeaveConfigEntitlementTablesPage({
     error?: string;
     editTemplate?: string;
     editRule?: string;
+    /**
+     * 3a4efe9f (r369) — THE LEAVE TYPE FILTER, AS A QUERY PARAMETER ON THIS ADDRESS AND NOT A NEW ROUTE.
+     *
+     * A second address would break four exact-set navigation guards: `test/leave-config-map.test.ts` pins
+     * the Entitlements row as exactly `['leaveTypes', 'entitlementTables']` in that order,
+     * `test/leave-flyout-nav.test.ts` pins that row at exactly two items with `ownedSubpaths` of exactly
+     * `['/admin/leave-config/entitlement-tables']`, and `test/r266-leave-config-rows.test.ts` pins the
+     * flattened href list and its count. A filter is a view of this screen, not another screen, so it
+     * belongs in the query string — which is also what makes it linkable from the leave type screen.
+     *
+     * Absent or naming no live leave type ⇒ every leave type side by side, which is this screen's default
+     * and the one thing it does that a leave type's own tab 3 cannot.
+     */
+    leaveType?: string;
+    /** 3a4efe9f — the table a deep link came here to show: highlighted by the block, and scrolled to by the
+     *  same link's `#table-<lineageId>` fragment, which needs no JavaScript. */
+    table?: string;
     /** r212 — the explain panel's four GET parameters, so an answer is addressable and can be sent as a
      *  link. The panel builds its own relative hrefs, so it is addressable at THIS route unchanged. */
     explainQ?: string;
@@ -93,8 +110,44 @@ export default async function LeaveConfigEntitlementTablesPage({
         </div>
       </Card>
 
-      {/* F33 — unfiltered: no `leaveTypeId`, so the Leave type column stays and the create form keeps its
-          type picker.
+      {/* ── 3a4efe9f (r369) · THE LEAVE TYPE FILTER ───────────────────────────────────────────────────
+          A plain GET form, so this stays a server component and the filter is a URL the operator can send.
+          Submitting drops `?table=` and `?editTemplate=` on purpose: both name a record inside whatever
+          was on screen before, and carrying them across a change of filter would highlight or open a table
+          the new filter does not show.
+
+          ⚠️ THIS IS NOT THE HARDCODED FILTER RETURNING. The default — "All leave types", the empty value —
+          is this screen's every-type view, unchanged, and it is what an operator who never touches the
+          control sees. What the filter buys is a screen that KNOWS which leave type it is about, which is
+          the only condition under which the create form's reach warning can be worded at all. */}
+      <Card>
+        <form className="flex flex-wrap items-end gap-3 p-4" method="get">
+          <Field label={t('filterLeaveType')}>
+            <select className={inputCls} name="leaveType" defaultValue={sp.leaveType ?? ''}>
+              {/* An EMPTY value clears the filter — the same "no choice is a real instruction" shape the
+                  default-table picker uses, so the way out of a filter is the way into it. */}
+              <option value="">{t('filterAllTypes')}</option>
+              {data.leaveTypes
+                .filter((x) => !x.archived)
+                .map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                  </option>
+                ))}
+            </select>
+          </Field>
+          <button
+            type="submit"
+            className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
+          >
+            {t('filterApply')}
+          </button>
+          <p className="basis-full text-xs text-muted-foreground">{t('filterHint')}</p>
+        </form>
+      </Card>
+
+      {/* F33 — unfiltered BY DEFAULT: no `leaveTypeId`, so with no filter chosen the Leave type column stays
+          and the create form keeps its type picker.
 
           r270 — and two surfaces of the block are switched OFF here, both because this screen was drawing
           a second copy of something that already has one home:
@@ -102,9 +155,11 @@ export default async function LeaveConfigEntitlementTablesPage({
               types tab, drawn there at page level; this tab drew the identical card above the tables.
             · `showBenefitSchemes={false}` (995387c6) — the schemes list and its create/edit form live on
               the leave type's own "What they are entitled to" tab, and did before this item was raised.
-          Neither flag names `leaveTypeId`: this mount stays UNFILTERED, which is the one thing this screen
-          does that a leave type's own tab cannot, and two guards read the mount text to prove it. */}
-      <EntitlementTablesBlock data={data} editTemplate={sp.editTemplate} editRule={sp.editRule} showConfigHealth={false} showBenefitSchemes={false} />
+          No prop here names `leaveTypeId`, and two guards read the mount text to prove it. 3a4efe9f — that
+          property is unchanged and the claim behind it is now stated exactly: this mount carries NO
+          HARDCODED leave type, and with no query parameter it renders every leave type side by side. What
+          `typeFilter` adds is the operator's own choice, read from the URL and cleared from the URL. */}
+      <EntitlementTablesBlock data={data} typeFilter={sp.leaveType} highlightTable={sp.table} editTemplate={sp.editTemplate} editRule={sp.editRule} showConfigHealth={false} showBenefitSchemes={false} />
 
       {/* F49 (r212 8ebf77ae) — the question the tables above cannot answer for one person: which rules
           exist, which are in force, and what about THIS employee does not match. Below the rules it

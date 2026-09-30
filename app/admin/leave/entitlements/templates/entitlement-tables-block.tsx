@@ -56,7 +56,9 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 // that is not Annual Leave is decided exactly where the sweep decides it. Server module; plain boolean out.
 import { isEarnedAccrualType, isEarnedMethod } from '@/core/leave';
 // ee6b7c69 — "which tables and rules are this leave type's", pure and tested on its own.
-import { scopeEntitlementTables } from '@/lib/entitlement-tables-scope';
+// 3a4efe9f — and "which leave type is in view", host-bound or operator-chosen, decided in the same pure
+// module so the two kinds of scope cannot come to mean two different slices.
+import { resolveViewLeaveTypeId, scopeEntitlementTables } from '@/lib/entitlement-tables-scope';
 // 9e2a89e9 — "who does this cover", derived ONCE for both Covers columns. The scheme list had this
 // rendering inline (raw criteria keys and a count); the tables list needed the same answer, and two
 // renderings of one criteria object is how two halves of a screen come to disagree. See that file.
@@ -472,6 +474,8 @@ export function entitlementGridRows(input: {
 export async function EntitlementTablesBlock({
   data,
   leaveTypeId,
+  typeFilter,
+  highlightTable,
   editTemplate,
   editRule,
   showConfigHealth = true,
@@ -481,6 +485,38 @@ export async function EntitlementTablesBlock({
   /** Absent ⇒ the standalone screen: every leave type, with the Leave type column and the type picker.
    *  Present ⇒ the Entitlement step of that type: its own tables only, and the type filled in for HR. */
   leaveTypeId?: string;
+  /**
+   * 3a4efe9f (r369) — THE OPERATOR'S OWN LEAVE TYPE FILTER, and it is a different thing from the prop above.
+   *
+   * The prop above is a HOST DECISION: the leave type screen's tab 3 is about one type and always was. This
+   * one is a READER'S CHOICE, arriving as `?leaveType=<id>` on the Entitlement tables tab, cleared by
+   * picking "All leave types" again. Default absent ⇒ every leave type side by side, exactly as before, so
+   * no existing mount changes shape.
+   *
+   * ⚠️ NAMED SO IT CANNOT READ AS THE HARDCODED FILTER. Like `showConfigHealth` and `showBenefitSchemes`,
+   * this name MAY NOT CARRY THE SUBSTRING `leaveTypeId`: `test/entitlement-tables-embed.test.ts` and
+   * `test/leave-config-round3.test.ts` both prove the standalone mount names no hardcoded leave type by
+   * looking for that substring, and the decision they pin — this screen's default view is every type at
+   * once — is NOT being reversed here, only made narrowable on request.
+   *
+   * WHAT IT UNLOCKS, AND WHY THE ITEM NEEDED IT FIRST: with one type in view the create form can name that
+   * type, which is the precondition for the create-time reach warning (see `scoped` below). The alternative
+   * — moving create to this tab unfiltered — loses the warning, and a leave type whose second table reaches
+   * nobody then looks exactly like one that is fine.
+   */
+  typeFilter?: string;
+  /**
+   * 3a4efe9f — `?table=<lineageId>`: the table a deep link from the leave type screen came here to show.
+   *
+   * Its version rows carry `id="table-<lineageId>"`, so the same link's `#table-<lineageId>` fragment does
+   * the scrolling with no client JavaScript, and this prop does the HIGHLIGHT. Held until the operator
+   * navigates rather than faded out on a timer: a highlight that expires before the reader has looked is a
+   * highlight that was never shown, and a timer would make this server component a client one.
+   *
+   * An id matching nothing on screen highlights nothing and is not an error — a stale bookmark must still
+   * render the tab.
+   */
+  highlightTable?: string;
   editTemplate?: string;
   editRule?: string;
   /**
@@ -526,15 +562,50 @@ export async function EntitlementTablesBlock({
     today,
   } = data;
 
-  const scoped = leaveTypeId != null;
   const typeNameById = new Map(leaveTypes.map((x) => [x.id, x.name]));
-  const scopedTypeName = scoped ? (typeNameById.get(leaveTypeId!) ?? '') : '';
+  /**
+   * 3a4efe9f (r369) — "IS EXACTLY ONE LEAVE TYPE IN VIEW" AND "DID MY HOST BIND ME TO ONE" ARE NOW TWO
+   * QUESTIONS.
+   *
+   * Until this round they were one, because only the embedded mount ever showed a single type. The
+   * Entitlement tables tab now carries an operator-chosen Leave type filter, so a mount can be showing one
+   * leave type without its host having named one, and the two facts have different consumers:
+   *
+   *   · `scoped` — ONE TYPE IS IN VIEW. Everything that only makes sense once the screen knows which leave
+   *     type it is talking about: the heading, the dropped Leave type column, the type filled in and locked
+   *     on the create form, and — the load-bearing one — the create-time reach warning below. r224's own
+   *     comment gave the reason it could not be shown here: "the unfiltered screen cannot know which leave
+   *     type the picker below is about to name." With the filter on, it can.
+   *   · `embedded` — MY HOST BOUND ME. Only the things that are about being inside a leave type's tab: the
+   *     `#type-<id>` fragment `href()` appends, the `embeddedLeaveTypeId` return field, and the default-table
+   *     picker, which the approved matrix keeps on the leave type screen and OFF this tab.
+   *
+   * ⚠️ WHY THE ORDER OF THIS ROUND'S TWO COMMITS IS NOT COSMETIC. The reach warning is the only notice that
+   * adding a SECOND table to a leave type ends the sole-table fallback, after which neither table resolves
+   * for anybody until a rule or a default points at one. It can only be worded when the type is known. Move
+   * the create form off the leave type screen before this filter exists and the warning renders nowhere, so
+   * the screen quietly starts producing configurations that reach no one.
+   *
+   * ⚠️ `typeFilter` IS DELIBERATELY NOT NAMED AFTER WHAT IT NARROWS. Two guards prove the standalone mount
+   * carries no HARDCODED leave type by asserting its mount text names no `leaveTypeId`; a prop called
+   * `filterLeaveTypeId` would read to both as the hardcoded filter coming back. Their claim is updated in
+   * place rather than loosened — see test/entitlement-tables-embed.test.ts §1.
+   *
+   * ⚠️ AN UNKNOWN id FALLS BACK TO UNFILTERED, never to an empty screen. A stale bookmark naming a deleted
+   * leave type would otherwise produce a scoped mount with no type — the r270 edge case that rendered an
+   * empty "No active leave types" card. Resolved against the loaded list, so only a real type can filter.
+   */
+  const embedded = leaveTypeId != null;
+  const viewTypeId = resolveViewLeaveTypeId({ leaveTypeId, typeFilter, known: leaveTypes });
+  const scoped = viewTypeId != null;
+  const scopedTypeName = scoped ? (typeNameById.get(viewTypeId!) ?? '') : '';
 
   // ── The slice this mount shows ────────────────────────────────────────────────────────────────────
   // Filtered IN MEMORY off the one page-level read (see loadEntitlementTablesData's note), through the
   // shared pure scoper — which is where the "a rule has no leave type of its own" reasoning lives, and
-  // where it is tested.
-  const { templates, rules } = scopeEntitlementTables(data, leaveTypeId);
+  // where it is tested. One scoper for both kinds of scope: the operator's filter narrows by exactly the
+  // rule the embedded mount is narrowed by, so the two cannot come to mean different slices.
+  const { templates, rules } = scopeEntitlementTables(data, viewTypeId);
 
   const running = templates.filter((x) => x.validTo == null);
   const runningRules = rules.filter((x) => x.validTo == null);
@@ -595,7 +666,7 @@ export async function EntitlementTablesBlock({
    * NO EXTRA QUERY. `templates`, `rules`, `activeGrades` and the leave types' earning-method columns are
    * all in `data`, which each host page loads exactly once.
    */
-  const scopedType = scoped ? leaveTypes.find((x) => x.id === leaveTypeId) : undefined;
+  const scopedType = scoped ? leaveTypes.find((x) => x.id === viewTypeId) : undefined;
   const scopedHealth = scopedType
     ? leaveTypeConfigHealth({ leaveType: scopedType, templates, rules, grades: activeGrades, today })
     : null;
@@ -730,11 +801,17 @@ export async function EntitlementTablesBlock({
    * alphabetically while the edit form below it is showing another type's table. Soft navigation happens to
    * survive without it — the workspace is not remounted — which is exactly the kind of difference that gets
    * a missing anchor shipped. Every Edit / Cancel link this block emits carries it.
+   *
+   * 3a4efe9f — `embedded`, NOT `scoped`. The fragment names a leave type PANEL, and panels exist only on
+   * the leave type screen. The Entitlement tables tab filtered to one type has no `#type-<id>` target, so
+   * appending one there would produce links the browser cannot resolve.
    */
-  const href = (query: string) => (scoped ? `${query}#type-${leaveTypeId}` : query);
+  const href = (query: string) => (embedded ? `${query}#type-${leaveTypeId}` : query);
   /** The embedded mount posts this so the save returns to the step it was typed in, not to the standalone
-   *  screen. Absent on the standalone mount, where the actions keep their own return. */
-  const returnField = scoped ? <input type="hidden" name="embeddedLeaveTypeId" value={leaveTypeId} /> : null;
+   *  screen. Absent on the standalone mount, where the actions keep their own return.
+   *  3a4efe9f — `embedded` for the same reason as `href` above: a save typed on the Entitlement tables tab
+   *  belongs back on the Entitlement tables tab, filter and all, whether or not a filter was in force. */
+  const returnField = embedded ? <input type="hidden" name="embeddedLeaveTypeId" value={leaveTypeId} /> : null;
 
   /**
    * 9e2a89e9 — THE COVERS CELL, one renderer for both columns.
@@ -923,10 +1000,27 @@ export async function EntitlementTablesBlock({
               )}
               {gridRows.map((r) => {
                 const x = templateById.get(r.templateId);
+                /**
+                 * 3a4efe9f — THE DEEP LINK'S TARGET AND ITS HIGHLIGHT, both keyed on the LINEAGE.
+                 *
+                 * The lineage is the table's identity through time; the version id is not, so a link written
+                 * before a supersede would land on a row that no longer exists. Every row of the group is
+                 * highlighted, not just the head, because a table's service bands are what the reader was
+                 * sent here to read — highlighting one line of six would read as "this band", not "this
+                 * table". The `id` goes on the group HEAD only: one anchor per table, or the fragment would
+                 * be ambiguous.
+                 */
+                const highlighted = highlightTable != null && x != null && x.lineageId === highlightTable;
                 return (
                   <tr
                     key={r.key}
-                    className={r.firstOfTable ? 'border-t-2 border-border align-top' : 'border-t align-top'}
+                    id={r.firstOfTable && x ? `table-${x.lineageId}` : undefined}
+                    className={[
+                      r.firstOfTable ? 'border-t-2 border-border align-top' : 'border-t align-top',
+                      highlighted ? 'bg-amber-50 dark:bg-amber-950/30' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
                   >
                     {scoped ? null : (
                       <td className="px-3 py-2">{r.firstOfTable ? (typeNameById.get(r.leaveTypeId) ?? dash) : null}</td>
@@ -1076,8 +1170,14 @@ export async function EntitlementTablesBlock({
                       aria-label={t('templateLeaveType')}
                     />
                   ) : scoped ? (
+                    /* 3a4efe9f — `viewTypeId`, NOT `leaveTypeId`, and this is the create path's whole point.
+                       Filtered by the operator on the Entitlement tables tab there IS no `leaveTypeId`: it
+                       is undefined, so posting it would submit a create with no leave type and the action
+                       would refuse a form whose visible field said "Annual Leave". `viewTypeId` is the type
+                       the reader is looking at, host-bound or filtered, which is the one the read-only field
+                       beside it names. */
                     <>
-                      <input type="hidden" name="leaveTypeId" value={leaveTypeId} />
+                      <input type="hidden" name="leaveTypeId" value={viewTypeId} />
                       <input className={inputCls} value={scopedTypeName} readOnly aria-label={t('templateLeaveType')} />
                     </>
                   ) : (
@@ -1190,8 +1290,14 @@ export async function EntitlementTablesBlock({
           "never hand out a table nobody chose" (r193 fault 3) survives intact and no days are invented.
           SCOPED MOUNT ONLY — the default belongs to ONE leave type, and a picker per type on the
           unfiltered screen would be a column of twenty-four saves. The unfiltered list still SHOWS which
-          table is a default, on the row it belongs to. */}
-      {scoped && scopedType ? (
+          table is a default, on the row it belongs to.
+
+          3a4efe9f — `embedded`, NOT `scoped`, and this is the approved matrix rather than a technical
+          limit. "Default table and benefit schemes" is a LEAVE TYPE rule: the matrix reads "Not shown" for
+          the Entitlement tables tab and "Editable" for the leave type screen. Filtering this tab to one
+          type does now make the picker expressible here, and it still must not appear — that would put the
+          same setting on two screens, which is the duplication this whole item exists to remove. */}
+      {embedded && scopedType ? (
         <Card>
           <SectionHeader title={t('defaultTableTitle')} />
           <div className="space-y-3 p-4">
