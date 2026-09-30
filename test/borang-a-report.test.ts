@@ -647,7 +647,15 @@ describe('r372 — filing one payroll cycle of a month on its own', () => {
   const salary = 4000;
   const BONUS = 1200;
 
-  /** July: the regular run pays the month, then a bonus run pays a real bonus to one employee. */
+  /**
+   * July, with TWO employees and two runs: the regular run pays them both, the bonus run pays a real bonus
+   * to ONE of them.
+   *
+   * THE SECOND EMPLOYEE IS THE POINT OF THE FIXTURE, not padding. An additional run SKIPS anybody with no
+   * keyed input, so ZZZ REGULAR ONLY genuinely has no payslip on the bonus run — which is what makes
+   * "an unticked cycle contributes no employee" an assertion about the filter rather than about a person
+   * who was never in the month at all.
+   */
   async function julyWithBonus() {
     await setModule(b.tenantId, 'multi_cycle_payroll', 'active');
     const a = await entitledCtx(b);
@@ -657,6 +665,13 @@ describe('r372 — filing one payroll cycle of a month on its own', () => {
       salary,
       ic: '900101015555',
       epfNumber: '18690645',
+    });
+    await hire({
+      name: 'ZZZ REGULAR ONLY',
+      hiredOn: '2024-03-01',
+      salary,
+      ic: '880808085555',
+      epfNumber: '19807671',
     });
     const reg = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
     await generatePayslips(a, { batchId: reg.batchId });
@@ -671,7 +686,12 @@ describe('r372 — filing one payroll cycle of a month on its own', () => {
       overtimeAmount: 0,
       bonusAmount: BONUS,
     });
-    await generatePayslips(a, { batchId: bonus.batchId });
+    const gen = await generatePayslips(a, { batchId: bonus.batchId });
+    // Asserted, not assumed: the fixture only means what it claims if the kernel really left the second
+    // employee out of the bonus run.
+    expect('skipped' in gen && Array.isArray(gen.skipped) ? gen.skipped.map((x) => x.name) : []).toEqual([
+      'ZZZ REGULAR ONLY',
+    ]);
     // The run numbers are READ BACK rather than assumed to be 1 and 2 — `run_seq` is the kernel's to
     // allocate, and a test that hard-coded them would be pinning an implementation detail of createBatch.
     const rows = await owner.db
@@ -717,6 +737,9 @@ describe('r372 — filing one payroll cycle of a month on its own', () => {
     const { a, regularSeq } = await julyWithBonus();
     const regularOnly = rowOf(await view(a, [regularSeq]), 'AAA CYCLE');
     expect(Number(regularOnly.wage)).toBeCloseTo(salary, 2);
+    // The colleague the bonus run skipped is unaffected either way — their month is one run long.
+    expect(Number(rowOf(await view(a, [regularSeq]), 'ZZZ REGULAR ONLY').wage)).toBeCloseTo(salary, 2);
+    expect(Number(rowOf(await view(a), 'ZZZ REGULAR ONLY').wage)).toBeCloseTo(salary, 2);
   });
 
   /**
@@ -733,14 +756,18 @@ describe('r372 — filing one payroll cycle of a month on its own', () => {
     expect(omitted.readiness).toEqual(everyRun.readiness);
   });
 
-  it('leaves out an employee the selected cycles never paid', async () => {
-    const { a, bonusSeq } = await julyWithBonus();
-    // Hired and paid in the regular run only — by being hired after the bonus run's inputs were keyed,
-    // they simply have no payslip on it.
-    await hire({ name: 'ZZZ REGULAR ONLY', hiredOn: '2024-03-01', salary, ic: '880808085555', epfNumber: '19807671' });
-    const names = (await view(a, [bonusSeq])).rows.map((r) => r.name);
-    expect(names).not.toContain('ZZZ REGULAR ONLY');
-    expect(names).toContain('AAA CYCLE');
+  it('leaves out an employee the selected cycles never paid, and keeps them for the ones that did', async () => {
+    const { a, regularSeq, bonusSeq } = await julyWithBonus();
+    // The whole month, and a regular-only filing, both carry BOTH people…
+    for (const sel of [undefined, [regularSeq]]) {
+      const names = (await view(a, sel)).rows.map((r) => r.name);
+      expect(names, String(sel)).toContain('AAA CYCLE');
+      expect(names, String(sel)).toContain('ZZZ REGULAR ONLY');
+    }
+    // …and a Bonus-only filing carries only the person the bonus run actually paid. Not "present with
+    // zeros": absent, because a statutory return names contributors and nobody else.
+    const bonusNames = (await view(a, [bonusSeq])).rows.map((r) => r.name);
+    expect(bonusNames).toEqual(['AAA CYCLE']);
   });
 
   it('answers a selection that names no run of this month apart from "no payroll run"', async () => {
