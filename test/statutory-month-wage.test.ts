@@ -309,6 +309,29 @@ describe('all three statutory reads consume ONE derivation, not a copy', () => {
     }
   });
 
+  /**
+   * ── CP39 IS UNTOUCHED, ASSERTED AND NOT ASSUMED (the reporter was promised this in writing) ──────
+   *
+   * The e-Data PCB / CP39 file reports one instalment per employee per month and HAS NO WAGE COLUMN OF
+   * THIS KIND: `Cp39FormRow` carries `pcb` and `cp38` and no wage, gross or basis field at all. So the
+   * defect could not reach it and the correction must not either. `test/cp39-form-report.test.ts`'s
+   * "counts one instalment for a month that was run twice, not two" is the live proof it still holds; this
+   * is the structural half — the shape that would have to change before CP39 could be affected.
+   */
+  it('CP39 carries no wage column and reaches none of this', () => {
+    const row = read('lib/cp39-form.ts');
+    const at = row.indexOf('export type Cp39FormRow');
+    expect(at).toBeGreaterThan(-1);
+    const body = row.slice(at, row.indexOf('};', at));
+    // The two money fields it does carry, and nothing wage-shaped beside them.
+    expect(body).toMatch(/\bpcb:\s*number/);
+    expect(body).toMatch(/\bcp38:\s*number/);
+    expect(body).not.toMatch(/^\s*(wage|gross|basis|salary|upah)\s*[?]?:/im);
+    for (const p of ['lib/cp39-form.ts', 'localization/my/cp39-form.ts', 'localization/my/cp39-file.ts']) {
+      expect(read(p), p).not.toContain('statutory-month-wage');
+    }
+  });
+
   it('the derivation lives inside the MY pack, which is the only thing allowed to import it', () => {
     // ADR-0080 D1: app/ reaches all of this through core/reporting's reportPreview.
     const hits: string[] = [];
