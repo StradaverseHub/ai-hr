@@ -885,6 +885,33 @@ export type PcbChildProfile = {
   disabledSpouse: boolean | null;
 };
 
+/**
+ * r372 — HOW MANY CHILDREN ARE ON RECORD, AND WHICH RECORD THAT IS.
+ *
+ * ⚠️ THIS IS NOT C, AND THE WHOLE POINT OF THE ROW IS THAT IT CANNOT BE READ AS C. LHDN's specification
+ * (printed p.10) defines "C  Number of qualifying children", and printed p.27 decides C under the heading
+ * "Relief to be given AS IF THE EMPLOYEE HAS THIS NUMBER OF CHILDREN" — 1 for a child under 18, 4 for one
+ * in tertiary study, 4 for a disabled child, 8 for a disabled child in tertiary study. So the agency's own
+ * C is a WEIGHTED figure: two children can be a C of 9, which is exactly what the reporter's specimen
+ * prints. r359 put the weighted figure where a form meant the head count, on the EA, and the reporter
+ * caught it; r364 fixed the EA and left this surface's Q and C alone because they were already right.
+ *
+ * Both numbers are legitimate HERE and both belong in sequence 2, which is the section the agency titles
+ * "Category of number of children / qualification rate" — a count and a rate. They are therefore two rows
+ * under two captions that say which is which, and the caption names the RECORD the count came from,
+ * because "2 children" from a per-category grid and "2 children" keyed as a single total are different
+ * statements about what HR entered.
+ *
+ * COUNTED IN THE READ LAYER, never here: summing the grid is arithmetic, and core/pcb-explain.ts holds
+ * none (test/7f251381-pcb-lhdn-worksheet.test.ts refuses an operator below its marker). The sum is where
+ * the other sum on this surface is — `priorRemuneration` in app/payroll/pcb-detail/slip-data.ts.
+ */
+export type PcbChildHeadCount = {
+  count: number;
+  /** `grid` — the five categories added up. `keyed` — `employee_statutory_my.num_children`. */
+  source: 'grid' | 'keyed';
+};
+
 /** A stored whole number, or the honest absence. NEVER a zero standing in for a missing box. */
 /** A category the admin was shown and left empty. See `pcbChildSection` for why that is a count, not an
  *  absence, and `SLIP_NIL` for the same decision on the relief schedule. */
@@ -924,6 +951,8 @@ export function pcbChildSection(
   childCount: PcbWorksheetValue,
   /** r359 — Q, the deduction for ONE qualifying child. See the Q/C note on the worksheet rows. */
   childDeductionPerChild: PcbWorksheetValue,
+  /** r372 — the HEAD COUNT, which is not C. NULL ⇒ no count was ever recorded; see `PcbChildHeadCount`. */
+  headCount: PcbChildHeadCount | null,
 ): PcbSlipSection {
   const grid = p != null && p.mode === 'auto_table' ? p.table : null;
   const rows: PcbSlipRow[] = PCB_CHILD_CATEGORIES.map((c) => {
@@ -946,6 +975,18 @@ export function pcbChildSection(
     // property of the CATEGORY, not of this employee, so it is stated even where the counts are not.
     third: { kind: 'count', count: c.qc },
     };
+  });
+  // r372 — THE HEAD COUNT FIRST, BESIDE C AND NEVER INSTEAD OF IT. It sits above C so a reader meets the
+  // plain number of children before the weighted one, and its caption names which record it was read from.
+  // Absent ⇒ nothing was recorded, which is not a family of nobody: see `PcbChildHeadCount`.
+  rows.push({
+    line: '',
+    caption: headCount != null && headCount.source === 'grid' ? 'slipChildOnRecordGrid' : 'slipChildOnRecordKeyed',
+    ns: 'pcbDetail',
+    first:
+      headCount == null
+        ? ({ kind: 'notRecorded' } as PcbWorksheetValue)
+        : ({ kind: 'count', count: headCount.count } as PcbWorksheetValue),
   });
   // r359 — the same correction as the worksheet: Q is the per-child deduction, C is the weighted number
   // of qualifying children, and the product is the relief that was applied. Q used to print the total.
@@ -1336,6 +1377,8 @@ export function pcbSlipSections(
   x: PcbExplanation,
   p: {
     profile: PcbChildProfile | null;
+    /** r372 — how many children are on record, and from which record. See `PcbChildHeadCount`. */
+    childHeadCount?: PcbChildHeadCount | null;
     catalogue: readonly PcbSlipCatalogueItem[];
     rebateCatalogue: readonly PcbSlipCatalogueItem[];
     currentDeduction: PcbSlipSide | null;
@@ -1359,10 +1402,14 @@ export function pcbSlipSections(
       // rows: a run stamped before r359 has a trace with neither, and SLIP_ABSENT is the truthful cell.
       t && t.childCount != null ? { kind: 'count', count: t.childCount } : SLIP_ABSENT,
       t && t.childDeductionPerChild != null ? slipMoney(t.childDeductionPerChild) : SLIP_ABSENT,
+      p.childHeadCount ?? null,
     ),
     // 3 — r361: the accumulated remuneration block, which the official prints on page 1 immediately
-    // under the child grid and above the accumulated deductions. It goes HERE, and not at the foot with
-    // the results, because the whole point of the item is that the two documents read down in step.
+    // under the child grid and above the accumulated deductions.
+    // ⚠️ r372 — THE ORDER OF THIS ARRAY IS NO LONGER WHAT A SURFACE RENDERS. `pcbDetailLayout` places
+    // every one of these sections BY ITS HEADING and gives it the reporter's number, so reordering this
+    // return value cannot renumber a tax document and cannot move a section on one surface only. The
+    // numbers in these comments are the reporter's sequences, which is what they always meant.
     pcbAccumulatedRemunerationSection(x, p.accumulatedRemuneration ?? null),
     // 4 — what a previous employer already deducted, itemised. The ACCUMULATED side of the reporter's
     // section 4: TP3 Section D, keyed exactly as `tp1_relief.categories.items` is.
@@ -1640,11 +1687,14 @@ export function pcbCalculationResultsSection(x: Extract<PcbExplanation, { kind: 
 }
 
 /**
- * The closing trio, in the official's order, for a surface that renders them as one run of sections.
+ * The closing trio, in the official's order.
  *
- * ONE LIST, TWO SURFACES. The screen and the downloaded document both iterate this, so neither can carry
- * a band the other does not and neither can put them in a different order — the identical device, and
- * the identical reason, as `pcbFormulaBlocks` for the substituted expressions.
+ * ONE LIST, TWO SURFACES. The screen and the downloaded document both reach these through
+ * `pcbDetailLayout`, so neither can carry a band the other does not and neither can put them in a
+ * different order — the identical device, and the identical reason, as `pcbFormulaBlocks` for the
+ * substituted expressions. r372 — the agency prints its two numbered items UNDER its "MTD CALCULATION"
+ * heading, so the layout places them as the closing steps of the reporter's sequence 9, and CALCULATION
+ * RESULTS as his sequence 10.
  *
  * Empty for a flat-rate payee and for a payslip with no recorded working: there is no monthly MTD
  * calculation to number the steps of, and three bands of "not recorded" would assert that one exists
@@ -1682,3 +1732,206 @@ export const CATEGORY_LABEL: Record<number, 'category1' | 'category2' | 'categor
   2: 'category2',
   3: 'category3',
 };
+
+// ═════════════════ r372 — ONE ORDERED SECTION LIST, AND BOTH SURFACES ITERATE IT ═════════════════
+//
+// WHAT WAS WRONG, AND IT WAS NOT A MISSING SECTION. Every FIGURE on this surface already had one source:
+// `page.tsx` and `pcbDetailModel` in app/payroll/pcb-detail/shared.ts call `explainPcb`, `pcbWorksheet`,
+// `pcbSlipSections` and `pcbClosingSections` with identical arguments over one payslip's own stamp. The
+// LAYOUT did not. The screen's order was hand-placed JSX in `pcb-detail-view.tsx`; the document's was
+// imperative `sections.push` in shared.ts — TWO independent orderings of one document. They had already
+// drifted: five whole sections the screen carried were absent from the paper, three headings were emitted
+// twice there, and the payroll month printed as "2026-06" on one and "June 2026" on the other. The
+// reporter's criteria 19, 20 and 21 were false, and no test could see it, because each surface was
+// asserted against its own expectations.
+//
+// SO THE ORDER ITSELF BECOMES PART OF THE MODEL. `pcbDetailLayout` is the single ordered list of what this
+// document contains, in what order, under which number. Both surfaces iterate it and neither owns an order
+// of its own, so a section added, moved or renumbered moves on BOTH or compiles on NEITHER: `slot` is a
+// closed union and each surface switches over it exhaustively. That is the anti-drift device this file
+// already uses for `pcbClosingSections` and `pcbFormulaBlocks`, applied to the thing that was still
+// written out twice.
+//
+// ⚠️ IT DECIDES NOTHING ABOUT A FIGURE. There is no arithmetic here and no value: an entry carries a
+// number, a heading key, a band and either a `PcbSlipSection` already built above or the name of a body
+// the surface paints. The guard in test/7f251381-pcb-lhdn-worksheet.test.ts that refuses an operator
+// anywhere below its marker covers this block too.
+
+/**
+ * Where an entry sits in the document.
+ *
+ *   · `banner`   — said BEFORE any working, and outside the numbered run: which figure this document is
+ *                  about when the working does not explain the deduction, and whether a working exists.
+ *   · `sequence` — one of the reporter's ten numbered sequences.
+ *   · `step`     — a step of sequence 9. The first of a run carries the sub-number; a continuation
+ *                  carries none, because the agency's own step covers more of our boxes than one.
+ *   · `card`     — a state rather than a section: no working recorded, or a flat-rate payee.
+ *   · `appendix` — present for reference, deliberately NOT in the numbered run.
+ *   · `footer`   — where these figures came from. Also not numbered.
+ */
+export type PcbDetailBand = 'banner' | 'sequence' | 'step' | 'card' | 'appendix' | 'footer';
+
+/**
+ * A body neither surface can build from a `PcbSlipSection`: identification rows, a banner, a formula
+ * block. The union is CLOSED and both surfaces switch over it exhaustively, which is what makes "a
+ * section cannot reach one surface and not the other" a compile error rather than a review note.
+ */
+export type PcbDetailBodySlot =
+  | 'identification'
+  | 'basisBanner'
+  | 'traceBanner'
+  | 'unavailableCard'
+  | 'flatCard'
+  | 'mtdBand'
+  | 'mtdCategory'
+  | 'mtdReliefs'
+  | 'mtdK2'
+  | 'mtdP'
+  | 'mtdFormula'
+  | 'mtdBracket'
+  | 'mtdPrior'
+  | 'mtdFloor'
+  | 'mtdNet'
+  | 'mtdSummary'
+  | 'mtdYear'
+  | 'mtdAdditional'
+  | 'mtdSteps'
+  | 'lhdnWorksheet'
+  | 'source';
+
+/** One section of the document, in its place. `label` is the printed number, or null where none is. */
+export type PcbDetailEntry =
+  | { kind: 'body'; slot: PcbDetailBodySlot; label: string | null; band: PcbDetailBand; heading: string }
+  | { kind: 'section'; label: string | null; band: PcbDetailBand; heading: string; section: PcbSlipSection };
+
+/**
+ * The reporter's sequences 2 to 8, keyed by the heading the builder above gives each one.
+ *
+ * BY HEADING AND NOT BY INDEX, deliberately. `pcbSlipSections` returns them in this order today; reading
+ * them positionally would mean a reordering there silently renumbering a tax document. A section whose
+ * heading is not on this list is still rendered — unnumbered, after the eight — because dropping one
+ * would be the worse failure.
+ */
+const PCB_SEQUENCE_OF_SECTION: readonly (readonly [string, string])[] = [
+  ['slipChildHeading', '2'],
+  ['slipAccHeading', '3'],
+  ['slipPrevDeductionHeading', '4'],
+  ['slipCurrentHeading', '5'],
+  ['slipAdditionalRemHeading', '6'],
+  ['slipCurrentDeductionHeading', '7'],
+  ['slipRebateHeading', '8'],
+];
+
+/**
+ * SEQUENCE 9, IN THE ORDER THE SPECIFICATION SETS ITS OWN STEPS OUT, not in the order this screen grew.
+ *
+ * The specification's worked examples (printed pp. 44-46) run: [A] category, then [B] chargeable income
+ * for the year — inside which it says "Firstly determine value K2" and only then substitutes P — then [C]
+ * the monthly deduction with M, R and B read off Table 1, then [D] the net deduction, then [E] the year's
+ * total, then Steps 2 to 5 for additional remuneration. The reporter's own 9.1 to 9.9 is that sequence,
+ * and this list is it.
+ *
+ * ⚠️ NINE NUMBERS OVER MORE THAN NINE BOXES. The agency's [C] covers four of ours — the formula, the
+ * Table 1 row it read M, R and B from, the accumulators Z and X it subtracts, and §E's floors — and its
+ * [D] covers two. A continuation therefore carries `label: null` and keeps its own heading: repeating
+ * "9.5" over four consecutive cards would defeat the one thing the numbering is for, which is being able
+ * to point at a step.
+ *
+ * ⚠️ AND THE ORDER OF THE FOURTEEN CHANGED, WHICH IS THE REQUEST. Tax relief and the remuneration legs
+ * used to sit BELOW the P formula that consumes them, and the calculation summary above everything. The
+ * figures are untouched; only where they are read has moved.
+ */
+const PCB_MTD_STEPS: readonly {
+  readonly label: string | null;
+  readonly slot: PcbDetailBodySlot;
+  readonly heading: string;
+}[] = [
+  { label: '9.1', slot: 'mtdCategory', heading: 'stepAHeading' },
+  { label: '9.2', slot: 'mtdReliefs', heading: 'reliefsHeading' },
+  { label: '9.3', slot: 'mtdK2', heading: 'k2Heading' },
+  { label: '9.4', slot: 'mtdP', heading: 'pHeading' },
+  { label: '9.5', slot: 'mtdFormula', heading: 'formulaHeading' },
+  { label: null, slot: 'mtdBracket', heading: 'bracketHeading' },
+  { label: null, slot: 'mtdPrior', heading: 'priorHeading' },
+  { label: null, slot: 'mtdFloor', heading: 'floorHeading' },
+  { label: '9.6', slot: 'mtdNet', heading: 'netHeading' },
+  { label: null, slot: 'mtdSummary', heading: 'summaryHeading' },
+  { label: '9.7', slot: 'mtdYear', heading: 'yearHeading' },
+  { label: '9.8', slot: 'mtdAdditional', heading: 'additionalHeading' },
+  { label: '9.9', slot: 'mtdSteps', heading: 'stepsHeading' },
+];
+
+/**
+ * The closing trio's place. The agency's own two numbered items are the LAST steps of sequence 9 — they
+ * are printed under its "MTD CALCULATION" heading on the slip — and CALCULATION RESULTS is the reporter's
+ * sequence 10, which is where the whole document lands.
+ */
+const PCB_CLOSING_PLACE: Readonly<Record<string, { readonly label: string | null; readonly band: PcbDetailBand }>> = {
+  slipStep1Heading: { label: null, band: 'step' },
+  slipStep2Heading: { label: null, band: 'step' },
+  slipResultHeading: { label: '10', band: 'sequence' },
+};
+
+/**
+ * THE ORDER OF THE WHOLE DOCUMENT, ONCE.
+ *
+ * @param p the model both surfaces already hold: what `explainPcb` read, LHDN's worksheet, the reporter's
+ *          detail sections and the agency's closing trio. Nothing is read or computed here.
+ */
+export function pcbDetailLayout(p: {
+  explanation: PcbExplanation;
+  worksheet: PcbWorksheet | null;
+  slip: readonly PcbSlipSection[];
+  closing: readonly PcbSlipSection[];
+}): PcbDetailEntry[] {
+  const x = p.explanation;
+  const out: PcbDetailEntry[] = [];
+  const body = (slot: PcbDetailBodySlot, label: string | null, band: PcbDetailBand, heading: string) => {
+    out.push({ kind: 'body', slot, label, band, heading });
+  };
+
+  // The two sentences a reader needs BEFORE a single figure, above the numbered run on both surfaces.
+  if (x.basis != null) body('basisBanner', null, 'banner', pcbBasisLabels(x.basis).bannerHeading);
+  if (x.kind === 'mtd' && x.trace == null) body('traceBanner', null, 'banner', 'traceNotRecordedHeading');
+
+  body('identification', '1', 'sequence', 'identificationHeading');
+
+  const pending = new Map<string, PcbSlipSection>();
+  for (const sec of p.slip) pending.set(sec.heading, sec);
+  for (const [heading, label] of PCB_SEQUENCE_OF_SECTION) {
+    const sec = pending.get(heading);
+    if (sec === undefined) continue;
+    pending.delete(heading);
+    out.push({ kind: 'section', label, band: 'sequence', heading, section: sec });
+  }
+  for (const sec of pending.values()) {
+    out.push({ kind: 'section', label: null, band: 'card', heading: sec.heading, section: sec });
+  }
+
+  if (x.kind === 'unavailable') body('unavailableCard', null, 'card', 'summaryHeading');
+  if (x.kind === 'flat') body('flatCard', null, 'card', 'flatHeading');
+  if (x.kind === 'mtd') {
+    body('mtdBand', '9', 'sequence', 'mtdCalculationHeading');
+    for (const s of PCB_MTD_STEPS) body(s.slot, s.label, 'step', s.heading);
+  }
+
+  for (const sec of p.closing) {
+    const place = PCB_CLOSING_PLACE[sec.heading];
+    out.push({
+      kind: 'section',
+      label: place === undefined ? null : place.label,
+      band: place === undefined ? 'card' : place.band,
+      heading: sec.heading,
+      section: sec,
+    });
+  }
+
+  // LHDN's own worksheet order: the same recorded figures again, which is why it is an APPENDIX and no
+  // longer positions 2 to 8 of the numbered run. It duplicated every figure shown below it and pushed the
+  // reporter's sequence 2 down to eighth place on the page.
+  if (p.worksheet != null && p.worksheet.shape !== 'unavailable') {
+    body('lhdnWorksheet', null, 'appendix', p.worksheet.shape === 'flat' ? 'worksheetFlatHeading' : 'worksheetHeading');
+  }
+  body('source', null, 'footer', 'sourceHeading');
+  return out;
+}
