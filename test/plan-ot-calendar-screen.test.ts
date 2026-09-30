@@ -325,17 +325,30 @@ describe('F · the contract between the form and the server action', () => {
     expect(redirects.some((r) => r.includes('toast=Overtime+plan+submitted'))).toBe(true);
   });
 
-  it('on a phone Submit is pinned to the bottom of the screen, and is an ordinary footer row from md up', () => {
+  it('on a phone Submit is pinned to the bottom of the screen, and is an ordinary footer row from lg up', () => {
     // The approved picture draws it pinned, with the hours and the date beside it. `sticky bottom-0`
     // only works because nothing between this row and `main` clips overflow — components/ui/card.tsx
     // carries no overflow-hidden, and the scroll container is main itself (app/layout.tsx).
+    //
+    // ⚠️ c7c69a18 (r369) MOVED THE BREAKPOINT FROM `md` TO `lg`, and this case is UPDATED rather than
+    // loosened. Until then it asserted, and the case was titled, "an ordinary footer row from md up":
+    //     expect(APPLY).toContain('md:static');
+    //     // Single column below md, two from md up — the calendar on top, the day panel and the form under it.
+    //     expect(APPLY).toContain('grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]');
+    // ce5ded11's reading was not wrong, it was superseded by the reporter's own measurement: at 768px the
+    // month grid and the form sat side by side at about 300px and 450px, so the calendar was squeezed. The
+    // columns now stack until 1024px. The footer moves WITH them deliberately — a footer that un-pinned at
+    // `md` while the form was still one stacked column would disagree with the layout across that band.
     expect(APPLY).toContain('sticky bottom-0');
-    expect(APPLY).toContain('md:static');
+    expect(APPLY).toContain('lg:static');
     expect(read('components/ui/card.tsx').includes('overflow-hidden'), 'a clipping Card would strand the sticky bar').toBe(
       false,
     );
-    // Single column below md, two from md up — the calendar on top, the day panel and the form under it.
-    expect(APPLY).toContain('grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]');
+    // Single column below lg, two from lg up — the calendar on top, the day panel and the form under it.
+    expect(APPLY).toContain('grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]');
+    // And the old breakpoint is gone from the page, not merely joined by the new one: `md:static` beside
+    // `lg:static` would leave the footer un-pinning a breakpoint early, which is the defect this pins.
+    expect(code(APPLY).includes('md:'), 'no `md:` variant survives on this screen').toBe(false);
   });
 
   it('the overtime start is prefilled from the scheduled finish on a working day, and nowhere else', () => {
@@ -381,5 +394,44 @@ describe('G · the dynamically-resolved keys, which Check C of i18n-coverage can
       }
     }
     expect(copies, `untranslated: ${copies.join(', ')}`).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+/**
+ * H · c7c69a18 (r369) — THE FIELD NAMES. The reporter reads this screen in the words on it, and two of
+ * the three names here were developer phrasing that reached production: "Planned start" / "Planned end"
+ * for boxes that hold a start and an end time, and "Overtime hours" over a figure the same screen also
+ * calls a duration. Pinned because a label is exactly the kind of change a later round reverts without
+ * noticing it was asked for.
+ */
+describe('H · c7c69a18 — the field names this screen asks for', () => {
+  it('the two time boxes read Start Time and End Time in all six catalogues, on the SAME keys', () => {
+    // A VALUE rename, not a key rename: the keys carry no screen wording, so nothing else moves with them.
+    // They read "Planned start" and "Planned end" from 1e9145d4 until c7c69a18.
+    expect(FIELDS).toContain("t('plannedStartLabel')");
+    expect(FIELDS).toContain("t('plannedEndLabel')");
+    expect(MESSAGES.en.me.plannedStartLabel).toBe('Start Time');
+    expect(MESSAGES.en.me.plannedEndLabel).toBe('End Time');
+    for (const k of ['plannedStartLabel', 'plannedEndLabel']) keyEverywhere(k);
+    const copies = LOCALES.filter((l) => l !== 'en').flatMap((l) =>
+      (['plannedStartLabel', 'plannedEndLabel'] as const)
+        .filter((k) => MESSAGES[l].me[k] === MESSAGES.en.me[k])
+        .map((k) => `${l}.${k}`),
+    );
+    expect(copies, `untranslated: ${copies.join(', ')}`).toEqual([]);
+  });
+
+  it('the running total is "Overtime duration", on a key of this screen’s own, and the old key is retired in place', () => {
+    expect(FIELDS).toContain("t('otDurationLabel')");
+    expect(code(FIELDS).includes("t('otHoursLabel')"), 'this screen is off the shared key now').toBe(false);
+    expect(MESSAGES.en.me.otDurationLabel).toBe('Overtime duration');
+    keyEverywhere('otDurationLabel');
+    // RETIRED, NEVER DELETED. me.otHoursLabel is unreferenced after this round and stays in all six
+    // catalogues at its own wording, so anything that resolves it later does not silently acquire this
+    // screen's. (The approved plan's build note said app/approvals/page.tsx shares this key; it does not —
+    // that file opens getTranslations('approvals') and reads approvals.otHoursLabel, whose value is "OT".)
+    keyEverywhere('otHoursLabel');
+    expect(MESSAGES.en.me.otHoursLabel, 'the retired key keeps its own wording').toBe('Overtime hours');
   });
 });
