@@ -36,7 +36,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pcbMonth, statutory, coordinatedPcbForPerson } from '../localization/my/payroll';
-import { explainPcb, pcbBasisLabels, type PcbBasis, type PcbReliefBreakdown } from '../core/pcb-explain';
+import {
+  explainPcb,
+  pcbBasisLabels,
+  pcbDetailLayout,
+  type PcbBasis,
+  type PcbExplanation,
+  type PcbReliefBreakdown,
+} from '../core/pcb-explain';
 import { REGISTERED_ROUTES } from '../lib/permissions';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -1018,9 +1025,43 @@ describe('45df860a — the shared screen, and the two entry points that reach it
     // which is strictly more than the substring search asserted, and the component is still required to
     // render the banner through that label set.
     expect(view, 'the screen reads the caption set rather than choosing its own').toContain('pcbBasisLabels(basis)');
-    for (const k of ['L.bannerHeading', 'L.banner', 'L.bannerSystem', 'L.bannerApplied', 'deltaPrior', 'overrideReason']) {
+    for (const k of ['L.banner', 'L.bannerSystem', 'L.bannerApplied', 'deltaPrior', 'overrideReason']) {
       expect(view, `the banner must render ${k}`).toContain(k);
     }
+    /**
+     * r370 — `L.bannerHeading` LEFT THIS COMPONENT AND THE CLAIM GOT STRONGER, NOT WEAKER.
+     *
+     * The banner's HEADING is now the heading of its entry in `pcbDetailLayout`, which is where the order
+     * of both surfaces comes from — so it reaches the downloaded document by the same route as every other
+     * heading instead of being a second literal in shared.ts. A substring search for `L.bannerHeading` in
+     * this component would now be asserting the opposite of what the round did, so the heading is driven:
+     * a hand-set PCB must produce `overrideHeading`, and an increment run its own wording, IN THE LIST.
+     */
+    const base = explainPcb(
+      {
+        pcb: 402.65,
+        epfEmployee: 0,
+        pcbMeta: {
+          month: 1, n: 11, ytdNet: 0, epfClaimed: 0, pcbPaid: 0, P1: 75956.07,
+          reliefs: { individual: 9000, spouse: 0, children: 0, disabledIndividual: 0, disabledSpouse: 0, lp: 0, total: 9000 },
+          trace: STORED_TRACE,
+        },
+      },
+      CURRENT,
+    );
+    const bannerHeadingFor = (basis: PcbBasis | null): string | undefined =>
+      pcbDetailLayout({
+        explanation: { ...base, basis } as PcbExplanation,
+        worksheet: null,
+        slip: [],
+        closing: [],
+      }).find((e) => e.kind === 'body' && e.slot === 'basisBanner')?.heading;
+    expect(bannerHeadingFor({ kind: 'manual', system: 900, applied: 500, prior: null, engineRun: null, reason: 'x' }))
+      .toBe('overrideHeading');
+    expect(bannerHeadingFor({ kind: 'additionalRun', system: 900, applied: 300, prior: 600, engineRun: null, reason: '' }))
+      .toBe('deltaHeading');
+    // …and no banner at all when the working explains exactly what was deducted, which is the ordinary case.
+    expect(bannerHeadingFor(null), 'a banner on every normal payslip would be noise').toBeUndefined();
     const manual = pcbBasisLabels({ kind: 'manual', system: 900, applied: 500, prior: null, engineRun: null, reason: 'x' });
     expect(manual.bannerHeading, 'a hand-set PCB is announced as one').toBe('overrideHeading');
     expect(manual.banner).toBe('overrideBanner');

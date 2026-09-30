@@ -22,19 +22,12 @@ import { scopedAdmin } from '@/lib/scope';
 import { currentPcbReliefs, payslipForReview, previousEmploymentForPayslip } from '@/core/payroll-view';
 import { explainPcb, pcbClosingSections, pcbSlipSections, pcbWorksheet } from '@/core/pcb-explain';
 import { payslipProvenance } from '@/core/payslip-recompute';
+// r370 — ONE month formatter for this screen and the downloaded document. See lib/month-name.ts on why:
+// the document printed the stored "2026-06" where this screen printed "June 2026", for the same payslip.
+import { monthYearLabel } from '@/lib/month-name';
 import { Card, PageHeader } from '@/components/ui';
 import { PcbDetailView } from './pcb-detail-view';
 import { SLIP_ITEMS, SLIP_REBATES, pcbSlipData } from './slip-data';
-
-/** The stored `YYYY-MM` as a month name in the reader's own language — the same `Intl` idiom the
- *  Individual Payslip uses, deliberately, so one payroll month is named identically on both screens. */
-function monthYear(payPeriod: string, locale: string): string {
-  const m = /^(\d{4})-(\d{2})$/.exec(payPeriod ?? '');
-  if (!m || Number(m[2]) < 1 || Number(m[2]) > 12) return payPeriod ?? '';
-  return new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
-    new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 1)),
-  );
-}
 
 export default async function PcbDetailPage({
   searchParams,
@@ -119,6 +112,9 @@ export default async function PcbDetailPage({
     explanation && slipData
       ? pcbSlipSections(explanation, {
           profile: slipData.profile,
+          // r370 — the HEAD COUNT for sequence 2, which is NOT C. Summed in the read layer; see
+          // `childHeadCountOf` in ./slip-data.ts and `PcbChildHeadCount` in core/pcb-explain.ts.
+          childHeadCount: slipData.childHeadCount,
           catalogue: SLIP_ITEMS,
           rebateCatalogue: SLIP_REBATES,
           currentDeduction: slipData.currentDeduction,
@@ -184,7 +180,7 @@ export default async function PcbDetailPage({
             employeeCode: row.employeeCode,
             employeeName: row.employeeName,
             company: row.company,
-            periodLabel: monthYear(row.payPeriod, locale),
+            periodLabel: monthYearLabel(row.payPeriod, locale),
             payPeriod: row.payPeriod,
             runType: row.runType,
             runSeq: row.runSeq,

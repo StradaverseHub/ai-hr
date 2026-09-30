@@ -44,6 +44,8 @@ import {
   pcbAccumulatedRemunerationSection,
   pcbCalculationResultsSection,
   pcbClosingSections,
+  pcbDetailLayout,
+  pcbWorksheet,
   pcbMtdStep1Section,
   pcbMtdStep2Section,
   pcbSlipSections,
@@ -395,14 +397,35 @@ describe('r361 — the results band prints the figure the PAYSLIP paid, and neve
 describe('r361 — the screen and the downloaded document cannot disagree about the closing bands', () => {
   it('both iterate the SAME list, built in core/, and neither composes a band of its own', () => {
     expect(code(EXPLAIN), 'the trio is assembled once').toContain('export function pcbClosingSections');
-    expect(code(VIEW), 'the screen paints it').toContain('{slipSections(closing)}');
     const shared = code(SHARED);
     expect(shared, 'the model carries it').toContain('closing: pcbClosingSections(explanation)');
-    expect(shared, 'and the document pushes it through the same mapping').toContain('pushSlipSections(model.closing)');
-    // LAST on the paper, as on the agency's slip — and after the lettered steps, not before them.
-    expect(shared.indexOf('pushSlipSections(model.closing)')).toBeGreaterThan(
-      shared.indexOf('pushSlipSections(model.slip)'),
-    );
+    /**
+     * r370 — THE ORDERING CLAIM MOVED FROM TWO SOURCE MATCHES TO THE LIST ITSELF, WHICH IS WHY IT CAN NOW
+     * FAIL. This used to compare the positions of two `pushSlipSections` calls in shared.ts and the
+     * presence of one JSX expression in the view — a pair of independent claims about two independent
+     * orderings, which is exactly the arrangement that let five sections drift off the paper. Both
+     * surfaces now iterate `pcbDetailLayout`, so the assertion is about the ORDER THAT LIST RETURNS, once,
+     * and both surfaces inherit it. The closing trio's own placement — the agency's two numbered items as
+     * the last steps of sequence 9, its CALCULATION RESULTS band as sequence 10 — is asserted here and
+     * again, with the whole run of ten, in test/r370-pcb-sequence.test.ts.
+     */
+    expect(code(VIEW), 'the screen iterates the shared list').toContain('pcbDetailLayout({ explanation, worksheet, slip, closing })');
+    expect(shared, 'and so does the document').toContain('pcbDetailLayout({');
+    const x = richRun();
+    const order = pcbDetailLayout({
+      explanation: x,
+      worksheet: pcbWorksheet(x, null),
+      slip: pcbSlipSections(x, {
+        profile: null, catalogue: CATALOGUE, rebateCatalogue: REBATES,
+        currentDeduction: null, accumulatedDeduction: null, previousDeduction: null,
+        currentRebate: null, accumulatedRebate: null, accumulatedRemuneration: null,
+      }),
+      closing: pcbClosingSections(x),
+    }).map((e) => e.heading);
+    expect(order.indexOf('slipStep1Heading'), 'the trio comes after the lettered steps, not before them')
+      .toBeGreaterThan(order.indexOf('stepsHeading'));
+    expect(order.indexOf('slipResultHeading'), 'and CALCULATION RESULTS is the last numbered section')
+      .toBeGreaterThan(order.indexOf('slipStep2Heading'));
   });
 
   it('the document MODEL carries the trio, behaviourally and not merely by a source match', () => {

@@ -35,7 +35,10 @@ import {
   PCB_CHILD_CATEGORIES,
   explainPcb,
   pcbBasisSection,
+  pcbClosingSections,
+  pcbDetailLayout,
   pcbSlipSections,
+  pcbWorksheet,
   type PcbChildProfile,
   type PcbExplanation,
   type PcbReliefBreakdown,
@@ -640,19 +643,24 @@ describe('ad7bc503 — the screen and the document render each absence as its ow
     // `slipSections` helper. A second copy of that JSX is how one list quietly loses an absence wording
     // the other keeps, so the copy does not exist and this guard now covers both lists at once.
     const view = code(VIEW);
-    const at = view.indexOf('sections.map((sec)');
-    expect(at, 'the slip block').toBeGreaterThan(-1);
-    // Bounded at the helper's own closer. The block used to end at a `))}` inside the JSX; now that it is
-    // a function the slice must stop at `));` or it runs on into the rest of the screen and the
-    // prohibitions below would be asserted about code they were never written for.
-    const close = view.indexOf('\n    ));', view.indexOf('sec.note', at));
-    expect(close, 'the helper’s closer').toBeGreaterThan(at);
+    // r370 — THE ANCHOR MOVED WITH THE CODE AND THE DECISION DID NOT. There is no longer a `slip` list and
+    // a `closing` list painted one after the other: `pcbDetailLayout` returns ONE ordered list in which
+    // every slip-shaped section already sits at its own numbered place, and `slipBody` paints one of them.
+    // The prohibitions below are the point of this test and they still apply to that one painter; that the
+    // ORDER now comes from core/ is asserted in test/r370-pcb-sequence.test.ts, over the list itself.
+    const at = view.indexOf('const slipBody = (sec: PcbSlipSection)');
+    expect(at, 'the one painter for every slip-shaped section').toBeGreaterThan(-1);
+    const close = view.indexOf('\n  );', view.indexOf('sec.note', at));
+    expect(close, 'the painter’s closer').toBeGreaterThan(at);
     const block = view.slice(at, close);
-    // …and BOTH lists go through it. A list painted inline again would escape every assertion below.
-    expect(view, 'the detail sections are painted by the helper').toContain('{slipSections(slip)}');
-    expect(view, 'and so is the closing trio').toContain('{slipSections(closing)}');
-    expect(view.indexOf('{slipSections(closing)}'), 'the closing trio comes last, as on the agency’s slip')
-      .toBeGreaterThan(view.indexOf('{slipSections(slip)}'));
+    // …and EVERY slip-shaped section goes through it, whichever list it came from: the layout entry's
+    // own kind chooses the painter, so a section painted inline again would escape every assertion below.
+    expect(view, 'the screen iterates the shared ordered list').toContain('layout.map((e)');
+    expect(view, 'and a section entry is painted by the one helper').toContain('{slipBody(e.section)}');
+    expect(
+      (view.match(/slipBody\(/g) ?? []).length,
+      'ONE call site: a second is a second copy of this JSX in prospect',
+    ).toBe(1);
     expect(block, 'values go through the same switch the worksheet uses').toContain('wsValue(r.first)');
     expect(block, 'and the second column likewise').toContain('wsValue(r.second)');
     expect(block, 'the caption is resolved, never minted').toContain("r.ns === 'taxRelief' ? tr(r.caption) : t(r.caption)");
@@ -762,9 +770,14 @@ describe('ad7bc503 — the download is the screen’s own model, behind the scre
     expect(code(PAGE), 'and so does the screen').toContain('pcbSlipSections');
     // All ten of the reporter's sections reach the document: 1 from the identification rows, 3/9/10 from
     // the worksheet, and 2/4/5/6/7/8 from the slip.
-    expect(shared).toContain('model.worksheet.sections');
-    expect(shared).toContain('model.slip');
-    expect(shared).toContain("t('identificationHeading')");
+    // r370 — THE HEADINGS ARE NO LONGER LITERALS HERE, AND THAT IS THE FIX RATHER THAN A LOOSENING. Every
+    // heading this document prints comes from `pcbDetailLayout`, so a `t('identificationHeading')` in this
+    // file would be a second decision about what the document contains. What must still be true is that
+    // the document is built over the whole model, and THAT the ten sequences reach it is asserted against
+    // the list itself in test/r370-pcb-sequence.test.ts — behaviourally, for both surfaces at once.
+    expect(shared, 'the sheet reaches the document').toContain('model.worksheet');
+    expect(shared, 'and so do the reporter’s own sections').toContain('slip: model.slip');
+    expect(shared, 'placed by the shared ordered list, not by this file').toContain('pcbDetailLayout({');
 
     /**
      * r351 — AND THE ARITHMETIC, WHICH IT DID NOT CARRY.
@@ -776,8 +789,18 @@ describe('ad7bc503 — the download is the screen’s own model, behind the scre
      * screen". Each of the five is pinned by NAME, because "the PDF has some sections" is exactly the
      * assertion that would keep passing while one of them was dropped.
      */
-    for (const key of ['summaryHeading', 'stepAHeading', 'floorHeading', 'netHeading', 'stepsHeading', 'finalPcb']) {
-      expect(shared, `the document must carry ${key}`).toContain(`t('${key}')`);
+    // r370 — pinned against the ORDERED LIST instead of against a substring in this file, which is
+    // strictly more than the substring asserted: it is now a claim about what the document CONTAINS and
+    // in what order, checked for the screen and the paper at once. See test/r370-pcb-sequence.test.ts.
+    expect(shared, 'the deducted total still gets its own labelled line here').toContain("t('finalPcb')");
+    const headings = pcbDetailLayout({
+      explanation: richRun(),
+      worksheet: pcbWorksheet(richRun(), null),
+      slip: [],
+      closing: pcbClosingSections(richRun()),
+    }).map((e) => e.heading);
+    for (const key of ['summaryHeading', 'stepAHeading', 'floorHeading', 'netHeading', 'stepsHeading']) {
+      expect(headings, `the document must carry ${key}`).toContain(key);
     }
     for (const label of ['formulaLabel', 'substitutedLabel', 'calculationLabel']) {
       expect(shared, `the document must carry the ${label} row`).toContain(`t('${label}')`);

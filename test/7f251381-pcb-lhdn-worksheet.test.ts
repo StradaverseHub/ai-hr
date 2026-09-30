@@ -35,6 +35,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pcbMonth } from '../localization/my/payroll';
 import {
   explainPcb,
+  pcbDetailLayout,
   pcbWorksheet,
   type PcbExplanation,
   type PcbPreviousEmployment,
@@ -371,13 +372,32 @@ describe('7f251381 — the worksheet derives nothing', () => {
 
   it('the screen paints the row list and never reaches back into the figures', () => {
     const view = code(VIEW);
-    const at = view.indexOf("worksheet.shape !== 'unavailable'");
-    expect(at, 'the worksheet block').toBeGreaterThan(-1);
-    const block = view.slice(at, view.indexOf('</Block>', at));
+    /**
+     * r370 — THE ANCHOR MOVED, AND THE DECISION IT PINS GOT STRONGER RATHER THAN WEAKER.
+     *
+     * "Absent rather than drawn empty" used to be a `worksheet.shape !== 'unavailable'` test inside this
+     * component, so this guard sliced from it. The sheet is now an unnumbered APPENDIX placed by
+     * `pcbDetailLayout`, and that decision therefore lives in core/ where it can be driven directly — the
+     * case below does exactly that, for the shape AND for a null sheet, which the string match could not.
+     * What is still asserted HERE is the other half: the body paints and computes nothing.
+     */
+    const at = view.indexOf("case 'lhdnWorksheet':");
+    expect(at, 'the worksheet body').toBeGreaterThan(-1);
+    const block = view.slice(at, view.indexOf("case 'source':", at));
+    expect(block.length, 'the slice found a body to assert about').toBeGreaterThan(200);
     expect(block, 'the block renders values through the switch').toContain('wsValue(r.value)');
     expect(block, 'and must not read the explanation itself').not.toContain('explanation.');
     expect(block, 'nor the trace').not.toContain('trace.');
     expect(block, 'nor format a figure of its own').not.toContain('rm(');
+    // …and the absence decision itself, driven rather than matched.
+    const gone = pcbDetailLayout({
+      explanation: { kind: 'unavailable', pcb: 100, pcbSystem: 100, pcbNormal: 100, pcbAdditional: 0, basis: null } as PcbExplanation,
+      worksheet: null,
+      slip: [],
+      closing: [],
+    });
+    const slots = gone.flatMap((e) => (e.kind === 'body' ? [e.slot] : []));
+    expect(slots, 'a sheet that could not be built is ABSENT, not drawn empty').not.toContain('lhdnWorksheet');
 
     // The value switch itself: a formatter chooser, with no arithmetic and no coercion of its own.
     const sw = view.slice(view.indexOf('const wsValue ='), view.indexOf('const cycleKey'));

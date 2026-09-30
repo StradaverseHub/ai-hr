@@ -33,17 +33,46 @@
  * with the same arguments — so the document and the screen cannot disagree about a figure, a mapping or
  * an absence. Only the plumbing is written twice, and `test/ad7bc503-pcb-slip.test.ts` drives BOTH paths
  * over one generated payslip and requires the model to be identical.
+ *
+ * ── r370: AND THE FIFTH FUNCTION, WHICH IS THE ONE THAT WAS MISSING ────────────────────────────────
+ * Those four gave the two surfaces one set of FIGURES. Nothing gave them one LAYOUT: the screen's order
+ * was hand-placed JSX and this file's was a run of `sections.push` calls, and they had drifted — five
+ * whole sections the screen carried were absent here, `netHeading` and `yearHeading` were each emitted
+ * TWICE and `pHeading` twice in a bonus month, the currency note was missing, and the payroll month
+ * printed as the stored "2026-06" where the screen printed "June 2026". The reporter's criteria 19, 20
+ * and 21 were false and no test could see it, because each surface was asserted against its own
+ * expectations. `pcbDetailLayout` is now the single ordered list of what this document contains, in what
+ * order, under which number; both surfaces iterate it and switch EXHAUSTIVELY over its closed slot union,
+ * so a section added, moved or renumbered moves on both or compiles on neither.
  */
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { currentPcbReliefs, payslipForReview, previousEmploymentForPayslip } from '@/core/payroll-view';
-import { CATEGORY_LABEL, CYCLE_LABEL, explainPcb, pcbBasisLabels, pcbBasisSection, pcbClosingSections, pcbSlipSections, pcbWorksheet } from '@/core/pcb-explain';
-import type { PcbExplanation, PcbSlipSection, PcbWorksheet, PcbWorksheetValue } from '@/core/pcb-explain';
+import {
+  CATEGORY_LABEL,
+  CYCLE_LABEL,
+  explainPcb,
+  pcbBasisLabels,
+  pcbBasisSection,
+  pcbClosingSections,
+  pcbDetailLayout,
+  pcbSlipSections,
+  pcbWorksheet,
+} from '@/core/pcb-explain';
+import type {
+  PcbDetailBodySlot,
+  PcbExplanation,
+  PcbSlipSection,
+  PcbWorksheet,
+  PcbWorksheetValue,
+} from '@/core/pcb-explain';
 import { payslipProvenance } from '@/core/payslip-recompute';
 import { formatMoney } from '@/lib/money';
+// r370 — ONE month formatter for the screen and the document. See lib/month-name.ts on why.
+import { monthYearLabel } from '@/lib/month-name';
 import { SLIP_ITEMS, SLIP_REBATES, pcbSlipData } from './slip-data';
 // r351 — the SAME assembly the screen paints. See the block comment where it is used.
-import { pcbFormulaBlocks } from './formulas';
+import { pcbFormulaBlocks, pcbFormulaByKey, type PcbFormulaBlock } from './formulas';
 import { renderPcbDetailPdf, type PcbSlipPdfRow, type PcbSlipPdfSection } from './slip-pdf';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -71,7 +100,8 @@ export type PcbDetailModel = {
   worksheet: PcbWorksheet;
   slip: PcbSlipSection[];
   /** r361 — the official's two numbered steps and its CALCULATION RESULTS band, in its own order. It is
-   *  part of the MODEL and not of either renderer, so the screen and this document iterate one list. */
+   *  part of the MODEL and not of either renderer, so the screen and this document iterate one list.
+   *  r370 — and WHERE each of them goes is `pcbDetailLayout`'s answer, over this same model. */
   closing: PcbSlipSection[];
 };
 
@@ -94,6 +124,8 @@ export function pcbDetailModel(p: {
     slip: p.slipData
       ? pcbSlipSections(explanation, {
           profile: p.slipData.profile,
+          // r370 — the head count for sequence 2, read from the same `pcbSlipData` the screen reads.
+          childHeadCount: p.slipData.childHeadCount,
           catalogue: SLIP_ITEMS,
           rebateCatalogue: SLIP_REBATES,
           currentDeduction: p.slipData.currentDeduction,
@@ -190,122 +222,24 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
 
   const sections: PcbSlipPdfSection[] = [];
 
-  // ── Reporter section 1 — employee information ──────────────────────────────────────────────────────
   const kv = (label: string, value: string | null): PcbSlipPdfRow => ({
     line: '',
     label,
     cells: [value && value.trim() !== '' ? value : t('notRecordedShort')],
   });
   const category = model.explanation.kind === 'mtd' ? (slipData?.profile?.taxCategory ?? null) : null;
-  // ⚠️ THE SAME EIGHT ROWS THE SCREEN RENDERS. Requirement 11 is "the same calculation details displayed
-  // on screen", and this block used to carry seven of them: the MARITAL TAX STATUS, which the reporter's
-  // section 1 lists by name, and the payroll CYCLE were on the screen and not in the document. Both are
-  // resolved through the same two maps the view uses (`core/pcb-explain.ts`), not through a second copy.
   const cycleKey = CYCLE_LABEL[row.runType];
-  sections.push({
-    heading: t('identificationHeading'),
-    columns: [],
-    rows: [
-      kv(t('fieldEmployee'), row.employeeCode ? `${row.employeeCode} · ${row.employeeName}` : row.employeeName),
-      kv(row.identityIsPassport ? t('fieldPassport') : t('fieldIdentityNo'), row.identityNumber),
-      kv(t('fieldTaxNumber'), row.taxNumber),
-      kv(t('fieldCompany'), row.company),
-      kv(t('fieldPeriod'), row.payPeriod),
-      kv(t('fieldTaxCategory'), category == null ? null : String(category)),
-      kv(
-        t('fieldMaritalStatus'),
-        category != null && CATEGORY_LABEL[category] ? t(CATEGORY_LABEL[category]) : null,
-      ),
-      kv(t('fieldCycle'), `${cycleKey ? t(cycleKey) : row.runType}${row.runSeq > 1 ? ` #${row.runSeq}` : ''}`),
-      kv(t('sourceTaxTable'), prov?.rulesetVersion ?? null),
-    ],
-  });
-
-  // ── WHICH FIGURE THIS DOCUMENT IS ABOUT, SAID BEFORE ANY WORKING ──────────────────────────────────
-  // The screen has carried this banner since 45df860a and the document did not, which is the one omission
-  // on it that changes what a reader concludes: `pcb-detail-view.tsx` says in its own comment that
-  // "rendering the working without this makes the screen a competent-looking derivation of an amount nobody
-  // deducted", and that is exactly what a PDF handed to an auditor would have been. `pcbBasisSection`
-  // returns null when the working explains precisely what was deducted, which is the ordinary case.
-  const basisSection = pcbBasisSection(model.explanation);
-  if (basisSection) {
-    sections.push({
-      heading: t(basisSection.heading),
-      columns: [t(basisSection.firstColumn)],
-      rows: basisSection.rows.map((r) => ({ line: r.line, label: t(r.caption), cells: [cell(r.first)] })),
-      note: basisSection.note ? t(basisSection.note) : undefined,
-    });
-  }
-
-  // ── Reporter sections 3, 9 and 10 — LHDN's own worksheet, exactly as the screen shows it ──────────
-  if (model.worksheet.shape !== 'unavailable') {
-    for (const sec of model.worksheet.sections) {
-      sections.push({
-        heading: `${t(model.worksheet.shape === 'flat' ? 'worksheetFlatHeading' : 'worksheetHeading')} — ${t(sec.heading)}`,
-        columns: [t('slipColAmount')],
-        rows: sec.rows.map((r) => ({ line: r.symbol, label: t(r.caption), cells: [cell(r.value)] })),
-        note: sec.note ? t(sec.note) : undefined,
-      });
-    }
-  }
 
   /**
-   * ONE MAPPING FOR EVERY SLIP-SHAPED SECTION, because as of r361 there are TWO lists of them — the
-   * reporter's detail behind the totals (`model.slip`) and the official's closing trio (`model.closing`),
-   * which is pushed further down where the agency prints it. The screen has the same split and the same
-   * single painter (`slipSections` in pcb-detail-view.tsx); a second copy of this mapping here is how one
-   * list quietly loses a column or an absence wording that the other keeps.
+   * ⚠️ r370 — THE MONTH IS NAMED, NOT PRINTED AS A STORED STRING. This document used to carry the raw
+   * `payPeriod` — "2026-06" — in the masthead and in section 1, where the screen says "June 2026". The
+   * reporter's criterion 20 is that the two show the same values, and a reader holding both had to work out
+   * that two differently-spelled things were one month. It is resolved against the DOCUMENT's own language
+   * (`lang`, allowlisted to the two the agency itself issues) rather than the reader's UI locale, because
+   * this file's fonts can only print those two — `lib/month-name.ts` is the one formatter both surfaces use.
    */
-  const pushSlipSections = (list: readonly PcbSlipSection[]) => {
-    for (const sec of list) {
-      const columns = [
-        ...(sec.limitColumn ? [t(sec.limitColumn)] : []),
-        t(sec.firstColumn),
-        ...(sec.secondColumn ? [t(sec.secondColumn)] : []),
-        ...(sec.thirdColumn ? [t(sec.thirdColumn)] : []),
-      ];
-      sections.push({
-        heading: t(sec.heading),
-        columns,
-        rows: sec.rows.map((r) => ({
-          line: r.line,
-          label: r.ns === 'taxRelief' ? tr(r.caption) : t(r.caption),
-          sub: r.sub,
-          cells: [
-            ...(sec.limitColumn ? [r.limit == null ? t('slipNoLimit') : formatMoney(r.limit, cur)] : []),
-            cell(r.first),
-            ...(sec.secondColumn ? [r.second ? cell(r.second) : ''] : []),
-            ...(sec.thirdColumn ? [r.third ? cell(r.third) : ''] : []),
-          ],
-        })),
-        note: sec.note ? t(sec.note) : undefined,
-      });
-    }
-  };
+  const periodLabel = monthYearLabel(row.payPeriod, lang);
 
-  // ── Reporter sections 2, 3, 4, 5, 6, 7 and 8 — the detail behind the totals ───────────────────────
-  pushSlipSections(model.slip);
-
-  /**
-   * ── r351: THE WORKING ITSELF, WHICH THIS DOCUMENT DID NOT CARRY ────────────────────────────────────
-   *
-   * WHAT WAS MISSING, AND WHY IT MATTERED MORE THAN ANY ROW ABOVE IT. Up to r351 this document pushed the
-   * identification rows, the basis banner, LHDN's worksheet and the reporter's slip — every FIGURE, and
-   * not one of the four formulas, not the calculation summary, not the step chain, not the deducted total.
-   * A reader could see every input and every accumulator and still not see the arithmetic that turned them
-   * into a deduction, which is the one thing a person disputing their tax needs. Requirement 11 is "the
-   * same calculation details displayed on screen", and this was the gap in it.
-   *
-   * ⚠️ AND IT IS THE SCREEN'S OWN ASSEMBLY, NOT A SECOND COPY. `pcbFormulaBlocks` is the function
-   * `pcb-detail-view.tsx` calls, with the same explanation and equivalent formatters, so an expression
-   * cannot differ between the page and the file that leaves the building. Writing these strings again here
-   * is exactly the drift this file's header spends forty lines refusing for the read path.
-   *
-   * THE LONG EXPRESSIONS GO IN THE LABEL, NOT IN A FIGURE COLUMN. A figure column is 96 points wide and
-   * right-aligned; a 200-character substituted formula placed in one would be drawn leftwards straight
-   * across the label beside it. So a formula row carries no cell at all and wraps across the full text
-   * width, and only the RESULT — a single amount — is right-aligned as a figure.
-   */
   const b2 = (v: number) => v.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const pctOf = (r: number) => `${(r * 100).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
   const money = (v: number) => formatMoney(v, cur);
@@ -313,76 +247,228 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
   const wide = (label: string): PcbSlipPdfRow => ({ line: '', label, cells: [] });
   const figure = (label: string, value: string, strong = false): PcbSlipPdfRow => ({ line: '', label, cells: [value], strong });
 
-  if (model.explanation.kind !== 'unavailable') {
-    const x = model.explanation;
-    const trace = x.kind === 'mtd' ? x.trace : null;
-    const L = pcbBasisLabels(x.basis);
-    const na = t('notRecordedShort');
-    const wholeMonth = x.basis != null && x.basis.prior != null;
+  const x = model.explanation;
+  const trace = x.kind === 'mtd' ? x.trace : null;
+  const mtd = x.kind === 'mtd' ? x : null;
+  const flat = x.kind === 'flat' ? x : null;
+  const L = pcbBasisLabels(x.basis);
+  const na = t('notRecordedShort');
+  const wholeMonth = x.basis != null && x.basis.prior != null;
+  const basis = x.basis;
+  const fb = pcbFormulaByKey(pcbFormulaBlocks(x, { b2, pct: pctOf, int: (v: number) => `${v}` }));
 
-    // ── The calculation summary, which the screen has carried since 45df860a ──────────────────────
-    if (x.kind === 'mtd') {
-      sections.push({
-        heading: t('summaryHeading'),
-        columns: [t('slipColAmount')],
-        rows: [
-          figure(t('mtdNormal'), trace ? money(trace.mtdNormalCalc) : na),
-          figure(t('mtdAdditional'), trace ? money(trace.mtdAdditionalCalc) : na),
-          figure(t('currentZakat'), money(x.zakat)),
-          figure(x.basis ? t(L.netSystem) : t('netMtd'), money(x.pcbSystem), true),
-          ...(x.basis ? [figure(t(L.netDeducted), money(x.pcb), true)] : []),
-        ],
-        note: t('netMtdNote'),
-      });
+  /**
+   * ⚠️ r370 — THE FOUR ROWS OF A STEP, ASSEMBLED ONCE FOR EVERY STEP THAT HAS THEM.
+   *
+   * THE LONG EXPRESSIONS GO IN THE LABEL, NOT IN A FIGURE COLUMN. A figure column is 96 points wide and
+   * right-aligned; a 200-character substituted formula placed in one would be drawn leftwards straight
+   * across the label beside it. So a formula row carries no cell at all and wraps across the full text
+   * width, and only the RESULT — a single amount — is right-aligned as a figure.
+   *
+   * ABSENT, not zero and not derived: `formulas.ts` omits the calculation row for a step whose intermediate
+   * the engine never stored, and this must omit it for exactly the same reason.
+   */
+  const formulaRows = (blk: PcbFormulaBlock): PcbSlipPdfRow[] => {
+    const rows: PcbSlipPdfRow[] = [wide(`${t('formulaLabel')}:  ${t(blk.formula)}`)];
+    if (blk.legend) rows.push(wide(t(blk.legend)));
+    rows.push(wide(`${t('substitutedLabel')}:  ${blk.substituted ?? na}`));
+    if (blk.calculation !== undefined) rows.push(wide(`${t('calculationLabel')}:  ${blk.calculation}`));
+    rows.push(figure(t(blk.resultLabel), blk.result === null ? na : money(blk.result), true));
+    return rows;
+  };
+  const noteOf = (blk: PcbFormulaBlock | undefined): string | undefined =>
+    blk && blk.notes.length > 0 ? blk.notes.map((k) => t(k)).join(' ') : undefined;
 
-      // ── Step 1 [A] — the category the RUN applied, which is not necessarily the one stored today ──
-      sections.push({
-        heading: t('stepAHeading'),
-        columns: [t('slipColAmount')],
-        rows: [
-          figure(
-            t('bracketCategory'),
-            trace && CATEGORY_LABEL[trace.category] ? t(CATEGORY_LABEL[trace.category]) : na,
-          ),
-          // GUARD THE FIELD, NOT THE TRACE. `childCount` is `number | null` (core/pcb-explain.ts:94,
-          // and readTrace:283 deliberately refuses to coerce absence to 0 — a payslip predating r359
-          // genuinely never recorded it). `trace ? String(trace.childCount) : na` therefore printed the
-          // literal four characters "null" onto a DOWNLOADED STATUTORY PDF for every such payslip,
-          // because the ternary tested the wrong thing. r364 fixed exactly this confusion inside the
-          // kernel and left both render sites carrying it — this one printing "null", its twin on the
-          // screen drawing an empty cell. CLAUDE.md §8: an absent box asserts nothing, 0.00 asserts the
-          // money does not exist, and "null" asserts we do not know what we are printing.
-          figure(t('reliefChildCount'), trace?.childCount != null ? String(trace.childCount) : na),
-        ],
-      });
-    }
+  /** ONE figure column even where only the result row uses it: `labelW` is computed from the column count,
+   *  so declaring it is what keeps a wrapped expression from being drawn under the amount. */
+  const AMOUNT = [t('slipColAmount')];
 
-    // ── Steps [B] to [E], each as formula → actual values → calculation → result ──────────────────
-    for (const fb of pcbFormulaBlocks(x, { b2, pct: pctOf, int: (v: number) => `${v}` })) {
-      const rows: PcbSlipPdfRow[] = [wide(`${t('formulaLabel')}:  ${t(fb.formula)}`)];
-      if (fb.legend) rows.push(wide(t(fb.legend)));
-      rows.push(wide(`${t('substitutedLabel')}:  ${fb.substituted ?? na}`));
-      // ABSENT, not zero and not derived: `formulas.ts` omits this row for a step whose intermediate the
-      // engine never stored, and the document must omit it for exactly the same reason.
-      if (fb.calculation !== undefined) rows.push(wide(`${t('calculationLabel')}:  ${fb.calculation}`));
-      rows.push(figure(t(fb.resultLabel), fb.result === null ? na : money(fb.result), true));
-      // ONE figure column even though only the result row uses it: `labelW` is computed from the column
-      // count, so declaring it is what keeps a wrapped expression from being drawn under the amount.
-      sections.push({
-        heading: t(fb.heading),
-        columns: [t('slipColAmount')],
-        rows,
-        note: fb.notes.map((k) => t(k)).join(' '),
-      });
+  /**
+   * ══ r370 — ONE BODY PER SLOT, EXHAUSTIVE, AND THE SCREEN'S TWIN ══
+   *
+   * `pcb-detail-view.tsx` has the identical switch over the identical closed union, and both are driven by
+   * `pcbDetailLayout`. That is what makes "five sections reached the screen and not the paper" — which is
+   * what this document shipped until r370 — a compile error rather than something only a render check
+   * could find. The `never` in the default is load-bearing: without it a missing slot would compile.
+   *
+   * ⚠️ AND IT IS THE SCREEN'S OWN ASSEMBLY, NOT A SECOND COPY OF IT. `pcbFormulaBlocks` is the function
+   * `pcb-detail-view.tsx` calls, with the same explanation and equivalent formatters, so an expression
+   * cannot differ between the page and the file that leaves the building.
+   */
+  const bodyFor = (slot: PcbDetailBodySlot): { rows: PcbSlipPdfRow[]; columns?: string[]; note?: string } => {
+    switch (slot) {
+      // ⚠️ THE SAME EIGHT ROWS THE SCREEN RENDERS, AND NO MORE. Until r370 this block also carried the
+      // statutory table version, which on the screen belongs to the "Calculation source" footer — and that
+      // footer was absent from this document altogether, so the row had nowhere else to be. It has one now.
+      case 'identification':
+        return {
+          columns: [],
+          rows: [
+            kv(t('fieldEmployee'), row.employeeCode ? `${row.employeeCode} · ${row.employeeName}` : row.employeeName),
+            kv(row.identityIsPassport ? t('fieldPassport') : t('fieldIdentityNo'), row.identityNumber),
+            kv(t('fieldTaxNumber'), row.taxNumber),
+            kv(t('fieldCompany'), row.company),
+            kv(t('fieldPeriod'), periodLabel),
+            kv(t('fieldTaxCategory'), category == null ? null : String(category)),
+            kv(t('fieldMaritalStatus'), category != null && CATEGORY_LABEL[category] ? t(CATEGORY_LABEL[category]) : null),
+            kv(t('fieldCycle'), `${cycleKey ? t(cycleKey) : row.runType}${row.runSeq > 1 ? ` #${row.runSeq}` : ''}`),
+          ],
+        };
 
-      // ── §E's flooring, immediately after the step it turns into A and E ──────────────────────────
-      // The specification's headline formula prints no floor and its rules apply two, plus the RM10 rule.
-      // The screen shows that as its own step; so does this, or the document's substituted expressions
-      // carry a clamp the formula above them does not and nothing on the page accounts for it.
-      if (fb.key === 'mtd' && x.kind === 'mtd') {
-        sections.push({
-          heading: t('floorHeading'),
-          columns: [t('slipColAmount')],
+      // WHICH FIGURE THIS DOCUMENT IS ABOUT, SAID BEFORE ANY WORKING. The screen has carried this banner
+      // since 45df860a and the document did not, which was the one omission on it that changes what a
+      // reader concludes: rendering the working without it makes the document a competent-looking
+      // derivation of an amount nobody deducted. Built by `pcbBasisSection` in core/ — one decision, two
+      // surfaces, no second copy of an eight-branch ternary.
+      case 'basisBanner': {
+        const basisSection = pcbBasisSection(x);
+        if (basisSection == null) return { rows: [] };
+        return {
+          columns: [t(basisSection.firstColumn)],
+          rows: basisSection.rows.map((r) => ({ line: r.line, label: t(r.caption), cells: [cell(r.first)] })),
+          // The PROSE, which is the part that was missing: the figures alone do not say why two of them
+          // differ, and a document that omits the sentence is the "competent-looking derivation of an
+          // amount nobody deducted" the screen's own comment warns about.
+          note: basisSection.note ? t(basisSection.note) : undefined,
+        };
+      }
+
+      // r370 — THE HONEST BANNER, WHICH THIS DOCUMENT NEVER CARRIED. A reader holding a PDF of dashes with
+      // no sentence explaining them reads the dashes as zeroes; the screen has said so since 45df860a.
+      case 'traceBanner':
+        return { columns: [], rows: [wide(t('traceNotRecorded'))] };
+
+      case 'unavailableCard':
+        return { columns: AMOUNT, rows: [figure(t('netMtd'), money(x.pcb))], note: t('unavailable') };
+
+      case 'flatCard': {
+        if (flat == null) return { rows: [] };
+        const rows: PcbSlipPdfRow[] = [
+          figure(flat.nonResident ? t('flatNonResident') : t('flatIncentive'), pctOf(flat.rate)),
+          figure(t('flatRemuneration'), flat.trace ? money(flat.trace.remuneration) : na),
+          figure(t('flatAdditional'), flat.trace ? money(flat.trace.additional) : na),
+          figure(basis ? t(L.netSystem) : t('netMtd'), money(x.pcbSystem), true),
+          ...(basis ? [figure(t(L.netDeducted), money(x.pcb), true)] : []),
+        ];
+        if (fb.flat) for (const r of formulaRows(fb.flat)) rows.push(r);
+        return { columns: AMOUNT, rows, note: noteOf(fb.flat) };
+      }
+
+      // Sequence 9's own heading: the container the reporter asked for, with 9.1 to 9.9 beneath it.
+      case 'mtdBand':
+        return { columns: [], rows: [] };
+
+      // 9.1 / Step 1 [A] — the category the RUN applied, which is not necessarily the one stored today.
+      case 'mtdCategory':
+        return {
+          columns: AMOUNT,
+          rows: [
+            figure(t('bracketCategory'), trace && CATEGORY_LABEL[trace.category] ? t(CATEGORY_LABEL[trace.category]) : na),
+            // GUARD THE FIELD, NOT THE TRACE. `childCount` is `number | null` (core/pcb-explain.ts, and
+            // `readTrace` deliberately refuses to coerce absence to 0 — a payslip predating r359 genuinely
+            // never recorded the count). `trace ? String(trace.childCount) : na` therefore printed the
+            // literal four characters "null" onto a DOWNLOADED STATUTORY PDF for every such payslip,
+            // because the ternary tested the wrong thing. r364 fixed exactly this confusion inside the
+            // kernel and left both render sites carrying it — this one printing "null", its twin on the
+            // screen drawing an empty cell. CLAUDE.md §8: an absent box asserts nothing, 0.00 asserts the
+            // money does not exist, and "null" asserts we do not know what we are printing.
+            figure(t('reliefChildCount'), trace?.childCount != null ? String(trace.childCount) : na),
+          ],
+        };
+
+      // 9.2 / Step 1 [B] — the deductions the chargeable income is reduced by. Absent from this document
+      // entirely until r370, though every term of them appears inside the substituted P expression below.
+      case 'mtdReliefs':
+        return mtd == null
+          ? { rows: [] }
+          : {
+              columns: AMOUNT,
+              rows: [
+                figure(t('reliefIndividual'), money(mtd.reliefs.individual)),
+                figure(t('reliefSpouse'), money(mtd.reliefs.spouse)),
+                figure(t('reliefDisabledIndividual'), money(mtd.reliefs.disabledIndividual)),
+                figure(t('reliefDisabledSpouse'), money(mtd.reliefs.disabledSpouse)),
+                figure(t('reliefChildren'), money(mtd.reliefs.children)),
+                figure(t('reliefChildCount'), trace?.childCount != null ? String(trace.childCount) : na),
+                figure(t('reliefLpAccumulated'), trace ? money(trace.lpAccumulated) : na),
+                figure(t('reliefLpCurrent'), trace ? money(trace.lpCurrent) : na),
+                figure(t('reliefLpCombined'), money(mtd.reliefs.lp)),
+                figure(t('reliefTotal'), money(mtd.reliefs.total), true),
+              ],
+              note: mtd.reliefSource === 'snapshot' ? t('reliefFromSnapshot') : t('reliefFromCurrent'),
+            };
+
+      // 9.3 / Step 1 [B] — K₂ and the remuneration legs, which the specification determines FIRST.
+      case 'mtdK2':
+        return mtd == null
+          ? { rows: [] }
+          : {
+              columns: AMOUNT,
+              rows: [
+                figure(t('compAccNet'), money(mtd.ytdNetRemuneration)),
+                figure(t('compEpfClaimed'), money(mtd.epfClaimedYtd)),
+                figure(t('compY1'), trace ? money(trace.Y1) : na),
+                figure(t('compK1'), trace ? money(trace.K1) : money(mtd.epfThisMonth)),
+                figure(t('compY2'), trace ? money(trace.Y2) : na),
+                figure(t('compK2'), trace ? money(trace.K2) : na),
+                ...(trace && trace.Yt > 0 ? [figure(t('compK2t'), money(trace.K2t))] : []),
+                figure(t('compN'), `${mtd.remainingMonths}`),
+                ...(mtd.chargeableIncomeWithAdditional != null
+                  ? [figure(t('pWithAdditional'), money(mtd.chargeableIncomeWithAdditional))]
+                  : []),
+              ],
+            };
+
+      // 9.4 / Step 1 [B] — P, and P₂ when a bonus was paid. ONE section, as on the screen: this document
+      // used to push a separate section per formula block, so `pHeading` was printed TWICE in a bonus month.
+      case 'mtdP': {
+        const rows: PcbSlipPdfRow[] = [];
+        if (fb.p1) for (const r of formulaRows(fb.p1)) rows.push(r);
+        if (fb.p2) for (const r of formulaRows(fb.p2)) rows.push(r);
+        const both = [noteOf(fb.p1), noteOf(fb.p2)].filter((n): n is string => n !== undefined);
+        return { columns: AMOUNT, rows, note: both.length > 0 ? both.join(' ') : undefined };
+      }
+
+      // 9.5 / Step 1 [C] — the monthly deduction on net normal remuneration.
+      case 'mtdFormula':
+        return fb.mtd == null
+          ? { rows: [] }
+          : { columns: AMOUNT, rows: formulaRows(fb.mtd), note: noteOf(fb.mtd) };
+
+      // 9.5 continued — M, R and B, read off Table 1 once P is known. Absent from this document until r370.
+      case 'mtdBracket':
+        return {
+          columns: AMOUNT,
+          rows: [
+            figure(t('bracketM'), trace ? money(trace.M) : na),
+            figure(t('bracketR'), trace ? pctOf(trace.R) : na),
+            figure(t('bracketB'), trace ? money(trace.B) : na),
+            figure(t('bracketTaxOnP'), trace ? money(trace.taxOnP1) : na),
+          ],
+          note: t('bracketNote'),
+        };
+
+      // 9.5 continued — the accumulators [C] subtracts and its divisor. Absent from this document until r370.
+      case 'mtdPrior':
+        return mtd == null
+          ? { rows: [] }
+          : {
+              columns: AMOUNT,
+              rows: [
+                figure(t('priorZakat'), trace ? money(trace.Z) : na),
+                figure(t('priorPcb'), money(mtd.pcbPaidYtd)),
+                figure(t('currentZakat'), money(mtd.zakat)),
+                figure(t('monthOfYear'), `${mtd.month} / 12`),
+                figure(t('monthsRemaining'), `${mtd.remainingMonths}`),
+                figure(t('monthsDivisor'), `${mtd.remainingMonths + 1}`),
+              ],
+              note: t('monthsNote'),
+            };
+
+      // 9.5 continued / §E — the zero floors and the RM10 rule, as a step a reader can see.
+      case 'mtdFloor':
+        return {
+          columns: AMOUNT,
           rows: [
             figure(t('mtdNormal'), trace ? money(trace.mtdNormalCalc) : na),
             figure(t('netA'), trace ? money(trace.mtdNormalFloored) : na),
@@ -390,68 +476,198 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
             figure(t('netE'), trace ? money(trace.mtdAdditionalFloored) : na),
           ],
           note: t('floorNote'),
-        });
-      }
-      if (fb.key === 'net' && x.kind === 'mtd') {
-        sections.push({
-          heading: t('netHeading'),
-          columns: [t('slipColAmount')],
-          rows: [
-            figure(t('netZ1'), trace ? money(trace.zakatCurrent) : money(x.zakat)),
-            figure(t('netLeftover'), trace ? money(trace.zakatLeftover) : na),
-          ],
-        });
-      }
-      if (fb.key === 'year' && x.kind === 'mtd') {
-        sections.push({
-          heading: t('yearHeading'),
-          columns: [t('slipColAmount')],
-          rows: [
-            figure(t('yearTotalTax'), trace && trace.totalTaxYear != null ? money(trace.totalTaxYear) : na),
-            figure(t('yearTotalMtd'), trace && trace.totalMtdYear != null ? money(trace.totalMtdYear) : na),
-          ],
-        });
-      }
-    }
+        };
 
-    // ── The five lettered steps, and the figure the whole document is about ───────────────────────
-    if (x.kind === 'mtd') {
-      sections.push({
-        heading: t('stepsHeading'),
-        columns: [t('slipColAmount')],
-        rows: [
-          { line: 'A', label: t('stepA'), cells: [trace && CATEGORY_LABEL[trace.category] ? t(CATEGORY_LABEL[trace.category]) : na] },
-          { line: 'B', label: t('stepB'), cells: [money(x.chargeableIncome)] },
-          { line: 'C', label: t('stepC'), cells: [trace ? money(trace.mtdNormalCalc) : na] },
-          { line: 'D', label: t('stepD'), cells: [trace ? money(x.pcbSystem) : na] },
-          { line: 'E', label: t('stepE'), cells: [trace && trace.totalMtdYear != null ? money(trace.totalMtdYear) : na] },
-          figure(x.basis ? t(L.finalSystem) : t('finalPcb'), money(x.pcbSystem), true),
-          // The deduction gets its OWN labelled line whenever the working does not explain it — never the
-          // quiet answer to a chain that produced a different number. Same rule as the screen.
-          ...(x.basis ? [figure(t(L.finalDeducted), money(x.pcb), true)] : []),
-          ...(wholeMonth ? [figure(t('additionalMtdMonth'), money(x.pcbAdditional))] : []),
-        ],
-        note: x.basis ? t(L.note) : undefined,
-      });
+      // 9.6 / Step 1 [D] — the net deduction. ONE section: the zakat rows used to be pushed as a SECOND
+      // section under the same `netHeading`, so "Step 1 [D]" was printed twice on every document.
+      case 'mtdNet': {
+        if (mtd == null || fb.net == null) return { rows: [] };
+        const rows: PcbSlipPdfRow[] = [
+          figure(t('netA'), trace ? money(trace.mtdNormalFloored) : na),
+          figure(t('netE'), trace ? money(trace.mtdAdditionalFloored) : na),
+          figure(t('netZ1'), trace ? money(trace.zakatCurrent) : money(mtd.zakat)),
+          figure(t('netLeftover'), trace ? money(trace.zakatLeftover) : na),
+        ];
+        for (const r of formulaRows(fb.net)) rows.push(r);
+        const note = noteOf(fb.net);
+        // The screen states the unit once, under [D]; so does this. Without it every bare figure inside an
+        // expression above is a number with no currency anywhere near it.
+        const currency = t('currencyNote', { currency: cur ?? '—' });
+        return { columns: AMOUNT, rows, note: note === undefined ? currency : `${note} ${currency}` };
+      }
+
+      // 9.6 continued — the two legs and the figure [D] lands on.
+      case 'mtdSummary':
+        return mtd == null
+          ? { rows: [] }
+          : {
+              columns: AMOUNT,
+              rows: [
+                figure(t('mtdNormal'), trace ? money(trace.mtdNormalCalc) : na),
+                figure(t('mtdAdditional'), trace ? money(trace.mtdAdditionalCalc) : na),
+                figure(t('currentZakat'), money(mtd.zakat)),
+                figure(basis ? t(L.netSystem) : t('netMtd'), money(x.pcbSystem), true),
+                ...(basis ? [figure(t(L.netDeducted), money(x.pcb), true)] : []),
+              ],
+              note: t('netMtdNote'),
+            };
+
+      // 9.7 / Step 1 [E] — the year's total. ONE section, for the same reason as [D] above.
+      case 'mtdYear': {
+        if (fb.year == null) return { rows: [] };
+        const rows: PcbSlipPdfRow[] = [
+          figure(t('yearTotalTax'), trace && trace.totalTaxYear != null ? money(trace.totalTaxYear) : na),
+        ];
+        for (const r of formulaRows(fb.year)) rows.push(r);
+        return { columns: AMOUNT, rows, note: noteOf(fb.year) };
+      }
+
+      // 9.8 — additional remuneration. Absent from this document until r370.
+      case 'mtdAdditional':
+        return mtd == null
+          ? { rows: [] }
+          : {
+              columns: AMOUNT,
+              rows: [
+                figure(t('additionalAmount'), trace ? money(trace.Yt) : na),
+                figure(t('additionalEpf'), trace ? money(trace.Kt) : na),
+                figure(
+                  t('additionalChargeable'),
+                  mtd.chargeableIncomeWithAdditional != null
+                    ? money(mtd.chargeableIncomeWithAdditional)
+                    : t('additionalNone'),
+                ),
+                figure(t('additionalMtdCalc'), trace ? money(trace.mtdAdditionalCalc) : na),
+                figure(wholeMonth ? t('additionalMtdMonth') : t('additionalMtdDeducted'), money(mtd.pcbAdditional)),
+              ],
+            };
+
+      // 9.9 — the five lettered steps, and the figure the whole document is about.
+      case 'mtdSteps':
+        return mtd == null
+          ? { rows: [] }
+          : {
+              columns: AMOUNT,
+              rows: [
+                { line: 'A', label: t('stepA'), cells: [trace && CATEGORY_LABEL[trace.category] ? t(CATEGORY_LABEL[trace.category]) : na] },
+                { line: 'B', label: t('stepB'), cells: [money(mtd.chargeableIncome)] },
+                { line: 'C', label: t('stepC'), cells: [trace ? money(trace.mtdNormalCalc) : na] },
+                { line: 'D', label: t('stepD'), cells: [trace ? money(x.pcbSystem) : na] },
+                { line: 'E', label: t('stepE'), cells: [trace && trace.totalMtdYear != null ? money(trace.totalMtdYear) : na] },
+                figure(basis ? t(L.finalSystem) : t('finalPcb'), money(x.pcbSystem), true),
+                // The deduction gets its OWN labelled line whenever the working does not explain it —
+                // never the quiet answer to a chain that produced a different number. As on the screen.
+                ...(basis ? [figure(t(L.finalDeducted), money(x.pcb), true)] : []),
+                ...(wholeMonth ? [figure(t('additionalMtdMonth'), money(mtd.pcbAdditional))] : []),
+              ],
+              note: basis ? t(L.note) : undefined,
+            };
+
+      // APPENDIX — LHDN's own worksheet order. Out of the numbered run since r370: every figure on it
+      // appears again below, and it used to stand between the reporter's sequences 1 and 2.
+      case 'lhdnWorksheet': {
+        const w = model.worksheet;
+        if (w.shape === 'unavailable') return { rows: [] };
+        const rows: PcbSlipPdfRow[] = [];
+        for (const sec of w.sections) {
+          rows.push({ line: '', label: t(sec.heading), cells: [], strong: true });
+          for (const r of sec.rows) rows.push({ line: r.symbol, label: t(r.caption), cells: [cell(r.value)], sub: true });
+          if (sec.note) rows.push(wide(t(sec.note)));
+        }
+        return { columns: AMOUNT, rows, note: t(w.note) };
+      }
+
+      // FOOTER — where these figures came from. Absent from this document until r370.
+      case 'source':
+        return {
+          columns: [],
+          rows: [
+            kv(t('sourceTaxYear'), String(Number.isFinite(taxYear) ? taxYear : row.payPeriod)),
+            kv(t('sourceTaxMethod'), x.kind === 'flat' ? t('methodFlat') : t('methodMtd')),
+            kv(t('sourceTaxTable'), prov?.rulesetVersion ?? null),
+            kv(t('sourcePeriod'), periodLabel),
+            kv(t('sourceCycle'), cycleKey ? t(cycleKey) : row.runType),
+          ],
+          note: t('sourceNote'),
+        };
+
+      // ⚠️ THE EXHAUSTIVENESS IS THE GUARD. A slot added to `pcbDetailLayout` and not drawn here fails
+      // `tsc`, and the same line stands in pcb-detail-view.tsx for the screen.
+      default: {
+        const unhandled: never = slot;
+        return unhandled;
+      }
     }
-  }
+  };
 
   /**
-   * ── r361 / bf3c9712: THE OFFICIAL'S CLOSING TRIO, LAST, WHERE THE OFFICIAL PUTS IT ────────────────
+   * ══ r370 — ONE ORDERED LIST, ITERATED. THIS FILE NO LONGER OWNS AN ORDER ══
    *
-   * "1. MTD excess of annual year net remuneration excluding additional remuneration", then "2. MTD must
-   * be deducted", then CALCULATION RESULTS. The document ended at the lettered steps above, one band
-   * before the figure the whole thing is about is stated the way the agency states it — and requirement
-   * 10 on this item is expressly "the PDF must not omit the final deducted amount".
+   * Until r370 the order of this document was the sequence of `sections.push` calls written here, and the
+   * order of the screen was hand-placed JSX in `pcb-detail-view.tsx`. TWO lists, and they had drifted:
+   * `reliefsHeading`, `bracketHeading`, `priorHeading`, `additionalHeading` and `sourceHeading` were absent
+   * from the paper altogether, `netHeading` and `yearHeading` were each emitted TWICE and `pHeading` twice
+   * in a bonus month, the currency note was missing and the payroll month printed as "2026-06" where the
+   * screen printed "June 2026". The reporter's criteria 19, 20 and 21 were false and nothing could see it.
    *
-   * Built in core/ and pushed through the SAME mapping as every other slip section, so the page and the
-   * paper cannot differ about the order or about a single cell.
+   * `pcbDetailLayout` is called with exactly the arguments the screen passes it, so the two cannot differ
+   * about which sections there are, what order they come in, or what number each carries.
    */
-  pushSlipSections(model.closing);
+  const layout = pcbDetailLayout({
+    explanation: model.explanation,
+    worksheet: model.worksheet,
+    slip: model.slip,
+    closing: model.closing,
+  });
+
+  /** The reporter's number, or the band's own marker — the SAME composition the screen's `entryTitle` is. */
+  const entryTitle = (e: (typeof layout)[number]): string => {
+    const heading = t(e.heading);
+    if (e.label != null) return `${e.label} · ${heading}`;
+    if (e.band === 'appendix') return `${t('appendixLabel')} · ${heading}`;
+    return heading;
+  };
+
+  /**
+   * ONE MAPPING FOR EVERY SLIP-SHAPED SECTION. A second copy of it is how one section quietly loses a
+   * column or an absence wording that the others keep, on a document about somebody's tax.
+   */
+  const slipRows = (sec: PcbSlipSection): { rows: PcbSlipPdfRow[]; columns: string[]; note?: string } => ({
+    columns: [
+      ...(sec.limitColumn ? [t(sec.limitColumn)] : []),
+      t(sec.firstColumn),
+      ...(sec.secondColumn ? [t(sec.secondColumn)] : []),
+      ...(sec.thirdColumn ? [t(sec.thirdColumn)] : []),
+    ],
+    rows: sec.rows.map((r) => ({
+      line: r.line,
+      label: r.ns === 'taxRelief' ? tr(r.caption) : t(r.caption),
+      sub: r.sub,
+      cells: [
+        ...(sec.limitColumn ? [r.limit == null ? t('slipNoLimit') : formatMoney(r.limit, cur)] : []),
+        cell(r.first),
+        ...(sec.secondColumn ? [r.second ? cell(r.second) : ''] : []),
+        ...(sec.thirdColumn ? [r.third ? cell(r.third) : ''] : []),
+      ],
+    })),
+    note: sec.note ? t(sec.note) : undefined,
+  });
+
+  /**
+   * ⚠️ ONE PLACE APPENDS A SECTION TO THIS DOCUMENT, AND IT IS THIS LOOP.
+   *
+   * The defect was eleven `sections.push` calls whose written order WAS the document's layout. A second
+   * push anywhere in this file is a second ordering in prospect, so there is exactly one and
+   * test/r370-pcb-sequence.test.ts counts them.
+   */
+  for (const e of layout) {
+    const b = e.kind === 'section' ? slipRows(e.section) : bodyFor(e.slot);
+    sections.push({ heading: entryTitle(e), columns: b.columns ?? AMOUNT, rows: b.rows, note: b.note });
+  }
 
   const bytes = await renderPcbDetailPdf({
     title: t('title'),
-    subtitle: `${row.employeeName} · ${row.company} · ${row.payPeriod}`,
+    subtitle: `${row.employeeName} · ${row.company} · ${periodLabel}`,
     sections,
     // Stated in the reader's own language AND in English, because this claim — that what they are holding
     // is our rendering and not the agency's form — is the one thing a reader must not have to take on trust.
