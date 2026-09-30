@@ -218,6 +218,21 @@ describe('§3 · the filter reaches the warning, and the standalone tab reads it
     expect(mount.slice(0, mount.indexOf('/>'))).not.toContain('leaveTypeId');
   });
 
+  it('“+ New table” is a round trip: the create it opens posts the leave type to return to', () => {
+    // The approved plan's step 2.4 — saving brings the operator back to the leave type screen with the new
+    // table visible. `returnFor` in ./actions.ts already reads `embeddedLeaveTypeId` and `saved()` sends
+    // them to that type's tab 3; until r369 only the EMBEDDED mount posted it, so a create typed on the
+    // Entitlement tables tab always stayed there — right for someone who went there directly, wrong for
+    // someone who pressed "+ New table".
+    expect(blockCode).toContain('&returnTo=${encodeURIComponent(leaveTypeId ?? \'\')}#new-entitlement-table');
+    expect(blockCode).toContain('returnToType ? <input type="hidden" name="embeddedLeaveTypeId" value={returnToType} />');
+    expect(blockCode).toContain('{formReturnField}');
+    // ⚠️ THE ROW CONTROLS MUST NOT GET IT. A Stop or Delete pressed on the Entitlement tables tab belongs
+    // back on the Entitlement tables tab; bouncing a destructive save to another screen hides its result.
+    expect(blockCode).toContain('const returnField = embedded ?');
+    expect(stripComments(read(STANDALONE))).toContain('returnToType={sp.returnTo}');
+  });
+
   it('the create form POSTS the type it is showing, so a filtered create is not a create with no type', () => {
     // On the filtered standalone tab `leaveTypeId` is undefined. Posting it would submit a create with no
     // leave type while the read-only field beside it said "Annual Leave" — a refusal the operator could not
@@ -299,7 +314,10 @@ describe('§5 · tablesReadOnly — GATED, never forked, and never at the cost o
     expect(blockCode).toContain("t('newTableElsewhere')");
     // The link preselects the filter §1 is about — which is the whole reason the filter shipped first. A
     // "+ New table" link landing on an UNFILTERED tab would open a create form that cannot warn.
-    expect(blockCode).toContain('?leaveType=${encodeURIComponent(leaveTypeId ?? \'\')}#new-entitlement-table');
+    // The round trip half of this href is asserted in its own case above; here only that it preselects the
+    // filter, which is the whole reason the filter shipped first — a "+ New table" link landing on an
+    // UNFILTERED tab would open a create form that cannot warn.
+    expect(blockCode).toContain('?leaveType=${encodeURIComponent(leaveTypeId ?? \'\')}&returnTo=');
     expect(blockCode).toContain('&table=${encodeURIComponent(lineageId)}#table-${lineageId}');
     // …and the create form carries that fragment's target.
     expect(blockCode).toContain('id="new-entitlement-table"');
@@ -391,7 +409,17 @@ describe('§5 · tablesReadOnly — GATED, never forked, and never at the cost o
 // ────────────────────────────────────────────────────────────────────────────────────────────────────
 
 describe('§4 · the filter’s own strings', () => {
-  const KEYS = ['filterLeaveType', 'filterAllTypes', 'filterApply', 'filterHint'] as const;
+  const KEYS = [
+    'filterLeaveType',
+    'filterAllTypes',
+    'filterApply',
+    'filterHint',
+    // 3a4efe9f — the caption follows the filter. The unfiltered sentence over a filtered list would
+    // contradict the table under it, and the sentence's job is to say how to widen the screen again.
+    'filterHintScoped',
+    // The approved sketch's top-right way in to the create form, which has NOT moved.
+    'newTableJump',
+  ] as const;
 
   it('all four strings exist in all six catalogues and are translated', () => {
     const en = catalogue('en').admin.entitlementTemplates as Record<string, string>;
@@ -409,6 +437,24 @@ describe('§4 · the filter’s own strings', () => {
 
   it('the screen asks for every one of them, so none is an orphan key', () => {
     const standaloneCode = stripComments(read(STANDALONE));
-    for (const k of KEYS) expect(standaloneCode, k).toContain(`t('${k}')`);
+    for (const k of KEYS) {
+      // `filterHintScoped` takes an argument, so it is asked for as `t('key', {...})`.
+      expect(standaloneCode, k).toContain(`t('${k}'`);
+    }
+    // …and the two captions are the two ARMS of one choice, not one sentence plus a dead key.
+    expect(standaloneCode).toContain("filteredTypeName ? t('filterHintScoped', { type: filteredTypeName }) : t('filterHint')");
+    // The scoped caption names the type, so it must carry the placeholder in every locale.
+    for (const loc of LOCALES) {
+      const v = (catalogue(loc).admin.entitlementTemplates as Record<string, string>).filterHintScoped;
+      expect(v, `${loc} filterHintScoped`).toContain('{type}');
+    }
+  });
+
+  it('the top-right button is a jump to the ONE create form, not a second form', () => {
+    // The approved sketch shows "+ New entitlement table" opposite the filter. The form itself stays at the
+    // foot of the list where eight guards read it; a second form here would be the fork this item removes.
+    const standaloneCode = stripComments(read(STANDALONE));
+    expect(standaloneCode).toContain('href="#new-entitlement-table"');
+    expect(standaloneCode).not.toContain('createEntitlementTemplateAction');
   });
 });

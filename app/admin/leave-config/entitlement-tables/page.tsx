@@ -1,6 +1,11 @@
 import { getTranslations } from 'next-intl/server';
 
+import Link from 'next/link';
+
 import { requireAdmin } from '@/lib/authz';
+// 3a4efe9f — the same resolver the block scopes itself with, so this page's caption and the table under it
+// cannot disagree about whether a filter is in force.
+import { resolveViewLeaveTypeId } from '@/lib/entitlement-tables-scope';
 import { Card, ErrorBanner, Field, PageHeader, inputCls } from '@/components/ui';
 import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
 import {
@@ -72,6 +77,14 @@ export default async function LeaveConfigEntitlementTablesPage({
     /** 3a4efe9f — the table a deep link came here to show: highlighted by the block, and scrolled to by the
      *  same link's `#table-<lineageId>` fragment, which needs no JavaScript. */
     table?: string;
+    /**
+     * 3a4efe9f — the leave type to put the operator back on after a save, set by "+ New table" on that leave
+     * type's own tab (the approved plan's step 2.4). It becomes the `embeddedLeaveTypeId` the create form
+     * posts, which `returnFor` in the templates actions already reads. An id, never a URL: `returnFor`'s
+     * header records that it is interpolated into a fixed internal path, so nothing hand-crafted can open a
+     * redirect through it.
+     */
+    returnTo?: string;
     /** r212 — the explain panel's four GET parameters, so an answer is addressable and can be sent as a
      *  link. The panel builds its own relative hrefs, so it is addressable at THIS route unchanged. */
     explainQ?: string;
@@ -92,6 +105,12 @@ export default async function LeaveConfigEntitlementTablesPage({
   // tab row below says which tab. The back-link to the leave type screen is gone with it — the first tab
   // of the same row is one click away and the submenu row stays lit here (ownedSubpaths).
   const header = await leaveConfigPageHeader('entitlementTables');
+  /** The leave type the filter is actually on — resolved through the SAME pure function the block scopes
+   *  itself with, so the caption and the table below it cannot disagree about whether a filter applied. An
+   *  id naming nothing resolves to undefined here exactly as it does there, and the caption says "all". */
+  const filteredTypeName = data.leaveTypes.find(
+    (x) => x.id === resolveViewLeaveTypeId({ typeFilter: sp.leaveType, known: data.leaveTypes }),
+  )?.name;
 
   return (
     <div className="space-y-6">
@@ -138,11 +157,27 @@ export default async function LeaveConfigEntitlementTablesPage({
           </Field>
           <button
             type="submit"
-            className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
+            className="h-9 rounded-md border border-input bg-card px-4 text-sm font-medium"
           >
             {t('filterApply')}
           </button>
-          <p className="basis-full text-xs text-muted-foreground">{t('filterHint')}</p>
+          {/* The approved sketch puts "+ New entitlement table" at the top right of this tab, opposite the
+              filter. The create form itself has not moved — it is still at the foot of the list, where every
+              guard over this block expects it — so this is a jump to it rather than a second form. One
+              definition, two ways in. */}
+          <Link
+            href="#new-entitlement-table"
+            className="ml-auto h-9 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+          >
+            {t('newTableJump')}
+          </Link>
+          {/* ⚠️ THE LINE HAS TO FOLLOW THE FILTER, because it states what is on screen. A fixed sentence
+              reading "Showing all leave types side by side" over a filtered list would be a caption that
+              contradicts the table under it — and the sentence's job is to tell an operator who narrowed the
+              screen how to widen it again. */}
+          <p className="basis-full text-xs text-muted-foreground">
+            {filteredTypeName ? t('filterHintScoped', { type: filteredTypeName }) : t('filterHint')}
+          </p>
         </form>
       </Card>
 
@@ -159,7 +194,7 @@ export default async function LeaveConfigEntitlementTablesPage({
           property is unchanged and the claim behind it is now stated exactly: this mount carries NO
           HARDCODED leave type, and with no query parameter it renders every leave type side by side. What
           `typeFilter` adds is the operator's own choice, read from the URL and cleared from the URL. */}
-      <EntitlementTablesBlock data={data} typeFilter={sp.leaveType} highlightTable={sp.table} editTemplate={sp.editTemplate} editRule={sp.editRule} showConfigHealth={false} showBenefitSchemes={false} />
+      <EntitlementTablesBlock data={data} typeFilter={sp.leaveType} highlightTable={sp.table} returnToType={sp.returnTo} editTemplate={sp.editTemplate} editRule={sp.editRule} showConfigHealth={false} showBenefitSchemes={false} />
 
       {/* F49 (r212 8ebf77ae) — the question the tables above cannot answer for one person: which rules
           exist, which are in force, and what about THIS employee does not match. Below the rules it

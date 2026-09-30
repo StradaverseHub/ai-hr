@@ -478,6 +478,7 @@ export async function EntitlementTablesBlock({
   leaveTypeId,
   typeFilter,
   highlightTable,
+  returnToType,
   editTemplate,
   editRule,
   showConfigHealth = true,
@@ -520,6 +521,34 @@ export async function EntitlementTablesBlock({
    * render the tab.
    */
   highlightTable?: string;
+  /**
+   * 3a4efe9f (r369) — "+ NEW TABLE" IS A ROUND TRIP, NOT A ONE-WAY DOOR.
+   *
+   * The approved plan's step 2.4: pressing "+ New table" on a leave type opens the create form on the
+   * Entitlement tables tab with the leave type filled in and locked, and SAVING BRINGS THE OPERATOR BACK to
+   * the leave type screen with the new table visible.
+   *
+   * The mechanism already existed and needed one more caller. `returnFor` in ./actions.ts reads
+   * `embeddedLeaveTypeId` off the posted form and `saved()` / `refused()` send the operator to that leave
+   * type's tab 3 with the `#type-<id>` anchor. Until now only the EMBEDDED mount posted that field, so a
+   * create typed on the Entitlement tables tab always stayed there — correct for an operator who went to
+   * that tab directly, and wrong for one who arrived by pressing "+ New table" and expects to be put back
+   * where they were.
+   *
+   * So the link carries `?returnTo=<leaveTypeId>` and this prop turns it into the SAME hidden field, on the
+   * CREATE / EDIT FORM ONLY. Not on the row controls: a Stop or Delete pressed on the Entitlement tables tab
+   * belongs back on the Entitlement tables tab whatever brought the operator there, and bouncing a
+   * destructive save onto a different screen would hide its result.
+   *
+   * ⚠️ NOT AN OPEN REDIRECT, and `returnFor`'s own header is why: the value is a leave type id interpolated
+   * into a fixed internal path fragment, never a caller-supplied URL. An id naming nothing lands on tab 3
+   * with no panel selected, which is what a stale link deserves.
+   *
+   * ⚠️ NAMED `returnToType`, NOT `returnToLeaveTypeId`. Two guards assert the standalone mount's props name
+   * no `leaveTypeId`; the capitalised form would not match their substring today, and relying on that would
+   * be relying on a coincidence of casing.
+   */
+  returnToType?: string;
   editTemplate?: string;
   editRule?: string;
   /**
@@ -844,7 +873,7 @@ export async function EntitlementTablesBlock({
   const manageTableHref = (lineageId: string) =>
     `${ENTITLEMENT_TEMPLATES}?leaveType=${encodeURIComponent(leaveTypeId ?? '')}&table=${encodeURIComponent(lineageId)}#table-${lineageId}`;
   /** …and the same screen with its create form in view and this leave type already filled in. */
-  const newTableHref = `${ENTITLEMENT_TEMPLATES}?leaveType=${encodeURIComponent(leaveTypeId ?? '')}#new-entitlement-table`;
+  const newTableHref = `${ENTITLEMENT_TEMPLATES}?leaveType=${encodeURIComponent(leaveTypeId ?? '')}&returnTo=${encodeURIComponent(leaveTypeId ?? '')}#new-entitlement-table`;
   /** The row's date box for Stop. `inputCls` is `w-full` and full height — a row control is neither. */
   const rowDateCls =
     'h-8 w-[8.5rem] rounded-md border border-input bg-card px-2 text-xs shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
@@ -867,6 +896,15 @@ export async function EntitlementTablesBlock({
    *  3a4efe9f — `embedded` for the same reason as `href` above: a save typed on the Entitlement tables tab
    *  belongs back on the Entitlement tables tab, filter and all, whether or not a filter was in force. */
   const returnField = embedded ? <input type="hidden" name="embeddedLeaveTypeId" value={leaveTypeId} /> : null;
+  /**
+   * 3a4efe9f — the CREATE / EDIT FORM's return field. `returnField` wins wherever it exists, so the embedded
+   * mount is byte-for-byte unchanged; `returnToType` only fills the gap on the standalone tab, and only for
+   * an operator who arrived by pressing "+ New table" on a leave type. See the prop's own note for why the
+   * row controls deliberately do NOT get this.
+   */
+  const formReturnField =
+    returnField ??
+    (returnToType ? <input type="hidden" name="embeddedLeaveTypeId" value={returnToType} /> : null);
 
   /**
    * 9e2a89e9 — THE COVERS CELL, one renderer for both columns.
@@ -1246,7 +1284,7 @@ export async function EntitlementTablesBlock({
               action={editingTemplate ? updateEntitlementTemplateAction : createEntitlementTemplateAction}
               className="space-y-4"
             >
-              {returnField}
+              {formReturnField}
               {editingTemplate ? <input type="hidden" name="lineageId" value={editingTemplate.lineageId} /> : null}
               <div className="grid gap-3 sm:grid-cols-3">
                 <Field label={t('templateName')}>
