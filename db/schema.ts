@@ -3678,6 +3678,13 @@ export const geofenceStatusEnum = pgEnum('geofence_status', ['pass', 'not_enforc
 // Only 'web' (self-service /me) can carry geofencing. 'import' = the biometric/terminal CSV importer,
 // which bypasses geofencing entirely (physical presence at the device is its own proof). A punch written
 // by decideAttendanceCorrection stays NULL (deliberate — no 'correction' value, per ADR-0070 §6).
+//
+// r368 c8282468 — AND THE READING THAT WAS THERE IS NOW KEPT. This comment recorded the deliberate half
+// only: a correction NULLS all 14 geo/method columns on both punches, which is right, but it destroyed a
+// geofence attestation with no copy anywhere, silently. The pre-image of those columns is now carried on
+// the `attendance.amended` event's top-level `before` block (core/attendance.ts AMENDED_FIGURE_COLUMNS),
+// so the Audit Trail shows the loss as "old → new" rather than leaving it invisible. Still no column and
+// still no snapshot table: see the ADR-0069 note on attendance_correction below.
 export const clockMethodEnum = pgEnum('clock_method', ['web', 'import']);
 
 // Absence classification (Wave 4A) — set when a day is explicitly recorded/corrected as absent, so the
@@ -4080,6 +4087,15 @@ export const attendanceCorrection = pgTable(
     //  • otApprovalMethod — which of the 3 calculation options produced approvedOtMinutes, for audit.
     // NOTE (ADR-0069): we deliberately do NOT persist a "systemCalculated" snapshot column — the comparison
     // figure is computed LIVE at review time via deriveAttendance/scheduleFor, never stored.
+    //
+    // ⚠️ r368 c8282468 — AND `systemCalculatedOtMinutes` IS NOT THE DAY'S PREVIOUS OT FIGURE. It is derived
+    // live, and on the clock-correction branch it is derived from the PROPOSED punches, so it never was the
+    // old row's overtime. It looks like an answer and is not; do not reach for it to reconstruct a
+    // pre-correction figure. THE PREVIOUS VALUES OF A CORRECTED DAY live on the `attendance.amended` event,
+    // as a top-level `{ before, after }` pair written in the same transaction after a SELECT of the row
+    // (core/attendance.ts AMENDED_FIGURE_COLUMNS). That placement is the point: a stored snapshot COLUMN
+    // here is what ADR-0069 declined by name, so recording it on the event honours that decision instead of
+    // fighting it. If a future round wants a column, it reopens ADR-0069 first.
     requestedOtMinutes: integer('requested_ot_minutes'),
     approvedOtMinutes: integer('approved_ot_minutes'),
     otApprovalMethod: otApprovalCalculationEnum('ot_approval_method'),

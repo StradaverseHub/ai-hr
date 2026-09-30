@@ -3201,6 +3201,118 @@ export function getAttendanceCorrectionAttachment(ctx: SessionContext, correctio
   });
 }
 
+/**
+ * ─── r368 · c8282468 · THE PRE-IMAGE OF A CORRECTED DAY ─────────────────────────────────────────────
+ *
+ * The caption under the admin correction form promised HR that a correction records "the previous value".
+ * It did not. `decideAttendanceCorrection` wrote the day with a blind `insert … onConflictDoUpdate` that
+ * never read the existing row, `.returning` took the id only, and the `attendance.amended` payload was
+ * after-values only — so the figure a correction replaced was destroyed UNREAD, and nothing anywhere
+ * could say afterwards what the day used to hold. No history table, no before column, no spelling of
+ * previousValue in the repo. This projection is the read that stops that.
+ *
+ * WHERE THE PREVIOUS VALUE GOES: a TOP-LEVEL `{ before, after }` pair on the existing `attendance.amended`
+ * payload, in the same transaction as the write. NOT a column and NOT a history table — ADR-0069 already
+ * declined a stored snapshot column on `attendance_correction` by name (db/schema.ts), so a column would
+ * fight an existing decision; an event payload does not. It is also the repo's dominant convention across
+ * ~60 `appendEvent` sites, and the closest precedent is one module away: `core/attendance-recompute.ts`
+ * puts `{ before, after }` on `attendance.recomputed`. The worked discipline is
+ * `localization/my/statutory.ts` — read the pre-image into a named local FIRST, write, then emit named
+ * before/after blocks ADDITIVELY, never moving the existing after-only keys.
+ *
+ * TWO HARD CONSTRAINTS FROM `describePayload` (lib/audit-format.ts), and breaking either loses the render:
+ *   · `before` and `after` must sit at the TOP LEVEL. A nested block falls through to the flat-key dump
+ *     and renders as one JSON string truncated at 120 characters.
+ *   · both sides must carry the SAME KEY SET, because the diff is per key. ONE projection is used for both
+ *     sides for exactly this reason: two hand-written shapes drift, and the trail then silently stops
+ *     showing a column.
+ *
+ * `after` IS RE-READ FROM THE ROW, never assembled from the values passed to the write. On the clock
+ * branch `applyApprovedOtPlanTx` runs AFTER the upsert and can re-assert `ot_minutes` and its six split
+ * columns; an assembled `after` would report a figure that is not on the row.
+ *
+ * WHAT IT COVERS — every column the correction's upsert writes, and nothing else:
+ *   · the clock times, the status and the day type;
+ *   · worked and overtime minutes, and the six per-rate OT split columns;
+ *   · the stage-1 measured and deducted minutes, and `calcTrace` — the stored WORKING behind them, which
+ *     a correction replaces and which cannot be re-derived from the figures beside it;
+ *   · `remarks`;
+ *   · AND THE 14 GEO/METHOD COLUMNS A CORRECTION NULLS, seven per punch. Nulling them is ADR-0070 and is
+ *     deliberate and right — a time typed in by HR has no location behind it — but it DESTROYS a geofence
+ *     attestation, and until now it did so silently: db/schema.ts records the deliberate half only. They
+ *     are in the before-image so the diff SHOWS the loss; `after` carries the same keys as nulls.
+ *
+ * NOT `absenceReason`: the upsert does not write it. A before-image wider than the write would assert a
+ * change that never happened.
+ */
+const AMENDED_FIGURE_COLUMNS = {
+  checkInAt: attendance.checkInAt,
+  checkOutAt: attendance.checkOutAt,
+  status: attendance.status,
+  dayType: attendance.dayType,
+  workedMinutes: attendance.workedMinutes,
+  otMinutes: attendance.otMinutes,
+  // stage1Columns(), column for column.
+  calcTrace: attendance.calcTrace,
+  lateMinutes: attendance.lateMinutes,
+  earlyOutMinutes: attendance.earlyOutMinutes,
+  underMinutes: attendance.underMinutes,
+  lateDeductMinutes: attendance.lateDeductMinutes,
+  earlyOutDeductMinutes: attendance.earlyOutDeductMinutes,
+  // otSplitColumns(), column for column — the OT-only branch writes these six and nothing else.
+  otFlatMinutes: attendance.otFlatMinutes,
+  ot00Minutes: attendance.ot00Minutes,
+  ot10Minutes: attendance.ot10Minutes,
+  ot15Minutes: attendance.ot15Minutes,
+  ot20Minutes: attendance.ot20Minutes,
+  ot30Minutes: attendance.ot30Minutes,
+  remarks: attendance.remarks,
+  // ADR-0070 geo capture, seven per punch. Destroyed by every clock correction; see the note above.
+  checkInMethod: attendance.checkInMethod,
+  checkInLat: attendance.checkInLat,
+  checkInLng: attendance.checkInLng,
+  checkInClockingLocationId: attendance.checkInClockingLocationId,
+  checkInDistanceM: attendance.checkInDistanceM,
+  checkInGeofenceStatus: attendance.checkInGeofenceStatus,
+  checkInRadiusM: attendance.checkInRadiusM,
+  checkOutMethod: attendance.checkOutMethod,
+  checkOutLat: attendance.checkOutLat,
+  checkOutLng: attendance.checkOutLng,
+  checkOutClockingLocationId: attendance.checkOutClockingLocationId,
+  checkOutDistanceM: attendance.checkOutDistanceM,
+  checkOutGeofenceStatus: attendance.checkOutGeofenceStatus,
+  checkOutRadiusM: attendance.checkOutRadiusM,
+};
+
+/** Every key of the pair, exported so a guard can assert the two sides agree without restating the list. */
+export const AMENDED_FIGURE_KEYS = Object.keys(AMENDED_FIGURE_COLUMNS) as readonly string[];
+
+export type AmendedFigures = { [K in keyof typeof AMENDED_FIGURE_COLUMNS]: unknown };
+
+/** The day's figures BY (employment, date) — the pair the correction's upsert targets, and the only handle
+ *  available before the row exists. `null` means NO ROW EXISTED, which is not an empty object and not a row
+ *  of nulls: "nothing was recorded" and "an explicit zero" are different befores, so `before: null` is the
+ *  honest answer and `describePayload` renders each key as "— → value" from it. */
+async function attendanceFiguresTx(tx: Tx, employmentId: string, date: string): Promise<AmendedFigures | null> {
+  const [row] = await tx
+    .select(AMENDED_FIGURE_COLUMNS)
+    .from(attendance)
+    .where(and(eq(attendance.employmentId, employmentId), eq(attendance.attendanceDate, date)))
+    .limit(1);
+  return row ?? null;
+}
+
+/** The same projection BY ROW ID, for the after-image and for `applyApprovedOtPlanTx` (which is handed the
+ *  attendance id). Exact rather than re-resolving (employment, date) after a write. */
+async function attendanceFiguresByIdTx(tx: Tx, attendanceId: string): Promise<AmendedFigures | null> {
+  const [row] = await tx
+    .select(AMENDED_FIGURE_COLUMNS)
+    .from(attendance)
+    .where(eq(attendance.id, attendanceId))
+    .limit(1);
+  return row ?? null;
+}
+
 /** Decide a correction. Approval upserts the attendance row with the proposed punches,
  *  re-derived through the time engine (so corrected OT flows to payroll). No self-approval.
  *
@@ -3289,6 +3401,18 @@ export async function decideAttendanceCorrection(
           approvedOtMinutes = resolveApprovedOt(cor.requestedOtMinutes!, systemOtForComparison, otApprovalMethod);
         }
       }
+
+      // ── r368 c8282468 · THE PRE-IMAGE, READ BEFORE ANYTHING IS WRITTEN ──────────────────────────────
+      // ⚠️ THIS READ MUST STAY ABOVE THE BRANCH DISPATCH. Everything below it writes: the clock branch
+      // upserts the whole day, the OT-only branch updates ot_minutes and its split. Move this line under
+      // either of them and `before` becomes a copy of `after` — green tests, and an audit trail that
+      // silently says nothing changed. See AMENDED_FIGURE_COLUMNS above for what it covers and why the
+      // geo columns are in it.
+      //
+      // Skipped for a DEFERRED approval, which writes nothing to attendance and emits no
+      // `attendance.amended` at all: its before/after is taken at the moment the plan LANDS, in
+      // applyApprovedOtPlanTx, because that is the moment a figure actually moves.
+      const beforeFigures = deferred ? null : await attendanceFiguresTx(tx, cor.employmentId, cor.attendanceDate);
 
       let amendedId: string | null = null;
       let eventPayload: Record<string, unknown>;
@@ -3478,6 +3602,10 @@ export async function decideAttendanceCorrection(
 
       // 1e9145d4 — only when an attendance row was actually amended. A deferred approval touched none.
       if (amendedId != null) {
+        // r368 c8282468 — the AFTER image, re-read from the row rather than assembled from what we passed
+        // to the write. `applyApprovedOtPlanTx` above can re-assert ot_minutes and its six split columns
+        // after the upsert, so the row is the only thing that knows what the day now says.
+        const afterFigures = await attendanceFiguresByIdTx(tx, amendedId);
         await appendEvent(tx, {
           tenantId: ctx.tenantId,
           aggregateType: 'attendance',
@@ -3485,7 +3613,13 @@ export async function decideAttendanceCorrection(
           eventType: 'attendance.amended',
           actor: actorOf(ctx),
           subjectEmploymentId: cor.employmentId,
-          payload: eventPayload,
+          // ⚠️ ADDITIVE, AND `before`/`after` ARE TOP-LEVEL. The after-only keys `eventPayload` already
+          // carried (correctionId, date, checkIn, checkOut, status, dayType, workedMinutes, otMinutes and
+          // the four OT-approval keys) are KEPT AND UNMOVED: a consumer of the event stream reads them,
+          // and the same "add beside, never relocate" rule localization/my/statutory.ts states for the EPF
+          // election applies here. Nesting the pair would drop describePayload through to the flat dump and
+          // render it as JSON truncated at 120 characters.
+          payload: { ...eventPayload, before: beforeFigures, after: afterFigures },
         });
       }
 
@@ -4505,11 +4639,21 @@ async function applyApprovedOtPlanTx(
   const method: OtApprovalMethod =
     (plan.otApprovalMethod as OtApprovalMethod | null) ?? (await otApprovalCalculationFor(tx, p.employmentId));
   const otMinutes = resolveApprovedOt(plan.requestedOtMinutes!, p.systemOtMinutes, method);
+  // ── r368 c8282468 · THE PRE-IMAGE OF A DEFERRED LANDING ─────────────────────────────────────────────
+  // THIS IS THE ONLY MOMENT A DEFERRED APPROVAL MOVES A FIGURE. `decideAttendanceCorrection` wrote nothing
+  // to attendance when the plan was filed for a future date and emitted no `attendance.amended` at all, so
+  // it has no before/after to record; the landing does, and this is it. ⚠️ MUST STAY ABOVE `writeOt` — it
+  // is the only write to the attendance row on this path, and reading after it makes `before` a copy of
+  // `after`. The `claimed` UPDATE above touches attendance_correction, never attendance.
+  const beforeFigures = await attendanceFiguresByIdTx(tx, p.attendanceId);
   await writeOt(otMinutes);
   await tx
     .update(attendanceCorrection)
     .set({ approvedOtMinutes: otMinutes })
     .where(eq(attendanceCorrection.id, plan.id));
+  // Re-read rather than assembled, and with the SAME projection as `before`, so the two sides cannot carry
+  // different key sets — which is what describePayload's per-key diff needs to render "old → new".
+  const afterFigures = await attendanceFiguresByIdTx(tx, p.attendanceId);
 
   await appendEvent(tx, {
     tenantId: ctx.tenantId,
@@ -4530,6 +4674,12 @@ async function applyApprovedOtPlanTx(
       // The distinguishing mark of a deferred landing in the audit trail: this OT was agreed before the day
       // was worked, and this is the moment it was counted.
       otPlanApplied: true,
+      // r368 c8282468 — TOP-LEVEL and ADDITIVE, exactly as on the correction path. Every key above is
+      // after-only and stays where it is; the pair is added beside them. On this path the figures that move
+      // are ot_minutes and the six split columns, so those are the lines the trail renders as old → new —
+      // the rest of the projection is carried unchanged on both sides and describePayload drops it.
+      before: beforeFigures,
+      after: afterFigures,
     },
   });
 
@@ -4563,6 +4713,13 @@ async function applyApprovedOtPlanTx(
  *  · OvertimeAlreadyCountedError — the hours are already ON the attendance day and in what payroll reads.
  *    Withdrawal is refused at that point by design, so the way out is an attendance CORRECTION that also
  *    states the day's clock times: the route that records what the figure was and what it became.
+ *
+ *    ⚠️ r368 c8282468 — THAT SENTENCE WAS NOT TRUE WHEN IT WAS WRITTEN. The correction route recorded what
+ *    the figure BECAME and nothing about what it WAS: the upsert never read the row it overwrote and the
+ *    `attendance.amended` payload was after-values only. It is true as of this round, because the payload
+ *    now carries a top-level `{ before, after }` pair (AMENDED_FIGURE_COLUMNS above). Left standing rather
+ *    than reworded, with the correction beside it, so a reader can see which half of it the code earned and
+ *    when — and so nobody quietly re-derives the claim from the comment again.
  *
  * TYPED, not raw English `throw`s, because app/me/actions.ts surfaces `Error.message` straight into
  * `?error=` and ErrorBanner prints it verbatim — so a raw throw is English for a Tamil, Thai, Malay,

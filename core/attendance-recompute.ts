@@ -435,8 +435,16 @@ export async function recomputeAttendance(ctx: SessionContext, p: RecomputeScope
       });
     }
     // The run event. It carries the WHOLE per-day array because that array is the run history: the screen
-    // re-opens a past run by reading this payload back, and /admin/audit renders no payloads at all. At
-    // tenant scale (hundreds of attendance rows) the payload is small.
+    // re-opens a past run by reading this payload back. At tenant scale (hundreds of attendance rows) the
+    // payload is small.
+    //
+    // ⚠️ r368 c8282468 — THIS COMMENT USED TO END "and /admin/audit renders no payloads at all", WHICH IS
+    // FALSE and was the reason the whole array was considered safe to carry. components/audit-table.tsx
+    // expands every row's payload through lib/audit-format.ts `describePayload`, so this one renders as a
+    // flat key dump with each value truncated at 120 characters — including `rows`. That is ugly, not
+    // unsafe (the array carries minutes, not pay), and it is left as it is rather than reshaped in a round
+    // that is about the correction path. What is corrected is the SENTENCE: the next reader must not size a
+    // payload on the belief that nothing displays it.
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'attendance-recompute',
