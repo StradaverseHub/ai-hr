@@ -3025,7 +3025,7 @@
     "dayCorrectReason": "திருத்தத்திற்கான காரணம்",
     "dayCorrectSave": "திருத்தத்தைச் சேமிக்கவும்",
     "dayCorrectTrailNote": "[retired r368 — item c8282468. It read \"Saved immediately, and recorded: who changed it, when, the previous value and this reason\" and THE PREVIOUS VALUE WAS RECORDED NOWHERE: decideAttendanceCorrection overwrote the day’s figures without first reading them and the attendance.amended payload carried after-values only. Replaced by dayCorrectAuditNote, which the same admin correction form on /attendance/individual/<date> renders. Item 67268d83 round 2 consumes the new key and must not reinstate this sentence]",
-    "dayCorrectAuditNote": "உடனடியாகச் சேமிக்கப்பட்டு பதிவு செய்யப்படுகிறது: யார் மாற்றினார், எப்போது, மேலும் இந்தக் காரணம்.",
+    "dayCorrectAuditNote": "உடனடியாகச் சேமிக்கப்படுகிறது. தணிக்கைப் பதிவில் பதிவு செய்யப்படுவது: யார் மாற்றினார், எப்போது, இந்தக் காரணம், மேலும் இந்தத் திருத்தம் மாற்றும் ஒவ்வொரு புள்ளிவிவரத்தின் பழைய மதிப்பும் புதிய மதிப்பும் — அது அழிக்கும் பணியிடத்தின் இருப்பிடச் சரிபார்ப்பு உட்பட.",
     "correctionForbidden": "அந்தப் பணியாளரை நீங்கள் திருத்த முடியாது.",
     "correctionBadDate": "அது சரியான தேதி அல்ல.",
     "correctionReasonRequired": "திருத்தத்திற்கான காரணத்தைக் குறிப்பிடவும்.",

@@ -3025,7 +3025,7 @@
     "dayCorrectReason": "Lý do điều chỉnh",
     "dayCorrectSave": "Lưu điều chỉnh",
     "dayCorrectTrailNote": "[retired r368 — item c8282468. It read \"Saved immediately, and recorded: who changed it, when, the previous value and this reason\" and THE PREVIOUS VALUE WAS RECORDED NOWHERE: decideAttendanceCorrection overwrote the day’s figures without first reading them and the attendance.amended payload carried after-values only. Replaced by dayCorrectAuditNote, which the same admin correction form on /attendance/individual/<date> renders. Item 67268d83 round 2 consumes the new key and must not reinstate this sentence]",
-    "dayCorrectAuditNote": "Lưu ngay và được ghi nhận: ai đã thay đổi, khi nào và lý do này.",
+    "dayCorrectAuditNote": "Lưu ngay. Được ghi trong Nhật ký kiểm toán: ai đã thay đổi, khi nào, lý do này, cùng giá trị cũ và giá trị mới của mọi con số mà lần sửa này làm thay đổi — bao gồm cả kiểm tra vị trí tại chỗ bị xóa.",
     "correctionForbidden": "Bạn không có quyền điều chỉnh nhân viên này.",
     "correctionBadDate": "Ngày không hợp lệ.",
     "correctionReasonRequired": "Vui lòng nêu lý do điều chỉnh.",

@@ -3025,7 +3025,7 @@
     "dayCorrectReason": "Sebab pembetulan",
     "dayCorrectSave": "Simpan pembetulan",
     "dayCorrectTrailNote": "[retired r368 — item c8282468. It read \"Saved immediately, and recorded: who changed it, when, the previous value and this reason\" and THE PREVIOUS VALUE WAS RECORDED NOWHERE: decideAttendanceCorrection overwrote the day’s figures without first reading them and the attendance.amended payload carried after-values only. Replaced by dayCorrectAuditNote, which the same admin correction form on /attendance/individual/<date> renders. Item 67268d83 round 2 consumes the new key and must not reinstate this sentence]",
-    "dayCorrectAuditNote": "Disimpan serta-merta dan direkodkan: siapa yang mengubah, bila, dan sebab ini.",
+    "dayCorrectAuditNote": "Disimpan serta-merta. Direkodkan dalam Jejak audit: siapa yang mengubah, bila, sebab ini, serta nilai lama dan nilai baharu bagi setiap angka yang diubah oleh pembetulan ini — termasuk pemeriksaan lokasi di tapak yang dikosongkannya.",
     "correctionForbidden": "Pekerja itu bukan pekerja yang boleh anda betulkan.",
     "correctionBadDate": "Itu bukan tarikh yang sah.",
     "correctionReasonRequired": "Berikan sebab untuk pembetulan ini.",

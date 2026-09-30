@@ -43,6 +43,18 @@ const PREVIOUS_VALUE_CLAUSE: Record<string, string> = {
   vi: 'giá trị trước đó',
 };
 
+/** The two claims step 3 adds, per locale: the old-and-new-value promise and the on-site location clause.
+ *  Asserted in the language the caption is written in — a half-applied reword that changed English and left
+ *  five locales on the narrower step-1 sentence is exactly the failure the deep-merge hides. */
+const KEPT_CLAIM: Record<string, string[]> = {
+  en: ['Audit trail', 'old and new value', 'on-site location check'],
+  ms: ['Jejak audit', 'nilai lama dan nilai baharu', 'lokasi di tapak'],
+  zh: ['审计日志', '原值与新值', '现场位置校验'],
+  ta: ['தணிக்கைப் பதிவில்', 'பழைய மதிப்பும் புதிய மதிப்பும்', 'இருப்பிடச் சரிபார்ப்பு'],
+  th: ['บันทึกการตรวจสอบ', 'ค่าเดิมกับค่าใหม่', 'ตำแหน่งที่หน้างาน'],
+  vi: ['Nhật ký kiểm toán', 'giá trị cũ và giá trị mới', 'vị trí tại chỗ'],
+};
+
 describe('r368 c8282468 · the correction caption stops promising what nothing stored', () => {
   it('the form renders the NEW key, and no longer the retired one', () => {
     expect(DAY_PAGE, 'the caption under the admin correction form').toContain("t('dayCorrectAuditNote')");
@@ -57,17 +69,68 @@ describe('r368 c8282468 · the correction caption stops promising what nothing s
     );
   });
 
-  it.each(LOCALES)('%s: dayCorrectAuditNote is live, and does not claim the previous value', (loc) => {
+  it.each(LOCALES)('%s: dayCorrectAuditNote is live in every locale', (loc) => {
     const a = messages(loc).attendance;
     const v = String(a.dayCorrectAuditNote);
     expect(typeof a.dayCorrectAuditNote, `${loc}: the replacement must resolve`).toBe('string');
     expect(v.trim(), `${loc}: a blank caption is a silent regression`).not.toBe('');
     expect(v, `${loc}: the live caption must not itself be a retirement marker`).not.toContain('[retired');
-    // ⚠️ THE WHOLE POINT. The clause the screen may not print until something stores it.
+  });
+
+  /**
+   * ⚠️ STEP 1's ASSERTION IS GONE FROM HERE, AND THIS IS THE RECORD OF WHY — the same "prose outlives the
+   * kernel" rule, applied to a test. Step 1 asserted the caption did NOT contain the previous-value clause
+   * (PREVIOUS_VALUE_CLAUSE below), because nothing stored it. Step 2 stores it, so the clause became TRUE
+   * and the negative assertion became a guard against the fix. In zh and th it is not even expressible any
+   * more: "原值" and "ค่าเดิม" are substrings of the "原值与新值" / "ค่าเดิมกับค่าใหม่" the corrected caption
+   * legitimately says.
+   *
+   * The clause is now EARNED, not assumed, and what earns it is a different file:
+   * test/r368-correction-before-after.test.ts pins the `{ before, after }` pair on `attendance.amended`.
+   * If that file is ever weakened, the caption below is overclaiming again — the two move together.
+   */
+  it('the retired clause is still spelled out, so a future round can find what changed', () => {
+    for (const loc of LOCALES) {
+      expect(PREVIOUS_VALUE_CLAUSE[loc], `${loc}: the clause the old caption used`).toBeTruthy();
+    }
     expect(
-      v,
-      `${loc}: the caption may not promise the previous value — check what is stored before relaxing this`,
-    ).not.toContain(PREVIOUS_VALUE_CLAUSE[loc]);
+      String(messages('en').attendance.dayCorrectTrailNote),
+      'the retired key quotes it, which is how a reader finds this history at all',
+    ).toContain(PREVIOUS_VALUE_CLAUSE.en);
+  });
+
+  /**
+   * STEP 3 — AND NOW IT SAYS WHAT IS KEPT. Step 1 made the caption true by saying LESS; step 2 made the
+   * recording real, so the caption says more again — and every clause of it has to be checkable from this
+   * repo (CLAUDE.md §8, "a shared caption may say only what is true of every member"):
+   *
+   *   · "the old and new value of every figure the correction moves" — the `{ before, after }` pair on the
+   *     `attendance.amended` event, over the whole projection (test/r368-correction-before-after.test.ts);
+   *   · "including the on-site location check it clears" — the 14 ADR-0070 geo columns are IN the pair;
+   *   · "the Audit trail" — and NOT this screen, and NOT the personnel Change History card. The day screen
+   *     renders no history, and core/read.ts `employeeAudit` filters on an aggregate-id set that excludes
+   *     attendance. /admin/audit is the only surface, so it is the only one the sentence may name.
+   *
+   * The caption's own product noun must match what the Audit Trail screen calls itself, or a reader is sent
+   * to a page that is not labelled the way the caption says.
+   */
+  it.each(LOCALES)('%s: the caption states what is now kept, and names the surface that shows it', (loc) => {
+    const v = String(messages(loc).attendance.dayCorrectAuditNote);
+    for (const phrase of KEPT_CLAIM[loc]) {
+      expect(v, `${loc}: the caption must state "${phrase}" — it is what step 2 made true`).toContain(phrase);
+    }
+  });
+
+  /** The product noun is tied to the screen's OWN label in English, where the caption is authored. The five
+   *  translations inflect it (Tamil's locative is "தணிக்கைப் பதிவில்", not the bare nominative), so they are
+   *  checked against their own listed phrase above rather than against a substring of `nav.auditTrail` — a check
+   *  that would only be satisfiable by writing ungrammatical Tamil. */
+  it('the English caption names the Audit trail exactly as the screen labels itself', () => {
+    const m = messages('en');
+    expect(String(m.attendance.dayCorrectAuditNote)).toContain(String(m.nav.auditTrail));
+    expect(String(m.nav.auditTrail), 'and the nav row and the page heading already agree on it').toBe(
+      String(m.admin.audit.title),
+    );
   });
 
   /** The retirement note has to say what the sentence claimed and why it was wrong, or the next round
