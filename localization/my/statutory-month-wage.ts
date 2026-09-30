@@ -422,8 +422,10 @@ export function scopedMonthWagesFrom(
       }
     }
 
-    // THE NORMAL STREAM ONLY IF THE SELECTION PAID IT. This single line is the difference between a
-    // Bonus-only Borang A that reads RM5,000 and one that reads RM14,000 — see the header.
+    // THE NORMAL STREAM ONLY IF THE SELECTION PAID IT. On a month of RM4,000 salary plus an RM5,000 bonus
+    // run, this single line is the difference between a Bonus-only Borang A whose Upah reads 5,000 and one
+    // whose Upah reads 9,000 beside contributions that only cover the bonus — see the header, and
+    // test/statutory-month-wage.test.ts, which asserts BOTH figures so the wrong one cannot be reached.
     w.epf = round2((selectionHasRegularRun && normalBase !== null ? normalBase : 0) + additionalInSelection);
     if (epfStampedInSelection > 1 && maxEpf - minEpf > WAGE_BASE_TOLERANCE) w.epfInconsistent = true;
     if (socsoStampedInSelection > 1 && maxSocso - minSocso > WAGE_BASE_TOLERANCE) {
