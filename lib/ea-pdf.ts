@@ -455,7 +455,13 @@ export const EA_FORM = {
    */
   moneyLeft: 482.3,
   moneyRight: 556.6,
-  /** Where the agency writes ON that rule (the cell edge + the table's 5.4 pt cell padding). */
+  /**
+   * Where the agency writes ON that rule (the cell edge + the table's 5.4 pt cell padding).
+   *
+   * ⚠️ NOT DRAWN ON — our amounts are RIGHT-aligned on `moneyRight`, as money is. It is here because
+   * `test/ea-agency-grid.test.ts` re-derives the money column from the agency's own file on every run
+   * and this is the run position it finds; a constant nobody draws with is still evidence.
+   */
   moneyLeader: 487.7,
   /**
    * ── THE FOUR TEXT COLUMNS THE FORM IS SET IN ──────────────────────────────────────────────────────
@@ -465,7 +471,13 @@ export const EA_FORM = {
    * 80.2, and those are what a renderer must draw on. (Section A's letter is at 45.5 against a 39.8 cell
    * edge, 5.7 pt: the letter is centred in its cell rather than padded, and 45.5 is where it lands.)
    */
-  /** The section letter, inside its filled block. */
+  /**
+   * The section letter, inside its filled block.
+   *
+   * ⚠️ NOT DRAWN ON either — the letter is CENTRED in the agency's own block, which puts it within a
+   * point of this (45.4 for A, 45.9 for F, because the glyphs differ in width). It is the agency's
+   * measured position and what the grid guard checks our centring against.
+   */
   sectionLetter: 45.5,
   /** The item number — "1.", "2." … — and equally a section's TITLE, which sits in the same column. */
   itemLabel: 62.5,
@@ -623,8 +635,6 @@ export const EA_FORM = {
   rowsE: { fundName: 661.8, epf: 675, perkeso: 688.1 },
   /** B.2's two description rules, which carry no money. */
   incomeTypeX: { letter: 154.3, rule: [172.4, 298.9] as const },
-  /** B.1(f)'s two period rules, measured off the agency's own leaders. */
-  gratuityRule: { from: [192.3, 296] as const, to: [307.9, 411] as const, toCue: 299 },
   /**
    * The officer box at the foot, on the agency's own rows.
    *
@@ -670,7 +680,15 @@ export const EA_FORM = {
      * rather than wrap goes UP, which is the argument for the second sheet, not against the floor.
      */
     minSize: 6,
-    /** The gap between the last writing baseline and the box's own bottom rule (802 → 817.9). */
+    /**
+     * The gap between the last writing baseline and the box's own bottom rule (802 → 817.9).
+     *
+     * ⚠️ NOT DRAWN WITH — `t1` is the measured bottom rule and the box does not grow, so nothing
+     * computes from this. It is here as the CONSISTENCY CHECK between two independent readings of the
+     * agency's page: `rowT0 + 4 × rowPitch + footPad` must land on `t1`, and
+     * `test/ea-agency-grid.test.ts` asserts it. If a future round re-pitches this box, that is the
+     * arithmetic that says where its bottom edge goes.
+     */
     footPad: 15.9,
   },
   /** The Date, which the agency prints OUTSIDE the box, on the telephone's row. */

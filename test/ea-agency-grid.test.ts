@@ -188,6 +188,16 @@ describe('r372 — EA_FORM is LHDN’s own grid, re-derived from LHDN’s own fi
     expect(agency.runs.some((r) => near(r.tt, lastRow) && near(r.x, F.dateX)), 'the agency’s Date row').toBe(true);
   });
 
+  it('the box’s own two readings agree: five rows plus its foot padding land on its bottom rule', () => {
+    const O = F.officerBox;
+    // Two independent measurements off the agency's page — the five text baselines (--all) and the
+    // frame's bottom rule (--rects) — must be consistent, or one of them was read off the wrong thing.
+    expect(O.rowT0 + 4 * O.rowPitch + O.footPad, 'the officer box’s rows and its frame disagree').toBeCloseTo(O.t1, 0);
+    // The bottom rule is a 0.9 pt FILL, so `t1` is its outer edge (tt1) and `t0` the top rule's tt0.
+    expect(agency.rects.some((r) => near(r.tt1, O.t1, 0.4) && near(r.x0, O.x0, 0.4)), 'the agency’s bottom rule').toBe(true);
+    expect(agency.rects.some((r) => near(r.tt0, O.t0, 0.4) && near(r.x0, O.x0, 0.4)), 'the agency’s top rule').toBe(true);
+  });
+
   it('the money column the item promises is UNTOUCHED is still the agency’s', () => {
     const cells = agency.rects.filter((r) => near(r.x0, F.moneyLeft) && near(r.x1, F.moneyRight));
     expect(cells.length, 'the agency’s money cells moved').toBeGreaterThan(50);
