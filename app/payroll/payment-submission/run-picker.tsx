@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { inputCls } from '@/components/ui';
 import { payslipCycleLabel } from '@/core/payslip-cycle-label';
@@ -93,16 +93,23 @@ export function RunPicker({
 
   const all = runs ?? [];
   const allPicked = all.length > 0 && picked.size === all.length;
-  const label = (r: FilableRun) =>
-    payslipCycleLabel({ cycleName: r.cycleName, runTypeLabel: runTypeWord(t, r.runType) }) ??
-    t('payCycleRun', { seq: r.runSeq });
+  // `useCallback` so the search memo can DECLARE its dependency on the label rather than close over it
+  // silently. The label is what the search matches, so a memo that did not list it would keep yesterday's
+  // matches after a locale change — small here, and the kind of omission that is invisible until it is not.
+  const label = useCallback(
+    (r: FilableRun) =>
+      payslipCycleLabel({ cycleName: r.cycleName, runTypeLabel: runTypeWord(t, r.runType) }) ??
+      t('payCycleRun', { seq: r.runSeq }),
+    [t],
+  );
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return all;
+    // Matched on the LABEL the operator can actually read, plus an exact run number — never on the raw
+    // `run_type` enum, which is not a word anybody sees.
     return all.filter((r) => label(r).toLowerCase().includes(q) || String(r.runSeq) === q);
-    // `label` closes over `t`, which is stable for a render pass; the list and the query are what change.
-  }, [all, search]);
+  }, [all, search, label]);
 
   const toggle = (seq: number) =>
     setPicked((prev) => {
