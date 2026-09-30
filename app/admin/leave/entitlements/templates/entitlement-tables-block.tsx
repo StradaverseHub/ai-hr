@@ -52,6 +52,8 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { EntitlementBandsEditor, type EditableBand } from '@/components/leave/entitlement-bands-editor';
 import { EligibilityRuleForm } from '@/components/leave/eligibility-rule-form';
 import { todayInKualaLumpur } from '@/lib/hr-date';
+// 3a4efe9f — the ONE address that edits entitlement tables, named where every save already returns to it.
+import { ENTITLEMENT_TEMPLATES } from '@/app/admin/_redirects';
 // r299 (3de1453a) — the engine's own predicates, so the Balance Health finding for an earned method on a type
 // that is not Annual Leave is decided exactly where the sweep decides it. Server module; plain boolean out.
 import { isEarnedAccrualType, isEarnedMethod } from '@/core/leave';
@@ -480,6 +482,7 @@ export async function EntitlementTablesBlock({
   editRule,
   showConfigHealth = true,
   showBenefitSchemes = true,
+  tablesReadOnly = false,
 }: {
   data: EntitlementTablesData;
   /** Absent ⇒ the standalone screen: every leave type, with the Leave type column and the type picker.
@@ -545,6 +548,41 @@ export async function EntitlementTablesBlock({
    * deletion would take the scoped mount's schemes editor with it.
    */
   showBenefitSchemes?: boolean;
+  /**
+   * 3a4efe9f (r369) — THIS MOUNT SHOWS THE TABLES BUT DOES NOT EDIT THEM.
+   *
+   * THE COMPLAINT. The same list of entitlement tables appeared on two screens, both with Edit, a date box,
+   * Stop and Delete, and both with a full create form. Underneath there is ONE stored record
+   * (`entitlement_template`), ONE component (this file) and ONE write path (`./actions.ts` → `core/`), so
+   * nothing was ever actually duplicated — but nothing on either screen said so, and HR admins updated both
+   * and worried about which one won.
+   *
+   * The agreed responsibility matrix: the Entitlement tables tab CREATES, EDITS, STOPS and DELETES; the
+   * leave type's "What are they entitled to" tab SHOWS the same tables read-only and owns the leave type's
+   * own rules — earning method, proration, rounding, the default table, the benefit schemes, and the
+   * job-grade coverage warning. So this flag suppresses the four row controls, the delete-blocked caption
+   * and the create/edit form, and puts a link to the editing screen in their place.
+   *
+   * ⚠️ GATED, NEVER FORKED, and the reason is the item itself. Two copies of a form writing one
+   * effective-dated lineage drift the first time either is touched and both still save — which is exactly
+   * the fear this item was raised about. The JSX below is the one definition both mounts share, precisely as
+   * `showConfigHealth` and `showBenefitSchemes` already are (that precedent is pinned as "GATED, not
+   * deleted" at test/r270-entitlement-tables-screen.test.ts). Deleting it would also take the editor away
+   * from the Entitlement tables tab, and `test/r210-entitlement-delete.test.ts` §D reads this file's source
+   * for every control being suppressed here.
+   *
+   * ⚠️ IT DOES NOT TOUCH THE ELIGIBILITY / BENEFIT SCHEME CONTROLS. Those stay EDITABLE on the leave type
+   * screen — the matrix says so — and they are governed by `showBenefitSchemes`, which is already true there
+   * and false on the Entitlement tables tab.
+   *
+   * ⚠️ AND IT DOES NOT TOUCH `leaveTypeId`. The leave type mount must keep passing it
+   * (`test/entitlement-tables-embed.test.ts` §1 asserts `leaveTypeId={leaveTypeId}` on that page): read-only
+   * is a SECOND property, not the removal of the filter. Nor may this name carry that substring.
+   *
+   * Default FALSE, so every existing mount keeps today's behaviour and only the caller that wants the
+   * editor gone has to say so.
+   */
+  tablesReadOnly?: boolean;
 }) {
   const t = await getTranslations('admin.entitlementTemplates');
   // r212 — the marital-status values already shipped in six locales under the leave-type screen's own
@@ -790,6 +828,23 @@ export async function EntitlementTablesBlock({
    */
   const deleteBlockText = (block: EntitlementUsageBlock | undefined): string | null =>
     !block || isDeletableLineage(block) ? null : t('deleteBlockedByRules', { rules: block.rules.join(', ') });
+  /**
+   * 3a4efe9f — THE WAY TO THE ONE SCREEN THAT EDITS TABLES, built from the redirect constant rather than a
+   * typed path.
+   *
+   * `ENTITLEMENT_TEMPLATES` is already the address every table and eligibility save returns to, so a literal
+   * here would be a second statement about where that screen lives — the exact drift that constant's own
+   * header warns about. `?leaveType=` preselects r369's filter (which is what lets the create form on that
+   * tab name a leave type at all, and therefore what keeps its reach warning wordable); `?table=` highlights
+   * the row; the `#table-<lineageId>` fragment scrolls to it with no client JavaScript.
+   *
+   * ⚠️ NOT THROUGH `href()`. That helper appends `#type-<id>`, which names a leave type PANEL on the screen
+   * we are LEAVING. These links carry their own fragment, on the screen they are going to.
+   */
+  const manageTableHref = (lineageId: string) =>
+    `${ENTITLEMENT_TEMPLATES}?leaveType=${encodeURIComponent(leaveTypeId ?? '')}&table=${encodeURIComponent(lineageId)}#table-${lineageId}`;
+  /** …and the same screen with its create form in view and this leave type already filled in. */
+  const newTableHref = `${ENTITLEMENT_TEMPLATES}?leaveType=${encodeURIComponent(leaveTypeId ?? '')}#new-entitlement-table`;
   /** The row's date box for Stop. `inputCls` is `w-full` and full height — a row control is neither. */
   const rowDateCls =
     'h-8 w-[8.5rem] rounded-md border border-input bg-card px-2 text-xs shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
@@ -977,6 +1032,23 @@ export async function EntitlementTablesBlock({
         />
         {/* What this table cannot show, said before it rather than after (r270 D4). */}
         <p className="px-3 pb-2 text-xs text-muted-foreground">{t('gridOverlapNote')}</p>
+        {/* ── 3a4efe9f · THE WAY TO ADD A TABLE, ON THE SCREEN THAT ADDS THEM ──────────────────────────
+            At the TOP of the list, where the create form used to begin, so an operator looking for "New
+            entitlement table" finds the route to it in the place the form stood. The link carries this leave
+            type, so the form opens with the type already filled in and locked — which is also what makes its
+            reach warning wordable there, and the reason r369's filter had to ship before this link did.
+            The helper line above the list (`entitlementStep.tablesHint`, rendered by the host page) says the
+            other half: changes made there appear here with no second save. */}
+        {tablesReadOnly ? (
+          <div className="flex flex-wrap items-center justify-end px-3 pb-2">
+            <Link
+              href={newTableHref}
+              className="h-8 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
+            >
+              {t('newTableElsewhere')}
+            </Link>
+          </div>
+        ) : null}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
@@ -1066,6 +1138,17 @@ export async function EntitlementTablesBlock({
                     <td className="px-3 py-2">
                       {r.firstOfTable && x ? (
                         <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+                          {/* ── 3a4efe9f · ONE SCREEN OWNS THESE FOUR CONTROLS ────────────────────────
+                              Read-only mounts send the operator to that screen instead of offering a second
+                              copy of Edit, Stop and Delete over the same stored record. GATED, NOT DELETED:
+                              the branch below is what the Entitlement tables tab renders, and
+                              test/r210-entitlement-delete.test.ts §D reads it out of this file's source. */}
+                          {tablesReadOnly ? (
+                            <Link href={manageTableHref(x.lineageId)} className="text-sm underline">
+                              {t('manageInTables')}
+                            </Link>
+                          ) : (
+                            <>
                           {x.validTo == null ? (
                             <Link
                               href={href(`?editTemplate=${encodeURIComponent(x.lineageId)}`)}
@@ -1122,6 +1205,8 @@ export async function EntitlementTablesBlock({
                               </form>
                             )
                           ) : null}
+                            </>
+                          )}
                         </div>
                       ) : null}
                     </td>
@@ -1132,8 +1217,20 @@ export async function EntitlementTablesBlock({
           </table>
         </div>
 
+        {/* ── 3a4efe9f · THE CREATE / EDIT FORM, ON ONE SCREEN ONLY ────────────────────────────────────
+            The strongest signal that the leave type screen was a second place to create tables was that it
+            carried a whole New entitlement table form. It is GATED here rather than removed: this is the one
+            definition the Entitlement tables tab renders, and eight guards read it out of this file's source
+            — the effective-date field (r219), the save-mode submit (r224), the create-time reach warning
+            (r224/r269), the bands editor's remount key (4a1abc4a) and r210 §D's 200-character panel slice
+            among them. A read-only FORK would be the second implementation this whole item exists to remove.
+            `null` and not a placeholder: the "+ New table" link at the top of the list is where an operator
+            goes instead, and a disabled form would still read as a form. */}
+        {tablesReadOnly ? null : (
         <div className="border-t p-4">
-          <h3 className="mb-3 text-sm font-medium">
+          {/* 3a4efe9f — the anchor the "+ New table" link on every read-only mount scrolls to. On the id, not
+              on the h3's text, so the fragment survives the heading being reworded or translated. */}
+          <h3 id="new-entitlement-table" className="mb-3 text-sm font-medium">
             {editingTemplate ? t('editTemplateTitle') : t('newTemplateTitle')}
           </h3>
           {/* r224 — THE DATE BOX, THE NOTE AND THE SUBMIT SHARE ONE PIECE OF STATE, so they sit under one
@@ -1280,6 +1377,7 @@ export async function EntitlementTablesBlock({
               several fields inside an Edit panel is the one nobody finds — which is the complaint this
               item opens with. The row carries the same date field and the same ConfirmSubmit subtitle. */}
         </div>
+        )}
       </Card>
 
       {/* ── 76ffdcf2 · THE DEFAULT ENTITLEMENT TABLE: WHO A SCHEME NEVER REACHES ────────────────────

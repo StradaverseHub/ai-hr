@@ -33,6 +33,7 @@ import { describe, expect, it } from 'vitest';
 
 import { resolveViewLeaveTypeId } from '../lib/entitlement-tables-scope';
 import { leaveTypeConfigHealth, newTableReachesNobody } from '../lib/leave-config-health';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import type { HealthLeaveType, HealthRule, HealthTemplate } from '../lib/leave-config-health';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -40,6 +41,7 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 const BLOCK = '/app/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
 const STANDALONE = '/app/admin/leave-config/entitlement-tables/page.tsx';
+const TYPES_PAGE = '/app/admin/leave-config/types/page.tsx';
 const SCOPE = '/lib/entitlement-tables-scope.ts';
 
 /** COMMENTS ARE NOT CODE (the r134 rule). Every claim here explains itself by naming what it is about, and a
@@ -101,7 +103,12 @@ describe('§1 · resolveViewLeaveTypeId — the operator filter produces a SCOPE
 // ────────────────────────────────────────────────────────────────────────────────────────────────────
 
 describe('§2 · the reaches-nobody state, measured where the warning reads it', () => {
-  const today = '2026-06-01';
+  // DERIVED FROM THE CLOCK, never a written date: `leaveTypeConfigHealth` decides "in force" against this
+  // value, and a fixture with a hardcoded year silently stops being in force once the year passes — taking
+  // the assertion with it and reporting green.
+  const today = todayInKualaLumpur();
+  /** A year comfortably behind `today`, so every fixture table below is in force whenever this runs. */
+  const longAgo = `${Number(today.slice(0, 4)) - 6}-01-01`;
   const leaveType = (over: Partial<HealthLeaveType> = {}): HealthLeaveType => ({
     id: 'annual',
     name: 'Annual Leave',
@@ -119,9 +126,7 @@ describe('§2 · the reaches-nobody state, measured where the warning reads it',
     lineageId,
     leaveTypeId: 'annual',
     name: `Table ${lineageId}`,
-    // Derived from the case's own clock, never a hardcoded year: a fixture dated in the past relative to a
-    // future test run would silently stop being "in force" and take the assertion with it.
-    validFrom: '2020-01-01',
+    validFrom: longAgo,
     validTo: null,
     serviceBands: [{ days: 14 }],
   });
@@ -129,7 +134,7 @@ describe('§2 · the reaches-nobody state, measured where the warning reads it',
     lineageId: `rule-for-${templateLineageId}`,
     name: 'Everyone',
     templateLineageId,
-    validFrom: '2020-01-01',
+    validFrom: longAgo,
     validTo: null,
     criteria: {},
   });
@@ -234,6 +239,150 @@ describe('§3 · the filter reaches the warning, and the standalone tab reads it
     expect(standaloneCode).toContain('method="get"');
     expect(standaloneCode).toContain('name="leaveType"');
     expect(standaloneCode).not.toContain('action="/admin');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────────────
+// §5 · the create move — one screen edits tables, and the other one links to it
+// ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+describe('§5 · tablesReadOnly — GATED, never forked, and never at the cost of the filter', () => {
+  const blockCode = stripComments(read(BLOCK));
+  const typesCode = stripComments(read(TYPES_PAGE));
+
+  it('the flag defaults to today’s behaviour and does not name the scope', () => {
+    // Same shape and the same naming constraint as showConfigHealth / showBenefitSchemes: a flag carrying
+    // the substring `leaveTypeId` would read to the two anti-filter guards as the hardcoded filter coming
+    // back. Default false, so the Entitlement tables tab is untouched by it.
+    expect(blockCode).toContain('tablesReadOnly = false');
+    expect(blockCode).not.toContain('readOnlyLeaveTypeId');
+  });
+
+  it('the leave type tab passes it AND keeps passing leaveTypeId — read-only is a SECOND property', () => {
+    // ⚠️ THE FAILURE MODE THIS FORBIDS: implementing "read-only" by dropping the filter. That would make
+    // tab 3 list every leave type's tables, which is neither what the reporter asked for nor something any
+    // other guard would catch — test/entitlement-tables-embed.test.ts §1 asserts the string below, so the
+    // two facts are pinned together here.
+    expect(typesCode).toContain('leaveTypeId={leaveTypeId}');
+    expect(typesCode).toContain('tablesReadOnly');
+    // The Entitlement tables tab must NOT pass it: it is the one screen that edits tables.
+    expect(stripComments(read(STANDALONE))).not.toContain('tablesReadOnly');
+  });
+
+  it('every control the matrix moves is GATED, and every one of them survives in the source', () => {
+    // r210 §D, r219 and r224 all read these literals out of this file. Gating keeps them; deleting them
+    // would take the editor away from the Entitlement tables tab as well, and fail those guards — the same
+    // conclusion reached from two directions, which is why this is a conditional and not a removal.
+    for (const kept of [
+      'action={retireEntitlementTemplateAction}',
+      'action={deleteEntitlementTemplateAction}',
+      '?editTemplate=',
+      'name="validTo"',
+      "t('deleteBlockedByRules'",
+      '<EntitlementEffectiveFromField />',
+      "<EntitlementSaveModeSubmit createLabel={t('createTemplate')} />",
+      '<EntitlementBandsEditor',
+    ]) {
+      expect(blockCode, `${kept} must survive the gate`).toContain(kept);
+    }
+    // …and the gate itself, outside the row-controls slice anchor the r210 and r271 guards cut on.
+    expect(blockCode).toContain('{r.firstOfTable && x ? (');
+    expect(blockCode).toContain('{tablesReadOnly ? (');
+    expect(blockCode).toContain('{tablesReadOnly ? null : (');
+  });
+
+  it('a read-only row offers the way to the editor instead, keyed on the lineage and the ONE address', () => {
+    // Built from ENTITLEMENT_TEMPLATES rather than a typed path: that constant is already the address every
+    // table save returns to, and a literal here would be a second statement about where the screen lives.
+    expect(blockCode).toContain("import { ENTITLEMENT_TEMPLATES } from '@/app/admin/_redirects'");
+    expect(blockCode).toContain("t('manageInTables')");
+    expect(blockCode).toContain("t('newTableElsewhere')");
+    // The link preselects the filter §1 is about — which is the whole reason the filter shipped first. A
+    // "+ New table" link landing on an UNFILTERED tab would open a create form that cannot warn.
+    expect(blockCode).toContain('?leaveType=${encodeURIComponent(leaveTypeId ?? \'\')}#new-entitlement-table');
+    expect(blockCode).toContain('&table=${encodeURIComponent(lineageId)}#table-${lineageId}');
+    // …and the create form carries that fragment's target.
+    expect(blockCode).toContain('id="new-entitlement-table"');
+  });
+
+  it('the benefit scheme controls are NOT gated with it — the matrix keeps them editable on the leave type tab', () => {
+    // "Default table and benefit schemes: Editable" on the leave type screen, in the reporter's own table.
+    // They are governed by showBenefitSchemes, which is already true there and false on the other tab.
+    const gate = blockCode.indexOf('{showBenefitSchemes ? (');
+    expect(gate).toBeGreaterThan(-1);
+    const schemes = blockCode.slice(gate);
+    expect(schemes).toContain('<EligibilityRuleForm');
+    expect(schemes).not.toContain('tablesReadOnly');
+  });
+
+  it('the five sentences that promised editing on the leave type screen have been reworded, in six locales', () => {
+    /**
+     * PROSE OUTLIVES THE KERNEL. Each of these asserted the rule this round reverses — two of them on an
+     * EMPLOYEE's own leave balance. Retired in place: the keys are not deleted, the values are corrected,
+     * and each names the destination with the string the MENU uses for that screen in the same locale.
+     */
+    const STALE = [
+      'leave.errors.insufficientBalanceNoTableOther',
+      'leave.breakdown.statusNoEntitlementTableBody',
+      'me.leaveBalanceTable.statusNoEntitlementTableTip',
+      'admin.leave.entitlementStep.tablesHint',
+      'admin.entitlementTemplates.rulesNeedTemplate',
+    ] as const;
+    const at = (cat: unknown, path: string) =>
+      path.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], cat);
+
+    /**
+     * ⚠️ WHY THE "DOES NOT SEND THEM TO THE LEAVE TYPES SCREEN" HALF IS ENGLISH-ONLY, AND IT IS A LIMIT OF
+     * SUBSTRINGS RATHER THAN A GAP IN THE WORK.
+     *
+     * In several locales the MENU label for Leave types is also ordinary prose: `ms` calls that menu entry
+     * "Jenis cuti", which is simply "leave type", and the very sentence under test opens "Jenis cuti ini…"
+     * ("This leave type…"). A substring check cannot tell a destination from a sentence's subject, so a
+     * cross-locale negative assertion here would fail on correct copy. In `th` the reverse trap exists: the
+     * Entitlement tables menu label "ตารางสิทธิ" is a substring of the ordinary words for "entitlement
+     * table", so a cross-locale POSITIVE assertion can pass on the old wording.
+     *
+     * So the destination is pinned precisely in `en` — the source catalogue, and the one the reporter reads —
+     * and all six are pinned on the two properties that hold regardless of language: the key still EXISTS
+     * (retired in place, never deleted) and it is translated. `scripts/i18n-check.mjs` holds parity and
+     * placeholders, and test/r266-benefit-scheme-vocabulary.test.ts pins the same `en` destination from the
+     * other side.
+     */
+    const en = catalogue('en');
+    for (const key of STALE) {
+      const v = at(en, key) as string;
+      expect(v, `en ${key} still sends the reader to the Leave types screen`).not.toContain('Leave types screen');
+    }
+    for (const key of STALE.slice(0, 3)) {
+      expect(at(en, key) as string, `en ${key} must name the Entitlement tables screen`).toContain(
+        'on the Entitlement tables screen',
+      );
+    }
+    // The helper line no longer promises that the days can be set BELOW it, because they cannot.
+    const hint = at(en, 'admin.leave.entitlementStep.tablesHint') as string;
+    expect(hint).toContain('Tables are managed in Entitlement tables');
+    expect(hint, 'the old promise was "Set this leave type\'s days … below"').not.toContain("Set this leave type");
+
+    for (const loc of LOCALES) {
+      const cat = catalogue(loc);
+      for (const key of STALE) {
+        const v = at(cat, key);
+        expect(typeof v, `${loc} ${key} must still EXIST — retire in place, never delete`).toBe('string');
+        expect((v as string).length, `${loc} ${key}`).toBeGreaterThan(0);
+        if (loc !== 'en') expect(v, `${loc} ${key} is still English`).not.toBe(at(en, key));
+      }
+    }
+  });
+
+  it('the IA document no longer promises table editing on tab 3 — no test but this one reads it', () => {
+    // The r258/r270 lesson applied in reverse: when a surface is REMOVED, the design document is half the
+    // fix, and F11 is the written promise this item reverses.
+    const f11 = read('/docs/design/a6fe37fc-leave-config-ia.md')
+      .split('\n')
+      .find((l) => l.startsWith('| F11 |'));
+    expect(f11, 'the F11 row must still exist').toBeTruthy();
+    expect(f11!).toContain('read-only');
+    expect(f11!).toContain('r369');
   });
 });
 
