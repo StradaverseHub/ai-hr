@@ -29,7 +29,7 @@
  * them, so the form always agrees with what was actually paid and a change to the KWSP table cannot make a
  * re-printed past month disagree with the month that was filed.
  *
- * ⚠️ r371 — UPAH IS THE MONTH'S WAGE ONCE, AND IS NOT SUMMED ACROSS THE MONTH'S RUNS. It used to be, and
+ * ⚠️ r372 — UPAH IS THE MONTH'S WAGE ONCE, AND IS NOT SUMMED ACROSS THE MONTH'S RUNS. It used to be, and
  * in a month that held more than one run that overstated it by about a month's wage per extra run
  * (item d4f6848f). `bases.epf` is the WHOLE month's figure, re-derived from compensation on EVERY run and
  * identical on each of them, so summing it multiplies the month by the run count. The month's wage is now
@@ -77,7 +77,7 @@ import {
 } from '../../lib/borang-a';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { MY_STATUTORY_VERSION } from './statutory-tables';
-// r371 — the month's wage, once, for all three statutory read paths. See that module's header for why
+// r372 — the month's wage, once, for all three statutory read paths. See that module's header for why
 // summing `bases` across the month's runs was wrong and why the per-payslip stamp is not touched.
 import { EPF_WAGE_INCONSISTENT_REASON, monthWageFor, monthWagesFrom } from './statutory-month-wage';
 import type { ReportColumn, ReportResult, ReportRow, ReportParams } from './reports';
@@ -247,7 +247,7 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
         staffNo: employment.employeeCode,
         gross: payslip.grossPay,
         statutory: payslip.statutory,
-        // r371 — WHICH RUN OF THE MONTH WROTE THIS PAYSLIP. Joined rather than mapped off `batches` so the
+        // r372 — WHICH RUN OF THE MONTH WROTE THIS PAYSLIP. Joined rather than mapped off `batches` so the
         // pairing is an invariant of the query and cannot acquire a "?? 1" fallback that silently decides
         // a wage. `run_seq` is NOT NULL DEFAULT 1 and unique per (pay_period_id, run_seq).
         runSeq: payrollBatch.runSeq,
@@ -276,7 +276,7 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
       /**
        * UPAH — the month's EPF wage ONCE (`bases.epf + bases.epfAdditional` from the month's greatest
        * `run_seq`), NOT a sum across the runs. Set when the employee is first seen, from the whole-month
-       * derivation above, so no branch of this loop can add a second month to it. r371 / item d4f6848f.
+       * derivation above, so no branch of this loop can add a second month to it. r372 / item d4f6848f.
        */
       wage: number;
       employer: number;
@@ -284,7 +284,7 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
       /** False as soon as ONE slip in the month carried no `bases` — the month's wage is then incomplete. */
       wageRecorded: boolean;
       /**
-       * r371 — the month's runs were charged on DIFFERENT EPF wages (a mid-month change), so no single
+       * r372 — the month's runs were charged on DIFFERENT EPF wages (a mid-month change), so no single
        * Upah is the month's wage. Named on the review screen and the document is HELD; see the readiness
        * list below. Printing whichever run happened to be last would be a figure nobody can stand behind.
        */
@@ -327,7 +327,7 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
       r.employer = round2(r.employer + num(st.epfEmployer));
       r.employee = round2(r.employee + num(st.epfEmployee));
       r.gross = round2(r.gross + num(s.gross));
-      // NOTHING TOUCHES `r.wage` HERE, AND THAT IS THE ROUND (r371 / item d4f6848f). `bases.epf` is the
+      // NOTHING TOUCHES `r.wage` HERE, AND THAT IS THE ROUND (r372 / item d4f6848f). `bases.epf` is the
       // normal stream and `bases.epfAdditional` the bonus/off-cycle one, both already net of the EPF
       // exclusions — and `bases.epf` is the WHOLE MONTH'S figure on every run of the month, so adding it
       // up here put one extra month in the Upah column per extra run. The month's wage, and whether it is
@@ -370,7 +370,7 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
       // THE FOUR THINGS A ROW CANNOT GO ON A FILED FORM WITHOUT. Named before the download, not
       // discovered after it. Sorted so the list reads the same way twice.
       //
-      // r371 ADDED THE FOURTH, AND IT IS NOT AN ABSENCE. The first three are things we do not have; the
+      // r372 ADDED THE FOURTH, AND IT IS NOT AN ABSENCE. The first three are things we do not have; the
       // fourth is a month whose own runs disagree about the wage, where we have TWO figures and neither is
       // the month's. The existing gate (app/payroll/borang-a/shared.ts) blocks the PDF, the text export and
       // the i-Akaun file on ANY entry in this list, so naming it here is what holds the document — and the

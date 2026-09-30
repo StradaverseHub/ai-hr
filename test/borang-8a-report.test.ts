@@ -23,7 +23,7 @@ import { setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { createAdditionalRun, createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
 import { reportPreview } from '../core/reporting';
 import { BORANG_8A_HEADER_KEYS, borang8AFrom } from '../lib/borang-8a';
-// r371 — THE THIRD SURFACE, COVERED BY ITS OWN TEST AND NOT BY INFERENCE. `socsoEisFileForBatch` is an
+// r372 — THE THIRD SURFACE, COVERED BY ITS OWN TEST AND NOT BY INFERENCE. `socsoEisFileForBatch` is an
 // INDEPENDENT resolution of the same PERKESO population as the read above — its own batch query, its own
 // accumulator, its own download route — and r296 is what happened the last time the two resolved one field
 // separately. So the corrected wage is asserted on the FILE'S OWN BYTES here, not deduced from the report.
@@ -236,7 +236,7 @@ describe('the Borang 8A read', () => {
 
 
 /**
- * ─── r227, CORRECTED IN r371 — WHAT AN ADDITIONAL RUN DOES TO THE SALARY (UPAH) COLUMN ───────────
+ * ─── r227, CORRECTED IN r372 — WHAT AN ADDITIONAL RUN DOES TO THE SALARY (UPAH) COLUMN ───────────
  *
  * THE SAME DEFECT AS THE BORANG A ONE, THROUGH THE OTHER AGENCY'S BASE, AND THE SAME REASON IT WAS
  * INVISIBLE: `createAdditionalRun` appeared ZERO times in this repository's statutory-form guards, so
@@ -244,7 +244,7 @@ describe('the Borang 8A read', () => {
  * filed figure.
  *
  * ── THE CLAIM THIS BLOCK USED TO PIN, QUOTED SO IT CANNOT COME BACK BY ACCIDENT ──────────────────
- * Between r227 and r371 the two cases below asserted the DEFECT as a deliberately recorded fact, under
+ * Between r227 and r372 the two cases below asserted the DEFECT as a deliberately recorded fact, under
  * this header:
  *
  *     "Pinned, not fixed: nothing in r226/r227 changes the stamp or the sum. The reporter sees the change
@@ -268,7 +268,7 @@ describe('the Borang 8A read', () => {
  * NOTHING PRINTED ON THE PAPER BORANG 8A MOVED AT ALL. The salary base has no column on the agency's page;
  * it rides on the row for the PERKESO ASSIST upload file, which is where the overstated figure was filed.
  */
-describe('r371 — an additional run and the SOCSO salary column', () => {
+describe('r372 — an additional run and the SOCSO salary column', () => {
   const salary = 4000;
 
   async function twoRuns(period: string) {
@@ -381,7 +381,7 @@ describe('r371 — an additional run and the SOCSO salary column', () => {
   });
 
   /**
-   * ── THE THIRD SURFACE, ON ITS OWN BYTES (r371) ───────────────────────────────────────────────────
+   * ── THE THIRD SURFACE, ON ITS OWN BYTES (r372) ───────────────────────────────────────────────────
    *
    * `socsoEisFileForBatch` resolves the same PERKESO population through its OWN query and its OWN
    * accumulator, behind /payroll/reports/socso-eis-file. It carried the identical defect and it must now

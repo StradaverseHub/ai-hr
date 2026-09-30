@@ -108,10 +108,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 /**
- * r371 — WHO CANNOT GO ON A FILED RETURN, AND WHY, carried as the pack's own reasons.
+ * r372 — WHO CANNOT GO ON A FILED RETURN, AND WHY, carried as the pack's own reasons.
  *
  * IT USED TO BE `{ employmentId, name }` AND THREE PLACES SPELLED THE REASON OUT AS "no identity card
- * number on file". That was true while an absent IC was the only per-employee gap; r371 gave the read a
+ * number on file". That was true while an absent IC was the only per-employee gap; r372 gave the read a
  * second one (a month whose payroll runs were charged on different SOCSO/EIS wages), and a caption that
  * names a cause it cannot know is exactly the assurance CLAUDE.md §8 forbids. The reasons come from the
  * pack, which is the only thing that knows them, and every surface prints the SAME ones — the Borang A
@@ -197,7 +197,7 @@ export async function loadBorang8A(p: {
   if (!result.meta.hasBatch) return { ok: false, reason: 'no-batch' };
 
   const missing = result.readiness.map((r) => ({ employmentId: r.employmentId, name: r.name, missing: r.missing }));
-  // TWO KINDS OF GAP, ONE GATE. `missing` is per-employee (no identity card number, or — r371 — a month
+  // TWO KINDS OF GAP, ONE GATE. `missing` is per-employee (no identity card number, or — r372 — a month
   // whose runs were charged on different SOCSO/EIS wages); `headerMissing` is employer-level (no SOCSO
   // employer code) and gaps EVERY page at once. Either one means the document cannot be filed, so either
   // one blocks the download — and the review screen shows both, which is the entire reason it must still

@@ -31,7 +31,7 @@
  * different number". Gross pay includes money PERKESO does not charge on (the annual bonus is excluded —
  * docs/architecture/STATUTORY-SOURCES.md §1), so it is the wrong number for a contribution return.
  *
- * ⚠️ r371 — FIELD 6 IS THE MONTH'S WAGE ONCE, AND IS NOT SUMMED ACROSS THE MONTH'S RUNS. It used to be,
+ * ⚠️ r372 — FIELD 6 IS THE MONTH'S WAGE ONCE, AND IS NOT SUMMED ACROSS THE MONTH'S RUNS. It used to be,
  * and in a month that held more than one payroll run that overstated it by about a month's wage per extra
  * run (item d4f6848f). `bases.socsoEis` is the WHOLE month's figure, re-derived on EVERY run of the month
  * and identical on each of them, so summing it multiplied the month by the run count. This read is an
@@ -68,7 +68,7 @@ import {
   type PerkesoFileLayout,
 } from '../../lib/perkeso-socso-file';
 import { MY_STATUTORY_VERSION } from './statutory-tables';
-// r371 — the month's wage, once, for all three statutory read paths. The Borang A read and the Borang 8A
+// r372 — the month's wage, once, for all three statutory read paths. The Borang A read and the Borang 8A
 // read call the SAME function; see that module's header for why summing `bases` across the month's runs was
 // wrong and why the per-payslip stamp is not touched.
 import { monthWageFor, monthWagesFrom } from './statutory-month-wage';
@@ -83,7 +83,7 @@ export type SocsoEisRow = {
   name: string;
   /**
    * The SOCSO/EIS WAGE the contributions were worked out from (`statutory.bases.socsoEis`), in RM — the
-   * MONTH'S figure ONCE, from the month's greatest `run_seq`, NOT a sum across the runs (r371).
+   * MONTH'S figure ONCE, from the month's greatest `run_seq`, NOT a sum across the runs (r372).
    * NULL when no run in the period stamped one — a REFUSAL, never a substitution. See the module header.
    */
   wage: number | null;
@@ -155,7 +155,7 @@ export function socsoEisFileForBatch(
         name: person.fullName,
         ic: employeeStatutoryMy.icNumber,
         statutory: payslip.statutory,
-        // r371 — WHICH RUN OF THE MONTH WROTE THIS PAYSLIP. Joined rather than mapped off `batches` so the
+        // r372 — WHICH RUN OF THE MONTH WROTE THIS PAYSLIP. Joined rather than mapped off `batches` so the
         // pairing is an invariant of the query and cannot acquire a "?? 1" fallback that silently decides
         // a wage. `run_seq` is NOT NULL DEFAULT 1 and unique per (pay_period_id, run_seq).
         runSeq: payrollBatch.runSeq,
@@ -176,7 +176,7 @@ export function socsoEisFileForBatch(
     // One row per employee per month: SOCSO/EIS/SKBBK are charged once for the month (an additional run
     // adds 0, ADR-0024), so summing across the period's runs yields the monthly total.
     //
-    // ⚠️ r371 RETIRED THE SENTENCE THAT USED TO END THAT COMMENT — "the wage base sums the same way". IT
+    // ⚠️ r372 RETIRED THE SENTENCE THAT USED TO END THAT COMMENT — "the wage base sums the same way". IT
     // DOES NOT. The contribution legs are deltas and sum; `bases.socsoEis` is the whole month's figure on
     // every run and must be taken once. That one clause is the whole of item d4f6848f on this surface.
     const byEmp = new Map<string, SocsoEisRow>();
@@ -199,7 +199,7 @@ export function socsoEisFileForBatch(
       r.eisEmployer = round2(r.eisEmployer + Number(st.eisEmployer ?? 0));
       r.eisEmployee = round2(r.eisEmployee + Number(st.eisEmployee ?? 0));
       r.skbbk = round2(r.skbbk + Number(st.socsoSkbbk ?? 0));
-      // NOTHING TOUCHES `r.wage` HERE (r371). `bases.socsoEis` absent on EVERY run of the period ⇒ still
+      // NOTHING TOUCHES `r.wage` HERE (r372). `bases.socsoEis` absent on EVERY run of the period ⇒ still
       // null and the writer still refuses this employee by name; present on ANY run ⇒ the month's figure
       // from the greatest `run_seq`. Exactly the rule localization/my/borang-8a.ts applies, because both
       // screens fill the same box from the same fact — and now from the same function.
@@ -209,7 +209,7 @@ export function socsoEisFileForBatch(
     if (missing.length) {
       throw new SocsoEisNotReadyError(`Member IC / SOCSO no. is mandatory — missing for: ${missing.join(', ')}`);
     }
-    // r371 — THE MONTH'S RUNS DISAGREE ABOUT THE WAGE, SO THERE IS NO MONTH'S WAGE TO FILE. Refused HERE
+    // r372 — THE MONTH'S RUNS DISAGREE ABOUT THE WAGE, SO THERE IS NO MONTH'S WAGE TO FILE. Refused HERE
     // rather than by handing the writer a null: the writer's own message says "no SOCSO wage was recorded",
     // which would be false — two were recorded and they differ. This read owns its readiness refusals
     // (the employer code and the member IC above are the other two) and the route answers 422 for them.

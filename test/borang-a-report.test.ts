@@ -316,7 +316,7 @@ describe('the read feeds both outputs', () => {
 
 
 /**
- * ─── r227, CORRECTED IN r371 — WHAT AN ADDITIONAL RUN DOES TO THE UPAH COLUMN ────────────────────
+ * ─── r227, CORRECTED IN r372 — WHAT AN ADDITIONAL RUN DOES TO THE UPAH COLUMN ────────────────────
  *
  * THIS COVERAGE DID NOT EXIST BEFORE r227, and its absence is why a change to a FILED STATUTORY FORM
  * nearly shipped unmeasured. `createAdditionalRun` appeared ZERO times in test/borang-a.test.ts,
@@ -325,7 +325,7 @@ describe('the read feeds both outputs', () => {
  * SINGLE regular run, so the whole suite was green whatever an extra run did to the figures on the paper.
  *
  * ── THE CLAIM THIS BLOCK USED TO PIN, QUOTED SO IT CANNOT COME BACK BY ACCIDENT ──────────────────
- * Between r227 and r371 the two cases below asserted the DEFECT as a deliberately recorded fact, under
+ * Between r227 and r372 the two cases below asserted the DEFECT as a deliberately recorded fact, under
  * this header:
  *
  *     "WHAT IS PINNED HERE IS THE FACT, NOT A FIX. Nothing in r226/r227 changes how `bases` are stamped
@@ -356,7 +356,7 @@ describe('the read feeds both outputs', () => {
  * move, so a later "simplification" of the fold that quietly re-summed the wage would have to break an
  * assertion about money to do it.
  */
-describe('r371 — an additional run and the Upah column', () => {
+describe('r372 — an additional run and the Upah column', () => {
   const salary = 4000;
 
   /** The regular run, then a bonus run that pays NOBODY in it — the shape the reported case produces. */
@@ -562,7 +562,7 @@ describe('r371 — an additional run and the Upah column', () => {
   });
 
   /**
-   * ── AND WHERE ONE FIGURE IS NOT THE TRUTH, THE FORM IS HELD (r371) ───────────────────────────────
+   * ── AND WHERE ONE FIGURE IS NOT THE TRUTH, THE FORM IS HELD (r372) ───────────────────────────────
    *
    * A mid-month pay change makes the month's runs disagree about `bases.epf`, and then no single Upah is
    * the month's wage. `localization/my/multicycle-worksheet.ts` already refuses this exact shape as
