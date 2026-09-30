@@ -321,7 +321,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
       // derivation of an amount nobody deducted. Built by `pcbBasisSection` in core/ — one decision, two
       // surfaces, no second copy of an eight-branch ternary.
       case 'basisBanner': {
-        const basisSection = pcbBasisSection(x);
+        const basisSection = pcbBasisSection(model.explanation);
         if (basisSection == null) return { rows: [] };
         return {
           columns: [t(basisSection.firstColumn)],

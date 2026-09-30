@@ -474,8 +474,26 @@ describe('7f251381 — a run that recorded no working is not handed one in LHDN�
     const w = pcbWorksheet(x, SEED);
     expect(w.shape).toBe('unavailable');
     expect(w.sections, 'an empty LHDN sheet asserts that this employee HAS one').toEqual([]);
-    // …and the screen skips it, leaving the existing "unavailable" card to say so in words.
-    expect(code(VIEW)).toContain("worksheet.shape !== 'unavailable'");
+    /**
+     * …and NEITHER SURFACE DRAWS IT — which r372 moved out of this component and into the shared list.
+     *
+     * The screen used to decide this itself with a `worksheet.shape !== 'unavailable'` test in its JSX, so
+     * this guard matched that string. The order of both surfaces is now `pcbDetailLayout`'s answer, so the
+     * decision is driven instead of matched — and the driven version is strictly stronger: it covers the
+     * `worksheet: null` case too, which a string match in one component never could, and it covers the
+     * DOWNLOADED DOCUMENT, which this assertion never reached at all.
+     */
+    for (const sheet of [w, null]) {
+      const slots = pcbDetailLayout({ explanation: x, worksheet: sheet, slip: [], closing: [] })
+        .flatMap((e) => (e.kind === 'body' ? [e.slot] : []));
+      expect(slots, 'a sheet with no rows is ABSENT, not drawn as dashes').not.toContain('lhdnWorksheet');
+    }
+    // The "unavailable" card is what says so in words, and it is still in the run.
+    expect(
+      pcbDetailLayout({ explanation: x, worksheet: w, slip: [], closing: [] })
+        .flatMap((e) => (e.kind === 'body' ? [e.slot] : [])),
+      'the card that says it in words',
+    ).toContain('unavailableCard');
   });
 });
 
