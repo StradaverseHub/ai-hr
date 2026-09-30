@@ -44,6 +44,13 @@ export * from '../../core/leave-import';
 // would grow a list documented to only ever shrink. No allowlist entry is added — its only outside
 // consumer is app/admin/leave-config/, which is already always-allowed.
 export * from '../../core/leave-history-import';
+// db55d08a (r369) — LEAVE B/F DATA IMPORT, the OPENING-FIGURE third of a migration (the two lines above
+// are the BALANCE and RECORD halves). Re-exported here, and registered in BOTH BOUNDARIES and
+// ALWAYS_ALLOWED in test/leave-pack-drift.test.ts, for the reason the 241817ef note above gives: a new
+// leave-pack module that is not a BOUNDARY is simply unguarded, and silencing the guard with a
+// pack-drift-allowlist entry would grow a list documented to only ever shrink. No allowlist entry is
+// added — its only outside consumer is app/admin/leave-config/, which is already always-allowed.
+export * from '../../core/leave-bf-import';
 // 56910869 — the Override Leave Application rule vocabulary. Re-exported here (and registered in BOTH
 // BOUNDARIES and ALWAYS_ALLOWED in test/leave-pack-drift.test.ts) for the reason the 241817ef note above
 // gives: a new leave-pack module that is not a BOUNDARY is simply unguarded, and silencing the guard with

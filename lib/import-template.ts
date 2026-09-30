@@ -30,6 +30,7 @@ import { IMPORT_COLUMNS } from './import-schema';
 import { PAYROLL_HISTORY_COLUMNS, PAYROLL_HISTORY_SAMPLE_ROWS } from './payroll-history-import-schema';
 import { LEAVE_IMPORT_COLUMNS } from './leave-import-schema';
 import { LEAVE_HISTORY_COLUMNS } from './leave-history-import-schema';
+import { LEAVE_BF_COLUMNS } from './leave-bf-import-schema';
 
 export type TemplateSpec = {
   id: string;
@@ -231,6 +232,37 @@ export const leaveHistoryImportTemplate: TemplateSpec = {
 /** The .xlsx template's header row: the reporter's own spellings, in the same order as the contract.
  *  Derived, so a column added to the contract appears in the workbook without a second edit. */
 export const LEAVE_HISTORY_XLSX_HEADERS: string[] = LEAVE_HISTORY_COLUMNS.map((c) => c.header);
+
+/**
+ * db55d08a (r369) — LEAVE B/F DATA IMPORT: the five columns of the reporter's own table, in the reporter's
+ * own order, DERIVED from `LEAVE_BF_COLUMNS` so the template and the validator cannot drift — the fourth
+ * contract to take the desync lock.
+ *
+ * ⚠️ THE CSV FORM CARRIES THE snake_case KEYS, NOT THE HUMAN HEADERS, for the reason the leave-history spec
+ * above gives at length: `buildTemplateCsv` writes `columns[].key` and test/import-template.test.ts asserts
+ * the file round-trips back through `parseCsvRecords` to exactly those keys. The human spellings cannot do
+ * that — "B/F Days" normalises to `b/f_days`, slash and all. The .xlsx template is where HR gets the human
+ * headings; the importer accepts BOTH, because `canonicalBfColumnKey` maps either form onto the same
+ * contract key, which is the whole reason that function exists.
+ *
+ * SAMPLE ROWS are on the demo seed's E1001 / ANNUAL so an unmodified download → upload round-trips clean,
+ * and they are the worked example of the one thing users get wrong: Entitlement Year is the year the days
+ * go INTO, so `2026` means days carried from 2025 into 2026. The Remark says "Data Migration", which is the
+ * reporter's own word for it and is what will appear against the ledger row.
+ */
+export const leaveBfImportTemplate: TemplateSpec = {
+  id: 'leave-bf-import',
+  filename: 'leave-bf-import-template.csv',
+  columns: LEAVE_BF_COLUMNS.map((c) => ({ key: c.key, required: c.required })),
+  sampleRows: [
+    // employee_id, leave_code, entitlement_year, bf_days, remark
+    ['E1001', 'ANNUAL', '2026', '3.5', 'Data Migration'],
+  ],
+};
+
+/** The .xlsx template's header row: the reporter's own spellings, in contract order. Derived, so a column
+ *  added to the contract appears in the workbook without a second edit. */
+export const LEAVE_BF_XLSX_HEADERS: string[] = LEAVE_BF_COLUMNS.map((c) => c.header);
 
 const ATTENDANCE_SAMPLE = `staff_id,timestamp
 E1001,2026-07-01 08:02:00
