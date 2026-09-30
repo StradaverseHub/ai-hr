@@ -116,7 +116,11 @@ export async function GET(req: Request) {
           // Who this is, which tab produced it, and when — so a file sent on can still answer all three.
           header: [me.name, me.employeeCode, me.position, me.company].filter(Boolean).join(' · '),
           subtitle: status ? statusLabel(status, t, false) : t('maFilterAll'),
-          description: `${t('maColSubmitted')}: ${dmy(todayInKualaLumpur())}`,
+          // WHEN THE FILE WAS PRODUCED, not a column value. `me.maColSubmitted` ("Submitted") was tried here
+          // first and read as a second Submitted figure sitting above a Submitted COLUMN — so this is its own
+          // unambiguous sentence, English like every other part of the payload (ADR-0047 §9), and it names the
+          // zone because the date is the Malaysian calendar day and a reader elsewhere would otherwise guess.
+          description: `Produced ${dmy(todayInKualaLumpur())} (Malaysia time)`,
           orientation: 'landscape',
           widths: WIDTHS,
           freeze: 1, // the header row stays put while the list scrolls
