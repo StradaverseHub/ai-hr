@@ -506,6 +506,11 @@ describe('4 · one approved plan per date', () => {
   // `if (hasOt)`, and `hasOt` is ALSO true of the clock correction the refusal tells the employee to use.
   // Without (b), widening the guard to every OT-bearing request would pass (a) and would refuse the remedy
   // in the same breath as recommending it.
+  //
+  // d16237da (r366) — AND IT IS (e)'s PARTNER TOO, which is the sharper version of the same point. (e)
+  // widens WHAT COUNTS the day; (b) pins WHICH INCOMING REQUEST is refused. Making (e) pass by dropping the
+  // call site's `checkIn == null` instead of the helper's `proposed_check_in IS NULL` turns (b) red, and
+  // that is the only thing separating this round from a refusal that refuses its own recommended remedy.
   describe('once the hours have been COUNTED (r364)', () => {
     /** A past day worked 09:00→20:00 (engine OT = 120) with a 180-minute plan approved and LANDED on it. */
     async function countedPastDay() {
@@ -670,6 +675,79 @@ describe('4 · one approved plan per date', () => {
       expect(credits.length, 'exactly one replacement-leave credit for the date').toBe(1);
       expect(Number(credits[0].days)).toBe(0.5);
       expect(await replacementBalance(employmentId)).toBe(0.5);
+    });
+
+    // ── d16237da (r366) · THE DOOR (a) LEFT OPEN — COUNTED BY A CORRECTION, NOT BY A PLAN ────────────
+    //
+    // (a) pins a day counted by an earlier PLAN. The guard behind it asked `proposed_check_in IS NULL` of
+    // the ALREADY-COUNTED row as well as of the incoming one, so a day counted by an approved CLOCK
+    // CORRECTION — the very route the refusal recommends — was invisible to it. An OT-only request filed
+    // afterwards was accepted, and approving it replaced the corrected figure.
+    //
+    // THE FIXTURE CARRIES NO PLAN AT ALL, deliberately: the only approved, applied, OT-bearing row on the
+    // day is a correction, so nothing but the widened helper can produce this refusal. Restore
+    // `isNull(proposed_check_in)` in countedOtPlanTx and this case goes red on its own.
+    //
+    // THREE DISTINCT NUMBERS, as (c) has: 60 is what the punches alone earned (the day's starting figure,
+    // asserted in its own right — a day carrying no overtime would pass this whatever the code does), 240
+    // is the correction's approved figure and the only thing that may stand at the end, and 30 is what the
+    // refused request asks for. 180 — what the engine would derive from the corrected 09:00→21:00 punches
+    // — is a fourth distinct number, so `requested` really is the rule being exercised.
+    it('(e) REFUSES an OT-ONLY request on a date counted by an approved CLOCK CORRECTION (r366)', async () => {
+      const { a, employmentId } = await hire();
+      await setAttendancePolicy(a, { ...BASE_POLICY(b.companyId), otApprovalCalculation: 'requested' });
+      await checkIn(a, { employmentId, date: PAST, time: '09:00' });
+      await checkOut(a, { employmentId, date: PAST, time: '19:00' });
+
+      // PREMISE 1 — the day starts with a real, non-zero figure that is NOT the one under test.
+      expect(
+        (await attendanceRow(employmentId, PAST)).otMinutes,
+        'the punches alone must earn 60 — a day with no overtime makes this case vacuous',
+      ).toBe(60);
+
+      const { correctionId } = await requestAttendanceCorrection(a, {
+        employmentId,
+        date: PAST,
+        checkIn: '09:00',
+        checkOut: '21:00',
+        requestedOtMinutes: 240,
+        reason: 'Forgot to clock out; correcting the punches and the hours together',
+      });
+      await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+
+      // PREMISE 2 — the CORRECTION is what counted the day, and "counted" means applied_at is stamped.
+      expect(
+        (await attendanceRow(employmentId, PAST)).otMinutes,
+        "the correction's figure must be on the day before a second request can threaten it",
+      ).toBe(240);
+      expect(
+        (await correctionRow(correctionId)).appliedAt,
+        '"counted" means applied_at is stamped — without it this fixture is testing the wrong window',
+      ).not.toBeNull();
+
+      // THE CASE. Same refusal, same sentence: the rule has no exception for which route counted the day.
+      await expect(
+        filePlan(a, employmentId, PAST, 30, { plannedStartTime: null, plannedEndTime: null }),
+      ).rejects.toThrow(OvertimeAlreadyCountedError);
+      await expect(
+        filePlan(a, employmentId, PAST, 30, { plannedStartTime: null, plannedEndTime: null }),
+      ).rejects.toThrow(new RegExp(`${PAST}.*already been approved and counted`));
+
+      // Refused AT THE DOOR: the corrected figure stands, and no second row was written.
+      expect(
+        (await attendanceRow(employmentId, PAST)).otMinutes,
+        '240 must still stand — 30 is the refused request winning, 60 is the correction being undone',
+      ).toBe(240);
+      const rows = await owner.db
+        .select({ id: schema.attendanceCorrection.id })
+        .from(schema.attendanceCorrection)
+        .where(
+          and(
+            eq(schema.attendanceCorrection.employmentId, employmentId),
+            eq(schema.attendanceCorrection.attendanceDate, PAST),
+          ),
+        );
+      expect(rows.length, 'a refused request writes nothing — only the correction should be here').toBe(1);
     });
 
     it('a FUTURE-dated plan is still refused by the UNAPPLIED guard, with its own distinct error', async () => {

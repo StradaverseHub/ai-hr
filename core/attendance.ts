@@ -3023,6 +3023,12 @@ export async function requestAttendanceCorrection(
       // in the same breath as recommending it, and the message would be a lie. An OT-ONLY request (no
       // proposed clock-in) is a PLAN; anything carrying punches is a correction and passes straight through.
       // Pinned by test/plan-ot.test.ts §4, whose (b) case exists for no other purpose.
+      //
+      // d16237da (r366) — WHAT THE HELPER NOW ANSWERS. `countedOtPlanTx` used to count only a day counted
+      // by an earlier PLAN; it now counts a day counted by ANY approved, applied, OT-bearing decision,
+      // including the clock correction this refusal recommends. That widening belongs in the helper and
+      // NOT here: the gate on this line is the only thing keeping the recommended route open, so the two
+      // reads must stay separate. See the helper's own note.
       if (checkIn == null) {
         const counted = await countedOtPlanTx(tx, p.employmentId, p.date);
         if (counted) throw new OvertimeAlreadyCountedError(p.date);
@@ -4310,9 +4316,13 @@ async function liveOtPlanTx(tx: Tx, employmentId: string, date: string) {
 }
 
 /**
- * ec30b2e9 (r364) · The approved OT plan for one (employment, date) whose hours HAVE ALREADY LANDED, if
- * there is one. `liveOtPlanTx` with `applied_at IS NULL` flipped to `IS NOT NULL` — deliberately the same
- * predicate otherwise, so "is there a plan on this date" is asked ONE way and the two guards cannot drift.
+ * ec30b2e9 (r364), widened by d16237da (r366) · The approved, OT-bearing decision for one
+ * (employment, date) whose hours HAVE ALREADY LANDED, if there is one. `liveOtPlanTx` with
+ * `applied_at IS NULL` flipped to `IS NOT NULL` — and, since r366, WITHOUT its `proposed_check_in IS NULL`,
+ * because the two are no longer asking the same question: `liveOtPlanTx` looks for an unapplied PLAN this
+ * request would duplicate, while this one looks for a COUNTED FIGURE, and a figure counts however it got
+ * there. The r364 text claiming the two predicates are "deliberately the same predicate otherwise" is
+ * quoted and superseded below.
  *
  * WHY IT IS NEEDED AT ALL. `liveOtPlanTx` stops a second plan only while the first is APPROVED AND
  * UNAPPLIED. For a date that is today or past the immediate branch of decideAttendanceCorrection lands the
@@ -4321,9 +4331,22 @@ async function liveOtPlanTx(tx: Tx, employmentId: string, date: string) {
  * moment a second plan was ACCEPTED, and approving it did a bare `update attendance set ot_minutes = …`:
  * REPLACE, not add, with nothing on any screen saying a figure had been displaced.
  *
- * ONLY A PLAN COUNTS HERE (`proposed_check_in IS NULL`), which is the boundary of this item: what is
- * refused is a second PLAN on a counted day. A clock correction carrying OT is the sanctioned way to
- * change a counted day and is never refused by this — see the caller.
+ * d16237da (r366) · WHAT COUNTS AS "COUNTED" — AND THE SENTENCE THIS REPLACES. This comment used to read
+ * "ONLY A PLAN COUNTS HERE (`proposed_check_in IS NULL`), which is the boundary of this item: what is
+ * refused is a second PLAN on a counted day." That boundary has MOVED and the `isNull(proposed_check_in)`
+ * it described is gone. It left one door open: a day counted by an approved CLOCK CORRECTION — the very
+ * route the refusal recommends — was invisible here, so a plain OT-only plan filed afterwards was accepted
+ * and approving it replaced the corrected figure. This helper now answers the question its name implies:
+ * ANY approved, applied, OT-bearing decision on the date, whichever route filed it.
+ *
+ * WHAT STILL KEEPS THE CORRECTION ROUTE OPEN IS THE CALLER, NOT THIS QUERY. The two conditions do
+ * different jobs and must not be confused:
+ *
+ *   - the CALL SITE asks "is the INCOMING request a plan?" (`checkIn == null`) — only a plan is refused;
+ *   - this HELPER asks "has this day's overtime ALREADY been counted?" — by anything.
+ *
+ * Drop the caller's gate instead of this condition and the refusal refuses the remedy its own message
+ * recommends. Pinned both ways by test/plan-ot.test.ts §4: (b) is the correction route staying open.
  */
 async function countedOtPlanTx(tx: Tx, employmentId: string, date: string) {
   const [row] = await tx
@@ -4335,7 +4358,6 @@ async function countedOtPlanTx(tx: Tx, employmentId: string, date: string) {
         eq(attendanceCorrection.attendanceDate, date),
         eq(attendanceCorrection.status, 'approved'),
         isNotNull(attendanceCorrection.appliedAt),
-        isNull(attendanceCorrection.proposedCheckIn),
         sql`${attendanceCorrection.requestedOtMinutes} is not null`,
       ),
     )
