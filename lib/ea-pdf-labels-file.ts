@@ -13,14 +13,16 @@
  * keeps the two key lists identical because both must satisfy `EaPdfLabels`.
  */
 import { readFileSync } from 'node:fs';
-import path from 'node:path';
 
 import type { EaPdfLabels } from './ea-pdf';
 
 /** Every caption the printed C.P.8A needs, read straight out of `messages/<locale>.json`. */
 export function eaPdfLabelsFromCatalogue(locale: string): EaPdfLabels {
-  const file = path.resolve(process.cwd(), 'messages', `${locale}.json`);
-  const messages = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+  // Resolved against THIS MODULE, not the process's cwd: the script is run from wherever somebody
+  // happens to be standing, and a silently-missing catalogue would read as a missing caption.
+  const messages = JSON.parse(
+    readFileSync(new URL(`../messages/${locale}.json`, import.meta.url), 'utf8'),
+  ) as Record<string, unknown>;
   const L = (key: string): string => {
     let node: unknown = (messages as { payroll?: { ea?: unknown } }).payroll?.ea;
     for (const part of key.split('.')) node = (node as Record<string, unknown> | undefined)?.[part];

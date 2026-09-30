@@ -191,12 +191,69 @@ paper edge, inside the unprintable margin of most office printers, so everything
 
       150 of the agency's body-table cells begin at x = 39.8, and NOTHING on its page begins left of it.
       The next columns in are 45.2 (the Date caption), 57.1 (156 cells) and 74.8 (214 cells).
-      Its outer frame closes at ~557; ours runs to EA_FORM.right = 571.3.
+      Its outer frame closes at ~557; ours ran to EA_FORM.right = 571.3 (now 557 — see below).
 
   So the agency's page is NARROWER in content and WIDER in margin than ours: our left edge at 24 sits
   15.8 pt OUTSIDE the agency's, not inside it. There is no unprintable-margin conflict, and 24 is not a
   printability departure to be preserved — it is an un-remeasured leftover of the tracing, like the
-  item and sub-item columns beside it. Re-deriving it belongs to the grid redraw (item 795c470c).
+  item and sub-item columns beside it. Re-deriving it belonged to the grid redraw (item 795c470c),
+  which has now been done — see the next section.
+
+
+THE WHOLE GRID, RE-MEASURED IN ONE PASS (r372, 2026-09-30, item 795c470c)
+--------------------------------------------------------------------------
+Until r372 this page had TWO provenances. r346 measured the MONEY COLUMN off the agency's own vector
+file; the item numbers, the sub-items, the description column, the left margin and every section
+baseline were still r219's tracing of the DevExpress specimen PNG. The tracing put the item and
+sub-item columns about 20 pt too far left and compressed the page to ~87% of the agency's pitch
+(220.8 / 254.2 = 0.869), so Section F landed about 85 pt — an inch — above where the agency ends it.
+
+Every position below is read off `ea-cp8a-pin-2023-official-en.pdf` with
+`pnpm exec tsx scripts/measure-ea-official-pdf.ts --all` and `--rects`, and `test/ea-agency-grid.test.ts`
+re-derives them from that same file on every run, so this table cannot quietly go stale.
+
+    COLUMNS (text x; the agency's table pads its cells by 5.4 pt, so a cell edge is 5.4 pt left of these)
+      body table left edge  39.8      section letter        45.5      item number            62.5
+      sub-item letter       80.2      sub-item description  94.3      D5's sub-items         98.2
+      A's right item no.   304.3      A's right caption    321.9      A's 9(a)/9(b)         342.6
+      A's left rule        143.5 → 298.9                    A's right rule   433.5 → 556.6
+      money cell           482.3 → 556.6                    money leader     487.7
+      D5's own "RM"        342.6      E/F's "RM"           467.1      B's one RM heading    511.7
+      officer captions     196.9      officer rules        331.5 → 556.1   Date (outside)     45.2
+
+    BASELINES (tt, points from the top edge)
+      A 105.9 · B 229.1 · C 449.4 · D 518.3 · E 648.5 · F 712.4
+      A's rows       119.7 / 133.3 / 147.5 / 161.8 / 175.9 (+187.6 for item 8's second line)
+                     9(a) 190.1 · 9(b) 204.4
+      B's rows       254.2 / 268.4 / 282.5 / 296.8 / 311 / 325.1 / 339.4 / 353.6 / 367.7 /
+                     382 / 396.2 / 410.3 / 424.6, with its sub-heading and RM on 240.4
+      C's rows       463.2 / 477.4, TOTAL on 492.4 between rules at 481.8 and 497
+      D's rows       531.7 / 544.9 / 558.1 / 571.3 / 584.5 / 597.7 / 610.9 / 624.1
+      E's rows       661.8 (fund name) / 675 (its contribution) / 688.1 (PERKESO)
+      officer box    frame 727.5 → 817.9 between vertical rules at x 191 and 557;
+                     five writing rows at 749.1 / 762.3 / 775.5 / 788.8 / 802, a 13.2 pt pitch
+
+WHAT IS STILL OURS, AND IT IS A SHORT LIST
+  · the banner's 8 pt caption and the section letters' 8.5 pt, because the strings are ours and the
+    Malay banner does not clear the strip at the agency's 9 pt;
+  · the two header rules ("Serial No.", "Employer's No. E"), which stop at 188 rather than the
+    agency's ~275, because our centred masthead line is wider than the agency's and pdf-lib does not
+    clip. That end is a CLEARANCE, not a column;
+  · 1(f)'s two gratuity period rules and 1(c)/3/4's inline description rules, which flow from the
+    caption rather than sitting on a column, because our captions differ in length per edition;
+  · the amended-statement marker, which the agency's page has no box for at all. It sits in the
+    11.1 pt the agency leaves between Section F's row and the officer box's top rule;
+  · a CONTINUATION SHEET for an employer name and address longer than the agency's two writing rules.
+    The agency's box ends at 817.9 against a page floor of 830 — twelve points against a 13.2 pt
+    pitch — so the box cannot grow. The remainder continues on a second sheet at a full 8 pt rather
+    than being shrunk (item 450f443f's whole point) or truncated.
+
+CORRECTIONS THE RAISED ITEM ITSELF GOT WRONG, recorded because we raised it:
+  · "In Section C, TOTAL sits in the item-number column, where the agency puts it in the DESCRIPTION
+    column" — the agency puts it at x 80.5, which is the SUB-ITEM column (80.2 plus the bold face's
+    side bearing), not the description column (94.3). Both halves of the sentence were wrong.
+  · "The agency's left margin is 16.8 points, inside the unprintable margin of most office printers"
+    — corrected above, and in the plan, before any of this was built.
 
 WHAT THIS SYSTEM ALREADY HOLDS FOR EVERY BOX
 --------------------------------------------

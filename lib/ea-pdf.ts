@@ -1350,8 +1350,13 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // Item 2 — the caption, then "Jenis pendapatan (a) …/(b) …" beneath it. The two description rules carry
   // no money; the amount belongs to item 2 and sits on the (b) line, exactly as the agency sets it
   // (measured: "(a)" and "(b)" at 154.3, their leaders from 172.4, the money on the (b) row).
-  itemLine({ item: '2' }, t.arrears, A.rowsB.arrears, '');
-  amountOrRule('', MX, MR, A.rowsB.arrears);
+  // ⚠️ ITS OWN ROW CARRIES NO MONEY RULE. The agency's leader on this row is absent and reappears on
+  // the (b) line below — `--all` shows nothing at 487.7 on tt 339.4 and a leader at 487.7 on 367.7.
+  {
+    const n: Numbering = { item: '2' };
+    const x = numbering(n, A.rowsB.arrears);
+    putFit(stripDrawnNumbering(t.arrears, n), x, MX - x - 14, A.rowsB.arrears, 8);
+  }
   putFit(t.incomeType, A.subLabel, A.incomeTypeX.letter - A.subLabel - 4, A.rowsB.incomeTypeA, 8);
   put('(a)', A.incomeTypeX.letter, A.rowsB.incomeTypeA, 8);
   dotted(A.incomeTypeX.rule[0], A.incomeTypeX.rule[1], A.rowsB.incomeTypeA + 2.5);

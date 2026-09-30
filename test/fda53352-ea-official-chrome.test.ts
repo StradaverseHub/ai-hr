@@ -191,7 +191,8 @@ describe('fda53352 · (d) the officer captions clear their writing lines, in BOT
   it('the longest caption in either language ends before the rule starts', async () => {
     const doc = await PDFDocument.create();
     const font = await doc.embedFont(StandardFonts.Helvetica);
-    const x0 = EA_FORM.officerBox.x0 + 8;
+    // r372 — the agency's own caption column (196.9), not `x0 + 8`: the box moved and so did its text.
+    const x0 = EA_FORM.officerBox.captionX;
     for (const locale of ['en', 'ms']) {
       const w = eaFormWords(locale);
       for (const c of [w.officerName, w.officerPosition, w.employerNameAddress, w.employerPhone]) {
@@ -206,7 +207,7 @@ describe('fda53352 · (d) the officer captions clear their writing lines, in BOT
     // fit with 11pt to spare, which is why it was never seen — the form was only ever read in Malay.
     const doc = await PDFDocument.create();
     const font = await doc.embedFont(StandardFonts.Helvetica);
-    const end = EA_FORM.officerBox.x0 + 8 + font.widthOfTextAtSize(eaFormWords('en').employerNameAddress, 8);
+    const end = EA_FORM.officerBox.captionX + font.widthOfTextAtSize(eaFormWords('en').employerNameAddress, 8);
     expect(end).toBeGreaterThan(272);
     expect(EA_FORM.officerBox.ruleX[0], 'the rule start was not moved').toBeGreaterThan(end);
   });

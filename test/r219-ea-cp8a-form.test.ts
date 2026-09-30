@@ -382,11 +382,14 @@ describe('r219 — the foot: the officer box, and the agency’s own spelling of
    * telephone rule at 331.5 — so the date rides down with that row rather than floating above the box's
    * new foot. The literal is therefore gone from the source and the baseline is computed.
    *
-   * WHAT REPLACES IT IS THE CLAIM ITSELF, measured on the page: on a statement whose employer block
-   * fits the agency's two rules — which is every statement that existed before r372 — the caption and
-   * its rule are drawn at EXACTLY tt 723, on the same baseline as the telephone number, at the same x
-   * r219 chose. A source grep could not have told the difference between that and a coincidence; this
-   * can, and it survives round two re-pitching the box (item 795c470c).
+   * WHAT REPLACES IT IS THE CLAIM ITSELF, measured on the page: the caption and its rule are drawn on
+   * the same baseline as the telephone number, outside the box, where the agency prints them. A source
+   * grep could not have told the difference between that and a coincidence; this can.
+   *
+   * ⚠️ AND THE SENTENCE THAT STOOD HERE PROMISED SOMETHING IT COULD NOT DELIVER (retired in r372):
+   * "…drawn at EXACTLY tt 723 … and it survives round two re-pitching the box (item 795c470c)". A
+   * hard-coded 723 does not survive a re-pitch; it fails it, which is the honest outcome but not the
+   * promised one. The baselines below are derived from the box's own two constants instead.
    */
   it('Tarikh is filled from the statement’s own formDate, at the position r219 put it', async () => {
     const src = read('lib/ea-pdf.ts');
@@ -399,11 +402,29 @@ describe('r219 — the foot: the officer box, and the agency’s own spelling of
     expect(caption, 'the Tarikh caption is not on the page').toBeDefined();
     expect(value, 'the foot carries no date').toBeDefined();
     expect(phone, 'the telephone number is not on the page').toBeDefined();
-    // r219's own numbers: the caption at EA_FORM.left + 6, its rule written at 68 + 3, both on tt 723.
-    expect(caption!.x).toBeCloseTo(EA_FORM.left + 6, 2);
-    expect(value!.x).toBeCloseTo(71, 2);
-    expect(tt(caption!.y), 'the Tarikh caption moved off r219’s baseline').toBeCloseTo(723, 2);
-    expect(tt(value!.y), 'the date moved off r219’s baseline').toBeCloseTo(723, 2);
+    /**
+     * ⚠️ r372 — THE NUMBERS THIS PINNED WERE r219's AND THEY WERE THE TRACING's. Quoted, because this
+     * case's own prose claimed the opposite ("it survives round two re-pitching the box") and that
+     * claim was wrong:
+     *
+     *     expect(caption!.x).toBeCloseTo(EA_FORM.left + 6, 2);
+     *     expect(value!.x).toBeCloseTo(71, 2);
+     *     expect(tt(caption!.y)).toBeCloseTo(723, 2);
+     *
+     * LHDN puts its Date at x 45.2 on tt 802, on the SAME table row as its Telephone No. rule at
+     * 331.5. r219 put ours at `left + 6` on 723, off a 150 dpi tracing of another vendor's page, and
+     * 723 is 79 pt above the agency's row. The RELATIONSHIP r367 cared about — the date and the
+     * telephone on one baseline, the date OUTSIDE the box — is the agency's own and is what is pinned
+     * now, against `EA_FORM` rather than against a literal, so the next re-pitch really does carry it.
+     */
+    const O = EA_FORM.officerBox;
+    const footRow = Math.round((O.rowT0 + 4 * O.rowPitch) * 10) / 10;
+    expect(caption!.x, 'the Tarikh caption left the agency’s own column').toBeCloseTo(EA_FORM.dateX, 2);
+    expect(value!.x, 'the date is written before its own caption').toBeGreaterThan(caption!.x);
+    expect(value!.x, 'the date ran past the agency’s rule').toBeLessThan(EA_FORM.dateRule[1]);
+    expect(tt(caption!.y), 'the Tarikh caption left the agency’s last row').toBeCloseTo(footRow, 1);
+    expect(tt(value!.y), 'the date left the agency’s last row').toBeCloseTo(footRow, 1);
+    expect(caption!.x, 'the date moved INSIDE the officer box — the agency prints it outside').toBeLessThan(O.x0);
     // …and it is the agency's own arrangement that keeps them together: LHDN's Date and Telephone No.
     // share one table row, so a change that moves one and not the other is the defect to catch.
     expect(tt(phone!.y), 'the date and the telephone number came off the same row').toBeCloseTo(tt(value!.y), 2);
@@ -546,7 +567,24 @@ describe('r219 — a caption can never overprint its neighbour', () => {
    */
   it('every label drawn inside the form goes through the shrink-to-fit path', () => {
     const src = read('lib/ea-pdf.ts');
-    const form = src.slice(src.indexOf('const W = EA_FORM_WORDS;'), src.indexOf('let y: number = EA_FORM.footStripT'));
+    /**
+     * ⚠️ r372 — THIS GUARD HAD BEEN VACUOUS SINCE r346 AND NOTHING SAID SO. It sliced the renderer
+     * between two markers:
+     *
+     *     src.slice(src.indexOf('const W = EA_FORM_WORDS;'), src.indexOf('let y: number = EA_FORM.footStripT'))
+     *
+     * r346 split the agency's furniture per edition and the first line became
+     * `const W = eaFormWords(opts.locale ?? 'en');`, so `indexOf` returned -1; r351 removed the strip
+     * below the form and the second marker went too. `slice(-1, -1)` is the EMPTY STRING, so the
+     * matchAll found nothing, the array was empty and the case passed — on no source at all. A guard
+     * that greps a slice must assert the slice exists, which is what the two lines below do.
+     */
+    const from = src.indexOf('const W = eaFormWords(');
+    const to = src.indexOf('return doc.save();');
+    expect(from, 'the renderer’s drawing section could not be found — this guard reads nothing').toBeGreaterThan(0);
+    expect(to, 'the renderer’s end could not be found — this guard reads nothing').toBeGreaterThan(from);
+    const form = src.slice(from, to);
+    expect(form.length, 'the sliced drawing section is empty').toBeGreaterThan(5000);
     const unbounded = [...form.matchAll(/\bput[RC]?\(t\.[a-zA-Z0-9]+/g)].map((m) => m[0]);
     expect(unbounded, `labels drawn without a width bound: ${unbounded.join(', ')}`).toEqual([]);
     // …and the shrink is a real one: it rounds DOWN so the drawn string stays inside its slot, and it
