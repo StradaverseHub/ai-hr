@@ -41,24 +41,49 @@ const panel = ['/app/admin/leave-config/types/page.tsx', '/app/admin/leave-confi
 const engine = read('/core/leave-compute.ts');
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
-/** The `mode === 'percent' ? ( … ) : ( … )` arm of CarryPolicyForm, sliced from its source. */
+/**
+ * The body of `CarryPolicyForm`, from its declaration to the end of the concatenated source.
+ *
+ * ⚠️ r375 — `expect(form).not.toBe('')` USED TO STAND HERE AND CAUGHT NOTHING. When `indexOf` misses it
+ * returns −1, and `panel.slice(-1)` is the LAST CHARACTER of the file, not `""` — a non-empty string that
+ * sails past an emptiness check. (The sibling trap is `slice(-1, n)`, which IS `""` because a negative
+ * start is read as `length + start`; `test/r219-ea-cp8a-form.test.ts` asserted nothing at all for 27
+ * rounds that way.) Every marker below is therefore asserted `>= 0` — never truthy, since −1 is truthy —
+ * BEFORE it is used to slice, and every slice is asserted substantial. A length assertion is the only
+ * thing separating "no violations found" from "no text searched".
+ */
+function formBody(): string {
+  const at = panel.indexOf('function CarryPolicyForm(');
+  expect(at, 'CarryPolicyForm was renamed or removed — this whole guard would otherwise no-op').toBeGreaterThanOrEqual(0);
+  const form = panel.slice(at);
+  expect(form.length, 'the sliced CarryPolicyForm body is not substantial').toBeGreaterThan(500);
+  return form;
+}
+
+/** The `mode === 'percent' ? ( … )` arm of CarryPolicyForm, sliced from its source. */
 function percentBranch(): string {
-  const form = panel.slice(panel.indexOf('function CarryPolicyForm('));
-  expect(form).not.toBe('');
+  const form = formBody();
   const start = form.indexOf("mode === 'percent' ? (");
-  expect(start).toBeGreaterThan(-1);
+  expect(start, 'the percent-mode ternary marker was renamed').toBeGreaterThanOrEqual(0);
   // Ends where the ternary's alternative begins — the `) : (` that opens the fixed_max arm.
   const end = form.indexOf(') : (', start);
-  expect(end).toBeGreaterThan(start);
-  return form.slice(start, end);
+  expect(end, 'the `) : (` that closes the percent arm was not found').toBeGreaterThan(start);
+  const slice = form.slice(start, end);
+  expect(slice.length, 'the sliced percent branch is not substantial — the guard would assert nothing').toBeGreaterThan(200);
+  return slice;
 }
 
 function fixedMaxBranch(): string {
-  const form = panel.slice(panel.indexOf('function CarryPolicyForm('));
-  const alt = form.indexOf(') : (', form.indexOf("mode === 'percent' ? ("));
+  const form = formBody();
+  const pct = form.indexOf("mode === 'percent' ? (");
+  expect(pct, 'the percent-mode ternary marker was renamed').toBeGreaterThanOrEqual(0);
+  const alt = form.indexOf(') : (', pct);
+  expect(alt, 'the `) : (` that opens the fixed_max arm was not found').toBeGreaterThan(pct);
   const end = form.indexOf('<CarryExpiryFields', alt);
-  expect(end).toBeGreaterThan(alt);
-  return form.slice(alt, end);
+  expect(end, 'CarryExpiryFields no longer follows the mode ternary').toBeGreaterThan(alt);
+  const slice = form.slice(alt, end);
+  expect(slice.length, 'the sliced fixed_max branch is not substantial — the guard would assert nothing').toBeGreaterThan(200);
+  return slice;
 }
 
 describe('7cd914b1 rev 2 — percentage mode shows one number', () => {
@@ -87,11 +112,14 @@ describe('7cd914b1 rev 2 — percentage mode shows one number', () => {
   it('keeps the carry expiry fields reachable from percent mode', () => {
     // CarryExpiryFields sits OUTSIDE the mode ternary, so both modes render it. If someone moves it
     // inside the fixed_max arm, percentage types silently lose their expiry configuration.
-    const form = panel.slice(panel.indexOf('function CarryPolicyForm('));
-    const ternaryEnd = form.indexOf('<CarryExpiryFields');
+    const form = formBody();
     const percentStart = form.indexOf("mode === 'percent' ? (");
-    expect(ternaryEnd).toBeGreaterThan(percentStart);
-    expect(form.slice(percentStart, ternaryEnd)).toContain(') : (');
+    expect(percentStart, 'the percent-mode ternary marker was renamed').toBeGreaterThanOrEqual(0);
+    const ternaryEnd = form.indexOf('<CarryExpiryFields', percentStart);
+    expect(ternaryEnd, 'CarryExpiryFields was not found after the mode ternary').toBeGreaterThan(percentStart);
+    const between = form.slice(percentStart, ternaryEnd);
+    expect(between.length, 'the slice between the ternary and CarryExpiryFields is not substantial').toBeGreaterThan(200);
+    expect(between).toContain(') : (');
   });
 });
 
@@ -100,6 +128,8 @@ describe('7cd914b1 rev 2 — the engine clamp is a backstop and must survive', (
     // Deliberately asserting the SOURCE, not just behaviour: the behavioural cases live in
     // carry-forward-percent.test.ts, and this one exists so that deleting the clamp as "dead code"
     // fails with a message saying why it is not dead.
+    // r375 — the same discipline: a guard that searches a file must prove it read one.
+    expect(engine.length, 'core/leave-compute.ts read as empty — this guard would assert nothing').toBeGreaterThan(1000);
     expect(engine).toMatch(/Math\.min/);
     expect(engine).toContain('hand-written UPDATE');
   });
