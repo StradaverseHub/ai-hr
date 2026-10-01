@@ -612,7 +612,6 @@ describe('r378 company information in actual localized documents', () => {
         {label:info.branch,value:'Synthetic North Branch'},
         {label:info.daysWorked,value:'0'},
       ]},localized);
-      fs.writeFileSync(`scratchpad/r378-payroll/payslip-${locale}.pdf`,bytes);
       const text = await extractedText(bytes);
       expect(text).toContain('Synthetic North Branch');
       expect(text).not.toContain(data.employee);
