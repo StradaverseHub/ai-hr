@@ -1,3 +1,5 @@
+import { selectPayslipInformation } from '@/core/payslip-information';
+import { payslipInformationLabels } from '@/lib/payslip-information-labels';
 /**
  * Feedback 169e3c24 — Individual Payslip: one named place to review, verify, print and download an
  * employee's payslip BEFORE it is released.
@@ -264,6 +266,7 @@ export default async function IndividualPayslipPage({
   }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
+  const informationLabels = await payslipInformationLabels();
   const t = await getTranslations('payroll.individualPayslip');
   const tSlip = await getTranslations('me.payslip');
   const tTxn = await getTranslations('payroll.transactions');
@@ -708,37 +711,18 @@ export default async function IndividualPayslipPage({
               ⚠️ payroll.statutoryAdjustment.employeeHeading is a DIFFERENT key on a different screen. */}
           <Block title={t('employmentInfoHeading')}>
             <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <Info label={t('fieldEmployeeCode')} value={row.employeeCode} />
-              <Info label={t('fieldEmployeeName')} value={row.employeeName} />
-              <Info
-                label={row.identityIsPassport ? t('fieldPassport') : t('fieldIc')}
-                value={row.identityNumber}
-              />
-              {/* 5c198931 — the statutory registration numbers the downloaded document prints. Added here
-                  so the preview and the download show the same employee record, which was the whole
-                  complaint: the two had drifted. SOCSO and EIS share ONE number — there is no separate EIS
-                  column on employee_statutory_my, and the attached design prints them as one field. */}
-              <Info label={t('fieldEpfNumber')} value={row.epfNumber} />
-              <Info label={t('fieldSocsoNumber')} value={row.socsoNumber} />
-              <Info label={t('fieldTaxNumber')} value={row.taxNumber} />
-              <Info label={t('fieldDepartment')} value={row.department} />
-              <Info label={t('fieldPosition')} value={row.position} />
-              <Info label={t('fieldGrade')} value={row.jobGrade} />
-              <Info
-                label={t('fieldEmploymentType')}
-                value={row.employmentType ? t(`employmentType_${row.employmentType}`) : null}
-              />
+              {selectPayslipInformation({ ...row, employee: row.employeeName,
+                employmentType: row.employmentType ? t(`employmentType_${row.employmentType}`) : null,
+              }, row.informationFields, { ...informationLabels, identityNumber: row.identityIsPassport ? t('fieldPassport') : informationLabels.identityNumber })
+                .map(field => <Info key={field.key} label={field.label} value={field.value} />)}
               <Info
                 label={t('fieldPaymentMethod')}
                 value={row.paymentMethod ? t(`paymentMethod_${row.paymentMethod}`) : null}
               />
               {/* Masked in the READ, not here: the full account number never reaches the client. */}
-              <Info
-                label={t('fieldBankAccount')}
-                value={row.bankAccountMasked ? `${row.bankName ?? ''} ${row.bankAccountMasked}`.trim() : null}
-              />
-              <Info label={t('fieldCurrency')} value={row.currency} />
-              <Info label={t('fieldDaysWorked')} value={row.daysWorked ?? '—'} />
+              {row.bankName?.trim() && <Info label={t('fieldBankName')} value={row.bankName} />}
+              {row.bankAccountMasked && <Info label={t('fieldBankAccount')} value={row.bankAccountMasked} />}
+
               {/* r360 (1fe55a23) — THE COMPANY'S OWN PAY CYCLE NAME, not the kernel's run-type word.
                   "Regular" is `payroll_batch.run_type`, one of four fixed behavioural types the kernel
                   gates on and nobody in the company chose; "Monthly" is `payroll_cycle.name`, the label the
@@ -760,7 +744,7 @@ export default async function IndividualPayslipPage({
 
           {/* ── Earnings ── */}
           <Block title={tSlip('earnings')}>
-            <Row label={tSlip('basicSalary')} value={rm(b.basic)} />
+            {b.basic !== 0 && <Row label={tSlip('basicSalary')} value={rm(b.basic)} />}
             {/* a96d320c rev 2 — AN EARNING LINE WITH NOTHING ON IT IS NOT SHOWN. This screen is the admin
                 REVIEW COPY of the payslip and it is where the PDF is downloaded from, so it follows the
                 document: lib/payslip-pdf.ts stops printing a zero Allowance / Overtime / Bonus in the same
@@ -952,18 +936,6 @@ export default async function IndividualPayslipPage({
               value={hrdfRegistered ? rm(b.employerContributions.hrdf) : tTxn('view.history.hrdfNotRegistered')}
               muted
             />
-            <Row label={tSlip('totalEmployerCost')} value={rm(row.employerCost)} muted />
-            {/* r367 — THE SENTENCE THAT NOW CARRIES WHAT THE HEADING'S BRACKET USED TO.
-                The heading above read "Employer contributions (not deducted from you)" and the bracket was
-                load-bearing: the ROW LABELS in this block and in Deductions above are THE SAME KEYS —
-                `me.payslip.epf`, `socso`, `eis` render in both — so the heading was the only thing on the
-                page separating the employee's money from the company's. Dropping the bracket without this
-                sentence would delete that statement outright.
-                The printed document has carried it under this box all along (lib/payslip-pdf.ts
-                `empSpec.note`); until this round `payroll.individualPayslip.employerContributionsNote` had
-                exactly ONE call site in the tree, that one, and none of the three screens resolved it. It
-                is already translated in all six catalogues, so no key is added here either. */}
-            <p className="mt-2 text-xs text-muted-foreground">{t('employerContributionsNote')}</p>
 
             {eb.any && (
               <div className="mt-4 border-t border-border pt-3">

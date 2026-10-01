@@ -405,17 +405,17 @@ describe('5b2a7f0f — the en document is untouched, and that is the regression 
     logo: 'e20b0afe847cd55942e1e8842cc415b752c653c267e382edd006e6748170ec0f',
     multipage: 'a6c07537806118b3321e69729f5069ba72ef10c4e0f357416935e9fd729393ae',
   };
-  /** r367 — the LIVE pins: one heading over the whole employee band, name and code on one line. */
+  /** r378 approved layout — employment card, payment values and no employer cost total. */
   const NO_REG_R367 = {
-    plain: 'a7dd9bd81f1800cfcb8753200896a6dd46a87bcd1186f7c83f05784f21d106fa',
-    logo: '1a42278cf9fc3c5bd8e3c8a55f001d3b76b9c729bf8d72d2529a83c23f656c4c',
-    multipage: '4a525a6cff48518da9be18b65950e75a61723ce63a5c042573186e3bbb81dc23',
+    plain: 'a959efe73dedef970e7aa3df718a6ac8d9c760d5142c25b39aba5d6de0a659e4',
+    logo: '24c15eaeda182ecd42d987c525881d4bc4c3617377a2068540e35da97173e755',
+    multipage: 'c89ae89416bbe532d7288adbc7db843ef2fae6439e909aacd9c1cf0f30b11360',
   };
-  /** r367 — and the same three fixtures for a company that HAS a registration number. */
+  /** r378 — the same fixtures with a company registration number. */
   const WITH_REG_R367 = {
-    plain: 'b2caffe02a93ce71e2d322bd7845f50b9688329ff79f14a9ddd0a6a3efc36d07',
-    logo: 'a5166c42460c495f38dbaa352090965432afd8e6e6c5d51db2ac23cf427072f0',
-    multipage: 'c8d0f6a2d209f39bf7c938f05bc9861c773e0ada02319dee6065ccc6547cf033',
+    plain: '6396dab1551c9a026d4c562be33693265eaebc26ba400bff21d1a979349a39a0',
+    logo: '86c44fba0a84c151c4d027d9d715d00edfec3ecb0ad0260ae72c8877dd7a5543',
+    multipage: '476fe519812ce79add0455387e27a8ac131e0a62f23514507e4dbdd72cebeb07',
   };
   /** The sheet count is part of the pin: a digest cannot say where a page BROKE. */
   const pageCountOf = async (b: Uint8Array) => (await PDFDocument.load(b)).getPageCount();
@@ -517,21 +517,13 @@ describe('5b2a7f0f — a real translation is longer than a question mark, and th
    */
   const EMPLOYER_COST_EN = labels.totalEmployerCost.toUpperCase();
 
-  it('English is untouched: its total captions still draw at the full 8pt', async () => {
-    const runs = await drawnRuns(await renderPayslipPdf(data, labels));
-    const cost = runs.find((r) => r.text === EMPLOYER_COST_EN);
-    expect(cost, 'the employer-cost total caption must be on the page').toBeTruthy();
-    expect(cost!.size).toBe(8);
-  });
-
-  it('Vietnamese — the caption that overlapped the amount — is shrunk to clear it', async () => {
-    const vi = localizeLabels('vi');
-    const caption = vi.totalEmployerCost.toUpperCase();
-    expect(caption).toBe('TỔNG CHI PHÍ NGƯỜI SỬ DỤNG LAO ĐỘNG');
-    const runs = await drawnRuns(await renderPayslipPdf(data, vi));
-    const cost = runs.find((r) => r.text === caption);
-    expect(cost, 'the Vietnamese caption must be on the page in full, not clipped').toBeTruthy();
-    expect(cost!.size).toBeLessThan(8);
+  it('omits the obsolete employer cost caption in English and Vietnamese while retaining net pay', async () => {
+    for (const locale of ['en', 'vi']) {
+      const localized = localizeLabels(locale);
+      const runs = await drawnRuns(await renderPayslipPdf(data, localized));
+      expect(runs.some(r => r.text === localized.totalEmployerCost.toUpperCase())).toBe(false);
+      expect(runs.some(r => r.text === localized.netPay.toUpperCase())).toBe(true);
+    }
   });
 
   it('no locale drives any run down to the 5.5pt floor — below that the fit would stop fitting', async () => {
@@ -605,6 +597,26 @@ describe('5b2a7f0f — safe() still folds, and nothing degrades by throwing', ()
       'OFL.txt',
     ]) {
       expect(fs.existsSync(new URL(`../${PAYSLIP_FONT_DIR}/${f}`, import.meta.url)), f).toBe(true);
+    }
+  });
+});
+
+
+describe('r378 company information in actual localized documents', () => {
+  it('renders selected organization fields in all six locales and omits zero basic salary and disabled identity fields', async () => {
+    for (const locale of ['en','ms','zh','ta','th','vi']) {
+      const messages = JSON.parse(fs.readFileSync(`messages/${locale}.json`, 'utf8'));
+      const info = messages.payroll.payslipInformation;
+      const localized = localizeLabels(locale);
+      const bytes = await renderPayslipPdf({...data,basic:0,informationRows:[
+        {label:info.branch,value:'Synthetic North Branch'},
+        {label:info.daysWorked,value:'0'},
+      ]},localized);
+      fs.writeFileSync(`scratchpad/r378-payroll/payslip-${locale}.pdf`,bytes);
+      const text = await extractedText(bytes);
+      expect(text).toContain('Synthetic North Branch');
+      expect(text).not.toContain(data.employee);
+      expect(text).not.toContain(localized.basicSalary);
     }
   });
 });

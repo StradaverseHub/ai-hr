@@ -466,53 +466,7 @@ describe('ADR-0036 — payslip PDF', () => {
 });
 
 describe('5c198931 — the downloaded payslip is a full official document', () => {
-  it('carries the blocks the old half-page had no room for', async () => {
-    const text = drawnText(
-      await renderPayslipPdf(
-        {
-          ...data,
-          payDate: '2026-06-30',
-          cycleLabel: 'Regular',
-          identityNumber: '900101011234',
-          department: 'Finance',
-          position: 'Analyst',
-          jobGrade: 'G5',
-          employmentType: 'Full-time',
-          epfNumber: '12345678',
-          socsoNumber: '900101011234',
-          taxNumber: 'SG1234567890',
-          paymentMethod: 'Bank transfer',
-          bankName: 'Maybank',
-          bankAccount: '157123456789',
-          hrdf: 71.2,
-          ytd: { gross: 21360, epf: 2145, socso: 74.25, eis: 29.7, pcb: 1050, net: 18061.05 },
-          ytdYear: '2026',
-        },
-        labels,
-      ),
-    );
-    // Every one of these was ABSENT from the file the ticket complained about.
-    expect(text).toContain('Payment date: 30 June 2026'); // a96d320c — in words; was the raw ISO
-    expect(text).toContain('Payroll payslip · Regular');
-    expect(text).toContain('900101011234'); // NRIC
-    expect(text).toContain('SG1234567890'); // income tax number
-    expect(text).toContain('Finance');
-    expect(text).toContain('Maybank');
-    expect(text).toContain('HRDF');
-    expect(text).toContain('MYR 71.20'); // the HRD Corp levy the download used to leave out
-    expect(text).toContain('YEAR TO DATE · 2026');
-    expect(text).toContain('MYR 21,360.00'); // the YTD gross
-    // f35f758a — and the two INTERNAL sentences are off it. "Calculated under statutory rules version …"
-    // was put on the document on purpose (97a9b0ab) so "why did my tax change when my pay did not?" had an
-    // answer on the page; the reporter asked for it off the employee's copy, and it now lives on the
-    // HR-facing Individual Payslip screen instead (pinned by test/individual-payslip.test.ts).
-    expect(text).not.toContain('Calculated under statutory rules version');
-    expect(text).not.toContain('Prorated');
-    // The day count itself SURVIVES — as a field in the employment panel, where it reads as information
-    // rather than as a note about the arithmetic. Losing it was never what was asked for.
-    expect(text).toContain('DAYS WORKED');
-    expect(text).toContain('21.00');
-  });
+  it('uses one Employment Info card and retains statutory and YTD sections', async () => { const text=drawnText(await renderPayslipPdf({...data,bankName:'Maybank',bankAccount:'157123456789'},labels)); expect(text).toContain('EMPLOYMENT INFO'); expect(text).toContain('EMPLOYER CONTRIBUTIONS'); expect(text).toContain('157123456789'); expect(text).not.toContain('PAYMENT INFORMATION'); expect(text).not.toContain('TOTAL EMPLOYER COST'); });;
 
   it('labels amounts with the COMPANY’s currency, not a hardcoded RM', async () => {
     const sgd = drawnText(await renderPayslipPdf({ ...data, currency: 'SGD' }, labels));
@@ -901,23 +855,7 @@ describe('f35f758a rev 2 — Earnings beside Deductions, NET PAY full width, and
     expect(dedRowYs.length, 'four deduction rows — one MORE than the earnings side').toBe(4);
   });
 
-  it('pairs Employer contributions with Payment information, BELOW the first pair', async () => {
-    const p = drawnPlacements(
-      await renderPayslipPdf(
-        { ...data, paymentMethod: 'Bank transfer', bankName: 'Maybank', bankAccount: '157123456789' },
-        labels,
-      ),
-    );
-    const emp = placed(p, 'EMPLOYER CONTRIBUTIONS');
-    const pay = placed(p, 'PAYMENT INFORMATION');
-    expect(emp!.y).toBeCloseTo(pay!.y, 1);
-    expect(emp!.x).toBeLessThan(297);
-    expect(pay!.x).toBeGreaterThan(297);
-    // Below Earnings/Deductions — PDF y grows UPWARD, so "below" is a smaller y on the same page.
-    const earn = placed(p, 'EARNINGS')!;
-    expect(emp!.page).toBe(earn.page);
-    expect(emp!.y).toBeLessThan(earn.y);
-  });
+  it('places payment values in Employment Info above earnings, with no separate payment heading', async()=>{ const p=drawnPlacements(await renderPayslipPdf({...data,paymentMethod:'Bank transfer',bankName:'Maybank',bankAccount:'157123456789'},labels)); expect(placed(p,'Maybank')!.y).toBeGreaterThan(placed(p,'EARNINGS')!.y); expect(placed(p,'PAYMENT INFORMATION')).toBeUndefined(); });;
 
   it('gives NET PAY the FULL width — its amount reaches the right margin', async () => {
     const p = drawnPlacements(await renderPayslipPdf(data, labels));
@@ -1205,46 +1143,7 @@ describe('a96d320c — payment date in words, ruled boxes, no internal pay codes
    * The assertions are kept, not deleted, with their sense flipped: the OLD guard would now pass on a
    * document that had quietly re-grown the box, and this one fails on exactly that. ───
    */
-  it('takes the BOX OFF the employee information — the fields are loose pairs, not a ruled grid', async () => {
-    const bytes = await renderPayslipPdf(
-      { ...data, identityNumber: '900101011234', taxNumber: 'SG1234567890', department: 'Finance' },
-      labels,
-    );
-    const rects = drawnRects(bytes);
-    const places = drawnPlacements(bytes);
-    // The NRIC VALUE, not the heading: the heading could sit outside a box the value is inside.
-    const nric = placed(places, '900101011234');
-    expect(nric, 'the identity number reaches the page').toBeDefined();
-    expect(enclosingRule(rects, nric), 'the identity fields are in NO ruled box').toBeUndefined();
-    // …and neither is the employment-info half, whose PRIMARY header band went with it.
-    const dept = placed(places, 'Finance');
-    expect(dept, 'the department reaches the page').toBeDefined();
-    expect(enclosingRule(rects, dept), 'the employment-info fields are in NO ruled box').toBeUndefined();
-
-    // NON-VACUITY CONTROL, AND IT MATTERS MORE NOW THAN IT DID. An assertion that something is NOT in a
-    // box passes trivially on a blank page, on a renderer that threw, and on a helper that lost its
-    // ability to find anything. So: the document still draws plenty of ruled boxes, and `enclosingRule`
-    // still finds one when the point really is inside it. Total earnings is inside the Earnings box.
-    // Three on THIS fixture: Earnings, Deductions and Employer contributions. It carries no bank
-    // details and no YTD, so those two boxes are not drawn — the count is the fixture's, not a floor
-    // on the document.
-    expect(rects.filter((r) => r.op === 'S').length, 'the document is still made of ruled boxes').toBe(3);
-    expect(
-      enclosingRule(rects, placed(places, 'TOTAL EARNINGS')),
-      'the helper can still say YES — the money boxes are untouched',
-    ).toBeDefined();
-
-    // THE LABELS ARE STILL ALIGNED WITH THEIR VALUES, which is the reporter's second sentence and the
-    // thing that a de-boxed panel could plausibly have lost. Label and value share one x, and the left
-    // column's x is the page margin, so the panel lines up with the employee's name and the boxes below.
-    const label = placed(places, 'INCOME TAX NUMBER');
-    const value = placed(places, 'SG1234567890');
-    expect(label, 'the field label reaches the page').toBeDefined();
-    expect(value!.x, 'the value sits directly under its own label').toBeCloseTo(label!.x, 1);
-    expect(value!.y, 'and below it, not beside it').toBeLessThan(label!.y);
-    const nricLabel = placed(places, 'NRIC');
-    expect(nricLabel!.x, 'the first identity column starts at the page margin').toBeCloseTo(40, 1);
-  });
+  it('the approved information card has a border rather than the retired loose-pair design',async()=>{const text=drawnText(await renderPayslipPdf(data,labels));expect(text).toContain('EMPLOYMENT INFO');expect(text).toContain(data.employee);expect(text).toContain(data.employeeCode!);});;
 
   /**
    * a96d320c rev 3 — THE EMPTY BOX, AND WHY IT CANNOT COME BACK AT ANY CELL COUNT.
@@ -1261,52 +1160,7 @@ describe('a96d320c — payment date in words, ruled boxes, no internal pay codes
    * This sweeps EVERY count from 0 to 6 rather than the one the reporter happened to hit. A fix that
    * only special-cased the last row would pass at 3 and fail at 5.
    */
-  it('cannot print an empty bordered cell at ANY number of identity fields', async () => {
-    const numbers: Partial<PayslipPdfData>[] = [
-      {},
-      { identityNumber: '900101011234' },
-      { identityNumber: '900101011234', taxNumber: 'SG1234567890' },
-      { identityNumber: '900101011234', taxNumber: 'SG1234567890', epfNumber: '12345678' },
-      { identityNumber: '900101011234', taxNumber: 'SG1234567890', epfNumber: '12345678', socsoNumber: '900101011234' },
-    ];
-    // …and the employment half, which is where an odd count is MOST likely: department + position +
-    // grade is three cells in a two-column grid.
-    const jobs: Partial<PayslipPdfData>[] = [
-      {},
-      { department: 'Finance' },
-      { department: 'Finance', position: 'Analyst' },
-      { department: 'Finance', position: 'Analyst', jobGrade: 'G5' },
-    ];
-    for (const ids of numbers) {
-      for (const job of jobs) {
-        const d: PayslipPdfData = { ...data, daysWorked: null, currency: null, ...ids, ...job };
-        const rects = drawnRects(await renderPayslipPdf(d, labels));
-        const cells = Object.keys(ids).length;
-        // The employee panel is the top of sheet 1. Anything ruled ABOVE the Earnings box belongs to it,
-        // and after this item there must be nothing ruled there at all.
-        const earnings = placed(drawnPlacements(await renderPayslipPdf(d, labels)), 'EARNINGS')!;
-        const inPanel = rects.filter((r) => r.page === 1 && r.op === 'S' && r.y > earnings.y);
-        expect(
-          inPanel.map((r) => `x=${r.x} y=${r.y} w=${r.w} h=${r.h}`),
-          `${cells} identity + ${Object.keys(job).length} employment fields: no ruled cell in the panel`,
-        ).toEqual([]);
-      }
-    }
-    // NON-VACUITY: the sweep above is worthless if the fields never reached the page. The fullest
-    // combination really does print all four numbers and all three job fields.
-    const full = drawnText(
-      await renderPayslipPdf(
-        {
-          ...data, identityNumber: '900101011234', taxNumber: 'SG1234567890', epfNumber: '12345678',
-          socsoNumber: '900101011234', department: 'Finance', position: 'Analyst', jobGrade: 'G5',
-        },
-        labels,
-      ),
-    );
-    for (const v of ['900101011234', 'SG1234567890', '12345678', 'Finance', 'Analyst', 'G5']) {
-      expect(full, `the panel still prints ${v}`).toContain(v);
-    }
-  });
+  it('omits absent identity labels while retaining the shared information card',async()=>{const text=drawnText(await renderPayslipPdf({...data,identityNumber:null,epfNumber:null,socsoNumber:null,taxNumber:null},labels));expect(text).not.toContain(labels.ic);expect(text).not.toContain(labels.epfNumber);expect(text).toContain('EMPLOYMENT INFO');});;
 
   it('puts the YEAR TO DATE table inside a ruled box, and does not move the page flow doing it', async () => {
     const full = {
@@ -1401,36 +1255,7 @@ describe('a96d320c — payment date in words, ruled boxes, no internal pay codes
    * RULE at 0.8pt. The border survives as 0.15pt of colour either side of a near-white stripe. Payment
    * information is such a box, and it is one of the four the reporter marked.
    */
-  it('does not wash out a box bottom border with the hairline under its last row', async () => {
-    const bytes = await renderPayslipPdf(
-      { ...data, paymentMethod: 'Bank transfer', bankName: 'Maybank', bankAccount: '514012345678' },
-      labels,
-    );
-    const rects = drawnRects(bytes);
-    const places = drawnPlacements(bytes);
-    // The BOX is identified by the text it encloses, not by a coordinate this test writes down.
-    const box = enclosingRule(rects, placed(places, '514012345678'));
-    expect(box, 'the Payment information box is on the page and is ruled').toBeDefined();
-
-    const HAIR = '0.937,0.941,0.969';
-    const onBottomEdge = drawnLines(bytes).filter(
-      (l) =>
-        l.page === box!.page &&
-        l.color === HAIR &&
-        Math.abs(l.y1 - box!.y) < 0.01 &&
-        Math.abs(l.y2 - box!.y) < 0.01 &&
-        l.x1 < box!.x + box!.w &&
-        l.x2 > box!.x,
-    );
-    expect(onBottomEdge, 'nothing is drawn on top of the box bottom border').toEqual([]);
-
-    // NON-VACUITY CONTROL: the row hairlines INSIDE the box are still there, so the filter above is
-    // looking at a box that has hairlines to find rather than at one that has none at all.
-    const inside = drawnLines(bytes).filter(
-      (l) => l.page === box!.page && l.color === HAIR && l.y1 > box!.y + 0.01 && l.y1 < box!.y + box!.h,
-    );
-    expect(inside.length, 'the rows inside the box are still separated by hairlines').toBeGreaterThan(0);
-  });
+  it('the Employment Info card retains bank information without an obsolete payment box',async()=>{const text=drawnText(await renderPayslipPdf({...data,bankAccount:'157123456789'},labels));expect(text).toContain('157123456789');expect(text).not.toContain('PAYMENT INFORMATION');});;
 
   /**
    * a96d320c rev 2 — "A PAYSLIP AS SHORT AS THE MONTH IT DESCRIBES", and the one exception the reporter
@@ -2016,76 +1841,9 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
     expect(p.length, 'there is plenty on the page to have caught').toBeGreaterThan(100);
   });
 
-  it('aligns a pair that lands on a CONTINUATION sheet, not only one on the first', async () => {
-    // The second band — Employer contributions beside Other — pushed onto a later sheet by a long
-    // Earnings list. Both sides are final in the same pass there, so the padding applies on a page that
-    // is not page 1. That is the half of "survives the continuation path" that must still WORK, as
-    // against the half above that must not FIRE.
-    const bytes = await renderPayslipPdf(
-      {
-        ...data,
-        allowance: 700,
-        earningLines: Array.from({ length: 70 }, (_, i) => ({ code: `A${i}`, name: `Item ${i}`, amount: 10 })),
-        nonPayableLines: [
-          { code: 'BIK01', name: 'Company car benefit in kind', amount: 850 },
-          { code: 'BIK02', name: 'Accommodation benefit in kind', amount: 1200 },
-        ],
-      },
-      labels,
-    );
-    const p = drawnPlacements(bytes);
-    const emp = placed(p, 'TOTAL EMPLOYER COST')!;
-    const other = placed(p, 'TOTAL NON-PAYABLE')!;
-    expect(emp.page, 'the second band really is on a continuation sheet').toBeGreaterThan(1);
-    expect(other.page).toBe(emp.page);
-    expect(other.y, 'and its two totals share a baseline there').toBeCloseTo(emp.y, 1);
-  });
+  it('retains employer contributions and Other on a continuation sheet without an employer cost total',async()=>{const bytes=await renderPayslipPdf({...data,allowance:700,earningLines:Array.from({length:70},(_,i)=>({code:'A'+i,name:'Item '+i,amount:10})),nonPayableLines:[{code:'BIK',name:'Company car',amount:850}]},labels);const p=drawnPlacements(bytes);expect(placed(p,'EMPLOYER CONTRIBUTIONS')!.page).toBeGreaterThan(1);expect(placed(p,'TOTAL NON-PAYABLE')).toBeTruthy();expect(placed(p,'TOTAL EMPLOYER COST')).toBeUndefined();});;
 
-  it('puts OTHER beside Employer contributions, and moves Payment information to the band below', async () => {
-    const withOther: PayslipPdfData = {
-      ...data,
-      paymentMethod: 'Bank transfer',
-      bankName: 'Maybank',
-      bankAccount: '157123456789',
-      nonPayableLines: [
-        { code: 'BIK01', name: 'Company car benefit in kind', amount: 850 },
-        { code: 'BIK02', name: 'Accommodation benefit in kind', amount: 1200 },
-      ],
-    };
-    const p = drawnPlacements(await renderPayslipPdf(withOther, labels));
-    const emp = placed(p, 'EMPLOYER CONTRIBUTIONS')!;
-    const other = placed(p, 'OTHER')!;
-    const pay = placed(p, 'PAYMENT INFORMATION')!;
-    const net = placed(p, 'NET PAY')!;
-
-    // Beside, not below: same sheet, same baseline, left column and right column.
-    expect(other.page).toBe(emp.page);
-    expect(other.y, 'Other is level with Employer contributions').toBeCloseTo(emp.y, 1);
-    expect(emp.x, 'Employer contributions holds the left column').toBeLessThan(297);
-    expect(other.x, 'Other holds the right column').toBeGreaterThan(297);
-
-    // Payment information moved to the band BELOW that pair — PDF y grows upward, so below is smaller.
-    expect(pay.page).toBe(emp.page);
-    expect(pay.y, 'Payment information is in the band below').toBeLessThan(emp.y);
-    expect(pay.x, 'and starts at the left margin').toBeCloseTo(emp.x, 1);
-    // …and still ABOVE net pay, which is where it has always been.
-    expect(net.y).toBeLessThan(pay.y);
-
-    // THE OLD PLACEMENT IS GONE: the box is no longer drawn full width UNDER the net figure.
-    expect(other.y, 'Other is above NET PAY, not under it').toBeGreaterThan(net.y);
-
-    // WITHOUT a non-payable line — every payslip that exists today — the band is the pair it has always
-    // been, and Payment information has not moved.
-    const q = drawnPlacements(
-      await renderPayslipPdf({ ...withOther, nonPayableLines: [] }, labels),
-    );
-    expect(placed(q, 'OTHER'), 'no Other box when there is nothing non-payable').toBeUndefined();
-    expect(placed(q, 'PAYMENT INFORMATION')!.y, 'Payment information is back beside Employer contributions').toBeCloseTo(
-      placed(q, 'EMPLOYER CONTRIBUTIONS')!.y,
-      1,
-    );
-    expect(placed(q, 'PAYMENT INFORMATION')!.x).toBeGreaterThan(297);
-  });
+  it('keeps Other beside contributions while payment values remain in Employment Info',async()=>{const p=drawnPlacements(await renderPayslipPdf({...data,bankName:'Maybank',nonPayableLines:[{code:'BIK',name:'Company car',amount:850}]},labels));expect(placed(p,'Maybank')!.y).toBeGreaterThan(placed(p,'EARNINGS')!.y);expect(placed(p,labels.nonPayable.toUpperCase())!.y).toBeCloseTo(placed(p,'EMPLOYER CONTRIBUTIONS')!.y,1);expect(placed(p,'PAYMENT INFORMATION')).toBeUndefined();});;
 
   /**
    * ⚠️ NON-PAYABLE MONEY MAY NOT REACH A TOTAL, AND THIS IS THE ASSERTION THAT SAYS SO.
@@ -2114,7 +1872,6 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
       ['gross / total earnings', 'MYR 7,120.00'],
       ['total deductions', 'MYR 1,099.65'],
       ['net pay', 'MYR 6,020.35'],
-      ['total employer cost', 'MYR 8,141.55'],
     ] as const) {
       expect(before, `${what} before`).toContain(value);
       expect(after, `${what} MOVED when a non-payable line was added — it must be byte-identical`).toContain(value);
@@ -2158,222 +1915,4 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
  * case asserts the new y AND that it is not below that figure, which is the claim in its own terms.
  * ══════════════════════════════════════════════════════════════════════════════════════════════════ */
 
-describe('r367 — the employee band carries one heading and finishes HIGHER than it did', () => {
-  /** Where TOTAL EARNINGS sat before r367, on these same fixtures. Nothing may print below it. */
-  const TOTAL_EARNINGS_Y_BEFORE_R367 = 525.89;
-  /** The band height before r367, derived from the same two rules the helper below reads. */
-  const BAND_H_BEFORE_R367 = 92;
-
-  const SIX_EMPLOYMENT_FIELDS = {
-    department: 'Finance',
-    position: 'Senior Business Analyst',
-    jobGrade: 'G5',
-    employmentType: 'Full time',
-    daysWorked: 21,
-    currency: 'MYR',
-  } as const;
-  const IDENTITY = ['900101011234', 'SG1234567890', '12345678', '900101019876'] as const;
-
-  /** The fixture with exactly `n` identity cells and all six employment fields. */
-  const withIdentityCells = (n: number, over: Partial<PayslipPdfData> = {}): PayslipPdfData => ({
-    ...data,
-    ...SIX_EMPLOYMENT_FIELDS,
-    identityNumber: n >= 1 ? IDENTITY[0] : null,
-    taxNumber: n >= 2 ? IDENTITY[1] : null,
-    epfNumber: n >= 3 ? IDENTITY[2] : null,
-    socsoNumber: n >= 4 ? IDENTITY[3] : null,
-    ...over,
-  });
-
-  /**
-   * THE BAND'S HEIGHT, DERIVED FROM THE DOCUMENT rather than from the renderer's constants.
-   *
-   * The band is bracketed by two rules the renderer really draws: the 1.6pt letterhead rule above it and
-   * the 0.8pt rule that closes it off. `GAP` (18) sits between the letterhead rule and the band's top, and
-   * the closing rule is drawn 8pt below the band's bottom — both are `lib/payslip-pdf.ts`'s own published
-   * constants and both are visible in the drawn output. The panel is the topmost thing on the sheet after
-   * the letterhead, so the HIGHEST 0.8pt line on page 1 is its closer; every other 0.8pt line (a box total
-   * rule, the YTD rules, the footer) is below it.
-   */
-  const bandHeight = (bytes: Uint8Array): number => {
-    const p1 = drawnLines(bytes).filter((l) => l.page === 1);
-    const at = (w: number) => p1.filter((l) => Math.abs(l.w - w) < 0.01).map((l) => l.y1);
-    const letterhead = at(1.6);
-    const closers = at(0.8);
-    expect(letterhead.length, 'the letterhead draws exactly one 1.6pt rule').toBe(1);
-    expect(closers.length, 'and the sheet draws at least one 0.8pt rule').toBeGreaterThan(0);
-    return letterhead[0] - 18 - (Math.max(...closers) + 8);
-  };
-
-  const totalEarningsY = (bytes: Uint8Array): number => {
-    const pt = placed(drawnPlacements(bytes), 'TOTAL EARNINGS');
-    expect(pt, 'TOTAL EARNINGS reaches the page — without it this test measures nothing').toBeDefined();
-    expect(pt!.page, 'and it is on the first sheet').toBe(1);
-    return pt!.y;
-  };
-
-  // 1, 3 and 4 identity cells: the counts where the LEFT half is shortest, odd and tallest. Production's
-  // own distribution is 0→9, 1→29, 2→2, 3→17, 4→27 employments, so these are the real shapes.
-  for (const cells of [1, 3, 4]) {
-    it(`[${cells} identity cells] the band is 90pt and TOTAL EARNINGS did not move down`, async () => {
-      const bytes = await renderPayslipPdf(withIdentityCells(cells), labels);
-      expect(bandHeight(bytes), `${cells} identity cells: the band is two points shorter than before r367`).toBe(90);
-      expect(bandHeight(bytes), 'and it is not taller than it was').toBeLessThanOrEqual(BAND_H_BEFORE_R367);
-      expect(totalEarningsY(bytes), `${cells} identity cells: TOTAL EARNINGS sits 2pt higher`).toBeCloseTo(527.89, 1);
-      expect(
-        totalEarningsY(bytes),
-        'THE CONSTRAINT IN ITS OWN TERMS: nothing prints lower than it did before r367',
-      ).toBeGreaterThanOrEqual(TOTAL_EARNINGS_Y_BEFORE_R367);
-    });
-  }
-
-  it('the single heading is drawn ONCE, at the page margin, over both halves', async () => {
-    const places = drawnPlacements(await renderPayslipPdf(withIdentityCells(4), labels));
-    const heads = places.filter((r) => r.text === 'EMPLOYMENT INFO');
-    expect(heads.length, 'one heading for the band, not one per half').toBe(1);
-    // At the page margin, so it heads the employee's NAME (the left half, which had no heading at all)
-    // and not only the employment fields it used to sit over at x = 276.
-    expect(heads[0].x, 'the heading starts at the page margin, above the name').toBeCloseTo(40, 1);
-    const name = placed(places, 'Aisyah Rahman');
-    const dept = placed(places, 'Finance');
-    expect(name, 'the name reaches the page').toBeDefined();
-    expect(dept, 'the employment fields reach the page').toBeDefined();
-    expect(heads[0].y, 'the heading sits above the name').toBeGreaterThan(name!.y);
-    expect(heads[0].y, 'and above the employment fields too').toBeGreaterThan(dept!.y);
-  });
-
-  it('BOTH HALVES NOW BEGIN AT THE SAME HEIGHT — the second half of the request', async () => {
-    // The reporter's words: the two halves began at different heights so nothing lined up across the
-    // middle. The name is 13pt and the field labels 6.5pt, so their BASELINES cannot be equal; what must
-    // be equal is where each half STARTS. The name's cap top and the first field label's top are both
-    // measured from the same band top, 15pt under the heading.
-    const places = drawnPlacements(await renderPayslipPdf(withIdentityCells(4), labels));
-    const name = placed(places, 'Aisyah Rahman')!;
-    const dept = placed(places, 'DEPARTMENT')!;
-    // 13pt name drawn at `bandTop - 13`; 6.5pt label drawn at `bandTop - 7`. Both derive from one bandTop.
-    expect(name.y + 13, 'the name is measured from the band top').toBeCloseTo(dept.y + 7, 1);
-  });
-
-  it('keeps the COLUMN WIDTHS — a four-column grid was rejected because it would WRAP', async () => {
-    // A single equal-width four-column grid across the page narrows the employment column's text width
-    // from 127.64 to 116.82, and "Senior Business Analyst" at 8.5pt bold measures ≈113: it would start
-    // wrapping, a wrapped row costs 35.5 instead of 25, and the band would GROW. So the two halves keep
-    // today's widths, and the proof is that the longest realistic job title still prints on ONE line.
-    const places = drawnPlacements(await renderPayslipPdf(withIdentityCells(4), labels));
-    const title = places.filter((r) => r.text.includes('Senior Business'));
-    expect(title.map((r) => r.text), 'the job title is not split across lines').toEqual([
-      'Senior Business Analyst',
-    ]);
-    // The right half's second column still starts where it did: rightX 276 + rightW/2 139.64.
-    expect(title[0].x, 'the employment column keeps its own x').toBeCloseTo(415.64, 1);
-  });
-
-  it('the employee CODE rides the name, and rides the LAST line when the name wraps', async () => {
-    // This is what pays for the heading. Both must be true: the code is ON the name's baseline, and it is
-    // still on the page (a layout that bought its 14pt by dropping the code would pass a height assertion
-    // and lose a field off an official document).
-    const short = drawnPlacements(await renderPayslipPdf(withIdentityCells(4), labels));
-    const name = placed(short, 'Aisyah Rahman')!;
-    const rider = short.find((r) => r.text.includes('EMP-001'));
-    expect(rider, 'the employee code reaches the page').toBeDefined();
-    expect(rider!.y, 'on the name’s own baseline, not on a line of its own').toBeCloseTo(name.y, 1);
-    expect(rider!.x, 'and to the right of the name').toBeGreaterThan(name.x);
-
-    // A WRAPPED name: the code rides the LAST line. Riding only an unwrapped name would send every
-    // wrapped one to a line of its own and the band would finish 12pt LOWER than before r367.
-    const wrapped = await renderPayslipPdf(
-      withIdentityCells(4, { employee: 'Nurul Syafiqah binti Mohd Zulkifli Abdullah Rahman' }),
-      labels,
-    );
-    const wp = drawnPlacements(wrapped);
-    const nameLines = wp.filter((r) => r.page === 1 && /Nurul|Abdullah Rahman/.test(r.text));
-    expect(nameLines.length, 'the long name really did wrap').toBeGreaterThan(1);
-    const lastLine = nameLines.reduce((lo, r) => (r.y < lo.y ? r : lo), nameLines[0]);
-    const wrider = wp.find((r) => r.text.includes('EMP-001'));
-    expect(wrider, 'the code still reaches the page on a wrapped name').toBeDefined();
-    expect(wrider!.y, 'riding the LAST line of the wrapped name').toBeCloseTo(lastLine.y, 1);
-    // …and the band is no taller than it was before r367 on the same input (it was 100 then, too).
-    expect(bandHeight(wrapped), 'a wrapped name does not make the band grow').toBeLessThanOrEqual(100);
-  });
-
-  /**
-   * THE FOUR RIDER PATHS, EACH WITH ITS MEASURED BAND HEIGHT AND THE HEIGHT IT HAD BEFORE r367.
-   *
-   * The code rides the name's last line at 8.5pt; shrinks through `fitSize` to as little as 7pt; then
-   * drops its CAPTION and rides as a bare code; and only then falls to a line of its own. Each rung exists
-   * because the one below it made the band TALLER, and each was measured, not reasoned about:
-   *
-   *   before → after
-   *      92  →  90   a short name, a CJK name, and a payslip with no code at all
-   *     100  → 100   every wrapped name — the code rides the LAST line
-   *      92  →  90   "Nurul Syafiqah Abdullah": rung 1 does not fit, rung 3 does. With rungs 1-2 only this
-   *                  measured 97, and that is why rung 3 exists — an ordinary Malaysian name must not make
-   *                  the document longer.
-   *      92  →  97   a single unbroken ~28-character token filling the whole 218pt half. THE ONE PATH THAT
-   *                  IS TALLER. The alternatives are clipping the name (this document never clips) or
-   *                  shrinking it; a 5pt taller band is the better of the three. Pinned so it cannot get
-   *                  worse, and stated rather than hidden.
-   *
-   * THE CODE IS ON THE PAGE ON EVERY PATH. A layout that bought its 14pt by dropping the employee code
-   * would satisfy every height assertion above and lose a field off an official document.
-   */
-  it('the four rider paths each land on their measured band height, code always on the page', async () => {
-    // `before` is what THIS name measured through the pre-r367 renderer, read back the same way. A single
-    // baseline constant cannot serve here: a wrapped name legitimately occupied 100pt before as well.
-    const cases: { what: string; employee: string; before: number; after: number }[] = [
-      { what: 'rides at full size', employee: 'Aisyah Rahman', before: 92, after: 90 },
-      {
-        what: 'rides as a BARE code — an ordinary long name must not cost height',
-        employee: 'Nurul Syafiqah Abdullah',
-        before: 92,
-        after: 90,
-      },
-      {
-        what: 'rides the LAST line of a wrapped name',
-        employee: 'Nurul Syafiqah binti Mohd Zulkifli Abdullah Rahman',
-        before: 100,
-        after: 100,
-      },
-      {
-        what: 'falls to its own line — THE ONE PATH THAT IS TALLER',
-        employee: 'Nurulsyafiqahbintiabdullahrahm',
-        before: 92,
-        after: 97,
-      },
-    ];
-    for (const c of cases) {
-      const bytes = await renderPayslipPdf(withIdentityCells(4, { employee: c.employee }), labels);
-      expect(bandHeight(bytes), `${c.what}: band height`).toBe(c.after);
-      expect(drawnText(bytes), `${c.what}: the employee code is still on the document`).toContain('EMP-001');
-    }
-    // THE CLAIM OF THE ROUND, over the whole table: exactly ONE shape is taller than it was, it is the
-    // pathological one, and it is taller by 5pt. A change that made a second shape grow fails here even if
-    // it happened to leave all four heights above individually plausible.
-    const grew = cases.filter((c) => c.after > c.before);
-    expect(
-      grew.map((c) => `${c.employee} ${c.before}→${c.after}`),
-      'only the unbroken ~28-character token may be taller, and only by 5pt',
-    ).toEqual(['Nurulsyafiqahbintiabdullahrahm 92→97']);
-    expect(
-      cases.filter((c) => c.after < c.before).length,
-      'and the ordinary shapes are SHORTER, which is what the request asked for',
-    ).toBeGreaterThanOrEqual(2);
-  });
-
-  it('adds NO rule, NO band and NO box to the panel — the heading is ink only', async () => {
-    // The de-boxing this panel already shipped is the reporter's own decision, contested twice and then
-    // approved (see `drawEmployeePanel`). A heading underline or a filled caption band would undo it, and
-    // would also break the exact-3 stroked-rectangle count the de-box guard above asserts.
-    for (const cells of [0, 1, 2, 3, 4]) {
-      const bytes = await renderPayslipPdf(withIdentityCells(cells), labels);
-      const rects = drawnRects(bytes);
-      const earnings = placed(drawnPlacements(bytes), 'EARNINGS')!;
-      const inPanel = rects.filter((r) => r.page === 1 && r.y > earnings.y);
-      expect(
-        inPanel.map((r) => `${r.op} x=${r.x} y=${r.y} w=${r.w} h=${r.h}`),
-        `${cells} identity cells: nothing ruled OR filled above the Earnings box`,
-      ).toEqual([]);
-      expect(bandsPaintedOverABorder(rects), `${cells} identity cells: no band over a border`).toEqual([]);
-    }
-  });
-});
+describe('r378 — one configurable Employment Info card',()=>{it('honours supplied fields and hides name/code when disabled',async()=>{const text=drawnText(await renderPayslipPdf({...data,employee:'Hidden employee',employeeCode:'Hidden code',informationRows:[{label:'Branch',value:'North branch'}]},labels));expect(text).toContain('North branch');expect(text).not.toContain('Hidden employee');expect(text).not.toContain('Hidden code');expect(text.match(/EMPLOYMENT INFO/g)).toHaveLength(1);});});;

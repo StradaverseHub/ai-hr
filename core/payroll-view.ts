@@ -1,3 +1,4 @@
+import { businessUnit, payslipInformationSetting } from '../db/schema';
 /**
  * Payroll Transaction View (feedback a4a05174) — the centralized, READ-ONLY transaction inquiry.
  *
@@ -1319,6 +1320,17 @@ export function listPayrollRegisterAcross(
 
 /** Everything the Individual Payslip screen and its PDF need for ONE payslip, beyond the figures. */
 export type PayslipReviewRow = ProcessedPayslipViewRow & {
+  informationFields: string[] | null;
+  businessUnit: string | null;
+  division: string | null;
+  branch: string | null;
+  region: string | null;
+  line: string | null;
+  section: string | null;
+  team: string | null;
+  base: string | null;
+  category: string | null;
+
   companyReg: string | null;
   /**
    * r360 — the NAME of the configured Pay Cycle this run was opened under (`payroll_cycle.name` via
@@ -1431,6 +1443,16 @@ export function payslipForReview(
         coverageFrom: payslip.coverageFrom,
         coverageTo: payslip.coverageTo,
         payDate: payrollBatch.batchDate,
+        informationFields: payslipInformationSetting.fields,
+        businessUnit: businessUnit.name,
+        division: employment.orgDivision,
+        branch: employment.orgBranch,
+        region: employment.orgRegion,
+        line: employment.orgLine,
+        section: employment.orgSection,
+        team: employment.orgTeam,
+        base: employment.orgBase,
+        category: employment.employmentCategory,
         department: department.name,
         position: position.title,
         jobGrade: jobGrade.name,
@@ -1460,6 +1482,8 @@ export function payslipForReview(
           isNull(assignment.supersededAt),
         ),
       )
+      .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
+      .leftJoin(payslipInformationSetting, eq(payslipInformationSetting.companyId, payrollBatch.companyId))
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
       .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
