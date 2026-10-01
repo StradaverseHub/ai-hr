@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { InquiryTabLink as Link } from './inquiry-tab-link';
 import { getTranslations } from 'next-intl/server';
 
 /** r378 b594a6e0: two full-width inquiry destinations, with employee search context
