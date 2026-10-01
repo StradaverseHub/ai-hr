@@ -24,6 +24,7 @@
  * NOTHING HERE WRITES A PCB FIGURE OR CHANGES ONE. The item surfaces what the kernel already computes.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { currentPcbReliefs } from '../core/payroll-view';
 import { randomUUID } from 'node:crypto';
 import { DEFAULT_MY_STATUTORY } from '../localization/my/statutory-tables';
 import { childReliefAmountFor } from '../localization/my/payroll';
@@ -93,6 +94,9 @@ it('r377 category one has no applied child relief on the employee screen, while 
   expect(q!.reliefRM).toBe(0);
   expect(q!.storedQualifyingChildren).toBe(0);
   expect(q!.storedReliefRM).toBe(0);
+  const current = await currentPcbReliefs(adminCtx(base), { companyIds: [base.companyId], employmentId: E.employmentId, asOf: ASOF });
+  expect(current?.children).toBe(0);
+  expect(current?.total).toBe(RELIEFS.individual);
   expect(q!.breakdown.map(row => row.children)).toEqual([1, 1]);
   expect(q!.breakdown.every(row => row.units === 0 && row.amountRM === 0)).toBe(true);
 });

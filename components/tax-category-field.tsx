@@ -54,7 +54,7 @@ type Common = {
 
 export function TaxCategoryField(
   props:
-    | (Common & { mode: 'form'; defaultValue?: number | string | null; name?: string })
+    | (Common & { mode: 'form'; defaultValue?: number | string | null; name?: string; onChange?: (value: string) => void })
     | (Common & { mode: 'controlled'; value: string | undefined; onChange: (value: string) => void }),
 ) {
   const t = useTranslations('people.detail');
@@ -72,6 +72,7 @@ export function TaxCategoryField(
         <select
           name={props.name ?? 'taxCategory'}
           defaultValue={String(props.defaultValue ?? 1)}
+          onChange={props.onChange ? (e) => props.onChange?.(e.target.value) : undefined}
           className={inputCls}
         >
           {options}

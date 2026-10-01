@@ -173,6 +173,19 @@ describe('the card shows TWO figures under two captions', () => {
   });
 });
 
+it.each(['manual', 'auto_table'] as const)('live %s category changes agree with payroll eligibility', async mode => {
+  const { user } = renderCard({ mode, numChildren: 2, grid: { under_18: { full: 2, half: 0 } } });
+  const category = document.querySelector<HTMLSelectElement>('select[name="taxCategory"]')!;
+  expect(text('[data-child-relief-amount]')).toContain(rm(4000));
+  await user.selectOptions(category, '1');
+  expect(qualifyingValue()!.textContent).toBe('0');
+  expect(text('[data-child-relief-amount]')).toContain(rm(0));
+  expect(physical().value).toBe('2');
+  await user.selectOptions(category, '3');
+  expect(mode === 'manual' ? qualifyingInput()!.value : qualifyingValue()!.textContent).toBe('2');
+  expect(text('[data-child-relief-amount]')).toContain(rm(4000));
+});
+
 describe('manual — TYPED, and therefore still editable', () => {
   it('the qualifying field is an EDITABLE input, marked as entered, and is not dressed up as a calculation', () => {
     renderCard({ numChildren: 3 });

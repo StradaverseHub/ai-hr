@@ -97,6 +97,7 @@ const GOLDEN_STATUTORY = {
       // exact-shape guard is what forces that to be noticed rather than absorbed, which is the same
       // service it did for `ytdGross` in r354.
       childDeductionPerChild: 2000,
+      childWorking: { mode: 'manual', table: null, rows: [], categoryUnits: {}, headCount: 0, disabledIndividual: false, disabledSpouse: false },
       lpAccumulated: 0,
       lpCurrent: 0,
       mtdAdditionalCalc: 0,

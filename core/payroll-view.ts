@@ -1559,7 +1559,12 @@ export function currentPcbReliefs(
     const r = rules.pcb?.reliefs;
     if (!r) return null;
     const category = Number(row.category ?? 1);
-    const children =
+    const childFigure = pack.payroll.childReliefFor && pack.payroll.childReliefPrices
+      ? pack.payroll.childReliefFor(pricesChildReliefFromGrid(row)
+          ? { from: 'table', taxCategory: category, table: row.childReliefTable, prices: pack.payroll.childReliefPrices(r) }
+          : { from: 'headCount', taxCategory: category, children: Number(row.children ?? 0), perChild: r.perChild })
+      : null;
+    const children = childFigure?.amountRM ?? (
       // a5f21891 — 'auto' PRICES ITS GRID TOO, and all three gates widen together. The sync derives that
       // grid from the Family register (core/dependents.ts), so on 'auto' the categories decide the money
       // exactly as a keyed grid does on 'auto_table'. Widening one gate alone leaves the multicycle
@@ -1568,7 +1573,7 @@ export function currentPcbReliefs(
       pricesChildReliefFromGrid(row) &&
       pack.payroll.childReliefAmountFor
         ? pack.payroll.childReliefAmountFor(row.childReliefTable, r)
-        : Number(row.children ?? 0) * r.perChild;
+        : Number(row.children ?? 0) * r.perChild);
     const spouse = category === 2 ? r.spouse : 0;
     const disabledIndividual = row.disabled ? (r.disabledIndividual ?? 0) : 0;
     const disabledSpouse = row.disabledSpouse && category === 2 ? (r.disabledSpouse ?? 0) : 0;

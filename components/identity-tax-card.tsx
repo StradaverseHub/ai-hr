@@ -232,6 +232,8 @@ export function IdentityTaxCard({
       ? defaults.childReliefMode
       : 'manual',
   );
+  const [taxCategory, setTaxCategory] = useState(String(defaults.taxCategory ?? 1));
+  const categoryChanged = taxCategory !== String(defaults.taxCategory ?? 1);
   const [numChildren, setNumChildren] = useState<string>(String(defaults.numChildren ?? 0));
   // Item d64d0df4 — the 'auto_table' grid. Held as STRINGS so an emptied cell stays empty while the
   // admin retypes it (a number state would snap it back to 0 on every keystroke). Every category has a
@@ -295,17 +297,24 @@ export function IdentityTaxCard({
   //                returns `storedReliefRM` and the amber line below states it whenever the two differ.
   const figure =
     mode === 'auto_table'
-      ? (packChildReliefFor?.({ from: 'table', taxCategory: defaults.taxCategory ?? 1, table: typedGrid, prices }) ?? null)
+      ? (packChildReliefFor?.({ from: 'table', taxCategory: Number(taxCategory), table: typedGrid, prices }) ?? null)
       : mode === 'manual'
         ? (packChildReliefFor?.({
             from: 'headCount',
-            taxCategory: defaults.taxCategory ?? 1,
+            taxCategory: Number(taxCategory),
             children: whole(numChildren),
             perChild: childRelief?.perChild ?? 0,
           }) ?? null)
         : childRelief
-          ? { units: childRelief.qualifyingChildren, amountRM: childRelief.reliefRM, rows: [] }
+          ? (categoryChanged
+              ? (packChildReliefFor?.(childRelief.pricedFromGrid
+                  ? { from: 'table', taxCategory: Number(taxCategory), table: childRelief.derivedGrid, prices }
+                  : { from: 'headCount', taxCategory: Number(taxCategory), children: childRelief.eligibleChildren, perChild: childRelief.perChild }) ?? null)
+              : { units: childRelief.qualifyingChildren, amountRM: childRelief.reliefRM, rows: [] })
           : null;
+  const manualClaimAllowed = !packChildReliefFor || packChildReliefFor({
+    from: 'headCount', taxCategory: Number(taxCategory), children: 1, perChild: childRelief?.perChild ?? 0,
+  }).units > 0;
   const headCount =
     mode === 'auto'
       ? (childRelief?.eligibleChildren ?? 0)
@@ -331,7 +340,7 @@ export function IdentityTaxCard({
   //              RM2,000 where the categories support RM1,000.
   // A TOLERANCE RATHER THAN `!==`: a half share makes both sides fractional, and float equality on a
   // derived figure would put an amber warning on a difference of 1e-15.
-  const ruleUnitsGap = (childRelief?.ruleUnits ?? qualifying) - qualifying;
+  const ruleUnitsGap = categoryChanged ? 0 : (childRelief?.ruleUnits ?? qualifying) - qualifying;
   const weightingGap: 'under' | 'over' | null =
     Math.abs(ruleUnitsGap) < 0.0005 ? null : ruleUnitsGap > 0 ? 'under' : 'over';
   // IS PAYROLL BEHIND THE FAMILY RECORDS? Only a record STORED as 'auto' can be: the server-side sync fires
@@ -366,6 +375,17 @@ export function IdentityTaxCard({
   // the live grid) or the server's (for a saved 'auto' record) — this only labels them.
   // 'manual' gets NO breakdown: there is nothing to break down, and a table under a typed number would
   // imply one.
+  // Preserve the saved declaration while pricing an unsaved category change through the pack.
+  const familyBreakdown = (childRelief?.breakdown ?? []).map(row => {
+    if (!categoryChanged || !packChildReliefFor || !childRelief) return row;
+    const priced = packChildReliefFor(childRelief.pricedFromGrid && row.category
+      ? { from: 'table', taxCategory: Number(taxCategory), prices, table: {
+          [row.category]: { full: row.sharePercent === 100 ? row.children : 0, half: row.sharePercent === 50 ? row.children : 0 },
+        } }
+      : { from: 'headCount', taxCategory: Number(taxCategory), children: row.children, perChild: childRelief.perChild });
+    return { ...row, units: priced.units, amountRM: priced.amountRM };
+  });
+
   const breakdown: {
     key: string;
     label: string;
@@ -395,7 +415,7 @@ export function IdentityTaxCard({
           categoryContradictsDob: false,
         }))
       : mode === 'auto'
-        ? (childRelief?.breakdown ?? []).map((r, i) => ({
+        ? familyBreakdown.map((r, i) => ({
             key: `${r.name ?? r.category ?? 'row'}-${i}`,
             // ONE UNIT PER ELIGIBLE CHILD, because that is what 'auto' mode's kernel expression gives it:
             // `num_children × perChild`, whatever category is on file. The category column below is shown
@@ -466,7 +486,7 @@ export function IdentityTaxCard({
             {/* 35b7af0a group 6 — the SAME control the Create Employee wizard now renders. The option
                 list, its order and the 5→3 value mapping moved into components/tax-category-field.tsx
                 VERBATIM: this card still posts `taxCategory` with the same values it always did. */}
-            <TaxCategoryField mode="form" defaultValue={defaults.taxCategory} />
+            <TaxCategoryField mode="form" defaultValue={defaults.taxCategory} onChange={setTaxCategory} />
             <Field label={t('incomeTaxResident')}>
               <select name="taxResidency" defaultValue={defaults.taxResidency || 'resident'} className={inputCls}>
                 <option value="resident">{t('taxResidencyResident')}</option>
@@ -572,7 +592,7 @@ export function IdentityTaxCard({
                 perChild`), and they are wired to the same state so typing in either moves both; only the
                 Physical box carries the `name`, so the form still posts exactly one `numChildren`. */}
             <Field label={t('childrenQualifying')}>
-              {mode === 'manual' ? (
+              {mode === 'manual' && manualClaimAllowed ? (
                 <input
                   type="number"
                   min="0"
