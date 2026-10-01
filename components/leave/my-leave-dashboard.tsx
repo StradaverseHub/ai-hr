@@ -4,9 +4,9 @@
  * r302 (board 6c9802c9) — My Leave: the leave balance dashboard.
  *
  * ONE card per leave type that applies to the employee, in the order the server decided (Primary before
- * Secondary; Hidden never arrives). The Annual Leave type — `annualLeave`, decided on the server by
- * isEarnedAccrualType — is drawn with the ring; every other type is a smaller card with the same figures; a type
- * with no entitlement (`takenOnly`) shows how much has been taken and nothing else.
+ * Secondary; Hidden never arrives). r378 gives every type the same card frame. Drawable entitlement types use the existing
+ * segment arithmetic; hidden, negative, borrower and taken-only states use a neutral track.
+ * A type with no entitlement (`takenOnly`) still shows only its permitted taken figure.
  *
  * DB-FREE AND FORMULA-FREE. Every figure arrives computed (core/my-leave.ts) and is printed through the shared
  * day formatter; a null figure (HR hid it, or nothing could be read) prints an em dash, never a number. The
@@ -138,8 +138,6 @@ export function MyLeaveDashboard({
     return <p className="text-sm text-muted-foreground">{t('noCards')}</p>;
   }
 
-  const ringCards = cards.filter((c) => c.annualLeave && !c.takenOnly && ringDrawable(c));
-  const otherCards = cards.filter((c) => !ringCards.includes(c));
   const selected = cards.find((c) => c.leaveTypeId === selectedId) ?? null;
   const canOpen = (c: MyLeaveDashboardCard) => c.breakdown != null && (c.replacement != null || essViewHasAnyVisibleRow(c.essView));
   const openCard = (c: MyLeaveDashboardCard) => {
@@ -352,15 +350,16 @@ export function MyLeaveDashboard({
     return (
       <article
         key={c.leaveTypeId}
-        className="flex flex-col gap-4 rounded-xl border border-border bg-background p-4 sm:flex-row sm:items-center"
+        className="flex h-full items-start gap-3 rounded-xl border border-border bg-background p-4"
         data-testid="leave-ring-card"
         aria-label={c.leaveType}
       >
         <div className="flex flex-col items-center self-center">
           <LeaveBalanceRing
             segments={segments}
+            size={136}
             centre={fmt(c.remaining)}
-            centreCaption={t('centreCaption', { label: centreLabel })}
+            centreCaption={centreLabel}
             label={t('ringLabel', {
               type: c.leaveType,
               label: centreLabel,
@@ -378,6 +377,7 @@ export function MyLeaveDashboard({
           <dl className="mt-1.5">
             {row(t('entitlement'), c.entitlement)}
             {row(labelEarned(), c.earnedSoFar)}
+            {!c.annualLeave && row(t('balance'), c.balance)}
             {segments.map((s) => (
               <div
                 key={s.key}
@@ -410,15 +410,25 @@ export function MyLeaveDashboard({
     return (
       <article
         key={c.leaveTypeId}
-        className="flex flex-col rounded-xl border border-border bg-background p-3.5"
+        className="flex h-full items-start gap-3 rounded-xl border border-border bg-background p-4"
         data-testid="leave-type-card"
         aria-label={c.leaveType}
       >
+        <div className="shrink-0 self-start">
+          <LeaveBalanceRing
+            size={136}
+            segments={[]}
+            centre={fmt(c.takenOnly ? c.taken : borrowed ? borrowedValue : c.isCurrentCycle ? c.canApplyFor : c.remaining)}
+            centreCaption={c.takenOnly ? t('takenOnlyCaption') : segmentLabel('available', c)}
+            label={`${c.leaveType}: ${c.takenOnly ? t('takenOnlyCaption') : segmentLabel('available', c)} ${fmt(c.takenOnly ? c.taken : borrowed ? borrowedValue : c.isCurrentCycle ? c.canApplyFor : c.remaining)}`}
+          />
+        </div>
+        <div className="min-w-0 flex-1">
         <h3 className="flex items-center gap-1.5 text-sm font-semibold">
           <span className={v.hasColor ? `rounded p-0.5 ${v.chipClass}` : undefined}>
             <Icon className="size-3.5 shrink-0" aria-hidden />
           </span>
-          <span className="min-w-0 truncate">{c.leaveType}</span>
+          <span className="min-w-0 break-words">{c.leaveType}</span>
         </h3>
         {c.takenOnly ? (
           <>
@@ -451,23 +461,30 @@ export function MyLeaveDashboard({
               {c.hasEntitlement && row(t('entitlement'), c.entitlement)}
               {c.hasEntitlement && row(labelEarned(), c.earnedSoFar)}
               {row(t('taken'), c.taken)}
-              {row(t('pending'), c.pending)}
+              {row(t('pendingApproval'), c.pending)}
             </dl>
             {canApplyLine(c)}
           </>
         )}
         {extras(c)}
         {footer(c)}
+        </div>
       </article>
     );
   };
 
   return (
     <>
-      <div className={ringCards.length > 0 ? 'grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1.9fr)]' : ''}>
-        {ringCards.length > 0 && <div className="flex flex-col gap-4">{ringCards.map(ringCard)}</div>}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {otherCards.map(smallCard)}
+      <div className="mb-3 flex flex-wrap gap-x-4 gap-y-2 text-xs" data-testid="leave-shared-legend">
+        {(['available', 'pending', 'taken', 'unearned'] as const).map((key) => (
+          <span key={key} className="inline-flex items-center gap-1.5">
+            <span aria-hidden className="size-2.5 rounded-sm" style={{ background: RING_COLORS[key] }} />
+            {key === 'available' ? labelAvailable() : key === 'pending' ? t('pendingApproval') : key === 'taken' ? t('taken') : t('notEarnedYet')}
+          </span>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2" data-testid="leave-balance-grid">
+          {cards.map((c) => c.hasEntitlement && !c.takenOnly && poolRole(c) !== 'borrower' && ringDrawable(c) ? ringCard(c) : smallCard(c))}
           {sharedGroups.map((g) => (
             <article key={g.id} className="flex flex-col rounded-xl border border-border bg-muted/40 p-3.5" aria-label={g.name}>
               <h3 className="flex items-center gap-1.5 text-sm font-semibold">
@@ -480,7 +497,6 @@ export function MyLeaveDashboard({
               {g.capLabel && <p className="text-[11px] text-muted-foreground">{g.capLabel}</p>}
             </article>
           ))}
-        </div>
       </div>
 
       {selected?.breakdown && selected.replacement && (

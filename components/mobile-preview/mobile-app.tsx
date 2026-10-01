@@ -38,6 +38,7 @@ type ScreenId =
   | 'home'
   | 'attendance'
   | 'leave'
+  | 'leaveHistory'
   | 'leaveBalance'
   | 'leaveCalendar'
   | 'leaveApplication'
@@ -73,7 +74,9 @@ export function MobileApp() {
       case 'attendance':
         return t('feature.attendance');
       case 'leave':
-        return t('feature.leave');
+        return t('leave.overview');
+      case 'leaveHistory':
+        return t('leave.history');
       case 'leaveBalance':
         return t('leave.balance');
       case 'leaveCalendar':
@@ -136,6 +139,7 @@ export function MobileApp() {
               <AttendanceScreen t={t} clockedIn={clockedIn} setClockedIn={setClockedIn} />
             )}
             {current === 'leave' && <LeaveMenuScreen t={t} go={go} />}
+            {current === 'leaveHistory' && <LeavePreviewHistory t={t} go={go} />}
             {current === 'leaveBalance' && <LeaveBalanceScreen t={t} />}
             {current === 'leaveCalendar' && <LeaveCalendarScreen t={t} />}
             {current === 'leaveApplication' && <LeaveApplicationScreen t={t} />}
@@ -252,14 +256,16 @@ function MenuRow({ label, onClick }: { label: string; onClick: () => void }) {
   );
 }
 
+function LeavePreviewNav({t, go, history = false}: {t:T;go:(id:ScreenId)=>void;history?:boolean}) {
+  return <nav aria-label={t('feature.leave')} className="space-y-1"><div className="font-semibold">{t('feature.leave')} ▾</div><div className="flex gap-2"><button className={`min-h-11 rounded-lg px-3 ${!history ? 'bg-primary/10 font-semibold' : ''}`} onClick={() => go('leave')}>{t('leave.overview')}</button><button className={`min-h-11 rounded-lg px-3 ${history ? 'bg-primary/10 font-semibold' : ''}`} onClick={() => go('leaveHistory')}>{t('leave.history')}</button></div></nav>;
+}
+
 function LeaveMenuScreen({ t, go }: { t: T; go: (id: ScreenId) => void }) {
-  return (
-    <div className="space-y-3 pt-2">
-      <MenuRow label={t('leave.balance')} onClick={() => go('leaveBalance')} />
-      <MenuRow label={t('leave.calendar')} onClick={() => go('leaveCalendar')} />
-      <MenuRow label={t('leave.application')} onClick={() => go('leaveApplication')} />
-    </div>
-  );
+  return <div className="space-y-3 pt-2"><LeavePreviewNav t={t} go={go} /><MenuRow label={t('leave.balance')} onClick={() => go('leaveBalance')} /><MenuRow label={t('leave.calendar')} onClick={() => go('leaveCalendar')} /><MenuRow label={t('leave.application')} onClick={() => go('leaveApplication')} /></div>;
+}
+
+function LeavePreviewHistory({t,go}: {t:T;go:(id:ScreenId)=>void}) {
+  return <div className="space-y-4 pt-2"><LeavePreviewNav t={t} go={go} history /><p className="text-xs text-muted-foreground">{t('leave.historySample')}</p><div className="flex flex-wrap gap-2">{['pending','approved','rejected','cancelled'].map((status) => <span key={status} className="rounded-full border border-border px-2 py-1 text-xs">{t(`leave.historyStatus.${status}`)} —</span>)}</div><div className="rounded-lg border border-border p-3">—</div></div>;
 }
 
 function LeaveBalanceScreen({ t }: { t: T }) {

@@ -32,6 +32,8 @@ export type PackKind = 'module' | 'country';
  */
 export type NavChildDescriptor = {
   href: string;
+  /** Destination query intent; highlighting continues to use the route path. */
+  navigationHref?: string;
   labelKey: string;
   icon: LucideIcon;
   adminOnly?: boolean;
@@ -58,6 +60,8 @@ export type NavChildDescriptor = {
 
 /** A module's collapsible sidebar node: parent label/icon + its child rows, in render order. */
 export type NavNodeDescriptor = {
+  /** Inline expandable self-service group; parent name navigates to this destination. */
+  defaultHref?: string;
   labelKey: string;
   icon: LucideIcon;
   children: NavChildDescriptor[];

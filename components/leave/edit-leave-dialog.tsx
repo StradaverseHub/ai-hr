@@ -27,6 +27,7 @@ export function EditLeaveDialog({
   types,
   current,
   submitAction,
+  returnContext,
 }: {
   leaveRequestId: string;
   types: EditLeaveTypeOption[];
@@ -41,6 +42,7 @@ export function EditLeaveDialog({
     employeeRemark?: string | null;
   };
   submitAction: Action;
+  returnContext?: string;
 }) {
   const t = useTranslations('leave');
   const [open, setOpen] = useState(false);
@@ -72,6 +74,7 @@ export function EditLeaveDialog({
           </Dialog.Description>
           <form action={submitAction} className="mt-4 space-y-3" onSubmit={() => setOpen(false)}>
             <input type="hidden" name="leaveRequestId" value={leaveRequestId} />
+            {returnContext != null && <><input type="hidden" name="leaveOrigin" value="history" /><input type="hidden" name="leaveContext" value={returnContext} /></>}
 
             <Field label={t('fieldLeaveType')}>
               <select

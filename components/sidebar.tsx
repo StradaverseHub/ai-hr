@@ -66,7 +66,7 @@ import { modulePackById } from '@/packs/registry';
 
 // `labelKey` indexes the `nav` message namespace; labels are resolved at render via useTranslations.
 // `tour` (optional) marks the element as an onboarding-tour anchor (ADR-0018).
-type Item = { href: string; labelKey: string; icon: LucideIcon; tour?: string };
+type Item = { navigationHref?: string; href: string; labelKey: string; icon: LucideIcon; tour?: string };
 // A flyout parent node (b3dc0f78, flyout redesign fdc20776): one level of nesting only. Each child
 // carries its own visibility flag so filtering is per-child (vs. whole-group gating).
 type ChildItem = Item & {
@@ -77,6 +77,7 @@ type ChildItem = Item & {
   ownedSubpaths?: string[];
 };
 type CollapsibleGroupItem = {
+  defaultHref?: string;
   collapsible: true;
   labelKey: string;
   icon: LucideIcon;
@@ -149,7 +150,7 @@ const PERFORMANCE_ROW: ChildItem = modulePackById('performance')!.navLinks!.find
 // The `group` tag is the pack's placement declaration; position WITHIN the group stays this file's
 // concern.
 const LEAVE_LINKS = modulePackById('leave')!.navLinks!;
-const LEAVE_ABSENCE_ROW: ChildItem = LEAVE_LINKS.find((l) => l.group === 'main')!;
+const LEAVE_ABSENCE_ROW: CollapsibleGroupItem = {collapsible:true, ...modulePackById('leave')!.navNodes!.find((n) => n.group === 'main')!};
 // a00c4f64 — "Team Leave Tracker", the Leave Calendar's own screen after it left the Dashboard. It goes
 // in the Manage group (the reporter asked for it there) and carries NO gate, which is the point: the
 // group gates per row, and every employee could see this calendar before the move.
@@ -590,7 +591,7 @@ export function Sidebar({
     groups.find((g) =>
       g.items.some((r) =>
         isCollapsible(r)
-          ? isParentActive(pathname, r.children.filter(canSeeChild).flatMap(childPaths))
+          ? (r.defaultHref ? r.children.filter(canSeeChild).some(isRowActive) : isParentActive(pathname, r.children.filter(canSeeChild).flatMap(childPaths)))
           : isNavRowActive(pathname, search, r),
       ),
     )?.labelKey ?? null;
@@ -599,7 +600,7 @@ export function Sidebar({
     key == null || key === activeSectionKey || openSections.has(key);
 
   const openNode = openKey
-    ? groups.flatMap((g) => g.items).find((r): r is CollapsibleGroupItem => isCollapsible(r) && r.labelKey === openKey) ?? null
+    ? groups.flatMap((g) => g.items).find((r): r is CollapsibleGroupItem => isCollapsible(r) && r.labelKey === openKey && (!r.defaultHref || collapsed)) ?? null
     : null;
   const openChildren = openNode ? openNode.children.filter(canSeeChild) : [];
   // Inside a panel the LONGEST matching href wins, so exactly one row ever reads as the current page
@@ -725,13 +726,25 @@ export function Sidebar({
                   const children = item.children.filter(canSeeChild);
                   // Hide the whole parent if the viewer can see none of its children.
                   if (children.length === 0) return null;
+                  if (item.defaultHref && !collapsed) {
+                    const active = children.some(isRowActive);
+                    const expanded = active || openKey === item.labelKey;
+                    const Icon = item.icon;
+                    return <div key={item.labelKey}>
+                      <div className={cn(rowBase, 'w-full gap-1 px-3 py-1', active && 'bg-accent')}>
+                        <Link href={item.defaultHref} className="flex min-h-11 min-w-0 flex-1 items-center gap-3"><Icon className="size-5 shrink-0" aria-hidden /><span className="text-sm">{t(item.labelKey)}</span></Link>
+                        <button type="button" aria-label={t(item.labelKey)} aria-expanded={expanded} aria-controls={`inline-${item.labelKey}`} className="flex size-11 shrink-0 items-center justify-center" onClick={() => setOpenKey((key) => key === item.labelKey ? null : item.labelKey)}><ChevronDown className={cn('size-4', !expanded && '-rotate-90')} aria-hidden /></button>
+                      </div>
+                      {expanded && <nav id={`inline-${item.labelKey}`} aria-label={t(item.labelKey)} className="ml-7 flex flex-col gap-1">{children.map((child) => <Link key={child.href} href={child.href} aria-current={isRowActive(child) ? 'page' : undefined} className={cn('flex min-h-11 items-center rounded-xl px-3 text-sm', isRowActive(child) ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-accent')}>{t(child.labelKey)}</Link>)}</nav>}
+                    </div>;
+                  }
                   return (
                     <NavFlyout
                       key={item.labelKey}
                       labelKey={item.labelKey}
                       icon={item.icon}
                       open={openKey === item.labelKey}
-                      active={isParentActive(pathname, children.flatMap(childPaths))}
+                      active={item.defaultHref ? children.some(isRowActive) : isParentActive(pathname, children.flatMap(childPaths))}
                       collapsed={collapsed}
                       rowBase={rowBase}
                       panelId={`nav-flyout-${item.labelKey}`}
@@ -754,7 +767,7 @@ export function Sidebar({
                 return (
                   <Link
                     key={item.href}
-                    href={item.href}
+                    href={item.navigationHref ?? item.href}
                     data-tour={item.tour}
                     title={collapsed ? label : undefined}
                     // The badge itself is aria-hidden, so the count reaches screen readers here —

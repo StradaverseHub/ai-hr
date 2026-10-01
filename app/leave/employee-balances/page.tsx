@@ -13,7 +13,8 @@ import {
 } from '@/components/collapsible-employee-panel';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav';
-import { TableFullscreen } from '@/components/leave/table-fullscreen';
+import { InquiryNote } from '@/components/leave/inquiry-note';
+import styles from '@/components/leave/inquiry-table.module.css';
 import { selectInquiryEmployee, sortInquiryEmployees } from '@/lib/leave-inquiry';
 // 4a1abc4a: HR's copy of the employee's own balance grid must print the figures identically to it.
 import { dayPluralCategory, formatDays } from '@/lib/day-format';
@@ -90,6 +91,12 @@ export default async function EmployeeBalancesPage({
 }: {
   searchParams: Promise<{
     emp?: string;
+    pickerQ?: string;
+    pickerCompany?: string;
+    pickerBusinessUnit?: string;
+    pickerDepartment?: string;
+    pickerStatus?: string;
+
     asOf?: string;
     q?: string;
     type?: string | string[];
@@ -140,7 +147,8 @@ export default async function EmployeeBalancesPage({
     status: e.terminatedOn == null ? 'active' : 'ended',
   }));
   /** Read on the SERVER, so the first paint is already right rather than opening and folding (r320). */
-  const panelDefaultOpen = (await cookies()).get(PANEL_COOKIE)?.value !== '0';
+  const panelCookies = await cookies();
+  const panelDefaultOpen = !selected || (panelCookies.get(`${PANEL_COOKIE}-selected`)?.value === selected.employmentId && panelCookies.get(PANEL_COOKIE)?.value === '1');
 
   const asOf = sp.asOf && /^\d{4}-\d{2}-\d{2}$/.test(sp.asOf) ? sp.asOf : todayInKualaLumpur();
   // r219 — TODAY, kept as its own value rather than folded into the line above. The as-at fallback is a
@@ -212,7 +220,7 @@ export default async function EmployeeBalancesPage({
         {badges.map((c) => (
           <span
             key={c.leaveTypeId}
-            className="rounded border border-border px-1 text-[10px] font-medium text-muted-foreground"
+            className="rounded border border-border px-1 text-xs font-medium text-muted-foreground"
             title={tMe(`leaveBalanceTable.${tipKey}`, {
               v: formatDays(c[which]),
               cat: dayPluralCategory(c[which], locale),
@@ -243,24 +251,22 @@ export default async function EmployeeBalancesPage({
     const pooled = pooledEntitlementCaption(r);
     if (pooled) {
       return (
-        <div
-          className="mt-0.5 whitespace-nowrap text-[11px] text-muted-foreground"
-          title={tMe(`leaveBalanceTable.${pooled.tipKey}`, { pool: pooled.pool })}
+        <span
+          className="inline text-muted-foreground"
           data-testid="entitlement-pooled-caption"
         >
-          {tMe(`leaveBalanceTable.${pooled.labelKey}`, { pool: pooled.pool })}
-        </div>
+          <InquiryNote label={tInq('noteLabel')}><span>{tMe(`leaveBalanceTable.${pooled.labelKey}`, { pool: pooled.pool })}</span><span className="mt-1 block">{tMe(`leaveBalanceTable.${pooled.tipKey}`, { pool: pooled.pool })}</span></InquiryNote>
+        </span>
       );
     }
     // 31e39d74, byte for byte as it was: every OTHER row's caption, in amber, off the shared status maps.
     if (!entitlementStatusNeedsNotice(r.entitlementStatus)) return null;
     return (
-      <div
-        className="mt-0.5 whitespace-nowrap text-[11px] text-amber-700 dark:text-amber-500"
-        title={tMe(`leaveBalanceTable.${ENTITLEMENT_STATUS_TIP_KEY[r.entitlementStatus]!}`)}
+      <span
+        className="inline text-amber-700 dark:text-amber-500"
       >
-        {tMe(`leaveBalanceTable.${ENTITLEMENT_STATUS_LABEL_KEY[r.entitlementStatus]}`)}
-      </div>
+        <InquiryNote label={tInq('noteLabel')}><span className="text-amber-700 dark:text-amber-500">{tMe(`leaveBalanceTable.${ENTITLEMENT_STATUS_LABEL_KEY[r.entitlementStatus]}`)}</span><span className="mt-1 block">{tMe(`leaveBalanceTable.${ENTITLEMENT_STATUS_TIP_KEY[r.entitlementStatus]!}`)}</span></InquiryNote>
+      </span>
     );
   };
 
@@ -308,6 +314,7 @@ export default async function EmployeeBalancesPage({
    * `string | string[]`.
    */
   const panelPreserve: Record<string, string | string[]> = { dir };
+  for (const key of ['pickerQ', 'pickerCompany', 'pickerBusinessUnit', 'pickerDepartment', 'pickerStatus'] as const) { if (sp[key]) panelPreserve[key] = sp[key]; }
   if (sp.asOf) panelPreserve.asOf = asOf;
   if (q) panelPreserve.q = q;
   if (typeIds.length) panelPreserve.type = typeIds;
@@ -414,7 +421,7 @@ export default async function EmployeeBalancesPage({
   const tdNum = 'whitespace-nowrap px-2 py-2 text-right tabular-nums';
 
   return (
-    <div className="mx-auto max-w-[100rem] space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       <PageHeader title={tInq('balancesTitle')} description={tInq('balancesDescription')} />
       {/**
        * d990f14a — NO TAB RAIL: the tab bar is rendered below, between the filters and the table, so the
@@ -437,6 +444,7 @@ export default async function EmployeeBalancesPage({
        */}
       <CollapsibleEmployeePanel
         defaultOpen={panelDefaultOpen}
+        collapseOnSelection={selected?.employmentId ?? null}
         cookieKey={PANEL_COOKIE}
         title={tInq('balancesTitle')}
         hideLabel={tInq('panelHide')}
@@ -464,6 +472,7 @@ export default async function EmployeeBalancesPage({
                 basePath="/leave/employee-balances"
                 selectParam="emp"
                 preserve={panelPreserve}
+                preservePicker
               />
             </div>
           </Card>
@@ -538,7 +547,7 @@ export default async function EmployeeBalancesPage({
               scopes. The chips only render when a filter is active, so the search bar is directly above the
               bar in the ordinary case, which is what the reporter asked for; putting the bar between the
               search fields and their own active-filter chips would split one control into two. */}
-          <LeaveInquiryNav active="balances" employmentId={selected?.employmentId} carry={{ q, type: typeIds }} />
+          <LeaveInquiryNav active="balances" employmentId={selected?.employmentId} carry={{ ...panelPreserve, q, type: typeIds }} />
 
           {/* r219 (7966ee35) — why Replacement Leave in Lieu is not available to the employee named on the
               card below. Directly above that card so it is unambiguously about THIS person, and phrased
@@ -553,29 +562,22 @@ export default async function EmployeeBalancesPage({
               table is replaced. `tInq('noEmployees')` is a DIFFERENT statement — "no employees in the current
               company scope" — and stays for the scope-is-empty case the panel itself also reports. */}
           {!selected ? (
-            <Card className="overflow-hidden">
+            <Card>
               <p className="px-4 py-10 text-center text-sm text-muted-foreground" data-testid="pick-employee">
                 {employees.length === 0 ? tInq('noEmployees') : tInq('pickEmployeeBalances')}
               </p>
             </Card>
           ) : (
-          <Card className="overflow-hidden">
-            <TableFullscreen
-              title={tInq('balancesTitle')}
-              subtitle={selected ? `${selected.name} · ${selected.company}` : undefined}
-              openLabel={tInq('fullScreen')}
-              closeLabel={tInq('fullScreenClose')}
-              escHint={tInq('fullScreenEsc')}
-            >
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+          <Card>
+            <div className="overflow-x-auto" data-testid="employee-balances-scroll">
+              <table className={styles.table} data-testid="employee-balances-table">
                 {/* 026e16b9: no `tracking-wide` on these inquiry tables. Measured live, the extra letter-spacing
                       cost this header row 23px across eleven columns — the last of the horizontal overflow.
                       Uppercase small-caps headings read fine without it. */}
                 <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                   <tr>
                     <th
-                      className={`${th} w-[26%] min-w-[13rem]`}
+                      className={th}
                       aria-sort={dir === 'asc' ? 'ascending' : 'descending'}
                     >
                       <Link
@@ -673,19 +675,17 @@ export default async function EmployeeBalancesPage({
                             exists to close. The resolved-table caption still belongs here, not beside the
                             figures. */}
                         {r.entitlementTemplateName && (
-                          <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                            {tInq('resolvedEntitlementTable', { name: r.entitlementTemplateName })}
-                          </span>
+                          <InquiryNote label={tInq('noteLabel')}>{tInq('resolvedEntitlementTable', { name: r.entitlementTemplateName })}</InquiryNote>
                         )}
                         {/* r209 — the same sentence the employee's own grid carries, from the same row, so
                             HR and the employee are never told two different stories about one pool. */}
                         {r.sharedBalance && otherContributors(r.sharedBalance, r.leaveType).length > 0 && (
-                          <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                          <InquiryNote label={tInq('noteLabel')}>
                             {tInq('sharedBalanceWith', {
                               pool: r.sharedBalance.sourceLeaveTypeName,
                               types: otherContributors(r.sharedBalance, r.leaveType).join(', '),
                             })}
-                          </span>
+                          </InquiryNote>
                         )}
                       </td>
                       <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">
@@ -701,7 +701,7 @@ export default async function EmployeeBalancesPage({
                           the last 23px out of the header), and the status belongs to YTD Entitled rather
                           than standing on its own. The figure itself is untouched. */}
                       <td className={tdNum}>
-                        <div>{num(r.ytdEntitled)}</div>
+                        <span>{num(r.ytdEntitled)}</span>
                         {entitlementCaptionCell(r)}
                       </td>
                       <td className={tdNum}>{num(r.broughtForward)}</td>
@@ -785,7 +785,6 @@ export default async function EmployeeBalancesPage({
                 </tbody>
               </table>
             </div>
-            </TableFullscreen>
           </Card>
           )}
         </div>

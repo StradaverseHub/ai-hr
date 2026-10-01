@@ -360,7 +360,10 @@
     "systemTesting": "Kiểm thử hệ thống",
     "leaveHistoryImport": "Nhập dữ liệu lịch sử nghỉ phép",
     "leaveBfImport": "Nhập dữ liệu B/F phép",
-    "leaveDataImport": "Nhập dữ liệu nghỉ phép"
+    "leaveDataImport": "Nhập dữ liệu nghỉ phép",
+    "myLeave": "Nghỉ phép của tôi",
+    "leaveOverview": "Tổng quan nghỉ phép",
+    "leaveHistory": "Lịch sử nghỉ phép"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -2543,7 +2546,8 @@
       "takenRecordsLink": "Xem các bản ghi tạo nên con số Đã dùng này",
       "fullScreen": "Toàn màn hình",
       "fullScreenClose": "Đóng",
-      "fullScreenEsc": "Nhấn Esc để đóng"
+      "fullScreenEsc": "Nhấn Esc để đóng",
+      "noteLabel": "Hiển thị ghi chú hiện có"
     },
     "override": {
       "title": "Before you submit",
@@ -2643,7 +2647,8 @@
     },
     "replacementRequest": {
       "viewMyRequests": "View my leave credit requests"
-    }
+    },
+    "historyHeading": "Lịch sử nghỉ phép"
   },
   "leaveTracker": {
     "title": "Theo dõi nghỉ phép của nhóm",
@@ -13002,7 +13007,7 @@
     "resetToHome": "Về trang chủ",
     "feature": {
       "attendance": "Chấm công",
-      "leave": "Nghỉ phép",
+      "leave": "Nghỉ phép của tôi",
       "claim": "Yêu cầu hoàn tiền",
       "payroll": "Lương",
       "performance": "Hiệu suất",
@@ -13021,7 +13026,16 @@
     "leave": {
       "balance": "Số ngày phép còn lại",
       "calendar": "Lịch nghỉ phép",
-      "application": "Đơn xin nghỉ phép"
+      "application": "Đơn xin nghỉ phép",
+      "overview": "Tổng quan nghỉ phép",
+      "history": "Lịch sử nghỉ phép",
+      "historySample": "Chỉ là bố cục mẫu; không có hồ sơ nghỉ phép trực tiếp.",
+      "historyStatus": {
+        "pending": "Chờ duyệt",
+        "approved": "Đã duyệt",
+        "rejected": "Bị từ chối",
+        "cancelled": "Đã hủy"
+      }
     },
     "leaveBalance": {
       "annual": "Nghỉ phép năm",
@@ -13647,9 +13661,9 @@
       "help": "Số giờ làm việc sau giờ kết thúc ca theo lịch trong một ngày làm việc thường.",
       "shiftEnd": "Giờ kết thúc ca theo lịch",
       "actualClockOut": "Giờ ra thực tế",
-      "extendedStart": "Bắt đầu làm thêm",
-      "extendedEnd": "Kết thúc làm thêm",
-      "eligibleMinutes": "Số phút đủ điều kiện",
+      "extendedStart": "Giờ bắt đầu",
+      "extendedEnd": "Giờ kết thúc",
+      "eligibleMinutes": "Giờ đủ điều kiện",
       "credit": "Tín dụng",
       "total": "Tổng phần này",
       "nonWorkingDayRefused": "Ngày này không phải ngày làm việc. Hãy dùng Làm việc vào ngày không phải ngày làm việc thay thế.",
@@ -13689,7 +13703,18 @@
       "attendanceOtPlanNone": "Không có cho ngày này",
       "attendanceOtPlanApproved": "Đã duyệt cho ngày này",
       "dotReasonNoRecord": "Không có giờ ra được ghi nhận cho ngày này.",
-      "dotReasonPastClockOut": "Bạn khai đến {claimEnd}; giờ ra được ghi nhận là {clockOut}."
+      "dotReasonPastClockOut": "Bạn khai đến {claimEnd}; giờ ra được ghi nhận là {clockOut}.",
+      "detailToggle": "Xem chi tiết từng ngày",
+      "detailDay": "Ngày",
+      "detailSchedule": "Lịch làm việc",
+      "detailShift": "Ca",
+      "detailHours": "Giờ sau ca",
+      "noAttendanceRecord": "Không có hồ sơ chấm công cho ngày này.",
+      "companyRule": "Quy tắc của công ty: {half} = 0.5 ngày · {full} = 1 ngày",
+      "duplicateDate": "Ngày này đã có trong yêu cầu.",
+      "reasonRequired": "Thêm lý do để tiếp tục.",
+      "completeRows": "Hoàn thành các dòng đủ điều kiện để tiếp tục.",
+      "reasonPlaceholder": "vd. Chốt bảng lương cuối tháng"
     }
   },
   "notices": {

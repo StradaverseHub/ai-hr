@@ -131,7 +131,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     // "My Absence" in the access grid describe one function as if it were two (570fd56e).
     // r343 (cbfa8b0b) — '/leave/credit' rides THIS column on exactly that argument: the employee's own
     // Leave Credit request table, reached from this very screen.
-    routes: ['/leave', '/leave/credit'],
+    routes: ['/leave', '/leave/history', '/leave/credit'],
     hasScopeNote: true,
   },
   {

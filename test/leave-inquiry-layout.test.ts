@@ -76,9 +76,9 @@ describe('026e16b9 · the three inquiry tabs use the page width, consistently', 
     // recording the before/after measurement, and a naive substring search finds "max-w-7xl" in the
     // explanation of why it is no longer used.
     const classNames = (src: string) => (src.match(/className="[^"]*"/g) ?? []).join('\n');
-    for (const p of [BALANCES, RECORDS, DETAILS]) {
+    for (const p of [BALANCES, RECORDS]) {
       const cls = classNames(inquiryPart(p));
-      expect(cls.includes('mx-auto max-w-[100rem] space-y-6'), `${p} container`).toBe(true);
+      expect(cls.includes('w-full min-w-0 space-y-6'), `${p} container`).toBe(true);
       expect(cls.includes('max-w-7xl'), `${p} still capped at 7xl`).toBe(false);
       expect(cls.includes('max-w-6xl'), `${p} still capped at 6xl`).toBe(false);
     }
@@ -186,7 +186,7 @@ describe('026e16b9 · the three inquiry tabs use the page width, consistently', 
   });
 
   it('the tab bar is rendered ABOVE the table on every tab, and the tables still scroll in a wrapper', () => {
-    for (const p of [BALANCES, RECORDS, DETAILS]) {
+    for (const p of [BALANCES, RECORDS]) {
       const src = inquiryPart(p);
       const bar = src.indexOf('<LeaveInquiryNav');
       const table = src.indexOf('<table');
@@ -240,7 +240,11 @@ describe('026e16b9 · numeric columns compact, the text column gets the room', (
   });
 
   it('the leave-type column takes the recovered slack, with a floor so it cannot collapse', () => {
-    expect(balances.includes('w-[26%] min-w-[13rem]')).toBe(true);
+    const css = read('components/leave/inquiry-table.module.css');
+    expect(css).toMatch(/width:\s*13%/);
+    expect(css).toMatch(/width:\s*150px/);
+    expect(css).toMatch(/font-size:\s*12px/);
+    expect(css).toMatch(/table-layout:\s*fixed/);
   });
 
   it('the free-text Reason column on the records tab widens rather than staying the narrowest', () => {

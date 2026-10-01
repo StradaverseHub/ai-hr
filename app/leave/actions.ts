@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { leaveSelfReturnUrl } from '@/lib/leave-return-context';
 import { redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
@@ -271,6 +272,7 @@ export async function requestLeaveAction(formData: FormData) {
     );
   }
   revalidatePath('/leave');
+  revalidatePath('/leave/history');
   // Success confirmation (feedback 45c781e2) — until now a successful submission was SILENT: the dialog
   // closed and the page refreshed, which is indistinguishable from having dismissed it. It rides the
   // redirect rather than being raised in the client, so it fires only on CONFIRMED success — this line is
@@ -306,15 +308,16 @@ export async function requestLeaveCancellationAction(formData: FormData) {
     result = await requestLeaveCancellation(session, { leaveRequestId, cancelDates, reason, today: todayInKualaLumpur() });
   } catch (e) {
     // r301 (83511d3b): every refusal now says exactly why — localizeLeaveError maps each one to its own message.
-    redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e))}`);
+    redirect(leaveSelfReturnUrl(formData, 'error', await localizeLeaveError(e)));
   }
   revalidatePath('/leave');
+  revalidatePath('/leave/history');
   revalidatePath('/approvals');
   revalidatePath('/'); // the dashboard's Team Away Today count
   revalidatePath('/leave/tracker'); // a00c4f64 — the calendar itself lives here now
   // r301 (83511d3b) — approved automatically by the leave type setting: the days are already back.
-  if (result?.status === 'approved') redirect('/leave?toast=cancellationApproved');
-  redirect('/leave?toast=cancellationRequested');
+  if (result?.status === 'approved') redirect(leaveSelfReturnUrl(formData, 'toast', 'cancellationApproved'));
+  redirect(leaveSelfReturnUrl(formData, 'toast', 'cancellationRequested'));
 }
 
 // HR Admin Leave Cancellation on behalf of an employee (feedback 22e68ff0). Immediate, no approval workflow:
@@ -334,7 +337,7 @@ export async function adminCancelLeaveAction(formData: FormData) {
   let back: string;
   // a00c4f64: the calendar's return surface is '/leave/tracker', not '/' — the dashboard no longer
   // renders it. An old form still posting '/' falls through to '/leave', which is a real page.
-  if (backRaw === '/leave/tracker') back = '/leave/tracker';
+  if (backRaw === '/leave/tracker') back = '/leave/tracker?calendar=1';
   else if (backRaw === '/leave/employee-records') {
     back = /^[0-9a-f-]{36}$/i.test(backEmp)
       ? `/leave/employee-records?emp=${encodeURIComponent(backEmp)}`
@@ -348,6 +351,7 @@ export async function adminCancelLeaveAction(formData: FormData) {
     redirect(withParam(`error=${encodeURIComponent(await localizeLeaveError(e))}`));
   }
   revalidatePath('/leave');
+  revalidatePath('/leave/history');
   revalidatePath('/leave/employee-records');
   revalidatePath('/approvals');
   revalidatePath('/'); // the dashboard's Team Away Today count
@@ -381,10 +385,11 @@ export async function editLeaveAction(formData: FormData) {
       today: todayInKualaLumpur(),
     });
   } catch (e) {
-    redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e, selected?.name))}`);
+    redirect(leaveSelfReturnUrl(formData, 'error', await localizeLeaveError(e, selected?.name)));
   }
   revalidatePath('/leave');
-  redirect('/leave?toast=leaveUpdated');
+  revalidatePath('/leave/history');
+  redirect(leaveSelfReturnUrl(formData, 'toast', 'leaveUpdated'));
 }
 
 export async function cancelOwnLeaveAction(formData: FormData) {
@@ -393,12 +398,13 @@ export async function cancelOwnLeaveAction(formData: FormData) {
   try {
     await cancelOwnLeave(session, { leaveRequestId });
   } catch (e) {
-    redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e))}`);
+    redirect(leaveSelfReturnUrl(formData, 'error', await localizeLeaveError(e)));
   }
   revalidatePath('/leave');
+  revalidatePath('/leave/history');
   revalidatePath('/approvals');
   revalidatePath('/leave/tracker'); // a00c4f64 — this action is also posted from the calendar's pills
-  redirect('/leave?toast=leaveCancelled');
+  redirect(leaveSelfReturnUrl(formData, 'toast', 'leaveCancelled'));
 }
 
 // Item r80 (Request subsection on Employee Details): `decideLeaveAction` used to live here — the Leave
@@ -528,6 +534,7 @@ export async function submitReplacementLeaveRequestAction(formData: FormData) {
     redirect(`/leave?error=${encodeURIComponent(e instanceof Error ? e.message : String(e))}`);
   }
   revalidatePath('/leave');
+  revalidatePath('/leave/history');
   const t = await getTranslations('replacementRequest');
   redirect(`/leave?toast=${encodeURIComponent(t('submittedToast'))}`);
 }
@@ -568,6 +575,7 @@ export async function decideReplacementLeaveRequestAction(formData: FormData) {
   }
   // The employee's own My Leave card shows the pending figure, so it goes stale on every decision too.
   revalidatePath('/leave');
+  revalidatePath('/leave/history');
   if (toApprovals) {
     // Same shell refresh the other decide actions do (836118c4): the nav badge and the bell's Task count
     // are computed in the ROOT layout, so a page-only revalidate leaves both stale until a hard reload.

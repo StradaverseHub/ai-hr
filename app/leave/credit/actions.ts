@@ -35,6 +35,10 @@ export async function leaveCreditDayFactsAction(workedDate: string) {
   // send (test/server-client-boundary.test.ts). None of the three is read by any arithmetic.
   return {
     kind: day.kind,
+    scheduleName: day.scheduleName,
+    shiftCode: day.shiftCode,
+    shiftName: day.shiftName,
+    attendanceRecordPresent: day.attendanceRecordPresent,
     shiftStart: day.shiftStart,
     shiftEnd: day.shiftEnd,
     actualClockIn: day.actualClockIn,
@@ -85,6 +89,7 @@ export async function submitLeaveCreditRequestAction(formData: FormData) {
     .filter((r) => r.workedDate !== '');
 
   try {
+    if (!String(formData.get('reason') ?? '').trim()) throw new Error((await getTranslations('replacementRequest'))('table.reasonRequired'));
     const employmentId = (await myEmployment(session))?.employmentId;
     if (!employmentId) throw new Error('No employment on record for this account.');
     await submitLeaveCreditRequest(session, {

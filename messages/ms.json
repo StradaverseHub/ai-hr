@@ -360,7 +360,10 @@
     "systemTesting": "Ujian Sistem",
     "leaveHistoryImport": "Import Data Sejarah Cuti",
     "leaveBfImport": "Import Data B/F Cuti",
-    "leaveDataImport": "Import Data Cuti"
+    "leaveDataImport": "Import Data Cuti",
+    "myLeave": "Cuti Saya",
+    "leaveOverview": "Gambaran Cuti",
+    "leaveHistory": "Sejarah Cuti"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -2543,7 +2546,8 @@
       "takenRecordsLink": "Tunjukkan rekod di sebalik angka Diambil ini",
       "fullScreen": "Skrin penuh",
       "fullScreenClose": "Tutup",
-      "fullScreenEsc": "Tekan Esc untuk tutup"
+      "fullScreenEsc": "Tekan Esc untuk tutup",
+      "noteLabel": "Tunjukkan nota sedia ada"
     },
     "override": {
       "title": "Before you submit",
@@ -2643,7 +2647,8 @@
     },
     "replacementRequest": {
       "viewMyRequests": "View my leave credit requests"
-    }
+    },
+    "historyHeading": "Sejarah cuti"
   },
   "leaveTracker": {
     "title": "Penjejak Cuti Pasukan",
@@ -13002,7 +13007,7 @@
     "resetToHome": "Kembali ke laman utama",
     "feature": {
       "attendance": "Kehadiran",
-      "leave": "Cuti",
+      "leave": "Cuti Saya",
       "claim": "Tuntutan",
       "payroll": "Gaji",
       "performance": "Prestasi",
@@ -13021,7 +13026,16 @@
     "leave": {
       "balance": "Baki Cuti",
       "calendar": "Kalendar Cuti",
-      "application": "Permohonan Cuti"
+      "application": "Permohonan Cuti",
+      "overview": "Gambaran Cuti",
+      "history": "Sejarah Cuti",
+      "historySample": "Susun atur contoh sahaja; tiada rekod cuti langsung.",
+      "historyStatus": {
+        "pending": "Tertangguh",
+        "approved": "Diluluskan",
+        "rejected": "Ditolak",
+        "cancelled": "Dibatalkan"
+      }
     },
     "leaveBalance": {
       "annual": "Cuti Tahunan",
@@ -13647,9 +13661,9 @@
       "help": "Jam bekerja selepas waktu tamat syif anda pada hari bekerja biasa.",
       "shiftEnd": "Tamat syif dijadualkan",
       "actualClockOut": "Waktu keluar sebenar",
-      "extendedStart": "Mula lanjutan",
-      "extendedEnd": "Tamat lanjutan",
-      "eligibleMinutes": "Minit layak",
+      "extendedStart": "Masa mula",
+      "extendedEnd": "Masa tamat",
+      "eligibleMinutes": "Jam layak",
       "credit": "Kredit",
       "total": "Jumlah bahagian",
       "nonWorkingDayRefused": "Tarikh ini bukan hari bekerja. Gunakan Kerja pada hari bukan bekerja sebaliknya.",
@@ -13689,7 +13703,18 @@
       "attendanceOtPlanNone": "Tiada bagi tarikh ini",
       "attendanceOtPlanApproved": "Diluluskan bagi tarikh ini",
       "dotReasonNoRecord": "Tiada waktu keluar direkodkan untuk tarikh ini.",
-      "dotReasonPastClockOut": "Anda menuntut sehingga {claimEnd}; waktu keluar yang direkodkan ialah {clockOut}."
+      "dotReasonPastClockOut": "Anda menuntut sehingga {claimEnd}; waktu keluar yang direkodkan ialah {clockOut}.",
+      "detailToggle": "Lihat butiran mengikut hari",
+      "detailDay": "Hari",
+      "detailSchedule": "Jadual",
+      "detailShift": "Syif",
+      "detailHours": "Jam selepas syif",
+      "noAttendanceRecord": "Tiada rekod kehadiran untuk tarikh ini.",
+      "companyRule": "Peraturan kredit syarikat: {half} = 0.5 hari · {full} = 1 hari",
+      "duplicateDate": "Tarikh ini sudah ada dalam permohonan.",
+      "reasonRequired": "Tambah sebab untuk meneruskan.",
+      "completeRows": "Lengkapkan baris yang layak untuk meneruskan.",
+      "reasonPlaceholder": "cth. Penutupan gaji akhir bulan"
     }
   },
   "notices": {

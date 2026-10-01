@@ -65,6 +65,12 @@ export default async function EmployeeLeaveRecordPage({
 }: {
   searchParams: Promise<{
     emp?: string;
+    pickerQ?: string;
+    pickerCompany?: string;
+    pickerBusinessUnit?: string;
+    pickerDepartment?: string;
+    pickerStatus?: string;
+
     type?: string | string[];
     status?: string | string[];
     q?: string;
@@ -111,7 +117,8 @@ export default async function EmployeeLeaveRecordPage({
     status: e.terminatedOn == null ? 'active' : 'ended',
   }));
   /** Read on the SERVER, so the first paint is already right rather than opening and folding (r320). */
-  const panelDefaultOpen = (await cookies()).get(PANEL_COOKIE)?.value !== '0';
+  const panelCookies = await cookies();
+  const panelDefaultOpen = !selected || (panelCookies.get(`${PANEL_COOKIE}-selected`)?.value === selected.employmentId && panelCookies.get(PANEL_COOKIE)?.value === '1');
 
   const typeIds = arr(sp.type);
   const statuses = arr(sp.status).filter((s) => (LEAVE_STATUSES as readonly string[]).includes(s));
@@ -244,6 +251,7 @@ export default async function EmployeeLeaveRecordPage({
    * `a,b` they would survive the switch in the URL and match nothing on screen.
    */
   const panelPreserve: Record<string, string | string[]> = { sort, dir, size: String(pq.size) };
+  for (const key of ['pickerQ', 'pickerCompany', 'pickerBusinessUnit', 'pickerDepartment', 'pickerStatus'] as const) { if (sp[key]) panelPreserve[key] = sp[key]; }
   if (typeIds.length) panelPreserve.type = typeIds;
   if (statuses.length) panelPreserve.status = statuses;
   if (q) panelPreserve.q = q;
@@ -282,7 +290,7 @@ export default async function EmployeeLeaveRecordPage({
 
 
   return (
-    <div className="mx-auto max-w-[100rem] space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       <PageHeader title={tInq('recordsTitle')} description={tInq('recordsDescription')} />
 
       {/* fe3eb141 — the Cancel Leave action redirects back here, so this page needs the same two
@@ -315,6 +323,7 @@ export default async function EmployeeLeaveRecordPage({
        */}
       <CollapsibleEmployeePanel
         defaultOpen={panelDefaultOpen}
+        collapseOnSelection={selected?.employmentId ?? null}
         cookieKey={PANEL_COOKIE}
         title={tInq('recordsTitle')}
         hideLabel={tInq('panelHide')}
@@ -345,6 +354,7 @@ export default async function EmployeeLeaveRecordPage({
                 basePath="/leave/employee-records"
                 selectParam="emp"
                 preserve={panelPreserve}
+                preservePicker
               />
             </div>
           </Card>
@@ -413,7 +423,7 @@ export default async function EmployeeLeaveRecordPage({
 
           {/* d990f14a — see the note on the Employee Balances tab: under the search bar and its chips,
               above the table. `carry` hands on the leave-code search and the leave-type filter only. */}
-          <LeaveInquiryNav active="records" employmentId={selected?.employmentId} carry={{ q, type: typeIds }} />
+          <LeaveInquiryNav active="records" employmentId={selected?.employmentId} carry={{ ...panelPreserve, q, type: typeIds }} />
 
           {/* 9949f91a — THE PROMPT, in the reference mount's own shape: the filter row and the tab bar stay
               drawn so a reader with nobody selected can still switch tabs, and only the table is replaced.

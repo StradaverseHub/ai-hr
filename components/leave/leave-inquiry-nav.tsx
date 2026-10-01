@@ -1,39 +1,12 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
-/**
- * Navigation for the HR-admin leave INQUIRY surface (feedback 20c699f8 / 953be4b0 / 026e16b9 / d990f14a).
- *
- * Three destinations, in the reporter's order: the employee listing you pick from, the picked employee's
- * balances, and the transactions behind one of those balances.
- *
- * d990f14a — A HORIZONTAL PILL BAR, AND THE HISTORY IS THE ARGUMENT. This was a LEFT-SIDE rail for three
- * rounds because 20c699f8 asked for one in those words. 026e16b9 then reported that it was squeezing the
- * balances table and we narrowed it from w-56 to sm:w-44, which recovered most of the overflow and not all
- * of it — its own guard header records 1038px of table area for 1047px of columns at a 1512px window.
- * This item finishes that job the only way it can be finished: a bar costs the table NOTHING, where a
- * narrower column still cost it 192px (sm:w-44 = 11rem = 176px, plus the gap-4 beside it = 16px).
- *
- * So the rail is gone, the pages render this BETWEEN the search bar and the table, and the table gets the
- * full width of the panel. Below sm nothing changes in kind: this was already a horizontal overflow-x-auto
- * strip there, and still is — the change brings the desktop into line with the phone, not the reverse.
- *
- * IT IS A NAV, NOT A TABLIST, and that is deliberate rather than an oversight of the segmented-control
- * look. The three are separate ROUTES: every pill is a navigation, not a panel swap. `role="tablist"` with
- * `aria-selected` would tell a screen reader these are panels of one page and that activating one changes
- * nothing but the view, which is false — so it stays a `nav` with `aria-current="page"`, exactly as it was
- * when it was a rail. Only the paint changed.
- *
- * Employee Details points at `/leave/tracker` — the Team Leave Tracker row, which is where feedback
- * 388e53c2 moved the HR administrator's way in. It used to point at `/leave`, and that was the whole
- * complaint: the sidebar kept "My Leave" lit while an administrator read somebody else's leave record.
- *
- * THE OTHER TWO HREFS ARE DELIBERATELY UNCHANGED. Employee Balances and Employee Leave Record keep the
- * exact addresses they have always had, so saved links and the export links already in circulation stay
- * valid — 388e53c2 moved the ENTRY POINT and nothing else.
+/** r378 b594a6e0: two full-width inquiry destinations, with employee search context
+ * carried in its own picker namespace. The retired Employee Details listing now
+ * redirects to balances; explicit tracker calendar intent remains a separate journey.
+ * Navigation uses links and aria-current because these are independent routes.
  */
-
-type Tab = 'details' | 'balances' | 'records';
+type Tab = 'balances' | 'records';
 
 /**
  * d990f14a — WHICH FILTERS SURVIVE A TAB CHANGE, decided per DESTINATION rather than by copying the query
@@ -53,9 +26,8 @@ type Tab = 'details' | 'balances' | 'records';
  *     search, not a leave-code one. Nothing crosses into it, so it carries `emp` alone.
  */
 const CARRY: Record<Tab, readonly string[]> = {
-  details: [],
-  balances: ['q', 'type'],
-  records: ['q', 'type'],
+  balances: ['q', 'type', 'pickerQ', 'pickerCompany', 'pickerBusinessUnit', 'pickerDepartment', 'pickerStatus'],
+  records: ['q', 'type', 'pickerQ', 'pickerCompany', 'pickerBusinessUnit', 'pickerDepartment', 'pickerStatus'],
 };
 
 export type InquiryCarry = Readonly<Record<string, string | readonly string[] | undefined>>;
@@ -87,7 +59,6 @@ export async function LeaveInquiryNav({
   };
 
   const tabs = [
-    { key: 'details', href: hrefFor('/leave/tracker', 'details'), label: t('employeeDetails') },
     { key: 'balances', href: hrefFor('/leave/employee-balances', 'balances'), label: t('employeeBalances') },
     { key: 'records', href: hrefFor('/leave/employee-records', 'records'), label: t('employeeLeaveRecord') },
   ] as const;

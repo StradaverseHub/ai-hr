@@ -360,7 +360,10 @@
     "systemTesting": "系统测试",
     "leaveHistoryImport": "休假历史数据导入",
     "leaveBfImport": "休假结转数据导入",
-    "leaveDataImport": "休假数据导入"
+    "leaveDataImport": "休假数据导入",
+    "myLeave": "我的休假",
+    "leaveOverview": "休假概览",
+    "leaveHistory": "休假记录"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -2543,7 +2546,8 @@
       "takenRecordsLink": "查看构成此「已用」数字的记录",
       "fullScreen": "全屏",
       "fullScreenClose": "关闭",
-      "fullScreenEsc": "按 Esc 关闭"
+      "fullScreenEsc": "按 Esc 关闭",
+      "noteLabel": "显示现有备注"
     },
     "override": {
       "title": "Before you submit",
@@ -2643,7 +2647,8 @@
     },
     "replacementRequest": {
       "viewMyRequests": "View my leave credit requests"
-    }
+    },
+    "historyHeading": "休假记录"
   },
   "leaveTracker": {
     "title": "团队休假追踪",
@@ -13002,7 +13007,7 @@
     "resetToHome": "返回主页",
     "feature": {
       "attendance": "考勤",
-      "leave": "请假",
+      "leave": "我的休假",
       "claim": "报销",
       "payroll": "薪资",
       "performance": "绩效",
@@ -13021,7 +13026,16 @@
     "leave": {
       "balance": "假期余额",
       "calendar": "请假日历",
-      "application": "请假申请"
+      "application": "请假申请",
+      "overview": "休假概览",
+      "history": "休假记录",
+      "historySample": "仅为示例布局，不包含实际休假记录。",
+      "historyStatus": {
+        "pending": "待审",
+        "approved": "已批准",
+        "rejected": "已驳回",
+        "cancelled": "已取消"
+      }
     },
     "leaveBalance": {
       "annual": "年假",
@@ -13647,9 +13661,9 @@
       "help": "在普通工作日排定下班时间之后继续工作的时数。",
       "shiftEnd": "排定下班时间",
       "actualClockOut": "实际打卡下班时间",
-      "extendedStart": "延长开始",
-      "extendedEnd": "延长结束",
-      "eligibleMinutes": "符合资格分钟数",
+      "extendedStart": "开始时间",
+      "extendedEnd": "结束时间",
+      "eligibleMinutes": "符合条件的时数",
       "credit": "额度",
       "total": "本节合计",
       "nonWorkingDayRefused": "此日期并非工作日。请改用非工作日工作。",
@@ -13689,7 +13703,18 @@
       "attendanceOtPlanNone": "此日期没有",
       "attendanceOtPlanApproved": "此日期已批准",
       "dotReasonNoRecord": "此日期没有打卡下班记录。",
-      "dotReasonPastClockOut": "您申报至 {claimEnd}；记录的打卡下班时间为 {clockOut}。"
+      "dotReasonPastClockOut": "您申报至 {claimEnd}；记录的打卡下班时间为 {clockOut}。",
+      "detailToggle": "查看每日明细",
+      "detailDay": "星期",
+      "detailSchedule": "工作安排",
+      "detailShift": "班次",
+      "detailHours": "班后工时",
+      "noAttendanceRecord": "该日期没有考勤记录。",
+      "companyRule": "公司补休规则：{half} = 0.5 天 · {full} = 1 天",
+      "duplicateDate": "申请中已有此日期。",
+      "reasonRequired": "请填写原因后继续。",
+      "completeRows": "请完成符合条件的日期行后继续。",
+      "reasonPlaceholder": "例如：月末薪资结算"
     }
   },
   "notices": {

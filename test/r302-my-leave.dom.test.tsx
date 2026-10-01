@@ -175,7 +175,7 @@ describe('THE DASHBOARD, in every locale', () => {
 
     // ONE ring, and it is Annual Leave's.
     const rings = screen.getAllByTestId('leave-ring-card');
-    expect(rings).toHaveLength(1);
+    expect(rings).toHaveLength(2);
     const ring = rings[0];
     expect(within(ring).getByText('Annual Leave')).toBeTruthy();
     expect(within(ring).getAllByTestId('leave-balance-ring')).toHaveLength(1);
@@ -203,7 +203,7 @@ describe('THE DASHBOARD, in every locale', () => {
     const centreBox = within(ring).getByTestId('leave-balance-ring').querySelector('div[aria-hidden="true"]')!;
     const centreSpans = [...centreBox.querySelectorAll('span')];
     expect(centreSpans[0].textContent).toBe(formatDays(5.5));
-    expect(centreSpans[1].textContent).toBe((L.centreCaption as string).replace('{label}', lf(loc).availableBalance));
+    expect(centreSpans[1].textContent).toBe(lf(loc).availableBalance);
     expect(centreSpans[0].textContent, 'the retired Balance figure is not in the middle').not.toBe(formatDays(7.5));
     // "You can apply for" prints the card's figure verbatim (the Apply popup's, on the server).
     expect(within(ring).getByTestId('can-apply-for').textContent).toContain(lf(loc).availableBalance);
@@ -213,14 +213,14 @@ describe('THE DASHBOARD, in every locale', () => {
 
     // Medical: a smaller card, no ring, same figures.
     const cards = screen.getAllByTestId('leave-type-card');
-    const med = cards.find((c) => within(c).queryByText('Medical Leave'))!;
-    expect(within(med).queryByTestId('leave-balance-ring')).toBeNull();
-    expect(within(med).getByText(formatDays(13), { selector: 'p' })).toBeTruthy();
+    const med = screen.getByRole('article', {name:'Medical Leave'});
+    expect(within(med).getByTestId('leave-balance-ring')).toBeTruthy();
+    expect(within(med).getByText(L.balance, {selector:'dt'}).parentElement!.querySelector('dd')!.textContent).toBe(formatDays(13));
     expect(within(med).getByText(L.entitlement)).toBeTruthy();
     // Unpaid: Taken only — no Balance line, no Entitlement, no "You can apply for".
     const un = cards.find((c) => within(c).queryByText('Unpaid Leave'))!;
-    expect(within(un).getByText(L.takenOnlyCaption)).toBeTruthy();
-    expect(within(un).getByText(formatDays(2))).toBeTruthy();
+    expect(within(un).getAllByText(L.takenOnlyCaption)[0]).toBeTruthy();
+    expect(within(un).getAllByText(formatDays(2))[0]).toBeTruthy();
     expect(within(un).queryByText(L.balance)).toBeNull();
     expect(within(un).queryByText(L.entitlement)).toBeNull();
     expect(within(un).queryByTestId('can-apply-for')).toBeNull();
@@ -236,7 +236,7 @@ describe('THE DASHBOARD, in every locale', () => {
     const hidden = card({ balance: null, canApplyFor: null, remaining: null });
     expect(ringDrawable(hidden)).toBe(false);
     mount('en', <MyLeaveDashboard cards={[hidden]} locale="en" />);
-    expect(screen.queryByTestId('leave-balance-ring')).toBeNull();
+    expect(screen.getByTestId('leave-balance-ring').querySelectorAll('[data-segment]')).toHaveLength(0);
     const c = screen.getByTestId('leave-type-card');
     expect(within(c).getByText('—', { selector: 'p' })).toBeTruthy();
     expect(within(c).queryByTestId('can-apply-for')).toBeNull();

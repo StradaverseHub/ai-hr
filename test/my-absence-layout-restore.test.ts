@@ -29,6 +29,8 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 const leavePage = read('app/leave/page.tsx');
+const ownHistory = read('components/leave/own-leave-history.tsx');
+const historyRoute = read('app/leave/history/page.tsx');
 const groupsCmp = read('components/leave/secondary-leave-groups.tsx');
 const section = read('components/collapsible-card-section.tsx');
 const historyCmp = read('components/leave/leave-history-cards.tsx');
@@ -47,18 +49,23 @@ const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
  * the wrong branch. So the boundary is now the comment that closes the self-service pairing, and the
  * marker's presence is asserted before anything is sliced with it.
  */
-const SELF_BRANCH_ENDS = '{/* Feedback 8ec63139:';
-/** The self-service render branch: breakdown + history columns. */
+// r378: the own-history projection moved intact to its dedicated route.
 const selfBranch = () => {
-  const from = leavePage.indexOf('{!admin && (');
-  const to = leavePage.indexOf(SELF_BRANCH_ENDS);
-  expect(from, 'self-service branch marker').toBeGreaterThan(-1);
-  expect(to, 'self-service branch end marker').toBeGreaterThan(from);
-  return leavePage.slice(from, to);
+  const from = ownHistory.indexOf('const history = (');
+  const to = ownHistory.indexOf('return {', from);
+  expect(from).toBeGreaterThan(-1);
+  expect(to).toBeGreaterThan(from);
+  expect(historyRoute).toContain('{history}');
+  expect(leavePage).not.toContain('data-tour="leave-requests"');
+  return ownHistory.slice(from, to);
 };
-/** The RSC entries builder that feeds LeaveHistoryCards (pre-translated data + action/outcome nodes). */
-const entriesBuilder = () =>
-  leavePage.slice(leavePage.indexOf('const historyEntries'), leavePage.indexOf('{!admin && ('));
+const entriesBuilder = () => {
+  const from = ownHistory.indexOf('const historyEntries');
+  const to = ownHistory.indexOf('const historyTypeOptions', from);
+  expect(from).toBeGreaterThan(-1);
+  expect(to).toBeGreaterThan(from);
+  return ownHistory.slice(from, to);
+};
 
 // ── UPDATED BY r302 (board 6c9802c9) ──────────────────────────────────────────────────────────────────────────
 // The approved My Leave dashboard plan REVERSES three of 56a0deb9's decisions pinned in this file: "The My
@@ -184,7 +191,7 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
     // One page, top to bottom: dashboard → Upcoming Leave → My Leave History.
     const dashAt = leavePage.indexOf('data-tour="me-leave"');
     const upcomingAt = leavePage.indexOf("{t('myLeave.upcomingTitle')}");
-    const historyAt = leavePage.indexOf('data-tour="leave-requests"');
+    const historyAt = leavePage.indexOf("t('historyHeading')");
     expect(dashAt).toBeGreaterThan(-1);
     expect(upcomingAt).toBeGreaterThan(dashAt);
     expect(historyAt).toBeGreaterThan(upcomingAt);
@@ -245,7 +252,7 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
     expect(guardAt, 'the short-page guard').toBeGreaterThan(-1);
     // …and it comes BEFORE the self-service reads it protects.
     // r302: the balance read is the per-year dashboard read now (it calls leaveBalances inside core/my-leave.ts).
-    for (const read of ['myLeaveDashboard(session', 'listLeaveRequestsPage(session', 'listEmployees(session']) {
+    for (const read of ['myLeaveDashboard(session', 'loadOwnLeaveHistory({', 'listEmployees(session']) {
       expect(leavePage.indexOf(read), read).toBeGreaterThan(guardAt);
     }
   });
@@ -265,7 +272,9 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
     // an allow-list and cannot express "every viewer EXCEPT an admin"; leaving it would strand the step
     // on an anchor an admin never renders, and onboarding-tour.tsx retries 25 x 140ms before falling back
     // to a centred card — a ~3.5s dead pause.
-    expect(leavePage.split('data-tour="leave-requests"').length - 1).toBe(1);
+    expect(ownHistory.split('data-tour="leave-requests"').length - 1).toBe(1);
+    expect(leavePage).not.toContain('data-tour="leave-requests"');
+    expect(historyRoute.indexOf('if (!me || isAdmin(session))')).toBeLessThan(historyRoute.indexOf('await loadOwnLeaveHistory('));
     const tours = JSON.parse(read('lib/module-tours.json')) as { leave: { steps: { id: string }[] } };
     expect(tours.leave.steps.map((s) => s.id)).not.toContain('requests');
   });
@@ -290,13 +299,13 @@ describe('657962ec §1: the self-service history renders as compact cards, newes
     // still asserted — it moved from a JavaScript re-sort into the read itself, because the history is now
     // filtered in SQL and re-sorting a filtered page in JS would only re-order the page. Pinning the JS
     // sort would have pinned a second ordering the same round deliberately removed as redundant.
-    expect(leavePage).toContain("sort: 'start',");
-    expect(leavePage).toContain("dir: 'desc',");
-    expect(leavePage).toContain('const selfHistory = historyShown.rows;');
-    expect(leavePage).not.toMatch(/\[\.\.\.history\]\.sort\(/);
+    expect(ownHistory).toContain("sort: 'start',");
+    expect(ownHistory).toContain("dir: 'desc',");
+    expect(ownHistory).toContain('const selfHistory = historyShown.rows;');
+    expect(ownHistory).not.toMatch(/\[\.\.\.history\]\.sort\(/);
     // The per-date outcome window follows the card order (5 newest by start date).
-    expect(leavePage).toMatch(/selfHistory\.slice\(0, 5\)\.map/);
-    expect(leavePage.includes('leaveRequestDateBreakdown(session, r.id)')).toBe(true);
+    expect(ownHistory).toMatch(/selfHistory\.slice\(0, 5\)\.map/);
+    expect(ownHistory.includes('leaveRequestDateBreakdown(session, r.id)')).toBe(true);
   });
 
   it('the card face carries ONLY the essentials — actions, document link and outcomes are panel-only', () => {

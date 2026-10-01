@@ -334,6 +334,10 @@ export function workedDayKindForEmployment(ctx: SessionContext, employmentId: st
 export type LeaveCreditExtendedDayView = {
   kind: ToilWorkedDayKind;
   /** Display only — the shift WINDOW's start. Null on the company-policy branch (no assigned shift). */
+  scheduleName: string | null;
+  shiftCode: string | null;
+  shiftName: string | null;
+  attendanceRecordPresent: boolean;
   shiftStart: string | null;
   shiftEnd: string | null;
   /** Display only — the clock-IN. Null when the day has no attendance row or was never clocked in. */

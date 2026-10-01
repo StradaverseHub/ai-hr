@@ -360,7 +360,10 @@
     "systemTesting": "கணினி சோதனை",
     "leaveHistoryImport": "விடுப்பு வரலாற்றுத் தரவு இறக்குமதி",
     "leaveBfImport": "விடுப்பு B/F தரவு இறக்குமதி",
-    "leaveDataImport": "விடுப்புத் தரவு இறக்குமதி"
+    "leaveDataImport": "விடுப்புத் தரவு இறக்குமதி",
+    "myLeave": "எனது விடுப்பு",
+    "leaveOverview": "விடுப்பு கண்ணோட்டம்",
+    "leaveHistory": "விடுப்பு வரலாறு"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",
@@ -2543,7 +2546,8 @@
       "takenRecordsLink": "இந்த எடுக்கப்பட்டது எண்ணிக்கையின் பின்னுள்ள பதிவுகளைக் காட்டு",
       "fullScreen": "முழுத் திரை",
       "fullScreenClose": "மூடு",
-      "fullScreenEsc": "மூட Esc அழுத்தவும்"
+      "fullScreenEsc": "மூட Esc அழுத்தவும்",
+      "noteLabel": "ஏற்கனவே உள்ள குறிப்புகளைக் காட்டு"
     },
     "override": {
       "title": "Before you submit",
@@ -2643,7 +2647,8 @@
     },
     "replacementRequest": {
       "viewMyRequests": "View my leave credit requests"
-    }
+    },
+    "historyHeading": "விடுப்பு வரலாறு"
   },
   "leaveTracker": {
     "title": "குழு விடுப்பு கண்காணிப்பு",
@@ -13002,7 +13007,7 @@
     "resetToHome": "முகப்புக்குத் திரும்பு",
     "feature": {
       "attendance": "வருகை",
-      "leave": "விடுப்பு",
+      "leave": "எனது விடுப்பு",
       "claim": "உரிமைகோரல்",
       "payroll": "ஊதியம்",
       "performance": "செயல்திறன்",
@@ -13021,7 +13026,16 @@
     "leave": {
       "balance": "விடுப்பு இருப்பு",
       "calendar": "விடுப்பு நாட்காட்டி",
-      "application": "விடுப்பு விண்ணப்பம்"
+      "application": "விடுப்பு விண்ணப்பம்",
+      "overview": "விடுப்பு கண்ணோட்டம்",
+      "history": "விடுப்பு வரலாறு",
+      "historySample": "மாதிரி அமைப்பு மட்டுமே; நேரடி விடுப்பு பதிவுகள் இல்லை.",
+      "historyStatus": {
+        "pending": "நிலுவையில்",
+        "approved": "ஒப்புதலளிக்கப்பட்டது",
+        "rejected": "நிராகரிக்கப்பட்டது",
+        "cancelled": "ரத்துசெய்யப்பட்டது"
+      }
     },
     "leaveBalance": {
       "annual": "வருடாந்திர விடுப்பு",
@@ -13647,9 +13661,9 @@
       "help": "வழக்கமான வேலை நாளில் திட்டமிட்ட பணிநேரம் முடிந்த பிறகு வேலை செய்த மணிநேரங்கள்.",
       "shiftEnd": "திட்டமிட்ட பணிநேர முடிவு",
       "actualClockOut": "உண்மையான வெளியேறும் நேரம்",
-      "extendedStart": "நீட்டிப்பு தொடக்கம்",
-      "extendedEnd": "நீட்டிப்பு முடிவு",
-      "eligibleMinutes": "தகுதியான நிமிடங்கள்",
+      "extendedStart": "தொடக்க நேரம்",
+      "extendedEnd": "முடிவு நேரம்",
+      "eligibleMinutes": "தகுதியான மணிநேரங்கள்",
       "credit": "வரவு",
       "total": "பிரிவு மொத்தம்",
       "nonWorkingDayRefused": "இந்த தேதி வேலை நாள் அல்ல. அதற்குப் பதிலாக வேலை அல்லாத நாள் பணியைப் பயன்படுத்தவும்.",
@@ -13689,7 +13703,18 @@
       "attendanceOtPlanNone": "இந்த தேதிக்கு எதுவும் இல்லை",
       "attendanceOtPlanApproved": "இந்த தேதிக்கு அங்கீகரிக்கப்பட்டது",
       "dotReasonNoRecord": "இந்த தேதிக்கு வெளியேறும் நேரம் பதிவாகவில்லை.",
-      "dotReasonPastClockOut": "நீங்கள் {claimEnd} வரை கோரியுள்ளீர்கள்; பதிவான வெளியேறும் நேரம் {clockOut}."
+      "dotReasonPastClockOut": "நீங்கள் {claimEnd} வரை கோரியுள்ளீர்கள்; பதிவான வெளியேறும் நேரம் {clockOut}.",
+      "detailToggle": "நாள் வாரியான விவரங்களைக் காண்க",
+      "detailDay": "நாள்",
+      "detailSchedule": "அட்டவணை",
+      "detailShift": "பணி முறை",
+      "detailHours": "பணி முடிவுக்குப் பின் நேரம்",
+      "noAttendanceRecord": "இந்தத் தேதிக்கு வருகைப் பதிவு இல்லை.",
+      "companyRule": "நிறுவன வரவு விதி: {half} = 0.5 நாள் · {full} = 1 நாள்",
+      "duplicateDate": "இந்தத் தேதி ஏற்கனவே கோரிக்கையில் உள்ளது.",
+      "reasonRequired": "தொடர காரணத்தைச் சேர்க்கவும்.",
+      "completeRows": "தொடர தகுதியுள்ள வரிசைகளை நிறைவு செய்யவும்.",
+      "reasonPlaceholder": "எ.கா. மாத இறுதி ஊதிய முடிப்பு"
     }
   },
   "notices": {

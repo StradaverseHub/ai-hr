@@ -565,6 +565,9 @@ const perRowBreakMinutes = (
 // ADR-0032 Phase C: the schedule the engine derives against for one (employee, date) — resolved from the
 // employee's roster when present, else the company policy (today's behaviour, byte-identical).
 type ResolvedSchedule = {
+  /** Display-only identity of the shift selected by this exact date resolver. */
+  displayShiftCode?: string | null;
+  displayShiftName?: string | null;
   dayType: DayType;
   lateAfter: string; // time-of-day after which check-in is "late" (shift start + policy grace, or policy)
   halfDayBefore: string; // checkout before this on a workday ⇒ half-day (policy / shift midpoint)
@@ -747,6 +750,8 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     .select({
       isRestDay: rosterAssignment.isRestDay,
       shiftId: shift.id,
+      code: shift.code,
+      name: shift.name,
       start: shift.startTime,
       end: shift.endTime,
       brk: shift.breakMinutes,
@@ -855,6 +860,8 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       earlyGraceMinutes: earlyGrace ?? 0,
       crossesMidnight: ra.crosses!,
       source: 'roster-shift',
+      displayShiftCode: ra.code,
+      displayShiftName: ra.name,
     };
   }
   // A rostered REST day: the calendar-holiday class still wins (premium 3× beats rest-day 2×) — unchanged
@@ -879,6 +886,8 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
   const arrangement = pickArrangementOn(await arrangementsForEmploymentTx(tx, employmentId), date);
   const defaultShiftCols = {
     shiftId: shift.id,
+    code: shift.code,
+    name: shift.name,
     start: shift.startTime,
     end: shift.endTime,
     brk: shift.breakMinutes,
@@ -992,6 +1001,8 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
         earlyGraceMinutes: earlyGrace ?? 0,
         crossesMidnight: crosses,
         source: 'default-shift',
+        displayShiftCode: ds.code,
+        displayShiftName: ds.name,
       };
     }
     // The default shift's own rest day wins over the flat company working-days list (matching how a
@@ -4252,6 +4263,10 @@ export function otPlanCalendarMonth(
  */
 export type ExtendedHoursDayView = {
   kind: WorkedDayKind;
+  scheduleName: string | null;
+  shiftCode: string | null;
+  shiftName: string | null;
+  attendanceRecordPresent: boolean;
   /** The resolved schedule's shift START (HH:MM:SS), or null on the company-policy branch. Display only. */
   shiftStart: string | null;
   /** The resolved schedule's shift end (HH:MM:SS), or null on the company-policy branch. */
@@ -4278,7 +4293,12 @@ export async function extendedHoursDayForTx(tx: Tx, employmentId: string, date: 
     .from(attendance)
     .where(and(eq(attendance.employmentId, employmentId), eq(attendance.attendanceDate, date)))
     .limit(1);
+  const [group] = s.rule ? await tx.select({name:attendanceRule.name}).from(attendanceRule).where(eq(attendanceRule.id,s.rule.id)).limit(1) : [];
   return {
+    scheduleName: group?.name ?? null,
+    shiftCode: s.displayShiftCode ?? null,
+    shiftName: s.displayShiftName ?? null,
+    attendanceRecordPresent: row != null,
     kind,
     shiftStart: s.shiftStart ?? null,
     shiftEnd: s.shiftEnd ?? null,
