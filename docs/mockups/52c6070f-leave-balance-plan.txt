@@ -53,4 +53,4 @@ NOT DONE: implementation, rendered mockup, production reproduction, tests, datab
 
 LOCAL MOCKUP: the adjacent HTML is a responsive static schematic with prefers-color-scheme dark styling. It uses placeholders rather than employee figures and is not a tested runtime screen. Parent must render and inspect desktop/phone/dark before publication.
 
-LOCALIZATION: implement all new or changed UI captions, row errors, disabled-send explanations and accessible labels in the six locale catalogues, following existing namespaces. Preserve the reporter's two English header paragraphs on the credit dialog, and the balance metrics' established meanings. Do not alter shared numeric formatting or unrelated screens.
+LOCALIZATION: implement balance-card captions, the shared colour legend and accessible ring/card labels in all six locale catalogues, following existing namespaces. Preserve each balance metric's established meaning, year-dependent labels and existing notes. Remove the displayed days suffix only within this approved balance presentation. Do not alter shared numeric formatting or unrelated screens.
