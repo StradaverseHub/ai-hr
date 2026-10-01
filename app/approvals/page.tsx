@@ -475,6 +475,7 @@ export default async function ApprovalsPage({
         {pendingLeave.length === 0 ? (
           <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingLeave')}</p>
         ) : (
+          <div className="overflow-x-auto" data-approvals-table-scroll="">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
@@ -623,6 +624,7 @@ export default async function ApprovalsPage({
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
       )}
@@ -636,6 +638,7 @@ export default async function ApprovalsPage({
         {pendingCancellations.length === 0 ? (
           <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingCancellations')}</p>
         ) : (
+          <div className="overflow-x-auto" data-approvals-table-scroll="">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
@@ -734,6 +737,7 @@ export default async function ApprovalsPage({
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
       )}
@@ -753,6 +757,7 @@ export default async function ApprovalsPage({
         {replacementRequests.length === 0 ? (
           <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingReplacement')}</p>
         ) : (
+          <div className="overflow-x-auto" data-approvals-table-scroll="">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
@@ -899,6 +904,7 @@ export default async function ApprovalsPage({
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
       )}
@@ -909,6 +915,7 @@ export default async function ApprovalsPage({
         {claims.length === 0 ? (
           <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingClaims')}</p>
         ) : (
+          <div className="overflow-x-auto" data-approvals-table-scroll="">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
@@ -948,6 +955,7 @@ export default async function ApprovalsPage({
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
       )}
@@ -961,6 +969,7 @@ export default async function ApprovalsPage({
         {visibleCorrections.length === 0 ? (
           <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingCorrections')}</p>
         ) : (
+          <div className="overflow-x-auto" data-approvals-table-scroll="">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
@@ -1029,6 +1038,7 @@ export default async function ApprovalsPage({
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
       )}
@@ -1094,6 +1104,7 @@ export default async function ApprovalsPage({
           {resignations.length === 0 ? (
             <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingResignations')}</p>
           ) : (
+            <div className="overflow-x-auto" data-approvals-table-scroll="">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
@@ -1153,6 +1164,7 @@ export default async function ApprovalsPage({
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </Card>
       )}
