@@ -1,0 +1,42 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+The Individual Payslip already shows employee identification and employment information, but HR cannot choose which fields appear. The nine additional organisation fields exist in Personnel but are not available on this payslip. Preview and PDF currently arrange some information differently.
+
+WHAT WE'LL CHANGE
+
+- Add Payslip Information Setup under Payroll > Settings, with a company selector and Show/Hide controls for all 21 requested fields. The existing 12 start enabled; the nine additional fields start disabled.
+- Save each company's selections independently, with Save and Cancel. Only users authorised to administer payroll for that company can change them.
+- Use the same selected fields, values and requested order in Individual Payslip Preview and PDF, including employee PDF downloads using the standard design. Hide both the label and value for disabled or blank fields, while keeping a recorded zero Days Worked visible.
+- Apply a saved change on the next preview or download, including existing payslips. Use the company belonging to the payroll record, even if the employee has since transferred.
+- Keep the existing payslip layout and payment information. This setting controls the requested employee-information fields only; it does not change payroll amounts, calculations or Personnel records.
+
+WHAT YOU'LL GET
+
+HR can decide which employee information each company shows without requesting a template change. Preview and PDF will agree on the selected information, with no empty labels.
+
+GOOD TO KNOW
+
+- Personnel details will follow the employee's current Personnel record, as the existing payslip does today. This does not recreate historical organisation details. Payroll figures and Days Worked remain those saved for the selected payslip.
+- Default selections preserve the existing available fields, but blank entries will disappear from Preview instead of showing an empty-value placeholder. Previously downloaded files remain as downloaded.
+- This setting does not redesign the payslip. The separate downloaded-payslip design proposal governs any new Employment Info card; approving either item alone does not approve the other.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Add a settings card to app/payroll/setup/page.tsx and a scoped company-selection/edit route under Payroll Settings. Create one company-owned, audited payslip-information configuration owner with an exhaustive 21-field allowlist and explicit defaults. Use the existing payroll company administration permission, tenant/company fences and server-side validation for reads/writes. Do not reuse setPayrollConfig's full-overwrite scheduling payload for this independent setting. Parent allocates any required migration after approval.
+
+Create one ordered field descriptor and presentation selector shared by the admin preview and lib/payslip-pdf.ts buildPayslipPdfData/renderPayslipPdf. Wire both app/payroll/individual-payslip/[payslipId]/pdf/route.ts and app/me/payslip/[payslipId]/pdf/route.ts. Employee routes must read only the settings needed to render their own released payslip, without receiving permission to edit settings or view another company's payslips. Keep the separate employee screen's current design unless it renders the standard Individual Payslip employment panel; do not broaden this to register exports, statutory documents or mobile summaries.
+
+Use payrollBatch.companyId from the selected payslip as the configuration owner. Extend payslipForReview in core/payroll-view.ts and payslipDetail in core/payroll.ts consistently: Business Unit comes from assignment.businessUnitId joined to businessUnit.name; Division/Branch/Region/Line/Section/Team/Base come from employment.orgDivision/orgBranch/orgRegion/orgLine/orgSection/orgTeam/orgBase; Category is employment.employmentCategory, not tax category or employment status. Keep current assignment/master provenance for organisation data, matching the existing department/position readers; no snapshot backfill or payroll regeneration.
+
+Map the 21 controls to existing identity/employment fields. NRIC must preserve the existing passport label for non-NRIC identities. Employee Name and Employee ID also control their occurrences in the PDF employee-information panel; the company letterhead and payroll identifiers stay unchanged. Preserve existing payment method, bank information and cycle presentation outside this 21-field selector. Do not expose unmasked account data in the preview. Blank means absent or whitespace-only, never numeric zero.
+
+After approval, verify all 21 independent toggles, defaults, blank omission, recorded zero Days Worked, save/cancel/error persistence, configured order and preview/PDF field-value parity. Cover two companies with opposite selections, transfers using the slip's payroll company, admin/payroll-admin roles, employee released-only PDF access, denied company and cross-tenant reads/writes, long values and six UI locales. Check actual rendered and extracted Unicode PDF text and multi-page layout with all fields enabled. Confirm payroll amounts and existing financial disclosures are identical before and after changing display settings.
+
+No attachments are present on this item. The accompanying HTML is a schematic proposal using placeholders only, not a rendered product or payroll example.
+
+
+Make the settings form and standard preview responsive, support light/dark themes and all six supported UI locales, and preserve accessible checkbox labels, keyboard access, saving/error state and a confirmed success message. Verify actual narrow/wide and light/dark output after implementation. The HTML mockup is static and unrendered; parent renders it after the shared gate.
