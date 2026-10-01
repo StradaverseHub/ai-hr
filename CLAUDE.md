@@ -323,7 +323,16 @@ which is a real case and used to be shipped by retyping `rsync --delete` against
   `TEST_DB_NAMESPACE`** — a namespace separates agents from each other, never from a cluster rebuild. So
   while the parent gates, agents run **NO vitest at all**: reading, `tsc` and committing only. Measured
   in r374 — a gate chunk came back `8 failed`, across eight unrelated suites, with **zero
-  AssertionErrors** and 136 environment-shaped errors. Dispatch builders OR gate; never both. `devdb-lock.sh` has ONE holder and
+  AssertionErrors** and 136 environment-shaped errors. Dispatch builders OR gate; never both.
+  **Even `tsc` is too heavy**: measured in r374 at **1.19 GB RSS**, and a second run reached 2.4 GB — beside
+  three vitest workers that starved Postgres into four `Hook timed out in 30000ms` and `9 failed` with
+  **zero AssertionErrors**, including a pure-JSON locale test, which can only time out and never genuinely
+  miss a key. So during a gate agents read, write and commit; they do not run `tsc`, `vitest`,
+  `next build`, `db:seed` or a dev server.
+  **Make the lock enforce it rather than asking agents to police it — hold BOTH slots by nesting:**
+  `bash ~/.aihr-gate-state/testlock.sh gate-a -- bash ~/.aihr-gate-state/testlock.sh gate-b -- <gate>`.
+  Nesting also **self-sequences**: it blocks until a builder's in-flight `tsc` releases its slot, so no
+  process has to be killed. `devdb-lock.sh` has ONE holder and
   **does not reap dead holders**: if you are killed holding it, everyone blocks.
 - Worked workflow scripts: `scripts/improve/*.workflow.js`.
 
