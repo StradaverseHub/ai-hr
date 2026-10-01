@@ -1724,7 +1724,7 @@ export async function eaStatement(
     // deliberately the same source, so the two LHDN documents cannot name different officers. A company
     // with no row simply leaves those boxes as the empty rules the blank form prints.
     const [auth] = await tx
-      .select({ state: companyStatutoryAuthority.state, signatoryPersonId: companyStatutoryAuthority.signatoryPersonId })
+      .select({ state: companyStatutoryAuthority.state })
       .from(companyStatutoryAuthority)
       .where(and(eq(companyStatutoryAuthority.companyId, employerId), eq(companyStatutoryAuthority.authority, 'lhdn')))
       .limit(1);

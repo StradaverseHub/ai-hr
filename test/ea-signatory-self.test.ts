@@ -5,7 +5,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import { hireEmployee, terminateEmployment } from '../core/org';
 import { employeeEaStatement } from '../core/reporting';
 import { upsertCompanyStatutoryAuthority } from '../core/statutory-authority';
-import { company, person } from '../db/schema';
+import { company, companyStatutoryAuthority, person } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 describe('450f443f — EA signatory display identity with unchanged person visibility', () => {
@@ -67,8 +67,12 @@ describe('450f443f — EA signatory display identity with unchanged person visib
   });
   it('direct reader refuses a peer subject, unrelated company, malformed year and foreign tenant', async () => {
     const { subject, signatory, ctx } = await fixture();
-    const [other] = await owner.db.insert(company).values({ tenantId: b.tenantId, code: 'OTHER', legalName: 'Other', country: 'MY' }).returning();
+    const [other] = await owner.db.insert(company).values({ tenantId: b.tenantId, legalName: 'Other', country: 'MY' }).returning();
+    await owner.db.insert(companyStatutoryAuthority).values({ tenantId: b.tenantId, companyId: other.id, authority: 'lhdn', signatoryPersonId: signatory.personId });
     const direct = (subjectId: string, coId: string, year = '2026', caller = ctx) => withTenant(caller, tx => tx.execute(sql`select * from app.ea_signatory(${subjectId}::uuid, ${coId}::uuid, ${year})`));
+    const scopedPayroll: SessionContext = { ...ctx, userId: undefined, personId: null, roles: ['payroll_partner'], grants: [{ role: 'payroll_partner', companyId: b.companyId }] };
+    expect((await direct(subject.employmentId, b.companyId, '2026', scopedPayroll))[0]?.officer_name).toBe('Configured officer');
+    expect(await direct(subject.employmentId, b.companyId, '2026', { ...scopedPayroll, grants: [{ role: 'payroll_partner', companyId: other.id }] })).toEqual([]);
     expect(await direct(signatory.employmentId, b.companyId)).toEqual([]);
     expect(await direct(subject.employmentId, other.id)).toEqual([]);
     expect(await direct(subject.employmentId, b.companyId, '2026%')).toEqual([]);
