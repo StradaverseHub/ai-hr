@@ -1,0 +1,43 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+Leave History Data Import and Leave B/F Data Import currently have separate menus and their own six-step workflows. They import different information: past leave records versus the opening brought-forward figure. A third tool, Leave Balance Import, handles balance movements and must remain separate.
+
+WHAT WE'LL CHANGE
+
+- Replace the two menu entries with Leave Data Import. Step 1 will require an Import Type choice before Download Template or Next becomes available.
+- Keep the six steps in the same order and reuse the selected type's existing template, validation, preview, confirmation and summary behaviour.
+- Show the selected Import Type on Steps 2–6 and in the import history. Reject a file for the wrong type with a message directing HR to change the selection in Step 1.
+- Changing the type will clear the uploaded file and all unfinished results. Old bookmarks will open the new screen with their matching type selected.
+- Keep the existing permissions, history records, B/F rollback and all type-specific settings.
+
+WHAT YOU'LL GET
+
+HR will have one clear starting point for these two imports without changing what either import does to leave records or balances. Each completed import remains identifiable by its type.
+
+GOOD TO KNOW
+
+- Leave Balance Import remains in Leave Adjustments; its existing address will not be reused for this consolidation.
+- History import's balance-treatment choice and B/F import's Replace/Add choice remain distinct. B/F rollback will not be offered for history imports.
+- The attached screen example has been reviewed. It shows History and B/F tabs with History selected; the written request instead requires no initial selection. We will follow the written requirement: neither type is selected until HR chooses one in Step 1. Production screens have not been verified; implementation starts after approval.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+OBSERVATION: The reporter’s two-page Leave Data Import.pdf was read and both pages visually inspected. Page 1 highlights the two existing menu entries. Page 2 shows one Leave Data Import menu, History/B/F tabs with History selected, and the six steps. This differs from the written no-default requirement; follow the explicit written Step-1 choice, retaining the shown menu/title and six-step structure. The screenshot contains the history-specific balance-treatment controls and does not evidence B/F flow, saved type, wrong-file checks or production behaviour.
+
+FACT: Graph queried before source. app/admin/leave-config/history-import and bf-import each mount a client workflow, requireAdmin and a separate run list. Both are routes under the existing leaveConfig permission key in lib/permissions.ts, not separate stored permissions. packs/leave/index.ts and components/leave-config-map own navigation. app/admin/leave-config/import is already the unrelated Leave Balance Import; select a new unambiguous route, /admin/leave-config/data-import.
+
+FACT: Authoritative business services remain core/leave-history-import.ts and core/leave-bf-import.ts. History writes leave_request and may write a matching debit according to openingBalancesAreNet; B/F writes adjustment ledger rows with replace/add semantics, prior-cycle/carry handling and compensating rollback. Their counts, duplicate handling, options and histories differ. Preserve both services and run tables. The table identity already persistently identifies import type; use a discriminated read model over leaveHistoryImportRun and leaveBfImportRun, with stable type plus run id. Do not merge the tables or duplicate a mutable importType column merely to restate table ownership. Include type in each displayed result and history row, including existing rows.
+
+FACT: lib/leave-history-import-schema.ts and lib/leave-bf-import-schema.ts own columns, aliases, six-step labels and typed results. lib/import-template.ts owns matching CSV/XLSX template metadata. Current validators accept established header aliases and ignore unrelated extra columns; consolidation must not impose an exact header-order match that rejects currently valid files.
+
+RECOMMENDATION: One shared page and six-step shell dispatching by validated authoritative type to existing workflow owners. No default on the ordinary new route; allow only explicit recognised history/bf values from compatibility redirects. Server actions and templates dispatch using a validated discriminator, never infer type from filename or client preview. Keep requireAdmin and per-row company checks, run-table RLS, server revalidation at commit and original rollback authorisation. Abort or discard stale async file reads/validation responses after type changes, clear file input, source metadata, CSV/paste, preview, results, errors and pending confirmation; freeze type during an in-flight commit. Never reuse one type's preview/options as the other's payload.
+
+IMPLEMENTATION: Register the new guarded route under leaveConfig; replace sidebar/map entries with one entry and accurate active-route ownership; retain old pages as redirects with matching type and safe context, update action revalidation to the new route. Render one authoritative step rail, keeping the six labels/order and each service's actual progress gates; avoid two nested rails. Header validation in Step 2 and again server-side must normalise through the existing selected-type aliases, require selected-type identifying/required headers and reject opposite-type or conflicting layouts before any row writes. Preserve valid optional/extra-column behaviour, XLSX and CSV/paste decode contracts, all templates and warning/error downloads. Existing typed result/run views can be reused behind one labelled history list, with B/F-only rollback and truthful differing counts. No database migration is proposed unless actual inspection proves table-derived persisted type insufficient.
+
+VALIDATION AFTER APPROVAL: Initial choice and disabled buttons; both templates; wrong-type files and established aliases; type change during file read/validation; six-step progression and preserved options; tampered type/preview rejection; scoped multi-company files; partial failure and duplicates; B/F replace/add and rollback; prior existing runs labelled correctly; old redirects; sidebar/map/permission ownership; locale/mobile and empty-state behaviour. No implementation, repo writes, tests, builds, dev server, database operations, board writes or deployment performed during triage. Production state remains UNKNOWN. Attachment evidence is verified as described above.
+
+PRESENTATION AFTER APPROVAL: Match the existing design system, responsive mobile layout, accessible 44px controls and dark/light theme. Update all six supported locale catalogues with consistent labels and messages; statutory EA option wording follows the approved form wording. The accompanying HTML is a placeholder-only review sketch, not functional application code or a verified production reproduction. No render or browser verification performed during the parent gate.

@@ -1,0 +1,42 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+Pay Items already has an EA Form Reporting selection, and EA preview and download already share the same result. The selections differ from your requested twelve choices, and blank selections currently keep the amount in its existing reporting category. Detailed routing is deliberately enabled from 2027; earlier payroll records do not contain a complete year's item-by-item amounts.
+
+WHAT WE'LL CHANGE
+
+- Provide the twelve requested choices with their exact wording and one reporting identity for each printed line. Existing intended assignments will be preserved, including assignments outside these twelve choices that need separate treatment.
+- Show B1 (a) as the default for otherwise unclassified employment-income items, and combine each item's processed amounts into its selected EA line once.
+- Keep preview and download on the same result, and retain recorded tax exemptions, manual amendments and the correct employer/year boundaries.
+- Explain when an older year's amounts cannot be reliably separated. We will preserve the existing correction process rather than invent historical item amounts.
+
+WHAT YOU'LL GET
+
+HR will have clearer selections and a traceable connection between processed pay and EA lines. Generating or downloading the form again will not add duplicate amounts.
+
+GOOD TO KNOW
+
+- A deduction or an expense repayment must not become taxable salary merely because its EA setting is blank. The default applies to employment income; existing exemption treatment remains intact.
+- Pension and annuity reporting needs validation against the actual payment type before it can be connected to employment payroll. Moving an amount into Part C must not leave it in Part B as well.
+- Changing a reporting assignment can change an EA generated later for already processed pay. The proposed approach preserves the existing annual reporting correction behaviour and records who changed the assignment; it does not rewrite the pay amounts already issued.
+- Production behaviour has not been verified; the board CLI confirms this item has no attachments. The reported wrong-line result still needs an example with the pay item, employer, payroll month and EA year before implementation.
+- This is a proposed plan only. Approval is required before implementation or changes to saved records.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: Read-only mainwt source and graph reviewed. core/pay-components.ts owns EA_FORM_LINES, cleanEaLine and pay-component saves; db/schema.ts pay_component.ea_form_line is nullable text. app/admin/pay-components/component-form.tsx currently renders the field with a blank option. A contrary stale comment in app/payroll/setup/page.tsx claims the control left the screen; the actual form retains it. No production UI inspection was performed. The board CLI confirms there are no attachments for this item.
+
+FACT: localization/my/reports.ts eaStatement reads saved statutory.componentLines amounts/buckets but resolves eaFormLine from the CURRENT pay-component catalogue by code. The snapshot holds processed amount provenance, not the EA assignment. EA_LINE_TO_FIELD currently has fourteen routes plus allowance_exempt as a deliberate no-transfer selection; bonus, commission and director_fee share printed B1(b), and allowance_taxable/tips_perquisites share B1(c). arrears B2 and allowance_exempt Section F cannot be silently converted to B1(a) merely because the requested twelve-item list omits them. Pension/annuity currently have zero derived baselines and can be amended; they have no pay-item route.
+
+FACT: EA_ROUTING_FROM_YEAR is 2027 because component-line stamping began August 2026. This is a coverage restriction rather than proof that the mapping is disconnected. Before 2027, selections are deliberately inert. Blank mappings retain original bucket-derived figures rather than omitting all pay. Reimburse/deduct buckets are intentionally excluded from routing. PCB exemptionUsed is the sole exemption source; overrides apply after routing. Preview/download both use app/payroll/statutory-forms/ea/shared.ts eaPdfResponse and renderEaPdf; employee routes also consume employeeEaStatement.
+
+RECOMMENDATION: Use one jurisdiction-owned typed catalogue with stable reporting codes, exact requested labels, destination field/section and order. Avoid a separately editable master table unless there is an approved business need to administer statutory lines. Keep compatibility aliases for existing vocabulary; retain B2/Section F legacy classifications rather than losing their intended assignment. Present the twelve requested standard options and explicitly preserve existing legacy assignments on edit. Reject unknown selections instead of silently nulling them. Default blank income classifications to EA_B1A at save and calculation; do not convert deductions, expense reimbursements or exempt amounts into taxable income. Route Part C with separate section totals and reconciliation, never through the existing Part-B-only sum.
+
+IMPLEMENTATION ORDER: Verify a production example and the intended pension/annuity income model; inventory actual stored classifications and snapshot coverage read-only; prepare a reviewed mapping crosswalk and migration impact before allocation. Keep 2027 coverage boundary unless authoritative historical component provenance proves a complete earlier year. Preserve current catalogue-based annual correction semantics with audited edits; do not claim the classification was stamped at processing time. Implement catalogue/save/default changes, compatibility migration and one pure annual accumulator used by every EA consumer. Migration must preserve recognised legacy assignments, flag unknown assignments for review and avoid changing filed forms or historical payslip amounts.
+
+VALIDATION AFTER APPROVAL: Each standard code maps to its correct box; B1(b) combines bonus/fees/commission; blank income defaults; legacy B2/F preserved; multiple items, repeated generation and regular/additional runs count once; Part-C transfers reconcile without inflating Part B; exemption ledger and overrides remain correct; current mapping edits versus historical amount snapshots are explicit; pre-2027 missing provenance remains truthful; cross-employer/year/self permissions and preview/PDF parity verified. No tests, builds, dev server, database operations, board writes or deployment performed during this triage.
+
+PRESENTATION AFTER APPROVAL: Match the existing design system, responsive mobile layout, accessible 44px controls and dark/light theme. Update all six supported locale catalogues with consistent labels and messages; statutory EA option wording follows the approved form wording. The accompanying HTML is a placeholder-only review sketch, not functional application code or a verified production reproduction. No render or browser verification performed during the parent gate.
