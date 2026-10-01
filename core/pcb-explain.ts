@@ -231,6 +231,8 @@ export type PcbExplanation =
       /** NULL for a run predating 45df860a. The caller says "not recorded for this run"; it does NOT
        *  back-derive the bracket and it does NOT render the legs as zeroes. */
       trace: PcbTrace | null;
+      /** Newly expanded normal working is unavailable when any required saved input is absent. */
+      normalMtdWorkingRecorded?: boolean;
     } & PcbFigures);
 
 const n = (v: unknown) => {
@@ -515,6 +517,10 @@ export function explainPcb(
     pcbNormal: r2(figures.pcbSystem - pcbAdditional),
     pcbAdditional: r2(pcbAdditional),
     trace: readTrace(m.trace),
+    normalMtdWorkingRecorded: ['P1', 'n', 'pcbPaid'].every(key => typeof m[key] === 'number' && Number.isFinite(m[key]))
+      && !!m.trace && typeof m.trace === 'object' && ['M', 'R', 'B', 'Z', 'zakatCurrent', 'mtdNormalCalc', 'mtdNormalFloored'].every(key => typeof (m.trace as Record<string, unknown>)[key] === 'number' && Number.isFinite((m.trace as Record<string, unknown>)[key]))
+      && typeof st.pcb === 'number' && Number.isFinite(st.pcb)
+      && (delta ? typeof (m.delta as Record<string, unknown>)?.cumulativeBonus === 'number' && Number.isFinite((m.delta as Record<string, unknown>).cumulativeBonus) : typeof st.pcbBonus === 'number' && Number.isFinite(st.pcbBonus)),
     ...figures,
   };
 }
@@ -1678,7 +1684,7 @@ export function pcbBasisSection(x: PcbExplanation): PcbSlipSection | null {
  * engine's own stamped additional leg) and not the subtraction the agency's line describes.
  */
 export function pcbMtdStep1Section(x: Extract<PcbExplanation, { kind: 'mtd' }>): PcbSlipSection {
-  const t = x.trace;
+  const t = x.normalMtdWorkingRecorded === false ? null : x.trace;
   return {
     heading: 'slipStep1Heading',
     normalMtdWorking: true,

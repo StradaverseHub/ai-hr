@@ -251,8 +251,9 @@ export function pcbNormalMtdStep1Blocks(x: PcbExplanation, f: PcbFormulaFormat):
   if (x.kind !== 'mtd') return [];
   const monthly = pcbFormulaBlocks(x, f).find(block => block.key === 'mtd');
   if (!monthly) return [];
-  const t = x.trace;
-  return [monthly, {
+  const t = x.normalMtdWorkingRecorded === false ? null : x.trace;
+  const recordedMonthly = x.normalMtdWorkingRecorded === false ? {...monthly, substituted: null, result: null} : monthly;
+  return [recordedMonthly, {
     key: 'net', step: 'D', heading: 'slipStep1NetMtd', formula: 'formulaNormalMtdNet',
     substituted: t ? `max( 0, ${f.b2(t.mtdNormalFloored)} − ${f.b2(t.zakatCurrent)} )` : null,
     resultLabel: 'slipStep1NetMtd', result: t ? x.pcbNormal : null,
