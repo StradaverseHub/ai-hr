@@ -486,18 +486,29 @@ describe('5570c6a2: no document-required badge in the employee leave-type dropdo
   });
 
   it('EditLeaveDialog’s own options were already bare names and are unchanged', () => {
-    // app/leave/page.tsx builds a second, separate option list for the edit dialog; both now agree.
+    // r378 moved the employee's edit controls into the dedicated History entries builder.
     //
     // UPDATED BY ad965821 (AGENTS rule 18). The property under test — the option LABEL is the type's name
     // and nothing else — is untouched and still asserted. What changed is which rows reach the list: it is
     // now the eligible set UNION the request's own type, so the hiding holds in the Edit box too without
     // ever taking a request's own type out of its own editor. Pinning `types={leaveTypes.map(` would have
     // pinned the unfiltered catalogue, which is the thing this round removed.
-    const at = page.indexOf('types={leaveTypes');
+    const history = read('components/leave/own-leave-history.tsx');
+    const entriesStart = history.indexOf('const historyEntries:');
+    const entriesEnd = history.indexOf('const historyTypeOptions', entriesStart);
+    expect(entriesStart, 'the owned History entries builder exists').toBeGreaterThan(-1);
+    expect(entriesEnd, 'the entries builder has a nonempty boundary').toBeGreaterThan(entriesStart);
+    const entries = history.slice(entriesStart, entriesEnd);
+    expect(entries).toContain('<EditLeaveDialog');
+    const at = entries.indexOf('types={leaveTypes');
     expect(at).toBeGreaterThan(-1);
-    const list = page.slice(at, page.indexOf('}))}', at));
+    const end = entries.indexOf('}))}', at);
+    expect(end, 'the edit options mapping has a nonempty boundary').toBeGreaterThan(at);
+    const list = entries.slice(at, end).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     expect(list).toContain('label: lt.name,');
     expect(list).toContain('eligibleTypeIds.has(lt.id) || lt.id === r.leaveTypeId');
+    expect(list).not.toContain('documentRequiredBadge');
+    expect(list).not.toContain('requiresDocument');
   });
 
   it('the badge key survives in all six catalogs (parity, and nothing checks for unused keys)', () => {
