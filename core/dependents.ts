@@ -458,10 +458,11 @@ export function eligibleChildReliefUnits(
     /** `pack.payroll.childReliefFor` — the ONE derivation; `.amountRM` is what the kernel deducts. */
     childReliefFor: (i: ChildReliefInput) => ChildReliefFigure;
     asOf?: Date;
+    taxCategory?: number;
   },
 ): { units: number; amountRM: number; eligible: number; categorised: number } {
   const { grid, eligible, categorised } = childReliefGridFromFamily(rows, p.asOf ?? new Date());
-  const figure = p.childReliefFor({ from: 'table', table: grid, prices: p.prices });
+  const figure = p.childReliefFor({ from: 'table', taxCategory: p.taxCategory, table: grid, prices: p.prices });
   return { units: figure.units, amountRM: figure.amountRM, eligible, categorised };
 }
 
@@ -1387,6 +1388,7 @@ export async function qualifyingChildReliefFor(
 
     const [statutory] = await tx
       .select({
+        taxCategory: employeeStatutoryMy.taxCategory,
         numChildren: employeeStatutoryMy.numChildren,
         childReliefMode: employeeStatutoryMy.childReliefMode,
         childReliefTable: employeeStatutoryMy.childReliefTable,
@@ -1447,6 +1449,7 @@ export async function qualifyingChildReliefFor(
     const rule = eligibleChildReliefUnits(family, {
       prices: categories,
       childReliefFor,
+      taxCategory: statutory.taxCategory ?? 1,
       asOf: asOfDate,
     });
 
@@ -1493,8 +1496,8 @@ export async function qualifyingChildReliefFor(
     // An empty / unkeyed grid still claims NOTHING — the count follows the money to zero rather than
     // optimistically reporting the head count.
     const figure = pricedFromGrid
-      ? childReliefFor({ from: 'table', table: pricingTable, prices: categories })
-      : childReliefFor({ from: 'headCount', children: pricingHeadCount, perChild });
+      ? childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'table', table: pricingTable, prices: categories })
+      : childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'headCount', children: pricingHeadCount, perChild });
 
     // ── WHAT PAYROLL DEDUCTS TODAY, FROM THE STORED COLUMNS, IN THE KERNEL'S OWN EXPRESSION ───────────
     // Not a second arithmetic: the SAME predicate and the SAME pack call, over `child_relief_table` and
@@ -1505,14 +1508,14 @@ export async function qualifyingChildReliefFor(
       childReliefMode: mode,
       childReliefTable: statutory.childReliefTable,
     })
-      ? childReliefFor({ from: 'table', table: statutory.childReliefTable, prices: categories })
-      : childReliefFor({ from: 'headCount', children: physicalChildren, perChild });
+      ? childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'table', table: statutory.childReliefTable, prices: categories })
+      : childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'headCount', children: physicalChildren, perChild });
 
     /**
      * ONE LINE PER CHILD, PRICED THE WAY THAT CHILD IS ACTUALLY PRICED (r347).
      *
      * The child's own category is turned into a ONE-CHILD GRID and run through the SAME
-     * `childReliefFor({ from: 'table' })` that prices the whole employee, so the lines provably sum to
+     * `childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'table' })` that prices the whole employee, so the lines provably sum to
      * the total above them rather than being a second arithmetic that agrees by coincidence. This is
      * what the reporter asked to see: "1 Disabled Child × 4 = 4 Qualifying Children".
      *
@@ -1525,11 +1528,12 @@ export async function qualifyingChildReliefFor(
       const priced =
         cat != null
           ? childReliefFor({
+              taxCategory: statutory.taxCategory ?? 1,
               from: 'table',
               table: { [cat]: { full: half ? 0 : 1, half: half ? 1 : 0 } },
               prices: categories,
             })
-          : childReliefFor({ from: 'headCount', children: 1, perChild });
+          : childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'headCount', children: 1, perChild });
       return {
         kind: 'child' as const,
         name: d.fullName,
@@ -1580,8 +1584,8 @@ export async function qualifyingChildReliefFor(
                     // stored 100|50 on write, so this never has to re-validate it.
                     sharePercent: d.childReliefPercentage === 50 ? 50 : 100,
                     children: 1,
-                    units: childReliefFor({ from: 'headCount', children: 1, perChild }).units,
-                    amountRM: childReliefFor({ from: 'headCount', children: 1, perChild }).amountRM,
+                    units: childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'headCount', children: 1, perChild }).units,
+                    amountRM: childReliefFor({ taxCategory: statutory.taxCategory ?? 1, from: 'headCount', children: 1, perChild }).amountRM,
                     why: childEligibilityReason(d, asOfDate),
                     categoryContradictsDob: childCategoryContradictsDob(d, asOfDate),
                   },

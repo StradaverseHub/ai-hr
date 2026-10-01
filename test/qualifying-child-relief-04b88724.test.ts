@@ -77,11 +77,32 @@ afterAll(async () => {
   await closeAll();
 });
 
+it('r377 category one has no applied child relief on the employee screen, while preserving its declaration', async () => {
+  const E = await hire('SingleDeclaredChildren');
+  await setTaxProfileMY(adminCtx(base), {
+    personId: E.personId,
+    taxCategory: 1,
+    numChildren: 2,
+    childReliefMode: 'auto_table',
+    childReliefTable: { under_18: { full: 1, half: 0 }, disabled_study: { full: 0, half: 1 } },
+  });
+  const q = await qualifyingChildReliefFor(adminCtx(base), { personId: E.personId, asOf: ASOF });
+  expect(q).not.toBeNull();
+  expect(q!.physicalChildren).toBe(2);
+  expect(q!.qualifyingChildren).toBe(0);
+  expect(q!.reliefRM).toBe(0);
+  expect(q!.storedQualifyingChildren).toBe(0);
+  expect(q!.storedReliefRM).toBe(0);
+  expect(q!.breakdown.map(row => row.children)).toEqual([1, 1]);
+  expect(q!.breakdown.every(row => row.units === 0 && row.amountRM === 0)).toBe(true);
+});
+
 describe("04b88724 · the qualifying count is the KERNEL's ringgit ÷ the ruleset's rate", () => {
   it("auto_table: the reporter's own worked example — one child under 18 plus one disabled child in higher education is NINE qualifying children, not two", async () => {
     const E = await hire('WorkedExample');
     const grid = { under_18: { full: 1, half: 0 }, disabled_study: { full: 1, half: 0 } };
     await setTaxProfileMY(adminCtx(base), {
+      taxCategory: 3,
       personId: E.personId,
       // The HEAD count stays two. That is the whole point of the split: Form E still reads two people.
       numChildren: 2,
@@ -107,6 +128,7 @@ describe("04b88724 · the qualifying count is the KERNEL's ringgit ÷ the rulese
       const E = await hire(`Cat${key}`);
       const grid = { [key]: { full: 1, half: 0 } };
       await setTaxProfileMY(adminCtx(base), {
+      taxCategory: 3,
         personId: E.personId,
         numChildren: 1,
         childReliefMode: 'auto_table',
@@ -127,6 +149,7 @@ describe("04b88724 · the qualifying count is the KERNEL's ringgit ÷ the rulese
     const E = await hire('HalfShare');
     const grid = { under_18: { full: 0, half: 1 } };
     await setTaxProfileMY(adminCtx(base), {
+      taxCategory: 3,
       personId: E.personId,
       numChildren: 1,
       childReliefMode: 'auto_table',
@@ -145,6 +168,7 @@ describe("04b88724 · the qualifying count is the KERNEL's ringgit ÷ the rulese
   it('auto_table with NOTHING keyed claims nothing — the count follows the money to zero, it does not fall back to the head count', async () => {
     const E = await hire('EmptyGrid');
     await setTaxProfileMY(adminCtx(base), {
+      taxCategory: 3,
       personId: E.personId,
       numChildren: 3,
       childReliefMode: 'auto_table',
@@ -161,6 +185,7 @@ describe("04b88724 · the qualifying count is the KERNEL's ringgit ÷ the rulese
     const E = await hire('Breakdown');
     const grid = { under_18: { full: 2, half: 1 }, study_tertiary: { full: 1, half: 0 } };
     await setTaxProfileMY(adminCtx(base), {
+      taxCategory: 3,
       personId: E.personId,
       numChildren: 4,
       childReliefMode: 'auto_table',
@@ -187,6 +212,7 @@ describe('04b88724 · provenance — derived or typed, and never dressed up as t
   it('manual is TYPED: derived=false, the qualifying count IS the typed head count, and there is no breakdown', async () => {
     const E = await hire('ManualTyped');
     await setTaxProfileMY(adminCtx(base), {
+      taxCategory: 3,
       personId: E.personId,
       numChildren: 3,
       childReliefMode: 'manual',
@@ -226,6 +252,7 @@ describe('04b88724 · provenance — derived or typed, and never dressed up as t
     });
     // …but this employee is on 'auto', where the mode is switched by the sync itself.
     await setTaxProfileMY(adminCtx(base), {
+      taxCategory: 3,
       personId: E.personId,
       numChildren: 2,
       childReliefMode: 'auto',
@@ -284,6 +311,7 @@ describe('04b88724 · provenance — derived or typed, and never dressed up as t
       // No childReliefCategory at all — the production shape: 24 of 38 dependents carry one.
     });
     await setTaxProfileMY(adminCtx(base), {
+      taxCategory: 3,
       personId: E.personId,
       numChildren: 1,
       childReliefMode: 'auto',
@@ -297,6 +325,7 @@ describe('04b88724 · provenance — derived or typed, and never dressed up as t
   it('the ruleset that priced the figure is named, and the per-category prices travel with it', async () => {
     const E = await hire('Priced');
     await setTaxProfileMY(adminCtx(base), {
+      taxCategory: 3,
       personId: E.personId,
       numChildren: 0,
       childReliefMode: 'auto_table',
@@ -375,6 +404,7 @@ describe('04b88724 · the stored head count and the eligible children, from one 
     });
     // The stored head count still says two, because nothing rewrote it after the birthday.
     await setTaxProfileMY(adminCtx(base), {
+      taxCategory: 3,
       personId: E.personId,
       numChildren: 2,
       childReliefMode: 'auto',
@@ -441,6 +471,7 @@ describe('04b88724 · the stored head count and the eligible children, from one 
       });
     }
     await setTaxProfileMY(adminCtx(base), {
+      taxCategory: 3,
       personId: E.personId,
       numChildren: 2,
       childReliefMode: 'auto',
@@ -475,6 +506,7 @@ describe('04b88724 · the stored head count and the eligible children, from one 
       childReliefCategory: 'under_18',
     });
     await setTaxProfileMY(adminCtx(base), {
+      taxCategory: 3,
       personId: E.personId,
       numChildren: 2,
       childReliefMode: 'auto',
@@ -502,6 +534,7 @@ describe('04b88724 · the stored head count and the eligible children, from one 
       isStudent: true,
     });
     await setTaxProfileMY(adminCtx(base), {
+      taxCategory: 3,
       personId: E.personId,
       numChildren: 1,
       childReliefMode: 'auto',
@@ -516,6 +549,7 @@ describe('04b88724 · the stored head count and the eligible children, from one 
   it('the date every figure was taken at is echoed back, so a screen can say which day it describes', async () => {
     const E = await hire('AsOfEcho');
     await setTaxProfileMY(adminCtx(base), {
+      taxCategory: 3,
       personId: E.personId,
       numChildren: 0,
       childReliefMode: 'auto',
@@ -536,6 +570,7 @@ describe('04b88724 · the stored head count and the eligible children, from one 
       dateOfBirth: '2006-04-01',
     });
     await setTaxProfileMY(adminCtx(base), {
+      taxCategory: 3,
       personId: E.personId,
       numChildren: 3,
       childReliefMode: 'manual',
@@ -568,6 +603,7 @@ describe('04b88724 · the stored head count and the eligible children, from one 
       dateOfBirth: '2019-02-02',
     });
     await setTaxProfileMY(adminCtx(base), {
+      taxCategory: 3,
       personId: E.personId,
       numChildren: 2,
       childReliefMode: 'auto',
@@ -595,6 +631,7 @@ describe('04b88724 · the stored head count and the eligible children, from one 
       dateOfBirth: '2017-05-05',
     });
     await setTaxProfileMY(adminCtx(base), {
+      taxCategory: 3,
       personId: E.personId,
       numChildren: 5,
       childReliefMode: 'manual',

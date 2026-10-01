@@ -121,7 +121,7 @@ function renderCard(over: {
         childRelief={over.pricing === undefined ? PRICING : over.pricing}
         defaults={{
           taxNumber: 'IG1',
-          taxCategory: 1,
+          taxCategory: 3,
           taxResidency: 'resident',
           numChildren: over.numChildren ?? 0,
           childReliefMode: over.mode ?? 'manual',

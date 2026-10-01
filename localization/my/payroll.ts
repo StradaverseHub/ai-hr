@@ -35,7 +35,7 @@ import {
 // 04b88724 — the ONE child-relief derivation (the count, the money and the working). Kept in its own
 // db-free leaf because the Identification & Tax card calls the same function through the CLIENT seam, and
 // this module must not be dragged into a browser bundle to make that possible.
-import { childReliefFor, childReliefPrices } from './child-relief';
+import { childReliefAllowed, childReliefFor, childReliefPrices } from './child-relief';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 /** Round a contribution up to the next whole ringgit (KWSP Third Schedule convention). */
@@ -903,7 +903,9 @@ export function pcbMonth(p: {
   // child-relief mode, where the caller has already worked the total out category by category from the
   // ruleset's `childByCategory` map (halving any 50%-share child). For every other employee it is
   // undefined and this is `children * perChild` — the identical expression that was here before.
-  const childRelief = p.profile?.childReliefAmount ?? children * pcb.reliefs.perChild;
+  const childRelief = childReliefAllowed(category)
+    ? (p.profile?.childReliefAmount ?? children * pcb.reliefs.perChild)
+    : 0;
   const reliefs =
     pcb.reliefs.individual +
     (category === 2 ? pcb.reliefs.spouse : 0) +
@@ -994,11 +996,16 @@ export function pcbMonth(p: {
         // r359 — C from the money, not from `children` (which is `num_children`, the record count).
         // `childRelief` is what was actually deducted, weighted by the s.48 grid where one applies, so
         // dividing by the per-child figure gives the spec's C and keeps Q x C === the relief exactly.
-        childCount: round2(childRelief / pcb.reliefs.perChild),
+        childCount: pcb.reliefs.perChild > 0 ? round2(childRelief / pcb.reliefs.perChild) : 0,
         childDeductionPerChild: pcb.reliefs.perChild,
         ...(p.profile?.childWorking ? {
           childWorking: {
             ...structuredClone(p.profile.childWorking),
+            // A supplied declaration is preserved, but its contributions must match the actual C.
+            ...(!childReliefAllowed(category) ? {
+              rows: p.profile.childWorking.rows.map(row => ({ ...row, units: 0, amountRM: 0 })),
+              categoryUnits: Object.fromEntries(Object.keys(p.profile.childWorking.categoryUnits).map(key => [key, 0])),
+            } : {}),
             disabledIndividual: p.profile.disabled ?? false,
             disabledSpouse: p.profile.disabledSpouse ?? false,
           },

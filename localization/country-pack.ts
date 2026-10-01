@@ -173,9 +173,12 @@ export type ChildReliefFigure = {
  * `prices` comes from `childReliefPrices` so the caller never names a relief figure — including a client
  * island, which receives the prices as plain data and hands them straight back.
  */
-export type ChildReliefInput =
+export type ChildReliefInput = {
+  /** When supplied, apply the jurisdiction's tax-category eligibility before pricing. */
+  taxCategory?: number;
+} & (
   | { from: 'table'; table: unknown; prices: readonly ChildReliefPrice[] }
-  | { from: 'headCount'; children: number; perChild: number };
+  | { from: 'headCount'; children: number; perChild: number });
 
 /**
  * Rung 5c (ADR-0080 D4) — a country-admin configuration section the pack contributes. FLAT data only

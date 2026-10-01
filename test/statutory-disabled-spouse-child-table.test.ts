@@ -196,8 +196,8 @@ describe('d64d0df4 · the child-relief category table', () => {
   it('REPLACES children × perChild in the projection rather than adding to it', () => {
     const pcb: StatutoryRuleset['pcb'] = { ...DEFAULT_MY_STATUTORY.pcb, reliefs: RULES };
     // Three children counted the old way vs. an explicitly supplied amount.
-    const flat = P1of({ category: 1, children: 3 }, pcb);
-    const table = P1of({ category: 1, children: 3, childReliefAmount: 12345 }, pcb);
+    const flat = P1of({ category: 3, children: 3 }, pcb);
+    const table = P1of({ category: 3, children: 3, childReliefAmount: 12345 }, pcb);
     expect(flat - table).toBeCloseTo(12345 - 3 * pcb.reliefs.perChild, 2);
   });
 

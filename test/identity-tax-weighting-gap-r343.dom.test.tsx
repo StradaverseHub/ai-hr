@@ -149,7 +149,7 @@ function renderCard(pricing: ChildReliefPricing, messages: unknown = en) {
         childRelief={pricing}
         defaults={{
           taxNumber: 'IG1',
-          taxCategory: 1,
+          taxCategory: 3,
           taxResidency: 'resident',
           numChildren: pricing.physicalChildren,
           childReliefMode: 'auto',

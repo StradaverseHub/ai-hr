@@ -148,12 +148,12 @@ describe('99b2d6c0 · (b) manual and auto keep the flat arithmetic to the cent',
 
   it('pcbMonth with no supplied child amount is byte-identical to the expression it always used', () => {
     for (const children of [0, 2, 5]) {
-      const before = pcbMonth({ monthlyWage: 9000, epfMonthly: 990, month: 4, profile: { category: 1, children } });
+      const before = pcbMonth({ monthlyWage: 9000, epfMonthly: 990, month: 4, profile: { category: 3, children } });
       const withUndefined = pcbMonth({
         monthlyWage: 9000,
         epfMonthly: 990,
         month: 4,
-        profile: { category: 1, children, childReliefAmount: undefined },
+        profile: { category: 3, children, childReliefAmount: undefined },
       });
       expect(withUndefined).toEqual(before);
       expect(before.snapshot.reliefs.children).toBeCloseTo(children * RELIEFS.perChild, 2);
@@ -369,6 +369,7 @@ describe('99b2d6c0 · the report and the kernel gates, against a real database',
     await setTaxProfileMY(a, { personId: flat.personId, childReliefMode: 'manual', numChildren: 2 });
     await setTaxProfileMY(a, {
       personId: table.personId,
+      taxCategory: 3,
       childReliefMode: 'auto_table',
       numChildren: 1,
       childReliefTable: { study_tertiary: { full: 1, half: 0 } },
@@ -474,9 +475,10 @@ describe('99b2d6c0 · the report and the kernel gates, against a real database',
     }
     await setStatutoryProfileMY(a, { personId: flat.personId, icNumber: '900101010106' });
     await setStatutoryProfileMY(a, { personId: table.personId, icNumber: '900101010107' });
-    await setTaxProfileMY(a, { personId: flat.personId, childReliefMode: 'manual', numChildren: 1 });
+    await setTaxProfileMY(a, { personId: flat.personId, taxCategory: 3, childReliefMode: 'manual', numChildren: 1 });
     await setTaxProfileMY(a, {
       personId: table.personId,
+      taxCategory: 3,
       childReliefMode: 'auto_table',
       numChildren: 1,
       childReliefTable: { study_tertiary: { full: 1, half: 0 } },
@@ -509,9 +511,10 @@ describe('99b2d6c0 · the report and the kernel gates, against a real database',
     const table = await hire(a, 'Drill Table');
     await setStatutoryProfileMY(a, { personId: flat.personId, icNumber: '900101010108' });
     await setStatutoryProfileMY(a, { personId: table.personId, icNumber: '900101010109' });
-    await setTaxProfileMY(a, { personId: flat.personId, childReliefMode: 'manual', numChildren: 1 });
+    await setTaxProfileMY(a, { personId: flat.personId, taxCategory: 3, childReliefMode: 'manual', numChildren: 1 });
     await setTaxProfileMY(a, {
       personId: table.personId,
+      taxCategory: 3,
       childReliefMode: 'auto_table',
       numChildren: 1,
       childReliefTable: { study_tertiary: { full: 1, half: 0 } },

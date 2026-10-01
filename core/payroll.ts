@@ -6315,8 +6315,8 @@ export async function generatePayslips(
       // Preserve the pack's existing working; readers never re-price an old employee profile.
       const childFigure = pack.payroll.childReliefFor && pack.payroll.childReliefPrices
         ? pack.payroll.childReliefFor(pricesChildReliefFromGrid(e)
-          ? { from: 'table', table: e.childReliefTable, prices: pack.payroll.childReliefPrices(rules.pcb?.reliefs) }
-          : { from: 'headCount', children: e.numChildren ?? 0, perChild: rules.pcb?.reliefs.perChild ?? 0 })
+          ? { from: 'table', taxCategory: e.taxCategory ?? 1, table: e.childReliefTable, prices: pack.payroll.childReliefPrices(rules.pcb?.reliefs) }
+          : { from: 'headCount', taxCategory: e.taxCategory ?? 1, children: e.numChildren ?? 0, perChild: rules.pcb?.reliefs.perChild ?? 0 })
         : null;
       const childReliefAmount =
       // a5f21891 — 'auto' PRICES ITS GRID TOO, and all three gates widen together. The sync derives that

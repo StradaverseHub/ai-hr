@@ -295,10 +295,11 @@ export function IdentityTaxCard({
   //                returns `storedReliefRM` and the amber line below states it whenever the two differ.
   const figure =
     mode === 'auto_table'
-      ? (packChildReliefFor?.({ from: 'table', table: typedGrid, prices }) ?? null)
+      ? (packChildReliefFor?.({ from: 'table', taxCategory: defaults.taxCategory ?? 1, table: typedGrid, prices }) ?? null)
       : mode === 'manual'
         ? (packChildReliefFor?.({
             from: 'headCount',
+            taxCategory: defaults.taxCategory ?? 1,
             children: whole(numChildren),
             perChild: childRelief?.perChild ?? 0,
           }) ?? null)

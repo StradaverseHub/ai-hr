@@ -28,10 +28,8 @@
  * nothing db-backed can reach a client bundle through it. Do not import db/client, a server action or
  * next-intl/server here — see the header of ./client.ts for what that would drag in.
  *
- * NO PCB ARITHMETIC IS CHANGED BY THIS FILE. `childReliefAmountFor` returns, for every input, exactly what
- * it returned before (pinned by test/statutory-disabled-spouse-child-table.test.ts,
- * test/child-relief-figures-04b88724.test.ts and test/child-relief-review.test.ts, which were written
- * against the old body and all still pass against this one).
+ * An explicit tax category applies HASiL 2026 MTD eligibility: category 1 has C = 0.
+ * Omitted categories retain raw pricing for family/category reference calculations.
  */
 import type { ChildReliefFigure, ChildReliefInput, ChildReliefPrice, ChildReliefRow } from '../country-pack';
 import {
@@ -97,9 +95,12 @@ export function childReliefPrices(reliefs?: StatutoryRuleset['pcb']['reliefs']):
  * P is truncated once, downstream, exactly as it is today. What LHDN's specification intends QC to read as
  * in a shared-claim case is NOT known — see the note in core/dependents.ts.
  */
+/** HASiL 2026 computerised MTD specification, category 1: C = 0 (page 10). */
+export const childReliefAllowed = (category: number | undefined) => category !== 1;
+
 export function childReliefFor(p: ChildReliefInput): ChildReliefFigure {
   if (p.from === 'headCount') {
-    const children = whole(p.children);
+    const children = childReliefAllowed(p.taxCategory) ? whole(p.children) : 0;
     const perChild =
       typeof p.perChild === 'number' && Number.isFinite(p.perChild) ? Math.max(0, p.perChild) : 0;
     return { units: children, amountRM: children * perChild, rows: [] };
@@ -120,8 +121,8 @@ export function childReliefFor(p: ChildReliefInput): ChildReliefFigure {
       [50, whole(c.half), price.units / 2, price.amountRM / 2],
     ] as const) {
       if (children === 0) continue;
-      const lineUnits = children * unitEach;
-      const lineRM = children * rateEach;
+      const lineUnits = childReliefAllowed(p.taxCategory) ? children * unitEach : 0;
+      const lineRM = childReliefAllowed(p.taxCategory) ? children * rateEach : 0;
       units += lineUnits;
       amountRM += lineRM;
       rows.push({ category: price.key, sharePercent, children, units: lineUnits, amountRM: lineRM });

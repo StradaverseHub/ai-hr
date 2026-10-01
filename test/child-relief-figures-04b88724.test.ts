@@ -142,7 +142,7 @@ describe('04b88724 · (a) the two figures the reporter was right about', () => {
       },
     };
     const P = (pcb: StatutoryRuleset['pcb'], childReliefAmount: number) =>
-      pcbMonth({ monthlyWage: 12000, epfMonthly: 1320, month: 3, profile: { category: 1, children: 1, childReliefAmount }, pcb })
+      pcbMonth({ monthlyWage: 12000, epfMonthly: 1320, month: 3, profile: { category: 3, children: 1, childReliefAmount }, pcb })
         .snapshot.P1;
     const grid = { disabled: { full: 1, half: 0 } };
     const before = P(wrong, childReliefAmountFor(grid, wrong.reliefs));
@@ -273,14 +273,14 @@ describe('04b88724 · (d) a manual or auto employee is byte-identical — the fl
   });
 
   it('and the flat path is still literally children × RM2,000, not the category map', () => {
-    const base = pcbMonth({ monthlyWage: 12000, epfMonthly: 1320, month: 3, profile: { category: 1, children: 0 } })
+    const base = pcbMonth({ monthlyWage: 12000, epfMonthly: 1320, month: 3, profile: { category: 3, children: 0 } })
       .snapshot.P1;
     for (const children of [1, 2, 5]) {
       const withKids = pcbMonth({
         monthlyWage: 12000,
         epfMonthly: 1320,
         month: 3,
-        profile: { category: 1, children },
+        profile: { category: 3, children },
       }).snapshot.P1;
       expect(base - withKids, `${children} children on the flat path deduct ${children} × RM2,000`).toBeCloseTo(
         children * PER_CHILD_RM,
