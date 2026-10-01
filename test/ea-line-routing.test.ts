@@ -58,11 +58,11 @@ describe('ea54fe6e — the routing vocabulary and the box table are one thing', 
     }
   });
 
-  it('every routed box is one the printed Part B total actually sums', () => {
+  it('every routed box belongs to the printed Part B or Part C total', () => {
     // Routing that lands money in a box outside EA_PART_B_COMPONENTS would move it OUT of the printed
     // total — the form would stop reconciling, which is the §0 invariant the whole EA rests on.
     for (const target of Object.values(EA_LINE_TO_FIELD)) {
-      expect(EA_PART_B_COMPONENTS as readonly string[], `${target} is routed but never summed`).toContain(target);
+      expect([...EA_PART_B_COMPONENTS, 'pension', 'annuity'], `${target} is routed but never summed`).toContain(target);
     }
   });
 
@@ -154,14 +154,14 @@ describe('ea54fe6e — routing on a real payroll year', () => {
   const mapPayItem = (id: string, line: string | null) =>
     owner.db.update(schema.payComponent).set({ eaFormLine: line }).where(eq(schema.payComponent.id, id));
 
-  it('an UNMAPPED pay item is named on the form, and its money stays in allowances', async () => {
+  it('blank taxable income defaults to B1(a) and remains fully reported', async () => {
     const a = adminCtx(base);
     const { E } = await seed(ROUTED_YEAR);
     const ea = await employeeEaStatement(a, { employmentId: E.employmentId, year: ROUTED_YEAR });
 
-    expect(ea!.routing.unmapped.map((u) => u.code)).toContain('HOUSING');
-    // Not a failure state — the figure is still reported, in the summary box it has always been in.
-    expect(ea!.partB.allowances).toBeCloseTo(800, 2);
+    expect(ea!.routing.unmapped.map((u) => u.code)).not.toContain('HOUSING');
+    expect(ea!.partB.allowances).toBeCloseTo(0, 2);
+    expect(ea!.partB.grossSalary).toBeCloseTo(10800, 2);
     expect(ea!.partB.directorFee).toBeCloseTo(0, 2);
   });
 
@@ -175,7 +175,8 @@ describe('ea54fe6e — routing on a real payroll year', () => {
     await mapPayItem(housingId, 'director_fee');
     const after = await employeeEaStatement(a, { employmentId: E.employmentId, year: ROUTED_YEAR });
 
-    expect(before!.partB.allowances).toBeCloseTo(800, 2);
+    expect(before!.partB.allowances).toBeCloseTo(0, 2);
+    expect(before!.partB.grossSalary).toBeCloseTo(10800, 2);
     expect(after!.partB.allowances).toBeCloseTo(0, 2);
     expect(after!.partB.directorFee).toBeCloseTo(800, 2);
     expect(after!.routing.unmapped.map((u) => u.code)).not.toContain('HOUSING');
@@ -207,6 +208,25 @@ describe('ea54fe6e — routing on a real payroll year', () => {
     expect(ea!.routing.active).toBe(false);
     expect(ea!.routing.unmapped.map((u) => u.code)).toContain('HOUSING');
     expect(ea!.routing.fromYear).toBe(EA_ROUTING_FROM_YEAR);
+  });
+
+  it.each([['EA_C1', 'pension'], ['EA_C2', 'annuity']] as const)('explicit %s moves processed amounts to Part C without leaving them in Part B', async (code, field) => {
+    const a = adminCtx(base);
+    const { E, housingId } = await seed(ROUTED_YEAR);
+    await mapPayItem(housingId, code);
+    const first = await employeeEaStatement(a, { employmentId: E.employmentId, year: ROUTED_YEAR });
+    const again = await employeeEaStatement(a, { employmentId: E.employmentId, year: ROUTED_YEAR });
+    expect(first!.partB.grossSalary).toBeCloseTo(10000, 2);
+    expect(first!.partB.allowances).toBeCloseTo(0, 2);
+    expect(first!.partB.gross).toBeCloseTo(10000, 2);
+    expect(first!.partC[field]).toBeCloseTo(800, 2);
+    expect(first!.partC.total).toBeCloseTo(800, 2);
+    expect(first!.partB.gross + first!.partC.total).toBeCloseTo(10800, 2);
+    expect(again!.partC).toEqual(first!.partC);
+    await setEaOverride(a, { employmentId: E.employmentId, year: ROUTED_YEAR, field, amount: 750, reason: 'verified annual classification correction' });
+    const amended = await employeeEaStatement(a, { employmentId: E.employmentId, year: ROUTED_YEAR });
+    expect(amended!.partC[field]).toBe(750);
+    expect(amended!.overrides.find(row => row.field === field)?.original).toBe(800);
   });
 
   it('a hand amendment still beats the routed figure, and the routed figure is what it amended', async () => {

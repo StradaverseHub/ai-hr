@@ -1919,10 +1919,10 @@ export async function eaStatement(
     // and MOVES the amount out of the summary figure the kernel's bucket put it in and into the mapped
     // box. Three properties make this safe to ship:
     //
-    //   1. IT MOVES, NEVER ADDS. `partB.gross` is arithmetically identical before and after, so a form
+    //   1. IT MOVES, NEVER ADDS. Part B plus Part C retains the processed total, so a form
     //      that reconciled yesterday still reconciles. Pinned by test/ea-line-routing.test.ts.
-    //   2. IT IS INERT UNTIL CONFIGURED. Every pay_component on production carries ea_form_line = NULL
-    //      (measured 2026-08-29), so nothing routes until an admin maps an item deliberately.
+    //   2. Explicit current assignments route to their approved box; blank taxable income defaults
+    //      to B1(a). Exempt and non-income buckets never become salary through that default.
     //   3. IT IS OFF FOR EVERY YEAR WE CANNOT STAND BEHIND — see EA_ROUTING_FROM_YEAR.
     //
     // Applied to `derived` BEFORE the override merge below, so a hand amendment still wins: the reporter
