@@ -757,7 +757,8 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
     for (const tab of LEAVE_TAB_NAMES) {
       const sh = shell(await leaveRender(tab, { emp: mine.employmentId }), tab);
       keys[tab] = sh.cookieKey;
-      expect(sh.defaultOpen, `${tab}: an absent cookie opens expanded`).toBe(true);
+      expect(sh.defaultOpen, `${tab}: a selected employee starts collapsed`).toBe(false);
+      expect(shell(await leaveRender(tab, {}), tab).defaultOpen, `${tab}: no selection exposes the picker`).toBe(true);
     }
     expect(keys).toEqual({ balances: 'leave-balances-panel', records: 'leave-records-panel' });
     // Two tabs sharing a key means every move between them undoes the last answer — and Employee Balances is
@@ -765,8 +766,8 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
     expect(new Set(Object.values(keys)).size).toBe(LEAVE_TAB_NAMES.length);
 
     panelCookies.set('leave-balances-panel', '0');
-    expect(shell(await leaveRender('balances', {}), 'balances').defaultOpen, 'a fold survives with nobody selected').toBe(
-      false,
+    expect(shell(await leaveRender('balances', {}), 'balances').defaultOpen, 'no selection exposes the picker even after a prior fold').toBe(
+      true,
     );
     expect(
       shell(await leaveRender('balances', { emp: mine.employmentId }), 'balances').defaultOpen,
@@ -777,7 +778,17 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
       'folding Balances must not fold Employee Leave Record',
     ).toBe(true);
     panelCookies.set('leave-balances-panel', '1');
-    expect(shell(await leaveRender('balances', {}), 'balances').defaultOpen, 'reopening sticks too').toBe(true);
+    expect(shell(await leaveRender('balances', {}), 'balances').defaultOpen, 'no selection remains usable').toBe(true);
+    expect(shell(await leaveRender('balances', { emp: mine.employmentId }), 'balances').defaultOpen,
+      'an open cookie alone cannot reopen a different selected context').toBe(false);
+    panelCookies.set('leave-balances-panel-selected', mine.employmentId);
+    expect(shell(await leaveRender('balances', { emp: mine.employmentId }), 'balances').defaultOpen,
+      'explicit reopening survives for the same selected employee').toBe(true);
+    expect(shell(await leaveRender('records', { emp: mine.employmentId }), 'records').defaultOpen,
+      'the other tab remains independently collapsed').toBe(false);
+    panelCookies.set('leave-balances-panel-selected', foreign.employmentId);
+    expect(shell(await leaveRender('balances', { emp: mine.employmentId }), 'balances').defaultOpen,
+      'a different employee does not inherit the remembered open state').toBe(false);
   });
 
   it.each(LEAVE_TAB_NAMES)(
