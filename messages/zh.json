@@ -2542,7 +2542,8 @@
       "takenRecordsLink": "查看构成此「已用」数字的记录",
       "fullScreen": "全屏",
       "fullScreenClose": "关闭",
-      "fullScreenEsc": "按 Esc 关闭"
+      "fullScreenEsc": "按 Esc 关闭",
+      "noteLabel": "显示现有备注"
     },
     "override": {
       "title": "Before you submit",

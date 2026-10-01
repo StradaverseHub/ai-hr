@@ -2542,7 +2542,8 @@
       "takenRecordsLink": "இந்த எடுக்கப்பட்டது எண்ணிக்கையின் பின்னுள்ள பதிவுகளைக் காட்டு",
       "fullScreen": "முழுத் திரை",
       "fullScreenClose": "மூடு",
-      "fullScreenEsc": "மூட Esc அழுத்தவும்"
+      "fullScreenEsc": "மூட Esc அழுத்தவும்",
+      "noteLabel": "ஏற்கனவே உள்ள குறிப்புகளைக் காட்டு"
     },
     "override": {
       "title": "Before you submit",

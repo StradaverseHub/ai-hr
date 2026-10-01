@@ -1,0 +1,15 @@
+.table {width:100%; table-layout:fixed; font-size:12px;}
+.table th {font-size:12px; text-transform:none; overflow-wrap:anywhere; line-height:1.25; padding:6px 3px;}
+.table td {padding:6px 3px; vertical-align:top;}
+.table th:first-child,.table td:first-child {width:13%; white-space:normal; overflow-wrap:anywhere;}
+.table th:nth-child(2) {width:5.5%;}
+.table th:nth-child(15) {width:9%;}
+.table th:nth-child(16) {width:7%;}
+.table td:nth-child(13),.table td:nth-child(14) {font-weight:700;}
+@media(max-width:1365px) {
+ .table {min-width:1150px;}
+ .table th:first-child,.table td:first-child {width:150px;position:sticky;left:0;z-index:10;background:var(--background);}
+ .table th:nth-child(13),.table td:nth-child(13) {width:76px;position:sticky;right:84px;z-index:10;background:var(--background);}
+ .table th:nth-child(14),.table td:nth-child(14) {width:84px;position:sticky;right:0;z-index:10;background:var(--background);}
+ .table thead th:first-child,.table thead th:nth-child(13),.table thead th:nth-child(14) {z-index:20;}
+}

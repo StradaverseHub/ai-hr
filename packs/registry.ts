@@ -32,6 +32,8 @@ export type PackKind = 'module' | 'country';
  */
 export type NavChildDescriptor = {
   href: string;
+  /** Destination query intent; highlighting continues to use the route path. */
+  navigationHref?: string;
   labelKey: string;
   icon: LucideIcon;
   adminOnly?: boolean;

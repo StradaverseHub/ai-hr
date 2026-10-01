@@ -111,7 +111,8 @@ export default async function EmployeeLeaveRecordPage({
     status: e.terminatedOn == null ? 'active' : 'ended',
   }));
   /** Read on the SERVER, so the first paint is already right rather than opening and folding (r320). */
-  const panelDefaultOpen = (await cookies()).get(PANEL_COOKIE)?.value !== '0';
+  const panelCookies = await cookies();
+  const panelDefaultOpen = !selected || (panelCookies.get(`${PANEL_COOKIE}-selected`)?.value === selected.employmentId && panelCookies.get(PANEL_COOKIE)?.value === '1');
 
   const typeIds = arr(sp.type);
   const statuses = arr(sp.status).filter((s) => (LEAVE_STATUSES as readonly string[]).includes(s));
@@ -282,7 +283,7 @@ export default async function EmployeeLeaveRecordPage({
 
 
   return (
-    <div className="mx-auto max-w-[100rem] space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       <PageHeader title={tInq('recordsTitle')} description={tInq('recordsDescription')} />
 
       {/* fe3eb141 — the Cancel Leave action redirects back here, so this page needs the same two
@@ -315,6 +316,7 @@ export default async function EmployeeLeaveRecordPage({
        */}
       <CollapsibleEmployeePanel
         defaultOpen={panelDefaultOpen}
+        collapseOnSelection={selected?.employmentId ?? null}
         cookieKey={PANEL_COOKIE}
         title={tInq('recordsTitle')}
         hideLabel={tInq('panelHide')}

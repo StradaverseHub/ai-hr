@@ -33,7 +33,7 @@ import { getTranslations } from 'next-intl/server';
  * valid — 388e53c2 moved the ENTRY POINT and nothing else.
  */
 
-type Tab = 'details' | 'balances' | 'records';
+type Tab = 'balances' | 'records';
 
 /**
  * d990f14a — WHICH FILTERS SURVIVE A TAB CHANGE, decided per DESTINATION rather than by copying the query
@@ -53,7 +53,6 @@ type Tab = 'details' | 'balances' | 'records';
  *     search, not a leave-code one. Nothing crosses into it, so it carries `emp` alone.
  */
 const CARRY: Record<Tab, readonly string[]> = {
-  details: [],
   balances: ['q', 'type'],
   records: ['q', 'type'],
 };
@@ -87,7 +86,6 @@ export async function LeaveInquiryNav({
   };
 
   const tabs = [
-    { key: 'details', href: hrefFor('/leave/tracker', 'details'), label: t('employeeDetails') },
     { key: 'balances', href: hrefFor('/leave/employee-balances', 'balances'), label: t('employeeBalances') },
     { key: 'records', href: hrefFor('/leave/employee-records', 'records'), label: t('employeeLeaveRecord') },
   ] as const;

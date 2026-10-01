@@ -2542,7 +2542,8 @@
       "takenRecordsLink": "Tunjukkan rekod di sebalik angka Diambil ini",
       "fullScreen": "Skrin penuh",
       "fullScreenClose": "Tutup",
-      "fullScreenEsc": "Tekan Esc untuk tutup"
+      "fullScreenEsc": "Tekan Esc untuk tutup",
+      "noteLabel": "Tunjukkan nota sedia ada"
     },
     "override": {
       "title": "Before you submit",

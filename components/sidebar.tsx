@@ -66,7 +66,7 @@ import { modulePackById } from '@/packs/registry';
 
 // `labelKey` indexes the `nav` message namespace; labels are resolved at render via useTranslations.
 // `tour` (optional) marks the element as an onboarding-tour anchor (ADR-0018).
-type Item = { href: string; labelKey: string; icon: LucideIcon; tour?: string };
+type Item = { navigationHref?: string; href: string; labelKey: string; icon: LucideIcon; tour?: string };
 // A flyout parent node (b3dc0f78, flyout redesign fdc20776): one level of nesting only. Each child
 // carries its own visibility flag so filtering is per-child (vs. whole-group gating).
 type ChildItem = Item & {
@@ -754,7 +754,7 @@ export function Sidebar({
                 return (
                   <Link
                     key={item.href}
-                    href={item.href}
+                    href={item.navigationHref ?? item.href}
                     data-tour={item.tour}
                     title={collapsed ? label : undefined}
                     // The badge itself is aria-hidden, so the count reaches screen readers here —

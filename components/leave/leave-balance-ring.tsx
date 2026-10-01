@@ -40,7 +40,7 @@ export type RingFigures = {
 };
 
 export const RING_COLORS = {
-  taken: '#6366f1',
+  taken: '#a855f7',
   pending: '#f59e0b',
   available: '#22c55e',
   unearned: '#d6d7e0',
@@ -128,7 +128,7 @@ export function LeaveBalanceRing({
       </svg>
       <div aria-hidden className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
         <span className="text-2xl font-bold tabular-nums leading-none">{centre}</span>
-        <span className="mt-1 text-[11px] font-medium text-muted-foreground">{centreCaption}</span>
+        <span className="mt-1 max-w-[75%] text-[11px] font-medium leading-tight text-muted-foreground">{centreCaption}</span>
       </div>
     </div>
   );

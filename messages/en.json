@@ -2542,7 +2542,8 @@
       "takenRecordsLink": "Show the records behind this Taken figure",
       "fullScreen": "Full screen",
       "fullScreenClose": "Close",
-      "fullScreenEsc": "Press Esc to close"
+      "fullScreenEsc": "Press Esc to close",
+      "noteLabel": "Show existing notes"
     },
     "override": {
       "title": "Before you submit",

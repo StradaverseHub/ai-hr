@@ -2542,7 +2542,8 @@
       "takenRecordsLink": "ดูบันทึกที่ประกอบเป็นตัวเลขวันที่ใช้ไปนี้",
       "fullScreen": "เต็มหน้าจอ",
       "fullScreenClose": "ปิด",
-      "fullScreenEsc": "กด Esc เพื่อปิด"
+      "fullScreenEsc": "กด Esc เพื่อปิด",
+      "noteLabel": "แสดงหมายเหตุที่มีอยู่"
     },
     "override": {
       "title": "Before you submit",

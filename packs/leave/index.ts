@@ -176,7 +176,7 @@ const LEAVE_NAV_LINKS: NavLinkDescriptor[] = [
   // DISCLOSED CONSEQUENCE (in the approved plan): stepping across the inquiry rail's three tabs moves the
   // sidebar highlight between Manage (Employee Details) and Leave config (Balances / Leave Record). That is
   // the least-bad option — the alternative is two lit rows, or taking the calendar off /leave/tracker.
-  { group: 'manage', href: '/leave/tracker', labelKey: 'teamLeaveTracker', icon: CalendarRange },
+  { group: 'manage', href: '/leave/tracker', navigationHref: '/leave/tracker?calendar=1', labelKey: 'teamLeaveTracker', icon: CalendarRange },
 ];
 
 /**

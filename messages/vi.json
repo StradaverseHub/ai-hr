@@ -2542,7 +2542,8 @@
       "takenRecordsLink": "Xem các bản ghi tạo nên con số Đã dùng này",
       "fullScreen": "Toàn màn hình",
       "fullScreenClose": "Đóng",
-      "fullScreenEsc": "Nhấn Esc để đóng"
+      "fullScreenEsc": "Nhấn Esc để đóng",
+      "noteLabel": "Hiển thị ghi chú hiện có"
     },
     "override": {
       "title": "Before you submit",

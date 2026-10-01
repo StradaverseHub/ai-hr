@@ -311,7 +311,7 @@ export default async function DashboardPage({
       case 'teamAwayToday':
         // a00c4f64 — a NAVIGATION to the Team Leave Tracker, not an anchor jump: the calendar this card
         // was a shortcut into is no longer on this page. Mirrors lib/dashboard-cards CARD_META.teamAwayToday.
-        return <StatCard key={id} label={t('teamAwayToday')} value={mgrAwayCount} hint={t('onApprovedLeaveToday')} href="/leave/tracker" />;
+        return <StatCard key={id} label={t('teamAwayToday')} value={mgrAwayCount} hint={t('onApprovedLeaveToday')} href="/leave/tracker?calendar=1" />;
       case 'approvalRequests':
         return <StatCard key={id} label={t('approvalRequests')} value={mgrApprovals} hint={t('awaitingYourAction')} href="/approvals" />;
       case 'upcomingReminders':

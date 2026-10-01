@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useTransition, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Card, EmployeeName, Field, inputCls } from '@/components/ui';
@@ -50,6 +50,7 @@ export function CollapsibleEmployeePanel({
   title,
   detailHeader,
   headerClassName,
+  collapseOnSelection,
 }: {
   /** The employee list (left). Rendered only while expanded. */
   panel: ReactNode;
@@ -57,6 +58,8 @@ export function CollapsibleEmployeePanel({
   children: ReactNode;
   /** SSR-resolved initial state, read from the cookie by the server page. */
   defaultOpen: boolean;
+  /** Opt-in for inquiry: a newly selected employment collapses its list. */
+  collapseOnSelection?: string | null;
   /**
    * Cookie persisting the choice. ONE KEY PER COLLAPSE STATE A READER EXPECTS TO SET SEPARATELY — which
    * was one per SCREEN while every consumer showed one person, and is one per TAB on Transaction View
@@ -88,6 +91,16 @@ export function CollapsibleEmployeePanel({
 }) {
   const t = useTranslations('employeePanel');
   const [open, setOpen] = useState(defaultOpen);
+  const [previousSelection, setPreviousSelection] = useState(collapseOnSelection);
+  if (collapseOnSelection !== previousSelection) {
+    setPreviousSelection(collapseOnSelection);
+    setOpen(!collapseOnSelection);
+  }
+  useEffect(() => {
+    if (collapseOnSelection === undefined) return;
+    document.cookie = `${cookieKey}-selected=${collapseOnSelection ?? ''}; path=/; max-age=31536000; samesite=lax`;
+    document.cookie = `${cookieKey}=${open ? '1' : '0'}; path=/; max-age=31536000; samesite=lax`;
+  }, [collapseOnSelection, cookieKey, open]);
   const hide = hideLabel ?? t('hideEmployees');
   const show = showLabel ?? t('showEmployees');
 
