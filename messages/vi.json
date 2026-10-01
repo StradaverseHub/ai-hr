@@ -359,7 +359,10 @@
     "attendanceBreakdown": "Phân tách chấm công",
     "systemTesting": "Kiểm thử hệ thống",
     "leaveHistoryImport": "Nhập dữ liệu lịch sử nghỉ phép",
-    "leaveBfImport": "Nhập dữ liệu B/F phép"
+    "leaveBfImport": "Nhập dữ liệu B/F phép",
+    "myLeave": "Nghỉ phép của tôi",
+    "leaveOverview": "Tổng quan nghỉ phép",
+    "leaveHistory": "Lịch sử nghỉ phép"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -2643,7 +2646,8 @@
     },
     "replacementRequest": {
       "viewMyRequests": "View my leave credit requests"
-    }
+    },
+    "historyHeading": "Lịch sử nghỉ phép"
   },
   "leaveTracker": {
     "title": "Theo dõi nghỉ phép của nhóm",
@@ -12873,7 +12877,7 @@
     "resetToHome": "Về trang chủ",
     "feature": {
       "attendance": "Chấm công",
-      "leave": "Nghỉ phép",
+      "leave": "Nghỉ phép của tôi",
       "claim": "Yêu cầu hoàn tiền",
       "payroll": "Lương",
       "performance": "Hiệu suất",
@@ -12892,7 +12896,16 @@
     "leave": {
       "balance": "Số ngày phép còn lại",
       "calendar": "Lịch nghỉ phép",
-      "application": "Đơn xin nghỉ phép"
+      "application": "Đơn xin nghỉ phép",
+      "overview": "Tổng quan nghỉ phép",
+      "history": "Lịch sử nghỉ phép",
+      "historySample": "Chỉ là bố cục mẫu; không có hồ sơ nghỉ phép trực tiếp.",
+      "historyStatus": {
+        "pending": "Chờ duyệt",
+        "approved": "Đã duyệt",
+        "rejected": "Bị từ chối",
+        "cancelled": "Đã hủy"
+      }
     },
     "leaveBalance": {
       "annual": "Nghỉ phép năm",

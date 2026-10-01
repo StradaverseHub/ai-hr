@@ -359,7 +359,10 @@
     "attendanceBreakdown": "Pecahan Kehadiran",
     "systemTesting": "Ujian Sistem",
     "leaveHistoryImport": "Import Data Sejarah Cuti",
-    "leaveBfImport": "Import Data B/F Cuti"
+    "leaveBfImport": "Import Data B/F Cuti",
+    "myLeave": "Cuti Saya",
+    "leaveOverview": "Gambaran Cuti",
+    "leaveHistory": "Sejarah Cuti"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -2643,7 +2646,8 @@
     },
     "replacementRequest": {
       "viewMyRequests": "View my leave credit requests"
-    }
+    },
+    "historyHeading": "Sejarah cuti"
   },
   "leaveTracker": {
     "title": "Penjejak Cuti Pasukan",
@@ -12873,7 +12877,7 @@
     "resetToHome": "Kembali ke laman utama",
     "feature": {
       "attendance": "Kehadiran",
-      "leave": "Cuti",
+      "leave": "Cuti Saya",
       "claim": "Tuntutan",
       "payroll": "Gaji",
       "performance": "Prestasi",
@@ -12892,7 +12896,16 @@
     "leave": {
       "balance": "Baki Cuti",
       "calendar": "Kalendar Cuti",
-      "application": "Permohonan Cuti"
+      "application": "Permohonan Cuti",
+      "overview": "Gambaran Cuti",
+      "history": "Sejarah Cuti",
+      "historySample": "Susun atur contoh sahaja; tiada rekod cuti langsung.",
+      "historyStatus": {
+        "pending": "Tertangguh",
+        "approved": "Diluluskan",
+        "rejected": "Ditolak",
+        "cancelled": "Dibatalkan"
+      }
     },
     "leaveBalance": {
       "annual": "Cuti Tahunan",

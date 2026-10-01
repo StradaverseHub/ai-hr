@@ -359,7 +359,10 @@
     "attendanceBreakdown": "การแยกย่อยการลงเวลา",
     "systemTesting": "การทดสอบระบบ",
     "leaveHistoryImport": "นำเข้าข้อมูลประวัติการลา",
-    "leaveBfImport": "นำเข้าข้อมูลยกยอดวันลา"
+    "leaveBfImport": "นำเข้าข้อมูลยกยอดวันลา",
+    "myLeave": "การลาของฉัน",
+    "leaveOverview": "ภาพรวมการลา",
+    "leaveHistory": "ประวัติการลา"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
@@ -2643,7 +2646,8 @@
     },
     "replacementRequest": {
       "viewMyRequests": "View my leave credit requests"
-    }
+    },
+    "historyHeading": "ประวัติการลา"
   },
   "leaveTracker": {
     "title": "ตัวติดตามการลาของทีม",
@@ -12873,7 +12877,7 @@
     "resetToHome": "กลับสู่หน้าหลัก",
     "feature": {
       "attendance": "การลงเวลา",
-      "leave": "การลา",
+      "leave": "การลาของฉัน",
       "claim": "การเบิก",
       "payroll": "เงินเดือน",
       "performance": "ผลงาน",
@@ -12892,7 +12896,16 @@
     "leave": {
       "balance": "ยอดวันลาคงเหลือ",
       "calendar": "ปฏิทินการลา",
-      "application": "ใบลา"
+      "application": "ใบลา",
+      "overview": "ภาพรวมการลา",
+      "history": "ประวัติการลา",
+      "historySample": "ตัวอย่างรูปแบบเท่านั้น ไม่มีข้อมูลการลาจริง",
+      "historyStatus": {
+        "pending": "รออนุมัติ",
+        "approved": "อนุมัติแล้ว",
+        "rejected": "ปฏิเสธแล้ว",
+        "cancelled": "ยกเลิกแล้ว"
+      }
     },
     "leaveBalance": {
       "annual": "ลาพักร้อน",

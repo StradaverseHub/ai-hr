@@ -18,11 +18,13 @@ type Action = (fd: FormData) => void | Promise<void>;
 export function CancelLeaveDialog({
   leaveRequestId,
   submitAction,
+  returnContext,
   // Optional compact trigger (e.g. a calendar pill icon); defaults to a labelled destructive button.
   trigger,
 }: {
   leaveRequestId: string;
   submitAction: Action;
+  returnContext?: string;
   trigger?: ReactNode;
 }) {
   const t = useTranslations('leave');
@@ -52,6 +54,7 @@ export function CancelLeaveDialog({
           </Dialog.Description>
           <form action={submitAction} className="mt-4 space-y-3" onSubmit={() => setOpen(false)}>
             <input type="hidden" name="leaveRequestId" value={leaveRequestId} />
+            {returnContext != null && <><input type="hidden" name="leaveOrigin" value="history" /><input type="hidden" name="leaveContext" value={returnContext} /></>}
             <div className="flex justify-end gap-2 pt-1">
               <Dialog.Close asChild>
                 <Button type="button" size="sm" variant="outline">

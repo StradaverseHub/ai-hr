@@ -359,7 +359,10 @@
     "attendanceBreakdown": "考勤分解",
     "systemTesting": "系统测试",
     "leaveHistoryImport": "休假历史数据导入",
-    "leaveBfImport": "休假结转数据导入"
+    "leaveBfImport": "休假结转数据导入",
+    "myLeave": "我的休假",
+    "leaveOverview": "休假概览",
+    "leaveHistory": "休假记录"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -2643,7 +2646,8 @@
     },
     "replacementRequest": {
       "viewMyRequests": "View my leave credit requests"
-    }
+    },
+    "historyHeading": "休假记录"
   },
   "leaveTracker": {
     "title": "团队休假追踪",
@@ -12873,7 +12877,7 @@
     "resetToHome": "返回主页",
     "feature": {
       "attendance": "考勤",
-      "leave": "请假",
+      "leave": "我的休假",
       "claim": "报销",
       "payroll": "薪资",
       "performance": "绩效",
@@ -12892,7 +12896,16 @@
     "leave": {
       "balance": "假期余额",
       "calendar": "请假日历",
-      "application": "请假申请"
+      "application": "请假申请",
+      "overview": "休假概览",
+      "history": "休假记录",
+      "historySample": "仅为示例布局，不包含实际休假记录。",
+      "historyStatus": {
+        "pending": "待审",
+        "approved": "已批准",
+        "rejected": "已驳回",
+        "cancelled": "已取消"
+      }
     },
     "leaveBalance": {
       "annual": "年假",

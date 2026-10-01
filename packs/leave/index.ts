@@ -162,7 +162,6 @@ const LEAVE_NAV_LINKS: NavLinkDescriptor[] = [
   // administrator reading somebody else's leave record saw their own row highlighted — the reporter's
   // original complaint. The two inquiry screens keep their /leave/* addresses on purpose, so the row
   // they are now reached from has to claim them explicitly.
-  { group: 'main', href: '/leave', labelKey: 'myAbsence', icon: CalendarDays, exactHref: true },
   // 5ca446db (r269) — `ownedSubpaths: ['/leave/employee-balances', '/leave/employee-records']` STOOD HERE
   // and is a DELIBERATE TRANSFER, not a lost line. The two inquiry paths now belong to the new
   // "Employee Leave Inquiry" child of LEAVE_ADMIN_NAV below, because the reporter asked (twice) for a
@@ -452,13 +451,21 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
   ],
 };
 
+export const LEAVE_SELF_NAV: NavNodeGroupDescriptor = {
+  group: 'main', labelKey: 'myLeave', icon: CalendarDays, defaultHref: '/leave',
+  children: [
+    {href:'/leave', labelKey:'leaveOverview', icon:CalendarDays, exactHref:true},
+    {href:'/leave/history', labelKey:'leaveHistory', icon:CalendarDays, exactHref:true},
+  ],
+};
+
 export const leavePack: ModulePack = {
   id: 'leave',
   kind: 'module',
   navLinks: LEAVE_NAV_LINKS,
   // 645e67c4 — the Administration-group contribution went from a flat row to a node (see LEAVE_ADMIN_NAV).
   // The 'main' /leave row above is untouched: that is the employee's own My Absence home, not config.
-  navNodes: [LEAVE_ADMIN_NAV],
+  navNodes: [LEAVE_SELF_NAV, LEAVE_ADMIN_NAV],
   // Pack-owned satellite tables (D5/D11 criterion 2 — documentation, not DDL). Audited from
   // db/schema.ts 2026-07-24. holiday / holiday_group / holiday_group_holiday stay OUTSIDE (shared
   // spine, see the header decision). leave_request unpaid-day reads and payroll_input rows written

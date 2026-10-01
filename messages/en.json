@@ -359,7 +359,10 @@
     "attendanceBreakdown": "Attendance Breakdown",
     "systemTesting": "System Testing",
     "leaveHistoryImport": "Leave History Data Import",
-    "leaveBfImport": "Leave B/F Data Import"
+    "leaveBfImport": "Leave B/F Data Import",
+    "myLeave": "My Leave",
+    "leaveOverview": "Leave Overview",
+    "leaveHistory": "Leave History"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -2643,7 +2646,8 @@
     },
     "replacementRequest": {
       "viewMyRequests": "View my leave credit requests"
-    }
+    },
+    "historyHeading": "Leave history"
   },
   "leaveTracker": {
     "title": "Team Leave Tracker",
@@ -12873,7 +12877,7 @@
     "resetToHome": "Back to home",
     "feature": {
       "attendance": "Attendance",
-      "leave": "Leave",
+      "leave": "My Leave",
       "claim": "Claim",
       "payroll": "Payroll",
       "performance": "Performance",
@@ -12892,7 +12896,16 @@
     "leave": {
       "balance": "Leave Balance",
       "calendar": "Leave Calendar",
-      "application": "Leave Application"
+      "application": "Leave Application",
+      "overview": "Leave Overview",
+      "history": "Leave History",
+      "historySample": "Sample layout only; no live leave records.",
+      "historyStatus": {
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "cancelled": "Cancelled"
+      }
     },
     "leaveBalance": {
       "annual": "Annual Leave",

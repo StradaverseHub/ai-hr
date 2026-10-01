@@ -26,6 +26,7 @@ export function CancelDatesDialog({
   leaveRequestId,
   candidateDates,
   submitAction,
+  returnContext,
   // Calendar entry point (ADR-0065): the dashboard passes a COMPACT icon trigger (a small XCircle button on the
   // approved pill) instead of the default labelled "Cancel dates" outline button the Leave page uses. Optional
   // — when omitted, the Leave-page behaviour is byte-identical (default labelled button, disabled-with-reason
@@ -36,6 +37,7 @@ export function CancelDatesDialog({
   leaveRequestId: string;
   candidateDates: string[];
   submitAction: Action;
+  returnContext?: string;
   trigger?: ReactNode;
 }) {
   const t = useTranslations('leave');
@@ -83,6 +85,7 @@ export function CancelDatesDialog({
             onSubmit={() => setOpen(false)}
           >
             <input type="hidden" name="leaveRequestId" value={leaveRequestId} />
+            {returnContext != null && <><input type="hidden" name="leaveOrigin" value="history" /><input type="hidden" name="leaveContext" value={returnContext} /></>}
             <div className="space-y-1.5">
               {candidateDates.map((d) => (
                 <label key={d} className="flex items-center gap-2 text-sm">

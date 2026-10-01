@@ -359,7 +359,10 @@
     "attendanceBreakdown": "வருகைப் பிரிவு",
     "systemTesting": "கணினி சோதனை",
     "leaveHistoryImport": "விடுப்பு வரலாற்றுத் தரவு இறக்குமதி",
-    "leaveBfImport": "விடுப்பு B/F தரவு இறக்குமதி"
+    "leaveBfImport": "விடுப்பு B/F தரவு இறக்குமதி",
+    "myLeave": "எனது விடுப்பு",
+    "leaveOverview": "விடுப்பு கண்ணோட்டம்",
+    "leaveHistory": "விடுப்பு வரலாறு"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",
@@ -2643,7 +2646,8 @@
     },
     "replacementRequest": {
       "viewMyRequests": "View my leave credit requests"
-    }
+    },
+    "historyHeading": "விடுப்பு வரலாறு"
   },
   "leaveTracker": {
     "title": "குழு விடுப்பு கண்காணிப்பு",
@@ -12873,7 +12877,7 @@
     "resetToHome": "முகப்புக்குத் திரும்பு",
     "feature": {
       "attendance": "வருகை",
-      "leave": "விடுப்பு",
+      "leave": "எனது விடுப்பு",
       "claim": "உரிமைகோரல்",
       "payroll": "ஊதியம்",
       "performance": "செயல்திறன்",
@@ -12892,7 +12896,16 @@
     "leave": {
       "balance": "விடுப்பு இருப்பு",
       "calendar": "விடுப்பு நாட்காட்டி",
-      "application": "விடுப்பு விண்ணப்பம்"
+      "application": "விடுப்பு விண்ணப்பம்",
+      "overview": "விடுப்பு கண்ணோட்டம்",
+      "history": "விடுப்பு வரலாறு",
+      "historySample": "மாதிரி அமைப்பு மட்டுமே; நேரடி விடுப்பு பதிவுகள் இல்லை.",
+      "historyStatus": {
+        "pending": "நிலுவையில்",
+        "approved": "ஒப்புதலளிக்கப்பட்டது",
+        "rejected": "நிராகரிக்கப்பட்டது",
+        "cancelled": "ரத்துசெய்யப்பட்டது"
+      }
     },
     "leaveBalance": {
       "annual": "வருடாந்திர விடுப்பு",
