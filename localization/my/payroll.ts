@@ -67,6 +67,13 @@ export type TaxProfile = {
    *  'auto_table' child-relief mode. When supplied it REPLACES `children × perChild` in the relief sum;
    *  when absent (every 'manual' and 'auto' employee) the arithmetic below is untouched to the cent. */
   childReliefAmount?: number;
+  /** Forward-only evidence from the same country-pack derivation used by payroll. */
+  childWorking?: {
+    mode: 'auto_table' | 'manual';
+    table: Record<string, { full?: unknown; half?: unknown } | undefined> | null;
+    rows: Array<{ category: string; sharePercent: number; children: number; units: number; amountRM: number }>;
+    headCount: number;
+  };
 };
 
 /**
@@ -773,6 +780,10 @@ export type PcbMonthResult = {
       childCount: number;
       /** Q — the deduction FOR ONE qualifying child, straight off the ruleset. */
       childDeductionPerChild: number;
+      childWorking?: NonNullable<TaxProfile['childWorking']> & {
+        disabledIndividual: boolean;
+        disabledSpouse: boolean;
+      };
       /** The remuneration legs exactly as they entered P₁. Y₂ IS Y₁ by construction — the projection
        *  assumes each remaining month repeats the current one — and is stored rather than left implied,
        *  because a reader checking `(Y₂−K₂)·n` cannot otherwise tell which figure was projected. */
@@ -984,6 +995,13 @@ export function pcbMonth(p: {
         // dividing by the per-child figure gives the spec's C and keeps Q x C === the relief exactly.
         childCount: round2(childRelief / pcb.reliefs.perChild),
         childDeductionPerChild: pcb.reliefs.perChild,
+        ...(p.profile?.childWorking ? {
+          childWorking: {
+            ...structuredClone(p.profile.childWorking),
+            disabledIndividual: p.profile.disabled ?? false,
+            disabledSpouse: p.profile.disabledSpouse ?? false,
+          },
+        } : {}),
         Y1,
         K1: round2(K1),
         // Y₂ = Y₁: the projection repeats the current month across the balance of the year.

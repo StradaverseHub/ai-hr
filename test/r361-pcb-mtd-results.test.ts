@@ -62,7 +62,7 @@ import { createBatch, generatePayslips, setPayrollInput } from '../core/payroll'
 import { currentPcbReliefs, listProcessedPayslipsAcross, payslipForReview } from '../core/payroll-view';
 import { pcbSlipData } from '../app/payroll/pcb-detail/slip-data';
 import { pcbDetailModel } from '../app/payroll/pcb-detail/shared';
-import { foldWinAnsi } from '../app/payroll/pcb-detail/slip-pdf';
+import { pcbPdfText } from '../app/payroll/pcb-detail/slip-pdf';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -494,13 +494,13 @@ describe('r361 — the screen and the downloaded document cannot disagree about 
   it('nothing the new bands put on the PDF folds to a question mark', () => {
     // Helvetica is WinAnsi and pdf-lib folds an unmappable codepoint to '?'. The Σ in the accumulated
     // block's own line marker is exactly the class of character that shipped as "?(Y - K)" until r351.
-    const fold = foldWinAnsi;
+    const fold = pcbPdfText;
     for (const sec of [pcbAccumulatedRemunerationSection(richRun(), PAID), ...pcbClosingSections(richRun())]) {
       for (const r of sec.rows) {
         expect(fold(r.line), `the line marker ${r.line} folds to a '?'`).not.toContain('?');
       }
     }
-    expect(fold('Σ(Y−K)'), 'and it is LEGIBLE, not merely not-a-question-mark').toBe('Sum(Y-K)');
+    expect(fold('Σ(Y−K)'), 'and it is LEGIBLE, not merely not-a-question-mark').toBe('Σ(Y−K)');
     for (const loc of ['en', 'ms'] as const) {
       const blk = JSON.parse(read(`messages/${loc}.json`)).payroll.pcbDetail as Record<string, string>;
       for (const k of ['slipAccHeading', 'slipAccNote', 'slipStep1Heading', 'slipResultHeading', 'slipResultNote']) {

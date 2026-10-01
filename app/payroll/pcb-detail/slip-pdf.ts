@@ -23,52 +23,11 @@
  * says so in plain words, in the reader's language and in English, and it is supplied rather than
  * hardcoded here — the same posture lib/tp1-pdf.ts and lib/borang-a-pdf.ts take.
  */
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { embedPayslipFaces } from '../../../lib/payslip-pdf-fonts';
 
-/**
- * r351 — WINANSI FOLDING, AND THE DEFECT IT WAS SHIPPING.
- *
- * Helvetica is WinAnsi and pdf-lib folds an unmappable codepoint to '?'. The fold used to handle only the
- * typographic characters a company name or an agency sentence carries — the dashes, the curly quotes, the
- * ellipsis — and mapped everything else outside \x20-\x7E / \xA0-\xFF to '?'. Every LHDN SYMBOL on this
- * document is outside that range, so the downloaded PDF has been printing, on a statutory explanation of
- * someone's tax:
- *
- *     "Σ(Y − K)"  →  "?(Y - K)"        "ΣLP"  →  "?LP"        "Y₁ − K₁"  →  "Y? - K?"
- *
- * `core/pcb-explain.ts` emits those symbols into worksheet rows that reach this renderer, and r351 adds
- * the substituted formulas, which carry Σ and the ₁ ₂ ₜ subscripts several times a line. So the fold is
- * extended: the two sigmas become "Sum", every subscript becomes its base character, and the arithmetic
- * signs become their ASCII equivalents. A symbol is only useful on this document if the reader can match
- * it against the agency's own sheet, and "?LP" matches nothing.
- *
- * EXPORTED so it can be tested directly. There is no PDF text extractor in this repo — pdf-parse is not a
- * dependency — and `test/r351-pcb-detail-pdf.test.ts` therefore sweeps every caption in the two locales
- * this document is issued in, plus every symbol core emits, THROUGH THIS FUNCTION, and requires that not
- * one of them comes out carrying a '?'. That is a stronger statement than reading one rendered page.
- */
-export const foldWinAnsi = (s: string) =>
-  (s ?? '')
-    .replace(/[–—−]/g, '-')
-    .replace(/[‘’ʼ]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/…/g, '...')
-    // The two sigmas: U+03A3 (what core/pcb-explain.ts emits) and U+2211 (what the specification prints).
-    // Spelled out rather than dropped — "SumLP" reads; "LP" would be a different symbol.
-    .replace(/[Σ∑]/g, 'Sum')
-    // Subscripts and superscripts, to their base character: Y₁ → Y1, K₂ₜ → K2t, Z₁ → Z1.
-    .replace(/[₀₁₂₃₄₅₆₇₈₉]/g, (c) => String.fromCharCode(0x30 + (c.codePointAt(0)! - 0x2080)))
-    .replace(/ₜ/g, 't')
-    .replace(/ₖ/g, 'k')
-    .replace(/ₙ/g, 'n')
-    .replace(/ₐ/g, 'a')
-    // Arithmetic and relational signs that appear in the assembled expressions and the notes.
-    .replace(/[⁄∕]/g, '/')
-    .replace(/≈/g, '~=')
-    .replace(/≤/g, '<=')
-    .replace(/≥/g, '>=')
-    .replace(/≠/g, '!=')
-    .replace(/[^\x20-\x7E\xA0-\xFF]/g, '?');
+/** Keep real mathematical notation; normalise the alternate summation glyph to the requested Sigma. */
+export const pcbPdfText = (s: string) => (s ?? '').replace(/∑/g, 'Σ');
 
 const W = 595.28;
 const H = 841.89;
@@ -112,15 +71,21 @@ export async function renderPcbDetailPdf(data: PcbSlipPdfData): Promise<Uint8Arr
   const doc = await PDFDocument.create();
   doc.setTitle(data.title);
   doc.setProducer('AI HR');
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const [face] = await embedPayslipFaces(doc, ['latin']);
+  // A statutory formula must never silently change notation when an asset is missing.
+  if (!face || !['Σ', '−'].every((symbol) => face.chars.has(symbol.codePointAt(0)!))) {
+    throw new Error('PCB PDF mathematical font is unavailable');
+  }
+  const font = face.regular;
+  const bold = face.bold;
 
   const ink = rgb(0.09, 0.09, 0.11);
   const muted = rgb(0.42, 0.42, 0.47);
   const rule = rgb(0.6, 0.6, 0.65);
 
-  // One fold, defined and exported at the top of this file so the test can drive it without rendering.
-  const safe = foldWinAnsi;
+  // Glyph coverage comes from the actual embedded face, not an ASCII approximation.
+  const safe = (s: string) => Array.from(pcbPdfText(s), (ch) =>
+    face.chars.has(ch.codePointAt(0)!) ? ch : '?').join('');
 
   let page: PDFPage = doc.addPage([W, H]);
   let y = H - M;
@@ -184,14 +149,15 @@ export async function renderPcbDetailPdf(data: PcbSlipPdfData): Promise<Uint8Arr
     y -= 22;
     columnHeadings();
 
-    const labelW = RIGHT - M - LINE_W - COL_W * columns.length - 8;
+    const markerW = Math.max(LINE_W, ...sec.rows.map((row) => bold.widthOfTextAtSize(safe(row.line), 8) + 8));
+    const labelW = RIGHT - M - markerW - COL_W * columns.length - 8;
     for (const row of sec.rows) {
       const size = row.sub ? 7.5 : 8;
       const lines = wrapTo(row.label, row.sub ? labelW - 14 : labelW, size, font);
       need(lines.length * (size + 2) + 4);
       for (const [i, l] of lines.entries()) {
         if (i === 0 && row.line) text(row.line, M, size, bold, row.sub ? muted : ink);
-        text(l, M + LINE_W + (row.sub ? 14 : 0), size, row.strong ? bold : font);
+        text(l, M + markerW + (row.sub ? 14 : 0), size, row.strong ? bold : font);
         // The figures sit on the FIRST label line, so a three-line agency description never pushes them
         // away from the line marker they belong to.
         if (i === 0) {

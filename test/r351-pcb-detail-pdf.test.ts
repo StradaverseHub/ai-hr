@@ -1,37 +1,11 @@
-/**
- * r351 / ad7bc503 — THE DOWNLOADED PCB / MTD CALCULATION DETAIL, READ BACK OUT OF THE PDF.
- *
- * WHY THIS FILE EXISTS. Before r351 there was no test of this document's CONTENT anywhere in the repo —
- * `grep -rn 'renderPcbDetailPdf' test/` returned nothing and no PDF text was ever read back. The renderer
- * was therefore free to print anything, and it was: `slip-pdf.ts`'s WinAnsi fold mapped every codepoint
- * outside \x20-\x7E / \xA0-\xFF to '?', and every LHDN symbol on the sheet is outside that range. The
- * downloaded document has been printing
- *
- *     "?(Y - K)"      where the worksheet row says Σ(Y − K)
- *     "?LP"           where it says ΣLP
- *     "Y? - K?"       where it says Y₁ − K₁
- *
- * on a statutory explanation of a named person's tax. The first case below re-derives that defect from the
- * pre-r351 fold so this file cannot pass vacuously: it asserts the OLD expression produces the '?' and the
- * new one does not.
- *
- * HOW THE TEXT IS READ. There is no PDF text extractor in this repo — pdf-parse is not a dependency, and
- * adding one for a test is a production dependency added for a test. pdf-lib writes every drawn string as a
- * hex literal in the page's content stream (`<48656c6c6f> Tj`), and pdf-lib can decode that stream, so the
- * drawn text is recovered with the library the renderer already uses and no new dependency. That is the
- * document as a reader receives it, not the model that was handed to the renderer.
- *
- * AND THE SWEEP IS THE STRONGER HALF. Reading one rendered page proves that page. Section (a) pushes EVERY
- * caption in the two locales this document is issued in (en and ms — `shared.ts` allowlists them because
- * Helvetica cannot render the other four), every symbol `core/pcb-explain.ts` emits, and every expression
- * `formulas.ts` assembles, through the fold, and requires that nothing comes out carrying a '?' that did
- * not go in with one. A caption added in a later round with a new symbol in it fails here.
- */
+/** PCB formula regression tests: extract the actual rendered PDF through its font ToUnicode CMaps.
+ * r377 replaces the previous ASCII approximation with real mathematical glyphs. */
 import fs from 'node:fs';
+import { extractedText as drawnText } from './helpers/pcb-pdf-text';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PDFDocument, PDFRawStream, decodePDFRawStream, type PDFArray } from 'pdf-lib';
-import { foldWinAnsi, renderPcbDetailPdf } from '../app/payroll/pcb-detail/slip-pdf';
+import { pcbPdfText, renderPcbDetailPdf } from '../app/payroll/pcb-detail/slip-pdf';
 import { pcbFormulaBlocks } from '../app/payroll/pcb-detail/formulas';
 import { explainPcb, type PcbExplanation, type PcbReliefBreakdown } from '../core/pcb-explain';
 import { pcbMonth } from '../localization/my/payroll';
@@ -94,23 +68,6 @@ function plainMonth(): Extract<PcbExplanation, { kind: 'mtd' }> {
  * fold applied inside the renderer is invisible to any assertion about its input, which is exactly how the
  * '?' shipped.
  */
-async function drawnText(bytes: Uint8Array): Promise<string> {
-  const doc = await PDFDocument.load(bytes);
-  const out: string[] = [];
-  for (const page of doc.getPages()) {
-    const contents = page.node.Contents();
-    const streams =
-      contents instanceof PDFRawStream
-        ? [contents]
-        : (contents as PDFArray).asArray().map((ref) => doc.context.lookup(ref) as PDFRawStream);
-    for (const stream of streams) {
-      const body = Buffer.from(decodePDFRawStream(stream).decode()).toString('latin1');
-      for (const m of body.matchAll(/<([0-9A-Fa-f]+)>\s*Tj/g)) out.push(Buffer.from(m[1], 'hex').toString('latin1'));
-    }
-  }
-  return out.join('\n');
-}
-
 // ───────────────────────── (a) the fold, and the defect it was shipping ─────────────────────────
 
 describe('r351 — the WinAnsi fold no longer turns LHDN’s symbols into question marks', () => {
@@ -131,15 +88,15 @@ describe('r351 — the WinAnsi fold no longer turns LHDN’s symbols into questi
     expect(foldBefore('ΣLP')).toBe('?LP');
     expect(foldBefore('Y₁ − K₁')).toBe('Y? - K?');
 
-    expect(foldWinAnsi('Σ(Y−K)'), 'and what it prints now').toBe('Sum(Y-K)');
-    expect(foldWinAnsi('ΣLP')).toBe('SumLP');
-    expect(foldWinAnsi('Y₁ − K₁')).toBe('Y1 - K1');
+    expect(pcbPdfText('Σ(Y−K)'), 'and what it prints now').toBe('Σ(Y−K)');
+    expect(pcbPdfText('ΣLP')).toBe('ΣLP');
+    expect(pcbPdfText('Y₁ − K₁')).toBe('Y₁ − K₁');
     // The specification's own sigma is U+2211 where core emits U+03A3; both must fold the same way or the
     // formula and the row it names print differently.
-    expect(foldWinAnsi('∑LP'), 'U+2211 and U+03A3 fold alike').toBe('SumLP');
+    expect(pcbPdfText('∑LP'), 'U+2211 and U+03A3 fold alike').toBe('ΣLP');
     // Every subscript this screen uses, to its base character.
-    expect(foldWinAnsi('K₂ₜ')).toBe('K2t');
-    expect(foldWinAnsi('P₂ = Σ(Y − K*) + (Yₜ − Kₜ*)')).toBe('P2 = Sum(Y - K*) + (Yt - Kt*)');
+    expect(pcbPdfText('K₂ₜ')).toBe('K₂ₜ');
+    expect(pcbPdfText('P₂ = Σ(Y − K*) + (Yₜ − Kₜ*)')).toBe('P₂ = Σ(Y − K*) + (Yₜ − Kₜ*)');
   });
 
   it('no caption on the document, in either issued locale, folds to a question mark', () => {
@@ -163,7 +120,7 @@ describe('r351 — the WinAnsi fold no longer turns LHDN’s symbols into questi
     expect(strings.length, 'the sweep reaches the catalogue').toBeGreaterThan(200);
     for (const [where, value] of strings) {
       if (value.includes('?')) continue; // a genuine question mark in the prose is not a folding failure
-      expect(foldWinAnsi(value), `${where} folds to a '?' on the PDF`).not.toContain('?');
+      expect(pcbPdfText(value), `${where} folds to a '?' on the PDF`).not.toContain('?');
     }
   });
 
@@ -203,14 +160,14 @@ describe('r351 — the WinAnsi fold no longer turns LHDN’s symbols into questi
     const symbols = [...explain.matchAll(/symbol: '([^']*)'/g)].map((m) => m[1]);
     expect(symbols.length, 'core declares the symbols').toBeGreaterThan(20);
     for (const sym of symbols) {
-      expect(foldWinAnsi(sym), `the symbol ${sym} folds to a '?' on the PDF`).not.toContain('?');
+      expect(pcbPdfText(sym), `the symbol ${sym} folds to a '?' on the PDF`).not.toContain('?');
     }
     // And the assembled expressions, which carry Σ and the subscripts several times a line.
     for (const x of [plainMonth(), bonusMonth()]) {
       for (const fb of pcbFormulaBlocks(x, FMT)) {
         for (const s of [fb.substituted, fb.calculation]) {
           if (s == null) continue;
-          expect(foldWinAnsi(s), `an assembled expression folds to a '?': ${s}`).not.toContain('?');
+          expect(pcbPdfText(s), `an assembled expression folds to a '?': ${s}`).not.toContain('?');
         }
       }
     }
@@ -219,7 +176,7 @@ describe('r351 — the WinAnsi fold no longer turns LHDN’s symbols into questi
 
 // ───────────────────── (b) the rendered file, read back as a reader receives it ─────────────────────
 
-describe('r351 — the rendered document says Sum(Y - K), not ?(Y - K)', () => {
+describe('r377 — rendered document preserves actual Sigma and mathematical minus', () => {
   it('every LHDN symbol and every assembled expression survives into the drawn text', async () => {
     const x = bonusMonth();
     const blocks = pcbFormulaBlocks(x, FMT);
@@ -257,7 +214,7 @@ describe('r351 — the rendered document says Sum(Y - K), not ?(Y - K)', () => {
     // renderer was handed is one Helvetica can set, after the fold.
     expect(text, 'a statutory document must not print a question mark for a symbol').not.toContain('?');
     // …and the symbols are LEGIBLE rather than merely not-'?': each is the folded form of itself.
-    for (const probe of ['Sum(Y-K)', 'SumLP', 'K2t']) {
+    for (const probe of ['Σ(Y−K)', 'ΣLP', 'K2t']) {
       expect(text, `the drawn text must contain ${probe}`).toContain(probe);
     }
   });
@@ -286,7 +243,7 @@ describe('r351 — the rendered document says Sum(Y - K), not ?(Y - K)', () => {
     const text = await drawnText(bytes);
     // pdf-lib draws each wrapped line as its own string, so the assertion is per TOKEN rather than on the
     // whole expression: a line break inside a formula is a layout fact, not a content failure.
-    for (const token of ['Sum(Y', 'K2t*)', 'max(', 'DU', 'SU', 'QC']) {
+    for (const token of ['Σ(Y', 'K₂ₜ*)', 'max(', 'DU', 'SU', 'QC']) {
       expect(text, `the drawn text must carry ${token}`).toContain(token);
     }
     // The figure each step landed on, as a figure — and P is the stored P, not a re-derivation.

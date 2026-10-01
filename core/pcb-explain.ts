@@ -93,6 +93,11 @@ export type PcbTrace = {
    */
   childCount: number | null;
   childDeductionPerChild: number | null;
+  childWorking: (PcbChildProfile & {
+    rows: Array<{ category: string; sharePercent: number; children: number; units: number; amountRM: number }>;
+    headCount: number;
+    categoryUnits: Record<string, number>;
+  }) | null;
   /** The remuneration legs of P. Y₂ = Y₁ by construction (the projection repeats the current month). */
   Y1: number;
   K1: number;
@@ -268,6 +273,19 @@ type PcbDelta = { cumulative: number; prior: number; cumulativeBonus: number };
  * merely read, because a trace missing it produces a printable `max(0, 0.00 − …)` beside a non-zero PCB —
  * a working that contradicts its own answer, which is worse than an honest "not recorded".
  */
+function readChildWorking(raw: unknown): PcbTrace['childWorking'] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const w = raw as Record<string, unknown>;
+  if (!w.categoryUnits || typeof w.categoryUnits !== 'object' || Array.isArray(w.categoryUnits) ||
+      !Object.values(w.categoryUnits).every((value) => typeof value === 'number' && Number.isFinite(value) && value >= 0)) return null;
+  if ((w.mode !== 'manual' && w.mode !== 'auto_table') || !Array.isArray(w.rows) ||
+      typeof w.headCount !== 'number' || !Number.isFinite(w.headCount) || w.headCount < 0) return null;
+  if (!w.rows.every((row) => row && typeof row === 'object' &&
+      typeof row.category === 'string' && [100, 50].includes(row.sharePercent) &&
+      ['children', 'units', 'amountRM'].every((key) => typeof row[key] === 'number' && Number.isFinite(row[key]) && row[key] >= 0))) return null;
+  return w as unknown as NonNullable<PcbTrace['childWorking']>;
+}
+
 function readTrace(raw: unknown): PcbTrace | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const t = raw as Record<string, unknown>;
@@ -280,8 +298,9 @@ function readTrace(raw: unknown): PcbTrace | null {
     taxOnP1: n(t.taxOnP1),
     category: n(t.category),
     // NOT `n()` — see the field's own note. `n(undefined)` is 0, and 0 is a lie here.
-    childCount: t.childCount === undefined ? null : n(t.childCount),
+    childCount: t.childCount === undefined || t.childDeductionPerChild === undefined ? null : n(t.childCount),
     childDeductionPerChild: t.childDeductionPerChild === undefined ? null : n(t.childDeductionPerChild),
+    childWorking: readChildWorking(t.childWorking),
     Y1: n(t.Y1),
     K1: n(t.K1),
     Y2: n(t.Y2),
@@ -860,8 +879,8 @@ export type PcbSlipSection = {
  * test/ad7bc503-pcb-slip.test.ts — the same device test/child-relief-figures-04b88724.test.ts uses for the
  * pack's own figures, so an edit to either side fails loudly instead of drifting.
  *
- * NOTHING IS COMPUTED FROM IT. It is printed as the weighting column and never multiplied by a count:
- * Q and C on this section are the figures the payroll run itself applied.
+ * This reference weighting is not an employee claim. The counted-as column now reads the actual
+ * recorded contributions from payroll, including zero and shared claims. Q/C retain their run values.
  */
 export const PCB_CHILD_CATEGORIES: readonly {
   readonly key: string;
@@ -953,6 +972,7 @@ export function pcbChildSection(
   childDeductionPerChild: PcbWorksheetValue,
   /** r372 — the HEAD COUNT, which is not C. NULL ⇒ no count was ever recorded; see `PcbChildHeadCount`. */
   headCount: PcbChildHeadCount | null,
+  working: PcbTrace['childWorking'] = null,
 ): PcbSlipSection {
   const grid = p != null && p.mode === 'auto_table' ? p.table : null;
   const rows: PcbSlipRow[] = PCB_CHILD_CATEGORIES.map((c) => {
@@ -971,9 +991,10 @@ export function pcbChildSection(
     ns: 'pcbDetail' as const,
     first: grid ? (cell == null ? SLIP_NIL_COUNT : slipCount(cell.full)) : ({ kind: 'notRecorded' } as PcbWorksheetValue),
     second: grid ? (cell == null ? SLIP_NIL_COUNT : slipCount(cell.half)) : ({ kind: 'notRecorded' } as PcbWorksheetValue),
-    // The weighting the agency's own table gives this category, whether or not a child sits in it: it is a
-    // property of the CATEGORY, not of this employee, so it is stated even where the counts are not.
-    third: { kind: 'count', count: c.qc },
+    // Read the category total recorded by payroll; the worksheet performs no arithmetic.
+    third: working?.mode === 'auto_table'
+      ? { kind: 'count', count: working.categoryUnits[c.key] ?? 0 }
+      : { kind: 'notRecorded' },
     };
   });
   // r372 — THE HEAD COUNT FIRST, BESIDE C AND NEVER INSTEAD OF IT. It sits above C so a reader meets the
@@ -1396,13 +1417,14 @@ export function pcbSlipSections(
   return [
     // 2 — the children grid behind Q.
     pcbChildSection(
-      p.profile,
+      t?.childWorking ?? null,
       slipMoney(x.reliefs.children),
       // r362 — guarded on the FIELD, not the trace, for the same reason as the worksheet's Q and C
       // rows: a run stamped before r359 has a trace with neither, and SLIP_ABSENT is the truthful cell.
       t && t.childCount != null ? { kind: 'count', count: t.childCount } : SLIP_ABSENT,
       t && t.childDeductionPerChild != null ? slipMoney(t.childDeductionPerChild) : SLIP_ABSENT,
-      p.childHeadCount ?? null,
+      t?.childWorking ? { count: t.childWorking.headCount, source: t.childWorking.mode === 'auto_table' ? 'grid' : 'keyed' } : null,
+      t?.childWorking ?? null,
     ),
     // 3 — r361: the accumulated remuneration block, which the official prints on page 1 immediately
     // under the child grid and above the accumulated deductions.

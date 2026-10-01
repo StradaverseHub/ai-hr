@@ -6322,6 +6322,12 @@ export async function generatePayslips(
         pack.payroll.childReliefAmountFor
           ? pack.payroll.childReliefAmountFor(e.childReliefTable, rules.pcb?.reliefs)
           : undefined;
+      // Preserve the pack's existing working; readers never re-price an old employee profile.
+      const childFigure = pack.payroll.childReliefFor && pack.payroll.childReliefPrices
+        ? pack.payroll.childReliefFor(pricesChildReliefFromGrid(e)
+          ? { from: 'table', table: e.childReliefTable, prices: pack.payroll.childReliefPrices(rules.pcb?.reliefs) }
+          : { from: 'headCount', children: e.numChildren ?? 0, perChild: rules.pcb?.reliefs.perChild ?? 0 })
+        : null;
       const taxProfile = {
         category: (e.taxCategory ?? 1) as 1 | 2 | 3,
         children: e.numChildren ?? 0,
@@ -6330,6 +6336,16 @@ export async function generatePayslips(
         // computing exactly as it does today.
         disabledSpouse: e.disabledSpouse ?? false,
         childReliefAmount,
+        ...(childFigure ? { childWorking: {
+          mode: pricesChildReliefFromGrid(e) ? 'auto_table' as const : 'manual' as const,
+          table: pricesChildReliefFromGrid(e) ? e.childReliefTable as Record<string, { full?: unknown; half?: unknown } | undefined> | null : null,
+          rows: childFigure.rows,
+          categoryUnits: Object.fromEntries(childFigure.rows.map((row) => [row.category,
+            childFigure.rows.filter((other) => other.category === row.category).reduce((total, other) => total + other.units, 0)])),
+          headCount: pricesChildReliefFromGrid(e)
+            ? childFigure.rows.reduce((count, row) => count + row.children, 0)
+            : e.numChildren ?? 0,
+        } } : {}),
       };
       // Item a7271737 — persisted SOCSO / EIS category override. 'auto' reproduces the age/citizenship derivation
       // below byte-for-byte; 'first'/'second' pin the SOCSO band; 'none' gates the respective scheme off (exactly

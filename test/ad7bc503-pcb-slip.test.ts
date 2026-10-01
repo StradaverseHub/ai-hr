@@ -31,6 +31,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pcbMonth } from '../localization/my/payroll';
+import { childReliefFor, childReliefPrices } from '../localization/my/child-relief';
 import {
   PCB_CHILD_CATEGORIES,
   explainPcb,
@@ -136,8 +137,19 @@ const noSides: Sides = {
   accumulatedRebate: null,
 };
 
-const sections = (x: PcbExplanation, over: Partial<Sides> = {}) =>
-  pcbSlipSections(x, { ...noSides, ...over });
+// These section fixtures describe the profile RECORDED AT RUN TIME, not today's employee profile.
+// Historical independence from the live profile is exercised in r377-pcb-child-snapshot.test.ts.
+const sections = (x: PcbExplanation, over: Partial<Sides> = {}) => {
+  if (x.kind === 'mtd' && x.trace && Object.hasOwn(over, 'profile')) {
+    const p = over.profile;
+    const figure = p?.mode === 'auto_table'
+      ? childReliefFor({ from: 'table', table: p.table, prices: childReliefPrices() }) : null;
+    x = { ...x, trace: { ...x.trace, childWorking: p ? {
+      ...p, rows: figure?.rows ?? [], categoryUnits: Object.fromEntries((figure?.rows ?? []).map(row => [row.category, (figure?.rows ?? []).filter(other => other.category === row.category).reduce((sum, other) => sum + other.units, 0)])), headCount: figure?.rows.reduce((sum, row) => sum + row.children, 0) ?? 0,
+    } : null } };
+  }
+  return pcbSlipSections(x, { ...noSides, ...over });
+};
 const byHeading = (s: PcbSlipSection[], heading: string) => {
   const found = s.find((sec) => sec.heading === heading);
   expect(found, `the slip must carry a ${heading} section`).toBeTruthy();
@@ -1206,7 +1218,10 @@ describe('ad7bc503 — the weighting each child category carries', () => {
       const sec = byHeading(sections(richRun(), { profile }), 'slipChildHeading');
       expect(sec.thirdColumn, 'the section declares the column').toBe('slipColWeighting');
       for (const c of PCB_CHILD_CATEGORIES) {
-        expect(byCaption(sec, c.caption)!.third, `${c.key} weighting`).toEqual({ kind: 'count', count: c.qc });
+        expect(byCaption(sec, c.caption)!.third, `${c.key} actual claimed contribution`).toEqual(
+          profile?.mode === 'auto_table'
+            ? { kind: 'count', count: c.key === 'under_18' ? 2.5 : c.key === 'study_tertiary' ? 4 : 0 }
+            : { kind: 'notRecorded' });
       }
     }
     // C, Q and the two disability rows are not categories and carry no weighting.
