@@ -1,0 +1,37 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+Section 9 already shows the monthly tax formula and the final figures. Its closing Step 1 only repeats two totals, so the reader has to look elsewhere for the values and the current-month rebate that explain them.
+
+WHAT WE'LL CHANGE
+
+- Give Step 1 a complete MTD (A) / Net MTD explanation: the formula, the meaning of P, the saved P, M, R, B, Z, X and n values, the substituted expression, and the current month's MTD.
+
+- Show the current month's Zakat/Fi/Levy directly below that result, followed by the saved normal-remuneration Net MTD. Keep accumulated rebates clearly separate from the current month's rebate.
+
+- Show how rounding and the applicable minimum-deduction rules connect the formula to the saved result. Where the rebate exceeds the normal deduction, show the zero result and explain any remaining rebate treatment for additional remuneration.
+
+- Use the same Step 1 content on screen and in the downloaded PDF. Preserve the remaining calculation steps and the final payroll deduction.
+
+WHAT YOU'LL GET
+
+A reader can follow the normal monthly deduction through its input values, calculation, rounding and current-month rebate without piecing together several separate sections.
+
+GOOD TO KNOW
+
+- Your numerical example is an illustration, not a new tax rule. The existing calculation applies the required two-decimal truncation, five-sen rounding and minimum-deduction rules; the explanation will show those steps rather than changing the payroll result to match an example.
+
+- This changes the explanation, not already processed payroll amounts. Missing historical working stays labelled Not recorded. Manual deductions and additional payroll runs keep their separate explanation of the amount actually deducted.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: core/pcb-explain.ts pcbMtdStep1Section currently exposes only mtdNormalCalc and pcbNormal. app/payroll/pcb-detail/formulas.ts already owns stored-value MTD and combined normal/additional net formula blocks. Reuse the existing model and shared renderer seam; do not derive payroll money in the UI or introduce a second calculator.
+
+Extend the shared Step 1 contract with the normal-remuneration formula and P definition, variables from this run's trace, substitution, current zakat/levy, stored mtdNormalFloored and stored normal net value. Clearly distinguish normal net from combined pcbSystem. Preserve zero clamps and additional-remuneration rebate cascade, not a negative tax deduction. Historic trace compatibility must remain honest; new trace fields, if genuinely necessary, are forward-only and parent-hand-fixed first.
+
+PRIMARY SOURCE: HASiL 2026 computerised PCB specification, printed pages 19-20, governs truncation, five-sen rounding, minimum deductions and zakat treatment. https://www.hasil.gov.my/wp-content/uploads/spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf . Verified 1 October 2026. The reporter's 9,313.359 illustration cannot replace the established rounding sequence.
+
+Tests: real processed normal/no-rebate, current-versus-prior rebate, excess rebate, additional remuneration, low-MTD thresholds, fractional rounding, manual override and additional-run provenance; old missing trace; selected-run isolation; employee/tenant authorization; screen/PDF content and final-value parity; Unicode and six locales. Parent owns money changes, full gate and deployment. No migration or historical recalculation is planned.
