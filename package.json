@@ -32,6 +32,7 @@
     "improve:raise": "node --import tsx scripts/improve/cli.ts raise",
     "improve:pull-item": "node --import tsx scripts/improve/cli.ts pull-item",
     "improve:pull-approved": "node --import tsx scripts/improve/cli.ts pull-approved",
+    "improve:pull-planned": "node --import tsx scripts/improve/cli.ts pull-planned",
     "improve:pull-blocked": "node --import tsx scripts/improve/cli.ts pull-blocked",
     "improve:attachments": "node --import tsx scripts/improve/cli.ts attachments",
     "improve:block": "node --import tsx scripts/improve/cli.ts block",

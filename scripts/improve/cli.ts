@@ -38,6 +38,7 @@ import {
   markDeployed,
   markUnblocked,
   pullApproved,
+  pullPlanned,
   pullItem,
   pullBlocked,
   pullPlannable,
@@ -89,6 +90,9 @@ async function main() {
     }
     case 'pull-approved':
       process.stdout.write(JSON.stringify(pullApproved(), null, 2) + '\n');
+      break;
+    case 'pull-planned':
+      process.stdout.write(JSON.stringify(pullPlanned(), null, 2) + '\n');
       break;
     case 'status': {
       // The whole board at a glance: one line per status. Ids are printed for the live statuses only;
@@ -212,7 +216,7 @@ async function main() {
     }
     default:
       console.error(
-        'usage: improve <pull | pull-item <id> | pull-approved | pull-blocked | raise | push-plan | block | unblock | build-start | build-complete | release | deploy | mark-deployed>',
+        'usage: improve <pull | pull-item <id> | pull-approved | pull-planned | pull-blocked | raise | push-plan | block | unblock | build-start | build-complete | release | deploy | mark-deployed>',
       );
       process.exit(2);
   }
