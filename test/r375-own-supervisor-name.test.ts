@@ -522,12 +522,13 @@ describe('migration 0498 — the object, not its behaviour', () => {
     const journal = JSON.parse(raw) as { entries: { idx: number; tag: string; when: number }[] };
     const mine = journal.entries.find((e) => e.tag === '0498_own_reporting_managers');
     expect(mine, 'a .sql without a journal entry NEVER runs (CLAUDE.md §6)').toBeDefined();
-    const others = journal.entries.filter((e) => e.idx !== mine!.idx);
-    expect(others.length, 'sanity: the journal was really read').toBeGreaterThan(400);
-    // Allocated from max(idx), NOT entries.length — a number below the applied watermark is a SILENT skip.
-    expect(mine!.idx, 'above every other idx in the journal').toBeGreaterThan(Math.max(...others.map((e) => e.idx)));
-    expect(mine!.when, 'and above every other `when`, or drizzle skips it at exit 0').toBeGreaterThan(
-      Math.max(...others.map((e) => e.when)),
+    const position = journal.entries.findIndex((e) => e.tag === '0498_own_reporting_managers');
+    expect(position, 'the compared journal prefix must contain the prior migrations').toBeGreaterThan(400);
+    const prior = journal.entries.slice(0, position);
+    // Compare with the applied prefix, not future migrations appended after this one.
+    expect(mine!.idx, 'above all prior migration indices').toBeGreaterThan(Math.max(...prior.map((e) => e.idx)));
+    expect(mine!.when, 'above the prior applied watermark, or drizzle silently skips it').toBeGreaterThan(
+      Math.max(...prior.map((e) => e.when)),
     );
   });
 });
