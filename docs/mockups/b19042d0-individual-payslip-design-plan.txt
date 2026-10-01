@@ -1,0 +1,47 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+The downloaded payslip already separates earnings, deductions and statutory employer contributions. However, it also prints Total Employer Cost, which includes remuneration as well as employer contributions. That broader total can make a Director Fee look like a contribution even though the contribution rows themselves contain statutory items.
+
+WHAT WE'LL CHANGE
+
+- Place employee, employment and payment information in one centred, clearly defined Employment Info card. Move Payment Method, Bank Name and Bank Account into that card and remove the separate Payment Information section.
+- Remove Total Employer Cost and the requested explanatory remark from the payslip. Show applicable employer-paid contribution items only, with labels that distinguish employer amounts from employee deductions.
+- Keep Director Fee and other remuneration in Earnings. Verify any configured contribution items against their saved classification and processed amounts, rather than treating all company payments as contributions.
+- Hide the Basic Salary row when the selected payroll record has no applicable amount or a zero amount. Retain genuine negative adjustments and other earnings.
+- Rename the Year to Date column This Run to Current Month, retaining the same saved figures and Year to Date calculation.
+- Apply the same information placement and contribution rows in the Individual Payslip preview and both admin and employee PDF downloads using this design. Preserve payment details, payroll figures and the existing employer-paid employee-share disclosures.
+
+WHAT YOU'LL GET
+
+A compact payslip with one clear information card and a contribution section that does not mix company payroll cost with statutory contributions. Director-only payslips will show the actual fee without an unnecessary zero Basic Salary row.
+
+GOOD TO KNOW
+
+- Current Month remains the amount on the selected payslip. If there are several payroll runs in one month, this change does not combine those runs into a monthly total.
+- The related Payslip Information Setup request will control which employee fields are shown; this request controls their layout. Payment details remain available in the new card.
+- Previously issued payroll amounts will not be recalculated. If reproduction identifies an actual calculation error, it will be reviewed as a separate correction before any payroll amounts are changed.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Layout owners: lib/payslip-pdf.ts renderPayslipPdf, employerRows near line 983, payRows near 989, empSpec/payPlan near 1220, and employment/identity panels near 1398-1494. earningsRowsOf near 1721 unconditionally creates Basic Salary. Admin preview owner app/payroll/individual-payslip/page.tsx uses deriveHistoryBreakdown from app/payroll/transaction-view/history-breakdown.ts and hardcodes its basic/employer rows. Both admin and employee PDF routes use buildPayslipPdfData and payslipPdfStrings; preserve the released-only employee gate and company-scoped admin gate. Keep admin preview's masked account number and PDF's currently authorised full account number; moving fields must not weaken those boundaries.
+
+Read employer amounts from the payslip's saved statutory snapshot via buildPayslipPdfData and core/payslip-employer-borne.ts. Do not rebuild contributions or employer-borne flags from today's employee or pay-item settings. The existing regular employerCost formula in core/payroll.ts includes wages, overtime, bonus, reimbursement, employer statutory amounts and employerBorneTotal; the additional-run path also includes remuneration. That is a total-cost metric, not a contribution subtotal, and must remain unchanged for other screens/reports. Current employerRows already use only saved statutory employer amounts. No actual money-affecting defect has been verified by this source-only triage.
+
+The pay_component kind enum already includes contribution. Before implementing configured-item display, reproduce a Director Fee and a genuine contribution-kind item, inspect their processed componentLines, kind/classification provenance, statutory snapshot and earnings/employer rows. Show only trustworthy recorded contribution classifications. If the historical snapshot lacks that provenance, do not infer an old contribution from the current catalogue or manufacture amounts. Establish the forward-only classification stamp required for future processed slips, preserving money semantics. Any verified kernel defect or new money behavior must be handled by the parent; no display reader may calculate payroll independently.
+
+Keep statutory contribution rounding and manual overrides at the payroll owner. Existing EPF/SOCSO/EIS/HRDF amounts are read from processed snapshot values; renderer money formatting is not authority to recompute them. Preserve separate employer-funded employee-share disclosure, applicable HRDF and SKBBK behavior, rather than hiding genuine employer outlay because a total row was removed. Do not invent a statutory employer SKBBK share where the stored scheme has none.
+
+Use a shared presentation description for preview/PDF contribution rows and apply the exact zero Basic Salary predicate to all relevant standard outputs. Preserve YTD rows where historic Basic Salary is nonzero even when the selected run Basic Salary is zero. Current Month is a label change only, including supplementary and split-company runs. Add six-locale labels and inspect actual PDF Unicode text and long-value wrapping.
+
+Coordinate with 38df601b Payslip Information Setup: the centred card is the new layout recommendation; its 21-field selector governs the employee fields. Preserve Payment Method/Bank Name/Bank Account independently of those 21 controls. This newly requested card supersedes the earlier a96d320c deboxed employment-panel preference only after this proposal is approved. Preserve the existing non-payable Other section, financial disclosures and net-pay hierarchy when removing payPlan.
+
+After approval, reproduce zero-basic Director Fee, regular salary, genuine configured employer contribution, employer-borne employee shares, manual contribution overrides, HRDF registered/unregistered, applicable SKBBK, multi-run/YTD, historical catalogue changes and split-company slips. Compare extracted PDF and preview fields/amounts, check absence of removed headings/total/remark, verify bank masking boundaries and tenant/company/released-only permissions, and inspect narrow/wide screens plus long, multilingual and multi-page PDFs. Confirm stored gross/net/deductions/employerCost and YTD totals do not change.
+
+No attachments are present on this item. Inspect the reported payslip during reproduction; the numerical examples in the request are illustrative, not verified calculation evidence. The accompanying HTML is a schematic proposal with placeholders only, not a calculation or actual document.
+
+
+Implement responsive preview behavior and light/dark UI presentation in all six supported locales. Keep printed/PDF documents on a readable white page. Inspect actual narrow/wide and light/dark preview plus all six PDF locales, preserving embedded Unicode fonts. The static HTML has no payroll logic and remains unrendered until the parent shared gate is complete.
