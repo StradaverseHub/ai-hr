@@ -11,9 +11,9 @@
  *  A. The calendar is mounted, on BOTH screens, and it is the SAME component — the reason it exists is
  *     that the Apply screen and the Self Overtime list must not grow two month grids that disagree.
  *  B. THE REFUSALS. The approved plan lists what this round deliberately does not build, each for an
- *     evidenced reason: Draft / Resubmit, a second overtime period, the 2100- / 0300+ notation, a
+ *     evidenced reason: Draft / Resubmit, a second overtime period, the 2100- / 0300+ notation (ordinary overnight HH:mm is now supported), a
  *     configurable ceiling, a configurable long-plan threshold, Day Type and Actual Hours columns on the
- *     list, bulk planning, a REST API. Each of those is a refusal we owe the reporter, and a refusal that
+ *     list, bulk OT planning, a second OT REST writer. Private clock/photo routes are separate. Each of those is a refusal we owe the reporter, and a refusal that
  *     nothing holds in place is an oversight waiting to be "fixed" by the next round.
  *  C. THE FOUR STATUSES AND NO FIFTH. The calendar's dots are keyed by the stored enum, so a Draft dot
  *     cannot appear without a migration and a decision.
@@ -22,8 +22,8 @@
  *  E. THE TWO PANELS THAT WENT. The blue "kind of day" panel moved INTO the day card and the green
  *     "both of these warn you" explainer was removed as a correction (it held no warnings). Their keys
  *     are RETIRED, not deleted, in all six catalogues.
- *  F. THE CONTRACT BETWEEN THE FORM AND THE ACTION. The hours ride in a hidden field the island fills in;
- *     when it arrives blank the action derives them from the window. Neither half is any use alone, so
+ *  F. THE CONTRACT BETWEEN THE FORM AND THE ACTION. Integer minutes ride in a hidden field the island fills in;
+ *     when it arrives blank the action derives them from the strict window, including overnight. Neither half is any use alone, so
  *     both are pinned here and the service's side of it in test/ot-plan-calendar.test.ts §5.
  *  G. THE DYNAMIC KEYS. Three of this screen's label maps are resolved as `t(MAP[value])`, which
  *     test/i18n-coverage.test.ts Check C cannot see. Every one of them is resolved here, in all six
@@ -33,6 +33,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { attendanceCorrectionStatusEnum } from '../db/schema';
+import { formatMinutesToHM, plannedOvertimeMinutes } from '../lib/overtime-duration';
 
 const root = (p: string) => path.resolve(__dirname, '..', p);
 const read = (p: string) => fs.readFileSync(root(p), 'utf8');
@@ -114,21 +115,27 @@ describe('B · the refusals the approved plan owes the reporter', () => {
     }
   });
 
-  it('no 2100- / 0300+ cross-midnight notation — an inverted pair is still refused as a typo', () => {
+  it('no special cross-midnight notation — strict HH:mm supports approved overnight plans', () => {
     expect(SURFACE.includes('2100-')).toBe(false);
     expect(SURFACE.includes('0300+')).toBe(false);
-    // The island still treats end <= start as nothing, which is the reading the service takes.
-    expect(FIELDS).toContain('return mins > 0 ? mins : 0;');
+    expect(FIELDS).toContain('plannedOvertimeMinutes(startValue, end)');
+    expect(plannedOvertimeMinutes('22:00', '01:30')).toBe(210);
+    expect(plannedOvertimeMinutes('21:00', '18:00')).toBe(1260);
+    expect(plannedOvertimeMinutes('21:00', '21:00')).toBeNull();
+    expect(plannedOvertimeMinutes('2100-', '0300+')).toBeNull();
   });
 
-  it('no bulk / multi-date planning, and no second REST route for any of it', () => {
+  it('no bulk / multi-date OT planning or second OT request route; private clock routes stay separate', () => {
     for (const marker of ['bulk', 'multi-date', 'multiselect']) {
       expect(SURFACE.includes(marker), `"${marker}" is the reporter's own later phase`).toBe(false);
     }
-    expect(
-      fs.existsSync(root('app/api/attendance')),
-      'section 10 of the ticket describes another product’s HTTP API; this app is server actions',
-    ).toBe(false);
+    expect(code(FIELDS)).not.toContain('/api/attendance');
+    expect(fs.readdirSync(root('app/api/attendance')).sort()).toEqual(['clock', 'photo', 'today']);
+    const photoRoute = read('app/api/attendance/photo/[id]/route.ts');
+    expect(photoRoute).toContain('clockApiSession');
+    expect(photoRoute).toContain('clockCapturePhoto');
+    expect(photoRoute).toContain('no-store');
+    expect(photoRoute).not.toContain('requestAttendanceCorrection');
   });
 
   it('the 104-hour ceiling and the long-plan threshold stay where they are', () => {
@@ -266,9 +273,11 @@ describe('E · the two right-hand panels, and what happened to their keys', () =
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 describe('F · the contract between the form and the server action', () => {
   it('the form still posts exactly the field names the action reads', () => {
-    for (const name of ['date', 'plannedStart', 'plannedEnd', 'otHours', 'otReasonCategory']) {
+    for (const name of ['date', 'plannedStart', 'plannedEnd', 'otMinutes']) {
       expect(FIELDS.includes(`name="${name}"`), `the island must keep posting ${name}`).toBe(true);
     }
+    expect(FIELDS).not.toContain('name="otHours"');
+    expect(FIELDS).not.toContain('name="otReasonCategory"');
     expect(APPLY).toContain('name="reason"');
     // The date is no longer typed — the calendar picks it — so it rides as a hidden field.
     expect(FIELDS).toContain('<input type="hidden" name="date" value={date} />');
@@ -296,28 +305,29 @@ describe('F · the contract between the form and the server action', () => {
     ).toBe(true);
   });
 
-  it('a blank hidden otHours is DERIVED from the window, which is what makes the form work with no JavaScript', () => {
+  it('blank hidden minutes are derived server-side; supplied minutes must agree with the window', () => {
     const fn = ACTIONS.slice(ACTIONS.indexOf('export async function myRequestOvertime'));
     const body = fn.slice(0, fn.indexOf('\n}\n') + 3);
-    expect(body).toContain('} else if (plannedStart || plannedEnd) {');
-    // A ZERO, never a null: `hasOt` in requestAttendanceCorrection is `!= null`, so zero is what carries
-    // an inverted or half window past the at-least-one test and into the refusals that are true of it.
-    // The service side of this contract is test/ot-plan-calendar.test.ts §5.
-    expect(body).toContain('requestedOtMinutes = a != null && b != null ? Math.max(0, b - a) : 0;');
-    // And the island is the other half: blank when the window yields nothing.
-    expect(FIELDS).toContain("value={hours ? hours.toFixed(4) : ''}");
-    // The prop that made the old claim false is gone; nothing hard-codes a server figure of zero.
-    expect(code(APPLY).includes('initialOtMinutes')).toBe(false);
-    expect(code(FIELDS).includes('initialOtMinutes')).toBe(false);
+    expect(body).toContain('plannedOvertimeMinutes(plannedStart, plannedEnd)');
+    expect(body).toContain('if (derivedMinutes == null) throw');
+    expect(body).toContain('requestedOtMinutes = derivedMinutes;');
+    expect(body).toContain('!Number.isSafeInteger(value)');
+    expect(body).toContain('value !== derivedMinutes');
+    expect(FIELDS).toContain('value={derivedMinutes ?? \'\'}');
+    expect(body).toContain('derivedMinutes == null && otHoursRaw');
+    expect(body).toContain('hours > 24');
+    expect(body).not.toContain('otReasonCategory');
+    expect(code(APPLY)).not.toContain('initialOtMinutes');
+    expect(code(FIELDS)).not.toContain('initialOtMinutes');
   });
 
-  it('both refusal redirects carry the date, and success stays on the calendar', () => {
+  it('the common refusal redirect carries the date, and success stays on the calendar', () => {
     const fn = ACTIONS.slice(ACTIONS.indexOf('export async function myRequestOvertime'));
     const body = fn.slice(0, fn.indexOf('\n}\n') + 3);
     // Every redirect out of this action names the apply screen AND the date the employee picked. The
     // non-negative-hours one used to drop it and reset the form to tomorrow.
     const redirects = [...body.matchAll(/redirect\(\s*\n?\s*`([^`]*)`/g)].map((m) => m[1]);
-    expect(redirects.length, 'three redirects: bad figure, refusal, success').toBe(3);
+    expect(redirects.length, 'validation and service failures share one refusal; then success').toBe(2);
     for (const r of redirects) {
       expect(r, `redirect must return to the form: ${r}`).toContain('${PLAN_OT_PAGE}/apply');
       expect(r, `redirect must carry the date: ${r}`).toContain('date=${encodeURIComponent(date)}');
@@ -390,10 +400,14 @@ describe('G · the dynamically-resolved keys, which Check C of i18n-coverage can
     const copies: string[] = [];
     for (const l of LOCALES.filter((x) => x !== 'en')) {
       for (const k of newKeys) {
-        if (MESSAGES[l].me[k] === MESSAGES.en.me[k]) copies.push(`${l}.${k}`);
+        if (k !== 'otCalHoursValue' && MESSAGES[l].me[k] === MESSAGES.en.me[k]) copies.push(`${l}.${k}`);
       }
     }
     expect(copies, `untranslated: ${copies.join(', ')}`).toEqual([]);
+    // A symbolic placeholder has no words to translate; the duration carries its units already.
+    for (const l of LOCALES) expect(MESSAGES[l].me.otCalHoursValue).toBe('{hours}');
+    expect(formatMinutesToHM(150)).toBe('2h30m');
+    expect(formatMinutesToHM(45)).toBe('45m');
   });
 });
 
@@ -422,10 +436,12 @@ describe('H · c7c69a18 — the field names this screen asks for', () => {
     expect(copies, `untranslated: ${copies.join(', ')}`).toEqual([]);
   });
 
-  it('the running total is "Overtime duration", on a key of this screen’s own, and the old key is retired in place', () => {
+  it('the approved running total is "Overtime Hours", on a key of this screen’s own, and the old key is retired in place', () => {
     expect(FIELDS).toContain("t('otDurationLabel')");
     expect(code(FIELDS).includes("t('otHoursLabel')"), 'this screen is off the shared key now').toBe(false);
-    expect(MESSAGES.en.me.otDurationLabel).toBe('Overtime duration');
+    expect(MESSAGES.en.me.otDurationLabel).toBe('Overtime Hours');
+    expect(MESSAGES.en.me.otComputedHoursHelp).toBe('Worked out from Start Time and End Time.');
+    keyEverywhere('otComputedHoursHelp');
     keyEverywhere('otDurationLabel');
     // RETIRED, NEVER DELETED. me.otHoursLabel is unreferenced after this round and stays in all six
     // catalogues at its own wording, so anything that resolves it later does not silently acquire this
