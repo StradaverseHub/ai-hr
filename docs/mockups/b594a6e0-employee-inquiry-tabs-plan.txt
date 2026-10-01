@@ -1,0 +1,33 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+Employee Leave Inquiry already has an employee selector and separate balances and records views. Its Employee Details tab opens Team Leave Tracker, which explains the sidebar jump in the reported journey. Team Leave Tracker also contains a separate leave calendar that must remain available.
+
+WHAT WE'LL CHANGE
+
+- Remove Employee Details from Employee Leave Inquiry. Keep Employee Balances followed by Employee Leave Record, with balances as the default.
+- Keep the selected employee when switching between these views, together with the existing applicable filter context and employee-list controls.
+- Remove the Employee Details listing and three-tab bar from Team Leave Tracker. Keep its leave calendar, My/Team views, manager links and existing calendar actions.
+- Redirect old Employee Details links to Employee Balances under Leave Config. Update all links so inquiry screens keep the Leave Config sidebar highlight.
+
+WHAT YOU'LL GET
+
+HR will choose the employee once and move between balances and records without leaving Leave Config. Employee Profile data and leave calculations remain unchanged.
+
+GOOD TO KNOW
+
+- Team Leave Tracker uses the same address for the old admin listing and the existing calendar. Compatibility handling will distinguish old inquiry links from calendar links so calendar users keep their existing journey.
+- The board confirms there are no attachments. Production has not been reproduced; the reported route relationship is verified in source. Approval is required before implementation.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: Graph queried in mainwt before source. components/leave/leave-inquiry-nav.tsx owns three route links: details goes to /leave/tracker; balances and records go to /leave/employee-balances and /leave/employee-records. emp is carried; q/type are allowlisted for balances/records; asOf is balances-only. packs/leave/index.ts owns balances and records under the Leave Config inquiry row, while /leave/tracker remains Manage. app/leave/tracker/page.tsx branches isAdmin to Employee Details listing; the following branch owns a real calendar for employee/manager users. The old listing uses edQ, edPage, edCompany, edDept and edStatus. These are not the same namespace as leave-code/calendar filters.
+
+RECOMMENDATION: Remove only the details navigation and admin listing branch, preserving calendar service reads, actions, view preferences, direct-report scope, planned absences and focus links. Preserve existing balances/records paths and their independent permission registrations; no data migration. Old listing entry points must redirect to balances with safely allowlisted emp and mapped employee-picker context. Do not copy employee-name search into leave-code q or transfer unrelated calendar query state into inquiry. Existing explicit calendar links and manager focus links must keep calendar semantics. For an ambiguous bare admin /leave/tracker bookmark, use the former admin-listing destination (balances); update the Manage calendar entry to carry an explicit calendar intent, and let existing calendar-specific query parameters identify legacy calendar intent. Non-admin bare /leave/tracker retains its calendar. This resolves shared-route compatibility without deleting Team Tracker.
+
+BUILD: Inventory every /leave/tracker consumer and former /leave details/redirect alias, including mobile/profile/summary/sidebar links; classify calendar versus removed listing intents before editing. Narrow LeaveInquiryNav to balances/records, preserve emp and current filter allowlists, retain employee-picker Company/BU/Department/Status/search/Hide list state using existing supported fields. Preserve balances asOf/Search leave code/Apply/Filter and records filters/columns/actions/export/cancel return paths verbatim. Remove obsolete details-only UI/imports after graph consumer review; do not remove shared employee reads or Employee Profile. Keep authorisation on balances/records and never redirect an unauthorised viewer into admin inquiry. Confirm exact old aliases before implementing rather than inventing routes.
+
+VALIDATION AFTER APPROVAL: Exactly two navigation links in order; default balances; selected employment survives both directions; sidebar stays Leave Config; filters/list visibility/aliases/cancel backlinks preserved; direct old listing URLs redirect with employee context; unauthorised links blocked; tracker calendar/My-Team/focus/date/week-month/cancellation functions unchanged; balances match My Leave through existing formula owner, including scoped multiple employments. Update all six supported locale catalogues, responsive mobile and dark/light presentation, accessible navigation semantics and 44px targets. No tests, builds, dev server, browser, render, database, board write or application change performed. Production behaviour remains UNKNOWN; no attachments verified by board CLI.
