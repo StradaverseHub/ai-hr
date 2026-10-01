@@ -92,7 +92,7 @@ describe('388e53c2 · the calendar is still there, for everybody it was there fo
     expect(screen!.href).toBe('/leave/tracker');
     expect(REGISTERED_ROUTES.has('/leave/tracker')).toBe(true);
     // The page must not have grown a redirect that fences non-admins out by the back door.
-    expect(trackerPage, 'a redirect would be a silent access removal').not.toMatch(/redirect\(/);
+    expect(trackerPage, 'only obsolete admin listing intent redirects').toContain('if (admin && !calendarIntent)');
     expect(trackerPage).not.toContain('scopedAdmin');
   });
 
@@ -109,7 +109,7 @@ describe('388e53c2 · every inbound pointer at /leave/tracker still resolves', (
     // dashboard_card_config carries live per-tenant rows, so a tenant may hold its own href here. The
     // route SURVIVING is what protects them — this move deliberately did not rename it.
     expect(CARD_META.teamAwayToday.href).toBe('/leave/tracker');
-    expect(read('app/page.tsx')).toContain('href="/leave/tracker"');
+    expect(read('app/page.tsx')).toContain('href="/leave/tracker?calendar=1"');
     expect(read('lib/dashboard-layout.ts')).toContain("href: '/leave/tracker'");
   });
 
@@ -125,7 +125,7 @@ describe('388e53c2 · every inbound pointer at /leave/tracker still resolves', (
     expect(read('components/planned-absences-grid.tsx')).toContain('back="/leave/tracker"');
     // A back whitelist compared by STRING EQUALITY: a miss falls through to /leave silently, and tsc sees
     // nothing. The union type on the dialog is the other half of the same guard.
-    expect(actions).toContain("if (backRaw === '/leave/tracker') back = '/leave/tracker';");
+    expect(actions).toContain("if (backRaw === '/leave/tracker') back = '/leave/tracker?calendar=1';");
     expect(read('components/leave/admin-cancel-leave-dialog.tsx')).toContain(
       "back: '/leave' | '/leave/employee-records' | '/leave/tracker';",
     );
@@ -135,103 +135,15 @@ describe('388e53c2 · every inbound pointer at /leave/tracker still resolves', (
   });
 });
 
-describe('388e53c2 · the rail is the way in, and only its FIRST tab moved', () => {
-  it('Employee Details points at the tracker; the other two addresses are untouched', () => {
-    expect(nav).toContain("{ key: 'details', href: hrefFor('/leave/tracker', 'details'), label: t('employeeDetails') }");
+describe('r378 · inquiry has exactly two destinations under Leave Config', () => {
+  it('balances remains first, records second, with exact selected employee and picker context', () => {
+    expect(nav).not.toContain("key: 'details'");
     expect(nav).toContain("{ key: 'balances', href: hrefFor('/leave/employee-balances', 'balances'), label: t('employeeBalances') }");
     expect(nav).toContain("{ key: 'records', href: hrefFor('/leave/employee-records', 'records'), label: t('employeeLeaveRecord') }");
-    // `emp` threading is what makes switching tab keep the employee you are looking at. d990f14a rebuilt
-    // the helper as hrefFor(base, tab) so it can also decide, PER DESTINATION, which filters carry over —
-    // the claim being guarded is unchanged: every tab href carries the employee.
-    expect(nav).toContain('const hrefFor = (base: string, tab: Tab) =>');
     expect(nav).toContain("p.set('emp', employmentId)");
-  });
-
-  it('all three inquiry surfaces mount the rail, and the tracker opens on details', () => {
-    for (const rel of [
-      'app/leave/tracker/page.tsx',
-      'app/leave/employee-balances/page.tsx',
-      'app/leave/employee-records/page.tsx',
-    ]) {
-      expect(read(rel).includes('<LeaveInquiryNav'), rel).toBe(true);
-    }
-    expect(adminBranch).toContain('<LeaveInquiryNav active="details"');
-  });
-
-  it('THE LISTING FORMS POST BACK TO THE TRACKER — the failure a 200 would not show', () => {
-    // Search, Filter and the chip row. Three `action=` strings and one pager base path; miss any one and
-    // the administrator is silently thrown onto /leave, which is now a one-sentence page.
-    expect((adminBranch.match(/action="\/leave\/tracker"/g) ?? [])).toHaveLength(3);
-    expect(adminBranch, 'a form still posting to /leave').not.toMatch(/action="\/leave"/);
-    expect(adminBranch).toContain("return q ? `/leave/tracker?${q}` : '/leave/tracker';");
-    // Row clicks still open Employee Balances at its unchanged address.
-    expect(adminBranch).toContain('`/leave/employee-balances?emp=${employmentId}`');
-  });
-});
-
-/**
- * r242 — A SECOND DOOR, NOT A SECOND ADDRESS.
- *
- * 388e53c2 moved the entry point to Team Leave Tracker and the reporter still went looking under Leave
- * Config, which is where an HR administrator configures leave and therefore where they expected to look one
- * up. The approved plan answers that with a LINK, deliberately and only a link: the three screens keep the
- * exact addresses the block above pins, because saved links and the export links already in circulation
- * depend on them, and because two routes for one screen is how a surface starts diverging from itself.
- */
-describe('r242 → 5ca446db · Leave Config points at the inquiry surface with a ROW, and still moves nothing', () => {
-  const leaveConfigLanding = read('app/admin/leave-config/types/page.tsx');
-  const CONFIG_NODE = leavePack.navNodes!.find((n) => n.group === 'admin')!;
-
-  it('the way in from Leave Config is the submenu row, at the unchanged address', () => {
-    // a6fe37fc ROUND 5 — the landing screen is `/admin/leave-config/types`.
-    //
-    // 5ca446db (r269) — UPDATED, NOT DELETED. r242's PROPERTY — an HR admin standing in Leave Config can
-    // reach the inquiry surface — is what this case is for, and it survives intact. What changed is the
-    // FORM: the reporter came back a second time asking for a menu row rather than the single underlined
-    // header link r242 shipped, so the link is gone and the Leave Config fly-out's last child carries the
-    // way in. THE ADDRESS IS STILL THE POINT and is still unchanged: `/leave/employee-balances` is not a
-    // Leave Config screen, no route moved, and every saved link and export link still resolves.
-    // r281 (a73d1e14) — UPDATED, NOT LOOSENED. `children.at(-1)` was a spelling of "the inquiry row exists
-    // and sits at the bottom", and it held only while that row happened to be last. An unrelated item
-    // appended Special Setting below it — the reporter drew it at the very bottom of their own sketch — so
-    // the row is resolved BY NAME and its position is asserted as the NEIGHBOUR PAIR it was always about
-    // ("at the bottom, AFTER Company rules"). A row inserted between them still fails.
-    const inquiry = CONFIG_NODE.children.find((c) => c.labelKey === 'employeeLeaveInquiry');
-    expect(inquiry, 'the way in r242 promised is gone from the menu').toBeTruthy();
-    expect(inquiry!.href).toBe('/leave/employee-balances');
-    expect(CONFIG_NODE.children.map((c) => c.labelKey).slice(-2)).toEqual([
-      'employeeLeaveInquiry',
-      'leaveSpecialSetting',
-    ]);
-    expect(REGISTERED_ROUTES.has('/leave/employee-balances')).toBe(true);
-    // The link it replaced is gone from the page — both halves asserted, so a half-done change is red.
-    expect(leaveConfigLanding).not.toContain('href="/leave/employee-balances"');
-    expect(leaveConfigLanding).not.toContain("{t('employeeBalancesAction')}");
-  });
-
-  it('the caption the link used is pruned in all six catalogues, with its only reader', () => {
-    // 5ca446db — `admin.leave.employeeBalancesAction` had exactly ONE reader (the header link above) and no
-    // computed `t(\`…\`)` form in any file reading the `admin.leave` namespace can reach it, so it retires
-    // with the link rather than lingering as an untranslatable orphan. The ROW's label is its own key,
-    // `nav.employeeLeaveInquiry`, asserted below.
-    for (const loc of LOCALES) {
-      const dict = JSON.parse(read(`messages/${loc}.json`)) as Record<string, Record<string, Record<string, string>>>;
-      expect(dict.admin.leave.employeeBalancesAction, `${loc} admin.leave.employeeBalancesAction must be pruned`).toBeUndefined();
-      const label = dict.nav.employeeLeaveInquiry as unknown as string;
-      expect(label, `${loc} nav.employeeLeaveInquiry`).toBeTruthy();
-      // Rendered by a bare t() — a {brace} throws FORMATTING_ERROR at render behind a green 200.
-      expect(String(label), `${loc}: unexpected ICU argument`).not.toMatch(/[{}]/);
-    }
-  });
-
-  it('IT IS A LINK AND NOTHING ELSE — the rail is not duplicated onto the config screen', () => {
-    // A second mount of the inquiry rail here would give an administrator two Employee Details screens,
-    // which is the exact failure the block above ("the move is incomplete") exists to catch, arriving from
-    // the other direction. One way in, one screen.
-    expect(leaveConfigLanding).not.toContain('LeaveInquiryNav');
-    expect(leaveConfigLanding).not.toContain('employeeBalanceRows');
-    // …and the rail's own three hrefs are untouched by this item; they are asserted verbatim above.
-    expect(nav).toContain("{ key: 'balances', href: hrefFor('/leave/employee-balances', 'balances'), label: t('employeeBalances') }");
+    for(const key of ['pickerQ','pickerCompany','pickerDepartment','pickerStatus'])expect(nav).toContain(key);
+    for(const rel of ['employee-balances','employee-records'])expect(read(`app/leave/${rel}/page.tsx`)).toContain('<LeaveInquiryNav');
+    expect(trackerPage).not.toContain('<LeaveInquiryNav');
   });
 });
 
@@ -259,7 +171,7 @@ describe('388e53c2 · My Leave means your own leave again', () => {
     // is asserted on what it is WIRED TO instead: this page's own history params, never the listing's.
     // (`employeeFilterFields` / `employeeHiddenParams` — the listing's own wiring — are still asserted
     // absent in the loop above, so the panel here can only be serving this page's own history.)
-    expect(leavePage).toContain('fields={historyFilterFields}');
+    expect(read('components/leave/own-leave-history.tsx')).toContain('fields={historyFilterFields}');
   });
 
   it('an HR admin and an UNLINKED viewer both get the heading and one sentence, before any read runs', () => {
@@ -274,7 +186,7 @@ describe('388e53c2 · My Leave means your own leave again', () => {
     // above the early return — so the list follows the read rather than the read being kept for the list.
     // r302 (6c9802c9): the balance read became the per-year dashboard read (core/my-leave.ts calls
     // leaveBalances inside it), so the list follows the read again — the property is unchanged.
-    for (const r of ['myLeaveDashboard(session', 'listLeaveRequestsPage(session', 'listEmployees(session']) {
+    for (const r of ['myLeaveDashboard(session', 'loadOwnLeaveHistory({ session', 'listEmployees(session']) {
       expect(leavePage.indexOf(r), r).toBeGreaterThan(guardAt);
     }
   });
@@ -302,10 +214,7 @@ describe('388e53c2 · My Leave means your own leave again', () => {
       // r302 (6c9802c9) — the employee's balances are the dashboard now (the My balances table is gone by the
       // approved plan); what this case defends — the self-service half is still here — is unchanged.
       '<MyLeaveDashboard',
-      '<LeaveHistoryCards',
-      '<EditLeaveDialog',
-      '<CancelLeaveDialog',
-      '<CancelDatesDialog',
+      'loadOwnLeaveHistory({ session',
       'const ess = !admin;',
     ]) {
       expect(leavePage.includes(kept), kept).toBe(true);
@@ -317,7 +226,8 @@ describe('388e53c2 · My Leave means your own leave again', () => {
 });
 
 describe('388e53c2 → 5ca446db · the sidebar lights exactly one row, and it is the right one', () => {
-  const leaveRow = leavePack.navLinks!.find((l) => l.href === '/leave')!;
+  const leaveNode = leavePack.navNodes!.find(n=>n.group==='main')!;
+  const leaveRow = leaveNode.children.find(c=>c.href==='/leave')!;
   const trackerRow = leavePack.navLinks!.find((l) => l.href === '/leave/tracker')!;
   /** 5ca446db — the two inquiry paths' owner. r281 — resolved BY NAME: it was the fly-out's last child
    *  until an unrelated item appended Special Setting below it, and what this block is about is which row
@@ -360,13 +270,14 @@ describe('388e53c2 → 5ca446db · the sidebar lights exactly one row, and it is
   const TRUTH: ReadonlyArray<readonly [string, boolean, boolean, boolean]> = [
     // pathname                      My Leave   Team Leave Tracker   Employee Leave Inquiry
     ['/leave', true, false, false],
+    ['/leave/history', true, false, false],
     ['/leave/tracker', false, true, false],
     ['/leave/employee-balances', false, false, true],
     ['/leave/employee-records', false, false, true],
   ];
 
   it.each(TRUTH)('on %s the correct single row is lit', (pathname, myLeaveLit, trackerLit, inquiryLit) => {
-    expect(isNavRowActive(pathname, '', leaveRow), `My Leave on ${pathname}`).toBe(myLeaveLit);
+    expect(leaveNode.children.some(child => isNavRowActive(pathname, '', child)), `My Leave on ${pathname}`).toBe(myLeaveLit);
     expect(isNavRowActive(pathname, '', trackerRow), `Team Leave Tracker on ${pathname}`).toBe(
       trackerLit,
     );

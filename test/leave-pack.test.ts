@@ -110,7 +110,6 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
   // dashboard. The `toBeUndefined()` assertions below are therefore load-bearing for this row, not
   // boilerplate — a `managerUp` creeping in here silently removes a screen from plain staff.
   const EXPECTED = [
-    { group: 'main', href: '/leave', labelKey: 'myAbsence', icon: CalendarDays },
     { group: 'manage', href: '/leave/tracker', labelKey: 'teamLeaveTracker', icon: CalendarRange },
   ] as const;
 
@@ -136,6 +135,14 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
       expect(got.adminOnly, `${want.href} adminOnly`).toBeUndefined();
       expect(got.managerUp, `${want.href} managerUp`).toBeUndefined();
     });
+  });
+
+  it('r378 declares exactly Overview and History under the ungated My Leave parent', () => {
+    const self = leavePack.navNodes!.filter(n => n.group === 'main');
+    expect(self).toHaveLength(1);
+    expect(self[0].labelKey).toBe('myLeave');
+    expect(self[0].defaultHref).toBe('/leave');
+    expect(self[0].children.map(c => [c.href,c.labelKey,c.exactHref])).toEqual([['/leave','leaveOverview',true],['/leave/history','leaveHistory',true]]);
   });
 
   it('declares the Leave config node (645e67c4 — an expandable group, not a flat row)', () => {

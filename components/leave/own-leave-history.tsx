@@ -1,104 +1,23 @@
+/** Shared own-history projection; reads and action owners are unchanged. */
 import Link from 'next/link';
-import { getLocale, getTranslations } from 'next-intl/server';
+import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
-import { isAdmin } from '@/lib/authz';
-import {
-  leaveRequestDateBreakdown,
-  myEmployment,
-  myEmploymentIdsAll,
-  listEmployees,
-  listLeaveTypes,
-  listLeaveRequestsPage,
-  // ad965821 — the eligibility-filtered apply source for the viewer's own dropdown. Its multi-employment
-  // sibling, and the reporting-lines read that used to decide who got an Employee selector, both left with
-  // 5206539f: the selector is a named permission now, not a shape of the org chart.
-  listEligibleLeaveTypesFor,
-  replacementLeaveLedger,
-  // r301 (83511d3b) — Cancel Approved Leave: THE button predicate (shared with the Team Leave Tracker) and the
-  // Pending Cancellation progress on the viewer's own records.
-  employeeCancelOffers,
-  pendingCancellationProgress,
-} from '@/core/read';
-// 5f2e20fb — the SAME filter control the three HR leave screens use, on the employee's own history box.
+import { leaveRequestDateBreakdown, myEmployment, myEmploymentIdsAll, listLeaveTypes, listLeaveRequestsPage, employeeCancelOffers, pendingCancellationProgress } from '@/core/read';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
-// 5206539f — `leave.apply_on_behalf`, resolved by the SAME function requestLeave's own gate calls, so the
-// selector below and the refusal in the service can never answer differently.
-import { canApplyLeaveOnBehalf, todayInKualaLumpur } from '@/core/leave';
-import { isReplacementLeaveType, pickReplacementLeaveType } from '@/core/ess-view';
-// r302 (6c9802c9) — My Leave dashboard: the per-leave-year figures, Upcoming Leave, and the names of the people
-// who decide the viewer's OWN requests (migration 0472). Every figure is a pick in core/my-leave.ts.
-import {
-  myLeaveDashboard,
-  myUpcomingLeave,
-  ownLeaveApprovalTrails,
-  ownLeaveCancellations,
-  ownLeaveRejections,
-} from '@/core/my-leave';
-import { MyLeaveDashboard, type MyLeaveDashboardCard } from '@/components/leave/my-leave-dashboard';
-import { UpcomingLeave, type UpcomingLeaveRow } from '@/components/leave/upcoming-leave';
-import {
-  LEAVE_HISTORY_TABS,
-  applicationDateOutcomeRows,
-  approvalProgress,
-  approverKindLabelKey,
-  approverLine,
-  cancellationLines,
-  isPartiallyApproved,
-  resolveHistoryTab,
-  type HistoryLineDeps,
-  type LeaveHistoryTab,
-} from '@/lib/my-leave-history';
+import { todayInKualaLumpur } from '@/packs/leave/service';
+import { myUpcomingLeave, ownLeaveApprovalTrails, ownLeaveCancellations, ownLeaveRejections } from '@/core/my-leave';
+import { type UpcomingLeaveRow } from '@/components/leave/upcoming-leave';
+import { LEAVE_HISTORY_TABS, applicationDateOutcomeRows, approvalProgress, approverKindLabelKey, approverLine, cancellationLines, isPartiallyApproved, resolveHistoryTab, type HistoryLineDeps, type LeaveHistoryTab } from '@/lib/my-leave-history';
 import { HR_LOCAL_TZ } from '@/lib/hr-date';
-import { Card, PageHeader } from '@/components/ui';
-// 388e53c2 — the Employee Details listing, its left-side rail, its filter panel and the People status
-// vocabulary all LEFT this page with the HR-admin inquiry surface. They live on app/leave/tracker/page.tsx
-// now, which is the Team Leave Tracker row the reporter asked to enter them from. Nothing was deleted:
-// the listing is the same code with its base path repointed. (Naming the moved components literally here
-// would defeat the guards that assert none of them survived on this page — prose is not exempt.)
-// 33bf1a2d: the leave-request table cells this table used to spell out inline, now SHARED with the
-// Approval Items leave table (app/approvals/page.tsx) so the two can no longer drift apart.
-import { LeaveDaysCell, LeaveEmployeeCell, LeaveTypeCell } from '@/components/leave/leave-request-cells';
+import { Card } from '@/components/ui';
 import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
 import { EditLeaveDialog } from '@/components/leave/edit-leave-dialog';
 import { CancelLeaveDialog } from '@/components/leave/cancel-leave-dialog';
-import { RequestLeaveDialog } from '@/components/leave/request-leave-dialog';
-// 296fc027 — the employee replacement-leave request: the button beside "+ Request Leave", the availability
-// read that decides whether to offer it, and the action it posts to.
-import { ReplacementLeaveRequestDialog } from '@/components/leave/replacement-leave-request-dialog';
-// r343 — the dialog's body is now the single Leave Credit table, and it posts to that table's own action.
-// The two actions live beside the `/leave/credit` screen because that screen is the other entry point to the
-// SAME component (components/leave/leave-credit-request-table.tsx) and both must post through one path.
-import { leaveCreditDayFactsAction, submitLeaveCreditRequestAction } from '@/app/leave/credit/actions';
-// r219 (7966ee35) — …and, when that availability read says NO, the sentence saying why. The read has always
-// carried a discriminated reason; this page rendered the boolean and dropped it, so the reporter spent a
-// round changing Leave config settings against a cause that sits above Leave config.
-import { ReplacementAvailabilityNotice } from '@/components/leave/replacement-availability-notice';
-import { leaveCreditOfferForEmployment, listReplacementLeaveRequests, replacementRequestAvailability } from '@/packs/leave/service';
 import { LeaveDateOutcome } from '@/components/leave/leave-date-outcome';
-// My Leave History — tabs, one row per request, and the slide-out View panel (657962ec, reshaped by r302).
 import { LeaveHistoryCards, type LeaveHistoryEntry } from '@/components/leave/leave-history-cards';
-// Shared Leave Group display (feedback 46afcc48): the pooled allowance several leave types draw on, drawn
-// as ONE balance, independent of each member type's own placement. r302: a tile in the dashboard grid.
-import { sharedLeaveGroupBalances } from '@/core/leave-shared-group';
-// r341 (8d3a7bff) — which leave-type card a shared group's ceiling belongs on, decided in one pure place.
-import { planSharedGroupCeilings } from '@/lib/shared-leave-pool';
 import { durationLabel } from '@/lib/leave-duration';
-// 46afcc48 — the shared-group context lines interpolate day figures, and a day figure is printed one way
-// in this repo (4a1abc4a). Interpolating a raw Number would print "10" beside the card's "9.00".
-import { formatDays } from '@/lib/day-format';
-// fef49b9a — ONE derivation of the paid/unpaid breakdown, shared with the other three surfaces.
 import { leaveDisplaySplit } from '@/lib/leave-split';
-import { LEAVE_STATUS_PILL, LEAVE_STATUS_PILL_DEFAULT } from '@/lib/leave-status';
-import {
-  requestLeaveAction,
-  requestLeaveCancellationAction,
-  adminCancelLeaveAction,
-  editLeaveAction,
-  cancelOwnLeaveAction,
-  previewLeaveDeductionAction,
-  leaveApplySummaryAction,
-} from '@/app/leave/actions';
-
+import { requestLeaveCancellationAction, editLeaveAction, cancelOwnLeaveAction } from '@/app/leave/actions';
 
 export type HistorySearch = { warnHoliday?: string; hTab?: string; hType?: string | string[]; hFrom?: string; hTo?: string; leaveYear?: string; year?: string; state?: string; loaded?: string };
 

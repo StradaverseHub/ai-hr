@@ -220,7 +220,7 @@ export default async function EmployeeBalancesPage({
         {badges.map((c) => (
           <span
             key={c.leaveTypeId}
-            className="rounded border border-border px-1 text-[10px] font-medium text-muted-foreground"
+            className="rounded border border-border px-1 text-xs font-medium text-muted-foreground"
             title={tMe(`leaveBalanceTable.${tipKey}`, {
               v: formatDays(c[which]),
               cat: dayPluralCategory(c[which], locale),

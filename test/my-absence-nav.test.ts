@@ -31,21 +31,16 @@ const leavePack = read('packs/leave/index.ts');
 const SRC = sidebar + leavePack;
 const permissions = read('lib/permissions.ts');
 const leavePage = read('app/leave/page.tsx');
+const ownHistory = read('components/leave/own-leave-history.tsx');
 const mePage = read('app/me/page.tsx');
 const meActions = read('app/me/actions.ts');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 describe('My Absence: first-level nav rename (label-only, same href)', () => {
   it("nav row is labelKey 'myAbsence' with href '/leave' unchanged (now on the leave pack)", () => {
-    // The row literal moved verbatim onto the pack's LEAVE_NAV_LINKS (with its group tag).
-    // 388e53c2 appended `exactHref: true` to this row — HIGHLIGHTING ONLY, never a gate (see the comment
-    // above LEAVE_NAV_LINKS) — so the literal no longer closes at the icon. The match is deliberately
-    // NOT anchored on the closing brace any more: this guard exists to hold the group, the href and the
-    // labelKey, all three of which are unchanged, and row-content parity is test/leave-pack.test.ts.
-    // Anchoring on `}` would fail again for the next legitimate field and teaches people to delete it.
-    expect(
-      leavePack.includes("{ group: 'main', href: '/leave', labelKey: 'myAbsence', icon: CalendarDays"),
-    ).toBe(true);
+    expect(leavePack).toContain("group: 'main', labelKey: 'myLeave', icon: CalendarDays, defaultHref: '/leave'");
+    expect(leavePack).toContain("{href:'/leave', labelKey:'leaveOverview', icon:CalendarDays, exactHref:true}");
+    expect(leavePack).toContain("{href:'/leave/history', labelKey:'leaveHistory', icon:CalendarDays, exactHref:true}");
     // The old top-level `labelKey: 'leave'` is gone (renamed to myAbsence; leaveConfig — the ADMIN
     // config row — is unaffected). Asserted on the labelKey form directly: since rung 6 the sidebar's
     // only bare `'leave'` token is the `modulePackById('leave')` registry lookup, not a nav labelKey.
@@ -148,16 +143,16 @@ describe('My Absence: everything the /me Leave tab had now lives on /leave', () 
   });
 
   it('ports the per-date outcome expander, document link, stage line and partial badge', () => {
-    expect(leavePage.includes('<LeaveDateOutcome')).toBe(true);
-    expect(leavePage.includes('leaveRequestDateBreakdown(session, r.id)')).toBe(true);
+    expect(ownHistory.includes('<LeaveDateOutcome')).toBe(true);
+    expect(ownHistory.includes('leaveRequestDateBreakdown(session, r.id)')).toBe(true);
     // Own uploaded attachment — served by the UNCHANGED route under /me/leave/attachment.
-    expect(leavePage.includes('/me/leave/attachment/${r.id}?inline=1')).toBe(true);
+    expect(ownHistory.includes('/me/leave/attachment/${r.id}?inline=1')).toBe(true);
     expect(existsSync(root + 'app/me/leave/attachment/[id]/route.ts')).toBe(true);
-    expect(leavePage.includes("tMe('leaveStatus.partiallyApproved')")).toBe(true);
+    expect(ownHistory.includes("tMe('leaveStatus.partiallyApproved')")).toBe(true);
     // r302 (6c9802c9): the stage line ("Manager review" / "HR review") is replaced by the approver line — who
     // it is waiting for and at which level, labelled by the step's KIND — and the step-by-step progress.
-    expect(leavePage.includes("tMe('stageManager')")).toBe(false);
-    expect(leavePage.includes('approverLine: approverLineFor(r)')).toBe(true);
+    expect(ownHistory.includes("tMe('stageManager')")).toBe(false);
+    expect(ownHistory.includes('approverLine: approverLineFor(r)')).toBe(true);
     expect(read('lib/my-leave-history.ts').includes("t('myLeave.waitingForRole', { role, level: line.level, of: line.of })")).toBe(true);
   });
 
@@ -170,7 +165,7 @@ describe('My Absence: everything the /me Leave tab had now lives on /leave', () 
       '<CancelLeaveDialog',
       '<CancelDatesDialog',
     ]) {
-      expect(leavePage.includes(kept), kept).toBe(true);
+      expect((kept.includes('Edit') || kept.includes('Cancel') ? ownHistory : leavePage).includes(kept), kept).toBe(true);
     }
     // afd0a87c — AdminCancelLeaveDialog went with the org-wide request table and is NOT a lost
     // capability: cancelling someone else's leave lives on Employee Leave Record (where fe3eb141 moved

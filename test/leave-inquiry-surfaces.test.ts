@@ -92,7 +92,7 @@ describe('8ec63139: the HR-admin leave page drops the ESS blocks', () => {
     // on the page it moved to (388e53c2). Asserted THERE, and asserted absent here, because a listing
     // left behind on /leave is the half-move that relights "My Leave" all over again.
     for (const name of ["name: 'edCompany'", "name: 'edDept'", "name: 'edStatus'"]) {
-      expect(trackerAdminBranch.includes(name), name).toBe(true);
+      expect(trackerAdminBranch.includes(name), name).toBe(false);
       expect(leavePage.includes(name), `${name} still on /leave`).toBe(false);
     }
   });
@@ -401,116 +401,30 @@ describe('953be4b0: Employee Leave Record', () => {
   });
 });
 
-describe('650b6eb8: Employee Details — the tab an HR admin lands on', () => {
-  const nav = read('components/leave/leave-inquiry-nav.tsx');
-
-  it('mounts the left-side nav on the admin landing page, opening on Employee Details', () => {
-    // REPOINTED BY 388e53c2, not weakened. The landing page is /leave/tracker now — the menu row an HR
-    // administrator should have been on all along — and "details" is still the tab it opens on.
-    expect(trackerPage).toContain("import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav'");
-    expect(trackerAdminBranch).toContain('<LeaveInquiryNav active="details" employmentId={inquiryEmploymentId} />');
-    expect(nav).toContain("{ key: 'details', href: hrefFor('/leave/tracker', 'details')");
-    // THE OTHER TWO ARE UNCHANGED, and that is a promise made in writing: saved links and the export links
-    // already in circulation point at these two addresses.
-    expect(nav).toContain("{ key: 'balances', href: hrefFor('/leave/employee-balances', 'balances')");
-    expect(nav).toContain("{ key: 'records', href: hrefFor('/leave/employee-records', 'records')");
-    // …and My Absence kept none of it — one Employee Details screen, not two.
-    expect(leavePage).not.toContain('LeaveInquiryNav');
+// r378 retires the Employee Details listing; its shape tests are replaced by
+// complete-removal and compatibility guards. Balances/records data guards above stay intact.
+describe('r378 · the old employee listing is gone, while scoped inquiry selection remains', () => {
+  it('tracker contains no listing read, forms, columns or three-tab navigation', () => {
+    for (const token of ['listEmployeesPage(', '<LeaveInquiryNav', 'employeeFilterFields', 'colPosition', 'inquiryPageWindow(']) expect(trackerPage).not.toContain(token);
+    expect(trackerPage).toContain('if (admin && !calendarIntent)');
+    expect(trackerPage).toContain("edQ: 'pickerQ'");
+    expect(trackerPage).toContain("edCompany: 'pickerCompany'");
+    expect(trackerPage).toContain("edDept: 'pickerDepartment'");
+    expect(trackerPage).toContain("edStatus: 'pickerStatus'");
+    expect(trackerPage).toContain("p.set('emp', emp)");
   });
-
-  it('renders the six requested columns', () => {
-    // `t` was the `leave` namespace on the old host page; on the tracker it is `leaveTracker`, so the
-    // leave-namespace calls are spelled `tLeave` there. Same six columns, same two vocabularies.
-    for (const col of [
-      "tLeave('filters.employeeId')",
-      "tInq('colEmployeeName')",
-      "tLeave('filters.company')",
-      "tLeave('filters.department')",
-      "tInq('colPosition')",
-      "tPeople('colStatus')",
-    ]) {
-      expect(trackerAdminBranch.includes(col), col).toBe(true);
-    }
-    expect(trackerAdminBranch).toContain('colSpan={6}');
-  });
-
-  it('reads the access-scoped People page, ten at a time, company A→Z then name A→Z', () => {
-    expect(trackerAdminBranch).toContain('listEmployeesPage(s, {');
-    expect(trackerPage).toContain('const EMPLOYEE_PAGE = 10;');
-    expect(trackerAdminBranch).toContain("sort: 'company',");
-    expect(trackerAdminBranch).toContain('limit: EMPLOYEE_PAGE,');
-    expect(trackerAdminBranch).toContain('offset: edPage * EMPLOYEE_PAGE,');
-    // Scope fence first: the listing shows only the companies this session may see.
-    expect(trackerAdminBranch).toContain('companyIds: scopeIds,');
-    // Terminated staff are NOT filtered out — their leave position is exactly what HR looks up after
-    // someone leaves, and the sibling screen makes the same call.
-    expect(trackerAdminBranch, 'terminated staff must stay in the listing').not.toMatch(/terminatedOn/);
-  });
-
-  it('shows the DERIVED Employee Status, in the shared vocabulary — never the legacy stored enum', () => {
-    expect(trackerAdminBranch).toContain('deriveEmploymentStatus(e, today)');
-    expect(trackerAdminBranch).toContain("const tStatus = await getTranslations('people.employeeStatus');");
-    expect(trackerAdminBranch).toContain('options: EMPLOYMENT_STATUSES.map((v) => ({ value: v, label: tStatus(v) }))');
-    // `status` on the row IS the legacy stored enum (EmployeeListRow keeps it for other callers) — this
-    // screen must never read it, or the retired On Leave / Offboarding values come back on a new surface.
-    expect(/\be\.status\b/.test(trackerAdminBranch), 'legacy row.status is read').toBe(false);
-  });
-
-  it('search + a multi-select Company / Department / Status filter with bulk controls', () => {
-    expect(trackerAdminBranch).toContain("tInq('detailsSearchPlaceholder')");
-    for (const name of ["name: 'edCompany'", "name: 'edDept'", "name: 'edStatus'"]) {
-      expect(trackerAdminBranch.includes(name), name).toBe(true);
-    }
-    expect(trackerAdminBranch).toContain("selectAll: tLeave('filters.selectAll')");
-    expect(trackerAdminBranch).toContain("deselectAll: tLeave('filters.deselectAll')");
-  });
-
-  it('clicking an employee opens Employee Balances for that employee', () => {
-    expect(trackerAdminBranch).toContain('const employeeHref = (employmentId: string) => `/leave/employee-balances?emp=${employmentId}`;');
-  });
-
-  it('one listing remains, and it still carries its own state', () => {
-    // INVERTED. Two independently-filtered listings shared this page, so every control of one carried the
-    // other's params or filtering employees would silently blank the leave requests. afd0a87c removed the
-    // request table, so the invariant it protected no longer has two sides — and requestHiddenParams must
-    // be gone, not merely unused, or the next author will wire a control to an empty carrier.
-    expect(trackerAdminBranch).toContain('hidden={employeeHiddenParams}');
-    expect(trackerPage.includes('requestHiddenParams')).toBe(false);
-    expect(panel).toContain('hidden?: readonly (readonly [string, string])[];');
-    // The employee listing's params stay prefixed AND keep their exact spelling: 388e53c2 changed the
-    // base path they hang off, so renaming them on top of that would break every saved admin link twice.
-    for (const param of ['edQ?: string', 'edPage?: string', 'edCompany?: string | string[]']) {
-      expect(trackerPage.includes(param), param).toBe(true);
-    }
-    // …and they are gone from the page they left, or the two screens read each other's query strings.
-    for (const param of ['edQ?: string', 'edPage?: string', 'edCompany?: string | string[]']) {
-      expect(leavePage.includes(param), `${param} still declared on /leave`).toBe(false);
+  it('both remaining views read the fenced list and validate selection against it', () => {
+    for(const name of ['employee-balances','employee-records']) {
+      const source=read(`app/leave/${name}/page.tsx`);
+      expect(source).toContain('await scopedAdmin()');
+      expect(source).toContain('listEmployees(session, scopeIds)');
+      expect(source).toContain('selectInquiryEmployee(employees, sp.emp)');
+      expect(source).toContain('preservePicker');
     }
   });
-
-  it('the org-wide leave-request table is GONE — afd0a87c, and it took its export with it', () => {
-    // INVERTED. This asserted the table was still on the page, on the reasoning that dropping it would
-    // undo the every-column filter the same reporter asked for in the same round. The reporter has since
-    // asked plainly for the removal with no relocation, and said they will redesign Employee Leave Record
-    // separately. What is asserted now is that the removal was COMPLETE — a half-removed table leaves the
-    // read running for nobody, which is the expensive half.
-    // UPDATED BY 5f2e20fb (AGENTS rule 18). The paginated read is no longer proof the register is back:
-    // the employee's own history now uses it, narrowed to their own employments, for the date and
-    // leave-type filter the reporter asked for. The register is identified by what only IT had — an
-    // org-wide scope argument, its own title and its export link — none of which may return.
-    for (const call of leavePage.match(/listLeaveRequestsPage\(session, \{[\s\S]*?\n\s*\}\)/g) ?? []) {
-      expect(call, 'a /leave history read must be self-narrowed, never org-wide').toContain('employmentIds:');
-      expect(call).not.toContain('companyIds:');
-    }
-    expect(leavePage).not.toContain("t('requestsTitle')");
-    expect(leavePage).not.toContain('/leave/export?');
-    // The employee listing that replaced it must survive — at its new address (388e53c2).
-    expect(trackerAdminBranch).toContain('listEmployeesPage(s, {');
-  });
-
   it('numbers the pages — 1 2 3 Next >, with the far ends always one click away', () => {
-    expect(trackerAdminBranch).toContain('inquiryPageWindow(edPage, employeePageCount)');
-    expect(trackerAdminBranch).toContain("tInq('pageNext')");
+    expect(trackerAdminBranch).not.toContain('inquiryPageWindow(edPage, employeePageCount)');
+    expect(trackerAdminBranch).not.toContain("tInq('pageNext')");
     // Short list: every page, no gaps.
     expect(inquiryPageWindow(0, 3)).toEqual([0, 1, 2]);
     expect(inquiryPageWindow(0, 1)).toEqual([0]);
@@ -526,18 +440,6 @@ describe('650b6eb8: Employee Details — the tab an HR admin lands on', () => {
     }
   });
 
-  it('ships the Employee Details strings in every locale', () => {
-    const keys = [
-      'detailsSearchPlaceholder', 'colEmployeeName', 'colPosition', 'openBalances',
-      'pagePrev', 'pageNext', 'pageAria', 'noEmployeesFiltered',
-      // 388e53c2 — the header sentence under "Employee Details" on its new host page.
-      'detailsDescription',
-    ];
-    for (const loc of LOCALES) {
-      const inquiry = (msgs(loc) as unknown as { leave: { inquiry: Record<string, string> } }).leave.inquiry;
-      for (const k of keys) expect(inquiry?.[k], `${loc} leave.inquiry.${k}`).toBeTruthy();
-    }
-  });
 });
 
 describe('37a1141e: Carried Forward → Brought Forward (English labels only)', () => {

@@ -1,18 +1,10 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Trash2 } from 'lucide-react';
 import { useFormStatus } from 'react-dom';
 import { Button, Field, btnPrimary, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from '../ui';
-// r365 cbfa8b0b — ONE anchored panel in this repo, and ONE sheet. Neither is new: the panel is the
-// positioning components/attendance-figure-cells.tsx has used since 7c834696, extracted so this row can
-// open the same thing; the sheet is components/ui/drawer.tsx, which is FULL SCREEN below `lg` and is the
-// product's answer to "a bottom sheet on a phone". No dependency was added for either (the plan says so
-// plainly: @radix-ui/react-popover and react-tooltip are not installed and are not being installed).
-import { AnchoredPanel, useAnchoredPanel, useBelowLg } from '../ui/anchored-panel';
-import { Drawer } from '../ui/drawer';
-import { cn } from '@/lib/utils';
 // r362 58424c7f — `claimCrossesMidnight` is the ROLL'S OWN CONDITION, exported rather than re-parsed here:
 // the note this row prints and the minutes printed beside it come from one comparison, or they disagree the
 // first time either moves. See that file's header for why a reversed pair is not refused.
@@ -113,11 +105,11 @@ const dayTypeLabelOf = (t: (k: string) => string, d: LeaveCreditDayType) =>
  * The unnamed toggle posts no row field, preserving the action's index-aligned payload.
  * Explicit attendanceRecordPresent distinguishes an absent row from missing punches.
  */
-function AttendanceFacts({workedDate,dayType,view,alert}: {workedDate:string;dayType:LeaveCreditDayType | '';view:LeaveCreditDayFacts | null;alert:string | null}) {
+function AttendanceFacts({workedDate,view,alert}: {workedDate:string;view:LeaveCreditDayFacts | null;alert:string | null}) {
   const t = useTranslations('replacementRequest');
   const locale = useLocale();
   const weekday = workedDate ? new Intl.DateTimeFormat(locale,{weekday:'short',timeZone:'UTC'}).format(new Date(`${workedDate}T00:00:00Z`)) : DAY_DASH;
-  return <div data-testid="leave-credit-attendance-panel" className="space-y-2 py-2">
+  return <div data-testid="leave-credit-attendance-panel" className="max-w-[calc(90vw-4rem)] space-y-2 py-2 sm:max-w-none">
     {view?.attendanceRecordPresent === false ? <p data-testid="leave-credit-attendance-no-record">{t('table.noAttendanceRecord')}</p> : <table className="w-full text-xs"><thead><tr>{['workedDate','table.detailDay','table.detailSchedule','table.detailShift','table.attendanceClockIn','sectionB.actualClockOut','table.detailHours'].map((key) => <th key={key} className="px-2 py-1 text-left font-medium">{t(key)}</th>)}</tr></thead><tbody><tr><td className="px-2 py-1">{workedDate}</td><td className="px-2 py-1">{weekday}</td><td className="px-2 py-1">{view?.scheduleName ?? DAY_DASH}</td><td className="px-2 py-1">{[view?.shiftCode,view?.shiftName].filter(Boolean).join(' · ') || DAY_DASH}</td><td className="px-2 py-1">{hhmm(view?.actualClockIn ?? null) ?? DAY_DASH}</td><td className="px-2 py-1">{hhmm(view?.actualClockOut ?? null) ?? DAY_DASH}</td><td className="px-2 py-1">{view ? minutesHM(view.measuredExtendedMinutes) : DAY_DASH}</td></tr></tbody></table>}
     {view?.approvedOtPlan && <p data-testid="leave-credit-attendance-ot-plan">{t('table.attendanceOtPlan')}: {view.approvedOtPlan.start && view.approvedOtPlan.end ? `${hhmm(view.approvedOtPlan.start)} – ${hhmm(view.approvedOtPlan.end)}` : t('table.attendanceOtPlanApproved')}</p>}
     {alert && <p className="text-amber-700 dark:text-amber-400" data-testid="leave-credit-attendance-alert">{alert}</p>}
@@ -410,7 +402,8 @@ export function LeaveCreditRequestTable({
       });
       return changed ? next : prev;
     });
-  }, [facts]);
+  // A newly added row may reuse an already settled date, so its type must fill even without a new fetch.
+  }, [facts, datesKey]);
 
   // r365 — ONE mapping, at module scope, because the Attendance panel prints the same four labels and two
   // copies of a four-way conditional is how a fifth roster kind reaches one of them and not the other.
@@ -583,11 +576,8 @@ export function LeaveCreditRequestTable({
    * caption spilled past the bottom edge into the row beneath — on EVERY filled row, worst under the
    * longest caption (`dayTypeFromHolidays`, "From the public holiday calendar").
    *
-   * Two changes, both needed: the box grows (`h-auto` with `min-h-9`, so an empty row is unchanged) and the
-   * caption stops claiming a full 16px line (`leading-tight`). Built through `cn` rather than a template
-   * string BECAUSE `h-9` AND `h-auto` ARE THE SAME CSS PROPERTY AT THE SAME SPECIFICITY: concatenated, which
-   * one wins is decided by the order Tailwind happens to emit them in, not by the order written here.
-   * tailwind-merge drops the loser.
+   * r378 uses an auto-height tag and provenance text outside its coloured label.
+   * No fixed input-box height or conflicting h-9/h-auto classes remain.
    */
   const filledDayTypeCell = 'inline-flex flex-col items-start gap-1 rounded-lg bg-primary/10 px-2 py-1.5 text-xs text-primary';
 
@@ -767,7 +757,7 @@ export function LeaveCreditRequestTable({
                         </div>
                       ) : (
                         <div className={filledDayTypeCell} data-testid="leave-credit-day-type">
-                          <span className="leading-tight text-foreground">{dayTypeLabel(r.dayType)}</span>
+                          <span className={`rounded px-2 py-1 leading-tight ${r.dayType === 'workday' ? 'bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-200' : r.dayType === 'holiday' ? 'bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-200' : 'bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-200'}`}>{dayTypeLabel(r.dayType)}</span>
                           {/* WHERE IT CAME FROM, which is the other half of the reporter's ask. A public
                               holiday outranks the roster in `scheduleFor`, so the two provenances are
                               genuinely different facts and the caption may not merge them. */}
@@ -818,6 +808,7 @@ export function LeaveCreditRequestTable({
                       <div className="py-2 text-xs tabular-nums" data-testid="leave-credit-eligible-minutes">
                         {d?.minutes != null ? minutesHM(d.minutes) : DAY_DASH}
                       </div>
+                      {below && <p className="text-xs font-medium text-amber-700 dark:text-amber-400" data-testid="leave-credit-below-threshold">{belowThresholdText}</p>}
                     </td>
                     <td className="px-3 py-2">
                       <div className="py-2 text-xs tabular-nums" data-testid="leave-credit-row-credit">
@@ -837,8 +828,8 @@ export function LeaveCreditRequestTable({
                       </Button>
                     </td>
                   </tr>
-                  <tr><td colSpan={7} className="px-3 py-1"><button data-testid="leave-credit-details-toggle" type="button" disabled={!r.workedDate} aria-expanded={expandedRows.has(r.key)} className="min-h-11 text-xs font-medium text-primary underline" onClick={() => setExpandedRows((previous) => {const next = new Set(previous);if(next.has(r.key)) next.delete(r.key);else next.add(r.key);return next;})}>{t('table.detailToggle')}</button></td></tr>
-                  {expandedRows.has(r.key) && <tr><td colSpan={7} className="bg-muted/30 px-3 py-2">{factError[r.workedDate] ? <span>{t('table.dayTypeLookupFailed')} <button type="button" onClick={retryFacts}>{t('table.dayTypeRetry')}</button></span> : !factsSettled[r.workedDate] ? <p>{t('table.dayTypeReading')}</p> : !d?.view ? <p>{t('table.dayTypeNotFound')}</p> : <AttendanceFacts workedDate={r.workedDate} dayType={chosen} view={d.view} alert={attendanceAlert} />}</td></tr>}
+                  <tr><td colSpan={7} className="px-3 py-1"><button data-testid="leave-credit-details-toggle" type="button" disabled={!r.workedDate} aria-expanded={expandedRows.has(r.key)} className="min-h-11 text-xs font-medium text-primary underline" onClick={() => setExpandedRows((previous) => {const next = new Set(previous);if(next.has(r.key)) next.delete(r.key);else next.add(r.key);return next;})}><span aria-hidden>{expandedRows.has(r.key) ? '▾ ' : '▸ '}</span>{t('table.detailToggle')}</button></td></tr>
+                  {expandedRows.has(r.key) && <tr><td colSpan={7} className="bg-muted/30 px-3 py-2">{factError[r.workedDate] ? <span>{t('table.dayTypeLookupFailed')} <button type="button" onClick={retryFacts}>{t('table.dayTypeRetry')}</button></span> : !factsSettled[r.workedDate] ? <p>{t('table.dayTypeReading')}</p> : !d?.view ? <p>{t('table.dayTypeNotFound')}</p> : <AttendanceFacts workedDate={r.workedDate} view={d.view} alert={attendanceAlert} />}</td></tr>}
                   {duplicateDates.some((row) => row.key === r.key) && <tr><td colSpan={7} className="px-3 py-1 text-xs text-destructive">{t('table.duplicateDate')}</td></tr>}
                   {/* ⚠️ r362 58424c7f · MUTED, AND THE COLOUR IS THE DECISION.
                       The reporter asked Leave Credit to REFUSE an end earlier than the start. It is
@@ -859,7 +850,7 @@ export function LeaveCreditRequestTable({
                       </td>
                     </tr>
                   )}
-                  {(mismatch != null || ordinaryUnavailable || below) && (
+                  {(mismatch != null || ordinaryUnavailable) && (
                     <tr>
                       <td colSpan={7} className="px-3 pb-2 text-[11px] font-medium text-destructive">
                         {mismatch != null ? (
@@ -870,9 +861,7 @@ export function LeaveCreditRequestTable({
                           /* The fourth option is offered on every company; what it EARNS is the switch.
                              `workingDayRefused` is translated in all six locales and says exactly this. */
                           <span data-testid="leave-credit-ordinary-earns-nothing">{t('workingDayRefused')}</span>
-                        ) : (
-                          <span data-testid="leave-credit-below-threshold">{belowThresholdText}</span>
-                        )}
+                        ) : null}
                       </td>
                     </tr>
                   )}
@@ -883,12 +872,12 @@ export function LeaveCreditRequestTable({
         </table>
       </div>
 
-      <Button type="button" size="sm" variant="secondary" onClick={addRow} data-testid="leave-credit-add-row">
+      <Button type="button" size="sm" variant="secondary" onClick={addRow} data-testid="leave-credit-add-row" className="border border-dashed border-primary bg-transparent text-primary">
         {t('addRow')}
       </Button>
 
-      <Field label={`${t('reason')} *`}>
-        <textarea name="reason" required rows={3} value={reason} onChange={(event) => setReason(event.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+      <Field label={t('reason')} required>
+        <textarea name="reason" required rows={3} placeholder={t('table.reasonPlaceholder')} value={reason} onChange={(event) => setReason(event.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
       </Field>
 
       {requiresFirstScheduleConsent && (
@@ -900,7 +889,7 @@ export function LeaveCreditRequestTable({
 
       </div>
       <div className={dialog ? 'flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border p-4' : 'flex flex-wrap items-center justify-between gap-3'}>
-      <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
         <span className="font-medium text-foreground" data-testid="leave-credit-total-label">
           {t('grandTotal')}
         </span>

@@ -28,7 +28,7 @@ const DETAILS = '/app/leave/tracker/page.tsx';
 
 describe('d990f14a · the Full screen overlay', () => {
   it('is ONE shared component, used by all three tabs rather than copied', () => {
-    for (const p of [BALANCES, RECORDS, DETAILS]) {
+    for (const p of [RECORDS]) {
       expect(read(p).includes("from '@/components/leave/table-fullscreen'"), `${p} imports it`).toBe(true);
     }
   });
@@ -77,7 +77,7 @@ describe('d990f14a · the Full screen overlay', () => {
     expect(src.startsWith("'use client';")).toBe(true);
     // No translator crosses: the component never imports next-intl, it takes finished strings.
     expect(src.includes('next-intl'), 'the overlay must not translate anything itself').toBe(false);
-    for (const p of [BALANCES, RECORDS, DETAILS]) {
+    for (const p of [RECORDS]) {
       expect(read(p).includes("openLabel={tInq('fullScreen')}"), `${p} passes a finished string`).toBe(true);
     }
   });
@@ -88,9 +88,9 @@ describe('d990f14a · which filters follow a tab change', () => {
     const nav = read(NAV);
     expect(nav.includes('const CARRY: Record<Tab, readonly string[]>')).toBe(true);
     // details gets `emp` alone: its search is an employee search in its own edQ namespace.
-    expect(nav).toMatch(/details:\s*\[\]/);
-    expect(nav).toMatch(/balances:\s*\['q',\s*'type'\]/);
-    expect(nav).toMatch(/records:\s*\['q',\s*'type'\]/);
+    expect(nav).not.toMatch(/details:\s*\[/);
+    expect(nav).toMatch(/balances:\s*\['q',\s*'type',\s*'pickerQ'/);
+    expect(nav).toMatch(/records:\s*\['q',\s*'type',\s*'pickerQ'/);
   });
 
   /**
@@ -110,11 +110,10 @@ describe('d990f14a · which filters follow a tab change', () => {
   it('emp is still threaded through every tab — losing the selection is what made the screen unusable', () => {
     expect(read(NAV).includes("p.set('emp', employmentId)")).toBe(true);
     for (const p of [BALANCES, RECORDS]) {
-      expect(read(p).includes('carry={{ q, type: typeIds }}'), `${p} hands its filters on`).toBe(true);
+      expect(read(p).includes('carry={{ ...panelPreserve, q, type: typeIds }}'), `${p} hands its filters on`).toBe(true);
     }
     // Details passes no carry at all, by design.
-    expect(read(DETAILS).includes('<LeaveInquiryNav active="details" employmentId={inquiryEmploymentId} />')).toBe(
-      true,
-    );
+    expect(read(DETAILS)).not.toContain('<LeaveInquiryNav');
+    expect(read(BALANCES)).not.toContain('<TableFullscreen');
   });
 });

@@ -13531,9 +13531,9 @@
       "help": "Số giờ làm việc sau giờ kết thúc ca theo lịch trong một ngày làm việc thường.",
       "shiftEnd": "Giờ kết thúc ca theo lịch",
       "actualClockOut": "Giờ ra thực tế",
-      "extendedStart": "Bắt đầu làm thêm",
-      "extendedEnd": "Kết thúc làm thêm",
-      "eligibleMinutes": "Số phút đủ điều kiện",
+      "extendedStart": "Giờ bắt đầu",
+      "extendedEnd": "Giờ kết thúc",
+      "eligibleMinutes": "Giờ đủ điều kiện",
       "credit": "Tín dụng",
       "total": "Tổng phần này",
       "nonWorkingDayRefused": "Ngày này không phải ngày làm việc. Hãy dùng Làm việc vào ngày không phải ngày làm việc thay thế.",
@@ -13583,7 +13583,8 @@
       "companyRule": "Quy tắc của công ty: {half} = 0.5 ngày · {full} = 1 ngày",
       "duplicateDate": "Ngày này đã có trong yêu cầu.",
       "reasonRequired": "Thêm lý do để tiếp tục.",
-      "completeRows": "Hoàn thành các dòng đủ điều kiện để tiếp tục."
+      "completeRows": "Hoàn thành các dòng đủ điều kiện để tiếp tục.",
+      "reasonPlaceholder": "vd. Chốt bảng lương cuối tháng"
     }
   },
   "notices": {

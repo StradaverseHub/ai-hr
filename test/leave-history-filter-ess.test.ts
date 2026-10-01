@@ -211,19 +211,16 @@ describe('5f2e20fb · the fence: this is MY history', () => {
 });
 
 describe('5f2e20fb · only the history box is affected (source shape)', () => {
-  const page = read('app/leave/page.tsx');
+  const page = read('components/leave/own-leave-history.tsx');
 
   it('no section above the history read touches hFrom / hTo / hType', () => {
     // The item is explicit: balances, entitlement breakdowns and the secondary groups are untouched. They
     // are all resolved ABOVE the history read on this page, so the slice is the assertion.
-    const bodyAt = page.indexOf('const { s: session, scopeIds } = await scopedSession();');
-    const historyAt = page.indexOf("// History: the viewer's OWN requests");
-    expect(bodyAt).toBeGreaterThan(-1);
-    expect(historyAt).toBeGreaterThan(bodyAt);
-    const beforeHistory = page.slice(bodyAt, historyAt);
-    for (const p of ['hFrom', 'hTo', 'hType']) {
-      expect(beforeHistory.includes(p), `${p} must not reach the balance/entitlement reads`).toBe(false);
-    }
+    const overview = read('app/leave/page.tsx');
+    const balanceRead = overview.match(/const dashboard =[^;]+;/)?.[0];
+    expect(balanceRead, 'dashboard read exists').toBeTruthy();
+    for (const key of ['hFrom', 'hTo', 'hType']) expect(balanceRead).not.toContain(key);
+    expect(overview).toContain('loadOwnLeaveHistory({ session, me, sp, locale, leaveTypes, eligibleTypeIds })');
     // The leave YEAR the dashboard owns is untouched by the history filter, and rides along as a hidden input
     // so applying a filter cannot reset it. UPDATED BY r302 (6c9802c9): this was the as-at date, which went
     // with the My balances card; the Year selector replaced it, and the carrier moved with it.
@@ -260,7 +257,7 @@ describe('a hand-edited filter in the URL degrades to no filter, never to a 500'
   });
 
   it('the page shape-checks all three before they reach the read', () => {
-    const page = read('app/leave/page.tsx');
+    const page = read('components/leave/own-leave-history.tsx');
     // Each raw param is consumed exactly once, and that use is guarded.
     expect(page).toMatch(/const hTypeIds = hArr\(sp\.hType\)\.filter\(\(v\) => UUID\.test\(v\)\)/);
     expect(page).toMatch(/const hFrom = sp\.hFrom && ISO_DATE\.test\(sp\.hFrom\) \? sp\.hFrom : undefined/);

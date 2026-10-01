@@ -703,6 +703,26 @@ describe('r378 · inline attendance details replace the View popup without chang
     expect(screen.getByTestId('leave-credit-submit')).not.toBeDisabled();
   });
 
+  it('keeps the same expanded row while its date facts refresh, and blocks repeated dates', async () => {
+    const user = userEvent.setup();
+    mount('en', {action:async(date) => ({...REST_DAY, scheduleName:date, shiftCode:'FX',shiftName:'Fixture shift',attendanceRecordPresent:true})});
+    await user.type(dateInput('en'), '2026-09-16');
+    await awaitDayType('en','rest_day');
+    await user.type(startInput('en'),'09:00');
+    await user.type(endInput('en'),'17:00');
+    await user.click(screen.getByTestId('leave-credit-details-toggle'));
+    expect(screen.getByTestId('leave-credit-attendance-panel')).toHaveTextContent('2026-09-16');
+    fireEvent.change(dateInput('en'), {target:{value:'2026-09-17'}});
+    await waitFor(() => expect(screen.getByTestId('leave-credit-attendance-panel')).toHaveTextContent('2026-09-17'));
+    expect(screen.getByTestId('leave-credit-details-toggle')).toHaveAttribute('aria-expanded','true');
+    await user.click(screen.getByRole('button', {name:copy('en').addRow}));
+    const dates = screen.getAllByLabelText(copy('en').workedDate) as HTMLInputElement[];
+    fireEvent.change(dates[1], {target:{value:'2026-09-17'}});
+    await awaitDayType('en','rest_day',1);
+    await waitFor(() => expect(screen.getByTestId('leave-credit-submit')).toBeDisabled());
+    expect(screen.getAllByText(copy('en').table.duplicateDate)[0]).toBeInTheDocument();
+  });
+
   it('approved overtime remains visible, and a blank free-text reason blocks an otherwise valid row',async()=>{
     const user=userEvent.setup();mount('en',{reason:'',facts:{...REST_DAY,approvedOtPlan:{start:'19:00:00',end:'21:00:00',minutes:120}}});
     await user.type(dateInput('en'),'2026-09-16');await awaitDayType('en','rest_day');

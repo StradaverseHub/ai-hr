@@ -13531,9 +13531,9 @@
       "help": "在普通工作日排定下班时间之后继续工作的时数。",
       "shiftEnd": "排定下班时间",
       "actualClockOut": "实际打卡下班时间",
-      "extendedStart": "延长开始",
-      "extendedEnd": "延长结束",
-      "eligibleMinutes": "符合资格分钟数",
+      "extendedStart": "开始时间",
+      "extendedEnd": "结束时间",
+      "eligibleMinutes": "符合条件的时数",
       "credit": "额度",
       "total": "本节合计",
       "nonWorkingDayRefused": "此日期并非工作日。请改用非工作日工作。",
@@ -13583,7 +13583,8 @@
       "companyRule": "公司补休规则：{half} = 0.5 天 · {full} = 1 天",
       "duplicateDate": "申请中已有此日期。",
       "reasonRequired": "请填写原因后继续。",
-      "completeRows": "请完成符合条件的日期行后继续。"
+      "completeRows": "请完成符合条件的日期行后继续。",
+      "reasonPlaceholder": "例如：月末薪资结算"
     }
   },
   "notices": {

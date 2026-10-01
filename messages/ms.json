@@ -13531,9 +13531,9 @@
       "help": "Jam bekerja selepas waktu tamat syif anda pada hari bekerja biasa.",
       "shiftEnd": "Tamat syif dijadualkan",
       "actualClockOut": "Waktu keluar sebenar",
-      "extendedStart": "Mula lanjutan",
-      "extendedEnd": "Tamat lanjutan",
-      "eligibleMinutes": "Minit layak",
+      "extendedStart": "Masa mula",
+      "extendedEnd": "Masa tamat",
+      "eligibleMinutes": "Jam layak",
       "credit": "Kredit",
       "total": "Jumlah bahagian",
       "nonWorkingDayRefused": "Tarikh ini bukan hari bekerja. Gunakan Kerja pada hari bukan bekerja sebaliknya.",
@@ -13583,7 +13583,8 @@
       "companyRule": "Peraturan kredit syarikat: {half} = 0.5 hari · {full} = 1 hari",
       "duplicateDate": "Tarikh ini sudah ada dalam permohonan.",
       "reasonRequired": "Tambah sebab untuk meneruskan.",
-      "completeRows": "Lengkapkan baris yang layak untuk meneruskan."
+      "completeRows": "Lengkapkan baris yang layak untuk meneruskan.",
+      "reasonPlaceholder": "cth. Penutupan gaji akhir bulan"
     }
   },
   "notices": {

@@ -124,9 +124,9 @@ import {
 } from 'lucide-react';
 import { registerPack, type ModulePack, type NavLinkDescriptor, type NavNodeGroupDescriptor } from '../registry';
 
-// The leave sidebar presence, moved VERBATIM from components/sidebar.tsx at rung 6 — like claims this
-// is two FLAT rows in two different groups (not a collapsible node), so the pack contributes
-// `navLinks` (group-tagged standalone rows):
+// The leave sidebar originally moved from components/sidebar.tsx as flat rows at rung 6.
+// r378 gives self-service its My Leave node with Overview and History children; the
+// existing administrative configuration node remains separately gated:
 //   - "/leave" sat in the top day-to-day group after /org, before the Attendance node — the "My
 //     Absence" self-service home (a7cbd895 renamed it from "Leave"; label-only, same href/icon),
 //     visible to every employee (self-service, no per-row gate);
@@ -171,10 +171,9 @@ const LEAVE_NAV_LINKS: NavLinkDescriptor[] = [
   //
   // WHAT THIS ROW KEEPS, and it is the load-bearing half: `/leave/tracker` itself, matched on its own href
   // by the plain prefix rule (no `exactHref` here). The tracker is the Leave Calendar for every plain
-  // employee AND the Employee Details tab of the inquiry rail, so it stays a Manage row with no gate.
-  // DISCLOSED CONSEQUENCE (in the approved plan): stepping across the inquiry rail's three tabs moves the
-  // sidebar highlight between Manage (Employee Details) and Leave config (Balances / Leave Record). That is
-  // the least-bad option — the alternative is two lit rows, or taking the calendar off /leave/tracker.
+  // employee. r378 removes the old Employee Details listing; legacy listing links forward to
+  // Employee Balances, while explicit calendar links retain this route. The two remaining inquiry
+  // tabs are owned by Leave config, so switching between them retains that sidebar highlight.
   { group: 'manage', href: '/leave/tracker', navigationHref: '/leave/tracker?calendar=1', labelKey: 'teamLeaveTracker', icon: CalendarRange },
 ];
 
@@ -399,7 +398,7 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
     // 5ca446db (r269) — THE SIXTH ROW, and the only child of this node whose destination is NOT a Leave
     // Config screen. The reporter asked twice ("add a new function under Leave Config: Leave Inquiry", item
     // 1ff969ed; then this item) for a way to look one person's leave up from the menu they configure leave
-    // in. The three screens already exist and already sit together as the Leave Inquiry rail
+    // in. The two remaining screens sit together as the Leave Inquiry tabs
     // (components/leave/leave-inquiry-nav.tsx); what was missing was the door, which was a single underlined
     // link in the Entitlements page header (removed in this same commit — a link on one page is not
     // navigation, and r242's F47 property is served strictly better by a permanent row).
@@ -464,7 +463,7 @@ export const leavePack: ModulePack = {
   kind: 'module',
   navLinks: LEAVE_NAV_LINKS,
   // 645e67c4 — the Administration-group contribution went from a flat row to a node (see LEAVE_ADMIN_NAV).
-  // The 'main' /leave row above is untouched: that is the employee's own My Absence home, not config.
+  // r378: the employee's own Overview and History live in LEAVE_SELF_NAV; configuration stays separate.
   navNodes: [LEAVE_SELF_NAV, LEAVE_ADMIN_NAV],
   // Pack-owned satellite tables (D5/D11 criterion 2 — documentation, not DDL). Audited from
   // db/schema.ts 2026-07-24. holiday / holiday_group / holiday_group_holiday stay OUTSIDE (shared

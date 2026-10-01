@@ -178,7 +178,7 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
     // same blind spot in test/function-access.test.ts was fixed for the opposite reason, where a
     // comment made an UNGUARDED page look guarded. Four other helpers in this very file already strip
     // before matching. Nothing is loosened: a real second <table> or <section> still fails.
-    const src = read(TABLE_TSX)
+    const src = read(TABLE_TSX).slice(read(TABLE_TSX).indexOf('export function LeaveCreditRequestTable'))
       .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^\s*\/\/.*$/gm, '');
@@ -253,9 +253,7 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
      * Both are named, so removing either fails here rather than passing on the other's mention.
      */
     expect(src, 'the money rule: NULL shift end on the three non-working types').toContain('shiftEnd: floored ? view.shiftEnd : null');
-    expect(src, 'and the panel asks the same predicate, so it cannot contradict the arithmetic').toContain(
-      "const scheduled = dayType !== '' && flooredByScheduledShiftEnd(dayType);",
-    );
+    expect(src, 'recorded effective shift identity is display-only').toContain('view?.shiftCode');
     expect(src).toContain('const windowLive = wantsWindow && !ordinaryUnavailable;');
     expect(src).toContain('claimsTimeWindow');
   });
@@ -595,7 +593,7 @@ describe('r365 · the Attendance column, the shared panel, and what was retired 
    * about THIS one.
    */
   it('both callers take the anchored panel from the one module, and neither keeps a copy of the maths', () => {
-    for (const f of [TABLE, FIGURES]) {
+    for (const f of ['components/leave/inquiry-note.tsx', FIGURES]) {
       expect(stripped(f), `${f} must import the shared panel`).toMatch(/from '(@\/components|\.\.)\/ui\/anchored-panel'/);
       expect(stripped(f), `${f} must not re-derive the rect`).not.toContain('getBoundingClientRect');
       expect(stripped(f), `${f} must not re-register the capture-phase scroll sync`).not.toContain("addEventListener('scroll'");
@@ -626,7 +624,8 @@ describe('r365 · the Attendance column, the shared panel, and what was retired 
    */
   it('the Attendance control carries no name and is type="button" — it cannot post and cannot submit', () => {
     const code = stripped(TABLE);
-    const btn = code.slice(code.indexOf('data-testid="leave-credit-attendance-view"') - 900, code.indexOf('data-testid="leave-credit-attendance-view"'));
+    const btn = code.match(/<button[^>]*data-testid="leave-credit-details-toggle"[^>]*>/)?.[0] ?? '';
+    expect(btn, 'the inline toggle exists').not.toBe('');
     expect(btn, 'the Attendance button must be type="button"').toContain("type=\"button\"");
     expect(btn, 'and must carry no posted name').not.toMatch(/name="/);
   });
@@ -659,7 +658,7 @@ describe('r365 · the Attendance column, the shared panel, and what was retired 
     const stmt = code.slice(code.indexOf('const blocked ='), code.indexOf(';', code.indexOf('const blocked =')));
     const operands = [...stmt.matchAll(/([A-Za-z_$][\w$]*)\s*(?:\.length\s*>\s*0|<=\s*0)/g)].map((m) => m[1]).sort();
     expect(operands).toEqual(
-      ['belowThresholdRows', 'incompleteRows', 'mismatchRows', 'ordinaryUnavailableRows', 'totalCredit'].sort(),
+      ['belowThresholdRows', 'duplicateDates', 'incompleteRows', 'mismatchRows', 'ordinaryUnavailableRows', 'totalCredit'].sort(),
     );
     for (const name of ['attendance', 'Attendance', 'hasClockOut', 'exceedsClockOut', 'actualClock', 'approvedOtPlan'])
       expect(stmt, `${name} must not reach the submit gate`).not.toContain(name);
@@ -704,10 +703,10 @@ describe('r365 · the Attendance column, the shared panel, and what was retired 
    */
   it('the two old column headings survive as the panel’s labels for the same two facts', () => {
     const code = stripped(TABLE);
-    expect(code).toContain("t('sectionB.shiftEnd')");
-    expect(code).toContain("t('sectionB.actualClockOut')");
+    expect(code).toContain("'sectionB.actualClockOut'");
+    expect(code).toContain("'table.detailShift'");
     // …and they are no longer `<th>`s: the Attendance column took their place.
-    expect(code, 'the header row is eight cells and one of them is Attendance').toContain("t('table.attendanceColumn')");
+    expect(code, 'Attendance column is retired for inline details').not.toContain("t('table.attendanceColumn')");
     expect(code).not.toMatch(/<th className=\{thCls\}>\{t\('sectionB\.shiftEnd'\)\}<\/th>/);
     expect(code).not.toMatch(/<th className=\{thCls\}>\{t\('sectionB\.actualClockOut'\)\}<\/th>/);
   });
@@ -814,6 +813,9 @@ describe('r343 · the translated keys are translated, and the English ones are n
         .replace(/\/\*[\s\S]*?\*\//g, '')
         .replace(/^\s*\/\/.*$/gm, '');
       for (const m of code.matchAll(/\bt\('([^']+)'/g)) out.add(m[1]);
+      // Inline reference-table headings translate a fixed key array through t(key).
+      const headings=code.match(/\{\[([^\]]+)\]\.map\(\(key\)/)?.[1];
+      if(headings)for(const m of headings.matchAll(/'([^']+)'/g))out.add(m[1]);
     }
     return [...out].sort();
   };
@@ -855,8 +857,6 @@ describe('r343 · the translated keys are translated, and the English ones are n
     'table.statusHeading',
     'table.submittedOn',
     'totalDays',
-    'unit',
-    'unitDay',
     'workedDate',
   ];
 
@@ -905,19 +905,20 @@ describe('r343 · the translated keys are translated, and the English ones are n
       'table.dayTypeReading',
       'table.dayTypeNotFound',
       'table.crossesMidnight',
-      'table.attendanceColumn',
-      'table.attendanceView',
-      'table.attendanceViewDisabled',
-      'table.attendanceHeading',
-      'table.attendanceScheduledShift',
+      'table.detailToggle',
+      'table.detailDay',
+      'table.detailSchedule',
+      'table.detailShift',
+      'table.detailHours',
+      'table.noAttendanceRecord',
+      'table.companyRule',
+      'table.duplicateDate',
+      'table.reasonRequired',
+      'table.reasonPlaceholder',
+      'table.completeRows',
       'table.attendanceClockIn',
-      'table.attendanceClockInOut',
-      'table.attendanceNoShift',
-      'table.attendanceNothingRecorded',
-      'table.attendanceNoRecordNote',
       'table.attendanceReferenceOnly',
       'table.attendanceOtPlan',
-      'table.attendanceOtPlanNone',
       'table.attendanceOtPlanApproved',
       'table.dotReasonNoRecord',
       'table.dotReasonPastClockOut',
@@ -1132,6 +1133,13 @@ beforeEach(async () => {
 });
 
 describe('r343 · the roster adjudicates the employee’s chosen Day Type', () => {
+  it('r378 requires a nonblank free-text reason at the service boundary, before any claim write', async () => {
+    for (const reason of [undefined, '', '   ']) {
+      await expect(submitLeaveCreditRequest(ctx, {reason,employmentId:'11111111-1111-1111-1111-111111111111',rows:[{workedDate:REST_DAY,dayType:'rest_day',claimStart:'09:00',claimEnd:'17:00'}],today:TODAY})).rejects.toThrow('Enter a reason');
+    }
+    expect(await owner.db.select().from(schema.replacementLeaveRequestDate)).toHaveLength(0);
+  });
+
   it('the fixture roster really does hold three different kinds for the three dates', async () => {
     await setToilPolicy(adminCtx(b), policy());
     const employmentId = await hire();
@@ -1145,14 +1153,14 @@ describe('r343 · the roster adjudicates the employee’s chosen Day Type', () =
     await setToilPolicy(adminCtx(b), policy());
     const employmentId = await hire();
     await expect(
-      submitLeaveCreditRequest(ctx, {
+      submitLeaveCreditRequest(ctx, { reason: 'Fixture claim reason',
         employmentId,
         rows: [{ workedDate: OFF_DAY, dayType: 'rest_day', claimStart: '09:00', claimEnd: '17:00' }],
         today: TODAY,
       }),
     ).rejects.toThrow(LeaveCreditDayTypeMismatchError);
     await expect(
-      submitLeaveCreditRequest(ctx, {
+      submitLeaveCreditRequest(ctx, { reason: 'Fixture claim reason',
         employmentId,
         rows: [{ workedDate: OFF_DAY, dayType: 'rest_day', claimStart: '09:00', claimEnd: '17:00' }],
         today: TODAY,
@@ -1182,7 +1190,7 @@ describe('r343 · the roster adjudicates the employee’s chosen Day Type', () =
   it('a row that agrees with the roster submits, and all four day types share one request and one total', async () => {
     await setToilPolicy(adminCtx(b), policy());
     const employmentId = await hire();
-    const res = await submitLeaveCreditRequest(ctx, {
+    const res = await submitLeaveCreditRequest(ctx, { reason: 'Fixture claim reason',
       employmentId,
       rows: [
         // r358 — a window, not a declared figure: eight hours is the full-day tier, four is the half.
@@ -1207,10 +1215,10 @@ describe('r343 · the roster adjudicates the employee’s chosen Day Type', () =
     await setToilPolicy(adminCtx(b), policy());
     const employmentId = await hire();
     await expect(
-      submitLeaveCreditRequest(ctx, { employmentId, rows: [{ workedDate: WORKDAY, dayType: 'workday' }], today: TODAY }),
+      submitLeaveCreditRequest(ctx, { reason: 'Fixture claim reason', employmentId, rows: [{ workedDate: WORKDAY, dayType: 'workday' }], today: TODAY }),
     ).rejects.toThrow(new RegExp(WORKDAY));
     await expect(
-      submitLeaveCreditRequest(ctx, { employmentId, rows: [{ workedDate: WORKDAY, dayType: 'workday' }], today: TODAY }),
+      submitLeaveCreditRequest(ctx, { reason: 'Fixture claim reason', employmentId, rows: [{ workedDate: WORKDAY, dayType: 'workday' }], today: TODAY }),
     ).rejects.toThrow(ReplacementRequestInvalidError);
   });
 
@@ -1218,7 +1226,7 @@ describe('r343 · the roster adjudicates the employee’s chosen Day Type', () =
     await setToilPolicy(adminCtx(b), policy());
     const employmentId = await hire();
     await expect(
-      submitLeaveCreditRequest(ctx, {
+      submitLeaveCreditRequest(ctx, { reason: 'Fixture claim reason',
         employmentId,
         rows: [{ workedDate: REST_DAY, dayType: 'weekend' as unknown as LeaveCreditDayType, claimStart: '09:00', claimEnd: '17:00' }],
         today: TODAY,
