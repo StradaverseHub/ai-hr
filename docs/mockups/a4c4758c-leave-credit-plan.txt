@@ -1,0 +1,56 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+The request already supports one date per row, an automatically filled day type, overnight times and a live credit total. Attendance is already a reference rather than a limit on the claim. The current pop-up is vertically centred, scrolls as a whole and opens attendance in a separate view. This review checked the current code; the production screen has not yet been inspected. The attachment listing has been checked and contains no attachment, despite the request naming a layout image.
+
+WHAT WE'LL CHANGE
+
+- Make the pop-up up to 1080px wide, use 90% of the screen width on smaller screens, and anchor its top at 5% of the screen. Keep its height within 90% of the screen. Only the middle will scroll; the header, total and buttons stay visible.
+
+- Keep your two existing explanatory paragraphs exactly as requested, under Leave Credit request. Add the purple credit-rule label, show the replacement leave type as plain text, remove the Unit box and add a close icon.
+
+- Use Date Worked, Day Type, Start Time, End Time, Eligible Hours, Credit and Delete. Only the date and times will be editable. Day types become blue, orange or green tags; eligible hours and credit become plain text. Keep overnight claims working.
+
+- Show a clear warning below a row's eligible hours when it earns no credit, and show This date is already added on duplicate dates. Keep the existing credit rules and checks.
+
+- Replace the eye icon with View day-by-day details below each row. It will expand the attendance for that row's date only, with Date, Day, Schedule, Shift, Clock in, Clock out and Hours after shift. It stays open and refreshes when the date changes, and clearly explains when no attendance record exists. Attendance remains for reference only and does not limit the claim.
+
+- Add the dashed purple Add date button and a required three-line Reason box with your suggested example. Keep Total credit claimed in the fixed footer, with Cancel and Send to manager beside it. Explain why sending is unavailable, including a missing reason or incomplete times.
+
+WHAT YOU'LL GET
+
+A stable pop-up with the total and actions always available, clearer claim rows, and each date's attendance directly beneath that row.
+
+GOOD TO KNOW
+
+- Credit thresholds are already configurable by company. We will use the same saved thresholds for the rule label, warnings and credit calculation. Where they are four and eight hours, the label will read 4 hrs = 0.5 day · 8 hrs = 1 day. We will not reset a company's rules to those values as part of a layout change.
+
+- The existing agreement checkbox, where required, and manager approval remain in place. Existing requests and credits are unaffected.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+SOURCE OWNERS, verified against mainwt:
+components/leave/replacement-leave-request-dialog.tsx owns the Radix modal, title/description and external Cancel button. Current frame is top-1/2, translate-y-1/2, w-[95vw], max-w-5xl, max-h-[90vh], overflow-y-auto. It mounts components/leave/leave-credit-request-table.tsx, which is also used by app/leave/credit/page.tsx. Preserve one form and one posted-row contract. Refactor shared form/header/footer slots or a layout mode rather than creating a second implementation. Fixed modal header/footer must belong to the same form; form-linked submission must preserve server-action pending semantics and First Schedule consent. Close/Cancel/Escape retain Radix focus restoration.
+
+The table owns date-keyed facts loading, factError/factsSettled/retry states, rows, day-type auto-fill, cross-midnight notice, derived minutes/credits and total, disabled-submit predicate. Remove the visible Attendance column and anchored AttendanceViewCell route from this employee form; replace it with one full-width detail row per stable row key. Track expansion by row key while details consume facts indexed by its CURRENT workedDate. Empty date disables details; changing date clears stale day type atomically already, must also avoid rendering stale attendance during reload. Preserve loading/failure/retry distinctions. Seven columns means updating every detail/warning colSpan, and responsive tables must scroll without widening the modal.
+
+Current eligible minutes and credit are dressed as disabledCell input-like boxes. Current Day Type is already read-only, with provenance captions; retain provenance accessibly when changing it to the requested coloured tag. Start/end labels use sectionB.extendedStart/extendedEnd. All four types already post date/day type/start/end via ordered hidden fields, and submitLeaveCreditRequestAction zips them by index. Keep hidden replacement leaveTypeId; remove only visible Unit, whose value the service already derives as day. Use the tenant's resolved replacementType.name, not a hardcoded name that overwrites renamed leave types.
+
+AUTHORITATIVE DATA: app/leave/credit/actions.ts leaveCreditDayFactsAction resolves the calling employee through getSession/myEmployment and consumes packs/leave/service extendedHoursDayForEmployment. Facts currently expose kind, shiftStart, shiftEnd, actualClockIn, actualClockOut, measuredExtendedMinutes and approvedOtPlan. They do NOT expose Schedule or Shift names/codes, nor an explicit attendance-record-present flag. Extend the existing scoped read result with these display-only facts through the attendance owner. Do not infer absence from missing punches: an attendance record can exist without them. Resolve schedule/shift identity from the same effective schedule source used for that date, never show another date or invent a label. Keep approved-OT overlap information and existing claim/clock-out caution accessible in the expanded details; do not silently remove those safeguards when retiring the eye/dot presentation.
+
+ARITHMETIC: lib/extended-hours.ts assessExtendedClaim and claimCrossesMidnight already interpret end earlier than start as next day, equal times as zero, and floor ordinary-day claims at the scheduled shift end without capping at attendance. extendedHoursCreditDays applies configured break/grace and half/full-day thresholds. Do not substitute a raw time difference, hardcode four/eight, alter rounding/caps, or change OT overlap/First Schedule/manager rules. Use display-only hours/minutes formatting with the requested spacing, retaining integer minutes internally. Derive the purple label and below-threshold warning from the same company tiers. Exact fixed four/eight assertions remain unverified for this reporter's company until its saved configuration is checked.
+
+VALIDATION: core/leave-credit-request.ts submitLeaveCreditRequest enforces row windows and roster adjudication before core/replacement-request.ts submitReplacementLeaveRequest. The latter already refuses repeated dates via a seen set and below-threshold credit. Add the requested immediate duplicate-row warning, retaining server refusal. Current client blocked predicate covers total <= 0, roster mismatch, below threshold, incomplete dates/times and unavailable ordinary-day credits; it does NOT include Reason or pending submit. Current Reason is a single-line input, not required. Backend accepts optional reason and stores p.reason?.trim() || null. Therefore mandatory Reason is an explicitly requested validation change, not an existing guarantee: require trimmed nonblank reason in both employee action/shared submitLeaveCreditRequest boundary and client state, without retroactively changing historic records or unrelated HR/legacy submission pathways. Keep conditional consent enforcement and prevent double submit. A disabled button cannot reliably receive hover/focus; place its explanation on a focusable wrapper and include accessible text.
+
+SCOPE/UNKNOWNS: no schema change appears necessary from source triage; Schedule/Shift display owner extension still needs exact query design. VERIFIED ATTACHMENTS: the board attachment listing contains none. Leave_Credit_Request_layout.png is named in the request but was not supplied on the board; the written specification is the available design reference. Production reproduction, current company tier values and no-record behaviour are not verified. Preserve the exact two requested paragraphs from replacementRequest.description and replacementRequest.table.help; do not replace them with image copy. If company thresholds differ, the fixed existing paragraph is potentially misleading even though the reporter explicitly asks to retain it: surface that conflict before build rather than changing policy. This draft recommends truthful dynamic rule/warning figures while preserving their paragraph wording.
+
+VERIFICATION AFTER APPROVAL: modal geometry at wide/phone/dark, top fixed while rows expand and only middle scrolls; single form and keyboard dismissal; all four day types; current-date-only details including schedule/shift/no-record/loading/error/retry; date replacement while expanded; duplicate dates; overnight/equal times; configured break/grace/nondefault tier cases; under-threshold zero-credit rows; required/whitespace reason enforcement on client/server; consent, overlap and manager decision unchanged; historic requests unchanged. Existing r343-leave-credit-table.dom, r343-leave-credit-single-table, r365 attendance-view guards and related credit/extended-hours tests must be updated rather than weakened.
+
+NOT DONE: implementation, rendered mockup, production reproduction, tests, database reads, migrations or board writes. This proposal needs reporter approval before implementation.
+
+LOCAL MOCKUP: the adjacent HTML is a responsive static schematic with prefers-color-scheme dark styling. It uses placeholders rather than employee figures and is not a tested runtime screen. Parent must render and inspect desktop/phone/dark before publication.
+
+LOCALIZATION: implement all new or changed UI captions, row errors, disabled-send explanations and accessible labels in the six locale catalogues, following existing namespaces. Preserve the reporter's two English header paragraphs on the credit dialog, and the balance metrics' established meanings. Do not alter shared numeric formatting or unrelated screens.

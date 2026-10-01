@@ -1,0 +1,56 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+Annual Leave already uses a donut with the Available Balance in its centre. Other leave types use smaller cards, and the centre caption adds (days). We checked the current screen code and your attached picture. Your picture shows the Annual Leave donut beside smaller cards and asks us to extend that design to the other leave types. We have not yet reproduced the production screen.
+
+WHAT WE'LL CHANGE
+
+- Use one consistent card frame: donut on the left, leave name and figures on the right. Show two cards per row on desktop and one on mobile, with equal-height cards in the same row.
+
+- Remove (days) from leave-card labels, keep the existing two-decimal figures, and use Pending approval throughout these cards. Keep the star markers, Details actions and every existing note, including shared leave, Special Leave pool information and Replacement Leave expiry or in-lieu information.
+
+- Use green for Available Balance, orange for Pending approval, purple for Taken and grey for Not earned yet. Add one shared colour legend above the cards. Draw the same existing figures without changing how leave is earned, deducted or approved.
+
+- For a type without an entitlement table, use a neutral grey ring and retain the existing No entitlement table note. Keep its real displayed figures rather than substituting zero. Preserve — wherever a figure is unavailable or hidden.
+
+WHAT YOU'LL GET
+
+A consistent balance section that is easier to compare, with readable centre labels and the same figures, notes and actions as before.
+
+GOOD TO KNOW
+
+- We found a conflict in the request: no entitlement table does not necessarily mean zero balance. Replacement Leave can hold credited days without an entitlement table. Showing 0.00 regardless would change a figure you explicitly asked us to preserve. This plan keeps the real figure and uses the grey ring to indicate that there is no entitlement table.
+
+- Some figures are deliberately hidden, negative or drawn from a shared leave pool. Those cards will use a neutral ring when coloured segments would reveal hidden figures or imply a separate allowance. Their existing figures and explanations remain. We will not manufacture missing figures to make every ring look complete.
+
+- Request leave, Leave Credit request, Details and the leave-year selector keep their current behaviour. If the reference design requires changing a figure or calculation, we will flag that instead of implementing it.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+AUTHORITATIVE LAYOUT: components/leave/my-leave-dashboard.tsx MyLeaveDashboard, mounted by app/leave/page.tsx around line 1240. Do not alter components/leave/leave-balance-table.tsx merely because its name matches the ticket: that is the separate shared summary table used by other surfaces. Graph query identifies MyLeaveDashboard in both core/my-leave.ts (data) and the component (presentation); only the presentation owner is in scope.
+
+Current ringCards filter requires annualLeave, not takenOnly and ringDrawable; otherCards use smallCard, and the current layout has an annual-vs-other split plus up to three small cards per row. Unify the card frame/grid at the UI layer, preserving cards array membership/order, primary/secondary presentation and standalone shared-group tiles. Future types consume the same frame through the existing cards projection. Keep footer, extras, laterLine, poolRole, notes and detail handlers, including replacement-specific panel and shared ceiling lines. Do not change query inputs, RSC data projection, lookup/scoping, core/my-leave.ts, core/read.ts or the data model.
+
+components/leave/leave-balance-ring.tsx owns SVG ring proportions, ringDrawable/ringSegments and RING_COLORS. Existing colours are available green, pending orange, taken indigo and unearned grey; change taken to the requested purple and keep accessible titles/labels. leave.myLeave.centreCaption is currently {label} (days); local UI caption/message styling can drop the unit without changing global formatDays. Keep all numeric formatDays output and null -> DAY_DASH behaviour. Rename this card's pending caption to existing pendingApproval. Search all My Leave rendered labels for (days), including constructed units and localized variants, before claiming absence. Changes to shared messages must be scoped and all six catalogues consistent; avoid global label edits that rename unrelated screens.
+
+MATERIAL CONFLICTS FOUND IN SOURCE:
+1. No entitlement table is c.hasEntitlement=false, which is not c.remaining=0. c.takenOnly has another, narrower definition. Replacement credits or carried/adjusted days can exist without an entitlement table. Never force centre 0.00 or replace an existing positive/negative/null value just to match the generic empty-ring example.
+2. smallCard prints c.balance as its headline for a normal nonannual card, but annual ringCard centre is c.remaining. They are different metrics (gross balance versus available after pending). Adopting the annual centre everywhere must not silently drop or relabel the old balance number. Preserve any currently displayed balance figure as an additional labelled row if the new centre uses available; derive nothing new. Borrower headline already uses c.canApplyFor for the current cycle or c.remaining for an earlier cycle. Preserve that exact mapping and pool provenance.
+3. ringDrawable rejects null/negative arc figures to prevent hidden values leaking through proportions and to avoid drawing negative arcs. A donut frame on every type does not authorize relaxing those guards. A neutral track with the existing permitted centre/text is the no-logic-change solution for undrawable cards.
+4. Current ringSegments requires earnedSoFar nonnull and derives unearned from entitlement-earnedSoFar. The request asks Medical with earned — to draw against entitlement. That is NOT supported by the current drawable guard, and inventing an earned value or new unearned amount would alter logic. Stop and flag before changing the segmentation model. This proposal retains a neutral ring for that case unless a subsequent approved design can use the existing segments without changing semantics.
+5. Taken-only/borrower cards deliberately omit some rows rather than printing all pool figures as the type's own. Keep their existing visible values and notes; do not expand hidden/absent values into fictional zeros or duplicate a pool allowance. Shared unit/remnant captions and year-dependent Remaining labels retain their factual meaning.
+
+VERIFICATION AFTER APPROVAL: the attached reference has been inspected; reproduce production before building. Capture before screenshot and structured visible label/value pairs for the same user/year/locale, then compare after for every card and note. Include nonzero replacement credits without entitlement, taken-only unpaid, earned null, hidden ESS figures, negative available, borrower/pool cards, expired/earlier cycles and types with later ledger notes. No figure disappears or changes label to a different metric; no hidden figure is exposed. Pin two-column desktop/one-column phone/equal-row-height geometry, unclipped centre caption and legend colours; keyboard/Details and request actions unchanged. Update existing r302-my-leave.dom, r302fp-my-leave-fixpass.dom, r302-my-leave-dashboard and label/ring guards, preserving their arithmetic/privacy assertions. Diff must contain only approved frontend presentation/style/message/test files; no backend/query/model/formatter arithmetic changes.
+
+REFERENCE VERIFIED: the one-page My Leave -My Leave Balance page design.pdf was text-extracted and rendered to PNG, then visually inspected. It is a screenshot of the existing My Leave page annotated in red: remove (days) from the donut/Annual card and apply its design to other leave types. It shows the Annual donut and six smaller cards, with existing stars, Pending versus Pending approval label inconsistency, Replacement/Unpaid no-entitlement notes, Details links, and the Special Leave pool explanation. It is not a separate redesigned two-column mockup; the written request supplies that layout requirement. The screenshot captures one user at one selected year, not an invariant that every no-entitlement balance must be zero. No captured user identifiers or figures have been copied into this proposal.
+
+UNKNOWN: actual current production data/figures and the breadth of (days) in the rendered page remain unverified. The neutral-ring exceptions above must be explicit in the published plan, not quietly shipped as if every requested display rule were compatible.
+
+NOT DONE: implementation, rendered mockup, production reproduction, tests, database reads or board writes. This proposal preserves data and explicitly describes the neutral-ring exceptions for reporter approval.
+
+LOCAL MOCKUP: the adjacent HTML is a responsive static schematic with prefers-color-scheme dark styling. It uses placeholders rather than employee figures and is not a tested runtime screen. Parent must render and inspect desktop/phone/dark before publication.
+
+LOCALIZATION: implement all new or changed UI captions, row errors, disabled-send explanations and accessible labels in the six locale catalogues, following existing namespaces. Preserve the reporter's two English header paragraphs on the credit dialog, and the balance metrics' established meanings. Do not alter shared numeric formatting or unrelated screens.
