@@ -1,0 +1,47 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+The children table currently shows each category's weighting even when no children are claimed in that category. That makes an unclaimed category look as though it contributes to C. The PDF also changes Σ and the mathematical minus sign into ordinary text.
+
+The ten-section layout already exists. Most older payroll runs did not save Q, so their missing value cannot honestly be filled using today's settings.
+
+WHAT WE'LL CHANGE
+
+- Q will show the relief per child from the PCB settings used for the selected payroll run. Subsequent calculations will follow the applicable settings automatically; the detail page will never keep a separate hard-coded amount.
+
+- C will use the same counted-as result as the employee's Income Tax (PCB) information and payroll calculation. Each child category will show its actual claimed contribution, including the shared-claim weighting. A category with no claim will contribute zero. The category totals will reconcile with C.
+
+- New payroll runs will save the child claims and their counted-as results together with Q and C. The screen and PDF will use those saved values, so later changes to employee information cannot change the explanation of an earlier payslip.
+
+- The PDF will display Σ(Y−K), ΣLP and the other mathematical symbols directly, using a font that supports them. The screen and PDF will retain the same ten sections, formulas and final deduction.
+
+WHAT YOU'LL GET
+
+The child table, C and the qualifying-child deduction will explain the same calculation. The downloaded slip will use the requested mathematical notation and match the payroll deduction it explains.
+
+GOOD TO KNOW
+
+- Settings and employee changes affect subsequent payroll calculations. Already processed payslips retain the values used when they were calculated. Missing historical details remain labelled “Not recorded”; they will never be replaced with today's figures or shown as zero.
+
+- For employees whose children are entered as a single total, that total remains the source of C. We will not invent a breakdown across child categories.
+
+- Approval authorizes this revised child-count and PDF work. It does not authorize recalculating or changing any already processed payroll.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: live pull-item on 1 October 2026 confirms contested, revision 1. The latest contest has ten acceptance criteria covering Q configuration, shared C, zero claimed-rate rows, reconciliation, QC and Unicode PDF. Existing r372 ten-section structure is retained; the original deferred 9.7/9.8 additions remain outside this revised child/PDF change and are not claimed complete.
+
+FACT: localization/my/payroll.ts stamps childDeductionPerChild from resolved pcb.reliefs.perChild and childCount from childRelief divided by that same Q. Employee Counted as uses childReliefFor via the country pack seam. Do not introduce a second stored employee C or independent tax calculation. Verify all modes and category-1 treatment before any patch; if the actual payroll input differs, correct the single kernel source and add official-spec regression cases rather than patching the reader.
+
+Historical trace availability varies. A legacy childCount without Q must not be silently treated as modern weighted C; version/availability checks must state missing provenance.
+
+FACT: core/pcb-explain.ts childSlipSection currently renders c.qc as the third category column irrespective of full/half claimed counts. This is the category multiplier, not the claimed contribution. The detail slip-data.ts reads the current employee profile rather than the run's profile. Add forward-only child-claim working to pcbMeta.trace at the payroll owner and let the shared reader consume it. Historical category working that was never stamped stays notRecorded. No migration needed. Do not reconstruct old claims from current employee data. Validate and reconcile the summed claims, stamped C and reliefs.children; do not round a shared-claim count to an integer.
+
+FACT: slip-pdf.ts foldWinAnsi deliberately turns Σ and ∑ into Sum and − into hyphen. Replace this fallback for formula text with an embedded Unicode font using the existing bundled font machinery. Verify glyph coverage and extracted Unicode text plus rendered PDF; changing the fold alone would leave unsupported glyphs. Keep source formulas shared and no arithmetic in the reader.
+
+PRIMARY SOURCE: HASiL 2026 specification, printed page 10 for Q/C and printed page 27 for child category weighting: https://www.hasil.gov.my/wp-content/uploads/spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf . Retrieved from the official current index on 1 October 2026. Apply 100-percent and 50-percent entitlement to actual child counts, and distinguish category weighting from the employee's claimed total.
+
+Tests after approval: shared employee/kernel/slip cases for unclaimed, full, half, mixed and all-zero categories; changed Q in subsequent runs; unchanged historical snapshot after employee/config edits; legacy childCount without Q; manual/no profile; category-1 rule; PDF Σ(Y−K)/ΣLP/minus text and visible glyphs; screen/PDF ten-section and final-PCB parity; tenant/employee scope. Six locales. No payroll backfill. Parent owns full gate and release.
