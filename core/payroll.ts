@@ -6336,7 +6336,7 @@ export async function generatePayslips(
         // computing exactly as it does today.
         disabledSpouse: e.disabledSpouse ?? false,
         childReliefAmount,
-        ...(childFigure ? { childWorking: {
+        ...(childFigure && e.childReliefMode != null ? { childWorking: {
           mode: pricesChildReliefFromGrid(e) ? 'auto_table' as const : 'manual' as const,
           table: pricesChildReliefFromGrid(e) ? e.childReliefTable as Record<string, { full?: unknown; half?: unknown } | undefined> | null : null,
           rows: childFigure.rows,

@@ -276,6 +276,8 @@ type PcbDelta = { cumulative: number; prior: number; cumulativeBonus: number };
 function readChildWorking(raw: unknown): PcbTrace['childWorking'] {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const w = raw as Record<string, unknown>;
+  if (w.table != null && (typeof w.table !== 'object' || Array.isArray(w.table))) return null;
+  if (typeof w.disabledIndividual !== 'boolean' || typeof w.disabledSpouse !== 'boolean') return null;
   if (!w.categoryUnits || typeof w.categoryUnits !== 'object' || Array.isArray(w.categoryUnits) ||
       !Object.values(w.categoryUnits).every((value) => typeof value === 'number' && Number.isFinite(value) && value >= 0)) return null;
   if ((w.mode !== 'manual' && w.mode !== 'auto_table') || !Array.isArray(w.rows) ||
