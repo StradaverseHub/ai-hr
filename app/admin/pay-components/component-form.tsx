@@ -1,3 +1,4 @@
+import { packFor } from '@/localization/registry';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import type { listPayComponents } from '@/core/pay-components';
@@ -235,13 +236,11 @@ export async function ComponentForm({
           <p className="text-xs text-muted-foreground">{t('sectionEaFormHint')}</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label={t('colEaLine')}>
-              <select name="eaFormLine" defaultValue={component?.eaFormLine ?? ''} className={inputCls}>
+              <select name="eaFormLine" defaultValue={component?.eaFormLine ?? (component?.kind === 'deduction' || component?.kind === 'non_payable' || component?.kind === 'contribution' ? '' : 'EA_B1A')} className={inputCls}>
                 <option value="">{t('eaLineNone')}</option>
-                {EA_FORM_LINES.map((l) => (
-                  <option key={l} value={l}>
-                    {t(`eaLine_${l}`)}
-                  </option>
-                ))}
+                {(packFor('MY')?.eaReporting ?? []).filter(e => e.active).map(e => <option key={e.code} value={e.code}>{e.label}</option>)}
+                {component?.eaFormLine && !component.eaFormLine.startsWith('EA_') && <option value={component.eaFormLine}>{t(`eaLine_${component.eaFormLine}`)}</option>}
+
               </select>
             </Field>
           </div>
