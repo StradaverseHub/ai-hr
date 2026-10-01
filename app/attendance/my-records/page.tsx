@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
@@ -59,13 +60,7 @@ import { resolveMyAttendanceRange } from './range';
  * screen REFUSES politely instead of printing a truncated record. See ./range.ts.
  *
  * ── WHAT IS DELIBERATELY NOT HERE ───────────────────────────────────────────────────────────────────
- * 1. NO ACTION / VIEW COLUMN. ⚠️ THE APPROVED PLAN LISTS ONE IN ROUND ONE ("…and a View link"), and this
- *    omits it on purpose. `/attendance/my-records/[date]` is round TWO, and the two halves of
- *    test/function-access.test.ts pin route and file to each other in both directions: the route cannot be
- *    registered before the page exists, and an unregistered route is not reachable. A View link shipped a
- *    round early is therefore a column of links that 404 for every employee who clicks one — worse for the
- *    reporter reviewing round one than a list with no link yet. The column arrives with the screen it
- *    opens. Recorded here, not silently dropped.
+ * 1. View opens the employee-only day route, with the current date filter retained.
  * 2. NO TAB STRIP. `components/attendance-tabs.tsx` links to `/attendance`, `/attendance/daily` and
  *    `/attendance/individual` — three ADMIN questions, and clicking one drops the employee out of their
  *    own screen (r274, then r287). One screen, one job.
@@ -250,6 +245,7 @@ export default async function MyAttendanceRecordsPage({
                   <th className="px-3 py-2 font-medium">{t('colStatus')}</th>
                   {/* The SECOND AXIS. Late / Under / Odd are flags, not statuses — see the statusText note. */}
                   <th className="px-3 py-2 font-medium">{t('colNote')}</th>
+                  <th className="sticky right-0 bg-card px-3 py-2 font-medium">{t('colAction')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -285,12 +281,17 @@ export default async function MyAttendanceRecordsPage({
                           <span className="text-muted-foreground">—</span>
                         )}
                       </td>
+                      <td className="sticky right-0 whitespace-nowrap bg-card px-3 py-2.5">
+                        <Link className="font-medium text-primary hover:underline" href={`/attendance/my-records/${r.date}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`}>
+                          {t('breakdownView')}
+                        </Link>
+                      </td>
                     </tr>
                   );
                 })}
                 {dayPage.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={11} className="px-4 py-8 text-center text-muted-foreground">
                       {t('noRecords')}
                     </td>
                   </tr>

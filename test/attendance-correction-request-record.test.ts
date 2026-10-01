@@ -29,6 +29,8 @@ import * as schema from '../db/schema';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base, harnessSnapshot } from './harness';
 import { hireEmployee } from '../core/org';
 import {
+  AttendanceCorrectionPendingError,
+  AttendanceCorrectionFutureDateError,
   addAttendanceCorrectionAttachment,
   cancelOwnAttendanceCorrection,
   checkIn,
@@ -38,6 +40,7 @@ import {
   requestAttendanceCorrection,
 } from '../core/attendance';
 import type { SessionContext } from '../db/client';
+import { todayInKualaLumpur } from '../lib/hr-date';
 
 let b: Base;
 const DATE = '2026-07-27'; // the mockup's own subject day: clocked in, never clocked out.
@@ -190,17 +193,24 @@ describe('2166ef79 — the two refusals the Fix panel is shaped around', () => {
   it('one PENDING request per employee-day — which is why the row shows "Requested" instead of Fix this', async () => {
     const { a, employmentId } = await hire();
     await requestAttendanceCorrection(a, { employmentId, date: DATE, checkIn: '09:00', checkOut: '18:00', reason: 'first' });
-    await refusedByConstraint(
-      () =>
-        requestAttendanceCorrection(a, {
-          employmentId,
-          date: DATE,
-          checkIn: '09:00',
-          checkOut: '17:00',
-          reason: 'second',
-        }),
-      'attendance_correction_one_pending_uq',
-    );
+    await expect(requestAttendanceCorrection(a, {
+      employmentId, date: DATE, checkIn: '09:00', checkOut: '17:00', reason: 'second',
+    })).rejects.toBeInstanceOf(AttendanceCorrectionPendingError);
+    expect(await myAttendanceCorrections(a, employmentId, { date: DATE, status: 'pending' })).toHaveLength(1);
+  });
+});
+
+describe('employee day correction date boundary', () => {
+  it('refuses future clock corrections but accepts a future OT-only plan', async () => {
+    const { a, employmentId } = await hire();
+    const future = new Date();
+    future.setUTCDate(future.getUTCDate() + 2);
+    const date = todayInKualaLumpur(future);
+    await expect(requestAttendanceCorrection(a, { employmentId, date, checkIn: '09:00', reason: 'clock fix' }))
+      .rejects.toBeInstanceOf(AttendanceCorrectionFutureDateError);
+    expect(await myAttendanceCorrections(a, employmentId, { date })).toHaveLength(0);
+    await requestAttendanceCorrection(a, { employmentId, date, requestedOtMinutes: 60, reason: 'planned work' });
+    expect(await myAttendanceCorrections(a, employmentId, { date, status: 'pending' })).toHaveLength(1);
   });
 });
 

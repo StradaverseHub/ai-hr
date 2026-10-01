@@ -63,6 +63,7 @@ import {
   // ec30b2e9 (r364) — the two typed refusals of a second overtime figure for one date. Asserted by CLASS,
   // not only by message text: the action layer branches on the class to pick which localized sentence the
   // employee reads, so a test that only matched the English words would pass with the wrong branch wired.
+  AttendanceCorrectionFutureDateError,
   OvertimeAlreadyCountedError,
   OvertimePlanAlreadyApprovedError,
   requestAttendanceCorrection,
@@ -478,7 +479,7 @@ describe('4 · one approved plan per date', () => {
     await expect(filePlan(a, employmentId, FUTURE, 60)).resolves.toBeTruthy();
   });
 
-  it('a plain CLOCK correction for the same date is not blocked by an approved OT plan', async () => {
+  it('a future CLOCK correction is refused even when an approved OT plan exists', async () => {
     // The guard is about two overtime figures for one day, not about punches. A clock fix is a different
     // request answering a different question, and blocking it would be scope the plan does not ask for.
     const { a, employmentId } = await hire();
@@ -486,7 +487,7 @@ describe('4 · one approved plan per date', () => {
     await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
     await expect(
       requestAttendanceCorrection(a, { employmentId, date: FUTURE, checkIn: '09:00', reason: 'forgot' }),
-    ).resolves.toBeTruthy();
+    ).rejects.toBeInstanceOf(AttendanceCorrectionFutureDateError);
   });
 
   // ── ec30b2e9 (r364) · THE WINDOW THE FOUR CASES ABOVE DID NOT COVER ────────────────────────────────
@@ -580,7 +581,7 @@ describe('4 · one approved plan per date', () => {
       // And a PLAIN clock fix carrying no overtime at all is untouched by any of this.
       await expect(
         requestAttendanceCorrection(a, { employmentId, date: FUTURE, checkIn: '09:00', reason: 'forgot' }),
-      ).resolves.toBeTruthy();
+      ).rejects.toBeInstanceOf(AttendanceCorrectionFutureDateError);
     });
 
     it("(c) an approved correction's overtime survives a later clock-out — it is not reverted to the plan's", async () => {

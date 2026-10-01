@@ -2948,6 +2948,13 @@ async function otApprovalCalculationFor(tx: Tx, employmentId: string): Promise<O
  *    • `reason`/remarks is MANDATORY (enforced here, NOT at the DB layer — reason stays nullable to avoid a
  *      breaking retroactive NOT NULL on the live table);
  *    • requestedOtMinutes, when present, is a non-negative integer. */
+export class AttendanceCorrectionFutureDateError extends Error {
+  constructor() { super('Future dates cannot be corrected.'); }
+}
+export class AttendanceCorrectionPendingError extends Error {
+  constructor() { super('A correction is already pending for this date.'); }
+}
+
 export async function requestAttendanceCorrection(
   ctx: SessionContext,
   p: {
@@ -2973,6 +2980,9 @@ export async function requestAttendanceCorrection(
   const checkIn = p.checkIn ?? null;
   const checkOut = p.checkOut ?? null;
   const hasOt = p.requestedOtMinutes != null;
+  if ((checkIn || checkOut) && p.date > todayInKualaLumpur()) {
+    throw new AttendanceCorrectionFutureDateError();
+  }
   // At least one of clock-in / clock-out / OT (mirrors the DB check constraint, with a friendly message).
   if (!checkIn && !checkOut && !hasOt) {
     throw new Error('Provide at least one of a clock-in time, a clock-out time, or overtime hours.');
@@ -3115,6 +3125,17 @@ export async function requestAttendanceCorrection(
       },
     });
     return { correctionId: row.id };
+  }).catch((error: unknown) => {
+    // Preserve the database's atomic pending-request fence, including simultaneous submissions.
+    let cause: unknown = error;
+    for (let depth = 0; cause && typeof cause === 'object' && depth < 5; depth++) {
+      const dbError = cause as { code?: string; constraint_name?: string; constraint?: string; cause?: unknown };
+      if (dbError.code === '23505' && (dbError.constraint_name ?? dbError.constraint) === 'attendance_correction_one_pending_uq') {
+        throw new AttendanceCorrectionPendingError();
+      }
+      cause = dbError.cause;
+    }
+    throw error;
   });
 }
 
@@ -4890,7 +4911,7 @@ export const MY_ATTENDANCE_REQUEST_ROW_CEILING = 500;
 export function myAttendanceCorrections(
   ctx: SessionContext,
   employmentId: string,
-  opts: { limit?: number; status?: 'pending' | 'approved' | 'rejected' | 'cancelled' } = {},
+  opts: { limit?: number; date?: string; status?: 'pending' | 'approved' | 'rejected' | 'cancelled' } = {},
 ): Promise<MyAttendanceRequestRow[]> {
   const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? 100)), MY_ATTENDANCE_REQUEST_ROW_CEILING + 1);
   return withTenant(ctx, async (tx) => {
@@ -4913,14 +4934,11 @@ export function myAttendanceCorrections(
         createdAt: attendanceCorrection.createdAt,
       })
       .from(attendanceCorrection)
-      .where(
-        opts.status
-          ? and(
-              eq(attendanceCorrection.employmentId, employmentId),
-              eq(attendanceCorrection.status, opts.status),
-            )
-          : eq(attendanceCorrection.employmentId, employmentId),
-      )
+      .where(and(
+        eq(attendanceCorrection.employmentId, employmentId),
+        opts.status ? eq(attendanceCorrection.status, opts.status) : undefined,
+        opts.date ? eq(attendanceCorrection.attendanceDate, opts.date) : undefined,
+      ))
       // Newest first BY THE ATTENDANCE DATE, then by when it was filed — the same ordering the Plan OT
       // list uses, so two lists on one screen are not sorted two different ways.
       .orderBy(desc(attendanceCorrection.attendanceDate), desc(attendanceCorrection.createdAt))

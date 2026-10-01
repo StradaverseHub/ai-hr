@@ -3100,7 +3100,14 @@
     "correctionNothingToChange": "Enter a clock-in or clock-out time to correct.",
     "correctionRejected": "That correction could not be recorded.",
     "correctionPendingAnotherApprover": "Saved, but it needs another approver: you cannot approve a correction to your own attendance.",
-    "correctionSaved": "Correction saved and applied."
+    "correctionSaved": "Correction saved and applied.",
+    "myDayBack": "Back to Attendance Overview",
+    "myDayPending": "Pending approval — another correction cannot be submitted for this date.",
+    "myDayFuture": "Future dates cannot be corrected.",
+    "myDayBadTimes": "Check-out must be later than check-in.",
+    "myDaySubmitted": "Correction submitted for approval.",
+    "myDaySubmit": "Submit correction",
+    "myDayApprovalNote": "Submitted for approval. We record who requested it, when, the requested values and the reason. Original and new day figures are recorded in the Audit trail when an approved correction is applied."
   },
   "org": {
     "title": "Org chart",

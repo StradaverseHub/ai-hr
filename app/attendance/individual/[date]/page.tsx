@@ -4,7 +4,7 @@ import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { adminCorrectAttendanceDayAction } from './actions';
 import { attendanceForEmploymentRange, attendancePunchesForRange } from '@/core/attendance';
-import { otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
+import { breakMinutesOf, otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
 import { explainAttendanceDay } from '@/core/attendance-explain';
 import { listEmployees } from '@/core/read';
 import { Card, ErrorBanner, PageHeader, SectionHeader, Button, inputCls, pageWideCls } from '@/components/ui';
@@ -136,13 +136,7 @@ export default async function IndividualAttendanceDayPage({
 
   // The shift's SPAN less its NET scheduled minutes is the unpaid break — the engine's own arithmetic, not
   // a second definition. Null whenever either half is missing (a policy day or a rest day has no shift).
-  const toMin = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
-  const spanMinutes =
-    row.shiftStart && row.shiftEnd
-      ? (toMin(row.shiftEnd) - toMin(row.shiftStart) + 24 * 60) % (24 * 60) || 24 * 60
-      : null;
-  const breakMinutes =
-    spanMinutes != null && row.scheduledMinutes != null ? Math.max(0, spanMinutes - row.scheduledMinutes) : null;
+  const breakMinutes = breakMinutesOf(row);
 
   const Field = ({ label, value }: { label: string; value: string }) => (
     <div>

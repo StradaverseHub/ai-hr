@@ -3100,7 +3100,14 @@
     "correctionNothingToChange": "Nhập giờ vào hoặc giờ ra cần điều chỉnh.",
     "correctionRejected": "Không thể ghi nhận điều chỉnh này.",
     "correctionPendingAnotherApprover": "Đã lưu, nhưng cần người duyệt khác: bạn không thể duyệt điều chỉnh chấm công của chính mình.",
-    "correctionSaved": "Đã lưu và áp dụng điều chỉnh."
+    "correctionSaved": "Đã lưu và áp dụng điều chỉnh.",
+    "myDayBack": "Quay lại tổng quan chấm công",
+    "myDayPending": "Đang chờ phê duyệt — không thể gửi thêm yêu cầu sửa cho ngày này.",
+    "myDayFuture": "Không thể sửa ngày trong tương lai.",
+    "myDayBadTimes": "Giờ ra phải sau giờ vào.",
+    "myDaySubmitted": "Đã gửi yêu cầu sửa để phê duyệt.",
+    "myDaySubmit": "Gửi yêu cầu sửa",
+    "myDayApprovalNote": "Gửi để phê duyệt. Chúng tôi ghi lại người yêu cầu, thời điểm, giá trị được yêu cầu và lý do. Giá trị cũ và mới được ghi trong nhật ký kiểm toán khi áp dụng yêu cầu sửa đã duyệt."
   },
   "org": {
     "title": "Sơ đồ tổ chức",

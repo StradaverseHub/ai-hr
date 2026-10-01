@@ -178,3 +178,11 @@ export function statusOf(row: Pick<AttendanceDeriveRow, 'attendanceId' | 'status
   if (row.context === 'rest_day') return row.isRosterRest ? 'rest' : 'off';
   return 'absent';
 }
+
+/** Scheduled span less net work, shared by employee and HR day views. */
+export function breakMinutesOf(row: { shiftStart: string | null; shiftEnd: string | null; scheduledMinutes: number | null }): number | null {
+  if (!row.shiftStart || !row.shiftEnd || row.scheduledMinutes == null) return null;
+  const minutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+  const span = (minutes(row.shiftEnd) - minutes(row.shiftStart) + 1440) % 1440 || 1440;
+  return Math.max(0, span - row.scheduledMinutes);
+}

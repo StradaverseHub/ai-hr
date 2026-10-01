@@ -3100,7 +3100,14 @@
     "correctionNothingToChange": "Masukkan waktu masuk atau waktu keluar untuk dibetulkan.",
     "correctionRejected": "Pembetulan itu tidak dapat direkodkan.",
     "correctionPendingAnotherApprover": "Disimpan, tetapi memerlukan pelulus lain: anda tidak boleh meluluskan pembetulan kehadiran anda sendiri.",
-    "correctionSaved": "Pembetulan disimpan dan digunakan."
+    "correctionSaved": "Pembetulan disimpan dan digunakan.",
+    "myDayBack": "Kembali ke Ringkasan Kehadiran",
+    "myDayPending": "Menunggu kelulusan — pembetulan lain tidak boleh dihantar untuk tarikh ini.",
+    "myDayFuture": "Tarikh akan datang tidak boleh dibetulkan.",
+    "myDayBadTimes": "Waktu keluar mestilah selepas waktu masuk.",
+    "myDaySubmitted": "Pembetulan dihantar untuk kelulusan.",
+    "myDaySubmit": "Hantar pembetulan",
+    "myDayApprovalNote": "Dihantar untuk kelulusan. Kami merekodkan pemohon, masa, nilai yang diminta dan sebab. Nilai asal dan baharu direkodkan dalam Jejak Audit apabila pembetulan yang diluluskan digunakan."
   },
   "org": {
     "title": "Carta organisasi",

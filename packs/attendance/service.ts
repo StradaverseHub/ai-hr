@@ -22,3 +22,5 @@ export * from '../../core/clocking-location';
 // core/attendance-derive; the ambiguous star export would silently drop the name from the facade,
 // so re-export it explicitly (explicit exports take precedence over star ambiguity).
 export type { DayContext } from '../../core/attendance';
+
+export * from '../../core/attendance-explain';

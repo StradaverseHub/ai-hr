@@ -272,7 +272,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/attendance/my-records',
     labelKey: 'nav.myRecords',
     guard: 'scopedSession',
-    routes: ['/attendance/my-records'],
+    routes: ['/attendance/my-records', '/attendance/my-records/[date]'],
     hasScopeNote: true,
   },
   /**

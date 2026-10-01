@@ -3100,7 +3100,14 @@
     "correctionNothingToChange": "请输入需更正的上班或下班时间。",
     "correctionRejected": "无法记录该更正。",
     "correctionPendingAnotherApprover": "已保存，但需另一位审批人：您不能审批自己的考勤更正。",
-    "correctionSaved": "更正已保存并生效。"
+    "correctionSaved": "更正已保存并生效。",
+    "myDayBack": "返回考勤概览",
+    "myDayPending": "待审批 — 此日期无法再次提交更正。",
+    "myDayFuture": "无法更正未来日期。",
+    "myDayBadTimes": "签退时间必须晚于签到时间。",
+    "myDaySubmitted": "更正已提交审批。",
+    "myDaySubmit": "提交更正",
+    "myDayApprovalNote": "提交审批。系统记录申请人、时间、申请值及原因。批准的更正生效时，原始及新考勤数据会记入审计记录。"
   },
   "org": {
     "title": "组织架构图",
