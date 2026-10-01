@@ -64,11 +64,11 @@ const addDays = (iso: string, n: number) =>
 /** A window `assertRosterWindow` accepts, anchored on the clock. */
 const WINDOW = () => ({ from: TODAY, to: addDays(TODAY, 6) });
 
-async function hire(fullName: string, role: 'employee' | 'manager' | 'hr_admin') {
+async function hire(fullName: string, role: 'employee' | 'manager' | 'hr_admin', departmentId?: string) {
   const e = await hireEmployee(adminCtx(b), {
     person: { fullName, primaryEmail: `r375_${randomUUID().slice(0, 8)}@t.local` },
     companyId: b.companyId,
-    departmentId: b.deptA,
+    departmentId: departmentId ?? b.deptA,
     positionId: b.positionId,
     employmentType: 'full_time',
     hiredOn: '2020-01-01',
@@ -344,7 +344,12 @@ describe('per role — what each session gets, and the negatives', () => {
   it('a MANAGER gains nothing new, and keeps the downward visibility they had', async () => {
     const emp = await hire('Nadia Employee', 'employee');
     const mgr = await hire('Farid Hassan', 'manager');
-    const boss = await hire('Bella Boss', 'manager');
+    // THE BOSS SITS IN A DIFFERENT DEPARTMENT ON PURPOSE. `app.heads_department_of` (live def 0121) is
+    // true for any caller who manages SOMEBODY and whose department subtree contains the subject — see
+    // the "pre-existing" test below — so a boss in the SAME department is already visible for reasons
+    // that have nothing to do with r375. Putting them in the sibling department (Operations vs Finance,
+    // no parent link) switches that branch off, so the only thing left that can name them is 0498.
+    const boss = await hire('Bella Boss', 'manager', b.deptB);
     await line(emp, mgr, 'administrative', '2020-01-01');
     await line(mgr, boss, 'administrative', '2020-01-01');
     await seedSensitive(emp);
@@ -352,11 +357,53 @@ describe('per role — what each session gets, and the negatives', () => {
     // UNCHANGED, and this is the half a widening would have put at risk: the manager still reads their
     // report's record through RLS, exactly as before.
     expect((await adminManagers(mgr.ctx, emp.employmentId))[0].name).toBe('Farid Hassan');
-    expect((await sensitiveCounts(mgr.ctx, emp)).compensation, 'downward visibility is untouched').toBeGreaterThan(0);
+    const downward = await sensitiveCounts(mgr.ctx, emp);
+    expect(downward.employment, 'downward visibility is untouched: can_see_employment admits the report').toBe(1);
+    expect(downward.person, 'and can_see_person follows it, which is how the manager screens name them').toBe(1);
+    // MEASURED, not assumed, and narrower than this test first claimed: a plain line manager CANNOT read
+    // their report's PAY. compensation_rls (0099) asks can_admin_employment / perfcomp / payroll / self —
+    // the administrative down-walk is not one of them, and 0109's own header says so ("indirect managers
+    // gain employment visibility, NOT pay visibility"). r375 changed neither.
+    expect(downward.compensation, 'pay is NOT part of a line manager’s downward visibility').toBe(0);
+    expect(downward.statutory, 'nor is the statutory identity row').toBe(0);
+
     // NEW, and the only new thing: a manager is also somebody's report, so they now read their own boss.
     expect((await adminManagers(mgr.ctx, mgr.employmentId))[0].name).toBe('Bella Boss');
-    // The boss's file stays shut to them.
+    // …and NOTHING else about that boss opened up — not even the employment or person ROW. This is the
+    // assertion that distinguishes "a narrow definer reader" from "we widened the policy".
     expect(await sensitiveCounts(mgr.ctx, boss)).toEqual(NOTHING);
+  });
+
+  it('PRE-EXISTING, not r375: a manager already sees same-department colleagues through heads_department_of', async () => {
+    // Pinned as an OBSERVATION so nobody later reads it as something this round did, and so that
+    // tightening `app.heads_department_of` turns this red rather than silently changing the premise the
+    // item was written on.
+    //
+    // The live definition (0121, unchanged by r375) never consults `department.head_employment_id`. It
+    // is true when the caller has a current department assignment, the subject's department is in the
+    // caller's company-clamped department subtree, AND the caller is the current administrative manager
+    // of AT LEAST ONE person — any person. So in a single-department company every manager already reads
+    // every colleague's employment and person row, their own boss included.
+    const emp = await hire('Nadia Employee', 'employee');
+    const mgr = await hire('Farid Hassan', 'manager');
+    const sameDeptBoss = await hire('Bella Boss', 'manager'); // deptA, like mgr
+    await line(emp, mgr, 'administrative', '2020-01-01');
+    await line(mgr, sameDeptBoss, 'administrative', '2020-01-01');
+    await seedSensitive(sameDeptBoss);
+
+    const counts = await sensitiveCounts(mgr.ctx, sameDeptBoss);
+    expect(counts.employment, 'the department branch, not r375').toBe(1);
+    expect(counts.person, 'the department branch, not r375').toBe(1);
+    // The important half: it is still NOT a pay or identity leak, and r375 did not make it one.
+    expect(counts.compensation).toBe(0);
+    expect(counts.statutory).toBe(0);
+
+    // And it requires managing somebody: a PLAIN employee in the same department sees neither row, which
+    // is exactly why this item existed at all.
+    const plain = await hire('Plain Employee', 'employee');
+    await line(plain, mgr, 'administrative', '2020-01-01');
+    const asPlain = await sensitiveCounts(plain.ctx, sameDeptBoss);
+    expect(asPlain, 'a plain employee manages nobody, so the branch never fires for them').toEqual(NOTHING);
   });
 
   it('an HR ADMIN reads the same answer it always did (there is no admin branch in the function)', async () => {
