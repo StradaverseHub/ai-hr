@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, useTransition, type ReactNode } from 'react';
+import { INQUIRY_PICKER_KEYS } from '@/lib/inquiry-picker-context';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Card, EmployeeName, Field, inputCls } from '@/components/ui';
@@ -290,11 +291,25 @@ export function EmployeeScopePanel({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  const [query, setQuery] = useState(() => preservePicker && typeof preserve?.pickerQ === 'string' ? preserve.pickerQ : '');
-  const [companyId, setCompanyId] = useState(() => preservePicker && typeof preserve?.pickerCompany === 'string' ? preserve.pickerCompany : '');
-  const [businessUnitId, setBusinessUnitId] = useState(() => preservePicker && typeof preserve?.pickerBusinessUnit === 'string' ? preserve.pickerBusinessUnit : '');
-  const [departmentId, setDepartmentId] = useState(() => preservePicker && typeof preserve?.pickerDepartment === 'string' ? preserve.pickerDepartment : '');
-  const [status, setStatus] = useState(() => preservePicker && typeof preserve?.pickerStatus === 'string' ? preserve.pickerStatus : '');
+  const initialPickerValue = (key: typeof INQUIRY_PICKER_KEYS[number]) => {
+    if (!preservePicker) return '';
+    // After collapsing/reopening, server props may predate the last client-side filter change.
+    if (typeof window !== 'undefined') return new URLSearchParams(window.location.search).get(key) ?? '';
+    return typeof preserve?.[key] === 'string' ? preserve[key] as string : '';
+  };
+  const [query, setQuery] = useState(() => initialPickerValue('pickerQ'));
+  const [companyId, setCompanyId] = useState(() => initialPickerValue('pickerCompany'));
+  const [businessUnitId, setBusinessUnitId] = useState(() => initialPickerValue('pickerBusinessUnit'));
+  const [departmentId, setDepartmentId] = useState(() => initialPickerValue('pickerDepartment'));
+  const [status, setStatus] = useState(() => initialPickerValue('pickerStatus'));
+  useEffect(() => {
+    if (!preservePicker) return;
+    const url = new URL(window.location.href);
+    for (const [key, value] of Object.entries({pickerQ:query,pickerCompany:companyId,pickerBusinessUnit:businessUnitId,pickerDepartment:departmentId,pickerStatus:status})) {
+      if (value) url.searchParams.set(key,value); else url.searchParams.delete(key);
+    }
+    if (url.href !== window.location.href) window.history.replaceState(window.history.state, '', url.href);
+  }, [preservePicker, query, companyId, businessUnitId, departmentId, status]);
   /**
    * 009c8a37 — the More-filters fold, CONTROLLED and DELIBERATELY NOT PERSISTED.
    *
