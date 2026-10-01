@@ -364,7 +364,9 @@ describe('8d3a7bff · (d) Marriage Leave keeps its card, its balance and the con
     // A 0.00 card, WHEREVER it came from, says the same thing as a card holding days — see `keepers` above for
     // why r343 means a placed group's empty member is no longer one of the routes it can come from.
     const exm = cardNamed('Examination Leave');
-    expect(within(exm).getByText(formatDays(0), {selector:'p'}).textContent, `${loc}: EXM own balance`).toBe(formatDays(0));
+    const exmBalance = within(exm).getByText(CATALOGUES[loc].leave.myLeave.balance, {selector:'dt'});
+    expect(exmBalance.parentElement!.querySelector('dd')!.textContent, `${loc}: EXM own balance`).toBe(formatDays(0));
+    expect(within(exm).getByTestId('leave-balance-ring').querySelector('div[aria-hidden="true"]')!.textContent).toBe(`${formatDays(0)}${CATALOGUES[loc].leaveFigure.availableBalance}`);
     expect(within(exm).getByTestId('leave-balance-ring').querySelectorAll('[data-segment]'), `${loc}: a zero-entitlement member has a neutral frame`).toHaveLength(0);
     expect(within(exm).getByTestId('ceiling-membership').textContent, `${loc}: EXM ceiling line`).toBe(
       fill(slg(loc).alsoCountsToward, { group: 'Special Leave' }),

@@ -189,7 +189,7 @@ describe('leave filter panel: surviving inquiry and dedicated own History surfac
     expect(leavePage).toContain('{ess && replacementRequest.allowed && replacementLeaveType != null && (');
     // The unfiltered catalogue is STILL read — two consumers need it and would break silently otherwise.
     expect(leavePage).toContain("const unpaidTypeName = leaveTypes.find((lt) => lt.code === 'UNPAID')?.name;");
-    expect(leavePage).toContain('eligibleTypeIds.has(lt.id) || lt.id === r.leaveTypeId');
+    expect(ownHistory).toContain('eligibleTypeIds.has(lt.id) || lt.id === r.leaveTypeId');
     // NOTHING announces that a row was removed: no caption, no disabled option, no count under the select.
     const fields = read('components/leave-duration-fields.tsx');
     /**

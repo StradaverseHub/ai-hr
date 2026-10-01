@@ -346,8 +346,15 @@ describe('r343 · the ordinary-day row derives its figures and never offers them
      * test/r343-leave-credit-table.dom.test.tsx. What this case can still say from inside the dialog is
      * that the control reached it and is live, which is the half a missing column would break.
      */
-    expect(screen.getByTestId('leave-credit-attendance-view')).toBeTruthy();
-    expect((screen.getByTestId('leave-credit-attendance-view') as HTMLButtonElement).disabled).toBe(false);
+    const disclosure = screen.getByTestId('leave-credit-details-toggle') as HTMLButtonElement;
+    expect(disclosure.disabled).toBe(false);
+    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+    await user.click(disclosure);
+    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+    const facts = screen.getByTestId('leave-credit-attendance-panel');
+    expect(facts.closest('td')).not.toBeNull();
+    expect(facts).toHaveTextContent('18:00');
+    expect(facts).toHaveTextContent('02:00');
     expect(screen.queryAllByTestId('leave-credit-shift-end')).toHaveLength(0);
     expect(screen.queryAllByTestId('leave-credit-clock-out')).toHaveLength(0);
     // r358 — this read `expect(daysSelect('en').disabled).toBe(true)`, "the Days cell is dead on this
