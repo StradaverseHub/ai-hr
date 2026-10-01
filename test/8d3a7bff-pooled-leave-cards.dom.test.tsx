@@ -209,7 +209,8 @@ const medical = base({
 
 const ALL = [annual, emergency, specialLeave, compassionate, medical];
 
-const cardNamed = (name: string) => screen.getAllByTestId('leave-type-card').find((c) => c.getAttribute('aria-label') === name)!;
+// r378 uses the same article frame for drawable and neutral cards; identify the leave type, not its shape.
+const cardNamed = (name: string) => screen.getByRole('article', { name });
 
 /** The dl rows of a small card, as label → printed value, in DOM order. */
 const dlRows = (el: HTMLElement): [string, string][] =>
@@ -274,7 +275,7 @@ describe('8d3a7bff · the two halves of a shared balance read differently', () =
       fill(L.sharedPoolHolder, { types: 'Compassionate Leave' }),
     );
     // EL → AL: the pool is the ring card. Same sentence, same shape.
-    const ring = screen.getAllByTestId('leave-ring-card')[0];
+    const ring = cardNamed('Annual Leave');
     expect(ring.getAttribute('aria-label')).toBe('Annual Leave');
     expect(within(ring).getByTestId('shared-balance-caption').textContent, `${loc}: AL caption`).toBe(
       fill(L.sharedPoolHolder, { types: 'Emergency Leave' }),
@@ -285,20 +286,22 @@ describe('8d3a7bff · the two halves of a shared balance read differently', () =
     const L = ml(loc) as unknown as Record<string, string>;
     mount(loc, <MyLeaveDashboard cards={ALL} locale={loc} />);
 
-    // The pool small card, figure for figure, in the order it renders today.
+    // r378: Special Leave now has the same ring frame as Annual Leave. Its centre repeats available;
+    // its gross Balance remains an explicit row, preserving both different source figures.
     const sp = cardNamed('Special Leave');
-    expect(sp.querySelector('p')!.textContent, `${loc}: SP headline`).toBe(formatDays(8));
-    expect(sp.querySelector('p')!.nextElementSibling!.textContent, `${loc}: SP headline caption`).toBe(L.balance);
+    expect(within(sp).getByTestId('leave-balance-ring').querySelector('div[aria-hidden="true"]')!.textContent).toBe(`${formatDays(7)}${lf(loc).availableBalance}`);
     expect(dlRows(sp), `${loc}: SP breakdown rows`).toEqual([
       [L.entitlement, formatDays(12)],
       [lf(loc).earnedToDate, formatDays(12)],
+      [L.balance, formatDays(8)],
       [L.taken, formatDays(4)],
-      [L.pending, formatDays(1)],
+      [L.pendingApproval, formatDays(1)],
+      [lf(loc).availableBalance, formatDays(7)],
     ]);
     expect(within(sp).getByTestId('can-apply-for').textContent, `${loc}: SP can apply for`).toBe(`${lf(loc).availableBalance}${formatDays(7)}`);
 
     // The pool ring card's own two lines above its legend.
-    const ring = screen.getAllByTestId('leave-ring-card')[0];
+    const ring = cardNamed('Annual Leave');
     for (const [label, value] of [
       [L.entitlement, 14],
       [lf(loc).earnedToDate, 10.5],
@@ -315,7 +318,7 @@ describe('8d3a7bff · the two halves of a shared balance read differently', () =
     expect(
       within(ring).getByTestId('leave-balance-ring').querySelector('div[aria-hidden="true"]')!.textContent,
       `${loc}: AL ring centre is the available figure, not the balance`,
-    ).toBe(`${formatDays(5.5)}${(ml(loc) as unknown as Record<string, string>).centreCaption.replace('{label}', lf(loc).availableBalance)}`);
+    ).toBe(`${formatDays(5.5)}${lf(loc).availableBalance}`);
   });
 
   it.each(LOCALES)('%s — (c) an ordinary unpooled type is byte-identical to today, and says nothing about a pool', (loc) => {
@@ -325,13 +328,14 @@ describe('8d3a7bff · the two halves of a shared balance read differently', () =
 
     const med = cardNamed('Medical Leave');
     expect(within(med).queryByTestId('shared-balance-caption'), `${loc}: Medical Leave mentions a pool`).toBeNull();
-    expect(med.querySelector('p')!.textContent, `${loc}: Medical headline`).toBe(formatDays(13));
-    expect(med.querySelector('p')!.nextElementSibling!.textContent, `${loc}: Medical headline caption`).toBe(L.balance);
+    expect(within(med).getByTestId('leave-balance-ring').querySelector('div[aria-hidden="true"]')!.textContent).toBe(`${formatDays(13)}${lf(loc).availableBalance}`);
     expect(dlRows(med), `${loc}: Medical breakdown rows`).toEqual([
       [L.entitlement, formatDays(14)],
       [lf(loc).earnedToDate, formatDays(14)],
+      [L.balance, formatDays(13)],
       [L.taken, formatDays(1)],
-      [L.pending, formatDays(0)],
+      [L.pendingApproval, formatDays(0)],
+      [lf(loc).availableBalance, formatDays(13)],
     ]);
     expect(within(med).getByTestId('can-apply-for').textContent, `${loc}: Medical can apply for`).toBe(
       `${lf(loc).availableBalance}${formatDays(13)}`,
@@ -344,6 +348,7 @@ describe('8d3a7bff · the two halves of a shared balance read differently', () =
       ...screen.getAllByTestId('leave-ring-card').map((c) => c.getAttribute('aria-label')),
       ...screen.getAllByTestId('leave-type-card').map((c) => c.getAttribute('aria-label')),
     ];
+    expect(titles).toHaveLength(5);
     expect(new Set(titles)).toEqual(
       new Set(['Annual Leave', 'Emergency Leave', 'Special Leave', 'Compassionate Leave', 'Medical Leave']),
     );
