@@ -116,6 +116,9 @@ describe('topbar — search box and company switcher keep to their own lanes', (
    */
   it('dev identity switcher can compress (a <select> is as wide as its longest option)', () => {
     expect(DEV_SWITCHER).toContain('<form action={actAs} className="flex min-w-0 items-center gap-1.5">');
+    // min-w-0 and nothing else. A `w-28` BASE was tried and measured worse: it redistributed the
+    // cluster's shrinkage so the select rendered ~30px wide with no text at all at 1280, against
+    // 48px ("HI…") without it. The floor is 0 either way; only the base size differs.
     expect(DEV_SWITCHER).toContain('className="min-w-0 max-w-full rounded-md border border-input');
   });
 
