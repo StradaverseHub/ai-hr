@@ -235,6 +235,13 @@ export type PcbExplanation =
       normalMtdWorkingRecorded?: boolean;
     } & PcbFigures);
 
+/** Finite numbers must exist in the saved payload; normal working never adopts n() defaults. */
+const hasRecordedNumbers = (raw: unknown, keys: readonly string[]): boolean => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+  const record = raw as Record<string, unknown>;
+  return keys.every(key => typeof record[key] === 'number' && Number.isFinite(record[key]));
+};
+
 const n = (v: unknown) => {
   const x = Number(v ?? 0);
   return Number.isFinite(x) ? x : 0;
@@ -517,10 +524,11 @@ export function explainPcb(
     pcbNormal: r2(figures.pcbSystem - pcbAdditional),
     pcbAdditional: r2(pcbAdditional),
     trace: readTrace(m.trace),
-    normalMtdWorkingRecorded: ['P1', 'n', 'pcbPaid'].every(key => typeof m[key] === 'number' && Number.isFinite(m[key]))
-      && !!m.trace && typeof m.trace === 'object' && ['M', 'R', 'B', 'Z', 'zakatCurrent', 'mtdNormalCalc', 'mtdNormalFloored'].every(key => typeof (m.trace as Record<string, unknown>)[key] === 'number' && Number.isFinite((m.trace as Record<string, unknown>)[key]))
-      && typeof st.pcb === 'number' && Number.isFinite(st.pcb)
-      && (delta ? typeof (m.delta as Record<string, unknown>)?.cumulativeBonus === 'number' && Number.isFinite((m.delta as Record<string, unknown>).cumulativeBonus) : typeof st.pcbBonus === 'number' && Number.isFinite(st.pcbBonus)),
+    normalMtdWorkingRecorded: hasRecordedNumbers(m, ['P1', 'n', 'pcbPaid'])
+      && hasRecordedNumbers(m.trace, ['M', 'R', 'B', 'Z', 'zakatCurrent', 'mtdNormalCalc', 'mtdNormalFloored'])
+      && hasRecordedNumbers(st, ['pcb'])
+      && (m.delta !== undefined ? hasRecordedNumbers(m.delta, ['cumulative', 'prior', 'cumulativeBonus']) : hasRecordedNumbers(st, ['pcbBonus']))
+      && ((st.adjustment as {lines?: {pcb?: unknown}} | null)?.lines?.pcb === undefined || hasRecordedNumbers((st.adjustment as {lines?: {pcb?: unknown}}).lines?.pcb, ['system', 'applied'])),
     ...figures,
   };
 }
