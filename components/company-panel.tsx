@@ -373,8 +373,8 @@ function BankAccountForm({
  *     open. What r352 got wrong was not the objection but WHERE it applied: the fields do not belong on
  *     this TAB, and they do not belong behind a second page either.
  *
- * WHAT DID NOT CHANGE THROUGH ANY OF IT: this TAB has no per-body route and no per-body fields. Every row
- * here links to the one statutory SCREEN, which is one address for all eight, and the reporter's first
+ * WHAT DID NOT CHANGE THROUGH ANY OF IT: this TAB has no per-body route and no per-body fields. One shared link
+ * opens the statutory SCREEN for all eight bodies, and the reporter's first
  * approved point ("Open Settings becomes a link to a real page") is satisfied by that link. That route IS
  * registered in lib/permissions.ts under screenKey 'organization'; test/function-access.test.ts requires
  * exactly that, in BOTH directions — so the deleted route's entry had to be removed, not left behind.
@@ -384,7 +384,7 @@ function BankAccountForm({
  * ONE STATUTORY BODY, AS A READ-ONLY ROW OF THIS TAB'S LIST.
  *
  * The face: the body's own mark, its name, a one-line description, Configured / Not set up, and the
- * summary of what is on file. READ-ONLY THROUGHOUT — it renders text and one link, never a field. That
+ * summary of what is on file. READ-ONLY THROUGHOUT — it renders text, never a link or field. That
  * was true while a workspace sat beside it and it is more true now: the only writer is the dedicated
  * setup screen, and `company_statutory_authority` is also what the EA officer block and the CP39 preparer
  * block read (localization/my/reports.ts), so a second set of controls over the same columns on a screen
@@ -402,7 +402,6 @@ function StatutoryBodyRow({
   subordinate = false,
   filingCountry,
   bankProfiles,
-  setupHref,
 }: {
   authority: string;
   row: PanelStatutoryAuthority | null;
@@ -421,19 +420,7 @@ function StatutoryBodyRow({
   /** ISO code of the company. 'MY' is the only pack with a filing identity today. */
   filingCountry: string;
   bankProfiles: PanelBankProfile[];
-  /**
-   * 15e5bd93 rev 2 — WHERE "Open settings" GOES. The Statutory Payment Setup screen for this company, built
-   * by the pane below from the company id it already holds. Every row links to the SAME address.
-   *
-   * ⚠️ rev 3 (r355) — AND IT STILL DOES, EVEN THOUGH A PER-BODY ROUTE NOW EXISTS. The earlier version of
-   * this note gave "there is no route per authority" as the reason one address served every row; that reason
-   * has stopped being true (see the note above this component). The address is still one because the screen
-   * it opens is the LIST, which is where the reporter's sketch starts: identity on top, then the rows, each
-   * offering its own View and Edit. Pointing each row here straight at its own body would skip the identity
-   * card the reporter asked to see BEFORE touching anything, and would make this tab a second list of the
-   * same eight links.
-   */
-  setupHref: string;
+
 }) {
   const t = useTranslations('admin.organization');
   const r = row;
@@ -533,19 +520,7 @@ function StatutoryBodyRow({
             {configured ? t('authorityConfigured') : t('authorityNotConfigured')}
           </span>
         </span>
-        {/* `authorityOpen` — THE RETIRED KEY, BACK IN SERVICE AND SAYING THE SAME THING. It captioned the
-            per-body fold until r352 took the fold out, and the two catalogue entries were kept unused
-            rather than deleted precisely because a retired string costs nothing and re-translating a
-            deleted one into six languages costs a round. The reporter's approved wording for this row is
-            "Open Settings becomes a link to a real page", so the caption is the one they already know. */}
-        <Link
-          href={setupHref}
-          className="shrink-0 text-xs font-medium text-primary hover:underline"
-          data-statutory-setup-link={authority}
-        >
-          {t('authorityOpen')}
-          <span aria-hidden> →</span>
-        </Link>
+
       </div>
 
       {/* 3783fd87 — WHAT IS SET, WITHOUT OPENING ANYTHING. A <dl> because each entry is a caption and
@@ -1293,7 +1268,17 @@ export function CompanyPanel({
                 Nothing is filtered out: `eis` remains a real authority that the services, the reports and
                 the payroll feed all still know. */}
             <div className="min-w-0 flex-1 space-y-2.5 rounded-lg border border-border bg-card p-3">
-              <SubHeader>{t('authoritiesTitle')}</SubHeader>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <SubHeader>{t('authoritiesTitle')}</SubHeader>
+                <Link
+                  href={`/admin/organization/${c.id}/statutory`}
+                  className="shrink-0 text-xs font-medium text-primary hover:underline"
+                  data-statutory-setup-link
+                >
+                  {t('authorityOpen')}
+                  <span aria-hidden> →</span>
+                </Link>
+              </div>
               <p className="text-xs text-muted-foreground">{t('authoritiesHint')}</p>
               {bankProfiles.length === 0 && (
                 <p className="text-xs text-amber-700 dark:text-amber-400">{t('authoritiesNoBankAccounts')}</p>
@@ -1310,7 +1295,6 @@ export function CompanyPanel({
                       statutory={statutory}
                       filingCountry={c.country}
                       bankProfiles={bankProfiles}
-                      setupHref={`/admin/organization/${c.id}/statutory`}
                     />
                   ))}
                 </ul>

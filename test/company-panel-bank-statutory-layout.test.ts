@@ -151,8 +151,9 @@ describe('an opened company has nothing left to unfold (3c2f55d7)', () => {
      * caption comes back as an `<a>`, not as a toggle. The two claims are not in tension and the guard has
      * to be able to tell them apart: what is banned is a DISCLOSURE, not the words.
      */
-    expect(ROW_SRC, 'the row offers Open settings').toContain("t('authorityOpen')");
-    expect(ROW_SRC, 'as a LINK to the dedicated screen, not a toggle').toContain('<Link');
+    expect(ROW_SRC, 'body summaries have no repeated entry action').not.toContain("t('authorityOpen')");
+    expect(panel.match(/data-statutory-setup-link/g)).toHaveLength(1);
+    expect(ROW_SRC, 'individual bodies remain read-only summaries').not.toContain('<Link');
     expect(ROW_SRC, 'and it carries no onClick that could hide or reveal anything').not.toContain('onClick');
     expect(panel, 'the selection accent went with the workspace it chose between').not.toContain('aria-current={');
   });
@@ -991,8 +992,10 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
     expect(pane, 'the list is not conditional on a selection').not.toMatch(/\{\s*statutoryBody\s*&&/);
     // THE LINK, which is approved point 1. Built from the company id the pane already holds — one address
     // for every row, because there is no route per authority.
-    expect(pane).toContain('setupHref={`/admin/organization/${c.id}/statutory`}');
-    expect(ROW_SRC, 'and the row renders it as a link').toContain('href={setupHref}');
+    expect(pane.length).toBeGreaterThan(100);
+    expect(pane).toContain('href={`/admin/organization/${c.id}/statutory`}');
+    expect(pane.match(/data-statutory-setup-link/g)).toHaveLength(1);
+    expect(ROW_SRC, 'body rows have no navigation props').not.toContain('setupHref');
     // NO SELECTION STATE ANY MORE: it chose between workspaces that are not here.
     expect(panel, 'the workspace selection is gone').not.toContain('setStatutoryBody');
   });
