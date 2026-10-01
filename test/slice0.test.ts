@@ -632,8 +632,8 @@ describe('Slice 5 — payroll compliance (official MY statutory tables)', () => 
     expect(jan(5000)).toBe(110);
     // Category 2 (non-working spouse, +RM4000 relief) pays less than a single earner.
     expect(jan(8000, { category: 2 })).toBeLessThan(jan(8000, { category: 1 }));
-    // Each qualifying child reduces PCB.
-    expect(jan(8000, { children: 2 })).toBeLessThan(jan(8000, { children: 0 }));
+    // Qualifying children reduce PCB for eligible tax category 3; category 1 has C = 0.
+    expect(jan(8000, { category: 3, children: 2 })).toBeLessThan(jan(8000, { category: 3, children: 0 }));
   });
 
   it('SOCSO First Category matches the official Act 4 schedule to the RM6,000 ceiling', () => {

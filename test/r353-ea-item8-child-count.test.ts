@@ -182,7 +182,7 @@ describe('r353 · EA item 8 reads the source its child-relief mode makes authori
     // are on this mode, so it is the common case and not the edge. r364: the answer does not move from
     // r359 here, but its source does — the stored column again, and NO payroll run is needed to read it.
     const E = await hire('manual@acme.test');
-    await setTaxProfileMY(adminCtx(base), { personId: E.personId, childReliefMode: 'manual', numChildren: 3 });
+    await setTaxProfileMY(adminCtx(base), { taxCategory: 3, personId: E.personId, childReliefMode: 'manual', numChildren: 3 });
     expect(await item8(E.employmentId)).toBe(3);
   });
 
@@ -193,7 +193,7 @@ describe('r353 · EA item 8 reads the source its child-relief mode makes authori
     // qualifying count. Under r359 this case passed by arithmetic accident instead: with no grid the
     // relief was 2 x perChild, so dividing it back gave 2 whatever the box meant.
     const E = await hire('auto@acme.test');
-    await setTaxProfileMY(adminCtx(base), { personId: E.personId, childReliefMode: 'auto', numChildren: 2 });
+    await setTaxProfileMY(adminCtx(base), { taxCategory: 3, personId: E.personId, childReliefMode: 'auto', numChildren: 2 });
     expect(await item8(E.employmentId)).toBe(2);
   });
 
@@ -213,7 +213,7 @@ describe('r353 · EA item 8 reads the source its child-relief mode makes authori
     const E = await hire('table@acme.test');
     // num_children says 5, the grid claims relief for two children, and those two children are worth
     // nine qualifying children between them. All three numbers are different on purpose.
-    await setTaxProfileMY(adminCtx(base), {
+    await setTaxProfileMY(adminCtx(base), { taxCategory: 3,
       personId: E.personId,
       childReliefMode: 'auto_table',
       numChildren: 5,
@@ -247,7 +247,7 @@ describe('r353 · EA item 8 reads the source its child-relief mode makes authori
     // declared child-relief position, so it answers item 8 on its own. A form for a year nobody has run
     // payroll for still states how many children qualify.
     const E = await hire('tablenopay@acme.test');
-    await setTaxProfileMY(adminCtx(base), {
+    await setTaxProfileMY(adminCtx(base), { taxCategory: 3,
       personId: E.personId,
       childReliefMode: 'auto_table',
       numChildren: 5,
@@ -271,7 +271,7 @@ describe('r353 · EA item 8 reads the source its child-relief mode makes authori
    */
   it('A.8 x the per-child deduction is NOT D.6 — the weighting is why, and two children are RM18,000', async () => {
     const E = await hire('identity@acme.test');
-    await setTaxProfileMY(adminCtx(base), {
+    await setTaxProfileMY(adminCtx(base), { taxCategory: 3,
       personId: E.personId,
       childReliefMode: 'auto_table',
       numChildren: 5,
@@ -309,7 +309,7 @@ describe('r353 · EA item 8 reads the source its child-relief mode makes authori
      * a different box is empty is not caution, it is a second wrong answer.
      */
     const E = await hire('nopayroll@acme.test');
-    await setTaxProfileMY(adminCtx(base), { personId: E.personId, childReliefMode: 'manual', numChildren: 3 });
+    await setTaxProfileMY(adminCtx(base), { taxCategory: 3, personId: E.personId, childReliefMode: 'manual', numChildren: 3 });
     // deliberately no payOneMonth
     const ea = (await employeeEaStatement(adminCtx(base), { employmentId: E.employmentId, year: '2026' }))!;
     expect(ea.employee.children, 'A.8 stands on its own').toBe(3);
@@ -328,7 +328,7 @@ describe('r353 · EA item 8 reads the source its child-relief mode makes authori
     // what this case always said." The 0 stays; "the count follows the money" is retired. It is the slogan
     // that turned a count into a price.
     const E = await hire('emptytable@acme.test');
-    await setTaxProfileMY(adminCtx(base), {
+    await setTaxProfileMY(adminCtx(base), { taxCategory: 3,
       personId: E.personId,
       childReliefMode: 'auto_table',
       numChildren: 4,
@@ -357,7 +357,7 @@ describe('r353 · EA item 8 reads the source its child-relief mode makes authori
   it('a 50%-shared child is ONE child — 1 full + 2 half prints 3, never a fraction', async () => {
     const E = await hire('half@acme.test');
     const halfGrid = { under_18: { full: 1, half: 2 } };
-    await setTaxProfileMY(adminCtx(base), {
+    await setTaxProfileMY(adminCtx(base), { taxCategory: 3,
       personId: E.personId,
       childReliefMode: 'auto_table',
       numChildren: 0,
