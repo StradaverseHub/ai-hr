@@ -70,7 +70,12 @@ const hire = (hiredOn: string, name = 'CarryOff') =>
  * from the type, and `expireCarriedLeave` gates its whole sweep on the TYPE's expiry — a fixture that put
  * them on the band would assert a clean zero while proving nothing.
  */
-const annualPolicy = async (p: { carryForwardEnabled: boolean | null; carryForwardMax?: number }) => {
+const annualPolicy = async (p: {
+  carryForwardEnabled: boolean | null;
+  carryForwardMax?: number;
+  /** A stored percentage. The editor's Percentage mode posts `carryForwardMax=0` alongside it. */
+  carryForwardPercent?: number;
+}) => {
   await seedEntitlement(adminCtx(b), {
     leaveTypeId: b.annualLeaveTypeId,
     annualDays: 12,
@@ -80,6 +85,7 @@ const annualPolicy = async (p: { carryForwardEnabled: boolean | null; carryForwa
     .update(schema.leaveType)
     .set({
       carryForwardMax: String(p.carryForwardMax ?? 5),
+      carryForwardPercent: p.carryForwardPercent == null ? null : String(p.carryForwardPercent),
       carryForwardExpiryMonth: 3,
       carryForwardExpiryDay: 31,
       carryForwardEnabled: p.carryForwardEnabled,
@@ -256,6 +262,47 @@ describe('ed6f7a7b — carry forward ON is entirely unaffected, whatever the lim
     expect(bd!.carriedForward).toBe(5);
     expect(bd!.carryForwardExpiryDate).toBe('2026-03-31');
     expect(bd!.carriedForward + (await capForfeitPosted(emp.employmentId))).toBe(Math.max(0, bd!.broughtForward));
+  });
+});
+
+describe('ed6f7a7b — the expiry-date derivation is left alone, including the percentage-only type', () => {
+  it('(k) a PERCENTAGE-ONLY type still carries and still gets its expiry date', async () => {
+    // The item is explicit that this must not move: `carryConfigured` answers "is carry configured at all"
+    // for the expiry DATE, and a percentage-only type has NO cap — so a gate that passed the cap alone, or
+    // one placed inside the shared helper, would strip the date and let what it carried never expire. The
+    // call-site gate passes the percentage through untouched because `carryEnabled` returns true from the
+    // percentage clause before it ever looks at the cap.
+    await annualPolicy({ carryForwardEnabled: true, carryForwardMax: 0, carryForwardPercent: 50 });
+    const emp = await hire('2025-01-01');
+    await openLeaveYear(adminCtx(b), { year: 2026 });
+    // 50% of the prior 12 carries (no cap to clamp it), 6 forfeits at open, +12 fresh ⇒ 18.
+    expect(await balance(emp.employmentId)).toBe(18);
+    const forfeitedAtOpen = await capForfeitPosted(emp.employmentId);
+    expect(forfeitedAtOpen).toBe(6);
+
+    const bd = await breakdown(emp.employmentId);
+    expect(bd!.carriedForward).toBe(6);
+    expect(bd!.carryForwardExpiryDate).toBe('2026-03-31'); // the date SURVIVES — the point of this case
+    expect(bd!.carriedForward + forfeitedAtOpen).toBe(Math.max(0, bd!.broughtForward));
+    expect(bd!.derivation!.carry).toEqual({ rule: 'on', maxDays: 0, percent: 50 });
+  });
+
+  it('(l) a stored percentage beats an explicit OFF switch, and both sides agree that it does', async () => {
+    // UNREACHABLE FROM THE EDITOR — Percentage mode and None both clear the other's field — but reachable
+    // by a hand-written UPDATE or an old dump, which is the case `carryEnabled`'s percentage clause exists
+    // for (7cd914b1: without it a "carry 50%, no cap" type would read as carry-OFF and forfeit everything).
+    // The two sides must AGREE in this state too, which is the whole property of asking one function.
+    await annualPolicy({ carryForwardEnabled: false, carryForwardMax: 0, carryForwardPercent: 50 });
+    const emp = await hire('2025-01-01');
+    await openLeaveYear(adminCtx(b), { year: 2026 });
+    expect(await balance(emp.employmentId)).toBe(18); // the engine carried 6
+
+    const bd = await breakdown(emp.employmentId);
+    expect(bd!.carriedForward).toBe(6); // …and so does the screen
+    expect(bd!.carriedForward + (await capForfeitPosted(emp.employmentId))).toBe(Math.max(0, bd!.broughtForward));
+    // The derivation reports carry ON, because it is: the percentage is live configuration, not a dormant
+    // leftover. Nothing here is dormant, so the configuration screen's new line has nothing to say.
+    expect(bd!.derivation!.carry).toEqual({ rule: 'on', maxDays: 0, percent: 50 });
   });
 });
 
