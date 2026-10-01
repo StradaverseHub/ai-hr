@@ -139,6 +139,7 @@ import {
   position,
   reportingLine,
   reportingLineScope,
+  reportingLineTypeEnum,
   toilAccrual,
 } from '../db/schema';
 import { ALL_ROW_CEILING } from '../lib/pagination';
@@ -4571,11 +4572,90 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
   });
 }
 
+/** The reporting-line vocabulary as the edge stores it, in the enum's DECLARATION order — which is also
+ *  the order Postgres sorts the column in, and therefore the order `reportingLinesFor` has always
+ *  returned. Kept as an array so the union below can re-sort without changing what callers saw. */
+type ReportingLineKind = (typeof reportingLineTypeEnum.enumValues)[number];
+const reportingLineKindRank = (k: ReportingLineKind): number => reportingLineTypeEnum.enumValues.indexOf(k);
+
+/** One edge from `app.own_reporting_managers` — the caller's own supervisor, named. */
+export type OwnReportingManager = {
+  id: string;
+  lineType: ReportingLineKind;
+  employmentId: string;
+  personId: string;
+  name: string;
+  employeeCode: string | null;
+  validFrom: string;
+  validTo: string | null;
+};
+
+/**
+ * r375 (board 7c972a40) — THE ONE PLACE AN EMPLOYEE'S OWN SUPERVISORS ARE NAMED, and the only new
+ * authority in this round.
+ *
+ * WHY IT EXISTS. Visibility flows DOWNWARD: `app.can_see_employment` (0109) admits admins, self, the
+ * recursive administrative down-walk and the head-of-department tree, and `app.can_see_person` (0029 /
+ * 0099) delegates to it. `reporting_line` SELECT is tenant-wide, so the subordinate sees the EDGE — the
+ * inner joins to `employment` and `person` are what drop the name. So for a plain employee the `managers`
+ * array below came back EMPTY, and every screen that asks "who is my supervisor" fell through to a
+ * fallback. The fix cannot live in a screen.
+ *
+ * WHY NOT A POLICY. `person` carries date_of_birth, gender, marital_status, religion, race (PDPA 2010
+ * s.40 sensitive), address_line1..3, personal_email and phone, and `can_see_person` additionally gates
+ * the statutory row, dependents, TP1, TP3, the photo and emergency contacts. Widening it would hand a
+ * subordinate all of that, through every read in the product. Migration 0472 refused exactly that for
+ * the leave approver names; 0498 refuses it again and adds a narrow SECURITY DEFINER reader instead,
+ * following `app.self_delegations` (0196) and `app.own_leave_request_approvals` (0472).
+ *
+ * WHAT IT WILL NOT ANSWER. Rows come back ONLY for an employment of the signed-in user's own person,
+ * inside the session tenant: one hop up, current lines only (judged in the tenant's Asia/Kuala_Lumpur
+ * calendar, not the server's), never a `delegate` edge, display identity only. Anything else is NO ROWS
+ * rather than an error, so it cannot be used to probe which ids exist. See 0498's header for the four
+ * fences and `test/r375-own-supervisor-name.test.ts` for both directions.
+ *
+ * Takes a `tx` rather than a ctx so the two readers that need it — `reportingLinesFor` here and
+ * `myRosterWindow` in core/roster.ts — share ONE expression of the rule instead of each growing a
+ * private exception.
+ */
+export async function ownReportingManagersTx(tx: Tx, employmentId: string): Promise<OwnReportingManager[]> {
+  const res = (await tx.execute(
+    sql`SELECT * FROM app.own_reporting_managers(${employmentId}::uuid)
+        ORDER BY line_type, valid_from, reporting_line_id`,
+  )) as unknown as {
+    reporting_line_id: string;
+    line_type: ReportingLineKind;
+    manager_employment_id: string;
+    manager_person_id: string;
+    full_name: string;
+    employee_code: string | null;
+    valid_from: string;
+    valid_to: string | null;
+  }[];
+  return res.map((r) => ({
+    id: r.reporting_line_id,
+    lineType: r.line_type,
+    employmentId: r.manager_employment_id,
+    personId: r.manager_person_id,
+    name: r.full_name,
+    employeeCode: r.employee_code,
+    validFrom: r.valid_from,
+    validTo: r.valid_to,
+  }));
+}
+
 /** Current reporting edges for an employment: who they report to, and their direct reports. Excludes
- *  `delegate` edges (approver-routing, surfaced separately by delegationsFor — ADR-0052). */
+ *  `delegate` edges (approver-routing, surfaced separately by delegationsFor — ADR-0052).
+ *
+ *  `managers` is the UNION, by reporting-line id, of what this session can reach through RLS and what
+ *  `ownReportingManagersTx` adds when the employment is the caller's OWN (r375). A union, not a
+ *  replacement, because the two sets are not nested: the RLS query admits a FUTURE-DATED open line
+ *  (it filters `valid_to IS NULL` and never checks `valid_from`), while 0498 answers only for the line
+ *  in force today. Taking either one alone would REMOVE a row somebody can see today, and this round
+ *  takes nothing away. */
 export function reportingLinesFor(ctx: SessionContext, employmentId: string) {
   return withTenant(ctx, async (tx) => {
-    const managers = await tx
+    const visibleManagers = await tx
       .select({
         id: reportingLine.id,
         lineType: reportingLine.lineType,
@@ -4599,6 +4679,31 @@ export function reportingLinesFor(ctx: SessionContext, employmentId: string) {
         ),
       )
       .orderBy(reportingLine.lineType);
+    // r375 — the caller's OWN supervisors, which the query above cannot reach (see ownReportingManagersTx).
+    // Keyed by reporting-line id so a row both reads return appears ONCE: `test/direct-superior.test.ts`
+    // and `test/slice0.test.ts` both assert exactly one active administrative manager, and a duplicate
+    // here would read as a second supervisor rather than as the same edge seen twice.
+    const byLineId = new Map(visibleManagers.map((m) => [m.id, m]));
+    for (const own of await ownReportingManagersTx(tx, employmentId)) {
+      if (byLineId.has(own.id)) continue;
+      byLineId.set(own.id, {
+        id: own.id,
+        lineType: own.lineType,
+        employmentId: own.employmentId,
+        personId: own.personId,
+        name: own.name,
+        employeeCode: own.employeeCode,
+      });
+    }
+    // Enum declaration order, which is what `ORDER BY line_type` gave before the union (Postgres sorts an
+    // enum by declaration, not alphabetically), then name and id so the array is fully determined —
+    // within one line type the old query left the order to the planner (CLAUDE.md §8).
+    const managers = [...byLineId.values()].sort(
+      (a, b) =>
+        reportingLineKindRank(a.lineType) - reportingLineKindRank(b.lineType) ||
+        a.name.localeCompare(b.name) ||
+        a.id.localeCompare(b.id),
+    );
     const reports = await tx
       .select({
         id: reportingLine.id,

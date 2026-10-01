@@ -6,6 +6,15 @@
  * self, admins, and people whose employment the caller may see — a manager's employment is not one of those
  * for the manager's report). The first describe block seeds exactly that and reads as the APP ROLE with an
  * EMPLOYEE session, so the premise is a pinned fact rather than a repeated assumption.
+ *
+ * r375 SCOPED THAT PREMISE, AND DID NOT REPEAL IT. `app.can_see_person` is still untouched, so the
+ * `listLeaveRequestsPage` projection asserted below — which resolves `currentApproverName` with its own
+ * RLS-bound join to employment → person — still returns NULL to the employee, and the assertions in STEP
+ * 1a are still live guards on that read NOT widening. What r375 added is a separate narrow reader,
+ * `app.own_reporting_managers` (migration 0498), consumed only through `core/read.ts`
+ * reportingLinesFor / ownReportingManagersTx. So "an employee cannot read their own manager's name"
+ * is now true of THIS PROJECTION rather than of the product: on My Leave the name reaches the employee
+ * through 0472, and on the roster and the attendance screens through 0498.
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -99,7 +108,10 @@ describe('STEP 1a · TODAY an employee cannot read their approver’s name (the 
     expect(own, 'the employee sees their own request').toBeDefined();
     expect(own!.currentStepKind).toBe('direct_manager');
     expect(own!.stepCount).toBe(2);
-    expect(own!.currentApproverName, 'person RLS hides the manager’s name from the employee').toBeNull();
+    expect(
+      own!.currentApproverName,
+      'person RLS hides the manager’s name from the employee in THIS projection — r375/0498 left it untouched',
+    ).toBeNull();
     // The manager and HR read the same projection and DO get the name — so the null above is RLS, not data.
     expect((await read(mgr.ctx))!.currentApproverName).toBe('Marcus Manager');
     expect((await read(hr.ctx))!.currentApproverName).toBe('Marcus Manager');
