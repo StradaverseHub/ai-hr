@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { requireAdmin } from '@/lib/authz';
 import { parseCsvRecords } from '@/lib/csv';
+import { requireLeaveImportHeaders } from '@/lib/leave-data-import';
 import {
   validateLeaveHistoryImport,
   commitLeaveHistoryImport,
@@ -40,7 +41,8 @@ export async function validateLeaveHistoryImportAction(
   openingBalancesAreNet: boolean,
 ): Promise<LeaveHistoryImportPreview> {
   const s = await requireAdmin();
-  const { records } = parseCsvRecords(csv);
+  const { headers, records } = parseCsvRecords(csv);
+  requireLeaveImportHeaders('history', headers);
   return validateLeaveHistoryImport(s, { records, openingBalancesAreNet });
 }
 
@@ -58,12 +60,15 @@ export async function commitLeaveHistoryImportAction(
   source?: LeaveHistoryImportSource,
 ): Promise<LeaveHistoryImportResult> {
   const s = await requireAdmin();
-  const { records } = parseCsvRecords(csv);
+  const { headers, records } = parseCsvRecords(csv);
+  requireLeaveImportHeaders('history', headers);
   const result = await commitLeaveHistoryImport(s, { records, source, openingBalancesAreNet });
   // The import log lives on this page and is server-rendered, so it must be re-read after a commit.
   revalidatePath('/admin/leave-config/history-import');
+  revalidatePath('/admin/leave-config/data-import');
   // …and the records themselves land in leave history, on both the admin register and the self-view.
   revalidatePath('/leave');
+  revalidatePath('/leave/history');
   revalidatePath('/leave/employee-records');
   // r367 — …and, when the run deducted, the BALANCE surfaces move too. Employee Balances is the tab the
   // reporter was looking at when Taken read 0.00 beside six records, and it is server-rendered.

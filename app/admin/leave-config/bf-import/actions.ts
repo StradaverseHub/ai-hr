@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { requireAdmin } from '@/lib/authz';
 import { parseCsvRecords } from '@/lib/csv';
+import { requireLeaveImportHeaders } from '@/lib/leave-data-import';
 import {
   validateLeaveBfImport,
   commitLeaveBfImport,
@@ -41,7 +42,8 @@ export async function validateLeaveBfImportAction(
   mode: LeaveBfImportMode,
 ): Promise<LeaveBfImportPreview> {
   const s = await requireAdmin();
-  const { records } = parseCsvRecords(csv);
+  const { headers, records } = parseCsvRecords(csv);
+  requireLeaveImportHeaders('bf', headers);
   return validateLeaveBfImport(s, { records, mode });
 }
 
@@ -57,7 +59,8 @@ export async function commitLeaveBfImportAction(
   source?: LeaveBfImportSource,
 ): Promise<LeaveBfImportResult> {
   const s = await requireAdmin();
-  const { records } = parseCsvRecords(csv);
+  const { headers, records } = parseCsvRecords(csv);
+  requireLeaveImportHeaders('bf', headers);
   const result = await commitLeaveBfImport(s, { records, source, mode });
   revalidateBfSurfaces();
   return result;
@@ -86,6 +89,7 @@ export async function reverseLeaveBfImportAction(runId: string): Promise<{ rever
 function revalidateBfSurfaces(): void {
   // The import log lives on this page and is server-rendered, so it must be re-read after a write.
   revalidatePath('/admin/leave-config/bf-import');
+  revalidatePath('/admin/leave-config/data-import');
   // The balance surfaces. Employee Balances is the tab whose Brought Forward / B/F Forfeited columns move.
   revalidatePath('/leave/employee-balances');
   revalidatePath('/me');

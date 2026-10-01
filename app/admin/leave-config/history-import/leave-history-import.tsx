@@ -8,7 +8,8 @@ import { UploadCloud } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { DownloadTemplate } from '@/components/download-template';
 import { leaveHistoryImportTemplate, LEAVE_HISTORY_XLSX_HEADERS } from '@/lib/import-template';
-import { toCsv } from '@/lib/csv';
+import { toCsv, parseCsvRecords } from '@/lib/csv';
+import { requireLeaveImportHeaders } from '@/lib/leave-data-import';
 import {
   IMPORT_FILE_ACCEPT,
   importFileMessageKey,
@@ -50,8 +51,9 @@ const MAX_PREVIEW_ROWS = 500;
 
 type Phase = 'idle' | 'previewed' | 'done';
 
-export function LeaveHistoryImport({ runs }: { runs: LeaveHistoryRunRow[] }) {
+export function LeaveHistoryImport({ runs, showRunLog = true, historyOnly = false, onCommitPending }: { runs: LeaveHistoryRunRow[]; showRunLog?: boolean; historyOnly?: boolean; onCommitPending?: (pending: boolean) => void }) {
   const t = useTranslations('admin.leaveHistoryImport');
+  const importT = useTranslations('admin.leaveDataImport');
   const router = useRouter();
   const [csv, setCsv] = useState('');
   const [preview, setPreview] = useState<LeaveHistoryImportPreview | null>(null);
@@ -86,7 +88,10 @@ export function LeaveHistoryImport({ runs }: { runs: LeaveHistoryRunRow[] }) {
    * changes (see the radio group below). A preview that was computed under one answer and then read under
    * the other would show a balance movement that Confirm import is not going to make.
    */
-  const runValidate = (text: string, net = openingBalancesAreNet) =>
+  const runValidate = (text: string, net = openingBalancesAreNet) => {
+    try { requireLeaveImportHeaders('history', parseCsvRecords(text).headers); } catch {
+      setError(importT('wrongType')); setPreview(null); setResult(null); setPhase('idle'); return;
+    }
     startTransition(async () => {
       setError(null);
       try {
@@ -98,8 +103,10 @@ export function LeaveHistoryImport({ runs }: { runs: LeaveHistoryRunRow[] }) {
         setError((e as Error).message);
       }
     });
+  };
 
-  const commit = () =>
+  const commit = () => {
+    onCommitPending?.(true);
     startTransition(async () => {
       setError(null);
       try {
@@ -109,8 +116,11 @@ export function LeaveHistoryImport({ runs }: { runs: LeaveHistoryRunRow[] }) {
         router.refresh();
       } catch (e) {
         setError((e as Error).message);
+      } finally {
+        onCommitPending?.(false);
       }
     });
+  };
 
   /** Step 2 → 3 → 4 in one gesture: read the file, then validate it immediately. */
   const loadFile = async (file: File) => {
@@ -205,6 +215,8 @@ export function LeaveHistoryImport({ runs }: { runs: LeaveHistoryRunRow[] }) {
           : templateTaken
             ? 'uploadExcel'
             : 'downloadTemplate';
+
+  if (historyOnly) return <ImportLog runs={runs} onDownload={downloadErrors} />;
 
   return (
     <div className="space-y-6">
@@ -411,7 +423,7 @@ export function LeaveHistoryImport({ runs }: { runs: LeaveHistoryRunRow[] }) {
           always was: the surprise it prevents arrives days after the upload, not at upload time. */}
       <BalanceEffectNotice net={openingBalancesAreNet} />
 
-      <ImportLog runs={runs} onDownload={downloadErrors} />
+      {showRunLog && <ImportLog runs={runs} onDownload={downloadErrors} />}
     </div>
   );
 }

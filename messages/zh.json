@@ -359,7 +359,8 @@
     "attendanceBreakdown": "考勤分解",
     "systemTesting": "系统测试",
     "leaveHistoryImport": "休假历史数据导入",
-    "leaveBfImport": "休假结转数据导入"
+    "leaveBfImport": "休假结转数据导入",
+    "leaveDataImport": "休假数据导入"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -10611,6 +10612,28 @@
     },
     "leaveConfigBfImport": {
       "pageDescription": "从文件载入休假年度开始时的结转天数。不会创建任何休假记录，也不会扣减任何休假。"
+    },
+    "leaveDataImport": {
+      "title": "休假数据导入",
+      "chooseType": "在步骤 1 选择导入类型",
+      "changeType": "切换类型会清除未完成的文件和结果。",
+      "noSelection": "选择类型后才能下载模板或继续。",
+      "downloadTemplate": "下载模板",
+      "selectedType": "所选导入类型",
+      "historyTitle": "导入历史",
+      "historyEmpty": "暂无导入记录。",
+      "when": "日期",
+      "importType": "导入类型",
+      "file": "文件",
+      "rows": "行数",
+      "imported": "已导入",
+      "failed": "失败",
+      "details": "详情",
+      "pasted": "粘贴的数据",
+      "history": "休假历史数据导入",
+      "bf": "休假结转数据导入",
+      "pageDescription": "使用现有流程导入历史休假记录或期初结转余额。",
+      "wrongType": "此文件与所选导入类型不符。请在步骤 1 更改类型或下载对应模板。"
     }
   },
   "topbar": {

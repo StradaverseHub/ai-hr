@@ -669,6 +669,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       // REGISTERING IT IS NOT PAPERWORK: test/function-access.test.ts fails BOTH ways — a guarded
       // page.tsx absent from REGISTERED_ROUTES, and a registered route with no guarded page on disk.
       '/admin/leave-config/history-import',
+      '/admin/leave-config/data-import',
       // db55d08a (r369) — LEAVE B/F DATA IMPORT, the opening-figure third of a migration.
       //
       // A ROUTE on the EXISTING `leaveConfig` key, NOT a new screenKey, for the reason the note above

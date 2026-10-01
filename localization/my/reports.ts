@@ -24,6 +24,7 @@ import {
 // kernel's stamp without importing core/payroll and dragging the whole engine into every EA caller.
 import { storedComponentLines } from '../../core/payslip-earning-lines';
 import { accumulateEaRouting } from './ea-routing';
+import { MY_EA_REPORTING } from './ea-reporting';
 export { EA_BUCKET_SOURCE_FIELD } from './ea-routing';
 import { MY_STATUTORY_VERSION, DEFAULT_MY_STATUTORY, childReliefTableHeadCount } from './statutory-tables';
 import { coordinatedPcbForPerson } from './payroll';
@@ -1159,18 +1160,7 @@ export const EA_PART_B_COMPONENTS = [
  * unchanged; only the claim about where the money ends up was wrong.
  */
 export const EA_LINE_TO_FIELD = {
-  EA_B1A: 'grossSalary',
-  EA_B1B: 'directorFee',
-  EA_B1C: 'allowances',
-  EA_B1D: 'taxBorneByEmployer',
-  EA_B1E: 'esos',
-  EA_B1F: 'gratuity',
-  EA_B3: 'benefitsInKind',
-  EA_B4: 'livingAccommodation',
-  EA_B5: 'unapprovedFundRefund',
-  EA_B6: 'compensation',
-  EA_C1: 'pension',
-  EA_C2: 'annuity',
+  ...Object.fromEntries(MY_EA_REPORTING.map(entry => [entry.code, entry.destination])) as Record<string, EaField>,
   gross_salary: 'grossSalary',
   bonus: 'bonus',
   // Both, and not a bug — the printed box is "1(b) Fees (including directors' fees), commission or bonus".

@@ -359,7 +359,8 @@
     "attendanceBreakdown": "Attendance Breakdown",
     "systemTesting": "System Testing",
     "leaveHistoryImport": "Leave History Data Import",
-    "leaveBfImport": "Leave B/F Data Import"
+    "leaveBfImport": "Leave B/F Data Import",
+    "leaveDataImport": "Leave Data Import"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -10611,6 +10612,28 @@
     },
     "leaveConfigBfImport": {
       "pageDescription": "Load the brought-forward days a leave year opens with, from a file. No leave record is created and no leave is deducted."
+    },
+    "leaveDataImport": {
+      "title": "Leave Data Import",
+      "chooseType": "Choose Import Type in Step 1",
+      "changeType": "Changing type clears the unfinished file and results.",
+      "noSelection": "Choose a type before downloading a template or continuing.",
+      "downloadTemplate": "Download Template",
+      "selectedType": "Selected Import Type",
+      "historyTitle": "Import history",
+      "historyEmpty": "No imports yet.",
+      "when": "Date",
+      "importType": "Import Type",
+      "file": "File",
+      "rows": "Rows",
+      "imported": "Imported",
+      "failed": "Failed",
+      "details": "Details",
+      "pasted": "Pasted data",
+      "history": "Leave History Data Import",
+      "bf": "Leave B/F Data Import",
+      "pageDescription": "Load past leave records or opening brought-forward figures using their existing workflows.",
+      "wrongType": "This file does not match the selected Import Type. Change the selection in Step 1 or download its template."
     }
   },
   "topbar": {

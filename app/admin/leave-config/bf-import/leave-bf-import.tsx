@@ -8,7 +8,8 @@ import { UploadCloud } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { DownloadTemplate } from '@/components/download-template';
 import { leaveBfImportTemplate, LEAVE_BF_XLSX_HEADERS } from '@/lib/import-template';
-import { toCsv } from '@/lib/csv';
+import { toCsv, parseCsvRecords } from '@/lib/csv';
+import { requireLeaveImportHeaders } from '@/lib/leave-data-import';
 import { IMPORT_FILE_ACCEPT, importFileMessageKey, readImportFile } from '@/lib/import-file';
 import {
   LEAVE_BF_COLUMNS,
@@ -49,8 +50,9 @@ const MAX_PREVIEW_ROWS = 500;
 
 type Phase = 'idle' | 'previewed' | 'done';
 
-export function LeaveBfImport({ runs }: { runs: LeaveBfRunRow[] }) {
+export function LeaveBfImport({ runs, showRunLog = true, historyOnly = false, onCommitPending }: { runs: LeaveBfRunRow[]; showRunLog?: boolean; historyOnly?: boolean; onCommitPending?: (pending: boolean) => void }) {
   const t = useTranslations('admin.leaveBfImport');
+  const importT = useTranslations('admin.leaveDataImport');
   const router = useRouter();
   const [csv, setCsv] = useState('');
   const [preview, setPreview] = useState<LeaveBfImportPreview | null>(null);
@@ -83,7 +85,10 @@ export function LeaveBfImport({ runs }: { runs: LeaveBfRunRow[] }) {
    * preview computed under Replace and then read under Add would show a movement Confirm import is not
    * going to make.
    */
-  const runValidate = (text: string, m = mode) =>
+  const runValidate = (text: string, m = mode) => {
+    try { requireLeaveImportHeaders('bf', parseCsvRecords(text).headers); } catch {
+      setError(importT('wrongType')); setPreview(null); setResult(null); setPhase('idle'); return;
+    }
     startTransition(async () => {
       setError(null);
       try {
@@ -95,8 +100,10 @@ export function LeaveBfImport({ runs }: { runs: LeaveBfRunRow[] }) {
         setError((e as Error).message);
       }
     });
+  };
 
-  const commit = () =>
+  const commit = () => {
+    onCommitPending?.(true);
     startTransition(async () => {
       setError(null);
       try {
@@ -106,8 +113,11 @@ export function LeaveBfImport({ runs }: { runs: LeaveBfRunRow[] }) {
         router.refresh();
       } catch (e) {
         setError((e as Error).message);
+      } finally {
+        onCommitPending?.(false);
       }
     });
+  };
 
   const rollback = (runId: string) =>
     startTransition(async () => {
@@ -215,6 +225,8 @@ export function LeaveBfImport({ runs }: { runs: LeaveBfRunRow[] }) {
           : templateTaken
             ? 'uploadExcel'
             : 'downloadTemplate';
+
+  if (historyOnly) return <ImportLog runs={runs} onDownload={downloadErrors} onRollback={rollback} busy={pending} />;
 
   return (
     <div className="space-y-6">
@@ -424,7 +436,7 @@ export function LeaveBfImport({ runs }: { runs: LeaveBfRunRow[] }) {
         />
       )}
 
-      <ImportLog runs={runs} onDownload={downloadErrors} onRollback={rollback} busy={pending} />
+      {showRunLog && <ImportLog runs={runs} onDownload={downloadErrors} onRollback={rollback} busy={pending} />}
     </div>
   );
 }

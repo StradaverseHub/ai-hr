@@ -138,6 +138,7 @@ export type LeaveConfigScreenId =
    * its LABEL, to "Leave Balance Import": two near-identical names for two tools that do opposite
    * things is the confusion the pair would otherwise create.
    */
+  | 'leaveDataImport'
   | 'leaveHistoryImport'
   /**
    * db55d08a (r369) — `leaveBfImport` (`/admin/leave-config/bf-import`), the OPENING-FIGURE third of a
@@ -223,6 +224,7 @@ export type LeaveConfigGroupId =
   | 'adjustments'
   // 3f15ffdb (r362) — a one-screen row directly after Leave Adjustments (see the screen id's note
   // above for why it is a group of its own rather than a third tab of `adjustments`).
+  | 'leaveDataImport'
   | 'leaveHistoryImport'
   // db55d08a (r369) — a one-screen row directly after Leave History Data Import (see the screen id's note
   // above for why it is a group of its own rather than a tab of either importer beside it).
@@ -246,6 +248,7 @@ export type LeaveConfigRowNavKey =
   | 'leaveEntitlements'
   | 'leaveBalanceHealth'
   | 'leaveAdjustments'
+  | 'leaveDataImport'
   | 'leaveHistoryImport'
   | 'leaveBfImport'
   | 'leaveCredit'
@@ -308,9 +311,9 @@ export const LEAVE_CONFIG_MAP: Group[] = [
   // item: that row is called Leave Adjustments and describes itself as adjusting balances, and this
   // tool adjusts none. Immediately after it because a migration loads the balances, then the records.
   {
-    id: 'leaveHistoryImport',
-    navKey: 'leaveHistoryImport',
-    items: [{ id: 'leaveHistoryImport', href: '/admin/leave-config/history-import' }],
+    id: 'leaveDataImport',
+    navKey: 'leaveDataImport',
+    items: [{ id: 'leaveDataImport', href: '/admin/leave-config/data-import' }],
   },
   // db55d08a (r369) — LEAVE B/F DATA IMPORT, ONE SCREEN, ITS OWN ROW, DIRECTLY AFTER LEAVE HISTORY DATA
   // IMPORT. The tab row renders nothing for a group of one (see `LeaveConfigMap` below), so this entry buys
@@ -326,11 +329,6 @@ export const LEAVE_CONFIG_MAP: Group[] = [
   // IMMEDIATELY AFTER IT, not at the bottom, because the order of the menu is the order of the work — and
   // the reporter's own go-live sequence is generate the entitlements, then load B/F, then load the leave
   // taken. The screen prints that sequence.
-  {
-    id: 'leaveBfImport',
-    navKey: 'leaveBfImport',
-    items: [{ id: 'leaveBfImport', href: '/admin/leave-config/bf-import' }],
-  },
   // 3fb1a611 (r299) — LEAVE CREDIT, ITS OWN ROW, DIRECTLY AFTER LEAVE ADJUSTMENTS, with two tabs: Credits and
   // Rules. The row is gated on the `toil` module in the sidebar (MODULE_OF_HREF); both pages also check it.
   {
@@ -465,6 +463,7 @@ const ROW_DESCRIPTION_KEY: Record<LeaveConfigGroupId, [namespace: string, key: s
   // 3f15ffdb (r362) — its own namespace, the house shape (`admin.leaveConfig<Row>.pageDescription`).
   // It must NOT borrow the Leave Adjustments sentence: that row's sentence is about changing balances,
   // and the one thing this row does not do is change a balance.
+  leaveDataImport: ['admin.leaveDataImport', 'pageDescription'],
   leaveHistoryImport: ['admin.leaveConfigHistoryImport', 'pageDescription'],
   // db55d08a (r369) — its own namespace, the house shape. It must NOT borrow either neighbour's
   // sentence: the row above is about loading leave RECORDS (this creates none) and Leave Adjustments is

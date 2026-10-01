@@ -359,7 +359,8 @@
     "attendanceBreakdown": "Phân tách chấm công",
     "systemTesting": "Kiểm thử hệ thống",
     "leaveHistoryImport": "Nhập dữ liệu lịch sử nghỉ phép",
-    "leaveBfImport": "Nhập dữ liệu B/F phép"
+    "leaveBfImport": "Nhập dữ liệu B/F phép",
+    "leaveDataImport": "Nhập dữ liệu nghỉ phép"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -10611,6 +10612,28 @@
     },
     "leaveConfigBfImport": {
       "pageDescription": "Tải số ngày chuyển sang mà một năm phép bắt đầu với, từ một tệp. Không tạo bản ghi phép nào và không trừ ngày phép nào."
+    },
+    "leaveDataImport": {
+      "title": "Nhập dữ liệu nghỉ phép",
+      "chooseType": "Chọn loại nhập ở Bước 1",
+      "changeType": "Đổi loại sẽ xóa tệp và kết quả chưa hoàn tất.",
+      "noSelection": "Chọn loại trước khi tải mẫu hoặc tiếp tục.",
+      "downloadTemplate": "Tải mẫu",
+      "selectedType": "Loại nhập đã chọn",
+      "historyTitle": "Lịch sử nhập",
+      "historyEmpty": "Chưa có lần nhập nào.",
+      "when": "Ngày",
+      "importType": "Loại nhập",
+      "file": "Tệp",
+      "rows": "Số dòng",
+      "imported": "Đã nhập",
+      "failed": "Thất bại",
+      "details": "Chi tiết",
+      "pasted": "Dữ liệu đã dán",
+      "history": "Nhập lịch sử nghỉ phép",
+      "bf": "Nhập số dư nghỉ phép chuyển sang",
+      "pageDescription": "Nhập lịch sử nghỉ phép hoặc số dư đầu kỳ bằng quy trình hiện có.",
+      "wrongType": "Tệp không khớp với loại nhập đã chọn. Đổi lựa chọn ở Bước 1 hoặc tải mẫu tương ứng."
     }
   },
   "topbar": {

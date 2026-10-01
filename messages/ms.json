@@ -359,7 +359,8 @@
     "attendanceBreakdown": "Pecahan Kehadiran",
     "systemTesting": "Ujian Sistem",
     "leaveHistoryImport": "Import Data Sejarah Cuti",
-    "leaveBfImport": "Import Data B/F Cuti"
+    "leaveBfImport": "Import Data B/F Cuti",
+    "leaveDataImport": "Import Data Cuti"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -10611,6 +10612,28 @@
     },
     "leaveConfigBfImport": {
       "pageDescription": "Muatkan hari bawa hadapan yang membuka tahun cuti, daripada fail. Tiada rekod cuti dicipta dan tiada cuti ditolak."
+    },
+    "leaveDataImport": {
+      "title": "Import Data Cuti",
+      "chooseType": "Pilih Jenis Import pada Langkah 1",
+      "changeType": "Menukar jenis memadam fail dan hasil yang belum selesai.",
+      "noSelection": "Pilih jenis sebelum memuat turun templat atau meneruskan.",
+      "downloadTemplate": "Muat Turun Templat",
+      "selectedType": "Jenis Import Dipilih",
+      "historyTitle": "Sejarah import",
+      "historyEmpty": "Belum ada import.",
+      "when": "Tarikh",
+      "importType": "Jenis Import",
+      "file": "Fail",
+      "rows": "Baris",
+      "imported": "Diimport",
+      "failed": "Gagal",
+      "details": "Butiran",
+      "pasted": "Data ditampal",
+      "history": "Import Sejarah Cuti",
+      "bf": "Import B/F Cuti",
+      "pageDescription": "Muatkan rekod cuti terdahulu atau baki dibawa ke hadapan melalui aliran kerja sedia ada.",
+      "wrongType": "Fail ini tidak sepadan dengan Jenis Import dipilih. Tukar pilihan pada Langkah 1 atau muat turun templatnya."
     }
   },
   "topbar": {

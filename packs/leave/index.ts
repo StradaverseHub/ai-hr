@@ -309,7 +309,7 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
     //
     // NO `ownedSubpaths`: one page, no tabs, no sub-screen — nothing for the row to stay lit on beyond
     // its own href. NOT module-gated: leave is core, like every row here except Leave Credit.
-    { href: '/admin/leave-config/history-import', labelKey: 'leaveHistoryImport', icon: FileUp },
+    { href: '/admin/leave-config/data-import', labelKey: 'leaveDataImport', icon: FileUp, ownedSubpaths: ['/admin/leave-config/history-import', '/admin/leave-config/bf-import'] },
     // db55d08a (r369) — LEAVE B/F DATA IMPORT, DIRECTLY AFTER THE RECORD IMPORTER, and the place is
     // again the point.
     //
@@ -326,7 +326,6 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
     //
     // NO `ownedSubpaths`: one page, no tabs, no sub-screen. NOT module-gated: leave is core, like every
     // row here except Leave Credit.
-    { href: '/admin/leave-config/bf-import', labelKey: 'leaveBfImport', icon: FileUp },
     // 3fb1a611 (r299) — LEAVE CREDIT, DIRECTLY AFTER LEAVE ADJUSTMENTS, where the approved plan puts it.
     //
     // Every Replacement Leave credit in one list (earned through a request, added by HR, used, reversed,
