@@ -23,6 +23,8 @@ import {
 // ea54fe6e — read the itemised lines STRUCTURALLY (by shape), which is what lets this file consume the
 // kernel's stamp without importing core/payroll and dragging the whole engine into every EA caller.
 import { storedComponentLines } from '../../core/payslip-earning-lines';
+import { accumulateEaRouting } from './ea-routing';
+export { EA_BUCKET_SOURCE_FIELD } from './ea-routing';
 import { MY_STATUTORY_VERSION, DEFAULT_MY_STATUTORY, childReliefTableHeadCount } from './statutory-tables';
 import { coordinatedPcbForPerson } from './payroll';
 // 8ca344bf — Borang 8A's read lives in its own file (it needs hire/termination dates and the employer
@@ -1157,6 +1159,18 @@ export const EA_PART_B_COMPONENTS = [
  * unchanged; only the claim about where the money ends up was wrong.
  */
 export const EA_LINE_TO_FIELD = {
+  EA_B1A: 'grossSalary',
+  EA_B1B: 'directorFee',
+  EA_B1C: 'allowances',
+  EA_B1D: 'taxBorneByEmployer',
+  EA_B1E: 'esos',
+  EA_B1F: 'gratuity',
+  EA_B3: 'benefitsInKind',
+  EA_B4: 'livingAccommodation',
+  EA_B5: 'unapprovedFundRefund',
+  EA_B6: 'compensation',
+  EA_C1: 'pension',
+  EA_C2: 'annuity',
   gross_salary: 'grossSalary',
   bonus: 'bonus',
   // Both, and not a bug — the printed box is "1(b) Fees (including directors' fees), commission or bonus".
@@ -1182,7 +1196,7 @@ export const EA_LINE_TO_FIELD = {
  * so a pay item mapped to an EA line but paid through those buckets routes NOTHING rather than inventing
  * income. (`wage` → allowances and `ot` → grossSalary mirror the loop below: grossSalary = basic + overtime.)
  */
-export const EA_BUCKET_SOURCE_FIELD = { wage: 'allowances', ot: 'grossSalary', bonus: 'bonus' } as const;
+
 
 /**
  * THE YEAR ROUTING SWITCHES ON, AND THE REASON IS THE WHOLE RISK OF THIS FEATURE.
@@ -1923,30 +1937,9 @@ export async function eaStatement(
         .from(payComponent);
       const lineOf = new Map(catalogue.map((c) => [c.code, c.eaLine]));
       const nameOf = new Map(catalogue.map((c) => [c.code, c.name]));
-      for (const s of slips) {
-        for (const line of storedComponentLines(s.statutory)) {
-          const code = (line.code ?? '').trim();
-          if (!code) continue;
-          const mapped = lineOf.get(code) ?? null;
-          for (const b of line.buckets ?? []) {
-            const source = EA_BUCKET_SOURCE_FIELD[(b?.bucket ?? '') as keyof typeof EA_BUCKET_SOURCE_FIELD];
-            // Not Part B income (reimbursement, deduction) — never routed, and never counted as an
-            // unmapped omission either: mapping it would not have printed anything.
-            if (!source) continue;
-            const amount = num(b?.amount);
-            if (!amount) continue;
-            if (!mapped) {
-              unmappedPayItems.set(code, nameOf.get(code) ?? code);
-              continue;
-            }
-            // `allowance_exempt` is mapped but routes no figure, by the decision on EA_LINE_TO_FIELD.
-            const target = EA_LINE_TO_FIELD[mapped as keyof typeof EA_LINE_TO_FIELD] as EaField | undefined;
-            if (!target || !routingActive || target === source) continue;
-            routed[source] = (routed[source] ?? 0) - amount;
-            routed[target] = (routed[target] ?? 0) + amount;
-          }
-        }
-      }
+      const routing = accumulateEaRouting(slips.flatMap((slip) => storedComponentLines(slip.statutory)), lineOf, EA_LINE_TO_FIELD, routingActive);
+      Object.assign(routed, routing.deltas);
+      for (const code of routing.unmapped) unmappedPayItems.set(code, nameOf.get(code) ?? code);
     }
     const withRouting = (field: EaField, base: number) => round2(base + (routed[field] ?? 0));
 
@@ -2023,10 +2016,10 @@ export async function eaStatement(
       livingAccommodation: withRouting('livingAccommodation', 0),
       unapprovedFundRefund: withRouting('unapprovedFundRefund', 0),
       compensation: withRouting('compensation', 0),
-      // Part C. NOT routable — no EA_FORM_LINES value targets them, and a pension or annuity is not
-      // employment income a pay item can produce.
-      pension: 0,
-      annuity: 0,
+      // Explicit Part C classifications transfer the processed amount out of Part B.
+      // Blank classification never infers a pension/annuity; amendments retain precedence.
+      pension: withRouting('pension', 0),
+      annuity: withRouting('annuity', 0),
       // da4fc817 — Section D's four. `tp1Relief` is the one with a real source: the year's APPROVED
       // declarations put through `tp1CountForYear`, which is the same rule the payroll feed reads (see
       // core/tax-relief.ts's header on why a second sum is forbidden). No `throughMonth` — an EA covers
