@@ -6312,6 +6312,12 @@ export async function generatePayslips(
       // ringgit (core/dependents.ts `storedReliefRM`); it deliberately did not move this expression, for
       // the same reason r343 did not move it and r344 was raised as its own item — three money-path
       // consumers change together or not at all.
+      // Preserve the pack's existing working; readers never re-price an old employee profile.
+      const childFigure = pack.payroll.childReliefFor && pack.payroll.childReliefPrices
+        ? pack.payroll.childReliefFor(pricesChildReliefFromGrid(e)
+          ? { from: 'table', table: e.childReliefTable, prices: pack.payroll.childReliefPrices(rules.pcb?.reliefs) }
+          : { from: 'headCount', children: e.numChildren ?? 0, perChild: rules.pcb?.reliefs.perChild ?? 0 })
+        : null;
       const childReliefAmount =
       // a5f21891 — 'auto' PRICES ITS GRID TOO, and all three gates widen together. The sync derives that
       // grid from the Family register (core/dependents.ts), so on 'auto' the categories decide the money
@@ -6320,14 +6326,8 @@ export async function generatePayslips(
       // test/child-relief-weighted-units-r343.test.ts (g) exists to catch.
         pricesChildReliefFromGrid(e) &&
         pack.payroll.childReliefAmountFor
-          ? pack.payroll.childReliefAmountFor(e.childReliefTable, rules.pcb?.reliefs)
+          ? (childFigure?.amountRM ?? pack.payroll.childReliefAmountFor(e.childReliefTable, rules.pcb?.reliefs))
           : undefined;
-      // Preserve the pack's existing working; readers never re-price an old employee profile.
-      const childFigure = pack.payroll.childReliefFor && pack.payroll.childReliefPrices
-        ? pack.payroll.childReliefFor(pricesChildReliefFromGrid(e)
-          ? { from: 'table', table: e.childReliefTable, prices: pack.payroll.childReliefPrices(rules.pcb?.reliefs) }
-          : { from: 'headCount', children: e.numChildren ?? 0, perChild: rules.pcb?.reliefs.perChild ?? 0 })
-        : null;
       const taxProfile = {
         category: (e.taxCategory ?? 1) as 1 | 2 | 3,
         children: e.numChildren ?? 0,

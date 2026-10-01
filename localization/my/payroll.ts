@@ -73,6 +73,7 @@ export type TaxProfile = {
     table: Record<string, { full?: unknown; half?: unknown } | undefined> | null;
     rows: Array<{ category: string; sharePercent: number; children: number; units: number; amountRM: number }>;
     headCount: number;
+    categoryUnits: Record<string, number>;
   };
 };
 

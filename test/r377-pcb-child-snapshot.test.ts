@@ -51,6 +51,15 @@ describe('r377 immutable child working', () => {
     expect(section.rows.find(row => row.caption === 'slipChildUnder18')?.first).toEqual({ kind: 'notRecorded' });
     expect(section.rows.find(row => row.caption === 'slipChildCount')?.first).toEqual({ kind: 'notRecorded' });
   });
+  it('no profile working never borrows the current employee grid', () => {
+    const r = pcbMonth({ monthlyWage: 14000, epfMonthly: 1540, month: 7 });
+    const x = explainPcb({ pcb: r.total, pcbMeta: r.snapshot }, current);
+    if (x.kind !== 'mtd') throw Error('expected MTD');
+    expect(x.trace?.childWorking).toBeNull();
+    const section = pcbSlipSections(x, sides)[0];
+    expect(section.note).toBe('slipChildNoteNoProfile');
+    expect(section.rows.find(row => row.caption === 'slipChildUnder18')?.third).toEqual({ kind: 'notRecorded' });
+  });
   it('manual totals preserve C without inventing child-category claims', () => {
     const r = pcbMonth({ monthlyWage: 14000, epfMonthly: 1540, month: 7, profile: { category: 2, children: 3, childWorking: { mode: 'manual', table: null, rows: [], categoryUnits: {}, headCount: 3 } } });
     const x = explainPcb({ pcb: r.total, pcbMeta: r.snapshot }, current);

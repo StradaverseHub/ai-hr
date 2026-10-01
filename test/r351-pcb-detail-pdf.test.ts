@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { extractedText as drawnText } from './helpers/pcb-pdf-text';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { PDFDocument, PDFRawStream, decodePDFRawStream, type PDFArray } from 'pdf-lib';
+import { PDFDocument, PDFDict, PDFName } from 'pdf-lib';
 import { pcbPdfText, renderPcbDetailPdf } from '../app/payroll/pcb-detail/slip-pdf';
 import { pcbFormulaBlocks } from '../app/payroll/pcb-detail/formulas';
 import { explainPcb, type PcbExplanation, type PcbReliefBreakdown } from '../core/pcb-explain';
@@ -207,6 +207,10 @@ describe('r377 — rendered document preserves actual Sigma and mathematical min
     });
 
     expect(Buffer.from(bytes).subarray(0, 5).toString(), 'a real PDF').toBe('%PDF-');
+    const pdf = await PDFDocument.load(bytes);
+    expect([...pdf.context.enumerateIndirectObjects()].some(([, object]) =>
+      object instanceof PDFDict && object.has(PDFName.of('FontFile2'))),
+      'the delivered document embeds its portable TrueType glyph outlines').toBe(true);
     const text = await drawnText(bytes);
     expect(text.length, 'the drawn text was recovered').toBeGreaterThan(200);
 
