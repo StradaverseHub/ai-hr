@@ -299,10 +299,9 @@ describe('r343 · ⚠️ THE TWO SECTIONS ARE GONE FROM THE SURFACE THE EMPLOYEE
     const user = userEvent.setup();
     mount('en');
     await openModal(user, 'en');
-    const unit = screen.getByTestId('leave-credit-unit') as HTMLInputElement;
-    expect(unit.tagName).toBe('INPUT');
-    expect(unit.disabled).toBe(true);
-    expect(unit.value).toBe(en.replacementRequest.unitDay);
+    // r378 removes the redundant disabled unit field; totals still state their derived day unit.
+    expect(screen.queryByTestId('leave-credit-unit')).toBeNull();
+    expect(screen.getByTestId('leave-credit-total')).toHaveTextContent(en.replacementRequest.totalDays.replace('{days}', '0.00'));
     // r336 posted `<input type="hidden" name="unit" value="day">`. `submitLeaveCreditRequest` derives the
     // unit itself (every row of this table credits in days), so the field is gone rather than restated.
     expect(screen.getByTestId('leave-credit-request-dialog').querySelector('input[name="unit"]')).toBeNull();
@@ -323,7 +322,7 @@ describe('r343 · the ordinary-day row derives its figures and never offers them
     await user.type(endInput('en'), '22:00');
 
     // 18:00 → 22:00 is 240 minutes, inside the measured 480 ⇒ half a day.
-    await waitFor(() => expect(screen.getByTestId('leave-credit-eligible-minutes')).toHaveTextContent('240'));
+    await waitFor(() => expect(screen.getByTestId('leave-credit-eligible-minutes')).toHaveTextContent('4h'));
     expect(screen.getByTestId('leave-credit-row-credit')).toHaveTextContent('0.5');
     expect(screen.getByTestId('leave-credit-total')).toHaveTextContent('0.5');
 
@@ -364,6 +363,9 @@ describe('r343 · the ordinary-day row derives its figures and never offers them
     // and block the submit for the wrong reason, which is what the non-vacuity note below is about.
     mount('en', { factsFor: (d) => (d === '2026-09-16' ? { ...WORKING_DAY, measuredExtendedMinutes: 180 } : REST_DAY_VIEW) });
     await openModal(user, 'en');
+    const reason = screen.getByTestId('leave-credit-request-dialog').querySelector('textarea[name="reason"]') as HTMLTextAreaElement;
+    expect(reason.required).toBe(true);
+    await user.type(reason, 'Synthetic requested leave credit');
     // ⚠️ NON-VACUITY, kept from r336 and adapted: a VALID row is filled FIRST — same table now, second row —
     // so the total is above zero and the button would be enabled but for the offending one. Without it the
     // assertion passes on an empty form, where the button is disabled because nothing is claimed.
@@ -460,6 +462,9 @@ describe('r343 · ONE total, over rows of different day types in ONE table', () 
     // Two different roster answers, so the two rows are genuinely different day types in one table.
     mount('en', { factsFor: (d) => (d === '2026-09-16' ? WORKING_DAY : REST_DAY_VIEW) });
     await openModal(user, 'en');
+    const reason = screen.getByTestId('leave-credit-request-dialog').querySelector('textarea[name="reason"]') as HTMLTextAreaElement;
+    expect(reason.required).toBe(true);
+    await user.type(reason, 'Synthetic requested leave credit');
 
     await user.type(dateInput('en'), '2026-09-20');
     await awaitDayType('en', 'rest_day'); // r360 — was selectOptions(…, 'rest_day').
