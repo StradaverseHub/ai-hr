@@ -2890,8 +2890,14 @@ export default async function EmployeePage({
             <p className="mt-1 text-xs text-muted-foreground">{t('salaryInitialEffectiveHint')}</p>
           )}
         </Field>
+        {/* r374 (item 7dbaf677) — `required` DROPPED, `min="0"` KEPT. A Director paid Director Fees
+            quarterly has no monthly basic; `required` meant HR could type a zero but not leave the box
+            empty, and an empty box is the honest answer. A blank POST is read as an explicit zero by
+            `setCompensationAction` (`Number(null)` and `Number('')` are both 0), and `setCompensation`
+            then makes Remarks compulsory — the hint below says so BEFORE the save rather than after it.
+            `min="0"` stays because the service refuses a negative amount. */}
         <Field label={t('basicSalaryMyr')}>
-          <input name="basicSalary" type="number" min="0" step="0.01" required className={inputCls} />
+          <input name="basicSalary" type="number" min="0" step="0.01" className={inputCls} />
         </Field>
         {/* 297ae65a — the record's salary currency, grouped WITH the amount (searchable ISO 4217 list).
             Preselects the open row's currency (carry-forward made visible) or the company default for
@@ -2918,6 +2924,10 @@ export default async function EmployeePage({
         />
       </div>
       <p className="text-xs text-muted-foreground">{t('salaryAllowanceMovedHint')}</p>
+      {/* r374 — the rule behind the now-optional amount, said on the form rather than discovered through
+          a refused save. STATIC, not conditional: this is a server-rendered <form> with no client state
+          to watch the box with, and the sentence is true whether or not the box is empty. */}
+      <p className="text-xs text-muted-foreground">{t('salaryNoBasicHint')}</p>
       <p className="text-xs text-muted-foreground">{t('payModeBoundaryHint')}</p>
       {/* Confirm-before-save survives the move. It is a ConfirmSubmit (an AlertDialog) inside this
           FamilyFormDialog — a modal over a modal — and it keeps working for a specific reason: the

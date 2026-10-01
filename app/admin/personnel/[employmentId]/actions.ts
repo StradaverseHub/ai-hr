@@ -7,7 +7,15 @@ import { getTranslations } from 'next-intl/server';
 import { setEmploymentCardId } from '@/core/attendance-card';
 import { requireAdmin } from '@/lib/authz';
 import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, employmentGradeId, endReportingLine, setEmployeeCode, setEmploymentBlacklist, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
-import { PayModePeriodBoundaryError, setCompensation, supersedeCompensation, updateCompensation } from '@/core/comp';
+import {
+  NegativeSalaryAmountError,
+  NonFiniteSalaryAmountError,
+  PayModePeriodBoundaryError,
+  SalaryRemarkRequiredError,
+  setCompensation,
+  supersedeCompensation,
+  updateCompensation,
+} from '@/core/comp';
 import {
   createMovementEvent,
   editMovementEvent,
@@ -715,12 +723,37 @@ export async function endDelegationAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
-/** ADR-0078 — a pay-mode change off a period boundary maps to the localized message (the service throws a
- *  typed error so the toast is not raw English for the one rule an admin will actually hit). */
+/**
+ * ADR-0078 — a pay-mode change off a period boundary maps to the localized message (the service throws a
+ * typed error so the toast is not raw English for the one rule an admin will actually hit).
+ *
+ * r374 (item 7dbaf677) — AND THE THREE SALARY-AMOUNT REFUSALS, for the same reason. This function used
+ * to translate exactly one error and return `(e as Error).message` for everything else, so
+ * `SalaryRemarkRequiredError` (live since r369) reached the Personnel screen as a paragraph of English
+ * written for a developer, in all six locales. This round makes the amount optional on both salary
+ * forms, which turns that refusal from a theoretical one into the one HR will actually meet.
+ *
+ * MATCHED BY `instanceof` **OR** BY `name`. The `name` arm is not belt-and-braces: these classes are
+ * declared in `core/comp.ts`, and an error that crosses a module boundary a bundler duplicated fails
+ * `instanceof` while keeping its name. The existing pay-mode arm already did this.
+ */
 async function payModeErrorMessage(e: unknown): Promise<string> {
-  if (e instanceof PayModePeriodBoundaryError || (e as Error)?.name === 'PayModePeriodBoundaryError') {
+  const name = (e as Error)?.name;
+  if (e instanceof PayModePeriodBoundaryError || name === 'PayModePeriodBoundaryError') {
     const t = await getTranslations('people.detail');
     return t('payModeBoundaryError');
+  }
+  if (e instanceof SalaryRemarkRequiredError || name === 'SalaryRemarkRequiredError') {
+    const t = await getTranslations('people.detail');
+    return t('salaryRemarkRequiredError');
+  }
+  if (e instanceof NegativeSalaryAmountError || name === 'NegativeSalaryAmountError') {
+    const t = await getTranslations('people.detail');
+    return t('salaryNegativeError');
+  }
+  if (e instanceof NonFiniteSalaryAmountError || name === 'NonFiniteSalaryAmountError') {
+    const t = await getTranslations('people.detail');
+    return t('salaryNotANumberError');
   }
   return (e as Error).message;
 }
@@ -747,6 +780,11 @@ export async function setCompensationAction(formData: FormData) {
     const currencyRaw = String(formData.get('currency') ?? '').trim();
     await setCompensation(s, {
       employmentId,
+      // r374 (item 7dbaf677) — A BLANK OR ABSENT AMOUNT IS ZERO HERE, and that is already right:
+      // `Number(null)` and `Number('')` are both 0, and `setCompensation` ALWAYS writes a new row, so
+      // there is no "untouched" case for it to be confused with (unlike the edit action below, which
+      // had to be changed). `setCompensation` then requires a remark for a zero. Nothing to do but say
+      // so, because dropping `required` from the form made this line load-bearing.
       basicSalary: Number(formData.get('basicSalary')),
       currency: currencyRaw || undefined,
       // Allowance is no longer maintained on the Basic Salary screen (feedback 87c82b18) — allowances
@@ -795,7 +833,19 @@ export async function editCompensationAction(formData: FormData) {
     await updateCompensation(s, {
       compensationId: String(formData.get('compensationId')),
       employmentId,
-      basicSalary: rawBasicStr !== '' ? Number(rawBasicStr) : undefined,
+      // r374 (item 7dbaf677) — A POSTED-BUT-BLANK AMOUNT IS AN EXPLICIT ZERO, NOT "UNTOUCHED".
+      //
+      // It used to be `rawBasicStr !== '' ? Number(rawBasicStr) : undefined`, and `undefined` means
+      // UNTOUCHED to the service. That was harmless only while the input carried `required`. With
+      // `required` dropped from the edit form, clearing the box would have silently kept the old
+      // amount here while meaning zero on the Add form — the same gesture, two answers.
+      //
+      // THE DISCRIMINATOR IS THE KEY'S PRESENCE, NOT THE VALUE'S EMPTINESS (CLAUDE.md §8). The edit
+      // form always posts this field (its `defaultValue` is the stored amount), so a blank from it can
+      // only be a deliberate clear; an ABSENT key is a different caller entirely and still means
+      // untouched. `Number('')` is 0, so a cleared box lands as 0 and `updateCompensation` then
+      // requires a remark on the resulting row.
+      basicSalary: rawBasic !== null ? Number(rawBasicStr) : undefined,
       currency: currencyRaw || undefined,
       // Remarks always submitted (possibly empty → cleared to NULL).
       remarks: String(formData.get('remarks') ?? '').trim() || null,

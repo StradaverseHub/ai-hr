@@ -15,8 +15,10 @@ import { decideProfileChange } from '@/core/profile';
  * endpoint whether or not any screen posts to it. That is exactly the vestige r80 found and removed
  * for leave decisions (`decideLeaveAction`), for the same reason.
  *
- * What moved with it: the initial basic salary is still required and still validated before anything
- * is created; the provisional end date is still computed SERVER-side from the company's configured
+ * What moved with it: the initial basic salary is still VALIDATED before anything is created, though
+ * since r374 (item 7dbaf677) it is no longer REQUIRED — blank or zero is legitimate for a Director paid
+ * quarterly fees, and Remarks is what becomes compulsory in its place; the provisional end date is still
+ * computed SERVER-side from the company's configured
  * probation months (r79a / 4fb8b75a step 3), never trusted from the client; and the three standing
  * leave grants (ANNUAL / SICK / HOSPITALIZATION) are still made on hire.
  */
