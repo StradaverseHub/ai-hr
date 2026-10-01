@@ -126,7 +126,7 @@ describe('454d79a9 actual processed screen/PDF content',()=>{
    expect(html).toContain(captions.slipStep1CombinedHeading);expect(html).toContain(captions.slipStep1PMeaning);expect(html).toContain(block.substituted!);expect(html).toContain(captions.slipStep1CurrentRebate);
    if(locale==='en'||locale==='ms'){
     const response=await pcbDetailPdfResponse(new Request(`http://example.test/payroll/pcb-detail/pdf?payslipId=${slip.id}&lang=${locale}`),'attachment');expect(response.status).toBe(200);
-    const bytes=new Uint8Array(await response.arrayBuffer());fs.writeFileSync(`scratchpad/r378-payroll/step1-${locale}.pdf`,bytes);const text=await extractedText(bytes);
+    const bytes=new Uint8Array(await response.arrayBuffer());const text=await extractedText(bytes);
     expect(text).toContain(captions.slipStep1CombinedHeading);expect(text).toContain(captions.slipStep1PMeaning);expect(text).toContain(block.substituted!);expect(text).toContain(captions.slipStep1CurrentRebate);
     const step1=text.slice(text.indexOf(captions.slipStep1CombinedHeading),text.indexOf(captions.slipStep2Heading));
     expect(step1).toContain(f.b2(x.pcbNormal));expect(step1).not.toContain(f.b2(x.pcbSystem));
