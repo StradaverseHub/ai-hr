@@ -706,11 +706,12 @@ const myReportingLine: AssistantTool = {
       'Who the asking user reports to, and who reports to them. Managers are returned with their employee ' +
       'code; direct reports with their name and employmentId, which team_leave_summary and ' +
       'employee_profile accept. Approval-delegation routing is not included. This tool takes no arguments ' +
-      'and can only ever answer about the asking user. IMPORTANT: `managers` lists only managers whose ' +
-      'record the asking user is permitted to see, and an ordinary employee usually is not permitted to ' +
-      "see their own manager's record. An empty `managers` therefore means \"no manager is visible " +
-      'through this tool\", NOT "this person reports to nobody" — say the former and suggest they check ' +
-      'their profile page; never conclude they have no manager.',
+      'and can only ever answer about the asking user. `managers` lists the asking user\'s CURRENT ' +
+      'reporting managers; since r375 an ordinary employee may see their own, so an empty `managers` now ' +
+      'ordinarily means they have no current reporting line on record — not that one is hidden. Do not ' +
+      'hedge it as "no manager is visible through this tool". A line dated in the future, or already ' +
+      'ended, is deliberately not current and so is absent: if the user insists they have a supervisor, ' +
+      'suggest they check their profile page rather than asserting they have none.',
     inputSchema: schema({}),
   },
   async run(ctx) {

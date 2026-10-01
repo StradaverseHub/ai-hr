@@ -400,15 +400,32 @@ describe('ADR-0082 §5 — a tool cannot see what its caller cannot see', () => 
     expect(res.employmentId).toBe(M.employmentId);
     expect((res.reports as { name: string }[]).map((r) => r.name)).toEqual(['Line Employee']);
 
-    // THE OTHER HALF, pinned because it is surprising and a later reader might "fix" it wrongly: an
-    // ordinary employee cannot see their own manager's employment row, so the inner join drops it and
-    // `managers` comes back empty even though the line exists. The tool's description carries the
-    // instruction that keeps the model from reporting that as "you have no manager".
+    // THE OTHER HALF, AND IT INVERTED IN r375 (item 7c972a40). This used to pin the OPPOSITE: an ordinary
+    // employee could not see their own manager's employment row, the inner join dropped it, and `managers`
+    // came back EMPTY even though the line existed — pinned deliberately, with a warning that a later
+    // reader might "fix" it wrongly. r375 is that fix, done properly: `app.own_reporting_managers` (0498)
+    // is a narrow SECURITY DEFINER reader for the caller's OWN current lines, so the employee now sees
+    // their own supervisor and nobody else's. Updated, not loosened — the assertion got STRONGER: it was
+    // `toEqual([])`, and it now names the one manager that may appear and checks there is exactly one, so
+    // a reader that returned somebody else's manager would fail here.
     const eCtx = sessionFor(await createAppUser(base.tenantId, E.personId, 'employee'), E.personId, ['employee']);
     const asEmployee = await call('my_reporting_line', eCtx);
     if (!asEmployee.ok) throw new Error('expected a result');
-    expect(asEmployee.managers).toEqual([]);
-    expect(toolByName('my_reporting_line')!.spec.description).toMatch(/not "this person reports to nobody"/i);
+    const seen = asEmployee.managers as { name: string; lineType: string; employeeCode: string }[];
+    expect(seen, 'the employee sees exactly their own manager — not zero, and not two').toHaveLength(1);
+    expect(seen[0]!.name, 'their OWN manager, never another employee’s').toBe('Line Manager');
+    expect(seen[0]!.lineType).toBe('administrative');
+    // X is nobody's manager here, so a reader that leaked beyond the one hop would surface it.
+    expect(seen.map((m) => m.name)).not.toContain('Line Outsider');
+    // The description must now state the POSITIVE rule, because an empty list means what it says.
+    // Asserted positively on purpose: the description legitimately QUOTES the old hedge in order to
+    // forbid it, so a `not.toMatch` on that phrase fires on the very sentence whose job is to ban it —
+    // the §8 trap where a guard that greps prose is fooled by a quoted specifier. Pin what must be
+    // SAID, not what must be absent.
+    const desc = toolByName('my_reporting_line')!.spec.description;
+    expect(desc, 'the model must be told an employee may now see their own manager').toMatch(/may see their own/i);
+    expect(desc, 'an empty list now means no CURRENT line, not a hidden one').toMatch(/no current reporting line on record/i);
+    expect(desc, 'and it must still not assert "you have no manager" for a non-current line').toMatch(/check their profile page/i);
   });
 
   it('the self-bound tools refuse with no_employment for a login with no employee record', async () => {
