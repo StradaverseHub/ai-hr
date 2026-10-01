@@ -258,6 +258,18 @@ export const pullPlannable = (): RemoteFeedback[] => selectFeedback(`'open','con
  */
 export const pullApproved = (): RemoteFeedback[] => selectFeedback(`'approved'`);
 
+/**
+ * Planned but not yet approved — the items waiting on the reporter.
+ *
+ * Why this exists: `boardStatus()` prints `left(id::text, 8)`, so the full id of a `planned` item never
+ * leaves the database, and `pull-item` requires a whole uuid. Between them there was NO path from the CLI
+ * to a planned item's PLAN TEXT. That matters because a plan can go stale while it waits — r373 shipped
+ * with an approved plan whose central premise had become false, and the only reason that was caught is
+ * that a builder re-read it against the code. Auditing a plan before the reporter acts on it needs the
+ * plan readable. Same failure shape as `pullApproved()` stranding a builder the moment `build-start` runs.
+ */
+export const pullPlanned = (): RemoteFeedback[] => selectFeedback(`'planned'`);
+
 /** Approved but waiting on something outside the item — see the `blocked` status note in db/schema.ts. */
 export const pullBlocked = (): RemoteFeedback[] => selectFeedback(`'blocked'`);
 

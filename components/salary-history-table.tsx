@@ -184,9 +184,15 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
         <span className="text-xs font-medium text-muted-foreground">{t('effectiveDate')}</span>
         <input name="effectiveFrom" type="date" required defaultValue={r.effectiveDate} className={inputCls} />
       </label>
+      {/* r374 (item 7dbaf677) — `required` DROPPED here too, and the two forms HAD to move together.
+          This is the EDIT half of the same screen whose Add half dropped it; leaving one of them is how
+          the two drift. Clearing this box is a DELIBERATE clear, never an absent field — it always posts
+          (its `defaultValue` is the stored amount) — so `editCompensationAction` reads a posted blank as
+          an explicit ZERO rather than "untouched", which is what a blank meant before this round.
+          `min="0"` stays: the service refuses a negative amount. */}
       <label className="flex flex-col gap-1.5">
         <span className="text-xs font-medium text-muted-foreground">{t('basicSalaryMyr')}</span>
-        <input name="basicSalary" type="number" min="0" step="0.01" required defaultValue={r.basic} className={inputCls} />
+        <input name="basicSalary" type="number" min="0" step="0.01" defaultValue={r.basic} className={inputCls} />
       </label>
       {/* 297ae65a — edit the open row's salary currency in place (searchable ISO 4217 select; the service
           validates and records only a real change). */}

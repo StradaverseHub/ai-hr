@@ -42,6 +42,31 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
+/**
+ * THE BODY OF `missingByTab`, AND PROOF THAT IT IS REALLY THERE (r374, CLAUDE.md §8).
+ *
+ * Two cases below read this function's source rather than calling it, because what they assert is that
+ * a field name is NEVER pushed — a thing no amount of calling can establish. Both used to cut the slice
+ * with a bare pair of `indexOf` calls, and a renamed marker makes `indexOf` return −1, which
+ * `String.prototype.slice` reads as `length − 1`: the slice collapses to the empty string and every
+ * `not.toContain` on it passes over no source at all. Asserted with `>= 0` rather than truthiness,
+ * because −1 is truthy, plus a length floor — the only thing that separates "no violations" from
+ * "no text".
+ */
+function missingByTabBody(): string {
+  const schema = read('lib/employee-draft-schema.ts');
+  const start = schema.indexOf('export function missingByTab');
+  const end = schema.indexOf('export function missingForCreation');
+  expect(start, 'missingByTab was renamed — this guard would silently stop reading anything').toBeGreaterThanOrEqual(0);
+  expect(end, 'missingForCreation was renamed — same trap').toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  const body = schema.slice(start, end);
+  expect(body.length, 'the missingByTab body is implausibly short — the markers moved').toBeGreaterThan(2000);
+  // A positive control: the one field name the function certainly DOES push.
+  expect(body).toContain("'basicSalary'");
+  return body;
+}
+
 const WIZARD = 'app/admin/personnel/new/wizard.tsx';
 const PERSONNEL = 'app/admin/personnel/[employmentId]/page.tsx';
 const SHARED = 'components/person-details-fields.tsx';
@@ -568,9 +593,11 @@ describe('§3f group 6 — Tax Category is one component, and the wizard stops l
     // r159 nearly deleted three keys that survive no literal grep because the Review step renders
     // t(`fields.${f}`) from whatever missingByTab returns. Checked by READING the function, not grepping:
     // it never pushes 'taxCategory', so nothing can ask for the retired key.
-    const schema = read('lib/employee-draft-schema.ts');
-    const fn = schema.slice(schema.indexOf('export function missingByTab'));
-    expect(fn.slice(0, fn.indexOf('export function missingForCreation'))).not.toContain("'taxCategory'");
+    // r374 — THE SLICE IS PROVEN NON-EMPTY FIRST (CLAUDE.md §8). Both markers are matched by `indexOf`,
+    // and a renamed one returns −1: `slice(-1)` is the LAST CHARACTER, whose own `indexOf` is then −1
+    // too, so `slice(0, -1)` is `""` and this `not.toContain` would pass over no source at all.
+    // `test/r219-ea-cp8a-form.test.ts` asserted nothing for 27 rounds through exactly this.
+    expect(missingByTabBody()).not.toContain("'taxCategory'");
   });
 });
 
@@ -748,9 +775,7 @@ describe('§3h group 8 — Identity is one group, and the wizard finally asks fo
     // The IC is required on the Personnel card (a Malaysian must have an NRIC) and deliberately optional in
     // the wizard: item e3ce0d4d made the column nullable for passport holders, and lib/employee-draft-schema
     // states that a wizard stricter than hireEmployee and the bulk importer is how the three drift apart.
-    const schema = read('lib/employee-draft-schema.ts');
-    const fn = schema.slice(schema.indexOf('export function missingByTab'));
-    const body = fn.slice(0, fn.indexOf('export function missingForCreation'));
+    const body = missingByTabBody(); // r374 — non-emptiness proven inside the helper (CLAUDE.md §8).
     expect(body).not.toContain("'icNumber'");
     expect(body).not.toContain("'nationality'");
   });

@@ -127,7 +127,9 @@ describe('§1 the two rules — what Create asks for, and what Activate needs', 
     // about company, name or email, because by the time it runs those are settled and stored.
     const m = missingForCreation({});
     for (const f of ['company', 'fullName', 'primaryEmail', 'employeeCode']) expect(m).not.toContain(f);
-    expect(m).toEqual(['department', 'employmentType', 'hiredOn', 'basicSalary']);
+    // r374 (item 7dbaf677) — `remarks`, NOT `basicSalary`. An empty draft has no basic amount, which is
+    // now LEGITIMATE (a Director paid quarterly fees); what it is missing is the sentence saying why.
+    expect(m).toEqual(['department', 'employmentType', 'hiredOn', 'remarks']);
   });
 
   it('an empty draft is missing exactly the required fields, grouped by their own TAB', () => {
@@ -138,7 +140,8 @@ describe('§1 the two rules — what Create asks for, and what Activate needs', 
     expect(m.profile).toEqual([]);
     expect(m.job).toEqual(['department', 'employmentType', 'hiredOn']);
     expect(m.bankStatutory).toEqual([]); // nothing on Bank & Statutory is required by any writer
-    expect(m.payroll).toEqual(['basicSalary']);
+    // r374 — see the note on the Create/Activate split case above: an absent amount asks for REMARKS.
+    expect(m.payroll).toEqual(['remarks']);
     // ITEM 759dfc7d ADDED `family`, AND IT REQUIRES NOTHING. Most new joiners have no family record to
     // enter, so a step that demanded one would block every one of them; what the rule does judge is a
     // member somebody DID add (see test/employee-draft-family.test.ts §1).
@@ -198,10 +201,21 @@ describe('§1 the two rules — what Create asks for, and what Activate needs', 
     expect(missingByTab({ payroll: { basicSalary: '5000', payMode: 'monthly' } }).payroll).toEqual([]);
   });
 
-  it('rejects a zero or negative salary, not merely a blank one', () => {
-    expect(missingByTab({ payroll: { basicSalary: '0' } }).payroll).toContain('basicSalary');
+  /**
+   * r374 (item 7dbaf677) — THIS CASE USED TO SAY "rejects a zero or negative salary". The zero no
+   * longer is rejected; the reporter told us plainly that a Director paid quarterly fees has no monthly
+   * basic and that refusing the zero was wrong. The other two cases are UNCHANGED and must stay red: a
+   * junk string is not a Director, and a negative wage has no meaning in any arrangement they described.
+   * The full conditional rule lives in test/r374-no-basic-salary-forms.test.ts §1.
+   */
+  it('still rejects a negative or unparseable salary — but a ZERO is now a legitimate answer', () => {
     expect(missingByTab({ payroll: { basicSalary: '-100' } }).payroll).toContain('basicSalary');
     expect(missingByTab({ payroll: { basicSalary: 'abc' } }).payroll).toContain('basicSalary');
+    // A zero is accepted on its own terms — what it needs is the reason, not a different amount.
+    expect(missingByTab({ payroll: { basicSalary: '0' } }).payroll).not.toContain('basicSalary');
+    expect(missingByTab({ payroll: { basicSalary: '0' } }).payroll).toEqual(['remarks']);
+    expect(missingByTab({ payroll: { basicSalary: '0', remarks: "Quarterly director's fees" } }).payroll)
+      .toEqual([]);
   });
 
   it('tab numbers and keys round-trip, and the label comes from the name typed so far', () => {
@@ -334,6 +348,11 @@ describe('§2 every computed translation key resolves, in all six locales', () =
       { employment: { provisionalEndOn: 'nope' } },
       { statutory: { bankName: 'Maybank' } },
       { payroll: { basicSalary: '1', payMode: 'hourly' } },
+      // r374 — the empty draft above no longer trips `basicSalary` (a blank amount is legitimate and
+      // asks for `remarks` instead), so the only inputs that still reach that branch are a junk string
+      // and a negative one. Both are listed so the sweep keeps covering the label for it.
+      { payroll: { basicSalary: 'abc' } },
+      { payroll: { basicSalary: '-100' } },
       // item 759dfc7d — the Family step's three names. Swept from the same rule for the same reason:
       // a family field added without a label would otherwise reach HR as a raw `fields.familyMemberX`.
       { family: [{}] },
@@ -348,6 +367,9 @@ describe('§2 every computed translation key resolves, in all six locales', () =
     // Sanity: the sweep really did reach every step's rules.
     for (const expected of ['fullName', 'primaryEmail', 'dateOfBirth', 'company', 'department',
       'employmentType', 'hiredOn', 'provisionalEndOn', 'bankAccount', 'basicSalary', 'rateAmount',
+      // r374 — the payroll tab's new name. It is rendered by the SAME `t(\`fields.${f}\`)` as the rest,
+      // so a locale without it would show HR a raw `fields.remarks` on the outstanding list.
+      'remarks',
       'employeeCode']) {
       expect(names.has(expected), expected).toBe(true);
     }

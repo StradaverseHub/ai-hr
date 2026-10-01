@@ -176,8 +176,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <div className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4">
               {/* Three-zone grid: equal minmax(0,1fr) side tracks keep the centre search geometrically
                   centred regardless of what each cluster contains (dev switcher hidden in production,
-                  bell variants, …). The centre track is bounded on sm+ so the w-full trigger has a real
-                  track to fill — a bare `auto` track would size to content and never widen it.
+                  bell variants, …). The centre track is bounded from sm up so the w-full trigger has a
+                  real track to fill — a bare `auto` track would size to content and never widen it.
 
                   ⚠️ THE CENTRE TRACK'S MAX IS A BUDGET TAKEN FROM BOTH SIDE TRACKS, and r256 measured
                   what that cost. The shell is body p-4 + a 232px rail + gap-4, so the header is
@@ -188,8 +188,40 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   TRIGGER is an icon + a placeholder + a ⌘K hint, nowhere near 448px of content); 28rem
                   returns at 2xl, where there is room for both. Measured in a real engine at 1280 and
                   1440 by test/topbar-identity-width.browser.test.tsx — change these numbers and that
-                  test re-measures them. */}
-              <header className="grid h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)] sm:grid-cols-[minmax(0,1fr)_minmax(0,20rem)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,28rem)_minmax(0,1fr)]">
+                  test re-measures them.
+
+                  ⚠️⚠️ r374 — AND BELOW 1024 THAT BUDGET WAS BIGGER THAN THE HEADER, which is where the
+                  reported sideways scrolling came from. A FIXED `minmax(0,20rem)` centre is taken FIRST,
+                  before the fr side tracks get anything, so from the sm breakpoint (where the 232px rail
+                  appears and the header gets 232px NARROWER while the centre gets 278px WIDER) the side
+                  tracks collapsed: measured on the dev server at an 820px viewport, header 552px, side
+                  tracks 83px each. The right cluster cannot shrink below 206px (1px divider + 3 × 36px
+                  icon buttons + 4 × 8px gaps + the account trigger's irreducible avatar + chevron +
+                  padding = 65px), so the account control was handed a 0-width box and its shrink-0
+                  avatar and chevron spilled out of it to the RIGHT: documentElement.scrollWidth 856 vs
+                  clientWidth 820, and window.scrollTo(500,0) moved the canvas 36px. Identical on all 13
+                  routes measured, i.e. the shell, and identical with the dev chrome removed, i.e. it
+                  shipped. (Not a visible scrollbar — body's overflow-hidden propagates to the viewport —
+                  but a programmatic one, which is exactly the "page is cut off" shape of
+                  test/layout-scroll-containment.ts.)
+
+                  SO THE CENTRE NOW YIELDS INSTEAD OF THE SIDES: `min(20rem, 100% − 27.75rem)`. 27.75rem
+                  is 444px = 2 × the 206px cluster floor + the two 16px grid gaps — the width the centre
+                  must leave alone before it takes anything for itself. `100%` resolves against the
+                  header's content box, so this is self-balancing and needs no breakpoint per viewport:
+                  the centre gets 74px at 820, 266px at 1024, the full 320px from ~1090 up, and 1120 /
+                  1280 / 1440 / 1512 / 1600 / 1920 are byte-identical to before the change (307/320/307
+                  at 1280 — the r256 budget is untouched).
+
+                  AND BELOW md THE SIDES STOP BEING EQUAL. Two 206px side tracks plus two gaps need a
+                  444px header, i.e. a 776px viewport with the rail out; below that no centre width at
+                  all can make equal tracks fit. So from 0 to 767 the right track is `minmax(0,max-content)`
+                  — it is served before the left one, which is the compressible side (a static group
+                  label and a switcher that already truncates) — and the search is no longer centred
+                  there. Nothing was centred there before either: the left cluster was overflowing its
+                  own track. From md up the equal tracks and the exact centring return (measured: the
+                  centre's midpoint is 0px off the header's midpoint at every width ≥ 768). */}
+              <header className="grid h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,max-content)] items-center gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)] sm:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,max-content)] md:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,min(28rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)]">
                 {/* Left cluster = WHERE you are working. The CompanySwitcher MOVED here from the right
                     cluster (r256): this track is a full 1fr — 243px at 1280, 563px at 1920 — carrying
                     one static group label, while the switcher was being crushed to 27px on the right

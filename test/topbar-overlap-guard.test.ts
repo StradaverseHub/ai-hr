@@ -22,9 +22,16 @@
  *   • here — the shrink chain, AND the cluster's child list, AND that the replica the browser test
  *     measures is still a copy of this header;
  *   • test/topbar-identity-width.browser.test.tsx — the measurement itself, in real Chromium with real
- *     compiled Tailwind, at 1280 / 1440 / 1512.
+ *     compiled Tailwind, at 1280 / 1440 / 1512, plus r374's no-overflow sweep from 320 to 1920.
  * A source scan cannot see a zero-width element. A measurement cannot see a control added to a cluster
  * it does not know about. Neither is redundant.
+ *
+ * ⚠️ AND THE BROWSER HALF IS NOT IN THE GATE. vitest.browser.config.ts is a separate project run by
+ * `pnpm test:browser`, deliberately outside scripts/gate-chunked.sh — so a green gate says nothing
+ * about either measurement. Everything the gate can see about this header is in THIS file.
+ *
+ * r374 (feedback 371708bb) added the grid-template and reserve assertions below after the header was
+ * found to overflow the VIEWPORT by 36px on every route between 640 and ~1000px wide.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -37,6 +44,7 @@ const SWITCHER = read('../components/company-switcher.tsx');
 const COMMAND_BAR = read('../components/command-bar.tsx');
 const USER_MENU = read('../components/user-menu.tsx');
 const SIDEBAR = read('../components/sidebar.tsx');
+const DEV_SWITCHER = read('../components/dev-identity-switcher.tsx');
 const BELL = read('../components/notification-center.tsx');
 const THEME = read('../components/theme-toggle.tsx');
 const LANGUAGE = read('../components/language-switcher.tsx');
@@ -51,13 +59,67 @@ const replicaConst = (name: string): string => {
 };
 
 describe('topbar — search box and company switcher keep to their own lanes', () => {
-  it('header keeps the three-lane grid template (bounded centre track, minmax(0,1fr) sides)', () => {
-    expect(LAYOUT).toContain('grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]');
-    // r256 narrowed the centre below 2xl: its max comes straight off BOTH side tracks, and at 28rem
-    // everywhere the right cluster was 243px at 1280 / 323px at 1440 — too little for the account
-    // corner to show a name at all. Equal 1fr sides at every step keep the search box centred.
-    expect(LAYOUT).toContain('sm:grid-cols-[minmax(0,1fr)_minmax(0,20rem)_minmax(0,1fr)]');
-    expect(LAYOUT).toContain('2xl:grid-cols-[minmax(0,1fr)_minmax(0,28rem)_minmax(0,1fr)]');
+  it('header keeps the three-lane grid template (bounded centre track, equal sides from md up)', () => {
+    // r374 UPDATED THESE, it did not relax them. Before: a FIXED `minmax(0,20rem)` centre from sm up,
+    // with minmax(0,1fr) sides at every step. A fixed track is taken before the fr tracks get anything,
+    // so from sm — the same breakpoint that brings in the 232px rail — the side tracks collapsed to
+    // 83px at an 820px viewport against a 206px floor in the right cluster, and the account control's
+    // avatar + chevron left the viewport by 36px. See the ⚠️⚠️ block in app/layout.tsx for the numbers
+    // and r374's measured sweep; the r374 sweep at the foot of
+    // test/topbar-identity-width.browser.test.tsx re-measures it in a real engine.
+    //
+    // r256's own rule survives unchanged where it was measured: equal 1fr sides from md up keep the
+    // search box centred (its max comes straight off BOTH side tracks, and at 28rem everywhere the
+    // right cluster was 243px at 1280 / 323px at 1440 — too little for the account corner to show a
+    // name at all, hence 20rem below 2xl).
+    expect(LAYOUT).toContain('grid-cols-[minmax(0,1fr)_auto_minmax(0,max-content)]');
+    expect(LAYOUT).toContain(
+      'sm:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,max-content)]',
+    );
+    expect(LAYOUT).toContain(
+      'md:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)]',
+    );
+    expect(LAYOUT).toContain(
+      '2xl:grid-cols-[minmax(0,1fr)_minmax(0,min(28rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)]',
+    );
+  });
+
+  /**
+   * r374 — the reserve in those templates is DERIVED, not chosen, and this is the arithmetic. If a
+   * control joins the right cluster the floor goes up and 27.75rem is stale, which is why the child
+   * list below is pinned: that test fails first, and whoever adds the control re-derives this one.
+   */
+  it('the centre track reserves exactly the two side clusters’ floor (2 × 206 + 32 = 27.75rem)', () => {
+    // The right cluster's irreducible width: the 1px divider + three 36px icon buttons + four 8px
+    // gaps, plus the account trigger's avatar (28) + chevron (16) + pl-1/pr-2 padding (12) + border
+    // (2) + its own gap-2 (8) = 66, measured at 65px on the dev server.
+    const RIGHT_CLUSTER_FLOOR_PX = 1 + 3 * 36 + 4 * 8 + 65;
+    expect(RIGHT_CLUSTER_FLOOR_PX).toBe(206);
+    const reserveRem = (2 * RIGHT_CLUSTER_FLOOR_PX + 2 * 16) / 16;
+    expect(reserveRem).toBe(27.75);
+    // …and the header spells that number in EVERY variant that bounds the centre track. A matchAll
+    // whose result is empty would assert nothing, so the count is pinned: three bounded variants.
+    const bounded = [...LAYOUT.matchAll(/grid-cols-\[minmax\(0,1fr\)_minmax\(0,min\([^\]]+\]/g)].map(
+      (m) => m[0],
+    );
+    expect(bounded).toHaveLength(3);
+    for (const variant of bounded) {
+      expect(variant).toContain(`max(0px,100%_-_${reserveRem}rem)`);
+    }
+  });
+
+  /**
+   * r374 — the left cluster is the compressible SIDE below md (the right track is served first there),
+   * so every child of it has to be able to give way. The dev identity switcher could not: a <select>
+   * is as wide as its longest <option>, measured at 216px, which put a 369px floor under the whole
+   * track and pushed the overflow straight back out of the header in local dev and on the gated demo.
+   */
+  it('dev identity switcher can compress (a <select> is as wide as its longest option)', () => {
+    expect(DEV_SWITCHER).toContain('<form action={actAs} className="flex min-w-0 items-center gap-1.5">');
+    // min-w-0 and nothing else. A `w-28` BASE was tried and measured worse: it redistributed the
+    // cluster's shrinkage so the select rendered ~30px wide with no text at all at 1280, against
+    // 48px ("HI…") without it. The floor is 0 either way; only the base size differs.
+    expect(DEV_SWITCHER).toContain('className="min-w-0 max-w-full rounded-md border border-input');
   });
 
   it('right cluster is track-constrained (min-w-0) with narrow-viewport spacing trim', () => {
@@ -160,7 +222,10 @@ describe('topbar — the right cluster has a budget and it is full', () => {
     expect(LAYOUT).toContain(replicaConst('SHELL_ROW_CLS'));
     expect(LAYOUT).toContain(replicaConst('SHELL_COL_CLS'));
     expect(LAYOUT).toContain(replicaConst('DIVIDER_CLS'));
-    // The rail is the other half of `header width = viewport − 280`.
+    // The rail is the other half of `header width = viewport − 280`…
     expect(SIDEBAR).toContain(replicaConst('RAIL_WIDTH_CLS'));
+    // …and r374's sweep reaches below sm, where the rail is not there at all, so the replica copies
+    // its visibility too. Without this the sweep would measure a 232px rail inside a 320px phone.
+    expect(SIDEBAR).toContain(replicaConst('RAIL_VISIBILITY_CLS'));
   });
 });
