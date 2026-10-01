@@ -1,4 +1,7 @@
 /**
+ * r378 b19042d0 supersedes the reference note only for Individual Payslip and the standard PDF.
+ * ESS screen and History retain their existing note; headings, locale and deduction guards remain.
+ *
  * Item e0b6e3b8, r367 — THE PAYSLIP'S TWO STATUTORY SECTIONS LOSE THEIR BRACKETS, AND ONE OF THE TWO
  * CANNOT LOSE ITS BRACKET FOR FREE.
  *
@@ -255,16 +258,16 @@ describe('r367 — payroll.individualPayslip.employeeHeading is retired IN PLACE
  * C. THE THREE SCREEN CALL SITES — the note is bound and resolved on each, not merely present in JSON.
  * ══════════════════════════════════════════════════════════════════════════════════════════════════ */
 
-describe('r367 — all three screens now render the employer-contributions note', () => {
-  it('each screen binds payroll.individualPayslip and resolves the note through it', () => {
+describe('r378 — the standard payslip removes its reference note while other screens retain it', () => {
+  it('ESS and History retain their translated note, while Individual Payslip omits it', () => {
     // The key lived under a namespace NONE of the three bound. Binding is half the change and it is the
     // half that a value assertion cannot see: an unbound namespace raises MISSING_MESSAGE at render, which
     // passes tsc, the suite and `next build`.
     const BINDINGS: [string, RegExp, RegExp][] = [
-      [IP_PAGE, /getTranslations\('payroll\.individualPayslip'\)/, /\{t\('employerContributionsNote'\)\}/],
       [ESS_PAGE, /getTranslations\('payroll\.individualPayslip'\)/, /\{tIp\('employerContributionsNote'\)\}/],
       [HISTORY, /useTranslations\('payroll\.individualPayslip'\)/, /\{tIp\('employerContributionsNote'\)\}/],
     ];
+    expect(read(IP_PAGE)).not.toMatch(/\{t\('employerContributionsNote'\)\}/);
     for (const [file, binding, call] of BINDINGS) {
       const src = read(file);
       expect(src, `${file} must bind payroll.individualPayslip`).toMatch(binding);
@@ -272,11 +275,11 @@ describe('r367 — all three screens now render the employer-contributions note'
     }
   });
 
-  it('and the key’s only OTHER call site — the document — is untouched', () => {
+  it('the shared PDF labels remain available but the standard employer box omits the note', () => {
     expect(read('lib/payslip-pdf-strings.ts'), 'the document still resolves it').toMatch(
       /employerContributionsNote: tIp\('employerContributionsNote'\)/,
     );
-    expect(read('lib/payslip-pdf.ts'), 'and still prints it under the employer box').toContain(
+    expect(read('lib/payslip-pdf.ts'), 'the approved standard layout removes this reference note').not.toContain(
       'note: t.employerContributionsNote,',
     );
   });
@@ -365,11 +368,11 @@ async function oneProcessedPayslip() {
   return e.employmentId;
 }
 
-describe('r367 — on the rendered Individual Payslip the brackets are gone and the note is there', () => {
+describe('r378 — Individual Payslip retains plain headings and omits the reference note', () => {
   // English, the Malay a Malaysian tenant reads, and a non-Latin script where a stale copy would be
   // least visible by eye.
   for (const locale of ['en', 'ms', 'zh'] as const) {
-    it(`[${locale}] the two headings read plainly and the note carries what the bracket carried`, async () => {
+    it(`[${locale}] the two headings read plainly and the superseded reference note is absent`, async () => {
       loc.cur = locale;
       const employmentId = await oneProcessedPayslip();
       const tree = await IndividualPayslipPage({ searchParams: Promise.resolve({ employmentId }) });
@@ -392,7 +395,7 @@ describe('r367 — on the rendered Individual Payslip the brackets are gone and 
 
       // 3. THE NOTE. This is the load-bearing half: the row labels inside the two blocks are the same
       //    keys, so without this sentence the screen would make NO statement about whose money is whose.
-      expect(texts, `${locale}: the employer-contributions note renders`).toContain(msg(locale, NOTE));
+      expect(texts, `${locale}: the approved reference note removal reaches the preview`).not.toContain(msg(locale, NOTE));
 
       // 4. THE BLOCK HEADING the screen and the document now share.
       expect(texts, `${locale}: the employee block is headed "Employment info"`).toContain(
@@ -408,7 +411,7 @@ describe('r367 — on the rendered Individual Payslip the brackets are gone and 
     });
   }
 
-  it('the note sits INSIDE the Employer contributions block, not loose on the page', async () => {
+  it('the employer block retains contribution rows and amounts without the removed note or cost total', async () => {
     // Placement is the whole value of the sentence: under Deductions it would say the opposite of what it
     // means. The Block that carries the employer heading must be the one carrying the note.
     const employmentId = await oneProcessedPayslip();
@@ -418,8 +421,14 @@ describe('r367 — on the rendered Individual Payslip the brackets are gone and 
     expect(employerBlock.map((b) => b.props.title), 'exactly one Employer contributions block').toHaveLength(1);
     expect(
       textOf(employerBlock[0].props.children),
-      'the note is inside that block',
-    ).toContain(msg('en', NOTE));
+      'the reference note is absent from that block',
+    ).not.toContain(msg('en', NOTE));
+    const contributionRows = nodes(employerBlock[0].props.children).filter(el => typeof el.props?.label === 'string' && 'value' in (el.props ?? {}));
+    for (const key of ['epf', 'socso', 'eis'] as const) {
+      expect(contributionRows.map(el => el.props.label), `employer ${key} remains displayed`).toContain(msg('en', `me.payslip.${key}`));
+    }
+    expect(contributionRows.find(el => el.props.label === msg('en', 'me.payslip.epf'))?.props.value, 'the real employer EPF amount remains').toBe('MYR 840.00');
+    expect(textOf(employerBlock[0].props.children)).not.toContain(msg('en', 'me.payslip.totalEmployerCost'));
     // …and NOT inside the Deductions block, where it would be a false statement.
     const deductionsBlock = blocks.filter((b) => b.props.title === msg('en', DEDUCTIONS));
     expect(deductionsBlock, 'exactly one Deductions block').toHaveLength(1);
