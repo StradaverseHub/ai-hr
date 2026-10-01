@@ -46,6 +46,9 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 const leavePage = read('app/leave/page.tsx');
+const ownHistory = read('components/leave/own-leave-history.tsx');
+const historyPage = read('app/leave/history/page.tsx');
+const balancesPage = read('app/leave/employee-balances/page.tsx');
 const leaveActionsSrc = read('app/leave/actions.ts');
 const approvalsPage = read('app/approvals/page.tsx');
 const approvalsActions = read('app/approvals/actions.ts');
@@ -123,7 +126,9 @@ describe('§2 r80 hold: the Requests subsection is not a second Approval Items',
     // UPDATED BY 5f2e20fb (AGENTS rule 18). The register is gone and stays gone; what identifies it is
     // an ORG-WIDE scope, not the read it used. /leave's own history now calls the paginated read narrowed
     // to the viewer's employments, for the filter the reporter asked for on their own records.
-    for (const call of leavePage.match(/listLeaveRequestsPage\(session, \{[\s\S]*?\n\s*\}\)/g) ?? []) {
+    const ownCalls = ownHistory.match(/listLeaveRequestsPage\(session, \{[\s\S]*?\n\s*\}\)/g) ?? [];
+    expect(ownCalls.length, 'own history read slice is nonempty').toBeGreaterThan(0);
+    for (const call of ownCalls) {
       expect(call).toContain('employmentIds:');
       expect(call).not.toContain('companyIds:');
     }
@@ -167,18 +172,23 @@ describe('§2 r80 hold: the Requests subsection is not a second Approval Items',
   });
 
   it('ENUMERATION: own-row controls survive for the SUBJECT, and /approvals still self-bans own rows', () => {
-    // The three subject-only dialogs stay in source and still serve an ordinary employee — they render
-    // from `selfHistory`, which is the viewer's own rows and is empty for an admin.
+    // r378: the subject-only entries builder now belongs to the dedicated own History projection.
+    const from = ownHistory.indexOf('const historyEntries');
+    const to = ownHistory.indexOf('const historyTypeOptions', from);
+    expect(from, 'own entries builder starts').toBeGreaterThan(-1);
+    expect(to, 'own entries builder ends').toBeGreaterThan(from);
+    const entries = ownHistory.slice(from, to);
     for (const own of ['<EditLeaveDialog', '<CancelLeaveDialog', '<CancelDatesDialog']) {
-      expect(leavePage.includes(own), own).toBe(true);
+      expect(entries.includes(own), own).toBe(true);
+      expect(leavePage.includes(own), `${own} is not duplicated on Overview`).toBe(false);
     }
-    // The `admin ? [] :` arm went with the admin branch (388e53c2): an administrator no longer reaches
-    // this code at all, because /leave returns the short page before it. The property being pinned is
-    // unchanged and is now pinned at its source — these dialogs render from the viewer's OWN rows.
-    // 5f2e20fb: the newest-first ordering moved into SQL, so the JS re-sort is gone. Still the viewer's
-    // own rows, which is the property under test here.
-    expect(leavePage).toContain('const selfHistory = historyShown.rows;');
+    expect(ownHistory).toContain('const selfHistory = historyShown.rows;');
+    expect(ownHistory).toContain('employmentIds: historyEmploymentIds');
     expect(leavePage).toContain('if (me == null || admin) {');
+    const guardAt = historyPage.indexOf('if (!me || isAdmin(session))');
+    const loadAt = historyPage.indexOf('await loadOwnLeaveHistory(');
+    expect(guardAt).toBeGreaterThan(-1);
+    expect(loadAt).toBeGreaterThan(guardAt);
     // The mine() self-ban is unchanged: on /approvals the viewer's OWN row shows a label, never a control.
     expect(approvalsPage).toContain('const mine = (personId: string | null) => s.personId != null && personId === s.personId;');
     expect(approvalsPage).toContain('{mine(r.personId) ? (');
@@ -203,8 +213,14 @@ describe('§2 r80 hold: the Requests subsection is not a second Approval Items',
     // left-side nav — moved to the Team Leave Tracker route, so it is asserted there. What this test is
     // actually about is that the ORG-WIDE REQUEST TABLE stayed removed, and that is checked on both.
     const trackerPage = read('app/leave/tracker/page.tsx');
-    expect(trackerPage).toContain('if (admin) {');
-    expect(trackerPage).toContain('<LeaveInquiryNav active="details"');
+    // r378 removes the listing; legacy admin inquiry URLs forward to the selected employee's balances.
+    expect(trackerPage).toContain('if (admin && !calendarIntent) {');
+    expect(trackerPage).toContain('redirect(`/leave/employee-balances');
+    expect(trackerPage).toContain("if (emp) p.set('emp', emp)");
+    expect(trackerPage).not.toContain('<LeaveInquiryNav');
+    expect(balancesPage).toContain('<LeaveInquiryNav active="balances"');
+    expect(recordsPage).toContain('<LeaveInquiryNav active="records"');
+    expect(trackerPage).toContain('<PlannedAbsences');
     // The retired table's pager goes with it, on either page.
     expect(leavePage).not.toContain('<Pager hrefFor={pagerHref}');
     expect(trackerPage).not.toContain('<Pager hrefFor={pagerHref}');
