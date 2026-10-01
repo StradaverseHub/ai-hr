@@ -245,3 +245,17 @@ export function pcbFormulaByKey(blocks: readonly PcbFormulaBlock[]): Partial<Rec
   for (const b of blocks) out[b.key] = b;
   return out;
 }
+
+/** Closing Step 1 shares [C], but its net result is the normal leg alone, not combined PCB. */
+export function pcbNormalMtdStep1Blocks(x: PcbExplanation, f: PcbFormulaFormat): PcbFormulaBlock[] {
+  if (x.kind !== 'mtd') return [];
+  const monthly = pcbFormulaBlocks(x, f).find(block => block.key === 'mtd');
+  if (!monthly) return [];
+  const t = x.trace;
+  return [monthly, {
+    key: 'net', step: 'D', heading: 'slipStep1NetMtd', formula: 'formulaNormalMtdNet',
+    substituted: t ? `max( 0, ${f.b2(t.mtdNormalFloored)} − ${f.b2(t.zakatCurrent)} )` : null,
+    resultLabel: 'slipStep1NetMtd', result: t ? x.pcbNormal : null,
+    notes: ['slipStep1NormalRules'],
+  }];
+}

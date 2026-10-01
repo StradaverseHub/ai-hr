@@ -7073,7 +7073,13 @@
       "traceNotRecordedHeading": "Lần chạy này không ghi lại toàn bộ phần tính toán",
       "appendixLabel": "Phụ lục",
       "slipChildOnRecordGrid": "Số con trong hồ sơ — tổng của năm nhóm ở trên",
-      "slipChildOnRecordKeyed": "Số con trong hồ sơ — một tổng duy nhất được nhập cho người lao động này"
+      "slipChildOnRecordKeyed": "Số con trong hồ sơ — một tổng duy nhất được nhập cho người lao động này",
+      "slipStep1CombinedHeading": "MTD (A) / MTD ròng",
+      "slipStep1PMeaning": "P = Tổng thu nhập chịu thuế trong năm, không bao gồm khoản thù lao bổ sung của tháng hiện tại.",
+      "slipStep1CurrentRebate": "Zakat/Phí/Lệ phí tháng hiện tại",
+      "formulaNormalMtdNet": "MTD ròng của thù lao thông thường = max(0, MTD thông thường sau quy tắc khấu trừ tối thiểu − Zakat/Phí/Lệ phí tháng hiện tại)",
+      "slipStep1NormalRules": "Áp dụng quy tắc cắt phần thập phân, làm tròn lên năm sen và khấu trừ tối thiểu trước khoản giảm trừ tháng hiện tại. MTD ròng thông thường không âm. Khoản giảm trừ còn lại tuân theo cách xử lý thù lao bổ sung đã ghi nhận; tổng khấu trừ cuối cùng được hiển thị riêng.",
+      "slipStep1CombinedFormula": "MTD (A) / MTD ròng = [((P−M)R + B − (Z + X)) / (n + 1)] − Zakat/Phí/Lệ phí tháng hiện tại"
     },
     "multiCycleWorksheet": {
       "title": "Bảng tính pháp định cho nhiều kỳ trả lương",

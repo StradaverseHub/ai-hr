@@ -895,6 +895,8 @@ export type PcbSlipRow = {
 };
 
 export type PcbSlipSection = {
+  /** Both surfaces prepend the same stored normal-MTD formula working. */
+  normalMtdWorking?: true;
   /** A key under `payroll.pcbDetail`. */
   heading: string;
   /** Column headings, as keys. `secondColumn` absent ⇒ a one-column section. */
@@ -1679,10 +1681,20 @@ export function pcbMtdStep1Section(x: Extract<PcbExplanation, { kind: 'mtd' }>):
   const t = x.trace;
   return {
     heading: 'slipStep1Heading',
+    normalMtdWorking: true,
     firstColumn: 'slipColTotal',
     rows: [
+      { line: 'P', caption: 'worksheetP', ns: 'pcbDetail', first: t ? slipMoney(x.chargeableIncome) : SLIP_ABSENT },
+      { line: 'M', caption: 'bracketM', ns: 'pcbDetail', first: t ? slipMoney(t.M) : SLIP_ABSENT },
+      { line: 'R', caption: 'bracketR', ns: 'pcbDetail', first: t ? {kind: 'rate', rate: t.R} : SLIP_ABSENT },
+      { line: 'B', caption: 'bracketB', ns: 'pcbDetail', first: t ? slipMoney(t.B) : SLIP_ABSENT },
+      { line: 'Z', caption: 'worksheetZ', ns: 'pcbDetail', first: t ? slipMoney(t.Z) : SLIP_ABSENT },
+      { line: 'X', caption: 'worksheetX', ns: 'pcbDetail', first: t ? slipMoney(x.pcbPaidYtd) : SLIP_ABSENT },
+      { line: 'n', caption: 'worksheetN', ns: 'pcbDetail', first: t ? {kind: 'count', count: x.remainingMonths} : SLIP_ABSENT },
       { line: '1', caption: 'slipStep1CurrentMtd', ns: 'pcbDetail', first: t ? slipMoney(t.mtdNormalCalc) : SLIP_ABSENT },
-      { line: '', caption: 'slipStep1NetMtd', ns: 'pcbDetail', first: slipMoney(x.pcbNormal) },
+      { line: 'Z1', caption: 'slipStep1CurrentRebate', ns: 'pcbDetail', first: t ? slipMoney(t.zakatCurrent) : SLIP_ABSENT },
+      { line: 'A', caption: 'worksheetA', ns: 'pcbDetail', first: t ? slipMoney(t.mtdNormalFloored) : SLIP_ABSENT },
+      { line: '', caption: 'slipStep1NetMtd', ns: 'pcbDetail', first: t ? slipMoney(x.pcbNormal) : SLIP_ABSENT },
     ],
     note: 'slipStep1Note',
   };
