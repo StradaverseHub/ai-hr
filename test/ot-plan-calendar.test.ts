@@ -382,26 +382,28 @@ describe('4 · the overtime-date window on myOvertimePlans', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 describe('5 · a ZERO requested figure reaches the planned-window refusals', () => {
-  /**
-   * THE CONTRACT THE APPLY SCREEN'S ACTION NOW DEPENDS ON. The hours on that screen are DERIVED from the
-   * two times, so an inverted pair yields nothing and the hidden field posts blank — which used to mean
-   * "no overtime at all" and produced the generic at-least-one message about a field the employee could
-   * not fill in. myRequestOvertime now derives the figure from the window and hands the service a ZERO,
-   * so the window checks downstream of the at-least-one test get to run and refuse in their own words.
-   * `hasOt` is `!= null`, so zero must satisfy the first test — that is the property pinned here.
-   */
-  it('an inverted window is refused as an inverted window, not as "no hours"', async () => {
+  // Explicit zero still reaches window validation. Under approved r378, an earlier end is overnight;
+  // equal times are invalid, while absent/half windows retain their existing refusals.
+  it('equal times are refused as an invalid window, not as "no hours"', async () => {
     const { a, employmentId } = await hire();
-    await expect(
-      requestAttendanceCorrection(a, {
-        employmentId,
-        date: WED,
-        requestedOtMinutes: 0,
-        reason: 'Typed the times the wrong way round',
-        plannedStartTime: '21:00',
-        plannedEndTime: '18:00',
-      }),
-    ).rejects.toThrow('The planned end time must be after the planned start time.');
+    await expect(requestAttendanceCorrection(a, {
+      employmentId, date: WED, requestedOtMinutes: 0, reason: 'Identical planned times',
+      plannedStartTime: '21:00', plannedEndTime: '21:00',
+    })).rejects.toThrow('Enter different valid start and end times.');
+  });
+
+  it('an earlier end is an overnight plan retained on its selected start date', async () => {
+    const { a, employmentId } = await hire();
+    const { correctionId } = await requestAttendanceCorrection(a, {
+      employmentId, date: WED, requestedOtMinutes: 1260, reason: 'Overnight planned work',
+      plannedStartTime: '21:00', plannedEndTime: '18:00',
+    });
+    const [row] = await owner.db.select().from(schema.attendanceCorrection)
+      .where(eq(schema.attendanceCorrection.id, correctionId));
+    expect(row.attendanceDate).toBe(WED);
+    expect(row.plannedStartTime).toBe('21:00:00');
+    expect(row.plannedEndTime).toBe('18:00:00');
+    expect(row.requestedOtMinutes).toBe(1260);
   });
 
   it('half a window is refused as half a window', async () => {
