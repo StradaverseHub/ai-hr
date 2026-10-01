@@ -213,6 +213,15 @@ const basePreview: ImportPreview = {
 };
 
 /** Paste text, press Validate, and let the mocked action resolve into the preview panel. */
+/**
+ * ⚠️ WAITS FOR THE PREVIEW TEXT ONLY, SO THE IMPORT BUTTON MAY NOT HAVE COMMITTED YET.
+ * `findByText(/Preview/)` resolves on the preview heading; the Import button's accessible name carries
+ * the valid-row count and can land in a later render. Callers must therefore use `findByRole`, never a
+ * synchronous `getByRole`, for that button — r375 saw exactly that race fail one chunk of a 16-chunk
+ * gate ("Unable to find an accessible element with the role button and name /Import 2 valid/") while the
+ * identically-shaped disabled-case assertion two lines above it passed. Nothing about the screen
+ * changed; three vitest workers were enough to lose the margin.
+ */
 async function previewWith(preview: ImportPreview) {
   const userEvent = (await import('@testing-library/user-event')).default;
   const user = userEvent.setup();
@@ -256,13 +265,13 @@ describe('2983802f · a whole-file refusal is visible and blocks the button', ()
     // This is the case a per-row-only screen gets wrong: two green rows and an offered button that
     // would import half a file. The server refuses independently; the button is the courtesy.
     await previewWith(refused);
-    expect(screen.getByRole('button', { name: /Import 2 valid/ })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: /Import 2 valid/ })).toBeDisabled();
   });
 
   it('offers Import when the same preview carries no file-level refusal', async () => {
     // The counterpart, so the case above is proving the refusal and not merely that a button exists.
     await previewWith({ ...basePreview, fileErrors: [] });
-    expect(screen.getByRole('button', { name: /Import 2 valid/ })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: /Import 2 valid/ })).toBeEnabled();
   });
 });
 
@@ -281,7 +290,7 @@ describe('2983802f · the result names what happened to family and to superiors'
   it('reports the family members created and the superior that could not be linked', async () => {
     const user = await previewWith({ ...basePreview, fileErrors: [] });
     commitMock.mockResolvedValue(result);
-    await user.click(screen.getByRole('button', { name: /Import 2 valid/ }));
+    await user.click(await screen.findByRole('button', { name: /Import 2 valid/ }));
     await screen.findByText(/Imported 2 employees/);
     expect(screen.getByText(/3 family members added/)).toBeInTheDocument();
     // Reported as its own line — NOT as a failure, because these people are in the system.
