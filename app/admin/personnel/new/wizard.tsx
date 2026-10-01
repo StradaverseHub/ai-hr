@@ -1037,12 +1037,15 @@ export function EmployeeWizard({
         <SectionHeader title={t('sections.compensation')} />
         <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
             {/* r374 (item 7dbaf677) — THE FLOOR IS ZERO, AND BLANK IS ALLOWED.
-                It was `min="0.01"`, the only such floor on a basic salary anywhere in the tree, and
-                with `missingByTab` demanding an amount above zero it kept Activate switched off until
-                somebody typed one. A Director paid Director Fees quarterly has no monthly basic, so HR
-                had to invent a figure. `min="0"` keeps the browser refusing a NEGATIVE amount — which
-                `setCompensation` also refuses now, so the box and the service agree — while leaving
-                blank and zero reachable. The placeholder says so in the box itself. */}
+                The floor here used to be one sen (a min of 0.01 — DELIBERATELY NOT WRITTEN AS THE
+                ATTRIBUTE, so a census grep for that floor across app/ and components/ does not get a
+                false hit from this sentence; CLAUDE.md §8 says the same about the import ratchet). It
+                was the only such floor on a basic salary anywhere in the tree, and with `missingByTab`
+                demanding an amount above zero it kept Activate switched off until somebody typed one.
+                A Director paid Director Fees quarterly has no monthly basic, so HR had to invent a
+                figure. `min="0"` keeps the browser refusing a NEGATIVE amount — which `setCompensation`
+                also refuses now, so the box and the service agree — while leaving blank and zero
+                reachable. The placeholder says so in the box itself. */}
             <Field label={t('fields.basicSalary')}>
               <input
                 type="number"
