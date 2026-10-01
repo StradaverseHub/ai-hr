@@ -1,0 +1,57 @@
+VERDICT: Not built yet   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+An employee can now open their own attendance day and submit a correction for approval. When it is rejected, the day keeps its original figures, but the employee cannot see why: nobody is asked to record an explanation. The day screens also need a deliberate phone layout.
+
+WHAT WE'LL CHANGE
+
+- Ask the supervisor or HR to enter a reason before rejecting an attendance correction. Keep that explanation with the decision and show it on the employee's day screen and in My Request.
+
+- Show each rejected request separately, with its requested times, decision date and rejection reason. A later request for the same day will not erase the earlier explanation.
+
+- Keep old rejected requests visible with “Rejection reason not recorded” rather than inventing an explanation.
+
+- Make both the employee and HR day screens comfortable on a phone: stack their cards, keep labels beside their figures, let the overtime figures scroll inside their card, and make correction fields and buttons easy to reach.
+
+WHAT YOU'LL GET
+
+An employee can understand a refusal and submit a better correction without guessing what went wrong. The employee and HR see the same attendance figures on a phone as on a larger screen.
+
+GOOD TO KNOW
+
+- Rejection leaves attendance and overtime unchanged. Approval still uses the existing review process and recalculates the day as it does today.
+
+- A person who can already make the decision can record the explanation. This gives nobody extra access to another employee's attendance.
+
+- The rejection explanation belongs to the approver. The employee's reason and optional note stay separate.
+
+- Rejecting several selected attendance or overtime requests together uses the same required explanation for each. Approval requires no explanation.
+
+- Old decisions will not acquire explanations after the fact. Nothing already saved is replaced.
+
+- The request records who asked, when, the requested values and their reason. The day figures before and after an approved correction are recorded when it is applied. This work does not add a separate snapshot of the day when the request was submitted.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: original item 011c5b7f-c522-4390-88ae-177c8219b58f approved revision 1 explicitly defers rejection remark and phone layouts. This is a continuation proposal, not approved scope or a declaration that the full original request is done. No board write or implementation is authorised by this draft.
+
+GRAPH: employee owns request reason/remark and proposed punches; approver owns immutable rejection reason on a pending-to-rejected transition. Attendance remains authoritative for actual figures. The correction row owns rejection reason; the decision event carries the same reason for audit. No duplicate calculation, no new approval workflow, no widening app.can_see_employment or app.can_see_person.
+
+FACT: attendance_correction has employee remark but no rejection reason. decideAttendanceCorrection updates status, decidedByEmploymentId, decidedAt and emits attendance-correction.rejected with actorOf(ctx). assertCanDecide checks HR/admin, active administrative manager or scoped delegate; self-decision is refused except the existing super_admin escape hatch. Read visibility and decision authority are distinct. Preserve every existing permission branch.
+
+MIGRATION: add nullable reject_reason text to attendance_correction and rejectReason in db/schema.ts. No backfill. Do not add a global mandatory constraint: legacy rejected rows have no reason and existing erasure/sweep writers must be inspected. Allocate from current maximum migration index only after approval and parent allocation; the old plan's tentative 0495 is stale and must not be assumed available. No new table or grant needed for this added column; shadow migration and existing column privileges still require verification.
+
+DECISION: extend decideAttendanceCorrection with optional rejectReason. Validate decision whitelist, trim reason, require 1–1000 characters for rejection; store null on approval. Validate after the existing authority check within the transaction. A typed MissingAttendanceRejectReasonError maps to six-locale friendly messages; do not expose arbitrary URL translation keys. Existing decided rows remain terminal. Add rejection reason to attendance-correction.rejected payload, preserving its existing keys and real user actor even when the decider has no employment.
+
+WRITERS: app/approvals/actions.ts approveCorrectionAction and dispatchBulkItem attendance branch must pass rejectReason; bulk already collects it but currently drops it for attendance. app/attendance/actions.ts decideCorrectionAction is another live decision entry and must pass it. app/attendance/page.tsx and Approvals attendance table currently have one-click rejection; use the established required-reason control pattern, preserving self-request disablement and navigation filters. The shared decision function covers clock corrections and OT requests; require rejection reason for both so all callers have one contract. Admin Individual Attendance Save correction submits then approves and must remain unchanged; no reason required for approval.
+
+READERS: project rejectReason through myAttendanceCorrections and the inbox as needed. Employee day route currently queries pending requests only; additionally read all correction history for the selected own date. Render rejected decisions as separate dated entries, newest first with deterministic createdAt/id ordering, beside their proposed values. Never take a rejection reason from a different request or suppress it when another request becomes pending. My Request desktop/mobile history and its workbook export must expose the same rejection reason with a clear caption, distinct from employee reason/remark. All reads remain authenticated self or existing authorised scope; no new security-definer reader.
+
+PHONE: both day pages use the same five-card hierarchy. At 360/390px, stack shift/clock/irregularity fields with readable labels, correction inputs full-width, and a reachable submit button. Keep overtime table in an inner overflow container; add a visible scrolling hint when columns extend beyond the viewport. Keep the overview View action pinned and filters usable; no document-wide horizontal overflow. Preserve employee/HR figures and HR Save correction semantics. Use existing typography, colour tokens and dark-mode styles. The HTML proposal illustrates hierarchy, not a claim of measured browser compliance.
+
+VERIFICATION AFTER APPROVAL: mandatory reason enforced in service with forged blank POST, ordinary manager allowed, dotted manager/peer/self refused, scoped delegation preserved; rejection stores actor/date/reason and no attendance or payroll change; same reason survives request/day/history/export and repeated requests for one date; old rejected rows honestly say not recorded; approval still applies figures and OT-only future plan remains legal. Pin single and bulk action contracts. Adversarially remove the service reason guard and prove the blank-rejection assertion fails. Render employee and HR routes at 360/390/820/wide in light and dark modes; inspect dev log for every new locale key in all six catalogues. Prove card/scroll reachability by measurements and screenshots. Run applicable permissions/drift/i18n guards and full parent gate, shadow migration, build, release and arrival checks only after approved implementation.
+
+ORIGINAL ACCEPTANCE STILL UNFULFILLED: rejection remark display and deliberate phone layout remain deferred. The original request's exact dash-for-zero rendering was explicitly replaced by the approved calculated-zero policy. Request-time original-value capture is not implemented: approved round-one copy truthfully states original/new day figures are captured at application. Cross-midnight correction validation remains a recorded pre-existing limitation. This proposal does not silently redefine any of those as completed.
