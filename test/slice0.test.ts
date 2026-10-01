@@ -1615,7 +1615,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
       checkOut: '18:00',
       reason: 'Correction',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'rejected' });
+    await decideAttendanceCorrection(a, { correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
     const rows = await attRow(employmentId, '2026-06-03');
     expect(rows.length).toBe(0); // no attendance row materialized — that is the proof reject is a no-op
     const evs = await eventTypesFor(base.tenantId, correctionId);

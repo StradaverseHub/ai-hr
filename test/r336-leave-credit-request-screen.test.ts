@@ -757,7 +757,7 @@ describe('r336 · (e)(f) the double-claim check, in BOTH directions, from ONE pr
         today: TODAY,
       });
     await expect(claim()).rejects.toThrow(ClaimOverlapError);
-    await decideAttendanceCorrection(ctx, { correctionId, decision: 'rejected' });
+    await decideAttendanceCorrection(ctx, { correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
     // Released. The employee whose overtime was refused may now claim the credit instead, which is the
     // whole point of asking.
     const res = await claim();

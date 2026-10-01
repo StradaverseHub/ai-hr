@@ -226,7 +226,7 @@ describe('Approval activity history (44a89810)', () => {
       checkOut: '18:00',
       reason: 'Forgot to clock in',
     });
-    await decideAttendanceCorrection(mgrCtx, { correctionId, decision: 'rejected' });
+    await decideAttendanceCorrection(mgrCtx, { correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
 
     const all = await listApprovalHistory(mgrCtx);
     expect(all.map((r) => r.eventType).sort()).toEqual(['attendance-correction.rejected', 'claim-request.approved']);

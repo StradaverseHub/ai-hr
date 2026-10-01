@@ -156,7 +156,7 @@ describe('A · the counts are an aggregate over the RECORDS, not over the page',
     const approved = await filePlan(a, employmentId, D(2), 120, 'approved one');
     await decideAttendanceCorrection(a, { correctionId: approved.correctionId, decision: 'approved' });
     const rejected = await filePlan(a, employmentId, D(3), 180, 'rejected one');
-    await decideAttendanceCorrection(a, { correctionId: rejected.correctionId, decision: 'rejected' });
+    await decideAttendanceCorrection(a, { correctionId: rejected.correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
     const withdrawn = await filePlan(a, employmentId, D(4), 240, 'withdrawn one');
     await cancelPlannedOvertime(emp, { correctionId: withdrawn.correctionId, today: D(1) });
     // A clock-time correction is NOT overtime and belongs to the other screen. Mixing the two is the
