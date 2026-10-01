@@ -230,7 +230,7 @@ export function LeaveBfImport({ runs, showRunLog = true, historyOnly = false, on
             ? 'uploadExcel'
             : 'downloadTemplate';
 
-  if (historyOnly) return <ImportLog runs={runs} onDownload={downloadErrors} onRollback={rollback} busy={pending} />;
+  if (historyOnly) return <>{error && <p role="alert" className="mb-3 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}<ImportLog runs={runs} onDownload={downloadErrors} onRollback={rollback} busy={pending} /></>;
 
   return (
     <div className="space-y-6">
