@@ -118,6 +118,7 @@ import {
   draftFamily,
   missingByTab,
   missingForCreation,
+  noBasicSalaryAmount,
   openingTab,
   stepNumber,
   withSameAsPermanent,
@@ -220,6 +221,16 @@ export function EmployeeWizard({
 
   const missing = useMemo(() => missingByTab(data), [data]);
   const outstanding = useMemo(() => missingForCreation(data), [data]);
+  /**
+   * r374 (item 7dbaf677) — IS THERE NO INITIAL BASIC SALARY? The Payroll tab's whole conditional rule.
+   *
+   * `noBasicSalaryAmount` is the SAME predicate `missingByTab` decides the requirement with, imported
+   * rather than restated: a screen that marked Remarks required on its own reading of the box would
+   * either ask for a reason the rule does not want, or hold Activate back over a field it never
+   * starred. True for blank, whitespace and zero; false for a junk or negative amount, which are
+   * refused outright and are not this case.
+   */
+  const noBasicSalary = noBasicSalaryAmount(data.payroll?.basicSalary);
 
   const set = <K extends keyof EmployeeDraftData>(section: K, patch: Partial<NonNullable<EmployeeDraftData[K]>>) => {
     setSaved(false);
@@ -1025,11 +1036,22 @@ export function EmployeeWizard({
       <Card>
         <SectionHeader title={t('sections.compensation')} />
         <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
+            {/* r374 (item 7dbaf677) — THE FLOOR IS ZERO, AND BLANK IS ALLOWED.
+                The floor here used to be one sen (a min of 0.01 — DELIBERATELY NOT WRITTEN AS THE
+                ATTRIBUTE, so a census grep for that floor across app/ and components/ does not get a
+                false hit from this sentence; CLAUDE.md §8 says the same about the import ratchet). It
+                was the only such floor on a basic salary anywhere in the tree, and with `missingByTab`
+                demanding an amount above zero it kept Activate switched off until somebody typed one.
+                A Director paid Director Fees quarterly has no monthly basic, so HR had to invent a
+                figure. `min="0"` keeps the browser refusing a NEGATIVE amount — which `setCompensation`
+                also refuses now, so the box and the service agree — while leaving blank and zero
+                reachable. The placeholder says so in the box itself. */}
             <Field label={t('fields.basicSalary')}>
               <input
                 type="number"
-                min="0.01"
+                min="0"
                 step="0.01"
+                placeholder={t('fields.basicSalaryBlankPlaceholder')}
                 className={inputCls}
                 value={data.payroll?.basicSalary ?? ''}
                 onChange={(e) => set('payroll', { basicSalary: e.target.value })}
@@ -1063,6 +1085,13 @@ export function EmployeeWizard({
               payMode={(data.payroll?.payMode ?? 'monthly') as PayModeOption}
               paymentTerm={data.payroll?.paymentTerm ?? 'monthly'}
               rateAmount={data.payroll?.rateAmount ?? ''}
+              /* r374 — the reporter's requirement 3 names Pay Mode and Payment Term alongside Remarks
+                 when there is no basic amount. They are marked required ON SCREEN and NOT by presence:
+                 both are <select>s that always carry a value, and this very screen displays "Monthly"
+                 for a draft that stores neither field (the `?? 'monthly'` above, with no matching
+                 write) — so a presence rule would refuse a draft that looks complete. CLAUDE.md §8. */
+              markRequired={noBasicSalary}
+              requiredAriaLabel={t('requiredField')}
               onChange={(patch) =>
                 set('payroll', {
                   ...patch,
@@ -1070,13 +1099,31 @@ export function EmployeeWizard({
                 })
               }
             />
-            <Field label={t('fields.remarks')}>
+            {/* r374 — REMARKS IS WHERE THE REASON GOES, and with no basic amount it is compulsory. That
+                is the reporter's own condition (expected_behavior 4-5) and the only thing left of the
+                refusal they rejected: a mistyped zero and a deliberate one are indistinguishable on the
+                day they are saved, months before any run, and this one sentence tells them apart. The
+                star and the hint below are driven by the SAME predicate `missingByTab` uses. */}
+            <Field
+              label={t('fields.remarks')}
+              required={noBasicSalary}
+              requiredAriaLabel={t('requiredField')}
+            >
               <input
                 className={inputCls}
+                placeholder={noBasicSalary ? t('fields.remarksNoBasicPlaceholder') : undefined}
                 value={data.payroll?.remarks ?? ''}
                 onChange={(e) => set('payroll', { remarks: e.target.value })}
               />
             </Field>
+            {/* SAID WHERE IT IS NEEDED, not after a save is refused. The outstanding list above the
+                Activate button names the tab and the field; this names the RULE, on the tab, the moment
+                the amount goes blank or to zero. */}
+            {noBasicSalary && (
+              <p className="text-xs text-amber-700 sm:col-span-2 dark:text-amber-400">
+                {t('hints.noBasicSalary')}
+              </p>
+            )}
         </div>
       </Card>
     ),

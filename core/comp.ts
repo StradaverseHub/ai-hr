@@ -131,6 +131,31 @@ const assertFinite = (field: string, v: number | null | undefined): void => {
 };
 
 /**
+ * r374 — A NEGATIVE BASIC SALARY IS REFUSED. Found while planning item 7dbaf677, and it belongs with it.
+ *
+ * `unpayableSalaryLeg` above returns `no_monthly_basic` for ANY non-positive amount, so once r369 made
+ * that leg survivable-with-a-remark, a basic of −100 WITH a remark stored silently. No form offered it
+ * then, because every basic input carried a floor — and this round deliberately lowers two of those
+ * floors to zero and drops `required` from them, so the service has to be the one that says no.
+ *
+ * BLANK AND ZERO ARE LEGITIMATE; NEGATIVE NEVER IS. A negative monthly wage has no meaning in any pay
+ * arrangement the reporter described, and it would flow straight into every statutory base, the payslip
+ * and the agency returns as a negative figure. `min="0"` stays on all three inputs so the browser
+ * refuses first; this is the authority behind it. `core/movement.ts` already refused `dSalary < 0` on its
+ * own path, so this makes the two writers agree rather than inventing a new rule.
+ */
+export class NegativeSalaryAmountError extends Error {
+  constructor(field: string) {
+    super(`${field} cannot be negative. Leave it blank or zero for an employee with no basic amount.`);
+    this.name = 'NegativeSalaryAmountError';
+  }
+}
+const assertNotNegative = (field: string, v: number | null | undefined): void => {
+  if (v == null) return;
+  if (Number.isFinite(v) && v < 0) throw new NegativeSalaryAmountError(field);
+};
+
+/**
  * r369 — THE CONFIRMATION GESTURE, AND THE ONLY THING LEFT OF THE REFUSAL THE REPORTER REJECTED.
  *
  * We proposed refusing a basic salary of zero outright. The reporter rejected that: a Director paid fees
@@ -286,6 +311,8 @@ export async function setCompensation(
     assertFinite('Basic salary', p.basicSalary);
     assertFinite('Monthly allowance', effectiveAllowance);
     assertFinite('Rate', p.rateAmount ?? null);
+    // r374 — and it may not be NEGATIVE. See NegativeSalaryAmountError.
+    assertNotNegative('Basic salary', p.basicSalary);
     // r369 — no basic amount ⇒ Remarks is mandatory. Remarks are NOT carried forward by this service (each
     // revision carries its own reason), so the gesture is required on the revision that removes the basic,
     // which is exactly the moment the operator can still say why.
@@ -441,6 +468,9 @@ export async function updateCompensation(
     // remark on a row that has no basic" is refused. `assertFinite` is a no-op for an omitted field.
     assertFinite('Basic salary', p.basicSalary ?? null);
     assertFinite('Rate', p.rateAmount ?? null);
+    // r374 — and it may not be NEGATIVE. A no-op for an omitted field, like `assertFinite`: a stored
+    // negative from before this guard existed is not re-refused by an unrelated edit.
+    assertNotNegative('Basic salary', p.basicSalary ?? null);
     const nextBasic = p.basicSalary !== undefined ? p.basicSalary : Number(row.basicSalary);
     const nextRemarks = p.remarks !== undefined ? (p.remarks ?? '') : (row.remarks ?? '');
     if (unpayableSalaryLeg(nextPayMode, nextBasic, nextRate) === 'no_monthly_basic' && !nextRemarks.trim()) {
