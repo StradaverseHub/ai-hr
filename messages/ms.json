@@ -5817,7 +5817,12 @@
       "readinessNoDefault": "Tiada kitaran gaji lalai dipilih untuk syarikat ini.",
       "readinessNoAutoCreate": "Kitaran tidak dicipta secara automatik — kitaran yang sepatutnya dimiliki syarikat ialah keputusan anda.",
       "readinessFullReport": "Lihat laporan kesediaan penuh",
-      "readinessHideReport": "Sembunyikan laporan penuh"
+      "readinessHideReport": "Sembunyikan laporan penuh",
+      "payslipInformation": {
+        "title": "Tetapan Maklumat Slip Gaji",
+        "desc": "Pilih maklumat pekerjaan untuk slip gaji syarikat ini.",
+        "cta": "Muat"
+      }
     },
     "historyImport": {
       "title": "Import sejarah gaji",
@@ -6198,7 +6203,7 @@
       "title": "Slip Gaji Individu",
       "totalEarnings": "Jumlah pendapatan",
       "viewPayslip": "Lihat Slip Gaji",
-      "ytdCurrent": "Larian ini",
+      "ytdCurrent": "Bulan Semasa",
       "ytdHeading": "Setakat tahun ini · {year}",
       "ytdItem": "Perkara",
       "ytdNote": "Angka setakat tahun ini ialah jumlah penuh seperti yang dikira dan dilaporkan kepada pihak berkuasa. Jika majikan menanggung sebahagian caruman, baris potongan di atas menunjukkan apa yang benar-benar diambil daripada pekerja, jadi kedua-duanya boleh berbeza dengan sah.",
@@ -7336,6 +7341,41 @@
       "runTypeOffCycle": "Luar kitaran",
       "runTypeBonus": "Bonus",
       "runTypeAdjustment": "Pelarasan"
+    },
+    "payslipInformation": {
+      "employee": "Nama Pekerja",
+      "employeeCode": "ID Pekerja",
+      "identityNumber": "NRIC",
+      "taxNumber": "Nombor Cukai Pendapatan",
+      "epfNumber": "Nombor KWSP",
+      "socsoNumber": "Nombor PERKESO/EIS",
+      "department": "Jabatan",
+      "position": "Jawatan",
+      "jobGrade": "Gred",
+      "employmentType": "Jenis Pekerja",
+      "businessUnit": "Unit Perniagaan",
+      "division": "Bahagian",
+      "branch": "Cawangan",
+      "region": "Wilayah",
+      "line": "Barisan",
+      "section": "Seksyen",
+      "team": "Pasukan",
+      "base": "Pangkalan",
+      "category": "Kategori",
+      "daysWorked": "Hari Bekerja",
+      "currency": "Mata Wang",
+      "description": "Pilih maklumat pekerjaan untuk slip gaji syarikat ini.",
+      "company": "Syarikat",
+      "load": "Muat",
+      "saved": "Berjaya disimpan.",
+      "heading": "Maklumat Pekerjaan – Paparan Slip Gaji",
+      "save": "Simpan",
+      "cancel": "Batal",
+      "passport": "Pasport",
+      "currentMonth": "Bulan Semasa",
+      "title": "Tetapan Maklumat Slip Gaji",
+      "saving": "Menyimpan…",
+      "saveError": "Tidak dapat menyimpan. Pilihan anda dikekalkan; sila cuba lagi."
     }
   },
   "admin": {
@@ -11301,7 +11341,19 @@
     "orpOvertimeLabel": "Tambah ke Pengiraan ORP Kerja Lebih Masa",
     "orpOvertimeHint": "Mengira item gaji ini ke dalam jumlah \"Semua elaun tetap\" yang dibaca oleh formula kerja lebih masa anda. Sebelum ini perkara itu ditentukan oleh Kategori item; setiap item ditandakan pada hari pelancaran supaya kerja lebih masa sesiapa pun tidak berubah.",
     "orpDeductionWarning": "Item gaji ini ialah Potongan. Undang-undang pekerjaan Malaysia mengira kerja lebih masa daripada kadar gaji biasa yang berasaskan upah, jadi potongan tidak ditolak daripada asas itu. Pilihan anda disimpan, tetapi ia tidak merendahkan kadar kerja lebih masa atau cuti tanpa gaji sesiapa pun. Beritahu kami jika ini perlu diubah.",
-    "orpStatutoryNote": "Kerja lebih masa berkanun yang dikira daripada kehadiran tidak terjejas oleh kotak ini. Ia berasaskan Gaji Pokok dan Elaun Bulanan pada rekod Personel pekerja."
+    "orpStatutoryNote": "Kerja lebih masa berkanun yang dikira daripada kehadiran tidak terjejas oleh kotak ini. Ia berasaskan Gaji Pokok dan Elaun Bulanan pada rekod Personel pekerja.",
+    "eaLine_EA_B1A": "B1 (a) Gross salary, wages or leave pay (including overtime pay)",
+    "eaLine_EA_B1B": "B1 (b) Fees (including director fees), commission or bonus",
+    "eaLine_EA_B1C": "B1 (c) Gross tips, perquisites, awards / rewards or other allowances",
+    "eaLine_EA_B1D": "B1 (d) Income tax borne by the employer in respect of his employee",
+    "eaLine_EA_B1E": "B1 (e) Employee Share Option Scheme (ESOS) benefit",
+    "eaLine_EA_B1F": "B1 (f) Gratuity",
+    "eaLine_EA_B3": "B3 - Benefits in kind",
+    "eaLine_EA_B4": "B4 - Value of living accommodation provided",
+    "eaLine_EA_B5": "B5 - Refund from unapproved Provident / Pension Fund",
+    "eaLine_EA_B6": "B6 - Compensation for loss of employment",
+    "eaLine_EA_C1": "C1 - Pension",
+    "eaLine_EA_C2": "C2 - Annuities or other periodical payments"
   },
   "notifications": {
     "title": "Pemberitahuan",

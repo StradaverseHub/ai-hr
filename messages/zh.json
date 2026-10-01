@@ -5817,7 +5817,12 @@
       "readinessNoDefault": "该公司尚未选择默认薪资周期。",
       "readinessNoAutoCreate": "系统不会替你创建周期——公司应该有哪些周期由你决定。",
       "readinessFullReport": "查看完整的就绪报告",
-      "readinessHideReport": "隐藏完整报告"
+      "readinessHideReport": "隐藏完整报告",
+      "payslipInformation": {
+        "title": "工资单信息设置",
+        "desc": "选择此公司工资单显示的任职信息。",
+        "cta": "加载"
+      }
     },
     "historyImport": {
       "title": "导入薪资历史",
@@ -6198,7 +6203,7 @@
       "title": "个人工资单",
       "totalEarnings": "收入总额",
       "viewPayslip": "查看工资单",
-      "ytdCurrent": "本批次",
+      "ytdCurrent": "本月",
       "ytdHeading": "年初至今 · {year}",
       "ytdItem": "项目",
       "ytdNote": "年初至今的数字是按计算并向主管机关申报的全额。若雇主承担了部分供款，上方扣除行显示的是实际从员工薪资中扣除的金额，两者出现差异属正常。",
@@ -7336,6 +7341,41 @@
       "runTypeOffCycle": "额外周期",
       "runTypeBonus": "奖金",
       "runTypeAdjustment": "调整"
+    },
+    "payslipInformation": {
+      "employee": "员工姓名",
+      "employeeCode": "员工编号",
+      "identityNumber": "身份证号码",
+      "taxNumber": "所得税号码",
+      "epfNumber": "公积金号码",
+      "socsoNumber": "SOCSO/EIS号码",
+      "department": "部门",
+      "position": "职位",
+      "jobGrade": "职级",
+      "employmentType": "员工类型",
+      "businessUnit": "业务单位",
+      "division": "事业部",
+      "branch": "分支机构",
+      "region": "区域",
+      "line": "生产线",
+      "section": "科室",
+      "team": "团队",
+      "base": "基地",
+      "category": "类别",
+      "daysWorked": "工作天数",
+      "currency": "货币",
+      "description": "选择此公司工资单显示的任职信息。",
+      "company": "公司",
+      "load": "加载",
+      "saved": "保存成功。",
+      "heading": "任职信息 – 工资单显示字段",
+      "save": "保存",
+      "cancel": "取消",
+      "passport": "护照",
+      "currentMonth": "本月",
+      "title": "工资单信息设置",
+      "saving": "保存中…",
+      "saveError": "无法保存。您的选择已保留，请重试。"
     }
   },
   "admin": {
@@ -11301,7 +11341,19 @@
     "orpOvertimeLabel": "计入加班 ORP 计算",
     "orpOvertimeHint": "将此薪资项目计入加班公式所读取的「所有固定津贴」总额。此前这是由项目的类别决定的；上线当天所有项目均已按原样勾选，因此没有人的加班费发生变化。",
     "orpDeductionWarning": "此薪资项目属于扣款。马来西亚劳工法以工资导出的普通工资率计算加班费，因此扣款不会从该基数中减去。您的选择会被保存，但不会降低任何人的加班或无薪假费率。如需更改请告知我们。",
-    "orpStatutoryNote": "依考勤计算的法定加班费不受这些选项影响。它以员工人事记录中的基本工资与每月津贴为准。"
+    "orpStatutoryNote": "依考勤计算的法定加班费不受这些选项影响。它以员工人事记录中的基本工资与每月津贴为准。",
+    "eaLine_EA_B1A": "B1 (a) Gross salary, wages or leave pay (including overtime pay)",
+    "eaLine_EA_B1B": "B1 (b) Fees (including director fees), commission or bonus",
+    "eaLine_EA_B1C": "B1 (c) Gross tips, perquisites, awards / rewards or other allowances",
+    "eaLine_EA_B1D": "B1 (d) Income tax borne by the employer in respect of his employee",
+    "eaLine_EA_B1E": "B1 (e) Employee Share Option Scheme (ESOS) benefit",
+    "eaLine_EA_B1F": "B1 (f) Gratuity",
+    "eaLine_EA_B3": "B3 - Benefits in kind",
+    "eaLine_EA_B4": "B4 - Value of living accommodation provided",
+    "eaLine_EA_B5": "B5 - Refund from unapproved Provident / Pension Fund",
+    "eaLine_EA_B6": "B6 - Compensation for loss of employment",
+    "eaLine_EA_C1": "C1 - Pension",
+    "eaLine_EA_C2": "C2 - Annuities or other periodical payments"
   },
   "notifications": {
     "title": "通知",

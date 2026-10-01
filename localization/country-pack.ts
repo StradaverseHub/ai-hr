@@ -329,6 +329,7 @@ type MyPayrollModule = typeof import('./my/payroll');
  * names a jurisdiction directly (enforced by the drift-guard ratchet, ADR-0080 D7).
  */
 export interface CountryPack {
+  eaReporting?: readonly {code: string; section: string; destination: string; label: string; order: number; active: boolean}[];
   /** ISO alpha-2 country code (uppercase) — the registry key, matching `company.country`. */
   country: string;
 

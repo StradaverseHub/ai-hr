@@ -5817,7 +5817,12 @@
       "readinessNoDefault": "No default payroll cycle is chosen for this company.",
       "readinessNoAutoCreate": "Cycles are not created for you — which cycles a company should have is your decision.",
       "readinessFullReport": "See the full readiness report",
-      "readinessHideReport": "Hide the full report"
+      "readinessHideReport": "Hide the full report",
+      "payslipInformation": {
+        "title": "Payslip Information Setup",
+        "desc": "Choose which employment fields appear on this company’s payslips.",
+        "cta": "Load"
+      }
     },
     "historyImport": {
       "title": "Import payroll history",
@@ -6198,7 +6203,7 @@
       "title": "Individual Payslip",
       "totalEarnings": "Total earnings",
       "viewPayslip": "View Payslip",
-      "ytdCurrent": "This run",
+      "ytdCurrent": "Current Month",
       "ytdHeading": "Year to date · {year}",
       "ytdItem": "Item",
       "ytdNote": "Year-to-date figures are the full amounts as computed and reported to the authorities. Where the employer bore part of a contribution, the deduction lines above show what was actually taken from the employee, so the two can legitimately differ.",
@@ -7336,6 +7341,41 @@
       "runTypeOffCycle": "Off-cycle",
       "runTypeBonus": "Bonus",
       "runTypeAdjustment": "Adjustment"
+    },
+    "payslipInformation": {
+      "employee": "Employee Name",
+      "employeeCode": "Employee ID",
+      "identityNumber": "NRIC",
+      "taxNumber": "Income Tax Number",
+      "epfNumber": "EPF Number",
+      "socsoNumber": "SOCSO/EIS Number",
+      "department": "Department",
+      "position": "Position",
+      "jobGrade": "Grade",
+      "employmentType": "Employee Type",
+      "businessUnit": "Business Unit",
+      "division": "Division",
+      "branch": "Branch",
+      "region": "Region",
+      "line": "Line",
+      "section": "Section",
+      "team": "Team",
+      "base": "Base",
+      "category": "Category",
+      "daysWorked": "Days Worked",
+      "currency": "Currency",
+      "description": "Choose which employment fields appear on this company’s payslips.",
+      "company": "Company",
+      "load": "Load",
+      "saved": "Saved successfully.",
+      "heading": "Employment Info – Payslip Display Fields",
+      "save": "Save",
+      "cancel": "Cancel",
+      "passport": "Passport",
+      "currentMonth": "Current Month",
+      "title": "Payslip Information Setup",
+      "saving": "Saving…",
+      "saveError": "Could not save. Your selections are retained; please try again."
     }
   },
   "admin": {
@@ -11301,7 +11341,19 @@
     "orpOvertimeLabel": "Add to Overtime ORP Calculation",
     "orpOvertimeHint": "Counts this pay item towards the \"All fixed allowances\" total your overtime formula reads. Until now that was decided by the item’s Category instead; every item was ticked on release day so nobody’s overtime changed.",
     "orpDeductionWarning": "This pay item is a Deduction. Malaysian employment law works overtime out from the ordinary rate of pay derived from wages, so a deduction is not taken off that base. Your choice is saved, but it does not lower anyone’s overtime or unpaid-leave rate. Tell us if you need this to change.",
-    "orpStatutoryNote": "Statutory overtime worked out from attendance is not affected by these boxes. It is based on the Basic Salary and Monthly Allowance on the employee’s Personnel record."
+    "orpStatutoryNote": "Statutory overtime worked out from attendance is not affected by these boxes. It is based on the Basic Salary and Monthly Allowance on the employee’s Personnel record.",
+    "eaLine_EA_B1A": "B1 (a) Gross salary, wages or leave pay (including overtime pay)",
+    "eaLine_EA_B1B": "B1 (b) Fees (including director fees), commission or bonus",
+    "eaLine_EA_B1C": "B1 (c) Gross tips, perquisites, awards / rewards or other allowances",
+    "eaLine_EA_B1D": "B1 (d) Income tax borne by the employer in respect of his employee",
+    "eaLine_EA_B1E": "B1 (e) Employee Share Option Scheme (ESOS) benefit",
+    "eaLine_EA_B1F": "B1 (f) Gratuity",
+    "eaLine_EA_B3": "B3 - Benefits in kind",
+    "eaLine_EA_B4": "B4 - Value of living accommodation provided",
+    "eaLine_EA_B5": "B5 - Refund from unapproved Provident / Pension Fund",
+    "eaLine_EA_B6": "B6 - Compensation for loss of employment",
+    "eaLine_EA_C1": "C1 - Pension",
+    "eaLine_EA_C2": "C2 - Annuities or other periodical payments"
   },
   "notifications": {
     "title": "Notifications",

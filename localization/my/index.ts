@@ -1,3 +1,4 @@
+import { MY_EA_REPORTING } from './ea-reporting';
 /**
  * Malaysia localization pack (ADR-0008). Slice 1 ships the statutory profile; leave rules,
  * holiday calendar, and payroll calculators (EPF/SOCSO/EIS/PCB) join here in later slices.
@@ -64,6 +65,7 @@ import type { CountryPack } from '../country-pack';
 // ADR-0080 D1: the pack implements the registry-owned CountryPack contract (previously the
 // registry derived its type FROM this object — backwards).
 export const myPack: CountryPack = {
+  eaReporting: MY_EA_REPORTING,
   country: 'MY' as const,
   // Rung 5b (ADR-0080 D4) — the client-safe vocabulary slice, ALSO served to 'use client'
   // components by localization/registry.client.ts (this reference makes it contract-declared).

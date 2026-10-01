@@ -97,6 +97,7 @@ export { PAY_DISPLAY_CATEGORIES, cleanDisplayCategory, type PayDisplayCategory }
 // that box is "1(b) Fees (including directors' fees), commission or bonus" (messages `ea.directorFee` /
 // `ea.feesCommissionBonus`). Two vocabulary words, one printed line, because the FORM groups them.
 export const EA_FORM_LINES = [
+  'EA_B1A','EA_B1B','EA_B1C','EA_B1D','EA_B1E','EA_B1F','EA_B3','EA_B4','EA_B5','EA_B6','EA_C1','EA_C2',
   'gross_salary',           // B.1(a) salary, wages, leave pay
   'bonus',                  // B.1(b) bonus / incentive (cash)
   'commission',             // B.1(b) fees, commission — same printed box as director_fee
@@ -119,8 +120,11 @@ export type EaFormLine = (typeof EA_FORM_LINES)[number];
 export const ROUNDING_METHODS = ['none', 'up', 'down', 'nearest'] as const;
 export type RoundingMethod = (typeof ROUNDING_METHODS)[number];
 
-const cleanEaLine = (v: unknown): string | null =>
-  EA_FORM_LINES.includes(v as EaFormLine) ? (v as string) : null;
+const cleanEaLine = (v: unknown): string | null => {
+  if (v == null || v === '') return null;
+  if (!EA_FORM_LINES.includes(v as EaFormLine)) throw new Error('Unknown EA reporting classification');
+  return v as string;
+};
 const cleanRounding = (v: unknown): RoundingMethod =>
   ROUNDING_METHODS.includes(v as RoundingMethod) ? (v as RoundingMethod) : 'none';
 

@@ -5817,7 +5817,12 @@
       "readinessNoDefault": "ยังไม่ได้เลือกรอบเงินเดือนเริ่มต้นสำหรับบริษัทนี้",
       "readinessNoAutoCreate": "ระบบไม่สร้างรอบให้อัตโนมัติ — บริษัทควรมีรอบใดบ้างเป็นการตัดสินใจของคุณ",
       "readinessFullReport": "ดูรายงานความพร้อมฉบับเต็ม",
-      "readinessHideReport": "ซ่อนรายงานฉบับเต็ม"
+      "readinessHideReport": "ซ่อนรายงานฉบับเต็ม",
+      "payslipInformation": {
+        "title": "ตั้งค่าข้อมูลสลิปเงินเดือน",
+        "desc": "เลือกข้อมูลการจ้างงานที่แสดงบนสลิปเงินเดือนของบริษัทนี้",
+        "cta": "โหลด"
+      }
     },
     "historyImport": {
       "title": "นำเข้าประวัติเงินเดือน",
@@ -6198,7 +6203,7 @@
       "title": "สลิปเงินเดือนรายบุคคล",
       "totalEarnings": "รายได้รวม",
       "viewPayslip": "ดูสลิปเงินเดือน",
-      "ytdCurrent": "รอบนี้",
+      "ytdCurrent": "เดือนปัจจุบัน",
       "ytdHeading": "สะสมทั้งปี · {year}",
       "ytdItem": "รายการ",
       "ytdNote": "ตัวเลขสะสมทั้งปีคือยอดเต็มตามที่คำนวณและรายงานต่อหน่วยงานที่เกี่ยวข้อง หากนายจ้างรับภาระบางส่วนของเงินสมทบ รายการหักด้านบนจะแสดงยอดที่หักจากพนักงานจริง ทั้งสองจึงอาจต่างกันได้ตามปกติ",
@@ -7336,6 +7341,41 @@
       "runTypeOffCycle": "นอกรอบ",
       "runTypeBonus": "โบนัส",
       "runTypeAdjustment": "ปรับปรุง"
+    },
+    "payslipInformation": {
+      "employee": "ชื่อพนักงาน",
+      "employeeCode": "รหัสพนักงาน",
+      "identityNumber": "NRIC",
+      "taxNumber": "เลขประจำตัวผู้เสียภาษี",
+      "epfNumber": "หมายเลข EPF",
+      "socsoNumber": "หมายเลข SOCSO/EIS",
+      "department": "แผนก",
+      "position": "ตำแหน่ง",
+      "jobGrade": "ระดับ",
+      "employmentType": "ประเภทพนักงาน",
+      "businessUnit": "หน่วยธุรกิจ",
+      "division": "ฝ่าย",
+      "branch": "สาขา",
+      "region": "ภูมิภาค",
+      "line": "สายงาน",
+      "section": "ส่วนงาน",
+      "team": "ทีม",
+      "base": "ฐาน",
+      "category": "หมวดหมู่",
+      "daysWorked": "วันที่ทำงาน",
+      "currency": "สกุลเงิน",
+      "description": "เลือกข้อมูลการจ้างงานที่แสดงบนสลิปเงินเดือนของบริษัทนี้",
+      "company": "บริษัท",
+      "load": "โหลด",
+      "saved": "บันทึกสำเร็จ",
+      "heading": "ข้อมูลการจ้างงาน – รายการแสดงบนสลิปเงินเดือน",
+      "save": "บันทึก",
+      "cancel": "ยกเลิก",
+      "passport": "หนังสือเดินทาง",
+      "currentMonth": "เดือนปัจจุบัน",
+      "title": "ตั้งค่าข้อมูลสลิปเงินเดือน",
+      "saving": "กำลังบันทึก…",
+      "saveError": "บันทึกไม่ได้ ตัวเลือกของคุณยังคงอยู่ โปรดลองอีกครั้ง"
     }
   },
   "admin": {
@@ -11301,7 +11341,19 @@
     "orpOvertimeLabel": "เพิ่มเข้าการคำนวณ ORP ของค่าล่วงเวลา",
     "orpOvertimeHint": "นับรายการจ่ายนี้เข้ายอด \"เบี้ยเลี้ยงคงที่ทั้งหมด\" ที่สูตรค่าล่วงเวลาของคุณอ่าน ก่อนหน้านี้เรื่องนี้ถูกกำหนดโดยหมวดของรายการ ในวันที่เปิดใช้งานทุกรายการถูกตั้งค่าไว้ตามเดิม ค่าล่วงเวลาของทุกคนจึงไม่เปลี่ยนแปลง",
     "orpDeductionWarning": "รายการจ่ายนี้เป็นรายการหัก กฎหมายแรงงานมาเลเซียคำนวณค่าล่วงเวลาจากอัตราค่าจ้างปกติที่มาจากค่าจ้าง จึงไม่นำรายการหักไปลบออกจากฐานดังกล่าว ระบบบันทึกตัวเลือกของคุณไว้ แต่จะไม่ลดอัตราค่าล่วงเวลาหรือการลาไม่รับค่าจ้างของใคร หากต้องการให้เปลี่ยนแปลงโปรดแจ้งเรา",
-    "orpStatutoryNote": "ค่าล่วงเวลาตามกฎหมายที่คำนวณจากการลงเวลาไม่ได้รับผลจากช่องเหล่านี้ โดยอิงจากเงินเดือนพื้นฐานและเบี้ยเลี้ยงรายเดือนในประวัติพนักงาน"
+    "orpStatutoryNote": "ค่าล่วงเวลาตามกฎหมายที่คำนวณจากการลงเวลาไม่ได้รับผลจากช่องเหล่านี้ โดยอิงจากเงินเดือนพื้นฐานและเบี้ยเลี้ยงรายเดือนในประวัติพนักงาน",
+    "eaLine_EA_B1A": "B1 (a) Gross salary, wages or leave pay (including overtime pay)",
+    "eaLine_EA_B1B": "B1 (b) Fees (including director fees), commission or bonus",
+    "eaLine_EA_B1C": "B1 (c) Gross tips, perquisites, awards / rewards or other allowances",
+    "eaLine_EA_B1D": "B1 (d) Income tax borne by the employer in respect of his employee",
+    "eaLine_EA_B1E": "B1 (e) Employee Share Option Scheme (ESOS) benefit",
+    "eaLine_EA_B1F": "B1 (f) Gratuity",
+    "eaLine_EA_B3": "B3 - Benefits in kind",
+    "eaLine_EA_B4": "B4 - Value of living accommodation provided",
+    "eaLine_EA_B5": "B5 - Refund from unapproved Provident / Pension Fund",
+    "eaLine_EA_B6": "B6 - Compensation for loss of employment",
+    "eaLine_EA_C1": "C1 - Pension",
+    "eaLine_EA_C2": "C2 - Annuities or other periodical payments"
   },
   "notifications": {
     "title": "การแจ้งเตือน",

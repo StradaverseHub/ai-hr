@@ -5817,7 +5817,12 @@
       "readinessNoDefault": "Chưa chọn chu kỳ trả lương mặc định cho công ty này.",
       "readinessNoAutoCreate": "Hệ thống không tự tạo chu kỳ — công ty nên có những chu kỳ nào là quyết định của bạn.",
       "readinessFullReport": "Xem báo cáo mức độ sẵn sàng đầy đủ",
-      "readinessHideReport": "Ẩn báo cáo đầy đủ"
+      "readinessHideReport": "Ẩn báo cáo đầy đủ",
+      "payslipInformation": {
+        "title": "Thiết lập thông tin phiếu lương",
+        "desc": "Chọn thông tin việc làm hiển thị trên phiếu lương của công ty.",
+        "cta": "Tải"
+      }
     },
     "historyImport": {
       "title": "Nhập lịch sử bảng lương",
@@ -6198,7 +6203,7 @@
       "title": "Phiếu lương cá nhân",
       "totalEarnings": "Tổng thu nhập",
       "viewPayslip": "Xem phiếu lương",
-      "ytdCurrent": "Lần chạy này",
+      "ytdCurrent": "Tháng hiện tại",
       "ytdHeading": "Lũy kế từ đầu năm · {year}",
       "ytdItem": "Khoản mục",
       "ytdNote": "Số lũy kế là toàn bộ số tiền như đã tính và báo cáo cho cơ quan chức năng. Khi người sử dụng lao động gánh một phần khoản đóng góp, các dòng khấu trừ ở trên thể hiện số thực sự trừ vào lương nhân viên, nên hai bên có thể khác nhau một cách hợp lệ.",
@@ -7336,6 +7341,41 @@
       "runTypeOffCycle": "Ngoài chu kỳ",
       "runTypeBonus": "Thưởng",
       "runTypeAdjustment": "Điều chỉnh"
+    },
+    "payslipInformation": {
+      "employee": "Tên nhân viên",
+      "employeeCode": "Mã nhân viên",
+      "identityNumber": "NRIC",
+      "taxNumber": "Mã số thuế thu nhập",
+      "epfNumber": "Số EPF",
+      "socsoNumber": "Số SOCSO/EIS",
+      "department": "Phòng ban",
+      "position": "Chức vụ",
+      "jobGrade": "Cấp bậc",
+      "employmentType": "Loại nhân viên",
+      "businessUnit": "Đơn vị kinh doanh",
+      "division": "Bộ phận",
+      "branch": "Chi nhánh",
+      "region": "Khu vực",
+      "line": "Dây chuyền",
+      "section": "Tổ",
+      "team": "Nhóm",
+      "base": "Cơ sở",
+      "category": "Danh mục",
+      "daysWorked": "Ngày làm việc",
+      "currency": "Tiền tệ",
+      "description": "Chọn thông tin việc làm hiển thị trên phiếu lương của công ty.",
+      "company": "Công ty",
+      "load": "Tải",
+      "saved": "Đã lưu thành công.",
+      "heading": "Thông tin việc làm – Trường hiển thị phiếu lương",
+      "save": "Lưu",
+      "cancel": "Hủy",
+      "passport": "Hộ chiếu",
+      "currentMonth": "Tháng hiện tại",
+      "title": "Thiết lập thông tin phiếu lương",
+      "saving": "Đang lưu…",
+      "saveError": "Không thể lưu. Lựa chọn được giữ lại; vui lòng thử lại."
     }
   },
   "admin": {
@@ -11301,7 +11341,19 @@
     "orpOvertimeLabel": "Thêm vào cách tính ORP cho Làm thêm giờ",
     "orpOvertimeHint": "Tính khoản lương này vào tổng \"Tất cả phụ cấp cố định\" mà công thức làm thêm giờ của bạn đọc. Trước đây điều đó do Danh mục của khoản mục quyết định; vào ngày phát hành mọi khoản đều được đặt đúng như cũ nên tiền làm thêm giờ của không ai thay đổi.",
     "orpDeductionWarning": "Khoản lương này là một khoản Khấu trừ. Luật lao động Malaysia tính làm thêm giờ theo mức lương thông thường lấy từ tiền lương, nên khoản khấu trừ không bị trừ khỏi cơ sở đó. Lựa chọn của bạn được lưu lại, nhưng nó không làm giảm mức làm thêm giờ hay nghỉ không lương của bất kỳ ai. Hãy cho chúng tôi biết nếu bạn cần thay đổi điều này.",
-    "orpStatutoryNote": "Tiền làm thêm giờ theo luật định tính từ chấm công không bị ảnh hưởng bởi các ô này. Nó dựa trên Lương cơ bản và Phụ cấp hàng tháng trong hồ sơ Nhân sự của nhân viên."
+    "orpStatutoryNote": "Tiền làm thêm giờ theo luật định tính từ chấm công không bị ảnh hưởng bởi các ô này. Nó dựa trên Lương cơ bản và Phụ cấp hàng tháng trong hồ sơ Nhân sự của nhân viên.",
+    "eaLine_EA_B1A": "B1 (a) Gross salary, wages or leave pay (including overtime pay)",
+    "eaLine_EA_B1B": "B1 (b) Fees (including director fees), commission or bonus",
+    "eaLine_EA_B1C": "B1 (c) Gross tips, perquisites, awards / rewards or other allowances",
+    "eaLine_EA_B1D": "B1 (d) Income tax borne by the employer in respect of his employee",
+    "eaLine_EA_B1E": "B1 (e) Employee Share Option Scheme (ESOS) benefit",
+    "eaLine_EA_B1F": "B1 (f) Gratuity",
+    "eaLine_EA_B3": "B3 - Benefits in kind",
+    "eaLine_EA_B4": "B4 - Value of living accommodation provided",
+    "eaLine_EA_B5": "B5 - Refund from unapproved Provident / Pension Fund",
+    "eaLine_EA_B6": "B6 - Compensation for loss of employment",
+    "eaLine_EA_C1": "C1 - Pension",
+    "eaLine_EA_C2": "C2 - Annuities or other periodical payments"
   },
   "notifications": {
     "title": "Thông báo",

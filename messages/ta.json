@@ -5817,7 +5817,12 @@
       "readinessNoDefault": "இந்த நிறுவனத்திற்கு இயல்பு ஊதியச் சுழற்சி எதுவும் தேர்ந்தெடுக்கப்படவில்லை.",
       "readinessNoAutoCreate": "சுழற்சிகள் தானாக உருவாக்கப்படுவதில்லை — ஒரு நிறுவனத்திற்கு எந்தச் சுழற்சிகள் இருக்க வேண்டும் என்பது உங்கள் முடிவு.",
       "readinessFullReport": "முழு தயார்நிலை அறிக்கையைப் பார்க்க",
-      "readinessHideReport": "முழு அறிக்கையை மறை"
+      "readinessHideReport": "முழு அறிக்கையை மறை",
+      "payslipInformation": {
+        "title": "சம்பளச் சீட்டு தகவல் அமைப்பு",
+        "desc": "இந்த நிறுவனத்தின் சம்பளச் சீட்டில் காட்ட வேண்டிய வேலைத் தகவலைத் தேர்வு செய்யவும்.",
+        "cta": "ஏற்று"
+      }
     },
     "historyImport": {
       "title": "ஊதிய வரலாற்றை இறக்குமதி செய்",
@@ -6198,7 +6203,7 @@
       "title": "தனிநபர் ஊதியச் சீட்டு",
       "totalEarnings": "மொத்த வருவாய்",
       "viewPayslip": "ஊதியச் சீட்டைக் காண்க",
-      "ytdCurrent": "இந்த இயக்கம்",
+      "ytdCurrent": "நடப்பு மாதம்",
       "ytdHeading": "ஆண்டு இதுவரை · {year}",
       "ytdItem": "உருப்படி",
       "ytdNote": "ஆண்டு இதுவரையிலான எண்கள் கணக்கிடப்பட்டு அதிகாரிகளுக்கு அறிவிக்கப்பட்ட முழுத் தொகைகள். முதலாளி ஒரு பங்களிப்பின் ஒரு பகுதியை ஏற்றிருந்தால், மேலே உள்ள கழிவு வரிகள் ஊழியரிடமிருந்து உண்மையில் எடுக்கப்பட்டதைக் காட்டுகின்றன, எனவே இரண்டும் நியாயமாக வேறுபடலாம்.",
@@ -7336,6 +7341,41 @@
       "runTypeOffCycle": "சுழற்சிக்கு வெளியே",
       "runTypeBonus": "்போனஸ்",
       "runTypeAdjustment": "சரிசெய்தல்"
+    },
+    "payslipInformation": {
+      "employee": "பணியாளர் பெயர்",
+      "employeeCode": "பணியாளர் எண்",
+      "identityNumber": "NRIC",
+      "taxNumber": "வருமான வரி எண்",
+      "epfNumber": "EPF எண்",
+      "socsoNumber": "SOCSO/EIS எண்",
+      "department": "துறை",
+      "position": "பதவி",
+      "jobGrade": "தரம்",
+      "employmentType": "பணியாளர் வகை",
+      "businessUnit": "வணிக அலகு",
+      "division": "பிரிவு",
+      "branch": "கிளை",
+      "region": "பகுதி",
+      "line": "வரி",
+      "section": "பிரிவகம்",
+      "team": "குழு",
+      "base": "தளம்",
+      "category": "வகை",
+      "daysWorked": "வேலை நாட்கள்",
+      "currency": "நாணயம்",
+      "description": "இந்த நிறுவனத்தின் சம்பளச் சீட்டில் காட்ட வேண்டிய வேலைத் தகவலைத் தேர்வு செய்யவும்.",
+      "company": "நிறுவனம்",
+      "load": "ஏற்று",
+      "saved": "வெற்றிகரமாகச் சேமிக்கப்பட்டது.",
+      "heading": "வேலைத் தகவல் – சம்பளச் சீட்டு காட்சிப் புலங்கள்",
+      "save": "சேமி",
+      "cancel": "ரத்து",
+      "passport": "கடவுச்சீட்டு",
+      "currentMonth": "நடப்பு மாதம்",
+      "title": "சம்பளச் சீட்டு தகவல் அமைப்பு",
+      "saving": "சேமிக்கிறது…",
+      "saveError": "சேமிக்க முடியவில்லை. உங்கள் தேர்வுகள் உள்ளன; மீண்டும் முயற்சிக்கவும்."
     }
   },
   "admin": {
@@ -11301,7 +11341,19 @@
     "orpOvertimeLabel": "கூடுதல் நேர ORP கணக்கீட்டில் சேர்",
     "orpOvertimeHint": "உங்கள் கூடுதல் நேரச் சூத்திரம் படிக்கும் \"அனைத்து நிலையான படிகள்\" மொத்தத்தில் இந்த ஊதிய உருப்படியைச் சேர்க்கிறது. இதுவரை அதை உருப்படியின் வகை தீர்மானித்தது; வெளியீட்டு நாளில் ஒவ்வொரு உருப்படியும் அப்படியே குறிக்கப்பட்டதால் யாருடைய கூடுதல் நேர ஊதியமும் மாறவில்லை.",
     "orpDeductionWarning": "இந்த ஊதிய உருப்படி ஒரு கழிவு. மலேசியத் தொழிலாளர் சட்டம் ஊதியத்திலிருந்து பெறப்படும் சாதாரண ஊதிய விகிதத்தின் அடிப்படையில் கூடுதல் நேரத்தைக் கணக்கிடுகிறது, எனவே கழிவு அந்த அடிப்படையிலிருந்து கழிக்கப்படுவதில்லை. உங்கள் தேர்வு சேமிக்கப்படுகிறது, ஆனால் அது யாருடைய கூடுதல் நேர அல்லது ஊதியமில்லா விடுப்பு விகிதத்தையும் குறைக்காது. இதை மாற்ற வேண்டுமானால் எங்களிடம் தெரிவிக்கவும்.",
-    "orpStatutoryNote": "வருகைப் பதிவிலிருந்து கணக்கிடப்படும் சட்டரீதியான கூடுதல் நேர ஊதியம் இந்தப் பெட்டிகளால் பாதிக்கப்படுவதில்லை. அது ஊழியரின் பணியாளர் பதிவில் உள்ள அடிப்படை ஊதியம் மற்றும் மாதாந்திரப் படியை அடிப்படையாகக் கொண்டது."
+    "orpStatutoryNote": "வருகைப் பதிவிலிருந்து கணக்கிடப்படும் சட்டரீதியான கூடுதல் நேர ஊதியம் இந்தப் பெட்டிகளால் பாதிக்கப்படுவதில்லை. அது ஊழியரின் பணியாளர் பதிவில் உள்ள அடிப்படை ஊதியம் மற்றும் மாதாந்திரப் படியை அடிப்படையாகக் கொண்டது.",
+    "eaLine_EA_B1A": "B1 (a) Gross salary, wages or leave pay (including overtime pay)",
+    "eaLine_EA_B1B": "B1 (b) Fees (including director fees), commission or bonus",
+    "eaLine_EA_B1C": "B1 (c) Gross tips, perquisites, awards / rewards or other allowances",
+    "eaLine_EA_B1D": "B1 (d) Income tax borne by the employer in respect of his employee",
+    "eaLine_EA_B1E": "B1 (e) Employee Share Option Scheme (ESOS) benefit",
+    "eaLine_EA_B1F": "B1 (f) Gratuity",
+    "eaLine_EA_B3": "B3 - Benefits in kind",
+    "eaLine_EA_B4": "B4 - Value of living accommodation provided",
+    "eaLine_EA_B5": "B5 - Refund from unapproved Provident / Pension Fund",
+    "eaLine_EA_B6": "B6 - Compensation for loss of employment",
+    "eaLine_EA_C1": "C1 - Pension",
+    "eaLine_EA_C2": "C2 - Annuities or other periodical payments"
   },
   "notifications": {
     "title": "அறிவிப்புகள்",
