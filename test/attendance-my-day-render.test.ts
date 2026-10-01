@@ -1,4 +1,5 @@
-import { createElement } from 'react';
+import { Children, cloneElement, createElement, isValidElement } from 'react';
+import { AttendanceRequestHistory } from '../components/attendance-request-history';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,7 +7,7 @@ import { createTranslator, NextIntlClientProvider } from 'next-intl';
 const state = vi.hoisted(() => ({ locale: 'en', own: vi.fn(), rows: vi.fn(), punches: vi.fn(), requests: vi.fn() }));
 vi.mock('next-intl/server', () => ({
   getLocale: async () => state.locale,
-  getTranslations: async () => createTranslator({ locale: state.locale, namespace: 'attendance', messages: JSON.parse(readFileSync(new URL(`../messages/${state.locale}.json`, import.meta.url), 'utf8')) }),
+  getTranslations: async (namespace: string = 'attendance') => createTranslator({ locale: state.locale, namespace, messages: JSON.parse(readFileSync(new URL(`../messages/${state.locale}.json`, import.meta.url), 'utf8')) }),
 }));
 vi.mock('../lib/scope', () => ({ scopedSession: async () => ({ s: { personId: 'manager' } }) }));
 vi.mock('../lib/authz', () => ({ requireModule: async () => undefined }));
@@ -29,25 +30,34 @@ beforeEach(() => {
 });
 const render = async (extra = {}) => {
   const page = await Page({ params: Promise.resolve({ date: '2025-06-04' }), searchParams: Promise.resolve({ from: '2025-06-01', to: '2025-06-30', ...extra }) });
-  return renderToStaticMarkup(createElement(NextIntlClientProvider, { locale: state.locale, messages: JSON.parse(readFileSync(new URL(`../messages/${state.locale}.json`, import.meta.url), 'utf8')), children: page }));
+  // Next resolves this async server child; legacy static markup cannot await it itself.
+  const children = await Promise.all(Children.toArray(page.props.children).map(child =>
+    isValidElement(child) && child.type === AttendanceRequestHistory
+      ? AttendanceRequestHistory(child.props as Parameters<typeof AttendanceRequestHistory>[0])
+      : child));
+  const resolved = cloneElement(page, undefined, ...children);
+  return renderToStaticMarkup(createElement(NextIntlClientProvider, { locale: state.locale, messages: JSON.parse(readFileSync(new URL(`../messages/${state.locale}.json`, import.meta.url), 'utf8')), children: resolved }));
 };
 describe('employee day render', () => {
   it('a manager sees their own day even when the URL asks for their report', async () => {
     const html = await render({ emp: 'report-employment' });
     expect(state.rows).toHaveBeenCalledWith(expect.anything(), 'manager-own', '2025-06-04', '2025-06-04');
     expect(state.punches).toHaveBeenCalledWith(expect.anything(), 'manager-own', '2025-06-04', '2025-06-04');
+    expect(state.requests).toHaveBeenCalledWith(expect.anything(), 'manager-own', { date: '2025-06-04', limit: 100 });
     expect(html).toContain('Own day');
     expect(html).not.toContain('report-employment');
     expect(html).toContain('/attendance/my-records?from=2025-06-01&amp;to=2025-06-30');
   });
   it.each(['en', 'ms', 'zh', 'ta', 'th', 'vi'])('renders pending state and all five sections in %s', async (locale) => {
-    state.locale = locale; state.requests.mockResolvedValue([{ id: 'pending' }]);
+    state.locale = locale; state.requests.mockResolvedValue([{ id: 'pending', status: 'pending', createdAt: new Date('2025-06-04T01:00:00Z'), proposedCheckIn: '09:00', proposedCheckOut: '18:00', originalClockSnapshot: null, reason: 'Fixture correction', rejectReason: null, decidedAt: null }]);
     const html = await render();
     expect(html).toContain('<fieldset disabled=""');
     expect(html).not.toMatch(/MISSING_MESSAGE|FORMATTING_ERROR/);
     expect(html).toContain('AM01');
+    expect(html).toContain('Fixture correction');
+    expect(html).toContain('09:00 → 18:00');
     const catalogue = JSON.parse(readFileSync(new URL(`../messages/${locale}.json`, import.meta.url), 'utf8')).attendance;
-    for (const key of ['daySecShift', 'daySecBreak', 'daySecClock', 'daySecIrregular', 'myDayPending']) expect(html).toContain(catalogue[key]);
+    for (const key of ['daySecShift', 'daySecBreak', 'daySecClock', 'daySecOt', 'daySecIrregular', 'myDayPending']) expect(html).toContain(catalogue[key]);
   });
   it('an invalid calendar date is refused before attendance reads', async () => {
     await Page({ params: Promise.resolve({ date: '2025-02-30' }), searchParams: Promise.resolve({}) });
