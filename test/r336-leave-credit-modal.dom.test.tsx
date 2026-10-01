@@ -353,7 +353,8 @@ describe('r343 · the ordinary-day row derives its figures and never offers them
     expect(disclosure.getAttribute('aria-expanded')).toBe('true');
     const facts = screen.getByTestId('leave-credit-attendance-panel');
     expect(facts.closest('td')).not.toBeNull();
-    expect(facts).toHaveTextContent('18:00');
+    expect(facts).toHaveTextContent('08:52');
+    expect(facts).toHaveTextContent('8h');
     expect(facts).toHaveTextContent('02:00');
     expect(screen.queryAllByTestId('leave-credit-shift-end')).toHaveLength(0);
     expect(screen.queryAllByTestId('leave-credit-clock-out')).toHaveLength(0);
