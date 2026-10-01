@@ -1,3 +1,197 @@
+## r375 — 2026-10-01 · main@bb49aa90 · migration 0498
+
+Two board items that were **parked unverified at the end of r374 and finished afterwards**. 25 files,
++1516/−84, two new suites, **one migration (0498)**, all six locales at 12,833 keys with none removed.
+Gate **GREEN across all 24 chunks, 1093 of 1093 files counted**, run at `CHUNKS=24
+VITEST_MAX_WORKERS=2` rather than the documented 16/3 — recorded because it is a deviation, though
+coverage is identical and the script still asserts every file counted. Swap was at **37.3 GB of 38.9
+GB** after four gates and two `next build`s in one session, and the first chunk took **459 s** against a
+normal ~85 s: the gate was paging, not computing. Smaller chunks and fewer workers lower peak memory,
+and once pressure eased chunks 2–24 ran at **59–109 s** — on the FOURTH attempt; the three red runs are recorded below because all three were real and none was in this round's new code. `gate:shadow` **PASS — applied 406 → 407 against a live-shaped schema**, re-run on the
+INTEGRATION rather than trusted from the branch.
+
+**Items closed:** `7c972a40` an employee may see their own supervisor's name · `ed6f7a7b` a leave type
+with carry forward off still showed days it would forfeit.
+
+### Why these were parked, and what that cost
+
+Both were built during r374 and then **stopped mid-flight by me** to keep the machine quiet for r374's
+gate. Neither had run a single test: one test file was committed **un-typechecked**, and **migration 0498
+had never been executed** — it was unproven that it even parsed. They were handed back deliberately
+half-done with accurate notes rather than tidied into something that looked finished.
+
+That turned out to be the right shape. Nothing was wrong with either branch; both were simply **unproven**,
+and everything they needed was in their own hand-back notes. Resuming them cost one pass each.
+
+### `7c972a40` — one narrow reader, not a wider policy
+
+`app.own_reporting_managers(uuid)`, `SQL STABLE SECURITY DEFINER`, `search_path` pinned, every relation
+schema-qualified, `REVOKE ALL FROM PUBLIC` + `GRANT EXECUTE TO ai_hr_app`. Follows `app.self_delegations`
+(0196) and `app.own_leave_request_approvals` (0472).
+
+**`app.can_see_person` and `app.can_see_employment` are untouched**, which is the whole point: that
+function also gates DOB, gender, marital status, religion, **race (PDPA s.40)**, address, personal email,
+phone, statutory rows, dependents, TP1 relief, the photo and TP3 — and migration 0472's header had already
+refused this exact widening. Four fences instead: ownership (the argument's `person_id` must match the
+caller's, else **no rows and no error**, so it cannot probe which ids exist), one hop only, current-only,
+and no `delegate` edges. No admin branch — admins already read these names through RLS.
+
+⚠️ **THE PLAN'S INSTRUCTION WOULD HAVE CAUSED A REGRESSION, and the reason is worth keeping.** It said to
+route My Roster through `reportingLinesFor` because both have "the same inner join". **Both halves are
+false:**
+
+- `reportingLinesFor` filters `valid_to IS NULL` and **never checks `valid_from`** — it therefore sees a
+  **future-dated** open line and **misses** a line with a scheduled end. The old roster helper filtered
+  `valid_from <= asOf && (valid_to IS NULL || valid_to > asOf)` — the reverse. **They were never
+  interchangeable**, so the literal reading would have broken every employee whose line has an end date.
+- The roster helper is **two queries, not one join**. The first reads `reporting_line` alone, which is
+  tenant-wide and therefore **succeeds**, yielding a manager employment id; the second joins
+  employment→person and returns nothing. Same symptom, different mechanism.
+
+Routing **both** through 0498 is an exact match for the roster and a **union** for `reportingLinesFor` —
+a union, not a replacement, because the plan's "those become the managers list" would have **removed a row
+an admin sees today**.
+
+**`current_date` is the wrong "today".** The function uses `(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date`
+— the SQL form of `todayInKualaLumpur()`, the idiom 0288/0320/0449 already use. On a UTC server
+`current_date` is *yesterday* for the first eight hours of every Malaysian day, which would hand the screen
+the **outgoing** supervisor across a handover. No as-of parameter on purpose: a date argument would make it
+a history reader.
+
+**A third manager-name reader exists that the plan never mentioned** — `core/movement.ts:1236`. It is
+admin-only and reconstructs *historical* as-of state, which a current-only reader cannot serve, so it is
+**deliberately untouched rather than a gap**. Two more projections resolve manager names through their own
+RLS joins and are unchanged, so r302's `toBeNull()` assertions **remain live guards** that person RLS was
+not widened — their prose was scoped, not loosened.
+
+`otGoesToUnknown` is **retired in meaning but kept in name and value**: "Your HR administrator" is still
+true for an employee who has no supervisor.
+
+### `ed6f7a7b` — carry off must mean nothing carried, on every surface
+
+Both read paths now ask the engine's own `carryEnabled(policy)` instead of trusting the stored
+`carryMax`/`carryPercent`: `core/read.ts#leaveEntitlementBreakdown` and
+`core/analytics.ts#carryForwardReport`. The stored values stay intact for the derivation node, and the
+configuration screen's retention is untouched — the hidden `carryForwardMax` still posts the stored cap, so
+switching carry back on restores it. One new line tells the operator the kept figure is **dormant**, shown
+only when the cap is above zero.
+
+**The surface map, which is the expensive part not to re-derive.** Wrong figure reached: the Employee
+Balances grid, **its download** (not named in the plan), the HR personnel leave inquiry, **the AI
+assistant's answer**, the analytics view, and the **analytics download in three formats** (csv + xlsx +
+pdf off one route, not one). Checked and found **already correct, so deliberately not touched**: the
+Explain panel selects the RAW signed `broughtForward`, never `carriedForward`; `core/my-leave.ts`,
+`lib/shared-leave-balance.ts` and `app/leave/page.tsx` carry none of these fields; and the importer's
+`carryAllowanceFrom` call sites were already gated.
+
+⚠️ **A CLAIM THE REPORTER WAS SHOWN IS FALSE, and is owed a correction.** The plan said the Explain panel
+"contradicts itself" by printing a figure beside "Carry forward is off for this leave type". It does not:
+that figure is `breakdown.broughtForward` (raw, an **addend of the reconciliation identity**), and changing
+it would break `reconciledBalance`. The panel also prints "Brought Forward Forfeited" from the **tagged**
+rows, which for a carry-off type equals the whole brought-forward figure — so "+12 brought forward, −12
+forfeited, carry is off" **was already the truth**. What does change is the `(Expires: …)` sub-line, which
+correctly disappears.
+
+**The non-vacuity result worth keeping** is the cross-surface one. With **only** `core/read.ts` reverted:
+
+    AssertionError: expected +0 to be 5
+     ❯ test/r375-carry-off-read-gate.test.ts:222
+        222|     expect(row!.carried).toBe(bd!.carriedForward);
+
+The analytics report (still gated, 0) against the breakdown (reverted, 5) — the exact drift the item exists
+to prevent, caught by a **pin between two sources** rather than by a literal. Reverting `core/analytics.ts`
+alone fires its own assertion at line 212.
+
+### ⚠️ CORRECTION: the slice-guard sweep in r374 was an OVERCLAIM
+
+r374 reported that the bare-`indexOf` slice trap existed in exactly two places and there was "no third
+instance". **That was wrong**, and this round found the third. The sweep matched only the TWO-argument form
+`slice(indexOf(A), indexOf(B))`. The **single-argument** form is also live, and on it the obvious emptiness
+guard **silently does not work**:
+
+    const form = panel.slice(panel.indexOf('function CarryPolicyForm('));
+    expect(form).not.toBe('');     // PASSES even when indexOf returned -1
+
+Demonstrated rather than argued: for `s = 'abcdefghij'`, `s.indexOf('NOPE')` is `-1`, **`s.slice(-1)` is
+`"j"`, not `""`**, `Boolean(-1)` is `true`, and `(-1) >= 0` is the only check that fires. (`slice(-1, 5)`
+*is* `""` — that is the sibling r219 trap.) Found in `test/carry-percent-cap-removal.test.ts`, whose
+`fixedMaxBranch()` had no emptiness check at all; both were saved by luck downstream, not by design.
+
+Hardened, with its own non-vacuity: renaming `function CarryPolicyForm(` now fails **5 of 18** cases with a
+named message — `CarryPolicyForm was renamed or removed — this whole guard would otherwise no-op: expected
+-1 to be greater than or equal to 0`.
+
+**So the rule is about the INDEX, not the slice:** assert every marker `>= 0` **before** slicing, then
+assert the slice's length. `not.toBe('')` is never adequate. **And the lesson about the sweep itself: a
+mechanical audit is only as good as the shapes its pattern admits — report what the pattern covered, not
+what the code contains.**
+
+### Render checks — the §8 trap fired and was separated
+
+The carry-forward line was read out of the **script-stripped** DOM, and that mattered: the sentence appears
+**twice** in the raw HTML and **once** stripped. The second copy rides in the **RSC payload**, which carries
+the whole catalogue — so grepping the fetched HTML would have "proved" the line on a page that never
+rendered it. Three states were rendered and looked at: carry off with a cap (line present, `{days}`
+substituted as `5.00`, retention a hidden input), carry off with cap 0 (line correctly absent), carry on
+(line absent, a real editable number input). `{days}` is never left raw.
+
+### The deploy ordering question this round raised, and its answer
+
+0498 is **load-bearing with no graceful degradation, by choice**: if it has not applied, My Roster and the
+five attendance screens **hard-500**, because a silent fallback would make a failed migration look like
+"no supervisor" forever. That is the right call, and the sequencing supports it — checked rather than
+hoped: `deploy/deploy.sh` is `set -euo pipefail` (line 23) and runs **build (284) → `pnpm db:migrate`
+(292) → restart (374)**. A failed migration therefore aborts **before** the service restarts, leaving the
+OLD build serving, which does not call the function. There is no window in which the new code runs without
+0498.
+
+One operational note from the render check: **`pnpm db:seed` does not migrate.** The first render attempt
+500'd with `PostgresError: function app.own_reporting_managers(uuid) does not exist (code 42883)` purely
+because the dev database had never had 0498 applied. A render check that touches new SQL needs
+`pnpm db:migrate` in it. Also `which psql` is **PG14** on this machine while the cluster is PG16 — put PG16
+first on PATH before `gate:shadow`, or a 14 client restores the box's dump.
+
+### Two pre-existing visibility facts found by probe, not by reasoning — NOT this round's to fix
+
+Both were measured while building the RLS test and both correct earlier assumptions:
+
+1. **A plain line manager cannot read their report's PAY.** `compensation_rls` (0099) admits
+   `can_admin_employment` / perfcomp / payroll / self — **not** the administrative down-walk that
+   `can_see_employment` uses. 0109's own header already said so. The new test pins employment + person
+   visible and compensation + statutory **not**.
+2. ⚠️ **`app.heads_department_of` (live definition 0121) never consults `department.head_employment_id`** —
+   despite the name. It is true when the caller has a current department assignment, the subject's
+   department is inside the caller's company-clamped subtree, **and the caller is the current
+   administrative manager of at least one person — any person at all.** So in a single-department company
+   every manager already reads every colleague's employment and person row, their own boss included, with
+   **no r375 involved**. All four `can_see_employment` branches *looked* false until probed. This does not
+   change the item's premise (a plain employee manages nobody, so the branch never fires for them), and the
+   test now pins that observation explicitly — including that it does **not** fire for a plain employee.
+   **The name/semantics mismatch deserves attention on its own.**
+
+### Outstanding, carried forward
+
+- **`db1e7b9d` (PCB/MTD) is contested and unplanned**, with 10 acceptance criteria. Its wording is
+  preserved on the item. Points 1–3 (Q from PCB settings, C from the employee's record, counted-as must be
+  0 when the claimed rate is 0) look like ordinary wiring, **unverified**. Point 4 — print real `Σ(Y−K)`
+  instead of `Sum(Y-K)` — is **FONT-BLOCKED, not a quick fix**: the PDF embeds Helvetica (WinAnsi/Latin-1)
+  and `safe()` folds everything outside Latin-1 to `?`. Σ is U+03A3 and the true minus U+2212, so it needs
+  the Unicode font path (`lib/payslip-pdf-fonts.ts`, ADR-0036's Unicode half) extended to the PCB slip —
+  which touches `fontkit`, whose upgrade is the **blocked security H1** work.
+- **Four approved items with verified plans**: `15e5bd93` (consolidate 8 "Open Settings" links into one;
+  the destination page already exists from r372), `450f443f` (EA officer name + designation; both data
+  sources confirmed to exist — `company_statutory_authority.signatoryPersonId` and designation via
+  `employment.positionId` — so **no migration**), `96051c97` (two screens clip table columns, cause
+  deliberately unestablished), `011c5b7f` (Attendance Overview, Large).
+- **Security H1 still open** — three CVEs; upgrade `fontkit` before the framework, verified on Linux.
+- **A risk this round widens, and the reporter is owed one sentence**: leave-type rule columns are **not
+  versioned**, so `carryForwardReport` resolves a *closed* year with *today's* rules. Switching carry off in
+  2027 makes a 2026 row read `carried 0` while its `forfeitedAtOpen` (tagged, historical) stands. The
+  item's own `expected_behavior` demands exactly that, and a changed *cap* already behaved this way, so it
+  is a widening of a pre-existing property rather than a new one.
+- Still **UNKNOWN**: how many live leave types hold carry-off with a non-zero maximum. Needs production.
+- `devdb-lock.sh` still has one holder and **no stale-slot reaping**.
+
 ## r374 — 2026-10-01 · main@2191ca48 · no migration
 
 Two board items plus the tooling and standing orders the round paid for. 31 files, +2023/−82, two new
