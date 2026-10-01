@@ -3,16 +3,34 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
+import type { LeaveBfRunRow } from '../lib/leave-bf-import-schema';
 import { LeaveDataImport } from '../app/admin/leave-config/data-import/leave-data-import';
 
-const actions = vi.hoisted(() => ({ validate: vi.fn(), commit: vi.fn(), bfValidate: vi.fn() }));
+const actions = vi.hoisted(() => ({ validate: vi.fn(), commit: vi.fn(), bfValidate: vi.fn(), reverse: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock('../app/admin/leave-config/history-import/actions', () => ({ validateLeaveHistoryImportAction: actions.validate, commitLeaveHistoryImportAction: actions.commit }));
-vi.mock('../app/admin/leave-config/bf-import/actions', () => ({ validateLeaveBfImportAction: actions.bfValidate, commitLeaveBfImportAction: vi.fn(), reverseLeaveBfImportAction: vi.fn() }));
+vi.mock('../app/admin/leave-config/bf-import/actions', () => ({ validateLeaveBfImportAction: actions.bfValidate, commitLeaveBfImportAction: vi.fn(), reverseLeaveBfImportAction: actions.reverse }));
 
-function show() { render(<NextIntlClientProvider locale="en" messages={messages}><LeaveDataImport initialType={null} historyRuns={[]} bfRuns={[]} /></NextIntlClientProvider>); }
+function show(bfRuns: LeaveBfRunRow[] = []) { render(<NextIntlClientProvider locale="en" messages={messages}><LeaveDataImport initialType={null} historyRuns={[]} bfRuns={bfRuns} /></NextIntlClientProvider>); }
 beforeEach(() => vi.clearAllMocks());
 describe('Leave Data Import with real typed workbenches', () => {
+  it.each(['success','refusal'] as const)('freezes type and run details during a B/F rollback, then releases after %s', async outcome => {
+    const user=userEvent.setup();
+    show([{id:'synthetic-run',actorName:'Synthetic HR',fileName:'synthetic.csv',mode:'replace',totalRows:1,importedRows:1,failedRows:0,ledgerRows:1,errors:[],errorsTruncated:false,reversedAt:null,createdAt:new Date().toISOString()}]);
+    let finish!:()=>void;
+    actions.reverse.mockImplementation(()=>new Promise<void>((resolve,reject)=>{finish=()=>outcome==='success'?resolve():reject(new Error('Synthetic rollback refusal'));}));
+    await user.click(screen.getByRole('button',{name:'Details'}));
+    await user.click(screen.getByRole('button',{name:'Roll back'}));
+    await user.click(screen.getByRole('button',{name:'Click again to roll back'}));
+    for(const choice of screen.getAllByRole('radio')) expect(choice).toBeDisabled();
+    expect(screen.getByRole('button',{name:'Details'})).toBeDisabled();
+    await act(async()=>finish());
+    await waitFor(()=>{for(const choice of screen.getAllByRole('radio'))expect(choice).toBeEnabled();});
+    expect(screen.getByRole('button',{name:'Details'})).toBeEnabled();
+    expect(actions.reverse).toHaveBeenCalledExactlyOnceWith('synthetic-run');
+    if(outcome==='refusal')expect(screen.getByText('Synthetic rollback refusal')).toBeVisible();
+  });
+
   it('starts without a workflow and clears an unfinished file when switching away and back', async () => {
     const user = userEvent.setup(); show();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
