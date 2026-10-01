@@ -241,10 +241,39 @@ describe('§2 the forms, read from source', () => {
     expect(tag).not.toContain('required');
   });
 
+  /**
+   * ⚠️ THE LIMIT OF THIS CASE, RECORDED BECAUSE IT IS NOT OBVIOUS AND WAS MEASURED.
+   *
+   * The Add dialog's BODY is never server-rendered: it lives inside a Radix Dialog in `page.tsx`, which
+   * renders nothing until the trigger is pressed. A dev-server render of the Payroll tab (r374) returned
+   * 200 with the trigger "Add salary revision" present and the whole form absent — including
+   * `salaryAllowanceMovedHint` and `payModeBoundaryHint`, which both predate this round. And it cannot be
+   * mounted in jsdom either: `test/personnel-payroll-tab-dialogs.dom.test.tsx` says in its header that
+   * the forms rendered inline in `page.tsx` are out of reach there.
+   *
+   * SO THIS INPUT IS PINNED FROM SOURCE AND NOTHING MORE HONEST IS AVAILABLE IN THIS REPO TODAY. The
+   * EDIT half of the same section IS rendered and driven (the .dom file beside this one opens its
+   * dialog, clears the box and reads the FormData), which is why the two were changed together and why
+   * the case below asserts they match.
+   */
   it('the Personnel ADD form no longer requires an amount, and keeps its zero floor', () => {
     const tag = basicSalaryInput(PERSONNEL_PAGE, 'name="basicSalary"');
     expect(tag).toContain('min="0"');
     expect(tag, 'required meant HR could type a zero but not leave the box empty').not.toContain('required');
+  });
+
+  it('the ADD and EDIT amount boxes agree, attribute for attribute — neither may drift alone', () => {
+    // The add form cannot be rendered in a test (see the note above), so what stands in for it is this:
+    // whatever is true of the box that IS driven on screen must be true of the one that is not.
+    const add = basicSalaryInput(PERSONNEL_PAGE, 'name="basicSalary"');
+    const edit = basicSalaryInput(SALARY_HISTORY, 'name="basicSalary"');
+    for (const attr of ['type="number"', 'min="0"', 'step="0.01"']) {
+      expect(add, `add form missing ${attr}`).toContain(attr);
+      expect(edit, `edit form missing ${attr}`).toContain(attr);
+    }
+    expect(add.includes('required'), 'the two halves disagree about `required`').toBe(
+      edit.includes('required'),
+    );
   });
 
   it('the salary-history EDIT form moved WITH it — one screen, two halves', () => {

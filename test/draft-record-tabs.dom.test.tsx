@@ -319,8 +319,14 @@ describe('it is still a draft: nothing is lost, nothing is demanded', () => {
     const outstanding = screen.getByText(messages.people.wizard.activateNeeds).parentElement as HTMLElement;
     expect(outstanding.textContent, 'Department was filled in on a tab that is now hidden')
       .not.toContain(messages.people.wizard.fields.department);
+    // r374 (item 7dbaf677) — the Payroll tab's outstanding field is REMARKS, not the amount. A blank
+    // Initial Basic Salary is legitimate (a Director paid quarterly fees); what Activate waits for is
+    // the sentence saying why. The ASSERTION IS UNCHANGED IN KIND — "the rest is still outstanding" —
+    // only the name of the rest moved.
     expect(outstanding.textContent, 'and the rest is still outstanding')
-      .toContain(messages.people.wizard.fields.basicSalary);
+      .toContain(messages.people.wizard.fields.remarks);
+    expect(outstanding.textContent, 'the amount itself is no longer demanded')
+      .not.toContain(messages.people.wizard.fields.basicSalary);
   });
 
   it('SAVE works with the record deliberately half-empty, and sends the tab it was pressed on', async () => {
@@ -342,12 +348,14 @@ describe('it is still a draft: nothing is lost, nothing is demanded', () => {
     wrap();
     const activate = screen.getByRole('button', { name: messages.people.wizard.activate });
     expect(activate.hasAttribute('disabled')).toBe(true);
-    // "Activate still needs: Employment — Department, Employment type, Join date · Payroll — Basic salary"
+    // "Activate still needs: Employment — Department, Employment type, Join date · Payroll — Remarks"
+    // r374 — the Payroll tab still appears and is still named; what it asks for is the REASON rather
+    // than an amount, because a blank Initial Basic Salary is now a legitimate answer.
     const outstanding = screen.getByText(messages.people.wizard.activateNeeds).parentElement as HTMLElement;
     expect(outstanding.textContent).toContain(messages.people.detail.tabs.job);
     expect(outstanding.textContent).toContain(messages.people.detail.tabs.payroll);
     expect(outstanding.textContent).toContain(messages.people.wizard.fields.department);
-    expect(outstanding.textContent).toContain(messages.people.wizard.fields.basicSalary);
+    expect(outstanding.textContent).toContain(messages.people.wizard.fields.remarks);
     // …and the name of the missing thing is the way to reach it.
     await userEvent.click(within(outstanding).getByRole('button', { name: messages.people.detail.tabs.job }));
     expect(shownPanel().dataset.tabpanel).toBe('job');
