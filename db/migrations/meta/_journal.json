@@ -2859,17 +2859,17 @@
       "breakpoints": true
     },
     {
-<<<<<<< HEAD
-      "idx": 502,
-      "version": "7",
-      "when": 1790867765655,
-      "tag": "0502_payslip_information",
-=======
       "idx": 500,
       "version": "7",
       "when": 1790867765653,
       "tag": "0500_attendance_clock_evidence",
->>>>>>> codex/r378-attendance
+      "breakpoints": true
+    },
+    {
+      "idx": 502,
+      "version": "7",
+      "when": 1790867765655,
+      "tag": "0502_payslip_information",
       "breakpoints": true
     }
   ]
