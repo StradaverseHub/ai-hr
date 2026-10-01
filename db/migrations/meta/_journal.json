@@ -2843,6 +2843,13 @@
       "when": 1789980207344,
       "tag": "0497_leave_bf_import",
       "breakpoints": true
+    },
+    {
+      "idx": 498,
+      "version": "7",
+      "when": 1789980208344,
+      "tag": "0498_own_reporting_managers",
+      "breakpoints": true
     }
   ]
 }

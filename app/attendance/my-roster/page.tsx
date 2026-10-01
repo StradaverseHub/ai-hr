@@ -222,8 +222,12 @@ export default async function MyRosterPage({
           </span>
         </div>
         <p className="text-xs text-muted-foreground">
-          {/* Named when the reporting line resolves AND this session may read that person; otherwise the
-              same sentence without a name. Never a guess — see point 3 in the header. */}
+          {/* Named when an administrative reporting line is in force today; otherwise the same sentence
+              without a name. Never a guess — see point 3 in the header. Up to r375 this also went
+              nameless whenever the session could not READ that person, which for a plain employee was
+              always (visibility walks downward only) — so the one reader this screen is for never saw
+              the name the approved design prints. Migration 0498 answers it for the viewer's own
+              supervisor, and `administrativeManagerNameTx` is now the only thing between the two. */}
           {view.managerName ? t('myRoster.readOnlyNamed', { manager: view.managerName }) : t('myRoster.readOnly')}{' '}
           <span className="italic">{t('myRoster.usualNote')}</span>
         </p>

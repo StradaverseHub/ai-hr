@@ -14,7 +14,6 @@ import {
   employmentShiftArrangement,
   leaveRequest,
   person,
-  reportingLine,
   rosterAssignment,
   shift,
   shiftOtWindow,
@@ -34,7 +33,7 @@ import {
   weekPatternWorkingDayCount,
 } from './attendance';
 import { approvedLeaveDates } from './leave';
-import { listEmployees, listEmployeesPage, myEmployment } from './read';
+import { listEmployees, listEmployeesPage, myEmployment, ownReportingManagersTx } from './read';
 import { isAdmin } from '../lib/authz';
 import {
   ROSTER_MAX_RANGE_DAYS,
@@ -3150,7 +3149,7 @@ export async function myRosterWindow(
       name: me.name,
       employeeCode: me.employeeCode,
       position: me.position,
-      managerName: await administrativeManagerNameTx(tx, me.employmentId, todayInKualaLumpur()),
+      managerName: await administrativeManagerNameTx(tx, me.employmentId),
       from: p.from,
       to: p.to,
       days,
@@ -3167,33 +3166,29 @@ export async function myRosterWindow(
 /**
  * The caller's administrative manager's NAME, or null.
  *
- * Null covers three different situations on purpose — no line, a superseded line, and a line whose
- * manager this session may not read — because the screen does the same thing in all three: it says
- * "your supervisor" instead of a name. Distinguishing them would only let the page print a confident
- * sentence about a person it cannot see. `administrative` only: a functional, project or dotted line is
- * not who plans your roster, and `delegate` is an approver stand-in rather than a supervisor at all.
+ * r375 (board 7c972a40) — THIS HELPER NO LONGER CARRIES ITS OWN RULE. It used to read `reporting_line`
+ * by itself (SELECT there is tenant-wide, so that half SUCCEEDED and yielded the manager's employment
+ * id) and then join employment → person in a SECOND query, which returned no row for a plain employee.
+ * So the name was missing from My Roster for exactly the people the screen exists for, while the
+ * approved design prints it. It now reads `ownReportingManagersTx` (core/read.ts, migration 0498) — the
+ * same single expression the five attendance "Goes to" screens read through `reportingLinesFor` — so the
+ * two code paths cannot drift and neither needs a private exception.
+ *
+ * Null now means what it says: no administrative line in force today (or a session with no linked
+ * login, which has no "own" employment to ask about). The screen keeps its name-free sentence for that
+ * case, which is still the honest answer — an employee with no supervisor really does have their
+ * requests decided by HR.
+ *
+ * `administrative` only: a functional, project or dotted line is not who plans your roster, and
+ * `delegate` is an approver stand-in rather than a supervisor at all (0498 never returns one).
  */
-async function administrativeManagerNameTx(tx: Tx, employmentId: string, asOf: string): Promise<string | null> {
-  const rows = await tx
-    .select({ validFrom: reportingLine.validFrom, validTo: reportingLine.validTo, managerEmploymentId: reportingLine.managerEmploymentId })
-    .from(reportingLine)
-    .where(
-      and(
-        eq(reportingLine.subordinateEmploymentId, employmentId),
-        eq(reportingLine.lineType, 'administrative'),
-        isNull(reportingLine.supersededAt),
-      ),
-    )
-    // ORDER BY, because the line in force is picked off the END of this list and an unordered query
-    // would pick an arbitrary one (CLAUDE.md §8 — an asserted array from a query needs an ORDER BY).
-    .orderBy(asc(reportingLine.validFrom));
-  const line = rows.filter((r) => r.validFrom <= asOf && (r.validTo == null || r.validTo > asOf)).pop();
-  if (!line) return null;
-  const [m] = await tx
-    .select({ name: person.fullName })
-    .from(employment)
-    .innerJoin(person, eq(person.id, employment.personId))
-    .where(eq(employment.id, line.managerEmploymentId))
-    .limit(1);
-  return m?.name ?? null;
+async function administrativeManagerNameTx(tx: Tx, employmentId: string): Promise<string | null> {
+  const admin = (await ownReportingManagersTx(tx, employmentId))
+    .filter((l) => l.lineType === 'administrative')
+    // The line in force is picked off the END, so this order has to be decided here rather than left to
+    // the planner (CLAUDE.md §8 — an asserted array needs an ORDER BY). Latest `validFrom` wins, exactly
+    // as the hand-rolled read did; the id breaks a same-day tie so two calls cannot disagree.
+    .sort((a, b) => a.validFrom.localeCompare(b.validFrom) || a.id.localeCompare(b.id))
+    .pop();
+  return admin?.name ?? null;
 }
