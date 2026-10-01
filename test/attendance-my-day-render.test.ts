@@ -29,7 +29,7 @@ beforeEach(() => {
 });
 const render = async (extra = {}) => {
   const page = await Page({ params: Promise.resolve({ date: '2025-06-04' }), searchParams: Promise.resolve({ from: '2025-06-01', to: '2025-06-30', ...extra }) });
-  return renderToStaticMarkup(createElement(NextIntlClientProvider, { locale: state.locale, messages: JSON.parse(readFileSync(new URL(`../messages/${state.locale}.json`, import.meta.url), 'utf8')) }, page));
+  return renderToStaticMarkup(createElement(NextIntlClientProvider, { locale: state.locale, messages: JSON.parse(readFileSync(new URL(`../messages/${state.locale}.json`, import.meta.url), 'utf8')), children: page }));
 };
 describe('employee day render', () => {
   it('a manager sees their own day even when the URL asks for their report', async () => {
