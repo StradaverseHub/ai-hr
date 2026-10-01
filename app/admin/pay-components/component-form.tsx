@@ -3,7 +3,6 @@ import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import type { listPayComponents } from '@/core/pay-components';
 import {
-  EA_FORM_LINES,
   listPayComponents as loadPayComponents,
   listPayRulePreviewCandidates,
   PAY_DISPLAY_CATEGORIES,
@@ -53,6 +52,10 @@ export async function ComponentForm({
 }) {
   const t = await getTranslations('payComponents');
   const editing = !!component && !copy;
+  const eaCatalogue = packFor('MY')?.eaReporting ?? [];
+  const currentEa = component?.eaFormLine;
+  const canonicalEa = eaCatalogue.find(e => e.code === currentEa || e.aliases?.includes(currentEa ?? ''))?.code ?? currentEa;
+
 
   // 61bf109d — the two lists the Input Type / Formula editor needs, resolved server-side so the client
   // island never queries. Referenceable pay items exclude THIS item (a rule cannot read itself — the server
@@ -236,10 +239,10 @@ export async function ComponentForm({
           <p className="text-xs text-muted-foreground">{t('sectionEaFormHint')}</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label={t('colEaLine')}>
-              <select name="eaFormLine" defaultValue={component?.eaFormLine ?? (component?.kind === 'deduction' || component?.kind === 'non_payable' || component?.kind === 'contribution' ? '' : 'EA_B1A')} className={inputCls}>
+              <select name="eaFormLine" defaultValue={canonicalEa ?? (component?.kind === 'deduction' || component?.kind === 'non_payable' || component?.kind === 'contribution' ? '' : 'EA_B1A')} className={inputCls}>
                 <option value="">{t('eaLineNone')}</option>
-                {(packFor('MY')?.eaReporting ?? []).filter(e => e.active).map(e => <option key={e.code} value={e.code}>{e.label}</option>)}
-                {component?.eaFormLine && !component.eaFormLine.startsWith('EA_') && <option value={component.eaFormLine}>{t(`eaLine_${component.eaFormLine}`)}</option>}
+                {eaCatalogue.filter(e => e.active).map(e => <option key={e.code} value={e.code}>{e.label}</option>)}
+                {currentEa && !eaCatalogue.some(e => e.code === canonicalEa) && <option value={currentEa}>{t(`eaLine_${currentEa}`)}</option>}
 
               </select>
             </Field>
