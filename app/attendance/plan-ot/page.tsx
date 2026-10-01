@@ -77,38 +77,11 @@ import { Pill, REQUEST_STATUSES, statusLabel, type RequestStatus } from '../requ
  *    anything filed before 08:00 MYT; its own comment calls that a real pre-existing defect. This column
  *    is right from the start. Fixing that screen is deliberately not in this round.
  *
- *  · WHAT WE DO HOLD, IN PLACE OF THE REASON WE DO NOT. The ticket asked for the approver's remark on a
- *    rejected row. There is no such data — `decideAttendanceCorrection` takes no reason argument, the
- *    update writes status/decidedBy/decidedAt only, and the event payload carries none — so the plan
- *    said so to the reporter and promised the two things that DO exist: the employee's own note (the
- *    `remark` column, which only `requestAttendanceCorrection` ever writes) and the date the request was
- *    answered. Both render here; neither is dressed up as an approver's explanation.
+ *  · r362 could display only the employee note and answer date because rejection explanations were
+ *    not then recorded. r378 adds the stored approver explanation, while legacy rows explicitly say
+ *    it was not recorded. The employee note remains a distinct field.
  *
- * NOT IN THIS ROUND, and the reporter was told each one in the approved plan: an approver's rejection
- * remark (see above — there is no such data to show), a confirm dialog on Withdraw (no My Attendance
- * screen has one), a narrow-screen block face, and 20 rows a page (`lib/pagination.ts` is a product-wide
- * contract starting at 25).
- *
- * ⚠️ DAY TYPE AND ACTUAL HOURS ARE DELIBERATELY NOT COLUMNS HERE, and the ticket asked for both. This
- * list holds plans across arbitrary months; a day type is one scheduling resolution per row and actual
- * hours one attendance lookup per row, which is an N+1 on a self-service page to restate what the
- * calendar above now shows at a glance for the month in view.
- *
- * THE ERROR QUERY IS WHY THIS ROUTE COULD NEVER JUST BE DELETED. `myWithdrawOvertimePlan` reports a refusal
- * ("the overtime date has passed") by redirecting to `/attendance/plan-ot?error=…`. The banner below is
- * what makes that visible; without it the employee presses Withdraw, the list comes back unchanged, and
- * nothing says why.
- *
- * ⚠️ `?toast=` IS ALREADY RENDERED, AND NOT BY THIS FILE — a correction to what the header used to say.
- * `<ToastFromQuery />` is mounted in the ROOT layout (app/layout.tsx), reads `toast` and `error` off the
- * query on every authenticated page, fires the sonner toast and strips the param. So the confirmation the
- * submit and withdraw actions emit has been arriving all along; a second renderer here would show it
- * twice. The header's old "toast is still NOT rendered: no screen in this module renders one" was true of
- * this module and false of the page, which is the only thing an employee sees.
- *
- * TRUST MODEL: self-service, so NO page guard — the viewer's own employment is resolved from the session,
- * the read is RLS-scoped to it, and the withdraw action re-resolves the caller server-side. See the nav row
- * in packs/attendance/index.ts (ungated, like its siblings) and test/attendance-pack.test.ts.
+ * Withdraw confirmation, a narrow-screen block face, and 20-row paging remain outside this change.
  */
 export default async function SelfOvertimePage({
   searchParams,
@@ -131,6 +104,7 @@ export default async function SelfOvertimePage({
   }>;
 }) {
   const t = await getTranslations('me');
+  const attendanceLabels = await getTranslations('attendance');
   const locale = await getLocale();
   const sp = await searchParams;
   const s = await getSession();
@@ -526,11 +500,9 @@ export default async function SelfOvertimePage({
                                   : t('otNotWorkedYet')}
                               </div>
                             )}
-                            {/* WHEN it was turned down. The approved plan owed the reporter a reason on a
-                                rejected row and could not give one — decideAttendanceCorrection takes no
-                                reason and the event payload carries none — so it promised what we DO
-                                hold. `decidedOn` is an existing caption ("answered on {date}"), read in
-                                MYT like the Submitted on column beside it. */}
+                            {p.status === 'rejected' && <div className="mt-0.5 text-[11px] text-red-700 dark:text-red-300">
+                              {attendanceLabels('rejectReasonLabel')}: {p.rejectReason ?? attendanceLabels('rejectNotRecorded')}
+                            </div>}
                             {p.status === 'rejected' && p.decidedAt && (
                               <div className="mt-0.5 text-[11px] text-muted-foreground">
                                 {t('decidedOn', { date: todayInKualaLumpur(p.decidedAt) })}

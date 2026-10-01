@@ -60,7 +60,7 @@ describe('7ac6b4db · the date and the shift being clocked against', () => {
   it('the Current shift card uses the same resolved identity and window, with only an explicit Switch preview', () => {
     const client = codeOnly(read(CLIENT));
     expect(client).toContain("t('currentShift')");
-    expect(client).toContain("shown?.name??shiftName??t('noShiftAssigned')");
+    expect(client).toContain("shown?.name??(today.shift.code===initial.shift.code?shiftName:today.shift.code)??t('noShiftAssigned')");
     expect(client).toContain("shown?.start??today.shift.start??'—'");
     expect(client).toContain("shown?.end??today.shift.end??'—'");
     expect(client).toContain('shiftOptions.length>1&&');

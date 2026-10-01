@@ -5,12 +5,11 @@ import { attendanceForEmploymentRange, isoWeekday } from '@/core/attendance';
 import { listShiftsForTenant } from '@/core/roster';
 import { getTranslations } from 'next-intl/server';
 import { ClockPageClient } from './clock-client';
-import { todayInKualaLumpur } from '@/lib/hr-date';
 export default async function AttendanceClockPage() {
   const session=await getSession(), me=await myEmployment(session), t=await getTranslations('attendance.clock');
   if(!me) return <p>{t('notLinked')}</p>;
-  const date=todayInKualaLumpur();
-  const [initial,range,shifts]=await Promise.all([ownClockToday(session),attendanceForEmploymentRange(session,me.employmentId,date,date),listShiftsForTenant(session)]);
+  const initial=await ownClockToday(session), date=initial.date;
+  const [range,shifts]=await Promise.all([attendanceForEmploymentRange(session,me.employmentId,date,date),listShiftsForTenant(session)]);
   const resolved=range[0], dow=isoWeekday(date);
   const shiftOptions=resolved?.shiftCode?shifts.filter(s=>(!s.weeklyPattern?.length&&!s.halfPattern.length&&!s.offPattern.length)||s.weeklyPattern?.includes(dow)||s.halfPattern.includes(dow)).map(s=>({code:s.code,name:s.name,start:s.startTime.slice(0,5),end:s.endTime.slice(0,5)})):[];
   const shift=shifts.find(s=>s.code===resolved?.shiftCode);

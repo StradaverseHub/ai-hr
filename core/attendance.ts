@@ -3871,9 +3871,7 @@ export type OvertimePlanRow = {
   rejectReason?: string | null;
   originalClockSnapshot?: typeof attendanceCorrection.$inferSelect.originalClockSnapshot;
   reason: string | null;
-  /** f618065d (r362) — the EMPLOYEE's own optional note, written only by requestAttendanceCorrection.
-   *  It is NOT an approver's reason: `decideAttendanceCorrection` takes none and writes none. The plan
-   *  told the reporter exactly that, and promised this — the note they themselves added — instead. */
+  /** Employee's optional note, separate from the approver's stored rejectReason. */
   remark: string | null;
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
   appliedAt: Date | null;

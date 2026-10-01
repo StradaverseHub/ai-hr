@@ -401,6 +401,8 @@ describe('C · the screen: what the approved plan changed, and what it deliberat
     expect(requestStatus).toContain("r.rejectReason ?? t('maRejectNotRecorded')");
     expect(requestStatus).toContain("t('maRejectReason')");
     expect(requestStatus).toContain("r.status === 'rejected'");
+    expect(LIST).toContain("p.rejectReason ?? attendanceLabels('rejectNotRecorded')");
+    expect(LIST).toContain("attendanceLabels('rejectReasonLabel')");
     // Self Overtime's existing employee note and answer-date guarantees remain separately pinned.
     // The EMPLOYEE's own note — the `remark` column, written only by requestAttendanceCorrection.
     // ⚠️ THE OBVIOUS ASSERTION HERE IS VACUOUS AND A MUTATION PROVED IT: `myAttendanceCorrections`
