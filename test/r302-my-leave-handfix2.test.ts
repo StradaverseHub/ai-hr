@@ -88,6 +88,18 @@ const deps: HistoryLineDeps = {
 };
 
 
+// r378 relocates the unchanged row projection into the dedicated owned History loader.
+const ownHistoryEntries = () => {
+  const source = readFileSync(path.resolve(__dirname, '../components/leave/own-leave-history.tsx'), 'utf8');
+  const start = source.indexOf('const historyEntries:');
+  const end = source.indexOf('const historyTypeOptions', start);
+  expect(start, 'the owned History entries builder exists').toBeGreaterThan(-1);
+  expect(end, 'the entries builder has a nonempty boundary').toBeGreaterThan(start);
+  const entries = source.slice(start, end);
+  expect(entries).toContain('selfHistory.map((r) =>');
+  return entries;
+};
+
 const LOG = (_k: string, _v: unknown) => {};
 async function world() {
   const emp = await person('Nadia Employee', 'employee');
@@ -132,8 +144,8 @@ describe('1 · a given-back day reads Cancelled on every row of the application'
     const trails = await ownLeaveApprovalTrails(emp.ctx, rows.map((r) => r.id));
     const breakdowns = new Map(await Promise.all(rows.map(async (r) => [r.id, await leaveRequestDateBreakdown(emp.ctx, r.id)] as const)));
 
-    // What app/leave/page.tsx shows as each row's per-date list (its own expression, pinned by source).
-    const page = readFileSync(path.resolve(__dirname, '../app/leave/page.tsx'), 'utf8');
+    // The owned History builder's exact per-date expression, with all lineage assertions retained.
+    const page = ownHistoryEntries();
     expect(page).toContain('const dateRows = applicationOutcome ? applicationDateOutcomeRows(applicationOutcome) : (requestDateBreakdowns.get(r.id) ?? []);');
     const shown = (id: string) => {
       const o = trails.get(id)?.perDateOutcome ?? null;
@@ -249,7 +261,7 @@ describe('3 · the Year selector and the cycles it maps to', () => {
 
 describe('4 · a split with no recorded lineage prints no Applied date', () => {
   it('the page sets appliedOn to null for lineage "unrecorded"', () => {
-    const page = readFileSync(path.resolve(__dirname, '../app/leave/page.tsx'), 'utf8');
+    const page = ownHistoryEntries();
     expect(page).toContain("appliedOn: trail?.lineage === 'unrecorded' ? null : todayInKualaLumpur(trail?.submittedAt ?? new Date(r.appliedOn)),");
   });
 });
