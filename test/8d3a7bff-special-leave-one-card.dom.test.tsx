@@ -184,8 +184,8 @@ const titles = () => [
   ...screen.queryAllByTestId('leave-ring-card').map((c) => c.getAttribute('aria-label')),
   ...screen.queryAllByTestId('leave-type-card').map((c) => c.getAttribute('aria-label')),
 ];
-const cardNamed = (name: string) =>
-  screen.getAllByTestId('leave-type-card').find((c) => c.getAttribute('aria-label') === name)!;
+// r378: drawable and neutral cards share the same article identity; the frame is not a type selector.
+const cardNamed = (name: string) => screen.getByRole('article', { name });
 
 describe('8d3a7bff · the two new strings exist in all six catalogues', () => {
   it('the ONE new key carries its placeholder, and the ceiling line reuses the TRANSLATED ofLimit', () => {
@@ -349,7 +349,11 @@ describe('8d3a7bff · (d) Marriage Leave keeps its card, its balance and the con
     // own days must keep its card" — verified by applying the widening and watching exactly that
     // assertion fail. What this file pins is the RENDER: given a kept card, it draws the balance and the
     // ceiling line rather than swallowing them.
-    expect(mrl.querySelector('p')!.textContent, `${loc}: MRL headline balance`).toBe(formatDays(3));
+    // Its drawable frame centres Available Balance; the separate gross Balance row still holds its own days.
+    const balanceLabel = CATALOGUES[loc].leave.myLeave.balance;
+    const balance = within(mrl).getByText(balanceLabel, {selector:'dt'});
+    expect(balance.parentElement!.querySelector('dd')!.textContent, `${loc}: MRL own balance`).toBe(formatDays(3));
+    expect(within(mrl).getByTestId('leave-balance-ring').querySelector('div[aria-hidden="true"]')!.textContent).toBe(`${formatDays(3)}${CATALOGUES[loc].leaveFigure.availableBalance}`);
     // THE CONNECTION, without the balance disappearing.
     expect(within(mrl).getByTestId('ceiling-membership').textContent, `${loc}: MRL ceiling line`).toBe(
       fill(slg(loc).alsoCountsToward, { group: 'Special Leave' }),
@@ -360,7 +364,8 @@ describe('8d3a7bff · (d) Marriage Leave keeps its card, its balance and the con
     // A 0.00 card, WHEREVER it came from, says the same thing as a card holding days — see `keepers` above for
     // why r343 means a placed group's empty member is no longer one of the routes it can come from.
     const exm = cardNamed('Examination Leave');
-    expect(exm.querySelector('p')!.textContent, `${loc}: EXM headline balance`).toBe(formatDays(0));
+    expect(within(exm).getByText(formatDays(0), {selector:'p'}).textContent, `${loc}: EXM own balance`).toBe(formatDays(0));
+    expect(within(exm).getByTestId('leave-balance-ring').querySelectorAll('[data-segment]'), `${loc}: a zero-entitlement member has a neutral frame`).toHaveLength(0);
     expect(within(exm).getByTestId('ceiling-membership').textContent, `${loc}: EXM ceiling line`).toBe(
       fill(slg(loc).alsoCountsToward, { group: 'Special Leave' }),
     );
