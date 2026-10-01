@@ -67,3 +67,7 @@ test/__screenshots__/
 
 # graphify code graph — local, regenerable (`graphify extract . --code-only`), ~16 MB; never commit or deploy
 graphify-out/
+
+# Build-agent evidence (screenshots, measurement JSON, dev logs). A render check produces megabytes
+# of it and r374 found this directory UNIGNORED, one `git add -A` away from a 4 MB commit.
+scratchpad/
