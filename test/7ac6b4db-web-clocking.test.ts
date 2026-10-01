@@ -1,17 +1,6 @@
 /**
- * 7ac6b4db — My Attendance › Clock in/out becomes Web Clocking, with the shift it is clocking against.
- *
- * ⚠️ THE WEBCAM PHOTO IS NOT IN THIS ROUND, AND THAT IS A DECISION, NOT AN OVERSIGHT. The ticket asks for a
- * photo on every Clock In and Clock Out. A face photo is biometric-adjacent personal data — this codebase
- * already says so about the profile photograph (core/pdpa.ts, b4682879: identity scope, erased on an
- * identity/all erasure, never statutory-locked) — and there would be hundreds per employee per year rather
- * than one. Shipping it needs a storage design that is NOT person_photo's in-row bytea (150-400 KB × 2 per
- * working day is 10-20 GB a year of primary-database bytes, inside every backup), its own RLS policy, a
- * place in the PDPA erasure path, a consent record, and a retention sweep ON THE BOX'S CRONTAB — a script
- * in scripts/ that nobody schedules is not a retention policy. That is a round, and it is owed to the
- * reporter in those words rather than half-built beside a menu rename.
- *
- * What IS here: the rename, the date the employee is clocking for, and the shift they are clocking against.
+ * 7ac6b4db rename/date/resolved-shift guarantees remain. Approved r378 adds mandatory private camera
+ * capture; the prior deliberate-camera-absence guard is superseded by capture/storage/access guards.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -58,57 +47,62 @@ describe('7ac6b4db · the rename', () => {
 });
 
 describe('7ac6b4db · the date and the shift being clocked against', () => {
-  /**
-   * The island renders a FINISHED string. `toLocaleDateString` in the browser formats against the BROWSER's
-   * locale and time zone, so a viewer in another zone could be shown yesterday's date beside today's
-   * punches — on the one screen whose entire job is to say which day you are clocking for.
-   */
-  it('the date is formatted on the SERVER and crosses as a string', () => {
-    expect(read(PAGE)).toContain('const todayLabel = `${fmtDayDate(today, locale)}, ${fmtDayName(today, locale)}`');
-    expect(read(PAGE)).toContain('const locale = await getLocale();');
+  it('formats the authoritative server-owned clocking date explicitly in Kuala Lumpur', () => {
+    const reader = codeOnly(read('/core/attendance-clock-read.ts'));
+    expect(reader).toContain('todayInKualaLumpur(now)');
+    expect(reader).toContain('serverNow:now.toISOString(),date');
     const client = codeOnly(read(CLIENT));
-    expect(client).toContain('todayLabel');
-    expect(client.includes('toLocaleDateString'), 'the island must not format a date itself').toBe(false);
+    expect(client).toContain("timeZone:'Asia/Kuala_Lumpur',weekday:'long'");
+    expect(client).toContain("new Date(today.date+'T12:00:00+08:00')");
+    expect(client).not.toContain('toLocaleDateString');
   });
 
-  it('the Current shift card reads the SAME resolved shift the "ends at" line does', () => {
+  it('the Current shift card uses the same resolved identity and window, with only an explicit Switch preview', () => {
     const client = codeOnly(read(CLIENT));
-    for (const key of ['currentShift', 'shiftId', 'shiftStarts', 'shiftEnds', 'noShiftAssigned']) {
-      expect(client, `the card is missing ${key}`).toContain(`t('${key}')`);
-    }
-    // `shownShiftEnd` is the value the shift-end line already used (resolved shift, or the Switch's pick);
-    // a second resolution here could name a different shift from the one the punch is judged against.
-    expect(client).toContain('shownShiftEnd');
-    expect(client).toContain('resolvedShiftStart');
+    expect(client).toContain("t('currentShift')");
+    expect(client).toContain("shown?.name??shiftName??t('noShiftAssigned')");
+    expect(client).toContain("shown?.start??today.shift.start??'—'");
+    expect(client).toContain("shown?.end??today.shift.end??'—'");
+    expect(client).toContain('shiftOptions.length>1&&');
+    expect(read(PAGE)).toContain('s.code===resolved?.shiftCode');
+    expect(read(PAGE)).toContain('shiftName={shift?.name??null}');
   });
 
   it('a day that resolves to NO shift says so, rather than rendering an empty card', () => {
     expect(codeOnly(read(CLIENT))).toContain("t('noShiftAssigned')");
   });
 
-  it('the shift start comes from the engine’s resolved row, not a second read', () => {
-    expect(read(PAGE)).toContain('resolvedShiftStart={resolved?.shiftStart ?? null}');
+  it('the shift window depends on the existing engine schedule resolver', () => {
+    const reader = codeOnly(read('/core/attendance-clock-read.ts'));
+    expect(reader).toContain('const schedule = await clockScheduleForTx(tx, me.employmentId, date)');
+    expect(reader).toContain('shift:{code:schedule.code,start:schedule.start,end:schedule.end}');
+    expect(read('/core/attendance.ts')).toContain('const schedule = await scheduleFor(tx, employmentId, date)');
   });
 });
 
-describe('7ac6b4db · the photo is deliberately absent, and nothing half-built was left behind', () => {
-  /**
-   * A half-landed capture path is worse than none: a `getUserMedia` call with no storage, no retention and
-   * no erasure route is a screen that asks for a face and does something undefined with it. If a later
-   * round adds the photo, it deletes this test and says so in the round entry.
-   */
-  it('no camera capture exists anywhere yet', () => {
-    for (const p of [CLIENT, PAGE, '/app/attendance/clock/actions.ts']) {
-      const src = codeOnly(read(p));
-      expect(src.includes('getUserMedia'), `${p} started capturing before the design landed`).toBe(false);
-      expect(src.includes('requestFullscreen'), p).toBe(false);
-    }
+describe('r378 · mandatory private camera capture supersedes deliberate absence', () => {
+  it('requires front-camera review, cleanup and the private authenticated capture endpoint', () => {
+    const client = codeOnly(read(CLIENT));
+    expect(client).toContain("getUserMedia({video:{facingMode:'user'},audio:false})");
+    expect(client).toContain("body.set('photo',photo,'attendance.jpg')");
+    expect(client).toContain('if(!photo||!action||busy)return');
+    expect(client).toContain("fetch('/api/attendance/clock',{method:'POST'");
+    expect(client).toContain('stream.current?.getTracks().forEach(track=>track.stop())');
+    expect(client).not.toContain('type="file"');
+    expect(client).not.toContain('requestFullscreen');
+    const command = codeOnly(read('/core/attendance-clock.ts'));
+    expect(command).toContain('decodeClockPhoto(p.photo, p.mime)');
+    expect(command).toContain('const me = await myEmployment(ctx)');
+    expect(command).toContain('clockCaptureId: captureId');
+    const migration = read('/db/migrations/0500_attendance_clock_evidence.sql');
+    expect(migration).toContain('ENABLE ROW LEVEL SECURITY');
+    expect(migration).toContain('app.can_see_employment(employment_id)');
+    expect(migration).toContain('REVOKE ALL ON attendance_clock_capture FROM ai_hr_app');
+    expect(migration).toContain('app.purge_attendance_clock_photo');
   });
 
-  it('the PDPA erasure precedent this WILL have to join is still in place', () => {
-    // core/pdpa.ts deletes person_photo on an identity/all erasure and reports it. A clocking photo is the
-    // same classification; when it ships it joins this path. Pinned so the precedent cannot quietly vanish
-    // between now and then, which is how the new table would end up outside the erasure scope.
+  it('the existing profile-photo erasure precedent remains in place', () => {
+    // Existing profile-photo erasure behavior remains unchanged by private clock evidence.
     const pdpa = read('/core/pdpa.ts');
     expect(pdpa).toContain('personPhoto');
     expect(pdpa).toContain("erased.push('profilePhoto')");
