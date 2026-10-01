@@ -144,6 +144,16 @@ chunk 1 is green in attempt 3 with no change to that test.
   ADR-0036's Unicode half) extended to the PCB slip — which touches `fontkit`, whose upgrade is the
   **blocked security H1** work. Points 1–3 (Q from PCB settings, C from the employee's record, counted-as
   must be 0 when the claimed rate is 0) look like ordinary wiring, unverified.
+- ⚠️ **TWO BOARD ITEMS ARE LEFT `building` WITH NO AGENT — they are PARKED, not in flight.** This is the
+  stranding shape (`pull-approved` filters `approved`, so a `building` item is invisible to it), so the
+  mapping is recorded here deliberately:
+  **`ed6f7a7b` → `build/r375-carryforward`** (2 commits, `cd14d760`/`94059bdf`, 13 files) and
+  **`7c972a40` → `build/r375-supervisor`** (2 commits, `1f190053`/`4afb387f`). Pick them up with
+  `improve:pull-item <id>`, which reads any status. They were NOT set to `blocked`, because `block` files
+  a question to the reporter and there is none — they wait on us.
+  **NEITHER MEETS THE NON-VACUITY BAR AND NEITHER MAY SHIP AS-IS.** Between them: no vitest was ever run,
+  `build/r375-supervisor`'s test file was committed un-typechecked, and its **migration 0498 has never been
+  executed** — it is unproven that it parses. `tsc` exit 0 is the only execution evidence either has.
 - **Two unshipped r375 branches**, committed and left deliberately half-done with hand-back notes:
   `build/r375-supervisor` (supervisor-name visibility — note the standing refusal to widen
   `app.can_see_person`, which gates DOB, race, religion and address) and `build/r375-carryforward`
