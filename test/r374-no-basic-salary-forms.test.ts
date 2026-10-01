@@ -50,6 +50,7 @@ import {
 } from '../core/comp';
 import { completeEmployeeDraft, saveEmployeeDraft } from '../core/employee-draft';
 import { createCycle, openCycle, submitManagerReview, enactCompAction } from '../core/performance';
+import { createMovementEvent } from '../core/movement';
 import { withTenant } from '../db/client';
 import {
   missingByTab,
@@ -684,7 +685,8 @@ describe('§5 every sentence this round added, in all six locales', () => {
   });
 
   it('the Personnel hint and the THREE refusals are legible everywhere, not raw English', () => {
-    // `payModeErrorMessage` used to translate exactly ONE error and return `(e as Error).message` for
+    // The one translator (`compensationErrorMessage`, called `payModeErrorMessage` until r374 — see §6)
+    // used to translate exactly ONE error and return `(e as Error).message` for
     // everything else — so `SalaryRemarkRequiredError`, live since r369, reached HR as a paragraph
     // written for a developer in all six locales. This round makes the amount optional on both salary
     // forms, which turns that from a theoretical refusal into the one HR will actually meet.
@@ -734,5 +736,193 @@ describe('§5 every sentence this round added, in all six locales', () => {
       expect(actions).toContain(`e instanceof ${n}`);
       expect(actions).toContain(`name === '${n}'`);
     }
+  });
+});
+
+// ── §6 the Movement screen, which this round made reachable ──────────────────────────────────────
+/**
+ * r374 residual — THE SAME DEFECT CLASS, ON A THIRD SCREEN, REACHABLE *BECAUSE* OF THIS ROUND.
+ *
+ * The approved plan said `core/movement.ts` was "fine by contrast" because it forwards the movement's
+ * own remarks when present. That is true and not sufficient. `core/movement.ts` writes compensation
+ * whenever the pay STRUCTURE moved, not only when an amount was typed — `compChanged` is true for a
+ * currency, pay-mode or payment-term change on its own — and the amount it then sends is
+ * `dSalary ?? Number(cur.basicSalary)`. The movement form's amount box posts BLANK by default and
+ * `parseMovementForm` reads a blank as `undefined`, meaning "leave the salary alone"; for a Director with
+ * no monthly basic, "alone" is zero. So a currency-only Movement on such an employee, saved with no
+ * movement remark, raises `SalaryRemarkRequiredError` — and the movement actions' catch blocks put
+ * `(e as Error).message` on screen, i.e. a paragraph of developer English in all six locales.
+ *
+ * It was unreachable in practice before this round only because no form would let a zero basic exist.
+ * Making zero-basic employees ordinary is what turned it into a sentence HR will actually meet, so it is
+ * in scope as a consequence of the change.
+ *
+ * ONE TRANSLATOR, NOT A SECOND MAPPER. `payModeErrorMessage` was renamed `compensationErrorMessage` —
+ * its old name claimed one rule while it covered four — and the two movement writers that reach
+ * `setCompensation` now call it. That adds coverage for exactly four typed classes and changes nothing
+ * about the dozens of other refusals the movement writers raise, each of which still reaches the screen
+ * with its own sentence. NO NEW MESSAGE KEY: the movement form's own field is labelled "Remarks"
+ * (`people.detail.movement.form.remarks`), which is the field the existing sentence names, so a
+ * movement-specific variant would be a second sentence that can disagree with the first.
+ *
+ * SCOPE: the MESSAGE only. Whether the movement refuses is unchanged, and `core/movement.ts` is untouched
+ * — including its own `dSalary < 0` refusal, which is why `NegativeSalaryAmountError` and
+ * `NonFiniteSalaryAmountError` can never reach the translator from this path and the two arms are
+ * harmless no-ops there.
+ */
+describe('§6 the Movement screen reaches the same refusal, and it is now legible', () => {
+  const zeroBasicDirector = async () => {
+    const a = adminCtx(base);
+    const e = await hireEmployee(a, {
+      person: { fullName: 'Movement Director', primaryEmail: `r374m_${randomUUID().slice(0, 8)}@nb.test` },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2024-01-01',
+    });
+    await setCompensation(a, {
+      employmentId: e.employmentId,
+      basicSalary: 0,
+      remarks: DIRECTOR_REMARK,
+      effectiveFrom: '2025-01-01',
+    });
+    return { a, employmentId: e.employmentId };
+  };
+
+  it('THE PREMISE: a structure-only movement on a zero-basic employee DOES raise the refusal', async () => {
+    const { a, employmentId } = await zeroBasicDirector();
+    // No amount typed and no movement remark — the ordinary way HR records a currency change.
+    const err = await createMovementEvent(a, {
+      employmentId,
+      kind: 'salaryAdjustment',
+      effectiveDate: '2026-03-01',
+      currency: 'SGD',
+    }).then(
+      () => null,
+      (e: Error) => e,
+    );
+    expect(err, 'the movement must refuse — this is the premise the translation exists for').not.toBeNull();
+    expect(err!.name).toBe('SalaryRemarkRequiredError');
+    // ── THE LOOP CLOSED ACROSS THE TWO FILES (CLAUDE.md §8) ───────────────────────────────────────
+    // The defect was never "the movement does not refuse"; it was "the refusal arrives untranslated".
+    // That lives in the contract between the writer that raises it and the action that renders it, so
+    // the class RAISED HERE is checked against the translator's own arms, by the name just observed
+    // rather than a name typed twice. A new refusal class on this path fails HERE until it is mapped.
+    const actionsSrc = read(PERSONNEL_ACTIONS);
+    expect(actionsSrc, `the movement path raises ${err!.name} and the translator has no arm for it`)
+      .toContain(`name === '${err!.name}'`);
+    expect(actionsSrc).toContain(`e instanceof ${err!.name}`);
+    // Nothing was written: the zero-basic row is still the open one, still in MYR.
+    const cur = await currentCompensation(a, employmentId);
+    expect(cur?.basicSalary).toBe('0.00');
+    expect(cur?.currency).toBe('MYR');
+  });
+
+  it('…and the movement SAVES when it carries its own remark — the refusal is not a dead end', async () => {
+    const { a, employmentId } = await zeroBasicDirector();
+    await createMovementEvent(a, {
+      employmentId,
+      kind: 'salaryAdjustment',
+      effectiveDate: '2026-03-01',
+      currency: 'SGD',
+      remarks: 'Director fees now settled in SGD',
+    });
+    const cur = await currentCompensation(a, employmentId);
+    expect(cur?.currency).toBe('SGD');
+    // The basic is still zero and still carries a reason — the movement's own, forwarded.
+    expect(cur?.basicSalary).toBe('0.00');
+    expect(cur?.remarks).toBe('Director fees now settled in SGD');
+  });
+
+  it('a POSITIVE-basic employee is unaffected: the same movement needs no remark at all', async () => {
+    const a = adminCtx(base);
+    const e = await hireEmployee(a, {
+      person: { fullName: 'Movement Paid', primaryEmail: `r374m_${randomUUID().slice(0, 8)}@nb.test` },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2024-01-01',
+    });
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, effectiveFrom: '2025-01-01' });
+    await createMovementEvent(a, {
+      employmentId: e.employmentId,
+      kind: 'salaryAdjustment',
+      effectiveDate: '2026-03-01',
+      currency: 'SGD',
+    });
+    expect((await currentCompensation(a, e.employmentId))?.currency).toBe('SGD');
+  });
+
+  it('the two movement writers that reach setCompensation go through the ONE translator', () => {
+    const src = read(PERSONNEL_ACTIONS);
+    // The rename happened, and the old name survives only in the note explaining it.
+    expect(src).toContain('async function compensationErrorMessage(');
+    expect(src, 'the old name must not still be a callable').not.toContain('async function payModeErrorMessage(');
+    expect(src).not.toContain('await payModeErrorMessage(e)');
+    // ONE translator in this file, not two that can disagree.
+    expect((src.match(/async function \w*ErrorMessage\(/g) ?? []).length, 'exactly one translator').toBe(1);
+    // FOUR callers: the two salary forms and the two movement writers.
+    expect((src.match(/await compensationErrorMessage\(e\)/g) ?? []).length).toBe(4);
+  });
+
+  it('the ROLLBACK action is deliberately NOT routed, and the reason is checkable', () => {
+    // Its compensation leg is `supersedeCompensation`, which raises none of the four classes, so wiring
+    // it would imply a reachability that does not exist. Asserted from BOTH sides: the action keeps the
+    // raw forward, and the reversal leg really does supersede rather than set.
+    const src = read(PERSONNEL_ACTIONS);
+    const start = src.indexOf('export async function reverseMovementEventAction');
+    expect(start, 'reverseMovementEventAction was renamed — this guard would read nothing').toBeGreaterThanOrEqual(0);
+    const end = src.indexOf('export async function', start + 10);
+    expect(end).toBeGreaterThan(start);
+    const body = src.slice(start, end);
+    expect(body.length, 'the action body is implausibly short — the markers moved').toBeGreaterThan(400);
+    expect(body, 'a positive control: it really is the rollback action').toContain('reverseMovementEvent(');
+    expect(body).toContain('(e as Error).message');
+    expect(body).not.toContain('compensationErrorMessage');
+
+    const mv = read('core/movement.ts');
+    const legAt = mv.indexOf("case 'compensation.set': {");
+    expect(legAt, "the reversal's compensation leg was renamed").toBeGreaterThanOrEqual(0);
+    const leg = mv.slice(legAt, legAt + 1200);
+    expect(leg.length).toBeGreaterThan(600);
+    expect(leg, 'the reversal supersedes; it does not write a new salary').toContain('supersedeCompensation(');
+    expect(leg).not.toContain('setCompensation(');
+  });
+
+  it("the movement form's own Remarks field is the field the sentence names — hence no new key", () => {
+    // If the movement screen called that field something else, the shared sentence would point HR at a
+    // control that is not on their screen and a movement-specific string would be owed.
+    expect(read('app/admin/personnel/[employmentId]/movement-new-event.tsx')).toContain("t('form.remarks')");
+    for (const loc of LOCALES) {
+      const f = (CATALOGUES[loc].people.detail as unknown as {
+        movement: { form: Record<string, string> };
+      }).movement.form;
+      expect(String(f.remarks ?? '').trim(), `${loc} people.detail.movement.form.remarks`).not.toBe('');
+    }
+    // en is the one we can compare word-for-word against the sentence's own subject.
+    const enForm = (CATALOGUES.en.people.detail as unknown as {
+      movement: { form: Record<string, string> };
+    }).movement.form;
+    const sentence = (CATALOGUES.en.people.detail as unknown as Record<string, string>)
+      .salaryRemarkRequiredError;
+    expect(sentence).toContain(enForm.remarks);
+  });
+
+  it('`parseMovementForm` keeps reading a blank amount as UNTOUCHED — that is what makes this reachable', () => {
+    // Not a thing to fix: on a movement a blank amount means "leave the salary alone", and it must keep
+    // meaning that (a movement records a DELTA). It is named here because it is the mechanism — "alone"
+    // for a Director with no basic is zero, which is what reaches `setCompensation`.
+    const src = read(PERSONNEL_ACTIONS);
+    expect(src).toContain("basicSalary: rawSalary === '' ? undefined : Number(rawSalary)");
+    // And the form posts that blank by default: no `required`, floor at zero.
+    const mv = read(MOVEMENT_FORM);
+    const at = mv.indexOf('name="basicSalary"');
+    expect(at).toBeGreaterThanOrEqual(0);
+    const open = mv.lastIndexOf('<input', at);
+    expect(open).toBeGreaterThanOrEqual(0);
+    const tag = mv.slice(open, mv.indexOf('/>', at) + 2);
+    expect(tag.length).toBeGreaterThan(40);
+    expect(tag).toContain('min={0}');
+    expect(tag).not.toContain('required');
   });
 });
