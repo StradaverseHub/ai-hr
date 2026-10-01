@@ -1,5 +1,7 @@
 /**
  * Advanced Search & Filter for Leave Management (feedback 0773bda9) — static-source guard.
+ * r378: own History moved to its dedicated projection; the tracker listing is retired in favour of
+ * the two inquiry destinations and their shared employee picker. Assertions follow these approved owners.
  *
  * afd0a87c RE-SCOPED THIS FILE. It guarded the admin /leave surface's global search bar, consolidated
  * filter panel, sortable headers, pager and CSV/Excel export — all of which belonged to the ORG-WIDE
@@ -22,26 +24,30 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
  *  names `ensureReplacementLeaveType` precisely to say it must not be called. Block then line comments. */
 const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-describe('leave filter panel: the HR-admin Employee Details surface', () => {
+describe('leave filter panel: surviving inquiry and dedicated own History surfaces', () => {
   // REPOINTED BY 388e53c2. The listing this block is about did not change — it MOVED, from /leave to the
   // Team Leave Tracker route, because the sidebar lights a row by path prefix and every /leave/* screen
   // kept "My Leave" lit while an administrator read somebody else's leave record. So the panel assertions
   // follow the panel, and /leave is asserted to have kept none of it.
   const src = read('app/leave/tracker/page.tsx');
   const leavePage = read('app/leave/page.tsx');
+  const ownHistory = read('components/leave/own-leave-history.tsx');
+  const balancesPage = read('app/leave/employee-balances/page.tsx');
 
-  it('still imports FilterPanel + FilterChips — the Employee Details listing uses them', () => {
-    expect(src).toMatch(/import\s*\{[^}]*FilterPanel[^}]*\}\s*from\s*'@\/components\/filter-panel'/);
-    expect(src).toMatch(/FilterChips/);
-    expect(src.includes('fields={employeeFilterFields}')).toBe(true);
+  it('the retired listing is absent; inquiry retains its shared employee controls and filter panel', () => {
+    expect(src).not.toContain('fields={employeeFilterFields}');
+    expect(src).not.toContain('listEmployeesPage');
+    expect(balancesPage).toContain('<EmployeeScopePanel');
+    expect(balancesPage).toContain('fields={filterFields}');
+    expect(balancesPage).toMatch(/import\s*\{[^}]*FilterPanel[^}]*\}\s*from\s*'@\/components\/filter-panel'/);
   });
 
-  it('THE PANEL POSTS BACK TO ITS OWN PAGE — a form left on /leave silently leaves the screen', () => {
-    // The trap in the lift, and the one no type checker sees: the search form, the FilterPanel and the
-    // FilterChips row each hardcoded `action="/leave"`. Carried over unchanged, pressing Search or
-    // applying a filter would throw an administrator off the screen they are working on.
-    expect(src.match(/action="\/leave\/tracker"/g) ?? []).toHaveLength(3);
-    expect(src).not.toMatch(/action="\/leave"/);
+  it('inquiry filters post to their surviving page, while old listing URLs forward there', () => {
+    expect(src).toContain('redirect(`/leave/employee-balances');
+    expect(balancesPage).toMatch(/<form method="get" action="\/leave\/employee-balances"/);
+    expect(balancesPage).toMatch(/<FilterPanel\s+action="\/leave\/employee-balances"/);
+    expect(balancesPage).toContain('const chipAction = `/leave/employee-balances');
+    expect(balancesPage).toContain('<FilterChips action={chipAction}');
   });
 
   it('the org-wide read is gone, and the self-service read is NOT', () => {
@@ -62,7 +68,7 @@ describe('leave filter panel: the HR-admin Employee Details surface', () => {
     // `statuses:` argument is now legitimate — but only ever ONE status, taken from the tab whitelist, on a read
     // that is still narrowed to the viewer. Three reads: the unfiltered one (options + total), one count per
     // tab, and the active tab's rows.
-    const pageCalls = leavePage.match(/listLeaveRequestsPage\(session, \{[\s\S]*?\n\s*\}\)/g) ?? [];
+    const pageCalls = ownHistory.match(/listLeaveRequestsPage\(session, \{[\s\S]*?\n\s*\}\)/g) ?? [];
     expect(pageCalls.length, 'the self-service history reads the paginated, self-narrowed read').toBe(3);
     for (const call of pageCalls) {
       expect(call, 'every /leave history read is narrowed to the viewer').toContain(
@@ -72,44 +78,49 @@ describe('leave filter panel: the HR-admin Employee Details surface', () => {
       const statuses = call.match(/statuses: (.*),/)?.[1];
       if (statuses != null) expect(['[tab]', '[historyTab]'], `a history read narrowed by ${statuses}`).toContain(statuses);
     }
-    expect(leavePage).toContain('LEAVE_HISTORY_TABS.map(');
-    expect(leavePage).toContain('const historyTab = resolveHistoryTab(sp.hTab, tabCounts);');
+    expect(ownHistory).toContain('LEAVE_HISTORY_TABS.map(');
+    expect(ownHistory).toContain('const historyTab = resolveHistoryTab(sp.hTab, tabCounts);');
     // And it is the VIEWER's own employments — not just the current one, or a rehired person loses the
     // records of their earlier employment (the personId test this replaced kept them).
-    expect(leavePage).toContain('const myEmploymentIds = (await myEmploymentIdsAll(session)).map(');
+    expect(ownHistory).toContain('const myEmploymentIds = (await myEmploymentIdsAll(session)).map(');
     // The flat scope-wide read it replaced must not linger alongside it: two history reads on one page is
     // the same "read running for nobody" this block exists to catch.
-    expect(leavePage.includes('listLeaveRequests(session, scopeIds)')).toBe(false);
-    // And the listing that replaced it as the admin's landing view survives, at its new address.
-    expect(src.includes('listEmployeesPage(s, {')).toBe(true);
-    expect(leavePage.includes('listEmployeesPage'), 'the listing must not be left behind too').toBe(false);
+    expect(ownHistory.includes('listLeaveRequests(session, scopeIds)')).toBe(false);
+    // r378 removes the listing; inquiry retains the shared employee picker at its surviving address.
+    expect(src).not.toContain('listEmployeesPage');
+    expect(balancesPage).toContain('<EmployeeScopePanel');
+    expect(ownHistory.includes('listEmployeesPage'), 'the listing must not be left behind too').toBe(false);
   });
 
   it('5f2e20fb: My Leave History carries the SAME filter control, prefixed so old admin links stay inert', () => {
     // Three fields, one multi + two dates, exactly the shape app/leave/employee-records/page.tsx uses.
-    expect(leavePage).toMatch(/import \{ FilterChips, FilterPanel, type FilterField \} from '@\/components\/filter-panel'/);
-    expect(leavePage).toContain("kind: 'multi'");
-    expect((leavePage.match(/kind: 'date'/g) ?? []).length).toBe(2);
-    expect(leavePage).toContain("name: 'hType'");
-    expect(leavePage).toContain("name: 'hFrom'");
-    expect(leavePage).toContain("name: 'hTo'");
+    expect(ownHistory).toMatch(/import \{ FilterChips, FilterPanel, type FilterField \} from '@\/components\/filter-panel'/);
+    expect(ownHistory).toContain("kind: 'multi'");
+    expect((ownHistory.match(/kind: 'date'/g) ?? []).length).toBe(2);
+    expect(ownHistory).toContain("name: 'hType'");
+    expect(ownHistory).toContain("name: 'hFrom'");
+    expect(ownHistory).toContain("name: 'hTo'");
     // The panel and its chips both post back to THIS page, and both carry the page's foreign params so
     // applying a filter cannot reset the as-at date or the holiday banner.
-    expect((leavePage.match(/action="\/leave"\n\s+fields=\{historyFilterFields\}/g) ?? []).length).toBe(2);
-    expect((leavePage.match(/hidden=\{historyHiddenParams\}/g) ?? []).length).toBe(2);
+    expect((ownHistory.match(/action="\/leave\/history"\n\s+fields=\{historyFilterFields\}/g) ?? []).length).toBe(2);
+    expect((ownHistory.match(/hidden=\{historyHiddenParams\}/g) ?? []).length).toBe(2);
     // THE PREFIX IS THE POINT: the retired register owned bare from/to/type on this same path, and a saved
     // admin link carrying them must keep arriving unfiltered.
     for (const bare of ['from?: string', 'to?: string', 'type?: string']) {
-      expect(leavePage.includes(bare), `${bare} would revive a stale admin link as a filter`).toBe(false);
+      expect(ownHistory.includes(bare), `${bare} would revive a stale admin link as a filter`).toBe(false);
     }
     // Empty-with-filters says the filters matched nothing — NOT requestsEmpty, which means "no records at all".
-    expect(leavePage).toContain("t('filters.emptyFiltered')");
+    expect(ownHistory).toContain("t('filters.emptyFiltered')");
     // r302: "shown" is the filtered total across the four tabs (each tab is one status of the same filter).
-    expect(leavePage).toContain("t('filters.showingOf', { shown: filteredTotal, total })");
+    expect(ownHistory).toContain("t('filters.showingOf', { shown: filteredTotal, total })");
     // LAYOUT TRAP: FilterPanel's popover is absolutely positioned, not a portal, so a clipping ancestor
     // would cut it off. The history Card must not clip. (r302: full width, no column cap any more.)
-    expect(leavePage).toContain('<Card className="flex flex-col" data-tour="leave-requests">');
-    expect(leavePage.slice(leavePage.indexOf('data-tour="leave-requests"')).split('<FilterPanel')[0]).not.toContain('overflow-hidden');
+    expect(ownHistory).toContain('<Card className="flex flex-col" data-tour="leave-requests">');
+    const anchor = ownHistory.indexOf('data-tour="leave-requests"');
+    const panel = ownHistory.indexOf('<FilterPanel',anchor);
+    expect(anchor).toBeGreaterThan(-1);
+    expect(panel).toBeGreaterThan(anchor);
+    expect(ownHistory.slice(anchor,panel)).not.toContain('overflow-hidden');
   });
 
   it('ad965821: the ESS apply dropdown is built from the ELIGIBILITY-filtered read', () => {
@@ -216,12 +227,10 @@ describe('leave filter panel: the HR-admin Employee Details surface', () => {
     }
   });
 
-  it('the Employee Details panel is still admin-gated and still multi-select', () => {
-    // The gate moved from a `{admin && (…)}` block to an EARLY RETURN on the same predicate, which is
-    // strictly stronger: it suppresses the READS as well as the markup.
-    expect(src.includes('isAdmin(s)')).toBe(true);
-    expect(src).toMatch(/if \(admin\) \{/);
-    expect(src.includes("kind: 'multi'")).toBe(true);
+  it('the surviving inquiry panel stays admin-scoped and preserves multi-select leave filters', () => {
+    expect(balancesPage).toContain('await scopedAdmin()');
+    expect(balancesPage).toContain("kind: 'multi'");
+    expect(src).toContain('if (admin && !calendarIntent) {');
   });
 
   it('the retired request table takes its whole query contract with it', () => {

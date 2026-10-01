@@ -181,9 +181,18 @@ describe('drift guards (source assertions)', () => {
     // which call that is — /leave moved off the flat scope-wide read onto the paginated one narrowed by
     // employmentIds, so it can carry the My Leave History date/leave-type filter. Asserting the old literal
     // would have pinned a read the same round deliberately replaced.
-    const src = read('app/leave/page.tsx');
-    expect(src).toContain('listLeaveRequestsPage(session, {');
-    expect(src).toContain('employmentIds: historyEmploymentIds');
+    const src = read('components/leave/own-leave-history.tsx');
+    const calls = src.match(/listLeaveRequestsPage\(session, \{[\s\S]*?\n\s*\}\)/g) ?? [];
+    expect(calls).toHaveLength(3);
+    for (const call of calls) {
+      expect(call).toContain('employmentIds: historyEmploymentIds');
+      expect(call).not.toContain('companyIds:');
+    }
+    const route = read('app/leave/history/page.tsx');
+    const guard = route.indexOf('if (!me || isAdmin(session))');
+    const load = route.indexOf('await loadOwnLeaveHistory(');
+    expect(guard).toBeGreaterThan(-1);
+    expect(load).toBeGreaterThan(guard);
     expect(src).not.toContain('listLeaveRequests(session, scopeIds)');
   });
 
