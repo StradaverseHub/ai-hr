@@ -160,7 +160,7 @@ describe('ADR-0035 1A — pay-component rounding + attributes + delete guard', (
     expect(lines.every((l) => l.buckets.length > 0)).toBe(true);
   });
 
-  // #14/#15 — the attributes persist; out-of-vocabulary values are cleaned (line→null, rounding→none).
+  // #14/#15 and approved EA catalogue: recognised aliases persist; unknown EA lines refuse the save; invalid rounding still cleans to none.
   it('persists EA-form line + rounding, and rejects invalid values', async () => {
     const a = adminCtx(base);
     await upsertPayComponent(a, {
@@ -172,13 +172,22 @@ describe('ADR-0035 1A — pay-component rounding + attributes + delete guard', (
     expect(housing.eaFormLine).toBe('bik');
     expect(housing.roundingMethod).toBe('nearest');
 
-    await upsertPayComponent(a, {
+    await expect(upsertPayComponent(a, {
       code: 'HOUSING', name: 'Housing', kind: 'allowance',
       includedInEpf: true, includedInSocsoEis: true, includedInPcb: true, includedInHrdfBase: false,
       isNonPayable: false, prorates: true, eaFormLine: 'not-a-line', roundingMethod: 'sideways',
+    })).rejects.toThrow('Unknown EA reporting classification');
+    housing = (await listPayComponents(a)).find((c) => c.code === 'HOUSING')!;
+    expect(housing.eaFormLine).toBe('bik');
+    expect(housing.roundingMethod).toBe('nearest');
+
+    await upsertPayComponent(a, {
+      code: 'HOUSING', name: 'Housing', kind: 'allowance',
+      includedInEpf: true, includedInSocsoEis: true, includedInPcb: true, includedInHrdfBase: false,
+      isNonPayable: false, prorates: true, eaFormLine: 'EA_B3', roundingMethod: 'sideways',
     });
     housing = (await listPayComponents(a)).find((c) => c.code === 'HOUSING')!;
-    expect(housing.eaFormLine).toBeNull();
+    expect(housing.eaFormLine).toBe('EA_B3');
     expect(housing.roundingMethod).toBe('none');
   });
 
