@@ -1,0 +1,53 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+The table already fills the space beside the employee list, but that list and long notes leave less room for its columns. Hide list and Full screen are available today. We checked the current code; the board contains no attachment for this item, and the current production geometry has not yet been measured.
+
+WHAT WE'LL CHANGE
+
+- When an employee is selected, start with the employee list hidden so the table gets the full content width. Keep Show list and Hide list available. Apply the same full-width arrangement to Employee Leave Record.
+
+- Keep the leave code and full leave name in their column. Move the existing secondary notes into an info control next to the name. Move the existing Earned to Date notes beside its figure in the same way. Hover, keyboard focus or clicking the control will reveal the exact existing note text.
+
+- Compact the columns and row padding, wrap long headings, and keep the text at least 12px. Keep every column in its current order, every figure and existing two-decimal format, the date format, and the emphasis on Balance and Available Balance.
+
+- At 1366px and above, fit the complete balance table into the available content width without Full screen. On smaller windows, keep Leave Code visible at the left and Balance and Available Balance visible at the right while the other columns scroll.
+
+- Remove the table's Full screen control. Keep the yellow replacement-leave banner, employee identity, As at, Search, Filter, Export, tabs, explanation actions and record links.
+
+WHAT YOU'LL GET
+
+A compact table that uses the space already available, with its notes still one action away and its key balances visible on narrower windows.
+
+GOOD TO KNOW
+
+- There are sixteen columns today, including Entitlement Year and Explanation as well as the twelve balance figures, Leave Code and Date. All sixteen stay. The smaller-screen sticky columns will not change their order.
+
+- We will measure the real table with the normal application sidebar visible before removing Full screen. If the requested fit would require hiding a column, clipping a figure or making text smaller than 12px, we will flag that conflict instead of changing data or quietly shrinking the scope.
+
+- All calculations, filters, exports and displayed values remain unchanged. This layout change will not repair or reinterpret any existing difference between an older As at balance and today's My Leave view.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+OWNERS: app/leave/employee-balances/page.tsx and app/leave/employee-records/page.tsx own the inquiry layouts and tables. components/collapsible-employee-panel.tsx already provides the grid, header and persistent Show/Hide list controls. components/leave/table-fullscreen.tsx is a shared component used elsewhere; remove its mount/import from the relevant inquiry screens rather than deleting/changing the shared implementation. Keep app/leave/employee-balances/rows.ts, core/read.ts, all data queries, exports, actions and numeric formatters untouched. Graph confirms EmployeeBalancesPage consumes employeeBalanceRows and formatDays; layout must consume their existing values verbatim.
+
+Current pages have max-w-[100rem]; at laptop width that cap is not the immediate cause. Balance page has sixteen columns in this exact order: Leave Code, Entitlement Year, Entitlement, Earned to Date, Brought Forward, Taken, Pending Approval, Adjustment, Share, Pending Share, Overutilized, Forfeited BF, Balance, Available Balance, Date, Explanation. Do not interpret the ticket's shorthand 'Leave Code to Date' as permission to delete the final Explanation column. Preserve its EntitlementBreakdown data and action. Taken's nonzero link to employee records remains. Share/Pending Share contributor badges/tooltips remain because the ticket relocates only Leave Code/Earned notes. If they affect compactness, use existing accessible content without deleting contributors.
+
+STATIC WIDTH EVIDENCE: the app shell's default sidebar is 232px (collapsed 66px). app/layout.tsx documents a viewport-minus-280 content budget: at 1366px approximately 1086px before table/card borders. CollapsibleEmployeePanel currently consumes minmax(0,22rem) plus gap-4 when open; collapsing returns roughly 368px. Twelve numeric columns alone at 60px would consume 720px, leaving roughly 366px for Leave Code, Year, Date and Explanation. That is a planning budget, NOT measured proof. Fixed numeric widths must be tuned per longest two-line heading and actual value, including signs, large amounts, icons, badges and all locale strings. Do not rely on a width sum with empty placeholder cells to prove real production fit. Leave name may wrap completely; never ellipsize away its content as a shortcut. Numeric values remain unbroken and the existing num()/formatDays output remains unchanged.
+
+PANEL STATE: both page panelDefaultOpen values currently default open unless their screen-specific cookie is '0'. Implement this item's selection-triggered collapse only for these inquiry pages, retaining their separate cookie keys and explicit Show/Hide choices. Merely passing defaultOpen=false will not necessarily collapse an already-mounted useState panel after employee selection. Define the selection transition in the UI shell (plain selected key or specific opt-in prop), collapse on newly selected employee, and allow manual reopening until the next selection. No changes to employee search, selection query, permissions, panel scope or payroll consumers of the shared shell. Initial no-selection state retains the usable list and choose-employee message. Persist explicit toggle behaviour coherently across the two existing tab-specific keys rather than inventing a global preference.
+
+NOTES: Leave Code currently renders entitlementTemplateName's resolvedEntitlementTable message and sharedBalanceWith message. Earned to Date renders entitlementCaptionCell: normal pooled caption or entitlement-status label with its longer tooltip. Preserve ALL exact current caption and tooltip sentences rather than replacing the caption with the existing title only; these can differ. Combine multiple notes into an accessible info popover with independent lines, preserving amber-versus-normal meaning. Hover/focus/click and Escape dismissal must work; no tooltip-only data loss on phones. Keep the numerical value itself outside the popover and right-aligned.
+
+STICKY FALLBACK: keep DOM column order and one scroll container. Pin Leave Code left and Balance/Available Balance right using explicit offsets, opaque matching light/dark backgrounds, correct header z-order and focus visibility. Date and Explanation occur AFTER the sticky balances in DOM and must remain scroll-accessible; right-sticky adjacent columns need real-browser verification rather than assuming 'right:0' on a non-final column behaves as intended. Do not duplicate rows/tables to create frozen panels or duplicate controls. Preserve the records tab's existing columns/order and actions; share full-width/list-collapse layout, not the balance-specific set of three frozen columns where those columns do not exist.
+
+LOCALIZATION: add any new info-control accessible labels in all six catalogues; existing note text resolves from its current locale owners. Header wrapping is CSS/layout rather than inserting English-only slashes or hardcoding shortened captions. Preserve labels and existing precision, null em dashes, dates and sort links.
+
+VALIDATION AFTER APPROVAL: reproduce production; before/after compare every header, cell value, caption/tooltip and action for the same employee/As at/filter/locale. Verify sixteen-column balance table at 1366, 1440 and wider with standard app sidebar, selected list hidden, then manual reopened. Require all values and Explanation accessible without horizontal scroll in default desktop state, no clipped names/figures, 12px minimum and compact rows. Below 1366 verify sticky geometry at both scroll extremes, Date/Explanation reachability, key balance visibility, phone info popover and keyboard actions. Verify list selection collapses without resetting filters/tabs, Show list works, yellow banner unchanged, and records tab full width with its own columns preserved. Exports remain byte-identical in structure/values. Full parent gate plus rendered geometry tests after approved implementation. If live values cannot fit without forbidden changes, stop and report the measured conflict before removing fallback controls.
+
+LOCAL MOCKUP: adjacent HTML is a responsive static schematic with dark colour-scheme styling and sixteen placeholder columns. It illustrates default hidden list, compact table and preserved controls only; its fit is not production verification. No employee identity or balance example has been copied into it.
+
+NOT DONE: implementation, production reproduction, rendering, tests, database access or board writes. This proposal requires reporter approval before build.
