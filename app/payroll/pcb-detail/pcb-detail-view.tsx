@@ -91,7 +91,7 @@ import type {
 // r351 — THE SUBSTITUTED EXPRESSIONS MOVED OUT OF THIS FILE, and not for tidiness: the DOWNLOADED PDF
 // carried none of them. One assembly, painted by this screen and by `shared.ts`, is the only way the
 // promise that the document shows "the same calculation details displayed on screen" survives an edit.
-import { pcbFormulaBlocks, pcbFormulaByKey } from './formulas';
+import { pcbFormulaBlocks, pcbFormulaByKey, pcbNormalMtdStep1Blocks } from './formulas';
 
 export type PcbDetailContext = {
   employeeCode: string | null;
@@ -405,6 +405,17 @@ export async function PcbDetailView({
    */
   const slipBody = (sec: PcbSlipSection) => (
     <>
+      {sec.normalMtdWorking && <div className="mb-4 space-y-4">
+        <h3 className="font-semibold">{t('slipStep1CombinedHeading')}</h3>
+        <p className="break-words font-mono text-sm">{t('slipStep1CombinedFormula')}</p>
+        <p className="text-sm text-muted-foreground">{t('slipStep1PMeaning')}</p>
+        {pcbNormalMtdStep1Blocks(explanation, {b2, pct, int: value => `${value}`}).map(block => <div key={block.key}>
+          <Formula formulaLabel={t('formulaLabel')} formula={t(block.formula)} substitutedLabel={t('substitutedLabel')}
+            substituted={block.substituted ?? <NotRecorded />} calculationLabel={block.calculation === undefined ? undefined : t('calculationLabel')}
+            calculation={block.calculation} resultLabel={t(block.resultLabel)} result={block.result === null ? <NotRecorded /> : rm(block.result)} />
+          {block.notes.map(note => <p key={note} className="mt-2 text-xs text-muted-foreground">{t(note)}</p>)}
+        </div>)}
+      </div>}
       <div className="flex items-baseline gap-3 border-b border-border pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         <span className="inline-block w-10 shrink-0" aria-hidden="true" />
         <span className="min-w-0 flex-1" />

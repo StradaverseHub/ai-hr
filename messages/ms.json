@@ -7074,7 +7074,13 @@
       "traceNotRecordedHeading": "Larian ini tidak merekodkan kertas kerja penuh",
       "appendixLabel": "Lampiran",
       "slipChildOnRecordGrid": "Anak dalam rekod — jumlah lima kategori di atas",
-      "slipChildOnRecordKeyed": "Anak dalam rekod — satu jumlah yang dikunci masuk bagi pekerja ini"
+      "slipChildOnRecordKeyed": "Anak dalam rekod — satu jumlah yang dikunci masuk bagi pekerja ini",
+      "slipStep1CombinedHeading": "MTD (A) / MTD Bersih",
+      "slipStep1PMeaning": "P = Jumlah pendapatan bercukai bagi tahun ini tidak termasuk saraan tambahan bulan semasa.",
+      "slipStep1CurrentRebate": "Zakat/Fi/Levi bulan semasa",
+      "formulaNormalMtdNet": "MTD bersih saraan biasa = max(0, MTD biasa selepas peraturan potongan minimum − Zakat/Fi/Levi bulan semasa)",
+      "slipStep1NormalRules": "Pengiraan menggunakan pemotongan perpuluhan, pembundaran lima sen dan peraturan potongan minimum sebelum rebat bulan semasa. MTD bersih biasa tidak boleh negatif. Baki rebat mengikuti layanan saraan tambahan yang direkodkan; jumlah potongan akhir dipaparkan berasingan.",
+      "slipStep1CombinedFormula": "MTD (A) / MTD Bersih = [((P−M)R + B − (Z + X)) / (n + 1)] − Zakat/Fi/Levi bulan semasa"
     },
     "multiCycleWorksheet": {
       "title": "Lembaran Kerja Berkanun Berbilang Kitaran",

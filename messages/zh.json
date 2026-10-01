@@ -7074,7 +7074,13 @@
       "traceNotRecordedHeading": "本次运行未记录完整的计算过程",
       "appendixLabel": "附录",
       "slipChildOnRecordGrid": "在册子女人数 — 上方五个类别的合计",
-      "slipChildOnRecordKeyed": "在册子女人数 — 为该雇员录入的单一总数"
+      "slipChildOnRecordKeyed": "在册子女人数 — 为该雇员录入的单一总数",
+      "slipStep1CombinedHeading": "MTD (A) / 净 MTD",
+      "slipStep1PMeaning": "P = 全年的应税收入总额，不包括本月额外薪酬。",
+      "slipStep1CurrentRebate": "本月天课/费用/征费",
+      "formulaNormalMtdNet": "正常薪酬净 MTD = max(0，最低扣款规则处理后的正常 MTD − 本月天课/费用/征费)",
+      "slipStep1NormalRules": "先应用既定的小数截断、五仙进位及最低扣款规则，再抵扣本月回扣。正常薪酬净 MTD 不得为负数。剩余回扣按已记录的额外薪酬规则处理；合并后的最终扣款另行显示。",
+      "slipStep1CombinedFormula": "MTD (A) / 净 MTD = [((P−M)R + B − (Z + X)) / (n + 1)] − 本月天课/费用/征费"
     },
     "multiCycleWorksheet": {
       "title": "多次发薪法定核对表",

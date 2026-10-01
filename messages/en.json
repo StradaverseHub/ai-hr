@@ -7074,7 +7074,13 @@
       "traceNotRecordedHeading": "This run did not record the full working",
       "appendixLabel": "Appendix",
       "slipChildOnRecordGrid": "Children on record — the five categories above, added up",
-      "slipChildOnRecordKeyed": "Children on record — the single total keyed for this employee"
+      "slipChildOnRecordKeyed": "Children on record — the single total keyed for this employee",
+      "slipStep1CombinedHeading": "MTD (A) / Net MTD",
+      "slipStep1PMeaning": "P = The total taxable income for the year does not include current additional remuneration.",
+      "slipStep1CurrentRebate": "Current month’s Zakat/Fi/Levy",
+      "formulaNormalMtdNet": "Net normal MTD = max(0, normal MTD after the minimum-deduction rule − current month’s Zakat/Fi/Levy)",
+      "slipStep1NormalRules": "The calculation applies the established truncation, five-sen rounding and minimum-deduction rules before the current-month rebate. Net normal MTD cannot be negative. Any remaining rebate follows the recorded additional-remuneration treatment; the combined final deduction is shown separately.",
+      "slipStep1CombinedFormula": "MTD (A) / Net MTD = [((P−M)R + B − (Z + X)) / (n + 1)] − Current month’s Zakat/Fi/Levy"
     },
     "multiCycleWorksheet": {
       "title": "Multi-Cycle Statutory Worksheet",

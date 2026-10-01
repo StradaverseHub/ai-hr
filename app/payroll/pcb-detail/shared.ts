@@ -72,7 +72,7 @@ import { formatMoney } from '@/lib/money';
 import { monthYearLabel } from '@/lib/month-name';
 import { SLIP_ITEMS, SLIP_REBATES, pcbSlipData } from './slip-data';
 // r351 — the SAME assembly the screen paints. See the block comment where it is used.
-import { pcbFormulaBlocks, pcbFormulaByKey, type PcbFormulaBlock } from './formulas';
+import { pcbFormulaBlocks, pcbFormulaByKey, pcbNormalMtdStep1Blocks, type PcbFormulaBlock } from './formulas';
 import { renderPcbDetailPdf, type PcbSlipPdfRow, type PcbSlipPdfSection } from './slip-pdf';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -639,7 +639,10 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
       ...(sec.secondColumn ? [t(sec.secondColumn)] : []),
       ...(sec.thirdColumn ? [t(sec.thirdColumn)] : []),
     ],
-    rows: sec.rows.map((r) => ({
+    rows: [
+      ...(sec.normalMtdWorking ? [wide(t('slipStep1CombinedHeading')), wide(t('slipStep1CombinedFormula')), wide(t('slipStep1PMeaning')),
+        ...pcbNormalMtdStep1Blocks(x, {b2, pct: pctOf, int: value => `${value}`}).flatMap(block => [...formulaRows(block), ...block.notes.map(note => wide(t(note)))])] : []),
+      ...sec.rows.map((r) => ({
       line: r.line,
       label: r.ns === 'taxRelief' ? tr(r.caption) : t(r.caption),
       sub: r.sub,
@@ -649,7 +652,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
         ...(sec.secondColumn ? [r.second ? cell(r.second) : ''] : []),
         ...(sec.thirdColumn ? [r.third ? cell(r.third) : ''] : []),
       ],
-    })),
+    }))],
     note: sec.note ? t(sec.note) : undefined,
   });
 
