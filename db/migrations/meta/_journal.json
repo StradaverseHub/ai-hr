@@ -2850,6 +2850,13 @@
       "when": 1789980208344,
       "tag": "0498_own_reporting_managers",
       "breakpoints": true
+    },
+    {
+      "idx": 499,
+      "version": "7",
+      "when": 1789980209344,
+      "tag": "0499_ea_signatory",
+      "breakpoints": true
     }
   ]
 }
