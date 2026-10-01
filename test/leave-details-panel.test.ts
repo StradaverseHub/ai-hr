@@ -353,8 +353,27 @@ describe('Leave Details panel: both call sites feed the trimmed §1 summary + vi
   it('r302: /leave renders an Upcoming Leave section of its own, fed by the approved+pending read', () => {
     const page = read('/app/leave/page.tsx');
     expect(page).toContain('<UpcomingLeave rows={upcoming} locale={locale} />');
-    expect(page).toContain('myUpcomingLeave(session, historyEmploymentIds, today)');
-    expect(read('/core/my-leave.ts')).toContain("statuses: ['pending', 'approved'],");
+    // r378 shares the owned History/upcoming projection; Overview retains the upcoming renderer.
+    expect(page).toContain('const { upcoming, historyFilterParams } = await loadOwnLeaveHistory({ session, me, sp, locale, leaveTypes, eligibleTypeIds });');
+    const history = read('/components/leave/own-leave-history.tsx');
+    const loaderStart = history.indexOf('export async function loadOwnLeaveHistory(');
+    const loaderEnd = history.indexOf('return { history, upcoming, historyFilterParams };', loaderStart);
+    expect(loaderStart).toBeGreaterThan(-1);
+    expect(loaderEnd).toBeGreaterThan(loaderStart);
+    const projection = history.slice(loaderStart, loaderEnd);
+    expect(projection).toContain('const historyEmploymentIds = myEmploymentIds.length > 0 ? myEmploymentIds : [me.employmentId];');
+    expect(projection).toContain('myUpcomingLeave(session, historyEmploymentIds, today)');
+    const service = read('/core/my-leave.ts');
+    const serviceStart = service.indexOf('export async function myUpcomingLeave(');
+    const serviceEnd = service.indexOf('return rows;', serviceStart);
+    expect(serviceStart).toBeGreaterThan(-1);
+    expect(serviceEnd).toBeGreaterThan(serviceStart);
+    const upcomingRead = service.slice(serviceStart, serviceEnd);
+    expect(upcomingRead).toContain('employmentIds: [...employmentIds],');
+    expect(upcomingRead).toContain("statuses: ['pending', 'approved'],");
+    expect(upcomingRead).toContain('from: today,');
+    expect(upcomingRead).toContain("sort: 'start',");
+    expect(upcomingRead).toContain("dir: 'asc',");
     // …and the panel takes no upcoming prop (comments recording the 11876072 removal are allowed).
     expect(read('/components/leave/LeaveDetailsPanel.tsx')).not.toMatch(/\bupcoming\??:\s/);
   });
