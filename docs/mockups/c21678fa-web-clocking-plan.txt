@@ -2,35 +2,33 @@ VERDICT: Partly there already   ·   SIZE: Large
 
 THE SITUATION TODAY
 
-Web Clocking already records attendance, supports repeated clock-ins and clock-outs, and shows the assigned shift and a running worked-time total. It does not capture attendance photos. Device registration and location restrictions currently depend on company and employee settings; they are not compulsory for everybody today.
+Web Clocking supports repeated clock-ins and clock-outs, assigned shifts and worked time. It does not capture photos. Device and location restrictions currently depend on settings; they are not compulsory for everybody.
 
 WHAT WE'LL CHANGE
 
-- Replace the single clock button with separate green Clock In and red Clock Out buttons. Show the current shift, a ticking server clock, worked time and this device's verified registration status. Put the clocking and photo cards side by side on desktop and stack them on phones.
+- Separate green Clock In and red Clock Out buttons, alongside the actual shift, ticking server time and worked time. Clocking and photo cards sit side by side on desktop and stack on phones.
 
-- Require a photo, a registered device and a passing work-location check for every employee portal clock-in and clock-out. This is stricter than today's optional checks. If approved work locations have not been assigned, show what HR needs to set up and prevent clocking; do not quietly allow it.
+- Require a photo, registered device and passing work-location check for every employee portal clock event. Missing registration or assigned work locations blocks clocking with clear setup guidance.
 
-- Open the front camera only after Clock In or Clock Out is selected. Let the employee take, review, retake or cancel the photo before confirming. Turn the camera off after capture, confirmation, cancellation and leaving the page. If saving fails, keep the captured photo for retry while the camera stays off.
+- Open the front camera after selecting an action. Take, review, retake or cancel before confirmation. Stop the camera after capture, confirmation, cancellation and leaving. Failed saves retain the photo for retry with the camera off.
 
-- Save the photo and clock event together, with the recorded time decided by the server when confirmation succeeds. A photo taken earlier never backdates attendance. Refresh the shift, status, worked time and today's newest-first log after saving.
+- Save photo and event together, using the server's confirmation time. Refresh status, worked time and the newest-first photo log. Lost-response retries return the successful receipt instead of another event.
 
-- Put private photo thumbnails beside each event, with an enlarged view on click. Employees see their own photos; supervisors and HR see only the people their existing attendance permissions cover. Keep the original photo evidence when attendance is later corrected.
+- Private thumbnails enlarge on click. Employees see only their own photos; supervisors and HR follow existing attendance permissions. Corrections preserve original photo evidence.
 
-- Use the same protected clocking process wherever an employee can clock from the portal, including the home-page shortcut, so an old button cannot bypass the photo, time, device or location checks. Other My Attendance menus stay as they are.
+- Route existing employee portal clock shortcuts through this same process so they cannot bypass any check. Other My Attendance menus stay unchanged.
 
 WHAT YOU'LL GET
 
-A clear Clock In / Clock Out screen with a photo for every new portal clock event, a reliable worked-time display and an attendance trail that authorised reviewers can inspect. The attached sketch shows the proposed screen before any records or storage are changed.
+A clear clocking screen and private photo evidence for every new portal clock event. The sketch and proposed data changes are ready for review before anything is applied.
 
 GOOD TO KNOW
 
-- Approving this plan approves compulsory device and work-location checks for employee portal clocking, including people whose current settings do not require them. HR must register or assign what is missing before those people can clock.
+- Approval includes making device and location checks compulsory for portal clocking, even where current settings do not require them. HR must complete missing setup first.
 
-- Existing attendance records remain intact. Old events without a photo say No photo recorded; they never receive a false Photo + location badge. Terminal imports and approved HR corrections remain their own existing processes and are identified separately from portal clocking.
+- Existing records, terminal imports and authorised corrections remain. Older events say No photo recorded, never Photo + location.
 
-- A photo is attendance evidence, not face recognition or a guarantee of someone's identity. Browser registration and reported location keep their existing security limits; this does not introduce biometric matching or new device hardware.
-
-- The review shows when the photo was taken for guidance. The saved event and photo receipt show the time the server accepted the confirmation. A retry after an uncertain network result returns the first successful receipt instead of recording another event.
+- Photos are evidence, not face recognition. Browser registration and reported location retain their existing security limits.
 
 ------------------------------------------------------------
 
