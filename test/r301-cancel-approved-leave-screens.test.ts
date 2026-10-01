@@ -140,7 +140,12 @@ describe('THE CARD AND ITS ACTION', () => {
 
 describe('THE BUTTON, THE STATUS AND THE LEVEL — on the server, through one predicate', () => {
   it('/leave renders the Cancel dates button only for a non-null server offer', () => {
-    const page = read('app/leave/page.tsx');
+    const page = read('components/leave/own-leave-history.tsx');
+    const from = page.indexOf('const historyEntries');
+    const to = page.indexOf('const historyTypeOptions', from);
+    expect(from).toBeGreaterThan(-1);
+    expect(to).toBeGreaterThan(from);
+    expect(page.slice(from,to)).toContain('<CancelDatesDialog');
     expect(page).toContain('const cancelOffers = await employeeCancelOffers(session, selfHistory, today);');
     expect(page).toContain(') : (cancelOffers.get(r.id) ?? null) !== null ? (');
     expect(page).toContain('candidateDates={cancelOffers.get(r.id) ?? []}');

@@ -48,6 +48,8 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const recordsPage = read('app/leave/employee-records/page.tsx');
 const recordsExport = read('app/leave/employee-records/export/route.ts');
 const leavePage = read('app/leave/page.tsx');
+const ownHistory = read('components/leave/own-leave-history.tsx');
+const historyPage = read('app/leave/history/page.tsx');
 const leaveActionsSrc = read('app/leave/actions.ts');
 const cancelDialog = read('components/leave/admin-cancel-leave-dialog.tsx');
 
@@ -187,7 +189,9 @@ describe('§3 the Requests subsection is REMOVED — where each of its six capab
     // name. The employee's own My Leave History now uses the paginated read for its date/leave-type
     // filter, narrowed to the viewer's own employments — which is the opposite of a register. Asserted
     // on the narrowing, which is what made the old call org-wide in the first place.
-    for (const call of leavePage.match(/listLeaveRequestsPage\(session, \{[\s\S]*?\n\s*\}\)/g) ?? []) {
+    const calls = ownHistory.match(/listLeaveRequestsPage\(session, \{[\s\S]*?\n\s*\}\)/g) ?? [];
+    expect(calls).toHaveLength(3);
+    for (const call of calls) {
       expect(call).toContain('employmentIds:');
       expect(call).not.toContain('companyIds:');
     }
@@ -200,14 +204,21 @@ describe('§3 the Requests subsection is REMOVED — where each of its six capab
     // and it is now an early return at the top of the page, so an administrator renders none of the
     // self-service surface at all. Employee Leave Records cannot stand in because an admin there is never
     // the subject. Withdraw-and-reapply is the workaround; disclosed in the approved plan.
-    expect(leavePage).toContain('<EditLeaveDialog');
+    const from = ownHistory.indexOf('const historyEntries');
+    const to = ownHistory.indexOf('const historyTypeOptions',from);
+    expect(from).toBeGreaterThan(-1);
+    expect(to).toBeGreaterThan(from);
+    expect(ownHistory.slice(from,to)).toContain('<EditLeaveDialog');
     expect(leavePage).toContain('if (me == null || admin) {');
     // 5f2e20fb moved the newest-first ordering into SQL (sort 'start', dir 'desc'), so the JS re-sort it
     // used to need is gone. `selfHistory` is still the viewer's own rows and still what EditLeaveDialog is
     // built from, which is the property this case is about.
-    expect(leavePage).toContain('const selfHistory = historyShown.rows;');
+    expect(ownHistory).toContain('const selfHistory = historyShown.rows;');
     // The early return really does precede the dialog it fences off.
-    expect(leavePage.indexOf('if (me == null || admin) {')).toBeLessThan(leavePage.indexOf('<EditLeaveDialog'));
+    const guard = historyPage.indexOf('if (!me || isAdmin(session))');
+    const load = historyPage.indexOf('await loadOwnLeaveHistory(');
+    expect(guard).toBeGreaterThan(-1);
+    expect(load).toBeGreaterThan(guard);
     expect(recordsPage.includes('<EditLeaveDialog')).toBe(false);
     // The service is untouched — nothing about the ability was deleted, only the surface that reached it.
     expect(read('core/leave.ts')).toContain('export async function editLeaveRequest');
