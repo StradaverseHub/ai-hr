@@ -44,10 +44,10 @@ export const runtime = 'nodejs'; // pdf-lib needs the Node runtime (serializeRep
 const FORMATS: ReportFormat[] = ['csv', 'xlsx', 'pdf'];
 
 /** Export-payload headers, ENGLISH and in the screen's own column order (ADR-0047 §9). */
-const COLUMNS = ['Date', 'Type', 'What was asked for', 'Reason', 'Remark', 'Submitted', 'Goes to', 'Status'] as const;
+const COLUMNS = ['Date', 'Type', 'What was asked for', 'Reason', 'Remark', 'Submitted', 'Goes to', 'Status', 'Rejection reason'] as const;
 
 /** Relative column weights. "What was asked for" carries the most words on screen and in the file. */
-const WIDTHS = [10, 12, 26, 18, 14, 10, 14, 10];
+const WIDTHS = [10, 12, 26, 18, 14, 10, 14, 10, 18];
 
 /** RFC 5987 Content-Disposition: an ASCII-safe fallback plus a UTF-8-encoded `filename*`. */
 function contentDisposition(base: string, ext: string): string {
@@ -102,6 +102,7 @@ export async function GET(req: Request) {
       // still with somebody (see app/attendance/request-status/page.tsx A3). The file follows the screen.
       r.status === 'pending' ? approver : '',
       statusLabel(r.status, t, isOvertime(r)),
+      r.status === 'rejected' ? r.rejectReason ?? t('maRejectNotRecorded') : '',
     ]);
 
     const stamp = todayInKualaLumpur().replace(/-/g, '');

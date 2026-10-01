@@ -1,3 +1,4 @@
+import { formatMinutesToHM } from '@/lib/overtime-duration';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
@@ -22,7 +23,7 @@ import { OtPlanCalendar, type OtCalendarCell, type OtCalendarPlanStatus } from '
 import { addMonths, isMonthParam, monthRange } from '@/lib/roster-month';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { myWithdrawOvertimePlan } from '@/app/me/actions';
-import { CATEGORY_KEY, Pill, REQUEST_STATUSES, statusLabel, type RequestStatus } from '../request-ui';
+import { Pill, REQUEST_STATUSES, statusLabel, type RequestStatus } from '../request-ui';
 
 /**
  * My Attendance > Self Overtime — the employee's own overtime plans, on a screen of their own.
@@ -422,7 +423,7 @@ export default async function SelfOvertimePage({
               <span className="font-medium">{t('otSummaryRequests', { count: total })}</span>
               <span className="text-muted-foreground">·</span>
               <span className="font-medium tabular-nums">
-                {t('otSummaryHoursRequested', { hours: (requestedMinutes / 60).toFixed(1) })}
+                {t('otSummaryHoursRequested', { hours: formatMinutesToHM(requestedMinutes) })}
               </span>
               {/* Only on the Approved chip. Approved hours can be LOWER than requested — the approver may
                   trim a plan, or the rule may measure the day against what was actually clocked. */}
@@ -430,7 +431,7 @@ export default async function SelfOvertimePage({
                 <>
                   <span className="text-muted-foreground">·</span>
                   <span className="font-medium tabular-nums">
-                    {t('otSummaryHoursApproved', { hours: (approvedMinutes / 60).toFixed(1) })}
+                    {t('otSummaryHoursApproved', { hours: formatMinutesToHM(approvedMinutes) })}
                   </span>
                 </>
               )}
@@ -465,7 +466,6 @@ export default async function SelfOvertimePage({
                       const canWithdraw =
                         p.status === 'pending' ||
                         (p.status === 'approved' && p.appliedAt == null && p.attendanceDate >= today);
-                      const category = p.otReasonCategory ? t(CATEGORY_KEY[p.otReasonCategory]) : '';
                       return (
                         <tr key={p.id}>
                           <td className="px-3 py-2 tabular-nums">{p.attendanceDate}</td>
@@ -475,10 +475,10 @@ export default async function SelfOvertimePage({
                               : '—'}
                           </td>
                           <td className="px-3 py-2 tabular-nums">
-                            {p.requestedOtMinutes != null ? (p.requestedOtMinutes / 60).toFixed(1) : '—'}
+                            {p.requestedOtMinutes != null ? formatMinutesToHM(p.requestedOtMinutes) : '—'}
                           </td>
                           <td className="px-3 py-2 tabular-nums">
-                            {p.approvedOtMinutes != null ? (p.approvedOtMinutes / 60).toFixed(1) : '—'}
+                            {p.approvedOtMinutes != null ? formatMinutesToHM(p.approvedOtMinutes) : '—'}
                           </td>
                           {/* The wide page's room goes here, and anything still too long is shortened on
                               screen with the whole of it on the native title — the house pattern; there is
@@ -488,10 +488,10 @@ export default async function SelfOvertimePage({
                             // The note is inside the truncating cell, so it has to be inside the title
                             // too — the plan's promise is that anything shortened on screen can be read
                             // by resting on it, and that is the whole cell, not the first line of it.
-                            title={[[category, p.reason].filter(Boolean).join(' — '), p.remark].filter(Boolean).join('\n')}
+                            title={[p.reason, p.remark].filter(Boolean).join('\n')}
                           >
-                            {category && <span className="font-medium">{category}</span>}
-                            {category && p.reason ? ' — ' : ''}
+
+
                             <span className="text-muted-foreground">{p.reason ?? ''}</span>
                             {/* The EMPLOYEE's own optional note, which the plan promised on a rejected row
                                 in place of the approver's reason the system does not hold. Same shape as

@@ -1,3 +1,4 @@
+import { formatMinutesToHM } from '@/lib/overtime-duration';
 import type { getTranslations } from 'next-intl/server';
 
 /**
@@ -134,7 +135,7 @@ export function askedFor(
   t: T,
 ): string {
   if (r.proposedCheckIn == null && r.requestedOtMinutes != null) {
-    return t('maAskedOvertime', { hours: (r.requestedOtMinutes / 60).toFixed(1) });
+    return t('maAskedOvertime', { hours: formatMinutesToHM(r.requestedOtMinutes) });
   }
   return t('maAskedTimes', {
     in: r.proposedCheckIn?.slice(0, 5) ?? '—',

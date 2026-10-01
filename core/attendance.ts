@@ -7,6 +7,7 @@
  * (approved leave / holiday / rest day are not "absent"). Each mutation appends a
  * domain event (ADR-0006).
  */
+import { plannedOvertimeMinutes } from '../lib/overtime-duration';
 import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 // f618065d (r362) — the "All" ceiling the shared pager already assumes. Self Overtime is a server-paged
@@ -212,9 +213,9 @@ type GeofenceCheck =
  * The MATCH is the closest PASSING site, not merely the first one found — with two gates in range the row
  * should record the one the employee actually stood at.
  */
-async function resolveGeofence(
+export async function resolveGeofence(
   tx: Tx,
-  p: { employmentId: string; date: string; time: string; lat?: number; lng?: number; punch: 'in' | 'out' },
+  p: { employmentId: string; date: string; time: string; lat?: number; lng?: number; punch: 'in' | 'out'; required?: boolean },
 ): Promise<GeofenceCheck> {
   const [emp] = await tx
     .select({ geofencingEnabled: employment.geofencingEnabled, geofenceRadiusM: employment.geofenceRadiusM })
@@ -223,7 +224,7 @@ async function resolveGeofence(
     .limit(1);
   const enabled = emp?.geofencingEnabled ?? false;
 
-  if (!enabled) {
+  if (!enabled && !p.required) {
     return { enforced: false, lat: p.lat ?? null, lng: p.lng ?? null };
   }
   if (p.lat == null || p.lng == null || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) {
@@ -1656,11 +1657,12 @@ async function recomputeDayFromPunches(
   return { status, workedMinutes, otMinutes, checkInAt, checkOutAt };
 }
 
-async function checkInTx(
+export async function checkInTx(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; clockCaptureId?: string; preciseOrder?: boolean },
+  existingTx?: Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  const perform = async (tx: Tx) => {
     // Feedback 5249d43f: registered-device gate FIRST — when the company policy requires it, an absent /
     // unknown / revoked token throws the typed DeviceNotRegisteredError before anything is evaluated or
     // written (policy OFF ⇒ no-op). Terminal imports bypass by construction (they never call checkIn).
@@ -1679,7 +1681,7 @@ async function checkInTx(
 
     // R45: a SECOND (or later) clock-in of the day is now allowed (multiple clocking). Keep punches monotonic
     // on a non-cross-midnight day: a new clocking must be later than every punch already recorded today.
-    if (existing && !sched.crossesMidnight) {
+    if (existing && !sched.crossesMidnight && !p.preciseOrder) {
       const [last] = await tx
         .select({ punchAt: attendancePunch.punchAt })
         .from(attendancePunch)
@@ -1701,6 +1703,7 @@ async function checkInTx(
       lat: p.geo?.lat,
       lng: p.geo?.lng,
       punch: 'in',
+      required: !!p.clockCaptureId,
     });
 
     let attendanceId: string;
@@ -1740,6 +1743,7 @@ async function checkInTx(
       punchAt: p.time,
       direction: 'in',
       method: 'web',
+      clockCaptureId: p.clockCaptureId,
       ...punchGeoValues(geo),
     });
 
@@ -1762,7 +1766,8 @@ async function checkInTx(
       payload: { employmentId: p.employmentId, date: p.date, time: p.time, status: derived.status, dayType, punch: 'in' },
     });
     return { attendanceId, status: derived.status, dayType };
-  });
+  };
+  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
 }
 
 /** Check in. `geo` is optional — omitted/undefined when the browser gave no coordinates (allowed only
@@ -1783,11 +1788,12 @@ export async function checkIn(
   }
 }
 
-async function checkOutTx(
+export async function checkOutTx(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; clockCaptureId?: string; preciseOrder?: boolean },
+  existingTx?: Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  const perform = async (tx: Tx) => {
     // Feedback 5249d43f: same registered-device gate as checkInTx — see the comment there.
     await enforceDeviceGateTx(tx, { employmentId: p.employmentId, deviceToken: p.deviceToken });
 
@@ -1814,10 +1820,10 @@ async function checkOutTx(
     const anchor = existingPunches.length
       ? existingPunches.reduce((a, b) => (toMinutes(b.punchAt) > toMinutes(a.punchAt) ? b : a)).punchAt
       : rec.checkInAt;
-    if (!sched.crossesMidnight && anchor != null && toMinutes(p.time) <= toMinutes(anchor)) {
+    if (!p.preciseOrder && !sched.crossesMidnight && anchor != null && toMinutes(p.time) <= toMinutes(anchor)) {
       throw new Error('Check-out must be after check-in');
     }
-    if (anchor != null && toMinutes(p.time) === toMinutes(anchor)) {
+    if (!p.preciseOrder && anchor != null && toMinutes(p.time) === toMinutes(anchor)) {
       throw new Error('Check-out must differ from check-in');
     }
 
@@ -1830,6 +1836,7 @@ async function checkOutTx(
       lat: p.geo?.lat,
       lng: p.geo?.lng,
       punch: 'out',
+      required: !!p.clockCaptureId,
     });
 
     // Legacy backfill: an attendance row created before multi-punch (biometric import, seed) carries a
@@ -1861,6 +1868,7 @@ async function checkOutTx(
       punchAt: p.time,
       direction: 'out',
       method: 'web',
+      clockCaptureId: p.clockCaptureId,
       ...punchGeoValues(geo),
     });
 
@@ -1924,7 +1932,8 @@ async function checkOutTx(
       },
     });
     return { status: derived.status, dayType, workedMinutes: derived.workedMinutes, otMinutes };
-  });
+  };
+  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
 }
 
 /** Check out. Same optional-geo / blocked-event contract as checkIn (ADR-0070 §3). */
@@ -3013,8 +3022,8 @@ export async function requestAttendanceCorrection(
   if ((plannedStartTime == null) !== (plannedEndTime == null)) {
     throw new Error('A planned overtime window needs both a start time and an end time.');
   }
-  if (plannedStartTime && plannedEndTime && toMinutes(plannedEndTime) <= toMinutes(plannedStartTime)) {
-    throw new Error('The planned end time must be after the planned start time.');
+  if (plannedStartTime && plannedEndTime && plannedOvertimeMinutes(plannedStartTime, plannedEndTime) == null) {
+    throw new Error('Enter different valid start and end times.');
   }
   const otReasonCategory = p.otReasonCategory ?? null;
   // 2166ef79 — the remark is OPTIONAL and stays optional in stage one: the reporter's "Require Remark"
@@ -3086,6 +3095,14 @@ export async function requestAttendanceCorrection(
         await assertNoCreditClaimForDatesTx(tx, p.employmentId, [p.date]);
       }
     }
+    const [original] = checkIn || checkOut ? await tx.select({
+      id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt,
+    }).from(attendance).where(and(eq(attendance.employmentId, p.employmentId), eq(attendance.attendanceDate, p.date))).limit(1) : [];
+    const originalClockSnapshot = checkIn || checkOut ? {
+      version: 1 as const, attendanceId: original?.id ?? null,
+      originalCheckIn: original?.checkIn ?? null, originalCheckOut: original?.checkOut ?? null,
+      capturedAt: new Date().toISOString(),
+    } : null;
     const [row] = await tx
       .insert(attendanceCorrection)
       .values({
@@ -3101,6 +3118,7 @@ export async function requestAttendanceCorrection(
         otReasonCategory,
         remark,
         requestKind,
+        originalClockSnapshot,
       })
       .returning({ id: attendanceCorrection.id });
     await appendEvent(tx, {
@@ -3122,6 +3140,7 @@ export async function requestAttendanceCorrection(
         otReasonCategory,
         remark,
         requestKind,
+        originalClockSnapshot,
       },
     });
     return { correctionId: row.id };
@@ -3343,20 +3362,28 @@ async function attendanceFiguresByIdTx(tx: Tx, attendanceId: string): Promise<Am
  *  the resolution rule are stamped on the plan and attendance is left alone, and the hours land later,
  *  when the day is worked (applyApprovedOtPlanTx). Everything else — every clock correction, and every
  *  OT request dated today or earlier — behaves exactly as it did. `today` is injectable for tests only. */
+export class MissingAttendanceRejectReasonError extends Error {
+  constructor() { super('A rejection explanation of 1–1000 characters is required.'); }
+}
+
 export async function decideAttendanceCorrection(
   ctx: SessionContext,
-  p: { correctionId: string; decision: 'approved' | 'rejected'; deciderEmploymentId?: string; today?: string },
+  p: { correctionId: string; decision: 'approved' | 'rejected'; rejectReason?: string; deciderEmploymentId?: string; today?: string },
 ) {
   return withTenant(ctx, async (tx) => {
     const [cor] = await tx
       .select()
       .from(attendanceCorrection)
       .where(eq(attendanceCorrection.id, p.correctionId))
-      .limit(1);
+      .limit(1).for('update');
     if (!cor) throw new Error('correction request not found (or not visible)');
     if (cor.status !== 'pending') throw new Error(`correction request is already ${cor.status}`);
 
     await assertCanDecide(tx, ctx, cor.employmentId, 'attendance correction', scopeOf('attendance.correction'));
+    if (!['approved', 'rejected'].includes(p.decision)) throw new Error('Invalid attendance decision');
+    const rejectReason = p.decision === 'rejected' ? (p.rejectReason ?? '').trim() : null;
+    if (p.decision === 'rejected' && (!rejectReason || rejectReason.length > 1000)) throw new MissingAttendanceRejectReasonError();
+
 
     // 1e9145d4 — true when this approval was HELD ON THE PLAN rather than written to an attendance day.
     // Surfaced in the decision event's payload and in the return value, so a caller (and an auditor) can
@@ -3696,6 +3723,7 @@ export async function decideAttendanceCorrection(
       .update(attendanceCorrection)
       .set({
         status: p.decision,
+        rejectReason,
         decidedByEmploymentId: p.deciderEmploymentId ?? null,
         decidedAt: sql`now()`,
       })
@@ -3709,6 +3737,7 @@ export async function decideAttendanceCorrection(
       subjectEmploymentId: cor.employmentId,
       payload: {
         decision: p.decision,
+        rejectReason,
         deciderEmploymentId: p.deciderEmploymentId ?? null,
         // 1e9145d4 — `overtime` tells a consumer which KIND of request was decided. The notification
         // registry needs it: this one event type covers both an overtime plan and a clock-time correction,
@@ -3748,6 +3777,8 @@ export function listAttendanceCorrections(
         approvedOtMinutes: attendanceCorrection.approvedOtMinutes,
         otApprovalMethod: attendanceCorrection.otApprovalMethod,
         reason: attendanceCorrection.reason,
+        rejectReason: attendanceCorrection.rejectReason,
+        originalClockSnapshot: attendanceCorrection.originalClockSnapshot,
         status: attendanceCorrection.status,
         createdAt: attendanceCorrection.createdAt,
         // ADR-0069 / R45 3707cba9 — surface the "Actual vs Approved" OT comparison the decide path already
@@ -3823,6 +3854,8 @@ export type OvertimePlanRow = {
   requestedOtMinutes: number | null;
   approvedOtMinutes: number | null;
   otReasonCategory: OtReasonCategory | null;
+  rejectReason?: string | null;
+  originalClockSnapshot?: typeof attendanceCorrection.$inferSelect.originalClockSnapshot;
   reason: string | null;
   /** f618065d (r362) — the EMPLOYEE's own optional note, written only by requestAttendanceCorrection.
    *  It is NOT an approver's reason: `decideAttendanceCorrection` takes none and writes none. The plan
@@ -4369,6 +4402,8 @@ export function myOvertimePlans(
         approvedOtMinutes: attendanceCorrection.approvedOtMinutes,
         otReasonCategory: attendanceCorrection.otReasonCategory,
         reason: attendanceCorrection.reason,
+        rejectReason: attendanceCorrection.rejectReason,
+        originalClockSnapshot: attendanceCorrection.originalClockSnapshot,
         remark: attendanceCorrection.remark,
         status: attendanceCorrection.status,
         appliedAt: attendanceCorrection.appliedAt,
@@ -4857,6 +4892,8 @@ export type MyAttendanceRequestRow = {
   plannedStartTime: string | null;
   plannedEndTime: string | null;
   otReasonCategory: OtReasonCategory | null;
+  rejectReason?: string | null;
+  originalClockSnapshot?: typeof attendanceCorrection.$inferSelect.originalClockSnapshot;
   reason: string | null;
   remark: string | null;
   requestKind: AttendanceRequestKind | null;
@@ -4926,6 +4963,8 @@ export function myAttendanceCorrections(
         plannedEndTime: attendanceCorrection.plannedEndTime,
         otReasonCategory: attendanceCorrection.otReasonCategory,
         reason: attendanceCorrection.reason,
+        rejectReason: attendanceCorrection.rejectReason,
+        originalClockSnapshot: attendanceCorrection.originalClockSnapshot,
         remark: attendanceCorrection.remark,
         requestKind: attendanceCorrection.requestKind,
         status: attendanceCorrection.status,
@@ -4941,7 +4980,7 @@ export function myAttendanceCorrections(
       ))
       // Newest first BY THE ATTENDANCE DATE, then by when it was filed — the same ordering the Plan OT
       // list uses, so two lists on one screen are not sorted two different ways.
-      .orderBy(desc(attendanceCorrection.attendanceDate), desc(attendanceCorrection.createdAt))
+      .orderBy(desc(attendanceCorrection.attendanceDate), desc(attendanceCorrection.createdAt), desc(attendanceCorrection.id))
       .limit(limit);
     if (rows.length === 0) return [];
     // Which of them carry a file. One extra query for the page rather than one per row; the content
@@ -5588,4 +5627,10 @@ export async function recomputeDayFigures(
       ...stage1,
     },
   };
+}
+
+/** Presentation/command anchoring only; calculation remains in the existing writer. */
+export async function clockScheduleForTx(tx: Tx, employmentId: string, date: string) {
+  const schedule = await scheduleFor(tx, employmentId, date);
+  return { crossesMidnight: schedule.crossesMidnight, start: schedule.shiftStart, end: schedule.shiftEnd, code: await recomputeShiftCode(tx, employmentId, date, schedule.source) };
 }

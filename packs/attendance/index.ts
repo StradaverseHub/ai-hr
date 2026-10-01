@@ -13,6 +13,8 @@
  *   `core/attendance-rule.ts` (lateness/early-out/OT rule library), `core/attendance-calc.ts`
  *   (7c834696 stage 1 — the pure lateness/early-out/OT-band arithmetic), `core/attendance-derive.ts`
  *   (status/flag/OT derivation), `core/attendance-device.ts` (R63–R65 device registration + gate),
+ *   `core/attendance-clock.ts` (atomic private photo command and audited purge),
+ *   `core/attendance-clock-read.ts` (own live status, original photo receipts),
  *   `core/attendance-allowance.ts` (attendance-triggered allowances), and
  *   `core/clocking-location.ts` — clocking sites ARE pack-owned: they exist solely for the clock
  *   portal's geofence/device gate and per-employee site assignment, not for the org spine

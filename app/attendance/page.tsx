@@ -173,6 +173,7 @@ export default async function AttendancePage({
                             <form action={decideCorrectionAction}>
                               <input type="hidden" name="correctionId" value={c.id} />
                               <input type="hidden" name="decision" value="rejected" />
+                              <label className="block text-xs">{t('rejectReasonLabel')}<textarea name="rejectReason" required maxLength={1000} className="block w-full rounded border border-border bg-background p-2" /></label>
                               <Button type="submit" size="sm" variant="outline">
                                 {t('reject')}
                               </Button>

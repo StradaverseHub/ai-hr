@@ -8,7 +8,7 @@ import { decideLeave, decideLeaveDate, decideLeaveDates, decideLeaveCancellation
 import { parseBulkItems, runBulkDecide, type BulkDecideItem } from '@/lib/approvals-bulk';
 import { approvalsReturnUrl } from '@/lib/approvals-categories';
 import { localizeLeaveError } from '@/app/me/actions';
-import { decideAttendanceCorrection } from '@/core/attendance';
+import { decideAttendanceCorrection, MissingAttendanceRejectReasonError } from '@/core/attendance';
 import { decideProfileChange } from '@/core/profile';
 import { decideClaim } from '@/core/claims';
 import { decideResignation } from '@/core/offboarding';
@@ -152,9 +152,9 @@ export async function approveCorrectionAction(formData: FormData) {
   const nav = navOf(formData);
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
   try {
-    await decideAttendanceCorrection(s, { correctionId: String(formData.get('id')), decision });
+    await decideAttendanceCorrection(s, { correctionId: String(formData.get('id')), decision, rejectReason: String(formData.get('rejectReason') ?? '') });
   } catch (e) {
-    fail(e, nav);
+    fail(e instanceof MissingAttendanceRejectReasonError ? new Error((await getTranslations('attendance'))('rejectRequired')) : e, nav);
   }
   done(`Correction ${decision}`, nav);
 }
@@ -263,7 +263,7 @@ async function dispatchBulkItem(
       });
       return;
     case 'attendance':
-      await decideAttendanceCorrection(s, { correctionId: item.id, decision, deciderEmploymentId });
+      await decideAttendanceCorrection(s, { correctionId: item.id, decision, rejectReason, deciderEmploymentId });
       return;
   }
 }

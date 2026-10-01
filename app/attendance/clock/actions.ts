@@ -73,31 +73,14 @@ async function localizeClockError(e: unknown): Promise<string> {
   return (e as Error).message;
 }
 
-export async function clockInAction(formData: FormData) {
-  const { s, employmentId } = await resolveMe();
-  const { date, time } = nowParts();
-  try {
-    await checkIn(s, { employmentId, date, time, geo: parseGeo(formData), deviceToken: parseDeviceToken(formData) });
-  } catch (e) {
-    // deviceError=1 renders the inline register-this-device prompt instead of a bare error string.
-    if (e instanceof DeviceNotRegisteredError) redirect(`${PAGE}?deviceError=1`);
-    redirect(`${PAGE}?error=${encodeURIComponent(await localizeClockError(e))}`);
-  }
-  revalidatePath(PAGE);
-  redirect(`${PAGE}?toast=Clocked+in`);
+export async function clockInAction(_formData: FormData) {
+  await getSession();
+  redirect('/attendance/clock');
 }
 
-export async function clockOutAction(formData: FormData) {
-  const { s, employmentId } = await resolveMe();
-  const { date, time } = nowParts();
-  try {
-    await checkOut(s, { employmentId, date, time, geo: parseGeo(formData), deviceToken: parseDeviceToken(formData) });
-  } catch (e) {
-    if (e instanceof DeviceNotRegisteredError) redirect(`${PAGE}?deviceError=1`);
-    redirect(`${PAGE}?error=${encodeURIComponent(await localizeClockError(e))}`);
-  }
-  revalidatePath(PAGE);
-  redirect(`${PAGE}?toast=Clocked+out`);
+export async function clockOutAction(_formData: FormData) {
+  await getSession();
+  redirect('/attendance/clock');
 }
 
 /**

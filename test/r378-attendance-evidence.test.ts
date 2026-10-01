@@ -70,8 +70,8 @@ describe('r378 private capture command integrity',()=>{
   const today=await ownClockToday(x.ctx,x.intent.deviceToken,{lat:3,lng:101,accuracy:10});
   expect(today.workedSeconds).toBe(35);expect(today.clockedIn).toBe(false);expect(today.captures).toHaveLength(4);
   const [day]=await owner.db.select().from(schema.attendance);
-  expect(day.checkOutAt,'the authoritative last clock-out must retain its actual server seconds').toBe('09:00:55');
   expect(day.workedMinutes).toBe(0);expect(day.otMinutes).toBe(0);
+  expect(day.checkOutAt,'the authoritative last clock-out must retain its actual server seconds').toBe('09:00:55');
  });
  it('photo reads obey subject RLS and purge keeps receipt/digests with an audited unavailable marker',async()=>{
   const x=await subject(), receipt=await captureEmployeeClock(x.ctx,x.intent), stranger=await subject();
@@ -86,6 +86,23 @@ describe('r378 private capture command integrity',()=>{
   await expect(purgeClockPhoto(x.ctx,receipt.id)).rejects.toThrow();
   await purgeClockPhoto(x.admin,receipt.id);expect((await eventTypesFor(b.tenantId,receipt.id)).filter(t=>t==='attendance.clock.photo-purged')).toHaveLength(1);
   await expect(withTenant(x.ctx,tx=>tx.execute(sql`update attendance_clock_capture set photo_digest=${'0'.repeat(64)} where id=${receipt.id}::uuid`))).rejects.toThrow();
+ });
+ it('legacy manual same-minute and future anchors keep existing ordering guards without partial evidence',async()=>{
+  const x=await subject();const date=todayInKualaLumpur();clockAt(date+'T09:00:10+08:00');
+  await checkIn(x.admin,{employmentId:x.h.employmentId,date,time:'09:00'});
+  await expect(captureEmployeeClock(x.ctx,{...x.intent,action:'out'})).rejects.toThrow();
+  expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(0);
+  const [day]=await owner.db.select().from(schema.attendance);expect(day.checkInAt).toBe('09:00:00');expect(day.checkOutAt).toBeNull();
+  await owner.db.update(schema.attendancePunch).set({punchAt:'10:00:00'}).where(eq(schema.attendancePunch.attendanceId,day.id));
+  await expect(captureEmployeeClock(x.ctx,{...x.intent,action:'out',requestId:randomUUID()})).rejects.toThrow('previous attendance punch');
+  expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(0);
+ });
+ it('direct app-role insert rejects foreign-tenant employment, independently of service checks',async()=>{
+  const x=await subject();const receipt=await captureEmployeeClock(x.ctx,x.intent);
+  const [row]=await owner.db.select().from(schema.attendanceClockCapture).where(eq(schema.attendanceClockCapture.id,receipt.id));
+  const foreign=await seedBase();const other=await hireEmployee(adminCtx(foreign),{person:{fullName:'Synthetic foreign subject',primaryEmail:randomUUID()+'@test.local'},companyId:foreign.companyId,departmentId:foreign.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
+  await expect(withTenant(x.ctx,tx=>tx.insert(schema.attendanceClockCapture).values({...row,id:randomUUID(),requestId:randomUUID(),employmentId:other.employmentId}))).rejects.toThrow();
+  expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(1);
  });
  it('revoked device cannot make a new action but an exact accepted replay returns its historical receipt',async()=>{
   const x=await subject(),receipt=await captureEmployeeClock(x.ctx,x.intent);await revokeDevice(x.admin,{deviceId:x.device.deviceId});

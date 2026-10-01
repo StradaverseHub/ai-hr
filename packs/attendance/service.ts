@@ -24,3 +24,7 @@ export * from '../../core/clocking-location';
 export type { DayContext } from '../../core/attendance';
 
 export * from '../../core/attendance-explain';
+
+export * from '../../core/attendance-clock';
+
+export * from '../../core/attendance-clock-read';

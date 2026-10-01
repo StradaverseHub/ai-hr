@@ -1,9 +1,11 @@
 'use server';
 
+import { getTranslations } from 'next-intl/server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { checkIn, checkOut, decideAttendanceCorrection } from '@/core/attendance';
+import { requireAdmin } from '@/lib/authz';
+import { checkIn, checkOut, decideAttendanceCorrection, MissingAttendanceRejectReasonError } from '@/core/attendance';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -16,7 +18,7 @@ const dateOf = (formData: FormData) => {
 const DAILY = '/attendance/daily';
 
 export async function checkInAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   const date = dateOf(formData);
   try {
@@ -35,16 +37,17 @@ export async function decideCorrectionAction(formData: FormData) {
     await decideAttendanceCorrection(s, {
       correctionId: String(formData.get('correctionId')),
       decision: String(formData.get('decision')) as 'approved' | 'rejected',
+      rejectReason: String(formData.get('rejectReason') ?? ''),
     });
   } catch (e) {
-    redirect(`${back}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${back}?error=${encodeURIComponent(e instanceof MissingAttendanceRejectReasonError ? (await getTranslations('attendance'))('rejectRequired') : (e as Error).message)}`);
   }
   revalidatePath(back);
   redirect(`${back}?toast=${encodeURIComponent('Correction ' + String(formData.get('decision')))}`);
 }
 
 export async function checkOutAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   const date = dateOf(formData);
   try {

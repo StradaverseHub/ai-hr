@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { myEmployment, reportingLinesFor } from '@/core/read';
 import { MY_ATTENDANCE_REQUEST_ROW_CEILING, myAttendanceCorrections } from '@/packs/attendance/service';
@@ -82,7 +82,7 @@ export default async function MyRequestStatusPage({
     size?: string;
   }>;
 }) {
-  const t = await getTranslations('me');
+  const t = await getTranslations('me'), locale = await getLocale();
   const sp = await searchParams;
   const s = await getSession();
   const me = await myEmployment(s);
@@ -248,6 +248,7 @@ export default async function MyRequestStatusPage({
                         <div className="tabular-nums">{askedFor(r, t)}</div>
                         {r.reason && <div className="text-[11px]">{r.reason}</div>}
                         {r.remark && <div className="text-[11px] italic">{r.remark}</div>}
+                        {r.status === 'rejected' && <div className="text-[11px] text-red-700 dark:text-red-300">{t('maRejectReason')}: {r.rejectReason ?? t('maRejectNotRecorded')} {r.decidedAt ? t('decidedOn', {date: new Intl.DateTimeFormat(locale, {timeZone:'Asia/Kuala_Lumpur',dateStyle:'medium'}).format(r.decidedAt)}) : ''}</div>}
                         {r.hasAttachment && (
                           <a
                             href={`/attendance/requests/attachment/${r.id}`}
@@ -290,6 +291,7 @@ export default async function MyRequestStatusPage({
                     {r.reason && <span className="text-muted-foreground"> — {r.reason}</span>}
                   </p>
                   {r.remark && <p className="text-sm italic text-muted-foreground">{r.remark}</p>}
+                  {r.status === 'rejected' && <p className="break-words text-sm text-red-700 dark:text-red-300">{t('maRejectReason')}: {r.rejectReason ?? t('maRejectNotRecorded')} {r.decidedAt ? t('decidedOn', {date: new Intl.DateTimeFormat(locale, {timeZone:'Asia/Kuala_Lumpur',dateStyle:'medium'}).format(r.decidedAt)}) : ''}</p>}
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     <span>
                       {t('maColSubmitted')} <span className="tabular-nums">{submittedOn(r)}</span>

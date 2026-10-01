@@ -56,7 +56,7 @@ const ALL_TABLES = [
   'clocking_location', 'employee_clocking_location',
   // 5249d43f — registered clocking devices: truncate between test files (the global unique token index
   // means a leaked row can't collide, but a surviving device would make a later gate test false-green).
-  'employee_device',
+  'employee_device', 'attendance_clock_capture',
   'notification', 'notification_pref', 'notification_delivery', 'notification_cursor',
   // 6e122302 — the Notice Board. `notice_recipient` cascades from `notice`, but BOTH are listed for the
   // ADR-0071 reason recorded further down: a table only ever cleared as a side effect is a table that
