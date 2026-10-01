@@ -661,8 +661,13 @@ describe('recordLineIdentity — repairing a stale record-line label (417d4937)'
       .toBe('MEAL ALLOWANCE');
     const pdf = readSrc('lib/payslip-pdf.ts');
     expect(pdf, 'the flag is read as === true here too, or the two readers disagree').toContain(
-      '.filter((l) => l?.nonPayable === true)',
+      '.filter((l) => l?.nonPayable === true && !isRecordedEmployerContribution(l))',
     );
+    const contribution = readSrc('core/payslip-configured-contributions.ts');
+    expect(contribution, 'only an explicit processed contribution stamp leaves the legacy Other list')
+      .toContain("return value.nonPayable === true && value.kind === 'contribution';");
+    expect(pdf, 'the employer list must use the same recorded-classification reader')
+      .toContain('configuredEmployerContributions: payslipConfiguredContributions(st)');
   });
 
   it('the kernel stamps the flag this rule branches on — both BIK sites and the txn helper', () => {
@@ -671,11 +676,12 @@ describe('recordLineIdentity — repairing a stale record-line label (417d4937)'
     // either half passes throughout.
     const kernel = readSrc('core/payroll.ts');
     expect(kernel).toContain('list.push({ ...line, nonPayable: false });');
-    expect(
-      kernel.match(/recordLines\.push\(\{ code: c\.code, name: c\.name, amount: applied, nonPayable: true \}\)/g)
-        ?.length,
-      'both BIK push sites must stamp nonPayable: true',
-    ).toBe(2);
+    const sites = kernel.match(/if \(c\.nonPayable\) \{ recordLines\.push\(\{ code: c\.code, name: c\.name, amount: applied, nonPayable: true,[^;]+\}\); continue; \}/g) ?? [];
+    expect(sites, 'both record-only sites must retain the strict nonPayable flag and stop before cash routing').toHaveLength(2);
+    for (const site of sites) {
+      expect(site, 'forward contribution provenance must be stamped only for a declared contribution kind')
+        .toContain("...(c.kind === 'contribution' ? { kind: 'contribution' as const } : {})");
+    }
   });
 
   it('componentLines are NOT repaired — rule (a) still holds for the per-item stamp', () => {
