@@ -1,3 +1,192 @@
+## r374 — 2026-10-01 · main@2191ca48 · no migration
+
+Two board items plus the tooling and standing orders the round paid for. 31 files, +2023/−82, two new
+suites, **no migration**, all six locales at 12,832 keys with none removed. Gate **GREEN across all 16
+chunks** — on the THIRD attempt, and the two red runs were MINE, not the code's. See below, because the
+lesson is the most reusable thing in this round.
+
+**Items closed:** `371708bb` horizontal overflow at narrow desktop widths · `7dbaf677` employee without a
+basic salary.
+
+### `371708bb` — it was the shared shell, not one page
+
+Measured at an 820px viewport across 13 routes: `documentElement.scrollWidth` **856** against
+`clientWidth` **820** — **36px, identically, on every one.** Not a page; the app shell. There is no visible
+scrollbar because `body` is `h-dvh overflow-hidden`, which is why it reads as "the page is cut off" rather
+than "the page scrolls". Confirmed it is a real scroll and not a reported number: `window.scrollTo(500,0)`
+leaves `scrollLeft === 36`. Re-measured with the dev-only chrome deleted from the DOM — still exactly 36,
+so it ships.
+
+**The element, measured rather than reasoned about:** the chevron in the account trigger at right edge
+**856**, and the avatar at 824, spilling out of a box the header grid had squeezed to **14px**.
+
+**The cause:** the header's `grid-cols-[… minmax(0,20rem) …]` from `sm` up. A *fixed* track is sized
+**before** `fr` tracks get anything, and `sm` is the same breakpoint that brings in the 232px rail — so in
+one step the header loses 232px while the centre gains 278px. Side tracks measured **83px** against a
+**206px** floor in the right cluster.
+
+The fix makes the centre track yield instead of the sides collapsing, via
+`min(20rem, max(0px, 100% − 27.75rem))`. **27.75rem = 444px = 2 × 206 + the two 16px gaps — derived, and
+re-derived inside the guard** rather than chosen. Self-balancing with no per-viewport breakpoint. Track
+widths at 1120 / 1280 / 1440 / 1512 / 1535 / 1536 / 1600 / 1920 are **byte-identical to before**, and the
+r256 account-identity budget is untouched.
+
+⚠️ **The evidence for this fix is NOT in the gate.** 74 measurements (37 light + 37 dark, 25 widths
+including both sides of every Tailwind breakpoint) live in `test/topbar-identity-width.browser.test.tsx`,
+and the browser project is deliberately outside `scripts/gate-chunked.sh`. **A green full gate says
+nothing about it** — run `pnpm test:browser` as well. That warning is now in the guard's own header.
+
+Also caught by *rasterising*, which no assertion had: at our 9pt the masthead ended at 416.1 while the
+employee TIN value starts at 418.8 — **they collided on the page**; and `midMoney` ran to 556.6 so
+D5(a)/(b)'s leader rules printed through the money column. And a Tailwind arbitrary value that silently
+fails to compile would give a green build and a broken header, so the compiled CSS was grepped to confirm
+all three tracks are really present.
+
+### `7dbaf677` — a Director with no monthly basic
+
+Blank, whitespace and zero now push **`remarks`** instead of `basicSalary`; non-finite and **negative**
+stay refused. The reporter's own condition is what makes it safe: with no amount, Remarks is compulsory.
+No tick box — Remarks does that job, and one fact in one place beats two that can disagree.
+
+**The non-vacuity result worth keeping** is the one for shipping the relief while forgetting the remark
+requirement:
+
+    AssertionError: no employment may survive a refused activation: expected 1 to be +0
+
+The refusal arrived at `setCompensation` **after `hireEmployee` had already committed** — a half-activated
+employee, measured rather than theorised.
+
+Two service gaps the new permissiveness opened were closed with it: a **−100** basic used to store
+silently with any remark, and a merit percentage on a zero basic threw `SalaryRemarkRequiredError` at an
+appraiser who has no Remarks field.
+
+`payModeErrorMessage` translated exactly **one** error, so the remark refusal had been reaching HR as
+developer English in all six locales since r369. It is now `compensationErrorMessage` — renamed because
+the old name claimed one rule while covering four, which is how a second mapper gets added beside it —
+and the two movement writers route through it. The rollback action deliberately does **not**: its
+compensation leg calls `supersedeCompensation`, not `setCompensation`, so it raises none of the four, and
+that exclusion is asserted from both sides rather than left as a comment.
+
+**And the mechanism nobody had read:** `parseMovementForm` reads a blank amount as `undefined`, and the
+movement form has no `required`, so a blank is the ordinary post. A currency-only movement therefore sends
+`dSalary ?? current basic` — and for a Director with no monthly basic, *current* is zero. That is how the
+refusal fires **with nobody having typed a salary at all**.
+
+### ⚠️ A SECOND vacuous slice guard, and the sweep that followed
+
+`test/wizard-personnel-shared-fields.test.ts` carried the r219 trap verbatim — a bare `indexOf` pair where
+a renamed marker makes `slice(-1, n)` the empty string, so both `not.toContain`s pass over no source. It
+would have let the Add form be relieved while the Edit form was forgotten.
+
+So the repo was swept: **396 single-line slice markers checked, and after discarding regex over-capture and
+`\n`-escape artifacts, there is NO third instance.** The trap existed in exactly two places, both now
+fixed. **The durable fix is therefore the §8 rule, not a periodic sweep** — because for a slice over
+*generated* output (rendered HTML, a generated file), no source search can tell you anything.
+
+⚠️ **CORRECTION, found hours later by an r375 builder: "no third instance" was an OVERCLAIM.** The sweep
+matched only the TWO-argument form. The **single-argument** form is also live, and on it the obvious
+emptiness guard **silently does not work**:
+
+    const form = panel.slice(panel.indexOf('function CarryPolicyForm('));
+    expect(form).not.toBe('');     // PASSES even when indexOf returned -1
+
+because `slice(-1)` returns the **last character**, not `""`. Live in
+`test/carry-percent-cap-removal.test.ts`, saved only by a later `expect(start).toBeGreaterThan(-1)` — by
+luck downstream, not by design; its `fixedMaxBranch()` has no emptiness check at all. **So the rule is
+about the INDEX, not the slice:** assert every marker `>= 0` BEFORE slicing, then assert length.
+`not.toBe('')` is never adequate — `-1` is truthy and `slice(-1)` is non-empty. And the lesson about the
+sweep itself: a mechanical audit is only as good as the shapes its pattern admits, so report what the
+pattern covered rather than what the code contains.
+
+### Tooling, and two standing orders
+
+- **`improve:pull-planned`.** A `planned` item's PLAN TEXT was **unreachable from the CLI**: `boardStatus()`
+  selects `left(id::text, 8)` so the full id never leaves the database, `pull-item` needs a whole uuid, and
+  `pullPlannable`/`pullApproved`/`pullBlocked` all skip `planned`. That matters because a plan goes stale
+  while it waits — r373 shipped an item whose approved plan's central premise had become false.
+- **`scratchpad/` is now gitignored.** It was not, and a build agent's render evidence reached **4.2 MB**
+  untracked in a worktree, one `git add -A` from being committed.
+
+### ⚠️ THREE GATE ATTEMPTS, AND BOTH REDS WERE RESOURCE CONTENTION, NOT CODE
+
+| attempt | result | cause |
+|---|---|---|
+| 1 | 8 failed, **0 AssertionErrors**, 8 unrelated suites | two builders' vitest vs the per-chunk cluster rebuild |
+| 2 | 9 failed, **0 AssertionErrors**, 4 × `Hook timed out in 30000ms` | a builder's `tsc` at **1.19 GB** (later 2.4 GB) beside 3 vitest workers |
+| 3 | **GREEN 16/16** | gate held BOTH lock slots |
+
+Two mechanisms, both now in §10:
+
+1. **`gate-chunked.sh` calls `dev-db-rebuild.sh` INSIDE its per-chunk loop**, so a 16-chunk gate rebuilds
+   the whole cluster 16 times. That destroys any concurrent vitest's databases **whatever its
+   `TEST_DB_NAMESPACE`** — a namespace separates agents from *each other*, never from a cluster rebuild.
+2. **`testlock.sh` has two slots, so it grants a builder one while the gate holds the other.** It was never
+   a gate lock.
+
+**The fix is not a better instruction — it is making the lock enforce it.** Hold both slots by nesting:
+`testlock.sh gate-a -- testlock.sh gate-b -- <gate>`. Nesting also **self-sequences**: it waited 40s for a
+builder's in-flight `tsc` to release slot.2, so nothing had to be killed. The instruction route cannot
+work on its own, because a message reaches an agent at its *next tool round* — useless when it is already
+blocked inside a two-minute `tsc`.
+
+**One diagnostic correction owed:** I was counting "environment-shaped errors" with a grep that also matches
+benign Postgres `does not exist, skipping` migration notices, which inflated it to 136 and 129. The signal
+that actually held both times was **failing tests with ZERO AssertionErrors**. A single real AssertionError
+in attempt 2 (`test/tp1-relief-redesign.test.ts`, `not to contain '9999'`) turned out to be collateral too —
+chunk 1 is green in attempt 3 with no change to that test.
+
+### Outstanding, carried forward
+
+- **`db1e7b9d` (PCB/MTD) was contested again** with 10 acceptance criteria, read and preserved, not yet
+  planned. Its point 4 — print real `Σ(Y−K)` instead of `Sum(Y-K)` — is **font-blocked, not a quick fix**:
+  the PDF embeds Helvetica (WinAnsi/Latin-1) and `safe()` folds everything outside Latin-1 to `?`. Σ is
+  U+03A3 and the true minus is U+2212, so this needs the Unicode font path (`lib/payslip-pdf-fonts.ts`,
+  ADR-0036's Unicode half) extended to the PCB slip — which touches `fontkit`, whose upgrade is the
+  **blocked security H1** work. Points 1–3 (Q from PCB settings, C from the employee's record, counted-as
+  must be 0 when the claimed rate is 0) look like ordinary wiring, unverified.
+- **Two unshipped r375 branches**, committed and left deliberately half-done with hand-back notes:
+  `build/r375-supervisor` (supervisor-name visibility — note the standing refusal to widen
+  `app.can_see_person`, which gates DOB, race, religion and address) and `build/r375-carryforward`
+  (carry-forward forfeit figure, which reaches more surfaces than first claimed, including the analytics
+  download and the assistant's answer).
+- **Corrections owed to the reporter from the unshipped `build/r375-carryforward`**, which are worth more
+  than the branch: (a) the plan told them the Explain panel "contradicts itself" by printing a figure
+  beside "Carry forward is off for this leave type". **That is false** — the figure is
+  `breakdown.broughtForward` (the RAW signed prior-cycle sum, an addend of the reconciliation identity),
+  not `carriedForward`, and changing it would break `reconciledBalance`. The panel also prints "Brought
+  Forward Forfeited" from the tagged rows, which for a carry-off type equals the whole figure, so
+  "+12 brought forward, −12 forfeited, carry is off" was already the truth. (b) The wrong figure reached
+  **two surfaces the plan never named** — the Employee Balances **download**, and the analytics download
+  is **three** formats (csv + xlsx + pdf) off one route, not one. (c) A real unresolved risk: leave-type
+  rule columns are **not versioned**, so a closed year's carry report resolves with TODAY's rules; the
+  item's own `expected_behavior` demands exactly that, and the same hazard already existed for a changed
+  cap, so it is a widening of a pre-existing property rather than a new one — but the reporter should be
+  told in one sentence.
+- **`.next/dev/types` needs clearing too**, not just `.next/types`, when a stale validator names a deleted
+  route. Both directories carry it.
+- ⚠️ **MIGRATION 0498 IS CLAIMED BY AN UNSHIPPED BRANCH.**
+  `db/migrations/0498_own_reporting_managers.sql` exists only on `build/r375-supervisor` (`1f190053`).
+  `main`'s journal is 406 entries / **max idx 497**, so the next session will allocate 498 correctly and
+  **collide**. Check unmerged branches before allocating:
+  `git log --all --diff-filter=A -- 'db/migrations/0*'`. **That SQL has never been executed** — no
+  `gate:shadow`, no test; it is unproven that it parses.
+- **Findings from the unshipped `build/r375-supervisor` worth more than the branch.** The plan said to route
+  the roster through `reportingLinesFor` because both have "the same inner join". **Both halves are wrong,
+  and following it would have been a regression:** `reportingLinesFor` filters `valid_to IS NULL` and
+  **never checks `valid_from`** (so it sees a future-dated open line and misses a line with a scheduled
+  end), while the roster helper did the reverse — they were never interchangeable. And the roster helper is
+  **two queries**, not one join: the first reads `reporting_line` alone, which is tenant-wide and therefore
+  *succeeds*, yielding a manager id the second query then fails to resolve. Same symptom, different
+  mechanism. Also: `current_date` is the wrong "today" — on a UTC server it is yesterday for the first eight
+  hours of every Malaysian day, which would hand the screen the **outgoing** supervisor across a handover;
+  the SQL form of `todayInKualaLumpur()` is the idiom 0288/0320/0449 already use. And a **third**
+  manager-name reader exists that the plan never mentioned, `core/movement.ts:1236` — admin-only and
+  historical, so deliberately untouched rather than a gap.
+- **Security H1 still open** — three CVEs; upgrade `fontkit` before the framework, verified on Linux.
+- `011c5b7f` (Attendance Overview) is approved and unstarted; `96051c97` (two screens clip table columns,
+  cause deliberately unestablished) is planned.
+- `devdb-lock.sh` still has one holder and **no stale-slot reaping**.
+
 ## r373 — 2026-10-01 · main@ed9eaba8 · no migration
 
 Two board items, the phase-two halves of r372's EA and statutory work. 45 files, +4046/−683, two new
