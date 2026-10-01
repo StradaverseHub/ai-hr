@@ -868,6 +868,18 @@ export function CarryPolicyForm({
         // None = disabled carry: keep the stored cap/expiry so switching back to Fixed Max restores them.
         // The PERCENTAGE is cleared instead — carryEnabled() reads a stored percentage as "carry is on".
         <>
+          {/* ed6f7a7b — THE RETENTION IS NOW SAID OUT LOUD. The reporter read "carry off with a maximum of
+              5 days still in the field" as a contradictory state the editor saved quietly. It is not saved
+              quietly and it is not editable — the box above is GONE in this mode — but nothing on screen
+              said the kept figure is dormant, and the balance screens were simultaneously printing it as
+              days brought forward (the defect this round fixes in core/read.ts + core/analytics.ts). Shown
+              only when there IS a retained figure: with the cap at 0 there is nothing dormant to explain,
+              and a line claiming otherwise would be the same kind of untruth in the other direction. */}
+          {cap > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {t('subStep.carryNoneDormant', { days: formatDayInput(cap) })}
+            </p>
+          )}
           <input type="hidden" name="carryForwardMax" value={cap} />
           <input type="hidden" name="carryForwardPercent" value="" />
           <input

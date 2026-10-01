@@ -7724,6 +7724,7 @@
         "roundingHelp": "Applied as the final step, AFTER the entitlement calculation — the earning rule itself is unchanged. Choose No Rounding to keep the calculated value exactly, or Custom Rounding and write the table yourself. The rounded figure is the one credited, so it flows through the leave balance, YTD entitled, the entitlement breakdown and the accrual process. Set separately for each leave type.",
         "carryPolicyLabel": "Carry forward policy",
         "carryNone": "None (no carry-forward)",
+        "carryNoneDormant": "Carry forward is off, so nothing carries into the next leave year. The maximum of {days} day(s) set earlier is kept but dormant — it has no effect on any balance, and it will apply again if you switch carry forward back on.",
         "carryFixedMax": "Fixed maximum",
         "carryHelp": "Fixed maximum keeps up to the cap; percentage keeps that share of the balance still held at year end. The two are alternatives — with percentage, the percentage alone decides the figure. The expiry fields decide when the carried portion lapses (a date, or X months after year-end).",
         "carryStepHelp": "A front door to the active entitlement policy's carry-forward settings — the per-policy controls under Eligibility remain the underlying truth.",

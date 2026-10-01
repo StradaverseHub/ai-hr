@@ -3775,14 +3775,29 @@ export function leaveEntitlementBreakdown(
     const carryMax = policy?.carryMax ?? 0;
     const carryPercent = policy?.carryPercent ?? null;
     const expiry = policy?.carryExpiry ?? null;
+    // ed6f7a7b — THE CARRY-ENABLED GATE. Asked ONCE for this whole breakdown, and asked with the ENGINE's
+    // own function so the two sides cannot drift: `resolveCarryAllowance` (core/leave-compute.ts) gates on
+    // `carryEnabled` BEFORE it reaches `carryAllowanceFrom`, and this read path reached the arithmetic
+    // directly. A type configured "carry forward: None" while still holding the maximum the editor
+    // deliberately RETAINS (CarryPolicyForm's 'none' branch keeps it so switching carry back on restores
+    // it) therefore printed a brought-forward figure that openLeaveYear forfeits in FULL.
+    // THE GATE BELONGS HERE, NOT IN THE ARITHMETIC: `carryAllowanceFrom` is the arithmetic alone and is
+    // shared with `reconstructCarry`, which is precisely what stops the report contradicting the ledger.
+    // Zeroing the INPUTS also suppresses the expiry DATE through `carryConfigured` inside the shared
+    // helper — the right outcome, reached without editing a helper two engines depend on.
+    // The STORED figures stay in `carryMax`/`carryPercent` for the derivation node below, which is the one
+    // place HR can read what is configured while it is dormant.
+    const carryOn = carryEnabled(policy);
+    const carryMaxIfOn = carryOn ? carryMax : 0;
+    const carryPercentIfOn = carryOn ? carryPercent : null;
     // R4 Build #1: the expiry date is clamped to the real last day of `expiry.month` in this cycle year
     // (months-mode day=31 sentinel, and any 29-Feb-in-a-common-year) inside the shared helper below —
     // computed once here (pre-aggregates, for the debit-window bound) via the same helper so the two
     // computations can never drift.
     const { carryForwardExpiryDate } = resolveCarryBreakdown({
       cycleStart,
-      carryMax,
-      carryPercent,
+      carryMax: carryMaxIfOn,
+      carryPercent: carryPercentIfOn,
       expiry,
       priorBalanceAtCycleStart: 0,
       debitsInWindow: 0,
@@ -3907,8 +3922,8 @@ export function leaveEntitlementBreakdown(
     // arithmetic (existing test suite is the regression gate).
     const { carried, unconsumedCarry: carryForwardRemaining, forfeited: carryForfeited } = resolveCarryBreakdown({
       cycleStart,
-      carryMax,
-      carryPercent,
+      carryMax: carryMaxIfOn,
+      carryPercent: carryPercentIfOn,
       expiry,
       priorBalanceAtCycleStart: priorBalance,
       debitsInWindow,
@@ -4187,7 +4202,10 @@ export function leaveEntitlementBreakdown(
               : null,
           credits,
         },
-        carry: { rule: policy == null ? 'not_recorded' : carryEnabled(policy) ? 'on' : 'off', maxDays: carryMax, percent: carryPercent },
+        // ed6f7a7b — `carryOn` is the SAME decision the two resolveCarryBreakdown calls above were gated on,
+        // reused rather than re-asked. maxDays/percent stay the STORED configuration on purpose: this node is
+        // what lets HR see a retained maximum while it is dormant, which the zeroed inputs above hide.
+        carry: { rule: policy == null ? 'not_recorded' : carryOn ? 'on' : 'off', maxDays: carryMax, percent: carryPercent },
         adjustments: { manual: configAdjustmentItems, system: systemItems },
         taken: { leaveDays: takenOnLeave, other: otherDebits.map(({ ledgerId: _id, ...o }) => o) },
         pending: pendingRows.map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days) })),

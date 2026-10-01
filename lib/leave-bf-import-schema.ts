@@ -28,7 +28,8 @@
  * Nowhere in this system is there a column holding Brought Forward. It is derived, every time a screen
  * asks: `core/read.ts`'s `priorBalance` is `sum(leave_ledger.days) where effective_on < cycleStart`,
  * surfaced as `broughtForward`, and the Employee Balances grid column is that figure put through the
- * leave type's carry rule (`carriedForward` → `carryAllowanceFrom`).
+ * leave type's carry rule (`carriedForward` → `carryEnabled` gate, then `carryAllowanceFrom` — ed6f7a7b
+ * added the gate; before it the column printed a figure a carry-OFF type forfeits in full).
  *
  * So the BALANCE importer can be made to produce a Brought Forward figure, but only by someone who knows
  * two things written down nowhere: the line must be dated in the PREVIOUS leave year, and it must be an
@@ -226,8 +227,8 @@ export type LeaveBfRowResult = {
  *
  *   `broughtForwardAfter`  — the RAW prior-cycle sum afterwards. This is what the Explain panel prints as
  *                            Brought Forward (`core/read.ts` → `broughtForward` ← `priorBalance`).
- *   `carriedForwardAfter`  — the same figure through the leave type's carry rule (`carryAllowanceFrom`),
- *                            which is what the Employee Balances GRID column prints
+ *   `carriedForwardAfter`  — the same figure through the leave type's carry rule (the `carryEnabled` gate
+ *                            and then `carryAllowanceFrom`), which is what the Employee Balances GRID prints
  *                            (components/leave-balance-row.ts → `carriedForward`).
  *   `forfeitedBf`          — the difference. Load 3.5 days into a type that caps carry-forward at 2 and
  *                            the grid will read 2.00 with 1.50 forfeited. The approved plan promises the

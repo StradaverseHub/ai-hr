@@ -33,6 +33,9 @@ import {
   CARRY_FORFEIT_REASON_CAP,
   CARRY_FORFEIT_REASON_EXPIRY,
   applyLeaveTypeRules,
+  // ed6f7a7b — the ENGINE's carry-enabled decision, re-exported from core/leave.ts. This report must ask
+  // the same question openLeaveYear asks before it prints a carried figure.
+  carryEnabled,
   earnedCycleStart,
   isEarnedMethod,
   leaveTypeRuleColumns,
@@ -1015,13 +1018,22 @@ export async function carryForwardReport(
       const carryMax = policy?.carryMax ?? 0;
       // 7cd914b1: this report is ANNUAL-scoped by design, but an ANNUAL type may now carry by percentage.
       const carryPercent = policy?.carryPercent ?? null;
+      // ed6f7a7b — THE SAME GATE core/read.ts#leaveEntitlementBreakdown applies, and for the same reason:
+      // `resolveCarryBreakdown` is the shared ARITHMETIC and asks no carry-enabled question, so a type set
+      // to "carry forward: None" that still holds a retained maximum reported a carried figure the engine
+      // forfeited in full. Zeroing the inputs also blanks the expiry column via `carryConfigured`.
+      // `forfeitedAtOpen`/`forfeitedAtExpiry` below are read from reason-TAGGED ledger rows, not
+      // reconstructed, so what the engine actually posted is still reported unchanged.
+      const carryOn = carryEnabled(policy);
+      const carryMaxIfOn = carryOn ? carryMax : 0;
+      const carryPercentIfOn = carryOn ? carryPercent : null;
       const anniversaryEarned = isAnniversaryEarned(e.leaveCycle, policy?.method);
       const priorBalance = priorBalByEmp.get(e.employmentId) ?? 0;
       const debitsInWindow = debitByEmp.get(e.employmentId) ?? 0;
       const { carried, carryForwardExpiryDate } = resolveCarryBreakdown({
         cycleStart,
-        carryMax,
-        carryPercent,
+        carryMax: carryMaxIfOn,
+        carryPercent: carryPercentIfOn,
         expiry: policy?.carryExpiry ?? null,
         priorBalanceAtCycleStart: priorBalance,
         debitsInWindow,

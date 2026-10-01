@@ -533,6 +533,9 @@ describe('e1a51aea · i18n — all six locales', () => {
         'roundingHelp',
         'carryPolicyLabel',
         'carryNone',
+        // ed6f7a7b — the line that says a maximum RETAINED while carry is off is dormant. Appended here
+        // because this array is hardcoded: a locale that dropped it would otherwise still pass green.
+        'carryNoneDormant',
         'carryFixedMax',
         'carryHelp',
         'carryStepHelp',

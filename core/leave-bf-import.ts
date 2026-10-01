@@ -95,12 +95,19 @@
  * "Carry-forward not enabled" is `carryEnabled` (core/leave-compute.ts): a positive `carryPercent`, OR
  * `carryForwardEnabled` when it is set, and otherwise a positive `carryMax`.
  *
- * It is NOT `carryMax` alone, and the difference is real. The READ path (`carryAllowanceFrom`) ignores
- * `carryForwardEnabled` while the WRITE path (`openLeaveYear` → `resolveCarryAllowance` → `carryEnabled`)
- * honours it. So a type with `carry_forward_enabled = false` and `carry_forward_max = 5` would DISPLAY up
- * to 5.00 brought forward while `openLeaveYear` forfeited the lot. Validating on the write-path predicate
- * keeps this screen from promising a figure the engine will take away. The divergence itself is recorded
- * as a finding for the round entry; it is not fixed here.
+ * It is NOT `carryMax` alone, and the difference is real. `carryAllowanceFrom` is the ARITHMETIC ALONE and
+ * asks no carry-enabled question; only its callers do. When this importer was written the two READ call
+ * sites did not, while the WRITE path (`openLeaveYear` → `resolveCarryAllowance` → `carryEnabled`) always
+ * had — so a type with `carry_forward_enabled = false` and `carry_forward_max = 5` DISPLAYED up to 5.00
+ * brought forward while `openLeaveYear` forfeited the lot. Validating on the write-path predicate kept this
+ * screen from promising a figure the engine would take away, and raising the divergence as a finding is how
+ * it came to be fixed.
+ *
+ * ed6f7a7b CLOSED THAT GAP, AND THIS PREDICATE IS STILL THE RIGHT ONE. `leaveEntitlementBreakdown`
+ * (core/read.ts) and `carryForwardReport` (core/analytics.ts) now gate on `carryEnabled` before they reach
+ * the arithmetic, so the screens agree with the engine. Nothing here changed, and nothing here should: this
+ * module asks the write path's question directly, which is what made it right BEFORE the read path was
+ * fixed and is what keeps it right if a fourth read surface is ever added without the gate.
  *
  * ══════════════════════════════════════════════════════════════════════════════════════════════════
  * THE CONSUMPTION-ORDER QUESTION, ANSWERED RATHER THAN ASSUMED

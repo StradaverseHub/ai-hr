@@ -7724,6 +7724,7 @@
         "roundingHelp": "Được áp dụng ở bước cuối cùng, SAU khi tính xong quyền lợi — quy tắc tích lũy không thay đổi. Con số đã làm tròn chính là con số được ghi có, nên nó thể hiện trong số dư phép, quyền lợi lũy kế từ đầu năm, bảng chi tiết tính quyền lợi và quy trình tích lũy. Thiết lập riêng cho từng loại phép.",
         "carryPolicyLabel": "Chính sách chuyển tiếp",
         "carryNone": "Không (không chuyển tiếp)",
+        "carryNoneDormant": "Chuyển tiếp đang tắt, nên không có ngày nào được chuyển sang năm nghỉ phép tiếp theo. Mức tối đa {days} ngày đã đặt trước đó vẫn được giữ nhưng không có hiệu lực — nó không ảnh hưởng đến số dư nào, và sẽ áp dụng lại nếu bạn bật chuyển tiếp.",
         "carryFixedMax": "Mức tối đa cố định",
         "carryHelp": "Mức tối đa cố định giữ lại tối đa đến giới hạn; phần trăm giữ lại tỷ lệ đó của số dư còn nắm giữ vào cuối năm. Hai lựa chọn này thay thế cho nhau — với phần trăm, chỉ phần trăm quyết định con số. Các trường hết hạn quyết định khi nào phần chuyển tiếp hết hiệu lực (một ngày cụ thể, hoặc X tháng sau cuối năm).",
         "carryStepHelp": "Cửa trước dẫn tới thiết lập chuyển tiếp của chính sách quyền lợi đang hiệu lực — điều khiển theo từng chính sách trong mục Điều kiện vẫn là nguồn dữ liệu gốc.",
