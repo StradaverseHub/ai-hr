@@ -1,3 +1,4 @@
+/** r378: legacy admin listing redirects to balances; explicit calendar intent preserves the unchanged calendar. */
 /**
  * Team Leave Tracker (feedback a00c4f64) — the Leave Calendar moves off the Dashboard.
  *
@@ -110,11 +111,22 @@ describe('the Manage row is ungated — the access the move must not remove', ()
  * `}` — sliced at the `── The Leave Calendar` banner comment, which is the first line of it — so an
  * assertion made here cannot be satisfied by markup that only an administrator ever sees.
  */
-const ADMIN_BRANCH_OPENS = '  if (admin) {';
+const ADMIN_BRANCH_OPENS = '  if (admin && !calendarIntent) {';
 const CALENDAR_BANNER = '  // ── The Leave Calendar';
-const adminBranch = () =>
-  trackerPage.slice(trackerPage.indexOf(ADMIN_BRANCH_OPENS), trackerPage.indexOf(CALENDAR_BANNER));
-const calendarBranch = () => trackerPage.slice(trackerPage.indexOf(CALENDAR_BANNER));
+const adminBranch = () => {
+  const start = trackerPage.indexOf(ADMIN_BRANCH_OPENS);
+  const end = trackerPage.indexOf(CALENDAR_BANNER, start);
+  expect(start, 'legacy admin redirect branch exists').toBeGreaterThan(-1);
+  expect(end, 'calendar follows the redirect branch').toBeGreaterThan(start);
+  return trackerPage.slice(start, end);
+};
+const calendarBranch = () => {
+  const start = trackerPage.indexOf(CALENDAR_BANNER);
+  expect(start, 'calendar source slice exists').toBeGreaterThan(-1);
+  const calendar = trackerPage.slice(start);
+  expect(calendar).toContain('<PlannedAbsences');
+  return calendar;
+};
 
 describe('the calendar is the SAME screen, not a rebuild', () => {
   it('the page really does have the two branches these assertions are scoped to', () => {
@@ -181,60 +193,52 @@ describe('the calendar is the SAME screen, not a rebuild', () => {
     // The calendar is a server component that hands SERVER ACTIONS to a client island. Actions are
     // serialisable; a locally-defined arrow would not be. test/server-client-boundary.test.ts pins the
     // class repo-wide — this asserts this page does not open a hole in it.
-    const jsx = trackerPage.slice(trackerPage.indexOf('<PlannedAbsences'));
+    const jsxStart = trackerPage.indexOf('<PlannedAbsences');
+    expect(jsxStart).toBeGreaterThan(-1);
+    const jsx = trackerPage.slice(jsxStart);
     expect(jsx).not.toMatch(/=\{\s*\([^)]*\)\s*=>/);
     expect(jsx).not.toMatch(/=\{\s*function\b/);
   });
 });
 
-describe('388e53c2 · the HR-admin inquiry surface is an ADDITION to this page, not a replacement', () => {
-  it('an in-page role branch, and it is an EARLY RETURN so the reads are suppressed too', () => {
-    // Copying app/leave/page.tsx's `ess = !admin` discipline: hiding markup while still issuing the read
-    // is the failure mode this asserts against. The admin branch returns, so `plannedAbsences` is
-    // unreachable for an administrator and `listEmployeesPage` unreachable for everybody else.
+describe('r378 · legacy HR inquiry links redirect while explicit calendar intent retains the calendar', () => {
+  it('redirects only an admin without calendar intent, before calendar reads', () => {
     expect(trackerPage).toContain('const admin = isAdmin(s);');
-    expect(trackerPage).toContain(ADMIN_BRANCH_OPENS);
-    expect(adminBranch(), 'the calendar read must not run for an admin').not.toContain('plannedAbsences(');
-    expect(calendarBranch(), 'the listing read must not run for anyone else').not.toContain(
-      'listEmployeesPage(',
-    );
+    expect(trackerPage).toContain("const calendarIntent = sp.calendar === '1' || ['abs', 'view', 'cal', 'focus'].some((key) => key in sp);");
+    const legacy = adminBranch();
+    expect(legacy.length).toBeGreaterThan(0);
+    expect(legacy).toContain("redirect(`/leave/employee-balances${p.size ? `?${p}` : ''}`)");
+    expect(legacy).not.toContain('plannedAbsences(');
+    expect(calendarBranch()).not.toContain('listEmployeesPage(');
+    expect(trackerPage).not.toContain('<LeaveInquiryNav active="details"');
   });
 
-  it('lands on Employee Details with the rail, and the listing is the one lifted from /leave', () => {
-    const admin = adminBranch();
-    expect(admin).toContain('<LeaveInquiryNav active="details" employmentId={inquiryEmploymentId} />');
-    expect(admin).toContain('listEmployeesPage(s, {');
-    // Ten per page, company A→Z then name A→Z, and the numbered pager — 650b6eb8's shape, carried over.
-    expect(trackerPage).toContain('const EMPLOYEE_PAGE = 10;');
-    expect(admin).toContain("sort: 'company',");
-    expect(admin).toContain('limit: EMPLOYEE_PAGE,');
-    expect(admin).toContain('offset: edPage * EMPLOYEE_PAGE,');
-    expect(admin).toContain('inquiryPageWindow(edPage, employeePageCount)');
-    // The DERIVED employment status (9cbf5e0d), never the legacy stored enum.
-    expect(admin).toContain('deriveEmploymentStatus(e, today)');
-    expect(/\be\.status\b/.test(admin), 'legacy row.status is read').toBe(false);
-    // Scope fence first: the listing shows only the companies this session may see.
-    expect(admin).toContain('companyIds: scopeIds,');
+  it('forwards the selected employee and legacy search/filter meanings into the picker namespace', () => {
+    const legacy = adminBranch();
+    expect(legacy).toContain('const emp = Array.isArray(sp.emp) ? sp.emp[0] : sp.emp;');
+    expect(legacy).toContain("if (emp) p.set('emp', emp);");
+    expect(legacy).toContain("const mapping = { edQ: 'pickerQ', edCompany: 'pickerCompany', edDept: 'pickerDepartment', edStatus: 'pickerStatus' } as const;");
+    expect(legacy).toContain('for (const [oldKey, key] of Object.entries(mapping))');
+    expect(legacy).toContain('for (const one of Array.isArray(value) ? value : value ? [value] : []) p.append(key, one);');
+    expect(legacy).not.toContain("p.set('edPage'");
   });
 
-  it('THE SEARCH AND FILTER FORMS POST BACK TO THIS PAGE — the trap in the lift', () => {
-    // The listing's three forms hardcoded `action="/leave"`. Carried over unchanged they would silently
-    // throw an administrator off the screen the moment they pressed Search or applied a filter, and no
-    // type checker sees a string in an action attribute.
-    const admin = adminBranch();
-    expect(admin.match(/action="\/leave\/tracker"/g) ?? [], 'search form + FilterPanel + FilterChips').toHaveLength(
-      3,
-    );
-    expect(admin, 'a form still posting to /leave').not.toMatch(/action="\/leave"/);
-    // The pager builds its own links and must follow the same base path.
-    expect(admin).toContain("return q ? `/leave/tracker?${q}` : '/leave/tracker';");
+  it('the moved picker stays scoped and navigates to balances instead of posting to the retired listing', () => {
+    const balances = read('app/leave/employee-balances/page.tsx');
+    expect(balances).toContain('await scopedAdmin()');
+    expect(balances).toContain('scopeIds');
+    expect(balances).toContain('<EmployeeScopePanel');
+    expect(balances).toContain('basePath="/leave/employee-balances"');
+    expect(balances).toContain('selectParam="emp"');
+    expect(trackerPage).not.toContain('action="/leave/tracker"');
   });
 
-  it('the two OTHER inquiry screens keep their addresses — saved and export links stay valid', () => {
-    // The promise made in writing in the approved plan. Only the way IN changed.
-    expect(adminBranch()).toContain(
-      'const employeeHref = (employmentId: string) => `/leave/employee-balances?emp=${employmentId}`;',
-    );
+  it('the balances and records routes remain registered at their saved/export addresses', () => {
+    for (const href of ['/leave/employee-balances', '/leave/employee-records']) {
+      expect(REGISTERED_ROUTES.has(href)).toBe(true);
+      expect(fs.existsSync(path.join(root, `app${href}/page.tsx`))).toBe(true);
+      expect(read(`app${href}/page.tsx`)).toContain('await scopedAdmin()');
+    }
   });
 
   it('every string it prints is pinned per locale — this file is multi-namespace, so check C skips it', () => {
@@ -324,7 +328,7 @@ describe('every pointer at the old location follows the calendar', () => {
   it('the Team Away Today card navigates to the tracker instead of an in-page anchor', () => {
     expect(CARD_META.teamAwayToday.href).toBe('/leave/tracker');
     // The dashboard renders that card from a literal, not from CARD_META, so both must move together.
-    expect(dashboard).toContain('href="/leave/tracker"');
+    expect(dashboard).toContain('href="/leave/tracker?calendar=1"');
     expect(dashboard).not.toContain('#planned-absences');
   });
 
@@ -343,7 +347,7 @@ describe('every pointer at the old location follows the calendar', () => {
 
   it('the HR-admin cancel dialog returns to the calendar, and the action whitelists that surface', () => {
     expect(read('components/planned-absences-grid.tsx')).toContain('back="/leave/tracker"');
-    expect(read('app/leave/actions.ts')).toContain("if (backRaw === '/leave/tracker') back = '/leave/tracker';");
+    expect(read('app/leave/actions.ts')).toContain("if (backRaw === '/leave/tracker') back = '/leave/tracker?calendar=1';");
     // The cancel paths must also refresh the page they were posted from.
     expect(read('app/leave/actions.ts')).toContain("revalidatePath('/leave/tracker')");
   });
