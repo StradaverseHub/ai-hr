@@ -1,3 +1,4 @@
+/** r378: consolidated Import row and guarded bookmark aliases supersede the historical importer layout below. */
 /**
  * 3fb1a611 (r299) · LEAVE CREDIT — THE SCREENS, THE MENU AND THE GATE.
  *
@@ -51,14 +52,19 @@ describe('Leave Config › Leave Credit — the row, the tabs, the registry', ()
     //
     // Spelled as ORDER rather than as an index, so the next row inserted in this family does not have to
     // rewrite the claim — but a Leave Credit moved out of the family, or above Leave Adjustments, fails.
-    const family = labels.slice(labels.indexOf('leaveAdjustments'), labels.indexOf('leaveGenerate'));
+    const start = labels.indexOf('leaveAdjustments');
+    const end = labels.indexOf('leaveGenerate');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const family = labels.slice(start, end);
     // db55d08a (r369) — UPDATED, NOT LOOSENED, and the old claim is quoted so the change is legible: this
     // read `expect(family).toEqual(['leaveAdjustments', 'leaveHistoryImport', 'leaveCredit'])`. Leave B/F
     // Data Import joined the family between the record importer and Leave Credit. r299's PROPERTY —
     // "Leave Credit is the adjustment screen FOR Replacement Leave, so it sits with the adjustment rows
     // rather than off on its own" — is untouched: it is still a member of that family, still in that order,
     // and still below Leave Adjustments. Adjacency was never its property; membership in order was.
-    expect(family).toEqual(['leaveAdjustments', 'leaveHistoryImport', 'leaveBfImport', 'leaveCredit']);
+    // r378 consolidates the import family into one row, retaining Leave Credit's order and gate.
+    expect(family).toEqual(['leaveAdjustments', 'leaveDataImport', 'leaveCredit']);
     const row = node.children.find((c) => c.labelKey === 'leaveCredit')!;
     expect(row.href).toBe('/admin/leave-config/leave-credit');
     expect(row.ownedSubpaths).toEqual(['/admin/leave-config/leave-credit/rules']);
