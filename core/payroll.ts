@@ -449,6 +449,8 @@ export type PayslipRecordLine = {
   amount: number;
   /** True ⇒ recorded but never paid (a BIK). False ⇒ money that moved. Absent ⇒ written before the stamp. */
   nonPayable?: boolean;
+  /** Forward-only declaration for record-only employer contribution display. */
+  kind?: 'contribution';
 };
 
 /** f1564110 Phase 3 — INDIVIDUAL_TXN_PAY_ENABLED's earning/deduction fold RIDES the typed-pay-component
@@ -5466,7 +5468,7 @@ export async function generatePayslips(
           // remark — and `nonPayable: true` is what tells the read side so: `recordLineIdentity`
           // (core/payslip-earning-lines.ts) repairs a txn-derived record line's label from today's
           // catalogue and must never touch this one. Drop the flag and it would.
-          if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied, nonPayable: true }); continue; }
+          if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied, nonPayable: true, ...(c.kind === 'contribution' ? { kind: 'contribution' as const } : {}) }); continue; }
           reimburse = round2(reimburse + applied);
           contributes('reimburse', applied);
           continue;
@@ -5515,7 +5517,7 @@ export async function generatePayslips(
         // INFORMATIONAL record line — it does NOT affect any cash bucket, gross, or net (ADR-0025 §5 / Option A).
         // As above: the stored `name` is the item's own description (provenance), and `nonPayable: true` is
         // the flag that keeps 417d4937's read-time label repair off it.
-        if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied, nonPayable: true }); continue; }
+        if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied, nonPayable: true, ...(c.kind === 'contribution' ? { kind: 'contribution' as const } : {}) }); continue; }
         // ── Feedback 09b554e9: declared Normal/Additional remuneration, with per-code annual exemption ──
         // The exempt portion (up to the PCB code's remaining annual headroom; cap -1 = fully exempt,
         // cap 0 = fully taxable) is PAID but stays out of every statutory base (the reimburse bucket);

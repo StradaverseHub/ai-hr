@@ -1,3 +1,4 @@
+import { isRecordedEmployerContribution, payslipConfiguredContributions } from '@/core/payslip-configured-contributions';
 import { selectPayslipInformation } from '@/core/payslip-information';
 import { payslipInformationLabels } from '@/lib/payslip-information-labels';
 /**
@@ -928,6 +929,7 @@ export default async function IndividualPayslipPage({
 
           {/* ── Employer contributions, with the employer-borne disclosure folded in (3c473773) ── */}
           <Block title={tSlip('employerContributionsHeading')}>
+            {payslipConfiguredContributions(row.statutory).map((line, index) => <Row key={`${line.code}-${index}`} label={line.name} value={rm(line.amount)} muted />)}
             <Row label={tSlip('epf')} value={rm(b.employerContributions.epf)} muted />
             <Row label={tSlip('socso')} value={rm(b.employerContributions.socso)} muted />
             <Row label={tSlip('eis')} value={rm(b.employerContributions.eis)} muted />
@@ -1000,7 +1002,7 @@ export default async function IndividualPayslipPage({
                 from the deduction lines above when the employer bore part of them. Said, not hidden. */}
             <p className="mt-2 text-xs text-muted-foreground">{t('ytdNote')}</p>
 
-            {b.recordLines.length > 0 && (
+            {b.recordLines.some(line => !isRecordedEmployerContribution(line)) && (
               <div className="mt-4 border-t border-border pt-3">
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   {tTxn('view.history.itemsHeading')}
@@ -1008,7 +1010,7 @@ export default async function IndividualPayslipPage({
                 {/* 417d4937 — the pay item's own code and description, with the words that were typed
                     kept beside them as the remark. Nothing is rewritten and nothing is hidden; the code
                     and the amount are exactly as stored. */}
-                {b.recordLines.map((l, i) => {
+                {b.recordLines.filter(line => !isRecordedEmployerContribution(line)).map((l, i) => {
                   const id = recordLineIdentity(l, payItemNames);
                   return (
                     <div

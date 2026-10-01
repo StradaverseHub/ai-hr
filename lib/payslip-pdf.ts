@@ -1,3 +1,4 @@
+import { isRecordedEmployerContribution, payslipConfiguredContributions } from '../core/payslip-configured-contributions';
 // ADR-0036 (#22) — render a payslip as a PDF with pdf-lib (pure JS, no WASM/native, so no Next bundler
 // friction). A pure function over the payslipDetail / payslipForReview read + localized labels, so it is
 // unit-testable and reused identically by every surface that links a PDF route.
@@ -157,6 +158,7 @@ export type PayslipPdfData = {
   epfEmployer: number;
   socsoEmployer: number;
   eisEmployer: number;
+  configuredEmployerContributions?: { code: string; name: string; amount: number }[];
   employerCost: number;
   daysWorked: number | null;
   /** 3c473773 issue 2 — statutory contributions the EMPLOYER funded on the employee's behalf, named and
@@ -442,6 +444,7 @@ export function buildPayslipPdfData(
     epfEmployer: n(st.epfEmployer),
     socsoEmployer: n(st.socsoEmployer),
     eisEmployer: n(st.eisEmployer),
+    configuredEmployerContributions: payslipConfiguredContributions(st),
     employerCost: n(p.employerCost),
     daysWorked: p.daysWorked != null ? n(p.daysWorked) : null,
     employerBorne: eb.keys.map((k) => ({ label: borneLabels[k], amount: eb.borne[k] })),
@@ -489,7 +492,7 @@ type StoredRecordLine = { code?: string | null; name?: string | null; amount?: u
 function nonPayableLinesOf(raw: unknown): PayslipEarningLine[] {
   if (!Array.isArray(raw)) return [];
   return (raw as StoredRecordLine[])
-    .filter((l) => l?.nonPayable === true)
+    .filter((l) => l?.nonPayable === true && !isRecordedEmployerContribution(l))
     .map((l) => ({ code: l.code ?? null, name: l.name ?? '', amount: round2(n(l.amount)) }));
 }
 
@@ -985,6 +988,7 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   ];
 
   const employerRows: Row[] = [
+    ...(d.configuredEmployerContributions ?? []).map(line => ({ label: line.name, amount: line.amount })),
     { label: t.epf, amount: d.epfEmployer },
     { label: t.socso, amount: d.socsoEmployer },
     { label: t.eis, amount: d.eisEmployer },
