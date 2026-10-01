@@ -393,14 +393,15 @@ describe('C · the screen: what the approved plan changed, and what it deliberat
     );
   });
 
-  it('the approver’s rejection remark is NOT invented — but what we DO hold is shown', () => {
-    // decideAttendanceCorrection takes no reason, the update writes status/decidedBy/decidedAt only, and
-    // the event payload carries none. The approved plan says so to the reporter in plain words AND
-    // promises the two things that exist instead — so a screen that quietly showed neither would have
-    // kept the refusal and dropped the compensation.
+  it('stored rejection reasons surface in My Requests, distinct from the employee note and answer date', () => {
     const core = code(read('core/attendance.ts'));
-    expect(core.includes('rejectReason'), 'attendance has no stored approver reason').toBe(false);
-    expect(code(LIST).toLowerCase().includes('rejectreason')).toBe(false);
+    expect(core).toContain('rejectReason: attendanceCorrection.rejectReason');
+    expect(core).toContain('MissingAttendanceRejectReasonError');
+    const requestStatus = code(read('app/attendance/request-status/page.tsx'));
+    expect(requestStatus).toContain("r.rejectReason ?? t('maRejectNotRecorded')");
+    expect(requestStatus).toContain("t('maRejectReason')");
+    expect(requestStatus).toContain("r.status === 'rejected'");
+    // Self Overtime's existing employee note and answer-date guarantees remain separately pinned.
     // The EMPLOYEE's own note — the `remark` column, written only by requestAttendanceCorrection.
     // ⚠️ THE OBVIOUS ASSERTION HERE IS VACUOUS AND A MUTATION PROVED IT: `myAttendanceCorrections`
     // selects `remark: attendanceCorrection.remark,` too, so a plain `toContain` of that line passes
