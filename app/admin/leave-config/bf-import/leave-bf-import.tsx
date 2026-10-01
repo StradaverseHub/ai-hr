@@ -109,7 +109,8 @@ export function LeaveBfImport({ runs }: { runs: LeaveBfRunRow[] }) {
       }
     });
 
-  const rollback = (runId: string) =>
+  const rollback = (runId: string) => {
+    onCommitPending?.(true);
     startTransition(async () => {
       setError(null);
       try {
@@ -117,8 +118,11 @@ export function LeaveBfImport({ runs }: { runs: LeaveBfRunRow[] }) {
         router.refresh();
       } catch (e) {
         setError((e as Error).message);
+      } finally {
+        onCommitPending?.(false);
       }
     });
+  };
 
   /** Step 2 → 3 → 4 in one gesture: read the file, then validate it immediately. */
   const loadFile = async (file: File) => {
