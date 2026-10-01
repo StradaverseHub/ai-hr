@@ -69,3 +69,71 @@ describe('r377 immutable child working', () => {
     expect(section.rows.find(row => row.caption === 'slipChildUnder18')?.third).toEqual({ kind: 'notRecorded' });
   });
 });
+
+
+describe('r377 malformed recorded child provenance', () => {
+  const malformed = (edit: (trace: any) => void) => {
+    const r = run({ under_18: { full: 1 }, disabled_study: { half: 1 } });
+    const snapshot = structuredClone(r.payroll.snapshot);
+    edit(snapshot.trace);
+    const x = explainPcb({ pcb: r.payroll.total, pcbMeta: snapshot }, current);
+    if (x.kind !== 'mtd') throw Error('expected MTD');
+    return { x, section: pcbSlipSections(x, sides)[0] };
+  };
+  it.each([
+    ['missing table', (t: any) => { delete t.childWorking.table; }],
+    ['null table', (t: any) => { t.childWorking.table = null; }],
+    ['missing claimed category units', (t: any) => { delete t.childWorking.categoryUnits.under_18; }],
+    ['contradictory category units', (t: any) => { t.childWorking.categoryUnits.under_18 = 9; }],
+    ['malformed table count', (t: any) => { t.childWorking.table.under_18.full = '1'; }],
+    ['negative table count', (t: any) => { t.childWorking.table.under_18.full = -1; }],
+    ['unmatched claim row', (t: any) => { t.childWorking.rows[0].children = 2; }],
+    ['duplicate claim row', (t: any) => { t.childWorking.rows.push(t.childWorking.rows[0]); }],
+    ['unknown row category', (t: any) => { t.childWorking.rows[0].category = 'unknown'; }],
+    ['inconsistent head count', (t: any) => { t.childWorking.headCount = 99; }],
+    ['inconsistent C', (t: any) => { t.childCount = 99; }],
+    ['inconsistent Q', (t: any) => { t.childDeductionPerChild = 1000; }],
+    ['missing Q', (t: any) => { delete t.childDeductionPerChild; }],
+  ])('rejects %s without reconstructing claims', (_label, edit) => {
+    const { x, section } = malformed(edit);
+    expect(x.trace?.childWorking).toBeNull();
+    expect(section.rows.find(row => row.caption === 'slipChildUnder18')?.third).toEqual({ kind: 'notRecorded' });
+    expect(section.rows.find(row => row.caption === 'slipChildUnder18')?.first).toEqual({ kind: 'notRecorded' });
+  });
+  it.each([null, 'bad', '5', NaN, Infinity, -1])('invalid C %s stays unrecorded', value => {
+    const { x, section } = malformed(t => { t.childCount = value; });
+    expect(x.trace?.childCount).toBeNull();
+    expect(x.trace?.childWorking).toBeNull();
+    expect(section.rows.find(row => row.caption === 'slipChildCount')?.first).toEqual({ kind: 'notRecorded' });
+  });
+  it.each([null, 'bad', '2000', NaN, Infinity, -1])('invalid Q %s stays unrecorded', value => {
+    const { x, section } = malformed(t => { t.childDeductionPerChild = value; });
+    expect(x.trace?.childDeductionPerChild).toBeNull();
+    expect(x.trace?.childCount).toBeNull();
+    expect(x.trace?.childWorking).toBeNull();
+    expect(section.rows.find(row => row.caption === 'slipChildRelief')?.first).toEqual({ kind: 'notRecorded' });
+  });
+  it('accepts recorded category 1 declarations with zero applied contribution', () => {
+    const { x } = malformed(t => {
+      t.category = 1;
+      t.childCount = 0;
+      for (const row of t.childWorking.rows) { row.units = 0; row.amountRM = 0; }
+      for (const key of Object.keys(t.childWorking.categoryUnits)) t.childWorking.categoryUnits[key] = 0;
+    });
+    expect(x.trace?.childWorking?.headCount).toBe(2);
+    expect(x.trace?.childWorking?.categoryUnits.under_18).toBe(0);
+  });
+  it('accepts category 1 manual declarations beside an applied C of zero', () => {
+    const { x } = malformed(t => {
+      t.category = 1;
+      t.childCount = 0;
+      t.childWorking = { ...t.childWorking, mode: 'manual', table: null, rows: [], categoryUnits: {} };
+    });
+    expect(x.trace?.childWorking?.headCount).toBe(2);
+  });
+  it('accepts payroll-rounded C while preserving exact category totals', () => {
+    const r = run({ under_18: { full: 1 } }, 3000);
+    expect(r.x.trace?.childCount).toBe(.67);
+    expect(r.x.trace?.childWorking?.categoryUnits.under_18).toBeCloseTo(2 / 3);
+  });
+});

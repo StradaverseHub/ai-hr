@@ -273,7 +273,10 @@ type PcbDelta = { cumulative: number; prior: number; cumulativeBonus: number };
  * merely read, because a trace missing it produces a printable `max(0, 0.00 − …)` beside a non-zero PCB —
  * a working that contradicts its own answer, which is worse than an honest "not recorded".
  */
-function readChildWorking(raw: unknown): PcbTrace['childWorking'] {
+const recordedChildNumber = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+
+function readChildWorking(raw: unknown, childCount: number | null, q: number | null, category: unknown): PcbTrace['childWorking'] {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const w = raw as Record<string, unknown>;
   if (w.table != null && (typeof w.table !== 'object' || Array.isArray(w.table))) return null;
@@ -285,7 +288,45 @@ function readChildWorking(raw: unknown): PcbTrace['childWorking'] {
   if (!w.rows.every((row) => row && typeof row === 'object' &&
       typeof row.category === 'string' && [100, 50].includes(row.sharePercent) &&
       ['children', 'units', 'amountRM'].every((key) => typeof row[key] === 'number' && Number.isFinite(row[key]) && row[key] >= 0))) return null;
-  return w as unknown as NonNullable<PcbTrace['childWorking']>;
+  // Validate recorded provenance; never rebuild missing claims from today's employee profile.
+  if (childCount == null || q == null) return null;
+  const working = w as unknown as NonNullable<PcbTrace['childWorking']>;
+  const close = (a: number, b: number) => Math.abs(a - b) < 0.005000001;
+  if (working.mode === 'manual') {
+    return working.table == null && working.rows.length === 0 && Object.keys(working.categoryUnits).length === 0 &&
+      (close(working.headCount, childCount) || category === 1 && childCount === 0) ? working : null;
+  }
+  if (!working.table) return null;
+  const keys = new Set(PCB_CHILD_CATEGORIES.map(category => category.key));
+  if (Object.keys(working.table).some(key => !keys.has(key)) ||
+      Object.keys(working.categoryUnits).some(key => !keys.has(key))) return null;
+  let headCount = 0;
+  let units = 0;
+  let claims = 0;
+  for (const key of keys) {
+    const cell = working.table[key];
+    if (cell != null && (typeof cell !== 'object' || Array.isArray(cell))) return null;
+    const categoryRows = working.rows.filter(row => row.category === key);
+    let categoryUnits = 0;
+    for (const [share, field] of [[100, 'full'], [50, 'half']] as const) {
+      const count = cell?.[field] ?? 0;
+      if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) return null;
+      const rows = categoryRows.filter(row => row.sharePercent === share);
+      if (count === 0 ? rows.length !== 0 : rows.length !== 1 || rows[0].children !== count) return null;
+      if (rows.length) {
+        if (!close(rows[0].amountRM, rows[0].units * q)) return null;
+        categoryUnits += rows[0].units;
+        claims += rows.length;
+      }
+      headCount += count;
+    }
+    // An omitted zero category is sparse storage; an omitted claimed category is incomplete provenance.
+    const recorded = working.categoryUnits[key];
+    if (categoryRows.length ? recorded == null || !close(recorded, categoryUnits) : recorded != null && recorded !== 0) return null;
+    units += categoryUnits;
+  }
+  return claims === working.rows.length && close(headCount, working.headCount) && close(units, childCount)
+    ? working : null;
 }
 
 function readTrace(raw: unknown): PcbTrace | null {
@@ -293,6 +334,8 @@ function readTrace(raw: unknown): PcbTrace | null {
   const t = raw as Record<string, unknown>;
   if (t.M === undefined || t.R === undefined || t.mtdNormalCalc === undefined) return null;
   if (t.mtdNormalFloored === undefined) return null;
+  const childDeductionPerChild = recordedChildNumber(t.childDeductionPerChild);
+  const childCount = childDeductionPerChild == null ? null : recordedChildNumber(t.childCount);
   return {
     M: n(t.M),
     R: n(t.R),
@@ -300,9 +343,9 @@ function readTrace(raw: unknown): PcbTrace | null {
     taxOnP1: n(t.taxOnP1),
     category: n(t.category),
     // NOT `n()` — see the field's own note. `n(undefined)` is 0, and 0 is a lie here.
-    childCount: t.childCount === undefined || t.childDeductionPerChild === undefined ? null : n(t.childCount),
-    childDeductionPerChild: t.childDeductionPerChild === undefined ? null : n(t.childDeductionPerChild),
-    childWorking: readChildWorking(t.childWorking),
+    childCount,
+    childDeductionPerChild,
+    childWorking: readChildWorking(t.childWorking, childCount, childDeductionPerChild, t.category),
     Y1: n(t.Y1),
     K1: n(t.K1),
     Y2: n(t.Y2),
