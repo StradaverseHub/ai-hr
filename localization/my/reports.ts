@@ -3,7 +3,7 @@
  * payslips, per legal entity. Each ReportDef is registered on the pack; the generic core
  * (core/reporting.ts) lists / previews / records them without naming any MY-specific report.
  */
-import { and, desc, eq, gte, inArray, isNull, like, lte, or } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, like, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';
 import {
   assignment,
@@ -1728,22 +1728,13 @@ export async function eaStatement(
       .from(companyStatutoryAuthority)
       .where(and(eq(companyStatutoryAuthority.companyId, employerId), eq(companyStatutoryAuthority.authority, 'lhdn')))
       .limit(1);
-    let officerName: string | null = null;
-    let officerPosition: string | null = null;
-    if (auth?.signatoryPersonId) {
-      const [rep] = await tx
-        .select({ name: person.fullName, title: position.title })
-        .from(person)
-        // LEFT joined throughout, exactly as cp39FormExtras does it: a signatory who is not an employee
-        // of this company still prints their name, with no Jawatan beside it.
-        .leftJoin(employment, and(eq(employment.personId, person.id), eq(employment.companyId, employerId)))
-        .leftJoin(assignment, and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo)))
-        .leftJoin(position, eq(position.id, assignment.positionId))
-        .where(eq(person.id, auth.signatoryPersonId))
-        .limit(1);
-      officerName = rep?.name ?? null;
-      officerPosition = rep?.title ?? null;
-    }
+    // Display identity only, guarded by EA ownership/payroll scope inside the database. Ordinary
+    // employees cannot read their company's signatory person row; do not widen person RLS for a form.
+    const officer = await tx.execute<{ officer_name: string | null; officer_position: string | null }>(
+      sql`select * from app.ea_signatory(${p.employmentId}::uuid, ${employerId}::uuid, ${p.year})`,
+    );
+    const officerName = officer[0]?.officer_name ?? null;
+    const officerPosition = officer[0]?.officer_position ?? null;
     const slips = await tx
       .select({
         basic: payslip.basicSalary,
