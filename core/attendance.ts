@@ -1637,8 +1637,11 @@ async function recomputeDayFromPunches(
     .where(eq(attendancePunch.attendanceId, p.attendanceId));
   const ins = punches.filter((x) => x.direction === 'in').map((x) => x.punchAt);
   const outs = punches.filter((x) => x.direction === 'out').map((x) => x.punchAt);
-  const minAt = (xs: string[]) => xs.reduce((a, b) => (toMinutes(b) < toMinutes(a) ? b : a));
-  const maxAt = (xs: string[]) => xs.reduce((a, b) => (toMinutes(b) > toMinutes(a) ? b : a));
+  // Preserve the payroll minute owner; seconds only resolve equal-minute clock metadata.
+  const compareClock = (a: string, b: string) =>
+    toMinutes(a) - toMinutes(b) || Number(a.split(':')[2] ?? 0) - Number(b.split(':')[2] ?? 0);
+  const minAt = (xs: string[]) => xs.reduce((a, b) => (compareClock(b, a) < 0 ? b : a));
+  const maxAt = (xs: string[]) => xs.reduce((a, b) => (compareClock(b, a) > 0 ? b : a));
   const checkInAt = ins.length ? minAt(ins) : p.fallbackCheckInAt;
   const balanced = ins.length >= 1 && ins.length === outs.length;
   const checkOutAt = balanced && outs.length ? maxAt(outs) : null;

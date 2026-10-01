@@ -58,7 +58,8 @@ describe('configured contribution provenance without changing payroll money', ()
     expect(Number(ps.grossPay)).toBe(5550);
     const review = await payslipForReview(a, {companyIds: [base.companyId], payslipId: ps.id});
     expect(review).not.toBeNull();
-    const pdf = buildPayslipPdfData(review!, {epf:'EPF', socso:'SOCSO', eis:'EIS', skbbk:'SKBBK', tax:'Tax'});
+    const pdf = buildPayslipPdfData({...review!, employee: review!.employeeName}, {epf:'EPF', socso:'SOCSO', eis:'EIS', skbbk:'SKBBK', tax:'Tax'});
+    expect(pdf.employee).toBe('Synthetic Contribution');
     expect(pdf.configuredEmployerContributions).toEqual([{code: 'COMPANY_PLAN', name: 'COMPANY_PLAN', amount: 250}]);
     expect(pdf.nonPayableLines).toEqual([]);
     expect(pdf.gross).toBe(Number(ps.grossPay));
