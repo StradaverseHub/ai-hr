@@ -214,7 +214,7 @@ describe('D5 · the ring legend is the ring', () => {
     expect(centre.value, 'the retired Balance figure is no longer in the middle').not.toBe(formatDays(7));
     // The caption is built from the ARC's name through the catalogue's own wrapper, so `leave.myLeave.balanceDays`
     // ("Balance (days)") can no longer reach the screen. It stays in all six catalogues: retired, never deleted.
-    expect(centre.caption).toBe(L.centreCaption.replace('{label}', lf('en').availableBalance));
+    expect(centre.caption).toBe(lf('en').availableBalance);
     expect(centre.caption, 'and the retired Balance caption is gone with it').not.toBe(L.balanceDays);
     expect(errors, errors.join('\n')).toEqual([]);
   });
@@ -252,7 +252,7 @@ describe('D5 · the ring legend is the ring', () => {
 
   it('an overdrawn "You can apply for" cannot be an arc: the card is drawn without the ring, the figure in full', () => {
     mount('en', <MyLeaveDashboard cards={[card({ taken: 16, balance: -2, canApplyFor: -2, remaining: -2 })]} locale="en" />);
-    expect(screen.queryByTestId('leave-balance-ring')).toBeNull();
+    expect(screen.getByTestId('leave-balance-ring').querySelectorAll('[data-segment]')).toHaveLength(0);
     const c = screen.getByTestId('leave-type-card');
     expect(within(c).getByTestId('can-apply-for').textContent).toContain(formatDays(-2));
   });
@@ -276,7 +276,7 @@ describe('D1 · "Includes next leave year" — itemised, or honestly not', () =>
     );
     const lines = screen.getAllByTestId('balance-includes-later');
     expect(lines).toHaveLength(2);
-    expect(within(screen.getByTestId('leave-ring-card')).getByTestId('balance-includes-later').textContent).toContain(formatDays(14));
+    expect(within(screen.getByRole('article', {name:'Annual Leave'})).getByTestId('balance-includes-later').textContent).toContain(formatDays(14));
     expect(lines[0].textContent).toContain(formatDays(2));
     expect(lines[1].textContent, 'only the non-zero parts').not.toContain(formatDays(0));
     expect(lines[1].textContent).toContain(formatDays(2));
@@ -372,7 +372,7 @@ describe('D7 · a per-date rejection lists each date in the viewer’s locale wi
 // ── The page hands the islands the fixed data (the RSC is not rendered in a test) ───────────────────────────
 
 describe('app/leave/page.tsx wires the fix pass into the history it builds', () => {
-  const page = readFileSync(path.resolve(__dirname, '../app/leave/page.tsx'), 'utf8');
+  const page = readFileSync(path.resolve(__dirname, '../components/leave/own-leave-history.tsx'), 'utf8');
   it('D4: "Partially approved" and the date breakdown come from the application; D3: Applied is the application’s; D7: dates, not the audit string', () => {
     expect(page, 'the status badge reads the application outcome').toContain('isPartiallyApproved(r, approvalTrails.get(r.id))');
     expect(page, 'the history row too').toContain('const isPartial = isPartiallyApproved(r, trail);');

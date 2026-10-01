@@ -585,6 +585,9 @@ export default async function LeavePage({
   }));
 
   const { upcoming, historyFilterParams } = await loadOwnLeaveHistory({ session, me, sp, locale, leaveTypes, eligibleTypeIds });
+  const historyLinkParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(historyFilterParams)) for (const one of Array.isArray(value) ? value : [value]) historyLinkParams.append(key, one);
+  for (const key of ['leaveYear', 'warnHoliday', 'loaded', 'state', 'year'] as const) if (sp[key]) historyLinkParams.set(key, sp[key]);
 
   return (
     // Layout (feedback 026e16b9): the container cap goes to 100rem so this page — whose Employee Details
@@ -819,7 +822,7 @@ export default async function LeavePage({
           now with the reason, the date submitted, the approval progress with names, a rejection's reason and
           a cancellation's who and when. Rows, actions, gates and the per-date outcome are unchanged. */}
 
-      <Link href={`/leave/history${Object.keys(historyFilterParams).length ? `?${new URLSearchParams(Object.entries(historyFilterParams).flatMap(([key, value]) => (Array.isArray(value) ? value : [value]).map((one) => [key, one])) )}` : ''}`} className="text-sm text-primary hover:underline">{t('historyHeading')}</Link>
+      <Link href={`/leave/history${historyLinkParams.size ? `?${historyLinkParams}` : ''}`} className="text-sm text-primary hover:underline">{t('historyHeading')}</Link>
 
       {/* Feedback 8ec63139: the HR admin's own full-width "Other leave" breakdown card (56a0deb9) is gone —
           it was the third face of My Balances on a page that is now about employees, not the viewer. The

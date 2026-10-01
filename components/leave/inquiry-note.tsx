@@ -15,7 +15,7 @@ export function InquiryNote({ label, children }: { label: string; children: Reac
     return () => document.removeEventListener('keydown', escape);
   }, []);
   return <span ref={root} className="relative inline-flex align-middle" onMouseEnter={() => { if (root.current) anchorTo(root.current); setOpen(true); }} onMouseLeave={() => setOpen(false)} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
-    <button type="button" aria-label={label} aria-expanded={open} onFocus={() => { if (root.current) anchorTo(root.current); setOpen(true); }} onClick={() => setOpen(!open)} className="inline-flex min-h-7 min-w-7 items-center justify-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"><Info className="size-3.5" aria-hidden /></button>
+    <button type="button" aria-label={label} aria-expanded={open} onFocus={() => { if (root.current) anchorTo(root.current); setOpen(true); }} onClick={() => { if (root.current) anchorTo(root.current); setOpen(true); }} className="inline-flex min-h-7 min-w-7 items-center justify-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"><Info className="size-3.5" aria-hidden /></button>
     {open && <AnchoredPanel at={at} role="note" className="w-64 whitespace-normal text-xs font-normal text-popover-foreground">{children}</AnchoredPanel>}
   </span>;
 }

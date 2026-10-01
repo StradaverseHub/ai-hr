@@ -13573,7 +13573,17 @@
       "attendanceOtPlanNone": "Tiada bagi tarikh ini",
       "attendanceOtPlanApproved": "Diluluskan bagi tarikh ini",
       "dotReasonNoRecord": "Tiada waktu keluar direkodkan untuk tarikh ini.",
-      "dotReasonPastClockOut": "Anda menuntut sehingga {claimEnd}; waktu keluar yang direkodkan ialah {clockOut}."
+      "dotReasonPastClockOut": "Anda menuntut sehingga {claimEnd}; waktu keluar yang direkodkan ialah {clockOut}.",
+      "detailToggle": "Lihat butiran mengikut hari",
+      "detailDay": "Hari",
+      "detailSchedule": "Jadual",
+      "detailShift": "Syif",
+      "detailHours": "Jam selepas syif",
+      "noAttendanceRecord": "Tiada rekod kehadiran untuk tarikh ini.",
+      "companyRule": "Peraturan kredit syarikat: {half} = 0.5 hari · {full} = 1 hari",
+      "duplicateDate": "Tarikh ini sudah ada dalam permohonan.",
+      "reasonRequired": "Tambah sebab untuk meneruskan.",
+      "completeRows": "Lengkapkan baris yang layak untuk meneruskan."
     }
   },
   "notices": {

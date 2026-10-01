@@ -337,7 +337,7 @@ export async function adminCancelLeaveAction(formData: FormData) {
   let back: string;
   // a00c4f64: the calendar's return surface is '/leave/tracker', not '/' — the dashboard no longer
   // renders it. An old form still posting '/' falls through to '/leave', which is a real page.
-  if (backRaw === '/leave/tracker') back = '/leave/tracker';
+  if (backRaw === '/leave/tracker') back = '/leave/tracker?calendar=1';
   else if (backRaw === '/leave/employee-records') {
     back = /^[0-9a-f-]{36}$/i.test(backEmp)
       ? `/leave/employee-records?emp=${encodeURIComponent(backEmp)}`

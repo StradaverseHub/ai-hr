@@ -4,9 +4,9 @@
  * r302 (board 6c9802c9) — My Leave: the leave balance dashboard.
  *
  * ONE card per leave type that applies to the employee, in the order the server decided (Primary before
- * Secondary; Hidden never arrives). The Annual Leave type — `annualLeave`, decided on the server by
- * isEarnedAccrualType — is drawn with the ring; every other type is a smaller card with the same figures; a type
- * with no entitlement (`takenOnly`) shows how much has been taken and nothing else.
+ * Secondary; Hidden never arrives). r378 gives every type the same card frame. Drawable entitlement types use the existing
+ * segment arithmetic; hidden, negative, borrower and taken-only states use a neutral track.
+ * A type with no entitlement (`takenOnly`) still shows only its permitted taken figure.
  *
  * DB-FREE AND FORMULA-FREE. Every figure arrives computed (core/my-leave.ts) and is printed through the shared
  * day formatter; a null figure (HR hid it, or nothing could be read) prints an em dash, never a number. The

@@ -4,7 +4,7 @@ export function leaveSelfReturnUrl(formData: FormData, key: 'error' | 'toast', v
   const query = new URLSearchParams();
   if (history) {
     const incoming = new URLSearchParams(String(formData.get('leaveContext') ?? ''));
-    for (const name of ['hTab','hType','hFrom','hTo','leaveYear','year','state','loaded']) {
+    for (const name of ['hTab','hType','hFrom','hTo','leaveYear','year','state','loaded', 'warnHoliday']) {
       for (const item of incoming.getAll(name)) if (item.length <= 200) query.append(name,item);
     }
   }

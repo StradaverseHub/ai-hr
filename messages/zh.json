@@ -13573,7 +13573,17 @@
       "attendanceOtPlanNone": "此日期没有",
       "attendanceOtPlanApproved": "此日期已批准",
       "dotReasonNoRecord": "此日期没有打卡下班记录。",
-      "dotReasonPastClockOut": "您申报至 {claimEnd}；记录的打卡下班时间为 {clockOut}。"
+      "dotReasonPastClockOut": "您申报至 {claimEnd}；记录的打卡下班时间为 {clockOut}。",
+      "detailToggle": "查看每日明细",
+      "detailDay": "星期",
+      "detailSchedule": "工作安排",
+      "detailShift": "班次",
+      "detailHours": "班后工时",
+      "noAttendanceRecord": "该日期没有考勤记录。",
+      "companyRule": "公司补休规则：{half} = 0.5 天 · {full} = 1 天",
+      "duplicateDate": "申请中已有此日期。",
+      "reasonRequired": "请填写原因后继续。",
+      "completeRows": "请完成符合条件的日期行后继续。"
     }
   },
   "notices": {

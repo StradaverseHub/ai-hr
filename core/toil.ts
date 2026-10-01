@@ -1286,6 +1286,10 @@ export async function extendedHoursDayForEmploymentTx(
   // r365 — `shiftStart` and `actualClockIn` are DISPLAY-ONLY additions for the Leave Credit request's
   // Attendance panel; nothing in this file or in lib/extended-hours.ts reads either. See the view's own
   // doc in core/attendance.ts for why the SHIFT pair is printed and never the SCHEDULED pair.
+  scheduleName: string | null;
+  shiftCode: string | null;
+  shiftName: string | null;
+  attendanceRecordPresent: boolean;
   shiftStart: string | null;
   shiftEnd: string | null;
   actualClockIn: string | null;

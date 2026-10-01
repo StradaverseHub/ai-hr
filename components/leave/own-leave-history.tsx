@@ -100,7 +100,7 @@ import {
 } from '@/app/leave/actions';
 
 
-export type HistorySearch = { hTab?: string; hType?: string | string[]; hFrom?: string; hTo?: string; leaveYear?: string; year?: string; state?: string; loaded?: string };
+export type HistorySearch = { warnHoliday?: string; hTab?: string; hType?: string | string[]; hFrom?: string; hTo?: string; leaveYear?: string; year?: string; state?: string; loaded?: string };
 
 /** One server-owned projection for the unchanged history and upcoming consumers. */
 export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, eligibleTypeIds}: {

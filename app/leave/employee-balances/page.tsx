@@ -91,6 +91,12 @@ export default async function EmployeeBalancesPage({
 }: {
   searchParams: Promise<{
     emp?: string;
+    pickerQ?: string;
+    pickerCompany?: string;
+    pickerBusinessUnit?: string;
+    pickerDepartment?: string;
+    pickerStatus?: string;
+
     asOf?: string;
     q?: string;
     type?: string | string[];
@@ -308,6 +314,7 @@ export default async function EmployeeBalancesPage({
    * `string | string[]`.
    */
   const panelPreserve: Record<string, string | string[]> = { dir };
+  for (const key of ['pickerQ', 'pickerCompany', 'pickerBusinessUnit', 'pickerDepartment', 'pickerStatus'] as const) { if (sp[key]) panelPreserve[key] = sp[key]; }
   if (sp.asOf) panelPreserve.asOf = asOf;
   if (q) panelPreserve.q = q;
   if (typeIds.length) panelPreserve.type = typeIds;
@@ -465,6 +472,7 @@ export default async function EmployeeBalancesPage({
                 basePath="/leave/employee-balances"
                 selectParam="emp"
                 preserve={panelPreserve}
+                preservePicker
               />
             </div>
           </Card>
@@ -539,7 +547,7 @@ export default async function EmployeeBalancesPage({
               scopes. The chips only render when a filter is active, so the search bar is directly above the
               bar in the ordinary case, which is what the reporter asked for; putting the bar between the
               search fields and their own active-filter chips would split one control into two. */}
-          <LeaveInquiryNav active="balances" employmentId={selected?.employmentId} carry={{ q, type: typeIds }} />
+          <LeaveInquiryNav active="balances" employmentId={selected?.employmentId} carry={{ ...panelPreserve, q, type: typeIds }} />
 
           {/* r219 (7966ee35) — why Replacement Leave in Lieu is not available to the employee named on the
               card below. Directly above that card so it is unambiguously about THIS person, and phrased

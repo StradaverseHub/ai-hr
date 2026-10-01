@@ -13573,7 +13573,17 @@
       "attendanceOtPlanNone": "ไม่มีสำหรับวันที่นี้",
       "attendanceOtPlanApproved": "อนุมัติแล้วสำหรับวันที่นี้",
       "dotReasonNoRecord": "ไม่มีบันทึกเวลาออกงานสำหรับวันที่นี้",
-      "dotReasonPastClockOut": "คุณแจ้งถึง {claimEnd} แต่เวลาออกงานที่บันทึกไว้คือ {clockOut}"
+      "dotReasonPastClockOut": "คุณแจ้งถึง {claimEnd} แต่เวลาออกงานที่บันทึกไว้คือ {clockOut}",
+      "detailToggle": "ดูรายละเอียดรายวัน",
+      "detailDay": "วัน",
+      "detailSchedule": "ตารางงาน",
+      "detailShift": "กะ",
+      "detailHours": "ชั่วโมงหลังกะ",
+      "noAttendanceRecord": "ไม่มีบันทึกการเข้างานสำหรับวันที่นี้",
+      "companyRule": "กฎเครดิตบริษัท: {half} = 0.5 วัน · {full} = 1 วัน",
+      "duplicateDate": "วันที่นี้อยู่ในคำขอแล้ว",
+      "reasonRequired": "เพิ่มเหตุผลเพื่อดำเนินการต่อ",
+      "completeRows": "กรอกแถวที่มีสิทธิ์ให้ครบเพื่อดำเนินการต่อ"
     }
   },
   "notices": {

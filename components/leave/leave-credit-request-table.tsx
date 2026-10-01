@@ -1,8 +1,9 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'next-intl';
-import { Eye, Trash2 } from 'lucide-react';
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
+import { Trash2 } from 'lucide-react';
+import { useFormStatus } from 'react-dom';
 import { Button, Field, btnPrimary, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from '../ui';
 // r365 cbfa8b0b — ONE anchored panel in this repo, and ONE sheet. Neither is new: the panel is the
 // positioning components/attendance-figure-cells.tsx has used since 7c834696, extracted so this row can
@@ -19,6 +20,7 @@ import { assessExtendedClaim, claimCrossesMidnight, extendedHoursCreditDays, typ
 // 4a1abc4a — every day figure a leave surface prints goes through ONE formatter, so 0.5 and 0.50 cannot
 // appear on two screens for the same balance.
 import { DAY_DASH, formatDays } from '@/lib/day-format';
+import { formatMinutesToHM } from '@/lib/overtime-duration';
 // The pure vocabulary and the per-row conditional, from the module BOTH sides read — never from
 // packs/leave/service, which is server-only (it drags db/client). lib/extended-hours.ts's precedent.
 import {
@@ -40,6 +42,10 @@ export type LeaveCreditDayFacts = {
    *  r360 that is the cell's only writer — the adjudication still compares it with the POSTED value, which is
    *  a form field and so still tamperable however this screen renders it. */
   kind: LeaveCreditDayType;
+  scheduleName?: string | null;
+  shiftCode?: string | null;
+  shiftName?: string | null;
+  attendanceRecordPresent?: boolean;
   /**
    * r365 cbfa8b0b — THE SHIFT **START** AND THE CLOCK-**IN** ARE NEW, AND NEITHER IS AN INPUT TO ANYTHING.
    * They exist for the Attendance panel behind this row's View button, which shows the employee the whole
@@ -101,268 +107,30 @@ const dayTypeLabelOf = (t: (k: string) => string, d: LeaveCreditDayType) =>
         : t('dayKind.workday');
 
 /**
- * r365 cbfa8b0b · WHAT ATTENDANCE HOLDS FOR ONE DATE, AS A RECORD RATHER THAN AS TWO GREY BOXES.
- *
- * ── WHY THIS EXISTS AT ALL, AND WHY IT IS NOT A THIRD AND FOURTH COLUMN ────────────────────────────────
- * The row used to carry SCHEDULED SHIFT END and ACTUAL CLOCK-OUT as two disabled cells. Two things were
- * wrong with that and the reporter named both.
- *   · They read as fields waiting to be filled in — same grey box, same size, same place in the row as the
- *     boxes that ARE inputs — while nobody can type into either, and on three of the four day types the
- *     shift end is permanently blank by design.
- *   · The row had no space for them. `disabledCell` is `inputCls` + flex, and `inputCls` fixes `h-9`
- *     (36px) with 8px of padding; the filled Day Type cell stacks a `text-xs` line (16px line-height) over
- *     a `text-[11px]` line that INHERITS that same 16px. 16 + 16 + 8 = 40px of content in a 36px box, on
- *     every filled row — which is the "text overlapping" in the reporter's screenshot, arithmetic rather
- *     than taste. Two columns leaving is what gives the row its width back; the box is made tall enough
- *     for its own caption in the same round, below.
- *
- * ── THE DOT IS THE WHOLE WARNING NOW ───────────────────────────────────────────────────────────────────
- * A full-width amber `<tr>` used to appear and disappear under the row as the two times were typed,
- * pushing everything below it up and down. What replaces it is a dot on this button, its one-line reason
- * on hover, and the detail inside the panel. ⚠️ The CONDITION is untouched — it is still
- * `!hasClockOut || exceedsClockOut` off the ONE `assessExtendedClaim` the row and the approvals queue
- * share — and it is truthful only because r364 (c36e1ae6) made `hasClockOut` read the day FACTS instead of
- * the assessment: the assessment is handed `null` on the three non-working day types because that is the
- * money rule, so it used to answer "no clock-out" on every rest day, off day and public holiday. A dot
- * built on the old reading would have been the same wrong answer in a quieter shape.
- *
- * ── IT NEVER BLOCKS THE CLAIM, AND IT NEVER POSTS ANYTHING ─────────────────────────────────────────────
- * ⚠️ THE BUTTON CARRIES NO `name`, AND THAT IS LOAD-BEARING RATHER THAN TIDY: `submitLeaveCreditRequestAction`
- * zips the repeated row fields BY INDEX, a browser does not submit a DISABLED control at all, and this one
- * is disabled on every row that has no date yet. A `name` here would post a list SHORTER than the row list
- * and silently shift every row after the gap. The five hidden inputs remain the only posted row state.
- * Nothing this component renders reaches `blocked` either: an employee with no attendance record for the
- * date reads that plainly and still submits.
- *
- * ── BELOW `lg` IT IS THE PRODUCT'S SHEET, NOT A NEW ONE ────────────────────────────────────────────────
- * The reporter asked for a bottom sheet. components/ui/drawer.tsx is full screen below `lg` and is what
- * every other sheet in this product is; a second sheet style for one button is one more thing to maintain
- * and one more thing to look inconsistent. Said on the item rather than quietly substituted.
+ * r378 a4c4758c replaces r365's View popup and warning dot with an inline attendance
+ * subrow. The same clock-out assessment supplies the warning; it never caps the
+ * declared claim or blocks submission. Recorded attendance hours are display-only.
+ * The unnamed toggle posts no row field, preserving the action's index-aligned payload.
+ * Explicit attendanceRecordPresent distinguishes an absent row from missing punches.
  */
-function AttendanceViewCell({
-  workedDate,
-  dayType,
-  view,
-  /** The one-line dot reason, or null when there is nothing to flag. Its presence IS the dot. */
-  alert,
-}: {
-  workedDate: string;
-  dayType: LeaveCreditDayType | '';
-  view: LeaveCreditDayFacts | null;
-  alert: string | null;
-}) {
+function AttendanceFacts({workedDate,dayType,view,alert}: {workedDate:string;dayType:LeaveCreditDayType | '';view:LeaveCreditDayFacts | null;alert:string | null}) {
   const t = useTranslations('replacementRequest');
-  const panelId = useId();
-  const [open, setOpen] = useState(false);
-  const close = useCallback(() => setOpen(false), []);
-  const { at, anchorTo, release } = useAnchoredPanel({ open, onClose: close });
-  const belowLg = useBelowLg();
-  const root = useRef<HTMLDivElement>(null);
-
-  // No date ⇒ nothing to look up. The button is off rather than opening an empty panel.
-  const enabled = workedDate !== '';
-
-  /**
-   * Outside-click dismissal, the idiom components/ui/multi-select-popover.tsx records: a document
-   * `mousedown` listener and NO `fixed inset-0` backdrop. A backdrop over a table swallows the click that
-   * was meant for the next row's own View button, so every dismissal would cost two clicks.
-   * The panel is rendered INSIDE `root` (it escapes visually through `position: fixed`, not through the
-   * DOM), so one `contains` check covers both the trigger and the panel.
-   */
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (root.current && e.target instanceof Node && !root.current.contains(e.target)) {
-        release();
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [open, release]);
-
-  const toggle = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (open) {
-      release();
-      setOpen(false);
-      return;
-    }
-    anchorTo(e.currentTarget);
-    setOpen(true);
-  };
-
-  const body = <AttendanceFacts workedDate={workedDate} dayType={dayType} view={view} alert={alert} />;
-
-  return (
-    <div ref={root} className="relative inline-block">
-      <Button
-        type="button"
-        size="sm"
-        variant="secondary"
-        disabled={!enabled}
-        onClick={toggle}
-        aria-expanded={open}
-        aria-controls={open ? panelId : undefined}
-        // A native `title` rather than a hand-rolled hover card: it is the one-LINE reason, the detail is
-        // inside the panel, and a tooltip primitive would be the dependency this round is not adding.
-        title={enabled ? (alert ?? undefined) : t('table.attendanceViewDisabled')}
-        data-testid="leave-credit-attendance-view"
-      >
-        <Eye className="size-4" aria-hidden />
-        {t('table.attendanceView')}
-        {alert != null && (
-          <>
-            <span
-              aria-hidden
-              data-testid="leave-credit-attendance-dot"
-              className="ml-0.5 inline-block size-2 shrink-0 rounded-full bg-amber-500 dark:bg-amber-400"
-            />
-            {/* The dot is a colour, and a colour is not a message. The reason is in the tree for a screen
-                reader whether or not the pointer ever rests on the button. */}
-            <span className="sr-only">{alert}</span>
-          </>
-        )}
-      </Button>
-
-      {open &&
-        (belowLg ? (
-          <Drawer
-            open={open}
-            onOpenChange={(v) => {
-              if (!v) {
-                release();
-                setOpen(false);
-              }
-            }}
-            width="narrow"
-            title={t('table.attendanceHeading')}
-            description={workedDate}
-          >
-            {body}
-          </Drawer>
-        ) : (
-          <AnchoredPanel at={at} id={panelId} role="dialog" aria-label={t('table.attendanceHeading')}>
-            {body}
-          </AnchoredPanel>
-        ))}
-    </div>
-  );
+  const locale = useLocale();
+  const weekday = workedDate ? new Intl.DateTimeFormat(locale,{weekday:'short',timeZone:'UTC'}).format(new Date(`${workedDate}T00:00:00Z`)) : DAY_DASH;
+  return <div data-testid="leave-credit-attendance-panel" className="space-y-2 py-2">
+    {view?.attendanceRecordPresent === false ? <p data-testid="leave-credit-attendance-no-record">{t('table.noAttendanceRecord')}</p> : <table className="w-full text-xs"><thead><tr>{['workedDate','table.detailDay','table.detailSchedule','table.detailShift','table.attendanceClockIn','sectionB.actualClockOut','table.detailHours'].map((key) => <th key={key} className="px-2 py-1 text-left font-medium">{t(key)}</th>)}</tr></thead><tbody><tr><td className="px-2 py-1">{workedDate}</td><td className="px-2 py-1">{weekday}</td><td className="px-2 py-1">{view?.scheduleName ?? DAY_DASH}</td><td className="px-2 py-1">{[view?.shiftCode,view?.shiftName].filter(Boolean).join(' · ') || DAY_DASH}</td><td className="px-2 py-1">{hhmm(view?.actualClockIn ?? null) ?? DAY_DASH}</td><td className="px-2 py-1">{hhmm(view?.actualClockOut ?? null) ?? DAY_DASH}</td><td className="px-2 py-1">{view ? minutesHM(view.measuredExtendedMinutes) : DAY_DASH}</td></tr></tbody></table>}
+    {view?.approvedOtPlan && <p data-testid="leave-credit-attendance-ot-plan">{t('table.attendanceOtPlan')}: {view.approvedOtPlan.start && view.approvedOtPlan.end ? `${hhmm(view.approvedOtPlan.start)} – ${hhmm(view.approvedOtPlan.end)}` : t('table.attendanceOtPlanApproved')}</p>}
+    {alert && <p className="text-amber-700 dark:text-amber-400" data-testid="leave-credit-attendance-alert">{alert}</p>}
+    <p className="whitespace-normal text-xs text-muted-foreground" data-testid="leave-credit-attendance-footnote">{t('table.attendanceReferenceOnly')}</p>
+  </div>;
 }
 
-/**
- * The panel's CONTENTS, shared by the anchored panel and the sheet so the two can never say different
- * things about one date.
- *
- * ⚠️ "NO SCHEDULED SHIFT" IS DECIDED BY THE SAME PREDICATE THE CREDIT IS, not by whether the roster
- * happens to hold times. `flooredByScheduledShiftEnd` is workday-only, and a roster CAN carry a shift on a
- * rest day (a swap, a correction, a pattern edited after the fact) — `derive` passes `shiftEnd: null` on
- * the three non-working types precisely so that floor cannot eat the first hours of the claim. Printing
- * "18:00" here on a rest day would tell the employee a floor applies that the arithmetic does not apply.
- *
- * ⚠️ AND THE DASH IS "NOT KNOWN YET", NEVER "NOTHING". While the day facts are in flight `view` is null and
- * every value is the dash; the named absences ("No record", "Nothing recorded") are only ever printed
- * against an answer that came back. That distinction is r364's, kept.
- */
-function AttendanceFacts({
-  workedDate,
-  dayType,
-  view,
-  alert,
-}: {
-  workedDate: string;
-  dayType: LeaveCreditDayType | '';
-  view: LeaveCreditDayFacts | null;
-  alert: string | null;
-}) {
+const minutesHM = formatMinutesToHM;
+
+function CreditSubmit({blocked, explanation}: {blocked:boolean;explanation:string}) {
+  const {pending} = useFormStatus();
   const t = useTranslations('replacementRequest');
-  const noShift = t('table.attendanceNoShift');
-  const scheduled = dayType !== '' && flooredByScheduledShiftEnd(dayType);
-  const start = hhmm(view?.shiftStart ?? null);
-  const end = hhmm(view?.shiftEnd ?? null);
-  const clockIn = hhmm(view?.actualClockIn ?? null);
-  const clockOut = hhmm(view?.actualClockOut ?? null);
-  // Only ever asserted about an answer that came back. `view == null` is "still asking", not "nothing".
-  const nothingRecorded = view != null && clockIn == null && clockOut == null;
-  const ot = view?.approvedOtPlan ?? null;
-
-  const line = (label: string, value: string, testid: string) => (
-    <div className="flex items-baseline justify-between gap-3 py-0.5" data-testid={testid}>
-      <dt className="shrink-0 text-muted-foreground">{label}</dt>
-      <dd className="text-right font-medium text-foreground">{value}</dd>
-    </div>
-  );
-
-  return (
-    <div data-testid="leave-credit-attendance-panel">
-      <p className="text-sm font-semibold text-foreground">{t('table.attendanceHeading')}</p>
-      <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground" data-testid="leave-credit-attendance-date">
-        {workedDate || DAY_DASH}
-      </p>
-
-      <dl className="mt-3 space-y-0 text-xs">
-        {line(t('sectionA.dayType'), dayType === '' ? DAY_DASH : dayTypeLabelOf(t, dayType), 'leave-credit-attendance-day-type')}
-        {line(
-          t('table.attendanceScheduledShift'),
-          view == null ? DAY_DASH : !scheduled || start == null || end == null ? noShift : `${start} - ${end}`,
-          'leave-credit-attendance-shift',
-        )}
-        {line(
-          t('sectionB.shiftEnd'),
-          view == null ? DAY_DASH : !scheduled || end == null ? noShift : end,
-          'leave-credit-attendance-shift-end',
-        )}
-        {nothingRecorded
-          ? line(t('table.attendanceClockInOut'), t('table.attendanceNothingRecorded'), 'leave-credit-attendance-clocking')
-          : (
-            <>
-              {line(
-                t('table.attendanceClockIn'),
-                view == null ? DAY_DASH : (clockIn ?? t('table.noClockOutRecord')),
-                'leave-credit-attendance-clock-in',
-              )}
-              {line(
-                t('sectionB.actualClockOut'),
-                view == null ? DAY_DASH : (clockOut ?? t('table.noClockOutRecord')),
-                'leave-credit-attendance-clock-out',
-              )}
-            </>
-          )}
-        {line(
-          t('table.attendanceOtPlan'),
-          view == null
-            ? DAY_DASH
-            : ot == null
-              ? t('table.attendanceOtPlanNone')
-              : ot.start && ot.end
-                ? `${hhmm(ot.start)} - ${hhmm(ot.end)}`
-                : t('table.attendanceOtPlanApproved'),
-          'leave-credit-attendance-ot-plan',
-        )}
-      </dl>
-
-      {nothingRecorded && (
-        <p
-          className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
-          data-testid="leave-credit-attendance-no-record"
-        >
-          {t('table.attendanceNoRecordNote')}
-        </p>
-      )}
-      {alert != null && (
-        <p
-          className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
-          data-testid="leave-credit-attendance-alert"
-        >
-          {alert}
-        </p>
-      )}
-
-      {/* The reporter's own footnote, and it stays: the panel is a record, never a ceiling. */}
-      <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground" data-testid="leave-credit-attendance-footnote">
-        {t('table.attendanceReferenceOnly')}
-      </p>
-    </div>
-  );
+  return <span tabIndex={blocked || pending ? 0 : undefined} title={blocked || pending ? explanation : undefined} className="inline-flex flex-col gap-1"><button className={btnPrimary} disabled={blocked || pending} data-testid="leave-credit-submit">{t('submit')}</button>{(blocked || pending) && <span className="text-xs text-muted-foreground">{explanation}</span>}</span>;
 }
 
 /**
@@ -480,6 +248,9 @@ export function LeaveCreditRequestTable({
   tiers,
   ordinaryDayAllowed,
   onSubmitted,
+  header,
+  cancel,
+  dialog = false,
 }: {
   replacementType: LeaveCreditLeaveTypeView;
   submitAction: Action;
@@ -513,9 +284,14 @@ export function LeaveCreditRequestTable({
    * not a validation hook — the submit is a server action and this runs beside it, not before it.
    */
   onSubmitted?: () => void;
+  header?: ReactNode;
+  cancel?: ReactNode;
+  dialog?: boolean;
 }) {
   const t = useTranslations('replacementRequest');
   // The four statuses of the requests table below share the vocabulary every other leave surface prints.
+  const [reason, setReason] = useState('');
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [rows, setRows] = useState<Row[]>([emptyRow(1)]);
 
   /**
@@ -786,7 +562,9 @@ export function LeaveCreditRequestTable({
   // refuses it anyway. r358: this used to catch every row that claimed a window, which after the owner's
   // answer is every row there is.
   const ordinaryUnavailableRows = rows.filter((r) => r.dayType === 'workday' && ordinaryEarnsNothing);
+  const duplicateDates = rows.filter((row) => row.workedDate && rows.filter((other) => other.workedDate === row.workedDate).length > 1);
   const blocked =
+    !reason.trim() || duplicateDates.length > 0 ||
     totalCredit <= 0 ||
     mismatchRows.length > 0 ||
     belowThresholdRows.length > 0 ||
@@ -811,29 +589,21 @@ export function LeaveCreditRequestTable({
    * one wins is decided by the order Tailwind happens to emit them in, not by the order written here.
    * tailwind-merge drops the loser.
    */
-  const filledDayTypeCell = cn(disabledCell, 'h-auto min-h-9 flex-col !items-start py-1.5');
+  const filledDayTypeCell = 'inline-flex flex-col items-start gap-1 rounded-lg bg-primary/10 px-2 py-1.5 text-xs text-primary';
 
   return (
-    <form action={submitAction} onSubmit={() => onSubmitted?.()} className="space-y-4" data-testid="leave-credit-request-form">
-      <p className="text-xs text-muted-foreground" data-testid="leave-credit-helper">
-        {t('table.help')}
-      </p>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label={t('leaveType')}>
-          {/* 2a237f5f — FIXED ON PURPOSE: a Leave Credit is always Replacement Leave. The visible box is
-              disabled, so the BROWSER never submits it — which is why the id travels in its own hidden field. */}
-          <input type="hidden" name="leaveTypeId" value={replacementType.id} />
-          <input value={replacementType.name} readOnly disabled data-testid="leave-credit-leave-type" className={`${inputCls} bg-muted`} />
-        </Field>
-        <Field label={t('unit')}>
-          {/* Derived, never selectable: every row of this table credits in DAYS. r333's precedent. */}
-          <input value={t('unitDay')} readOnly disabled data-testid="leave-credit-unit" className={`${inputCls} bg-muted`} />
-        </Field>
+    <form action={submitAction} onSubmit={() => onSubmitted?.()} className={dialog ? 'flex min-h-0 max-h-[90vh] flex-col' : 'space-y-4'} data-testid="leave-credit-request-form">
+      <div className={dialog ? 'shrink-0 border-b border-border p-4' : 'space-y-2'}>
+        {header}
+        <p className="mt-2 text-xs text-muted-foreground" data-testid="leave-credit-helper">{t('table.help')}</p>
+        {tiers && <p className="mt-2 text-xs font-medium text-primary">{t('table.companyRule', {half: minutesHM(tiers.extendedHalfDayMinutes),full: minutesHM(tiers.extendedFullDayMinutes)})}</p>}
+        <input type="hidden" name="leaveTypeId" value={replacementType.id} />
+        <p className="mt-2 text-xs text-muted-foreground" data-testid="leave-credit-leave-type">{t('leaveType')}: {replacementType.name}</p>
       </div>
-
+      <div className={dialog ? 'min-h-0 space-y-4 overflow-y-auto p-4' : 'space-y-4'} data-testid="leave-credit-scroll-body">
       <div className={tableWrapCls}>
-        {/* r365 — EIGHT columns, not nine. Scheduled shift end and Actual clock-out left the row for the
+        {/* r378 — SEVEN columns: the Attendance/View column is replaced by an inline details row.
+            Previously r365 used eight columns. Scheduled shift end and Actual clock-out left the row for the
             Attendance panel; `min-w` came down with them, which is the other half of the reporter's
             crowding complaint (a 60rem minimum inside `overflow-x-auto` made a laptop scroll sideways to
             reach the delete button). */}
@@ -846,7 +616,6 @@ export function LeaveCreditRequestTable({
               <th className={thCls}>{t('sectionB.extendedEnd')}</th>
               <th className={thCls}>{t('sectionB.eligibleMinutes')}</th>
               <th className={thCls}>{t('sectionB.credit')}</th>
-              <th className={thCls}>{t('table.attendanceColumn')}</th>
               <th className={thCls} />
             </tr>
           </thead>
@@ -865,9 +634,8 @@ export function LeaveCreditRequestTable({
               //        assessment ONLY, never the clock-out cell.
               // Neither cell is in the row any more, so the ROW no longer needs the predicate. The two places
               // that do still ask it are unchanged and are the two that matter: `derive` above, which is
-              // where it decides the MONEY (`shiftEnd: floored ? view.shiftEnd : null`), and `AttendanceFacts`,
-              // which prints "No scheduled shift" off the same question so the panel and the arithmetic
-              // cannot say different things about one date.
+              // where it decides the MONEY (`shiftEnd: floored ? view.shiftEnd : null`), and the server credit assessment. AttendanceFacts prints the recorded effective shift
+              // independently: a rostered rest-day shift remains visible while never flooring its claim.
               // Ordinary Day chosen on a company that cannot credit one: the option was still offered, so
               // the row is where that is explained. Its claimed-window cells are dead, not merely empty.
               const ordinaryUnavailable = chosen === 'workday' && ordinaryEarnsNothing;
@@ -1047,17 +815,14 @@ export function LeaveCreditRequestTable({
                       />
                     </td>
                     <td className="px-3 py-2">
-                      <div className={`${disabledCell} tabular-nums`} data-testid="leave-credit-eligible-minutes">
-                        {d?.minutes ?? DAY_DASH}
+                      <div className="py-2 text-xs tabular-nums" data-testid="leave-credit-eligible-minutes">
+                        {d?.minutes != null ? minutesHM(d.minutes) : DAY_DASH}
                       </div>
                     </td>
                     <td className="px-3 py-2">
-                      <div className={`${disabledCell} tabular-nums`} data-testid="leave-credit-row-credit">
+                      <div className="py-2 text-xs tabular-nums" data-testid="leave-credit-row-credit">
                         {credit != null ? t('totalDays', { days: formatDays(credit) }) : DAY_DASH}
                       </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <AttendanceViewCell workedDate={r.workedDate} dayType={chosen} view={d?.view ?? null} alert={attendanceAlert} />
                     </td>
                     <td className="px-3 py-2">
                       <Button
@@ -1072,6 +837,9 @@ export function LeaveCreditRequestTable({
                       </Button>
                     </td>
                   </tr>
+                  <tr><td colSpan={7} className="px-3 py-1"><button data-testid="leave-credit-details-toggle" type="button" disabled={!r.workedDate} aria-expanded={expandedRows.has(r.key)} className="min-h-11 text-xs font-medium text-primary underline" onClick={() => setExpandedRows((previous) => {const next = new Set(previous);if(next.has(r.key)) next.delete(r.key);else next.add(r.key);return next;})}>{t('table.detailToggle')}</button></td></tr>
+                  {expandedRows.has(r.key) && <tr><td colSpan={7} className="bg-muted/30 px-3 py-2">{factError[r.workedDate] ? <span>{t('table.dayTypeLookupFailed')} <button type="button" onClick={retryFacts}>{t('table.dayTypeRetry')}</button></span> : !factsSettled[r.workedDate] ? <p>{t('table.dayTypeReading')}</p> : !d?.view ? <p>{t('table.dayTypeNotFound')}</p> : <AttendanceFacts workedDate={r.workedDate} dayType={chosen} view={d.view} alert={attendanceAlert} />}</td></tr>}
+                  {duplicateDates.some((row) => row.key === r.key) && <tr><td colSpan={7} className="px-3 py-1 text-xs text-destructive">{t('table.duplicateDate')}</td></tr>}
                   {/* ⚠️ r362 58424c7f · MUTED, AND THE COLOUR IS THE DECISION.
                       The reporter asked Leave Credit to REFUSE an end earlier than the start. It is
                       deliberately allowed — lib/extended-hours.ts's header has the argument — because that
@@ -1084,7 +852,7 @@ export function LeaveCreditRequestTable({
                       past its clock-out AND cross midnight without one message hiding the other. */}
                   {crossesMidnight && (
                     <tr>
-                      <td colSpan={8} className="px-3 pb-2">
+                      <td colSpan={7} className="px-3 pb-2">
                         <p className="text-[11px] text-muted-foreground" data-testid="leave-credit-crosses-midnight">
                           {t('table.crossesMidnight')}
                         </p>
@@ -1093,7 +861,7 @@ export function LeaveCreditRequestTable({
                   )}
                   {(mismatch != null || ordinaryUnavailable || below) && (
                     <tr>
-                      <td colSpan={8} className="px-3 pb-2 text-[11px] font-medium text-destructive">
+                      <td colSpan={7} className="px-3 pb-2 text-[11px] font-medium text-destructive">
                         {mismatch != null ? (
                           <span data-testid="leave-credit-roster-mismatch">
                             {t('table.rosterMismatch', { roster: dayTypeLabel(mismatch) })}
@@ -1119,17 +887,8 @@ export function LeaveCreditRequestTable({
         {t('addRow')}
       </Button>
 
-      <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
-        <span className="font-medium text-foreground" data-testid="leave-credit-total-label">
-          {t('grandTotal')}
-        </span>
-        <span className="font-semibold tabular-nums text-foreground" data-testid="leave-credit-total">
-          {t('totalDays', { days: formatDays(totalCredit) })}
-        </span>
-      </div>
-
-      <Field label={t('reason')}>
-        <input name="reason" className={inputCls} />
+      <Field label={`${t('reason')} *`}>
+        <textarea name="reason" required rows={3} value={reason} onChange={(event) => setReason(event.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
       </Field>
 
       {requiresFirstScheduleConsent && (
@@ -1139,10 +898,18 @@ export function LeaveCreditRequestTable({
         </label>
       )}
 
-      <div className="flex justify-end">
-        <button className={btnPrimary} disabled={blocked} data-testid="leave-credit-submit">
-          {t('submit')}
-        </button>
+      </div>
+      <div className={dialog ? 'flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border p-4' : 'flex flex-wrap items-center justify-between gap-3'}>
+      <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
+        <span className="font-medium text-foreground" data-testid="leave-credit-total-label">
+          {t('grandTotal')}
+        </span>
+        <span className="font-semibold tabular-nums text-foreground" data-testid="leave-credit-total">
+          {t('totalDays', { days: formatDays(totalCredit) })}
+        </span>
+      </div>
+
+        <div className="flex items-start gap-2">{cancel}<CreditSubmit blocked={blocked} explanation={!reason.trim() ? t('table.reasonRequired') : t('table.completeRows')} /></div>
       </div>
     </form>
   );

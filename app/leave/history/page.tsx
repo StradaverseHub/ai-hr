@@ -15,5 +15,5 @@ export default async function LeaveHistoryPage({ searchParams }: { searchParams:
   const sp = await searchParams;
   const [leaveTypes, eligible] = await Promise.all([listLeaveTypes(session, {locale, includeArchived:false}), listEligibleLeaveTypesFor(session, me.employmentId, locale)]);
   const { history } = await loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, eligibleTypeIds:new Set(eligible.map((row) => row.id))});
-  return <div className="w-full min-w-0 space-y-6"><PageHeader title={t('historyHeading')} />{sp.error && <p className="text-sm text-destructive">{sp.error}</p>}{history}</div>;
+  return <div className="w-full min-w-0 space-y-6"><PageHeader title={t('historyHeading')} />{sp.warnHoliday && <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">{t('errors.holidaysIncomplete', {loaded:sp.loaded??'0',state:sp.state||'—',year:sp.year??''})}</div>}{sp.error && <p className="text-sm text-destructive">{sp.error}</p>}{history}</div>;
 }

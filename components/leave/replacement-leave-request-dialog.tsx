@@ -115,17 +115,12 @@ export function ReplacementLeaveRequestDialog({
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
         <Dialog.Content
           data-testid="leave-credit-request-dialog"
-          className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[95vw] max-w-5xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-card p-5 shadow-xl"
+          className="fixed left-1/2 top-[5vh] z-50 max-h-[90vh] w-[90vw] max-w-[1080px] -translate-x-1/2 overflow-hidden rounded-xl border border-border bg-card shadow-xl"
         >
-          <Dialog.Title className="text-base font-semibold text-foreground">{t('title')}</Dialog.Title>
-          {/* What a Leave Credit IS, in one sentence, translated in all six locales. The table draws its own
-              helper line for how the rows work; these two say different things and both are wanted. */}
-          <Dialog.Description className="mt-0.5 text-xs text-muted-foreground" data-testid="leave-credit-dialog-description">
-            {t('description')}
-          </Dialog.Description>
-
-          <div className="mt-4">
             <LeaveCreditRequestTable
+              dialog
+              header={<><div className="flex items-start justify-between gap-3"><Dialog.Title className="text-base font-semibold text-foreground">{t('title')}</Dialog.Title><Dialog.Close asChild><button type="button" aria-label={t('cancel')} className="flex size-11 shrink-0 items-center justify-center rounded-md border border-border text-lg">×</button></Dialog.Close></div><Dialog.Description className="mt-2 text-xs text-muted-foreground" data-testid="leave-credit-dialog-description">{t('description')}</Dialog.Description></>}
+              cancel={<Dialog.Close asChild><button type="button" className="min-h-11 rounded-md border border-border px-3 text-sm">{t('cancel')}</button></Dialog.Close>}
               replacementType={replacementType}
               submitAction={submitAction}
               today={today}
@@ -137,15 +132,6 @@ export function ReplacementLeaveRequestDialog({
               // new request is listed. A modal still standing over that navigation is the defect.
               onSubmitted={() => setOpen(false)}
             />
-          </div>
-
-          <div className="mt-3 flex justify-end">
-            <Dialog.Close asChild>
-              <button type="button" className="text-xs text-muted-foreground underline">
-                {t('cancel')}
-              </button>
-            </Dialog.Close>
-          </div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

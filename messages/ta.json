@@ -13573,7 +13573,17 @@
       "attendanceOtPlanNone": "இந்த தேதிக்கு எதுவும் இல்லை",
       "attendanceOtPlanApproved": "இந்த தேதிக்கு அங்கீகரிக்கப்பட்டது",
       "dotReasonNoRecord": "இந்த தேதிக்கு வெளியேறும் நேரம் பதிவாகவில்லை.",
-      "dotReasonPastClockOut": "நீங்கள் {claimEnd} வரை கோரியுள்ளீர்கள்; பதிவான வெளியேறும் நேரம் {clockOut}."
+      "dotReasonPastClockOut": "நீங்கள் {claimEnd} வரை கோரியுள்ளீர்கள்; பதிவான வெளியேறும் நேரம் {clockOut}.",
+      "detailToggle": "நாள் வாரியான விவரங்களைக் காண்க",
+      "detailDay": "நாள்",
+      "detailSchedule": "அட்டவணை",
+      "detailShift": "பணி முறை",
+      "detailHours": "பணி முடிவுக்குப் பின் நேரம்",
+      "noAttendanceRecord": "இந்தத் தேதிக்கு வருகைப் பதிவு இல்லை.",
+      "companyRule": "நிறுவன வரவு விதி: {half} = 0.5 நாள் · {full} = 1 நாள்",
+      "duplicateDate": "இந்தத் தேதி ஏற்கனவே கோரிக்கையில் உள்ளது.",
+      "reasonRequired": "தொடர காரணத்தைச் சேர்க்கவும்.",
+      "completeRows": "தொடர தகுதியுள்ள வரிசைகளை நிறைவு செய்யவும்."
     }
   },
   "notices": {

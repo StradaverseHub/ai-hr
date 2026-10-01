@@ -249,6 +249,7 @@ export function EmployeeScopePanel({
   selectParam = 'employmentId',
   preserve,
   allowAll = false,
+  preservePicker = false,
 }: {
   /** The already access-fenced employee set, mapped from the server's `listEmployees`. */
   employees: ScopeEmployee[];
@@ -282,16 +283,18 @@ export function EmployeeScopePanel({
    * removing it would take away the view those tabs open on today.
    */
   allowAll?: boolean;
+  /** Leave Inquiry only: keep employee-search context separate from leave-code filters. */
+  preservePicker?: boolean;
 }) {
   const t = useTranslations('employeePanel');
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  const [query, setQuery] = useState('');
-  const [companyId, setCompanyId] = useState('');
-  const [businessUnitId, setBusinessUnitId] = useState('');
-  const [departmentId, setDepartmentId] = useState('');
-  const [status, setStatus] = useState('');
+  const [query, setQuery] = useState(() => preservePicker && typeof preserve?.pickerQ === 'string' ? preserve.pickerQ : '');
+  const [companyId, setCompanyId] = useState(() => preservePicker && typeof preserve?.pickerCompany === 'string' ? preserve.pickerCompany : '');
+  const [businessUnitId, setBusinessUnitId] = useState(() => preservePicker && typeof preserve?.pickerBusinessUnit === 'string' ? preserve.pickerBusinessUnit : '');
+  const [departmentId, setDepartmentId] = useState(() => preservePicker && typeof preserve?.pickerDepartment === 'string' ? preserve.pickerDepartment : '');
+  const [status, setStatus] = useState(() => preservePicker && typeof preserve?.pickerStatus === 'string' ? preserve.pickerStatus : '');
   /**
    * 009c8a37 — the More-filters fold, CONTROLLED and DELIBERATELY NOT PERSISTED.
    *
@@ -348,6 +351,11 @@ export function EmployeeScopePanel({
     // The screen's own filters ride along; anything it did NOT list is dropped on purpose, because a
     // param scoped to the PREVIOUS employee (a payslip id, a page number) is wrong for the next one.
     const qs = preservedParams(preserve);
+    if (preservePicker) {
+      for (const [key, value] of Object.entries({ pickerQ: query, pickerCompany: companyId, pickerBusinessUnit: businessUnitId, pickerDepartment: departmentId, pickerStatus: status })) {
+        if (value) qs.set(key, value); else qs.delete(key);
+      }
+    }
     qs.set(selectParam, id);
     startTransition(() => router.push(`${basePath}?${qs.toString()}`));
   };

@@ -13573,7 +13573,17 @@
       "attendanceOtPlanNone": "None for this date",
       "attendanceOtPlanApproved": "Approved for this date",
       "dotReasonNoRecord": "No clock-out is on record for this date.",
-      "dotReasonPastClockOut": "You claimed to {claimEnd}; the clock-out on record is {clockOut}."
+      "dotReasonPastClockOut": "You claimed to {claimEnd}; the clock-out on record is {clockOut}.",
+      "detailToggle": "View day-by-day details",
+      "detailDay": "Day",
+      "detailSchedule": "Schedule",
+      "detailShift": "Shift",
+      "detailHours": "Hours after shift",
+      "noAttendanceRecord": "No attendance record for this date.",
+      "companyRule": "Company credit rule: {half} = 0.5 day · {full} = 1 day",
+      "duplicateDate": "This date is already in the request.",
+      "reasonRequired": "Add a reason to continue.",
+      "completeRows": "Complete the eligible rows to continue."
     }
   },
   "notices": {

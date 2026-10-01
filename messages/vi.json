@@ -13573,7 +13573,17 @@
       "attendanceOtPlanNone": "Không có cho ngày này",
       "attendanceOtPlanApproved": "Đã duyệt cho ngày này",
       "dotReasonNoRecord": "Không có giờ ra được ghi nhận cho ngày này.",
-      "dotReasonPastClockOut": "Bạn khai đến {claimEnd}; giờ ra được ghi nhận là {clockOut}."
+      "dotReasonPastClockOut": "Bạn khai đến {claimEnd}; giờ ra được ghi nhận là {clockOut}.",
+      "detailToggle": "Xem chi tiết từng ngày",
+      "detailDay": "Ngày",
+      "detailSchedule": "Lịch làm việc",
+      "detailShift": "Ca",
+      "detailHours": "Giờ sau ca",
+      "noAttendanceRecord": "Không có hồ sơ chấm công cho ngày này.",
+      "companyRule": "Quy tắc của công ty: {half} = 0.5 ngày · {full} = 1 ngày",
+      "duplicateDate": "Ngày này đã có trong yêu cầu.",
+      "reasonRequired": "Thêm lý do để tiếp tục.",
+      "completeRows": "Hoàn thành các dòng đủ điều kiện để tiếp tục."
     }
   },
   "notices": {

@@ -201,6 +201,7 @@ export async function submitLeaveCreditRequest(
     today: string;
   },
 ): Promise<SubmitReplacementRequestResult> {
+  if (!p.reason?.trim()) throw new ReplacementRequestInvalidError('Enter a reason for the leave credit request.');
   if (p.rows.length === 0) throw new ReplacementRequestInvalidError('Add at least one worked date.');
   for (const r of p.rows) {
     if (!isLeaveCreditDayType(r.dayType)) throw new ReplacementRequestInvalidError('Choose a day type for every date worked.');

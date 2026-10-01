@@ -59,7 +59,7 @@
  * is REFUSED", plus its vacuity control).
  */
 import { describe, expect, it, vi as vitestVi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 
@@ -116,12 +116,13 @@ function mount(
   locale: Locale,
   opts: {
     facts?: LeaveCreditDayFacts | null;
+    reason?: string;
     tiers?: typeof TIERS | null;
     /** r360 — the whole action, for the cases that need it to REJECT (the reported defect) or answer per date. */
     action?: (workedDate: string) => Promise<LeaveCreditDayFacts | null>;
   } = {},
 ) {
-  return render(
+  const rendered = render(
     <NextIntlClientProvider locale={locale} messages={CATALOGUES[locale]}>
       <LeaveCreditRequestTable
         replacementType={{ id: 'lt-1', name: 'Replacement Leave' }}
@@ -135,6 +136,9 @@ function mount(
       />
     </NextIntlClientProvider>,
   );
+  // Existing arithmetic cases submit a complete form; blank-reason behavior is tested separately.
+  fireEvent.change(rendered.container.querySelector('textarea[name=reason]')!, {target:{value:opts.reason ?? 'Fixture claim reason'}});
+  return rendered;
 }
 
 /**
@@ -418,7 +422,7 @@ describe('r343 · the per-row conditional, as disabled cells on ONE row', () => 
     await awaitDayType('en', 'rest_day');
     await user.type(startInput('en'), '18:00');
     await user.type(endInput('en'), '22:00');
-    expect(screen.getAllByTestId('leave-credit-eligible-minutes')[0].textContent).toContain('240');
+    expect(screen.getAllByTestId('leave-credit-eligible-minutes')[0].textContent).toContain('4h');
     expect(screen.getAllByTestId('leave-credit-row-credit')[0].textContent).toMatch(/0\.5/);
   });
 
@@ -629,340 +633,85 @@ describe('r343 · the roster adjudicates — and after r360 the screen cannot be
  * three non-working day types — so the minutes, the credit and the total are asserted at exactly the same
  * absolute values they were before, which is this round's proof that no money moved.
  */
-describe('r365 · the attendance figures moved behind one View button, and every claim moved with them', () => {
-  it('EIGHT columns, not nine: the shift-end and clock-out cells are gone and an Attendance column is there', async () => {
+describe('r378 · inline attendance details replace the View popup without changing credit', () => {
+  it('seven columns; detail toggle posts no field, is unavailable without a date and expands inline', async () => {
     const user = userEvent.setup();
-    mount('en', { facts: WORKING_DAY });
+    const {container} = mount('en', {facts: WORKING_DAY});
+    const toggle = () => screen.getByTestId('leave-credit-details-toggle') as HTMLButtonElement;
+    expect(toggle().disabled).toBe(true);
+    expect(toggle().type).toBe('button');
+    expect(toggle().getAttribute('name')).toBeNull();
+    expect(screen.getByTestId('leave-credit-table').querySelectorAll('thead th')).toHaveLength(7);
     await user.type(dateInput('en'), '2026-09-16');
     await awaitDayType('en', 'workday');
-
-    const heads = [...screen.getByTestId('leave-credit-table').querySelectorAll('thead th')].map((h) => h.textContent?.trim());
-    expect(heads).toEqual([
-      en.replacementRequest.workedDate,
-      en.replacementRequest.sectionA.dayType,
-      en.replacementRequest.sectionB.extendedStart,
-      en.replacementRequest.sectionB.extendedEnd,
-      en.replacementRequest.sectionB.eligibleMinutes,
-      en.replacementRequest.sectionB.credit,
-      en.replacementRequest.table.attendanceColumn,
-      '',
-    ]);
-    // ⚠️ THE OLD HEADINGS ARE NOT MERELY ABSENT FROM THE LIST ABOVE — they are absent from the table, and
-    // so are the two cells. A reader who only saw the array could not tell a removal from a reordering.
-    expect(screen.queryAllByTestId('leave-credit-shift-end'), 'the shift-end CELL left the row').toHaveLength(0);
-    expect(screen.queryAllByTestId('leave-credit-clock-out'), 'the clock-out CELL left the row').toHaveLength(0);
-    // …and the row's cell count matches its heading count, so no cell is hiding under a wrong colspan.
-    expect(screen.getAllByTestId('leave-credit-row')[0].querySelectorAll('td')).toHaveLength(8);
+    await user.click(toggle());
+    expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('leave-credit-attendance-panel').closest('tr')).toBeInTheDocument();
+    expect([...container.querySelectorAll('[name]')].map(e=>e.getAttribute('name')).sort()).toEqual(['claimEnd','claimStart','dayType','leaveTypeId','reason','workedDate'].sort());
+    await user.click(toggle());
+    expect(screen.queryByTestId('leave-credit-attendance-panel')).toBeNull();
   });
 
-  it('View is OFF until a date is picked, and ON once there is one', async () => {
+  it.each(LOCALES)('%s — recorded schedule, shift, punches, hours and reference resolve inline', async locale => {
     const user = userEvent.setup();
-    mount('en', { facts: WORKING_DAY });
-    expect(viewButton().disabled, 'nothing to look up before a date exists').toBe(true);
-    expect(viewButton().getAttribute('title')).toBe(en.replacementRequest.table.attendanceViewDisabled);
-    expect(attendancePanel()).toBeNull();
-    await user.type(dateInput('en'), '2026-09-16');
-    await waitFor(() => expect(viewButton().disabled).toBe(false));
-  });
-
-  /**
-   * ⚠️ THE BUTTON POSTS NOTHING, AND THAT IS THE CONTRACT THE WHOLE FORM RESTS ON.
-   * `submitLeaveCreditRequestAction` zips the repeated row fields BY INDEX and a browser does not submit a
-   * DISABLED control at all — this one is disabled on every row with no date yet. A `name` here would post
-   * a list shorter than the row list and silently shift every row after the gap. Asserted in the DOM as
-   * well as in source (test/r343-leave-credit-single-table.test.ts) because the two can only both be
-   * wrong together.
-   */
-  it('the View button carries no name and no value: the hidden inputs stay the only posted row state', async () => {
-    const user = userEvent.setup();
-    const { container } = mount('en', { facts: WORKING_DAY });
-    await user.type(dateInput('en'), '2026-09-16');
-    await awaitDayType('en', 'workday');
-    expect(viewButton().getAttribute('name')).toBeNull();
-    expect(viewButton().type, 'a submit button inside this form would send the request').toBe('button');
-    const posted = [...container.querySelectorAll('[name]')].map((e) => e.getAttribute('name')).sort();
-    expect(posted).toEqual(['claimEnd', 'claimStart', 'dayType', 'leaveTypeId', 'reason', 'workedDate'].sort());
-  });
-
-  it('the panel opens beside the button with the whole record for the date, and the footnote', async () => {
-    const user = userEvent.setup();
-    mount('en', { facts: WORKING_DAY }); // 09:00-18:00 rostered, in 08:52, out 02:00
-    await user.type(dateInput('en'), '2026-09-16');
-    await awaitDayType('en', 'workday');
-    await user.click(viewButton());
-
-    await waitFor(() => expect(attendancePanel()).not.toBeNull());
-    expect(panelLine('date')).toContain('2026-09-16');
-    expect(panelLine('day-type')).toContain(en.replacementRequest.dayKind.workday);
-    expect(panelLine('shift')).toContain('09:00');
-    expect(panelLine('shift')).toContain('18:00');
-    expect(panelLine('shift-end')).toContain('18:00');
-    expect(panelLine('clock-in')).toContain('08:52');
-    expect(panelLine('clock-out')).toContain('02:00');
-    expect(panelLine('ot-plan')).toContain(en.replacementRequest.table.attendanceOtPlanNone);
-    // The reporter's own footnote, which the plan says stays.
-    expect(panelLine('footnote')).toBe(en.replacementRequest.table.attendanceReferenceOnly);
-    expect(looksUnresolved(attendancePanel()?.textContent ?? '')).toBe(false);
-  });
-
-  it('an approved overtime plan on the date is named in the panel, because it will refuse this claim', async () => {
-    const user = userEvent.setup();
-    mount('en', { facts: { ...WORKING_DAY, approvedOtPlan: { start: '19:00:00', end: '21:00:00', minutes: 120 } } });
-    await user.type(dateInput('en'), '2026-09-16');
-    await awaitDayType('en', 'workday');
-    await user.click(viewButton());
-    await waitFor(() => expect(attendancePanel()).not.toBeNull());
-    expect(panelLine('ot-plan')).toContain('19:00');
-    expect(panelLine('ot-plan')).toContain('21:00');
-    expect(panelLine('ot-plan')).not.toContain(en.replacementRequest.table.attendanceOtPlanNone);
-  });
-
-  /**
-   * ⚠️ REVERSED FROM r364's "a Rest Day row PRINTS the clock-out, and the SHIFT END keeps its day-type
-   * dash". BOTH halves survive and the second one is STRENGTHENED rather than relaxed: a dash is a symbol
-   * the employee has to decode, and the reporter asked for words. The panel says "No scheduled shift" —
-   * which is the same statement as the NULL `derive` passes into `assessExtendedClaim` on this day type.
-   */
-  it('a Rest Day panel says "No scheduled shift" in words, and still prints the clock-out on record', async () => {
-    const user = userEvent.setup();
-    mount('en', { facts: REST_DAY }); // no shift, in 08:00, out 17:00
-    await user.type(dateInput('en'), '2026-09-13');
-    await awaitDayType('en', 'rest_day');
-    await user.click(viewButton());
-    await waitFor(() => expect(attendancePanel()).not.toBeNull());
-    expect(panelLine('shift')).toContain(en.replacementRequest.table.attendanceNoShift);
-    expect(panelLine('shift-end')).toContain(en.replacementRequest.table.attendanceNoShift);
-    expect(panelLine('shift-end'), 'the dash is gone: it is a decode, not an answer').not.toContain(DAY_DASH);
-    expect(panelLine('clock-out')).toContain('17:00');
-    expect(attendanceDot(), 'nothing to flag: the clock-out is there').toBeNull();
-  });
-
-  /**
-   * ⚠️⚠️ THE MONEY GUARD, CARRIED OVER WORD FOR WORD FROM r364 AND EXTENDED TO THE PANEL.
-   * A roster CAN carry a shift end on a rest day. The floor is `max(claimStart, shiftEnd)`, so a row
-   * claiming 09:00-17:00 against a rostered 18:00 end would be floored PAST its own end and credit
-   * NOTHING. `derive` passes NULL on this day type for exactly that reason — and the panel must say the
-   * same thing, or the employee reads an 18:00 floor that the arithmetic does not apply.
-   */
-  it('a Rest Day whose roster carries a shift end is not floored by it, and the panel does not print it', async () => {
-    const user = userEvent.setup();
-    mount('en', { facts: REST_DAY_ROSTERED_SHIFT }); // rostered 09:00-18:00, clocked out 17:00
-    await user.type(dateInput('en'), '2026-09-13');
-    await awaitDayType('en', 'rest_day');
-    await user.type(startInput('en'), '09:00');
-    await user.type(endInput('en'), '17:00');
-    // 480 and a full day — the whole window. A floored row would read 0 here and credit 0.00.
-    await waitFor(() => expect(screen.getByTestId('leave-credit-eligible-minutes').textContent?.trim()).toBe('480'));
-    expect(screen.getByTestId('leave-credit-row-credit').textContent?.trim()).toBe('1.00 day(s)');
-    await user.click(viewButton());
-    await waitFor(() => expect(attendancePanel()).not.toBeNull());
-    expect(panelLine('shift-end'), 'the rostered 18:00 must not be shown as a floor').not.toContain('18:00');
-    expect(panelLine('shift-end')).toContain(en.replacementRequest.table.attendanceNoShift);
-    expect(panelLine('clock-out')).toContain('17:00');
-  });
-
-  it('a date with NO attendance record at all opens, says so plainly, and does NOT block the claim', async () => {
-    const user = userEvent.setup();
-    mount('en', { facts: { ...NO_ATTENDANCE, actualClockIn: null, actualClockOut: null } });
-    await user.type(dateInput('en'), '2026-09-16');
-    await awaitDayType('en', 'workday');
-    await user.click(viewButton());
-    await waitFor(() => expect(attendancePanel()).not.toBeNull());
-    expect(panelLine('clocking')).toContain(en.replacementRequest.table.attendanceNothingRecorded);
-    expect(screen.getByTestId('leave-credit-attendance-no-record').textContent).toBe(
-      en.replacementRequest.table.attendanceNoRecordNote,
-    );
-
-    // ⚠️ IT MUST NOT BLOCK THE CLAIM. The panel is a record, never a gate — the reporter's own footnote says
-    // so and the owner's r353 reversal is what makes it true. Typed with the panel still open.
-    await user.type(startInput('en'), '18:00');
-    await user.type(endInput('en'), '23:51'); // the reporter's own window: 351 minutes
-    await waitFor(() => expect(screen.getByTestId('leave-credit-eligible-minutes')).toHaveTextContent('351'));
-    expect(screen.getByTestId('leave-credit-row-credit')).toHaveTextContent('0.5');
-    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  it('Escape closes the panel, and a second click on View closes it too', async () => {
-    const user = userEvent.setup();
-    mount('en', { facts: WORKING_DAY });
-    await user.type(dateInput('en'), '2026-09-16');
-    await awaitDayType('en', 'workday');
-    await user.click(viewButton());
-    await waitFor(() => expect(attendancePanel()).not.toBeNull());
-    await user.keyboard('{Escape}');
-    await waitFor(() => expect(attendancePanel()).toBeNull());
-    await user.click(viewButton());
-    await waitFor(() => expect(attendancePanel()).not.toBeNull());
-    await user.click(viewButton());
-    await waitFor(() => expect(attendancePanel()).toBeNull());
-  });
-
-  /**
-   * ⚠️ REPLACES r353's "a claim that ends AFTER the recorded clock-out warns, names both times, and still
-   * credits". Same condition, same two figures, same non-refusal — a dot instead of a bar, and the reason
-   * on the button rather than across the table.
-   */
-  it('a claim past the recorded clock-out lights the dot, names both times, and still credits', async () => {
-    const user = userEvent.setup();
-    mount('en', { facts: CLOCKED_OUT_EARLY }); // clocked out 20:00
-    await user.type(dateInput('en'), '2026-09-16');
-    await awaitDayType('en', 'workday');
-    await user.type(startInput('en'), '18:00');
-    await user.type(endInput('en'), '22:00');
-
-    // 240 minutes: the clock-out no longer cuts it to 120.
-    await waitFor(() => expect(screen.getByTestId('leave-credit-eligible-minutes')).toHaveTextContent('240'));
-    expect(screen.getByTestId('leave-credit-row-credit')).toHaveTextContent('0.5');
-    await waitFor(() => expect(attendanceDot()).not.toBeNull());
-    // BOTH figures, so the employee can see which two the manager will be comparing.
-    const reason = viewButton().getAttribute('title') ?? '';
-    expect(reason).toContain('22:00');
-    expect(reason).toContain('20:00');
-    // ⚠️ IT IS A WARNING, NOT A REFUSAL. The submit stays available — that is the loosening the owner chose.
-    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(false);
-    // And the detail is inside the panel, which is where the plan puts it.
-    await user.click(viewButton());
-    await waitFor(() => expect(attendancePanel()).not.toBeNull());
-    expect(screen.getByTestId('leave-credit-attendance-alert').textContent).toBe(reason);
-  });
-
-  it('a claim INSIDE the recorded clock-out lights nothing at all — the dot is not decoration', async () => {
-    const user = userEvent.setup();
-    mount('en', { facts: WORKING_DAY }); // clocked out 02:00, shift end 18:00
-    await user.type(dateInput('en'), '2026-09-16');
-    await awaitDayType('en', 'workday');
-    await user.type(startInput('en'), '18:00');
-    await user.type(endInput('en'), '22:00');
-    await waitFor(() => expect(screen.getByTestId('leave-credit-eligible-minutes')).toHaveTextContent('240'));
-    expect(attendanceDot()).toBeNull();
-    expect(viewButton().getAttribute('title')).toBeNull();
-  });
-
-  /**
-   * ⚠️⚠️ r364 c36e1ae6's REGRESSION GUARD, AND THE DOT INHERITS IT. `derive` reads `hasClockOut` off the
-   * day FACTS, not off the assessment — which is handed NULL on the three non-working types because that
-   * is the money rule, and so used to answer "no clock-out" on every one of them. A dot built on the old
-   * reading would be amber on every rest day, off day and public holiday row. BOTH times are typed, because
-   * the early exit was always right and only the assessed exit was wrong; a complete window is what reaches
-   * it.
-   */
-  it('a rest-day row WITH a clock-out shows NO dot once both times are typed', async () => {
-    const user = userEvent.setup();
-    mount('en', { facts: REST_DAY }); // clocked out 17:00
-    await user.type(dateInput('en'), '2026-09-13');
-    await awaitDayType('en', 'rest_day');
-    expect(attendanceDot(), 'dark before the window is typed').toBeNull();
-    await user.type(startInput('en'), '09:00');
-    await user.type(endInput('en'), '17:00');
-    // The figures prove the ASSESSED exit was taken — the exit that used to answer hasClockOut false.
-    await waitFor(() => expect(screen.getByTestId('leave-credit-eligible-minutes')).toHaveTextContent('480'));
-    expect(attendanceDot()).toBeNull();
-  });
-
-  it('…and a rest-day row with NO clock-out DOES light it — the non-vacuity partner of the case above', async () => {
-    const user = userEvent.setup();
-    mount('en', { facts: REST_DAY_NO_CLOCK_OUT });
-    await user.type(dateInput('en'), '2026-09-13');
-    await awaitDayType('en', 'rest_day');
-    await user.type(startInput('en'), '09:00');
-    await user.type(endInput('en'), '17:00');
-    await waitFor(() => expect(screen.getByTestId('leave-credit-eligible-minutes')).toHaveTextContent('480'));
-    // The same row, the same window, the same day type. Only the fact differs — and now the screen speaks.
-    await waitFor(() => expect(attendanceDot()).not.toBeNull());
-    expect(viewButton().getAttribute('title')).toBe(en.replacementRequest.table.dotReasonNoRecord);
-    await user.click(viewButton());
-    await waitFor(() => expect(attendancePanel()).not.toBeNull());
-    expect(panelLine('clock-out')).toContain(en.replacementRequest.table.noClockOutRecord);
-    // Still a warning and not a refusal, on this day type as on an ordinary day.
-    expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  /**
-   * ⚠️ r364 c36e1ae6 · THE MONEY DID NOT MOVE, AND r365 MOVES IT NO FURTHER. Kept verbatim, at the same
-   * absolute figures, because this is the case that fails if the round ever stops being display-only: two
-   * rest-day rows differing ONLY in whether a clock-out exists must produce the SAME minutes, credit and
-   * total. The figures are asserted absolutely as well as against each other — two identical em dashes
-   * would otherwise satisfy the comparison.
-   */
-  it('the figures on a Rest Day row are identical with a clock-out and without: nothing was recalculated', async () => {
-    const figuresFor = async (facts: LeaveCreditDayFacts) => {
-      const user = userEvent.setup();
-      const { unmount } = mount('en', { facts });
-      await user.type(dateInput('en'), '2026-09-13');
-      await awaitDayType('en', 'rest_day');
-      await user.type(startInput('en'), '09:00');
-      await user.type(endInput('en'), '17:00');
-      await waitFor(() => expect(screen.getByTestId('leave-credit-eligible-minutes').textContent?.trim()).not.toBe(DAY_DASH));
-      const figures = {
-        minutes: screen.getByTestId('leave-credit-eligible-minutes').textContent?.trim(),
-        credit: screen.getByTestId('leave-credit-row-credit').textContent?.trim(),
-        total: screen.getByTestId('leave-credit-total').textContent?.trim(),
-      };
-      unmount();
-      return figures;
-    };
-    const withClockOut = await figuresFor(REST_DAY);
-    const without = await figuresFor(REST_DAY_NO_CLOCK_OUT);
-    // 09:00→17:00 on a rest day: the whole window is the claim (no shift-end floor), 480 minutes ⇒ one day.
-    expect(withClockOut.minutes).toBe('480');
-    expect(withClockOut.credit).toBe('1.00 day(s)');
-    expect(withClockOut.total).toBe('1.00 day(s)');
-    // …and the clock-out changes none of it. This is the proof that the round is display-only.
-    expect(without).toEqual(withClockOut);
-  });
-
-  /**
-   * ⚠️⚠️ THE FIGURE MATRIX, AND IT IS THIS ROUND'S "NO MONEY MOVED" PROOF IN FULL.
-   *
-   * Every day type, with an attendance record and without, against ONE window — and every figure written
-   * out as a literal. A round that only removed two cells cannot change any of these; a round that started
-   * passing the view's own shiftEnd through on a non-working type, or that let the panel's new fields reach
-   * `derive`, breaks a literal here rather than a comparison between two things that moved together.
-   */
-  it.each([
-    ['rest_day', REST_DAY, '480', '1.00 day(s)'],
-    ['rest_day (no record)', REST_DAY_NO_CLOCK_OUT, '480', '1.00 day(s)'],
-    ['rest_day (rostered shift)', REST_DAY_ROSTERED_SHIFT, '480', '1.00 day(s)'],
-    ['off_day', OFF_DAY, '480', '1.00 day(s)'],
-    ['holiday', HOLIDAY, '480', '1.00 day(s)'],
-  ] as const)('%s · 09:00→17:00 earns exactly the same minutes and credit as before the columns moved', async (_name, facts, minutes, credit) => {
-    const user = userEvent.setup();
-    mount('en', { facts });
-    await user.type(dateInput('en'), '2026-09-13');
-    await awaitDayType('en', facts.kind as Kind);
-    await user.type(startInput('en'), '09:00');
-    await user.type(endInput('en'), '17:00');
-    await waitFor(() => expect(screen.getByTestId('leave-credit-eligible-minutes').textContent?.trim()).toBe(minutes));
-    expect(screen.getByTestId('leave-credit-row-credit').textContent?.trim()).toBe(credit);
-    expect(screen.getByTestId('leave-credit-total').textContent?.trim()).toBe(credit);
-  });
-
-  it('an ordinary day is still floored at its scheduled shift end — 18:00→22:00 is 240, not 780', async () => {
-    const user = userEvent.setup();
-    mount('en', { facts: WORKING_DAY }); // 18:00 shift end
-    await user.type(dateInput('en'), '2026-09-16');
-    await awaitDayType('en', 'workday');
-    await user.type(startInput('en'), '09:00');
-    await user.type(endInput('en'), '22:00');
-    // Floored at 18:00: 240 minutes, half a day. Un-floored it would be 780 and a full day.
-    await waitFor(() => expect(screen.getByTestId('leave-credit-eligible-minutes').textContent?.trim()).toBe('240'));
-    expect(screen.getByTestId('leave-credit-row-credit').textContent?.trim()).toBe('0.50 day(s)');
-  });
-
-  it.each(LOCALES)('%s — the dot reason and the whole panel resolve in this locale', async (locale) => {
-    const user = userEvent.setup();
-    mount(locale, { facts: { ...NO_ATTENDANCE, actualClockIn: null, actualClockOut: null } });
+    mount(locale, {facts: {...WORKING_DAY, scheduleName:'Fixture schedule',shiftCode:'FX',shiftName:'Fixture shift',attendanceRecordPresent:true}});
     await user.type(dateInput(locale), '2026-09-16');
     await awaitDayType(locale, 'workday');
-    await user.type(startInput(locale), '18:00');
-    await user.type(endInput(locale), '22:00');
-    await waitFor(() => expect(attendanceDot()).not.toBeNull());
-    expect(viewButton().getAttribute('title')).toBe(copy(locale).table.dotReasonNoRecord);
-    expect(looksUnresolved(viewButton().getAttribute('title') ?? '')).toBe(false);
-    await user.click(viewButton());
-    await waitFor(() => expect(attendancePanel()).not.toBeNull());
-    expect(looksUnresolved(attendancePanel()?.textContent ?? '')).toBe(false);
-    expect(attendancePanel()?.textContent).toContain(copy(locale).table.attendanceReferenceOnly);
+    await user.click(screen.getByTestId('leave-credit-details-toggle'));
+    const panel=screen.getByTestId('leave-credit-attendance-panel');
+    for(const text of ['2026-09-16','Fixture schedule','FX · Fixture shift','08:52','02:00','8h',copy(locale).table.attendanceReferenceOnly]) expect(panel).toHaveTextContent(text);
+    expect(looksUnresolved(panel.textContent??'')).toBe(false);
+  });
+
+  it('absence of an attendance row is explicit; missing punches on an existing row do not claim absence', async () => {
+    const user=userEvent.setup();
+    const facts={...NO_ATTENDANCE,attendanceRecordPresent:false};
+    const rendered=mount('en',{facts});
+    await user.type(dateInput('en'),'2026-09-16');await awaitDayType('en','workday');
+    await user.type(startInput('en'),'18:00');await user.type(endInput('en'),'22:00');
+    await user.click(screen.getByTestId('leave-credit-details-toggle'));
+    expect(screen.getByTestId('leave-credit-attendance-no-record')).toHaveTextContent(en.replacementRequest.table.noAttendanceRecord);
+    expect(screen.getByTestId('leave-credit-submit')).not.toBeDisabled();
+    expect(screen.getByTestId('leave-credit-eligible-minutes')).toHaveTextContent('4h');
+    rendered.unmount();
+    mount('en',{facts:{...facts,attendanceRecordPresent:true}});
+    await user.type(dateInput('en'),'2026-09-16');await awaitDayType('en','workday');
+    await user.click(screen.getByTestId('leave-credit-details-toggle'));
+    expect(screen.queryByTestId('leave-credit-attendance-no-record')).toBeNull();
+    expect(screen.getByTestId('leave-credit-attendance-panel').querySelector('table')).not.toBeNull();
+  });
+
+  it.each([
+    ['rest_day',REST_DAY],['rest_day',REST_DAY_NO_CLOCK_OUT],['rest_day',REST_DAY_ROSTERED_SHIFT],['off_day',OFF_DAY],['holiday',HOLIDAY],
+  ] as const)('%s — same eight-hour claim and one-day credit regardless of shift end or clock-out',async(kind,facts)=>{
+    const user=userEvent.setup();mount('en',{facts});
+    await user.type(dateInput('en'),'2026-09-16');await awaitDayType('en',kind);
+    await user.type(startInput('en'),'09:00');await user.type(endInput('en'),'17:00');
+    await waitFor(()=>expect(screen.getByTestId('leave-credit-eligible-minutes')).toHaveTextContent('8h'));
+    expect(screen.getByTestId('leave-credit-row-credit')).toHaveTextContent('1.00');
+    expect(screen.getByTestId('leave-credit-submit')).not.toBeDisabled();
+  });
+
+  it('ordinary claims retain the shift-end floor; past-clock-out warning does not cap the declared window',async()=>{
+    const user=userEvent.setup();mount('en',{facts:CLOCKED_OUT_EARLY});
+    await user.type(dateInput('en'),'2026-09-16');await awaitDayType('en','workday');
+    await user.type(startInput('en'),'09:00');await user.type(endInput('en'),'22:00');
+    await waitFor(()=>expect(screen.getByTestId('leave-credit-eligible-minutes')).toHaveTextContent('4h'));
+    expect(screen.getByTestId('leave-credit-row-credit')).toHaveTextContent('0.50');
+    await user.click(screen.getByTestId('leave-credit-details-toggle'));
+    expect(screen.getByTestId('leave-credit-attendance-alert')).toHaveTextContent('20:00');
+    expect(screen.getByTestId('leave-credit-submit')).not.toBeDisabled();
+  });
+
+  it('approved overtime remains visible, and a blank free-text reason blocks an otherwise valid row',async()=>{
+    const user=userEvent.setup();mount('en',{reason:'',facts:{...REST_DAY,approvedOtPlan:{start:'19:00:00',end:'21:00:00',minutes:120}}});
+    await user.type(dateInput('en'),'2026-09-16');await awaitDayType('en','rest_day');
+    await user.type(startInput('en'),'09:00');await user.type(endInput('en'),'17:00');
+    await user.click(screen.getByTestId('leave-credit-details-toggle'));
+    expect(screen.getByTestId('leave-credit-attendance-ot-plan')).toHaveTextContent('19:00 – 21:00');
+    expect(screen.getByTestId('leave-credit-submit')).toBeDisabled();
+    await user.type(screen.getByRole('textbox'),'  ');
+    expect(screen.getByTestId('leave-credit-submit')).toBeDisabled();
   });
 });
 
@@ -1283,7 +1032,7 @@ describe('r362 · the night-shift note, and the credit it must not change', () =
     await waitFor(() => expect(note()).not.toBeNull());
     expect(note()!.textContent?.trim()).toBe(en.replacementRequest.table.crossesMidnight);
     // ⚠️ AND THE MONEY, UNCHANGED. A rest day has no scheduled shift end, so the whole rolled window counts.
-    expect(minutes(), 'the rolled window is four hours, as it was before this round').toBe('240');
+    expect(minutes(), 'the rolled window is four hours, as it was before this round').toBe('4h');
     expect(rowCredit()).toBe(en.replacementRequest.totalDays.replace('{days}', '0.50'));
     expect(screen.getByTestId('leave-credit-total').textContent?.trim()).toBe(
       en.replacementRequest.totalDays.replace('{days}', '0.50'),
@@ -1301,7 +1050,7 @@ describe('r362 · the night-shift note, and the credit it must not change', () =
     await awaitDayType('en', 'rest_day');
     await user.type(startInput('en'), '09:00');
     await user.type(endInput('en'), '14:00');
-    await waitFor(() => expect(minutes()).toBe('300'));
+    await waitFor(() => expect(minutes()).toBe('5h'));
     expect(note(), 'a forward window does not cross midnight').toBeNull();
     expect(rowCredit()).toBe(en.replacementRequest.totalDays.replace('{days}', '0.50'));
   });
@@ -1319,7 +1068,7 @@ describe('r362 · the night-shift note, and the credit it must not change', () =
     await awaitDayType('en', 'workday');
     await user.type(startInput('en'), '18:00');
     await user.type(endInput('en'), '18:00');
-    await waitFor(() => expect(minutes()).toBe('0'));
+    await waitFor(() => expect(minutes()).toBe('0m'));
     expect(note(), 'end === start is zero minutes, not twenty-four hours').toBeNull();
     expect(rowCredit()).toBe(en.replacementRequest.totalDays.replace('{days}', '0.00'));
     expect(screen.getByTestId('leave-credit-below-threshold')).not.toBeNull();
@@ -1339,7 +1088,7 @@ describe('r362 · the night-shift note, and the credit it must not change', () =
     await user.type(endInput('en'), '09:00');
     await waitFor(() => expect(note()).not.toBeNull());
     // 14:00 → 09:00 the next morning is nineteen hours, and the tier ladder still caps the day at 1.0.
-    expect(minutes()).toBe('1140');
+    expect(minutes()).toBe('19h');
     expect(rowCredit()).toBe(en.replacementRequest.totalDays.replace('{days}', '1.00'));
     expect((screen.getByTestId('leave-credit-submit') as HTMLButtonElement).disabled, 'explained, not blocked').toBe(false);
   });
