@@ -69,9 +69,15 @@ export const SHELL_ROW_CLS = 'flex h-full gap-3 lg:gap-4';
 export const SHELL_COL_CLS = 'flex min-w-0 flex-1 flex-col gap-3 lg:gap-4';
 /** components/sidebar.tsx — the expanded rail. The collapsed state (w-[66px]) only gives MORE room. */
 export const RAIL_WIDTH_CLS = 'w-[232px]';
+/**
+ * components/sidebar.tsx — the rail is ABSENT below sm, which is half of why the overflow band r374
+ * found starts exactly at 640: that breakpoint takes 232px away from the header and, before r374,
+ * handed 278px of it to the centre search in the same step.
+ */
+export const RAIL_VISIBILITY_CLS = 'hidden h-full shrink-0 sm:block';
 /** app/layout.tsx — the three-lane header grid. */
 export const HEADER_CLS =
-  'grid h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)] sm:grid-cols-[minmax(0,1fr)_minmax(0,20rem)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,28rem)_minmax(0,1fr)]';
+  'grid h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,max-content)] items-center gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)] sm:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,max-content)] md:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,min(28rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)]';
 /** app/layout.tsx — the right cluster the account control lives in. */
 export const RIGHT_CLUSTER_CLS = 'flex min-w-0 items-center justify-end gap-2 2xl:gap-2.5';
 /** app/layout.tsx — the divider that drops below md. */
@@ -89,8 +95,21 @@ const IDENTITY_BUDGET_PX = 87;
 /** The two viewports the feature was invisible at. 1512 is a MacBook Pro 14"; it was 11px of 87 there. */
 const WIDTHS = [1280, 1440, 1512] as const;
 
-/** body p-4 (16 each side) + the 232px rail + gap-4 (16) — so the header is `viewport − 280`. */
-const headerWidthFor = (viewport: number) => viewport - 280;
+/**
+ * body p-4 (16 each side) + the 232px rail + gap-4 (16) — so the header is `viewport − 280` at lg and
+ * up, which is where every number in the r256 block above was measured.
+ *
+ * r374 widened this to the whole range, because the overflow it chased lives below lg: the shell pads
+ * p-3 / gap-3 (12px) below lg, and the rail is `hidden sm:block`, so the header is `viewport − 268`
+ * from 640 to 1023 and `viewport − 24` below 640. At the three widths r256 measured this returns
+ * exactly what it always did: 1000 at 1280, 1160 at 1440, 1232 at 1512.
+ */
+const headerWidthFor = (viewport: number) => {
+  const pad = viewport >= 1024 ? 16 : 12; // body p-3 lg:p-4
+  const gap = viewport >= 1024 ? 16 : 12; // the rail/content row gap-3 lg:gap-4
+  const rail = viewport >= 640 ? 232 + gap : 0; // the rail is hidden below sm, gutter and all
+  return viewport - 2 * pad - rail;
+};
 
 const wrap = (ui: ReactNode) =>
   render(
@@ -108,9 +127,11 @@ const wrap = (ui: ReactNode) =>
 /** The app shell around the header, at the real rail width, so the header gets its real width. */
 function Shell({ account }: { account: ReactNode }) {
   return (
-    <div className={SHELL_BODY_CLS}>
+    <div className={SHELL_BODY_CLS} data-testid="shell">
       <div className={SHELL_ROW_CLS}>
-        <div className={`${RAIL_WIDTH_CLS} shrink-0`} />
+        {/* r374: `hidden sm:block`, as the real rail is — otherwise the sweep below would measure a
+            232px rail inside a 320px phone, a shell the app never renders. */}
+        <div className={`${RAIL_WIDTH_CLS} ${RAIL_VISIBILITY_CLS}`} />
         <div className={SHELL_COL_CLS}>
           <header className={HEADER_CLS} data-testid="topbar">
             <div className="flex min-w-0 items-center gap-2.5 text-sm text-muted-foreground">
@@ -221,3 +242,102 @@ describe('topbar identity is actually visible at laptop widths', () => {
 function UserMenuShell({ name, code }: { name: string; code: string }) {
   return <Shell account={<UserMenu name={name} employeeCode={code} employed />} />;
 }
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════════
+ * r374 — DOES THE TOPBAR FIT THE WINDOW? (feedback 371708bb)
+ *
+ * The other half of the same geometry, and the same reason this file is in a real browser: the
+ * reported fault was "content runs off the right edge at narrow desktop widths (around 820 pixels),
+ * forcing sideways scrolling", and it was NOT one page — measured on the dev server at an 820px
+ * viewport, documentElement.scrollWidth was 856 against a clientWidth of 820 on all 13 routes swept,
+ * identically, with and without the dev-only chrome. The element that escaped was the account
+ * trigger's avatar and chevron: the right cluster needs 206px and the header's three-lane grid, which
+ * took a fixed 20rem for the centre search before the fr side tracks got anything, had left it 83px.
+ *
+ * The invariant pinned here is "no horizontal overflow", NOT a pixel count — the numbers in the
+ * r256 block above drift with fonts and chrome, this does not. Two assertions with deliberately
+ * different scopes, because they are different claims:
+ *
+ *   • EVERY width, 320 → 1920: the shell's own scrollWidth does not exceed its clientWidth. That is
+ *     the reported symptom exactly — nothing is reachable only by scrolling sideways.
+ *   • FROM 640 UP: the right cluster's content also fits its grid TRACK. Below 640 it does not quite
+ *     (188px of track for 197px of content at a 320px viewport) and the remainder is absorbed by the
+ *     header's px-4 and the shell's p-3; asserting it there would be asserting something this round
+ *     did not achieve. 640 is where the rail arrives and where the reported band began.
+ *
+ * jsdom cannot see any of this: it computes no layout, so every assertion here would be vacuously
+ * true there. That is why this is a .browser test — and why it is NOT in `scripts/gate-chunked.sh`
+ * (see vitest.browser.config.ts). test/topbar-overlap-guard.test.ts carries the gate-visible half.
+ * ════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/** Phone, the band the fault was reported in, both sides of every Tailwind breakpoint, and wide. */
+const OVERFLOW_WIDTHS = [
+  320, 360, 414, 480, 560, 600, 639, 640, 672, 700, 767, 768, 820, 900, 960, 1023, 1024, 1120, 1280,
+  1440, 1512, 1535, 1536, 1600, 1920,
+] as const;
+
+/**
+ * The first descendant whose right edge is outside `root`'s padding box — i.e. the element that is
+ * making the box scrollable. Returned rather than asserted so the failure message names it; a bare
+ * scrollWidth comparison says a number and not which control moved.
+ */
+const firstOverflowing = (root: HTMLElement): HTMLElement | null => {
+  const limit = root.getBoundingClientRect().left + root.clientWidth;
+  return (
+    [...root.querySelectorAll<HTMLElement>('*')].find((el) => {
+      const b = el.getBoundingClientRect();
+      return b.width > 0 && b.height > 0 && b.right > limit + 0.5;
+    }) ?? null
+  );
+};
+
+const describeEl = (el: HTMLElement | null) =>
+  el === null
+    ? null
+    : `<${el.tagName.toLowerCase()} class="${el.getAttribute('class') ?? ''}"> right=${Math.round(
+        el.getBoundingClientRect().right,
+      )}`;
+
+describe('topbar fits the window at every width (r374)', () => {
+  beforeAll(() => {
+    document.body.style.margin = '0';
+  });
+  afterEach(() => cleanup());
+
+  for (const width of OVERFLOW_WIDTHS) {
+    it(`needs no sideways scrolling at ${width}`, async () => {
+      await page.viewport(width, 900);
+      // A name far longer than any seeded one, so the account control asks for every pixel it can and
+      // the layout is measured under pressure rather than under slack.
+      wrap(
+        <Shell
+          account={
+            <UserMenu name="Nurulhuda binti Abdul Rahman Al-Hafiz" employeeCode="EMP-0001" employed />
+          }
+        />,
+      );
+      const shell = document.querySelector<HTMLElement>('[data-testid="shell"]')!;
+      const header = document.querySelector<HTMLElement>('[data-testid="topbar"]')!;
+      const cluster = document.querySelector<HTMLElement>('[data-testid="right-cluster"]')!;
+
+      // ── NON-VACUITY. Every assertion below is "x is not bigger than y"; all of them pass on an
+      // empty box. So first prove there IS a populated header of the app's real width here.
+      expect(cluster.children).toHaveLength(5); // divider + bell + language + theme + account
+      expect(header.querySelectorAll('*').length).toBeGreaterThan(10);
+      expect(Math.round(header.getBoundingClientRect().width)).toBe(headerWidthFor(width));
+      expect(shell.clientWidth).toBe(width);
+
+      // ── THE REPORTED SYMPTOM. 856 vs 820 at an 820px viewport before this round.
+      expect(describeEl(firstOverflowing(shell))).toBe(null);
+      expect(shell.scrollWidth).toBeLessThanOrEqual(shell.clientWidth);
+
+      // ── AND THE LOCUS, from the breakpoint the rail arrives at: the cluster fits its own track, so
+      // the account control is not being handed a zero-width box to spill out of.
+      if (width >= 640) {
+        expect(describeEl(firstOverflowing(header))).toBe(null);
+        expect(cluster.scrollWidth).toBeLessThanOrEqual(cluster.clientWidth);
+        expect(header.scrollWidth).toBeLessThanOrEqual(header.clientWidth);
+      }
+    });
+  }
+});

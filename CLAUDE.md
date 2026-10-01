@@ -316,8 +316,23 @@ which is a real case and used to be shipped by retyping `rsync --delete` against
   log it had just written held requests it never made. Beware a render script that kills whatever holds
   its port; on a shared port it kills a sibling's server.
 - A build worktree needs a **REAL `node_modules`** (§2), and **every** `vitest`/`next build`/`tsc` goes
-  through `~/.aihr-gate-state/testlock.sh <slot> -- <cmd>`. The lock does NOT protect a running gate, so
-  while the parent gates, agents are **tsc-and-targeted-suites only**. `devdb-lock.sh` has ONE holder and
+  through `~/.aihr-gate-state/testlock.sh <slot> -- <cmd>`. **The lock does NOT protect a
+  running gate** — it has two slots, so it hands an agent one while the gate holds the other. And
+  `gate-chunked.sh` calls `scripts/dev-db-rebuild.sh` **inside its per-chunk loop**, rebuilding the whole
+  cluster 16 times, which destroys any concurrent vitest's databases **whatever its
+  `TEST_DB_NAMESPACE`** — a namespace separates agents from each other, never from a cluster rebuild. So
+  while the parent gates, agents run **NO vitest at all**: reading, `tsc` and committing only. Measured
+  in r374 — a gate chunk came back `8 failed`, across eight unrelated suites, with **zero
+  AssertionErrors** and 136 environment-shaped errors. Dispatch builders OR gate; never both.
+  **Even `tsc` is too heavy**: measured in r374 at **1.19 GB RSS**, and a second run reached 2.4 GB — beside
+  three vitest workers that starved Postgres into four `Hook timed out in 30000ms` and `9 failed` with
+  **zero AssertionErrors**, including a pure-JSON locale test, which can only time out and never genuinely
+  miss a key. So during a gate agents read, write and commit; they do not run `tsc`, `vitest`,
+  `next build`, `db:seed` or a dev server.
+  **Make the lock enforce it rather than asking agents to police it — hold BOTH slots by nesting:**
+  `bash ~/.aihr-gate-state/testlock.sh gate-a -- bash ~/.aihr-gate-state/testlock.sh gate-b -- <gate>`.
+  Nesting also **self-sequences**: it blocks until a builder's in-flight `tsc` releases its slot, so no
+  process has to be killed. `devdb-lock.sh` has ONE holder and
   **does not reap dead holders**: if you are killed holding it, everyone blocks.
 - Worked workflow scripts: `scripts/improve/*.workflow.js`.
 

@@ -27,24 +27,45 @@ export type PaymentTermOption = (typeof PAYMENT_TERM_OPTIONS)[number];
  * — it holds a draft object in React state — so its inputs must be controlled. `mode` is OPTIONAL and
  * defaults to the form behaviour, so the two existing call sites are unchanged, down to the markup.
  */
-export type PayStructureFieldsProps =
-  | {
-      mode?: 'form';
-      defaultPayMode: PayModeOption;
-      defaultPaymentTerm: string;
-      defaultRateAmount: string | null;
-      disabled?: boolean;
-    }
-  | {
-      mode: 'controlled';
-      payMode: PayModeOption;
-      paymentTerm: string;
-      rateAmount: string;
-      /** Called with the whole patch, so a caller can clear the rate in the SAME state update that
-       *  switches the mode to monthly — see the wizard's note on why that matters there and not here. */
-      onChange: (patch: { payMode?: PayModeOption; paymentTerm?: string; rateAmount?: string }) => void;
-      disabled?: boolean;
-    };
+/**
+ * r374 (item 7dbaf677) — MARK PAY MODE AND PAYMENT TERM AS REQUIRED, ON SCREEN ONLY.
+ *
+ * The reporter asked for both to be mandatory when there is no basic salary amount. They cannot be made
+ * mandatory by PRESENCE — both are `<select>`s that always carry a value, and the Create New Employee
+ * Payroll tab displays "Monthly" for a draft that stores neither (CLAUDE.md §8: a field that is always
+ * submitted cannot be read by presence). What the requirement actually asks for, and all it can mean
+ * here, is that HR is TOLD they are part of the answer. So this is a red asterisk and nothing else: no
+ * validation changes with it.
+ *
+ * DEFAULTS TO FALSE, so the two Personnel callers are rendered exactly as before, down to the markup.
+ */
+type RequiredMarkProps = {
+  /** Render a red asterisk beside Pay Mode and Payment Term. Presentation only. */
+  markRequired?: boolean;
+  /** Localised "required", for the asterisk's accessible name. Only read when `markRequired`. */
+  requiredAriaLabel?: string;
+};
+
+export type PayStructureFieldsProps = RequiredMarkProps &
+  (
+    | {
+        mode?: 'form';
+        defaultPayMode: PayModeOption;
+        defaultPaymentTerm: string;
+        defaultRateAmount: string | null;
+        disabled?: boolean;
+      }
+    | {
+        mode: 'controlled';
+        payMode: PayModeOption;
+        paymentTerm: string;
+        rateAmount: string;
+        /** Called with the whole patch, so a caller can clear the rate in the SAME state update that
+         *  switches the mode to monthly — see the wizard's note on why that matters there and not here. */
+        onChange: (patch: { payMode?: PayModeOption; paymentTerm?: string; rateAmount?: string }) => void;
+        disabled?: boolean;
+      }
+  );
 
 export function PayStructureFields(props: PayStructureFieldsProps) {
   const t = useTranslations('people.detail');
@@ -61,11 +82,21 @@ export function PayStructureFields(props: PayStructureFieldsProps) {
   const safePaymentTerm = PAYMENT_TERM_OPTIONS.includes(paymentTerm as PaymentTermOption)
     ? paymentTerm
     : 'monthly';
+  /** r374 — the same asterisk `components/ui.tsx` `Field` draws, for the two labels this component owns
+   *  itself. Presentation only; nothing here validates. */
+  const star = props.markRequired ? (
+    <span className="ml-0.5 text-destructive" aria-label={props.requiredAriaLabel}>
+      *
+    </span>
+  ) : null;
 
   return (
     <>
       <label className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium text-muted-foreground">{t('payMode')}</span>
+        <span className="text-xs font-medium text-muted-foreground">
+          {t('payMode')}
+          {star}
+        </span>
         <select
           value={payMode}
           onChange={(e) => {
@@ -85,7 +116,10 @@ export function PayStructureFields(props: PayStructureFieldsProps) {
         </select>
       </label>
       <label className="flex flex-col gap-1.5">
-        <span className="text-xs font-medium text-muted-foreground">{t('paymentTerm')}</span>
+        <span className="text-xs font-medium text-muted-foreground">
+          {t('paymentTerm')}
+          {star}
+        </span>
         <select
           disabled={props.disabled}
           className={inputCls}

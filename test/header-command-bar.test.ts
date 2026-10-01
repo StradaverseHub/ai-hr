@@ -27,8 +27,15 @@ describe('top-bar centred search (app/layout.tsx + components/command-bar.tsx)',
 
   it('header uses the three-zone minmax grid (centre track can shrink AND be filled)', () => {
     const header = layoutSrc.slice(layoutSrc.indexOf('<header'), layoutSrc.indexOf('</header>'));
-    // Mobile: auto centre track (icon-only trigger); side tracks minmax(0,1fr) so they can shrink.
-    expect(header).toContain('grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]');
+    // A slice is only evidence if it is really the header. `indexOf` returns −1 on a miss and
+    // slice(−1, −1) is '', which would make every assertion below pass against nothing.
+    expect(layoutSrc.indexOf('<header')).toBeGreaterThanOrEqual(0);
+    expect(header.length).toBeGreaterThan(400);
+
+    // Mobile: auto centre track (icon-only trigger); the left track minmax(0,1fr) so it can shrink.
+    // r374 made the RIGHT track minmax(0,max-content) below md — see below.
+    expect(header).toContain('grid-cols-[minmax(0,1fr)_auto_minmax(0,max-content)]');
+
     // sm+: a real BOUNDED centre track — a bare `auto` track would size to content and the w-full
     // trigger would never widen, silently defeating the feature.
     //
@@ -37,10 +44,27 @@ describe('top-bar centred search (app/layout.tsx + components/command-bar.tsx)',
     // 20rem below 2xl and 28rem from 2xl up. So what is pinned here is the PROPERTY this test exists
     // for — bounded, not `auto`, and wide enough to be a real track — while the exact ceilings, which
     // are a measured budget, are pinned by test/topbar-overlap-guard.test.ts.
-    const centre = header.match(/sm:grid-cols-\[minmax\(0,1fr\)_minmax\(0,(\d+)rem\)_minmax\(0,1fr\)\]/);
-    expect(centre, 'sm+ must keep a bounded minmax centre track').not.toBeNull();
-    expect(Number(centre![1])).toBeGreaterThanOrEqual(18);
-    expect(header).toContain('2xl:grid-cols-[minmax(0,1fr)_minmax(0,28rem)_minmax(0,1fr)]');
+    //
+    // r374 UPDATED the shape without relaxing that property. A FIXED ceiling is sized BEFORE the fr
+    // side tracks get anything, so from sm — the breakpoint that also brings in the 232px rail — the
+    // side tracks collapsed and the account control left the viewport by 36px at an 820px window. The
+    // ceiling is now `min(<ceiling>, 100% − <reserve>)`: still bounded, still ≥ 18rem of ambition, but
+    // it can no longer eat the side clusters' floor. The reserve's arithmetic lives in
+    // test/topbar-overlap-guard.test.ts; here we only pin that a reserve EXISTS on every bounded
+    // variant, which is the property that stops the search box pushing the account control off-screen.
+    const bounded = [
+      ...header.matchAll(
+        /(sm|md|2xl):grid-cols-\[minmax\(0,1fr\)_minmax\(0,min\((\d+)rem,max\(0px,100%_-_([\d.]+)rem\)\)\)_minmax\(0,(?:1fr|max-content)\)\]/g,
+      ),
+    ];
+    // Three variants, or this matched nothing and asserted nothing.
+    expect(bounded.map((m) => m[1])).toEqual(['sm', 'md', '2xl']);
+    for (const m of bounded) {
+      expect(Number(m[2]), `${m[1]} centre ceiling must stay a real track`).toBeGreaterThanOrEqual(18);
+      expect(Number(m[3]), `${m[1]} must reserve room for both side clusters`).toBeGreaterThan(20);
+    }
+    // 2xl still widens the centre, as r256 decided.
+    expect(Number(bounded[2][2])).toBe(28);
   });
 
   it("trigger carries aria-label={t('placeholder')} (WCAG 2.5.3 label-in-name)", () => {

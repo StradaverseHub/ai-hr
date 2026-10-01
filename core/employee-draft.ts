@@ -877,9 +877,17 @@ export async function completeEmployeeDraft(
     await setEmploymentInfo(ctx, { employmentId, ...employmentInfo });
   }
 
+  // r374 (item 7dbaf677) — A BLANK INITIAL BASIC SALARY IS AN EXPLICIT ZERO, written out rather than
+  // relied on. `Number('')` and `Number('   ')` are both 0 and not NaN, so this line always DID store
+  // 0.00 for a blank — but it read as if a blank were a parse accident, and the draft rule now lets a
+  // blank through on purpose (a Director paid quarterly fees). A junk string still reaches
+  // `setCompensation` as NaN and is refused there by `NonFiniteSalaryAmountError`; `missingByTab` keeps
+  // that case red on the tab so it never gets this far, which matters because this function is NOT one
+  // transaction — a throw here leaves the employment created (see the header).
+  const basicDigits = (pay.basicSalary ?? '').replace(/[,_]/g, '').trim();
   await setCompensation(ctx, {
     employmentId,
-    basicSalary: Number((pay.basicSalary ?? '').replace(/[,_]/g, '')),
+    basicSalary: basicDigits === '' ? 0 : Number(basicDigits),
     monthlyAllowance: numOrUndef(pay.monthlyAllowance),
     payMode: str(pay.payMode),
     paymentTerm: str(pay.paymentTerm),

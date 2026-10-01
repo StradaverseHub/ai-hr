@@ -25,7 +25,11 @@
  *     wizard stricter than the other two ways of creating an employee is how the three drift apart —
  *     the plan's own warning about import and hand-entry needing the same completion rules.
  * Everything else on their list (Employee Name, Company, Department, Join Date, Employment Type) is
- * required, plus the two the existing hire form already requires: work email and initial basic salary.
+ * required, plus the one the existing hire form already requires: work email.
+ *   - THE INITIAL BASIC SALARY WAS ON THIS LIST UNTIL r374 (item 7dbaf677) and no longer is. It may be
+ *     blank or zero — a Director paid quarterly fees has no monthly basic — and what is required in its
+ *     place is REMARKS, saying why. A non-finite or negative amount is still refused. See the payroll
+ *     branch of `missingByTab` for the whole rule.
  *
  * ITEM bd271009 CHANGED TWO THINGS HERE. Company became the FIRST question (it decides the Employee ID
  * rule) and the Employee ID became conditionally required — see `MissingOptions`. 06f0cb8f then moved
@@ -481,6 +485,24 @@ export function openingTab(tabParam: string | null | undefined, currentStep: num
 
 const blank = (v: string | undefined) => (v ?? '').trim() === '';
 
+/**
+ * r374 (item 7dbaf677) — IS THIS AMOUNT "NO BASIC SALARY"? ONE PREDICATE, TWO READERS.
+ *
+ * `missingByTab`'s payroll branch decides whether Remarks is compulsory with it, and the Create New
+ * Employee Payroll tab marks Remarks required and shows its hint with it. They must be the same
+ * question, or the screen asks for a reason the rule does not want (or, worse, holds Activate back over
+ * a field it never marked).
+ *
+ * TRUE for blank, whitespace and a finite zero. FALSE for a positive amount, FALSE for a negative one
+ * and FALSE for a junk string — those last two are refused outright and are not this case at all, so a
+ * caller must never read a `false` here as "the amount is fine".
+ */
+export function noBasicSalaryAmount(basicSalary: string | undefined): boolean {
+  if (blank(basicSalary)) return true;
+  const n = Number((basicSalary ?? '').replace(/[,_]/g, ''));
+  return Number.isFinite(n) && n === 0;
+}
+
 /** The employment type the Employment tab opens on when a draft carries none. Named because
  *  `withEmploymentDefaults` seeds it and the wizard's select displays it, and those two must not drift. */
 export const DEFAULT_EMPLOYMENT_TYPE = 'full_time';
@@ -641,9 +663,45 @@ export function missingByTab(data: EmployeeDraftData): Record<DraftTabKey, strin
   if (blank(s.bankName) !== blank(s.bankAccountNo)) bankStatutory.push('bankAccount');
 
   const payroll: string[] = [];
+  // ── THE INITIAL BASIC SALARY MAY BE BLANK OR ZERO (item 7dbaf677, r374) ────────────────────────
+  //
+  // It used to be required above zero, and Activate was held up until somebody typed one. The reporter
+  // rejected that: a Director-level employee may have NO monthly basic and be paid Director Fees
+  // quarterly instead, and refusing the zero forced HR to invent a figure. r369 relieved the SERVICE
+  // (core/comp.ts `unpayableSalaryLeg` / `SalaryRemarkRequiredError`) and the importer; this is the
+  // same rule on the draft, which is the screen the reporter actually named.
+  //
+  // WHAT REPLACES THE AMOUNT IS THE REPORTER'S OWN CONDITION, not a tick box: with no amount, REMARKS
+  // becomes compulsory, and that sentence is where HR says why. One fact, recorded once — a boolean
+  // beside it would be a second source of truth that can disagree with the sentence.
+  //
+  // THREE CASES STAY RED, and the distinction is the whole of this rule:
+  //   · a NON-FINITE amount ('abc', 'RM500', a bare '-' or '.') — a junk string is not a Director, and
+  //     `money(NaN)` is the STRING "NaN", which Postgres `numeric` ACCEPTS. It must never get that far.
+  //   · a NEGATIVE amount — blank and zero are legitimate, negative never is (core/comp.ts refuses it
+  //     too, so the form and the service agree).
+  //   · an amount ABOVE zero — judged exactly as it was before, so nothing changes for a normal hire.
+  // `Number('')` and `Number('   ')` are both 0, NOT NaN, so blankness is decided by `blank()` and
+  // never inferred from the parse.
+  //
+  // PAY MODE AND PAYMENT TERM ARE DELIBERATELY NOT REQUIRED BY PRESENCE, although the reporter listed
+  // them. The wizard reads `data.payroll?.payMode ?? 'monthly'` for DISPLAY with no matching write
+  // (wizard.tsx), so an untouched draft stores neither field while the screen shows "Monthly" — a
+  // presence rule would refuse a draft that looks complete, which is the a72610af defect the
+  // Employment tab already had to fix. `setCompensation` defaults a brand-new record to
+  // monthly/monthly anyway, so absent genuinely MEANS monthly. CLAUDE.md §8: a field that is always
+  // submitted cannot be read by presence. The requirement is met by marking them required ON SCREEN.
   const salary = Number((pay.basicSalary ?? '').replace(/[,_]/g, ''));
-  if (blank(pay.basicSalary)) payroll.push('basicSalary');
-  else if (!Number.isFinite(salary) || salary <= 0) payroll.push('basicSalary');
+  const basicBlank = blank(pay.basicSalary);
+  if (!basicBlank && !Number.isFinite(salary)) payroll.push('basicSalary');
+  else if (!basicBlank && salary < 0) payroll.push('basicSalary');
+  else if (noBasicSalaryAmount(pay.basicSalary)) {
+    // No basic amount ⇒ say why. Mirrors `SalaryRemarkRequiredError`, provoked HERE because
+    // `completeEmployeeDraft` calls `setCompensation` AFTER `hireEmployee` has committed — a refusal
+    // raised there would leave an employment created and the draft still sitting beside it.
+    // `noBasicSalaryAmount` is the SAME predicate the Payroll tab marks Remarks required with.
+    if (blank(pay.remarks)) payroll.push('remarks');
+  }
   // Mirrors setCompensation: a daily or hourly worker without a positive rate cannot be paid.
   if ((pay.payMode === 'daily' || pay.payMode === 'hourly') && !(Number(pay.rateAmount) > 0))
     payroll.push('rateAmount');

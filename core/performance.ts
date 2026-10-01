@@ -1086,7 +1086,14 @@ export async function enactCompAction(
     }
     // No pay actions for someone who has left.
     const [emp] = await tx
-      .select({ companyId: employment.companyId, terminatedOn: employment.terminatedOn })
+      .select({
+        companyId: employment.companyId,
+        terminatedOn: employment.terminatedOn,
+        // r374 — named in the no-basic refusal below, so the message identifies WHO cannot be given a
+        // merit percentage. The code rather than the name: it is on this row already, it is what HR
+        // searches by, and ADR-0030 keeps pay-adjacent messages off person detail.
+        employeeCode: employment.employeeCode,
+      })
       .from(employment)
       .where(eq(employment.id, review.employmentId))
       .limit(1);
@@ -1128,6 +1135,25 @@ export async function enactCompAction(
         )
         .limit(1);
       if (!cur) throw new PerfError('Employee has no current compensation to increase');
+      // r374 (item 7dbaf677) — A MERIT PERCENTAGE ON A ZERO BASIC IS REFUSED HERE, NAMING THE EMPLOYEE.
+      //
+      // Two reasons, and the second is why it is a refusal rather than a fix. First, the arithmetic is
+      // meaningless: `0 × (1 + pct/100)` is 0, so the enact would record a raise that raises nothing.
+      // Second, the write below passes NO remarks (deliberately — see the ADR-0078 note), and since r369
+      // `setCompensation` refuses a non-positive basic with no remark. So without this, an enact from a
+      // screen that has no Remarks field at all would surface `SalaryRemarkRequiredError`: a sentence
+      // about director's fees, on the performance screen, telling an appraiser to write a salary remark
+      // they cannot write. r374 made the zero basic reachable from both HR forms, so this stopped being
+      // hypothetical.
+      //
+      // A DIRECTOR PAID QUARTERLY FEES IS NOT GIVEN A PERCENTAGE RAISE; their fee is changed. The right
+      // place to record that is the Basic Salary screen, which the message names.
+      if (!(Number(cur.basicSalary) > 0)) {
+        throw new PerfError(
+          `Employee ${emp.employeeCode ?? review.employmentId} has no monthly basic salary, so a merit ` +
+            'percentage cannot be applied to it. Record the new amount on their Basic Salary record instead.',
+        );
+      }
       // Effective date must be after the current record starts, else the temporal range inverts.
       if (p.meritEffectiveFrom <= cur.validFrom) {
         throw new PerfError(`The effective date must be after the current pay started (${cur.validFrom})`);

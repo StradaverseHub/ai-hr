@@ -7,7 +7,15 @@ import { getTranslations } from 'next-intl/server';
 import { setEmploymentCardId } from '@/core/attendance-card';
 import { requireAdmin } from '@/lib/authz';
 import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, employmentGradeId, endReportingLine, setEmployeeCode, setEmploymentBlacklist, setEmploymentPaymentMethod, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, updatePerson, type EmploymentTypeValue, type HolidayCalendarSelection, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
-import { PayModePeriodBoundaryError, setCompensation, supersedeCompensation, updateCompensation } from '@/core/comp';
+import {
+  NegativeSalaryAmountError,
+  NonFiniteSalaryAmountError,
+  PayModePeriodBoundaryError,
+  SalaryRemarkRequiredError,
+  setCompensation,
+  supersedeCompensation,
+  updateCompensation,
+} from '@/core/comp';
 import {
   createMovementEvent,
   editMovementEvent,
@@ -557,7 +565,22 @@ export async function createMovementEventAction(formData: FormData) {
       });
     }
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    // r374 (item 7dbaf677) — THROUGH THE ONE TRANSLATOR, because this path reaches `setCompensation`.
+    //
+    // `core/movement.ts` writes compensation whenever the pay STRUCTURE changed, not only when an amount
+    // was typed: `compChanged` is true for a currency, pay-mode or payment-term move on its own, and the
+    // amount it then sends is `dSalary ?? Number(cur.basicSalary)`. For an employee with no monthly basic
+    // that is 0 — so a currency-only Movement on a Director paid quarterly fees raises
+    // `SalaryRemarkRequiredError`, and this catch used to put it on screen as developer English in all six
+    // locales. It became reachable BECAUSE this round made a zero basic ordinary.
+    //
+    // `PayModePeriodBoundaryError` was in the same position here and is fixed by the same line: a
+    // movement's pay-mode change inherits that guard from `setCompensation` (see `editMovementEvent`).
+    //
+    // Everything else this writer refuses — and it refuses a great many things, each with its own
+    // sentence — still reaches the screen exactly as before. The translator knows four classes and
+    // forwards the rest untouched.
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(await compensationErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   // ae9350f2 — the approved plan's promise about a backdated termination: where a payroll run has already
@@ -602,7 +625,10 @@ export async function editMovementEventAction(formData: FormData) {
         changeEffectiveOn: p.effectiveDate ?? null,
       });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    // r374 — the SAME translator as the create path, for the same reason and not a second one. A
+    // correction is a rollback plus a REPLAY through the writer the New Event form uses, so it inherits
+    // every refusal that path can raise, this one included (`editMovementEvent`'s own header says so).
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(await compensationErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -715,12 +741,56 @@ export async function endDelegationAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
-/** ADR-0078 — a pay-mode change off a period boundary maps to the localized message (the service throws a
- *  typed error so the toast is not raw English for the one rule an admin will actually hit). */
-async function payModeErrorMessage(e: unknown): Promise<string> {
-  if (e instanceof PayModePeriodBoundaryError || (e as Error)?.name === 'PayModePeriodBoundaryError') {
+/**
+ * EVERY TYPED REFUSAL THE COMPENSATION WRITERS RAISE, AS A SENTENCE HR CAN ACT ON. One translator.
+ *
+ * ADR-0078 put the first one here: a pay-mode change off a period boundary throws a typed error so the
+ * toast is not raw English for the one rule an admin will actually hit.
+ *
+ * r374 (item 7dbaf677) — THE OTHER THREE, for the same reason. This function used to translate exactly
+ * one error and return `(e as Error).message` for everything else, so `SalaryRemarkRequiredError` (live
+ * since r369) reached the Personnel screen as a paragraph of English written for a developer, in all six
+ * locales. This round makes the amount optional on both salary forms, which turns that refusal from a
+ * theoretical one into the one HR will actually meet.
+ *
+ * ⚠️ IT WAS CALLED `payModeErrorMessage`, AND THE NAME HAD BECOME A LIE — it covers four refusals, not
+ * one rule. Renamed rather than left, because the next round reading the old name would add a SECOND
+ * mapper beside it, and two translators for one set of errors are two sentences that can disagree
+ * (CLAUDE.md §1: one authoritative owner; §8: prose outlives the kernel).
+ *
+ * WHAT IT DOES NOT CLAIM, so that routing another caller through it is a safe act and not a widening:
+ * it translates these four typed classes and NOTHING else. Every other refusal on every path that calls
+ * it — and the movement writers raise dozens, each with its own English prose — still falls through to
+ * `(e as Error).message` exactly as it does today. Adding a caller adds coverage for these four and
+ * changes nothing about the rest.
+ *
+ * CALLERS (r374): the two salary forms (`setCompensationAction`, `editCompensationAction`) and the two
+ * movement writers that reach `setCompensation` (`createMovementEventAction`, `editMovementEventAction`
+ * — see the note on the latter). `reverseMovementEventAction` is DELIBERATELY NOT routed: its
+ * compensation leg is `supersedeCompensation`, which raises none of these, and wiring it would imply a
+ * reachability that does not exist.
+ *
+ * MATCHED BY `instanceof` **OR** BY `name`. The `name` arm is not belt-and-braces: these classes are
+ * declared in `core/comp.ts`, and an error that crosses a module boundary a bundler duplicated fails
+ * `instanceof` while keeping its name. The original pay-mode arm already did this.
+ */
+async function compensationErrorMessage(e: unknown): Promise<string> {
+  const name = (e as Error)?.name;
+  if (e instanceof PayModePeriodBoundaryError || name === 'PayModePeriodBoundaryError') {
     const t = await getTranslations('people.detail');
     return t('payModeBoundaryError');
+  }
+  if (e instanceof SalaryRemarkRequiredError || name === 'SalaryRemarkRequiredError') {
+    const t = await getTranslations('people.detail');
+    return t('salaryRemarkRequiredError');
+  }
+  if (e instanceof NegativeSalaryAmountError || name === 'NegativeSalaryAmountError') {
+    const t = await getTranslations('people.detail');
+    return t('salaryNegativeError');
+  }
+  if (e instanceof NonFiniteSalaryAmountError || name === 'NonFiniteSalaryAmountError') {
+    const t = await getTranslations('people.detail');
+    return t('salaryNotANumberError');
   }
   return (e as Error).message;
 }
@@ -747,6 +817,11 @@ export async function setCompensationAction(formData: FormData) {
     const currencyRaw = String(formData.get('currency') ?? '').trim();
     await setCompensation(s, {
       employmentId,
+      // r374 (item 7dbaf677) — A BLANK OR ABSENT AMOUNT IS ZERO HERE, and that is already right:
+      // `Number(null)` and `Number('')` are both 0, and `setCompensation` ALWAYS writes a new row, so
+      // there is no "untouched" case for it to be confused with (unlike the edit action below, which
+      // had to be changed). `setCompensation` then requires a remark for a zero. Nothing to do but say
+      // so, because dropping `required` from the form made this line load-bearing.
       basicSalary: Number(formData.get('basicSalary')),
       currency: currencyRaw || undefined,
       // Allowance is no longer maintained on the Basic Salary screen (feedback 87c82b18) — allowances
@@ -765,7 +840,7 @@ export async function setCompensationAction(formData: FormData) {
       movement: { type: 'salaryAdjustment', groupId: randomUUID() },
     });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(await payModeErrorMessage(e))}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(await compensationErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -795,7 +870,22 @@ export async function editCompensationAction(formData: FormData) {
     await updateCompensation(s, {
       compensationId: String(formData.get('compensationId')),
       employmentId,
-      basicSalary: rawBasicStr !== '' ? Number(rawBasicStr) : undefined,
+      // r374 (item 7dbaf677) — A POSTED-BUT-BLANK AMOUNT IS AN EXPLICIT ZERO, NOT "UNTOUCHED".
+      //
+      // It used to branch on the trimmed STRING being empty and send `undefined` for a blank, and
+      // `undefined` means UNTOUCHED to the service. (The old expression is deliberately not quoted
+      // verbatim here: the guard in test/r374-no-basic-salary-forms.test.ts §2 asserts this file does
+      // not contain it, and a comment is source too — CLAUDE.md §8.) That was harmless only while the
+      // input carried `required`. With
+      // `required` dropped from the edit form, clearing the box would have silently kept the old
+      // amount here while meaning zero on the Add form — the same gesture, two answers.
+      //
+      // THE DISCRIMINATOR IS THE KEY'S PRESENCE, NOT THE VALUE'S EMPTINESS (CLAUDE.md §8). The edit
+      // form always posts this field (its `defaultValue` is the stored amount), so a blank from it can
+      // only be a deliberate clear; an ABSENT key is a different caller entirely and still means
+      // untouched. `Number('')` is 0, so a cleared box lands as 0 and `updateCompensation` then
+      // requires a remark on the resulting row.
+      basicSalary: rawBasic !== null ? Number(rawBasicStr) : undefined,
       currency: currencyRaw || undefined,
       // Remarks always submitted (possibly empty → cleared to NULL).
       remarks: String(formData.get('remarks') ?? '').trim() || null,
@@ -807,7 +897,7 @@ export async function editCompensationAction(formData: FormData) {
       validFrom: rawFrom !== '' ? rawFrom : undefined,
     });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(await payModeErrorMessage(e))}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(await compensationErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
