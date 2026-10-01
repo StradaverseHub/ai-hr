@@ -62,6 +62,47 @@ describe('454d79a9 saved normal MTD Step 1 contract',()=>{
   const delta=readRun({additional:26000,epfOnAdditional:600,zakatCurrent:60},{pcb:45.35,pcbBonus:45.35,pcbMeta:{...r.snapshot,delta:{cumulative:r.total,prior:r.total-45.35,cumulativeBonus:r.additional}}}).x;
   expect(delta.pcb).toBe(45.35);expect(pcbNormalMtdStep1Blocks(delta,f)[1].result).toBe(r.normal);
  });
+ it('every absent or malformed saved Step 1 input suppresses the new working without changing global compatibility',()=>{
+  const {r}=readRun({additional:26000,epfOnAdditional:600,zakatCurrent:60});
+  const cases=[...['P1','n','pcbPaid'].map(key=>({owner:'meta',key})),...['M','R','B','Z','zakatCurrent','mtdNormalCalc','mtdNormalFloored'].map(key=>({owner:'trace',key})),...['pcb','pcbBonus'].map(key=>({owner:'statutory',key}))];
+  for(const {owner,key} of cases)for(const invalid of [undefined,null,NaN,Infinity,'not-a-number','0']){
+   const raw:any={pcb:r.total,pcbBonus:r.additional,pcbMeta:{...r.snapshot,trace:{...r.snapshot.trace}}};
+   const target=owner==='meta'?raw.pcbMeta:owner==='trace'?raw.pcbMeta.trace:raw;
+   if(invalid===undefined)delete target[key];else target[key]=invalid;
+   const x=explainPcb(raw,null);if(owner==='meta'&&key==='P1'&&invalid===undefined){expect(x.kind).toBe('unavailable');continue;}if(x.kind!=='mtd')throw Error(`${owner}.${key} unexpectedly changed kind`);
+   expect(x.normalMtdWorkingRecorded,`${owner}.${key}=${String(invalid)}`).toBe(false);
+   expect(pcbMtdStep1Section(x).rows.every(row=>row.first.kind==='notRecorded'),`${owner}.${key}`).toBe(true);
+   expect(pcbNormalMtdStep1Blocks(x,f).every(block=>block.result===null&&block.substituted===null),`${owner}.${key}`).toBe(true);
+   expect(pcbFormulaBlocks(x,f).length).toBeGreaterThan(0);
+  }
+  expect(readRun().x.normalMtdWorkingRecorded).toBe(true);
+  expect(readRun({additional:26000,epfOnAdditional:600,zakatCurrent:60}).x.normalMtdWorkingRecorded).toBe(true);
+ });
+ it('partial additional delta never substitutes an unrecorded cumulative normal result',()=>{
+  const {r}=readRun({additional:26000,epfOnAdditional:600,zakatCurrent:60});
+  for(const key of ['cumulative','prior','cumulativeBonus'])for(const invalid of [undefined,null,NaN,Infinity,'not-a-number','0']){
+   const delta:any={cumulative:r.total,prior:r.total-45.35,cumulativeBonus:r.additional};
+   if(invalid===undefined)delete delta[key];else delta[key]=invalid;
+   const x=explainPcb({pcb:45.35,pcbBonus:45.35,pcbMeta:{...r.snapshot,delta}},null);if(x.kind!=='mtd')throw Error('Expected saved cumulative metadata');
+   expect(x.normalMtdWorkingRecorded,`delta.${key}=${String(invalid)}`).toBe(false);
+   expect(pcbNormalMtdStep1Blocks(x,f).every(block=>block.result===null&&block.substituted===null)).toBe(true);
+  }
+  for(const delta of [null,{},[],false,'malformed']){
+   const x=explainPcb({pcb:45.35,pcbBonus:45.35,pcbMeta:{...r.snapshot,delta}},null);if(x.kind!=='mtd')throw Error('Expected metadata');expect(x.normalMtdWorkingRecorded).toBe(false);
+  }
+ });
+ it('partial manual override never presents an invented system normal result',()=>{
+  const {r}=readRun({additional:26000,epfOnAdditional:600,zakatCurrent:60});
+  for(const key of ['system','applied'])for(const invalid of [undefined,null,NaN,Infinity,'not-a-number','0']){
+   const line:any={system:r.total,applied:123.47};if(invalid===undefined)delete line[key];else line[key]=invalid;
+   const x=explainPcb({pcb:123.47,pcbBonus:r.additional,pcbMeta:r.snapshot,adjustment:{reason:'Synthetic partial override',lines:{pcb:line}}},null);if(x.kind!=='mtd')throw Error('Expected saved resident metadata');
+   expect(x.normalMtdWorkingRecorded,`override.${key}=${String(invalid)}`).toBe(false);
+   expect(pcbNormalMtdStep1Blocks(x,f).every(block=>block.result===null&&block.substituted===null)).toBe(true);
+  }
+  for(const pcb of [null,{},[],false,'malformed']){
+   const x=explainPcb({pcb:123.47,pcbBonus:r.additional,pcbMeta:r.snapshot,adjustment:{lines:{pcb}}},null);if(x.kind!=='mtd')throw Error('Expected metadata');expect(x.normalMtdWorkingRecorded).toBe(false);
+  }
+ });
  it('missing or incomplete historical trace never fabricates zero variables, rebate, or normal net',()=>{
   const {r}=readRun();for(const trace of [undefined,{}, {M:0,R:0,mtdNormalCalc:0}]){
    const x=explainPcb({pcb:402.65,pcbMeta:{...r.snapshot,trace}},null);if(x.kind!=='mtd')throw Error('Missing metadata shape');
