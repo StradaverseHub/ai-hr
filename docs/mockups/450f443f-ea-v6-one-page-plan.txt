@@ -1,0 +1,40 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+Preview and download already show the same generated EA Form. The officer details already come from the selected company's authorised signatory. However, the employer information area is too narrow: a longer name or address can continue onto another page, which does not meet your one-page requirement.
+
+WHAT WE'LL CHANGE
+
+- Use the wider employer-information arrangement in V6. Keep Employer Name on its own line and allow the complete Employer Address to wrap below it, with Officer Name, Designation and Telephone clearly aligned.
+- Measure the complete form before generating it. Improve the available width, spacing and line heights so each employee's complete statement fits one readable A4 page, with every statutory section and the form date retained.
+- Remove the automatic employer-address continuation page. Keep Preview and Download on the same final form, including identical wrapping, font sizes and page boundaries.
+- If complete information genuinely cannot fit legibly, show a clear explanation and produce no incomplete form. HR can review the recorded information or ask for a layout review; the system will not silently cut an address, hide information or use unreadable lettering.
+
+WHAT YOU'LL GET
+
+A readable one-page EA Form following V6's employer-information arrangement, with the full information shown identically in Preview and Download.
+
+GOOD TO KNOW
+
+- This changes the form's presentation, not payroll or tax calculations. The existing company signatory, selected EA year and generated form date remain in use.
+- V6 is a cropped employer-information reference. Its missing date is not permission to remove the date from the complete form.
+- A page has finite space. The system will assess the actual complete information rather than impose a new character limit or silently create a second page. Previously downloaded files remain unchanged.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Evidence: current main source, graphify explain/affected renderEaPdf, latest contested revision 2 in /tmp/r378-open-latest.json, and actual V6 attachment 5c938d5b-e71f-4594-a0d9-131b3f3ac171-EA Form design V6.png visually inspected. Production UI/PDF reproduction of this contested case is not verified. Other attachment references remain available for retained sections. The accompanying HTML is a placeholder-only schematic, not an actual statutory form or a completed render.
+
+Ownership: lib/ea-pdf.ts renderEaPdf and measured AGENCY constants own all geometry. app/payroll/statutory-forms/ea/shared.ts eaPdfResponse owns scoped selection, employeeEaStatement assembly, labels and PDF composition; preview/route.ts and download/route.ts only choose inline versus attachment. Keep that single read/render path. Preserve app/me/ea/[employmentId]/pdf/route.ts and app/payroll/ea/blank/route.ts consumers. No database change is proposed.
+
+Current cause: officerBox spans x191 to the right rule, with employer value rules331.5 to556.1; only224.6 points are available for wrapping. Its bottom817.9 leaves12.1 points before page floor830, less than row pitch13.2. renderEaPdf currently joins employer name/address, wraps at8pt, holds two writing lines and explicitly emits continuation pages for overflow. Removing only doc.addPage would lose text. Do not do that.
+
+Recommended implementation: measure the actual V6 proportions against A4, widen the officer/employer block within the form boundaries, reserve a stable caption column and substantially wider value column, and print employer name separately from the address. Build a complete line/row plan before drawing. Preserve the existing statutory A–F grid and measured header/amount columns wherever possible; reclaim spacing only after measurement proves it is needed. Keep the required date, officer details, telephone and amended marker in explicitly measured nonoverlapping positions. Document deliberate V6 geometry departures from the prior agency tracing instead of retaining contradictory comments about an immutable narrow foot box.
+
+Use a finite readable-fit preflight: measure all name/address/officer/designation lines, required captions, figures, notes and page boundaries using the actual final font metrics. Declare and test readable font/line-height floors from the measured design; do not globally shrink the page or invent a new input character cap. If all complete content cannot fit within those bounds, throw a typed layout-fit failure before returning any PDF. Return a clear authorised-user-facing explanation identifying the affected employee/section, without exposing unauthorised data. A selected batch must not quietly omit an unfit employee or return a partial batch presented as complete. Preview and download must surface the same failure and use the same layout plan.
+
+Keep current authorised LHDN signatory ownership, dynamic selected year, MY-owned eaFormDate, manual overrides, form version and statutory data assembly. This presentation proposal does not change monetary routing.
+
+After approval, verify actual PDF geometry and extracted text for blank/ordinary/V6-equivalent/long employer names and addresses, narrow words, long tokens, officer/designation, two years and applicable form versions, amended forms and batch selections. Prove one employee produces exactly one A4 page, the complete text survives, no content exceeds its cell/page boundaries, and required sections/date remain. Exercise the explicit unfit case, with no PDF or partial batch returned. Verify Preview and Download field/layout parity, access denial, readable six-locale viewing states, responsive light/dark screen feedback, and existing monetary/layout regression checks. Do not use raw production employee financial payloads for verification; use synthetic fixtures.
