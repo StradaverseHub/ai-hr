@@ -1,3 +1,4 @@
+/** r378: approved two-tab Inquiry, grouped My Leave, and consolidated import row supersede the historical shape below. */
 /**
  * 5ca446db (r269) — A SIXTH LEAVE CONFIG ROW: "Employee Leave Inquiry".
  *
@@ -32,7 +33,7 @@
  * The RENDER half renders the REAL pages with a REAL database — a 200 is not a render check, and neither
  * is a source scan (CLAUDE.md §8). The Entitlements page must render with NO link to the inquiry screen
  * anywhere in its visible markup, and Employee Balances must still render, with its own "Employee
- * Balances" heading and its three-tab rail, when opened with no `emp=` — which is the state the new row
+ * Balances" heading and its two-tab rail, when opened with no `emp=` — which is the state the new row
  * lands on, so "the row opens something usable" is a claim this file is entitled to make.
  *
  * ⚠️ FILE-LEVEL MOCKS: requireAdmin()/scopedAdmin() are fakes returning the module-level ADMIN;
@@ -87,6 +88,8 @@ vi.mock('next/navigation', () => ({
    * this file had not yet mounted the panel. Only the full gate over the merged tree fails here.
    */
   useRouter: () => ({ push: () => {}, refresh: () => {}, replace: () => {} }),
+  // The real inquiry tab links project current picker context from the URL.
+  useSearchParams: () => new URLSearchParams(),
 }));
 vi.mock('next-intl/server', async () => {
   const { createTranslator: make } = await import('next-intl');
@@ -168,18 +171,8 @@ describe('5ca446db — six rows in the Leave Config fly-out, the new one last', 
       'leaveEntitlements',
       'leaveBalanceHealth',
       'leaveAdjustments',
-      // 3f15ffdb (r362) — UPDATED, NOT LOOSENED: Leave History Data Import joined between Leave
-      // Adjustments and Leave Credit, which is where the reporter's approved mockup draws it. It is the
-      // RECORD importer and Leave Adjustments owns the BALANCE importer as a tab, so the two halves of a
-      // migration sit together and the row order is the order the work is done in.
-      'leaveHistoryImport',
-      // db55d08a (r369) — UPDATED, NOT LOOSENED: Leave B/F Data Import joined between the record importer
-      // and Leave Credit. It is the OPENING-FIGURE importer, so the three halves of a migration sit
-      // together and the row order is the order the work is done in. r269's own promise is restated
-      // exactly below: the inquiry row still sits immediately after Company rules. The list stays an exact
-      // set — a deletion, a rename or a re-sort still fails it.
-      'leaveBfImport',
-      // 3fb1a611 (r299) — UPDATED, NOT LOOSENED: Leave Credit joined directly after Leave Adjustments.
+      // r378 consolidates the import destinations behind one row; legacy routes remain aliases.
+      'leaveDataImport',
       'leaveCredit',
       'leaveGenerate',
       'leaveEarnedAccrual',
@@ -207,9 +200,9 @@ describe('5ca446db — six rows in the Leave Config fly-out, the new one last', 
     expect(REGISTERED_ROUTES.has(BALANCES_HREF)).toBe(true);
     // …and the other two rail screens keep their addresses too, so every saved and export link resolves.
     for (const href of [TRACKER_HREF, RECORDS_HREF]) expect(REGISTERED_ROUTES.has(href)).toBe(true);
-    // The rail itself is untouched: three tabs, same three hrefs, `emp=` still threaded through.
+    // r378 retains two inquiry tabs; tracker remains the separately accessible calendar/legacy alias.
     const rail = read('components/leave/leave-inquiry-nav.tsx');
-    expect(rail).toContain("{ key: 'details', href: hrefFor('/leave/tracker', 'details'), label: t('employeeDetails') }");
+    expect(rail).not.toContain("{ key: 'details'");
     expect(rail).toContain("{ key: 'balances', href: hrefFor('/leave/employee-balances', 'balances'), label: t('employeeBalances') }");
     expect(rail).toContain("{ key: 'records', href: hrefFor('/leave/employee-records', 'records'), label: t('employeeLeaveRecord') }");
   });
@@ -310,7 +303,7 @@ describe('5ca446db — the sidebar lights the new row on both inquiry screens, a
     // Non-vacuity for the two `it.each` tables below: an empty or leave-only row set would make "exactly
     // one lights" trivially true.
     expect(ALL_ROWS.length).toBeGreaterThan(10);
-    for (const key of ['leave:employeeLeaveInquiry', 'leave:teamLeaveTracker', 'leave:myAbsence', 'leave:leaveEntitlements'])
+    for (const key of ['leave:employeeLeaveInquiry', 'leave:teamLeaveTracker', 'leave:leaveOverview', 'leave:leaveHistory', 'leave:leaveEntitlements'])
       expect(ALL_ROWS.map((r) => r.key), key).toContain(key);
   });
 
@@ -319,12 +312,11 @@ describe('5ca446db — the sidebar lights the new row on both inquiry screens, a
     [BALANCES_HREF, 'leave:employeeLeaveInquiry'],
     [RECORDS_HREF, 'leave:employeeLeaveInquiry'],
     [`${RECORDS_HREF}/EMP-0003`, 'leave:employeeLeaveInquiry'],
-    // The disclosed consequence, pinned rather than left to be discovered: the rail's FIRST tab still
-    // lights Team Leave Tracker, because /leave/tracker is the leave CALENDAR for every plain employee and
-    // cannot move into the adminOnly Administration group. Stepping across the rail therefore moves the
-    // highlight between Manage and Leave config. That is the approved trade.
+    // The separately accessible calendar retains its Manage owner; My Leave's two destinations
+    // each have exactly one child row in the grouped self-service node.
     [TRACKER_HREF, 'leave:teamLeaveTracker'],
-    ['/leave', 'leave:myAbsence'],
+    ['/leave', 'leave:leaveOverview'],
+    ['/leave/history', 'leave:leaveHistory'],
     // …and Entitlements is NOT lit by the new row: the row the reporter opened Leave Config on still wins
     // its own screen.
     ['/admin/leave-config/types', 'leave:leaveEntitlements'],
@@ -403,7 +395,7 @@ describe('5ca446db — the Entitlements page renders, for real, with no way out 
 });
 
 describe('5ca446db — the row lands somewhere usable: Employee Balances renders with no emp=', () => {
-  it('keeps its own name and its three-tab rail, and offers the employee picker', async () => {
+  it('keeps its own name and its two-tab rail, and offers the employee picker', async () => {
     const html = visible(
       toMarkup(await settle(await EmployeeBalancesPage({ searchParams: Promise.resolve({}) }))),
     );
@@ -411,9 +403,10 @@ describe('5ca446db — the row lands somewhere usable: Employee Balances renders
     // "Employee Balances". Both strings are read from the catalogue, not typed here.
     expect(html).toContain(`<h1 class="text-xl font-semibold tracking-tight">${CATALOGUES.en.leave.inquiry.balancesTitle}</h1>`);
     expect(html).not.toContain(CATALOGUES.en.nav.employeeLeaveInquiry);
-    // The existing Leave Inquiry side list, all three tabs, at their unchanged addresses.
-    for (const href of [TRACKER_HREF, BALANCES_HREF, RECORDS_HREF]) expect(html, href).toContain(`href="${href}"`);
-    for (const label of ['employeeDetails', 'employeeBalances', 'employeeLeaveRecord'] as const)
+    // Both approved inquiry destinations render, without reviving the retired Details tab.
+    expect(html).not.toContain(`href="${TRACKER_HREF}"`);
+    for (const href of [BALANCES_HREF, RECORDS_HREF]) expect(html, href).toContain(`href="${href}"`);
+    for (const label of ['employeeBalances', 'employeeLeaveRecord'] as const)
       expect(html, label).toContain(CATALOGUES.en.leave.inquiry[label]);
     // With no `emp=` the page renders the picker rather than an error — which is what makes the new row a
     // legitimate destination in its own right.

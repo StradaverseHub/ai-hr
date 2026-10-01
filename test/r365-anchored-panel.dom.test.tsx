@@ -11,8 +11,8 @@
  * caller at all — test/attendance-explain-panel.test.ts checks the reader and the six catalogues and never
  * mounts anything. So "the extraction preserves behaviour" was unfalsifiable. Every case in block A drives
  * the ATTENDANCE island, through the shared module, and would fail on a move that dropped the flip, the
- * re-place, the Escape or the fixed positioning. Block B then asserts the SAME behaviours through the new
- * Leave Credit caller, which is what makes "one panel, two callers" a fact rather than an intention.
+ * re-place, the Escape or the fixed positioning. Block B follows the approved r378 Leave Credit change to inline details, preserving
+ * their reference content and verifying that no second modal surface remains.
  *
  * ── jsdom SUPPLIES NO LAYOUT, SO THE RECTS ARE STUBBED AND THAT IS THE POINT ────────────────────────────
  * `getBoundingClientRect` returns all zeros in jsdom, which would make every placement identical and every
@@ -28,7 +28,6 @@ import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 import { AttendanceFigureCells } from '../components/attendance-figure-cells';
 import { LeaveCreditRequestTable, type LeaveCreditDayFacts } from '../components/leave/leave-credit-request-table';
-import { ANCHORED_PANEL_SHEET_QUERY } from '../components/ui/anchored-panel';
 import type { AttendanceExplanation } from '../core/attendance-explain';
 
 const OT = { flat: 0, ot00: 0, ot10: 60, ot15: 0, ot20: 0, ot30: 0 };
@@ -175,70 +174,41 @@ const mountCredit = () =>
     </NextIntlClientProvider>,
   );
 
-const viewButton = () => screen.getAllByTestId('leave-credit-attendance-view')[0] as HTMLButtonElement;
-const openView = async (user: ReturnType<typeof userEvent.setup>) => {
+// r378 replaces this caller's anchored panel/phone Drawer with one inline disclosure.
+const detailsButton = () => screen.getAllByTestId('leave-credit-details-toggle')[0] as HTMLButtonElement;
+const openDetails = async (user: ReturnType<typeof userEvent.setup>) => {
+  expect(detailsButton().disabled).toBe(true);
   await user.type(screen.getAllByLabelText(en.replacementRequest.workedDate)[0], '2026-09-16');
-  await waitFor(() => expect(viewButton().disabled).toBe(false));
-  await user.click(viewButton());
+  await waitFor(() => expect(detailsButton().disabled).toBe(false));
+  expect(detailsButton().getAttribute('aria-expanded')).toBe('false');
+  await user.click(detailsButton());
   await waitFor(() => expect(screen.queryByTestId('leave-credit-attendance-panel')).not.toBeNull());
 };
 
-describe('r365 · the Leave Credit row opens the SAME panel, and the product’s sheet below lg', () => {
-  it('the Attendance panel is the anchored one, placed from the button’s rect', async () => {
-    window.innerHeight = 900;
-    window.innerWidth = 1400;
-    stubRects({ top: 200, bottom: 230, right: 900 });
+describe('r378 · Leave Credit attendance details stay inline at wide and phone widths', () => {
+  it.each([1400, 390])('at %ipx the same reference contents expand in the owning table row', async (width) => {
+    window.innerWidth = width;
     const user = userEvent.setup();
     mountCredit();
-    await openView(user);
-    const el = document.querySelector('[role="dialog"]') as HTMLElement;
-    expect(el.className.split(' ')).toContain('fixed');
-    expect(el.style.top).toBe('236px'); // 230 + the 6px gap
-    expect(el.style.left).toBe('540px'); // 900 - 360
-  });
-
-  /**
-   * ⚠️ BELOW `lg` IT IS components/ui/drawer.tsx — THE PRODUCT'S OWN SHEET, FULL SCREEN ON A PHONE AND A
-   * TABLET — and not a second, bottom-sliding style invented for one button. The reporter asked for a
-   * bottom sheet; the plan says plainly that this product has a full-screen sheet and that inventing a
-   * third one is one more thing to maintain and one more thing to look inconsistent.
-   *
-   * jsdom answers every media query `false`, which is why `useBelowLg` asks a **max-width**: the desktop
-   * panel is what an environment with no real viewport gets. This case installs the answer the other way.
-   */
-  it('below lg the same contents open in the shared Drawer, as a modal dialog, not as an anchored box', async () => {
-    window.matchMedia = vi.fn().mockImplementation((q: string) => ({
-      matches: q === ANCHORED_PANEL_SHEET_QUERY,
-      media: q,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })) as unknown as typeof window.matchMedia;
-    stubRects({ top: 200, bottom: 230, right: 900 });
-    const user = userEvent.setup();
-    mountCredit();
-    await openView(user);
-
-    // Radix's Dialog, portalled to the body — NOT the anchored box. Found by the drawer's OWN class
-    // rather than by `role`, because that is the claim: this is components/ui/drawer.tsx and not a
-    // second sheet that happens to be a dialog.
-    const modal = document.querySelector('.ui-drawer-panel') as HTMLElement;
-    expect(modal, 'the shared Drawer, not a hand-rolled sheet').not.toBeNull();
-    expect(modal.getAttribute('role'), 'Radix Dialog semantics come with it').toBe('dialog');
-    expect(modal.className, 'full width below lg — that is what makes it full screen on a phone').toContain('w-full');
-    expect(modal.className, 'and the lg clamp is what it grows into above the breakpoint').toContain('lg:w-[28rem]');
-    // The modal overlay is the other half of "this is the product's sheet" and a bare panel has none.
-    expect(document.querySelector('.ui-drawer-overlay')).not.toBeNull();
-    // The same contents, not a second rendering of them.
-    expect(screen.getByTestId('leave-credit-attendance-panel')).toBeTruthy();
+    await openDetails(user);
+    const panel = screen.getByTestId('leave-credit-attendance-panel');
+    const cell = panel.closest('td');
+    expect(cell, 'the facts belong to an actual table cell').not.toBeNull();
+    expect(cell!.getAttribute('colspan')).toBe('7');
+    expect(panel.closest('table')).toBe(screen.getByTestId('leave-credit-table'));
+    expect(detailsButton().getAttribute('aria-expanded')).toBe('true');
+    expect(detailsButton().type).toBe('button');
+    expect(detailsButton().name).toBe('');
     expect(screen.getByTestId('leave-credit-attendance-footnote').textContent).toBe(
       en.replacementRequest.table.attendanceReferenceOnly,
     );
-    // …and NOTHING is anchored: a sheet and an anchored box at once is the bug this guards.
-    expect(document.querySelectorAll('[role="dialog"]'), 'exactly one surface is open').toHaveLength(1);
-    expect(document.querySelectorAll('.fixed.w-\\[22\\.5rem\\]'), 'the anchored panel must not also be mounted').toHaveLength(0);
+    expect(panel.textContent).toContain('2026-09-16');
+    expect(panel.textContent).toContain('08:52');
+    expect(panel.textContent).toContain('21:05');
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(0);
+    expect(document.querySelector('.ui-drawer-panel')).toBeNull();
+    await user.click(detailsButton());
+    expect(detailsButton().getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByTestId('leave-credit-attendance-panel')).toBeNull();
   });
 });

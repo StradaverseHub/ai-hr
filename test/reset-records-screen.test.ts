@@ -1,3 +1,4 @@
+/** r378: consolidated Import row and guarded bookmark aliases supersede the historical importer layout below. */
 /**
  * 7f69bd71 (r268) — both reset records leave the everyday tabs for ONE "Reset records" sub-screen,
  * reached from the foot of Leave Adjustments. No data change: the two archive tables and every row in
@@ -285,21 +286,8 @@ describe('7f69bd71 — the map: two tabs per row, the record ids excluded by typ
       '/admin/leave-config/types',
       '/admin/leave-config/balance-health',
       '/admin/leave-config/adjustments',
-      // 3f15ffdb (r362) — UPDATED, NOT LOOSENED, and for the same reason a fourth time: a later,
-      // unrelated item gave Leave History Data Import a row of its own, directly after Leave
-      // Adjustments. This case's property is untouched — that round added no tab and no sub-screen, and
-      // the Reset records sub-screen is STILL owned by the Leave Adjustments row alone (asserted below)
-      // — so the list is restated exactly rather than turned into a count or a "contains".
-      '/admin/leave-config/history-import',
-      // db55d08a (r369) — UPDATED, NOT LOOSENED, and for the same reason a fifth time: a later, unrelated
-      // item gave Leave B/F Data Import a row of its own, directly after the record importer. This case's
-      // property is untouched — that round added no tab and no sub-screen, and the Reset records
-      // sub-screen is STILL owned by the Leave Adjustments row alone (asserted below) — so the list is
-      // restated exactly rather than turned into a count or a "contains".
-      '/admin/leave-config/bf-import',
-      // 3fb1a611 (r299) — UPDATED, NOT LOOSENED, for the same reason as the r281 note below: a later, unrelated
-      // item gave Leave Credit a row directly after Leave Adjustments. The Reset records sub-screen is still
-      // owned by the Leave Adjustments row alone.
+      // r378 consolidates importer rows; reset-record ownership remains unchanged.
+      '/admin/leave-config/data-import',
       '/admin/leave-config/leave-credit',
       '/admin/leave-config/generate',
       // r281 (09386e29) — UPDATED, NOT LOOSENED, and for the third time for the same reason. A later,

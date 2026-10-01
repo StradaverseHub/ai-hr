@@ -1,3 +1,4 @@
+/** r378: consolidated Import row and guarded bookmark aliases supersede the historical importer layout below. */
 /**
  * r266 · 10b59703 — THE LEFT SUBMENU IS THE ONLY NAVIGATION BETWEEN LEAVE CONFIG SCREENS.
  *
@@ -88,7 +89,12 @@ const STUBS = ['app/admin/leave-config/records/entitlement/page.tsx', 'app/admin
  * with no group, would have needed its own carve-out in both of those loops AND in
  * test/leave-config-map.test.ts: three exceptions bought nothing that one map entry did not.
  */
-const PAGES = pages().filter((p) => p !== SUB_SCREEN && !STUBS.includes(p));
+// r378: importer bookmarks are guarded redirects, not duplicate row pages.
+const IMPORT_ALIASES = {
+  'app/admin/leave-config/history-import/page.tsx': 'history',
+  'app/admin/leave-config/bf-import/page.tsx': 'bf',
+} as const;
+const PAGES = pages().filter((p) => p !== SUB_SCREEN && !STUBS.includes(p) && !(p in IMPORT_ALIASES));
 const MAP_SRC = read('components/leave-config-map.tsx');
 const MAP_CODE = stripComments(MAP_SRC);
 const CHILDREN = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
@@ -126,7 +132,8 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
     // `toEqual`s above moved together and no exception was needed anywhere in this file. It is a group of
     // ONE for a sharper version of the same reason: a tab of Leave History Data Import would have inherited
     // that row's "load past leave records" description, and this tool creates no leave record at all.
-    expect(ROWS).toHaveLength(11);
+    // r378 consolidates the two import rows into one.
+    expect(ROWS).toHaveLength(10);
   });
 
   it('5ca446db — the Leave Inquiry door is the only child with no map group, and it is where r269 put it', () => {
@@ -174,7 +181,7 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
     // one row like every other route, and this loop needed no second exemption.
     expect(LEAVE_CONFIG_RECORDS_HREF).toBe('/admin/leave-config/records');
     for (const r of leaveConfig.routes) {
-      expect(onMap.filter((h) => h === r), r).toHaveLength(r === LEAVE_CONFIG_RECORDS_HREF ? 0 : 1);
+      expect(onMap.filter((h) => h === r), r).toHaveLength(r === LEAVE_CONFIG_RECORDS_HREF || Object.keys(IMPORT_ALIASES).some((p) => p.replace(/^app/, '').replace(/\/page\.tsx$/, '') === r) ? 0 : 1);
     }
     expect(leaveConfig.routes).toContain(LEAVE_CONFIG_RECORDS_HREF);
     expect(read('app/admin/leave-config/adjustments/page.tsx')).toContain('<Link href={LEAVE_CONFIG_RECORDS_HREF}');
@@ -185,15 +192,8 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
       '/admin/leave-config/balance-health',
       '/admin/leave-config/adjustments',
       '/admin/leave-config/import',
-      // 3f15ffdb (r362) — its row is directly after Leave Adjustments, so its one screen follows that
-      // row's two tabs and precedes Leave Credit's.
-      '/admin/leave-config/history-import',
-      // db55d08a (r369) — UPDATED, NOT LOOSENED: its row is directly after Leave History Data Import, so
-      // its one screen follows that row's one and precedes Leave Credit's two. The list is restated
-      // exactly rather than turned into a count or a "contains", so a route added under
-      // app/admin/leave-config by anything OTHER than the commit that names it here still fails.
-      '/admin/leave-config/bf-import',
-      // 3fb1a611 (r299) — its row is directly after Leave Adjustments; its two tabs follow Adjustments' two.
+      // r378 canonical importer; guarded aliases are verified separately below.
+      '/admin/leave-config/data-import',
       '/admin/leave-config/leave-credit',
       '/admin/leave-config/leave-credit/rules',
       '/admin/leave-config/generate',
@@ -208,6 +208,15 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
   });
 
   it('7f69bd71 — the three named non-row files are what they claim: a sub-screen with a back link, and two redirect stubs', () => {
+    expect(PAGES.length).toBeGreaterThan(0);
+    for (const [rel, type] of Object.entries(IMPORT_ALIASES)) {
+      const alias = stripComments(read(rel));
+      const guard = alias.indexOf('await requireAdmin()');
+      const redirect = alias.indexOf(`redirect('/admin/leave-config/data-import?type=${type}')`);
+      expect(guard, `${rel} retains authorization`).toBeGreaterThan(-1);
+      expect(redirect, `${rel} redirects after its guard`).toBeGreaterThan(guard);
+      expect(alias).not.toContain('<LeaveConfigMap');
+    }
     const sub = read(SUB_SCREEN);
     expect(sub).toContain('requireAdmin()');
     expect(sub).not.toContain('<LeaveConfigMap');
@@ -284,7 +293,8 @@ describe('§C · every page\'s heading is its submenu row, and its description i
       // through this helper exactly like every other, which is the whole reason it was given a group.
       // db55d08a (r369) — FOURTEEN, with `leaveBfImport`. UPDATED, NOT LOOSENED: the old claim read
       // `expect(ids).toHaveLength(13)`.
-      expect(ids).toHaveLength(14);
+      // r378 one canonical import id replaces two row ids.
+      expect(ids).toHaveLength(13);
     for (const id of ids) {
       const group = leaveConfigGroupOf(id);
       const header = await leaveConfigPageHeader(id);
@@ -307,7 +317,9 @@ describe('§C · every page\'s heading is its submenu row, and its description i
   it('each page reads its PageHeader through leaveConfigPageHeader(<its own id>)', () => {
     for (const rel of PAGES) {
       const src = read(rel);
-      const id = src.match(/<LeaveConfigMap current="([a-zA-Z]+)" \/>/)![1];
+      const mount = src.match(/<LeaveConfigMap current="([a-zA-Z]+)" \/>/);
+      expect(mount, `${rel} has a real map mount`).not.toBeNull();
+      const id = mount![1];
       expect(src, `${rel} must read its header through the row helper`).toContain(`leaveConfigPageHeader('${id}')`);
       // No page titles itself with the TAB label any more: that is the heading/row mismatch measured.
       const headerBlock = src.slice(src.indexOf('<PageHeader'), src.indexOf('/>', src.indexOf('<PageHeader')));
@@ -332,7 +344,7 @@ describe('§C · every page\'s heading is its submenu row, and its description i
       // sentence ("Change an employee's balance by hand… and load balances from a file"): that row is
       // about changing balances and this one changes none, so sharing the sentence would tell an
       // administrator the opposite of what the tool does.
-      leaveHistoryImport: 'admin.leaveConfigHistoryImport.pageDescription',
+      leaveDataImport: 'admin.leaveDataImport.pageDescription',
       // db55d08a (r369) — its own namespace, the house shape. It must NOT borrow EITHER neighbour's
       // sentence, and the two failures would read differently: Leave History Data Import's sentence says
       // this loads past leave records (it creates none at all), and Leave Adjustments' says it changes a
@@ -525,7 +537,10 @@ describe('§D · the moves, and what deliberately did not move', () => {
   it('the submenu row stays lit on its tabs: the two rows own exactly their other tabs (plus the named sub-screen)', () => {
     // 7f69bd71 — Leave Adjustments also owns the Reset records sub-screen, so the row stays lit on it and
     // on the two records/* stubs on the way through. Nothing else is owned by anyone.
-    const SUB_SCREENS: Record<string, string[]> = { leaveAdjustments: [LEAVE_CONFIG_RECORDS_HREF] };
+    const SUB_SCREENS: Record<string, string[]> = {
+      leaveAdjustments: [LEAVE_CONFIG_RECORDS_HREF],
+      leaveDataImport: ['/admin/leave-config/history-import', '/admin/leave-config/bf-import'],
+    };
     for (const g of LEAVE_CONFIG_MAP) {
       const row = ROWS.find((r) => r.labelKey === g.navKey)!;
       expect(row.ownedSubpaths ?? []).toEqual([...g.items.slice(1).map((i) => i.href), ...(SUB_SCREENS[g.navKey] ?? [])]);
