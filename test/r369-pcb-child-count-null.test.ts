@@ -80,7 +80,7 @@ describe('PCB detail — a missing child count renders "Not recorded", never "nu
     const core = codeOnly(read('core/pcb-explain.ts'));
     expect(core).toContain('childCount: number | null');
     expect(core, 'readTrace must map an absent count to null, never to 0').toMatch(
-      /childCount:\s*t\.childCount === undefined \|\| t\.childDeductionPerChild === undefined \? null :/,
+      /const childCount = childDeductionPerChild == null \? null : recordedChildNumber\(t\.childCount\)/,
     );
   });
 });
