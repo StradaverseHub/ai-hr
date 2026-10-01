@@ -835,8 +835,11 @@ export async function editCompensationAction(formData: FormData) {
       employmentId,
       // r374 (item 7dbaf677) — A POSTED-BUT-BLANK AMOUNT IS AN EXPLICIT ZERO, NOT "UNTOUCHED".
       //
-      // It used to be `rawBasicStr !== '' ? Number(rawBasicStr) : undefined`, and `undefined` means
-      // UNTOUCHED to the service. That was harmless only while the input carried `required`. With
+      // It used to branch on the trimmed STRING being empty and send `undefined` for a blank, and
+      // `undefined` means UNTOUCHED to the service. (The old expression is deliberately not quoted
+      // verbatim here: the guard in test/r374-no-basic-salary-forms.test.ts §2 asserts this file does
+      // not contain it, and a comment is source too — CLAUDE.md §8.) That was harmless only while the
+      // input carried `required`. With
       // `required` dropped from the edit form, clearing the box would have silently kept the old
       // amount here while meaning zero on the Add form — the same gesture, two answers.
       //
