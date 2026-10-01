@@ -226,7 +226,7 @@ export default async function IndividualAttendanceDayPage({
           the SAME working, so this screen and the list can never explain one day two ways. */}
       <Card className="overflow-hidden">
         <SectionHeader title={t('daySecOt')} />
-        <div className="overflow-x-auto">
+        <p className="px-4 text-xs text-muted-foreground sm:hidden">{t('otScrollHint')}</p><div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
               <tr>
@@ -277,7 +277,7 @@ export default async function IndividualAttendanceDayPage({
         {admin ? (
           <form
             action={adminCorrectAttendanceDayAction}
-            className="flex flex-wrap items-end gap-3 border-t border-border px-4 py-3"
+            className="grid grid-cols-1 gap-3 border-t border-border px-4 py-3 sm:flex sm:flex-wrap sm:items-end"
           >
             <input type="hidden" name="employmentId" value={selected.employmentId} />
             <input type="hidden" name="date" value={date} />
@@ -289,7 +289,7 @@ export default async function IndividualAttendanceDayPage({
               {t('colCheckOut')}
               <input type="time" name="checkOut" defaultValue={row.checkOutAt?.slice(0, 5) ?? ''} className={inputCls} />
             </label>
-            <label className="flex min-w-[14rem] flex-1 flex-col gap-1 text-xs text-muted-foreground">
+            <label className="flex min-w-0 sm:min-w-[14rem] flex-1 flex-col gap-1 text-xs text-muted-foreground">
               {t('dayCorrectReason')}
               <input name="reason" required maxLength={500} className={inputCls} />
             </label>

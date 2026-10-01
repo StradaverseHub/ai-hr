@@ -191,7 +191,7 @@ describe('1 · with JavaScript off, the form now succeeds', () => {
     expect(row.requestedOtMinutes, 'two and a half hours, worked out from the window').toBe(150);
     expect(row.plannedStartTime).toBe('18:00:00');
     expect(row.plannedEndTime).toBe('20:30:00');
-    expect(row.otReasonCategory).toBe('project_deadline');
+    expect(row.otReasonCategory).toBeNull();
   });
 
   it('and with JavaScript ON the posted figure is still what the engine reads, unchanged', async () => {
@@ -220,17 +220,15 @@ describe('1 · with JavaScript off, the form now succeeds', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 describe('2 · the refusals the employee reads are the ones that are TRUE of what they typed', () => {
-  it('an inverted window says so, instead of the generic "provide at least one"', async () => {
-    const url = await redirectOf(() =>
-      myRequestOvertime(form({ date: FUTURE, plannedStart: '21:00', plannedEnd: '18:00', reason: 'Typed them the wrong way round' })),
-    );
-    expect(errorOf(url)).toBe('The planned end time must be after the planned start time.');
-    expect(await plansCount(), 'nothing is written on a refusal').toBe(0);
+  it('an earlier end submits the next-day window as integer minutes', async () => {
+    const url = await redirectOf(() => myRequestOvertime(form({ date: FUTURE, plannedStart: '21:00', plannedEnd: '18:00', reason: 'Overnight work' })));
+    expect(errorOf(url)).toBeNull();
+    expect((await planFor(FUTURE)).requestedOtMinutes).toBe(1260);
   });
 
   it('half a window says so', async () => {
     const url = await redirectOf(() => myRequestOvertime(form({ date: FUTURE, plannedStart: '18:00', reason: 'Only filled in the start' })));
-    expect(errorOf(url)).toBe('A planned overtime window needs both a start time and an end time.');
+    expect(errorOf(url)).toBe('Enter different valid start and end times.');
     expect(await plansCount()).toBe(0);
   });
 

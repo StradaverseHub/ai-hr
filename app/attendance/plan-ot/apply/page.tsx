@@ -1,3 +1,4 @@
+import { formatMinutesToHM } from '@/lib/overtime-duration';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
@@ -175,7 +176,7 @@ export default async function ApplyOtPlanPage({
                 ? 'otCalFromHoliday'
                 : 'otCalFromPolicy';
 
-  const fmtHours = (minutes: number) => (minutes / 60).toFixed(2).replace(/\.?0+$/, '');
+  const fmtHours = formatMinutesToHM;
   // The month's own roll-up. PLANNED counts what still stands (waiting + approved); a withdrawn or
   // refused plan is not a commitment and adding it would inflate the figure the employee is judging
   // their month by. APPROVED is the approver's own figure. CLOCKED is `recordedMinutes` — the overtime
@@ -378,7 +379,6 @@ export default async function ApplyOtPlanPage({
               <Field label={t('reasonRequired')} required requiredAriaLabel={t('reasonRequired')}>
                 <input name="reason" required placeholder={t('otReasonPlaceholder')} className={inputCls} />
               </Field>
-              <p className="text-[11px] text-muted-foreground">{t('otReasonOtherHelp')}</p>
 
               {/* ce5ded11 — Remarks and Attachment are NOT new capability and are not rebuilt here.
                   `attendance_correction.remark` is an existing column that requestAttendanceCorrection

@@ -1,3 +1,4 @@
+import { formatMinutesToHM } from '@/lib/overtime-duration';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -99,12 +100,14 @@ function DecideButtons({
   disabled,
   labels,
   nav,
+  rejectReasonLabel,
 }: {
   action: (fd: FormData) => void | Promise<void>;
   id: string;
   disabled?: boolean;
   labels: { yourRequest: string; approve: string; reject: string };
   nav: NavParams;
+  rejectReasonLabel?: string;
 }) {
   if (disabled) {
     return <span className="text-xs text-muted-foreground">{labels.yourRequest}</span>;
@@ -119,14 +122,23 @@ function DecideButtons({
           {labels.approve}
         </Button>
       </form>
-      <form action={action}>
+      {rejectReasonLabel ? <details><summary className="cursor-pointer text-sm">{labels.reject}</summary>      <form action={action}>
+        <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="decision" value="rejected" />
+        <NavFields nav={nav} />
+        {rejectReasonLabel && <label className="block text-xs">{rejectReasonLabel}<textarea name="rejectReason" required maxLength={1000} className="block min-h-20 w-full rounded border border-border bg-background p-2" /></label>}
+        <Button type="submit" size="sm" variant="outline">
+          {labels.reject}
+        </Button>
+      </form></details> :       <form action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="decision" value="rejected" />
         <NavFields nav={nav} />
         <Button type="submit" size="sm" variant="outline">
           {labels.reject}
         </Button>
-      </form>
+      </form>}
+
     </div>
   );
 }
@@ -994,11 +1006,12 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5 font-medium">{c.employee}</td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{c.attendanceDate}</td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
+                    {c.proposedCheckIn && <p className="text-xs text-muted-foreground">{t('originalTimes')}: {c.originalClockSnapshot == null ? t('originalNotRecorded') : c.originalClockSnapshot.attendanceId == null ? t('originalNoRecord') : `${c.originalClockSnapshot.originalCheckIn ?? '—'} → ${c.originalClockSnapshot.originalCheckOut ?? '—'}`}</p>}
                     {c.proposedCheckIn
                       ? `${c.proposedCheckIn.slice(0, 5)}${c.proposedCheckOut ? ` → ${c.proposedCheckOut.slice(0, 5)}` : ''}`
                       : ''}
                     {c.requestedOtMinutes != null
-                      ? `${c.proposedCheckIn ? ' · ' : ''}${t('otHoursLabel')} ${(c.requestedOtMinutes / 60).toFixed(1)}h`
+                      ? `${c.proposedCheckIn ? ' · ' : ''}${t('otHoursLabel')} ${formatMinutesToHM(c.requestedOtMinutes)}`
                       : ''}
                     {/* 1e9145d4 — the two facts an overtime approver must not have to work out for
                         themselves. An ordinary working day gets no chip: a marker on everything marks
@@ -1028,6 +1041,7 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5">
                     <DecideButtons
                       action={approveCorrectionAction}
+                      rejectReasonLabel={t('rejectReasonPlaceholder')}
                       id={c.id}
                       disabled={mine(c.personId)}
                       labels={decideLabels}

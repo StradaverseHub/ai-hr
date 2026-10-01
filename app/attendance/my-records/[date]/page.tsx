@@ -1,3 +1,4 @@
+import { AttendanceRequestHistory } from '@/components/attendance-request-history';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
@@ -57,13 +58,13 @@ export default async function MyAttendanceDayPage({
     );
   }
 
-  const [rows, punchesByAttendance, pendingRequests] = await Promise.all([
+  const [rows, punchesByAttendance, requestHistory] = await Promise.all([
     attendanceForEmploymentRange(s, selected.employmentId, date, date),
     attendancePunchesForRange(s, selected.employmentId, date, date),
-    myAttendanceCorrections(s, selected.employmentId, { date, status: 'pending', limit: 1 }),
+    myAttendanceCorrections(s, selected.employmentId, { date, limit: 100 }),
   ]);
   const row = rows[0] ?? null;
-  const pending = pendingRequests.length > 0;
+  const pending = requestHistory.some(request => request.status === 'pending');
   const future = date > todayInKualaLumpur();
   // Keyed by attendance id, exactly as the list reads it — no second shape for one fact.
   const punches = row?.attendanceId ? punchesByAttendance.get(row.attendanceId) ?? [] : [];
@@ -78,6 +79,7 @@ export default async function MyAttendanceDayPage({
           ← {t('myDayBack')}
         </Link>
         <Card className="p-6 text-sm text-muted-foreground">{t('dayNoRecord')}</Card>
+        <AttendanceRequestHistory rows={requestHistory} />
       </div>
     );
   }
@@ -128,6 +130,7 @@ export default async function MyAttendanceDayPage({
       )}
 
       {/* 1 · SHIFT DETAILS */}
+      <AttendanceRequestHistory rows={requestHistory} />
       <Card className="overflow-hidden">
         <SectionHeader title={t('daySecShift')} />
         <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
@@ -189,7 +192,7 @@ export default async function MyAttendanceDayPage({
           the SAME working, so this screen and the list can never explain one day two ways. */}
       <Card className="overflow-hidden">
         <SectionHeader title={t('daySecOt')} />
-        <div className="overflow-x-auto">
+        <p className="px-4 text-xs text-muted-foreground sm:hidden">{t('otScrollHint')}</p><div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
               <tr>
@@ -232,7 +235,7 @@ export default async function MyAttendanceDayPage({
           <input type="hidden" name="date" value={date} />
           <input type="hidden" name="from" value={sp.from ?? ''} />
           <input type="hidden" name="to" value={sp.to ?? ''} />
-          <fieldset disabled={pending || future} className="flex flex-wrap items-end gap-3 disabled:opacity-60">
+          <fieldset disabled={pending || future} className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end disabled:opacity-60">
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               {t('colCheckIn')}
               <input type="time" name="checkIn" defaultValue={row.checkInAt?.slice(0, 5) ?? ''} className={inputCls} />
@@ -241,7 +244,7 @@ export default async function MyAttendanceDayPage({
               {t('colCheckOut')}
               <input type="time" name="checkOut" defaultValue={row.checkOutAt?.slice(0, 5) ?? ''} className={inputCls} />
             </label>
-            <label className="flex min-w-[14rem] flex-1 flex-col gap-1 text-xs text-muted-foreground">
+            <label className="flex min-w-0 sm:min-w-[14rem] flex-1 flex-col gap-1 text-xs text-muted-foreground">
               {t('dayCorrectReason')}
               <input name="reason" required maxLength={500} className={inputCls} />
             </label>

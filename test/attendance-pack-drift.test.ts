@@ -36,6 +36,8 @@ const BOUNDARIES = [
   'core/attendance-calc',
   'core/attendance-derive',
   'core/attendance-device',
+  'core/attendance-clock',
+  'core/attendance-clock-read',
   'core/attendance-rule',
   'core/clocking-location',
 ];
@@ -48,6 +50,9 @@ const ALWAYS_ALLOWED = [
   'core/attendance-calc.ts',
   'core/attendance-derive.ts',
   'core/attendance-device.ts',
+  // r378: narrow pack-owned implementations; outside consumers still require the facade.
+  'core/attendance-clock.ts',
+  'core/attendance-clock-read.ts',
   'core/attendance-rule.ts',
   'core/clocking-location.ts',
   'app/attendance/', // module routes: records/daily/individual/import/ot-report + R63–R65 clock portal

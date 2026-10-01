@@ -1,5 +1,6 @@
 'use server';
 
+import { plannedOvertimeMinutes } from '@/lib/overtime-duration';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -683,7 +684,6 @@ export async function myRequestOvertime(formData: FormData) {
   const otHoursRaw = String(formData.get('otHours') || '').trim();
   const plannedStart = String(formData.get('plannedStart') || '').trim();
   const plannedEnd = String(formData.get('plannedEnd') || '').trim();
-  const categoryRaw = String(formData.get('otReasonCategory') || '').trim();
   // ce5ded11 — the optional note and the optional supporting file. Both are EXISTING capability that the
   // overtime form simply never offered: `attendance_correction.remark` is a column
   // requestAttendanceCorrection already accepts, and the attachment is the same table, the same 5 MB /
@@ -691,55 +691,27 @@ export async function myRequestOvertime(formData: FormData) {
   const remark = String(formData.get('remark') || '').trim();
   const file = formData.get('attachment');
   const hasFile = file instanceof File && file.size > 0;
-  // Never trust the posted category: an unknown value would be refused by the DB CHECK with a constraint
-  // name in the message. Anything not in the vocabulary is simply dropped (the mandatory free text carries
-  // the meaning regardless).
-  const otReasonCategory = (OT_REASON_CATEGORIES as readonly string[]).includes(categoryRaw)
-    ? (categoryRaw as OtReasonCategory)
-    : null;
+  const postedMinutes = String(formData.get('otMinutes') ?? '').trim();
+  const derivedMinutes = plannedStart || plannedEnd ? plannedOvertimeMinutes(plannedStart, plannedEnd) : null;
   let requestedOtMinutes: number | null = null;
-  if (otHoursRaw.length > 0) {
-    const hrs = Number(otHoursRaw);
-    if (!Number.isFinite(hrs) || hrs < 0) {
-      // ce5ded11 — CARRYING THE DATE. This redirect used to drop it, so a mistyped figure threw the
-      // employee back to a form reset to tomorrow and they lost the day they had picked. The generic
-      // catch below always preserved it; this one now does too.
-      redirect(
-        `${PLAN_OT_PAGE}/apply?date=${encodeURIComponent(date)}&error=${encodeURIComponent('Overtime hours must be a non-negative number.')}`,
-      );
-    }
-    requestedOtMinutes = Math.round(hrs * 60);
-  } else if (plannedStart || plannedEnd) {
-    /**
-     * ce5ded11 — THE HOURS, DERIVED FROM THE WINDOW WHEN THE FORM DID NOT DERIVE THEM.
-     *
-     * `otHours` is a hidden field the island fills in as the two times are typed. It arrives blank in
-     * exactly two situations, and both of them used to end in the wrong refusal:
-     *
-     *   · JAVASCRIPT IS OFF. The island never ran, so nothing computed the figure and the request was
-     *     refused with "Provide at least one of a clock-in time, a clock-out time, or overtime hours."
-     *     — about the one thing the employee could not fill in, on a screen where the two boxes they DID
-     *     fill in say exactly how many hours they mean.
-     *   · THE WINDOW IS INVERTED. The island treats an end at or before the start as a typo and yields
-     *     nothing, so the figure was blank and the employee got the same generic message instead of
-     *     "The planned end time must be after the planned start time." — the refusal that is actually
-     *     true of what they typed, and which was therefore UNREACHABLE from this screen.
-     *
-     * Handing the service a ZERO rather than a null is what fixes the second one: `hasOt` in
-     * requestAttendanceCorrection is `!= null`, so zero satisfies the at-least-one test and the window
-     * checks downstream of it — both-or-neither, then end-after-start — get to run and refuse in their
-     * own words. THE RULE IS STILL THE SERVICE'S; this only stops swallowing the question before it is
-     * asked. A window that is genuinely valid can never derive zero.
-     */
-    const mins = (t: string) => {
-      const [h, m] = t.split(':').map(Number);
-      return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
-    };
-    const a = plannedStart ? mins(plannedStart) : null;
-    const b = plannedEnd ? mins(plannedEnd) : null;
-    requestedOtMinutes = a != null && b != null ? Math.max(0, b - a) : 0;
-  }
   try {
+    if (plannedStart || plannedEnd) {
+      if (derivedMinutes == null) throw new Error('Enter different valid start and end times.');
+      requestedOtMinutes = derivedMinutes;
+    }
+    if (postedMinutes) {
+      const value = Number(postedMinutes);
+      if (!Number.isSafeInteger(value) || value < 0 || derivedMinutes != null && value !== derivedMinutes) {
+        throw new Error('Overtime minutes must agree with the planned times.');
+      }
+      requestedOtMinutes = value;
+    } else if (derivedMinutes == null && otHoursRaw) {
+      // Bounded compatibility for callers that supply only the original hours field.
+      const hours = Number(otHoursRaw);
+      if (!Number.isFinite(hours) || hours < 0 || hours > 24) throw new Error('Overtime hours must be a non-negative number.');
+      requestedOtMinutes = Math.round(hours * 60);
+    }
+
     // Orphan-prevention, the leave path's lesson (myRequestCorrection above): a bad file is refused
     // BEFORE the request row and its event commit, so a rejected upload never leaves a pending request
     // behind that the employee then has to withdraw.
@@ -754,7 +726,6 @@ export async function myRequestOvertime(formData: FormData) {
       remark: remark || null,
       plannedStartTime: plannedStart || null,
       plannedEndTime: plannedEnd || null,
-      otReasonCategory,
     });
     if (hasFile) {
       await addAttendanceCorrectionAttachment(s, {
@@ -988,28 +959,14 @@ async function localizeClockError(e: unknown): Promise<string> {
   return (e as Error).message;
 }
 
-export async function myCheckIn(formData: FormData) {
-  const { s, employmentId } = await resolveMe();
-  const { date, time } = nowParts();
-  try {
-    await checkIn(s, { employmentId, date, time, geo: parseGeo(formData), deviceToken: parseDeviceToken(formData) });
-  } catch (e) {
-    redirect(`/me?error=${encodeURIComponent(await localizeClockError(e))}`);
-  }
-  revalidatePath('/me');
-  redirect('/me?toast=Checked+in');
+export async function myCheckIn(_formData: FormData) {
+  await getSession();
+  redirect('/attendance/clock');
 }
 
-export async function myCheckOut(formData: FormData) {
-  const { s, employmentId } = await resolveMe();
-  const { date, time } = nowParts();
-  try {
-    await checkOut(s, { employmentId, date, time, geo: parseGeo(formData), deviceToken: parseDeviceToken(formData) });
-  } catch (e) {
-    redirect(`/me?error=${encodeURIComponent(await localizeClockError(e))}`);
-  }
-  revalidatePath('/me');
-  redirect('/me?toast=Checked+out');
+export async function myCheckOut(_formData: FormData) {
+  await getSession();
+  redirect('/attendance/clock');
 }
 
 // ── Goals (ADR-0022) — the employee's own continuous goals ──

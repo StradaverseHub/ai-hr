@@ -3858,6 +3858,23 @@ export const attendance = pgTable(
 // Stage-1 scope: capture + first-in/last-out summation. Deferred (stage 2, documented GAP): per-pair
 // unpaid-break, pre-shift/early-OT attribution, split shifts, cross-midnight multi-punch.
 export const attendancePunchDirectionEnum = pgEnum('attendance_punch_direction', ['in', 'out']);
+export const attendanceClockCapture = pgTable('attendance_clock_capture', {
+  id: id(), tenantId: tenantId(), employmentId: uuid('employment_id').notNull().references(() => employment.id),
+  attendanceDate: date('attendance_date').notNull(), direction: attendancePunchDirectionEnum('direction').notNull(),
+  requestId: uuid('request_id').notNull(), serverRecordedAt: timestamp('server_recorded_at', { withTimezone: true }).notNull(),
+  photoCapturedAt: timestamp('photo_captured_at', { withTimezone: true }).notNull(),
+  photoMimeType: text('photo_mime_type').notNull(), photoSize: integer('photo_size').notNull(),
+  photoBytes: bytea('photo_bytes'), thumbnailBytes: bytea('thumbnail_bytes'),
+  decodedWidth: integer('decoded_width').notNull(), decodedHeight: integer('decoded_height').notNull(),
+  deviceId: uuid('device_id').notNull().references(() => employeeDevice.id),
+  lat: doublePrecision('lat').notNull(), lng: doublePrecision('lng').notNull(), accuracyM: doublePrecision('accuracy_m').notNull(),
+  clockingLocationId: uuid('clocking_location_id').notNull().references((): AnyPgColumn => clockingLocation.id),
+  distanceM: integer('distance_m').notNull(), radiusM: integer('radius_m').notNull(),
+  commandDigest: text('command_digest').notNull(), photoDigest: text('photo_digest').notNull(),
+  photoPurgedAt: timestamp('photo_purged_at', { withTimezone: true }), photoPurgeEventId: uuid('photo_purge_event_id').references(() => domainEvent.id),
+}, (t) => [uniqueIndex('attendance_clock_capture_request_uq').on(t.tenantId, t.employmentId, t.requestId),
+  index('attendance_clock_capture_day_idx').on(t.employmentId, t.attendanceDate, t.serverRecordedAt)]);
+
 export const attendancePunch = pgTable(
   'attendance_punch',
   {
@@ -3882,6 +3899,7 @@ export const attendancePunch = pgTable(
     distanceM: integer('distance_m'),
     geofenceStatus: geofenceStatusEnum('geofence_status'),
     radiusM: integer('radius_m'),
+    clockCaptureId: uuid('clock_capture_id').unique().references(() => attendanceClockCapture.id),
     createdAt: createdAt(),
   },
   (t) => [index('attendance_punch_attendance_idx').on(t.attendanceId, t.punchAt)],
@@ -4190,6 +4208,11 @@ export const attendanceCorrection = pgTable(
     //    above for why it is stored rather than re-derived at read time.
     remark: text('remark'),
     requestKind: text('request_kind').$type<AttendanceRequestKind>(),
+    rejectReason: text('reject_reason'),
+    originalClockSnapshot: jsonb('original_clock_snapshot').$type<{
+      version: 1; attendanceId: string | null; originalCheckIn: string | null;
+      originalCheckOut: string | null; capturedAt: string;
+    }>(),
     status: attendanceCorrectionStatusEnum('status').notNull().default('pending'),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
     decidedAt: timestamp('decided_at', { withTimezone: true }),

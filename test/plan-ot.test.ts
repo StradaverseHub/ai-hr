@@ -475,7 +475,7 @@ describe('4 · one approved plan per date', () => {
   it('a REJECTED plan leaves the date free (nothing was agreed)', async () => {
     const { a, employmentId } = await hire();
     const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'rejected' });
+    await decideAttendanceCorrection(a, { correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
     await expect(filePlan(a, employmentId, FUTURE, 60)).resolves.toBeTruthy();
   });
 
@@ -831,7 +831,7 @@ describe('5 · withdraw', () => {
     const { a, employmentId, personId } = await hire();
     const emp = await employeeCtx(personId);
     const rejected = await filePlan(a, employmentId, FUTURE, 180);
-    await decideAttendanceCorrection(a, { correctionId: rejected.correctionId, decision: 'rejected' });
+    await decideAttendanceCorrection(a, { correctionId: rejected.correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
     await expect(cancelPlannedOvertime(emp, { correctionId: rejected.correctionId })).rejects.toThrow(
       /not approved/i,
     );
@@ -1045,7 +1045,7 @@ describe('9 · notifications — the superior on arrival, the subject on the ans
     // and dispatchNotifications is a no-op for a context that does not have the module.
     const a = adminCtx(b);
     const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'rejected' });
+    await decideAttendanceCorrection(a, { correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
     await dispatchNotifications(a, {});
     expect((await notificationsFor(employmentId)).map((n) => n.kind)).toContain('attendance.ot-rejected');
   });
@@ -1053,11 +1053,11 @@ describe('9 · notifications — the superior on arrival, the subject on the ans
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 describe('10 · request-time validation of the planned window', () => {
-  it('refuses an end at or before the start (a typo, not a cross-midnight plan)', async () => {
+  it('accepts an earlier end as an overnight plan and refuses equal times', async () => {
     const { a, employmentId } = await hire();
-    await expect(
-      filePlan(a, employmentId, FUTURE, 180, { plannedStartTime: '21:00', plannedEndTime: '18:00' }),
-    ).rejects.toThrow(/planned end time must be after/i);
+    const request = await filePlan(a, employmentId, FUTURE, 1260, { plannedStartTime: '21:00', plannedEndTime: '18:00' });
+    expect((await correctionRow(request.correctionId)).requestedOtMinutes).toBe(1260);
+    await expect(filePlan(a, employmentId, todayInKualaLumpur(new Date(new Date(FUTURE + 'T12:00:00+08:00').getTime() + 86400000)), 0, { plannedStartTime: '18:00', plannedEndTime: '18:00' })).rejects.toThrow(/different valid start and end/i);
   });
 
   it('refuses half a window', async () => {

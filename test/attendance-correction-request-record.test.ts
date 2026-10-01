@@ -297,7 +297,7 @@ describe('2166ef79 — the status filter, and cancelling your own request', () =
       reason: 'overtime one',
       requestKind: 'self_overtime',
     });
-    await decideAttendanceCorrection(a, { correctionId: ot.correctionId, decision: 'rejected' });
+    await decideAttendanceCorrection(a, { correctionId: ot.correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
 
     const all = await myAttendanceCorrections(a, employmentId);
     expect(all.map((r) => r.id).sort()).toEqual([pending.correctionId, ot.correctionId].sort());
