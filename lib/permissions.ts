@@ -1195,6 +1195,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       // /payroll/transaction-view uses for `?tab=`.
       '/payroll/statutory-adjustment',
       '/payroll/setup',
+      '/payroll/payslip-information',
       // R17 59178702: Transaction View promoted to a top-level Payroll tab (scopedAdmin, same guard
       // as the hub). The old /payroll/transactions/view path is now a guard-free redirect stub.
       '/payroll/transaction-view',

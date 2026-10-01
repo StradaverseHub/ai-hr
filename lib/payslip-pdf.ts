@@ -72,6 +72,7 @@ export type PayslipYtdTotals = {
 export type PayslipPdfLogo = { bytes: Uint8Array; mimeType: string };
 
 export type PayslipPdfData = {
+  informationRows?: {label: string; value: string}[];
   employee: string;
   employeeCode: string | null;
   company: string;
@@ -774,7 +775,7 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
    *  is drawn, which is what lets the page flow below decide where a block breaks. */
   // 5b2a7f0f — `labelFont` is the face `planRow` MEASURED the lines in; `paintBox` must draw them in the
   //  same one or a wrapped Tamil description stops fitting the column it was wrapped for.
-  type BoxRowPlan = { lines: string[]; labelFont: PDFFont; value: string; muted?: boolean; h: number };
+  type BoxRowPlan = { lines: string[]; labelFont: PDFFont; value: string; valueLines?: string[]; valueFont?: PDFFont; muted?: boolean; h: number };
   /** A whole box, measured. `paintBox` draws exactly what `planBox` measured. */
   type BoxPlan = {
     w: number;
@@ -805,10 +806,12 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     const label = r.sub ? `${r.label} · ${r.sub}` : r.label;
     // The label gets whatever the amount leaves, measured per row. The floor keeps a pathologically wide
     // amount from collapsing the label column to nothing and wrapping it one letter per line.
-    const labelW = Math.max(60, w - 28 - widthOf(value, font, 8.5));
+    const labelW = r.text != null ? (w - 28) * 0.35 : Math.max(60, w - 28 - widthOf(value, font, 8.5));
     const labelFont = faceOf(label, font);
     const lines = wrap(label, labelFont, 8.5, labelW);
-    return { lines, labelFont, value, muted: r.muted, h: Math.max(ROW_H, 4.5 + lines.length * LINE_H) };
+    const valueFont = faceOf(value, font);
+    const valueLines = r.text != null ? wrap(value, valueFont, 8.5, w - 28 - labelW) : undefined;
+    return { lines, labelFont, value, valueLines, valueFont, muted: r.muted, h: Math.max(ROW_H, 4.5 + Math.max(lines.length, valueLines?.length ?? 1) * LINE_H) };
   };
 
   const noteHeightOf = (noteLines: string[]) => (noteLines.length > 0 ? noteLines.length * 9 + 7 : 0);
@@ -892,7 +895,8 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
       // The amount sits on the row's FIRST baseline whatever the label does below it, so a column of
       // figures still reads as a column when one description above it took two lines.
       r.lines.forEach((line, j) => at(pg, line, x + 10, ry - 10.5 - j * LINE_H, 8.5, r.labelFont, color));
-      atR(pg, r.value, x + p.w - 10, ry - 10.5, 8.5, font, color);
+      if (r.valueLines) r.valueLines.forEach((line, j) => atR(pg, line, x + p.w - 10, ry - 10.5 - j * LINE_H, 8.5, r.valueFont ?? font, color));
+      else atR(pg, r.value, x + p.w - 10, ry - 10.5, 8.5, font, color);
       ry -= r.h;
       // a96d320c — EDGE TO EDGE. This rule was inset 6pt either side, so it read as a floating divider
       // between two rows rather than as the line between two cells of one ruled box. The reporter asked
@@ -985,12 +989,6 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     { label: t.socso, amount: d.socsoEmployer },
     { label: t.eis, amount: d.eisEmployer },
     ...(d.hrdf != null ? [{ label: t.hrdf, amount: d.hrdf }] : []),
-  ];
-  const payRows: Row[] = [
-    ...(d.paymentMethod ? [{ label: t.paymentMethod, text: d.paymentMethod }] : []),
-    ...(d.bankName ? [{ label: t.bankName, text: d.bankName }] : []),
-    // f35f758a — the WHOLE account number, not the last four. See PayslipPdfData.bankAccount.
-    ...(d.bankAccount ? [{ label: t.bankAccount, text: d.bankAccount }] : []),
   ];
   // a96d320c — THE PAY CODE COMES OFF THE EMPLOYEE'S DOCUMENT (site 1 of 2; the other is in
   // `earningsRowsOf`). `sub` carried `l.code`, so every line printed "Petrol card · A0031". The code is
@@ -1219,14 +1217,12 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   const empSpec = {
     x: M, w: COL_W, title: t.employerContributions, continuedTitle: t.employerContributions,
     rows: employerRows,
-    total: { label: t.totalEmployerCost, value: money(d.employerCost) },
-    note: t.employerContributionsNote,
+
+
   } as const;
   // Payment information is printed only when there is something to print. A row of empty labels tells the
   // employee nothing and reads as a broken document; a missing block reads as "not recorded" — the truth.
-  const payPlan = payRows.length > 0
-    ? planBox({ w: COL_W, title: t.paymentInformation, rows: payRows })
-    : null;
+  const payPlan: ReturnType<typeof planBox> | null = null;
 
   if (nonPayableRows.length > 0) {
     // `flowPair`, not the measure-once pair: a company that starts declaring benefits in kind can declare
@@ -1256,7 +1252,7 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     // PADDING HERE, deliberately: Payment information has no total to align to, so `flowPair` would only
     // open whitespace above TOTAL EMPLOYER COST and change a document that nothing asked to change.
     const empPlan = planBox({
-      w: empSpec.w, title: empSpec.title, rows: empSpec.rows, total: empSpec.total, note: empSpec.note,
+      w: empSpec.w, title: empSpec.title, rows: empSpec.rows,
     });
     const pairH = Math.max(boxHeight(empPlan), payPlan ? boxHeight(payPlan) : 0);
     ensure(pairH);
@@ -1362,249 +1358,57 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   }
 
   function drawEmployeePanel(pg: PDFPage, top: number): number {
-    const leftW = 218;
-    const rightX = M + leftW + GAP;
-    const rightW = CONTENT_W - leftW - GAP;
-
-    // ─── r367 — ONE HEADING FOR THE WHOLE BAND, AND THE NAME BESIDE ITS CODE ───
-    //
-    // THE DEFECT. `EMPLOYMENT INFO` headed only the RIGHT half. The employee's name and their four
-    // statutory reference numbers — the left half — sat under no heading at all, and the two halves
-    // started at different heights, so nothing lined up across the middle of the band. The reporter named
-    // both in their own words.
-    //
-    // THE HARD CONSTRAINT IS THE HEIGHT. A heading added above both halves costs 15pt that has to come
-    // from somewhere, or the band grows and a one-page payslip stops being one page. It comes from two
-    // places, and both are measured rather than estimated:
-    //   · the 17pt heading slot INSIDE the right half is deleted — this heading replaces it, it is not
-    //     a second one, and the right half now starts where its old caption did;
-    //   · the name and the employee code share ONE line, 20pt instead of 34.
-    // leftH = 15 + 20 + 50 (four identity cells, two rows) = 85. rightH = 15 + 75 (six employment cells,
-    // three rows) = 90. `h` is 90 against the 92 this panel occupied before, so every block below it
-    // moves UP by two points. `test/payslip-pdf.test.ts` pins the y of TOTAL EARNINGS against the figure
-    // read out of the real document at one, three and four identity cells, so "it did not get longer" is
-    // a measurement and not a claim.
-    //
-    // COLUMN WIDTHS DO NOT CHANGE, and a four-equal-column grid across the full page was considered and
-    // REJECTED: it narrows the employment column's text width from 127.64 to 116.82, and "Senior Business
-    // Analyst" at 8.5pt bold measures ≈113 — it would start wrapping, a wrapped row costs 35.5 instead of
-    // 25, and the band would GROW. Same objection `drawFieldColumns` already records against three columns.
-    //
-    // INK, NOT A RULE. The heading is 7.5pt bold PRIMARY text and nothing else — no underline, no band,
-    // no rectangle. `test/payslip-pdf.test.ts` asserts EXACTLY three stroked rectangles on its fixture and
-    // none of them in this panel; a heading rule here would break both, and the de-boxing this panel
-    // already shipped (see below) is the reporter's own decision, twice contested and now approved.
-    const HEAD_H = 15;
-    at(pg, t.employmentInfo.toUpperCase(), M, top - 11.5, 7.5, bold, PRIMARY);
-    const bandTop = top - HEAD_H;
-
-    // The employee's own name was clipped by the same `fit()` the pay items were. It wraps now.
-    const nameFont = faceOf(d.employee, bold);
-    const nameLines = wrap(d.employee, nameFont, 13, leftW);
-    nameLines.forEach((line, i) => at(pg, line, M, bandTop - 13 - i * 15, 13, nameFont));
-    const nameH = 13 + (nameLines.length - 1) * 15;
-
-    // ─── r367 — THE CODE RIDES THE NAME'S LAST LINE, AND THAT IS WHAT PAYS FOR THE HEADING ───
-    //
-    // Name and code on one line is 20pt where the two stacked were 34, which is the 15pt this band's new
-    // heading costs plus one to spare. It is the whole reason the panel finishes HIGHER than it did, and
-    // it is why the code has to ride WHENEVER IT CAN: the left half never had a heading before, so on the
-    // one path where the code falls to a line of its own the 15pt has nothing to set against it and the
-    // band grows by 5pt. With only rungs 1-2 below, that path caught a name as ordinary as "Nurul Syafiqah
-    // Abdullah" — measured, 97pt against the 92 it was — which is not a rare shape and not an acceptable
-    // answer to a request whose whole point is that the payslip must not get longer. Rung 3 is what moved
-    // that name back to 90.
-    //
-    // SO FOUR CANDIDATES ARE MEASURED, AND THE FIRST THAT FITS IS DRAWN:
-    //   1. `· Employee code: A0001` at 8.5pt.
-    //   2. the same, shrunk by `fitSize` to as little as 7pt — the same helper the box totals and the YTD
-    //      rows already use for two strings on one baseline with no wrapping available between them. 7pt is
-    //      a floor, not a target; this document already sets its field labels at 6.5pt, so a code at 7 is
-    //      inside the type scale it has.
-    //   3. `· A0001` — THE CODE WITHOUT ITS CAPTION, at 8.5pt down to 7pt. This drops a LABEL, never the
-    //      value, and only when the label provably does not fit. The number keeps its meaning: it sits
-    //      beside the employee's name, inside a band headed EMPLOYMENT INFO, which is where a reader looks
-    //      for exactly this. A caption that forced the document to grow would be the worse trade, and this
-    //      is the step that makes the approved plan's "one line" arithmetic hold for every name rather
-    //      than for short ones.
-    //   4. its own line, exactly the pre-r367 layout. THE ONE PATH ON WHICH THIS PANEL IS TALLER THAN IT
-    //      WAS — 97pt against 92 — and it is reached only by a single unbroken token of about 28 characters
-    //      or more, which fills essentially the whole 218pt half and leaves no room for even a bare code.
-    //      The alternatives there are clipping the name (this document does not clip, ever: see `wrap`) or
-    //      shrinking it, and a taller band is the better of the three. Pinned in the guard so it cannot
-    //      quietly get worse, and it is the one case a reader of this function should know about.
-    //
-    // THE LAST LINE, NOT THE FIRST. A name that wraps still usually ends in a short line ("… Abdullah
-    // Rahman") with room beside it. Riding only an UNWRAPPED name would send every wrapped one back to a
-    // line of its own and the band would finish 12pt LOWER than today — the opposite of this request.
-    //
-    // Everything is measured against the REAL face at the real size, so a Tamil or Chinese name is judged
-    // by what will be DRAWN and not by character count. `test/payslip-pdf.test.ts` pins the band height on
-    // every one of the four paths, so none of them can drift into making the document longer.
-    const codeText = d.employeeCode ? `${t.employeeCode}: ${d.employeeCode}` : '';
-    // A REAL GAP, not a leading space. An 8.5pt space is ~2.4pt against a 13pt name, and the first real
-    // render of this panel printed "Daniel Tan· Employee ID: EMP-0005" — the middot read as punctuation
-    // stuck to the surname. Measured into the fit below, so the gap cannot push the rider past its half.
-    const RIDER_GAP = 6;
-    const lastLineW = nameLines.length > 0 ? widthOf(nameLines[nameLines.length - 1], nameFont, 13) : 0;
-    const riderRoom = leftW - lastLineW - RIDER_GAP;
-    /** The largest drawable form of the code that fits `riderRoom`, or null when none does. */
-    const riderFit = (): { text: string; size: number } | null => {
-      if (d.employeeCode == null || d.employeeCode === '' || riderRoom <= 0) return null;
-      for (const text of [`\u00b7 ${codeText}`, `\u00b7 ${d.employeeCode}`]) {
-        const size = fitSize(text, font, 8.5, riderRoom);
-        if (size >= 7 && widthOf(text, font, size) <= riderRoom) return { text, size };
-      }
-      return null;
+    const entries = d.informationRows ?? [
+      {label: 'Employee Name', value: d.employee},
+      ...([[t.employeeCode, d.employeeCode], [d.identityIsPassport ? t.passport : t.ic, d.identityNumber],
+        [t.taxNumber, d.taxNumber], [t.epfNumber, d.epfNumber], [t.socsoNumber, d.socsoNumber],
+        [t.department, d.department], [t.position, d.position], [t.grade, d.jobGrade],
+        [t.employmentType, d.employmentType], [t.daysWorked, d.daysWorked == null ? null : String(d.daysWorked)],
+        [t.currency, d.currency]] as [string, string | null | undefined][])
+        .filter(([, value]) => value != null && value.trim() !== '').map(([label, value]) => ({label, value: value!})),
+    ];
+    const cells: [string, string][] = [...entries.map(e => [e.label, e.value] as [string, string]),
+      ...([[t.paymentMethod,d.paymentMethod],[t.bankName,d.bankName],[t.bankAccount,d.bankAccount]] as [string,string|null|undefined][])
+        .filter(([, value]) => value != null && value.trim() !== '').map(([label,value]) => [label,value!] as [string,string])];
+    // Row-major order is the shared selector's order. Measure real wrapped values before page breaks.
+    const width = A4_W - 2*M;
+    const columnWidth = (width - 36)/3;
+    const groups = Array.from({length:Math.ceil(cells.length/3)},(_,i)=>cells.slice(i*3,i*3+3));
+    let topOfCard = y;
+    let height = 24;
+    const heading = () => {
+      page.drawRectangle({x:M,y:y-24,width,height:24,color:BAND});
+      at(page,t.employmentInfo.toUpperCase(),M+12,y-16,7.5,bold,PRIMARY);
+      topOfCard=y; y-=24; height=24;
     };
-    const rider = riderFit();
-    if (rider) {
-      at(pg, rider.text, M + lastLineW + RIDER_GAP, bandTop - nameH, rider.size, font, MUTED);
-    } else if (codeText) {
-      at(pg, codeText, M, bandTop - nameH - 12, 9, font, MUTED);
+    const finish = () => page.drawRectangle({x:M,y:topOfCard-height,width,height,borderColor:RULE,borderWidth:0.8});
+    heading();
+    for(const group of groups) {
+      const plans=group.map(([label,value])=>({label,value,lf:faceOf(label,font),vf:faceOf(value,bold),
+        lines:wrap(value,faceOf(value,bold),8.5,columnWidth-12)}));
+      const rowHeight=Math.max(...plans.map(p=>18+p.lines.length*11));
+      if(y-rowHeight<M+FOOTER_H && rowHeight < A4_H-2*M-FOOTER_H-24) {finish();newPage();heading();}
+      // An unusually long organization value may span sheets; retain every line and repeat its label.
+      let offset = 0;
+      const totalLines = Math.max(...plans.map(p=>p.lines.length));
+      while (offset < totalLines) {
+        let capacity = Math.floor((y-M-FOOTER_H-18)/11);
+        if(capacity < 1) {finish();newPage();heading();capacity=Math.floor((y-M-FOOTER_H-18)/11);}
+        const count=Math.min(capacity,totalLines-offset);
+        plans.forEach((p,i)=>{
+          const x=M+12+i*columnWidth;
+          if(offset < p.lines.length) {
+            at(page,p.label,x,y-10,6.5,p.lf,MUTED);
+            p.lines.slice(offset,offset+count).forEach((line,j)=>at(page,line,x,y-23-j*11,8.5,p.vf));
+          }
+        });
+        const used=18+count*11; y-=used; height+=used; offset+=count;
+        if(offset < totalLines) {finish();newPage();heading();}
+      }
     }
-    const headH = nameH + (rider != null || codeText === '' ? 7 : 19);
+    finish(); y-=GAP;
+    return y;
 
-    const idCells: [string, string][] = [
-      ...(d.identityNumber ? ([[d.identityIsPassport ? t.passport : t.ic, d.identityNumber]] as [string, string][]) : []),
-      ...(d.taxNumber ? ([[t.taxNumber, d.taxNumber]] as [string, string][]) : []),
-      ...(d.epfNumber ? ([[t.epfNumber, d.epfNumber]] as [string, string][]) : []),
-      ...(d.socsoNumber ? ([[t.socsoNumber, d.socsoNumber]] as [string, string][]) : []),
-    ];
-    // a96d320c rev 3 — THE RULED GRID IS WITHDRAWN AND THIS COMMENT IS ITS RECORD, so it does not come
-    // back. It read: "the identity fields sit in a RULED GRID, not in loose label-over-value pairs."
-    // That was OUR change (rev 1 / r328), not a request, and the reporter contested it twice and has now
-    // approved its reversal in their own words — "remove the unnecessary bordered-line design", "maintain
-    // clear alignment between the field labels and values", "avoid excessive borders and visual
-    // separation". The fields are back to loose label-over-value pairs, aligned on a shared column grid.
-    // DO NOT RE-RULE THIS PANEL: it was tried, it shipped, it was read by the person the document is
-    // for, and it was rejected. See `drawFieldColumns` for the defect it also carried.
-    const leftH = HEAD_H + headH + drawFieldColumns(pg, idCells, M, bandTop - headH, leftW, 2);
-
-    const infoCells: [string, string][] = [
-      ...(d.department ? ([[t.department, d.department]] as [string, string][]) : []),
-      ...(d.position ? ([[t.position, d.position]] as [string, string][]) : []),
-      ...(d.jobGrade ? ([[t.grade, d.jobGrade]] as [string, string][]) : []),
-      ...(d.employmentType ? ([[t.employmentType, d.employmentType]] as [string, string][]) : []),
-      ...(d.daysWorked != null ? ([[t.daysWorked, d.daysWorked.toFixed(2)]] as [string, string][]) : []),
-      ...(d.currency ? ([[t.currency, d.currency]] as [string, string][]) : []),
-    ];
-    let rightH = 0;
-    if (infoCells.length > 0) {
-      // a96d320c rev 3 — THE EMPLOYMENT-INFO HALF IS DE-BOXED TOO, AND THAT IS A DECISION, not a spill.
-      //
-      // The reporter named the EMPLOYEE block. They also asked, generally, to "avoid excessive borders
-      // and visual separation". Three things decided it for the whole panel rather than half of it:
-      //   1. THE VOID IS HERE TOO. `drawGrid`'s odd-cell case (see `drawFieldColumns`) is a property of
-      //      the grid, not of the identity fields: an employment panel printing department + position +
-      //      grade is three cells in a two-column grid and encloses a fourth that is never written into.
-      //      Keeping the box here would have meant fixing the void twice, or in a shared function that
-      //      one caller no longer uses.
-      //   2. TWO HALVES OF ONE PANEL IN TWO VISUAL LANGUAGES is exactly what rev 1's own comment gave as
-      //      the reason for boxing this half ("one visual language for every block"). De-boxing the left
-      //      and leaving the right ruled would re-create that fault with the sides swapped.
-      //   3. THE MONEY IS WHAT THE RULES ARE FOR. Earnings, Deductions, Employer contributions, Other,
-      //      Payment information and Year to date are all still ruled boxes and none of them is touched.
-      //      What changes is that the identity panel stops competing with them: reference data reads
-      //      light, figures read ruled, and the panel is still closed off by the single 0.8pt rule below.
-      //
-      // The HEADING SURVIVES, as ink rather than as a filled band: same text, same size, same PRIMARY
-      // accent — a full-width solid rectangle over a list with no border is the "visual separation" that
-      // was objected to, and 7.5pt bold PRIMARY names the column without drawing one.
-      //
-      // r367 — IT IS NO LONGER DRAWN HERE. The heading moved to the top of the BAND (see the header of
-      // this function): it heads the employee's name and reference numbers as well as these fields, which
-      // is the half the reporter pointed at. Drawing it again here would print it twice. What this half
-      // keeps is the 15pt the caption used to occupy, so its first row still starts where it always did.
-      // TWO columns, not three: a position title ("Senior Business Analyst") does not fit a third of this
-      // panel and would print truncated on an official document.
-      rightH = HEAD_H + drawFieldColumns(pg, infoCells, rightX, bandTop, rightW, 2);
-    }
-
-    const h = Math.max(leftH, rightH, 40);
-    pg.drawLine({ start: { x: M, y: top - h - 8 }, end: { x: A4_W - M, y: top - h - 8 }, thickness: 0.8, color: RULE });
-    return top - h - 8 - GAP;
-  }
-
-  /**
-   * The identity / employment fields as LABEL-OVER-VALUE PAIRS on a shared column grid. No box, no column
-   * rule, no row rule. Returns the height consumed, so the caller can align the panel beside it.
-   *
-   * ─── a96d320c rev 3 — THIS REPLACES `drawGrid`, AND WHY MATTERS MORE THAN WHAT ───
-   *
-   * `drawGrid` ruled this panel: an outer rectangle, a column rule, a hairline between rows. It was OUR
-   * idea (rev 1 / r328), the reporter contested it, and it is now withdrawn on their approval. Their
-   * words: "remove the unnecessary bordered-line design", "maintain clear alignment between the field
-   * labels and values", "avoid excessive borders and visual separation". THE GRID MUST NOT COME BACK.
-   * It is recorded here rather than deleted so the next reader knows it was tried, shipped, read by the
-   * person the document is for, and rejected.
-   *
-   * IT ALSO CARRIED A DEFECT NO STYLING COULD REACH — an EMPTY RULED CELL, on 46 of 84 production
-   * employments. Not a missing-field case: `idCells` already spreads to nothing for an absent number, so
-   * a payslip with three identity numbers passes three cells. The fault was the DRAW ORDER the grid
-   * needed in order to keep rules off glyphs: the outer rectangle was stroked at FULL WIDTH and the
-   * column rule from `top` to `top - used` at FULL HEIGHT, both before any text, and only then were the
-   * cells filled left to right. An ODD `cells.length` therefore enclosed a cell that was never written
-   * into — a ruled, labelled-looking, permanently blank box on an official document. By identity-cell
-   * count production reads 0→9, 1→29, 2→2, 3→17, 4→27: the 29 one-number and 17 three-number employments
-   * are the 46.
-   *
-   * THE FIX IS STRUCTURAL, NOT COSMETIC. Suppressing the last column-rule segment when the count is odd
-   * (the shape r328's lesson prescribes — suppress a segment, never paint another rectangle over one)
-   * would close the void and leave the box the reporter asked to remove. Loose pairs cannot produce a
-   * void at ANY cell count, because a row with one field draws one field and nothing else: there is no
-   * enclosure to be empty. `test/payslip-pdf.test.ts` renders 0..6 cells and asserts no ruled rectangle
-   * appears in this panel at any of them.
-   *
-   * THE r328 DISCIPLINE IS PRESERVED, absolutely rather than by ordering: `paintBox`, `drawGrid` and
-   * `drawYtd` each had to paint fills and rules in a careful sequence "so no rule can be drawn over a
-   * glyph", and every regression in this file has been a break in one of those sequences. This function
-   * draws NO rules and NO fills, so the property holds unconditionally and cannot be broken by a future
-   * edit reordering anything. Anyone adding a rule here inherits the whole problem again.
-   *
-   * Both halves WRAP (f35f758a). This panel is where "Construction Project Managem…" was printed: a job
-   * title, a department name or a long field label got one 25pt row and whatever did not fit was cut.
-   * Rows are as tall as their tallest cell, and nothing on this document clips.
-   */
-  function drawFieldColumns(
-    pg: PDFPage, cells: [string, string][], x: number, top: number, w: number, cols: number,
-  ): number {
-    if (cells.length === 0) return 0;
-    const cw = w / cols;
-    // a96d320c rev 3 — the label and its value share ONE x, the column's own left edge, and the left
-    // column's x is the page margin: the fields line up with the employee's name above them and with the
-    // Earnings box below them. `drawGrid` inset its text by CELL_PAD to hold it off the rules beside it;
-    // with the rules gone the inset would only push the panel out of alignment with the rest of the page.
-    // GUTTER is taken off the WRAP WIDTH instead, so a long value still stops short of the next column
-    // rather than running into it.
-    const GUTTER = 12;
-    const textW = cw - GUTTER;
-    const planned = cells.map(([k, v]) => {
-      const kf = faceOf(k.toUpperCase(), font);
-      const vf = faceOf(v, bold);
-      return { kf, vf, k: wrap(k.toUpperCase(), kf, 6.5, textW), v: wrap(v, vf, 8.5, textW) };
-    });
-    // Measured first, drawn second — the caller needs the height to align the half beside this one, and
-    // a row is as tall as the tallest pair in it so a wrapped job title pushes its whole row down.
-    const rowHs: number[] = [];
-    for (let r = 0; r * cols < planned.length; r += 1) {
-      const rowCells = planned.slice(r * cols, r * cols + cols);
-      rowHs.push(Math.max(25, ...rowCells.map((c) => c.k.length * 8 + c.v.length * 10.5 + 6.5)));
-    }
-    const used = rowHs.reduce((s, h) => s + h, 0);
-
-    let drawn = 0;
-    for (let r = 0; r * cols < planned.length; r += 1) {
-      const rowCells = planned.slice(r * cols, r * cols + cols);
-      rowCells.forEach((c, i) => {
-        const cx = x + i * cw;
-        const cy = top - drawn;
-        c.k.forEach((line, j) => at(pg, line, cx, cy - 7 - j * 8, 6.5, c.kf, MUTED));
-        c.v.forEach((line, j) => at(pg, line, cx, cy - c.k.length * 8 - 10.5 - j * 10.5, 8.5, c.vf));
-      });
-      drawn += rowHs[r];
-    }
-    return used;
   }
 
   function drawYtd(pg: PDFPage, top: number): number {
@@ -1718,7 +1522,7 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
  * component line to explain it) is a normal outcome, not a special case.
  */
 function earningsRowsOf(d: PayslipPdfData, t: PayslipPdfLabels, rate: (v: number) => string): Row[] {
-  const rows: Row[] = [{ label: t.basicSalary, amount: d.basic }];
+  const rows: Row[] = d.basic !== 0 ? [{ label: t.basicSalary, amount: d.basic }] : [];
   /**
    * a96d320c — "10 hours × MYR 36.045", composed from what the RUN recorded and nothing else.
    *

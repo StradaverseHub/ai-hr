@@ -1,3 +1,5 @@
+import { selectPayslipInformation } from '@/core/payslip-information';
+import { payslipInformationLabels } from '@/lib/payslip-information-labels';
 /**
  * Feedback 169e3c24 — the admin review copy of a payslip as a PDF, available BEFORE release.
  *
@@ -72,6 +74,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ payslipI
   // `employee` (the payslipDetail convention). Bridged here rather than renaming either, so neither the
   // ESS route nor the History screen has to change for this one.
   const data = buildPayslipPdfData({ ...p, employee: p.employeeName }, strings.borneLabels, {
+    informationRows: selectPayslipInformation({ ...p, employee: p.employeeName, employmentType: strings.employmentType }, p.informationFields, await payslipInformationLabels(p.identityIsPassport)),
     currency: p.currency,
     payDate: p.payDate,
     cycleLabel: strings.cycleLabel,

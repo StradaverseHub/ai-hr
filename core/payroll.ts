@@ -1,3 +1,4 @@
+import { businessUnit, payslipInformationSetting } from '../db/schema';
 /**
  * Payroll kernel — generic, jurisdiction-neutral (ADR-0008). Computes gross→net and delegates
  * every statutory contribution to the company's country pack. Each mutation appends an event.
@@ -10254,6 +10255,16 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
         releasedAt: payrollBatch.releasedAt,
         // 5c198931 — the employment + identity context the official document prints. Same columns
         // core/payroll-view.ts `payslipForReview` already returns to the admin screen.
+        informationFields: payslipInformationSetting.fields,
+        businessUnit: businessUnit.name,
+        division: employment.orgDivision,
+        branch: employment.orgBranch,
+        region: employment.orgRegion,
+        line: employment.orgLine,
+        section: employment.orgSection,
+        team: employment.orgTeam,
+        base: employment.orgBase,
+        category: employment.employmentCategory,
         department: department.name,
         position: position.title,
         jobGrade: jobGrade.name,
@@ -10285,6 +10296,8 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
           isNull(assignment.supersededAt),
         ),
       )
+      .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
+      .leftJoin(payslipInformationSetting, eq(payslipInformationSetting.companyId, payrollBatch.companyId))
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
       .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))

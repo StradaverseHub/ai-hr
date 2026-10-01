@@ -1,3 +1,5 @@
+import { selectPayslipInformation } from '@/core/payslip-information';
+import { payslipInformationLabels } from '@/lib/payslip-information-labels';
 // ADR-0036 (#22) — stream a payslip as a downloadable PDF. ABAC is inherited from payslipDetail,
 // which is RLS-gated to own-or-admin AND carries the ESS release gate, so an employee can only fetch
 // their own payslip and only once it has been released to them.
@@ -59,6 +61,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ payslip
   // admin review copy cannot disagree about which box an amount is in or whether the employer funded a
   // deduction. It reads THIS payslip's stored snapshot, never today's settings.
   const data = buildPayslipPdfData(p, strings.borneLabels, {
+    informationRows: selectPayslipInformation({ ...p, employee: p.employee, employmentType: strings.employmentType }, p.informationFields, await payslipInformationLabels(p.identityIsPassport)),
     currency: p.currency,
     payDate: p.payDate,
     cycleLabel: strings.cycleLabel,

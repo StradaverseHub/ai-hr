@@ -9284,3 +9284,12 @@ export const testRun = pgTable(
     index('test_run_case_idx').on(t.tenantId, t.testCaseId, t.runNo.desc()),
   ],
 );
+
+// Company-owned display choices; independent of payroll scheduling and money.
+export const payslipInformationSetting = pgTable(
+  'payslip_information_setting', {
+    companyId: uuid('company_id').primaryKey().references(() => company.id),
+    tenantId: tenantId(),
+    fields: jsonb('fields').$type<string[]>().notNull(),
+  },
+);
