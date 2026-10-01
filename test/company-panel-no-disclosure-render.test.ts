@@ -323,40 +323,26 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
   });
 
   /**
-   * 3c2f55d7 rev 2 — the body's FACE, rendered. The description strings are dynamic keys
-   * (`authorityDesc_epf`, …) which no static check can see; the six-locale loop above would catch a
-   * MISSING_MESSAGE, and this catches the other failure: a row that renders no description at all.
-   *
-   * ⚠️ THE "Open settings" HALF OF THIS CASE HAS NOW BEEN WRITTEN THREE WAYS, AND THE THIRD IS THE FIRST
-   * AGAIN. 3c2f55d7 rev 2 counted one Open control per body (the fold). r352 asserted there were NONE (the
-   * fold was gone). r353 counts one per body again — but as a LINK to the dedicated screen, which is the
-   * reporter's first approved point in their own words: "Open Settings" becomes a link to a real page.
-   *
-   * The count matters and so does the ELEMENT. A row per body with one link each is the claim; a single
-   * link somewhere on the tab would leave seven rows with no way out of them, and a toggle would be the
-   * disclosure the last two rounds removed. So both are asserted, on the rendered markup.
+   * r376 / 15e5bd93: one shared settings entry replaces eight repeated row links.
+   * Keep every body name, description and visible summary; no row regains a toggle.
    */
-  it('every statutory body shows its name, its description and its own way through to the setup screen', () => {
+  it('every statutory body remains visible with one shared link to the selected company setup screen', () => {
     const en = messagesFor('en').admin.organization as Record<string, string>;
     const html = render('en', richProps);
     const faces = cardFaces(html);
     for (const [i, a] of STATUTORY_AUTHORITIES.entries()) {
       expect(faces[i], `authority_${a}`).toContain(inMarkup(en[`authority_${a}`]));
       expect(faces[i], `authorityDesc_${a}`).toContain(inMarkup(en[`authorityDesc_${a}`]));
-      // ONE LINK PER ROW, to the ONE route for the whole setup — there is no route per authority.
-      expect(faces[i], `${a}: Open settings`).toContain(inMarkup(en.authorityOpen));
-      expect(faces[i], `${a}: links to the dedicated screen`).toContain('href="/admin/organization/c1/statutory"');
-      expect(faces[i], `${a}: as a link, not a toggle`).not.toContain('aria-expanded');
+      expect(faces[i], `${a}: no repeated settings entry`).not.toContain('<a ');
+      expect(faces[i], `${a}: not a toggle`).not.toContain('aria-expanded');
     }
-    expect(
-      (html.match(/data-statutory-setup-link="/g) ?? []).length,
-      'one per body, and no stray extras',
-    ).toBe(STATUTORY_AUTHORITIES.length);
-    // `authorityClose` only ever captioned a fold, so it must not reach the screen.
+    const links = html.match(/<a\b[^>]*data-statutory-setup-link="[^"]*"[^>]*>[\s\S]*?<\/a>/g) ?? [];
+    expect(links, 'one shared entry, rendered as an actual link').toHaveLength(1);
+    expect(links[0]).toContain('href="/admin/organization/c1/statutory"');
+    expect(links[0]).toContain(inMarkup(en.authorityOpen));
+    expect(html.match(/data-statutory-setup-link="/g) ?? [], 'no extra settings markers').toHaveLength(1);
+    expect(html.match(/href="\/admin\/organization\/c1\/statutory"/g) ?? [], 'no unmarked duplicate links').toHaveLength(1);
     expect(html, 'no Close survives').not.toContain(inMarkup(en.authorityClose));
-    // NOT asserted here: "no aria-expanded anywhere in the markup". The panel declares none (pinned in
-    // test/company-panel-bank-statutory-layout.test.ts), but other comboboxes on the General tab render
-    // their own — a blanket rendered-markup ban would fail on a control that is not a disclosure at all.
   });
 
   /**
