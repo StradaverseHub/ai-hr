@@ -6994,7 +6994,7 @@
       "slipChildRelief": "Khoản giảm trừ cho mỗi con đủ điều kiện",
       "slipDisabledIndividual": "Disabled individual",
       "slipDisabledSpouse": "Disabled spouse",
-      "slipChildNoteTable": "Các khai báo về con và số quy đổi đã được ghi lại khi xử lý kỳ lương này. Khai báo nửa mức được tính bằng một nửa trọng số của nhóm. Q, C và khoản giảm trừ cho con là các giá trị đã dùng trong kỳ này.",
+      "slipChildNoteTable": "Các khai báo về con và số quy đổi đã được ghi lại khi xử lý kỳ lương này. Số quy đổi hiển thị là số thực tế được áp dụng sau khi xét việc chia sẻ khai báo và điều kiện của nhóm thuế. Q, C và khoản giảm trừ cho con là các giá trị đã dùng trong kỳ này.",
       "slipChildNoteManual": "Trong kỳ lương này, số con được ghi thành một tổng duy nhất. Không lưu chi tiết theo năm nhóm nên phần này hiển thị là chưa ghi nhận. Q, C và khoản giảm trừ cho con là các giá trị đã dùng trong kỳ này.",
       "slipColWeighting": "Counted as (children)",
       "slipChildNoteTableEmpty": "Kỳ lương này dùng khai báo theo nhóm con nhưng không lưu bảng nhóm. Số con theo nhóm hiển thị là chưa ghi nhận; số quy đổi và Q/C là các giá trị đã dùng trong kỳ này.",

@@ -6994,7 +6994,7 @@
       "slipChildRelief": "每名符合资格子女的扣除额",
       "slipDisabledIndividual": "Disabled individual",
       "slipDisabledSpouse": "Disabled spouse",
-      "slipChildNoteTable": "这些子女申报及其折算贡献在本次工资计算时已记录。半额申报按类别权重的一半计入。Q、C 和子女减免均为本次计算所用值。",
+      "slipChildNoteTable": "这些子女申报及其折算贡献在本次工资计算时已记录。显示的贡献是考虑申报分摊及税务类别资格后实际采用的值。Q、C 和子女减免均为本次计算所用值。",
       "slipChildNoteManual": "本次工资计算将子女记录为一个总数，未保存五类明细，因此明细显示为未记录。Q、C 和子女减免均为本次计算所用值。",
       "slipColWeighting": "Counted as (children)",
       "slipChildNoteTableEmpty": "本次工资计算使用子女类别申报，但未保存类别表。各类别人数显示为未记录；折算贡献和 Q/C 为本次计算所用值。",

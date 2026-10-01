@@ -6994,7 +6994,7 @@
       "slipChildRelief": "Potongan bagi setiap anak yang layak",
       "slipDisabledIndividual": "Disabled individual",
       "slipDisabledSpouse": "Disabled spouse",
-      "slipChildNoteTable": "Tuntutan anak dan sumbangan bilangannya direkodkan semasa penggajian ini diproses. Tuntutan kadar separuh menyumbang separuh wajaran kategori. Q, C dan pelepasan anak ialah nilai yang digunakan untuk penggajian ini.",
+      "slipChildNoteTable": "Tuntutan anak dan sumbangan bilangannya direkodkan semasa penggajian ini diproses. Sumbangan yang dipaparkan ialah nilai yang benar-benar digunakan selepas mengambil kira perkongsian tuntutan dan kelayakan kategori cukai. Q, C dan pelepasan anak ialah nilai yang digunakan untuk penggajian ini.",
       "slipChildNoteManual": "Untuk penggajian ini, anak direkodkan sebagai satu jumlah keseluruhan. Tiada pecahan lima kategori disimpan, maka pecahan dipaparkan sebagai tidak direkodkan. Q, C dan pelepasan anak ialah nilai yang digunakan untuk penggajian ini.",
       "slipColWeighting": "Dikira sebagai (bilangan anak)",
       "slipChildNoteTableEmpty": "Penggajian ini menggunakan tuntutan kategori anak, tetapi tiada jadual kategori disimpan. Bilangan kategori dipaparkan sebagai tidak direkodkan; sumbangan bilangan dan Q/C ialah nilai yang digunakan untuk penggajian ini.",

@@ -6994,7 +6994,7 @@
       "slipChildRelief": "Deduction per qualifying child",
       "slipDisabledIndividual": "Disabled individual",
       "slipDisabledSpouse": "Disabled spouse",
-      "slipChildNoteTable": "These child claims and their counted-as contributions were recorded when this payroll ran. Half-rate claims contribute half their category weighting. Q, C and the child relief are the values used for this run.",
+      "slipChildNoteTable": "These child claims and their counted-as contributions were recorded when this payroll ran. The contributions shown are those actually applied after claim sharing and tax-category eligibility. Q, C and the child relief are the values used for this run.",
       "slipChildNoteManual": "For this payroll run, children were recorded as a single total. No split across the five categories was saved, so it is shown as not recorded. Q, C and the child relief are the values used for this run.",
       "slipColWeighting": "Counted as (children)",
       "slipChildNoteTableEmpty": "This payroll ran using child-category claims, but no category grid was saved. The category counts are shown as not recorded; the counted-as contributions and Q/C are the values used for this run.",
