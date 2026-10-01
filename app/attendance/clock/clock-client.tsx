@@ -78,7 +78,7 @@ export function ClockPageClient({initial,shiftName,shiftOptions}:{initial:Today;
       if(!response.ok){command.current=null;throw new Error(result.error??'photoInvalid');}
       const recorded=new Intl.DateTimeFormat(locale,{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(result.receipt.recordedAt));
       setSuccess(t(action==='in'?'savedIn':'savedOut',{time:recorded}));setPhoto(null);setAction(null);command.current=null;await refresh().catch(()=>{setSynced(false);setError(t('syncFailed'));});
-    }catch(error){const code=(error as Error).message;setError(t(['outsideGeofence','deviceRequired','photoInvalid','conflict'].includes(code)?code:'retryFailed'));}finally{setBusy(false);}
+    }catch(error){const code=(error as Error).message;setError(t(['outsideGeofence','deviceRequired','photoInvalid','conflict','correctedDay'].includes(code)?code:'retryFailed'));}finally{setBusy(false);}
   }
   async function register(){setBusy(true);setError('');try{const result=await registerDeviceAction({label:deviceLabel});if(!result.deviceToken){setError(result.error??t('deviceRequired'));return;}storeDeviceToken(result.deviceToken);await refresh();}finally{setBusy(false);}}
   async function retryLocation(){setBusy(true);try{const point=await locate();setGeo(point);await refresh(point);setError('');}catch{setError(t('locationRequired'));}finally{setBusy(false);}}

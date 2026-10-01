@@ -2,7 +2,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and, desc, eq, isNull, isNotNull, sql } from 'drizzle-orm';
 import type { SessionContext } from '../db/client';
-import { attendance, attendanceClockCapture, attendancePunch, employeeDevice, domainEvent } from '../db/schema';
+import { attendance, attendanceClockCapture, attendancePunch, attendanceCorrection, employeeDevice, domainEvent } from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import { myEmployment } from './read';
@@ -13,6 +13,7 @@ import { todayInKualaLumpur, timeInKualaLumpur } from '../lib/hr-date';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export class ClockConflictError extends Error {}
+export class CorrectedClockConflictError extends ClockConflictError {}
 export class ClockLocationError extends Error {}
 export type ClockIntent = { action: 'in' | 'out'; requestId: string; deviceToken: string; lat: number; lng: number; accuracy: number; photo: Buffer; mime: string };
 const publicReceipt = (row: typeof attendanceClockCapture.$inferSelect) => ({ id: row.id, direction: row.direction, recordedAt: row.serverRecordedAt.toISOString(), date: row.attendanceDate, photoAvailable: row.photoPurgedAt == null });
@@ -46,12 +47,19 @@ export async function captureEmployeeClock(ctx: SessionContext, p: ClockIntent) 
       if (unclosed.date === todayInKualaLumpur(previousDate) && overnight.crossesMidnight && p.action === 'out') date = unclosed.date;
     }
     const [lastCapture] = await tx.select({ direction: attendanceClockCapture.direction, time: attendanceClockCapture.serverRecordedAt }).from(attendanceClockCapture).where(eq(attendanceClockCapture.employmentId, me.employmentId)).orderBy(desc(attendanceClockCapture.serverRecordedAt), desc(attendanceClockCapture.id)).limit(1);
-    const [day] = await tx.select({ id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt }).from(attendance).where(and(eq(attendance.employmentId, me.employmentId), eq(attendance.attendanceDate, date))).limit(1);
+    const [day] = await tx.select({ id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt }).from(attendance).where(and(eq(attendance.employmentId, me.employmentId), eq(attendance.attendanceDate, date))).limit(1).for('update');
     // The aggregate is authoritative after a correction; original captured punches remain evidence.
     const open = !!day?.checkIn && !day.checkOut;
     if (p.action === 'in' && open || p.action === 'out' && !open) throw new ClockConflictError('Clock action does not match the current attendance state');
     if (lastCapture && now.getTime() <= lastCapture.time.getTime()) throw new ClockConflictError('Clocking must follow the previous accepted event');
     const priorPunches = day ? await tx.select({time:attendancePunch.punchAt,captureId:attendancePunch.clockCaptureId}).from(attendancePunch).where(eq(attendancePunch.attendanceId,day.id)) : [];
+    // Approved clock corrections own the aggregate. Retained punches remain evidence and must
+    // not recompute that corrected day. Locking the day sequences concurrent correction writers.
+    if (priorPunches.length) {
+      const [correction] = await tx.select({ id: attendanceCorrection.id }).from(attendanceCorrection)
+        .where(and(eq(attendanceCorrection.employmentId, me.employmentId), eq(attendanceCorrection.attendanceDate, date), eq(attendanceCorrection.status, 'approved'), isNotNull(attendanceCorrection.proposedCheckIn))).limit(1);
+      if (correction) throw new CorrectedClockConflictError('An approved clock correction owns this day; ask HR to review any further clock changes.');
+    }
     const minute = (clock:string) => Number(clock.slice(0,2))*60+Number(clock.slice(3,5));
     const schedule = await clockScheduleForTx(tx,me.employmentId,date);
     if (!schedule.crossesMidnight && priorPunches.some(punch=>minute(punch.time)>minute(time))) throw new ClockConflictError('Clocking must follow the previous attendance punch');

@@ -73,6 +73,20 @@ describe('r378 private capture command integrity',()=>{
   expect(day.workedMinutes).toBe(0);expect(day.otMinutes).toBe(0);
   expect(day.checkOutAt,'the authoritative last clock-out must retain its actual server seconds').toBe('09:00:55');
  });
+ it('new same-day capture cannot overwrite an approved clock correction from the retained punch trail',async()=>{
+  const x=await subject(),date=todayInKualaLumpur();clockAt(date+'T09:00:10+08:00');
+  await captureEmployeeClock(x.ctx,x.intent);vi.setSystemTime(new Date(date+'T10:00:10+08:00'));
+  await captureEmployeeClock(x.ctx,{...x.intent,action:'out',requestId:randomUUID()});
+  const request=await requestAttendanceCorrection(x.ctx,{employmentId:x.h.employmentId,date,checkIn:'08:00',checkOut:'11:00',reason:'Synthetic correction review'});
+  await decideAttendanceCorrection(x.admin,{correctionId:request.correctionId,decision:'approved'});
+  const [corrected]=await owner.db.select().from(schema.attendance).where(eq(schema.attendance.employmentId,x.h.employmentId));
+  expect(corrected.checkInAt).toBe('08:00:00');expect(corrected.checkOutAt).toBe('11:00:00');
+  vi.setSystemTime(new Date(date+'T12:00:10+08:00'));
+  await expect(captureEmployeeClock(x.ctx,{...x.intent,requestId:randomUUID()})).rejects.toThrow('approved clock correction');
+  expect(await owner.db.select().from(schema.attendance).where(eq(schema.attendance.employmentId,x.h.employmentId))).toEqual([corrected]);
+  expect(await owner.db.select().from(schema.attendanceClockCapture)).toHaveLength(2);
+  expect(await owner.db.select().from(schema.attendancePunch)).toHaveLength(2);
+ });
  it('photo reads obey subject RLS and purge keeps receipt/digests with an audited unavailable marker',async()=>{
   const x=await subject(), receipt=await captureEmployeeClock(x.ctx,x.intent), stranger=await subject();
   expect((await clockCapturePhoto(x.ctx,receipt.id,false))?.bytes).toBeInstanceOf(Buffer);

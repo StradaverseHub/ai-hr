@@ -2860,6 +2860,7 @@
       "retryFailed": "Chưa xác nhận được bản ghi. Ảnh vẫn được giữ; thử lại cùng yêu cầu.",
       "deviceRequired": "Đăng ký thiết bị này trước khi chấm công.",
       "photoInvalid": "Ảnh hoặc yêu cầu không hợp lệ. Chụp lại và thử lại.",
+      "correctedDay": "Ngày này đã có điều chỉnh giờ chấm công được phê duyệt. Hãy yêu cầu nhân sự xem xét các thay đổi giờ tiếp theo.",
       "conflict": "Chấm công đã thay đổi hoặc yêu cầu xung đột với bản ghi đã nhận. Tải lại và thử lại.",
       "outsideLocation": "Ngoài địa điểm làm việc",
       "locationCheckNeeded": "Kiểm tra vị trí hiện tại"

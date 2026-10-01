@@ -1,5 +1,5 @@
 import { clockApiSession } from '@/lib/attendance-clock-session';
-import { captureEmployeeClock, ClockConflictError, ClockLocationError } from '@/packs/attendance/service';
+import { captureEmployeeClock, ClockConflictError, CorrectedClockConflictError, ClockLocationError } from '@/packs/attendance/service';
 import { DeviceNotRegisteredError } from '@/packs/attendance/service';
 import { GeolocationRequiredError, OutsideGeofenceError } from '@/packs/attendance/service';
 export const runtime = 'nodejs';
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     const receipt=await captureEmployeeClock(session,{action:String(data.get('action')) as 'in'|'out',requestId:String(data.get('requestId')),deviceToken:String(data.get('deviceToken')),lat:Number(data.get('lat')),lng:Number(data.get('lng')),accuracy:Number(data.get('accuracy')),photo:Buffer.from(await photo.arrayBuffer()),mime:photo.type});
     return Response.json({receipt},{headers:{'Cache-Control':'private, no-store'}});
   } catch(error) {
-    const code=error instanceof ClockConflictError?'conflict':error instanceof DeviceNotRegisteredError?'deviceRequired':error instanceof OutsideGeofenceError?'outsideGeofence':error instanceof GeolocationRequiredError || error instanceof ClockLocationError?'locationRequired':'photoInvalid';
+    const code=error instanceof CorrectedClockConflictError?'correctedDay':error instanceof ClockConflictError?'conflict':error instanceof DeviceNotRegisteredError?'deviceRequired':error instanceof OutsideGeofenceError?'outsideGeofence':error instanceof GeolocationRequiredError || error instanceof ClockLocationError?'locationRequired':'photoInvalid';
     return Response.json({error:code},{status:error instanceof ClockConflictError?409:400,headers:{'Cache-Control':'private, no-store'}});
   }
 }

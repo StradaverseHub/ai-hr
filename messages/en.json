@@ -2860,6 +2860,7 @@
       "retryFailed": "The record could not be confirmed. Your photo is kept; retry to check the same request.",
       "deviceRequired": "Register this device before clocking.",
       "photoInvalid": "The photo or request is invalid. Retake the photo and try again.",
+      "correctedDay": "This day has an approved clock correction. Ask HR to review any further clock changes.",
       "conflict": "Attendance changed or this request conflicts with an accepted record. Refresh and try again.",
       "outsideLocation": "Outside work location",
       "locationCheckNeeded": "Check your current location"

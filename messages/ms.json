@@ -2860,6 +2860,7 @@
       "retryFailed": "Rekod belum dapat disahkan. Foto anda disimpan; cuba semula permintaan yang sama.",
       "deviceRequired": "Daftarkan peranti ini sebelum merekod kehadiran.",
       "photoInvalid": "Foto atau permintaan tidak sah. Ambil foto semula dan cuba lagi.",
+      "correctedDay": "Hari ini mempunyai pembetulan waktu yang diluluskan. Minta HR menyemak sebarang perubahan waktu seterusnya.",
       "conflict": "Kehadiran berubah atau permintaan bercanggah dengan rekod diterima. Muat semula dan cuba lagi.",
       "outsideLocation": "Di luar lokasi kerja",
       "locationCheckNeeded": "Semak lokasi semasa anda"

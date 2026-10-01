@@ -2860,6 +2860,7 @@
       "retryFailed": "尚未确认记录。照片已保留，请重试同一请求。",
       "deviceRequired": "请先注册此设备再打卡。",
       "photoInvalid": "照片或请求无效。请重新拍照后重试。",
+      "correctedDay": "当天已有获批的打卡更正。请联系人事部门审核进一步的打卡更改。",
       "conflict": "考勤已更改，或请求与已接受的记录冲突。请刷新后重试。",
       "outsideLocation": "在工作地点范围外",
       "locationCheckNeeded": "请检查当前位置"
