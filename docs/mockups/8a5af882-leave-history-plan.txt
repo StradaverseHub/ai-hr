@@ -1,0 +1,65 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+Leave history already has the tabs, filters, columns and View details you describe. It appears below balances and Upcoming Leave on the current My Leave page. Your attached sample shows the separate destination you want; we will move the existing section there rather than rebuild it.
+
+WHAT WE'LL CHANGE
+
+- Make My Leave an expandable menu with Leave Overview and Leave History. Clicking its name opens Overview; its chevron opens or closes the children. Keep the parent expanded and highlight the active child on either page.
+
+- Keep the current page as Leave Overview, removing only the history section. Existing links still work, including links that open a leave application.
+
+- Move the existing history into Leave History. Keep Pending, Approved, Rejected and Cancelled counts, filters, columns, View details, existing edit/cancel actions, sorting and status colours exactly as today. Rename the heading to Leave history and keep its actual record count.
+
+- Use the same My Leave / Leave Overview / Leave History naming and navigation in Mobile App Preview.
+
+WHAT YOU'LL GET
+
+Balances and upcoming leave remain where they are. History has its own clear place in the menu, with the same records and functions.
+
+GOOD TO KNOW
+
+- The sample's 28 records are an example, not a number we will insert or force. Your actual records and counts carry over unchanged.
+
+- No leave calculation, balance, approval rule or permission changes. Mobile App Preview remains a demonstration, as it is today; it does not become a second live leave system.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+EVIDENCE AND LIMITS
+
+Inspected the live board brief and its attachment b03a7687-ca56-476e-bd29-53920d41796d, Leave history picture.pdf. Rendered its page and visually checked the reference: My Leave expanded, Overview and History children, separate Leave History title, original four status pills, Filter and six requested columns plus View. Its 28 count and sample rows are reporter artwork, not authoritative production data.
+
+Queried mainwt's graph for core myLeaveRequests and traced the source consumers. Current code at main be4eb855 is the evidence below. Production UI was not opened. The local development database had no leave-request subjects, so a local render would have been vacuous. A shared seed reset was rejected by automatic approval review and was not performed. A meaningful isolated fixture render remains required before implementation; no production-screen claim is made here.
+
+OWNER AND READ CONTRACT
+
+app/leave/page.tsx owns the history read/assembly and renders components/leave/leave-history-cards.tsx. Extract the same history assembly into one server-owned helper used by the new app/leave/history/page.tsx; do not duplicate reads or reconstruct row behaviour. The page currently uses scopedSession, myEmployment and myEmploymentIdsAll. Preserve every concurrent and historical employment belonging to this person, plus the nonempty employment-id fallback; an empty employmentIds list would widen the underlying read. Preserve the current early return for unlinked users and HR admins, even if those users have employment records. This ticket grants no new audience.
+
+Preserve listLeaveRequestsPage with start-date descending ordering, existing tie-breaks, offset zero and the existing per-tab 200-row cap. Do not add pagination or truncate record counts differently. Keep the unfiltered history total, the filtered showing-of count, filtered per-status counts, resolveHistoryTab's default selection and empty-state distinctions. Keep hTab, repeated hType, hFrom and hTo with existing malformed-value handling, overlap date semantics and filter type options sourced from unfiltered own records. Existing leaveYear and warning/context parameters must survive tab/filter/clear navigation, without turning history into a year-filtered data set it is not today.
+
+Keep LeaveHistoryCards unchanged apart from necessary route/heading plumbing. Preserve its responsive row shape, palette, View slide-out, reason, applied date, duration/session details, documents, approval progress and approver names, rejection remarks, cancellation who/when/reason, partial approval and per-date outcomes. The request asks for Cancel on pending records; preserve the existing gates, not a new blanket Cancel for every pending type: ordinary pending nonsplit/nonemergency/nonreplacement records currently have Edit and Cancel, and eligible approved records have Cancel dates. Preserve employeeCancelOffers, pending cancellation state, parentGroupId behaviour, employment scope and authoritative service refusal checks.
+
+ROUTES, WRITES AND OLD LINKS
+
+Leave Overview remains /leave. Leave History is /leave/history. Point history tab/filter/chip/clear links at the new base, preserving all carried parameters. Existing plain /leave, /me?tab=leave forwarding and /leave?apply=1&start=... from attendance continue to open Overview and the existing application dialog. Handle old /leave links with explicit history filter/tab parameters as compatibility links to History, retaining repeated query values. For mixed application/history parameters, keep the original application opening on Overview and carry the history filters into its Leave History entry link; do not drop apply/start or redirect away from the requested application. History-only legacy links redirect to History with their existing parameters. Hash-based section links and guided-tour anchors must be inspected; a server redirect cannot see a fragment. Update the guided-tour destination and keep an explicit legacy anchor bridge where an old history fragment exists.
+
+Existing actions in app/leave/actions.ts currently redirect and revalidate /leave. Carry an allowlisted origin and history context through history-posted Edit, Cancel and Cancel dates success/error returns, using the same actions/services and preserving existing Overview/Tracker/Employee Records callers. Do not trust an arbitrary back URL. Revalidate both Overview and History plus existing Approvals, dashboard and Tracker surfaces where the action already does so. Reopening View after a save must follow the same existing behaviour; do not add persistence features or alter the detail lifecycle. Preserve existing upcoming-row assembly/approval trails on Overview; extracting history must not remove reads still needed there. Keep request-leave, replacement-leave availability/actions, balance and upcoming features unchanged, including the existing Overview page heading and controls; Leave Overview is the new submenu name, not a redesign of that page.
+
+MENU OWNERSHIP AND MOBILE PREVIEW
+
+packs/leave/index.ts currently contributes flat My Leave through LEAVE_NAV_LINKS (href /leave, labelKey myAbsence, exactHref true) and a separate Team Leave Tracker, plus LEAVE_ADMIN_NAV. Add the self-service parent/children to the leave pack, retire only the replaced flat row and mount through components/sidebar.tsx's existing pack-driven mechanism; do not hardcode leaf leave paths there. Parent label click must navigate to /leave while the separate accessible chevron toggles, as explicitly requested. Preserve keyboard, Escape, collapsed-rail and touch handling. Current NavFlyout is a toggle-only button, so simply reusing it unchanged does not satisfy default navigation.
+
+Current isParentActive prefix-matches any child path. An Overview child at /leave must not mark this parent active on /leave/tracker, /leave/credit, /leave/employee-balances or /leave/employee-records. Use exact ownership for Overview and History, preserving existing Team Tracker and Leave Config ownership, module/role filtering and scope. Register /leave/history under the existing leave screen permission in lib/permissions.ts, without a broader role or person policy. Rename only the required visible overview/history labels in all six locales; keep unrelated historical keys/callers intact.
+
+components/mobile-preview/mobile-app.tsx is a static showcase with leaveBalance, leaveCalendar and leaveApplication screens today. Replace its My Leave menu structure with Overview/History and default Overview, active-child highlighting and parent expansion. Overview retains access to the existing preview balance/calendar/application demonstrations; History shows the requested structure as clearly marked sample placeholders, not live records or invented counts. The preview does not gain reads/writes or API calls.
+
+DATA CHANGES AND APPROVAL
+
+No database migration, new table, new leave data, new API or workflow change. This is a route/menu relocation consuming existing services and components. Approve the plan and rendered mockup before implementation. Do not publish this draft without explicit authorization following the earlier board-write review rejection.
+
+VERIFICATION AFTER APPROVAL
+
+Create a meaningful own-employee fixture in an isolated database, with pending/approved/rejected/cancelled records, multiple employments, filters and eligible/ineligible cancellation cases. Compare original and moved projections for exact ids, counts, ordering, values and action eligibility; no hardcoded count of 28. Exercise real View, attachments, Edit/Cancel/Cancel dates and their redirects, errors and revalidation. Check query/filter/chip/tab/clear carriers, malformed filters, no-record versus no-match states, compatibility links, old application links and query-plus-application cases. Assert Overview removes only history and retains all other functions. Verify unlinked/admin outcomes, employee peer/company/tenant refusal and unchanged service authorization. Check exact active-menu ownership and expanded/default behaviour, collapsed desktop rail, keyboard/touch, all six locales and Mobile App Preview navigation. Run relevant leave history, filter, pack/sidebar/permission/source-slice guards plus parent full gate; source-slice guards must prove nonempty slices. Render meaningful narrow/wide/light/dark states and inspect diagnostics; proposal HTML alone is not evidence that implementation is complete.
