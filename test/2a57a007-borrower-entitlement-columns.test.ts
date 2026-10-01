@@ -260,12 +260,24 @@ describe('2a57a007 (r340) · (c) the three surfaces read ONE decision', () => {
         'ENTITLEMENT_STATUS_LABEL_KEY[r.entitlementStatus]',
       );
     }
-    expect(page, 'the pooled caption is MUTED — nothing here is wrong').toContain(
-      '<div\n          className="mt-0.5 whitespace-nowrap text-[11px] text-muted-foreground"',
-    );
-    expect(page, 'and amber is still reserved for a real misconfiguration').toContain(
-      "className=\"mt-0.5 whitespace-nowrap text-[11px] text-amber-700 dark:text-amber-500\"",
-    );
+    // r378 wraps the same caption and exact note in the compact inquiry tooltip.
+    const start = page.indexOf('const entitlementCaptionCell =');
+    const split = page.indexOf('if (!entitlementStatusNeedsNotice', start);
+    const end = page.indexOf('const params =', split);
+    expect(start).toBeGreaterThan(-1);
+    expect(split).toBeGreaterThan(start);
+    expect(end).toBeGreaterThan(split);
+    const pooled = page.slice(start, split);
+    expect(pooled, 'the pooled caption is MUTED — nothing here is wrong').toContain('className="inline text-muted-foreground"');
+    expect(pooled).toContain('data-testid="entitlement-pooled-caption"');
+    expect(pooled).toContain('<InquiryNote');
+    expect(pooled).toContain('pooled.labelKey');
+    expect(pooled).toContain('pooled.tipKey');
+    expect(pooled).not.toMatch(/text-amber|text-destructive/);
+    const notice = page.slice(split, end);
+    expect(notice, 'amber remains reserved for a real misconfiguration').toContain('className="inline text-amber-700 dark:text-amber-500"');
+    expect(notice).toContain('ENTITLEMENT_STATUS_LABEL_KEY[r.entitlementStatus]');
+    expect(notice).toContain('ENTITLEMENT_STATUS_TIP_KEY[r.entitlementStatus]');
   });
 
   /**
