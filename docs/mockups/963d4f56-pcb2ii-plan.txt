@@ -1,0 +1,42 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+Both PCB 2(II) languages already have an employee selection screen and a shared PDF preview and download. The form currently uses today's date and leaves the officer's name and designation empty. The existing design needs to be checked against the official English and Bahasa Malaysia references, particularly its borders and long values.
+
+WHAT WE'LL CHANGE
+
+- Add a required Selected Date before Preview and Download. Leave it empty until the user chooses a date; both documents will show that exact date.
+- Fill Name of Officer and Designation from the selected company's Income Tax authorised signatory. Changing company or updating that setup will affect subsequent generation. If no signatory is configured, explain what to configure and prevent generation.
+- Match each language's official one-page layout, labels, grouped columns and border positions. Keep complete employee, employer and receipt details inside their allotted space, with a clear message if complete information cannot fit readably.
+- Keep preview and download together so they show the same selected date, company, employee, deductions, receipts and officer information.
+
+WHAT YOU'LL GET
+
+HR can choose the statement date and generate a company-specific PCB 2(II) in either official language without retyping the signatory. This changes the form's presentation and preparation, not payroll calculations or saved deductions.
+
+GOOD TO KNOW
+
+- Previous-year income deductions cannot currently be reliably attributed from the saved payroll information. That section will remain visibly blank; this work will not invent amounts or apportion tax. Providing those figures needs a separately agreed source and is not included here.
+- Existing employee selection, company permissions and payment receipt maintenance will stay available.
+- The official reference links currently return an error, so exact visual matching must be checked against accessible copies before the layout is built. The sketch shows the proposed preparation screen, not a verified official form. Production appearance has not been verified.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Evidence: graphify query PCB2II identified localization/my/pcb2ii.ts, lib/pcb2ii-form.ts, lib/pcb2ii-pdf.ts, lib/pcb2ii-labels.ts and app/payroll/statutory-forms/pcb2ii. Source confirms shared pcb2iiPdfResponse renders both routes, differing only by disposition. pcb2iiStatement uses todayInKualaLumpur and blank officer fields. Existing rendering clips receipts and officer fields, substitutes unsupported Unicode with question marks, and prints only the first four employer-address lines. These are source observations, not production reproduction.
+
+Official references requested: https://www.hasil.gov.my/wp-content/uploads/PCB2II_Pin2012_2.pdf and https://www.hasil.gov.my/wp-content/uploads/PCB2II_Pin2012_1.pdf. Web open failed; direct downloads returned HTTP 500 on 2 October 2026. Obtain and visually inspect the actual PDFs before final coordinate implementation. Do not treat current code comments or the sketch as verified specimens. Board CLI verified that this item has no attachments. Official-domain search did not produce an accessible alternate reference.
+
+Add required selectedDate as a generation parameter through page/picker, shared response, core/reporting.ts and CountryPack pcb2iiStatement seam into the MY assembler. Validate a real YYYY-MM-DD calendar date on both screen and server; missing/invalid date must not fall back to today's date. Preserve it through language selection, receipt-screen return and company/year selection where appropriate; invalidate stale preview whenever any generation parameter changes. Do not constrain the selected date to the deduction year. No durable generation record is requested.
+
+Use company_statutory_authority authority=lhdn signatoryPersonId and the selected company's employment position/person fullName, following the existing EA designation selection semantics. The admin-only PCB2II path should use narrowly scoped authorized reads; do not broaden person RLS or repurpose the EA-only database function without reviewing its ownership contract. Keep scope checks, company relationship validation, tenant isolation, de-duplication, selection ceiling, no-store headers and whole-request failure. Missing configured person must produce an actionable validation message without returning partial PDFs or another company's identity. Officer phone can use the same selected-company LHDN authority phone, staying blank when absent; no new required phone input.
+
+Use one jurisdiction-owned data assembly and two official language label/layout definitions. Preserve deduction-period owner cp39DeductionPeriodFor, payslip pcb/cp38 amounts, receipt ownership pcbPaymentsForYear, all twelve months, null versus zero and totals. priorYearRows remains empty: current back-pay records cannot attribute a share of PCB. Do not populate section 3 from guessed earlier-year totals. No money changes, payroll rewriting, backfill or new storage tables are proposed. Existing signatory configuration supplies ownership; any new database privilege requirement must be justified and separately allocated before implementation.
+
+Measure all borders from inspected English/BM specimens; each grouped column's split begins below its parent heading, with shared adjacent edges and complete outer frame. Keep fixed official page proportions. Use supported embedded fonts and measured wrapping inside cells; preserve complete long Unicode values, long unbroken identifiers and all address lines. Never silently clip, replace characters, truncate, add a continuation page or shrink below a reviewed readable size. Refuse exceptionally unfit data explicitly before export and identify the field; batch generation fails as a whole. Date and missing-signatory errors should appear in the normal generation workflow, not as unexplained 404s; unauthorized identifiers remain indistinguishable 404s.
+
+Keep six-locale screen labels and validation, responsive employee selection and accessible required date control, keyboard focus and dark mode. Official PDF languages remain only English/BM with their corresponding labels. Preview remains the actual rendered PDF, not a separate HTML form.
+
+Verify real date changes including leap dates and invalid/missing input; company A/B signatories and a transferred employee; latest setup edits; missing/deleted person and blank designation; both languages with identical figures and selected date; twelve months, zero/absent values, receipts and empty prior-year table; scopes, foreign tenant, ceiling and partial-batch refusal. Render actual normal/long/Unicode PDFs and inspect official-reference overlays, every border, page count, all complete text and margins. Compare normalized preview/download PDF content and geometry rather than timestamp-dependent raw bytes. Reverse a new named selected-date or company-signatory assertion and restore. No runtime changes or verification runs are included in this proposal commit.
