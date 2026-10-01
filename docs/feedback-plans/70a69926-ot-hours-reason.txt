@@ -1,0 +1,49 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+Apply OT Plan already works out the duration while you enter the two times, but it shows decimal hours. The current form also offers a reason category alongside the required written reason. We checked the current code; we have not yet reproduced this screen on production.
+
+WHAT WE'LL CHANGE
+
+- Rename the readout to Overtime Hours and show hours and minutes: 2h30m, 2h or 45m. Until both times are entered it will show —. The helper will say: Worked out from Start Time and End Time.
+
+- Support overnight plans. An end time earlier than the start means the following day, so 22:00 to 01:30 shows 3h30m. Equal start and end times will remain invalid rather than silently becoming a full day.
+
+- Use the same hours-and-minutes display in This month, the monthly-limit comparison, the Self Overtime list and the superior's approval view. The monthly comparison will keep its existing figures and limit, with no extra h after a value that already includes its unit.
+
+- Remove Reason category and its explanatory hint. Reason remains mandatory. Previously saved categories will stay on record but will no longer appear in overtime lists, approval views or any overtime report or export that currently includes them.
+
+WHAT YOU'LL GET
+
+An overtime duration you can read directly, including overnight work, and one clear place to explain the request. Everything else on the form stays as it is today.
+
+GOOD TO KNOW
+
+- Existing saved plans remain available. We will keep their hours, approval decisions and recorded categories intact.
+
+- This does not change the monthly limit, which plans count toward it, how approvals work, pay calculations, attachments or who may see a plan. Supporting overnight plans changes the planned-time check only; it does not change clock-correction rules.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT, verified in current source: app/attendance/plan-ot/apply/plan-ot-fields.tsx uses local fmtHours, calculates positive same-day differences, posts decimal otHours, and renders otReasonCategory. app/me/actions.ts myRequestOvertime reads that category, drops unknown values, and derives same-day minutes when the hidden hours are blank. core/attendance.ts requestAttendanceCorrection already accepts optional nullable otReasonCategory, and db/schema.ts attendanceCorrection.otReasonCategory is nullable. No migration, category backfill or record deletion is needed. The existing backend already permits its absence.
+
+GRAPH: employee -> own employment -> selected date -> planned time window -> integer requested minutes -> attendance correction request -> superior decision -> approved minutes -> recorded attendance and payroll consumers. Reason is mandatory at the service boundary. Category is optional metadata, not duration or approval policy. Preserve authorization, tenant/company scope, events, attachments, duplicate-plan controls, cancellation and approval state transitions.
+
+DECISION: add one pure display helper formatMinutesToHM(minutes) in lib, with nonnegative integer input, zero shown as 0m, hours-only and minutes-only forms without redundant units. Missing duration stays — at the caller. Add a shared strict HH:MM planned-window derivation used by the client and action; end before start advances one day, equal times are invalid, missing/invalid pairs are refused. Service validation must accept overnight planned windows without relaxing check-in/check-out correction validation. Keep the request attributed to its selected start date; do not reallocate monthly totals or split attendance/payroll rows in this change.
+
+The form must submit integer minutes, not display strings. Update the action to accept that integer input; derive server-side from the planned pair for JavaScript-off submissions and validate agreement when both minutes and times are posted. Preserve any existing hours-only caller contract through a clearly bounded legacy conversion rather than changing unrelated correction callers. Inspect every writer before removing the old hidden hours field.
+
+READERS: app/attendance/plan-ot/apply/page.tsx uses fmtHours for planned/approved/recorded monthly figures, cap comparison, selected-day figures and existing-plan readouts. Replace relevant duration displays consistently and update me.otCalOfCap and me.otCalHoursValue to avoid double units. Monthly cap.totalMinutes is the existing recorded-plus-approved-not-counted figure from otMonthToDateMinutes; keep its deduplication and capMinutes source. The current source provides OT_CAP_MINUTES; this proposal neither verifies a legal assertion nor creates new policy.
+
+app/attendance/plan-ot/page.tsx renders requested and approved minutes with toFixed(1), and joins CATEGORY_KEY category labels to the reason cell and tooltip. Keep the written reason, remove category presentation. app/approvals/page.tsx proposed overtime uses requestedOtMinutes / 60 plus a literal h; share the display helper without changing decision payloads. Sweep all consumers of otReasonCategory and CATEGORY_KEY for any remaining display/filter/export. app/attendance/ot-report/export/route.ts consumes core/reporting.ts overtimeReportToReportData: inspect its serializer columns, but do not confuse rate/day-type categories with the removed reason category. No reason-category export/filter was established during this source review; do not delete unrelated report classification.
+
+Remove category state, dropdown, frontend handling, action payload property and category-specific Reason helper from Apply OT Plan. Keep database vocabulary/column/check constraints and historical event data. Retire unused message keys only after checking computed consumers; update all six locales. Shared backend inputs remain nullable for older integrations and old records.
+
+VERIFY BEFORE BUILD: reproduce live UI and inspect attachments if any. Approved scope is these two changes only. The HTML mockup is a proposal, not a tested runtime screen, and deliberately contains no employee or monthly figures.
+
+BUILD VERIFICATION: formatter cases 150 -> 2h30m, 120 -> 2h, 45 -> 45m, 0 -> 0m; incomplete fields -> —; live 18:00/20:30, 18:00/20:00, 18:00/18:45, overnight 22:00/01:30; equal and malformed times; no-JavaScript submission; forged disagreement between posted minutes and times; required Reason enforcement; no category form field/payload; old categorized rows open with category hidden and database value unchanged. Pin all requested display surfaces and absence of duplicate unit suffixes. Existing plan-ot-apply-action, plan-ot-self-screen, plan-ot-calendar-screen, plan-ot and attendance-correction-request-record tests must be updated to the approved overnight rule without weakening punch-pair guards. Then full gate and rendered narrow/wide/dark checks through the normal parent workflow.
+
+NOT DONE: implementation, migrations, tests, rendering and production reproduction. No board state was changed by this proposal.
