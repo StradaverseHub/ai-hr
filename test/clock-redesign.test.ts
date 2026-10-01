@@ -1,14 +1,8 @@
 /**
- * Feedback af552c5d — Clock In/Out screen redesign (phone-first circular button).
- *
- * Covers, per the approved plan: the state-driven gradient classes drift guard (grey idle before the
- * first clock-in / red while clocked in / green between sessions); the cumulative-worked counter
- * anchored to SERVER timestamps (unit tests on the offset math — a refresh or a wildly skewed client
- * clock cannot reset or shift it); the in-flight double-tap guard and conditional Switch link (source
- * guards on the client island — a node test can't render a 'use client' component, mirroring the
- * sidebar-attendance-group precedent); the single shared capture path (AttendanceClockButton still rides
- * ClockCaptureForm); the new i18n keys in all six locales; and the attendancePunchesForRange extension
- * (matched clocking-location name + captured coordinates on each punch row) through the real engine.
+ * af552c5d legacy display derivations and per-punch site metadata remain covered.
+ * r378 replaces the circular control/shared form with mandatory camera review and a single private
+ * capture endpoint. Source guards retain double-submit, server-clock, shift-count, device/location and
+ * legacy entry-point authority checks against that approved replacement.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -165,29 +159,57 @@ describe('showShiftSwitch — the Switch link is hidden rather than dead', () =>
 const ISLAND = fs.readFileSync(path.resolve(__dirname, '../app/attendance/clock/clock-client.tsx'), 'utf8');
 const CAPTURE = fs.readFileSync(path.resolve(__dirname, '../components/attendance-clock-button.tsx'), 'utf8');
 
-describe('clock-client source guards (af552c5d)', () => {
-  it('disables the circular button while capture or the server request is in flight (double-tap guard)', () => {
-    expect(ISLAND).toMatch(/const busy = capturing \|\| pending/);
-    expect(ISLAND).toMatch(/disabled=\{busy\}/);
-    expect(ISLAND).toMatch(/useFormStatus\(\)/);
+describe('clock-client source guards (r378 approved camera replacement for af552c5d)', () => {
+  it('blocks both clock actions during capture/request and guards duplicate confirmation', () => {
+    expect(ISLAND).toMatch(/const blocked=busy\|\|camera\|\|!!action\|\|!synced\|\|!today\.deviceValid\|\|!today\.locationValid/);
+    expect(ISLAND).toContain('disabled={blocked||today.clockedIn}');
+    expect(ISLAND).toContain('disabled={blocked||!today.clockedIn}');
+    expect(ISLAND).toContain('if(!photo||!action||busy)return;setBusy(true)');
+    expect(ISLAND).toContain('disabled={busy} onClick={confirm}');
+    expect(ISLAND).toContain('body:command.current.body');
   });
-  it('gates the Switch link on showShiftSwitch (hidden unless >1 assignable shift)', () => {
-    expect(ISLAND).toMatch(/showShiftSwitch\(shiftOptions\.length\) &&/);
+  it('hides Switch unless there is more than one assignable shift', () => {
+    expect(ISLAND).toMatch(/shiftOptions\.length>1&&<button/);
+    expect(ISLAND).toContain('setShiftIdx(i=>(i+1)%shiftOptions.length)');
   });
-  it('anchors the counter to the SERVER base + a client delta (never a client-clock absolute)', () => {
-    expect(ISLAND).toMatch(/elapsedDisplaySeconds\(baseWorkedSeconds, clockedIn, mountMsRef\.current, now\.getTime\(\)\)/);
+  it('anchors the clock and worked duration to authenticated server values plus a monotonic delta', () => {
+    expect(ISLAND).toContain("fetch('/api/time',{cache:'no-store'})");
+    expect(ISLAND).toContain('Date.parse(clockValue.serverNow)+(end-clockStart)/2');
+    expect(ISLAND).toContain('base.current.server+performance.now()-base.current.mono');
+    expect(ISLAND).toContain('today.workedSeconds+(today.clockedIn&&now!=null?');
+    expect(ISLAND).toContain('now-Date.parse(today.serverNow)');
+    expect(ISLAND).not.toContain('Date.now()');
   });
-  it('drives the circle from the state-class map (drift-guarded above)', () => {
-    expect(ISLAND).toMatch(/RING_CLASSES\[state\]/);
+  it('renders separate accessible green IN and red OUT controls with state-specific disabling', () => {
+    expect(ISLAND).toContain("onClick={()=>openCamera('in')}");
+    expect(ISLAND).toContain("onClick={()=>openCamera('out')}");
+    expect(ISLAND).toContain('bg-[#12795A]');
+    expect(ISLAND).toContain('bg-[#B3402A]');
+    expect(ISLAND).toContain('min-h-14');
+    expect(ISLAND).toContain('disabled:opacity-[.35]');
   });
-  it('keeps ONE geolocation/device capture path: the island and the /me button both ride ClockCaptureForm', () => {
-    expect(ISLAND).toMatch(/<ClockCaptureForm action=\{clockedIn \? clockOutAction : clockInAction\}>/);
-    expect(CAPTURE).toMatch(/export function ClockCaptureForm/);
-    expect(CAPTURE).toMatch(/export function AttendanceClockButton/);
-    // AttendanceClockButton (the /me card) is implemented ON the shared form, not a fork of it.
-    expect(CAPTURE.slice(CAPTURE.indexOf('export function AttendanceClockButton'))).toMatch(/<ClockCaptureForm/);
-    // The capture form still carries the three hidden fields every submit path depends on.
-    for (const name of ['name="lat"', 'name="lng"', 'name="deviceToken"']) expect(CAPTURE).toContain(name);
+  it('keeps one mandatory photo/device/location writer and redirects legacy self-service entry points', () => {
+    expect(ISLAND).toContain('navigator.geolocation.getCurrentPosition');
+    expect(ISLAND).toContain("navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false})");
+    expect(ISLAND).toContain('deviceToken:getStoredDeviceToken()');
+    expect(ISLAND).toContain("body.set('photo',photo,'attendance.jpg')");
+    expect(ISLAND).toContain("fetch('/api/attendance/clock',{method:'POST'");
+    expect(ISLAND).toContain('stream.current?.getTracks().forEach(track=>track.stop())');
+    for (const [file, names] of [
+      ['../app/me/actions.ts', ['myCheckIn', 'myCheckOut']],
+      ['../app/attendance/clock/actions.ts', ['clockInAction', 'clockOutAction']],
+    ] as const) {
+      const source = fs.readFileSync(path.resolve(__dirname, file), 'utf8');
+      for (const name of names) {
+        const body = source.slice(source.indexOf(`export async function ${name}`)).split('\n}')[0];
+        expect(body).toContain('await getSession()');
+        expect(body).toContain("redirect('/attendance/clock')");
+        expect(body).not.toMatch(/await check(?:In|Out)\(/);
+      }
+    }
+    // The existing /me wrapper remains a legacy entry point, never an independent photo writer.
+    expect(CAPTURE).toContain('export function AttendanceClockButton');
+    expect(CAPTURE).not.toContain('/api/attendance/clock');
   });
 });
 
