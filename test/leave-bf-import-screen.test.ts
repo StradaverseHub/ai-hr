@@ -104,10 +104,38 @@ describe('db55d08a — the entry type, pinned in the source as well as in the da
     // The journal IS the migration: a .sql without an entry never runs (CLAUDE.md §6).
     expect(mine, 'migration 0497 must be journalled').toBeDefined();
     expect(mine!.idx).toBe(497);
-    // ⚠️ THE SILENT-SKIP GUARD. drizzle's watermark is the last applied `when`, so a lower `when` merged
-    // later is a skip at exit 0. This entry must be the newest by BOTH idx and when.
-    expect(Math.max(...journal.entries.map((e) => e.idx))).toBe(mine!.idx);
-    expect(Math.max(...journal.entries.map((e) => e.when))).toBe(mine!.when);
+    // ⚠️ THE SILENT-SKIP GUARD — RE-POINTED IN r375 FROM A POSITION TO THE INVARIANT.
+    //
+    // It used to assert that this entry was the newest in the journal by BOTH idx and `when`:
+    //     expect(Math.max(...journal.entries.map((e) => e.idx))).toBe(mine!.idx);
+    //     expect(Math.max(...journal.entries.map((e) => e.when))).toBe(mine!.when);
+    // Both were true the day they were written and expired the moment ANY later round added a
+    // migration — r375's 0498 did, and this case failed with `expected 498 to be 497`. "Mine is the
+    // global maximum" is a position, not the property the comment is about (CLAUDE.md §8: pin
+    // invariants, not positions).
+    //
+    // The actual hazard: drizzle's watermark is the last applied `when`, so an entry whose `when` is
+    // EARLIER than an already-applied one is skipped at exit 0 — no error, no row. The invariant that
+    // makes THIS entry safe, and that stays true however many migrations follow, is ordering relative
+    // to its neighbours rather than to the end of the list.
+    const byIdx = [...journal.entries].sort((a, b) => a.idx - b.idx);
+    for (const e of byIdx.filter((x) => x.idx < mine!.idx)) {
+      expect(
+        e.when,
+        `idx ${e.idx} (${e.tag}) is dated at or after 0497 — drizzle would reach 0497's watermark first and SKIP it`,
+      ).toBeLessThan(mine!.when);
+    }
+    for (const e of byIdx.filter((x) => x.idx > mine!.idx)) {
+      expect(
+        e.when,
+        `idx ${e.idx} (${e.tag}) is numbered after 0497 but dated before it — it would be SKIPPED at exit 0`,
+      ).toBeGreaterThan(mine!.when);
+    }
+    // ⚠️ DELIBERATELY NOT asserted globally across every pair, because the journal ALREADY contains one
+    // such inversion and this guard is not the place to fail on it: idx 230 is dated 1781862229000 and
+    // idx 240 is dated 1781862219000 — ten seconds EARLIER despite the higher number. Both were applied
+    // long ago so the watermark has passed them and it is inert, but it is real, and it is why this
+    // case checks the neighbourhood of one entry rather than the whole file.
     // …and `entries.length` is NOT the allocator: the two have diverged by dozens, and a number taken
     // from the length would be a low number, which is a silent skip.
     expect(journal.entries.length).not.toBe(mine!.idx);
