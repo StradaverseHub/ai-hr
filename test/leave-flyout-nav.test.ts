@@ -167,32 +167,8 @@ const ADDED_AFTER_GENERATE: readonly { href: string; labelKey: string }[] = [
  * gated on a module (`toil`): components/sidebar.tsx maps it by hand, pinned in test/r299-leave-credit-screens.
  */
 const ADDED_AFTER_ADJUSTMENTS: readonly { href: string; labelKey: string }[] = [
-  /**
-   * 3f15ffdb (r362) — LEAVE HISTORY DATA IMPORT, spliced in BEFORE Leave Credit, and the order within
-   * this list is the answer to a question the reporter asked directly.
-   *
-   * They asked for an import function under Leave Config and could not find one, because the importer
-   * that exists is the hidden second TAB of the Leave Adjustments row above — and it loads BALANCES,
-   * not records, so it would not have answered them anyway. This row is the record half, and it sits
-   * immediately behind the row that owns the balance half: a migration loads the balances, then the
-   * records, and this node's header says the order of the menu is the order of the work.
-   */
-  { href: '/admin/leave-config/history-import', labelKey: 'leaveHistoryImport' },
-  /**
-   * db55d08a (r369) — LEAVE B/F DATA IMPORT, spliced in directly behind the record importer and still
-   * BEFORE Leave Credit, and the order within this list is again the answer to the reporter's own question.
-   *
-   * They asked for a sibling of Leave History Data Import for the OPENING FIGURE, and were right to.
-   * Brought Forward is DERIVED (`sum(leave_ledger.days) where effective_on < cycleStart`) and no field
-   * holds it, so the only existing route to it is the BALANCE importer, where the uploader must know two
-   * unwritten rules — date the line in the PREVIOUS leave year, and make it an `adjustment`. An `accrual`
-   * dated inside the year instead satisfies `yearOpenMarkerCond` and makes Generate Entitlement grant that
-   * employee nothing for the whole year. This row is the tool that knows those rules.
-   *
-   * Immediately behind the record importer because the order of the menu is the order of the work, and the
-   * reporter's go-live sequence is: generate the entitlements, load B/F, load the leave taken.
-   */
-  { href: '/admin/leave-config/bf-import', labelKey: 'leaveBfImport' },
+  // r378: one canonical importer row, with both guarded legacy bookmarks owned below.
+  { href: '/admin/leave-config/data-import', labelKey: 'leaveDataImport' },
   { href: '/admin/leave-config/leave-credit', labelKey: 'leaveCredit' },
 ] as const;
 
@@ -271,7 +247,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
       // (lib/permissions.ts head), so minting one for a sibling of the balance importer would create a
       // permission nobody has been granted and split one area's access in two. Same requireAdmin guard,
       // and the run log is admin-only at the row level by RLS (migration 0490) on top of it.
-      '/admin/leave-config/history-import': 'leaveConfig',
+      '/admin/leave-config/data-import': 'leaveConfig',
       '/admin/leave-config/leave-credit': 'leaveConfig',
       '/admin/leave-config/generate': 'leaveConfig',
         // r281 (09386e29) — Run earned accrual is on `leaveConfig` ON PURPOSE: it WAS a section of the
@@ -300,7 +276,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
       // screenKey of its own would invent a permission NOBODY HAS BEEN GRANTED and split one area's
       // access in two: anyone who could open Leave Balance Import could already load balance movements,
       // which is a strictly wider power than stating an opening figure.
-      '/admin/leave-config/bf-import': 'leaveConfig',
+
     };
     for (const child of NODE.children) {
       expect(exists(routeFile(child.href)), `${child.href} has no route file`).toBe(true);
@@ -429,7 +405,10 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     // took a map group of its own (of one item, drawing no tab row) and is covered by the loop above
     // instead: its group has no tabs and its row owns no sub-screen, so the loop asserts an empty
     // `ownedSubpaths` for it — which is the right answer and is derived, not written down here.
-    const SUB_SCREENS: Record<string, string[]> = { leaveAdjustments: [LEAVE_CONFIG_RECORDS_HREF] };
+    const SUB_SCREENS: Record<string, string[]> = {
+      leaveAdjustments: [LEAVE_CONFIG_RECORDS_HREF],
+      leaveDataImport: ['/admin/leave-config/history-import', '/admin/leave-config/bf-import'],
+    };
     const MAPLESS_ROWS: Record<string, string[]> = { employeeLeaveInquiry: ['/leave/employee-records'] };
     for (const group of LEAVE_CONFIG_MAP) {
       const row = NODE.children.find((c) => c.labelKey === group.navKey)!;
@@ -450,7 +429,8 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     // Non-vacuity: two rows own two tabs each and the Leave Inquiry row owns the rail's other admin tab
     // (2 → 3 at r269), and the sidebar consults them all (components/sidebar.tsx).
     // 3fb1a611 (r299) — 3 → 4: Leave Credit owns its Rules tab.
-    expect(NODE.children.filter((c) => (c.ownedSubpaths ?? []).length > 0)).toHaveLength(4);
+    // r378 adds the consolidated importer owner for both legacy bookmark paths.
+    expect(NODE.children.filter((c) => (c.ownedSubpaths ?? []).length > 0)).toHaveLength(5);
     const sidebar = read('components/sidebar.tsx');
     expect(sidebar).toContain('const childPaths = (c: { href: string; ownedSubpaths?: string[] }) => [c.href, ...(c.ownedSubpaths ?? [])];');
     expect(sidebar).toContain('isParentActive(pathname, children.flatMap(childPaths))');

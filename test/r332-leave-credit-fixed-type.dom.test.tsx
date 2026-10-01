@@ -67,19 +67,19 @@ function openDialog(locale: Locale) {
 
 describe('2a237f5f: the Leave Credit request names one leave type and offers no other', () => {
   for (const locale of LOCALES) {
-    it(`[${locale}] renders the tenant's own type name in a fixed, non-editable box`, () => {
+    it(`[${locale}] renders the tenant's own type name as a fixed identity caption`, () => {
       const { dialog, rr } = openDialog(locale);
 
       // The field is still LABELLED "Leave type" — the employee must still be told what the box is.
       expect(dialog.textContent).toContain(rr.leaveType);
 
       // r343 — the fixed box moved into the single table with the rest of the form; the testid moved with it.
-      const box = dialog.querySelector('[data-testid="leave-credit-leave-type"]') as HTMLInputElement;
+      const box = dialog.querySelector('[data-testid="leave-credit-leave-type"]') as HTMLParagraphElement;
       expect(box).toBeTruthy();
-      expect(box.tagName).toBe('INPUT');
-      expect(box.value).toBe(TENANT_TYPE.name);
-      expect(box.readOnly).toBe(true);
-      expect(box.disabled).toBe(true);
+      // r378 presents identity as text instead of a disabled form field.
+      expect(box.tagName).toBe('P');
+      expect(box.textContent).toBe(`${rr.leaveType}: ${TENANT_TYPE.name}`);
+      expect(box.querySelector('input, select, textarea, button, [contenteditable="true"]')).toBeNull();
       // …and it carries no `name`, so it cannot post anything of its own even if `disabled` were removed.
       expect(box.getAttribute('name')).toBeNull();
 
@@ -179,7 +179,9 @@ describe('2a237f5f: the Leave Credit request names one leave type and offers no 
     );
     fireEvent.click(screen.getByText((en as unknown as { replacementRequest: { trigger: string } }).replacementRequest.trigger));
     const dialog = screen.getByRole('dialog');
-    expect((dialog.querySelector('[data-testid="leave-credit-leave-type"]') as HTMLInputElement).value).toBe(other.name);
+    const caption = dialog.querySelector('[data-testid="leave-credit-leave-type"]');
+    expect(caption).not.toBeNull();
+    expect(caption!.textContent).toBe(`${en.replacementRequest.leaveType}: ${other.name}`);
     expect(new FormData(dialog.querySelector('form') as HTMLFormElement).get('leaveTypeId')).toBe(other.id);
   });
 });
