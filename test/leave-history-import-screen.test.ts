@@ -44,8 +44,8 @@ type Dict = Record<string, unknown>;
 const getPath = (obj: unknown, dotted: string): unknown =>
   dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Dict)[k] : undefined), obj);
 
-const HREF = '/admin/leave-config/history-import';
-const PAGE = 'app/admin/leave-config/history-import/page.tsx';
+const HREF = '/admin/leave-config/data-import';
+const PAGE = 'app/admin/leave-config/data-import/page.tsx';
 const ISLAND = 'app/admin/leave-config/history-import/leave-history-import.tsx';
 const ACTIONS = 'app/admin/leave-config/history-import/actions.ts';
 
@@ -54,14 +54,14 @@ describe('the three registries agree about the new row', () => {
     const children = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
     const row = children.find((c) => c.href === HREF);
     expect(row, 'the Leave Config fly-out must carry the row').toBeTruthy();
-    expect(row!.labelKey).toBe('leaveHistoryImport');
+    expect(row!.labelKey).toBe('leaveDataImport');
     // One page, no tabs, no sub-screen — so nothing for the row to stay lit on beyond its own href.
-    expect(row!.ownedSubpaths ?? []).toEqual([]);
+    expect(row!.ownedSubpaths ?? []).toEqual(['/admin/leave-config/history-import', '/admin/leave-config/bf-import']);
     // Not module-gated: leave is core (Leave Credit is the only gated row of this node).
     expect(row!.adminOnly).toBeUndefined();
     expect(row!.managerUp).toBeUndefined();
 
-    const group = LEAVE_CONFIG_MAP.find((g) => g.navKey === 'leaveHistoryImport')!;
+    const group = LEAVE_CONFIG_MAP.find((g) => g.navKey === 'leaveDataImport')!;
     expect(group, 'every Leave Config row is a group; this one must be too').toBeTruthy();
     expect(group.items.map((i) => i.href)).toEqual([HREF]);
 
@@ -76,10 +76,10 @@ describe('the three registries agree about the new row', () => {
   it('it sits immediately after Leave Adjustments — the balance importer, then the record importer', () => {
     const labels = leavePack.navNodes!.find((n) => n.group === 'admin')!.children.map((c) => c.labelKey);
     const i = labels.indexOf('leaveAdjustments');
-    expect(labels[i + 1]).toBe('leaveHistoryImport');
+    expect(labels[i + 1]).toBe('leaveDataImport');
     // …and the same order in the map, which is what test/r266 asserts both ways.
     const ids = LEAVE_CONFIG_MAP.map((g) => g.id);
-    expect(ids[ids.indexOf('adjustments') + 1]).toBe('leaveHistoryImport');
+    expect(ids[ids.indexOf('adjustments') + 1]).toBe('leaveDataImport');
   });
 
   it('the older importer is RENAMED, not moved: same id, same route, new label only', () => {
@@ -96,8 +96,8 @@ describe('the page is the house shape', () => {
   it('server component, guarded, heading through the row helper, map mounted once', () => {
     const src = read(PAGE);
     expect(src).toContain('requireAdmin()');
-    expect(src).toContain("leaveConfigPageHeader('leaveHistoryImport')");
-    expect(src.match(/<LeaveConfigMap current="leaveHistoryImport" \/>/g)).toHaveLength(1);
+    expect(src).toContain("leaveConfigPageHeader('leaveDataImport')");
+    expect(src.match(/<LeaveConfigMap current="leaveDataImport" \/>/g)).toHaveLength(1);
     // Not a client component, and it must stay one — the r123 class test/server-client-boundary pins.
     expect(src.startsWith("'use client'")).toBe(false);
     // The log is read on the SERVER so it is RLS-scoped, not fetched from the island.
@@ -123,7 +123,7 @@ describe('the page is the house shape', () => {
     expect(src).toContain('IMPORT_FILE_ACCEPT');
     // The error report echoes user-supplied cells back into a file Excel will open, so it must go
     // through toCsv's formula-injection guard rather than being joined by hand.
-    expect(src).toContain("import { toCsv } from '@/lib/csv'");
+    expect(src).toMatch(/import\s*\{[^}]*\btoCsv\b[^}]*\} from '@\/lib\/csv'/);
     expect(src).not.toMatch(/\.join\(','\)[\s\S]{0,40}Blob/);
   });
 });

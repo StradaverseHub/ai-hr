@@ -10022,7 +10022,8 @@
         "leaveCredit": "额度",
         "leaveCreditRules": "规则",
         "leaveHistoryImport": "休假历史数据导入",
-        "leaveBfImport": "休假结转数据导入"
+        "leaveBfImport": "休假结转数据导入",
+        "leaveDataImport": "休假数据导入"
       }
     },
     "leaveConfigRecords": {

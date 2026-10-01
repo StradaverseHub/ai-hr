@@ -10022,7 +10022,8 @@
         "leaveCredit": "Tín dụng",
         "leaveCreditRules": "Quy tắc",
         "leaveHistoryImport": "Nhập dữ liệu lịch sử nghỉ phép",
-        "leaveBfImport": "Nhập dữ liệu B/F phép"
+        "leaveBfImport": "Nhập dữ liệu B/F phép",
+        "leaveDataImport": "Nhập dữ liệu nghỉ phép"
       }
     },
     "leaveConfigRecords": {

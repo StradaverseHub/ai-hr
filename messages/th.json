@@ -10022,7 +10022,8 @@
         "leaveCredit": "เครดิต",
         "leaveCreditRules": "กฎ",
         "leaveHistoryImport": "นำเข้าข้อมูลประวัติการลา",
-        "leaveBfImport": "นำเข้าข้อมูลยกยอดวันลา"
+        "leaveBfImport": "นำเข้าข้อมูลยกยอดวันลา",
+        "leaveDataImport": "นำเข้าข้อมูลการลา"
       }
     },
     "leaveConfigRecords": {

@@ -10022,7 +10022,8 @@
         "leaveCredit": "வரவுகள்",
         "leaveCreditRules": "விதிகள்",
         "leaveHistoryImport": "விடுப்பு வரலாற்றுத் தரவு இறக்குமதி",
-        "leaveBfImport": "விடுப்பு B/F தரவு இறக்குமதி"
+        "leaveBfImport": "விடுப்பு B/F தரவு இறக்குமதி",
+        "leaveDataImport": "விடுப்புத் தரவு இறக்குமதி"
       }
     },
     "leaveConfigRecords": {

@@ -54,8 +54,8 @@ type Dict = Record<string, unknown>;
 const getPath = (obj: unknown, dotted: string): unknown =>
   dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Dict)[k] : undefined), obj);
 
-const HREF = '/admin/leave-config/bf-import';
-const PAGE = 'app/admin/leave-config/bf-import/page.tsx';
+const HREF = '/admin/leave-config/data-import';
+const PAGE = 'app/admin/leave-config/data-import/page.tsx';
 const ISLAND = 'app/admin/leave-config/bf-import/leave-bf-import.tsx';
 const ACTIONS = 'app/admin/leave-config/bf-import/actions.ts';
 const SERVICE = 'core/leave-bf-import.ts';
@@ -148,14 +148,14 @@ describe('db55d08a — the three registries agree about the new row', () => {
     const children = leavePack.navNodes!.find((n) => n.group === 'admin')!.children;
     const row = children.find((c) => c.href === HREF);
     expect(row, 'the Leave Config fly-out must carry the row').toBeTruthy();
-    expect(row!.labelKey).toBe('leaveBfImport');
+    expect(row!.labelKey).toBe('leaveDataImport');
     // One page, no tabs, no sub-screen — so nothing for the row to stay lit on beyond its own href.
-    expect(row!.ownedSubpaths ?? []).toEqual([]);
+    expect(row!.ownedSubpaths ?? []).toEqual(['/admin/leave-config/history-import', '/admin/leave-config/bf-import']);
     // Not module-gated: leave is core (Leave Credit is the only gated row of this node).
     expect(row!.adminOnly).toBeUndefined();
     expect(row!.managerUp).toBeUndefined();
 
-    const group = LEAVE_CONFIG_MAP.find((g) => g.navKey === 'leaveBfImport')!;
+    const group = LEAVE_CONFIG_MAP.find((g) => g.navKey === 'leaveDataImport')!;
     expect(group, 'every Leave Config row is a group; this one must be too').toBeTruthy();
     expect(group.items.map((i) => i.href)).toEqual([HREF]);
     // A GROUP OF ONE, so no tab strip is drawn. A second item here would be the wrong shape twice over:
@@ -172,10 +172,10 @@ describe('db55d08a — the three registries agree about the new row', () => {
 
   it('it sits immediately after the RECORD importer — balances, then records, then the opening figure', () => {
     const labels = leavePack.navNodes!.find((n) => n.group === 'admin')!.children.map((c) => c.labelKey);
-    expect(labels[labels.indexOf('leaveHistoryImport') + 1]).toBe('leaveBfImport');
+    expect(labels[labels.indexOf('leaveAdjustments') + 1]).toBe('leaveDataImport');
     // …and the same order in the map, which is what test/r266 asserts both ways.
     const ids = LEAVE_CONFIG_MAP.map((g) => g.id);
-    expect(ids[ids.indexOf('leaveHistoryImport') + 1]).toBe('leaveBfImport');
+    expect(ids[ids.indexOf('adjustments') + 1]).toBe('leaveDataImport');
   });
 
   it('neither sibling importer was touched: same ids, same routes, same labels', () => {
@@ -184,9 +184,9 @@ describe('db55d08a — the three registries agree about the new row', () => {
     const balanceTab = LEAVE_CONFIG_MAP.flatMap((g) => g.items).find((i) => i.id === 'importLeaveData')!;
     expect(balanceTab.href).toBe('/admin/leave-config/import');
     expect(en.admin.leaveConfigMap.item.importLeaveData).toBe('Leave Balance Import');
-    const record = LEAVE_CONFIG_MAP.flatMap((g) => g.items).find((i) => i.id === 'leaveHistoryImport')!;
-    expect(record.href).toBe('/admin/leave-config/history-import');
-    expect(en.admin.leaveConfigMap.item.leaveHistoryImport).toBe('Leave History Data Import');
+    const record = LEAVE_CONFIG_MAP.flatMap((g) => g.items).find((i) => i.id === 'leaveDataImport')!;
+    expect(record.href).toBe('/admin/leave-config/data-import');
+    expect(en.admin.leaveConfigMap.item.leaveDataImport).toBe('Leave Data Import');
     const leaveConfig = SCREENS.find((s) => s.screenKey === 'leaveConfig')!;
     for (const r of ['/admin/leave-config/import', '/admin/leave-config/history-import', HREF]) {
       expect(leaveConfig.routes, r).toContain(r);
@@ -199,8 +199,8 @@ describe('db55d08a — the page is the house shape', () => {
   it('server component, guarded, heading through the row helper, map mounted once', () => {
     const src = read(PAGE);
     expect(src).toContain('requireAdmin()');
-    expect(src).toContain("leaveConfigPageHeader('leaveBfImport')");
-    expect(src.match(/<LeaveConfigMap current="leaveBfImport" \/>/g)).toHaveLength(1);
+    expect(src).toContain("leaveConfigPageHeader('leaveDataImport')");
+    expect(src.match(/<LeaveConfigMap current="leaveDataImport" \/>/g)).toHaveLength(1);
     // Not a client component, and it must stay one — the r123 class test/server-client-boundary pins.
     expect(src.startsWith("'use client'")).toBe(false);
     // The log is read on the SERVER so it is RLS-scoped, not fetched from the island.
