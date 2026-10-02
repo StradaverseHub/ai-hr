@@ -9,6 +9,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
+import { saveTaxSelectionMY } from '../localization/my/tax-selection';
 import { createBatch, generatePayslips } from '../core/payroll';
 import { crossEmployerPcbExposure } from '../localization/my/reports';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -48,6 +49,9 @@ describe('crossEmployerPcbExposure (ADR-0029)', () => {
       .values({ tenantId: base.tenantId, personId: e1.personId, companyId: c2.id, hiredOn: '2025-01-01' })
       .returning({ id: schema.employment.id });
     await setCompensation(a, { employmentId: e2.id, basicSalary: 8000, effectiveFrom: '2025-01-01' });
+    // The synthetic second employment bypasses hireEmployee; ordinary resident intent belongs to
+    // its own employer context, not the other employment's selection or this person's legacy profile.
+    await saveTaxSelectionMY(a,{employmentId:e2.id,expectedCompanyId:c2.id,scheme:'resident'});
 
     // Per-employer payroll for the month in BOTH companies (the status quo).
     for (const companyId of [base.companyId, c2.id]) {

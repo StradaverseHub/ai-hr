@@ -119,7 +119,17 @@ describe('ADR-0060 — loan ⊥ payroll', () => {
     expect(Number(loanPs.netPay)).toBeCloseTo(Number(noLoanPs.netPay) - 200, 2);
     expect(Number(loanPs.totalDeductions)).toBeCloseTo(Number(noLoanPs.totalDeductions) + 200, 2);
     // Statutory is identical (post-tax: loan touches no statutory base).
-    expect(loanPs.statutory).toEqual(noLoanPs.statutory);
+    const verifiedStatutory = async (ps: typeof schema.payslip.$inferSelect) => {
+      const [batch]=await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,ps.batchId));
+      const selections=await owner.db.select().from(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.employmentId,ps.employmentId));
+      const selection=selections.find(row=>row.tenantId===ps.tenantId&&row.companyId===batch.companyId);
+      expect(selection).toBeDefined();expect(batch.tenantId).toBe(ps.tenantId);expect(selection!.transitionState).toBe('resolved');
+      const statutory=ps.statutory as Record<string,unknown>,meta=statutory.pcbMeta as Record<string,unknown>;
+      expect(meta).toMatchObject({taxSelectionId:selection!.id,taxSelectionVersion:selection!.version,taxSelectionSource:'income_tax_resident',calculationScheme:selection!.scheme});
+      // Only validated per-employment identity differs; compare every statutory calculation unchanged.
+      return {...statutory,pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'}};
+    };
+    expect(await verifiedStatutory(loanPs)).toEqual(await verifiedStatutory(noLoanPs));
     // Gross is unchanged.
     expect(Number(loanPs.grossPay)).toBeCloseTo(Number(noLoanPs.grossPay), 2);
   });
