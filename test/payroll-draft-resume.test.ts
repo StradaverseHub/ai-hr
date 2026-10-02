@@ -402,11 +402,22 @@ describe('Payroll draft-resume — updateBatchScope (DB)', () => {
 
   it('f. regression: generatePayslips output is identical whether reached directly or via updateBatchScope (unmodified scope) then generate', async () => {
     const a = adminCtx(base);
+    const verifiedStatutory = async (ps: typeof schema.payslip.$inferSelect) => {
+      const [batch]=await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,ps.batchId));
+      const [selection]=await owner.db.select().from(schema.employmentTaxSelectionMy).where(and(eq(schema.employmentTaxSelectionMy.tenantId,ps.tenantId),eq(schema.employmentTaxSelectionMy.employmentId,ps.employmentId),eq(schema.employmentTaxSelectionMy.companyId,batch.companyId)));
+      expect(selection).toBeDefined();expect(batch.tenantId).toBe(ps.tenantId);expect(selection.transitionState).toBe('resolved');
+      const statutory=ps.statutory as Record<string,unknown>,meta=statutory.pcbMeta as Record<string,unknown>;
+      expect(meta).toMatchObject({taxSelectionId:selection.id,taxSelectionVersion:selection.version,taxSelectionSource:'income_tax_resident',calculationScheme:selection.scheme});
+      // Independent fixtures have different owner UUIDs. Every other saved field remains exact.
+      return {...statutory,pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'}};
+    };
     // Path A — plain create + generate (the pre-feature direct path).
     await hire(base, 'Golden A', 4321);
     const { batchId: directId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     await generatePayslips(a, { batchId: directId });
     const [directPs] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, directId));
+    // Validate this owner before resetDb removes the first independent fixture.
+    const directStatutory=await verifiedStatutory(directPs);
 
     // Reset + rebuild an IDENTICAL scenario, but route through updateBatchScope (no real change) first.
     await resetDb();
@@ -423,7 +434,7 @@ describe('Payroll draft-resume — updateBatchScope (DB)', () => {
     expect(Number(resumePs.grossPay)).toBeCloseTo(Number(directPs.grossPay), 2);
     expect(Number(resumePs.netPay)).toBeCloseTo(Number(directPs.netPay), 2);
     expect(Number(resumePs.totalDeductions)).toBeCloseTo(Number(directPs.totalDeductions), 2);
-    expect(resumePs.statutory).toEqual(directPs.statutory);
+    expect(await verifiedStatutory(resumePs)).toEqual(directStatutory);
   });
 
   it('g. off-cycle draft resume: cycle/paymentDate/remarks survive an updateBatchScope round-trip unchanged', async () => {

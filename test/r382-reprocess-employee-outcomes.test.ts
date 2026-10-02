@@ -75,13 +75,23 @@ describe('r382 selected reprocess exact employee outcomes', () => {
   expect(result.outcomes.find(r=>r.employmentId===b.employmentId)).toMatchObject({status:'validation_failed',reasonCode:'PAYROLL_CONFIGURATION_INCOMPLETE',validationDetails:[{gap:'no current salary record'}]});
   expect(await slip(batchId,b.employmentId)).toBeUndefined();
  });
- it('no-pay precedes a missing REP declaration, but payable REP validation continues other employees',async()=>{
-  const a=await hire('Normal'),b=await hire('REP');const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:'2026-05'});await generatePayslips(ctx,{batchId});
+ it('no-pay precedes a missing scoped tax selection, while payable configuration gaps continue other employees',async()=>{
+  const a=await hire('Normal'),b=await hire('Selection needs confirmation');const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:'2026-05'});await generatePayslips(ctx,{batchId});
   const oldB=await slip(batchId,b.employmentId);
-  await owner.db.update(schema.employeeStatutoryMy).set({taxResidency:'rep'}).where(eq(schema.employeeStatutoryMy.personId,b.personId));
-  let r=await run([a.employmentId,b.employmentId],batchId);expect(r.result.reprocessed).toBe(1);expect(r.result.validationFailed).toBe(1);
-  expect(r.result.outcomes.find(r=>r.employmentId===b.employmentId)).toMatchObject({status:'validation_failed',validationCode:'missing_declaration'});expect(await slip(batchId,b.employmentId)).toEqual(oldB);
-  await zero(b);r=await run([b.employmentId],batchId);expect(r.result.skipped).toBe(1);expect(r.result.validationFailed).toBe(0);expect(await slip(batchId,b.employmentId)).toEqual(oldB);
+  // Remove only the synthetic input owner after a real positive payroll result. Person-wide legacy
+  // category and declaration absence are no longer processing authorities after the direct selection cutover.
+  await owner.db.delete(schema.employmentTaxSelectionMy).where(and(eq(schema.employmentTaxSelectionMy.employmentId,b.employmentId),eq(schema.employmentTaxSelectionMy.companyId,base.companyId)));
+  const [txn]=await owner.db.insert(schema.payrollIndividualTxn).values({tenantId:base.tenantId,batchId,companyId:base.companyId,payPeriod:'2026-05',employmentId:b.employmentId,kind:'deduction',txnDate:'2026-05-12',amount:'20.00',consumedBatchId:batchId,consumedAt:new Date()}).returning();
+  await owner.db.update(schema.payrollBatch).set({needsRecalcAt:new Date(),recalcEmploymentIds:[b.employmentId]}).where(eq(schema.payrollBatch.id,batchId));
+  let r=await run([a.employmentId,b.employmentId],batchId);expect(r.job.status).toBe('completed');expect(r.result.reprocessed).toBe(1);expect(r.result.validationFailed).toBe(1);
+  expect(r.result.outcomes.find(r=>r.employmentId===b.employmentId)).toMatchObject({status:'validation_failed',reasonCode:'TAX_SCHEME_CONFIGURATION_INCOMPLETE',validationCode:'confirmation_required',resultRetained:true,payslipId:oldB.id,historyId:null,versionBefore:oldB.version,versionAfter:oldB.version});expect(await slip(batchId,b.employmentId)).toEqual(oldB);
+  expect((await slip(batchId,a.employmentId)).version).toBe(oldB.version+1);
+  await zero(b);r=await run([b.employmentId],batchId);expect(r.job.status).toBe('completed');expect(r.result.skipped).toBe(1);expect(r.result.validationFailed).toBe(0);
+  expect(r.result.outcomes[0]).toMatchObject({status:'skipped',reasonCode:'NOTHING_PAYABLE',resultRetained:true,payslipId:oldB.id,historyId:null,versionBefore:oldB.version,versionAfter:oldB.version});
+  expect(await slip(batchId,b.employmentId)).toEqual(oldB);
+  expect((await owner.db.select().from(schema.payrollIndividualTxn).where(eq(schema.payrollIndividualTxn.id,txn.id)))[0]).toEqual(txn);
+  expect((await batch(batchId)).recalcEmploymentIds).toContain(b.employmentId);
+  expect(await owner.db.select().from(schema.payrollEmployeeResultHistory).where(and(eq(schema.payrollEmployeeResultHistory.batchId,batchId),eq(schema.payrollEmployeeResultHistory.employmentId,b.employmentId)))).toHaveLength(0);
  });
  it('a nonempty earning with final net zero is still reprocessed',async()=>{
   const a=await hire('With earnings');const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:'2026-05'});await generatePayslips(ctx,{batchId});

@@ -42,6 +42,7 @@ import { statusOf } from '../core/attendance-derive';
 import { payslipAbsenceLines } from '../core/payslip-absence-lines';
 import { cleanPayrollPolicyConfig } from '../core/payroll-policy-config';
 import { setCompensation } from '../core/comp';
+import { saveTaxSelectionMY } from '../localization/my/tax-selection';
 import { batchInputRows, createBatch, generatePayslips, unpaidDaysByEmployment } from '../core/payroll';
 import { assignPolicy, createPolicy } from '../core/payroll-policy';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -72,6 +73,9 @@ async function makeEmp(name: string, hiredOn = '2020-01-01', terminatedOn: strin
     .insert(schema.employment)
     .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn, terminatedOn })
     .returning({ id: schema.employment.id });
+  // The bare attendance fixture intentionally bypasses hireEmployee. Initialize its ordinary
+  // tax input through the public employer-scoped owner, without changing absence or monetary inputs.
+  await saveTaxSelectionMY(await entitledCtx(b),{employmentId:e.id,expectedCompanyId:b.companyId,scheme:'resident'});
   return e.id;
 }
 
