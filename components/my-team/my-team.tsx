@@ -27,6 +27,11 @@ export function MyTeam(props:MyTeamProps){
  const [selected,setSelected]=useState<{employmentId:string;date:string}|null>(null);
  const [decision,setDecision]=useState<string|null>(null);const [reason,setReason]=useState('');const [dateIds,setDateIds]=useState<string[]>([]);
  const loadedKey=useRef(dataKey(props.snapshot.query));const epoch=useRef(0);const refreshLoaded=useRef(0);const key=dataKey(query);
+ const incomingSnapshot=useRef(props.snapshot);
+ useEffect(()=>{
+  if(incomingSnapshot.current===props.snapshot)return;incomingSnapshot.current=props.snapshot;epoch.current++;
+  loadedKey.current=dataKey(props.snapshot.query);refreshLoaded.current=0;setSnapshot(props.snapshot);setNavigation(props.navigation);setQuery(props.snapshot.query);setSearch(props.snapshot.query.search);setRefresh(0);setLoading(false);setSelected(null);setDecision(null);setError(null);
+ },[props.snapshot,props.navigation]);
  const fresh=key===loadedKey.current&&!loading;const employee=selected?snapshot.employees.find(item=>item.employmentId===selected.employmentId):undefined;
  useEffect(()=>{
   if(key===loadedKey.current&&refresh===refreshLoaded.current)return;

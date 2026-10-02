@@ -61,7 +61,7 @@ export function formatMyTeamCell(day:MyTeamDay,layers:MyTeamLayers,locale:string
  const attendance=layers.attendance&&day.date<=options.today?attendanceText(day,locale,t):null;
  const future=layers.roster&&day.date>options.today&&day.roster?.start&&day.roster.end?`${day.roster.start}–${day.roster.end}`:null;
  const primary=leaveTexts.length?leaveTexts.join(' · '):attendance??future;
- const secondary=leaveTexts.length&&day.leave.some(leave=>leave.session==='AM'||leave.session==='PM'||leave.session==='hourly')?attendance:null;
+ const secondary=leaveTexts.length&&(day.leave.some(leave=>leave.session==='AM'||leave.session==='PM'||leave.session==='hourly')||day.leave.every(leave=>leave.status==='pending'))?attendance:null;
  let compact='';
  if(leaveTexts.length)compact=day.leave.map(leave=>`${leave.code}${leave.status==='pending'?'?':''}`).join('/');
  else if(layers.attendance&&day.date<=options.today&&day.attendance){
