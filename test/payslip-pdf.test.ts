@@ -1026,9 +1026,16 @@ describe('f35f758a rev 2 — Earnings beside Deductions, NET PAY full width, and
     for (let i = 0; i < 45; i += 1) {
       expect(text.replace(/\n/g,' '), `row ${i} must be complete across wrapped runs`).toContain(`Long pay item description ${i}`);
     }
-    // The pair partner finished on sheet one and was NOT redrawn beside the continuation.
+    // r381 repeats the partner heading so both totals finish together, without repeating its money.
     const p = drawnPlacements(bytes);
-    expect(p.filter((r) => r.text === 'DEDUCTIONS')).toHaveLength(1);
+    const earningsPages = p.filter(r => r.text === 'EARNINGS' || r.text === 'EARNINGS (CONTINUED)').map(r => r.page);
+    expect(p.filter(r => r.text === 'DEDUCTIONS').map(r => r.page)).toEqual(earningsPages);
+    const earned = p.filter(r => r.text === labels.totalEarnings.toUpperCase());
+    const deducted = p.filter(r => r.text === labels.totalDeductions.toUpperCase());
+    expect(earned).toHaveLength(1);
+    expect(deducted).toHaveLength(1);
+    expect(deducted[0].page).toBe(earned[0].page);
+    expect(deducted[0].y).toBeCloseTo(earned[0].y, 2);
   });
 });
 
@@ -1740,8 +1747,8 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
    * `total` is handed to `paintBox` only on `c.final`. A fix that padded whenever ITS OWN side was final
    * would, on a sheet where Earnings is mid-flow and Deductions has finished, hold the Deductions body
    * open to the height of the Earnings CHUNK — thirty-odd rows — and drive that box and its total
-   * straight through the footer and off the sheet. The guard is that EVERY side must be final in the
-   * same pass; a side that finished on an earlier sheet answers `null` and refuses the padding too.
+   * straight through the footer and off the sheet. The transaction pair now retains an empty shorter
+   * body without its total until BOTH sides can finish, with every continuation bounded by the footer.
    */
   it('carries both transaction totals to the same final page without losing rows or crossing the footer', async () => {
     const spilled = await renderPayslipPdf(

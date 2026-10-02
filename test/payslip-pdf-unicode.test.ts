@@ -342,7 +342,7 @@ describe('5b2a7f0f — the payslip PDF prints every locale it offers', () => {
   });
 });
 
-describe('5b2a7f0f — the en document is untouched, and that is the regression guard', () => {
+describe('5b2a7f0f — lazy English fonts and deliberate document layout pins', () => {
   it('an en payslip embeds NO font file: the faces are lazy, per document, per locale', async () => {
     const facts = await fontFacts(await renderPayslipPdf(data, labels));
     expect(facts.baseFonts).toEqual(['/Helvetica', '/Helvetica-Bold']);
@@ -419,6 +419,18 @@ describe('5b2a7f0f — the en document is untouched, and that is the regression 
     multipage: '1a84aef8a69d34f58a38f56f0ffa23e268965451a1ae74377108419054c50a57',
 
   };
+  // r381 deliberately changes the header, profile borders, transaction continuation and YTD placement.
+  // These pins cover the inspected rendered documents; the original page counts remain 1, 1 and 3.
+  const NO_REG_R381 = {
+    plain: '8dc6ca7fe351874071afb77381532edadc857150efa59b213ccdfad05ecc8c98',
+    logo: '158b13fdb88591f617904e0e84ec7e70244a58a1905deea34a7930e96546e594',
+    multipage: '6387c71f34107b92e98514e40fc1bf19888a39c0e43cee14872864036eadd15a',
+  };
+  const WITH_REG_R381 = {
+    plain: '0cc3ff5ae94dedd24da67e6db8aac802b4c381083194fc7500863a32b0c3d9bb',
+    logo: '867c175eccc24ac7140855567b3c7e68301c3902da8adfc18175b0d68977a695',
+    multipage: '28f8f76f8da757bfbbca8874b802e723e0d23d094d54d63d9f2a4a02a8b73da2',
+  };
   /** The sheet count is part of the pin: a digest cannot say where a page BROKE. */
   const pageCountOf = async (b: Uint8Array) => (await PDFDocument.load(b)).getPageCount();
   const PNG_1x1 = Buffer.from(
@@ -431,7 +443,7 @@ describe('5b2a7f0f — the en document is untouched, and that is the regression 
     amount: 10,
   }));
 
-  it('an en payslip for a company with NO registration number is pinned to the byte — plain, with a logo, and over two sheets', async () => {
+  it('an en payslip for a company with NO registration number is pinned to the byte — plain, with a logo, and across sheets', async () => {
     // r360 — `companyReg: null` is the reporter's own fallback case: no line, no reserved band. A change
     // that "only" reserved space for the missing line, or that printed a dash in its place, fails all three.
     // r367 — these are r367 values, not main@fbe66e35's: the employee band changed on every payslip.
@@ -445,9 +457,10 @@ describe('5b2a7f0f — the en document is untouched, and that is the regression 
       { ...noReg, allowance: 400, earningLines: manyLines, detailNotRecorded: false },
       labels,
     );
-    expect(await documentDigest(plain)).toBe(NO_REG_R379.plain);
-    expect(await documentDigest(withLogo)).toBe(NO_REG_R379.logo);
-    expect(await documentDigest(long)).toBe(NO_REG_R379.multipage);
+    expect(await documentDigest(plain)).toBe(NO_REG_R381.plain);
+    expect(await documentDigest(withLogo)).toBe(NO_REG_R381.logo);
+    expect(await documentDigest(long)).toBe(NO_REG_R381.multipage);
+    expect(await documentDigest(plain), 'the requested r381 layout changes the prior document').not.toBe(NO_REG_R379.plain);
     // THE SHEET COUNT, SEPARATELY. r367 took 2pt off the employee band and every block below it moved up;
     // a digest cannot tell "two points higher" from "the page broke somewhere else", and the second would
     // be a real change to an official document.
@@ -472,11 +485,12 @@ describe('5b2a7f0f — the en document is untouched, and that is the regression 
       { ...data, allowance: 400, earningLines: manyLines, detailNotRecorded: false },
       labels,
     );
-    expect(await documentDigest(plain)).toBe(WITH_REG_R379.plain);
-    expect(await documentDigest(withLogo)).toBe(WITH_REG_R379.logo);
-    expect(await documentDigest(long)).toBe(WITH_REG_R379.multipage);
-    expect(WITH_REG_R379.plain, 'the registered and unregistered documents are not the same file').not.toBe(
-      NO_REG_R379.plain,
+    expect(await documentDigest(plain)).toBe(WITH_REG_R381.plain);
+    expect(await documentDigest(withLogo)).toBe(WITH_REG_R381.logo);
+    expect(await documentDigest(long)).toBe(WITH_REG_R381.multipage);
+    expect(await documentDigest(plain), 'r381 deliberately changes the registered layout too').not.toBe(WITH_REG_R379.plain);
+    expect(WITH_REG_R381.plain, 'the registered and unregistered documents are not the same file').not.toBe(
+      NO_REG_R381.plain,
     );
     expect([await pageCountOf(plain), await pageCountOf(withLogo), await pageCountOf(long)]).toEqual([1, 1, 3]);
     // r367, stated in both directions here too.
@@ -485,7 +499,7 @@ describe('5b2a7f0f — the en document is untouched, and that is the regression 
 
   it('…and the guard above is a guard: the same fixture in Chinese does NOT hash to it', async () => {
     expect(await documentDigest(await renderPayslipPdf(data, localizeLabels('zh')))).not.toBe(
-      WITH_REG_R379.plain,
+      WITH_REG_R381.plain,
     );
   });
 

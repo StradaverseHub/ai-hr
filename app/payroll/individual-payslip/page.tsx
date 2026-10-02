@@ -230,7 +230,7 @@ const EMPLOYER_BORNE_LABEL: Record<EmployerBorneKey, 'epf' | 'socso' | 'skbbk' |
 function Row({ label, value, muted, quantity }: { label: string; value: React.ReactNode; muted?: boolean; quantity?:React.ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-4 border-b border-border/60 py-1.5 text-sm last:border-0">
-      <span className={muted ? 'text-muted-foreground' : ''}>{label}</span>
+      <span className={`min-w-0 break-words ${muted ? 'text-muted-foreground' : ''}`}>{label}</span>
       {quantity != null && <span className="ms-auto text-right text-xs tabular-nums">{quantity}</span>}
       <span className={`shrink-0 text-right tabular-nums ${muted ? 'text-muted-foreground' : 'font-medium'}`}>{value}</span>
     </div>

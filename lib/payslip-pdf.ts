@@ -1149,9 +1149,8 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
    * and Earnings is exactly the box that continues.
    *
    * So: chunk BOTH sides against the same available height, paint both at the same y, advance by the
-   * TALLER chunk, and carry on with whichever side still has rows. A side that finished simply stops being
-   * painted, which is why a 70-item Earnings box continues down the left of sheet two with nothing beside
-   * it rather than dragging a second copy of Deductions along.
+   * TALLER chunk. Transaction pairs retain the shorter side's heading and empty body until both totals
+   * can finish together, without repeating its amounts. Other paired tables can finish independently.
    */
   const flowPair = (specs: readonly FlowSpec[]) => {
     const alignedTransactions=specs.length===2 && specs[0].dot==='earn' && specs[1].dot==='deduct';
