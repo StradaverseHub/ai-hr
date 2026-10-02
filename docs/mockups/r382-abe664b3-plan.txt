@@ -1,0 +1,40 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+The system already protects employees from a newly calculated payslip with no earnings and statutory deductions. For selected reprocessing, that protection currently stops the whole selection and asks HR to remove the employee. Skipping a calculation must instead keep the employee and their saved records in the run.
+
+WHAT WE'LL CHANGE
+
+- Check each selected employee separately using the same pay rules that calculate their salary, allowances, transactions, attendance, leave and other earnings. An empty basic salary alone will not decide whether they have anything payable.
+- Show Skipped – Nothing payable when there are no payable earnings for the period. Continue processing the other selected employees without asking HR to remove anyone.
+- Preserve the skipped employee's existing saved payslip, run membership, transactions, reservations and payroll history. Do not create a replacement payslip or new statutory deductions for that attempt.
+- Add Processing status and Remarks to the employee results. Show the full skip explanation in expandable details, together with who requested the attempt and when it happened.
+- Show a separate Needs attention result for an employee whose required payroll information is incomplete, including a missing applicable tax-scheme approval. Continue eligible employees without applying another employee's settings or silently substituting a different tax category.
+- Keep Remove employees from this run as a separate intentional action. Record skipped, successfully reprocessed and validation-failed attempts distinctly in the audit trail.
+
+WHAT YOU'LL GET
+
+HR can reprocess a mixed selection and see an honest result for each employee. A skipped employee remains on the run; their last saved result is explicitly labelled as retained, rather than presented as newly recalculated.
+
+GOOD TO KNOW
+
+- Nothing payable means no payable earnings after the period's pay rules, before statutory deductions. A positive earning reduced to no take-home pay by deductions is a different case and will not be silently skipped.
+- A skipped or unsuccessful attempt does not make an outdated saved result current. Where the run already requires correction, that warning remains and HR must resolve it before finalising the run.
+- This change does not rewrite historical payroll or invent missing tax-scheme approvals. The separate tax-scheme request shares the same employee-by-employee result handling.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Source investigation verified reprocessSelectedEmployees in core/payroll.ts enqueues and claims a durable job, then generatePayslips processes the entire selected list in one withTenant transaction. ReprocessNothingPayableError occurs before the subset snapshot/delete. Existing regularRunNothingPayable covers no_monthly_basic only; it is not an authoritative resolved-period earnings calculation. Missing-rate and compensation readiness are genuine validation failures, not NOTHING_PAYABLE.
+
+Extract a transaction-aware per-employee generation owner rather than duplicate calculation rules. Revalidate permission, processed/open-period state and dated employer membership inside the transaction. Serialize run mutations at the batch owner; take stable employment/declaration locks. Use one transaction per selected employment and a transaction-aware generatePayslips single-subset owner. Checkpoint its successful outcome into the claimed job result inside that same transaction as the payslip and side effects. Place a savepoint around the complete employee attempt, from readiness and transaction collection through resolved earnings, statutory routing, payslip replacement, delta totals, claims/loans, consumption markers and counterpart checks. Roll back the entire employee savepoint on NOTHING_PAYABLE or recognized employee validation, then checkpoint its durable outcome and audit in the employee transaction. A resumed job skips committed employment outcomes instead of replacing the payslip again. Revalidate global guards before every employee attempt and stop safely on unknown or global errors without losing already committed outcomes. Do not catch arbitrary database, permission, filing or infrastructure errors as successful completion.
+
+Evaluate authoritative period earnings before calling statutory calculators, including proration, daily/hourly work, unpaid wage reductions, resolved rule items, capped/converted overtime and additional-cycle routing. Do not infer from basic salary, transaction presence, estimated unresolved rule amounts or final net pay. Preserve former full-generation behavior unless a shared correctness change is independently justified. A skip must retain exact old payslip/version, input, scope, transaction bindings/consumption, reservations, balances, claims and recalc-required markers. Newly collected rows for a would-be addition must roll back too. No statutory calculator, replacement slip or removal/release owner runs for the skipped attempt.
+
+Store exact selected-employment outcomes keyed to the job, with status/reason code, actor, instant, batch, company and period. Use the existing job result plus durable audit with explicit job linkage; no timestamp-range inference. Outcomes must survive refresh, retry and a mixed/all-skipped selection. A completed job may have validation outcomes and must not imply every employee succeeded. Duplicate retry returns the stored outcome, while a fresh operator attempt receives a fresh request key.
+
+Update core/payroll-view.ts readers to positively select add/reprocess for snapshot diffs; skip/failure are not payslip comparisons. Extend app/payroll/[batchId]/reprocess/page.tsx, run result/preview readers and six locale catalogues with status, full reason and retained-result disclosure. Audit viewer must show skip distinctly from removal. Employee count remains a count of saved payslips, not attempts. Do not silently exclude retained money from existing totals, exports or documents; keep existing correction/finalisation controls and make stale retained results explicit.
+
+Verification: mixed payable/no-pay/missing-REP selection and all-skipped; recurring and individual earnings, deduction-only, noncash items, missing versus valid daily/hourly rate, no worked time, entire-month unpaid leave, proration, resolved rule zero, statutory overrides and additional runs. Prove unchanged skipped transaction/payslip/history versions and unselected rows, correct saved totals and each successful add side effect exactly once. Cover stale/closed/filing/cross-employer/tenant/permission, repeated submissions, concurrent overlapping selections, employee validation rollback after collection, job interruption and database failure. Prove skipped statutory invocation absent and no new negative zero-pay result. Render actual results in all locales and inspect logs; reverse named changes to demonstrate non-vacuous regressions. The backend agent owns the shared reprocessing kernel; the parent coordinates the read models, screens, migration allocation, full gate and deployment.

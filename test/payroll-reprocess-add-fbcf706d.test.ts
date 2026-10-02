@@ -147,7 +147,7 @@ describe('fbcf706d — the selective-reprocess path against an employment with N
     expect(Number(totalsAfter.net) - Number(totalsBefore.net ?? 0)).toBeCloseTo(Number(addedSlip!.netPay), 2);
   });
 
-  it('but WITHOUT an open compensation row it is refused BY NAME, and nothing on the run moves', async () => {
+  it('WITHOUT an open compensation row records named employee validation and nothing on the run moves', async () => {
     const paid = await hire('Paid Two', 'paidtwo@acme.test', '900101011234', '2026-01-01');
     await setCompensation(a, {
       employmentId: paid.employmentId,
@@ -168,9 +168,11 @@ describe('fbcf706d — the selective-reprocess path against an employment with N
     // exact failure the item exists to replace, and it must keep failing, just truthfully.
     const noPay = await hire('No Salary', 'nosalary@acme.test', '900101013333', '2026-02-01');
 
-    await expect(
-      reprocessSelectedEmployees(a, { batchId: b.batchId, employmentIds: [noPay.employmentId] }),
-    ).rejects.toThrow(/No Salary \(no current salary record\)/);
+    const result = await reprocessSelectedEmployees(a, { batchId: b.batchId, employmentIds: [noPay.employmentId] });
+    expect(result).toMatchObject({status:'completed',validationFailed:1,outcomes:[{
+      employmentId:noPay.employmentId,name:'No Salary',status:'validation_failed',
+      validationDetails:[{gap:'no current salary record'}],resultRetained:false,
+    }]});
 
     // It fails CLOSED: no payslip was written for them and the run is unchanged.
     expect(await slipOf(b.batchId, noPay.employmentId)).toBeNull();
