@@ -39,7 +39,7 @@ describe('direct employer Income Tax Resident selection',()=>{
   expect(await getTaxSelectionMY(adminCtx(b),e.employmentId)).toEqual(view);
  });
  it('person-only automatic/partial tax write cannot overwrite selected REP',async()=>{
-  await save('rep');await setTaxProfileMY(adminCtx(b),{personId:e.personId,taxResidency:'resident',numChildren:2,provenance:{reason:'synthetic'} as never});
+  await save('rep');await setTaxProfileMY(adminCtx(b),{personId:e.personId,taxResidency:'resident',numChildren:2,provenance:'auto_child_relief'});
   expect(await resolve()).toMatchObject({scheme:'rep',selectionVersion:2});
  });
  it('scoped tax card write is atomic, preserves person legacy provenance and audits exact employment',async()=>{
