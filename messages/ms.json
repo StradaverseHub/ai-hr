@@ -14482,6 +14482,7 @@
     "employeeCode": "Kod pekerja",
     "occupation": "Jawatan",
     "cancel": "Batal",
-    "saving": "Menyimpan…"
+    "saving": "Menyimpan…",
+    "attentionCount": "{count} perkara perlu perhatian"
   }
 }

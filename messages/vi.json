@@ -14482,6 +14482,7 @@
     "employeeCode": "Mã nhân viên",
     "occupation": "Chức danh",
     "cancel": "Hủy",
-    "saving": "Đang lưu…"
+    "saving": "Đang lưu…",
+    "attentionCount": "{count} mục cần chú ý"
   }
 }

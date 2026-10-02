@@ -14482,6 +14482,7 @@
     "employeeCode": "员工编号",
     "occupation": "职位",
     "cancel": "取消",
-    "saving": "正在保存…"
+    "saving": "正在保存…",
+    "attentionCount": "{count} 项待处理"
   }
 }

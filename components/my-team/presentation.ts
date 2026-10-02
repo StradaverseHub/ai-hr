@@ -15,6 +15,10 @@ export const STATUS_CLASSES:Record<MyTeamCellStatus,string>={
 export function dateText(date:string,locale:string,options:Intl.DateTimeFormatOptions={weekday:'short',day:'numeric',month:'short'}):string{
  return new Intl.DateTimeFormat(locale,{...options,timeZone:'UTC'}).format(new Date(`${date}T00:00:00Z`));
 }
+/** Application timestamps are instants; calendar grid dates above remain plain UTC dates. */
+export function instantDateText(value:string,locale:string):string{
+ return new Intl.DateTimeFormat(locale,{weekday:'short',day:'numeric',month:'short',timeZone:'Asia/Kuala_Lumpur'}).format(new Date(value));
+}
 export function clockText(value:string|null,locale:string):string{
  if(!value)return '—';
  const instant=new Date(value);if(!Number.isFinite(instant.getTime()))return '—';

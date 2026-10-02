@@ -1,13 +1,16 @@
 import {describe,expect,it} from 'vitest';
 import {createTranslator} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import vn from '../messages/vi.json';
-import {annualText,formatMyTeamCell,visualStatus,type MyTeamTranslate} from '../components/my-team/presentation';
+import {annualText,instantDateText,formatMyTeamCell,visualStatus,type MyTeamTranslate} from '../components/my-team/presentation';
 import {teamDay,teamEmployee,ids} from './fixtures/my-team-ui';
 const catalogues={en,ms,zh,ta,th,vi:vn};const layers={roster:true,attendance:true,leave:true};
 const options={today:'2026-10-02',view:'week' as const};
 const translate=(locale:keyof typeof catalogues):MyTeamTranslate=>createTranslator({locale,messages:catalogues[locale],namespace:'myTeam'});
 function leave(session:'full_day'|'AM'|'PM'|'hourly'='full_day',status:'approved'|'pending'='approved'){return {requestId:ids.request,leaveTypeId:ids.leave,code:'AL',name:'Annual',color:'violet',session,status,days:session==='full_day'?1:0.5,fromTime:null,toTime:null};}
 describe('My Team presents saved source facts without deriving attendance or leave entitlements',()=>{
+ it('formats application instants in KL without changing plain grid calendar dates',()=>{
+  expect(instantDateText('2026-10-01T20:30:00Z','en')).toContain('2 Oct');
+ });
  it('uses the source status, never lateness inferred from shift or clock comparison',()=>{
   const day=teamDay();day.attendance!.checkInAt='2026-10-02T03:30:00Z';day.attendance!.lateMinutes=0;
   expect(visualStatus(day,options.today)).toBe('present');day.attendance!.flag='late';expect(visualStatus(day,options.today)).toBe('late');

@@ -28,6 +28,15 @@ describe('My Team client consumes canonical facts and preserves action context',
   await user.keyboard('{Escape}');await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
   expect(document.activeElement).toBe(screen.getByRole('button',{name:/Synthetic A S-01/}));expect(errors).toEqual([]);
  });
+ it('shows the complete week, pending request range, KL application date, attention badge and absent shift facts',()=>{
+  const snapshot=teamSnapshot();snapshot.actionableApprovals[0].appliedAt='2026-10-01T20:30:00Z';snapshot.attention.push({kind:'absent',id:'absent',employmentId:ids.person,date:snapshot.today,lateMinutes:null,pendingLeave:true});
+  mount(snapshot);
+  expect(screen.getByText(/28 Sep.*4 Oct/)).toBeTruthy();expect(screen.getByText(/Synthetic A.*5 Oct.*6 Oct/)).toBeTruthy();
+  expect(screen.getByText(/applied Fri, 2 Oct/)).toBeTruthy();expect(screen.getByLabelText('2 items need attention').textContent).toBe('2');
+  expect(screen.getByText(/D · 08:30–17:30/).textContent).toContain(en.myTeam.noCheckIn);expect(screen.getByText(/D · 08:30–17:30/).textContent).toContain(en.myTeam.leavePending);
+  const today=screen.getByRole('region',{name:en.myTeam.today});expect(today.className).toContain('grid-cols-2');expect(today.className).toContain('min-[900px]:grid-cols-3');expect(today.className).not.toContain('xl:grid-cols-6');
+  expect(screen.getByText(en.myTeam.status_upcoming)).toBeTruthy();
+ });
  it('month cells expose full details on keyboard focus and panel tabs support arrow navigation and modal focus',async()=>{
   const snapshot=teamSnapshot();snapshot.query.view='month';mount(snapshot);const user=userEvent.setup();
   const cell=screen.getByRole('button',{name:/Synthetic A.*Fri/});cell.focus();
