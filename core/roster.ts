@@ -33,6 +33,7 @@ import {
   weekPatternWorkingDayCount,
 } from './attendance';
 import { approvedLeaveDates } from './leave';
+import {workingShiftSchedule} from '../packs/attendance/service';
 import { listEmployees, listEmployeesPage, myEmployment, ownReportingManagersTx } from './read';
 import { isAdmin } from '../lib/authz';
 import {
@@ -3067,7 +3068,7 @@ export async function myRosterWindow(
 
   return withTenant(ctx, async (tx) => {
     const usualRow = usualRows[0] ?? null;
-    const usual: UsualShift | null = usualRow ? { shiftId: usualRow.shiftId, pattern: usualRow.pattern } : null;
+    const usual: UsualShift | null = usualRow ? { shiftId: usualRow.shiftId, pattern: usualRow.pattern, ...(usualRow.halfPattern?.length?{halfPattern:usualRow.halfPattern}:{}) } : null;
 
     // Only the shifts this window actually references — the legend names what is on screen, and a
     // tenant-wide shift list would serialise every template the company has ever authored into the
@@ -3084,6 +3085,7 @@ export async function myRosterWindow(
             breakMinutes: shift.breakMinutes,
             normalMinutesOverride: shift.normalMinutesOverride,
             roundingMinutes: shift.normalHoursRoundingMinutes,
+            crossesMidnight: shift.crossesMidnight,
             color: shift.color,
           })
           .from(shift)
@@ -3091,6 +3093,9 @@ export async function myRosterWindow(
           .orderBy(asc(shift.code), asc(shift.name))
       : [];
 
+    const scheduleInputs=new Map(shiftRows.map(s=>[s.id,{start:s.startTime,end:s.endTime,
+      crosses:s.crossesMidnight,breakMinutes:s.breakMinutes,roundingMinutes:s.roundingMinutes,
+      normalMinutesOverride:s.normalMinutesOverride}]));
     const shifts = new Map<string, MyRosterShift>(
       shiftRows.map((s) => [
         s.id,
@@ -3103,15 +3108,7 @@ export async function myRosterWindow(
           breakMinutes: s.breakMinutes,
           // The SHARED figure (core/attendance.ts), never a second expression: the hours this screen
           // promises and the hours the engine schedules have to be the same number.
-          workingMinutes:
-            s.normalMinutesOverride ??
-            netScheduledMinutes(
-              s.startTime,
-              s.endTime,
-              shiftCrossesMidnight(s.startTime, s.endTime),
-              s.breakMinutes,
-              s.roundingMinutes,
-            ),
+          workingMinutes:workingShiftSchedule(scheduleInputs.get(s.id)!,'full').normalMinutes,
           color: s.color,
         },
       ]),
@@ -3123,7 +3120,13 @@ export async function myRosterWindow(
       const row = assigned.get(date);
       const cellIn: AssignedCell = row ? (row.isRestDay ? { kind: 'rest' } : row.shiftId ? { kind: 'shift', shiftId: row.shiftId } : null) : null;
       const cell = resolveRosterCell(date, cellIn, usual);
-      const sh = cell.kind === 'shift' || cell.kind === 'usual' ? (shifts.get(cell.shiftId) ?? null) : null;
+      const baseShift = cell.kind === 'shift' || cell.kind === 'usual' ? (shifts.get(cell.shiftId) ?? null) : null;
+      // Assigned shifts always own their full schedule, exactly as scheduleFor's roster branch does.
+      // The usual week was already resolved in one batch through the employee/shift/Standard group.
+      const kind=cell.kind==='usual'&&usual&&shiftDayKindFor(usual,date)==='half'?'half':'full';
+      const schedule=baseShift?workingShiftSchedule(scheduleInputs.get(baseShift.id)!,kind):null;
+      const sh=baseShift&&schedule?{...baseShift,startTime:schedule.shiftStart,endTime:schedule.shiftEnd,
+        workingMinutes:schedule.normalMinutes}:baseShift;
       return {
         date,
         cell,
