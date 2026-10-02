@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {eq} from 'drizzle-orm';
-import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
+import {beforeAll,beforeEach,afterAll,describe,it,expect,vi} from 'vitest';
 import {requirePackFor} from '../localization/registry';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
@@ -9,6 +9,15 @@ import {setEaOverride} from '../core/ea-override';
 import {createBatch,createAdditionalRun,generatePayslips,upsertPayComponent,setEmploymentPayComponent,setPayrollBatchComponent,createIndividualTxn} from '../packs/payroll/service';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 import * as schema from '../db/schema';
+import {renderToStaticMarkup} from 'react-dom/server';
+import EaStatementPage from '../app/payroll/reports/ea/[employmentId]/page';
+const sessionState=vi.hoisted(()=>({ctx:null as any}));
+vi.mock('../lib/session',()=>({getSession:async()=>sessionState.ctx}));
+vi.mock('next-intl/server',async()=>{const {createTranslator}=await import('next-intl');const fs=await import('node:fs');return {getTranslations:async(arg:any)=>createTranslator({locale:'en',messages:JSON.parse(fs.readFileSync('messages/en.json','utf8')),namespace:typeof arg==='string'?arg:arg.namespace})};});
+// Client controls are outside this static RSC proof; data retrieval and printed EA rows remain real.
+vi.mock('../app/payroll/reports/ea/[employmentId]/ea-amend-panel',()=>({EaAmendPanel:()=>null}));
+vi.mock('../components/print-button',()=>({PrintButton:()=>null}));
+vi.mock('../components/ui/toast-trigger',()=>({ToastFromQuery:()=>null}));
 const pack=requirePackFor('MY');
 const flags={kind:'non_payable' as const,isNonPayable:true,prorates:false,includedInPcb:true,includedInEpf:false,includedInSocsoEis:false,includedInHrdfBase:false,pcbRemunerationType:'normal' as const,pcbExemptionCode:'PCB_TAXABLE',epfBonus2012:false};
 describe('r383 generated payroll to employee EA statement',()=>{
@@ -86,4 +95,26 @@ describe('r383 generated payroll to employee EA statement',()=>{
   expect(after!.partB.benefitsInKind).toBe(888);expect(after!.overrides).toContainEqual({field:'benefitsInKind',original:0,amended:888,reason:'Synthetic manual evidence for incomplete legacy year'});
   expect((await slip(jan)).statutory).toEqual(old);
  });
+ it('keeps known BIK plus unmapped VOLA unavailable in the actual EA page until explicitly amended',async()=>{
+  const {ctx,e}=await employee();sessionState.ctx=ctx;
+  const bik=await upsertPayComponent(ctx,{...flags,code:'EA_KNOWN_CAR',name:'Synthetic mapped BIK',displayCategory:'bik',eaFormLine:'EA_B3'});
+  const vola=await upsertPayComponent(ctx,{...flags,code:'EA_UNMAPPED_HOME',name:'Synthetic unmapped accommodation',displayCategory:'vola',eaFormLine:null});
+  await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:bik.id,amount:600,effectiveFrom:'2026-01-01'});
+  const jan=await regular(ctx,'2026-01');const extra=await createAdditionalRun(ctx,{companyId:base.companyId,payPeriod:'2026-01',runType:'bonus'});
+  await createIndividualTxn(ctx,{batchId:extra.batchId,employmentId:e.employmentId,kind:'earning',componentId:vola.id,txnDate:'2026-01-15',amount:800});await generatePayslips(ctx,{batchId:extra.batchId});
+  const saved=[await slip(jan),await slip(extra.batchId)];
+  expect((saved[0].statutory as any).pcbNonCash.ownedEaEntries).toEqual(expect.arrayContaining([expect.objectContaining({code:'EA_KNOWN_CAR',reportableAmount:600,eaFormLine:'EA_B3'})]));
+  expect((saved[1].statutory as any).pcbNonCash.ownedEaEntries).toEqual(expect.arrayContaining([expect.objectContaining({code:'EA_UNMAPPED_HOME',reportableAmount:800,eaFormLine:null})]));
+  const form=await employeeEaStatement(ctx,{employmentId:e.employmentId,year:'2026',companyId:base.companyId});
+  expect(form!.routing).toMatchObject({nonCashComplete:false,unmapped:expect.arrayContaining([expect.objectContaining({code:'EA_UNMAPPED_HOME'})])});
+  expect(form!.partB).toMatchObject({benefitsInKind:0,livingAccommodation:0});
+  const render=async()=>renderToStaticMarkup(await EaStatementPage({params:Promise.resolve({employmentId:e.employmentId}),searchParams:Promise.resolve({year:'2026',company:base.companyId})}));
+  const row=(html:string,label:string)=>{const start=html.indexOf(label);expect(start).toBeGreaterThan(-1);return html.slice(start,html.indexOf('</div>',start));};
+  const before=await render();
+  expect(row(before,'3. Benefits in kind')).toContain('>—</span>');expect(row(before,'4. Value of living accommodation provided')).toContain('>—</span>');
+  await setEaOverride(ctx,{employmentId:e.employmentId,year:'2026',field:'benefitsInKind',amount:888,reason:'Synthetic manual evidence for incomplete annual mapping'});
+  const after=await render();expect(row(after,'3. Benefits in kind')).toContain('RM 888.00');expect(row(after,'3. Benefits in kind')).toContain('Amended');expect(row(after,'4. Value of living accommodation provided')).toContain('>—</span>');
+  expect([await slip(jan),await slip(extra.batchId)]).toEqual(saved);
+ });
+
 });
