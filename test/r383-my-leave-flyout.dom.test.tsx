@@ -29,15 +29,25 @@ describe('My Leave uses the shared sidebar flyout',()=>{
   fireEvent.click(leave);fireEvent.click(screen.getByRole('link',{name:'Leave Overview'}));expect(screen.queryByRole('navigation',{name:'My Leave'})).toBeNull();
   expect(within(rail).queryByRole('link',{name:'Leave History'})).toBeNull();
  });
- it('highlights only the existing overview destination and preserves entitlement visibility',()=>{
+ it('highlights the overview and keeps core leave visible while sellable attendance is hidden',()=>{
   location.path='/leave';const view=show();const leave=screen.getByRole('button',{name:'My Leave'});expect(leave.classList.contains('bg-accent')).toBe(true);
   fireEvent.click(leave);const panel=screen.getByRole('navigation',{name:'My Leave'});
   expect(within(panel).getByRole('link',{name:'Leave Overview'})).toHaveAttribute('aria-current','page');
   expect(within(panel).getByRole('link',{name:'Leave History'})).not.toHaveAttribute('aria-current');
-  view.unmount();show(false,[]);expect(screen.queryByRole('button',{name:'My Leave'})).toBeNull();
+  view.unmount();show(false,[]);
+  // Leave is shared core, so an empty sellable-module list must retain both self-service links.
+  const coreLeave=screen.getByRole('button',{name:'My Leave'});expect(coreLeave.classList.contains('bg-accent')).toBe(true);
+  expect(screen.queryByRole('button',{name:'My Attendance'})).toBeNull();
+  fireEvent.click(coreLeave);expect(within(screen.getByRole('navigation',{name:'My Leave'})).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history']);
  });
- it('does not highlight My Leave on the distinct team tracker route',()=>{
-  location.path='/leave/tracker';show();const leave=screen.getByRole('button',{name:'My Leave'});
+ it.each([false,true])('does not highlight My Leave on the tracker route in collapsed=%s',collapsed=>{
+  location.path='/leave/tracker';show(collapsed);
+  if(!collapsed){
+   // Manage is active on the tracker; the inactive Home section initially stays closed.
+   expect(screen.queryByRole('button',{name:'My Leave'})).toBeNull();
+   const home=screen.getByRole('button',{name:messages.nav.sectionHome});expect(home).toHaveAttribute('aria-expanded','false');fireEvent.click(home);
+  }
+  const leave=screen.getByRole('button',{name:'My Leave'});
   expect(leave.classList.contains('bg-accent')).toBe(false);fireEvent.click(leave);
   const panel=screen.getByRole('navigation',{name:'My Leave'});
   expect(within(panel).getAllByRole('link').every(link=>!link.hasAttribute('aria-current'))).toBe(true);

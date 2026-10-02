@@ -10,7 +10,7 @@ describe('canonical roster includes half working days without changing rest/off 
  it('carries stored half weekdays through the administrative roster reader',async()=>{
   const b=await seedBase(),ctx=adminCtx(b);
   const employee=await hireEmployee(ctx,{person:{fullName:'Half week reader',primaryEmail:'half@t.local'},companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:'2020-01-01'});
-  const shift=await createShift(ctx,{companyId:b.companyId,name:'Mixed full and half week',code:'HALF',startTime:'09:00:00',endTime:'18:00:00',weeklyPattern:[1,2,3,4],halfPattern:[5],offPattern:[6]});
+  const shift=await createShift(ctx,{companyId:b.companyId,name:'Mixed full and half week',code:'HALF',startTime:'09:00:00',endTime:'18:00:00',breakMinutes:60,weeklyPattern:[1,2,3,4],halfPattern:[5],offPattern:[6]});
   await assignDefaultShift(ctx,{employmentId:employee.employmentId,shiftId:shift.id});
   const view=await rosterWindowView(ctx,{companyIds:[b.companyId],employmentIds:[employee.employmentId],from:'2026-03-02',to:'2026-03-08'});
   expect(view.usual[employee.employmentId]).toEqual({shiftId:shift.id,pattern:[1,2,3,4],halfPattern:[5]});
