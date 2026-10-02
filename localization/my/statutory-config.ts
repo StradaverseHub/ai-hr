@@ -376,6 +376,11 @@ export function validateStatutoryRuleset(data: StatutoryRuleset): string[] {
           errs.push(`PCB band ${i + 1}: B values must be numbers.`);
       });
     }
+    if (pcb.incentive != null) {
+      const i = pcb.incentive;
+      if (!inUnit(i.rate) || !nonNeg(i.rebateThreshold) || !nonNeg(i.rebateCat13) || !nonNeg(i.rebateCat2))
+        errs.push('PCB incentive rate and rebate table must contain valid non-negative numbers.');
+    }
     const r = pcb.reliefs;
     if (!r || !nonNeg(r.individual) || !nonNeg(r.spouse) || !nonNeg(r.perChild) || !nonNeg(r.epfReliefCap))
       errs.push('PCB reliefs must all be ≥ 0.');
@@ -599,6 +604,7 @@ function changedFields(before: StatutoryRuleset, after: StatutoryRuleset): strin
     changed.push('pcb.reliefs.childByCategory');
   if (JSON.stringify(before.epf?.partA) !== JSON.stringify(after.epf?.partA)) changed.push('epf.partA');
   if (JSON.stringify(before.epf?.partE) !== JSON.stringify(after.epf?.partE)) changed.push('epf.partE');
+  if (JSON.stringify(before.pcb?.incentive) !== JSON.stringify(after.pcb?.incentive)) changed.push('pcb.incentive');
   if (JSON.stringify(before.pcb?.bands) !== JSON.stringify(after.pcb?.bands)) changed.push('pcb.bands');
   if (JSON.stringify(before.socso?.category1) !== JSON.stringify(after.socso?.category1))
     changed.push('socso.category1');

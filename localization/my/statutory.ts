@@ -917,8 +917,8 @@ export async function correctAccidentalHrdfOptOutsMY(
 /** Tax residency status. resident ⇒ full computerised MTD; non_resident ⇒ flat 30% (spec §D.a); rep
  *  (Returning Expert Programme) + knowledge_worker (specific-region incentive, e.g. Iskandar) ⇒ flat 15%.
  *  Source: Income Tax (Exemption) orders / TalentCorp REP; both incentive schemes tax employment income at a
- *  flat 15%. The exact rate/eligibility is a government-incentive matter to confirm before go-live. */
-export const TAX_RESIDENCIES = ['resident', 'non_resident', 'rep', 'knowledge_worker'] as const;
+ *  annual incentive tax at 15% on chargeable income. HR confirms approval eligibility. */
+export const TAX_RESIDENCIES = ['resident', 'non_resident', 'rep', 'knowledge_worker', 'c_suite'] as const;
 export type TaxResidency = (typeof TAX_RESIDENCIES)[number];
 export const isTaxResidency = (v: string): v is TaxResidency => (TAX_RESIDENCIES as readonly string[]).includes(v);
 
@@ -1245,7 +1245,7 @@ export type TaxWriteProvenance = 'auto_child_relief';
  * SOCSO/EIS, bank, TP3, zakat) untouched — the Identification & Tax card was split out of the single full-row
  * statutory form (item 8b5334db), exactly like setTp3/setBank. Requires an existing statutory row (the IC seeds
  * it on the Profile tab) — throws NoIcYetError otherwise. isResident is kept in sync as the legacy source of
- * truth (resident ⇒ true, any incentive status ⇒ false). Appends `employee.tax.updated` (before/after).
+ * truth (all resident and approved resident incentive schemes ⇒ true; non-resident ⇒ false). Appends `employee.tax.updated` (before/after).
  */
 export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
   const residency: TaxResidency =
@@ -1260,9 +1260,8 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
     numChildren,
     childReliefMode: mode,
     taxResidency: residency,
-    // Keep the legacy boolean in sync so any caller still reading is_resident sees the right full-MTD vs
-    // flat-rate intent (only 'resident' is a full-MTD resident; the three incentive statuses are not).
-    isResident: residency === 'resident',
+    // Approved incentive categories are resident. Explicit scheme owns their annual tax method.
+    isResident: residency !== 'non_resident',
     employerBearsTax: p.employerBearsTax ?? false,
     // Item d64d0df4 — defaults to false, matching the column default, so an employee nobody has flagged
     // keeps today's PCB exactly and a caller that predates this field cannot claim the relief by omission.

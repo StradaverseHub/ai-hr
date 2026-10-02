@@ -24,6 +24,7 @@ import {
   MY_EPF_THIRD_SCHEDULE_PART_A,
   MY_EPF_THIRD_SCHEDULE_PART_E,
   MY_HRDF,
+  MY_PCB_INCENTIVE,
   MY_OT_WAGE_CEILING,
   type ContribBand,
   type SocsoBand,
@@ -48,6 +49,16 @@ export class StatutoryRulesetMalformedError extends Error {
     super(message);
     this.name = 'StatutoryRulesetMalformedError';
   }
+}
+
+export type PcbCalculationScheme = 'resident' | 'non_resident' | 'rep' | 'knowledge_worker' | 'c_suite';
+/** Resolve the explicit HR declaration; legacy residency is consulted only when no scheme is saved. */
+export function resolvePcbCalculationScheme(value: string | null | undefined, resident = true): PcbCalculationScheme {
+  const scheme = value ?? (resident ? 'resident' : 'non_resident');
+  if (!['resident', 'non_resident', 'rep', 'knowledge_worker', 'c_suite'].includes(scheme)) {
+    throw new StatutoryRulesetMalformedError('Unknown PCB calculation scheme');
+  }
+  return scheme as PcbCalculationScheme;
 }
 
 export type TaxProfile = {
@@ -701,6 +712,7 @@ export type PcbMonthResult = {
   normalPreZakat: number;
   /** Audit snapshot stamped into the payslip (reproducibility, ADR-0006). */
   snapshot: {
+    calculationScheme?: PcbCalculationScheme | string;
     month: number;
     n: number;
     ytdNet: number;
@@ -753,6 +765,9 @@ export type PcbMonthResult = {
      * and the screen prints that sentence — it never renders the missing legs as zeroes.
      */
     trace?: {
+      schemeVersion?: 1;
+      T?: number;
+      T2?: number;
       /** LHDN Table 1 row that P₁ fell into, and the annual tax it yields. `B` is already the
        *  category-selected column (negative B encodes the RM400/RM800 rebate). */
       M: number;
@@ -863,6 +878,7 @@ export function childReliefAmountFor(
  * the bonus (Yₜ/Kₜ). `month` is the calendar month of the pay period (1–12).
  */
 export function pcbMonth(p: {
+  calculationScheme?: Exclude<PcbCalculationScheme, 'non_resident'>;
   monthlyWage: number;
   epfMonthly: number;
   month: number;
@@ -877,6 +893,8 @@ export function pcbMonth(p: {
   /** PCB bands + reliefs (ADR-0019); defaults to the verified built-in set. */
   pcb?: StatutoryRuleset['pcb'];
 }): PcbMonthResult {
+  const scheme = p.calculationScheme ?? 'resident';
+  if (!['resident', 'rep', 'knowledge_worker', 'c_suite'].includes(scheme)) throw new StatutoryRulesetMalformedError('Invalid resident PCB scheme');
   const category: TaxCategory = p.profile?.category ?? 1;
   const children = p.profile?.children ?? 0;
   const acc = p.acc ?? PCB_ZERO_ACC;
@@ -924,7 +942,17 @@ export function pcbMonth(p: {
   const P1 = trunc2(acc.netRemuneration + (Y1 - K1) + (Y1 - K2n) * n - reliefs - lp);
   // 45df860a — the bracket is now KEPT rather than consumed inline. `bracket.tax` is the exact number
   // `annualTaxFor` used to return, so this line is arithmetically identical to the one it replaces.
-  const bracket = annualTaxFor(P1, category, pcb.bands);
+  // The P/history/EPF/TP1 owner is shared. Only the annual tax map differs by approved scheme.
+  // §D.2 and the incentive-section Yt footnote retain the normal/additional five-step split.
+  const incentive = pcb.incentive ?? MY_PCB_INCENTIVE;
+  if (scheme !== 'resident' && (['rate', 'rebateThreshold', 'rebateCat13', 'rebateCat2'] as const).some(k => typeof incentive[k] !== 'number' || !Number.isFinite(incentive[k]) || incentive[k] < 0) || (scheme !== 'resident' && incentive.rate > 1)) {
+    throw new StatutoryRulesetMalformedError('Invalid incentive PCB table');
+  }
+  const rebateFor = (P: number) => scheme === 'c_suite' || P > incentive.rebateThreshold
+    ? 0 : category === 2 ? incentive.rebateCat2 : incentive.rebateCat13;
+  const annualFor = (P: number) => scheme === 'resident' ? annualTaxFor(P, category, pcb.bands)
+    : { M: 0, R: incentive.rate, B: -rebateFor(P), tax: Math.max(0, P * incentive.rate - rebateFor(P)) };
+  const bracket = annualFor(P1);
   const mtdNormalCalc = ceil5sen(trunc2(Math.max(0, (bracket.tax - (Z + X)) / (n + 1))));
 
   // Steps 2–4 — additional remuneration via the year-total difference.
@@ -941,7 +969,7 @@ export function pcbMonth(p: {
     Kt = Math.min(p.epfOnAdditional ?? 0, Math.max(0, cap - K - K1));
     K2a = n > 0 ? trunc2(Math.min((cap - K - K1 - Kt) / n, K1)) : 0;
     P2 = trunc2(acc.netRemuneration + (Y1 - K1) + (Y1 - K2a) * n + (Yt - Kt) - reliefs - lp);
-    totalTaxYear = annualTaxFor(P2, category, pcb.bands).tax; // Step 3
+    totalTaxYear = annualFor(P2).tax; // Step 3
     totalMtdYear = X + mtdNormalCalc * (n + 1); // Step 1[E]
     additionalCalc = ceil5sen(trunc2(Math.max(0, totalTaxYear - totalMtdYear + Z))); // Step 4
   }
@@ -959,6 +987,7 @@ export function pcbMonth(p: {
     // it without re-deriving. Additive; the offset/total above are unchanged.
     normalPreZakat: mtdNormalCalc,
     snapshot: {
+      calculationScheme: scheme,
       month,
       n,
       ytdNet: round2(acc.netRemuneration),
@@ -988,6 +1017,7 @@ export function pcbMonth(p: {
       // 45df860a — the rest of the working. Every member was already computed above; none of them is
       // derived here, and none of them is rounded differently from the value that entered the formula.
       trace: {
+        ...(scheme === 'resident' ? {} : { schemeVersion: 1 as const, ...(scheme === 'c_suite' ? {} : { T: rebateFor(P1), ...(P2 === undefined ? {} : { T2: rebateFor(P2) }) }) }),
         M: bracket.M,
         R: bracket.R,
         B: bracket.B,
@@ -1171,11 +1201,9 @@ export function statutory(
     subjectToSocso?: boolean;
     subjectToSkbbk?: boolean;
     resident?: boolean;
-    /** Item 8b5334db — an explicit flat PCB rate for the incentive tax-residency statuses, overriding the
-     *  resident/non-resident branch selection. null/undefined ⇒ resolve from `resident` (back-compat). 0.30 ⇒
-     *  non-resident (identical to resident:false); 0.15 ⇒ REP / Knowledge Worker (specific region). A flat rate
-     *  means the same "flat % of taxable remuneration, no reliefs, no accumulators" shape as the non-resident MTD. */
+    /** Legacy non-resident 30% option. Approved incentives require calculationScheme. */
     flatTaxRate?: number | null;
+    calculationScheme?: PcbCalculationScheme | string;
     epfElection?: EpfElection;
     /** Employee age + citizenship select the EPF rule (Part A / Part E senior / non-citizen 2%/2%). */
     epfAge?: number | null;
@@ -1279,14 +1307,14 @@ export function statutory(
   // between the combined-month Third Schedule lookup and the same lookup on the normal wage alone, so
   // `e.employee − epfOnBonus` below is exactly the normal-wage schedule amount K₁ is taken from.
   const epfOnBonus = eC.employeeOnBonus;
-  // Item 8b5334db — resolve the flat PCB rate: an explicit flatTaxRate wins (REP/Knowledge Worker = 0.15,
-  // non_resident = 0.30); otherwise fall back to the legacy resident=false ⇒ 0.30 branch. A resident (null
-  // rate, resident !== false) takes the full computerised-MTD path below. This keeps every existing caller
-  // byte-identical: resident:false with no flatTaxRate still yields exactly 0.30.
-  const flatRate = opts?.flatTaxRate != null ? opts.flatTaxRate : opts?.resident === false ? 0.3 : null;
+  const scheme = resolvePcbCalculationScheme(opts?.calculationScheme, opts?.resident ?? true);
+  // Only the legacy 30% non-resident option remains valid. 15% alone cannot identify an approved scheme.
+  if (opts?.flatTaxRate != null && opts.flatTaxRate !== 0.3) {
+    throw new StatutoryRulesetMalformedError('Select an explicit approved PCB scheme instead of a flat incentive rate');
+  }
+  const flatRate = scheme === 'non_resident' || (opts?.calculationScheme == null && opts?.flatTaxRate === 0.3) ? 0.3 : null;
   if (flatRate != null) {
-    // Flat-rate MTD (spec §D.a for non-residents; the REP/Knowledge-Worker incentive schemes use the same
-    // shape at 15%): flat % of taxable remuneration, no reliefs / accumulators.
+    // Non-resident MTD, spec §D.a: taxable remuneration × 30%, without resident reliefs.
     const pcbAll = rm10Floor(ceil5sen(trunc2((pcbWage + additional) * flatRate)));
     const pcbBonusOnly = rm10Floor(ceil5sen(trunc2(additional * flatRate)));
     return {
@@ -1307,6 +1335,7 @@ export function statutory(
       // the flat rate was applied to, and RM x % is not checkable without the x. Additive; the three
       // keys that were here are untouched.
       pcbMeta: {
+        calculationScheme: 'non_resident',
         nonResident: flatRate === 0.3,
         flatRate,
         rate: flatRate,
@@ -1316,6 +1345,7 @@ export function statutory(
     };
   }
   const m = pcbMonth({
+    calculationScheme: scheme as Exclude<PcbCalculationScheme, 'non_resident'>,
     monthlyWage: pcbWage,
     epfMonthly: Math.max(0, e.employee - epfOnBonus),
     month: pcbCtx?.month ?? 1,

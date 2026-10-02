@@ -55,6 +55,7 @@ import {
   epf,
   foldPriorSlipIntoAccumulators,
   openingAccumulatorsFromTp3,
+  resolvePcbCalculationScheme,
   statutory,
   type EpfMode,
   type PcbAccumulators,
@@ -692,7 +693,7 @@ function statutoryOptsOf(e: ProfileRow, period: string): NonNullable<Parameters<
     subjectToSocso: socsoCatSel === 'none' ? false : (e.subjectToSocso ?? true),
     subjectToSkbbk: e.subjectToSkbbk ?? true,
     resident: e.isResident ?? true,
-    flatTaxRate: residency === 'non_resident' ? 0.3 : residency === 'rep' || residency === 'knowledge_worker' ? 0.15 : null,
+    calculationScheme: resolvePcbCalculationScheme(residency, e.isResident ?? true),
     epfAge: age,
     epfCitizenship: citizenship,
     // Item 70b14723 — THE TYPED AMOUNTS TRAVEL WITH THE ELECTION. `localization/my/multicycle.ts` re-derives

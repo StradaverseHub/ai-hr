@@ -6373,16 +6373,8 @@ export async function generatePayslips(
         subjectToSocso: socsoCatSel === 'none' ? false : (e.subjectToSocso ?? true),
         subjectToSkbbk: e.subjectToSkbbk ?? true,
         resident: e.isResident ?? true,
-        // Item 8b5334db — resolve the flat PCB rate from tax residency (falling back to isResident for a legacy
-        // row with no residency set). resident ⇒ null (full MTD); non_resident ⇒ 0.30 (identical to the old
-        // resident:false path); rep / knowledge_worker ⇒ 0.15 (Returning Expert Programme / Knowledge Worker in a
-        // specific region — flat incentive rate, no reliefs). Byte-identical for every existing resident/non-res row.
-        flatTaxRate: (() => {
-          const r = e.taxResidency ?? (e.isResident === false ? 'non_resident' : 'resident');
-          if (r === 'non_resident') return 0.3;
-          if (r === 'rep' || r === 'knowledge_worker') return 0.15;
-          return null;
-        })(),
+        // Preserve the explicit approved scheme; the country pack alone resolves its formula.
+        calculationScheme: e.taxResidency ?? (e.isResident === false ? 'non_resident' : 'resident'),
         // EPF rule selection (#95): age + citizenship pick Part A / Part E senior / non-citizen 2%/2%.
         epfAge: age,
         epfCitizenship: e.epfCitizenship ?? 'citizen',

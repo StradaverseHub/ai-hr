@@ -488,12 +488,14 @@ export function IdentityTaxCard({
                 VERBATIM: this card still posts `taxCategory` with the same values it always did. */}
             <TaxCategoryField mode="form" defaultValue={defaults.taxCategory} onChange={setTaxCategory} />
             <Field label={t('incomeTaxResident')}>
-              <select name="taxResidency" defaultValue={defaults.taxResidency || 'resident'} className={inputCls}>
+              <select name="taxResidency" aria-describedby="tax-residency-approval-note" defaultValue={defaults.taxResidency || 'resident'} className={inputCls}>
                 <option value="resident">{t('taxResidencyResident')}</option>
                 <option value="non_resident">{t('taxResidencyNonResident')}</option>
                 <option value="rep">{t('taxResidencyRep')}</option>
                 <option value="knowledge_worker">{t('taxResidencyKnowledgeWorker')}</option>
+                <option value="c_suite">{t('taxResidencyCSuite')}</option>
               </select>
+              <p id="tax-residency-approval-note" className="mt-1 text-xs text-slate-600 dark:text-slate-400">{t('taxResidencyApprovedSchemeNote')}</p>
             </Field>
             {/* Item d64d0df4 — Disabled Individual and Disabled Spouse (OKU). Yes/No, defaulting to No,
                 so nobody's monthly tax moves until an admin makes the claim. Setting either to Yes DOES

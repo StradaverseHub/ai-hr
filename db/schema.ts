@@ -3204,7 +3204,7 @@ export const employeeStatutoryMy = pgTable(
     isResident: boolean('is_resident').notNull().default(true),
     // Item 8b5334db — richer tax residency than the boolean above (which stays in sync as the legacy source of
     // truth). resident ⇒ full computerised MTD; non_resident ⇒ flat 30%; rep (Returning Expert Programme) +
-    // knowledge_worker (specific-region incentive, e.g. Iskandar) ⇒ flat 15%. Backfilled from is_resident.
+    // knowledge_worker and c_suite ⇒ approved annual incentive method at 15%. HR confirms eligibility.
     taxResidency: text('tax_residency').notNull().default('resident'),
     // Item 8b5334db — employer bears the employee's PCB: the tax is still computed + reported in full, but its
     // amount is funded from employer cost instead of deducted from the employee's net (same plumbing as

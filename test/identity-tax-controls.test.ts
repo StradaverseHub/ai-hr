@@ -67,14 +67,13 @@ describe('statutory() tax residency branches (item 8b5334db)', () => {
     expect((viaFlat.pcbMeta as { rate: number }).rate).toBe(0.3);
   });
 
-  it('rep + knowledge_worker use a flat 15% — half the non-resident PCB, and identical to each other', () => {
-    const rep = statutory(wage, { category: 1, children: 0 }, 0, 0, { month: 1 }, { flatTaxRate: 0.15 });
-    const nonRes = statutory(wage, { category: 1, children: 0 }, 0, 0, { month: 1 }, { flatTaxRate: 0.3 });
-    expect(rep.pcb).toBeGreaterThan(0);
-    // 15% is exactly half of 30% before rounding; the rounded figures stay close to half.
-    expect(rep.pcb).toBeLessThan(nonRes.pcb);
-    expect((rep.pcbMeta as { flatRate: number }).flatRate).toBe(0.15);
-    expect((rep.pcbMeta as { nonResident: boolean }).nonResident).toBe(false);
+  it('REP and Knowledge Worker use the approved annual chargeable-income method', () => {
+    const rep = statutory(wage, { category: 1, children: 0 }, 0, 0, { month: 1 }, { calculationScheme: 'rep' });
+    const kw = statutory(wage, { category: 1, children: 0 }, 0, 0, { month: 1 }, { calculationScheme: 'knowledge_worker' });
+    // P = 96,000 -4,000 EPF -9,000 individual =83,000; tax12,450 spread over12months.
+    expect(rep.pcb).toBe(1037.5);expect(kw.pcb).toBe(rep.pcb);
+    expect(rep.pcbMeta).toMatchObject({calculationScheme:'rep',P1:83000,trace:{schemeVersion:1,R:0.15,T:0}});
+    expect(rep.pcbMeta).not.toHaveProperty('flatRate');
   });
 
   it('resident (no flat rate) takes the full computerised-MTD path, not a flat percentage', () => {
@@ -179,8 +178,8 @@ describe('Identification & Tax — service + action behaviour (item 8b5334db)', 
     expect(row?.numChildren).toBe(2);
     expect(row?.childReliefMode).toBe('auto');
     expect(row?.employerBearsTax).toBe(true);
-    // is_resident synced: rep is NOT a full-MTD resident.
-    expect(row?.isResident).toBe(false);
+    // REP is a resident incentive; its explicit scheme selects the annual formula.
+    expect(row?.isResident).toBe(true);
 
     const payload = await latestEventPayload(base.tenantId, row!.id, 'employee.tax.updated');
     expect(payload).not.toBeNull();
@@ -259,7 +258,7 @@ describe('Identification & Tax — service + action behaviour (item 8b5334db)', 
     expect((psBase.statutory as Record<string, unknown>).employerBears).toBeUndefined();
   });
 
-  it('rep + knowledge_worker employees withhold a flat 15% PCB on the payslip', async () => {
+  it('REP and Knowledge Worker payroll save annual incentive working', async () => {
     const a = adminCtx(base);
     const slip = async (employmentId: string) => {
       const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId, employmentId));
@@ -283,10 +282,12 @@ describe('Identification & Tax — service + action behaviour (item 8b5334db)', 
     const repPcb = Number((await slip(rep.employmentId)).statutory ? ((await slip(rep.employmentId)).statutory as Record<string, number>).pcb : 0);
     const kwPcb = Number(((await slip(kw.employmentId)).statutory as Record<string, number>).pcb);
     const resPcb = Number(((await slip(resident.employmentId)).statutory as Record<string, number>).pcb);
-    // REP and Knowledge Worker use the same flat 15% ⇒ identical PCB; both differ from the resident MTD figure.
+    // REP and Knowledge Worker share annual incentive tax, while normal residents use their bands.
     expect(repPcb).toBeGreaterThan(0);
     expect(kwPcb).toBeCloseTo(repPcb, 2);
     expect(resPcb).not.toBeCloseTo(repPcb, 2);
+    expect((await slip(rep.employmentId)).statutory).toMatchObject({pcbMeta:{calculationScheme:'rep',trace:{schemeVersion:1,R:0.15}}});
+    expect(repPcb).not.toBe(1200);
   });
   // ── r209 7ee14bbc — THE DUPLICATE TAX-NUMBER WARNING AT THE POINT OF ENTRY ─────────────────────────────
   //

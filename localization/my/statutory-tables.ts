@@ -20,7 +20,9 @@
  * Retrieved: 2026-06-06.
  */
 
-export const MY_STATUTORY_VERSION = '2026.9';
+export const MY_STATUTORY_VERSION = '2026.10';
+// 2026.10 (2026-10-02): category-specific annual PCB for approved REP, Knowledge Worker and C-Suite.
+// LHDN 2026 printed pp.13–18; stored earlier payroll is not rewritten.
 // 2026.9 (2026-09-25): `disabledSpouse` CORRECTED RM5,000 -> RM6,000 against the primary source — item
 //   57d48735. Printed page 28 (PDF p.29) of the LHDN 2026 MTD spec, Reliefs table item f, gives RM6,000
 //   for a disabled husband / wife. RM5,000 is the ANNUAL ASSESSMENT figure under s.47(1)(b) ITA 1967:
@@ -125,6 +127,10 @@ export const MY_PCB_BANDS: PcbBand[] = [
   { upTo: 2000000, M: 600000, R: 0.28, bCat13: 136400, bCat2: 136400 },
   { upTo: Infinity, M: 2000000, R: 0.3, bCat13: 528400, bCat2: 528400 },
 ];
+
+/** Verified LHDN 2026 Tables 2/3, printed pp.15/17; C-Suite pp.17–18 uses the rate without T.
+ * Eligibility is HR's explicit approved-scheme declaration, never inferred from pay or job title. */
+export const MY_PCB_INCENTIVE = { rate: 0.15, rebateThreshold: 35000, rebateCat13: 400, rebateCat2: 800 };
 
 /** Annual reliefs (RM) used to project chargeable income P. Source: LHDN 2026 MTD spec. Every figure is
  *  now transcribed from the primary publication; all still await the human sign-off §1 of
@@ -797,6 +803,7 @@ export type StatutoryRuleset = {
   eis: { bands: ContribBand[]; rates: { employer: number; employee: number } };
   pcb: {
     bands: PcbBand[];
+    incentive?: typeof MY_PCB_INCENTIVE;
     reliefs: {
       individual: number;
       spouse: number;
@@ -851,7 +858,7 @@ export const DEFAULT_MY_STATUTORY: StatutoryRuleset = {
     verifiedUpTo: MY_SOCSO_VERIFIED_UP_TO,
   },
   eis: { bands: MY_EIS_BANDS, rates: MY_EIS_RATES },
-  pcb: { bands: MY_PCB_BANDS, reliefs: MY_RELIEFS },
+  pcb: { bands: MY_PCB_BANDS, reliefs: MY_RELIEFS, incentive: MY_PCB_INCENTIVE },
   ot: {
     wageCeiling: MY_OT_WAGE_CEILING,
     restDayExcessMultiplier: MY_OT_RESTDAY_EXCESS,
