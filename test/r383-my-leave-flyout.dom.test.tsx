@@ -30,7 +30,7 @@ describe('My Leave uses the shared sidebar flyout',()=>{
   expect(within(rail).queryByRole('link',{name:'Leave History'})).toBeNull();
  });
  it('highlights only the existing overview destination and preserves entitlement visibility',()=>{
-  location.path='/leave';const view=show();const leave=screen.getByRole('button',{name:'My Leave'});expect(leave.className).toContain('bg-accent');
+  location.path='/leave';const view=show();const leave=screen.getByRole('button',{name:'My Leave'});expect(leave.classList.contains('bg-accent')).toBe(true);
   fireEvent.click(leave);const panel=screen.getByRole('navigation',{name:'My Leave'});
   expect(within(panel).getByRole('link',{name:'Leave Overview'})).toHaveAttribute('aria-current','page');
   expect(within(panel).getByRole('link',{name:'Leave History'})).not.toHaveAttribute('aria-current');
@@ -38,7 +38,7 @@ describe('My Leave uses the shared sidebar flyout',()=>{
  });
  it('does not highlight My Leave on the distinct team tracker route',()=>{
   location.path='/leave/tracker';show();const leave=screen.getByRole('button',{name:'My Leave'});
-  expect(leave.className).not.toContain('bg-accent');fireEvent.click(leave);
+  expect(leave.classList.contains('bg-accent')).toBe(false);fireEvent.click(leave);
   const panel=screen.getByRole('navigation',{name:'My Leave'});
   expect(within(panel).getAllByRole('link').every(link=>!link.hasAttribute('aria-current'))).toBe(true);
  });
