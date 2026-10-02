@@ -6,7 +6,7 @@ import {appendEvent,actorOf} from '../db/events';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {datesBetween,monthRange,weekRangeOf,addDaysIso,resolveRosterCell} from '../lib/roster-month';
 import type {MyTeamQuery,MyTeamSnapshot,MyTeamEmployee,MyTeamDay,MyTeamRosterDay,MyTeamPunchReviewResult,MyTeamRosterScope,MyTeamApproval} from '../lib/my-team-types';
-import {attendanceForEmploymentsRange,statusOf,flagOf,workingShiftSchedule,shiftDayKindFor} from '../packs/attendance/service';
+import {attendanceForEmploymentsRange,statusOf,flagOf,workingShiftSchedule,shiftDayKindFor,type AttendanceRangeRow} from '../packs/attendance/service';
 import {actionableLeaveRequests,myTeamLeaveProjection,decideLeave,decideLeaveDates,leaveTypeIs} from '../packs/leave/service';
 import {leaveBalances} from './read';
 import {rosterWindowView,type RosterMonthView} from './roster';
@@ -57,22 +57,14 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
  const attendanceAvailable=isModuleEnabled(ctx,'attendance'),leaveAvailable=isModuleEnabled(ctx,'leave');
  const inGrid=period.gridDates.includes(today),from=period.gridDates[0],to=period.gridDates.at(-1)!;
  const realCtx={...ctx,personId:scope.principal.personId};
- const [roster,todayRoster,attendanceRows,todayAttendanceRows,leaves,decisions,balanceRows,observations]=await Promise.all([
+ const [roster,todayRoster,attendanceRows,todayAttendanceRows,leaves,decisions,balanceRows]=await Promise.all([
    employeeIds.length ? rosterWindowView(realCtx,{companyIds,employmentIds:employeeIds,from,to}) : null,
    employeeIds.length&&!inGrid ? rosterWindowView(realCtx,{companyIds,employmentIds:employeeIds,from:today,to:today}) : null,
-   attendanceAvailable&&employeeIds.length ? attendanceForEmploymentsRange(realCtx,employeeIds,from,to) : new Map(),
-   attendanceAvailable&&employeeIds.length&&!inGrid ? attendanceForEmploymentsRange(realCtx,employeeIds,today,today) : new Map(),
+   attendanceAvailable&&employeeIds.length ? attendanceForEmploymentsRange(realCtx,employeeIds,from,to,{includePunchReviews:true}) : new Map<string,AttendanceRangeRow[]>(),
+   attendanceAvailable&&employeeIds.length&&!inGrid ? attendanceForEmploymentsRange(realCtx,employeeIds,today,today,{includePunchReviews:true}) : new Map<string,AttendanceRangeRow[]>(),
    leaveAvailable ? myTeamLeaveProjection(realCtx,{employmentIds:employeeIds,from,to,today}) : [],
    leaveAvailable ? actionableLeaveRequests(realCtx,{employmentIds:employeeIds}) : [],
    leaveAvailable ? mapBounded(scope.employees,e=>leaveBalances(realCtx,e.employmentId,input.locale)) : [],
-   attendanceAvailable&&employeeIds.length ? withTenant(realCtx,async tx=>{
-     const rows=await tx.select({attendanceId:attendance.id,employmentId:attendance.employmentId,date:attendance.attendanceDate,
-       fingerprint:sql<string>`app.attendance_attention_fingerprint(${attendance})`,
-       reviewed:sql<boolean>`EXISTS(SELECT 1 FROM attendance_attention_review r WHERE r.attendance_id=${attendance.id}
-        AND r.reviewer_user_id=app.current_user_id() AND r.fingerprint=app.attendance_attention_fingerprint(${attendance}))`})
-       .from(attendance).where(and(inArray(attendance.employmentId,employeeIds),
-         sql`(${attendance.attendanceDate} BETWEEN ${from}::date AND ${to}::date OR ${attendance.attendanceDate}=${today}::date)`));return rows;
-   }) : [],
  ]);
  // Active catalogue rows are not an authority for an archived but still referenced shift.
  // Fetch exact IDs from this authorized period/today projection, never search a reused code.
@@ -96,14 +88,13 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
    const defaultShift=defaults.find(s=>s.id===(todayRoster??roster)?.usual[employee.employmentId]?.shiftId);
    const days:MyTeamDay[]=allDates.map(date=>{
      const ownRoster=date===today&&!inGrid?todayRoster:roster;
-     const row=(date===today&&!inGrid?todayAttendanceRows:attendanceRows).get(employee.employmentId)?.find((r: {date:string})=>r.date===date);
-     const observation=observations.find(o=>o.employmentId===employee.employmentId&&o.date===date);
+     const row=(date===today&&!inGrid?todayAttendanceRows:attendanceRows).get(employee.employmentId)?.find(r=>r.date===date);
      const dayRoster=ownRoster?rosterDay(ownRoster,employee.employmentId,date,defaults):null;
      if(dayRoster&&row){dayRoster.scheduledMinutes=row.scheduledMinutes;
        if(row.shiftStart!==null)dayRoster.start=row.shiftStart;if(row.shiftEnd!==null)dayRoster.end=row.shiftEnd;}
      return {date,roster:dayRoster,attendance:row?{attendanceId:row.attendanceId,status:statusOf(row),flag:flagOf(row),late:row.status==='late',
        checkInAt:row.checkInAt,checkOutAt:row.checkOutAt,workedMinutes:row.workedMinutes,lateMinutes:row.lateMinutes,
-       scheduledMinutes:row.scheduledMinutes,fingerprint:observation?.fingerprint??null,reviewed:observation?.reviewed??false}:null,
+       scheduledMinutes:row.scheduledMinutes,fingerprint:row.punchReview?.fingerprint??null,reviewed:row.punchReview?.reviewed??false}:null,
        leave:leaves.filter(l=>l.employmentId===employee.employmentId).flatMap(l=>l.dates.filter(d=>d.date===date).map(d=>({
          requestId:l.requestId,leaveTypeId:l.leaveTypeId,code:l.code??'',name:l.name,color:l.color,status:d.status,
          session:l.session,days:d.days,fromTime:l.fromTime,toTime:l.toTime})))};
