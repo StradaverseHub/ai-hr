@@ -444,14 +444,14 @@ describe('5b2a7f0f — lazy English fonts and deliberate document layout pins', 
   }));
 
   const NO_REG_R383 = {
-    plain: '68a7752cc5ea0a96e92e5de0a6885b3cc7cc8a76cb645912ac23388052b04730',
-    logo: '92bcfaecbdf09fa21a3742af96987104e3b9f1bbffe65399e60f50dbbe3592ed',
-    multipage: '1c3c89c988836e81eafb54804bcb414595b9bff5343d04bfe113d6dffb82f3e9',
+    plain: '5d606527f00a88c777fb0f10bc2a39ab3bebe69141f15f2c8d3229194df6aeb3',
+    logo: 'dbf283268d53dede63ea6caf3dcd3751c100e929356961ca671baf3fdea4e49b',
+    multipage: '1111d11d1779a797e3a84bcd5ebffad426adef279377dc85811a8c11aa91837a',
   };
   const WITH_REG_R383 = {
-    plain: 'f1c1a2fed173d20715cb7f3dd9364eb5df238a4e1f0be1391665a02feb24701d',
-    logo: '499b12649eb2f71a97e7066dfac56cc064ce68b2a2b3e70883e810016384e1b0',
-    multipage: 'f28ac591e795e4988ca637748efcecbb4bfa151767a3329f71d498e5460ccfbd',
+    plain: 'fd582f9ba517d5caf89308303a802ffda6538dad7913a2257a3f01426fef948c',
+    logo: '5d82b06656a54c4da71e5fa45738791990767a2a3139e77e74a7423df3b589b6',
+    multipage: '86c9e1659008468a6a4084d50788c07e169d97486b43efbcbd47f717ae4df84a',
   };
 
   it('an en payslip for a company with NO registration number is pinned to the byte — plain, with a logo, and across sheets', async () => {

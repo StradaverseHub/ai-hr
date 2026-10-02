@@ -1322,8 +1322,6 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
         at(page,line,textX,cursor-textMetrics(line,face,size).ascent,size,face,strong?INK:MUTED);cursor-=pitch;
       }
     };
-    flowBrand(d.company,13,true);
-    if(d.companyReg)flowBrand(`${t.companyReg}: ${d.companyReg}`,8.5,false);
     let rightCursor=brandTop;
     const flowPeriod=(text:string,size:number,strong:boolean)=>{
       const face=faceOf(text,strong?bold:font),lines=wrap(text,face,size,CONTENT_W*.36);
@@ -1332,6 +1330,9 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     };
     flowPeriod(t.periodLabel,13,true);
     if(d.payDate)flowPeriod(`${t.paymentDateLabel??'Payment Date'}: ${t.paymentDate}`,8.5,false);
+    flowBrand(d.company,13,true);
+    if(d.companyReg)flowBrand(`${t.companyReg}: ${d.companyReg}`,8.5,false);
+    if(page!==pg)return cursor-GAP;
     return Math.min(cursor,rightCursor,logoBottom)-GAP;
   }
 
@@ -1379,7 +1380,7 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
         const count=Math.min(capacity,totalLines-offset);
         const used=8+count*pitch;
         plans.forEach((p,i)=>{
-          const x=M+12+i*columnWidth;
+          const x=M+12+i*(columnWidth+24);
           if(offset < Math.max(p.lines.length,p.labelLines.length)) {
             p.labelLines.slice(offset,offset+count).forEach((line,j)=>at(page,line,x,y-4-ascent-j*pitch,8.5,p.lf,MUTED));
             p.lines.slice(offset,offset+count).forEach((line,j)=>at(page,line,x+columnWidth*.40,y-4-ascent-j*pitch,8.5,p.vf));

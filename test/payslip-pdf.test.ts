@@ -1971,6 +1971,7 @@ describe('r383 restored compact payslip profile',()=>{
   const runs=drawnPlacements(bytes),heading=placed(runs,'EMPLOYEE PROFILE')!,earnings=placed(runs,'EARNINGS')!;
   const body=runs.filter(r=>r.page===heading.page&&r.y<heading.y&&r.y>earnings.y).map(r=>r.text);
   expect(body).toEqual(['Position','Configured position','Department','Configured department',labels.paymentMethod,'Bank transfer',labels.bankName,'Saved bank',labels.bankAccount,'FULLACCOUNT',labels.payrollCycleLabel??'Payroll cycle','Company cycle']);
+  expect(placed(runs,'Department')!.x-placed(runs,'Position')!.x).toBeCloseTo((595.28-48-24)/2+24,2);
   expect(body).not.toContain(data.company);expect(body).not.toContain(labels.periodLabel);expect(body).not.toContain(data.employee);
   const borders=drawnRects(bytes).filter(r=>r.op==='S'&&r.y<heading.y&&r.y>earnings.y);
   expect(borders,'one outer profile border, without individually boxed fields').toHaveLength(1);
