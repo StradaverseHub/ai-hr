@@ -1344,10 +1344,10 @@
       "incomeTaxResident": "Cư trú thuế thu nhập",
       "taxResidencyResident": "Cư trú",
       "taxResidencyNonResident": "Không cư trú",
-      "taxResidencyCSuite": "C-Suite cư trú được phê duyệt",
+      "taxResidencyCSuite": "Vị trí C-Suites",
       "taxResidencyApprovedSchemeNote": "Chỉ chọn REP, Lao động tri thức hoặc C-Suite khi nhân viên có phê duyệt cần thiết cho quan hệ lao động và năm này. C-Suite yêu cầu người cư trú không có quốc tịch tại công ty được phê duyệt. HR xác nhận điều kiện.",
       "taxResidencyRep": "Chương trình Chuyên gia Hồi hương (REP)",
-      "taxResidencyKnowledgeWorker": "Lao động tri thức (khu vực cụ thể)",
+      "taxResidencyKnowledgeWorker": "Lao động tri thức (IRDA)",
       "childReliefLegend": "Con cái (miễn giảm PCB)",
       "childReliefModeLabel": "Chế độ miễn giảm cho con",
       "childReliefModeManual": "Thủ công (nhập số lượng)",
@@ -1694,7 +1694,11 @@
       "epfManualAmountHint": "Nhập chính xác số tiền đóng EPF hằng tháng bằng ringgit. Số tiền này được dùng ngay từ lần tính lương đầu tiên và trong mọi lần tính lại. Bên để trống vẫn giữ cách tính theo luật định. Số tiền thấp hơn biểu của Luật EPF vẫn được chấp nhận và ghi nhận — tệp gửi KWSP sẽ mang mức lương thực tế cùng số tiền bạn nhập, và cơ quan quản lý là bên đối chiếu.",
       "epfManualDraftHint": "Các loại số tiền cố định (Thủ công theo số tiền) được đặt trên thẻ Ngân hàng & Luật định của nhân viên sau khi nhân viên được tạo, vì số tiền không được thu thập ở đây.",
       "childQualificationUnavailable": "Không có dữ liệu",
-      "childQualificationReviewSettings": "Kiểm tra thiết lập giảm trừ cho con PCB trước khi xử lý lương."
+      "childQualificationReviewSettings": "Kiểm tra thiết lập giảm trừ cho con PCB trước khi xử lý lương.",
+      "taxSelectionEmployer": "Người sử dụng lao động: {employer}",
+      "taxSelectionEligibilityHint": "Chọn phân loại áp dụng cho quan hệ lao động và người sử dụng lao động này. Việc chọn ưu đãi ghi nhận quyết định của HR rằng các điều kiện phê duyệt, đủ điều kiện và thời gian áp dụng đã được đáp ứng. Không cần khai báo riêng.",
+      "taxSelectionConfirmationRequired": "Xác nhận phân loại phù hợp trong trường này và lưu một lần. Cài đặt cũ không xác định được lựa chọn rõ ràng cho từng người sử dụng lao động.",
+      "taxSelectionChoose": "Chọn phân loại thuế"
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -6227,7 +6231,11 @@
       "taxScheme_declaration_outside_period": "Phê duyệt đã ghi nhận không bao gồm kỳ lương này. Hoàn tất thời gian phê duyệt phù hợp trước khi tính lại.",
       "taxScheme_not_resident": "Tình trạng cư trú thuế đã ghi nhận không phù hợp với chương trình dành cho người cư trú đã được phê duyệt này.",
       "taxScheme_citizenship_unknown": "Quốc tịch đã ghi nhận không đáp ứng yêu cầu của chương trình C-suite.",
-      "taxScheme_overlap": "Có nhiều chương trình thuế áp dụng cho người sử dụng lao động và kỳ lương này. Sửa cấu hình bị chồng lấn."
+      "taxScheme_overlap": "Có nhiều chương trình thuế áp dụng cho người sử dụng lao động và kỳ lương này. Sửa cấu hình bị chồng lấn.",
+      "taxSelection_confirmation_required": "Xác nhận phân loại phù hợp trong trường Cư trú thuế thu nhập và lưu một lần. Cài đặt cũ cần xác nhận một lần; không cần khai báo riêng hay tham chiếu phê duyệt.",
+      "taxSelection_invalid_scheme": "Chọn phân loại Cư trú thuế thu nhập hợp lệ.",
+      "taxSelection_citizenship_unknown": "Quốc tịch đã ghi nhận không đáp ứng yêu cầu C-Suite dành cho người cư trú không phải công dân.",
+      "taxSelection_not_resident": "Tình trạng cư trú thuế đã ghi nhận không đáp ứng yêu cầu của chương trình cư trú này."
     },
     "guide": {
       "title": "Hướng dẫn quy trình bảng lương",
@@ -7582,7 +7590,14 @@
       "title": "Cấu hình thuế cho đợt lương này",
       "context": "{employee} · {employer} · {period}",
       "permissionHint": "Trang này dùng cùng quyền truy cập như hồ sơ nhân viên. Với quan hệ lao động đã chuyển công ty, HR phải có quyền quản trị cả người sử dụng lao động của đợt lương và người sử dụng lao động hiện tại.",
-      "back": "Quay lại xử lý lại"
+      "back": "Quay lại xử lý lại",
+      "error_stale_context": "Người sử dụng lao động, kỳ lương hoặc phân loại đã lưu đã thay đổi. Tải lại trước khi lưu.",
+      "error_not_found": "Cấu hình thuế của nhân viên này không nằm trong phạm vi truy cập của bạn.",
+      "error_saveFailed": "Không thể lưu phân loại thuế. Tải lại và kiểm tra cấu hình của nhân viên.",
+      "error_confirmation_required": "Xác nhận phân loại phù hợp trong trường Cư trú thuế thu nhập và lưu một lần. Cài đặt cũ cần xác nhận một lần; không cần khai báo riêng hay tham chiếu phê duyệt.",
+      "error_invalid_scheme": "Chọn phân loại Cư trú thuế thu nhập hợp lệ.",
+      "error_citizenship_unknown": "Quốc tịch đã ghi nhận không đáp ứng yêu cầu C-Suite dành cho người cư trú không phải công dân.",
+      "error_not_resident": "Tình trạng cư trú thuế đã ghi nhận không đáp ứng yêu cầu của chương trình cư trú này."
     }
   },
   "admin": {

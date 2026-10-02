@@ -41,7 +41,7 @@ export function classifyNonCashBenefit(c: NonCashClassificationInput): NonCashBe
   if (explicit && legacy && explicit !== legacy) throw new NonCashBenefitConfigurationError(c.code, 'classification_conflict');
   const benefit = explicit ?? legacy;
   if (!benefit) return null;
-  if (c.kind !== 'allowance' && c.kind !== 'earning') throw new NonCashBenefitConfigurationError(c.code, 'unsupported_kind');
+  if (c.kind !== 'allowance' && c.kind !== 'earning' && c.kind !== 'non_payable') throw new NonCashBenefitConfigurationError(c.code, 'unsupported_kind');
   if (c.pcb && (c.epfBonus2012 || (c.pcbRemunerationType != null && c.pcbRemunerationType !== 'normal'))) {
     throw new NonCashBenefitConfigurationError(c.code, 'normal_remuneration_required');
   }
@@ -59,21 +59,49 @@ export function taxableNonCash(entries: readonly NonCashEntry[]): NonCashAmounts
 /** Strict enough to reuse saved ownership in a future calculation; malformed is unavailable. */
 export function readPcbNonCash(value: unknown): PcbNonCashSnapshot | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const v=value as PcbNonCashSnapshot;
-  const money=(n:unknown):n is number=>typeof n==='number' && Number.isFinite(n) && n>=0;
-  const near=(a:number,b:number)=>Math.abs(a-b)<0.005;
-  const entries=(xs:unknown):xs is NonCashEntry[]=>Array.isArray(xs) && xs.every(e=>e && typeof e==='object' &&
-    (e.kind==='bik'||e.kind==='vola') && typeof e.code==='string' && e.code.length>0 && (e.source==='recurring'||e.source==='one_off') &&
-    (e.sourceId===undefined||(typeof e.sourceId==='string'&&e.sourceId.length>0)) && (e.exemptionCode===undefined||typeof e.exemptionCode==='string') &&
-    money(e.entered)&&money(e.exempt)&&money(e.taxable)&&near(e.entered,e.exempt+e.taxable));
-  if(v.version!==1||!money(v.cashNormal)||!entries(v.entries)||!entries(v.ownedEntries)||typeof v.accumulated?.complete!=='boolean') return null;
-  const eaEntries=(xs:unknown):xs is NonCashEaEntry[]=>Array.isArray(xs)&&xs.every(e=>e&&typeof e==='object'&&(e.kind==='bik'||e.kind==='vola')&&typeof e.code==='string'&&e.code.length>0&&(e.source==='recurring'||e.source==='one_off')&&(e.sourceId===undefined||(typeof e.sourceId==='string'&&e.sourceId.length>0))&&(e.eaFormLine===null||typeof e.eaFormLine==='string')&&typeof e.subjectPCB==='boolean'&&money(e.entered)&&money(e.reportableAmount)&&money(e.exemptAmount)&&near(e.entered,e.reportableAmount+e.exemptAmount));
-  if(!eaEntries(v.eaEntries)||!eaEntries(v.ownedEaEntries))return null;
-  const current=totalNonCash(v.entries),owned=totalNonCash(v.ownedEntries);
-  for(const k of ['bik','vola'] as const){
-    if(!money(v.owned?.[k])||!money(v.before?.[k])||!money(v.cumulative?.[k])||!money(v.accumulated?.[k]))return null;
-    for(const f of ['entered','exempt','taxable'] as const) if(!money(v.current?.[k]?.[f])||!money(v.ownedCurrent?.[k]?.[f])||!near(v.current[k][f],current[k][f])||!near(v.ownedCurrent[k][f],owned[k][f]))return null;
-    if(!near(v.owned[k],owned[k].taxable)||!near(v.cumulative[k],current[k].taxable)||!near(v.before[k]+v.owned[k],v.cumulative[k]))return null;
+  const v = value as PcbNonCashSnapshot;
+  const money = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0 && Number.isSafeInteger(Math.round(n * 100)) && Math.abs(n * 100 - Math.round(n * 100)) < 1e-6;
+  const same = (a: number, b: number) => money(a) && money(b) && Math.round(a * 100) === Math.round(b * 100);
+  const ownership = (e: { source: string; sourceId?: string; code: string }) => `${e.source}:${e.sourceId ?? e.code}`;
+  const source = (e: NonCashEntry | NonCashEaEntry) => (e.kind === 'bik' || e.kind === 'vola') && typeof e.code === 'string' && e.code.length > 0 &&
+    (e.source === 'recurring' || e.source === 'one_off') &&
+    (e.sourceId === undefined ? e.source === 'recurring' : typeof e.sourceId === 'string' && e.sourceId.length > 0) &&
+    (e.exemptionCode === undefined || typeof e.exemptionCode === 'string' && e.exemptionCode.length > 0);
+  const unique = (xs: (NonCashEntry | NonCashEaEntry)[]) => new Set(xs.map(ownership)).size === xs.length;
+  const entries = (xs: unknown): xs is NonCashEntry[] => Array.isArray(xs) && xs.every(e => e && typeof e === 'object' && source(e) &&
+    money(e.entered) && money(e.exempt) && money(e.taxable) && same(e.entered, round(e.exempt + e.taxable))) && unique(xs);
+  const eaEntries = (xs: unknown): xs is NonCashEaEntry[] => Array.isArray(xs) && xs.every(e => e && typeof e === 'object' && source(e) &&
+    (e.eaFormLine === null || typeof e.eaFormLine === 'string') && typeof e.subjectPCB === 'boolean' &&
+    money(e.entered) && money(e.reportableAmount) && money(e.exemptAmount) && same(e.entered, round(e.reportableAmount + e.exemptAmount)) &&
+    (e.subjectPCB || e.exemptAmount === 0)) && unique(xs);
+  if (v.version !== 1 || !money(v.cashNormal) || !entries(v.entries) || !entries(v.ownedEntries) ||
+      !eaEntries(v.eaEntries) || !eaEntries(v.ownedEaEntries) || typeof v.accumulated?.complete !== 'boolean') return null;
+  const fields = (e: NonCashEntry | NonCashEaEntry) => [e.kind, e.code, e.source, e.sourceId ?? null, e.exemptionCode ?? null];
+  const exact = (a: NonCashEntry | NonCashEaEntry, b: NonCashEntry | NonCashEaEntry) => JSON.stringify(fields(a)) === JSON.stringify(fields(b));
+  for (const e of v.ownedEntries) {
+    const full = v.entries.find(x => ownership(x) === ownership(e));
+    if (!full || !exact(e, full) || !same(e.entered, full.entered) || !same(e.exempt, full.exempt) || !same(e.taxable, full.taxable)) return null;
+  }
+  for (const e of v.ownedEaEntries) {
+    const full = v.eaEntries.find(x => ownership(x) === ownership(e));
+    if (!full || !exact(e, full) || e.eaFormLine !== full.eaFormLine || e.subjectPCB !== full.subjectPCB ||
+        !same(e.entered, full.entered) || !same(e.exemptAmount, full.exemptAmount) || !same(e.reportableAmount, full.reportableAmount)) return null;
+  }
+  const reconcile = (pcb: NonCashEntry[], ea: NonCashEaEntry[]) => {
+    if (pcb.length !== ea.filter(e => e.subjectPCB).length) return false;
+    return ea.every(e => {
+      const p = pcb.find(x => ownership(x) === ownership(e));
+      return e.subjectPCB ? !!p && exact(e, p) && same(e.entered, p.entered) && same(e.exemptAmount, p.exempt) && same(e.reportableAmount, p.taxable) : !p;
+    });
+  };
+  if (!reconcile(v.entries, v.eaEntries) || !reconcile(v.ownedEntries, v.ownedEaEntries)) return null;
+  const current = totalNonCash(v.entries), owned = totalNonCash(v.ownedEntries);
+  for (const k of ['bik', 'vola'] as const) {
+    if (!money(v.owned?.[k]) || !money(v.before?.[k]) || !money(v.cumulative?.[k]) || !money(v.accumulated?.[k])) return null;
+    for (const f of ['entered', 'exempt', 'taxable'] as const) {
+      if (!money(v.current?.[k]?.[f]) || !money(v.ownedCurrent?.[k]?.[f]) || !same(v.current[k][f], current[k][f]) || !same(v.ownedCurrent[k][f], owned[k][f])) return null;
+    }
+    if (!same(v.owned[k], owned[k].taxable) || !same(v.cumulative[k], current[k].taxable) || !same(round(v.before[k] + v.owned[k]), v.cumulative[k])) return null;
   }
   return v;
 }

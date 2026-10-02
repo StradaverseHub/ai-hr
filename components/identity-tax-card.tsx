@@ -183,6 +183,7 @@ export function IdentityTaxCard({
   employmentId,
   personId,
   defaults,
+  taxSelection,
   childRelief = null,
   taxNumberSharedWith = [],
   country = 'MY',
@@ -192,6 +193,7 @@ export function IdentityTaxCard({
   employmentId: string;
   personId: string;
   defaults: IdentityTaxDefaults;
+  taxSelection?:{companyId:string;companyName:string;version:number;confirmationRequired:boolean};
   /**
    * 04b88724 — the pack's prices AND the pack's figure for the saved record; null when no pack / no PCB
    * reliefs can be resolved, and the card then names no relief figure rather than inventing a rate.
@@ -466,6 +468,7 @@ export function IdentityTaxCard({
       <form action={action} data-save-section="tax" className="flex flex-col gap-6 px-4 pb-4">
         <input type="hidden" name="employmentId" value={employmentId} />
         <input type="hidden" name="personId" value={personId} />
+        {taxSelection && <><input type="hidden" name="expectedTaxCompanyId" value={taxSelection.companyId}/><input type="hidden" name="expectedTaxSelectionVersion" value={taxSelection.version}/></>}
 
         <fieldset className="flex flex-col gap-3">
           <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -495,7 +498,9 @@ export function IdentityTaxCard({
                 <option value="non_resident">{t('taxResidencyNonResident')}</option>
                 <option value="rep">{t('taxResidencyRep')}</option>
                 <option value="knowledge_worker">{t('taxResidencyKnowledgeWorker')}</option>
+                <option value="c_suite">{t('taxResidencyCSuite')}</option>
               </select>
+              {taxSelection && <><span className="text-xs text-muted-foreground">{t('taxSelectionEmployer',{employer:taxSelection.companyName})}</span><span className="text-xs text-muted-foreground">{t('taxSelectionEligibilityHint')}</span>{taxSelection.confirmationRequired&&<span className="text-xs text-amber-700">{t('taxSelectionConfirmationRequired')}</span>}</>}
             </Field>
             {/* Item d64d0df4 — Disabled Individual and Disabled Spouse (OKU). Yes/No, defaulting to No,
                 so nobody's monthly tax moves until an admin makes the claim. Setting either to Yes DOES

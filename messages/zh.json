@@ -1344,10 +1344,10 @@
       "incomeTaxResident": "所得税居民身份",
       "taxResidencyResident": "居民",
       "taxResidencyNonResident": "非居民",
-      "taxResidencyCSuite": "获批准的居民高级管理人员",
+      "taxResidencyCSuite": "Position C-Suites（高管职位）",
       "taxResidencyApprovedSchemeNote": "只有员工已获得此雇佣关系和年度所需批准时，才可选择REP、知识工作者或C-Suite。C-Suite要求为获批准公司的非公民居民。资格由人力资源部门确认。",
       "taxResidencyRep": "归国专才计划（REP）",
-      "taxResidencyKnowledgeWorker": "特定区域知识型员工",
+      "taxResidencyKnowledgeWorker": "知识工作者 (IRDA)",
       "childReliefLegend": "子女（PCB 减免）",
       "childReliefModeLabel": "子女减免模式",
       "childReliefModeManual": "手动（输入数量）",
@@ -1694,7 +1694,11 @@
       "epfManualAmountHint": "请输入每月确切的 EPF 缴纳金额（马币）。自第一次薪资处理起即采用，并在每次重新处理时沿用。留空的一方维持法定计算。低于 EPF 法令附表的金额会被接受并记录——KWSP 提交文件将以真实薪资搭配您输入的金额，由该机构自行核查。",
       "epfManualDraftHint": "固定金额类别（手动按金额）需在员工建立后，于该员工的「银行与法定」卡上设定，因为此处不收集金额本身。",
       "childQualificationUnavailable": "不可用",
-      "childQualificationReviewSettings": "处理工资前请检查 PCB 子女减免设置。"
+      "childQualificationReviewSettings": "处理工资前请检查 PCB 子女减免设置。",
+      "taxSelectionEmployer": "雇主：{employer}",
+      "taxSelectionEligibilityHint": "请选择适用于此雇佣关系和雇主的类别。选择优惠方案即记录人力资源部门已确认符合批准、资格及期间条件的决定。无需另行填写声明。",
+      "taxSelectionConfirmationRequired": "请在此字段确认适用类别并保存一次。旧设置无法明确确定此雇主适用的类别。",
+      "taxSelectionChoose": "选择税务类别"
     },
     "import": {
       "title": "导入员工",
@@ -6227,7 +6231,11 @@
       "taxScheme_declaration_outside_period": "批准记录未涵盖此工资期间。重新计算前，请补全适用的批准期间。",
       "taxScheme_not_resident": "已记录的税务居民身份不符合此已获批准的居民方案。",
       "taxScheme_citizenship_unknown": "已记录的国籍不符合 C-suite 方案要求。",
-      "taxScheme_overlap": "此雇主和工资期间有多个适用的税务方案。请修正重叠配置。"
+      "taxScheme_overlap": "此雇主和工资期间有多个适用的税务方案。请修正重叠配置。",
+      "taxSelection_confirmation_required": "请在“所得税居民身份”字段确认适用类别并保存一次。旧设置需要一次性确认，无需另行填写声明或批准参考编号。",
+      "taxSelection_invalid_scheme": "请选择有效的所得税居民类别。",
+      "taxSelection_citizenship_unknown": "已记录的国籍不符合 C-Suite 方案针对非公民居民的要求。",
+      "taxSelection_not_resident": "已记录的税务居民身份不符合此居民方案的要求。"
     },
     "guide": {
       "title": "薪资工作流程指南",
@@ -7582,7 +7590,14 @@
       "title": "此工资批次的税务配置",
       "context": "{employee} · {employer} · {period}",
       "permissionHint": "此页面使用与员工记录相同的访问权限。对于已调动的雇佣关系，人力资源部门必须同时拥有工资所属雇主和现任雇主的管理权限。",
-      "back": "返回重新处理"
+      "back": "返回重新处理",
+      "error_stale_context": "雇主、工资期间或已保存的类别已更改。保存前请刷新。",
+      "error_not_found": "您的访问范围内无法查看此员工的税务配置。",
+      "error_saveFailed": "无法保存税务类别。请刷新并检查员工配置。",
+      "error_confirmation_required": "请在“所得税居民身份”字段确认适用类别并保存一次。旧设置需要一次性确认，无需另行填写声明或批准参考编号。",
+      "error_invalid_scheme": "请选择有效的所得税居民类别。",
+      "error_citizenship_unknown": "已记录的国籍不符合 C-Suite 方案针对非公民居民的要求。",
+      "error_not_resident": "已记录的税务居民身份不符合此居民方案的要求。"
     }
   },
   "admin": {

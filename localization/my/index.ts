@@ -1,3 +1,4 @@
+import {getTaxSelectionMY,saveTaxSelectionMY,initializeHiredTaxSelectionMYTx,resolveTaxSelectionMY} from './tax-selection';
 import {listTaxSchemeDeclarationsMY,saveTaxSchemeDeclarationMY,revokeTaxSchemeDeclarationMY,resolveTaxSchemeMY} from './tax-scheme-declarations';
 import { MY_EA_REPORTING } from './ea-reporting';
 /**
@@ -90,6 +91,9 @@ export const myPack: CountryPack = {
     // The counterpart to setIc; the identity form on the Profile tab picks one based on the selected nationality.
     setPassport: setPassportProfileMY,
     setTax: setTaxProfileMY,
+    getTaxSelection:getTaxSelectionMY,
+    saveTaxSelection:saveTaxSelectionMY,
+    initializeHiredTaxSelectionTx:initializeHiredTaxSelectionMYTx,
     listTaxSchemeDeclarations:listTaxSchemeDeclarationsMY,
     saveTaxSchemeDeclaration:saveTaxSchemeDeclarationMY,
     revokeTaxSchemeDeclaration:revokeTaxSchemeDeclarationMY,
@@ -126,7 +130,7 @@ export const myPack: CountryPack = {
   holidays: MY_HOLIDAYS_2026,
   payroll: {
     statutory,
-    resolveTaxScheme:resolveTaxSchemeMY,
+    resolveTaxScheme:resolveTaxSelectionMY,
     // r356 — ONE replay of the prior months' PCB accumulators, for the kernel AND for the multicycle
     // worksheet's model of an already-paid month. They were two copies and the copy drifted twice in two
     // rounds (zakatRebateTp1, then Sigma(Y-K) moving off gross_pay onto bases.pcb); the fold's own header
