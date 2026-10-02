@@ -647,6 +647,7 @@ export default async function IndividualPayslipPage({
                     src={`/admin/organization/logo/${row.companyId}`}
                     alt={row.company}
                     className="mb-2 inline-block max-h-14 w-auto max-w-[14rem] object-contain"
+                    style={{ maxWidth: 'min(14rem, 100%)' }}
                   />
                 )}
                 <h1 className="text-sm font-medium leading-5">{row.company}</h1>
@@ -1016,15 +1017,11 @@ export default async function IndividualPayslipPage({
             )}
           </Block>
 
-          {/* ── Year to date ──
-              Summed from the SAME read that lists this employee's months, so the column beside the
-              current month can never disagree with the months it is made of. */}
+          {/* Recorded items and their source remain available to the payroll reviewer. */}
+          {(b.recordLines.some(line => !isRecordedEmployerContribution(line)) || sourceTxns.length > 0) && (
           <Block title={tTxn('view.history.itemsHeading')}>
             {b.recordLines.some(line => !isRecordedEmployerContribution(line)) && (
               <div className="mt-4 border-t border-border pt-3">
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {tTxn('view.history.itemsHeading')}
-                </h3>
                 {/* 417d4937 — the pay item's own code and description, with the words that were typed
                     kept beside them as the remark. Nothing is rewritten and nothing is hidden; the code
                     and the amount are exactly as stored. */}
@@ -1059,6 +1056,7 @@ export default async function IndividualPayslipPage({
               <SourceTxnBlock rows={sourceTxns} />
             </div>
           </Block>
+          )}
 
           <div className="space-y-1 border-t border-border pt-3 text-center text-xs text-muted-foreground"><p>{tSlip('hrContactNote')}</p><p>{tSlip('generatedNote')}</p></div>
           {/* THE IN-PAGE DOCUMENT VIEWER IS GONE (rev 2). r179 framed the real file in an iframe here so
