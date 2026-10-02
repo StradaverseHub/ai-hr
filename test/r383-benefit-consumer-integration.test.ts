@@ -1,0 +1,61 @@
+import fs from 'node:fs';
+import React from 'react';
+import {randomUUID} from 'node:crypto';
+import {eq} from 'drizzle-orm';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {beforeAll,beforeEach,afterAll,describe,it,expect,vi} from 'vitest';
+import {requirePackFor} from '../localization/registry';
+import {hireEmployee} from '../core/org';
+import {setCompensation} from '../core/comp';
+import {createBatch,createAdditionalRun,generatePayslips,upsertPayComponent,setEmploymentPayComponent,setPayrollBatchComponent,createIndividualTxn} from '../packs/payroll/service';
+import {payslipForReview} from '../core/payroll-view';
+import {multiCycleWorksheetMY} from '../localization/my/multicycle-worksheet';
+import {explainPcb,pcbSlipSections,pcbClosingSections,pcbWorksheet} from '../core/pcb-explain';
+import {PcbDetailView} from '../app/payroll/pcb-detail/pcb-detail-view';
+import {pcbDetailPdfResponse} from '../app/payroll/pcb-detail/shared';
+import {extractedText} from './helpers/pcb-pdf-text';
+import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import * as schema from '../db/schema';
+const state=vi.hoisted(()=>({locale:'en',auth:null as any}));
+vi.mock('../lib/scope',async importOriginal=>({...await importOriginal<any>(),scopedAdmin:async()=>state.auth}));
+vi.mock('next-intl/server',async()=>{const {createTranslator}=await import('next-intl');const fs=await import('node:fs');return {getTranslations:async(arg:any)=>{const locale=typeof arg==='string'?state.locale:arg.locale??state.locale;return createTranslator({locale,messages:JSON.parse(fs.readFileSync(`messages/${locale}.json`,'utf8')),namespace:typeof arg==='string'?arg:arg.namespace});}};});
+const sides={profile:null,catalogue:[],rebateCatalogue:[],currentDeduction:null,accumulatedDeduction:null,previousDeduction:null,currentRebate:null,accumulatedRebate:null};
+const pack=requirePackFor('MY');
+describe('r383 generated saved benefit consumers',()=>{
+ let base:Base;
+ beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();base=await seedBase();await setModule(base.tenantId,'multi_cycle_payroll','active');await setModule(base.tenantId,'typed_pay_components','active');});afterAll(closeAll);
+ it('replays owned benefits and renders saved screen/download facts after catalogue changes',async()=>{
+  const ctx=await entitledCtx(base);
+  const e=await hireEmployee(ctx,{person:{fullName:'Synthetic Saved Benefit',primaryEmail:`${randomUUID()}@test.local`},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2025-01-01'});
+  await pack.statutory.set(ctx,{personId:e.personId,icNumber:'900101145678',taxCategory:3});
+  await setCompensation(ctx,{employmentId:e.employmentId,basicSalary:14000,effectiveFrom:'2025-01-01'});
+  const flags={kind:'non_payable' as const,isNonPayable:true,prorates:false,includedInPcb:true,includedInEpf:false,includedInSocsoEis:false,includedInHrdfBase:false,pcbRemunerationType:'normal' as const,pcbExemptionCode:'PCB_TAXABLE',epfBonus2012:false};
+  const bik=await upsertPayComponent(ctx,{...flags,code:'SYNTH_CAR',name:'Synthetic BIK',displayCategory:'bik',eaFormLine:'EA_B3'});
+  const vola=await upsertPayComponent(ctx,{...flags,code:'SYNTH_HOME',name:'Synthetic VOLA',displayCategory:'vola',eaFormLine:'EA_B4'});
+  await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:bik.id,amount:600,effectiveFrom:'2026-01-01'});
+  const regular=await createBatch(ctx,{companyId:base.companyId,payPeriod:'2026-05'});await generatePayslips(ctx,{batchId:regular.batchId});
+  const additional=await createAdditionalRun(ctx,{companyId:base.companyId,payPeriod:'2026-05',runType:'bonus'});
+  const cash=await upsertPayComponent(ctx,{code:'SYNTH_BONUS',name:'Synthetic Cash Bonus',kind:'allowance',isNonPayable:false,prorates:false,includedInPcb:true,includedInEpf:true,includedInSocsoEis:false,includedInHrdfBase:false,pcbRemunerationType:'additional',pcbExemptionCode:'PCB_TAXABLE',epfBonus2012:true});
+  await setPayrollBatchComponent(ctx,{batchId:additional.batchId,employmentId:e.employmentId,componentId:cash.id,amount:3000});
+  await createIndividualTxn(ctx,{batchId:additional.batchId,employmentId:e.employmentId,kind:'earning',componentId:vola.id,txnDate:'2026-05-15',amount:900});
+  await generatePayslips(ctx,{batchId:additional.batchId});
+  const saved=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,additional.batchId));expect(saved).toHaveLength(1);
+  const st=saved[0].statutory as any;expect(st.pcbNonCash.owned).toEqual({bik:0,vola:900});expect(st.pcbNonCash.cumulative).toEqual({bik:600,vola:900});expect(st.pcbMeta.trace.Y1).toBe(15500);
+  const before=await multiCycleWorksheetMY(ctx,{companyIds:[base.companyId]});expect(before.employeeMonthsCompared).toBe(1);expect(before.employeeMonthsFlagged).toBe(0);expect(before.rows[0].verdict).toBe('already_aggregated');
+  // Today's catalogue and recurring values must not change a recorded replay or download.
+  await upsertPayComponent(ctx,{...flags,id:bik.id,code:'SYNTH_CAR',name:'Synthetic BIK changed',displayCategory:'bik',eaFormLine:'EA_B3',pcbExemptionCode:'PCB_CHILD_CARE'});
+  await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:bik.id,amount:9900,effectiveFrom:'2026-06-01'});
+  const after=await multiCycleWorksheetMY(ctx,{companyIds:[base.companyId]});expect(after.rows).toEqual(before.rows);expect(after.movement).toEqual(before.movement);
+  const row=await payslipForReview(ctx,{companyIds:[base.companyId],payslipId:saved[0].id});expect(row).toBeTruthy();
+  const x=explainPcb(row!.statutory,null);expect(x.kind).toBe('mtd');expect(x.taxSelection).toBeTruthy();
+  state.auth={s:ctx,scopeIds:[base.companyId]};
+  for(const locale of ['en','ms']){
+   state.locale=locale;const captions=JSON.parse(fs.readFileSync(`messages/${locale}.json`,'utf8')).payroll.pcbDetail;
+   const html=renderToStaticMarkup(await PcbDetailView({ctx:{employeeCode:'SYNTH',employeeName:'Synthetic Saved Benefit',company:'Synthetic Company',periodLabel:'May 2026',payPeriod:'2026-05',runType:'bonus',runSeq:2,currency:'MYR',rulesetVersion:null,identityNumber:null,identityIsPassport:false,taxNumber:null,taxCategory:3},explanation:x,worksheet:pcbWorksheet(x,null),slip:pcbSlipSections(x,sides),closing:pcbClosingSections(x)}));
+   expect(html).toContain(captions.slipBikEntered);expect(html).toContain('600.00');expect(html).toContain('900.00');
+   const response=await pcbDetailPdfResponse(new Request(`http://test.local/payroll/pcb-detail/pdf?payslipId=${saved[0].id}&lang=${locale}`),'attachment');expect(response.status).toBe(200);
+   const text=await extractedText(new Uint8Array(await response.arrayBuffer()));expect(text).toContain(captions.slipBikEntered);expect(text).toContain(captions.slipVolaEntered);expect(text).toContain('600.00');expect(text).toContain('900.00');expect(text).not.toContain('9,900.00');
+  }
+  expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,saved[0].id)))[0]).toEqual(saved[0]);
+ });
+});
