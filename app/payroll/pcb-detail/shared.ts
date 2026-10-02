@@ -45,6 +45,7 @@
  * order, under which number; both surfaces iterate it and switch EXHAUSTIVELY over its closed slot union,
  * so a section added, moved or renumbered moves on both or compiles on neither.
  */
+import { formatQualifyingChildCount } from '@/localization/child-qualification';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { currentPcbReliefs, payslipForReview, previousEmploymentForPayslip } from '@/core/payroll-view';
@@ -206,7 +207,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
       case 'rate':
         return `${(v.rate * 100).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
       case 'count':
-        return String(v.count);
+        return formatQualifyingChildCount(v.count);
       case 'text':
         return v.text;
       case 'caption':
@@ -373,7 +374,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
             // kernel and left both render sites carrying it — this one printing "null", its twin on the
             // screen drawing an empty cell. CLAUDE.md §8: an absent box asserts nothing, 0.00 asserts the
             // money does not exist, and "null" asserts we do not know what we are printing.
-            figure(t('reliefChildCount'), trace?.childCount != null ? String(trace.childCount) : na),
+            figure(t('reliefChildCount'), trace?.childCount != null ? formatQualifyingChildCount(trace.childCount) : na),
           ],
         };
 
@@ -390,7 +391,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
                 figure(t('reliefDisabledIndividual'), money(mtd.reliefs.disabledIndividual)),
                 figure(t('reliefDisabledSpouse'), money(mtd.reliefs.disabledSpouse)),
                 figure(t('reliefChildren'), money(mtd.reliefs.children)),
-                figure(t('reliefChildCount'), trace?.childCount != null ? String(trace.childCount) : na),
+                figure(t('reliefChildCount'), trace?.childCount != null ? formatQualifyingChildCount(trace.childCount) : na),
                 figure(t('reliefLpAccumulated'), trace ? money(trace.lpAccumulated) : na),
                 figure(t('reliefLpCurrent'), trace ? money(trace.lpCurrent) : na),
                 figure(t('reliefLpCombined'), money(mtd.reliefs.lp)),

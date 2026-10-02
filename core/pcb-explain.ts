@@ -97,6 +97,8 @@ export type PcbTrace = {
    * does for a run with no trace at all.
    */
   childCount: number | null;
+  /** Version 1 retains exact C and verifies it against the saved child deduction. */
+  childCountVersion?: 1;
   childDeductionPerChild: number | null;
   childWorking: (PcbChildProfile & {
     rows: Array<{ category: string; sharePercent: number; children: number; units: number; amountRM: number }>;
@@ -294,7 +296,7 @@ type PcbDelta = { cumulative: number; prior: number; cumulativeBonus: number };
 const recordedChildNumber = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 
-function readChildWorking(raw: unknown, childCount: number | null, q: number | null, category: unknown): PcbTrace['childWorking'] {
+function readChildWorking(raw: unknown, childCount: number | null, q: number | null, category: unknown, exactCounts = false): PcbTrace['childWorking'] {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const w = raw as Record<string, unknown>;
   if (w.table != null && (typeof w.table !== 'object' || Array.isArray(w.table))) return null;
@@ -309,7 +311,10 @@ function readChildWorking(raw: unknown, childCount: number | null, q: number | n
   // Validate recorded provenance; never rebuild missing claims from today's employee profile.
   if (childCount == null || q == null) return null;
   const working = w as unknown as NonNullable<PcbTrace['childWorking']>;
-  const close = (a: number, b: number) => Math.abs(a - b) < 0.005000001;
+  const close = exactCounts
+    ? (a: number, b: number) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= Number.EPSILON * Math.max(1, Math.abs(a), Math.abs(b)) * 16
+    : (a: number, b: number) => Math.abs(a - b) < 0.005000001;
+  if (exactCounts && !Number.isSafeInteger(working.headCount)) return null;
   if (working.mode === 'manual') {
     return working.table == null && working.rows.length === 0 && Object.keys(working.categoryUnits).length === 0 &&
       (close(working.headCount, childCount) || category === 1 && childCount === 0) ? working : null;
@@ -347,13 +352,26 @@ function readChildWorking(raw: unknown, childCount: number | null, q: number | n
     ? working : null;
 }
 
-function readTrace(raw: unknown): PcbTrace | null {
+function readTrace(raw: unknown, savedChildRelief?: unknown): PcbTrace | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const t = raw as Record<string, unknown>;
   if (t.M === undefined || t.R === undefined || t.mtdNormalCalc === undefined) return null;
   if (t.mtdNormalFloored === undefined) return null;
-  const childDeductionPerChild = recordedChildNumber(t.childDeductionPerChild);
-  const childCount = childDeductionPerChild == null ? null : recordedChildNumber(t.childCount);
+  const exactCounts = t.childCountVersion === 1;
+  const unsupportedCountVersion = t.childCountVersion !== undefined && !exactCounts;
+  const childDeductionPerChild = unsupportedCountVersion ? null : recordedChildNumber(t.childDeductionPerChild);
+  let childCount = childDeductionPerChild == null ? null : recordedChildNumber(t.childCount);
+  // Check the ACTUAL immutable snapshot, before relief parsing/current-relief fallback can turn absence
+  // into a printable zero. Money is rounded to cents by payroll; C itself has no monetary rounding.
+  if (exactCounts) {
+    const recordedRelief = recordedChildNumber(savedChildRelief);
+    if (childCount == null || childDeductionPerChild == null || recordedRelief == null ||
+        Math.abs(r2(childCount * childDeductionPerChild) - recordedRelief) > 0.0000001) childCount = null;
+  }
+  const childWorking = readChildWorking(t.childWorking, childCount, childDeductionPerChild, t.category, exactCounts);
+  // A recorded new declaration that fails its exact contribution check cannot certify C either.
+  // An absent declaration still leaves independently verified Q/C available without inventing rows.
+  if (exactCounts && t.childWorking !== undefined && childWorking === null) childCount = null;
   return {
     ...(t.schemeVersion === 1 ? { schemeVersion: 1 as const } : {}),
     ...(hasRecordedNumbers(t, ['T']) ? {T: t.T as number} : {}),
@@ -365,8 +383,9 @@ function readTrace(raw: unknown): PcbTrace | null {
     category: n(t.category),
     // NOT `n()` — see the field's own note. `n(undefined)` is 0, and 0 is a lie here.
     childCount,
+    ...(exactCounts ? { childCountVersion: 1 as const } : {}),
     childDeductionPerChild,
-    childWorking: readChildWorking(t.childWorking, childCount, childDeductionPerChild, t.category),
+    childWorking: childCount == null ? null : childWorking,
     Y1: n(t.Y1),
     K1: n(t.K1),
     Y2: n(t.Y2),
@@ -570,7 +589,7 @@ export function explainPcb(
     zakat: n(st.zakat),
     pcbNormal: r2(figures.pcbSystem - pcbAdditional),
     pcbAdditional: r2(pcbAdditional),
-    trace: readTrace(m.trace),
+    trace: readTrace(m.trace, stored?.children),
     normalMtdWorkingRecorded: hasRecordedNumbers(m, ['P1', 'n', 'pcbPaid'])
       && hasRecordedNumbers(m.trace, ['M', 'R', 'B', 'Z', 'zakatCurrent', 'mtdNormalCalc', 'mtdNormalFloored'])
       && hasRecordedNumbers(st, ['pcb'])

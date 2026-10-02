@@ -73,6 +73,7 @@
  * about someone's tax that nobody computed. Historical months are deliberately never recomputed — the
  * figure on the screen must stay the figure that was deducted.
  */
+import { formatQualifyingChildCount } from '@/localization/child-qualification';
 import { getTranslations } from 'next-intl/server';
 import { Card } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
@@ -371,7 +372,7 @@ export async function PcbDetailView({
       case 'rate':
         return pct(v.rate);
       case 'count':
-        return v.count;
+        return formatQualifyingChildCount(v.count);
       case 'text':
         return v.text;
       case 'caption':
@@ -628,7 +629,7 @@ export async function PcbDetailView({
             {/* `trace.childCount` is `number | null`; React renders null as NOTHING, so testing the
                 trace instead of the field drew a silently empty cell on a tax explanation. Same defect
                 as the PDF's, opposite symptom. See shared.ts's note at the equivalent row. */}
-            <Row label={t('reliefChildCount')} value={trace?.childCount != null ? trace.childCount : <NotRecorded />} />
+            <Row label={t('reliefChildCount')} value={trace?.childCount != null ? formatQualifyingChildCount(trace.childCount) : <NotRecorded />} />
           </>
         );
 
@@ -646,7 +647,7 @@ export async function PcbDetailView({
             <Row
               label={t('reliefChildCount')}
               // Field, not trace — see the 9.1 row above.
-              value={trace?.childCount != null ? trace.childCount : <NotRecorded />}
+              value={trace?.childCount != null ? formatQualifyingChildCount(trace.childCount) : <NotRecorded />}
               muted
             />
             <Row label={t('reliefLpAccumulated')} value={trace ? rm(trace.lpAccumulated) : <NotRecorded />} muted />
