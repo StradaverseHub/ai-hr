@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EA Date containment — layout sketch</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 48px; background: #f4f4f3; color: #18181b; font-family: Arial, Helvetica, sans-serif; }
+  main { max-width: 1080px; margin: auto; }
+  h1 { font-size: 26px; font-weight: 600; margin: 0 0 12px; }
+  p { font-size: 16px; line-height: 1.5; margin: 0 0 24px; }
+  .paper { background: white; border: 1px solid #dededb; padding: 32px; }
+  svg { display: block; width: 100%; height: auto; }
+  .note { margin: 24px 0 0; font-size: 15px; }
+  .caveat { color: #52525b; }
+</style>
+</head>
+<body>
+<main>
+<h1>EA Form — Date stays within the existing footer</h1>
+<p class="caveat">Layout sketch with placeholders. This illustrates the footer correction; it is not a generated statutory form.</p>
+<div class="paper">
+<svg viewBox="0 0 516.3 94" role="img" aria-label="Existing employer and officer footer with Date contained below the telephone row">
+  <rect x="0.4" y="0.4" width="515.5" height="89.6" fill="white" stroke="#18181b" stroke-width="0.8" />
+  <g font-family="Arial, Helvetica, sans-serif" font-size="8" fill="#18181b">
+    <text x="6" y="12">Name of Officer</text><text x="142.2" y="12">[Officer name]</text>
+    <text x="6" y="23.2">Designation</text><text x="142.2" y="23.2">[Officer designation]</text>
+    <text x="6" y="34.4">Name and Address of Employer</text><text x="142.2" y="34.4">[Employer name]</text>
+    <text x="142.2" y="45.6">[Complete employer address — first line]</text>
+    <text x="142.2" y="56.8">[Complete employer address — continued]</text>
+    <text x="6" y="68">Telephone No.</text><text x="142.2" y="68">[Employer telephone]</text>
+    <text x="5.4" y="87.5">Date:</text><text x="31.5" y="87.5">[Generated date]</text>
+  </g>
+  <g stroke="#777" stroke-width="0.5" stroke-dasharray="1.4 1.6">
+    <path d="M139.2 14.5H516 M139.2 25.7H516 M139.2 36.9H516 M139.2 48.1H516 M139.2 59.3H516 M139.2 70.5H516" />
+    <path d="M28.5 90H145.2" />
+  </g>
+</svg>
+</div>
+<p class="note">Only the Date caption, value and writing line move inside the existing border. The employer and officer rows, border dimensions and all other EA sections retain their positions.</p>
+<p class="caveat">Complete information must remain readable and clear of the date. If exceptionally long information cannot fit, the form explains the issue instead of overlapping or hiding it.</p>
+</main>
+</body>
+</html>
