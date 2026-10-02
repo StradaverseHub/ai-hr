@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
 import { packFor } from '@/localization/registry';
+import {payrollTaxContextQuery} from '@/lib/payroll-tax-context-query';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const month = /^(?!0000)\d{4}-(0[1-9]|1[0-2])$/;
@@ -23,7 +24,7 @@ function refusal(error: unknown, fallback: 'saveFailed' | 'revokeFailed'): Error
 function back(employmentId: string, formData: FormData, error?: ErrorKey): never {
   const payrollBatchId=String(formData.get('payrollBatchId')??'');
   if(uuid.test(payrollBatchId)&&uuid.test(employmentId)){
-    const q=new URLSearchParams();if(error)q.set('incentiveError',error);else q.set('toast','Saved');
+    const q=payrollTaxContextQuery(formData.get('payrollFrom'),formData.get('payrollJob'));if(error)q.set('incentiveError',error);else q.set('toast','Saved');
     redirect(`/payroll/${payrollBatchId}/tax-configuration/${employmentId}?${q}`);
   }
   const query = new URLSearchParams({ tab: 'bankStatutory' });

@@ -14,15 +14,15 @@ type Declaration = {
 export type IncentiveDeclarationView = { companyId: string; companyName: string; rows: Declaration[];payrollBatchId?:string;payPeriod?:string;configuredScheme?:string;effectiveScheme?:string;readinessCode?:string };
 
 /** Separate forms intentionally remain outside the tab's full-row statutory save. */
-export async function IncentiveDeclarationCard({ employmentId, view, from, asOf, error }: {
-  employmentId: string; view: IncentiveDeclarationView; from?: string; asOf?: string; error?: string;
+export async function IncentiveDeclarationCard({ employmentId, view, from, asOf, error,payrollFrom,payrollJob }: {
+  employmentId: string; view: IncentiveDeclarationView; from?: string; asOf?: string; error?: string;payrollFrom?:string;payrollJob?:string;
 }) {
   const t = await getTranslations('people.detail.incentiveDeclarations');
   const context = <><input type="hidden" name="employmentId" value={employmentId} />
     <input type="hidden" name="tab" value="bankStatutory" />
     {from === 'org' && <input type="hidden" name="from" value="org" />}
     {asOf && /^\d{4}-\d{2}-\d{2}$/.test(asOf) && <input type="hidden" name="asOf" value={asOf} />}
-    {view.payrollBatchId&&<><input type="hidden" name="payrollBatchId" value={view.payrollBatchId}/><input type="hidden" name="expectedPayPeriod" value={view.payPeriod}/></>}</>;
+    {view.payrollBatchId&&<><input type="hidden" name="payrollBatchId" value={view.payrollBatchId}/><input type="hidden" name="expectedPayPeriod" value={view.payPeriod}/>{payrollFrom&&<input type="hidden" name="payrollFrom" value={payrollFrom}/>} {payrollJob&&<input type="hidden" name="payrollJob" value={payrollJob}/>}</>}</>;
   const errorKey = ['invalid', 'unavailable', 'saveFailed', 'revokeFailed', 'invalid_scheme', 'invalid_period',
     'approval_required', 'missing_reference', 'not_found', 'not_resident', 'citizenship_unknown', 'overlap', 'missing_declaration', 'declaration_revoked', 'declaration_outside_period', 'stale_context'].includes(error ?? '') ? error : null;
   return <Card>

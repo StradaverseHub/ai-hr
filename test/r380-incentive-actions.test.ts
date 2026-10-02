@@ -61,6 +61,22 @@ describe('r380 incentive declaration action form contract', () => {
     expect(mocks.save.mock.calls[0][1]).toMatchObject({payrollBatchId,expectedPayPeriod:'2027-01',expectedCompanyId});
     expect(new URL(url,'http://localhost').pathname).toBe(`/payroll/${payrollBatchId}/tax-configuration/${employmentId}`);
   });
+  it('carries payroll-list filters and a job identifier through configuration save and revoke using the shared whitelist',async()=>{
+    const payrollBatchId='55555555-5555-4555-8555-555555555555';
+    const payrollJob='66666666-6666-4666-8666-666666666666';
+    const payrollFrom='/payroll?year=2027&m=1&company=selected';
+    for(const action of [saveIncentiveDeclarationAction,revokeIncentiveDeclarationAction]){
+      mocks.redirect.mockClear();
+      const url=await submitted(action,form({payrollBatchId,expectedPayPeriod:'2027-01',payrollFrom,payrollJob}));
+      const q=new URL(url,'http://localhost').searchParams;
+      expect(q.get('from')).toBe(payrollFrom);expect(q.get('job')).toBe(payrollJob);
+    }
+  });
+  it.each(['https://attacker.example','//attacker.example/payroll','/payrollevil','/admin/personnel'])('does not echo hostile payroll navigation %s',async payrollFrom=>{
+    const url=await submitted(saveIncentiveDeclarationAction,form({payrollBatchId:'55555555-5555-4555-8555-555555555555',expectedPayPeriod:'2027-01',payrollFrom,payrollJob:'../another'}));
+    const q=new URL(url,'http://localhost').searchParams;
+    expect(q.has('from')).toBe(false);expect(q.has('job')).toBe(false);
+  });
   it.each(['rep', 'knowledge_worker', 'c_suite'])('forwards explicit %s approval and reviewed-employer precondition', async scheme => {
     const url = await submitted(saveIncentiveDeclarationAction, form({ scheme, companyId: 'attacker-company', personId: 'ignored-person' }));
     expect(mocks.requireAdmin).toHaveBeenCalledTimes(1);
