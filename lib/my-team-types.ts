@@ -33,13 +33,15 @@ export type MyTeamBalance = {
   accrued: number | null; taken: number | null; pending: number | null; available: number | null;
 };
 export type MyTeamWeekSummary = {
-  from: string; to: string; checkedInDays: number; absentDays: number;
+  from: string; to: string; checkedInDays: number; rosteredDays: number; absentDays: number;
+  lateOrMissingDays: number; approvedLeaveDays: number | null;
   lateMinutes: number | null; workedMinutes: number | null;
 };
 export type MyTeamTodayFlags = { checkedIn: boolean; late: boolean; absent: boolean; onLeave: boolean; halfDayLeave: boolean; pendingApprovals: boolean };
 export type MyTeamEmployee = {
   employmentId: string; employeeCode: string | null; name: string; occupation: string | null;
   companyId: string; departmentId: string | null;
+  defaultShift: {code:string;start:string|null;end:string|null} | null;
   annualAvailable: number | null; balances: MyTeamBalance[];
   days: MyTeamDay[]; weeks: MyTeamWeekSummary[]; today: MyTeamTodayFlags;
 };
@@ -47,7 +49,7 @@ export type MyTeamApproval = {
   requestId: string; employmentId: string; employeeName: string;
   leaveTypeId: string; leaveType: string; startDate: string; endDate: string; days: number;
   appliedAt: string; annualAvailable: number | null; dateDecisionRequired: boolean;
-  dates: { date: string; days: number; status: string }[];
+  dates: { id:string;date: string; days: number; status: string }[];
 };
 export type MyTeamAttention =
   | { kind: 'pending_leave'; id: string; employmentId: string; approval: MyTeamApproval }
@@ -56,7 +58,7 @@ export type MyTeamAttention =
 export type MyTeamSnapshot = {
   query: MyTeamNormalizedQuery; today: string;
   period: { from: string; to: string; gridDates: string[]; coveringWeeks: { from: string; to: string }[] };
-  scope: { employmentIds: string[]; companies: { id: string; name: string }[]; departments: { id: string; companyId: string; name: string }[]; canEditRoster: boolean };
+  scope: { employmentIds: string[]; companies: { id: string; name: string }[]; departments: { id: string; companyId: string; name: string }[]; canEditRoster: boolean; canChooseDepartment:boolean };
   availability: { attendance: MyTeamSourceAvailability; leave: MyTeamSourceAvailability; roster: MyTeamSourceAvailability };
   /** Whole authorized scope supplies fixed tiles/attention/panel. Search and tile narrow only grid IDs. */
   employees: MyTeamEmployee[]; gridEmploymentIds: string[];
@@ -65,3 +67,8 @@ export type MyTeamSnapshot = {
 };
 export type MyTeamRosterScope = { companyIds: string[]; employmentIds: string[]; from: string; to: string; canEditRoster: boolean };
 export type MyTeamPunchReviewResult = { reviewed: true; reviewId: string };
+/** The server route supplies destinations after freshly checking the same team scope. */
+export type MyTeamNavigation = {
+  roster: { href: string | null; label: 'view' | 'edit' };
+  employees: Record<string, { weeks: Record<string, { attendanceHref: string | null; rosterHref: string | null }> }>;
+};
