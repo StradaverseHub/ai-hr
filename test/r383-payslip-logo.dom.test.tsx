@@ -14,4 +14,13 @@ describe('payslip document logo fallback',()=>{
   fireEvent.error(screen.getByRole('img'));
   expect(screen.queryByRole('img')).toBeNull();expect(screen.getByRole('heading',{name:'Company legal name'})).toBeTruthy();
  });
+ it('does not carry one company failure into a different selected payslip company',()=>{
+  const {rerender}=render(<PayslipCompanyLogo companyId="company-a" companyName="Company A"/>);
+  fireEvent.error(screen.getByRole('img',{name:'Company A'}));expect(screen.queryByRole('img')).toBeNull();
+  rerender(<PayslipCompanyLogo companyId="company-b" companyName="Company B"/>);
+  const next=screen.getByRole('img',{name:'Company B'});
+  expect(next.getAttribute('src')).toBe('/admin/organization/logo/company-b');
+  fireEvent.error(next);expect(screen.queryByRole('img')).toBeNull();
+ });
+
 });
