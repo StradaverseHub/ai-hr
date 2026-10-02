@@ -46,7 +46,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -175,8 +175,28 @@ const statRow = (personId: string) =>
 type SlipStatutory = {
   pcb: number;
   epfEmployee?: number;
-  pcbMeta?: { P1: number; epfClaimed: number; trace?: { lpAccumulated: number; lpCurrent: number } };
+  pcbMeta?: { P1: number; epfClaimed: number; taxSelectionId?: string; taxSelectionVersion?: number; taxSelectionSource?: string; calculationScheme?: string; trace?: { lpAccumulated: number; lpCurrent: number } };
 };
+
+/** Validate each fixture's scoped authority before omitting only its unique identity from a
+ * comparison across two different employments. All money, LP, versions and other metadata remain. */
+async function comparableStatutory(st: SlipStatutory, employmentId: string) {
+  const rows = await owner.db.select().from(schema.employmentTaxSelectionMy).where(and(
+    eq(schema.employmentTaxSelectionMy.tenantId, b.tenantId),
+    eq(schema.employmentTaxSelectionMy.employmentId, employmentId),
+    eq(schema.employmentTaxSelectionMy.companyId, b.companyId),
+  ));
+  expect(rows).toHaveLength(1);
+  const selection = rows[0];
+  expect(selection).toMatchObject({ scheme: 'resident', transitionState: 'resolved', version: 1 });
+  expect(selection.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+  expect(st.pcbMeta).toMatchObject({
+    calculationScheme: selection.scheme, taxSelectionId: selection.id,
+    taxSelectionVersion: selection.version, taxSelectionSource: 'income_tax_resident',
+  });
+  const { taxSelectionId: _scopedIdentity, ...metadata } = st.pcbMeta!;
+  return { ...st, pcbMeta: metadata };
+}
 
 /** One month's run, returning each named employee's statutory block. */
 async function runMonth(period: string, names: string[]) {
@@ -359,8 +379,10 @@ describe('20837372 (b)/(e) · nothing declared changes nothing', () => {
       sectionD: { c5: { subItems: { a: 0, b: 0 } }, c8: { amount: 0 }, c12: { amount: 0 } },
     });
     const { st } = await runMonth(`${YEAR}-07`, ['D Absent', 'D Empty']);
-    // THE WHOLE STATUTORY BLOCK, not just the PCB: a change anywhere in it is a change to the payslip.
-    expect(st.get('D Empty')).toEqual(st.get('D Absent'));
+    // The whole block remains equal except each employment's independently verified selection UUID.
+    expect(await comparableStatutory(st.get('D Empty')!, empty.employmentId)).toEqual(
+      await comparableStatutory(st.get('D Absent')!, absent.employmentId),
+    );
     expect(st.get('D Empty')!.pcbMeta!.trace!.lpAccumulated).toBe(0);
   });
 
@@ -369,7 +391,9 @@ describe('20837372 (b)/(e) · nothing declared changes nothing', () => {
     const none2 = await payableEmployee('No Form Two');
     expect((await statRow(none1.personId)).tp3Lp, 'the column is nullable and nothing wrote it').toBeNull();
     const { st } = await runMonth(`${YEAR}-07`, ['No Form One', 'No Form Two']);
-    expect(st.get('No Form One')).toEqual(st.get('No Form Two'));
+    expect(await comparableStatutory(st.get('No Form One')!, none1.employmentId)).toEqual(
+      await comparableStatutory(st.get('No Form Two')!, none2.employmentId),
+    );
     expect(st.get('No Form One')!.pcbMeta!.trace!.lpAccumulated).toBe(0);
   });
 });
