@@ -639,7 +639,7 @@ export default async function IndividualPayslipPage({
           <Card className="p-6">
             <p className="mb-4 text-xs font-semibold">{tSlip('confidentialHeading')}</p>
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
-              <div className="min-w-0">
+              <div className="min-w-0 break-words">
                 {companyHasLogo && (
                   /* eslint-disable-next-line @next/next/no-img-element -- a bytea served by our own route,
                      not a build-time asset; next/image would need a loader for an authenticated endpoint. */
