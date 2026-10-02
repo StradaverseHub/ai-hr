@@ -1,3 +1,5 @@
+import { EaLayoutFitError } from '@/lib/ea-pdf';
+import { eaLayoutFailure } from '@/lib/ea-layout-response';
 /**
  * r220 (item 61c2e30f) — THE BLANK C.P.8A, so the arrangement can be checked before a filled one is
  * trusted.
@@ -45,7 +47,9 @@ export async function GET(req: Request) {
   const lang: EaLang | null = EA_LANGS.includes(langParam as EaLang) ? (langParam as EaLang) : null;
   const locale = lang ?? (await getLocale());
 
-  const bytes = await renderEaPdf(blankEaPdfData(), await eaPdfLabels(locale, { blank: true }), { blank: true, locale });
+  let bytes: Uint8Array;
+  try { bytes = await renderEaPdf(blankEaPdfData(), await eaPdfLabels(locale, { blank: true }), { blank: true, locale }); }
+  catch(error) { if(error instanceof EaLayoutFitError) return eaLayoutFailure(error,locale); throw error; }
 
   // The language rides in the filename because both are offered from the same shelf and an operator
   // downloading each of them should not end up with "…(1).pdf" and no way to tell which is which.

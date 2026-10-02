@@ -24,7 +24,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { EA_FORM, blankEaPdfData, renderEaPdf, type EaPdfData } from '../lib/ea-pdf';
+import { EA_FORM, EA_V6_FOOT, blankEaPdfData, renderEaPdf, type EaPdfData } from '../lib/ea-pdf';
 import { eaPdfLabelsFromCatalogue } from '../lib/ea-pdf-labels-file';
 import { type PdfRun, joinRuns, readPdfPageGeometry } from '../lib/pdf-page-geometry';
 
@@ -131,10 +131,7 @@ const ROWS: { row: string; tt: number; xs: number[]; letter?: boolean }[] = [
   { row: 'E.1 amount', tt: F.rowsE.epf, xs: [F.subLabel, F.rmBeforeRule] },
   { row: 'E.2', tt: F.rowsE.perkeso, xs: [F.itemLabel, F.subLabel, F.rmBeforeRule] },
   { row: 'F heading', tt: F.sectionT.f, xs: [F.sectionLetter, F.itemLabel, F.rmBeforeRule], letter: true },
-  { row: 'foot: officer', tt: F.officerBox.rowT0, xs: [F.officerBox.captionX] },
-  { row: 'foot: designation', tt: F.officerBox.rowT0 + F.officerBox.rowPitch, xs: [F.officerBox.captionX] },
-  { row: 'foot: employer', tt: F.officerBox.rowT0 + 2 * F.officerBox.rowPitch, xs: [F.officerBox.captionX] },
-  { row: 'foot: phone + date', tt: F.officerBox.rowT0 + 4 * F.officerBox.rowPitch, xs: [F.officerBox.captionX, F.dateX] },
+
 ];
 
 describe('r372 — EA_FORM is LHDN’s own grid, re-derived from LHDN’s own file', () => {
@@ -275,7 +272,7 @@ describe.each(EDITIONS)('r372 — the %s edition is drawn on that grid', (locale
   it('the form is not compressed: F and the officer box end where the agency ends them', async () => {
     const { runs } = await readPdfPageGeometry(await renderEaPdf(statement(), labels, { locale }));
     const lowest = Math.max(...runs.map((r) => r.tt));
-    expect(lowest, `${locale}: the last line of the form`).toBeCloseTo(F.officerBox.rowT0 + 4 * F.officerBox.rowPitch, 1);
+    expect(lowest, `${locale}: the last line of the form`).toBeCloseTo(827, 1);
     expect(runAt(runs, F.sectionT.f, F.itemLabel), `${locale}: Section F is not on the agency's baseline`).toBeDefined();
     // …and the agency agrees about both, read off its own file rather than restated here.
     expect(agency.runs.some((r) => near(r.tt, F.sectionT.f) && near(r.x, F.itemLabel))).toBe(true);
@@ -283,83 +280,19 @@ describe.each(EDITIONS)('r372 — the %s edition is drawn on that grid', (locale
   });
 });
 
-/**
- * ── THE CONTINUATION SHEET (r372, inheriting item 450f443f) ────────────────────────────────────────
- *
- * Round one made the officer box grow a rule at a time, because `fitSize` shrinks rather than wraps
- * and a 225-character employer block set its last line at 3.4 pt — present in the file, absent from
- * the paper. At the AGENCY's geometry the box ends at 817.9 against a page floor of 830: twelve points
- * against a 13.2 pt pitch, so not one more rule fits and the growth has nowhere to go on page one.
- * It goes to a second sheet, at a full 8 pt, rather than shrinking or truncating.
- */
-describe('r372 — an employer the agency’s own box cannot hold', () => {
-  const labels = eaPdfLabelsFromCatalogue('en');
-  const LONG_NAME = 'Perbadanan Pembangunan Infrastruktur dan Teknologi Maklumat Semenanjung Malaysia Berhad';
-  const LONG_ADDRESS = [
-    'Aras 27, Menara Tabung Haji, Jalan Tun Razak',
-    'Kawasan Perindustrian Desa Aman Fasa 3, Lot 88-A',
-    '52200 Kuala Lumpur, Wilayah Persekutuan',
-  ];
-
-  it('the agency’s two rules leave no room for a third — the reason the sheet exists', () => {
-    const room = EA_FORM.bottom - EA_FORM.officerBox.t1;
-    expect(room, 'the room under the agency’s box').toBeLessThan(EA_FORM.officerBox.rowPitch);
-    expect(EA_FORM.officerBox.employerRules, 'the agency’s own writing rules').toBe(2);
-  });
-
-  it('a block that fits the agency’s two rules stays on ONE page, exactly as the agency draws it', async () => {
-    const { pages, runs } = await readPdfPageGeometry(await renderEaPdf(statement(), labels, { locale: 'en' }));
-    expect(pages, 'a short employer block spilled').toBe(1);
-    expect(runAt(runs, EA_FORM.officerBox.rowT0 + 4 * EA_FORM.officerBox.rowPitch, EA_FORM.dateX)?.text).toContain('Date');
-  });
-
-  it('a longer one continues on a second sheet at FULL SIZE, with nothing shrunk and nothing lost', async () => {
-    const long: EaPdfData = {
-      ...statement(),
-      employer: { ...statement().employer, name: LONG_NAME, address: LONG_ADDRESS },
-    };
-    const bytes = await renderEaPdf(long, labels, { locale: 'en' });
-    const page1 = await readPdfPageGeometry(bytes, 0);
-    const page2 = await readPdfPageGeometry(bytes, 1);
-    expect(page1.pages, 'the overflow did not reach a second sheet').toBe(2);
-
-    const block = [LONG_NAME, ...LONG_ADDRESS].join(', ');
-    const O = EA_FORM.officerBox;
-    const onPage1 = [0, 1].map((k) => runAt(page1.runs, O.rowT0 + (2 + k) * O.rowPitch, O.ruleX[0] + 3));
-    const onPage2 = page2.runs.filter((r) => near(r.x, EA_FORM.left + 3));
-    const printed = [...onPage1.map((r) => r?.text ?? ''), ...onPage2.map((r) => r.text)].filter(Boolean).join(' ');
-    expect(printed, 'the employer block was truncated or reordered').toBe(block);
-    for (const run of [...onPage1, ...onPage2]) {
-      if (run) expect(run.size, `"${run.text}" was shrunk to ${run.size}pt`).toBe(8);
-    }
-    // The sheet says which statement it belongs to, and introduces no wording of its own.
-    const joined = joinRuns(page2.runs).map((r) => r.text);
-    expect(joined.some((s) => s.includes('C.P.8A')), 'a loose second sheet with no form number').toBe(true);
-    expect(joined.some((s) => s.includes('2026')), 'a loose second sheet with no year').toBe(true);
-  });
-
-  it('the form’s own page is unchanged by the overflow — the box is still the agency’s', async () => {
-    const short = await readPdfPageGeometry(await renderEaPdf(statement(), labels, { locale: 'en' }));
-    const long = await readPdfPageGeometry(
-      await renderEaPdf(
-        { ...statement(), employer: { ...statement().employer, name: LONG_NAME, address: LONG_ADDRESS } },
-        labels,
-        { locale: 'en' },
-      ),
-      0,
-    );
-    /**
-     * The box's own FURNITURE — its four captions and the Date beside the telephone. Not every run
-     * below `t0`: an employer block that fills only one of the agency's two rules leaves the second
-     * one blank, and a blank rule draws no text, so the two documents legitimately differ by one run
-     * there. What must not differ is where the box and its captions are.
-     */
-    const O = EA_FORM.officerBox;
-    const foot = (g: { runs: PdfRun[] }) =>
-      g.runs
-        .filter((r) => r.tt > O.t0 && (near(r.x, O.captionX) || near(r.x, EA_FORM.dateX)))
-        .map((r) => `${r.tt}/${r.x}/${r.text}`);
-    expect(foot(short).length, 'the box lost its captions').toBe(5);
-    expect(foot(long), 'a long address moved the agency’s own rows').toEqual(foot(short));
+// Revision 3 replaces the narrow agency footer and continuation with the approved V6 footer.
+describe('r379 — V6 finite layout retains the measured A–F body',()=>{
+  const labels=eaPdfLabelsFromCatalogue('en');
+  it('wraps a complete long address on the same page without moving any body row',async()=>{
+    const short=await readPdfPageGeometry(await renderEaPdf(statement(),labels,{locale:'en'}));
+    const address=['Aras 27, Menara Tabung Haji, Jalan Tun Razak','Kawasan Perindustrian Desa Aman Fasa 3, Lot 88-A','52200 Kuala Lumpur, Wilayah Persekutuan'];
+    const long=await readPdfPageGeometry(await renderEaPdf({...statement(),employer:{...statement().employer,address}},labels,{locale:'en'}));
+    expect(long.pages).toBe(1);
+    const body=(g:{runs:PdfRun[]})=>g.runs.filter(r=>r.tt<EA_V6_FOOT.top).map(r=>`${r.tt}/${r.x}/${r.text}`);
+    expect(body(long)).toEqual(body(short));
+    const values=long.runs.filter(r=>r.tt>EA_V6_FOOT.top&&near(r.x,EA_V6_FOOT.valueX+3));
+    expect(values.map(r=>r.text).join(' ')).toContain(address.join(', '));
+    expect(values.every(r=>r.size===8)).toBe(true);
+    expect(runAt(long.runs,827,EA_FORM.dateX)?.text).toContain('Date');
   });
 });

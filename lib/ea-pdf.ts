@@ -55,6 +55,14 @@
 // MONEY COLUMN — `amountOrRule` draws its rule and nothing on it — while every caption, box, heading,
 // note, rule and signature area is drawn at exactly the position it occupies on a filled form.
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib';
+import { bestFaceFor, embedPayslipFaces, payslipFaceScripts } from './payslip-pdf-fonts';
+
+/** No partial or unreadable statutory PDF may escape a failed measured plan. */
+export class EaLayoutFitError extends Error {
+  constructor(public readonly section: string) { super(`EA form cannot fit complete readable information in ${section}. Review the recorded information or request a layout review.`); this.name = 'EaLayoutFitError'; }
+}
+export const EA_READABLE_FONT_FLOOR = 6;
+export const EA_V6_FOOT = { left:39.8, top:727.5, bottom:817.9, captionX:45.8, valueX:179, right:556.1, size:8, lineHeight:11.2 } as const;
 
 /** Mirrors EaStatement (localization/my/reports.ts). year is a STRING end-to-end (the read filters
  *  payPeriod LIKE '<year>-%'). */
@@ -569,7 +577,7 @@ export const EA_FORM = {
     /** The right-hand block: the employee's TIN caption, its rule, and "LHDNM State". */
     rightLabel: 415.7,
     tinRule: [415.8, 557] as const,
-    stateRule: [476.1, 557] as const,
+    stateRule: [444.8, 557] as const,
     privateBlock: [399.1, 527] as const,
     privateText: 405.1,
   },
@@ -642,63 +650,13 @@ export const EA_FORM = {
   rowsE: { fundName: 661.8, epf: 675, perkeso: 688.1 },
   /** B.2's two description rules, which carry no money. */
   incomeTypeX: { letter: 154.3, rule: [172.4, 298.9] as const },
-  /**
-   * The officer box at the foot, on the agency's own rows.
-   *
-   * ⚠️ r372 — THIS BOX MOVED 99 pt DOWN THE PAGE AND ITS PITCH CHANGED, AND BOTH ARE THE AGENCY'S.
-   * `--rects` puts its frame at tt 727.5 → 817.9 between vertical rules at x 191 and 557, with five
-   * writing rows whose baselines are 749.1 / 762.3 / 775.5 / 788.8 / 802 — a 13.2 pt pitch. Ours was
-   * 640.8 → 730.6 at a 17 pt pitch, traced. The captions sit at 196.9 and the writing rules start at
-   * 331.5; the agency's Date is OUTSIDE the box at x 45.2, on the SAME row as the telephone.
-   *
-   * ⚠️ AND THE ROOM UNDER IT IS GONE, WHICH IS WHY ROUND ONE'S GROWTH NOW SPILLS TO A SECOND SHEET.
-   * The agency's last row ends at 817.9 and `bottom` is 830: 12.1 pt against a 13.2 pt pitch, so not one
-   * more rule fits. Round one (item 450f443f) grew this box downwards for an employer name and address
-   * longer than the agency's two writing rules; at the agency's own geometry there is nowhere to grow
-   * into, and the alternatives are both refused — shrinking the type reinstates the 3.4 pt line that
-   * round one exists to prevent, and truncating reads as a complete address. So the rules that fit are
-   * drawn here and the remainder continues on a second sheet, at a full 8 pt, under the agency's own
-   * caption. `minSize` is still the floor for the three single-value rows, which cannot wrap.
-   */
+  /** Historical agency footer geometry, retained for comparison tests. V6 drawing uses EA_V6_FOOT. */
   officerBox: {
-    x0: 191,
-    t0: 727.5,
-    /**
-     * The box's bottom edge WHEN IT HAS NOT GROWN — i.e. for the two writing lines the agency's own
-     * box has, which is the agency's own bottom rule. A name and address that needs more takes
-     * `rowPitch` per extra rule below this; the renderer computes `officerBoxT1` and nothing else
-     * reads `t1` for a grown box.
-     */
-    t1: 817.9,
-    ruleX: [331.5, 556.1] as const,
-    captionX: 196.9,
-    /** The agency's own first writing baseline, and the pitch of its five rows. */
-    rowT0: 749.1,
-    rowPitch: 13.2,
-    /** The agency's own count of writing lines for the name and address: two. The floor, never a cap. */
-    employerRules: 2,
-    /**
-     * The smallest type ANY row of this box may set — the employer's name and address, and equally the
-     * officer's name, the designation and the telephone number. See the employer rules' own note for
-     * why it is 6 and not `fitSize`'s 1, and `officerRow` for what the three single-value rows do when
-     * they reach it (they overprint; they have no second rule to wrap onto).
-     *
-     * ⚠️ IT WAS NOT r372's TO LOWER AND IT HAS NOT BEEN LOWERED. At 13.2 pt the pressure to shrink
-     * rather than wrap goes UP, which is the argument for the second sheet, not against the floor.
-     */
-    minSize: 6,
-    /**
-     * The gap between the last writing baseline and the box's own bottom rule (802 → 817.9).
-     *
-     * ⚠️ NOT DRAWN WITH — `t1` is the measured bottom rule and the box does not grow, so nothing
-     * computes from this. It is here as the CONSISTENCY CHECK between two independent readings of the
-     * agency's page: `rowT0 + 4 × rowPitch + footPad` must land on `t1`, and
-     * `test/ea-agency-grid.test.ts` asserts it. If a future round re-pitches this box, that is the
-     * arithmetic that says where its bottom edge goes.
-     */
-    footPad: 15.9,
+    x0:191,t0:727.5,t1:817.9,
+    ruleX:[331.5,556.1] as const,captionX:196.9,
+    rowT0:749.1,rowPitch:13.2,employerRules:2,minSize:6,footPad:15.9,
   },
-  /** The Date, which the agency prints OUTSIDE the box, on the telephone's row. */
+  /** Retained date column; V6 puts its baseline below the full-width footer. */
   dateX: 45.2,
   dateRule: [62.2, 185] as const,
   /**
@@ -719,7 +677,7 @@ export const EA_FORM = {
   amendedNoteT: 723.5,
   /** The page floor. Nothing may be drawn below it. */
   bottom: 830,
-  /** Where a continuation sheet starts, when the employer's address outgrows the agency's box. */
+  /** Historical continuation measurement; V6 never creates a continuation page. */
   overflowT: 60,
 } as const;
 
@@ -911,6 +869,11 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
 
+  const strings: string[] = [];
+  const collect = (v: unknown): void => { if (typeof v === 'string') strings.push(v); else if (v && typeof v === 'object') Object.values(v).forEach(collect); };
+  collect(d); collect(t); collect(eaFormWords(opts.locale ?? 'en'));
+  const faces = await embedPayslipFaces(doc, payslipFaceScripts(strings));
+  const operations: (() => void)[] = [];
   const H = A4[1];
   const { left: L, right: R, moneyLeft: MX, moneyRight: MR } = EA_FORM;
   /** The whole measured grid, under one short name, because nearly every draw below reads from it. */
@@ -934,7 +897,25 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
       .replace(/[‘’ʼ]/g, "'")
       .replace(/[“”]/g, '"')
       .replace(/…/g, '...');
-  const safe = (s: string) => fold(s).replace(/[^\x20-\x7E\xA0-\xFF]/g, '?');
+  const safe = (s: string) => fold(s).replace(/[\r\n\t]+/g, ' ');
+  const face = (s: string, requested: PDFFont): PDFFont => {
+    const selected = bestFaceFor(safe(s), faces);
+    const actual = selected ? (requested === bold ? selected.bold : selected.regular) : requested;
+    const chars = new Set(actual.getCharacterSet());
+    if ([...safe(s)].some(ch => !chars.has(ch.codePointAt(0)!))) throw new EaLayoutFitError('unsupported text');
+    return actual;
+  };
+  type TextCell = {left:number;right:number;top:number;bottom:number};
+  const rowCell = (x:number,right:number,tt:number):TextCell => ({left:x,right,top:tt-10,bottom:tt+4});
+  const drawText = (s: string, x: number, tt: number, size: number, requested: PDFFont, color = ink, cell?:TextCell) => {
+    const actual = face(s, requested); const value = safe(s);
+    const ascent = actual.heightAtSize(size,{descender:false});
+    const descent = actual.heightAtSize(size)-ascent;
+    const right = x+actual.widthOfTextAtSize(value,size);
+    const bounds = cell ?? {left:0,right:tt>=88?R:A4[0],top:0,bottom:A.bottom};
+    if (size < EA_READABLE_FONT_FLOOR || x < bounds.left-0.001 || right > bounds.right+0.001 || tt-ascent < bounds.top-0.001 || tt+descent > bounds.bottom+0.001) throw new EaLayoutFitError('page content');
+    operations.push(() => page.drawText(value, {x, y: H-tt, size, font: actual, color}));
+  };
 
   /** A money figure as the form prints it: NO "RM" prefix — the column has one bold RM heading, and
    *  D5/E/F print their own RM immediately before their rule. */
@@ -988,16 +969,13 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // ── Drawing primitives, all in TOP-DOWN coordinates ────────────────────────────────────────────────
   let page = first;
   const at = (tt: number) => H - tt;
-  const put = (s: string, x: number, tt: number, size: number, f: PDFFont = font, color = ink) =>
-    page.drawText(safe(s), { x, y: at(tt), size, font: f, color });
-  const putR = (s: string, xr: number, tt: number, size: number, f: PDFFont = font, color = ink) =>
-    page.drawText(safe(s), { x: xr - f.widthOfTextAtSize(safe(s), size), y: at(tt), size, font: f, color });
-  const putC = (s: string, cx: number, tt: number, size: number, f: PDFFont = font, color = ink) =>
-    page.drawText(safe(s), { x: cx - f.widthOfTextAtSize(safe(s), size) / 2, y: at(tt), size, font: f, color });
+  const put = (s: string, x: number, tt: number, size: number, f: PDFFont = font, color = ink) => drawText(s,x,tt,size,f,color);
+  const putR = (s: string, xr: number, tt: number, size: number, f: PDFFont = font, color = ink) => drawText(s,xr-face(s,f).widthOfTextAtSize(safe(s),size),tt,size,f,color);
+  const putC = (s: string, cx: number, tt: number, size: number, f: PDFFont = font, color = ink) => drawText(s,cx-face(s,f).widthOfTextAtSize(safe(s),size)/2,tt,size,f,color);
   const hRule = (x0: number, x1: number, tt: number, thickness = 0.8, color = rule) =>
-    page.drawLine({ start: { x: x0, y: at(tt) }, end: { x: x1, y: at(tt) }, thickness, color });
+    operations.push(() => page.drawLine({ start: { x: x0, y: at(tt) }, end: { x: x1, y: at(tt) }, thickness, color }));
   const box = (x0: number, t0: number, x1: number, t1: number, thickness = 0.8) =>
-    page.drawRectangle({ x: x0, y: at(t1), width: x1 - x0, height: t1 - t0, borderColor: rule, borderWidth: thickness });
+    operations.push(() => page.drawRectangle({ x: x0, y: at(t1), width: x1 - x0, height: t1 - t0, borderColor: rule, borderWidth: thickness }));
   /**
    * A SOLID BLACK BLOCK — the agency's own device, and the thing that made our page read as a different
    * document (item fda53352, r349). LHDN sets its section letters, its banner and its top-right heading
@@ -1010,12 +988,12 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
    * caption exists for every fill.
    */
   const fill = (x0: number, t0: number, x1: number, t1: number) =>
-    page.drawRectangle({ x: x0, y: at(t1), width: x1 - x0, height: t1 - t0, color: ink });
+    operations.push(() => page.drawRectangle({ x: x0, y: at(t1), width: x1 - x0, height: t1 - t0, color: ink }));
   const white = rgb(1, 1, 1);
   /** The dotted rule the specimen writes every value on. */
   const dotted = (x0: number, x1: number, tt: number) => {
     for (let x = x0; x < x1; x += 3) {
-      page.drawLine({ start: { x, y: at(tt) }, end: { x: Math.min(x + 1.4, x1), y: at(tt) }, thickness: 0.5, color: rule });
+      operations.push(() => page.drawLine({ start: { x, y: at(tt) }, end: { x: Math.min(x + 1.4, x1), y: at(tt) }, thickness: 0.5, color: rule }));
     }
   };
 
@@ -1024,40 +1002,38 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
    * renderer safe for two languages on a fixed-geometry form: an English caption is routinely wider than
    * its Malay original, and pdf-lib does not clip. Truncating instead would be worse, not better — a
    * clean truncation READS AS THE CAPTION. The size comes down, rounded DOWN to 0.1 pt so the drawn
-   * string stays inside `maxW`, and is clamped at 1 pt; the clamp is the one case where a string can
-   * still exceed its slot, and an overprint gets queried while an invisible caption does not.
+   * string stays inside `maxW`. The readable floor and actual vertical metrics are checked before drawing.
    */
   const fitSize = (v: string, maxW: number, size: number, f: PDFFont) => {
-    const w = f.widthOfTextAtSize(v, size);
+    const w = face(v,f).widthOfTextAtSize(v, size);
     if (w <= maxW || w <= 0) return size;
-    return Math.max(1, Math.floor((size * maxW * 10) / w) / 10);
+    return Math.floor((size * maxW * 10) / w) / 10;
   };
   /** Returns the x the drawn string ENDS at, so the next run (a cue word, an inline rule) can start from
    *  what was actually drawn rather than from a guess at its width. */
-  /**
-   * ⚠️ r372 — `minSize` IS A FLOOR THE CALLER MAY RAISE, AND RAISING IT TRADES AN INVISIBLE STRING FOR
-   * A VISIBLE ONE. `fitSize` clamps at 1 pt, which is not a floor so much as a formality: at 3 pt the
-   * string is gone on paper and still present in the file, so nothing — not a test, not a 200, not a
-   * reader on a bright screen — reports it (item 450f443f; the measurement is on the employer rules
-   * below). Above this floor the text is shrunk to fit as before; at it, it is drawn at the floor and
-   * OVERPRINTS, which is r205's Borang A trade taken deliberately: an overprint gets queried, an
-   * invisible line does not. The default of 1 leaves every existing caller exactly as it was, because
-   * `fitSize` already returns at least 1.
-   */
-  const putFit = (s: string, x: number, maxW: number, tt: number, size: number, f: PDFFont = font, color = ink, minSize = 1) => {
+  /** Fit only within the readable floor; refuse the complete plan rather than overprint. */
+  const putFit = (s: string, x: number, maxW: number, tt: number, size: number, f: PDFFont = font, color = ink, minSize = EA_READABLE_FONT_FLOOR) => {
     const v = safe(s);
-    const sz = Math.max(minSize, fitSize(v, maxW, size, f));
-    page.drawText(v, { x, y: at(tt), size: sz, font: f, color });
-    return x + f.widthOfTextAtSize(v, sz);
+    const fitted = fitSize(v, maxW, size, f);
+    const actual = face(v,f);
+    const ascent = actual.heightAtSize(fitted,{descender:false});
+    const descent = actual.heightAtSize(fitted)-ascent;
+    const verticalFit = tt>=88 ? Math.min(1,10/ascent,descent>0?4/descent:1) : 1;
+    const sz = verticalFit<1 ? Math.floor(fitted*verticalFit*10)/10 : fitted;
+    if (sz < minSize) throw new EaLayoutFitError(tt < 88 ? 'header' : tt < 230 ? 'employee details' : tt < 489 ? 'employment income' : tt < 530 ? 'pension and annuity' : tt < 652 ? 'deductions' : tt < 727 ? 'contributions and exemptions' : 'employer and authorised officer');
+    drawText(v,x,tt,sz,f,color,tt>=88?rowCell(x,x+maxW,tt):{left:x,right:x+maxW,top:0,bottom:88});
+    return x + face(v,f).widthOfTextAtSize(v,sz);
   };
 
   /** Greedy word-wrap at `size`, so the footnote strip can be MEASURED before it is placed. */
   const wrapped = (s: string, size: number, maxW: number, f: PDFFont = font) => {
     const out: string[] = [];
     let line = '';
-    for (const w of safe(s).split(/\s+/)) {
+    const actual = face(s,f);
+    const words = safe(s).split(/\s+/).flatMap(word => { const chunks: string[] = []; let chunk = ''; for(const ch of word) {if(actual.widthOfTextAtSize(chunk+ch,size)>maxW && chunk){chunks.push(chunk);chunk='';}chunk+=ch;} if(chunk)chunks.push(chunk);return chunks; });
+    for (const w of words) {
       const trial = line ? `${line} ${w}` : w;
-      if (f.widthOfTextAtSize(trial, size) > maxW && line) {
+      if (actual.widthOfTextAtSize(trial, size) > maxW && line) {
         out.push(line);
         line = w;
       } else line = trial;
@@ -1074,7 +1050,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
    * the dotted rule and nothing else — an empty rule asserts nothing, while a printed zero asserts that
    * the money does not exist.
    */
-  const valueOrRule = (v: string, x0: number, x1: number, tt: number, size = 7.5, minSize = 1) => {
+  const valueOrRule = (v: string, x0: number, x1: number, tt: number, size = 7.5, minSize = EA_READABLE_FONT_FLOOR) => {
     dotted(x0, x1, tt + 2.5);
     if (v) putFit(v, x0 + 3, x1 - x0 - 6, tt, size, font, ink, minSize);
   };
@@ -1097,7 +1073,8 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
     if (v) {
       const s = safe(v);
       const sz = fitSize(s, x1 - x0 - 4, size, font);
-      page.drawText(s, { x: x1 - 2 - font.widthOfTextAtSize(s, sz), y: at(tt), size: sz, font, color: ink });
+      if (sz < EA_READABLE_FONT_FLOOR) throw new EaLayoutFitError('amount column');
+      putR(s,x1-2,tt,sz);
     }
   };
   /** One numbered money line: the caption at `x`, its amount on the RM column's rule. */
@@ -1188,7 +1165,8 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
     if (n.sub) put(n.sub, A.subLabel, tt, size);
     return textX ?? (n.sub ? A.subText : A.subLabel);
   };
-  const W = eaFormWords(opts.locale ?? 'en');
+  // V6 splits the employer name from its address; preserve original wording metadata for comparisons.
+  const W = {...eaFormWords(opts.locale ?? 'en'), employerNameAddress:opts.locale === 'ms' ? 'Nama Majikan' : 'Employer Name'};
 
   // ── THE HEADER BAND — three blocks and the ruled banner under them ──────────────────────────────────
   //
@@ -1256,7 +1234,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // The agency LEFT-aligns the employee's TIN caption in its own column and rules it on the line below.
   putFit(W.employeeTin, HX.rightLabel, R - HX.rightLabel, HT.employeeTin, 7.5);
   valueOrRule(d.employee.taxNo ?? '', HX.tinRule[0], HX.tinRule[1], HT.employeeTinRule);
-  put(W.lhdnState, HX.rightLabel, HT.lhdnState, 7.5);
+  put(W.lhdnState, 399.1, HT.lhdnState, 6);
   valueOrRule(d.employer.lhdnState ?? '', HX.stateRule[0], HX.stateRule[1], HT.lhdnState);
 
   // r349 — SOLID, WHITE-ON-BLACK, as the agency prints it; r372 put it on the agency's own strip
@@ -1304,7 +1282,8 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   {
     const n: EaNumbering = N.childrenTaxRelief;
     put(`${n.item}.`, A.itemLabel, A.rowsA.children, 7.5);
-    const childLines = wrapped(eaCaptionWords(t.childrenTaxRelief, n), 7.5, A.aChildrenRule[0] - A.aLeftLabel - 4).slice(0, 2);
+    const childLines = wrapped(eaCaptionWords(t.childrenTaxRelief, n), 7.5, A.aChildrenRule[0] - A.aLeftLabel - 4);
+    if (childLines.length > 2) throw new EaLayoutFitError('employee details');
     childLines.forEach((line, i) => put(line, A.aLeftLabel, i ? A.rowsA.childrenLine2 : A.rowsA.children, 7.5));
     // r220 — a COUNT, not an amount, so it does not pass through `amountOrRule` and has to say for itself
     // that a blank form carries no number here. `String(0)` is "0", and "0 children qualifying for tax
@@ -1545,108 +1524,32 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   amountOrRule(derived(d.partB.exemptAllowances ?? 0), MX, MR, A.sectionT.f);
 
   // ── THE FOOT — the ruled officer box on the agency's own rows, the date beside it ──────────────────
-  const O = A.officerBox;
-  /**
-   * "Nama dan Alamat Majikan" — TWO writing rules ON THE AGENCY'S FORM, AND A CONTINUATION SHEET FOR AN
-   * EMPLOYER THE AGENCY'S BOX CANNOT HOLD (r353, then r372 / items 450f443f and 795c470c).
-   *
-   * ⚠️ WHAT THE MEASUREMENT SETTLED, AND IT STILL HOLDS. The agency's officer box has exactly FIVE rows
-   * (baselines 749.1 / 762.3 / 775.5 / 788.8 / 802, a 13.2 pt pitch, inside a frame at tt 727.5 → 817.9
-   * between vertical rules at x 191 and 557): Name of Officer, Designation, "Name and Address of
-   * Employer", ONE unlabelled continuation rule, and Telephone No. So TWO writing lines is the agency's
-   * arrangement and `employerRules` stays 2 — the FLOOR, and a blank form, a short address and anything
-   * else that fits in two lines is drawn exactly as the agency draws it.
-   *
-   * ⚠️ AND r372 TOOK AWAY THE ROOM ROUND ONE GREW INTO, WHICH IS A CHANGE TO ROUND ONE'S OUTCOME AND IS
-   * SAID HERE RATHER THAN DISCOVERED. Round one (item 450f443f) made the box grow a rule at a time
-   * because `fitSize` shrinks rather than wraps and used to clamp at 1 pt: measured on forms this
-   * renderer produced, a 225-character block set its last line at 3.4 pt, which is present in the file,
-   * passes every test, downloads — and is gone on the paper the employee files. At the TRACED geometry
-   * the box ended at 730.6 and five more 17 pt rules fitted above `bottom`. At the AGENCY's the box ends
-   * at 817.9 and `bottom` is 830: twelve points against a 13.2 pt pitch, so NOT ONE more rule fits.
-   *
-   * The three ways out are not equal. Shrinking reinstates the exact defect round one exists to prevent.
-   * Truncating is worse, because a truncated address reads as a complete one. Raising `bottom` spends
-   * the paper's own margin — 830 already leaves 11.9 pt, about 4 mm, and most office printers cannot
-   * print the last 4-6 mm. So the rules that fit are drawn in the box and THE REMAINDER CONTINUES ON A
-   * SECOND SHEET, at a full 8 pt, under the agency's own caption and on a rule of the same width. The
-   * employer block is never shrunk and never cut; the form's own page is unchanged.
-   *
-   * `minSize` IS STILL THE FLOOR, for the three single-value rows which cannot wrap onto anything.
-   * It was not r372's to lower and it has not been lowered.
-   */
-  const employerBlock = [d.employer.name, ...d.employer.address].map((s) => (s ?? '').trim()).filter(Boolean).join(', ');
-  const officerRuleW = O.ruleX[1] - O.ruleX[0] - 6; // the width valueOrRule actually writes into
-  const employerLines = wrapped(employerBlock, 8, officerRuleW);
-  /** How many rules fit before the box's bottom edge would cross `bottom`. Nothing may be drawn below it. */
-  const maxEmployerRules = O.employerRules + Math.floor((A.bottom - O.t1) / O.rowPitch);
-  const employerRules = Math.min(Math.max(employerLines.length, O.employerRules), maxEmployerRules);
-  /** The wrapped lines the agency's box cannot hold. Empty for every address that fits its two rules. */
-  const employerOverflow = employerLines.slice(employerRules);
-  /** How far the box reaches below where the agency ends it. Zero at the agency's own geometry today. */
-  const officerBoxGrowth = (employerRules - O.employerRules) * O.rowPitch;
-  /** The box's bottom edge for THIS statement. `O.t1` is the ungrown case, and the two agree at 2 rules. */
-  const officerBoxT1 = O.t1 + officerBoxGrowth;
-  /** Row `n` of the box, from its first writing baseline. Re-pitching is these two constants. */
-  const officerRowT = (n: number) => round1(O.rowT0 + n * O.rowPitch);
-
-  box(O.x0, O.t0, R, officerBoxT1);
-  /**
-   * ONE CAPTIONED ROW OF THE BOX — Name of Officer, Designation, Employer's Telephone No.
-   *
-   * ⚠️ r372 — THE FLOOR APPLIES HERE TOO, AND THESE THREE CANNOT GROW TO MEET IT. The employer's name
-   * and address wraps onto another rule and then onto another sheet; these do not. Each is ONE value on
-   * ONE rule with no continuation, so past the point where 8 pt will not fit they shrink to `O.minSize`
-   * and then OVERPRINT to the right — they never disappear, and they are never set smaller than 6 pt.
-   *
-   * That is the same trade the employer rules used to take at their cap and it is chosen for the same
-   * reason: `fitSize`'s 1 pt clamp is not a floor, it is the absence of one, and a 1 pt officer's name
-   * on a document somebody signs and files is indefensible however unlikely the input. An overprint is
-   * queried; a 1 pt line is filed. Measured on the drawn page: 8 pt holds ~67 characters on this
-   * 219 pt rule and the floor holds ~90, so every realistic officer name, designation and telephone
-   * number is unaffected and prints at a full 8 pt.
-   *
-   * THE DATE beside the telephone is deliberately NOT given the floor: `formDate` emits a fixed
-   * DD/MM/YYYY, ~49 pt of 8 pt Helvetica on a 110 pt rule, so it has no reachable shrink path at all.
-   */
-  const officerRow = (caption: string, tt: number, value: string) => {
-    put(caption, O.captionX, tt, 8);
-    valueOrRule(value, O.ruleX[0], O.ruleX[1], tt, 8, O.minSize);
-  };
-  officerRow(W.officerName, officerRowT(0), d.employer.officerName ?? '');
-  officerRow(W.officerPosition, officerRowT(1), d.employer.officerPosition ?? '');
-  // The caption sits on the FIRST of the employer's rules; the rest are the agency's unlabelled
-  // continuation rule and, past two, the continuation sheet's. Nothing is joined onto a last rule and
-  // shrunk any more — the overflow has somewhere to go.
-  put(W.employerNameAddress, O.captionX, officerRowT(2), 8);
-  for (let i = 0; i < employerRules; i += 1) {
-    valueOrRule(employerLines[i] ?? '', O.ruleX[0], O.ruleX[1], officerRowT(2 + i), 8, O.minSize);
+  // V6 deliberately replaces the narrow agency foot with a full-width caption/value arrangement.
+  // A-F retain their measured geometry; the date has its own reserved row below this box.
+  const V = EA_V6_FOOT;
+  const employerAddress = d.employer.address.map(line => line.trim()).filter(Boolean).join(', ');
+  const rows = [
+    {caption:W.officerName, value:d.employer.officerName ?? ''},
+    {caption:W.officerPosition, value:d.employer.officerPosition ?? ''},
+    {caption:W.employerNameAddress, value:d.employer.name},
+    {caption:'', value:employerAddress},
+    {caption:W.employerPhone, value:d.employer.phone ?? ''},
+  ].map(row => {
+    const actual=face(row.value,font);
+    const lineHeight=Math.max(V.lineHeight,actual.heightAtSize(V.size)+1);
+    return {...row,lineHeight,lines:wrapped(row.value,V.size,V.right-V.valueX-6)};
+  });
+  rows[3].lines = rows[3].lines.length ? rows[3].lines : [''];
+  const contentHeight = rows.reduce((sum,row)=>sum+Math.max(1,row.lines.length)*row.lineHeight,0);
+  if (contentHeight+10 > V.bottom-V.top) throw new EaLayoutFitError('employer and authorised officer');
+  box(V.left,V.top,V.right,V.bottom);
+  let baseline = V.top+12;
+  for(const row of rows){
+    putFit(row.caption,V.captionX,V.valueX-V.captionX-8,baseline,V.size);
+    for(const value of row.lines.length?row.lines:['']){valueOrRule(value,V.valueX,V.right,baseline,V.size,V.size);baseline+=row.lineHeight;}
   }
-  const footRowT = officerRowT(2 + employerRules);
-  officerRow(W.employerPhone, footRowT, d.employer.phone ?? '');
-  /**
-   * ⚠️ r367 (item fda53352, round A) — TARIKH IS FILLED NOW, AND THAT REVERSES r219's RECORDED DECISION.
-   *
-   * r219 wrote, and `test/r219-ea-cp8a-form.test.ts` pinned verbatim: "Tarikh is the date the employer
-   * SIGNS the statement, which is theirs to write and not ours to invent. It prints the blank form's
-   * rule." The reporter has now told us what to write, so we write it.
-   *
-   * THE VALUE ARRIVES ON `EaPdfData`. `localization/my/reports.ts` `eaFormDate()` computes
-   * `MIN(todayInKualaLumpur(), 28 February of the year after the EA year)`; no clock is read here, so the
-   * renderer stays pure and every EA test stays time-independent. THE RULE IS THE REPORTER'S, NOT THE
-   * AGENCY'S: nothing in this repository sources a published LHDN date for this box.
-   *
-   * `null` (the blank form, and any caller with nothing to date) still prints the agency's empty rule —
-   * `valueOrRule` does that for an empty value, which is why the reversal needed no new branch here.
-   *
-   * ⚠️ r372 — IT IS ON THE AGENCY'S OWN ROW AND COLUMN: `--rects` puts LHDN's Date at x 45.2 on tt 802,
-   * the SAME row as its Telephone No. rule at 331.5, one table row with the date OUTSIDE the box and the
-   * telephone inside it. Its rule STARTS after the drawn caption rather than at the agency's 62.2,
-   * because LHDN's caption is "Date" with the colon in the leader while ours is "Date:" / "Tarikh:" and
-   * would print through a rule pinned there.
-   */
-  const dateEnd = putFit(W.date, A.dateX, A.dateRule[1] - A.dateX, footRowT, 8);
-  valueOrRule(formDate(d.formDate), Math.max(A.dateRule[0], dateEnd + 4), A.dateRule[1], footRowT, 8);
+  const dateEnd = putFit(W.date,A.dateX,A.dateRule[1]-A.dateX,827,8);
+  valueOrRule(formDate(d.formDate),Math.max(A.dateRule[0],dateEnd+4),A.dateRule[1],827,8);
 
   // ── BELOW THE FORM ────────────────────────────────────────────────────────────────────────────────
   //
@@ -1676,32 +1579,9 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   // overlaid the figures above). Disclosure of WHICH figures were amended is a compliance decision
   // flagged in the plan; the default is this neutral marker.
   if (d.overrides && d.overrides.length > 0) {
-    putFit(t.amendedNote, L, O.x0 - L - 6, A.amendedNoteT, 7.5, bold, ink);
+    putFit(t.amendedNote, L, R-L, A.amendedNoteT, 7.5, bold, ink);
   }
 
-  /**
-   * THE CONTINUATION SHEET — only when the employer's name and address outgrows the agency's own box.
-   *
-   * Nothing of the FORM is on it: it carries the form number, the year the statement is for, the
-   * agency's own "Name and Address of Employer" caption and the rules the box could not hold. A loose
-   * second sheet has to say which statement it belongs to, and those two lines are what say it. No new
-   * wording is introduced — every string here is already drawn on page one.
-   */
-  if (employerOverflow.length > 0) {
-    page = doc.addPage(A4);
-    put(W.formNo, L, A.headerT.formNo, 7.5);
-    putR(`${W.masthead4} ${d.year}`.trim(), R, A.headerT.formNo, 7.5);
-    let oy: number = A.overflowT;
-    put(W.employerNameAddress, L, oy, 8);
-    for (const line of employerOverflow) {
-      oy = round1(oy + O.rowPitch);
-      if (oy > A.bottom) {
-        page = doc.addPage(A4);
-        oy = A.overflowT;
-      }
-      valueOrRule(line, L, L + (O.ruleX[1] - O.ruleX[0]), oy, 8, O.minSize);
-    }
-  }
-
+  for (const operation of operations) operation();
   return doc.save();
 }

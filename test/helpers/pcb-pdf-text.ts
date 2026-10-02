@@ -101,3 +101,21 @@ export async function extractedText(bytes: Uint8Array): Promise<string> {
   return (await drawnRuns(bytes)).map((r) => r.text).join('\n');
 }
 
+
+/** Actual glyphs and geometry, including embedded Unicode font maps. */
+export async function extractedRuns(bytes: Uint8Array) {
+  const doc = await PDFDocument.load(bytes);
+  const items: {page:number;x:number;y:number;text:string;size:number}[] = [];
+  doc.getPages().forEach((page,pageIndex) => {
+    const fonts = fontsOfPage(page);
+    for (const m of contentOf(page).matchAll(/(\/[A-Za-z0-9#+._-]+)\s+([\d.]+)\s+Tf[\s\S]{0,120}?1 0 0 1 (-?[\d.]+) (-?[\d.]+) Tm\s*<([0-9A-Fa-f]*)> Tj/g)) {
+      const f = fonts.get(m[1]);
+      const hex = m[5];
+      let text = '';
+      if (f?.composite) for (let i=0;i<hex.length;i+=4) text += f.toUnicode?.get(parseInt(hex.slice(i,i+4),16)) ?? '\uFFFD';
+      else text = Buffer.from(hex,'hex').toString('latin1');
+      items.push({page:pageIndex,x:Number(m[3]),y:Number(m[4]),size:Number(m[2]),text});
+    }
+  });
+  return {items,pageHeights:doc.getPages().map(p=>p.getHeight())};
+}

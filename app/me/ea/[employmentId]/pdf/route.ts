@@ -1,3 +1,5 @@
+import { EaLayoutFitError } from '@/lib/ea-pdf';
+import { eaLayoutFailure } from '@/lib/ea-layout-response';
 // ADR-0036 (#22 follow-up) — stream a self-serve annual EA (C.P.8A) statement as a downloadable A4 PDF.
 //
 // ABAC is inherited from employeeEaStatement, which since security finding H4 gates on PAYROLL-STAFF-OR-SELF
@@ -97,12 +99,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ employme
   // `present`, `yearEnded` and the two subtotals have no box on the printed form at all. Every one of
   // them still exists in `payroll.ea` for the HTML statement; see the EaPdfLabels block comment for why
   // each left. test/ea-form-boxes-contract.test.ts fails on a declared label nothing prints.
-  const bytes = await renderEaPdf(
+  let bytes: Uint8Array;
+  try { bytes = await renderEaPdf(
     data,
     await eaPdfLabels(locale, { year: ea.year, version: ea.statutoryVersion }),
     // r346 — the form's own furniture follows the DOCUMENT's language, as LHDN's two editions do.
     { locale },
-  );
+  ); } catch(error) { if(error instanceof EaLayoutFitError) return eaLayoutFailure(error,locale,ea.employee.name); throw error; }
 
   // Substrate: this is a read-only render (no state change), so it appends NO domain event — same as the
   // payslip-pdf route. Deliberate skip.

@@ -37,6 +37,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PDFDocument } from 'pdf-lib';
+import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { employeeEaStatement } from '../core/reporting';
@@ -276,6 +277,31 @@ describe('2a1a6f42 · the EA preview is the EA download, opened instead of saved
     expect(named.headers.get('Content-Disposition')).toContain(`-ms.pdf"`);
     const unnamed = await previewGET(url('preview', ok()));
     expect(unnamed.headers.get('Content-Disposition')).not.toMatch(/-(en|ms)\.pdf"/);
+  });
+});
+
+describe('r379 V6 whole-selection readable-fit failure', () => {
+  it('keeps the missing-employment 404 gate ahead of fit diagnostics',async()=>{
+    await owner.db.update(schema.company).set({addressLine1:'Unfit Complete Address '.repeat(80)}).where(eq(schema.company.id,b.companyId));
+    const selection={...ok(),ids:[employmentId,randomUUID()]};
+    for(const get of [previewGET,downloadGET]) {
+      const res=await get(url('preview',selection));
+      expect(res.status).toBe(404);
+      expect(await res.text()).toBe('Not found');
+    }
+  });
+  it.each(['preview','download'] as const)('%s refuses the entire two-employee selection without PDF bytes', async disposition => {
+    await owner.db.update(schema.company).set({addressLine1:'Bangunan Amanah Pekerja Blok Aras Lapan Belas '.repeat(30)}).where(eq(schema.company.id,b.companyId));
+    const selected={...ok(),ids:[employmentId,secondEmploymentId]};
+    const res=await(disposition==='preview'?previewGET:downloadGET)(url(disposition,selected));
+    expect(res.status).toBe(422);
+    expect(res.headers.get('Content-Type')).toContain('text/html');
+    expect(res.headers.get('Content-Disposition')).toBeNull();
+    expect(res.headers.get('Cache-Control')).toBe('private, no-store');
+    const body=await res.text();
+    expect(body).toContain('Preview Subject');
+    expect(body).toContain('Employer and authorised officer');
+    expect(body).not.toContain('%PDF');
   });
 });
 

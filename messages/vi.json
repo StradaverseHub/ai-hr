@@ -4537,7 +4537,11 @@
       },
       "downloadPdf": "Tải xuống biểu mẫu EA",
       "previewNotice": "Màn hình này là bản xem trước, để kiểm tra các con số trước khi bạn nộp. “Tải biểu mẫu EA” sẽ cho bạn chính bản C.P.8A, trình bày theo đúng biểu mẫu in.",
-      "notOfficialStrip": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A now ends at the officer's box and this line has no reader]"
+      "notOfficialStrip": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A now ends at the officer's box and this line has no reader]",
+      "layoutFitTitle": "Không thể tạo mẫu EA",
+      "layoutFitMessage": "Toàn bộ thông tin không vừa một trang A4 dễ đọc. Hãy kiểm tra thông tin đã lưu hoặc yêu cầu xem xét bố cục. Không có PDF nào được tạo cho lựa chọn này.",
+      "layoutFitSection": "Phần bị ảnh hưởng",
+      "layoutFitEmployerSection": "Người sử dụng lao động và người được ủy quyền"
     },
     "cp22": {
       "download": "Tải CP22",

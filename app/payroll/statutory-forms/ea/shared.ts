@@ -1,3 +1,5 @@
+import { EaLayoutFitError } from '@/lib/ea-pdf';
+import { eaLayoutFailure } from '@/lib/ea-layout-response';
 /**
  * 2a1a6f42 (r331) — THE C.P.8A (EA) RESPONSE, GATE AND ALL, WRITTEN ONCE.
  *
@@ -107,12 +109,17 @@ export async function eaPdfResponse(req: Request, disposition: EaDisposition): P
     return built;
   };
 
-  const out = await PDFDocument.create();
+  const statements: NonNullable<Awaited<ReturnType<typeof employeeEaStatement>>>[] = [];
   for (const employmentId of unique) {
     // RLS-gated, and pinned to THIS company: after an Entity Transfer a year can span two employers, and
     // handing over the wrong employer's statement is the failure the per-employee route refuses too.
     const ea = await employeeEaStatement(s, { employmentId, year, companyId });
     if (!ea) return notFound();
+    statements.push(ea);
+  }
+  // Finish all existing authorization reads before exposing any fit diagnostic for this selection.
+  const out = await PDFDocument.create();
+  for (const ea of statements) {
     const data: EaPdfData = {
       year: ea.year,
       employer: ea.employer,
@@ -130,7 +137,9 @@ export async function eaPdfResponse(req: Request, disposition: EaDisposition): P
       // 1.2.6 EA Data Overwrite — HR's EA-only amendments, so the PDF prints the "Amended" footnote.
       overrides: ea.overrides,
     };
-    const bytes = await renderEaPdf(data, await labelsFor(ea.year, ea.statutoryVersion), { locale });
+    let bytes: Uint8Array;
+    try { bytes = await renderEaPdf(data, await labelsFor(ea.year, ea.statutoryVersion), { locale }); }
+    catch(error) { if(error instanceof EaLayoutFitError) return eaLayoutFailure(error,locale,ea.employee.name); throw error; }
     const src = await PDFDocument.load(bytes);
     for (const page of await out.copyPages(src, src.getPageIndices())) out.addPage(page);
   }
