@@ -365,6 +365,7 @@ export interface CountryPack {
     getTaxSelection?: MyTaxSelectionModule['getTaxSelectionMY'];
     saveTaxSelection?: MyTaxSelectionModule['saveTaxSelectionMY'];
     initializeHiredTaxSelectionTx?: MyTaxSelectionModule['initializeHiredTaxSelectionMYTx'];
+    initializeTransferredTaxSelectionTx?: MyTaxSelectionModule['initializeTransferredTaxSelectionMYTx'];
     listTaxSchemeDeclarations?: MyTaxSchemeModule['listTaxSchemeDeclarationsMY'];
     saveTaxSchemeDeclaration?: MyTaxSchemeModule['saveTaxSchemeDeclarationMY'];
     revokeTaxSchemeDeclaration?: MyTaxSchemeModule['revokeTaxSchemeDeclarationMY'];
