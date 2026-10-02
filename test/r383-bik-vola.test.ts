@@ -5,6 +5,7 @@ import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
+import { isUnsupportedTaxableComponent } from '../core/pay-components';
 import { requirePackFor } from '../localization/registry';
 import { classifyNonCashBenefit, NonCashBenefitConfigurationError, readPcbNonCash } from '../localization/noncash-benefits';
 import { createBatch, createAdditionalRun, generatePayslips, reprocessSelectedEmployees, getReprocessJob, setPayrollInput, createIndividualTxn, upsertPayComponent, setEmploymentPayComponent, setPayrollBatchComponent, isStatutoryRelevantChange } from '../packs/payroll/service';
@@ -22,6 +23,10 @@ describe('r383 canonical BIK/VOLA classification and pack cash isolation',()=>{
  it('refuses conflicts, unsupported sign/kind and additional normal-benefit declarations',()=>{
   for(const c of [{...kindInput,eaFormLine:'EA_B4'},{...kindInput,kind:'deduction'},{...kindInput,pcbRemunerationType:'additional'}])expect(()=>classifyNonCashBenefit(c)).toThrow(NonCashBenefitConfigurationError);
  });
+ it('unknown PCB-subject nonpayable items remain refused even when a normal stream is declared',()=>{
+  expect(isUnsupportedTaxableComponent({code:'UNKNOWN',kind:'non_payable',includedInPcb:true,includedInEpf:false,includedInSocsoEis:false,isNonPayable:true,pcbRemunerationType:'normal'})).toBe(true);
+  expect(isUnsupportedTaxableComponent({code:'KNOWN',kind:'non_payable',displayCategory:'vola',includedInPcb:true,includedInEpf:false,includedInSocsoEis:false,isNonPayable:true,pcbRemunerationType:'normal'})).toBe(false);
+ });
  it('PCB-only input increases Y1 without increasing any cash agency base',()=>{
   const profile={category:1 as const,children:0};
   const a=pack.payroll.statutory(12000,profile,0,0,{month:7});
@@ -35,6 +40,11 @@ describe('r383 canonical BIK/VOLA classification and pack cash isolation',()=>{
    const s=pack.payroll.statutory(12000,{category:1,children:0},0,0,{month:7},opts);
    expect((s.pcbMeta as any).trace[scheme==='non_resident'?'remuneration':'Y1']).toBe(13300);
   }
+ });
+ it('malformed saved new ownership stops monetary replay while absent legacy stamps keep the existing fallback',()=>{
+  const fresh=()=>({netRemuneration:0,epfClaimed:0,pcbPaid:0,zakatPaid:0,lpAccumulated:0});
+  expect(()=>pack.payroll.foldPriorSlipIntoAccumulators(fresh(),{gross:100,statutory:{bases:{pcb:100},pcbNonCash:{version:1}}},4000)).toThrow();
+  const legacy=fresh();pack.payroll.foldPriorSlipIntoAccumulators(legacy,{gross:100,statutory:{bases:{pcb:100}}},4000);expect(legacy.netRemuneration).toBe(100);
  });
  it('rejects malformed noncash kernel input and leaves cash display changes presentation-only',()=>{
   expect(()=>pack.payroll.statutory(12000,{category:1,children:0},0,0,{month:7},{pcbNonCashNormal:{bik:-1,vola:0}})).toThrow();
@@ -92,6 +102,25 @@ describe('r383 generated benefit provenance, month ownership and retained no-pay
  });
  it('no cash has priority over taxable noncash and preserves old result and pending transaction',async()=>{
   const e=await employee();const b=await createBatch(ctx,{companyId:base.companyId,payPeriod:'2026-07'});await generatePayslips(ctx,{batchId:b.batchId});const before=await slip(b.batchId,e.employmentId);const c=await benefit('bik');await createIndividualTxn(ctx,{batchId:b.batchId,employmentId:e.employmentId,kind:'earning',componentId:c.id,txnDate:'2026-07-15',amount:1000});await createIndividualTxn(ctx,{batchId:b.batchId,employmentId:e.employmentId,kind:'unpaid',txnDate:'2026-07-15',amount:12000});const txns=await owner.db.select().from(schema.payrollIndividualTxn);const run=await reprocessSelectedEmployees(ctx,{batchId:b.batchId,employmentIds:[e.employmentId],idempotencyKey:randomUUID()});const job=await getReprocessJob(ctx,run.jobId);expect((job!.result as any).outcomes[0]).toMatchObject({status:'skipped',resultRetained:true});expect(await slip(b.batchId,e.employmentId)).toEqual(before);expect(await owner.db.select().from(schema.payrollIndividualTxn)).toEqual(txns);
+ });
+ it('shared exemption headroom is consumed once across cash and noncash rather than creating exempt cash benefits',async()=>{
+  const e=await employee(),noncash=await benefit('bik',true,'PCB_CHILD_CARE');
+  const cash=await upsertPayComponent(ctx,{code:'CASH_CHILDCARE',name:'Cash childcare',kind:'allowance',isNonPayable:false,prorates:false,includedInPcb:true,includedInEpf:false,includedInSocsoEis:false,includedInHrdfBase:false,pcbRemunerationType:'normal',pcbExemptionCode:'PCB_CHILD_CARE',epfBonus2012:false});
+  for(const c of [noncash,cash])await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:c.id,amount:2000,effectiveFrom:'2026-01-01'});
+  const r=await createBatch(ctx,{companyId:base.companyId,payPeriod:'2026-01'});await generatePayslips(ctx,{batchId:r.batchId});const s=await slip(r.batchId,e.employmentId),nc=meta(s);
+  expect(s.grossPay).toBe('14000.00');expect((s.statutory as any).exemptionUsed.PCB_CHILD_CARE).toBe(3000);expect(nc.current.bik.exempt).toBe(2000);expect((s.statutory as any).pcbMeta.trace.Y1).toBe(13000);
+ });
+ it('changed or new recurring benefits after a saved regular run refuse and preserve the additional saved result',async()=>{
+  const e=await employee(),c=await benefit('vola');await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:c.id,amount:1000,effectiveFrom:'2026-01-01'});
+  const r=await createBatch(ctx,{companyId:base.companyId,payPeriod:'2026-07'});await generatePayslips(ctx,{batchId:r.batchId});const a=await createAdditionalRun(ctx,{companyId:base.companyId,payPeriod:'2026-07',runType:'bonus'});await bonus(a.batchId,e.employmentId);await generatePayslips(ctx,{batchId:a.batchId});const before=await slip(a.batchId,e.employmentId);
+  const changed=await upsertPayComponent(ctx,{code:'VOLA_1',name:'Changed accommodation',kind:'non_payable',isNonPayable:true,prorates:false,includedInPcb:true,includedInEpf:false,includedInSocsoEis:false,includedInHrdfBase:false,displayCategory:'bik',eaFormLine:'EA_B3',pcbRemunerationType:'normal',pcbExemptionCode:'PCB_TAXABLE',epfBonus2012:false});expect(changed.changed).toContain('nonCashClassification');
+  const run=await reprocessSelectedEmployees(ctx,{batchId:a.batchId,employmentIds:[e.employmentId],idempotencyKey:randomUUID()});const job=await getReprocessJob(ctx,run.jobId);
+  expect((job!.result as any).outcomes[0]).toMatchObject({status:'validation_failed',validationCode:'pcb_non_cash_configuration_invalid',resultRetained:true,validationDetails:[{gap:'month_baseline_unavailable'}]});expect(await slip(a.batchId,e.employmentId)).toEqual(before);
+ });
+ it('recurring taxable benefits accumulate once across same-month cycles and stamp genuine zero next-month absence',async()=>{
+  const e=await employee(),c=await benefit('bik');await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:c.id,amount:1000,effectiveFrom:'2026-07-01',effectiveTo:'2026-07-31'});
+  const r=await createBatch(ctx,{companyId:base.companyId,payPeriod:'2026-07'});await generatePayslips(ctx,{batchId:r.batchId});const a=await createAdditionalRun(ctx,{companyId:base.companyId,payPeriod:'2026-07',runType:'bonus'});await bonus(a.batchId,e.employmentId);await generatePayslips(ctx,{batchId:a.batchId});const rnc=meta(await slip(r.batchId,e.employmentId)),anc=meta(await slip(a.batchId,e.employmentId));expect(rnc.owned.bik).toBe(1000);expect(anc.owned.bik).toBe(0);expect(anc.cumulative.bik).toBe(1000);
+  const next=await createBatch(ctx,{companyId:base.companyId,payPeriod:'2026-08'});await generatePayslips(ctx,{batchId:next.batchId});const nc=meta(await slip(next.batchId,e.employmentId));expect(nc.accumulated).toEqual({bik:1000,vola:0,complete:true});expect(nc.current.bik).toEqual({entered:0,exempt:0,taxable:0});
  });
  it('new-year current input stays valid while previous-year accumulation and exemption usage reset',async()=>{
   const e=await employee();const c=await benefit('vola');await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:c.id,amount:1100,effectiveFrom:'2026-01-01'});
