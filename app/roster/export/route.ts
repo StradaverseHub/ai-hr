@@ -33,6 +33,8 @@ import { getScopeIds } from '@/lib/scope';
 import { RosterRangeError, rosterWindowView } from '@/core/roster';
 import { serializeReport, type ReportFormat } from '@/lib/report-export';
 import { ROSTER_TEMPLATE_ID_COLUMNS, resolveRosterCell, resolveRosterWindow, shiftCodeOf } from '@/lib/roster-month';
+import {rosterTeamContext} from '../my-team-scope';
+import {myTeamErrorResponse} from '@/app/manage/my-team/server';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
 export const runtime = 'nodejs'; // pdf-lib needs the Node runtime
@@ -53,7 +55,9 @@ export async function GET(req: Request) {
 
   const allowed = await allowedCompanies(s);
   const scopeIds = await getScopeIds(allowed.map((c) => c.id));
-  const inScope = allowed.filter((c) => scopeIds.length === 0 || scopeIds.includes(c.id));
+  let team:Awaited<ReturnType<typeof rosterTeamContext>>;
+  try{team=await rosterTeamContext(s,scopeIds,Object.fromEntries(url.searchParams));}catch(error){return myTeamErrorResponse(error);}
+  const inScope = allowed.filter(c=>!team||team.scope.companyIds.includes(c.id)).filter((c) => scopeIds.length === 0 || scopeIds.includes(c.id));
   if (inScope.length === 0) return new Response('Forbidden', { status: 403 });
   const asked = url.searchParams.get('companyId');
   /**
@@ -85,7 +89,7 @@ export async function GET(req: Request) {
       { status: 400 },
     );
   }
-  const win = resolved.window;
+  const win = team?resolveRosterWindow({view:team.query.view,month:team.scope.from.slice(0,7),from:team.scope.from,to:team.scope.to,today:todayInKualaLumpur()}).window:resolved.window;
   /** The file is named for what it holds: a month by its month, any other window by its two ends. */
   const stamp = win.kind === 'month' ? win.month : `${win.from}_${win.to}`;
 
@@ -97,6 +101,7 @@ export async function GET(req: Request) {
       ...(url.searchParams.get('bu') ? { businessUnitId: url.searchParams.get('bu')! } : {}),
       ...(url.searchParams.get('dept') ? { departmentId: url.searchParams.get('dept')! } : {}),
       ...(url.searchParams.get('q') ? { q: url.searchParams.get('q')! } : {}),
+      ...(team?{employmentIds:team.scope.employmentIds}:{}),
     });
 
     const codeById = new Map(view.shifts.map((sh) => [sh.id, shiftCodeOf(sh)]));

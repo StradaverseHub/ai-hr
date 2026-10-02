@@ -33,6 +33,7 @@ import {
   weekPatternWorkingDayCount,
 } from './attendance';
 import { approvedLeaveDates } from './leave';
+import {workingShiftSchedule} from '../packs/attendance/service';
 import { listEmployees, listEmployeesPage, myEmployment, ownReportingManagersTx } from './read';
 import { isAdmin } from '../lib/authz';
 import {
@@ -2378,6 +2379,7 @@ export type UsualShiftRow = {
   endTime: string;
   /** ISO weekdays the shift works (1=Mon…7=Sun). NULL ⇒ the shift schedules nothing (same as scheduleFor). */
   pattern: number[] | null;
+  halfPattern: number[] | null;
 };
 
 /**
@@ -2398,7 +2400,7 @@ export function usualShiftsFor(ctx: SessionContext, employmentIds: string[]): Pr
         startTime: shift.startTime,
         endTime: shift.endTime,
         pattern: shift.weeklyPattern,
-        // 07ebd04d — the four-way row is read but NOT surfaced (see below), and the two Schedule Group
+        // The four-way row and the two Schedule Group
         // columns the ghost cells must now resolve through (migration 0483).
         halfPattern: shift.halfPattern,
         offPattern: shift.offPattern,
@@ -2412,16 +2414,13 @@ export function usualShiftsFor(ctx: SessionContext, employmentIds: string[]): Pr
     // scheduleFor uses (employee's group → shift's group → tenant default), so the grid cannot say OFF on
     // a day the engine pays as work. One extra set-based read for the whole grid.
     //
-    // ⚠️ WHAT THIS DELIBERATELY DOES NOT FIX: `UsualShift.pattern` is still the FULL-day list alone and
-    // lib/roster-month.ts resolveRosterCell still asks it a two-way question, so a HALF working day
-    // renders as OFF on the duty roster while the engine treats it as a working half day. That is a
-    // pre-existing display defect (it predates this item and is unchanged by it), it needs its own item,
-    // and widening the type here without changing the renderer would only move it.
+    // Half working weekdays must travel with the resolved full pattern to every roster consumer.
+    // They are working cells; this read does not invent half-day duration or reclassify rest/off days.
     const lookup = await weekLookupTx(tx, null, [...rows.map((r) => r.shiftRuleId), ...rows.map((r) => r.groupRuleId)]);
-    return rows.map(({ halfPattern, offPattern, shiftRuleId, groupRuleId, ...r }) => ({
-      ...r,
-      pattern: lookup(groupRuleId ?? shiftRuleId, { pattern: r.pattern, halfPattern, offPattern }).pattern,
-    }));
+    return rows.map(({ halfPattern, offPattern, shiftRuleId, groupRuleId, ...r }) => {
+      const week=lookup(groupRuleId ?? shiftRuleId, { pattern: r.pattern, halfPattern, offPattern });
+      return {...r,pattern:week.pattern,halfPattern:week.halfPattern};
+    });
   });
 }
 
@@ -2550,12 +2549,12 @@ export async function rosterWindowView(
   const { from, to } = { from: p.from, to: p.to };
   const dates = datesBetween(from, to);
   const [employeeRows, shiftRows] = await Promise.all([
-    listEmployees(ctx, p.companyIds.length > 0 ? p.companyIds : undefined),
+    p.employmentIds?.length === 0 ? Promise.resolve([]) : listEmployees(ctx, p.companyIds.length > 0 ? p.companyIds : undefined),
     listShiftsForTenant(ctx),
   ]);
 
   const allEmployees: RosterMonthEmployee[] = employeeRows
-    .filter((e) => !e.terminatedOn)
+    .filter((e) => !e.terminatedOn && (!p.employmentIds || p.employmentIds.includes(e.employmentId)))
     .map((e) => ({
       employmentId: e.employmentId,
       name: e.name,
@@ -2600,7 +2599,7 @@ export async function rosterWindowView(
   const usual: Record<string, UsualShift> = {};
   const usualNames: Record<string, { code: string | null; name: string }> = {};
   for (const u of usualRows) {
-    usual[u.employmentId] = { shiftId: u.shiftId, pattern: u.pattern };
+    usual[u.employmentId] = { shiftId: u.shiftId, pattern: u.pattern, ...(u.halfPattern?.length?{halfPattern:u.halfPattern}:{}) };
     usualNames[u.shiftId] = { code: u.code, name: u.name };
   }
 
@@ -2815,8 +2814,9 @@ export type RosterVarianceRow = {
  */
 export function rosterVariance(
   ctx: SessionContext,
-  p: { from: string; to: string; companyIds?: string[]; today?: string },
+  p: { from: string; to: string; companyIds?: string[]; today?: string; employmentIds?: string[] },
 ): Promise<RosterVarianceRow[]> {
+  if(p.employmentIds?.length === 0)return Promise.resolve([]);
   return withTenant(ctx, async (tx) => {
     const today = p.today ?? todayInKualaLumpur();
     const ras = await tx
@@ -2844,6 +2844,7 @@ export function rosterVariance(
           gte(rosterAssignment.shiftDate, p.from),
           lte(rosterAssignment.shiftDate, p.to),
           p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
+          p.employmentIds ? inArray(rosterAssignment.employmentId,p.employmentIds) : undefined,
         ),
       );
     if (ras.length === 0) return [];
@@ -2947,7 +2948,7 @@ export const isRosterException = (v: RosterVarianceRow): boolean => v.kind !== '
  */
 export async function rosterExceptionCount(
   ctx: SessionContext,
-  p: { from: string; to: string; companyIds?: string[]; today?: string },
+  p: { from: string; to: string; companyIds?: string[]; today?: string; employmentIds?: string[] },
 ): Promise<number> {
   return (await rosterVariance(ctx, p)).filter(isRosterException).length;
 }
@@ -3067,7 +3068,7 @@ export async function myRosterWindow(
 
   return withTenant(ctx, async (tx) => {
     const usualRow = usualRows[0] ?? null;
-    const usual: UsualShift | null = usualRow ? { shiftId: usualRow.shiftId, pattern: usualRow.pattern } : null;
+    const usual: UsualShift | null = usualRow ? { shiftId: usualRow.shiftId, pattern: usualRow.pattern, ...(usualRow.halfPattern?.length?{halfPattern:usualRow.halfPattern}:{}) } : null;
 
     // Only the shifts this window actually references — the legend names what is on screen, and a
     // tenant-wide shift list would serialise every template the company has ever authored into the
@@ -3084,6 +3085,7 @@ export async function myRosterWindow(
             breakMinutes: shift.breakMinutes,
             normalMinutesOverride: shift.normalMinutesOverride,
             roundingMinutes: shift.normalHoursRoundingMinutes,
+            crossesMidnight: shift.crossesMidnight,
             color: shift.color,
           })
           .from(shift)
@@ -3091,6 +3093,9 @@ export async function myRosterWindow(
           .orderBy(asc(shift.code), asc(shift.name))
       : [];
 
+    const scheduleInputs=new Map(shiftRows.map(s=>[s.id,{start:s.startTime,end:s.endTime,
+      crosses:s.crossesMidnight,breakMinutes:s.breakMinutes,roundingMinutes:s.roundingMinutes,
+      normalMinutesOverride:s.normalMinutesOverride}]));
     const shifts = new Map<string, MyRosterShift>(
       shiftRows.map((s) => [
         s.id,
@@ -3103,15 +3108,7 @@ export async function myRosterWindow(
           breakMinutes: s.breakMinutes,
           // The SHARED figure (core/attendance.ts), never a second expression: the hours this screen
           // promises and the hours the engine schedules have to be the same number.
-          workingMinutes:
-            s.normalMinutesOverride ??
-            netScheduledMinutes(
-              s.startTime,
-              s.endTime,
-              shiftCrossesMidnight(s.startTime, s.endTime),
-              s.breakMinutes,
-              s.roundingMinutes,
-            ),
+          workingMinutes:workingShiftSchedule(scheduleInputs.get(s.id)!,'full').normalMinutes,
           color: s.color,
         },
       ]),
@@ -3123,7 +3120,13 @@ export async function myRosterWindow(
       const row = assigned.get(date);
       const cellIn: AssignedCell = row ? (row.isRestDay ? { kind: 'rest' } : row.shiftId ? { kind: 'shift', shiftId: row.shiftId } : null) : null;
       const cell = resolveRosterCell(date, cellIn, usual);
-      const sh = cell.kind === 'shift' || cell.kind === 'usual' ? (shifts.get(cell.shiftId) ?? null) : null;
+      const baseShift = cell.kind === 'shift' || cell.kind === 'usual' ? (shifts.get(cell.shiftId) ?? null) : null;
+      // Assigned shifts always own their full schedule, exactly as scheduleFor's roster branch does.
+      // The usual week was already resolved in one batch through the employee/shift/Standard group.
+      const kind=cell.kind==='usual'&&usual&&shiftDayKindFor(usual,date)==='half'?'half':'full';
+      const schedule=baseShift?workingShiftSchedule(scheduleInputs.get(baseShift.id)!,kind):null;
+      const sh=baseShift&&schedule?{...baseShift,startTime:schedule.shiftStart,endTime:schedule.shiftEnd,
+        workingMinutes:schedule.normalMinutes}:baseShift;
       return {
         date,
         cell,
