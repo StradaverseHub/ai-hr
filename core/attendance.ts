@@ -2507,7 +2507,9 @@ export function attendanceForEmploymentsRange(
         calcTrace:attendance.calcTrace,
         ...(opts.includePunchReviews ? {
           punchReviewFingerprint:sql<string>`app.attendance_attention_fingerprint(${attendance})`,
-          punchReviewed:sql<boolean>`EXISTS(SELECT 1 FROM attendance_attention_review r WHERE r.attendance_id=${attendance.id}
+          // A PgColumn interpolation in a single-table SELECT is unqualified by Drizzle.
+          // Inside EXISTS that would bind review.id; keep the outer attendance identifier explicit.
+          punchReviewed:sql<boolean>`EXISTS(SELECT 1 FROM attendance_attention_review r WHERE r.attendance_id=${sql.identifier('attendance')}.${sql.identifier('id')}
             AND r.reviewer_user_id=app.current_user_id() AND r.fingerprint=app.attendance_attention_fingerprint(${attendance}))`,
         } : {}),
       }).from(attendance).where(and(inArray(attendance.employmentId,ids),

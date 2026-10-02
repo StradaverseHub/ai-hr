@@ -142,7 +142,7 @@ describe('My Team current scope and canonical projection',()=>{
  it('uses one canonical Annual Leave balance and reports ambiguous annual sources unavailable',async()=>{
   expect((await readMyTeam(managerCtx,query)).employees.find(e=>e.employmentId===subject.employmentId)?.annualAvailable).toBe(20);
   const [type]=await owner.db.select().from(schema.leaveType).where(eq(schema.leaveType.id,b.annualLeaveTypeId));
-  const annualId=randomUUID();await owner.db.insert(schema.leaveType).values({...type,id:annualId,code:`SYN_ANNUAL_${randomUUID().slice(0,8)}`,name:'Synthetic Other Annual',role:'annual'});
+  const annualId=randomUUID();await owner.db.insert(schema.leaveType).values({...type,id:annualId,code:`SYN_ANNUAL_${randomUUID().slice(0,8).toUpperCase()}`,name:'Synthetic Other Annual',role:'annual'});
   await owner.db.insert(schema.leaveLedger).values({tenantId:b.tenantId,employmentId:subject.employmentId,leaveTypeId:annualId,entryType:'accrual',days:'3.00',effectiveOn:today.slice(0,4)+'-01-01'});
   const employee=(await readMyTeam(managerCtx,query)).employees.find(e=>e.employmentId===subject.employmentId)!;
   expect(employee.balances.filter(bal=>bal.leaveTypeId===annualId||bal.leaveTypeId===b.annualLeaveTypeId)).toHaveLength(2);
@@ -190,7 +190,7 @@ describe('My Team actionable current-step decisions',()=>{
 describe('My Team recorded leave dates and alternate authority',()=>{
  it('projects partial approvals and half-day pending leave from the same source, never a rejected date',async()=>{
   await setLeaveApprovalPolicy(adminCtx(b),{companyId:b.companyId,levels:['direct_manager']});
-  await owner.db.update(schema.leaveType).set({perDateApproval:true,durations:['full_day','half_day_am']}).where(eq(schema.leaveType.id,b.annualLeaveTypeId));
+  await owner.db.update(schema.leaveType).set({perDateApproval:true,counting:'working_days',durations:['full_day','half_day_am']}).where(eq(schema.leaveType.id,b.annualLeaveTypeId));
   const from=addDaysIso(weekRangeOf(today).from,7),middle=addDaysIso(from,1),to=addDaysIso(from,2);
   const {leaveRequestId}=await requestLeave(adminCtx(b),{employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:from,endDate:to});
   const before=await readMyTeam(managerCtx,{...query,anchorDate:from});
