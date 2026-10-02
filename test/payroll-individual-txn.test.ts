@@ -320,7 +320,14 @@ describe('1.2.2 Individual Transaction', () => {
       const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
       // Strip row identity (id / batch / employment / created); the money figures + statutory JSONB remain.
       const { id: _id, batchId: _b, employmentId: _e, createdAt: _c, ...figures } = ps;
-      return figures;
+      const [selection]=await owner.db.select().from(schema.employmentTaxSelectionMy).where(and(eq(schema.employmentTaxSelectionMy.tenantId,ps.tenantId),eq(schema.employmentTaxSelectionMy.employmentId,ps.employmentId),eq(schema.employmentTaxSelectionMy.companyId,companyId)));
+      const [savedBatch]=await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,ps.batchId));
+      expect(savedBatch).toMatchObject({tenantId:ps.tenantId,companyId});expect(selection).toBeDefined();expect(selection.transitionState).toBe('resolved');
+      const statutory=ps.statutory as Record<string,unknown>,meta=statutory.pcbMeta as Record<string,unknown>;
+      expect(meta).toMatchObject({taxSelectionId:selection.id,taxSelectionVersion:selection.version,taxSelectionSource:'income_tax_resident',calculationScheme:selection.scheme});
+      // Distinct fixture employees have distinct authority UUIDs. Preserve all financial fields and
+      // complete statutory JSON; normalize only the UUID whose employer context was validated above.
+      return {...figures,statutory:{...statutory,pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'}}};
     }
     const without = await generate(await company('Inert Co A'), '900101011234', false);
     const withRows = await generate(await company('Inert Co B'), '900101015678', true);
