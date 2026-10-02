@@ -37,7 +37,7 @@ function attendanceText(day:MyTeamDay,locale:string,t:MyTeamTranslate):string|nu
 }
 export function visualStatus(day:MyTeamDay,today:string):MyTeamCellStatus{
  if(day.leave.some(leave=>leave.status==='approved'&&leave.session==='full_day'))return 'approved_leave';
- if(day.roster?.isRestDay||day.attendance?.status==='rest'||day.attendance?.status==='off'||day.attendance?.status==='ph')return 'off';
+ if(day.roster?.kind==='rest'||day.roster?.kind==='off'||day.roster?.isRestDay||day.attendance?.status==='rest'||day.attendance?.status==='off'||day.attendance?.status==='ph')return 'off';
  if(day.date>today)return 'upcoming';
  if(day.attendance){
   if(day.attendance.flag==='odd'||day.attendance.flag==='late'||day.attendance.status==='late')return 'late';
@@ -55,7 +55,7 @@ function leaveText(leave:MyTeamLeaveDay,t:MyTeamTranslate):string{
 }
 export function formatMyTeamCell(day:MyTeamDay,layers:MyTeamLayers,locale:string,t:MyTeamTranslate,options:{today:string;view:'week'|'month'}){
  const status=visualStatus(day,options.today),pending=day.leave.some(leave=>leave.status==='pending');
- const shift=day.roster?.isRestDay?t('restCode'):day.roster?.code??'—';
+ const shift=day.roster?.kind==='off'?t('offCode'):day.roster?.isRestDay?t('restCode'):day.roster?.code??'—';
  const roster=layers.roster&&day.roster?`${shift}${day.roster.isOverride?' *':''}`:null;
  const leaveTexts=layers.leave?day.leave.map(leave=>leaveText(leave,t)):[];
  const attendance=layers.attendance&&day.date<=options.today?attendanceText(day,locale,t):null;
@@ -67,8 +67,8 @@ export function formatMyTeamCell(day:MyTeamDay,layers:MyTeamLayers,locale:string
  else if(layers.attendance&&day.date<=options.today&&day.attendance){
   if(day.attendance.flag==='odd')compact='!';else if(day.attendance.flag==='late'||day.attendance.status==='late')compact=t('lateCode');else if(day.attendance.status==='absent')compact=t('absentCode');
  }
- if(!compact&&layers.roster&&day.roster)compact=day.roster.isRestDay?t('restCode'):day.attendance?.status==='off'?'·':day.roster.code??'—';
- const details=[day.roster?.code??(day.roster?.isRestDay?t('restCode'):null),attendanceText(day,locale,t),t(`status_${status}`),...day.leave.map(leave=>leaveText(leave,t))].filter(Boolean).join(' · ')||t('status_unavailable');
+ if(!compact&&layers.roster&&day.roster)compact=day.roster.kind==='off'?'·':day.roster.isRestDay?t('restCode'):day.roster.code??'—';
+ const details=[day.roster?.kind==='off'?t('offCode'):day.roster?.code??(day.roster?.isRestDay?t('restCode'):null),day.date<=options.today?attendanceText(day,locale,t):null,t(`status_${status}`),...day.leave.map(leave=>leaveText(leave,t))].filter(Boolean).join(' · ')||t('status_unavailable');
  return {roster,primary,secondary,compact,description:details,status,pending,exportText:options.view==='month'?compact:[roster,primary,secondary].filter(Boolean).join(' · ')};
 }
 export function annualText(employee:MyTeamEmployee,t:MyTeamTranslate):string{return employee.annualAvailable==null?t('annualUnavailable'):t('annualBalance',{days:formatDays(employee.annualAvailable)});}

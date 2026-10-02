@@ -14477,6 +14477,11 @@
     "error_request_changed": "Đơn nghỉ phép đã thay đổi. Hãy tải lại trước khi quyết định.",
     "error_review_changed": "Lượt chấm công đã thay đổi. Hãy tải lại trước khi đánh dấu đã xem.",
     "error_invalid_query": "Bộ lọc nhóm đã chọn không hợp lệ.",
-    "error_failed": "Không thể cập nhật dữ liệu nhóm. Hãy thử lại."
+    "error_failed": "Không thể cập nhật dữ liệu nhóm. Hãy thử lại.",
+    "employeeName": "Tên nhân viên",
+    "employeeCode": "Mã nhân viên",
+    "occupation": "Chức danh",
+    "cancel": "Hủy",
+    "saving": "Đang lưu…"
   }
 }

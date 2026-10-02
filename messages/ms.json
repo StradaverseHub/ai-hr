@@ -14477,6 +14477,11 @@
     "error_request_changed": "Permohonan cuti berubah. Muat semula sebelum membuat keputusan.",
     "error_review_changed": "Rekod daftar berubah. Muat semula sebelum menandakannya disemak.",
     "error_invalid_query": "Penapis pasukan yang dipilih tidak sah.",
-    "error_failed": "Rekod pasukan tidak dapat dikemas kini. Cuba lagi."
+    "error_failed": "Rekod pasukan tidak dapat dikemas kini. Cuba lagi.",
+    "employeeName": "Nama pekerja",
+    "employeeCode": "Kod pekerja",
+    "occupation": "Jawatan",
+    "cancel": "Batal",
+    "saving": "Menyimpan…"
   }
 }

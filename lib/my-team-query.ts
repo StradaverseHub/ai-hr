@@ -11,15 +11,17 @@ export function parseMyTeamQuery(params:URLSearchParams):MyTeamQuery {
  const view=params.get('view')??'week',scope=params.get('scope')??'direct';
  if(!['week','month'].includes(view)||!['direct','all','department'].includes(scope))throw new MyTeamQueryError();
  const anchorDate=params.get('anchorDate')||undefined,departmentId=params.get('departmentId')||undefined,employmentId=params.get('employmentId')||undefined;
- const companyIds=params.getAll('companyIds');const search=params.get('search')?.trim()||undefined,tile=params.get('tile')||undefined;
+ const rawCompanyIds=params.getAll('companyIds'),explicitEmpty=rawCompanyIds.length===1&&rawCompanyIds[0]==='';
+ const companyIds=explicitEmpty?[]:rawCompanyIds;const search=params.get('search')?.trim()||undefined,tile=params.get('tile')||undefined;
  if(anchorDate&&!date(anchorDate)||departmentId&&!uuid.test(departmentId)||employmentId&&!uuid.test(employmentId)||companyIds.length>50||companyIds.some(id=>!uuid.test(id))||(search?.length??0)>100||tile&&!tiles.includes(tile as MyTeamTile))throw new MyTeamQueryError();
  const layerText=params.get('layers');let layers:MyTeamQuery['layers'];
  if(layerText!==null){const names=layerText?layerText.split(','):[];if(names.some(name=>!['roster','attendance','leave'].includes(name))||new Set(names).size!==names.length)throw new MyTeamQueryError();layers={roster:names.includes('roster'),attendance:names.includes('attendance'),leave:names.includes('leave')};}
- return {view:view as MyTeamQuery['view'],scope:scope as MyTeamQuery['scope'],...(anchorDate?{anchorDate}:{}),...(companyIds.length?{companyIds:[...new Set(companyIds)]}:{}),...(departmentId?{departmentId}:{}),...(employmentId?{employmentId}:{}),...(search?{search}:{}),...(tile?{tile:tile as MyTeamTile}:{}),...(layers?{layers}:{})};
+ return {view:view as MyTeamQuery['view'],scope:scope as MyTeamQuery['scope'],...(anchorDate?{anchorDate}:{}),...(companyIds.length||explicitEmpty?{companyIds:[...new Set(companyIds)]}:{}),...(departmentId?{departmentId}:{}),...(employmentId?{employmentId}:{}),...(search?{search}:{}),...(tile?{tile:tile as MyTeamTile}:{}),...(layers?{layers}:{})};
 }
 export function serializeMyTeamQuery(query:MyTeamQuery):URLSearchParams {
  const params=new URLSearchParams({view:query.view,scope:query.scope});
  for(const key of ['anchorDate','departmentId','employmentId','search','tile'] as const)if(query[key])params.set(key,query[key]!);
+ if(query.companyIds?.length===0)params.set('companyIds','');
  for(const id of query.companyIds??[])params.append('companyIds',id);
  if(query.layers)params.set('layers',(['roster','attendance','leave'] as const).filter(key=>query.layers![key]).join(','));
  return params;

@@ -14477,6 +14477,11 @@
     "error_request_changed": "This leave request changed. Refresh before deciding.",
     "error_review_changed": "The punch record changed. Refresh before marking it reviewed.",
     "error_invalid_query": "The selected team filters are invalid.",
-    "error_failed": "Team records could not be updated. Try again."
+    "error_failed": "Team records could not be updated. Try again.",
+    "employeeName": "Employee name",
+    "employeeCode": "Employee code",
+    "occupation": "Occupation",
+    "cancel": "Cancel",
+    "saving": "Saving…"
   }
 }

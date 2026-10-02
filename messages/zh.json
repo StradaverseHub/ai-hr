@@ -14477,6 +14477,11 @@
     "error_request_changed": "休假申请已改变，请刷新后审批。",
     "error_review_changed": "打卡记录已改变，请刷新后标记。",
     "error_invalid_query": "所选团队筛选条件无效。",
-    "error_failed": "无法更新团队记录，请重试。"
+    "error_failed": "无法更新团队记录，请重试。",
+    "employeeName": "员工姓名",
+    "employeeCode": "员工编号",
+    "occupation": "职位",
+    "cancel": "取消",
+    "saving": "正在保存…"
   }
 }
