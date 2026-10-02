@@ -19,11 +19,12 @@ afterAll(async () => { await closeAll(); });
 beforeEach(async () => {
   await resetDb(); b = await seedBase(); subject = await hire(b);
 });
+let icSequence = 15555;
 async function hire(base: Base) {
   const e = await hireEmployee(adminCtx(base), { person: {fullName: 'Synthetic tax subject',
     primaryEmail: `declaration_${randomUUID()}@example.test`}, companyId: base.companyId,
     departmentId: base.deptA, employmentType: 'full_time', hiredOn: '2026-01-01' });
-  await setStatutoryProfileMY(adminCtx(base), {personId: e.personId, icNumber: '900101015555'});
+  await setStatutoryProfileMY(adminCtx(base), {personId: e.personId, icNumber: `900101${String(icSequence++).padStart(6,'0')}`});
   return e;
 }
 const input = () => ({employmentId: subject.employmentId, expectedCompanyId: b.companyId,
@@ -149,9 +150,9 @@ describe('r380 declaration scope and app-role immutability', () => {
   it('permits archival only: app role cannot rewrite approval facts, unarchive or delete', async () => {
     const id = await saveTaxSchemeDeclarationMY(adminCtx(b),input());
     for (const [column,value] of [['scheme','knowledge_worker'],['approval_reference','CHANGED'],['valid_from','2026-08'],['valid_to','2027-09'],['employment_id',randomUUID()],['company_id',randomUUID()],['declared_by_user_id',randomUUID()]] as const) {
-      await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`UPDATE employment_tax_scheme_my SET ${sql.raw(column)}=${value} WHERE id=${id}::uuid`))).rejects.toBeDefined();
+      await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`UPDATE employment_tax_scheme_my SET ${sql.raw(column)}=${value}, archived_at=now() WHERE id=${id}::uuid`))).rejects.toMatchObject({cause:{code:'42501'}});
     }
-    await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`DELETE FROM employment_tax_scheme_my WHERE id=${id}::uuid`))).rejects.toBeDefined();
+    await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`DELETE FROM employment_tax_scheme_my WHERE id=${id}::uuid`))).rejects.toMatchObject({cause:{code:'42501'}});
     await withTenant(adminCtx(b),tx=>tx.update(schema.employmentTaxSchemeMy).set({archivedAt:sql`now()`}).where(eq(schema.employmentTaxSchemeMy.id,id)));
     const [archived] = await owner.db.select().from(schema.employmentTaxSchemeMy).where(eq(schema.employmentTaxSchemeMy.id,id));
     expect(archived.archivedAt).toBeInstanceOf(Date);

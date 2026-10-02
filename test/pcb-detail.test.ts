@@ -954,8 +954,17 @@ describe('45df860a — the shared screen, and the two entry points that reach it
     // The bracket line — both zero floors in the substitution, because B carries the rebate as a negative
     // number. The FORMULA row above it is the agency's and prints none (asserted in the case above), and
     // the flooring is a visible step of its own; these two counts are what keep the substitution honest.
-    expect((row('mtd', 'substituted').match(/max\( 0,/g) ?? []).length,
+    const monthlySubstitutions = row('mtd', 'substituted');
+    const normalAt = monthlySubstitutions.indexOf(': `max( 0, max( 0, (');
+    expect(normalAt, 'normal monthly substitution branch must exist').toBeGreaterThan(0);
+    const normalSubstitution = monthlySubstitutions.slice(normalAt);
+    const incentiveSubstitution = monthlySubstitutions.slice(0, normalAt);
+    expect(normalSubstitution.length).toBeGreaterThan(100);
+    expect(incentiveSubstitution.length).toBeGreaterThan(100);
+    expect((normalSubstitution.match(/max\( 0,/g) ?? []).length,
       'annualTaxFor floors, and pcbMonth floors again').toBe(2);
+    expect((incentiveSubstitution.match(/max\( 0,/g) ?? []).length,
+      'the incentive branch preserves its annual and monthly floors').toBe(2);
     // The `calculation` row resolves the inner bracket to the STORED `taxOnP1`, which annualTaxFor has
     // already floored — so one clamp disappears with it and exactly the outer one remains.
     expect((row('mtd', 'calculation').match(/max\( 0,/g) ?? []).length,

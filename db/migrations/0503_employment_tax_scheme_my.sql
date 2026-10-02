@@ -19,6 +19,9 @@ ALTER TABLE employment_tax_scheme_my ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 GRANT SELECT, INSERT ON employment_tax_scheme_my TO ai_hr_app;
 --> statement-breakpoint
+-- Bootstrap default privileges include table-wide UPDATE/DELETE; remove them explicitly.
+REVOKE UPDATE, DELETE ON employment_tax_scheme_my FROM ai_hr_app;
+--> statement-breakpoint
 -- Immutable approval facts: the only app update is explicit archival (revoke + new declaration).
 GRANT UPDATE (archived_at) ON employment_tax_scheme_my TO ai_hr_app;
 --> statement-breakpoint
