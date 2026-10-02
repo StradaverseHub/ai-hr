@@ -2138,14 +2138,19 @@ function resolveShiftDisplay(
       };
     case 'roster_rest':
       return { ...NO_SHIFT, isRosterRest: true }; // an explicit rostered rest day
-    case 'default_shift':
+    case 'default_shift': {
+      // `def` already carries the effective group week. Use the calculation owner's exact half window,
+      // so Records cannot display a full shift while the engine and My Roster use half a day.
+      const schedule=workingShiftSchedule({start:def!.start,end:def!.end,crosses:def!.crosses,
+        breakMinutes:def!.brk,roundingMinutes:def!.rounding},shiftDayKindFor(def!,date)==='half'?'half':'full');
       return {
         shiftCode: def!.code,
-        scheduledMinutes: netScheduledMinutes(def!.start, def!.end, def!.crosses, def!.brk, def!.rounding),
-        shiftStart: def!.start.slice(0, 5),
-        shiftEnd: def!.end.slice(0, 5),
+        scheduledMinutes: schedule.scheduledMinutes,
+        shiftStart: schedule.shiftStart.slice(0, 5),
+        shiftEnd: schedule.shiftEnd.slice(0, 5),
         isRosterRest: false,
       };
+    }
     case 'default_rest':
       return NO_SHIFT; // default shift's own rest day (pattern excludes) → OFF, not an explicit rostered rest
     default:

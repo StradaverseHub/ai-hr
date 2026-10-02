@@ -1,4 +1,13 @@
 -- My Team uses today's live administrative reporting membership, never HOD visibility.
+-- A context may only narrow a currently held authenticated grant; stale session roles never restore one.
+CREATE FUNCTION app.my_team_has_role_for(requested_role text,requested_company uuid) RETURNS boolean LANGUAGE sql STABLE AS $$
+ SELECT app.has_role(requested_role) AND app.has_role_for(requested_role,requested_company)
+ AND EXISTS(SELECT 1 FROM role_assignment r JOIN app_user u ON u.id=r.app_user_id AND u.tenant_id=r.tenant_id
+  WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL
+   AND r.role::text=requested_role
+   AND (r.company_id IS NULL OR r.company_id=requested_company OR app.is_company_descendant(requested_company,r.company_id)))
+$$;
+--> statement-breakpoint
 CREATE FUNCTION app.my_team_report_ids() RETURNS SETOF uuid LANGUAGE sql STABLE AS $$
  WITH RECURSIVE roots AS (
   SELECT e.id FROM employment e JOIN app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
@@ -15,7 +24,7 @@ CREATE FUNCTION app.my_team_report_ids() RETURNS SETOF uuid LANGUAGE sql STABLE 
    AND (l.valid_to IS NULL OR l.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
    AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
    AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
-   AND cardinality(r.path)<65 AND NOT e.id=ANY(r.path)
+   AND NOT e.id=ANY(r.path)
  ) SELECT DISTINCT r.id FROM reports r WHERE NOT EXISTS(SELECT 1 FROM roots x WHERE x.id=r.id)
 $$;
 --> statement-breakpoint
@@ -24,8 +33,8 @@ CREATE FUNCTION app.my_team_subject_authorized(subject uuid) RETURNS boolean LAN
   AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
   AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
   AND EXISTS(SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=e.tenant_id AND u.archived_at IS NULL)
-  AND ((app.has_role_for('manager',e.company_id) AND e.id IN (SELECT app.my_team_report_ids()))
-   OR ((app.has_role('hr_admin') OR app.has_role('super_admin')) AND app.is_admin_for(e.company_id))))
+  AND ((app.my_team_has_role_for('manager',e.company_id) AND e.id IN (SELECT app.my_team_report_ids()))
+   OR (app.my_team_has_role_for('hr_admin',e.company_id) OR app.my_team_has_role_for('super_admin',e.company_id))))
 $$;
 --> statement-breakpoint
 -- Stored processed observations only: a subsequent changed observation is unreviewed.
@@ -40,7 +49,7 @@ CREATE TABLE attendance_attention_review (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),
  attendance_id uuid NOT NULL REFERENCES attendance(id) ON DELETE CASCADE,reviewer_user_id uuid NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
  fingerprint text NOT NULL CHECK(fingerprint ~ '^[0-9a-f]{32}$'),created_at timestamptz NOT NULL DEFAULT now(),
- UNIQUE(tenant_id,attendance_id,reviewer_user_id,fingerprint)
+ CONSTRAINT attendance_attention_review_observation UNIQUE(tenant_id,attendance_id,reviewer_user_id,fingerprint)
 );
 --> statement-breakpoint
 ALTER TABLE attendance_attention_review ENABLE ROW LEVEL SECURITY;
