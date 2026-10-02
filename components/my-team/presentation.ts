@@ -19,10 +19,11 @@ export function dateText(date:string,locale:string,options:Intl.DateTimeFormatOp
 export function instantDateText(value:string,locale:string):string{
  return new Intl.DateTimeFormat(locale,{weekday:'short',day:'numeric',month:'short',timeZone:'Asia/Kuala_Lumpur'}).format(new Date(value));
 }
-export function clockText(value:string|null,locale:string):string{
- if(!value)return '—';
- const instant=new Date(value);if(!Number.isFinite(instant.getTime()))return '—';
- return new Intl.DateTimeFormat(locale,{hour:'2-digit',minute:'2-digit',hourCycle:'h23',timeZone:'Asia/Kuala_Lumpur'}).format(instant);
+/** Attendance TIME is already a local clock, matching the canonical Attendance reader's HH:mm display.
+ * It has no date/offset to reinterpret. Application instants above are a separate type of source fact. */
+export function clockText(value:string|null,_locale:string):string{
+ if(!value||!/^((?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,6})?)?|24:00:00(?:\.0{1,6})?)$/.test(value))return '—';
+ return value.slice(0,5);
 }
 export function initials(name:string):string{return name.trim().split(/\s+/).slice(0,2).map(part=>part[0]??'').join('').toLocaleUpperCase();}
 export function weekFor(employee:MyTeamEmployee,selectedDate:string):MyTeamWeekSummary|undefined{return employee.weeks.find(week=>week.from<=selectedDate&&week.to>=selectedDate);}
