@@ -7,12 +7,12 @@ import { explainPcb, pcbSlipSections } from '../core/pcb-explain';
 
 const sides = { profile: { mode: 'auto_table', table: { disabled_study: { full: 99 } }, disabledIndividual: true, disabledSpouse: true }, catalogue: [], rebateCatalogue: [], currentDeduction: null, accumulatedDeduction: null, previousDeduction: null, currentRebate: null, accumulatedRebate: null };
 const current = { individual: 9000, spouse: 0, children: 0, disabledIndividual: 0, disabledSpouse: 0, total: 9000, lp: 0 };
-function run(table: Record<string, { full?: number; half?: number }>, q = 2000) {
+function run(table: Record<string, { full?: number; half?: number }>, q = 2000, category: 1 | 2 | 3 = 2) {
   const pcb = structuredClone(DEFAULT_MY_STATUTORY.pcb);
   pcb.reliefs = repriceChildQualificationReliefs({ ...pcb.reliefs, perChild: q }, pcb.reliefs);
-  const figure = childReliefFor({ from: 'table', table, prices: childReliefPrices(pcb.reliefs) });
+  const figure = childReliefFor({ from: 'table', taxCategory: category, table, prices: childReliefPrices(pcb.reliefs) });
   const childWorking = { mode: 'auto_table' as const, table, rows: figure.rows, categoryUnits: Object.fromEntries(figure.rows.map(row => [row.category, figure.rows.filter(other => other.category === row.category).reduce((sum, other) => sum + other.units, 0)])), headCount: figure.rows.reduce((n, r) => n + r.children, 0) };
-  const payroll = pcbMonth({ monthlyWage: 14000, epfMonthly: 1540, month: 7, profile: { category: 2, children: 0, childReliefAmount: figure.amountRM, childWorking }, pcb });
+  const payroll = pcbMonth({ monthlyWage: 14000, epfMonthly: 1540, month: 7, profile: { category, children: 0, childReliefAmount: figure.amountRM, childReliefCount: figure.units, childWorking }, pcb });
   const x = explainPcb({ pcb: payroll.total, pcbBonus: payroll.additional, pcbMeta: payroll.snapshot }, current);
   if (x.kind !== 'mtd') throw Error('expected MTD');
   return { payroll, x, section: pcbSlipSections(x, sides)[0], childWorking };
@@ -115,21 +115,16 @@ describe('r377 malformed recorded child provenance', () => {
     expect(section.rows.find(row => row.caption === 'slipChildRelief')?.first).toEqual({ kind: 'notRecorded' });
   });
   it('accepts recorded category 1 declarations with zero applied contribution', () => {
-    const { x } = malformed(t => {
-      t.category = 1;
-      t.childCount = 0;
-      for (const row of t.childWorking.rows) { row.units = 0; row.amountRM = 0; }
-      for (const key of Object.keys(t.childWorking.categoryUnits)) t.childWorking.categoryUnits[key] = 0;
-    });
+    const { x } = run({ under_18: { full: 1 }, disabled_study: { half: 1 } }, 2000, 1);
+    expect(x.reliefs.children).toBe(0);
     expect(x.trace?.childWorking?.headCount).toBe(2);
     expect(x.trace?.childWorking?.categoryUnits.under_18).toBe(0);
   });
   it('accepts category 1 manual declarations beside an applied C of zero', () => {
-    const { x } = malformed(t => {
-      t.category = 1;
-      t.childCount = 0;
-      t.childWorking = { ...t.childWorking, mode: 'manual', table: null, rows: [], categoryUnits: {} };
-    });
+    const r = pcbMonth({ monthlyWage: 14000, epfMonthly: 1540, month: 7, profile: { category: 1, children: 2, childWorking: { mode: 'manual', table: null, rows: [], categoryUnits: {}, headCount: 2 } } });
+    const x = explainPcb({ pcb: r.total, pcbMeta: r.snapshot }, current);
+    if (x.kind !== 'mtd') throw Error('expected MTD');
+    expect(x.reliefs.children).toBe(0);
     expect(x.trace?.childWorking?.headCount).toBe(2);
   });
   it('configured Q does not round or change qualifying C', () => {

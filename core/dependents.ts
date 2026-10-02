@@ -1381,10 +1381,12 @@ export async function qualifyingChildReliefFor(
     const reliefs = rules.pcb?.reliefs;
     if (!reliefs) return null;
     const perChild = reliefs.perChild;
-    // A zero or missing per-child figure prices no qualifying-children COUNT at all (`childReliefPrices`
-    // returns units 0 rather than Infinity), so report nothing rather than a screen full of zeroes that
-    // look like a figure.
-    if (typeof perChild !== 'number' || !Number.isFinite(perChild) || perChild <= 0) return null;
+    // The country pricing owner decides whether zero Q has a coherent qualifying-count basis.
+    // Invalid settings offer no prices; never dress that absence as C=0 or a zero child deduction.
+    if (typeof perChild !== 'number' || !Number.isFinite(perChild) || perChild < 0) return null;
+    const categories = childReliefPrices(reliefs);
+    if (categories.length === 0 || categories.some(price =>
+      !Number.isFinite(price.units) || price.units < 0 || !Number.isFinite(price.amountRM) || price.amountRM < 0)) return null;
 
     const [statutory] = await tx
       .select({
@@ -1441,8 +1443,6 @@ export async function qualifyingChildReliefFor(
     // The pack's own prices, and the ONLY place ringgit and qualifying children are converted into each
     // other. The screen receives this list verbatim: it has to price a grid the admin is still typing into,
     // and handing it the prices keeps the statutory rule in the pack while it does.
-    const categories = childReliefPrices(reliefs);
-
     // r343 04b88724 — the s.48 WEIGHTED figure from the children on file, through the pack's own prices and
     // the pack's own walk. One call; no units are named here. See `eligibleChildReliefUnits` for why this is
     // reported rather than applied.
