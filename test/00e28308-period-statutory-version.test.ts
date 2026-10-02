@@ -65,6 +65,8 @@ const GOLDEN_STATUTORY = {
   pcb: 0,
   pcbBonus: 0,
   pcbMeta: {
+    // r380 records the selected scheme without changing this ordinary resident's money.
+    calculationScheme: 'resident',
     P1: 27000.05,
     epfClaimed: 0,
     month: 5,

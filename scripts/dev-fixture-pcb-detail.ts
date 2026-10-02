@@ -96,8 +96,8 @@ const requestedScheme = process.env.DEV_PCB_SCHEME ?? 'resident';
 if (!['resident','non_resident','rep','knowledge_worker','c_suite'].includes(requestedScheme)) throw new Error('Unknown fixture PCB scheme');
 const typedBonus = process.env.DEV_PCB_TYPED_BONUS === '1';
 if (requestedScheme !== 'resident' || typedBonus) {
-  for (const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']) {
-    const target = new URL(process.env[key] ?? '');
+  for (const databaseUrl of [process.env.DATABASE_URL, process.env.MIGRATION_DATABASE_URL]) {
+    const target = new URL(databaseUrl ?? '');
     if (!['localhost','127.0.0.1','[::1]'].includes(target.hostname) || target.port !== '5433') {
       throw new Error('Synthetic incentive/bonus variants require the disposable localhost:5433 database');
     }
