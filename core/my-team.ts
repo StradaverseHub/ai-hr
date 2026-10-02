@@ -33,14 +33,14 @@ function periodOf(query:ReturnType<typeof normalizeQuery>){
  for(let from=start;from<=end;from=addDaysIso(from,7))coveringWeeks.push({from,to:addDaysIso(from,6)});
  return {...period,gridDates:datesBetween(start,end),coveringWeeks};
 }
-type ShiftScheduleInput={id:string;code:string|null;start:string;end:string;crosses:boolean;breakMinutes:number;roundingMinutes:number|null};
+type ShiftScheduleInput={id:string;code:string|null;name:string;color:string|null;start:string;end:string;crosses:boolean;breakMinutes:number;roundingMinutes:number|null};
 function rosterDay(view:RosterMonthView,id:string,date:string,schedules:ShiftScheduleInput[]):MyTeamRosterDay {
  const assigned=view.cells[`${id}|${date}`]??null,resolved=resolveRosterCell(date,assigned,view.usual[id]);
  const shiftId=resolved.kind==='shift'||resolved.kind==='usual'?resolved.shiftId:null;
  const sh=view.shifts.find(s=>s.id===shiftId),input=schedules.find(s=>s.id===shiftId);
  const schedule=input?workingShiftSchedule(input,resolved.kind==='usual'&&shiftDayKindFor(view.usual[id],date)==='half'?'half':'full'):null;
  return {kind:resolved.kind==='rest'?'rest':resolved.kind==='off'?'off':resolved.kind==='none'?'unassigned':'shift',
-   shiftId,code:sh?.code??null,name:sh?.name??null,color:sh?.color??null,start:schedule?.shiftStart.slice(0,5)??sh?.startTime??null,end:schedule?.shiftEnd.slice(0,5)??sh?.endTime??null,
+   shiftId,code:input?.code??sh?.code??null,name:input?.name??sh?.name??null,color:input?.color??sh?.color??null,start:schedule?.shiftStart.slice(0,5)??sh?.startTime??null,end:schedule?.shiftEnd.slice(0,5)??sh?.endTime??null,
    scheduledMinutes:schedule?.scheduledMinutes??null,isRestDay:resolved.kind==='rest',isOverride:assigned!==null};
 }
 /** Bounded concurrency for canonical employee balance reads, never a call per cell. */
@@ -74,8 +74,11 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
          sql`(${attendance.attendanceDate} BETWEEN ${from}::date AND ${to}::date OR ${attendance.attendanceDate}=${today}::date)`));return rows;
    }) : [],
  ]);
- const shiftIds=[...new Set([...(roster?.shifts??[]),...(todayRoster?.shifts??[])].map(s=>s.id))];
- const defaults=shiftIds.length ? await withTenant(realCtx,tx=>tx.select({id:shift.id,code:shift.code,start:shift.startTime,end:shift.endTime,
+ // Active catalogue rows are not an authority for an archived but still referenced shift.
+ // Fetch exact IDs from this authorized period/today projection, never search a reused code.
+ const shiftIds=[...new Set([roster,todayRoster].flatMap(view=>view?
+   [...Object.values(view.usual).map(u=>u.shiftId),...Object.values(view.cells).flatMap(c=>c?.kind==='shift'?[c.shiftId]:[])]:[]))];
+ const defaults=shiftIds.length ? await withTenant(realCtx,tx=>tx.select({id:shift.id,code:shift.code,name:shift.name,color:shift.color,start:shift.startTime,end:shift.endTime,
    crosses:shift.crossesMidnight,breakMinutes:shift.breakMinutes,roundingMinutes:shift.normalHoursRoundingMinutes})
    .from(shift).where(inArray(shift.id,shiftIds))) : [];
  const approvals:MyTeamApproval[]=decisions.map(d=>{
@@ -171,9 +174,12 @@ export function markMyTeamPunchReviewed(ctx:SessionContext,p:{attendanceId:strin
  assertMyTeamAccess(ctx);if(!isModuleEnabled(ctx,'attendance'))throw new MyTeamAuthorizationError();
  if(!uuid.test(p.attendanceId)||!/^[0-9a-f]{32}$/.test(p.fingerprint))throw new MyTeamReviewChangedError();
  return withTenant(ctx,async tx=>{
+   // Use subject → graph/assignment → observation lock order, consistent with employment mutations.
+   const [candidate]=await tx.select({employmentId:attendance.employmentId}).from(attendance).where(eq(attendance.id,p.attendanceId)).limit(1);
+   if(!candidate)throw new MyTeamAuthorizationError();
+   await assertMyTeamSubjectTx(tx,ctx,query,candidate.employmentId);
    const [row]=await tx.select().from(attendance).where(eq(attendance.id,p.attendanceId)).limit(1).for('update');
-   if(!row)throw new MyTeamAuthorizationError();
-   await assertMyTeamSubjectTx(tx,ctx,query,row.employmentId);
+   if(!row||row.employmentId!==candidate.employmentId)throw new MyTeamReviewChangedError();
    const [observed]=await tx.execute(sql`SELECT app.attendance_attention_fingerprint(a) AS fingerprint FROM attendance a WHERE a.id=${row.id}::uuid`) as unknown as {fingerprint:string}[];
    if(observed?.fingerprint!==p.fingerprint||row.attendanceDate>todayInKualaLumpur()||!!row.checkInAt===!!row.checkOutAt)throw new MyTeamReviewChangedError();
    const [inserted]=await tx.insert(attendanceAttentionReview).values({tenantId:ctx.tenantId,attendanceId:row.id,

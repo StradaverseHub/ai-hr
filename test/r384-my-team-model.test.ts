@@ -5,7 +5,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import * as readOwner from '../core/read';
 import {hireEmployee,setReportingLine} from '../core/org';
-import {assignDefaultShift,createShift} from '../core/roster';
+import {assignDefaultShift,assignShift,archiveShift,createShift} from '../core/roster';
 import {attendanceForEmploymentRange,attendanceForEmploymentsRange,attendanceForDate,checkIn,checkOut} from '../packs/attendance/service';
 import {requestLeave,actionableLeaveRequests,setLeaveApprovalPolicy,decideLeave} from '../packs/leave/service';
 import {readMyTeam,markMyTeamPunchReviewed,decideMyTeamLeave,decideMyTeamLeaveDates} from '../core/my-team';
@@ -106,6 +106,20 @@ describe('My Team current scope and canonical projection',()=>{
   const withoutAttendance=unavailable.employees.find(e=>e.employmentId===subject.employmentId)!.days.find(d=>d.date===date)!;
   expect(withoutAttendance.attendance).toBeNull();
   expect(withoutAttendance.roster).toMatchObject({kind:'shift',scheduledMinutes:240,start:'09:00',end:'13:30'});
+ });
+ it('keeps exact archived default and dated shift identities instead of substituting a reused active code',async()=>{
+  const a=await entitledCtx(b),date='2026-09-26',next='2026-09-27';
+  const original=await createShift(a,{name:'Archived referenced shift',code:'SAVED',startTime:'09:00',endTime:'18:00',breakMinutes:60,
+    weeklyPattern:[1,2,3,4,5],halfPattern:[6]});
+  await assignDefaultShift(a,{employmentId:subject.employmentId,shiftId:original.id});
+  await assignShift(a,{employmentId:subject.employmentId,shiftDate:next,shiftId:original.id});
+  await archiveShift(a,{shiftId:original.id});
+  const replacement=await createShift(a,{name:'Active reused code',code:'SAVED',startTime:'11:00',endTime:'20:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5,6,7]});
+  expect(replacement.id).not.toBe(original.id);
+  const snapshot=await readMyTeam(managerCtx,{...query,anchorDate:date}),employee=snapshot.employees.find(e=>e.employmentId===subject.employmentId)!;
+  expect(employee.defaultShift).toEqual({code:'SAVED',start:'09:00:00',end:'18:00:00'});
+  expect(employee.days.find(d=>d.date===date)!.roster).toMatchObject({shiftId:original.id,name:'Archived referenced shift',code:'SAVED',start:'09:00',end:'13:30',scheduledMinutes:240,isOverride:false});
+  expect(employee.days.find(d=>d.date===next)!.roster).toMatchObject({shiftId:original.id,name:'Archived referenced shift',code:'SAVED',start:'09:00',end:'18:00',scheduledMinutes:480,isOverride:true});
  });
  it('search and tile only narrow grid IDs, while tiles and attention retain the full authorized team',async()=>{
   const plain=await readMyTeam(managerCtx,query),filtered=await readMyTeam(managerCtx,{...query,search:'Report'});
@@ -276,12 +290,12 @@ describe('My Team attendance review is per user, observation and fresh authority
   if(missing?.kind!=='missing_punch')throw new Error('non-vacuous direct report missing punch');
   let attempted!:Promise<{error?:unknown}>;
   await owner.db.transaction(async tx=>{
-   await tx.select().from(schema.attendance).where(eq(schema.attendance.id,missing.attendanceId)).for('update');
+   await tx.select().from(schema.employment).where(eq(schema.employment.id,subject.employmentId)).for('update');
    attempted=markMyTeamPunchReviewed(managerCtx,{attendanceId:missing.attendanceId,fingerprint:missing.fingerprint},snapshot.query)
      .then(()=>({}),error=>({error}));
    let waiting=false;
    for(let attempt=0;attempt<50&&!waiting;attempt++){
-    const rows=await tx.execute(sql`SELECT pid FROM pg_stat_activity WHERE cardinality(pg_blocking_pids(pid))>0 AND query LIKE '%attendance%'`);
+    const rows=await tx.execute(sql`SELECT pid FROM pg_stat_activity WHERE cardinality(pg_blocking_pids(pid))>0 AND query LIKE '%employment%'`);
     waiting=rows.length>0;if(!waiting)await new Promise(r=>setTimeout(r,10));
    }
    expect(waiting).toBe(true);
