@@ -41,8 +41,8 @@ import { payrollResultHref, type PayrollResultRun } from '../../payroll-result-h
  * some other row's employee.
  */
 export function reprocessResultHrefs(
-  rows: readonly { id: string; employmentId: string }[],
-  slips: readonly { id: string; employmentId: string }[],
+  rows: readonly { id: string; employmentId: string; payslipId?: string | null; versionAfter?: number | null }[],
+  slips: readonly { id: string; employmentId: string; version?: number }[],
   run: PayrollResultRun,
   from?: string,
 ): Map<string, string> {
@@ -51,6 +51,10 @@ export function reprocessResultHrefs(
   const hrefs = new Map<string, string>();
   for (const row of rows) {
     if (!paidOnThisRun.has(row.employmentId)) continue;
+    // Recorded attempts link only the exact retained/new version they describe. An older job must
+    // never offer a current-version screen as if it still shows that earlier calculation.
+    if ('payslipId' in row && !slips.some(slip => slip.id === row.payslipId
+      && slip.employmentId === row.employmentId && slip.version === row.versionAfter)) continue;
     hrefs.set(row.id, payrollResultHref(run, row.employmentId, from));
   }
   return hrefs;

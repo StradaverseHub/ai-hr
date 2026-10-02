@@ -6,6 +6,7 @@ import { ClientPager, useClientPageQuery } from '@/components/client-pager';
 
 import { useTranslations } from 'next-intl';
 import { Badge, EmployeeName } from '@/components/ui';
+import type { ReprocessEmployeeOutcome } from '@/packs/payroll/service';
 import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
 import { deriveHistoryBreakdown } from './history-breakdown';
 // 6b134681 / 417d4937 — one label format for a pay item, shared with the ESS payslip and the printed
@@ -80,15 +81,17 @@ const EMPLOYER_BORNE_LABEL: Record<EmployerBorneKey, 'epf' | 'socso' | 'skbbk' |
   epf: 'epf', socso: 'socso', skbbk: 'skbbk', eis: 'eis', tax: 'pcb',
 };
 
-const COL_COUNT = 13; // toggle + 12 summary columns
+const COL_COUNT = 15; // toggle + 12 financial/run columns + processing status/remarks
 
 export function HistoryTable({
   rows,
   hrdfRegisteredCompanyIds,
   payItemNames,
   sourceTxnsByPayslip,
+  processingOutcomes,
 }: {
   rows: ProcessedPayslipViewRow[];
+  processingOutcomes?: Record<string,Pick<ReprocessEmployeeOutcome,'status'|'reasonCode'|'resultRetained'>>;
   /** Feedback efece4ce — companies whose HRDF Contribution Rate is set (0.5% / 1.0%). Everything else is
    *  unregistered and levies nothing, which the breakdown must SAY rather than leave blank. */
   hrdfRegisteredCompanyIds: string[];
@@ -139,11 +142,14 @@ export function HistoryTable({
             <th className="px-4 py-2 text-right font-medium">{tBatch('totalDeductions')}</th>
             <th className="px-4 py-2 text-right font-medium">{tBatch('colNet')}</th>
             <th className="px-4 py-2 font-medium">{tList('colStatus')}</th>
+            <th className="px-4 py-2 font-medium">{tBatch('reprocessOutcomeStatusHeading')}</th>
+            <th className="px-4 py-2 font-medium">{tBatch('reprocessOutcomeRemarksHeading')}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
           {pageRows.map((r) => {
             const b = deriveHistoryBreakdown(r);
+            const outcome=processingOutcomes?.[r.id];
             const st = b.st;
             const isOpen = open.has(r.id);
             // 3c88d593 — null for every payslip that covered its whole month, which is every payslip this
@@ -213,6 +219,14 @@ export function HistoryTable({
                   <td className="px-4 py-2.5 text-right font-medium tabular-nums">{rm(r.net)}</td>
                   <td className="px-4 py-2.5">
                     <Badge variant="success">{tList(`status.${r.batchStatus}`)}</Badge>
+                  </td>
+                  <td className="px-4 py-2.5">{outcome ? <Badge variant={outcome.status==='reprocessed'?'success':outcome.status==='skipped'?'default':'warning'}>
+                    {tBatch(`reprocessOutcomeStatus.${outcome.status}`)}</Badge> : '—'}</td>
+                  <td className="max-w-sm px-4 py-2.5 text-xs">
+                    {outcome ? <><p title={outcome.status==='skipped'?tBatch('reprocessNothingPayableFull'):undefined}>
+                      {tBatch(outcome.status==='skipped'?'reprocessNothingPayableShort':outcome.status==='reprocessed'?'reprocessSucceededReason':'reprocessConfigurationReason')}</p>
+                      {outcome.resultRetained && <p className="mt-1 font-medium text-amber-800 dark:text-amber-300">{tBatch('reprocessPreviousResultRetained')}</p>}
+                    </> : '—'}
                   </td>
                 </tr>
                 {isOpen && (

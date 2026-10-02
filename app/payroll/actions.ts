@@ -31,6 +31,7 @@ import {
   prefillTp1FromSelfRelief,
   removeEmployeePayroll,
   reprocessSelectedEmployees,
+  PayrollReprocessStoppedError,
   resetProcessedBatch,
   setPayrollInput,
   unlockClosedBatch,
@@ -518,6 +519,12 @@ export async function reprocessSelectedAction(formData: FormData) {
     });
     jobId = r.jobId;
   } catch (e) {
+    if (e instanceof PayrollReprocessStoppedError) {
+      revalidatePath('/payroll');
+      revalidatePath(`/payroll/${batchId}`);
+      revalidatePath(backPath);
+      redirect(withQueryParam(back, 'job', e.jobId));
+    }
     const msg =
       e instanceof PayrollPermissionDeniedError
         ? t('reprocessAdminOnly')

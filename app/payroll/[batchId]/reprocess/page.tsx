@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, getReprocessJob, listBatches, listPayslipLessEligible, reprocessEligibility } from '@/core/payroll';
+import { batchDetail, decodeReprocessEmployeeOutcomes, getReprocessJob, listBatches, listPayslipLessEligible, reprocessEligibility } from '@/core/payroll';
 import { listRecomputeDisclosure } from '@/core/payroll-view';
 import { STATUTORY_BASE_KEYS, type StatutoryBaseKey, type StatutoryLineKey } from '@/core/payslip-recompute';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
@@ -22,7 +22,7 @@ import { ReprocessForm, type ReprocessAddCandidate, type ReprocessCandidate } fr
 // against a real reprocessed run; see the module header for why that is not a four-line inline map.
 // The href is spent on the EMPLOYEE NAME (rev.2, below) — the destination did not change, only what
 // the operator clicks to reach it.
-import { reprocessResultHrefs } from './result-links';
+import { ReprocessOutcomePanel } from './outcomes';
 
 /**
  * e440991b — REPROCESS SELECTED EMPLOYEES, a screen of its own.
@@ -35,7 +35,7 @@ import { reprocessResultHrefs } from './result-links';
  * identity at the top, the selection, a review of what is about to happen, and — afterwards, on this
  * same screen — an account of what it did.
  *
- * THE ENGINE IS UNTOUCHED. `reprocessSelectedEmployees` remains the only authority: permission,
+ * THE ENGINE REMAINS THE AUTHORITY. `reprocessSelectedEmployees` remains the only authority: permission,
  * processed-only, closed-period refusal, cross-company intersection, idempotent enqueue and the
  * queued→running claim all live there and all still run on submit. The gates below are a SECOND
  * surface (`reprocessEligibility` re-reads the same three facts), so the operator is told why the door
@@ -233,22 +233,11 @@ export default async function ReprocessPage({
     added?: number;
     recalculated?: number;
   } | null;
-  // The history rows THIS job wrote: its own employments, written at or after it was enqueued. The
-  // recompute runs inline between enqueue and completion, so that window holds exactly this job's rows
-  // and the card below can show the EARLIER ones as what they are — the record of past reprocessing.
-  const jobRows = thisJob
-    ? disclosure.filter((r) => thisJob.employmentIds.includes(r.employmentId) && r.at >= thisJob.createdAt)
-    : [];
-  const jobRowIds = new Set(jobRows.map((r) => r.id));
-  const earlier = disclosure.filter((r) => !jobRowIds.has(r.id));
-  // b372e923 — the Payroll Result link for each of those rows, at the SAME destination the normal
-  // Payroll Process run screen sends its own per-employee links to (one shared builder, so there is no
-  // reprocess-only result screen to drift). `slips` is this run's payslips as read at the top of THIS
-  // render, i.e. after the reprocess wrote its results, so an employee the job just ADDED is already
-  // paid on the run and links exactly like a recalculated one. `listFrom` travels with the link so Back
-  // from the result returns the list as the operator left it — the same journey this screen's own
-  // header Back makes, and it survives the submit because the form posts it (see ReprocessForm).
-  const resultHrefs = reprocessResultHrefs(jobRows, slips, batch, listFrom);
+  // Exact references in the recorded job result are the only job/history join. Earlier jobs
+  // did not record them: keep their history available without guessing from timestamps.
+  const outcomes = thisJob ? decodeReprocessEmployeeOutcomes(thisJob.result, thisJob.employmentIds) : null;
+  const jobRowIds = new Set(outcomes?.flatMap(outcome => outcome.historyId ? [outcome.historyId] : []) ?? []);
+  const earlier = disclosure.filter(row => !jobRowIds.has(row.id));
 
   const money = (n: unknown) => formatMoney(n, currency);
   /** What moved, in the words of the diff: gross first when it moved, then each statutory line. */
@@ -279,119 +268,17 @@ export default async function ReprocessPage({
       {/* THE RESULT, when there is one. It is rendered ABOVE the selection because after a submit this
           is what the operator came back for; the selection stays below so a second correction does not
           need a second navigation. */}
-      {thisJob && thisJob.status === 'failed' && (
-        <ErrorBanner message={t('reprocessJobFailed', { error: thisJob.error ?? '' })} />
+      {thisJob?.status === 'failed' && <ErrorBanner message={t('reprocessStoppedPartial')} />}
+      {thisJob && outcomes !== null && (outcomes.length > 0 || thisJob.status === 'completed') && (
+        <ReprocessOutcomePanel outcomes={outcomes} history={disclosure} slips={slips} run={batch}
+          currency={currency} batchId={batchId} from={listFrom} jobId={thisJob.id}
+          selected={thisJob.employmentIds.length} stopped={thisJob.status === 'failed'} />
       )}
-      {thisJob && thisJob.status === 'completed' && (
-        <Card className="overflow-hidden">
-          <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
-            ✓{' '}
-            {t('reprocessResultTitle', {
-              n: jobResult?.reprocessed ?? thisJob.employmentIds.length,
-              total: jobResult?.headcount ?? slips.length,
-            })}
-            {/* fbcf706d — "N of M recalculated" is not what happened when some of the N had never been
-                on the run. The split is stated rather than folded into the recalculation count. */}
-            {(jobResult?.added ?? 0) > 0 && ` · ${t('reprocessResultAddedCount', { n: jobResult!.added! })}`}{' '}
-            · {thisJob.updatedAt.toISOString().slice(0, 16).replace('T', ' ')}
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[52rem] text-sm">
-              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 font-medium">{t('colEmployee')}</th>
-                  <th className="whitespace-nowrap px-3 py-2 text-right font-medium">{t('reprocessColNetBefore')}</th>
-                  <th className="whitespace-nowrap px-3 py-2 text-right font-medium">{t('reprocessColNetAfter')}</th>
-                  <th className="px-3 py-2 font-medium">{t('reprocessColMoved')}</th>
-                  <th className="px-3 py-2 font-medium">{t('reprocessColWhy')}</th>
-                  {/* b372e923 rev.2 — there is NO "Payroll Result" column. r253 added one; the reporter
-                      rejected it because the run screen has no such column either — there, the employee's
-                      own name is the link. The Employee column below is now that same affordance, and a
-                      second control for the one action would be exactly the clutter that was rejected. */}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {jobRows.map((r) => {
-                  const moved = movedLabels(r);
-                  // fbcf706d — an ADD has no previous calculation, so every figure on it "moved" from
-                  // zero and the diff would read as a pay rise from nothing. It is rendered as the event
-                  // it actually is; `action` is what the engine recorded, not something re-derived here.
-                  const isAdd = r.action === 'add';
-                  // b372e923 — THIS row's href, looked up by THIS row's id. An addition is not excluded:
-                  // it has a payslip, created by this very reprocess. Absent ⇒ no payslip on this run for
-                  // that employment, and the cell is plain text rather than a link that leads nowhere.
-                  const resultHref = resultHrefs.get(r.id);
-                  return (
-                    <tr key={r.id}>
-                      {/* b372e923 rev.2 — THE NAME IS THE LINK, and the Employee ID with it, exactly as
-                          the Payroll Process run screen does it (app/payroll/[batchId]/page.tsx, "code
-                          and name both open the employee's full payroll result"). r253 read the request
-                          as "add a link" and put a separate Payroll Result column beside a plain-text
-                          name; the reporter rejected it, because the point was that the two screens
-                          behave the SAME WAY — you click the name you are already looking at, not a
-                          different control in a different place. Same href, same builder, same
-                          destination as before: only what carries it changed.
-
-                          No payslip on this run ⇒ the identical cell WITHOUT the anchor. The row still
-                          reads normally; what it must never do is offer a link that opens nothing. */}
-                      <td className="px-3 py-2 font-medium">
-                        {resultHref ? (
-                          <Link href={resultHref} className="text-primary hover:underline">
-                            <EmployeeName code={r.employeeCode} name={r.employeeName} />
-                          </Link>
-                        ) : (
-                          <EmployeeName code={r.employeeCode} name={r.employeeName} />
-                        )}
-                      </td>
-                      {/* Net BEFORE and AFTER come off the stored snapshots this run wrote at the time
-                          (payroll_employee_result_history.before / .after), never off a fresh
-                          calculation — a results screen that re-derived the figures could disagree with
-                          the payslip it claims to describe. */}
-                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground">
-                        {isAdd ? '—' : money(r.diff.netBefore)}
-                      </td>
-                      <td
-                        className={`whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums ${
-                          isAdd || r.diff.netChanged ? 'text-emerald-700 dark:text-emerald-400' : ''
-                        }`}
-                      >
-                        {money(r.diff.netAfter)}
-                      </td>
-                      <td className="px-3 py-2 text-xs">
-                        {isAdd
-                          ? t('reprocessResultAdded')
-                          : moved.length === 0
-                            ? t('reprocessNothingMoved')
-                            : r.diff.netChanged
-                              ? moved.join(', ')
-                              : `${moved.join(', ')} — ${t('reprocessPayUnchanged')}`}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">
-                        {isAdd
-                          ? t('reprocessWhyAdded')
-                          : r.priorMonths.length > 0
-                          ? t('reprocessWhyPriorMonths', { periods: r.priorMonths.join(', ') })
-                          : r.diff.rulesetChanged
-                            ? t('reprocessWhyRuleset', {
-                                before: r.diff.before.rulesetVersion ?? '?',
-                                after: r.diff.after.rulesetVersion ?? '?',
-                              })
-                            : t('reprocessWhyOwnInputs')}
-                        {r.reason ? ` · ${r.reason}` : ''}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {jobRows.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">
-                      {t('reprocessNothingMoved')}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+      {thisJob?.status === 'completed' && outcomes === null && (
+        <Card className="px-4 py-3 text-sm">
+          <p>{t('reprocessResultTitle', { n: jobResult?.reprocessed ?? thisJob.employmentIds.length,
+            total: jobResult?.headcount ?? slips.length })}</p>
+          <p className="mt-2 text-muted-foreground">{t('reprocessLegacyOutcomeUnavailable')}</p>
         </Card>
       )}
 
@@ -415,6 +302,7 @@ export default async function ReprocessPage({
               no filter query, and every Payroll Result link the result table then draws drops the
               operator on an unfiltered list. The Remove form carries it the same way. */}
           <ReprocessForm
+            key={thisJob?.id ?? 'selection'}
             batchId={batchId}
             employees={candidates}
             newCandidates={newCandidates}

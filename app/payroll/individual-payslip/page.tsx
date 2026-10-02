@@ -119,6 +119,8 @@ import { payslipPaymentDate } from '@/lib/payslip-pdf-strings';
  * their `statutory` blobs in order to choose one of them.
  */
 import { cookies } from 'next/headers';
+import { listReprocessEmployeeOutcomes } from '@/packs/payroll/service';
+import { ReprocessOutcomeStatus, ReprocessOutcomeRemarks } from '../[batchId]/reprocess/outcomes';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees, listCompanies } from '@/core/read';
@@ -409,6 +411,9 @@ export default async function IndividualPayslipPage({
   // One payslip id, one read. `companyIds` is unchanged from what the guard above produced, so the fence
   // this row is read through is exactly the fence it was read through before r210.
   const row = sel.payslipId ? await payslipForReview(s, { companyIds, payslipId: sel.payslipId }) : null;
+  const processingOutcome = row?.batchId ? (await listReprocessEmployeeOutcomes(s, {batchId: row.batchId})).find(
+    outcome => outcome.employmentId === row.employmentId && outcome.payslipId === row.id && outcome.versionAfter === row.version,
+  ) : undefined;
   // 417d4937 (request 10) — the one-off transactions recorded against THIS employee on THIS run, so the
   // screen can answer "where did this recorded item come from?" without a report. One indexed query,
   // fenced on the same `companyIds` as the payslip itself, and only once a payslip has been chosen.
@@ -629,6 +634,10 @@ export default async function IndividualPayslipPage({
 
       {row && b && eb && (
         <>
+          {processingOutcome && row.batchId && <Card className="px-4 py-3">
+            <ReprocessOutcomeStatus outcome={processingOutcome} />
+            <div className="mt-2"><ReprocessOutcomeRemarks outcome={processingOutcome} batchId={row.batchId} jobId={processingOutcome.jobId} /></div>
+          </Card>}
           {/* ── Letterhead ──
               The logo is the company's OWN uploaded file, served by the existing
               /admin/organization/logo/[id] route — the same bytes the Organization screen shows, so the

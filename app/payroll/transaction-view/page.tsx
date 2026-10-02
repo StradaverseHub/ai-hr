@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
+import { listReprocessEmployeeOutcomes } from '@/packs/payroll/service';
 import { listCompanies, listEmployees } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
 import {
@@ -315,6 +316,16 @@ export default async function TransactionViewPage({
   const historyBatchIds = [
     ...new Set(shownHistoryRows.map((r) => r.batchId).filter((b): b is string => b != null)),
   ];
+  const recordedOutcomes = tab === 'history' && historyBatchIds.length
+    ? await listReprocessEmployeeOutcomes(s, {batchIds:historyBatchIds}) : [];
+  const byResult = new Map(recordedOutcomes.map(outcome => [`${outcome.batchId}:${outcome.employmentId}`,outcome]));
+  // Only outcomes joined to visible, exact-version payslips cross the client boundary.
+  const processingOutcomes = Object.fromEntries(shownHistoryRows.flatMap(row => {
+    const outcome=byResult.get(`${row.batchId}:${row.employmentId}`);
+    return outcome?.payslipId === row.id && outcome.versionAfter === row.version ? [[row.id, {
+      status:outcome.status, reasonCode:outcome.reasonCode, resultRetained:outcome.resultRetained,
+    }]] : [];
+  }));
   // …and the EMPLOYMENTS on screen. Batch + company alone would return every employee's ledger rows on
   // every shown run and serialise them all into the flight payload for a table that can only look up
   // `${batchId}:${employmentId}` — invisible on screen, and a whole company's ledger on a tab filtered to
@@ -914,6 +925,7 @@ export default async function TransactionViewPage({
                     standardization this same round shipped. */}
                 <HistoryTable
                   rows={shownHistoryRows}
+                  processingOutcomes={processingOutcomes}
                   hrdfRegisteredCompanyIds={hrdfRegisteredCompanyIds}
                   payItemNames={payItemNames}
                   sourceTxnsByPayslip={sourceTxnsByPayslip}

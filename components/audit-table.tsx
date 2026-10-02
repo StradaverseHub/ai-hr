@@ -36,6 +36,7 @@ export async function AuditTable({ rows, nowMs }: { rows: AuditRow[]; nowMs: num
   if (rows.length === 0) {
     return <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('empty')}</p>;
   }
+  const tp = await getTranslations('payroll.batch');
   const moduleLabel = (k: ModuleKey) => t(`module_${k}` as `module_${ModuleKey}`);
   const actionLabel = (k: ActionKind) => t(`action_${k}` as `action_${ActionKind}`);
   return (
@@ -44,6 +45,10 @@ export async function AuditTable({ rows, nowMs }: { rows: AuditRow[]; nowMs: num
         const who = r.actorName ?? ACTOR_LABEL[r.actorType] ?? r.actorType;
         const href = aggregateHref(r.aggregateType, r.aggregateId);
         const detail = describePayload(r.payload);
+        const recorded = r.eventType === 'payroll-batch.employee-reprocess-outcome' && r.payload
+          && typeof r.payload === 'object' && !Array.isArray(r.payload) ? r.payload as Record<string,unknown> : null;
+        const processingStatus = recorded && ['reprocessed','skipped','validation_failed'].includes(String(recorded.status))
+          ? String(recorded.status) : null;
         const action = actionOf(r.eventType);
         const mod = moduleKeyOf(r.aggregateType);
         const highImpact = isHighImpactAction(action);
@@ -66,7 +71,9 @@ export async function AuditTable({ rows, nowMs }: { rows: AuditRow[]; nowMs: num
                       {t('highImpact')}
                     </span>
                   )}
-                  <span className="font-medium text-foreground">{humanizeEvent(r.eventType)}</span>{' '}
+                  <span className="font-medium text-foreground">{humanizeEvent(r.eventType)}</span>
+                  {processingStatus && <span className="ml-1 font-medium">· {tp(`reprocessOutcomeStatus.${processingStatus}`)}
+                    {recorded?.reasonCode === 'NOTHING_PAYABLE' ? ` — ${tp('reprocessNothingPayableShort')}` : ''}</span>}{' '}
                   <span className="text-muted-foreground">{t('byActor', { who })}</span>
                 </span>
                 <span className="hidden shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline">

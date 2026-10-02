@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, batchInputRows, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory } from '@/core/payroll';
+import { batchDetail, listReprocessEmployeeOutcomes, batchInputRows, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory } from '@/core/payroll';
 import { payrollReadiness, type PayrollReadiness } from '@/core/payroll-readiness';
 import { statutoryPackStale } from '@/lib/statutory-readiness';
 import { auditEvents } from '@/core/read';
@@ -15,6 +15,7 @@ import { closeAction, generateAction, resetAction, unlockAction } from '../actio
 // links to it too and the reporter's requirement is that the two cannot be different screens.
 import { payrollResultHref } from '../payroll-result-href';
 import { payrollListReturnTo } from '@/lib/return-to';
+import { ReprocessOutcomeStatus, ReprocessOutcomeRemarks } from './reprocess/outcomes';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { packFor } from '@/localization/registry';
 import { payrollPublicationState, type PayrollPublicationState } from '@/lib/payroll-publication';
@@ -80,6 +81,8 @@ export default async function BatchPage({
   const data = await batchDetail(s, batchId);
   if (!data) notFound();
   const { batch, slips } = data;
+  const processingOutcomes = batch.status === 'draft' ? [] : await listReprocessEmployeeOutcomes(s, {batchId});
+  const processingByEmployment = new Map(processingOutcomes.map(outcome => [outcome.employmentId, outcome]));
   // Feedback ef31d251 — this header used to render the RAW status enum, and "Processed" reads as
   // finished. It is not: payslips stay invisible to employees until Close, which is why eighteen runs
   // were calculated and never published. Derived through the shared helper the payroll LIST also uses,
@@ -1140,11 +1143,15 @@ export default async function BatchPage({
                     since the selective-reprocess build) and neither was ever shown, which is why a
                     figure that moved on a re-run looked unexplainable. No DDL. */}
                 <th className="px-4 py-2 font-medium">{t('colRules')}</th>
+                <th className="px-4 py-2 font-medium">{t('reprocessOutcomeStatusHeading')}</th>
+                <th className="px-4 py-2 font-medium">{t('reprocessOutcomeRemarksHeading')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {slipPage.rows.map((sl) => {
                 const prov = payslipProvenance(sl.statutory);
+                const recorded = processingByEmployment.get(sl.employmentId);
+                const outcome = recorded?.payslipId === sl.id && recorded.versionAfter === sl.version ? recorded : undefined;
                 // 3c473773 — the Bonus column reads the payslip's own box stamp (so an overtime code
                 // declared as additional remuneration no longer inflates Bonus here while reading Overtime
                 // on the payslip), and the five statutory columns are NET of anything the employer agreed
@@ -1193,12 +1200,15 @@ export default async function BatchPage({
                         </span>
                       )}
                     </td>
+                    <td className="px-4 py-2.5">{outcome ? <ReprocessOutcomeStatus outcome={outcome} /> : '—'}</td>
+                    <td className="max-w-sm px-4 py-2.5">{outcome ? <ReprocessOutcomeRemarks outcome={outcome}
+                      batchId={batchId} from={backHref === '/payroll' ? undefined : backHref} jobId={outcome.jobId} /> : '—'}</td>
                   </tr>
                 );
               })}
               {slipPage.rows.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={13} className="px-4 py-8 text-center text-muted-foreground">
                     {t('noPayslips')}
                   </td>
                 </tr>

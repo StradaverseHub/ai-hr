@@ -51,7 +51,7 @@ describe('r382 selected reprocess exact employee outcomes', () => {
   const history=await owner.db.select().from(schema.payrollEmployeeResultHistory).where(eq(schema.payrollEmployeeResultHistory.batchId,batchId));
   expect(history).toHaveLength(2);for(const r of result.outcomes.filter(r=>r.status==='reprocessed'))expect(history.find(h=>h.id===r.historyId)?.employmentId).toBe(r.employmentId);
   const event=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,batchId),eq(schema.domainEvent.eventType,'payroll-batch.employee-reprocess-outcome')));
-  expect(event).toHaveLength(3);expect(event.find(e=>(e.payload as any).employmentId===b.employmentId)?.payload).toMatchObject({jobId:job.id,status:'skipped',payPeriod:'2026-05',reasonCode:'NOTHING_PAYABLE'});
+  expect(event).toHaveLength(3);expect(event.find(e=>(e.payload as any).employmentId===b.employmentId)?.payload).toMatchObject({jobId:job.id,status:'skipped',payPeriod:'2026-05',reasonCode:'NOTHING_PAYABLE',employeeName:'No payable B',employeeCode:result.outcomes.find(r=>r.employmentId===b.employmentId)!.employeeCode});
   await reprocessSelectedEmployees(ctx,{batchId,employmentIds:[a.employmentId,b.employmentId,c.employmentId],idempotencyKey:key});
   expect((await slip(batchId,a.employmentId)).version).toBe(2);expect((await getReprocessJob(ctx,job.id))?.result).toEqual(result);
  });
@@ -136,6 +136,7 @@ describe('r382 selected reprocess exact employee outcomes', () => {
   const first=await run([a.employmentId],batchId);await zero(a);const second=await run([a.employmentId],batchId);
   await owner.db.update(schema.payrollReprocessJob).set({updatedAt:new Date(Date.now()+60000)}).where(eq(schema.payrollReprocessJob.id,first.job.id));
   expect(await listReprocessEmployeeOutcomes(ctx,{batchId})).toMatchObject([{jobId:second.job.id,status:'skipped',resultRetained:true,versionAfter:2}]);
+  expect(await listReprocessEmployeeOutcomes(ctx,{batchIds:[batchId,batchId,base.companyId]})).toMatchObject([{batchId,jobId:second.job.id,status:'skipped',resultRetained:true,versionAfter:2}]);
   const row=first.result.outcomes[0];expect(decodeReprocessEmployeeOutcomes({outcomes:[{...row,historyId:null}]},[a.employmentId])).toBeNull();
   expect(decodeReprocessEmployeeOutcomes({outcomes:[row]},[randomUUID()])).toBeNull();
   expect(decodeReprocessEmployeeOutcomes({outcomes:[{...row,effectiveTaxScheme:'invented'}]},[a.employmentId])).toBeNull();
@@ -155,7 +156,7 @@ describe('r382 selected reprocess exact employee outcomes', () => {
   const ownUser=await createAppUser(base.tenantId,a.personId,'employee');
   const [other]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Other employer'}).returning();
   const caller={...ctx,userId:ownUser,roles:['employee','hr_admin'],grants:[{role:'employee',companyId:null},{role:'hr_admin',companyId:other.id}]};
-  expect(await getReprocessJob(caller,job.id)).toBeNull();expect(await listReprocessEmployeeOutcomes(caller,{batchId})).toEqual([]);
+  expect(await getReprocessJob(caller,job.id)).toBeNull();expect(await listReprocessEmployeeOutcomes(caller,{batchId})).toEqual([]);expect(await listReprocessEmployeeOutcomes(caller,{batchIds:[batchId,base.companyId]})).toEqual([]);
  });
 
  it('overlapping selections each record their own exact serial result rather than borrowing another job history',async()=>{

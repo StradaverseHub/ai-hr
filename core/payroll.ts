@@ -8730,7 +8730,8 @@ export async function reprocessSelectedEmployees(
           tenantId:ctx.tenantId,aggregateType:'payroll-batch',aggregateId:p.batchId,
           eventType:'payroll-batch.employee-reprocess-outcome',actor:actorOf(ctx),subjectEmploymentId:employmentId,
           payload:{jobId:job.id,batchId:p.batchId,companyId:currentBatch.companyId,payPeriod:currentBatch.payPeriod,
-            employmentId,status:outcome.status,reasonCode:outcome.reasonCode,
+            employmentId,employeeName:outcome.name,employeeCode:outcome.employeeCode,
+            status:outcome.status,reasonCode:outcome.reasonCode,
             validationCode:outcome.validationCode ?? null,resultRetained:outcome.resultRetained,
             configuredTaxScheme:outcome.configuredTaxScheme ?? null,effectiveTaxScheme:outcome.effectiveTaxScheme ?? null,
             payslipId:outcome.payslipId,historyId:outcome.historyId,
@@ -8796,24 +8797,35 @@ export function decodeReprocessEmployeeOutcomes(result: unknown, selection: read
 
 /** Current processing outcome is distinct from the last saved payslip. Exact attempt instants decide
  * which status is latest; completing/failing the overall job cannot relabel another employee. */
-export async function listReprocessEmployeeOutcomes(ctx: SessionContext,p:{batchId:string}): Promise<(ReprocessEmployeeOutcome & {jobId:string})[]> {
+export async function listReprocessEmployeeOutcomes(
+  ctx: SessionContext,p: {batchId:string} | {batchIds:readonly string[]},
+): Promise<(ReprocessEmployeeOutcome & {jobId:string;batchId:string})[]> {
+  const requested = [...new Set('batchId' in p ? [p.batchId] : p.batchIds)];
+  if (!requested.length) return [];
   return withTenant(ctx,async tx=>{
-    const [batch] = await tx.select({companyId:payrollBatch.companyId}).from(payrollBatch)
-      .where(and(eq(payrollBatch.id,p.batchId),sql`app.can_admin_payroll_for(${payrollBatch.companyId})`)).limit(1);
-    if (!batch || !(await resolvePayrollPermission(tx,ctx,'payroll.reprocess.selective',batch.companyId))) return [];
-    const jobs = await tx.select({id:payrollReprocessJob.id,selection:payrollReprocessJob.employmentIds,result:payrollReprocessJob.result})
-      .from(payrollReprocessJob).where(eq(payrollReprocessJob.batchId,p.batchId));
-    const latest = new Map<string,ReprocessEmployeeOutcome & {jobId:string}>();
+    const batches = await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId}).from(payrollBatch)
+      .where(and(inArray(payrollBatch.id,requested),sql`app.can_admin_payroll_for(${payrollBatch.companyId})`));
+    const permittedCompanies = new Set<string>();
+    for(const companyId of new Set(batches.map(batch=>batch.companyId))) {
+      if(await resolvePayrollPermission(tx,ctx,'payroll.reprocess.selective',companyId)) permittedCompanies.add(companyId);
+    }
+    const batchIds = batches.filter(batch=>permittedCompanies.has(batch.companyId)).map(batch=>batch.id);
+    if(!batchIds.length) return [];
+    const jobs = await tx.select({id:payrollReprocessJob.id,batchId:payrollReprocessJob.batchId,
+      selection:payrollReprocessJob.employmentIds,result:payrollReprocessJob.result})
+      .from(payrollReprocessJob).where(inArray(payrollReprocessJob.batchId,batchIds));
+    const latest = new Map<string,ReprocessEmployeeOutcome & {jobId:string;batchId:string}>();
     for(const job of jobs) {
       const rows = decodeReprocessEmployeeOutcomes(job.result,job.selection);
       if (!rows) continue;
       for(const row of rows) {
-        const old=latest.get(row.employmentId);
+        const key=`${job.batchId}:${row.employmentId}`;
+        const old=latest.get(key);
         if (!old || Date.parse(row.at)>Date.parse(old.at) || (Date.parse(row.at)===Date.parse(old.at) && job.id>old.jobId))
-          latest.set(row.employmentId,{...row,jobId:job.id});
+          latest.set(key,{...row,jobId:job.id,batchId:job.batchId});
       }
     }
-    return [...latest.values()].sort((a,b)=>a.employmentId.localeCompare(b.employmentId));
+    return [...latest.values()].sort((a,b)=>a.batchId.localeCompare(b.batchId)||a.employmentId.localeCompare(b.employmentId));
   });
 }
 

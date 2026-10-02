@@ -2278,7 +2278,7 @@ export function listRecomputeDisclosure(
       // with it, because after a removal there is no other copy. Diffing that would render "revision 1 →
       // ?, gross NaN" under a heading that says something was recalculated, which is false twice over.
       // Removals have their own reader (`listRemovalHistory`) and their own card on the Remove screen.
-      .where(and(eq(payrollEmployeeResultHistory.batchId, p.batchId), ne(payrollEmployeeResultHistory.action, 'remove')))
+      .where(and(eq(payrollEmployeeResultHistory.batchId, p.batchId), inArray(payrollEmployeeResultHistory.action, ['add', 'reprocess'])))
       .orderBy(asc(payrollEmployeeResultHistory.employmentId), asc(payrollEmployeeResultHistory.createdAt));
     if (events.length === 0) return [];
 

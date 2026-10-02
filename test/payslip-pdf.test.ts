@@ -1946,3 +1946,19 @@ describe('r381 — newest reporter payslip layout',()=>{
     expect(text.replace(/\n/g,' ')).not.toContain(labels.periodScopeNote!);
   });
 });
+
+
+describe('r382 retained result on the admin review document', () => {
+  it('prints the recorded skip as a separate notice while preserving financial data', async () => {
+    const original=structuredClone(data);
+    const notice={heading:'Skipped',text:'Nothing payable in this pay period. Previous payroll result retained.'};
+    const document=await renderPayslipPdf({...original,reviewNotice:notice},labels);
+    const text=drawnText(document);
+    expect(text).toContain('SKIPPED');
+    expect(text.replace(/\s+/g,' ')).toContain(notice.text);
+    expect(original).toEqual(data);
+    const issued=drawnText(await renderPayslipPdf(original,labels));
+    expect(issued).not.toContain('SKIPPED');
+    expect(issued).not.toContain('Previous payroll result retained');
+  });
+});

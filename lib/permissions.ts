@@ -988,6 +988,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       // completeness: a guarded page with no matrix column fails the suite rather than silently
       // becoming a screen nobody can grant or revoke.
       '/payroll/[batchId]/reprocess',
+      '/payroll/[batchId]/tax-configuration/[employmentId]',
       // 9066bd6c — Remove Employee Payroll, the per-employee counterpart to the whole-run Reset. Same
       // requireAdmin guard as the run page it is reached from, and registered here for the same reason
       // its Reprocess sibling above is: test/function-access.test.ts checks reverse completeness, so a

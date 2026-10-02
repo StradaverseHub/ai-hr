@@ -22,6 +22,8 @@ import { payslipInformationLabels } from '@/lib/payslip-information-labels';
  * year's payslips, nothing else), no write, no recomputation, and not one figure that this route decides.
  */
 import { scopedAdmin } from '@/lib/scope';
+import { getTranslations } from 'next-intl/server';
+import { listReprocessEmployeeOutcomes } from '@/packs/payroll/service';
 import { listProcessedPayslipsAcross, payslipForReview, sumPayslipYtd, sumPayslipEmployerPeriodTotals } from '@/core/payroll-view';
 import { getCompanyLogo } from '@/core/admin';
 import { buildPayslipPdfData, renderPayslipPdf } from '@/lib/payslip-pdf';
@@ -40,6 +42,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ payslipI
   const p = await payslipForReview(s, { companyIds: scopeIds, payslipId });
   if (!p) return new Response('Not found', { status: 404 });
 
+  const recorded = p.batchId ? (await listReprocessEmployeeOutcomes(s, {batchId:p.batchId})).find(
+    outcome => outcome.employmentId === p.employmentId && outcome.payslipId === p.id && outcome.versionAfter === p.version,
+  ) : undefined;
+  const t = await getTranslations('payroll.batch');
+  const reviewNotice = recorded?.resultRetained ? {
+    heading: t(`reprocessOutcomeStatus.${recorded.status}`),
+    text: `${recorded.status === 'skipped' ? t('reprocessNothingPayableShort') : t('reprocessConfigurationReason')} ${t('reprocessPreviousResultRetained')}`,
+  } : undefined;
   const year = p.payPeriod.slice(0, 4);
   // Year-to-date is summed from the SAME read the Individual Payslip screen lists this employee's months
   // with, through the SAME helper, so the screen and the document cannot disagree about the year.
@@ -76,6 +86,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ payslipI
   const data = buildPayslipPdfData({ ...p, employee: p.employeeName }, strings.borneLabels, {
     informationRows: selectPayslipInformation({ ...p, employee: p.employeeName, employmentType: strings.employmentType }, p.informationFields, await payslipInformationLabels(p.identityIsPassport)),
     currency: p.currency,
+    reviewNotice,
     payDate: p.payDate,
     cycleLabel: strings.cycleLabel,
     identityNumber: p.identityNumber,

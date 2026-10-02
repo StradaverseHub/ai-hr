@@ -73,6 +73,8 @@ export type PayslipYtdTotals = {
 export type PayslipPdfLogo = { bytes: Uint8Array; mimeType: string };
 
 export type PayslipPdfData = {
+  /** Admin review annotation of a recorded attempt. It changes no saved or issued financial value. */
+  reviewNotice?: {heading: string; text: string};
   employerPeriodTotals?: {mtd:{epf:number|null;socso:number|null;eis:number|null;hrdf:number|null};ytd:{epf:number|null;socso:number|null;eis:number|null;hrdf:number|null}};
   informationRows?: {label: string; value: string}[];
   employee: string;
@@ -1228,6 +1230,10 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
 
   y = drawLetterhead(page, y);
   y = drawEmployeePanel(page, y);
+  if (d.reviewNotice) {
+    flowPair([{x:M, w:CONTENT_W, title:d.reviewNotice.heading, continuedTitle:d.reviewNotice.heading,
+      rows:[{label:d.reviewNotice.text, text:''}]}]);
+  }
 
   // ─── Earnings BESIDE Deductions ───
   //
