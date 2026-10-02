@@ -8,7 +8,7 @@ The calculation detail already shows the saved normal resident working on screen
 
 WHAT WE'LL CHANGE
 
-- Use the employee's explicitly approved tax category for new payroll calculations, following the official 2026 HASiL rules verified for each category.
+- Use the applicable normal or non-resident method, and the approved incentive method recorded for the employment, employer and period, for new payroll calculations, following the official 2026 HASiL rules verified for each category.
 - Show the actual category, applicable formula, substituted values, rebate and final result from that payroll calculation in the existing ten-section detail and PDF.
 - Keep the additional-remuneration steps and show the category-specific annual tax working where applicable.
 - Require HR to record the existing approval for the specific employment, employer and effective period before incentive payroll can be processed. Record the approval reference and eligibility confirmation. C-Suite requires a resident non-citizen in an approved company.

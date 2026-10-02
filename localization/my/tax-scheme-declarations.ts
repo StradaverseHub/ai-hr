@@ -12,6 +12,11 @@ export class TaxSchemeDeclarationError extends Error {
 const validPeriod=(p:string)=>/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(p);
 const validId=(s:string)=>/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(s);
 const schemeOk=(s:string):s is IncentiveScheme=>['rep','knowledge_worker','c_suite'].includes(s);
+// Older full-profile writers set only isResident; a default resident label must not erase their
+// non-resident 30% election. REP/KW remain explicit resident incentives despite their old false flag.
+const legacySchemeOf=(scheme:string|null|undefined,resident:boolean)=>resolvePcbCalculationScheme(
+  scheme==='resident'&&!resident?'non_resident':scheme??undefined,resident);
+
 
 async function scope(tx:Tx,ctx:SessionContext,employmentId:string,write=false){
   if(!validId(employmentId))throw new TaxSchemeDeclarationError('not_found');
@@ -45,7 +50,7 @@ export async function saveTaxSchemeDeclarationMY(ctx:SessionContext,p:{employmen
     if(e.country!=='MY')throw new TaxSchemeDeclarationError('not_found');
     const [profile]=await tx.select({taxResidency:employeeStatutoryMy.taxResidency,isResident:employeeStatutoryMy.isResident,epfCitizenship:employeeStatutoryMy.epfCitizenship}).from(employeeStatutoryMy)
       .where(and(eq(employeeStatutoryMy.personId,e.personId),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).limit(1);
-    if(!profile||resolvePcbCalculationScheme(profile.taxResidency,profile.isResident)==='non_resident')throw new TaxSchemeDeclarationError('not_resident');
+    if(!profile||legacySchemeOf(profile.taxResidency,profile.isResident)==='non_resident')throw new TaxSchemeDeclarationError('not_resident');
     if(p.scheme==='c_suite'&&!['pr','non_citizen'].includes(profile.epfCitizenship))throw new TaxSchemeDeclarationError('citizenship_unknown');
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+e.employmentId+'tax-scheme'},0))`);
     const [overlap]=await tx.select({id:employmentTaxSchemeMy.id}).from(employmentTaxSchemeMy).where(and(eq(employmentTaxSchemeMy.tenantId,ctx.tenantId),eq(employmentTaxSchemeMy.employmentId,e.employmentId),eq(employmentTaxSchemeMy.companyId,e.companyId),isNull(employmentTaxSchemeMy.archivedAt),lte(employmentTaxSchemeMy.validFrom,p.validTo),gte(employmentTaxSchemeMy.validTo,p.validFrom))).limit(1);
@@ -76,7 +81,7 @@ export async function resolveTaxSchemeMY(tx:Tx,p:{tenantId:string;employmentId:s
     .where(and(eq(employmentTaxSchemeMy.tenantId,p.tenantId),eq(employmentTaxSchemeMy.employmentId,p.employmentId),eq(employmentTaxSchemeMy.companyId,p.companyId),isNull(employmentTaxSchemeMy.archivedAt),lte(employmentTaxSchemeMy.validFrom,p.payPeriod),gte(employmentTaxSchemeMy.validTo,p.payPeriod))).limit(2);
   if(rows.length>1)throw new TaxSchemeDeclarationError('overlap');
   const row=rows[0];
-  const legacy=resolvePcbCalculationScheme(p.legacyScheme,p.resident??true);
+  const legacy=legacySchemeOf(p.legacyScheme,p.resident??true);
   if(row){
     if(legacy==='non_resident')throw new TaxSchemeDeclarationError('not_resident');
     if(row.scheme==='c_suite'&&!['pr','non_citizen'].includes(p.epfCitizenship??''))throw new TaxSchemeDeclarationError('citizenship_unknown');

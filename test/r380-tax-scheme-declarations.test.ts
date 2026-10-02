@@ -95,9 +95,13 @@ describe('r380 employer-period declaration lifecycle', () => {
     await expect(resolve('2026-10',{legacyScheme:scheme})).rejects.toMatchObject({code:'missing_declaration'});
     expect(await resolve('2026-10',{legacyScheme:'resident',resident:true})).toEqual({scheme:'resident'});
     expect(await resolve('2026-10',{legacyScheme:'non_resident',resident:false})).toEqual({scheme:'non_resident'});
+    expect(await resolve('2026-10',{legacyScheme:'resident',resident:false})).toEqual({scheme:'non_resident'});
+    expect(await resolve('2026-10',{legacyScheme:null,resident:false})).toEqual({scheme:'non_resident'});
   });
   it('requires resident foreign/PR classification for C-suite at entry and consumption', async () => {
     await expect(saveTaxSchemeDeclarationMY(adminCtx(b),{...input(),scheme:'c_suite'})).rejects.toMatchObject({code:'citizenship_unknown'});
+    await profile({taxResidency:'resident',isResident:false,epfCitizenship:'non_citizen'});
+    await expect(saveTaxSchemeDeclarationMY(adminCtx(b),{...input(),scheme:'c_suite'})).rejects.toMatchObject({code:'not_resident'});
     await profile({taxResidency:'non_resident',isResident:false,epfCitizenship:'non_citizen'});
     await expect(saveTaxSchemeDeclarationMY(adminCtx(b),{...input(),scheme:'c_suite'})).rejects.toMatchObject({code:'not_resident'});
     await profile({taxResidency:'resident',isResident:true,epfCitizenship:'pr'});
