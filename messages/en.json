@@ -6236,7 +6236,12 @@
       "taxSelection_confirmation_required": "Confirm the applicable category in Income Tax Resident and save once. Older settings need one-time confirmation; no separate declaration or approval reference is required.",
       "taxSelection_invalid_scheme": "Select a valid Income Tax Resident category.",
       "taxSelection_citizenship_unknown": "The recorded citizenship does not meet the resident non-citizen C-Suite requirement.",
-      "taxSelection_not_resident": "The recorded tax residency does not meet this resident scheme requirement."
+      "taxSelection_not_resident": "The recorded tax residency does not meet this resident scheme requirement.",
+      "nonCash_classification_conflict": "The non-cash benefit category conflicts with its EA reporting line. Review the payroll item configuration.",
+      "nonCash_unsupported_kind": "This payroll item type cannot be calculated as a non-cash benefit. Review the payroll item configuration.",
+      "nonCash_normal_remuneration_required": "Taxable BIK and living accommodation must use normal remuneration for PCB. Review the payroll item configuration.",
+      "nonCash_month_baseline_unavailable": "Saved monthly benefit inputs are missing or differ from this setup. Review the regular run and benefit configuration before calculating this additional run.",
+      "nonCash_configuration_invalid": "Review the non-cash benefit configuration before calculating payroll."
     },
     "guide": {
       "title": "Payroll Workflow Guide",

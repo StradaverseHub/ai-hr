@@ -6236,7 +6236,12 @@
       "taxSelection_confirmation_required": "Xác nhận phân loại phù hợp trong trường Cư trú thuế thu nhập và lưu một lần. Cài đặt cũ cần xác nhận một lần; không cần khai báo riêng hay tham chiếu phê duyệt.",
       "taxSelection_invalid_scheme": "Chọn phân loại Cư trú thuế thu nhập hợp lệ.",
       "taxSelection_citizenship_unknown": "Quốc tịch đã ghi nhận không đáp ứng yêu cầu C-Suite dành cho người cư trú không phải công dân.",
-      "taxSelection_not_resident": "Tình trạng cư trú thuế đã ghi nhận không đáp ứng yêu cầu của chương trình cư trú này."
+      "taxSelection_not_resident": "Tình trạng cư trú thuế đã ghi nhận không đáp ứng yêu cầu của chương trình cư trú này.",
+      "nonCash_classification_conflict": "Loại phúc lợi phi tiền mặt không khớp với mục báo cáo EA. Hãy kiểm tra cấu hình khoản lương.",
+      "nonCash_unsupported_kind": "Loại khoản lương này không thể được tính là phúc lợi phi tiền mặt. Hãy kiểm tra cấu hình khoản lương.",
+      "nonCash_normal_remuneration_required": "BIK và chỗ ở chịu thuế phải dùng thù lao thông thường để tính PCB. Hãy kiểm tra cấu hình khoản lương.",
+      "nonCash_month_baseline_unavailable": "Dữ liệu phúc lợi tháng đã lưu bị thiếu hoặc khác với thiết lập này. Hãy kiểm tra kỳ lương thông thường và cấu hình phúc lợi trước khi tính kỳ bổ sung này.",
+      "nonCash_configuration_invalid": "Hãy kiểm tra cấu hình phúc lợi phi tiền mặt trước khi tính lương."
     },
     "guide": {
       "title": "Hướng dẫn quy trình bảng lương",

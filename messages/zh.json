@@ -6236,7 +6236,12 @@
       "taxSelection_confirmation_required": "请在“所得税居民身份”字段确认适用类别并保存一次。旧设置需要一次性确认，无需另行填写声明或批准参考编号。",
       "taxSelection_invalid_scheme": "请选择有效的所得税居民类别。",
       "taxSelection_citizenship_unknown": "已记录的国籍不符合 C-Suite 方案针对非公民居民的要求。",
-      "taxSelection_not_resident": "已记录的税务居民身份不符合此居民方案的要求。"
+      "taxSelection_not_resident": "已记录的税务居民身份不符合此居民方案的要求。",
+      "nonCash_classification_conflict": "非现金福利类别与 EA 申报项目冲突。请检查薪资项目配置。",
+      "nonCash_unsupported_kind": "此薪资项目类型不能作为非现金福利计算。请检查薪资项目配置。",
+      "nonCash_normal_remuneration_required": "应税实物福利及住宿福利必须按正常薪酬计算 PCB。请检查薪资项目配置。",
+      "nonCash_month_baseline_unavailable": "已保存的每月福利输入缺失或与当前设置不一致。计算此次额外薪资前，请检查常规薪资及福利配置。",
+      "nonCash_configuration_invalid": "计算薪资前，请检查非现金福利配置。"
     },
     "guide": {
       "title": "薪资工作流程指南",

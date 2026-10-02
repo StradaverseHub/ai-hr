@@ -12,6 +12,7 @@ vi.mock('next-intl/server', () => ({
   getTranslations: async (namespace:string) => createTranslator({locale:state.locale, namespace,
     messages:JSON.parse(fs.readFileSync(path.resolve(__dirname,`../messages/${state.locale}.json`),'utf8'))}),
 }));
+import { payrollNonCashErrorMessage } from '../lib/payroll-noncash-error';
 import { ReprocessOutcomePanel, ReprocessOutcomeStatus, ReprocessOutcomeRemarks } from '../app/payroll/[batchId]/reprocess/outcomes';
 
 const run={companyId:'22222222-2222-4222-8222-222222222222',payPeriod:'2026-07',runType:'regular'};
@@ -63,6 +64,21 @@ describe('r382 recorded processing outcome presentation',()=>{
     expect(output).toContain(`/payroll/${run.companyId}/tax-configuration/${jobId}`);
     expect(output).toContain(`job=${jobId}`);expect(output).toContain('from=%2Fpayroll');
     expect(output).not.toContain('Processing stopped before');
+  });
+  it.each(['en','ms','zh','ta','th','vi'])('renders new selection and benefit refusals without raw inputs in %s',async locale=>{
+    state.locale=locale;
+    const messages=JSON.parse(fs.readFileSync(path.resolve(__dirname,`../messages/${locale}.json`),'utf8')).payroll.process;
+    const tax={...base,status:'validation_failed' as const,reasonCode:'TAX_SCHEME_CONFIGURATION_INCOMPLETE' as const,validationCode:'confirmation_required'};
+    expect(await html([tax])).toContain(messages.taxSelection_confirmation_required.replaceAll('&','&amp;'));
+    for(const gap of ['classification_conflict','unsupported_kind','normal_remuneration_required','month_baseline_unavailable','private component secret']){
+      const row={...base,status:'validation_failed' as const,reasonCode:'PAYROLL_CONFIGURATION_INCOMPLETE' as const,validationCode:'pcb_non_cash_configuration_invalid',validationDetails:[{gap}]};
+      const expected=messages[gap==='private component secret'?'nonCash_configuration_invalid':`nonCash_${gap}`];
+      expect(await html([row])).toContain(expected.replaceAll('&','&amp;'));
+      expect(await html([row])).not.toContain('private component secret');
+      const error=Object.assign(new Error('private component secret'),{name:'NonCashBenefitConfigurationError',code:'pcb_non_cash_configuration_invalid',reason:gap});
+      expect(await payrollNonCashErrorMessage(error)).toBe(expected);
+    }
+    expect(await payrollNonCashErrorMessage(new Error('unrelated'))).toBeNull();
   });
   it('partial global failure keeps recorded successes visible without exposing an internal error',async()=>{
     state.locale='en';
