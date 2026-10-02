@@ -30,7 +30,6 @@
  *      the run; its throw is mapped to a reason code and the loop continues to the next company.
  */
 import { NonCashBenefitConfigurationError } from '../localization/noncash-benefits';
-import { TaxSelectionError } from '../localization/my/tax-selection';
 import { withTenant, type SessionContext } from '../db/client';
 import { randomUUID } from 'node:crypto';
 import { actorOf, appendEvent } from '../db/events';
@@ -135,9 +134,9 @@ export function reasonForError(message: string): RunGroupReasonCode {
 
 /** Typed calculation refusals retain actionable reasons without exposing engine text. */
 export function reasonForPayrollError(error: unknown): RunGroupReasonCode {
-  if (error instanceof TaxSelectionError) {
+  if (error instanceof Error && error.name === 'TaxSelectionError' && 'code' in error) {
     const codes = {confirmation_required:'TAX_SELECTION_CONFIRMATION_REQUIRED',invalid_scheme:'TAX_SELECTION_INVALID_SCHEME',citizenship_unknown:'TAX_SELECTION_CITIZENSHIP_UNKNOWN',not_resident:'TAX_SELECTION_NOT_RESIDENT'} as const;
-    if (Object.hasOwn(codes, error.code)) return codes[error.code as keyof typeof codes];
+    if (typeof error.code === 'string' && Object.hasOwn(codes, error.code)) return codes[error.code as keyof typeof codes];
     return 'SYSTEM_VALIDATION_ERROR';
   }
   if (error instanceof NonCashBenefitConfigurationError) {
