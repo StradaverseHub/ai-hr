@@ -2,7 +2,6 @@
 
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { payrollTaxSchemeErrorMessage } from '@/lib/payroll-tax-scheme-error';
 import { getSession } from '@/lib/session';
 import { scopedAdmin } from '@/lib/scope';
 import { batchDetail, createAdditionalRun, createBatch, generatePayslips, preProcessAdvisoryForSelection, updateBatchScope, type PreProcessAdvisory } from '@/core/payroll';
@@ -191,7 +190,7 @@ export async function createRunAction(formData: FormData) {
       batchId = r.batchId;
     }
   } catch (e) {
-    redirect(`/payroll/process?error=${encodeURIComponent(await payrollTaxSchemeErrorMessage(e))}`);
+    redirect(`/payroll/process?error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath('/payroll');
   // Compact one-shot codes 'country|state|year|loaded|required' (';'-joined) — the domain event appended
@@ -244,7 +243,7 @@ export async function resumeRunAction(formData: FormData) {
       await updateBatchScope(s, { batchId, scope });
     }
   } catch (e) {
-    redirect(`/payroll/process?resume=${batchId}&error=${encodeURIComponent(await payrollTaxSchemeErrorMessage(e))}`);
+    redirect(`/payroll/process?resume=${batchId}&error=${encodeURIComponent((e as Error).message)}`);
   }
 
   // Re-read the batch AFTER the scope write: the persisted scope is the authority on who this run covers
@@ -348,7 +347,7 @@ export async function runMultiCompanyAction(formData: FormData) {
   } catch (e) {
     // A whole-run failure (e.g. an invalid session) is rare — per-company failures are caught inside the
     // orchestrator and reported as rows. Surface anything that escapes as a Step-1 error banner.
-    redirect(`/payroll/process?error=${encodeURIComponent(await payrollTaxSchemeErrorMessage(e))}`);
+    redirect(`/payroll/process?error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath('/payroll');
   redirect(`/payroll/process/result?r=${encoded}${resultFromSuffix(formData.get('from'))}`);
