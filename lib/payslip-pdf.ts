@@ -1,3 +1,4 @@
+import {payslipProfileRows} from '../core/payslip-information';
 import { isRecordedEmployerContribution, payslipConfiguredContributions } from '../core/payslip-configured-contributions';
 // ADR-0036 (#22) — render a payslip as a PDF with pdf-lib (pure JS, no WASM/native, so no Next bundler
 // friction). A pure function over the payslipDetail / payslipForReview read + localized labels, so it is
@@ -81,7 +82,7 @@ export type PayslipPdfData = {
   employeeCode: string | null;
   company: string;
   /**
-   * The company registration number, retained with its label in the employee profile (r379).
+   * The company registration number, labelled below the legal name in the restored header (r383).
    *
    * ─── THE HISTORY MATTERS, because this field has been on and off the document once already ───
    *
@@ -1303,24 +1304,36 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   function drawLetterhead(pg: PDFPage, top: number): number {
     const confidential=t.confidentialHeading??'STRICTLY PRIVATE & CONFIDENTIAL';
     at(pg,confidential,M,top-textMetrics(confidential,bold,8).ascent,8,bold);
-    let cursor=top-18;
-    const leftWidth=CONTENT_W*.54;
-    const periodLines=wrap(t.periodLabel,faceOf(t.periodLabel,font),8.5,CONTENT_W*.40);
-    const periodPitch=Math.max(12,...periodLines.map(line=>{const m=textMetrics(line,font,8.5);return m.ascent+m.descent+2;}));
-    periodLines.forEach((line,i)=>atR(pg,line,A4_W-M,cursor-9-i*periodPitch,8.5,font));
-    const periodBottom=cursor-periodLines.length*periodPitch;
-    if (logo) {
-      const scale=Math.min(48/logo.height,120/logo.width,1);
+    const brandTop=top-24;
+    let textX=M,logoBottom=brandTop;
+    if(logo){
+      const scale=Math.min(48/logo.height,96/logo.width,1);
       const w=logo.width*scale,h=logo.height*scale;
-      pg.drawImage(logo,{x:M,y:cursor-h,width:w,height:h});cursor-=h+8;
+      pg.drawImage(logo,{x:M,y:brandTop-h,width:w,height:h});
+      textX=M+w+14;logoBottom=brandTop-h;
     }
-    const lines=wrap(d.company,faceOf(d.company,font),8.5,leftWidth);
-    const pitch=Math.max(12,...lines.map(line=>{const m=textMetrics(line,font,8.5);return m.ascent+m.descent+2;}));
-    lines.forEach(line=>{
-      if(cursor-pitch < M+FOOTER_H){newPage();cursor=y;}
-      at(page,line,M,cursor-9,8.5,font);cursor-=pitch;
-    });
-    return Math.min(cursor,periodBottom)-GAP;
+    const leftRight=M+CONTENT_W*.60;
+    let cursor=brandTop;
+    const flowBrand=(text:string,size:number,strong:boolean)=>{
+      const face=faceOf(text,strong?bold:font),lines=wrap(text,face,size,leftRight-textX);
+      const pitch=Math.max(size+4,...lines.map(line=>{const m=textMetrics(line,face,size);return m.ascent+m.descent+3;}));
+      for(const line of lines){
+        if(cursor-pitch<M+FOOTER_H){newPage();cursor=y;}
+        at(page,line,textX,cursor-textMetrics(line,face,size).ascent,size,face,strong?INK:MUTED);cursor-=pitch;
+      }
+    };
+    let rightCursor=brandTop;
+    const flowPeriod=(text:string,size:number,strong:boolean)=>{
+      const face=faceOf(text,strong?bold:font),lines=wrap(text,face,size,CONTENT_W*.36);
+      const pitch=Math.max(size+4,...lines.map(line=>{const m=textMetrics(line,face,size);return m.ascent+m.descent+3;}));
+      lines.forEach(line=>{atR(pg,line,A4_W-M,rightCursor-textMetrics(line,face,size).ascent,size,face,strong?INK:MUTED);rightCursor-=pitch;});
+    };
+    flowPeriod(t.periodLabel,13,true);
+    if(d.payDate)flowPeriod(`${t.paymentDateLabel??'Payment Date'}: ${t.paymentDate}`,8.5,false);
+    flowBrand(d.company,13,true);
+    if(d.companyReg)flowBrand(`${t.companyReg}: ${d.companyReg}`,8.5,false);
+    if(page!==pg)return cursor-GAP;
+    return Math.min(cursor,rightCursor,logoBottom)-GAP;
   }
 
   function drawEmployeePanel(pg: PDFPage, top: number): number {
@@ -1333,15 +1346,13 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
         [t.currency, d.currency]] as [string, string | null | undefined][])
         .filter(([, value]) => value != null && value.trim() !== '').map(([label, value]) => ({label, value: value!})),
     ];
-    const cells: [string, string][] = [[t.companyName??'Company Name',d.company],
-      ...(d.companyReg?[[t.companyReg,d.companyReg] as [string,string]]:[]),
-      ...(d.payDate?[[t.paymentDateLabel??'Payment Date',t.paymentDate] as [string,string]]:[]),
-      ...(d.cycleLabel?[[t.payrollCycleLabel??'Payroll cycle',d.cycleLabel] as [string,string]]:[]),...entries.map(e => [e.label, e.value] as [string, string]),
-      ...([[t.paymentMethod,d.paymentMethod],[t.bankName,d.bankName],[t.bankAccount,d.bankAccount]] as [string,string|null|undefined][])
-        .filter(([, value]) => value != null && value.trim() !== '').map(([label,value]) => [label,value!] as [string,string])];
+    const cells: [string,string][]=payslipProfileRows(entries,
+      {paymentMethod:d.paymentMethod,bankName:d.bankName,bankAccount:d.bankAccount,cycle:d.cycleLabel},
+      {paymentMethod:t.paymentMethod,bankName:t.bankName,bankAccount:t.bankAccount,cycle:t.payrollCycleLabel??'Payroll cycle'})
+      .map(e=>[e.label,e.value]);
     // Row-major order is the shared selector's order. Measure real wrapped values before page breaks.
     const width = A4_W - 2*M;
-    const columnWidth = width/2;
+    const columnWidth = (width-24)/2;
     const groups = Array.from({length:Math.ceil(cells.length/2)},(_,i)=>cells.slice(i*2,i*2+2));
     let topOfCard = y;
     let height = 24;
@@ -1368,10 +1379,8 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
         if(capacity < 1) {finish();newPage();heading();capacity=Math.floor((y-M-FOOTER_H-8)/pitch);}
         const count=Math.min(capacity,totalLines-offset);
         const used=8+count*pitch;
-        // Every real field has the same cell border, inset, font and line-height.
-        for(let i=0;i<group.length;i++) page.drawRectangle({x:M+i*columnWidth,y:y-used,width:columnWidth,height:used,borderColor:RULE,borderWidth:0.8});
         plans.forEach((p,i)=>{
-          const x=M+12+i*columnWidth;
+          const x=M+12+i*(columnWidth+24);
           if(offset < Math.max(p.lines.length,p.labelLines.length)) {
             p.labelLines.slice(offset,offset+count).forEach((line,j)=>at(page,line,x,y-4-ascent-j*pitch,8.5,p.lf,MUTED));
             p.lines.slice(offset,offset+count).forEach((line,j)=>at(page,line,x+columnWidth*.40,y-4-ascent-j*pitch,8.5,p.vf));
@@ -1493,7 +1502,7 @@ async function embedLogo(doc: PDFDocument, logo: PayslipPdfLogo | null | undefin
     if (/png/i.test(logo.mimeType)) {
       return pngIsWellFormed(logo.bytes) ? await doc.embedPng(logo.bytes) : null;
     }
-    return await doc.embedJpg(logo.bytes); // embedJpg refuses a malformed file cleanly; embedPng does not
+    return await doc.embedJpg(new Uint8Array(logo.bytes)); // embedJpg refuses a malformed file cleanly; embedPng does not
   } catch {
     return null;
   }

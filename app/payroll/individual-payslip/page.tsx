@@ -1,5 +1,6 @@
+import {PayslipCompanyLogo} from '@/components/payslip-company-logo';
 import { isRecordedEmployerContribution, payslipConfiguredContributions } from '@/core/payslip-configured-contributions';
-import { selectPayslipInformation } from '@/core/payslip-information';
+import { selectPayslipInformation, payslipProfileRows } from '@/core/payslip-information';
 import { payslipInformationLabels } from '@/lib/payslip-information-labels';
 import { payslipPaymentDate } from '@/lib/payslip-pdf-strings';
 /**
@@ -241,7 +242,7 @@ function Row({ label, value, muted, quantity }: { label: string; value: React.Re
 
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[2fr_3fr] items-start gap-2 border border-border px-3 py-2 break-words text-sm leading-5">
+    <div className="grid grid-cols-[2fr_3fr] items-start gap-2 break-words text-sm leading-5">
       <dt className="font-medium text-muted-foreground">{label}</dt>
       <dd className="min-w-0 font-medium">{value || '—'}</dd>
     </div>
@@ -647,19 +648,11 @@ export default async function IndividualPayslipPage({
               worse than a clean text letterhead. No placeholder is invented when there is none. */}
           <Card className="p-6">
             <p className="mb-4 text-xs font-semibold">{tSlip('confidentialHeading')}</p>
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+            <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
               <div className="min-w-0 break-words">
-                {companyHasLogo && (
-                  /* eslint-disable-next-line @next/next/no-img-element -- a bytea served by our own route,
-                     not a build-time asset; next/image would need a loader for an authenticated endpoint. */
-                  <img
-                    src={`/admin/organization/logo/${row.companyId}`}
-                    alt={row.company}
-                    className="mb-2 inline-block max-h-14 w-auto max-w-[14rem] object-contain"
-                    style={{ maxWidth: 'min(14rem, 100%)' }}
-                  />
-                )}
-                <h1 className="text-sm font-medium leading-5">{row.company}</h1>
+                <div className="flex items-start gap-4">
+                {companyHasLogo && <PayslipCompanyLogo companyId={row.companyId} companyName={row.company}/>}
+                <div className="min-w-0"><h1 className="break-words text-xl font-semibold leading-7">{row.company}</h1>
                 {/* r360 (1fe55a23) — THE REGISTRATION NUMBER NOW SAYS WHAT IT IS.
                     It has always been drawn here, directly under the legal name, but with no caption at
                     all: the reader met a bare "201901024512" under a company name, which is how an
@@ -675,6 +668,7 @@ export default async function IndividualPayslipPage({
                     {tOrg('regNo')}: {row.companyReg}
                   </p>
                 )}
+                </div></div>
                 {/* 3c88d593 — WHAT THIS SLIP ACTUALLY COVERS. "August 2026" is not what a slip for
                     1–10 August says, and an employee who transferred mid-month holds TWO documents for
                     one month, each naming a different employer. Without this line the two are
@@ -687,8 +681,8 @@ export default async function IndividualPayslipPage({
                   </p>
                 )}
               </div>
-              <div className="text-right text-sm font-medium leading-5"><p>{monthYear(row.payPeriod, locale)}</p><p className="text-muted-foreground">{tSlip('payPeriodLabel')}</p></div>
-              <div className="col-span-2 flex flex-wrap items-center justify-end gap-2">
+              <div className="text-left leading-5 sm:text-right"><p className="text-lg font-semibold">{monthYear(row.payPeriod, locale)}</p><p className="text-xs text-muted-foreground">{tSlip('payPeriodLabel')}</p>{row.payDate && <p className="mt-1 text-xs text-muted-foreground">{tSlip('paymentDateLabel')}: {payslipPaymentDate(row.payDate,locale)}</p>}</div>
+              <div className="sm:col-span-2 flex flex-wrap items-center justify-end gap-2">
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PAYROLL_PUBLICATION_PILL[pubState!]}`}>
                   {t(`state_${pubState}`)}
                 </span>
@@ -735,38 +729,15 @@ export default async function IndividualPayslipPage({
               PLACE in all six — re-adding a deleted key later is the MISSING_MESSAGE trap.
               ⚠️ payroll.statutoryAdjustment.employeeHeading is a DIFFERENT key on a different screen. */}
           <Block title={tSlip('employeeProfile')}>
-            <dl className="grid grid-cols-1 sm:grid-cols-2">
-              <Info label={tSlip('companyName')} value={row.company} />
-              {row.companyReg && <Info label={tOrg('regNo')} value={row.companyReg} />}
-              {row.payDate && <Info label={tSlip('paymentDateLabel')} value={payslipPaymentDate(row.payDate,locale)} />}
-              {selectPayslipInformation({ ...row, employee: row.employeeName,
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+              {payslipProfileRows(selectPayslipInformation({ ...row, employee: row.employeeName,
                 employmentType: row.employmentType ? t(`employmentType_${row.employmentType}`) : null,
-              }, row.informationFields, { ...informationLabels, identityNumber: row.identityIsPassport ? t('fieldPassport') : informationLabels.identityNumber })
-                .map(field => <Info key={field.key} label={field.label} value={field.value} />)}
-              <Info
-                label={t('fieldPaymentMethod')}
-                value={row.paymentMethod ? t(`paymentMethod_${row.paymentMethod}`) : null}
-              />
-              {/* Full account is shown only within this existing company-scoped individual review. */}
-              {row.bankName?.trim() && <Info label={t('fieldBankName')} value={row.bankName} />}
-              {row.bankAccountFull && <Info label={t('fieldBankAccount')} value={row.bankAccountFull} />}
-
-              {/* r360 (1fe55a23) — THE COMPANY'S OWN PAY CYCLE NAME, not the kernel's run-type word.
-                  "Regular" is `payroll_batch.run_type`, one of four fixed behavioural types the kernel
-                  gates on and nobody in the company chose; "Monthly" is `payroll_cycle.name`, the label the
-                  Payroll Process wizard offered when this run was opened (ADR-0069). The reporter asked for
-                  the second one on the payslip.
-                  RESOLVED THROUGH THE SHARED RULE, not inline: `payslipCycleLabel` is the same function
-                  lib/payslip-pdf-strings.ts calls for the letterhead subtitle, so the downloaded file and
-                  this screen can never disagree about which word a payslip's cycle is called.
-                  NO CYCLE ⇒ the run-type word, exactly as this field printed before r360. */}
-              <Info
-                label={t('fieldCycle')}
-                value={payslipCycleLabel({
-                  cycleName: row.cycleName,
-                  runTypeLabel: tTxn(`individual.cycle.${row.runType}`),
-                })}
-              />
+              }, row.informationFields, { ...informationLabels, identityNumber: row.identityIsPassport ? t('fieldPassport') : informationLabels.identityNumber }),
+                {paymentMethod:row.paymentMethod?t(`paymentMethod_${row.paymentMethod}`):null,
+                  bankName:row.bankName,bankAccount:row.bankAccountFull,
+                  cycle:payslipCycleLabel({cycleName:row.cycleName,runTypeLabel:tTxn(`individual.cycle.${row.runType}`)})},
+                {paymentMethod:t('fieldPaymentMethod'),bankName:t('fieldBankName'),bankAccount:t('fieldBankAccount'),cycle:t('fieldCycle')})
+                .map((field,index)=><Info key={index} label={field.label} value={field.value}/>)}
             </dl>
           </Block>
 

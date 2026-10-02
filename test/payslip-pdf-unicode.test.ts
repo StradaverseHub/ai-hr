@@ -443,6 +443,17 @@ describe('5b2a7f0f — lazy English fonts and deliberate document layout pins', 
     amount: 10,
   }));
 
+  const NO_REG_R383 = {
+    plain: '5d606527f00a88c777fb0f10bc2a39ab3bebe69141f15f2c8d3229194df6aeb3',
+    logo: 'dbf283268d53dede63ea6caf3dcd3751c100e929356961ca671baf3fdea4e49b',
+    multipage: '1111d11d1779a797e3a84bcd5ebffad426adef279377dc85811a8c11aa91837a',
+  };
+  const WITH_REG_R383 = {
+    plain: 'fd582f9ba517d5caf89308303a802ffda6538dad7913a2257a3f01426fef948c',
+    logo: '5d82b06656a54c4da71e5fa45738791990767a2a3139e77e74a7423df3b589b6',
+    multipage: '86c9e1659008468a6a4084d50788c07e169d97486b43efbcbd47f717ae4df84a',
+  };
+
   it('an en payslip for a company with NO registration number is pinned to the byte — plain, with a logo, and across sheets', async () => {
     // r360 — `companyReg: null` is the reporter's own fallback case: no line, no reserved band. A change
     // that "only" reserved space for the missing line, or that printed a dash in its place, fails all three.
@@ -457,10 +468,10 @@ describe('5b2a7f0f — lazy English fonts and deliberate document layout pins', 
       { ...noReg, allowance: 400, earningLines: manyLines, detailNotRecorded: false },
       labels,
     );
-    expect(await documentDigest(plain)).toBe(NO_REG_R381.plain);
-    expect(await documentDigest(withLogo)).toBe(NO_REG_R381.logo);
-    expect(await documentDigest(long)).toBe(NO_REG_R381.multipage);
-    expect(await documentDigest(plain), 'the requested r381 layout changes the prior document').not.toBe(NO_REG_R379.plain);
+    expect(await documentDigest(plain)).toBe(NO_REG_R383.plain);
+    expect(await documentDigest(withLogo)).toBe(NO_REG_R383.logo);
+    expect(await documentDigest(long)).toBe(NO_REG_R383.multipage);
+    expect(await documentDigest(plain), 'the requested r383 layout changes the prior document').not.toBe(NO_REG_R379.plain);
     // THE SHEET COUNT, SEPARATELY. r367 took 2pt off the employee band and every block below it moved up;
     // a digest cannot tell "two points higher" from "the page broke somewhere else", and the second would
     // be a real change to an official document.
@@ -485,12 +496,12 @@ describe('5b2a7f0f — lazy English fonts and deliberate document layout pins', 
       { ...data, allowance: 400, earningLines: manyLines, detailNotRecorded: false },
       labels,
     );
-    expect(await documentDigest(plain)).toBe(WITH_REG_R381.plain);
-    expect(await documentDigest(withLogo)).toBe(WITH_REG_R381.logo);
-    expect(await documentDigest(long)).toBe(WITH_REG_R381.multipage);
-    expect(await documentDigest(plain), 'r381 deliberately changes the registered layout too').not.toBe(WITH_REG_R379.plain);
-    expect(WITH_REG_R381.plain, 'the registered and unregistered documents are not the same file').not.toBe(
-      NO_REG_R381.plain,
+    expect(await documentDigest(plain)).toBe(WITH_REG_R383.plain);
+    expect(await documentDigest(withLogo)).toBe(WITH_REG_R383.logo);
+    expect(await documentDigest(long)).toBe(WITH_REG_R383.multipage);
+    expect(await documentDigest(plain), 'r383 deliberately changes the registered layout too').not.toBe(WITH_REG_R379.plain);
+    expect(WITH_REG_R383.plain, 'the registered and unregistered documents are not the same file').not.toBe(
+      NO_REG_R383.plain,
     );
     expect([await pageCountOf(plain), await pageCountOf(withLogo), await pageCountOf(long)]).toEqual([1, 1, 3]);
     // r367, stated in both directions here too.
@@ -499,7 +510,7 @@ describe('5b2a7f0f — lazy English fonts and deliberate document layout pins', 
 
   it('…and the guard above is a guard: the same fixture in Chinese does NOT hash to it', async () => {
     expect(await documentDigest(await renderPayslipPdf(data, localizeLabels('zh')))).not.toBe(
-      WITH_REG_R381.plain,
+      WITH_REG_R383.plain,
     );
   });
 
