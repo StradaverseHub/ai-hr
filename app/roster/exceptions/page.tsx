@@ -12,6 +12,7 @@ import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { Card, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { ToilElectButton } from '@/components/toil-elect-button';
 import { resolveRosterWindow, rosterDateLocale } from '@/lib/roster-month';
+import {rosterTeamContext} from '../my-team-scope';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
 /**
@@ -46,6 +47,7 @@ export default async function RosterExceptionsPage({
 }: {
   searchParams: Promise<{
     companyId?: string;
+    myTeam?:string;
     view?: string;
     month?: string;
     from?: string;
@@ -60,7 +62,8 @@ export default async function RosterExceptionsPage({
   const locale = await getLocale();
   const sp = await searchParams;
 
-  const companies = (await listCompanies(s)).filter((c) => scopeIds.length === 0 || scopeIds.includes(c.id));
+  const team=await rosterTeamContext(s,scopeIds,sp);
+  const companies = (await listCompanies(s)).filter(c=>!team||team.scope.companyIds.includes(c.id)).filter((c) => scopeIds.length === 0 || scopeIds.includes(c.id));
   const companyId = sp.companyId && companies.some((c) => c.id === sp.companyId) ? sp.companyId : null;
   const companyIds = companyId ? [companyId] : companies.map((c) => c.id);
   const todayIso = todayInKualaLumpur();
@@ -71,11 +74,12 @@ export default async function RosterExceptionsPage({
    * query string is what stops a hand-typed `?from=2026-01-01&to=2026-12-31` asking `rosterVariance` for
    * a year across every company — the resolver clamps, exactly as it does on the roster.
    */
-  const win = resolveRosterWindow({ view: sp.view, month: sp.month, from: sp.from, to: sp.to, today: todayIso }).window;
+  const win = team?resolveRosterWindow({view:team.query.view,month:team.scope.from.slice(0,7),from:team.scope.from,to:team.scope.to,today:todayIso}).window:resolveRosterWindow({ view: sp.view, month: sp.month, from: sp.from, to: sp.to, today: todayIso }).window;
   const { from, to } = win;
 
   // The roster's own query string, rebuilt so Back lands on the window and narrowing this was opened from.
   const back = new URLSearchParams({ view: win.kind, month: win.month });
+  if(sp.myTeam)back.set('myTeam',sp.myTeam);
   if (win.kind !== 'month') {
     back.set('from', win.from);
     back.set('to', win.to);
@@ -86,8 +90,8 @@ export default async function RosterExceptionsPage({
   if (sp.q) back.set('q', sp.q);
 
   const [variance, toilPolicies] = await Promise.all([
-    rosterVariance(s, { from, to, companyIds, today: todayIso }),
-    listToilPolicies(s, companyIds),
+    rosterVariance(s, { from, to, companyIds, today: todayIso, ...(team?{employmentIds:team.scope.employmentIds}:{}) }),
+    team && companyIds.length===0 ? Promise.resolve([]) : listToilPolicies(s, companyIds),
   ]);
   const exceptions = variance.filter(isRosterException);
 

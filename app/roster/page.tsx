@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listCompanies, listDepartments } from '@/core/read';
-import { rosterExceptionCount, rosterWindowView, rosterVariance, isRosterException } from '@/core/roster';
+import { rosterExceptionCount, rosterWindowView } from '@/core/roster';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { RosterGrid, RosterTemplateButton } from '@/components/roster-grid';
 import { copyRosterAction, generateRosterAction } from './actions';
@@ -20,8 +20,7 @@ import {
   type RosterViewKind,
 } from '@/lib/roster-month';
 
-import {resolveMyTeamRosterScope} from '@/core/my-team';
-import {parseMyTeamQuery,serializeMyTeamQuery} from '@/lib/my-team-query';
+import {rosterTeamContext} from './my-team-scope';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
 /**
@@ -65,14 +64,8 @@ export default async function RosterPage({
   const locale = await getLocale();
   const sp = await searchParams;
 
-  const requestedTeamQuery = sp.myTeam ? parseMyTeamQuery(new URLSearchParams(sp.myTeam)) : null;
-  const teamQuery = requestedTeamQuery ? {...requestedTeamQuery,
-    view:sp.view==='month'?'month' as const:sp.view==='week'?'week' as const:requestedTeamQuery.view,
-    anchorDate:sp.from??(sp.month?`${sp.month}-01`:requestedTeamQuery.anchorDate),
-    search:sp.q??requestedTeamQuery.search,
-    companyIds:(requestedTeamQuery.companyIds??scopeIds).filter(id=>scopeIds.includes(id)),
-  } : null;
-  const teamScope = teamQuery ? await resolveMyTeamRosterScope(s,teamQuery) : null;
+  const team=await rosterTeamContext(s,scopeIds,sp);
+  const teamQuery=team?.query??null,teamScope=team?.scope??null;
   const companies = (await listCompanies(s)).filter(c=>!teamScope||teamScope.companyIds.includes(c.id)).filter((c) => scopeIds.length === 0 || scopeIds.includes(c.id));
   if (companies.length === 0) {
     // a57f0584 — the empty state takes the SAME width as the screen. It was mx-auto max-w-6xl, which is a
@@ -140,7 +133,7 @@ export default async function RosterPage({
    * them.
    */
   const [exceptionCount, departments] = await Promise.all([
-    teamIds ? rosterVariance(s,{from:view.from,to:view.to,companyIds,today:todayIso}).then(rows=>rows.filter(row=>teamIds.has(row.employmentId)&&isRosterException(row)).length) : rosterExceptionCount(s, { from: view.from, to: view.to, companyIds, today: todayIso }),
+    rosterExceptionCount(s, { from: view.from, to: view.to, companyIds, today: todayIso, ...(teamScope?{employmentIds:teamScope.employmentIds}:{}) }),
     listDepartments(s, { companyIds }),
   ]);
 
@@ -328,10 +321,10 @@ export default async function RosterPage({
               are any"); the rows are a screen of their own, reached from here with the same month and the
               same filters. It is NOT hidden when the count is zero: an Exceptions button that vanishes
               cannot tell you there is nothing wrong, it can only look like a missing feature. */}
-          {!teamScope && <Link href={`/roster/exceptions?${qs({})}`} className={navBtn}>
+          <Link href={`/roster/exceptions?${qs({})}`} className={navBtn}>
             {t('exceptionsButton', { count: exceptionCount })}
-          </Link>}
-          <Link href={teamQuery?`/manage/my-team/export?${serializeMyTeamQuery({...teamQuery,anchorDate:win.from,view:win.kind==='month'?'month':'week',layers:{roster:true,attendance:false,leave:false}})}&format=xlsx`:`/roster/export?${qs({ format: 'xlsx' })}`}  className={navBtn} prefetch={false}>
+          </Link>
+          <Link href={`/roster/export?${qs({ format: 'xlsx' })}`}  className={navBtn} prefetch={false}>
             {t('exportLabel')}
           </Link>
         </div>

@@ -8,6 +8,11 @@ describe('My Team URL state preserves narrowing without inventing authority',()=
   expect(parseMyTeamQuery(serializeMyTeamQuery(query))).toEqual(query);
   expect(serializeMyTeamQuery(query).get('layers')).toBe('');
  });
+ it('keeps explicit empty company scope through a URL without broadening it',()=>{
+  expect(parseMyTeamQuery(serializeMyTeamQuery({view:'week',scope:'direct',companyIds:[]})).companyIds).toEqual([]);
+  expect(parseMyTeamQuery(new URLSearchParams()).companyIds).toBeUndefined();
+  expect(()=>parseMyTeamQuery(new URLSearchParams('companyIds=&companyIds=11111111-1111-4111-8111-111111111111'))).toThrow(MyTeamQueryError);
+ });
  it.each(['view=custom','scope=tenant','anchorDate=2026-02-30','anchorDate=not-a-date','companyIds=not-an-id','departmentId=all','employmentId=arbitrary','tile=salary','layers=roster,roster','layers=salary'])('refuses invalid input %s',raw=>{expect(()=>parseMyTeamQuery(new URLSearchParams(raw))).toThrow(MyTeamQueryError);});
  it('uses existing calendar stepping across week and month boundaries',()=>{
   expect(stepMyTeamAnchor({view:'week',scope:'direct',anchorDate:'2026-12-28'},1)).toBe('2027-01-04');

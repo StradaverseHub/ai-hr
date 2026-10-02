@@ -2550,12 +2550,12 @@ export async function rosterWindowView(
   const { from, to } = { from: p.from, to: p.to };
   const dates = datesBetween(from, to);
   const [employeeRows, shiftRows] = await Promise.all([
-    listEmployees(ctx, p.companyIds.length > 0 ? p.companyIds : undefined),
+    p.employmentIds?.length === 0 ? Promise.resolve([]) : listEmployees(ctx, p.companyIds.length > 0 ? p.companyIds : undefined),
     listShiftsForTenant(ctx),
   ]);
 
   const allEmployees: RosterMonthEmployee[] = employeeRows
-    .filter((e) => !e.terminatedOn)
+    .filter((e) => !e.terminatedOn && (!p.employmentIds || p.employmentIds.includes(e.employmentId)))
     .map((e) => ({
       employmentId: e.employmentId,
       name: e.name,
@@ -2815,8 +2815,9 @@ export type RosterVarianceRow = {
  */
 export function rosterVariance(
   ctx: SessionContext,
-  p: { from: string; to: string; companyIds?: string[]; today?: string },
+  p: { from: string; to: string; companyIds?: string[]; today?: string; employmentIds?: string[] },
 ): Promise<RosterVarianceRow[]> {
+  if(p.employmentIds?.length === 0)return Promise.resolve([]);
   return withTenant(ctx, async (tx) => {
     const today = p.today ?? todayInKualaLumpur();
     const ras = await tx
@@ -2844,6 +2845,7 @@ export function rosterVariance(
           gte(rosterAssignment.shiftDate, p.from),
           lte(rosterAssignment.shiftDate, p.to),
           p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
+          p.employmentIds ? inArray(rosterAssignment.employmentId,p.employmentIds) : undefined,
         ),
       );
     if (ras.length === 0) return [];
@@ -2947,7 +2949,7 @@ export const isRosterException = (v: RosterVarianceRow): boolean => v.kind !== '
  */
 export async function rosterExceptionCount(
   ctx: SessionContext,
-  p: { from: string; to: string; companyIds?: string[]; today?: string },
+  p: { from: string; to: string; companyIds?: string[]; today?: string; employmentIds?: string[] },
 ): Promise<number> {
   return (await rosterVariance(ctx, p)).filter(isRosterException).length;
 }
