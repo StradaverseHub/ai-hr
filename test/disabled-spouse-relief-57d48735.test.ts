@@ -182,7 +182,7 @@ describe('57d48735 · (g) the red flag r339 left is retired everywhere it was ra
   const read = (p: string) => readFileSync(new URL(p, `file://${root}`), 'utf8');
 
   it('STATUTORY-SOURCES.md names the current statutory-table version', () => {
-    expect(read('docs/architecture/STATUTORY-SOURCES.md')).toContain('`2026.9`');
+    expect(read('docs/architecture/STATUTORY-SOURCES.md')).toContain('`2026.10`');
   });
 
   it('STATUTORY-SOURCES.md no longer says the figure is probably wrong', () => {

@@ -53,7 +53,7 @@ export async function IncentiveDeclarationCard({ employmentId, view, from, asOf,
           <option value="" disabled>{t('scheme')}</option>
           {(['rep','knowledge_worker','c_suite'] as const).map(scheme => <option key={scheme} value={scheme}>{t(`scheme_${scheme}`)}</option>)}
         </select></Field>
-        <Field label={t('approvalReference')}><input name="approvalReference" required className={inputCls} /></Field>
+        <Field label={t('approvalReference')}><input name="approvalReference" required maxLength={300} className={inputCls} /></Field>
         <Field label={t('validFrom')}><input name="validFrom" type="month" required className={inputCls} /></Field>
         <Field label={t('validTo')}><input name="validTo" type="month" required className={inputCls} /></Field>
         <label className="flex items-start gap-2 text-sm sm:col-span-2"><input name="eligibilityConfirmed" type="checkbox" value="confirmed" required className="mt-1" /><span>{t('eligibilityConfirmed')}</span></label>

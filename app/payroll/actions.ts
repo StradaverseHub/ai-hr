@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { payrollTaxSchemeErrorMessage } from '@/lib/payroll-tax-scheme-error';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
@@ -135,18 +136,15 @@ export async function generateAction(formData: FormData) {
       if (skipped > 0) toastMsg = t('generatedWithSkipped', { n: skipped });
     }
   } catch (e) {
-    const tp = await getTranslations('payroll.process');
     errMsg =
-      (e as Error).name === 'TaxSchemeDeclarationError'
-        ? tp('taxSchemeDeclarationRequired')
-        : e instanceof PreProcessBlockedError
+      e instanceof PreProcessBlockedError
         ? t('preChecksBlockedError', { n: e.count })
         : // 1b0943d5 — a transferred employee whose OTHER employer's run for this period is already
           // closed. Refused in the kernel before anything commits; the operator gets the real reason,
           // in their own language, rather than the service's raw English.
           e instanceof PayrollCounterpartClosedError
           ? t('generateBlockedByCounterpartClosed', { n: e.employmentIds.length })
-          : (e as Error).message;
+          : await payrollTaxSchemeErrorMessage(e);
   }
   if (errMsg) redirect(withQueryParam(home, 'error', errMsg));
   revalidatePath(`/payroll/${batchId}`);
@@ -179,7 +177,7 @@ export async function setPayrollInputAction(formData: FormData) {
       zakat: Number(formData.get('zakat')) || 0,
     });
   } catch (e) {
-    redirect(withQueryParam(back, 'error', (e as Error).message));
+    redirect(withQueryParam(back, 'error', await payrollTaxSchemeErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}`);
   redirect(withQueryParam(back, 'toast', 'Saved'));
@@ -194,7 +192,7 @@ export async function prefillOvertimeAction(formData: FormData) {
   try {
     ({ applied, ineligible } = await prefillOvertimeFromAttendance(s, { batchId }));
   } catch (e) {
-    redirect(withQueryParam(back, 'error', (e as Error).message));
+    redirect(withQueryParam(back, 'error', await payrollTaxSchemeErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note =
@@ -217,7 +215,7 @@ export async function prefillShiftDifferentialAction(formData: FormData) {
     applied = r.applied;
     gated = 'gated' in r && r.gated === true;
   } catch (e) {
-    redirect(withQueryParam(back, 'error', (e as Error).message));
+    redirect(withQueryParam(back, 'error', await payrollTaxSchemeErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note = gated
@@ -241,7 +239,7 @@ export async function prefillClaimsAction(formData: FormData) {
     // what claims calls `claims` — the toast copy below is unchanged.
     ({ applied, sourceCount: claims, total } = await payrollInputContributorById('claims')!.contribute(s, { batchId }));
   } catch (e) {
-    redirect(withQueryParam(back, 'error', (e as Error).message));
+    redirect(withQueryParam(back, 'error', await payrollTaxSchemeErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note =
@@ -264,7 +262,7 @@ export async function prefillLoansAction(formData: FormData) {
   try {
     ({ loans, total } = await prefillLoansForBatch(s, { batchId }));
   } catch (e) {
-    redirect(withQueryParam(back, 'error', (e as Error).message));
+    redirect(withQueryParam(back, 'error', await payrollTaxSchemeErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note =
@@ -285,7 +283,7 @@ export async function prefillTp1Action(formData: FormData) {
   try {
     ({ applied, skipped } = await prefillTp1FromSelfRelief(s, { batchId }));
   } catch (e) {
-    redirect(withQueryParam(back, 'error', (e as Error).message));
+    redirect(withQueryParam(back, 'error', await payrollTaxSchemeErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note =
@@ -307,7 +305,7 @@ export async function prefillFixedZakatAction(formData: FormData) {
   try {
     ({ applied } = await prefillFixedZakat(s, { batchId }));
   } catch (e) {
-    redirect(withQueryParam(back, 'error', (e as Error).message));
+    redirect(withQueryParam(back, 'error', await payrollTaxSchemeErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note =
@@ -333,7 +331,7 @@ export async function transferAllowancesAction(formData: FormData) {
   try {
     ({ applied, ineligible, reversed, gated } = await transferAllowancesToBatch(s, { batchId, policyId }));
   } catch (e) {
-    redirect(withQueryParam(back, 'error', (e as Error).message));
+    redirect(withQueryParam(back, 'error', await payrollTaxSchemeErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note = gated
@@ -436,7 +434,7 @@ export async function resetAction(formData: FormData) {
   } catch (e) {
     // ORDERED AS THE SERVICE THROWS THEM. `SettingNotEnabledError` is FIRST because `resetProcessedBatch`
     // raises it before anything else, and it was the hole left here: unmapped, this catch fell through to
-    // `(e as Error).message` and painted the service's raw English ("Payroll reset is not enabled.") into
+    // `await payrollTaxSchemeErrorMessage(e)` and painted the service's raw English ("Payroll reset is not enabled.") into
     // the banner in all six locales — the identical defect test/payroll-remove-i18n.test.ts was written
     // to close for Remove. It needs the risk switch to flip between rendering the form and pressing it,
     // which is narrow, but "narrow" is not "translated".
@@ -449,7 +447,7 @@ export async function resetAction(formData: FormData) {
             ? t('resetReasonRequired')
             : e instanceof BatchNotResettableError
               ? t('resetOnlyProcessed')
-              : (e as Error).message;
+              : await payrollTaxSchemeErrorMessage(e);
     if (onResetScreen) {
       const q = new URLSearchParams({ error: msg });
       // Only when it is not the default, so an unfiltered visit keeps a clean URL — the Remove screen's
@@ -529,7 +527,7 @@ export async function reprocessSelectedAction(formData: FormData) {
             // employee short on a counterpart run that is already closed and can no longer take the days.
             e instanceof PayrollCounterpartClosedError
             ? t('generateBlockedByCounterpartClosed', { n: e.employmentIds.length })
-            : (e as Error).message;
+            : await payrollTaxSchemeErrorMessage(e);
     redirect(withQueryParam(back, 'error', msg));
   }
   revalidatePath('/payroll');
@@ -575,7 +573,7 @@ export async function removeEmployeePayrollAction(formData: FormData) {
     removed = r.payslipsRemoved;
   } catch (e) {
     // ORDERED AS THE SERVICE THROWS THEM: the two entitlement gates come first, before the reason check,
-    // and each of the eight has its own translated line. `(e as Error).message` is the floor, not a
+    // and each of the eight has its own translated line. `await payrollTaxSchemeErrorMessage(e)` is the floor, not a
     // fallback anyone should land on — every refusal this service can raise is named above it.
     const msg =
       e instanceof SettingNotEnabledError
@@ -594,7 +592,7 @@ export async function removeEmployeePayrollAction(formData: FormData) {
                     ? t('removeNotOnRun')
                     : e instanceof BatchNotResettableError
                       ? t('removeNotProcessed')
-                      : (e as Error).message;
+                      : await payrollTaxSchemeErrorMessage(e);
     redirect(to({ error: msg }));
   }
   revalidatePath('/payroll');
@@ -630,7 +628,7 @@ export async function unlockAction(formData: FormData) {
           ? t('unlockReasonRequired')
           : e instanceof BatchNotUnlockableError
             ? t('unlockNotClosed')
-            : (e as Error).message;
+            : await payrollTaxSchemeErrorMessage(e);
     redirect(withQueryParam(home, 'error', msg));
   }
   revalidatePath(`/payroll/${batchId}`);
@@ -648,7 +646,7 @@ export async function unlockAction(formData: FormData) {
  *    unpublished badge + banner would have gone stale the instant a run was closed.
  *  - The success toast was the hardcoded English `?toast=Batch closed`. It IS rendered (ToastFromQuery is
  *    mounted in app/layout.tsx), so it was untranslated copy on the confirmed flow.
- *  - The catch pushed `(e as Error).message` — raw English core strings — into the URL. Mapped to
+ *  - The catch pushed `await payrollTaxSchemeErrorMessage(e)` — raw English core strings — into the URL. Mapped to
  *    translated copy per named error, mirroring unlockAction.
  */
 export async function closeAction(formData: FormData) {
@@ -687,7 +685,7 @@ export async function closeAction(formData: FormData) {
               ? ta('closeBlockedBySwing', { movement: e.movementPct, threshold: e.thresholdPct })
               : e instanceof PayrollPermissionDeniedError
                 ? t('closePermissionDenied')
-                : (e as Error).message;
+                : await payrollTaxSchemeErrorMessage(e);
     redirect(withQueryParam(home, 'error', msg));
   }
   revalidatePath(`/payroll/${batchId}`);
@@ -714,7 +712,7 @@ export async function evaluateAnomaliesAction(formData: FormData) {
     const run = await evaluateBatchAnomalies(s, { batchId });
     summary = { block: run.block, review: run.review, autoClear: run.autoClear };
   } catch (e) {
-    redirect(withQueryParam(home, 'error', (e as Error).message));
+    redirect(withQueryParam(home, 'error', await payrollTaxSchemeErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}/anomalies`);
   revalidatePath(`/payroll/${batchId}`);
@@ -747,7 +745,7 @@ export async function narrateAnomalyAction(formData: FormData) {
   try {
     outcome = await narrateVerdict(s, { verdictId });
   } catch (e) {
-    redirect(withQueryParam(home, 'error', (e as Error).message));
+    redirect(withQueryParam(home, 'error', await payrollTaxSchemeErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}/anomalies`);
   // Three outcomes, three different sentences. "Nothing happened" is never rendered as success.
@@ -779,7 +777,7 @@ export async function proposeHypothesesAction(formData: FormData) {
   try {
     run = await proposeHypotheses(s, { batchId });
   } catch (e) {
-    redirect(withQueryParam(home, 'error', (e as Error).message));
+    redirect(withQueryParam(home, 'error', await payrollTaxSchemeErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}/anomalies`);
   revalidatePath(`/payroll/${batchId}`);
@@ -821,7 +819,7 @@ export async function resolveAnomalyAction(formData: FormData) {
   try {
     await resolveAnomalyVerdict(s, { verdictId, resolution, note: note || undefined });
   } catch (e) {
-    redirect(withQueryParam(home, 'error', (e as Error).message));
+    redirect(withQueryParam(home, 'error', await payrollTaxSchemeErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}/anomalies`);
   revalidatePath(`/payroll/${batchId}`);
