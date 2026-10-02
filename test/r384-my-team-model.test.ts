@@ -331,14 +331,17 @@ describe('My Team attendance review is per user, observation and fresh authority
   await checkIn(adminCtx(b),{employmentId:subject.employmentId,date,time:'09:10'});
   const snapshot=await readMyTeam(managerCtx,direct),missing=snapshot.attention.find(a=>a.kind==='missing_punch'&&a.employmentId===subject.employmentId);
   if(missing?.kind!=='missing_punch')throw new Error('non-vacuous direct report missing punch');
-  let attempted!:Promise<{error?:unknown}>;
-  await owner.db.transaction(async tx=>{
+  let attempted:Promise<{error?:unknown}>|undefined;
+  try{await owner.db.transaction(async tx=>{
    await tx.select().from(schema.employment).where(eq(schema.employment.id,subject.employmentId)).for('update');
+   const [holder]=await tx.execute(sql`SELECT pg_backend_pid() AS pid`) as unknown as {pid:number}[];
    attempted=markMyTeamPunchReviewed(managerCtx,{attendanceId:missing.attendanceId,fingerprint:missing.fingerprint},snapshot.query)
      .then(()=>({}),error=>({error}));
    let waiting=false;
    for(let attempt=0;attempt<50&&!waiting;attempt++){
-    const rows=await tx.execute(sql`SELECT pid FROM pg_stat_activity WHERE cardinality(pg_blocking_pids(pid))>0 AND query LIKE '%employment%'`);
+    // pg_stat_activity is transaction-cached; refresh before observing the exact holder's waiters.
+    await tx.execute(sql`SELECT pg_stat_clear_snapshot()`);
+    const rows=await tx.execute(sql`SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND ${holder.pid} = ANY(pg_blocking_pids(pid))`);
     waiting=rows.length>0;if(!waiting)await new Promise(r=>setTimeout(r,10));
    }
    expect(waiting).toBe(true);
@@ -348,8 +351,9 @@ describe('My Team attendance review is per user, observation and fresh authority
     {tenantId:b.tenantId,managerEmploymentId:manager.employmentId,subordinateEmploymentId:downline.employmentId,lineType:'administrative',validFrom:today},
     {tenantId:b.tenantId,managerEmploymentId:downline.employmentId,subordinateEmploymentId:subject.employmentId,lineType:'administrative',validFrom:today},
    ]);
-  });
-  expect((await attempted).error).toMatchObject({message:'MY_TEAM_NOT_AUTHORIZED'});
+  });}finally{if(attempted)await attempted;}
+  expect(attempted).toBeDefined();
+  expect((await attempted!).error).toMatchObject({message:'MY_TEAM_NOT_AUTHORIZED'});
   expect((await resolveMyTeamScope(managerCtx,query)).employees.map(e=>e.employmentId)).toContain(subject.employmentId);
   expect((await resolveMyTeamScope(managerCtx,direct)).employees.map(e=>e.employmentId)).not.toContain(subject.employmentId);
   expect(await owner.db.select().from(schema.attendanceAttentionReview).where(eq(schema.attendanceAttentionReview.attendanceId,missing.attendanceId))).toEqual([]);
