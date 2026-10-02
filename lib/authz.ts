@@ -9,6 +9,18 @@ export function isAdmin(s: SessionContext): boolean {
   return !!s.roles?.some((r) => ADMIN_ROLES.has(r));
 }
 
+/** My Team is a manager job; approval delegation alone never grants team browsing. */
+export function hasTeamAccess(s: SessionContext): boolean {
+  return !!s.roles?.some(role => role === 'manager' || ADMIN_ROLES.has(role));
+}
+
+/** Page-level team gate; scopedSession and the model enforce fresh company/report/module scope. */
+export async function requireTeamAccess(s?: SessionContext): Promise<SessionContext> {
+  const session = s ?? await getSession();
+  if (!hasTeamAccess(session)) redirect('/');
+  return session;
+}
+
 /** Group-level admin: super_admin (any scope) or a group-wide hr_admin. Mirrors app.is_group_admin(). */
 export function isGroupAdmin(s: SessionContext): boolean {
   return !!s.grants?.some((g) => g.role === 'super_admin' || (g.role === 'hr_admin' && g.companyId == null));

@@ -176,6 +176,7 @@ const LEAVE_NAV_LINKS: NavLinkDescriptor[] = [
   // Employee Balances, while explicit calendar links retain this route. The two remaining inquiry
   // tabs are owned by Leave config, so switching between them retains that sidebar highlight.
   { group: 'manage', href: '/leave/tracker', navigationHref: '/leave/tracker?calendar=1', labelKey: 'teamLeaveTracker', icon: CalendarRange },
+  { group: 'manage', href: '/manage/my-team', labelKey: 'myTeam', icon: UserSearch, managerUp: true },
 ];
 
 /**
