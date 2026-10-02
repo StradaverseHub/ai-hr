@@ -51,6 +51,25 @@ describe('r380 stored scheme presentation', () => {
       expect(explainPcb(st, null)).toMatchObject({kind: 'unavailable', pcb: 45});
     }
   });
+  it('reads canonical recorded non_resident without a resident declaration', () => {
+    const x = explainPcb({pcb: 300, pcbMeta: {calculationScheme: 'non_resident', flatRate: .3,
+      trace: {remuneration: 1000, additional: 0, rate: .3}}}, null);
+    expect(x).toMatchObject({kind: 'flat', nonResident: true, legacy: false, rate: .3, pcb: 300});
+    expect(pcbFormulaBlocks(x, format)[0]).toMatchObject({substituted: '( 1000.00 + 0.00 ) × 30%', notes: ['flatRoundingNote', 'nonresidentWorkingNote']});
+  });
+  it('does not require rebate fields for recorded C-Suite working', () => {
+    const st = saved('c_suite'); Reflect.deleteProperty(st.pcbMeta.trace, 'T');
+    Object.assign(st.pcbMeta, {P2: 40000});
+    Object.assign(st.pcbMeta.trace, {totalTaxYear: 6000, totalMtdYear: 200});
+    const x = explainPcb(st, null); expect(x.kind).toBe('mtd');
+    expect(pcbFormulaBlocks(x, format).find(b => b.key === 'schemeAnnual')).toMatchObject({formula: 'formulaSchemeAnnual', substituted: 'max( 0, 40000.00 × 15% )', result: 6000});
+  });
+  it('accepts recorded zero rebate and rejects nonfinite required common facts', () => {
+    const st = saved(); st.pcbMeta.trace.T = 0;
+    expect(explainPcb(st, null).kind).toBe('mtd');
+    Object.assign(st.pcbMeta.trace, {taxOnP1: NaN});
+    expect(explainPcb(st, null)).toMatchObject({kind: 'unavailable', pcb: 45});
+  });
   it('retains legacy flat working instead of reclassifying from a current relief profile', () => {
     const x = explainPcb({pcb: 100, pcbMeta: {flatRate: .15, trace: {remuneration: 1000, additional: 0, rate: .15}}},
       {individual: 99999, spouse: 99999, children: 99999, disabledIndividual: 0, disabledSpouse: 0, total: 299997, lp: 0});

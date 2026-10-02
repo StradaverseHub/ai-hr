@@ -474,7 +474,7 @@ export function explainPcb(
 
   // Read the immutable scheme before legacy rate keys. Never infer a category from today's profile.
   const scheme = metaObj.calculationScheme;
-  const knownSchemes = ['resident', 'rep', 'knowledge_worker', 'c_suite', 'nonresident'];
+  const knownSchemes = ['resident', 'rep', 'knowledge_worker', 'c_suite', 'non_resident'];
   if (scheme !== undefined && !knownSchemes.includes(scheme as string)) return {kind: 'unavailable', ...figures};
   const incentive = scheme === 'rep' || scheme === 'knowledge_worker' || scheme === 'c_suite';
   if (incentive) {
@@ -497,15 +497,15 @@ export function explainPcb(
       return {kind: 'unavailable', ...figures};
     }
   }
-  if (scheme === 'nonresident' && (!hasRecordedNumbers(metaObj, ['flatRate']) || metaObj.flatRate !== 0.3)) return {kind: 'unavailable', ...figures};
+  if (scheme === 'non_resident' && (!hasRecordedNumbers(metaObj, ['flatRate']) || metaObj.flatRate !== 0.3)) return {kind: 'unavailable', ...figures};
   const flat = metaObj as FlatMeta;
-  if (scheme === 'nonresident' || (scheme === undefined && (flat.flatRate != null || flat.rate != null))) {
+  if (scheme === 'non_resident' || (scheme === undefined && (flat.flatRate != null || flat.rate != null))) {
     const rate = n(flat.flatRate ?? flat.rate);
     return {
       kind: 'flat',
       legacy: scheme === undefined,
       rate,
-      nonResident: scheme === 'nonresident' || flat.nonResident === true,
+      nonResident: scheme === 'non_resident' || flat.nonResident === true,
       trace: readFlatTrace(flat.trace),
       ...figures,
     };
