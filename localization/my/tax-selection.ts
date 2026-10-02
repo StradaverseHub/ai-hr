@@ -19,7 +19,7 @@ export async function taxSelectionContextMY(tx:Tx,ctx:SessionContext,employmentI
  if(!idOk(employmentId)||payrollBatchId!==undefined&&!idOk(payrollBatchId))throw new TaxSelectionError('not_found');
  let batch:{companyId:string;payPeriod:string}|undefined;
  if(payrollBatchId){const [b]=await tx.select({companyId:payrollBatch.companyId,payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(and(eq(payrollBatch.id,payrollBatchId),eq(payrollBatch.tenantId,ctx.tenantId))).limit(1).for('share');if(!b||!periodOk(b.payPeriod))throw new TaxSelectionError('not_found');batch=b;}
- const [e]=await tx.select({employmentId:employment.id,personId:employment.personId,employeeCode:employment.employeeCode,currentCompanyId:employment.companyId}).from(employment).where(and(eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1).for(write?'update':'share');
+ const [e]=await tx.select({employmentId:employment.id,personId:employment.personId,employeeCode:employment.employeeCode,currentCompanyId:employment.companyId}).from(employment).where(and(eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1).for(write?'no key update':'share');
  if(!e)throw new TaxSelectionError('not_found');
  const companyId=batch?.companyId??e.currentCompanyId;
  const allowed=await tx.execute(sql`SELECT ${write?sql`app.is_admin_for(${companyId}::uuid) AND app.is_admin_for(${e.currentCompanyId}::uuid)`:sql`app.can_admin_payroll_for(${companyId}::uuid) AND app.can_admin_payroll_for(${e.currentCompanyId}::uuid)`} AS ok`);

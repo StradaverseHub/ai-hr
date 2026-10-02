@@ -2028,7 +2028,7 @@ export async function changeEmploymentCompany(
       .from(employment)
       .where(eq(employment.id, p.employmentId))
       .limit(1)
-      .for('update');
+      .for('no key update');
     if (!emp) throw new Error('Employment not found');
     // No-op guard: moving to the same company is not a change.
     if (emp.companyId === p.newCompanyId) throw new Error('The employee is already in this company.');
@@ -2235,7 +2235,7 @@ export async function transferEmploymentCompanyTx(
     .from(employment)
     .where(eq(employment.id, p.employmentId))
     .limit(1)
-    .for('update');
+    .for('no key update');
   if (!emp) throw new Error('Employment not found');
   if (emp.companyId === p.newCompanyId) throw new Error('The employee is already in this company.');
 

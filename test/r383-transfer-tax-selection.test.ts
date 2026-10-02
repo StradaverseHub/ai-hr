@@ -1,12 +1,13 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {and,eq} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
+import {appendEvent,actorOf} from '../db/events';
 import {hireEmployee,changeEmploymentCompany,transferEmploymentCompanyTx} from '../core/org';
 import {createMovementEvent,movementHistory,reverseMovementEvent} from '../core/movement';
 import {requirePackFor} from '../localization/registry';
-import {resolveTaxSelectionMY} from '../localization/my/tax-selection';
+import {resolveTaxSelectionMY,saveTaxSelectionMYTx} from '../localization/my/tax-selection';
 import {setStatutoryProfileMY,setTaxProfileMY} from '../localization/my/statutory';
 import {saveTaxSchemeDeclarationMY} from '../localization/my/tax-scheme-declarations';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -97,6 +98,41 @@ describe('ordinary tax defaults in canonical employer changes',()=>{
   await owner.db.delete(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.employmentId,e.employmentId));
   await expect(move()).rejects.toMatchObject({code:'confirmation_required'});expect(await owners()).toEqual([]);
   expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,e.employmentId)))[0].companyId).toBe(b.companyId);
+ });
+ it('a tax save waiting for a partial profile update permits the writer subject-audit FK lock',async()=>{
+  // The real app role holds the profile UPDATE before the authoritative save starts.
+  // Observe the actual database wait, then release the audit barrier: no timed sleep establishes order.
+  let profilePid=0,savePid=0;
+  let releaseAudit!:()=>void,announceProfile!:()=>void,announceSave!:()=>void;
+  const auditBarrier=new Promise<void>(resolve=>{releaseAudit=resolve;});
+  const profileReady=new Promise<void>(resolve=>{announceProfile=resolve;});
+  const saveReady=new Promise<void>(resolve=>{announceSave=resolve;});
+  const writer=withTenant(a,async tx=>{
+   await tx.execute(sql`SET LOCAL lock_timeout='2500ms'`);
+   const pid=await tx.execute(sql`SELECT pg_backend_pid() AS pid`);profilePid=Number(pid[0].pid);
+   const [profile]=await tx.update(schema.employeeStatutoryMy).set({taxNumber:'Synthetic concurrent partial update'}).where(eq(schema.employeeStatutoryMy.personId,e.personId)).returning({id:schema.employeeStatutoryMy.id});
+   announceProfile();await auditBarrier;
+   await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'employee-statutory',aggregateId:profile.id,eventType:'employee.tax.updated',actor:actorOf(a),subjectEmploymentId:e.employmentId,payload:{synthetic:true}});
+  }).then(()=>null,error=>error);
+  await Promise.race([profileReady,writer.then(error=>{throw error??new Error('Profile writer finished before barrier');})]);
+  const saver=withTenant(a,async tx=>{
+   await tx.execute(sql`SET LOCAL lock_timeout='2500ms'`);
+   const pid=await tx.execute(sql`SELECT pg_backend_pid() AS pid`);savePid=Number(pid[0].pid);announceSave();
+   await saveTaxSelectionMYTx(tx,a,{employmentId:e.employmentId,expectedCompanyId:b.companyId,scheme:'resident'});
+  }).then(()=>null,error=>error);
+  let blocked=false;let outcomes:unknown[]=[];
+  try{
+   await Promise.race([saveReady,saver.then(error=>{throw error??new Error('Tax save finished before barrier');})]);
+   const deadline=Date.now()+2000;
+   while(Date.now()<deadline){
+    const wait=await owner.db.execute(sql`SELECT EXISTS(SELECT 1 FROM pg_locks WHERE pid=${savePid} AND NOT granted AND locktype='transactionid') AND ${profilePid}::integer=ANY(pg_blocking_pids(${savePid}::integer)) AS blocked`);
+    if(wait[0].blocked===true){blocked=true;break;}
+   }
+  }finally{releaseAudit();outcomes=await Promise.all([writer,saver]);}
+  expect(blocked,'save must be observably waiting on the profile transaction').toBe(true);
+  expect(outcomes,'profile audit FK and authoritative save must both commit without lock failure').toEqual([null,null]);
+  expect(await rows(b.companyId)).toMatchObject({scheme:'resident',transitionState:'resolved'});
+  expect((await events()).some(event=>event.eventType==='employee.tax.updated')).toBe(true);
  });
  it('an arbitrary missing owner remains refused by payroll; no continuing fallback exists',async()=>{
   await owner.db.delete(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.employmentId,e.employmentId));
