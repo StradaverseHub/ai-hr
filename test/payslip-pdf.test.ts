@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 /**
  * ADR-0036 (#22) — payslip PDF renderer. A pure function over the payslipDetail read + localized labels;
  * here we assert it produces a real (%PDF) document of non-trivial size and degrades gracefully on null
@@ -12,7 +13,7 @@
  * to add up to the total beside them. That guard has its own test, and it is the important one.
  */
 import zlib from 'node:zlib';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument,PDFName,PDFDict } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { buildPayslipPdfData, renderPayslipPdf, type PayslipPdfData } from '../lib/payslip-pdf';
 // a96d320c — the payment date is resolved to words SERVER-side, in the same module that already resolves
@@ -1650,15 +1651,13 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
    * the band is 12pt taller only when something is drawn in it. The no-registration document is still
    * byte-identical in height to today's, which is the fallback the plan promised.
    */
-  it('retains a labelled full registration number inside the reference employee profile', async () => {
+  it('retains a labelled full registration below the header company without duplicating the profile', async () => {
     const p=drawnPlacements(await renderPayslipPdf(data,labels));
-    const caption=placed(p,labels.companyReg)!;
-    const number=placed(p,data.companyReg!)!;
-    expect(caption).toBeDefined();expect(number).toBeDefined();
-    expect(number.y).toBeCloseTo(caption.y,3);
-    expect(number.x).toBeGreaterThan(caption.x);
-    expect(number.y).toBeLessThan(placed(p,'EMPLOYEE PROFILE')!.y);
-    expect(number.y).toBeGreaterThan(placed(p,'EARNINGS')!.y);
+    const registration=placed(p,`${labels.companyReg}: ${data.companyReg}`)!;
+    expect(registration).toBeDefined();
+    expect(registration.y).toBeLessThan(placed(p,data.company)!.y);
+    expect(registration.y).toBeGreaterThan(placed(p,'EMPLOYEE PROFILE')!.y);
+    expect(p.filter(r=>r.text.includes(data.companyReg!))).toHaveLength(1);
     const bare=drawnText(await renderPayslipPdf({...data,companyReg:null},labels));
     expect(bare).not.toContain(labels.companyReg);
     expect(bare).not.toContain(data.companyReg!);
@@ -1888,7 +1887,7 @@ describe('r379 — reporter reference columns without losing saved evidence',()=
     const tokens=Array.from({length:200},(_,i)=>`EmployerWord${i}`);
     const bytes=await renderPayslipPdf({...data,company:tokens.join(' ')},labels);
     expect(await pageCount(bytes)).toBeGreaterThan(1);
-    expect(drawnText(bytes).replace(/\n/g,' ').match(/\bEmployerWord\d+\b/g),'complete letterhead and complete profile value').toEqual([...tokens,...tokens]);
+    expect(drawnText(bytes).replace(/\n/g,' ').match(/\bEmployerWord\d+\b/g),'complete letterhead without a duplicate profile value').toEqual(tokens);
     expect(drawnPlacements(bytes).filter(r=>r.y<24)).toEqual([]);
   });
   it('shows unknown employer snapshots as Not recorded and retains explicit zero separately',async()=>{
@@ -1928,10 +1927,11 @@ describe('r381 — newest reporter payslip layout',()=>{
     const text=drawnText(bytes),runs=drawnPlacements(bytes);
     expect(text).toContain('Payment Date');expect(text).toContain('30 Sep 2026');
     expect(text).not.toContain(labels.paymentInformation);
-    const caption=placed(runs,'Payment Date')!,value=placed(runs,'30 Sep 2026')!;
-    expect(caption.y).toBeCloseTo(value.y,3);
-    const rules=drawnRects(bytes);
-    expect(enclosingRule(rules,caption)).toBeDefined();expect(enclosingRule(rules,value)).toBeDefined();
+    const payment=placed(runs,'Payment Date: 30 Sep 2026')!;
+    expect(payment).toBeDefined();
+    expect(payment.y).toBeGreaterThan(placed(runs,'EMPLOYEE PROFILE')!.y);
+    expect(runs.filter(r=>r.text.includes('30 Sep 2026'))).toHaveLength(1);
+
   });
   it('places saved gross and net YTD inside the same Year to Date box as saved statutory YTD',async()=>{
     const bytes=await renderPayslipPdf({...data,ytd:{gross:21360,net:18061.05,epf:2145,socso:74.25,eis:29.7,pcb:1050}},labels);
@@ -1961,4 +1961,40 @@ describe('r382 retained result on the admin review document', () => {
     expect(issued).not.toContain('SKIPPED');
     expect(issued).not.toContain('Previous payroll result retained');
   });
+});
+
+
+describe('r383 restored compact payslip profile',()=>{
+ it('keeps only configured employee facts in their saved order followed by payment and cycle',async()=>{
+  const subset=[{label:'Position',value:'Configured position'},{label:'Department',value:'Configured department'}];
+  const bytes=await renderPayslipPdf({...data,informationRows:subset,bankName:'Saved bank',bankAccount:'FULLACCOUNT',paymentMethod:'Bank transfer',cycleLabel:'Company cycle'},labels);
+  const runs=drawnPlacements(bytes),heading=placed(runs,'EMPLOYEE PROFILE')!,earnings=placed(runs,'EARNINGS')!;
+  const body=runs.filter(r=>r.page===heading.page&&r.y<heading.y&&r.y>earnings.y).map(r=>r.text);
+  expect(body).toEqual(['Position','Configured position','Department','Configured department',labels.paymentMethod,'Bank transfer',labels.bankName,'Saved bank',labels.bankAccount,'FULLACCOUNT',labels.payrollCycleLabel??'Payroll cycle','Company cycle']);
+  expect(body).not.toContain(data.company);expect(body).not.toContain(labels.periodLabel);expect(body).not.toContain(data.employee);
+  const borders=drawnRects(bytes).filter(r=>r.op==='S'&&r.y<heading.y&&r.y>earnings.y);
+  expect(borders,'one outer profile border, without individually boxed fields').toHaveLength(1);
+ });
+ it('wraps complete configured profile values across pages without losing payment details',async()=>{
+  const tokens=Array.from({length:700},(_,i)=>`ProfileToken${i}`);
+  const bytes=await renderPayslipPdf({...data,informationRows:[{label:'Department',value:tokens.join(' ')}],bankAccount:'FULLACCOUNT'},labels);
+  expect(await pageCount(bytes)).toBeGreaterThan(1);
+  expect(drawnText(bytes).replace(/\n/g,' ').match(/ProfileToken\d+/g)).toEqual(tokens);
+  expect(drawnText(bytes)).toContain('FULLACCOUNT');
+  expect(drawnPlacements(bytes).filter(r=>r.y<24)).toEqual([]);
+ });
+ it('keeps uploaded logo branding adjacent and period in the header; no-logo and corrupt controls retain text',async()=>{
+  for(const logo of [{bytes:fs.readFileSync(new URL('./fixtures/r383-payslip-logo/company.png',import.meta.url)),mimeType:'image/png'},{bytes:fs.readFileSync(new URL('./fixtures/r383-payslip-logo/company.jpg',import.meta.url)),mimeType:'image/jpeg'},null,{bytes:Buffer.from('broken'),mimeType:'image/png'}]){
+   const bytes=await renderPayslipPdf({...data,logo},labels),runs=drawnPlacements(bytes);
+   const company=placed(runs,data.company)!,period=placed(runs,labels.periodLabel)!,profile=placed(runs,'EMPLOYEE PROFILE')!;
+   expect(company).toBeDefined();expect(period).toBeDefined();expect(company.y).toBeCloseTo(period.y,3);
+   expect(company.y).toBeGreaterThan(profile.y);expect(period.x).toBeGreaterThan(company.x);
+   expect(runs.filter(r=>r.text===data.company)).toHaveLength(1);
+   const uploaded=logo&&logo.bytes.length>20;
+   expect(company.x).toBe(uploaded?134:24);
+   const pdf=await PDFDocument.load(bytes);
+   const imageKeys=pdf.getPages()[0].node.Resources()?.lookupMaybe(PDFName.of('XObject'),PDFDict)?.keys()??[];
+   expect(imageKeys.length).toBe(uploaded?1:0);
+  }
+ });
 });

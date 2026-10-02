@@ -21,3 +21,15 @@ export function selectPayslipInformation(
     return [{ key, label: labels[key], value: String(value).trim() }];
   });
 }
+
+/** One row-major profile order for review and both PDF outputs; header facts stay in the header. */
+export function payslipProfileRows(
+  informationRows: readonly {label:string;value:string}[],
+  extra:{paymentMethod?:string|null;bankName?:string|null;bankAccount?:string|null;cycle?:string|null},
+  labels:{paymentMethod:string;bankName:string;bankAccount:string;cycle:string},
+):{label:string;value:string}[]{
+  return [...informationRows.map(({label,value})=>({label,value})),
+    ...(['paymentMethod','bankName','bankAccount','cycle'] as const).flatMap(key=>{
+      const value=extra[key]?.trim();return value?[{label:labels[key],value}]:[];
+    })];
+}

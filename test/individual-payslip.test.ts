@@ -69,12 +69,12 @@ describe('169e3c24 — explaining the PCB figure from what the payslip recorded'
     // These two `toEqual`s are updated rather than loosened to `toMatchObject` — an exact shape is the
     // point of asserting it this way, and a silently-grown explanation is what the update catches.
     const r = explainPcb({ pcb: 1500, pcbMeta: { nonResident: true, flatRate: 0.3, rate: 0.3 } }, CURRENT);
-    expect(r).toEqual({ kind: 'flat', legacy: true, rate: 0.3, nonResident: true, trace: null, pcb: 1500, pcbSystem: 1500, basis: null });
+    expect(r).toEqual({ kind: 'flat', legacy: true, nonCash:null, rate: 0.3, nonResident: true, trace: null, pcb: 1500, pcbSystem: 1500, basis: null });
   });
 
   it('reports the REP / knowledge-worker incentive rate as flat but NOT non-resident', () => {
     const r = explainPcb({ pcb: 750, pcbMeta: { nonResident: false, flatRate: 0.15, rate: 0.15 } }, CURRENT);
-    expect(r).toEqual({ kind: 'flat', legacy: true, rate: 0.15, nonResident: false, trace: null, pcb: 750, pcbSystem: 750, basis: null });
+    expect(r).toEqual({ kind: 'flat', legacy: true, nonCash:null, rate: 0.15, nonResident: false, trace: null, pcb: 750, pcbSystem: 750, basis: null });
   });
 
   it('reads the payslip’s OWN relief working when it has one', () => {
@@ -201,8 +201,9 @@ describe('169e3c24 — the ESS release gate is not weakened, and no logo is inve
 
     // (b) It renders the logo through the EXISTING serve route, so the payslip cannot show a different
     //     mark from the rest of the product, and no new endpoint appears for one screen.
-    expect(codeOnly, 'the letterhead renders a logo now').toMatch(/<img/);
-    expect(codeOnly).toContain('/admin/organization/logo/');
+    expect(codeOnly, 'the letterhead renders the bounded document logo').toContain('PayslipCompanyLogo');
+    const logo=read('components/payslip-company-logo.tsx');
+    expect(logo).toMatch(/<img/);expect(logo).toContain('/admin/organization/logo/');
 
     // (c) CONDITIONALLY. `hasLogo` comes from listCompanies (an EXISTS against the side table, never the
     //     blob). An <img> rendered unconditionally 404s into a broken-image icon on a payslip, which is
@@ -468,8 +469,9 @@ describe('f35f758a note 8 — the pay item master save refuses the combination t
 
   it('the predicate is the KERNEL\u2019s, exported rather than copied', () => {
     expect(isUnsupportedTaxableComponent(bad), 'Non-payable + PCB with no classification').toBe(true);
-    // A DECLARED remuneration type makes it computable (feedback 09b554e9) — the guard must not fire.
-    expect(isUnsupportedTaxableComponent({ ...bad, pcbRemunerationType: 'normal' })).toBe(false);
+    // A tax stream alone cannot identify an unknown non-cash item. An explicit BIK category can.
+    expect(isUnsupportedTaxableComponent({ ...bad, pcbRemunerationType: 'normal' })).toBe(true);
+    expect(isUnsupportedTaxableComponent({ ...bad, displayCategory:'bik',eaFormLine:'EA_B3',pcbRemunerationType:'normal' })).toBe(false);
     // PCB-only earnings (neither EPF nor SOCSO) are the other half of the same fail-closed condition.
     expect(isUnsupportedTaxableComponent({ ...bad, isNonPayable: false })).toBe(true);
     // …and an ordinary taxable allowance is untouched, or every pay item in the catalogue would be refused.
@@ -600,11 +602,11 @@ describe('r360 — the cycle name and the registration label are decided in ONE 
     }
   });
 
-  it('preserves the registration caption and complete value in the reference profile', () => {
+  it('preserves the registration caption and complete value below the header company', () => {
     // r379 uses separate label/value cells in the PDF profile; the screen retains its caption.
     expect(read(PAGE), 'the screen composes label, colon, value').toMatch(/\{tOrg\('regNo'\)\}: \{row\.companyReg\}/);
-    expect(read('lib/payslip-pdf.ts'), 'the document profile retains the label and complete value').toContain(
-      '[t.companyReg,d.companyReg]',
+    expect(read('lib/payslip-pdf.ts'), 'the document header retains the label and complete value').toContain(
+      '${t.companyReg}: ${d.companyReg}',
     );
   });
 
