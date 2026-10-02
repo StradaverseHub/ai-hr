@@ -27,7 +27,7 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee } from '../core/org';
@@ -52,8 +52,22 @@ beforeAll(() => {
     pack: {
       ...my,
       country: 'YY',
-      // Everything else is MY's, so the ONLY difference between the two forms is which pack made it —
-      // which is precisely the thing under test. A wholesale second jurisdiction would prove less.
+      // Share the monetary engine to isolate employer-pack routing. YY's synthetic ordinary-resident
+      // routing is independent of MY's scoped statutory owner; a foreign company cannot own that row.
+      statutory: {
+        ...my.statutory,
+        getTaxSelection: undefined, saveTaxSelection: undefined, initializeHiredTaxSelectionTx: undefined,
+        listTaxSchemeDeclarations: undefined, saveTaxSchemeDeclaration: undefined, revokeTaxSchemeDeclaration: undefined,
+      },
+      payroll: {
+        ...my.payroll,
+        resolveTaxScheme: undefined,
+        statutory: (wage, profile, additional, overtime, pcbCtx, opts) => my.payroll.statutory(
+          wage, profile, additional, overtime, pcbCtx,
+          { ...opts, resident: true, calculationScheme: 'resident', taxSchemeDeclarationId: undefined,
+            taxSelectionId: undefined, taxSelectionVersion: undefined, taxSelectionSource: undefined },
+        ),
+      },
       eaStatement: async (ctx, p) => {
         const base = await my.eaStatement(ctx, p);
         return base ? { ...base, statutoryVersion: YY_VERSION } : null;
@@ -119,6 +133,17 @@ describe('against the real database', () => {
 
     const janMY = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-01' });
     await generatePayslips(a, { batchId: janMY.batchId });
+    const selectionRows = () => owner.db.select().from(schema.employmentTaxSelectionMy).where(and(
+      eq(schema.employmentTaxSelectionMy.tenantId, b.tenantId),
+      eq(schema.employmentTaxSelectionMy.employmentId, E.employmentId),
+    ));
+    const beforeSelections = await selectionRows();
+    expect(beforeSelections).toHaveLength(1);
+    expect(beforeSelections[0]).toMatchObject({companyId:b.companyId,scheme:'resident',transitionState:'resolved',version:1});
+    const [janSaved] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,janMY.batchId));
+    expect(janSaved).toBeTruthy();
+    const beforeMY = await employeeEaStatement(a,{employmentId:E.employmentId,year:'2026',companyId:b.companyId});
+    expect(beforeMY).not.toBeNull();
 
     await createMovementEvent(a, {
       employmentId: E.employmentId,
@@ -131,6 +156,19 @@ describe('against the real database', () => {
 
     const febYY = await createBatch(a, { companyId: coYY, payPeriod: '2026-02' });
     await generatePayslips(a, { batchId: febYY.batchId });
+    // YY generation creates no MY owner/declaration and cannot mutate MY's issued calculation/form.
+    expect(await selectionRows()).toEqual(beforeSelections);
+    const [febSaved] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,febYY.batchId));
+    expect(febSaved).toBeTruthy();
+    expect((febSaved.statutory as {pcbMeta:Record<string,unknown>}).pcbMeta).toMatchObject({calculationScheme:'resident'});
+    for (const key of ['taxSelectionId','taxSelectionVersion','taxSelectionSource','taxSchemeDeclarationId']) {
+      expect((febSaved.statutory as {pcbMeta:Record<string,unknown>}).pcbMeta).not.toHaveProperty(key);
+    }
+    const [afterJan] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,janSaved.id));
+    expect(afterJan.statutory).toEqual(janSaved.statutory);
+    const afterMY = await employeeEaStatement(a,{employmentId:E.employmentId,year:'2026',companyId:b.companyId});
+    expect(afterMY!.partB).toEqual(beforeMY!.partB);
+    expect(afterMY!.statutoryVersion).toBe(beforeMY!.statutoryVersion);
 
     return E;
   }
