@@ -50,7 +50,7 @@ describe('My Team current scope and canonical projection',()=>{
  it('intersects a real current grant even when a second authenticated employment makes company B reports RLS-visible',async()=>{
   const [otherCompany]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Synthetic Scoped B',country:'MY',currency:'MYR'}).returning({id:schema.company.id});
   const [otherDepartment]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:otherCompany.id,name:'Synthetic Dept B'}).returning({id:schema.department.id});
-  const [secondRoot]=await owner.db.insert(schema.employment).values({tenantId:b.tenantId,personId:manager.personId,companyId:otherCompany.id,employmentType:'full_time',hiredOn:'2024-01-01'}).returning({id:schema.employment.id});
+  const [secondRoot]=await owner.db.insert(schema.employment).values({tenantId:b.tenantId,personId:manager.personId,companyId:otherCompany.id,hiredOn:'2024-01-01'}).returning({id:schema.employment.id});
   const otherReport=await hireEmployee(adminCtx(b),{person:{fullName:'Scoped B Report',primaryEmail:`myteam_b_${randomUUID()}@t.local`},companyId:otherCompany.id,departmentId:otherDepartment.id,employmentType:'full_time',hiredOn:'2024-01-01'});
   await setReportingLine(adminCtx(b),{subordinateEmploymentId:otherReport.employmentId,managerEmploymentId:secondRoot.id,lineType:'administrative',validFrom:'2024-01-01'});
   const visible=await withTenant(managerCtx,tx=>tx.select({id:schema.employment.id}).from(schema.employment).where(eq(schema.employment.id,otherReport.employmentId)));
@@ -78,9 +78,9 @@ describe('My Team current scope and canonical projection',()=>{
  it('All reports walks deeper than 64 with visited-path protection and no silent model cutoff',async()=>{
   const people=Array.from({length:66},(_,index)=>({id:randomUUID(),tenantId:b.tenantId,fullName:`Deep Synthetic ${index}`,primaryEmail:`deep_${randomUUID()}@t.local`}));
   await owner.db.insert(schema.person).values(people);
-  const employments=people.map(p=>({id:randomUUID(),tenantId:b.tenantId,personId:p.id,companyId:b.companyId,employmentType:'full_time' as const,hiredOn:'2024-01-01'}));
+  const employments=people.map(p=>({id:randomUUID(),tenantId:b.tenantId,personId:p.id,companyId:b.companyId,hiredOn:'2024-01-01'}));
   await owner.db.insert(schema.employment).values(employments);
-  await owner.db.insert(schema.assignment).values(employments.map(e=>({tenantId:b.tenantId,employmentId:e.id,companyId:b.companyId,departmentId:b.deptA,validFrom:'2024-01-01'})));
+  await owner.db.insert(schema.assignment).values(employments.map(e=>({tenantId:b.tenantId,employmentId:e.id,companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time' as const,validFrom:'2024-01-01'})));
   await owner.db.insert(schema.reportingLine).values(employments.map((e,index)=>({tenantId:b.tenantId,subordinateEmploymentId:e.id,
     managerEmploymentId:index===0?manager.employmentId:employments[index-1].id,lineType:'administrative' as const,validFrom:'2024-01-01'})));
   const scope=await resolveMyTeamScope(managerCtx,query);

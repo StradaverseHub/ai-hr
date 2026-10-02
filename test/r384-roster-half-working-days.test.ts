@@ -37,7 +37,7 @@ describe('canonical roster includes half working days without changing rest/off 
  it('uses canonical overnight half end and rounded normal override, retaining assigned full schedule',async()=>{
   const b=await seedBase(),ctx=adminCtx(b);
   const employee=await hireEmployee(ctx,{person:{fullName:'Overnight half reader',primaryEmail:'night@t.local'},companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:'2020-01-01'});
-  const shift=await createShift(ctx,{companyId:b.companyId,name:'Night half',code:'NIGHT',startTime:'22:00:00',endTime:'06:00:00',crossesMidnight:true,breakMinutes:45,normalHoursRoundingMinutes:30,normalMinutesOverride:451,weeklyPattern:[2],halfPattern:[1]});
+  const shift=await createShift(ctx,{companyId:b.companyId,name:'Night half',code:'NIGHT',startTime:'22:00:00',endTime:'06:00:00',breakMinutes:45,normalHoursRoundingMinutes:30,normalMinutesOverride:451,weeklyPattern:[2],halfPattern:[1]});
   await assignDefaultShift(ctx,{employmentId:employee.employmentId,shiftId:shift.id});
   const userId=await createAppUser(b.tenantId,employee.personId,'employee');
   const self={tenantId:b.tenantId,userId,personId:employee.personId,roles:['employee'],entitlements:harnessSnapshot(b.tenantId)} as SessionContext;

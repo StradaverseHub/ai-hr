@@ -2419,7 +2419,7 @@ export function usualShiftsFor(ctx: SessionContext, employmentIds: string[]): Pr
     const lookup = await weekLookupTx(tx, null, [...rows.map((r) => r.shiftRuleId), ...rows.map((r) => r.groupRuleId)]);
     return rows.map(({ halfPattern, offPattern, shiftRuleId, groupRuleId, ...r }) => {
       const week=lookup(groupRuleId ?? shiftRuleId, { pattern: r.pattern, halfPattern, offPattern });
-      return {...r,pattern:week.pattern,halfPattern:week.halfPattern};
+      return {...r,pattern:week.pattern,halfPattern:week.halfPattern??null};
     });
   });
 }
