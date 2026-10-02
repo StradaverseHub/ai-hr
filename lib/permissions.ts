@@ -55,10 +55,11 @@ export const MATRIX_ROLES: readonly Role[] = [
 ] as const;
 
 /** The page guard each screen is gated by — the single source of the access truth for that screen. */
-export type Guard = 'requireAdmin' | 'scopedAdmin' | 'scopedSession';
+export type Guard = 'requireAdmin' | 'scopedAdmin' | 'scopedSession' | 'requireTeamAccess';
 
 /** Roles that can REACH a screen given its guard (coarse page-level access). */
 export function rolesForGuard(guard: Guard): ReadonlySet<Role> {
+  if (guard === 'requireTeamAccess') return new Set<Role>(['manager', 'hr_admin', 'super_admin']);
   // requireAdmin & scopedAdmin both gate on isAdmin → hr_admin + super_admin only.
   if (guard === 'requireAdmin' || guard === 'scopedAdmin') {
     return new Set<Role>(['hr_admin', 'super_admin']);
@@ -152,7 +153,11 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/leave/tracker'],
     hasScopeNote: true,
   },
-  // 20c699f8 / 953be4b0 — the two HR-admin leave inquiry screens. They are scopedAdmin-guarded pages, so
+
+  {
+    screenKey: 'myTeam', href: '/manage/my-team', labelKey: 'nav.myTeam',
+    guard: 'requireTeamAccess', routes: ['/manage/my-team'], hasScopeNote: true,
+  },  // 20c699f8 / 953be4b0 — the two HR-admin leave inquiry screens. They are scopedAdmin-guarded pages, so
   // without a matrix column an administrator could reach them but Security & Permissions could neither
   // grant nor revoke them: the reverse-completeness guard in test/function-access.test.ts is what caught
   // it. Labels live under admin.users.screen.* rather than nav.* because neither screen is a sidebar row —
