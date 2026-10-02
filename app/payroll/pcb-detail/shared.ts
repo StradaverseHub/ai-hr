@@ -363,6 +363,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
         return {
           columns: AMOUNT,
           rows: [
+                ...(mtd?.calculationScheme ? [figure(t('schemeLabel'), t(`scheme_${mtd.calculationScheme}`))] : []),
             figure(t('bracketCategory'), trace && CATEGORY_LABEL[trace.category] ? t(CATEGORY_LABEL[trace.category]) : na),
             // GUARD THE FIELD, NOT THE TRACE. `childCount` is `number | null` (core/pcb-explain.ts, and
             // `readTrace` deliberately refuses to coerce absence to 0 — a payslip predating r359 genuinely
@@ -440,12 +441,12 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
         return {
           columns: AMOUNT,
           rows: [
-            figure(t('bracketM'), trace ? money(trace.M) : na),
+            ...(!mtd?.calculationScheme || mtd.calculationScheme === 'resident' ? [figure(t('bracketM'), trace ? money(trace.M) : na)] : []),
             figure(t('bracketR'), trace ? pctOf(trace.R) : na),
-            figure(t('bracketB'), trace ? money(trace.B) : na),
+            ...(!mtd?.calculationScheme || mtd.calculationScheme === 'resident' ? [figure(t('bracketB'), trace ? money(trace.B) : na)] : mtd.calculationScheme === 'c_suite' ? [] : [figure(t('schemeRebate'), trace?.T == null ? na : money(trace.T))]),
             figure(t('bracketTaxOnP'), trace ? money(trace.taxOnP1) : na),
           ],
-          note: t('bracketNote'),
+          note: t(mtd?.calculationScheme && mtd.calculationScheme !== 'resident' ? 'schemeWorkingNote' : 'bracketNote'),
         };
 
       // 9.5 continued — the accumulators [C] subtracts and its divisor. Absent from this document until r372.
@@ -518,6 +519,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
         const rows: PcbSlipPdfRow[] = [
           figure(t('yearTotalTax'), trace && trace.totalTaxYear != null ? money(trace.totalTaxYear) : na),
         ];
+        if (fb.schemeAnnual) rows.push(...formulaRows(fb.schemeAnnual));
         for (const r of formulaRows(fb.year)) rows.push(r);
         return { columns: AMOUNT, rows, note: noteOf(fb.year) };
       }
@@ -583,7 +585,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
           columns: [],
           rows: [
             kv(t('sourceTaxYear'), String(Number.isFinite(taxYear) ? taxYear : row.payPeriod)),
-            kv(t('sourceTaxMethod'), x.kind === 'flat' ? t('methodFlat') : t('methodMtd')),
+            kv(t('sourceTaxMethod'), x.kind === 'flat' ? t('methodFlat') : x.kind === 'mtd' && x.calculationScheme ? t(`scheme_${x.calculationScheme}`) : t('methodMtd')),
             kv(t('sourceTaxTable'), prov?.rulesetVersion ?? null),
             kv(t('sourcePeriod'), periodLabel),
             kv(t('sourceCycle'), cycleKey ? t(cycleKey) : row.runType),

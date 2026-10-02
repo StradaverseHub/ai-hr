@@ -67,7 +67,7 @@ export type PcbFormulaFormat = {
  * document iterates the same list in the same order, so neither can carry a step the other does not.
  */
 export type PcbFormulaBlock = {
-  key: 'p1' | 'p2' | 'mtd' | 'net' | 'year' | 'flat';
+  key: 'p1' | 'p2' | 'mtd' | 'net' | 'year' | 'flat' | 'schemeAnnual';
   /** The specification's own step letter, '' for a step it letters differently or not at all. */
   step: string;
   /** Block heading caption key. */
@@ -111,13 +111,15 @@ export function pcbFormulaBlocks(x: PcbExplanation, f: PcbFormulaFormat): PcbFor
         // mean this file performing the addition, which is precisely what it may not do.
         resultLabel: 'resultLabel',
         result: x.pcbSystem,
-        notes: ['flatRoundingNote', 'flatNote'],
+        notes: ['flatRoundingNote', x.legacy === false ? 'nonresidentWorkingNote' : 'flatNote'],
       },
     ];
   }
 
   const t = x.trace;
   const n = f.int(x.remainingMonths);
+  const incentive = !!x.calculationScheme && x.calculationScheme !== 'resident';
+  const rebate = x.calculationScheme !== 'c_suite';
 
   /**
    * The seven terms of the agency's second bracket, in its order: D + S + DU + SU + QC + (∑LP + LP1).
@@ -173,14 +175,23 @@ export function pcbFormulaBlocks(x: PcbExplanation, f: PcbFormulaFormat): PcbFor
     });
   }
 
+  if (incentive && t && x.chargeableIncomeWithAdditional !== null) {
+    blocks.push({key: 'schemeAnnual', step: '3', heading: 'yearTotalTax',
+      formula: rebate ? 'formulaSchemeAnnualRebate' : 'formulaSchemeAnnual',
+      substituted: `max( 0, ${f.b2(x.chargeableIncomeWithAdditional)} × ${f.pct(t.R)}${rebate ? ` − ${f.b2(t.T2!)}` : ''} )`,
+      resultLabel: 'yearTotalTax', result: t.totalTaxYear, notes: ['schemeWorkingNote']});
+  }
+
   // ── Step 1[C] — MTD on net normal remuneration for the current month. ─────────────────────────────
   blocks.push({
     key: 'mtd',
     step: 'C',
     heading: 'formulaHeading',
-    formula: 'formulaMtd',
+    formula: incentive ? (rebate ? 'formulaSchemeMtdRebate' : 'formulaSchemeMtd') : 'formulaMtd',
     substituted: t
-      ? `max( 0, max( 0, ( ${f.b2(x.chargeableIncome)} − ${f.b2(t.M)} ) × ${f.pct(t.R)} + ${f.b2(t.B)} ) − ( ${f.b2(t.Z)} + ${f.b2(x.pcbPaidYtd)} ) ) ÷ ( ${n} + 1 )`
+      ? incentive
+        ? `max( 0, max( 0, ${f.b2(x.chargeableIncome)} × ${f.pct(t.R)}${rebate ? ` − ${f.b2(t.T!)}` : ''} ) − ( ${f.b2(t.Z)} + ${f.b2(x.pcbPaidYtd)} ) ) ÷ ( ${n} + 1 )`
+        : `max( 0, max( 0, ( ${f.b2(x.chargeableIncome)} − ${f.b2(t.M)} ) × ${f.pct(t.R)} + ${f.b2(t.B)} ) − ( ${f.b2(t.Z)} + ${f.b2(x.pcbPaidYtd)} ) ) ÷ ( ${n} + 1 )`
       : null,
     // `taxOnP1` IS the inner bracket as the engine stored it — already floored at zero by `annualTaxFor`.
     // So the calculation row resolves the bracket and keeps the outer clamp, which is one fewer term and
