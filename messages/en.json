@@ -1683,7 +1683,9 @@
       "childrenPhysicalDoc": "The number of children who qualify. Form EA item 8, Form E and CP8D read this one.",
       "childrenQualifyingDoc": "LHDN’s C — a weighting, not a number of people: each child counted as the s.48 units its relief category carries. The monthly PCB calculation and its slip read this one; nothing on Form EA prints it. The relief it produces, RM{perChild} × C, is what Form EA Section D item 6 prints.",
       "epfManualAmountHint": "Enter the exact monthly EPF contribution in ringgit. It is used from the very first payroll run and on every reprocess. A side left blank keeps the statutory calculation. An amount below the EPF Act schedule is accepted and recorded — the KWSP submission file will carry the true wage against your amount, and the agency is the one who checks them.",
-      "epfManualDraftHint": "The fixed-amount categories (Manual by Amount) are set on the employee’s Bank & Statutory card after the employee is created, because the amount itself is not collected here."
+      "epfManualDraftHint": "The fixed-amount categories (Manual by Amount) are set on the employee’s Bank & Statutory card after the employee is created, because the amount itself is not collected here.",
+      "childQualificationUnavailable": "Not available",
+      "childQualificationReviewSettings": "Review the PCB child relief settings before processing payroll."
     },
     "import": {
       "title": "Import employees",
@@ -5180,7 +5182,13 @@
       "skbbkAbout": "SKBBK is an employee-paid leg that rides on the SOCSO contribution bands. It is maintained together with SOCSO — publishing a SOCSO override updates these figures. The employer and SOCSO employee columns are unchanged.",
       "secSkbbk": "SKBBK (Lindung 24 Jam)",
       "skbbkBothCategories": "Identical for Category 1 and Category 2 — {count} bands verified to the RM6,000 ceiling. Employees aged 60 and above and foreign workers contribute too.",
-      "skbbkEditNote": "SKBBK amounts are the SKBBK (RM) column of the SOCSO band tables below. Edit them here and publish — the change is saved as a SOCSO statutory version."
+      "skbbkEditNote": "SKBBK amounts are the SKBBK (RM) column of the SOCSO band tables below. Edit them here and publish — the change is saved as a SOCSO statutory version.",
+      "childQualificationQNote": "Changing relief per child changes the deduction for future payroll. It does not change qualifying-child counts.",
+      "childQualificationExplicitNote": "Qualifying-child weights are recorded separately from the relief per child.",
+      "childQualificationLegacyNote": "This earlier configuration records category relief amounts. Publishing an update will preserve its current qualifying-child weights before applying any new relief per child.",
+      "childQualificationInvalid": "Child relief settings are inconsistent. Review the qualifying-child weights and category amounts before processing payroll or publishing the configuration.",
+      "childQualificationCount": "Qualifying children",
+      "childQualificationUnavailable": "Not available"
     },
     "transactions": {
       "title": "Transaction Entry",

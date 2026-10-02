@@ -1,5 +1,6 @@
 'use server';
 
+import { getTranslations } from 'next-intl/server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -36,7 +37,9 @@ export async function saveStatutoryAction(formData: FormData) {
   try {
     await pack!.statutoryConfig.save(s, { version, effectiveFrom, data, notes });
   } catch (e) {
-    const msg = e instanceof StatutoryRulesetInvalidError ? e.problems.join('; ') : (e as Error).message;
+    const t = await getTranslations('payroll.config');
+    const msg = e instanceof StatutoryRulesetInvalidError && e.problems.includes('pcb_child_relief_configuration_invalid')
+      ? t('childQualificationInvalid') : e instanceof StatutoryRulesetInvalidError ? e.problems.join('; ') : (e as Error).message;
     redirect(`${returnTo}?edit=1&error=${encodeURIComponent(msg)}`);
   }
   // Revalidate both the return tab AND the index (the overview banner/history/versions grid reflect the
@@ -109,7 +112,9 @@ export async function setStatutoryComponentAction(formData: FormData) {
   try {
     await pack!.statutoryConfig.setComponent(s, { body, version, effectiveFrom, data, notes });
   } catch (e) {
-    const msg = e instanceof StatutoryRulesetInvalidError ? e.problems.join('; ') : (e as Error).message;
+    const t = await getTranslations('payroll.config');
+    const msg = e instanceof StatutoryRulesetInvalidError && e.problems.includes('pcb_child_relief_configuration_invalid')
+      ? t('childQualificationInvalid') : e instanceof StatutoryRulesetInvalidError ? e.problems.join('; ') : (e as Error).message;
     redirect(`${returnTo}?error=${encodeURIComponent(msg)}`);
   }
   revalidatePath(returnTo);

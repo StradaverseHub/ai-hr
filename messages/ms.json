@@ -1683,7 +1683,9 @@
       "childrenPhysicalDoc": "Bilangan anak yang layak. Borang EA item 8, Borang E dan CP8D membaca yang ini.",
       "childrenQualifyingDoc": "C LHDN — satu pemberat, bukan bilangan orang: setiap anak dikira sebagai unit s.48 yang dibawa oleh kategori pelepasannya. Pengiraan PCB bulanan dan slipnya membaca yang ini; tiada apa-apa pada Borang EA mencetaknya. Pelepasan yang terhasil, RM{perChild} × C, ialah apa yang dicetak oleh Borang EA Seksyen D item 6.",
       "epfManualAmountHint": "Masukkan caruman KWSP bulanan yang tepat dalam ringgit. Ia digunakan dari proses gaji yang pertama dan pada setiap proses semula. Bahagian yang dibiarkan kosong kekal menggunakan pengiraan berkanun. Jumlah di bawah jadual Akta KWSP diterima dan direkodkan — fail penghantaran KWSP akan membawa upah sebenar berserta jumlah anda, dan pihak agensi yang akan menyemaknya.",
-      "epfManualDraftHint": "Kategori jumlah tetap (Manual mengikut Jumlah) ditetapkan pada kad Bank & Statutori pekerja selepas pekerja dicipta, kerana jumlah itu sendiri tidak dikumpulkan di sini."
+      "epfManualDraftHint": "Kategori jumlah tetap (Manual mengikut Jumlah) ditetapkan pada kad Bank & Statutori pekerja selepas pekerja dicipta, kerana jumlah itu sendiri tidak dikumpulkan di sini.",
+      "childQualificationUnavailable": "Tidak tersedia",
+      "childQualificationReviewSettings": "Semak tetapan pelepasan anak PCB sebelum memproses gaji."
     },
     "import": {
       "title": "Import pekerja",
@@ -4799,7 +4801,13 @@
       "skbbkAbout": "SKBBK ialah bahagian caruman pekerja yang menumpang pada band caruman SOCSO. Ia diselenggara bersama SOCSO — menerbitkan tindanan SOCSO akan mengemas kini angka ini. Lajur majikan dan pekerja SOCSO tidak berubah.",
       "secSkbbk": "SKBBK (Lindung 24 Jam)",
       "skbbkBothCategories": "Sama untuk Kategori 1 dan Kategori 2 — {count} band disahkan hingga siling RM6,000. Pekerja berumur 60 tahun ke atas dan pekerja asing turut mencarum.",
-      "skbbkEditNote": "Amaun SKBBK ialah lajur SKBBK (RM) pada jadual band SOCSO di bawah. Sunting di sini dan terbitkan — perubahan disimpan sebagai versi berkanun SOCSO."
+      "skbbkEditNote": "Amaun SKBBK ialah lajur SKBBK (RM) pada jadual band SOCSO di bawah. Sunting di sini dan terbitkan — perubahan disimpan sebagai versi berkanun SOCSO.",
+      "childQualificationQNote": "Mengubah pelepasan setiap anak mengubah potongan untuk gaji akan datang. Ia tidak mengubah bilangan anak yang layak.",
+      "childQualificationExplicitNote": "Pemberat anak yang layak direkodkan berasingan daripada pelepasan setiap anak.",
+      "childQualificationLegacyNote": "Konfigurasi terdahulu ini merekodkan amaun pelepasan mengikut kategori. Kemas kini akan mengekalkan pemberat anak yang layak semasa sebelum menggunakan pelepasan setiap anak yang baharu.",
+      "childQualificationInvalid": "Tetapan pelepasan anak tidak konsisten. Semak pemberat anak yang layak dan amaun kategori sebelum memproses gaji atau menerbitkan konfigurasi.",
+      "childQualificationCount": "Anak yang layak",
+      "childQualificationUnavailable": "Tidak tersedia"
     },
     "batch": {
       "back": "Gaji",

@@ -10,6 +10,7 @@ import { saveStatutoryAction } from '@/app/payroll/configuration/actions';
 // this client component never names the MY tables.
 import type { ContribBand, SocsoBand, StatutoryRuleset } from '@/localization/country-pack';
 
+import { repriceChildQualificationReliefs } from '@/localization/child-qualification';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
 /** The pack's built-in verified EPF Third Schedule tables (CountryPack.payroll.epfThirdSchedule),
@@ -195,13 +196,14 @@ export function assemble(s: FormState, base: StatutoryRuleset, epfFallback: EpfS
       // The `ot` slice three lines above documents this exact hazard and was already fixed for it. The
       // reliefs were missed. Spread first, THEN overwrite the four this form actually edits, so a relief
       // the UI has never heard of survives a round trip untouched.
-      reliefs: {
+      reliefs: (() => { const edited = {
         ...base.pcb.reliefs,
         individual: num(s.reliefIndividual),
         spouse: num(s.reliefSpouse),
         perChild: num(s.reliefPerChild),
         epfReliefCap: num(s.reliefEpfCap),
-      },
+      }; try { return base.pcb.reliefs.childByCategory || base.pcb.reliefs.childQualificationWeights
+        ? repriceChildQualificationReliefs(edited, base.pcb.reliefs) : edited; } catch { return edited; } })(),
       bands: s.pcbBands.map((b) => ({
         upTo: b.upTo.trim() === '' ? null : num(b.upTo),
         M: num(b.M),
@@ -375,6 +377,7 @@ export function StatutoryConfigForm({
         {/* Third Schedule band tables — amounts are RM per wage band (not %), rounded up to the ringgit.
             The wage range each row covers runs from the previous row's "Wage To" up to this row's; the
             open-ended top band ("and above") is the exact-percentage tail beyond RM20,000. */}
+        <p className="mt-3 text-sm text-muted-foreground">{t('childQualificationQNote')}</p>
         <h3 className="mb-2 mt-5 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('epfPartA')}</h3>
         <p className="mb-2 text-xs text-muted-foreground">{t('epfBandsNote')}</p>
         <BandGridEditor<EpfBandRow>

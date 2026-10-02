@@ -1683,7 +1683,9 @@
       "childrenPhysicalDoc": "Số con đủ điều kiện. Mẫu EA mục 8, Mẫu E và CP8D đọc mục này.",
       "childrenQualifyingDoc": "C của LHDN — một trọng số, không phải số người: mỗi con được tính bằng số đơn vị theo mục 48 của loại giảm trừ tương ứng. Phép tính PCB hàng tháng và phiếu tính của nó đọc mục này; không có ô nào trên Mẫu EA in ra nó. Khoản giảm trừ thu được, RM{perChild} × C, là con số mà Mẫu EA Phần D mục 6 in ra.",
       "epfManualAmountHint": "Nhập chính xác số tiền đóng EPF hằng tháng bằng ringgit. Số tiền này được dùng ngay từ lần tính lương đầu tiên và trong mọi lần tính lại. Bên để trống vẫn giữ cách tính theo luật định. Số tiền thấp hơn biểu của Luật EPF vẫn được chấp nhận và ghi nhận — tệp gửi KWSP sẽ mang mức lương thực tế cùng số tiền bạn nhập, và cơ quan quản lý là bên đối chiếu.",
-      "epfManualDraftHint": "Các loại số tiền cố định (Thủ công theo số tiền) được đặt trên thẻ Ngân hàng & Luật định của nhân viên sau khi nhân viên được tạo, vì số tiền không được thu thập ở đây."
+      "epfManualDraftHint": "Các loại số tiền cố định (Thủ công theo số tiền) được đặt trên thẻ Ngân hàng & Luật định của nhân viên sau khi nhân viên được tạo, vì số tiền không được thu thập ở đây.",
+      "childQualificationUnavailable": "Không có dữ liệu",
+      "childQualificationReviewSettings": "Kiểm tra thiết lập giảm trừ cho con PCB trước khi xử lý lương."
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -4799,7 +4801,13 @@
       "skbbkAbout": "SKBBK là khoản do người lao động đóng, đi kèm trên các bậc đóng góp SOCSO. Nó được duy trì cùng với SOCSO — việc phát hành ghi đè SOCSO sẽ cập nhật các con số này. Cột người sử dụng lao động và người lao động SOCSO không thay đổi.",
       "secSkbbk": "SKBBK (Lindung 24 Jam)",
       "skbbkBothCategories": "Giống nhau cho Nhóm 1 và Nhóm 2 — {count} bậc đã được xác minh đến mức trần RM6,000. Người lao động từ 60 tuổi trở lên và lao động nước ngoài cũng phải đóng.",
-      "skbbkEditNote": "Số tiền SKBBK là cột SKBBK (RM) trong các bảng bậc SOCSO bên dưới. Chỉnh sửa tại đây và phát hành — thay đổi được lưu dưới dạng phiên bản pháp định SOCSO."
+      "skbbkEditNote": "Số tiền SKBBK là cột SKBBK (RM) trong các bảng bậc SOCSO bên dưới. Chỉnh sửa tại đây và phát hành — thay đổi được lưu dưới dạng phiên bản pháp định SOCSO.",
+      "childQualificationQNote": "Thay đổi mức giảm trừ mỗi con sẽ thay đổi khoản giảm trừ cho kỳ lương sau. Số con đủ điều kiện không thay đổi.",
+      "childQualificationExplicitNote": "Trọng số con đủ điều kiện được ghi riêng với mức giảm trừ mỗi con.",
+      "childQualificationLegacyNote": "Cấu hình trước đây ghi số tiền giảm trừ theo nhóm. Khi công bố bản cập nhật, hệ thống giữ nguyên trọng số con đủ điều kiện hiện tại trước khi áp dụng mức giảm trừ mới.",
+      "childQualificationInvalid": "Thiết lập giảm trừ cho con không nhất quán. Kiểm tra trọng số con đủ điều kiện và số tiền theo nhóm trước khi xử lý lương hoặc công bố cấu hình.",
+      "childQualificationCount": "Con đủ điều kiện",
+      "childQualificationUnavailable": "Không có dữ liệu"
     },
     "batch": {
       "back": "Bảng lương",

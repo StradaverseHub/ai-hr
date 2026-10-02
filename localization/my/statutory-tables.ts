@@ -20,7 +20,9 @@
  * Retrieved: 2026-06-06.
  */
 
-export const MY_STATUTORY_VERSION = '2026.10';
+export const MY_STATUTORY_VERSION = '2026.11';
+// 2026.11 (2026-10-02): explicit qualifying-child weights; future Q edits preserve C. Existing
+// unversioned effective-dated rulesets retain their legacy monetary-price semantics.
 // 2026.10 (2026-10-02): category-specific annual PCB for approved REP, Knowledge Worker and C-Suite.
 // LHDN 2026 printed pp.13–18; stored earlier payroll is not rewritten.
 // 2026.9 (2026-09-25): `disabledSpouse` CORRECTED RM5,000 -> RM6,000 against the primary source — item
@@ -247,6 +249,8 @@ export const MY_RELIEFS = {
    * f) ABOVE now carry the same primary-source footing, read off the same Reliefs table — item 57d48735
    * corrected the second and cited both. They remain awaiting the same human sign-off as these five.
    */
+  childQualificationVersion: 1 as const,
+  childQualificationWeights: { under_18: 1, study_preu: 1, study_tertiary: 4, disabled: 4, disabled_study: 8 },
   childByCategory: {
     // NB: keyed by CHILD_RELIEF_CATEGORY_KEYS below — the SAME five keys the Family register stores per
     // child (core/dependents.ts CHILD_RELIEF_CATEGORIES). A test pins the two lists equal.
@@ -823,6 +827,9 @@ export type StatutoryRuleset = {
        *  built-in map. Read ONLY for an employee in 'auto_table' child-relief mode; every other
        *  employee keeps `children × perChild`. */
       childByCategory?: Record<string, number>;
+      /** Prospective explicit qualification weights: changing Q changes money, never these counts. */
+      childQualificationVersion?: 1;
+      childQualificationWeights?: Record<string, number>;
     };
   };
   ot: {

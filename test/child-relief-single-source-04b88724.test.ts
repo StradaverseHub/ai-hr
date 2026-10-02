@@ -99,12 +99,9 @@ describe('(2) the COUNT and the MONEY are the same statement', () => {
       expect(p.amountRM).toBe(RELIEFS.childByCategory![p.key]);
       expect(p.units * RELIEFS.perChild).toBeCloseTo(p.amountRM, 6);
     }
-    // A ruleset with no usable per-child rate prices no COUNT rather than dividing by zero.
+    // A zero Q alongside positive category money is invalid and offers no printable UI prices.
     const noRate = { ...RELIEFS, perChild: 0 } as StatutoryRuleset['pcb']['reliefs'];
-    for (const p of childReliefPrices(noRate)) {
-      expect(Number.isFinite(p.units)).toBe(true);
-      expect(p.units).toBe(0);
-    }
+    expect(childReliefPrices(noRate)).toEqual([]);
   });
 });
 

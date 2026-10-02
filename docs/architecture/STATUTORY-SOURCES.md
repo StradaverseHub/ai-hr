@@ -1,6 +1,6 @@
 # Malaysia Statutory Figures — Sources & Verification
 
-**Statutory-table version:** `2026.10` (see `MY_STATUTORY_VERSION`)
+**Statutory-table version:** `2026.11` (see `MY_STATUTORY_VERSION`)
 **Retrieved:** 2026-06-06 (PCB/EPF) · 2026-06-11 (SOCSO/EIS exact schedules) · 2026-06-19 (EPF Third Schedule Part A #95; SOCSO Lindung-24-Jam/SKBBK #155)
 **Encoded in:** `localization/my/statutory-tables.ts`, applied by `localization/my/payroll.ts`
 
@@ -13,6 +13,8 @@ Each payslip stores the `version` string above in its `statutory` JSON, so any f
 to these tables is traceable to the exact runs it affects.
 
 ---
+
+**2026.11 child qualification configuration.** New default rulesets explicitly retain the HASiL 2026 printed-page 27 weights (1, 1, 4, 4, 8). Changing Q changes the deduction, not qualifying C. Existing unversioned effective-dated overrides and signed packs keep their monetary category prices. A new configuration publication preserves their current exact weights once and records the new basis; issued payroll is never rewritten.
 
 ## 1. PCB / MTD (income tax) — ✅ Verified
 
