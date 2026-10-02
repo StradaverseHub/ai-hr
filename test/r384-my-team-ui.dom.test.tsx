@@ -29,13 +29,18 @@ describe('My Team client consumes canonical facts and preserves action context',
   expect(document.activeElement).toBe(screen.getByRole('button',{name:/Synthetic A S-01/}));expect(errors).toEqual([]);
  });
  it('shows the complete week, pending request range, KL application date, attention badge and absent shift facts',()=>{
-  const snapshot=teamSnapshot();snapshot.actionableApprovals[0].appliedAt='2026-10-01T20:30:00Z';snapshot.attention.push({kind:'absent',id:'absent',employmentId:ids.person,date:snapshot.today,lateMinutes:null,pendingLeave:true});
+  const snapshot=teamSnapshot();snapshot.actionableApprovals[0].appliedAt='2026-10-01T20:30:00Z';snapshot.attention.push({kind:'absent',id:'absent',employmentId:ids.person,date:snapshot.today,lateMinutes:null,pendingLeave:true,roster:{...snapshot.employees[0].days[1].roster!,code:'N',start:'22:00',end:'06:00'}});
   mount(snapshot);
   expect(screen.getByText(/Sep 28.*Oct 4/)).toBeTruthy();expect(screen.getByText(/Synthetic A.*Oct 5.*Oct 6/)).toBeTruthy();
   expect(screen.getByText(/applied Fri, Oct 2/)).toBeTruthy();expect(screen.getByLabelText('2 items need attention').textContent).toBe('2');
-  expect(screen.getByText(/D · 08:30–17:30/).textContent).toContain(en.myTeam.noCheckIn);expect(screen.getByText(/D · 08:30–17:30/).textContent).toContain(en.myTeam.leavePending);
+  expect(screen.getByText(/N · 22:00–06:00/).textContent).toContain(en.myTeam.noCheckIn);expect(screen.getByText(/N · 22:00–06:00/).textContent).toContain(en.myTeam.leavePending);
   const today=screen.getByRole('region',{name:en.myTeam.today});expect(today.className).toContain('grid-cols-2');expect(today.className).toContain('min-[900px]:grid-cols-3');expect(today.className).not.toContain('xl:grid-cols-6');
   expect(screen.getByText(en.myTeam.status_upcoming)).toBeTruthy();
+ });
+ it('pending titles disclose the exact remaining dates instead of already decided or intervening dates',()=>{
+  const snapshot=teamSnapshot();snapshot.actionableApprovals[0].effectiveDates=[{date:'2026-10-06',days:1},{date:'2026-10-08',days:1}];mount(snapshot);
+  const attention=screen.getByRole('region',{name:/Needs your attention/});const title=within(attention).getByText(/Synthetic A.*Oct 6.*Oct 8/);
+  expect(title.textContent).not.toContain('Oct 5');expect(title.textContent).not.toContain('Oct 7');
  });
  it('month cells expose full details on keyboard focus and panel tabs support arrow navigation and modal focus',async()=>{
   const snapshot=teamSnapshot();snapshot.query.view='month';mount(snapshot);const user=userEvent.setup();

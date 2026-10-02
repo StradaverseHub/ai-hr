@@ -52,10 +52,11 @@ export type MyTeamApproval = {
   leaveTypeId: string; leaveType: string; startDate: string; endDate: string; days: number;
   appliedAt: string; annualAvailable: number | null; dateDecisionRequired: boolean;
   dates: { id:string;date: string; days: number; status: string }[];
+  effectiveDates: {date:string;days:number}[];
 };
 export type MyTeamAttention =
   | { kind: 'pending_leave'; id: string; employmentId: string; approval: MyTeamApproval }
-  | { kind: 'absent' | 'late'; id: string; employmentId: string; date: string; lateMinutes: number | null; pendingLeave: boolean }
+  | { kind: 'absent' | 'late'; id: string; employmentId: string; date: string; lateMinutes: number | null; pendingLeave: boolean; roster:MyTeamRosterDay|null }
   | { kind: 'missing_punch'; id: string; employmentId: string; date: string; attendanceId: string; fingerprint: string };
 export type MyTeamSnapshot = {
   query: MyTeamNormalizedQuery; today: string;
