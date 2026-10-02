@@ -123,12 +123,13 @@ describe('fbcf706d — the side effects of adding an employee to a processed pay
     expect(r.recalculated).toBe(1);
 
     // The event the Payroll Process list and the result panel read carries the same split.
-    const [ev] = await eventsOfType('payroll-batch.selective-reprocessed');
-    const payload = ev.payload as Record<string, unknown>;
-    expect(payload.headcount).toBe(2);
-    expect(payload.addedCount).toBe(1);
-    expect(payload.recalculatedCount).toBe(1);
-    expect(payload.addedEmploymentIds).toEqual([late.employmentId]);
+    const events = await eventsOfType('payroll-batch.selective-reprocessed');
+    expect(events).toHaveLength(2);
+    const payloads = events.map(e=>e.payload as {headcount:number;addedCount:number;recalculatedCount:number;addedEmploymentIds:string[]});
+    expect(Math.max(...payloads.map(p=>p.headcount))).toBe(2);
+    expect(payloads.reduce((n,p)=>n+p.addedCount,0)).toBe(1);
+    expect(payloads.reduce((n,p)=>n+p.recalculatedCount,0)).toBe(1);
+    expect(payloads.flatMap(p=>p.addedEmploymentIds)).toEqual([late.employmentId]);
 
     // The audit distinguishes the two. An add has no version and no figures BEFORE it, which is what
     // stops the disclosure rendering a rise from 0.00 as if the person's pay had gone up.
@@ -156,11 +157,15 @@ describe('fbcf706d — the side effects of adding an employee to a processed pay
 
     await expect(
       reprocessSelectedEmployees(a, { batchId, employmentIds: [onRun.employmentId, future.employmentId] }),
-    ).rejects.toThrow(/FutureHire[^]*not on this payroll run/);
+    ).rejects.toMatchObject({name:'PayrollReprocessStoppedError',cause:expect.objectContaining({message:expect.stringMatching(/FutureHire[^]*not on this payroll run/)})});
 
     // Fails closed: the whole job is refused, so the person who WAS on the run is not half-processed.
     expect(await slipOf(batchId, future.employmentId)).toBeNull();
-    expect((await slipOf(batchId, onRun.employmentId))!.version).toBe(1);
+    // A global error stops the job; earlier employee transactions may already be committed.
+    const [stoppedJob] = await owner.db.select().from(schema.payrollReprocessJob).where(eq(schema.payrollReprocessJob.batchId,batchId));
+    const priorOutcomes = (stoppedJob.result as {outcomes?:{employmentId:string}[]} | null)?.outcomes ?? [];
+    expect(stoppedJob.status).toBe('failed');
+    expect((await slipOf(batchId, onRun.employmentId))!.version).toBe(priorOutcomes.some(r=>r.employmentId===onRun.employmentId) ? 2 : 1);
     expect((await batchRow(batchId)).employeeCount).toBe(1);
   });
 
@@ -291,7 +296,7 @@ describe('fbcf706d — the side effects of adding an employee to a processed pay
 
     await expect(
       reprocessSelectedEmployees(a, { batchId, employmentIds: [late.employmentId] }),
-    ).rejects.toThrow(/claim allowance of 250\.00 against 0\.00/);
+    ).rejects.toMatchObject({name:'PayrollReprocessStoppedError',cause:expect.objectContaining({message:expect.stringMatching(/claim allowance of 250\.00 against 0\.00/)})});
 
     // Fails closed, in one transaction: no payslip, no headcount move, claim untouched.
     expect(await slipOf(batchId, late.employmentId)).toBeNull();
@@ -397,7 +402,7 @@ describe('fbcf706d — the side effects of adding an employee to a processed pay
 
     await expect(
       reprocessSelectedEmployees(a, { batchId, employmentIds: [late.employmentId] }),
-    ).rejects.toThrow(/loan instalment of 200\.00 with no instalment held on this run/);
+    ).rejects.toMatchObject({name:'PayrollReprocessStoppedError',cause:expect.objectContaining({message:expect.stringMatching(/loan instalment of 200\.00 with no instalment held on this run/)})});
 
     expect(await slipOf(batchId, late.employmentId)).toBeNull();
     expect((await batchRow(batchId)).employeeCount).toBe(1);
@@ -432,9 +437,10 @@ describe('fbcf706d — the side effects of adding an employee to a processed pay
     // screen says will happen is what the engine will actually do.
     const notReadyRow = rows.find((r) => r.employmentId === notReady.employmentId)!;
     expect(notReadyRow.blockers).toContain('missingCompensation');
-    await expect(
-      reprocessSelectedEmployees(a, { batchId, employmentIds: [notReady.employmentId] }),
-    ).rejects.toThrow(/no current salary record/);
+    expect(await reprocessSelectedEmployees(a, {batchId,employmentIds:[notReady.employmentId]})).toMatchObject({
+      status:'completed',validationFailed:1,outcomes:[{employmentId:notReady.employmentId,status:'validation_failed',
+        validationDetails:[{gap:'no current salary record'}]}],
+    });
   });
 
   it('reports the run’s chosen list rather than filtering by it', async () => {
