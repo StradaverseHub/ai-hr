@@ -1,0 +1,46 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+The last revision made the Employee Profile more rigid and less compact than the previous payslip. The company logo and name are still available today, but their size and spacing no longer give the header the familiar emphasis you want. We will restore the earlier compact arrangement first, then improve its typography and alignment.
+
+WHAT WE'LL CHANGE
+
+- Keep the company logo at the top-left, with a clearly readable company name alongside it and the company registration below when available.
+- Keep the selected payroll month and year at the top-right. Show the saved payment date there when available; neither belongs inside Employee Profile.
+- Restore the previous compact Employee Profile: two balanced columns of aligned labels and values inside one lightly bordered section. Remove the heavy border around every field. Keep the existing configured field order and allow long names and descriptions to wrap completely.
+- Keep payment method, bank name, full bank account and payroll cycle together with the employee details, without creating another payment card or repeating company identification and pay period.
+- Use consistent text sizes, restrained section headings and balanced spacing throughout. Keep earnings and deductions side by side with their total rows aligned, followed by Net Pay, applicable recorded items, employer contributions and Year to Date.
+- Apply the same header, field order and section hierarchy to Review, Preview and the downloaded PDF. On small screens, columns will stack in the same reading order without losing any information.
+
+WHAT YOU'LL GET
+
+A familiar payslip with clear company branding, a compact employee profile and a cleaner professional appearance. The attached design shows the arrangement without example payroll amounts.
+
+GOOD TO KNOW
+
+- All saved payroll amounts, year totals, historical records and viewing permissions stay intact.
+- A company without an uploaded logo still shows its company name. Missing payment dates remain absent.
+- Previously removed titles, duplicate summaries and explanation messages will stay removed. Existing bank details remain in Employee Profile rather than being repeated in another section.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: latest live contest b19042d0-31ce-485e-89d5-45485ce5f0dd is contested, plan_revision 3, build_ref 5eed01bf. Read normal improve:pull-item and all attachment metadata. Visually inspected the reporter's New_Payslip_V1.png and New_Payslip_V2.png reuploaded at revision 3, plus the original New · A4 payslip.pdf. The screenshots/reference establish compact two-column inline label/value groups inside an outer profile border, not individually boxed fields. No fresh screenshot names a specific earlier release.
+
+DECISION: use the immediately previous pre-r381 design at ec442551b65bbca37ab031e8d3e22513f1590499 (37f48da5 parent) as the compact profile baseline, consistent with the reporter screenshots. Preserve its two-column inline structure and ordered configured fields, while keeping company identification and pay period only in the header. Earlier pre-r379 a20ddbdd used three stacked field columns; do not restore that older design or reverse saved-data fixes. This is one chosen course, not an unresolved choice.
+
+FACT: 37f48da5 changed the PDF profile from spaced inline rows with one outer border to equal-font individually bordered cells, and changed the review Info/dl layout to a full field grid. Current lib/payslip-pdf.ts drawLetterhead already draws the uploaded logo at x=M, but renders the company name below it at 8.5pt; current review header already loads an image at the left. Therefore do not claim the company-logo facility is absent. Restore branding emphasis and adjacency using the actual authorized logo of the selected payslip company, preserving aspect ratio, bounded dimensions and the text-only fallback. Registration is labelled below the name, not duplicated in profile.
+
+Ownership: app/payroll/individual-payslip/page.tsx owns authorized Individual Payslip review layout; lib/payslip-pdf.ts owns the shared PDF renderer consumed by both app/payroll/individual-payslip/[payslipId]/pdf/route.ts and app/me/payslip/[payslipId]/pdf/route.ts. lib/payslip-pdf-strings.ts supplies localized period/payment captions and exact saved payment-date formatting. core/payslip-information.ts selectPayslipInformation owns configured field vocabulary/order. Keep these readers and authorization fences unchanged. The existing core/admin getCompanyLogo and authenticated app/admin/organization/logo/[id]/route.ts own logo bytes; no new uploads, storage or logo access policy.
+
+Use the same ordered profile-row projection for the review and PDF, including payroll cycle and payment/bank fields, with no company/registration/period/date duplicates. Measure actual localized labels and values; wrap without character caps. Keep a single outer border and subtle section rule, consistent label widths and compact row padding. Mobile uses row-major single-column reading order; PDF keeps paired columns with safe continuation headings. The restored baseline does not restore masked bank accounts, removed text, obsolete summary, zero Basic Salary rows or incorrect contribution classification.
+
+Coordinate with the current BIK/VOLA work: preserve saved non-cash recorded items and the required truthful non-cash explanation, regardless of this visual restoration. Preserve admin calculation/source drill-down links outside the transaction pair and the retained-result notice. Do not edit core/payroll.ts or duplicate calculation logic.
+
+Validation before shipping: use synthetic saved payroll fixtures with real uploaded PNG/JPEG and no-logo/corrupt-logo controls. Verify company/logo/actual selected period header geometry, no period in profile, identical ordered fields in review/PDF, no duplicate identification, full authorized bank value, configuration subsets, uneven transaction row counts, long names/labels and multipage wrapping. Check all six locales, phone/wide and light/dark review plus actual Preview/PDF. Reverse the new layout or header projection and require a named geometry/order assertion to fail. Parent alone runs full gate, build, shadow when applicable and deployment arrival.
+
+UNKNOWN: the reporter did not identify an earlier commit or provide a new earlier-version image. The explicit baseline above is supported by the prior uploaded screenshots and is visible in this proposal. Production render parity remains to be verified by the parent.
+
+Not done: no source implementation, runtime server, payroll recalculation, private production payroll/personnel query, historical rewrite, board write or deployment. This draft and mockup are prepared for parent review/render/post.
