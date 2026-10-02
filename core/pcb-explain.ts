@@ -1241,6 +1241,18 @@ const slipComponentRows = (captions: readonly string[]): PcbSlipRow[] =>
     first: { kind: 'notSeparatelyRecorded' } as PcbWorksheetValue,
   }));
 
+function recordedBenefitRows(benefits: PcbNonCashSnapshot): PcbSlipRow[] {
+  return (['bik','vola'] as const).flatMap(kind => [
+    {line:'',caption:kind==='bik'?'slipCompBenefitsInKind':'slipCompLivingAccommodation',ns:'pcbDetail' as const,first:slipMoney(benefits.current[kind].taxable)},
+    {line:'',caption:kind==='bik'?'slipBikEntered':'slipVolaEntered',ns:'pcbDetail' as const,first:slipMoney(benefits.current[kind].entered)},
+    {line:'',caption:kind==='bik'?'slipBikExempt':'slipVolaExempt',ns:'pcbDetail' as const,first:slipMoney(benefits.current[kind].exempt)},
+  ]);
+}
+function accumulatedBenefitRows(benefits?: PcbNonCashSnapshot | null): PcbSlipRow[] {
+  return (['bik','vola'] as const).map(kind => ({line:'',caption:kind==='bik'?'slipAccBik':'slipAccVola',ns:'pcbDetail' as const,
+    first:benefits?.accumulated.complete ? slipMoney(benefits.accumulated[kind]) : SLIP_ABSENT}));
+}
+
 /**
  * REPORTER SECTION 5 — CURRENT MONTH'S REMUNERATION.
  *
@@ -1249,14 +1261,9 @@ const slipComponentRows = (captions: readonly string[]): PcbSlipRow[] =>
  */
 export function pcbCurrentRemunerationSection(y1: PcbWorksheetValue, k1: PcbWorksheetValue, benefits?: PcbNonCashSnapshot | null): PcbSlipSection {
   const rows: PcbSlipRow[] = [{ line: 'Y1', caption: 'slipCurrentTotal', ns: 'pcbDetail', first: y1 }];
-  for (const r of slipComponentRows(SLIP_CURRENT_COMPONENTS)) {
-    const kind = r.caption === 'slipCompBenefitsInKind' ? 'bik' : r.caption === 'slipCompLivingAccommodation' ? 'vola' : null;
-    rows.push(kind ? {...r, first: benefits ? slipMoney(benefits.current[kind].taxable) : SLIP_ABSENT} : r);
-    if (kind && benefits) {
-      rows.push({line: '', caption: kind === 'bik' ? 'slipBikEntered' : 'slipVolaEntered', ns: 'pcbDetail', first: slipMoney(benefits.current[kind].entered)});
-      rows.push({line: '', caption: kind === 'bik' ? 'slipBikExempt' : 'slipVolaExempt', ns: 'pcbDetail', first: slipMoney(benefits.current[kind].exempt)});
-    }
-  }
+  for (const r of slipComponentRows(SLIP_CURRENT_COMPONENTS.filter(caption => caption !== 'slipCompBenefitsInKind' && caption !== 'slipCompLivingAccommodation'))) rows.push(r);
+  if (benefits) rows.push(...recordedBenefitRows(benefits));
+  else for (const caption of ['slipCompBenefitsInKind','slipCompLivingAccommodation']) rows.push({line:'',caption,ns:'pcbDetail',first:SLIP_ABSENT});
   rows.push({ line: 'K1', caption: 'slipCurrentEpf', ns: 'pcbDetail', first: k1 });
   return { heading: 'slipCurrentHeading', firstColumn: 'slipColAmount', rows, note: 'slipCurrentNote' };
 }
@@ -1495,8 +1502,7 @@ export function pcbAccumulatedRemunerationSection(
     { line: '', caption: 'slipAccGrossSalary', ns: 'pcbDetail', first: slipMoney(paid?.grossSalary) },
     { line: '', caption: 'slipAccFeesCommission', ns: 'pcbDetail', first: SLIP_COMBINED },
     { line: '', caption: 'slipAccTipsAllowances', ns: 'pcbDetail', first: slipMoney(paid?.allowances) },
-    { line: '', caption: 'slipAccBik', ns: 'pcbDetail', first: x.nonCash?.accumulated.complete ? slipMoney(x.nonCash.accumulated.bik) : SLIP_ABSENT },
-    { line: '', caption: 'slipAccVola', ns: 'pcbDetail', first: x.nonCash?.accumulated.complete ? slipMoney(x.nonCash.accumulated.vola) : SLIP_ABSENT },
+    ...accumulatedBenefitRows(x.nonCash),
     { line: '', caption: 'slipAccAdditional', ns: 'pcbDetail', first: slipMoney(paid?.additional) },
     {
       line: 'Y',
@@ -1570,6 +1576,10 @@ export function pcbSlipSections(
     accumulatedRemuneration?: PcbAccumulatedRemuneration | null;
   },
 ): PcbSlipSection[] {
+  if (x.kind === 'flat' && x.nonCash) return [
+    {heading:'slipAccHeading',firstColumn:'slipColAmount',rows:accumulatedBenefitRows(x.nonCash),note:'slipAccNote'},
+    {heading:'slipCurrentHeading',firstColumn:'slipColAmount',rows:recordedBenefitRows(x.nonCash),note:'slipCurrentNote'},
+  ];
   if (x.kind !== 'mtd') return [];
   const t = x.trace;
   return [
