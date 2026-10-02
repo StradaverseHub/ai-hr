@@ -1,5 +1,5 @@
 /** The Income Tax Resident field owns the scoped scheme; legacy approvals are conversion evidence only. */
-import {and,eq,inArray,isNull,sql} from 'drizzle-orm';
+import {and,eq,isNull,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {actorOf,appendEvent} from '../../db/events';
 import {assignment,company,employment,employeeStatutoryMy,employmentTaxSchemeMy,employmentTaxSelectionMy,payrollBatch} from '../../db/schema';
@@ -35,8 +35,9 @@ async function initialize(tx:Tx,ctx:SessionContext,e:{employmentId:string;person
  const legacy=legacyOf(profile?.taxResidency,profile?.isResident);
  const current=await tx.select({companyId:employment.companyId}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.personId,e.personId),isNull(employment.terminatedOn)));
  const assignments=await tx.select({companyId:assignment.companyId}).from(assignment).where(and(eq(assignment.tenantId,ctx.tenantId),eq(assignment.employmentId,e.employmentId),isNull(assignment.supersededAt)));
- const declarations=await tx.select({id:employmentTaxSchemeMy.id,scheme:employmentTaxSchemeMy.scheme}).from(employmentTaxSchemeMy).where(and(eq(employmentTaxSchemeMy.tenantId,ctx.tenantId),eq(employmentTaxSchemeMy.employmentId,e.employmentId),eq(employmentTaxSchemeMy.companyId,e.companyId),isNull(employmentTaxSchemeMy.archivedAt),sql`EXISTS (SELECT 1 FROM assignment a WHERE a.employment_id=${e.employmentId}::uuid AND a.tenant_id=${ctx.tenantId}::uuid AND a.company_id=${e.companyId}::uuid AND a.superseded_at IS NULL AND a.valid_from <= (to_date(${employmentTaxSchemeMy.validTo}||'-01','YYYY-MM-DD')+interval '1 month'-interval '1 day')::date AND (a.valid_to IS NULL OR a.valid_to > to_date(${employmentTaxSchemeMy.validFrom}||'-01','YYYY-MM-DD'))) OR EXISTS (SELECT 1 FROM employment e WHERE e.id=${e.employmentId}::uuid AND e.tenant_id=${ctx.tenantId}::uuid AND e.company_id=${e.companyId}::uuid AND e.hired_on <= (to_date(${employmentTaxSchemeMy.validTo}||'-01','YYYY-MM-DD')+interval '1 month'-interval '1 day')::date AND (e.terminated_on IS NULL OR e.terminated_on>=to_date(${employmentTaxSchemeMy.validFrom}||'-01','YYYY-MM-DD')))`));
- const needs=legacy==='resident'||legacy==='non_resident'?declarations.length>0:!['rep','knowledge_worker'].includes(legacy)||e.companyId!==e.currentCompanyId||new Set(current.map(x=>x.companyId)).size!==1||new Set(assignments.map(x=>x.companyId)).size>1||declarations.some(d=>d.scheme!==legacy);
+ const declarations=await tx.select({id:employmentTaxSchemeMy.id,scheme:employmentTaxSchemeMy.scheme,validFrom:employmentTaxSchemeMy.validFrom,validTo:employmentTaxSchemeMy.validTo}).from(employmentTaxSchemeMy).where(and(eq(employmentTaxSchemeMy.tenantId,ctx.tenantId),eq(employmentTaxSchemeMy.employmentId,e.employmentId),eq(employmentTaxSchemeMy.companyId,e.companyId),isNull(employmentTaxSchemeMy.archivedAt),sql`(EXISTS (SELECT 1 FROM assignment a WHERE a.employment_id=${e.employmentId}::uuid AND a.tenant_id=${ctx.tenantId}::uuid AND a.company_id=${e.companyId}::uuid AND a.superseded_at IS NULL AND a.valid_from <= (to_date(${employmentTaxSchemeMy.validTo}||'-01','YYYY-MM-DD')+interval '1 month'-interval '1 day')::date AND (a.valid_to IS NULL OR a.valid_to > to_date(${employmentTaxSchemeMy.validFrom}||'-01','YYYY-MM-DD'))) OR EXISTS (SELECT 1 FROM employment e WHERE e.id=${e.employmentId}::uuid AND e.tenant_id=${ctx.tenantId}::uuid AND e.company_id=${e.companyId}::uuid AND e.hired_on <= (to_date(${employmentTaxSchemeMy.validTo}||'-01','YYYY-MM-DD')+interval '1 month'-interval '1 day')::date AND (e.terminated_on IS NULL OR e.terminated_on>=to_date(${employmentTaxSchemeMy.validFrom}||'-01','YYYY-MM-DD'))))`));
+ const overlapping=declarations.some((d,i)=>declarations.slice(i+1).some(other=>d.validFrom<=other.validTo&&other.validFrom<=d.validTo));
+ const needs=legacy==='resident'||legacy==='non_resident'?declarations.length>0:!['rep','knowledge_worker'].includes(legacy)||e.companyId!==e.currentCompanyId||new Set(current.map(x=>x.companyId)).size!==1||new Set(assignments.map(x=>x.companyId)).size>1||declarations.some(d=>d.scheme!==legacy)||overlapping;
  const [row]=await tx.insert(employmentTaxSelectionMy).values({tenantId:ctx.tenantId,employmentId:e.employmentId,companyId:e.companyId,scheme:selectedSchemeOk(legacy)?legacy:null,transitionState:needs?'confirmation_required':'resolved',legacyScheme:legacy,source:'legacy_conversion',provenance:{reason:needs?'legacy_context_ambiguous':'legacy_unambiguous',declarationIds:declarations.map(d=>d.id).sort()},updatedByUserId:ctx.userId}).onConflictDoNothing().returning();
  if(row)return row;
  const [existing]=await tx.select().from(employmentTaxSelectionMy).where(and(eq(employmentTaxSelectionMy.tenantId,ctx.tenantId),eq(employmentTaxSelectionMy.employmentId,e.employmentId),eq(employmentTaxSelectionMy.companyId,e.companyId))).limit(1);return existing;
@@ -53,7 +54,7 @@ export async function saveTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p:{employmen
  if(p.personId&&p.personId!==e.personId)throw new TaxSelectionError('not_found');
  if(e.companyId!==p.expectedCompanyId||p.payrollBatchId&&e.payPeriod!==p.expectedPayPeriod)throw new TaxSelectionError('stale_context');
  await lock(tx,ctx.tenantId,e.employmentId);
- const [profile]=await tx.select({citizenship:employeeStatutoryMy.epfCitizenship}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,e.personId),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).limit(1);
+ const [profile]=await tx.select({citizenship:employeeStatutoryMy.epfCitizenship}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,e.personId),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).limit(1).for('share');
  if(p.scheme==='c_suite'&&!['pr','non_citizen'].includes(profile?.citizenship??''))throw new TaxSelectionError('citizenship_unknown',{configuredScheme:p.scheme});
  const before=await initialize(tx,ctx,e);
  if(p.expectedVersion!==undefined&&p.expectedVersion!==before.version)throw new TaxSelectionError('stale_context');
@@ -69,7 +70,12 @@ export async function resolveTaxSelectionMY(tx:Tx,p:{tenantId:string;employmentI
  const configured=row?.scheme??legacyOf(p.legacyScheme,p.resident);const details=selectedSchemeOk(configured)?{configuredScheme:configured}:undefined;
  if(!row||row.transitionState!=='resolved')throw new TaxSelectionError('confirmation_required',details);
  if(!selectedSchemeOk(row.scheme))throw new TaxSelectionError('invalid_scheme',details);
- if(row.scheme==='c_suite'&&!['pr','non_citizen'].includes(p.epfCitizenship??''))throw new TaxSelectionError('citizenship_unknown',{configuredScheme:row.scheme});
+ if(row.scheme==='c_suite'){
+  const [identity]=await tx.select({personId:employment.personId}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,p.tenantId))).limit(1);
+  if(!identity)throw new TaxSelectionError('not_found');
+  const [profile]=await tx.select({citizenship:employeeStatutoryMy.epfCitizenship}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,identity.personId),eq(employeeStatutoryMy.tenantId,p.tenantId))).limit(1).for('share');
+  if(!['pr','non_citizen'].includes(profile?.citizenship??''))throw new TaxSelectionError('citizenship_unknown',{configuredScheme:row.scheme});
+ }
  return {scheme:row.scheme,selectionId:row.id,selectionVersion:row.version,selectionSource:'income_tax_resident'};
 }
 /** Hiring supplies explicit initial normal/nonresident intent in the SAME employment transaction. */

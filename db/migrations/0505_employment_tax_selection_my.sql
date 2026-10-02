@@ -73,6 +73,7 @@ WITH contexts AS (
  CASE WHEN legacy IN ('resident','non_resident') THEN jsonb_array_length(declaration_ids)>0
  WHEN legacy IN ('rep','knowledge_worker') THEN current_company_id<>company_id OR current_employers<>1 OR assignment_employers>1
  OR EXISTS(SELECT 1 FROM employment_tax_scheme_my d WHERE d.id IN (SELECT value::uuid FROM jsonb_array_elements_text(declaration_ids)) AND d.scheme<>legacy)
+ OR EXISTS(SELECT 1 FROM employment_tax_scheme_my d JOIN employment_tax_scheme_my other ON d.id<other.id AND d.valid_from<=other.valid_to AND other.valid_from<=d.valid_to WHERE d.id IN (SELECT value::uuid FROM jsonb_array_elements_text(declaration_ids)) AND other.id IN (SELECT value::uuid FROM jsonb_array_elements_text(declaration_ids)))
  ELSE true END needs_confirmation FROM inputs i
 )
 INSERT INTO employment_tax_selection_my(tenant_id,employment_id,company_id,scheme,transition_state,legacy_scheme,source,provenance)

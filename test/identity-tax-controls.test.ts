@@ -24,7 +24,7 @@ import { type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { saveTaxSchemeDeclarationMY } from '../localization/my/tax-scheme-declarations';
+import {getTaxSelectionMY,saveTaxSelectionMY} from '../localization/my/tax-selection';
 import { createBatch, generatePayslips } from '../core/payroll';
 import { statutory } from '../localization/my/payroll';
 import { eligibleChildReliefCount } from '../core/dependents';
@@ -142,7 +142,7 @@ describe('Identification & Tax — service + action behaviour (item 8b5334db)', 
     await expect(setTaxProfileMY(a, { personId: e.personId, taxCategory: 2 })).rejects.toBeInstanceOf(NoIcYetError);
   });
 
-  it('(2) setIcAction seeds the row; setTaxAction persists tax + syncs is_resident + fires employee.tax.updated', async () => {
+  it('(2) setIcAction seeds the row; setTaxAction saves scoped category and person tax facts with audit', async () => {
     const a = adminCtx(base);
     const e = await hire(a, 'Ic Then Tax');
 
@@ -164,6 +164,8 @@ describe('Identification & Tax — service + action behaviour (item 8b5334db)', 
           taxNumber: 'IG9988776655',
           taxCategory: '3',
           taxResidency: 'rep',
+          expectedTaxCompanyId:base.companyId,
+          expectedTaxSelectionVersion:'1',
           numChildren: '2',
           childReliefMode: 'auto',
           employerBearsTax: 'on',
@@ -175,7 +177,8 @@ describe('Identification & Tax — service + action behaviour (item 8b5334db)', 
     row = await getStatutoryProfileMY(a, e.personId);
     expect(row?.taxNumber).toBe('IG9988776655');
     expect(row?.taxCategory).toBe(3);
-    expect(row?.taxResidency).toBe('rep');
+    expect(row?.taxResidency).toBe('resident');
+    expect(await getTaxSelectionMY(a,e.employmentId)).toMatchObject({scheme:'rep',version:2});
     expect(row?.numChildren).toBe(2);
     expect(row?.childReliefMode).toBe('auto');
     expect(row?.employerBearsTax).toBe(true);
@@ -185,7 +188,7 @@ describe('Identification & Tax — service + action behaviour (item 8b5334db)', 
     const payload = await latestEventPayload(base.tenantId, row!.id, 'employee.tax.updated');
     expect(payload).not.toBeNull();
     expect((payload as Record<string, unknown>).after).toMatchObject({
-      taxResidency: 'rep',
+      taxResidency: 'resident',
       taxCategory: 3,
       numChildren: 2,
       childReliefMode: 'auto',
@@ -274,11 +277,9 @@ describe('Identification & Tax — service + action behaviour (item 8b5334db)', 
     await setStatutoryProfileMY(a, { personId: rep.personId, icNumber: '900101015034' });
     await setStatutoryProfileMY(a, { personId: kw.personId, icNumber: '900101015035' });
     await setStatutoryProfileMY(a, { personId: resident.personId, icNumber: '900101015036' });
-    await setTaxProfileMY(a, { personId: rep.personId, taxResidency: 'rep' });
-    await setTaxProfileMY(a, { personId: kw.personId, taxResidency: 'knowledge_worker' });
 
     for (const [emp, scheme] of [[rep, 'rep'], [kw, 'knowledge_worker']] as const) {
-      await saveTaxSchemeDeclarationMY(a, {employmentId: emp.employmentId, expectedCompanyId: base.companyId, scheme, validFrom:'2026-01',validTo:'2026-12',approvalReference:'Synthetic test approval',eligibilityConfirmed:true});
+      await saveTaxSelectionMY(a, {employmentId: emp.employmentId, expectedCompanyId: base.companyId, scheme});
     }
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     await generatePayslips(a, { batchId });
