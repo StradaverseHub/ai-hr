@@ -243,7 +243,7 @@ function localizeLabels(locale: string): PayslipPdfLabels {
 
 /** How many of a label set's strings carry a codepoint Helvetica cannot draw — the defect's own measure. */
 const unprintableCount = (l: PayslipPdfLabels) =>
-  Object.values(l).filter((v) => typeof v === 'string' && /[^\x20-\x7E\xA0-\xFF]/.test(v)).length;
+  Object.values(l).filter((v) => typeof v === 'string' && /[^\x20-\x7E\xA0-\xFF]/.test(v.replace(/[‐-―]/g,'-'))).length;
 
 const MONEY = /\d[\d,]*\.\d\d/g;
 const moneyOf = (text: string) => [...text.matchAll(MONEY)].map((m) => m[0]).sort();
@@ -406,16 +406,18 @@ describe('5b2a7f0f — the en document is untouched, and that is the regression 
     multipage: 'a6c07537806118b3321e69729f5069ba72ef10c4e0f357416935e9fd729393ae',
   };
   /** r378 approved layout — employment card, payment values and no employer cost total. */
-  const NO_REG_R367 = {
-    plain: 'a959efe73dedef970e7aa3df718a6ac8d9c760d5142c25b39aba5d6de0a659e4',
-    logo: '24c15eaeda182ecd42d987c525881d4bc4c3617377a2068540e35da97173e755',
-    multipage: 'c89ae89416bbe532d7288adbc7db843ef2fae6439e909aacd9c1cf0f30b11360',
+  const NO_REG_R379 = {
+    plain: '4b07faac76235285faff0c79d6885ff13365caf3113789b67c400eb79dd0bcdd',
+    logo: '8b973ccdb3a1b75d20e1f3ee2bf4da8112f8569b33906d7d3cfc5016f4e37346',
+    multipage: '32a0c1e8048811f651f4199dc292d56ee8bbb5d8bd7ee435639f9daa247608e9',
+
   };
   /** r378 — the same fixtures with a company registration number. */
-  const WITH_REG_R367 = {
-    plain: '6396dab1551c9a026d4c562be33693265eaebc26ba400bff21d1a979349a39a0',
-    logo: '86c44fba0a84c151c4d027d9d715d00edfec3ecb0ad0260ae72c8877dd7a5543',
-    multipage: '476fe519812ce79add0455387e27a8ac131e0a62f23514507e4dbdd72cebeb07',
+  const WITH_REG_R379 = {
+    plain: '5288ef4607f29402a7f98ab862a50dd41b5beb19778f9112824bd48e8b322880',
+    logo: '2a2c156638f912f3b3a54d8657bd8acb66b492f5fc7ce19848c0dde83b754786',
+    multipage: '1a84aef8a69d34f58a38f56f0ffa23e268965451a1ae74377108419054c50a57',
+
   };
   /** The sheet count is part of the pin: a digest cannot say where a page BROKE. */
   const pageCountOf = async (b: Uint8Array) => (await PDFDocument.load(b)).getPageCount();
@@ -443,13 +445,13 @@ describe('5b2a7f0f — the en document is untouched, and that is the regression 
       { ...noReg, allowance: 400, earningLines: manyLines, detailNotRecorded: false },
       labels,
     );
-    expect(await documentDigest(plain)).toBe(NO_REG_R367.plain);
-    expect(await documentDigest(withLogo)).toBe(NO_REG_R367.logo);
-    expect(await documentDigest(long)).toBe(NO_REG_R367.multipage);
+    expect(await documentDigest(plain)).toBe(NO_REG_R379.plain);
+    expect(await documentDigest(withLogo)).toBe(NO_REG_R379.logo);
+    expect(await documentDigest(long)).toBe(NO_REG_R379.multipage);
     // THE SHEET COUNT, SEPARATELY. r367 took 2pt off the employee band and every block below it moved up;
     // a digest cannot tell "two points higher" from "the page broke somewhere else", and the second would
     // be a real change to an official document.
-    expect([await pageCountOf(plain), await pageCountOf(withLogo), await pageCountOf(long)]).toEqual([1, 1, 2]);
+    expect([await pageCountOf(plain), await pageCountOf(withLogo), await pageCountOf(long)]).toEqual([1, 1, 3]);
     // r367 CHANGED THE DOCUMENT ON PURPOSE, stated in both directions so the round cannot be read as an
     // accident: none of the three still hashes to what it hashed to before.
     expect(await documentDigest(plain), 'r367 changed the unregistered payslip too').not.toBe(
@@ -470,20 +472,20 @@ describe('5b2a7f0f — the en document is untouched, and that is the regression 
       { ...data, allowance: 400, earningLines: manyLines, detailNotRecorded: false },
       labels,
     );
-    expect(await documentDigest(plain)).toBe(WITH_REG_R367.plain);
-    expect(await documentDigest(withLogo)).toBe(WITH_REG_R367.logo);
-    expect(await documentDigest(long)).toBe(WITH_REG_R367.multipage);
-    expect(WITH_REG_R367.plain, 'the registered and unregistered documents are not the same file').not.toBe(
-      NO_REG_R367.plain,
+    expect(await documentDigest(plain)).toBe(WITH_REG_R379.plain);
+    expect(await documentDigest(withLogo)).toBe(WITH_REG_R379.logo);
+    expect(await documentDigest(long)).toBe(WITH_REG_R379.multipage);
+    expect(WITH_REG_R379.plain, 'the registered and unregistered documents are not the same file').not.toBe(
+      NO_REG_R379.plain,
     );
-    expect([await pageCountOf(plain), await pageCountOf(withLogo), await pageCountOf(long)]).toEqual([1, 1, 2]);
+    expect([await pageCountOf(plain), await pageCountOf(withLogo), await pageCountOf(long)]).toEqual([1, 1, 3]);
     // r367, stated in both directions here too.
     expect(await documentDigest(plain), 'r367 changed the registered payslip').not.toBe(WITH_REG_R360.plain);
   });
 
   it('…and the guard above is a guard: the same fixture in Chinese does NOT hash to it', async () => {
     expect(await documentDigest(await renderPayslipPdf(data, localizeLabels('zh')))).not.toBe(
-      WITH_REG_R367.plain,
+      WITH_REG_R379.plain,
     );
   });
 

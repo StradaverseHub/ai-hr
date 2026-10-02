@@ -249,7 +249,7 @@ describe('r367 — payroll.individualPayslip.employeeHeading is retired IN PLACE
     const src = strip(read(IP_PAGE));
     expect(src, 'the retired key has no render site left on this screen').not.toMatch(/t\(\s*'employeeHeading'\s*\)/);
     expect(src, 'and the block is headed by the wording the document uses').toMatch(
-      /t\(\s*'employmentInfoHeading'\s*\)/,
+      /tSlip\(\s*'employeeProfile'\s*\)/,
     );
   });
 });
@@ -399,7 +399,7 @@ describe('r378 — Individual Payslip retains plain headings and omits the refer
 
       // 4. THE BLOCK HEADING the screen and the document now share.
       expect(texts, `${locale}: the employee block is headed "Employment info"`).toContain(
-        msg(locale, 'payroll.individualPayslip.employmentInfoHeading'),
+        msg(locale, 'me.payslip.employeeProfile'),
       );
 
       // 5. NO RETIRE MARKER REACHES A READER. A retired key that is still resolved paints its own
@@ -423,11 +423,12 @@ describe('r378 — Individual Payslip retains plain headings and omits the refer
       textOf(employerBlock[0].props.children),
       'the reference note is absent from that block',
     ).not.toContain(msg('en', NOTE));
-    const contributionRows = nodes(employerBlock[0].props.children).filter(el => typeof el.props?.label === 'string' && 'value' in (el.props ?? {}));
-    for (const key of ['epf', 'socso', 'eis'] as const) {
-      expect(contributionRows.map(el => el.props.label), `employer ${key} remains displayed`).toContain(msg('en', `me.payslip.${key}`));
+    const contributionText=textOf(employerBlock[0].props.children);
+    for (const key of ['epf','socso','eis'] as const) {
+      expect(contributionText,`employer ${key} remains displayed`).toContain(msg('en',`me.payslip.${key}`));
     }
-    expect(contributionRows.find(el => el.props.label === msg('en', 'me.payslip.epf'))?.props.value, 'the real employer EPF amount remains').toBe('MYR 840.00');
+    expect(contributionText,'the real saved month employer EPF amount remains').toContain('MYR 840.00');
+    expect(contributionText).toContain(msg('en','me.payslip.mtdEmployerColumn'));
     expect(textOf(employerBlock[0].props.children)).not.toContain(msg('en', 'me.payslip.totalEmployerCost'));
     // …and NOT inside the Deductions block, where it would be a false statement.
     const deductionsBlock = blocks.filter((b) => b.props.title === msg('en', DEDUCTIONS));

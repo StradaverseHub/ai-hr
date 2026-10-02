@@ -11,6 +11,22 @@ import type { PayslipPdfData, PayslipPdfLabels } from '../../lib/payslip-pdf';
 
 export const labels: PayslipPdfLabels = {
   title: 'Payslip',
+  periodScopeNote: "Month and year totals include all eligible payroll runs for this employment, including other employers where applicable.",
+  confidentialHeading: "STRICTLY PRIVATE & CONFIDENTIAL",
+  employeeProfile: "Employee Profile",
+  companyName: "Company Name",
+  descriptionColumn: "Description",
+  quantityColumn: "Day/Hrs",
+  amountColumn: "Amount",
+  statutoryCodeColumn: "Statutory code",
+  mtdEmployerColumn: "MTD employer",
+  ytdEmployeeColumn: "YTD employee",
+  ytdEmployerColumn: "YTD employer",
+  normalEmployerNote: "Normal statutory employer shares only. Employer-funded employee shares are shown separately.",
+  configuredContributionsHeading: "Configured employer contributions — selected payslip",
+  paySummaryHeading: "Gross and net pay summary",
+  hrContactNote: "Please refer to the Human Resource Department if there is any irregularity in your salaries payment.",
+  periodNotRecorded: "Not recorded",
   payPeriod: 'Pay period',
   employeeCode: 'Employee code',
   earnings: 'Earnings',
@@ -84,7 +100,7 @@ export const labels: PayslipPdfLabels = {
   // beside Employer contributions instead of full width under NET PAY. This fixture says what the REAL
   // caller says: `me.payslip.nonPayableHeading` carries this value in all six locales (pinned in
   // test/individual-payslip.test.ts, which is the test that reads the catalogue).
-  nonPayable: 'Other',
+  nonPayable: 'Other (Non-Payable)',
   nonPayableTotal: 'Total non-payable',
   nonPayableNote: 'Recorded for your reference only - these do not affect your gross or net pay.',
   // a96d320c — the rate-and-input vocabulary. REQUIRED on the type, and tsc caught this fixture the
@@ -101,6 +117,7 @@ export const labels: PayslipPdfLabels = {
   },
 };
 export const data: PayslipPdfData = {
+  employerPeriodTotals: {mtd:{epf:925,socso:86.65,eis:9.9,hrdf:71.2},ytd:{epf:2775,socso:259.95,eis:29.7,hrdf:213.6}},
   employee: 'Aisyah Rahman',
   employeeCode: 'EMP-001',
   company: 'Demo Sdn Bhd',
