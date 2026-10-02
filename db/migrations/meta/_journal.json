@@ -2906,6 +2906,13 @@
       "when": 1790953010000,
       "tag": "0507_attendance_attention_review",
       "breakpoints": true
+    },
+    {
+      "idx": 508,
+      "version": "7",
+      "when": 1790962962847,
+      "tag": "0508_my_team_authorized_subject_set",
+      "breakpoints": true
     }
   ]
 }

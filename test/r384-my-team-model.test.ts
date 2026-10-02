@@ -1,6 +1,7 @@
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import * as readOwner from '../core/read';
@@ -31,6 +32,47 @@ beforeEach(async()=>{
 afterAll(closeAll);
 
 describe('My Team current scope and canonical projection',()=>{
+ it('preserves the original authorization set for scoped managers and administrators across membership changes',async()=>{
+  const migration=readFileSync(new URL('../db/migrations/0507_attendance_attention_review.sql',import.meta.url),'utf8');
+  const original=migration.match(/CREATE FUNCTION app\.my_team_subject_authorized\(subject uuid\) RETURNS boolean LANGUAGE sql STABLE AS \$\$([\s\S]*?)\$\$;/);
+  expect(original).not.toBeNull();expect(original![1].length).toBeGreaterThan(500);
+  await owner.db.execute(sql.raw(`CREATE OR REPLACE FUNCTION app.r384_original_authorized(subject uuid) RETURNS boolean LANGUAGE sql STABLE AS $$${original![1]}$$;`));
+  async function compare(ctx:SessionContext){
+   return withTenant(ctx,async tx=>{
+    const old=await tx.execute(sql`SELECT e.id FROM employment e WHERE app.r384_original_authorized(e.id) ORDER BY e.id`);
+    const current=await tx.execute(sql`SELECT id FROM app.my_team_authorized_subject_ids() AS authorized(id) ORDER BY id`);
+    const wrapper=await tx.execute(sql`SELECT e.id FROM employment e WHERE app.my_team_subject_authorized(e.id) ORDER BY e.id`);
+    expect(current).toEqual(old);expect(wrapper).toEqual(old);
+    const [nullResult]=await tx.execute(sql`SELECT app.my_team_subject_authorized(NULL::uuid) AS allowed`) as unknown as {allowed:boolean}[];
+    expect(nullResult.allowed).toBe(false);return current.map(row=>String(row.id));
+   });
+  }
+  expect(await compare(managerCtx)).toEqual([subject.employmentId,downline.employmentId].sort());
+  const [hrPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Synthetic HR without employment'}).returning({id:schema.person.id});
+  const hrId=await createAppUser(b.tenantId,hrPerson.id,'hr_admin');
+  const hr={...managerCtx,userId:hrId,personId:hrPerson.id,roles:['hr_admin'],grants:[{role:'hr_admin' as const,companyId:b.companyId}]};
+  expect(await owner.db.select().from(schema.employment).where(eq(schema.employment.personId,hrPerson.id))).toEqual([]);
+  expect(await compare(hr)).toContain(outsider.employmentId);
+  const [superPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Synthetic super without employment'}).returning({id:schema.person.id});
+  const superId=await createAppUser(b.tenantId,superPerson.id,'super_admin');
+  const superCtx={...hr,userId:superId,personId:superPerson.id,roles:['super_admin'],grants:[{role:'super_admin' as const,companyId:null}]};
+  expect(await compare(superCtx)).toContain(outsider.employmentId);
+  await owner.db.insert(schema.reportingLine).values({tenantId:b.tenantId,managerEmploymentId:downline.employmentId,subordinateEmploymentId:manager.employmentId,lineType:'administrative',validFrom:today});
+  expect(await compare(managerCtx)).toEqual([subject.employmentId,downline.employmentId].sort());
+  await owner.db.update(schema.reportingLine).set({validTo:today}).where(eq(schema.reportingLine.subordinateEmploymentId,subject.employmentId));
+  expect(await compare(managerCtx)).toEqual([]);
+  await owner.db.update(schema.reportingLine).set({validTo:null,validFrom:addDaysIso(today,1)}).where(eq(schema.reportingLine.subordinateEmploymentId,subject.employmentId));
+  expect(await compare(managerCtx)).toEqual([]);
+  await owner.db.update(schema.reportingLine).set({validFrom:today}).where(eq(schema.reportingLine.subordinateEmploymentId,subject.employmentId));
+  await owner.db.update(schema.employment).set({hiredOn:addDaysIso(today,1)}).where(eq(schema.employment.id,subject.employmentId));
+  expect(await compare(managerCtx)).toEqual([]);
+  await owner.db.update(schema.employment).set({hiredOn:'2024-01-01',terminatedOn:addDaysIso(today,1)}).where(eq(schema.employment.id,subject.employmentId));
+  expect(await compare(managerCtx)).toEqual([subject.employmentId,downline.employmentId].sort());
+  await owner.db.update(schema.employment).set({terminatedOn:today}).where(eq(schema.employment.id,subject.employmentId));
+  expect(await compare(managerCtx)).toEqual([]);
+  await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,hrId));
+  expect(await compare(hr)).toEqual([]);
+ });
  it('direct/all reports are dated, self-free and never expand through HOD visibility or a caller identity',async()=>{
   const direct=await readMyTeam(managerCtx,{...query,scope:'direct'});
   expect(direct.scope.employmentIds).toEqual([subject.employmentId]);

@@ -47,7 +47,7 @@ export async function resolveMyTeamScopeTx(tx:Tx,ctx:SessionContext,query:MyTeam
     .leftJoin(assignment,and(eq(assignment.employmentId,employment.id),isNull(assignment.supersededAt),lte(assignment.validFrom,today),
       or(isNull(assignment.validTo),sql`${assignment.validTo}>${today}::date`)))
     .leftJoin(position,eq(position.id,assignment.positionId))
-    .where(and(inArray(employment.companyId,companyIds),sql`app.my_team_subject_authorized(${employment.id})`,mode,
+    .where(and(inArray(employment.companyId,companyIds),sql`${employment.id} IN (SELECT app.my_team_authorized_subject_ids())`,mode,
       query.departmentId ? eq(assignment.departmentId,query.departmentId) : undefined,
       query.employmentId ? eq(employment.id,query.employmentId) : undefined)).orderBy(person.fullName,employment.id);
   return {employees:[...new Map(employees.map(e=>[e.employmentId,e])).values()],companies:authorizedCompanies.map(c=>({id:c.id,name:c.name})),departments,
