@@ -14482,6 +14482,7 @@
     "employeeCode": "รหัสพนักงาน",
     "occupation": "ตำแหน่ง",
     "cancel": "ยกเลิก",
-    "saving": "กำลังบันทึก…"
+    "saving": "กำลังบันทึก…",
+    "attentionCount": "มี {count} รายการที่ต้องดำเนินการ"
   }
 }
