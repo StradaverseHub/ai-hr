@@ -3374,7 +3374,7 @@
       "nonPayableHeading": "其他（不支付）",
       "nonPayableTotal": "不支付项目合计",
       "pdfTitle": "薪资单",
-      "payPeriodLabel": "薪资周期",
+      "payPeriodLabel": "薪资月份",
       "employeeCodeLabel": "员工编号",
       "generatedNote": "本薪资单由系统自动生成。",
       "downloadPdf": "下载 PDF",
