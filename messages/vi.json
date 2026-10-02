@@ -607,6 +607,16 @@
     },
     "detail": {
       "incentiveDeclarations": {
+        "error_invalid_scheme": "Chọn chương trình ưu đãi.",
+        "error_invalid_period": "Nhập tháng bắt đầu và kết thúc hợp lệ; tháng bắt đầu không được sau tháng kết thúc.",
+        "error_approval_required": "HR phải xác nhận phê duyệt và điều kiện áp dụng trước khi lưu.",
+        "error_missing_reference": "Nhập tham chiếu phê duyệt (tối đa 300 ký tự).",
+        "error_not_found": "Bạn không còn truy cập được quan hệ lao động hoặc khai báo này. Làm mới và kiểm tra quyền công ty.",
+        "error_not_resident": "Kiểm tra tình trạng thuế cư trú đã ghi nhận của nhân viên trước khi lưu khai báo.",
+        "error_citizenship_unknown": "Kiểm tra tình trạng quốc tịch/PR đã ghi nhận cần cho chương trình C-Suite.",
+        "error_overlap": "Thời kỳ này trùng với khai báo hiện có. Kiểm tra hoặc thu hồi trước khi ghi nhận thay thế.",
+        "error_missing_declaration": "Trước tiên hãy ghi nhận khai báo phê duyệt cho chủ lao động và thời kỳ này.",
+        "error_stale_context": "Chủ lao động của quan hệ lao động đã thay đổi. Làm mới và xác nhận phê duyệt cho chủ lao động hiện tại.",
         "title": "Khai báo ưu đãi tiền lương",
         "hint": "HR ghi nhận phê duyệt hiện có cho chủ lao động và thời kỳ này. Điều kiện không được xác định tự động.",
         "employer": "Chủ lao động",
@@ -6125,6 +6135,7 @@
         "failed": "Thất bại"
       },
       "reason": {
+        "TAX_SCHEME_DECLARATION_REQUIRED": "Trước khi xử lý lương, hãy ghi nhận chương trình thuế được phê duyệt cho quan hệ lao động, chủ lao động và kỳ lương này, gồm tham chiếu phê duyệt và xác nhận điều kiện của HR.",
         "PERIOD_ALREADY_PROCESSED": "Đã xử lý cho tháng này",
         "NO_PAYROLL_CONFIG": "Thiếu cấu hình lương",
         "NOT_AUTHORIZED": "Bạn không có quyền truy cập công ty này",

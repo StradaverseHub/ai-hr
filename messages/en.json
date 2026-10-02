@@ -607,6 +607,16 @@
     },
     "detail": {
       "incentiveDeclarations": {
+        "error_invalid_scheme": "Select an incentive scheme.",
+        "error_invalid_period": "Enter valid start and end months, with the start no later than the end.",
+        "error_approval_required": "HR must confirm the applicable approval and eligibility before saving.",
+        "error_missing_reference": "Enter the approval reference (up to 300 characters).",
+        "error_not_found": "This employment or declaration is no longer available to you. Refresh and check your company access.",
+        "error_not_resident": "Check the employee’s recorded resident tax status before saving this declaration.",
+        "error_citizenship_unknown": "Check the recorded citizenship/PR status required for the C-Suite scheme.",
+        "error_overlap": "This period overlaps an existing declaration. Review or revoke it before recording a replacement.",
+        "error_missing_declaration": "Record an approval declaration for this employer and period first.",
+        "error_stale_context": "The employment’s employer changed. Refresh and confirm the approval for the current employer.",
         "title": "Payroll incentive declarations",
         "hint": "HR records existing approval for this employer and period. Eligibility is not determined automatically.",
         "employer": "Employer",
@@ -6125,6 +6135,7 @@
         "failed": "Failed"
       },
       "reason": {
+        "TAX_SCHEME_DECLARATION_REQUIRED": "Record the approved tax scheme for this employment, employer and payroll period, including the approval reference and HR eligibility confirmation, before processing payroll.",
         "PERIOD_ALREADY_PROCESSED": "Already processed for this month",
         "NO_PAYROLL_CONFIG": "Payroll configuration missing",
         "NOT_AUTHORIZED": "You do not have access to this company",

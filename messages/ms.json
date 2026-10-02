@@ -607,6 +607,16 @@
     },
     "detail": {
       "incentiveDeclarations": {
+        "error_invalid_scheme": "Pilih skim insentif.",
+        "error_invalid_period": "Masukkan bulan mula dan akhir yang sah; bulan mula tidak boleh selepas bulan akhir.",
+        "error_approval_required": "HR mesti mengesahkan kelulusan dan kelayakan yang berkenaan sebelum menyimpan.",
+        "error_missing_reference": "Masukkan rujukan kelulusan (sehingga 300 aksara).",
+        "error_not_found": "Pekerjaan atau pengisytiharan ini tidak lagi tersedia kepada anda. Muat semula dan semak akses syarikat.",
+        "error_not_resident": "Semak status cukai pemastautin pekerja yang direkodkan sebelum menyimpan pengisytiharan ini.",
+        "error_citizenship_unknown": "Semak status kewarganegaraan/PR yang direkodkan bagi skim C-Suite.",
+        "error_overlap": "Tempoh ini bertindih dengan pengisytiharan sedia ada. Semak atau batalkannya sebelum merekodkan pengganti.",
+        "error_missing_declaration": "Rekodkan pengisytiharan kelulusan untuk majikan dan tempoh ini dahulu.",
+        "error_stale_context": "Majikan bagi pekerjaan ini telah berubah. Muat semula dan sahkan kelulusan bagi majikan semasa.",
         "title": "Pengisytiharan insentif penggajian",
         "hint": "HR merekodkan kelulusan sedia ada untuk majikan dan tempoh ini. Kelayakan tidak ditentukan secara automatik.",
         "employer": "Majikan",
@@ -6125,6 +6135,7 @@
         "failed": "Gagal"
       },
       "reason": {
+        "TAX_SCHEME_DECLARATION_REQUIRED": "Rekodkan skim cukai diluluskan untuk pekerjaan, majikan dan tempoh penggajian ini, termasuk rujukan kelulusan dan pengesahan kelayakan HR, sebelum memproses penggajian.",
         "PERIOD_ALREADY_PROCESSED": "Sudah diproses untuk bulan ini",
         "NO_PAYROLL_CONFIG": "Konfigurasi gaji tiada",
         "NOT_AUTHORIZED": "Anda tiada akses kepada syarikat ini",

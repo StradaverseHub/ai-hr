@@ -607,6 +607,16 @@
     },
     "detail": {
       "incentiveDeclarations": {
+        "error_invalid_scheme": "请选择优惠计划。",
+        "error_invalid_period": "请输入有效的开始和结束月份，开始月份不得晚于结束月份。",
+        "error_approval_required": "保存前，人力资源部门必须确认适用的批准和资格。",
+        "error_missing_reference": "请输入批准参考编号（最多300个字符）。",
+        "error_not_found": "您已无法访问此雇佣关系或声明。请刷新并检查公司访问权限。",
+        "error_not_resident": "保存此声明前，请检查员工记录中的居民税务状态。",
+        "error_citizenship_unknown": "请检查C-Suite计划所需的已记录公民或永久居民状态。",
+        "error_overlap": "此期间与已有声明重叠。记录替代声明前，请检查或撤销已有声明。",
+        "error_missing_declaration": "请先记录此雇主和期间的批准声明。",
+        "error_stale_context": "此雇佣关系的雇主已变更。请刷新并确认当前雇主的批准。",
         "title": "工资优惠声明",
         "hint": "人力资源部门记录此雇主及期间已有的批准。资格不会自动判定。",
         "employer": "雇主",
@@ -6125,6 +6135,7 @@
         "failed": "失败"
       },
       "reason": {
+        "TAX_SCHEME_DECLARATION_REQUIRED": "处理工资前，请记录此雇佣关系、雇主和工资期间获批准的税务计划，包括批准参考编号及人力资源部门的资格确认。",
         "PERIOD_ALREADY_PROCESSED": "本月已处理",
         "NO_PAYROLL_CONFIG": "缺少薪资配置",
         "NOT_AUTHORIZED": "您无权访问此公司",
