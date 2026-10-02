@@ -2378,6 +2378,7 @@ export type UsualShiftRow = {
   endTime: string;
   /** ISO weekdays the shift works (1=Mon…7=Sun). NULL ⇒ the shift schedules nothing (same as scheduleFor). */
   pattern: number[] | null;
+  halfPattern: number[] | null;
 };
 
 /**
@@ -2398,7 +2399,7 @@ export function usualShiftsFor(ctx: SessionContext, employmentIds: string[]): Pr
         startTime: shift.startTime,
         endTime: shift.endTime,
         pattern: shift.weeklyPattern,
-        // 07ebd04d — the four-way row is read but NOT surfaced (see below), and the two Schedule Group
+        // The four-way row and the two Schedule Group
         // columns the ghost cells must now resolve through (migration 0483).
         halfPattern: shift.halfPattern,
         offPattern: shift.offPattern,
@@ -2412,16 +2413,13 @@ export function usualShiftsFor(ctx: SessionContext, employmentIds: string[]): Pr
     // scheduleFor uses (employee's group → shift's group → tenant default), so the grid cannot say OFF on
     // a day the engine pays as work. One extra set-based read for the whole grid.
     //
-    // ⚠️ WHAT THIS DELIBERATELY DOES NOT FIX: `UsualShift.pattern` is still the FULL-day list alone and
-    // lib/roster-month.ts resolveRosterCell still asks it a two-way question, so a HALF working day
-    // renders as OFF on the duty roster while the engine treats it as a working half day. That is a
-    // pre-existing display defect (it predates this item and is unchanged by it), it needs its own item,
-    // and widening the type here without changing the renderer would only move it.
+    // Half working weekdays must travel with the resolved full pattern to every roster consumer.
+    // They are working cells; this read does not invent half-day duration or reclassify rest/off days.
     const lookup = await weekLookupTx(tx, null, [...rows.map((r) => r.shiftRuleId), ...rows.map((r) => r.groupRuleId)]);
-    return rows.map(({ halfPattern, offPattern, shiftRuleId, groupRuleId, ...r }) => ({
-      ...r,
-      pattern: lookup(groupRuleId ?? shiftRuleId, { pattern: r.pattern, halfPattern, offPattern }).pattern,
-    }));
+    return rows.map(({ halfPattern, offPattern, shiftRuleId, groupRuleId, ...r }) => {
+      const week=lookup(groupRuleId ?? shiftRuleId, { pattern: r.pattern, halfPattern, offPattern });
+      return {...r,pattern:week.pattern,halfPattern:week.halfPattern};
+    });
   });
 }
 
@@ -2600,7 +2598,7 @@ export async function rosterWindowView(
   const usual: Record<string, UsualShift> = {};
   const usualNames: Record<string, { code: string | null; name: string }> = {};
   for (const u of usualRows) {
-    usual[u.employmentId] = { shiftId: u.shiftId, pattern: u.pattern };
+    usual[u.employmentId] = { shiftId: u.shiftId, pattern: u.pattern, ...(u.halfPattern?.length?{halfPattern:u.halfPattern}:{}) };
     usualNames[u.shiftId] = { code: u.code, name: u.name };
   }
 
@@ -3069,7 +3067,7 @@ export async function myRosterWindow(
 
   return withTenant(ctx, async (tx) => {
     const usualRow = usualRows[0] ?? null;
-    const usual: UsualShift | null = usualRow ? { shiftId: usualRow.shiftId, pattern: usualRow.pattern } : null;
+    const usual: UsualShift | null = usualRow ? { shiftId: usualRow.shiftId, pattern: usualRow.pattern, ...(usualRow.halfPattern?.length?{halfPattern:usualRow.halfPattern}:{}) } : null;
 
     // Only the shifts this window actually references — the legend names what is on screen, and a
     // tenant-wide shift list would serialise every template the company has ever authored into the
