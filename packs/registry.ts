@@ -60,6 +60,8 @@ export type NavChildDescriptor = {
 
 /** A module's collapsible sidebar node: parent label/icon + its child rows, in render order. */
 export type NavNodeDescriptor = {
+  /** Use each child's declared active predicate for this parent's highlight; presentation only. */
+  activeMatch?: 'children';
   /** Inline expandable self-service group; parent name navigates to this destination. */
   defaultHref?: string;
   labelKey: string;

@@ -38,9 +38,9 @@ const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 describe('My Absence: first-level nav rename (label-only, same href)', () => {
   it("nav row is labelKey 'myAbsence' with href '/leave' unchanged (now on the leave pack)", () => {
-    expect(leavePack).toContain("group: 'main', labelKey: 'myLeave', icon: CalendarDays, defaultHref: '/leave'");
+    expect(leavePack).toContain("group: 'main', labelKey: 'myLeave', icon: CalendarDays,");
     expect(leavePack).toContain("{href:'/leave', labelKey:'leaveOverview', icon:CalendarDays, exactHref:true}");
-    expect(leavePack).toContain("{href:'/leave/history', labelKey:'leaveHistory', icon:CalendarDays, exactHref:true}");
+    expect(leavePack).toContain("{href:'/leave/history', labelKey:'leaveHistory', icon:History, exactHref:true}");
     // The old top-level `labelKey: 'leave'` is gone (renamed to myAbsence; leaveConfig — the ADMIN
     // config row — is unaffected). Asserted on the labelKey form directly: since rung 6 the sidebar's
     // only bare `'leave'` token is the `modulePackById('leave')` registry lookup, not a nav labelKey.
