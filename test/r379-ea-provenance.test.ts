@@ -43,11 +43,17 @@ describe('r379 complete historical EA provenance', () => {
     s.statutory.componentLines[0].buckets.push({ bucket: 'ot', amount: 0.001 });
     expect(hasCompleteHistoricalEaProvenance([s], mapping)).toBe(false);
   });
-  it('refuses duplicate identities/buckets and unrecorded exemption provenance', () => {
+  it('refuses unreconciled repeated contributions and unrecorded exemption provenance', () => {
     const s = slip();
     expect(hasCompleteHistoricalEaProvenance([{ ...s, statutory: { componentLines: [...s.statutory.componentLines, ...s.statutory.componentLines] } }], mapping)).toBe(false);
-    expect(hasCompleteHistoricalEaProvenance([{ ...s, statutory: { componentLines: [{ code: 'DIRECTOR', buckets: [{ bucket: 'wage', amount: 15000 }, { bucket: 'wage', amount: 15000 }] }] } }], mapping)).toBe(false);
+    expect(hasCompleteHistoricalEaProvenance([{ ...s, statutory: { componentLines: [{ code: 'DIRECTOR', buckets: [{ bucket: 'wage', amount: 15000 }, { bucket: 'wage', amount: 15001 }] }] } }], mapping)).toBe(false);
     expect(hasCompleteHistoricalEaProvenance([{ ...s, statutory: { ...s.statutory, exemptionUsed: { PCB_TRAVEL: 1 } } }], mapping)).toBe(false);
+  });
+  it('accepts recurring and additional contributions for the same stable pay-item code when totals reconcile', () => {
+    const lines = [{ code: 'DIRECTOR', buckets: [{ bucket: 'wage', amount: 10000 }, { bucket: 'wage', amount: 5000 }] }, { code: 'DIRECTOR', buckets: [{ bucket: 'wage', amount: 15000 }] }];
+    const s = { allowance: '30000', bonus: '0', statutory: { componentLines: lines } };
+    expect(hasCompleteHistoricalEaProvenance([s], mapping)).toBe(true);
+    expect(accumulateEaRouting(lines, mapping, { EA_B1B: 'directorFee' }, true).deltas).toEqual({ allowances: -30000, directorFee: 30000 });
   });
   it('accepts recorded exempt/reimbursement splits without rerouting exempt amounts', () => {
     const s = { allowance: '30000', bonus: '500', statutory: { componentLines: [{ code: 'DIRECTOR', amount: 30500, buckets: [{ bucket: 'wage', amount: 29000 }, { bucket: 'reimburse', amount: 1000 }, { bucket: 'bonus', amount: 500 }] }], exemptionUsed: { PCB_TRAVEL: 1000 } } };

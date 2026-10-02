@@ -281,10 +281,12 @@ export function renderEaFieldRegisterMarkdown(): string {
   out.push('**Hold this beside a blank C.P.8A and work down it.** The blank copy this system produces is on');
   out.push('the Statutory Forms screen, beside each of the two EA rows (“Download blank EA form”).');
   out.push('');
-  out.push('**What this page is not.** The EA is drawn to the C.P.8A (Pin. 2023) arrangement on paper of');
-  out.push('ours — we hold no blank C.P.8A from LHDN to print onto — so this register describes our');
-  out.push('rendering of that arrangement, not agency artwork. The wording in the third column is taken from');
-  out.push('`docs/forms/ea-cp8a-pin-2023-transcription.txt`, the hand transcription of the specimen.');
+  out.push('The printed body follows the measured C.P.8A (Pin. 2023) grid and the committed');
+  out.push('English and Bahasa Malaysia agency references. The approved V6 employer footer');
+  out.push('uses wider rules for complete employer and officer details on one readable page;');
+  out.push('exceptionally unfit information is refused before export. All statutory sections');
+  out.push('and the signing date remain. The wording below is taken from');
+  out.push('`docs/forms/ea-cp8a-pin-2023-transcription.txt` and the form caption catalogue.');
   out.push('');
   out.push('**This file is generated.** Edit `lib/ea-field-register.ts` and run');
   out.push('`pnpm tsx scripts/gen-ea-field-register.ts`. `test/ea-form-boxes-contract.test.ts` fails if a row');

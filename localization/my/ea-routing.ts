@@ -57,19 +57,15 @@ export function hasCompleteHistoricalEaProvenance(
       if (!st.otConvert || typeof st.otConvert !== 'object' || cents((st.otConvert as Record<string, unknown>).amount) !== 0) return false;
     }
     let wage = 0, reimburse = 0, additional = 0;
-    const codes = new Set<string>();
     for (const raw of st.componentLines) {
       if (!raw || typeof raw !== 'object') return false;
       const line = raw as Record<string, unknown>;
-      if (typeof line.code !== 'string' || !line.code.trim() || codes.has(line.code.trim()) || !mapping.has(line.code.trim())) return false;
-      codes.add(line.code.trim());
+      if (typeof line.code !== 'string' || !line.code.trim() || !mapping.has(line.code.trim())) return false;
       if (!Array.isArray(line.buckets) || line.buckets.length === 0) return false;
-      const seenBuckets = new Set<string>();
       for (const rawBucket of line.buckets) {
         if (!rawBucket || typeof rawBucket !== 'object') return false;
         const bucket = rawBucket as Record<string, unknown>;
-        if (typeof bucket.bucket !== 'string' || !['wage', 'bonus', 'ot', 'reimburse', 'deduct'].includes(bucket.bucket) || seenBuckets.has(bucket.bucket)) return false;
-        seenBuckets.add(bucket.bucket);
+        if (typeof bucket.bucket !== 'string' || !['wage', 'bonus', 'ot', 'reimburse', 'deduct'].includes(bucket.bucket)) return false;
         const amount = cents(bucket.amount);
         if (amount === null || (bucket.bucket === 'ot' && amount !== 0)) return false;
         if (bucket.bucket === 'wage') wage += amount;
