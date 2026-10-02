@@ -1,7 +1,7 @@
 # ADR-0089 — Employer and period scoped PCB incentive declarations
 
 - **Date:** 2026-10-02
-- **Status:** Implemented in r380; execution and release verification pending.
+- **Status:** Accepted; implemented and production-verified in r380–r381.
 - **Raised by:** feedback `2b9235f6-d0d1-4530-9118-ceea1cbf601a`.
 - **Related:** ADR-0009 (multiple employments), ADR-0006 (audit), ADR-0020 (statutory packs), ADR-0085 (saved statutory working).
 
