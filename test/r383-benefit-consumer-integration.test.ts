@@ -14,7 +14,7 @@ import {explainPcb,pcbSlipSections,pcbClosingSections,pcbWorksheet} from '../cor
 import {PcbDetailView} from '../app/payroll/pcb-detail/pcb-detail-view';
 import {pcbDetailPdfResponse} from '../app/payroll/pcb-detail/shared';
 import {extractedText} from './helpers/pcb-pdf-text';
-import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 import * as schema from '../db/schema';
 const state=vi.hoisted(()=>({locale:'en',auth:null as any}));
 vi.mock('../lib/scope',async importOriginal=>({...await importOriginal<any>(),scopedAdmin:async()=>state.auth}));
@@ -23,7 +23,7 @@ const sides={profile:null,catalogue:[],rebateCatalogue:[],currentDeduction:null,
 const pack=requirePackFor('MY');
 describe('r383 generated saved benefit consumers',()=>{
  let base:Base;
- beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();base=await seedBase();await setModule(base.tenantId,'multi_cycle_payroll','active');await setModule(base.tenantId,'typed_pay_components','active');});afterAll(closeAll);
+ beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();base=await seedBase();await setModule(base.tenantId,'multi_cycle_payroll','active');await setModule(base.tenantId,'typed_pay_components','active');await setSetting(base.tenantId,'payroll.individual_txn_pay_enabled',true);});afterAll(closeAll);
  it('replays owned benefits and renders saved screen/download facts after catalogue changes',async()=>{
   const ctx=await entitledCtx(base);
   const e=await hireEmployee(ctx,{person:{fullName:'Synthetic Saved Benefit',primaryEmail:`${randomUUID()}@test.local`},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2025-01-01'});
@@ -43,11 +43,12 @@ describe('r383 generated saved benefit consumers',()=>{
   const st=saved[0].statutory as any;expect(st.pcbNonCash.owned).toEqual({bik:0,vola:900});expect(st.pcbNonCash.cumulative).toEqual({bik:600,vola:900});expect(st.pcbMeta.trace.Y1).toBe(15500);
   const before=await multiCycleWorksheetMY(ctx,{companyIds:[base.companyId]});expect(before.employeeMonthsCompared).toBe(1);expect(before.employeeMonthsFlagged).toBe(0);expect(before.rows[0].verdict).toBe('already_aggregated');
   // Today's catalogue and recurring values must not change a recorded replay or download.
-  await upsertPayComponent(ctx,{...flags,id:bik.id,code:'SYNTH_CAR',name:'Synthetic BIK changed',displayCategory:'bik',eaFormLine:'EA_B3',pcbExemptionCode:'PCB_CHILD_CARE'});
+  await upsertPayComponent(ctx,{...flags,code:'SYNTH_CAR',name:'Synthetic BIK changed',displayCategory:'bik',eaFormLine:'EA_B3',pcbExemptionCode:'PCB_CHILD_CARE'});
   await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:bik.id,amount:9900,effectiveFrom:'2026-06-01'});
+  await pack.statutory.setTax(ctx,{personId:e.personId,employmentId:e.employmentId,expectedCompanyId:base.companyId,taxResidency:'rep'});
   const after=await multiCycleWorksheetMY(ctx,{companyIds:[base.companyId]});expect(after.rows).toEqual(before.rows);expect(after.movement).toEqual(before.movement);
   const row=await payslipForReview(ctx,{companyIds:[base.companyId],payslipId:saved[0].id});expect(row).toBeTruthy();
-  const x=explainPcb(row!.statutory,null);expect(x.kind).toBe('mtd');expect(x.taxSelection).toBeTruthy();
+  const x=explainPcb(row!.statutory,null);expect(x.kind).toBe('mtd');expect(x.taxSelection).toBeTruthy();if(x.kind==='mtd')expect(x.calculationScheme).toBe('resident');
   state.auth={s:ctx,scopeIds:[base.companyId]};
   for(const locale of ['en','ms']){
    state.locale=locale;const captions=JSON.parse(fs.readFileSync(`messages/${locale}.json`,'utf8')).payroll.pcbDetail;
