@@ -5,6 +5,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import * as readOwner from '../core/read';
 import * as attendanceOwner from '../packs/attendance/service';
+import {createLeaveType,updateLeaveType} from '../core/admin';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {assignDefaultShift,assignShift,archiveShift,createShift} from '../core/roster';
 import {attendanceForEmploymentRange,attendanceForEmploymentsRange,attendanceForDate,checkIn,checkOut} from '../packs/attendance/service';
@@ -372,5 +373,62 @@ describe('My Team attendance review is per user, observation and fresh authority
    expect(waiting).toBe(true);expect(changed).toBe(false);
   }finally{release();await holder;await mutation;}
   expect((await readMyTeam(managerCtx,query)).scope.employmentIds).not.toContain(subject.employmentId);
+ });
+});
+
+
+describe('My Team canonical balance and independent reader integration',()=>{
+ it('consumes shared annual reservations exactly once before and after the actual borrower decision',async()=>{
+  const admin=adminCtx(b);await setLeaveApprovalPolicy(admin,{companyId:b.companyId,levels:['direct_manager']});
+  const borrower=await createLeaveType(admin,{code:`SYN_BORROW_${randomUUID().slice(0,8).toUpperCase()}`,name:'Synthetic Annual borrower',paid:true});
+  await updateLeaveType(admin,{id:borrower.id,name:'Synthetic Annual borrower',balanceSourceTypeId:b.annualLeaveTypeId});
+  const next=addDaysIso(weekRangeOf(today).from,7);
+  const borrowed=await requestLeave(admin,{employmentId:subject.employmentId,leaveTypeId:borrower.id,startDate:next,endDate:addDaysIso(next,1)});
+  await requestLeave(admin,{employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:addDaysIso(next,3),endDate:addDaysIso(next,3)});
+  const verify=async()=>{
+   const canonical=await readOwner.leaveBalances(managerCtx,subject.employmentId,'en');
+   const annual=canonical.find(x=>x.leaveTypeId===b.annualLeaveTypeId)!;expect(annual.available).toBe(17);
+   const snapshot=await readMyTeam(managerCtx,query),employee=snapshot.employees.find(x=>x.employmentId===subject.employmentId)!;
+   expect(employee.annualAvailable).toBe(annual.available);
+   for(const id of [b.annualLeaveTypeId,borrower.id]){
+    const source=canonical.find(x=>x.leaveTypeId===id)!;
+    expect(employee.balances.find(x=>x.leaveTypeId===id)).toMatchObject({available:source.available,pending:source.pending,taken:source.taken});
+   }
+   expect(snapshot.actionableApprovals.filter(x=>x.employmentId===subject.employmentId).map(x=>x.annualAvailable)).not.toEqual([]);
+   expect(snapshot.actionableApprovals.filter(x=>x.employmentId===subject.employmentId).every(x=>x.annualAvailable===17)).toBe(true);
+  };
+  await verify();await decideMyTeamLeave(managerCtx,query,{leaveRequestId:borrowed.leaveRequestId,decision:'approved'});await verify();
+ });
+ it('keeps two actual manager observations independent while preserving attendance and each audit actor',async()=>{
+  const parent=await hire('Synthetic senior manager'),userId=await createAppUser(b.tenantId,parent.personId,'manager');
+  await setReportingLine(adminCtx(b),{subordinateEmploymentId:manager.employmentId,managerEmploymentId:parent.employmentId,lineType:'administrative',validFrom:'2024-01-01'});
+  const other:SessionContext={...managerCtx,userId,personId:parent.personId};const date=addDaysIso(today,-1);
+  await checkIn(adminCtx(b),{employmentId:subject.employmentId,date,time:'09:10'});
+  const [source]=await owner.db.select().from(schema.attendance).where(and(eq(schema.attendance.employmentId,subject.employmentId),eq(schema.attendance.attendanceDate,date)));
+  const before=await readMyTeam(managerCtx,query),item=before.attention.find(x=>x.kind==='missing_punch'&&x.attendanceId===source.id);
+  if(item?.kind!=='missing_punch')throw new Error('Actual observed punch required');
+  expect((await readMyTeam(other,query)).attention.some(x=>x.kind==='missing_punch'&&x.attendanceId===source.id)).toBe(true);
+  const first=await markMyTeamPunchReviewed(managerCtx,{attendanceId:source.id,fingerprint:item.fingerprint},query);
+  expect((await readMyTeam(managerCtx,query)).attention.some(x=>x.kind==='missing_punch'&&x.attendanceId===source.id)).toBe(false);
+  expect((await readMyTeam(other,query)).attention.some(x=>x.kind==='missing_punch'&&x.attendanceId===source.id)).toBe(true);
+  const second=await markMyTeamPunchReviewed(other,{attendanceId:source.id,fingerprint:item.fingerprint},query);expect(second.reviewId).not.toBe(first.reviewId);
+  expect((await readMyTeam(other,query)).attention.some(x=>x.kind==='missing_punch'&&x.attendanceId===source.id)).toBe(false);
+  const rows=await owner.db.select().from(schema.attendanceAttentionReview).where(eq(schema.attendanceAttentionReview.attendanceId,source.id));
+  expect(new Set(rows.map(x=>x.reviewerUserId))).toEqual(new Set([managerCtx.userId,other.userId]));expect(rows).toHaveLength(2);
+  for(const [reviewId,actor]of [[first.reviewId,managerCtx.userId],[second.reviewId,other.userId]]){
+   const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,reviewId!));expect(events).toHaveLength(1);expect(events[0].actorId).toBe(actor);
+  }
+  expect((await owner.db.select().from(schema.attendance).where(eq(schema.attendance.id,source.id)))[0]).toEqual(source);
+ });
+ it('bounds actual canonical balance reads to four concurrent employees and retains their returned facts',async()=>{
+  for(let i=0;i<6;i++){const e=await hire(`Synthetic bounded ${i}`);await setReportingLine(adminCtx(b),{subordinateEmploymentId:e.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2024-01-01'});}
+  const original=readOwner.leaveBalances;let active=0,peak=0;const returned=new Map<string,Awaited<ReturnType<typeof original>>>();
+  const spy=vi.spyOn(readOwner,'leaveBalances').mockImplementation(async(...args)=>{
+   active++;peak=Math.max(peak,active);try{const rows=await original(...args);returned.set(args[1],rows);return rows;}finally{active--;}
+  });
+  try{
+   const snapshot=await readMyTeam(managerCtx,query);expect(snapshot.employees).toHaveLength(8);expect(spy).toHaveBeenCalledTimes(8);expect(active).toBe(0);expect(peak).toBe(4);
+   for(const employee of snapshot.employees){const annual=returned.get(employee.employmentId)!.find(x=>x.leaveTypeId===b.annualLeaveTypeId);expect(employee.annualAvailable).toBe(annual?.essView.available?annual.available:null);}
+  }finally{spy.mockRestore();}
  });
 });
