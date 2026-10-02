@@ -1,0 +1,61 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+HR can record non-cash benefits against an employee, but the payroll calculation currently leaves those items out before applying their PCB treatment. The PCB calculation detail also has no saved breakdown of taxable BIK and living accommodation. The reported Employee D calculation has not yet been independently checked against the installed payroll records.
+
+WHAT WE'LL CHANGE
+
+- Include the entered monthly BIK and living accommodation values in normal taxable remuneration when the pay item is subject to PCB. Keep items marked not subject to PCB outside the tax calculation.
+- Keep BIK and living accommodation separate from cash earnings. They may change the PCB deduction, but will never increase the cash salary paid to the employee.
+- Show each benefit separately in the current-month and accumulated sections of PCB Calculation Detail, using the same saved information in the preview and download.
+- Carry the applicable saved taxable benefits through the current tax year without counting them twice across payroll cycles or carrying the previous year's values into the next year.
+- Keep the existing EA benefit classifications separate from cash gross salary, and identify incomplete or conflicting pay-item settings before recalculation.
+
+WHAT YOU'LL GET
+
+HR will be able to see how a non-cash benefit affected PCB and compare the saved calculation with the entered monthly benefit. Payroll will distinguish the employee's taxable remuneration from their cash earnings throughout calculation and reporting.
+
+GOOD TO KNOW
+
+- This change uses monthly benefit values entered by HR. It does not determine the value of a car, accommodation or other benefit, or introduce automatic annual allocation.
+- Existing saved results will not be silently recalculated. An authorised recalculation is needed to replace a result, and the previous result remains in its history.
+- If selected reprocessing finds no payable cash earnings, it will retain the saved result and show the existing skipped outcome. A non-cash benefit will not create a fresh deduction against no payable earnings.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+UNDERSTANDING / GRAPH IMPACT
+
+FACT: Board item 9b125bfd-a8de-46d6-8785-ff12cefb5035 is OPEN. Read from mainwt/.vitest-attachments/r382-requests/board-current.json after the command prologue. Graph queried before source search: earningsOf -> pack.payroll.statutory -> saved statutory/trace -> explainPcb -> shared PCB slip sections -> screen/download. Also inspect foldPriorSlipIntoAccumulators and multicycle-worksheet; EA reporting is a separate classification consumer.
+
+FACT: HASiL Specification for Monthly Tax Deduction Calculations Using Computerized Calculation for 2026, updated 01 January 2026, printed p23 rules 11–12, confirms normal-remuneration treatment; monthly keyed BIK/VOLA enters Y1 in the current year only and is excluded from payslip/EA gross salary. Official source verified 02 October 2026: https://www.hasil.gov.my/wp-content/uploads/spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf . This rule is not an exemption valuation authority and does not prohibit separate EA B3/B4 reporting.
+
+FACT: Main core/payroll.ts CompRow and catCols around 4750–4820 carry nonPayable, pcb, pcbRemunerationType and displayCategory, but not EA classification. Transaction-derived rows around 4986–5018 reuse this fold. earningsOf around 5471 and 5520 records nonPayable and continues before declared stream/exemption processing; around 5513 unsupported unclassified PCB-taxable noncash throws. Additional-run pre-skip unsupported predicate around 6010 repeats the unsupported shape. Removing only the continue would route benefits into cash allowance/bonus and other statutory bases, so is unsafe.
+
+FACT: core/pay-display-category.ts supports bik but no vola and declares displayCategory presentation-only. core/pay-components.ts EA_FORM_LINES and localization/my/ea-reporting.ts already distinguish EA_B3/bik and EA_B4/vola. The request's VOLA Pay Category is not currently a distinct enum value; do not claim its installed setting is verified. PCB current section core/pcb-explain.ts pcbCurrentRemunerationSection lists benefit rows as notSeparatelyRecorded; pcbAccumulatedRemunerationSection around 1432–1450 explicitly prints unrecorded BIK/VOLA zeros. This nuance differs from the reporter's blanket assertion that every current line is zero.
+
+FACT: localization/my/payroll.ts foldPriorSlipIntoAccumulators accumulates saved statutory.bases.pcb, not cash gross, with counted legacy fallback. core/payroll.ts priorSlips selects the current year before the payroll month; same-month regular/additional totals use a separate cumulative delta. Stored PCB base must include taxable benefits exactly once, and separate benefit breakdown must not be added again when folding that combined base.
+
+RECOMMENDATION / SINGLE COURSE
+
+Introduce one typed non-cash benefit classification owner in the country/pay-item seam, distinct from display cash routing. Extend the existing Pay Category vocabulary with VOLA; for non-payable rows resolve explicit BIK/VOLA classification together with subjectPCB. Retain B3/B4 reporting independently. Recognise legacy EA_B3/EA_B4 aliases only as a narrow unambiguous benefit-kind compatibility mapping; subjectPCB remains the inclusion decision. Conflicting explicit category and EA benefit mapping must produce a typed employee configuration refusal, not silently choose a benefit or tax it because it has an EA label. Do not widen support to arbitrary non-payable taxable shapes or optional_deduction/deduction/contribution shapes without modelling their rules.
+
+Resolve entered amount, proration and rounding once in earningsOf; before the nonPayable continue produce a separate normal non-cash benefit result with entered, exempt and taxable amounts per BIK/VOLA. Reuse the existing annual exemption owner/headroom, keeping exempt noncash out of reimburse and every cash bucket. Explicit BIK/VOLA uses normal Y1 per the verified rule; conflicting additional/optional declaration is actionable configuration failure. Do not infer an exemption from category alone or add benefit amounts to EPF/SOCSO/EIS/HRDF wage arguments. Carry a typed PCB-only noncash input through the shared pack interface to the authoritative monthly kernel, including normal/non-resident/incentive branches. Preserve cash arguments and cash gross; only PCB/net deduction may change. Any affected scheme-specific limits require authoritative verification rather than new policy.
+
+Stamp versioned benefit provenance, current entered/exempt/taxable BIK/VOLA and separate PCB cash-normal amount atomically with statutory trace/base. Saved category/subjectPCB/exemption decisions belong to that attempt; later catalogue edits must not rewrite an old explanation. Let combined bases.pcb drive total Y accumulation; saved separate breakdown drives accumulated benefit rows. Missing legacy breakdown is unavailable, never fabricated zero or repriced from today's transaction catalogue. Genuine newly stamped zero is displayable. Share the same saved reader for preview and downloaded document.
+
+Model recurring benefit and one-off transaction ownership across regular/additional/off-cycle runs before implementation. Recurring monthly normal benefits must appear once in the cumulative month baseline; transaction benefits must be owned once by their authorised run. Apply month delta so previous paid PCB cancels, without paying benefits as cash, charging normal benefits twice, applying an exemption twice or consuming transactions twice. Use the same stamped contributions in multicycle worksheet replay. No automatic annual allocation; entered monthly values are the chosen scope.
+
+Retain r382 selected no-pay cash guard before statutory execution. Taxable noncash must not make payableBeforeStatutory positive. Existing whole-employee savepoint rolls back skip/config failure and retains prior slips, history, dirty markers and transaction bindings. Only narrow typed employee configuration failures continue; global/permission/closed-period errors stop safely. Keep job fencing, checkpoint/audit and actor/company/period scope. Do not make no-pay skips appear to have applied the new benefits. No new negative-pay/deferred-tax policy is inferred.
+
+EA B3/B4 remains separately classified through the EA owner, not inferred from PCB trace and not added to B1 cash gross. Verify actual EA input consumption before altering any EA data producer; do not turn an MTD amount into a second annual EA amount. Existing B3/B4 manual/amendment semantics require inspection, and changes beyond mapping support need explicit scope.
+
+UNKNOWN / HAZARDS
+
+Employee D installed August 2026 amount, actual pay-item category/flags, exemption setting, prior slips, run sequence, tax scheme and published status remain UNKNOWN. No private production audit performed. Synthetic reproductions can prove the generic source defect but cannot establish that employee's exact final PCB. Monthly versus annual input intent cannot be inferred from a transaction amount. No-cash statutory settlement remains an existing skip boundary, not a new tax collection policy. Future-year recurring templates are not previous-year accumulation; do not delete valid new-year entered benefits when resetting YTD.
+
+IMPLEMENTATION VALIDATION TO RUN LATER
+
+Named regressions: transaction and recurring BIK/VOLA; each subjectPCB false; exemption none/partial/full and shared annual headroom; cash/statutory bases unchanged except PCB; exact trace Y1 and combined PCB base; current/accumulated saved benefit breakdown; next tax year reset; valid configured future-year recurrence; regular plus additional in both permitted sequences; one-off benefit uniqueness and retries; reprocess old history retained; no-cash skip with taxable noncash; classification conflicts and unknown noncash refuse; legacy breakdown unavailable; preview/download identical; schemes and company/role/tenant guards. Reverse proof disable noncash PCB input then synthetic VOLA test fails; remove cash isolation then gross/base isolation test fails. Run tests only after parent assigns isolated implementation. No source edit, test, build, dev server, production payroll query, board write or deployment in this investigation.
