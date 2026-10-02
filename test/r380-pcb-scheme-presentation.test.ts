@@ -9,7 +9,7 @@ function saved(scheme: 'rep' | 'knowledge_worker' | 'c_suite' = 'rep') {
     taxSchemeDeclarationId: '11111111-2222-4333-8444-555555555555', calculationScheme: scheme, rate: .15, month: 10, n: 2, ytdNet: 1000, epfClaimed: 500,
     pcbPaid: 20, P1: 30000, reliefs: {individual: 9000, spouse: 0, children: 0,
       disabledIndividual: 0, disabledSpouse: 0, total: 9000, lp: 0},
-    trace: {schemeVersion: 1, T: 400, M: 0, R: .15, B: -400, taxOnP1: 4100,
+    trace: {schemeVersion: 1, ...(scheme === 'c_suite' ? {} : {T: 400}), M: 0, R: .15, B: scheme === 'c_suite' ? 0 : -400, taxOnP1: scheme === 'c_suite' ? 4500 : 4100,
       category: 1, Y1: 2000, K1: 100, Y2: 2000, K2: 100, Yt: 0, Kt: 0, K2t: 100,
       Z: 0, lpAccumulated: 0, lpCurrent: 0, zakatCurrent: 5, mtdNormalCalc: 50,
       mtdAdditionalCalc: 0, mtdNormalFloored: 50, mtdAdditionalFloored: 0, zakatLeftover: 0},
@@ -65,10 +65,22 @@ describe('r380 stored scheme presentation', () => {
     expect(pcbFormulaBlocks(x, format).find(b => b.key === 'schemeAnnual')).toMatchObject({formula: 'formulaSchemeAnnual', substituted: 'max( 0, 40000.00 × 15% )', result: 6000});
   });
   it('accepts recorded zero rebate and rejects nonfinite required common facts', () => {
-    const st = saved(); st.pcbMeta.trace.T = 0;
+    const st = saved(); Object.assign(st.pcbMeta.trace, {T: 0, B: 0});
     expect(explainPcb(st, null).kind).toBe('mtd');
     Object.assign(st.pcbMeta.trace, {taxOnP1: NaN});
     expect(explainPcb(st, null)).toMatchObject({kind: 'unavailable', pcb: 45});
+  });
+  it('refuses mixed rebate provenance or inconsistent compatibility fields without reconciling money', () => {
+    for (const patch of [{T: 400}, {T: undefined}, {T2: 0}, {B: -400}, {M: 1}]) {
+      const st = saved('c_suite'); Object.assign(st.pcbMeta.trace, patch);
+      expect(explainPcb(st, null)).toMatchObject({kind: 'unavailable', pcb: 45});
+    }
+    for (const scheme of ['rep', 'knowledge_worker'] as const) {
+      for (const patch of [{B: 0}, {M: 1}]) {
+        const st = saved(scheme); Object.assign(st.pcbMeta.trace, patch);
+        expect(explainPcb(st, null).kind).toBe('unavailable');
+      }
+    }
   });
   it('retains legacy flat working instead of reclassifying from a current relief profile', () => {
     const x = explainPcb({pcb: 100, pcbMeta: {flatRate: .15, trace: {remuneration: 1000, additional: 0, rate: .15}}},

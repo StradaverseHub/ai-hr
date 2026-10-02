@@ -489,7 +489,9 @@ export function explainPcb(
         !hasRecordedNumbers(metaObj, ['month', 'n', 'ytdNet', 'epfClaimed', 'pcbPaid', 'P1']) ||
         !hasRecordedNumbers(reliefs, ['individual', 'spouse', 'children', 'disabledIndividual', 'disabledSpouse', 'total', 'lp']) ||
         !hasRecordedNumbers(st, ['pcb', 'pcbBonus', 'zakat', 'epfEmployee']) ||
-        raw.R !== 0.15 ||
+        raw.R !== 0.15 || raw.M !== 0 ||
+        (scheme === 'c_suite' ? raw.B !== 0 || Object.hasOwn(raw, 'T') || Object.hasOwn(raw, 'T2')
+          : hasRecordedNumbers(raw, ['T']) && raw.B !== -(raw.T as number)) ||
         (scheme !== 'c_suite' && (!hasRecordedNumbers(raw, ['T']) || (raw.T as number) < 0)) ||
         (metaObj.P2 !== undefined && (!hasRecordedNumbers(metaObj, ['P2']) ||
           !hasRecordedNumbers(raw, ['totalTaxYear', 'totalMtdYear']) ||
