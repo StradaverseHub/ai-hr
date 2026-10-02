@@ -1,4 +1,5 @@
 /** Server-owned links and finite error translation; caller URLs never confer scope. */
+import {ModuleNotEnabledError} from '@/core/entitlements';
 import type {MyTeamNavigation,MyTeamSnapshot} from '@/lib/my-team-types';
 import {serializeMyTeamQuery,MyTeamQueryError,type MyTeamActionError} from '@/lib/my-team-query';
 export function myTeamNavigation(snapshot:MyTeamSnapshot):MyTeamNavigation {
@@ -19,6 +20,7 @@ export function myTeamNavigation(snapshot:MyTeamSnapshot):MyTeamNavigation {
  return {roster:{href:snapshot.availability.roster==='available'?rosterHref():null,label:snapshot.scope.canEditRoster?'edit':'view'},employees};
 }
 export function myTeamError(error:unknown):{error:MyTeamActionError;status:number} {
+ if(error instanceof ModuleNotEnabledError)return {error:'not_authorized',status:403};
  if(error instanceof MyTeamQueryError)return {error:'invalid_query',status:400};
  const code=error instanceof Error?(error as Error&{code?:string}).code??error.message:'';
  if(code==='MY_TEAM_QUERY_INVALID')return {error:'invalid_query',status:400};
