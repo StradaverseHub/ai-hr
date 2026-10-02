@@ -55,12 +55,12 @@ import {
   epf,
   foldPriorSlipIntoAccumulators,
   openingAccumulatorsFromTp3,
-  resolvePcbCalculationScheme,
   statutory,
   type EpfMode,
   type PcbAccumulators,
   type TaxProfile,
 } from './payroll';
+import { explainPcb } from '../../core/pcb-explain';
 import { pricesChildReliefFromGrid } from '../../core/dependents';
 import { computeMonthlyRuns, type MonthRunInput, type RunType } from './multicycle';
 import { getActiveStatutoryMY } from './statutory-config';
@@ -144,6 +144,8 @@ export const WORKSHEET_SKIP_REASONS = [
   'zakat_or_lp_present',
   /** No Malaysian statutory profile for this person, so the tax category and scheme eligibility are unknown. */
   'no_statutory_profile',
+  /** Saved scheme provenance is missing, legacy flat incentive, malformed or differs between runs. */
+  'tax_scheme_not_reconstructable',
 ] as const;
 export type WorksheetSkipReason = (typeof WORKSHEET_SKIP_REASONS)[number];
 
@@ -557,6 +559,19 @@ function replayEmployeeMonth(p: {
 
   const profile = taxProfileOf(p.profile, rules);
   const opts = statutoryOptsOf(p.profile, first.period);
+  // Today's profile or revoked approval cannot reinterpret paid history. The canonical recorded
+  // reader validates incentive version, working and declaration provenance before replay is allowed.
+  const recorded = runs.map(r => explainPcb(r.statutory, null));
+  const schemes = recorded.map(x => x.kind === 'mtd'
+    ? {scheme: x.calculationScheme ?? 'resident', declarationId: x.taxSchemeDeclarationId}
+    : x.kind === 'flat' && x.nonResident && x.rate === 0.3
+      ? {scheme: 'non_resident' as const, declarationId: undefined} : null);
+  const saved = schemes[0];
+  if (!saved || schemes.some(x => !x || x.scheme !== saved.scheme || x.declarationId !== saved.declarationId)) {
+    return {reason: 'tax_scheme_not_reconstructable', excluded: false};
+  }
+  opts.calculationScheme = saved.scheme;
+  opts.taxSchemeDeclarationId = saved.declarationId;
   const month = Number(first.period.slice(5, 7));
   const priorAcc = p.priorAcc;
 
@@ -685,7 +700,6 @@ function statutoryOptsOf(e: ProfileRow, period: string): NonNullable<Parameters<
   const eisCatSel = (e.eisCategory ?? 'auto') as 'auto' | 'none';
   const citizenship = e.epfCitizenship ?? 'citizen';
   const autoSocsoCategory = ((age != null && age >= 60) || citizenship === 'non_citizen' ? 2 : 1) as 1 | 2;
-  const residency = e.taxResidency ?? (e.isResident === false ? 'non_resident' : 'resident');
   return {
     socsoCategory: socsoCatSel === 'first' ? 1 : socsoCatSel === 'second' ? 2 : autoSocsoCategory,
     eisEligible:
@@ -693,7 +707,6 @@ function statutoryOptsOf(e: ProfileRow, period: string): NonNullable<Parameters<
     subjectToSocso: socsoCatSel === 'none' ? false : (e.subjectToSocso ?? true),
     subjectToSkbbk: e.subjectToSkbbk ?? true,
     resident: e.isResident ?? true,
-    calculationScheme: resolvePcbCalculationScheme(residency, e.isResident ?? true),
     epfAge: age,
     epfCitizenship: citizenship,
     // Item 70b14723 — THE TYPED AMOUNTS TRAVEL WITH THE ELECTION. `localization/my/multicycle.ts` re-derives

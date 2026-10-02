@@ -7,7 +7,7 @@
  *     partial save (setTaxAction → setTaxProfileMY), leaving the rest of the statutory row untouched.
  *   - Tax Category expanded to five labels mapping to the LHDN integers 1/2/3/3/1.
  *   - Income Tax Resident drives the PCB method: resident (full MTD), non_resident (flat 30%), and the two new
- *     incentive statuses rep + knowledge_worker (flat 15%).
+ *     incentive statuses rep + knowledge_worker (approved annual chargeable-income calculation).
  *   - Children (PCB relief) gains a manual/auto mode; auto derives an eligible-child suggestion from Family
  *     records (eligibleChildReliefCount) that HR confirms into num_children — never a silent sync.
  *   - Employer bears tax: PCB computed + reported in full, but funded from employer cost (not deducted from net).
@@ -24,6 +24,7 @@ import { type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
+import { saveTaxSchemeDeclarationMY } from '../localization/my/tax-scheme-declarations';
 import { createBatch, generatePayslips } from '../core/payroll';
 import { statutory } from '../localization/my/payroll';
 import { eligibleChildReliefCount } from '../core/dependents';
@@ -276,6 +277,9 @@ describe('Identification & Tax — service + action behaviour (item 8b5334db)', 
     await setTaxProfileMY(a, { personId: rep.personId, taxResidency: 'rep' });
     await setTaxProfileMY(a, { personId: kw.personId, taxResidency: 'knowledge_worker' });
 
+    for (const [emp, scheme] of [[rep, 'rep'], [kw, 'knowledge_worker']] as const) {
+      await saveTaxSchemeDeclarationMY(a, {employmentId: emp.employmentId, expectedCompanyId: base.companyId, scheme, validFrom:'2026-01',validTo:'2026-12',approvalReference:'Synthetic test approval',eligibilityConfirmed:true});
+    }
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     await generatePayslips(a, { batchId });
 

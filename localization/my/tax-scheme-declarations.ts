@@ -17,7 +17,7 @@ async function scope(tx:Tx,ctx:SessionContext,employmentId:string,write=false){
   if(!validId(employmentId))throw new TaxSchemeDeclarationError('not_found');
   const [e]=await tx.select({employmentId:employment.id,personId:employment.personId,companyId:employment.companyId,companyName:company.legalName,country:company.country})
     .from(employment).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,employment.tenantId)))
-    .where(and(eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);
+    .where(and(eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1).for(write?'update':'share',{of:employment});
   if(!e)throw new TaxSchemeDeclarationError('not_found');
   const allowed=await tx.execute(sql`SELECT ${write?sql`app.is_admin_for(${e.companyId}::uuid)`:sql`app.can_admin_payroll_for(${e.companyId}::uuid)`} AS ok`);
   if(allowed[0]?.ok!==true)throw new TaxSchemeDeclarationError('not_found');
@@ -33,7 +33,7 @@ export async function listTaxSchemeDeclarationsMY(ctx:SessionContext,employmentI
     return {companyId:e.companyId,companyName:e.companyName,rows};
   });
 }
-export async function saveTaxSchemeDeclarationMY(ctx:SessionContext,p:{employmentId:string;scheme:string;validFrom:string;validTo:string;approvalReference:string;eligibilityConfirmed:boolean}){
+export async function saveTaxSchemeDeclarationMY(ctx:SessionContext,p:{employmentId:string;expectedCompanyId:string;scheme:string;validFrom:string;validTo:string;approvalReference:string;eligibilityConfirmed:boolean}){
   if(!schemeOk(p.scheme))throw new TaxSchemeDeclarationError('invalid_scheme');
   if(!validPeriod(p.validFrom)||!validPeriod(p.validTo)||p.validFrom>p.validTo)throw new TaxSchemeDeclarationError('invalid_period');
   if(p.eligibilityConfirmed!==true||!ctx.userId)throw new TaxSchemeDeclarationError('approval_required');
@@ -41,6 +41,7 @@ export async function saveTaxSchemeDeclarationMY(ctx:SessionContext,p:{employmen
   if(!reference||reference.length>300)throw new TaxSchemeDeclarationError('missing_reference');
   return withTenant(ctx,async tx=>{
     const e=await scope(tx,ctx,p.employmentId,true);
+    if(p.expectedCompanyId!==e.companyId)throw new TaxSchemeDeclarationError('stale_context');
     if(e.country!=='MY')throw new TaxSchemeDeclarationError('not_found');
     const [profile]=await tx.select({taxResidency:employeeStatutoryMy.taxResidency,isResident:employeeStatutoryMy.isResident,epfCitizenship:employeeStatutoryMy.epfCitizenship}).from(employeeStatutoryMy)
       .where(and(eq(employeeStatutoryMy.personId,e.personId),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).limit(1);
