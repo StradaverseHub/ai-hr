@@ -23,6 +23,7 @@ GOOD TO KNOW
 
 - Earlier payroll payments will not be recalculated or rewritten by this work. Correcting an earlier payment requires the existing accountable payroll correction process.
 - The official C-Suite wording specifies 15% of chargeable income, while its printed table shows only income above RM35,000. We follow the stated 15% rate and the published formula; we do not invent a zero-rate threshold or rebate.
+- For additional remuneration, use the published general five-step method with the applicable incentive annual-tax formula. The official incentive sections do not give a separate worked bonus example; this is the implementation interpretation we will test.
 - This proposal covers both the calculations and their explanation; the attached illustration contains placeholders only.
 
 ------------------------------------------------------------
