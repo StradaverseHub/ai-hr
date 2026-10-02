@@ -6179,6 +6179,15 @@
         "failed": "Gagal"
       },
       "reason": {
+        "TAX_SELECTION_CONFIRMATION_REQUIRED": "Sahkan pilihan Pemastautin Cukai Pendapatan untuk majikan ini sebelum memproses penggajian.",
+        "TAX_SELECTION_INVALID_SCHEME": "Semak kategori cukai pendapatan yang dipilih sebelum memproses penggajian.",
+        "TAX_SELECTION_CITIZENSHIP_UNKNOWN": "Rekodkan kewarganegaraan sebelum mengira kategori cukai yang dipilih.",
+        "TAX_SELECTION_NOT_RESIDENT": "Semak kelayakan pemastautin bagi kategori cukai yang dipilih.",
+        "NON_CASH_CLASSIFICATION_CONFLICT": "Kategori manfaat dan pengelasan EA bercanggah. Semak konfigurasi manfaat.",
+        "NON_CASH_UNSUPPORTED_KIND": "Jenis item bayaran ini tidak boleh dikira sebagai manfaat bukan tunai.",
+        "NON_CASH_NORMAL_REMUNERATION_REQUIRED": "Tetapkan BIK/VOLA bercukai sebagai saraan biasa sebelum mengira penggajian.",
+        "NON_CASH_MONTH_BASELINE_UNAVAILABLE": "Input manfaat bulanan yang disimpan tiada atau berbeza daripada tetapan ini. Semak larian biasa dan konfigurasi manfaat sebelum mengira larian tambahan ini.",
+        "NON_CASH_CONFIGURATION_INVALID": "Semak konfigurasi manfaat bukan tunai sebelum mengira penggajian.",
         "TAX_SCHEME_DECLARATION_REQUIRED": "Rekodkan skim cukai diluluskan untuk pekerjaan, majikan dan tempoh penggajian ini, termasuk rujukan kelulusan dan pengesahan kelayakan HR, sebelum memproses penggajian.",
         "PERIOD_ALREADY_PROCESSED": "Sudah diproses untuk bulan ini",
         "NO_PAYROLL_CONFIG": "Konfigurasi gaji tiada",

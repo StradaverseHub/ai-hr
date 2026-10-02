@@ -6179,6 +6179,15 @@
         "failed": "失败"
       },
       "reason": {
+        "TAX_SELECTION_CONFIRMATION_REQUIRED": "处理工资前，请确认此雇主的所得税居民选项。",
+        "TAX_SELECTION_INVALID_SCHEME": "处理工资前，请检查所选所得税类别。",
+        "TAX_SELECTION_CITIZENSHIP_UNKNOWN": "计算所选税务类别前，请记录国籍。",
+        "TAX_SELECTION_NOT_RESIDENT": "请检查所选税务类别的居民资格。",
+        "NON_CASH_CLASSIFICATION_CONFLICT": "福利类别与EA分类冲突。请检查福利设置。",
+        "NON_CASH_UNSUPPORTED_KIND": "此薪酬项目类型不能作为非现金福利计算。",
+        "NON_CASH_NORMAL_REMUNERATION_REQUIRED": "计算工资前，请将应税BIK/VOLA设为正常薪酬。",
+        "NON_CASH_MONTH_BASELINE_UNAVAILABLE": "已保存的月度福利输入缺失或与当前设置不同。计算此次额外工资前，请检查正常工资批次及福利设置。",
+        "NON_CASH_CONFIGURATION_INVALID": "计算工资前，请检查非现金福利设置。",
         "TAX_SCHEME_DECLARATION_REQUIRED": "处理工资前，请记录此雇佣关系、雇主和工资期间获批准的税务计划，包括批准参考编号及人力资源部门的资格确认。",
         "PERIOD_ALREADY_PROCESSED": "本月已处理",
         "NO_PAYROLL_CONFIG": "缺少薪资配置",

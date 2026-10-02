@@ -6179,6 +6179,15 @@
         "failed": "Thất bại"
       },
       "reason": {
+        "TAX_SELECTION_CONFIRMATION_REQUIRED": "Xác nhận lựa chọn cư trú thuế thu nhập cho chủ lao động này trước khi xử lý lương.",
+        "TAX_SELECTION_INVALID_SCHEME": "Kiểm tra loại thuế thu nhập đã chọn trước khi xử lý lương.",
+        "TAX_SELECTION_CITIZENSHIP_UNKNOWN": "Ghi nhận quốc tịch trước khi tính loại thuế đã chọn.",
+        "TAX_SELECTION_NOT_RESIDENT": "Kiểm tra điều kiện cư trú của loại thuế đã chọn.",
+        "NON_CASH_CLASSIFICATION_CONFLICT": "Loại phúc lợi và phân loại EA mâu thuẫn. Kiểm tra cấu hình phúc lợi.",
+        "NON_CASH_UNSUPPORTED_KIND": "Loại khoản lương này không thể được tính là phúc lợi phi tiền mặt.",
+        "NON_CASH_NORMAL_REMUNERATION_REQUIRED": "Đặt BIK/VOLA chịu thuế là thù lao thông thường trước khi tính lương.",
+        "NON_CASH_MONTH_BASELINE_UNAVAILABLE": "Dữ liệu phúc lợi tháng đã lưu bị thiếu hoặc khác thiết lập này. Kiểm tra đợt lương thường và cấu hình phúc lợi trước khi tính đợt bổ sung này.",
+        "NON_CASH_CONFIGURATION_INVALID": "Kiểm tra cấu hình phúc lợi phi tiền mặt trước khi tính lương.",
         "TAX_SCHEME_DECLARATION_REQUIRED": "Trước khi xử lý lương, hãy ghi nhận chương trình thuế được phê duyệt cho quan hệ lao động, chủ lao động và kỳ lương này, gồm tham chiếu phê duyệt và xác nhận điều kiện của HR.",
         "PERIOD_ALREADY_PROCESSED": "Đã xử lý cho tháng này",
         "NO_PAYROLL_CONFIG": "Thiếu cấu hình lương",

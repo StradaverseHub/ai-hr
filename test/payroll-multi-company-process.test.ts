@@ -6,6 +6,9 @@
  *      abort (no batch is created for it).
  * Plus the pure result helpers (reason mapping, overall status, summary counts, one-shot encode/decode).
  */
+import { readFileSync } from 'node:fs';
+import { NonCashBenefitConfigurationError } from '../localization/noncash-benefits';
+import { TaxSelectionError } from '../localization/my/tax-selection';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -20,6 +23,7 @@ import {
   encodeRunGroupResult,
   overallStatusOf,
   reasonForError,
+  reasonForPayrollError,
   runMultiCompanyPayroll,
   summarize,
   type CompanyOutcome,
@@ -31,6 +35,26 @@ describe('multi-company payroll — pure helpers', () => {
     expect(reasonForError('A payroll process already exists for this period')).toBe('PERIOD_ALREADY_PROCESSED');
     expect(reasonForError('No localization pack for MY')).toBe('NO_PAYROLL_CONFIG');
     expect(reasonForError('something else entirely')).toBe('SYSTEM_VALIDATION_ERROR');
+  });
+
+  it('typed wizard failures retain safe reasons through result transport and every locale', () => {
+    const errors = [
+      ...(['confirmation_required','invalid_scheme','citizenship_unknown','not_resident'] as const).map(code=>new TaxSelectionError(code)),
+      ...(['classification_conflict','unsupported_kind','normal_remuneration_required','month_baseline_unavailable'] as const).map(reason=>new NonCashBenefitConfigurationError('PRIVATE_COMPONENT',reason)),
+    ];
+    const expected = ['TAX_SELECTION_CONFIRMATION_REQUIRED','TAX_SELECTION_INVALID_SCHEME','TAX_SELECTION_CITIZENSHIP_UNKNOWN','TAX_SELECTION_NOT_RESIDENT','NON_CASH_CLASSIFICATION_CONFLICT','NON_CASH_UNSUPPORTED_KIND','NON_CASH_NORMAL_REMUNERATION_REQUIRED','NON_CASH_MONTH_BASELINE_UNAVAILABLE'];
+    errors.forEach((error,i)=>{
+      const reason=reasonForPayrollError(error);expect(reason).toBe(expected[i]);
+      const result=summarize('2026-07','s','e',[{companyId:'a',companyName:'A',status:'failed',employeesSelected:1,employeesSucceeded:0,reason}]);
+      const encoded=encodeRunGroupResult(result);expect(encoded).not.toContain('PRIVATE_COMPONENT');expect(decodeRunGroupResult(encoded)?.perCompany[0].reason).toBe(reason);
+      for(const locale of ['en','ms','zh','ta','th','vi']){const messages=JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8'));expect(messages.payroll.process.reason[reason]).toBeTruthy();}
+    });
+    for(const code of ['not_found','invalid_period','stale_context'] as const)expect(reasonForPayrollError(new TaxSelectionError(code))).toBe('SYSTEM_VALIDATION_ERROR');
+    expect(reasonForPayrollError(new Error('private SQL failure'))).toBe('SYSTEM_VALIDATION_ERROR');expect(reasonForPayrollError(null)).toBe('SYSTEM_VALIDATION_ERROR');
+    expect(reasonForPayrollError(new Error('No localization pack for MY'))).toBe('NO_PAYROLL_CONFIG');
+    const actions=readFileSync(new URL('../app/payroll/process/actions.ts',import.meta.url),'utf8');
+    const orchestration=readFileSync(new URL('../core/payroll-run-group.ts',import.meta.url),'utf8');
+    expect(actions).toContain('reason: reasonForPayrollError(e)');expect(orchestration).toContain('reason: reasonForPayrollError(e)');
   });
 
   it('overallStatusOf: all ok → succeeded, some fail → partial, all fail → failed', () => {

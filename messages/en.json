@@ -6179,6 +6179,15 @@
         "failed": "Failed"
       },
       "reason": {
+        "TAX_SELECTION_CONFIRMATION_REQUIRED": "Confirm the Income Tax Resident selection for this employer before processing payroll.",
+        "TAX_SELECTION_INVALID_SCHEME": "Review the selected income tax category before processing payroll.",
+        "TAX_SELECTION_CITIZENSHIP_UNKNOWN": "Record citizenship before calculating the selected tax category.",
+        "TAX_SELECTION_NOT_RESIDENT": "Review residency eligibility for the selected tax category.",
+        "NON_CASH_CLASSIFICATION_CONFLICT": "The benefit category and EA classification conflict. Review the benefit configuration.",
+        "NON_CASH_UNSUPPORTED_KIND": "This pay item kind cannot be calculated as a non-cash benefit.",
+        "NON_CASH_NORMAL_REMUNERATION_REQUIRED": "Set taxable BIK/VOLA to normal remuneration before calculating payroll.",
+        "NON_CASH_MONTH_BASELINE_UNAVAILABLE": "Saved monthly benefit inputs are missing or differ from this setup. Review the regular run and benefit configuration before calculating this additional run.",
+        "NON_CASH_CONFIGURATION_INVALID": "Review the non-cash benefit configuration before calculating payroll.",
         "TAX_SCHEME_DECLARATION_REQUIRED": "Record the approved tax scheme for this employment, employer and payroll period, including the approval reference and HR eligibility confirmation, before processing payroll.",
         "PERIOD_ALREADY_PROCESSED": "Already processed for this month",
         "NO_PAYROLL_CONFIG": "Payroll configuration missing",
