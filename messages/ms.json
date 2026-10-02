@@ -7372,7 +7372,8 @@
         "inconsistent_run_bases": "Larian dikenakan caj atas gaji bulanan yang berbeza",
         "tax_scheme_not_reconstructable": "Skim cukai atau kelulusan majikan tersimpan tidak lengkap atau berbeza antara penggajian; perbandingan tahunan tidak dibina semula.",
         "zakat_or_lp_present": "Zakat atau potongan TP1 terlibat pada bulan ini",
-        "no_statutory_profile": "Tiada profil berkanun Malaysia bagi pekerja ini"
+        "no_statutory_profile": "Tiada profil berkanun Malaysia bagi pekerja ini",
+        "noncash_not_reconstructable": "Sumbangan atau pemilikan manfaat bukan tunai tersimpan tidak lengkap atau tidak konsisten; perbandingan tidak dibina semula."
       },
       "runType": {
         "regular": "Biasa",

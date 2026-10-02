@@ -7372,7 +7372,8 @@
         "inconsistent_run_bases": "The runs were charged on different monthly wages",
         "tax_scheme_not_reconstructable": "The saved tax scheme or employer approval is incomplete or differs between runs; no annual comparison was reconstructed.",
         "zakat_or_lp_present": "Zakat or a TP1 deduction rode this month",
-        "no_statutory_profile": "No Malaysian statutory profile for this employee"
+        "no_statutory_profile": "No Malaysian statutory profile for this employee",
+        "noncash_not_reconstructable": "The saved non-cash contribution or ownership is incomplete or inconsistent; no comparison was reconstructed."
       },
       "runType": {
         "regular": "Regular",

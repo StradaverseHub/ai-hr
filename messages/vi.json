@@ -7372,7 +7372,8 @@
         "inconsistent_run_bases": "Các kỳ được tính trên mức lương tháng khác nhau",
         "tax_scheme_not_reconstructable": "Chương trình thuế hoặc phê duyệt chủ lao động đã lưu thiếu hoặc khác giữa các lần trả lương; không tái dựng so sánh hằng năm.",
         "zakat_or_lp_present": "Tháng này có zakat hoặc khoản khấu trừ TP1",
-        "no_statutory_profile": "Nhân viên này không có hồ sơ pháp định Malaysia"
+        "no_statutory_profile": "Nhân viên này không có hồ sơ pháp định Malaysia",
+        "noncash_not_reconstructable": "Khoản lợi ích phi tiền mặt hoặc quyền sở hữu theo kỳ đã lưu không đầy đủ hoặc không nhất quán; không dựng lại phép so sánh."
       },
       "runType": {
         "regular": "Thường",

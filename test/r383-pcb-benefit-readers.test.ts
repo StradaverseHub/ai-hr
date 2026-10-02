@@ -46,3 +46,22 @@ describe('r383 saved taxable noncash explanation',()=>{
     expect(row(pcbSlipSections(x,sides),'slipCompBenefitsInKind')).toEqual({kind:'notRecorded'});
   });
 });
+
+import {computeMonthlyRuns} from '../localization/my/multicycle';
+import {statutory} from '../localization/my/payroll';
+describe('r383 noncash month replay model',()=>{
+  it('applies saved owned taxable contributions once and leaves cash statutory bases alone',()=>{
+    const profile={category:3 as const},opts={resident:true};
+    const replay=computeMonthlyRuns({month:7,profile,opts,runs:[{runType:'regular',payment:5000,pcbNonCashNormal:{bik:400,vola:0}},{runType:'bonus',payment:1000,pcbNonCashNormal:{bik:0,vola:600}}]});
+    const expected=statutory(5000,profile,1000,0,{month:7},{...opts,pcbNonCashNormal:{bik:400,vola:600}});
+    const cashOnly=statutory(5000,profile,1000,0,{month:7},opts);
+    expect(replay.monthly.pcb).toBe(expected.pcb);
+    expect(replay.runs[0].pcb+replay.runs[1].pcb).toBeCloseTo(expected.pcb,8);
+    expect(replay.monthly.pcb).toBeGreaterThan(cashOnly.pcb);
+    for(const key of ['epfEmployee','epfEmployer','socsoEmployee','socsoEmployer','eisEmployee','eisEmployer'] as const)expect(replay.monthly[key]).toBe(cashOnly[key]);
+  });
+  it('refuses negative or overflowing saved contributions rather than clamping invented money',()=>{
+    expect(()=>computeMonthlyRuns({month:7,runs:[{runType:'regular',payment:5000,pcbNonCashNormal:{bik:-1,vola:0}}]})).toThrow('Invalid saved non-cash contribution');
+    expect(()=>computeMonthlyRuns({month:7,runs:[{runType:'regular',payment:5000,pcbNonCashNormal:{bik:1e308,vola:0}}]})).toThrow('Invalid saved non-cash contribution');
+  });
+});

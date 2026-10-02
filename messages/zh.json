@@ -7372,7 +7372,8 @@
         "inconsistent_run_bases": "各次发薪按不同的月薪计费",
         "tax_scheme_not_reconstructable": "已保存的税务计划或雇主批准不完整，或各次工资记录之间不同；未重建年度比较。",
         "zakat_or_lp_present": "本月涉及天课或 TP1 扣除",
-        "no_statutory_profile": "该员工没有马来西亚法定资料"
+        "no_statutory_profile": "该员工没有马来西亚法定资料",
+        "noncash_not_reconstructable": "已保存的非现金福利金额或所属运行记录不完整或不一致；未重建比较。"
       },
       "runType": {
         "regular": "常规",
