@@ -3412,7 +3412,8 @@
       "periodNotRecorded": "Chưa ghi nhận",
       "selectedEmployerContributionsHeading": "Đóng góp chủ lao động — phiếu lương được chọn",
       "periodScopeNote": "Tổng tháng và năm gồm mọi đợt lương đủ điều kiện của việc làm này, kể cả các chủ lao động khác khi áp dụng.",
-      "employeeYtdNote": "Số liệu lũy kế năm của nhân viên thể hiện toàn bộ phần đóng góp theo luật đã được tính. Khi người sử dụng lao động chi trả một phần khoản đóng góp, các khoản khấu trừ phía trên thể hiện số tiền thực tế đã trừ từ nhân viên."
+      "employeeYtdNote": "Số liệu lũy kế năm của nhân viên thể hiện toàn bộ phần đóng góp theo luật đã được tính. Khi người sử dụng lao động chi trả một phần khoản đóng góp, các khoản khấu trừ phía trên thể hiện số tiền thực tế đã trừ từ nhân viên.",
+      "paymentDateLabel": "Ngày thanh toán"
     },
     "goalsTitle": "Mục tiêu của tôi",
     "goalsEmpty": "Chưa có mục tiêu nào. Hãy thêm một mục tiêu để theo dõi điều bạn đang hướng tới.",

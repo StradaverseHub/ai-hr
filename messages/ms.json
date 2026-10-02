@@ -3412,7 +3412,8 @@
       "periodNotRecorded": "Tidak direkodkan",
       "selectedEmployerContributionsHeading": "Caruman majikan — slip gaji dipilih",
       "periodScopeNote": "Jumlah bulanan dan tahunan merangkumi semua proses gaji yang layak untuk pekerjaan ini, termasuk majikan lain jika berkenaan.",
-      "employeeYtdNote": "Angka pekerja tahun hingga kini menunjukkan bahagian berkanun pekerja yang dikira sepenuhnya. Jika majikan membiayai sebahagian caruman, potongan di atas menunjukkan jumlah yang sebenarnya dipotong daripada pekerja."
+      "employeeYtdNote": "Angka pekerja tahun hingga kini menunjukkan bahagian berkanun pekerja yang dikira sepenuhnya. Jika majikan membiayai sebahagian caruman, potongan di atas menunjukkan jumlah yang sebenarnya dipotong daripada pekerja.",
+      "paymentDateLabel": "Tarikh Bayaran"
     },
     "goalsTitle": "Matlamat saya",
     "goalsEmpty": "Belum ada matlamat. Tambah satu untuk menjejaki apa yang anda usahakan.",

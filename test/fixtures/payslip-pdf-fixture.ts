@@ -67,7 +67,9 @@ export const labels: PayslipPdfLabels = {
   companyReg: 'Reg. no.',
   // a96d320c — the shape the REAL caller now passes. `payslipPdfStrings` interpolates the localized
   // `payDateLine` with `englishLongDate(payDate)`, so the fixture says what the document says.
-  paymentDate: 'Payment date: 30 June 2026',
+  paymentDate: '30 Jun 2026',
+  paymentDateLabel: 'Payment Date',
+  payrollCycleLabel: 'Payroll cycle',
   employmentInfo: 'Employment info',
   department: 'Department',
   position: 'Position',

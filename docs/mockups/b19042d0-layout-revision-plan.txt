@@ -1,0 +1,45 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+The payslip has the saved payroll information, but the review and downloaded document still contain the extra title, uneven profile formatting and the messages marked in your latest screenshots. Earnings and deductions do not always finish on the same line, and the review hides part of the bank account number.
+
+WHAT WE'LL CHANGE
+
+- Remove the Payroll Payslip title. Align company information at the left with the applicable Month and Year at the top-right.
+- Show Payment Date using the actual saved payroll payment date, formatted like 30 Sep 2026.
+- Give every Employee Profile field consistent borders, font size, weight, spacing and alignment.
+- Keep Earnings and Deductions side by side with aligned headings, bottom borders and total rows. Longer documents will carry both totals to the same final page.
+- Remove the three explanation messages you identified while keeping the saved payroll items and contributions visible.
+- Remove Gross and Net Pay Summary. Show the saved Gross Pay and Net Pay year totals within Year to Date beside the applicable statutory year totals.
+- Show the full bank account number on the authorized Individual Payslip review and its PDF, retaining the bank name and payment method.
+
+WHAT YOU'LL GET
+
+A consistent, readable payslip review and download that follows the latest annotated screenshots. All applicable saved information remains complete, including longer descriptions that need another page.
+
+GOOD TO KNOW
+
+- This changes what is shown, without changing payroll amounts, year totals or who may open an individual payslip.
+- A missing payment date will remain absent. The payslip will not guess a date or claim that a bank transfer has settled.
+- The selected payslip's Net Pay band remains. The separate Gross and Net Pay Summary is removed, and the year totals move into Year to Date.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: inspected both reporter screenshots New_Payslip_V1.png and New_Payslip_V2.png. V1 marks the document title, payment caption, explanation tails and duplicate gross/net summary. V2 marks account masking and the baseline below transaction totals. Current source was inspected; production visual parity remains to be verified by the parent.
+
+The existing payroll_batch.batch_date read owns payDate. Existing core/payroll-view.ts sumPayslipYtd owns gross/net and employee statutory YTD; existing employer-period reader owns employer figures. Consume those facts unchanged. No migration or recalculation is needed.
+
+Change app/payroll/individual-payslip/page.tsx and lib/payslip-pdf.ts, sharing validated payment-date formatting and caption through lib/payslip-pdf-strings.ts. Six locales receive paymentDateLabel. Preserve invalid historical date strings rather than converting them into a different payment date.
+
+The Individual Payslip page uses the existing company-scoped payslipForReview bankAccountFull field. Retain the separate masked read contract and all list consumers. Both existing PDF routes already consume bankAccountFull; their authorization and release fences remain unchanged.
+
+Use the generic Item and Year to Date columns for the combined YTD table, preserving employee statutory and gross/net figures. Employer columns for gross and net remain blank. Keep the selected-run Net Pay band, employer-funded employee-share disclosures, genuine configured contribution items, record-only items, source records and admin calculation links. Move admin drill-down cards outside the transaction pair so they do not shift its total rows.
+
+Measure all PDF profile fields at the same font size and weight with consistent padding and borders. Wrap complete values without character caps. Keep transaction pairs aligned through continuation pages, delaying both totals until their shared final chunk. Repeat required headings without repeating payroll amounts.
+
+Update the superseded masking, title, explanation and continuation assertions rather than removing their guards. Verify actual PDF header coordinates, profile cell borders, merged saved YTD figures, no removed messages, full account scope, uneven row counts and long multi-page content. Parent runs targeted and full tests, typecheck, actual six-locale review/PDF render, narrow/wide and light/dark checks, reverse proof and production arrival after integration.
+
+Not done: no payroll kernel or source-reader changes, new payment state, historical correction, bank settlement assertion, access widening outside this authorized individual review, or inferred money/date values.

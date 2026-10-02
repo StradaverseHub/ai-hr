@@ -3445,7 +3445,8 @@
       "periodNotRecorded": "Not recorded",
       "selectedEmployerContributionsHeading": "Employer contributions — selected payslip",
       "periodScopeNote": "Month and year totals include all eligible payroll runs for this employment, including other employers where applicable.",
-      "employeeYtdNote": "Employee year-to-date figures show the full computed statutory employee shares. Where the employer funded part of a contribution, the deductions above show what was actually taken from the employee."
+      "employeeYtdNote": "Employee year-to-date figures show the full computed statutory employee shares. Where the employer funded part of a contribution, the deductions above show what was actually taken from the employee.",
+      "paymentDateLabel": "Payment Date"
     },
     "secOverview": "Overview",
     "secProfile": "Profile",
