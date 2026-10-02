@@ -145,3 +145,16 @@ describe('r383 saved direct selection provenance', () => {
     expect(explainPcb(st, null)).toMatchObject({kind: 'unavailable', pcb: 45});
   });
 });
+
+describe('r383 normal and nonresident selection readers',()=>{
+  const selection={taxSelectionId:'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',taxSelectionVersion:2,taxSelectionSource:'income_tax_resident'};
+  it('keeps the recorded nonresident selection without requesting a resident declaration',()=>{
+    const x=explainPcb({pcb:300,pcbMeta:{...selection,calculationScheme:'non_resident',flatRate:.3,trace:{remuneration:1000,additional:0,rate:.3}}},null);
+    expect(x).toMatchObject({kind:'flat',nonResident:true,taxSelection:selection,pcb:300});
+  });
+  it('keeps an ordinary saved resident selection and refuses an incomplete revision',()=>{
+    const st=saved();Object.assign(st.pcbMeta,selection,{calculationScheme:'resident'});
+    const x=explainPcb(st,null);expect(x).toMatchObject({kind:'mtd',calculationScheme:'resident',taxSelection:selection});
+    Object.assign(st.pcbMeta,{taxSelectionVersion:undefined});expect(explainPcb(st,null).kind).toBe('unavailable');
+  });
+});

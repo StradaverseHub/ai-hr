@@ -186,8 +186,8 @@ describe('r361 — the accumulated block itemises what was paid and states what 
     };
     const x = richRun();
     const allowed = numbersIn({ x, paid: PAID });
-    // Zero is the one literal this builder prints (BIK and VOLA), and it is in the inputs many times over.
-    expect(allowed.has(0), 'the premise for the two printed zeroes').toBe(true);
+    // Every displayed amount must belong to the saved inputs, including any genuine recorded zero.
+    expect(allowed.has(0), 'the fixture contains recorded zeros').toBe(true);
     for (const row of pcbAccumulatedRemunerationSection(x, PAID).rows) {
       for (const v of [row.first, row.second]) {
         if (v?.kind === 'money') {

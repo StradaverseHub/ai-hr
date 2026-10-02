@@ -500,8 +500,10 @@ export function explainPcb(
   const nonCash = readPcbNonCash(st.pcbNonCash);
   const savedTrace = metaObj.trace as Record<string, unknown> | null;
   const savedNormal = savedTrace?.Y1 ?? savedTrace?.remuneration;
+  const benefitNormal = nonCash ? nonCash.cashNormal + nonCash.cumulative.bik + nonCash.cumulative.vola : NaN;
   figures.nonCash = nonCash && typeof savedNormal === 'number' && Number.isFinite(savedNormal) &&
-    Math.abs(nonCash.cashNormal + nonCash.cumulative.bik + nonCash.cumulative.vola - savedNormal) < 0.005
+    Number.isSafeInteger(Math.round(savedNormal * 100)) && Math.abs(savedNormal * 100 - Math.round(savedNormal * 100)) < 0.000001 &&
+    Number.isSafeInteger(Math.round(benefitNormal * 100)) && Math.round(benefitNormal * 100) === Math.round(savedNormal * 100)
       ? nonCash : null;
 
   // Read the immutable scheme before legacy rate keys. Never infer a category from today's profile.
@@ -1198,19 +1200,9 @@ export function pcbChildSection(
 
 // ── Sections 5 and 6: the component split behind Y1 and Yt ─────────────────────────────────────────
 //
-// ⚠️ PAYROLL DOES NOT PERSIST THIS SPLIT, AND THAT WAS CHECKED BEFORE THESE ROWS WERE WRITTEN.
-// `localization/my/payroll.ts` hands `pcbMonth` ONE `monthlyWage` (its own `pcbWage`) and ONE
-// `additional`, and `pcbMeta` stamps them back as Y1 and Yt. The payslip's four money columns —
-// basic_salary / allowance / overtime_pay / bonus — are PRESENTATION buckets (`display_category`,
-// "PRESENTATION ONLY and independent of every statutory flag"), they are not the agency's taxonomy, and
-// `pcbWage` is not their sum: exclusions and ticked wage deductions move it. There is no payslip line
-// item table to read either.
-//
-// So the split does not exist, anywhere, for any month. Each component line says `notSeparatelyRecorded`
-// — the vocabulary already on this screen, already used for LHDN's gross Y — and the COMBINED figure the
-// engine actually charged sits above them as a real number. Deriving five component figures from one
-// total would put invented amounts on a tax document, which is the failure this whole screen exists to
-// prevent, and no amount of plausibility makes an invented figure a recorded one.
+// Cash presentation columns do not identify the tax agency's cash component split. Versioned noncash
+// snapshots record BIK/VOLA separately; their saved entered/exempt/taxable decisions are read below.
+// Missing legacy benefit provenance stays unavailable and is never priced from today's catalogue.
 
 /** The agency's own remuneration lines for the current month (reference page 3). */
 const SLIP_CURRENT_COMPONENTS: readonly string[] = [
@@ -1486,12 +1478,8 @@ export type PcbAccumulatedRemuneration = {
  *   · Y reads "recorded only in combination" on a payslip written before the engine stamped it
  *     (4011903e), exactly as the worksheet's own Y row does. It is never reconstructed.
  *
- * ⚠️ BIK AND VOLA ARE PRINTED AS 0.00, WHICH IS THE ONE PLACE THIS FILE PRINTS A ZERO IT DID NOT READ,
- * AND THE APPROVED PLAN PROMISES IT IN WRITING. Neither is a payroll component in this system, so the
- * agency's two lines would otherwise be absent from a document a payroll officer lays beside the
- * agency's own. CLAUDE.md §8 is that a printed 0.00 asserts the money does not exist — so the note
- * says, in the reader's own language, that the zero means WE HOLD NO SUCH FIGURE and not that anybody
- * has checked there is none. The note is the load-bearing half of that decision; do not drop it.
+ * BIK and VOLA come from this attempt's immutable accumulated benefit snapshot. Incomplete or missing
+ * historical benefit evidence is unavailable. A genuine saved zero remains displayable as zero.
  */
 export function pcbAccumulatedRemunerationSection(
   x: Extract<PcbExplanation, { kind: 'mtd' }>,
@@ -1553,10 +1541,9 @@ export function pcbAccumulatedRemunerationSection(
  * and 10 are `pcbWorksheet` above, which has emitted them since 7f251381. Rebuilding them would be the
  * second display of one calculation this whole screen was created to remove.
  *
- * A FLAT-RATE PAYEE AND A RUN WITH NO WORKING GET NOTHING, and that is the answer rather than a gap. A
- * non-resident / REP / knowledge-worker deduction never reaches `pcbMonth`: there is no Q, no ΣLP, no LP1
- * and no Z1 for them, so five schedules of "not recorded" would assert those figures exist and were
- * merely unsaved. `flatWorksheet` already says so in one sentence, which is the truthful version.
+ * A flat-rate payee has no resident relief schedules. Newly recorded noncash benefits still have
+ * meaningful current/accumulated rows and share this same screen/download section owner. Legacy flat
+ * histories without that provenance retain their existing layout.
  */
 export function pcbSlipSections(
   x: PcbExplanation,
