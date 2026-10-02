@@ -48,6 +48,7 @@ import {
 import { listPayComponents, previewPayRule, upsertPayComponent } from '../core/pay-components';
 import { setCompensation } from '../core/comp';
 import { createBatch, generatePayslips } from '../core/payroll';
+import { saveTaxSelectionMY } from '../localization/my/tax-selection';
 import { setEmploymentPayComponent } from '../core/pay-components';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
@@ -338,6 +339,9 @@ async function makeEmp(name: string) {
     .insert(schema.employment)
     .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2020-01-01' })
     .returning({ id: schema.employment.id });
+  // This low-level fixture bypasses hireEmployee's input initialization. Record explicit ordinary
+  // resident intent through the public scoped owner; never fabricate a statutory result for the ORP oracle.
+  await saveTaxSelectionMY(await entitledCtx(b),{employmentId:e.id,expectedCompanyId:b.companyId,scheme:'resident'});
   return e.id;
 }
 
