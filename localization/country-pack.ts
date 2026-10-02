@@ -721,6 +721,6 @@ export interface CountryPack {
    */
   pcb2iiStatement?: (
     ctx: SessionContext,
-    p: { employmentId: string; year: string; companyId?: string },
+    p: { employmentId: string; year: string; selectedDate: string; companyId?: string },
   ) => Promise<Pcb2iiForm | null>;
 }
