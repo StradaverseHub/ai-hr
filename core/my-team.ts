@@ -6,7 +6,7 @@ import {appendEvent,actorOf} from '../db/events';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {datesBetween,monthRange,weekRangeOf,addDaysIso,resolveRosterCell} from '../lib/roster-month';
 import type {MyTeamQuery,MyTeamSnapshot,MyTeamEmployee,MyTeamDay,MyTeamRosterDay,MyTeamPunchReviewResult,MyTeamRosterScope,MyTeamApproval} from '../lib/my-team-types';
-import {attendanceForEmploymentsRange,statusOf,flagOf} from '../packs/attendance/service';
+import {attendanceForEmploymentsRange,statusOf,flagOf,workingShiftSchedule,shiftDayKindFor} from '../packs/attendance/service';
 import {actionableLeaveRequests,myTeamLeaveProjection,decideLeave,decideLeaveDates,leaveTypeIs} from '../packs/leave/service';
 import {leaveBalances} from './read';
 import {rosterWindowView,type RosterMonthView} from './roster';
@@ -33,13 +33,15 @@ function periodOf(query:ReturnType<typeof normalizeQuery>){
  for(let from=start;from<=end;from=addDaysIso(from,7))coveringWeeks.push({from,to:addDaysIso(from,6)});
  return {...period,gridDates:datesBetween(start,end),coveringWeeks};
 }
-function rosterDay(view:RosterMonthView,id:string,date:string):MyTeamRosterDay {
+type ShiftScheduleInput={id:string;code:string|null;start:string;end:string;crosses:boolean;breakMinutes:number;roundingMinutes:number|null};
+function rosterDay(view:RosterMonthView,id:string,date:string,schedules:ShiftScheduleInput[]):MyTeamRosterDay {
  const assigned=view.cells[`${id}|${date}`]??null,resolved=resolveRosterCell(date,assigned,view.usual[id]);
  const shiftId=resolved.kind==='shift'||resolved.kind==='usual'?resolved.shiftId:null;
- const sh=view.shifts.find(s=>s.id===shiftId);
+ const sh=view.shifts.find(s=>s.id===shiftId),input=schedules.find(s=>s.id===shiftId);
+ const schedule=input?workingShiftSchedule(input,resolved.kind==='usual'&&shiftDayKindFor(view.usual[id],date)==='half'?'half':'full'):null;
  return {kind:resolved.kind==='rest'?'rest':resolved.kind==='off'?'off':resolved.kind==='none'?'unassigned':'shift',
-   shiftId,code:sh?.code??null,name:sh?.name??null,color:sh?.color??null,start:sh?.startTime??null,end:sh?.endTime??null,
-   scheduledMinutes:null,isRestDay:resolved.kind==='rest',isOverride:assigned!==null};
+   shiftId,code:sh?.code??null,name:sh?.name??null,color:sh?.color??null,start:schedule?.shiftStart.slice(0,5)??sh?.startTime??null,end:schedule?.shiftEnd.slice(0,5)??sh?.endTime??null,
+   scheduledMinutes:schedule?.scheduledMinutes??null,isRestDay:resolved.kind==='rest',isOverride:assigned!==null};
 }
 /** Bounded concurrency for canonical employee balance reads, never a call per cell. */
 async function mapBounded<T,R>(items:T[],fn:(item:T)=>Promise<R>):Promise<R[]>{
@@ -72,9 +74,10 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
          sql`(${attendance.attendanceDate} BETWEEN ${from}::date AND ${to}::date OR ${attendance.attendanceDate}=${today}::date)`));return rows;
    }) : [],
  ]);
- const usualIds=[...new Set([...Object.values(roster?.usual??{}),...Object.values(todayRoster?.usual??{})].map(u=>u.shiftId))];
- const defaults=usualIds.length ? await withTenant(realCtx,tx=>tx.select({id:shift.id,code:shift.code,start:shift.startTime,end:shift.endTime})
-   .from(shift).where(inArray(shift.id,usualIds))) : [];
+ const shiftIds=[...new Set([...(roster?.shifts??[]),...(todayRoster?.shifts??[])].map(s=>s.id))];
+ const defaults=shiftIds.length ? await withTenant(realCtx,tx=>tx.select({id:shift.id,code:shift.code,start:shift.startTime,end:shift.endTime,
+   crosses:shift.crossesMidnight,breakMinutes:shift.breakMinutes,roundingMinutes:shift.normalHoursRoundingMinutes})
+   .from(shift).where(inArray(shift.id,shiftIds))) : [];
  const approvals:MyTeamApproval[]=decisions.map(d=>{
    const employee=scope.employees.find(e=>e.employmentId===d.employmentId)!;
    const effectiveDates=leaves.find(l=>l.requestId===d.requestId)?.dates.filter(date=>date.status==='pending').map(date=>({date:date.date,days:date.days}))??[];
@@ -92,8 +95,9 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
      const ownRoster=date===today&&!inGrid?todayRoster:roster;
      const row=(date===today&&!inGrid?todayAttendanceRows:attendanceRows).get(employee.employmentId)?.find((r: {date:string})=>r.date===date);
      const observation=observations.find(o=>o.employmentId===employee.employmentId&&o.date===date);
-     const dayRoster=ownRoster?rosterDay(ownRoster,employee.employmentId,date):null;
-     if(dayRoster&&row)dayRoster.scheduledMinutes=row.scheduledMinutes;
+     const dayRoster=ownRoster?rosterDay(ownRoster,employee.employmentId,date,defaults):null;
+     if(dayRoster&&row){dayRoster.scheduledMinutes=row.scheduledMinutes;
+       if(row.shiftStart!==null)dayRoster.start=row.shiftStart;if(row.shiftEnd!==null)dayRoster.end=row.shiftEnd;}
      return {date,roster:dayRoster,attendance:row?{attendanceId:row.attendanceId,status:statusOf(row),flag:flagOf(row),late:row.status==='late',
        checkInAt:row.checkInAt,checkOutAt:row.checkOutAt,workedMinutes:row.workedMinutes,lateMinutes:row.lateMinutes,
        scheduledMinutes:row.scheduledMinutes,fingerprint:observation?.fingerprint??null,reviewed:observation?.reviewed??false}:null,
@@ -163,13 +167,13 @@ export async function resolveMyTeamRosterScope(ctx:SessionContext,query:MyTeamQu
  const snapshot=await readMyTeam(ctx,query);return {companyIds:snapshot.query.companyIds,employmentIds:snapshot.gridEmploymentIds,
    from:snapshot.period.gridDates[0],to:snapshot.period.gridDates.at(-1)!,canEditRoster:snapshot.scope.canEditRoster};
 }
-export function markMyTeamPunchReviewed(ctx:SessionContext,p:{attendanceId:string;fingerprint:string}):Promise<MyTeamPunchReviewResult>{
+export function markMyTeamPunchReviewed(ctx:SessionContext,p:{attendanceId:string;fingerprint:string},query?:MyTeamQuery):Promise<MyTeamPunchReviewResult>{
  assertMyTeamAccess(ctx);if(!isModuleEnabled(ctx,'attendance'))throw new MyTeamAuthorizationError();
  if(!uuid.test(p.attendanceId)||!/^[0-9a-f]{32}$/.test(p.fingerprint))throw new MyTeamReviewChangedError();
  return withTenant(ctx,async tx=>{
    const [row]=await tx.select().from(attendance).where(eq(attendance.id,p.attendanceId)).limit(1).for('update');
    if(!row)throw new MyTeamAuthorizationError();
-   await assertMyTeamSubjectTx(tx,ctx,undefined,row.employmentId);
+   await assertMyTeamSubjectTx(tx,ctx,query,row.employmentId);
    const [observed]=await tx.execute(sql`SELECT app.attendance_attention_fingerprint(a) AS fingerprint FROM attendance a WHERE a.id=${row.id}::uuid`) as unknown as {fingerprint:string}[];
    if(observed?.fingerprint!==p.fingerprint||row.attendanceDate>todayInKualaLumpur()||!!row.checkInAt===!!row.checkOutAt)throw new MyTeamReviewChangedError();
    const [inserted]=await tx.insert(attendanceAttentionReview).values({tenantId:ctx.tenantId,attendanceId:row.id,

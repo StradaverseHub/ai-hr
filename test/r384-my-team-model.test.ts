@@ -6,13 +6,13 @@ import * as schema from '../db/schema';
 import * as readOwner from '../core/read';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {assignDefaultShift,createShift} from '../core/roster';
-import {attendanceForEmploymentRange,attendanceForEmploymentsRange,checkIn,checkOut} from '../packs/attendance/service';
+import {attendanceForEmploymentRange,attendanceForEmploymentsRange,attendanceForDate,checkIn,checkOut} from '../packs/attendance/service';
 import {requestLeave,actionableLeaveRequests,setLeaveApprovalPolicy,decideLeave} from '../packs/leave/service';
 import {readMyTeam,markMyTeamPunchReviewed,decideMyTeamLeave,decideMyTeamLeaveDates} from '../core/my-team';
 import {assertMyTeamSubjectTx,resolveMyTeamScope} from '../core/my-team-scope';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {addDaysIso,weekRangeOf} from '../lib/roster-month';
-import {adminCtx,createAppUser,entitledCtx,owner,seedBase,resetDb,migrateTestDb,closeAll,type Base} from './harness';
+import {adminCtx,createAppUser,entitledCtx,owner,seedBase,resetDb,migrateTestDb,closeAll,setModule,type Base} from './harness';
 
 let b:Base,manager:{personId:string;employmentId:string},subject:{personId:string;employmentId:string},downline:{personId:string;employmentId:string},outsider:{personId:string;employmentId:string},managerCtx:SessionContext;
 const today=todayInKualaLumpur(),query={view:'week' as const,scope:'all' as const,anchorDate:today};
@@ -85,6 +85,27 @@ describe('My Team current scope and canonical projection',()=>{
   const scope=await resolveMyTeamScope(managerCtx,query);
   expect(scope.employees.map(e=>e.employmentId)).toContain(employments[65].id);
   expect(scope.employees).toHaveLength(68);
+ });
+ it('Records and My Team use the exact half-day window, including when Attendance is unavailable',async()=>{
+  const a=await entitledCtx(b),date='2026-09-26';
+  const {id:shiftId}=await createShift(a,{name:'My Team Half',code:'MTH',startTime:'09:00',endTime:'18:00',breakMinutes:60,
+    weeklyPattern:[1,2,3,4,5],halfPattern:[6]});
+  await assignDefaultShift(a,{employmentId:subject.employmentId,shiftId});
+  const records=(await attendanceForDate(managerCtx,date,[b.companyId])).find(r=>r.employmentId===subject.employmentId)!;
+  const [range]=await attendanceForEmploymentRange(managerCtx,subject.employmentId,date,date);
+  expect(records).toMatchObject({scheduledMinutes:240,shiftStart:'09:00',shiftEnd:'13:30'});
+  expect(range).toMatchObject({scheduledMinutes:240,shiftStart:'09:00',shiftEnd:'13:30'});
+  const snapshot=await readMyTeam(managerCtx,{...query,anchorDate:date});
+  const day=snapshot.employees.find(e=>e.employmentId===subject.employmentId)!.days.find(d=>d.date===date)!;
+  expect(day.roster).toMatchObject({kind:'shift',scheduledMinutes:240,start:'09:00',end:'13:30'});
+  await setModule(b.tenantId,'attendance','disabled');
+  const disabled=await entitledCtx(b,['manager']);
+  const noAttendance={...disabled,userId:managerCtx.userId,personId:manager.personId,roles:['manager'],grants:managerCtx.grants};
+  const unavailable=await readMyTeam(noAttendance,{...query,anchorDate:date});
+  expect(unavailable.availability.attendance).toBe('unavailable');
+  const withoutAttendance=unavailable.employees.find(e=>e.employmentId===subject.employmentId)!.days.find(d=>d.date===date)!;
+  expect(withoutAttendance.attendance).toBeNull();
+  expect(withoutAttendance.roster).toMatchObject({kind:'shift',scheduledMinutes:240,start:'09:00',end:'13:30'});
  });
  it('search and tile only narrow grid IDs, while tiles and attention retain the full authorized team',async()=>{
   const plain=await readMyTeam(managerCtx,query),filtered=await readMyTeam(managerCtx,{...query,search:'Report'});
@@ -247,6 +268,34 @@ describe('My Team attendance review is per user, observation and fresh authority
   await owner.db.delete(schema.attendance).where(eq(schema.attendance.id,missing.attendanceId));
   expect(await owner.db.select().from(schema.attendanceAttentionReview).where(eq(schema.attendanceAttentionReview.id,reviewed.reviewId))).toEqual([]);
   expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,reviewed.reviewId))).toHaveLength(1);
+ });
+ it('rechecks the selected direct-report context after a read-to-review membership race',async()=>{
+  const date=addDaysIso(today,-1),direct={...query,scope:'direct' as const,anchorDate:date};
+  await checkIn(adminCtx(b),{employmentId:subject.employmentId,date,time:'09:10'});
+  const snapshot=await readMyTeam(managerCtx,direct),missing=snapshot.attention.find(a=>a.kind==='missing_punch'&&a.employmentId===subject.employmentId);
+  if(missing?.kind!=='missing_punch')throw new Error('non-vacuous direct report missing punch');
+  let attempted!:Promise<{error?:unknown}>;
+  await owner.db.transaction(async tx=>{
+   await tx.select().from(schema.attendance).where(eq(schema.attendance.id,missing.attendanceId)).for('update');
+   attempted=markMyTeamPunchReviewed(managerCtx,{attendanceId:missing.attendanceId,fingerprint:missing.fingerprint},snapshot.query)
+     .then(()=>({}),error=>({error}));
+   let waiting=false;
+   for(let attempt=0;attempt<50&&!waiting;attempt++){
+    const rows=await tx.execute(sql`SELECT pid FROM pg_stat_activity WHERE cardinality(pg_blocking_pids(pid))>0 AND query LIKE '%attendance%'`);
+    waiting=rows.length>0;if(!waiting)await new Promise(r=>setTimeout(r,10));
+   }
+   expect(waiting).toBe(true);
+   await tx.update(schema.reportingLine).set({validTo:today}).where(and(eq(schema.reportingLine.tenantId,b.tenantId),
+     sql`${schema.reportingLine.subordinateEmploymentId} IN (${subject.employmentId}::uuid,${downline.employmentId}::uuid)`));
+   await tx.insert(schema.reportingLine).values([
+    {tenantId:b.tenantId,managerEmploymentId:manager.employmentId,subordinateEmploymentId:downline.employmentId,lineType:'administrative',validFrom:today},
+    {tenantId:b.tenantId,managerEmploymentId:downline.employmentId,subordinateEmploymentId:subject.employmentId,lineType:'administrative',validFrom:today},
+   ]);
+  });
+  expect((await attempted).error).toMatchObject({message:'MY_TEAM_NOT_AUTHORIZED'});
+  expect((await resolveMyTeamScope(managerCtx,query)).employees.map(e=>e.employmentId)).toContain(subject.employmentId);
+  expect((await resolveMyTeamScope(managerCtx,direct)).employees.map(e=>e.employmentId)).not.toContain(subject.employmentId);
+  expect(await owner.db.select().from(schema.attendanceAttentionReview).where(eq(schema.attendanceAttentionReview.attendanceId,missing.attendanceId))).toEqual([]);
  });
  it('holds membership facts through an app-role transaction, so ending a report waits and the next decision refuses',async()=>{
   let release!:()=>void,entered!:()=>void;const gate=new Promise<void>(r=>release=r),ready=new Promise<void>(r=>entered=r);
