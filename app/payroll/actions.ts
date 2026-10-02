@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { payrollNonCashErrorMessage } from '@/lib/payroll-noncash-error';
 import { payrollTaxSchemeErrorMessage } from '@/lib/payroll-tax-scheme-error';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -145,7 +146,7 @@ export async function generateAction(formData: FormData) {
           // in their own language, rather than the service's raw English.
           e instanceof PayrollCounterpartClosedError
           ? t('generateBlockedByCounterpartClosed', { n: e.employmentIds.length })
-          : await payrollTaxSchemeErrorMessage(e);
+          : (await payrollNonCashErrorMessage(e)) ?? await payrollTaxSchemeErrorMessage(e);
   }
   if (errMsg) redirect(withQueryParam(home, 'error', errMsg));
   revalidatePath(`/payroll/${batchId}`);
@@ -534,7 +535,7 @@ export async function reprocessSelectedAction(formData: FormData) {
             // employee short on a counterpart run that is already closed and can no longer take the days.
             e instanceof PayrollCounterpartClosedError
             ? t('generateBlockedByCounterpartClosed', { n: e.employmentIds.length })
-            : await payrollTaxSchemeErrorMessage(e);
+            : (await payrollNonCashErrorMessage(e)) ?? await payrollTaxSchemeErrorMessage(e);
     redirect(withQueryParam(back, 'error', msg));
   }
   revalidatePath('/payroll');

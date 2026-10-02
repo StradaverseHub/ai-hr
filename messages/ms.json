@@ -6180,6 +6180,15 @@
         "failed": "Gagal"
       },
       "reason": {
+        "TAX_SELECTION_CONFIRMATION_REQUIRED": "Sahkan pilihan Pemastautin Cukai Pendapatan untuk majikan ini sebelum memproses penggajian.",
+        "TAX_SELECTION_INVALID_SCHEME": "Semak kategori cukai pendapatan yang dipilih sebelum memproses penggajian.",
+        "TAX_SELECTION_CITIZENSHIP_UNKNOWN": "Rekodkan kewarganegaraan sebelum mengira kategori cukai yang dipilih.",
+        "TAX_SELECTION_NOT_RESIDENT": "Semak kelayakan pemastautin bagi kategori cukai yang dipilih.",
+        "NON_CASH_CLASSIFICATION_CONFLICT": "Kategori manfaat dan pengelasan EA bercanggah. Semak konfigurasi manfaat.",
+        "NON_CASH_UNSUPPORTED_KIND": "Jenis item bayaran ini tidak boleh dikira sebagai manfaat bukan tunai.",
+        "NON_CASH_NORMAL_REMUNERATION_REQUIRED": "Tetapkan BIK/VOLA bercukai sebagai saraan biasa sebelum mengira penggajian.",
+        "NON_CASH_MONTH_BASELINE_UNAVAILABLE": "Input manfaat bulanan yang disimpan tiada atau berbeza daripada tetapan ini. Semak larian biasa dan konfigurasi manfaat sebelum mengira larian tambahan ini.",
+        "NON_CASH_CONFIGURATION_INVALID": "Semak konfigurasi manfaat bukan tunai sebelum mengira penggajian.",
         "TAX_SCHEME_DECLARATION_REQUIRED": "Rekodkan skim cukai diluluskan untuk pekerjaan, majikan dan tempoh penggajian ini, termasuk rujukan kelulusan dan pengesahan kelayakan HR, sebelum memproses penggajian.",
         "PERIOD_ALREADY_PROCESSED": "Sudah diproses untuk bulan ini",
         "NO_PAYROLL_CONFIG": "Konfigurasi gaji tiada",
@@ -6236,7 +6245,12 @@
       "taxSelection_confirmation_required": "Sahkan kategori yang terpakai dalam Pemastautin Cukai Pendapatan dan simpan sekali. Tetapan terdahulu memerlukan pengesahan sekali sahaja; tiada pengisytiharan berasingan atau rujukan kelulusan diperlukan.",
       "taxSelection_invalid_scheme": "Pilih kategori Pemastautin Cukai Pendapatan yang sah.",
       "taxSelection_citizenship_unknown": "Kewarganegaraan yang direkodkan tidak memenuhi syarat C-Suite bagi pemastautin bukan warganegara.",
-      "taxSelection_not_resident": "Status pemastautin cukai yang direkodkan tidak memenuhi syarat skim pemastautin ini."
+      "taxSelection_not_resident": "Status pemastautin cukai yang direkodkan tidak memenuhi syarat skim pemastautin ini.",
+      "nonCash_classification_conflict": "Kategori manfaat bukan tunai bercanggah dengan baris pelaporan EA. Semak konfigurasi item gaji.",
+      "nonCash_unsupported_kind": "Jenis item gaji ini tidak boleh dikira sebagai manfaat bukan tunai. Semak konfigurasi item gaji.",
+      "nonCash_normal_remuneration_required": "BIK dan tempat kediaman yang dikenakan cukai mesti menggunakan saraan biasa untuk PCB. Semak konfigurasi item gaji.",
+      "nonCash_month_baseline_unavailable": "Input manfaat bulanan tersimpan tiada atau berbeza daripada tetapan ini. Semak larian biasa dan konfigurasi manfaat sebelum mengira larian tambahan ini.",
+      "nonCash_configuration_invalid": "Semak konfigurasi manfaat bukan tunai sebelum mengira gaji."
     },
     "guide": {
       "title": "Panduan Aliran Kerja Gaji",

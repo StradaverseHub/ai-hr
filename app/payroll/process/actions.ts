@@ -10,7 +10,7 @@ import { allowedCompanies, listEmployees, listEmployeesForPayrollRun, type Payro
 import {
   companiesMissingCycle,
   encodeRunGroupResult,
-  reasonForError,
+  reasonForPayrollError,
   runMultiCompanyPayroll,
   summarize,
   type CompanyOutcome,
@@ -291,7 +291,7 @@ export async function resumeRunAction(formData: FormData) {
       batchId,
       employeesSelected,
       employeesSucceeded: 0,
-      reason: reasonForError((e as Error).message),
+      reason: reasonForPayrollError(e),
     };
   }
   const result = summarize(batch.payPeriod, startedAt, new Date().toISOString(), [outcome]);

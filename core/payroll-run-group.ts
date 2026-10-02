@@ -29,6 +29,8 @@
  *   2. CATCH PER COMPANY — one company failing (typically "already processed this month") must never abort
  *      the run; its throw is mapped to a reason code and the loop continues to the next company.
  */
+import { NonCashBenefitConfigurationError } from '../localization/noncash-benefits';
+import { TaxSelectionError } from '../localization/my/tax-selection';
 import { withTenant, type SessionContext } from '../db/client';
 import { randomUUID } from 'node:crypto';
 import { actorOf, appendEvent } from '../db/events';
@@ -49,6 +51,15 @@ export type RunGroupReasonCode =
   // will actually produce, and it is one the operator can fix in a minute.
   | 'TAX_SCHEME_DECLARATION_REQUIRED'
   | 'PRE_PROCESS_BLOCKED'
+  | 'TAX_SELECTION_CONFIRMATION_REQUIRED'
+  | 'TAX_SELECTION_INVALID_SCHEME'
+  | 'TAX_SELECTION_CITIZENSHIP_UNKNOWN'
+  | 'TAX_SELECTION_NOT_RESIDENT'
+  | 'NON_CASH_CLASSIFICATION_CONFLICT'
+  | 'NON_CASH_UNSUPPORTED_KIND'
+  | 'NON_CASH_NORMAL_REMUNERATION_REQUIRED'
+  | 'NON_CASH_MONTH_BASELINE_UNAVAILABLE'
+  | 'NON_CASH_CONFIGURATION_INVALID'
   | 'SYSTEM_VALIDATION_ERROR';
 
 /** The four fixed behavioural run types a cycle maps to (mirrors payrollRunTypeEnum / PayrollCycleRunType). */
@@ -120,6 +131,20 @@ export function reasonForError(message: string): RunGroupReasonCode {
   // instanceof, because this function is pure and takes only the message the caller already caught.
   if (/^Payroll cannot be processed: \d+ employees? in scope /.test(message)) return 'PRE_PROCESS_BLOCKED';
   return 'SYSTEM_VALIDATION_ERROR';
+}
+
+/** Typed calculation refusals retain actionable reasons without exposing engine text. */
+export function reasonForPayrollError(error: unknown): RunGroupReasonCode {
+  if (error instanceof TaxSelectionError) {
+    const codes = {confirmation_required:'TAX_SELECTION_CONFIRMATION_REQUIRED',invalid_scheme:'TAX_SELECTION_INVALID_SCHEME',citizenship_unknown:'TAX_SELECTION_CITIZENSHIP_UNKNOWN',not_resident:'TAX_SELECTION_NOT_RESIDENT'} as const;
+    if (Object.hasOwn(codes, error.code)) return codes[error.code as keyof typeof codes];
+    return 'SYSTEM_VALIDATION_ERROR';
+  }
+  if (error instanceof NonCashBenefitConfigurationError) {
+    const codes = {classification_conflict:'NON_CASH_CLASSIFICATION_CONFLICT',unsupported_kind:'NON_CASH_UNSUPPORTED_KIND',normal_remuneration_required:'NON_CASH_NORMAL_REMUNERATION_REQUIRED',month_baseline_unavailable:'NON_CASH_MONTH_BASELINE_UNAVAILABLE'} as const;
+    return Object.hasOwn(codes, error.reason) ? codes[error.reason] : 'NON_CASH_CONFIGURATION_INVALID';
+  }
+  return reasonForError(error instanceof Error ? error.message : typeof error === 'string' ? error : '');
 }
 
 /** Derive the overall run status from the per-company outcomes (pure — unit-tested directly). */
@@ -343,7 +368,7 @@ export async function runMultiCompanyPayroll(
         status: 'failed',
         employeesSelected: 0,
         employeesSucceeded: 0,
-        reason: reasonForError((e as Error).message),
+        reason: reasonForPayrollError(e),
       });
     }
   }

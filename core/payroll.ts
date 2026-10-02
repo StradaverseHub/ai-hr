@@ -4723,6 +4723,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         earlierRunByEmp.set(r.employmentId, cur);
         const nc=earlierNonCashByEmp.get(r.employmentId) ?? {ownedEntries:[],regularEntries:null,ownedEaEntries:[],regularEaEntries:null,legacyRegular:false};
         const saved=readPcbNonCash((r.statutory as {pcbNonCash?:unknown}|null)?.pcbNonCash);
+        if((r.statutory as {pcbNonCash?:unknown}|null)?.pcbNonCash!==undefined&&!saved)throw new Error('Saved PCB non-cash ownership is malformed');
         if(saved){
           nc.ownedEntries.push(...saved.ownedEntries);
           nc.ownedEaEntries.push(...saved.ownedEaEntries);
@@ -5643,6 +5644,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // INFORMATIONAL record line — it does NOT affect any cash bucket, gross, or net (ADR-0025 §5 / Option A).
         // As above: the stored `name` is the item's own description (provenance), and `nonPayable: true` is
         // the flag that keeps 417d4937's read-time label repair off it.
+        if (c.nonPayable && c.pcb) throw new UnsupportedPayComponentError(c.code);
         if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied, nonPayable: true, ...(c.kind === 'contribution' ? { kind: 'contribution' as const } : {}) }); continue; }
         // ── Feedback 09b554e9: declared Normal/Additional remuneration, with per-code annual exemption ──
         // The exempt portion (up to the PCB code's remaining annual headroom; cap -1 = fully exempt,
@@ -6125,8 +6127,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           c.kind !== 'deduction' &&
           c.pcb &&
           !classifyNonCashBenefit(c) &&
-          c.pcbRemunerationType == null &&
-          (c.nonPayable || (!c.epf && !c.socso));
+          (c.nonPayable || (c.pcbRemunerationType == null && !c.epf && !c.socso));
         for (const id of skippedIds) {
           for (const c of [...(recurringByEmp.get(id) ?? []), ...(batchCompByEmp.get(id) ?? [])]) {
             if (unsupported(c)) throw new UnsupportedPayComponentError(c.code);

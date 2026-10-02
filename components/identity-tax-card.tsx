@@ -457,14 +457,9 @@ export function IdentityTaxCard({
   return (
     <div className={wrapperCls}>
       {heading}
-      {/* 420ebab5 PART TWO (r255) — the card's own Save button is GONE; the Bank & Statutory tab's one
-          "Save Changes" covers it. THE ORDER THIS SECTION IS WRITTEN IN IS LOAD-BEARING and is declared in
-          lib/personnel-tab-sections.ts: `setTaxProfileMY` re-derives `isResident` from the `taxResidency`
-          picked here, and the Statutory (Malaysia) form — which carries no residency control of its own —
-          writes that same column on every save. Tax therefore runs AFTER statutory in a consolidated
-          request, or the residency the admin chose would be overwritten. `action={…}` stays: it is the
-          only wiring of `setTaxAction` to a card, and a `<form>` with no action would POST to the current
-          URL. */}
+      {/* The tab's Save Changes submits this tax section. The employer-scoped selection is saved
+          atomically with the other tax fields; person-only statutory updates cannot change it.
+          The form action also supports this card outside a consolidated tab. */}
       <form action={action} data-save-section="tax" className="flex flex-col gap-6 px-4 pb-4">
         <input type="hidden" name="employmentId" value={employmentId} />
         <input type="hidden" name="personId" value={personId} />
@@ -493,7 +488,7 @@ export function IdentityTaxCard({
                 VERBATIM: this card still posts `taxCategory` with the same values it always did. */}
             <TaxCategoryField mode="form" defaultValue={defaults.taxCategory} onChange={setTaxCategory} />
             <Field label={t('incomeTaxResident')}>
-              <select name="taxResidency" defaultValue={defaults.taxResidency || 'resident'} className={inputCls}>
+              <select id="income-tax-resident" name="taxResidency" defaultValue={defaults.taxResidency || 'resident'} className={inputCls}>
                 <option value="resident">{t('taxResidencyResident')}</option>
                 <option value="non_resident">{t('taxResidencyNonResident')}</option>
                 <option value="rep">{t('taxResidencyRep')}</option>
