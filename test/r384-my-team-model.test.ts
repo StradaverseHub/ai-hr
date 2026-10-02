@@ -334,7 +334,9 @@ describe('My Team attendance review is per user, observation and fresh authority
   if(missing?.kind!=='missing_punch')throw new Error('non-vacuous direct report missing punch');
   let attempted:Promise<{error?:unknown}>|undefined;
   try{await owner.db.transaction(async tx=>{
-   await tx.select().from(schema.employment).where(eq(schema.employment.id,subject.employmentId)).for('update');
+   // Lock every FK participant in the same order as the review owner, before launching the waiter.
+   // Locking only the subject lets the waiter retain an earlier manager/downline row needed by INSERT.
+   await tx.select().from(schema.employment).where(sql`${schema.employment.id} IN (${manager.employmentId}::uuid,${subject.employmentId}::uuid,${downline.employmentId}::uuid)`).orderBy(schema.employment.id).for('update');
    const [holder]=await tx.execute(sql`SELECT pg_backend_pid() AS pid`) as unknown as {pid:number}[];
    attempted=markMyTeamPunchReviewed(managerCtx,{attendanceId:missing.attendanceId,fingerprint:missing.fingerprint},snapshot.query)
      .then(()=>({}),error=>({error}));
