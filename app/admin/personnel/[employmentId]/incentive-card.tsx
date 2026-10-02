@@ -22,7 +22,8 @@ export async function IncentiveDeclarationCard({ employmentId, view, from, asOf,
     <input type="hidden" name="tab" value="bankStatutory" />
     {from === 'org' && <input type="hidden" name="from" value="org" />}
     {asOf && /^\d{4}-\d{2}-\d{2}$/.test(asOf) && <input type="hidden" name="asOf" value={asOf} />}</>;
-  const errorKey = ['invalid', 'unavailable', 'saveFailed', 'revokeFailed'].includes(error ?? '') ? error : null;
+  const errorKey = ['invalid', 'unavailable', 'saveFailed', 'revokeFailed', 'invalid_scheme', 'invalid_period',
+    'approval_required', 'missing_reference', 'not_found', 'not_resident', 'citizenship_unknown', 'overlap', 'missing_declaration', 'stale_context'].includes(error ?? '') ? error : null;
   return <Card>
     <SectionHeader title={t('title')} />
     <div className="space-y-4 p-4">
@@ -46,6 +47,8 @@ export async function IncentiveDeclarationCard({ employmentId, view, from, asOf,
         </li>)}</ul>}
       <form action={saveIncentiveDeclarationAction} className="grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
         {context}
+        {/* Optimistic display-context precondition only; service derives and locks the real company. */}
+        <input type="hidden" name="expectedCompanyId" value={view.companyId} />
         <Field label={t('scheme')}><select name="scheme" required defaultValue="" className={inputCls}>
           <option value="" disabled>{t('scheme')}</option>
           {(['rep','knowledge_worker','c_suite'] as const).map(scheme => <option key={scheme} value={scheme}>{t(`scheme_${scheme}`)}</option>)}
