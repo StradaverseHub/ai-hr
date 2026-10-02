@@ -76,8 +76,11 @@ describe('388e53c2 · the calendar is still there, for everybody it was there fo
 
   it('the nav row carries NO adminOnly and NO managerUp — the access this move must not remove', () => {
     const manage = (leavePack.navLinks ?? []).filter((l) => l.group === 'manage');
-    expect(manage).toHaveLength(1);
+    // r384 adds My Team beside the preserved all-employee calendar, with its own stricter gate.
+    expect(manage.map(row => row.href)).toEqual(['/leave/tracker', '/manage/my-team']);
     expect(manage[0].href).toBe('/leave/tracker');
+    expect(manage[1].managerUp, 'the new workspace must remain supervisor-only').toBe(true);
+    expect(manage[1].adminOnly, 'managers must retain their workspace').toBeUndefined();
     // The Manage group gates PER ROW (components/sidebar.tsx canSeeChild), so absent flags = every
     // employee. An admin-only surface now sits behind this row, which makes `adminOnly` LOOK correct —
     // it would delete the calendar from every plain employee and manager instead.

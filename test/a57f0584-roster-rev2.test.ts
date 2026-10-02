@@ -186,7 +186,7 @@ describe('a57f0584 · Edit opens a screen, and comes back', () => {
 describe('a57f0584 · the exceptions listing left the roster', () => {
   it('the roster reads a COUNT and draws no rows', () => {
     expect(PAGE, 'the listing read is gone').not.toContain('rosterVariance(');
-    expect(PAGE).toContain('rosterExceptionCount(s, { from: view.from, to: view.to, companyIds, today: todayIso })');
+    expect(PAGE).toContain('rosterExceptionCount(s, { from: view.from, to: view.to, companyIds, today: todayIso, ...(teamScope?{employmentIds:teamScope.employmentIds}:{}) })');
     expect(PAGE, 'no variance rows are rendered here any more').not.toContain('kindBadge');
     expect(PAGE, 'nor the button that only appeared on one of them').not.toContain('ToilElectButton');
     expect(PAGE, 'and the count rides the button').toContain("t('exceptionsButton', { count: exceptionCount })");

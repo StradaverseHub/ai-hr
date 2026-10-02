@@ -227,5 +227,10 @@ describe('topbar — the right cluster has a budget and it is full', () => {
     // …and r374's sweep reaches below sm, where the rail is not there at all, so the replica copies
     // its visibility too. Without this the sweep would measure a 232px rail inside a 320px phone.
     expect(SIDEBAR).toContain(replicaConst('RAIL_VISIBILITY_CLS'));
+    expect(SIDEBAR).toContain(replicaConst('RAIL_DEFAULT_BREAKPOINT_CLS'));
+    expect(SIDEBAR).toContain(replicaConst('RAIL_TEAM_BREAKPOINT_CLS'));
+    expect(SIDEBAR, 'the measured route-specific breakpoint must match the actual rail').toContain(
+      `pathname === '/manage/my-team' ? '${replicaConst('RAIL_TEAM_BREAKPOINT_CLS')}' : '${replicaConst('RAIL_DEFAULT_BREAKPOINT_CLS')}'`,
+    );
   });
 });

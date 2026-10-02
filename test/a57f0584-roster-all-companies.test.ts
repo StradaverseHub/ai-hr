@@ -140,7 +140,7 @@ describe('a57f0584 · what must NOT have widened', () => {
   it('the page feeds the read from the SCOPED company list, never from a wider one', () => {
     expect(PAGE).toContain('const companyIds = companyId ? [companyId] : companies.map((c) => c.id);');
     expect(PAGE, 'and that list is the scoped one').toContain(
-      'const companies = (await listCompanies(s)).filter((c) => scopeIds.length === 0 || scopeIds.includes(c.id));',
+      'const companies = (await listCompanies(s)).filter(c=>!teamScope||teamScope.companyIds.includes(c.id)).filter((c) => scopeIds.length === 0 || scopeIds.includes(c.id));',
     );
     // The old fallback must be gone, or the screen silently picks one company again.
     expect(PAGE, 'companies[0] was the whole fault').not.toContain('companies[0].id');
@@ -156,18 +156,24 @@ describe('a57f0584 · what must NOT have widened', () => {
    * twelve-company roster, which is the exact fault this file was written for.
    */
   it('every dependent read takes the same set, so nothing narrows behind the grid', () => {
-    for (const call of ['companyIds, today: todayIso', 'listDepartments(s, { companyIds })']) {
-      expect(PAGE, `${call} must use the widened set`).toContain(call);
-    }
+    // Team-linked views add an exact employment intersection to the same authorized company set.
+    // Pin the complete calls so an unrelated occurrence cannot satisfy the scope contract.
+    expect(PAGE).toContain(
+      'rosterExceptionCount(s, { from: view.from, to: view.to, companyIds, today: todayIso, ...(teamScope?{employmentIds:teamScope.employmentIds}:{}) })',
+    );
+    expect(PAGE).toContain('listDepartments(s, { companyIds })');
     const exceptions = src('app/roster/exceptions/page.tsx');
     expect(exceptions, 'the exceptions screen resolves the company set the same way').toContain(
       'const companyIds = companyId ? [companyId] : companies.map((c) => c.id);',
     );
-    for (const call of ['rosterVariance(s, { from, to, companyIds, today: todayIso })', 'listToilPolicies(s, companyIds)']) {
+    for (const call of ['rosterVariance(s, { from, to, companyIds, today: todayIso, ...(team?{employmentIds:team.scope.employmentIds}:{}) })', 'listToilPolicies(s, companyIds)']) {
       expect(exceptions, `${call} must use the widened set`).toContain(call);
     }
+    expect(exceptions, 'an empty team company set must not become an unrestricted policy read').toContain(
+      'team && companyIds.length===0 ? Promise.resolve([]) : listToilPolicies(s, companyIds)',
+    );
     expect(exceptions, 'and from the scoped company list, never a wider one').toContain(
-      'const companies = (await listCompanies(s)).filter((c) => scopeIds.length === 0 || scopeIds.includes(c.id));',
+      'const companies = (await listCompanies(s)).filter(c=>!team||team.scope.companyIds.includes(c.id)).filter((c) => scopeIds.length === 0 || scopeIds.includes(c.id));',
     );
   });
 

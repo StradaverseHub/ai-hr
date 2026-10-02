@@ -3,11 +3,10 @@
  *
  * Verifies the mechanical halves of the retrofit with behaviour unchanged:
  *   1. Registry: `packs/leave` registers a module pack the registry resolves by id.
- *   2. Nav parity: the pack's navLinks are ROW-FOR-ROW the sidebar's pre-rung-6 leave rows — same
- *      labelKeys, hrefs, icon refs (CalendarDays for My Absence, CalendarRange for the Team Leave
- *      Tracker, SlidersHorizontal for the config row), same (absence of) visibility flags, same group
- *      placement — and components/sidebar.tsx mounts them via the registry instead of hardcoding them
- *      (the EXPECTED table below is the literal; any drift is a rendering change by definition).
+ *   2. Navigation ownership: preserved tracker and approved My Team rows have exact labels, hrefs,
+ *      icon refs and role gates. The employee's My Leave flyout remains ungated, with exact children
+ *      and active predicates. Sidebar mounts them via the registry instead of duplicating destinations.
+ *      The EXPECTED table pins the current approved additions and the original tracker behavior.
  *   3. Facade: `packs/leave/service` re-exports the implementation — outside callers get the exact
  *      same function references, so switching import paths cannot change behaviour.
  *   4. Boundary honesty: holidays is spine (not a satellite, not re-exported); the leave↔payroll
@@ -16,7 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CalendarDays, CalendarRange, SlidersHorizontal } from 'lucide-react';
+import { CalendarDays, CalendarRange, History, SlidersHorizontal, UserSearch } from 'lucide-react';
 import { leavePack } from '../packs/leave';
 import { listPacks, modulePackById, packById } from '../packs/registry';
 import * as facade from '../packs/leave/service';
@@ -101,7 +100,7 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
   // none of them. What the node itself must contain is test/leave-flyout-nav.test.ts's job, exactly as
   // payroll's node parity lives in test/payroll-flyout-nav.test.ts rather than here.
   //
-  //   top group:   { href: '/leave', labelKey: 'myAbsence', icon: CalendarDays }  (no gate) — UNCHANGED
+  //   top group:   ungated LEAVE_SELF_NAV, containing Overview and History in the shared flyout
   //   admin group: now LEAVE_ADMIN_NAV, a node (see below)
   //
   // a00c4f64 ADDS a Manage-group row — Team Leave Tracker, the Leave Calendar's own screen after it left
@@ -110,19 +109,22 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
   // dashboard. The `toBeUndefined()` assertions below are therefore load-bearing for this row, not
   // boilerplate — a `managerUp` creeping in here silently removes a screen from plain staff.
   const EXPECTED = [
-    { group: 'manage', href: '/leave/tracker', labelKey: 'teamLeaveTracker', icon: CalendarRange },
+    { group: 'manage', href: '/leave/tracker', labelKey: 'teamLeaveTracker', icon: CalendarRange, managerUp: undefined },
+    // r384 adds a supervisor workspace; the existing all-employee tracker remains ungated.
+    { group: 'manage', href: '/manage/my-team', labelKey: 'myTeam', icon: UserSearch, managerUp: true },
   ] as const;
 
   /** Every href the pack contributes, flat rows and node children alike — what the sidebar must not hardcode. */
   const ALL_HREFS = [
     '/leave',
     '/leave/tracker',
+    '/manage/my-team',
     ...leavePack.navNodes!.flatMap((n) => n.children.map((c) => c.href)),
   ];
 
   const links = leavePack.navLinks!;
 
-  it('carries exactly the pre-retrofit rows, in order, with identical icon refs and gates', () => {
+  it('carries the preserved tracker and approved My Team row in order with exact icons and gates', () => {
     expect(links).toHaveLength(EXPECTED.length);
     EXPECTED.forEach((want, i) => {
       const got = links[i];
@@ -130,19 +132,28 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
       expect(got.href, `row ${i} href`).toBe(want.href);
       expect(got.labelKey, `${want.href} labelKey`).toBe(want.labelKey);
       expect(got.icon, `${want.href} icon ref`).toBe(want.icon);
-      // Neither row carried a visibility flag pre-rung-6: /leave is every-employee self-service;
-      // /admin/leave relies on the admin GROUP gate, not a per-row flag.
+      // The tracker stays available to ordinary staff; My Team requires supervisor authority.
       expect(got.adminOnly, `${want.href} adminOnly`).toBeUndefined();
-      expect(got.managerUp, `${want.href} managerUp`).toBeUndefined();
+      expect(got.managerUp, `${want.href} managerUp`).toBe(want.managerUp);
     });
   });
 
-  it('r378 declares exactly Overview and History under the ungated My Leave parent', () => {
+  it('declares exactly Overview and History under the ungated My Leave flyout', () => {
     const self = leavePack.navNodes!.filter(n => n.group === 'main');
     expect(self).toHaveLength(1);
     expect(self[0].labelKey).toBe('myLeave');
-    expect(self[0].defaultHref).toBe('/leave');
-    expect(self[0].children.map(c => [c.href,c.labelKey,c.exactHref])).toEqual([['/leave','leaveOverview',true],['/leave/history','leaveHistory',true]]);
+    expect(self[0].icon).toBe(CalendarDays);
+    expect(self[0].defaultHref, 'parent opens its flyout rather than navigating immediately').toBeUndefined();
+    expect(self[0].activeMatch).toBe('children');
+    expect(self[0].children.map(c => [c.href,c.labelKey,c.exactHref,c.icon])).toEqual([
+      ['/leave','leaveOverview',true,CalendarDays], ['/leave/history','leaveHistory',true,History],
+    ]);
+    expect(self[0]).not.toHaveProperty('adminOnly');
+    expect(self[0]).not.toHaveProperty('managerUp');
+    for (const row of self[0].children) {
+      expect(row.adminOnly, 'My Leave remains employee self-service').toBeUndefined();
+      expect(row.managerUp, 'My Leave remains employee self-service').toBeUndefined();
+    }
   });
 
   it('declares the Leave config node (645e67c4 — an expandable group, not a flat row)', () => {
@@ -154,7 +165,7 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
     expect(leavePack.navLinks!.some((l) => l.group === 'admin')).toBe(false);
   });
 
-  it('sidebar.tsx mounts both rows via the registry and hardcodes neither', () => {
+  it('sidebar.tsx mounts pack navigation via the registry without duplicating destinations', () => {
     const sidebar = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
     // The registration moved out of the sidebar into packs/register-all.ts (ADR-0077 slice 1) so that
     // SERVER code can enumerate module packs too — a client-component side effect left listPacks()
@@ -165,9 +176,14 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
     expect(registerAll, 'registers the pack (static side-effect import)').toContain(`import '@/packs/leave'`);
     expect(sidebar, 'sidebar pulls in the shared pack wiring').toContain(`import '@/packs/register-all'`);
     expect(sidebar, 'resolves the rows through the registry').toContain(`modulePackById('leave')`);
+    // Only the exact responsive route condition is allowed to name My Team here. Remove that
+    // known expression, then every pack destination remains forbidden in the navigation source.
+    const responsiveRail = "pathname === '/manage/my-team' ? 'min-[900px]:block' : 'sm:block'";
+    expect(sidebar, 'the responsive exception must be the actual rail condition').toContain(responsiveRail);
+    const navigationSource = sidebar.replace(responsiveRail, '');
     // Node children count too: a hardcoded child href would bypass the pack just as a hardcoded row did.
     for (const href of ALL_HREFS) {
-      expect(sidebar.includes(`'${href}'`), `${href} no longer hardcoded in sidebar.tsx`).toBe(false);
+      expect(navigationSource.includes(`'${href}'`), `${href} no longer hardcoded in sidebar.tsx`).toBe(false);
     }
   });
 });

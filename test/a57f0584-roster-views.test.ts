@@ -248,7 +248,10 @@ describe('a57f0584 · the window survives every way off the screen', () => {
     expect(PAGE, 'the query-string builder carries the view').toContain("new URLSearchParams({ view: win.kind, month: win.month })");
     expect(PAGE, 'and the dates, for the two views that need them').toContain("p.set('from', win.from)");
     // Resolved, never as typed: a clamped range must not be handed on as the range that was refused.
-    expect(PAGE).toContain('const win = resolved.window;');
+    // Team links resolve their period through the shared team owner; ordinary roster links retain
+    // the existing clamped resolver. Both feed the same win used by every outbound destination.
+    expect(PAGE).toContain('const win = team ? rosterTeamWindow(team,todayIso) : resolved.window;');
+    expect(PAGE).toContain('const team=await rosterTeamContext(s,scopeIds,sp);');
     expect(PAGE, 'the grid, export, exceptions and Edit all take the same string').toContain('editQuery={qs({})}');
     expect(PAGE).toContain('`/roster/exceptions?${qs({})}`');
   });

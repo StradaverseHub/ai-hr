@@ -57,9 +57,11 @@ const dashboard = read('app/page.tsx');
 const sidebar = read('components/sidebar.tsx');
 
 describe('the Manage row is ungated — the access the move must not remove', () => {
-  it('the pack contributes ONE manage row at /leave/tracker with no managerUp and no adminOnly', () => {
+  it('the pack retains the ungated tracker beside the separately supervisor-gated My Team row', () => {
     const manage = (leavePack.navLinks ?? []).filter((l) => l.group === 'manage');
-    expect(manage).toHaveLength(1);
+    expect(manage.map(row => row.href)).toEqual(['/leave/tracker', '/manage/my-team']);
+    expect(manage[1].managerUp, 'My Team is a separate supervisor workspace').toBe(true);
+    expect(manage[1].adminOnly, 'managers retain their workspace').toBeUndefined();
     expect(manage[0].href).toBe('/leave/tracker');
     expect(manage[0].labelKey).toBe('teamLeaveTracker');
     // The load-bearing pair. The Manage group gates PER ROW (canSeeChild), so absent flags = every

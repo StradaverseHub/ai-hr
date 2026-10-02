@@ -70,11 +70,14 @@ export const SHELL_COL_CLS = 'flex min-w-0 flex-1 flex-col gap-3 lg:gap-4';
 /** components/sidebar.tsx — the expanded rail. The collapsed state (w-[66px]) only gives MORE room. */
 export const RAIL_WIDTH_CLS = 'w-[232px]';
 /**
- * components/sidebar.tsx — the rail is ABSENT below sm, which is half of why the overflow band r374
+ * components/sidebar.tsx — ordinary routes hide the rail below sm; My Team hides it below 900px.
+ * The original sm breakpoint was half of why the overflow band r374
  * found starts exactly at 640: that breakpoint takes 232px away from the header and, before r374,
  * handed 278px of it to the centre search in the same step.
  */
-export const RAIL_VISIBILITY_CLS = 'hidden h-full shrink-0 sm:block';
+export const RAIL_VISIBILITY_CLS = 'hidden h-full shrink-0';
+export const RAIL_DEFAULT_BREAKPOINT_CLS = 'sm:block';
+export const RAIL_TEAM_BREAKPOINT_CLS = 'min-[900px]:block';
 /** app/layout.tsx — the three-lane header grid. */
 export const HEADER_CLS =
   'grid h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,max-content)] items-center gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)] sm:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,max-content)] md:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,min(28rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)]';
@@ -100,14 +103,15 @@ const WIDTHS = [1280, 1440, 1512] as const;
  * up, which is where every number in the r256 block above was measured.
  *
  * r374 widened this to the whole range, because the overflow it chased lives below lg: the shell pads
- * p-3 / gap-3 (12px) below lg, and the rail is `hidden sm:block`, so the header is `viewport − 268`
- * from 640 to 1023 and `viewport − 24` below 640. At the three widths r256 measured this returns
- * exactly what it always did: 1000 at 1280, 1160 at 1440, 1232 at 1512.
+ * p-3 / gap-3 (12px) below lg. Ordinary routes show the rail from sm (640px); My Team from
+ * 900px. The header is `viewport − 268` below lg when that route's rail is visible, and
+ * `viewport − 24` when it is hidden. At the three laptop widths both variants still return
+ * 1000 at 1280, 1160 at 1440, 1232 at 1512.
  */
-const headerWidthFor = (viewport: number) => {
+const headerWidthFor = (viewport: number, myTeam = false) => {
   const pad = viewport >= 1024 ? 16 : 12; // body p-3 lg:p-4
   const gap = viewport >= 1024 ? 16 : 12; // the rail/content row gap-3 lg:gap-4
-  const rail = viewport >= 640 ? 232 + gap : 0; // the rail is hidden below sm, gutter and all
+  const rail = viewport >= (myTeam ? 900 : 640) ? 232 + gap : 0; // team rail starts at 900; ordinary rail at sm
   return viewport - 2 * pad - rail;
 };
 
@@ -125,13 +129,12 @@ const wrap = (ui: ReactNode) =>
   );
 
 /** The app shell around the header, at the real rail width, so the header gets its real width. */
-function Shell({ account }: { account: ReactNode }) {
+function Shell({ account, myTeam = false }: { account: ReactNode; myTeam?: boolean }) {
   return (
     <div className={SHELL_BODY_CLS} data-testid="shell">
       <div className={SHELL_ROW_CLS}>
-        {/* r374: `hidden sm:block`, as the real rail is — otherwise the sweep below would measure a
-            232px rail inside a 320px phone, a shell the app never renders. */}
-        <div className={`${RAIL_WIDTH_CLS} ${RAIL_VISIBILITY_CLS}`} />
+        {/* Copy both real route-specific breakpoints; the measurement must not invent a phone rail. */}
+        <div className={`${RAIL_WIDTH_CLS} ${RAIL_VISIBILITY_CLS} ${myTeam ? RAIL_TEAM_BREAKPOINT_CLS : RAIL_DEFAULT_BREAKPOINT_CLS}`} />
         <div className={SHELL_COL_CLS}>
           <header className={HEADER_CLS} data-testid="topbar">
             <div className="flex min-w-0 items-center gap-2.5 text-sm text-muted-foreground">
@@ -272,7 +275,7 @@ function UserMenuShell({ name, code }: { name: string; code: string }) {
 
 /** Phone, the band the fault was reported in, both sides of every Tailwind breakpoint, and wide. */
 const OVERFLOW_WIDTHS = [
-  320, 360, 414, 480, 560, 600, 639, 640, 672, 700, 767, 768, 820, 900, 960, 1023, 1024, 1120, 1280,
+  320, 360, 414, 480, 560, 600, 639, 640, 672, 700, 767, 768, 820, 899, 900, 901, 960, 1023, 1024, 1120, 1280,
   1440, 1512, 1535, 1536, 1600, 1920,
 ] as const;
 
@@ -304,13 +307,15 @@ describe('topbar fits the window at every width (r374)', () => {
   });
   afterEach(() => cleanup());
 
+  for (const myTeam of [false, true]) {
   for (const width of OVERFLOW_WIDTHS) {
-    it(`needs no sideways scrolling at ${width}`, async () => {
+    it(`needs no sideways scrolling at ${width} (${myTeam ? 'My Team' : 'ordinary'})`, async () => {
       await page.viewport(width, 900);
       // A name far longer than any seeded one, so the account control asks for every pixel it can and
       // the layout is measured under pressure rather than under slack.
       wrap(
         <Shell
+          myTeam={myTeam}
           account={
             <UserMenu name="Nurulhuda binti Abdul Rahman Al-Hafiz" employeeCode="EMP-0001" employed />
           }
@@ -324,7 +329,7 @@ describe('topbar fits the window at every width (r374)', () => {
       // empty box. So first prove there IS a populated header of the app's real width here.
       expect(cluster.children).toHaveLength(5); // divider + bell + language + theme + account
       expect(header.querySelectorAll('*').length).toBeGreaterThan(10);
-      expect(Math.round(header.getBoundingClientRect().width)).toBe(headerWidthFor(width));
+      expect(Math.round(header.getBoundingClientRect().width)).toBe(headerWidthFor(width, myTeam));
       expect(shell.clientWidth).toBe(width);
 
       // ── THE REPORTED SYMPTOM. 856 vs 820 at an 820px viewport before this round.
@@ -339,5 +344,6 @@ describe('topbar fits the window at every width (r374)', () => {
         expect(header.scrollWidth).toBeLessThanOrEqual(header.clientWidth);
       }
     });
+  }
   }
 });
