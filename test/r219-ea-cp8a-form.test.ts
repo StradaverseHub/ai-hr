@@ -410,7 +410,7 @@ describe('r219 — the foot: the officer box, and the agency’s own spelling of
    * hard-coded 723 does not survive a re-pitch; it fails it, which is the honest outcome but not the
    * promised one. The baselines below are derived from the box's own two constants instead.
    */
-  it('Tarikh is filled from the statement’s own formDate within the unchanged V6 footer', async () => {
+  it('Tarikh is filled from the statement’s own formDate outside left of the officer box', async () => {
     const src = read('lib/ea-pdf.ts');
     const items = await drawn(await renderEaPdf(BASE, bundleFor('ms'), { locale: 'ms' }));
     const H = 841.89; // A4, and the renderer's own `at()` is H - tt.
@@ -421,14 +421,15 @@ describe('r219 — the foot: the officer box, and the agency’s own spelling of
     expect(caption, 'the Tarikh caption is not on the page').toBeDefined();
     expect(value, 'the foot carries no date').toBeDefined();
     expect(phone, 'the telephone number is not on the page').toBeDefined();
-    // r381 only moves the date inside the unchanged V6 footer; surrounding rows stay in place.
-    const footRow = EA_V6_FOOT.bottom-3.6;
+    // Revision 5: Date is outside left and shares the measured telephone baseline.
+    const footRow = tt(phone!.y);
     expect(caption!.x).toBeCloseTo(EA_FORM.dateX, 2);
     expect(value!.x).toBeGreaterThan(caption!.x);
     expect(value!.x).toBeLessThan(EA_FORM.dateRule[1]);
     expect(tt(caption!.y)).toBeCloseTo(footRow, 1);
     expect(tt(value!.y)).toBeCloseTo(footRow, 1);
-    expect(tt(phone!.y)).toBeLessThan(tt(value!.y));
+    expect(value!.x).toBeLessThan(EA_V6_FOOT.left);
+    expect(EA_FORM.dateRule[1]).toBeLessThan(EA_V6_FOOT.left);
     // The renderer must not read a clock: that is what keeps every EA test time-independent.
     // Comment-proof: the renderer's own prose NAMES `todayInKualaLumpur` (to say where the value comes
     // from), so the check is on the IMPORTS — a pure renderer cannot read a clock it never imported, and
