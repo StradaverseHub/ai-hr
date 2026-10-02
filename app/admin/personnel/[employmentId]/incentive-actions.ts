@@ -8,7 +8,7 @@ import { packFor } from '@/localization/registry';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const month = /^(?!0000)\d{4}-(0[1-9]|1[0-2])$/;
 const declarationErrorCodes = ['invalid_scheme', 'invalid_period', 'approval_required', 'missing_reference',
-  'not_found', 'not_resident', 'citizenship_unknown', 'overlap', 'missing_declaration', 'stale_context'] as const;
+  'not_found', 'not_resident', 'citizenship_unknown', 'overlap', 'missing_declaration', 'declaration_revoked', 'declaration_outside_period', 'stale_context'] as const;
 type DeclarationErrorCode = typeof declarationErrorCodes[number];
 type ErrorKey = 'invalid' | 'unavailable' | 'saveFailed' | 'revokeFailed' | DeclarationErrorCode;
 
@@ -21,6 +21,11 @@ function refusal(error: unknown, fallback: 'saveFailed' | 'revokeFailed'): Error
 }
 
 function back(employmentId: string, formData: FormData, error?: ErrorKey): never {
+  const payrollBatchId=String(formData.get('payrollBatchId')??'');
+  if(uuid.test(payrollBatchId)&&uuid.test(employmentId)){
+    const q=new URLSearchParams();if(error)q.set('incentiveError',error);else q.set('toast','Saved');
+    redirect(`/payroll/${payrollBatchId}/tax-configuration/${employmentId}?${q}`);
+  }
   const query = new URLSearchParams({ tab: 'bankStatutory' });
   if (String(formData.get('from') ?? '') === 'org') query.set('from', 'org');
   const asOf = String(formData.get('asOf') ?? '');
@@ -36,6 +41,8 @@ export async function saveIncentiveDeclarationAction(formData: FormData) {
   const session = await requireAdmin();
   const employmentId = String(formData.get('employmentId') ?? '');
   const expectedCompanyId = String(formData.get('expectedCompanyId') ?? '');
+  const payrollBatchId=formData.has('payrollBatchId')?String(formData.get('payrollBatchId')):undefined;
+  const expectedPayPeriod=formData.has('expectedPayPeriod')?String(formData.get('expectedPayPeriod')):undefined;
   const scheme = String(formData.get('scheme') ?? '');
   const validFrom = String(formData.get('validFrom') ?? '');
   const validTo = String(formData.get('validTo') ?? '');
@@ -52,11 +59,12 @@ export async function saveIncentiveDeclarationAction(formData: FormData) {
   if (!service) back(employmentId, formData, 'unavailable');
   try {
     await service(session, { employmentId, expectedCompanyId, scheme: scheme as 'rep' | 'knowledge_worker' | 'c_suite',
-      validFrom, validTo, approvalReference, eligibilityConfirmed });
+      validFrom, validTo, approvalReference, eligibilityConfirmed, ...(payrollBatchId!==undefined?{payrollBatchId,expectedPayPeriod}:{}) });
   } catch (error) {
     back(employmentId, formData, refusal(error, 'saveFailed'));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
+  if(payrollBatchId&&uuid.test(payrollBatchId))revalidatePath(`/payroll/${payrollBatchId}/tax-configuration/${employmentId}`);
   back(employmentId, formData);
 }
 
@@ -65,15 +73,19 @@ export async function revokeIncentiveDeclarationAction(formData: FormData) {
   const session = await requireAdmin();
   const employmentId = String(formData.get('employmentId') ?? '');
   const id = String(formData.get('id') ?? '');
+  const payrollBatchId=formData.has('payrollBatchId')?String(formData.get('payrollBatchId')):undefined;
+  const expectedCompanyId=formData.has('expectedCompanyId')?String(formData.get('expectedCompanyId')):undefined;
+  const expectedPayPeriod=formData.has('expectedPayPeriod')?String(formData.get('expectedPayPeriod')):undefined;
   if (!uuid.test(employmentId) || !uuid.test(id)) back(employmentId, formData, 'invalid');
   const service = packFor('MY')?.statutory.revokeTaxSchemeDeclaration;
   if (!service) back(employmentId, formData, 'unavailable');
   try {
     // Service verifies declaration ownership against this employment and derives the company.
-    await service(session, { employmentId, id });
+    await service(session, { employmentId, id, ...(payrollBatchId!==undefined?{payrollBatchId,expectedCompanyId,expectedPayPeriod}:{}) });
   } catch (error) {
     back(employmentId, formData, refusal(error, 'revokeFailed'));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
+  if(payrollBatchId&&uuid.test(payrollBatchId))revalidatePath(`/payroll/${payrollBatchId}/tax-configuration/${employmentId}`);
   back(employmentId, formData);
 }

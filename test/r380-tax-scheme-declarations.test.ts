@@ -5,6 +5,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
+import { createBatch } from '../core/payroll';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { listTaxSchemeDeclarationsMY, saveTaxSchemeDeclarationMY, revokeTaxSchemeDeclarationMY,
   resolveTaxSchemeMY } from '../localization/my/tax-scheme-declarations';
@@ -57,7 +58,7 @@ describe('r380 employer-period declaration lifecycle', () => {
     expect(archived.archivedAt).toBeInstanceOf(Date);
     expect(archived.approvalReference).toBe(stored.approvalReference);
     expect(await eventTypesFor(b.tenantId,id)).toEqual(['employment.tax.scheme.declared','employment.tax.scheme.revoked']);
-    await expect(resolve('2026-10')).rejects.toMatchObject({code:'missing_declaration'});
+    await expect(resolve('2026-10')).rejects.toMatchObject({code:'declaration_revoked',details:{configuredScheme:'rep'}});
     const replacement = await saveTaxSchemeDeclarationMY(adminCtx(b), input());
     expect(replacement).not.toBe(id);
     expect((await listTaxSchemeDeclarationsMY(adminCtx(b),subject.employmentId))!.rows).toHaveLength(2);
@@ -65,7 +66,7 @@ describe('r380 employer-period declaration lifecycle', () => {
   it('includes both boundary months, excludes adjacent months and accepts adjacent nonoverlapping approval', async () => {
     const id = await saveTaxSchemeDeclarationMY(adminCtx(b), input());
     for (const period of ['2026-09','2027-08']) expect(await resolve(period)).toEqual({scheme:'rep',declarationId:id});
-    for (const period of ['2026-08','2027-09']) await expect(resolve(period)).rejects.toMatchObject({code:'missing_declaration'});
+    for (const period of ['2026-08','2027-09']) await expect(resolve(period)).rejects.toMatchObject({code:'declaration_outside_period'});
     await expect(saveTaxSchemeDeclarationMY(adminCtx(b), {...input(),scheme:'knowledge_worker',validFrom:'2027-08',validTo:'2027-09'}))
       .rejects.toMatchObject({code:'overlap'});
     const adjacent = await saveTaxSchemeDeclarationMY(adminCtx(b), {...input(),scheme:'knowledge_worker',validFrom:'2027-09',validTo:'2027-09'});
@@ -91,9 +92,9 @@ describe('r380 employer-period declaration lifecycle', () => {
     expect(await saveTaxSchemeDeclarationMY(adminCtx(b),input())).toBeTruthy();
   });
   it.each(['rep','knowledge_worker'])('refuses missing and expired approval for legacy %s, retains ordinary paths', async scheme => {
-    await expect(resolve('2026-10',{legacyScheme:scheme})).rejects.toMatchObject({code:'missing_declaration'});
+    await expect(resolve('2026-10',{legacyScheme:scheme})).rejects.toMatchObject({code:'missing_declaration',details:{configuredScheme:scheme}});
     await saveTaxSchemeDeclarationMY(adminCtx(b), {...input(),scheme,validTo:'2026-09'});
-    await expect(resolve('2026-10',{legacyScheme:scheme})).rejects.toMatchObject({code:'missing_declaration'});
+    await expect(resolve('2026-10',{legacyScheme:scheme})).rejects.toMatchObject({code:'declaration_outside_period',details:{configuredScheme:scheme}});
     expect(await resolve('2026-10',{legacyScheme:'resident',resident:true})).toEqual({scheme:'resident'});
     expect(await resolve('2026-10',{legacyScheme:'non_resident',resident:false})).toEqual({scheme:'non_resident'});
     expect(await resolve('2026-10',{legacyScheme:'resident',resident:false})).toEqual({scheme:'non_resident'});
@@ -110,6 +111,55 @@ describe('r380 employer-period declaration lifecycle', () => {
     for (const citizenship of ['pr','non_citizen']) expect(await resolve('2026-10',{legacyScheme:'resident',resident:true,epfCitizenship:citizenship})).toEqual({scheme:'c_suite',declarationId:id});
     for (const citizenship of ['citizen',null,undefined]) await expect(resolve('2026-10',{legacyScheme:'resident',resident:true,epfCitizenship:citizenship})).rejects.toMatchObject({code:'citizenship_unknown'});
     await expect(resolve('2026-10',{legacyScheme:'non_resident'})).rejects.toMatchObject({code:'not_resident'});
+  });
+});
+
+describe('r382 selected payroll tax context and readiness authority',()=>{
+  it('uses a scoped declaration rather than creating a second profile scheme authority',async()=>{
+    const id=await saveTaxSchemeDeclarationMY(adminCtx(b),{...input(),scheme:'knowledge_worker'});
+    expect(await resolve('2026-10',{legacyScheme:'rep'})).toEqual({scheme:'knowledge_worker',declarationId:id});
+    expect(await resolve('2026-10',{legacyScheme:'resident',resident:true})).toEqual({scheme:'knowledge_worker',declarationId:id});
+  });
+  it('recognises REP configuration independently from missing approval metadata and records no inferred approval',async()=>{
+    await profile({taxResidency:'rep',isResident:true});
+    const batch=await createBatch(adminCtx(b),{companyId:b.companyId,payPeriod:'2026-10'});
+    const view=await listTaxSchemeDeclarationsMY(adminCtx(b),subject.employmentId,batch.batchId);
+    expect(view).toMatchObject({companyId:b.companyId,payPeriod:'2026-10',configuredScheme:'rep',readinessCode:'missing_declaration',rows:[]});
+    expect(view?.effectiveScheme).toBeUndefined();
+    expect(await owner.db.select().from(schema.employmentTaxSchemeMy)).toHaveLength(0);
+    const id=await saveTaxSchemeDeclarationMY(adminCtx(b),{...input(),payrollBatchId:batch.batchId,expectedPayPeriod:'2026-10'});
+    expect(await listTaxSchemeDeclarationsMY(adminCtx(b),subject.employmentId,batch.batchId)).toMatchObject({configuredScheme:'rep',effectiveScheme:'rep',readinessCode:undefined,rows:[{id}]});
+  });
+  it('derives batch employer and period, refusing stale period, wrong employer and noncovering approval ranges',async()=>{
+    const batch=await createBatch(adminCtx(b),{companyId:b.companyId,payPeriod:'2026-10'});
+    const p={...input(),payrollBatchId:batch.batchId,expectedPayPeriod:'2026-10'};
+    await expect(saveTaxSchemeDeclarationMY(adminCtx(b),{...p,expectedPayPeriod:'2026-09'})).rejects.toMatchObject({code:'stale_context'});
+    await expect(saveTaxSchemeDeclarationMY(adminCtx(b),{...p,expectedCompanyId:randomUUID()})).rejects.toMatchObject({code:'stale_context'});
+    await expect(saveTaxSchemeDeclarationMY(adminCtx(b),{...p,validTo:'2026-09'})).rejects.toMatchObject({code:'invalid_period'});
+    await expect(listTaxSchemeDeclarationsMY(adminCtx(b),subject.employmentId,randomUUID())).rejects.toMatchObject({code:'not_found'});
+    expect(await owner.db.select().from(schema.employmentTaxSchemeMy)).toHaveLength(0);
+  });
+  it('supports historical employer only for existing group/both-employer visibility, with real app-role insertion',async()=>{
+    const batch=await createBatch(adminCtx(b),{companyId:b.companyId,payPeriod:'2026-10'});
+    const [destination]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Synthetic destination',country:'MY'}).returning({id:schema.company.id});
+    await owner.db.update(schema.assignment).set({companyId:b.companyId,validTo:'2026-11-01'}).where(eq(schema.assignment.employmentId,subject.employmentId));
+    await owner.db.update(schema.employment).set({companyId:destination.id}).where(eq(schema.employment.id,subject.employmentId));
+    const p={...input(),validFrom:'2026-10',validTo:'2026-10',payrollBatchId:batch.batchId,expectedPayPeriod:'2026-10'};
+    const id=await saveTaxSchemeDeclarationMY(adminCtx(b),p);
+    expect(await listTaxSchemeDeclarationsMY(adminCtx(b),subject.employmentId,batch.batchId)).toMatchObject({companyId:b.companyId,rows:[{id}]});
+    const [user]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:`outgoing_${randomUUID()}`}).returning({id:schema.appUser.id});
+    await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,companyId:b.companyId,role:'hr_admin'});
+    const outgoing:SessionContext={tenantId:b.tenantId,userId:user.id,grants:[{role:'hr_admin',companyId:b.companyId}],entitlements:adminCtx(b).entitlements};
+    await expect(listTaxSchemeDeclarationsMY(outgoing,subject.employmentId,batch.batchId)).rejects.toMatchObject({code:'not_found'});
+    await expect(saveTaxSchemeDeclarationMY(outgoing,p)).rejects.toMatchObject({code:'not_found'});
+    expect(await withTenant(outgoing,tx=>tx.select().from(schema.employmentTaxSchemeMy))).toHaveLength(0);
+    await expect(withTenant(outgoing,tx=>tx.insert(schema.employmentTaxSchemeMy).values({tenantId:b.tenantId,employmentId:subject.employmentId,companyId:b.companyId,scheme:'rep',validFrom:'2026-08',validTo:'2026-08',approvalReference:'SYNTHETIC-DENIED',declaredByUserId:user.id}))).rejects.toMatchObject({cause:{code:'42501'}});
+    const raw=(validFrom:string,validTo:string,companyId=b.companyId)=>withTenant(adminCtx(b),tx=>tx.insert(schema.employmentTaxSchemeMy).values({tenantId:b.tenantId,employmentId:subject.employmentId,companyId,scheme:'rep',validFrom,validTo,approvalReference:'SYNTHETIC-PAST',declaredByUserId:b.adminUserId}));
+    await expect(raw('2027-01','2027-01')).rejects.toMatchObject({cause:{code:'42501'}});
+    await expect(raw('2025-12','2025-12')).rejects.toMatchObject({cause:{code:'42501'}});
+    await raw('2026-09','2026-09');
+    await revokeTaxSchemeDeclarationMY(adminCtx(b),{employmentId:subject.employmentId,id,payrollBatchId:batch.batchId,expectedCompanyId:b.companyId,expectedPayPeriod:'2026-10'});
+    expect(await listTaxSchemeDeclarationsMY(adminCtx(b),subject.employmentId,batch.batchId)).toMatchObject({rows:expect.arrayContaining([expect.objectContaining({id,archivedAt:expect.any(Date)})])});
   });
 });
 

@@ -2878,6 +2878,13 @@
       "when": 1790912363798,
       "tag": "0503_employment_tax_scheme_my",
       "breakpoints": true
+    },
+    {
+      "idx": 504,
+      "version": "7",
+      "when": 1790931526487,
+      "tag": "0504_tax_scheme_historical_employer",
+      "breakpoints": true
     }
   ]
 }

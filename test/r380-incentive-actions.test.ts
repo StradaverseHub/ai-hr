@@ -18,7 +18,7 @@ const expectedCompanyId = '22222222-2222-4222-8222-222222222222';
 const declarationId = '33333333-3333-4333-8333-333333333333';
 const session = { tenantId: '44444444-4444-4444-8444-444444444444', userId: 'hr-user', roles: ['hr_admin'] };
 const codes = ['invalid_scheme', 'invalid_period', 'approval_required', 'missing_reference', 'not_found',
-  'not_resident', 'citizenship_unknown', 'overlap', 'missing_declaration', 'stale_context'];
+  'not_resident', 'citizenship_unknown', 'overlap', 'missing_declaration', 'declaration_revoked', 'declaration_outside_period', 'stale_context'];
 
 function form(overrides: Record<string, string | null> = {}) {
   const values: Record<string, string | null> = { employmentId, expectedCompanyId, id: declarationId,
@@ -55,6 +55,12 @@ beforeEach(() => {
 });
 
 describe('r380 incentive declaration action form contract', () => {
+  it('forwards payroll context and server-reviewed employer/period preconditions without changing current-personnel navigation',async()=>{
+    const payrollBatchId='55555555-5555-4555-8555-555555555555';
+    const url=await submitted(saveIncentiveDeclarationAction,form({payrollBatchId,expectedPayPeriod:'2027-01'}));
+    expect(mocks.save.mock.calls[0][1]).toMatchObject({payrollBatchId,expectedPayPeriod:'2027-01',expectedCompanyId});
+    expect(new URL(url,'http://localhost').pathname).toBe(`/payroll/${payrollBatchId}/tax-configuration/${employmentId}`);
+  });
   it.each(['rep', 'knowledge_worker', 'c_suite'])('forwards explicit %s approval and reviewed-employer precondition', async scheme => {
     const url = await submitted(saveIncentiveDeclarationAction, form({ scheme, companyId: 'attacker-company', personId: 'ignored-person' }));
     expect(mocks.requireAdmin).toHaveBeenCalledTimes(1);
