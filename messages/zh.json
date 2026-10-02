@@ -3449,7 +3449,8 @@
       "periodNotRecorded": "未记录",
       "selectedEmployerContributionsHeading": "雇主缴费 — 所选工资单",
       "periodScopeNote": "月度及年度累计包括此雇佣关系的所有符合条件的工资批次，适用时包含其他雇主。",
-      "employeeYtdNote": "员工年度累计数字显示完整计算的法定员工份额。若雇主承担部分缴款，上方扣款显示实际从员工薪资中扣除的金额。"
+      "employeeYtdNote": "员工年度累计数字显示完整计算的法定员工份额。若雇主承担部分缴款，上方扣款显示实际从员工薪资中扣除的金额。",
+      "paymentDateLabel": "付款日期"
     },
     "goalsTitle": "我的目标",
     "goalsEmpty": "暂无目标。添加一个，跟踪您正在努力实现的方向。",

@@ -18,7 +18,7 @@ import { buildPayslipPdfData, renderPayslipPdf, type PayslipPdfData } from '../l
 // a96d320c — the payment date is resolved to words SERVER-side, in the same module that already resolves
 // the pay period to a month name. Imported directly so the formatter is pinned as a function rather than
 // through a label fixture the test writes itself.
-import { englishLongDate } from '../lib/payslip-pdf-strings';
+import { englishLongDate, payslipPaymentDate } from '../lib/payslip-pdf-strings';
 
 import { data, labels } from './fixtures/payslip-pdf-fixture';
 const head = (b: Uint8Array) => Buffer.from(b.slice(0, 5)).toString('latin1');
@@ -530,10 +530,10 @@ describe('5c198931 — the downloaded payslip is a full official document', () =
     expect(text).toContain('MYR 500.00');
   });
 
-  it('says so plainly when the run never recorded the per-item detail', async () => {
+  it('retains saved allowance totals without the retired employee-facing per-item explanation', async () => {
     const older = drawnText(await renderPayslipPdf({ ...data, earningLines: [], detailNotRecorded: true }, labels));
     expect(older).toContain('Allowances');
-    expect(older).toContain('This payroll run recorded only the totals.');
+    expect(older).not.toContain('This payroll run recorded only the totals.');
     // A run that DID record its items carries no such note.
     const newer = drawnText(
       await renderPayslipPdf(
@@ -1668,7 +1668,7 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
     // A batch that named no cycle AND no recognised run type: the subtitle is the document name alone,
     // never "Payroll payslip · " with nothing after the separator.
     const none = drawnText(await renderPayslipPdf({ ...data, cycleLabel: null }, labels));
-    expect(none).toContain(labels.documentSubtitle);
+    expect(none).not.toContain(labels.documentSubtitle);
     expect(none, 'no orphaned separator').not.toContain(`${labels.documentSubtitle} ·`);
   });
 
@@ -1743,7 +1743,7 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
    * straight through the footer and off the sheet. The guard is that EVERY side must be final in the
    * same pass; a side that finished on an earlier sheet answers `null` and refuses the padding too.
    */
-  it('does NOT pad a side whose partner is still flowing onto the next sheet', async () => {
+  it('carries both transaction totals to the same final page without losing rows or crossing the footer', async () => {
     const spilled = await renderPayslipPdf(
       {
         ...data,
@@ -1758,19 +1758,13 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
 
     const td = placed(p, 'TOTAL DEDUCTIONS')!;
     const te = placed(p, 'TOTAL EARNINGS')!;
-    // The two totals are on DIFFERENT SHEETS. There is no baseline to share, and the renderer must not
-    // invent one — which is exactly what padding a lone final side would have tried to do.
-    expect(td.page, 'Deductions finishes on sheet 1').toBe(1);
-    expect(te.page, 'Earnings finishes later').toBeGreaterThan(1);
-
-    // AND THE DEDUCTIONS BOX IS STILL ITS OWN SIZE. Its total sits one total-band below its last row
-    // (PCB). Padded to the Earnings chunk it would be ~30 rows lower — off the bottom of the sheet.
-    const pcb = p.find((r) => r.text === 'PCB' && r.page === 1 && r.x > 297)!;
-    expect(pcb, 'the last deduction row is drawn').toBeDefined();
-    expect(
-      pcb.y - td.y,
-      'TOTAL DEDUCTIONS sits directly under the last deduction row, not 30 rows below it',
-    ).toBeLessThan(40);
+    expect(te.page, 'Earnings really continues').toBeGreaterThan(1);
+    expect(td.page, 'the shorter deductions total follows the final earnings chunk').toBe(te.page);
+    expect(td.y,'the final totals share one baseline').toBeCloseTo(te.y,3);
+    expect(p.filter(r=>r.text==='TOTAL DEDUCTIONS')).toHaveLength(1);
+    expect(p.filter(r=>r.text==='TOTAL EARNINGS')).toHaveLength(1);
+    const itemTokens=drawnText(spilled).match(/Item \d+/g);
+    expect(itemTokens).toEqual(Array.from({length:70},(_,i)=>`Item ${i}`));
     // …and nothing on any sheet is drawn below the page margin. The footer sentence itself sits at y=48,
     // between the margin (40) and its own rule (62), and is excluded by name rather than by geometry so
     // this cannot quietly stop measuring if that line moves.
@@ -1869,7 +1863,7 @@ describe('r379 — reporter reference columns without losing saved evidence',()=
     expect(amount.x).toBeGreaterThan(quantity.x);
     expect(drawnText(bytes)).toContain('Day/Hrs');
     expect(drawnText(bytes)).not.toContain('\nRate\n');
-    expect(drawnText(bytes).replace(/\n/g,' ')).toContain(labels.periodScopeNote!);
+    expect(drawnText(bytes).replace(/\n/g,' ')).not.toContain(labels.periodScopeNote!);
   });
   it('continues an exceptionally long single description completely and prints its saved amount once',async()=>{
     const name=Array.from({length:300},(_,i)=>`Evidence${i}`).join(' ');
@@ -1895,7 +1889,7 @@ describe('r379 — reporter reference columns without losing saved evidence',()=
     const text=drawnText(await renderPayslipPdf({...data,hrdf:0,employerPeriodTotals:p,ytd:{gross:7120,net:6020.35,epf:715,socso:24.75,eis:9.9,pcb:350}},labels));
     expect(text.replace(/\n/g,' ').match(/Not recorded/g)!.length).toBe(5);
     expect(text).toContain('MYR 0.00');expect(text).toContain('MYR 100.00');
-    expect(text.replace(/\n/g,' ')).toContain(labels.normalEmployerNote!);
+    expect(text.replace(/\n/g,' ')).not.toContain(labels.normalEmployerNote!);
     expect(text).not.toContain('credited into your bank account');
   });
   it('places the full-width Other section below Net Pay and above the employer period tables',async()=>{
@@ -1904,5 +1898,44 @@ describe('r379 — reporter reference columns without losing saved evidence',()=
     expect(other.page).toBe(net.page);expect(other.y).toBeLessThan(net.y);
     expect(employer.page).toBe(other.page);expect(employer.y).toBeLessThan(other.y);
     expect(drawnText(bytes)).toContain('TOTAL NON-PAYABLE');expect(drawnText(bytes)).toContain('MYR 850.00');
+  });
+});
+
+
+describe('r381 — newest reporter payslip layout',()=>{
+  it('keeps company at left and Month Year at right on the same first header line without the old document title',async()=>{
+    const bytes=await renderPayslipPdf({...data,logo:null},labels);
+    const runs=drawnPlacements(bytes);
+    const company=placed(runs,data.company)!,period=placed(runs,labels.periodLabel)!;
+    expect(company).toBeDefined();expect(period).toBeDefined();
+    expect(company.page).toBe(period.page);
+    expect(company.y).toBeCloseTo(period.y,3);
+    expect(period.x).toBeGreaterThan(company.x+200);
+    expect(drawnText(bytes)).not.toContain(labels.documentSubtitle);
+  });
+  it('prints the actual saved payment date under Payment Date, with no Payment Information caption',async()=>{
+    expect(payslipPaymentDate('2026-09-30')).toBe('30 Sep 2026');
+    expect(payslipPaymentDate('2026-02-31')).toBe('2026-02-31');
+    expect(payslipPaymentDate('')).toBe('');
+    const bytes=await renderPayslipPdf({...data,payDate:'2026-09-30'}, {...labels,paymentDate:payslipPaymentDate('2026-09-30')});
+    const text=drawnText(bytes),runs=drawnPlacements(bytes);
+    expect(text).toContain('Payment Date');expect(text).toContain('30 Sep 2026');
+    expect(text).not.toContain(labels.paymentInformation);
+    const caption=placed(runs,'Payment Date')!,value=placed(runs,'30 Sep 2026')!;
+    expect(caption.y).toBeCloseTo(value.y,3);
+    const rules=drawnRects(bytes);
+    expect(enclosingRule(rules,caption)).toBeDefined();expect(enclosingRule(rules,value)).toBeDefined();
+  });
+  it('places saved gross and net YTD inside the same Year to Date box as saved statutory YTD',async()=>{
+    const bytes=await renderPayslipPdf({...data,ytd:{gross:21360,net:18061.05,epf:2145,socso:74.25,eis:29.7,pcb:1050}},labels);
+    const runs=drawnPlacements(bytes),rules=drawnRects(bytes),text=drawnText(bytes);
+    const gross=placed(runs,'MYR 21,360.00')!,net=placed(runs,'MYR 18,061.05')!,epf=placed(runs,'MYR 2,145.00')!;
+    expect(gross).toBeDefined();expect(net).toBeDefined();expect(epf).toBeDefined();
+    expect(enclosingRule(rules,gross)).toEqual(enclosingRule(rules,net));
+    expect(enclosingRule(rules,gross)).toEqual(enclosingRule(rules,epf));
+    expect(text.match(/YEAR TO DATE.*2026/g)).toHaveLength(1);
+    expect(text.toLowerCase()).not.toContain('gross and net pay summary');
+    expect(text.replace(/\n/g,' ')).not.toContain(labels.normalEmployerNote!);
+    expect(text.replace(/\n/g,' ')).not.toContain(labels.periodScopeNote!);
   });
 });

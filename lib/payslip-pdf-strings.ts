@@ -118,6 +118,17 @@ export function englishLongDate(iso: string): string {
   }).format(dt);
 }
 
+/** Actual saved calendar date, never inferred from the pay period or today's date. */
+export function payslipPaymentDate(iso: string, locale = 'en-GB'): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso ?? '');
+  if (!m) return iso ?? '';
+  const year=Number(m[1]), month=Number(m[2]), day=Number(m[3]);
+  const dt=new Date(Date.UTC(year,month-1,day));
+  if(dt.getUTCFullYear()!==year || dt.getUTCMonth()!==month-1 || dt.getUTCDate()!==day) return iso;
+  const dateLocale=locale==='en'?'en-GB':locale;
+  return new Intl.DateTimeFormat(dateLocale,{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).formatToParts(dt).map(part=>part.type==='month' && part.value==='Sept'?'Sep':part.value).join('');
+}
+
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
 const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contract', 'intern'] as const;
 const PAYMENT_METHODS = ['bank_transfer', 'cheque', 'cash'] as const;
@@ -254,9 +265,10 @@ export async function payslipPdfStrings(p: {
       // the field already uses, in all six catalogues; a second key would be a translation to keep in step
       // for one number that already has a name.
       companyReg: tOrg('regNo'),
-      // a96d320c — the DATE is resolved to words here (see `englishLongDate`); the sentence around it is
-      // still `payDateLine` in the reader's own language, unchanged in all six locales.
-      paymentDate: p.payDate ? tIp('payDateLine', { date: englishLongDate(p.payDate) }) : '',
+      // r381: caption and actual date are separate profile cells; neither asserts bank settlement.
+      paymentDate: p.payDate ? payslipPaymentDate(p.payDate) : '',
+      paymentDateLabel: t('paymentDateLabel'),
+      payrollCycleLabel: tIp('fieldCycle'),
       employmentInfo: tIp('employmentInfoHeading'),
       department: tIp('fieldDepartment'),
       position: tIp('fieldPosition'),

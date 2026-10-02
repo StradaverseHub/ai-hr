@@ -1,6 +1,7 @@
 import { isRecordedEmployerContribution, payslipConfiguredContributions } from '@/core/payslip-configured-contributions';
 import { selectPayslipInformation } from '@/core/payslip-information';
 import { payslipInformationLabels } from '@/lib/payslip-information-labels';
+import { payslipPaymentDate } from '@/lib/payslip-pdf-strings';
 /**
  * Feedback 169e3c24 — Individual Payslip: one named place to review, verify, print and download an
  * employee's payslip BEFORE it is released.
@@ -238,19 +239,19 @@ function Row({ label, value, muted, quantity }: { label: string; value: React.Re
 
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[2fr_3fr] items-baseline gap-2 break-words">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 text-sm font-medium">{value || '—'}</dd>
+    <div className="grid grid-cols-[2fr_3fr] items-start gap-2 border border-border px-3 py-2 break-words text-sm leading-5">
+      <dt className="font-medium text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 font-medium">{value || '—'}</dd>
     </div>
   );
 }
 
 /** One card in the payslip stack. The screen used to be a single tall card with <section>s inside it. */
-function Block({ title, children, tone = "slate" }: { title: string; children: React.ReactNode; tone?:"slate"|"earn"|"deduct"|"other" }) {
+function Block({ title, children, tone = "slate", aligned = false }: { title: string; children: React.ReactNode; tone?:"slate"|"earn"|"deduct"|"other"; aligned?: boolean }) {
   return (
-    <Card className="overflow-hidden">
+    <Card className={`overflow-hidden ${aligned ? "flex h-full flex-col" : ""}`}>
       <h2 className={`px-4 py-2 text-center text-xs font-semibold uppercase tracking-wide text-white ${tone==='earn'?'bg-teal-700':tone==='deduct'?'bg-orange-800':tone==='other'?'bg-violet-700':'bg-slate-600'}`}>{title}</h2>
-      <div className="p-4">{children}</div>
+      <div className={`p-4 ${aligned ? "flex flex-1 flex-col" : ""}`}>{children}</div>
     </Card>
   );
 }
@@ -637,8 +638,8 @@ export default async function IndividualPayslipPage({
               worse than a clean text letterhead. No placeholder is invented when there is none. */}
           <Card className="p-6">
             <p className="mb-4 text-xs font-semibold">{tSlip('confidentialHeading')}</p>
-            <div className="flex flex-col items-center justify-between gap-4">
-              <div className="w-full text-center">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+              <div className="min-w-0">
                 {companyHasLogo && (
                   /* eslint-disable-next-line @next/next/no-img-element -- a bytea served by our own route,
                      not a build-time asset; next/image would need a loader for an authenticated endpoint. */
@@ -648,7 +649,7 @@ export default async function IndividualPayslipPage({
                     className="mb-2 inline-block max-h-14 w-auto max-w-[14rem] object-contain"
                   />
                 )}
-                <h1 className="text-lg font-semibold tracking-tight">{row.company}</h1>
+                <h1 className="text-sm font-medium leading-5">{row.company}</h1>
                 {/* r360 (1fe55a23) — THE REGISTRATION NUMBER NOW SAYS WHAT IT IS.
                     It has always been drawn here, directly under the legal name, but with no caption at
                     all: the reader met a bare "201901024512" under a company name, which is how an
@@ -660,14 +661,10 @@ export default async function IndividualPayslipPage({
                     nullable and most companies on production carry none, and a printed "Reg. no. —" would
                     assert that we looked and there is none. */}
                 {row.companyReg && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-sm font-medium leading-5 text-muted-foreground">
                     {tOrg('regNo')}: {row.companyReg}
                   </p>
                 )}
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {t('payPeriodLine', { period: monthYear(row.payPeriod, locale) })}
-                  {row.payDate ? ` · ${t('payDateLine', { date: row.payDate })}` : ''}
-                </p>
                 {/* 3c88d593 — WHAT THIS SLIP ACTUALLY COVERS. "August 2026" is not what a slip for
                     1–10 August says, and an employee who transferred mid-month holds TWO documents for
                     one month, each naming a different employer. Without this line the two are
@@ -680,7 +677,8 @@ export default async function IndividualPayslipPage({
                   </p>
                 )}
               </div>
-              <div className="flex flex-wrap items-center justify-center gap-2">
+              <div className="text-right text-sm font-medium leading-5"><p>{monthYear(row.payPeriod, locale)}</p><p className="text-muted-foreground">{tSlip('payPeriodLabel')}</p></div>
+              <div className="col-span-2 flex flex-wrap items-center justify-end gap-2">
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PAYROLL_PUBLICATION_PILL[pubState!]}`}>
                   {t(`state_${pubState}`)}
                 </span>
@@ -727,10 +725,10 @@ export default async function IndividualPayslipPage({
               PLACE in all six — re-adding a deleted key later is the MISSING_MESSAGE trap.
               ⚠️ payroll.statutoryAdjustment.employeeHeading is a DIFFERENT key on a different screen. */}
           <Block title={tSlip('employeeProfile')}>
-            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <dl className="grid grid-cols-1 sm:grid-cols-2">
               <Info label={tSlip('companyName')} value={row.company} />
               {row.companyReg && <Info label={tOrg('regNo')} value={row.companyReg} />}
-              <Info label={tSlip('payPeriodLabel')} value={monthYear(row.payPeriod,locale)} />
+              {row.payDate && <Info label={tSlip('paymentDateLabel')} value={payslipPaymentDate(row.payDate,locale)} />}
               {selectPayslipInformation({ ...row, employee: row.employeeName,
                 employmentType: row.employmentType ? t(`employmentType_${row.employmentType}`) : null,
               }, row.informationFields, { ...informationLabels, identityNumber: row.identityIsPassport ? t('fieldPassport') : informationLabels.identityNumber })
@@ -739,9 +737,9 @@ export default async function IndividualPayslipPage({
                 label={t('fieldPaymentMethod')}
                 value={row.paymentMethod ? t(`paymentMethod_${row.paymentMethod}`) : null}
               />
-              {/* Masked in the READ, not here: the full account number never reaches the client. */}
+              {/* Full account is shown only within this existing company-scoped individual review. */}
               {row.bankName?.trim() && <Info label={t('fieldBankName')} value={row.bankName} />}
-              {row.bankAccountMasked && <Info label={t('fieldBankAccount')} value={row.bankAccountMasked} />}
+              {row.bankAccountFull && <Info label={t('fieldBankAccount')} value={row.bankAccountFull} />}
 
               {/* r360 (1fe55a23) — THE COMPANY'S OWN PAY CYCLE NAME, not the kernel's run-type word.
                   "Regular" is `payroll_batch.run_type`, one of four fixed behavioural types the kernel
@@ -762,9 +760,9 @@ export default async function IndividualPayslipPage({
             </dl>
           </Block>
 
-          <div className="grid items-start gap-4 lg:grid-cols-2">
+          <div className="grid items-stretch gap-4 lg:grid-cols-2">
           {/* ── Earnings ── */}
-          <Block title={tSlip('earnings')} tone="earn">
+          <Block title={tSlip('earnings')} tone="earn" aligned>
             <div className="mb-2 grid grid-cols-[2fr_1fr_1fr] gap-2 text-xs text-muted-foreground"><span>{tSlip('descriptionColumn')}</span><span className="text-right">{tSlip('quantityColumn')}</span><span className="text-right">{tSlip('amountColumn')}</span></div>
             {b.basic !== 0 && <Row label={tSlip('basicSalary')} value={rm(b.basic)} />}
             {/* a96d320c rev 2 — AN EARNING LINE WITH NOTHING ON IT IS NOT SHOWN. This screen is the admin
@@ -835,17 +833,14 @@ export default async function IndividualPayslipPage({
               </p>
             );})}
             {earningRowShown(b.claim) && <Row label={tSlip('claim')} value={rm(b.claim)} />}
-            {b.detailNotRecorded && (
-              <p className="pt-1 text-[11px] text-muted-foreground">{tTxn('view.history.detailNotRecorded')}</p>
-            )}
-            <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
-              <span>{tSlip('grossPay')}</span>
+            <div className="mt-auto flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
+              <span>{tSlip('totalEarnings')}</span>
               <span className="tabular-nums">{rm(b.gross)}</span>
             </div>
           </Block>
 
           {/* ── Deductions, with the PCB drill-down beneath ── */}
-          <Block title={tSlip('deductionsHeading')} tone="deduct">
+          <Block title={tSlip('deductionsHeading')} tone="deduct" aligned>
             <div className="mb-2 grid grid-cols-[2fr_1fr_1fr] gap-2 text-xs text-muted-foreground"><span>{tSlip('descriptionColumn')}</span><span className="text-right">{tSlip('quantityColumn')}</span><span className="text-right">{tSlip('amountColumn')}</span></div>
             <Row label={tSlip('epf')} value={rm(eb.employee.epf)} />
             <Row label={tSlip('socso')} value={rm(eb.employee.socso)} />
@@ -907,11 +902,15 @@ export default async function IndividualPayslipPage({
                 it touches display only — nothing downstream reads this string. Pinned by a source-shape
                 assertion in test/individual-payslip.test.ts so it cannot creep back on any of the three
                 surfaces that render this line. */}
-            <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
+            <div className="mt-auto flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
               <span>{tSlip('totalDeductions')}</span>
               <span className="tabular-nums">{rm(b.totalDeductions)}</span>
             </div>
 
+          </Block>
+
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
             {/* ── PCB working: ONE screen, not a second copy of it (45df860a) ──
                 169e3c24 put a short drill-down here, reading this payslip's own `pcbMeta`. It was right
                 about the principle — never recompute — and short of what a payroll checker needs: it
@@ -957,8 +956,6 @@ export default async function IndividualPayslipPage({
                 {tStat('viewExplanation')}
               </a>
             </div>
-          </Block>
-
           </div>
           {/* ── Net pay ──
               The one figure the reader looks for first, so it gets the strongest treatment on the screen
@@ -980,17 +977,16 @@ export default async function IndividualPayslipPage({
               <table className="w-full text-sm"><thead><tr className="text-xs text-muted-foreground"><th className="py-2 text-left">{tSlip('statutoryCodeColumn')}</th><th className="py-2 text-right">{tSlip('mtdEmployerColumn')}</th></tr></thead><tbody>
                 {(['epf','socso','eis','hrdf'] as ('epf'|'socso'|'eis'|'hrdf')[]).map(key => <tr key={key}><td className="py-1">{tSlip(key)}</td><td className="py-1 text-right tabular-nums">{employerPeriodTotals?.mtd[key] == null ? tSlip('periodNotRecorded') : rm(employerPeriodTotals.mtd[key])}</td></tr>)}
               </tbody></table>
-              <p className="mt-2 text-xs text-muted-foreground">{tSlip('normalEmployerNote')}</p>
             </Block>
             <Block title={t('ytdHeading',{year:row.payPeriod.slice(0,4)})}>
-              <table className="w-full text-sm"><thead><tr className="text-xs text-muted-foreground"><th className="py-2 text-left">{tSlip('statutoryCodeColumn')}</th><th className="py-2 text-right">{tSlip('ytdEmployeeColumn')}</th><th className="py-2 text-right">{tSlip('ytdEmployerColumn')}</th></tr></thead><tbody>
+              <table className="w-full text-sm"><thead><tr className="text-xs text-muted-foreground"><th className="py-2 text-left">{t('ytdItem')}</th><th className="py-2 text-right">{t('ytdToDate')}</th><th className="py-2 text-right">{tSlip('ytdEmployerColumn')}</th></tr></thead><tbody>
                 {(['epf','socso','eis','hrdf'] as ('epf'|'socso'|'eis'|'hrdf')[]).map(key => <tr key={key}><td className="py-1">{tSlip(key)}</td><td className="py-1 text-right tabular-nums">{key==='hrdf'?'':rm(ytd[key])}</td><td className="py-1 text-right tabular-nums">{employerPeriodTotals?.ytd[key] == null ? tSlip('periodNotRecorded') : rm(employerPeriodTotals.ytd[key])}</td></tr>)}
                 <tr><td className="py-1">{tSlip('pcb')}</td><td className="py-1 text-right tabular-nums">{rm(ytd.pcb)}</td><td /></tr>
+                {([[tSlip('grossPay'),ytd.gross],[tSlip('netPay'),ytd.net]] as [string,number][]).map(([label,value]) => <tr key={label} className="border-t border-border font-medium"><td className="py-2">{label}</td><td className="py-2 text-right tabular-nums">{rm(value)}</td><td /></tr>)}
               </tbody></table>
               <p className="mt-2 text-xs text-muted-foreground">{tSlip('employeeYtdNote')}</p>
             </Block>
           </div>
-          <p className="text-xs text-muted-foreground">{tSlip('periodScopeNote')}</p>
           {/* ── Employer contributions, with the employer-borne disclosure folded in (3c473773) ── */}
           <Block title={tSlip('selectedEmployerContributionsHeading')}>
             {payslipConfiguredContributions(row.statutory).map((line, index) => <Row key={`${line.code}-${index}`} label={line.name} value={rm(line.amount)} muted />)}
@@ -1023,36 +1019,7 @@ export default async function IndividualPayslipPage({
           {/* ── Year to date ──
               Summed from the SAME read that lists this employee's months, so the column beside the
               current month can never disagree with the months it is made of. */}
-          <Block title={tSlip('paySummaryHeading')}>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="py-1 font-medium">{t('ytdItem')}</th>
-                    <th className="py-1 text-right font-medium">{t('ytdCurrent')}</th>
-                    <th className="py-1 text-right font-medium">{t('ytdToDate')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/60">
-                  {(
-                    [
-                      [tSlip('grossPay'), b.gross, ytd.gross],
-                      [tSlip('netPay'), b.net, ytd.net],
-                    ] as [string, unknown, number][]
-                  ).map(([label, current, total]) => (
-                    <tr key={label}>
-                      <td className="py-1.5">{label}</td>
-                      <td className="py-1.5 text-right tabular-nums">{rm(current)}</td>
-                      <td className="py-1.5 text-right tabular-nums">{rm(total)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {/* The YTD column is the FULL employee share as computed and filed, which is why it can differ
-                from the deduction lines above when the employer bore part of them. Said, not hidden. */}
-            <p className="mt-2 text-xs text-muted-foreground">{tSlip('employeeYtdNote')}</p>
-
+          <Block title={tTxn('view.history.itemsHeading')}>
             {b.recordLines.some(line => !isRecordedEmployerContribution(line)) && (
               <div className="mt-4 border-t border-border pt-3">
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">

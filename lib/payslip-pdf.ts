@@ -323,7 +323,9 @@ export type PayslipPdfLabels = {
    * key the Organization screen that owns the field already uses in all six catalogues.
    */
   companyReg: string;
-  paymentDate: string; // already interpolated with the date by the caller
+  paymentDate: string; // saved payment date, already formatted by the caller
+  paymentDateLabel?: string;
+  payrollCycleLabel?: string;
   employmentInfo: string;
   department: string;
   position: string;
@@ -583,7 +585,6 @@ const LINE_H = 10.5;
 const BOX_HEAD_H = 20;
 const BOX_TOTAL_H = 21;
 /** Supplemental gross/net summary retains the selected-run and existing employee YTD figures. */
-const YTD_H = 64;
 
 type Row = { quantity?: string; textValues?:string[]; label: string; sub?: string | null; amount?: number; text?: string; muted?: boolean };
 
@@ -1085,8 +1086,8 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     // The complete value is printed in the flowing letterhead and employee profile below.
     const headerCompany=wrap(d.company,faceOf(d.company,bold),12,CONTENT_W-200);
     if(headerCompany.length===1) at(page,headerCompany[0],M,y-12,12,bold);
-    else at(page,t.documentSubtitle,M,y-12,9,bold);
-    atR(page,`${t.title} · ${t.periodLabel}`,A4_W-M,y-11,9,font,MUTED);
+    else at(page,t.companyName??'Company',M,y-12,8.5,font);
+    atR(page,t.periodLabel,A4_W-M,y-11,8.5,font,MUTED);
     y-=20;
     page.drawLine({ start: { x: M, y }, end: { x: A4_W - M, y }, thickness: 1.2, color: RULE });
     y -= GAP;
@@ -1153,6 +1154,7 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
    * it rather than dragging a second copy of Deductions along.
    */
   const flowPair = (specs: readonly FlowSpec[]) => {
+    const alignedTransactions=specs.length===2 && specs[0].dot==='earn' && specs[1].dot==='deduct';
     const sides = specs.map((spec) => ({
       spec,
       plan: planBox({ w: spec.w, title: spec.title, rows: spec.rows, columns: spec.columns, dot: spec.dot, total: spec.total, note: spec.note }),
@@ -1183,39 +1185,19 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
         freshPage = true;
         continue;
       }
-      /**
-       * a96d320c rev 3 — ONE BASELINE FOR THE TWO TOTALS.
-       *
-       * They were never aligned. Both sides start at the same `y` and `used = Math.max(...)` advances the
-       * flow past the taller one, so the TOPS line up and the downward step is shared — but each side is
-       * painted by its own `paintBox` with its own `plan.total`, and a total sits at the foot of its OWN
-       * content. Five earnings rows beside two deduction rows put TOTAL EARNINGS three rows above TOTAL
-       * DEDUCTIONS. The two were only ever level by coincidence, when the columns happened to hold the
-       * same number of rows; the reporter is reading a payslip where they do not.
-       *
-       * The fix is a FLOOR ON THE BODY, not an inserted row and not a taller row: the shorter side's body
-       * is held open to the taller side's, so its total band lands where the other one's already is. No
-       * row moves, no row is added, and no figure is touched.
-       *
-       * ⚠️ FINAL CHUNKS ONLY, AND ONLY WHEN BOTH SIDES ARE FINAL IN THE SAME PASS. `total` is handed to
-       * `paintBox` on `c.final`; a chunk that continues onto the next sheet has no total to align, and
-       * padding it would open a blank band in the middle of a list that carries on overleaf. A side that
-       * finished on an EARLIER sheet answers `null` here, and `every` then refuses the padding — its
-       * total is on a page this one cannot line up with. The two-page case is exercised explicitly in
-       * `test/payslip-pdf.test.ts`; it is where a padding that only looked at `c.final` per side breaks.
-       */
+      // Both transaction totals belong to the same final page, even when only one side has
+      // further recorded rows. A finished shorter list carries an empty measured body, never
+      // invented pay items or a repeated amount. Other period tables retain independent flow.
       const allFinal = chunks.every((c) => c != null && c.final);
-      let padTo = 0;
-      if (allFinal) {
-        const bodies = chunks.map((c, i) => rowsHeight(sides[i].rows.slice(0, c!.take)));
-        const tallest = Math.max(...bodies);
-        // ⚠️ ONLY IF BOTH PADDED BOXES STILL CLEAR THE FOOTER. `chunkFor` passed each side on its own
-        // height; padding makes the shorter one taller, and when its tail is the heavier of the two (the
-        // Earnings note beside a Deductions box with none) the padded box can exceed what was measured.
-        // Alignment is a courtesy to the reader; running a box through the footer is a defect. So when it
-        // will not fit, the two totals simply stay where they were.
-        const fits = sides.every((s) => BOX_HEAD_H + s.plan.columnH + tallest + tailHeight(s.plan) <= avail);
-        if (fits) padTo = tallest;
+      const bodies=chunks.map((c,i)=>c?rowsHeight(sides[i].rows.slice(0,c.take)):0);
+      let padTo=0;
+      if(alignedTransactions || allFinal) {
+        const tallest=Math.max(...bodies);
+        const fits=sides.every(s=>BOX_HEAD_H+s.plan.columnH+tallest+(allFinal?tailHeight(s.plan):0)<=avail);
+        if(fits) padTo=tallest;
+      }
+      if(alignedTransactions && !allFinal) {
+        chunks.forEach(c=>{if(c)c.final=false;});
       }
       let used = 0;
       chunks.forEach((c, i) => {
@@ -1230,9 +1212,8 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
             rows: s.rows.slice(0, take),
             total: c.final ? s.plan.total : undefined,
             noteLines: c.final ? s.plan.noteLines : [],
-            // `padTo` is 0 unless EVERY side is final, so a continued chunk can never be padded; the
-            // `c.final` guard repeats that at the point of use rather than trusting it from 30 lines up.
-            padBodyTo: c.final ? padTo : 0,
+            // Transaction pairs align every carried body; other tables pad only a shared final chunk.
+            padBodyTo: alignedTransactions || c.final ? padTo : 0,
           }),
         );
         s.rows = s.rows.slice(take);
@@ -1261,7 +1242,6 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     {
       x: M, w: COL_W, title: t.earnings, continuedTitle: t.earningsContinued, rows: earnRows, dot: 'earn', columns:[t.descriptionColumn??'Description',t.quantityColumn??'Day/Hrs',`${t.amountColumn??'Amount'} (${d.currency??''})`],
       total: { label: t.totalEarnings, value: money(d.gross), color: EARN },
-      note: d.detailNotRecorded ? t.detailNotRecorded : undefined,
     },
     {
       x: COL2_X, w: COL_W, title: t.deductions, continuedTitle: t.deductions, rows: dedRows, dot: 'deduct', columns:[t.descriptionColumn??'Description',t.quantityColumn??'Day/Hrs',`${t.amountColumn??'Amount'} (${d.currency??''})`],
@@ -1301,32 +1281,14 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   const ew=(CONTENT_W-GAP)*.4;
   flowPair([
     {x:M,w:ew,title:t.employerContributions,continuedTitle:t.employerContributions,columns:[t.statutoryCodeColumn??'Statutory code',`${t.mtdEmployerColumn??'MTD employer'} (${d.currency??''})`],rows:[
-      ...schemes.map(([label,key])=>({label,text:periodAmount(d.employerPeriodTotals?.mtd[key])}))],note:t.normalEmployerNote},
-    {x:M+ew+GAP,w:CONTENT_W-GAP-ew,title:t.ytdHeading,continuedTitle:t.ytdHeading,columns:[t.statutoryCodeColumn??'Statutory code',`${t.ytdEmployeeColumn??'YTD employee'} (${d.currency??''})`,`${t.ytdEmployerColumn??'YTD employer'} (${d.currency??''})`],rows:schemes.map(([label,key])=>({label,textValues:[key==='hrdf'?'':d.ytd?money(d.ytd[key]):unavailable,periodAmount(d.employerPeriodTotals?.ytd[key])]})).concat(d.ytd?[{label:'PCB',textValues:[money(d.ytd.pcb),'']}]:[])}
+      ...schemes.map(([label,key])=>({label,text:periodAmount(d.employerPeriodTotals?.mtd[key])}))]},
+    {x:M+ew+GAP,w:CONTENT_W-GAP-ew,title:t.ytdHeading,continuedTitle:t.ytdHeading,columns:[t.ytdItem,`${t.ytdToDate} (${d.currency??''})`,`${t.ytdEmployerColumn??'YTD employer'} (${d.currency??''})`],rows:schemes.map(([label,key])=>({label,textValues:[key==='hrdf'?'':d.ytd?money(d.ytd[key]):unavailable,periodAmount(d.employerPeriodTotals?.ytd[key])]})).concat(d.ytd?[{label:'PCB',textValues:[money(d.ytd.pcb),'']},{label:t.grossPay,textValues:[money(d.ytd.gross),'']},{label:t.netPay,textValues:[money(d.ytd.net),'']}]:[])}
   ]);
 
-  // The shared reader preserves the employment's eligible authorized run set across employers.
-  // This caption discloses that scope; it does not introduce a company fence or recalculate a share.
-  if (t.periodScopeNote) {
-    const lines=wrap(t.periodScopeNote,faceOf(t.periodScopeNote,font),7,CONTENT_W-16);
-    const ms=lines.map(line=>textMetrics(line,font,7));
-    const pitch=Math.max(10,...ms.map(m=>m.ascent+m.descent+2));
-    const ascent=Math.max(7,...ms.map(m=>m.ascent));
-    const h=6+lines.length*pitch;
-    ensure(h);
-    lines.forEach((line,i)=>at(page,line,M+8,y-3-ascent-i*pitch,7,font,MUTED));
-    y-=h+GAP;
-  }
   if (d.configuredEmployerContributions?.length) {
     flowPair([{x:M,w:CONTENT_W,title:t.configuredContributionsHeading??t.employerContributions,continuedTitle:t.configuredContributionsHeading??t.employerContributions,
       rows:d.configuredEmployerContributions.map(l=>({label:l.name,amount:l.amount}))}]);
   }
-  // ─── year to date ───
-  if (d.ytd) {
-    ensure(YTD_H);
-    y -= drawYtd(page, y) + GAP;
-  }
-
   for (const pg of pages) drawFooter(pg);
 
   return doc.save();
@@ -1337,23 +1299,23 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     const confidential=t.confidentialHeading??'STRICTLY PRIVATE & CONFIDENTIAL';
     at(pg,confidential,M,top-textMetrics(confidential,bold,8).ascent,8,bold);
     let cursor=top-18;
+    const leftWidth=CONTENT_W*.54;
+    const periodLines=wrap(t.periodLabel,faceOf(t.periodLabel,font),8.5,CONTENT_W*.40);
+    const periodPitch=Math.max(12,...periodLines.map(line=>{const m=textMetrics(line,font,8.5);return m.ascent+m.descent+2;}));
+    periodLines.forEach((line,i)=>atR(pg,line,A4_W-M,cursor-9-i*periodPitch,8.5,font));
+    const periodBottom=cursor-periodLines.length*periodPitch;
     if (logo) {
       const scale=Math.min(48/logo.height,120/logo.width,1);
       const w=logo.width*scale,h=logo.height*scale;
-      pg.drawImage(logo,{x:(A4_W-w)/2,y:cursor-h,width:w,height:h});
-      cursor-=h+8;
+      pg.drawImage(logo,{x:M,y:cursor-h,width:w,height:h});cursor-=h+8;
     }
-    const lines=wrap(d.company,faceOf(d.company,bold),14,CONTENT_W-16);
-    const nameMetrics=lines.map(v=>textMetrics(v,bold,14));
-    const nameAscent=Math.max(14,...nameMetrics.map(m=>m.ascent));
-    const pitch=Math.max(18,...nameMetrics.map(m=>m.ascent+m.descent+2));
+    const lines=wrap(d.company,faceOf(d.company,font),8.5,leftWidth);
+    const pitch=Math.max(12,...lines.map(line=>{const m=textMetrics(line,font,8.5);return m.ascent+m.descent+2;}));
     lines.forEach(line=>{
       if(cursor-pitch < M+FOOTER_H){newPage();cursor=y;}
-      at(page,line,(A4_W-widthOf(line,bold,14))/2,cursor-nameAscent,14,bold);cursor-=pitch;
+      at(page,line,M,cursor-9,8.5,font);cursor-=pitch;
     });
-    const subtitle=wrap(t.documentSubtitle,faceOf(t.documentSubtitle,font),8,CONTENT_W-16);
-    subtitle.forEach(line=>{if(cursor-12 < M+FOOTER_H){newPage();cursor=y;}at(page,line,(A4_W-widthOf(line,font,8))/2,cursor-10,8,font,MUTED);cursor-=12;});
-    return cursor-8;
+    return Math.min(cursor,periodBottom)-GAP;
   }
 
   function drawEmployeePanel(pg: PDFPage, top: number): number {
@@ -1368,13 +1330,13 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     ];
     const cells: [string, string][] = [[t.companyName??'Company Name',d.company],
       ...(d.companyReg?[[t.companyReg,d.companyReg] as [string,string]]:[]),
-      [t.payPeriod,t.periodLabel],...(d.payDate?[[t.paymentInformation,t.paymentDate] as [string,string]]:[]),
-      ...(d.cycleLabel?[[t.documentSubtitle,d.cycleLabel] as [string,string]]:[]),...entries.map(e => [e.label, e.value] as [string, string]),
+      ...(d.payDate?[[t.paymentDateLabel??'Payment Date',t.paymentDate] as [string,string]]:[]),
+      ...(d.cycleLabel?[[t.payrollCycleLabel??'Payroll cycle',d.cycleLabel] as [string,string]]:[]),...entries.map(e => [e.label, e.value] as [string, string]),
       ...([[t.paymentMethod,d.paymentMethod],[t.bankName,d.bankName],[t.bankAccount,d.bankAccount]] as [string,string|null|undefined][])
         .filter(([, value]) => value != null && value.trim() !== '').map(([label,value]) => [label,value!] as [string,string])];
     // Row-major order is the shared selector's order. Measure real wrapped values before page breaks.
     const width = A4_W - 2*M;
-    const columnWidth = (width - 24)/2;
+    const columnWidth = width/2;
     const groups = Array.from({length:Math.ceil(cells.length/2)},(_,i)=>cells.slice(i*2,i*2+2));
     let topOfCard = y;
     let height = 24;
@@ -1387,27 +1349,30 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     const finish = () => page.drawRectangle({x:M,y:topOfCard-height,width,height,borderColor:RULE,borderWidth:0.8});
     heading();
     for(const group of groups) {
-      const plans=group.map(([label,value])=>({label,value,lf:faceOf(label,font),vf:faceOf(value,bold),
-        lines:wrap(value,faceOf(value,bold),8.5,columnWidth*.60-12),labelLines:wrap(label,faceOf(label,font),7,columnWidth*.40-8)}));
-      const pitch=Math.max(11,...plans.flatMap(p=>[...p.lines.map(line=>textMetrics(line,p.vf,8.5)),...p.labelLines.map(line=>textMetrics(line,p.lf,7))]).map(m=>m.ascent+m.descent+2));
-      const ascent=Math.max(8.5,...plans.flatMap(p=>p.lines.map(line=>textMetrics(line,p.vf,8.5).ascent)));
-      const rowHeight=Math.max(...plans.map(p=>2+Math.max(p.lines.length,p.labelLines.length)*pitch));
+      const plans=group.map(([label,value])=>({label,value,lf:faceOf(label,font),vf:faceOf(value,font),
+        lines:wrap(value,faceOf(value,font),8.5,columnWidth*.60-12),labelLines:wrap(label,faceOf(label,font),8.5,columnWidth*.40-12)}));
+      const pitch=Math.max(11,...plans.flatMap(p=>[...p.lines.map(line=>textMetrics(line,p.vf,8.5)),...p.labelLines.map(line=>textMetrics(line,p.lf,8.5))]).map(m=>m.ascent+m.descent+2));
+      const ascent=Math.max(8.5,...plans.flatMap(p=>[...p.lines.map(line=>textMetrics(line,p.vf,8.5).ascent),...p.labelLines.map(line=>textMetrics(line,p.lf,8.5).ascent)]));
+      const rowHeight=Math.max(...plans.map(p=>8+Math.max(p.lines.length,p.labelLines.length)*pitch));
       if(y-rowHeight<M+FOOTER_H && rowHeight < A4_H-2*M-FOOTER_H-24) {finish();newPage();heading();}
       // An unusually long organization value may span sheets; retain every line and repeat its label.
       let offset = 0;
       const totalLines = Math.max(...plans.map(p=>Math.max(p.lines.length,p.labelLines.length)));
       while (offset < totalLines) {
-        let capacity = Math.floor((y-M-FOOTER_H-2)/pitch);
-        if(capacity < 1) {finish();newPage();heading();capacity=Math.floor((y-M-FOOTER_H-2)/pitch);}
+        let capacity = Math.floor((y-M-FOOTER_H-8)/pitch);
+        if(capacity < 1) {finish();newPage();heading();capacity=Math.floor((y-M-FOOTER_H-8)/pitch);}
         const count=Math.min(capacity,totalLines-offset);
+        const used=8+count*pitch;
+        // Every real field has the same cell border, inset, font and line-height.
+        for(let i=0;i<group.length;i++) page.drawRectangle({x:M+i*columnWidth,y:y-used,width:columnWidth,height:used,borderColor:RULE,borderWidth:0.8});
         plans.forEach((p,i)=>{
           const x=M+12+i*columnWidth;
           if(offset < Math.max(p.lines.length,p.labelLines.length)) {
-            p.labelLines.slice(offset,offset+count).forEach((line,j)=>at(page,line,x,y-3-ascent-j*pitch,7,p.lf,MUTED));
-            p.lines.slice(offset,offset+count).forEach((line,j)=>at(page,line,x+columnWidth*.40,y-3-ascent-j*pitch,8.5,p.vf));
+            p.labelLines.slice(offset,offset+count).forEach((line,j)=>at(page,line,x,y-4-ascent-j*pitch,8.5,p.lf,MUTED));
+            p.lines.slice(offset,offset+count).forEach((line,j)=>at(page,line,x+columnWidth*.40,y-4-ascent-j*pitch,8.5,p.vf));
           }
         });
-        const used=2+count*pitch; y-=used; height+=used; offset+=count;
+        y-=used; height+=used; offset+=count;
         if(offset < totalLines) {finish();newPage();heading();}
       }
     }
@@ -1416,62 +1381,6 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
 
   }
 
-  function drawYtd(pg: PDFPage, top: number): number {
-    const rows: [string, number, number][] = [
-      [t.grossPay, d.gross, d.ytd!.gross],
-      [t.netPay, d.net, d.ytd!.net],
-    ];
-    const c2 = M + CONTENT_W * 0.62;
-    const c3 = A4_W - M;
-    // a96d320c — YEAR TO DATE BECOMES A BOX. It was the last block on the document still drawn as a
-    // caption over loose rules, and it is the one an employee reads hardest against the boxes above it.
-    // Same three columns, same six rows, same figures, same 15pt row pitch — and the SAME total height:
-    // BOX_HEAD_H (20) + the column-header row (14) + 6 × 15 = 124 = YTD_H, which is what the page flow
-    // reserves for it. The header band and title are drawn exactly as `paintBox` draws a section head, so
-    // this block and the Earnings box beside it are now the same object.
-    const h = BOX_HEAD_H + 14 + rows.length * 15;
-    // a96d320c rev 2 — BAND FIRST, OUTLINE LAST, the same ordering `paintBox` now uses and for the same
-    // reason: this band is a FILLED full-width rectangle with no border of its own, so stroking the
-    // outline before it left a notch in the border at the top-left and top-right of the YTD box too.
-    // The reporter circled the four `paintBox` boxes, not this one — it shipped in r328 with the defect
-    // already in it, and fixing only what was circled would have left one box on the page out of step.
-    pg.drawRectangle({ x: M, y: top - BOX_HEAD_H, width: CONTENT_W, height: BOX_HEAD_H, color: BAND });
-    pg.drawRectangle({ x: M, y: top - h, width: CONTENT_W, height: h, borderColor: RULE, borderWidth: 0.8 });
-    pg.drawLine({
-      start: { x: M, y: top - BOX_HEAD_H }, end: { x: c3, y: top - BOX_HEAD_H },
-      thickness: 0.8, color: RULE,
-    });
-    at(pg, (t.paySummaryHeading??t.ytdHeading).toUpperCase(), M + 10, top - 13.5, 7.5, bold, INK);
-    let ry = top - BOX_HEAD_H;
-    at(pg, t.ytdItem.toUpperCase(), M + 10, ry - 9, 6.5, font, MUTED);
-    atR(pg, t.ytdCurrent.toUpperCase(), c2, ry - 9, 6.5, font, MUTED);
-    atR(pg, t.ytdToDate.toUpperCase(), c3 - 10, ry - 9, 6.5, font, MUTED);
-    ry -= 14;
-    pg.drawLine({ start: { x: M, y: ry }, end: { x: c3, y: ry }, thickness: 0.8, color: RULE });
-    rows.forEach(([label, cur, tot], i) => {
-      const last = i === rows.length - 1;
-      const f = last ? bold : font;
-      // Same one-baseline problem as a box total, same answer — the YTD label shares its line with two
-      // amounts and cannot wrap without breaking the 15pt row pitch this table's height is derived from.
-      at(pg, label, M + 10, ry - 11, fitSize(label, f, 8.5, c2 - (M + 10) - widthOf(money(cur), f, 8.5) - 8), f);
-      atR(pg, money(cur), c2, ry - 11, 8.5, f);
-      atR(pg, money(tot), c3 - 10, ry - 11, 8.5, f);
-      ry -= 15;
-      // The last row's rule IS the outer border — drawing a hairline on top of it would double it.
-      if (!last) pg.drawLine({ start: { x: M, y: ry }, end: { x: c3, y: ry }, thickness: 0.5, color: HAIR });
-    });
-    return h;
-  }
-
-  /**
-   * ONE line, and it is the one that says a machine produced this.
-   *
-   * f35f758a took the other two off: "Prorated on N days worked in this period." and "Calculated under
-   * statutory rules version X." Both were internal working notes on a document the employee files. The
-   * day count survives as a FIELD in the employment panel above, where it reads as information rather
-   * than as a note about the calculation, and the ruleset stays on the HR-facing review screen, which is
-   * where "why did my tax change when my pay did not?" gets answered.
-   */
   function drawFooter(pg: PDFPage) {
     const top=M+FOOTER_H-4;
     pg.drawLine({start:{x:M,y:top},end:{x:A4_W-M,y:top},thickness:.8,color:RULE});

@@ -733,12 +733,12 @@ describe('169e3c24 — the admin review read', () => {
     expect(row!.bankAccountFull, 'the DOCUMENT reads this one').toBe('512345678901');
   });
 
-  it('the screen shows the masked form and the PDF route takes the whole one', () => {
-    // The source half of the case above: the exposure the plan accepted is bounded to the DOCUMENT, and
-    // the only thing keeping it bounded is which field each consumer reads.
+  it('the authorized individual screen and PDF display the full account, while the read retains its separate mask', () => {
+    // The explicitly authorized exposure is confined to the existing individual company-scoped read.
+    // Its separate masked field remains available to consumers which retain masking.
     const page = read('app/payroll/individual-payslip/page.tsx');
-    expect(page, 'the review screen must keep showing only the last four digits').toContain('bankAccountMasked');
-    expect(page, 'and must never render the whole number').not.toContain('bankAccountFull');
+    expect(page, 'the individual review follows the explicit full-account display requirement').toContain('bankAccountFull');
+    expect(page, 'the individual review does not substitute the masked consumer field').not.toContain('bankAccountMasked');
     for (const route of [
       'app/payroll/individual-payslip/[payslipId]/pdf/route.ts',
       'app/me/payslip/[payslipId]/pdf/route.ts',
