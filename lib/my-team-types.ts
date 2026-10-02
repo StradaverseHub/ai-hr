@@ -67,3 +67,8 @@ export type MyTeamSnapshot = {
 };
 export type MyTeamRosterScope = { companyIds: string[]; employmentIds: string[]; from: string; to: string; canEditRoster: boolean };
 export type MyTeamPunchReviewResult = { reviewed: true; reviewId: string };
+/** The server route supplies destinations after freshly checking the same team scope. */
+export type MyTeamNavigation = {
+  roster: { href: string | null; label: 'view' | 'edit' };
+  employees: Record<string, { weeks: Record<string, { attendanceHref: string | null; rosterHref: string | null }> }>;
+};
