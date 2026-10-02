@@ -18,17 +18,19 @@ function mount(snapshot=teamSnapshot(),locale:keyof typeof catalogues='en',overr
  return {...render(view()),props,view,errors,approveAction,reviewAction};
 }
 function deferred(){let resolve!:(value:unknown)=>void;const promise=new Promise(resolve_=>{resolve=resolve_;});return {promise,resolve};}
+const employeeButton=(name='Synthetic A')=>screen.getByRole('button',{name:`${name} S-01 Analyst`,exact:true});
+const todayTile=(label:string,count:number|string)=>within(screen.getByRole('region',{name:en.myTeam.today})).getByRole('button',{name:`${label} ${count}`,exact:true});
 const response=(snapshot=teamSnapshot())=>({ok:true,json:async()=>({snapshot,navigation:teamNavigation()})});
 describe('My Team client consumes canonical facts and preserves action context',()=>{
  it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('renders grid, all three panel tabs and controls in %s without missing messages',async locale=>{
   const {errors}=mount(teamSnapshot(),locale);const messages=catalogues[locale].myTeam;const user=userEvent.setup();
   expect(screen.getByRole('heading',{name:messages.title})).toBeTruthy();expect(fetcher).not.toHaveBeenCalled();
-  await user.click(screen.getByRole('button',{name:/Synthetic A S-01/}));
+  await user.click(employeeButton());
   const drawer=await screen.findByRole('dialog');expect(drawer.className).toContain('w-full');expect(drawer.className).toContain('lg:w-[28rem]');
   for(const name of [messages.attendance,messages.leaveBalance,messages.roster]){await user.click(within(drawer).getByRole('tab',{name}));expect(within(drawer).getByRole('tabpanel')).toBeTruthy();}
   expect(within(drawer).getByRole('link',{name:messages.viewWeekRoster}).getAttribute('href')).toContain('2026-09-28');
   await user.keyboard('{Escape}');await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
-  expect(document.activeElement).toBe(screen.getByRole('button',{name:/Synthetic A S-01/}));expect(errors).toEqual([]);
+  expect(document.activeElement).toBe(employeeButton());expect(errors).toEqual([]);
  });
  it.each(['week','month'] as const)('real local first-in/last-out appear in %s detail, panel and matching export presentation',async view=>{
   const snapshot=teamSnapshot();snapshot.query.view=view;const day=snapshot.employees[0].days[1];day.attendance!.checkInAt='09:00:00';day.attendance!.checkOutAt='18:00:00';mount(snapshot);
@@ -77,15 +79,15 @@ describe('My Team client consumes canonical facts and preserves action context',
   fireEvent.click(screen.getByRole('button',{name:en.myTeam.next}));await waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(2));
   expect(fetcher.mock.calls[0][1].signal.aborted).toBe(true);
   const latest=teamSnapshot();latest.query.anchorDate='2026-10-16';latest.employees[0].name='Latest team';
-  await act(async()=>second.resolve(response(latest)));expect(await screen.findByRole('button',{name:/Latest team S-01/})).toBeTruthy();
+  await act(async()=>second.resolve(response(latest)));expect(await screen.findByRole('button',{name:'Latest team S-01 Analyst',exact:true})).toBeTruthy();
   const old=teamSnapshot();old.query.anchorDate='2026-10-09';old.employees[0].name='Obsolete team';await act(async()=>first.resolve(response(old)));
-  expect(screen.queryByRole('button',{name:/Obsolete team/})).toBeNull();expect(screen.getByRole('button',{name:/Latest team S-01/})).toBeTruthy();
+  expect(screen.queryByRole('button',{name:/Obsolete team/})).toBeNull();expect(employeeButton('Latest team')).toBeTruthy();
  });
  it('keeps full-scope Today counts while the server filters the grid, and toggles a selected tile off',async()=>{
   const snapshot=teamSnapshot();snapshot.todaySummary.members=7;mount(snapshot);
-  const tile=screen.getByRole('button',{name:/Late 0/});const filtered=teamSnapshot();filtered.todaySummary.members=7;filtered.query.tile='late';filtered.gridEmploymentIds=[];fetcher.mockResolvedValueOnce(response(filtered));
-  fireEvent.click(tile);await screen.findByText(en.myTeam.empty);expect(tile.getAttribute('aria-pressed')).toBe('true');expect(screen.getByRole('button',{name:/Team members 7/})).toBeTruthy();
-  fetcher.mockResolvedValueOnce(response(snapshot));fireEvent.click(tile);await screen.findByRole('button',{name:/Synthetic A S-01/});expect(tile.getAttribute('aria-pressed')).toBe('false');
+  const tile=todayTile(en.myTeam.tile_late,0);expect(within(tile).getByText('0').tagName).toBe('STRONG');const filtered=teamSnapshot();filtered.todaySummary.members=7;filtered.query.tile='late';filtered.gridEmploymentIds=[];fetcher.mockResolvedValueOnce(response(filtered));
+  fireEvent.click(tile);await screen.findByText(en.myTeam.empty);expect(tile.getAttribute('aria-pressed')).toBe('true');expect(within(todayTile(en.myTeam.tile_members,7)).getByText('7').tagName).toBe('STRONG');
+  fetcher.mockResolvedValueOnce(response(snapshot));fireEvent.click(tile);await screen.findByRole('button',{name:'Synthetic A S-01 Analyst',exact:true});expect(tile.getAttribute('aria-pressed')).toBe('false');
  });
  it('submits exact per-date IDs only after an explicit selection, with company scope and a rejection reason',async()=>{
   const snapshot=teamSnapshot();snapshot.actionableApprovals[0].dateDecisionRequired=true;
@@ -103,10 +105,10 @@ describe('My Team client consumes canonical facts and preserves action context',
  });
  it('shows unavailable attendance without fabricated zero counts, while roster links remain usable',()=>{
   const snapshot=teamSnapshot();snapshot.availability.attendance='unavailable';snapshot.todaySummary.checkedIn=null;snapshot.todaySummary.late=null;snapshot.todaySummary.absent=null;
-  mount(snapshot);expect(screen.getByRole('button',{name:/Checked in —/})).toHaveProperty('disabled',true);expect(screen.getByRole('link',{name:en.myTeam.viewRoster})).toBeTruthy();
+  mount(snapshot);const checkedIn=todayTile(en.myTeam.tile_checked_in,'—');expect(checkedIn).toHaveProperty('disabled',true);expect(within(checkedIn).getByText('—').tagName).toBe('STRONG');expect(within(checkedIn).queryByText('0')).toBeNull();expect(screen.getByRole('link',{name:en.myTeam.viewRoster})).toBeTruthy();
  });
  it('an incoming authorized server context replaces an old drawer and search draft without another period request',async()=>{
-  const {rerender,props,view}=mount();fireEvent.change(screen.getByRole('textbox',{name:en.myTeam.search}),{target:{value:'Unsaved search'}});fireEvent.click(screen.getByRole('button',{name:/Synthetic A S-01/}));
+  const {rerender,props,view}=mount();fireEvent.change(screen.getByRole('textbox',{name:en.myTeam.search}),{target:{value:'Unsaved search'}});fireEvent.click(employeeButton());
   const next=teamSnapshot();next.query.companyIds=[];next.employees=[];next.gridEmploymentIds=[];next.attention=[];next.todaySummary.members=0;
   rerender(view({...props,snapshot:next,query:next.query}));await screen.findByText(en.myTeam.empty);expect(screen.queryByRole('dialog')).toBeNull();expect(screen.getByRole('textbox',{name:en.myTeam.search})).toHaveProperty('value','');expect(fetcher).not.toHaveBeenCalled();
   expect(new URL(screen.getByRole('link',{name:en.myTeam.exportCsv}).getAttribute('href')!,'https://synthetic.invalid').searchParams.getAll('companyIds')).toEqual(['']);
