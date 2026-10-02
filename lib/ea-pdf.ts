@@ -656,7 +656,7 @@ export const EA_FORM = {
     ruleX:[331.5,556.1] as const,captionX:196.9,
     rowT0:749.1,rowPitch:13.2,employerRules:2,minSize:6,footPad:15.9,
   },
-  /** Retained date column; V6 puts its baseline below the full-width footer. */
+  /** Retained date column; the signing date is contained within the existing V6 footer. */
   dateX: 45.2,
   dateRule: [62.2, 185] as const,
   /**
@@ -1525,7 +1525,7 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
 
   // ── THE FOOT — the ruled officer box on the agency's own rows, the date beside it ──────────────────
   // V6 deliberately replaces the narrow agency foot with a full-width caption/value arrangement.
-  // A-F retain their measured geometry; the date has its own reserved row below this box.
+  // A-F and all officer rows retain their measured geometry. Only the date moves inside the box.
   const V = EA_V6_FOOT;
   const employerAddress = d.employer.address.map(line => line.trim()).filter(Boolean).join(', ');
   const rows = [
@@ -1543,13 +1543,33 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   const contentHeight = rows.reduce((sum,row)=>sum+Math.max(1,row.lines.length)*row.lineHeight,0);
   if (contentHeight+10 > V.bottom-V.top) throw new EaLayoutFitError('employer and authorised officer');
   box(V.left,V.top,V.right,V.bottom);
+  // r381: contain the entire date (including its dotted rule) inside the unchanged footer.
+  // The date uses the spare lower-left space; complete officer values still occupy their existing rows.
+  const dateBaseline = V.bottom-2.9;
+  const dateCell:TextCell = {left:A.dateX,right:A.dateRule[1],top:V.top,bottom:V.bottom};
+  const dateSize = 8;
+  const dateTop = dateBaseline-font.heightAtSize(dateSize,{descender:false});
   let baseline = V.top+12;
   for(const row of rows){
+    // A long address can push the telephone caption into this space. Refuse rather than move a row,
+    // cut off information, or return a date which overlaps the existing officer details.
+    const captionFace=face(row.caption,font);
+    const captionDescent=captionFace.heightAtSize(V.size)-captionFace.heightAtSize(V.size,{descender:false});
+    if(row.caption && baseline+captionDescent > dateTop-0.5) throw new EaLayoutFitError('date and authorised officer');
     putFit(row.caption,V.captionX,V.valueX-V.captionX-8,baseline,V.size);
     for(const value of row.lines.length?row.lines:['']){valueOrRule(value,V.valueX,V.right,baseline,V.size,V.size);baseline+=row.lineHeight;}
   }
-  const dateEnd = putFit(W.date,A.dateX,A.dateRule[1]-A.dateX,827,8);
-  valueOrRule(formDate(d.formDate),Math.max(A.dateRule[0],dateEnd+4),A.dateRule[1],827,8);
+  const captionSize=fitSize(safe(W.date),dateCell.right-dateCell.left,dateSize,font);
+  drawText(W.date,dateCell.left,dateBaseline,captionSize,font,ink,dateCell);
+  const dateEnd=dateCell.left+face(W.date,font).widthOfTextAtSize(safe(W.date),captionSize);
+  const dateRuleStart=Math.max(A.dateRule[0],dateEnd+4);
+  dotted(dateRuleStart,dateCell.right,dateBaseline+2.5);
+  const dateValue=formDate(d.formDate);
+  if(dateValue){
+    const valueX=dateRuleStart+3;
+    const valueSize=fitSize(dateValue,dateCell.right-valueX-3,dateSize,font);
+    drawText(dateValue,valueX,dateBaseline,valueSize,font,ink,{...dateCell,left:valueX,right:dateCell.right-3});
+  }
 
   // ── BELOW THE FORM ────────────────────────────────────────────────────────────────────────────────
   //

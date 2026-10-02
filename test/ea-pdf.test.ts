@@ -249,6 +249,36 @@ describe('EA PDF renderer', () => {
       expect(items.every(i=>i.size>=6)).toBe(true);
       expect(items.some(i=>i.text==='15/02/2027')).toBe(true);
     });
+    it.each(['en','ms'] as const)('%s: the complete date is inside the unchanged footer without touching officer details',async locale=>{
+      // Pin the surrounding design independently of the date position being corrected.
+      expect(EA_V6_FOOT).toEqual({left:39.8,top:727.5,bottom:817.9,captionX:45.8,valueX:179,right:556.1,size:8,lineHeight:11.2});
+      const {items,pageHeights}=await extractedRuns(await renderEaPdf(fixture,labels,{locale}));
+      const date=items.find(i=>i.text==='15/02/2027');
+      const caption=items.find(i=>i.text===eaFormWords(locale).date);
+      expect(date).toBeDefined();expect(caption).toBeDefined();
+      const font=await(await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
+      const bounds=(run:typeof items[number])=>{
+        const baseline=pageHeights[run.page]-run.y;
+        const ascent=font.heightAtSize(run.size,{descender:false});
+        return {left:run.x,right:run.x+font.widthOfTextAtSize(run.text,run.size),top:baseline-ascent,bottom:baseline+font.heightAtSize(run.size)-ascent};
+      };
+      for(const run of [caption!,date!]){
+        const rect=bounds(run);
+        expect(run.size).toBe(8);
+        expect(rect.left).toBeGreaterThanOrEqual(EA_V6_FOOT.left);
+        expect(rect.right).toBeLessThanOrEqual(EA_FORM.dateRule[1]);
+        expect(rect.top).toBeGreaterThanOrEqual(EA_V6_FOOT.top);
+        expect(rect.bottom).toBeLessThan(EA_V6_FOOT.bottom);
+        const surrounding=items.filter(i=>i!==date&&i!==caption&&pageHeights[i.page]-i.y>EA_V6_FOOT.top);
+        expect(surrounding.length).toBeGreaterThanOrEqual(9);
+        for(const other of surrounding){
+          const o=bounds(other);
+          expect(rect.right<=o.left||rect.left>=o.right||rect.top>=o.bottom+0.5||rect.bottom+0.5<=o.top,`date overlaps ${other.text}`).toBe(true);
+        }
+      }
+      // Include the lower edge of the actual dotted stroke, not only the date glyph baseline.
+      expect(pageHeights[date!.page]-date!.y+2.5+0.25).toBeLessThan(EA_V6_FOOT.bottom);
+    });
     it('preserves complete Unicode employee and employer values',async()=>{
       const unicode={...fixture,employee:{...fixture.employee,name:'陈大文'},employer:{...fixture.employer,name:'陈大文有限公司',officerName:'陈大文',address:['吉隆坡产业路一号']}};
       const {items}=await extractedRuns(await renderEaPdf(unicode,labels));
