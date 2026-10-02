@@ -1,0 +1,31 @@
+VERDICT: Partly there already   ·   SIZE: Quick
+
+THE SITUATION TODAY
+
+Our previous plan placed the Date inside the employer-information box. Your latest screenshot shows it outside that box on the left. We have corrected that interpretation in this plan and sketch.
+
+WHAT WE'LL CHANGE
+
+- Put the Date caption, complete date and writing line on the left, outside the officer-information box, as shown in your screenshot.
+- Place the officer-information box on the right and align the date with the telephone row. Keep the officer name, designation, complete employer name, address and telephone within that box.
+- Keep Sections A to F, their amounts, the selected year and the date calculation unchanged. Preview and Download will show the same corrected footer.
+
+WHAT YOU'LL GET
+
+An EA footer following your attached screenshot: Date on the left, officer and employer details in the box on the right.
+
+GOOD TO KNOW
+
+- The right-hand box replaces the wider footer arrangement in the previous proposal. This is the footer change needed to leave the separate Date area on the left.
+- Complete information will wrap within the right-hand box at readable size. If exceptional information cannot fit on one page, the form will explain the issue instead of cutting off text, overlapping fields or silently adding another page.
+- This only changes presentation. Saved payroll figures, records and previously downloaded files remain unchanged.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: visually inspected reporter attachment b639bba9-65dd-4297-9f16-f49c19a85da8, contested revision 4, EA Form review V1.png. It shows an outside-left Date field beside a right-side officer box, aligned with the employer telephone row. The previous inside-box interpretation is superseded. The linked official LHDN artwork previously returned HTTP500; uploaded screenshot is the verified presentation reference.
+
+Retain lib/ea-pdf.ts renderEaPdf as the sole renderer consumed by app/payroll/statutory-forms/ea/shared.ts and its preview/download routes. Preserve all A-F geometry and MY-owned eaFormDate. Keep footer top727.5, bottom817.9, right556.1; use the already-named historical officer left191, caption196.9 and value331.5 as measured starting coordinates. Keep existing readable8pt values, line-height11.2 and full employer-name/address separation, measuring actual final font metrics before drawing. The telephone caption's measured first baseline also owns Date baseline. Date remains in existing x45.2 to185 column, clear of the right box stroke. Fit its complete caption/value within the readable floor and keep its writing line within the page and footer vertical range. No truncation, silent continuation, partial batch or invented figures.
+
+Replace inside-footer guards with actual rendered Date-left/right-box separation, telephone-baseline alignment, complete long-content retention, inner-border officer glyph bounds, readable fit and blank-date checks in English and Malay. Keep unchanged A-F rows pinned. Reverse the date placement from a copy after test clearance to prove the geometry guard fails. Parent handles heavy targeted/full gates and actual Preview/Download render; none are claimed complete here. No migration, permission, data mapping or money calculation changes. This plan is proposed, not reporter-approved.

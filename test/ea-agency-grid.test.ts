@@ -24,7 +24,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { EA_FORM, EA_V6_FOOT, blankEaPdfData, renderEaPdf, type EaPdfData } from '../lib/ea-pdf';
+import { eaFormWords, EA_FORM, EA_V6_FOOT, blankEaPdfData, renderEaPdf, type EaPdfData } from '../lib/ea-pdf';
 import { eaPdfLabelsFromCatalogue } from '../lib/ea-pdf-labels-file';
 import { type PdfRun, joinRuns, readPdfPageGeometry } from '../lib/pdf-page-geometry';
 
@@ -269,10 +269,17 @@ describe.each(EDITIONS)('r372 — the %s edition is drawn on that grid', (locale
    * Section F landed 85 pt — an inch — above the agency's and the officer box 99 pt above its own.
    * This is the half of the round the horizontal move could not be checked without.
    */
-  it('the form is not compressed: F and the officer box end where the agency ends them', async () => {
+  it('Section F keeps its agency baseline and the Date remains beside the measured officer footer', async () => {
     const { runs } = await readPdfPageGeometry(await renderEaPdf(statement(), labels, { locale }));
     const lowest = Math.max(...runs.map((r) => r.tt));
-    expect(lowest, `${locale}: the last line of the form`).toBeCloseTo(827, 1);
+    const date = runs.find(r=>near(r.x,F.dateX)&&r.text===eaFormWords(locale).date);
+    const telephone = runs.find(r=>r.text===statement().employer.phone);
+    expect(date).toBeDefined();expect(telephone).toBeDefined();
+    expect(date!.tt).toBeCloseTo(telephone!.tt,1);
+    expect(lowest).toBeLessThan(EA_V6_FOOT.bottom-0.4);
+    expect(date!.x).toBeLessThan(EA_V6_FOOT.left);
+    expect(EA_V6_FOOT.top).toBe(F.officerBox.t0);
+    expect(EA_V6_FOOT.bottom).toBe(F.officerBox.t1);
     expect(runAt(runs, F.sectionT.f, F.itemLabel), `${locale}: Section F is not on the agency's baseline`).toBeDefined();
     // …and the agency agrees about both, read off its own file rather than restated here.
     expect(agency.runs.some((r) => near(r.tt, F.sectionT.f) && near(r.x, F.itemLabel))).toBe(true);
@@ -280,8 +287,8 @@ describe.each(EDITIONS)('r372 — the %s edition is drawn on that grid', (locale
   });
 });
 
-// Revision 3 replaces the narrow agency footer and continuation with the approved V6 footer.
-describe('r379 — V6 finite layout retains the measured A–F body',()=>{
+// Revision 5 restores the screenshot’s outside-left date and right-hand footer without changing A-F.
+describe('r381 — screenshot footer retains the measured A–F body',()=>{
   const labels=eaPdfLabelsFromCatalogue('en');
   it('wraps a complete long address on the same page without moving any body row',async()=>{
     const short=await readPdfPageGeometry(await renderEaPdf(statement(),labels,{locale:'en'}));
@@ -293,6 +300,8 @@ describe('r379 — V6 finite layout retains the measured A–F body',()=>{
     const values=long.runs.filter(r=>r.tt>EA_V6_FOOT.top&&near(r.x,EA_V6_FOOT.valueX+3));
     expect(values.map(r=>r.text).join(' ')).toContain(address.join(', '));
     expect(values.every(r=>r.size===8)).toBe(true);
-    expect(runAt(long.runs,827,EA_FORM.dateX)?.text).toContain('Date');
+    const phone=long.runs.find(r=>r.text===statement().employer.phone);
+    expect(phone).toBeDefined();
+    expect(runAt(long.runs,phone!.tt,EA_FORM.dateX)?.text).toContain('Date');
   });
 });

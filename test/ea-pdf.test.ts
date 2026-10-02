@@ -230,10 +230,10 @@ describe('EA PDF renderer', () => {
   });
 
   // Revision 3 supersedes the old continuation and overprint assertions with finite readable fit.
-  describe('r379 V6 complete one-page layout', () => {
+  describe('r381 screenshot footer complete one-page layout', () => {
     const fixture = {...fullForm, employer:{...fullForm.employer,name:'PECCA LEATHER SDN BHD',address:[
       'NO. 1, JALAN PERINDUSTRIAN DESA AMAN 1A,', 'INDUSTRI DESA AMAN, KEPONG,', '52200 KUALA LUMPUR, WILAYAH PERSEKUTUAN']}};
-    it.each(['en','ms'] as const)('%s: V6 whole employer block is readable on one A4 page', async locale => {
+    it.each(['en','ms'] as const)('%s: right-hand employer block is readable on one A4 page', async locale => {
       const {items,pageHeights}=await extractedRuns(await renderEaPdf(fixture,labels,{locale}));
       expect(pageHeights).toHaveLength(1);
       expect(pageHeights[0]).toBeCloseTo(841.89,1);
@@ -249,9 +249,10 @@ describe('EA PDF renderer', () => {
       expect(items.every(i=>i.size>=6)).toBe(true);
       expect(items.some(i=>i.text==='15/02/2027')).toBe(true);
     });
-    it.each(['en','ms'] as const)('%s: the complete date is inside the unchanged footer without touching officer details',async locale=>{
-      // Pin the surrounding design independently of the date position being corrected.
-      expect(EA_V6_FOOT).toEqual({left:39.8,top:727.5,bottom:817.9,captionX:45.8,valueX:179,right:556.1,size:8,lineHeight:11.2});
+    it.each(['en','ms'] as const)('%s: the complete date is outside left of the right-hand officer box',async locale=>{
+      // Preserve A-F independently of the deliberately revised screenshot footer.
+      expect(EA_FORM.sectionT).toEqual({a:105.9,b:229.1,c:449.4,d:518.3,e:648.5,f:712.4});
+      expect(EA_V6_FOOT).toEqual({left:191,top:727.5,bottom:817.9,captionX:196.9,valueX:331.5,right:556.1,size:8,lineHeight:11.2});
       const {items,pageHeights}=await extractedRuns(await renderEaPdf(fixture,labels,{locale}));
       const date=items.find(i=>i.text==='15/02/2027');
       const caption=items.find(i=>i.text===eaFormWords(locale).date);
@@ -265,8 +266,9 @@ describe('EA PDF renderer', () => {
       for(const run of [caption!,date!]){
         const rect=bounds(run);
         expect(run.size).toBe(8);
-        expect(rect.left).toBeGreaterThanOrEqual(EA_V6_FOOT.left);
+        expect(rect.left).toBeGreaterThanOrEqual(EA_FORM.dateX);
         expect(rect.right).toBeLessThanOrEqual(EA_FORM.dateRule[1]);
+        expect(rect.right).toBeLessThan(EA_V6_FOOT.left-0.4);
         expect(rect.top).toBeGreaterThanOrEqual(EA_V6_FOOT.top);
         expect(rect.bottom).toBeLessThan(EA_V6_FOOT.bottom-0.4);
         const surrounding=items.filter(i=>i!==date&&i!==caption&&pageHeights[i.page]-i.y>EA_V6_FOOT.top);
@@ -276,11 +278,22 @@ describe('EA PDF renderer', () => {
           expect(rect.right<=o.left||rect.left>=o.right||rect.top>=o.bottom+0.5||rect.bottom+0.5<=o.top,`date overlaps ${other.text}`).toBe(true);
         }
       }
+      const phone=items.find(i=>i.text===fixture.employer.phone)!;
+      expect(phone).toBeDefined();
+      expect(date!.y).toBeCloseTo(phone.y,5);
+      expect(EA_FORM.dateRule[1]+0.25).toBeLessThan(EA_V6_FOOT.left-0.4);
+      for(const run of items.filter(i=>pageHeights[i.page]-i.y>EA_V6_FOOT.top&&i!==date&&i!==caption)){
+        const rect=bounds(run);
+        expect(rect.left).toBeGreaterThan(EA_V6_FOOT.left+0.4);
+        expect(rect.right).toBeLessThan(EA_V6_FOOT.right-0.4);
+        expect(rect.top).toBeGreaterThan(EA_V6_FOOT.top+0.4);
+        expect(rect.bottom).toBeLessThan(EA_V6_FOOT.bottom-0.4);
+      }
       // Include the lower edge of the actual dotted stroke, not only the date glyph baseline.
       expect(pageHeights[date!.page]-date!.y+2.5+0.25).toBeLessThanOrEqual(EA_V6_FOOT.bottom-0.4-0.4);
     });
-    it.each(['en','ms'] as const)('%s: retains a seven-line footer by reducing only the date within the readable floor',async locale=>{
-      const token='ABCDEFGHIJKLMNO'.repeat(13);
+    it.each(['en','ms'] as const)('%s: retains a seven-line right-hand footer and aligns the readable Date with telephone',async locale=>{
+      const token='ABCDEFGHIJKLMNO'.repeat(8);
       const boundary={...fixture,employer:{...fixture.employer,address:[token]}};
       const {items,pageHeights}=await extractedRuns(await renderEaPdf(boundary,labels,{locale}));
       const values=items.filter(i=>i.x===EA_V6_FOOT.valueX+3&&pageHeights[i.page]-i.y>EA_V6_FOOT.top);
@@ -290,11 +303,14 @@ describe('EA PDF renderer', () => {
       const date=items.find(i=>i.text==='15/02/2027')!;
       const phoneCaption=items.find(i=>i.text===eaFormWords(locale).employerPhone)!;
       expect(date).toBeDefined();expect(phoneCaption).toBeDefined();
-      expect(date.size).toBeLessThan(8);expect(date.size).toBeGreaterThanOrEqual(6);
+      expect(date.size).toBe(8);
       const font=await(await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
       const phoneBottom=pageHeights[phoneCaption.page]-phoneCaption.y+font.heightAtSize(phoneCaption.size)-font.heightAtSize(phoneCaption.size,{descender:false});
       const dateTop=pageHeights[date.page]-date.y-font.heightAtSize(date.size,{descender:false});
-      expect(dateTop-phoneBottom).toBeGreaterThanOrEqual(0.5);
+      expect(pageHeights[date.page]-date.y).toBeCloseTo(pageHeights[phoneCaption.page]-phoneCaption.y,5);
+      expect(date.x+font.widthOfTextAtSize(date.text,date.size)).toBeLessThan(EA_V6_FOOT.left-0.4);
+      expect(dateTop).toBeGreaterThan(EA_V6_FOOT.top);
+      expect(phoneBottom).toBeLessThan(EA_V6_FOOT.bottom-0.4);
       expect(pageHeights[date.page]-date.y+2.5+0.25).toBeLessThanOrEqual(EA_V6_FOOT.bottom-0.4-0.4);
     });
     it('preserves complete Unicode employee and employer values',async()=>{
@@ -319,13 +335,19 @@ describe('EA PDF renderer', () => {
       await expect(renderEaPdf({...fixture,employer:{...fixture.employer,[field]:'Senior General Manager Corporate Compliance '.repeat(20)}},labels)).rejects.toBeInstanceOf(EaLayoutFitError);
     });
     it('preserves every character of an unbroken address token at readable size',async()=>{
-      const token='ABCDEFGHIJKLMNOP'.repeat(9);
+      const token='ABCDEFGHIJKLMNOP'.repeat(6);
       const {items,pageHeights}=await extractedRuns(await renderEaPdf({...fixture,employer:{...fixture.employer,address:[token]}},labels));
       const rows=items.filter(i=>i.x===EA_V6_FOOT.valueX+3 && pageHeights[0]-i.y>EA_V6_FOOT.top);
       expect(rows.map(i=>i.text).join('').includes(token)).toBe(true);
       expect(rows.every(i=>i.size===8)).toBe(true);
     });
-    it('keeps the amended marker clear of the wider footer',async()=>{
+    it('refuses the former full-width address boundary cleanly when it exceeds the screenshot box',async()=>{
+      // This exact former 144-character token fitted the superseded full-width V6 arrangement.
+      // Keep it covered rather than silently replacing all old fixtures with smaller inputs.
+      const formerToken='ABCDEFGHIJKLMNOP'.repeat(9);
+      await expect(renderEaPdf({...fixture,employer:{...fixture.employer,address:[formerToken]}},labels)).rejects.toMatchObject({name:'EaLayoutFitError',section:'employer and authorised officer'});
+    });
+    it('keeps the amended marker clear of the right-hand footer',async()=>{
       const {items,pageHeights}=await extractedRuns(await renderEaPdf({...fixture,overrides:[{field:'partB.bonus',original:0,amended:5000,reason:'Correction'}]},labels));
       const marker=items.find(i=>i.text===labels.amendedNote)!;
       expect(marker).toBeDefined();expect(marker.page).toBe(0);
