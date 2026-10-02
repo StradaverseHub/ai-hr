@@ -442,17 +442,10 @@ describe('f35f758a rev 2 — the screen: the panel is back, and Review opens the
       for (const k of ['nonPayableHeading', 'nonPayableTotal', 'recordLinesNote']) {
         expect(m.me.payslip[k], `me.payslip.${k} in ${loc}`).toBeTruthy();
       }
-      // a96d320c rev 3 — THE BOX IS TITLED "Other" NOW. It moved out from under NET PAY into the band
-      // beside Employer contributions, and that is the word the reporter asked the column to be called.
-      // The KEY still names the concept — only lines the run stamped `nonPayable` ever go in it — and
-      // `nonPayableTotal` deliberately keeps the longer caption, because "Other" is a heading and the
-      // total row is the one place the box still says in words what the figures in it are. Every locale
-      // must have moved, or the document prints the old wording for five readers out of six.
-      expect(
-        m.me.payslip.nonPayableHeading.length,
-        `me.payslip.nonPayableHeading in ${loc} is the short "Other" heading, not the old sentence`,
-      ).toBeLessThan(m.me.payslip.nonPayableTotal.length);
-      if (loc === 'en') expect(m.me.payslip.nonPayableHeading).toBe('Other');
+      // r379 reporter reference explicitly identifies the non-payable nature in the heading.
+      const expectedHeadings={en:'Other (Non-Payable)',ms:'Lain-lain (Tidak Dibayar)',zh:'其他（不支付）',ta:'மற்றவை (செலுத்தப்படாதவை)',th:'อื่น ๆ (ไม่จ่าย)',vi:'Khác (Không chi trả)'};
+      expect(m.me.payslip.nonPayableHeading).toBe(expectedHeadings[loc as keyof typeof expectedHeadings]);
+      if (loc === 'en') expect(m.me.payslip.nonPayableHeading).toBe('Other (Non-Payable)');
     }
   });
 });
@@ -607,20 +600,11 @@ describe('r360 — the cycle name and the registration label are decided in ONE 
     }
   });
 
-  it('composes the caption as "Reg. no.: <number>" — the line the approved mockup shows', () => {
-    // THE MOCKUP IS THE PROMISE. docs/mockups/1fe55a23-payslip-header.html draws "Reg. no.: 1234567-X" and
-    // spells the fallback out as "not 'Reg. no.: —' and not an empty label", so the colon is part of what
-    // the reporter approved rather than a detail left to the build. It is a LITERAL beside the catalogue
-    // label on both surfaces — the same shape `drawEmployeePanel` already uses for the employee code — so
-    // no seventh translation exists for a piece of punctuation.
-    //
-    // The DOCUMENT half of this is behavioural (test/payslip-pdf.test.ts reads the line back out of the
-    // rendered PDF). The SCREEN half is a source shape on purpose: React separates adjacent text children
-    // with `<!-- -->` comments, so the composed string is not one node in the markup and cannot be matched
-    // as a substring — verified on a real render, where the <p> reads "Reg. no.: 201901024512".
+  it('preserves the registration caption and complete value in the reference profile', () => {
+    // r379 uses separate label/value cells in the PDF profile; the screen retains its caption.
     expect(read(PAGE), 'the screen composes label, colon, value').toMatch(/\{tOrg\('regNo'\)\}: \{row\.companyReg\}/);
-    expect(read('lib/payslip-pdf.ts'), 'and so does the document').toContain(
-      '`${t.companyReg}: ${d.companyReg}`',
+    expect(read('lib/payslip-pdf.ts'), 'the document profile retains the label and complete value').toContain(
+      '[t.companyReg,d.companyReg]',
     );
   });
 

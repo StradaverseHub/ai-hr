@@ -20,7 +20,7 @@ import { isRecordedEmployerContribution, payslipConfiguredContributions } from '
 // total beside them.
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib';
 
-import { bestFaceFor, embedPayslipFaces, payslipFaceScripts, type PayslipFace } from './payslip-pdf-fonts';
+import { bestFaceFor, embedPayslipFaces, measurePayslipTextBounds, payslipFaceScripts, type PayslipFace } from './payslip-pdf-fonts';
 import { formatMoney, formatRate } from './money';
 import { payslipDisplayEarnings } from '../core/pay-display-category';
 import { absenceDaysLabel, payslipAbsenceLines, type PayslipAbsenceLines } from '../core/payslip-absence-lines';
@@ -73,12 +73,13 @@ export type PayslipYtdTotals = {
 export type PayslipPdfLogo = { bytes: Uint8Array; mimeType: string };
 
 export type PayslipPdfData = {
+  employerPeriodTotals?: {mtd:{epf:number|null;socso:number|null;eis:number|null;hrdf:number|null};ytd:{epf:number|null;socso:number|null;eis:number|null;hrdf:number|null}};
   informationRows?: {label: string; value: string}[];
   employee: string;
   employeeCode: string | null;
   company: string;
   /**
-   * The company registration number, PRINTED UNDER THE COMPANY NAME WITH ITS LABEL (r360).
+   * The company registration number, retained with its label in the employee profile (r379).
    *
    * ─── THE HISTORY MATTERS, because this field has been on and off the document once already ───
    *
@@ -290,6 +291,22 @@ export type PayslipPdfLabels = {
   employerContributions: string;
   totalEmployerCost: string;
   generatedNote: string;
+  periodNotRecorded?: string;
+  confidentialHeading?: string;
+  employeeProfile?: string;
+  companyName?:string;
+  descriptionColumn?: string;
+  quantityColumn?: string;
+  amountColumn?: string;
+  statutoryCodeColumn?: string;
+  mtdEmployerColumn?: string;
+  ytdEmployeeColumn?: string;
+  ytdEmployerColumn?: string;
+  normalEmployerNote?: string;
+  periodScopeNote?:string;
+  configuredContributionsHeading?: string;
+  paySummaryHeading?: string;
+  hrContactNote?: string;
   // 3c473773 — the Claim earnings box and the employer-borne disclosure block.
   claim: string;
   employerBorne: string;
@@ -542,8 +559,8 @@ function allowanceLinesOf(lines: StoredComponentLine[], otConvert: unknown): Pay
 
 const A4_W = 595.28;
 const A4_H = 841.89;
-const M = 40;
-const GAP = 18;
+const M = 24;
+const GAP = 12;
 const CONTENT_W = A4_W - 2 * M;
 const COL_W = (CONTENT_W - GAP) / 2;
 const COL2_X = M + COL_W + GAP;
@@ -552,9 +569,9 @@ const INK = rgb(0.102, 0.102, 0.133);
 const MUTED = rgb(0.388, 0.388, 0.435);
 const RULE = rgb(0.851, 0.855, 0.902);
 const HAIR = rgb(0.937, 0.941, 0.969);
-const PRIMARY = rgb(0.31, 0.275, 0.898);
-const EARN = rgb(0.059, 0.608, 0.557);
-const DEDUCT = rgb(0.886, 0.337, 0.302);
+const PRIMARY = rgb(0.255,0.325,0.435);
+const EARN = rgb(0.08,0.45,0.43);
+const DEDUCT = rgb(0.68,0.25,0.10);
 const BAND = rgb(0.98, 0.984, 1);
 const WHITE = rgb(1, 1, 1);
 
@@ -565,16 +582,10 @@ const ROW_H = 15;
 const LINE_H = 10.5;
 const BOX_HEAD_H = 20;
 const BOX_TOTAL_H = 21;
-/** Height the YTD table needs. a96d320c turned it into a ruled box and the number did not move:
- *  BOX_HEAD_H (20, the header band) + 14 (the column-header row) + 6 × 15 (the rows) = 124, the same
- *  total the loose caption + column header + six rows occupied. `drawYtd` derives `h` from those same
- *  constants rather than repeating the literal, so the two cannot drift. */
-const YTD_H = 124;
-/** Height reserved at the foot of EVERY page for the one "system-generated" line. f35f758a took the
- *  prorated and provenance sentences off the document, which is why this is 24 and not 46. */
-const FOOTER_H = 24;
+/** Supplemental gross/net summary retains the selected-run and existing employee YTD figures. */
+const YTD_H = 64;
 
-type Row = { label: string; sub?: string | null; amount?: number; text?: string; muted?: boolean };
+type Row = { quantity?: string; textValues?:string[]; label: string; sub?: string | null; amount?: number; text?: string; muted?: boolean };
 
 /**
  * 5b2a7f0f — every string this document could draw, for deciding which font faces to embed.
@@ -778,17 +789,21 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
    *  is drawn, which is what lets the page flow below decide where a block breaks. */
   // 5b2a7f0f — `labelFont` is the face `planRow` MEASURED the lines in; `paintBox` must draw them in the
   //  same one or a wrapped Tamil description stops fitting the column it was wrapped for.
-  type BoxRowPlan = { lines: string[]; labelFont: PDFFont; value: string; valueLines?: string[]; valueFont?: PDFFont; muted?: boolean; h: number };
+  type BoxRowPlan = { pitch:number; ascent:number; quantityLines?:string[]; textValues?:string[][]; lines: string[]; labelFont: PDFFont; value: string; valueLines?: string[]; valueFont?: PDFFont; muted?: boolean; h: number };
   /** A whole box, measured. `paintBox` draws exactly what `planBox` measured. */
   type BoxPlan = {
     w: number;
     title: string;
     dot?: 'earn' | 'deduct';
+    columns?:string[];
+    columnH: number;
     rows: BoxRowPlan[];
     total?: { label: string; value: string; color?: ReturnType<typeof rgb> };
     noteLines: string[];
     /** The face `noteLines` were measured in — see `BoxRowPlan.labelFont`. */
     noteFont: PDFFont;
+    notePitch:number;
+    noteAscent:number;
     /**
      * a96d320c rev 3 — THE ONE THING THAT PUTS TWO TOTALS ON ONE BASELINE.
      *
@@ -804,42 +819,78 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     padBodyTo?: number;
   };
 
-  const planRow = (r: Row, w: number): BoxRowPlan => {
+  const textMetrics = (text: string, f: PDFFont, size: number) => {
+    const ff = faceOf(text, f);
+    const measured = measurePayslipTextBounds(ff, safeIn(text, ff), size);
+    if (ff === font || ff === bold) {
+      const ascent=ff.heightAtSize(size,{descender:false});
+      return {...measured,ascent,descent:ff.heightAtSize(size,{descender:true})-ascent};
+    }
+    return measured;
+  };
+  const footerLines=[...(t.hrContactNote?wrap(t.hrContactNote,font,7,CONTENT_W-8):[]),...wrap(t.generatedNote,font,7,CONTENT_W-8)];
+  const footerMetrics=footerLines.map(line=>textMetrics(line,font,7));
+  const footerPitch=Math.max(10,...footerMetrics.map(m=>m.ascent+m.descent+2));
+  const footerAscent=Math.max(7,...footerMetrics.map(m=>m.ascent));
+  const FOOTER_H=Math.max(40,12+footerLines.length*footerPitch);
+  const planRow = (r: Row, w: number, columns?: string[]): BoxRowPlan => {
     const value = r.text ?? money(r.amount);
     const label = r.sub ? `${r.label} · ${r.sub}` : r.label;
-    // The label gets whatever the amount leaves, measured per row. The floor keeps a pathologically wide
-    // amount from collapsing the label column to nothing and wrapping it one letter per line.
-    const labelW = r.text != null ? (w - 28) * 0.35 : Math.max(60, w - 28 - widthOf(value, font, 8.5));
+    const quantityTable=columns?.[1]===(t.quantityColumn??'Day/Hrs');
+    const labelW = columns ? w * (columns.length===3?(quantityTable?.45:.30):.48) - 20 : r.text != null ? (w - 28) * .35 : Math.max(60, w - 32 - widthOf(value, font, 8.5));
     const labelFont = faceOf(label, font);
     const lines = wrap(label, labelFont, 8.5, labelW);
     const valueFont = faceOf(value, font);
-    const valueLines = r.text != null ? wrap(value, valueFont, 8.5, w - 28 - labelW) : undefined;
-    return { lines, labelFont, value, valueLines, valueFont, muted: r.muted, h: Math.max(ROW_H, 4.5 + Math.max(lines.length, valueLines?.length ?? 1) * LINE_H) };
+    const valueW = columns ? w * (columns.length === 3 ? (quantityTable?.37:.35) : .5) - 20 : w - 32 - labelW;
+    const valueLines = wrap(value, valueFont, 8.5, valueW);
+    const quantityLines = r.quantity ? wrap(r.quantity, faceOf(r.quantity, font), 7, w * .18 - 12) : [];
+    const textValues = r.textValues?.map(v => wrap(v, faceOf(v, font), 8, valueW));
+    const measured = [...lines.map(v => textMetrics(v,labelFont,8.5)), ...valueLines.map(v => textMetrics(v,valueFont,8.5)),
+      ...quantityLines.map(v => textMetrics(v,font,7)), ...(textValues?.flatMap(v => v.map(x => textMetrics(x,font,8))) ?? [])];
+    const ascent = Math.max(0,...measured.map(m => m.ascent));
+    const descent = Math.max(0,...measured.map(m => m.descent));
+    const pitch = Math.max(LINE_H,ascent + descent + 2);
+    const count = Math.max(1,lines.length,valueLines.length,quantityLines.length,...(textValues?.map(v => v.length) ?? []));
+    return {lines,labelFont,value,valueLines,valueFont,quantityLines,textValues,muted:r.muted,pitch,ascent,h:4+count*pitch};
   };
 
-  const noteHeightOf = (noteLines: string[]) => (noteLines.length > 0 ? noteLines.length * 9 + 7 : 0);
+  const noteHeightOf = (p: BoxPlan) => (p.noteLines.length > 0 ? p.noteLines.length * p.notePitch + 7 : 0);
   /** What the rows alone need. */
   const rowsHeight = (rows: BoxRowPlan[]) => rows.reduce((s, r) => s + r.h, 0);
   /** What the rows OCCUPY once `padBodyTo` has had its say (a96d320c rev 3). A floor, never a cap. */
   const bodyHeight = (p: BoxPlan) => Math.max(rowsHeight(p.rows), p.padBodyTo ?? 0);
   /** Everything under the body: the total band and the note. `chunkFor` and `flowPair` both need it. */
-  const tailHeight = (p: BoxPlan) => (p.total ? BOX_TOTAL_H : 0) + noteHeightOf(p.noteLines);
-  const boxHeight = (p: BoxPlan) => BOX_HEAD_H + bodyHeight(p) + tailHeight(p);
+  const tailHeight = (p: BoxPlan) => (p.total ? BOX_TOTAL_H : 0) + noteHeightOf(p);
+  const boxHeight = (p: BoxPlan) => BOX_HEAD_H + p.columnH + bodyHeight(p) + tailHeight(p);
 
   const planBox = (o: {
-    w: number; title: string; rows: Row[];
+    w: number; title: string; rows: Row[]; columns?:string[];
     dot?: 'earn' | 'deduct'; total?: { label: string; value: string; color?: ReturnType<typeof rgb> };
     note?: string;
   }): BoxPlan => {
     const noteFont = faceOf(o.note ?? '', font);
+    const noteLines=o.note?wrap(o.note,noteFont,7,o.w-20):[];
+    const noteMetrics=noteLines.map(line=>textMetrics(line,noteFont,7));
+    const notePitch=Math.max(9,...noteMetrics.map(m=>m.ascent+m.descent+2));
+    const noteAscent=Math.max(7,...noteMetrics.map(m=>m.ascent));
     return {
       w: o.w,
       title: o.title,
       dot: o.dot,
+      columns:o.columns,
+      columnH: o.columns ? Math.max(...o.columns.map((label,i) => {
+        const qt=o.columns?.[1]===(t.quantityColumn??'Day/Hrs');
+        const widths=o.columns!.length===3?(qt?[.45,.18,.37]:[.30,.35,.35]):[.5,.5];
+        const cw=o.w*widths[i]-20;
+        const lines = wrap(label,faceOf(label,bold),6.5,cw);
+        const ms = lines.map(v => textMetrics(v,bold,6.5));
+        const pitch = Math.max(9,...ms.map(m => m.ascent+m.descent+2));
+        return 8+Math.max(1,lines.length)*pitch;
+      })) : 0,
       total: o.total,
-      rows: o.rows.map((r) => planRow(r, o.w)),
+      rows: o.rows.map((r) => planRow(r, o.w,o.columns)),
       noteFont,
-      noteLines: o.note ? wrap(o.note, noteFont, 7, o.w - 20) : [],
+      noteLines,notePitch,noteAscent,
     };
   };
 
@@ -854,7 +905,7 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     const rowsH = rowsHeight(p.rows);
     const bodyH = bodyHeight(p);
     const h = boxHeight(p);
-    const totalTop = top - BOX_HEAD_H - bodyH;
+    const totalTop = top - BOX_HEAD_H - p.columnH - bodyH;
     // a96d320c rev 2 — THE NOTCH THE REPORTER CIRCLED, FOUR TIMES, IN THE SAME PLACE EACH TIME.
     //
     // Both BAND rectangles are FILLED and have no border of their own, and both are the FULL WIDTH of the
@@ -878,28 +929,38 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     // regression rather than a pre-existing fault. See the rev-2 note on that hairline below.
     // So: the NOTCH (a filled band over the outline) predates r328; the WASHED-OUT BOTTOM BORDER does
     // not. Both are fixed here, and the reporter is owed the distinction in plain words.
-    pg.drawRectangle({ x, y: top - BOX_HEAD_H, width: p.w, height: BOX_HEAD_H, color: BAND }); // header band
+    pg.drawRectangle({ x, y: top - BOX_HEAD_H, width: p.w, height: BOX_HEAD_H, color:p.dot==='earn'?EARN:p.dot==='deduct'?DEDUCT:p.title===t.nonPayable?rgb(.38,.30,.59):PRIMARY }); // header band
     if (p.total) pg.drawRectangle({ x, y: totalTop - BOX_TOTAL_H, width: p.w, height: BOX_TOTAL_H, color: BAND });
-    pg.drawRectangle({ x, y: top - h, width: p.w, height: h, borderColor: RULE, borderWidth: 0.8 });
     pg.drawLine({
       start: { x, y: top - BOX_HEAD_H }, end: { x: x + p.w, y: top - BOX_HEAD_H },
       thickness: 0.8, color: RULE,
     });
-    let tx = x + 10;
-    if (p.dot) {
-      pg.drawCircle({ x: tx + 3.5, y: top - BOX_HEAD_H / 2, size: 3.5, color: p.dot === 'earn' ? EARN : DEDUCT });
-      tx += 12;
-    }
-    at(pg, p.title.toUpperCase(), tx, top - 13.5, 7.5, bold, INK);
-
+    at(pg,p.title.toUpperCase(),x+(p.w-widthOf(p.title.toUpperCase(),bold,8))/2,top-13.5,8,bold,WHITE);
     let ry = top - BOX_HEAD_H;
+    if (p.columns) {
+      pg.drawRectangle({x,y:ry-p.columnH,width:p.w,height:p.columnH,color:HAIR});
+      p.columns.forEach((label,i) => {
+        const qt=p.columns?.[1]===(t.quantityColumn??'Day/Hrs');
+        const edges=p.columns!.length===3?(qt?[0,.45,.63,1]:[0,.30,.65,1]):[0,.5,1];
+        const left=x+p.w*edges[i]+10;
+        const right=x+p.w*edges[i+1]-10;
+        const lines = wrap(label,faceOf(label,bold),6.5,right-left);
+        const ms = lines.map(v => textMetrics(v,bold,6.5));
+        const ascent = Math.max(6.5,...ms.map(m => m.ascent));
+        const pitch = Math.max(9,...ms.map(m => m.ascent+m.descent+2));
+        lines.forEach((line,j) => i===0 ? at(pg,line,left,ry-4-ascent-j*pitch,6.5,bold,MUTED) : atR(pg,line,right,ry-4-ascent-j*pitch,6.5,bold,MUTED));
+      });
+      ry -= p.columnH;
+    }
     p.rows.forEach((r, i) => {
       const color = r.muted ? MUTED : INK;
       // The amount sits on the row's FIRST baseline whatever the label does below it, so a column of
       // figures still reads as a column when one description above it took two lines.
-      r.lines.forEach((line, j) => at(pg, line, x + 10, ry - 10.5 - j * LINE_H, 8.5, r.labelFont, color));
-      if (r.valueLines) r.valueLines.forEach((line, j) => atR(pg, line, x + p.w - 10, ry - 10.5 - j * LINE_H, 8.5, r.valueFont ?? font, color));
-      else atR(pg, r.value, x + p.w - 10, ry - 10.5, 8.5, font, color);
+      r.lines.forEach((line, j) => at(pg, line, x + 10, ry - 3 - r.ascent - j * r.pitch, 8.5, r.labelFont, color));
+      if(r.quantityLines?.length) r.quantityLines.forEach((line,j)=>atR(pg,line,x+p.w*.63-10,ry-3-r.ascent-j*r.pitch,7,font,color));
+      if(r.textValues) r.textValues.forEach((values,i)=>values.forEach((line,j)=>atR(pg,line,x+p.w*(r.textValues!.length===2?(i===0?.65:1):1)-10,ry-3-r.ascent-j*r.pitch,8,font,color)));
+      else if (r.valueLines) r.valueLines.forEach((line, j) => atR(pg, line, x + p.w - 10, ry - 3 - r.ascent - j * r.pitch, 8.5, r.valueFont ?? font, color));
+      else atR(pg, r.value, x + p.w - 10, ry - 3 - r.ascent, 8.5, font, color);
       ry -= r.h;
       // a96d320c — EDGE TO EDGE. This rule was inset 6pt either side, so it read as a floating divider
       // between two rows rather than as the line between two cells of one ruled box. The reporter asked
@@ -935,7 +996,8 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
       atR(pg, p.total.value, x + p.w - 10, by - 14, 9.5, bold, p.total.color ?? INK);
       by -= BOX_TOTAL_H;
     }
-    p.noteLines.forEach((line, i) => at(pg, line, x + 10, by - 10 - i * 9, 7, p.noteFont, MUTED));
+    p.noteLines.forEach((line, i) => at(pg, line, x + 10, by - 3 - p.noteAscent - i * p.notePitch, 7, p.noteFont, MUTED));
+    pg.drawRectangle({ x, y: top - h, width: p.w, height: h, borderColor: RULE, borderWidth: 0.8 });
     return h;
   };
 
@@ -979,21 +1041,14 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     // `sub` slot. They come OUT of "Other deductions" (d.absence.residual), they are not printed beside it,
     // so the box still adds up to the total it prints. No stamp ⇒ residual === otherDeductions ⇒ identical.
     ...(d.absence.unpaidLeave
-      ? [{ label: t.unpaidLeaveLine, sub: absenceDaysLabel(d.absence.unpaidLeave.days, t.dayUnit, t.daysUnit), amount: d.absence.unpaidLeave.amount }]
+      ? [{ label: t.unpaidLeaveLine, quantity: absenceDaysLabel(d.absence.unpaidLeave.days, t.dayUnit, t.daysUnit), amount: d.absence.unpaidLeave.amount }]
       : []),
     ...(d.absence.absent
-      ? [{ label: t.absentLine, sub: absenceDaysLabel(d.absence.absent.days, t.dayUnit, t.daysUnit), amount: d.absence.absent.amount }]
+      ? [{ label: t.absentLine, quantity: absenceDaysLabel(d.absence.absent.days, t.dayUnit, t.daysUnit), amount: d.absence.absent.amount }]
       : []),
     ...(d.absence.showResidual ? [{ label: t.otherDeductions, amount: d.absence.residual }] : []),
   ];
 
-  const employerRows: Row[] = [
-    ...(d.configuredEmployerContributions ?? []).map(line => ({ label: line.name, amount: line.amount })),
-    { label: t.epf, amount: d.epfEmployer },
-    { label: t.socso, amount: d.socsoEmployer },
-    { label: t.eis, amount: d.eisEmployer },
-    ...(d.hrdf != null ? [{ label: t.hrdf, amount: d.hrdf }] : []),
-  ];
   // a96d320c — THE PAY CODE COMES OFF THE EMPLOYEE'S DOCUMENT (site 1 of 2; the other is in
   // `earningsRowsOf`). `sub` carried `l.code`, so every line printed "Petrol card · A0031". The code is
   // an internal reconciliation key: the operator reconciles by it on the admin screens, which still show
@@ -1026,11 +1081,13 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     page = doc.addPage([A4_W, A4_H]);
     pages.push(page);
     y = A4_H - M;
-    const nameFont = faceOf(d.company, bold);
-    const nameLines = wrap(d.company, nameFont, 12, CONTENT_W - 200);
-    nameLines.forEach((line, i) => at(page, line, M, y - 12 - i * 13, 12, nameFont));
-    atR(page, `${t.title} · ${t.periodLabel}`, A4_W - M, y - 11, 9, font, MUTED);
-    y -= 20 + (nameLines.length - 1) * 13;
+    // A continuation heading never consumes the body with a repeated long legal name.
+    // The complete value is printed in the flowing letterhead and employee profile below.
+    const headerCompany=wrap(d.company,faceOf(d.company,bold),12,CONTENT_W-200);
+    if(headerCompany.length===1) at(page,headerCompany[0],M,y-12,12,bold);
+    else at(page,t.documentSubtitle,M,y-12,9,bold);
+    atR(page,`${t.title} · ${t.periodLabel}`,A4_W-M,y-11,9,font,MUTED);
+    y-=20;
     page.drawLine({ start: { x: M, y }, end: { x: A4_W - M, y }, thickness: 1.2, color: RULE });
     y -= GAP;
   };
@@ -1049,7 +1106,7 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
    */
   type FlowSpec = {
     x: number; w: number; title: string; continuedTitle: string; rows: Row[];
-    dot?: 'earn' | 'deduct'; total?: { label: string; value: string; color?: ReturnType<typeof rgb> };
+    columns?:string[]; dot?: 'earn' | 'deduct'; total?: { label: string; value: string; color?: ReturnType<typeof rgb> };
     note?: string;
   };
 
@@ -1068,16 +1125,16 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     const tailH = tailHeight(plan);
     let take = 0;
     let acc = 0;
-    while (take < rows.length && BOX_HEAD_H + acc + rows[take].h <= avail) {
+    while (take < rows.length && BOX_HEAD_H + plan.columnH + acc + rows[take].h <= avail) {
       acc += rows[take].h;
       take += 1;
     }
-    if (take === rows.length && BOX_HEAD_H + acc + tailH <= avail) {
-      return { take, final: true, h: BOX_HEAD_H + acc + tailH };
+    if (take === rows.length && BOX_HEAD_H + plan.columnH + acc + tailH <= avail) {
+      return { take, final: true, h: BOX_HEAD_H + plan.columnH + acc + tailH };
     }
     // Keep one row back so the total is never orphaned at the top of a sheet on its own.
     if (take === rows.length) take -= 1;
-    return { take, final: false, h: BOX_HEAD_H + rows.slice(0, take).reduce((s, r) => s + r.h, 0) };
+    return { take, final: false, h: BOX_HEAD_H + plan.columnH + rows.slice(0, take).reduce((s, r) => s + r.h, 0) };
   };
 
   /**
@@ -1095,15 +1152,26 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
    * painted, which is why a 70-item Earnings box continues down the left of sheet two with nothing beside
    * it rather than dragging a second copy of Deductions along.
    */
-  const flowPair = (specs: readonly [FlowSpec, FlowSpec]) => {
+  const flowPair = (specs: readonly FlowSpec[]) => {
     const sides = specs.map((spec) => ({
       spec,
-      plan: planBox({ w: spec.w, title: spec.title, rows: spec.rows, dot: spec.dot, total: spec.total, note: spec.note }),
+      plan: planBox({ w: spec.w, title: spec.title, rows: spec.rows, columns: spec.columns, dot: spec.dot, total: spec.total, note: spec.note }),
       rows: [] as BoxRowPlan[],
       title: spec.title,
       done: false,
     }));
-    for (const s of sides) s.rows = s.plan.rows;
+    for (const s of sides) {
+      const maxH = A4_H - 2*M - FOOTER_H - 100 - BOX_HEAD_H - s.plan.columnH - tailHeight(s.plan);
+      s.rows = s.plan.rows.flatMap(r => {
+        const perPage = Math.max(1,Math.floor((maxH-4)/r.pitch));
+        const count = Math.max(r.lines.length,r.valueLines?.length??0,r.quantityLines?.length??0,...(r.textValues?.map(v=>v.length)??[]));
+        return Array.from({length:Math.max(1,Math.ceil(count/perPage))},(_,i) => {
+          const start=i*perPage, end=start+perPage;
+          const lines=r.lines.slice(start,end), valueLines=r.valueLines?.slice(start,end), quantityLines=r.quantityLines?.slice(start,end), textValues=r.textValues?.map(v=>v.slice(start,end));
+          return {...r,lines,valueLines,quantityLines,textValues,value:i===0?r.value:'',h:4+Math.min(perPage,count-start)*r.pitch};
+        });
+      });
+    }
     let freshPage = false;
     for (;;) {
       const avail = y - (M + FOOTER_H);
@@ -1146,7 +1214,7 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
         // Earnings note beside a Deductions box with none) the padded box can exceed what was measured.
         // Alignment is a courtesy to the reader; running a box through the footer is a defect. So when it
         // will not fit, the two totals simply stay where they were.
-        const fits = sides.every((s) => BOX_HEAD_H + tallest + tailHeight(s.plan) <= avail);
+        const fits = sides.every((s) => BOX_HEAD_H + s.plan.columnH + tallest + tailHeight(s.plan) <= avail);
         if (fits) padTo = tallest;
       }
       let used = 0;
@@ -1191,79 +1259,15 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   // pair now continues across sheets together rather than one of them shoving the other down a page.
   flowPair([
     {
-      x: M, w: COL_W, title: t.earnings, continuedTitle: t.earningsContinued, rows: earnRows, dot: 'earn',
+      x: M, w: COL_W, title: t.earnings, continuedTitle: t.earningsContinued, rows: earnRows, dot: 'earn', columns:[t.descriptionColumn??'Description',t.quantityColumn??'Day/Hrs',`${t.amountColumn??'Amount'} (${d.currency??''})`],
       total: { label: t.totalEarnings, value: money(d.gross), color: EARN },
       note: d.detailNotRecorded ? t.detailNotRecorded : undefined,
     },
     {
-      x: COL2_X, w: COL_W, title: t.deductions, continuedTitle: t.deductions, rows: dedRows, dot: 'deduct',
+      x: COL2_X, w: COL_W, title: t.deductions, continuedTitle: t.deductions, rows: dedRows, dot: 'deduct', columns:[t.descriptionColumn??'Description',t.quantityColumn??'Day/Hrs',`${t.amountColumn??'Amount'} (${d.currency??''})`],
       total: { label: t.totalDeductions, value: money(d.totalDeductions), color: DEDUCT },
     },
   ]);
-
-  // ─── Employer contributions beside OTHER — or, when there is no Other, beside Payment information ───
-  //
-  // a96d320c rev 3 — THE SECOND BAND. `Other` is the box that used to be drawn FULL WIDTH BELOW NET PAY
-  // (f35f758a, "Non-payable items"): the items this run calculated and did not pay. Below the net figure
-  // is the worst place on the document for it — the employee has already found the number they came for,
-  // and a full-width box of money they did NOT receive, after it, reads like a second pay total. Beside
-  // Employer contributions it reads as what it is: the other half of "what this month cost that is not in
-  // your net pay". The reporter asked for it as a COLUMN and this is that column.
-  //
-  // WHY NOT FOUR ACROSS. Their sketch put Earnings, Deductions, Employer contributions and Other side by
-  // side in one row. On A4 that is ~32mm a column, and "Construction Project Management Allowance" wraps
-  // to four lines in it — the clipping/cramping fault r179 (f35f758a) was raised to fix. Two across, in
-  // two bands, keeps every column at the width that fix bought.
-  //
-  // PAYMENT INFORMATION MOVES DOWN, and only when Other is present: it is three short text fields and the
-  // band below is a better home for them than a third column that does not exist. With no Other — every
-  // payslip that exists today — this is byte for byte the pair it has always been.
-  const empSpec = {
-    x: M, w: COL_W, title: t.employerContributions, continuedTitle: t.employerContributions,
-    rows: employerRows,
-
-
-  } as const;
-  // Payment information is printed only when there is something to print. A row of empty labels tells the
-  // employee nothing and reads as a broken document; a missing block reads as "not recorded" — the truth.
-  const payPlan: ReturnType<typeof planBox> | null = null;
-
-  if (nonPayableRows.length > 0) {
-    // `flowPair`, not the measure-once pair: a company that starts declaring benefits in kind can declare
-    // a lot of them, and the full-width `flowBox` this replaces could already continue across sheets. The
-    // list must keep that. Employer contributions is four fixed rows and will never be the side that
-    // breaks. `flowPair` also lands TOTAL EMPLOYER COST and the Other total on one baseline, for the same
-    // reason and by the same mechanism as Total earnings and Total deductions above.
-    flowPair([
-      empSpec,
-      {
-        x: COL2_X, w: COL_W, title: t.nonPayable, continuedTitle: t.nonPayable, rows: nonPayableRows,
-        total: { label: t.nonPayableTotal, value: money(nonPayableTotal) },
-        note: t.nonPayableNote,
-      },
-    ]);
-    if (payPlan) {
-      // Its own band, at COL_W on the left — NOT widened to the full page. Three short text fields
-      // stretched across 515pt would put "Maybank" alone in the middle of a line; the box is the size of
-      // its contents, which is the rule every other block on this document already follows.
-      ensure(boxHeight(payPlan));
-      y -= paintBox(page, M, y, payPlan) + GAP;
-    }
-  } else {
-    // Both are SHORT and fixed (four statutory rows; three payment fields), so the simple measure-once
-    // pair is still right for them — neither can grow to the length that made Earnings need a continuing
-    // flow. Pairing them is also what buys the space for NET PAY to take the full width below. NO
-    // PADDING HERE, deliberately: Payment information has no total to align to, so `flowPair` would only
-    // open whitespace above TOTAL EMPLOYER COST and change a document that nothing asked to change.
-    const empPlan = planBox({
-      w: empSpec.w, title: empSpec.title, rows: empSpec.rows,
-    });
-    const pairH = Math.max(boxHeight(empPlan), payPlan ? boxHeight(payPlan) : 0);
-    ensure(pairH);
-    paintBox(page, M, y, empPlan);
-    if (payPlan) paintBox(page, COL2_X, y, payPlan);
-    y -= pairH + GAP;
-  }
 
   // ─── NET PAY, FULL WIDTH ───
   // The one figure the employee looks for first, and now the only thing on its line — which is both what
@@ -1289,6 +1293,34 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     y -= paintBox(page, M, y, bornePlan) + GAP;
   }
 
+  // Reference order: Net Pay, full-width Other, then employer MTD beside employee/employer YTD.
+  if(nonPayableRows.length){flowPair([{x:M,w:CONTENT_W,title:t.nonPayable,continuedTitle:t.nonPayable,rows:nonPayableRows,columns:[t.descriptionColumn??'Description',`${t.amountColumn??'Amount'} (${d.currency??''})`],total:{label:t.nonPayableTotal,value:money(nonPayableTotal)},note:t.nonPayableNote}]);}
+  const unavailable=t.periodNotRecorded??'Not recorded';
+  const periodAmount=(value:number|null|undefined)=>value==null?unavailable:money(value);
+  const schemes=[['EPF','epf'],['SOCSO','socso'],['EIS','eis'],...(d.hrdf!=null||(d.employerPeriodTotals?.mtd.hrdf??0)>0||(d.employerPeriodTotals?.ytd.hrdf??0)>0?[['HRDF','hrdf']]:[])] as [string,'epf'|'socso'|'eis'|'hrdf'][];
+  const ew=(CONTENT_W-GAP)*.4;
+  flowPair([
+    {x:M,w:ew,title:t.employerContributions,continuedTitle:t.employerContributions,columns:[t.statutoryCodeColumn??'Statutory code',`${t.mtdEmployerColumn??'MTD employer'} (${d.currency??''})`],rows:[
+      ...schemes.map(([label,key])=>({label,text:periodAmount(d.employerPeriodTotals?.mtd[key])}))],note:t.normalEmployerNote},
+    {x:M+ew+GAP,w:CONTENT_W-GAP-ew,title:t.ytdHeading,continuedTitle:t.ytdHeading,columns:[t.statutoryCodeColumn??'Statutory code',`${t.ytdEmployeeColumn??'YTD employee'} (${d.currency??''})`,`${t.ytdEmployerColumn??'YTD employer'} (${d.currency??''})`],rows:schemes.map(([label,key])=>({label,textValues:[key==='hrdf'?'':d.ytd?money(d.ytd[key]):unavailable,periodAmount(d.employerPeriodTotals?.ytd[key])]})).concat(d.ytd?[{label:'PCB',textValues:[money(d.ytd.pcb),'']}]:[])}
+  ]);
+
+  // The shared reader preserves the employment's eligible authorized run set across employers.
+  // This caption discloses that scope; it does not introduce a company fence or recalculate a share.
+  if (t.periodScopeNote) {
+    const lines=wrap(t.periodScopeNote,faceOf(t.periodScopeNote,font),7,CONTENT_W-16);
+    const ms=lines.map(line=>textMetrics(line,font,7));
+    const pitch=Math.max(10,...ms.map(m=>m.ascent+m.descent+2));
+    const ascent=Math.max(7,...ms.map(m=>m.ascent));
+    const h=6+lines.length*pitch;
+    ensure(h);
+    lines.forEach((line,i)=>at(page,line,M+8,y-3-ascent-i*pitch,7,font,MUTED));
+    y-=h+GAP;
+  }
+  if (d.configuredEmployerContributions?.length) {
+    flowPair([{x:M,w:CONTENT_W,title:t.configuredContributionsHeading??t.employerContributions,continuedTitle:t.configuredContributionsHeading??t.employerContributions,
+      rows:d.configuredEmployerContributions.map(l=>({label:l.name,amount:l.amount}))}]);
+  }
   // ─── year to date ───
   if (d.ytd) {
     ensure(YTD_H);
@@ -1302,63 +1334,26 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   // ─── section painters (closures over page/font/label state, kept out of the flow above) ───
 
   function drawLetterhead(pg: PDFPage, top: number): number {
-    let textX = M;
+    const confidential=t.confidentialHeading??'STRICTLY PRIVATE & CONFIDENTIAL';
+    at(pg,confidential,M,top-textMetrics(confidential,bold,8).ascent,8,bold);
+    let cursor=top-18;
     if (logo) {
-      // Cap the drawn height and preserve the aspect ratio: an uploaded logo is any size at all, and a
-      // stretched company mark on a payroll document is worse than none.
-      const h = Math.min(54, logo.height);
-      const w = (logo.width / logo.height) * h;
-      const drawW = Math.min(w, 120);
-      const drawH = (logo.height / logo.width) * drawW;
-      pg.drawImage(logo, { x: M, y: top - drawH, width: drawW, height: drawH });
-      textX = M + drawW + 14;
+      const scale=Math.min(48/logo.height,120/logo.width,1);
+      const w=logo.width*scale,h=logo.height*scale;
+      pg.drawImage(logo,{x:(A4_W-w)/2,y:cursor-h,width:w,height:h});
+      cursor-=h+8;
     }
-    // The legal name WRAPS rather than clipping: a company whose registered name is long is not a company
-    // whose payslip may say half of it. 150pt is reserved on the right for the month and payment date.
-    const nameFont = faceOf(d.company, bold);
-    const nameLines = wrap(d.company, nameFont, 16, A4_W - M - textX - 150);
-    nameLines.forEach((line, i) => at(pg, line, textX, top - 16 - i * 18, 16, nameFont));
-    const below = top - 16 - (nameLines.length - 1) * 18;
-    // ─── r360 — THE REGISTRATION NUMBER IS BACK ON THE LETTERHEAD, THIS TIME WITH ITS NAME ───
-    //
-    // The reporter asked for it "directly below the company name, labelled Reg. no.", so it sits between
-    // the legal name and the document subtitle rather than under the subtitle where a96d320c rev 3 found it
-    // unlabelled and took it off. That order is also the order the Individual Payslip SCREEN's letterhead
-    // uses (name → registration → period), so the document and the screen read the same way down the page.
-    //
-    // LABEL, COLON, VALUE, drawn as ONE string: `Reg. no.: 201901024512`, which is the line the approved
-    // mockup (docs/mockups/1fe55a23-payslip-header.html) shows the reporter, down to the colon. The
-    // separator is a literal beside the catalogue label, exactly as `${t.employeeCode}: …` already is in
-    // `drawEmployeePanel` — a second message key for a colon is a translation to keep in step for nothing.
-    // One string also means `at` resolves ONE face for the whole line, which is what keeps a Tamil or Thai
-    // caption and a Latin-digit number from being measured in one font and drawn in another.
-    //
-    // ABSENT ⇒ NOTHING DRAWN AND NOTHING RESERVED (see `textH` below). The fallback the plan promised: a
-    // company with no registration number gets the letterhead it gets today, not an empty band. The mockup
-    // spells that out too — "not 'Reg. no.: —' and not an empty label".
-    const regLine = d.companyReg ? `${t.companyReg}: ${d.companyReg}` : null;
-    if (regLine) at(pg, regLine, textX, below - 12, 8.5, font, MUTED);
-    const sub = [t.documentSubtitle, d.cycleLabel].filter(Boolean).join(' · ');
-    at(pg, sub, textX, below - (regLine ? 25 : 13), 9, font, MUTED);
-    // "August 2026", not "2026-08" (f35f758a). Resolved by the caller; English on the document by choice
-    // now that the font no longer forces it — see PayslipPdfLabels.periodLabel.
-    atR(pg, t.periodLabel, A4_W - M, top - 16, 13, bold);
-    if (d.payDate) atR(pg, t.paymentDate, A4_W - M, top - 29, 8.5, font, MUTED);
-    // r360 — TWO heights again, and THIS time the taller one has a visible cause.
-    //
-    // a96d320c rev 3 collapsed this to a single 34, and its note is worth keeping rather than deleting: it
-    // read `(d.companyReg ? 46 : 34)` while nothing drew the number, so a registered company's payslip
-    // carried a 12pt hole where the missing line had been and an unregistered company's did not — the same
-    // document in two shapes for a difference the reader could not see. The ternary is only honest when
-    // something is drawn in the space it reserves, which is now the case: 46 when the `Reg. no.` line is
-    // printed, and 34 — byte-for-byte today's letterhead — when there is nothing to print.
-    //
-    // `test/payslip-pdf.test.ts` renders both and asserts the difference is exactly the one line, so a
-    // future change cannot reserve the band again without drawing in it.
-    const textH = (nameLines.length - 1) * 18 + (regLine ? 46 : 34);
-    const h = Math.max(logo ? 58 : 0, textH);
-    pg.drawLine({ start: { x: M, y: top - h }, end: { x: A4_W - M, y: top - h }, thickness: 1.6, color: RULE });
-    return top - h - GAP;
+    const lines=wrap(d.company,faceOf(d.company,bold),14,CONTENT_W-16);
+    const nameMetrics=lines.map(v=>textMetrics(v,bold,14));
+    const nameAscent=Math.max(14,...nameMetrics.map(m=>m.ascent));
+    const pitch=Math.max(18,...nameMetrics.map(m=>m.ascent+m.descent+2));
+    lines.forEach(line=>{
+      if(cursor-pitch < M+FOOTER_H){newPage();cursor=y;}
+      at(page,line,(A4_W-widthOf(line,bold,14))/2,cursor-nameAscent,14,bold);cursor-=pitch;
+    });
+    const subtitle=wrap(t.documentSubtitle,faceOf(t.documentSubtitle,font),8,CONTENT_W-16);
+    subtitle.forEach(line=>{if(cursor-12 < M+FOOTER_H){newPage();cursor=y;}at(page,line,(A4_W-widthOf(line,font,8))/2,cursor-10,8,font,MUTED);cursor-=12;});
+    return cursor-8;
   }
 
   function drawEmployeePanel(pg: PDFPage, top: number): number {
@@ -1371,42 +1366,48 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
         [t.currency, d.currency]] as [string, string | null | undefined][])
         .filter(([, value]) => value != null && value.trim() !== '').map(([label, value]) => ({label, value: value!})),
     ];
-    const cells: [string, string][] = [...entries.map(e => [e.label, e.value] as [string, string]),
+    const cells: [string, string][] = [[t.companyName??'Company Name',d.company],
+      ...(d.companyReg?[[t.companyReg,d.companyReg] as [string,string]]:[]),
+      [t.payPeriod,t.periodLabel],...(d.payDate?[[t.paymentInformation,t.paymentDate] as [string,string]]:[]),
+      ...(d.cycleLabel?[[t.documentSubtitle,d.cycleLabel] as [string,string]]:[]),...entries.map(e => [e.label, e.value] as [string, string]),
       ...([[t.paymentMethod,d.paymentMethod],[t.bankName,d.bankName],[t.bankAccount,d.bankAccount]] as [string,string|null|undefined][])
         .filter(([, value]) => value != null && value.trim() !== '').map(([label,value]) => [label,value!] as [string,string])];
     // Row-major order is the shared selector's order. Measure real wrapped values before page breaks.
     const width = A4_W - 2*M;
-    const columnWidth = (width - 36)/3;
-    const groups = Array.from({length:Math.ceil(cells.length/3)},(_,i)=>cells.slice(i*3,i*3+3));
+    const columnWidth = (width - 24)/2;
+    const groups = Array.from({length:Math.ceil(cells.length/2)},(_,i)=>cells.slice(i*2,i*2+2));
     let topOfCard = y;
     let height = 24;
     const heading = () => {
-      page.drawRectangle({x:M,y:y-24,width,height:24,color:BAND});
-      at(page,t.employmentInfo.toUpperCase(),M+12,y-16,7.5,bold,PRIMARY);
+      page.drawRectangle({x:M,y:y-24,width,height:24,color:PRIMARY});
+      const heading=t.employeeProfile??t.employmentInfo;
+      at(page,heading.toUpperCase(),M+(width-widthOf(heading.toUpperCase(),bold,8))/2,y-16,8,bold,WHITE);
       topOfCard=y; y-=24; height=24;
     };
     const finish = () => page.drawRectangle({x:M,y:topOfCard-height,width,height,borderColor:RULE,borderWidth:0.8});
     heading();
     for(const group of groups) {
       const plans=group.map(([label,value])=>({label,value,lf:faceOf(label,font),vf:faceOf(value,bold),
-        lines:wrap(value,faceOf(value,bold),8.5,columnWidth-12)}));
-      const rowHeight=Math.max(...plans.map(p=>18+p.lines.length*11));
+        lines:wrap(value,faceOf(value,bold),8.5,columnWidth*.60-12),labelLines:wrap(label,faceOf(label,font),7,columnWidth*.40-8)}));
+      const pitch=Math.max(11,...plans.flatMap(p=>[...p.lines.map(line=>textMetrics(line,p.vf,8.5)),...p.labelLines.map(line=>textMetrics(line,p.lf,7))]).map(m=>m.ascent+m.descent+2));
+      const ascent=Math.max(8.5,...plans.flatMap(p=>p.lines.map(line=>textMetrics(line,p.vf,8.5).ascent)));
+      const rowHeight=Math.max(...plans.map(p=>2+Math.max(p.lines.length,p.labelLines.length)*pitch));
       if(y-rowHeight<M+FOOTER_H && rowHeight < A4_H-2*M-FOOTER_H-24) {finish();newPage();heading();}
       // An unusually long organization value may span sheets; retain every line and repeat its label.
       let offset = 0;
-      const totalLines = Math.max(...plans.map(p=>p.lines.length));
+      const totalLines = Math.max(...plans.map(p=>Math.max(p.lines.length,p.labelLines.length)));
       while (offset < totalLines) {
-        let capacity = Math.floor((y-M-FOOTER_H-18)/11);
-        if(capacity < 1) {finish();newPage();heading();capacity=Math.floor((y-M-FOOTER_H-18)/11);}
+        let capacity = Math.floor((y-M-FOOTER_H-2)/pitch);
+        if(capacity < 1) {finish();newPage();heading();capacity=Math.floor((y-M-FOOTER_H-2)/pitch);}
         const count=Math.min(capacity,totalLines-offset);
         plans.forEach((p,i)=>{
           const x=M+12+i*columnWidth;
-          if(offset < p.lines.length) {
-            at(page,p.label,x,y-10,6.5,p.lf,MUTED);
-            p.lines.slice(offset,offset+count).forEach((line,j)=>at(page,line,x,y-23-j*11,8.5,p.vf));
+          if(offset < Math.max(p.lines.length,p.labelLines.length)) {
+            p.labelLines.slice(offset,offset+count).forEach((line,j)=>at(page,line,x,y-3-ascent-j*pitch,7,p.lf,MUTED));
+            p.lines.slice(offset,offset+count).forEach((line,j)=>at(page,line,x+columnWidth*.40,y-3-ascent-j*pitch,8.5,p.vf));
           }
         });
-        const used=18+count*11; y-=used; height+=used; offset+=count;
+        const used=2+count*pitch; y-=used; height+=used; offset+=count;
         if(offset < totalLines) {finish();newPage();heading();}
       }
     }
@@ -1418,10 +1419,6 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   function drawYtd(pg: PDFPage, top: number): number {
     const rows: [string, number, number][] = [
       [t.grossPay, d.gross, d.ytd!.gross],
-      [t.epf, d.epfEmployee, d.ytd!.epf],
-      [t.socso, d.socsoEmployee, d.ytd!.socso],
-      [t.eis, d.eisEmployee, d.ytd!.eis],
-      [t.pcb, d.pcb, d.ytd!.pcb],
       [t.netPay, d.net, d.ytd!.net],
     ];
     const c2 = M + CONTENT_W * 0.62;
@@ -1444,7 +1441,7 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
       start: { x: M, y: top - BOX_HEAD_H }, end: { x: c3, y: top - BOX_HEAD_H },
       thickness: 0.8, color: RULE,
     });
-    at(pg, t.ytdHeading.toUpperCase(), M + 10, top - 13.5, 7.5, bold, INK);
+    at(pg, (t.paySummaryHeading??t.ytdHeading).toUpperCase(), M + 10, top - 13.5, 7.5, bold, INK);
     let ry = top - BOX_HEAD_H;
     at(pg, t.ytdItem.toUpperCase(), M + 10, ry - 9, 6.5, font, MUTED);
     atR(pg, t.ytdCurrent.toUpperCase(), c2, ry - 9, 6.5, font, MUTED);
@@ -1476,10 +1473,9 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
    * where "why did my tax change when my pay did not?" gets answered.
    */
   function drawFooter(pg: PDFPage) {
-    const fy = M + 8;
-    pg.drawLine({ start: { x: M, y: fy + 14 }, end: { x: A4_W - M, y: fy + 14 }, thickness: 0.8, color: RULE });
-    const w = widthOf(t.generatedNote, font, 7.5);
-    at(pg, t.generatedNote, M + (CONTENT_W - w) / 2, fy, 7.5, font, MUTED);
+    const top=M+FOOTER_H-4;
+    pg.drawLine({start:{x:M,y:top},end:{x:A4_W-M,y:top},thickness:.8,color:RULE});
+    footerLines.forEach((line,i)=>at(pg,line,M+(CONTENT_W-widthOf(line,font,7))/2,top-4-footerAscent-i*footerPitch,7,font,MUTED));
   }
 }
 
@@ -1538,21 +1534,6 @@ function earningsRowsOf(d: PayslipPdfData, t: PayslipPdfLabels, rate: (v: number
    * The multiplication sign is U+00D7, which IS in Latin-1 — `safe()` passes it through, where the
    * typographic dashes and quotes it folds would not survive.
    */
-  const detailSub = (l: PayslipEarningLine): string | null => {
-    const det = l.detail;
-    if (!det) return null;
-    const unit =
-      det.unit === 'hours'
-        ? det.qty === 1
-          ? t.hourUnit
-          : t.hoursUnit
-        : det.unit === 'days'
-          ? det.qty === 1
-            ? t.dayUnit
-            : t.daysUnit
-          : null;
-    return `${det.qty}${unit ? ` ${unit}` : ''} × ${rate(det.rate)}`;
-  };
   /** Named rows for a figure when they add up to it, otherwise the one grouped row, exactly as before. */
   const push = (lines: PayslipEarningLine[] | undefined, total: number, grouped: string) => {
     const named = lines ?? [];
@@ -1571,7 +1552,7 @@ function earningsRowsOf(d: PayslipPdfData, t: PayslipPdfLabels, rate: (v: number
         // this changes no document today; it is here because the rule below now depends on it — dropping a
         // 0.00 line cannot move a sum, so the reconciliation that licensed these rows still holds.
         if (!earningRowShown(l.amount)) continue;
-        rows.push({ label: l.otLeg ? t.otLegs[l.otLeg] : l.name, sub: detailSub(l), amount: l.amount });
+        rows.push({ label: l.otLeg ? t.otLegs[l.otLeg] : l.name, sub:l.detail?rate(l.detail.rate):null, quantity:l.detail?`${l.detail.qty}${l.detail.unit?' '+(l.detail.unit==='hours'?(l.detail.qty===1?t.hourUnit:t.hoursUnit):(l.detail.qty===1?t.dayUnit:t.daysUnit)):''}`:undefined, amount: l.amount });
       }
     } else if (earningRowShown(total)) {
       rows.push({ label: grouped, amount: total });

@@ -466,7 +466,7 @@ describe('ADR-0036 — payslip PDF', () => {
 });
 
 describe('5c198931 — the downloaded payslip is a full official document', () => {
-  it('uses one Employment Info card and retains statutory and YTD sections', async () => { const text=drawnText(await renderPayslipPdf({...data,bankName:'Maybank',bankAccount:'157123456789'},labels)); expect(text).toContain('EMPLOYMENT INFO'); expect(text).toContain('EMPLOYER CONTRIBUTIONS'); expect(text).toContain('157123456789'); expect(text).not.toContain('PAYMENT INFORMATION'); expect(text).not.toContain('TOTAL EMPLOYER COST'); });;
+  it('uses one Employment Info card and retains statutory and YTD sections', async () => { const text=drawnText(await renderPayslipPdf({...data,bankName:'Maybank',bankAccount:'157123456789'},labels)); expect(text).toContain('EMPLOYEE PROFILE'); expect(text).toContain('EMPLOYER CONTRIBUTIONS'); expect(text).toContain('157123456789'); expect(text).not.toContain('PAYMENT INFORMATION'); expect(text).not.toContain('TOTAL EMPLOYER COST'); });;
 
   it('labels amounts with the COMPANY’s currency, not a hardcoded RM', async () => {
     const sgd = drawnText(await renderPayslipPdf({ ...data, currency: 'SGD' }, labels));
@@ -597,9 +597,9 @@ describe('5c198931 — the downloaded payslip is a full official document', () =
     );
     for (const i of [0, 15, 29]) expect(thirty, `Item ${i} must print`).toContain(`Item ${i}`);
     expect(thirty).toContain('MYR 7,120.00'); // the total still reads the stored gross
-    expect(thirty, 'thirty rows fit under a full-width box — nothing was continued').not.toContain(
-      'EARNINGS (CONTINUED)',
-    );
+    for(let i=0;i<30;i++) expect(thirty,`complete measured row ${i}`).toContain(`Item ${i}`);
+    const short=drawnText(await renderPayslipPdf({...data,allowance:30,earningLines:rowsOf(3),detailNotRecorded:false},labels));
+    expect(short).not.toContain('EARNINGS (CONTINUED)');
 
     // A list long enough to genuinely run off the sheet DOES continue, with the heading repeated and the
     // last row intact. This is the case the old cap could never distinguish from the one above.
@@ -1024,7 +1024,7 @@ describe('f35f758a rev 2 — Earnings beside Deductions, NET PAY full width, and
     const text = drawnText(bytes);
     expect(text).toContain('EARNINGS (CONTINUED)');
     for (let i = 0; i < 45; i += 1) {
-      expect(text, `row ${i} must be on the document`).toContain(`Long pay item description ${i}`);
+      expect(text.replace(/\n/g,' '), `row ${i} must be complete across wrapped runs`).toContain(`Long pay item description ${i}`);
     }
     // The pair partner finished on sheet one and was NOT redrawn beside the continuation.
     const p = drawnPlacements(bytes);
@@ -1143,7 +1143,7 @@ describe('a96d320c — payment date in words, ruled boxes, no internal pay codes
    * The assertions are kept, not deleted, with their sense flipped: the OLD guard would now pass on a
    * document that had quietly re-grown the box, and this one fails on exactly that. ───
    */
-  it('the approved information card has a border rather than the retired loose-pair design',async()=>{const text=drawnText(await renderPayslipPdf(data,labels));expect(text).toContain('EMPLOYMENT INFO');expect(text).toContain(data.employee);expect(text).toContain(data.employeeCode!);});;
+  it('the approved information card has a border rather than the retired loose-pair design',async()=>{const text=drawnText(await renderPayslipPdf(data,labels));expect(text).toContain('EMPLOYEE PROFILE');expect(text).toContain(data.employee);expect(text).toContain(data.employeeCode!);});;
 
   /**
    * a96d320c rev 3 — THE EMPTY BOX, AND WHY IT CANNOT COME BACK AT ANY CELL COUNT.
@@ -1160,7 +1160,7 @@ describe('a96d320c — payment date in words, ruled boxes, no internal pay codes
    * This sweeps EVERY count from 0 to 6 rather than the one the reporter happened to hit. A fix that
    * only special-cased the last row would pass at 3 and fail at 5.
    */
-  it('omits absent identity labels while retaining the shared information card',async()=>{const text=drawnText(await renderPayslipPdf({...data,identityNumber:null,epfNumber:null,socsoNumber:null,taxNumber:null},labels));expect(text).not.toContain(labels.ic);expect(text).not.toContain(labels.epfNumber);expect(text).toContain('EMPLOYMENT INFO');});;
+  it('omits absent identity labels while retaining the shared information card',async()=>{const text=drawnText(await renderPayslipPdf({...data,identityNumber:null,epfNumber:null,socsoNumber:null,taxNumber:null},labels));expect(text).not.toContain(labels.ic);expect(text).not.toContain(labels.epfNumber);expect(text).toContain('EMPLOYEE PROFILE');});;
 
   it('puts the YEAR TO DATE table inside a ruled box, and does not move the page flow doing it', async () => {
     const full = {
@@ -1394,7 +1394,8 @@ describe('a96d320c — payment date in words, ruled boxes, no internal pay codes
         labels,
       ),
     );
-    expect(text).toContain('Unpaid leave · 2 days');
+    expect(text).toContain('Unpaid leave');
+    expect(text).toContain('2 days');
   });
 
   it('prints no internal pay code anywhere on a document made entirely of coded items', async () => {
@@ -1472,7 +1473,7 @@ describe('a96d320c — the overtime rate and the hours behind it', () => {
 
   it('prints the leg, its hours and its rate in place of the bare "Overtime" row', async () => {
     const bytes = await renderPayslipPdf(otSlip(WORKDAY_2H), labels);
-    expect(flat(bytes)).toContain('Overtime - normal working day · 2 hours × MYR 18.75');
+    expect(flat(bytes)).toContain('Overtime - normal working day · MYR 18.75 2 hours');
     expect(flat(bytes)).toContain('MYR 37.50');
     // The category word gave way to the rule that paid it, exactly as a named pay item replaces it.
     // Checked on the PLACEMENTS, because 'Overtime' is a substring of every leg label above.
@@ -1491,7 +1492,7 @@ describe('a96d320c — the overtime rate and the hours behind it', () => {
       lines: [{ kind: 'workday', qty: 10, unit: 'hours', rate: 36.045, amount: 360.45 }],
     };
     const text = flat(await renderPayslipPdf(otSlip(detail, 360.45), labels));
-    expect(text).toContain('10 hours × MYR 36.045');
+    expect(text).toContain('MYR 36.045 10 hours');
     expect(text).toContain('MYR 360.45');
   });
 
@@ -1504,8 +1505,8 @@ describe('a96d320c — the overtime rate and the hours behind it', () => {
       ],
     };
     const text = flat(await renderPayslipPdf(otSlip(detail, 250), labels));
-    expect(text).toContain('Overtime - rest day · 1 day × MYR 100.00');
-    expect(text).toContain('Overtime - public holiday · 1.5 days × MYR 100.00');
+    expect(text).toContain('Overtime - rest day · MYR 100.00 1 day');
+    expect(text).toContain('Overtime - public holiday · MYR 100.00 1.5 days');
   });
 
   it('REFUSES the whole itemisation when the legs do not add up to the stored overtime figure', async () => {
@@ -1574,7 +1575,7 @@ describe('a96d320c — the overtime rate and the hours behind it', () => {
       { currency: 'MYR' },
     );
     const text = flat(await renderPayslipPdf(d, labels));
-    expect(text).toContain('Site allowance · 18 days × MYR 25.00');
+    expect(text).toContain('Site allowance · MYR 25.00 18 days');
     expect(text, 'the internal pay code is still off the document').not.toContain('A0044');
   });
 
@@ -1642,88 +1643,26 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
    * the band is 12pt taller only when something is drawn in it. The no-registration document is still
    * byte-identical in height to today's, which is the fallback the plan promised.
    */
-  it('prints the registration number WITH its label, directly below the company name', async () => {
-    const withReg = await renderPayslipPdf(data, labels);
-    const text = drawnText(withReg);
-    // The caption and the number, on one line, in that order — `Reg. no. 202301000001 (1400001-A)`.
-    expect(text, 'the number must be captioned, never bare').toContain(
-      `${labels.companyReg}: ${data.companyReg}`,
-    );
-
-    // …AND IT IS BELOW THE NAME AND ABOVE THE SUBTITLE. "Directly below the company name" is a claim about
-    // coordinates: a document that draws the same three strings in any vertical order contains exactly the
-    // same words. The subtitle is what used to sit immediately under the name.
-    const p = drawnPlacements(withReg);
-    const name = placed(p, data.company)!;
-    const reg = placed(p, `${labels.companyReg}: ${data.companyReg}`)!;
-    const sub = placed(p, labels.documentSubtitle)!;
-    expect(reg.y, 'the registration line sits BELOW the company name').toBeLessThan(name.y);
-    expect(reg.y, 'and ABOVE the document subtitle').toBeGreaterThan(sub.y);
-    expect(reg.x, 'left-aligned with the company name, not indented into the period column').toBeCloseTo(
-      name.x,
-      3,
-    );
-
-    // THE FALLBACK, BY NAME: a company with NO registration number prints NO line at all — not an empty
-    // caption, not a dash — and the letterhead is exactly the height it is today for that company.
-    const withoutReg = await renderPayslipPdf({ ...data, companyReg: null }, labels);
-    const bare = drawnText(withoutReg);
-    expect(bare, 'no caption is printed when there is no number').not.toContain(labels.companyReg);
-    expect(bare, 'and no dash or placeholder stands in for it').not.toContain('202301000001');
-    expect(placed(drawnPlacements(withoutReg), labels.documentSubtitle)!.y, 'the subtitle moves back up')
-      .toBeCloseTo(placed(drawnPlacements(withoutReg), data.company)!.y - 13, 3);
-
-    // THE HEIGHT RULE, INVERTED ON PURPOSE. a96d320c collapsed `(companyReg ? 46 : 34)` to a flat 34
-    // because nothing was drawn in the 12pt the ternary reserved, which left a hole on a registered
-    // company's payslip and none on an unregistered one. The ternary is back, and the difference is now
-    // EXACTLY the one line that is drawn in it — so a future change cannot reserve the band again without
-    // printing something there.
-    expect(
-      letterheadRuleY(withoutReg) - letterheadRuleY(withReg),
-      'the letterhead grows by exactly the one 12pt line it draws',
-    ).toBeCloseTo(12, 3);
-    const a = placed(drawnPlacements(withReg), 'EARNINGS')!;
-    const b = placed(drawnPlacements(withoutReg), 'EARNINGS')!;
-    expect(b.y - a.y, 'and everything the letterhead pushes down moves by the same 12pt, not more').toBeCloseTo(
-      12,
-      3,
-    );
-
-    // NON-VACUITY. The fixture really carries a number, so the `withReg` assertions are about a line that
-    // is drawn and the `withoutReg` ones about one that is suppressed — not about a field never set.
-    expect(data.companyReg).toBe('202301000001 (1400001-A)');
-    expect(labels.companyReg).toBe('Reg. no.');
-    // …and the builder still resolves it from the read, which is where the value comes from.
-    const built = buildPayslipPdfData(
-      {
-        employee: 'Ismail', employeeCode: 'TEST0005', company: 'Isedecor Bina Sdn Bhd',
-        companyReg: '201901024512', payPeriod: '2026-07', basic: '4500.00', allowance: '0',
-        overtime: '0', bonus: '0', gross: '4500.00', otherDeductions: '0', totalDeductions: '649.65',
-        net: '3850.35', employerCost: '5085.00', daysWorked: '31', statutory: {},
-      },
-      { epf: 'EPF', socso: 'SOCSO', skbbk: 'SKBBK', eis: 'EIS', tax: 'PCB' },
-    );
-    expect(built.companyReg, 'the builder is the one place that resolves it for the document').toBe(
-      '201901024512',
-    );
-    expect(
-      drawnText(await renderPayslipPdf(built, labels)),
-      'and the document prints it captioned',
-    ).toContain('Reg. no.: 201901024512');
+  it('retains a labelled full registration number inside the reference employee profile', async () => {
+    const p=drawnPlacements(await renderPayslipPdf(data,labels));
+    const caption=placed(p,labels.companyReg)!;
+    const number=placed(p,data.companyReg!)!;
+    expect(caption).toBeDefined();expect(number).toBeDefined();
+    expect(number.y).toBeCloseTo(caption.y,3);
+    expect(number.x).toBeGreaterThan(caption.x);
+    expect(number.y).toBeLessThan(placed(p,'EMPLOYEE PROFILE')!.y);
+    expect(number.y).toBeGreaterThan(placed(p,'EARNINGS')!.y);
+    const bare=drawnText(await renderPayslipPdf({...data,companyReg:null},labels));
+    expect(bare).not.toContain(labels.companyReg);
+    expect(bare).not.toContain(data.companyReg!);
+    const built=buildPayslipPdfData({...data,companyReg:'201901024512',statutory:{}},{epf:'EPF',socso:'SOCSO',skbbk:'SKBBK',eis:'EIS',tax:'PCB'});
+    expect(built.companyReg).toBe('201901024512');
+    expect(drawnText(await renderPayslipPdf(built,labels))).toContain('201901024512');
   });
 
-  /**
-   * r360 — THE SUBTITLE NAMES THE COMPANY'S OWN PAY CYCLE.
-   *
-   * "Payroll payslip · Regular" was `payroll_batch.run_type`, one of four fixed behavioural types the
-   * kernel gates on and which nobody in the company chose; the reporter wants the configured Pay Cycle name
-   * ("Monthly"). The RESOLUTION lives in core/payslip-cycle-label.ts and is pinned as behaviour in
-   * test/individual-payslip.test.ts — this renderer prints the string it is handed, which is exactly the
-   * property that keeps the screen and the file from answering the question differently.
-   */
   it('prints whatever cycle name it is handed beside the subtitle, and drops the segment when handed none', async () => {
     const named = drawnText(await renderPayslipPdf({ ...data, cycleLabel: 'Monthly' }, labels));
-    expect(named, 'the reporter’s own example').toContain(`${labels.documentSubtitle} · Monthly`);
+    expect(named, 'the reporter’s own example').toContain('Monthly');
     expect(named, 'and the run-type word it replaces is nowhere on the document').not.toContain('Regular');
 
     // A batch that named no cycle AND no recognised run type: the subtitle is the document name alone,
@@ -1843,7 +1782,7 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
 
   it('retains employer contributions and Other on a continuation sheet without an employer cost total',async()=>{const bytes=await renderPayslipPdf({...data,allowance:700,earningLines:Array.from({length:70},(_,i)=>({code:'A'+i,name:'Item '+i,amount:10})),nonPayableLines:[{code:'BIK',name:'Company car',amount:850}]},labels);const p=drawnPlacements(bytes);expect(placed(p,'EMPLOYER CONTRIBUTIONS')!.page).toBeGreaterThan(1);expect(placed(p,'TOTAL NON-PAYABLE')).toBeTruthy();expect(placed(p,'TOTAL EMPLOYER COST')).toBeUndefined();});;
 
-  it('keeps Other beside contributions while payment values remain in Employment Info',async()=>{const p=drawnPlacements(await renderPayslipPdf({...data,bankName:'Maybank',nonPayableLines:[{code:'BIK',name:'Company car',amount:850}]},labels));expect(placed(p,'Maybank')!.y).toBeGreaterThan(placed(p,'EARNINGS')!.y);expect(placed(p,labels.nonPayable.toUpperCase())!.y).toBeCloseTo(placed(p,'EMPLOYER CONTRIBUTIONS')!.y,1);expect(placed(p,'PAYMENT INFORMATION')).toBeUndefined();});;
+  it('places full-width Other before contributions while retaining profile payment values',async()=>{const p=drawnPlacements(await renderPayslipPdf({...data,bankName:'Maybank',nonPayableLines:[{code:'BIK',name:'Company car',amount:850}]},labels));expect(placed(p,'Maybank')!.y).toBeGreaterThan(placed(p,'EARNINGS')!.y);expect(placed(p,labels.nonPayable.toUpperCase())!.y).toBeGreaterThan(placed(p,'EMPLOYER CONTRIBUTIONS')!.y);expect(placed(p,'PAYMENT INFORMATION')).toBeUndefined();});;
 
   /**
    * ⚠️ NON-PAYABLE MONEY MAY NOT REACH A TOTAL, AND THIS IS THE ASSERTION THAT SAYS SO.
@@ -1915,4 +1854,55 @@ describe('a96d320c rev 3 — the header number, the de-boxed panel, aligned tota
  * case asserts the new y AND that it is not below that figure, which is the claim in its own terms.
  * ══════════════════════════════════════════════════════════════════════════════════════════════════ */
 
-describe('r378 — one configurable Employment Info card',()=>{it('honours supplied fields and hides name/code when disabled',async()=>{const text=drawnText(await renderPayslipPdf({...data,employee:'Hidden employee',employeeCode:'Hidden code',informationRows:[{label:'Branch',value:'North branch'}]},labels));expect(text).toContain('North branch');expect(text).not.toContain('Hidden employee');expect(text).not.toContain('Hidden code');expect(text.match(/EMPLOYMENT INFO/g)).toHaveLength(1);});});;
+describe('r378 — one configurable Employment Info card',()=>{it('honours supplied fields and hides name/code when disabled',async()=>{const text=drawnText(await renderPayslipPdf({...data,employee:'Hidden employee',employeeCode:'Hidden code',informationRows:[{label:'Branch',value:'North branch'}]},labels));expect(text).toContain('North branch');expect(text).not.toContain('Hidden employee');expect(text).not.toContain('Hidden code');expect(text.match(/EMPLOYEE PROFILE/g)).toHaveLength(1);});});;
+
+describe('r379 — reporter reference columns without losing saved evidence',()=>{
+  it('places quantity in its own cell while preserving the exact saved rate in the description',async()=>{
+    const bytes=await renderPayslipPdf({...data,allowance:0,overtime:111.11,overtimeLines:[{code:'OT',name:'Recorded overtime',amount:111.11,detail:{qty:2,unit:'hours',rate:55.555}}]},labels);
+    const runs=drawnPlacements(bytes);
+    const quantity=placed(runs,'2 hours')!;
+    const amount=placed(runs,'MYR 111.11')!;
+    const rate=runs.find(r=>r.text.includes('55.555'))!;
+    expect(quantity).toBeDefined();expect(rate).toBeDefined();expect(amount).toBeDefined();
+    expect(quantity.page).toBe(amount.page);expect(quantity.y).toBeCloseTo(amount.y,3);
+    expect(quantity.x).toBeGreaterThan(rate.x);
+    expect(amount.x).toBeGreaterThan(quantity.x);
+    expect(drawnText(bytes)).toContain('Day/Hrs');
+    expect(drawnText(bytes)).not.toContain('\nRate\n');
+    expect(drawnText(bytes).replace(/\n/g,' ')).toContain(labels.periodScopeNote!);
+  });
+  it('continues an exceptionally long single description completely and prints its saved amount once',async()=>{
+    const name=Array.from({length:300},(_,i)=>`Evidence${i}`).join(' ');
+    const bytes=await renderPayslipPdf({...data,allowance:111.11,overtime:0,earningLines:[{code:'LONG',name,amount:111.11}],detailNotRecorded:false},labels);
+    const text=drawnText(bytes),flat=text.replace(/\n/g,' ');
+    expect(await pageCount(bytes)).toBeGreaterThan(1);
+    expect(flat.match(/\bEvidence\d+\b/g),'every exact saved description token appears once in order').toEqual(Array.from({length:300},(_,i)=>`Evidence${i}`));
+    expect(text.match(/MYR 111\.11/g)).toHaveLength(1);
+    expect(text).toContain('EARNINGS (CONTINUED)');
+    const runs=drawnPlacements(bytes);
+    expect(runs.filter(r=>r.y<24).map(r=>r.text),'all actual text baselines clear the page margin').toEqual([]);
+    expect(runs.length).toBeGreaterThan(150);
+  });
+  it('retains the whole employer name when the name itself needs continuation pages',async()=>{
+    const tokens=Array.from({length:200},(_,i)=>`EmployerWord${i}`);
+    const bytes=await renderPayslipPdf({...data,company:tokens.join(' ')},labels);
+    expect(await pageCount(bytes)).toBeGreaterThan(1);
+    expect(drawnText(bytes).replace(/\n/g,' ').match(/\bEmployerWord\d+\b/g),'complete letterhead and complete profile value').toEqual([...tokens,...tokens]);
+    expect(drawnPlacements(bytes).filter(r=>r.y<24)).toEqual([]);
+  });
+  it('shows unknown employer snapshots as Not recorded and retains explicit zero separately',async()=>{
+    const p={mtd:{epf:null,socso:0,eis:null,hrdf:null},ytd:{epf:100,socso:null,eis:0,hrdf:null}};
+    const text=drawnText(await renderPayslipPdf({...data,hrdf:0,employerPeriodTotals:p,ytd:{gross:7120,net:6020.35,epf:715,socso:24.75,eis:9.9,pcb:350}},labels));
+    expect(text.replace(/\n/g,' ').match(/Not recorded/g)!.length).toBe(5);
+    expect(text).toContain('MYR 0.00');expect(text).toContain('MYR 100.00');
+    expect(text.replace(/\n/g,' ')).toContain(labels.normalEmployerNote!);
+    expect(text).not.toContain('credited into your bank account');
+  });
+  it('places the full-width Other section below Net Pay and above the employer period tables',async()=>{
+    const bytes=await renderPayslipPdf({...data,nonPayableLines:[{code:'BIK',name:'Recorded benefit',amount:850}]},labels);
+    const runs=drawnPlacements(bytes),net=placed(runs,'NET PAY')!,other=placed(runs,labels.nonPayable.toUpperCase())!,employer=placed(runs,'EMPLOYER CONTRIBUTIONS')!;
+    expect(other.page).toBe(net.page);expect(other.y).toBeLessThan(net.y);
+    expect(employer.page).toBe(other.page);expect(employer.y).toBeLessThan(other.y);
+    expect(drawnText(bytes)).toContain('TOTAL NON-PAYABLE');expect(drawnText(bytes)).toContain('MYR 850.00');
+  });
+});

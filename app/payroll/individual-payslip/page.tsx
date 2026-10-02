@@ -137,6 +137,7 @@ import {
   listProcessedPayslipsAcross,
   payslipForReview,
   sumPayslipYtd,
+  sumPayslipEmployerPeriodTotals,
 } from '@/core/payroll-view';
 import { absenceDaysLabel, payslipAbsenceLines } from '@/core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-employer-borne';
@@ -150,7 +151,7 @@ import { payslipCycleLabel } from '@/core/payslip-cycle-label';
 import { payrollPublicationState, PAYROLL_PUBLICATION_PILL } from '@/lib/payroll-publication';
 import { payslipProvenance } from '@/core/payslip-recompute';
 import { payrollProcessBack } from '../back';
-import { formatMoney } from '@/lib/money';
+import { formatMoney, formatRate } from '@/lib/money';
 import { packFor } from '@/localization/registry';
 import { Button, Card, EmployeeName, Field, PageHeader, inputCls, pageWideCls } from '@/components/ui';
 import {
@@ -176,7 +177,7 @@ import { SourceTxnBlock } from '../transaction-view/source-txn-block';
 // own code and description, never the category it was classified into.
 // 417d4937 — and the read-time repair for RECORD lines, whose stored name was a free-text remark until
 // r196 and stays wrong on every run calculated before that deploy unless the screen reads the catalogue.
-import { earningRowShown, payItemLabel, recordLineIdentity } from '@/core/payslip-earning-lines';
+import { earningRowShown, payItemLabel, recordLineIdentity, storedComponentLines, payItemLinesForBuckets, storedOvertimeLines, payItemLinesReconcile } from '@/core/payslip-earning-lines';
 
 /** One cookie per screen — each collapses independently (the convention f3ae3245 set for Fixed). */
 export const PAYSLIP_PANEL_COOKIE = 'payslip_panel';
@@ -225,30 +226,31 @@ const EMPLOYER_BORNE_LABEL: Record<EmployerBorneKey, 'epf' | 'socso' | 'skbbk' |
   epf: 'epf', socso: 'socso', skbbk: 'skbbk', eis: 'eis', tax: 'pcb',
 };
 
-function Row({ label, value, muted }: { label: string; value: React.ReactNode; muted?: boolean }) {
+function Row({ label, value, muted, quantity }: { label: string; value: React.ReactNode; muted?: boolean; quantity?:React.ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-4 border-b border-border/60 py-1.5 text-sm last:border-0">
       <span className={muted ? 'text-muted-foreground' : ''}>{label}</span>
-      <span className={`tabular-nums ${muted ? 'text-muted-foreground' : 'font-medium'}`}>{value}</span>
+      {quantity != null && <span className="ms-auto text-right text-xs tabular-nums">{quantity}</span>}
+      <span className={`shrink-0 text-right tabular-nums ${muted ? 'text-muted-foreground' : 'font-medium'}`}>{value}</span>
     </div>
   );
 }
 
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div>
+    <div className="grid grid-cols-[2fr_3fr] items-baseline gap-2 break-words">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="text-sm font-medium">{value || '—'}</dd>
+      <dd className="min-w-0 text-sm font-medium">{value || '—'}</dd>
     </div>
   );
 }
 
 /** One card in the payslip stack. The screen used to be a single tall card with <section>s inside it. */
-function Block({ title, children }: { title: string; children: React.ReactNode }) {
+function Block({ title, children, tone = "slate" }: { title: string; children: React.ReactNode; tone?:"slate"|"earn"|"deduct"|"other" }) {
   return (
-    <Card className="p-6">
-      <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2>
-      {children}
+    <Card className="overflow-hidden">
+      <h2 className={`px-4 py-2 text-center text-xs font-semibold uppercase tracking-wide text-white ${tone==='earn'?'bg-teal-700':tone==='deduct'?'bg-orange-800':tone==='other'?'bg-violet-700':'bg-slate-600'}`}>{title}</h2>
+      <div className="p-4">{children}</div>
     </Card>
   );
 }
@@ -444,8 +446,21 @@ export default async function IndividualPayslipPage({
   // the downloaded document now prints this column too. A screen and a document each running their own
   // reduce over the same rows is how the two start disagreeing about someone's year.
   const ytd = sumPayslipYtd(ytdRows);
+  const employerPeriodTotals = row ? sumPayslipEmployerPeriodTotals(ytdRows,row.payPeriod) : null;
 
   const b = row ? deriveHistoryBreakdown(row) : null;
+  // Rate evidence comes from the same validated snapshot reader as the PDF. The review's historical
+  // grouped row may combine several components, so attach a rate only to one exact saved identity.
+  // Ambiguous/partial evidence stays blank; no attendance or current catalogue is consulted.
+  const components=storedComponentLines(row?.statutory);
+  const recordedDetails={allowance:payItemLinesForBuckets(components,['wage','reimburse']),overtime:payItemLinesForBuckets(components,['ot']),bonus:payItemLinesForBuckets(components,['bonus'])};
+  const detailFor=(line:{code:string;name:string;amount:number},kind:keyof typeof recordedDetails)=>{
+    const matches=recordedDetails[kind].filter(candidate=>(candidate.code??'')===line.code&&candidate.name===line.name&&candidate.amount===line.amount);
+    return matches.length===1?matches[0].detail:null;
+  };
+  const savedOvertime = recordedDetails.overtime.length===0 ? storedOvertimeLines(row?.statutory) : [];
+  const statutoryOvertimeRows = b && b.overtimeLines.length===0 && payItemLinesReconcile(savedOvertime,b.overtime) ? savedOvertime : [];
+  const otLegLabels = {workday:'otLegWorkday',rest_day:'otLegRestDay',rest_day_excess:'otLegRestDayExcess',holiday:'otLegHoliday',holiday_excess:'otLegHolidayExcess'} as const;
   const eb = row ? payslipEmployerBorne(row.statutory) : null;
   // e2632276 — split "Other deductions" into its named unpaid-leave / absence lines plus the residual.
   // Derived from the PAYSLIP'S OWN stamp, never from today's policy: a slip run before this shipped has no
@@ -621,15 +636,16 @@ export default async function IndividualPayslipPage({
               blob), because an <img> pointed at a 404 shows a broken-image icon on a payslip, which is
               worse than a clean text letterhead. No placeholder is invented when there is none. */}
           <Card className="p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
+            <p className="mb-4 text-xs font-semibold">{tSlip('confidentialHeading')}</p>
+            <div className="flex flex-col items-center justify-between gap-4">
+              <div className="w-full text-center">
                 {companyHasLogo && (
                   /* eslint-disable-next-line @next/next/no-img-element -- a bytea served by our own route,
                      not a build-time asset; next/image would need a loader for an authenticated endpoint. */
                   <img
                     src={`/admin/organization/logo/${row.companyId}`}
                     alt={row.company}
-                    className="mb-2 max-h-14 w-auto max-w-[14rem] object-contain"
+                    className="mx-auto mb-2 max-h-14 w-auto max-w-[14rem] object-contain"
                   />
                 )}
                 <h1 className="text-lg font-semibold tracking-tight">{row.company}</h1>
@@ -664,7 +680,7 @@ export default async function IndividualPayslipPage({
                   </p>
                 )}
               </div>
-              <div className="flex flex-col items-end gap-2">
+              <div className="flex flex-wrap items-center justify-center gap-2">
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PAYROLL_PUBLICATION_PILL[pubState!]}`}>
                   {t(`state_${pubState}`)}
                 </span>
@@ -710,8 +726,11 @@ export default async function IndividualPayslipPage({
               file), so this is a render-site change and not a new key. `employeeHeading` is retired IN
               PLACE in all six — re-adding a deleted key later is the MISSING_MESSAGE trap.
               ⚠️ payroll.statutoryAdjustment.employeeHeading is a DIFFERENT key on a different screen. */}
-          <Block title={t('employmentInfoHeading')}>
-            <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <Block title={tSlip('employeeProfile')}>
+            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Info label={tSlip('companyName')} value={row.company} />
+              {row.companyReg && <Info label={tOrg('regNo')} value={row.companyReg} />}
+              <Info label={tSlip('payPeriodLabel')} value={monthYear(row.payPeriod,locale)} />
               {selectPayslipInformation({ ...row, employee: row.employeeName,
                 employmentType: row.employmentType ? t(`employmentType_${row.employmentType}`) : null,
               }, row.informationFields, { ...informationLabels, identityNumber: row.identityIsPassport ? t('fieldPassport') : informationLabels.identityNumber })
@@ -743,8 +762,10 @@ export default async function IndividualPayslipPage({
             </dl>
           </Block>
 
+          <div className="grid items-start gap-4 lg:grid-cols-2">
           {/* ── Earnings ── */}
-          <Block title={tSlip('earnings')}>
+          <Block title={tSlip('earnings')} tone="earn">
+            <div className="mb-2 grid grid-cols-[2fr_1fr_1fr] gap-2 text-xs text-muted-foreground"><span>{tSlip('descriptionColumn')}</span><span className="text-right">{tSlip('quantityColumn')}</span><span className="text-right">{tSlip('amountColumn')}</span></div>
             {b.basic !== 0 && <Row label={tSlip('basicSalary')} value={rm(b.basic)} />}
             {/* a96d320c rev 2 — AN EARNING LINE WITH NOTHING ON IT IS NOT SHOWN. This screen is the admin
                 REVIEW COPY of the payslip and it is where the PDF is downloaded from, so it follows the
@@ -764,12 +785,13 @@ export default async function IndividualPayslipPage({
                 paid, and is inside this figure), and 6b134681 — labelled by CODE · DESCRIPTION, the same
                 identification the Recorded items rows and the printed payslip use. This screen reads the
                 identical derivation the History grid does, so the two cannot name one item differently. */}
-            {b.allowanceLines.map((l, i) => (
-              <p key={`w${i}`} className="flex justify-between ps-3 text-xs text-muted-foreground">
-                <span>{payItemLabel(l)}</span>
-                <span className="tabular-nums">{rm(l.amount)}</span>
+            {b.allowanceLines.map((l, i) => {const detail=detailFor(l,'allowance');return (
+              <p key={`w${i}`} className="grid grid-cols-[2fr_1fr_1fr] gap-2 ps-3 text-xs text-muted-foreground">
+                <span className="min-w-0 break-words">{payItemLabel(l)}{detail && <span className="block">{formatRate(detail.rate,cur)}</span>}</span>
+                <span className="text-right tabular-nums">{detail ? `${detail.qty} ${detail.unit==='hours'?tSlip(detail.qty===1?'hourUnit':'hoursUnit'):detail.unit==='days'?tSlip(detail.qty===1?'dayUnit':'daysUnit'):''}` : ''}</span>
+                <span className="text-right tabular-nums">{rm(l.amount)}</span>
               </p>
-            ))}
+            );})}
             {(earningRowShown(b.overtime) || b.overtimeLines.length > 0) && (
               <Row label={tSlip('overtime')} value={rm(b.overtime)} />
             )}
@@ -779,10 +801,18 @@ export default async function IndividualPayslipPage({
                 the figure is the DISPLAY box (3c473773) while the bucket is the KERNEL's statutory
                 routing, and an item declared into the Overtime box but bucketed as `bonus` would
                 otherwise print an itemised row under a zero Bonus total. */}
-            {b.overtimeLines.map((l, i) => (
-              <p key={`o${i}`} className="flex justify-between ps-3 text-xs text-muted-foreground">
-                <span>{payItemLabel(l)}</span>
-                <span className="tabular-nums">{rm(l.amount)}</span>
+            {b.overtimeLines.map((l, i) => {const detail=detailFor(l,'overtime');return (
+              <p key={`o${i}`} className="grid grid-cols-[2fr_1fr_1fr] gap-2 ps-3 text-xs text-muted-foreground">
+                <span className="min-w-0 break-words">{payItemLabel(l)}{detail && <span className="block">{formatRate(detail.rate,cur)}</span>}</span>
+                <span className="text-right tabular-nums">{detail ? `${detail.qty} ${detail.unit==='hours'?tSlip(detail.qty===1?'hourUnit':'hoursUnit'):detail.unit==='days'?tSlip(detail.qty===1?'dayUnit':'daysUnit'):''}` : ''}</span>
+                <span className="text-right tabular-nums">{rm(l.amount)}</span>
+              </p>
+            );})}
+            {statutoryOvertimeRows.map((line,i)=>(
+              <p key={`stat-ot${i}`} className="grid grid-cols-[2fr_1fr_1fr] gap-2 ps-3 text-xs text-muted-foreground">
+                <span className="min-w-0 break-words">{line.otLeg ? tSlip(otLegLabels[line.otLeg]) : tSlip('overtime')}<span className="block">{line.detail && formatRate(line.detail.rate,cur)}</span></span>
+                <span className="text-right tabular-nums">{line.detail ? `${line.detail.qty} ${line.detail.unit==='hours'?tSlip(line.detail.qty===1?'hourUnit':'hoursUnit'):tSlip(line.detail.qty===1?'dayUnit':'daysUnit')}` : ''}</span>
+                <span className="text-right tabular-nums">{rm(line.amount)}</span>
               </p>
             ))}
             {b.otConvertAmount > 0 && (
@@ -797,12 +827,13 @@ export default async function IndividualPayslipPage({
             {/* 6b134681 — "B0001 · ANGPOW" under Bonus. The bonus box is a statutory classification
                 (additional remuneration for EPF/PCB); it never gets to replace the pay item's own name.
                 Reconciled in the derivation, as above. */}
-            {b.bonusLines.map((l, i) => (
-              <p key={`b${i}`} className="flex justify-between ps-3 text-xs text-muted-foreground">
-                <span>{payItemLabel(l)}</span>
-                <span className="tabular-nums">{rm(l.amount)}</span>
+            {b.bonusLines.map((l, i) => {const detail=detailFor(l,'bonus');return (
+              <p key={`b${i}`} className="grid grid-cols-[2fr_1fr_1fr] gap-2 ps-3 text-xs text-muted-foreground">
+                <span className="min-w-0 break-words">{payItemLabel(l)}{detail && <span className="block">{formatRate(detail.rate,cur)}</span>}</span>
+                <span className="text-right tabular-nums">{detail ? `${detail.qty} ${detail.unit==='hours'?tSlip(detail.qty===1?'hourUnit':'hoursUnit'):detail.unit==='days'?tSlip(detail.qty===1?'dayUnit':'daysUnit'):''}` : ''}</span>
+                <span className="text-right tabular-nums">{rm(l.amount)}</span>
               </p>
-            ))}
+            );})}
             {earningRowShown(b.claim) && <Row label={tSlip('claim')} value={rm(b.claim)} />}
             {b.detailNotRecorded && (
               <p className="pt-1 text-[11px] text-muted-foreground">{tTxn('view.history.detailNotRecorded')}</p>
@@ -814,7 +845,8 @@ export default async function IndividualPayslipPage({
           </Block>
 
           {/* ── Deductions, with the PCB drill-down beneath ── */}
-          <Block title={tSlip('deductionsHeading')}>
+          <Block title={tSlip('deductionsHeading')} tone="deduct">
+            <div className="mb-2 grid grid-cols-[2fr_1fr_1fr] gap-2 text-xs text-muted-foreground"><span>{tSlip('descriptionColumn')}</span><span className="text-right">{tSlip('quantityColumn')}</span><span className="text-right">{tSlip('amountColumn')}</span></div>
             <Row label={tSlip('epf')} value={rm(eb.employee.epf)} />
             <Row label={tSlip('socso')} value={rm(eb.employee.socso)} />
             {/* a96d320c rev 2 — the ELECTION, not the amount. One predicate, shared with the printed
@@ -927,8 +959,40 @@ export default async function IndividualPayslipPage({
             </div>
           </Block>
 
+          </div>
+          {/* ── Net pay ──
+              The one figure the reader looks for first, so it gets the strongest treatment on the screen
+              exactly as it does on the document. Presentation only: the figure and its source are
+              untouched. */}
+          <Card className="flex items-baseline justify-between bg-primary px-6 py-5 text-primary-foreground">
+            <span className="text-sm font-semibold uppercase tracking-wide">{tSlip('netPay')}</span>
+            <span className="text-2xl font-bold tabular-nums">{rm(b.net)}</span>
+          </Card>
+
+          {b.recordLines.some(line => line.nonPayable === true && !isRecordedEmployerContribution(line)) && (
+            <Block title={tSlip('nonPayableHeading')} tone="other">
+              {b.recordLines.filter(line => line.nonPayable === true && !isRecordedEmployerContribution(line)).map((line,index) => <Row key={index} label={recordLineIdentity(line,payItemNames).label} value={rm(line.amount)} />)}
+              <p className="mt-2 text-xs text-muted-foreground">{tSlip('recordLinesNote')}</p>
+            </Block>
+          )}
+          <div className="grid items-start gap-4 lg:grid-cols-[2fr_3fr]">
+            <Block title={tSlip('employerContributionsHeading')}>
+              <table className="w-full text-sm"><thead><tr className="text-xs text-muted-foreground"><th className="py-2 text-left">{tSlip('statutoryCodeColumn')}</th><th className="py-2 text-right">{tSlip('mtdEmployerColumn')}</th></tr></thead><tbody>
+                {(['epf','socso','eis','hrdf'] as ('epf'|'socso'|'eis'|'hrdf')[]).map(key => <tr key={key}><td className="py-1">{tSlip(key)}</td><td className="py-1 text-right tabular-nums">{employerPeriodTotals?.mtd[key] == null ? tSlip('periodNotRecorded') : rm(employerPeriodTotals.mtd[key])}</td></tr>)}
+              </tbody></table>
+              <p className="mt-2 text-xs text-muted-foreground">{tSlip('normalEmployerNote')}</p>
+            </Block>
+            <Block title={t('ytdHeading',{year:row.payPeriod.slice(0,4)})}>
+              <table className="w-full text-sm"><thead><tr className="text-xs text-muted-foreground"><th className="py-2 text-left">{tSlip('statutoryCodeColumn')}</th><th className="py-2 text-right">{tSlip('ytdEmployeeColumn')}</th><th className="py-2 text-right">{tSlip('ytdEmployerColumn')}</th></tr></thead><tbody>
+                {(['epf','socso','eis','hrdf'] as ('epf'|'socso'|'eis'|'hrdf')[]).map(key => <tr key={key}><td className="py-1">{tSlip(key)}</td><td className="py-1 text-right tabular-nums">{key==='hrdf'?'':rm(ytd[key])}</td><td className="py-1 text-right tabular-nums">{employerPeriodTotals?.ytd[key] == null ? tSlip('periodNotRecorded') : rm(employerPeriodTotals.ytd[key])}</td></tr>)}
+                <tr><td className="py-1">{tSlip('pcb')}</td><td className="py-1 text-right tabular-nums">{rm(ytd.pcb)}</td><td /></tr>
+              </tbody></table>
+              <p className="mt-2 text-xs text-muted-foreground">{tSlip('employeeYtdNote')}</p>
+            </Block>
+          </div>
+          <p className="text-xs text-muted-foreground">{tSlip('periodScopeNote')}</p>
           {/* ── Employer contributions, with the employer-borne disclosure folded in (3c473773) ── */}
-          <Block title={tSlip('employerContributionsHeading')}>
+          <Block title={tSlip('selectedEmployerContributionsHeading')}>
             {payslipConfiguredContributions(row.statutory).map((line, index) => <Row key={`${line.code}-${index}`} label={line.name} value={rm(line.amount)} muted />)}
             <Row label={tSlip('epf')} value={rm(b.employerContributions.epf)} muted />
             <Row label={tSlip('socso')} value={rm(b.employerContributions.socso)} muted />
@@ -956,19 +1020,10 @@ export default async function IndividualPayslipPage({
             )}
           </Block>
 
-          {/* ── Net pay ──
-              The one figure the reader looks for first, so it gets the strongest treatment on the screen
-              exactly as it does on the document. Presentation only: the figure and its source are
-              untouched. */}
-          <Card className="flex items-baseline justify-between bg-primary px-6 py-5 text-primary-foreground">
-            <span className="text-sm font-semibold uppercase tracking-wide">{tSlip('netPay')}</span>
-            <span className="text-2xl font-bold tabular-nums">{rm(b.net)}</span>
-          </Card>
-
           {/* ── Year to date ──
               Summed from the SAME read that lists this employee's months, so the column beside the
               current month can never disagree with the months it is made of. */}
-          <Block title={t('ytdHeading', { year: row.payPeriod.slice(0, 4) })}>
+          <Block title={tSlip('paySummaryHeading')}>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -982,10 +1037,6 @@ export default async function IndividualPayslipPage({
                   {(
                     [
                       [tSlip('grossPay'), b.gross, ytd.gross],
-                      [tSlip('epf'), b.st.epfEmployee ?? 0, ytd.epf],
-                      [tSlip('socso'), b.st.socsoEmployee ?? 0, ytd.socso],
-                      [tSlip('eis'), b.st.eisEmployee ?? 0, ytd.eis],
-                      [tSlip('pcb'), b.st.pcb ?? 0, ytd.pcb],
                       [tSlip('netPay'), b.net, ytd.net],
                     ] as [string, unknown, number][]
                   ).map(([label, current, total]) => (
@@ -1000,7 +1051,7 @@ export default async function IndividualPayslipPage({
             </div>
             {/* The YTD column is the FULL employee share as computed and filed, which is why it can differ
                 from the deduction lines above when the employer bore part of them. Said, not hidden. */}
-            <p className="mt-2 text-xs text-muted-foreground">{t('ytdNote')}</p>
+            <p className="mt-2 text-xs text-muted-foreground">{tSlip('employeeYtdNote')}</p>
 
             {b.recordLines.some(line => !isRecordedEmployerContribution(line)) && (
               <div className="mt-4 border-t border-border pt-3">
@@ -1042,6 +1093,7 @@ export default async function IndividualPayslipPage({
             </div>
           </Block>
 
+          <div className="space-y-1 border-t border-border pt-3 text-center text-xs text-muted-foreground"><p>{tSlip('hrContactNote')}</p><p>{tSlip('generatedNote')}</p></div>
           {/* THE IN-PAGE DOCUMENT VIEWER IS GONE (rev 2). r179 framed the real file in an iframe here so
               preview and download could not disagree; the reporter would rather open it on its own, so
               the Review button in the letterhead above is now a new-tab link to that same `?inline=1`
