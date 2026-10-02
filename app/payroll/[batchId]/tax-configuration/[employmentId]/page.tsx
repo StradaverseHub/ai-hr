@@ -6,7 +6,7 @@ import {packFor} from '@/localization/registry';
 import {PageHeader,pageWideCls,Card,Button,inputCls} from '@/components/ui';
 import {savePayrollTaxSelectionAction} from '@/app/admin/personnel/[employmentId]/tax-selection-actions';
 import {payrollTaxContextQuery} from '@/lib/payroll-tax-context-query';
-const uuid=/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
+const uuid=/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 export default async function PayrollTaxConfigurationPage({params,searchParams}:{params:Promise<{batchId:string;employmentId:string}>;searchParams:Promise<{taxSelectionError?:string;from?:string;job?:string}>}){
  const session=await requireAdmin();const {batchId,employmentId}=await params;if(!uuid.test(batchId)||!uuid.test(employmentId))notFound();
  const t=await getTranslations('payroll.taxConfiguration');const tp=await getTranslations('people.detail');const tc=await getTranslations('common');
