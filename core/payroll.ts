@@ -7798,7 +7798,8 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
       })
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
-      .limit(1);
+      .limit(1)
+      .for('update');
     if (!batch) throw new Error('batch not found');
     // Granular RBAC (9bc442bc): payroll.close (configurable per company/tenant), not a coarse admin check.
     await assertPayrollPermission(tx, ctx, 'payroll.close', batch.companyId);
@@ -8724,6 +8725,7 @@ export async function reprocessSelectedEmployees(
           payload:{jobId:job.id,batchId:p.batchId,companyId:currentBatch.companyId,payPeriod:currentBatch.payPeriod,
             employmentId,status:outcome.status,reasonCode:outcome.reasonCode,
             validationCode:outcome.validationCode ?? null,resultRetained:outcome.resultRetained,
+            configuredTaxScheme:outcome.configuredTaxScheme ?? null,effectiveTaxScheme:outcome.effectiveTaxScheme ?? null,
             payslipId:outcome.payslipId,historyId:outcome.historyId,
             versionBefore:outcome.versionBefore,versionAfter:outcome.versionAfter},
         });

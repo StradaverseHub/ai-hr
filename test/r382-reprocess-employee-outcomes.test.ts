@@ -157,4 +157,13 @@ describe('r382 selected reprocess exact employee outcomes', () => {
   expect(await getReprocessJob(caller,job.id)).toBeNull();expect(await listReprocessEmployeeOutcomes(caller,{batchId})).toEqual([]);
  });
 
+ it('overlapping selections each record their own exact serial result rather than borrowing another job history',async()=>{
+  const a=await hire('Same employee');const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:'2026-05'});await generatePayslips(ctx,{batchId});
+  const pair=await Promise.all([run([a.employmentId],batchId),run([a.employmentId],batchId)]);
+  expect((await slip(batchId,a.employmentId)).version).toBe(3);
+  expect(pair.map(r=>r.result.outcomes[0].versionAfter).sort()).toEqual([2,3]);
+  expect(new Set(pair.map(r=>r.result.outcomes[0].historyId)).size).toBe(2);
+  for(const r of pair){const [h]=await owner.db.select().from(schema.payrollEmployeeResultHistory).where(eq(schema.payrollEmployeeResultHistory.id,r.result.outcomes[0].historyId!));expect(h.versionAfter).toBe(r.result.outcomes[0].versionAfter);}
+ });
+
 });
