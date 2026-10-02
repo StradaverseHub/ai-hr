@@ -43,7 +43,7 @@ export function accumulatedEaNonCash(slips: readonly { payPeriod: string; statut
       seen.add(key);
       const target = entry.eaFormLine === 'EA_B3' || entry.eaFormLine === 'bik' ? 'bik'
         : entry.eaFormLine === 'EA_B4' || entry.eaFormLine === 'vola' ? 'vola' : null;
-      if (!target) { unmapped.add(entry.code); continue; }
+      if (!target) { complete = false; unmapped.add(entry.code); continue; }
       if (target !== entry.kind) { complete = false; continue; }
       // The frozen reporting amount owns its exemptions; subjectPCB is not an EA inclusion decision.
       if (target === 'bik') bik = round(bik + entry.reportableAmount);
