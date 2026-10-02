@@ -615,7 +615,7 @@
         "error_not_resident": "Check the employee’s recorded resident tax status before saving this declaration.",
         "error_citizenship_unknown": "Check the recorded citizenship/PR status required for the C-Suite scheme.",
         "error_overlap": "This period overlaps an existing declaration. Review or revoke it before recording a replacement.",
-        "error_missing_declaration": "Record an approval declaration for this employer and period first.",
+        "error_missing_declaration": "No applicable approval is recorded for this employment, employer and payroll period. Complete the approval reference, effective period and HR eligibility confirmation.",
         "error_stale_context": "The employment’s employer changed. Refresh and confirm the approval for the current employer.",
         "title": "Payroll incentive declarations",
         "hint": "HR records existing approval for this employer and period. Eligibility is not determined automatically.",
@@ -639,7 +639,16 @@
         "error_invalid": "Check the employer, scheme, period, approval reference and eligibility confirmation.",
         "error_unavailable": "Declarations are unavailable for this employment or access scope.",
         "error_saveFailed": "Declaration could not be saved. Check the approval, period and employment scope.",
-        "error_revokeFailed": "Declaration could not be revoked. Refresh and check access."
+        "error_revokeFailed": "Declaration could not be revoked. Refresh and check access.",
+        "payrollPeriod": "Payroll period",
+        "configuredCategory": "Configured tax category",
+        "effectiveCategory": "Applicable calculation category",
+        "notReady": "Awaiting required approval information",
+        "ready": "Tax configuration is ready for this payroll period",
+        "scheme_resident": "Normal resident",
+        "scheme_non_resident": "Non-resident",
+        "error_declaration_revoked": "The recorded approval for this employer and payroll period was revoked. Record the applicable approved scheme before recalculating.",
+        "error_declaration_outside_period": "The recorded approval does not cover this payroll period. Complete the applicable approval period before recalculating."
       },
       "backToPeople": "People",
       "backToPersonnelAdmin": "Personnel Management",
@@ -4611,7 +4620,29 @@
       "preChecksNothingPayableNoRemark": "No reason was recorded on the salary record.",
       "reprocessGapNothingPayable": "no monthly basic salary",
       "reprocessReasonNothingPayable": "Deliberately left out of this run — no monthly basic salary and nothing was payable this month. Tick them only if something has been keyed for them since.",
-      "preChecksBadgeLegend": "Anything marked “Blocks processing” must be fixed before this run. Anything marked “Warning” can still be processed, after you confirm it. Anything marked “Will be skipped” needs nothing from you."
+      "preChecksBadgeLegend": "Anything marked “Blocks processing” must be fixed before this run. Anything marked “Warning” can still be processed, after you confirm it. Anything marked “Will be skipped” needs nothing from you.",
+      "reprocessOutcomeStatus": {
+        "reprocessed": "Reprocessed",
+        "skipped": "Skipped",
+        "validation_failed": "Configuration incomplete"
+      },
+      "reprocessNothingPayableFull": "No payable earnings were resolved for this pay period. Payroll recalculation was not performed. Existing payslip, run membership, transactions and history were retained.",
+      "reprocessSucceededReason": "A new payroll result was saved for this employee.",
+      "reprocessChildConfigurationReason": "The configured child relief and qualifying-child counts conflict. Review PCB configuration before recalculating.",
+      "reprocessConfigurationReason": "Required payroll configuration is incomplete. Review this employee’s payroll records before recalculating.",
+      "reprocessNothingPayableShort": "Nothing payable in this pay period; recalculation skipped.",
+      "reprocessPreviousResultRetained": "Previous payroll result retained; the figures shown are from that saved result.",
+      "reprocessOutcomeDetails": "View full reason",
+      "reprocessReviewTaxConfiguration": "Review tax configuration for this run",
+      "reprocessReviewPcbConfiguration": "Review PCB configuration",
+      "reprocessOutcomeRecordedAt": "Recorded at {at}",
+      "reprocessOutcomeTitle": "Selected employee outcomes",
+      "reprocessOutcomeSummary": "Selected: {selected} · Reprocessed: {succeeded} · Skipped: {skipped} · Configuration incomplete: {failed}",
+      "reprocessStoppedPartial": "Processing stopped before all selected employees finished. Saved outcomes remain valid. Review them before trying again.",
+      "reprocessOutcomeStatusHeading": "Processing status",
+      "reprocessOutcomeCategoryHeading": "Tax category",
+      "reprocessOutcomeRemarksHeading": "Remarks",
+      "reprocessLegacyOutcomeUnavailable": "This earlier job did not record individual outcomes. Its saved calculation history remains available below."
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -6190,7 +6221,13 @@
       "validationNoticeBadge": "Will be skipped",
       "validationNothingPayableTitle": "{n} employee(s) will be left out of this run",
       "validationNothingPayableHint": "They have no monthly basic salary and nothing is payable to them for this period. Processing is not blocked: they are named again on the result, and they are paid normally in a period where a transaction is keyed for them.",
-      "validationBadgeLegend": "Anything marked “Blocks processing” must be fixed before this run. Anything marked “Warning” can still be processed, after you confirm it. Anything marked “Will be skipped” needs nothing from you."
+      "validationBadgeLegend": "Anything marked “Blocks processing” must be fixed before this run. Anything marked “Warning” can still be processed, after you confirm it. Anything marked “Will be skipped” needs nothing from you.",
+      "taxScheme_missing_declaration": "Tax scheme information is incomplete: no applicable approval reference, effective period and HR eligibility confirmation have been recorded for this employment and employer.",
+      "taxScheme_declaration_revoked": "The recorded approval for this employer and payroll period was revoked. Record the applicable approved scheme before recalculating.",
+      "taxScheme_declaration_outside_period": "The recorded approval does not cover this payroll period. Complete the applicable approval period before recalculating.",
+      "taxScheme_not_resident": "The recorded tax residency is incompatible with this approved resident scheme.",
+      "taxScheme_citizenship_unknown": "The recorded citizenship does not meet the C-suite scheme requirement.",
+      "taxScheme_overlap": "More than one tax scheme applies to this employer and payroll period. Correct the overlapping configuration."
     },
     "guide": {
       "title": "Payroll Workflow Guide",
@@ -7535,6 +7572,12 @@
       "title": "Payslip Information Setup",
       "saving": "Saving…",
       "saveError": "Could not save. Your selections are retained; please try again."
+    },
+    "taxConfiguration": {
+      "title": "Tax configuration for this payroll run",
+      "context": "{employee} · {employer} · {period}",
+      "permissionHint": "This page uses the same employee-record permissions. For a transferred employment, HR must administer both the payroll employer and the current employer.",
+      "back": "Back to reprocessing"
     }
   },
   "admin": {

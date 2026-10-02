@@ -615,7 +615,7 @@
         "error_not_resident": "Kiểm tra tình trạng thuế cư trú đã ghi nhận của nhân viên trước khi lưu khai báo.",
         "error_citizenship_unknown": "Kiểm tra tình trạng quốc tịch/PR đã ghi nhận cần cho chương trình C-Suite.",
         "error_overlap": "Thời kỳ này trùng với khai báo hiện có. Kiểm tra hoặc thu hồi trước khi ghi nhận thay thế.",
-        "error_missing_declaration": "Trước tiên hãy ghi nhận khai báo phê duyệt cho chủ lao động và thời kỳ này.",
+        "error_missing_declaration": "Chưa ghi nhận phê duyệt áp dụng cho quan hệ lao động, người sử dụng lao động và kỳ lương này. Hoàn tất tham chiếu phê duyệt, thời gian hiệu lực và xác nhận đủ điều kiện của HR.",
         "error_stale_context": "Chủ lao động của quan hệ lao động đã thay đổi. Làm mới và xác nhận phê duyệt cho chủ lao động hiện tại.",
         "title": "Khai báo ưu đãi tiền lương",
         "hint": "HR ghi nhận phê duyệt hiện có cho chủ lao động và thời kỳ này. Điều kiện không được xác định tự động.",
@@ -639,7 +639,16 @@
         "error_invalid": "Kiểm tra chủ lao động, chương trình, thời kỳ, tham chiếu và xác nhận điều kiện.",
         "error_unavailable": "Khai báo không khả dụng cho quan hệ lao động hoặc phạm vi truy cập này.",
         "error_saveFailed": "Không thể lưu khai báo. Kiểm tra phê duyệt, thời kỳ và phạm vi lao động.",
-        "error_revokeFailed": "Không thể thu hồi khai báo. Làm mới và kiểm tra quyền truy cập."
+        "error_revokeFailed": "Không thể thu hồi khai báo. Làm mới và kiểm tra quyền truy cập.",
+        "payrollPeriod": "Kỳ lương",
+        "configuredCategory": "Phân loại thuế đã cấu hình",
+        "effectiveCategory": "Phân loại tính toán áp dụng",
+        "notReady": "Đang chờ thông tin phê duyệt bắt buộc",
+        "ready": "Cấu hình thuế đã sẵn sàng cho kỳ lương này",
+        "scheme_resident": "Cư trú thông thường",
+        "scheme_non_resident": "Không cư trú",
+        "error_declaration_revoked": "Phê duyệt đã ghi nhận cho người sử dụng lao động và kỳ lương này đã bị thu hồi. Ghi nhận chương trình đã được phê duyệt phù hợp trước khi tính lại.",
+        "error_declaration_outside_period": "Phê duyệt đã ghi nhận không bao gồm kỳ lương này. Hoàn tất thời gian phê duyệt phù hợp trước khi tính lại."
       },
       "backToPeople": "Nhân sự",
       "backToPersonnelAdmin": "Quản lý Nhân sự",
@@ -5188,7 +5197,29 @@
       "preChecksNothingPayableNoRemark": "Không có lý do nào được ghi trên hồ sơ lương.",
       "reprocessGapNothingPayable": "không có lương cơ bản hằng tháng",
       "reprocessReasonNothingPayable": "Được cố ý để ra ngoài lần chạy này — không có lương cơ bản hằng tháng và không có khoản nào phải trả trong tháng. Chỉ đánh dấu nếu sau đó đã nhập khoản nào cho họ.",
-      "preChecksBadgeLegend": "Mục đánh dấu “Chặn xử lý” phải được sửa trước lần chạy này. Mục đánh dấu “Cảnh báo” vẫn xử lý được sau khi bạn xác nhận. Mục đánh dấu “Sẽ được để ra ngoài” không cần bạn làm gì cả."
+      "preChecksBadgeLegend": "Mục đánh dấu “Chặn xử lý” phải được sửa trước lần chạy này. Mục đánh dấu “Cảnh báo” vẫn xử lý được sau khi bạn xác nhận. Mục đánh dấu “Sẽ được để ra ngoài” không cần bạn làm gì cả.",
+      "reprocessOutcomeStatus": {
+        "reprocessed": "Đã xử lý lại",
+        "skipped": "Đã bỏ qua",
+        "validation_failed": "Cấu hình chưa đầy đủ"
+      },
+      "reprocessNothingPayableFull": "Không xác định được khoản thu nhập phải trả trong kỳ lương này. Lương không được tính lại. Phiếu lương, danh sách của đợt lương, giao dịch và lịch sử hiện có được giữ nguyên.",
+      "reprocessSucceededReason": "Đã lưu kết quả tính lương mới cho nhân viên này.",
+      "reprocessChildConfigurationReason": "Mức giảm trừ con đã cấu hình không khớp với số con đủ điều kiện. Kiểm tra cấu hình PCB trước khi tính lại.",
+      "reprocessConfigurationReason": "Cấu hình lương bắt buộc chưa đầy đủ. Kiểm tra hồ sơ lương của nhân viên này trước khi tính lại.",
+      "reprocessNothingPayableShort": "Không có khoản phải trả trong kỳ lương này; đã bỏ qua việc tính lại.",
+      "reprocessPreviousResultRetained": "Giữ nguyên kết quả lương trước đó; các số liệu hiển thị lấy từ kết quả đã lưu đó.",
+      "reprocessOutcomeDetails": "Xem đầy đủ lý do",
+      "reprocessReviewTaxConfiguration": "Kiểm tra cấu hình thuế cho đợt lương này",
+      "reprocessReviewPcbConfiguration": "Kiểm tra cấu hình PCB",
+      "reprocessOutcomeRecordedAt": "Ghi nhận lúc {at}",
+      "reprocessOutcomeTitle": "Kết quả của nhân viên đã chọn",
+      "reprocessOutcomeSummary": "Đã chọn: {selected} · Đã xử lý lại: {succeeded} · Đã bỏ qua: {skipped} · Cấu hình chưa đầy đủ: {failed}",
+      "reprocessStoppedPartial": "Việc xử lý đã dừng trước khi hoàn tất tất cả nhân viên đã chọn. Các kết quả đã lưu vẫn có hiệu lực. Kiểm tra chúng trước khi thử lại.",
+      "reprocessOutcomeStatusHeading": "Trạng thái xử lý",
+      "reprocessOutcomeCategoryHeading": "Phân loại thuế",
+      "reprocessOutcomeRemarksHeading": "Ghi chú",
+      "reprocessLegacyOutcomeUnavailable": "Tác vụ trước đây không ghi nhận kết quả từng người. Lịch sử tính toán đã lưu vẫn có ở bên dưới."
     },
     "transactions": {
       "title": "Nhập liệu giao dịch",
@@ -6190,7 +6221,13 @@
       "validationNoticeBadge": "Sẽ được để ra ngoài",
       "validationNothingPayableTitle": "{n} nhân viên sẽ được để ra ngoài lần chạy này",
       "validationNothingPayableHint": "Họ không có lương cơ bản hằng tháng và không có khoản nào phải trả cho kỳ này. Việc xử lý không bị chặn: họ được nêu tên lại trong kết quả, và được trả bình thường ở kỳ có giao dịch nhập cho họ.",
-      "validationBadgeLegend": "Mục đánh dấu “Chặn xử lý” phải được sửa trước lần chạy này. Mục đánh dấu “Cảnh báo” vẫn xử lý được sau khi bạn xác nhận. Mục đánh dấu “Sẽ được để ra ngoài” không cần bạn làm gì cả."
+      "validationBadgeLegend": "Mục đánh dấu “Chặn xử lý” phải được sửa trước lần chạy này. Mục đánh dấu “Cảnh báo” vẫn xử lý được sau khi bạn xác nhận. Mục đánh dấu “Sẽ được để ra ngoài” không cần bạn làm gì cả.",
+      "taxScheme_missing_declaration": "Thông tin chương trình thuế chưa đầy đủ: chưa ghi nhận tham chiếu phê duyệt, thời gian hiệu lực và xác nhận đủ điều kiện của HR áp dụng cho quan hệ lao động và người sử dụng lao động này.",
+      "taxScheme_declaration_revoked": "Phê duyệt đã ghi nhận cho người sử dụng lao động và kỳ lương này đã bị thu hồi. Ghi nhận chương trình đã được phê duyệt phù hợp trước khi tính lại.",
+      "taxScheme_declaration_outside_period": "Phê duyệt đã ghi nhận không bao gồm kỳ lương này. Hoàn tất thời gian phê duyệt phù hợp trước khi tính lại.",
+      "taxScheme_not_resident": "Tình trạng cư trú thuế đã ghi nhận không phù hợp với chương trình dành cho người cư trú đã được phê duyệt này.",
+      "taxScheme_citizenship_unknown": "Quốc tịch đã ghi nhận không đáp ứng yêu cầu của chương trình C-suite.",
+      "taxScheme_overlap": "Có nhiều chương trình thuế áp dụng cho người sử dụng lao động và kỳ lương này. Sửa cấu hình bị chồng lấn."
     },
     "guide": {
       "title": "Hướng dẫn quy trình bảng lương",
@@ -7535,6 +7572,12 @@
       "title": "Thiết lập thông tin phiếu lương",
       "saving": "Đang lưu…",
       "saveError": "Không thể lưu. Lựa chọn được giữ lại; vui lòng thử lại."
+    },
+    "taxConfiguration": {
+      "title": "Cấu hình thuế cho đợt lương này",
+      "context": "{employee} · {employer} · {period}",
+      "permissionHint": "Trang này dùng cùng quyền truy cập như hồ sơ nhân viên. Với quan hệ lao động đã chuyển công ty, HR phải có quyền quản trị cả người sử dụng lao động của đợt lương và người sử dụng lao động hiện tại.",
+      "back": "Quay lại xử lý lại"
     }
   },
   "admin": {
