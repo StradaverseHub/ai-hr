@@ -563,15 +563,16 @@ function replayEmployeeMonth(p: {
   // reader validates incentive version, working and declaration provenance before replay is allowed.
   const recorded = runs.map(r => explainPcb(r.statutory, null));
   const schemes = recorded.map(x => x.kind === 'mtd'
-    ? {scheme: x.calculationScheme ?? 'resident', declarationId: x.taxSchemeDeclarationId}
+    ? {scheme: x.calculationScheme ?? 'resident', declarationId: x.taxSchemeDeclarationId, selection: x.taxSelection}
     : x.kind === 'flat' && x.nonResident && x.rate === 0.3
-      ? {scheme: 'non_resident' as const, declarationId: undefined} : null);
+      ? {scheme: 'non_resident' as const, declarationId: undefined, selection: x.taxSelection} : null);
   const saved = schemes[0];
-  if (!saved || schemes.some(x => !x || x.scheme !== saved.scheme || x.declarationId !== saved.declarationId)) {
+  if (!saved || schemes.some(x => !x || x.scheme !== saved.scheme || x.declarationId !== saved.declarationId || JSON.stringify(x.selection) !== JSON.stringify(saved.selection))) {
     return {reason: 'tax_scheme_not_reconstructable', excluded: false};
   }
   opts.calculationScheme = saved.scheme;
   opts.taxSchemeDeclarationId = saved.declarationId;
+  if (saved.selection) Object.assign(opts, saved.selection);
   const month = Number(first.period.slice(5, 7));
   const priorAcc = p.priorAcc;
 

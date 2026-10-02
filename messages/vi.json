@@ -7198,7 +7198,7 @@
       "slipCurrentHeading": "Current month's remuneration",
       "slipCurrentTotal": "Remuneration charged to tax this month",
       "slipCurrentEpf": "Employee provident fund contribution this month",
-      "slipCurrentNote": "Payroll records the month's taxable remuneration as one combined figure and does not store the split across these components, so each line says it was recorded only in combination rather than showing an amount nobody recorded. The combined figure above is the one the calculation charged.",
+      "slipCurrentNote": "Tổng số bao gồm lợi ích hiện vật và giá trị chỗ ở chịu thuế. Số tiền đã nhập, miễn thuế và chịu thuế được đọc từ phép tính đã lưu này; số tiền thiếu trong hồ sơ cũ được ghi là chưa được ghi nhận. Các thành phần tiền mặt khác chỉ được ghi chung.",
       "slipAdditionalRemHeading": "Additional remuneration for the current month",
       "slipAdditionalTotal": "Additional remuneration charged to tax this month",
       "slipAdditionalEpf": "Employee provident fund contribution on the additional remuneration",
@@ -7241,7 +7241,7 @@
       "slipAccMtd": "Khấu trừ thuế hằng tháng đã nộp lũy kế, bao gồm khấu trừ trên thù lao bổ sung",
       "slipAccZakat": "Zakat, fitrah và thuế xuất cảnh đã nộp lũy kế",
       "slipAccLevy": "Thuế xuất cảnh đã nộp lũy kế",
-      "slipAccNote": "Cột số tiền là những gì người sử dụng lao động này đã chi trả trong các tháng trước của năm tính thuế này, được cộng từ chính các phiếu lương đó. Cột tổng là những con số lũy kế mà phép tính đã dựa vào, đọc từ bản ghi của chính phiếu lương này. Hai bên không nhất thiết phải khớp nhau: các con số lũy kế là phần thù lao chịu thuế, không bao gồm những khoản được miễn, và chúng còn mang theo phần mà người sử dụng lao động trước đã kê khai trên mẫu TP3, điều mà các phiếu lương phát hành ở đây không thể thể hiện. Hệ thống này không ghi nhận lợi ích bằng hiện vật và giá trị chỗ ở như một khoản lương, nên con số 0.00 ở đó có nghĩa là chúng tôi không nắm giữ con số ấy, chứ không phải đã có ai xác nhận là không có. Phí và hoa hồng cũng không được lưu tách khỏi phụ cấp và tiền thưởng dùng để chi trả chúng. Thuế xuất cảnh lũy kế cũng không được lưu riêng: nó nằm trong dòng zakat phía trên, đó là con số hợp nhất duy nhất mà phép tính sử dụng.",
+      "slipAccNote": "Lợi ích hiện vật và giá trị chỗ ở chịu thuế lũy kế được đọc từ hồ sơ các tháng trước của phép tính đã lưu này. Hồ sơ cũ thiếu hoặc không đầy đủ là chưa được ghi nhận, không phải bằng không. Chi tiết tiền mặt thuộc về người sử dụng lao động này; tổng lũy kế đã lưu cũng có thể bao gồm mẫu TP3.",
       "slipAccNoteUnread": "Không thể đọc được các tháng trước của năm tính thuế này cho nhân viên này, nên các dòng chi tiết ghi là không có dữ liệu thay vì hiển thị số không. Các tổng lũy kế bên cạnh là những con số mà phép tính đã dựa vào và không bị ảnh hưởng.",
       "slipStep1Heading": "Bước 1 — khấu trừ thuế trên thù lao thuần cả năm, không bao gồm thù lao bổ sung",
       "slipStep1CurrentMtd": "Khấu trừ thuế của tháng hiện tại",
@@ -7268,7 +7268,11 @@
       "slipStep1CurrentRebate": "Zakat/Phí/Lệ phí tháng hiện tại",
       "formulaNormalMtdNet": "MTD ròng của thù lao thông thường = max(0, MTD thông thường sau quy tắc khấu trừ tối thiểu − Zakat/Phí/Lệ phí tháng hiện tại)",
       "slipStep1NormalRules": "Áp dụng quy tắc cắt phần thập phân, làm tròn lên năm sen và khấu trừ tối thiểu trước khoản giảm trừ tháng hiện tại. MTD ròng thông thường không âm. Khoản giảm trừ còn lại tuân theo cách xử lý thù lao bổ sung đã ghi nhận; tổng khấu trừ cuối cùng được hiển thị riêng.",
-      "slipStep1CombinedFormula": "MTD (A) / MTD ròng = [((P−M)R + B − (Z + X)) / (n + 1)] − Zakat/Phí/Lệ phí tháng hiện tại"
+      "slipStep1CombinedFormula": "MTD (A) / MTD ròng = [((P−M)R + B − (Z + X)) / (n + 1)] − Zakat/Phí/Lệ phí tháng hiện tại",
+      "slipBikEntered": "BIK đã nhập",
+      "slipBikExempt": "BIK miễn thuế",
+      "slipVolaEntered": "Giá trị chỗ ở đã nhập",
+      "slipVolaExempt": "Giá trị chỗ ở miễn thuế"
     },
     "multiCycleWorksheet": {
       "title": "Bảng tính pháp định cho nhiều kỳ trả lương",

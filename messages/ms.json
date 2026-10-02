@@ -7198,7 +7198,7 @@
       "slipCurrentHeading": "Current month's remuneration",
       "slipCurrentTotal": "Remuneration charged to tax this month",
       "slipCurrentEpf": "Employee provident fund contribution this month",
-      "slipCurrentNote": "Payroll records the month's taxable remuneration as one combined figure and does not store the split across these components, so each line says it was recorded only in combination rather than showing an amount nobody recorded. The combined figure above is the one the calculation charged.",
+      "slipCurrentNote": "Jumlah gabungan merangkumi manfaat berupa barangan dan nilai tempat kediaman yang dikenakan cukai. Amaun dimasukkan, dikecualikan dan dikenakan cukai dibaca daripada pengiraan tersimpan ini. Amaun lama yang tiada tidak direkodkan. Komponen tunai lain hanya direkodkan secara gabungan.",
       "slipAdditionalRemHeading": "Additional remuneration for the current month",
       "slipAdditionalTotal": "Additional remuneration charged to tax this month",
       "slipAdditionalEpf": "Employee provident fund contribution on the additional remuneration",
@@ -7241,7 +7241,7 @@
       "slipAccMtd": "PCB bulanan terkumpul yang telah dibayar, termasuk PCB atas saraan tambahan",
       "slipAccZakat": "Zakat, fitrah dan levi pelepasan terkumpul yang telah dibayar",
       "slipAccLevy": "Levi pelepasan terkumpul yang telah dibayar",
-      "slipAccNote": "Lajur amaun ialah apa yang majikan ini telah bayar pada bulan-bulan terdahulu tahun taksiran ini, dijumlahkan daripada penyata gaji tersebut. Lajur jumlah pula ialah angka terkumpul yang digunakan oleh pengiraan itu sendiri, dibaca daripada rekod penyata gaji ini. Kedua-duanya tidak semestinya sepadan: angka terkumpul ialah saraan yang dikenakan cukai, yang tidak termasuk amaun dikecualikan, dan ia turut membawa apa yang diisytiharkan oleh majikan terdahulu dalam Borang TP3, yang tidak dapat ditunjukkan oleh penyata gaji di sini. Manfaat berupa barangan dan nilai tempat kediaman tidak direkodkan sebagai komponen gaji dalam sistem ini, jadi 0.00 di situ bermaksud kami tidak memegang angka tersebut, bukan bahawa sesiapa telah mengesahkan tiada. Yuran dan komisen tidak disimpan berasingan daripada elaun dan bonus yang membayarnya. Levi pelepasan terkumpul juga tidak disimpan berasingan: ia berada di dalam baris zakat di atasnya, iaitu satu angka gabungan yang digunakan oleh pengiraan.",
+      "slipAccNote": "Manfaat berupa barangan dan nilai tempat kediaman terkumpul yang dikenakan cukai dibaca daripada rekod bulan terdahulu dalam pengiraan tersimpan ini. Rekod lama yang tiada atau tidak lengkap tidak direkodkan, bukannya sifar. Butiran tunai adalah untuk majikan ini; jumlah terkumpul tersimpan juga mungkin merangkumi Borang TP3.",
       "slipAccNoteUnread": "Bulan-bulan terdahulu tahun taksiran ini tidak dapat dibaca bagi pekerja ini, jadi baris terperinci menyatakan tiada rekod dan bukan memaparkan sifar. Jumlah terkumpul di sebelahnya ialah angka yang digunakan oleh pengiraan itu sendiri dan tidak terjejas.",
       "slipStep1Heading": "Langkah 1 — lebihan PCB atas saraan bersih tahunan tidak termasuk saraan tambahan",
       "slipStep1CurrentMtd": "PCB bulan semasa",
@@ -7268,7 +7268,11 @@
       "slipStep1CurrentRebate": "Zakat/Fi/Levi bulan semasa",
       "formulaNormalMtdNet": "MTD bersih saraan biasa = max(0, MTD biasa selepas peraturan potongan minimum − Zakat/Fi/Levi bulan semasa)",
       "slipStep1NormalRules": "Pengiraan menggunakan pemotongan perpuluhan, pembundaran lima sen dan peraturan potongan minimum sebelum rebat bulan semasa. MTD bersih biasa tidak boleh negatif. Baki rebat mengikuti layanan saraan tambahan yang direkodkan; jumlah potongan akhir dipaparkan berasingan.",
-      "slipStep1CombinedFormula": "MTD (A) / MTD Bersih = [((P−M)R + B − (Z + X)) / (n + 1)] − Zakat/Fi/Levi bulan semasa"
+      "slipStep1CombinedFormula": "MTD (A) / MTD Bersih = [((P−M)R + B − (Z + X)) / (n + 1)] − Zakat/Fi/Levi bulan semasa",
+      "slipBikEntered": "BIK dimasukkan",
+      "slipBikExempt": "BIK dikecualikan",
+      "slipVolaEntered": "Nilai tempat kediaman dimasukkan",
+      "slipVolaExempt": "Nilai tempat kediaman dikecualikan"
     },
     "multiCycleWorksheet": {
       "title": "Lembaran Kerja Berkanun Berbilang Kitaran",

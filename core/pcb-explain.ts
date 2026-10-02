@@ -1,3 +1,4 @@
+import { readPcbNonCash, type PcbNonCashSnapshot } from '../localization/noncash-benefits';
 /**
  * Feedback 169e3c24 — explain a payslip's PCB (MTD) figure from what the payslip itself recorded.
  * Feedback 45df860a — …and now the WHOLE working, so the LHDN formula can be closed on screen.
@@ -189,7 +190,12 @@ export type PcbFlatTrace = {
  *   · `pcb`       — what was DEDUCTED (`statutory.pcb`), override included.
  *   · `pcbSystem` — what the recorded working EXPLAINS. Identical to `pcb` on a plain regular run.
  *   · `basis`     — NULL when they are the same number; otherwise why they are not. */
-type PcbFigures = { pcb: number; pcbSystem: number; basis: PcbBasis | null };
+export type PcbTaxSelectionProvenance = {
+  taxSelectionId: string;
+  taxSelectionVersion: number;
+  taxSelectionSource: 'income_tax_resident';
+};
+type PcbFigures = { pcb: number; pcbSystem: number; basis: PcbBasis | null; taxSelection?: PcbTaxSelectionProvenance; nonCash?: PcbNonCashSnapshot | null };
 
 export type PcbExplanation =
   | ({
@@ -488,13 +494,31 @@ export function explainPcb(
         : manual
           ? { kind: 'manual', system: pcbSystem, applied: pcb, prior: null, engineRun: null, reason: manual.reason }
           : null;
-  const figures = { pcb, pcbSystem, basis };
+  const figures: PcbFigures = { pcb, pcbSystem, basis };
   if (!metaObj) return { kind: 'unavailable', ...figures };
 
+  const nonCash = readPcbNonCash(st.pcbNonCash);
+  const savedTrace = metaObj.trace as Record<string, unknown> | null;
+  const savedNormal = savedTrace?.Y1 ?? savedTrace?.remuneration;
+  figures.nonCash = nonCash && typeof savedNormal === 'number' && Number.isFinite(savedNormal) &&
+    Math.abs(nonCash.cashNormal + nonCash.cumulative.bik + nonCash.cumulative.vola - savedNormal) < 0.005
+      ? nonCash : null;
+
   // Read the immutable scheme before legacy rate keys. Never infer a category from today's profile.
+  const selectionFields = ['taxSelectionId', 'taxSelectionVersion', 'taxSelectionSource'] as const;
+  const hasSelection = selectionFields.some(key => Object.hasOwn(metaObj, key));
+  if (hasSelection && (typeof metaObj.taxSelectionId !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(metaObj.taxSelectionId) ||
+      !Number.isSafeInteger(metaObj.taxSelectionVersion) || (metaObj.taxSelectionVersion as number) < 1 ||
+      metaObj.taxSelectionSource !== 'income_tax_resident')) return {kind: 'unavailable', ...figures};
+  if (hasSelection) Object.assign(figures, {taxSelection: {
+    taxSelectionId: metaObj.taxSelectionId as string,
+    taxSelectionVersion: metaObj.taxSelectionVersion as number,
+    taxSelectionSource: 'income_tax_resident' as const,
+  }});
   const scheme = metaObj.calculationScheme;
   const knownSchemes = ['resident', 'rep', 'knowledge_worker', 'c_suite', 'non_resident'];
-  if (scheme !== undefined && !knownSchemes.includes(scheme as string)) return {kind: 'unavailable', ...figures};
+  if ((hasSelection && scheme === undefined) || scheme !== undefined && !knownSchemes.includes(scheme as string)) return {kind: 'unavailable', ...figures};
   const incentive = scheme === 'rep' || scheme === 'knowledge_worker' || scheme === 'c_suite';
   if (incentive) {
     const raw = metaObj.trace as Record<string, unknown> | null;
@@ -502,8 +526,8 @@ export function explainPcb(
     const common = ['M', 'R', 'B', 'taxOnP1', 'category', 'Y1', 'K1', 'Y2', 'K2', 'Yt', 'Kt', 'K2t',
       'Z', 'lpAccumulated', 'lpCurrent', 'zakatCurrent', 'mtdNormalCalc', 'mtdAdditionalCalc',
       'mtdNormalFloored', 'mtdAdditionalFloored', 'zakatLeftover'];
-    if (typeof metaObj.taxSchemeDeclarationId !== 'string' ||
-        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(metaObj.taxSchemeDeclarationId) ||
+    if ((!hasSelection && (typeof metaObj.taxSchemeDeclarationId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(metaObj.taxSchemeDeclarationId))) ||
         !raw || raw.schemeVersion !== 1 || !hasRecordedNumbers(raw, common) ||
         !hasRecordedNumbers(metaObj, ['month', 'n', 'ytdNet', 'epfClaimed', 'pcbPaid', 'P1']) ||
         !hasRecordedNumbers(reliefs, ['individual', 'spouse', 'children', 'disabledIndividual', 'disabledSpouse', 'total', 'lp']) ||
@@ -570,7 +594,7 @@ export function explainPcb(
   return {
     kind: 'mtd',
     ...(scheme !== undefined ? {calculationScheme: scheme as PcbCalculationScheme} : {}),
-    ...(incentive ? {taxSchemeDeclarationId: metaObj.taxSchemeDeclarationId as string} : {}),
+    ...(incentive && !hasSelection ? {taxSchemeDeclarationId: metaObj.taxSchemeDeclarationId as string} : {}),
     reliefSource,
     month: n(m.month),
     remainingMonths: n(m.n),
@@ -1223,9 +1247,16 @@ const slipComponentRows = (captions: readonly string[]): PcbSlipRow[] =>
  * @param y1 Y1 as the run stamped it — the combined normal remuneration PCB was charged on.
  * @param k1 K1 — this month's employee EPF, the leg netted off Y1.
  */
-export function pcbCurrentRemunerationSection(y1: PcbWorksheetValue, k1: PcbWorksheetValue): PcbSlipSection {
+export function pcbCurrentRemunerationSection(y1: PcbWorksheetValue, k1: PcbWorksheetValue, benefits?: PcbNonCashSnapshot | null): PcbSlipSection {
   const rows: PcbSlipRow[] = [{ line: 'Y1', caption: 'slipCurrentTotal', ns: 'pcbDetail', first: y1 }];
-  for (const r of slipComponentRows(SLIP_CURRENT_COMPONENTS)) rows.push(r);
+  for (const r of slipComponentRows(SLIP_CURRENT_COMPONENTS)) {
+    const kind = r.caption === 'slipCompBenefitsInKind' ? 'bik' : r.caption === 'slipCompLivingAccommodation' ? 'vola' : null;
+    rows.push(kind ? {...r, first: benefits ? slipMoney(benefits.current[kind].taxable) : SLIP_ABSENT} : r);
+    if (kind && benefits) {
+      rows.push({line: '', caption: kind === 'bik' ? 'slipBikEntered' : 'slipVolaEntered', ns: 'pcbDetail', first: slipMoney(benefits.current[kind].entered)});
+      rows.push({line: '', caption: kind === 'bik' ? 'slipBikExempt' : 'slipVolaExempt', ns: 'pcbDetail', first: slipMoney(benefits.current[kind].exempt)});
+    }
+  }
   rows.push({ line: 'K1', caption: 'slipCurrentEpf', ns: 'pcbDetail', first: k1 });
   return { heading: 'slipCurrentHeading', firstColumn: 'slipColAmount', rows, note: 'slipCurrentNote' };
 }
@@ -1464,8 +1495,8 @@ export function pcbAccumulatedRemunerationSection(
     { line: '', caption: 'slipAccGrossSalary', ns: 'pcbDetail', first: slipMoney(paid?.grossSalary) },
     { line: '', caption: 'slipAccFeesCommission', ns: 'pcbDetail', first: SLIP_COMBINED },
     { line: '', caption: 'slipAccTipsAllowances', ns: 'pcbDetail', first: slipMoney(paid?.allowances) },
-    { line: '', caption: 'slipAccBik', ns: 'pcbDetail', first: SLIP_NIL },
-    { line: '', caption: 'slipAccVola', ns: 'pcbDetail', first: SLIP_NIL },
+    { line: '', caption: 'slipAccBik', ns: 'pcbDetail', first: x.nonCash?.accumulated.complete ? slipMoney(x.nonCash.accumulated.bik) : SLIP_ABSENT },
+    { line: '', caption: 'slipAccVola', ns: 'pcbDetail', first: x.nonCash?.accumulated.complete ? slipMoney(x.nonCash.accumulated.vola) : SLIP_ABSENT },
     { line: '', caption: 'slipAccAdditional', ns: 'pcbDetail', first: slipMoney(paid?.additional) },
     {
       line: 'Y',
@@ -1571,7 +1602,7 @@ export function pcbSlipSections(
       first: p.previousDeduction,
     }),
     // 5 and 6 — the component split payroll does not persist. See the block above `SLIP_CURRENT_COMPONENTS`.
-    pcbCurrentRemunerationSection(fromTrace(t, (v) => v.Y1), t ? slipMoney(t.K1) : slipMoney(x.epfThisMonth)),
+    pcbCurrentRemunerationSection(fromTrace(t, (v) => v.Y1), t ? slipMoney(t.K1) : slipMoney(x.epfThisMonth), x.nonCash),
     pcbAdditionalRemunerationSection(fromTrace(t, (v) => v.Yt), fromTrace(t, (v) => v.Kt)),
     // 7 — this month's declaration, itemised, beside the year it accumulates into.
     pcbReliefScheduleSection({
