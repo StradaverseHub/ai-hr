@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listCompanies, listDepartments } from '@/core/read';
-import { rosterExceptionCount, rosterWindowView } from '@/core/roster';
+import { rosterExceptionCount, rosterWindowView, rosterVariance, isRosterException } from '@/core/roster';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { RosterGrid, RosterTemplateButton } from '@/components/roster-grid';
 import { copyRosterAction, generateRosterAction } from './actions';
@@ -20,6 +20,8 @@ import {
   type RosterViewKind,
 } from '@/lib/roster-month';
 
+import {resolveMyTeamRosterScope} from '@/core/my-team';
+import {parseMyTeamQuery,serializeMyTeamQuery} from '@/lib/my-team-query';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
 /**
@@ -41,6 +43,8 @@ export default async function RosterPage({
 }: {
   searchParams: Promise<{
     companyId?: string;
+    /** Serialized team query, always resolved afresh; never a posted employment-id authority. */
+    myTeam?: string;
     /** a57f0584 rev 2 — which of the three views, and the dates it needs. `month` alone still works, and
      *  still means the month view: every link and bookmark written before this round keeps resolving. */
     view?: string;
@@ -61,7 +65,15 @@ export default async function RosterPage({
   const locale = await getLocale();
   const sp = await searchParams;
 
-  const companies = (await listCompanies(s)).filter((c) => scopeIds.length === 0 || scopeIds.includes(c.id));
+  const requestedTeamQuery = sp.myTeam ? parseMyTeamQuery(new URLSearchParams(sp.myTeam)) : null;
+  const teamQuery = requestedTeamQuery ? {...requestedTeamQuery,
+    view:sp.view==='month'?'month' as const:sp.view==='week'?'week' as const:requestedTeamQuery.view,
+    anchorDate:sp.from??(sp.month?`${sp.month}-01`:requestedTeamQuery.anchorDate),
+    search:sp.q??requestedTeamQuery.search,
+    companyIds:(requestedTeamQuery.companyIds??scopeIds).filter(id=>scopeIds.includes(id)),
+  } : null;
+  const teamScope = teamQuery ? await resolveMyTeamRosterScope(s,teamQuery) : null;
+  const companies = (await listCompanies(s)).filter(c=>!teamScope||teamScope.companyIds.includes(c.id)).filter((c) => scopeIds.length === 0 || scopeIds.includes(c.id));
   if (companies.length === 0) {
     // a57f0584 — the empty state takes the SAME width as the screen. It was mx-auto max-w-6xl, which is a
     // page-level cap on a screen whose whole point is being full width; one card of text is no reason for
@@ -105,17 +117,20 @@ export default async function RosterPage({
    * `assertRosterWindow` — so this is the message, not the guard.
    */
   const resolved = resolveRosterWindow({ view: sp.view, month: sp.month, from: sp.from, to: sp.to, today: todayIso });
-  const win = resolved.window;
+  const win = teamScope ? resolveRosterWindow({view:teamQuery!.view,month:teamScope.from.slice(0,7),from:teamScope.from,to:teamScope.to,today:todayIso}).window : resolved.window;
   const month = win.month;
 
-  const view = await rosterWindowView(s, {
+  const rosterView = await rosterWindowView(s, {
     companyIds,
     from: win.from,
     to: win.to,
     ...(sp.bu ? { businessUnitId: sp.bu } : {}),
     ...(sp.dept ? { departmentId: sp.dept } : {}),
     ...(sp.q ? { q: sp.q } : {}),
+    ...(teamScope ? {employmentIds:teamScope.employmentIds} : {}),
   });
+  const teamIds=teamScope?new Set(teamScope.employmentIds):null;
+  const view=teamIds?{...rosterView,allEmployees:rosterView.allEmployees.filter(e=>teamIds.has(e.employmentId))}:rosterView;
 
   /**
    * a57f0584 rev 2 — ONLY THE COUNT. "This week's exceptions" was a full listing rendered at the foot of
@@ -125,7 +140,7 @@ export default async function RosterPage({
    * them.
    */
   const [exceptionCount, departments] = await Promise.all([
-    rosterExceptionCount(s, { from: view.from, to: view.to, companyIds, today: todayIso }),
+    teamIds ? rosterVariance(s,{from:view.from,to:view.to,companyIds,today:todayIso}).then(rows=>rows.filter(row=>teamIds.has(row.employmentId)&&isRosterException(row)).length) : rosterExceptionCount(s, { from: view.from, to: view.to, companyIds, today: todayIso }),
     listDepartments(s, { companyIds }),
   ]);
 
@@ -186,6 +201,7 @@ export default async function RosterPage({
    */
   const qs = (over: Record<string, string | undefined>) => {
     const p = new URLSearchParams({ view: win.kind, month: win.month });
+    if(sp.myTeam)p.set('myTeam',sp.myTeam);
     if (win.kind !== 'month') {
       p.set('from', win.from);
       p.set('to', win.to);
@@ -261,6 +277,7 @@ export default async function RosterPage({
       <div className="flex flex-wrap items-center justify-between gap-3">
         {companies.length > 1 ? (
           <form method="get" className="flex items-center gap-2">
+            {sp.myTeam && <input type="hidden" name="myTeam" value={sp.myTeam} />}
             <input type="hidden" name="month" value={month} />
             <select name="companyId" defaultValue={companyId ?? ''} className={inputCls}>
               {/* a57f0584 — and it is the DEFAULT, not merely available: the screen opens on everyone. */}
@@ -311,10 +328,10 @@ export default async function RosterPage({
               are any"); the rows are a screen of their own, reached from here with the same month and the
               same filters. It is NOT hidden when the count is zero: an Exceptions button that vanishes
               cannot tell you there is nothing wrong, it can only look like a missing feature. */}
-          <Link href={`/roster/exceptions?${qs({})}`} className={navBtn}>
+          {!teamScope && <Link href={`/roster/exceptions?${qs({})}`} className={navBtn}>
             {t('exceptionsButton', { count: exceptionCount })}
-          </Link>
-          <Link href={`/roster/export?${qs({ format: 'xlsx' })}`} className={navBtn} prefetch={false}>
+          </Link>}
+          <Link href={teamQuery?`/manage/my-team/export?${serializeMyTeamQuery({...teamQuery,anchorDate:win.from,view:win.kind==='month'?'month':'week',layers:{roster:true,attendance:false,leave:false}})}&format=xlsx`:`/roster/export?${qs({ format: 'xlsx' })}`}  className={navBtn} prefetch={false}>
             {t('exportLabel')}
           </Link>
         </div>
@@ -328,7 +345,7 @@ export default async function RosterPage({
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
           <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t('viewLabel')}</span>
           <span className="inline-flex overflow-hidden rounded-md border border-border">
-            {(['month', 'week', 'custom'] as const).map((kind) => (
+            {(['month', 'week', 'custom'] as const).filter(kind=>!teamScope||kind!=='custom').map((kind) => (
               <Link
                 key={kind}
                 href={viewHref(kind)}
@@ -363,6 +380,7 @@ export default async function RosterPage({
             the reporter's own screen carries. A plain GET form: the URL is the state, so a filtered window
             is shareable and the export link below carries the same narrowing. */}
         <form method="get" className="flex flex-wrap items-end gap-3 px-4 py-3">
+          {sp.myTeam && <input type="hidden" name="myTeam" value={sp.myTeam} />}
           {companyId && <input type="hidden" name="companyId" value={companyId} />}
           {/* The view is posted back with the filters, or Query would drop the operator to Month. */}
           <input type="hidden" name="view" value={win.kind} />
@@ -468,7 +486,7 @@ export default async function RosterPage({
               shifts={view.shifts}
               initial={view.cells}
               usual={view.usual}
-              isAdmin={admin}
+              isAdmin={admin && (!teamScope || teamScope.canEditRoster)}
               today={todayIso}
               editQuery={qs({})}
             />
