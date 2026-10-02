@@ -1,0 +1,30 @@
+VERDICT: Partly there already   ·   SIZE: Quick
+
+THE SITUATION TODAY
+
+The generated date is currently below the employer-information border. Preview and Download use the same form, so both show the same positioning issue.
+
+WHAT WE'LL CHANGE
+
+- Place the Date caption, date value and writing line fully inside the existing lower-left area of the employer-information border.
+- Keep the current form design, section positions, employer-information border and surrounding information in exactly the same places.
+- Check that the complete date remains readable and clear of the officer details, including forms with longer employer names and addresses.
+
+WHAT YOU'LL GET
+
+The existing EA Form with only the Date field corrected, shown consistently in Preview and Download.
+
+GOOD TO KNOW
+
+- This changes presentation only. The date calculation, payroll figures, selected year and saved records remain unchanged.
+- If exceptionally long complete information leaves no clear space for the date, the form will explain the problem rather than overlap or hide information.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: lib/ea-pdf.ts currently draws date caption/value at baseline 827 and dotted rule 829.5, below the V6 footer bottom 817.9. app/payroll/statutory-forms/ea/shared.ts is the shared scoped statement/read/render path; preview and download differ only in disposition. Retain all existing A-F and V6 employer/officer coordinates. Move only date baseline to 814.3, keep the current horizontal date column, and validate complete glyph bounds and the writing-line stroke against the existing footer bounds. Keep glyphs within the 0.8pt border’s inner edge and the dotted stroke at least 0.4pt clear; reduce only date size down to the existing 6pt readable floor when a previously-fitting seven-line footer needs more clearance. Use finite readable width fitting, preserve the blank form's empty date rule, and refuse a collision with officer captions before returning any PDF.
+
+OBSERVATION: uploaded V6 was visually inspected and shows only the cropped employer/officer box; it does not show a date. V5 was visually inspected and is cropped above the footer. The linked official LHDN PDF currently returns HTTP500, so it cannot establish new geometry. This is containment within the existing shipped V6 design, not a claim to reproduce currently unavailable official artwork.
+
+Verification: update the existing date placement guard and measure actual emitted date glyph bounds, readable size, separation from surrounding officer text, unchanged footer coordinates and lower dotted-line stroke edge in English and Malay. Parent will run existing EA renderer, blank/date, annual mapping and shared-route guards, non-vacuity check and actual render after the active r380 exclusive gate has finished. No migration, data mapping, money calculation, permission or statutory date rule changes. Previously downloaded files remain unchanged.

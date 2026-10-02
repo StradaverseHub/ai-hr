@@ -19,6 +19,7 @@ import { describe, expect, it } from 'vitest';
 import { PDFArray, PDFDocument, PDFRawStream, decodePDFRawStream } from 'pdf-lib';
 import {
   EA_FORM,
+  EA_V6_FOOT,
   EA_FORM_NUMBERING,
   EA_FORM_WORDS,
   eaCaptionWords,
@@ -409,7 +410,7 @@ describe('r219 — the foot: the officer box, and the agency’s own spelling of
    * hard-coded 723 does not survive a re-pitch; it fails it, which is the honest outcome but not the
    * promised one. The baselines below are derived from the box's own two constants instead.
    */
-  it('Tarikh is filled from the statement’s own formDate, at the position r219 put it', async () => {
+  it('Tarikh is filled from the statement’s own formDate within the unchanged V6 footer', async () => {
     const src = read('lib/ea-pdf.ts');
     const items = await drawn(await renderEaPdf(BASE, bundleFor('ms'), { locale: 'ms' }));
     const H = 841.89; // A4, and the renderer's own `at()` is H - tt.
@@ -420,32 +421,14 @@ describe('r219 — the foot: the officer box, and the agency’s own spelling of
     expect(caption, 'the Tarikh caption is not on the page').toBeDefined();
     expect(value, 'the foot carries no date').toBeDefined();
     expect(phone, 'the telephone number is not on the page').toBeDefined();
-    /**
-     * ⚠️ r372 — THE NUMBERS THIS PINNED WERE r219's AND THEY WERE THE TRACING's. Quoted, because this
-     * case's own prose claimed the opposite ("it survives round two re-pitching the box") and that
-     * claim was wrong:
-     *
-     *     expect(caption!.x).toBeCloseTo(EA_FORM.left + 6, 2);
-     *     expect(value!.x).toBeCloseTo(71, 2);
-     *     expect(tt(caption!.y)).toBeCloseTo(723, 2);
-     *
-     * LHDN puts its Date at x 45.2 on tt 802, on the SAME table row as its Telephone No. rule at
-     * 331.5. r219 put ours at `left + 6` on 723, off a 150 dpi tracing of another vendor's page, and
-     * 723 is 79 pt above the agency's row. The RELATIONSHIP r367 cared about — the date and the
-     * telephone on one baseline, the date OUTSIDE the box — is the agency's own and is what is pinned
-     * now, against `EA_FORM` rather than against a literal, so the next re-pitch really does carry it.
-     */
-    const O = EA_FORM.officerBox;
-    const footRow = 827; // V6 reserves a separate date row below the full-width footer.
-    expect(caption!.x, 'the Tarikh caption left the agency’s own column').toBeCloseTo(EA_FORM.dateX, 2);
-    expect(value!.x, 'the date is written before its own caption').toBeGreaterThan(caption!.x);
-    expect(value!.x, 'the date ran past the agency’s rule').toBeLessThan(EA_FORM.dateRule[1]);
-    expect(tt(caption!.y), 'the Tarikh caption left the agency’s last row').toBeCloseTo(footRow, 1);
-    expect(tt(value!.y), 'the date left the agency’s last row').toBeCloseTo(footRow, 1);
-    expect(caption!.x, 'the date moved INSIDE the officer box — the agency prints it outside').toBeLessThan(O.x0);
-    // …and it is the agency's own arrangement that keeps them together: LHDN's Date and Telephone No.
-    // share one table row, so a change that moves one and not the other is the defect to catch.
-    expect(tt(phone!.y), 'V6 telephone must remain inside the footer above the signing date').toBeLessThan(tt(value!.y));
+    // r381 only moves the date inside the unchanged V6 footer; surrounding rows stay in place.
+    const footRow = EA_V6_FOOT.bottom-3.6;
+    expect(caption!.x).toBeCloseTo(EA_FORM.dateX, 2);
+    expect(value!.x).toBeGreaterThan(caption!.x);
+    expect(value!.x).toBeLessThan(EA_FORM.dateRule[1]);
+    expect(tt(caption!.y)).toBeCloseTo(footRow, 1);
+    expect(tt(value!.y)).toBeCloseTo(footRow, 1);
+    expect(tt(phone!.y)).toBeLessThan(tt(value!.y));
     // The renderer must not read a clock: that is what keeps every EA test time-independent.
     // Comment-proof: the renderer's own prose NAMES `todayInKualaLumpur` (to say where the value comes
     // from), so the check is on the IMPORTS — a pure renderer cannot read a clock it never imported, and
