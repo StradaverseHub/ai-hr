@@ -489,6 +489,10 @@ export function explainPcb(
         !hasRecordedNumbers(metaObj, ['month', 'n', 'ytdNet', 'epfClaimed', 'pcbPaid', 'P1']) ||
         !hasRecordedNumbers(reliefs, ['individual', 'spouse', 'children', 'disabledIndividual', 'disabledSpouse', 'total', 'lp']) ||
         !hasRecordedNumbers(st, ['pcb', 'pcbBonus', 'zakat', 'epfEmployee']) ||
+        !Number.isInteger(metaObj.month) || (metaObj.month as number) < 1 || (metaObj.month as number) > 12 ||
+        !Number.isInteger(metaObj.n) || metaObj.n !== 12 - (metaObj.month as number) ||
+        ![1, 2, 3].includes(raw.category as number) || (raw.Yt as number) < 0 ||
+        ((raw.Yt as number) > 0) !== Object.hasOwn(metaObj, 'P2') ||
         raw.R !== 0.15 || raw.M !== 0 ||
         (scheme === 'c_suite' ? raw.B !== 0 || Object.hasOwn(raw, 'T') || Object.hasOwn(raw, 'T2')
           : hasRecordedNumbers(raw, ['T']) && raw.B !== -(raw.T as number)) ||

@@ -60,7 +60,7 @@ describe('r380 stored scheme presentation', () => {
   it('does not require rebate fields for recorded C-Suite working', () => {
     const st = saved('c_suite'); Reflect.deleteProperty(st.pcbMeta.trace, 'T');
     Object.assign(st.pcbMeta, {P2: 40000});
-    Object.assign(st.pcbMeta.trace, {totalTaxYear: 6000, totalMtdYear: 200});
+    Object.assign(st.pcbMeta.trace, {Yt: 1000, totalTaxYear: 6000, totalMtdYear: 200});
     const x = explainPcb(st, null); expect(x.kind).toBe('mtd');
     expect(pcbFormulaBlocks(x, format).find(b => b.key === 'schemeAnnual')).toMatchObject({formula: 'formulaSchemeAnnual', substituted: 'max( 0, 40000.00 × 15% )', result: 6000});
   });
@@ -82,6 +82,26 @@ describe('r380 stored scheme presentation', () => {
       }
     }
   });
+  it('refuses invalid recorded month, remaining months and tax category', () => {
+    for (const patch of [{month: 0}, {month: 13}, {month: 1.5}, {n: 1}, {n: 2.5}]) {
+      const st = saved(); Object.assign(st.pcbMeta, patch);
+      expect(explainPcb(st, null).kind).toBe('unavailable');
+    }
+    for (const category of [0, 4, 1.5]) {
+      const st = saved(); st.pcbMeta.trace.category = category;
+      expect(explainPcb(st, null).kind).toBe('unavailable');
+    }
+  });
+  it('refuses missing bonus working instead of presenting positive additional remuneration as no bonus', () => {
+    const st = saved(); st.pcbMeta.trace.Yt = 1000;
+    expect(explainPcb(st, null).kind).toBe('unavailable');
+    Object.assign(st.pcbMeta, {P2: 0});
+    expect(explainPcb(st, null).kind).toBe('unavailable');
+    Object.assign(st.pcbMeta.trace, {totalTaxYear: 0, totalMtdYear: 0, T2: 0});
+    expect(explainPcb(st, null).kind).toBe('mtd');
+    st.pcbMeta.trace.Yt = 0;
+    expect(explainPcb(st, null).kind).toBe('unavailable');
+  });
   it('retains legacy flat working instead of reclassifying from a current relief profile', () => {
     const x = explainPcb({pcb: 100, pcbMeta: {flatRate: .15, trace: {remuneration: 1000, additional: 0, rate: .15}}},
       {individual: 99999, spouse: 99999, children: 99999, disabledIndividual: 0, disabledSpouse: 0, total: 299997, lp: 0});
@@ -90,7 +110,7 @@ describe('r380 stored scheme presentation', () => {
   });
   it('requires the additional-leg rebate provenance and preserves recorded annual tax result', () => {
     const st = saved(); Object.assign(st.pcbMeta, {P2: 40000});
-    Object.assign(st.pcbMeta.trace, {totalTaxYear: 6000, totalMtdYear: 200});
+    Object.assign(st.pcbMeta.trace, {Yt: 1000, totalTaxYear: 6000, totalMtdYear: 200});
     expect(explainPcb(st, null).kind).toBe('unavailable');
     Object.assign(st.pcbMeta.trace, {T2: 0});
     const x = explainPcb(st, null); expect(x.kind).toBe('mtd');
