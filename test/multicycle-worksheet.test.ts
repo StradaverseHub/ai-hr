@@ -50,6 +50,7 @@ import {
   WORKSHEET_VERDICTS,
   type Figures,
 } from '../localization/my/multicycle-worksheet';
+import { saveTaxSchemeDeclarationMY, revokeTaxSchemeDeclarationMY } from '../localization/my/tax-scheme-declarations';
 import { myPack } from '../localization/my';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
@@ -245,7 +246,7 @@ describe('ADR-0024 §7 worksheet — replayed over real payroll history', () => 
 
   /** A May 2026 month with a regular RM5,001 run and a RM1,001 bonus run, produced by the real kernel.
    *  `dob` stamps the person's date of birth — the input the age-dependent statutory rules key off. */
-  async function seedMonth(p: { bonus?: number; dob?: string } = {}) {
+  async function seedMonth(p: { bonus?: number; dob?: string; scheme?: 'rep' | 'knowledge_worker' } = {}) {
     await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
     const a = await entitledCtx(base);
     const e = await hireEmployee(a, {
@@ -270,6 +271,7 @@ describe('ADR-0024 §7 worksheet — replayed over real payroll history', () => 
     // three readings and quietly stop testing that leg at all.
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234', subjectToSkbbk: true });
 
+    const declarationId = p.scheme ? await saveTaxSchemeDeclarationMY(a, {employmentId:e.employmentId,expectedCompanyId:base.companyId,scheme:p.scheme,validFrom:'2026-05',validTo:'2026-05',approvalReference:'Synthetic worksheet approval',eligibilityConfirmed:true}) : undefined;
     const reg = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     await generatePayslips(a, { batchId: reg.batchId });
     const extra = await createAdditionalRun(a, {
@@ -284,7 +286,7 @@ describe('ADR-0024 §7 worksheet — replayed over real payroll history', () => 
       bonusAmount: p.bonus ?? 1001,
     });
     await generatePayslips(a, { batchId: extra.batchId });
-    return { a, e, regBatchId: reg.batchId, extraBatchId: extra.batchId };
+    return { a, e, declarationId, regBatchId: reg.batchId, extraBatchId: extra.batchId };
   }
 
   const slipOf = async (batchId: string) => {
@@ -328,6 +330,38 @@ describe('ADR-0024 §7 worksheet — replayed over real payroll history', () => 
     expect(w.illustration.perRunTotal.employee).toBe(674);
     expect(w.illustration.monthAsOneTotal.employee).toBe(671);
     expect(w.illustration.version).toBe(w.replayVersion);
+  });
+
+  it('saved normal working survives a later person-level incentive status edit', async () => {
+    const {a,e} = await seedMonth();
+    const before = await multiCycleWorksheetMY(a, {companyIds:[base.companyId]});
+    expect(before.employeeMonthsCompared).toBe(1);
+    await owner.db.update(schema.employeeStatutoryMy).set({taxResidency:'rep',isResident:false})
+      .where(eq(schema.employeeStatutoryMy.personId,e.personId));
+    const after = await multiCycleWorksheetMY(a, {companyIds:[base.companyId]});
+    expect(after.rows).toEqual(before.rows);
+    expect(after.movement).toEqual(before.movement);
+  });
+
+  it('saved incentive working survives revocation without consulting a new live approval', async () => {
+    const {a,e,declarationId} = await seedMonth({scheme:'rep'});
+    const before = await multiCycleWorksheetMY(a, {companyIds:[base.companyId]});
+    expect(before.employeeMonthsCompared).toBe(1);
+    await revokeTaxSchemeDeclarationMY(a, {employmentId:e.employmentId,id:declarationId!});
+    const after = await multiCycleWorksheetMY(a, {companyIds:[base.companyId]});
+    expect(after.rows).toEqual(before.rows);
+    expect(after.movement).toEqual(before.movement);
+  });
+
+  it('legacy flat incentive working is flagged and its paid figures are preserved', async () => {
+    const {a,regBatchId,extraBatchId} = await seedMonth();
+    await patchStatutory(regBatchId, {pcbMeta:{flatRate:.15,rate:.15,trace:{remuneration:5001,additional:0,rate:.15}}});
+    const saved = [await slipOf(regBatchId),await slipOf(extraBatchId)];
+    const result = await multiCycleWorksheetMY(a, {companyIds:[base.companyId]});
+    expect(result.employeeMonthsCompared).toBe(0);
+    expect(result.employeeMonthsFlagged).toBe(1);
+    expect(result.skips[0].reason).toBe('tax_scheme_not_reconstructable');
+    expect([await slipOf(regBatchId),await slipOf(extraBatchId)]).toEqual(saved);
   });
 
   it('a month carrying the per-run figures is WOULD_CHANGE, with the exact movement per item', async () => {

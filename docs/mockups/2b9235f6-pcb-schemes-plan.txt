@@ -2,6 +2,8 @@ VERDICT: Partly there already   ·   SIZE: Large
 
 THE SITUATION TODAY
 
+The reported employee is currently marked REP, but I found no saved October 2026 payslip to correct. The current REP and Knowledge Worker path applies 15% to monthly taxable remuneration instead of using the annual chargeable-income calculation. That calculation path needs correcting for future runs.
+
 The calculation detail already shows the saved normal resident working on screen and in the PDF. Earlier payroll records saved with a REP or Knowledge Worker flat-rate calculation keep that original working; they cannot honestly show a different calculation after the payment was processed.
 
 WHAT WE'LL CHANGE
@@ -20,6 +22,7 @@ HR can see why a new deduction was made and compare the screen with the same PDF
 GOOD TO KNOW
 
 - Earlier payroll payments will not be recalculated or rewritten by this work. Correcting an earlier payment requires the existing accountable payroll correction process.
+- The official C-Suite wording specifies 15% of chargeable income, while its printed table shows only income above RM35,000. We follow the stated 15% rate and the published formula; we do not invent a zero-rate threshold or rebate.
 - This proposal covers both the calculations and their explanation; the attached illustration contains placeholders only.
 
 ------------------------------------------------------------
