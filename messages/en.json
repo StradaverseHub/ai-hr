@@ -6024,6 +6024,7 @@
       "importAnother": "Import another file"
     },
     "process": {
+      "taxSchemeDeclarationRequired": "Record the approved tax scheme for this employment, employer and payroll period, including the approval reference and HR eligibility confirmation, before processing payroll.",
       "title": "Payroll Process",
       "subtitle": "Run payroll in three guided steps: period, employees, then review and process.",
       "stepPeriod": "Payroll Period",

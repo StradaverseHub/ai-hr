@@ -23,6 +23,7 @@ describe('r380 stored scheme presentation', () => {
     expect(x.kind).toBe('mtd');
     if (x.kind !== 'mtd') throw Error('expected recorded scheme');
     expect(x.calculationScheme).toBe(scheme);
+    expect(x.taxSchemeDeclarationId).toBe('11111111-2222-4333-8444-555555555555');
     const monthly = pcbFormulaBlocks(x, format).find(b => b.key === 'mtd')!;
     expect(monthly.formula).toBe(scheme === 'c_suite' ? 'formulaSchemeMtd' : 'formulaSchemeMtdRebate');
     expect(monthly.substituted).toContain('30000.00 × 15%');

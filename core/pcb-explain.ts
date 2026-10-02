@@ -206,6 +206,8 @@ export type PcbExplanation =
   | ({
       kind: 'mtd';
       calculationScheme?: PcbCalculationScheme;
+      /** Immutable employer-scoped approval used by this run; absent on legacy/normal snapshots. */
+      taxSchemeDeclarationId?: string;
       /** 'snapshot' = this payslip's own relief working. 'current' = the employee's position TODAY. */
       reliefSource: 'snapshot' | 'current';
       /** Month of the tax year the calculation ran for, and the balance of months after it (LHDN `n`). */
@@ -543,6 +545,7 @@ export function explainPcb(
   return {
     kind: 'mtd',
     ...(scheme !== undefined ? {calculationScheme: scheme as PcbCalculationScheme} : {}),
+    ...(incentive ? {taxSchemeDeclarationId: metaObj.taxSchemeDeclarationId as string} : {}),
     reliefSource,
     month: n(m.month),
     remainingMonths: n(m.n),

@@ -6024,6 +6024,7 @@
       "importAnother": "Import fail lain"
     },
     "process": {
+      "taxSchemeDeclarationRequired": "Rekodkan skim cukai diluluskan untuk pekerjaan, majikan dan tempoh penggajian ini, termasuk rujukan kelulusan dan pengesahan kelayakan HR, sebelum memproses penggajian.",
       "title": "Proses Gaji",
       "subtitle": "Proses gaji dalam tiga langkah berpandu: tempoh, pekerja, kemudian semak dan proses.",
       "stepPeriod": "Tempoh Gaji",

@@ -6024,6 +6024,7 @@
       "importAnother": "导入其他文件"
     },
     "process": {
+      "taxSchemeDeclarationRequired": "处理工资前，请记录此雇佣关系、雇主和工资期间获批准的税务计划，包括批准参考编号及人力资源部门的资格确认。",
       "title": "薪资处理",
       "subtitle": "通过三个引导步骤处理薪资：周期、员工，然后审核并处理。",
       "stepPeriod": "薪资周期",

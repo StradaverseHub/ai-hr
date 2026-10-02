@@ -6024,6 +6024,7 @@
       "importAnother": "Nhập tệp khác"
     },
     "process": {
+      "taxSchemeDeclarationRequired": "Trước khi xử lý lương, hãy ghi nhận chương trình thuế được phê duyệt cho quan hệ lao động, chủ lao động và kỳ lương này, gồm tham chiếu phê duyệt và xác nhận điều kiện của HR.",
       "title": "Xử Lý Lương",
       "subtitle": "Xử lý lương qua ba bước có hướng dẫn: kỳ lương, nhân viên, sau đó xem lại và xử lý.",
       "stepPeriod": "Kỳ Lương",
