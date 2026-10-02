@@ -610,6 +610,7 @@ export async function completeEmployeeDraft(
 
   const types = await listLeaveTypes(ctx);
   const { employmentId, personId } = await hireEmployee(ctx, {
+    initialTaxScheme:boolOrUndef(s.isResident)===false?'non_resident':'resident',
     // 35b7af0a group 8 — the nationality is seeded on the person HERE, at creation, because everything
     // downstream keys on it: the Personnel screen decides NRIC-vs-passport from `person.nationality`, and
     // before this the wizard left it NULL, so a hire it created showed NO Identity No card at all and the

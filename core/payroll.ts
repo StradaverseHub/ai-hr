@@ -1,3 +1,4 @@
+import { classifyNonCashBenefit, NonCashBenefitConfigurationError, readPcbNonCash, totalNonCash, taxableNonCash, type NonCashEntry, type NonCashEaEntry, type PcbNonCashSnapshot } from '../localization/noncash-benefits';
 import { businessUnit, payslipInformationSetting } from '../db/schema';
 /**
  * Payroll kernel — generic, jurisdiction-neutral (ADR-0008). Computes gross→net and delegates
@@ -430,6 +431,8 @@ function employeeReprocessValidation(error: unknown): Pick<ReprocessEmployeeOutc
     (error as Error & {code?:string}).code === 'pcb_child_relief_configuration_invalid') return {
       status:'validation_failed',reasonCode:'PAYROLL_CONFIGURATION_INCOMPLETE',
       validationCode:'pcb_child_relief_configuration_invalid'};
+  if(error instanceof NonCashBenefitConfigurationError) return {status:'validation_failed',reasonCode:'PAYROLL_CONFIGURATION_INCOMPLETE',validationCode:error.code,validationDetails:[{gap:error.reason}]};
+  if(error instanceof Error && error.name==='TaxSelectionError'){const code=(error as Error&{code?:string}).code;if(code&&['confirmation_required','invalid_scheme','citizenship_unknown','not_resident'].includes(code))return {status:'validation_failed',reasonCode:'TAX_SCHEME_CONFIGURATION_INCOMPLETE',validationCode:code,...taxSchemeOutcomeDetails(error)};}
   if (error instanceof Error && error.name === 'TaxSchemeDeclarationError') {
     const code = (error as Error & {code?:string}).code;
     if (code && EMPLOYEE_TAX_VALIDATION_CODES.has(code)) return {status:'validation_failed',
@@ -4692,6 +4695,15 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
      */
     const restatesMonth = !isAdditionalRun && batch.runSeq > 1;
     const earlierRunByEmp = new Map<string, { additional: number; overtime: number }>();
+    const earlierNonCashByEmp = new Map<string,{ownedEntries:NonCashEntry[];regularEntries:NonCashEntry[]|null;ownedEaEntries:NonCashEaEntry[];regularEaEntries:NonCashEaEntry[]|null;legacyRegular:boolean}>();
+    const accumulatedNonCashByEmp = new Map<string,{bik:number;vola:number;complete:boolean}>();
+    for(const e of emps) accumulatedNonCashByEmp.set(e.employmentId,{bik:0,vola:0,complete:true});
+    for(const r of priorSlips){
+      const cur=accumulatedNonCashByEmp.get(r.employmentId); if(!cur)continue;
+      const saved=readPcbNonCash((r.statutory as {pcbNonCash?:unknown}|null)?.pcbNonCash);
+      if(!saved){cur.complete=false;continue;}
+      cur.bik=round2(cur.bik+saved.owned.bik);cur.vola=round2(cur.vola+saved.owned.vola);
+    }
     if (isAdditionalRun || restatesMonth) {
       const earlier = await tx
         .select({
@@ -4699,6 +4711,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           bonus: payslip.bonus,
           ot: payslip.overtimePay,
           runType: payrollBatch.runType,
+          statutory: payslip.statutory,
         })
         .from(payslip)
         .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
@@ -4708,6 +4721,20 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         cur.additional = round2(cur.additional + Number(r.bonus));
         if (r.runType === 'regular') cur.overtime = round2(cur.overtime + Number(r.ot));
         earlierRunByEmp.set(r.employmentId, cur);
+        const nc=earlierNonCashByEmp.get(r.employmentId) ?? {ownedEntries:[],regularEntries:null,ownedEaEntries:[],regularEaEntries:null,legacyRegular:false};
+        const saved=readPcbNonCash((r.statutory as {pcbNonCash?:unknown}|null)?.pcbNonCash);
+        if(saved){
+          nc.ownedEntries.push(...saved.ownedEntries);
+          nc.ownedEaEntries.push(...saved.ownedEaEntries);
+          if(r.runType==='regular')nc.regularEaEntries=saved.ownedEaEntries.filter(x=>x.source==='recurring');
+          if(r.runType==='regular') nc.regularEntries=saved.ownedEntries.filter(x=>x.source==='recurring');
+          // Annual exemption is consumed by each owned non-cash entry exactly once.
+          const used=exemptUsedByEmp.get(r.employmentId) ?? {};
+          for(const x of saved.ownedEaEntries) if(x.exemptionCode && x.exemptAmount>0) used[x.exemptionCode]=round2((used[x.exemptionCode]??0)+x.exemptAmount);
+          exemptUsedByEmp.set(r.employmentId,used);
+        } else if(r.runType==='regular') nc.legacyRegular=true;
+        earlierNonCashByEmp.set(r.employmentId,nc);
+
       }
     }
 
@@ -4821,6 +4848,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // TXN_DEDUCTION). Optional so every recurring-row literal stays valid; absent ⇒ recurring.
       // Read by core/pay-rule.ts's fixed_allowances aggregate, which must NOT total one-offs.
       oneOff?: boolean;
+      sourceId?: string;
+      eaFormLine?: string | null;
       // 711adcd2 — pay_component.orp_overtime (migration 0456): the tick box that decides whether this item
       // counts towards the fixed_allowances aggregate a tenant's overtime formula reads. It REPLACED the
       // aggregate's kind test, and 0456 backfilled it to exactly that test, so a run is byte-identical
@@ -4874,6 +4903,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // Feedback 3c473773 — the declared payslip box (migration 0393). Read-only here; it is applied to
         // the DISPLAY overlay in earningsOf and to nothing else.
         displayCategory: payComponent.displayCategory,
+        eaFormLine: payComponent.eaFormLine,
       };
       const push = (map: Map<string, CompRow[]>, r: { employmentId: string; amount: string; prorateOverride?: boolean | null } & Omit<CompRow, 'amount' | 'prorateOverride'>) => {
         const list = map.get(r.employmentId) ?? [];
@@ -4883,6 +4913,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       const rec = await tx
         .select({
           ...catCols,
+          sourceId: employmentPayComponent.id,
           employmentId: employmentPayComponent.employmentId,
           // 1.2.1 Fixed Transaction — per-employee prorate override (null = inherit catalog `prorates`).
           prorateOverride: employmentPayComponent.prorateOverride,
@@ -4910,7 +4941,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         );
       for (const r of rec) push(recurringByEmp, r);
       const bat = await tx
-        .select({ ...catCols, employmentId: payrollBatchComponent.employmentId, amount: payrollBatchComponent.amount })
+        .select({ ...catCols, sourceId: payrollBatchComponent.id, oneOff: sql<boolean>`true`, employmentId: payrollBatchComponent.employmentId, amount: payrollBatchComponent.amount })
         .from(payrollBatchComponent)
         .innerJoin(payComponent, eq(payComponent.id, payrollBatchComponent.componentId))
         .where(eq(payrollBatchComponent.batchId, p.batchId));
@@ -4958,6 +4989,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     if (individualTxnPay) {
       const ledger = await tx
         .select({
+          id: payrollIndividualTxn.id,
           employmentId: payrollIndividualTxn.employmentId,
           kind: payrollIndividualTxn.kind,
           amount: payrollIndividualTxn.amount,
@@ -4980,6 +5012,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           // This is the reporter's exact path: an Overtime 1.5 one-off landed in Bonus because the box was
           // inferred from the pay code's PCB stream.
           compDisplayCategory: payComponent.displayCategory,
+          compEaFormLine: payComponent.eaFormLine,
         })
         .from(payrollIndividualTxn)
         .leftJoin(payComponent, eq(payComponent.id, payrollIndividualTxn.componentId))
@@ -5068,6 +5101,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
                 pcbExemptionCode: t.compPcbExemptionCode ?? null,
                 // Feedback 3c473773 — display box from the catalog row (null ⇒ inferred, as before).
                 displayCategory: t.compDisplayCategory ?? null,
+                eaFormLine: t.compEaFormLine ?? null,
+                sourceId: t.id,
               }
             : t.kind === 'earning'
               ? { code: 'TXN_EARNING', name: t.notes ?? 'One-off earning', kind: 'allowance', oneOff: true, amount: amt, rounding: 'none', epf: true, socso: true, pcb: true, hrdf: false, nonPayable: false, orpOvertime: false, orpUnpaidLeave: false, prorates: false, prorateOverride: null, rule: null, resolutionOrder: 0, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null, displayCategory: null }
@@ -5230,7 +5265,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // 711adcd2 — `bik` joins the vocabulary (Benefit in Kind), and stays 0 by construction: a non-payable
     // item never reaches a cash bucket, and resolveDisplayCategory refuses `bik` on one that did. The key
     // exists so DisplayTally stays a total Record over PAY_DISPLAY_CATEGORIES rather than a partial one.
-    const emptyTally = (): DisplayTally => ({ basic: 0, overtime: 0, bonus: 0, allowance: 0, claim: 0, deduction: 0, bik: 0 });
+    const emptyTally = (): DisplayTally => ({ basic: 0, overtime: 0, bonus: 0, allowance: 0, claim: 0, deduction: 0, bik: 0, vola: 0 });
 
     const earningsOf = (
       e: { employmentId: string; basic: unknown; allowance: unknown },
@@ -5277,6 +5312,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       recordLines: PayslipRecordLine[];
       componentLines: PayComponentLine[];
       lpDeclared: number; exemptionUsed: Record<string, number>;
+      nonCashEntries: NonCashEntry[];
+      nonCashEaEntries:NonCashEaEntry[];
       // Feedback 3c473773 — the same component money tallied under each item's DECLARED payslip box, plus
       // how much left the `ot` bucket for another box (the one direction whose display arithmetic has to be
       // reconciled against the OT caps downstream). `displayMoved` is false whenever nothing was
@@ -5320,6 +5357,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           componentLines: [],
           lpDeclared: 0,
           exemptionUsed: {},
+          nonCashEntries: [],
+          nonCashEaEntries: [],
           // Flag off ⇒ there are no typed pay items, so there is no declared box to honour and nothing to
           // re-categorise. The legacy path stays exactly as it was.
           display: emptyTally(),
@@ -5386,6 +5425,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // joiner's previous employment has already spent part of them. See the seeding block above.
       let lpDeclared = 0;
       const exemptionUsed: Record<string, number> = {};
+      const nonCashEntries: NonCashEntry[] = [];
+      const nonCashEaEntries:NonCashEaEntry[]=[];
       const priorUsed = exemptUsedByEmp.get(e.employmentId) ?? {};
       /** Remaining annual headroom for a code under `cap` (cap < 0 = fully exempt sentinel ⇒ unlimited). */
       const roomFor = (code: string, cap: number): number =>
@@ -5509,6 +5550,31 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // (fed into LP₁ below), capped by the LP code's remaining ANNUAL headroom (YTD replay). Cash-wise
         // the component keeps its kind: a deduction deducts from net (e.g. LP_VOLUNTARY_EPF via salary), a
         // non-payable records only, and any other kind is paid untaxed (it is a relief claim, not remuneration).
+        const benefitKind=classifyNonCashBenefit(c);
+        if(benefitKind){
+          if(applied<0 || !Number.isFinite(applied) || !Number.isSafeInteger(Math.round(applied*100))) throw new NonCashBenefitConfigurationError(c.code,'unsupported_kind');
+          const earlier=earlierNonCashByEmp.get(e.employmentId);
+          if(isAdditionalRun && !c.oneOff && earlier?.legacyRegular && applied>0) throw new NonCashBenefitConfigurationError(c.code,'month_baseline_unavailable');
+          const savedEa=isAdditionalRun && !c.oneOff && earlier?.regularEaEntries
+            ? earlier.regularEaEntries.find(x=>x.code===c.code && x.sourceId===c.sourceId) : undefined;
+          const savedRecurring=isAdditionalRun && !c.oneOff && earlier?.regularEntries
+            ? earlier.regularEntries.find(x=>x.code===c.code && x.sourceId===c.sourceId) : undefined;
+          if(isAdditionalRun && !c.oneOff && earlier?.regularEaEntries && !savedEa && applied>0)throw new NonCashBenefitConfigurationError(c.code,'month_baseline_unavailable');
+          if(savedEa && (savedEa.subjectPCB!==c.pcb || savedEa.kind!==benefitKind || savedEa.entered!==applied || savedEa.eaFormLine!==(c.eaFormLine??null) || (savedEa.exemptionCode??null)!==c.pcbExemptionCode)) throw new NonCashBenefitConfigurationError(c.code,'month_baseline_unavailable');
+          let exempt=0,taxable=applied;
+          if(savedEa){
+            nonCashEaEntries.push({...savedEa});
+            if(c.pcb && savedRecurring) nonCashEntries.push({...savedRecurring});
+          } else {
+            const code=c.pcbExemptionCode;
+            if(code && c.pcb){const cap=exemptionTables.pcb[code]??0;exempt=cap===0?0:round2(Math.min(applied,roomFor(code,cap)));taxable=round2(applied-exempt);if(exempt>0)useRoom(code,exempt);}
+            const source={kind:benefitKind,code:c.code,source:c.oneOff?'one_off' as const:'recurring' as const,...(c.sourceId?{sourceId:c.sourceId}:{}),...(code?{exemptionCode:code}:{})};
+            if(c.pcb) nonCashEntries.push({...source,entered:applied,exempt,taxable});
+            nonCashEaEntries.push({...source,entered:applied,exemptAmount:exempt,reportableAmount:taxable,eaFormLine:c.eaFormLine??null,subjectPCB:c.pcb});
+          }
+          recordLines.push({code:c.code,name:c.name,amount:applied,nonPayable:true});
+          continue;
+        }
         if (c.pcbRemunerationType === 'optional_deduction') {
           const cap = c.pcbExemptionCode != null ? (exemptionTables.lp[c.pcbExemptionCode] ?? 0) : 0;
           const claim = c.pcbExemptionCode != null ? round2(Math.min(applied, roomFor(c.pcbExemptionCode, cap))) : 0;
@@ -5642,7 +5708,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         else if (c.epf && !c.socso) { bonusAmt = round2(bonusAmt + applied); contributes('bonus', applied); }
         else { reimburse = round2(reimburse + applied); contributes('reimburse', applied); } // all-false earning: paid but untaxed
       }
-      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, epfWageDeduction, socsoWageDeduction, pcbWageDeduction, hrdfWageDeduction, recordLines, componentLines, lpDeclared, exemptionUsed, display, displayMoved, displayOtOutbound, orpUnpaidLeaveExtra };
+      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, epfWageDeduction, socsoWageDeduction, pcbWageDeduction, hrdfWageDeduction, recordLines, componentLines, lpDeclared, exemptionUsed, nonCashEntries, nonCashEaEntries, display, displayMoved, displayOtOutbound, orpUnpaidLeaveExtra };
     };
 
     /**
@@ -6052,11 +6118,13 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           socso: boolean;
           pcb: boolean;
           pcbRemunerationType: 'normal' | 'additional' | 'optional_deduction' | null;
+          displayCategory?:string|null;eaFormLine?:string|null;epfBonus2012?:boolean;
         }): boolean =>
           c.code !== 'BASIC' &&
           c.pcbRemunerationType !== 'optional_deduction' &&
           c.kind !== 'deduction' &&
           c.pcb &&
+          !classifyNonCashBenefit(c) &&
           c.pcbRemunerationType == null &&
           (c.nonPayable || (!c.epf && !c.socso));
         for (const id of skippedIds) {
@@ -6137,7 +6205,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
 
     // Resolve and lock employer-period declarations in stable employment order, before producing money.
     // Save/revoke uses the same lock; an approval decision remains valid until this payroll commits.
-    const resolvedTaxSchemes = new Map<string, {scheme:string;declarationId?:string}>();
+    const resolvedTaxSchemes = new Map<string, {scheme:string;declarationId?:string;selectionId?:string;selectionVersion?:number;selectionSource?:'income_tax_resident'}>();
     if (!subset && pack.payroll.resolveTaxScheme) {
       for (const e of [...emps].sort((a,b)=>a.employmentId.localeCompare(b.employmentId))) {
         resolvedTaxSchemes.set(e.employmentId, await pack.payroll.resolveTaxScheme(tx, {tenantId:ctx.tenantId,employmentId:e.employmentId,companyId:batch.companyId,payPeriod:batch.payPeriod,legacyScheme:e.taxResidency,resident:e.isResident ?? true,epfCitizenship:e.epfCitizenship}));
@@ -6304,6 +6372,18 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // Agency bases differ (STATUTORY-SOURCES §6): EPF EXCLUDES overtime, SOCSO/EIS/PCB
       // include it — so the calculator takes wages ex-OT and the OT separately. The all-false
       // reimbursement is paid (in `allowance`/gross) but NOT in any statutory base.
+      const earlierBenefits=earlierNonCashByEmp.get(e.employmentId);
+      if(isAdditionalRun && earlierBenefits?.regularEaEntries){const current=new Set(en.nonCashEaEntries.filter(x=>x.source==='recurring').map(x=>x.sourceId??x.code));if(earlierBenefits.regularEaEntries.some(x=>!current.has(x.sourceId??x.code)))throw new NonCashBenefitConfigurationError('month','month_baseline_unavailable');}
+      const ownsRecurring=!isAdditionalRun;
+      const ownedEntries=en.nonCashEntries.filter(x=>ownsRecurring || x.source==='one_off');
+      const ownedEaEntries=en.nonCashEaEntries.filter(x=>ownsRecurring || x.source==='one_off');
+      const cumulativeEaEntries=[...(earlierBenefits?.ownedEaEntries??[]),...ownedEaEntries,...(isAdditionalRun&&!earlierBenefits?.regularEaEntries?en.nonCashEaEntries.filter(x=>x.source==='recurring'):[])];
+      const priorEntries=earlierBenefits?.ownedEntries ?? [];
+      const projectionEntries=isAdditionalRun && !earlierBenefits?.regularEntries
+        ? en.nonCashEntries.filter(x=>x.source==='recurring') : [];
+      const cumulativeEntries=[...priorEntries,...ownedEntries,...projectionEntries];
+      const nonCashCumulative=taxableNonCash(cumulativeEntries),nonCashOwned=taxableNonCash(ownedEntries);
+      const nonCashBefore={bik:round2(nonCashCumulative.bik-nonCashOwned.bik),vola:round2(nonCashCumulative.vola-nonCashOwned.vola)};
       const wagesExOt = Math.max(0, round2(basic + en.allowanceApplied - unpaidDeduction));
       // Bonus is additional remuneration: EPF + PCB (difference method), excluded from SOCSO/EIS.
       // LP₁ — this month's optional deductions: the approved TP1 amounts PLUS the declared
@@ -6444,10 +6524,13 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // 'none' also gates SOCSO off (the two are kept in sync by the setter).
         subjectToSocso: socsoCatSel === 'none' ? false : (e.subjectToSocso ?? true),
         subjectToSkbbk: e.subjectToSkbbk ?? true,
-        resident: e.isResident ?? true,
+        resident: resolvedTaxScheme.scheme !== 'non_resident',
         // Preserve the explicit approved scheme; the country pack alone resolves its formula.
         calculationScheme: resolvedTaxScheme.scheme,
         taxSchemeDeclarationId: resolvedTaxScheme.declarationId,
+        taxSelectionId:resolvedTaxScheme.selectionId,
+        taxSelectionVersion:resolvedTaxScheme.selectionVersion,
+        taxSelectionSource:resolvedTaxScheme.selectionSource,
         // EPF rule selection (#95): age + citizenship pick Part A / Part E senior / non-citizen 2%/2%.
         epfAge: age,
         epfCitizenship: e.epfCitizenship ?? 'citizen',
@@ -6479,6 +6562,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         epfWageDeduction: en.epfWageDeduction,
         socsoWageDeduction: en.socsoWageDeduction,
         pcbWageDeduction: en.pcbWageDeduction,
+        pcbNonCashNormal: nonCashCumulative,
       };
       // 1.2.4 Zakat — resolve THIS month's zakat at generate time so percent never goes stale (declared up
       // front so `computeMonth`'s default can read it; the percent branch is filled in after the closure):
@@ -6596,7 +6680,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // stay on both sides — both calls re-fold the same recurring components. (Item 70b14723 moved this
         // one line inside `coreFor` when the expression became a function of `bases`; for `bases === stOpts`
         // it is the identical object the previous `additionalBaseline` const built.)
-        const baseline = { ...bases, epfAdditionalExcluded: 0, socsoWageExtra: 0 };
+        const baseline = { ...bases, epfAdditionalExcluded: 0, socsoWageExtra: 0, pcbNonCashNormal: nonCashBefore };
         return isAdditionalRun
           ? deltaStat(
               computeMonth(earlierRun.additional + bonus, earlierRun.overtime, undefined, bases),
@@ -6606,8 +6690,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
             ? deltaStat(
                 computeMonth(earlierRun.additional + bonus, round2(earlierRun.overtime + otStat), undefined, bases),
                 chargedByEarlierRuns(
-                  computeMonth(earlierRun.additional, earlierRun.overtime, effectiveZakat, baseline),
-                  computeMonth(0, 0, effectiveZakat, baseline),
+                  computeMonth(earlierRun.additional, earlierRun.overtime, effectiveZakat, {...baseline,pcbNonCashNormal:{bik:round2(nonCashBefore.bik+taxableNonCash(en.nonCashEntries.filter(x=>x.source==='recurring')).bik),vola:round2(nonCashBefore.vola+taxableNonCash(en.nonCashEntries.filter(x=>x.source==='recurring')).vola)}}),
+                  computeMonth(0, 0, effectiveZakat, {...baseline,pcbNonCashNormal:taxableNonCash(en.nonCashEntries.filter(x=>x.source==='recurring'))}),
                 ),
               )
             : computeMonth(bonus, otStat, undefined, bases);
@@ -6670,7 +6754,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           0,
           round2(wagesExOt + statOvertime - en.socsoWageExcluded + en.socsoWageExtra - en.socsoWageDeduction),
         ),
-        pcb: round2(Math.max(0, round2(wagesExOt + statOvertime - en.pcbWageDeduction)) + statAdditional),
+        pcb: round2(Math.max(0, round2(wagesExOt + statOvertime - en.pcbWageDeduction)) + statAdditional + nonCashCumulative.bik + nonCashCumulative.vola),
         hrdf: isAdditionalRun ? 0 : hrdfBase,
       };
       // Feedback 6b134681 — the per-item stamp this run writes. A regular run stamps every line it folded;
@@ -6678,8 +6762,12 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // `bonusOnlyComponentLines`). Computed here rather than inline in the object below so the stamp and
       // the reconciliation test read the identical expression.
       const stampComponentLines = isAdditionalRun ? bonusOnlyComponentLines(en.componentLines) : en.componentLines;
+      const nonCashSnapshot:PcbNonCashSnapshot={version:1,current:totalNonCash(cumulativeEntries),ownedCurrent:totalNonCash(ownedEntries),owned:nonCashOwned,cumulative:nonCashCumulative,before:nonCashBefore,
+        accumulated:accumulatedNonCashByEmp.get(e.employmentId) ?? {bik:0,vola:0,complete:true},cashNormal:Math.max(0,round2(wagesExOt+statOvertime-en.pcbWageDeduction)),entries:cumulativeEntries,ownedEntries,eaEntries:cumulativeEaEntries,ownedEaEntries};
+      if(!readPcbNonCash(nonCashSnapshot))throw new NonCashBenefitConfigurationError('month','month_baseline_unavailable');
       const stComputed = {
         ...stCore,
+        pcbNonCash:nonCashSnapshot,
         bases: statBases,
         // Item 70b14723 — see `epfManualStamp` above. Key absent for every employee not on a typed amount,
         // so every other payslip is byte-identical.
@@ -6767,7 +6855,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // accumulator (like st.lp) and summed into the EA exempt-allowances figure. Regular run only
         // (an additional run re-folds the same recurring components; stamping again would double-count
         // the replay). Key present only when at least one code was used — legacy slips are byte-identical.
-        ...(!isAdditionalRun && Object.keys(en.exemptionUsed).length ? { exemptionUsed: en.exemptionUsed } : {}),
+        ...(!isAdditionalRun && Object.keys(en.exemptionUsed).length ? { exemptionUsed: en.exemptionUsed } : isAdditionalRun ? (()=>{const used:Record<string,number>={};for(const x of ownedEaEntries)if(x.exemptionCode&&x.exemptAmount>0)used[x.exemptionCode]=round2((used[x.exemptionCode]??0)+x.exemptAmount);return Object.keys(used).length?{exemptionUsed:used}:{};})() : {}),
       };
 
       // ── 2961a7ae — THE MANUAL OVERRIDE, applied here and nowhere else ──────────────────────────────

@@ -323,6 +323,7 @@ type MyCompanyStatutoryModule = typeof import('./my/company-statutory');
 type MyStatutoryConfigModule = typeof import('./my/statutory-config');
 type MyPayrollModule = typeof import('./my/payroll');
 type MyTaxSchemeModule = typeof import('./my/tax-scheme-declarations');
+type MyTaxSelectionModule = typeof import('./my/tax-selection');
 
 /**
  * A jurisdiction's compliance surface. One implementation per country, registered under the
@@ -361,6 +362,9 @@ export interface CountryPack {
     setIc: MyStatutoryModule['setIcProfileMY'];
     setPassport: MyStatutoryModule['setPassportProfileMY'];
     setTax: MyStatutoryModule['setTaxProfileMY'];
+    getTaxSelection?: MyTaxSelectionModule['getTaxSelectionMY'];
+    saveTaxSelection?: MyTaxSelectionModule['saveTaxSelectionMY'];
+    initializeHiredTaxSelectionTx?: MyTaxSelectionModule['initializeHiredTaxSelectionMYTx'];
     listTaxSchemeDeclarations?: MyTaxSchemeModule['listTaxSchemeDeclarationsMY'];
     saveTaxSchemeDeclaration?: MyTaxSchemeModule['saveTaxSchemeDeclarationMY'];
     revokeTaxSchemeDeclaration?: MyTaxSchemeModule['revokeTaxSchemeDeclarationMY'];
@@ -419,7 +423,7 @@ export interface CountryPack {
      * signature on the pack — MY-derived until rung 5 splits its options into contract vocabulary.
      */
     statutory: MyPayrollModule['statutory'];
-    resolveTaxScheme?: MyTaxSchemeModule['resolveTaxSchemeMY'];
+    resolveTaxScheme?: MyTaxSelectionModule['resolveTaxSelectionMY'];
     /**
      * r356 — fold ONE prior payslip into the year's PCB accumulators (Y, Sigma(Y-K), K, X, Z, sum-LP).
      * On the seam because the kernel's replay and the MY worksheet's replay must be the SAME arithmetic:

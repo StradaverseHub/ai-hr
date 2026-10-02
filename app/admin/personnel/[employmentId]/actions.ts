@@ -1593,7 +1593,7 @@ async function applyStatutorySection(
     // on every save and moved the employee onto flat-rate PCB (see the header note). `tax_residency` is
     // the column the Income Tax (PCB) card owns and is NOT NULL, so it is the answer; `isResident` is the
     // legacy mirror of it and is only the fallback for a row from before that column existed.
-    isResident: current.taxResidency != null ? current.taxResidency === 'resident' : (current.isResident ?? true),
+    isResident: current.isResident ?? true,
     epfCitizenship: (() => {
       const c = String(formData.get('epfCitizenship') ?? 'citizen');
       return c === 'pr' || c === 'non_citizen' ? c : 'citizen';
@@ -2082,9 +2082,12 @@ async function applyTaxSection(
   if (!pack) throw new Error('No localization pack for MY');
   await pack.statutory.setTax(s, {
     personId,
+    employmentId:String(formData.get('employmentId')??''),
+    expectedCompanyId:String(formData.get('expectedTaxCompanyId')??''),
+    expectedSelectionVersion:formData.has('expectedTaxSelectionVersion')?Number(formData.get('expectedTaxSelectionVersion')):undefined,
     taxNumber: (formData.get('taxNumber') as string) || null,
     taxCategory: Number(formData.get('taxCategory')) || 1,
-    taxResidency: (formData.get('taxResidency') as string) || 'resident',
+    taxResidency: String(formData.get('taxResidency')??''),
     numChildren: Number(formData.get('numChildren')) || 0,
     childReliefMode: (formData.get('childReliefMode') as string) || 'manual',
     employerBearsTax: formData.get('employerBearsTax') === 'on',
