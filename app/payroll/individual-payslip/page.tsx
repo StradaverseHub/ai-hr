@@ -835,7 +835,7 @@ export default async function IndividualPayslipPage({
             );})}
             {earningRowShown(b.claim) && <Row label={tSlip('claim')} value={rm(b.claim)} />}
             <div className="mt-auto flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
-              <span>{tSlip('totalEarnings')}</span>
+              <span>{t('totalEarnings')}</span>
               <span className="tabular-nums">{rm(b.gross)}</span>
             </div>
           </Block>
