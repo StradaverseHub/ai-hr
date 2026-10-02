@@ -27,12 +27,13 @@
  * SCOPE IS RLS's, NOT THIS FILE'S. Every read runs inside `withTenant`; an employment the caller may not
  * see simply is not found, and the caller gets null rather than a differently-worded refusal.
  */
-import { and, eq, like } from 'drizzle-orm';
+import { and, eq, like, sql } from 'drizzle-orm';
 import type { SessionContext } from '../../db/client';
 import { withTenant } from '../../db/client';
 import {
   company,
   companyStatutoryMy,
+  companyStatutoryAuthority,
   employeeStatutoryMy,
   employment,
   payrollBatch,
@@ -41,8 +42,13 @@ import {
 } from '../../db/schema';
 import { cp39DeductionPeriodFor } from '../../lib/cp39-form';
 import { pcbPaymentsForYear } from '../../core/pcb-payment';
-import { emptyPcb2iiMonths, pcb2iiTotals, type Pcb2iiForm } from '../../lib/pcb2ii-form';
-import { todayInKualaLumpur } from '../../lib/hr-date';
+import {
+  emptyPcb2iiMonths,
+  pcb2iiTotals,
+  Pcb2iiPreparationError,
+  validPcb2iiSelectedDate,
+  type Pcb2iiForm,
+} from '../../lib/pcb2ii-form';
 
 type Stat = { pcb?: unknown; cp38?: unknown };
 const num = (v: unknown): number => {
@@ -77,7 +83,7 @@ const addressOf = (c: {
  */
 export async function pcb2iiStatement(
   ctx: SessionContext,
-  p: { employmentId: string; year: string; companyId?: string },
+  p: { employmentId: string; year: string; companyId?: string; selectedDate: string },
 ): Promise<Pcb2iiForm | null> {
   const year = Number(p.year);
   if (!/^\d{4}$/.test(p.year) || !Number.isFinite(year)) return null;
@@ -169,6 +175,20 @@ export async function pcb2iiStatement(
      */
     if (employerId !== info.companyId && slips.length === 0) return null;
 
+    if (!validPcb2iiSelectedDate(p.selectedDate)) throw new Pcb2iiPreparationError('selectedDate');
+    // Reviewed 0499 contract: selected-company LHDN identity, tenant/company/subject/year fences and
+    // only name/title output. This admin-only form is stricter than the existing self-or-admin helper.
+    const officer = await tx.execute<{ officer_name: string | null; officer_position: string | null }>(
+      sql`select * from app.ea_signatory(${p.employmentId}::uuid, ${employerId}::uuid, ${p.year})`,
+    );
+    const officerName = officer[0]?.officer_name?.trim();
+    if (!officerName) throw new Pcb2iiPreparationError('signatory');
+    const [authority] = await tx
+      .select({ phone: companyStatutoryAuthority.phone })
+      .from(companyStatutoryAuthority)
+      .where(and(eq(companyStatutoryAuthority.companyId, employerId), eq(companyStatutoryAuthority.authority, 'lhdn')))
+      .limit(1);
+
     const months = emptyPcb2iiMonths();
     for (const s of slips) {
       // THE DATING RULE, IMPORTED. It also VALIDATES: a malformed pay period throws here rather than
@@ -206,7 +226,7 @@ export async function pcb2iiStatement(
 
     return {
       year,
-      printedOnIso: todayInKualaLumpur(),
+      printedOnIso: p.selectedDate,
       branch: '',
       employeeName: info.name,
       // The form's box is "New Identity Card No./Passport No." — one box, the IC when there is one.
@@ -217,9 +237,9 @@ export async function pcb2iiStatement(
       months,
       // Section 3 — always empty; see lib/pcb2ii-form.ts for why this is a refusal and not a gap.
       priorYearRows: [],
-      officerName: '',
-      officerDesignation: '',
-      officerPhone: '',
+      officerName,
+      officerDesignation: officer[0]?.officer_position?.trim() ?? '',
+      officerPhone: authority?.phone?.trim() ?? '',
       // r328 — the EMPLOYER's own row, not the employment's current company. See the block above.
       employerNameAddress: addressOf(employer),
     } satisfies Pcb2iiForm;

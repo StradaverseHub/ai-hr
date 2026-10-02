@@ -44,6 +44,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { employeePcb2iiStatement } from '@/core/reporting';
 import { listCompanies } from '@/core/read';
 import { renderPcb2iiPdf } from '@/lib/pcb2ii-pdf';
+import { Pcb2iiPreparationError, validPcb2iiSelectedDate, type Pcb2iiForm } from '@/lib/pcb2ii-form';
 import type { Pcb2iiLang } from '@/lib/pcb2ii-labels';
 // The ceiling, shared with the picker so the number the screen advertises is the number enforced here.
 import { MAX_EA_SELECTION } from '../ea/limits';
@@ -79,18 +80,50 @@ export async function pcb2iiPdfResponse(req: Request, disposition: Pcb2iiDisposi
   const langParam = q.get('lang');
   const lang: Pcb2iiLang = LANGS.includes(langParam as Pcb2iiLang) ? (langParam as Pcb2iiLang) : 'en';
 
+  const selectedDate = q.get('selectedDate') ?? '';
+  const preparationRefusal = (code: Pcb2iiPreparationError['code'], field?: string) => {
+    const back = new URL('/payroll/statutory-forms/pcb2ii', req.url);
+    back.searchParams.set('companyId', companyId);
+    back.searchParams.set('year', year);
+    back.searchParams.set('lang', lang);
+    if (validPcb2iiSelectedDate(selectedDate)) back.searchParams.set('selectedDate', selectedDate);
+    back.searchParams.set('error', code);
+    if (field) back.searchParams.set('field', field);
+    return new Response(null, {
+      status: 303,
+      headers: { Location: back.toString(), 'Cache-Control': 'private, no-store' },
+    });
+  };
+
   const companies = await listCompanies(s);
   const employerName = companies.find((c) => c.id === companyId)?.name ?? 'company';
 
-  const out = await PDFDocument.create();
+  // Each assembler resolves subject/employer ownership before any typed preparation error.
+  // A later unauthorized ID wins a generic 404 even if an earlier visible field cannot be prepared.
+  const forms: Pcb2iiForm[] = [];
+  let preparationError: Pcb2iiPreparationError | null = null;
   for (const employmentId of unique) {
-    // RLS-gated, and pinned to THIS company: after an Entity Transfer a year can span two employers, and
-    // a statement of what THIS employer deducted must not carry another employer's months.
-    const form = await employeePcb2iiStatement(s, { employmentId, year, companyId });
-    if (!form) return notFound();
-    const bytes = await renderPcb2iiPdf(form, lang);
-    const src = await PDFDocument.load(bytes);
-    for (const page of await out.copyPages(src, src.getPageIndices())) out.addPage(page);
+    try {
+      const form = await employeePcb2iiStatement(s, { employmentId, year, companyId, selectedDate });
+      if (!form) return notFound();
+      forms.push(form);
+    } catch (error) {
+      if (!(error instanceof Pcb2iiPreparationError)) throw error;
+      preparationError ??= error;
+    }
+  }
+  if (preparationError) return preparationRefusal(preparationError.code, preparationError.field);
+
+  const out = await PDFDocument.create();
+  try {
+    for (const form of forms) {
+      const bytes = await renderPcb2iiPdf(form, lang);
+      const src = await PDFDocument.load(bytes);
+      for (const page of await out.copyPages(src, src.getPageIndices())) out.addPage(page);
+    }
+  } catch (error) {
+    if (error instanceof Pcb2iiPreparationError) return preparationRefusal(error.code, error.field);
+    throw error;
   }
 
   // ASCII-only, because Content-Disposition's plain `filename` is Latin-1.

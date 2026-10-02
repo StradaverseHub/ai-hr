@@ -23,9 +23,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
+import { upsertCompanyStatutoryAuthority } from '../core/statutory-authority';
 import { pcb2iiStatement } from '../localization/my/pcb2ii';
 import { recordPcbPayment } from '../core/pcb-payment';
 import {
+  validPcb2iiSelectedDate,
   emptyPcb2iiMonths,
   pcb2iiAmount,
   pcb2iiDate,
@@ -118,6 +120,8 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
+  const officer = await hireEmployee(adminCtx(b), { person: { fullName: 'Configured PCB officer', primaryEmail: `officer_${randomUUID()}@pcb.test` }, companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: '2020-01-01' });
+  await upsertCompanyStatutoryAuthority(adminCtx(b), { companyId: b.companyId, authority: 'lhdn', signatoryPersonId: officer.personId });
 });
 
 describe('72b100cd · an empty box and a zero are different statements', () => {
@@ -126,7 +130,7 @@ describe('72b100cd · an empty box and a zero are different statements', () => {
     await payslipFor(employmentId, '2026-03', 412.35);
     await payslipFor(employmentId, '2026-04', 0);
 
-    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR }))!;
+    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, selectedDate: '2027-02-28' }))!;
     expect(form).toBeTruthy();
     expect(form.months).toHaveLength(12);
     expect(form.months[2].mtd, 'March ran and deducted 412.35').toBe(412.35);
@@ -166,7 +170,7 @@ describe('72b100cd · an empty box and a zero are different statements', () => {
     const { employmentId } = await hire();
     await payslipFor(employmentId, '2026-05', 100);
     await payslipFor(employmentId, '2026-05', 25.5);
-    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR }))!;
+    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, selectedDate: '2027-02-28' }))!;
     expect(form.months[4].mtd, 'two runs in May').toBe(125.5);
   });
 });
@@ -175,7 +179,7 @@ describe('72b100cd · MTD and CP38 stay apart, and so do the receipts', () => {
   it('keeps the two streams in their own columns', async () => {
     const { employmentId } = await hire();
     await payslipFor(employmentId, '2026-05', 440.35, 150);
-    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR }))!;
+    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, selectedDate: '2027-02-28' }))!;
     expect(form.months[4].mtd).toBe(440.35);
     expect(form.months[4].cp38).toBe(150);
     expect(form.months[3].cp38, 'a month with no CP38 asserts nothing about one').toBeNull();
@@ -192,7 +196,7 @@ describe('72b100cd · MTD and CP38 stay apart, and so do the receipts', () => {
       companyId: b.companyId, periodKey: '2026-03', kind: 'cp38', receiptRef: 'CP38-778812', paidOn: '2026-04-15',
     });
 
-    const form = (await pcb2iiStatement(ctx, { employmentId, year: YEAR }))!;
+    const form = (await pcb2iiStatement(ctx, { employmentId, year: YEAR, selectedDate: '2027-02-28' }))!;
     expect(form.months[2].mtdReceiptRef).toBe('LHDN-0093771');
     expect(form.months[2].mtdPaidOn).toBe('2026-04-14');
     expect(form.months[2].cp38ReceiptRef).toBe('CP38-778812');
@@ -203,7 +207,7 @@ describe('72b100cd · MTD and CP38 stay apart, and so do the receipts', () => {
   it('prints an amount with no receipt when the payment has not been keyed', async () => {
     const { employmentId } = await hire();
     await payslipFor(employmentId, '2026-06', 447.35);
-    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR }))!;
+    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, selectedDate: '2027-02-28' }))!;
     expect(form.months[5].mtd).toBe(447.35);
     expect(form.months[5].mtdReceiptRef, 'not paid yet — and the box says nothing').toBeNull();
   });
@@ -221,7 +225,7 @@ describe('72b100cd · the dating rule is CP39’s, not a second one', () => {
     const { employmentId } = await hire();
     await payslipFor(employmentId, '2026-01', 11);
     await payslipFor(employmentId, '2026-12', 22);
-    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR }))!;
+    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, selectedDate: '2027-02-28' }))!;
     expect(form.months[0].mtd, 'January payroll → January row').toBe(11);
     expect(form.months[11].mtd, 'December payroll → December row').toBe(22);
   });
@@ -230,7 +234,7 @@ describe('72b100cd · the dating rule is CP39’s, not a second one', () => {
     const { employmentId } = await hire();
     await payslipFor(employmentId, '2025-12', 999);
     await payslipFor(employmentId, '2026-02', 50);
-    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR }))!;
+    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, selectedDate: '2027-02-28' }))!;
     expect(form.months.filter((m) => m.mtd != null).map((m) => m.month)).toEqual([2]);
   });
 });
@@ -265,14 +269,15 @@ describe('72b100cd · Section 3 is empty by refusal', () => {
   it('the read returns no prior-year rows, and says why', async () => {
     const { employmentId } = await hire();
     await payslipFor(employmentId, '2026-03', 412.35);
-    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR }))!;
+    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, selectedDate: '2027-02-28' }))!;
     expect(form.priorYearRows).toEqual([]);
     expect(READ, 'the refusal is recorded where the empty is produced').toContain('Section 3');
   });
 
   it('the renderer prints the ruled rows rather than dropping the section', () => {
     expect(PDF).toContain('THREE EMPTY ROWS');
-    expect(PDF).toContain('L.section3');
+    expect(PDF).toContain('pcb2ii-${lang}.pdf');
+    expect(PDF).toContain('form.priorYearRows.length !== 0');
   });
 });
 
@@ -280,7 +285,7 @@ describe('72b100cd · it renders, in both languages', () => {
   it('produces a one-page PDF carrying the figures', async () => {
     const { employmentId } = await hire();
     await payslipFor(employmentId, '2026-03', 412.35, 150);
-    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR }))!;
+    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, selectedDate: '2027-02-28' }))!;
 
     for (const lang of ['en', 'ms'] as const) {
       const bytes = await renderPcb2iiPdf(form, lang);
@@ -307,6 +312,7 @@ describe('72b100cd · scope', () => {
   it('returns null for an employment that does not exist', async () => {
     const missing = await pcb2iiStatement(adminCtx(b), {
       employmentId: '00000000-0000-4000-8000-000000000000',
+      selectedDate: '2027-02-28',
       year: YEAR,
     });
     expect(missing).toBeNull();
@@ -315,7 +321,7 @@ describe('72b100cd · scope', () => {
   it('refuses a malformed year rather than querying with it', async () => {
     const { employmentId } = await hire();
     for (const year of ['26', 'YYYY', '']) {
-      expect(await pcb2iiStatement(adminCtx(b), { employmentId, year }), year).toBeNull();
+      expect(await pcb2iiStatement(adminCtx(b), { employmentId, year, selectedDate: '2027-02-28' }), year).toBeNull();
     }
   });
 
@@ -327,10 +333,35 @@ describe('72b100cd · scope', () => {
       .where(eq(schema.employment.id, employmentId));
     await payslipFor(employmentId, '2026-03', 412.35);
 
-    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR }))!;
+    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, selectedDate: '2027-02-28' }))!;
     expect(form.employeeName).toBe('PCB Subject');
     expect(form.staffNo).toBe('EMP-0042');
     expect(form.year).toBe(2026);
     expect(form.employerNameAddress, 'the employer block names the company').toContain('Acme');
+  });
+});
+
+
+describe('r379 · selected date and company signatory are preparation facts', () => {
+  it('selected form date has no today fallback or deduction-year restriction', async () => {
+    const { employmentId } = await hire();
+    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, selectedDate: '2028-02-29' }))!;
+    expect(form.printedOnIso).toBe('2028-02-29');
+    expect(form.year).toBe(2026);
+    expect(form.officerName).toBe('Configured PCB officer');
+    expect(form.officerDesignation).toBe('Executive');
+    expect(form.priorYearRows).toEqual([]);
+  });
+  it('validates a real calendar day, including leap days', () => {
+    for (const value of ['', undefined, '0000-01-01', '2027-02-29', '2028-02-30', '2028-13-01', '2028-00-01', '2028-2-01', '2028-02-29T00:00:00Z']) expect(validPcb2iiSelectedDate(value), String(value)).toBe(false);
+    expect(validPcb2iiSelectedDate('2028-02-29')).toBe(true);
+    expect(validPcb2iiSelectedDate('2027-02-28')).toBe(true);
+  });
+  it('reads a subsequently edited signatory setting and leaves absent designation blank', async () => {
+    const { employmentId, personId } = await hire();
+    await upsertCompanyStatutoryAuthority(adminCtx(b), { companyId: b.companyId, authority: 'lhdn', signatoryPersonId: personId });
+    const form = (await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, selectedDate: '2027-02-28' }))!;
+    expect(form.officerName).toBe('PCB Subject');
+    expect(form.officerDesignation).toBe('');
   });
 });
