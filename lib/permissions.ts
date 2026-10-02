@@ -157,7 +157,8 @@ export const SCREENS: readonly ScreenEntry[] = [
   {
     screenKey: 'myTeam', href: '/manage/my-team', labelKey: 'nav.myTeam',
     guard: 'requireTeamAccess', routes: ['/manage/my-team'], hasScopeNote: true,
-  },  // 20c699f8 / 953be4b0 — the two HR-admin leave inquiry screens. They are scopedAdmin-guarded pages, so
+  },
+  // 20c699f8 / 953be4b0 — the two HR-admin leave inquiry screens. They are scopedAdmin-guarded pages, so
   // without a matrix column an administrator could reach them but Security & Permissions could neither
   // grant nor revoke them: the reverse-completeness guard in test/function-access.test.ts is what caught
   // it. Labels live under admin.users.screen.* rather than nav.* because neither screen is a sidebar row —
