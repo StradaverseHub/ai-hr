@@ -57,6 +57,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { EpfElection } from '@/components/epf-election';
 import { BankInfoCard } from '@/components/bank-info-card';
 import { IdentityTaxCard } from '@/components/identity-tax-card';
+import { IncentiveDeclarationCard } from './incentive-card';
 import { SocsoEisFields } from '@/components/socso-eis-fields';
 // a72610af — the field groups this screen now SHARES with the Create New Employee draft, so a draft and
 // the record it becomes ask the same questions in the same words. Each has a `mode`; this screen is 'form'.
@@ -236,6 +237,7 @@ export default async function EmployeePage({
     // destination — it re-scopes the Organisation Assignment dropdowns to that company and shows a banner.
     // Nothing is committed until phase 2's Save (changeEmploymentCompanyAction).
     companyChange?: string;
+    incentiveError?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedAdmin(); // Admin-only management surface (People→Personnel split). Non-admins redirect home.
@@ -288,6 +290,7 @@ export default async function EmployeePage({
     childReliefAlert,
     childReliefTo,
     companyChange,
+    incentiveError,
     showCorrected: spShowCorrected,
   } = rawSearchParams;
   // Context-aware back link: came from the org chart (?from=org) → return there; otherwise the admin
@@ -383,6 +386,9 @@ export default async function EmployeePage({
   const closedPayrollPeriods = admin ? await closedPayrollPeriodsFor(s, employmentId) : [];
   // Rung 5c — the acting company's country pack; statutory reads + the SOCSO/EIS default resolve through it.
   const countryPack = packFor('MY');
+  // This scoped service verifies the owning company is MY; a person-level tax flag is not approval.
+  const incentiveDeclarations = admin && payrollOn
+    ? await countryPack?.statutory.listTaxSchemeDeclarations?.(s, emp.employmentId) ?? null : null;
   // Rung 5c — the holiday-calendar state pick-list comes from the country packs via the registry
   // (union-read, the rung-5a `countryPacks()` precedent). MY-only ⇒ byte-identical to the old MY_STATES.
   const stateOptions = countryPacks().flatMap((p) => p.states);
@@ -4900,6 +4906,7 @@ export default async function EmployeePage({
             {othersStatutoryCard}
           </TabSaveScope>
         )}
+        {incentiveDeclarations && <IncentiveDeclarationCard employmentId={emp.employmentId} view={incentiveDeclarations} from={from} asOf={spAsOf} error={incentiveError} />}
       </>
     ),
     // Payroll tab keeps pay components, CP38, encashment, policy assignment and compensation. The
