@@ -1,0 +1,29 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+We verified the reported employee’s saved payroll records. DIRECTOR FEE is assigned to B1(b), but the generated 2026 EA currently ignores that assignment because earlier years are excluded from automatic mapping. All four saved payslips in this example contain pay-item detail.
+
+WHAT WE’LL CHANGE
+
+- Use the Pay Item’s current EA reporting selection for earlier years when every saved payslip for that employee and employer contains complete, reconciled pay-item detail.
+- Put DIRECTOR FEE in B1(b) when that is its selected reporting box. Changing the selection will move the same saved amount to the newly selected box on the next generation.
+- Apply the same result to preview and download, without changing processed payroll or duplicating an amount across boxes.
+- Keep the existing historical treatment when saved detail is missing or incomplete. Do not guess old pay-item amounts from today’s settings.
+
+WHAT YOU’LL GET
+
+Complete saved payroll detail can support the correct EA reporting assignment even for 2026. The form continues to use the amounts actually processed, and any existing EA amendment retains its precedence.
+
+GOOD TO KNOW
+
+- This does not reconstruct missing historical pay-item detail or change issued payslips.
+- An employee’s records from different employers remain separate.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Parent owns the first monetary implementation in localization/my/reports.ts and ea-routing.ts. Keep EA_ROUTING_FROM_YEAR 2027 as the general boundary; add a conservative employee/employer/year eligibility check for authoritative complete earlier-year componentLines provenance. Inspect every selected slip, structural validity, stable code identity, stored bucket reconciliation, display overlays and capped overtime before enabling any transfer. A partially recorded year must never receive a partial mapped annual subtotal.
+
+Read current tenant-qualified pay-component classifications by code, consume only saved processed contributions, preserve EA overrides, Part B plus Part C reconciliation, exemption ownership and repeated generation. No historical backfill or new payroll calculation. Test B1(b) director fees, subsequent B1(c) change, multiple regular/additional runs, older complete records, missing/malformed/nonreconciling records, employer/year isolation and preview/download shared ownership. Reverse a named new assertion to prove the fix is load-bearing. Full runtime gate, typecheck and build precede automatic deployment.

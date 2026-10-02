@@ -18,7 +18,7 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
@@ -186,9 +186,11 @@ describe('ea54fe6e — routing on a real payroll year', () => {
     expect(after!.partB.gross).toBeCloseTo(before!.partB.gross, 2);
   });
 
-  it('routing is OFF for a year we do not hold every month for — the partial-year trap', async () => {
+  it('routing is OFF for an earlier year with a missing saved item stamp — the partial-year trap', async () => {
     const a = adminCtx(base);
     const { E, housingId } = await seed(PRE_YEAR);
+    const owned = await owner.db.select({ id: schema.payslip.id }).from(schema.payslip).where(eq(schema.payslip.employmentId, E.employmentId)).orderBy(schema.payslip.id);
+    await owner.db.update(schema.payslip).set({ statutory: sql`${schema.payslip.statutory} - 'componentLines'` }).where(eq(schema.payslip.id, owned[0].id));
     await mapPayItem(housingId, 'director_fee');
     const ea = await employeeEaStatement(a, { employmentId: E.employmentId, year: PRE_YEAR });
 
@@ -199,11 +201,29 @@ describe('ea54fe6e — routing on a real payroll year', () => {
     expect(ea!.partB.allowances).toBeCloseTo(800, 2);
   });
 
+  it('complete earlier-year processed item detail uses the latest reporting assignment without duplicates', async () => {
+    const a = adminCtx(base);
+    const { E, housingId } = await seed(PRE_YEAR);
+    await mapPayItem(housingId, 'EA_B1B');
+    const first = await employeeEaStatement(a, { employmentId: E.employmentId, year: PRE_YEAR });
+    expect(first!.routing.active).toBe(true);
+    expect(first!.partB.directorFee).toBeCloseTo(800, 2);
+    expect(first!.partB.allowances).toBeCloseTo(0, 2);
+    expect(first!.partB.grossSalary).toBeCloseTo(10000, 2);
+    await mapPayItem(housingId, 'EA_B1C');
+    const changed = await employeeEaStatement(a, { employmentId: E.employmentId, year: PRE_YEAR });
+    expect(changed!.partB.directorFee).toBeCloseTo(0, 2);
+    expect(changed!.partB.allowances).toBeCloseTo(800, 2);
+    expect(changed!.partB.gross).toBeCloseTo(first!.partB.gross, 2);
+  });
+
   it('the unmapped warning is computed even in a year that does not route yet', async () => {
     // So the mapping can be finished BEFORE the first year that needs it, rather than being discovered
     // on the form that needed it.
     const a = adminCtx(base);
     const { E } = await seed(PRE_YEAR);
+    const owned = await owner.db.select({ id: schema.payslip.id }).from(schema.payslip).where(eq(schema.payslip.employmentId, E.employmentId)).orderBy(schema.payslip.id);
+    await owner.db.update(schema.payslip).set({ statutory: sql`${schema.payslip.statutory} - 'componentLines'` }).where(eq(schema.payslip.id, owned[0].id));
     const ea = await employeeEaStatement(a, { employmentId: E.employmentId, year: PRE_YEAR });
     expect(ea!.routing.active).toBe(false);
     expect(ea!.routing.unmapped.map((u) => u.code)).toContain('HOUSING');

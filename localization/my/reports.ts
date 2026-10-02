@@ -23,7 +23,7 @@ import {
 // ea54fe6e — read the itemised lines STRUCTURALLY (by shape), which is what lets this file consume the
 // kernel's stamp without importing core/payroll and dragging the whole engine into every EA caller.
 import { storedComponentLines } from '../../core/payslip-earning-lines';
-import { accumulateEaRouting } from './ea-routing';
+import { hasCompleteHistoricalEaProvenance, accumulateEaRouting } from './ea-routing';
 import { MY_EA_REPORTING } from './ea-reporting';
 export { EA_BUCKET_SOURCE_FIELD } from './ea-routing';
 import { MY_STATUTORY_VERSION, DEFAULT_MY_STATUTORY, childReliefTableHeadCount } from './statutory-tables';
@@ -1199,7 +1199,8 @@ export const EA_LINE_TO_FIELD = {
  * totals only, and re-deriving the split from today's settings would disagree with the payslips already
  * issued (argued and rejected against 862ed0ad).
  *
- * 2027 is the first year whose January is stamped. Raise this ONLY with a real reason; never lower it.
+ * 2027 is the first year whose January is stamped. Keep this general boundary. Earlier years may route only when every owned slip passes
+ * hasCompleteHistoricalEaProvenance; missing or partial itemization stays on the legacy path.
  */
 export const EA_ROUTING_FROM_YEAR = 2027;
 
@@ -1422,7 +1423,7 @@ export type EaStatement = {
    * the first form that needed it.
    */
   routing: {
-    /** False for any year before EA_ROUTING_FROM_YEAR — the boxes are then derived exactly as before. */
+    /** Earlier years remain inactive unless every owned slip proves complete historical item provenance. */
     active: boolean;
     fromYear: number;
     /** Pay items with Part B money on this form and no EA line, by code. Empty = nothing to warn about. */
@@ -1918,7 +1919,7 @@ export async function eaStatement(
     // Applied to `derived` BEFORE the override merge below, so a hand amendment still wins: the reporter
     // asked for exactly that precedence (Pay Item mapping → auto amount → manual amendment → final).
     const routed: Partial<Record<EaField, number>> = {};
-    const routingActive = Number(p.year) >= EA_ROUTING_FROM_YEAR;
+    let routingActive = Number(p.year) >= EA_ROUTING_FROM_YEAR;
     /** Pay items whose money reached this form but which no one has mapped — the reporter's §7/§8. */
     const unmappedPayItems = new Map<string, string>();
     if (slips.length) {
@@ -1927,6 +1928,7 @@ export async function eaStatement(
         .from(payComponent);
       const lineOf = new Map(catalogue.map((c) => [c.code, c.eaLine]));
       const nameOf = new Map(catalogue.map((c) => [c.code, c.name]));
+      routingActive ||= hasCompleteHistoricalEaProvenance(slips, lineOf);
       const routing = accumulateEaRouting(slips.flatMap((slip) => storedComponentLines(slip.statutory)), lineOf, EA_LINE_TO_FIELD, routingActive);
       Object.assign(routed, routing.deltas);
       for (const code of routing.unmapped) unmappedPayItems.set(code, nameOf.get(code) ?? code);
