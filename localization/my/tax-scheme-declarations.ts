@@ -7,7 +7,7 @@ import {resolvePcbCalculationScheme,type PcbCalculationScheme} from './payroll';
 
 export type IncentiveScheme = 'rep'|'knowledge_worker'|'c_suite';
 export class TaxSchemeDeclarationError extends Error {
-  constructor(public readonly code:string){super(code);this.name='TaxSchemeDeclarationError';}
+  constructor(public readonly code:string){super(`PCB tax scheme declaration: ${code}`);this.name='TaxSchemeDeclarationError';}
 }
 const validPeriod=(p:string)=>/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(p);
 const validId=(s:string)=>/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(s);

@@ -78,8 +78,8 @@ describe('57d48735 · (a) the figure the reporter was right about', () => {
   });
 
   it('the ruleset version moved with the figure, so two different tables cannot share a version string', () => {
-    expect(MY_STATUTORY_VERSION).toBe('2026.9');
-    expect(DEFAULT_MY_STATUTORY.version).toBe('2026.9');
+    expect(MY_STATUTORY_VERSION).toBe('2026.10');
+    expect(DEFAULT_MY_STATUTORY.version).toBe('2026.10');
   });
 });
 
@@ -161,9 +161,9 @@ describe('57d48735 · (f) the bundled signed pack carries the corrected figure',
   );
   const ruleset = JSON.parse(pack.payload).rulesets[0];
 
-  it('the embedded ruleset is version 2026.9, so a sync cannot stamp the old version over it', () => {
-    expect(ruleset.version).toBe('2026.9');
-    expect(ruleset.data.version).toBe('2026.9');
+  it('the embedded ruleset is current version 2026.10, so a sync cannot stamp the old version over it', () => {
+    expect(ruleset.version).toBe('2026.10');
+    expect(ruleset.data.version).toBe('2026.10');
   });
 
   it('the embedded disabled-spouse figure is RM6,000 — `pnpm statutory:sync` would otherwise reinstate RM5,000', () => {

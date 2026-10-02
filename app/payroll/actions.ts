@@ -135,8 +135,11 @@ export async function generateAction(formData: FormData) {
       if (skipped > 0) toastMsg = t('generatedWithSkipped', { n: skipped });
     }
   } catch (e) {
+    const tp = await getTranslations('payroll.process');
     errMsg =
-      e instanceof PreProcessBlockedError
+      (e as Error).name === 'TaxSchemeDeclarationError'
+        ? tp('taxSchemeDeclarationRequired')
+        : e instanceof PreProcessBlockedError
         ? t('preChecksBlockedError', { n: e.count })
         : // 1b0943d5 — a transferred employee whose OTHER employer's run for this period is already
           // closed. Refused in the kernel before anything commits; the operator gets the real reason,

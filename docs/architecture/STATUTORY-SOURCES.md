@@ -1,6 +1,6 @@
 # Malaysia Statutory Figures — Sources & Verification
 
-**Statutory-table version:** `2026.9` (see `MY_STATUTORY_VERSION`)
+**Statutory-table version:** `2026.10` (see `MY_STATUTORY_VERSION`)
 **Retrieved:** 2026-06-06 (PCB/EPF) · 2026-06-11 (SOCSO/EIS exact schedules) · 2026-06-19 (EPF Third Schedule Part A #95; SOCSO Lindung-24-Jam/SKBBK #155)
 **Encoded in:** `localization/my/statutory-tables.ts`, applied by `localization/my/payroll.ts`
 
@@ -185,7 +185,25 @@ to these tables is traceable to the exact runs it affects.
     recorded in `d64d0df4`'s approved plan.
   - **Arrears / ESOS** other additional-remuneration types reuse the bonus steps; only bonus is
     surfaced in the UI so far.
-  - **REP / knowledge-worker / C-suite** special categories are not implemented.
+  - **REP / Knowledge Worker / C-suite (r380, 2026-10-02):** explicit HR declarations are scoped to
+    employment, employer and inclusive effective months. No eligibility or approval is inferred from
+    a job title, salary or an old person-level incentive flag. Missing declarations refuse future
+    processing; historical payslips retain their saved money and calculation working.
+    Official 2026 specification, printed pages 13–18:
+    <https://www.hasil.gov.my/wp-content/uploads/spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf>.
+    REP / Knowledge Worker use `[P·R − T − (Z+X)]/(n+1)`, with R=15%, T=RM400 for
+    categories 1/3 or RM800 for category 2 where P≤RM35,000, otherwise T=0. The shared
+    normal/additional method retains P, EPF relief caps, eligible reliefs, TP1, accumulated deductions
+    and current zakat offsets. C-suite uses `[P·R − (Z+X)]/(n+1)` without an invented rebate.
+    **Interpretation:** the C-suite narrative specifies 15% of chargeable income; Table 4 prints only
+    a P>RM35,000 row. The implementation follows that narrative at lower P rather than inventing a
+    zero-rate or ordinary-band branch. The additional-remuneration path applies the general five-step
+    method with the same scheme-specific annual tax map; the incentive-section Yt footnote supports
+    that reading, but the specification provides no incentive bonus worked example. These are stated
+    interpretations, not additional published worked examples.
+    Recorded incentive working includes a scheme version and immutable declaration ID; absent or
+    malformed provenance is reported as unavailable. Historical flat-15% working remains labelled
+    as legacy, and is excluded from comparative replay instead of silently reinterpreted.
   - **Cross-employer concurrent employment** (ADR-0009) accumulates per employment, not per
     person — the ADR-0010 flagged gap stands.
 

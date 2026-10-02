@@ -47,6 +47,7 @@ export type RunGroupReasonCode =
   // tells an operator nothing they can act on. It matters more now that a RESUMED run reports through
   // this same result page: "somebody in scope has no current salary record" is the failure that path
   // will actually produce, and it is one the operator can fix in a minute.
+  | 'TAX_SCHEME_DECLARATION_REQUIRED'
   | 'PRE_PROCESS_BLOCKED'
   | 'SYSTEM_VALIDATION_ERROR';
 
@@ -112,6 +113,7 @@ export type RunGroupResult = {
 
 /** Map a thrown engine error to a stable reason code (pure — unit-tested directly). */
 export function reasonForError(message: string): RunGroupReasonCode {
+  if (message.startsWith('PCB tax scheme declaration: ')) return 'TAX_SCHEME_DECLARATION_REQUIRED';
   if (message.includes('A payroll process already exists for this period')) return 'PERIOD_ALREADY_PROCESSED';
   if (/No localization pack/i.test(message)) return 'NO_PAYROLL_CONFIG';
   // PreProcessBlockedError's own message (core/payroll.ts) — matched on its stable phrasing rather than by
