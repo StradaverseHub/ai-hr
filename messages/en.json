@@ -4939,7 +4939,7 @@
       "unapprovedFundRefund": "5. Refund from unapproved Provident / Pension Fund",
       "compensation": "6. Compensation for loss of employment",
       "notTracked": "not tracked",
-      "manualEntryNote": "Boxes payroll cannot produce a figure for — fees, tips and perquisites, tax borne by the employer, ESOS, gratuity, arrears, benefits in kind, living accommodation, unapproved fund refunds, compensation for loss of employment, pension and annuity — start at 0.00 and are filled in under “Amend EA figures” below. Each entry records who made it and why, and the form is marked as amended.",
+      "manualEntryNote": "Review any figure without a complete payroll source under “Amend EA figures”. Each amendment records who made it and why, and the form is marked as amended.",
       "totalGrossRemuneration": "Total gross remuneration",
       "sectionCPensionOther": "C  PENSION AND OTHERS",
       "pension": "1. Pension",
@@ -4965,7 +4965,7 @@
       "perkesoE2Total": "2 SOCSO — total stated on the form (SOCSO + EIS + SKBBK)",
       "sectionFTaxExempt": "F · Total tax-exempt allowances / perquisites",
       "taxExemptAllowances": "Tax-exempt allowances",
-      "disclaimer": "Generated from payroll for YA {year} (statutory tables {version}). Salary, bonus, allowances, EPF, SOCSO/EIS, MTD, CP38 and zakat come from payroll. Fees, tips and perquisites, tax borne by the employer, ESOS, gratuity, arrears, benefits in kind, living accommodation, unapproved fund refunds, compensation for loss of employment, pension and annuity have no payroll source and are entered by HR; until then the printed form leaves those rules empty rather than printing 0.00. The printed form follows the C.P.8A (Pin. 2023) arrangement but is printed on paper of ours — we hold no blank C.P.8A from LHDN — so check every figure against your records before filing.",
+      "disclaimer": "Generated from saved payroll for YA {year} (statutory tables {version}), with EA-only amendments where recorded. BIK and VOLA use complete saved annual reporting evidence when available. Figures without a complete source require HR review. The printed form follows the C.P.8A (Pin. 2023) arrangement on our paper. Check every figure against your records before filing.",
       "blankDisclaimer": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A carries no disclaimer on a filled OR a blank copy]",
       "formEUnaffectedNote": "EA amendments affect only this EA form. Form E / CP8D figures are computed from payroll and are unaffected.",
       "readiness": {
@@ -5027,7 +5027,8 @@
       "layoutFitTitle": "EA form could not be generated",
       "layoutFitMessage": "The complete information does not fit on one readable A4 page. Review the recorded information or request a layout review. No PDF has been produced for this selection.",
       "layoutFitSection": "Affected section",
-      "layoutFitEmployerSection": "Employer and authorised officer"
+      "layoutFitEmployerSection": "Employer and authorised officer",
+      "nonCashSourceIncomplete": "BIK and VOLA do not have complete saved annual reporting evidence for this employer. Review and amend these figures; an unrecorded amount is not a confirmed zero."
     },
     "cp22": {
       "download": "Download CP22",

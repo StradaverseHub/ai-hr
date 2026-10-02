@@ -4536,7 +4536,7 @@
       "unapprovedFundRefund": "未获批准的公积金 / 退休金退款",
       "compensation": "失去雇佣的赔偿金",
       "notTracked": "未跟踪",
-      "manualEntryNote": "薪资系统无法产生金额的项目 — 费用、小费与额外补贴、雇主承担的所得税、ESOS、服务金、往年拖欠款、实物福利、居住住宿、未获批准基金退款、失去雇佣的赔偿金、退休金与年金 — 起始为 0.00，由下方“修订 EA 数据”填写。每笔填写都会记录填写人与原因，并将本表标示为已修订。",
+      "manualEntryNote": "请在“修订 EA 数据”中核对缺少完整薪资来源的金额。每次修订都会记录修订人及原因，并将表格标记为已修订。",
       "totalGrossRemuneration": "薪酬总额",
       "sectionCPensionOther": "C · 退休金及其他款项",
       "pension": "1 退休金",
@@ -4562,7 +4562,7 @@
       "perkesoE2Total": "2 SOCSO — 表格上申报的合计（SOCSO + EIS + SKBBK）",
       "sectionFTaxExempt": "F · 免税津贴 / 额外补贴合计",
       "taxExemptAllowances": "免税津贴",
-      "disclaimer": "由 YA {year} 的薪资生成（法定税表 {version}）。工资、奖金、津贴、EPF、SOCSO/EIS、MTD、CP38 和天课取自薪资系统。费用、小费与额外补贴、雇主承担的所得税、ESOS、服务金、往年拖欠款、实物福利、居住住宿、未获批准基金退款、失去雇佣的赔偿金、退休金与年金没有薪资来源，在 HR 填写前显示为 0.00。本表是我们对表格字段的排版，并非 LHDN 官方页面 — 申报前请对照您的记录核实。",
+      "disclaimer": "根据 YA {year} 的已保存薪资生成（法定税表 {version}），并应用已记录的 EA 专用修订。BIK 和 VOLA 在有完整的已保存年度申报依据时自动取值。缺少完整来源的金额需要 HR 核对。打印表格在我们的纸张上采用 C.P.8A（Pin. 2023）的排列。申报前请逐项核对您的记录。",
       "blankDisclaimer": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A carries no disclaimer on a filled OR a blank copy]",
       "formEUnaffectedNote": "EA 修订仅影响此 EA 表格。Form E / CP8D 的数字由薪资计算得出，不受影响。",
       "readiness": {
@@ -4624,7 +4624,8 @@
       "layoutFitTitle": "无法生成 EA 表格",
       "layoutFitMessage": "完整信息无法以清晰可读的方式放入一页 A4。请检查已记录的信息或申请版式审核。本次选择未生成 PDF。",
       "layoutFitSection": "受影响的部分",
-      "layoutFitEmployerSection": "雇主及授权人员"
+      "layoutFitEmployerSection": "雇主及授权人员",
+      "nonCashSourceIncomplete": "该雇主的 BIK 和 VOLA 缺少完整的已保存年度申报依据。请核对并修订这些金额；未记录金额并不代表已确认的零。"
     },
     "cp22": {
       "download": "下载 CP22",
