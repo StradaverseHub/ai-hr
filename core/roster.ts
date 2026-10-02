@@ -2548,13 +2548,14 @@ export async function rosterWindowView(
   assertRosterWindow(p.from, p.to);
   const { from, to } = { from: p.from, to: p.to };
   const dates = datesBetween(from, to);
+  const today=todayInKualaLumpur();
   const [employeeRows, shiftRows] = await Promise.all([
     p.employmentIds?.length === 0 ? Promise.resolve([]) : listEmployees(ctx, p.companyIds.length > 0 ? p.companyIds : undefined),
     listShiftsForTenant(ctx),
   ]);
 
   const allEmployees: RosterMonthEmployee[] = employeeRows
-    .filter((e) => !e.terminatedOn && (!p.employmentIds || p.employmentIds.includes(e.employmentId)))
+    .filter((e) => (!e.terminatedOn || e.terminatedOn>today) && (!p.employmentIds || p.employmentIds.includes(e.employmentId)))
     .map((e) => ({
       employmentId: e.employmentId,
       name: e.name,
