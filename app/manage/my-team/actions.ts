@@ -38,6 +38,6 @@ export async function reviewMyTeamPunchAction(form:FormData):Promise<MyTeamActio
   const attendanceId=String(form.get('attendanceId')??''),fingerprint=String(form.get('fingerprint')??'');
   const current=snapshot.attention.find(item=>item.kind==='missing_punch'&&item.attendanceId===attendanceId);
   if(!current||current.kind!=='missing_punch'||current.fingerprint!==fingerprint)return {ok:false,error:'review_changed'};
-  await markMyTeamPunchReviewed(s,{attendanceId,fingerprint});revalidatePath('/manage/my-team');return {ok:true};
+  await markMyTeamPunchReviewed(s,{attendanceId,fingerprint},snapshot.query);revalidatePath('/manage/my-team');return {ok:true};
  }catch(error){return {ok:false,error:myTeamError(error).error};}
 }

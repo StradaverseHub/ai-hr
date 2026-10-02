@@ -27,7 +27,13 @@ describe('My Team action handoff retains existing transaction-level workflow aut
  });
  it('requires the current record fingerprint without writing a punch correction',async()=>{
   expect(await reviewMyTeamPunchAction(form({attendanceId:'punch',fingerprint:'outdated'}))).toEqual({ok:false,error:'review_changed'});expect(f.review).not.toHaveBeenCalled();
-  expect(await reviewMyTeamPunchAction(form({attendanceId:'punch',fingerprint:'saved-record'}))).toEqual({ok:true});expect(f.review).toHaveBeenCalledWith(expect.anything(),{attendanceId:'punch',fingerprint:'saved-record'});
+  expect(await reviewMyTeamPunchAction(form({attendanceId:'punch',fingerprint:'saved-record'}))).toEqual({ok:true});expect(f.review).toHaveBeenCalledWith(expect.anything(),{attendanceId:'punch',fingerprint:'saved-record'},query);
+ });
+ it('retains an atomic selected-context refusal when the membership changes after the initial read',async()=>{
+  f.review.mockRejectedValueOnce(new Error('MY_TEAM_NOT_AUTHORIZED'));
+  expect(await reviewMyTeamPunchAction(form({attendanceId:'punch',fingerprint:'saved-record'}))).toEqual({ok:false,error:'not_authorized'});
+  expect(f.review).toHaveBeenCalledWith(expect.anything(),{attendanceId:'punch',fingerprint:'saved-record'},query);
+  expect(f.refresh).not.toHaveBeenCalled();
  });
  it('blocks an employee or delegated approver at the page-role boundary',async()=>{
   f.session.mockResolvedValue({s:{roles:['employee']} as SessionContext,scopeIds:[company]});
