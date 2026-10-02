@@ -29,7 +29,8 @@ describe('r379 complete historical EA provenance', () => {
   });
   it('refuses pre-cap item OT even when its amount is below saved total OT', () => {
     const s = slip(); s.statutory.componentLines[0].buckets.push({ bucket: 'ot', amount: 10 });
-    expect(hasCompleteHistoricalEaProvenance([{ ...s, overtime: '100' }], mapping)).toBe(false);
+    const savedSlip = { ...s, overtime: '100' };
+    expect(hasCompleteHistoricalEaProvenance([savedSlip], mapping)).toBe(false);
   });
   it.each([null, [], { amount: '1' }, { amount: null }])('refuses unproven converted OT %j', otConvert => {
     expect(hasCompleteHistoricalEaProvenance([{ ...slip(), statutory: { ...slip().statutory, otConvert } }], mapping)).toBe(false);
