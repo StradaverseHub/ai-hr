@@ -80,6 +80,8 @@ import {
   generatePayslips,
   setPayrollInput,
   listProcessedPayslipsAcross,
+  upsertPayComponent,
+  setEmploymentPayComponent,
 } from '../packs/payroll/service';
 
 const refusal = demoSeedRefusal(process.env);
@@ -89,6 +91,10 @@ if (refusal) {
 }
 
 const owner = createDb(process.env.MIGRATION_DATABASE_URL!);
+// Optional r380 synthetic variants: still behind the disposable-demo database guard above.
+const requestedScheme = process.env.DEV_PCB_SCHEME ?? 'resident';
+if (!['resident','non_resident','rep','knowledge_worker','c_suite'].includes(requestedScheme)) throw new Error('Unknown fixture PCB scheme');
+const typedBonus = process.env.DEV_PCB_TYPED_BONUS === '1';
 
 /** The reference slip's own position — see the header on why these two categories and not others. */
 const CHILD_GRID = { under_18: { full: 1, half: 0 }, disabled_study: { full: 1, half: 0 } };
@@ -138,8 +144,10 @@ async function main() {
     .select({ id: schema.appUser.id, role: schema.roleAssignment.role })
     .from(schema.appUser)
     .innerJoin(schema.roleAssignment, eq(schema.roleAssignment.appUserId, schema.appUser.id))
-    .where(eq(schema.appUser.tenantId, tenantId));
+    .where(eq(schema.appUser.tenantId, tenantId)).orderBy(schema.appUser.id, schema.roleAssignment.role);
   const adminIds = [...new Set(grants.filter((g) => g.role === 'hr_admin' || g.role === 'super_admin').map((g) => g.id))];
+  if (!adminIds[0]) throw new Error('Fixture needs a seeded HR administrator');
+  ctx.userId = adminIds[0];
 
   /**
    * ⚠️ TRAP 4, CHECKED BEFORE ANYTHING IS WRITTEN. One regular run per (company, pay period) is the
@@ -181,16 +189,34 @@ async function main() {
     personId: e.personId,
     icNumber: `850302${String(stamp).slice(-6)}`,
     taxCategory: 2,
+    ...(requestedScheme === 'c_suite' ? {epfCitizenship:'non_citizen' as const} : {}),
   });
   await pack.statutory.setTax(ctx, {
     personId: e.personId,
     taxCategory: 2,
+    taxResidency: requestedScheme === 'non_resident' ? 'non_resident' : 'resident',
     numChildren: 2,
     childReliefMode: 'auto_table',
     childReliefTable: CHILD_GRID,
     disabledIndividual: false,
     disabledSpouse: false,
   });
+
+
+  if (['rep','knowledge_worker','c_suite'].includes(requestedScheme)) {
+    if (!pack.statutory.saveTaxSchemeDeclaration) throw new Error('Fixture pack lacks scoped declarations');
+    await pack.statutory.saveTaxSchemeDeclaration(ctx, {employmentId:e.employmentId,
+      expectedCompanyId:company.id,scheme:requestedScheme,validFrom:'2026-05',validTo:'2026-06',
+      approvalReference:'SYNTHETIC DEV FIXTURE — not a real approval',eligibilityConfirmed:true});
+  }
+  if (typedBonus) {
+    const component = await upsertPayComponent(ctx, {code:'PCB_DETAIL_BONUS',name:'Synthetic PCB detail bonus',
+      kind:'allowance',includedInEpf:true,includedInSocsoEis:false,includedInPcb:true,
+      includedInHrdfBase:false,isNonPayable:false,prorates:false,epfBonus2012:true,
+      pcbRemunerationType:'additional',pcbExemptionCode:'PCB_TAXABLE',eaFormLine:'EA_B1A'});
+    await setEmploymentPayComponent(ctx, {employmentId:e.employmentId,componentId:component.id,
+      amount:30000,effectiveFrom:'2026-06-01',effectiveTo:'2026-06-30'});
+  }
 
   for (const [payPeriod, bonus, zakat] of PERIODS) {
     // Trap 1: SCOPED to this employment, so the seed's compensation-less employment cannot block the run.
@@ -203,7 +229,7 @@ async function main() {
       batchId,
       employmentId: e.employmentId,
       overtimeAmount: 0,
-      bonusAmount: bonus,
+      bonusAmount: typedBonus ? 0 : bonus,
       zakat,
     });
     await generatePayslips(ctx, { batchId });
@@ -222,7 +248,8 @@ async function main() {
   const st = slip?.statutory as { pcb?: number; pcbBonus?: number; pcbMeta?: { trace?: Record<string, number> } };
   const trace = st?.pcbMeta?.trace;
 
-  console.log('PCB detail dev fixture applied.');
+  if (typedBonus && !(Number(trace?.Yt) > 0 && Number(st?.pcbBonus) > 0)) throw new Error('Typed bonus fixture failed to exercise additional remuneration');
+  console.log('PCB detail dev fixture applied. Scheme: ' + requestedScheme);
   console.log(`  payslip        ${june.id}   (${june.payPeriod}, ${company.legalName})`);
   console.log(`  sign in as     dev_user=${adminIds[0] ?? '(no hr_admin grant found)'}`);
   console.log(`  screen         /payroll/pcb-detail?payslipId=${june.id}`);
