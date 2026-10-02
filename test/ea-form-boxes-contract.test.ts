@@ -183,7 +183,7 @@ describe('6036dab7 — every EA box reaches every surface', () => {
    * which renderer call a line uses, and no runtime value distinguishes "0.00 printed" from "omitted"
    * without rasterising a PDF.
    */
-  it('the manual Part B boxes are drawn only when HR has entered a figure', () => {
+  it('manual and unavailable Part B boxes suppress unsupported zero amounts', () => {
     const src = fs.readFileSync(path.resolve(__dirname, '../lib/ea-pdf.ts'), 'utf8');
 
     // r219 — THE DECISION IS UNCHANGED; THE SHAPE THAT EXPRESSES IT MOVED. Before the C.P.8A redraw this
@@ -202,7 +202,8 @@ describe('6036dab7 — every EA box reaches every surface', () => {
     // …and an empty amount draws the rule with nothing on it, rather than a placeholder.
     expect(src).toMatch(/const amountOrRule = [\s\S]{0,200}?dotted\(x0, x1, tt \+ 2\.5\);\s*\n\s*if \(v\) \{/);
 
-    // Every box whose ONLY source is an override goes through `manual`…
+    // These PDF boxes suppress unsupported zeros. B3/B4 may now have frozen annual evidence; the
+    // printer still leaves their rule empty when that evidence is unavailable and no amendment exists.
     for (const box of [
       'taxBorneByEmployer', 'esos', 'gratuity', 'arrears',
       'benefitsInKind', 'livingAccommodation', 'unapprovedFundRefund', 'compensation',
@@ -252,8 +253,8 @@ describe('6036dab7 — every EA box reaches every surface', () => {
      * test/pcb-classification.test.ts (RM4,000 paid, RM3,000 exempt ⇒ 1(c) = RM1,000).
      */
     const reports = read('localization/my/reports.ts');
-    expect(reports, 'B.1(c) no longer subtracts the exempt portion').toContain(
-      'const taxableAllowances = round2(allowances - exemptAllowances);',
+    expect(reports, 'B.1(c) must subtract cash exemptions while leaving run-owned noncash exemptions outside cash').toContain(
+      'const taxableAllowances = round2(allowances - (exemptAllowances - nonCashExemptions));',
     );
     expect(reports, "B.1(c)'s derived baseline is the TAXABLE allowance").toContain(
       "allowances: withRouting('allowances', taxableAllowances)",
@@ -272,6 +273,37 @@ describe('6036dab7 — every EA box reaches every surface', () => {
     for (const field of ['mtd', 'cp38', 'zakat']) {
       expect(src, `${field} must still print unconditionally`).toContain(`derived(d.partD.${field})`);
     }
+  });
+
+  it('B3/B4 derive from complete saved run ownership, show unavailable evidence honestly, and retain amendment precedence', () => {
+    const reports = read('localization/my/reports.ts');
+    const saved = read('localization/my/ea-noncash.ts');
+    const start = reports.indexOf('const derived: Record<EaField, number>');
+    const end = reports.indexOf('const merged: Record<EaField, number>', start);
+    expect(start).toBeGreaterThan(-1);expect(end).toBeGreaterThan(start);
+    const baselines = reports.slice(start, end);
+    expect(reports).toContain('const nonCashEa = accumulatedEaNonCash(slips);');
+    expect(reports).toContain('nonCashExemptions += eaNonCashExemption(s.statutory);');
+    expect(saved).toContain('byCode.set(entry.exemptionCode, round((byCode.get(entry.exemptionCode) ?? 0) + entry.exemptAmount));');
+    expect(saved).toContain('EA_NONCASH_EXEMPTION_UNRECORDED');
+    expect(saved).toContain('for (const entry of saved.ownedEaEntries)');
+    expect(saved).toContain('benefitsInKind: complete ? bik : 0');
+    expect(saved).toContain('livingAccommodation: complete ? vola : 0');
+    expect(saved).toContain('if (!target) { complete = false;');
+    expect(reports).toContain('nonCashComplete: nonCashEa.complete');
+    for (const field of ['benefitsInKind', 'livingAccommodation']) {
+      expect(baselines).toContain(`${field}: withRouting('${field}', nonCashEa.${field})`);
+      const row = PAGE.match(new RegExp(`<Row label=\\{t\\('${field}'\\)\\}[^\\n]+`));
+      expect(row, `${field} printed row must exist`).not.toBeNull();
+      expect(row![0]).toContain(`ea.routing.nonCashComplete === false && ea.partB.${field} === 0 && !ovByField.has('${field}') ? '—' : rm(ea.partB.${field})`);
+    }
+    const applyStart = reports.indexOf('for (const r of ovRows)', end);
+    const applyEnd = reports.indexOf('if (!grossOverridden)', applyStart);
+    expect(applyStart).toBeGreaterThan(end);expect(applyEnd).toBeGreaterThan(applyStart);
+    const overlay = reports.slice(applyStart, applyEnd);
+    expect(overlay).toContain('original: derived[field]');
+    expect(overlay).toContain('merged[field] = amended;');
+    expect(reports.slice(applyEnd)).toContain('EA_PART_B_COMPONENTS.reduce((a, f) => a + merged[f], 0)');
   });
 
 });
