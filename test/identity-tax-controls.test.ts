@@ -70,9 +70,9 @@ describe('statutory() tax residency branches (item 8b5334db)', () => {
   it('REP and Knowledge Worker use the approved annual chargeable-income method', () => {
     const rep = statutory(wage, { category: 1, children: 0 }, 0, 0, { month: 1 }, { calculationScheme: 'rep' });
     const kw = statutory(wage, { category: 1, children: 0 }, 0, 0, { month: 1 }, { calculationScheme: 'knowledge_worker' });
-    // P = 96,000 -4,000 EPF -9,000 individual =83,000; tax12,450 spread over12months.
+    // K2 truncates to283.63 permonth; P=83,000.07; truncated month tax=1,037.50.
     expect(rep.pcb).toBe(1037.5);expect(kw.pcb).toBe(rep.pcb);
-    expect(rep.pcbMeta).toMatchObject({calculationScheme:'rep',P1:83000,trace:{schemeVersion:1,R:0.15,T:0}});
+    expect(rep.pcbMeta).toMatchObject({calculationScheme:'rep',P1:83000.07,trace:{schemeVersion:1,R:0.15,T:0}});
     expect(rep.pcbMeta).not.toHaveProperty('flatRate');
   });
 

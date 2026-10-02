@@ -1,3 +1,4 @@
+import {listTaxSchemeDeclarationsMY,saveTaxSchemeDeclarationMY,revokeTaxSchemeDeclarationMY,resolveTaxSchemeMY} from './tax-scheme-declarations';
 import { MY_EA_REPORTING } from './ea-reporting';
 /**
  * Malaysia localization pack (ADR-0008). Slice 1 ships the statutory profile; leave rules,
@@ -89,6 +90,9 @@ export const myPack: CountryPack = {
     // The counterpart to setIc; the identity form on the Profile tab picks one based on the selected nationality.
     setPassport: setPassportProfileMY,
     setTax: setTaxProfileMY,
+    listTaxSchemeDeclarations:listTaxSchemeDeclarationsMY,
+    saveTaxSchemeDeclaration:saveTaxSchemeDeclarationMY,
+    revokeTaxSchemeDeclaration:revokeTaxSchemeDeclarationMY,
     // 7ee14bbc — the duplicate income-tax-reference warning AT THE POINT OF ENTRY. The CP39 preview
     // warns at filing time; the approved plan asks for the same warning on the screen where the number
     // is typed, and the personnel page reads it through the pack rather than importing MY directly.
@@ -122,6 +126,7 @@ export const myPack: CountryPack = {
   holidays: MY_HOLIDAYS_2026,
   payroll: {
     statutory,
+    resolveTaxScheme:resolveTaxSchemeMY,
     // r356 — ONE replay of the prior months' PCB accumulators, for the kernel AND for the multicycle
     // worksheet's model of an already-paid month. They were two copies and the copy drifted twice in two
     // rounds (zakatRebateTp1, then Sigma(Y-K) moving off gross_pay onto bases.pcb); the fold's own header

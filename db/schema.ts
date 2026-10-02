@@ -5533,6 +5533,19 @@ export function isTp1Categories2026(c: Tp1Categories | null | undefined): c is T
   return !!c && (c as Tp1Categories2026).form === 'tp1-2026';
 }
 
+/** HR's approved incentive declaration belongs to one employment, employer and effective period. */
+export const employmentTaxSchemeMy = pgTable('employment_tax_scheme_my', {
+  id: id(), tenantId: tenantId(),
+  employmentId: uuid('employment_id').notNull().references(() => employment.id),
+  companyId: uuid('company_id').notNull().references(() => company.id),
+  scheme: text('scheme').notNull().$type<'rep' | 'knowledge_worker' | 'c_suite'>(),
+  validFrom: text('valid_from').notNull(), validTo: text('valid_to').notNull(),
+  approvalReference: text('approval_reference').notNull(),
+  declaredByUserId: uuid('declared_by_user_id').notNull().references(() => appUser.id),
+  declaredAt: timestamp('declared_at', {withTimezone:true}).defaultNow().notNull(),
+  archivedAt: timestamp('archived_at', {withTimezone:true}),
+});
+
 export const tp1Relief = pgTable(
   'tp1_relief',
   {

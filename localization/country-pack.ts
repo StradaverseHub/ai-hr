@@ -322,6 +322,7 @@ type MyStatutoryModule = typeof import('./my/statutory');
 type MyCompanyStatutoryModule = typeof import('./my/company-statutory');
 type MyStatutoryConfigModule = typeof import('./my/statutory-config');
 type MyPayrollModule = typeof import('./my/payroll');
+type MyTaxSchemeModule = typeof import('./my/tax-scheme-declarations');
 
 /**
  * A jurisdiction's compliance surface. One implementation per country, registered under the
@@ -360,6 +361,9 @@ export interface CountryPack {
     setIc: MyStatutoryModule['setIcProfileMY'];
     setPassport: MyStatutoryModule['setPassportProfileMY'];
     setTax: MyStatutoryModule['setTaxProfileMY'];
+    listTaxSchemeDeclarations?: MyTaxSchemeModule['listTaxSchemeDeclarationsMY'];
+    saveTaxSchemeDeclaration?: MyTaxSchemeModule['saveTaxSchemeDeclarationMY'];
+    revokeTaxSchemeDeclaration?: MyTaxSchemeModule['revokeTaxSchemeDeclarationMY'];
     /**
      * 7ee14bbc — every OTHER person in a company already filed under one income tax reference number.
      * ADVISORY: the personnel screen shows it beside the field as it is typed, so a duplicate is caught
@@ -415,6 +419,7 @@ export interface CountryPack {
      * signature on the pack — MY-derived until rung 5 splits its options into contract vocabulary.
      */
     statutory: MyPayrollModule['statutory'];
+    resolveTaxScheme?: MyTaxSchemeModule['resolveTaxSchemeMY'];
     /**
      * r356 — fold ONE prior payslip into the year's PCB accumulators (Y, Sigma(Y-K), K, X, Z, sum-LP).
      * On the seam because the kernel's replay and the MY worksheet's replay must be the SAME arithmetic:

@@ -6094,6 +6094,15 @@ export async function generatePayslips(
       }
     }
 
+    // Resolve and lock employer-period declarations in stable employment order, before producing money.
+    // Save/revoke uses the same lock; an approval decision remains valid until this payroll commits.
+    const resolvedTaxSchemes = new Map<string, {scheme:string;declarationId?:string}>();
+    if (pack.payroll.resolveTaxScheme) {
+      for (const e of [...emps].sort((a,b)=>a.employmentId.localeCompare(b.employmentId))) {
+        resolvedTaxSchemes.set(e.employmentId, await pack.payroll.resolveTaxScheme(tx, {tenantId:ctx.tenantId,employmentId:e.employmentId,companyId:batch.companyId,payPeriod:batch.payPeriod,legacyScheme:e.taxResidency,resident:e.isResident ?? true,epfCitizenship:e.epfCitizenship}));
+      }
+    }
+
     for (const e of emps) {
       // 2.1.1 (ADR-0064) — the resolved policy config for this employment (null ⇒ legacy path unchanged).
       const cfg = policyConfigByEmp.get(e.employmentId) ?? null;
@@ -6357,6 +6366,8 @@ export async function generatePayslips(
       const socsoCatSel = (e.socsoCategory ?? 'auto') as 'auto' | 'first' | 'second' | 'none';
       const eisCatSel = (e.eisCategory ?? 'auto') as 'auto' | 'none';
       const autoSocsoCategory = ((age != null && age >= 60) || (e.epfCitizenship ?? 'citizen') === 'non_citizen' ? 2 : 1) as 1 | 2;
+      const resolvedTaxScheme = resolvedTaxSchemes.get(e.employmentId)
+        ?? {scheme:e.taxResidency ?? (e.isResident === false ? 'non_resident' : 'resident'),declarationId:undefined};
       const stOpts = {
         // SOCSO Second Category (employer Injury-only) for age 60+ AND foreign workers (#156); both
         // still pay the employee SKBBK leg. EIS (Act 800) is Malaysian 18–60 only — not 60+, not foreign.
@@ -6374,7 +6385,8 @@ export async function generatePayslips(
         subjectToSkbbk: e.subjectToSkbbk ?? true,
         resident: e.isResident ?? true,
         // Preserve the explicit approved scheme; the country pack alone resolves its formula.
-        calculationScheme: e.taxResidency ?? (e.isResident === false ? 'non_resident' : 'resident'),
+        calculationScheme: resolvedTaxScheme.scheme,
+        taxSchemeDeclarationId: resolvedTaxScheme.declarationId,
         // EPF rule selection (#95): age + citizenship pick Part A / Part E senior / non-citizen 2%/2%.
         epfAge: age,
         epfCitizenship: e.epfCitizenship ?? 'citizen',

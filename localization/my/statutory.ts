@@ -914,11 +914,9 @@ export async function correctAccidentalHrdfOptOutsMY(
 }
 
 // ── Item 8b5334db — Identification & Tax card ──────────────────────────────────────────────────────────
-/** Tax residency status. resident ⇒ full computerised MTD; non_resident ⇒ flat 30% (spec §D.a); rep
- *  (Returning Expert Programme) + knowledge_worker (specific-region incentive, e.g. Iskandar) ⇒ flat 15%.
- *  Source: Income Tax (Exemption) orders / TalentCorp REP; both incentive schemes tax employment income at a
- *  annual incentive tax at 15% on chargeable income. HR confirms approval eligibility. */
-export const TAX_RESIDENCIES = ['resident', 'non_resident', 'rep', 'knowledge_worker', 'c_suite'] as const;
+/** Legacy person tax classification. Approved incentives require a scoped employer-period declaration.
+ * C-Suite is declared only on that employment-scoped surface, never as a global person privilege. */
+export const TAX_RESIDENCIES = ['resident', 'non_resident', 'rep', 'knowledge_worker'] as const;
 export type TaxResidency = (typeof TAX_RESIDENCIES)[number];
 export const isTaxResidency = (v: string): v is TaxResidency => (TAX_RESIDENCIES as readonly string[]).includes(v);
 

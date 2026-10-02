@@ -2871,6 +2871,13 @@
       "when": 1790867765655,
       "tag": "0502_payslip_information",
       "breakpoints": true
+    },
+    {
+      "idx": 503,
+      "version": "7",
+      "when": 1790912363798,
+      "tag": "0503_employment_tax_scheme_my",
+      "breakpoints": true
     }
   ]
 }

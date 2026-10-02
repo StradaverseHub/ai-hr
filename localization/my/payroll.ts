@@ -713,6 +713,7 @@ export type PcbMonthResult = {
   /** Audit snapshot stamped into the payslip (reproducibility, ADR-0006). */
   snapshot: {
     calculationScheme?: PcbCalculationScheme | string;
+    taxSchemeDeclarationId?: string;
     month: number;
     n: number;
     ytdNet: number;
@@ -879,6 +880,7 @@ export function childReliefAmountFor(
  */
 export function pcbMonth(p: {
   calculationScheme?: Exclude<PcbCalculationScheme, 'non_resident'>;
+  taxSchemeDeclarationId?: string;
   monthlyWage: number;
   epfMonthly: number;
   month: number;
@@ -988,6 +990,7 @@ export function pcbMonth(p: {
     normalPreZakat: mtdNormalCalc,
     snapshot: {
       calculationScheme: scheme,
+      ...(p.taxSchemeDeclarationId ? {taxSchemeDeclarationId:p.taxSchemeDeclarationId} : {}),
       month,
       n,
       ytdNet: round2(acc.netRemuneration),
@@ -1204,6 +1207,7 @@ export function statutory(
     /** Legacy non-resident 30% option. Approved incentives require calculationScheme. */
     flatTaxRate?: number | null;
     calculationScheme?: PcbCalculationScheme | string;
+    taxSchemeDeclarationId?: string;
     epfElection?: EpfElection;
     /** Employee age + citizenship select the EPF rule (Part A / Part E senior / non-citizen 2%/2%). */
     epfAge?: number | null;
@@ -1346,6 +1350,7 @@ export function statutory(
   }
   const m = pcbMonth({
     calculationScheme: scheme as Exclude<PcbCalculationScheme, 'non_resident'>,
+    taxSchemeDeclarationId: opts?.taxSchemeDeclarationId,
     monthlyWage: pcbWage,
     epfMonthly: Math.max(0, e.employee - epfOnBonus),
     month: pcbCtx?.month ?? 1,
