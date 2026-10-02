@@ -17,6 +17,7 @@ describe('r383 saved annual noncash reporting',()=>{
   const s=additional();s.pcbNonCash.ownedEaEntries[0].subjectPCB=false;
   expect(accumulatedEaNonCash([{payPeriod:'2026-07',statutory:s}]).livingAccommodation).toBe(80);
   s.pcbNonCash.ownedEaEntries[0].eaFormLine='';
+  s.pcbNonCash.eaEntries[1].eaFormLine='';
   expect(accumulatedEaNonCash([{payPeriod:'2026-07',statutory:s}])).toMatchObject({livingAccommodation:0,unmapped:['HOUSE']});
  });
  it('does not label partial new evidence as a full annual figure',()=>{
