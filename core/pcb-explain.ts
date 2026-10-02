@@ -481,7 +481,9 @@ export function explainPcb(
     const common = ['M', 'R', 'B', 'taxOnP1', 'category', 'Y1', 'K1', 'Y2', 'K2', 'Yt', 'Kt', 'K2t',
       'Z', 'lpAccumulated', 'lpCurrent', 'zakatCurrent', 'mtdNormalCalc', 'mtdAdditionalCalc',
       'mtdNormalFloored', 'mtdAdditionalFloored', 'zakatLeftover'];
-    if (!raw || raw.schemeVersion !== 1 || !hasRecordedNumbers(raw, common) ||
+    if (typeof metaObj.taxSchemeDeclarationId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(metaObj.taxSchemeDeclarationId) ||
+        !raw || raw.schemeVersion !== 1 || !hasRecordedNumbers(raw, common) ||
         !hasRecordedNumbers(metaObj, ['month', 'n', 'ytdNet', 'epfClaimed', 'pcbPaid', 'P1']) ||
         !hasRecordedNumbers(reliefs, ['individual', 'spouse', 'children', 'disabledIndividual', 'disabledSpouse', 'total', 'lp']) ||
         !hasRecordedNumbers(st, ['pcb', 'pcbBonus', 'zakat', 'epfEmployee']) ||

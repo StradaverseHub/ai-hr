@@ -6,7 +6,7 @@ import {pcbFormulaBlocks} from '../app/payroll/pcb-detail/formulas';
 // to prove that immutable scheme dispatch takes priority over the old flat reader.
 function saved(scheme: 'rep' | 'knowledge_worker' | 'c_suite' = 'rep') {
   return {pcb: 45, pcbBonus: 0, zakat: 5, epfEmployee: 100, pcbMeta: {
-    calculationScheme: scheme, rate: .15, month: 10, n: 2, ytdNet: 1000, epfClaimed: 500,
+    taxSchemeDeclarationId: '11111111-2222-4333-8444-555555555555', calculationScheme: scheme, rate: .15, month: 10, n: 2, ytdNet: 1000, epfClaimed: 500,
     pcbPaid: 20, P1: 30000, reliefs: {individual: 9000, spouse: 0, children: 0,
       disabledIndividual: 0, disabledSpouse: 0, total: 9000, lp: 0},
     trace: {schemeVersion: 1, T: 400, M: 0, R: .15, B: -400, taxOnP1: 4100,
@@ -43,6 +43,12 @@ describe('r380 stored scheme presentation', () => {
     expect(explainPcb(st, null).kind).toBe('unavailable');
     Object.assign(st.pcbMeta, {calculationScheme: 'rep'}); Object.assign(st.pcbMeta.trace, {schemeVersion: 2});
     expect(explainPcb(st, null).kind).toBe('unavailable');
+  });
+  it('refuses incentive provenance without a valid saved declaration ID', () => {
+    for (const value of [undefined, null, '', 'not-a-uuid', 123]) {
+      const st = saved(); Object.assign(st.pcbMeta, {taxSchemeDeclarationId: value});
+      expect(explainPcb(st, null)).toMatchObject({kind: 'unavailable', pcb: 45});
+    }
   });
   it('retains legacy flat working instead of reclassifying from a current relief profile', () => {
     const x = explainPcb({pcb: 100, pcbMeta: {flatRate: .15, trace: {remuneration: 1000, additional: 0, rate: .15}}},
