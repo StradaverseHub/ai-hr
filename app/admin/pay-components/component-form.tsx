@@ -121,11 +121,9 @@ export async function ComponentForm({
                 <option value="non_payable">{t('kind_non_payable')}</option>
               </select>
             </Field>
-            {/* Feedback 3c473773 — Payroll Category. It decides WHICH BOX on the payslip this item's money
-                appears in, and nothing else: no statutory flag, no statutory base, and no EA / CP39 / KWSP
-                / PERKESO grouping reads it. It exists because the box used to be inferred from the tax
-                treatment, so an overtime code correctly declared as additional remuneration printed under
-                Bonus. Blank keeps that inference (which is what an unclassified legacy row does). */}
+            {/* Cash categories control presentation. Non-payable BIK/VOLA categories also identify
+                the benefit kind; Subject to PCB controls inclusion in taxable normal remuneration.
+                EA classification remains a separate reporting decision. */}
             <Field label={t('colDisplayCategory')}>
               <select name="displayCategory" defaultValue={component?.displayCategory ?? ''} className={inputCls}>
                 <option value="">{t('displayCategory_auto')}</option>

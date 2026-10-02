@@ -1,3 +1,4 @@
+import { classifyNonCashBenefit } from '../localization/noncash-benefits';
 /**
  * Typed pay-component services (Wave 3 #9, ADR-0025). Catalog management (admin), per-employment
  * recurring values (effective-dated like compensation), per-batch one-off values, plus backfill
@@ -412,6 +413,8 @@ export const STATUTORY_RELEVANT_FIELDS = [
   // and HRDF with it. A run that is stale must SAY it is stale rather than sit there looking agreed.
   'orpOvertime',
   'orpUnpaidLeave',
+  // Computed only when a PCB-bearing non-payable category/fallback changes.
+  'nonCashClassification',
 ] as const;
 
 export function isStatutoryRelevantChange(changed: readonly string[]): boolean {
@@ -643,6 +646,12 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
         const b = (existing as unknown as Record<string, unknown>)[f];
         return f === 'rule' ? JSON.stringify(a ?? null) !== JSON.stringify(b ?? null) : a !== b;
       });
+      const nonCashKey = (r: typeof existing) => {
+        if (!r.isNonPayable || !r.includedInPcb) return null;
+        try { return classifyNonCashBenefit({code:r.code,kind:r.kind,nonPayable:r.isNonPayable,pcb:r.includedInPcb,displayCategory:r.displayCategory,eaFormLine:r.eaFormLine,pcbRemunerationType:r.pcbRemunerationType,epfBonus2012:r.epfBonus2012}); }
+        catch { return 'invalid'; }
+      };
+      if (changed.some(f=>f==='displayCategory'||f==='eaFormLine') && nonCashKey(existing)!==nonCashKey({...existing,...next})) changed.push('nonCashClassification');
       await tx.update(payComponent).set(next).where(eq(payComponent.id, existing.id));
       id = existing.id;
     } else {
@@ -2119,8 +2128,13 @@ export class UnsupportedBatchComponentError extends Error {
  *  Exported rather than copied deliberately: a second hand-written copy of a fail-closed rule is how the
  *  entry gate and the kernel start disagreeing about which pay codes are allowed to exist. STATE-BASED —
  *  it reads the row being saved, so an already-bad row can still be edited back into a good one. */
-export const isUnsupportedTaxableComponent = (c: { includedInEpf: boolean; includedInSocsoEis: boolean; includedInPcb: boolean; isNonPayable: boolean; pcbRemunerationType?: string | null }) =>
-  c.includedInPcb && c.pcbRemunerationType == null && (c.isNonPayable || (!c.includedInEpf && !c.includedInSocsoEis));
+export const isUnsupportedTaxableComponent = (c: {code?:string;kind?:string;displayCategory?:string|null;eaFormLine?:string|null;epfBonus2012?:boolean;includedInEpf:boolean;includedInSocsoEis:boolean;includedInPcb:boolean;isNonPayable:boolean;pcbRemunerationType?:string|null}) => {
+  if(c.isNonPayable){
+    try { if(classifyNonCashBenefit({code:c.code??'pay-item',kind:c.kind??'allowance',nonPayable:true,pcb:c.includedInPcb,displayCategory:c.displayCategory,eaFormLine:c.eaFormLine,pcbRemunerationType:c.pcbRemunerationType,epfBonus2012:c.epfBonus2012}))return false; }
+    catch { return true; }
+  }
+  return c.includedInPcb && (c.isNonPayable || (c.pcbRemunerationType==null && !c.includedInEpf&&!c.includedInSocsoEis));
+};
 
 /** Upsert a one-off component value for an employee on a draft batch (by batch+employment+component). */
 export function setPayrollBatchComponent(
@@ -2134,6 +2148,7 @@ export function setPayrollBatchComponent(
     const [comp] = await tx
       .select({
         code: payComponent.code,
+        kind:payComponent.kind,displayCategory:payComponent.displayCategory,eaFormLine:payComponent.eaFormLine,epfBonus2012:payComponent.epfBonus2012,
         includedInEpf: payComponent.includedInEpf,
         includedInSocsoEis: payComponent.includedInSocsoEis,
         includedInPcb: payComponent.includedInPcb,

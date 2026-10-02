@@ -186,8 +186,8 @@ describe('r361 — the accumulated block itemises what was paid and states what 
     };
     const x = richRun();
     const allowed = numbersIn({ x, paid: PAID });
-    // Zero is the one literal this builder prints (BIK and VOLA), and it is in the inputs many times over.
-    expect(allowed.has(0), 'the premise for the two printed zeroes').toBe(true);
+    // Every displayed amount must belong to the saved inputs, including any genuine recorded zero.
+    expect(allowed.has(0), 'the fixture contains recorded zeros').toBe(true);
     for (const row of pcbAccumulatedRemunerationSection(x, PAID).rows) {
       for (const v of [row.first, row.second]) {
         if (v?.kind === 'money') {
@@ -197,17 +197,14 @@ describe('r361 — the accumulated block itemises what was paid and states what 
     }
   });
 
-  it('BIK and VOLA print 0.00 — and the note that makes that honest is attached to the same section', () => {
-    // CLAUDE.md §8: `0.00` asserts the money does not exist, and neither is a payroll component in this
-    // system. The approved plan chose to print the agency's two lines anyway ("an absent line on a
-    // statutory document is worse than a truthful zero") ON CONDITION that the page says what the zero
-    // means. Delete the note and this case, not a render check, is what fails.
+  it('legacy BIK and VOLA remain unavailable alongside their saved accumulated totals', () => {
+    // Missing old benefit provenance is not a recorded zero.
     const sec = pcbAccumulatedRemunerationSection(richRun(), PAID);
-    expect(captionOf(sec, 'slipAccBik').first).toEqual({ kind: 'money', amount: 0 });
-    expect(captionOf(sec, 'slipAccVola').first).toEqual({ kind: 'money', amount: 0 });
+    expect(captionOf(sec, 'slipAccBik').first).toEqual({ kind: 'notRecorded' });
+    expect(captionOf(sec, 'slipAccVola').first).toEqual({ kind: 'notRecorded' });
     expect(sec.note).toBe('slipAccNote');
     const en = JSON.parse(read('messages/en.json')).payroll.pcbDetail as Record<string, string>;
-    for (const phrase of ['benefit in kind', 'value of living accommodation', 'no such figure']) {
+    for (const phrase of ['benefit in kind', 'value of living accommodation', 'not recorded']) {
       expect(en.slipAccNote.toLowerCase(), `the note must say "${phrase}"`).toContain(phrase);
     }
   });

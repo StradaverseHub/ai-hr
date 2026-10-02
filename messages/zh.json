@@ -3421,7 +3421,7 @@
       "totalEmployerCost": "雇主总成本",
       "proratedNote": "按本周期内工作的 {days, plural, one {# 天} other {# 天}}按比例计算。",
       "recordLinesHeading": "逐项列出的薪资项目",
-      "recordLinesNote": "仅供参考记录 — 这些项目不影响您的应发或实发工资。",
+      "recordLinesNote": "记录项目不会作为现金收入支付。应税福利可能影响 PCB 和实发工资。",
       "recordLineRemark": "录入时写作“{remark}”",
       "nonPayableHeading": "其他（不支付）",
       "nonPayableTotal": "不支付项目合计",
@@ -4540,7 +4540,7 @@
       "unapprovedFundRefund": "未获批准的公积金 / 退休金退款",
       "compensation": "失去雇佣的赔偿金",
       "notTracked": "未跟踪",
-      "manualEntryNote": "薪资系统无法产生金额的项目 — 费用、小费与额外补贴、雇主承担的所得税、ESOS、服务金、往年拖欠款、实物福利、居住住宿、未获批准基金退款、失去雇佣的赔偿金、退休金与年金 — 起始为 0.00，由下方“修订 EA 数据”填写。每笔填写都会记录填写人与原因，并将本表标示为已修订。",
+      "manualEntryNote": "请在“修订 EA 数据”中核对缺少完整薪资来源的金额。每次修订都会记录修订人及原因，并将表格标记为已修订。",
       "totalGrossRemuneration": "薪酬总额",
       "sectionCPensionOther": "C · 退休金及其他款项",
       "pension": "1 退休金",
@@ -4566,7 +4566,7 @@
       "perkesoE2Total": "2 SOCSO — 表格上申报的合计（SOCSO + EIS + SKBBK）",
       "sectionFTaxExempt": "F · 免税津贴 / 额外补贴合计",
       "taxExemptAllowances": "免税津贴",
-      "disclaimer": "由 YA {year} 的薪资生成（法定税表 {version}）。工资、奖金、津贴、EPF、SOCSO/EIS、MTD、CP38 和天课取自薪资系统。费用、小费与额外补贴、雇主承担的所得税、ESOS、服务金、往年拖欠款、实物福利、居住住宿、未获批准基金退款、失去雇佣的赔偿金、退休金与年金没有薪资来源，在 HR 填写前显示为 0.00。本表是我们对表格字段的排版，并非 LHDN 官方页面 — 申报前请对照您的记录核实。",
+      "disclaimer": "根据 YA {year} 的已保存薪资生成（法定税表 {version}），并应用已记录的 EA 专用修订。BIK 和 VOLA 在有完整的已保存年度申报依据时自动取值。缺少完整来源的金额需要 HR 核对。打印表格在我们的纸张上采用 C.P.8A（Pin. 2023）的排列。申报前请逐项核对您的记录。",
       "blankDisclaimer": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A carries no disclaimer on a filled OR a blank copy]",
       "formEUnaffectedNote": "EA 修订仅影响此 EA 表格。Form E / CP8D 的数字由薪资计算得出，不受影响。",
       "readiness": {
@@ -4628,7 +4628,8 @@
       "layoutFitTitle": "无法生成 EA 表格",
       "layoutFitMessage": "完整信息无法以清晰可读的方式放入一页 A4。请检查已记录的信息或申请版式审核。本次选择未生成 PDF。",
       "layoutFitSection": "受影响的部分",
-      "layoutFitEmployerSection": "雇主及授权人员"
+      "layoutFitEmployerSection": "雇主及授权人员",
+      "nonCashSourceIncomplete": "该雇主的 BIK 和 VOLA 缺少完整的已保存年度申报依据。请核对并修订这些金额；未记录金额并不代表已确认的零。"
     },
     "cp22": {
       "download": "下载 CP22",
@@ -5812,7 +5813,7 @@
           "totalEmployerContributions": "雇主缴纳总额",
           "capped": "正在显示最近 {cap} 条结果。请收窄上方筛选条件以查看更早的月份。",
           "itemsHeading": "逐项列出的薪资项目",
-          "itemsNote": "在本工资单上单独记录。一次性项目已包含在上方合计内；仅作记录的项目（如实物福利）既不影响总额也不影响实发。",
+          "itemsNote": "一次性项目已包含在上述合计中。仅记录项目不是现金收入；应税福利可能影响 PCB 和实发工资。",
           "itemRemark": "录入时写作“{remark}”",
           "sourceHeading": "这些来自哪里",
           "sourceNote": "本次薪资计算中针对该员工记录的单项交易。它们列在已记录项目旁边，而不是与之逐一对应：两笔条目可能使用相同的薪资项目和金额，因此只有录入的人才能说清哪一笔对应哪一笔。",
@@ -6235,7 +6236,12 @@
       "taxSelection_confirmation_required": "请在“所得税居民身份”字段确认适用类别并保存一次。旧设置需要一次性确认，无需另行填写声明或批准参考编号。",
       "taxSelection_invalid_scheme": "请选择有效的所得税居民类别。",
       "taxSelection_citizenship_unknown": "已记录的国籍不符合 C-Suite 方案针对非公民居民的要求。",
-      "taxSelection_not_resident": "已记录的税务居民身份不符合此居民方案的要求。"
+      "taxSelection_not_resident": "已记录的税务居民身份不符合此居民方案的要求。",
+      "nonCash_classification_conflict": "非现金福利类别与 EA 申报项目冲突。请检查薪资项目配置。",
+      "nonCash_unsupported_kind": "此薪资项目类型不能作为非现金福利计算。请检查薪资项目配置。",
+      "nonCash_normal_remuneration_required": "应税实物福利及住宿福利必须按正常薪酬计算 PCB。请检查薪资项目配置。",
+      "nonCash_month_baseline_unavailable": "已保存的每月福利输入缺失或与当前设置不一致。计算此次额外薪资前，请检查常规薪资及福利配置。",
+      "nonCash_configuration_invalid": "计算薪资前，请检查非现金福利配置。"
     },
     "guide": {
       "title": "薪资工作流程指南",
@@ -7206,7 +7212,7 @@
       "slipCurrentHeading": "Current month's remuneration",
       "slipCurrentTotal": "Remuneration charged to tax this month",
       "slipCurrentEpf": "Employee provident fund contribution this month",
-      "slipCurrentNote": "Payroll records the month's taxable remuneration as one combined figure and does not store the split across these components, so each line says it was recorded only in combination rather than showing an amount nobody recorded. The combined figure above is the one the calculation charged.",
+      "slipCurrentNote": "合计金额包含应税实物福利和住宿价值。录入、免税和应税金额均来自本次已保存的计算；缺失的旧记录显示为未记录。其他现金组成部分仅以合计方式记录。",
       "slipAdditionalRemHeading": "Additional remuneration for the current month",
       "slipAdditionalTotal": "Additional remuneration charged to tax this month",
       "slipAdditionalEpf": "Employee provident fund contribution on the additional remuneration",
@@ -7249,7 +7255,7 @@
       "slipAccMtd": "已缴付的累计每月税务扣除，包括额外薪酬的税务扣除",
       "slipAccZakat": "已缴付的累计天课、施舍及出境税",
       "slipAccLevy": "已缴付的累计出境税",
-      "slipAccNote": "金额栏是本雇主在本课税年度较早月份实际支付的款项，由那几个月的薪金单汇总而得。合计栏则是此次计算本身所依据的累计数字，取自本薪金单自身的记录。两者不一定相符：累计数字是应课税的薪酬，不包括获豁免的款项，并且还包含前雇主在 TP3 表格上申报的部分，而这里签发的薪金单无法显示那一部分。本系统并未把实物福利和居住住所价值记录为薪资项目，因此其 0.00 表示我们没有该项数字，而不是有人已确认其不存在。费用与佣金并未与支付它们的津贴和花红分开储存。累计出境税同样没有单独储存：它包含在上方的天课行内，那是计算所采用的单一合并数字。",
+      "slipAccNote": "累计应税实物福利和住宿价值来自本次已保存计算中的前月福利记录。缺失或不完整的旧福利记录显示为未记录，而不是零。现金明细仅属于本雇主；已保存的累计总额也可能包含TP3表中的金额。",
       "slipAccNoteUnread": "本课税年度较早的月份无法为此雇员读取，因此明细各行显示为没有记录，而不是显示零。旁边的累计合计是计算本身所依据的数字，不受影响。",
       "slipStep1Heading": "步骤 1 — 不含额外薪酬的年度净薪酬的每月税务扣除",
       "slipStep1CurrentMtd": "本月每月税务扣除",
@@ -7276,7 +7282,11 @@
       "slipStep1CurrentRebate": "本月天课/费用/征费",
       "formulaNormalMtdNet": "正常薪酬净 MTD = max(0，最低扣款规则处理后的正常 MTD − 本月天课/费用/征费)",
       "slipStep1NormalRules": "先应用既定的小数截断、五仙进位及最低扣款规则，再抵扣本月回扣。正常薪酬净 MTD 不得为负数。剩余回扣按已记录的额外薪酬规则处理；合并后的最终扣款另行显示。",
-      "slipStep1CombinedFormula": "MTD (A) / 净 MTD = [((P−M)R + B − (Z + X)) / (n + 1)] − 本月天课/费用/征费"
+      "slipStep1CombinedFormula": "MTD (A) / 净 MTD = [((P−M)R + B − (Z + X)) / (n + 1)] − 本月天课/费用/征费",
+      "slipBikEntered": "录入的实物福利",
+      "slipBikExempt": "免税实物福利",
+      "slipVolaEntered": "录入的住宿价值",
+      "slipVolaExempt": "免税住宿价值"
     },
     "multiCycleWorksheet": {
       "title": "多次发薪法定核对表",
@@ -7376,7 +7386,8 @@
         "inconsistent_run_bases": "各次发薪按不同的月薪计费",
         "tax_scheme_not_reconstructable": "已保存的税务计划或雇主批准不完整，或各次工资记录之间不同；未重建年度比较。",
         "zakat_or_lp_present": "本月涉及天课或 TP1 扣除",
-        "no_statutory_profile": "该员工没有马来西亚法定资料"
+        "no_statutory_profile": "该员工没有马来西亚法定资料",
+        "noncash_not_reconstructable": "已保存的非现金福利金额或所属运行记录不完整或不一致；未重建比较。"
       },
       "runType": {
         "regular": "常规",
@@ -11572,7 +11583,7 @@
     "displayCategory_allowance": "收入",
     "displayCategory_claim": "报销",
     "displayCategory_deduction": "扣除",
-    "displayCategoryHint": "决定该项目在工资单、薪资结果、交易视图和薪资报表中显示在哪一栏。除此之外不改变任何内容——不涉及任何法定计算，EA、CP39、KWSP 或 PERKESO 的数字也不会变动。保持“自动判断”即可沿用此前由系统为您推断栏位的做法。",
+    "displayCategoryHint": "对于现金项目，工资类别决定项目的显示位置。对于非现金福利，请选择 BIK 或 VOLA；“需缴纳 PCB”决定该福利是否计入应税薪酬。EA 申报单独设置。",
     "displayCategory_bik": "实物福利 (BIK)",
     "sectionOrp": "普通工资率 (ORP) 计算",
     "sectionOrpHint": "选择计算普通工资率时是否纳入此薪资项目。两个选项互相独立 — 可任选其一、两者皆选或都不选。ORP 公式本身不变；这些选项只决定哪些薪资项目计入其中。",
@@ -11593,7 +11604,8 @@
     "eaLine_EA_B5": "B5 - Refund from unapproved Provident / Pension Fund",
     "eaLine_EA_B6": "B6 - Compensation for loss of employment",
     "eaLine_EA_C1": "C1 - Pension",
-    "eaLine_EA_C2": "C2 - Annuities or other periodical payments"
+    "eaLine_EA_C2": "C2 - Annuities or other periodical payments",
+    "displayCategory_vola": "居住设施价值（VOLA）"
   },
   "notifications": {
     "title": "通知",

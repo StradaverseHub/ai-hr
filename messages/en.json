@@ -3454,7 +3454,7 @@
       "totalEmployerCost": "Total employer cost",
       "proratedNote": "Prorated on {days, plural, one {# day} other {# days}} worked in this period.",
       "recordLinesHeading": "Itemised payroll items",
-      "recordLinesNote": "Recorded for your reference only — these do not affect your gross or net pay.",
+      "recordLinesNote": "Recorded items are not paid as cash earnings. Taxable benefits can affect PCB and net pay.",
       "recordLineRemark": "Entered as “{remark}”",
       "nonPayableHeading": "Other (Non-Payable)",
       "nonPayableTotal": "Total non-payable",
@@ -4943,7 +4943,7 @@
       "unapprovedFundRefund": "5. Refund from unapproved Provident / Pension Fund",
       "compensation": "6. Compensation for loss of employment",
       "notTracked": "not tracked",
-      "manualEntryNote": "Boxes payroll cannot produce a figure for — fees, tips and perquisites, tax borne by the employer, ESOS, gratuity, arrears, benefits in kind, living accommodation, unapproved fund refunds, compensation for loss of employment, pension and annuity — start at 0.00 and are filled in under “Amend EA figures” below. Each entry records who made it and why, and the form is marked as amended.",
+      "manualEntryNote": "Review any figure without a complete payroll source under “Amend EA figures”. Each amendment records who made it and why, and the form is marked as amended.",
       "totalGrossRemuneration": "Total gross remuneration",
       "sectionCPensionOther": "C  PENSION AND OTHERS",
       "pension": "1. Pension",
@@ -4969,7 +4969,7 @@
       "perkesoE2Total": "2 SOCSO — total stated on the form (SOCSO + EIS + SKBBK)",
       "sectionFTaxExempt": "F · Total tax-exempt allowances / perquisites",
       "taxExemptAllowances": "Tax-exempt allowances",
-      "disclaimer": "Generated from payroll for YA {year} (statutory tables {version}). Salary, bonus, allowances, EPF, SOCSO/EIS, MTD, CP38 and zakat come from payroll. Fees, tips and perquisites, tax borne by the employer, ESOS, gratuity, arrears, benefits in kind, living accommodation, unapproved fund refunds, compensation for loss of employment, pension and annuity have no payroll source and are entered by HR; until then the printed form leaves those rules empty rather than printing 0.00. The printed form follows the C.P.8A (Pin. 2023) arrangement but is printed on paper of ours — we hold no blank C.P.8A from LHDN — so check every figure against your records before filing.",
+      "disclaimer": "Generated from saved payroll for YA {year} (statutory tables {version}), with EA-only amendments where recorded. BIK and VOLA use complete saved annual reporting evidence when available. Figures without a complete source require HR review. The printed form follows the C.P.8A (Pin. 2023) arrangement on our paper. Check every figure against your records before filing.",
       "blankDisclaimer": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A carries no disclaimer on a filled OR a blank copy]",
       "formEUnaffectedNote": "EA amendments affect only this EA form. Form E / CP8D figures are computed from payroll and are unaffected.",
       "readiness": {
@@ -5031,7 +5031,8 @@
       "layoutFitTitle": "EA form could not be generated",
       "layoutFitMessage": "The complete information does not fit on one readable A4 page. Review the recorded information or request a layout review. No PDF has been produced for this selection.",
       "layoutFitSection": "Affected section",
-      "layoutFitEmployerSection": "Employer and authorised officer"
+      "layoutFitEmployerSection": "Employer and authorised officer",
+      "nonCashSourceIncomplete": "BIK and VOLA do not have complete saved annual reporting evidence for this employer. Review and amend these figures; an unrecorded amount is not a confirmed zero."
     },
     "cp22": {
       "download": "Download CP22",
@@ -5812,7 +5813,7 @@
           "totalEmployerContributions": "Total employer contributions",
           "capped": "Showing the {cap} most recent results. Narrow the filters above to see earlier months.",
           "itemsHeading": "Itemised payroll items",
-          "itemsNote": "Recorded individually on this payslip. One-off items are already included in the totals above; record-only items (such as benefits in kind) affect neither gross nor net.",
+          "itemsNote": "One-off items are included in the totals above. Record-only items are not cash earnings; taxable benefits can affect PCB and net pay.",
           "itemRemark": "Entered as “{remark}”",
           "sourceHeading": "Where these came from",
           "sourceNote": "The individual transactions recorded against this employee on this payroll run. They are listed beside the recorded items rather than matched to them: two entries can share a pay item and an amount, so only the person who keyed them can say which is which.",
@@ -6235,7 +6236,12 @@
       "taxSelection_confirmation_required": "Confirm the applicable category in Income Tax Resident and save once. Older settings need one-time confirmation; no separate declaration or approval reference is required.",
       "taxSelection_invalid_scheme": "Select a valid Income Tax Resident category.",
       "taxSelection_citizenship_unknown": "The recorded citizenship does not meet the resident non-citizen C-Suite requirement.",
-      "taxSelection_not_resident": "The recorded tax residency does not meet this resident scheme requirement."
+      "taxSelection_not_resident": "The recorded tax residency does not meet this resident scheme requirement.",
+      "nonCash_classification_conflict": "The non-cash benefit category conflicts with its EA reporting line. Review the payroll item configuration.",
+      "nonCash_unsupported_kind": "This payroll item type cannot be calculated as a non-cash benefit. Review the payroll item configuration.",
+      "nonCash_normal_remuneration_required": "Taxable BIK and living accommodation must use normal remuneration for PCB. Review the payroll item configuration.",
+      "nonCash_month_baseline_unavailable": "Saved monthly benefit inputs are missing or differ from this setup. Review the regular run and benefit configuration before calculating this additional run.",
+      "nonCash_configuration_invalid": "Review the non-cash benefit configuration before calculating payroll."
     },
     "guide": {
       "title": "Payroll Workflow Guide",
@@ -7206,7 +7212,7 @@
       "slipCurrentHeading": "Current month's remuneration",
       "slipCurrentTotal": "Remuneration charged to tax this month",
       "slipCurrentEpf": "Employee provident fund contribution this month",
-      "slipCurrentNote": "Payroll records the month's taxable remuneration as one combined figure and does not store the split across these components, so each line says it was recorded only in combination rather than showing an amount nobody recorded. The combined figure above is the one the calculation charged.",
+      "slipCurrentNote": "The combined figure includes taxable benefit in kind and value of living accommodation. Their entered, exempt and taxable amounts come from this saved calculation; missing legacy amounts are not recorded. Other cash components remain recorded only in combination.",
       "slipAdditionalRemHeading": "Additional remuneration for the current month",
       "slipAdditionalTotal": "Additional remuneration charged to tax this month",
       "slipAdditionalEpf": "Employee provident fund contribution on the additional remuneration",
@@ -7249,7 +7255,7 @@
       "slipAccMtd": "Accumulated monthly MTD paid, including MTD on additional remuneration",
       "slipAccZakat": "Accumulated zakat, fitrah and departure levy paid",
       "slipAccLevy": "Accumulated departure levy paid",
-      "slipAccNote": "The amount column is what this employer paid in the earlier months of this tax year, summed from those payslips. The total column is the accumulated figures the calculation itself ran against, read from this payslip's own record. The two need not agree: the accumulated figures are the remuneration tax is charged on, which leaves out exempt amounts, and they also carry whatever a previous employer declared on Form TP3, which payslips issued here cannot show. Benefit in kind and value of living accommodation are not recorded as payroll components in this system, so the 0.00 against them means we hold no such figure, not that anyone has established there is none. Fees and commission are not stored apart from the allowance and bonus they are paid through. No separate accumulated departure levy is stored either: it sits inside the zakat line above it, which is the single combined figure the calculation uses.",
+      "slipAccNote": "Accumulated taxable benefit in kind and value of living accommodation come from this saved calculation's prior-month benefit records. Missing or incomplete legacy benefit records are not recorded, not zero. Cash itemisation belongs to this employer; saved accumulated totals may also include Form TP3.",
       "slipAccNoteUnread": "The earlier months of this tax year could not be read for this employee, so the itemised lines say nothing was recorded rather than showing zeroes. The accumulated totals beside them are the figures the calculation itself ran against and are unaffected.",
       "slipStep1Heading": "Step 1 — MTD excess of annual year net remuneration excluding additional remuneration",
       "slipStep1CurrentMtd": "Current month's MTD",
@@ -7276,7 +7282,11 @@
       "slipStep1CurrentRebate": "Current month’s Zakat/Fi/Levy",
       "formulaNormalMtdNet": "Net normal MTD = max(0, normal MTD after the minimum-deduction rule − current month’s Zakat/Fi/Levy)",
       "slipStep1NormalRules": "The calculation applies the established truncation, five-sen rounding and minimum-deduction rules before the current-month rebate. Net normal MTD cannot be negative. Any remaining rebate follows the recorded additional-remuneration treatment; the combined final deduction is shown separately.",
-      "slipStep1CombinedFormula": "MTD (A) / Net MTD = [((P−M)R + B − (Z + X)) / (n + 1)] − Current month’s Zakat/Fi/Levy"
+      "slipStep1CombinedFormula": "MTD (A) / Net MTD = [((P−M)R + B − (Z + X)) / (n + 1)] − Current month’s Zakat/Fi/Levy",
+      "slipBikEntered": "BIK entered",
+      "slipBikExempt": "BIK exempt",
+      "slipVolaEntered": "Living accommodation entered",
+      "slipVolaExempt": "Living accommodation exempt"
     },
     "multiCycleWorksheet": {
       "title": "Multi-Cycle Statutory Worksheet",
@@ -7376,7 +7386,8 @@
         "inconsistent_run_bases": "The runs were charged on different monthly wages",
         "tax_scheme_not_reconstructable": "The saved tax scheme or employer approval is incomplete or differs between runs; no annual comparison was reconstructed.",
         "zakat_or_lp_present": "Zakat or a TP1 deduction rode this month",
-        "no_statutory_profile": "No Malaysian statutory profile for this employee"
+        "no_statutory_profile": "No Malaysian statutory profile for this employee",
+        "noncash_not_reconstructable": "The saved non-cash contribution or ownership is incomplete or inconsistent; no comparison was reconstructed."
       },
       "runType": {
         "regular": "Regular",
@@ -11572,7 +11583,7 @@
     "displayCategory_allowance": "Earning",
     "displayCategory_claim": "Claim",
     "displayCategory_deduction": "Deduction",
-    "displayCategoryHint": "Decides which box this item appears in on payslips, payroll results, transaction view and payroll reports. It changes nothing else — no statutory calculation, and no EA, CP39, KWSP or PERKESO figure. Leave it on “Work it out automatically” to keep the box worked out for you, as before.",
+    "displayCategoryHint": "For cash items, Payroll Category controls where the item is shown. For non-payable benefits, choose BIK or VOLA; Subject to PCB determines whether the benefit enters taxable remuneration. EA reporting is configured separately.",
     "displayCategory_bik": "Benefit in Kind (BIK)",
     "sectionOrp": "Ordinary Rate of Pay (ORP) Calculation",
     "sectionOrpHint": "Choose whether this pay item is included when the ordinary rate of pay is worked out. The two boxes are independent — tick either, both or neither. The ORP formula itself is unchanged; these boxes only decide which pay items feed it.",
@@ -11593,7 +11604,8 @@
     "eaLine_EA_B5": "B5 - Refund from unapproved Provident / Pension Fund",
     "eaLine_EA_B6": "B6 - Compensation for loss of employment",
     "eaLine_EA_C1": "C1 - Pension",
-    "eaLine_EA_C2": "C2 - Annuities or other periodical payments"
+    "eaLine_EA_C2": "C2 - Annuities or other periodical payments",
+    "displayCategory_vola": "Value of Living Accommodation (VOLA)"
   },
   "notifications": {
     "title": "Notifications",

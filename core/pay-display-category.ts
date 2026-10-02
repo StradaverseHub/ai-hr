@@ -33,7 +33,7 @@
 //  reaches a cash bucket at all (core/payroll.ts pushes it to `recordLines`), so the label describes
 //  exactly the line it is put on. What it may NOT do is re-box money that WAS paid — see
 //  resolveDisplayCategory's third refusal below.
-export const PAY_DISPLAY_CATEGORIES = ['basic', 'overtime', 'bonus', 'allowance', 'claim', 'deduction', 'bik'] as const;
+export const PAY_DISPLAY_CATEGORIES = ['basic', 'overtime', 'bonus', 'allowance', 'claim', 'deduction', 'bik', 'vola'] as const;
 export type PayDisplayCategory = (typeof PAY_DISPLAY_CATEGORIES)[number];
 
 /** The kernel's cash buckets (core/payroll.ts earningsOf). Repeated here rather than imported because that
@@ -89,7 +89,7 @@ export function resolveDisplayCategory(
   if (bucket === 'deduct') return 'deduction';
   if (declared == null) return fallback;
   if (declared === 'deduction') return fallback;
-  if (declared === 'bik') return fallback; // 711adcd2 — see the third refusal above.
+  if (declared === 'bik' || declared === 'vola') return fallback; // 711adcd2 — see the third refusal above.
   return (PAY_DISPLAY_CATEGORIES as readonly string[]).includes(declared)
     ? (declared as PayDisplayCategory)
     : fallback;

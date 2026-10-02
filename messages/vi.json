@@ -3421,7 +3421,7 @@
       "totalEmployerCost": "Tổng chi phí người sử dụng lao động",
       "proratedNote": "Tính theo tỷ lệ trên {days, plural, one {# ngày} other {# ngày}} làm việc trong kỳ này.",
       "recordLinesHeading": "Các khoản lương chi tiết",
-      "recordLinesNote": "Chỉ ghi nhận để bạn tham khảo — các mục này không ảnh hưởng đến lương gộp hoặc lương thực nhận của bạn.",
+      "recordLinesNote": "Các khoản ghi nhận không được trả dưới dạng thu nhập tiền mặt. Phúc lợi chịu thuế có thể ảnh hưởng đến PCB và lương thực nhận.",
       "recordLineRemark": "Được nhập là “{remark}”",
       "nonPayableHeading": "Khác (Không chi trả)",
       "nonPayableTotal": "Tổng khoản không chi trả",
@@ -4540,7 +4540,7 @@
       "unapprovedFundRefund": "Hoàn trả từ quỹ tiết kiệm / hưu trí chưa được phê duyệt",
       "compensation": "Bồi thường do mất việc làm",
       "notTracked": "không theo dõi",
-      "manualEntryNote": "Những ô bảng lương không thể tính ra số — thù lao, tiền boa và bổng lộc, thuế do người sử dụng lao động chịu, ESOS, trợ cấp thâm niên, truy lĩnh, lợi ích bằng hiện vật, chỗ ở, hoàn trả từ quỹ chưa được phê duyệt, bồi thường mất việc làm, lương hưu và niên kim — bắt đầu bằng 0.00 và được nhập ở mục “Điều chỉnh số liệu EA” bên dưới. Mỗi lần nhập đều ghi lại ai nhập và vì sao, và biểu mẫu được đánh dấu là đã điều chỉnh.",
+      "manualEntryNote": "Kiểm tra số liệu không có nguồn bảng lương đầy đủ trong “Điều chỉnh số liệu EA”. Mỗi điều chỉnh ghi lại người thực hiện và lý do, và biểu mẫu được đánh dấu đã điều chỉnh.",
       "totalGrossRemuneration": "Tổng thù lao gộp",
       "sectionCPensionOther": "C · Lương hưu và các khoản khác",
       "pension": "1 Lương hưu",
@@ -4566,7 +4566,7 @@
       "perkesoE2Total": "2 SOCSO — tổng số ghi trên mẫu (SOCSO + EIS + SKBBK)",
       "sectionFTaxExempt": "F · Tổng phụ cấp / bổng lộc miễn thuế",
       "taxExemptAllowances": "Phụ cấp miễn thuế",
-      "disclaimer": "Được tạo từ bảng lương cho YA {year} (bảng pháp lý {version}). Lương, thưởng, phụ cấp, EPF, SOCSO/EIS, MTD, CP38 và zakat lấy từ bảng lương. Thù lao, tiền boa và bổng lộc, thuế do người sử dụng lao động chịu, ESOS, trợ cấp thâm niên, truy lĩnh, lợi ích bằng hiện vật, chỗ ở, hoàn trả từ quỹ chưa được phê duyệt, bồi thường mất việc làm, lương hưu và niên kim không có nguồn từ bảng lương và hiển thị 0.00 cho đến khi HR nhập. Đây là bố cục các trường biểu mẫu của chúng tôi, không phải trang chính thức của LHDN — hãy đối chiếu với hồ sơ của bạn trước khi nộp.",
+      "disclaimer": "Được tạo từ bảng lương đã lưu cho YA {year} (bảng pháp lý {version}), cùng các điều chỉnh riêng cho EA đã ghi nhận. BIK và VOLA dùng chứng cứ báo cáo năm đã lưu đầy đủ khi có. Số liệu không có nguồn đầy đủ cần HR kiểm tra. Biểu mẫu in theo bố cục C.P.8A (Pin. 2023) trên giấy của chúng tôi. Hãy đối chiếu từng số liệu với hồ sơ trước khi nộp.",
       "blankDisclaimer": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A carries no disclaimer on a filled OR a blank copy]",
       "formEUnaffectedNote": "Sửa đổi EA chỉ ảnh hưởng đến biểu mẫu EA này. Các con số Form E / CP8D được tính từ bảng lương và không bị ảnh hưởng.",
       "readiness": {
@@ -4628,7 +4628,8 @@
       "layoutFitTitle": "Không thể tạo mẫu EA",
       "layoutFitMessage": "Toàn bộ thông tin không vừa một trang A4 dễ đọc. Hãy kiểm tra thông tin đã lưu hoặc yêu cầu xem xét bố cục. Không có PDF nào được tạo cho lựa chọn này.",
       "layoutFitSection": "Phần bị ảnh hưởng",
-      "layoutFitEmployerSection": "Người sử dụng lao động và người được ủy quyền"
+      "layoutFitEmployerSection": "Người sử dụng lao động và người được ủy quyền",
+      "nonCashSourceIncomplete": "BIK và VOLA chưa có đầy đủ chứng cứ báo cáo năm đã lưu cho người sử dụng lao động này. Hãy kiểm tra và điều chỉnh các số liệu này; khoản chưa ghi nhận không phải là số không đã xác nhận."
     },
     "cp22": {
       "download": "Tải CP22",
@@ -5812,7 +5813,7 @@
           "totalEmployerContributions": "Tổng đóng góp của người sử dụng lao động",
           "capped": "Đang hiển thị {cap} kết quả gần nhất. Hãy thu hẹp bộ lọc phía trên để xem các tháng trước.",
           "itemsHeading": "Các khoản lương chi tiết",
-          "itemsNote": "Được ghi riêng trên phiếu lương này. Các khoản một lần đã nằm trong tổng phía trên; các khoản chỉ để ghi nhận (như phúc lợi hiện vật) không ảnh hưởng đến tổng hay thực nhận.",
+          "itemsNote": "Các khoản một lần đã được tính trong tổng ở trên. Các khoản chỉ ghi nhận không phải thu nhập tiền mặt; phúc lợi chịu thuế có thể ảnh hưởng đến PCB và lương thực nhận.",
           "itemRemark": "Được nhập là “{remark}”",
           "sourceHeading": "Các khoản này đến từ đâu",
           "sourceNote": "Các giao dịch riêng lẻ được ghi nhận cho nhân viên này trong kỳ tính lương này. Chúng được liệt kê bên cạnh các khoản đã ghi nhận chứ không ghép cặp với chúng: hai bản ghi có thể trùng khoản lương và số tiền, nên chỉ người nhập mới biết bản ghi nào ứng với khoản nào.",
@@ -6235,7 +6236,12 @@
       "taxSelection_confirmation_required": "Xác nhận phân loại phù hợp trong trường Cư trú thuế thu nhập và lưu một lần. Cài đặt cũ cần xác nhận một lần; không cần khai báo riêng hay tham chiếu phê duyệt.",
       "taxSelection_invalid_scheme": "Chọn phân loại Cư trú thuế thu nhập hợp lệ.",
       "taxSelection_citizenship_unknown": "Quốc tịch đã ghi nhận không đáp ứng yêu cầu C-Suite dành cho người cư trú không phải công dân.",
-      "taxSelection_not_resident": "Tình trạng cư trú thuế đã ghi nhận không đáp ứng yêu cầu của chương trình cư trú này."
+      "taxSelection_not_resident": "Tình trạng cư trú thuế đã ghi nhận không đáp ứng yêu cầu của chương trình cư trú này.",
+      "nonCash_classification_conflict": "Loại phúc lợi phi tiền mặt không khớp với mục báo cáo EA. Hãy kiểm tra cấu hình khoản lương.",
+      "nonCash_unsupported_kind": "Loại khoản lương này không thể được tính là phúc lợi phi tiền mặt. Hãy kiểm tra cấu hình khoản lương.",
+      "nonCash_normal_remuneration_required": "BIK và chỗ ở chịu thuế phải dùng thù lao thông thường để tính PCB. Hãy kiểm tra cấu hình khoản lương.",
+      "nonCash_month_baseline_unavailable": "Dữ liệu phúc lợi tháng đã lưu bị thiếu hoặc khác với thiết lập này. Hãy kiểm tra kỳ lương thông thường và cấu hình phúc lợi trước khi tính kỳ bổ sung này.",
+      "nonCash_configuration_invalid": "Hãy kiểm tra cấu hình phúc lợi phi tiền mặt trước khi tính lương."
     },
     "guide": {
       "title": "Hướng dẫn quy trình bảng lương",
@@ -7206,7 +7212,7 @@
       "slipCurrentHeading": "Current month's remuneration",
       "slipCurrentTotal": "Remuneration charged to tax this month",
       "slipCurrentEpf": "Employee provident fund contribution this month",
-      "slipCurrentNote": "Payroll records the month's taxable remuneration as one combined figure and does not store the split across these components, so each line says it was recorded only in combination rather than showing an amount nobody recorded. The combined figure above is the one the calculation charged.",
+      "slipCurrentNote": "Tổng số bao gồm lợi ích hiện vật và giá trị chỗ ở chịu thuế. Số tiền đã nhập, miễn thuế và chịu thuế được đọc từ phép tính đã lưu này; số tiền thiếu trong hồ sơ cũ được ghi là chưa được ghi nhận. Các thành phần tiền mặt khác chỉ được ghi chung.",
       "slipAdditionalRemHeading": "Additional remuneration for the current month",
       "slipAdditionalTotal": "Additional remuneration charged to tax this month",
       "slipAdditionalEpf": "Employee provident fund contribution on the additional remuneration",
@@ -7249,7 +7255,7 @@
       "slipAccMtd": "Khấu trừ thuế hằng tháng đã nộp lũy kế, bao gồm khấu trừ trên thù lao bổ sung",
       "slipAccZakat": "Zakat, fitrah và thuế xuất cảnh đã nộp lũy kế",
       "slipAccLevy": "Thuế xuất cảnh đã nộp lũy kế",
-      "slipAccNote": "Cột số tiền là những gì người sử dụng lao động này đã chi trả trong các tháng trước của năm tính thuế này, được cộng từ chính các phiếu lương đó. Cột tổng là những con số lũy kế mà phép tính đã dựa vào, đọc từ bản ghi của chính phiếu lương này. Hai bên không nhất thiết phải khớp nhau: các con số lũy kế là phần thù lao chịu thuế, không bao gồm những khoản được miễn, và chúng còn mang theo phần mà người sử dụng lao động trước đã kê khai trên mẫu TP3, điều mà các phiếu lương phát hành ở đây không thể thể hiện. Hệ thống này không ghi nhận lợi ích bằng hiện vật và giá trị chỗ ở như một khoản lương, nên con số 0.00 ở đó có nghĩa là chúng tôi không nắm giữ con số ấy, chứ không phải đã có ai xác nhận là không có. Phí và hoa hồng cũng không được lưu tách khỏi phụ cấp và tiền thưởng dùng để chi trả chúng. Thuế xuất cảnh lũy kế cũng không được lưu riêng: nó nằm trong dòng zakat phía trên, đó là con số hợp nhất duy nhất mà phép tính sử dụng.",
+      "slipAccNote": "Lợi ích hiện vật và giá trị chỗ ở chịu thuế lũy kế được đọc từ hồ sơ các tháng trước của phép tính đã lưu này. Hồ sơ cũ thiếu hoặc không đầy đủ là chưa được ghi nhận, không phải bằng không. Chi tiết tiền mặt thuộc về người sử dụng lao động này; tổng lũy kế đã lưu cũng có thể bao gồm mẫu TP3.",
       "slipAccNoteUnread": "Không thể đọc được các tháng trước của năm tính thuế này cho nhân viên này, nên các dòng chi tiết ghi là không có dữ liệu thay vì hiển thị số không. Các tổng lũy kế bên cạnh là những con số mà phép tính đã dựa vào và không bị ảnh hưởng.",
       "slipStep1Heading": "Bước 1 — khấu trừ thuế trên thù lao thuần cả năm, không bao gồm thù lao bổ sung",
       "slipStep1CurrentMtd": "Khấu trừ thuế của tháng hiện tại",
@@ -7276,7 +7282,11 @@
       "slipStep1CurrentRebate": "Zakat/Phí/Lệ phí tháng hiện tại",
       "formulaNormalMtdNet": "MTD ròng của thù lao thông thường = max(0, MTD thông thường sau quy tắc khấu trừ tối thiểu − Zakat/Phí/Lệ phí tháng hiện tại)",
       "slipStep1NormalRules": "Áp dụng quy tắc cắt phần thập phân, làm tròn lên năm sen và khấu trừ tối thiểu trước khoản giảm trừ tháng hiện tại. MTD ròng thông thường không âm. Khoản giảm trừ còn lại tuân theo cách xử lý thù lao bổ sung đã ghi nhận; tổng khấu trừ cuối cùng được hiển thị riêng.",
-      "slipStep1CombinedFormula": "MTD (A) / MTD ròng = [((P−M)R + B − (Z + X)) / (n + 1)] − Zakat/Phí/Lệ phí tháng hiện tại"
+      "slipStep1CombinedFormula": "MTD (A) / MTD ròng = [((P−M)R + B − (Z + X)) / (n + 1)] − Zakat/Phí/Lệ phí tháng hiện tại",
+      "slipBikEntered": "BIK đã nhập",
+      "slipBikExempt": "BIK miễn thuế",
+      "slipVolaEntered": "Giá trị chỗ ở đã nhập",
+      "slipVolaExempt": "Giá trị chỗ ở miễn thuế"
     },
     "multiCycleWorksheet": {
       "title": "Bảng tính pháp định cho nhiều kỳ trả lương",
@@ -7376,7 +7386,8 @@
         "inconsistent_run_bases": "Các kỳ được tính trên mức lương tháng khác nhau",
         "tax_scheme_not_reconstructable": "Chương trình thuế hoặc phê duyệt chủ lao động đã lưu thiếu hoặc khác giữa các lần trả lương; không tái dựng so sánh hằng năm.",
         "zakat_or_lp_present": "Tháng này có zakat hoặc khoản khấu trừ TP1",
-        "no_statutory_profile": "Nhân viên này không có hồ sơ pháp định Malaysia"
+        "no_statutory_profile": "Nhân viên này không có hồ sơ pháp định Malaysia",
+        "noncash_not_reconstructable": "Khoản lợi ích phi tiền mặt hoặc quyền sở hữu theo kỳ đã lưu không đầy đủ hoặc không nhất quán; không dựng lại phép so sánh."
       },
       "runType": {
         "regular": "Thường",
@@ -11572,7 +11583,7 @@
     "displayCategory_allowance": "Thu nhập",
     "displayCategory_claim": "Hoàn ứng",
     "displayCategory_deduction": "Khoản trừ",
-    "displayCategoryHint": "Quyết định mục này hiển thị ở ô nào trên phiếu lương, kết quả tính lương, màn hình giao dịch và báo cáo lương. Không thay đổi bất kỳ điều gì khác — không có tính toán luật định, và không có con số EA, CP39, KWSP hay PERKESO nào thay đổi. Để ở “Tự động xác định” để hệ thống vẫn xác định ô giúp bạn như trước.",
+    "displayCategoryHint": "Đối với khoản tiền mặt, Nhóm lương quyết định vị trí hiển thị. Đối với phúc lợi không trả bằng tiền mặt, chọn BIK hoặc VOLA; thiết lập Chịu PCB quyết định phúc lợi có được tính vào thù lao chịu thuế hay không. Báo cáo EA được cấu hình riêng.",
     "displayCategory_bik": "Phúc lợi bằng hiện vật (BIK)",
     "sectionOrp": "Tính Mức lương thông thường (ORP)",
     "sectionOrpHint": "Chọn xem khoản lương này có được tính vào mức lương thông thường hay không. Hai ô là độc lập — chọn một, cả hai hoặc không ô nào. Bản thân công thức ORP không thay đổi; các ô này chỉ quyết định khoản nào đi vào công thức đó.",
@@ -11593,7 +11604,8 @@
     "eaLine_EA_B5": "B5 - Refund from unapproved Provident / Pension Fund",
     "eaLine_EA_B6": "B6 - Compensation for loss of employment",
     "eaLine_EA_C1": "C1 - Pension",
-    "eaLine_EA_C2": "C2 - Annuities or other periodical payments"
+    "eaLine_EA_C2": "C2 - Annuities or other periodical payments",
+    "displayCategory_vola": "Giá trị chỗ ở (VOLA)"
   },
   "notifications": {
     "title": "Thông báo",

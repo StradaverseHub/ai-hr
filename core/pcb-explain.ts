@@ -1,3 +1,4 @@
+import { readPcbNonCash, type PcbNonCashSnapshot } from '../localization/noncash-benefits';
 /**
  * Feedback 169e3c24 — explain a payslip's PCB (MTD) figure from what the payslip itself recorded.
  * Feedback 45df860a — …and now the WHOLE working, so the LHDN formula can be closed on screen.
@@ -189,7 +190,12 @@ export type PcbFlatTrace = {
  *   · `pcb`       — what was DEDUCTED (`statutory.pcb`), override included.
  *   · `pcbSystem` — what the recorded working EXPLAINS. Identical to `pcb` on a plain regular run.
  *   · `basis`     — NULL when they are the same number; otherwise why they are not. */
-type PcbFigures = { pcb: number; pcbSystem: number; basis: PcbBasis | null };
+export type PcbTaxSelectionProvenance = {
+  taxSelectionId: string;
+  taxSelectionVersion: number;
+  taxSelectionSource: 'income_tax_resident';
+};
+type PcbFigures = { pcb: number; pcbSystem: number; basis: PcbBasis | null; taxSelection?: PcbTaxSelectionProvenance; nonCash?: PcbNonCashSnapshot | null };
 
 export type PcbExplanation =
   | ({
@@ -488,13 +494,33 @@ export function explainPcb(
         : manual
           ? { kind: 'manual', system: pcbSystem, applied: pcb, prior: null, engineRun: null, reason: manual.reason }
           : null;
-  const figures = { pcb, pcbSystem, basis };
+  const figures: PcbFigures = { pcb, pcbSystem, basis };
   if (!metaObj) return { kind: 'unavailable', ...figures };
 
+  const nonCash = readPcbNonCash(st.pcbNonCash);
+  const savedTrace = metaObj.trace as Record<string, unknown> | null;
+  const savedNormal = savedTrace?.Y1 ?? savedTrace?.remuneration;
+  const benefitNormal = nonCash ? nonCash.cashNormal + nonCash.cumulative.bik + nonCash.cumulative.vola : NaN;
+  figures.nonCash = nonCash && typeof savedNormal === 'number' && Number.isFinite(savedNormal) &&
+    Number.isSafeInteger(Math.round(savedNormal * 100)) && Math.abs(savedNormal * 100 - Math.round(savedNormal * 100)) < 0.000001 &&
+    Number.isSafeInteger(Math.round(benefitNormal * 100)) && Math.round(benefitNormal * 100) === Math.round(savedNormal * 100)
+      ? nonCash : null;
+
   // Read the immutable scheme before legacy rate keys. Never infer a category from today's profile.
+  const selectionFields = ['taxSelectionId', 'taxSelectionVersion', 'taxSelectionSource'] as const;
+  const hasSelection = selectionFields.some(key => Object.hasOwn(metaObj, key));
+  if (hasSelection && (typeof metaObj.taxSelectionId !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(metaObj.taxSelectionId) ||
+      !Number.isSafeInteger(metaObj.taxSelectionVersion) || (metaObj.taxSelectionVersion as number) < 1 ||
+      metaObj.taxSelectionSource !== 'income_tax_resident')) return {kind: 'unavailable', ...figures};
+  if (hasSelection) Object.assign(figures, {taxSelection: {
+    taxSelectionId: metaObj.taxSelectionId as string,
+    taxSelectionVersion: metaObj.taxSelectionVersion as number,
+    taxSelectionSource: 'income_tax_resident' as const,
+  }});
   const scheme = metaObj.calculationScheme;
   const knownSchemes = ['resident', 'rep', 'knowledge_worker', 'c_suite', 'non_resident'];
-  if (scheme !== undefined && !knownSchemes.includes(scheme as string)) return {kind: 'unavailable', ...figures};
+  if ((hasSelection && scheme === undefined) || scheme !== undefined && !knownSchemes.includes(scheme as string)) return {kind: 'unavailable', ...figures};
   const incentive = scheme === 'rep' || scheme === 'knowledge_worker' || scheme === 'c_suite';
   if (incentive) {
     const raw = metaObj.trace as Record<string, unknown> | null;
@@ -502,8 +528,8 @@ export function explainPcb(
     const common = ['M', 'R', 'B', 'taxOnP1', 'category', 'Y1', 'K1', 'Y2', 'K2', 'Yt', 'Kt', 'K2t',
       'Z', 'lpAccumulated', 'lpCurrent', 'zakatCurrent', 'mtdNormalCalc', 'mtdAdditionalCalc',
       'mtdNormalFloored', 'mtdAdditionalFloored', 'zakatLeftover'];
-    if (typeof metaObj.taxSchemeDeclarationId !== 'string' ||
-        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(metaObj.taxSchemeDeclarationId) ||
+    if ((!hasSelection && (typeof metaObj.taxSchemeDeclarationId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(metaObj.taxSchemeDeclarationId))) ||
         !raw || raw.schemeVersion !== 1 || !hasRecordedNumbers(raw, common) ||
         !hasRecordedNumbers(metaObj, ['month', 'n', 'ytdNet', 'epfClaimed', 'pcbPaid', 'P1']) ||
         !hasRecordedNumbers(reliefs, ['individual', 'spouse', 'children', 'disabledIndividual', 'disabledSpouse', 'total', 'lp']) ||
@@ -570,7 +596,7 @@ export function explainPcb(
   return {
     kind: 'mtd',
     ...(scheme !== undefined ? {calculationScheme: scheme as PcbCalculationScheme} : {}),
-    ...(incentive ? {taxSchemeDeclarationId: metaObj.taxSchemeDeclarationId as string} : {}),
+    ...(incentive && !hasSelection ? {taxSchemeDeclarationId: metaObj.taxSchemeDeclarationId as string} : {}),
     reliefSource,
     month: n(m.month),
     remainingMonths: n(m.n),
@@ -1174,19 +1200,9 @@ export function pcbChildSection(
 
 // ── Sections 5 and 6: the component split behind Y1 and Yt ─────────────────────────────────────────
 //
-// ⚠️ PAYROLL DOES NOT PERSIST THIS SPLIT, AND THAT WAS CHECKED BEFORE THESE ROWS WERE WRITTEN.
-// `localization/my/payroll.ts` hands `pcbMonth` ONE `monthlyWage` (its own `pcbWage`) and ONE
-// `additional`, and `pcbMeta` stamps them back as Y1 and Yt. The payslip's four money columns —
-// basic_salary / allowance / overtime_pay / bonus — are PRESENTATION buckets (`display_category`,
-// "PRESENTATION ONLY and independent of every statutory flag"), they are not the agency's taxonomy, and
-// `pcbWage` is not their sum: exclusions and ticked wage deductions move it. There is no payslip line
-// item table to read either.
-//
-// So the split does not exist, anywhere, for any month. Each component line says `notSeparatelyRecorded`
-// — the vocabulary already on this screen, already used for LHDN's gross Y — and the COMBINED figure the
-// engine actually charged sits above them as a real number. Deriving five component figures from one
-// total would put invented amounts on a tax document, which is the failure this whole screen exists to
-// prevent, and no amount of plausibility makes an invented figure a recorded one.
+// Cash presentation columns do not identify the tax agency's cash component split. Versioned noncash
+// snapshots record BIK/VOLA separately; their saved entered/exempt/taxable decisions are read below.
+// Missing legacy benefit provenance stays unavailable and is never priced from today's catalogue.
 
 /** The agency's own remuneration lines for the current month (reference page 3). */
 const SLIP_CURRENT_COMPONENTS: readonly string[] = [
@@ -1217,15 +1233,29 @@ const slipComponentRows = (captions: readonly string[]): PcbSlipRow[] =>
     first: { kind: 'notSeparatelyRecorded' } as PcbWorksheetValue,
   }));
 
+function recordedBenefitRows(benefits: PcbNonCashSnapshot): PcbSlipRow[] {
+  return (['bik','vola'] as const).flatMap(kind => [
+    {line:'',caption:kind==='bik'?'slipCompBenefitsInKind':'slipCompLivingAccommodation',ns:'pcbDetail' as const,first:slipMoney(benefits.current[kind].taxable)},
+    {line:'',caption:kind==='bik'?'slipBikEntered':'slipVolaEntered',ns:'pcbDetail' as const,first:slipMoney(benefits.current[kind].entered)},
+    {line:'',caption:kind==='bik'?'slipBikExempt':'slipVolaExempt',ns:'pcbDetail' as const,first:slipMoney(benefits.current[kind].exempt)},
+  ]);
+}
+function accumulatedBenefitRows(benefits?: PcbNonCashSnapshot | null): PcbSlipRow[] {
+  return (['bik','vola'] as const).map(kind => ({line:'',caption:kind==='bik'?'slipAccBik':'slipAccVola',ns:'pcbDetail' as const,
+    first:benefits?.accumulated.complete ? slipMoney(benefits.accumulated[kind]) : SLIP_ABSENT}));
+}
+
 /**
  * REPORTER SECTION 5 — CURRENT MONTH'S REMUNERATION.
  *
  * @param y1 Y1 as the run stamped it — the combined normal remuneration PCB was charged on.
  * @param k1 K1 — this month's employee EPF, the leg netted off Y1.
  */
-export function pcbCurrentRemunerationSection(y1: PcbWorksheetValue, k1: PcbWorksheetValue): PcbSlipSection {
+export function pcbCurrentRemunerationSection(y1: PcbWorksheetValue, k1: PcbWorksheetValue, benefits?: PcbNonCashSnapshot | null): PcbSlipSection {
   const rows: PcbSlipRow[] = [{ line: 'Y1', caption: 'slipCurrentTotal', ns: 'pcbDetail', first: y1 }];
-  for (const r of slipComponentRows(SLIP_CURRENT_COMPONENTS)) rows.push(r);
+  for (const r of slipComponentRows(SLIP_CURRENT_COMPONENTS.filter(caption => caption !== 'slipCompBenefitsInKind' && caption !== 'slipCompLivingAccommodation'))) rows.push(r);
+  if (benefits) rows.push(...recordedBenefitRows(benefits));
+  else for (const caption of ['slipCompBenefitsInKind','slipCompLivingAccommodation']) rows.push({line:'',caption,ns:'pcbDetail',first:SLIP_ABSENT});
   rows.push({ line: 'K1', caption: 'slipCurrentEpf', ns: 'pcbDetail', first: k1 });
   return { heading: 'slipCurrentHeading', firstColumn: 'slipColAmount', rows, note: 'slipCurrentNote' };
 }
@@ -1448,12 +1478,8 @@ export type PcbAccumulatedRemuneration = {
  *   · Y reads "recorded only in combination" on a payslip written before the engine stamped it
  *     (4011903e), exactly as the worksheet's own Y row does. It is never reconstructed.
  *
- * ⚠️ BIK AND VOLA ARE PRINTED AS 0.00, WHICH IS THE ONE PLACE THIS FILE PRINTS A ZERO IT DID NOT READ,
- * AND THE APPROVED PLAN PROMISES IT IN WRITING. Neither is a payroll component in this system, so the
- * agency's two lines would otherwise be absent from a document a payroll officer lays beside the
- * agency's own. CLAUDE.md §8 is that a printed 0.00 asserts the money does not exist — so the note
- * says, in the reader's own language, that the zero means WE HOLD NO SUCH FIGURE and not that anybody
- * has checked there is none. The note is the load-bearing half of that decision; do not drop it.
+ * BIK and VOLA come from this attempt's immutable accumulated benefit snapshot. Incomplete or missing
+ * historical benefit evidence is unavailable. A genuine saved zero remains displayable as zero.
  */
 export function pcbAccumulatedRemunerationSection(
   x: Extract<PcbExplanation, { kind: 'mtd' }>,
@@ -1464,8 +1490,7 @@ export function pcbAccumulatedRemunerationSection(
     { line: '', caption: 'slipAccGrossSalary', ns: 'pcbDetail', first: slipMoney(paid?.grossSalary) },
     { line: '', caption: 'slipAccFeesCommission', ns: 'pcbDetail', first: SLIP_COMBINED },
     { line: '', caption: 'slipAccTipsAllowances', ns: 'pcbDetail', first: slipMoney(paid?.allowances) },
-    { line: '', caption: 'slipAccBik', ns: 'pcbDetail', first: SLIP_NIL },
-    { line: '', caption: 'slipAccVola', ns: 'pcbDetail', first: SLIP_NIL },
+    ...accumulatedBenefitRows(x.nonCash),
     { line: '', caption: 'slipAccAdditional', ns: 'pcbDetail', first: slipMoney(paid?.additional) },
     {
       line: 'Y',
@@ -1516,10 +1541,9 @@ export function pcbAccumulatedRemunerationSection(
  * and 10 are `pcbWorksheet` above, which has emitted them since 7f251381. Rebuilding them would be the
  * second display of one calculation this whole screen was created to remove.
  *
- * A FLAT-RATE PAYEE AND A RUN WITH NO WORKING GET NOTHING, and that is the answer rather than a gap. A
- * non-resident / REP / knowledge-worker deduction never reaches `pcbMonth`: there is no Q, no ΣLP, no LP1
- * and no Z1 for them, so five schedules of "not recorded" would assert those figures exist and were
- * merely unsaved. `flatWorksheet` already says so in one sentence, which is the truthful version.
+ * A flat-rate payee has no resident relief schedules. Newly recorded noncash benefits still have
+ * meaningful current/accumulated rows and share this same screen/download section owner. Legacy flat
+ * histories without that provenance retain their existing layout.
  */
 export function pcbSlipSections(
   x: PcbExplanation,
@@ -1539,6 +1563,10 @@ export function pcbSlipSections(
     accumulatedRemuneration?: PcbAccumulatedRemuneration | null;
   },
 ): PcbSlipSection[] {
+  if (x.kind === 'flat' && x.nonCash) return [
+    {heading:'slipAccHeading',firstColumn:'slipColAmount',rows:accumulatedBenefitRows(x.nonCash),note:'slipAccNote'},
+    {heading:'slipCurrentHeading',firstColumn:'slipColAmount',rows:recordedBenefitRows(x.nonCash),note:'slipCurrentNote'},
+  ];
   if (x.kind !== 'mtd') return [];
   const t = x.trace;
   return [
@@ -1571,7 +1599,7 @@ export function pcbSlipSections(
       first: p.previousDeduction,
     }),
     // 5 and 6 — the component split payroll does not persist. See the block above `SLIP_CURRENT_COMPONENTS`.
-    pcbCurrentRemunerationSection(fromTrace(t, (v) => v.Y1), t ? slipMoney(t.K1) : slipMoney(x.epfThisMonth)),
+    pcbCurrentRemunerationSection(fromTrace(t, (v) => v.Y1), t ? slipMoney(t.K1) : slipMoney(x.epfThisMonth), x.nonCash),
     pcbAdditionalRemunerationSection(fromTrace(t, (v) => v.Yt), fromTrace(t, (v) => v.Kt)),
     // 7 — this month's declaration, itemised, beside the year it accumulates into.
     pcbReliefScheduleSection({

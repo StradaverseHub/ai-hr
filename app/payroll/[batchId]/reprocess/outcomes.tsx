@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { NONCASH_CONFIGURATION_REASONS } from '@/lib/payroll-noncash-error';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { Badge, Card, EmployeeName, SectionHeader } from '@/components/ui';
 import type { RecomputeDisclosureRow, ReprocessEmployeeOutcome } from '@/packs/payroll/service';
@@ -6,6 +7,7 @@ import { formatMoney } from '@/lib/money';
 import type { PayrollResultRun } from '../../payroll-result-href';
 import { reprocessResultHrefs } from './result-links';
 
+const TAX_SELECTION_CODES = new Set(['confirmation_required', 'invalid_scheme', 'not_resident', 'citizenship_unknown']);
 const TAX_CODES = new Set([
   'missing_declaration', 'declaration_revoked', 'declaration_outside_period',
   'not_resident', 'citizenship_unknown', 'overlap',
@@ -25,8 +27,13 @@ export async function ReprocessOutcomeRemarks({
   const t = await getTranslations('payroll.batch');
   const tp = await getTranslations('payroll.process');
   const locale = await getLocale();
+  const noncashReason = outcome.validationDetails?.length === 1 ? outcome.validationDetails[0].gap : '';
   const fullReason = outcome.status === 'skipped' ? t('reprocessNothingPayableFull')
     : outcome.status === 'reprocessed' ? t('reprocessSucceededReason')
+    : outcome.reasonCode === 'TAX_SCHEME_CONFIGURATION_INCOMPLETE' && TAX_SELECTION_CODES.has(outcome.validationCode ?? '')
+      ? tp(`taxSelection_${outcome.validationCode}`)
+    : outcome.validationCode === 'pcb_non_cash_configuration_invalid'
+      ? tp(NONCASH_CONFIGURATION_REASONS.has(noncashReason) ? `nonCash_${noncashReason}` : 'nonCash_configuration_invalid')
     : outcome.reasonCode === 'TAX_SCHEME_CONFIGURATION_INCOMPLETE' && TAX_CODES.has(outcome.validationCode ?? '')
       ? tp(`taxScheme_${outcome.validationCode}`)
       : outcome.validationCode === 'pcb_child_relief_configuration_invalid'

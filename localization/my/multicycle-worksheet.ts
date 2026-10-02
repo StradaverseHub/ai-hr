@@ -146,6 +146,8 @@ export const WORKSHEET_SKIP_REASONS = [
   'no_statutory_profile',
   /** Saved scheme provenance is missing, legacy flat incentive, malformed or differs between runs. */
   'tax_scheme_not_reconstructable',
+  /** Saved non-cash ownership is incomplete or differs from the recorded cumulative month. */
+  'noncash_not_reconstructable',
 ] as const;
 export type WorksheetSkipReason = (typeof WORKSHEET_SKIP_REASONS)[number];
 
@@ -530,11 +532,26 @@ function replayEmployeeMonth(p: {
   const bases = runs.map((r) => basesOf(r.statutory));
   if (bases.some((b) => b === null)) return { reason: 'bases_not_recorded', excluded: false };
   const b = bases as Bases[];
+  const recorded = runs.map(r => explainPcb(r.statutory, null));
+  const hasBenefitStamp = runs.some(r => Object.hasOwn(r.statutory, 'pcbNonCash'));
+  const benefits = recorded.map(x => x.nonCash ?? null);
+  if (hasBenefitStamp && benefits.some(value => value === null)) return {reason:'noncash_not_reconstructable',excluded:false};
+  const seenBenefits = new Set<string>();
+  if (hasBenefitStamp) for (let i=0;i<benefits.length;i++) {
+    const value=benefits[i]!;
+    for (const kind of ['bik','vola'] as const) if (Math.abs(value.before[kind]-(i===0?0:benefits[i-1]!.cumulative[kind]))>0.005)
+      return {reason:'noncash_not_reconstructable',excluded:false};
+    for (const entry of value.ownedEntries) {
+      const identity=JSON.stringify([entry.kind,entry.code,entry.source,entry.sourceId]);
+      if (seenBenefits.has(identity)) return {reason:'noncash_not_reconstructable',excluded:false};
+      seenBenefits.add(identity);
+    }
+  }
   // One wage figure has to serve EPF, SOCSO/EIS and PCB. When a pay-item carve-out makes the three
   // disagree there is no such figure, and inventing one would put a fabricated difference on a
   // worksheet an accountant is being asked to sign. (`bases.pcb` is the SOCSO/EIS base plus the
   // cumulative additional stream, so the identity below holds exactly when no carve-out is in play.)
-  if (b.some((x) => Math.abs(round2(x.pcb - x.epfAdditional) - x.socsoEis) > 0.005)) {
+  if (b.some((x,i) => Math.abs(round2(x.pcb - x.epfAdditional - (benefits[i]?.cumulative.bik ?? 0) - (benefits[i]?.cumulative.vola ?? 0)) - x.socsoEis) > 0.005)) {
     return { reason: 'base_carve_outs', excluded: false };
   }
   // Every run of the month stamps the SAME normal-wage and SOCSO/EIS bases (the kernel re-derives the
@@ -561,17 +578,17 @@ function replayEmployeeMonth(p: {
   const opts = statutoryOptsOf(p.profile, first.period);
   // Today's profile or revoked approval cannot reinterpret paid history. The canonical recorded
   // reader validates incentive version, working and declaration provenance before replay is allowed.
-  const recorded = runs.map(r => explainPcb(r.statutory, null));
   const schemes = recorded.map(x => x.kind === 'mtd'
-    ? {scheme: x.calculationScheme ?? 'resident', declarationId: x.taxSchemeDeclarationId}
+    ? {scheme: x.calculationScheme ?? 'resident', declarationId: x.taxSchemeDeclarationId, selection: x.taxSelection}
     : x.kind === 'flat' && x.nonResident && x.rate === 0.3
-      ? {scheme: 'non_resident' as const, declarationId: undefined} : null);
+      ? {scheme: 'non_resident' as const, declarationId: undefined, selection: x.taxSelection} : null);
   const saved = schemes[0];
-  if (!saved || schemes.some(x => !x || x.scheme !== saved.scheme || x.declarationId !== saved.declarationId)) {
+  if (!saved || schemes.some(x => !x || x.scheme !== saved.scheme || x.declarationId !== saved.declarationId || JSON.stringify(x.selection) !== JSON.stringify(saved.selection))) {
     return {reason: 'tax_scheme_not_reconstructable', excluded: false};
   }
   opts.calculationScheme = saved.scheme;
   opts.taxSchemeDeclarationId = saved.declarationId;
+  if (saved.selection) Object.assign(opts, saved.selection);
   const month = Number(first.period.slice(5, 7));
   const priorAcc = p.priorAcc;
 
@@ -586,10 +603,10 @@ function replayEmployeeMonth(p: {
   for (let i = 0; i < runs.length; i++) {
     const mine: number[] = [];
     if (i === 0) {
-      mine.push(model.push({ runType: 'regular', payment: normal, overtime }) - 1);
+      mine.push(model.push({ runType: 'regular', payment: normal, overtime, ...(hasBenefitStamp ? {pcbNonCashNormal:benefits[i]!.owned} : {}) }) - 1);
       if (ownAdditional[0] > 0) mine.push(model.push({ runType: 'adjustment', payment: ownAdditional[0] }) - 1);
     } else {
-      mine.push(model.push({ runType: runs[i].runType, payment: ownAdditional[i] }) - 1);
+      mine.push(model.push({ runType: runs[i].runType, payment: ownAdditional[i], ...(hasBenefitStamp ? {pcbNonCashNormal:benefits[i]!.owned} : {}) }) - 1);
     }
     foldInto.push(mine);
   }
@@ -601,10 +618,11 @@ function replayEmployeeMonth(p: {
 
   // ── Reading RUNS: every run computed on its own, re-entering the bands from the bottom.
   const perRunPerRun = runs.map((_r, i) => {
+    const runOpts = hasBenefitStamp ? {...opts,pcbNonCashNormal:benefits[i]!.owned} : opts;
     const s =
       i === 0
-        ? statutory(normal, profile, ownAdditional[0], overtime, { month, acc: priorAcc }, opts, rules)
-        : statutory(ownAdditional[i], profile, 0, 0, { month, acc: priorAcc }, opts, rules);
+        ? statutory(normal, profile, ownAdditional[0], overtime, { month, acc: priorAcc }, runOpts, rules)
+        : statutory(ownAdditional[i], profile, 0, 0, { month, acc: priorAcc }, runOpts, rules);
     return figuresOf(s as unknown as StatBlob);
   });
   const perRun = perRunPerRun.reduce(add, ZERO);

@@ -3421,7 +3421,7 @@
       "totalEmployerCost": "Jumlah kos majikan",
       "proratedNote": "Diprorata pada {days, plural, one {# hari} other {# hari}} bekerja dalam tempoh ini.",
       "recordLinesHeading": "Butiran item gaji",
-      "recordLinesNote": "Direkodkan untuk rujukan anda sahaja — ini tidak menjejaskan gaji kasar atau bersih anda.",
+      "recordLinesNote": "Item yang direkodkan tidak dibayar sebagai pendapatan tunai. Manfaat bercukai boleh menjejaskan PCB dan gaji bersih.",
       "recordLineRemark": "Dimasukkan sebagai “{remark}”",
       "nonPayableHeading": "Lain-lain (Tidak Dibayar)",
       "nonPayableTotal": "Jumlah tidak dibayar",
@@ -4540,7 +4540,7 @@
       "unapprovedFundRefund": "5. Bayaran balik daripada Kumpulan Wang Simpanan / Pencen yang tidak diluluskan",
       "compensation": "6. Pampasan kerana kehilangan pekerjaan",
       "notTracked": "tidak dijejaki",
-      "manualEntryNote": "Kotak yang tidak boleh dijana oleh sistem gaji — fi, tip dan perkuisit, cukai ditanggung majikan, ESOS, gratuiti, tunggakan, manfaat berbentuk barangan, tempat kediaman, bayaran balik kumpulan wang tidak diluluskan, pampasan kehilangan pekerjaan, pencen dan anuiti — bermula pada 0.00 dan diisi di bawah “Pinda angka EA” di bawah. Setiap catatan merekodkan siapa yang memasukkannya dan sebabnya, dan borang ditanda sebagai dipinda.",
+      "manualEntryNote": "Semak angka tanpa sumber gaji lengkap di bawah “Pinda angka EA”. Setiap pindaan merekodkan siapa yang membuatnya dan sebabnya, dan borang ditanda sebagai dipinda.",
       "totalGrossRemuneration": "Jumlah saraan kasar",
       "sectionCPensionOther": "C  PENCEN DAN LAIN-LAIN",
       "pension": "1. Pencen",
@@ -4566,7 +4566,7 @@
       "perkesoE2Total": "2 PERKESO — jumlah yang dinyatakan pada borang (PERKESO + SIP + SKBBK)",
       "sectionFTaxExempt": "F · Jumlah elaun / perkuisit dikecualikan cukai",
       "taxExemptAllowances": "Elaun dikecualikan cukai",
-      "disclaimer": "Dijana daripada gaji untuk YA {year} (jadual berkanun {version}). Gaji, bonus, elaun, EPF, SOCSO/EIS, MTD, CP38 dan zakat datang daripada sistem gaji. Fi, tip dan perkuisit, cukai ditanggung majikan, ESOS, ganjaran, tunggakan, manfaat berupa barangan, tempat kediaman, bayaran balik kumpulan wang tidak diluluskan, pampasan kehilangan pekerjaan, pencen dan anuiti tiada sumber gaji dan dimasukkan oleh HR; sehingga itu borang bercetak membiarkan garisan itu kosong dan bukan mencetak 0.00. Borang bercetak mengikut susunan C.P.8A (Pin. 2023) tetapi dicetak di atas kertas kami sendiri — kami tidak menyimpan sebarang borang C.P.8A kosong daripada LHDN — jadi semak setiap angka dengan rekod anda sebelum memfailkan.",
+      "disclaimer": "Dijana daripada rekod gaji tersimpan untuk YA {year} (jadual berkanun {version}), dengan pindaan EA sahaja jika direkodkan. BIK dan VOLA menggunakan bukti pelaporan tahunan tersimpan yang lengkap apabila tersedia. Angka tanpa sumber lengkap memerlukan semakan HR. Borang bercetak mengikut susunan C.P.8A (Pin. 2023) di atas kertas kami. Semak setiap angka dengan rekod anda sebelum memfailkan.",
       "blankDisclaimer": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A carries no disclaimer on a filled OR a blank copy]",
       "formEUnaffectedNote": "Pindaan EA hanya menjejaskan borang EA ini. Angka Borang E / CP8D dikira daripada penggajian dan tidak terjejas.",
       "readiness": {
@@ -4628,7 +4628,8 @@
       "layoutFitTitle": "Borang EA tidak dapat dijana",
       "layoutFitMessage": "Maklumat lengkap tidak muat pada satu halaman A4 yang boleh dibaca. Semak maklumat yang direkodkan atau minta semakan susun atur. Tiada PDF dihasilkan untuk pilihan ini.",
       "layoutFitSection": "Bahagian terjejas",
-      "layoutFitEmployerSection": "Majikan dan pegawai yang diberi kuasa"
+      "layoutFitEmployerSection": "Majikan dan pegawai yang diberi kuasa",
+      "nonCashSourceIncomplete": "BIK dan VOLA tidak mempunyai bukti pelaporan tahunan tersimpan yang lengkap bagi majikan ini. Semak dan pinda angka ini; amaun yang tidak direkodkan bukan sifar yang disahkan."
     },
     "cp22": {
       "download": "Muat turun CP22",
@@ -5812,7 +5813,7 @@
           "totalEmployerContributions": "Jumlah caruman majikan",
           "capped": "Memaparkan {cap} keputusan terkini. Perhalusi penapis di atas untuk melihat bulan terdahulu.",
           "itemsHeading": "Butiran item gaji",
-          "itemsNote": "Direkodkan secara berasingan pada slip gaji ini. Item sekali sahaja sudah termasuk dalam jumlah di atas; item rekod sahaja (seperti manfaat berbentuk barangan) tidak menjejaskan kasar mahupun bersih.",
+          "itemsNote": "Item sekali sahaja termasuk dalam jumlah di atas. Item rekod sahaja bukan pendapatan tunai; manfaat bercukai boleh menjejaskan PCB dan gaji bersih.",
           "itemRemark": "Dimasukkan sebagai “{remark}”",
           "sourceHeading": "Dari mana ia datang",
           "sourceNote": "Transaksi individu yang direkodkan terhadap pekerja ini pada larian gaji ini. Ia disenaraikan di sebelah item yang direkodkan dan bukan dipadankan dengannya: dua entri boleh berkongsi item gaji dan amaun yang sama, jadi hanya orang yang memasukkannya boleh menyatakan yang mana satu.",
@@ -6235,7 +6236,12 @@
       "taxSelection_confirmation_required": "Sahkan kategori yang terpakai dalam Pemastautin Cukai Pendapatan dan simpan sekali. Tetapan terdahulu memerlukan pengesahan sekali sahaja; tiada pengisytiharan berasingan atau rujukan kelulusan diperlukan.",
       "taxSelection_invalid_scheme": "Pilih kategori Pemastautin Cukai Pendapatan yang sah.",
       "taxSelection_citizenship_unknown": "Kewarganegaraan yang direkodkan tidak memenuhi syarat C-Suite bagi pemastautin bukan warganegara.",
-      "taxSelection_not_resident": "Status pemastautin cukai yang direkodkan tidak memenuhi syarat skim pemastautin ini."
+      "taxSelection_not_resident": "Status pemastautin cukai yang direkodkan tidak memenuhi syarat skim pemastautin ini.",
+      "nonCash_classification_conflict": "Kategori manfaat bukan tunai bercanggah dengan baris pelaporan EA. Semak konfigurasi item gaji.",
+      "nonCash_unsupported_kind": "Jenis item gaji ini tidak boleh dikira sebagai manfaat bukan tunai. Semak konfigurasi item gaji.",
+      "nonCash_normal_remuneration_required": "BIK dan tempat kediaman yang dikenakan cukai mesti menggunakan saraan biasa untuk PCB. Semak konfigurasi item gaji.",
+      "nonCash_month_baseline_unavailable": "Input manfaat bulanan tersimpan tiada atau berbeza daripada tetapan ini. Semak larian biasa dan konfigurasi manfaat sebelum mengira larian tambahan ini.",
+      "nonCash_configuration_invalid": "Semak konfigurasi manfaat bukan tunai sebelum mengira gaji."
     },
     "guide": {
       "title": "Panduan Aliran Kerja Gaji",
@@ -7206,7 +7212,7 @@
       "slipCurrentHeading": "Current month's remuneration",
       "slipCurrentTotal": "Remuneration charged to tax this month",
       "slipCurrentEpf": "Employee provident fund contribution this month",
-      "slipCurrentNote": "Payroll records the month's taxable remuneration as one combined figure and does not store the split across these components, so each line says it was recorded only in combination rather than showing an amount nobody recorded. The combined figure above is the one the calculation charged.",
+      "slipCurrentNote": "Jumlah gabungan merangkumi manfaat berupa barangan dan nilai tempat kediaman yang dikenakan cukai. Amaun dimasukkan, dikecualikan dan dikenakan cukai dibaca daripada pengiraan tersimpan ini. Amaun lama yang tiada tidak direkodkan. Komponen tunai lain hanya direkodkan secara gabungan.",
       "slipAdditionalRemHeading": "Additional remuneration for the current month",
       "slipAdditionalTotal": "Additional remuneration charged to tax this month",
       "slipAdditionalEpf": "Employee provident fund contribution on the additional remuneration",
@@ -7249,7 +7255,7 @@
       "slipAccMtd": "PCB bulanan terkumpul yang telah dibayar, termasuk PCB atas saraan tambahan",
       "slipAccZakat": "Zakat, fitrah dan levi pelepasan terkumpul yang telah dibayar",
       "slipAccLevy": "Levi pelepasan terkumpul yang telah dibayar",
-      "slipAccNote": "Lajur amaun ialah apa yang majikan ini telah bayar pada bulan-bulan terdahulu tahun taksiran ini, dijumlahkan daripada penyata gaji tersebut. Lajur jumlah pula ialah angka terkumpul yang digunakan oleh pengiraan itu sendiri, dibaca daripada rekod penyata gaji ini. Kedua-duanya tidak semestinya sepadan: angka terkumpul ialah saraan yang dikenakan cukai, yang tidak termasuk amaun dikecualikan, dan ia turut membawa apa yang diisytiharkan oleh majikan terdahulu dalam Borang TP3, yang tidak dapat ditunjukkan oleh penyata gaji di sini. Manfaat berupa barangan dan nilai tempat kediaman tidak direkodkan sebagai komponen gaji dalam sistem ini, jadi 0.00 di situ bermaksud kami tidak memegang angka tersebut, bukan bahawa sesiapa telah mengesahkan tiada. Yuran dan komisen tidak disimpan berasingan daripada elaun dan bonus yang membayarnya. Levi pelepasan terkumpul juga tidak disimpan berasingan: ia berada di dalam baris zakat di atasnya, iaitu satu angka gabungan yang digunakan oleh pengiraan.",
+      "slipAccNote": "Manfaat berupa barangan dan nilai tempat kediaman terkumpul yang dikenakan cukai dibaca daripada rekod bulan terdahulu dalam pengiraan tersimpan ini. Rekod lama yang tiada atau tidak lengkap tidak direkodkan, bukannya sifar. Butiran tunai adalah untuk majikan ini; jumlah terkumpul tersimpan juga mungkin merangkumi Borang TP3.",
       "slipAccNoteUnread": "Bulan-bulan terdahulu tahun taksiran ini tidak dapat dibaca bagi pekerja ini, jadi baris terperinci menyatakan tiada rekod dan bukan memaparkan sifar. Jumlah terkumpul di sebelahnya ialah angka yang digunakan oleh pengiraan itu sendiri dan tidak terjejas.",
       "slipStep1Heading": "Langkah 1 — lebihan PCB atas saraan bersih tahunan tidak termasuk saraan tambahan",
       "slipStep1CurrentMtd": "PCB bulan semasa",
@@ -7276,7 +7282,11 @@
       "slipStep1CurrentRebate": "Zakat/Fi/Levi bulan semasa",
       "formulaNormalMtdNet": "MTD bersih saraan biasa = max(0, MTD biasa selepas peraturan potongan minimum − Zakat/Fi/Levi bulan semasa)",
       "slipStep1NormalRules": "Pengiraan menggunakan pemotongan perpuluhan, pembundaran lima sen dan peraturan potongan minimum sebelum rebat bulan semasa. MTD bersih biasa tidak boleh negatif. Baki rebat mengikuti layanan saraan tambahan yang direkodkan; jumlah potongan akhir dipaparkan berasingan.",
-      "slipStep1CombinedFormula": "MTD (A) / MTD Bersih = [((P−M)R + B − (Z + X)) / (n + 1)] − Zakat/Fi/Levi bulan semasa"
+      "slipStep1CombinedFormula": "MTD (A) / MTD Bersih = [((P−M)R + B − (Z + X)) / (n + 1)] − Zakat/Fi/Levi bulan semasa",
+      "slipBikEntered": "BIK dimasukkan",
+      "slipBikExempt": "BIK dikecualikan",
+      "slipVolaEntered": "Nilai tempat kediaman dimasukkan",
+      "slipVolaExempt": "Nilai tempat kediaman dikecualikan"
     },
     "multiCycleWorksheet": {
       "title": "Lembaran Kerja Berkanun Berbilang Kitaran",
@@ -7376,7 +7386,8 @@
         "inconsistent_run_bases": "Larian dikenakan caj atas gaji bulanan yang berbeza",
         "tax_scheme_not_reconstructable": "Skim cukai atau kelulusan majikan tersimpan tidak lengkap atau berbeza antara penggajian; perbandingan tahunan tidak dibina semula.",
         "zakat_or_lp_present": "Zakat atau potongan TP1 terlibat pada bulan ini",
-        "no_statutory_profile": "Tiada profil berkanun Malaysia bagi pekerja ini"
+        "no_statutory_profile": "Tiada profil berkanun Malaysia bagi pekerja ini",
+        "noncash_not_reconstructable": "Sumbangan atau pemilikan manfaat bukan tunai tersimpan tidak lengkap atau tidak konsisten; perbandingan tidak dibina semula."
       },
       "runType": {
         "regular": "Biasa",
@@ -11572,7 +11583,7 @@
     "displayCategory_allowance": "Pendapatan",
     "displayCategory_claim": "Tuntutan",
     "displayCategory_deduction": "Potongan",
-    "displayCategoryHint": "Menentukan ruangan tempat item ini dipaparkan pada slip gaji, keputusan gaji, paparan transaksi dan laporan gaji. Ia tidak mengubah apa-apa lagi — tiada pengiraan statutori, dan tiada angka EA, CP39, KWSP atau PERKESO. Biarkan pada “Tentukan secara automatik” untuk mengekalkan ruangan yang ditentukan untuk anda, seperti sebelum ini.",
+    "displayCategoryHint": "Bagi item tunai, Kategori Gaji menentukan tempat item dipaparkan. Bagi manfaat bukan bayaran tunai, pilih BIK atau VOLA; Tertakluk kepada PCB menentukan sama ada manfaat dimasukkan dalam saraan bercukai. Pelaporan EA ditetapkan secara berasingan.",
     "displayCategory_bik": "Manfaat Berbentuk Barangan (BIK)",
     "sectionOrp": "Pengiraan Kadar Gaji Biasa (ORP)",
     "sectionOrpHint": "Pilih sama ada item gaji ini dimasukkan semasa kadar gaji biasa dikira. Kedua-dua kotak adalah bebas — tandakan salah satu, kedua-duanya atau tiada. Formula ORP itu sendiri tidak berubah; kotak ini hanya menentukan item gaji mana yang menyuapnya.",
@@ -11593,7 +11604,8 @@
     "eaLine_EA_B5": "B5 - Refund from unapproved Provident / Pension Fund",
     "eaLine_EA_B6": "B6 - Compensation for loss of employment",
     "eaLine_EA_C1": "C1 - Pension",
-    "eaLine_EA_C2": "C2 - Annuities or other periodical payments"
+    "eaLine_EA_C2": "C2 - Annuities or other periodical payments",
+    "displayCategory_vola": "Nilai Tempat Kediaman (VOLA)"
   },
   "notifications": {
     "title": "Pemberitahuan",
