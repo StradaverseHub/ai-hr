@@ -55,8 +55,15 @@ export function resolveMyTeamScope(ctx:SessionContext,query:MyTeamQuery){return 
 /** Hold the membership facts through commit. FK inserts referencing these employments also wait. */
 export async function assertMyTeamSubjectTx(tx:Tx,ctx:SessionContext,query:MyTeamQuery|undefined,employmentId:string){
   assertMyTeamAccess(ctx);
-  await tx.select({id:employment.id}).from(employment).where(eq(employment.tenantId,ctx.tenantId)).orderBy(employment.id).for('update');
-  await tx.select({id:reportingLine.id}).from(reportingLine).where(eq(reportingLine.tenantId,ctx.tenantId)).orderBy(reportingLine.id).for('share');
+  const locked=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),
+    or(eq(employment.id,employmentId),sql`${employment.id} IN (SELECT app.my_team_report_ids())`,
+      sql`${employment.personId} IN (SELECT person_id FROM app_user WHERE id=app.current_user_id() AND tenant_id=app.current_tenant_id() AND archived_at IS NULL)`)))
+    .orderBy(employment.id).for('update');
+  const lockIds=locked.map(e=>e.id);
+  if(!lockIds.includes(employmentId))throw new MyTeamAuthorizationError();
+  await tx.select({id:reportingLine.id}).from(reportingLine).where(and(eq(reportingLine.tenantId,ctx.tenantId),
+    or(inArray(reportingLine.managerEmploymentId,lockIds),inArray(reportingLine.subordinateEmploymentId,lockIds))))
+    .orderBy(reportingLine.id).for('share');
   await tx.select({id:assignment.id}).from(assignment).where(eq(assignment.employmentId,employmentId)).orderBy(assignment.id).for('share');
   if(query){
     const scope=await resolveMyTeamScopeTx(tx,ctx,query);
