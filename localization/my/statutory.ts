@@ -1,3 +1,4 @@
+import {saveTaxSelectionMYTx,selectedSchemeOk,TaxSelectionError} from './tax-selection';
 /**
  * Malaysia statutory profile (localization pack, per ADR-0008). Per-Person statutory
  * identity: IC, EPF, SOCSO, tax, EIS eligibility, bank. IC is validated + unique per tenant.
@@ -916,7 +917,7 @@ export async function correctAccidentalHrdfOptOutsMY(
 // ── Item 8b5334db — Identification & Tax card ──────────────────────────────────────────────────────────
 /** Legacy person tax classification. Approved incentives require a scoped employer-period declaration.
  * C-Suite is declared only on that employment-scoped surface, never as a global person privilege. */
-export const TAX_RESIDENCIES = ['resident', 'non_resident', 'rep', 'knowledge_worker'] as const;
+export const TAX_RESIDENCIES = ['resident', 'non_resident', 'rep', 'knowledge_worker', 'c_suite'] as const;
 export type TaxResidency = (typeof TAX_RESIDENCIES)[number];
 export const isTaxResidency = (v: string): v is TaxResidency => (TAX_RESIDENCIES as readonly string[]).includes(v);
 
@@ -1196,6 +1197,9 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
  *  saves independently of the full statutory row (like setTp3/setBank). */
 export type TaxInput = {
   personId: string;
+  employmentId?:string;
+  expectedCompanyId?:string;
+  expectedSelectionVersion?:number;
   taxNumber?: string | null;
   taxCategory?: number;
   taxResidency?: TaxResidency | string | null;
@@ -1246,6 +1250,7 @@ export type TaxWriteProvenance = 'auto_child_relief';
  * truth (all resident and approved resident incentive schemes ⇒ true; non-resident ⇒ false). Appends `employee.tax.updated` (before/after).
  */
 export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
+  if(p.taxResidency!=null&&!selectedSchemeOk(p.taxResidency))throw new TaxSelectionError('invalid_scheme');
   const residency: TaxResidency =
     p.taxResidency != null && isTaxResidency(String(p.taxResidency)) ? (String(p.taxResidency) as TaxResidency) : 'resident';
   const mode: ChildReliefMode =
@@ -1289,9 +1294,16 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
       .where(eq(employeeStatutoryMy.personId, p.personId))
       .limit(1);
     if (!existing) throw new NoIcYetError();
+    if(p.employmentId){
+      if(!p.expectedCompanyId||!selectedSchemeOk(p.taxResidency))throw new TaxSelectionError('stale_context');
+      await saveTaxSelectionMYTx(tx,ctx,{employmentId:p.employmentId,personId:p.personId,scheme:p.taxResidency,expectedCompanyId:p.expectedCompanyId,expectedVersion:p.expectedSelectionVersion});
+    }
+    // Scoped field owns scheme. Person-only partial writers never alter that owner; scoped edits
+    // preserve legacy person provenance rather than silently changing another employer's category.
+    const persisted = p.employmentId ? {...values,taxResidency:existing.taxResidency,isResident:existing.isResident} : values;
     await tx
       .update(employeeStatutoryMy)
-      .set({ ...values, updatedAt: sql`now()` })
+      .set({ ...persisted, updatedAt: sql`now()` })
       .where(eq(employeeStatutoryMy.id, existing.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -1322,7 +1334,7 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
               childReliefTable: existing.childReliefTable,
             }
           : null,
-        after: values,
+        after: persisted,
         // R46 47146ea3 — provenance. `auto: true` + a reason code ONLY on machine-driven writes; a human
         // save leaves both absent, so existing events and their readers are unchanged.
         ...(p.provenance ? { auto: true, provenance: p.provenance } : {}),

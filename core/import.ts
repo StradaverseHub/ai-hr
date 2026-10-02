@@ -1105,7 +1105,7 @@ export async function commitEmployeeImport(
     // own country's. Reading it off the row rather than the batch is what keeps that honest.
     const pack = row.pack;
     try {
-      const { employmentId, personId } = await hireEmployee(ctx, row.hire);
+      const { employmentId, personId } = await hireEmployee(ctx, {...row.hire,initialTaxScheme:row.statutory.isResident===false?'non_resident':'resident'});
       employmentByRow.set(index, employmentId);
       await pack.statutory.set(ctx, { personId, ...row.statutory });
       // Feedback b9fd8fd5 — imports behave like manual entry (setIcAction, item 354a500d): a valid IC also

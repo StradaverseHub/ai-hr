@@ -5546,6 +5546,22 @@ export const employmentTaxSchemeMy = pgTable('employment_tax_scheme_my', {
   archivedAt: timestamp('archived_at', {withTimezone:true}),
 });
 
+/** One selected PCB category per employment/employer. Prior declarations stay immutable history. */
+export const employmentTaxSelectionMy = pgTable('employment_tax_selection_my', {
+  id: id(), tenantId: tenantId(),
+  employmentId: uuid('employment_id').notNull().references(() => employment.id),
+  companyId: uuid('company_id').notNull().references(() => company.id),
+  scheme: text('scheme').$type<'resident'|'non_resident'|'rep'|'knowledge_worker'|'c_suite'>(),
+  transitionState: text('transition_state').notNull().$type<'resolved'|'confirmation_required'>(),
+  version: integer('version').notNull().default(1),
+  legacyScheme: text('legacy_scheme'),
+  source: text('source').notNull().$type<'legacy_conversion'|'explicit'>(),
+  provenance: jsonb('provenance').notNull().$type<{reason:string;declarationIds:string[]}>(),
+  updatedByUserId: uuid('updated_by_user_id').references(() => appUser.id),
+  createdAt: timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+}, t => [uniqueIndex('employment_tax_selection_my_context').on(t.tenantId,t.employmentId,t.companyId)]);
+
 export const tp1Relief = pgTable(
   'tp1_relief',
   {
@@ -6548,7 +6564,7 @@ export const payComponent = pgTable(
     // 0456 widens 0393's CHECK constraint to match; the two vocabularies are pinned in step by
     // test/pay-display-category.test.ts.
     displayCategory: text('display_category').$type<
-      'basic' | 'overtime' | 'bonus' | 'allowance' | 'claim' | 'deduction' | 'bik' | null
+      'basic' | 'overtime' | 'bonus' | 'allowance' | 'claim' | 'deduction' | 'bik' | 'vola' | null
     >(),
     // ── 711adcd2 (migration 0456) — THE TWO ORP TICK BOXES ────────────────────────────────────────
     // Which ordinary-rate-of-pay base this pay item feeds. Two INDEPENDENT switches: either, both or

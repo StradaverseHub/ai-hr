@@ -1344,10 +1344,10 @@
       "incomeTaxResident": "Income Tax Resident",
       "taxResidencyResident": "Resident",
       "taxResidencyNonResident": "Non-Resident",
-      "taxResidencyCSuite": "Approved resident C-Suite",
+      "taxResidencyCSuite": "Position C-Suites",
       "taxResidencyApprovedSchemeNote": "Select REP, Knowledge Worker or C-Suite only when the employee has the required approval for this employment and year. C-Suite requires a resident non-citizen in an approved company. Eligibility is confirmed by HR.",
       "taxResidencyRep": "Returning Expert Program (REP)",
-      "taxResidencyKnowledgeWorker": "Knowledge Worker (specific region)",
+      "taxResidencyKnowledgeWorker": "Knowledge Worker (IRDA)",
       "childReliefLegend": "Children (PCB relief)",
       "childReliefModeLabel": "Child relief mode",
       "childReliefModeManual": "Manual (enter number)",
@@ -1694,7 +1694,11 @@
       "epfManualAmountHint": "Enter the exact monthly EPF contribution in ringgit. It is used from the very first payroll run and on every reprocess. A side left blank keeps the statutory calculation. An amount below the EPF Act schedule is accepted and recorded — the KWSP submission file will carry the true wage against your amount, and the agency is the one who checks them.",
       "epfManualDraftHint": "The fixed-amount categories (Manual by Amount) are set on the employee’s Bank & Statutory card after the employee is created, because the amount itself is not collected here.",
       "childQualificationUnavailable": "Not available",
-      "childQualificationReviewSettings": "Review the PCB child relief settings before processing payroll."
+      "childQualificationReviewSettings": "Review the PCB child relief settings before processing payroll.",
+      "taxSelectionEmployer": "Employer: {employer}",
+      "taxSelectionEligibilityHint": "Select the category applicable to this employment and employer. Selecting an incentive records HR’s decision that its approval, eligibility and period conditions are met. No separate declaration is required.",
+      "taxSelectionConfirmationRequired": "Confirm the applicable category in this field and save once. Older settings could not identify an unambiguous employer-specific choice.",
+      "taxSelectionChoose": "Choose a tax category"
     },
     "import": {
       "title": "Import employees",
@@ -6227,7 +6231,11 @@
       "taxScheme_declaration_outside_period": "The recorded approval does not cover this payroll period. Complete the applicable approval period before recalculating.",
       "taxScheme_not_resident": "The recorded tax residency is incompatible with this approved resident scheme.",
       "taxScheme_citizenship_unknown": "The recorded citizenship does not meet the C-suite scheme requirement.",
-      "taxScheme_overlap": "More than one tax scheme applies to this employer and payroll period. Correct the overlapping configuration."
+      "taxScheme_overlap": "More than one tax scheme applies to this employer and payroll period. Correct the overlapping configuration.",
+      "taxSelection_confirmation_required": "Confirm the applicable category in Income Tax Resident and save once. Older settings need one-time confirmation; no separate declaration or approval reference is required.",
+      "taxSelection_invalid_scheme": "Select a valid Income Tax Resident category.",
+      "taxSelection_citizenship_unknown": "The recorded citizenship does not meet the resident non-citizen C-Suite requirement.",
+      "taxSelection_not_resident": "The recorded tax residency does not meet this resident scheme requirement."
     },
     "guide": {
       "title": "Payroll Workflow Guide",
@@ -7577,7 +7585,14 @@
       "title": "Tax configuration for this payroll run",
       "context": "{employee} · {employer} · {period}",
       "permissionHint": "This page uses the same employee-record permissions. For a transferred employment, HR must administer both the payroll employer and the current employer.",
-      "back": "Back to reprocessing"
+      "back": "Back to reprocessing",
+      "error_stale_context": "The employer, payroll period or saved category changed. Refresh before saving.",
+      "error_not_found": "This employee’s tax configuration is unavailable in your access scope.",
+      "error_saveFailed": "The tax category could not be saved. Refresh and check the employee’s configuration.",
+      "error_confirmation_required": "Confirm the applicable category in Income Tax Resident and save once. Older settings need one-time confirmation; no separate declaration or approval reference is required.",
+      "error_invalid_scheme": "Select a valid Income Tax Resident category.",
+      "error_citizenship_unknown": "The recorded citizenship does not meet the resident non-citizen C-Suite requirement.",
+      "error_not_resident": "The recorded tax residency does not meet this resident scheme requirement."
     }
   },
   "admin": {
