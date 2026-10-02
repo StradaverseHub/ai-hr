@@ -40,8 +40,10 @@ describe('direct employer Income Tax Resident selection',()=>{
   expect(await getTaxSelectionMY(adminCtx(b),e.employmentId)).toEqual(view);
  });
  it.each(['rep',null] as const)('empty embedded form category cannot resolve an ambiguous %s context or save unrelated tax fields',async configured=>{
-  await owner.db.update(schema.employmentTaxSelectionMy).set({scheme:configured,transitionState:'confirmation_required'}).where(eq(schema.employmentTaxSelectionMy.employmentId,e.employmentId));
+  if(configured==='rep')await declaration('knowledge_worker');
+  await legacy(configured??'unsupported');
   const view=await getTaxSelectionMY(adminCtx(b),e.employmentId);
+  expect(view).toMatchObject({scheme:configured,transitionState:'confirmation_required'});
   const before=await owner.db.select().from(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.employmentId,e.employmentId)).orderBy(schema.employmentTaxSelectionMy.id);
   const oldProfile=await owner.db.select().from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId,e.personId)).orderBy(schema.employeeStatutoryMy.id);
   const oldEvents=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.subjectEmploymentId,e.employmentId)).orderBy(schema.domainEvent.sequence);
