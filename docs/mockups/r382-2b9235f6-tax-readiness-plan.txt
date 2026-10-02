@@ -1,0 +1,40 @@
+VERDICT: Partly there already · SIZE: Large
+
+THE SITUATION TODAY
+
+The REP calculation is available, but the current reprocessing message does not explain whether an employee's approval information is missing, revoked or outside the selected payroll period. One employee's incomplete tax information also stops the other selected employees. We have confirmed these weaknesses in the processing workflow; we have not yet verified Employee C's actual approval information.
+
+WHAT WE'LL CHANGE
+
+- Recognise the employee's configured tax category separately from whether the supporting approval information is ready for the selected employer and payroll period.
+- Show the category, applicable employer and period, and a clear readiness result for each selected employee. Reuse an existing applicable approval declaration instead of asking HR to enter it again.
+- Where information is genuinely incomplete, identify the reason and provide a direct route to the relevant tax configuration. Explain that recording the approval reference, effective period and HR confirmation records an existing approval; AIHR does not grant the approval.
+- Allow employees with complete information to reprocess while reporting an incomplete tax configuration against the affected employee only. Distinguish this from the separate Skipped – Nothing payable result in the related request.
+- Keep an unsuccessful employee in the run, with their existing payslip, transactions and payroll history unchanged. Do not release transactions or replace their tax category with an ordinary resident category.
+- Record each selected employee's outcome and reason in the processing results and audit trail. A successful REP calculation will identify REP consistently on the calculation screen, preview and downloaded document.
+
+WHAT YOU'LL GET
+
+HR can reprocess a group and see which employees succeeded, which need tax information, and which had nothing payable. An applicable recorded REP approval permits REP calculation without repeat entry. A missing approval is explained clearly without preventing other employees from processing.
+
+GOOD TO KNOW
+
+- HASiL's REP calculation applies to approved individuals. Selecting REP alone does not establish that approval. The approval reference and HR confirmation are AIHR's way of recording the evidence; they are not a separate approval issued by AIHR.
+- A declaration must apply to the employment, employer and payroll period being processed. If an employment has moved to another employer, the configuration route must retain the selected run's employer context and require permission for that employer.
+- This change does not invent approvals, change previously saved tax calculations, or silently correct older payroll records. Employee C can succeed when the required applicable information is present; if it is absent, the result will identify what must be completed.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Coordinate this item with abe664b3; the parent owns the shared core/payroll.ts selected-reprocess pipeline, job results and audit changes. Country-pack tax readiness is a typed, non-monetary outcome, consumed before snapshot/delete/ledger mutation. Preserve deterministic MY monetary ownership and declaration transaction locks. Keep a recognised scheme even when readiness fails; never use resident as a failure fallback.
+
+localization/my/tax-scheme-declarations.ts currently matches tenant, employment, batch company and inclusive payPeriod, excludes archived rows, and throws missing_declaration for legacy incentive classifications without a matching declaration. Matching declarations currently own the effective scheme and can differ from the person-wide legacy label; show the effective employer-period scheme explicitly rather than treating the person label as a second approval authority. Distinguish no applicable record, revoked record and period mismatch using only authorized employer/employment records; never disclose another employer's approval details. Invalid residency, citizenship and overlapping configuration remain genuine readiness failures.
+
+The existing personnel declaration service binds writes to employment.companyId today, while reprocessing accepts employment membership during the historical batch period. Add payroll-context configuration capability using authorized batch scope and dated employer membership; derive the employer server-side and retain a stale-context confirmation guard. Keep current personnel default behavior. Preserve immutable declarations, revoke-and-replace correction, no-overlap and actor provenance; do not insert or copy approvals automatically.
+
+Before mutating selected payslips, classify all requested employees into ready, validation_failed and skipped_nothing_payable using the existing authoritative payable classification. Run monetary processing for ready employees only. Persist terminal per-employee outcomes bound to the current job, with scheme and stable reason codes, not approval reference or salary values. An all-validation/all-skip result completes normally without payslip deletion, totals deltas, zero-pay statutory generation or ledger release. Infrastructure and authorization failures are job failures, never converted into configuration failures. Reconcile totals and status changes only for successful employees, preserve failed/skipped prior versions, and preserve lock/idempotency/concurrency guarantees.
+
+lib/payroll-tax-scheme-error.ts currently maps every TaxSchemeDeclarationError to the same generic message; replace this lossy handling for employee outcomes with localized specific reasons. Cover all six locales and permission-safe configuration links. Existing core/pcb-explain.ts and shared PCB screen/PDF consumers retain saved schemeVersion and declaration provenance; historical readers must not query current approval data.
+
+Verification: synthetic valid REP, legacy REP with no declaration, expired/revoked record, inclusive effective boundaries, correct and wrong employer/employment/year, current-employer transfer versus historical batch context, genuine residency/citizenship conflict, normal/nonresident employees alongside incomplete REP, mixed/all-failed/all-skipped selection, new-member and existing-member outcomes, actual transaction preservation, totals/version deltas, idempotent retry and concurrent declaration revocation. Re-derive guards and reverse named assertions. Actual hydrated six-locale screens and shared preview/download PDF must show the saved REP category. No production payroll read or configuration change has been performed during diagnosis; Employee C's actual cause remains UNKNOWN until authorized verification supplies evidence.
