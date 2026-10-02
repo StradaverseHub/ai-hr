@@ -77,6 +77,7 @@ type ChildItem = Item & {
   ownedSubpaths?: string[];
 };
 type CollapsibleGroupItem = {
+  activeMatch?: 'children';
   defaultHref?: string;
   collapsible: true;
   labelKey: string;
@@ -591,7 +592,7 @@ export function Sidebar({
     groups.find((g) =>
       g.items.some((r) =>
         isCollapsible(r)
-          ? (r.defaultHref ? r.children.filter(canSeeChild).some(isRowActive) : isParentActive(pathname, r.children.filter(canSeeChild).flatMap(childPaths)))
+          ? (r.defaultHref || r.activeMatch === 'children' ? r.children.filter(canSeeChild).some(isRowActive) : isParentActive(pathname, r.children.filter(canSeeChild).flatMap(childPaths)))
           : isNavRowActive(pathname, search, r),
       ),
     )?.labelKey ?? null;
@@ -744,7 +745,7 @@ export function Sidebar({
                       labelKey={item.labelKey}
                       icon={item.icon}
                       open={openKey === item.labelKey}
-                      active={item.defaultHref ? children.some(isRowActive) : isParentActive(pathname, children.flatMap(childPaths))}
+                      active={item.defaultHref || item.activeMatch === 'children' ? children.some(isRowActive) : isParentActive(pathname, children.flatMap(childPaths))}
                       collapsed={collapsed}
                       rowBase={rowBase}
                       panelId={`nav-flyout-${item.labelKey}`}

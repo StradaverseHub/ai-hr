@@ -36,4 +36,11 @@ describe('My Leave uses the shared sidebar flyout',()=>{
   expect(within(panel).getByRole('link',{name:'Leave History'})).not.toHaveAttribute('aria-current');
   view.unmount();show(false,[]);expect(screen.queryByRole('button',{name:'My Leave'})).toBeNull();
  });
+ it('does not highlight My Leave on the distinct team tracker route',()=>{
+  location.path='/leave/tracker';show();const leave=screen.getByRole('button',{name:'My Leave'});
+  expect(leave.className).not.toContain('bg-accent');fireEvent.click(leave);
+  const panel=screen.getByRole('navigation',{name:'My Leave'});
+  expect(within(panel).getAllByRole('link').every(link=>!link.hasAttribute('aria-current'))).toBe(true);
+ });
+
 });

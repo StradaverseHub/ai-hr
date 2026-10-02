@@ -649,6 +649,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     // f32242fc: use the same flyout path as My Attendance rather than an inline default link.
     expect(main[0].defaultHref).toBeUndefined();
     expect(main[0].labelKey).toBe('myLeave');
+    expect(main[0].activeMatch).toBe('children');
     expect(main[0].children.every(child => !child.adminOnly && !child.managerUp)).toBe(true);
     expect(main[0].children.map((l) => l.href)).toEqual(['/leave', '/leave/history']);
     expect(main[0].children.every((l) => l.exactHref)).toBe(true);

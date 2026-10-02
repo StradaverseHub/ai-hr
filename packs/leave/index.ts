@@ -451,7 +451,7 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
 };
 
 export const LEAVE_SELF_NAV: NavNodeGroupDescriptor = {
-  group: 'main', labelKey: 'myLeave', icon: CalendarDays,
+  group: 'main', labelKey: 'myLeave', icon: CalendarDays, activeMatch: 'children',
   children: [
     {href:'/leave', labelKey:'leaveOverview', icon:CalendarDays, exactHref:true},
     {href:'/leave/history', labelKey:'leaveHistory', icon:History, exactHref:true},
