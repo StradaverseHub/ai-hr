@@ -12,6 +12,7 @@ export type MyTeamQuery = {
 export type MyTeamNormalizedQuery = MyTeamQuery & { anchorDate: string; companyIds: string[]; search: string; layers: MyTeamLayers };
 export type MyTeamSourceAvailability = 'available' | 'unavailable';
 export type MyTeamRosterDay = {
+  kind: 'shift' | 'rest' | 'off' | 'unassigned';
   shiftId: string | null; code: string | null; name: string | null; color: string | null;
   start: string | null; end: string | null; scheduledMinutes: number | null;
   isRestDay: boolean; isOverride: boolean;
@@ -43,6 +44,7 @@ export type MyTeamEmployee = {
   companyId: string; departmentId: string | null;
   defaultShift: {code:string;start:string|null;end:string|null} | null;
   annualAvailable: number | null; balances: MyTeamBalance[];
+  upcomingLeave: {requestId:string;leaveTypeId:string;code:string;name:string;from:string;to:string;days:number;status:'approved'|'pending';session:MyTeamLeaveDay['session']}[];
   days: MyTeamDay[]; weeks: MyTeamWeekSummary[]; today: MyTeamTodayFlags;
 };
 export type MyTeamApproval = {

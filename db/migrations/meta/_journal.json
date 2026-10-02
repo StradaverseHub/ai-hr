@@ -2899,6 +2899,13 @@
       "when": 1790933835609,
       "tag": "0506_pay_component_vola",
       "breakpoints": true
+    },
+    {
+      "idx": 507,
+      "version": "7",
+      "when": 1790953010000,
+      "tag": "0507_attendance_attention_review",
+      "breakpoints": true
     }
   ]
 }

@@ -2012,7 +2012,7 @@ type RosterDisplayRow = { isRestDay: boolean; code: string | null; start: string
  * declares none, and migration 0483 deliberately leaves the is_default rule that way forever, so this is
  * byte-identical for every shift that has not been put into a pattern-carrying group.
  */
-export type WeekLookup = (shiftRuleId: string | null | undefined, sh: WeekPattern) => WeekPattern;
+export type WeekLookup = (shiftRuleId: string | null | undefined, sh: WeekPattern, employeeRuleId?: string | null) => WeekPattern;
 
 export async function weekLookupTx(
   tx: Tx,
@@ -2032,8 +2032,8 @@ export async function weekLookupTx(
     .where(ids.length ? or(inArray(attendanceRule.id, ids), eq(attendanceRule.isDefault, true)) : eq(attendanceRule.isDefault, true));
   const byId = new Map(rows.map((r) => [r.id, { pattern: r.pattern, halfPattern: r.halfPattern, offPattern: r.offPattern }]));
   const fallback = rows.find((r) => r.isDefault);
-  return (shiftRuleId, sh) => {
-    const chosen = empGroupRuleId ?? shiftRuleId ?? null;
+  return (shiftRuleId, sh, employeeRuleId = empGroupRuleId) => {
+    const chosen = employeeRuleId ?? shiftRuleId ?? null;
     const week = chosen ? byId.get(chosen) : fallback ? byId.get(fallback.id) : undefined;
     return weekPatternFor(week, sh);
   };
@@ -2469,163 +2469,76 @@ export const ATTENDANCE_RANGE_MAX_DAYS = 400;
  * ⚠️ TRUNCATES at ATTENDANCE_RANGE_MAX_DAYS calendar days and says nothing about it. A caller whose range
  * comes from a human must bound it against that constant first (see its comment).
  */
-export function attendanceForEmploymentRange(
-  ctx: SessionContext,
-  employmentId: string,
-  from: string,
-  to: string,
+export async function attendanceForEmploymentRange(
+  ctx: SessionContext, employmentId: string, from: string, to: string,
 ): Promise<AttendanceRangeRow[]> {
+  return (await attendanceForEmploymentsRange(ctx, [employmentId], from, to)).get(employmentId) ?? [];
+}
+
+/** Canonical Records projection for a team: input reads are bounded by source groups, not cells. */
+export function attendanceForEmploymentsRange(
+  ctx: SessionContext, employmentIds: string[], from: string, to: string,
+): Promise<Map<string, AttendanceRangeRow[]>> {
   return withTenant(ctx, async (tx) => {
-    if (from > to) return [];
-    const [emp] = await tx
-      .select({
-        companyId: employment.companyId,
-        // bbada39c — surface the identity onto every row (the page previously sourced it from the dropdown).
-        employeeCode: employment.employeeCode,
-        name: person.fullName,
-        // The employee's fixed DEFAULT shift, resolved once for the whole range.
-        defShiftId: employment.defaultShiftId,
-      })
-      .from(employment)
-      .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(employment.id, employmentId))
-      .limit(1);
-    if (!emp) return []; // RLS-fenced: not visible to this session, or no such employment.
-
-    const [rows, policyRows, approvedDates, holidays] = await Promise.all([
-      tx
-        .select({
-          date: attendance.attendanceDate,
-          attendanceId: attendance.id,
-          checkInAt: attendance.checkInAt,
-          checkOutAt: attendance.checkOutAt,
-          status: attendance.status,
-          dayType: attendance.dayType,
-          workedMinutes: attendance.workedMinutes,
-          otMinutes: attendance.otMinutes,
-          // 7c834696 stage 1 — the stored per-day figures. NULL on every row that predates the engine that
-          // computes them; the read-time derivations treat NULL as "fall back to the old routing".
-          lateMinutes: attendance.lateMinutes,
-          earlyOutMinutes: attendance.earlyOutMinutes,
-          underMinutes: attendance.underMinutes,
-          lateDeductMinutes: attendance.lateDeductMinutes,
-          earlyOutDeductMinutes: attendance.earlyOutDeductMinutes,
-          otFlatMinutes: attendance.otFlatMinutes,
-          ot00Minutes: attendance.ot00Minutes,
-          ot10Minutes: attendance.ot10Minutes,
-          ot15Minutes: attendance.ot15Minutes,
-          ot20Minutes: attendance.ot20Minutes,
-          ot30Minutes: attendance.ot30Minutes,
-          // 7c834696 point 3 — the working behind the figures above (see attendanceForDate for the why).
-          calcTrace: attendance.calcTrace,
-        })
-        .from(attendance)
-        .where(
-          and(
-            eq(attendance.employmentId, employmentId),
-            gte(attendance.attendanceDate, from),
-            lte(attendance.attendanceDate, to),
-          ),
-        ),
-      tx
-        .select({
-          workingDays: attendancePolicy.workingDays,
-          halfWorkingDays: attendancePolicy.halfWorkingDays,
-          workStart: attendancePolicy.workStart,
-          workEnd: attendancePolicy.workEnd,
-          breakMinutes: attendancePolicy.breakMinutes,
-        })
-        .from(attendancePolicy)
-        .where(eq(attendancePolicy.companyId, emp.companyId))
-        .limit(1),
-      // Only full_day leave suppresses the attendance signal (approvedLeaveDates already filters full_day).
-      approvedLeaveDates(tx, [employmentId], from, to),
-      holidayDatesFor(tx, { employmentId, startDate: from, endDate: to }),
+    const result = new Map<string, AttendanceRangeRow[]>();
+    if (from > to || employmentIds.length === 0) return result;
+    const employees = await tx.select({id:employment.id, companyId:employment.companyId,
+      employeeCode:employment.employeeCode,name:person.fullName,defShiftId:employment.defaultShiftId,
+      ruleId:employment.attendanceRuleId}).from(employment)
+      .innerJoin(person,eq(person.id,employment.personId)).where(inArray(employment.id,[...new Set(employmentIds)]));
+    if (employees.length === 0) return result;
+    const ids=employees.map(e=>e.id),companyIds=[...new Set(employees.map(e=>e.companyId))];
+    const [rows,policies,approvedDates,holidaySets,rosters,arrangements,deducted] = await Promise.all([
+      tx.select({employmentId:attendance.employmentId,date:attendance.attendanceDate,attendanceId:attendance.id,
+        checkInAt:attendance.checkInAt,checkOutAt:attendance.checkOutAt,status:attendance.status,dayType:attendance.dayType,
+        workedMinutes:attendance.workedMinutes,otMinutes:attendance.otMinutes,lateMinutes:attendance.lateMinutes,
+        earlyOutMinutes:attendance.earlyOutMinutes,underMinutes:attendance.underMinutes,
+        lateDeductMinutes:attendance.lateDeductMinutes,earlyOutDeductMinutes:attendance.earlyOutDeductMinutes,
+        otFlatMinutes:attendance.otFlatMinutes,ot00Minutes:attendance.ot00Minutes,ot10Minutes:attendance.ot10Minutes,
+        ot15Minutes:attendance.ot15Minutes,ot20Minutes:attendance.ot20Minutes,ot30Minutes:attendance.ot30Minutes,
+        calcTrace:attendance.calcTrace}).from(attendance).where(and(inArray(attendance.employmentId,ids),
+          gte(attendance.attendanceDate,from),lte(attendance.attendanceDate,to))),
+      tx.select({companyId:attendancePolicy.companyId,workingDays:attendancePolicy.workingDays,
+        halfWorkingDays:attendancePolicy.halfWorkingDays,workStart:attendancePolicy.workStart,
+        workEnd:attendancePolicy.workEnd,breakMinutes:attendancePolicy.breakMinutes})
+        .from(attendancePolicy).where(inArray(attendancePolicy.companyId,companyIds)),
+      approvedLeaveDates(tx,ids,from,to),
+      holidayDatesByEmployment(tx,{employmentIds:ids,startDate:from,endDate:to}),
+      tx.select({employmentId:rosterAssignment.employmentId,shiftDate:rosterAssignment.shiftDate,
+        isRestDay:rosterAssignment.isRestDay,code:shift.code,start:shift.startTime,end:shift.endTime,
+        brk:shift.breakMinutes,crosses:shift.crossesMidnight,rounding:shift.normalHoursRoundingMinutes})
+        .from(rosterAssignment).leftJoin(shift,eq(shift.id,rosterAssignment.shiftId))
+        .where(and(inArray(rosterAssignment.employmentId,ids),gte(rosterAssignment.shiftDate,from),lte(rosterAssignment.shiftDate,to))),
+      liveArrangementsTx(tx,ids),deductAbsentDaysByEmployment(tx,ids),
     ]);
-
-    const byDate = new Map(rows.map((r) => [r.date, r]));
-    const leaveSet = approvedDates.get(employmentId) ?? new Set<string>();
-    const workDays = policyRows[0]
-      ? unionWorkingDays(policyRows[0].workingDays, policyRows[0].halfWorkingDays)
-      : DEFAULTS.workingDays;
-    // bbada39c — policy net scheduled minutes for the "Shift Hours" column on a policy (no-shift) working day.
-    const policyScheduledMin = policyRows[0]
-      ? scheduledMinutes({ ...DEFAULTS, workStart: policyRows[0].workStart, workEnd: policyRows[0].workEnd, breakMinutes: policyRows[0].breakMinutes })
-      : scheduledMinutes(DEFAULTS);
-
-    // bbada39c — BATCHED shift-display inputs for the range: all roster rows in [from,to] joined to their
-    // shift, plus the one fixed default shift, resolved per date by resolveShiftDisplay (scheduleFor order).
-    const rosterByDate = new Map<string, RosterDisplayRow>();
-    for (const rr of await tx
-      .select({
-        shiftDate: rosterAssignment.shiftDate,
-        isRestDay: rosterAssignment.isRestDay,
-        code: shift.code,
-        start: shift.startTime,
-        end: shift.endTime,
-        brk: shift.breakMinutes,
-        crosses: shift.crossesMidnight,
-        rounding: shift.normalHoursRoundingMinutes,
-      })
-      .from(rosterAssignment)
-      .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
-      .where(and(eq(rosterAssignment.employmentId, employmentId), gte(rosterAssignment.shiftDate, from), lte(rosterAssignment.shiftDate, to)))) {
-      rosterByDate.set(rr.shiftDate, rr);
-    }
-    // 18504ca6 — the default shift is resolved PER DATE across the range, not once for the whole of it. The
-    // Individual Records table is the screen the reporter would look at to answer "which shift was I on on
-    // the 13th"; before this it answered with the shift the employee is on today for every row. Two batched
-    // queries (the ladder, then the shifts it names) — the header's batching promise is unchanged. An
-    // employment with no ladder row keeps the single cache lookup this replaced.
-    const rangeShiftCols = {
-      id: shift.id,
-      code: shift.code,
-      start: shift.startTime,
-      end: shift.endTime,
-      brk: shift.breakMinutes,
-      crosses: shift.crossesMidnight,
-      pattern: shift.weeklyPattern,
-      halfPattern: shift.halfPattern,
-      offPattern: shift.offPattern,
-      // 07ebd04d — the shift's Schedule Group, so this table's "was the employee scheduled that day"
-      // reads the SAME working week scheduleFor does (migration 0483). Without it, a group whose week
-      // differs from its shifts' would show Absent in red on a day the engine treated as a rest day.
-      ruleId: shift.ruleId,
-      rounding: shift.normalHoursRoundingMinutes,
-    };
-    const periods = await arrangementsForEmploymentTx(tx, employmentId);
-    const periodShiftIds = [...new Set(periods.map((p) => p.shiftId))];
-    const rangeShifts =
-      periodShiftIds.length > 0 ? await tx.select(rangeShiftCols).from(shift).where(inArray(shift.id, periodShiftIds)) : [];
-    const [cachedRangeRow] =
-      periods.length === 0 && emp.defShiftId
-        ? await tx.select(rangeShiftCols).from(shift).where(eq(shift.id, emp.defShiftId)).limit(1)
-        : [];
-    const [rangeEmpGroup] = await tx
-      .select({ ruleId: employment.attendanceRuleId })
-      .from(employment)
-      .where(eq(employment.id, employmentId))
-      .limit(1);
-    const rangeWeek = await weekLookupTx(
-      tx,
-      rangeEmpGroup?.ruleId,
-      [...rangeShifts, ...(cachedRangeRow ? [cachedRangeRow] : [])].map((r) => r.ruleId),
-    );
-    const shiftById = new Map<string, DefaultShiftRow>();
-    for (const sr of rangeShifts) shiftById.set(sr.id, { ...sr, ...rangeWeek(sr.ruleId, sr) });
-    const cachedDefShift: DefaultShiftRow | undefined = cachedRangeRow
-      ? { ...cachedRangeRow, ...rangeWeek(cachedRangeRow.ruleId, cachedRangeRow) }
-      : undefined;
-    const defShiftOn = (d: string): DefaultShiftRow | undefined => {
-      const p = pickArrangementOn(periods, d);
-      return p ? shiftById.get(p.shiftId) : cachedDefShift;
-    };
-
-    // e2632276 — the absence GATE for this one employment (see isScheduledOffDay). False until the
-    // employment's assigned payroll policy sets `leave.deductAbsentDays`, and false ⇒ the rest-day test
-    // below is `!isWorkingDay`, exactly as it was before this item.
-    const deductAbsence = (await deductAbsentDaysByEmployment(tx, [employmentId])).has(employmentId);
-
+    const shiftIds=[...new Set(employees.flatMap(e=>{
+      const periods=arrangements.get(e.id)??[];
+      return periods.length ? periods.map(p=>p.shiftId) : e.defShiftId ? [e.defShiftId] : [];
+    }))];
+    const rangeShifts=shiftIds.length ? await tx.select({id:shift.id,code:shift.code,start:shift.startTime,
+      end:shift.endTime,brk:shift.breakMinutes,crosses:shift.crossesMidnight,pattern:shift.weeklyPattern,
+      halfPattern:shift.halfPattern,offPattern:shift.offPattern,ruleId:shift.ruleId,rounding:shift.normalHoursRoundingMinutes})
+      .from(shift).where(inArray(shift.id,shiftIds)) : [];
+    const rangeWeek=await weekLookupTx(tx,null,[...rangeShifts.map(r=>r.ruleId),...employees.map(e=>e.ruleId)]);
+    const rowsByEmployment=new Map<string,typeof rows>();
+    const rosterByEmployment=new Map<string,typeof rosters>();
+    for(const row of rows){const list=rowsByEmployment.get(row.employmentId)??[];list.push(row);rowsByEmployment.set(row.employmentId,list);}
+    for(const row of rosters){const list=rosterByEmployment.get(row.employmentId)??[];list.push(row);rosterByEmployment.set(row.employmentId,list);}
+    for(const emp of employees){
+      const employmentId=emp.id;
+      const byDate=new Map((rowsByEmployment.get(emp.id)??[]).map(r=>[r.date,r]));
+      const policy=policies.find(p=>p.companyId===emp.companyId);
+      const leaveSet=approvedDates.get(emp.id)??new Set<string>();
+      const holidays=holidaySets.get(emp.id)??new Set<string>();
+      const workDays=policy ? unionWorkingDays(policy.workingDays,policy.halfWorkingDays) : DEFAULTS.workingDays;
+      const policyScheduledMin=policy ? scheduledMinutes({...DEFAULTS,workStart:policy.workStart,
+        workEnd:policy.workEnd,breakMinutes:policy.breakMinutes}) : scheduledMinutes(DEFAULTS);
+      const rosterByDate=new Map<string,RosterDisplayRow>((rosterByEmployment.get(emp.id)??[]).map(r=>[r.shiftDate,r]));
+      const periods=arrangements.get(emp.id)??[];
+      const shiftById=new Map<string,DefaultShiftRow>(rangeShifts.map(sr=>[sr.id,{...sr,...rangeWeek(sr.ruleId,sr,emp.ruleId)}]));
+      const cachedDefShift=periods.length===0&&emp.defShiftId ? shiftById.get(emp.defShiftId) : undefined;
+      const defShiftOn=(d:string):DefaultShiftRow|undefined=>{const p=pickArrangementOn(periods,d);return p ? shiftById.get(p.shiftId) : cachedDefShift;};
+      const deductAbsence=deducted.has(employmentId);
     const out: AttendanceRangeRow[] = [];
     let d = from;
     // Guard against a pathological range; a first-of-month → today window is ≤ 31 days. The literal moved
@@ -2675,7 +2588,9 @@ export function attendanceForEmploymentRange(
       next.setUTCDate(next.getUTCDate() + 1);
       d = next.toISOString().slice(0, 10);
     }
-    return out;
+      result.set(emp.id,out);
+    }
+    return result;
   });
 }
 

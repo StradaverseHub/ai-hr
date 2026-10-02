@@ -4146,6 +4146,15 @@ export type AttendanceRequestKind = (typeof ATTENDANCE_REQUEST_KINDS)[number];
 // Attendance correction requests (ADR-0011 Phase B): an employee proposes corrected punch
 // times for a day; an admin or their manager approves, which amends the attendance row
 // (re-derived through the time engine). Mirrors the leave request→decide workflow.
+/** Immutable, per-user review of one processed missing-punch observation. */
+export const attendanceAttentionReview = pgTable('attendance_attention_review', {
+  id: id(), tenantId: tenantId(),
+  attendanceId: uuid('attendance_id').notNull().references(() => attendance.id),
+  reviewerUserId: uuid('reviewer_user_id').notNull().references(() => appUser.id),
+  fingerprint: text('fingerprint').notNull(),
+  createdAt: timestamp('created_at', {withTimezone:true}).notNull().defaultNow(),
+}, t => [uniqueIndex('attendance_attention_review_observation').on(t.tenantId,t.attendanceId,t.reviewerUserId,t.fingerprint)]);
+
 export const attendanceCorrection = pgTable(
   'attendance_correction',
   {

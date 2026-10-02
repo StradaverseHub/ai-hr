@@ -9,6 +9,8 @@ import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, type Actor } from '../db/events';
 import { assertCanDecide } from './approvals';
+import {assertMyTeamSubjectTx} from './my-team-scope';
+import type {MyTeamQuery} from '../lib/my-team-types';
 import { scopeOf } from '../lib/delegation-scope';
 import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz';
 // 5206539f — the pure "does this caller hold this key" decision (defaults ∘ tenant overrides ∘ company
@@ -4955,6 +4957,24 @@ async function assertIsHrAdmin(tx: Tx, ctx: SessionContext, subjectEmploymentId:
  * with Sarah requesting means Ahmad approves, not that the level is skipped and not that Sarah approves
  * her own leave.
  */
+/** Only explicit authority refusals are absence from a decision list; infrastructure/config faults propagate. */
+function isLeaveDecisionRefusal(error:unknown):boolean {
+  if(!(error instanceof Error)||error.constructor!==Error)return false;
+  return [
+    'You cannot decide your own leave request',
+    'Only an admin or the administrative manager can decide this leave request',
+    'Only HR can decide this leave request',
+    "No manager's manager is recorded for this employee — an admin must decide",
+    "Only the manager's manager or HR can decide this leave request",
+    'Only Payroll or HR can decide this leave request',
+    'Only the named approver or HR can decide this leave request',
+    'No department head is set for this employee — an admin must decide or assign one',
+    'No business unit head is set for this employee — an admin must decide or assign one',
+    'Only the department head or HR can decide this leave request',
+    'Only the business unit head or HR can decide this leave request',
+  ].includes(error.message);
+}
+
 async function assertCanDecideLeaveStep(
   tx: Tx,
   ctx: SessionContext,
@@ -4986,6 +5006,8 @@ async function assertCanDecideLeaveStep(
       await assertCanDecideAsApprover(tx, ctx, subjectEmploymentId, approver.kind, label, approver.employmentId, taskType);
       return;
     } catch (e) {
+      const normalized=e instanceof Error && e.constructor===Error ? new Error(e.message.replaceAll(label,'leave request')) : e;
+      if(!isLeaveDecisionRefusal(normalized))throw e;
       refusals.push(e);
     }
   }
@@ -5522,6 +5544,8 @@ export async function decideLeave(
   ctx: SessionContext,
   p: {
     leaveRequestId: string;
+    /** Trusted server context; revalidated inside the locked decision transaction. */
+    teamScope?: MyTeamQuery;
     decision: 'approved' | 'rejected';
     deciderEmploymentId?: string;
     // Partial Leave Approval (0131): a reason is MANDATORY whenever a date is rejected (so the employee knows
@@ -5536,6 +5560,7 @@ export async function decideLeave(
   return withTenant(ctx, async (tx) => {
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1).for('update');
     if (!req) throw new Error('leave request not found (or not visible)');
+    if(p.teamScope)ctx=await assertMyTeamSubjectTx(tx,ctx,p.teamScope,req.employmentId);
     if (req.status !== 'pending') throw new Error(`leave request is already ${req.status}`);
 
     const steps = await tx
@@ -5775,6 +5800,8 @@ export async function decideLeaveDates(
   ctx: SessionContext,
   p: {
     leaveRequestId: string;
+    /** Trusted server context; revalidated inside the locked decision transaction. */
+    teamScope?: MyTeamQuery;
     decisions: { leaveDate: string; decision: 'approved' | 'rejected'; rejectReason?: string }[];
     deciderEmploymentId?: string;
   },
@@ -5797,6 +5824,7 @@ export async function decideLeaveDates(
   return withTenant(ctx, async (tx) => {
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1).for('update');
     if (!req) throw new Error('leave request not found (or not visible)');
+    if(p.teamScope)ctx=await assertMyTeamSubjectTx(tx,ctx,p.teamScope,req.employmentId);
     if (req.status !== 'pending') throw new Error(`leave request is already ${req.status}`);
     // Single-step authority (§4C): per-date rows only exist for single-step companies.
     await assertCanDecide(tx, ctx, req.employmentId, 'leave request', scopeOf('leave.application'));
@@ -11257,3 +11285,67 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
 
 
 
+
+
+/** Pending decisions the actual current-step writer allows, for an already authorized team subset. */
+export function actionableLeaveRequests(ctx:SessionContext,{employmentIds}:{employmentIds:string[]}){
+  return withTenant(ctx,async tx=>{
+    if(!employmentIds.length)return [];
+    const requests=await tx.select().from(leaveRequest).where(and(inArray(leaveRequest.employmentId,[...new Set(employmentIds)]),eq(leaveRequest.status,'pending')));
+    if(!requests.length)return [];
+    const ids=requests.map(r=>r.id);
+    const [steps,dates]=await Promise.all([
+      tx.select().from(leaveApprovalStep).where(inArray(leaveApprovalStep.leaveRequestId,ids)).orderBy(asc(leaveApprovalStep.stepIndex)),
+      tx.select({id:leaveRequestDate.id,requestId:leaveRequestDate.leaveRequestId,date:leaveRequestDate.leaveDate,
+        days:leaveRequestDate.days,status:leaveRequestDate.status}).from(leaveRequestDate).where(inArray(leaveRequestDate.leaveRequestId,ids)),
+    ]);
+    const result=[];
+    for(const req of requests){
+      const current=steps.find(s=>s.leaveRequestId===req.id&&s.status==='pending');
+      if(steps.some(s=>s.leaveRequestId===req.id)&&!current)continue;
+      try {
+        if(current)await assertCanDecideLeaveStep(tx,ctx,req.employmentId,current.approverKind,'leave request',current.approverEmploymentId,current.approverAlternates);
+        else await assertCanDecide(tx,ctx,req.employmentId,'leave request',scopeOf('leave.application'));
+      }catch(error){if(isLeaveDecisionRefusal(error))continue;throw error;}
+      const requestedDates=dates.filter(d=>d.requestId===req.id);
+      result.push({requestId:req.id,employmentId:req.employmentId,leaveTypeId:req.leaveTypeId,startDate:req.startDate,
+        endDate:req.endDate,days:Number(req.days),appliedAt:req.createdAt,
+        dateDecisionRequired:requestedDates.length>0,dates:requestedDates.map(d=>({id:d.id,date:d.date,days:Number(d.days),status:d.status}))});
+    }
+    return result;
+  });
+}
+
+
+/** Period and upcoming leave use the owner's deductible-day/session weights and recorded per-date truth. */
+export function myTeamLeaveProjection(ctx:SessionContext,p:{employmentIds:string[];from:string;to:string;today:string}){
+ return withTenant(ctx,async tx=>{
+  if(!p.employmentIds.length)return [];
+  const requests=await tx.select({request:leaveRequest,type:leaveType}).from(leaveRequest)
+   .innerJoin(leaveType,eq(leaveType.id,leaveRequest.leaveTypeId))
+   .where(and(inArray(leaveRequest.employmentId,p.employmentIds),inArray(leaveRequest.status,['approved','pending']),
+    or(and(lte(leaveRequest.startDate,p.to),gte(leaveRequest.endDate,p.from)),gte(leaveRequest.endDate,p.today))))
+   .orderBy(asc(leaveRequest.startDate));
+  const ids=requests.map(r=>r.request.id);
+  const dates=ids.length ? await tx.select().from(leaveRequestDate).where(inArray(leaveRequestDate.leaveRequestId,ids)) : [];
+  const result=[];
+  for(const employmentId of [...new Set(requests.map(r=>r.request.employmentId))]){
+   const own=requests.filter(r=>r.request.employmentId===employmentId);
+   const from=own.reduce((a,r)=>r.request.startDate<a?r.request.startDate:a,own[0].request.startDate);
+   const to=own.reduce((a,r)=>r.request.endDate>a?r.request.endDate:a,own[0].request.endDate);
+   const sched=await resolveSchedule(tx,employmentId),hols=await resolveHolidaySet(tx,employmentId,from,to);
+   for(const {request:req,type} of own){
+    const stored=dates.filter(d=>d.leaveRequestId===req.id);
+    const inclusion=normalizeDayTypeInclusion(type.dayTypeInclusion);
+    const session=req.durationType==='half_day_am' ? 'AM' as const : req.durationType==='half_day_pm' ? 'PM' as const : req.durationType==='hourly' ? 'hourly' as const : 'full_day' as const;
+    const projected=stored.length ? stored.filter(d=>d.status==='approved'||d.status==='pending')
+      .map(d=>({date:d.leaveDate,days:Number(d.days),status:d.status as 'approved'|'pending'})) :
+      eachDate(req.startDate,req.endDate).filter(d=>isDeductibleDay(d,sched,hols,inclusion)).map(date=>({date,
+        days:session==='full_day'?dayWeight(date,sched,hols,inclusion):Number(req.days),status:req.status as 'approved'|'pending'}));
+    result.push({requestId:req.id,employmentId,leaveTypeId:type.id,code:type.code,name:type.name,color:type.color,
+      session,fromTime:req.fromTime,toTime:req.toTime,dates:projected});
+   }
+  }
+  return result;
+ });
+}
