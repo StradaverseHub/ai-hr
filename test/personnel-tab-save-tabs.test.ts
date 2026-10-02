@@ -1,3 +1,4 @@
+import {getTaxSelectionMY} from '../localization/my/tax-selection';
 /**
  * 420ebab5 part two, r255 — the REMAINING consolidated tabs: Bank & Statutory, Attendance, Employment.
  *
@@ -211,6 +212,8 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
     [key('tax', 'taxNumber')]: 'IG1234567890',
     [key('tax', 'taxCategory')]: '1',
     [key('tax', 'taxResidency')]: taxResidency,
+    [key('tax', 'expectedTaxCompanyId')]: base.companyId,
+    [key('tax', 'expectedTaxSelectionVersion')]: '1',
     [key('tax', 'numChildren')]: '0',
     [key('tax', 'childReliefMode')]: 'manual',
   });
@@ -234,7 +237,7 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       const actions = ACTIONS();
       expect(actions, 'the statutory writer must not read a residency control the form does not have')
         .not.toContain("isResident: formData.get('isResident')");
-      expect(actions).toContain("isResident: current.taxResidency != null ? current.taxResidency === 'resident'");
+      expect(actions).toContain("isResident: current.isResident ?? true");
     });
 
     it('a LONE statutory save leaves the residency alone — an EPF edit cannot move the tax basis', async () => {
@@ -298,9 +301,10 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       // `tax_residency` instead of inventing one — which is the point: the correctness no longer depends
       // on a declared order being remembered. Before the fix, tax-first left this `false` and moved the
       // employee onto flat-rate PCB.
-      expect(row.isResident, 'the residency the admin chose must survive the same request').toBe(true);
+      expect(await getTaxSelectionMY(adminCtx(base),employmentId)).toMatchObject({scheme:'resident',version:2});
+      expect(row.isResident, 'person legacy provenance stays unchanged; scoped category owns calculation').toBe(false);
       expect(row.epfNumber).toBe('EPF-NEW');
-      expect(row.taxResidency).toBe('resident');
+      expect(row.taxResidency).toBe('non_resident');
       // `saved` is reported in the DECLARED order, not the order the client listed them in.
       expect(result.saved).toEqual(['statutory', 'tax']);
       expect(redirect).not.toHaveBeenCalled();

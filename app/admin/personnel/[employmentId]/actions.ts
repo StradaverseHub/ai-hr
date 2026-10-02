@@ -2080,7 +2080,7 @@ async function applyTaxSection(
   const personId = String(formData.get('personId'));
   const pack = packFor('MY');
   if (!pack) throw new Error('No localization pack for MY');
-  await pack.statutory.setTax(s, {
+  try { await pack.statutory.setTax(s, {
     personId,
     employmentId:String(formData.get('employmentId')??''),
     expectedCompanyId:String(formData.get('expectedTaxCompanyId')??''),
@@ -2105,7 +2105,14 @@ async function applyTaxSection(
     // column set, so omitting it in another mode would erase a grid the admin keyed earlier and would
     // silently move their tax the next time they switched back.
     childReliefTable: collectChildReliefTable(formData),
-  });
+  }); } catch(error){
+    if(error instanceof Error&&error.name==='TaxSelectionError'&&'code' in error){
+      const t=await getTranslations('payroll.taxConfiguration');
+      const code=['confirmation_required','invalid_scheme','citizenship_unknown','not_resident','stale_context','not_found'].includes(String(error.code))?String(error.code):'saveFailed';
+      throw new Error(t(`error_${code}`));
+    }
+    throw error;
+  }
 }
 
 export async function setTaxAction(formData: FormData) {
