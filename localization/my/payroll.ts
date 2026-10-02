@@ -607,6 +607,7 @@ export function foldPriorSlipIntoAccumulators(
   // rounding difference, so it is COUNTED and disclosed rather than absorbed.
   const stampedBase = st.bases?.pcb;
   const nc = readPcbNonCash((slip.statutory as {pcbNonCash?:unknown}|null)?.pcbNonCash);
+  if ((slip.statutory as {pcbNonCash?:unknown}|null)?.pcbNonCash !== undefined && !nc) throw new StatutoryRulesetMalformedError('Saved PCB non-cash ownership is malformed');
   // bases.pcb describes the cumulative month's computation; accumulate only this run's owned benefits.
   const y = stampedBase == null ? Number(slip.gross) : round2(Number(stampedBase) - (nc ? nc.cumulative.bik + nc.cumulative.vola - nc.owned.bik - nc.owned.vola : 0));
   if (stampedBase == null) acc.legacyBaseSlips = (acc.legacyBaseSlips ?? 0) + 1;

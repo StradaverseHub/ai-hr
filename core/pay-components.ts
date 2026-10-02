@@ -2133,7 +2133,7 @@ export const isUnsupportedTaxableComponent = (c: {code?:string;kind?:string;disp
     try { if(classifyNonCashBenefit({code:c.code??'pay-item',kind:c.kind??'allowance',nonPayable:true,pcb:c.includedInPcb,displayCategory:c.displayCategory,eaFormLine:c.eaFormLine,pcbRemunerationType:c.pcbRemunerationType,epfBonus2012:c.epfBonus2012}))return false; }
     catch { return true; }
   }
-  return c.includedInPcb && c.pcbRemunerationType==null && (c.isNonPayable||(!c.includedInEpf&&!c.includedInSocsoEis));
+  return c.includedInPcb && (c.isNonPayable || (c.pcbRemunerationType==null && !c.includedInEpf&&!c.includedInSocsoEis));
 };
 
 /** Upsert a one-off component value for an employee on a draft batch (by batch+employment+component). */
