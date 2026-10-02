@@ -488,7 +488,8 @@ export function IdentityTaxCard({
                 VERBATIM: this card still posts `taxCategory` with the same values it always did. */}
             <TaxCategoryField mode="form" defaultValue={defaults.taxCategory} onChange={setTaxCategory} />
             <Field label={t('incomeTaxResident')}>
-              <select id="income-tax-resident" name="taxResidency" defaultValue={taxSelection?.confirmationRequired || !['resident','non_resident','rep','knowledge_worker','c_suite'].includes(defaults.taxResidency) ? '' : defaults.taxResidency} required className={inputCls}>
+              {/* Reset only this draft when its employer owner/revision/confirmation changes. */}
+              <select key={`${employmentId}:${personId}:${taxSelection?.companyId??''}:${taxSelection?.version??0}:${taxSelection?.confirmationRequired??false}:${defaults.taxResidency}`} id="income-tax-resident" name="taxResidency" defaultValue={taxSelection?.confirmationRequired || !['resident','non_resident','rep','knowledge_worker','c_suite'].includes(defaults.taxResidency) ? '' : defaults.taxResidency} required className={inputCls}>
                 <option value="" disabled>{t('taxSelectionChoose')}</option>
                 <option value="resident">{t('taxResidencyResident')}</option>
                 <option value="non_resident">{t('taxResidencyNonResident')}</option>
