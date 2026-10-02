@@ -2,8 +2,7 @@
 import {revalidatePath} from 'next/cache';
 import {scopedSession} from '@/lib/scope';
 import {hasTeamAccess} from '@/lib/authz';
-import {readMyTeam,markMyTeamPunchReviewed} from '@/core/my-team';
-import {decideLeave,decideLeaveDates} from '@/packs/leave/service';
+import {readMyTeam,markMyTeamPunchReviewed,decideMyTeamLeave,decideMyTeamLeaveDates} from '@/core/my-team';
 import {parseMyTeamQuery,type MyTeamActionResult} from '@/lib/my-team-query';
 import {myTeamError} from './server';
 function paramsOf(form:FormData):URLSearchParams {const params=new URLSearchParams();for(const [key,value] of form.entries())if(typeof value==='string')params.append(key,value);return params;}
@@ -21,12 +20,12 @@ export async function approveMyTeamLeaveAction(form:FormData):Promise<MyTeamActi
   if(decision==='rejected'&&!rejectReason)return {ok:false,error:'invalid_query'};
   const dates=form.getAll('dateIds').map(value=>String(value));
   if(approval.dateDecisionRequired){
-   const allowed=new Set(approval.dates.filter(item=>item.status==='pending').map(item=>item.date));
+   const allowed=new Set(approval.dates.filter(item=>item.status==='pending').map(item=>item.id));
    if(!dates.length||new Set(dates).size!==dates.length||dates.some(date=>!allowed.has(date)))return {ok:false,error:'request_changed'};
-   await decideLeaveDates(s,{leaveRequestId:requestId,decisions:dates.map(leaveDate=>({leaveDate,decision,rejectReason}))});
+   await decideMyTeamLeaveDates(s,snapshot.query,{leaveRequestId:requestId,decisions:dates.map(id=>({leaveDate:approval.dates.find(item=>item.id===id)!.date,decision,rejectReason}))});
   }else{
    if(dates.length)return {ok:false,error:'invalid_query'};
-   await decideLeave(s,{leaveRequestId:requestId,decision,rejectReason});
+   await decideMyTeamLeave(s,snapshot.query,{leaveRequestId:requestId,decision,rejectReason});
   }
   refresh();return {ok:true};
  }catch(error){return {ok:false,error:myTeamError(error).error};}

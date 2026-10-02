@@ -122,8 +122,7 @@ export default async function RosterPage({
     ...(sp.q ? { q: sp.q } : {}),
     ...(teamScope ? {employmentIds:teamScope.employmentIds} : {}),
   });
-  const teamIds=teamScope?new Set(teamScope.employmentIds):null;
-  const view=teamIds?{...rosterView,allEmployees:rosterView.allEmployees.filter(e=>teamIds.has(e.employmentId))}:rosterView;
+  const view=rosterView;
 
   /**
    * a57f0584 rev 2 — ONLY THE COUNT. "This week's exceptions" was a full listing rendered at the foot of

@@ -21,6 +21,7 @@ export function myTeamNavigation(snapshot:MyTeamSnapshot):MyTeamNavigation {
 export function myTeamError(error:unknown):{error:MyTeamActionError;status:number} {
  if(error instanceof MyTeamQueryError)return {error:'invalid_query',status:400};
  const code=error instanceof Error?(error as Error&{code?:string}).code??error.message:'';
+ if(code==='MY_TEAM_QUERY_INVALID')return {error:'invalid_query',status:400};
  if(['MY_TEAM_FORBIDDEN','Forbidden','MODULE_DISABLED','MY_TEAM_NOT_AUTHORIZED','not_authorized'].includes(code))return {error:'not_authorized',status:403};
  if(['MY_TEAM_REVIEW_CHANGED','review_changed'].includes(code))return {error:'review_changed',status:409};
  if(['MY_TEAM_REQUEST_CHANGED','request_changed'].includes(code))return {error:'request_changed',status:409};
