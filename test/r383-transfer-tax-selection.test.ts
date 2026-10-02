@@ -7,7 +7,7 @@ import {hireEmployee,changeEmploymentCompany,transferEmploymentCompanyTx} from '
 import {createMovementEvent,movementHistory,reverseMovementEvent} from '../core/movement';
 import {requirePackFor} from '../localization/registry';
 import {resolveTaxSelectionMY} from '../localization/my/tax-selection';
-import {setStatutoryProfileMY} from '../localization/my/statutory';
+import {setStatutoryProfileMY,setTaxProfileMY} from '../localization/my/statutory';
 import {saveTaxSchemeDeclarationMY} from '../localization/my/tax-scheme-declarations';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -24,7 +24,7 @@ beforeEach(async()=>{
 });
 async function select(scheme:string,companyId=b.companyId){const save=requirePackFor('MY').statutory.saveTaxSelection;if(!save)throw new Error('MY direct selection missing');return save(a,{employmentId:e.employmentId,expectedCompanyId:companyId,scheme});}
 const events=()=>owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.tenantId,b.tenantId),eq(schema.domainEvent.subjectEmploymentId,e.employmentId))).orderBy(schema.domainEvent.sequence);
-const owners=()=>owner.db.select().from(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.employmentId,e.employmentId));
+const owners=()=>owner.db.select().from(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.employmentId,e.employmentId)).orderBy(schema.employmentTaxSelectionMy.id);
 const move=(companyId=destination,departmentId=department,date=transferDate,ctx=a)=>createMovementEvent(ctx,{employmentId:e.employmentId,kind:'entityTransfer',effectiveDate:date,companyId,departmentId});
 const rows=async(companyId:string)=>{const all=await owners();return all.find(row=>row.companyId===companyId)!;};
 describe('ordinary tax defaults in canonical employer changes',()=>{
@@ -63,10 +63,10 @@ describe('ordinary tax defaults in canonical employer changes',()=>{
  });
  it('a surrounding transaction failure rolls back company, assignment, selection and audit together',async()=>{
   const before=await owners(),oldEvents=await events();
-  const oldAssignments=await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,e.employmentId));
+  const oldAssignments=await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,e.employmentId)).orderBy(schema.assignment.validFrom,schema.assignment.id);
   await expect(withTenant(a,async tx=>{await transferEmploymentCompanyTx(tx,a,{employmentId:e.employmentId,newCompanyId:destination,effectiveDate:transferDate,placement:{departmentId:department},movement:{type:'entityTransfer',groupId:randomUUID()}});throw new Error('Synthetic rollback');})).rejects.toThrow('Synthetic rollback');
   expect(await owners()).toEqual(before);expect(await events()).toEqual(oldEvents);
-  expect(await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,e.employmentId))).toEqual(oldAssignments);
+  expect(await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,e.employmentId)).orderBy(schema.assignment.validFrom,schema.assignment.id)).toEqual(oldAssignments);
   expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,e.employmentId)))[0].companyId).toBe(b.companyId);
  });
  it.each([true,false])('preexisting missing ordinary source converts once with legacy isResident=%s compatibility',async resident=>{
@@ -74,6 +74,23 @@ describe('ordinary tax defaults in canonical employer changes',()=>{
   await setStatutoryProfileMY(a,{personId:e.personId,icNumber:'900101123456',isResident:resident});await move();
   expect(await rows(b.companyId)).toMatchObject({scheme:resident?'resident':'non_resident',source:'legacy_conversion'});
   expect(await rows(destination)).toMatchObject({scheme:resident?'resident':'non_resident'});
+ });
+ it.each(['rep','non_resident'])('non-MY source creates an ordinary MY default without importing legacy %s intent',async legacy=>{
+  const [source]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Synthetic foreign employer',country:'SG'}).returning();
+  const [sourceDept]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:source.id,name:'Foreign employer department'}).returning();
+  e=await hireEmployee(a,{person:{fullName:'Synthetic foreign transfer',primaryEmail:`foreign_${randomUUID()}@test.local`},companyId:source.id,departmentId:sourceDept.id,employmentType:'full_time',hiredOn});
+  await setStatutoryProfileMY(a,{personId:e.personId,icNumber:'900202123456',epfCitizenship:'non_citizen'});
+  await setTaxProfileMY(a,{personId:e.personId,taxResidency:legacy});
+  expect(await owners()).toEqual([]);
+  const userId=await createAppUser(b.tenantId,e.personId,'employee');
+  await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:userId,companyId:source.id,role:'hr_admin'});
+  const outgoing:SessionContext={tenantId:b.tenantId,userId,grants:[{role:'hr_admin',companyId:source.id}],entitlements:a.entitlements};
+  await expect(move(destination,department,transferDate,outgoing)).rejects.toBeDefined();
+  expect(await owners()).toEqual([]);
+  await move();
+  expect(await owners()).toHaveLength(1);
+  expect(await rows(destination)).toMatchObject({scheme:'resident',provenance:{reason:'ordinary_new_employer_default',fromCompanyId:source.id},updatedByUserId:a.userId});
+  expect((await rows(destination)).provenance).not.toHaveProperty('sourceSelectionId');
  });
  it('ambiguous missing source refuses atomically rather than silently becoming resident',async()=>{
   await saveTaxSchemeDeclarationMY(a,{employmentId:e.employmentId,expectedCompanyId:b.companyId,scheme:'rep',validFrom:`${year}-01`,validTo:`${year}-12`,approvalReference:'Synthetic legacy ambiguity',eligibilityConfirmed:true});
