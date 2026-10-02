@@ -635,3 +635,14 @@ describe('r378 company information in actual localized documents', () => {
     }
   });
 });
+
+
+describe('r381 Vietnamese PDF text mapping after composite glyphs', () => {
+  it('retains complete later captions rather than empty Unicode mappings', async () => {
+    const localized = localizeLabels('vi');
+    const text = await extractedText(await renderPayslipPdf(data, localized));
+    expect(text).toContain(localized.employerContributions.toUpperCase());
+    expect(text).toContain(localized.ytdHeading.toUpperCase());
+    expect(text).not.toContain('\uFFFD');
+  });
+});

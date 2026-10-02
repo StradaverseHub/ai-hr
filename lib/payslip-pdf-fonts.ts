@@ -231,7 +231,20 @@ export async function embedPayslipFaces(
   if (wanted.length === 0) return [];
 
   const mod = (await import('fontkit')) as unknown as { default?: unknown };
-  doc.registerFontkit((mod.default ?? mod) as Parameters<PDFDocument['registerFontkit']>[0]);
+  const fontkit = (mod.default ?? mod) as Parameters<PDFDocument['registerFontkit']>[0];
+  doc.registerFontkit({
+    ...fontkit,
+    create(...args: Parameters<typeof fontkit.create>) {
+      const face = fontkit.create(...args);
+      // Fontkit caches composite components before their later text runs can supply Unicode.
+      // Prime the Latin faces first so Vietnamese letters retain their PDF text mappings.
+      // Preserve the other scripts' shaping and the English/Malay built-in-font path.
+      if (/^NotoSans-(Regular|Bold)$/.test(face.postscriptName ?? '')) {
+        for (const cp of face.characterSet) face.glyphForCodePoint(cp);
+      }
+      return face;
+    },
+  });
 
   const out: PayslipFace[] = [];
   for (const { script, bytes } of wanted) {
