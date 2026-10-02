@@ -13,6 +13,16 @@ const company='11111111-1111-4111-8111-111111111111';
 const outside='33333333-3333-4333-8333-333333333333';
 const source=(path:string)=>readFileSync(resolve(process.cwd(),path),'utf8');
 describe('My Team server boundary',()=>{
+ it('consumes the uncorrelated authorization set instead of traversing the graph per employee',()=>{
+  const scope=source('core/my-team-scope.ts'),start=scope.indexOf('const employees=await tx.select('),end=scope.indexOf('return {employees:',start);
+  expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);const read=scope.slice(start,end);expect(read.length).toBeGreaterThan(500);
+  expect(read).toContain('${employment.id} IN (SELECT app.my_team_authorized_subject_ids())');
+  expect(read).not.toContain('app.my_team_subject_authorized(${employment.id})');
+  const migration=source('db/migrations/0508_my_team_authorized_subject_set.sql');
+  expect(migration).toContain('WITH reports AS MATERIALIZED (SELECT app.my_team_report_ids() AS id)');
+  expect(migration).toContain('SELECT coalesce(subject IN (SELECT app.my_team_authorized_subject_ids()),false)');
+  expect(migration).not.toContain('SECURITY DEFINER');
+ });
  beforeEach(()=>{vi.clearAllMocks();mocks.locale.mockResolvedValue('en');mocks.session.mockResolvedValue({s:{roles:['manager']} as SessionContext,scopeIds:[company]});});
  it('refuses an ordinary employee before invoking the team model, even if navigation is bypassed',async()=>{
   mocks.session.mockResolvedValue({s:{roles:['employee']} as SessionContext,scopeIds:[company]});
