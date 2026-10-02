@@ -1,0 +1,32 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+The calculation detail already shows the saved normal resident working on screen and in the PDF. Earlier REP and Knowledge Worker payments were saved as flat-rate calculations, so those historical details cannot honestly show the separate category working requested here.
+
+WHAT WE'LL CHANGE
+
+- Use the employee's explicitly approved tax category for new payroll calculations, following the official 2026 HASiL rules verified for each category.
+- Show the actual category, applicable formula, substituted values, rebate and final result from that payroll calculation in the existing ten-section detail and PDF.
+- Keep the additional-remuneration steps and show the category-specific annual tax working where applicable.
+- Require HR to confirm the necessary approval for the employment and year. C-Suite selection requires a resident non-citizen in an approved company.
+- Preserve earlier payments and label their original saved working clearly. Missing historical working will be shown as not recorded, rather than invented or replaced with current employee information.
+
+WHAT YOU'LL GET
+
+HR can see why a new deduction was made and compare the screen with the same PDF working. Normal resident, additional remuneration, REP, Knowledge Worker, C-Suite and non-resident calculations will each show the applicable working recorded for the payroll run.
+
+GOOD TO KNOW
+
+- Earlier payroll payments will not be recalculated or rewritten by this work. Correcting an earlier payment requires the existing accountable payroll correction process.
+- This proposal covers both the calculations and their explanation; the attached illustration contains placeholders only.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+The parent owns authoritative MY payroll arithmetic, category selection and the forward-only snapshot contract. New resident snapshots stamp calculationScheme resident, rep, knowledge_worker or c_suite. Incentive traces require schemeVersion 1, T and additional-leg T2 for REP and Knowledge Worker; C-Suite omits T. Preserve common P/EPF/relief/annual tax/MTD/zakat facts and original deduction values. Explicit nonresident is dispatched separately; legacy unstamped flat snapshots remain their original recorded method.
+
+core/pcb-explain.ts validates scheme provenance before legacy rate handling and shapes shared sections. app/payroll/pcb-detail/formulas.ts assembles category-specific expressions without computing money. Both HTML and PDF consume those stored facts; normal and five-step additional working remain shared. Identity selection includes a human approval eligibility note in six locales; no automatic inference from title or nationality.
+
+Verify official category rules and monetary fixtures at the authoritative owner, then reader malformed/legacy/threshold/bonus/manual/delta fixtures, role/company/tenant fences, six-locale actual screens, phone and dark layout, actual PDF glyphs and ten-section parity. Reverse a named new assertion and restore. No shared tests or dev server while the parent gate runs. Mockup rendering and all execution remain pending.

@@ -620,6 +620,7 @@ export async function PcbDetailView({
       case 'mtdCategory':
         return (
           <>
+            {mtd?.calculationScheme && <Row label={t('schemeLabel')} value={t(`scheme_${mtd.calculationScheme}`)} />}
             <Row
               label={t('bracketCategory')}
               value={trace && CATEGORY_LABEL[trace.category] ? t(CATEGORY_LABEL[trace.category]) : <NotRecorded />}
@@ -758,11 +759,11 @@ export async function PcbDetailView({
       case 'mtdBracket':
         return (
           <>
-            <Row label={t('bracketM')} value={trace ? rm(trace.M) : <NotRecorded />} />
+            {(!mtd?.calculationScheme || mtd.calculationScheme === 'resident') && <Row label={t('bracketM')} value={trace ? rm(trace.M) : <NotRecorded />} />}
             <Row label={t('bracketR')} value={trace ? pct(trace.R) : <NotRecorded />} />
-            <Row label={t('bracketB')} value={trace ? rm(trace.B) : <NotRecorded />} />
+            {(!mtd?.calculationScheme || mtd.calculationScheme === 'resident') ? <Row label={t('bracketB')} value={trace ? rm(trace.B) : <NotRecorded />} /> : mtd.calculationScheme !== 'c_suite' && <Row label={t('schemeRebate')} value={trace?.T == null ? <NotRecorded /> : rm(trace.T)} />}
             <Row label={t('bracketTaxOnP')} value={trace ? rm(trace.taxOnP1) : <NotRecorded />} />
-            <p className="pt-2 text-xs text-muted-foreground">{t('bracketNote')}</p>
+            <p className="pt-2 text-xs text-muted-foreground">{t(mtd?.calculationScheme && mtd.calculationScheme !== 'resident' ? 'schemeWorkingNote' : 'bracketNote')}</p>
           </>
         );
 
@@ -857,6 +858,11 @@ export async function PcbDetailView({
       case 'mtdYear':
         return fb.year == null ? null : (
           <>
+            {fb.schemeAnnual && <Formula
+              formulaLabel={t('formulaLabel')} formula={t(fb.schemeAnnual.formula)}
+              substitutedLabel={t('substitutedLabel')} substituted={fb.schemeAnnual.substituted ?? <NotRecorded />}
+              resultLabel={t(fb.schemeAnnual.resultLabel)} result={fb.schemeAnnual.result == null ? <NotRecorded /> : rm(fb.schemeAnnual.result)} />}
+
             <Row
               label={t('yearTotalTax')}
               value={trace && trace.totalTaxYear != null ? rm(trace.totalTaxYear) : <NotRecorded />}
@@ -991,7 +997,7 @@ export async function PcbDetailView({
             <Row label={t('sourceTaxYear')} value={taxYear} />
             <Row
               label={t('sourceTaxMethod')}
-              value={explanation.kind === 'flat' ? t('methodFlat') : t('methodMtd')}
+              value={explanation.kind === 'flat' ? t('methodFlat') : mtd?.calculationScheme ? t(`scheme_${mtd.calculationScheme}`) : t('methodMtd')}
             />
             <Row label={t('sourceTaxTable')} value={ctx.rulesetVersion ?? <NotRecorded />} />
             <Row label={t('sourcePeriod')} value={ctx.periodLabel} />

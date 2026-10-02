@@ -73,7 +73,12 @@ export type PcbReliefBreakdown = {
  * derived. The names are the spec's own symbols, because the screen prints the formula in those symbols
  * and a rename between the two is how a reader ends up checking the wrong figure.
  */
+export type PcbCalculationScheme = 'resident' | 'rep' | 'knowledge_worker' | 'c_suite';
+
 export type PcbTrace = {
+  schemeVersion?: 1;
+  T?: number;
+  T2?: number;
   /** Table 1 row P₁ fell into (M, R) and the category-selected B column, and the annual tax it yields. */
   M: number;
   R: number;
@@ -191,6 +196,7 @@ export type PcbExplanation =
     } & PcbFigures)
   | ({
       kind: 'flat';
+      legacy?: boolean;
       /** 0.30 non-resident, 0.15 REP / Knowledge Worker. */
       rate: number;
       nonResident: boolean;
@@ -199,6 +205,7 @@ export type PcbExplanation =
     } & PcbFigures)
   | ({
       kind: 'mtd';
+      calculationScheme?: PcbCalculationScheme;
       /** 'snapshot' = this payslip's own relief working. 'current' = the employee's position TODAY. */
       reliefSource: 'snapshot' | 'current';
       /** Month of the tax year the calculation ran for, and the balance of months after it (LHDN `n`). */
@@ -346,6 +353,9 @@ function readTrace(raw: unknown): PcbTrace | null {
   const childDeductionPerChild = recordedChildNumber(t.childDeductionPerChild);
   const childCount = childDeductionPerChild == null ? null : recordedChildNumber(t.childCount);
   return {
+    ...(t.schemeVersion === 1 ? { schemeVersion: 1 as const } : {}),
+    ...(hasRecordedNumbers(t, ['T']) ? {T: t.T as number} : {}),
+    ...(hasRecordedNumbers(t, ['T2']) ? {T2: t.T2 as number} : {}),
     M: n(t.M),
     R: n(t.R),
     B: n(t.B),
@@ -460,13 +470,38 @@ export function explainPcb(
   const figures = { pcb, pcbSystem, basis };
   if (!metaObj) return { kind: 'unavailable', ...figures };
 
+  // Read the immutable scheme before legacy rate keys. Never infer a category from today's profile.
+  const scheme = metaObj.calculationScheme;
+  const knownSchemes = ['resident', 'rep', 'knowledge_worker', 'c_suite', 'nonresident'];
+  if (scheme !== undefined && !knownSchemes.includes(scheme as string)) return {kind: 'unavailable', ...figures};
+  const incentive = scheme === 'rep' || scheme === 'knowledge_worker' || scheme === 'c_suite';
+  if (incentive) {
+    const raw = metaObj.trace as Record<string, unknown> | null;
+    const reliefs = metaObj.reliefs;
+    const common = ['M', 'R', 'B', 'taxOnP1', 'category', 'Y1', 'K1', 'Y2', 'K2', 'Yt', 'Kt', 'K2t',
+      'Z', 'lpAccumulated', 'lpCurrent', 'zakatCurrent', 'mtdNormalCalc', 'mtdAdditionalCalc',
+      'mtdNormalFloored', 'mtdAdditionalFloored', 'zakatLeftover'];
+    if (!raw || raw.schemeVersion !== 1 || !hasRecordedNumbers(raw, common) ||
+        !hasRecordedNumbers(metaObj, ['month', 'n', 'ytdNet', 'epfClaimed', 'pcbPaid', 'P1']) ||
+        !hasRecordedNumbers(reliefs, ['individual', 'spouse', 'children', 'disabledIndividual', 'disabledSpouse', 'total', 'lp']) ||
+        !hasRecordedNumbers(st, ['pcb', 'pcbBonus', 'zakat', 'epfEmployee']) ||
+        raw.R !== 0.15 ||
+        (scheme !== 'c_suite' && (!hasRecordedNumbers(raw, ['T']) || (raw.T as number) < 0)) ||
+        (metaObj.P2 !== undefined && (!hasRecordedNumbers(metaObj, ['P2']) ||
+          !hasRecordedNumbers(raw, ['totalTaxYear', 'totalMtdYear']) ||
+          (scheme !== 'c_suite' && (!hasRecordedNumbers(raw, ['T2']) || (raw.T2 as number) < 0))))) {
+      return {kind: 'unavailable', ...figures};
+    }
+  }
+  if (scheme === 'nonresident' && (!hasRecordedNumbers(metaObj, ['flatRate']) || metaObj.flatRate !== 0.3)) return {kind: 'unavailable', ...figures};
   const flat = metaObj as FlatMeta;
-  if (flat.flatRate != null || flat.rate != null) {
+  if (scheme === 'nonresident' || (scheme === undefined && (flat.flatRate != null || flat.rate != null))) {
     const rate = n(flat.flatRate ?? flat.rate);
     return {
       kind: 'flat',
+      legacy: scheme === undefined,
       rate,
-      nonResident: flat.nonResident === true,
+      nonResident: scheme === 'nonresident' || flat.nonResident === true,
       trace: readFlatTrace(flat.trace),
       ...figures,
     };
@@ -505,6 +540,7 @@ export function explainPcb(
   const pcbAdditional = Math.min(delta ? delta.cumulativeBonus : n(st.pcbBonus), figures.pcbSystem);
   return {
     kind: 'mtd',
+    ...(scheme !== undefined ? {calculationScheme: scheme as PcbCalculationScheme} : {}),
     reliefSource,
     month: n(m.month),
     remainingMonths: n(m.n),
@@ -821,9 +857,9 @@ export function pcbWorksheet(x: PcbExplanation, previous: PcbPreviousEmployment 
       value:
         x.chargeableIncomeWithAdditional === null ? { kind: 'didNotRun' } : money(x.chargeableIncomeWithAdditional),
     },
-    { symbol: 'M', caption: 'worksheetM', value: fromTrace(t, (v) => v.M) },
+    ...(!x.calculationScheme || x.calculationScheme === 'resident' ? [{ symbol: 'M', caption: 'worksheetM', value: fromTrace(t, (v) => v.M) }] : []),
     { symbol: 'R', caption: 'worksheetR', value: t ? { kind: 'rate', rate: t.R } : { kind: 'notRecorded' } },
-    { symbol: 'B', caption: 'worksheetB', value: fromTrace(t, (v) => v.B) },
+    ...(!x.calculationScheme || x.calculationScheme === 'resident' ? [{ symbol: 'B', caption: 'worksheetB', value: fromTrace(t, (v) => v.B) }] : x.calculationScheme === 'c_suite' ? [] : [{symbol: 'T', caption: 'schemeRebate', value: t?.T == null ? {kind: 'notRecorded' as const} : money(t.T)}]),
     { symbol: '', caption: 'worksheetTaxOnP', value: fromTrace(t, (v) => v.taxOnP1) },
   ];
   const result: PcbWorksheetRow[] = [
@@ -1699,9 +1735,9 @@ export function pcbMtdStep1Section(x: Extract<PcbExplanation, { kind: 'mtd' }>):
     firstColumn: 'slipColTotal',
     rows: [
       { line: 'P', caption: 'worksheetP', ns: 'pcbDetail', first: t ? slipMoney(x.chargeableIncome) : SLIP_ABSENT },
-      { line: 'M', caption: 'bracketM', ns: 'pcbDetail', first: t ? slipMoney(t.M) : SLIP_ABSENT },
+      ...(!x.calculationScheme || x.calculationScheme === 'resident' ? [{ line: 'M', caption: 'bracketM', ns: 'pcbDetail' as const, first: t ? slipMoney(t.M) : SLIP_ABSENT }] : []),
       { line: 'R', caption: 'bracketR', ns: 'pcbDetail', first: t ? {kind: 'rate', rate: t.R} : SLIP_ABSENT },
-      { line: 'B', caption: 'bracketB', ns: 'pcbDetail', first: t ? slipMoney(t.B) : SLIP_ABSENT },
+      ...(!x.calculationScheme || x.calculationScheme === 'resident' ? [{ line: 'B', caption: 'bracketB', ns: 'pcbDetail' as const, first: t ? slipMoney(t.B) : SLIP_ABSENT }] : x.calculationScheme === 'c_suite' ? [] : [{line: 'T', caption: 'schemeRebate', ns: 'pcbDetail' as const, first: t?.T == null ? SLIP_ABSENT : slipMoney(t.T)}]),
       { line: 'Z', caption: 'worksheetZ', ns: 'pcbDetail', first: t ? slipMoney(t.Z) : SLIP_ABSENT },
       { line: 'X', caption: 'worksheetX', ns: 'pcbDetail', first: t ? slipMoney(x.pcbPaidYtd) : SLIP_ABSENT },
       { line: 'n', caption: 'worksheetN', ns: 'pcbDetail', first: t ? {kind: 'count', count: x.remainingMonths} : SLIP_ABSENT },
