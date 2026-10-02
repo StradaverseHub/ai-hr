@@ -18,8 +18,8 @@ function mount(snapshot=teamSnapshot(),locale:keyof typeof catalogues='en',overr
  return {...render(view()),props,view,errors,approveAction,reviewAction};
 }
 function deferred(){let resolve!:(value:unknown)=>void;const promise=new Promise(resolve_=>{resolve=resolve_;});return {promise,resolve};}
-const employeeButton=(name='Synthetic A')=>screen.getByRole('button',{name:`${name} S-01 Analyst`,exact:true});
-const todayTile=(label:string,count:number|string)=>within(screen.getByRole('region',{name:en.myTeam.today})).getByRole('button',{name:`${label} ${count}`,exact:true});
+const employeeButton=(name='Synthetic A')=>screen.getByRole('button',{name:`${name} S-01 Analyst`});
+const todayTile=(label:string,count:number|string)=>within(screen.getByRole('region',{name:en.myTeam.today})).getByRole('button',{name:`${label} ${count}`});
 const response=(snapshot=teamSnapshot())=>({ok:true,json:async()=>({snapshot,navigation:teamNavigation()})});
 describe('My Team client consumes canonical facts and preserves action context',()=>{
  it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('renders grid, all three panel tabs and controls in %s without missing messages',async locale=>{
@@ -79,7 +79,7 @@ describe('My Team client consumes canonical facts and preserves action context',
   fireEvent.click(screen.getByRole('button',{name:en.myTeam.next}));await waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(2));
   expect(fetcher.mock.calls[0][1].signal.aborted).toBe(true);
   const latest=teamSnapshot();latest.query.anchorDate='2026-10-16';latest.employees[0].name='Latest team';
-  await act(async()=>second.resolve(response(latest)));expect(await screen.findByRole('button',{name:'Latest team S-01 Analyst',exact:true})).toBeTruthy();
+  await act(async()=>second.resolve(response(latest)));expect(await screen.findByRole('button',{name:'Latest team S-01 Analyst'})).toBeTruthy();
   const old=teamSnapshot();old.query.anchorDate='2026-10-09';old.employees[0].name='Obsolete team';await act(async()=>first.resolve(response(old)));
   expect(screen.queryByRole('button',{name:/Obsolete team/})).toBeNull();expect(employeeButton('Latest team')).toBeTruthy();
  });
@@ -87,7 +87,7 @@ describe('My Team client consumes canonical facts and preserves action context',
   const snapshot=teamSnapshot();snapshot.todaySummary.members=7;mount(snapshot);
   const tile=todayTile(en.myTeam.tile_late,0);expect(within(tile).getByText('0').tagName).toBe('STRONG');const filtered=teamSnapshot();filtered.todaySummary.members=7;filtered.query.tile='late';filtered.gridEmploymentIds=[];fetcher.mockResolvedValueOnce(response(filtered));
   fireEvent.click(tile);await screen.findByText(en.myTeam.empty);expect(tile.getAttribute('aria-pressed')).toBe('true');expect(within(todayTile(en.myTeam.tile_members,7)).getByText('7').tagName).toBe('STRONG');
-  fetcher.mockResolvedValueOnce(response(snapshot));fireEvent.click(tile);await screen.findByRole('button',{name:'Synthetic A S-01 Analyst',exact:true});expect(tile.getAttribute('aria-pressed')).toBe('false');
+  fetcher.mockResolvedValueOnce(response(snapshot));fireEvent.click(tile);await screen.findByRole('button',{name:'Synthetic A S-01 Analyst'});expect(tile.getAttribute('aria-pressed')).toBe('false');
  });
  it('submits exact per-date IDs only after an explicit selection, with company scope and a rejection reason',async()=>{
   const snapshot=teamSnapshot();snapshot.actionableApprovals[0].dateDecisionRequired=true;
