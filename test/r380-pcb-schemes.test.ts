@@ -44,6 +44,9 @@ describe('LHDN 2026 approved resident incentive formulas',()=>{
     expect(()=>statutory(...args,{flatTaxRate:0.15})).toThrow('explicit approved PCB scheme');
     expect(()=>resolvePcbCalculationScheme('unknown')).toThrow('Unknown PCB');
   });
+  it('rejects an invalid incentive tax category before returning money',()=>{
+    expect(()=>pcbMonth({calculationScheme:'rep',monthlyWage:3000,epfMonthly:330,month:1,profile:{category:4 as 1}})).toThrow('Invalid incentive PCB tax category');
+  });
   it('rejects a partial or nonfinite incentive ruleset before returning payroll money',()=>{
     for(const incentive of [{rate:0.15},{...MY_PCB_INCENTIVE,rate:NaN},{...MY_PCB_INCENTIVE,rate:1.1}]){
       expect(()=>pcbMonth({calculationScheme:'rep',monthlyWage:3000,epfMonthly:330,month:1,pcb:{...DEFAULT_MY_STATUTORY.pcb,incentive:incentive as typeof MY_PCB_INCENTIVE}})).toThrow('Invalid incentive PCB table');

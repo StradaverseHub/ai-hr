@@ -898,6 +898,7 @@ export function pcbMonth(p: {
   const scheme = p.calculationScheme ?? 'resident';
   if (!['resident', 'rep', 'knowledge_worker', 'c_suite'].includes(scheme)) throw new StatutoryRulesetMalformedError('Invalid resident PCB scheme');
   const category: TaxCategory = p.profile?.category ?? 1;
+  if (scheme !== 'resident' && ![1,2,3].includes(category)) throw new StatutoryRulesetMalformedError('Invalid incentive PCB tax category');
   const children = p.profile?.children ?? 0;
   const acc = p.acc ?? PCB_ZERO_ACC;
   const month = Math.min(12, Math.max(1, Math.trunc(p.month)));
