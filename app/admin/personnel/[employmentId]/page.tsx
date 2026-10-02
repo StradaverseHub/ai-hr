@@ -3221,7 +3221,7 @@ export default async function EmployeePage({
         defaults={{
           taxNumber: statutory?.taxNumber ?? null,
           taxCategory: statutory?.taxCategory ?? 1,
-          taxResidency: taxSelection?.scheme ?? statutory?.taxResidency ?? 'resident',
+          taxResidency: taxSelection?.transitionState === 'resolved' ? taxSelection.scheme ?? '' : '',
           numChildren: statutory?.numChildren ?? 0,
           childReliefMode: statutory?.childReliefMode ?? 'manual',
           employerBearsTax: statutory?.employerBearsTax ?? false,
