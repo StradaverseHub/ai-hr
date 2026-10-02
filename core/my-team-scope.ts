@@ -18,11 +18,13 @@ export async function resolveMyTeamScopeTx(tx:Tx,ctx:SessionContext,query:MyTeam
   const [principal]=await tx.select({personId:appUser.personId}).from(appUser)
     .where(and(eq(appUser.id,ctx.userId!),eq(appUser.tenantId,ctx.tenantId),isNull(appUser.archivedAt))).limit(1);
   if(!principal)throw new MyTeamAuthorizationError();
-  const [capability]=await tx.execute(sql`SELECT app.has_role('manager') OR app.has_role('hr_admin') OR app.has_role('super_admin') AS allowed,
-    app.has_role('hr_admin') OR app.has_role('super_admin') AS admin`) as unknown as {allowed:boolean;admin:boolean}[];
+  const [capability]=await tx.execute(sql`SELECT EXISTS(SELECT 1 FROM role_assignment r WHERE r.app_user_id=app.current_user_id() AND r.tenant_id=app.current_tenant_id()
+      AND r.role::text IN ('manager','hr_admin','super_admin') AND app.has_role(r.role::text)) AS allowed,
+    EXISTS(SELECT 1 FROM role_assignment r WHERE r.app_user_id=app.current_user_id() AND r.tenant_id=app.current_tenant_id()
+      AND r.role::text IN ('hr_admin','super_admin') AND app.has_role(r.role::text)) AS admin`) as unknown as {allowed:boolean;admin:boolean}[];
   if(!capability?.allowed||query.scope==='department'&&!capability.admin)throw new MyTeamAuthorizationError();
-  const companies=await tx.select({id:company.id,name:company.legalName,admin:sql<boolean>`app.is_admin_for(${company.id})`}).from(company)
-    .where(query.scope==='department' ? sql`app.is_admin_for(${company.id})` : sql`app.is_admin_for(${company.id}) OR app.has_role_for('manager',${company.id})`).orderBy(company.legalName);
+  const companies=await tx.select({id:company.id,name:company.legalName,admin:sql<boolean>`(app.my_team_has_role_for('hr_admin',${company.id}) OR app.my_team_has_role_for('super_admin',${company.id}))`}).from(company)
+    .where(query.scope==='department' ? sql`(app.my_team_has_role_for('hr_admin',${company.id}) OR app.my_team_has_role_for('super_admin',${company.id}))` : sql`(app.my_team_has_role_for('hr_admin',${company.id}) OR app.my_team_has_role_for('super_admin',${company.id})) OR app.my_team_has_role_for('manager',${company.id})`).orderBy(company.legalName);
   const selected=new Set(query.companyIds===undefined ? companies.map(c=>c.id) : query.companyIds);
   const authorizedCompanies=companies.filter(c=>selected.has(c.id));
   const companyIds=authorizedCompanies.map(c=>c.id);
@@ -37,7 +39,7 @@ export async function resolveMyTeamScopeTx(tx:Tx,ctx:SessionContext,query:MyTeam
     AND r.valid_from<=${today}::date AND (r.valid_to IS NULL OR r.valid_to>${today}::date)
     AND m.hired_on<=${today}::date AND (m.terminated_on IS NULL OR m.terminated_on>${today}::date)
     AND m.person_id<>${employment.personId})`;
-  const mode=query.scope==='department' ? sql`app.is_admin_for(${employment.companyId})` :
+  const mode=query.scope==='department' ? sql`app.my_team_has_role_for('hr_admin',${employment.companyId}) OR app.my_team_has_role_for('super_admin',${employment.companyId})` :
     query.scope==='direct' ? direct : sql`${employment.id} IN (SELECT app.my_team_report_ids())`;
   const employees=await tx.select({employmentId:employment.id,personId:employment.personId,employeeCode:employment.employeeCode,
     name:person.fullName,companyId:employment.companyId,departmentId:assignment.departmentId,occupation:position.title,

@@ -94,7 +94,7 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
      const observation=observations.find(o=>o.employmentId===employee.employmentId&&o.date===date);
      const dayRoster=ownRoster?rosterDay(ownRoster,employee.employmentId,date):null;
      if(dayRoster&&row)dayRoster.scheduledMinutes=row.scheduledMinutes;
-     return {date,roster:dayRoster,attendance:row?{attendanceId:row.attendanceId,status:statusOf(row),flag:flagOf(row),
+     return {date,roster:dayRoster,attendance:row?{attendanceId:row.attendanceId,status:statusOf(row),flag:flagOf(row),late:row.status==='late',
        checkInAt:row.checkInAt,checkOutAt:row.checkOutAt,workedMinutes:row.workedMinutes,lateMinutes:row.lateMinutes,
        scheduledMinutes:row.scheduledMinutes,fingerprint:observation?.fingerprint??null,reviewed:observation?.reviewed??false}:null,
        leave:leaves.filter(l=>l.employmentId===employee.employmentId).flatMap(l=>l.dates.filter(d=>d.date===date).map(d=>({
@@ -102,7 +102,7 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
          session:l.session,days:d.days,fromTime:l.fromTime,toTime:l.toTime})))};
    });
    const todayDay=days.find(d=>d.date===today)!;
-   const flags={checkedIn:!!todayDay.attendance?.checkInAt,late:todayDay.attendance?.flag==='late',
+   const flags={checkedIn:!!todayDay.attendance?.checkInAt,late:todayDay.attendance?.late??false,
      absent:todayDay.attendance?.status==='absent',onLeave:todayDay.leave.some(l=>l.status==='approved'&&l.session==='full_day'),
      halfDayLeave:todayDay.leave.some(l=>l.status==='approved'&&(l.session==='AM'||l.session==='PM')),
      pendingApprovals:approvals.some(a=>a.employmentId===employee.employmentId)};
@@ -123,7 +123,7 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
        const observed=own.filter(d=>d.date<=today);
        return {...week,rosteredDays:own.filter(d=>d.roster?.kind==='shift').length,
          checkedInDays:observed.filter(d=>d.attendance?.checkInAt).length,absentDays:observed.filter(d=>d.attendance?.status==='absent').length,
-         lateOrMissingDays:observed.filter(d=>d.attendance?.flag==='late'||d.attendance?.flag==='odd').length,
+         lateOrMissingDays:observed.filter(d=>d.attendance?.late||d.attendance?.flag==='odd').length,
          approvedLeaveDays:leaveAvailable?own.reduce((sum,d)=>sum+d.leave.filter(l=>l.status==='approved').reduce((s,l)=>s+l.days,0),0):null,
          workedMinutes:attendanceAvailable&&observed.every(d=>!d.attendance?.attendanceId||d.attendance.workedMinutes!==null)
            ? observed.reduce((sum,d)=>sum+(d.attendance?.workedMinutes??0),0):null,
@@ -135,7 +135,7 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
  const attention:MyTeamSnapshot['attention']=approvals.map(a=>({kind:'pending_leave',id:a.requestId,employmentId:a.employmentId,approval:a}));
  for(const employee of employees){const day=employee.days.find(d=>d.date===today)!;
    if(day.attendance?.status==='absent')attention.push({kind:'absent',id:`absent:${employee.employmentId}:${today}`,employmentId:employee.employmentId,date:today,lateMinutes:null,pendingLeave:day.leave.some(l=>l.status==='pending'),roster:day.roster});
-   if(day.attendance?.flag==='late')attention.push({kind:'late',id:`late:${employee.employmentId}:${today}`,employmentId:employee.employmentId,date:today,lateMinutes:day.attendance.lateMinutes,pendingLeave:day.leave.some(l=>l.status==='pending'),roster:day.roster});
+   if(day.attendance?.late)attention.push({kind:'late',id:`late:${employee.employmentId}:${today}`,employmentId:employee.employmentId,date:today,lateMinutes:day.attendance.lateMinutes,pendingLeave:day.leave.some(l=>l.status==='pending'),roster:day.roster});
    for(const observed of employee.days.filter(d=>d.date<=today&&d.attendance?.flag==='odd'&&!d.attendance.reviewed)){
      const a=observed.attendance!;
      if(a.attendanceId&&a.fingerprint)attention.push({kind:'missing_punch',id:a.attendanceId,employmentId:employee.employmentId,date:observed.date,attendanceId:a.attendanceId,fingerprint:a.fingerprint});

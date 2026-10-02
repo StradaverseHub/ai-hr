@@ -1,8 +1,9 @@
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
+import * as readOwner from '../core/read';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {assignDefaultShift,createShift} from '../core/roster';
 import {attendanceForEmploymentRange,attendanceForEmploymentsRange,checkIn,checkOut} from '../packs/attendance/service';
@@ -45,11 +46,59 @@ describe('My Team current scope and canonical projection',()=>{
   await owner.db.update(schema.reportingLine).set({validTo:today}).where(eq(schema.reportingLine.subordinateEmploymentId,subject.employmentId));
   expect((await readMyTeam(managerCtx,query)).employees).toEqual([]);
  });
+ it('intersects a real current grant even when a second authenticated employment makes company B reports RLS-visible',async()=>{
+  const [otherCompany]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Synthetic Scoped B',country:'MY',currency:'MYR'}).returning({id:schema.company.id});
+  const [otherDepartment]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:otherCompany.id,name:'Synthetic Dept B'}).returning({id:schema.department.id});
+  const [secondRoot]=await owner.db.insert(schema.employment).values({tenantId:b.tenantId,personId:manager.personId,companyId:otherCompany.id,employmentType:'full_time',hiredOn:'2024-01-01'}).returning({id:schema.employment.id});
+  const otherReport=await hireEmployee(adminCtx(b),{person:{fullName:'Scoped B Report',primaryEmail:`myteam_b_${randomUUID()}@t.local`},companyId:otherCompany.id,departmentId:otherDepartment.id,employmentType:'full_time',hiredOn:'2024-01-01'});
+  await setReportingLine(adminCtx(b),{subordinateEmploymentId:otherReport.employmentId,managerEmploymentId:secondRoot.id,lineType:'administrative',validFrom:'2024-01-01'});
+  const visible=await withTenant(managerCtx,tx=>tx.select({id:schema.employment.id}).from(schema.employment).where(eq(schema.employment.id,otherReport.employmentId)));
+  expect(visible).toHaveLength(1);
+  await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(eq(schema.roleAssignment.appUserId,managerCtx.userId!));
+  const forged={...managerCtx,grants:[{role:'manager',companyId:null}]};
+  expect((await readMyTeam(forged,{...query,companyIds:[otherCompany.id]})).employees).toEqual([]);
+  expect((await readMyTeam(forged,query)).scope.employmentIds).not.toContain(otherReport.employmentId);
+ });
+ it('refuses live grant revocation during a read and a stale context at the next writer authority check',async()=>{
+  const original=readOwner.leaveBalances;let revoked=false;
+  const spy=vi.spyOn(readOwner,'leaveBalances').mockImplementation(async(...args)=>{
+   const result=await original(...args);
+   if(!revoked){revoked=true;await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,managerCtx.userId!));}
+   return result;
+  });
+  try{await expect(readMyTeam(managerCtx,query)).rejects.toThrow('MY_TEAM_NOT_AUTHORIZED');expect(revoked).toBe(true);}
+  finally{spy.mockRestore();}
+  await expect(readMyTeam(managerCtx,query)).rejects.toThrow('MY_TEAM_NOT_AUTHORIZED');
+  const date=addDaysIso(weekRangeOf(today).from,7);
+  const {leaveRequestId}=await requestLeave(adminCtx(b),{employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:date,endDate:date});
+  await expect(decideMyTeamLeave(managerCtx,query,{leaveRequestId,decision:'approved'})).rejects.toThrow('MY_TEAM_NOT_AUTHORIZED');
+  const [req]=await owner.db.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id,leaveRequestId));expect(req.status).toBe('pending');
+ });
  it('search and tile only narrow grid IDs, while tiles and attention retain the full authorized team',async()=>{
   const plain=await readMyTeam(managerCtx,query),filtered=await readMyTeam(managerCtx,{...query,search:'Report'});
   expect(filtered.gridEmploymentIds).toEqual([subject.employmentId]);
   expect(filtered.scope.employmentIds).toEqual(plain.scope.employmentIds);expect(filtered.todaySummary).toEqual(plain.todaySummary);
   expect(filtered.employees.map(e=>e.employmentId)).toEqual(plain.employees.map(e=>e.employmentId));
+ });
+ it('refuses a reporting/assignment change during canonical source reads instead of returning stale team facts',async()=>{
+  const original=readOwner.leaveBalances;let changed=false;
+  const spy=vi.spyOn(readOwner,'leaveBalances').mockImplementation(async(...args)=>{
+   const result=await original(...args);
+   if(!changed){changed=true;await owner.db.update(schema.assignment).set({departmentId:b.deptB})
+     .where(and(eq(schema.assignment.employmentId,subject.employmentId),sql`${schema.assignment.supersededAt} IS NULL`));}
+   return result;
+  });
+  try{await expect(readMyTeam(managerCtx,query)).rejects.toThrow('MY_TEAM_NOT_AUTHORIZED');expect(changed).toBe(true);}
+  finally{spy.mockRestore();}
+ });
+ it('uses one canonical Annual Leave balance and reports ambiguous annual sources unavailable',async()=>{
+  expect((await readMyTeam(managerCtx,query)).employees.find(e=>e.employmentId===subject.employmentId)?.annualAvailable).toBe(20);
+  const [type]=await owner.db.select().from(schema.leaveType).where(eq(schema.leaveType.id,b.annualLeaveTypeId));
+  const annualId=randomUUID();await owner.db.insert(schema.leaveType).values({...type,id:annualId,code:`SYN_ANNUAL_${randomUUID().slice(0,8)}`,name:'Synthetic Other Annual',role:'annual'});
+  await owner.db.insert(schema.leaveLedger).values({tenantId:b.tenantId,employmentId:subject.employmentId,leaveTypeId:annualId,entryType:'accrual',days:'3.00',effectiveOn:today.slice(0,4)+'-01-01'});
+  const employee=(await readMyTeam(managerCtx,query)).employees.find(e=>e.employmentId===subject.employmentId)!;
+  expect(employee.balances.filter(bal=>bal.leaveTypeId===annualId||bal.leaveTypeId===b.annualLeaveTypeId)).toHaveLength(2);
+  expect(employee.annualAvailable).toBeNull();
  });
  it('bulk attendance is exactly the individual owner output, including stored results and off days',async()=>{
   const a=adminCtx(b),week=weekRangeOf(today);
@@ -139,6 +188,16 @@ describe('My Team recorded leave dates and alternate authority',()=>{
   expect(listed).toBe(allowed);
   if(allowed)expect(await decideLeave(ctx,{leaveRequestId,decision:'approved'})).toMatchObject({status:'pending'});
   else await expect(decideLeave(ctx,{leaveRequestId,decision:'approved'})).rejects.toThrow();
+ });
+ it('approved AM leave is a half-day indicator without being counted as full-day On Leave',async()=>{
+  await setLeaveApprovalPolicy(adminCtx(b),{companyId:b.companyId,levels:['direct_manager']});
+  await owner.db.update(schema.leaveType).set({durations:['full_day','half_day_am'],dayTypeInclusion:{publicHoliday:true,restDay:true,offDay:true}}).where(eq(schema.leaveType.id,b.annualLeaveTypeId));
+  const {leaveRequestId}=await requestLeave(adminCtx(b),{employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:today,endDate:today,durationType:'half_day_am'});
+  await decideMyTeamLeave(managerCtx,query,{leaveRequestId,decision:'approved'});
+  const snapshot=await readMyTeam(managerCtx,query),employee=snapshot.employees.find(e=>e.employmentId===subject.employmentId)!;
+  expect(employee.today).toMatchObject({onLeave:false,halfDayLeave:true});
+  expect(snapshot.todaySummary).toMatchObject({onLeave:0,halfDayLeave:1});
+  expect((await readMyTeam(managerCtx,{...query,tile:'on_leave'})).gridEmploymentIds).not.toContain(subject.employmentId);
  });
  it('uses frozen alternates as the actual writer does; configuration faults are never swallowed as refusal',async()=>{
   const date=addDaysIso(weekRangeOf(today).from,7);
