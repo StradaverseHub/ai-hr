@@ -29,7 +29,7 @@ export async function resolveMyTeamScopeTx(tx:Tx,ctx:SessionContext,query:MyTeam
   const canEditRoster=authorizedCompanies.length>0&&authorizedCompanies.every(c=>c.admin);
   const departments=companyIds.length ? await tx.select({id:department.id,companyId:department.companyId,name:department.name})
     .from(department).where(inArray(department.companyId,companyIds)).orderBy(department.name) : [];
-  if(!companyIds.length)return {employees:[],companies:authorizedCompanies,departments,principal,canEditRoster,canChooseDepartment:capability.admin};
+  if(!companyIds.length)return {employees:[],companies:authorizedCompanies.map(c=>({id:c.id,name:c.name})),departments,principal,canEditRoster,canChooseDepartment:capability.admin};
   const direct=sql`EXISTS(SELECT 1 FROM reporting_line r JOIN employment m ON m.id=r.manager_employment_id
     JOIN app_user u ON u.person_id=m.person_id AND u.tenant_id=m.tenant_id
     WHERE u.id=app.current_user_id() AND u.archived_at IS NULL AND r.subordinate_employment_id=${employment.id}
@@ -48,7 +48,7 @@ export async function resolveMyTeamScopeTx(tx:Tx,ctx:SessionContext,query:MyTeam
     .where(and(inArray(employment.companyId,companyIds),sql`app.my_team_subject_authorized(${employment.id})`,mode,
       query.departmentId ? eq(assignment.departmentId,query.departmentId) : undefined,
       query.employmentId ? eq(employment.id,query.employmentId) : undefined)).orderBy(person.fullName,employment.id);
-  return {employees:[...new Map(employees.map(e=>[e.employmentId,e])).values()],companies:authorizedCompanies,departments,
+  return {employees:[...new Map(employees.map(e=>[e.employmentId,e])).values()],companies:authorizedCompanies.map(c=>({id:c.id,name:c.name})),departments,
     principal,canEditRoster,canChooseDepartment:capability.admin};
 }
 export function resolveMyTeamScope(ctx:SessionContext,query:MyTeamQuery){return withTenant(ctx,tx=>resolveMyTeamScopeTx(tx,ctx,query));}

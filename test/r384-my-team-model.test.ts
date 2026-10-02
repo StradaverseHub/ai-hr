@@ -6,8 +6,8 @@ import * as schema from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {assignDefaultShift,createShift} from '../core/roster';
 import {attendanceForEmploymentRange,attendanceForEmploymentsRange,checkIn,checkOut} from '../packs/attendance/service';
-import {requestLeave,actionableLeaveRequests} from '../packs/leave/service';
-import {readMyTeam,markMyTeamPunchReviewed,decideMyTeamLeave} from '../core/my-team';
+import {requestLeave,actionableLeaveRequests,setLeaveApprovalPolicy,decideLeave} from '../packs/leave/service';
+import {readMyTeam,markMyTeamPunchReviewed,decideMyTeamLeave,decideMyTeamLeaveDates} from '../core/my-team';
 import {assertMyTeamSubjectTx} from '../core/my-team-scope';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {addDaysIso,weekRangeOf} from '../lib/roster-month';
@@ -90,6 +90,70 @@ describe('My Team actionable current-step decisions',()=>{
  });
 });
 
+describe('My Team recorded leave dates and alternate authority',()=>{
+ it('projects partial approvals and half-day pending leave from the same source, never a rejected date',async()=>{
+  await setLeaveApprovalPolicy(adminCtx(b),{companyId:b.companyId,levels:['direct_manager']});
+  await owner.db.update(schema.leaveType).set({perDateApproval:true,durations:['full_day','half_day_am']}).where(eq(schema.leaveType.id,b.annualLeaveTypeId));
+  const from=addDaysIso(weekRangeOf(today).from,7),middle=addDaysIso(from,1),to=addDaysIso(from,2);
+  const {leaveRequestId}=await requestLeave(adminCtx(b),{employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:from,endDate:to});
+  const before=await readMyTeam(managerCtx,{...query,anchorDate:from});
+  const approval=before.actionableApprovals.find(a=>a.requestId===leaveRequestId)!;
+  expect(approval.dateDecisionRequired).toBe(true);expect(approval.dates).toHaveLength(3);expect(approval.dates.every(d=>!!d.id&&d.days===1)).toBe(true);
+  await decideMyTeamLeaveDates(managerCtx,query,{leaveRequestId,decisions:[{leaveDate:from,decision:'approved'},
+    {leaveDate:middle,decision:'rejected',rejectReason:'Synthetic unavailable date'},{leaveDate:to,decision:'approved'}]});
+  const half=await requestLeave(adminCtx(b),{employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,
+    startDate:addDaysIso(from,3),endDate:addDaysIso(from,3),durationType:'half_day_am'});
+  const after=await readMyTeam(managerCtx,{...query,anchorDate:from}),employee=after.employees.find(e=>e.employmentId===subject.employmentId)!;
+  expect(employee.days.find(d=>d.date===from)?.leave).toEqual([expect.objectContaining({requestId:leaveRequestId,status:'approved',days:1})]);
+  expect(employee.days.find(d=>d.date===middle)?.leave).toEqual([]);
+  expect(employee.days.find(d=>d.date===to)?.leave).toEqual([expect.objectContaining({requestId:leaveRequestId,status:'approved',days:1})]);
+  expect(employee.days.find(d=>d.date===addDaysIso(from,3))?.leave).toEqual([expect.objectContaining({requestId:half.leaveRequestId,status:'pending',session:'AM',days:0.5})]);
+  expect(employee.weeks.find(w=>w.from===from)?.approvedLeaveDays).toBe(2);
+  expect(after.todaySummary.pendingApprovals).toBe(1);
+ });
+ it("delegation transfers decision authority, while My Team browsing remains the caller's own reporting team",async()=>{
+  const delegateReport=await hire('Delegate Own Report');
+  await setReportingLine(adminCtx(b),{subordinateEmploymentId:delegateReport.employmentId,managerEmploymentId:outsider.employmentId,lineType:'administrative',validFrom:'2024-01-01'});
+  const delegateUser=await createAppUser(b.tenantId,outsider.personId,'manager');
+  const delegateCtx={...managerCtx,userId:delegateUser,personId:outsider.personId};
+  await setReportingLine(adminCtx(b),{subordinateEmploymentId:manager.employmentId,managerEmploymentId:outsider.employmentId,lineType:'delegate',validFrom:'2024-01-01'});
+  const date=addDaysIso(weekRangeOf(today).from,7);
+  const {leaveRequestId}=await requestLeave(adminCtx(b),{employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:date,endDate:date});
+  expect((await actionableLeaveRequests(delegateCtx,{employmentIds:[subject.employmentId]})).map(r=>r.requestId)).toContain(leaveRequestId);
+  expect((await readMyTeam(delegateCtx,query)).scope.employmentIds).not.toContain(subject.employmentId);
+  await expect(decideMyTeamLeave(delegateCtx,query,{leaveRequestId,decision:'approved'})).rejects.toThrow('MY_TEAM_NOT_AUTHORIZED');
+  expect(await decideLeave(delegateCtx,{leaveRequestId,decision:'approved'})).toMatchObject({status:'pending',advancedTo:'hr_admin'});
+ });
+ it.each(['manager','hr','self','stranger','inactive'] as const)('actionability matches the actual writer for %s authority',async kind=>{
+  const date=addDaysIso(weekRangeOf(today).from,7);
+  const {leaveRequestId}=await requestLeave(adminCtx(b),{employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:date,endDate:date});
+  let ctx=managerCtx;
+  if(kind==='hr')ctx=adminCtx(b);
+  if(kind==='self'||kind==='stranger'){
+   const person=kind==='self'?subject:outsider;const userId=await createAppUser(b.tenantId,person.personId,'employee');
+   ctx={...managerCtx,userId,personId:person.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
+  }
+  if(kind==='inactive')await owner.db.update(schema.reportingLine).set({validTo:today}).where(eq(schema.reportingLine.subordinateEmploymentId,subject.employmentId));
+  const allowed=kind==='manager'||kind==='hr';
+  const listed=(await actionableLeaveRequests(ctx,{employmentIds:[subject.employmentId]})).some(r=>r.requestId===leaveRequestId);
+  expect(listed).toBe(allowed);
+  if(allowed)expect(await decideLeave(ctx,{leaveRequestId,decision:'approved'})).toMatchObject({status:'pending'});
+  else await expect(decideLeave(ctx,{leaveRequestId,decision:'approved'})).rejects.toThrow();
+ });
+ it('uses frozen alternates as the actual writer does; configuration faults are never swallowed as refusal',async()=>{
+  const date=addDaysIso(weekRangeOf(today).from,7);
+  const {leaveRequestId}=await requestLeave(adminCtx(b),{employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:date,endDate:date});
+  await owner.db.update(schema.leaveApprovalStep).set({approverKind:'hr_admin',approverAlternates:[{kind:'specific_employee',employmentId:manager.employmentId}]})
+    .where(and(eq(schema.leaveApprovalStep.leaveRequestId,leaveRequestId),eq(schema.leaveApprovalStep.stepIndex,0)));
+  expect((await actionableLeaveRequests(managerCtx,{employmentIds:[subject.employmentId]})).map(a=>a.requestId)).toContain(leaveRequestId);
+  await owner.db.update(schema.leaveApprovalStep).set({approverKind:'unknown_synthetic_kind'})
+    .where(and(eq(schema.leaveApprovalStep.leaveRequestId,leaveRequestId),eq(schema.leaveApprovalStep.stepIndex,0)));
+  await expect(actionableLeaveRequests(managerCtx,{employmentIds:[subject.employmentId]})).rejects.toThrow('Unknown approver step');
+  await expect(decideMyTeamLeave(managerCtx,query,{leaveRequestId,decision:'approved'})).rejects.toThrow('Unknown approver step');
+  const [request]=await owner.db.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id,leaveRequestId));expect(request.status).toBe('pending');
+ });
+});
+
 describe('My Team attendance review is per user, observation and fresh authority',()=>{
  it('marks only the observed missing punch; changed attendance reappears and stale/foreign markers refuse',async()=>{
   const date=addDaysIso(today,-1);await checkIn(adminCtx(b),{employmentId:subject.employmentId,date:date,time:'09:10'});
@@ -109,6 +173,9 @@ describe('My Team attendance review is per user, observation and fresh authority
   await owner.db.update(schema.reportingLine).set({validTo:today}).where(eq(schema.reportingLine.subordinateEmploymentId,subject.employmentId));
   await expect(markMyTeamPunchReviewed(managerCtx,{attendanceId:missing.attendanceId,fingerprint:missing.fingerprint})).rejects.toThrow('MY_TEAM_NOT_AUTHORIZED');
   await expect(withTenant(managerCtx,tx=>tx.update(schema.attendanceAttentionReview).set({fingerprint:'0'.repeat(32)}))).rejects.toThrow();
+  await owner.db.delete(schema.attendance).where(eq(schema.attendance.id,missing.attendanceId));
+  expect(await owner.db.select().from(schema.attendanceAttentionReview).where(eq(schema.attendanceAttentionReview.id,reviewed.reviewId))).toEqual([]);
+  expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,reviewed.reviewId))).toHaveLength(1);
  });
  it('holds membership facts through an app-role transaction, so ending a report waits and the next decision refuses',async()=>{
   let release!:()=>void,entered!:()=>void;const gate=new Promise<void>(r=>release=r),ready=new Promise<void>(r=>entered=r);

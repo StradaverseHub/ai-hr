@@ -38,7 +38,7 @@ $$;
 --> statement-breakpoint
 CREATE TABLE attendance_attention_review (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),
- attendance_id uuid NOT NULL REFERENCES attendance(id),reviewer_user_id uuid NOT NULL REFERENCES app_user(id),
+ attendance_id uuid NOT NULL REFERENCES attendance(id) ON DELETE CASCADE,reviewer_user_id uuid NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
  fingerprint text NOT NULL CHECK(fingerprint ~ '^[0-9a-f]{32}$'),created_at timestamptz NOT NULL DEFAULT now(),
  UNIQUE(tenant_id,attendance_id,reviewer_user_id,fingerprint)
 );

@@ -11291,16 +11291,17 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
 export function actionableLeaveRequests(ctx:SessionContext,{employmentIds}:{employmentIds:string[]}){
   return withTenant(ctx,async tx=>{
     if(!employmentIds.length)return [];
-    const requests=await tx.select().from(leaveRequest).where(and(inArray(leaveRequest.employmentId,[...new Set(employmentIds)]),eq(leaveRequest.status,'pending')));
+    const requests=await tx.select({request:leaveRequest,leaveTypeName:leaveType.name}).from(leaveRequest)
+      .innerJoin(leaveType,eq(leaveType.id,leaveRequest.leaveTypeId)).where(and(inArray(leaveRequest.employmentId,[...new Set(employmentIds)]),eq(leaveRequest.status,'pending')));
     if(!requests.length)return [];
-    const ids=requests.map(r=>r.id);
+    const ids=requests.map(r=>r.request.id);
     const [steps,dates]=await Promise.all([
       tx.select().from(leaveApprovalStep).where(inArray(leaveApprovalStep.leaveRequestId,ids)).orderBy(asc(leaveApprovalStep.stepIndex)),
       tx.select({id:leaveRequestDate.id,requestId:leaveRequestDate.leaveRequestId,date:leaveRequestDate.leaveDate,
         days:leaveRequestDate.days,status:leaveRequestDate.status}).from(leaveRequestDate).where(inArray(leaveRequestDate.leaveRequestId,ids)),
     ]);
     const result=[];
-    for(const req of requests){
+    for(const {request:req,leaveTypeName} of requests){
       const current=steps.find(s=>s.leaveRequestId===req.id&&s.status==='pending');
       if(steps.some(s=>s.leaveRequestId===req.id)&&!current)continue;
       try {
@@ -11308,7 +11309,7 @@ export function actionableLeaveRequests(ctx:SessionContext,{employmentIds}:{empl
         else await assertCanDecide(tx,ctx,req.employmentId,'leave request',scopeOf('leave.application'));
       }catch(error){if(isLeaveDecisionRefusal(error))continue;throw error;}
       const requestedDates=dates.filter(d=>d.requestId===req.id);
-      result.push({requestId:req.id,employmentId:req.employmentId,leaveTypeId:req.leaveTypeId,startDate:req.startDate,
+      result.push({requestId:req.id,employmentId:req.employmentId,leaveTypeId:req.leaveTypeId,leaveType:leaveTypeName,startDate:req.startDate,
         endDate:req.endDate,days:Number(req.days),appliedAt:req.createdAt,
         dateDecisionRequired:requestedDates.length>0,dates:requestedDates.map(d=>({id:d.id,date:d.date,days:Number(d.days),status:d.status}))});
     }
@@ -11324,7 +11325,7 @@ export function myTeamLeaveProjection(ctx:SessionContext,p:{employmentIds:string
   const requests=await tx.select({request:leaveRequest,type:leaveType}).from(leaveRequest)
    .innerJoin(leaveType,eq(leaveType.id,leaveRequest.leaveTypeId))
    .where(and(inArray(leaveRequest.employmentId,p.employmentIds),inArray(leaveRequest.status,['approved','pending']),
-    or(and(lte(leaveRequest.startDate,p.to),gte(leaveRequest.endDate,p.from)),gte(leaveRequest.endDate,p.today))))
+    or(eq(leaveRequest.status,'pending'),and(lte(leaveRequest.startDate,p.to),gte(leaveRequest.endDate,p.from)),gte(leaveRequest.endDate,p.today))))
    .orderBy(asc(leaveRequest.startDate));
   const ids=requests.map(r=>r.request.id);
   const dates=ids.length ? await tx.select().from(leaveRequestDate).where(inArray(leaveRequestDate.leaveRequestId,ids)) : [];

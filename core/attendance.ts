@@ -564,6 +564,21 @@ const perRowBreakMinutes = (
 
 // ADR-0032 Phase C: the schedule the engine derives against for one (employee, date) — resolved from the
 // employee's roster when present, else the company policy (today's behaviour, byte-identical).
+/** The default-shift schedule owner's full/half threshold and effective clock window. No module/DB dependency. */
+export function workingShiftSchedule(input:{start:string;end:string;crosses:boolean;breakMinutes:number;
+  roundingMinutes?:number|null;normalMinutesOverride?:number|null},kind:'full'|'half'){
+  const full=netScheduledMinutes(input.start,input.end,input.crosses,input.breakMinutes,input.roundingMinutes);
+  const scheduledMinutes=kind==='half'?Math.floor(full/2):full;
+  const shiftEnd=kind==='half'
+    ? fmtTime((toMinutes(input.start)+Math.floor(shiftSpan(input.start,input.end,input.crosses)/2))%MINS_PER_DAY)
+    : input.end;
+  const crosses=kind==='half'?false:input.crosses;
+  const normalMinutesOverride=input.normalMinutesOverride==null?null:
+    kind==='half'?Math.floor(input.normalMinutesOverride/2):input.normalMinutesOverride;
+  return {scheduledMinutes,normalMinutes:normalMinutesOverride??scheduledMinutes,
+    shiftStart:input.start,shiftEnd,crosses,normalMinutesOverride};
+}
+
 type ResolvedSchedule = {
   /** Display-only identity of the shift selected by this exact date resolver. */
   displayShiftCode?: string | null;
@@ -945,24 +960,9 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       // A HALF day is an ordinary working day with HALF the normal hours, so overtime starts after half a
       // day. Halving the threshold is the whole of it: the shift's clock times, breaks, grace, rule and OT
       // windows are unchanged, and a Full day halves nothing.
-      const full = netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk, ds.rounding);
-      const sched = kind === 'half' ? Math.floor(full / 2) : full;
-      // A HALF day ENDS halfway through the shift's clock span, and that end is what makes "overtime starts
-      // after half a day" TRUE. Halving `sched` alone would not: on a resolved shift the engine measures
-      // workday overtime as the minutes worked past the shift's TIME-OUT (the `window` branch in
-      // deriveAttendance), not as the amount by which the day's total overshot its scheduled duration. So
-      // the effective time-out has to halve with the hours, or a half day would accrue nothing until the
-      // FULL day's end and the dropdown would be a label with no behaviour behind it.
-      //
-      // Half the clock span, half the net hours — one rule, stated once. A Full day halves nothing and is
-      // byte-identical.
-      const shiftEnd =
-        kind === 'half' ? fmtTime((toMinutes(ds.start) + Math.floor(shiftSpan(ds.start, ds.end, ds.crosses) / 2)) % MINS_PER_DAY) : ds.end;
-      // Halving the span can only bring the end back inside the same day, so a half day never crosses midnight.
-      const crosses = kind === 'half' ? false : ds.crosses;
-      // The manual normal-hours figure is halved with it — otherwise a Semi-Flexi shift's required 8h would
-      // still be the threshold on a half day, and the half day would pay no overtime until hour 8.
-      const override = ds.override == null ? null : kind === 'half' ? Math.floor(ds.override / 2) : ds.override;
+      const {scheduledMinutes:sched,shiftEnd,crosses,normalMinutesOverride:override}=workingShiftSchedule({
+        start:ds.start,end:ds.end,crosses:ds.crosses,breakMinutes:ds.brk,
+        roundingMinutes:ds.rounding,normalMinutesOverride:ds.override},kind==='half'?'half':'full');
       const otWindows = await otWindowsFor(ds.shiftId);
       const lateGrace = ds.lateGrace ?? rule?.lateGracePeriodMinutes ?? grace;
       const earlyGrace = ds.earlyLeaveGrace ?? (rule && rule.earlyGracePeriodMinutes > 0 ? rule.earlyGracePeriodMinutes : null);
@@ -4073,10 +4073,8 @@ export function otPlanCalendarMonth(
         // A HALF day ENDS halfway through the shift's clock span — scheduleFor halves the effective
         // shift end, and that end is what workday overtime is measured past. The screen prefills the
         // overtime start from this figure, so it must be the engine's, not the full shift's.
-        const end =
-          kindOfDay === 'half'
-            ? fmtTime((toMinutes(def!.start) + Math.floor(shiftSpan(def!.start, def!.end, def!.crosses) / 2)) % MINS_PER_DAY)
-            : def!.end;
+        const end=workingShiftSchedule({start:def!.start,end:def!.end,crosses:def!.crosses,
+          breakMinutes:def!.brk??0,roundingMinutes:def!.rounding},kindOfDay==='half'?'half':'full').shiftEnd;
         const b = firstBreak(def!.periods);
         out.push({
           date: d,

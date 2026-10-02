@@ -7,7 +7,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {datesBetween,monthRange,weekRangeOf,addDaysIso,resolveRosterCell} from '../lib/roster-month';
 import type {MyTeamQuery,MyTeamSnapshot,MyTeamEmployee,MyTeamDay,MyTeamRosterDay,MyTeamPunchReviewResult,MyTeamRosterScope,MyTeamApproval} from '../lib/my-team-types';
 import {attendanceForEmploymentsRange,statusOf,flagOf} from '../packs/attendance/service';
-import {actionableLeaveRequests,myTeamLeaveProjection,decideLeave,decideLeaveDates} from '../packs/leave/service';
+import {actionableLeaveRequests,myTeamLeaveProjection,decideLeave,decideLeaveDates,leaveTypeIs} from '../packs/leave/service';
 import {leaveBalances} from './read';
 import {rosterWindowView,type RosterMonthView} from './roster';
 import {isModuleEnabled} from './entitlements';
@@ -55,7 +55,7 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
  const attendanceAvailable=isModuleEnabled(ctx,'attendance'),leaveAvailable=isModuleEnabled(ctx,'leave');
  const inGrid=period.gridDates.includes(today),from=period.gridDates[0],to=period.gridDates.at(-1)!;
  const realCtx={...ctx,personId:scope.principal.personId};
- const [roster,todayRoster,attendanceRows,todayAttendanceRows,leaves,decisions,balanceRows,observations,defaults]=await Promise.all([
+ const [roster,todayRoster,attendanceRows,todayAttendanceRows,leaves,decisions,balanceRows,observations]=await Promise.all([
    employeeIds.length ? rosterWindowView(realCtx,{companyIds,employmentIds:employeeIds,from,to}) : null,
    employeeIds.length&&!inGrid ? rosterWindowView(realCtx,{companyIds,employmentIds:employeeIds,from:today,to:today}) : null,
    attendanceAvailable&&employeeIds.length ? attendanceForEmploymentsRange(realCtx,employeeIds,from,to) : new Map(),
@@ -71,20 +71,22 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
        .from(attendance).where(and(inArray(attendance.employmentId,employeeIds),
          sql`(${attendance.attendanceDate} BETWEEN ${from}::date AND ${to}::date OR ${attendance.attendanceDate}=${today}::date)`));return rows;
    }) : [],
-   employeeIds.length ? withTenant(realCtx,tx=>tx.select({id:shift.id,code:shift.code,start:shift.startTime,end:shift.endTime})
-     .from(shift).where(inArray(shift.id,scope.employees.map(e=>e.defaultShiftId).filter((id):id is string=>!!id)))) : [],
  ]);
+ const usualIds=[...new Set([...Object.values(roster?.usual??{}),...Object.values(todayRoster?.usual??{})].map(u=>u.shiftId))];
+ const defaults=usualIds.length ? await withTenant(realCtx,tx=>tx.select({id:shift.id,code:shift.code,start:shift.startTime,end:shift.endTime})
+   .from(shift).where(inArray(shift.id,usualIds))) : [];
  const approvals:MyTeamApproval[]=decisions.map(d=>{
    const employee=scope.employees.find(e=>e.employmentId===d.employmentId)!;
-   const leave=leaves.find(l=>l.requestId===d.requestId);
-   return {...d,employeeName:employee.name,leaveType:leave?.name??'',appliedAt:d.appliedAt.toISOString(),annualAvailable:null};
+   const effectiveDates=leaves.find(l=>l.requestId===d.requestId)?.dates.filter(date=>date.status==='pending').map(date=>({date:date.date,days:date.days}))??[];
+   return {...d,effectiveDates,employeeName:employee.name,appliedAt:d.appliedAt.toISOString(),annualAvailable:null};
  });
  const allDates=inGrid?period.gridDates:[...period.gridDates,today];
  const employees:MyTeamEmployee[]=scope.employees.map((employee,index)=>{
    const balances=(balanceRows[index]??[]).map(b=>({leaveTypeId:b.leaveTypeId,code:b.code,name:b.leaveType,role:b.role,
      accrued:b.essView.ytdEntitled?b.accrued:null,taken:b.essView.taken?b.taken:null,
      pending:b.essView.pendingApproval?b.pending:null,available:b.essView.available?b.available:null}));
-   const annual=balances.find(b=>b.role==='annual')??balances.find(b=>!b.role&&(b.code==='AL'||b.code==='ANNUAL'));
+   const annualRows=balances.filter(b=>leaveTypeIs(b,'annual'));
+   const annual=annualRows.length===1 ? annualRows[0] : undefined;
    const defaultShift=defaults.find(s=>s.id===(todayRoster??roster)?.usual[employee.employmentId]?.shiftId);
    const days:MyTeamDay[]=allDates.map(date=>{
      const ownRoster=date===today&&!inGrid?todayRoster:roster;
@@ -101,7 +103,7 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
    });
    const todayDay=days.find(d=>d.date===today)!;
    const flags={checkedIn:!!todayDay.attendance?.checkInAt,late:todayDay.attendance?.flag==='late',
-     absent:todayDay.attendance?.status==='absent',onLeave:todayDay.leave.some(l=>l.status==='approved'),
+     absent:todayDay.attendance?.status==='absent',onLeave:todayDay.leave.some(l=>l.status==='approved'&&l.session==='full_day'),
      halfDayLeave:todayDay.leave.some(l=>l.status==='approved'&&(l.session==='AM'||l.session==='PM')),
      pendingApprovals:approvals.some(a=>a.employmentId===employee.employmentId)};
    const upcomingLeave=leaves.filter(l=>l.employmentId===employee.employmentId).flatMap(l=>{
@@ -113,7 +115,8 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
          days:d.days,status:d.status,session:l.session});
      }return groups;
    });
-   return {...employee,defaultShift:defaultShift?{code:defaultShift.code??'',start:defaultShift.start,end:defaultShift.end}:null,
+   return {employmentId:employee.employmentId,employeeCode:employee.employeeCode,name:employee.name,
+     occupation:employee.occupation,companyId:employee.companyId,departmentId:employee.departmentId,defaultShift:defaultShift?{code:defaultShift.code??'',start:defaultShift.start,end:defaultShift.end}:null,
      balances,annualAvailable:annual?.available??null,days,upcomingLeave,today:flags,
      weeks:period.coveringWeeks.map(week=>{
        const own=days.filter(d=>d.date>=week.from&&d.date<=week.to);
@@ -131,8 +134,8 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
  for(const approval of approvals)approval.annualAvailable=employees.find(e=>e.employmentId===approval.employmentId)?.annualAvailable??null;
  const attention:MyTeamSnapshot['attention']=approvals.map(a=>({kind:'pending_leave',id:a.requestId,employmentId:a.employmentId,approval:a}));
  for(const employee of employees){const day=employee.days.find(d=>d.date===today)!;
-   if(day.attendance?.status==='absent')attention.push({kind:'absent',id:`absent:${employee.employmentId}:${today}`,employmentId:employee.employmentId,date:today,lateMinutes:null,pendingLeave:day.leave.some(l=>l.status==='pending')});
-   if(day.attendance?.flag==='late')attention.push({kind:'late',id:`late:${employee.employmentId}:${today}`,employmentId:employee.employmentId,date:today,lateMinutes:day.attendance.lateMinutes,pendingLeave:day.leave.some(l=>l.status==='pending')});
+   if(day.attendance?.status==='absent')attention.push({kind:'absent',id:`absent:${employee.employmentId}:${today}`,employmentId:employee.employmentId,date:today,lateMinutes:null,pendingLeave:day.leave.some(l=>l.status==='pending'),roster:day.roster});
+   if(day.attendance?.flag==='late')attention.push({kind:'late',id:`late:${employee.employmentId}:${today}`,employmentId:employee.employmentId,date:today,lateMinutes:day.attendance.lateMinutes,pendingLeave:day.leave.some(l=>l.status==='pending'),roster:day.roster});
    for(const observed of employee.days.filter(d=>d.date<=today&&d.attendance?.flag==='odd'&&!d.attendance.reviewed)){
      const a=observed.attendance!;
      if(a.attendanceId&&a.fingerprint)attention.push({kind:'missing_punch',id:a.attendanceId,employmentId:employee.employmentId,date:observed.date,attendanceId:a.attendanceId,fingerprint:a.fingerprint});
@@ -141,6 +144,14 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
  const tile=input.tile??'members',flag={checked_in:'checkedIn',late:'late',absent:'absent',on_leave:'onLeave',pending_approvals:'pendingApprovals'} as const;
  const gridEmploymentIds=employees.filter(e=>(!query.search||`${e.name} ${e.employeeCode??''}`.toLowerCase().includes(query.search.toLowerCase()))
    &&(tile==='members'||e.today[flag[tile]])).map(e=>e.employmentId);
+ // Source owners retain their normal transactions; refuse a membership change rather than return old IDs.
+ const finalScope=await resolveMyTeamScope(ctx,input);
+ const scopeSignature=(value:typeof scope)=>JSON.stringify({
+   employees:value.employees.slice().sort((a,b)=>a.employmentId.localeCompare(b.employmentId)),
+   companies:value.companies.slice().sort((a,b)=>a.id.localeCompare(b.id)),
+   departments:value.departments.slice().sort((a,b)=>a.id.localeCompare(b.id)),
+   principal:value.principal,canEditRoster:value.canEditRoster,canChooseDepartment:value.canChooseDepartment});
+ if(scopeSignature(scope)!==scopeSignature(finalScope))throw new MyTeamAuthorizationError();
  const count=(key:keyof MyTeamEmployee['today'])=>employees.filter(e=>e.today[key]).length;
  return {query,today,period,scope:{employmentIds:employeeIds,companies:scope.companies,departments:scope.departments,
    canEditRoster:scope.canEditRoster,canChooseDepartment:scope.canChooseDepartment},availability:{attendance:attendanceAvailable?'available':'unavailable',leave:leaveAvailable?'available':'unavailable',roster:'available'},
