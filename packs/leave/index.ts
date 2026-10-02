@@ -116,6 +116,7 @@ import {
   FileUp,
   GitBranch,
   HeartPulse,
+  History,
   Play,
   Settings2,
   Repeat2,
@@ -450,10 +451,10 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
 };
 
 export const LEAVE_SELF_NAV: NavNodeGroupDescriptor = {
-  group: 'main', labelKey: 'myLeave', icon: CalendarDays, defaultHref: '/leave',
+  group: 'main', labelKey: 'myLeave', icon: CalendarDays,
   children: [
     {href:'/leave', labelKey:'leaveOverview', icon:CalendarDays, exactHref:true},
-    {href:'/leave/history', labelKey:'leaveHistory', icon:CalendarDays, exactHref:true},
+    {href:'/leave/history', labelKey:'leaveHistory', icon:History, exactHref:true},
   ],
 };
 
