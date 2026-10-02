@@ -283,6 +283,9 @@ describe('6036dab7 — every EA box reaches every surface', () => {
     expect(start).toBeGreaterThan(-1);expect(end).toBeGreaterThan(start);
     const baselines = reports.slice(start, end);
     expect(reports).toContain('const nonCashEa = accumulatedEaNonCash(slips);');
+    expect(reports).toContain('nonCashExemptions += eaNonCashExemption(s.statutory);');
+    expect(saved).toContain('byCode.set(entry.exemptionCode, round((byCode.get(entry.exemptionCode) ?? 0) + entry.exemptAmount));');
+    expect(saved).toContain('EA_NONCASH_EXEMPTION_UNRECORDED');
     expect(saved).toContain('for (const entry of saved.ownedEaEntries)');
     expect(saved).toContain('benefitsInKind: complete ? bik : 0');
     expect(saved).toContain('livingAccommodation: complete ? vola : 0');
