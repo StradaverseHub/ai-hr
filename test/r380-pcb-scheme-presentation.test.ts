@@ -95,6 +95,8 @@ describe('r380 stored scheme presentation', () => {
   it('refuses missing bonus working instead of presenting positive additional remuneration as no bonus', () => {
     const st = saved(); st.pcbMeta.trace.Yt = 1000;
     expect(explainPcb(st, null).kind).toBe('unavailable');
+    Object.assign(st.pcbMeta, {P2: undefined});
+    expect(explainPcb(st, null).kind).toBe('unavailable');
     Object.assign(st.pcbMeta, {P2: 0});
     expect(explainPcb(st, null).kind).toBe('unavailable');
     Object.assign(st.pcbMeta.trace, {totalTaxYear: 0, totalMtdYear: 0, T2: 0});

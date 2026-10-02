@@ -497,7 +497,7 @@ export function explainPcb(
         (scheme === 'c_suite' ? raw.B !== 0 || Object.hasOwn(raw, 'T') || Object.hasOwn(raw, 'T2')
           : hasRecordedNumbers(raw, ['T']) && raw.B !== -(raw.T as number)) ||
         (scheme !== 'c_suite' && (!hasRecordedNumbers(raw, ['T']) || (raw.T as number) < 0)) ||
-        (metaObj.P2 !== undefined && (!hasRecordedNumbers(metaObj, ['P2']) ||
+        (Object.hasOwn(metaObj, 'P2') && (!hasRecordedNumbers(metaObj, ['P2']) ||
           !hasRecordedNumbers(raw, ['totalTaxYear', 'totalMtdYear']) ||
           (scheme !== 'c_suite' && (!hasRecordedNumbers(raw, ['T2']) || (raw.T2 as number) < 0))))) {
       return {kind: 'unavailable', ...figures};
