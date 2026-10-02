@@ -161,6 +161,28 @@ describe('r382 selected payroll tax context and readiness authority',()=>{
     await revokeTaxSchemeDeclarationMY(adminCtx(b),{employmentId:subject.employmentId,id,payrollBatchId:batch.batchId,expectedCompanyId:b.companyId,expectedPayPeriod:'2026-10'});
     expect(await listTaxSchemeDeclarationsMY(adminCtx(b),subject.employmentId,batch.batchId)).toMatchObject({rows:expect.arrayContaining([expect.objectContaining({id,archivedAt:expect.any(Date)})])});
   });
+  it('pins historical insert policy to live same-tenant dated membership and a Malaysian employer, with permitted controls',async()=>{
+    const [destination]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Synthetic current employer',country:'MY'}).returning({id:schema.company.id});
+    const [unrelated]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Synthetic unrelated employer',country:'MY'}).returning({id:schema.company.id});
+    await owner.db.update(schema.assignment).set({companyId:b.companyId,validTo:'2026-11-01'}).where(eq(schema.assignment.employmentId,subject.employmentId));
+    await owner.db.update(schema.employment).set({companyId:destination.id}).where(eq(schema.employment.id,subject.employmentId));
+    const raw=(period:string,companyId=b.companyId)=>withTenant(adminCtx(b),tx=>tx.insert(schema.employmentTaxSchemeMy).values({tenantId:b.tenantId,employmentId:subject.employmentId,companyId,scheme:'rep',validFrom:period,validTo:period,approvalReference:'SYNTHETIC-RLS-CONTROL',declaredByUserId:b.adminUserId}));
+    await raw('2026-10');
+    await expect(raw('2026-09',unrelated.id)).rejects.toMatchObject({cause:{code:'42501'}});
+    await owner.db.update(schema.assignment).set({supersededAt:new Date()}).where(eq(schema.assignment.employmentId,subject.employmentId));
+    await expect(raw('2026-09')).rejects.toMatchObject({cause:{code:'42501'}});
+    await owner.db.update(schema.assignment).set({supersededAt:null}).where(eq(schema.assignment.employmentId,subject.employmentId));
+    await raw('2026-09');
+    const other=await seedBase();
+    await owner.db.update(schema.assignment).set({tenantId:other.tenantId}).where(eq(schema.assignment.employmentId,subject.employmentId));
+    await expect(raw('2026-08')).rejects.toMatchObject({cause:{code:'42501'}});
+    await owner.db.update(schema.assignment).set({tenantId:b.tenantId}).where(eq(schema.assignment.employmentId,subject.employmentId));
+    await raw('2026-08');
+    await owner.db.update(schema.company).set({country:'SG'}).where(eq(schema.company.id,b.companyId));
+    await expect(raw('2026-07')).rejects.toMatchObject({cause:{code:'42501'}});
+    await owner.db.update(schema.company).set({country:'MY'}).where(eq(schema.company.id,b.companyId));
+    await raw('2026-07');
+  });
 });
 
 describe('r380 declaration scope and app-role immutability', () => {
