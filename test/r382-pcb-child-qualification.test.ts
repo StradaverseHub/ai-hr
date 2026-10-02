@@ -61,6 +61,10 @@ describe('r382 one exact child qualification owner', () => {
     expect(src).toContain('const fmtCount = formatQualifyingChildCount');
     expect(src).not.toContain('n.toFixed(1)');
   });
+  it('zero-Q weighted money cannot invent C without the owner count', () => {
+    const reliefs = repriceChildQualificationReliefs({ ...base(), perChild: 0 }, base());
+    expect(() => pcbMonth({ monthlyWage: 14000, epfMonthly: 1540, month: 7, pcb: { ...DEFAULT_MY_STATUTORY.pcb, reliefs }, profile: { category: 3, children: 2, childReliefAmount: 0 } })).toThrow('Child qualification configuration');
+  });
   it('refuses a count that contradicts the actual payroll child deduction', () => {
     expect(() => pcbMonth({ monthlyWage: 14000, epfMonthly: 1540, month: 7, profile: { category: 3, childReliefAmount: 2000, childReliefCount: 9 } })).toThrow('Child qualification configuration');
   });

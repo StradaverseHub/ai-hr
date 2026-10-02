@@ -933,6 +933,10 @@ export function pcbMonth(p: {
   const childRelief = childReliefAllowed(category)
     ? (p.profile?.childReliefAmount ?? children * pcb.reliefs.perChild)
     : 0;
+  // With Q zero, a weighted declaration's C cannot be recovered from its zero money. Require the
+  // exact owner result rather than inventing the physical head count for a category-priced claim.
+  if (childReliefAllowed(category) && pcb.reliefs.perChild === 0 && p.profile?.childReliefAmount != null && p.profile.childReliefCount == null)
+    throw new ChildReliefConfigurationError();
   const childCount = !childReliefAllowed(category) ? 0 : p.profile?.childReliefCount ??
     (pcb.reliefs.perChild > 0 ? childRelief / pcb.reliefs.perChild : children);
   if (!Number.isFinite(childCount) || childCount < 0 || Math.abs(childCount * pcb.reliefs.perChild - childRelief) > 0.0000001)
