@@ -33,6 +33,7 @@ import { and, eq } from 'drizzle-orm';
 import { PDFDocument } from 'pdf-lib';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
+import { upsertCompanyStatutoryAuthority } from '../core/statutory-authority';
 import { createMovementEvent } from '../core/movement';
 import { pcb2iiStatement } from '../localization/my/pcb2ii';
 import { MAX_EA_SELECTION } from '../app/payroll/statutory-forms/ea/limits';
@@ -115,11 +116,12 @@ const ctxFor = (): SessionContext => ({
 
 const url = (
   route: 'preview' | 'download',
-  q: { companyId?: string; year?: string; ids?: string[]; lang?: string },
+  q: { companyId?: string; year?: string; ids?: string[]; lang?: string; selectedDate?: string },
 ) => {
   const p = new URLSearchParams();
   if (q.companyId !== undefined) p.set('companyId', q.companyId);
   if (q.year !== undefined) p.set('year', q.year);
+  p.set('selectedDate', q.selectedDate ?? '2027-02-28');
   for (const id of q.ids ?? []) p.append('id', id);
   if (q.lang !== undefined) p.set('lang', q.lang);
   return new Request(`http://t.local/payroll/statutory-forms/pcb2ii/${route}?${p.toString()}`);
@@ -157,6 +159,8 @@ afterAll(closeAll);
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
+  const officer = await hireEmployee(adminCtx(b), { person: { fullName: 'Configured PCB officer', primaryEmail: `officer_${randomUUID()}@pcb.test` }, companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: '2020-01-01' });
+  await upsertCompanyStatutoryAuthority(adminCtx(b), { companyId: b.companyId, authority: 'lhdn', signatoryPersonId: officer.personId });
   const hire = await hireEmployee(adminCtx(b), {
     person: { fullName: 'Preview Subject', primaryEmail: `pv_${randomUUID().slice(0, 8)}@t.local` },
     companyId: b.companyId,
@@ -176,6 +180,8 @@ beforeEach(async () => {
     .values({ tenantId: b.tenantId, companyId: foreignCompanyId, name: 'Foreign Ops' })
     .returning({ id: schema.department.id });
   foreignDeptId = fd.id;
+  const otherOfficer = await hireEmployee(adminCtx(b), { person: { fullName: 'Company B officer', primaryEmail: `officer_b_${randomUUID()}@pcb.test` }, companyId: foreignCompanyId, departmentId: foreignDeptId, employmentType: 'full_time', hiredOn: '2020-01-01' });
+  await upsertCompanyStatutoryAuthority(adminCtx(b), { companyId: foreignCompanyId, authority: 'lhdn', signatoryPersonId: otherOfficer.personId });
   scope = { s: ctxFor(), scopeIds: [b.companyId] };
 });
 
@@ -461,7 +467,7 @@ describe('72b100cd · the employer block names the employer the form speaks for'
 
   it("the OLD employer's form carries the OLD employer's name — not the company they moved to", async () => {
     await transferred();
-    const form = await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, companyId: b.companyId });
+    const form = await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, selectedDate: '2027-02-28', companyId: b.companyId });
     expect(form, 'A paid them in January, so A owes them a statement').toBeTruthy();
     // THE POINT. Before the fix this read 'Foreign …' — B's letterhead over A's deducted months.
     expect(form!.employerNameAddress, 'A’s own name').toContain('Acme');
@@ -472,9 +478,11 @@ describe('72b100cd · the employer block names the employer the form speaks for'
 
   it("the NEW employer's form carries the NEW employer's name, and none of the old one's months", async () => {
     await transferred();
-    const form = await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, companyId: foreignCompanyId });
+    const form = await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, selectedDate: '2027-02-28', companyId: foreignCompanyId });
     expect(form, 'B employs them now, so B’s statement exists even before B runs payroll').toBeTruthy();
     expect(form!.employerNameAddress).toContain('Foreign');
+    expect(form!.officerName).toBe('Company B officer');
+    expect(form!.officerDesignation).toBe('');
     expect(form!.employerNameAddress).not.toContain('Acme');
     expect(form!.months.every((m) => m.mtd === null), 'B has deducted nothing yet').toBe(true);
   });
@@ -485,7 +493,74 @@ describe('72b100cd · the employer block names the employer the form speaks for'
    * number under a letterhead of a company that never employed them (verified r328).
    */
   it('a company that neither employs nor paid this person gets NO form at all', async () => {
-    const form = await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, companyId: foreignCompanyId });
+    const form = await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, selectedDate: '2027-02-28', companyId: foreignCompanyId });
     expect(form, 'no relationship, so nothing to state').toBeNull();
   });
+});
+
+
+describe('r379 · required date and batch preparation refusal', () => {
+  it('missing or impossible selected date refuses both doors without a PDF', async () => {
+    for (const selectedDate of ['', '2027-02-29', '2027-13-01', '2027-01-01T00:00:00Z']) {
+      for (const route of ['preview', 'download'] as const) {
+        const response = await (route === 'preview' ? previewGET : downloadGET)(url(route, { ...ok(), selectedDate }));
+        expect(response.status).toBe(303);
+        expect(new URL(response.headers.get('Location')!).searchParams.get('error')).toBe('selectedDate');
+        expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+        expect(await response.text()).toBe('');
+      }
+    }
+  });
+  it('missing selected-company configured officer refuses the whole batch on both doors', async () => {
+    await upsertCompanyStatutoryAuthority(adminCtx(b), { companyId: b.companyId, authority: 'lhdn', signatoryPersonId: null });
+    for (const route of ['preview', 'download'] as const) {
+      const response = await (route === 'preview' ? previewGET : downloadGET)(url(route, ok()));
+      expect(response.status).toBe(303);
+      const back = new URL(response.headers.get('Location')!);
+      expect(back.searchParams.get('error')).toBe('signatory');
+      expect(back.searchParams.get('selectedDate')).toBe('2027-02-28');
+      expect(await response.text()).toBe('');
+    }
+  });
+});
+
+
+describe('r379 · all subject scopes precede preparation refusal', () => {
+  it('invalid date or missing officer followed by an unknown ID stays a generic 404', async () => {
+    for (const selectedDate of ['', '2027-02-28']) {
+      if (selectedDate) await upsertCompanyStatutoryAuthority(adminCtx(b), { companyId: b.companyId, authority: 'lhdn', signatoryPersonId: null });
+      for (const route of ['preview', 'download'] as const) {
+        const response = await (route === 'preview' ? previewGET : downloadGET)(url(route, { ...ok(), selectedDate, ids: [employmentId, randomUUID()] }));
+        expect(response.status).toBe(404);
+        expect(await response.text()).toBe('Not found');
+        expect(response.headers.get('Location')).toBeNull();
+      }
+    }
+  });
+  it('an unfit first visible name followed by an unknown ID stays a generic 404', async () => {
+    const [subject] = await owner.db.select({ personId: schema.employment.personId }).from(schema.employment).where(eq(schema.employment.id, employmentId));
+    await owner.db.update(schema.person).set({ fullName: 'Complete unfit name '.repeat(80) }).where(eq(schema.person.id, subject.personId));
+    for (const route of ['preview', 'download'] as const) {
+      const response = await (route === 'preview' ? previewGET : downloadGET)(url(route, { ...ok(), ids: [employmentId, randomUUID()] }));
+      expect(response.status).toBe(404);
+      expect(await response.text()).toBe('Not found');
+      expect(response.headers.get('Location')).toBeNull();
+    }
+  });
+});
+
+
+it('r379 · an unfit visible field refuses an otherwise authorized whole batch with a field-specific workflow error', async () => {
+  const next = await hireEmployee(adminCtx(b), { person: { fullName: 'Second valid subject', primaryEmail: `second_${randomUUID()}@pcb.test` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2020-01-01' });
+  const [subject] = await owner.db.select({ personId: schema.employment.personId }).from(schema.employment).where(eq(schema.employment.id, employmentId));
+  await owner.db.update(schema.person).set({ fullName: 'Complete unfit name '.repeat(80) }).where(eq(schema.person.id, subject.personId));
+  for (const route of ['preview', 'download'] as const) {
+    const response = await (route === 'preview' ? previewGET : downloadGET)(url(route, { ...ok(), ids: [employmentId, next.employmentId] }));
+    expect(response.status).toBe(303);
+    const back = new URL(response.headers.get('Location')!);
+    expect(back.searchParams.get('error')).toBe('fit');
+    expect(back.searchParams.get('field')).toBe('employeeName');
+    expect(await response.text()).toBe('');
+    expect(response.headers.get('Content-Type')).not.toBe('application/pdf');
+  }
 });

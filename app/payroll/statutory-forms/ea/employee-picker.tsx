@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Field, btnPrimary, inputCls } from '@/components/ui';
+import { Field, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { filterEaRows } from './filter';
 import { MAX_EA_SELECTION } from './limits';
 
@@ -93,6 +93,7 @@ export function EaEmployeePicker({
   previewAction,
   hidden,
   strings,
+  selectedDateField,
 }: {
   rows: EaPickerRow[];
   /** The download route. A plain href — never a callback: a closure crossing this boundary 500s. */
@@ -108,7 +109,10 @@ export function EaEmployeePicker({
   /** companyId / year / lang, carried through unchanged. */
   hidden: { name: string; value: string }[];
   strings: EaPickerStrings;
+  /** Optional preparation requirement; callers without it preserve existing selection behavior. */
+  selectedDateField?: {label: string; value: string; help: string; receiptsHref: string; receiptsLabel: string};
 }) {
+  const [selectedDate, setSelectedDate] = useState(selectedDateField?.value ?? '');
   const [nameQuery, setNameQuery] = useState('');
   const [codeQuery, setCodeQuery] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
@@ -136,6 +140,12 @@ export function EaEmployeePicker({
 
   return (
     <form method="get" action={action} className="space-y-4">
+      {selectedDateField && <Field label={selectedDateField.label} className="w-full sm:max-w-xs">
+        <input type="date" name="selectedDate" required value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)}
+          className={`${inputCls} min-h-11`} aria-describedby="pcb2ii-date-help" />
+        <p id="pcb2ii-date-help" className="text-xs text-muted-foreground">{selectedDateField.help}</p>
+      </Field>}
+      {selectedDateField && <a className={btnGhost} href={`${selectedDateField.receiptsHref}&selectedDate=${encodeURIComponent(selectedDate)}`}>{selectedDateField.receiptsLabel}</a>}
       {hidden.map((h) => (
         <input key={h.name} type="hidden" name={h.name} value={h.value} />
       ))}

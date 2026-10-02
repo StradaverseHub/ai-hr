@@ -281,3 +281,60 @@ export function bestFaceFor(folded: string, faces: readonly PayslipFace[]): Pays
   }
   return best;
 }
+
+/** Actual ink bounds for shaped text, in PDF points relative to its baseline/origin. */
+export type PayslipTextBounds = { ascent: number; descent: number; left: number; right: number };
+
+/**
+ * Reuse the fontkit font already parsed by pdf-lib, without loading or parsing a second font.
+ * pdf-lib 1.17's custom embedder retains this font; guard that integration rather than assuming it.
+ * Whole-font metrics are deliberately the conservative fallback for standard fonts or absent bounds.
+ * Match CustomFontEmbedder exactly: it emits layout glyph IDs at one baseline and advances each glyph
+ * by advanceWidth; it does not apply fontkit position offsets. Missing/non-finite glyphs cannot report
+ * a small successful box.
+ */
+export function measurePayslipTextBounds(font: PDFFont, text: string, size: number): PayslipTextBounds {
+  const conservative = (): PayslipTextBounds => {
+    const height = font.heightAtSize(size);
+    return { ascent: height, descent: height, left: 0, right: font.widthOfTextAtSize(text, size) };
+  };
+  type Glyph = { id: number; advanceWidth: number; path?: { commands: unknown[] }; bbox: { minX: number; minY: number; maxX: number; maxY: number } };
+  const parsed = (font as unknown as { embedder?: { font?: {
+    unitsPerEm: number;
+    layout?: (value: string) => { glyphs: Glyph[] };
+  } } }).embedder?.font;
+  if (!text) return { ascent: 0, descent: 0, left: 0, right: 0 };
+  if (!parsed?.layout || !Number.isFinite(parsed.unitsPerEm) || parsed.unitsPerEm <= 0) return conservative();
+  try {
+    const shaped = parsed.layout(text);
+    if (shaped.glyphs.length === 0) return conservative();
+    let cursorX = 0;
+    let left = 0;
+    let right = 0;
+    let bottom = 0;
+    let top = 0;
+    for (let i = 0; i < shaped.glyphs.length; i += 1) {
+      const glyph = shaped.glyphs[i];
+      if (glyph.id === 0) return { ascent: Infinity, descent: Infinity, left: -Infinity, right: Infinity };
+      if (glyph.bbox.minX === Infinity && glyph.bbox.minY === Infinity
+          && glyph.bbox.maxX === -Infinity && glyph.bbox.maxY === -Infinity
+          && glyph.path?.commands.length === 0 && Number.isFinite(glyph.advanceWidth)) {
+        // Fontkit's space glyph has no outline and canonical empty bounds, but still advances.
+        cursorX += glyph.advanceWidth;
+        continue;
+      }
+      const values = [glyph.bbox.minX, glyph.bbox.maxX, glyph.bbox.minY, glyph.bbox.maxY,
+        glyph.advanceWidth];
+      if (!values.every(Number.isFinite)) return conservative();
+      left = Math.min(left, cursorX + glyph.bbox.minX);
+      right = Math.max(right, cursorX + glyph.bbox.maxX);
+      bottom = Math.min(bottom, glyph.bbox.minY);
+      top = Math.max(top, glyph.bbox.maxY);
+      cursorX += glyph.advanceWidth;
+    }
+    const scale = size / parsed.unitsPerEm;
+    return { ascent: top * scale, descent: -bottom * scale, left: left * scale, right: right * scale };
+  } catch {
+    return conservative();
+  }
+}

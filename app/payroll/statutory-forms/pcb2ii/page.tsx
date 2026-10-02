@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { validPcb2iiSelectedDate } from '@/lib/pcb2ii-form';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -48,7 +49,7 @@ type Pcb2iiPageLang = (typeof PCB2II_LANGS)[number];
 export default async function Pcb2iiEmployeeSelectionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ companyId?: string; year?: string; lang?: string }>;
+  searchParams: Promise<{ companyId?: string; year?: string; lang?: string; selectedDate?: string; error?: string; field?: string }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.statutoryForms');
@@ -98,6 +99,23 @@ export default async function Pcb2iiEmployeeSelectionPage({
     })
     .filter((r): r is EaPickerRow => r !== null);
 
+  const selectedDate = validPcb2iiSelectedDate(sp.selectedDate) ? sp.selectedDate : '';
+  const preparationError = ['selectedDate', 'signatory', 'fit'].includes(sp.error ?? '') ? sp.error : null;
+  const fitFields: Record<string, string> = {
+    employeeName: t('pcb2iiField_employeeName'),
+    identifier: t('pcb2iiField_identifier'),
+    officerName: t('pcb2iiField_officerName'),
+    officerDesignation: t('pcb2iiField_officerDesignation'),
+    phone: t('pcb2iiField_phone'),
+    employerNameAddress: t('pcb2iiField_employerNameAddress'),
+    receiptRef: t('pcb2iiField_receiptRef'),
+    amount: t('pcb2iiField_amount'),
+    branch: t('pcb2iiField_branch'),
+    date: t('pcb2iiField_date'),
+    details: t('pcb2iiField_details'),
+  };
+  const fitFieldKey = sp.field ?? 'details';
+  const fitField = Object.hasOwn(fitFields, fitFieldKey) ? fitFields[fitFieldKey] : fitFields.details;
   const heading = t(entry.labelKey as 'link_pcb2ii_en');
   const backHref = `/payroll/statutory-forms/open?form=${encodeURIComponent(entry.id)}`;
   /* r331 (72b100cd) — THE DOOR TO THE RECEIPTS SCREEN, and it is here because this is the form that
@@ -107,16 +125,16 @@ export default async function Pcb2iiEmployeeSelectionPage({
      form to do it. The company and year travel with the link (and `lang`, so coming back lands on the
      same language's entry) — the receipts screen would otherwise default to a company and a year that
      are not the ones being looked at here. */
-  const receiptsHref = `/payroll/statutory-forms/pcb2ii/receipts?companyId=${encodeURIComponent(companyId)}&year=${encodeURIComponent(year)}${lang ? `&lang=${lang}` : ''}`;
+  const receiptsHref = `/payroll/statutory-forms/pcb2ii/receipts?companyId=${encodeURIComponent(companyId)}&year=${encodeURIComponent(year)}${lang ? `&lang=${lang}` : ''}${selectedDate ? `&selectedDate=${encodeURIComponent(selectedDate)}` : ''}`;
 
   return (
     <div className={pageWideCls}>
       <PageHeader
         back={{ href: backHref, label: t('criteria_back') }}
-        actions={
+        actions={rows.length === 0 ?
           <Link href={receiptsHref} className={btnGhost}>
             {t('pcb2iiReceiptsLink')}
-          </Link>
+          </Link> : undefined
         }
         title={heading}
         /* ⚠️ ITS OWN SENTENCE, NOT THE EA'S — r328. `eaPickPeople` reads "tick the people whose EA you
@@ -126,6 +144,7 @@ export default async function Pcb2iiEmployeeSelectionPage({
         description={t('pcb2iiPickPeople', { company: companyName, year })}
       />
 
+      {preparationError && <p role="alert" className="rounded-lg border border-destructive p-3 text-sm text-destructive">{t(preparationError === 'selectedDate' ? 'pcb2iiDateInvalid' : preparationError === 'signatory' ? 'pcb2iiSignatoryMissing' : 'pcb2iiFitRefused', { field: fitField })}</p>}
       <Card className="overflow-hidden">
         <SectionHeader title={t('eaSelectTitle')} count={rows.length} />
         <p className="px-4 pt-3 text-xs text-muted-foreground">{t('pcb2iiSelectHint')}</p>
@@ -142,6 +161,7 @@ export default async function Pcb2iiEmployeeSelectionPage({
           ) : (
             <EaEmployeePicker
               rows={rows}
+              selectedDateField={{label: t('pcb2iiSelectedDate'), value: selectedDate, help: t('pcb2iiDateHelp'), receiptsHref: `/payroll/statutory-forms/pcb2ii/receipts?companyId=${encodeURIComponent(companyId)}&year=${encodeURIComponent(year)}${lang ? `&lang=${lang}` : ''}`, receiptsLabel: t('pcb2iiReceiptsLink')}}
               action="/payroll/statutory-forms/pcb2ii/download"
               previewAction="/payroll/statutory-forms/pcb2ii/preview"
               hidden={[

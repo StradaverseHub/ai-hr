@@ -56,7 +56,7 @@ export type Pcb2iiPriorYearRow = {
 export type Pcb2iiForm = {
   /** "Tax Deduction Made During The Year" — the year the twelve rows belong to. */
   year: number;
-  /** `Tarikh` — the date the statement is produced. ISO; the operator may override it. */
+  /** `Tarikh` — the explicitly selected statement date. Real ISO calendar day. */
   printedOnIso: string;
   /** LHDN branch the statement is addressed to. Blank until somebody records one. */
   branch: string;
@@ -72,7 +72,7 @@ export type Pcb2iiForm = {
   months: Pcb2iiMonth[];
   /** Section 3. Empty today, by the reasoning in this file's header. */
   priorYearRows: Pcb2iiPriorYearRow[];
-  /** Name Of Officer / Designation / Telephone No. — the preparer block, operator-supplied. */
+  /** Name Of Officer / Designation / Telephone No. — the selected company LHDN authorised signatory and authority phone. */
   officerName: string;
   officerDesignation: string;
   officerPhone: string;
@@ -119,4 +119,15 @@ export function pcb2iiDate(iso: string | null | undefined): string {
 /** An amount for a box: a real figure to two decimals, or '' when there is none. Never '0.00' for null. */
 export function pcb2iiAmount(v: number | null): string {
   return v == null ? '' : v.toFixed(2);
+}
+
+/** Preparation failures have public codes; they never include employee identities or amounts. */
+export class Pcb2iiPreparationError extends Error {
+  constructor(public readonly code: 'selectedDate' | 'signatory' | 'fit', public readonly field?: string) { super(code); }
+}
+/** A complete, real ISO calendar day. No current-date fallback and no deduction-year restriction. */
+export function validPcb2iiSelectedDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith('0000-')) return false;
+  const date = new Date(value + 'T12:00:00Z');
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
