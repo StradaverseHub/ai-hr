@@ -247,6 +247,7 @@ describe('My Team recorded leave dates and alternate authority',()=>{
   expect((await readMyTeam(managerCtx,{...query,tile:'on_leave'})).gridEmploymentIds).not.toContain(subject.employmentId);
  });
  it('uses frozen alternates as the actual writer does; configuration faults are never swallowed as refusal',async()=>{
+  await setLeaveApprovalPolicy(adminCtx(b),{companyId:b.companyId,levels:['direct_manager','hr_admin']});
   const date=addDaysIso(weekRangeOf(today).from,7);
   const {leaveRequestId}=await requestLeave(adminCtx(b),{employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:date,endDate:date});
   await owner.db.update(schema.leaveApprovalStep).set({approverKind:'hr_admin',approverAlternates:[{kind:'specific_employee',employmentId:manager.employmentId}]})
@@ -279,6 +280,7 @@ describe('My Team attendance review is per user, observation and fresh authority
   await owner.db.update(schema.reportingLine).set({validTo:today}).where(eq(schema.reportingLine.subordinateEmploymentId,subject.employmentId));
   await expect(markMyTeamPunchReviewed(managerCtx,{attendanceId:missing.attendanceId,fingerprint:missing.fingerprint})).rejects.toThrow('MY_TEAM_NOT_AUTHORIZED');
   await expect(withTenant(managerCtx,tx=>tx.update(schema.attendanceAttentionReview).set({fingerprint:'0'.repeat(32)}))).rejects.toThrow();
+  await expect(withTenant(managerCtx,tx=>tx.delete(schema.attendanceAttentionReview).where(eq(schema.attendanceAttentionReview.id,reviewed.reviewId)))).rejects.toThrow();
   await owner.db.delete(schema.attendance).where(eq(schema.attendance.id,missing.attendanceId));
   expect(await owner.db.select().from(schema.attendanceAttentionReview).where(eq(schema.attendanceAttentionReview.id,reviewed.reviewId))).toEqual([]);
   expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,reviewed.reviewId))).toHaveLength(1);
