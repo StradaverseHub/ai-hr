@@ -57,6 +57,7 @@ beforeAll(() => {
       statutory: {
         ...my.statutory,
         getTaxSelection: undefined, saveTaxSelection: undefined, initializeHiredTaxSelectionTx: undefined,
+        initializeTransferredTaxSelectionTx: undefined,
         listTaxSchemeDeclarations: undefined, saveTaxSchemeDeclaration: undefined, revokeTaxSchemeDeclaration: undefined,
       },
       payroll: {
@@ -136,7 +137,7 @@ describe('against the real database', () => {
     const selectionRows = () => owner.db.select().from(schema.employmentTaxSelectionMy).where(and(
       eq(schema.employmentTaxSelectionMy.tenantId, b.tenantId),
       eq(schema.employmentTaxSelectionMy.employmentId, E.employmentId),
-    ));
+    )).orderBy(schema.employmentTaxSelectionMy.id);
     const beforeSelections = await selectionRows();
     expect(beforeSelections).toHaveLength(1);
     expect(beforeSelections[0]).toMatchObject({companyId:b.companyId,scheme:'resident',transitionState:'resolved',version:1});
