@@ -7212,7 +7212,7 @@
       "slipCurrentHeading": "Current month's remuneration",
       "slipCurrentTotal": "Remuneration charged to tax this month",
       "slipCurrentEpf": "Employee provident fund contribution this month",
-      "slipCurrentNote": "Payroll records the month's taxable remuneration as one combined figure and does not store the split across these components, so each line says it was recorded only in combination rather than showing an amount nobody recorded. The combined figure above is the one the calculation charged.",
+      "slipCurrentNote": "The combined figure includes taxable benefit in kind and value of living accommodation. Their entered, exempt and taxable amounts come from this saved calculation; missing legacy amounts are not recorded. Other cash components remain recorded only in combination.",
       "slipAdditionalRemHeading": "Additional remuneration for the current month",
       "slipAdditionalTotal": "Additional remuneration charged to tax this month",
       "slipAdditionalEpf": "Employee provident fund contribution on the additional remuneration",
@@ -7255,7 +7255,7 @@
       "slipAccMtd": "Accumulated monthly MTD paid, including MTD on additional remuneration",
       "slipAccZakat": "Accumulated zakat, fitrah and departure levy paid",
       "slipAccLevy": "Accumulated departure levy paid",
-      "slipAccNote": "The amount column is what this employer paid in the earlier months of this tax year, summed from those payslips. The total column is the accumulated figures the calculation itself ran against, read from this payslip's own record. The two need not agree: the accumulated figures are the remuneration tax is charged on, which leaves out exempt amounts, and they also carry whatever a previous employer declared on Form TP3, which payslips issued here cannot show. Benefit in kind and value of living accommodation are not recorded as payroll components in this system, so the 0.00 against them means we hold no such figure, not that anyone has established there is none. Fees and commission are not stored apart from the allowance and bonus they are paid through. No separate accumulated departure levy is stored either: it sits inside the zakat line above it, which is the single combined figure the calculation uses.",
+      "slipAccNote": "Accumulated taxable benefit in kind and value of living accommodation come from this saved calculation's prior-month benefit records. Missing or incomplete legacy benefit records are not recorded, not zero. Cash itemisation belongs to this employer; saved accumulated totals may also include Form TP3.",
       "slipAccNoteUnread": "The earlier months of this tax year could not be read for this employee, so the itemised lines say nothing was recorded rather than showing zeroes. The accumulated totals beside them are the figures the calculation itself ran against and are unaffected.",
       "slipStep1Heading": "Step 1 — MTD excess of annual year net remuneration excluding additional remuneration",
       "slipStep1CurrentMtd": "Current month's MTD",
@@ -7282,7 +7282,11 @@
       "slipStep1CurrentRebate": "Current month’s Zakat/Fi/Levy",
       "formulaNormalMtdNet": "Net normal MTD = max(0, normal MTD after the minimum-deduction rule − current month’s Zakat/Fi/Levy)",
       "slipStep1NormalRules": "The calculation applies the established truncation, five-sen rounding and minimum-deduction rules before the current-month rebate. Net normal MTD cannot be negative. Any remaining rebate follows the recorded additional-remuneration treatment; the combined final deduction is shown separately.",
-      "slipStep1CombinedFormula": "MTD (A) / Net MTD = [((P−M)R + B − (Z + X)) / (n + 1)] − Current month’s Zakat/Fi/Levy"
+      "slipStep1CombinedFormula": "MTD (A) / Net MTD = [((P−M)R + B − (Z + X)) / (n + 1)] − Current month’s Zakat/Fi/Levy",
+      "slipBikEntered": "BIK entered",
+      "slipBikExempt": "BIK exempt",
+      "slipVolaEntered": "Living accommodation entered",
+      "slipVolaExempt": "Living accommodation exempt"
     },
     "multiCycleWorksheet": {
       "title": "Multi-Cycle Statutory Worksheet",
@@ -7382,7 +7386,8 @@
         "inconsistent_run_bases": "The runs were charged on different monthly wages",
         "tax_scheme_not_reconstructable": "The saved tax scheme or employer approval is incomplete or differs between runs; no annual comparison was reconstructed.",
         "zakat_or_lp_present": "Zakat or a TP1 deduction rode this month",
-        "no_statutory_profile": "No Malaysian statutory profile for this employee"
+        "no_statutory_profile": "No Malaysian statutory profile for this employee",
+        "noncash_not_reconstructable": "The saved non-cash contribution or ownership is incomplete or inconsistent; no comparison was reconstructed."
       },
       "runType": {
         "regular": "Regular",

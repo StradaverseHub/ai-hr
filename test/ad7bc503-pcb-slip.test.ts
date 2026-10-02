@@ -436,7 +436,7 @@ describe('ad7bc503 — the component split payroll never stored', () => {
       'slipCompLivingAccommodation',
     ]) {
       const row = byCaption(cur, caption)!;
-      expect(row.first, caption).toEqual({ kind: 'notSeparatelyRecorded' });
+      expect(row.first, caption).toEqual({ kind: caption === 'slipCompBenefitsInKind' || caption === 'slipCompLivingAccommodation' ? 'notRecorded' : 'notSeparatelyRecorded' });
       mustNotBeAZero(row, 'current remuneration');
     }
 

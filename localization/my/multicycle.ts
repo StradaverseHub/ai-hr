@@ -50,12 +50,17 @@
  */
 import { statutory, type PcbAccumulators, type TaxProfile } from './payroll';
 import { DEFAULT_MY_STATUTORY, type StatutoryRuleset } from './statutory-tables';
+import type {NonCashAmounts} from '../noncash-benefits';
 
 export type RunType = 'regular' | 'off_cycle' | 'bonus' | 'adjustment';
 
 /** One run's pay within the month. `payment` for a regular run is the normal monthly remuneration
  *  (Y1); for any other run it is additional remuneration. `overtime` rides the SOCSO/EIS/PCB base. */
-export type MonthRunInput = { runType: RunType; payment: number; overtime?: number };
+export type MonthRunInput = {
+  runType: RunType; payment: number; overtime?: number;
+  /** Saved run-owned taxable normal benefits; never a cash wage or a catalogue revaluation. */
+  pcbNonCashNormal?: NonCashAmounts;
+};
 
 export type MonthRunResult = {
   runType: RunType;
@@ -134,11 +139,20 @@ export function computeMonthlyRuns(p: {
   let prev: MonthRunResult = blank('regular');
   let last: MonthlyFigures = emptyMonthly(rules.version);
   const out: MonthRunResult[] = [];
+  const cumulativeBenefits = {...(p.opts?.pcbNonCashNormal ?? {bik:0,vola:0})};
+  const hasBenefitInputs = p.runs.some(run => run.pcbNonCashNormal !== undefined);
+
 
   for (const run of p.runs) {
     if (run.runType === 'regular') cumNormal += run.payment;
     else cumAdditional += run.payment; // off_cycle / bonus / adjustment = additional remuneration
     cumOt += run.overtime ?? 0;
+    for (const kind of ['bik','vola'] as const) {
+      const owned = run.pcbNonCashNormal?.[kind] ?? 0;
+      if (!Number.isFinite(owned) || owned < 0) throw new RangeError('Invalid saved non-cash contribution');
+      cumulativeBenefits[kind] = round2(cumulativeBenefits[kind] + owned);
+      if (!Number.isFinite(cumulativeBenefits[kind])) throw new RangeError('Invalid saved non-cash contribution');
+    }
 
     // Re-compute the whole month with cumulative bases; the run's figure is the increment.
     const m = statutory(
@@ -147,7 +161,7 @@ export function computeMonthlyRuns(p: {
       cumAdditional,
       cumOt,
       { month: p.month, acc: p.priorAcc, lpCurrent: p.lpCurrent, zakatCurrent: p.zakatCurrent },
-      p.opts,
+      hasBenefitInputs ? {...p.opts, pcbNonCashNormal: {...cumulativeBenefits}} : p.opts,
       rules,
     );
     last = {

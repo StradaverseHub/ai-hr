@@ -7212,7 +7212,7 @@
       "slipCurrentHeading": "Current month's remuneration",
       "slipCurrentTotal": "Remuneration charged to tax this month",
       "slipCurrentEpf": "Employee provident fund contribution this month",
-      "slipCurrentNote": "Payroll records the month's taxable remuneration as one combined figure and does not store the split across these components, so each line says it was recorded only in combination rather than showing an amount nobody recorded. The combined figure above is the one the calculation charged.",
+      "slipCurrentNote": "合计金额包含应税实物福利和住宿价值。录入、免税和应税金额均来自本次已保存的计算；缺失的旧记录显示为未记录。其他现金组成部分仅以合计方式记录。",
       "slipAdditionalRemHeading": "Additional remuneration for the current month",
       "slipAdditionalTotal": "Additional remuneration charged to tax this month",
       "slipAdditionalEpf": "Employee provident fund contribution on the additional remuneration",
@@ -7255,7 +7255,7 @@
       "slipAccMtd": "已缴付的累计每月税务扣除，包括额外薪酬的税务扣除",
       "slipAccZakat": "已缴付的累计天课、施舍及出境税",
       "slipAccLevy": "已缴付的累计出境税",
-      "slipAccNote": "金额栏是本雇主在本课税年度较早月份实际支付的款项，由那几个月的薪金单汇总而得。合计栏则是此次计算本身所依据的累计数字，取自本薪金单自身的记录。两者不一定相符：累计数字是应课税的薪酬，不包括获豁免的款项，并且还包含前雇主在 TP3 表格上申报的部分，而这里签发的薪金单无法显示那一部分。本系统并未把实物福利和居住住所价值记录为薪资项目，因此其 0.00 表示我们没有该项数字，而不是有人已确认其不存在。费用与佣金并未与支付它们的津贴和花红分开储存。累计出境税同样没有单独储存：它包含在上方的天课行内，那是计算所采用的单一合并数字。",
+      "slipAccNote": "累计应税实物福利和住宿价值来自本次已保存计算中的前月福利记录。缺失或不完整的旧福利记录显示为未记录，而不是零。现金明细仅属于本雇主；已保存的累计总额也可能包含TP3表中的金额。",
       "slipAccNoteUnread": "本课税年度较早的月份无法为此雇员读取，因此明细各行显示为没有记录，而不是显示零。旁边的累计合计是计算本身所依据的数字，不受影响。",
       "slipStep1Heading": "步骤 1 — 不含额外薪酬的年度净薪酬的每月税务扣除",
       "slipStep1CurrentMtd": "本月每月税务扣除",
@@ -7282,7 +7282,11 @@
       "slipStep1CurrentRebate": "本月天课/费用/征费",
       "formulaNormalMtdNet": "正常薪酬净 MTD = max(0，最低扣款规则处理后的正常 MTD − 本月天课/费用/征费)",
       "slipStep1NormalRules": "先应用既定的小数截断、五仙进位及最低扣款规则，再抵扣本月回扣。正常薪酬净 MTD 不得为负数。剩余回扣按已记录的额外薪酬规则处理；合并后的最终扣款另行显示。",
-      "slipStep1CombinedFormula": "MTD (A) / 净 MTD = [((P−M)R + B − (Z + X)) / (n + 1)] − 本月天课/费用/征费"
+      "slipStep1CombinedFormula": "MTD (A) / 净 MTD = [((P−M)R + B − (Z + X)) / (n + 1)] − 本月天课/费用/征费",
+      "slipBikEntered": "录入的实物福利",
+      "slipBikExempt": "免税实物福利",
+      "slipVolaEntered": "录入的住宿价值",
+      "slipVolaExempt": "免税住宿价值"
     },
     "multiCycleWorksheet": {
       "title": "多次发薪法定核对表",
@@ -7382,7 +7386,8 @@
         "inconsistent_run_bases": "各次发薪按不同的月薪计费",
         "tax_scheme_not_reconstructable": "已保存的税务计划或雇主批准不完整，或各次工资记录之间不同；未重建年度比较。",
         "zakat_or_lp_present": "本月涉及天课或 TP1 扣除",
-        "no_statutory_profile": "该员工没有马来西亚法定资料"
+        "no_statutory_profile": "该员工没有马来西亚法定资料",
+        "noncash_not_reconstructable": "已保存的非现金福利金额或所属运行记录不完整或不一致；未重建比较。"
       },
       "runType": {
         "regular": "常规",
