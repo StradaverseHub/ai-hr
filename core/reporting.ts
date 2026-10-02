@@ -802,7 +802,7 @@ export async function employeeEaStatement(
  */
 export async function employeePcb2iiStatement(
   ctx: SessionContext,
-  p: { employmentId: string; year: string; companyId?: string },
+  p: { employmentId: string; year: string; selectedDate: string; companyId?: string },
 ): Promise<Pcb2iiForm | null> {
   const country = await eaEmployerCountry(ctx, p);
   if (country === undefined) return null;
