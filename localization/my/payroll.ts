@@ -1,3 +1,4 @@
+import { readPcbNonCash, type NonCashAmounts } from '../noncash-benefits';
 /**
  * Malaysia statutory payroll calculators (MY localization pack, ADR-0008).
  *
@@ -605,7 +606,9 @@ export function foldPriorSlipIntoAccumulators(
   // A slip predating the r187 stamp has no base and falls back to gross: a DIFFERENT figure, not a
   // rounding difference, so it is COUNTED and disclosed rather than absorbed.
   const stampedBase = st.bases?.pcb;
-  const y = stampedBase == null ? Number(slip.gross) : Number(stampedBase);
+  const nc = readPcbNonCash((slip.statutory as {pcbNonCash?:unknown}|null)?.pcbNonCash);
+  // bases.pcb describes the cumulative month's computation; accumulate only this run's owned benefits.
+  const y = stampedBase == null ? Number(slip.gross) : round2(Number(stampedBase) - (nc ? nc.cumulative.bik + nc.cumulative.vola - nc.owned.bik - nc.owned.vola : 0));
   if (stampedBase == null) acc.legacyBaseSlips = (acc.legacyBaseSlips ?? 0) + 1;
   acc.grossRemuneration = round2((acc.grossRemuneration ?? 0) + y);
   acc.netRemuneration = round2(acc.netRemuneration + y - claimed);
@@ -717,6 +720,9 @@ export type PcbMonthResult = {
   snapshot: {
     calculationScheme?: PcbCalculationScheme | string;
     taxSchemeDeclarationId?: string;
+    taxSelectionId?: string;
+    taxSelectionVersion?: number;
+    taxSelectionSource?: 'income_tax_resident';
     month: number;
     n: number;
     ytdNet: number;
@@ -886,6 +892,9 @@ export function childReliefAmountFor(
 export function pcbMonth(p: {
   calculationScheme?: Exclude<PcbCalculationScheme, 'non_resident'>;
   taxSchemeDeclarationId?: string;
+    taxSelectionId?: string;
+    taxSelectionVersion?: number;
+    taxSelectionSource?: 'income_tax_resident';
   monthlyWage: number;
   epfMonthly: number;
   month: number;
@@ -1006,6 +1015,7 @@ export function pcbMonth(p: {
     snapshot: {
       calculationScheme: scheme,
       ...(p.taxSchemeDeclarationId ? {taxSchemeDeclarationId:p.taxSchemeDeclarationId} : {}),
+      ...(p.taxSelectionId ? {taxSelectionId:p.taxSelectionId,taxSelectionVersion:p.taxSelectionVersion,taxSelectionSource:p.taxSelectionSource} : {}),
       month,
       n,
       ytdNet: round2(acc.netRemuneration),
@@ -1224,6 +1234,9 @@ export function statutory(
     flatTaxRate?: number | null;
     calculationScheme?: PcbCalculationScheme | string;
     taxSchemeDeclarationId?: string;
+    taxSelectionId?: string;
+    taxSelectionVersion?: number;
+    taxSelectionSource?: 'income_tax_resident';
     epfElection?: EpfElection;
     /** Employee age + citizenship select the EPF rule (Part A / Part E senior / non-citizen 2%/2%). */
     epfAge?: number | null;
@@ -1272,6 +1285,8 @@ export function statutory(
     socsoWageDeduction?: number;
     /** Deduction money to take OUT of the PCB remuneration base (item ticked "subject to PCB"). */
     pcbWageDeduction?: number;
+    /** PCB-only taxable normal remuneration; never an agency/cash wage. */
+    pcbNonCashNormal?: NonCashAmounts;
   },
   /** The active statutory ruleset (ADR-0019); defaults to the verified built-in set. */
   rules: StatutoryRuleset = DEFAULT_MY_STATUTORY,
@@ -1301,7 +1316,10 @@ export function statutory(
   );
   /** The cash remuneration PCB is charged on. Identical to `cashWage` unless a ticked deduction says
    *  some of that wage was never earned this month (unpaid leave / absence / short notice). */
-  const pcbWage = Math.max(0, round2(cashWage - Math.max(0, opts?.pcbWageDeduction ?? 0)));
+  const pcbCashWage = Math.max(0, round2(cashWage - Math.max(0, opts?.pcbWageDeduction ?? 0)));
+  const benefit = opts?.pcbNonCashNormal;
+  if (benefit && (![benefit.bik,benefit.vola].every(n=>Number.isFinite(n)&&n>=0))) throw new StatutoryRulesetMalformedError('Invalid PCB non-cash normal remuneration');
+  const pcbWage = round2(pcbCashWage + (benefit?.bik ?? 0) + (benefit?.vola ?? 0));
   // EPF by age + citizenship (Part A / Part E senior / non-citizen 2%/2%; #95). Bonus IS subject to
   // EPF; overtime is NOT.
   const eC = epfContribution(epfWage, epfAdditional, rules.epf, opts?.epfElection, {
@@ -1356,6 +1374,7 @@ export function statutory(
       // keys that were here are untouched.
       pcbMeta: {
         calculationScheme: 'non_resident',
+        ...(opts?.taxSelectionId?{taxSelectionId:opts.taxSelectionId,taxSelectionVersion:opts.taxSelectionVersion,taxSelectionSource:opts.taxSelectionSource}:{}),
         nonResident: flatRate === 0.3,
         flatRate,
         rate: flatRate,
@@ -1367,6 +1386,9 @@ export function statutory(
   const m = pcbMonth({
     calculationScheme: scheme as Exclude<PcbCalculationScheme, 'non_resident'>,
     taxSchemeDeclarationId: opts?.taxSchemeDeclarationId,
+    taxSelectionId: opts?.taxSelectionId,
+    taxSelectionVersion: opts?.taxSelectionVersion,
+    taxSelectionSource: opts?.taxSelectionSource,
     monthlyWage: pcbWage,
     epfMonthly: Math.max(0, e.employee - epfOnBonus),
     month: pcbCtx?.month ?? 1,
