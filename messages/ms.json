@@ -3417,7 +3417,7 @@
       "totalEmployerCost": "Jumlah kos majikan",
       "proratedNote": "Diprorata pada {days, plural, one {# hari} other {# hari}} bekerja dalam tempoh ini.",
       "recordLinesHeading": "Butiran item gaji",
-      "recordLinesNote": "Direkodkan untuk rujukan anda sahaja — ini tidak menjejaskan gaji kasar atau bersih anda.",
+      "recordLinesNote": "Item yang direkodkan tidak dibayar sebagai pendapatan tunai. Manfaat bercukai boleh menjejaskan PCB dan gaji bersih.",
       "recordLineRemark": "Dimasukkan sebagai “{remark}”",
       "nonPayableHeading": "Lain-lain (Tidak Dibayar)",
       "nonPayableTotal": "Jumlah tidak dibayar",
@@ -5808,7 +5808,7 @@
           "totalEmployerContributions": "Jumlah caruman majikan",
           "capped": "Memaparkan {cap} keputusan terkini. Perhalusi penapis di atas untuk melihat bulan terdahulu.",
           "itemsHeading": "Butiran item gaji",
-          "itemsNote": "Direkodkan secara berasingan pada slip gaji ini. Item sekali sahaja sudah termasuk dalam jumlah di atas; item rekod sahaja (seperti manfaat berbentuk barangan) tidak menjejaskan kasar mahupun bersih.",
+          "itemsNote": "Item sekali sahaja termasuk dalam jumlah di atas. Item rekod sahaja bukan pendapatan tunai; manfaat bercukai boleh menjejaskan PCB dan gaji bersih.",
           "itemRemark": "Dimasukkan sebagai “{remark}”",
           "sourceHeading": "Dari mana ia datang",
           "sourceNote": "Transaksi individu yang direkodkan terhadap pekerja ini pada larian gaji ini. Ia disenaraikan di sebelah item yang direkodkan dan bukan dipadankan dengannya: dua entri boleh berkongsi item gaji dan amaun yang sama, jadi hanya orang yang memasukkannya boleh menyatakan yang mana satu.",
@@ -11557,7 +11557,7 @@
     "displayCategory_allowance": "Pendapatan",
     "displayCategory_claim": "Tuntutan",
     "displayCategory_deduction": "Potongan",
-    "displayCategoryHint": "Menentukan ruangan tempat item ini dipaparkan pada slip gaji, keputusan gaji, paparan transaksi dan laporan gaji. Ia tidak mengubah apa-apa lagi — tiada pengiraan statutori, dan tiada angka EA, CP39, KWSP atau PERKESO. Biarkan pada “Tentukan secara automatik” untuk mengekalkan ruangan yang ditentukan untuk anda, seperti sebelum ini.",
+    "displayCategoryHint": "Bagi item tunai, Kategori Gaji menentukan tempat item dipaparkan. Bagi manfaat bukan bayaran tunai, pilih BIK atau VOLA; Tertakluk kepada PCB menentukan sama ada manfaat dimasukkan dalam saraan bercukai. Pelaporan EA ditetapkan secara berasingan.",
     "displayCategory_bik": "Manfaat Berbentuk Barangan (BIK)",
     "sectionOrp": "Pengiraan Kadar Gaji Biasa (ORP)",
     "sectionOrpHint": "Pilih sama ada item gaji ini dimasukkan semasa kadar gaji biasa dikira. Kedua-dua kotak adalah bebas — tandakan salah satu, kedua-duanya atau tiada. Formula ORP itu sendiri tidak berubah; kotak ini hanya menentukan item gaji mana yang menyuapnya.",
@@ -11578,7 +11578,8 @@
     "eaLine_EA_B5": "B5 - Refund from unapproved Provident / Pension Fund",
     "eaLine_EA_B6": "B6 - Compensation for loss of employment",
     "eaLine_EA_C1": "C1 - Pension",
-    "eaLine_EA_C2": "C2 - Annuities or other periodical payments"
+    "eaLine_EA_C2": "C2 - Annuities or other periodical payments",
+    "displayCategory_vola": "Nilai Tempat Kediaman (VOLA)"
   },
   "notifications": {
     "title": "Pemberitahuan",

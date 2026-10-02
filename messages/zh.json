@@ -3417,7 +3417,7 @@
       "totalEmployerCost": "雇主总成本",
       "proratedNote": "按本周期内工作的 {days, plural, one {# 天} other {# 天}}按比例计算。",
       "recordLinesHeading": "逐项列出的薪资项目",
-      "recordLinesNote": "仅供参考记录 — 这些项目不影响您的应发或实发工资。",
+      "recordLinesNote": "记录项目不会作为现金收入支付。应税福利可能影响 PCB 和实发工资。",
       "recordLineRemark": "录入时写作“{remark}”",
       "nonPayableHeading": "其他（不支付）",
       "nonPayableTotal": "不支付项目合计",
@@ -5808,7 +5808,7 @@
           "totalEmployerContributions": "雇主缴纳总额",
           "capped": "正在显示最近 {cap} 条结果。请收窄上方筛选条件以查看更早的月份。",
           "itemsHeading": "逐项列出的薪资项目",
-          "itemsNote": "在本工资单上单独记录。一次性项目已包含在上方合计内；仅作记录的项目（如实物福利）既不影响总额也不影响实发。",
+          "itemsNote": "一次性项目已包含在上述合计中。仅记录项目不是现金收入；应税福利可能影响 PCB 和实发工资。",
           "itemRemark": "录入时写作“{remark}”",
           "sourceHeading": "这些来自哪里",
           "sourceNote": "本次薪资计算中针对该员工记录的单项交易。它们列在已记录项目旁边，而不是与之逐一对应：两笔条目可能使用相同的薪资项目和金额，因此只有录入的人才能说清哪一笔对应哪一笔。",
@@ -11557,7 +11557,7 @@
     "displayCategory_allowance": "收入",
     "displayCategory_claim": "报销",
     "displayCategory_deduction": "扣除",
-    "displayCategoryHint": "决定该项目在工资单、薪资结果、交易视图和薪资报表中显示在哪一栏。除此之外不改变任何内容——不涉及任何法定计算，EA、CP39、KWSP 或 PERKESO 的数字也不会变动。保持“自动判断”即可沿用此前由系统为您推断栏位的做法。",
+    "displayCategoryHint": "对于现金项目，工资类别决定项目的显示位置。对于非现金福利，请选择 BIK 或 VOLA；“需缴纳 PCB”决定该福利是否计入应税薪酬。EA 申报单独设置。",
     "displayCategory_bik": "实物福利 (BIK)",
     "sectionOrp": "普通工资率 (ORP) 计算",
     "sectionOrpHint": "选择计算普通工资率时是否纳入此薪资项目。两个选项互相独立 — 可任选其一、两者皆选或都不选。ORP 公式本身不变；这些选项只决定哪些薪资项目计入其中。",
@@ -11578,7 +11578,8 @@
     "eaLine_EA_B5": "B5 - Refund from unapproved Provident / Pension Fund",
     "eaLine_EA_B6": "B6 - Compensation for loss of employment",
     "eaLine_EA_C1": "C1 - Pension",
-    "eaLine_EA_C2": "C2 - Annuities or other periodical payments"
+    "eaLine_EA_C2": "C2 - Annuities or other periodical payments",
+    "displayCategory_vola": "居住设施价值（VOLA）"
   },
   "notifications": {
     "title": "通知",

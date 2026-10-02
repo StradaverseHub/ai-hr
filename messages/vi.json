@@ -3417,7 +3417,7 @@
       "totalEmployerCost": "Tổng chi phí người sử dụng lao động",
       "proratedNote": "Tính theo tỷ lệ trên {days, plural, one {# ngày} other {# ngày}} làm việc trong kỳ này.",
       "recordLinesHeading": "Các khoản lương chi tiết",
-      "recordLinesNote": "Chỉ ghi nhận để bạn tham khảo — các mục này không ảnh hưởng đến lương gộp hoặc lương thực nhận của bạn.",
+      "recordLinesNote": "Các khoản ghi nhận không được trả dưới dạng thu nhập tiền mặt. Phúc lợi chịu thuế có thể ảnh hưởng đến PCB và lương thực nhận.",
       "recordLineRemark": "Được nhập là “{remark}”",
       "nonPayableHeading": "Khác (Không chi trả)",
       "nonPayableTotal": "Tổng khoản không chi trả",
@@ -5808,7 +5808,7 @@
           "totalEmployerContributions": "Tổng đóng góp của người sử dụng lao động",
           "capped": "Đang hiển thị {cap} kết quả gần nhất. Hãy thu hẹp bộ lọc phía trên để xem các tháng trước.",
           "itemsHeading": "Các khoản lương chi tiết",
-          "itemsNote": "Được ghi riêng trên phiếu lương này. Các khoản một lần đã nằm trong tổng phía trên; các khoản chỉ để ghi nhận (như phúc lợi hiện vật) không ảnh hưởng đến tổng hay thực nhận.",
+          "itemsNote": "Các khoản một lần đã được tính trong tổng ở trên. Các khoản chỉ ghi nhận không phải thu nhập tiền mặt; phúc lợi chịu thuế có thể ảnh hưởng đến PCB và lương thực nhận.",
           "itemRemark": "Được nhập là “{remark}”",
           "sourceHeading": "Các khoản này đến từ đâu",
           "sourceNote": "Các giao dịch riêng lẻ được ghi nhận cho nhân viên này trong kỳ tính lương này. Chúng được liệt kê bên cạnh các khoản đã ghi nhận chứ không ghép cặp với chúng: hai bản ghi có thể trùng khoản lương và số tiền, nên chỉ người nhập mới biết bản ghi nào ứng với khoản nào.",
@@ -11557,7 +11557,7 @@
     "displayCategory_allowance": "Thu nhập",
     "displayCategory_claim": "Hoàn ứng",
     "displayCategory_deduction": "Khoản trừ",
-    "displayCategoryHint": "Quyết định mục này hiển thị ở ô nào trên phiếu lương, kết quả tính lương, màn hình giao dịch và báo cáo lương. Không thay đổi bất kỳ điều gì khác — không có tính toán luật định, và không có con số EA, CP39, KWSP hay PERKESO nào thay đổi. Để ở “Tự động xác định” để hệ thống vẫn xác định ô giúp bạn như trước.",
+    "displayCategoryHint": "Đối với khoản tiền mặt, Nhóm lương quyết định vị trí hiển thị. Đối với phúc lợi không trả bằng tiền mặt, chọn BIK hoặc VOLA; thiết lập Chịu PCB quyết định phúc lợi có được tính vào thù lao chịu thuế hay không. Báo cáo EA được cấu hình riêng.",
     "displayCategory_bik": "Phúc lợi bằng hiện vật (BIK)",
     "sectionOrp": "Tính Mức lương thông thường (ORP)",
     "sectionOrpHint": "Chọn xem khoản lương này có được tính vào mức lương thông thường hay không. Hai ô là độc lập — chọn một, cả hai hoặc không ô nào. Bản thân công thức ORP không thay đổi; các ô này chỉ quyết định khoản nào đi vào công thức đó.",
@@ -11578,7 +11578,8 @@
     "eaLine_EA_B5": "B5 - Refund from unapproved Provident / Pension Fund",
     "eaLine_EA_B6": "B6 - Compensation for loss of employment",
     "eaLine_EA_C1": "C1 - Pension",
-    "eaLine_EA_C2": "C2 - Annuities or other periodical payments"
+    "eaLine_EA_C2": "C2 - Annuities or other periodical payments",
+    "displayCategory_vola": "Giá trị chỗ ở (VOLA)"
   },
   "notifications": {
     "title": "Thông báo",
