@@ -615,7 +615,7 @@
         "error_not_resident": "Semak status cukai pemastautin pekerja yang direkodkan sebelum menyimpan pengisytiharan ini.",
         "error_citizenship_unknown": "Semak status kewarganegaraan/PR yang direkodkan bagi skim C-Suite.",
         "error_overlap": "Tempoh ini bertindih dengan pengisytiharan sedia ada. Semak atau batalkannya sebelum merekodkan pengganti.",
-        "error_missing_declaration": "Rekodkan pengisytiharan kelulusan untuk majikan dan tempoh ini dahulu.",
+        "error_missing_declaration": "Tiada kelulusan yang terpakai direkodkan untuk pekerjaan, majikan dan tempoh penggajian ini. Lengkapkan rujukan kelulusan, tempoh kuat kuasa dan pengesahan kelayakan HR.",
         "error_stale_context": "Majikan bagi pekerjaan ini telah berubah. Muat semula dan sahkan kelulusan bagi majikan semasa.",
         "title": "Pengisytiharan insentif penggajian",
         "hint": "HR merekodkan kelulusan sedia ada untuk majikan dan tempoh ini. Kelayakan tidak ditentukan secara automatik.",
@@ -639,7 +639,16 @@
         "error_invalid": "Semak majikan, skim, tempoh, rujukan kelulusan dan pengesahan kelayakan.",
         "error_unavailable": "Pengisytiharan tidak tersedia untuk pekerjaan atau skop akses ini.",
         "error_saveFailed": "Pengisytiharan tidak dapat disimpan. Semak kelulusan, tempoh dan skop pekerjaan.",
-        "error_revokeFailed": "Pengisytiharan tidak dapat dibatalkan. Muat semula dan semak akses."
+        "error_revokeFailed": "Pengisytiharan tidak dapat dibatalkan. Muat semula dan semak akses.",
+        "payrollPeriod": "Tempoh penggajian",
+        "configuredCategory": "Kategori cukai yang dikonfigurasi",
+        "effectiveCategory": "Kategori pengiraan yang terpakai",
+        "notReady": "Menunggu maklumat kelulusan yang diperlukan",
+        "ready": "Konfigurasi cukai sedia untuk tempoh penggajian ini",
+        "scheme_resident": "Pemastautin biasa",
+        "scheme_non_resident": "Bukan pemastautin",
+        "error_declaration_revoked": "Kelulusan yang direkodkan untuk majikan dan tempoh penggajian ini telah dibatalkan. Rekodkan skim diluluskan yang terpakai sebelum mengira semula.",
+        "error_declaration_outside_period": "Kelulusan yang direkodkan tidak meliputi tempoh penggajian ini. Lengkapkan tempoh kelulusan yang terpakai sebelum mengira semula."
       },
       "backToPeople": "Kakitangan",
       "backToPersonnelAdmin": "Pengurusan Kakitangan",
@@ -5180,7 +5189,29 @@
       "preChecksNothingPayableNoRemark": "Tiada sebab direkodkan pada rekod gaji.",
       "reprocessGapNothingPayable": "tiada gaji asas bulanan",
       "reprocessReasonNothingPayable": "Sengaja dikecualikan daripada proses ini — tiada gaji asas bulanan dan tiada apa-apa untuk dibayar bulan ini. Tandakan mereka hanya jika sesuatu telah dimasukkan untuk mereka selepas itu.",
-      "preChecksBadgeLegend": "Apa-apa yang bertanda “Menghalang pemprosesan” mesti dibetulkan sebelum proses ini. Apa-apa yang bertanda “Amaran” masih boleh diproses selepas anda mengesahkannya. Apa-apa yang bertanda “Akan dikecualikan” tidak memerlukan apa-apa daripada anda."
+      "preChecksBadgeLegend": "Apa-apa yang bertanda “Menghalang pemprosesan” mesti dibetulkan sebelum proses ini. Apa-apa yang bertanda “Amaran” masih boleh diproses selepas anda mengesahkannya. Apa-apa yang bertanda “Akan dikecualikan” tidak memerlukan apa-apa daripada anda.",
+      "reprocessOutcomeStatus": {
+        "reprocessed": "Diproses semula",
+        "skipped": "Dilangkau",
+        "validation_failed": "Konfigurasi tidak lengkap"
+      },
+      "reprocessNothingPayableFull": "Tiada pendapatan yang perlu dibayar dikenal pasti bagi tempoh penggajian ini. Pengiraan semula tidak dilakukan. Slip gaji, keahlian dalam larian penggajian, transaksi dan sejarah sedia ada dikekalkan.",
+      "reprocessSucceededReason": "Hasil penggajian baharu telah disimpan untuk pekerja ini.",
+      "reprocessChildConfigurationReason": "Pelepasan anak yang dikonfigurasi bercanggah dengan bilangan anak yang layak. Semak konfigurasi PCB sebelum mengira semula.",
+      "reprocessConfigurationReason": "Konfigurasi penggajian yang diperlukan tidak lengkap. Semak rekod penggajian pekerja ini sebelum mengira semula.",
+      "reprocessNothingPayableShort": "Tiada bayaran bagi tempoh penggajian ini; pengiraan semula dilangkau.",
+      "reprocessPreviousResultRetained": "Hasil penggajian terdahulu dikekalkan; angka yang dipaparkan adalah daripada hasil yang disimpan itu.",
+      "reprocessOutcomeDetails": "Lihat sebab penuh",
+      "reprocessReviewTaxConfiguration": "Semak konfigurasi cukai untuk larian ini",
+      "reprocessReviewPcbConfiguration": "Semak konfigurasi PCB",
+      "reprocessOutcomeRecordedAt": "Direkodkan pada {at}",
+      "reprocessOutcomeTitle": "Hasil pekerja yang dipilih",
+      "reprocessOutcomeSummary": "Dipilih: {selected} · Diproses semula: {succeeded} · Dilangkau: {skipped} · Konfigurasi tidak lengkap: {failed}",
+      "reprocessStoppedPartial": "Pemprosesan terhenti sebelum semua pekerja yang dipilih selesai. Hasil yang disimpan masih sah. Semak hasil tersebut sebelum mencuba lagi.",
+      "reprocessOutcomeStatusHeading": "Status pemprosesan",
+      "reprocessOutcomeCategoryHeading": "Kategori cukai",
+      "reprocessOutcomeRemarksHeading": "Catatan",
+      "reprocessLegacyOutcomeUnavailable": "Tugas terdahulu ini tidak merekodkan hasil individu. Sejarah pengiraan yang disimpan masih tersedia di bawah."
     },
     "transactions": {
       "title": "Kemasukan Transaksi",
@@ -6182,7 +6213,13 @@
       "validationNoticeBadge": "Akan dikecualikan",
       "validationNothingPayableTitle": "{n} pekerja akan dikecualikan daripada proses ini",
       "validationNothingPayableHint": "Mereka tiada gaji asas bulanan dan tiada apa-apa untuk dibayar bagi tempoh ini. Proses gaji tidak dihalang: mereka dinamakan semula pada keputusan, dan dibayar seperti biasa pada tempoh yang ada transaksi dimasukkan untuk mereka.",
-      "validationBadgeLegend": "Apa-apa yang bertanda “Menghalang pemprosesan” mesti dibetulkan sebelum proses ini. Apa-apa yang bertanda “Amaran” masih boleh diproses selepas anda mengesahkannya. Apa-apa yang bertanda “Akan dikecualikan” tidak memerlukan apa-apa daripada anda."
+      "validationBadgeLegend": "Apa-apa yang bertanda “Menghalang pemprosesan” mesti dibetulkan sebelum proses ini. Apa-apa yang bertanda “Amaran” masih boleh diproses selepas anda mengesahkannya. Apa-apa yang bertanda “Akan dikecualikan” tidak memerlukan apa-apa daripada anda.",
+      "taxScheme_missing_declaration": "Maklumat skim cukai tidak lengkap: rujukan kelulusan, tempoh kuat kuasa dan pengesahan kelayakan HR yang terpakai belum direkodkan untuk pekerjaan dan majikan ini.",
+      "taxScheme_declaration_revoked": "Kelulusan yang direkodkan untuk majikan dan tempoh penggajian ini telah dibatalkan. Rekodkan skim diluluskan yang terpakai sebelum mengira semula.",
+      "taxScheme_declaration_outside_period": "Kelulusan yang direkodkan tidak meliputi tempoh penggajian ini. Lengkapkan tempoh kelulusan yang terpakai sebelum mengira semula.",
+      "taxScheme_not_resident": "Status pemastautin cukai yang direkodkan tidak serasi dengan skim pemastautin yang diluluskan ini.",
+      "taxScheme_citizenship_unknown": "Kewarganegaraan yang direkodkan tidak memenuhi syarat skim C-suite.",
+      "taxScheme_overlap": "Lebih daripada satu skim cukai terpakai bagi majikan dan tempoh penggajian ini. Betulkan konfigurasi yang bertindih."
     },
     "guide": {
       "title": "Panduan Aliran Kerja Gaji",
@@ -7527,6 +7564,12 @@
       "title": "Tetapan Maklumat Slip Gaji",
       "saving": "Menyimpan…",
       "saveError": "Tidak dapat menyimpan. Pilihan anda dikekalkan; sila cuba lagi."
+    },
+    "taxConfiguration": {
+      "title": "Konfigurasi cukai untuk larian penggajian ini",
+      "context": "{employee} · {employer} · {period}",
+      "permissionHint": "Halaman ini menggunakan kebenaran yang sama seperti rekod pekerja. Bagi pekerjaan yang dipindahkan, HR mesti mentadbir majikan penggajian dan majikan semasa.",
+      "back": "Kembali ke pemprosesan semula"
     }
   },
   "admin": {

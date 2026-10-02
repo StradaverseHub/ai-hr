@@ -615,7 +615,7 @@
         "error_not_resident": "保存此声明前，请检查员工记录中的居民税务状态。",
         "error_citizenship_unknown": "请检查C-Suite计划所需的已记录公民或永久居民状态。",
         "error_overlap": "此期间与已有声明重叠。记录替代声明前，请检查或撤销已有声明。",
-        "error_missing_declaration": "请先记录此雇主和期间的批准声明。",
+        "error_missing_declaration": "此雇佣关系、雇主和工资期间尚无适用的批准记录。请填写批准参考编号、有效期间，并由人力资源部门确认资格。",
         "error_stale_context": "此雇佣关系的雇主已变更。请刷新并确认当前雇主的批准。",
         "title": "工资优惠声明",
         "hint": "人力资源部门记录此雇主及期间已有的批准。资格不会自动判定。",
@@ -639,7 +639,16 @@
         "error_invalid": "请检查雇主、计划、期间、批准参考编号及资格确认。",
         "error_unavailable": "此雇佣关系或访问范围内无法获取声明。",
         "error_saveFailed": "无法保存声明。请检查批准、期间和雇佣范围。",
-        "error_revokeFailed": "无法撤销声明。请刷新并检查访问权限。"
+        "error_revokeFailed": "无法撤销声明。请刷新并检查访问权限。",
+        "payrollPeriod": "工资期间",
+        "configuredCategory": "已配置的税务类别",
+        "effectiveCategory": "适用的计算类别",
+        "notReady": "等待所需的批准信息",
+        "ready": "此工资期间的税务配置已就绪",
+        "scheme_resident": "普通居民",
+        "scheme_non_resident": "非居民",
+        "error_declaration_revoked": "此雇主和工资期间的批准记录已撤销。重新计算前，请记录适用的已获批准方案。",
+        "error_declaration_outside_period": "批准记录未涵盖此工资期间。重新计算前，请补全适用的批准期间。"
       },
       "backToPeople": "员工",
       "backToPersonnelAdmin": "员工管理",
@@ -5180,7 +5189,29 @@
       "preChecksNothingPayableNoRemark": "薪资记录上未填写原因。",
       "reprocessGapNothingPayable": "没有月度基本薪资",
       "reprocessReasonNothingPayable": "本次运行中被有意排除 — 没有月度基本薪资，本月也没有应付款项。仅在之后为其录入了款项时才勾选。",
-      "preChecksBadgeLegend": "标记为“阻止处理”的项目必须在本次运行前修正；标记为“警告”的项目在您确认后仍可继续处理；标记为“将被排除”的项目无需您做任何事。"
+      "preChecksBadgeLegend": "标记为“阻止处理”的项目必须在本次运行前修正；标记为“警告”的项目在您确认后仍可继续处理；标记为“将被排除”的项目无需您做任何事。",
+      "reprocessOutcomeStatus": {
+        "reprocessed": "已重新处理",
+        "skipped": "已跳过",
+        "validation_failed": "配置不完整"
+      },
+      "reprocessNothingPayableFull": "本工资期间未确定任何应付收入。未重新计算工资。现有工资单、工资批次成员、交易和历史记录均已保留。",
+      "reprocessSucceededReason": "已为此员工保存新的工资计算结果。",
+      "reprocessChildConfigurationReason": "已配置的子女减免与符合条件的子女人数不一致。重新计算前，请检查 PCB 配置。",
+      "reprocessConfigurationReason": "所需的工资配置不完整。重新计算前，请检查此员工的工资记录。",
+      "reprocessNothingPayableShort": "本工资期间无应付款项；已跳过重新计算。",
+      "reprocessPreviousResultRetained": "已保留之前的工资结果；显示的金额来自该已保存结果。",
+      "reprocessOutcomeDetails": "查看完整原因",
+      "reprocessReviewTaxConfiguration": "检查此批次的税务配置",
+      "reprocessReviewPcbConfiguration": "检查 PCB 配置",
+      "reprocessOutcomeRecordedAt": "记录时间：{at}",
+      "reprocessOutcomeTitle": "所选员工的处理结果",
+      "reprocessOutcomeSummary": "已选择：{selected} · 已重新处理：{succeeded} · 已跳过：{skipped} · 配置不完整：{failed}",
+      "reprocessStoppedPartial": "所有所选员工处理完成前，处理已停止。已保存的结果仍然有效。再次尝试前，请先检查这些结果。",
+      "reprocessOutcomeStatusHeading": "处理状态",
+      "reprocessOutcomeCategoryHeading": "税务类别",
+      "reprocessOutcomeRemarksHeading": "备注",
+      "reprocessLegacyOutcomeUnavailable": "此较早的任务未记录个人处理结果。其已保存的计算历史仍可在下方查看。"
     },
     "transactions": {
       "title": "交易录入",
@@ -6182,7 +6213,13 @@
       "validationNoticeBadge": "将被排除",
       "validationNothingPayableTitle": "{n} 名员工将被排除在本次运行之外",
       "validationNothingPayableHint": "他们没有月度基本薪资，本期也没有应付款项。这不会阻止处理：他们会在结果中再次列名，并在有交易录入的期间照常发放。",
-      "validationBadgeLegend": "标记为“阻止处理”的项目必须在本次运行前修正；标记为“警告”的项目在您确认后仍可继续处理；标记为“将被排除”的项目无需您做任何事。"
+      "validationBadgeLegend": "标记为“阻止处理”的项目必须在本次运行前修正；标记为“警告”的项目在您确认后仍可继续处理；标记为“将被排除”的项目无需您做任何事。",
+      "taxScheme_missing_declaration": "税务方案信息不完整：此雇佣关系和雇主尚未记录适用的批准参考编号、有效期间及人力资源部门的资格确认。",
+      "taxScheme_declaration_revoked": "此雇主和工资期间的批准记录已撤销。重新计算前，请记录适用的已获批准方案。",
+      "taxScheme_declaration_outside_period": "批准记录未涵盖此工资期间。重新计算前，请补全适用的批准期间。",
+      "taxScheme_not_resident": "已记录的税务居民身份不符合此已获批准的居民方案。",
+      "taxScheme_citizenship_unknown": "已记录的国籍不符合 C-suite 方案要求。",
+      "taxScheme_overlap": "此雇主和工资期间有多个适用的税务方案。请修正重叠配置。"
     },
     "guide": {
       "title": "薪资工作流程指南",
@@ -7527,6 +7564,12 @@
       "title": "工资单信息设置",
       "saving": "保存中…",
       "saveError": "无法保存。您的选择已保留，请重试。"
+    },
+    "taxConfiguration": {
+      "title": "此工资批次的税务配置",
+      "context": "{employee} · {employer} · {period}",
+      "permissionHint": "此页面使用与员工记录相同的访问权限。对于已调动的雇佣关系，人力资源部门必须同时拥有工资所属雇主和现任雇主的管理权限。",
+      "back": "返回重新处理"
     }
   },
   "admin": {
