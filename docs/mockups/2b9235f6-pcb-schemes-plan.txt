@@ -2,7 +2,7 @@ VERDICT: Partly there already   ·   SIZE: Large
 
 THE SITUATION TODAY
 
-The calculation detail already shows the saved normal resident working on screen and in the PDF. Earlier REP and Knowledge Worker payments were saved as flat-rate calculations, so those historical details cannot honestly show the separate category working requested here.
+The calculation detail already shows the saved normal resident working on screen and in the PDF. Earlier payroll records saved with a REP or Knowledge Worker flat-rate calculation keep that original working; they cannot honestly show a different calculation after the payment was processed.
 
 WHAT WE'LL CHANGE
 
@@ -26,7 +26,7 @@ GOOD TO KNOW
 
 BUILD NOTES (technical - skip this if you are reviewing the request)
 
-The parent owns authoritative MY payroll arithmetic, category selection and the forward-only snapshot contract. New resident snapshots stamp calculationScheme resident, rep, knowledge_worker or c_suite. Incentive snapshots require a valid taxSchemeDeclarationId tied to the scoped HR declaration. Incentive traces require schemeVersion 1, T and additional-leg T2 for REP and Knowledge Worker; C-Suite omits T. Preserve common P/EPF/relief/annual tax/MTD/zakat facts and original deduction values. Explicit nonresident is dispatched separately; legacy unstamped flat snapshots remain their original recorded method.
+The parent owns authoritative MY payroll arithmetic, category selection and the forward-only snapshot contract. New resident snapshots stamp calculationScheme resident, rep, knowledge_worker or c_suite. Incentive snapshots require a valid taxSchemeDeclarationId tied to the scoped HR declaration. The reader validates the saved UUID and trace, never looks up current declaration status to rewrite a historical explanation. Revocation or later expiry cannot erase the saved provenance. Incentive traces require schemeVersion 1, T and additional-leg T2 for REP and Knowledge Worker; C-Suite omits T. Preserve common P/EPF/relief/annual tax/MTD/zakat facts and original deduction values. Explicit non_resident is dispatched separately; legacy unstamped flat snapshots remain their original recorded method.
 
 core/pcb-explain.ts validates scheme provenance before legacy rate handling and shapes shared sections. app/payroll/pcb-detail/formulas.ts assembles category-specific expressions without computing money. Both HTML and PDF consume those stored facts; normal and five-step additional working remain shared. people.detail.incentiveDeclarations provides employer and employment scoped approval declarations with effective date interval, reference and HR eligibility confirmation. The parent owns migration 0503 and declaration authority; the UI agent owns list/save/revoke. No C-Suite option is added to a person-wide tax residency selector. Existing REP/Knowledge Worker person flags alone never authorize incentive payroll; an in-period scoped declaration is required. No automatic inference or historical backfill.
 
