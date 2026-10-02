@@ -24,7 +24,7 @@ CREATE FUNCTION app.my_team_report_ids() RETURNS SETOF uuid LANGUAGE sql STABLE 
    AND (l.valid_to IS NULL OR l.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
    AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
    AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
-   AND cardinality(r.path)<65 AND NOT e.id=ANY(r.path)
+   AND NOT e.id=ANY(r.path)
  ) SELECT DISTINCT r.id FROM reports r WHERE NOT EXISTS(SELECT 1 FROM roots x WHERE x.id=r.id)
 $$;
 --> statement-breakpoint

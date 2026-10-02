@@ -9,7 +9,7 @@ import {assignDefaultShift,createShift} from '../core/roster';
 import {attendanceForEmploymentRange,attendanceForEmploymentsRange,checkIn,checkOut} from '../packs/attendance/service';
 import {requestLeave,actionableLeaveRequests,setLeaveApprovalPolicy,decideLeave} from '../packs/leave/service';
 import {readMyTeam,markMyTeamPunchReviewed,decideMyTeamLeave,decideMyTeamLeaveDates} from '../core/my-team';
-import {assertMyTeamSubjectTx} from '../core/my-team-scope';
+import {assertMyTeamSubjectTx,resolveMyTeamScope} from '../core/my-team-scope';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {addDaysIso,weekRangeOf} from '../lib/roster-month';
 import {adminCtx,createAppUser,entitledCtx,owner,seedBase,resetDb,migrateTestDb,closeAll,type Base} from './harness';
@@ -73,6 +73,18 @@ describe('My Team current scope and canonical projection',()=>{
   const {leaveRequestId}=await requestLeave(adminCtx(b),{employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:date,endDate:date});
   await expect(decideMyTeamLeave(managerCtx,query,{leaveRequestId,decision:'approved'})).rejects.toThrow('MY_TEAM_NOT_AUTHORIZED');
   const [req]=await owner.db.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id,leaveRequestId));expect(req.status).toBe('pending');
+ });
+ it('All reports walks deeper than 64 with visited-path protection and no silent model cutoff',async()=>{
+  const people=Array.from({length:66},(_,index)=>({id:randomUUID(),tenantId:b.tenantId,fullName:`Deep Synthetic ${index}`,primaryEmail:`deep_${randomUUID()}@t.local`}));
+  await owner.db.insert(schema.person).values(people);
+  const employments=people.map(p=>({id:randomUUID(),tenantId:b.tenantId,personId:p.id,companyId:b.companyId,employmentType:'full_time' as const,hiredOn:'2024-01-01'}));
+  await owner.db.insert(schema.employment).values(employments);
+  await owner.db.insert(schema.assignment).values(employments.map(e=>({tenantId:b.tenantId,employmentId:e.id,companyId:b.companyId,departmentId:b.deptA,validFrom:'2024-01-01'})));
+  await owner.db.insert(schema.reportingLine).values(employments.map((e,index)=>({tenantId:b.tenantId,subordinateEmploymentId:e.id,
+    managerEmploymentId:index===0?manager.employmentId:employments[index-1].id,lineType:'administrative' as const,validFrom:'2024-01-01'})));
+  const scope=await resolveMyTeamScope(managerCtx,query);
+  expect(scope.employees.map(e=>e.employmentId)).toContain(employments[65].id);
+  expect(scope.employees).toHaveLength(68);
  });
  it('search and tile only narrow grid IDs, while tiles and attention retain the full authorized team',async()=>{
   const plain=await readMyTeam(managerCtx,query),filtered=await readMyTeam(managerCtx,{...query,search:'Report'});
