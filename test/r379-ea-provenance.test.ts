@@ -34,8 +34,14 @@ describe('r379 complete historical EA provenance', () => {
   it.each([null, [], { amount: '1' }, { amount: null }])('refuses unproven converted OT %j', otConvert => {
     expect(hasCompleteHistoricalEaProvenance([{ ...slip(), statutory: { ...slip().statutory, otConvert } }], mapping)).toBe(false);
   });
-  it.each([null, '', 'NaN', Infinity, -1, {}, []])('refuses malformed or negative contribution %j', amount => {
+  it.each([null, '', 'NaN', Infinity, -1, 0.004, '0.004', {}, []])('refuses malformed or negative contribution %j', amount => {
     expect(hasCompleteHistoricalEaProvenance([{ allowance: '30000', bonus: '0', statutory: { componentLines: [{ code: 'DIRECTOR', buckets: [{ bucket: 'wage', amount }] }] } }], mapping)).toBe(false);
+  });
+  it('accepts valid decimal cents without accepting rounded sub-cent item OT', () => {
+    const s = { allowance: '0.29', bonus: '0.00', statutory: { componentLines: [{ code: 'DIRECTOR', buckets: [{ bucket: 'wage', amount: 0.29 }] }] } };
+    expect(hasCompleteHistoricalEaProvenance([s], mapping)).toBe(true);
+    s.statutory.componentLines[0].buckets.push({ bucket: 'ot', amount: 0.001 });
+    expect(hasCompleteHistoricalEaProvenance([s], mapping)).toBe(false);
   });
   it('refuses duplicate identities/buckets and unrecorded exemption provenance', () => {
     const s = slip();

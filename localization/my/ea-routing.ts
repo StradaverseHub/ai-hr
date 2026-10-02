@@ -42,9 +42,10 @@ export function hasCompleteHistoricalEaProvenance(
   mapping: ReadonlyMap<string, string | null>,
 ): boolean {
   const cents = (value: unknown): number | null => {
-    if (typeof value !== 'number' && (typeof value !== 'string' || !/^\d+(?:\.\d+)?$/.test(value))) return null;
+    if (typeof value !== 'number' && (typeof value !== 'string' || !/^\d+(?:\.\d{1,2})?$/.test(value))) return null;
     const n = Number(value);
-    return Number.isFinite(n) && n >= 0 && Number.isSafeInteger(Math.round(n * 100)) ? Math.round(n * 100) : null;
+    const rounded = Math.round(n * 100);
+    return Number.isFinite(n) && n >= 0 && Number.isSafeInteger(rounded) && Math.abs(n * 100 - rounded) < 1e-7 ? rounded : null;
   };
   if (slips.length === 0) return false;
   return slips.every(slip => {
@@ -85,6 +86,6 @@ export function hasCompleteHistoricalEaProvenance(
         if (code.startsWith('PCB_')) exempt += amount;
       }
     }
-    return wage + reimburse === allowance && additional === bonus && exempt <= reimburse;
+    return [wage, reimburse, additional, exempt, wage + reimburse].every(Number.isSafeInteger) && wage + reimburse === allowance && additional === bonus && exempt <= reimburse;
   });
 }
