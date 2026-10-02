@@ -110,6 +110,7 @@ type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'intern';
 type LineType = 'administrative' | 'functional' | 'project' | 'dotted' | 'delegate';
 
 export type HireParams = {
+  initialTaxScheme?:'resident'|'non_resident';
   /** 35b7af0a group 8 — `nationality` joins the trio this writer already seeds on a NEW person. It belongs
    *  at creation rather than in a follow-up `updatePerson`: `setPassportProfileMY` and the SOCSO/EIS number
    *  default both read `person.nationality`, so a second write afterwards could only ever be too late, and
@@ -472,6 +473,8 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
       },
     });
 
+    const [taxCompany]=await tx.select({country:company.country}).from(company).where(eq(company.id,p.companyId)).limit(1);
+    await packFor(taxCompany?.country)?.statutory.initializeHiredTaxSelectionTx?.(tx,ctx,{employmentId:emp.id,companyId:p.companyId,scheme:p.initialTaxScheme??'resident'});
     return { employmentId: emp.id, personId };
   });
 }

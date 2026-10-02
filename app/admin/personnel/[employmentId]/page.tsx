@@ -57,7 +57,6 @@ import { Combobox } from '@/components/ui/combobox';
 import { EpfElection } from '@/components/epf-election';
 import { BankInfoCard } from '@/components/bank-info-card';
 import { IdentityTaxCard } from '@/components/identity-tax-card';
-import { IncentiveDeclarationCard } from './incentive-card';
 import { SocsoEisFields } from '@/components/socso-eis-fields';
 // a72610af — the field groups this screen now SHARES with the Create New Employee draft, so a draft and
 // the record it becomes ask the same questions in the same words. Each has a `mode`; this screen is 'form'.
@@ -387,8 +386,8 @@ export default async function EmployeePage({
   // Rung 5c — the acting company's country pack; statutory reads + the SOCSO/EIS default resolve through it.
   const countryPack = packFor('MY');
   // This scoped service verifies the owning company is MY; a person-level tax flag is not approval.
-  const incentiveDeclarations = admin && payrollOn
-    ? await countryPack?.statutory.listTaxSchemeDeclarations?.(s, emp.employmentId) ?? null : null;
+  const taxSelection = admin && payrollOn
+    ? await countryPack?.statutory.getTaxSelection?.(s, emp.employmentId) ?? null : null;
   // Rung 5c — the holiday-calendar state pick-list comes from the country packs via the registry
   // (union-read, the rung-5a `countryPacks()` precedent). MY-only ⇒ byte-identical to the old MY_STATES.
   const stateOptions = countryPacks().flatMap((p) => p.states);
@@ -3216,12 +3215,13 @@ export default async function EmployeePage({
         action={setTaxAction}
         employmentId={emp.employmentId}
         personId={emp.personId}
+        taxSelection={taxSelection ? {companyId:taxSelection.companyId,companyName:taxSelection.companyName,version:taxSelection.version,confirmationRequired:taxSelection.transitionState==='confirmation_required'} : undefined}
         childRelief={qualifyingChildRelief}
         taxNumberSharedWith={taxNumberSharedWith}
         defaults={{
           taxNumber: statutory?.taxNumber ?? null,
           taxCategory: statutory?.taxCategory ?? 1,
-          taxResidency: statutory?.taxResidency ?? 'resident',
+          taxResidency: taxSelection?.scheme ?? statutory?.taxResidency ?? 'resident',
           numChildren: statutory?.numChildren ?? 0,
           childReliefMode: statutory?.childReliefMode ?? 'manual',
           employerBearsTax: statutory?.employerBearsTax ?? false,
@@ -4906,7 +4906,7 @@ export default async function EmployeePage({
             {othersStatutoryCard}
           </TabSaveScope>
         )}
-        {incentiveDeclarations && <IncentiveDeclarationCard employmentId={emp.employmentId} view={incentiveDeclarations} from={from} asOf={spAsOf} error={incentiveError} />}
+
       </>
     ),
     // Payroll tab keeps pay components, CP38, encashment, policy assignment and compensation. The

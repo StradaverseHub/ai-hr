@@ -1344,10 +1344,10 @@
       "incomeTaxResident": "Pemastautin Cukai Pendapatan",
       "taxResidencyResident": "Pemastautin",
       "taxResidencyNonResident": "Bukan Pemastautin",
-      "taxResidencyCSuite": "C-Suite pemastautin yang diluluskan",
+      "taxResidencyCSuite": "Jawatan C-Suites",
       "taxResidencyApprovedSchemeNote": "Pilih REP, Pekerja Berpengetahuan atau C-Suite hanya apabila pekerja mempunyai kelulusan yang diperlukan untuk pekerjaan dan tahun ini. C-Suite memerlukan pemastautin bukan warganegara dalam syarikat yang diluluskan. Kelayakan disahkan oleh HR.",
       "taxResidencyRep": "Program Pakar Pulang (REP)",
-      "taxResidencyKnowledgeWorker": "Pekerja Berpengetahuan (kawasan tertentu)",
+      "taxResidencyKnowledgeWorker": "Pekerja Berpengetahuan (IRDA)",
       "childReliefLegend": "Anak (pelepasan PCB)",
       "childReliefModeLabel": "Mod pelepasan anak",
       "childReliefModeManual": "Manual (masukkan bilangan)",
@@ -1694,7 +1694,11 @@
       "epfManualAmountHint": "Masukkan caruman KWSP bulanan yang tepat dalam ringgit. Ia digunakan dari proses gaji yang pertama dan pada setiap proses semula. Bahagian yang dibiarkan kosong kekal menggunakan pengiraan berkanun. Jumlah di bawah jadual Akta KWSP diterima dan direkodkan — fail penghantaran KWSP akan membawa upah sebenar berserta jumlah anda, dan pihak agensi yang akan menyemaknya.",
       "epfManualDraftHint": "Kategori jumlah tetap (Manual mengikut Jumlah) ditetapkan pada kad Bank & Statutori pekerja selepas pekerja dicipta, kerana jumlah itu sendiri tidak dikumpulkan di sini.",
       "childQualificationUnavailable": "Tidak tersedia",
-      "childQualificationReviewSettings": "Semak tetapan pelepasan anak PCB sebelum memproses gaji."
+      "childQualificationReviewSettings": "Semak tetapan pelepasan anak PCB sebelum memproses gaji.",
+      "taxSelectionEmployer": "Majikan: {employer}",
+      "taxSelectionEligibilityHint": "Pilih kategori yang terpakai bagi pekerjaan dan majikan ini. Pemilihan insentif merekodkan keputusan HR bahawa syarat kelulusan, kelayakan dan tempohnya dipenuhi. Tiada pengisytiharan berasingan diperlukan.",
+      "taxSelectionConfirmationRequired": "Sahkan kategori yang terpakai dalam medan ini dan simpan sekali. Tetapan terdahulu tidak dapat menentukan pilihan khusus majikan yang jelas.",
+      "taxSelectionChoose": "Pilih kategori cukai"
     },
     "import": {
       "title": "Import pekerja",
@@ -6227,7 +6231,11 @@
       "taxScheme_declaration_outside_period": "Kelulusan yang direkodkan tidak meliputi tempoh penggajian ini. Lengkapkan tempoh kelulusan yang terpakai sebelum mengira semula.",
       "taxScheme_not_resident": "Status pemastautin cukai yang direkodkan tidak serasi dengan skim pemastautin yang diluluskan ini.",
       "taxScheme_citizenship_unknown": "Kewarganegaraan yang direkodkan tidak memenuhi syarat skim C-suite.",
-      "taxScheme_overlap": "Lebih daripada satu skim cukai terpakai bagi majikan dan tempoh penggajian ini. Betulkan konfigurasi yang bertindih."
+      "taxScheme_overlap": "Lebih daripada satu skim cukai terpakai bagi majikan dan tempoh penggajian ini. Betulkan konfigurasi yang bertindih.",
+      "taxSelection_confirmation_required": "Sahkan kategori yang terpakai dalam Pemastautin Cukai Pendapatan dan simpan sekali. Tetapan terdahulu memerlukan pengesahan sekali sahaja; tiada pengisytiharan berasingan atau rujukan kelulusan diperlukan.",
+      "taxSelection_invalid_scheme": "Pilih kategori Pemastautin Cukai Pendapatan yang sah.",
+      "taxSelection_citizenship_unknown": "Kewarganegaraan yang direkodkan tidak memenuhi syarat C-Suite bagi pemastautin bukan warganegara.",
+      "taxSelection_not_resident": "Status pemastautin cukai yang direkodkan tidak memenuhi syarat skim pemastautin ini."
     },
     "guide": {
       "title": "Panduan Aliran Kerja Gaji",
@@ -7577,7 +7585,14 @@
       "title": "Konfigurasi cukai untuk larian penggajian ini",
       "context": "{employee} · {employer} · {period}",
       "permissionHint": "Halaman ini menggunakan kebenaran yang sama seperti rekod pekerja. Bagi pekerjaan yang dipindahkan, HR mesti mentadbir majikan penggajian dan majikan semasa.",
-      "back": "Kembali ke pemprosesan semula"
+      "back": "Kembali ke pemprosesan semula",
+      "error_stale_context": "Majikan, tempoh penggajian atau kategori yang disimpan telah berubah. Muat semula sebelum menyimpan.",
+      "error_not_found": "Konfigurasi cukai pekerja ini tidak tersedia dalam skop akses anda.",
+      "error_saveFailed": "Kategori cukai tidak dapat disimpan. Muat semula dan semak konfigurasi pekerja.",
+      "error_confirmation_required": "Sahkan kategori yang terpakai dalam Pemastautin Cukai Pendapatan dan simpan sekali. Tetapan terdahulu memerlukan pengesahan sekali sahaja; tiada pengisytiharan berasingan atau rujukan kelulusan diperlukan.",
+      "error_invalid_scheme": "Pilih kategori Pemastautin Cukai Pendapatan yang sah.",
+      "error_citizenship_unknown": "Kewarganegaraan yang direkodkan tidak memenuhi syarat C-Suite bagi pemastautin bukan warganegara.",
+      "error_not_resident": "Status pemastautin cukai yang direkodkan tidak memenuhi syarat skim pemastautin ini."
     }
   },
   "admin": {
