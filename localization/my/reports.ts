@@ -25,6 +25,7 @@ import {
 import { storedComponentLines } from '../../core/payslip-earning-lines';
 import { hasCompleteHistoricalEaProvenance, accumulateEaRouting } from './ea-routing';
 import { MY_EA_REPORTING } from './ea-reporting';
+import { accumulatedEaNonCash, eaNonCashExemption } from './ea-noncash';
 export { EA_BUCKET_SOURCE_FIELD } from './ea-routing';
 import { MY_STATUTORY_VERSION, DEFAULT_MY_STATUTORY, childReliefTableHeadCount } from './statutory-tables';
 import { coordinatedPcbForPerson } from './payroll';
@@ -1425,6 +1426,8 @@ export type EaStatement = {
   routing: {
     /** Earlier years remain inactive unless every owned slip proves complete historical item provenance. */
     active: boolean;
+    /** Only a complete year of saved run-owned evidence may supply automatic B3/B4 amounts. */
+    nonCashComplete?: boolean;
     fromYear: number;
     /** Pay items with Part B money on this form and no EA line, by code. Empty = nothing to warn about. */
     unmapped: { code: string; name: string }[];
@@ -1742,6 +1745,7 @@ export async function eaStatement(
     const officerPosition = officer[0]?.officer_position ?? null;
     const slips = await tx
       .select({
+        payPeriod: payrollBatch.payPeriod,
         basic: payslip.basicSalary,
         allowance: payslip.allowance,
         overtime: payslip.overtimePay,
@@ -1805,6 +1809,7 @@ export async function eaStatement(
     // `partE` type for the caption reasoning and for why the three stay apart.
     let skbbk = 0;
     let exemptAllowances = 0;
+    let nonCashExemptions = 0;
     /**
      * ⚠️ r351, item fda53352 — D.6 "Total qualifying child relief" STOPS BEING AN EMPTY RULE.
      *
@@ -1845,6 +1850,7 @@ export async function eaStatement(
       if (stampedChildRelief !== undefined && stampedChildRelief !== null) {
         childReliefFromPayroll = num(stampedChildRelief);
       }
+      nonCashExemptions += eaNonCashExemption(s.statutory);
       grossSalary += num(s.basic) + num(s.overtime);
       bonus += num(s.bonus);
       allowances += num(s.allowance);
@@ -1933,6 +1939,8 @@ export async function eaStatement(
       Object.assign(routed, routing.deltas);
       for (const code of routing.unmapped) unmappedPayItems.set(code, nameOf.get(code) ?? code);
     }
+    const nonCashEa = accumulatedEaNonCash(slips);
+    for (const code of nonCashEa.unmapped) unmappedPayItems.set(code, code);
     const withRouting = (field: EaField, base: number) => round2(base + (routed[field] ?? 0));
 
     /**
@@ -1977,7 +1985,7 @@ export async function eaStatement(
      * `tp3_exemption_used` is NOT an input: that exemption was consumed against a PREVIOUS employer's
      * pay and belongs on THEIR EA. `eaStatement` does not read it and must not start.
      */
-    const taxableAllowances = round2(allowances - exemptAllowances);
+    const taxableAllowances = round2(allowances - (exemptAllowances - nonCashExemptions));
 
     const derived: Record<EaField, number> = {
       grossSalary: withRouting('grossSalary', grossSalary),
@@ -2004,8 +2012,8 @@ export async function eaStatement(
       esos: withRouting('esos', 0),
       gratuity: withRouting('gratuity', 0),
       arrears: withRouting('arrears', 0),
-      benefitsInKind: withRouting('benefitsInKind', 0),
-      livingAccommodation: withRouting('livingAccommodation', 0),
+      benefitsInKind: withRouting('benefitsInKind', nonCashEa.benefitsInKind),
+      livingAccommodation: withRouting('livingAccommodation', nonCashEa.livingAccommodation),
       unapprovedFundRefund: withRouting('unapprovedFundRefund', 0),
       compensation: withRouting('compensation', 0),
       // Explicit Part C classifications transfer the processed amount out of Part B.
@@ -2127,6 +2135,7 @@ export async function eaStatement(
       overrides,
       routing: {
         active: routingActive,
+        nonCashComplete: nonCashEa.complete,
         fromYear: EA_ROUTING_FROM_YEAR,
         // Sorted by code so the warning lists the same items in the same order on every render.
         unmapped: [...unmappedPayItems.entries()]

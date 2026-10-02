@@ -311,6 +311,10 @@ export default async function EaStatementPage({
         </div>
       )}
 
+      {ea.routing.nonCashComplete === false && <p className="rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+        {t('nonCashSourceIncomplete')}
+      </p>}
+
       <Card className="space-y-5 p-6">
         <div className="border-b border-border pb-4">
           <h1 className="text-lg font-semibold tracking-tight">{t('title')}</h1>
@@ -440,10 +444,9 @@ export default async function EaStatementPage({
               The `payroll.ea.exemptAllowances` key is RETIRED IN PLACE, not deleted — its wording in all
               six catalogues still says "(included above)", so anything reinstating it reinstates the
               defect. Section F uses `taxExemptAllowances`. */}
-          {/* 6036dab7 — BIK and living accommodation were the words "not tracked"; they are manual boxes
-              now, filled from the same amend panel as every other amended figure. */}
-          <Row label={t('benefitsInKind')} value={rm(ea.partB.benefitsInKind)} amended={ovByField.has('benefitsInKind')} amendedLabel={amendedBadge} />
-          <Row label={t('livingAccommodation')} value={rm(ea.partB.livingAccommodation)} amended={ovByField.has('livingAccommodation')} amendedLabel={amendedBadge} />
+          {/* Complete frozen annual benefit evidence supplies B3/B4; manual amendments retain precedence. */}
+          <Row label={t('benefitsInKind')} value={ea.routing.nonCashComplete === false && ea.partB.benefitsInKind === 0 && !ovByField.has('benefitsInKind') ? '—' : rm(ea.partB.benefitsInKind)} amended={ovByField.has('benefitsInKind')} amendedLabel={amendedBadge} />
+          <Row label={t('livingAccommodation')} value={ea.routing.nonCashComplete === false && ea.partB.livingAccommodation === 0 && !ovByField.has('livingAccommodation') ? '—' : rm(ea.partB.livingAccommodation)} amended={ovByField.has('livingAccommodation')} amendedLabel={amendedBadge} />
           <Row label={t('unapprovedFundRefund')} value={rm(ea.partB.unapprovedFundRefund)} amended={ovByField.has('unapprovedFundRefund')} amendedLabel={amendedBadge} />
           <Row label={t('compensation')} value={rm(ea.partB.compensation)} amended={ovByField.has('compensation')} amendedLabel={amendedBadge} />
           <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
