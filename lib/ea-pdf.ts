@@ -1545,17 +1545,27 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
   box(V.left,V.top,V.right,V.bottom);
   // r381: contain the entire date (including its dotted rule) inside the unchanged footer.
   // The date uses the spare lower-left space; complete officer values still occupy their existing rows.
-  const dateBaseline = V.bottom-2.9;
-  const dateCell:TextCell = {left:A.dateX,right:A.dateRule[1],top:V.top,bottom:V.bottom};
-  const dateSize = 8;
-  const dateTop = dateBaseline-font.heightAtSize(dateSize,{descender:false});
+  const dateBaseline = V.bottom-3.6;
+  // box() uses a 0.8pt stroke. Keep glyphs inside its inner edge and the dotted stroke 0.45pt clear.
+  const borderInset = 0.4;
+  let captionBottom = V.top+borderInset;
+  let measuredBaseline = V.top+12;
+  for(const row of rows){
+    if(row.caption){
+      const captionFace=face(row.caption,font);
+      const captionSize=fitSize(safe(row.caption),V.valueX-V.captionX-8,V.size,font);
+      const descent=captionFace.heightAtSize(captionSize)-captionFace.heightAtSize(captionSize,{descender:false});
+      captionBottom=Math.max(captionBottom,measuredBaseline+descent);
+    }
+    measuredBaseline+=Math.max(1,row.lines.length)*row.lineHeight;
+  }
+  const dateCell:TextCell = {left:A.dateX,right:A.dateRule[1],top:captionBottom+0.5,bottom:V.bottom-borderInset};
+  // Adjust only the date, preserving officer row positions and readable text. A seven-line Latin
+  // footer still fits, with a slightly smaller date; an impossible complete fit remains a refusal.
+  const dateSize=Math.min(8,Math.floor((dateBaseline-dateCell.top)/font.heightAtSize(1,{descender:false})*10)/10);
+  if(dateSize<EA_READABLE_FONT_FLOOR) throw new EaLayoutFitError('date and authorised officer');
   let baseline = V.top+12;
   for(const row of rows){
-    // A long address can push the telephone caption into this space. Refuse rather than move a row,
-    // cut off information, or return a date which overlaps the existing officer details.
-    const captionFace=face(row.caption,font);
-    const captionDescent=captionFace.heightAtSize(V.size)-captionFace.heightAtSize(V.size,{descender:false});
-    if(row.caption && baseline+captionDescent > dateTop-0.5) throw new EaLayoutFitError('date and authorised officer');
     putFit(row.caption,V.captionX,V.valueX-V.captionX-8,baseline,V.size);
     for(const value of row.lines.length?row.lines:['']){valueOrRule(value,V.valueX,V.right,baseline,V.size,V.size);baseline+=row.lineHeight;}
   }

@@ -422,7 +422,7 @@ describe('r219 — the foot: the officer box, and the agency’s own spelling of
     expect(value, 'the foot carries no date').toBeDefined();
     expect(phone, 'the telephone number is not on the page').toBeDefined();
     // r381 only moves the date inside the unchanged V6 footer; surrounding rows stay in place.
-    const footRow = EA_V6_FOOT.bottom-2.9;
+    const footRow = EA_V6_FOOT.bottom-3.6;
     expect(caption!.x).toBeCloseTo(EA_FORM.dateX, 2);
     expect(value!.x).toBeGreaterThan(caption!.x);
     expect(value!.x).toBeLessThan(EA_FORM.dateRule[1]);

@@ -268,7 +268,7 @@ describe('EA PDF renderer', () => {
         expect(rect.left).toBeGreaterThanOrEqual(EA_V6_FOOT.left);
         expect(rect.right).toBeLessThanOrEqual(EA_FORM.dateRule[1]);
         expect(rect.top).toBeGreaterThanOrEqual(EA_V6_FOOT.top);
-        expect(rect.bottom).toBeLessThan(EA_V6_FOOT.bottom);
+        expect(rect.bottom).toBeLessThan(EA_V6_FOOT.bottom-0.4);
         const surrounding=items.filter(i=>i!==date&&i!==caption&&pageHeights[i.page]-i.y>EA_V6_FOOT.top);
         expect(surrounding.length).toBeGreaterThanOrEqual(9);
         for(const other of surrounding){
@@ -277,7 +277,25 @@ describe('EA PDF renderer', () => {
         }
       }
       // Include the lower edge of the actual dotted stroke, not only the date glyph baseline.
-      expect(pageHeights[date!.page]-date!.y+2.5+0.25).toBeLessThan(EA_V6_FOOT.bottom);
+      expect(pageHeights[date!.page]-date!.y+2.5+0.25).toBeLessThanOrEqual(EA_V6_FOOT.bottom-0.4-0.4);
+    });
+    it.each(['en','ms'] as const)('%s: retains a seven-line footer by reducing only the date within the readable floor',async locale=>{
+      const token='ABCDEFGHIJKLMNO'.repeat(13);
+      const boundary={...fixture,employer:{...fixture.employer,address:[token]}};
+      const {items,pageHeights}=await extractedRuns(await renderEaPdf(boundary,labels,{locale}));
+      const values=items.filter(i=>i.x===EA_V6_FOOT.valueX+3&&pageHeights[i.page]-i.y>EA_V6_FOOT.top);
+      expect(values).toHaveLength(7);
+      expect(values.map(i=>i.text).join('').includes(token)).toBe(true);
+      expect(values.every(i=>i.size===8)).toBe(true);
+      const date=items.find(i=>i.text==='15/02/2027')!;
+      const phoneCaption=items.find(i=>i.text===eaFormWords(locale).employerPhone)!;
+      expect(date).toBeDefined();expect(phoneCaption).toBeDefined();
+      expect(date.size).toBeLessThan(8);expect(date.size).toBeGreaterThanOrEqual(6);
+      const font=await(await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
+      const phoneBottom=pageHeights[phoneCaption.page]-phoneCaption.y+font.heightAtSize(phoneCaption.size)-font.heightAtSize(phoneCaption.size,{descender:false});
+      const dateTop=pageHeights[date.page]-date.y-font.heightAtSize(date.size,{descender:false});
+      expect(dateTop-phoneBottom).toBeGreaterThanOrEqual(0.5);
+      expect(pageHeights[date.page]-date.y+2.5+0.25).toBeLessThanOrEqual(EA_V6_FOOT.bottom-0.4-0.4);
     });
     it('preserves complete Unicode employee and employer values',async()=>{
       const unicode={...fixture,employee:{...fixture.employee,name:'陈大文'},employer:{...fixture.employer,name:'陈大文有限公司',officerName:'陈大文',address:['吉隆坡产业路一号']}};
