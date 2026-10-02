@@ -212,12 +212,10 @@ async function main() {
   });
 
 
-  if (['rep','knowledge_worker','c_suite'].includes(requestedScheme)) {
-    if (!pack.statutory.saveTaxSchemeDeclaration) throw new Error('Fixture pack lacks scoped declarations');
-    await pack.statutory.saveTaxSchemeDeclaration(ctx, {employmentId:e.employmentId,
-      expectedCompanyId:company.id,scheme:requestedScheme,validFrom:'2026-05',validTo:'2026-06',
-      approvalReference:'SYNTHETIC DEV FIXTURE — not a real approval',eligibilityConfirmed:true});
-  }
+  if (!pack.statutory.saveTaxSelection) throw new Error('Fixture pack lacks scoped tax selection');
+  await pack.statutory.saveTaxSelection(ctx, {
+    employmentId:e.employmentId,expectedCompanyId:company.id,scheme:requestedScheme,
+  });
   if (typedBonus) {
     const component = await upsertPayComponent(ctx, {code:'PCB_DETAIL_BONUS',name:'Synthetic PCB detail bonus',
       kind:'allowance',includedInEpf:true,includedInSocsoEis:false,includedInPcb:true,
