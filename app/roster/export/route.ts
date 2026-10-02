@@ -33,7 +33,7 @@ import { getScopeIds } from '@/lib/scope';
 import { RosterRangeError, rosterWindowView } from '@/core/roster';
 import { serializeReport, type ReportFormat } from '@/lib/report-export';
 import { ROSTER_TEMPLATE_ID_COLUMNS, resolveRosterCell, resolveRosterWindow, shiftCodeOf } from '@/lib/roster-month';
-import {rosterTeamContext} from '../my-team-scope';
+import {rosterTeamContext,rosterTeamWindow} from '../my-team-scope';
 import {myTeamErrorResponse} from '@/app/manage/my-team/server';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -89,7 +89,7 @@ export async function GET(req: Request) {
       { status: 400 },
     );
   }
-  const win = team?resolveRosterWindow({view:team.query.view,month:team.scope.from.slice(0,7),from:team.scope.from,to:team.scope.to,today:todayInKualaLumpur()}).window:resolved.window;
+  const win = team?rosterTeamWindow(team,todayInKualaLumpur()):resolved.window;
   /** The file is named for what it holds: a month by its month, any other window by its two ends. */
   const stamp = win.kind === 'month' ? win.month : `${win.from}_${win.to}`;
 

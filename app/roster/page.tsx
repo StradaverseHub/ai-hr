@@ -20,7 +20,7 @@ import {
   type RosterViewKind,
 } from '@/lib/roster-month';
 
-import {rosterTeamContext} from './my-team-scope';
+import {rosterTeamContext,rosterTeamWindow} from './my-team-scope';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
 /**
@@ -65,7 +65,7 @@ export default async function RosterPage({
   const sp = await searchParams;
 
   const team=await rosterTeamContext(s,scopeIds,sp);
-  const teamQuery=team?.query??null,teamScope=team?.scope??null;
+  const teamScope=team?.scope??null;
   const companies = (await listCompanies(s)).filter(c=>!teamScope||teamScope.companyIds.includes(c.id)).filter((c) => scopeIds.length === 0 || scopeIds.includes(c.id));
   if (companies.length === 0) {
     // a57f0584 — the empty state takes the SAME width as the screen. It was mx-auto max-w-6xl, which is a
@@ -110,7 +110,7 @@ export default async function RosterPage({
    * `assertRosterWindow` — so this is the message, not the guard.
    */
   const resolved = resolveRosterWindow({ view: sp.view, month: sp.month, from: sp.from, to: sp.to, today: todayIso });
-  const win = teamScope ? resolveRosterWindow({view:teamQuery!.view,month:teamScope.from.slice(0,7),from:teamScope.from,to:teamScope.to,today:todayIso}).window : resolved.window;
+  const win = team ? rosterTeamWindow(team,todayIso) : resolved.window;
   const month = win.month;
 
   const rosterView = await rosterWindowView(s, {

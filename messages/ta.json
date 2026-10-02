@@ -14482,6 +14482,7 @@
     "employeeCode": "பணியாளர் குறியீடு",
     "occupation": "பணி",
     "cancel": "ரத்து",
-    "saving": "சேமிக்கிறது…"
+    "saving": "சேமிக்கிறது…",
+    "attentionCount": "{count} உருப்படிகள் கவனம் தேவை"
   }
 }

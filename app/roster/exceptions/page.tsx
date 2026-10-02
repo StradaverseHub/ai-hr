@@ -12,7 +12,7 @@ import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { Card, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { ToilElectButton } from '@/components/toil-elect-button';
 import { resolveRosterWindow, rosterDateLocale } from '@/lib/roster-month';
-import {rosterTeamContext} from '../my-team-scope';
+import {rosterTeamContext,rosterTeamWindow} from '../my-team-scope';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
 /**
@@ -74,7 +74,7 @@ export default async function RosterExceptionsPage({
    * query string is what stops a hand-typed `?from=2026-01-01&to=2026-12-31` asking `rosterVariance` for
    * a year across every company — the resolver clamps, exactly as it does on the roster.
    */
-  const win = team?resolveRosterWindow({view:team.query.view,month:team.scope.from.slice(0,7),from:team.scope.from,to:team.scope.to,today:todayIso}).window:resolveRosterWindow({ view: sp.view, month: sp.month, from: sp.from, to: sp.to, today: todayIso }).window;
+  const win = team?rosterTeamWindow(team,todayIso):resolveRosterWindow({ view: sp.view, month: sp.month, from: sp.from, to: sp.to, today: todayIso }).window;
   const { from, to } = win;
 
   // The roster's own query string, rebuilt so Back lands on the window and narrowing this was opened from.

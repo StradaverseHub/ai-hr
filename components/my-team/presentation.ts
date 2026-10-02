@@ -15,10 +15,15 @@ export const STATUS_CLASSES:Record<MyTeamCellStatus,string>={
 export function dateText(date:string,locale:string,options:Intl.DateTimeFormatOptions={weekday:'short',day:'numeric',month:'short'}):string{
  return new Intl.DateTimeFormat(locale,{...options,timeZone:'UTC'}).format(new Date(`${date}T00:00:00Z`));
 }
-export function clockText(value:string|null,locale:string):string{
- if(!value)return '—';
- const instant=new Date(value);if(!Number.isFinite(instant.getTime()))return '—';
- return new Intl.DateTimeFormat(locale,{hour:'2-digit',minute:'2-digit',hourCycle:'h23',timeZone:'Asia/Kuala_Lumpur'}).format(instant);
+/** Application timestamps are instants; calendar grid dates above remain plain UTC dates. */
+export function instantDateText(value:string,locale:string):string{
+ return new Intl.DateTimeFormat(locale,{weekday:'short',day:'numeric',month:'short',timeZone:'Asia/Kuala_Lumpur'}).format(new Date(value));
+}
+/** Attendance TIME is already a local clock, matching the canonical Attendance reader's HH:mm display.
+ * It has no date/offset to reinterpret. Application instants above are a separate type of source fact. */
+export function clockText(value:string|null,_locale:string):string{
+ if(!value||!/^((?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,6})?)?|24:00:00(?:\.0{1,6})?)$/.test(value))return '—';
+ return value.slice(0,5);
 }
 export function initials(name:string):string{return name.trim().split(/\s+/).slice(0,2).map(part=>part[0]??'').join('').toLocaleUpperCase();}
 export function weekFor(employee:MyTeamEmployee,selectedDate:string):MyTeamWeekSummary|undefined{return employee.weeks.find(week=>week.from<=selectedDate&&week.to>=selectedDate);}
@@ -61,7 +66,7 @@ export function formatMyTeamCell(day:MyTeamDay,layers:MyTeamLayers,locale:string
  const attendance=layers.attendance&&day.date<=options.today?attendanceText(day,locale,t):null;
  const future=layers.roster&&day.date>options.today&&day.roster?.start&&day.roster.end?`${day.roster.start}–${day.roster.end}`:null;
  const primary=leaveTexts.length?leaveTexts.join(' · '):attendance??future;
- const secondary=leaveTexts.length&&day.leave.some(leave=>leave.session==='AM'||leave.session==='PM'||leave.session==='hourly')?attendance:null;
+ const secondary=leaveTexts.length&&(day.leave.some(leave=>leave.session==='AM'||leave.session==='PM'||leave.session==='hourly')||day.leave.every(leave=>leave.status==='pending'))?attendance:null;
  let compact='';
  if(leaveTexts.length)compact=day.leave.map(leave=>`${leave.code}${leave.status==='pending'?'?':''}`).join('/');
  else if(layers.attendance&&day.date<=options.today&&day.attendance){

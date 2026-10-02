@@ -14482,6 +14482,7 @@
     "employeeCode": "Employee code",
     "occupation": "Occupation",
     "cancel": "Cancel",
-    "saving": "Saving…"
+    "saving": "Saving…",
+    "attentionCount": "{count} items need attention"
   }
 }
