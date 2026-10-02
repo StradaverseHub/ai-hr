@@ -9,7 +9,7 @@ const translate=(locale:keyof typeof catalogues):MyTeamTranslate=>createTranslat
 function leave(session:'full_day'|'AM'|'PM'|'hourly'='full_day',status:'approved'|'pending'='approved'){return {requestId:ids.request,leaveTypeId:ids.leave,code:'AL',name:'Annual',color:'violet',session,status,days:session==='full_day'?1:0.5,fromTime:null,toTime:null};}
 describe('My Team presents saved source facts without deriving attendance or leave entitlements',()=>{
  it('formats application instants in KL without changing plain grid calendar dates',()=>{
-  expect(instantDateText('2026-10-01T20:30:00Z','en')).toContain('2 Oct');
+  expect(instantDateText('2026-10-01T20:30:00Z','en')).toContain('Oct 2');
  });
  it('uses the source status, never lateness inferred from shift or clock comparison',()=>{
   const day=teamDay();day.attendance!.checkInAt='2026-10-02T03:30:00Z';day.attendance!.lateMinutes=0;

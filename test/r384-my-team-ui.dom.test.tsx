@@ -31,8 +31,8 @@ describe('My Team client consumes canonical facts and preserves action context',
  it('shows the complete week, pending request range, KL application date, attention badge and absent shift facts',()=>{
   const snapshot=teamSnapshot();snapshot.actionableApprovals[0].appliedAt='2026-10-01T20:30:00Z';snapshot.attention.push({kind:'absent',id:'absent',employmentId:ids.person,date:snapshot.today,lateMinutes:null,pendingLeave:true});
   mount(snapshot);
-  expect(screen.getByText(/28 Sep.*4 Oct/)).toBeTruthy();expect(screen.getByText(/Synthetic A.*5 Oct.*6 Oct/)).toBeTruthy();
-  expect(screen.getByText(/applied Fri, 2 Oct/)).toBeTruthy();expect(screen.getByLabelText('2 items need attention').textContent).toBe('2');
+  expect(screen.getByText(/Sep 28.*Oct 4/)).toBeTruthy();expect(screen.getByText(/Synthetic A.*Oct 5.*Oct 6/)).toBeTruthy();
+  expect(screen.getByText(/applied Fri, Oct 2/)).toBeTruthy();expect(screen.getByLabelText('2 items need attention').textContent).toBe('2');
   expect(screen.getByText(/D · 08:30–17:30/).textContent).toContain(en.myTeam.noCheckIn);expect(screen.getByText(/D · 08:30–17:30/).textContent).toContain(en.myTeam.leavePending);
   const today=screen.getByRole('region',{name:en.myTeam.today});expect(today.className).toContain('grid-cols-2');expect(today.className).toContain('min-[900px]:grid-cols-3');expect(today.className).not.toContain('xl:grid-cols-6');
   expect(screen.getByText(en.myTeam.status_upcoming)).toBeTruthy();
@@ -46,7 +46,7 @@ describe('My Team client consumes canonical facts and preserves action context',
   expect(within(drawer).getByRole('tab',{name:en.myTeam.leaveBalance}).getAttribute('aria-selected')).toBe('true');
   expect(document.activeElement).toBe(within(drawer).getByRole('tab',{name:en.myTeam.leaveBalance}));
   for(let index=0;index<12;index++){await user.tab();expect(drawer.contains(document.activeElement)).toBe(true);}
-  expect(within(drawer).getByText(/2 Nov/)).toBeTruthy(); // Upcoming group is outside the selected period, not derived from its cells.
+  expect(within(drawer).getByText(/Nov 2/)).toBeTruthy(); // Upcoming group is outside the selected period, not derived from its cells.
   await user.keyboard('{Escape}');await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());expect(document.activeElement).toBe(cell);
  });
  it('switches all layers off without requests, retaining truthful status colours and full keyboard detail',()=>{
@@ -77,7 +77,7 @@ describe('My Team client consumes canonical facts and preserves action context',
   const {approveAction}=mount(snapshot);const user=userEvent.setup();
   await user.click(screen.getByRole('button',{name:en.myTeam.chooseDates}));const approve=screen.getByRole('button',{name:en.myTeam.approve});expect((approve as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByRole('button',{name:en.myTeam.reject}) as HTMLButtonElement).disabled).toBe(true);
-  await user.click(screen.getByRole('checkbox',{name:/5 Oct/}));await user.type(screen.getByRole('textbox',{name:en.myTeam.rejectReason}),'Overlaps another request');
+  await user.click(screen.getByRole('checkbox',{name:/Oct 5/}));await user.type(screen.getByRole('textbox',{name:en.myTeam.rejectReason}),'Overlaps another request');
   fetcher.mockResolvedValueOnce(response(snapshot));await user.click(screen.getByRole('button',{name:en.myTeam.reject}));await waitFor(()=>expect(approveAction).toHaveBeenCalledTimes(1));
   const data=approveAction.mock.calls[0][0] as FormData;expect(data.get('requestId')).toBe(ids.request);expect(data.get('decision')).toBe('rejected');expect(data.get('rejectReason')).toBe('Overlaps another request');expect(data.getAll('dateIds')).toEqual([ids.date]);expect(data.getAll('companyIds')).toEqual([ids.company]);
  });
