@@ -41,7 +41,8 @@ export async function listTaxSchemeDeclarationsMY(ctx:SessionContext,employmentI
 export async function saveTaxSchemeDeclarationMY(ctx:SessionContext,p:{employmentId:string;expectedCompanyId:string;scheme:string;validFrom:string;validTo:string;approvalReference:string;eligibilityConfirmed:boolean}){
   if(!schemeOk(p.scheme))throw new TaxSchemeDeclarationError('invalid_scheme');
   if(!validPeriod(p.validFrom)||!validPeriod(p.validTo)||p.validFrom>p.validTo)throw new TaxSchemeDeclarationError('invalid_period');
-  if(p.eligibilityConfirmed!==true||!ctx.userId)throw new TaxSchemeDeclarationError('approval_required');
+  const actorUserId = ctx.userId;
+  if(p.eligibilityConfirmed!==true||!actorUserId)throw new TaxSchemeDeclarationError('approval_required');
   const reference=p.approvalReference.trim();
   if(!reference||reference.length>300)throw new TaxSchemeDeclarationError('missing_reference');
   return withTenant(ctx,async tx=>{
@@ -55,7 +56,7 @@ export async function saveTaxSchemeDeclarationMY(ctx:SessionContext,p:{employmen
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+e.employmentId+'tax-scheme'},0))`);
     const [overlap]=await tx.select({id:employmentTaxSchemeMy.id}).from(employmentTaxSchemeMy).where(and(eq(employmentTaxSchemeMy.tenantId,ctx.tenantId),eq(employmentTaxSchemeMy.employmentId,e.employmentId),eq(employmentTaxSchemeMy.companyId,e.companyId),isNull(employmentTaxSchemeMy.archivedAt),lte(employmentTaxSchemeMy.validFrom,p.validTo),gte(employmentTaxSchemeMy.validTo,p.validFrom))).limit(1);
     if(overlap)throw new TaxSchemeDeclarationError('overlap');
-    const [row]=await tx.insert(employmentTaxSchemeMy).values({tenantId:ctx.tenantId,employmentId:e.employmentId,companyId:e.companyId,scheme:p.scheme as IncentiveScheme,validFrom:p.validFrom,validTo:p.validTo,approvalReference:reference,declaredByUserId:ctx.userId}).returning({id:employmentTaxSchemeMy.id});
+    const [row]=await tx.insert(employmentTaxSchemeMy).values({tenantId:ctx.tenantId,employmentId:e.employmentId,companyId:e.companyId,scheme:p.scheme as IncentiveScheme,validFrom:p.validFrom,validTo:p.validTo,approvalReference:reference,declaredByUserId:actorUserId}).returning({id:employmentTaxSchemeMy.id});
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment-tax-scheme',aggregateId:row.id,eventType:'employment.tax.scheme.declared',actor:actorOf(ctx),subjectEmploymentId:e.employmentId,payload:{companyId:e.companyId,scheme:p.scheme,validFrom:p.validFrom,validTo:p.validTo,eligibilityConfirmed:true}});
     return row.id;
   });
