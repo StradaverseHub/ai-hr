@@ -175,7 +175,7 @@ describe('7076f8af — Reset lands in the run flow, and the run flow ends', () =
 
   it('2b. the generation stays inside a try so a failed run renders as a reason row, not a thrown page', () => {
     const body = PROCESS_ACTIONS.slice(PROCESS_ACTIONS.indexOf('export async function resumeRunAction'));
-    expect(body).toMatch(/reason: reasonForError\(\(e as Error\)\.message\)/);
+    expect(body).toMatch(/reason: reasonForPayrollError\(e\)/);
     expect(body).toMatch(/status: 'failed'/);
   });
 
