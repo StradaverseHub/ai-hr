@@ -1,5 +1,6 @@
 'use client';
 
+import { formatQualifyingChildCount } from '@/localization/child-qualification';
 import { useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 // 04b88724 (r340 fix pass) — the CLIENT-SAFE country-pack seam (ADR-0080 rung 5b, D4). This island prices
@@ -147,7 +148,7 @@ export type ChildReliefPricing = {
 
 /** A whole count reads as a whole number; a 50%-shared child priced by category produces a HALF unit, and
  *  rounding it would make the count disagree with the ringgit beside it. See core/dependents.ts. */
-const fmtCount = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+const fmtCount = formatQualifyingChildCount;
 const fmtRM = (n: number) =>
   new Intl.NumberFormat('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
@@ -312,9 +313,10 @@ export function IdentityTaxCard({
                   : { from: 'headCount', taxCategory: Number(taxCategory), children: childRelief.eligibleChildren, perChild: childRelief.perChild }) ?? null)
               : { units: childRelief.qualifyingChildren, amountRM: childRelief.reliefRM, rows: [] })
           : null;
-  const manualClaimAllowed = !packChildReliefFor || packChildReliefFor({
+  const childPricingAvailable = !packChildReliefFor || childRelief != null && (mode !== 'auto_table' || prices.length > 0);
+  const manualClaimAllowed = childPricingAvailable && (!packChildReliefFor || packChildReliefFor({
     from: 'headCount', taxCategory: Number(taxCategory), children: 1, perChild: childRelief?.perChild ?? 0,
-  }).units > 0;
+  }).units > 0);
   const headCount =
     mode === 'auto'
       ? (childRelief?.eligibleChildren ?? 0)
@@ -607,7 +609,7 @@ export function IdentityTaxCard({
                   data-child-qualifying-value
                   className={`${inputCls} items-center bg-muted/50 text-muted-foreground`}
                 >
-                  {fmtCount(qualifying)}
+                  {childPricingAvailable ? fmtCount(qualifying) : t('childQualificationUnavailable')}
                 </output>
               )}
               <span className="text-xs text-muted-foreground" data-child-qualifying-provenance>
@@ -619,7 +621,7 @@ export function IdentityTaxCard({
                   it, because item 8 reads the box on the left. Nothing on the EA prints C; the relief it
                   produces is what Form EA Section D item 6 prints. */}
               <span className="text-xs text-muted-foreground" data-child-qualifying-doc>
-                {t('childrenQualifyingDoc', { perChild: childRelief?.perChild ?? 0 })}
+                {childPricingAvailable ? t('childrenQualifyingDoc', { perChild: childRelief?.perChild ?? 0 }) : t('childQualificationReviewSettings')}
               </span>
               {childRelief && (
                 <span className="text-xs text-muted-foreground" data-child-relief-amount>

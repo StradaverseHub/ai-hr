@@ -155,6 +155,8 @@ describe('d64d0df4 · disabled spouse', () => {
 describe('d64d0df4 · the child-relief category table', () => {
   const RULES: StatutoryRuleset['pcb']['reliefs'] = {
     ...DEFAULT_MY_STATUTORY.pcb.reliefs,
+    // Exercise existing unversioned monetary overrides without fabricating a contradictory weights map.
+    childQualificationVersion: undefined, childQualificationWeights: undefined,
     childByCategory: {
       under_18: 1000,
       study_preu: 2000,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { pcbMonth } from '../localization/my/payroll';
+import { repriceChildQualificationReliefs } from '../localization/child-qualification';
 import { childReliefFor, childReliefPrices } from '../localization/my/child-relief';
 import { DEFAULT_MY_STATUTORY } from '../localization/my/statutory-tables';
 import { explainPcb, pcbSlipSections } from '../core/pcb-explain';
@@ -8,7 +9,7 @@ const sides = { profile: { mode: 'auto_table', table: { disabled_study: { full: 
 const current = { individual: 9000, spouse: 0, children: 0, disabledIndividual: 0, disabledSpouse: 0, total: 9000, lp: 0 };
 function run(table: Record<string, { full?: number; half?: number }>, q = 2000) {
   const pcb = structuredClone(DEFAULT_MY_STATUTORY.pcb);
-  pcb.reliefs.perChild = q;
+  pcb.reliefs = repriceChildQualificationReliefs({ ...pcb.reliefs, perChild: q }, pcb.reliefs);
   const figure = childReliefFor({ from: 'table', table, prices: childReliefPrices(pcb.reliefs) });
   const childWorking = { mode: 'auto_table' as const, table, rows: figure.rows, categoryUnits: Object.fromEntries(figure.rows.map(row => [row.category, figure.rows.filter(other => other.category === row.category).reduce((sum, other) => sum + other.units, 0)])), headCount: figure.rows.reduce((n, r) => n + r.children, 0) };
   const payroll = pcbMonth({ monthlyWage: 14000, epfMonthly: 1540, month: 7, profile: { category: 2, children: 0, childReliefAmount: figure.amountRM, childWorking }, pcb });
@@ -131,9 +132,10 @@ describe('r377 malformed recorded child provenance', () => {
     });
     expect(x.trace?.childWorking?.headCount).toBe(2);
   });
-  it('accepts payroll-rounded C while preserving exact category totals', () => {
+  it('configured Q does not round or change qualifying C', () => {
     const r = run({ under_18: { full: 1 } }, 3000);
-    expect(r.x.trace?.childCount).toBe(.67);
-    expect(r.x.trace?.childWorking?.categoryUnits.under_18).toBeCloseTo(2 / 3);
+    expect(r.x.trace?.childCount).toBe(1);
+    expect(r.x.reliefs.children).toBe(3000);
+    expect(r.x.trace?.childWorking?.categoryUnits.under_18).toBe(1);
   });
 });

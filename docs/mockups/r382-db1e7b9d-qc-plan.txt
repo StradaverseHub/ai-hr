@@ -1,0 +1,38 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+The saved child-claim table and mathematical PDF symbols already work. Further review found that changing the relief per child can make the employee page, category contributions and saved qualifying-child count disagree. The earlier conclusion that only an unidentified historical payroll needed checking was incomplete.
+
+WHAT WE'LL CHANGE
+
+- The employee page and payroll will use one qualifying-child count. Full and shared claims will contribute the same category counts everywhere, including fractional claims.
+- Changing the relief per child will change the deduction for future payroll, without changing the qualifying-child count. The child deduction will use Q multiplied by C.
+- When an earlier configuration is next published, its existing category amounts will be preserved as qualifying-child weights before applying a changed relief per child. A deliberately changed category amount will remain an explicit declaration; conflicting amounts and counts will require correction before payroll can proceed.
+- New payroll runs will save the exact count, category contributions and settings used together. The screen and PDF will show those recorded values consistently.
+
+WHAT YOU'LL GET
+
+Q, C, the category table and the child deduction will explain the same calculation. The current configuration example will retain Q at the configured relief per child and C at the employee's actual qualifying-child count.
+
+GOOD TO KNOW
+
+- Already processed payroll remains unchanged. Missing historical details will not be filled using today's employee information or settings. Checking a particular historical discrepancy still needs its employee and payroll month or run.
+- Employees with a single entered child total keep that total as their source; the system will not invent category claims for them.
+- This revision addresses the remaining Q/C reconciliation. The previously deferred additional calculation steps remain outside this revision.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+One jurisdiction-owned childReliefFor result supplies exact C and monetary relief to Personnel, preview and monthly payroll. No round2 on qualifying C and no toFixed(1) count formatter. New exact-count traces carry childCountVersion 1. New saved working must validate category-unit sums, C and Q multiplied by C against the saved child deduction; legacy rounded traces keep their original availability treatment without backfill.
+
+Prospective configuration: pcb.reliefs.childQualificationVersion 1 plus childQualificationWeights. New defaults use official weights 1, 1, 4, 4 and 8 (HASiL 2026 printed page 27). Existing unversioned stored overrides and signed packs retain legacy monetary category prices; no row rewrite or automatic pack ingestion. New configuration writes materialize existing weights once. Q-only edits use the original resolved Q and prices, then reprice those weights using submitted Q. Deliberately changed legacy category money is converted using submitted Q so its explicitly supplied amount remains intact. Explicit versioned monetary contradictions refuse. Zero Q with positive legacy category money refuses a new payroll/configuration write; unavailable UI prices do not claim C zero beside positive relief.
+
+The policy-free normalization leaf is shared with the advanced editor. It appends a new effective-dated record through existing admin guards and audit; generic screens do not import MY policy. Update both full-ruleset and PCB-component publication paths. New default version 2026.11 and DEV-signed bundled artifact stay in sync; installed immutable pack rows remain untouched.
+
+Existing ten sections, shared PDF notation and final payroll amounts remain the explanation source. This plan does not claim original Sequence 9.7/9.8 additions complete, nor that the unidentified production Q/C case has been reproduced.
+
+Verification: Q 2000 and 3000, manual, full, half, mixed, unclaimed and category-one; legacy custom prices, Q-only edit versus intentional category-money edit; zero-Q invalid configuration; exact Personnel/count/screen/PDF parity; immutable saved snapshots after employee/configuration changes; malformed and legacy unavailable provenance; six locale configuration messages; pack signature/default identity and owner/import boundaries. Named reversals must fail before restoration. Parent owns the full gate and actual route/PDF verification. No payroll backfill, private production audit, or production statutory sync.
+
+Primary source: https://www.hasil.gov.my/wp-content/uploads/spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf

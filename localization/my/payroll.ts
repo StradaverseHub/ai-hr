@@ -36,7 +36,8 @@ import {
 // 04b88724 — the ONE child-relief derivation (the count, the money and the working). Kept in its own
 // db-free leaf because the Identification & Tax card calls the same function through the CLIENT seam, and
 // this module must not be dragged into a browser bundle to make that possible.
-import { childReliefAllowed, childReliefFor, childReliefPrices } from './child-relief';
+import { ChildReliefConfigurationError } from '../child-qualification';
+import { assertChildReliefConfigurationMY, childReliefAllowed, childReliefFor, childReliefPrices } from './child-relief';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 /** Round a contribution up to the next whole ringgit (KWSP Third Schedule convention). */
@@ -78,6 +79,8 @@ export type TaxProfile = {
    *  'auto_table' child-relief mode. When supplied it REPLACES `children × perChild` in the relief sum;
    *  when absent (every 'manual' and 'auto' employee) the arithmetic below is untouched to the cent. */
   childReliefAmount?: number;
+  /** Exact C supplied by the same country owner as the child relief amount. */
+  childReliefCount?: number;
   /** Forward-only evidence from the same country-pack derivation used by payroll. */
   childWorking?: {
     mode: 'auto_table' | 'manual';
@@ -795,6 +798,8 @@ export type PcbMonthResult = {
        *  relief is shared 50/50, because `childReliefFor` halves such a child and the product must still
        *  reach the relief. The spec has no half child; a shared claim settles at the annual assessment. */
       childCount: number;
+      /** Version 1 records exact qualifying C rather than the former monetary 2dp projection. */
+      childCountVersion?: 1;
       /** Q — the deduction FOR ONE qualifying child, straight off the ruleset. */
       childDeductionPerChild: number;
       childWorking?: NonNullable<TaxProfile['childWorking']> & {
@@ -924,9 +929,18 @@ export function pcbMonth(p: {
   // child-relief mode, where the caller has already worked the total out category by category from the
   // ruleset's `childByCategory` map (halving any 50%-share child). For every other employee it is
   // undefined and this is `children * perChild` — the identical expression that was here before.
+  assertChildReliefConfigurationMY(pcb.reliefs);
   const childRelief = childReliefAllowed(category)
     ? (p.profile?.childReliefAmount ?? children * pcb.reliefs.perChild)
     : 0;
+  // With Q zero, a weighted declaration's C cannot be recovered from its zero money. Require the
+  // exact owner result rather than inventing the physical head count for a category-priced claim.
+  if (childReliefAllowed(category) && pcb.reliefs.perChild === 0 && p.profile?.childReliefAmount != null && p.profile.childReliefCount == null)
+    throw new ChildReliefConfigurationError();
+  const childCount = !childReliefAllowed(category) ? 0 : p.profile?.childReliefCount ??
+    (pcb.reliefs.perChild > 0 ? childRelief / pcb.reliefs.perChild : children);
+  if (!Number.isFinite(childCount) || childCount < 0 || Math.abs(childCount * pcb.reliefs.perChild - childRelief) > 0.0000001)
+    throw new ChildReliefConfigurationError();
   const reliefs =
     pcb.reliefs.individual +
     (category === 2 ? pcb.reliefs.spouse : 0) +
@@ -1030,7 +1044,8 @@ export function pcbMonth(p: {
         // r359 — C from the money, not from `children` (which is `num_children`, the record count).
         // `childRelief` is what was actually deducted, weighted by the s.48 grid where one applies, so
         // dividing by the per-child figure gives the spec's C and keeps Q x C === the relief exactly.
-        childCount: pcb.reliefs.perChild > 0 ? round2(childRelief / pcb.reliefs.perChild) : 0,
+        childCount,
+        childCountVersion: 1,
         childDeductionPerChild: pcb.reliefs.perChild,
         ...(p.profile?.childWorking ? {
           childWorking: {

@@ -43,7 +43,7 @@ function pcbBlock(): string {
 describe('2e3ec77d · the statutory editor preserves reliefs it does not render', () => {
   it('the reliefs object SPREADS its base before overwriting the edited fields', () => {
     const pcb = pcbBlock();
-    const reliefsAt = pcb.indexOf('reliefs: {');
+    const reliefsAt = pcb.indexOf('reliefs: (() => { const edited = {');
     expect(reliefsAt, 'reliefs is still built here').toBeGreaterThan(-1);
     const reliefs = pcb.slice(reliefsAt, pcb.indexOf('},', reliefsAt));
 

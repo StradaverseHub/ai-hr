@@ -7,6 +7,7 @@
  * an empty table ⇒ exactly the built-in behaviour. Past payslips snapshot their own figures, so an
  * edit only ever affects future runs.
  */
+import { assertChildQualificationReliefs, prepareChildQualificationReliefs, ChildReliefConfigurationError } from '../child-qualification';
 import { and, desc, eq, isNull, lte } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../../db/client';
 import { actorOf, appendEvent } from '../../db/events';
@@ -390,6 +391,10 @@ export function validateStatutoryRuleset(data: StatutoryRuleset): string[] {
     else if (r.disabledIndividual != null && !nonNeg(r.disabledIndividual))
       errs.push('PCB disabled-individual relief must be ≥ 0.');
     if (r) {
+      try { assertChildQualificationReliefs(r, DEFAULT_MY_STATUTORY.pcb.reliefs.childByCategory); }
+      catch { errs.push('pcb_child_relief_configuration_invalid'); }
+      if (r.childQualificationWeights && Object.keys(r.childQualificationWeights).some(key => !(CHILD_RELIEF_CATEGORY_KEYS as readonly string[]).includes(key)))
+        errs.push('pcb_child_relief_configuration_invalid');
       // d64d0df4 — the disabled-SPOUSE deduction, same optional-with-fallback treatment as above.
       if (r.disabledSpouse != null && !nonNeg(r.disabledSpouse))
         errs.push('PCB disabled-spouse relief must be ≥ 0.');
@@ -600,6 +605,8 @@ function changedFields(before: StatutoryRuleset, after: StatutoryRuleset): strin
   // d64d0df4 — the per-category child relief is a MAP, not a scalar, so it is compared the way the EPF
   // band TABLES below it are. Without this a per-category amount could be corrected (or dropped) without
   // the audit's changed-field list ever mentioning it — the one relief that would be edited silently.
+  if (JSON.stringify(before.pcb?.reliefs?.childQualificationWeights) !== JSON.stringify(after.pcb?.reliefs?.childQualificationWeights)) changed.push('pcb.reliefs.childQualificationWeights');
+  if (before.pcb?.reliefs?.childQualificationVersion !== after.pcb?.reliefs?.childQualificationVersion) changed.push('pcb.reliefs.childQualificationVersion');
   if (JSON.stringify(before.pcb?.reliefs?.childByCategory) !== JSON.stringify(after.pcb?.reliefs?.childByCategory))
     changed.push('pcb.reliefs.childByCategory');
   if (JSON.stringify(before.epf?.partA) !== JSON.stringify(after.epf?.partA)) changed.push('epf.partA');
@@ -626,13 +633,19 @@ export async function saveStatutoryRulesetMY(
 ): Promise<{ id: string }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.effectiveFrom))
     throw new StatutoryRulesetInvalidError(['Effective-from must be a YYYY-MM-DD date.']);
-  const data: StatutoryRuleset = { ...input.data, version: input.version };
-  const problems = validateStatutoryRuleset(data);
-  if (problems.length) throw new StatutoryRulesetInvalidError(problems);
-
   return withTenant(ctx, async (tx) => {
-    // The ruleset that was active on the new effective date — the audit "before".
+    // Normalize only the new appended record; the resolved before value and stored rows remain untouched.
     const before = await getActiveStatutoryMY(tx, { asOf: input.effectiveFrom });
+    let data: StatutoryRuleset;
+    try {
+      data = { ...input.data, version: input.version, pcb: { ...input.data.pcb, reliefs:
+        prepareChildQualificationReliefs(input.data.pcb.reliefs, before.pcb.reliefs, DEFAULT_MY_STATUTORY.pcb.reliefs.childByCategory) } };
+    } catch (e) {
+      if (e instanceof ChildReliefConfigurationError) throw new StatutoryRulesetInvalidError([e.code]);
+      throw new StatutoryRulesetInvalidError(validateStatutoryRuleset(input.data));
+    }
+    const problems = validateStatutoryRuleset(data);
+    if (problems.length) throw new StatutoryRulesetInvalidError(problems);
     const [row] = await tx
       .insert(statutoryRuleset)
       .values({
@@ -760,10 +773,16 @@ export async function setComponentOverrideMY(
     throw new StatutoryRulesetInvalidError(['Effective-from must be a YYYY-MM-DD date.']);
   if (typeof input.version !== 'string' || input.version.trim() === '')
     throw new StatutoryRulesetInvalidError(['Version is required.']);
-  const problems = validateStatutoryComponent(input.body, input.data);
-  if (problems.length) throw new StatutoryRulesetInvalidError(problems);
-
   return withTenant(ctx, async (tx) => {
+    let data = input.data;
+    if (input.body === 'pcb') {
+      const before = await getActiveStatutoryMY(tx, { asOf: input.effectiveFrom });
+      const pcb = data as StatutoryRuleset['pcb'];
+      try { data = { ...pcb, reliefs: prepareChildQualificationReliefs(pcb.reliefs, before.pcb.reliefs, DEFAULT_MY_STATUTORY.pcb.reliefs.childByCategory) }; }
+      catch (e) { if (e instanceof ChildReliefConfigurationError) throw new StatutoryRulesetInvalidError([e.code]); throw new StatutoryRulesetInvalidError(validateStatutoryComponent(input.body, data)); }
+    }
+    const problems = validateStatutoryComponent(input.body, data);
+    if (problems.length) throw new StatutoryRulesetInvalidError(problems);
     const [row] = await tx
       .insert(statutoryComponentOverride)
       .values({
@@ -772,7 +791,7 @@ export async function setComponentOverrideMY(
         body: input.body,
         version: input.version.trim(),
         effectiveFrom: input.effectiveFrom,
-        data: input.data as object,
+        data: data as object,
         notes: input.notes ?? null,
         createdByUserId: ctx.userId ?? null,
       })
@@ -783,7 +802,7 @@ export async function setComponentOverrideMY(
       aggregateId: row.id,
       eventType: 'statutory.component.updated',
       actor: actorOf(ctx),
-      payload: { country: 'MY', body: input.body, version: input.version, effectiveFrom: input.effectiveFrom },
+      payload: { country: 'MY', body: input.body, version: input.version, effectiveFrom: input.effectiveFrom, data },
     });
     return { id: row.id };
   });

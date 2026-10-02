@@ -140,7 +140,7 @@ export type ChildReliefPrice = {
   key: string;
   /** What the resolved ruleset prices one such child at, claimed in full. */
   amountRM: number;
-  /** The SAME price as a qualifying-children count: `amountRM / perChild`. */
+  /** Explicit qualification weight in versioned rulesets; legacy prices retain amountRM / perChild. */
   units: number;
 };
 

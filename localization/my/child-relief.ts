@@ -12,7 +12,9 @@
  * derivation, and it is here.
  *
  * WHAT "ONE DERIVATION" MEANS CONCRETELY:
- *   · `childReliefPrices` is the only place `units = amountRM ÷ perChild` is written. LHDN's specification
+ *   · Versioned rulesets record explicit qualifying weights independently of Q. Legacy unversioned
+ *     category monetary declarations retain their existing amountRM ÷ perChild semantics.
+ *   · `childReliefPrices` is the only reader of these category units. LHDN's specification
  *     prices each s.48 category as a number of QUALIFYING CHILDREN ("considered with 4 children") and the
  *     ruleset stores the ringgit; the two are the same statement and this converts between them once.
  *   · `childReliefFor` is the only walk of a keyed grid, and the only place a 50%-shared child is halved.
@@ -31,6 +33,7 @@
  * An explicit tax category applies HASiL 2026 MTD eligibility: category 1 has C = 0.
  * Omitted categories retain raw pricing for family/category reference calculations.
  */
+import { assertChildQualificationReliefs, ChildReliefConfigurationError } from '../child-qualification';
 import type { ChildReliefFigure, ChildReliefInput, ChildReliefPrice, ChildReliefRow } from '../country-pack';
 import {
   CHILD_RELIEF_CATEGORY_KEYS,
@@ -51,22 +54,36 @@ const whole = (v: unknown) =>
  * resolved ruleset predates 2026.7 — the same optional-with-fallback shape `childReliefAmountFor` has
  * always had, so a stored override that omits the map keeps computing byte-identically.
  *
- * The COUNT is `amountRM ÷ perChild`, which is exact by construction rather than by coincidence: every
+ * Legacy unversioned COUNT is `amountRM ÷ perChild`; prospective versioned rulesets carry explicit
+ * weights, with monetary prices validated as weight × Q. Existing saved settings are not rewritten.
+ * In the verified default: every
  * figure in `childByCategory` IS the specification's qualifying-children count multiplied by the RM2,000
  * per-child relief, which localization/my/statutory-tables.ts states per value with its printed-page
  * citation and test/child-relief-figures-04b88724.test.ts asserts. A ruleset with a zero or missing
  * per-child figure prices no counts at all (0 rather than Infinity), and the caller then shows the ringgit
  * alone rather than a number nobody can read.
  */
+/** Payroll refuses invalid category keys/settings; client readers present the absence instead. */
+export function assertChildReliefConfigurationMY(reliefs: StatutoryRuleset['pcb']['reliefs']): void {
+  assertChildQualificationReliefs(reliefs, DEFAULT_MY_STATUTORY.pcb.reliefs.childByCategory);
+  for (const values of [reliefs.childByCategory, reliefs.childQualificationWeights])
+    if (values && Object.keys(values).some(key => !(CHILD_RELIEF_CATEGORY_KEYS as readonly string[]).includes(key)))
+      throw new ChildReliefConfigurationError();
+}
+
 export function childReliefPrices(reliefs?: StatutoryRuleset['pcb']['reliefs']): ChildReliefPrice[] {
   const amounts = reliefs?.childByCategory ?? DEFAULT_MY_STATUTORY.pcb.reliefs.childByCategory ?? {};
   const perChild = reliefs?.perChild ?? DEFAULT_MY_STATUTORY.pcb.reliefs.perChild;
   const divisor = typeof perChild === 'number' && Number.isFinite(perChild) && perChild > 0 ? perChild : 0;
+  // Invalid settings have no readable count. The authoritative payroll path refuses them explicitly.
+  try { assertChildReliefConfigurationMY(reliefs ?? DEFAULT_MY_STATUTORY.pcb.reliefs); } catch { return []; }
+  const explicit = reliefs?.childQualificationVersion === 1 ? reliefs.childQualificationWeights :
+    reliefs == null ? DEFAULT_MY_STATUTORY.pcb.reliefs.childQualificationWeights : undefined;
   const priced: ChildReliefPrice[] = [];
   for (const key of CHILD_RELIEF_CATEGORY_KEYS) {
     const amountRM = amounts[key];
     if (typeof amountRM !== 'number' || !Number.isFinite(amountRM)) continue;
-    priced.push({ key, amountRM, units: divisor > 0 ? amountRM / divisor : 0 });
+    priced.push({ key, amountRM, units: explicit?.[key] ?? (divisor > 0 ? amountRM / divisor : 0) });
   }
   return priced;
 }

@@ -9,6 +9,7 @@ import type { StatutorySource } from '@/localization/my/statutory-config';
 // Item d64d0df4 — the built-in relief fallbacks + the canonical five-category order for the sign-off rows.
 import { CHILD_RELIEF_CATEGORY_KEYS, DEFAULT_MY_STATUTORY } from '@/localization/my/statutory-tables';
 import Link from 'next/link';
+import { formatQualifyingChildCount } from '@/localization/child-qualification';
 import { pct, rm, fmtUpTo, Row, SourceMeta, VersionBadge, OverrideHistoryTable } from '../shared';
 
 const BASE = '/payroll/configuration';
@@ -72,7 +73,8 @@ export default async function PcbConfigPage({
   // Resolving the display through the identical expression is what makes this card a sign-off surface
   // rather than a second, drift-prone copy of the numbers.
   const fallbackReliefs = DEFAULT_MY_STATUTORY.pcb.reliefs;
-  const childByCategory = ruleset.pcb.reliefs.childByCategory ?? fallbackReliefs.childByCategory ?? {};
+  const childPrices = pack.payroll.childReliefPrices?.(ruleset.pcb.reliefs) ?? [];
+  const childByCategory = Object.fromEntries(childPrices.map(price => [price.key, price.amountRM]));
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -126,6 +128,8 @@ export default async function PcbConfigPage({
           {t('reliefsPendingSignOff')}
         </h3>
         <p className="mt-1 text-xs text-muted-foreground">{t('reliefsPendingSignOffNote')}</p>
+        <p className="mt-2 text-sm text-muted-foreground">{t(ruleset.pcb.reliefs.childQualificationVersion === 1 ? 'childQualificationExplicitNote' : 'childQualificationLegacyNote')}</p>
+        {childPrices.length === 0 && <ErrorBanner message={t('childQualificationInvalid')} />}
         <div className="mt-2 grid gap-x-8 sm:grid-cols-2">
           <Row
             label={t('reliefDisabledIndividual')}
@@ -141,10 +145,11 @@ export default async function PcbConfigPage({
             <Row
               key={key}
               label={t(`reliefChildCat_${key}`)}
-              value={rm(childByCategory[key] ?? 0)}
+              value={childByCategory[key] == null ? t('childQualificationUnavailable') : rm(childByCategory[key])}
               pending={t('pendingSignOff')}
             />
           ))}
+          {childPrices.map(price => <Row key={`qualification-${price.key}`} label={`${t(`reliefChildCat_${price.key}`)} · ${t('childQualificationCount')}`} value={formatQualifyingChildCount(price.units)} />)}
         </div>
         <h3 className="mt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('pcbBands')}</h3>
         <div className="mt-2 overflow-x-auto">

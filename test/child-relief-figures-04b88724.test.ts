@@ -138,6 +138,8 @@ describe('04b88724 · (a) the two figures the reporter was right about', () => {
       ...DEFAULT_MY_STATUTORY.pcb,
       reliefs: {
         ...DEFAULT_MY_STATUTORY.pcb.reliefs,
+        // This simulates the historical unversioned 2026.7 monetary map, not a contradictory new weights declaration.
+        childQualificationVersion: undefined, childQualificationWeights: undefined,
         childByCategory: { ...BUILT_IN, ...WRONG_2026_7 },
       },
     };
@@ -257,7 +259,7 @@ describe('04b88724 · (d) a manual or auto employee is byte-identical — the fl
   it('the corrected map cannot reach an employee who supplies no childReliefAmount', () => {
     const wrong: StatutoryRuleset['pcb'] = {
       ...DEFAULT_MY_STATUTORY.pcb,
-      reliefs: { ...DEFAULT_MY_STATUTORY.pcb.reliefs, childByCategory: { ...BUILT_IN, ...WRONG_2026_7 } },
+      reliefs: { ...DEFAULT_MY_STATUTORY.pcb.reliefs, childQualificationVersion: undefined, childQualificationWeights: undefined, childByCategory: { ...BUILT_IN, ...WRONG_2026_7 } },
     };
     for (const c of CASES) {
       const profile = { category: c.category, children: c.children };
