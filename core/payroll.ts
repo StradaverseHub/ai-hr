@@ -3,7 +3,7 @@ import { businessUnit, payslipInformationSetting } from '../db/schema';
  * Payroll kernel — generic, jurisdiction-neutral (ADR-0008). Computes gross→net and delegates
  * every statutory contribution to the company's country pack. Each mutation appends an event.
  */
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withPayrollTenant` — all 38 exported entry
@@ -395,6 +395,8 @@ export type ReprocessEmployeeOutcome = {
 };
 
 export type ReprocessJobResult = {
+  /** Fences an abandoned worker from changing a reclaimed job; never a payroll business fact. */
+  workerToken?: string;
   outcomes: ReprocessEmployeeOutcome[];
   selected: number;
   reprocessed: number;
@@ -8637,10 +8639,13 @@ export async function reprocessSelectedEmployees(
 
   // Phase 2 — atomically CLAIM the job (queued→running) so a concurrent duplicate request can never
   // run the recompute twice; if the claim updates no row, another worker already took it → don't re-run.
+  const workerToken = randomUUID();
   const claimed = await withTenant(ctx, (tx) =>
     tx
       .update(payrollReprocessJob)
-      .set({ status: 'running', updatedAt: new Date() })
+      .set({ status: 'running', updatedAt: new Date(),
+        result:sql`coalesce(${payrollReprocessJob.result}, '{}'::jsonb) || jsonb_build_object('workerToken', ${workerToken}::text,
+          'outcomes', coalesce(${payrollReprocessJob.result}->'outcomes', '[]'::jsonb))` })
       .where(and(eq(payrollReprocessJob.id, job.id), or(eq(payrollReprocessJob.status, 'queued'),eq(payrollReprocessJob.status, 'failed'),
         and(eq(payrollReprocessJob.status,'running'),lt(payrollReprocessJob.updatedAt,abandonedBefore)))))
       .returning({ id: payrollReprocessJob.id }),
@@ -8656,6 +8661,8 @@ export async function reprocessSelectedEmployees(
         const [currentJob] = await tx.select().from(payrollReprocessJob)
           .where(eq(payrollReprocessJob.id, job.id)).limit(1).for('update');
         const prior = currentJob.result as ReprocessJobResult | null;
+        if (currentJob.status!=='running' || prior?.workerToken!==workerToken)
+          throw new Error('This payroll processing attempt was superseded by a recovered worker.');
         if (prior && !decodeReprocessEmployeeOutcomes(prior,currentJob.employmentIds))
           throw new Error('Stored payroll employee outcomes are invalid.');
         if (prior?.outcomes?.some(r => r.employmentId === employmentId)) return;
@@ -8709,7 +8716,7 @@ export async function reprocessSelectedEmployees(
         const [freshBatch] = await tx.select({totals:payrollBatch.totals,headcount:payrollBatch.employeeCount})
           .from(payrollBatch).where(eq(payrollBatch.id,p.batchId)).limit(1);
         const checkpoint: ReprocessJobResult = {
-          outcomes,selected:enq.employmentIds.length,
+          workerToken,outcomes,selected:enq.employmentIds.length,
           reprocessed:outcomes.filter(r=>r.status==='reprocessed').length,
           recalculated:outcomes.filter(r=>r.classification==='recalculated').length,
           added:outcomes.filter(r=>r.classification==='added').length,
@@ -8733,15 +8740,19 @@ export async function reprocessSelectedEmployees(
     }
     const result = await withTenant(ctx, async tx => {
       const [completed] = await tx.update(payrollReprocessJob)
-        .set({status:'completed',error:null,updatedAt:new Date()}).where(eq(payrollReprocessJob.id,job.id))
+        .set({status:'completed',error:null,updatedAt:new Date()})
+        .where(and(eq(payrollReprocessJob.id,job.id),eq(payrollReprocessJob.status,'running'),
+          sql`${payrollReprocessJob.result}->>'workerToken' = ${workerToken}`))
         .returning({result:payrollReprocessJob.result});
+      if (!completed) throw new Error('This payroll processing attempt was superseded by a recovered worker.');
       return completed.result as ReprocessJobResult;
     });
     return {jobId:job.id,status:'completed' as const,...result};
   } catch (e) {
     await withTenant(ctx, tx => tx.update(payrollReprocessJob)
       .set({status:'failed',error:'REPROCESS_STOPPED',updatedAt:new Date()})
-      .where(eq(payrollReprocessJob.id,job.id)));
+      .where(and(eq(payrollReprocessJob.id,job.id),eq(payrollReprocessJob.status,'running'),
+        sql`${payrollReprocessJob.result}->>'workerToken' = ${workerToken}`)));
     throw new PayrollReprocessStoppedError(job.id,e);
   }
 }

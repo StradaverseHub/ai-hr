@@ -5,6 +5,7 @@ import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
+import * as payrollGate from '../core/module-gate';
 import { packFor } from '../localization/registry';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, generatePayslips, reprocessSelectedEmployees, getReprocessJob, decodeReprocessEmployeeOutcomes, listReprocessEmployeeOutcomes, PayrollReprocessStoppedError, type ReprocessJobResult } from '../core/payroll';
@@ -164,6 +165,47 @@ describe('r382 selected reprocess exact employee outcomes', () => {
   expect(pair.map(r=>r.result.outcomes[0].versionAfter).sort()).toEqual([2,3]);
   expect(new Set(pair.map(r=>r.result.outcomes[0].historyId)).size).toBe(2);
   for(const r of pair){const [h]=await owner.db.select().from(schema.payrollEmployeeResultHistory).where(eq(schema.payrollEmployeeResultHistory.id,r.result.outcomes[0].historyId!));expect(h.versionAfter).toBe(r.result.outcomes[0].versionAfter);}
+ });
+
+ it('a live obsolete worker cannot overwrite a reclaimed running or completed job as failed',async()=>{
+  const a=await hire('Lease A'),b=await hire('Lease B'),c=await hire('Lease C');const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:'2026-05'});await generatePayslips(ctx,{batchId});
+  const selected=[a.employmentId,b.employmentId,c.employmentId].sort(),key=randomUUID();
+  let reachedA!:()=>void,releaseA!:()=>void,reachedB!:()=>void,releaseB!:()=>void,pausedA=false,pausedB=false;
+  const reachedAPromise=new Promise<void>(r=>{reachedA=r;});const releaseAPromise=new Promise<void>(r=>{releaseA=r;});
+  const reachedBPromise=new Promise<void>(r=>{reachedB=r;});const releaseBPromise=new Promise<void>(r=>{releaseB=r;});
+  const original=payrollGate.withPayrollTenant;const hook=vi.spyOn(payrollGate,'withPayrollTenant');
+  hook.mockImplementation((async(...args:Parameters<typeof original>)=>{
+   const value=await original(...args);
+   if(value===undefined){
+    const [job]=await owner.db.select().from(schema.payrollReprocessJob).where(eq(schema.payrollReprocessJob.idempotencyKey,key));
+    const count=(job?.result as ReprocessJobResult)?.outcomes?.length;
+    if(job?.status==='running' && count===1 && !pausedA){pausedA=true;reachedA();await releaseAPromise;}
+    else if(job?.status==='running' && count===2 && pausedA && !pausedB){pausedB=true;reachedB();await releaseBPromise;}
+   }
+   return value;
+  }) as typeof original);
+  const obsolete=reprocessSelectedEmployees(ctx,{batchId,employmentIds:selected,idempotencyKey:key}).catch(error=>error);
+  let recovered:Promise<unknown>|undefined;
+  try {
+   await reachedAPromise;
+   await owner.db.update(schema.payrollReprocessJob).set({updatedAt:new Date(Date.now()-11*60*1000)}).where(eq(schema.payrollReprocessJob.idempotencyKey,key));
+   recovered=reprocessSelectedEmployees(ctx,{batchId,employmentIds:selected,idempotencyKey:key}).catch(error=>error);
+   await reachedBPromise;
+   const [beforeLate]=await owner.db.select().from(schema.payrollReprocessJob).where(eq(schema.payrollReprocessJob.idempotencyKey,key));expect(beforeLate.status).toBe('running');
+   releaseA();expect(await obsolete).toBeInstanceOf(PayrollReprocessStoppedError);
+   const [afterLate]=await owner.db.select().from(schema.payrollReprocessJob).where(eq(schema.payrollReprocessJob.idempotencyKey,key));
+   expect(afterLate).toEqual(beforeLate);expect(afterLate.status).toBe('running');
+   releaseB();expect(await recovered).toMatchObject({status:'completed'});
+   const [done]=await owner.db.select().from(schema.payrollReprocessJob).where(eq(schema.payrollReprocessJob.idempotencyKey,key));expect(done.status).toBe('completed');expect(done.error).toBeNull();
+   for(const id of selected)expect((await slip(batchId,id)).version).toBe(2);
+  } finally {releaseA();releaseB();await obsolete;await recovered;hook.mockRestore();}
+ });
+ it('a selected existing member whose salary was removed gets an employee validation and retains the exact saved result',async()=>{
+  const a=await hire('Ready'),b=await hire('Salary removed');const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:'2026-05'});await generatePayslips(ctx,{batchId});const before=await slip(batchId,b.employmentId);
+  await owner.db.delete(schema.compensation).where(eq(schema.compensation.employmentId,b.employmentId));
+  const {result}=await run([a.employmentId,b.employmentId],batchId);expect(result.reprocessed).toBe(1);expect(result.validationFailed).toBe(1);
+  expect(result.outcomes.find(o=>o.employmentId===b.employmentId)).toMatchObject({status:'validation_failed',reasonCode:'PAYROLL_CONFIGURATION_INCOMPLETE',resultRetained:true,versionAfter:before.version});
+  expect(await slip(batchId,b.employmentId)).toEqual(before);
  });
 
 });
