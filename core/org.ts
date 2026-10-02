@@ -2027,13 +2027,14 @@ export async function changeEmploymentCompany(
       .select({ companyId: employment.companyId, hiredOn: employment.hiredOn })
       .from(employment)
       .where(eq(employment.id, p.employmentId))
-      .limit(1);
+      .limit(1)
+      .for('no key update');
     if (!emp) throw new Error('Employment not found');
     // No-op guard: moving to the same company is not a change.
     if (emp.companyId === p.newCompanyId) throw new Error('The employee is already in this company.');
     // Destination must be a live (non-archived) company in this tenant.
     const [dest] = await tx
-      .select({ id: company.id })
+      .select({ id: company.id, country: company.country })
       .from(company)
       .where(and(eq(company.id, p.newCompanyId), isNull(company.archivedAt)))
       .limit(1);
@@ -2134,6 +2135,10 @@ export async function changeEmploymentCompany(
       await tx.update(assignment).set({ locationId: nextLocationId }).where(eq(assignment.id, curAssign.id));
     }
 
+    await packFor(dest.country)?.statutory.initializeTransferredTaxSelectionTx?.(tx, ctx, {
+      employmentId: p.employmentId, fromCompanyId: emp.companyId, companyId: p.newCompanyId,
+    });
+
     // Audit (SUBSTRATE): a correction, NOT a movement — appendEvent lands it in the audit trail while it stays
     // OUT of MOVEMENT_EVENT_TYPES, so it never appears in the Movement/Transfer history projection.
     await appendEvent(tx, {
@@ -2229,13 +2234,14 @@ export async function transferEmploymentCompanyTx(
     .select({ companyId: employment.companyId })
     .from(employment)
     .where(eq(employment.id, p.employmentId))
-    .limit(1);
+    .limit(1)
+    .for('no key update');
   if (!emp) throw new Error('Employment not found');
   if (emp.companyId === p.newCompanyId) throw new Error('The employee is already in this company.');
 
   // Destination must be a live (non-archived) company in this tenant.
   const [dest] = await tx
-    .select({ id: company.id })
+    .select({ id: company.id, country: company.country })
     .from(company)
     .where(and(eq(company.id, p.newCompanyId), isNull(company.archivedAt)))
     .limit(1);
@@ -2432,6 +2438,10 @@ export async function transferEmploymentCompanyTx(
     },
     tx,
   );
+
+  await packFor(dest.country)?.statutory.initializeTransferredTaxSelectionTx?.(tx, ctx, {
+    employmentId: p.employmentId, fromCompanyId: emp.companyId, companyId: p.newCompanyId,
+  });
 
   return { from: emp.companyId, to: p.newCompanyId };
 }

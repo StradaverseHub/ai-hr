@@ -1,4 +1,4 @@
-import {getTaxSelectionMY,saveTaxSelectionMY,initializeHiredTaxSelectionMYTx,resolveTaxSelectionMY} from './tax-selection';
+import {getTaxSelectionMY,saveTaxSelectionMY,initializeHiredTaxSelectionMYTx,initializeTransferredTaxSelectionMYTx,resolveTaxSelectionMY} from './tax-selection';
 import {listTaxSchemeDeclarationsMY,saveTaxSchemeDeclarationMY,revokeTaxSchemeDeclarationMY,resolveTaxSchemeMY} from './tax-scheme-declarations';
 import { MY_EA_REPORTING } from './ea-reporting';
 /**
@@ -94,6 +94,7 @@ export const myPack: CountryPack = {
     getTaxSelection:getTaxSelectionMY,
     saveTaxSelection:saveTaxSelectionMY,
     initializeHiredTaxSelectionTx:initializeHiredTaxSelectionMYTx,
+    initializeTransferredTaxSelectionTx:initializeTransferredTaxSelectionMYTx,
     listTaxSchemeDeclarations:listTaxSchemeDeclarationsMY,
     saveTaxSchemeDeclaration:saveTaxSchemeDeclarationMY,
     revokeTaxSchemeDeclaration:revokeTaxSchemeDeclarationMY,

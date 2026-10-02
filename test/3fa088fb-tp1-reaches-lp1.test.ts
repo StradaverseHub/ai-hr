@@ -44,6 +44,7 @@ import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
+import { requirePackFor } from '../localization/registry';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { saveTp3 } from '../core/tp3';
@@ -91,6 +92,13 @@ describe('3fa088fb — approved TP1 reaches LP₁ automatically', () => {
     a = adminCtx(base);
   });
 
+  /** Each fixture employment owns its employer-scoped selection, including raw secondary jobs. */
+  async function selectResident(employmentId:string){
+    const save=requirePackFor('MY').statutory.saveTaxSelection;
+    if(!save)throw new Error('MY pack lacks direct tax selection');
+    await save(a,{employmentId,expectedCompanyId:base.companyId,scheme:'resident'});
+  }
+
   /** A payable employee: compensation + a MY statutory profile, so PCB is a real non-zero figure. */
   async function employee(name: string, basic = BASIC) {
     const e = await hireEmployee(a, {
@@ -107,6 +115,7 @@ describe('3fa088fb — approved TP1 reaches LP₁ automatically', () => {
       effectiveFrom: `${YEAR}-01-01`,
     });
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: String(++ic), taxCategory: 1 });
+    await selectResident(e.employmentId);
     return e;
   }
 
@@ -292,6 +301,7 @@ describe('3fa088fb — approved TP1 reaches LP₁ automatically', () => {
       .values({ tenantId: base.tenantId, personId, companyId: base.companyId, hiredOn: `${YEAR}-01-01` })
       .returning({ id: schema.employment.id });
     await setCompensation(a, { employmentId: row.id, basicSalary: BASIC, effectiveFrom: `${YEAR}-01-01` });
+    await selectResident(row.id);
     return row.id;
   }
 

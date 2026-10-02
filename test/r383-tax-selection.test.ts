@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
+import {requirePackFor} from '../localization/registry';
 import {createBatch} from '../core/payroll';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
@@ -37,6 +38,18 @@ describe('direct employer Income Tax Resident selection',()=>{
   await expect(save('rep',{expectedVersion:view.version+1})).rejects.toMatchObject({code:'stale_context'});
   await expect(save('rep',{expectedCompanyId:randomUUID()})).rejects.toMatchObject({code:'stale_context'});
   expect(await getTaxSelectionMY(adminCtx(b),e.employmentId)).toEqual(view);
+ });
+ it.each(['rep',null] as const)('empty embedded form category cannot resolve an ambiguous %s context or save unrelated tax fields',async configured=>{
+  await owner.db.update(schema.employmentTaxSelectionMy).set({scheme:configured,transitionState:'confirmation_required'}).where(eq(schema.employmentTaxSelectionMy.employmentId,e.employmentId));
+  const view=await getTaxSelectionMY(adminCtx(b),e.employmentId);
+  const before=await owner.db.select().from(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.employmentId,e.employmentId)).orderBy(schema.employmentTaxSelectionMy.id);
+  const oldProfile=await owner.db.select().from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId,e.personId)).orderBy(schema.employeeStatutoryMy.id);
+  const oldEvents=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.subjectEmploymentId,e.employmentId)).orderBy(schema.domainEvent.sequence);
+  const form=new FormData();form.set('taxResidency','');form.set('taxNumber','Unrelated edit');
+  await expect(requirePackFor('MY').statutory.setTax(adminCtx(b),{personId:e.personId,employmentId:e.employmentId,expectedCompanyId:b.companyId,expectedSelectionVersion:view.version,taxResidency:String(form.get('taxResidency')??''),taxNumber:String(form.get('taxNumber')??'')})).rejects.toMatchObject({code:'invalid_scheme'});
+  expect(await owner.db.select().from(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.employmentId,e.employmentId)).orderBy(schema.employmentTaxSelectionMy.id)).toEqual(before);
+  expect(await owner.db.select().from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId,e.personId)).orderBy(schema.employeeStatutoryMy.id)).toEqual(oldProfile);
+  expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.subjectEmploymentId,e.employmentId)).orderBy(schema.domainEvent.sequence)).toEqual(oldEvents);
  });
  it('person-only automatic/partial tax write cannot overwrite selected REP',async()=>{
   await save('rep');await setTaxProfileMY(adminCtx(b),{personId:e.personId,taxResidency:'resident',numChildren:2,provenance:'auto_child_relief'});

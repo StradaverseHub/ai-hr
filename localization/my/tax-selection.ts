@@ -19,7 +19,7 @@ export async function taxSelectionContextMY(tx:Tx,ctx:SessionContext,employmentI
  if(!idOk(employmentId)||payrollBatchId!==undefined&&!idOk(payrollBatchId))throw new TaxSelectionError('not_found');
  let batch:{companyId:string;payPeriod:string}|undefined;
  if(payrollBatchId){const [b]=await tx.select({companyId:payrollBatch.companyId,payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(and(eq(payrollBatch.id,payrollBatchId),eq(payrollBatch.tenantId,ctx.tenantId))).limit(1).for('share');if(!b||!periodOk(b.payPeriod))throw new TaxSelectionError('not_found');batch=b;}
- const [e]=await tx.select({employmentId:employment.id,personId:employment.personId,employeeCode:employment.employeeCode,currentCompanyId:employment.companyId}).from(employment).where(and(eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1).for(write?'update':'share');
+ const [e]=await tx.select({employmentId:employment.id,personId:employment.personId,employeeCode:employment.employeeCode,currentCompanyId:employment.companyId}).from(employment).where(and(eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1).for(write?'no key update':'share');
  if(!e)throw new TaxSelectionError('not_found');
  const companyId=batch?.companyId??e.currentCompanyId;
  const allowed=await tx.execute(sql`SELECT ${write?sql`app.is_admin_for(${companyId}::uuid) AND app.is_admin_for(${e.currentCompanyId}::uuid)`:sql`app.can_admin_payroll_for(${companyId}::uuid) AND app.can_admin_payroll_for(${e.currentCompanyId}::uuid)`} AS ok`);
@@ -31,7 +31,7 @@ export async function taxSelectionContextMY(tx:Tx,ctx:SessionContext,employmentI
 /** Same deterministic initialization for an authorized HR view; bulk conversion runs in migration0505. */
 async function initialize(tx:Tx,ctx:SessionContext,e:{employmentId:string;personId:string;companyId:string;currentCompanyId:string}){
  const [old]=await tx.select().from(employmentTaxSelectionMy).where(and(eq(employmentTaxSelectionMy.tenantId,ctx.tenantId),eq(employmentTaxSelectionMy.employmentId,e.employmentId),eq(employmentTaxSelectionMy.companyId,e.companyId))).limit(1);if(old)return old;
- const [profile]=await tx.select().from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.tenantId,ctx.tenantId),eq(employeeStatutoryMy.personId,e.personId))).limit(1);
+ const [profile]=await tx.select().from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.tenantId,ctx.tenantId),eq(employeeStatutoryMy.personId,e.personId))).limit(1).for('share');
  const legacy=legacyOf(profile?.taxResidency,profile?.isResident);
  const current=await tx.select({companyId:employment.companyId}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.personId,e.personId),isNull(employment.terminatedOn)));
  const assignments=await tx.select({companyId:assignment.companyId}).from(assignment).where(and(eq(assignment.tenantId,ctx.tenantId),eq(assignment.employmentId,e.employmentId),isNull(assignment.supersededAt)));
@@ -86,4 +86,34 @@ export async function initializeHiredTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p
  const [row]=await tx.insert(employmentTaxSelectionMy).values({tenantId:ctx.tenantId,employmentId:e.employmentId,companyId:e.companyId,scheme:p.scheme,transitionState:'resolved',source:'explicit',provenance:{reason:'initial_hire_selection',declarationIds:[]},updatedByUserId:ctx.userId}).returning();
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment-tax-selection',aggregateId:row.id,eventType:'employee.tax-scheme.selected',actor:actorOf(ctx),subjectEmploymentId:e.employmentId,payload:{employmentId:e.employmentId,companyId:e.companyId,selectionId:row.id,before:null,after:{scheme:row.scheme,transitionState:row.transitionState,version:row.version},eligibilityDecision:'initial_hire_selection'}});
  return row;
+}
+
+/** Canonical company writers supply their locked before-company after writing the new dated relation. */
+export async function initializeTransferredTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;fromCompanyId:string;companyId:string}){
+ const e=await taxSelectionContextMY(tx,ctx,p.employmentId,true);
+ if(e.companyId!==p.companyId||p.fromCompanyId===p.companyId||!idOk(p.fromCompanyId))throw new TaxSelectionError('stale_context');
+ const permitted=await tx.execute(sql`SELECT app.is_admin_for(${p.fromCompanyId}::uuid) AND app.is_admin_for(${p.companyId}::uuid) AS ok`);
+ if(permitted[0]?.ok!==true)throw new TaxSelectionError('not_found');
+ const [from]=await tx.select({country:company.country}).from(company).where(and(eq(company.id,p.fromCompanyId),eq(company.tenantId,ctx.tenantId))).limit(1);
+ if(!from)throw new TaxSelectionError('not_found');
+ const [membership]=await tx.select({id:assignment.id}).from(assignment).where(and(eq(assignment.tenantId,ctx.tenantId),eq(assignment.employmentId,e.employmentId),eq(assignment.companyId,p.companyId),isNull(assignment.supersededAt),isNull(assignment.validTo))).limit(1);
+ if(!membership)throw new TaxSelectionError('not_found');
+ await lock(tx,ctx.tenantId,e.employmentId);
+ const [existing]=await tx.select().from(employmentTaxSelectionMy).where(and(eq(employmentTaxSelectionMy.tenantId,ctx.tenantId),eq(employmentTaxSelectionMy.employmentId,e.employmentId),eq(employmentTaxSelectionMy.companyId,p.companyId))).limit(1);
+ if(existing)return existing;
+ let scheme:'resident'|'non_resident'='resident';
+ let sourceSelectionId:string|undefined;
+ if(from.country==='MY'){
+  // Conversion is only for a genuinely missing pre-cutover source context, never a live competing flag.
+  const source=await initialize(tx,ctx,{...e,companyId:p.fromCompanyId});
+  if(source.transitionState!=='resolved')throw new TaxSelectionError('confirmation_required',selectedSchemeOk(source.scheme)?{configuredScheme:source.scheme}:undefined);
+  if(!selectedSchemeOk(source.scheme))throw new TaxSelectionError('invalid_scheme');
+  scheme=source.scheme==='non_resident'?'non_resident':'resident';
+  sourceSelectionId=source.id;
+ }
+ const provenance={reason:'ordinary_new_employer_default',declarationIds:[] as string[],fromCompanyId:p.fromCompanyId,...(sourceSelectionId?{sourceSelectionId}:{})};
+ const [created]=await tx.insert(employmentTaxSelectionMy).values({tenantId:ctx.tenantId,employmentId:e.employmentId,companyId:p.companyId,scheme,transitionState:'resolved',source:'explicit',provenance,updatedByUserId:ctx.userId}).onConflictDoNothing().returning();
+ if(!created){const [winner]=await tx.select().from(employmentTaxSelectionMy).where(and(eq(employmentTaxSelectionMy.tenantId,ctx.tenantId),eq(employmentTaxSelectionMy.employmentId,e.employmentId),eq(employmentTaxSelectionMy.companyId,p.companyId))).limit(1);return winner;}
+ await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment-tax-selection',aggregateId:created.id,eventType:'employee.tax-scheme.selected',actor:actorOf(ctx),subjectEmploymentId:e.employmentId,payload:{employmentId:e.employmentId,companyId:p.companyId,selectionId:created.id,before:null,after:{scheme:created.scheme,transitionState:created.transitionState,version:created.version},eligibilityDecision:'ordinary_new_employer_default',fromCompanyId:p.fromCompanyId}});
+ return created;
 }

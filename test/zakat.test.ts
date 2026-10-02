@@ -11,6 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
+import { requirePackFor } from '../localization/registry';
 import { setCompensation } from '../core/comp';
 import {
   getStatutoryProfileMY,
@@ -334,6 +335,10 @@ describe('1.2.4 Zakat Deduction', () => {
       zakatMethod: 'percent_of_pcb',
       zakatPercent: 0.02,
     });
+    // The person-wide statutory residence is retained metadata; select this employer's category explicitly.
+    const select=requirePackFor('MY').statutory.saveTaxSelection;
+    if(!select)throw new Error('MY pack lacks direct tax selection');
+    await select(a,{employmentId:nr.employmentId,expectedCompanyId:base.companyId,scheme:'non_resident'});
     // Below-threshold earner (no normal PCB).
     const low = await hire(a, base, 'Zakat Low', base.deptB);
     await setCompensation(a, { employmentId: low.employmentId, basicSalary: 1500, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
