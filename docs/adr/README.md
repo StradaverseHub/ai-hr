@@ -46,6 +46,8 @@ decision, add a new ADR that supersedes the old one.
 | [0087](0087-epf-manual-amount-categories.md) | Manual EPF contribution categories: a standing per-employee ringgit amount, substituted INSIDE the pack's EPF computation so a monthly figure is charged once across a regular + bonus pair and K₁ + Kₜ still holds; below-schedule allowed and recorded, negative refused at entry; supersedes ADR-0046's fixed-amount deferral | Accepted |
 | [0088](0088-native-mobile-app.md) | Native mobile app (Expo) for employees and approvers: the WorkOS subject arrives as a bearer JWT and resolves through the same principal_by_subject → SessionContext → core/ path as the web; a narrow frozen /api/mobile/v1; content-free push; ADR-0070's geofence stays the one rule for both doors, with an evidence ledger and deterministic trust tier beside it (mock flags one-sided, hardware-key attestation, rotating site QR); attempt records for every failed punch; offline punches are signed, chained, anchored claims, off by default; face matching out of scope | Accepted |
 
-| [0089](0089-employer-period-pcb-incentive-declarations.md) | Employer and payroll-period scoped HR declarations of PCB incentive approval; immutable facts, revocation and saved payroll provenance | Implemented; verification pending |
+| [0089](0089-employer-period-pcb-incentive-declarations.md) | Employer and payroll-period scoped HR declarations of PCB incentive approval; immutable facts, revocation and saved payroll provenance | Accepted; superseded prospectively by ADR-0090 |
+
+| [0090](0090-employment-owned-my-tax-selection.md) | One employment/employer MY tax selection, explicit human confirmation and immutable saved statutory provenance; supersedes 0089 prospectively | Accepted |
 
 See also: [Malaysia localization — spec mapping & gap closure](../architecture/my-localization.md).
