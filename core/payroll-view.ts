@@ -1385,6 +1385,39 @@ export type PayslipReviewRow = ProcessedPayslipViewRow & {
   payDate: string | null;
 };
 
+/** Saved statutory employer shares only; employer-funded employee shares retain their own disclosure.
+ * Missing or malformed historical shares are unknown, never inferred as zero. Caller owns authorization
+ * and release fences exactly as for sumPayslipYtd; MTD selects all eligible runs in the chosen month. */
+export type PayslipEmployerPeriodTotals = {
+  mtd: { epf: number | null; socso: number | null; eis: number | null; hrdf: number | null };
+  ytd: { epf: number | null; socso: number | null; eis: number | null; hrdf: number | null };
+};
+export function sumPayslipEmployerPeriodTotals(
+  rows: readonly { payPeriod: string; statutory: unknown }[], payPeriod: string,
+): PayslipEmployerPeriodTotals {
+  const sum = (selected: typeof rows, field: string): number | null => {
+    if (!selected.length) return null;
+    let cents = 0;
+    for (const row of selected) {
+      const st = row.statutory;
+      if (!st || typeof st !== 'object' || Array.isArray(st)) return null;
+      const value = (st as Record<string, unknown>)[field];
+      if (typeof value !== 'number' && typeof value !== 'string') return null;
+      if (typeof value === 'string' && !/^-?\d+(?:\.\d{1,2})?$/.test(value)) return null;
+      const amount = Number(value), exact = amount * 100, rounded = Math.round(exact);
+      if (!Number.isFinite(amount) || !Number.isSafeInteger(rounded) || Math.abs(exact-rounded) > 1e-7) return null;
+      cents += rounded;
+      if (!Number.isSafeInteger(cents)) return null;
+    }
+    return cents / 100;
+  };
+  const total = (selected: typeof rows) => ({ epf: sum(selected, 'epfEmployer'),
+    socso: sum(selected, 'socsoEmployer'), eis: sum(selected, 'eisEmployer'), hrdf: sum(selected, 'hrdf') });
+  if (!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(payPeriod)) return {mtd: total([]), ytd: total([])};
+  const year = rows.filter(row => row.payPeriod.slice(0, 4) === payPeriod.slice(0, 4));
+  return { mtd: total(year.filter(row => row.payPeriod === payPeriod)), ytd: total(year) };
+}
+
 /**
  * 169e3c24 — ONE payslip for admin review, company-scope fenced.
  *
