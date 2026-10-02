@@ -80,6 +80,22 @@ afterAll(async () => {
   await closeAll();
 });
 
+/** Distinct employments have distinct saved authority IDs, even when their monetary inputs match.
+ * Validate each identity against its own employer-scoped owner; normalize only that UUID for the
+ * financial oracle. Every calculation, version/source, noncash and child working field stays compared.
+ */
+async function statutoryForMoneyComparison(ps: typeof schema.payslip.$inferSelect) {
+  const [batch]=await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,ps.batchId));
+  const rows=await owner.db.select().from(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.employmentId,ps.employmentId));
+  const selection=rows.find(row=>row.tenantId===ps.tenantId&&row.companyId===batch.companyId);
+  expect(selection).toBeDefined();
+  expect(batch.tenantId).toBe(ps.tenantId);expect(selection!.transitionState).toBe('resolved');
+  const statutory=ps.statutory as Record<string,unknown>;
+  const meta=statutory.pcbMeta as Record<string,unknown>;
+  expect(meta).toMatchObject({taxSelectionId:selection!.id,taxSelectionVersion:selection!.version,taxSelectionSource:'income_tax_resident',calculationScheme:selection!.scheme});
+  return {...statutory,pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'}};
+}
+
 describe('2.1 Payroll Policy — service + substrate', () => {
   it('creates, reads, and updates a monthly policy and emits events', async () => {
     const a = adminCtx(b);
@@ -318,7 +334,7 @@ describe('2.1.2 Daily Payroll Policy — kernel pays rate × eligible days', () 
 
     // Statutory on the resulting monthly wage equals the same-wage monthly employee's statutory (golden oracle).
     expect(Number(daily.grossPay)).toBeCloseTo(Number(monthly.grossPay), 2);
-    expect(daily.statutory).toEqual(monthly.statutory);
+    expect(await statutoryForMoneyComparison(daily)).toEqual(await statutoryForMoneyComparison(monthly));
     expect(Number(daily.netPay)).toBeCloseTo(Number(monthly.netPay), 2);
     // Sanity: the statutory is non-trivial (the wage actually bit on 6300).
     expect(Number(monthly.grossPay)).toBeCloseTo(dailyWage, 2);
@@ -362,7 +378,7 @@ describe('2.1.2 Daily Payroll Policy — kernel pays rate × eligible days', () 
       daysWorked: ps.daysWorked, grossPay: ps.grossPay, totalDeductions: ps.totalDeductions, netPay: ps.netPay,
       employerCost: ps.employerCost, statutory: ps.statutory,
     });
-    expect(cols(after)).toEqual(cols(before));
+    expect({...cols(after),statutory:await statutoryForMoneyComparison(after)}).toEqual({...cols(before),statutory:await statutoryForMoneyComparison(before)});
   });
 
   it('edge — zero eligible days: a Daily employee with only weekend days employed has basic = 0 (no divide-by-zero)', async () => {
@@ -574,8 +590,10 @@ describe('2.1 Payroll Policy — kernel non-perturbation + history', () => {
     });
     await generatePayslips(a, { batchId });
 
-    const unassigned = snap(await payslipOf(batchId, eUnassigned.employmentId));
-    const assigned = snap(await payslipOf(batchId, eAssigned.employmentId));
+    const unassignedSlip=await payslipOf(batchId,eUnassigned.employmentId);
+    const unassigned={...snap(unassignedSlip),statutory:await statutoryForMoneyComparison(unassignedSlip)};
+    const assignedSlip=await payslipOf(batchId,eAssigned.employmentId);
+    const assigned={...snap(assignedSlip),statutory:await statutoryForMoneyComparison(assignedSlip)};
 
     // The Monthly policy (null pay_rule) changes nothing — the additive column + null→monthly default is inert.
     expect(assigned.cols).toEqual(unassigned.cols);
@@ -607,8 +625,10 @@ describe('2.1 Payroll Policy — kernel non-perturbation + history', () => {
     });
     await generatePayslips(a, { batchId });
 
-    const unassigned = snap(await payslipOf(batchId, eUnassigned.employmentId));
-    const assigned = snap(await payslipOf(batchId, eAssigned.employmentId));
+    const unassignedSlip=await payslipOf(batchId,eUnassigned.employmentId);
+    const unassigned={...snap(unassignedSlip),statutory:await statutoryForMoneyComparison(unassignedSlip)};
+    const assignedSlip=await payslipOf(batchId,eAssigned.employmentId);
+    const assigned={...snap(assignedSlip),statutory:await statutoryForMoneyComparison(assignedSlip)};
 
     // The custom_period policy + its recorded window changes nothing — the window is configurable but not effective.
     expect(assigned.cols).toEqual(unassigned.cols);
