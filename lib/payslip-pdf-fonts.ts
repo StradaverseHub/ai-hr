@@ -240,7 +240,13 @@ export async function embedPayslipFaces(
       // Prime the Latin faces first so Vietnamese letters retain their PDF text mappings.
       // Preserve the other scripts' shaping and the English/Malay built-in-font path.
       if (/^NotoSans-(Regular|Bold)$/.test(face.postscriptName ?? '')) {
-        for (const cp of face.characterSet) face.glyphForCodePoint(cp);
+        for (const cp of face.characterSet) {
+          // Prime base/extended Latin and combining marks, retaining ligatures' actual letter sequences.
+          // Priming Unicode presentation ligatures would replace "officer" with "oﬃcer" in copied text.
+          if ((cp >= 0x20 && cp <= 0x024f) || (cp >= 0x0300 && cp <= 0x036f) || (cp >= 0x1e00 && cp <= 0x1eff)) {
+            face.glyphForCodePoint(cp);
+          }
+        }
       }
       return face;
     },
