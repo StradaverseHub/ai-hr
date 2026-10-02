@@ -3,6 +3,8 @@ import {act,cleanup,fireEvent,render,screen,waitFor,within} from '@testing-libra
 import userEvent from '@testing-library/user-event';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import vn from '../messages/vi.json';
+import {formatMyTeamCell,type MyTeamTranslate} from '../components/my-team/presentation';
+import {createTranslator} from 'next-intl';
 import {MyTeam,type MyTeamProps} from '../components/my-team/my-team';
 import {teamSnapshot,teamNavigation,ids} from './fixtures/my-team-ui';
 const catalogues={en,ms,zh,ta,th,vi:vn};
@@ -27,6 +29,14 @@ describe('My Team client consumes canonical facts and preserves action context',
   expect(within(drawer).getByRole('link',{name:messages.viewWeekRoster}).getAttribute('href')).toContain('2026-09-28');
   await user.keyboard('{Escape}');await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
   expect(document.activeElement).toBe(screen.getByRole('button',{name:/Synthetic A S-01/}));expect(errors).toEqual([]);
+ });
+ it.each(['week','month'] as const)('real local first-in/last-out appear in %s detail, panel and matching export presentation',async view=>{
+  const snapshot=teamSnapshot();snapshot.query.view=view;const day=snapshot.employees[0].days[1];day.attendance!.checkInAt='09:00:00';day.attendance!.checkOutAt='18:00:00';mount(snapshot);
+  const cell=screen.getByRole('button',{name:/Synthetic A.*Fri/});expect(cell.getAttribute('aria-label')).toContain('09:00–18:00');
+  if(view==='week')expect(cell.textContent).toContain('09:00–18:00');else{cell.focus();expect((await screen.findByRole('tooltip')).textContent).toContain('09:00–18:00');}
+  const t:MyTeamTranslate=createTranslator({locale:'en',messages:en,namespace:'myTeam'});const exported=formatMyTeamCell(day,snapshot.query.layers,'en',t,{today:snapshot.today,view}).exportText;
+  expect(exported).toBe(view==='week'?'D · 09:00–18:00':'D');
+  await userEvent.setup().click(cell);const drawer=await screen.findByRole('dialog');expect(within(drawer).getByText('09:00')).toBeTruthy();expect(within(drawer).getByText('18:00')).toBeTruthy();
  });
  it('shows the complete week, pending request range, KL application date, attention badge and absent shift facts',()=>{
   const snapshot=teamSnapshot();snapshot.actionableApprovals[0].appliedAt='2026-10-01T20:30:00Z';snapshot.attention.push({kind:'absent',id:'absent',employmentId:ids.person,date:snapshot.today,lateMinutes:null,pendingLeave:true,roster:{...snapshot.employees[0].days[1].roster!,code:'N',start:'22:00',end:'06:00'}});

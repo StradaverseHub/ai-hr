@@ -1,18 +1,27 @@
 import {describe,expect,it} from 'vitest';
 import {createTranslator} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import vn from '../messages/vi.json';
-import {annualText,instantDateText,formatMyTeamCell,visualStatus,type MyTeamTranslate} from '../components/my-team/presentation';
+import {annualText,clockText,instantDateText,formatMyTeamCell,visualStatus,type MyTeamTranslate} from '../components/my-team/presentation';
 import {teamDay,teamEmployee,ids} from './fixtures/my-team-ui';
 const catalogues={en,ms,zh,ta,th,vi:vn};const layers={roster:true,attendance:true,leave:true};
 const options={today:'2026-10-02',view:'week' as const};
 const translate=(locale:keyof typeof catalogues):MyTeamTranslate=>createTranslator({locale,messages:catalogues[locale],namespace:'myTeam'});
 function leave(session:'full_day'|'AM'|'PM'|'hourly'='full_day',status:'approved'|'pending'='approved'){return {requestId:ids.request,leaveTypeId:ids.leave,code:'AL',name:'Annual',color:'violet',session,status,days:session==='full_day'?1:0.5,fromTime:null,toTime:null};}
 describe('My Team presents saved source facts without deriving attendance or leave entitlements',()=>{
+ it.each(['en','ms','zh','ta','th','vi'])('displays actual local TIME values without timezone shifts in %s',locale=>{
+  expect(clockText('09:00:00',locale)).toBe('09:00');expect(clockText('18:00:00',locale)).toBe('18:00');expect(clockText('09:00:00.125',locale)).toBe('09:00');expect(clockText('00:00:00',locale)).toBe('00:00');expect(clockText('24:00:00',locale)).toBe('24:00');
+ });
+ it.each([null,'','invalid','25:00:00','09:60:00','09:00:60','2026-10-02T01:00:00Z'])('invalid or absent clock %s stays unavailable, never fabricated',value=>{expect(clockText(value,'en')).toBe('—');});
+ it('week export displays actual local first-in/last-out, while month detail retains them behind compact shift code',()=>{
+  const day=teamDay();day.attendance!.checkInAt='09:00:00';day.attendance!.checkOutAt='18:00:00';
+  const week=formatMyTeamCell(day,layers,'en',translate('en'),options);expect(week.primary).toBe('09:00–18:00');expect(week.exportText).toBe('D · 09:00–18:00');
+  const month=formatMyTeamCell(day,layers,'en',translate('en'),{...options,view:'month'});expect(month.compact).toBe('D');expect(month.description).toContain('09:00–18:00');expect(month.exportText).toBe('D');
+ });
  it('formats application instants in KL without changing plain grid calendar dates',()=>{
   expect(instantDateText('2026-10-01T20:30:00Z','en')).toContain('Oct 2');
  });
  it('uses the source status, never lateness inferred from shift or clock comparison',()=>{
-  const day=teamDay();day.attendance!.checkInAt='2026-10-02T03:30:00Z';day.attendance!.lateMinutes=0;
+  const day=teamDay();day.attendance!.checkInAt='11:30:00';day.attendance!.lateMinutes=0;
   expect(visualStatus(day,options.today)).toBe('present');day.attendance!.flag='late';expect(visualStatus(day,options.today)).toBe('late');
  });
  it('full approved leave outranks a rest day, but half-day leaves retain actual attendance',()=>{
@@ -35,7 +44,7 @@ describe('My Team presents saved source facts without deriving attendance or lea
  });
  it('out-without-in and in-without-out retain exact recorded clocks and warning status',()=>{
   const day=teamDay();day.attendance!.flag='odd';day.attendance!.checkOutAt=null;
-  expect(formatMyTeamCell(day,layers,'en',translate('en'),options).primary).toBe('In 08:30 · no out');day.attendance!.checkOutAt='2026-10-02T09:30:00Z';day.attendance!.checkInAt=null;
+  expect(formatMyTeamCell(day,layers,'en',translate('en'),options).primary).toBe('In 08:30 · no out');day.attendance!.checkOutAt='17:30:00';day.attendance!.checkInAt=null;
   expect(formatMyTeamCell(day,layers,'en',translate('en'),options).primary).toBe('Out 17:30 · no in');
  });
  it('all layers off hides visible/export text while keeping full source status and descriptive detail',()=>{
