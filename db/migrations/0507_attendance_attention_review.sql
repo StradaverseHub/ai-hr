@@ -15,7 +15,7 @@ CREATE FUNCTION app.my_team_report_ids() RETURNS SETOF uuid LANGUAGE sql STABLE 
    AND (l.valid_to IS NULL OR l.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
    AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
    AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
-   AND NOT e.id=ANY(r.path)
+   AND cardinality(r.path)<65 AND NOT e.id=ANY(r.path)
  ) SELECT DISTINCT r.id FROM reports r WHERE NOT EXISTS(SELECT 1 FROM roots x WHERE x.id=r.id)
 $$;
 --> statement-breakpoint
@@ -38,7 +38,7 @@ $$;
 --> statement-breakpoint
 CREATE TABLE attendance_attention_review (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),
- attendance_id uuid NOT NULL REFERENCES attendance(id),reviewer_user_id uuid NOT NULL REFERENCES app_user(id),
+ attendance_id uuid NOT NULL REFERENCES attendance(id) ON DELETE CASCADE,reviewer_user_id uuid NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
  fingerprint text NOT NULL CHECK(fingerprint ~ '^[0-9a-f]{32}$'),created_at timestamptz NOT NULL DEFAULT now(),
  UNIQUE(tenant_id,attendance_id,reviewer_user_id,fingerprint)
 );

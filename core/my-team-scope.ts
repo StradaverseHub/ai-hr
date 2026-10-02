@@ -29,7 +29,7 @@ export async function resolveMyTeamScopeTx(tx:Tx,ctx:SessionContext,query:MyTeam
   const canEditRoster=authorizedCompanies.length>0&&authorizedCompanies.every(c=>c.admin);
   const departments=companyIds.length ? await tx.select({id:department.id,companyId:department.companyId,name:department.name})
     .from(department).where(inArray(department.companyId,companyIds)).orderBy(department.name) : [];
-  if(!companyIds.length)return {employees:[],companies:authorizedCompanies,departments,principal,canEditRoster,canChooseDepartment:capability.admin};
+  if(!companyIds.length)return {employees:[],companies:authorizedCompanies.map(c=>({id:c.id,name:c.name})),departments,principal,canEditRoster,canChooseDepartment:capability.admin};
   const direct=sql`EXISTS(SELECT 1 FROM reporting_line r JOIN employment m ON m.id=r.manager_employment_id
     JOIN app_user u ON u.person_id=m.person_id AND u.tenant_id=m.tenant_id
     WHERE u.id=app.current_user_id() AND u.archived_at IS NULL AND r.subordinate_employment_id=${employment.id}
@@ -48,15 +48,22 @@ export async function resolveMyTeamScopeTx(tx:Tx,ctx:SessionContext,query:MyTeam
     .where(and(inArray(employment.companyId,companyIds),sql`app.my_team_subject_authorized(${employment.id})`,mode,
       query.departmentId ? eq(assignment.departmentId,query.departmentId) : undefined,
       query.employmentId ? eq(employment.id,query.employmentId) : undefined)).orderBy(person.fullName,employment.id);
-  return {employees:[...new Map(employees.map(e=>[e.employmentId,e])).values()],companies:authorizedCompanies,departments,
+  return {employees:[...new Map(employees.map(e=>[e.employmentId,e])).values()],companies:authorizedCompanies.map(c=>({id:c.id,name:c.name})),departments,
     principal,canEditRoster,canChooseDepartment:capability.admin};
 }
 export function resolveMyTeamScope(ctx:SessionContext,query:MyTeamQuery){return withTenant(ctx,tx=>resolveMyTeamScopeTx(tx,ctx,query));}
 /** Hold the membership facts through commit. FK inserts referencing these employments also wait. */
 export async function assertMyTeamSubjectTx(tx:Tx,ctx:SessionContext,query:MyTeamQuery|undefined,employmentId:string){
   assertMyTeamAccess(ctx);
-  await tx.select({id:employment.id}).from(employment).where(eq(employment.tenantId,ctx.tenantId)).orderBy(employment.id).for('update');
-  await tx.select({id:reportingLine.id}).from(reportingLine).where(eq(reportingLine.tenantId,ctx.tenantId)).orderBy(reportingLine.id).for('share');
+  const locked=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),
+    or(eq(employment.id,employmentId),sql`${employment.id} IN (SELECT app.my_team_report_ids())`,
+      sql`${employment.personId} IN (SELECT person_id FROM app_user WHERE id=app.current_user_id() AND tenant_id=app.current_tenant_id() AND archived_at IS NULL)`)))
+    .orderBy(employment.id).for('update');
+  const lockIds=locked.map(e=>e.id);
+  if(!lockIds.includes(employmentId))throw new MyTeamAuthorizationError();
+  await tx.select({id:reportingLine.id}).from(reportingLine).where(and(eq(reportingLine.tenantId,ctx.tenantId),
+    or(inArray(reportingLine.managerEmploymentId,lockIds),inArray(reportingLine.subordinateEmploymentId,lockIds))))
+    .orderBy(reportingLine.id).for('share');
   await tx.select({id:assignment.id}).from(assignment).where(eq(assignment.employmentId,employmentId)).orderBy(assignment.id).for('share');
   if(query){
     const scope=await resolveMyTeamScopeTx(tx,ctx,query);
