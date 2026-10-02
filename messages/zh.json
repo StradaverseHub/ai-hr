@@ -4537,7 +4537,11 @@
       },
       "downloadPdf": "下载 EA 表格",
       "previewNotice": "此页面为预览，供您在报税前核对数字。点击“下载 EA 表格”即可取得 C.P.8A 本身，按印刷表格的格式排版。",
-      "notOfficialStrip": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A now ends at the officer's box and this line has no reader]"
+      "notOfficialStrip": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A now ends at the officer's box and this line has no reader]",
+      "layoutFitTitle": "无法生成 EA 表格",
+      "layoutFitMessage": "完整信息无法以清晰可读的方式放入一页 A4。请检查已记录的信息或申请版式审核。本次选择未生成 PDF。",
+      "layoutFitSection": "受影响的部分",
+      "layoutFitEmployerSection": "雇主及授权人员"
     },
     "cp22": {
       "download": "下载 CP22",

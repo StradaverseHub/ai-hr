@@ -295,7 +295,7 @@ describe('r219 — the agency’s own page furniture reaches the paper, in both 
         // ⚠️ r372 — `perkeso` ("2. PERKESO :" / "2. SOCSO:") carries the FORM'S OWN item number, and
         // the agency draws that number in its own column (62.5) with the word at 80.2. So it reaches
         // the page as two runs and is checked as two: the words here, and the "2." below.
-        const expected = key === 'perkeso' ? eaCaptionWords(w, EA_FORM_NUMBERING.perkeso) : w;
+        const expected = key === 'employerNameAddress' ? (locale === 'ms' ? 'Nama Majikan' : 'Employer Name') : key === 'perkeso' ? eaCaptionWords(w, EA_FORM_NUMBERING.perkeso) : w;
         const hit = key === 'masthead4' ? printed.some((t) => t.startsWith(w)) : printed.includes(expected);
         expect(hit, `${locale}: ${w}`).toBe(true);
         if (key === 'perkeso') expect(printed, `${locale}: Section E item 2's own number`).toContain('2.');
@@ -436,7 +436,7 @@ describe('r219 — the foot: the officer box, and the agency’s own spelling of
      * now, against `EA_FORM` rather than against a literal, so the next re-pitch really does carry it.
      */
     const O = EA_FORM.officerBox;
-    const footRow = Math.round((O.rowT0 + 4 * O.rowPitch) * 10) / 10;
+    const footRow = 827; // V6 reserves a separate date row below the full-width footer.
     expect(caption!.x, 'the Tarikh caption left the agency’s own column').toBeCloseTo(EA_FORM.dateX, 2);
     expect(value!.x, 'the date is written before its own caption').toBeGreaterThan(caption!.x);
     expect(value!.x, 'the date ran past the agency’s rule').toBeLessThan(EA_FORM.dateRule[1]);
@@ -445,7 +445,7 @@ describe('r219 — the foot: the officer box, and the agency’s own spelling of
     expect(caption!.x, 'the date moved INSIDE the officer box — the agency prints it outside').toBeLessThan(O.x0);
     // …and it is the agency's own arrangement that keeps them together: LHDN's Date and Telephone No.
     // share one table row, so a change that moves one and not the other is the defect to catch.
-    expect(tt(phone!.y), 'the date and the telephone number came off the same row').toBeCloseTo(tt(value!.y), 2);
+    expect(tt(phone!.y), 'V6 telephone must remain inside the footer above the signing date').toBeLessThan(tt(value!.y));
     // The renderer must not read a clock: that is what keeps every EA test time-independent.
     // Comment-proof: the renderer's own prose NAMES `todayInKualaLumpur` (to say where the value comes
     // from), so the check is on the IMPORTS — a pure renderer cannot read a clock it never imported, and
@@ -597,7 +597,7 @@ describe('r219 — a caption can never overprint its neighbour', () => {
      * matchAll found nothing, the array was empty and the case passed — on no source at all. A guard
      * that greps a slice must assert the slice exists, which is what the two lines below do.
      */
-    const from = src.indexOf('const W = eaFormWords(');
+    const from = src.indexOf('const W = {...eaFormWords(');
     const to = src.indexOf('return doc.save();');
     expect(from, 'the renderer’s drawing section could not be found — this guard reads nothing').toBeGreaterThan(0);
     expect(to, 'the renderer’s end could not be found — this guard reads nothing').toBeGreaterThan(from);
@@ -607,7 +607,8 @@ describe('r219 — a caption can never overprint its neighbour', () => {
     expect(unbounded, `labels drawn without a width bound: ${unbounded.join(', ')}`).toEqual([]);
     // …and the shrink is a real one: it rounds DOWN so the drawn string stays inside its slot, and it
     // clamps rather than vanishing.
-    expect(src).toMatch(/return Math\.max\(1, Math\.floor\(\(size \* maxW \* 10\) \/ w\) \/ 10\);/);
+    expect(src).toContain('return Math.floor((size * maxW * 10) / w) / 10;');
+    expect(src).toContain('if (sz < minSize) throw new EaLayoutFitError');
   });
 });
 

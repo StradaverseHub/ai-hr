@@ -4537,7 +4537,11 @@
       },
       "downloadPdf": "Muat turun borang EA",
       "previewNotice": "Skrin ini ialah pratonton, untuk menyemak angka sebelum anda memfailkan. “Muat turun borang EA” memberikan anda C.P.8A itu sendiri, disusun seperti borang bercetak.",
-      "notOfficialStrip": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A now ends at the officer's box and this line has no reader]"
+      "notOfficialStrip": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A now ends at the officer's box and this line has no reader]",
+      "layoutFitTitle": "Borang EA tidak dapat dijana",
+      "layoutFitMessage": "Maklumat lengkap tidak muat pada satu halaman A4 yang boleh dibaca. Semak maklumat yang direkodkan atau minta semakan susun atur. Tiada PDF dihasilkan untuk pilihan ini.",
+      "layoutFitSection": "Bahagian terjejas",
+      "layoutFitEmployerSection": "Majikan dan pegawai yang diberi kuasa"
     },
     "cp22": {
       "download": "Muat turun CP22",

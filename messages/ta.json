@@ -4537,7 +4537,11 @@
       },
       "downloadPdf": "EA படிவத்தைப் பதிவிறக்கு",
       "previewNotice": "இந்தத் திரை ஒரு முன்னோட்டம் — தாக்கல் செய்வதற்கு முன் எண்களைச் சரிபார்க்க. “EA படிவத்தைப் பதிவிறக்கு” என்பதை அழுத்தினால் அச்சிடப்பட்ட படிவ அமைப்பில் C.P.8A கிடைக்கும்.",
-      "notOfficialStrip": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A now ends at the officer's box and this line has no reader]"
+      "notOfficialStrip": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A now ends at the officer's box and this line has no reader]",
+      "layoutFitTitle": "EA படிவத்தை உருவாக்க முடியவில்லை",
+      "layoutFitMessage": "முழுத் தகவலும் படிக்கக்கூடிய ஒரே A4 பக்கத்தில் பொருந்தவில்லை. பதிவான தகவலைச் சரிபார்க்கவும் அல்லது பக்க அமைப்பை மதிப்பாய்வு செய்யக் கோரவும். இந்தத் தேர்வுக்கு PDF உருவாக்கப்படவில்லை.",
+      "layoutFitSection": "பாதிக்கப்பட்ட பகுதி",
+      "layoutFitEmployerSection": "முதலாளி மற்றும் அங்கீகரிக்கப்பட்ட அதிகாரி"
     },
     "cp22": {
       "download": "CP22 பதிவிறக்கவும்",

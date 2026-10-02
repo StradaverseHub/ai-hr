@@ -4918,7 +4918,11 @@
       },
       "downloadPdf": "Download the EA form",
       "previewNotice": "This screen is a preview, for checking the figures before you file. “Download the EA form” gives you the C.P.8A itself, laid out as the printed form.",
-      "notOfficialStrip": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A now ends at the officer's box and this line has no reader]"
+      "notOfficialStrip": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A now ends at the officer's box and this line has no reader]",
+      "layoutFitTitle": "EA form could not be generated",
+      "layoutFitMessage": "The complete information does not fit on one readable A4 page. Review the recorded information or request a layout review. No PDF has been produced for this selection.",
+      "layoutFitSection": "Affected section",
+      "layoutFitEmployerSection": "Employer and authorised officer"
     },
     "cp22": {
       "download": "Download CP22",

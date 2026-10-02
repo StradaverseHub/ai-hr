@@ -4537,7 +4537,11 @@
       },
       "downloadPdf": "ดาวน์โหลดแบบฟอร์ม EA",
       "previewNotice": "หน้านี้เป็นตัวอย่างสำหรับตรวจสอบตัวเลขก่อนยื่นแบบ กด “ดาวน์โหลดแบบฟอร์ม EA” เพื่อรับ C.P.8A ตัวจริง ในรูปแบบเดียวกับแบบฟอร์มที่พิมพ์",
-      "notOfficialStrip": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A now ends at the officer's box and this line has no reader]"
+      "notOfficialStrip": "[retired r351 — the strip below the form was removed at the reporter's written instruction (\"Remove this part from the EA Form\"); the printed C.P.8A now ends at the officer's box and this line has no reader]",
+      "layoutFitTitle": "ไม่สามารถสร้างแบบฟอร์ม EA ได้",
+      "layoutFitMessage": "ข้อมูลทั้งหมดไม่พอดีกับกระดาษ A4 หนึ่งหน้าที่อ่านได้ชัดเจน โปรดตรวจสอบข้อมูลที่บันทึกหรือขอให้ตรวจสอบรูปแบบ ไม่มีการสร้าง PDF สำหรับรายการที่เลือกนี้",
+      "layoutFitSection": "ส่วนที่ได้รับผลกระทบ",
+      "layoutFitEmployerSection": "นายจ้างและเจ้าหน้าที่ผู้มีอำนาจ"
     },
     "cp22": {
       "download": "ดาวน์โหลด CP22",
