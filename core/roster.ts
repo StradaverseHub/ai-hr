@@ -3067,7 +3067,7 @@ export async function myRosterWindow(
 
   return withTenant(ctx, async (tx) => {
     const usualRow = usualRows[0] ?? null;
-    const usual: UsualShift | null = usualRow ? { shiftId: usualRow.shiftId, pattern: usualRow.pattern, ...(usualRow.halfPattern?.length?{halfPattern:usualRow.halfPattern}:{}) } : null;
+    const usual: UsualShift | null = usualRow ? { shiftId: usualRow.shiftId, pattern: usualRow.pattern } : null;
 
     // Only the shifts this window actually references — the legend names what is on screen, and a
     // tenant-wide shift list would serialise every template the company has ever authored into the

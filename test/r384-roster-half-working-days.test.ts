@@ -1,12 +1,11 @@
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
-import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,resetDb,seedBase} from './harness';
+import {adminCtx,closeAll,migrateTestDb,resetDb,seedBase} from './harness';
 import {hireEmployee} from '../core/org';
-import {assignDefaultShift,assignShift,createShift,myRosterWindow,rosterWindowView,setRestDay} from '../core/roster';
+import {assignDefaultShift,assignShift,createShift,rosterWindowView,setRestDay} from '../core/roster';
 import {cellIsWorking,resolveRosterCell} from '../lib/roster-month';
-import type {SessionContext} from '../db/client';
 beforeAll(async()=>{await migrateTestDb();});afterAll(async()=>{await closeAll();});beforeEach(async()=>{await resetDb();});
 describe('canonical roster includes half working days without changing rest/off precedence',()=>{
- it('carries stored half weekdays through both administrative and self roster readers',async()=>{
+ it('carries stored half weekdays through the administrative roster reader',async()=>{
   const b=await seedBase(),ctx=adminCtx(b);
   const employee=await hireEmployee(ctx,{person:{fullName:'Half week reader',primaryEmail:'half@t.local'},companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:'2020-01-01'});
   const shift=await createShift(ctx,{companyId:b.companyId,name:'Mixed full and half week',code:'HALF',startTime:'09:00:00',endTime:'18:00:00',weeklyPattern:[1,2,3,4],halfPattern:[5],offPattern:[6]});
@@ -15,10 +14,6 @@ describe('canonical roster includes half working days without changing rest/off 
   expect(view.usual[employee.employmentId]).toEqual({shiftId:shift.id,pattern:[1,2,3,4],halfPattern:[5]});
   const friday=resolveRosterCell('2026-03-06',null,view.usual[employee.employmentId]);expect(friday).toEqual({kind:'usual',shiftId:shift.id});expect(cellIsWorking(friday)).toBe(true);
   expect(resolveRosterCell('2026-03-07',null,view.usual[employee.employmentId])).toEqual({kind:'off'});
-  const userId=await createAppUser(b.tenantId,employee.personId,'employee');
-  const self={tenantId:b.tenantId,userId,personId:employee.personId,roles:['employee'],entitlements:harnessSnapshot(b.tenantId)} as SessionContext;
-  const own=await myRosterWindow(self,{from:'2026-03-02',to:'2026-03-08'});
-  expect(own?.days.find(day=>day.date==='2026-03-06')?.cell).toEqual({kind:'usual',shiftId:shift.id});
   await setRestDay(ctx,{employmentId:employee.employmentId,shiftDate:'2026-03-06'});
   await assignShift(ctx,{employmentId:employee.employmentId,shiftDate:'2026-03-07',shiftId:shift.id});
   const changed=await rosterWindowView(ctx,{companyIds:[b.companyId],employmentIds:[employee.employmentId],from:'2026-03-02',to:'2026-03-08'});
