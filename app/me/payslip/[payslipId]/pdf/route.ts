@@ -10,7 +10,7 @@ import { payslipInformationLabels } from '@/lib/payslip-information-labels';
 // difference between the two files is which fenced read produced the row.
 import { getSession } from '@/lib/session';
 import { payslipDetail } from '@/core/payroll';
-import { sumPayslipYtd } from '@/core/payroll-view';
+import { sumPayslipYtd, sumPayslipEmployerPeriodTotals } from '@/core/payroll-view';
 import { myPayslips } from '@/core/read';
 import { getCompanyLogo } from '@/core/admin';
 import { buildPayslipPdfData, renderPayslipPdf } from '@/lib/payslip-pdf';
@@ -80,6 +80,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ payslip
     // come off the same read (see PayslipReviewRow.bankAccountFull for the exposure this creates).
     bankAccount: p.bankAccountFull,
     ytd: sumPayslipYtd(ytdRows),
+    employerPeriodTotals: sumPayslipEmployerPeriodTotals(ytdRows, p.payPeriod),
     ytdYear: year,
     logo: logo ? { bytes: new Uint8Array(logo.content), mimeType: logo.mimeType } : null,
   });

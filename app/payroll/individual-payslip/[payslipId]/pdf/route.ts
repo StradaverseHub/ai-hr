@@ -22,7 +22,7 @@ import { payslipInformationLabels } from '@/lib/payslip-information-labels';
  * year's payslips, nothing else), no write, no recomputation, and not one figure that this route decides.
  */
 import { scopedAdmin } from '@/lib/scope';
-import { listProcessedPayslipsAcross, payslipForReview, sumPayslipYtd } from '@/core/payroll-view';
+import { listProcessedPayslipsAcross, payslipForReview, sumPayslipYtd, sumPayslipEmployerPeriodTotals } from '@/core/payroll-view';
 import { getCompanyLogo } from '@/core/admin';
 import { buildPayslipPdfData, renderPayslipPdf } from '@/lib/payslip-pdf';
 import { payslipPdfStrings } from '@/lib/payslip-pdf-strings';
@@ -93,6 +93,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ payslipI
     // come off the same read (see PayslipReviewRow.bankAccountFull for the exposure this creates).
     bankAccount: p.bankAccountFull,
     ytd: sumPayslipYtd(ytdRows),
+    employerPeriodTotals: sumPayslipEmployerPeriodTotals(ytdRows, p.payPeriod),
     ytdYear: year,
     logo: logo ? { bytes: new Uint8Array(logo.content), mimeType: logo.mimeType } : null,
   });
