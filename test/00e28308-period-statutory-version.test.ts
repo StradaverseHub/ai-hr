@@ -16,8 +16,7 @@
  *   (c) a month that already existed stays NULL, through find-or-create AND through payslip generation,
  *       so a backfill cannot be added later without failing here. The reporter approved the refusal to
  *       backfill: we know which rules were CURRENT when an old month ran, not which that run used;
- *   (d) the payslip is byte-identical to what today's engine produces — every stored column, golden,
- *       captured from the pre-change code;
+ *   (d) every monetary field retains the pre-change golden, with exact current provenance additions;
  *   (e) the Borang A read and the CP39 file still carry their OWN version, resolved their own way;
  *   (f) an IMPOSSIBLE month still opens. `pay_period.period` is free text with no CHECK and the wizard's
  *       only guard is `<input type="month">`, which Firefox and desktop Safari render as a text box, so a
@@ -25,7 +24,7 @@
  *       'as of' a date that does not exist threw out of createBatch when this round was first written —
  *       found by test/cp39-form-report.test.ts, and pinned here at the stamp rather than at the screen.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
@@ -95,6 +94,7 @@ const GOLDEN_STATUTORY = {
       Z: 0,
       category: 1,
       childCount: 0,
+      childCountVersion: 1,
       // r359 — Q joined the trace when the slip's Q and C were corrected to the spec's meanings. This
       // exact-shape guard is what forces that to be noticed rather than absorbed, which is the same
       // service it did for `ytdGross` in r354.
@@ -116,6 +116,15 @@ const GOLDEN_STATUTORY = {
     // true statement about Y and not a placeholder — the same reason `ytdNet` is 0 beside it.
     ytdGross: 0,
     ytdNet: 0,
+  },
+  // A complete cash-only run records actual zero benefit evidence, including empty ownership arrays.
+  pcbNonCash: {
+    version: 1,
+    current: { bik: { entered: 0, exempt: 0, taxable: 0 }, vola: { entered: 0, exempt: 0, taxable: 0 } },
+    ownedCurrent: { bik: { entered: 0, exempt: 0, taxable: 0 }, vola: { entered: 0, exempt: 0, taxable: 0 } },
+    owned: { bik: 0, vola: 0 }, cumulative: { bik: 0, vola: 0 }, before: { bik: 0, vola: 0 },
+    accumulated: { bik: 0, vola: 0, complete: true }, cashNormal: 5000,
+    entries: [], ownedEntries: [], eaEntries: [], ownedEaEntries: [],
   },
   pcbNormalPreZakat: 0,
   skbbkSubject: false,
@@ -330,11 +339,18 @@ describe('00e28308 · the month records the ruleset version it was opened under'
     expect(all).toEqual([{ period: MONTH, statutoryVersion: null }]);
   });
 
-  it('(d) every payslip figure is byte-identical to what today’s engine produces', async () => {
+  it('(d) every payslip monetary figure retains its golden and new provenance identifies the authoritative selection', async () => {
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: MONTH });
     await generatePayslips(a, { batchId });
     const slip = await payslipFigures(batchId);
 
+    const [selection] = await owner.db.select().from(schema.employmentTaxSelectionMy).where(and(
+      eq(schema.employmentTaxSelectionMy.tenantId, base.tenantId),
+      eq(schema.employmentTaxSelectionMy.employmentId, employmentId),
+      eq(schema.employmentTaxSelectionMy.companyId, base.companyId),
+    ));
+    expect(selection).toMatchObject({ scheme: 'resident', transitionState: 'resolved', version: 1 });
+    expect(selection.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     // Golden, captured from the code as it stood BEFORE the period stamp was added (RM5,000 basic, no
     // allowance, no OT, category 1, no children, 2026-05). Every stored column, so a change to any
     // figure — or to the immutable statutory snapshot the filings and the PDF read — fails here.
@@ -347,7 +363,15 @@ describe('00e28308 · the month records the ruleset version it was opened under'
       coverageFrom: '2026-05-01',
       coverageTo: '2026-05-31',
       grossPay: '5000.00',
-      statutory: GOLDEN_STATUTORY,
+      statutory: {
+        ...GOLDEN_STATUTORY,
+        pcbMeta: {
+          ...GOLDEN_STATUTORY.pcbMeta,
+          taxSelectionId: selection.id,
+          taxSelectionVersion: selection.version,
+          taxSelectionSource: 'income_tax_resident',
+        },
+      },
       otherDeductions: '0.00',
       totalDeductions: '584.65',
       netPay: '4415.35',
