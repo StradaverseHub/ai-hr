@@ -1,3 +1,4 @@
+import { validPcb2iiSelectedDate } from '@/lib/pcb2ii-form';
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -53,7 +54,7 @@ import { recordPcbPaymentAction } from '../../../pcb-payment-actions';
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
 const KINDS: readonly PcbPaymentKind[] = ['mtd', 'cp38'];
 
-type Search = { companyId?: string; year?: string; lang?: string };
+type Search = { companyId?: string; year?: string; lang?: string; selectedDate?: string };
 
 export default async function Pcb2iiReceiptsPage({ searchParams }: { searchParams: Promise<Search> }) {
   const { s, scopeIds } = await scopedAdmin();
@@ -97,7 +98,7 @@ export default async function Pcb2iiReceiptsPage({ searchParams }: { searchParam
   // the way in, so returning lands on the same language's entry rather than the default one.
   const backHref = `/payroll/statutory-forms/pcb2ii?companyId=${encodeURIComponent(companyId)}&year=${encodeURIComponent(year)}${
     sp.lang === 'en' || sp.lang === 'ms' ? `&lang=${sp.lang}` : ''
-  }`;
+  }${validPcb2iiSelectedDate(sp.selectedDate) ? `&selectedDate=${encodeURIComponent(sp.selectedDate)}` : ''}`;
 
   return (
     <div className={pageWideCls}>
@@ -112,6 +113,8 @@ export default async function Pcb2iiReceiptsPage({ searchParams }: { searchParam
           across a boundary. */}
       <Card className="overflow-hidden">
         <form method="get" className="flex flex-wrap items-end gap-3 px-4 py-4">
+          {validPcb2iiSelectedDate(sp.selectedDate) && <input type="hidden" name="selectedDate" value={sp.selectedDate} />}
+          {(sp.lang === 'en' || sp.lang === 'ms') && <input type="hidden" name="lang" value={sp.lang} />}
           <Field label={t('company')}>
             <select name="companyId" defaultValue={companyId} className={inputCls} required>
               {companies.map((c) => (
