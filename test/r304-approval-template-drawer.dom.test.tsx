@@ -474,7 +474,9 @@ describe.each(LOCALES)('r304 · %s · the template drawer', (loc) => {
     expect(refresh).not.toHaveBeenCalled();
     expect(toastSuccess).not.toHaveBeenCalled();
     // …and it can be tried again.
-    expect((within(dialog).getByRole('button', { name: commonSave(loc) }) as HTMLButtonElement).disabled).toBe(false);
+    await waitFor(() => {
+      expect((within(dialog).getByRole('button', { name: commonSave(loc) }) as HTMLButtonElement).disabled).toBe(false);
+    });
     expect(errors, errors.join('\n')).toEqual([]);
   });
 
