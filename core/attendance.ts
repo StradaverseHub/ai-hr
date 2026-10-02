@@ -2439,6 +2439,8 @@ export type AttendanceRangeRow = {
   calcTrace: unknown;
   /** Explains a no-row day, same precedence as attendanceForDate: leave > holiday > rest day. */
   context: DayContext;
+  /** Opt-in observation identity, from the exact SQL snapshot that read the displayed punch. */
+  punchReview?: {fingerprint:string;reviewed:boolean}|null;
   // bbada39c — the individual row now carries the employee identity (the page used to read it from the
   // dropdown) plus the shift-display subset, so the Records table can render code / shift / hours per day.
   employeeCode: string | null;
@@ -2483,6 +2485,7 @@ export async function attendanceForEmploymentRange(
 /** Canonical Records projection for a team: input reads are bounded by source groups, not cells. */
 export function attendanceForEmploymentsRange(
   ctx: SessionContext, employmentIds: string[], from: string, to: string,
+  opts: {includePunchReviews?:boolean} = {},
 ): Promise<Map<string, AttendanceRangeRow[]>> {
   return withTenant(ctx, async (tx) => {
     const result = new Map<string, AttendanceRangeRow[]>();
@@ -2501,7 +2504,13 @@ export function attendanceForEmploymentsRange(
         lateDeductMinutes:attendance.lateDeductMinutes,earlyOutDeductMinutes:attendance.earlyOutDeductMinutes,
         otFlatMinutes:attendance.otFlatMinutes,ot00Minutes:attendance.ot00Minutes,ot10Minutes:attendance.ot10Minutes,
         ot15Minutes:attendance.ot15Minutes,ot20Minutes:attendance.ot20Minutes,ot30Minutes:attendance.ot30Minutes,
-        calcTrace:attendance.calcTrace}).from(attendance).where(and(inArray(attendance.employmentId,ids),
+        calcTrace:attendance.calcTrace,
+        ...(opts.includePunchReviews ? {
+          punchReviewFingerprint:sql<string>`app.attendance_attention_fingerprint(${attendance})`,
+          punchReviewed:sql<boolean>`EXISTS(SELECT 1 FROM attendance_attention_review r WHERE r.attendance_id=${attendance.id}
+            AND r.reviewer_user_id=app.current_user_id() AND r.fingerprint=app.attendance_attention_fingerprint(${attendance}))`,
+        } : {}),
+      }).from(attendance).where(and(inArray(attendance.employmentId,ids),
           gte(attendance.attendanceDate,from),lte(attendance.attendanceDate,to))),
       tx.select({companyId:attendancePolicy.companyId,workingDays:attendancePolicy.workingDays,
         halfWorkingDays:attendancePolicy.halfWorkingDays,workStart:attendancePolicy.workStart,
@@ -2563,7 +2572,10 @@ export function attendanceForEmploymentsRange(
       }
       // bbada39c — per-date shift display (code / scheduled minutes / start-end / rostered-rest).
       const shiftDisplay = resolveShiftDisplay(d, rosterByDate.get(d), defShiftOn(d), isWorkingDay ? policyScheduledMin : null);
+      if(opts.includePunchReviews&&row&&(typeof row.punchReviewFingerprint!=='string'||typeof row.punchReviewed!=='boolean'))
+        throw new Error('Attendance punch review snapshot unavailable');
       out.push({
+        ...(opts.includePunchReviews ? {punchReview:row ? {fingerprint:row.punchReviewFingerprint!,reviewed:row.punchReviewed!}:null} : {}),
         date: d,
         attendanceId: row?.attendanceId ?? null,
         checkInAt: row?.checkInAt ?? null,
