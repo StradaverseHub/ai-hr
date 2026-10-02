@@ -645,7 +645,7 @@ export default async function IndividualPayslipPage({
                   <img
                     src={`/admin/organization/logo/${row.companyId}`}
                     alt={row.company}
-                    className="mx-auto mb-2 max-h-14 w-auto max-w-[14rem] object-contain"
+                    className="mb-2 inline-block max-h-14 w-auto max-w-[14rem] object-contain"
                   />
                 )}
                 <h1 className="text-lg font-semibold tracking-tight">{row.company}</h1>

@@ -273,6 +273,13 @@ describe('09b554e9 — engine: declared classification drives the PCB/EPF stream
     expect((sFeb.statutory as { exemptionUsed?: Record<string, number> }).exemptionUsed).toEqual({ PCB_CHILD_CARE: 1000 });
 
     // EA: the exempt portions accumulate to the exempt-allowances figure (2,000 + 1,000).
+    const blankMappingEa = await eaStatement(a, { employmentId: e.employmentId, year: '2026' });
+    expect(blankMappingEa?.partB.exemptAllowances).toBeCloseTo(3000, 2);
+    // Approved blank taxable mapping defaults to salary; the saved exemption remains separate.
+    expect(blankMappingEa?.partB.allowances).toBeCloseTo(0, 2);
+    expect(blankMappingEa?.partB.grossSalary).toBeCloseTo(9000, 2);
+    await upsertPayComponent(a, input('CHILDCARE', { pcbRemunerationType: 'normal',
+      pcbExemptionCode: 'PCB_CHILD_CARE', eaFormLine: 'EA_B1C' }));
     const ea = await eaStatement(a, { employmentId: e.employmentId, year: '2026' });
     expect(ea?.partB.exemptAllowances).toBeCloseTo(3000, 2);
     /**
