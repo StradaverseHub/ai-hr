@@ -633,7 +633,7 @@ export function Sidebar({
     // layout gutter, and the aside's h-full needs the wrapper to have height). While a panel is open
     // the wrapper is raised to z-50 so the rail rows stay clickable above the z-40 backdrop (module
     // swap in one click); the raise is conditional so onboarding-tour stacking is unaffected otherwise.
-    <div className={cn('relative hidden h-full shrink-0 sm:block', openNode && 'z-50')}>
+    <div className={cn('relative hidden h-full shrink-0', pathname === '/manage/my-team' ? 'min-[900px]:block' : 'sm:block', openNode && 'z-50')}>
       <aside
         className={cn(
           'flex h-full flex-col overflow-hidden rounded-[1.25rem] border border-border bg-sidebar py-4 shadow-[var(--shadow-card)] transition-[width] duration-200 ease-snappy',

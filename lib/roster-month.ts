@@ -21,16 +21,15 @@
  * display, because "OFF — the usual shift does not work that day" and "nobody ever set a usual shift"
  * are different things to an HR administrator and the reporter asked to tell them apart.
  *
- * A default shift with a NULL weekly_pattern resolves to `off` on every date, exactly as
- * resolveShiftDisplay does (`def.pattern?.includes(...)` is false when pattern is null) — a usual shift
- * with no pattern schedules nothing.
+ * Full and half working weekdays both schedule the usual shift. A legacy usual shift with neither
+ * a full pattern nor a half pattern schedules nothing; rest/off display retains its existing meaning.
  */
 
 /** What is actually stored for one (employee, date): a shift, an explicit rest day, or nothing. */
 export type AssignedCell = { kind: 'shift'; shiftId: string } | { kind: 'rest' } | null;
 
 /** The person's usual (default) shift, with the weekly pattern that decides which days it covers. */
-export type UsualShift = { shiftId: string; pattern: number[] | null };
+export type UsualShift = { shiftId: string; pattern: number[] | null; halfPattern?: number[] | null };
 
 /** What the cell shows. `usual` is the greyed ghost; `off`/`none` both mean "no shift is scheduled". */
 export type ResolvedCell =
@@ -230,7 +229,8 @@ export const rosterDateLocale = (locale: string): string => (locale === 'en' ? '
 export function resolveRosterCell(iso: string, assigned: AssignedCell, usual: UsualShift | null | undefined): ResolvedCell {
   if (assigned) return assigned.kind === 'shift' ? { kind: 'shift', shiftId: assigned.shiftId } : { kind: 'rest' };
   if (!usual) return { kind: 'none' };
-  return usual.pattern?.includes(isoWeekdayOf(iso)) ? { kind: 'usual', shiftId: usual.shiftId } : { kind: 'off' };
+  const weekday=isoWeekdayOf(iso);
+  return (usual.pattern?.includes(weekday)||usual.halfPattern?.includes(weekday)) ? { kind: 'usual', shiftId: usual.shiftId } : { kind: 'off' };
 }
 
 /** Is the person scheduled to WORK on this resolved cell? (`usual` counts — the ghost is a real schedule.) */

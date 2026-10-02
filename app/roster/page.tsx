@@ -20,6 +20,7 @@ import {
   type RosterViewKind,
 } from '@/lib/roster-month';
 
+import {rosterTeamContext,rosterTeamWindow} from './my-team-scope';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
 /**
@@ -41,6 +42,8 @@ export default async function RosterPage({
 }: {
   searchParams: Promise<{
     companyId?: string;
+    /** Serialized team query, always resolved afresh; never a posted employment-id authority. */
+    myTeam?: string;
     /** a57f0584 rev 2 — which of the three views, and the dates it needs. `month` alone still works, and
      *  still means the month view: every link and bookmark written before this round keeps resolving. */
     view?: string;
@@ -61,7 +64,9 @@ export default async function RosterPage({
   const locale = await getLocale();
   const sp = await searchParams;
 
-  const companies = (await listCompanies(s)).filter((c) => scopeIds.length === 0 || scopeIds.includes(c.id));
+  const team=await rosterTeamContext(s,scopeIds,sp);
+  const teamScope=team?.scope??null;
+  const companies = (await listCompanies(s)).filter(c=>!teamScope||teamScope.companyIds.includes(c.id)).filter((c) => scopeIds.length === 0 || scopeIds.includes(c.id));
   if (companies.length === 0) {
     // a57f0584 — the empty state takes the SAME width as the screen. It was mx-auto max-w-6xl, which is a
     // page-level cap on a screen whose whole point is being full width; one card of text is no reason for
@@ -105,17 +110,19 @@ export default async function RosterPage({
    * `assertRosterWindow` — so this is the message, not the guard.
    */
   const resolved = resolveRosterWindow({ view: sp.view, month: sp.month, from: sp.from, to: sp.to, today: todayIso });
-  const win = resolved.window;
+  const win = team ? rosterTeamWindow(team,todayIso) : resolved.window;
   const month = win.month;
 
-  const view = await rosterWindowView(s, {
+  const rosterView = await rosterWindowView(s, {
     companyIds,
     from: win.from,
     to: win.to,
     ...(sp.bu ? { businessUnitId: sp.bu } : {}),
     ...(sp.dept ? { departmentId: sp.dept } : {}),
     ...(sp.q ? { q: sp.q } : {}),
+    ...(teamScope ? {employmentIds:teamScope.employmentIds} : {}),
   });
+  const view=rosterView;
 
   /**
    * a57f0584 rev 2 — ONLY THE COUNT. "This week's exceptions" was a full listing rendered at the foot of
@@ -125,7 +132,7 @@ export default async function RosterPage({
    * them.
    */
   const [exceptionCount, departments] = await Promise.all([
-    rosterExceptionCount(s, { from: view.from, to: view.to, companyIds, today: todayIso }),
+    rosterExceptionCount(s, { from: view.from, to: view.to, companyIds, today: todayIso, ...(teamScope?{employmentIds:teamScope.employmentIds}:{}) }),
     listDepartments(s, { companyIds }),
   ]);
 
@@ -186,6 +193,7 @@ export default async function RosterPage({
    */
   const qs = (over: Record<string, string | undefined>) => {
     const p = new URLSearchParams({ view: win.kind, month: win.month });
+    if(sp.myTeam)p.set('myTeam',sp.myTeam);
     if (win.kind !== 'month') {
       p.set('from', win.from);
       p.set('to', win.to);
@@ -261,6 +269,7 @@ export default async function RosterPage({
       <div className="flex flex-wrap items-center justify-between gap-3">
         {companies.length > 1 ? (
           <form method="get" className="flex items-center gap-2">
+            {sp.myTeam && <input type="hidden" name="myTeam" value={sp.myTeam} />}
             <input type="hidden" name="month" value={month} />
             <select name="companyId" defaultValue={companyId ?? ''} className={inputCls}>
               {/* a57f0584 — and it is the DEFAULT, not merely available: the screen opens on everyone. */}
@@ -314,7 +323,7 @@ export default async function RosterPage({
           <Link href={`/roster/exceptions?${qs({})}`} className={navBtn}>
             {t('exceptionsButton', { count: exceptionCount })}
           </Link>
-          <Link href={`/roster/export?${qs({ format: 'xlsx' })}`} className={navBtn} prefetch={false}>
+          <Link href={`/roster/export?${qs({ format: 'xlsx' })}`}  className={navBtn} prefetch={false}>
             {t('exportLabel')}
           </Link>
         </div>
@@ -328,7 +337,7 @@ export default async function RosterPage({
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
           <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t('viewLabel')}</span>
           <span className="inline-flex overflow-hidden rounded-md border border-border">
-            {(['month', 'week', 'custom'] as const).map((kind) => (
+            {(['month', 'week', 'custom'] as const).filter(kind=>!teamScope||kind!=='custom').map((kind) => (
               <Link
                 key={kind}
                 href={viewHref(kind)}
@@ -363,6 +372,7 @@ export default async function RosterPage({
             the reporter's own screen carries. A plain GET form: the URL is the state, so a filtered window
             is shareable and the export link below carries the same narrowing. */}
         <form method="get" className="flex flex-wrap items-end gap-3 px-4 py-3">
+          {sp.myTeam && <input type="hidden" name="myTeam" value={sp.myTeam} />}
           {companyId && <input type="hidden" name="companyId" value={companyId} />}
           {/* The view is posted back with the filters, or Query would drop the operator to Month. */}
           <input type="hidden" name="view" value={win.kind} />
@@ -468,7 +478,7 @@ export default async function RosterPage({
               shifts={view.shifts}
               initial={view.cells}
               usual={view.usual}
-              isAdmin={admin}
+              isAdmin={admin && (!teamScope || teamScope.canEditRoster)}
               today={todayIso}
               editQuery={qs({})}
             />

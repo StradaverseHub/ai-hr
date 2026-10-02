@@ -18,7 +18,7 @@ export type MyTeamRosterDay = {
   isRestDay: boolean; isOverride: boolean;
 };
 export type MyTeamAttendanceDay = {
-  attendanceId: string | null; status: string; flag: string | null;
+  attendanceId: string | null; status: string; flag: string | null; late:boolean;
   checkInAt: string | null; checkOutAt: string | null; workedMinutes: number | null;
   lateMinutes: number | null; scheduledMinutes: number | null; fingerprint: string | null;
   reviewed: boolean;
