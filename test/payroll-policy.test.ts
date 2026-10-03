@@ -93,7 +93,16 @@ async function statutoryForMoneyComparison(ps: typeof schema.payslip.$inferSelec
   const statutory=ps.statutory as Record<string,unknown>;
   const meta=statutory.pcbMeta as Record<string,unknown>;
   expect(meta).toMatchObject({taxSelectionId:selection!.id,taxSelectionVersion:selection!.version,taxSelectionSource:'income_tax_resident',calculationScheme:selection!.scheme});
-  return {...statutory,pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'}};
+  const basis=statutory.salaryBasis as Record<string,unknown>;
+  const [salary]=await owner.db.select().from(schema.compensation).where(eq(schema.compensation.id,String(basis.compensationId)));
+  expect(salary).toBeDefined();expect(salary.tenantId).toBe(ps.tenantId);expect(salary.employmentId).toBe(ps.employmentId);
+  const [year,month]=batch.payPeriod.split('-').map(Number);
+  const referenceDate=new Date(Date.UTC(year,month,0)).toISOString().slice(0,10);
+  expect(salary.validFrom<=referenceDate && (salary.validTo==null || salary.validTo>referenceDate)).toBe(true);
+  expect(salary.supersededAt).toBeNull();
+  expect(basis).toEqual({version:1,referenceDate,compensationId:salary.id,effectiveFrom:salary.validFrom,basicSalary:salary.basicSalary,payMode:salary.payMode});
+  // Keep every saved input and monetary field; only independently validated employment-owned UUIDs differ.
+  return {...statutory,pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'},salaryBasis:{...basis,compensationId:'validated-compensation-selection'}};
 }
 
 describe('2.1 Payroll Policy — service + substrate', () => {
