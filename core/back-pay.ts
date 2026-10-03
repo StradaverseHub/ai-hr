@@ -451,7 +451,7 @@ async function computeLinesTx(tx: Tx, p: { candidates: ArrearsCandidate[] }): Pr
       const saved = slip.statutory as Record<string, unknown> | null;
       const stamped = saved != null && Object.prototype.hasOwnProperty.call(saved, 'salaryBasis');
       const salaryBasis = stamped ? readPayrollSalaryBasis(saved!.salaryBasis, periodEnd) : null;
-      // ABSENT keeps legacy reconstruction only when its visible baseline starts within the paid period.
+      // ABSENT keeps legacy reconstruction only when its visible baseline starts no later than the paid period end.
       // A future-starting legacy denominator cannot establish what the paid run actually used.
       // A malformed new stamp must not silently change contract by falling back to legacy history.
       const legacyBaseline = [...visible].sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0];
