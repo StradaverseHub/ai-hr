@@ -9,7 +9,7 @@ import {addDependent} from '../core/dependents';
 import {commitEmployeeImport} from '../core/import';
 import {parseCsvRecords} from '../lib/csv';
 import {setCompensation} from '../core/comp';
-import {createBatch,createAdditionalRun,generatePayslips,saveStatutoryAdjustment} from '../core/payroll';
+import {createBatch,createAdditionalRun,generatePayslips,saveStatutoryAdjustment,resetProcessedBatch} from '../core/payroll';
 import {seedPayComponentCatalog,setPayrollBatchComponent} from '../core/pay-components';
 import {multiCycleWorksheetMY} from '../localization/my/multicycle-worksheet';
 import {crossEmployerPcbExposure} from '../localization/my/reports';
@@ -17,9 +17,11 @@ import {getTaxSelectionMY,resolveTaxSelectionMY,saveTaxSelectionMY} from '../loc
 import {setStatutoryProfileMY,setTaxProfileMY} from '../localization/my/statutory';
 import {explainPcb,pcbTaxCategoryIdentity} from '../core/pcb-explain';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {adminCtx,entitledCtx,setModule,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,entitledCtx,setModule,setSetting,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,e:Awaited<ReturnType<typeof hireEmployee>>;
-const period=todayInKualaLumpur().slice(0,7),hiredOn=`${period.slice(0,4)}-01-01`;
+// The fixture has no prior-year-to-date earnings. January keeps its positive taxable control
+// meaningful when the real clock reaches late-year months with a shorter projection window.
+const period=`${todayInKualaLumpur().slice(0,4)}-01`,hiredOn=`${period.slice(0,4)}-01-01`;
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();e=await hireEmployee(adminCtx(b),{person:{fullName:'Synthetic circumstance',primaryEmail:`circ_${randomUUID()}@example.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn});await setStatutoryProfileMY(adminCtx(b),{personId:e.personId,icNumber:'900101017654',taxCategory:3});await setCompensation(adminCtx(b),{employmentId:e.employmentId,basicSalary:8000,monthlyAllowance:0,effectiveFrom:hiredOn});});
 const profile=async()=>{const [row]=await owner.db.select().from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId,e.personId));return row;};
@@ -83,6 +85,10 @@ describe('r385 authoritative tax circumstance transactions',()=>{
   const [transfer,saved]=await operations;expect(transfer.status).toBe('fulfilled');if(saved.status==='fulfilled'){expect(await profile()).toMatchObject({taxCircumstance:'none',taxApplicabilityEpoch:1});expect(await resolve(e.employmentId,company.id)).toMatchObject({scheme:'none'});}else{expect(saved.reason).toMatchObject({code:'stale_context'});expect(await profile()).toMatchObject({taxCircumstance:null,taxApplicabilityEpoch:0});}
  });
  it('company correction keeps None dormant and requires the destination current choice on reactivation',async()=>{
+  // Correction is permitted only before recorded activity; the shared compensation fixture
+  // already has such activity. Use a genuinely fresh hire rather than bypassing that owner gate.
+  e=await hireEmployee(adminCtx(b),{person:{fullName:'Synthetic fresh correction',primaryEmail:`fresh_${randomUUID()}@example.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn});
+  await setStatutoryProfileMY(adminCtx(b),{personId:e.personId,icNumber:'900101017655',taxCategory:3});
   const [company]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Synthetic transfer employer'}).returning();const [dept]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:company.id,name:'Synthetic transfer department'}).returning();await select('none','none');await changeEmploymentCompany(adminCtx(b),{employmentId:e.employmentId,newCompanyId:company.id,departmentId:dept.id});
   expect(await resolve(e.employmentId,company.id)).toMatchObject({scheme:'none',taxCircumstance:{epoch:1}});const view=await getTaxSelectionMY(adminCtx(b),e.employmentId);await setTaxProfileMY(adminCtx(b),{personId:e.personId,employmentId:e.employmentId,expectedCompanyId:company.id,expectedSelectionVersion:view.version,expectedApplicabilityEpoch:view.taxApplicabilityEpoch,taxCircumstance:'widow_divorced',taxResidency:'resident'});expect(await resolve(e.employmentId,company.id)).toMatchObject({scheme:'resident',taxCircumstance:{epoch:2}});
  });
@@ -132,6 +138,8 @@ describe('r385 authoritative tax circumstance transactions',()=>{
   expect(none.statutory).toMatchObject({pcb:0,pcbBonus:0,epfEmployee:123,pcbMeta:{notSubjectToIncomeTax:true},pcbAdjustmentSuppressed:{requested:321}});
   expect(pcbTaxCategoryIdentity(explainPcb(none.statutory,null))).toMatchObject({applicable:false,labelKey:'taxCategoryNone'});
   await expect(saveStatutoryAdjustment(adminCtx(b),{batchId:batch.batchId,employmentId:e.employmentId,values:{pcb:1},reason:'Synthetic forbidden current adjustment'})).rejects.toThrow('Tax Category is None');
-  await generatePayslips(adminCtx(b),{batchId:batch.batchId});expect((await slip(batch.batchId)).statutory).toMatchObject({pcb:0,pcbBonus:0});
+  await setSetting(b.tenantId,'payroll.reset_enabled',true);const resetCtx=await entitledCtx(b);
+  await resetProcessedBatch(resetCtx,{batchId:batch.batchId,reason:'Synthetic explicit full reprocessing after None'});
+  await generatePayslips(resetCtx,{batchId:batch.batchId});expect((await slip(batch.batchId)).statutory).toMatchObject({pcb:0,pcbBonus:0});
  });
 });
