@@ -218,9 +218,11 @@ describe('Identification & Tax card (item 8b5334db): IC relocated to Profile, ta
    */
   it('the extracted Tax Category still POSTS from this card (all three facts, per r159)', () => {
     const field = read('components/tax-category-field.tsx');
-    expect(field.includes("name={props.name ?? 'taxCategory'}"), '① the field exists in the component').toBe(
+    expect(field.replace(/\s/g, '').includes("name={props.name??'taxCategory'}"), '① the field exists in the component').toBe(
       true,
     );
+    expect(field, 'the mapped integer posts through a hidden input').toMatch(/<input\b[^>]*type="hidden"[^>]*name=\{props\.name\s*\?\?\s*'taxCategory'\}[^>]*value=\{numeric\}/);
+    expect(field, 'the detailed circumstance also posts in form mode').toMatch(/name=\{props\.mode\s*===\s*'form'\s*\?\s*'taxCircumstance'\s*:\s*undefined\}/);
     expect(identityTaxCard.includes('<TaxCategoryField'), '② the card renders the component').toBe(true);
     const call = identityTaxCard.match(/<TaxCategoryField[\s\S]*?\/>/);
     expect(call, 'the card must render TaxCategoryField').not.toBeNull();

@@ -26,6 +26,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { GENDERS, MARITAL_STATUSES } from '../lib/person-vocabulary';
+import { clientPackFor } from '../localization/registry.client';
 // The db-free leaf the client pack serves as `identity.isLocalNationality` — the gate group 8 shares.
 import { isMalaysianNationality } from '../localization/my/ic-dob';
 import * as profile from '../core/profile';
@@ -527,6 +528,8 @@ describe('§3f group 6 — Tax Category is one component, and the wizard stops l
       expect(wizard, `the numbered label ${k} must be gone`).not.toContain(k);
     }
     const src = read(TAX_FIELD);
+    expect(src, 'the shared control consumes the country-owned options').toContain("clientPackFor('MY')!.payroll.taxCircumstanceOptions");
+    const keys = clientPackFor('MY')!.payroll.taxCircumstanceOptions!.map((option) => option.key);
     for (const k of [
       'taxCategorySingle',
       'taxCategoryMarriedSpouseNotWorking',
@@ -534,22 +537,20 @@ describe('§3f group 6 — Tax Category is one component, and the wizard stops l
       'taxCategoryDivorcedWithKids',
       'taxCategoryNone',
     ]) {
-      expect(src, `the shared control must offer ${k}`).toContain(k);
+      expect(keys, `the shared control must offer ${k}`).toContain(k);
     }
   });
 
-  it('keeps the 5 -> 3 value mapping EXACTLY, duplicates included', () => {
-    // Two options sharing a value is deliberate and must not be "tidied": they are different circumstances
-    // that LHDN taxes identically, and HR picks the one that describes the employee rather than doing the
-    // mapping in their head. Collapsing them would silently remove a choice from the screen.
-    // Read from the SOURCE rather than imported: this file is a static-source guard throughout, and the
-    // component is a 'use client' .tsx that a node test should not be pulling into its module graph.
-    const src = read(TAX_FIELD);
-    const list = src.slice(src.indexOf('TAX_CATEGORY_OPTIONS = ['), src.indexOf('] as const;'));
-    const values = [...list.matchAll(/value: '(\d)'/g)].map((m) => m[1]);
-    const keys = [...list.matchAll(/key: '([A-Za-z]+)'/g)].map((m) => m[1]);
-    expect(values).toEqual(['1', '2', '3', '3', '1']);
-    expect(new Set(keys).size, 'five distinct labels').toBe(5);
+  it('preserves five distinct saved circumstances and their exact statutory mapping', () => {
+    // Spouse-working and widow/divorced retain separate saved identities while both map to category 3.
+    // Explicit None bypasses PCB rather than silently selecting category 1. The public client seam owns
+    // these options; importing its pure data avoids pulling the client component into this node guard.
+    const options = clientPackFor('MY')!.payroll.taxCircumstanceOptions!;
+    expect(Object.fromEntries(options.map((option) => [option.value, option.category]))).toEqual({
+      single: 1, spouse_not_working: 2, spouse_working: 3, widow_divorced: 3, none: null,
+    });
+    expect(new Set(options.map((option) => option.value)).size, 'five distinct saved tokens').toBe(5);
+    expect(new Set(options.map((option) => option.key)).size, 'five distinct labels').toBe(5);
   });
 
   it('the shared control is client-safe, single-namespace, and each screen uses the right mode', () => {
@@ -559,7 +560,7 @@ describe('§3f group 6 — Tax Category is one component, and the wizard stops l
     const namespaces = [...src.matchAll(/useTranslations\(\s*['"]([^'"]+)['"]\s*\)/g)].map((m) => m[1]);
     expect([...new Set(namespaces)]).toEqual(['people.detail']);
 
-    // The card POSTS through FormData, so it must stay uncontrolled and keep the name.
+    // The card POSTS both the mapped integer and the detailed identity through FormData.
     const cardCall = read(TAX_CARD).match(/<TaxCategoryField[\s\S]*?\/>/);
     expect(cardCall).not.toBeNull();
     expect(cardCall![0]).toContain('mode="form"');
