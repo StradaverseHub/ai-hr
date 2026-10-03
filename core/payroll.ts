@@ -3385,6 +3385,8 @@ export async function prefillShiftDifferentialFromRoster(ctx: SessionContext, p:
       .limit(1);
     if (!batch) throw new Error('batch not found');
     if (batch.status !== 'draft') throw new BatchNotDraftError();
+    const [salaryYear, salaryMonth] = batch.payPeriod.split('-').map(Number);
+    const periodEnd = `${batch.payPeriod}-${String(daysInMonth(salaryYear, salaryMonth)).padStart(2, '0')}`;
 
     const [comp] = await tx.select({ id: payComponent.id }).from(payComponent).where(eq(payComponent.code, 'SHIFT_DIFFERENTIAL')).limit(1);
     if (!comp) throw new Error('SHIFT_DIFFERENTIAL pay-component is not seeded — run the catalog seed first');
@@ -3545,15 +3547,15 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     }
 
     // Pre-processing validation (feedback f1564110, Phase 1): a full draft→processed generation is
-    // BLOCKED while any scoped, period-active employee has no current compensation row — previously
+    // BLOCKED while any scoped, period-active employee has no period-effective compensation row — previously
     // those employees were silently dropped by the inner join below. Fails closed BEFORE any write,
     // so there is deliberately no DomainEvent (nothing changed state). Warning-class gaps (missing
     // statutory profile / bank details) do not block here — the operator confirms them explicitly in
     // generateAction. A subset reprocess targets a processed run that already passed this gate.
     if (!subset) {
       const checks = await preProcessChecksTx(tx, { companyId: batch.companyId, payPeriod: batch.payPeriod, scope: batch.scope }, isModuleEnabled(ctx, 'typed_pay_components'));
-      // BLOCKER: no compensation row covering the period (a missing open row is silently dropped by the
-      // earnings inner-join; an effective date past the period is a salary the period never had) OR a zero
+      // BLOCKER: no compensation row effective for the period (the earnings inner-join would silently
+      // drop that employee; future rows do not supply a missing salary) OR a zero
       // basic/rate (feedback 64fb5e48 — the Personnel record would pay nothing). The old BASIC-component
       // existence blocker is GONE (feedback 64fb5e48): the Personnel Basic Salary record is the
       // authoritative pay source, so an internal BASIC pay item is never a processing prerequisite.
@@ -3823,6 +3825,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // 3c88d593 — TODAY's entity, which is the entity resolver's fallback for any range the dated
         // history does not cover. Selected here so the resolver needs no second query per employee.
         currentCompanyId: employment.companyId,
+        compensationId: compensation.id,
+        compensationEffectiveFrom: compensation.validFrom,
         basic: compensation.basicSalary,
         allowance: compensation.monthlyAllowance,
         // ADR-0078 (642ecc55) — the employee's OWN salary structure: `basic` stays the monthly-equivalent
@@ -4449,7 +4453,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
 
     // 1c — salary-increment proration: the two straddling compensation rows (superseded old + open new) for
     // any employment whose policy enables it AND that has a mid-period increment. Resolved once; the loop
-    // reads a per-employee blended basic. Default (off / single row) ⇒ the kernel's single open-row read is
+    // reads a per-employee blended basic. Default (off / single row) ⇒ the kernel's single period-effective row is
     // untouched. Only fires when the new comp row exists at generate time (snapshot immutability, ADR-0036).
     const incrementBasicByEmp = new Map<string, number>();
     const incrementEmpIds = emps
@@ -7156,6 +7160,17 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         statutory: {
           ...st,
           ...statutoryProvenance,
+          // Saved selection input, before existing proration. Back-pay reads this new contract rather
+          // than pricing a new period-effective slip from a future revision visible at processing.
+          // No stamp is inferred or backfilled on any untouched historical payslip.
+          salaryBasis: {
+            version: 1,
+            referenceDate: periodEnd,
+            compensationId: e.compensationId,
+            effectiveFrom: e.compensationEffectiveFrom,
+            basicSalary: e.basic,
+            payMode: e.payMode,
+          },
           // 3a092cf0 — THE STAMP THAT SAYS "THIS SLIP'S TOTAL ALREADY COUNTS THE ZAKAT".
           //
           // Zakat joined `statDeductions` in this round, so a slip written from here reconciles: its
@@ -9788,7 +9803,7 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
 // ("maintain employee info → validate → process as the final step"). All salary checks read the
 // Personnel Basic Salary record (compensation) — the authoritative source; the internal BASIC pay
 // item is NEVER a processing prerequisite (feedback 64fb5e48). Classes:
-//   • missingCompensation — BLOCKER. No open compensation row (the generation employee query
+//   • missingCompensation — BLOCKER. No period-effective compensation row (the generation employee query
 //     inner-joins compensation, so these employees were previously dropped from the run with no
 //     warning at all), or no salary record covering the pay period. Generation fails closed
 //     (PreProcessBlockedError) until fixed.
@@ -9831,7 +9846,7 @@ export type NothingPayableRow = PreProcessCheckRow & { remarks: string | null };
 
 export type PreProcessAdvisory = {
   missingCompensation: PreProcessCheckRow[];
-  // BLOCKER (ADR-0078 / 642ecc55). The employee's open compensation row carries pay_mode='custom_period',
+  // BLOCKER (ADR-0078 / 642ecc55). The employee's period-effective compensation row carries pay_mode='custom_period',
   // which has NO calculation behind it — letting the run proceed would quietly pay the monthly-equivalent
   // basic for a structure the admin explicitly marked as NOT monthly. Named per employee, blocked at
   // pre-flight (generatePayslips re-asserts fail-closed) rather than thrown inside the engine: the batch
@@ -9878,7 +9893,7 @@ export type PreProcessAdvisory = {
   staleBasicComponent?: PreProcessCheckRow[];
   missingStatutory: PreProcessCheckRow[];
   missingBank: PreProcessCheckRow[];
-  // WARNING (297ae65a — Currency on Basic Salary). The employee's OPEN compensation row is denominated in
+  // WARNING (297ae65a — Currency on Basic Salary). The employee's period-effective compensation row is denominated in
   // a currency other than MYR while payroll computes under the MY pack: the amount is processed AS ENTERED
   // (recording/reporting first; conversion is a future enhancement), so the operator must explicitly
   // confirm a mixed-currency / non-MYR run instead of it calculating something misleading silently.
@@ -10076,9 +10091,8 @@ async function preProcessChecksTx(
   const out: PreProcessAdvisory = { missingCompensation: [], unpayablePayMode: [], zeroBasic: [], nothingPayable: [], staleBasicComponent: [], missingStatutory: [], missingBank: [], currencyMismatch: [], hrdfSubjectUnregistered: [], tp3YearMismatch: [] };
   for (const r of rows) {
     const row: PreProcessCheckRow = { employmentId: r.employmentId, name: r.name, employeeCode: r.employeeCode };
-    // Feedback 64fb5e48 — the OPEN row must exist (the generation employee query inner-joins it, so a
-    // missing one silently drops the employee) AND the pay period must actually be covered by a salary
-    // record: an open row already in effect covers it, else a period-overlapping predecessor must exist.
+    // The period-effective row must exist: both validation and calculation select this same record.
+    // A future open revision cannot supply a missing salary or override an applicable historical one.
     if (!r.compId) out.missingCompensation.push(row);
     // ADR-0078 — pay_mode='custom_period' has no calculation: BLOCKER, named per employee. Checked before
     // the zero-amount gap so one row lands in exactly one blocker list (the mode gap subsumes it —

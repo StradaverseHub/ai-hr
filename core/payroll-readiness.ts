@@ -236,7 +236,7 @@ export function payrollReadiness(
       href: '/admin/payroll-policy',
     };
 
-    // ── payModes ── ADR-0078 (642ecc55): any period-active employee whose OPEN compensation row carries
+    // ── payModes ── ADR-0078 (642ecc55): any period-active employee whose period-effective compensation row carries
     // pay_mode='custom_period' BLOCKS the run — that mode has no calculation behind it, and letting the run
     // proceed would quietly pay the monthly-equivalent basic for a structure explicitly marked not-monthly.
     // Named per employee (the feedback's decision 4: "naming the employee"). Hourly is NOT blocked: per_hour
