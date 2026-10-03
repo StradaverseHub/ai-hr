@@ -4,6 +4,10 @@ import {and,eq,sql} from 'drizzle-orm';
 import {withTenant} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee,changeEmploymentCompany} from '../core/org';
+import {createMovementEvent} from '../core/movement';
+import {addDependent} from '../core/dependents';
+import {commitEmployeeImport} from '../core/import';
+import {parseCsvRecords} from '../lib/csv';
 import {setCompensation} from '../core/comp';
 import {createBatch,createAdditionalRun,generatePayslips,saveStatutoryAdjustment} from '../core/payroll';
 import {seedPayComponentCatalog,setPayrollBatchComponent} from '../core/pay-components';
@@ -58,6 +62,26 @@ describe('r385 authoritative tax circumstance transactions',()=>{
   await expect(setStatutoryProfileMY(adminCtx(b),{personId:e.personId,icNumber:current.icNumber,taxCircumstance:'single',taxCategory:1})).rejects.toMatchObject({code:'stale_context'});
   await expect(setStatutoryProfileMY(adminCtx(b),{personId:e.personId,icNumber:current.icNumber,taxCircumstance:'single',expectedApplicabilityEpoch:0,taxCategory:1})).rejects.toMatchObject({code:'stale_context'});
  });
+ it('numeric import remains legacy Category3 and cannot overwrite an existing None identity',async()=>{
+  await select('none','none');const before=await profile();const [department]=await owner.db.select().from(schema.department).where(eq(schema.department.id,b.deptA));
+  const records=parseCsvRecords(`full_name,email,department,hired_on,ic_number,basic_salary,employee_code,tax_category\nSynthetic numeric import,numeric_${randomUUID()}@example.test,${department.name},${hiredOn},900101017652,5000,R385IMP3,3`).records;
+  const result=await commitEmployeeImport(adminCtx(b),{companyId:b.companyId,records});expect(result.failed).toEqual([]);expect(result.imported).toBe(1);
+  const [imported]=await owner.db.select({category:schema.employeeStatutoryMy.taxCategory,key:schema.employeeStatutoryMy.taxCircumstance,epoch:schema.employeeStatutoryMy.taxApplicabilityEpoch}).from(schema.employeeStatutoryMy).innerJoin(schema.employment,eq(schema.employment.personId,schema.employeeStatutoryMy.personId)).where(eq(schema.employment.employeeCode,'R385IMP3'));expect(imported).toEqual({category:3,key:null,epoch:0});expect(await profile()).toEqual(before);
+ });
+ it('automatic dependent writes preserve detailed identity and epoch while conflicting numeric edits retire taxable detail',async()=>{
+  await select('widow_divorced','resident');await setTaxProfileMY(adminCtx(b),{personId:e.personId,taxCategory:3,childReliefMode:'auto'});
+  const first=await addDependent(adminCtx(b),{personId:e.personId,fullName:'Synthetic child one',relationship:'child',dateOfBirth:'2016-01-01',childTaxRelief:true,childReliefCategory:'under_18',childReliefPercentage:100});expect(first.childReliefSync).toMatchObject({changed:true,after:1,skipped:null});expect(await profile()).toMatchObject({taxCircumstance:'widow_divorced',taxCategory:3,taxApplicabilityEpoch:0,numChildren:1});
+  const prior=await profile();await setStatutoryProfileMY(adminCtx(b),{personId:e.personId,icNumber:prior.icNumber,taxCategory:2});expect(await profile()).toMatchObject({taxCircumstance:null,taxCategory:2,taxApplicabilityEpoch:0});
+  await select('none','none');await setTaxProfileMY(adminCtx(b),{personId:e.personId,taxCategory:1,childReliefMode:'auto'});
+  const second=await addDependent(adminCtx(b),{personId:e.personId,fullName:'Synthetic child two',relationship:'child',dateOfBirth:'2018-01-01',childTaxRelief:true,childReliefCategory:'under_18',childReliefPercentage:100});expect(second.childReliefSync).toMatchObject({changed:true,after:2,skipped:null});expect(await profile()).toMatchObject({taxCircumstance:'none',taxCategory:2,taxApplicabilityEpoch:1,numChildren:2});
+ });
+ it('concurrent Entity Transfer versus None save serializes or refuses stale employer intent',async()=>{
+  const [company]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Synthetic concurrent transfer'}).returning();const [dept]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:company.id,name:'Synthetic concurrent department'}).returning();const view=await getTaxSelectionMY(adminCtx(b),e.employmentId);
+  let release!:()=>void;const released=new Promise<void>(r=>{release=r;});let locked!:(x:string)=>void;const lockedOwner=new Promise<string>(r=>{locked=r;});const holder=owner.db.transaction(async tx=>{await tx.select().from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId,e.personId)).for('update');const rows=await tx.execute(sql`SELECT txid_current()::text AS id`);locked(String(rows[0].id));await released;});const xid=await lockedOwner;
+  const operations=Promise.allSettled([createMovementEvent(adminCtx(b),{employmentId:e.employmentId,kind:'entityTransfer',effectiveDate:todayInKualaLumpur(),companyId:company.id,departmentId:dept.id}),setTaxProfileMY(adminCtx(b),{personId:e.personId,employmentId:e.employmentId,expectedCompanyId:b.companyId,expectedSelectionVersion:view.version,expectedApplicabilityEpoch:view.taxApplicabilityEpoch,taxCircumstance:'none',taxResidency:'none'})]);
+  try{const deadline=Date.now()+5000;let blocked=0;do{const rows=await owner.db.execute(sql`SELECT count(*)::integer AS blocked FROM pg_locks WHERE locktype='transactionid' AND transactionid::text=${xid} AND NOT granted`);blocked=Number(rows[0].blocked);if(blocked<1)await new Promise(r=>setTimeout(r,25));}while(blocked<1&&Date.now()<deadline);expect(blocked).toBeGreaterThanOrEqual(1);}finally{release();await holder;}
+  const [transfer,saved]=await operations;expect(transfer.status).toBe('fulfilled');if(saved.status==='fulfilled'){expect(await profile()).toMatchObject({taxCircumstance:'none',taxApplicabilityEpoch:1});expect(await resolve(e.employmentId,company.id)).toMatchObject({scheme:'none'});}else{expect(saved.reason).toMatchObject({code:'stale_context'});expect(await profile()).toMatchObject({taxCircumstance:null,taxApplicabilityEpoch:0});}
+ });
  it('company correction keeps None dormant and requires the destination current choice on reactivation',async()=>{
   const [company]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Synthetic transfer employer'}).returning();const [dept]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:company.id,name:'Synthetic transfer department'}).returning();await select('none','none');await changeEmploymentCompany(adminCtx(b),{employmentId:e.employmentId,newCompanyId:company.id,departmentId:dept.id});
   expect(await resolve(e.employmentId,company.id)).toMatchObject({scheme:'none',taxCircumstance:{epoch:1}});const view=await getTaxSelectionMY(adminCtx(b),e.employmentId);await setTaxProfileMY(adminCtx(b),{personId:e.personId,employmentId:e.employmentId,expectedCompanyId:company.id,expectedSelectionVersion:view.version,expectedApplicabilityEpoch:view.taxApplicabilityEpoch,taxCircumstance:'widow_divorced',taxResidency:'resident'});expect(await resolve(e.employmentId,company.id)).toMatchObject({scheme:'resident',taxCircumstance:{epoch:2}});
@@ -81,6 +105,10 @@ describe('r385 authoritative tax circumstance transactions',()=>{
   const regular=await createBatch(ctx,{companyId:b.companyId,payPeriod:period});await select('widow_divorced','resident');await generatePayslips(ctx,{batchId:regular.batchId});const paid=await slip(regular.batchId);expect(Number((paid.statutory as {pcb:number}).pcb)).toBeGreaterThan(0);
   await select('none','none');await seedPayComponentCatalog(ctx);const [bonus]=await owner.db.select().from(schema.payComponent).where(and(eq(schema.payComponent.tenantId,b.tenantId),eq(schema.payComponent.code,'BONUS')));
   const extra=await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:period,runType:'bonus'});await setPayrollBatchComponent(ctx,{batchId:extra.batchId,employmentId:e.employmentId,componentId:bonus.id,amount:2000});await generatePayslips(ctx,{batchId:extra.batchId});expect((await slip(extra.batchId)).statutory).toMatchObject({pcb:0,pcbBonus:0,pcbMeta:{notSubjectToIncomeTax:true}});expect(await slip(regular.batchId)).toEqual(paid);
+ });
+ it('off_cycle processing after prior taxable PCB independently respects None and cannot refund prior paid PCB',async()=>{
+  await setModule(b.tenantId,'multi_cycle_payroll','active');await setModule(b.tenantId,'typed_pay_components','active');const ctx=await entitledCtx(b);const regular=await createBatch(ctx,{companyId:b.companyId,payPeriod:period});await select('widow_divorced','resident');await generatePayslips(ctx,{batchId:regular.batchId});const paid=await slip(regular.batchId);expect(Number((paid.statutory as {pcb:number}).pcb)).toBeGreaterThan(0);await select('none','none');await seedPayComponentCatalog(ctx);
+  const [bonus]=await owner.db.select().from(schema.payComponent).where(and(eq(schema.payComponent.tenantId,b.tenantId),eq(schema.payComponent.code,'BONUS')));const off=await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:period,runType:'off_cycle'});await setPayrollBatchComponent(ctx,{batchId:off.batchId,employmentId:e.employmentId,componentId:bonus.id,amount:2100});await generatePayslips(ctx,{batchId:off.batchId});const current=await slip(off.batchId);expect(Number(current.grossPay)).toBeGreaterThan(0);expect(current.statutory).toMatchObject({pcb:0,pcbBonus:0,pcbMeta:{notSubjectToIncomeTax:true}});expect(await slip(regular.batchId)).toEqual(paid);
  });
  it('worksheet replays saved None after the current profile becomes taxable',async()=>{
   await setModule(b.tenantId,'multi_cycle_payroll','active');await setModule(b.tenantId,'typed_pay_components','active');const ctx=await entitledCtx(b);await select('none','none');
