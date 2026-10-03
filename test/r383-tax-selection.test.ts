@@ -28,7 +28,7 @@ describe('direct employer Income Tax Resident selection',()=>{
  });
  it.each(['resident','non_resident','rep','knowledge_worker','c_suite'])('direct %s choice routes without any declaration',async scheme=>{
   await owner.db.update(schema.employeeStatutoryMy).set({epfCitizenship:'non_citizen'}).where(eq(schema.employeeStatutoryMy.personId,e.personId));
-  const row=await save(scheme);expect(await resolve()).toEqual({scheme,selectionId:row.id,selectionVersion:row.version,selectionSource:'income_tax_resident'});
+  const row=await save(scheme);expect(await resolve()).toEqual({scheme,selectionId:row.id,selectionVersion:row.version,selectionSource:'income_tax_resident',taxCircumstance:{version:1,key:null,category:1,applicable:true,epoch:0}});
   expect(await owner.db.select().from(schema.employmentTaxSchemeMy)).toHaveLength(0);
  });
  it('strict invalid choice, citizen/unknown C-Suite and stale revision do not change prior authority',async()=>{

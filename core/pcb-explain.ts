@@ -1,5 +1,8 @@
-import {readSavedTaxCircumstance,taxCircumstanceOf,type SavedTaxCircumstance} from '../localization/my/tax-circumstance';
+import {clientPackFor} from '../localization/registry.client';
+import type {SavedTaxCircumstance} from '../localization/country-pack';
 import { readPcbNonCash, type PcbNonCashSnapshot } from '../localization/noncash-benefits';
+const taxCircumstanceOf=clientPackFor('MY')!.payroll.taxCircumstanceOf!;
+const readSavedTaxCircumstance=clientPackFor('MY')!.payroll.readSavedTaxCircumstance!;
 /**
  * Feedback 169e3c24 — explain a payslip's PCB (MTD) figure from what the payslip itself recorded.
  * Feedback 45df860a — …and now the WHOLE working, so the LHDN formula can be closed on screen.

@@ -6,7 +6,8 @@ import {actorOf,appendEvent} from '../../db/events';
 import {assignment,company,employment,employeeStatutoryMy,employmentTaxSchemeMy,employmentTaxSelectionMy,payrollBatch} from '../../db/schema';
 import {employedByCompanyDuring} from '../../core/employment-company';
 import type {PcbCalculationScheme} from './payroll';
-export const TAX_SELECTION_SCHEMES=['resident','non_resident','rep','knowledge_worker','c_suite'] as const;
+import {TAX_SELECTION_SCHEMES} from './tax-selection-codes';
+export {TAX_SELECTION_SCHEMES} from './tax-selection-codes';
 export type TaxSelectionCode='confirmation_required'|'invalid_scheme'|'citizenship_unknown'|'not_resident'|'not_found'|'invalid_period'|'stale_context';
 export class TaxSelectionError extends Error {
  constructor(public readonly code:TaxSelectionCode,public readonly details?:{configuredScheme:PcbCalculationScheme;effectiveScheme?:PcbCalculationScheme}){super(`PCB selected category: ${code}`);this.name='TaxSelectionError';}

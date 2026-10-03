@@ -339,6 +339,7 @@ const REGISTRY: Record<string, RegistryTable> = {
     },
     excluded: [
       { reason: PLUMBING, fields: ['id', 'tenantId', 'personId', 'createdAt', 'updatedAt'] },
+      { reason: 'Detailed circumstance is an explicit Personnel tax choice; the numeric import remains legacy. Applicability epoch is assigned by that owner, never by a spreadsheet.', fields: ['taxCircumstance','taxApplicabilityEpoch'] },
       {
         reason:
           'passport detail beyond the trio + issuing country: a free-text remark and the CP39 country CODE, which HR picks by hand precisely because it is not derivable from the country name (e4b541c6)',

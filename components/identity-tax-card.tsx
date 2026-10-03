@@ -238,7 +238,17 @@ export function IdentityTaxCard({
   );
   const [taxCategory, setTaxCategory] = useState(String(defaults.taxCategory ?? 1));
   const [taxCircumstance,setTaxCircumstance]=useState(defaults.taxCircumstance??String(defaults.taxCategory??1));
-  const [taxResidency,setTaxResidency]=useState(taxSelection?.confirmationRequired?'':defaults.taxResidency);
+  const residencyDefault=taxSelection?.confirmationRequired||!clientPackFor('MY')?.payroll.taxSelectionSchemes?.includes(defaults.taxResidency)?'':defaults.taxResidency;
+  const taxContextKey=JSON.stringify([employmentId,personId,taxSelection?.companyId,taxSelection?.version,taxSelection?.confirmationRequired,defaults.taxApplicabilityEpoch??0]);
+  const [taxDraftContext,setTaxDraftContext]=useState(taxContextKey);
+  const [taxResidency,setTaxResidency]=useState(residencyDefault);
+  // Reset this controlled draft before rendering a changed owner/revision. Same-owner refreshes
+  // retain unsaved edits, while a returned old context cannot resurrect an earlier incentive draft.
+  if(taxDraftContext!==taxContextKey){
+    setTaxDraftContext(taxContextKey);setTaxResidency(residencyDefault);
+    setTaxCircumstance(defaults.taxCircumstance??String(defaults.taxCategory??1));
+    setTaxCategory(String(defaults.taxCategory??1));
+  }
   const none=taxCircumstance==='none';
   const onTaxCircumstance=(value:string)=>{
     if((taxCircumstance==='none')!==(value==='none'))setTaxResidency('');
@@ -495,11 +505,11 @@ export function IdentityTaxCard({
             </Field>
             {/* 35b7af0a group 6 — the SAME control the Create Employee wizard now renders. The option
                 list and mapping are country-owned; the integer and detailed circumstance post separately. */}
-            <input type="hidden" name="expectedTaxApplicabilityEpoch" value={defaults.taxApplicabilityEpoch??0}/><TaxCategoryField mode="form" defaultValue={defaults.taxCategory} circumstance={defaults.taxCircumstance} onChange={onTaxCircumstance} />
+            <input type="hidden" name="expectedTaxApplicabilityEpoch" value={defaults.taxApplicabilityEpoch??0}/><TaxCategoryField key={taxContextKey} mode="form" defaultValue={defaults.taxCategory} circumstance={defaults.taxCircumstance} onChange={onTaxCircumstance} />
             <Field label={t('incomeTaxResident')}>
               {/* Reset only this draft when its employer owner/revision/confirmation changes. */}
               {none&&<input type="hidden" name="taxResidency" value="none"/>}
-              <select key={`${employmentId}:${personId}:${taxSelection?.companyId??''}:${taxSelection?.version??0}`} id="income-tax-resident" aria-label={t('incomeTaxResident')} name={none?undefined:'taxResidency'} value={none?'none':taxResidency} onChange={e=>setTaxResidency(e.target.value)} disabled={none} required={!none} className={inputCls}>
+              <select key={taxContextKey} id="income-tax-resident" aria-label={t('incomeTaxResident')} name={none?undefined:'taxResidency'} value={none?'none':taxResidency} onChange={e=>setTaxResidency(e.target.value)} disabled={none} required={!none} className={inputCls}>
                 {none&&<option value="none">{t('taxCategoryNone')}</option>}
                 <option value="" disabled>{t('taxSelectionChoose')}</option>
                 <option value="resident">{t('taxResidencyResident')}</option>

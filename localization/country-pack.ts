@@ -48,6 +48,7 @@ export type {
   WorksheetSkipReason,
   WorksheetVerdict,
 } from './my/multicycle-worksheet';
+export type {SavedTaxCircumstance} from './my/tax-circumstance';
 
 import type { Tp1CategoryKey } from '../db/schema';
 import type { MyLeaveTypeDef } from './my/leave';
@@ -309,6 +310,8 @@ export interface CountryPackClient {
     childReliefFor: (p: ChildReliefInput) => ChildReliefFigure;
     taxCircumstanceOptions?: typeof import('./my/tax-circumstance')['TAX_CIRCUMSTANCE_OPTIONS'];
     taxCircumstanceOf?: typeof import('./my/tax-circumstance')['taxCircumstanceOf'];
+    readSavedTaxCircumstance?: typeof import('./my/tax-circumstance')['readSavedTaxCircumstance'];
+    taxSelectionSchemes?: readonly string[];
   };
 
   /**
