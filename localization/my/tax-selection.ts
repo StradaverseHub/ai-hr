@@ -20,7 +20,13 @@ export async function taxSelectionContextMY(tx:Tx,ctx:SessionContext,employmentI
  if(!idOk(employmentId)||payrollBatchId!==undefined&&!idOk(payrollBatchId))throw new TaxSelectionError('not_found');
  let batch:{companyId:string;payPeriod:string}|undefined;
  if(payrollBatchId){const [b]=await tx.select({companyId:payrollBatch.companyId,payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(and(eq(payrollBatch.id,payrollBatchId),eq(payrollBatch.tenantId,ctx.tenantId))).limit(1).for('share');if(!b||!periodOk(b.payPeriod))throw new TaxSelectionError('not_found');batch=b;}
+ // Lock the person before any employment row/advisory lock. Write contexts take UPDATE directly
+ // so separate employments cannot deadlock while both upgrade a shared person lock.
+ const [identity]=await tx.select({personId:employment.personId}).from(employment).where(and(eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);
+ if(!identity)throw new TaxSelectionError('not_found');
+ await tx.select({id:employeeStatutoryMy.id}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,identity.personId),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).limit(1).for(write?'update':'share');
  const [e]=await tx.select({employmentId:employment.id,personId:employment.personId,employeeCode:employment.employeeCode,currentCompanyId:employment.companyId}).from(employment).where(and(eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1).for(write?'no key update':'share');
+ if(e&&e.personId!==identity.personId)throw new TaxSelectionError('stale_context');
  if(!e)throw new TaxSelectionError('not_found');
  const companyId=batch?.companyId??e.currentCompanyId;
  const allowed=await tx.execute(sql`SELECT ${write?sql`app.is_admin_for(${companyId}::uuid) AND app.is_admin_for(${e.currentCompanyId}::uuid)`:sql`app.can_admin_payroll_for(${companyId}::uuid) AND app.can_admin_payroll_for(${e.currentCompanyId}::uuid)`} AS ok`);
@@ -44,10 +50,11 @@ async function initialize(tx:Tx,ctx:SessionContext,e:{employmentId:string;person
  const [existing]=await tx.select().from(employmentTaxSelectionMy).where(and(eq(employmentTaxSelectionMy.tenantId,ctx.tenantId),eq(employmentTaxSelectionMy.employmentId,e.employmentId),eq(employmentTaxSelectionMy.companyId,e.companyId))).limit(1);return existing;
 }
 export async function getTaxSelectionMY(ctx:SessionContext,employmentId:string,payrollBatchId?:string){
- return withTenant(ctx,async tx=>{const e=await taxSelectionContextMY(tx,ctx,employmentId,false,payrollBatchId);await lock(tx,ctx.tenantId,e.employmentId);
+ return withTenant(ctx,async tx=>{const e=await taxSelectionContextMY(tx,ctx,employmentId,false,payrollBatchId);
+ const [profile]=await tx.select({key:employeeStatutoryMy.taxCircumstance,epoch:employeeStatutoryMy.taxApplicabilityEpoch}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,e.personId)).limit(1).for('share');
+ await lock(tx,ctx.tenantId,e.employmentId);
  let [selection]=await tx.select().from(employmentTaxSelectionMy).where(and(eq(employmentTaxSelectionMy.tenantId,ctx.tenantId),eq(employmentTaxSelectionMy.employmentId,e.employmentId),eq(employmentTaxSelectionMy.companyId,e.companyId))).limit(1);
  if(!selection){const permission=await tx.execute(sql`SELECT app.is_admin_for(${e.companyId}::uuid) AND app.is_admin_for(${e.currentCompanyId}::uuid) AS ok`);if(permission[0]?.ok===true)selection=await initialize(tx,ctx,e);}
- const [profile]=await tx.select({key:employeeStatutoryMy.taxCircumstance,epoch:employeeStatutoryMy.taxApplicabilityEpoch}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,e.personId)).limit(1);
  return {...e,scheme:profile?.key==='none'?'none':selection?.scheme??null,transitionState:profile?.key==='none'?'resolved':selection?.taxApplicabilityEpoch!==(profile?.epoch??0)?'confirmation_required':selection?.transitionState??'confirmation_required',version:selection?.version??0,taxApplicabilityEpoch:profile?.epoch??0};});
 }
 export async function saveTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;personId?:string;scheme:string;expectedCompanyId:string;expectedVersion?:number;payrollBatchId?:string;expectedPayPeriod?:string}){
@@ -55,8 +62,8 @@ export async function saveTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p:{employmen
  const e=await taxSelectionContextMY(tx,ctx,p.employmentId,true,p.payrollBatchId);
  if(p.personId&&p.personId!==e.personId)throw new TaxSelectionError('not_found');
  if(e.companyId!==p.expectedCompanyId||p.payrollBatchId&&e.payPeriod!==p.expectedPayPeriod)throw new TaxSelectionError('stale_context');
- await lock(tx,ctx.tenantId,e.employmentId);
  const [profile]=await tx.select({citizenship:employeeStatutoryMy.epfCitizenship,key:employeeStatutoryMy.taxCircumstance,epoch:employeeStatutoryMy.taxApplicabilityEpoch}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,e.personId),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).limit(1).for('share');
+ await lock(tx,ctx.tenantId,e.employmentId);
  if((profile?.key==='none')!==(p.scheme==='none'))throw new TaxSelectionError('invalid_scheme');
  if(p.scheme==='c_suite'&&!['pr','non_citizen'].includes(profile?.citizenship??''))throw new TaxSelectionError('citizenship_unknown',{configuredScheme:p.scheme});
  const before=await initialize(tx,ctx,e);
@@ -90,8 +97,8 @@ export async function resolveTaxSelectionMY(tx:Tx,p:{tenantId:string;employmentI
 export async function initializeHiredTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;companyId:string;scheme:'resident'|'non_resident'}){
  const e=await taxSelectionContextMY(tx,ctx,p.employmentId,true);
  if(e.companyId!==p.companyId)throw new TaxSelectionError('stale_context');
+ const [profile]=await tx.select({epoch:employeeStatutoryMy.taxApplicabilityEpoch}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,e.personId)).limit(1).for('share');
  await lock(tx,ctx.tenantId,e.employmentId);
- const [profile]=await tx.select({epoch:employeeStatutoryMy.taxApplicabilityEpoch}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,e.personId)).limit(1);
  const [row]=await tx.insert(employmentTaxSelectionMy).values({tenantId:ctx.tenantId,employmentId:e.employmentId,companyId:e.companyId,taxApplicabilityEpoch:profile?.epoch??0,scheme:p.scheme,transitionState:'resolved',source:'explicit',provenance:{reason:'initial_hire_selection',declarationIds:[]},updatedByUserId:ctx.userId}).returning();
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment-tax-selection',aggregateId:row.id,eventType:'employee.tax-scheme.selected',actor:actorOf(ctx),subjectEmploymentId:e.employmentId,payload:{employmentId:e.employmentId,companyId:e.companyId,selectionId:row.id,before:null,after:{scheme:row.scheme,transitionState:row.transitionState,version:row.version},eligibilityDecision:'initial_hire_selection'}});
  return row;
@@ -107,10 +114,10 @@ export async function initializeTransferredTaxSelectionMYTx(tx:Tx,ctx:SessionCon
  if(!from)throw new TaxSelectionError('not_found');
  const [membership]=await tx.select({id:assignment.id}).from(assignment).where(and(eq(assignment.tenantId,ctx.tenantId),eq(assignment.employmentId,e.employmentId),eq(assignment.companyId,p.companyId),isNull(assignment.supersededAt),isNull(assignment.validTo))).limit(1);
  if(!membership)throw new TaxSelectionError('not_found');
+ const [applicability]=await tx.select({key:employeeStatutoryMy.taxCircumstance,epoch:employeeStatutoryMy.taxApplicabilityEpoch}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,e.personId)).limit(1).for('share');
  await lock(tx,ctx.tenantId,e.employmentId);
  const [existing]=await tx.select().from(employmentTaxSelectionMy).where(and(eq(employmentTaxSelectionMy.tenantId,ctx.tenantId),eq(employmentTaxSelectionMy.employmentId,e.employmentId),eq(employmentTaxSelectionMy.companyId,p.companyId))).limit(1);
  if(existing)return existing;
- const [applicability]=await tx.select({key:employeeStatutoryMy.taxCircumstance,epoch:employeeStatutoryMy.taxApplicabilityEpoch}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,e.personId)).limit(1).for('share');
  let scheme:'resident'|'non_resident'='resident';
  let sourceSelectionId:string|undefined;
  if(from.country==='MY'){

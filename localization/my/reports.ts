@@ -2659,7 +2659,7 @@ export async function crossEmployerPcbExposure(ctx: SessionContext, period: stri
       .where(eq(payrollBatch.payPeriod, period));
 
     type Acc = { personId: string; personName: string; category: number | null; children: number | null;
-      applicability:boolean[]; inputs: { employmentId: string; monthlyWage: number; epfMonthly: number; additional: number; epfOnAdditional: number;
+      invalidApplicability:boolean; recordedCategories:number[]; applicability:boolean[]; inputs: { employmentId: string; monthlyWage: number; epfMonthly: number; additional: number; epfOnAdditional: number;
         acc: { netRemuneration: number; epfClaimed: number; pcbPaid: number } }[];
       filed: { employmentId: string; company: string; filedPcb: number }[]; indicative: boolean };
     const byPerson = new Map<string, Acc>();
@@ -2667,8 +2667,12 @@ export async function crossEmployerPcbExposure(ctx: SessionContext, period: stri
       const st = (s.statutory ?? {}) as { epfEmployee?: number; pcb?: number; pcbMeta?: { ytdNet?: number; epfClaimed?: number; pcbPaid?: number } };
       const bonus = Number(s.bonus) || 0;
       let p = byPerson.get(s.personId);
-      if (!p) p = { personId: s.personId, personName: s.personName, category: s.category, children: s.children, applicability:[],inputs: [], filed: [], indicative: false };
-      const saved=readSavedTaxCircumstance((s.statutory as {pcbMeta?:{taxCircumstance?:unknown}}|null)?.pcbMeta?.taxCircumstance);
+      if (!p) p = { personId: s.personId, personName: s.personName, category: s.category, children: s.children, invalidApplicability:false, recordedCategories:[], applicability:[],inputs: [], filed: [], indicative: false };
+      const meta=(s.statutory as {pcbMeta?:{taxCircumstance?:unknown}}|null)?.pcbMeta;
+      const hasSaved=meta!==null&&typeof meta==='object'&&Object.hasOwn(meta,'taxCircumstance');
+      const saved=readSavedTaxCircumstance(meta?.taxCircumstance);
+      if(hasSaved&&!saved)p.invalidApplicability=true;
+      if(saved?.applicable)p.recordedCategories.push(saved.category!);
       p.applicability.push(saved?.applicable??true);
       p.inputs.push({
         employmentId: s.employmentId,
@@ -2687,6 +2691,9 @@ export async function crossEmployerPcbExposure(ctx: SessionContext, period: stri
     for (const p of byPerson.values()) {
       if (p.inputs.length < 2) continue; // only concurrent-employment people
       const summedMtd = r2(p.filed.reduce((a, b) => a + b.filedPcb, 0));
+      if(p.recordedCategories.some(x=>x!==p.recordedCategories[0]))p.invalidApplicability=true;
+      if(p.recordedCategories.length)p.category=p.recordedCategories[0];
+      if(p.invalidApplicability)continue; // Present malformed history is unavailable, never a legacy taxable fallback.
       if(p.applicability.some(x=>x!==p.applicability[0]))continue; // Inconsistent recorded applicability is not a combined formula.
       const coord = coordinatedPcbForPerson(p.inputs, {
         taxApplicable:p.applicability[0],

@@ -522,7 +522,11 @@ export async function decideProfileChange(
       };
       // Pay-affecting statutory fields → employee_statutory_my (needs a statutory profile to apply to).
       const statSet = setFor('statutory');
-      if(statSet.taxCategory!==undefined)statSet.taxCircumstance=sql`CASE WHEN ${employeeStatutoryMy.taxCircumstance}='none' OR ${employeeStatutoryMy.taxCategory}=${statSet.taxCategory} THEN ${employeeStatutoryMy.taxCircumstance} ELSE NULL END`;
+      if(statSet.taxCategory!==undefined){
+        const proposedCategory=statSet.taxCategory;
+        statSet.taxCircumstance=sql`CASE WHEN ${employeeStatutoryMy.taxCircumstance}='none' OR ${employeeStatutoryMy.taxCategory}=${proposedCategory} THEN ${employeeStatutoryMy.taxCircumstance} ELSE NULL END`;
+        statSet.taxCategory=sql`CASE WHEN ${employeeStatutoryMy.taxCircumstance}='none' THEN ${employeeStatutoryMy.taxCategory} ELSE ${proposedCategory} END`;
+      }
       // The IC is uniquely indexed per tenant (employee_statutory_my_ic_uq, partial on NOT NULL). An
       // approval that collides would surface as a raw Postgres unique violation in a redirect's query
       // string; checked here instead so the approver is told what is wrong in a sentence. Inside the

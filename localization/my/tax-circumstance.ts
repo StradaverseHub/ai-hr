@@ -29,6 +29,9 @@ export function writeTaxCircumstance(p:{key?:unknown;category?:number;beforeKey?
 }
 export type SavedTaxCircumstance={version:1;key:TaxCircumstance|null;category:1|2|3|null;applicable:boolean;epoch:number};
 export function savedTaxCircumstance(key:unknown,category:unknown,epoch=0):SavedTaxCircumstance{
+ if(key!==undefined&&key!==null&&!taxCircumstanceOk(key))throw new Error('Invalid tax circumstance');
+ if(category!==undefined&&category!==null&&![1,2,3].includes(category as number))throw new Error('Invalid tax category');
+ if(!Number.isSafeInteger(epoch)||epoch<0)throw new Error('Invalid tax applicability epoch');
  const resolved=taxCircumstanceOf(key,category);
  return {version:1,key:resolved.key,category:resolved.applicable?resolved.category as 1|2|3:null,applicable:resolved.applicable,epoch};
 }

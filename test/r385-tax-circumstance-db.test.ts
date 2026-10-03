@@ -48,6 +48,13 @@ describe('r385 authoritative tax circumstance transactions',()=>{
   await expect(setTaxProfileMY(adminCtx(b),{personId:e.personId,employmentId:e.employmentId,expectedCompanyId:b.companyId,expectedApplicabilityEpoch:0,taxCircumstance:'single',taxResidency:'resident'})).rejects.toMatchObject({code:'stale_context'});
   expect(await profile()).toEqual(after);
  });
+ it('full legacy writes preserve locked None and stale explicit full writes refuse reactivation',async()=>{
+  await select('none','none');const current=await profile();
+  await setStatutoryProfileMY(adminCtx(b),{personId:e.personId,icNumber:current.icNumber,taxCategory:1,numChildren:2});
+  expect(await profile()).toMatchObject({taxCircumstance:'none',taxCategory:3,taxApplicabilityEpoch:1,numChildren:2});
+  await expect(setStatutoryProfileMY(adminCtx(b),{personId:e.personId,icNumber:current.icNumber,taxCircumstance:'single',taxCategory:1})).rejects.toMatchObject({code:'stale_context'});
+  await expect(setStatutoryProfileMY(adminCtx(b),{personId:e.personId,icNumber:current.icNumber,taxCircumstance:'single',expectedApplicabilityEpoch:0,taxCategory:1})).rejects.toMatchObject({code:'stale_context'});
+ });
  it('ordinary and selected real processing bypass PCB, suppress saved override and preserve historical run',async()=>{
   const batch=await createBatch(adminCtx(b),{companyId:b.companyId,payPeriod:period});await select('widow_divorced','resident');await generatePayslips(adminCtx(b),{batchId:batch.batchId});const before=await slip(batch.batchId);
   expect(Number((before.statutory as {pcb:number}).pcb)).toBeGreaterThan(0);

@@ -256,6 +256,7 @@ export type StatutoryInput = {
   socsoNumber?: string;
   taxNumber?: string;
   taxCategory?: number;
+  expectedApplicabilityEpoch?: number;
   taxCircumstance?: TaxCircumstance | string | null; // PCB (MTD) category: 1 single, 2 married/spouse not working, 3 married/spouse working
   numChildren?: number;
   eisEligible?: boolean;
@@ -427,7 +428,9 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
       })
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
-      .limit(1);
+      .limit(1).for('update');
+    // Explicit identity changes must acknowledge the locked applicability boundary. Omitted legacy edits preserve it.
+    if(p.taxCircumstance!==undefined && existing && (p.expectedApplicabilityEpoch!==undefined ? p.expectedApplicabilityEpoch!==existing.taxApplicabilityEpoch : existing.taxApplicabilityEpoch!==0))throw new TaxSelectionError('stale_context');
     const circumstance = writeTaxCircumstance({key:p.taxCircumstance,category:p.taxCategory,beforeKey:existing?.taxCircumstance,beforeCategory:existing?.taxCategory,epoch:existing?.taxApplicabilityEpoch});
     Object.assign(values,circumstance);
     let id: string;

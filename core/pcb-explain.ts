@@ -504,7 +504,9 @@ export function explainPcb(
     if(!saved)return {kind:'unavailable',...figures};
     figures.taxCircumstance=saved;
     if(!saved.applicable){
-      if(metaObj.notSubjectToIncomeTax!==true)return {kind:'unavailable',...figures};
+      if(metaObj.notSubjectToIncomeTax!==true || pcb!==0 || n(st.pcbBonus)!==0 || pcbSystem!==0 ||
+        manual && (manual.system!==0 || manual.applied!==0) ||
+        delta && (delta.cumulative!==0 || delta.cumulativeBonus!==0))return {kind:'unavailable',...figures};
       return {kind:'not_subject',...figures,nonCash:readPcbNonCash(st.pcbNonCash)};
     }
     if(metaObj.notSubjectToIncomeTax===true)return {kind:'unavailable',...figures};
@@ -2140,6 +2142,7 @@ export function pcbDetailLayout(p: {
 export function pcbTaxCategoryIdentity(x:PcbExplanation){
  const saved=x.taxCircumstance;
  if(saved){const resolved=taxCircumstanceOf(saved.key,saved.category??1);return {category:saved.category,labelKey:resolved.labelKey,applicable:saved.applicable};}
- const category=x.kind==='mtd'?x.trace?.category??null:null;
+ const raw=x.kind==='mtd'?x.trace?.category??null:null;
+ const category=raw!==null&&[1,2,3].includes(raw)?raw:null;
  return {category,labelKey:category===null?null:taxCircumstanceOf(null,category).labelKey,applicable:true};
 }

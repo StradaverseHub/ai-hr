@@ -64,6 +64,13 @@ describe('r385 detailed circumstance preserves LHDN math and explicit applicabil
   expect(x.kind).toBe('not_subject');expect(pcbTaxCategoryIdentity(x)).toMatchObject({category:null,applicable:false,labelKey:'taxCategoryNone'});
   expect(pcbWorksheet(x)).toMatchObject({sections:[],note:'taxCategoryNoneExplanation'});
  });
+ it('contradictory None deductions and recorded system figures are unavailable',()=>{
+  const valid=statutory(7000,{category:3},0,0,{month:6},{taxCircumstance:savedTaxCircumstance('none',3)});
+  for(const change of [{pcb:1},{pcb:-1},{pcbBonus:1},{pcbBonus:-1},{adjustment:{reason:'Synthetic contradiction',lines:{pcb:{system:2,applied:0}}}}])expect(explainPcb({...valid,...change},null).kind).toBe('unavailable');
+  expect(explainPcb({...valid,pcbMeta:{...valid.pcbMeta,delta:{cumulative:2,prior:20,cumulativeBonus:0}}},null).kind).toBe('unavailable');
+  // A prior paid deduction is history, not a refund or a newly applied deduction.
+  expect(explainPcb({...valid,pcbMeta:{...valid.pcbMeta,delta:{cumulative:0,prior:20,cumulativeBonus:0}}},null).kind).toBe('not_subject');
+ });
  it('saved manual PCB override is suppressed truthfully while other legs and original adjustment stay intact',()=>{
   const computed=statutory(7000,{category:3},0,0,{month:6},{taxCircumstance:savedTaxCircumstance('none',3)});
   const adjustment={values:{pcb:300,epfEmployee:123},reason:'Historical synthetic override'};
