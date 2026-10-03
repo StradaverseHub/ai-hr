@@ -175,15 +175,26 @@ describe('the card shows TWO figures under two captions', () => {
 
 it.each(['manual', 'auto_table'] as const)('live %s category changes agree with payroll eligibility', async mode => {
   const { user } = renderCard({ mode, numChildren: 2, grid: { under_18: { full: 2, half: 0 } } });
-  const category = document.querySelector<HTMLSelectElement>('select[name="taxCategory"]')!;
+  const category = screen.getByRole('combobox', { name: D.taxCategoryLabel });
+  expect(category.getAttribute('name')).toBe('taxCircumstance');
+  const numericFields = document.querySelectorAll<HTMLInputElement>('input[name="taxCategory"]');
+  expect(numericFields, 'exactly one field posts the stable numeric category').toHaveLength(1);
+  const numeric = numericFields[0];
+  expect(numeric.type).toBe('hidden');
+  expect(numeric.value).toBe('3');
   expect(text('[data-child-relief-amount]')).toContain(rm(4000));
-  await user.selectOptions(category, '1');
+  await user.selectOptions(category, 'single');
+  expect(numeric.value).toBe('1');
   expect(qualifyingValue()!.textContent).toBe('0');
   expect(text('[data-child-relief-amount]')).toContain(rm(0));
   expect(physical().value).toBe('2');
-  await user.selectOptions(category, '3');
-  expect(mode === 'manual' ? qualifyingInput()!.value : qualifyingValue()!.textContent).toBe('2');
-  expect(text('[data-child-relief-amount]')).toContain(rm(4000));
+  for (const circumstance of ['spouse_working', 'widow_divorced']) {
+    await user.selectOptions(category, circumstance);
+    expect(numeric.value).toBe('3');
+    expect(mode === 'manual' ? qualifyingInput()!.value : qualifyingValue()!.textContent).toBe('2');
+    expect(text('[data-child-relief-amount]')).toContain(rm(4000));
+    expect(physical().value).toBe('2');
+  }
 });
 
 describe('manual — TYPED, and therefore still editable', () => {
