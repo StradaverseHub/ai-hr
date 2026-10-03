@@ -2037,7 +2037,7 @@ describe('r385 — company text midpoint beside the unchanged uploaded logo',()=
   const boldFace=await metricDocument.embedFont(StandardFonts.HelveticaBold),regularFace=await metricDocument.embedFont(StandardFonts.Helvetica);
   for(const logo of logos){
    let profileY:number|undefined;
-   for(const companyReg of ['SAMPLE-REGISTRATION',undefined]){
+   for(const companyReg of ['SAMPLE-REGISTRATION',null]){
     const company='Example Company';
     const bytes=await renderPayslipPdf({...data,company,companyReg,logo},labels),runs=drawnPlacements(bytes),images=drawnImages(bytes);
     expect(images,'nontrivial actual mark must be embedded').toHaveLength(1);
