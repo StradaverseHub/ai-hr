@@ -25,7 +25,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, lte, or } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
@@ -325,9 +325,29 @@ describe('1.2.2 Individual Transaction', () => {
       expect(savedBatch).toMatchObject({tenantId:ps.tenantId,companyId});expect(selection).toBeDefined();expect(selection.transitionState).toBe('resolved');
       const statutory=ps.statutory as Record<string,unknown>,meta=statutory.pcbMeta as Record<string,unknown>;
       expect(meta).toMatchObject({taxSelectionId:selection.id,taxSelectionVersion:selection.version,taxSelectionSource:'income_tax_resident',calculationScheme:selection.scheme});
+      // Independently locate each fixture employee's applicable salary, rather than trusting the
+      // saved stamp to choose its own owner. Compare every saved input before normalizing identity.
+      const salaryOwners = await owner.db.select().from(schema.compensation).where(and(
+        eq(schema.compensation.tenantId, base.tenantId),
+        eq(schema.compensation.employmentId, e.employmentId),
+        isNull(schema.compensation.supersededAt),
+        lte(schema.compensation.validFrom, '2026-05-31'),
+        or(isNull(schema.compensation.validTo), gt(schema.compensation.validTo, '2026-05-31')),
+      ));
+      expect(ps).toMatchObject({ tenantId: base.tenantId, employmentId: e.employmentId });
+      expect(savedBatch).toMatchObject({ payPeriod: '2026-05' });
+      expect(salaryOwners).toHaveLength(1);
+      expect(salaryOwners[0]).toMatchObject({ basicSalary: '4321.00', payMode: 'monthly',
+        validFrom: '2026-01-01', validTo: null, supersededAt: null });
+      const basis = statutory.salaryBasis as Record<string, unknown>;
+      expect(basis).toEqual({ version: 1, referenceDate: '2026-05-31',
+        compensationId: salaryOwners[0].id, effectiveFrom: '2026-01-01',
+        basicSalary: '4321.00', payMode: 'monthly' });
       // Distinct fixture employees have distinct authority UUIDs. Preserve all financial fields and
-      // complete statutory JSON; normalize only the UUID whose employer context was validated above.
-      return {...figures,statutory:{...statutory,pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'}}};
+      // complete statutory JSON; normalize only the independently validated ownership UUIDs.
+      return {...figures,statutory:{...statutory,
+        salaryBasis:{...basis,compensationId:'validated-compensation-selection'},
+        pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'}}};
     }
     const without = await generate(await company('Inert Co A'), '900101011234', false);
     const withRows = await generate(await company('Inert Co B'), '900101015678', true);
