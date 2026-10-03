@@ -55,6 +55,19 @@ describe('r385 full pay-item classification through actual maintenance actions a
   });
 
   it.each([createComponentAction, updateComponentAction])('reports genuinely missing/invalid selections and exact benefit refusals before persistence', async (action) => {
+    const updating = action === updateComponentAction;
+    if (updating) expect(await location(createComponentAction, form('bik'))).toContain('toast=toastSaved');
+    const stored = updating ? (await listPayComponents(ctx)).find(c => c.code === 'BIK_HOUSE')! : null;
+    const projection = (row: NonNullable<typeof stored>) => ({ code: row.code, name: row.name, kind: row.kind,
+      isNonPayable: row.isNonPayable, displayCategory: row.displayCategory, eaFormLine: row.eaFormLine,
+      includedInPcb: row.includedInPcb, includedInEpf: row.includedInEpf, includedInSocsoEis: row.includedInSocsoEis,
+      includedInHrdfBase: row.includedInHrdfBase, pcbRemunerationType: row.pcbRemunerationType,
+      pcbExemptionCode: row.pcbExemptionCode, epfBonus2012: row.epfBonus2012 });
+    async function assertRetained() {
+      const current = (await listPayComponents(ctx)).filter(c => c.code === 'BIK_HOUSE');
+      if (stored) { expect(current).toHaveLength(1); expect(projection(current[0])).toEqual(projection(stored)); }
+      else expect(current).toEqual([]);
+    }
     const cases: [string, string, string][] = [
       ['pcbRemunerationType', '', 'errorStatutory_pcbRemunerationTypeRequired'],
       ['pcbRemunerationType', 'bik', 'errorStatutory_pcbRemunerationTypeRequired'],
@@ -66,14 +79,33 @@ describe('r385 full pay-item classification through actual maintenance actions a
     for (const [key, value, expected] of cases) {
       const fd = form('bik'); fd.set(key, value);
       expect(await location(action, fd), `${key}=${value}`).toContain(`error=${expected}`);
+      await assertRetained();
     }
     const optional = form('bik'); optional.set('pcbRemunerationType', 'optional_deduction'); optional.set('pcbExemptionCode', 'LP_VOLUNTARY_EPF');
     expect(await location(action, optional)).toContain('error=errorBenefit_normal_remuneration_required');
+    await assertRetained();
     const bonus = form('bik'); bonus.set('includedInEpf', 'on'); bonus.set('epfBonus2012', 'on');
     expect(await location(action, bonus)).toContain('error=errorBenefit_normal_remuneration_required');
+    await assertRetained();
     const unknown = form('bik'); unknown.set('displayCategory', ''); unknown.set('eaFormLine', '');
     expect(await location(action, unknown)).toContain('error=errorUnsupportedTaxable');
-    expect((await listPayComponents(ctx)).filter(c => c.code === 'BIK_HOUSE')).toEqual([]);
+    await assertRetained();
+  });
+
+  it('a legacy partial setter preserves stored classification when changing an unrelated field', async () => {
+    expect(await location(createComponentAction, form('bik'))).toContain('toast=toastSaved');
+    const existing = (await listPayComponents(ctx)).find(c => c.code === 'BIK_HOUSE')!;
+    await upsertPayComponent(ctx, { code: existing.code, name: 'Legacy unrelated rename', kind: existing.kind,
+      isNonPayable: existing.isNonPayable, prorates: existing.prorates, includedInPcb: existing.includedInPcb,
+      includedInEpf: existing.includedInEpf, includedInSocsoEis: existing.includedInSocsoEis,
+      includedInHrdfBase: existing.includedInHrdfBase, eaFormLine: existing.eaFormLine, roundingMethod: existing.roundingMethod });
+    const saved = (await listPayComponents(ctx)).find(c => c.id === existing.id)!;
+    expect(saved.name).toBe('Legacy unrelated rename');
+    expect(saved.pcbRemunerationType).toBe(existing.pcbRemunerationType);
+    expect(saved.pcbExemptionCode).toBe(existing.pcbExemptionCode);
+    expect(saved.displayCategory).toBe(existing.displayCategory);
+    expect(saved.epfBonus2012).toBe(existing.epfBonus2012);
+    expect(saved.eaFormLine).toBe(existing.eaFormLine);
   });
 
   it('unticking PCB keeps benefit/EA identity and clears tax classification without creating an invented benefit type', async () => {
@@ -131,6 +163,7 @@ describe('r385 full pay-item classification through actual maintenance actions a
     const csvText = `employee,component,amount\n${email},BIK,700\n${email},VOLA,800\n${email},UNKNOWN,900`;
     const preview = await importBatchComponents(ctx, { batchId: batch.batchId, csvText, dryRun: true });
     expect(preview.valid).toBe(2); expect(preview.imported).toBe(0);
+    expect(await owner.db.select().from(schema.payrollBatchComponent).where(eq(schema.payrollBatchComponent.batchId, batch.batchId)).orderBy(schema.payrollBatchComponent.id)).toEqual([]);
     expect(preview.rows.map(r => [r.code, r.ok])).toEqual([['BIK', true], ['VOLA', true], ['UNKNOWN', false]]);
     expect(preview.rows[2].error).toBe('Unsupported component: UNKNOWN. No supported taxable classification; select the applicable benefit Pay Category and tax settings.');
     const result = await importBatchComponents(ctx, { batchId: batch.batchId, csvText, dryRun: false });
