@@ -24,7 +24,7 @@
  *       'as of' a date that does not exist threw out of createBatch when this round was first written —
  *       found by test/cp39-form-report.test.ts, and pinned here at the stamp rather than at the screen.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gt, isNull, lte, or } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
@@ -351,6 +351,18 @@ describe('00e28308 · the month records the ruleset version it was opened under'
     ));
     expect(selection).toMatchObject({ scheme: 'resident', transitionState: 'resolved', version: 1 });
     expect(selection.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    // Independently locate the whole salary input; the stored stamp must identify that owner,
+    // while every pre-existing monetary golden below remains exact and unchanged.
+    const salaryOwners = await owner.db.select().from(schema.compensation).where(and(
+      eq(schema.compensation.tenantId, base.tenantId),
+      eq(schema.compensation.employmentId, employmentId),
+      isNull(schema.compensation.supersededAt),
+      lte(schema.compensation.validFrom, '2026-05-31'),
+      or(isNull(schema.compensation.validTo), gt(schema.compensation.validTo, '2026-05-31')),
+    ));
+    expect(salaryOwners).toHaveLength(1);
+    expect(salaryOwners[0]).toMatchObject({ basicSalary: '5000.00', payMode: 'monthly',
+      validFrom: '2025-01-01', validTo: null, supersededAt: null });
     // Golden, captured from the code as it stood BEFORE the period stamp was added (RM5,000 basic, no
     // allowance, no OT, category 1, no children, 2026-05). Every stored column, so a change to any
     // figure — or to the immutable statutory snapshot the filings and the PDF read — fails here.
@@ -365,6 +377,8 @@ describe('00e28308 · the month records the ruleset version it was opened under'
       grossPay: '5000.00',
       statutory: {
         ...GOLDEN_STATUTORY,
+        salaryBasis: { version: 1, referenceDate: '2026-05-31', compensationId: salaryOwners[0].id,
+          effectiveFrom: '2025-01-01', basicSalary: '5000.00', payMode: 'monthly' },
         pcbMeta: {
           ...GOLDEN_STATUTORY.pcbMeta,
           taxCircumstance: { version: 1, key: null, category: 1, applicable: true, epoch: 0 },
