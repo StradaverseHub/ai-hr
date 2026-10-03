@@ -665,6 +665,7 @@ export async function completeEmployeeDraft(
       }),
       taxNumber: str(s.taxNumber),
       taxCategory: numOrUndef(s.taxCategory),
+      ...(!['','1','2','3'].includes(s.taxCategory??'')?{taxCircumstance:s.taxCategory}:{}),
       numChildren: numOrUndef(s.numChildren),
       // 35b7af0a group 7 — the wizard now sends the CATEGORY, matching the Personnel screen and item
       // a7271737's consolidation. setStatutoryProfileMY derives the legacy booleans from it.
@@ -752,6 +753,7 @@ export async function completeEmployeeDraft(
       // Pass-through of everything this setter would otherwise reset to a default.
       taxNumber: str(s.taxNumber) ?? null,
       taxCategory: numOrUndef(s.taxCategory),
+      ...(!['','1','2','3'].includes(s.taxCategory??'')?{taxCircumstance:s.taxCategory}:{}),
       numChildren: numOrUndef(s.numChildren),
       taxResidency: boolOrUndef(s.isResident) === false ? 'non_resident' : 'resident',
     });

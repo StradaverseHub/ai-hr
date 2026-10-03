@@ -3210,7 +3210,7 @@ export default async function EmployeePage({
           derive. `derivedChildCount` went with it: it was that second count, taken by a second
           `eligibleChildReliefCount` call at real UTC now while this figure is taken at Kuala Lumpur
           "today" — two instants, and on a child's 18th birthday two different answers. */}
-      <IdentityTaxCard
+      <IdentityTaxCard key={`${emp.employmentId}:${taxSelection?.version??0}:${statutory?.taxCircumstance??'legacy'}`}
         embedded
         action={setTaxAction}
         employmentId={emp.employmentId}
@@ -3221,6 +3221,8 @@ export default async function EmployeePage({
         defaults={{
           taxNumber: statutory?.taxNumber ?? null,
           taxCategory: statutory?.taxCategory ?? 1,
+          taxCircumstance:statutory?.taxCircumstance??null,
+          taxApplicabilityEpoch:statutory?.taxApplicabilityEpoch??0,
           taxResidency: taxSelection?.transitionState === 'resolved' ? taxSelection.scheme ?? '' : '',
           numChildren: statutory?.numChildren ?? 0,
           childReliefMode: statutory?.childReliefMode ?? 'manual',

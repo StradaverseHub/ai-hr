@@ -1,4 +1,5 @@
-import {saveTaxSelectionMYTx,selectedSchemeOk,TaxSelectionError} from './tax-selection';
+import { writeTaxCircumstance, type TaxCircumstance } from './tax-circumstance';
+import {saveTaxSelectionMYTx,selectedSchemeOk,TaxSelectionError,taxSelectionContextMY} from './tax-selection';
 /**
  * Malaysia statutory profile (localization pack, per ADR-0008). Per-Person statutory
  * identity: IC, EPF, SOCSO, tax, EIS eligibility, bank. IC is validated + unique per tenant.
@@ -254,7 +255,8 @@ export type StatutoryInput = {
   epfNumber?: string;
   socsoNumber?: string;
   taxNumber?: string;
-  taxCategory?: number; // PCB (MTD) category: 1 single, 2 married/spouse not working, 3 married/spouse working
+  taxCategory?: number;
+  taxCircumstance?: TaxCircumstance | string | null; // PCB (MTD) category: 1 single, 2 married/spouse not working, 3 married/spouse working
   numChildren?: number;
   eisEligible?: boolean;
   /** SOCSO / EIS contribution-category override (item a7271737). The single per-scheme control on the SOCSO &
@@ -400,6 +402,9 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
     const [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,
+        taxCategory: employeeStatutoryMy.taxCategory,
+        taxCircumstance: employeeStatutoryMy.taxCircumstance,
+        taxApplicabilityEpoch: employeeStatutoryMy.taxApplicabilityEpoch,
         // Statutory-control flags read for the event's before/after (item 5a461b99 audit trail; item a7271737
         // adds the socso/eis category before/after so a category change is reconstructable from the log alone).
         subjectToSocso: employeeStatutoryMy.subjectToSocso,
@@ -423,6 +428,8 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
       .limit(1);
+    const circumstance = writeTaxCircumstance({key:p.taxCircumstance,category:p.taxCategory,beforeKey:existing?.taxCircumstance,beforeCategory:existing?.taxCategory,epoch:existing?.taxApplicabilityEpoch});
+    Object.assign(values,circumstance);
     let id: string;
     if (existing) {
       await tx
@@ -1200,8 +1207,10 @@ export type TaxInput = {
   employmentId?:string;
   expectedCompanyId?:string;
   expectedSelectionVersion?:number;
+  expectedApplicabilityEpoch?:number;
   taxNumber?: string | null;
   taxCategory?: number;
+  taxCircumstance?: TaxCircumstance | string | null;
   taxResidency?: TaxResidency | string | null;
   numChildren?: number;
   childReliefMode?: ChildReliefMode | string | null;
@@ -1250,7 +1259,7 @@ export type TaxWriteProvenance = 'auto_child_relief';
  * truth (all resident and approved resident incentive schemes ⇒ true; non-resident ⇒ false). Appends `employee.tax.updated` (before/after).
  */
 export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
-  if(p.taxResidency!=null&&!selectedSchemeOk(p.taxResidency))throw new TaxSelectionError('invalid_scheme');
+  if(p.taxResidency!=null&&p.taxResidency!=='none'&&!selectedSchemeOk(p.taxResidency))throw new TaxSelectionError('invalid_scheme');
   const residency: TaxResidency =
     p.taxResidency != null && isTaxResidency(String(p.taxResidency)) ? (String(p.taxResidency) as TaxResidency) : 'resident';
   const mode: ChildReliefMode =
@@ -1276,11 +1285,14 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
     childReliefTable: normaliseChildReliefTable(p.childReliefTable),
   };
   return withTenant(ctx, async (tx) => {
+    if(p.employmentId)await taxSelectionContextMY(tx,ctx,p.employmentId,true);
     const [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,
         taxNumber: employeeStatutoryMy.taxNumber,
         taxCategory: employeeStatutoryMy.taxCategory,
+        taxCircumstance: employeeStatutoryMy.taxCircumstance,
+        taxApplicabilityEpoch: employeeStatutoryMy.taxApplicabilityEpoch,
         numChildren: employeeStatutoryMy.numChildren,
         childReliefMode: employeeStatutoryMy.childReliefMode,
         taxResidency: employeeStatutoryMy.taxResidency,
@@ -1292,11 +1304,18 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
       })
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
-      .limit(1);
+      .limit(1).for('update');
     if (!existing) throw new NoIcYetError();
+    if(p.expectedApplicabilityEpoch!==undefined&&p.expectedApplicabilityEpoch!==existing.taxApplicabilityEpoch)throw new TaxSelectionError('stale_context');
+    const circumstance=writeTaxCircumstance({key:p.taxCircumstance,category:p.taxCategory,beforeKey:existing.taxCircumstance,beforeCategory:existing.taxCategory,epoch:existing.taxApplicabilityEpoch});
+    Object.assign(values,circumstance);
+    if(p.employmentId&&circumstance.taxCircumstance==='none'&&p.taxResidency!=='none')throw new TaxSelectionError('invalid_scheme');
+    if(p.taxResidency==='none'&&circumstance.taxCircumstance!=='none')throw new TaxSelectionError('invalid_scheme');
+    // Write person applicability before acknowledging its epoch in the employer selection; one transaction.
+    await tx.update(employeeStatutoryMy).set(circumstance).where(eq(employeeStatutoryMy.id,existing.id));
     if(p.employmentId){
-      if(!p.expectedCompanyId||!selectedSchemeOk(p.taxResidency))throw new TaxSelectionError('stale_context');
-      await saveTaxSelectionMYTx(tx,ctx,{employmentId:p.employmentId,personId:p.personId,scheme:p.taxResidency,expectedCompanyId:p.expectedCompanyId,expectedVersion:p.expectedSelectionVersion});
+      if(!p.expectedCompanyId||circumstance.taxCircumstance!=='none'&&!selectedSchemeOk(p.taxResidency))throw new TaxSelectionError('stale_context');
+      await saveTaxSelectionMYTx(tx,ctx,{employmentId:p.employmentId,personId:p.personId,scheme:circumstance.taxCircumstance==='none'?'none':String(p.taxResidency),expectedCompanyId:p.expectedCompanyId,expectedVersion:p.expectedSelectionVersion});
     }
     // Scoped field owns scheme. Person-only partial writers never alter that owner; scoped edits
     // preserve legacy person provenance rather than silently changing another employer's category.
@@ -1321,6 +1340,8 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput) {
           ? {
               taxNumber: existing.taxNumber,
               taxCategory: existing.taxCategory,
+              taxCircumstance:existing.taxCircumstance,
+              taxApplicabilityEpoch:existing.taxApplicabilityEpoch,
               numChildren: existing.numChildren,
               childReliefMode: existing.childReliefMode,
               taxResidency: existing.taxResidency,

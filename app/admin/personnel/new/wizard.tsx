@@ -189,6 +189,7 @@ export function EmployeeWizard({
   stateOptions: { value: string; label: string }[];
 }) {
   const t = useTranslations('people.wizard');
+  const taxLabels=useTranslations('people.detail');
   const router = useRouter();
   const id = draftId;
   const [data, setData] = useState<EmployeeDraftData>(initialData);
@@ -977,9 +978,11 @@ export function EmployeeWizard({
             <Field label={t('fields.isResident')}>
               <select
                 className={inputCls}
-                value={data.statutory?.isResident ?? ''}
+                disabled={data.statutory?.taxCategory==='none'}
+                value={data.statutory?.taxCategory==='none'?'none':data.statutory?.isResident??''}
                 onChange={(e) => set('statutory', { isResident: e.target.value })}
               >
+                {data.statutory?.taxCategory==='none'&&<option value="none">{taxLabels('taxCategoryNone')}</option>}
                 <option value="">{t('notSet')}</option>
                 <option value="yes">{t('yes')}</option>
                 <option value="no">{t('no')}</option>

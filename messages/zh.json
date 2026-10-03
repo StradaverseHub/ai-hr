@@ -1337,10 +1337,10 @@
       "incomeTaxPcbSection": "所得税 (PCB)",
       "taxInfoLegend": "税务信息",
       "taxCategoryLabel": "税务类别",
-      "taxCategorySingle": "单身",
-      "taxCategoryMarriedSpouseNotWorking": "已婚且配偶无工作",
-      "taxCategoryMarriedSpouseWorking": "已婚且配偶有工作",
-      "taxCategoryDivorcedWithKids": "离异／单亲有子女",
+      "taxCategorySingle": "单身/配偶不申报子女减免",
+      "taxCategoryMarriedSpouseNotWorking": "已婚且配偶未工作",
+      "taxCategoryMarriedSpouseWorking": "已婚且配偶工作",
+      "taxCategoryDivorcedWithKids": "丧偶/离婚并有子女",
       "taxCategoryNone": "无",
       "incomeTaxResident": "所得税居民身份",
       "taxResidencyResident": "居民",
@@ -1699,7 +1699,10 @@
       "taxSelectionEmployer": "雇主：{employer}",
       "taxSelectionEligibilityHint": "请选择适用于此雇佣关系和雇主的类别。选择优惠方案即记录人力资源部门已确认符合批准、资格及期间条件的决定。无需另行填写声明。",
       "taxSelectionConfirmationRequired": "请在此字段确认适用类别并保存一次。旧设置无法明确确定此雇主适用的类别。",
-      "taxSelectionChoose": "选择税务类别"
+      "taxSelectionChoose": "选择税务类别",
+      "taxCategoryLegacy3": "类别 3 — 配偶工作、离婚、丧偶，或有收养子女的单身人士",
+      "taxCategorySingleHint": "LHDN 类别 1 指单身。已婚员工的类别仍按配偶工作状态确定，即使未申报子女减免。",
+      "taxCategoryNoneExplanation": "本次工资处理的税务类别为无。未计算 PCB；其他法定计算照常进行。"
     },
     "import": {
       "title": "导入员工",
@@ -7296,7 +7299,15 @@
       "slipBikEntered": "录入的实物福利",
       "slipBikExempt": "免税实物福利",
       "slipVolaEntered": "录入的住宿价值",
-      "slipVolaExempt": "免税住宿价值"
+      "slipVolaExempt": "免税住宿价值",
+      "taxCategorySingle": "单身/配偶不申报子女减免",
+      "taxCategoryMarriedSpouseNotWorking": "已婚且配偶未工作",
+      "taxCategoryMarriedSpouseWorking": "已婚且配偶工作",
+      "taxCategoryDivorcedWithKids": "丧偶/离婚并有子女",
+      "taxCategoryNone": "无",
+      "taxCategoryLegacy3": "类别 3 — 配偶工作、离婚、丧偶，或有收养子女的单身人士",
+      "taxCategorySingleHint": "LHDN 类别 1 指单身。已婚员工的类别仍按配偶工作状态确定，即使未申报子女减免。",
+      "taxCategoryNoneExplanation": "本次工资处理的税务类别为无。未计算 PCB；其他法定计算照常进行。"
     },
     "multiCycleWorksheet": {
       "title": "多次发薪法定核对表",

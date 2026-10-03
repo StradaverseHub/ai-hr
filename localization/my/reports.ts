@@ -1,3 +1,4 @@
+import {readSavedTaxCircumstance} from './tax-circumstance';
 /**
  * Malaysia statutory reports (ADR-0010). Layer-A (human-readable) reports derived from payroll
  * payslips, per legal entity. Each ReportDef is registered on the pack; the generic core
@@ -2658,7 +2659,7 @@ export async function crossEmployerPcbExposure(ctx: SessionContext, period: stri
       .where(eq(payrollBatch.payPeriod, period));
 
     type Acc = { personId: string; personName: string; category: number | null; children: number | null;
-      inputs: { employmentId: string; monthlyWage: number; epfMonthly: number; additional: number; epfOnAdditional: number;
+      applicability:boolean[]; inputs: { employmentId: string; monthlyWage: number; epfMonthly: number; additional: number; epfOnAdditional: number;
         acc: { netRemuneration: number; epfClaimed: number; pcbPaid: number } }[];
       filed: { employmentId: string; company: string; filedPcb: number }[]; indicative: boolean };
     const byPerson = new Map<string, Acc>();
@@ -2666,7 +2667,9 @@ export async function crossEmployerPcbExposure(ctx: SessionContext, period: stri
       const st = (s.statutory ?? {}) as { epfEmployee?: number; pcb?: number; pcbMeta?: { ytdNet?: number; epfClaimed?: number; pcbPaid?: number } };
       const bonus = Number(s.bonus) || 0;
       let p = byPerson.get(s.personId);
-      if (!p) p = { personId: s.personId, personName: s.personName, category: s.category, children: s.children, inputs: [], filed: [], indicative: false };
+      if (!p) p = { personId: s.personId, personName: s.personName, category: s.category, children: s.children, applicability:[],inputs: [], filed: [], indicative: false };
+      const saved=readSavedTaxCircumstance((s.statutory as {pcbMeta?:{taxCircumstance?:unknown}}|null)?.pcbMeta?.taxCircumstance);
+      p.applicability.push(saved?.applicable??true);
       p.inputs.push({
         employmentId: s.employmentId,
         monthlyWage: (Number(s.basic) || 0) + (Number(s.allowance) || 0) + (Number(s.overtime) || 0),
@@ -2684,7 +2687,9 @@ export async function crossEmployerPcbExposure(ctx: SessionContext, period: stri
     for (const p of byPerson.values()) {
       if (p.inputs.length < 2) continue; // only concurrent-employment people
       const summedMtd = r2(p.filed.reduce((a, b) => a + b.filedPcb, 0));
+      if(p.applicability.some(x=>x!==p.applicability[0]))continue; // Inconsistent recorded applicability is not a combined formula.
       const coord = coordinatedPcbForPerson(p.inputs, {
+        taxApplicable:p.applicability[0],
         month,
         profile: { category: (p.category ?? 1) as 1 | 2 | 3, children: p.children ?? 0 },
         pcb: DEFAULT_MY_STATUTORY.pcb,

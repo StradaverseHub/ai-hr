@@ -50,7 +50,7 @@ import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { currentPcbReliefs, payslipForReview, previousEmploymentForPayslip } from '@/core/payroll-view';
 import {
-  CATEGORY_LABEL,
+  CATEGORY_LABEL,pcbTaxCategoryIdentity,
   CYCLE_LABEL,
   explainPcb,
   pcbBasisLabels,
@@ -228,7 +228,8 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
     label,
     cells: [value && value.trim() !== '' ? value : t('notRecordedShort')],
   });
-  const category = model.explanation.kind === 'mtd' ? (slipData?.profile?.taxCategory ?? null) : null;
+  const categoryIdentity=pcbTaxCategoryIdentity(model.explanation);
+  const category=categoryIdentity.category;
   const cycleKey = CYCLE_LABEL[row.runType];
 
   /**
@@ -310,8 +311,8 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
             kv(t('fieldTaxNumber'), row.taxNumber),
             kv(t('fieldCompany'), row.company),
             kv(t('fieldPeriod'), periodLabel),
-            kv(t('fieldTaxCategory'), category == null ? null : String(category)),
-            kv(t('fieldMaritalStatus'), category != null && CATEGORY_LABEL[category] ? t(CATEGORY_LABEL[category]) : null),
+            kv(t('fieldTaxCategory'), !categoryIdentity.applicable?t('taxCategoryNone'):category==null?null:String(category)),
+            kv(t('fieldMaritalStatus'),categoryIdentity.labelKey?t(categoryIdentity.labelKey):null),
             kv(t('fieldCycle'), `${cycleKey ? t(cycleKey) : row.runType}${row.runSeq > 1 ? ` #${row.runSeq}` : ''}`),
           ],
         };
@@ -340,7 +341,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
         return { columns: [], rows: [wide(t('traceNotRecorded'))] };
 
       case 'unavailableCard':
-        return { columns: AMOUNT, rows: [figure(t('netMtd'), money(x.pcb))], note: t('unavailable') };
+        return { columns: AMOUNT, rows: [figure(t('netMtd'), money(x.pcb))], note:t(x.kind==='not_subject'?'taxCategoryNoneExplanation':'unavailable') };
 
       case 'flatCard': {
         if (flat == null) return { rows: [] };
@@ -586,7 +587,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
           columns: [],
           rows: [
             kv(t('sourceTaxYear'), String(Number.isFinite(taxYear) ? taxYear : row.payPeriod)),
-            kv(t('sourceTaxMethod'), x.kind === 'flat' ? t('methodFlat') : x.kind === 'mtd' && x.calculationScheme ? t(`scheme_${x.calculationScheme}`) : t('methodMtd')),
+            kv(t('sourceTaxMethod'), x.kind==='not_subject'?t('taxCategoryNone'):x.kind === 'flat' ? t('methodFlat') : x.kind === 'mtd' && x.calculationScheme ? t(`scheme_${x.calculationScheme}`) : t('methodMtd')),
             kv(t('sourceTaxTable'), prov?.rulesetVersion ?? null),
             kv(t('sourcePeriod'), periodLabel),
             kv(t('sourceCycle'), cycleKey ? t(cycleKey) : row.runType),

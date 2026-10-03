@@ -1337,10 +1337,10 @@
       "incomeTaxPcbSection": "ภาษีเงินได้ (PCB)",
       "taxInfoLegend": "ข้อมูลภาษี",
       "taxCategoryLabel": "หมวดภาษี",
-      "taxCategorySingle": "โสด",
+      "taxCategorySingle": "โสด/คู่สมรสไม่ขอลดหย่อนบุตร",
       "taxCategoryMarriedSpouseNotWorking": "สมรสและคู่สมรสไม่ทำงาน",
       "taxCategoryMarriedSpouseWorking": "สมรสและคู่สมรสทำงาน",
-      "taxCategoryDivorcedWithKids": "หย่าร้าง / โสดที่มีบุตร",
+      "taxCategoryDivorcedWithKids": "หม้าย/หย่าร้างและมีบุตร",
       "taxCategoryNone": "ไม่มี",
       "incomeTaxResident": "สถานะผู้มีถิ่นที่อยู่ทางภาษี",
       "taxResidencyResident": "ผู้มีถิ่นที่อยู่",
@@ -1699,7 +1699,10 @@
       "taxSelectionEmployer": "นายจ้าง: {employer}",
       "taxSelectionEligibilityHint": "เลือกประเภทที่ใช้กับการจ้างงานและนายจ้างนี้ การเลือกสิทธิพิเศษเป็นการบันทึกการตัดสินใจของ HR ว่าเป็นไปตามเงื่อนไขการอนุมัติ คุณสมบัติ และช่วงเวลาที่ใช้ ไม่ต้องมีคำประกาศแยกต่างหาก",
       "taxSelectionConfirmationRequired": "ยืนยันประเภทที่ใช้ในช่องนี้แล้วบันทึกครั้งเดียว การตั้งค่าเดิมไม่สามารถระบุประเภทที่แน่นอนสำหรับนายจ้างนี้ได้",
-      "taxSelectionChoose": "เลือกประเภทภาษี"
+      "taxSelectionChoose": "เลือกประเภทภาษี",
+      "taxCategoryLegacy3": "ประเภท 3 — คู่สมรสทำงาน หย่าร้าง เป็นหม้าย หรือโสดและมีบุตรบุญธรรม",
+      "taxCategorySingleHint": "LHDN ประเภท 1 หมายถึงโสด ผู้สมรสใช้ประเภทตามสถานะการทำงานของคู่สมรส แม้ไม่ขอลดหย่อนบุตร",
+      "taxCategoryNoneExplanation": "ประเภทภาษีของการประมวลผลเงินเดือนครั้งนี้คือไม่มี จึงไม่คำนวณ PCB การคำนวณตามกฎหมายอื่นยังดำเนินตามปกติ"
     },
     "import": {
       "title": "นำเข้าพนักงาน",
@@ -7296,7 +7299,15 @@
       "slipBikEntered": "BIK ที่ป้อน",
       "slipBikExempt": "BIK ที่ยกเว้นภาษี",
       "slipVolaEntered": "มูลค่าที่พักที่ป้อน",
-      "slipVolaExempt": "มูลค่าที่พักที่ยกเว้นภาษี"
+      "slipVolaExempt": "มูลค่าที่พักที่ยกเว้นภาษี",
+      "taxCategorySingle": "โสด/คู่สมรสไม่ขอลดหย่อนบุตร",
+      "taxCategoryMarriedSpouseNotWorking": "สมรสและคู่สมรสไม่ทำงาน",
+      "taxCategoryMarriedSpouseWorking": "สมรสและคู่สมรสทำงาน",
+      "taxCategoryDivorcedWithKids": "หม้าย/หย่าร้างและมีบุตร",
+      "taxCategoryNone": "ไม่มี",
+      "taxCategoryLegacy3": "ประเภท 3 — คู่สมรสทำงาน หย่าร้าง เป็นหม้าย หรือโสดและมีบุตรบุญธรรม",
+      "taxCategorySingleHint": "LHDN ประเภท 1 หมายถึงโสด ผู้สมรสใช้ประเภทตามสถานะการทำงานของคู่สมรส แม้ไม่ขอลดหย่อนบุตร",
+      "taxCategoryNoneExplanation": "ประเภทภาษีของการประมวลผลเงินเดือนครั้งนี้คือไม่มี จึงไม่คำนวณ PCB การคำนวณตามกฎหมายอื่นยังดำเนินตามปกติ"
     },
     "multiCycleWorksheet": {
       "title": "กระดาษทำการตามกฎหมายสำหรับการจ่ายหลายรอบ",

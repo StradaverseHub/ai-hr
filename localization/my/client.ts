@@ -1,3 +1,4 @@
+import {TAX_CIRCUMSTANCE_OPTIONS,taxCircumstanceOf} from './tax-circumstance';
 /**
  * MY client-safe pack entry (ADR-0080 rung 5b, D4) — the `CountryPackClient` implementation.
  *
@@ -44,6 +45,7 @@ export const myClientPack: CountryPackClient = {
     // hands them straight back here with the counts on screen, so the statutory rule never leaves the pack
     // and the screen cannot work out a different figure from the payslip's.
     childReliefFor,
+    taxCircumstanceOptions:TAX_CIRCUMSTANCE_OPTIONS,taxCircumstanceOf,
   },
   // Item ef720d3a — canonical MY bank names for the employee bank picker, in BNM catalog order
   // (the four common banks first). Projection of the shared bank master (lib/my-banks via

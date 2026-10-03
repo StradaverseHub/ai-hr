@@ -1,3 +1,4 @@
+import {clientPackFor} from '@/localization/registry.client';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -669,10 +670,10 @@ export default async function MePage({
         <ReadField label={tp('socsoCategoryLabel')} value={socsoCategoryLabel(st.socsoCategory)} notSet={notSet} />
         <ReadField label={tp('eisCategoryLabel')} value={eisCategoryLabel(st.eisCategory)} notSet={notSet} />
         <ReadField label={tp('taxNumber')} value={st.taxNumber} notSet={notSet} pending={pendingFor('taxNumber')} />
-        <ReadField label={tp('incomeTaxResident')} value={yesNo(st.isResident)} notSet={notSet} />
+        <ReadField label={tp('incomeTaxResident')} value={st.taxCircumstance==='none'?tp('taxCategoryNone'):yesNo(st.isResident)} notSet={notSet} />
         <ReadField
           label={tp('taxCategoryLabel')}
-          value={st.taxCategory ? t(PCB_LABEL_KEY[st.taxCategory] ?? 'pcbSingle') : null}
+          value={st.taxCategory?tp(clientPackFor('MY')!.payroll.taxCircumstanceOf!(st.taxCircumstance,st.taxCategory).labelKey):null}
           notSet={notSet}
           pending={pendingFor('taxCategory')}
         />

@@ -6206,7 +6206,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
 
     // Resolve and lock employer-period declarations in stable employment order, before producing money.
     // Save/revoke uses the same lock; an approval decision remains valid until this payroll commits.
-    const resolvedTaxSchemes = new Map<string, {scheme:string;declarationId?:string;selectionId?:string;selectionVersion?:number;selectionSource?:'income_tax_resident'}>();
+    const resolvedTaxSchemes = new Map<string, {scheme:string;declarationId?:string;selectionId?:string;selectionVersion?:number;selectionSource?:'income_tax_resident';taxCircumstance?:NonNullable<Parameters<typeof pack.payroll.statutory>[5]>['taxCircumstance']}>();
     if (!subset && pack.payroll.resolveTaxScheme) {
       for (const e of [...emps].sort((a,b)=>a.employmentId.localeCompare(b.employmentId))) {
         resolvedTaxSchemes.set(e.employmentId, await pack.payroll.resolveTaxScheme(tx, {tenantId:ctx.tenantId,employmentId:e.employmentId,companyId:batch.companyId,payPeriod:batch.payPeriod,legacyScheme:e.taxResidency,resident:e.isResident ?? true,epfCitizenship:e.epfCitizenship}));
@@ -6466,10 +6466,11 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // the same reason r343 did not move it and r344 was raised as its own item — three money-path
       // consumers change together or not at all.
       // Preserve the pack's existing working; readers never re-price an old employee profile.
+      const effectiveTaxCategory=resolvedTaxSchemes.get(e.employmentId)?.taxCircumstance?.category??e.taxCategory??1;
       const childFigure = pack.payroll.childReliefFor && pack.payroll.childReliefPrices
         ? pack.payroll.childReliefFor(pricesChildReliefFromGrid(e)
-          ? { from: 'table', taxCategory: e.taxCategory ?? 1, table: e.childReliefTable, prices: pack.payroll.childReliefPrices(rules.pcb?.reliefs) }
-          : { from: 'headCount', taxCategory: e.taxCategory ?? 1, children: e.numChildren ?? 0, perChild: rules.pcb?.reliefs.perChild ?? 0 })
+          ? { from: 'table', taxCategory: effectiveTaxCategory, table: e.childReliefTable, prices: pack.payroll.childReliefPrices(rules.pcb?.reliefs) }
+          : { from: 'headCount', taxCategory: effectiveTaxCategory, children: e.numChildren ?? 0, perChild: rules.pcb?.reliefs.perChild ?? 0 })
         : null;
       const childReliefAmount =
       // a5f21891 — 'auto' PRICES ITS GRID TOO, and all three gates widen together. The sync derives that
@@ -6482,7 +6483,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           ? (childFigure?.amountRM ?? pack.payroll.childReliefAmountFor(e.childReliefTable, rules.pcb?.reliefs))
           : undefined;
       const taxProfile = {
-        category: (e.taxCategory ?? 1) as 1 | 2 | 3,
+        category: effectiveTaxCategory as 1 | 2 | 3,
         children: e.numChildren ?? 0,
         disabled: e.disabledIndividual ?? false,
         // `?? false` keeps a row that predates migration 0356 (or a person with no statutory row at all)
@@ -6532,6 +6533,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         taxSelectionId:resolvedTaxScheme.selectionId,
         taxSelectionVersion:resolvedTaxScheme.selectionVersion,
         taxSelectionSource:resolvedTaxScheme.selectionSource,
+        taxCircumstance:resolvedTaxSchemes.get(e.employmentId)?.taxCircumstance,
         // EPF rule selection (#95): age + citizenship pick Part A / Part E senior / non-citizen 2%/2%.
         epfAge: age,
         epfCitizenship: e.epfCitizenship ?? 'citizen',
@@ -10908,14 +10910,16 @@ export function applyStatutoryAdjustment<T extends Record<string, unknown>>(
   const patch: Record<string, number> = {};
   for (const k of STATUTORY_ADJUSTMENT_LINES) {
     const applied = adj.values[k];
+    if(k==='pcb'&&(computed.pcbMeta as {notSubjectToIncomeTax?:boolean}|undefined)?.notSubjectToIncomeTax===true)continue;
     if (applied == null) continue; // blank ⇒ keep the system figure
     const system = round2(Number(computed[k] ?? 0));
     patch[k] = round2(applied);
     lines[k] = { system, applied: round2(applied) };
   }
-  if (Object.keys(patch).length === 0) return computed;
+  const suppressed=(computed.pcbMeta as {notSubjectToIncomeTax?:boolean}|undefined)?.notSubjectToIncomeTax===true&&adj.values.pcb!=null?{pcbAdjustmentSuppressed:{reason:'not_subject_to_income_tax',requested:adj.values.pcb,originalReason:adj.reason}}:{};
+  if (Object.keys(patch).length === 0) return Object.keys(suppressed).length?{...computed,...suppressed}:computed;
   const stamp: StatutoryAdjustmentStamp = { reason: adj.reason, lines };
-  return { ...computed, ...patch, adjustment: stamp } as T & { adjustment: StatutoryAdjustmentStamp };
+  return { ...computed,...suppressed, ...patch, adjustment: stamp } as T & { adjustment: StatutoryAdjustmentStamp };
 }
 
 /**
@@ -10966,6 +10970,7 @@ export function previewStatutoryAdjustment(p: {
   let employerDelta = 0; // change to employer cost
   for (const k of STATUTORY_ADJUSTMENT_LINES) {
     const applied = p.values[k];
+    if(k==='pcb'&&(p.statutory.pcbMeta as {notSubjectToIncomeTax?:boolean}|undefined)?.notSubjectToIncomeTax===true&&applied!=null)throw new Error('PCB cannot be overridden when Tax Category is None');
     if (applied == null) continue;
     const system = round2(Number(p.statutory[k] ?? 0));
     const delta = round2(round2(applied) - system);
@@ -11201,7 +11206,10 @@ export function saveStatutoryAdjustment(
     const cols: Record<string, string | null> = {};
     const changed: { line: StatutoryAdjustmentLine; system: number; applied: number }[] = [];
     const stored = (slip.statutory ?? {}) as Record<string, unknown>;
+    const [currentTax]=await tx.select({key:employeeStatutoryMy.taxCircumstance}).from(employment).innerJoin(employeeStatutoryMy,eq(employeeStatutoryMy.personId,employment.personId)).where(eq(employment.id,p.employmentId)).limit(1).for('share');
+    if(currentTax?.key==='none'&&p.values.pcb!=null)throw new Error('PCB cannot be overridden when Tax Category is None');
     const stamp = (stored.adjustment ?? null) as StatutoryAdjustmentStamp | null;
+    if((stored.pcbMeta as {notSubjectToIncomeTax?:boolean}|undefined)?.notSubjectToIncomeTax===true&&p.values.pcb!=null)throw new Error('PCB cannot be overridden when Tax Category is None');
     for (const k of STATUTORY_ADJUSTMENT_LINES) {
       const v = p.values[k];
       if (v != null && v < 0) throw new StatutoryAdjustmentAmountInvalidError(k);

@@ -3195,6 +3195,8 @@ export const employeeStatutoryMy = pgTable(
     taxNumber: text('tax_number'),
     // PCB (MTD) inputs. taxCategory: 1=single, 2=married/spouse not working, 3=married/spouse working.
     taxCategory: integer('tax_category').notNull().default(1),
+    taxCircumstance: text('tax_circumstance').$type<'single'|'spouse_not_working'|'spouse_working'|'widow_divorced'|'none'>(),
+    taxApplicabilityEpoch: integer('tax_applicability_epoch').notNull().default(0),
     numChildren: integer('num_children').notNull().default(0),
     // Item 8b5334db — how num_children is maintained. 'manual' = HR keys it (today's behaviour); 'auto' derives
     // the eligible child count from the Family register and surfaces it for HR CONFIRMATION into num_children
@@ -5563,6 +5565,7 @@ export const employmentTaxSelectionMy = pgTable('employment_tax_selection_my', {
   scheme: text('scheme').$type<'resident'|'non_resident'|'rep'|'knowledge_worker'|'c_suite'>(),
   transitionState: text('transition_state').notNull().$type<'resolved'|'confirmation_required'>(),
   version: integer('version').notNull().default(1),
+  taxApplicabilityEpoch: integer('tax_applicability_epoch').notNull().default(0),
   legacyScheme: text('legacy_scheme'),
   source: text('source').notNull().$type<'legacy_conversion'|'explicit'>(),
   provenance: jsonb('provenance').notNull().$type<{reason:string;declarationIds:string[]}>(),

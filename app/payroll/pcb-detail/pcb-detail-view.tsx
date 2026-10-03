@@ -80,7 +80,7 @@ import { formatMoney } from '@/lib/money';
 // ad7bc503 — CYCLE_LABEL and CATEGORY_LABEL moved to core/ so the DOWNLOADED document resolves the same
 // two maps this screen does. They were private to this file and the document therefore printed neither
 // the payroll cycle nor the marital tax status the reporter's section 1 asks for.
-import { CATEGORY_LABEL, CYCLE_LABEL, pcbBasisLabels, pcbDetailLayout } from '@/core/pcb-explain';
+import { CATEGORY_LABEL, CYCLE_LABEL, pcbBasisLabels, pcbDetailLayout,pcbTaxCategoryIdentity } from '@/core/pcb-explain';
 import type {
   PcbDetailBodySlot,
   PcbDetailEntry,
@@ -455,6 +455,7 @@ export async function PcbDetailView({
   const trace = explanation.kind === 'mtd' ? explanation.trace : null;
   /** The three shapes, narrowed once, so a body below never re-asks which one it is drawing. */
   const mtd = explanation.kind === 'mtd' ? explanation : null;
+  const categoryIdentity=pcbTaxCategoryIdentity(explanation);
   const flat = explanation.kind === 'flat' ? explanation : null;
   /** WHY the working and the deduction are different numbers, and the figure the working explains. With
    *  no basis `sys` IS `explanation.pcb` and every line below reads exactly as it always did. */
@@ -515,16 +516,12 @@ export async function PcbDetailView({
                 spouse working — so the two rows cannot disagree, which two stored fields could. */}
             <Row
               label={t('fieldTaxCategory')}
-              value={ctx.taxCategory == null ? <Muted>{t('notRecordedShort')}</Muted> : `${ctx.taxCategory}`}
+              value={!categoryIdentity.applicable?t('taxCategoryNone'):categoryIdentity.category==null?<Muted>{t('notRecordedShort')}</Muted>:String(categoryIdentity.category)}
             />
             <Row
               label={t('fieldMaritalStatus')}
               value={
-                ctx.taxCategory != null && CATEGORY_LABEL[ctx.taxCategory] ? (
-                  t(CATEGORY_LABEL[ctx.taxCategory])
-                ) : (
-                  <Muted>{t('notRecordedShort')}</Muted>
-                )
+                categoryIdentity.labelKey?t(categoryIdentity.labelKey):<Muted>{t('notRecordedShort')}</Muted>
               }
             />
             <Row
@@ -569,7 +566,7 @@ export async function PcbDetailView({
         return (
           <>
             <Row label={t('netMtd')} value={rm(explanation.pcb)} />
-            <p className="pt-2 text-sm text-muted-foreground">{t('unavailable')}</p>
+            <p className="pt-2 text-sm text-muted-foreground">{t(explanation.kind==='not_subject'?'taxCategoryNoneExplanation':'unavailable')}</p>
           </>
         );
 
@@ -998,7 +995,7 @@ export async function PcbDetailView({
             <Row label={t('sourceTaxYear')} value={taxYear} />
             <Row
               label={t('sourceTaxMethod')}
-              value={explanation.kind === 'flat' ? t('methodFlat') : mtd?.calculationScheme ? t(`scheme_${mtd.calculationScheme}`) : t('methodMtd')}
+              value={explanation.kind==='not_subject'?t('taxCategoryNone'):explanation.kind === 'flat' ? t('methodFlat') : mtd?.calculationScheme ? t(`scheme_${mtd.calculationScheme}`) : t('methodMtd')}
             />
             <Row label={t('sourceTaxTable')} value={ctx.rulesetVersion ?? <NotRecorded />} />
             <Row label={t('sourcePeriod')} value={ctx.periodLabel} />
