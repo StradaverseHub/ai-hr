@@ -652,7 +652,9 @@ export default async function IndividualPayslipPage({
               <div className="min-w-0 break-words">
                 <div className="flex items-start gap-4">
                 {companyHasLogo && <PayslipCompanyLogo companyId={row.companyId} companyName={row.company}/>}
-                <div className="min-w-0"><h1 className="break-words text-xl font-semibold leading-7">{row.company}</h1>
+                {/* Centre only the name/registration block: the uploaded mark keeps its top anchor
+                    even when a long legal name wraps taller than the mark. */}
+                <div className="min-w-0 self-center"><h1 className="break-words text-xl font-semibold leading-7">{row.company}</h1>
                 {/* r360 (1fe55a23) — THE REGISTRATION NUMBER NOW SAYS WHAT IT IS.
                     It has always been drawn here, directly under the legal name, but with no caption at
                     all: the reader met a bare "201901024512" under a company name, which is how an

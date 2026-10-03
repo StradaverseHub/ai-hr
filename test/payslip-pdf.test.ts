@@ -13,7 +13,7 @@ import fs from 'node:fs';
  * to add up to the total beside them. That guard has its own test, and it is the important one.
  */
 import zlib from 'node:zlib';
-import { PDFDocument,PDFName,PDFDict } from 'pdf-lib';
+import { PDFDocument,PDFName,PDFDict,StandardFonts } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { buildPayslipPdfData, renderPayslipPdf, type PayslipPdfData } from '../lib/payslip-pdf';
 // a96d320c — the payment date is resolved to words SERVER-side, in the same module that already resolves
@@ -115,6 +115,30 @@ function drawnPlacements(bytes: Uint8Array): { page: number; x: number; y: numbe
       }
     }
     i = e + 9;
+  }
+  return out;
+}
+
+/** The actual unrotated image matrices emitted by pdf-lib, not the renderer's planned logo size. */
+function drawnImages(bytes: Uint8Array): {x:number;y:number;w:number;h:number}[] {
+  const buf=Buffer.from(bytes),out:{x:number;y:number;w:number;h:number}[]=[];
+  let cursor=0;
+  for(;;){
+    const start=buf.indexOf('stream',cursor);if(start<0)break;
+    const end=buf.indexOf('endstream',start);if(end<0)break;
+    let bodyStart=start+6;
+    if(buf[bodyStart]===13)bodyStart++;
+    if(buf[bodyStart]===10)bodyStart++;
+    const raw=buf.subarray(bodyStart,end);
+    let body:Buffer;try{body=zlib.inflateSync(raw);}catch{body=raw;}
+    for(const block of body.toString('latin1').matchAll(/q\s+([\s\S]*?)\s+Q/g)){
+      if(!/\/[^\s]+\s+Do\b/.test(block[1]))continue;
+      const matrices=[...block[1].matchAll(/(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) cm/g)].map(m=>m.slice(1).map(Number));
+      expect(matrices,'actual logo translation/rotation/scale/skew matrices').toHaveLength(4);
+      expect(matrices[1]).toEqual([1,0,0,1,0,0]);expect(matrices[3]).toEqual([1,0,0,1,0,0]);
+      out.push({x:matrices[0][4],y:matrices[0][5],w:matrices[2][0],h:matrices[2][3]});
+    }
+    cursor=end+9;
   }
   return out;
 }
@@ -1988,7 +2012,9 @@ describe('r383 restored compact payslip profile',()=>{
   for(const logo of [{bytes:fs.readFileSync(new URL('./fixtures/r383-payslip-logo/company.png',import.meta.url)),mimeType:'image/png'},{bytes:fs.readFileSync(new URL('./fixtures/r383-payslip-logo/company.jpg',import.meta.url)),mimeType:'image/jpeg'},null,{bytes:Buffer.from('broken'),mimeType:'image/png'}]){
    const bytes=await renderPayslipPdf({...data,logo},labels),runs=drawnPlacements(bytes);
    const company=placed(runs,data.company)!,period=placed(runs,labels.periodLabel)!,profile=placed(runs,'EMPLOYEE PROFILE')!;
-   expect(company).toBeDefined();expect(period).toBeDefined();expect(company.y).toBeCloseTo(period.y,3);
+   expect(company).toBeDefined();expect(period).toBeDefined();
+   if(logo&&logo.bytes.length>20)expect(company.y,'tall uploaded logo centres its adjacent text below the period baseline').toBeLessThan(period.y);
+   else expect(company.y,'text-only fallback retains its original first baseline').toBeCloseTo(period.y,3);
    expect(company.y).toBeGreaterThan(profile.y);expect(period.x).toBeGreaterThan(company.x);
    expect(runs.filter(r=>r.text===data.company)).toHaveLength(1);
    const uploaded=logo&&logo.bytes.length>20;
@@ -1996,6 +2022,59 @@ describe('r383 restored compact payslip profile',()=>{
    const pdf=await PDFDocument.load(bytes);
    const imageKeys=pdf.getPages()[0].node.Resources()?.lookupMaybe(PDFName.of('XObject'),PDFDict)?.keys()??[];
    expect(imageKeys.length).toBe(uploaded?1:0);
+  }
+ });
+});
+
+
+describe('r385 — company text midpoint beside the unchanged uploaded logo',()=>{
+ const logos=[
+  {bytes:fs.readFileSync(new URL('./fixtures/r383-payslip-logo/company.png',import.meta.url)),mimeType:'image/png'},
+  {bytes:fs.readFileSync(new URL('./fixtures/r383-payslip-logo/company.jpg',import.meta.url)),mimeType:'image/jpeg'},
+ ];
+ it('centres the complete name and optional registration ink bounds beside tall PNG/JPEG marks; removing the PDF offset fails',async()=>{
+  const metricDocument=await PDFDocument.create();
+  const boldFace=await metricDocument.embedFont(StandardFonts.HelveticaBold),regularFace=await metricDocument.embedFont(StandardFonts.Helvetica);
+  for(const logo of logos){
+   let profileY:number|undefined;
+   for(const companyReg of ['SAMPLE-REGISTRATION',undefined]){
+    const company='Example Company';
+    const bytes=await renderPayslipPdf({...data,company,companyReg,logo},labels),runs=drawnPlacements(bytes),images=drawnImages(bytes);
+    expect(images,'nontrivial actual mark must be embedded').toHaveLength(1);
+    const image=images[0];expect(image).toEqual({x:24,y:841.89-24-24-48,w:96,h:48});
+    const name=placed(runs,company)!,registration=companyReg?placed(runs,`${labels.companyReg}: ${companyReg}`):undefined;
+    expect(name,'the measured block includes the actual legal name').toBeDefined();expect(name.x).toBe(134);
+    if(companyReg){expect(registration).toBeDefined();expect(registration!.x).toBe(name.x);expect(name.y-registration!.y,'existing font-aware 17pt company line pitch').toBeCloseTo(17+regularFace.heightAtSize(8.5,{descender:false})-boldFace.heightAtSize(13,{descender:false}),5);}
+    else expect(runs.filter(r=>r.text.startsWith(`${labels.companyReg}:`))).toHaveLength(0);
+    const top=name.y+boldFace.heightAtSize(13,{descender:false});
+    const last=registration??name,lastFace=registration?regularFace:boldFace,lastSize=registration?8.5:13;
+    const descent=lastFace.heightAtSize(lastSize,{descender:true})-lastFace.heightAtSize(lastSize,{descender:false});
+    const bottom=last.y-descent;
+    expect(top-bottom,'actual text must be shorter than the mark or the midpoint check is vacuous').toBeLessThan(image.h-10);
+    expect((top+bottom)/2,'actual glyph block midpoint equals actual logo midpoint').toBeCloseTo(image.y+image.h/2,5);
+    expect(top).toBeLessThan(image.y+image.h);expect(bottom).toBeGreaterThan(image.y);
+    const period=placed(runs,labels.periodLabel)!;expect(period).toBeDefined();expect(period.y).toBeCloseTo(841.89-24-24-boldFace.heightAtSize(13,{descender:false}),5);
+    expect(period.x).toBeGreaterThan(name.x);expect(runs.filter(r=>r.text===company)).toHaveLength(1);
+    const profile=placed(runs,'EMPLOYEE PROFILE')!;expect(profile).toBeDefined();
+    if(profileY===undefined)profileY=profile.y;else expect(profile.y,'centred ink does not move the original logo-owned body boundary').toBeCloseTo(profileY,5);
+   }
+  }
+ });
+ it('keeps a short logo at its top anchor when full wrapped company text is taller, without clipping or fixed offsets',async()=>{
+  const company=Array.from({length:18},(_,i)=>`BrandWord${i}`).join(' ');
+  const bytes=await renderPayslipPdf({...data,company,companyReg:'SAMPLE',logo:logos[0]},labels),runs=drawnPlacements(bytes),images=drawnImages(bytes);
+  expect(images).toHaveLength(1);expect(images[0]).toEqual({x:24,y:841.89-24-24-48,w:96,h:48});
+  const companyRuns=runs.filter(r=>/BrandWord/.test(r.text));expect(companyRuns.length).toBeGreaterThan(3);
+  const metricDocument=await PDFDocument.create(),face=await metricDocument.embedFont(StandardFonts.HelveticaBold);
+  expect(companyRuns[0].y+face.heightAtSize(13,{descender:false}),'wrapped branding retains the original top, not an arbitrary offset').toBeCloseTo(images[0].y+images[0].h,5);
+  expect(companyRuns.map(r=>r.text).join(' ').match(/BrandWord\d+/g)).toEqual(Array.from({length:18},(_,i)=>`BrandWord${i}`));
+  expect(companyRuns.every(r=>r.x===134)).toBe(true);expect(placed(runs,`${labels.companyReg}: SAMPLE`)).toBeDefined();
+ });
+ it('leaves text-only, corrupt and tiny-logo company baselines at the existing period baseline',async()=>{
+  for(const logo of [null,{bytes:Buffer.from('broken'),mimeType:'image/png'},{bytes:PNG_1x1,mimeType:'image/png'}]){
+   const bytes=await renderPayslipPdf({...data,logo},labels),runs=drawnPlacements(bytes);
+   expect(placed(runs,data.company)!.y).toBeCloseTo(placed(runs,labels.periodLabel)!.y,5);
+   expect(drawnImages(bytes)).toHaveLength(logo?.bytes===PNG_1x1?1:0);
   }
  });
 });
