@@ -84,7 +84,7 @@ afterAll(async () => {
  * Validate each identity against its own employer-scoped owner; normalize only that UUID for the
  * financial oracle. Every calculation, version/source, noncash and child working field stays compared.
  */
-async function statutoryForMoneyComparison(ps: typeof schema.payslip.$inferSelect) {
+async function statutoryForMoneyComparison(ps: typeof schema.payslip.$inferSelect, differentPayStructure = false) {
   const [batch]=await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,ps.batchId));
   const rows=await owner.db.select().from(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.employmentId,ps.employmentId));
   const selection=rows.find(row=>row.tenantId===ps.tenantId&&row.companyId===batch.companyId);
@@ -102,7 +102,7 @@ async function statutoryForMoneyComparison(ps: typeof schema.payslip.$inferSelec
   expect(salary.supersededAt).toBeNull();
   expect(basis).toEqual({version:1,referenceDate,compensationId:salary.id,effectiveFrom:salary.validFrom,basicSalary:salary.basicSalary,payMode:salary.payMode});
   // Keep every saved input and monetary field; only independently validated employment-owned UUIDs differ.
-  return {...statutory,pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'},salaryBasis:{...basis,compensationId:'validated-compensation-selection'}};
+  return {...statutory,pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'},salaryBasis:differentPayStructure?'validated-whole-salary-basis':{...basis,compensationId:'validated-compensation-selection'}};
 }
 
 describe('2.1 Payroll Policy — service + substrate', () => {
@@ -343,7 +343,10 @@ describe('2.1.2 Daily Payroll Policy — kernel pays rate × eligible days', () 
 
     // Statutory on the resulting monthly wage equals the same-wage monthly employee's statutory (golden oracle).
     expect(Number(daily.grossPay)).toBeCloseTo(Number(monthly.grossPay), 2);
-    expect(await statutoryForMoneyComparison(daily)).toEqual(await statutoryForMoneyComparison(monthly));
+    // This pair intentionally has different monthly-equivalent inputs and modes: daily 9999/rate300
+    // versus monthly6300. Independently validate each entire saved basis, then compare every statutory
+    // calculation on their equal paid wage; the provenance is not itself a statutory money result.
+    expect(await statutoryForMoneyComparison(daily, true)).toEqual(await statutoryForMoneyComparison(monthly, true));
     expect(Number(daily.netPay)).toBeCloseTo(Number(monthly.netPay), 2);
     // Sanity: the statutory is non-trivial (the wage actually bit on 6300).
     expect(Number(monthly.grossPay)).toBeCloseTo(dailyWage, 2);
