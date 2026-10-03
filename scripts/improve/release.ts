@@ -63,6 +63,20 @@ function run(cmd: string, args: string[], cwd?: string): void {
 /** SSH options shared by every remote call here: no prompts, and a connect that fails rather than hangs. */
 const SSH_OPTS = ['-p', PORT, '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=12'];
 
+/** App source ships through one filter. Internal decision/history records remain local and
+ * existing server copies are protected from --delete; they are not deployment dependencies. */
+export function deploymentRsyncArgs(source: string, destination = `${USER}@${HOST}:${DIR}/`): string[] {
+  return [
+    '-az', '--delete',
+    '-e', `ssh -p ${PORT} -o BatchMode=yes -o ConnectTimeout=12`,
+    '--exclude', 'node_modules', '--exclude', '.next', '--exclude', '.git', '--exclude', '.env*',
+    '--exclude', '.turbo', '--exclude', 'coverage', '--exclude', '.claude', '--exclude', 'graphify-out',
+    '--exclude', '.vitest-attachments',
+    '--exclude', '/docs/HANDOFF-HISTORY.md', '--exclude', '/docs/adr/',
+    source.replace(/\/?$/, '/'), destination,
+  ];
+}
+
 /** The argv for one remote command. Exported so the tests can drive the REAL command through a shim ssh. */
 export function sshArgs(remoteCommand: string, opts?: { host?: string; user?: string }): string[] {
   return [...SSH_OPTS, `${opts?.user ?? USER}@${opts?.host ?? HOST}`, remoteCommand];
@@ -360,16 +374,7 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
   // 3. rsync the worktree → server (same excludes as deploy; .env.production preserved on the box).
   const src = p.worktree.replace(/\/?$/, '/');
   console.log(`→ rsync ${src} → ${USER}@${HOST}:${DIR}/`);
-  run('rsync', [
-    '-az', '--delete',
-    '-e', `ssh -p ${PORT} -o BatchMode=yes -o ConnectTimeout=12`,
-    '--exclude', 'node_modules', '--exclude', '.next', '--exclude', '.git', '--exclude', '.env*',
-    '--exclude', '.turbo', '--exclude', 'coverage', '--exclude', '.claude', '--exclude', 'graphify-out',
-    // r252 — vitest writes failure attachments here during a gate. Small, but it is test output, and
-    // `--delete` above means whatever the local tree holds at rsync time is what the server gets.
-    '--exclude', '.vitest-attachments',
-    src, `${USER}@${HOST}:${DIR}/`,
-  ]);
+  run('rsync', deploymentRsyncArgs(src));
 
   // 4. deploy.sh on the server, DETACHED (build + migrate; the restart still needs the user's sudo,
   //    by design), then followed by polling. See the header for why.
