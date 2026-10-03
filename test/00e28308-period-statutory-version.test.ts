@@ -367,6 +367,7 @@ describe('00e28308 · the month records the ruleset version it was opened under'
         ...GOLDEN_STATUTORY,
         pcbMeta: {
           ...GOLDEN_STATUTORY.pcbMeta,
+          taxCircumstance: { version: 1, key: null, category: 1, applicable: true, epoch: 0 },
           taxSelectionId: selection.id,
           taxSelectionVersion: selection.version,
           taxSelectionSource: 'income_tax_resident',
