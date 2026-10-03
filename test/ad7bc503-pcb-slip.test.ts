@@ -1261,12 +1261,21 @@ describe('ad7bc503 — what the downloaded document carries that it used to leav
     for (const key of ['fieldMaritalStatus', 'fieldCycle']) {
       expect(shared, `the document must print ${key}`).toContain(`t('${key}')`);
     }
-    expect(shared, 'resolved through the same map the screen uses, not a second copy').toContain('CATEGORY_LABEL[category]');
+    // Detailed identity belongs to the recorded explanation, including None and legacy unknowns.
+    // Both renderers must consume that owner rather than collapsing distinct labels through 1/2/3.
+    const view = code(VIEW);
+    expect(shared, 'the document resolves the saved explanation').toMatch(/pcbTaxCategoryIdentity\(model\.explanation\)/);
+    expect(view, 'the screen resolves the same saved explanation').toMatch(/pcbTaxCategoryIdentity\(explanation\)/);
+    for (const consumer of [shared, view]) {
+      expect(consumer, 'both render the shared identity label').toMatch(/categoryIdentity\.labelKey\s*\?\s*t\(categoryIdentity\.labelKey\)/);
+      expect(consumer, 'both render the explicit None state').toMatch(/!categoryIdentity\.applicable\s*\?\s*t\('taxCategoryNone'\)/);
+    }
     expect(shared, 'and likewise the cycle').toContain('CYCLE_LABEL[row.runType]');
     // The maps now live in core/, so there is exactly one of each.
     const explain = code('core/pcb-explain.ts');
     expect(explain, 'the cycle map is in core').toContain('export const CYCLE_LABEL');
     expect(explain, 'and so is the category map').toContain('export const CATEGORY_LABEL');
+    expect(explain, 'the saved detailed identity has one shared owner').toContain('export function pcbTaxCategoryIdentity');
     expect(code(VIEW), 'the view reads them rather than owning them').toContain('CATEGORY_LABEL, CYCLE_LABEL');
   });
 
