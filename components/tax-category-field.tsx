@@ -5,6 +5,10 @@ import {Field,inputCls} from '@/components/ui';
 import {clientPackFor} from '@/localization/registry.client';
 export const TAX_CATEGORY_OPTIONS=clientPackFor('MY')!.payroll.taxCircumstanceOptions!;
 type Common={notSetLabel?:string;className?:string;circumstance?:string|null};
+export function TaxCategoryNoneOption(){
+ const t=useTranslations('people.detail');
+ return <option value="none">{t('taxCategoryNone')}</option>;
+}
 export function TaxCategoryField(props:
  |(Common&{mode:'form';defaultValue?:number|string|null;name?:string;onChange?:(value:string)=>void})
  |(Common&{mode:'controlled';value:string|undefined;onChange:(value:string)=>void})){

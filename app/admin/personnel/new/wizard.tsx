@@ -79,7 +79,7 @@ import { BirthDateFields } from '@/components/birth-date-fields';
 import { EpfRegistrationFields } from '@/components/epf-registration-fields';
 // 35b7af0a group 5 — the Bank + Bank Account Number group, shared with the Personnel Bank Information card.
 import { BankAccountFields } from '@/components/bank-account-fields';
-import { TaxCategoryField } from '@/components/tax-category-field';
+import { TaxCategoryField, TaxCategoryNoneOption } from '@/components/tax-category-field';
 import { SocsoEisFields } from '@/components/socso-eis-fields';
 // 35b7af0a group 8 — the Nationality picker and the nationality-gated Identity No, shared with the
 // Personnel profile card's identity block.
@@ -189,7 +189,6 @@ export function EmployeeWizard({
   stateOptions: { value: string; label: string }[];
 }) {
   const t = useTranslations('people.wizard');
-  const taxLabels=useTranslations('people.detail');
   const router = useRouter();
   const id = draftId;
   const [data, setData] = useState<EmployeeDraftData>(initialData);
@@ -982,7 +981,7 @@ export function EmployeeWizard({
                 value={data.statutory?.taxCategory==='none'?'none':data.statutory?.isResident??''}
                 onChange={(e) => set('statutory', { isResident: e.target.value })}
               >
-                {data.statutory?.taxCategory==='none'&&<option value="none">{taxLabels('taxCategoryNone')}</option>}
+                {data.statutory?.taxCategory==='none'&&<TaxCategoryNoneOption/>}
                 <option value="">{t('notSet')}</option>
                 <option value="yes">{t('yes')}</option>
                 <option value="no">{t('no')}</option>
