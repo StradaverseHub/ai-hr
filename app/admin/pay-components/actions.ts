@@ -11,6 +11,8 @@ import {
   deletePayComponent,
   isStatutoryRelevantChange,
   isUnsupportedTaxableComponent,
+  unsupportedTaxableReason,
+  validateStatutoryClassification,
   listPayRulePreviewCandidates,
   PayComponentCodeExistsError,
   PayComponentInUseError,
@@ -144,15 +146,15 @@ function unsupportedTaxableMessage(
   input: PayComponentInput,
   t: Awaited<ReturnType<typeof getTranslations>>,
 ): string | null {
-  return isUnsupportedTaxableComponent({
-    includedInEpf: input.includedInEpf,
-    includedInSocsoEis: input.includedInSocsoEis,
-    includedInPcb: input.includedInPcb,
-    isNonPayable: input.isNonPayable,
-    pcbRemunerationType: input.pcbRemunerationType,
-  })
+  // Check the actual submitted pair first: Normal must never be reported as missing merely because
+  // a benefit category was dropped by a projection. Legacy service callers retain their own semantics.
+  const classification = validateStatutoryClassification(input);
+  if (!classification.ok) return t(`errorStatutory_${classification.code}`);
+  if (!isUnsupportedTaxableComponent(input)) return null;
+  const reason = unsupportedTaxableReason(input);
+  return reason === 'unrecognised_taxable_item'
     ? t('errorUnsupportedTaxable', { code: input.code })
-    : null;
+    : t(`errorBenefit_${reason}`, { code: input.code });
 }
 
 /** Save & New ⇒ back to a BLANK /new: the toast survives ToastFromQuery only strips toast/error, and the
