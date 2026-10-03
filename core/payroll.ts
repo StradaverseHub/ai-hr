@@ -11206,7 +11206,10 @@ export function saveStatutoryAdjustment(
     const cols: Record<string, string | null> = {};
     const changed: { line: StatutoryAdjustmentLine; system: number; applied: number }[] = [];
     const stored = (slip.statutory ?? {}) as Record<string, unknown>;
-    const [currentTax]=await tx.select({key:employeeStatutoryMy.taxCircumstance}).from(employment).innerJoin(employeeStatutoryMy,eq(employeeStatutoryMy.personId,employment.personId)).where(eq(employment.id,p.employmentId)).limit(1).for('share');
+    // A joined FOR SHARE can lock employment before the person depending on the query plan.
+    // Match the person-first tax owner order explicitly; employment's person identity is immutable.
+    const [taxSubject]=await tx.select({personId:employment.personId}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);
+    const [currentTax]=taxSubject?await tx.select({key:employeeStatutoryMy.taxCircumstance}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,taxSubject.personId),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).limit(1).for('share'):[];
     if(currentTax?.key==='none'&&p.values.pcb!=null)throw new Error('PCB cannot be overridden when Tax Category is None');
     const stamp = (stored.adjustment ?? null) as StatutoryAdjustmentStamp | null;
     if((stored.pcbMeta as {notSubjectToIncomeTax?:boolean}|undefined)?.notSubjectToIncomeTax===true&&p.values.pcb!=null)throw new Error('PCB cannot be overridden when Tax Category is None');

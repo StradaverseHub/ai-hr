@@ -2672,7 +2672,8 @@ export async function crossEmployerPcbExposure(ctx: SessionContext, period: stri
       const meta=(s.statutory as {pcbMeta?:{taxCircumstance?:unknown}}|null)?.pcbMeta;
       const hasSaved=meta!==null&&typeof meta==='object'&&Object.hasOwn(meta,'taxCircumstance');
       const saved=readSavedTaxCircumstance(meta?.taxCircumstance);
-      if(hasSaved&&!saved || saved?.applicable===false&&explainPcb(s.statutory,null).kind!=='not_subject')p.invalidApplicability=true;
+      const explanation=hasSaved?explainPcb(s.statutory,null):null;
+      if(hasSaved&&!saved || explanation?.kind==='unavailable' || saved?.applicable===false&&explanation?.kind!=='not_subject')p.invalidApplicability=true;
       if(saved?.applicable)p.recordedCategories.push(saved.category!);
       p.applicability.push(saved?.applicable??true);
       p.inputs.push({

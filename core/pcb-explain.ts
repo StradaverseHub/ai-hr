@@ -577,6 +577,12 @@ export function explainPcb(
   }
 
   const m = metaObj as SnapshotMeta;
+  // A newly recorded identity and its recorded mathematical category must agree. Never
+  // assure an identity from one stamp while the worksheet explains a different category.
+  if(figures.taxCircumstance && (metaObj.trace as {category?:unknown}|null)?.category!==figures.taxCircumstance.category){
+    const {taxCircumstance:untrustedIdentity,...unavailableFigures}=figures;
+    return {kind:'unavailable',...unavailableFigures};
+  }
   if (m.P1 === undefined) return { kind: 'unavailable', ...figures };
 
   const stored = m.reliefs;

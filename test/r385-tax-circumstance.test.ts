@@ -62,7 +62,7 @@ describe('r385 detailed circumstance preserves LHDN math and explicit applicabil
  it('None explanation contains intentional bypass, not missing working or any worksheet formula',()=>{
   const x=explainPcb(statutory(7000,{category:3},0,0,{month:6},{taxCircumstance:savedTaxCircumstance('none',3)}),null);
   expect(x.kind).toBe('not_subject');expect(pcbTaxCategoryIdentity(x)).toMatchObject({category:null,applicable:false,labelKey:'taxCategoryNone'});
-  expect(pcbWorksheet(x)).toMatchObject({sections:[],note:'taxCategoryNoneExplanation'});
+  expect(pcbWorksheet(x,null)).toMatchObject({sections:[],note:'taxCategoryNoneExplanation'});
  });
  it('contradictory None deductions and recorded system figures are unavailable',()=>{
   const valid=statutory(7000,{category:3},0,0,{month:6},{taxCircumstance:savedTaxCircumstance('none',3)});
@@ -70,6 +70,14 @@ describe('r385 detailed circumstance preserves LHDN math and explicit applicabil
   expect(explainPcb({...valid,pcbMeta:{...valid.pcbMeta,delta:{cumulative:2,prior:20,cumulativeBonus:0}}},null).kind).toBe('unavailable');
   // A prior paid deduction is history, not a refund or a newly applied deduction.
   expect(explainPcb({...valid,pcbMeta:{...valid.pcbMeta,delta:{cumulative:0,prior:20,cumulativeBonus:0}}},null).kind).toBe('not_subject');
+ });
+ it('a saved taxable label cannot disagree with its recorded worksheet category',()=>{
+  const valid=statutory(8000,{category:2},0,0,{month:1},{taxCircumstance:savedTaxCircumstance('spouse_not_working',2)});
+  expect(explainPcb(valid,null).kind).toBe('mtd');
+  const inconsistent={...valid,pcbMeta:{...valid.pcbMeta,taxCircumstance:savedTaxCircumstance('widow_divorced',3)}};
+  const explanation=explainPcb(inconsistent,null);
+  expect(explanation.kind).toBe('unavailable');
+  expect(pcbTaxCategoryIdentity(explanation)).toMatchObject({category:null,labelKey:null});
  });
  it('saved manual PCB override is suppressed truthfully while other legs and original adjustment stay intact',()=>{
   const computed=statutory(7000,{category:3},0,0,{month:6},{taxCircumstance:savedTaxCircumstance('none',3)});

@@ -128,6 +128,14 @@ describe('r385 authoritative tax circumstance transactions',()=>{
   const [row]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batches[1]));const original=row.statutory as {pcbMeta:Record<string,unknown>};
   await owner.db.update(schema.payslip).set({statutory:{...original,pcbMeta:{...original.pcbMeta,taxCircumstance:{version:1,key:'none',category:3,applicable:false,epoch:1}}}}).where(eq(schema.payslip.id,row.id));expect(await crossEmployerPcbExposure(adminCtx(b),period)).toEqual([]);
   const {taxCircumstance:ignored,...legacy}=original.pcbMeta;await owner.db.update(schema.payslip).set({statutory:{...original,pcbMeta:legacy}}).where(eq(schema.payslip.id,row.id));expect(await crossEmployerPcbExposure(adminCtx(b),period)).toEqual([]);
+  await select('widow_divorced','resident');await saveTaxSelectionMY(adminCtx(b),{employmentId:other.employmentId,expectedCompanyId:company.id,scheme:'resident'});
+  for(const batchId of batches)await generatePayslips(adminCtx(b),{batchId,reprocessSubset:{employmentIds:[batchId===batches[0]?e.employmentId:other.employmentId]}});
+  expect(await crossEmployerPcbExposure(adminCtx(b),period)).toHaveLength(1);
+  const [taxable]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batches[1]));
+  const recorded=taxable.statutory as {pcbMeta:{trace:Record<string,unknown>}};
+  expect(recorded.pcbMeta.trace.category).toBe(3);
+  await owner.db.update(schema.payslip).set({statutory:{...recorded,pcbMeta:{...recorded.pcbMeta,trace:{...recorded.pcbMeta.trace,category:2}}}}).where(eq(schema.payslip.id,taxable.id));
+  expect(await crossEmployerPcbExposure(adminCtx(b),period)).toEqual([]);
  });
  it('ordinary and selected real processing bypass PCB, suppress saved override and preserve historical run',async()=>{
   const batch=await createBatch(adminCtx(b),{companyId:b.companyId,payPeriod:period});await select('widow_divorced','resident');await generatePayslips(adminCtx(b),{batchId:batch.batchId});const before=await slip(batch.batchId);
