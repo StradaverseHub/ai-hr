@@ -23,7 +23,7 @@ import {
 // 2aed39d4 — the closed-pay-run test reuses the SAME period helpers the Basic Salary card and the
 // Movement correction already refuse on, rather than a fourth definition of "payroll evidence".
 // core/comp.ts does not import this module, so this is not a cycle.
-import { closedPeriodsTx, overlapsClosedPeriod } from './comp';
+import { closedPeriodsTx, compensationEffectiveOn, overlapsClosedPeriod } from './comp';
 import { countryPacks } from '../localization/registry';
 import type { PayComponentSeed, PcbExemptionTable, PcbRemunerationType } from '../localization/country-pack';
 import { parseCsvRecords } from '../lib/csv';
@@ -945,8 +945,7 @@ async function resolveRuleForEmploymentTx(
     .where(
       and(
         eq(compensation.employmentId, p.employmentId),
-        isNull(compensation.validTo),
-        isNull(compensation.supersededAt),
+        compensationEffectiveOn(periodEnd),
       ),
     )
     .limit(1);

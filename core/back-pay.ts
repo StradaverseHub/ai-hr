@@ -87,6 +87,7 @@
  * MAGNITUDES and the `kind` carries the sign (createIndividualTxn* rejects a non-positive amount). Any
  * test that assumes arrears are owed to the employee is wrong about this data.
  */
+import { readPayrollSalaryBasis } from './comp';
 import { and, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r294, closing r292's stated gap). `withTenant` here is
@@ -412,6 +413,7 @@ async function computeLinesTx(tx: Tx, p: { candidates: ArrearsCandidate[] }): Pr
           id: payslip.id,
           batchId: payslip.batchId,
           basicSalary: payslip.basicSalary,
+          statutory: payslip.statutory,
           daysWorked: payslip.daysWorked,
           createdAt: payslip.createdAt,
           runType: payrollBatch.runType,
@@ -446,7 +448,14 @@ async function computeLinesTx(tx: Tx, p: { candidates: ArrearsCandidate[] }): Pr
       const overlapping = visible.filter(
         (h) => h.validFrom <= periodEnd && (h.validTo == null || h.validTo > periodStart),
       );
-      const baseline = [...visible].sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0];
+      const saved = slip.statutory as Record<string, unknown> | null;
+      const stamped = saved != null && Object.prototype.hasOwnProperty.call(saved, 'salaryBasis');
+      const salaryBasis = stamped ? readPayrollSalaryBasis(saved!.salaryBasis, periodEnd) : null;
+      // ABSENT means legacy open-row selection; PRESENT means the new saved period-effective input.
+      // A malformed new stamp must not silently change contract by falling back to legacy history.
+      const baseline = stamped
+        ? salaryBasis ? { basic: Number(salaryBasis.basicSalary), payMode: salaryBasis.payMode } : null
+        : [...visible].sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0];
 
       if (!baseline) {
         out.push(line({ payCode: BASIC_PAY_CODE, payItemName: 'Basic Salary', needsReview: true, reviewReason: 'noBaselineSalary' }));

@@ -36,7 +36,7 @@ export const PAY_MODES = payrollPolicyTypeEnum.enumValues;
 export type PayMode = (typeof PAY_MODES)[number];
 
 /** ADR-0078 D4 — a Pay Mode change is only valid on a pay-period boundary (the 1st of a month). The engine
- *  reads ONE open compensation row for the whole period and the increment-proration path day-weight-blends
+ *  reads ONE period-effective compensation row for the whole period and the increment-proration path day-weight-blends
  *  two straddling rows — a blend across two different pay modes is meaningless, so mid-period conversions
  *  are rejected at the service. Salary AMOUNT changes keep today's mid-period behaviour untouched. */
 export class PayModePeriodBoundaryError extends Error {
@@ -660,6 +660,28 @@ export function compensationEffectiveOn(referenceDate: string) {
   );
 }
 
+/** Immutable selection evidence on newly processed payslips. Old slips have no stamp: their
+ * historical selection contract stays unchanged. Consumers must refuse a present malformed stamp. */
+export type PayrollSalaryBasis = {
+  version: 1;
+  referenceDate: string;
+  compensationId: string;
+  effectiveFrom: string;
+  basicSalary: string;
+  payMode: PayMode;
+};
+
+export function readPayrollSalaryBasis(value: unknown, referenceDate: string): PayrollSalaryBasis | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  if (v.version !== 1 || v.referenceDate !== referenceDate ||
+      typeof v.compensationId !== 'string' || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(v.compensationId) ||
+      typeof v.effectiveFrom !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v.effectiveFrom) || v.effectiveFrom > referenceDate ||
+      typeof v.basicSalary !== 'string' || !/^\d+\.\d{2}$/.test(v.basicSalary) || !Number.isFinite(Number(v.basicSalary)) ||
+      typeof v.payMode !== 'string' || !PAY_MODES.includes(v.payMode as PayMode)) return null;
+  return v as PayrollSalaryBasis;
+}
+
 export function currentCompensation(ctx: SessionContext, employmentId: string) {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
@@ -686,11 +708,10 @@ export type EffectivePayStructure = {
 
 /**
  * ADR-0078 step 4 — the effective pay structure for an employment: pay mode, payment term and rate. Reads
- * the SAME open row the payroll engine joins (validTo IS NULL AND supersededAt IS NULL, core/payroll.ts) —
- * deliberately NOT a date-effective read, which on a reprocess would take the mode from a historical record
- * while the engine takes the money from the open one (mode from record A, money from record B). D4's
- * period-boundary constraint on pay-mode changes is what keeps the open-row read honest. Null when the
- * employment has no salary record yet.
+ * the current Personnel revision for the current-record form contract. Payroll readers use
+ * compensationEffectiveOn with their explicit period reference and take structure and money from that
+ * same row. This undated administrative reader does not decide historical payroll applicability.
+ * Null when the employment has no current salary record.
  */
 export function effectivePayStructure(
   ctx: SessionContext,
