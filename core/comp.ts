@@ -2,7 +2,7 @@
  * Compensation — generic, jurisdiction-neutral, effective-dated (ADR-0008 #5).
  * Salary is comp *history*: a change CLOSE + INSERTs a new version. Amounts are tenant data.
  */
-import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent, type MovementTag } from '../db/events';
 import {
@@ -645,6 +645,19 @@ export async function supersedeCompensation(
     return { compensationId: row.id };
   };
   return outerTx ? run(outerTx) : withTenant(ctx, run);
+}
+
+/** The whole compensation revision effective on the payroll reference date. Compensation ranges
+ * are [validFrom, validTo), and compensation_no_overlap guarantees at most one non-superseded row.
+ * Keep the employment/tenant authorization predicate at each existing reader. A future open row is
+ * not an applicable salary, and a genuine date gap must remain missing rather than falling forward.
+ * Selecting the row selects basic, allowance, structure, rate and currency together. */
+export function compensationEffectiveOn(referenceDate: string) {
+  return and(
+    isNull(compensation.supersededAt),
+    lte(compensation.validFrom, referenceDate),
+    or(isNull(compensation.validTo), gt(compensation.validTo, referenceDate)),
+  );
 }
 
 export function currentCompensation(ctx: SessionContext, employmentId: string) {

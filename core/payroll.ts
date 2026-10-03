@@ -29,7 +29,7 @@ import { absentDaysByEmployment, deductAbsentDaysByEmployment } from './absence-
 // no-monthly-basic leg; this file classifies the same two legs at pre-flight and reads the second one to
 // decide whether a regular run has anything to pay. Write-time and run-time therefore cannot drift, which
 // is the whole point of it living there and not being restated here. No cycle: comp.ts imports no payroll.
-import { unpayableSalaryLeg, type PayMode } from './comp';
+import { compensationEffectiveOn, unpayableSalaryLeg, type PayMode } from './comp';
 // 3c88d593 — "which legal entity did this person belong to on this date?", answered from the effective-dated
 // assignment spine (migration 0440). Payroll is the FIRST and, as of r197, still the ONLY reader of it:
 // the resolver has to be proven on the money before attendance, leave and reporting adopt it, and that
@@ -3243,7 +3243,7 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
     if (otRows.length === 0) return { applied: 0, ineligible: 0 };
     const empIds = [...new Set(otRows.map((r) => r.employmentId))];
 
-    // Current s.2 wages (basic + fixed allowance) — the ORP basis.
+    // Period-effective s.2 wages (basic + fixed allowance) — the ORP basis.
     const comps = await tx
       .select({
         employmentId: compensation.employmentId,
@@ -3254,8 +3254,7 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
       .where(
         and(
           inArray(compensation.employmentId, empIds),
-          isNull(compensation.validTo),
-          isNull(compensation.supersededAt),
+          compensationEffectiveOn(periodEnd),
         ),
       );
     const wagesBy = new Map(
@@ -3475,7 +3474,7 @@ export async function prefillShiftDifferentialFromRoster(ctx: SessionContext, p:
     const comps = await tx
       .select({ employmentId: compensation.employmentId, basic: compensation.basicSalary, allowance: compensation.monthlyAllowance })
       .from(compensation)
-      .where(and(inArray(compensation.employmentId, empIds), isNull(compensation.validTo), isNull(compensation.supersededAt)));
+      .where(and(inArray(compensation.employmentId, empIds), compensationEffectiveOn(periodEnd)));
     const hourlyBy = new Map(comps.map((c) => [c.employmentId, (Number(c.basic) + Number(c.allowance ?? 0)) / 26 / 8]));
 
     const totalBy = new Map<string, number>();
@@ -3588,7 +3587,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       .limit(1);
     const hrdfStatus = coStat?.hrdfStatus ?? 'not_registered';
 
-    // Active employees with current compensation.
+    // Period-active employees with period-effective compensation.
     const { payPeriod } = batch;
     const [pYear, pMonth] = payPeriod.split('-').map(Number);
     const periodStart = `${payPeriod}-01`;
@@ -3714,7 +3713,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           isModuleEnabled(ctx, 'typed_pay_components'),
         );
         const blockedRows = [
-          ...addChecks.missingCompensation.map((r) => ({ ...r, gap: 'no current salary record' })),
+          ...addChecks.missingCompensation.map((r) => ({ ...r, gap: 'no applicable salary record' })),
           // r369 — `zeroBasic` is now the daily/hourly-no-rate leg only, so the gap names it. The
           // no-monthly-basic population is NOT a blocker here: whether they can be reprocessed depends on
           // what is payable this period, which only the money doors know — `ReprocessNothingPayableError`
@@ -3903,8 +3902,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         compensation,
         and(
           eq(compensation.employmentId, employment.id),
-          isNull(compensation.validTo),
-          isNull(compensation.supersededAt),
+          compensationEffectiveOn(periodEnd),
         ),
       )
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
@@ -9704,7 +9702,7 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(
         compensation,
-        and(eq(compensation.employmentId, employment.id), isNull(compensation.validTo), isNull(compensation.supersededAt)),
+        and(eq(compensation.employmentId, employment.id), compensationEffectiveOn(end)),
       )
       .where(
         and(
@@ -9968,7 +9966,7 @@ async function preProcessChecksTx(
     .innerJoin(person, eq(person.id, employment.personId))
     .leftJoin(
       compensation,
-      and(eq(compensation.employmentId, employment.id), isNull(compensation.validTo), isNull(compensation.supersededAt)),
+      and(eq(compensation.employmentId, employment.id), compensationEffectiveOn(periodEnd)),
     )
     .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
     .where(
@@ -9983,27 +9981,8 @@ async function preProcessChecksTx(
       ),
     )
     .orderBy(person.fullName);
-  // Feedback 64fb5e48 — effective-date coverage. The engine reads the OPEN compensation row; when that row
-  // only takes effect AFTER the period end, the period itself may still be covered by the (closed, non-
-  // superseded) predecessor the revision truncated — a future-dated increment is not a data gap. Only
-  // employments whose open row starts after the period need this history lookup, so the common case (open
-  // row already in effect) issues NO extra query.
-  const futureOnlyIds = rows.filter((r) => r.compId && r.compValidFrom! > periodEnd).map((r) => r.employmentId);
-  const coveredEmpIds = new Set<string>();
-  if (futureOnlyIds.length > 0) {
-    const covRows = await tx
-      .selectDistinct({ employmentId: compensation.employmentId })
-      .from(compensation)
-      .where(
-        and(
-          inArray(compensation.employmentId, futureOnlyIds),
-          isNull(compensation.supersededAt),
-          lte(compensation.validFrom, periodEnd),
-          or(isNull(compensation.validTo), gte(compensation.validTo, periodStart)),
-        ),
-      );
-    for (const c of covRows) coveredEmpIds.add(c.employmentId);
-  }
+  // Salary coverage, amount, rate, mode and currency all come from the same period-effective row.
+  // A missing row remains a blocker; future history is never a fallback for calculation or validation.
   // Feedback 64fb5e48 (supersedes the R37 62e370b0 missingBasicComponent blocker) — typed path only: the
   // period-active BASIC employment_pay_component AMOUNTS per in-scope employee. The engine now always pays
   // basic from the Personnel compensation record, so a MISSING BASIC component is no gap at all; a PRESENT
@@ -10100,7 +10079,7 @@ async function preProcessChecksTx(
     // Feedback 64fb5e48 — the OPEN row must exist (the generation employee query inner-joins it, so a
     // missing one silently drops the employee) AND the pay period must actually be covered by a salary
     // record: an open row already in effect covers it, else a period-overlapping predecessor must exist.
-    if (!r.compId || (r.compValidFrom! > periodEnd && !coveredEmpIds.has(r.employmentId))) out.missingCompensation.push(row);
+    if (!r.compId) out.missingCompensation.push(row);
     // ADR-0078 — pay_mode='custom_period' has no calculation: BLOCKER, named per employee. Checked before
     // the zero-amount gap so one row lands in exactly one blocker list (the mode gap subsumes it —
     // there is nothing to compute regardless of amounts).
@@ -10696,8 +10675,7 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
         compensation,
         and(
           eq(compensation.employmentId, employment.id),
-          isNull(compensation.validTo),
-          isNull(compensation.supersededAt),
+          compensationEffectiveOn(periodEnd),
         ),
       )
       .where(

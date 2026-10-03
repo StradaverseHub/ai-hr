@@ -32,6 +32,7 @@ import {
   person,
 } from '../db/schema';
 import { daysInMonth } from './payroll';
+import { compensationEffectiveOn } from './comp';
 
 export type ReadinessStatus = 'ok' | 'warning' | 'blocker';
 
@@ -97,7 +98,7 @@ export function payrollReadiness(
       .from(employment)
       .leftJoin(
         compensation,
-        and(eq(compensation.employmentId, employment.id), isNull(compensation.validTo), isNull(compensation.supersededAt)),
+        and(eq(compensation.employmentId, employment.id), compensationEffectiveOn(periodEnd)),
       )
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
       .where(
@@ -246,7 +247,7 @@ export function payrollReadiness(
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(
         compensation,
-        and(eq(compensation.employmentId, employment.id), isNull(compensation.validTo), isNull(compensation.supersededAt)),
+        and(eq(compensation.employmentId, employment.id), compensationEffectiveOn(periodEnd)),
       )
       .where(
         and(
