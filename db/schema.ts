@@ -3363,6 +3363,8 @@ export const employeeStatutoryMy = pgTable(
   },
   (t) => [
     uniqueIndex('employee_statutory_my_person_uq').on(t.personId),
+    check('employee_statutory_my_tax_applicability_epoch_check', sql`${t.taxApplicabilityEpoch} >= 0`),
+    check('employee_statutory_my_tax_circumstance_check', sql`${t.taxCircumstance} IS NULL OR ${t.taxCircumstance} = 'none' OR (${t.taxCircumstance} = 'single' AND ${t.taxCategory} = 1) OR (${t.taxCircumstance} = 'spouse_not_working' AND ${t.taxCategory} = 2) OR (${t.taxCircumstance} IN ('spouse_working', 'widow_divorced') AND ${t.taxCategory} = 3)`),
     // Item e3ce0d4d — PARTIAL: real ICs stay unique per tenant, but multiple non-Malaysian rows carrying a
     // null IC (identified by passport instead) don't collide.
     uniqueIndex('employee_statutory_my_ic_uq').on(t.tenantId, t.icNumber).where(sql`ic_number is not null`),
@@ -5572,7 +5574,7 @@ export const employmentTaxSelectionMy = pgTable('employment_tax_selection_my', {
   updatedByUserId: uuid('updated_by_user_id').references(() => appUser.id),
   createdAt: timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
   updatedAt: timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
-}, t => [uniqueIndex('employment_tax_selection_my_context').on(t.tenantId,t.employmentId,t.companyId)]);
+}, t => [uniqueIndex('employment_tax_selection_my_context').on(t.tenantId,t.employmentId,t.companyId), check('employment_tax_selection_my_tax_applicability_epoch_check', sql`${t.taxApplicabilityEpoch} >= 0`)]);
 
 export const tp1Relief = pgTable(
   'tp1_relief',
