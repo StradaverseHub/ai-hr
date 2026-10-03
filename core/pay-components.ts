@@ -2349,7 +2349,17 @@ export async function importBatchComponents(
       else if (!comp) error = `Unknown component: ${code}`;
       else if (!Number.isFinite(amount)) error = `Invalid amount: ${amountRaw}`;
       // Same complete classification as the picker and single-row writer, before any import write.
-      else if (isUnsupportedTaxableComponent(comp)) error = `Unsupported component: ${code} (${unsupportedTaxableReason(comp)})`;
+      else if (isUnsupportedTaxableComponent(comp)) {
+        const reason = unsupportedTaxableReason(comp);
+        const explanation = reason === 'classification_conflict'
+          ? 'BIK and living accommodation classifications conflict; make Pay Category and EA reporting consistent.'
+          : reason === 'normal_remuneration_required'
+            ? 'Monthly BIK and living accommodation require Normal remuneration and cannot use EPF Bonus 2012.'
+            : reason === 'unsupported_kind'
+              ? 'The category cannot represent a non-cash benefit; review Category and Pay Category.'
+              : 'No supported taxable classification; select the applicable benefit Pay Category and tax settings.';
+        error = `Unsupported component: ${code}. ${explanation}`;
+      }
       return {
         line: i + 2,
         employee,

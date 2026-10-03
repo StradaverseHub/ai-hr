@@ -116,11 +116,23 @@ describe('r385 full pay-item classification through actual maintenance actions a
     await upsertPayComponent(ctx, { code: 'UNKNOWN', name: 'Unclassified', kind: 'non_payable', isNonPayable: true,
       prorates: false, includedInPcb: true, includedInEpf: false, includedInSocsoEis: false, includedInHrdfBase: false,
       pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_TAXABLE' });
+    for (const [code, eaFormLine, pcbRemunerationType] of [
+      ['CONFLICT', 'EA_B4', 'normal'], ['ADDITIONAL', 'EA_B3', 'additional'],
+    ] as const) await upsertPayComponent(ctx, { code, name: code, kind: 'non_payable', isNonPayable: true,
+      displayCategory: 'bik', eaFormLine, prorates: false, includedInPcb: true, includedInEpf: false,
+      includedInSocsoEis: false, includedInHrdfBase: false, pcbRemunerationType, pcbExemptionCode: 'PCB_TAXABLE' });
+    const refused = await importBatchComponents(ctx, { batchId: batch.batchId,
+      csvText: `employee,component,amount\n${email},CONFLICT,700\n${email},ADDITIONAL,800`, dryRun: true });
+    expect(refused.valid).toBe(0);
+    expect(refused.rows.map(r => r.error)).toEqual([
+      'Unsupported component: CONFLICT. BIK and living accommodation classifications conflict; make Pay Category and EA reporting consistent.',
+      'Unsupported component: ADDITIONAL. Monthly BIK and living accommodation require Normal remuneration and cannot use EPF Bonus 2012.',
+    ]);
     const csvText = `employee,component,amount\n${email},BIK,700\n${email},VOLA,800\n${email},UNKNOWN,900`;
     const preview = await importBatchComponents(ctx, { batchId: batch.batchId, csvText, dryRun: true });
     expect(preview.valid).toBe(2); expect(preview.imported).toBe(0);
     expect(preview.rows.map(r => [r.code, r.ok])).toEqual([['BIK', true], ['VOLA', true], ['UNKNOWN', false]]);
-    expect(preview.rows[2].error).toContain('unrecognised_taxable_item');
+    expect(preview.rows[2].error).toBe('Unsupported component: UNKNOWN. No supported taxable classification; select the applicable benefit Pay Category and tax settings.');
     const result = await importBatchComponents(ctx, { batchId: batch.batchId, csvText, dryRun: false });
     expect(result.imported).toBe(2);
     const saved = await owner.db.select().from(schema.payrollBatchComponent).where(and(eq(schema.payrollBatchComponent.batchId, batch.batchId), eq(schema.payrollBatchComponent.employmentId, employee.employmentId))).orderBy(schema.payrollBatchComponent.amount);
