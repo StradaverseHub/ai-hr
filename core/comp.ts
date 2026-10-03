@@ -671,12 +671,18 @@ export type PayrollSalaryBasis = {
   payMode: PayMode;
 };
 
+function canonicalSalaryBasisDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 export function readPayrollSalaryBasis(value: unknown, referenceDate: string): PayrollSalaryBasis | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const v = value as Record<string, unknown>;
   if (v.version !== 1 || v.referenceDate !== referenceDate ||
       typeof v.compensationId !== 'string' || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(v.compensationId) ||
-      typeof v.effectiveFrom !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v.effectiveFrom) || v.effectiveFrom > referenceDate ||
+      typeof v.effectiveFrom !== 'string' || !canonicalSalaryBasisDate(v.effectiveFrom) || !canonicalSalaryBasisDate(referenceDate) || v.effectiveFrom > referenceDate ||
       typeof v.basicSalary !== 'string' || !/^\d+\.\d{2}$/.test(v.basicSalary) || !Number.isFinite(Number(v.basicSalary)) ||
       typeof v.payMode !== 'string' || !PAY_MODES.includes(v.payMode as PayMode)) return null;
   return v as PayrollSalaryBasis;
