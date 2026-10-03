@@ -499,7 +499,7 @@ export function IdentityTaxCard({
             <Field label={t('incomeTaxResident')}>
               {/* Reset only this draft when its employer owner/revision/confirmation changes. */}
               {none&&<input type="hidden" name="taxResidency" value="none"/>}
-              <select key={`${employmentId}:${personId}:${taxSelection?.companyId??''}:${taxSelection?.version??0}`} id="income-tax-resident" name={none?undefined:'taxResidency'} value={none?'none':taxResidency} onChange={e=>setTaxResidency(e.target.value)} disabled={none} required={!none} className={inputCls}>
+              <select key={`${employmentId}:${personId}:${taxSelection?.companyId??''}:${taxSelection?.version??0}`} id="income-tax-resident" aria-label={t('incomeTaxResident')} name={none?undefined:'taxResidency'} value={none?'none':taxResidency} onChange={e=>setTaxResidency(e.target.value)} disabled={none} required={!none} className={inputCls}>
                 {none&&<option value="none">{t('taxCategoryNone')}</option>}
                 <option value="" disabled>{t('taxSelectionChoose')}</option>
                 <option value="resident">{t('taxResidencyResident')}</option>
