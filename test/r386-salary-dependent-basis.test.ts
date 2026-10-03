@@ -46,17 +46,17 @@ describe('r386 dependent salary consumers and immutable saved selection basis', 
     const { employee } = await salaryHistory();
     await upsertPayComponent(ctx, { code: 'R386PCT', name: 'Synthetic Percentage', kind: 'allowance',
       includedInEpf: false, includedInSocsoEis: false, includedInPcb: true, includedInHrdfBase: false,
-      isNonPayable: false, prorates: false, rule: { kind: 'percent_of', base: 'basic', pct: 10 } });
+      isNonPayable: false, prorates: false, rule: { kind: 'formula', start: { ref: 'basic' }, terms: [{ op: '*', operand: { ref: 'number', value: 0.1 } }] } });
     const [component] = await owner.db.select().from(schema.payComponent)
       .where(and(eq(schema.payComponent.tenantId, base.tenantId), eq(schema.payComponent.code, 'R386PCT')));
     for (const [period, expected] of [['2026-08', 1000], ['2026-10', 1000], ['2026-11', 1500]] as const) {
       expect(await deriveIndividualTxnAmount(ctx, { componentId: component.id, employmentId: employee.employmentId,
         companyId: base.companyId, payPeriod: period, quantity: null, unit: null }))
-        .toMatchObject({ derived: true, amount: expected, code: 'R386PCT', ruleKind: 'percent_of' });
+        .toMatchObject({ derived: true, amount: expected, code: 'R386PCT', ruleKind: 'formula' });
     }
   });
 
-  type StampVariant = 'valid' | 'legacy' | 'null' | 'empty' | 'version' | 'reference' | 'id' | 'future' | 'amount' | 'zero' | 'mode';
+  type StampVariant = 'valid' | 'legacy' | 'null' | 'empty' | 'version' | 'reference' | 'id' | 'future' | 'impossibleDate' | 'amount' | 'zero' | 'mode';
 
   async function paidAugust(variant: StampVariant) {
     const fixture = await salaryHistory();
@@ -75,7 +75,7 @@ describe('r386 dependent salary consumers and immutable saved selection basis', 
         const overrides: Record<string, unknown> = {
           null: null, empty: {}, version: { ...stamp, version: 2 },
           reference: { ...stamp, referenceDate: '2026-11-30' }, id: { ...stamp, compensationId: 'not-an-id' },
-          future: { ...stamp, effectiveFrom: '2026-11-01' }, amount: { ...stamp, basicSalary: 'NaN' },
+          future: { ...stamp, effectiveFrom: '2026-11-01' }, impossibleDate: { ...stamp, effectiveFrom: '2026-02-31' }, amount: { ...stamp, basicSalary: 'NaN' },
           zero: { ...stamp, basicSalary: '0.00' }, mode: { ...stamp, payMode: 'invalid-mode' },
         };
         statutory.salaryBasis = overrides[variant];
@@ -134,7 +134,7 @@ describe('r386 dependent salary consumers and immutable saved selection basis', 
     expect(await slipOf(fixture.batchId)).toEqual(fixture.closed);
   });
 
-  it.each(['null', 'empty', 'version', 'reference', 'id', 'future', 'amount', 'zero', 'mode'] as const)(
+  it.each(['null', 'empty', 'version', 'reference', 'id', 'future', 'impossibleDate', 'amount', 'zero', 'mode'] as const)(
     'present unusable salaryBasis (%s) requires review instead of falling back to legacy money', async variant => {
       const fixture = await paidAugust(variant);
       expect(fixture.closed.statutory).toHaveProperty('salaryBasis');
