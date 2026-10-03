@@ -3385,6 +3385,8 @@ export async function prefillShiftDifferentialFromRoster(ctx: SessionContext, p:
       .limit(1);
     if (!batch) throw new Error('batch not found');
     if (batch.status !== 'draft') throw new BatchNotDraftError();
+    const [salaryYear, salaryMonth] = batch.payPeriod.split('-').map(Number);
+    const periodEnd = `${batch.payPeriod}-${String(daysInMonth(salaryYear, salaryMonth)).padStart(2, '0')}`;
 
     const [comp] = await tx.select({ id: payComponent.id }).from(payComponent).where(eq(payComponent.code, 'SHIFT_DIFFERENTIAL')).limit(1);
     if (!comp) throw new Error('SHIFT_DIFFERENTIAL pay-component is not seeded — run the catalog seed first');
