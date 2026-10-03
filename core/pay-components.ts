@@ -1,4 +1,4 @@
-import { classifyNonCashBenefit } from '../localization/noncash-benefits';
+import { classifyNonCashBenefit, NonCashBenefitConfigurationError } from '../localization/noncash-benefits';
 /**
  * Typed pay-component services (Wave 3 #9, ADR-0025). Catalog management (admin), per-employment
  * recurring values (effective-dated like compensation), per-batch one-off values, plus backfill
@@ -2128,13 +2128,29 @@ export class UnsupportedBatchComponentError extends Error {
  *  Exported rather than copied deliberately: a second hand-written copy of a fail-closed rule is how the
  *  entry gate and the kernel start disagreeing about which pay codes are allowed to exist. STATE-BASED —
  *  it reads the row being saved, so an already-bad row can still be edited back into a good one. */
-export const isUnsupportedTaxableComponent = (c: {code?:string;kind?:string;displayCategory?:string|null;eaFormLine?:string|null;epfBonus2012?:boolean;includedInEpf:boolean;includedInSocsoEis:boolean;includedInPcb:boolean;isNonPayable:boolean;pcbRemunerationType?:string|null}) => {
-  if(c.isNonPayable){
-    try { if(classifyNonCashBenefit({code:c.code??'pay-item',kind:c.kind??'allowance',nonPayable:true,pcb:c.includedInPcb,displayCategory:c.displayCategory,eaFormLine:c.eaFormLine,pcbRemunerationType:c.pcbRemunerationType,epfBonus2012:c.epfBonus2012}))return false; }
-    catch { return true; }
-  }
-  return c.includedInPcb && (c.isNonPayable || (c.pcbRemunerationType==null && !c.includedInEpf&&!c.includedInSocsoEis));
+export type TaxableComponentClassification = {
+  code?: string; kind?: string; displayCategory?: string | null; eaFormLine?: string | null;
+  epfBonus2012?: boolean; includedInEpf: boolean; includedInSocsoEis: boolean;
+  includedInPcb: boolean; isNonPayable: boolean; pcbRemunerationType?: string | null;
 };
+export type UnsupportedTaxableReason = 'classification_conflict' | 'unsupported_kind' | 'normal_remuneration_required' | 'unrecognised_taxable_item';
+
+/** The classifier remains the benefit owner; callers retain the reason rather than inventing one. */
+export function unsupportedTaxableReason(c: TaxableComponentClassification): UnsupportedTaxableReason | null {
+  if (c.isNonPayable) {
+    try {
+      if (classifyNonCashBenefit({ code: c.code ?? 'pay-item', kind: c.kind ?? 'allowance',
+        nonPayable: true, pcb: c.includedInPcb, displayCategory: c.displayCategory,
+        eaFormLine: c.eaFormLine, pcbRemunerationType: c.pcbRemunerationType, epfBonus2012: c.epfBonus2012 })) return null;
+    } catch (error) {
+      if (error instanceof NonCashBenefitConfigurationError && error.reason !== 'month_baseline_unavailable') return error.reason;
+      throw error;
+    }
+  }
+  return c.includedInPcb && (c.isNonPayable || (c.pcbRemunerationType == null && !c.includedInEpf && !c.includedInSocsoEis))
+    ? 'unrecognised_taxable_item' : null;
+}
+export const isUnsupportedTaxableComponent = (c: TaxableComponentClassification) => unsupportedTaxableReason(c) !== null;
 
 /** Upsert a one-off component value for an employee on a draft batch (by batch+employment+component). */
 export function setPayrollBatchComponent(
@@ -2305,6 +2321,10 @@ export async function importBatchComponents(
         id: payComponent.id,
         code: payComponent.code,
         name: payComponent.name,
+        kind: payComponent.kind,
+        displayCategory: payComponent.displayCategory,
+        eaFormLine: payComponent.eaFormLine,
+        epfBonus2012: payComponent.epfBonus2012,
         includedInEpf: payComponent.includedInEpf,
         includedInSocsoEis: payComponent.includedInSocsoEis,
         includedInPcb: payComponent.includedInPcb,
@@ -2328,9 +2348,8 @@ export async function importBatchComponents(
       else if (!code) error = 'Missing component';
       else if (!comp) error = `Unknown component: ${code}`;
       else if (!Number.isFinite(amount)) error = `Invalid amount: ${amountRaw}`;
-      // Write-time guard parity (ADR-0025 §5): a PCB-taxable BIK / PCB-only earning is unprocessable by the
-      // v1 kernel — flag it in the preview so the admin is told here, not after a green import.
-      else if (isUnsupportedTaxableComponent(comp)) error = `Unsupported component: ${code} (PCB-taxable non-payable / PCB-only)`;
+      // Same complete classification as the picker and single-row writer, before any import write.
+      else if (isUnsupportedTaxableComponent(comp)) error = `Unsupported component: ${code} (${unsupportedTaxableReason(comp)})`;
       return {
         line: i + 2,
         employee,
