@@ -578,13 +578,19 @@ function replayEmployeeMonth(p: {
   const opts = statutoryOptsOf(p.profile, first.period);
   // Today's profile or revoked approval cannot reinterpret paid history. The canonical recorded
   // reader validates incentive version, working and declaration provenance before replay is allowed.
-  const schemes = recorded.map(x => x.kind === 'mtd'
-    ? {scheme: x.calculationScheme ?? 'resident', declarationId: x.taxSchemeDeclarationId, selection: x.taxSelection}
+  const schemes = recorded.map(x => x.kind==='not_subject'
+    ? {scheme:'resident' as const,declarationId:undefined,selection:undefined,taxCircumstance:x.taxCircumstance}
+    : x.kind === 'mtd'
+    ? {scheme: x.calculationScheme ?? 'resident', declarationId: x.taxSchemeDeclarationId, selection: x.taxSelection,taxCircumstance:x.taxCircumstance}
     : x.kind === 'flat' && x.nonResident && x.rate === 0.3
-      ? {scheme: 'non_resident' as const, declarationId: undefined, selection: x.taxSelection} : null);
+      ? {scheme: 'non_resident' as const, declarationId: undefined, selection: x.taxSelection,taxCircumstance:x.taxCircumstance} : null);
   const saved = schemes[0];
-  if (!saved || schemes.some(x => !x || x.scheme !== saved.scheme || x.declarationId !== saved.declarationId || JSON.stringify(x.selection) !== JSON.stringify(saved.selection))) {
+  if (!saved || schemes.some(x => !x || x.scheme !== saved.scheme || x.declarationId !== saved.declarationId || JSON.stringify(x.selection) !== JSON.stringify(saved.selection)||JSON.stringify(x.taxCircumstance)!==JSON.stringify(saved.taxCircumstance))) {
     return {reason: 'tax_scheme_not_reconstructable', excluded: false};
+  }
+  if(saved.taxCircumstance){
+    opts.taxCircumstance=saved.taxCircumstance;
+    if(saved.taxCircumstance.category!==null)profile.category=saved.taxCircumstance.category;
   }
   opts.calculationScheme = saved.scheme;
   opts.taxSchemeDeclarationId = saved.declarationId;

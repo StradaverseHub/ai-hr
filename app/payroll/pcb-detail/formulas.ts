@@ -95,7 +95,7 @@ export type PcbFormulaBlock = {
  * @param f  the caller's formatters.
  */
 export function pcbFormulaBlocks(x: PcbExplanation, f: PcbFormulaFormat): PcbFormulaBlock[] {
-  if (x.kind === 'unavailable') return [];
+  if (x.kind === 'unavailable'||x.kind==='not_subject') return [];
 
   if (x.kind === 'flat') {
     const tr = x.trace;

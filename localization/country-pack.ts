@@ -307,6 +307,8 @@ export interface CountryPackClient {
   payroll: {
     /** The SAME function the server pack exposes (and `childReliefAmountFor` is built on). */
     childReliefFor: (p: ChildReliefInput) => ChildReliefFigure;
+    taxCircumstanceOptions?: typeof import('./my/tax-circumstance')['TAX_CIRCUMSTANCE_OPTIONS'];
+    taxCircumstanceOf?: typeof import('./my/tax-circumstance')['taxCircumstanceOf'];
   };
 
   /**

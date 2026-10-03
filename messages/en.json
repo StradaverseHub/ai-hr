@@ -1337,10 +1337,10 @@
       "incomeTaxPcbSection": "Income Tax (PCB)",
       "taxInfoLegend": "Tax information",
       "taxCategoryLabel": "Tax Category",
-      "taxCategorySingle": "Single",
-      "taxCategoryMarriedSpouseNotWorking": "Married & Spouse Not Working",
-      "taxCategoryMarriedSpouseWorking": "Married & Spouse Working",
-      "taxCategoryDivorcedWithKids": "Divorced / Single with Kids",
+      "taxCategorySingle": "Single/Spouse do not Claim Child Relief",
+      "taxCategoryMarriedSpouseNotWorking": "Married and Spouse Not Working",
+      "taxCategoryMarriedSpouseWorking": "Married and Spouse Working",
+      "taxCategoryDivorcedWithKids": "Widow/Divorced with Kids",
       "taxCategoryNone": "None",
       "incomeTaxResident": "Income Tax Resident",
       "taxResidencyResident": "Resident",
@@ -1699,7 +1699,10 @@
       "taxSelectionEmployer": "Employer: {employer}",
       "taxSelectionEligibilityHint": "Select the category applicable to this employment and employer. Selecting an incentive records HR’s decision that its approval, eligibility and period conditions are met. No separate declaration is required.",
       "taxSelectionConfirmationRequired": "Confirm the applicable category in this field and save once. Older settings could not identify an unambiguous employer-specific choice.",
-      "taxSelectionChoose": "Choose a tax category"
+      "taxSelectionChoose": "Choose a tax category",
+      "taxCategoryLegacy3": "Category 3 — spouse working, divorced or widowed, or single with adopted child",
+      "taxCategorySingleHint": "LHDN Category 1 means Single. Married employees follow their spouse’s working status, even when no child relief is claimed.",
+      "taxCategoryNoneExplanation": "Tax Category was None for this payroll attempt. PCB was not calculated; other statutory calculations continue normally."
     },
     "import": {
       "title": "Import employees",
@@ -7296,7 +7299,15 @@
       "slipBikEntered": "BIK entered",
       "slipBikExempt": "BIK exempt",
       "slipVolaEntered": "Living accommodation entered",
-      "slipVolaExempt": "Living accommodation exempt"
+      "slipVolaExempt": "Living accommodation exempt",
+      "taxCategorySingle": "Single/Spouse do not Claim Child Relief",
+      "taxCategoryMarriedSpouseNotWorking": "Married and Spouse Not Working",
+      "taxCategoryMarriedSpouseWorking": "Married and Spouse Working",
+      "taxCategoryDivorcedWithKids": "Widow/Divorced with Kids",
+      "taxCategoryNone": "None",
+      "taxCategoryLegacy3": "Category 3 — spouse working, divorced or widowed, or single with adopted child",
+      "taxCategorySingleHint": "LHDN Category 1 means Single. Married employees follow their spouse’s working status, even when no child relief is claimed.",
+      "taxCategoryNoneExplanation": "Tax Category was None for this payroll attempt. PCB was not calculated; other statutory calculations continue normally."
     },
     "multiCycleWorksheet": {
       "title": "Multi-Cycle Statutory Worksheet",

@@ -1337,10 +1337,10 @@
       "incomeTaxPcbSection": "Cukai Pendapatan (PCB)",
       "taxInfoLegend": "Maklumat cukai",
       "taxCategoryLabel": "Kategori Cukai",
-      "taxCategorySingle": "Bujang",
-      "taxCategoryMarriedSpouseNotWorking": "Berkahwin & Pasangan Tidak Bekerja",
-      "taxCategoryMarriedSpouseWorking": "Berkahwin & Pasangan Bekerja",
-      "taxCategoryDivorcedWithKids": "Bercerai / Bujang dengan Anak",
+      "taxCategorySingle": "Bujang/Pasangan tidak Menuntut Pelepasan Anak",
+      "taxCategoryMarriedSpouseNotWorking": "Berkahwin dan Pasangan Tidak Bekerja",
+      "taxCategoryMarriedSpouseWorking": "Berkahwin dan Pasangan Bekerja",
+      "taxCategoryDivorcedWithKids": "Balu/Duda/Bercerai dengan Anak",
       "taxCategoryNone": "Tiada",
       "incomeTaxResident": "Pemastautin Cukai Pendapatan",
       "taxResidencyResident": "Pemastautin",
@@ -1699,7 +1699,10 @@
       "taxSelectionEmployer": "Majikan: {employer}",
       "taxSelectionEligibilityHint": "Pilih kategori yang terpakai bagi pekerjaan dan majikan ini. Pemilihan insentif merekodkan keputusan HR bahawa syarat kelulusan, kelayakan dan tempohnya dipenuhi. Tiada pengisytiharan berasingan diperlukan.",
       "taxSelectionConfirmationRequired": "Sahkan kategori yang terpakai dalam medan ini dan simpan sekali. Tetapan terdahulu tidak dapat menentukan pilihan khusus majikan yang jelas.",
-      "taxSelectionChoose": "Pilih kategori cukai"
+      "taxSelectionChoose": "Pilih kategori cukai",
+      "taxCategoryLegacy3": "Kategori 3 — pasangan bekerja, bercerai, balu/duda atau bujang dengan anak angkat",
+      "taxCategorySingleHint": "Kategori 1 LHDN bermaksud bujang. Kategori pekerja berkahwin mengikut status pekerjaan pasangan, walaupun pelepasan anak tidak dituntut.",
+      "taxCategoryNoneExplanation": "Kategori Cukai ialah Tiada untuk pemprosesan gaji ini. PCB tidak dikira; pengiraan berkanun lain diteruskan seperti biasa."
     },
     "import": {
       "title": "Import pekerja",
@@ -7296,7 +7299,15 @@
       "slipBikEntered": "BIK dimasukkan",
       "slipBikExempt": "BIK dikecualikan",
       "slipVolaEntered": "Nilai tempat kediaman dimasukkan",
-      "slipVolaExempt": "Nilai tempat kediaman dikecualikan"
+      "slipVolaExempt": "Nilai tempat kediaman dikecualikan",
+      "taxCategorySingle": "Bujang/Pasangan tidak Menuntut Pelepasan Anak",
+      "taxCategoryMarriedSpouseNotWorking": "Berkahwin dan Pasangan Tidak Bekerja",
+      "taxCategoryMarriedSpouseWorking": "Berkahwin dan Pasangan Bekerja",
+      "taxCategoryDivorcedWithKids": "Balu/Duda/Bercerai dengan Anak",
+      "taxCategoryNone": "Tiada",
+      "taxCategoryLegacy3": "Kategori 3 — pasangan bekerja, bercerai, balu/duda atau bujang dengan anak angkat",
+      "taxCategorySingleHint": "Kategori 1 LHDN bermaksud bujang. Kategori pekerja berkahwin mengikut status pekerjaan pasangan, walaupun pelepasan anak tidak dituntut.",
+      "taxCategoryNoneExplanation": "Kategori Cukai ialah Tiada untuk pemprosesan gaji ini. PCB tidak dikira; pengiraan berkanun lain diteruskan seperti biasa."
     },
     "multiCycleWorksheet": {
       "title": "Lembaran Kerja Berkanun Berbilang Kitaran",

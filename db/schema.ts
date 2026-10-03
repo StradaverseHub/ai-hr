@@ -3195,6 +3195,8 @@ export const employeeStatutoryMy = pgTable(
     taxNumber: text('tax_number'),
     // PCB (MTD) inputs. taxCategory: 1=single, 2=married/spouse not working, 3=married/spouse working.
     taxCategory: integer('tax_category').notNull().default(1),
+    taxCircumstance: text('tax_circumstance').$type<'single'|'spouse_not_working'|'spouse_working'|'widow_divorced'|'none'>(),
+    taxApplicabilityEpoch: integer('tax_applicability_epoch').notNull().default(0),
     numChildren: integer('num_children').notNull().default(0),
     // Item 8b5334db — how num_children is maintained. 'manual' = HR keys it (today's behaviour); 'auto' derives
     // the eligible child count from the Family register and surfaces it for HR CONFIRMATION into num_children
@@ -3361,6 +3363,8 @@ export const employeeStatutoryMy = pgTable(
   },
   (t) => [
     uniqueIndex('employee_statutory_my_person_uq').on(t.personId),
+    check('employee_statutory_my_tax_applicability_epoch_check', sql`${t.taxApplicabilityEpoch} >= 0`),
+    check('employee_statutory_my_tax_circumstance_check', sql`${t.taxCircumstance} IS NULL OR ${t.taxCircumstance} = 'none' OR (${t.taxCircumstance} = 'single' AND ${t.taxCategory} = 1) OR (${t.taxCircumstance} = 'spouse_not_working' AND ${t.taxCategory} = 2) OR (${t.taxCircumstance} IN ('spouse_working', 'widow_divorced') AND ${t.taxCategory} = 3)`),
     // Item e3ce0d4d — PARTIAL: real ICs stay unique per tenant, but multiple non-Malaysian rows carrying a
     // null IC (identified by passport instead) don't collide.
     uniqueIndex('employee_statutory_my_ic_uq').on(t.tenantId, t.icNumber).where(sql`ic_number is not null`),
@@ -5563,13 +5567,14 @@ export const employmentTaxSelectionMy = pgTable('employment_tax_selection_my', {
   scheme: text('scheme').$type<'resident'|'non_resident'|'rep'|'knowledge_worker'|'c_suite'>(),
   transitionState: text('transition_state').notNull().$type<'resolved'|'confirmation_required'>(),
   version: integer('version').notNull().default(1),
+  taxApplicabilityEpoch: integer('tax_applicability_epoch').notNull().default(0),
   legacyScheme: text('legacy_scheme'),
   source: text('source').notNull().$type<'legacy_conversion'|'explicit'>(),
   provenance: jsonb('provenance').notNull().$type<{reason:string;declarationIds:string[]}>(),
   updatedByUserId: uuid('updated_by_user_id').references(() => appUser.id),
   createdAt: timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
   updatedAt: timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
-}, t => [uniqueIndex('employment_tax_selection_my_context').on(t.tenantId,t.employmentId,t.companyId)]);
+}, t => [uniqueIndex('employment_tax_selection_my_context').on(t.tenantId,t.employmentId,t.companyId), check('employment_tax_selection_my_tax_applicability_epoch_check', sql`${t.taxApplicabilityEpoch} >= 0`)]);
 
 export const tp1Relief = pgTable(
   'tp1_relief',

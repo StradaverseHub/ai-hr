@@ -324,8 +324,8 @@ describe('45df860a — pcbMonth records the steps it used to discard', () => {
       ],
       { month: 1, profile: { category: 1 } },
     );
-    expect(c.snapshot.trace, 'the person-level working is returned').toBeTruthy();
-    expect((c.snapshot.trace as Trace).Y1, 'on the COMBINED remuneration').toBe(10000);
+    expect(c.snapshot!.trace, 'the person-level working is returned').toBeTruthy();
+    expect((c.snapshot!.trace as Trace).Y1, 'on the COMBINED remuneration').toBe(10000);
     expect(c.byEmployment.size).toBe(2);
   });
 });

@@ -204,6 +204,7 @@ export async function myProfileRecord(ctx: SessionContext) {
       eisCategory: statutoryRow?.eisCategory ?? null,
       taxNumber: statutoryRow?.taxNumber ?? null,
       taxCategory: statutoryRow?.taxCategory ?? null,
+      taxCircumstance:statutoryRow?.taxCircumstance??null,
       isResident: statutoryRow?.isResident ?? null,
       numChildren: statutoryRow?.numChildren ?? null,
       disabledIndividual: statutoryRow?.disabledIndividual ?? null,

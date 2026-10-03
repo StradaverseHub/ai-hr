@@ -1,3 +1,4 @@
+import {readSavedTaxCircumstance,taxCircumstanceOf,type SavedTaxCircumstance} from '../localization/my/tax-circumstance';
 import { readPcbNonCash, type PcbNonCashSnapshot } from '../localization/noncash-benefits';
 /**
  * Feedback 169e3c24 — explain a payslip's PCB (MTD) figure from what the payslip itself recorded.
@@ -195,9 +196,10 @@ export type PcbTaxSelectionProvenance = {
   taxSelectionVersion: number;
   taxSelectionSource: 'income_tax_resident';
 };
-type PcbFigures = { pcb: number; pcbSystem: number; basis: PcbBasis | null; taxSelection?: PcbTaxSelectionProvenance; nonCash?: PcbNonCashSnapshot | null };
+type PcbFigures = { taxCircumstance?:SavedTaxCircumstance; pcb: number; pcbSystem: number; basis: PcbBasis | null; taxSelection?: PcbTaxSelectionProvenance; nonCash?: PcbNonCashSnapshot | null };
 
 export type PcbExplanation =
+  | ({kind:'not_subject'} & PcbFigures)
   | ({
       /** No PCB working was recorded on this payslip (imported history, or a run predating the stamp). */
       kind: 'unavailable';
@@ -497,6 +499,18 @@ export function explainPcb(
   const figures: PcbFigures = { pcb, pcbSystem, basis };
   if (!metaObj) return { kind: 'unavailable', ...figures };
 
+  if(Object.hasOwn(metaObj,'taxCircumstance')){
+    const saved=readSavedTaxCircumstance(metaObj.taxCircumstance);
+    if(!saved)return {kind:'unavailable',...figures};
+    figures.taxCircumstance=saved;
+    if(!saved.applicable){
+      if(metaObj.notSubjectToIncomeTax!==true || pcb!==0 || n(st.pcbBonus)!==0 || pcbSystem!==0 ||
+        manual && (manual.system!==0 || manual.applied!==0) ||
+        delta && (delta.cumulative!==0 || delta.cumulativeBonus!==0))return {kind:'unavailable',...figures};
+      return {kind:'not_subject',...figures,nonCash:readPcbNonCash(st.pcbNonCash)};
+    }
+    if(metaObj.notSubjectToIncomeTax===true)return {kind:'unavailable',...figures};
+  }
   const nonCash = readPcbNonCash(st.pcbNonCash);
   const savedTrace = metaObj.trace as Record<string, unknown> | null;
   const savedNormal = savedTrace?.Y1 ?? savedTrace?.remuneration;
@@ -563,6 +577,12 @@ export function explainPcb(
   }
 
   const m = metaObj as SnapshotMeta;
+  // A newly recorded identity and its recorded mathematical category must agree. Never
+  // assure an identity from one stamp while the worksheet explains a different category.
+  if(figures.taxCircumstance && (metaObj.trace as {category?:unknown}|null)?.category!==figures.taxCircumstance.category){
+    const {taxCircumstance:untrustedIdentity,...unavailableFigures}=figures;
+    return {kind:'unavailable',...unavailableFigures};
+  }
   if (m.P1 === undefined) return { kind: 'unavailable', ...figures };
 
   const stored = m.reliefs;
@@ -846,6 +866,7 @@ export function pcbWorksheet(x: PcbExplanation, previous: PcbPreviousEmployment 
   // so an LHDN-shaped sheet with every line reading "not recorded" is added beside it — which would be a
   // worksheet asserting that this employee HAS a computerised calculation that merely went unsaved. The
   // note reuses that card's existing caption rather than minting a second wording of the same fact.
+  if (x.kind === 'not_subject') return {shape:'unavailable',sections:[],note:'taxCategoryNoneExplanation'};
   if (x.kind === 'unavailable') return { shape: 'unavailable', sections: [], note: 'unavailable' };
   if (x.kind === 'flat') return flatWorksheet(x);
 
@@ -2095,7 +2116,7 @@ export function pcbDetailLayout(p: {
     out.push({ kind: 'section', label: null, band: 'card', heading: sec.heading, section: sec });
   }
 
-  if (x.kind === 'unavailable') body('unavailableCard', null, 'card', 'summaryHeading');
+  if (x.kind === 'unavailable'||x.kind==='not_subject') body('unavailableCard', null, 'card', 'summaryHeading');
   if (x.kind === 'flat') body('flatCard', null, 'card', 'flatHeading');
   if (x.kind === 'mtd') {
     body('mtdBand', '9', 'sequence', 'mtdCalculationHeading');
@@ -2121,4 +2142,13 @@ export function pcbDetailLayout(p: {
   }
   body('source', null, 'footer', 'sourceHeading');
   return out;
+}
+
+/** Only the recorded attempt can identify a historical circumstance. Never today's person profile. */
+export function pcbTaxCategoryIdentity(x:PcbExplanation){
+ const saved=x.taxCircumstance;
+ if(saved){const resolved=taxCircumstanceOf(saved.key,saved.category??1);return {category:saved.category,labelKey:resolved.labelKey,applicable:saved.applicable};}
+ const raw=x.kind==='mtd'?x.trace?.category??null:null;
+ const category=raw!==null&&[1,2,3].includes(raw)?raw:null;
+ return {category,labelKey:category===null?null:taxCircumstanceOf(null,category).labelKey,applicable:true};
 }

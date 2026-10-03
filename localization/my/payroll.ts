@@ -1,3 +1,4 @@
+import {type SavedTaxCircumstance,readSavedTaxCircumstance} from './tax-circumstance';
 import { readPcbNonCash, type NonCashAmounts } from '../noncash-benefits';
 /**
  * Malaysia statutory payroll calculators (MY localization pack, ADR-0008).
@@ -1156,7 +1157,7 @@ export function coordinatedPcbForPerson(
     lpCurrent?: number;
     zakatCurrent?: number;
   }[],
-  shared: { month: number; profile?: TaxProfile; pcb?: StatutoryRuleset['pcb'] },
+  shared: { month: number; profile?: TaxProfile; pcb?: StatutoryRuleset['pcb'];taxApplicable?:boolean },
 ): {
   combinedMtd: number;
   combinedAdditional: number;
@@ -1166,8 +1167,9 @@ export function coordinatedPcbForPerson(
    *  employment: a trace per slice would restate a calculation that never ran. Returned rather than
    *  discarded so the kernel slice that wires coordination has one snapshot to stamp on the slips it
    *  splits. Additive — the three existing members are unchanged. */
-  snapshot: PcbMonthResult['snapshot'];
+  snapshot: PcbMonthResult['snapshot']|null;
 } {
+  if(shared.taxApplicable===false)return {combinedMtd:0,combinedAdditional:0,byEmployment:new Map(employments.map(e=>[e.employmentId,{pcb:0,pcbBonus:0}])),snapshot:null};
   const sum = (f: (e: (typeof employments)[number]) => number | undefined) =>
     employments.reduce((a, e) => a + (f(e) ?? 0), 0);
   const combinedAcc: PcbAccumulators = {
@@ -1231,6 +1233,7 @@ export function statutory(
     subjectToSocso?: boolean;
     subjectToSkbbk?: boolean;
     resident?: boolean;
+    taxCircumstance?: SavedTaxCircumstance;
     /** Legacy non-resident 30% option. Approved incentives require calculationScheme. */
     flatTaxRate?: number | null;
     calculationScheme?: PcbCalculationScheme | string;
@@ -1346,6 +1349,14 @@ export function statutory(
   // between the combined-month Third Schedule lookup and the same lookup on the normal wage alone, so
   // `e.employee − epfOnBonus` below is exactly the normal-wage schedule amount K₁ is taken from.
   const epfOnBonus = eC.employeeOnBonus;
+  // None is explicit non-applicability, not a tax rate or a fourth mathematical category.
+  if(opts?.taxCircumstance && !readSavedTaxCircumstance(opts.taxCircumstance))throw new StatutoryRulesetMalformedError('Invalid tax circumstance snapshot');
+  if(opts?.taxCircumstance?.applicable===false)return {
+    epfEmployee:e.employee,epfEmployer:e.employer,socsoEmployee:s.employee,socsoEmployer:s.employer,
+    socsoSkbbk:s.skbbk,eisEmployee:i.employee,eisEmployer:i.employer,
+    pcb:0,pcbBonus:0,pcbNormalPreZakat:0,
+    pcbMeta:{notSubjectToIncomeTax:true,taxCircumstance:opts.taxCircumstance},version:rules.version,
+  };
   const scheme = resolvePcbCalculationScheme(opts?.calculationScheme, opts?.resident ?? true);
   // Only the legacy 30% non-resident option remains valid. 15% alone cannot identify an approved scheme.
   if (opts?.flatTaxRate != null && opts.flatTaxRate !== 0.3) {
@@ -1374,6 +1385,7 @@ export function statutory(
       // the flat rate was applied to, and RM x % is not checkable without the x. Additive; the three
       // keys that were here are untouched.
       pcbMeta: {
+        ...(opts?.taxCircumstance?{taxCircumstance:opts.taxCircumstance}:{}),
         calculationScheme: 'non_resident',
         ...(opts?.taxSelectionId?{taxSelectionId:opts.taxSelectionId,taxSelectionVersion:opts.taxSelectionVersion,taxSelectionSource:opts.taxSelectionSource}:{}),
         nonResident: flatRate === 0.3,
@@ -1416,7 +1428,7 @@ export function statutory(
      *  the employee's zakatPercent for the 'percent_of_pcb' election. Additive. */
     pcbNormalPreZakat: m.normalPreZakat,
     /** Accumulator snapshot the PCB was computed from (audit / reproducibility, ADR-0014). */
-    pcbMeta: m.snapshot,
+    pcbMeta: {...m.snapshot,...(opts?.taxCircumstance?{taxCircumstance:opts.taxCircumstance}:{})},
     /** Statutory-table version that produced these figures (audit / reproducibility). */
     version: rules.version,
   };

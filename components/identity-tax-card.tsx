@@ -36,6 +36,8 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 export type IdentityTaxDefaults = {
   taxNumber: string | null;
   taxCategory: number;
+  taxCircumstance?:string|null;
+  taxApplicabilityEpoch?:number;
   taxResidency: string;
   numChildren: number;
   childReliefMode: string;
@@ -171,9 +173,8 @@ const CHILD_RELIEF_CATEGORY_KEYS = [
  * renders it as JSX only, so the server/client boundary is respected.
  *
  * Tax Category maps the five business labels to the LHDN integers the PCB engine needs (Single→1, Married &
- * Spouse Not Working→2, Married & Spouse Working→3, Divorced/Single with Kids→3, None→1). Two labels share value
- * 3 and two share value 1; the browser highlights the first option for a given stored value on reload (we only
- * persist the integer the engine uses — the label is a data-entry convenience).
+ * Tax choices now preserve their own circumstance token beside the existing mathematical integer.
+ * None is explicit person non-applicability; saved employer scheme history remains separate.
  *
  * Children auto mode SURFACES the family-derived eligible count for HR to confirm into numChildren — it never
  * silently syncs (respects the benefits-vs-tax firewall). Manual mode keeps HR's keyed figure.
@@ -236,6 +237,15 @@ export function IdentityTaxCard({
       : 'manual',
   );
   const [taxCategory, setTaxCategory] = useState(String(defaults.taxCategory ?? 1));
+  const [taxCircumstance,setTaxCircumstance]=useState(defaults.taxCircumstance??String(defaults.taxCategory??1));
+  const [taxResidency,setTaxResidency]=useState(taxSelection?.confirmationRequired?'':defaults.taxResidency);
+  const none=taxCircumstance==='none';
+  const onTaxCircumstance=(value:string)=>{
+    if((taxCircumstance==='none')!==(value==='none'))setTaxResidency('');
+    setTaxCircumstance(value);
+    const mapped=clientPackFor('MY')?.payroll.taxCircumstanceOptions?.find(x=>x.value===value)?.category;
+    setTaxCategory(String(mapped??defaults.taxCategory??1));
+  };
   const categoryChanged = taxCategory !== String(defaults.taxCategory ?? 1);
   const [numChildren, setNumChildren] = useState<string>(String(defaults.numChildren ?? 0));
   // Item d64d0df4 — the 'auto_table' grid. Held as STRINGS so an emptied cell stays empty while the
@@ -484,12 +494,13 @@ export function IdentityTaxCard({
               )}
             </Field>
             {/* 35b7af0a group 6 — the SAME control the Create Employee wizard now renders. The option
-                list, its order and the 5→3 value mapping moved into components/tax-category-field.tsx
-                VERBATIM: this card still posts `taxCategory` with the same values it always did. */}
-            <TaxCategoryField mode="form" defaultValue={defaults.taxCategory} onChange={setTaxCategory} />
+                list and mapping are country-owned; the integer and detailed circumstance post separately. */}
+            <input type="hidden" name="expectedTaxApplicabilityEpoch" value={defaults.taxApplicabilityEpoch??0}/><TaxCategoryField mode="form" defaultValue={defaults.taxCategory} circumstance={defaults.taxCircumstance} onChange={onTaxCircumstance} />
             <Field label={t('incomeTaxResident')}>
               {/* Reset only this draft when its employer owner/revision/confirmation changes. */}
-              <select key={`${employmentId}:${personId}:${taxSelection?.companyId??''}:${taxSelection?.version??0}:${taxSelection?.confirmationRequired??false}:${defaults.taxResidency}`} id="income-tax-resident" name="taxResidency" defaultValue={taxSelection?.confirmationRequired || !['resident','non_resident','rep','knowledge_worker','c_suite'].includes(defaults.taxResidency) ? '' : defaults.taxResidency} required className={inputCls}>
+              {none&&<input type="hidden" name="taxResidency" value="none"/>}
+              <select key={`${employmentId}:${personId}:${taxSelection?.companyId??''}:${taxSelection?.version??0}`} id="income-tax-resident" aria-label={t('incomeTaxResident')} name={none?undefined:'taxResidency'} value={none?'none':taxResidency} onChange={e=>setTaxResidency(e.target.value)} disabled={none} required={!none} className={inputCls}>
+                {none&&<option value="none">{t('taxCategoryNone')}</option>}
                 <option value="" disabled>{t('taxSelectionChoose')}</option>
                 <option value="resident">{t('taxResidencyResident')}</option>
                 <option value="non_resident">{t('taxResidencyNonResident')}</option>

@@ -43,6 +43,7 @@ import {
   setReportingLine,
   terminateEmploymentTx,
   transferEmploymentCompanyTx,
+  lockEmploymentStatutoryOwnerTx,
   type EmploymentTypeValue,
   type TerminationType,
 } from './org';
@@ -1723,6 +1724,8 @@ async function applyComparisonMovementTx(
   kind: ComparisonKind,
   opts?: { groupId?: string; allSecondary?: boolean },
 ) {
+  // Acquire the person owner before any info/assignment leg can lock employment.
+  await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
   const remarks = p.remarks?.trim() || null;
   const endDate = p.endDate?.trim() || null;
   const groupId = opts?.groupId ?? randomUUID();

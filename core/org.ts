@@ -2010,6 +2010,14 @@ export async function setEmploymentAssignment(
  * is validated directly (labelUsableByCompany has no 'location' kind): an HR-supplied location must belong to
  * the destination; a stored old-company location is cleared.
  */
+/** Serialize the existing person statutory owner before employment changes can hold row locks.
+ * Employment identity is immutable; tenant RLS still scopes both reads. Absent profiles need no lock.
+ * Core/org already owns this table edge; no country data is copied into employment history. */
+export async function lockEmploymentStatutoryOwnerTx(tx:Tx,employmentId:string){
+  const [identity]=await tx.select({personId:employment.personId}).from(employment).where(eq(employment.id,employmentId)).limit(1);
+  if(identity)await tx.select({id:employeeStatutoryMy.id}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,identity.personId)).limit(1).for('update');
+}
+
 export async function changeEmploymentCompany(
   ctx: SessionContext,
   p: {
@@ -2023,6 +2031,7 @@ export async function changeEmploymentCompany(
   },
 ) {
   return withTenant(ctx, async (tx) => {
+    await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
     const [emp] = await tx
       .select({ companyId: employment.companyId, hiredOn: employment.hiredOn })
       .from(employment)
@@ -2230,6 +2239,7 @@ export async function transferEmploymentCompanyTx(
     movement: MovementTag;
   },
 ) {
+  await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
   const [emp] = await tx
     .select({ companyId: employment.companyId })
     .from(employment)

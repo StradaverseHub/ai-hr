@@ -1337,11 +1337,11 @@
       "incomeTaxPcbSection": "Thuế thu nhập (PCB)",
       "taxInfoLegend": "Thông tin thuế",
       "taxCategoryLabel": "Nhóm thuế",
-      "taxCategorySingle": "Độc thân",
-      "taxCategoryMarriedSpouseNotWorking": "Đã kết hôn & vợ/chồng không đi làm",
-      "taxCategoryMarriedSpouseWorking": "Đã kết hôn & vợ/chồng đi làm",
-      "taxCategoryDivorcedWithKids": "Ly hôn / Độc thân có con",
-      "taxCategoryNone": "Không có",
+      "taxCategorySingle": "Độc thân/Vợ hoặc chồng không yêu cầu giảm trừ con",
+      "taxCategoryMarriedSpouseNotWorking": "Đã kết hôn và vợ hoặc chồng không làm việc",
+      "taxCategoryMarriedSpouseWorking": "Đã kết hôn và vợ hoặc chồng làm việc",
+      "taxCategoryDivorcedWithKids": "Góa/Ly hôn có con",
+      "taxCategoryNone": "Không",
       "incomeTaxResident": "Cư trú thuế thu nhập",
       "taxResidencyResident": "Cư trú",
       "taxResidencyNonResident": "Không cư trú",
@@ -1699,7 +1699,10 @@
       "taxSelectionEmployer": "Người sử dụng lao động: {employer}",
       "taxSelectionEligibilityHint": "Chọn phân loại áp dụng cho quan hệ lao động và người sử dụng lao động này. Việc chọn ưu đãi ghi nhận quyết định của HR rằng các điều kiện phê duyệt, đủ điều kiện và thời gian áp dụng đã được đáp ứng. Không cần khai báo riêng.",
       "taxSelectionConfirmationRequired": "Xác nhận phân loại phù hợp trong trường này và lưu một lần. Cài đặt cũ không xác định được lựa chọn rõ ràng cho từng người sử dụng lao động.",
-      "taxSelectionChoose": "Chọn phân loại thuế"
+      "taxSelectionChoose": "Chọn phân loại thuế",
+      "taxCategoryLegacy3": "Nhóm 3 — vợ hoặc chồng làm việc, ly hôn, góa hoặc độc thân có con nuôi",
+      "taxCategorySingleHint": "Nhóm 1 của LHDN là độc thân. Người đã kết hôn vẫn theo tình trạng làm việc của vợ hoặc chồng, dù không yêu cầu giảm trừ con.",
+      "taxCategoryNoneExplanation": "Nhóm thuế là Không trong lần xử lý lương này. PCB không được tính; các khoản theo luật khác tiếp tục bình thường."
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -7296,7 +7299,15 @@
       "slipBikEntered": "BIK đã nhập",
       "slipBikExempt": "BIK miễn thuế",
       "slipVolaEntered": "Giá trị chỗ ở đã nhập",
-      "slipVolaExempt": "Giá trị chỗ ở miễn thuế"
+      "slipVolaExempt": "Giá trị chỗ ở miễn thuế",
+      "taxCategorySingle": "Độc thân/Vợ hoặc chồng không yêu cầu giảm trừ con",
+      "taxCategoryMarriedSpouseNotWorking": "Đã kết hôn và vợ hoặc chồng không làm việc",
+      "taxCategoryMarriedSpouseWorking": "Đã kết hôn và vợ hoặc chồng làm việc",
+      "taxCategoryDivorcedWithKids": "Góa/Ly hôn có con",
+      "taxCategoryNone": "Không",
+      "taxCategoryLegacy3": "Nhóm 3 — vợ hoặc chồng làm việc, ly hôn, góa hoặc độc thân có con nuôi",
+      "taxCategorySingleHint": "Nhóm 1 của LHDN là độc thân. Người đã kết hôn vẫn theo tình trạng làm việc của vợ hoặc chồng, dù không yêu cầu giảm trừ con.",
+      "taxCategoryNoneExplanation": "Nhóm thuế là Không trong lần xử lý lương này. PCB không được tính; các khoản theo luật khác tiếp tục bình thường."
     },
     "multiCycleWorksheet": {
       "title": "Bảng tính pháp định cho nhiều kỳ trả lương",
