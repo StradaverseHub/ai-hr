@@ -451,11 +451,13 @@ async function computeLinesTx(tx: Tx, p: { candidates: ArrearsCandidate[] }): Pr
       const saved = slip.statutory as Record<string, unknown> | null;
       const stamped = saved != null && Object.prototype.hasOwnProperty.call(saved, 'salaryBasis');
       const salaryBasis = stamped ? readPayrollSalaryBasis(saved!.salaryBasis, periodEnd) : null;
-      // ABSENT means legacy open-row selection; PRESENT means the new saved period-effective input.
+      // ABSENT keeps legacy reconstruction only when its visible baseline starts within the paid period.
+      // A future-starting legacy denominator cannot establish what the paid run actually used.
       // A malformed new stamp must not silently change contract by falling back to legacy history.
+      const legacyBaseline = [...visible].sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0];
       const baseline = stamped
         ? salaryBasis ? { basic: Number(salaryBasis.basicSalary), payMode: salaryBasis.payMode } : null
-        : [...visible].sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0];
+        : legacyBaseline && legacyBaseline.validFrom <= periodEnd ? legacyBaseline : null;
 
       if (!baseline) {
         out.push(line({ payCode: BASIC_PAY_CODE, payItemName: 'Basic Salary', needsReview: true, reviewReason: 'noBaselineSalary' }));

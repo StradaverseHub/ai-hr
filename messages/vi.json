@@ -6463,7 +6463,7 @@
         "blendedOriginal": "Có hai bản ghi lương cùng áp dụng cho tháng này khi chi trả, nên không thể tái lập chính xác số gốc.",
         "nonMonthlyPayMode": "Nhân viên này hưởng lương theo ngày hoặc theo giờ, nên thay đổi lương tháng không phải nguyên nhân làm lương thay đổi.",
         "nonPayableItem": "Khoản mục này chỉ ghi nhận, không bao giờ chi bằng tiền mặt, nên chênh lệch của nó không phải là tiền.",
-        "noBaselineSalary": "Không có bản ghi lương nào hiệu lực khi tháng này được chi trả, nên không có gì để so sánh.",
+        "noBaselineSalary": "Không có hoặc không thể xác minh mức lương cơ sở đã dùng cho tháng được chi trả này. Cần xem xét trước khi tính tiền lương truy lĩnh.",
         "unpaidLeaveInPeriod": "Tháng này có nghỉ không lương. Thay đổi lương hồi tố cũng làm thay đổi khoản khấu trừ nghỉ không lương, vốn thuộc đợt bàn giao tiếp theo — nên tháng này được hiển thị để bạn tự tính, thay vì chi trả theo con số mà chúng tôi biết là quá cao."
       },
       "export": {

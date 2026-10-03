@@ -6463,7 +6463,7 @@
         "blendedOriginal": "Two salary records applied to this month when it was paid, so the original cannot be reproduced exactly.",
         "nonMonthlyPayMode": "This employee is paid by the day or the hour, so a monthly salary change is not what moved their pay.",
         "nonPayableItem": "This item is recorded but never paid in cash, so a difference on it is not money.",
-        "noBaselineSalary": "No salary record was in force when this month was paid, so there is nothing to compare against.",
+        "noBaselineSalary": "The salary baseline used for this paid month is unavailable or cannot be verified. Review is required before calculating back pay.",
         "unpaidLeaveInPeriod": "This month had unpaid leave. A backdated salary change also changes the unpaid-leave deduction, which is part of the next delivery — so the month is shown and left for you to work out rather than paid at a figure we know is too high."
       },
       "export": {

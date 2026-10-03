@@ -121,17 +121,45 @@ describe('r386 dependent salary consumers and immutable saved selection basis', 
     expect((await slipOf(fixture.batchId)).statutory).toEqual(fixture.closed.statutory);
   });
 
-  it('absent salaryBasis retains historical open-row reconstruction rather than inferring the new stamp', async () => {
+  it('absent salaryBasis with a visible future baseline requires review without inventing a proration factor', async () => {
     const fixture = await paidAugust('legacy');
     expect(fixture.closed.statutory).not.toHaveProperty('salaryBasis');
+    const visible = fixture.history.filter(row => row.recordedAt.getTime() <= fixture.closed.createdAt.getTime());
+    expect(visible).toHaveLength(2);
+    const legacyCandidate = [...visible].sort((left, right) => right.validFrom.localeCompare(left.validFrom))[0];
+    expect(legacyCandidate).toMatchObject({ validFrom: '2026-11-01', basicSalary: '15000.00' });
+    expect(legacyCandidate.validFrom > '2026-08-31').toBe(true);
     const correction = await appendBackdatedCorrection(fixture);
     const result = await calculateBackPay(ctx, { companyId: base.companyId, targetPayPeriod: '2026-12', compensationIds: [correction.id] });
-    // The legacy visible open salary was RM15000, so its established reconstruction factor is
-    // 10000/15000. RM12000 × that factor = RM8000; preserve this contract for unstamped old results.
-    expect(result.total).toBe(-2000);
+    // Preserve the paid August result, but do not price NEW arrears from an uncertain future
+    // denominator or silently infer an earlier salary input for an unstamped historical run.
+    expect(result.lineCount).toBe(1);
+    expect(result.total).toBe(0);
     const detail = await backPayRunDetail(ctx, result.runId);
-    expect(detail!.rows[0].byPeriod['2026-08']).toMatchObject({ old: 10000, new: 8000, diff: -2000 });
+    expect(detail!.rows).toHaveLength(1);
+    expect(detail!.rows[0]).toMatchObject({ payCode: 'BASIC', needsReview: true, reviewReason: 'noBaselineSalary' });
+    const [line] = await owner.db.select().from(schema.backPayLine).where(eq(schema.backPayLine.runId, result.runId));
+    expect(line.newAmount).toBeNull();
+    expect(line.difference).toBe('0.00');
     expect(await slipOf(fixture.batchId)).toEqual(fixture.closed);
+    expect((await slipOf(fixture.batchId)).statutory).not.toHaveProperty('salaryBasis');
+  });
+
+  it('absent salaryBasis keeps ordinary nonfuture legacy reconstruction despite the later correction closing its old row', async () => {
+    const fixture = await paidAugust('legacy');
+    // Synthetic timing control: November's revision was recorded AFTER August was paid, so the
+    // old RM10,000 row is the only visible legacy baseline. The new correction may close its validTo.
+    await owner.db.update(schema.compensation).set({ recordedAt: new Date(fixture.closed.createdAt.getTime() + 2000) })
+      .where(eq(schema.compensation.id, fixture.history[1].id));
+    const correction = await appendBackdatedCorrection(fixture);
+    const result = await calculateBackPay(ctx, { companyId: base.companyId, targetPayPeriod: '2026-12', compensationIds: [correction.id] });
+    expect(result.total).toBe(2000);
+    const detail = await backPayRunDetail(ctx, result.runId);
+    expect(detail!.rows).toHaveLength(1);
+    expect(detail!.rows[0]).toMatchObject({ payCode: 'BASIC', needsReview: false });
+    expect(detail!.rows[0].byPeriod['2026-08']).toMatchObject({ old: 10000, new: 12000, diff: 2000 });
+    expect(await slipOf(fixture.batchId)).toEqual(fixture.closed);
+    expect((await slipOf(fixture.batchId)).statutory).not.toHaveProperty('salaryBasis');
   });
 
   it.each(['null', 'empty', 'version', 'reference', 'id', 'future', 'impossibleDate', 'amount', 'zero', 'mode'] as const)(
