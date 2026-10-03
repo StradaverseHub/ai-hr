@@ -3715,7 +3715,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           isModuleEnabled(ctx, 'typed_pay_components'),
         );
         const blockedRows = [
-          ...addChecks.missingCompensation.map((r) => ({ ...r, gap: 'no applicable salary record' })),
+          ...addChecks.missingCompensation.map((r) => ({ ...r, gap: 'no current salary record' })),
           // r369 — `zeroBasic` is now the daily/hourly-no-rate leg only, so the gap names it. The
           // no-monthly-basic population is NOT a blocker here: whether they can be reprocessed depends on
           // what is payable this period, which only the money doors know — `ReprocessNothingPayableError`
