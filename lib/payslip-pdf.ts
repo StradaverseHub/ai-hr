@@ -1313,13 +1313,29 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
       textX=M+w+14;logoBottom=brandTop-h;
     }
     const leftRight=M+CONTENT_W*.60;
-    let cursor=brandTop;
-    const flowBrand=(text:string,size:number,strong:boolean)=>{
+    // Measure the complete existing name/registration block before drawing. Only its vertical
+    // placement changes; fonts, wrapping widths, line pitches and the uploaded mark stay identical.
+    const brandLines: {text:string;size:number;strong:boolean;face:PDFFont;pitch:number;ascent:number;descent:number}[]=[];
+    const planBrand=(text:string,size:number,strong:boolean)=>{
       const face=faceOf(text,strong?bold:font),lines=wrap(text,face,size,leftRight-textX);
-      const pitch=Math.max(size+4,...lines.map(line=>{const m=textMetrics(line,face,size);return m.ascent+m.descent+3;}));
-      for(const line of lines){
-        if(cursor-pitch<M+FOOTER_H){newPage();cursor=y;}
-        at(page,line,textX,cursor-textMetrics(line,face,size).ascent,size,face,strong?INK:MUTED);cursor-=pitch;
+      const measured=lines.map(line=>textMetrics(line,face,size));
+      const pitch=Math.max(size+4,...measured.map(m=>m.ascent+m.descent+3));
+      lines.forEach((line,i)=>brandLines.push({text:line,size,strong,face,pitch,...measured[i]}));
+    };
+    planBrand(d.company,13,true);
+    if(d.companyReg)planBrand(`${t.companyReg}: ${d.companyReg}`,8.5,false);
+    let brandDepth=0,brandInkHeight=0;
+    for(const line of brandLines){
+      brandInkHeight=Math.max(brandInkHeight,brandDepth+line.ascent+line.descent);
+      brandDepth+=line.pitch;
+    }
+    const brandOffset=logo?Math.max(0,(brandTop-logoBottom-brandInkHeight)/2):0;
+    let cursor=brandTop-brandOffset;
+    const flowBrand=()=>{
+      for(const line of brandLines){
+        if(cursor-line.pitch<M+FOOTER_H){newPage();cursor=y;}
+        at(page,line.text,textX,cursor-line.ascent,line.size,line.face,line.strong?INK:MUTED);
+        cursor-=line.pitch;
       }
     };
     let rightCursor=brandTop;
@@ -1330,10 +1346,11 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
     };
     flowPeriod(t.periodLabel,13,true);
     if(d.payDate)flowPeriod(`${t.paymentDateLabel??'Payment Date'}: ${t.paymentDate}`,8.5,false);
-    flowBrand(d.company,13,true);
-    if(d.companyReg)flowBrand(`${t.companyReg}: ${d.companyReg}`,8.5,false);
+    flowBrand();
     if(page!==pg)return cursor-GAP;
-    return Math.min(cursor,rightCursor,logoBottom)-GAP;
+    // Preserve the original flow boundary, including its trailing line spacing. Centring the ink
+    // inside a taller logo must not shift Employee Profile or anything below the header.
+    return Math.min(brandTop-brandDepth,rightCursor,logoBottom)-GAP;
   }
 
   function drawEmployeePanel(pg: PDFPage, top: number): number {

@@ -491,6 +491,25 @@ describe('r360 — the payslip letterhead labels its registration number, and na
     ).not.toBe('individual.cycle.regular');
   });
 
+  it('centres only the rendered company text wrapper while the logo flex keeps its top anchor; removing self-center fails', async () => {
+    await owner.db.update(schema.company).set({registrationNo:'SAMPLE-REGISTRATION'}).where(eq(schema.company.id,base.companyId));
+    const me=await hire(admin,'Header Alignment','header.alignment@acme.test');
+    await payUnderCycle('2026-03','Monthly');
+    const tree=await IndividualPayslipPage({searchParams:Promise.resolve({employmentId:me.employmentId})});
+    expect(renderedPayslipId(tree),'non-vacuous saved payslip rendering').toBeTruthy();
+    const headings=findByTag(tree,'h1');expect(headings).toHaveLength(1);
+    const wrappers=findByTag(tree,'div').filter(el=>el.props.children===headings[0] || (Array.isArray(el.props.children)&&el.props.children.includes(headings[0])));
+    expect(wrappers,'exact actual company-name/registration wrapper').toHaveLength(1);
+    expect(wrappers[0].props.className.split(' ')).toContain('self-center');
+    expect(textOf(wrappers[0])).toContain('SAMPLE-REGISTRATION');
+    const brands=findByTag(tree,'div').filter(el=>Array.isArray(el.props.children)&&el.props.children.includes(wrappers[0]));
+    expect(brands,'actual flex adjacent to the existing conditional uploaded logo').toHaveLength(1);
+    expect(brands[0].props.className).toBe('flex items-start gap-4');
+    expect(headings[0].props.className).toBe('break-words text-xl font-semibold leading-7');
+    const registration=findByTag(wrappers[0],'p');expect(registration).toHaveLength(1);
+    expect(registration[0].props.className).toBe('text-sm font-medium leading-5 text-muted-foreground');
+  });
+
   it('a company with NO registration number prints no caption, and a run with NO cycle keeps the run-type word', async () => {
     // BOTH FALLBACKS ON ONE SCREEN, and both are the reachable production state rather than a defensive
     // branch: `seedBase` leaves `company.registration_no` null (most companies on production carry none)
