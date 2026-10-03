@@ -32,7 +32,7 @@
  * cannot move this file onto the component earnings path with nothing noticing. The tests that actually
  * prove the gate open and closed are typed-components-compat / fixed-transaction / overtime-provenance.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gt, isNull, lte, or } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
@@ -126,8 +126,27 @@ describe('ADR-0060 — loan ⊥ payroll', () => {
       expect(selection).toBeDefined();expect(batch.tenantId).toBe(ps.tenantId);expect(selection!.transitionState).toBe('resolved');
       const statutory=ps.statutory as Record<string,unknown>,meta=statutory.pcbMeta as Record<string,unknown>;
       expect(meta).toMatchObject({taxSelectionId:selection!.id,taxSelectionVersion:selection!.version,taxSelectionSource:'income_tax_resident',calculationScheme:selection!.scheme});
-      // Only validated per-employment identity differs; compare every statutory calculation unchanged.
-      return {...statutory,pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'}};
+      // Independently bind the saved salary input to each twin's applicable compensation owner.
+      expect(ps.tenantId).toBe(base.tenantId);
+      expect([loanEmp.employmentId, noLoanEmp.employmentId]).toContain(ps.employmentId);
+      expect(batch).toMatchObject({ tenantId: base.tenantId, companyId: base.companyId, payPeriod: '2026-05' });
+      const salaryOwners = await owner.db.select().from(schema.compensation).where(and(
+        eq(schema.compensation.tenantId, base.tenantId),
+        eq(schema.compensation.employmentId, ps.employmentId),
+        isNull(schema.compensation.supersededAt),
+        lte(schema.compensation.validFrom, '2026-05-31'),
+        or(isNull(schema.compensation.validTo), gt(schema.compensation.validTo, '2026-05-31')),
+      ));
+      expect(salaryOwners).toHaveLength(1);
+      expect(salaryOwners[0]).toMatchObject({ basicSalary: '5000.00', payMode: 'monthly',
+        validFrom: '2026-01-01', validTo: null, supersededAt: null });
+      const basis = statutory.salaryBasis as Record<string, unknown>;
+      expect(basis).toEqual({ version: 1, referenceDate: '2026-05-31',
+        compensationId: salaryOwners[0].id, effectiveFrom: '2026-01-01',
+        basicSalary: '5000.00', payMode: 'monthly' });
+      // Only independently validated per-employment identities differ; keep all other saved fields.
+      return {...statutory,salaryBasis:{...basis,compensationId:'validated-compensation-selection'},
+        pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'}};
     };
     expect(await verifiedStatutory(loanPs)).toEqual(await verifiedStatutory(noLoanPs));
     // Gross is unchanged.

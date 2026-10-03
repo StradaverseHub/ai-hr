@@ -20,7 +20,7 @@
  *      (unmodified scope) then generate.
  *   g. Off-cycle draft resume — cycle/paymentDate/remarks survive the resume round-trip unchanged.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gt, isNull, lte, or } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import {
@@ -408,8 +408,27 @@ describe('Payroll draft-resume — updateBatchScope (DB)', () => {
       expect(selection).toBeDefined();expect(batch.tenantId).toBe(ps.tenantId);expect(selection.transitionState).toBe('resolved');
       const statutory=ps.statutory as Record<string,unknown>,meta=statutory.pcbMeta as Record<string,unknown>;
       expect(meta).toMatchObject({taxSelectionId:selection.id,taxSelectionVersion:selection.version,taxSelectionSource:'income_tax_resident',calculationScheme:selection.scheme});
+      // Resolve each independent fixture's salary owner before resetDb removes it. The stamp
+      // cannot choose its own owner; fixed inputs and the exclusive applicability range are checked.
+      expect(ps.tenantId).toBe(base.tenantId);
+      expect(batch).toMatchObject({ tenantId: base.tenantId, companyId: base.companyId, payPeriod: '2026-05' });
+      const salaryOwners = await owner.db.select().from(schema.compensation).where(and(
+        eq(schema.compensation.tenantId, base.tenantId),
+        eq(schema.compensation.employmentId, ps.employmentId),
+        isNull(schema.compensation.supersededAt),
+        lte(schema.compensation.validFrom, '2026-05-31'),
+        or(isNull(schema.compensation.validTo), gt(schema.compensation.validTo, '2026-05-31')),
+      ));
+      expect(salaryOwners).toHaveLength(1);
+      expect(salaryOwners[0]).toMatchObject({ basicSalary: '4321.00', payMode: 'monthly',
+        validFrom: '2026-01-01', validTo: null, supersededAt: null });
+      const basis = statutory.salaryBasis as Record<string, unknown>;
+      expect(basis).toEqual({ version: 1, referenceDate: '2026-05-31',
+        compensationId: salaryOwners[0].id, effectiveFrom: '2026-01-01',
+        basicSalary: '4321.00', payMode: 'monthly' });
       // Independent fixtures have different owner UUIDs. Every other saved field remains exact.
-      return {...statutory,pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'}};
+      return {...statutory,salaryBasis:{...basis,compensationId:'validated-compensation-selection'},
+        pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'}};
     };
     // Path A — plain create + generate (the pre-feature direct path).
     await hire(base, 'Golden A', 4321);

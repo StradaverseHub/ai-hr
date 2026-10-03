@@ -46,7 +46,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, gt, isNull, lte, or, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -173,6 +173,7 @@ const statRow = (personId: string) =>
     .then((r) => r[0]);
 
 type SlipStatutory = {
+  salaryBasis?: Record<string, unknown>;
   pcb: number;
   epfEmployee?: number;
   pcbMeta?: { P1: number; epfClaimed: number; taxSelectionId?: string; taxSelectionVersion?: number; taxSelectionSource?: string; calculationScheme?: string; trace?: { lpAccumulated: number; lpCurrent: number } };
@@ -194,8 +195,24 @@ async function comparableStatutory(st: SlipStatutory, employmentId: string) {
     calculationScheme: selection.scheme, taxSelectionId: selection.id,
     taxSelectionVersion: selection.version, taxSelectionSource: 'income_tax_resident',
   });
+  // Both callers compare the July run for distinct RM6,000 fixture employees. Locate the
+  // applicable owner independently; neither its ID nor its inputs are taken on trust from the stamp.
+  const referenceDate = `${YEAR}-07-31`;
+  const salaryOwners = await owner.db.select().from(schema.compensation).where(and(
+    eq(schema.compensation.tenantId, b.tenantId),
+    eq(schema.compensation.employmentId, employmentId),
+    isNull(schema.compensation.supersededAt),
+    lte(schema.compensation.validFrom, referenceDate),
+    or(isNull(schema.compensation.validTo), gt(schema.compensation.validTo, referenceDate)),
+  ));
+  expect(salaryOwners).toHaveLength(1);
+  expect(salaryOwners[0]).toMatchObject({ basicSalary: '6000.00', payMode: 'monthly',
+    validFrom: `${YEAR}-01-01`, validTo: null, supersededAt: null });
+  const basis = st.salaryBasis;
+  expect(basis).toEqual({ version: 1, referenceDate, compensationId: salaryOwners[0].id,
+    effectiveFrom: `${YEAR}-01-01`, basicSalary: '6000.00', payMode: 'monthly' });
   const { taxSelectionId: _scopedIdentity, ...metadata } = st.pcbMeta!;
-  return { ...st, pcbMeta: metadata };
+  return { ...st, salaryBasis: { ...basis, compensationId: 'validated-compensation-selection' }, pcbMeta: metadata };
 }
 
 /** One month's run, returning each named employee's statutory block. */
