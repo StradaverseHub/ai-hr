@@ -111,7 +111,8 @@ Run these before planning anything. Each finds what the others cannot.
     cd ~/Projects/ai-hr/.claude/worktrees/mainwt && rsync -azi --delete --dry-run \
       -e "ssh -p 8288 -o BatchMode=yes" --exclude node_modules --exclude .next --exclude .git \
       --exclude '.env*' --exclude .turbo --exclude coverage --exclude .claude --exclude graphify-out \
-      --exclude .vitest-attachments ./ ubuntu@203.142.6.241:/opt/ai-hr/
+      --exclude .vitest-attachments --exclude /docs/HANDOFF-HISTORY.md --exclude /docs/adr/ \
+      ./ ubuntu@203.142.6.241:/opt/ai-hr/
     # 2. The board: every status with ids. pull / pull-approved / pull-blocked give the full items.
     IMPROVE_SSH_HOST=203.142.6.241 pnpm improve:status
     # 3. Unmerged branches. Then LOOK: an old branch with four commits is not a pending round.
