@@ -213,6 +213,29 @@ describe('c063eea9 — the correction follows inheritance, and stops at an expli
     expect(res.currentRecordChanged).toEqual(['departmentId']);
   });
 
+  it('a record whose value no longer matches its predecessor is not overwritten, even if its event said "inherited"', async () => {
+    // Hired (Finance) → Transfer to Operations (explicit) → an assignment change that INHERITED Operations.
+    // Rolling the Transfer back leaves the third record holding Operations right after the hire record —
+    // its event still says before == after. The hire's Finance must not be carried over a value that is
+    // not Finance.
+    const hr = await dept('Human Resources');
+    const p3 = await pos('Lead Executive');
+    const { employmentId: id } = await hireOne();
+    await createMovementEvent(ctx(), { employmentId: id, kind: 'transfer', effectiveDate: '2025-03-01', departmentId: b.deptB });
+    await createMovementEvent(ctx(), { employmentId: id, kind: 'orgAssignmentChange', effectiveDate: '2025-06-01', positionId: p3 });
+    const transfer = (await movementHistory(ctx(), id)).find((r) => r.kind === 'transfer')!;
+    await reverseMovementEvent(ctx(), { employmentId: id, movementId: transfer.id, reason: 'Transfer keyed on the wrong person.' });
+    expect((await liveVersions(id)).map((v) => [v.validFrom, v.departmentId])).toEqual([
+      ['2025-01-01', b.deptA],
+      ['2025-06-01', b.deptB],
+    ]);
+    await correctHireDetails(ctx(), { employmentId: id, changes: { departmentId: hr }, reason: REASON });
+    expect((await liveVersions(id)).map((v) => [v.validFrom, v.departmentId])).toEqual([
+      ['2025-01-01', hr],
+      ['2025-06-01', b.deptB],
+    ]);
+  });
+
   it('a position correction stops at the Promotion that set the position', async () => {
     const { id, p2 } = await careerWithTransfer();
     const p4 = await pos('Executive (corrected)');
