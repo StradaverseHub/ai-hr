@@ -155,7 +155,9 @@ const LEAVE_ABSENCE_ROW: CollapsibleGroupItem = {collapsible:true, ...modulePack
 // a00c4f64 — "Team Leave Tracker", the Leave Calendar's own screen after it left the Dashboard. It goes
 // in the Manage group (the reporter asked for it there) and carries NO gate, which is the point: the
 // group gates per row, and every employee could see this calendar before the move.
-const LEAVE_TRACKER_ROW: ChildItem = LEAVE_LINKS.find((l) => l.group === 'manage')!;
+const LEAVE_TRACKER_ROW: ChildItem = LEAVE_LINKS.find((l) => l.labelKey === 'teamLeaveTracker')!;
+// A pack may contribute more than one Manage destination; selecting only the first hid My Team.
+const MY_TEAM_ROW: ChildItem = LEAVE_LINKS.find((l) => l.labelKey === 'myTeam')!;
 
 // 645e67c4 — leave's own horizontal tab strip (components/leave-tabs.tsx) is retired in favour of this
 // flyout, so the leave pack's Administration-group contribution went from a flat row (LEAVE_CONFIG_ROW,
@@ -370,6 +372,7 @@ const GROUPS: Group[] = [
     items: [
       { href: '/personnel', labelKey: 'people', icon: Users },
       LEAVE_TRACKER_ROW,
+      MY_TEAM_ROW,
       { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true },
       PERFORMANCE_ROW,
       // a324a4b3 rev3: Roster + Import come back here as FLAT rows. rev2 put them inside the Attendance
@@ -482,6 +485,7 @@ const GROUPS: Group[] = [
 export function Sidebar({
   isAdmin,
   canApprove = false,
+  canAccessTeam = false,
   approvalCount = 0,
   enabledModules = null,
   defaultCollapsed,
@@ -489,6 +493,8 @@ export function Sidebar({
   isAdmin: boolean;
   /** Manager-and-up: shows the Approvals inbox. */
   canApprove?: boolean;
+  /** Actual My Team role authority, independent of the broader partner administration rail. */
+  canAccessTeam?: boolean;
   /**
    * ADR-0077 slice 4 — module codes whose rows may be shown. `null` means "no opinion, show
    * everything", which is NOT the same as `[]` ("show nothing"): a session whose entitlement snapshot
@@ -560,7 +566,7 @@ export function Sidebar({
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
   const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true);
+    moduleAllows(c.href) && (c === MY_TEAM_ROW ? canAccessTeam : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true);
   const groups = GROUPS
     // Group-level flags still supported (the Admin group uses adminOnly).
     .filter((g) => (g.adminOnly ? isAdmin : g.managerUp ? isAdmin || canApprove : true))

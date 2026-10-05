@@ -22,7 +22,7 @@ import { viewerIdentity } from '@/lib/viewer';
 import { visibleModuleCodes } from '@/lib/nav-entitlements';
 import { AuthRequiredError } from '@/lib/auth-errors';
 import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
-import { canManagePayroll, canManagePerfComp, isAdmin } from '@/lib/authz';
+import { canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import { allowedCompanies } from '@/core/read';
@@ -159,6 +159,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // who is BOTH hr_admin and a partner is never narrower than a plain admin (union rule).
               isAdmin={isAdmin(session) || canManagePayroll(session) || canManagePerfComp(session)}
               canApprove={(session.roles ?? []).includes('manager')}
+              canAccessTeam={hasTeamAccess(session)}
               // Pending-approval badge on the "Approval Items" row (feedback 836118c4). Reuses the
               // pendingTasks already resolved above for the bell — ZERO extra queries — so the badge is
               // by construction the same user-scoped queue: only items awaiting THIS viewer's decision,
