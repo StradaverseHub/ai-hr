@@ -77,7 +77,7 @@ function shimRepo(envProduction: string): { dir: string; trace: string } {
   // branch is the one a first deploy takes.
   fs.mkdirSync(path.join(dir, 'node_modules'));
   fs.mkdirSync(path.join(dir, 'bin'));
-  for (const f of ['deploy.sh', 'deploy-customer.sh']) {
+  for (const f of ['deploy.sh', 'deploy-customer.sh', 'check-customer-env.mjs']) {
     fs.copyFileSync(path.join(REPO, 'deploy', f), path.join(dir, 'deploy', f));
     fs.chmodSync(path.join(dir, 'deploy', f), 0o755);
   }
@@ -87,7 +87,11 @@ function shimRepo(envProduction: string): { dir: string; trace: string } {
   const trace = path.join(dir, 'trace.log');
   for (const cmd of SHIMS) {
     const p = path.join(dir, 'bin', cmd);
-    fs.writeFileSync(p, `#!/bin/sh\nprintf '%s\\n' "${cmd} $*" >> "$DEPLOY_TRACE"\nexit 0\n`);
+    // Customer preflight is real and dependency-free; only the later Node jobs are stubbed.
+    const preflight = cmd === 'node'
+      ? `if [ "$1" = "deploy/check-customer-env.mjs" ]; then exec '${process.execPath.replace(/'/g, "'\\''")}' "$@"; fi\n`
+      : '';
+    fs.writeFileSync(p, `#!/bin/sh\nprintf '%s\\n' "${cmd} $*" >> "$DEPLOY_TRACE"\n${preflight}exit 0\n`);
     fs.chmodSync(p, 0o755);
   }
   // sha256sum has to produce something `cut -d' ' -f1` can read, and macOS has no sha256sum at all.
@@ -139,6 +143,12 @@ const CUSTOMER_ENV = [
   `MIGRATION_DATABASE_URL=${DEAD_DB}`,
   `DATABASE_URL=${DEAD_DB}`,
   'SHARE_PASSWORD=fixture-not-a-real-secret',
+  'AI_CONFIG_SECRET=fixture-encryption-secret',
+  'AUDIT_HASH_CHAIN_ENABLED=true',
+  'WORKOS_API_KEY=sk_customer_fixture',
+  'WORKOS_CLIENT_ID=client_customer_fixture',
+  'WORKOS_COOKIE_PASSWORD=fixture-cookie-password-with-32-characters',
+  'NEXT_PUBLIC_WORKOS_REDIRECT_URI=https://hr.customer.com/callback',
   '',
 ].join('\n');
 

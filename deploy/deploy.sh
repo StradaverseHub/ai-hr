@@ -4,7 +4,8 @@
 # TWO DEPLOYMENTS, ONE SPINE (r290 / readiness 1.1). install → chain check → build → migrate →
 # catalog-seed → restart is identical for the gated consultant demo and for a customer, and keeping it
 # in ONE script is the only way it stays identical: a forked customer copy would drift silently and the
-# drift would be discovered by the customer. Exactly one thing differs — whether the DEMO SEEDER
+# drift would be discovered by the customer. Customer configuration is checked before the shared
+# spine runs; the other difference is whether the DEMO SEEDER
 # (db/seed.ts, which TRUNCATEs 24 tables and plants a fictional "Demo Group" tenant) may run.
 #
 #   customer:  ./deploy/deploy-customer.sh   (== ./deploy/deploy.sh --customer)
@@ -119,7 +120,9 @@ fi
 set -a; . ./.env.production; set +a
 : "${MIGRATION_DATABASE_URL:?set in .env.production}"
 
-# DEMO MODE IS AN OPT-IN (r290). `--customer` forces it off; otherwise the deployment has to SAY it is
+# DEMO MODE IS AN OPT-IN (r290). `--customer` selects the customer checks and suppresses seeding; it
+# does not override the runtime environment. The customer preflight below rejects demo identities.
+# Otherwise the deployment has to SAY it is
 # the gated demo by setting ALLOW_DEMO_SESSION=true — the same variable lib/session.ts reads to enable
 # the "act as" switcher, so a deployment that has it on authenticates nobody and cannot be a real one.
 # Absence means customer. That is what makes a plain `./deploy/deploy.sh` safe for an operator who
@@ -165,6 +168,14 @@ fi
 # WHEN THE GATE IS RETIRED (readiness 1.3, the WorkOS cutover), delete this line AND the gate in
 # middleware.ts together, in a commit someone reviews. Removing the variable is not how you turn it off.
 : "${SHARE_PASSWORD:?missing or empty in .env.production — the middleware.ts access gate cannot be enforced without it and this deploy refuses rather than publish an open app. Set it (deploy/.env.production.example) and re-run.}"
+
+# Native Node only: this check must work on a fresh host BEFORE dependency installation, build or DB
+# access. --migrate-only has the same checks; neither initial provisioning nor an admin invitation
+# requires enabling the demo switcher. WorkOS credentials can be configured before either exists.
+if [ "$DEMO" = "0" ]; then
+  echo "▸ Checking customer authentication and audit configuration…"
+  node deploy/check-customer-env.mjs
+fi
 
 # Skip the install when the lockfile hasn't moved since the last successful install. node_modules is
 # rsync-excluded (it persists across deploys), so on a code-only update — the common case — reinstalling

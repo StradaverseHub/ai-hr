@@ -1,0 +1,171 @@
+/** Real deployment entry points + real preflight, with all later install/DB/service commands stubbed. */
+import { afterEach, describe, expect, it } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const REPO = fileURLToPath(new URL('..', import.meta.url));
+const dirs: string[] = [];
+const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
+// Structurally configured fixtures only: this test never contacts WorkOS or a database.
+const SAFE_ENV: Record<string, string> = {
+  NODE_ENV: 'production',
+  MIGRATION_DATABASE_URL: 'postgresql://owner:fixture@127.0.0.1:1/preflight',
+  DATABASE_URL: 'postgresql://app:fixture@127.0.0.1:1/preflight',
+  SHARE_PASSWORD: 'fixture-holding-gate-password',
+  AI_CONFIG_SECRET: 'fixture-encryption-password',
+  AUDIT_HASH_CHAIN_ENABLED: 'true',
+  WORKOS_API_KEY: 'sk_customer_fixture',
+  WORKOS_CLIENT_ID: 'client_customer_fixture',
+  WORKOS_COOKIE_PASSWORD: 'fixture-cookie-password-with-32-characters',
+  NEXT_PUBLIC_WORKOS_REDIRECT_URI: 'https://hr.customer.com/callback',
+};
+
+function runDeploy(
+  changes: Record<string, string | undefined> = {},
+  options: { args?: string[]; script?: string; extraFile?: string; inherited?: Record<string, string>; removeGuard?: boolean; template?: boolean } = {},
+) {
+  // deploy.sh prepends this host-specific toolchain; make a shadowed shim a loud test failure.
+  expect(fs.existsSync('/opt/node20/bin')).toBe(false);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'r387-customer-env-'));
+  dirs.push(dir);
+  const bin = path.join(dir, 'bin');
+  const trace = path.join(dir, 'trace');
+  for (const subdir of [bin, path.join(dir, 'deploy'), path.join(dir, 'node_modules')]) fs.mkdirSync(subdir);
+  for (const file of ['deploy.sh', 'deploy-customer.sh', 'deploy-state.sh', 'check-customer-env.mjs']) {
+    fs.copyFileSync(path.join(REPO, 'deploy', file), path.join(dir, 'deploy', file));
+    fs.chmodSync(path.join(dir, 'deploy', file), 0o755);
+  }
+  if (options.removeGuard) {
+    const file = path.join(dir, 'deploy/deploy.sh');
+    const source = fs.readFileSync(file, 'utf8');
+    expect(source.split('  node deploy/check-customer-env.mjs\n')).toHaveLength(2);
+    fs.writeFileSync(file, source.replace('  node deploy/check-customer-env.mjs\n', '  :\n'));
+  }
+  const values = { ...SAFE_ENV, ...changes };
+  fs.writeFileSync(path.join(dir, '.env.production'), options.template
+    ? fs.readFileSync(path.join(REPO, 'deploy/.env.customer.example'), 'utf8')
+    : Object.entries(values).filter(([, value]) => value !== undefined)
+      .map(([name, value]) => `${name}=${quote(value!)}`).join('\n'));
+  if (options.extraFile) fs.writeFileSync(path.join(dir, options.extraFile), 'ALLOW_DEMO_SESSION=true\n');
+  fs.writeFileSync(path.join(dir, 'pnpm-lock.yaml'), 'fixture\n');
+  for (const command of ['pnpm', 'node', 'psql', 'sudo', 'systemctl', 'sha256sum']) {
+    const body = command === 'node'
+      ? `if [ "$1" = "deploy/check-customer-env.mjs" ]; then exec ${quote(process.execPath)} "$@"; fi\n`
+      : command === 'sha256sum' ? "printf 'fixturehash  %s\\n' \"$1\"\n" : '';
+    const file = path.join(bin, command);
+    fs.writeFileSync(file, `#!/bin/sh\nprintf '%s\\n' "${command} $*" >> "$DEPLOY_TRACE"\n${body}exit 0\n`);
+    fs.chmodSync(file, 0o755);
+  }
+  const result = spawnSync('/bin/bash', [path.join(dir, 'deploy', options.script ?? 'deploy-customer.sh'), ...(options.args ?? [])], {
+    cwd: dir,
+    encoding: 'utf8',
+    timeout: 10_000,
+    env: {
+      PATH: `${bin}:/usr/bin:/bin:/usr/sbin:/sbin`, HOME: dir,
+      DEPLOY_TRACE: trace, AIHR_DEPLOY_STATE_DIR: path.join(dir, 'state'),
+      ...options.inherited,
+    },
+  });
+  return {
+    status: result.status,
+    output: `${result.stdout ?? ''}${result.stderr ?? ''}`,
+    trace: fs.existsSync(trace) ? fs.readFileSync(trace, 'utf8') : '',
+    state: fs.readFileSync(path.join(dir, 'state/current'), 'utf8'),
+  };
+}
+
+afterEach(() => { for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
+
+function refused(result: ReturnType<typeof runDeploy>, setting: string) {
+  expect(result.status, result.output).toBe(1);
+  expect(result.output).toContain('Customer deployment refused');
+  expect(result.output).toContain(setting);
+  expect(result.trace).not.toMatch(/pnpm|psql|sha256sum|systemctl|check-audit-chain-gate|seed-catalogs|db\/seed/);
+  expect(result.state).toContain('result=failed');
+  expect(result.state).toContain('phase=preflight');
+}
+
+describe('customer deploy refuses unsafe configuration before any install or database work', () => {
+  it.each(['true', 'TRUE', '1'])('refuses ALLOW_DEMO_SESSION=%s even with --customer', (value) => {
+    refused(runDeploy({ ALLOW_DEMO_SESSION: value }), 'ALLOW_DEMO_SESSION');
+  });
+  it.each(['DEV_USER_ID', 'DEV_TENANT_ID'])('refuses a leftover %s', (key) => {
+    refused(runDeploy({ [key]: '11111111-1111-1111-1111-111111111111' }), key);
+  });
+  it.each(['false', 'TRUE', '1'])('refuses WORKOS_API_HTTPS=%s', (value) => {
+    refused(runDeploy({ WORKOS_API_HTTPS: value }), 'WORKOS_API_HTTPS');
+  });
+  it.each([undefined, 'development', 'test'])('refuses NODE_ENV=%s', (value) => {
+    refused(runDeploy({ NODE_ENV: value }), 'NODE_ENV');
+  });
+  it.each([undefined, '', 'false', 'TRUE', '1'])('refuses AUDIT_HASH_CHAIN_ENABLED=%s', (value) => {
+    refused(runDeploy({ AUDIT_HASH_CHAIN_ENABLED: value }), 'AUDIT_HASH_CHAIN_ENABLED');
+  });
+  it.each(['WORKOS_API_KEY', 'WORKOS_CLIENT_ID', 'WORKOS_COOKIE_PASSWORD', 'NEXT_PUBLIC_WORKOS_REDIRECT_URI', 'AI_CONFIG_SECRET'])('refuses absent %s', (key) => {
+    refused(runDeploy({ [key]: undefined }), key);
+  });
+  it.each(['WORKOS_API_KEY', 'WORKOS_CLIENT_ID', 'WORKOS_COOKIE_PASSWORD', 'SHARE_PASSWORD', 'AI_CONFIG_SECRET'])('refuses placeholder %s without printing the secret', (key) => {
+    const value = 'CHANGE_ME_this-is-sensitive-and-must-not-be-logged';
+    const result = runDeploy({ [key]: value });
+    refused(result, key);
+    expect(result.output).not.toContain(value);
+  });
+  it.each(['', 'x'.repeat(31), ` ${'x'.repeat(32)}`])('refuses short, empty or padded cookie secrets', (value) => {
+    refused(runDeploy({ WORKOS_COOKIE_PASSWORD: value }), 'WORKOS_COOKIE_PASSWORD');
+  });
+  it.each([
+    'http://hr.customer.com/callback', 'https://hr.customer.com/',
+    'https://hr.customer.com/callback?next=/admin', 'https://hr.customer.com/callback#fragment',
+    'https://user:do-not-log-this@hr.customer.com/callback',
+    'https://localhost/callback', 'https://127.0.0.1/callback', 'https://[::1]/callback',
+    'https://hr.example.com/callback', 'https://your-host/callback', 'not-a-url',
+  ])('refuses unsafe callback %s', (value) => {
+    const result = runDeploy({ NEXT_PUBLIC_WORKOS_REDIRECT_URI: value });
+    refused(result, 'NEXT_PUBLIC_WORKOS_REDIRECT_URI');
+    expect(result.output).not.toContain(value);
+  });
+  it.each(['.env', '.env.local', '.env.production.local'])('refuses unchecked Next configuration in %s', (extraFile) => {
+    refused(runDeploy({}, { extraFile }), extraFile);
+  });
+  it('checks inherited demo variables as well as .env.production', () => {
+    refused(runDeploy({}, { inherited: { ALLOW_DEMO_SESSION: 'true' } }), 'ALLOW_DEMO_SESSION');
+  });
+  it('checks inferred customer mode on a plain deploy.sh invocation', () => {
+    refused(runDeploy({ WORKOS_API_KEY: undefined }, { script: 'deploy.sh' }), 'WORKOS_API_KEY');
+  });
+  it('does not let --migrate-only bypass customer configuration', () => {
+    refused(runDeploy({ ALLOW_DEMO_SESSION: 'true' }, { args: ['--migrate-only'] }), 'ALLOW_DEMO_SESSION');
+  });
+  it('refuses the unedited customer template before any external work', () => {
+    refused(runDeploy({}, { template: true }), 'WORKOS_API_KEY');
+  });
+});
+
+describe('configured customer bootstrap and the guard sensitivity', () => {
+  it.each(['deploy.sh', 'deploy-customer.sh'])('allows %s to complete without demo identity or existing tenant', (script) => {
+    const result = runDeploy({}, { script });
+    expect(result.status, result.output).toBe(0);
+    expect(result.output).toContain('Customer authentication and audit configuration passed');
+    expect(result.trace).toContain('pnpm build');
+    expect(result.trace).toContain('pnpm db:migrate');
+    expect(result.trace).toContain('systemctl restart aihr');
+    expect(result.trace).not.toContain('db/seed.ts');
+    expect(result.trace.indexOf('check-customer-env.mjs')).toBeLessThan(result.trace.indexOf('pnpm install'));
+  });
+  it('allows explicit false and migration bootstrap while leaving the service stopped', () => {
+    const result = runDeploy({ ALLOW_DEMO_SESSION: 'false' }, { args: ['--migrate-only'] });
+    expect(result.status, result.output).toBe(0);
+    expect(result.trace).toContain('pnpm db:migrate');
+    expect(result.trace).not.toContain('systemctl restart');
+  });
+  it('the named refusal disappears if only the guard invocation is removed from a copy', () => {
+    const result = runDeploy({ ALLOW_DEMO_SESSION: 'true' }, { removeGuard: true });
+    expect(result.status, result.output).toBe(0);
+    expect(result.trace).toContain('pnpm build');
+    expect(result.trace).toContain('systemctl restart aihr');
+    expect(result.output).not.toContain('Customer deployment refused');
+  });
+});
