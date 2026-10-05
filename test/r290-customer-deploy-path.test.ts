@@ -167,6 +167,7 @@ describe('r290 harness precondition', () => {
     // deploy.sh line ~28 prepends /opt/node20/bin to PATH when it exists. On the server that is the
     // point; here it would shadow the `node` shim and every trace assertion below would be vacuous.
     expect(fs.existsSync('/opt/node20/bin')).toBe(false);
+    expect(fs.existsSync('/opt/node22/bin')).toBe(false);
   });
 });
 

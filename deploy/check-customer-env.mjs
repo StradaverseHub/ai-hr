@@ -7,6 +7,10 @@ const errors = [];
 const env = process.env;
 const placeholder = /change[-_ ]?me|replace[-_ ]?me|your[-_ ]|<|>|\.\.\./i;
 
+if (Number(process.versions.node.split('.')[0]) < 22) {
+  errors.push('Customer deployments require Node.js 22 or newer; install the customer toolchain in /opt/node22/bin.');
+}
+
 function required(name, minLength = 1) {
   const value = env[name] ?? '';
   if (value.trim().length < minLength || value !== value.trim() || placeholder.test(value)) {

@@ -106,7 +106,11 @@ fi
 
 # Use the isolated Node toolchain if present (keeps the host's system Node untouched, and means
 # pnpm/node are found even when /opt/node20/bin isn't on the invoking shell's PATH).
-[ -d /opt/node20/bin ] && export PATH="/opt/node20/bin:$PATH"
+if [ -d /opt/node22/bin ]; then
+  export PATH="/opt/node22/bin:$PATH"
+elif [ -d /opt/node20/bin ]; then
+  export PATH="/opt/node20/bin:$PATH"
+fi
 
 # deploy/.env.production.example, NOT .env.example. The pointer was changed to .env.example during the
 # ADR-0077 slice-3 remediation and that was a regression: .env.example is the DEVELOPER template — it

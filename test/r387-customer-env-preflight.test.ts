@@ -25,10 +25,11 @@ const SAFE_ENV: Record<string, string> = {
 
 function runDeploy(
   changes: Record<string, string | undefined> = {},
-  options: { args?: string[]; script?: string; extraFile?: string; inherited?: Record<string, string>; removeGuard?: boolean; template?: boolean } = {},
+  options: { args?: string[]; script?: string; extraFile?: string; inherited?: Record<string, string>; removeGuard?: boolean; template?: boolean; nodeVersion?: string } = {},
 ) {
   // deploy.sh prepends this host-specific toolchain; make a shadowed shim a loud test failure.
   expect(fs.existsSync('/opt/node20/bin')).toBe(false);
+  expect(fs.existsSync('/opt/node22/bin')).toBe(false);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'r387-customer-env-'));
   dirs.push(dir);
   const bin = path.join(dir, 'bin');
@@ -51,9 +52,14 @@ function runDeploy(
       .map(([name, value]) => `${name}=${quote(value!)}`).join('\n'));
   if (options.extraFile) fs.writeFileSync(path.join(dir, options.extraFile), 'ALLOW_DEMO_SESSION=true\n');
   fs.writeFileSync(path.join(dir, 'pnpm-lock.yaml'), 'fixture\n');
+  // Exercise the production check in a process reporting an obsolete runtime, without requiring an
+  // obsolete executable on the developer's machine. This only affects the disposable Node shim.
+  const versionImport = options.nodeVersion ? ` --import ${quote(path.join(bin, 'node-version.mjs'))}` : '';
+  if (options.nodeVersion) fs.writeFileSync(path.join(bin, 'node-version.mjs'),
+    `Object.defineProperty(process.versions, 'node', { value: ${JSON.stringify(options.nodeVersion)} });\n`);
   for (const command of ['pnpm', 'node', 'psql', 'sudo', 'systemctl', 'sha256sum']) {
     const body = command === 'node'
-      ? `if [ "$1" = "deploy/check-customer-env.mjs" ]; then exec ${quote(process.execPath)} "$@"; fi\n`
+      ? `if [ "$1" = "deploy/check-customer-env.mjs" ]; then exec ${quote(process.execPath)}${versionImport} "$@"; fi\n`
       : command === 'sha256sum' ? "printf 'fixturehash  %s\\n' \"$1\"\n" : '';
     const file = path.join(bin, command);
     fs.writeFileSync(file, `#!/bin/sh\nprintf '%s\\n' "${command} $*" >> "$DEPLOY_TRACE"\n${body}exit 0\n`);
@@ -89,6 +95,9 @@ function refused(result: ReturnType<typeof runDeploy>, setting: string) {
 }
 
 describe('customer deploy refuses unsafe configuration before any install or database work', () => {
+  it('refuses an obsolete customer Node runtime before installation', () => {
+    refused(runDeploy({}, { nodeVersion: '20.20.0' }), 'Node.js 22');
+  });
   it.each(['true', 'TRUE', '1'])('refuses ALLOW_DEMO_SESSION=%s even with --customer', (value) => {
     refused(runDeploy({ ALLOW_DEMO_SESSION: value }), 'ALLOW_DEMO_SESSION');
   });
