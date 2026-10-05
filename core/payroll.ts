@@ -4731,7 +4731,15 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         if((r.statutory as {pcbNonCash?:unknown}|null)?.pcbNonCash!==undefined&&!saved)throw new Error('Saved PCB non-cash ownership is malformed');
         if(r.runType==='regular'){
           const detail=readPcbExemptions((r.statutory as {pcbExemptions?:unknown}|null)?.pcbExemptions);
-          if(detail?.payPeriod===batch.payPeriod) earlierExemptionLimits.set(r.employmentId,new Map(detail.rows.filter(x=>x.table==='pcb').map(x=>[x.code,x.annualLimit])));
+          const caps=new Map<string,number|null>();
+          const previous=earlierExemptionLimits.get(r.employmentId);
+          if(detail?.payPeriod===batch.payPeriod)for(const row of detail.rows.filter(x=>x.table==='pcb'))caps.set(row.code,row.annualLimit);
+          // The existing ownership reader may encounter multiple regular records. Their order must
+          // not invent a historical limit: absent or conflicting cap evidence is unavailable.
+          if(previous)for(const code of new Set([...previous.keys(),...caps.keys()])){
+            if(!previous.has(code)||!caps.has(code)||previous.get(code)!==caps.get(code))caps.set(code,null);
+          }
+          earlierExemptionLimits.set(r.employmentId,caps);
         }
         if(saved){
           nc.ownedEntries.push(...saved.ownedEntries);
@@ -5445,6 +5453,9 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       const exemptionInformation = new Map<string, PcbExemptionRow>();
       const reusedExemption = new Map<string, number>();
       const recordExemption = (code: string, table: 'pcb'|'lp', annualLimit: number|null, item: string, reusedAmount?: number) => {
+        // Existing headroom treats every negative cap as unlimited; canonicalize that display
+        // sentinel without changing the calculator's resolved cap.
+        if(annualLimit!==null && annualLimit<0)annualLimit=-1;
         const row=exemptionInformation.get(code);
         if(row){
           if(row.annualLimit!==annualLimit) row.annualLimit=null;
