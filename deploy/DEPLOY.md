@@ -88,38 +88,37 @@ rsync -az --delete \
 
 ## 2. One-time database bootstrap
 
-Generate **three** DB passwords and create the database + the three roles (owner, app, platform):
+Generate and save **three distinct strong passwords** in your password manager (owner, app,
+platform). Use 48 random hexadecimal characters for each so they are URL-safe inside the database
+connection strings. Run the bootstrap as the PostgreSQL administrator and paste each password at its
+hidden prompt:
 
 ```bash
 cd /opt/ai-hr
-# hex (not base64) so the passwords are URL-safe inside the postgresql:// connection strings:
-OWNER_PW=$(openssl rand -hex 24); APP_PW=$(openssl rand -hex 24); PLATFORM_PW=$(openssl rand -hex 24)
-sudo -u postgres psql -v owner_pw="$OWNER_PW" -v app_pw="$APP_PW" -v platform_pw="$PLATFORM_PW" \
-  -f deploy/bootstrap-db.sql
+sudo -u postgres deploy/bootstrap-db.sh
 ```
 
-> **ALL THREE `-v` FLAGS ARE REQUIRED — omitting one creates NO ROLES AT ALL, not two of three.**
-> An undefined `:'var'` is a psql **syntax error**, not an empty string, so that `set_config` line
-> never runs; the `DO` block then calls `current_setting()` on the unset GUC and throws; and a `DO`
-> block is a single statement, so the failure rolls back the *whole* block including the `CREATE ROLE`
-> statements that had already succeeded inside it. Verified on PostgreSQL 16.14, 2026-08-09. This
-> section previously documented only two, which is why an install can end up with no `ai_hr_platform`
-> (see "Provisioning the platform plane" below).
+For automation, supply exactly three newline-terminated records through a protected stdin pipe, in
+owner/app/platform order, and invoke `sudo -u postgres deploy/bootstrap-db.sh --stdin`. Disable shell
+tracing before accessing secrets. Do not put literal secrets or password-bearing connection strings
+in command arguments, terminal output, or shell history. The wrapper does not generate or save
+passwords; keep them in the password manager for configuring `.env.production` next.
 
-Read the passwords back from your shell when you fill in `.env.production` — `echo` them only if you
-must. They are about to be written to a `0600` file; printing them also puts them in your shell
-history and your terminal scrollback.
+**All three passwords must be present and non-empty.** The wrapper refuses before invoking database
+commands when input is missing, empty, or incomplete. The SQL independently checks all three before
+creating any role or database, including when somebody bypasses the wrapper. This needs **psql 16 or
+newer**: [`\getenv`](https://www.postgresql.org/docs/16/app-psql.html) reads credentials from the
+short-lived client environment; no password enters `sudo`/`psql` command arguments. `psql -X` ignores
+startup files, and the bootstrap suppresses query echo and password-valued query output. Only run it
+from a trusted administrator session; root/the PostgreSQL account and privileged audit tooling can
+still inspect process environments or SQL. Configure database/audit logs to avoid recording the raw
+credential statements, and never enable shell tracing around secret input.
 
 This creates `ai_hr` owned by `ai_hr_owner`, the non-privileged `ai_hr_app`, the BYPASSRLS
 `ai_hr_platform` control-plane role (ADR-0077 D5), and the default privileges that auto-grant later
 migrations' tables to the app role (see the comments in the SQL — do not blanket-grant after
-migrating).
-
-> Secret hygiene, known and not yet fixed: these passwords are passed to `psql` in **argv**, so sudo
-> records them in `/var/log/auth.log` and `/proc/<pid>/cmdline` is world-readable while psql runs.
-> `deploy/provision-platform-role.sh` shows the fix (pipe the statement in on **stdin** — a `printf`
-> builtin never enters the process table). Converting `bootstrap-db.sql` to psql 16's `\getenv` is the
-> clean follow-up; it is not done here because that file is pinned by `test/platform-plane.test.ts`.
+migrating). New credentials are stored as SCRAM-SHA-256 verifiers. Re-running bootstrap preserves
+existing roles and their passwords; this is not a password-rotation tool.
 
 ## 3. Configure the environment (gated demo)
 
@@ -154,6 +153,10 @@ This installs deps, builds, runs migrations (as the owner), and seeds the demo d
 
 ## Deploying for a customer (replaces steps 3 and 4)
 
+Use [CUSTOMER.md](CUSTOMER.md) for the customer host's dedicated service account, separate runtime
+secrets, hardened systemd unit, installation sequence and verification. The demo service/cron
+instructions below are not a customer isolation profile.
+
 Steps 0, 1 and 2 above are unchanged — same prerequisites, same code sync, same database bootstrap.
 Then, instead of steps 3 and 4:
 
@@ -166,25 +169,30 @@ Fill in:
 - `DATABASE_URL` → `postgresql://ai_hr_app:<APP_PW>@localhost:5432/ai_hr`
 - `MIGRATION_DATABASE_URL` → `postgresql://ai_hr_owner:<OWNER_PW>@localhost:5432/ai_hr`
 - `AI_CONFIG_SECRET` → `openssl rand -base64 32` (keep it stable — changing it breaks stored AI keys)
-- `SHARE_PASSWORD` → a strong password, until the WorkOS cutover replaces it
+- `SHARE_PASSWORD` → a strong holding-gate password (still required alongside WorkOS)
 - `AUDIT_HASH_CHAIN_ENABLED=true` → **leave it on, and do not deploy without it.** There is no
   backfill; every event written before it is armed is permanently unchained (readiness 1.2).
 - `NODE_ENV=production`, `PORT` → leave as-is
-- `WORKOS_*` → uncomment and fill during the cutover (`docs/WORKOS-CUTOVER.md`, readiness 1.3)
+- `WORKOS_API_KEY`, `WORKOS_CLIENT_ID`, `WORKOS_COOKIE_PASSWORD` and
+  `NEXT_PUBLIC_WORKOS_REDIRECT_URI` → required before deploying, including `--migrate-only`; register
+  the exact HTTPS `/callback` URL in WorkOS. The demo cutover's temporary identity switcher is not
+  allowed on a customer deployment.
 
 There is **no** `ALLOW_DEMO_SESSION`, `DEV_TENANT_ID` or `DEV_USER_ID` in this file. Do not add them,
 and do not build this file by copying `deploy/.env.production.example` and editing it — their absence
-is load-bearing, not cosmetic.
+is load-bearing, not cosmetic. Remove `.env`, `.env.local`, and `.env.production.local`; the customer
+preflight refuses these additional files so Next cannot reload conflicting configuration.
 
 ```bash
-./deploy/deploy-customer.sh
+PATH=/opt/node22/bin:$PATH ./deploy/deploy-customer.sh --migrate-only
 ```
 
 Same spine as `deploy.sh` — install, audit-chain preflight, build, migrate as the owner, seed the
 module/setting catalogs, restart — with the demo seeder unreachable and `DEV_TENANT_ID` not required.
 `--migrate-only` works the same way; `--reseed` is refused.
 
-Then continue with step 5 (systemd) and step 5b (the scheduled sweeps, which are **required**).
+Then complete cache permissions, the customer systemd installation and the scheduled-job separation
+in [CUSTOMER.md](CUSTOMER.md). Required sweeps still need to be configured and verified.
 
 The first tenant is created through the operator console / provisioning runner (step 5b), **not** by a
 seed script. A customer deployment starts with an empty `tenant` table and that is correct.

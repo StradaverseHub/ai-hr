@@ -10,6 +10,40 @@ https://claude.ai/code/artifact/db91c3d8-a733-4844-ac46-843873b245c1
 **Every claim here is one of: FACT (verified in code or live data) · OBSERVATION · UNKNOWN.** Nothing was
 carried over from prose. `docs/HANDOFF-HISTORY.md` was used only as an index of where to look.
 
+## Verified corrections — 2026-10-05
+
+**Scope.** Code was inspected at `main@2c1c47d6`; this documentation audit did not rerun tests or conduct a
+customer rehearsal. The live facts below were supplied by the coordinating deployment audit's read-only
+checks on the same date. Sections without a 2026-10-05 verification retain their original survey findings
+and require revalidation before action. Older measurements are historical evidence, not current capacity proof.
+
+- **FACT — deployment parity:** local and remote migration journals both contain 417 applied migrations.
+  Application source checksums match; the differences are generated TypeScript build metadata and scratch
+  PDFs. Source parity does not itself prove that the running build is current or secure.
+- **FACT — customer controls still open:** the live deployment has `ALLOW_DEMO_SESSION=true`, no WorkOS
+  environment variables or real WorkOS subjects, and no audit-chain flag; 16,551 events exist, zero chained.
+  There is no scheduled backup, `BACKUP_DEST` is absent and PostgreSQL has `archive_mode=off`. A successful
+  restore of a current production backup was not established by this audit.
+- **FACT — partial operations controls:** eight jobs use the installed cron-alert wrapper; provisioning and
+  entitlement heartbeat checks and user-level log rotation are scheduled. `AIHR_ALERT_COMMAND` is absent:
+  local failure records are not proof that a human receives alerts. All 185 public tables have RLS enabled
+  and `ai_hr_app` is `NOBYPASSRLS`; these flags alone do not prove every authorization path.
+- **FACT — runtime separation gap:** the environment file is mode 600, but the active `aihr` service's
+  `UnsetEnvironment` is empty. The repository's owner-credential exclusion is not installed on the live
+  service. Install and verify runtime exclusion of migration/owner credentials before customer data.
+- **FACT — capacity baseline:** the current shared host has 2 vCPU and 3,915 MiB RAM. The user confirmed
+  4,000 employees at launch, growing gradually. Neither the current host nor proposed replacements have a
+  measured 4,000-employee capacity result; clock-in bursts and payroll jobs must be included in the test.
+- **FACT — implemented code:** filing acknowledgment, submitted/amended state, filing reversal and filed
+  warnings exist (3.2). Each attendance holiday-loader invocation resolves distinct calendar input groups, rather than
+  blindly once per employee (7.2). These fixes do not establish an accepted customer filing or a complete
+  immutable payroll correction workflow (3.4).
+
+**Release requirements remain:** real authentication and customer provisioning, audit-chain activation
+before the first customer write, off-box backups and a timed restore, confirmed human alerts, stable
+controlled hosting, runtime credential separation, customer payroll/filing rehearsals and a production-like
+4,000-employee load test. The multi-replica requirements in 7.3 must be met before adding app replicas.
+
 ---
 
 ## THE VERDICT
@@ -17,26 +51,27 @@ carried over from prose. `docs/HANDOFF-HISTORY.md` was used only as an index of 
 **The product is further along than its own documentation says, and further from a paying customer than
 its feature list suggests.** Those are two different statements and both are true.
 
-**What is genuinely built and proven.** The payroll calculation engines (EPF, SOCSO/SKBBK, EIS, PCB with
+**What is implemented, with prior verification recorded below.** The payroll calculation engines (EPF, SOCSO/SKBBK, EIS, PCB with
 replayed accumulators, HRDF, zakat) are golden-tested against the agencies' own worked examples. Tenant
-isolation is real and enforced at the database: `ai_hr_app` is `NOBYPASSRLS`, 173 of 173 tables carry RLS
-(172 at survey time — 0465 closed the last one, see 1.7), and a live probe returned zero rows without a
-tenant context and zero foreign-tenant rows with one.
+isolation has a database backstop: `ai_hr_app` is `NOBYPASSRLS` and 185 of 185 public tables carry RLS
+(2026-10-05). The original survey's live probe returned zero rows without a tenant context and zero
+foreign-tenant rows with one; that historical probe is not a fresh exhaustive authorization test.
 Migration safety is unusually good — a shadow-migrate gate against the live schema shape, plus an upgrade
-rehearsal against a populated baseline. The five nightly sweeps have run 119 times with zero failures.
-Employee import is real and has been used six times. Real authentication (WorkOS) is **fully written**:
+rehearsal against a populated baseline. The original survey recorded 119 successful sweep runs and six
+employee imports; those counts are historical demo evidence. Real authentication (WorkOS) is implemented:
 login, callback, invitation, password reset, an auth audit writer, and a six-step cutover runbook.
 
-**What stands between here and a customer.** Authentication has never been switched on. The documented
-deploy path seeds demo data into the target database. There are no backups. Nothing alerts (r291 added `GET /health` and wrote the cron-alert and logrotate configs, but nothing is monitoring the endpoint and neither config is installed — see 1.6). Nothing has
-ever been filed with any agency, and there is no state in the data model that means "filed". And there is
-no customer: production holds two tenants, `System (auth audit)` and `Demo Group`, so every reassuring row
-count in this system describes seeded demo data. **No feature in this product has ever been exercised
-against real employee data.**
+**What stands between here and a customer.** The live deployment remains in demo mode without WorkOS
+configuration. A guarded customer deploy path exists (1.1), but customer cutover is not complete. Backups
+are not scheduled, audit chaining is off, and installed local alert/log-rotation machinery has no verified
+human delivery (1.2–1.6). Filed state and acknowledgments are implemented (3.2); accepted customer filings,
+a customer payroll reconciliation and recovery rehearsal remain unverified. The existing shared host is
+not proven for the confirmed 4,000-person launch, and several screens still read or send the full employee
+population (7.2). Runtime owner-credential exclusion and multi-replica coordination also remain open.
 
-**Recommendation.** Do not put real employee data on this deployment in its current state. The path to a
-first customer is a few weeks of unglamorous work, not a rebuild — the hard half (calculation, isolation,
-migration safety) is done. Work Part 1 in order; the order matters and is explained below.
+**Recommendation.** Complete and verify Part 1 before loading real employee data. Use the 4,000-person
+workload to validate the proposed hosting resources, then complete customer payroll and filing rehearsals.
+This audit provides no release-date estimate and does not certify the current deployment for customer use.
 
 ---
 
@@ -45,12 +80,11 @@ migration safety) is done. Work Part 1 in order; the order matters and is explai
 These are ordered by dependency, not by severity. Two of them cannot be done later.
 
 ### 1.1 Fix the deploy path so it cannot seed demo data — DO THIS FIRST
-`deploy/deploy.sh:40` hard-requires `DEV_TENANT_ID`, and `:174-177` runs `db/seed.ts` (the demo seeder)
-whenever that tenant row is absent from the target database. `deploy/DEPLOY.md:111` instructs the operator
-to leave `ALLOW_DEMO_SESSION`, `DEV_TENANT_ID` and `DEV_USER_ID` "as-is".
-**Following the documented runbook on a customer box plants Demo Group in their production database on the
-first deploy.** Write a customer deploy path that neither requires `DEV_TENANT_ID` nor can invoke the
-seeder, and make the seeder refuse to run when `NODE_ENV=production` and the demo flag is unset.
+**Historical defect, fixed by r290 below.** At the original survey, `deploy/deploy.sh:40` hard-required
+`DEV_TENANT_ID`, and `:174-177` ran `db/seed.ts` (the demo seeder) whenever that tenant row was absent from
+the target database. The old runbook instructed the operator to leave demo variables "as-is", allowing
+demo data into a customer database. The implemented customer path and seeder guards below close that
+documented path; using the separate demo configuration retains the stated residual risk.
 
 - [x] Customer deploy path exists and is documented separately from the demo one — r290:
       `deploy/deploy-customer.sh` (== `deploy.sh --customer`) plus `deploy/.env.customer.example` and
@@ -68,7 +102,7 @@ seeder, and make the seeder refuse to run when `NODE_ENV=production` and the dem
 > way. It closes properly by deleting the demo deploy path once the consultant demo is retired.
 
 ### 1.2 Arm the audit hash chain — THIS ONE IS NOT RETROACTIVE
-Production holds 11,195 `domain_event` rows and **zero** are chained. `AUDIT_HASH_CHAIN_ENABLED` is absent
+As of 2026-10-05, production holds 16,551 `domain_event` rows and **zero** are chained. `AUDIT_HASH_CHAIN_ENABLED` is absent
 from `.env.production`. There is no backfill: every event written before it is armed is permanently
 unprotected (ADR-0030, and `deploy/DEPLOY.md`'s own "there is no way back afterwards").
 **Arm it before the first real record is written, not after.** If tamper-evidence is part of what is being
@@ -86,15 +120,16 @@ action.** `deploy/.env.customer.example` already carries `AUDIT_HASH_CHAIN_ENABL
 path starts armed rather than needing someone to remember. This decision is reversible for the demo box at
 any time; the customer-box requirement is not, which is why it is written down rather than assumed.
 
-- [x] `AUDIT_HASH_CHAIN_ENABLED=true` set on the customer deployment before first data load — **the
-      customer template ships it on; verify on the box before first load**
+- [x] Customer environment template sets `AUDIT_HASH_CHAIN_ENABLED=true`
+- [ ] `AUDIT_HASH_CHAIN_ENABLED=true` verified on the customer deployment before first data load
 - [ ] Verified: new events carry `chain_seq`, `prev_hash` and `hash`
-- [ ] Decision recorded if it is deliberately left off
+- [x] Decision recorded for leaving it off on the gated demo — r295; this does not waive the customer requirement
 
 ### 1.3 Run the WorkOS cutover
-`.env.production` contains no `WORKOS_*` key and sets `ALLOW_DEMO_SESSION=true`, so `lib/session.ts:231-248`
-takes the dev-switcher branch and **the deployed system authenticates nobody**. All nine `app_user` rows
-carry placeholder subjects; `app_invitation` is empty; no `auth%` domain event has ever been written.
+The 2026-10-05 live check found no WorkOS environment variables or real WorkOS subjects and
+`ALLOW_DEMO_SESSION=true`. The application remains in demo session mode; a shared password is not
+individual employee authentication. Invitation and auth-event counts below belong to the original survey
+unless separately dated.
 
 Two live consequences, both measured on the box:
 - `/login` sits outside the password gate by design (`lib/auth-routes.ts:14` — `AUTH_ROUTE_PREFIXES`, not
@@ -143,15 +178,12 @@ be named, so test, and an environment that never set `NODE_ENV` at all, both ref
       verified with a real `next build` + `next start` (503 on `/`, `/login` and with Basic credentials)
 
 ### 1.5 Backups, and a restore that has actually been tested
-`crontab -l`, `cron.d`, `cron.daily` and `systemctl list-timers` contain **no dump job**. `archive_mode=off`
-and `wal_level=replica`, so there is no point-in-time recovery. Every dump on the box is an ad-hoc
-pre-migration artefact, all on the same disk as the database. `deploy/DEPLOY.md` (28 KB) mentions backup,
-restore and rollback exactly zero times. The only restore rehearsal on the box **failed**
-(`/home/ubuntu/rehearsal-restore.log` ends `database "ai_hr_rehearsal" does not exist`).
-Today the recovery-point objective is "whenever someone last dumped by hand" and the recovery-time
-objective is unknown. **An untested backup is not a backup.**
+**Current live facts, 2026-10-05:** no backup cron job, no `BACKUP_DEST`, and `archive_mode=off`. Scheduled
+off-box recovery and point-in-time recovery are not established. Backup/restore scripts and documentation
+now exist, but a successful timed restore of a current production dump was not verified. The original
+survey's ad-hoc dumps and failed rehearsal do not establish a recovery-point or recovery-time guarantee.
 
-**What r291 built, and exactly where it stops.** Two scripts, both runnable, **neither installed** —
+**What r291 built, and exactly where it stops.** Two scripts, **not scheduled on the live box** —
 `scripts/backup-db.sh` and `scripts/restore-rehearsal.sh`, shared plumbing in `scripts/backup-lib.sh`,
 documented in `deploy/DEPLOY.md` under "Backups, restore and rollback", and exercised end to end
 against a real cluster by `test/r291-backup-and-restore-rehearsal.test.ts`. The survey's findings above
@@ -164,8 +196,8 @@ destination by the timestamp in the filename and never below a floor, and exits 
 stage-specific code on every failure. It chooses a `pg_dump` at least as new as the server rather than
 inheriting whatever is on `PATH`.
 
-**The rehearsal is the half that has never worked here, and the thing that makes it a rehearsal is that
-it can FAIL.** "Usable" is defined as: the archive is the one the manifest describes; the target exists
+**A current production restore remains unverified; the rehearsal is designed to detect failures.**
+"Usable" is defined as: the archive is the one the manifest describes; the target exists
 and is reachable *before* `pg_restore` runs; `pg_restore --exit-on-error` completes; the schema, exact
 row counts, RLS flags, policy counts and drizzle watermark all match the manifest by diff; and **the
 application role** — `ai_hr_app`, `NOBYPASSRLS` — reads exactly what it read at backup time with a
@@ -188,8 +220,8 @@ this repo's call. `deploy/DEPLOY.md` states the manual sequence instead.
 - [ ] Scheduled `pg_dump` with retention, to an **off-box** destination — DECISION REQUIRED: the
       destination (another host over ssh, or object storage through `BACKUP_SHIP_CMD`) and the
       schedule. Until both are chosen, nothing runs and this item is not closed.
-- [ ] WAL archiving or a replica, if the customer's tolerance requires point-in-time recovery —
-      still `archive_mode=off`, `wal_level=replica` (2026-09-16). The recovery point is the last dump.
+- [ ] WAL archiving with base backups, or managed point-in-time recovery, if required by the customer's
+      recovery objective — `archive_mode=off` on 2026-10-05. A replica alone is not a historical backup.
 - [ ] The rehearsal RUN against a real production dump, and the restore time written down. It has been
       run only against a fixture: production is SELECT-only from here and `pg_dump` against it is
       blocked, so the first real timing has to be taken on the box.
@@ -244,7 +276,7 @@ Verified by running, not by reasoning: a real `next build` + `next start` with t
 port answers `503 {"status":"unhealthy"}` and logs `✗ HEALTH: … Reason: connect ECONNREFUSED
 127.0.0.1:5999`, with the host and port in the journal and absent from the body.
 
-`deploy/cron-alert.sh` and `deploy/logrotate-aihr` are **written but NOT installed** — both change the
+**At the end of r291**, `deploy/cron-alert.sh` and `deploy/logrotate-aihr` were **written but not installed** — both change the
 crontab or `/etc`, which is the owner's to do. Install steps are in `deploy/DEPLOY.md` §5c. The wrapper
 moves the redirect inside the job (restoring cron's mail path), alerts through `logger -p user.err`,
 stdout and an optional `AIHR_ALERT_COMMAND`, preserves the exit status through all three, timestamps each
@@ -289,14 +321,14 @@ is nothing to drop and logrotate refuses it outright. Adding it back breaks rota
 **IF THE ROOT INSTALL IS EVER DONE, delete the crontab line that drives this** — two rotations racing over
 one set of files is worse than either alone. Noted in both the config header and the crontab comment.
 
-- [x] Log rotation configured — **user-level, r295; root install still preferred and still available**
-
-- [x] Non-zero exit on any of the six cron jobs reaches a human — **done r295, proven on live traffic** — **wrapper written and tested, awaiting
-      the owner's crontab edit** (`deploy/cron-alert.sh`, `DEPLOY.md` §5c)
+- [x] Log rotation configured — user-level r295; scheduled installation reverified 2026-10-05
+- [x] Eight cron jobs use the failure-reporting wrapper — installed, reverified 2026-10-05
+- [ ] A non-zero job exit and a stale heartbeat reach a nominated human — `AIHR_ALERT_COMMAND` is absent
+      on 2026-10-05; local logs/cron output do not prove human delivery. Exercise an end-to-end alert.
 - [ ] Application 5xx reaches a human — **still open**; the design is above, the decision is the owner's
 - [x] A health endpoint exists — `GET /health`, ungated, database-backed, 503 when it cannot serve.
       **"and is monitored" is still the owner's step**: nothing here points a monitor at it
-- [ ] Log rotation configured — **config written and tested, awaiting `cp` to `/etc/logrotate.d/aihr`**
+- [ ] Health endpoint watched by an external monitor with verified human delivery
 - [ ] Somebody is nominated as on call
 
 ### 1.7 Close the one RLS hole before a second tenant exists — DONE (r290, migration 0465)
@@ -335,7 +367,10 @@ The app listens on `127.0.0.1:3000`. Public access is a Cloudflare **quick** tun
 18 June, not under systemd (`systemctl is-active cloudflared` → inactive), on a random
 `*.trycloudflare.com` hostname with no SLA and no access control. If that process dies the customer's URL
 changes and nothing restarts it. nginx on the box serves only an unrelated co-tenant application.
-There is **no rate limiting anywhere** — the shared password can be brute-forced without limit or alarm.
+The hosting description above is the original survey, not a newly verified public-endpoint inventory.
+**Code checked 2026-10-05:** `middleware.ts:106-152` contains no throttle for the shared-password path and
+no application-wide limiter was found. Edge protection remains unverified; WorkOS-owned auth protection
+must be assessed separately once real authentication is configured.
 
 - [ ] Named tunnel under systemd, or nginx with a real certificate, on a stable hostname
 - [ ] Rate limiting at the edge and on the authentication path
@@ -386,10 +421,10 @@ as never-configured and stays silent. `deleteEntitlementTemplate` already refuse
 days, but that guard is an approximation — the ledger records no template reference at all — so closing
 this needs the deciding lineage recorded on the grant, which is a schema change and a separate item.
 
-- [x] An alarm for "a leave type resolves for nobody" at tenant scale — **built r296**, awaiting the
-      crontab line (`deploy/DEPLOY.md` §5c, one line beside the six)
-- [x] An alarm for "a tenant's entitlement templates in force dropped to zero" — **built r296**, same line
-- [ ] The crontab line and its 48-hour heartbeat staleness check installed on the box — **owner's step**
+- [x] An alarm for "a leave type resolves for nobody" at tenant scale — built r296
+- [x] An alarm for "a tenant's entitlement templates in force dropped to zero" — built r296
+- [x] Entitlement alarm and its heartbeat staleness check scheduled — reverified 2026-10-05;
+      human alert delivery remains open in 1.6
 
 ### 2.2 Master data must be complete before month one
 Of 73 rows in `employee_statutory_my`: **30 have no tax number, 31 no EPF number, 47 no SOCSO number,
@@ -484,14 +519,21 @@ file passes **unmodified**. Both screens now produce identical bytes and one fil
       button on the Borang 8A review screen; the Reports download shows nothing. Needs a message key in all
       six locales; not done in r296.
 
-### 3.2 There is no "filed" state to reach
-All 20 `statutory_report` rows on production are `draft`. Both insert sites hardcode `status: 'draft'` and
-no code anywhere updates that column, so `final`, `submitted` and `amended` are unreachable. The unlock
-warning that claims `statutoryFiled` actually means "somebody generated a draft", so it misleads in both
-directions.
+### 3.2 Filed state and acknowledgments — IMPLEMENTED; customer filing unverified
+**Code verified 2026-10-05:** `core/reporting.ts:506` implements `markReportFiled`, checking
+`payroll.statutory_file` permission, requiring an acknowledgment reference and recording the filing date,
+timestamp and actor. It sets `submitted`, or `amended` when a previously filed report for the same company,
+type and period exists, and appends an audit event. `reverseReportFiling` (`:633`) requires a reason,
+returns the report to draft and preserves the removed filing evidence in its audit event. The actions are
+wired in `app/payroll/reports/actions.ts:58-85`.
 
-- [ ] A mark-as-filed action recording who, when and the acknowledgement reference
-- [ ] `statutoryFiled` means filed
+`core/payroll.ts:1031-1068` now derives `statutoryFiled` from submitted/amended statuses, excluding mere
+draft generation. These are application records of a filing; they do not themselves submit to an agency
+or prove an agency accepted the artifact. Original survey draft counts are historical.
+
+- [x] Mark-as-filed action records who, when and the acknowledgment reference — verified in code
+- [x] `statutoryFiled` distinguishes filed reports from drafts — verified in code
+- [ ] Customer filing rehearsal completed, accepted artifact and acknowledgment independently checked
 
 ### 3.3 No bank payment file, no e-filing
 `localization/my/bank-files/` contains one file, a **2014-vintage** BNM routing table flagged RE-VERIFY
@@ -503,11 +545,18 @@ or MyInvois host. Every payment and every return is a manual key-in today.
 - [ ] BNM routing codes re-verified against PayNet
 - [ ] Manual portal key-in accepted and documented, or an integration scoped
 
-### 3.4 A filed month cannot be corrected without rewriting history
-The payroll status enum is `draft | processed | closed` — there is no `paid`, `reversed` or `void`, and no
-contra. Closed payslips are immutable at the database trigger. The only correction path is unlock → reset
-(which **deletes** the payslips) → regenerate → re-close. Both `PAYROLL_UNLOCK_ENABLED` and
-`PAYROLL_RESET_ENABLED` are **on in production**.
+### 3.4 A complete filed-month correction procedure remains open
+**Code verified 2026-10-05:** additional payroll runs exist, but the filed-period guard
+(`core/payroll.ts:1904-1913`, `:1967`, `:3536-3542`; `core/statutory-filed.ts:187`) prevents treating another
+run as a general solution once statutory filing/payment evidence exists. EA overrides with reasons and
+audit evidence also exist (`core/ea-override.ts:203`), but affect EA fields only, not payroll totals,
+CP8D/Form E or an agency amendment workflow.
+
+The gated unlock/reset path still exists. Unlock requires a reason (`core/payroll.ts:8553`); reset deletes
+payslip rows before regenerating (`:8306`, `:8374`). A filing reversal or an `amended` report label does
+not create immutable contra payroll entries or obtain agency acceptance. A customer correction/refiling
+procedure and the customer's unlock/reset policy remain required. The original survey's enabled flags
+were not reverified for a customer deployment in this audit.
 
 - [ ] Correction story defined: contra payslip and amended return, or a documented refile procedure
 - [ ] Decide whether unlock and reset stay enabled on a customer deployment
@@ -574,18 +623,21 @@ status in one transaction) and ticks every 60 seconds writing 1.3 MB of "nothing
 
 - **Statutory calculation engines** — EPF, SOCSO with SKBBK, EIS, PCB with replayed accumulators, HRDF,
   zakat, all golden-tested against the agencies' own worked examples.
-- **Tenant isolation** — `ai_hr_app` is `NOBYPASSRLS`; 173 of 173 tables carry RLS (172 at survey time;
-  0465 closed `tenant_suspension_window`); `platform_user` is
+- **Tenant isolation** — `ai_hr_app` is `NOBYPASSRLS`; all 185 public tables carry RLS (2026-10-05;
+  0465 closed the historical `tenant_suspension_window` gap); `platform_user` is
   default-deny with no grant; `withTenant` uses transaction-scoped `SET LOCAL`. Verified live.
 - **Migration safety** — shadow-migrate against the live schema shape catches drizzle's silent-skip mode;
   the upgrade rehearsal runs against a populated baseline; the audit-chain gate runs before the build.
-- **Scheduled work** — six cron jobs, 119 recorded runs, **zero failures**, no missed days.
+- **Scheduled work** — eight jobs use the alert wrapper (2026-10-05). The original 119 successful runs
+  are historical evidence, not an assertion of no subsequent failures or missed work.
 - **Employee import** — analyse-then-commit, six real runs, ~45 optional columns, XLSX supported.
 - **Leave engine** — the deepest module in the product, and the most heavily tested.
 
 Note one accepted consequence: no table is `FORCE ROW LEVEL SECURITY`, so `ai_hr_owner` bypasses RLS
-entirely. The web tier never uses it, but **all six cron jobs do**, so for those paths correctness rests on
-application-layer scoping with no database backstop.
+entirely. Privileged maintenance jobs must remain separate from web processes. The repository service
+excludes the migration credential, but that exclusion is not active on the live service (2026-10-05);
+verify runtime separation, not only the application's chosen connection string. Jobs using owner access
+depend on application-layer scoping with no RLS backstop for that role.
 
 ---
 
@@ -629,7 +681,11 @@ silent, but the box still has no margin.
 - [x] Detach the remote deploy so a local failure cannot kill it — r291
 - [x] A deploy that fails partway is detected and reported, rather than left mixed — r291
 
-### 7.2 Pagination fetches every row — measured 2026-09-17 (r297)
+### 7.2 Pagination and payloads — historical measurements, current 4,000-person launch risks
+
+**2026-10-05 scope:** the measurements below are the 2026-09-17 r297 workstation results. They predate the
+attendance holiday fix and are not a benchmark of the current production build, proposed infrastructure
+or 4,000-person workload. Historical threshold estimates below must not be used as launch capacity limits.
 
 `lib/pagination.ts:124` (`paginateRows`) slices an already-loaded array, across **31 call sites** — not the
 61 recorded here before, which counted import lines and the definition as well as calls. Production holds 84
@@ -687,23 +743,21 @@ stop a screen shipping the whole population. The user-reachable worst case is on
 10,000-payslip run renders the 2,000-row ceiling as a **9.59 MB document in 7.3 s**. The ceiling behaved
 correctly (it said "showing the first 2,000 of 10,000"); it is simply set for a smaller world.
 
-**3. The worst screen is not a pagination problem.** `/attendance/daily` took 0.70 s at 100 employees, ~10 s
-at 1,000, and **had not returned after 14 minutes at 10,000** — superlinear, with the database idle and Node
-pinned at 100% CPU and 1.7 GB resident. The cause is `core/attendance.ts:2245`: a **sequential `await` per
-employee** (`holidayDatesFor`, a seven-join query each) for every employee with no attendance row that day.
-Proof rather than inference — on the 1,000-employee tenant, inserting one attendance row per employee for the
-measured date, which makes the loop body `continue`, took the page from **10.0 s to 0.31 s, a 32× collapse**,
-with no code change. A 5-second CPU sample of the stalled 10,000 render put ~65% of main-thread samples in
-`Builtin_ErrorConstructor` → `CaptureAndSetErrorStack` → `CaptureSimpleStackTrace`, i.e. async stack capture,
-which is why it degrades worse than linearly rather than merely N times.
+**3. The historical attendance holiday N+1 is fixed in current code.** The old daily-attendance path
+performed a sequential holiday query for each employee missing attendance; that was the defect behind the
+historical 14-minute result above. As of `main@2c1c47d6`, daily attendance calls
+`holidayDatesByEmployment` once (`core/attendance.ts:2368`), and the range loader does likewise (`:2522`).
+The helper bulk-loads employment inputs and memoizes by company, work state and holiday group
+(`core/holidays.ts:542-582`). Monthly absence resolution also memoizes that same calendar key
+(`core/absence-days.ts:425-478`; called by `core/attendance.ts:2781-2785`).
 
-**It bites hardest when the screen is most used.** The loop runs only for employees with no attendance row,
-so it is cheap on a busy afternoon and at its worst first thing in the morning before anyone has clocked in —
-and on any historical date, weekend, holiday, or tenant not using clock-in it is *always* the full N+1. At 100
-employees with no rows it is already 0.70 s, so the 1,000 ms budget falls at roughly **120 employees**.
-**Production has 84.** RISK: this one is at the edge today, not an order of magnitude away.
+Resolver work therefore scales with distinct calendar input groups, not blindly with employee count.
+This is not a constant-query guarantee when every employee has a different calendar input. The old
+per-employee warning at `core/attendance.ts:4246` is a stale comment. The fix is code evidence only:
+repeat first-morning, no-clock-in, historical-date and diverse-calendar cases at 4,000 employees before
+claiming an acceptable response time. The historical estimate of a 120-employee limit no longer applies.
 
-**4. An abandoned request keeps burning the server.** When the 10,000 measurement was cancelled client-side,
+**4. Historical cancellation behavior needs retesting.** When the old 10,000 measurement was cancelled client-side,
 Node stayed at 100% CPU for minutes and queued later requests behind it — two subsequent requests timed out
 at 300 s and the server had to be restarted. On a 2-vCPU box (7.1), one impatient reload of a slow screen
 degrades the app for every other user.
@@ -740,20 +794,66 @@ view returns to `/attendance/my-records`, its read returns to this class with it
 `components/profile-options-grid.tsx:290` · `components/system-labels-grid.tsx:584` org structure. None of these can
 plausibly pass the 2,000-row ceiling, let alone a budget.
 
-**What this round deliberately did NOT do.** No call site was rewritten and nothing was converted to
+**What the historical r297 measurement round deliberately did NOT do.** No call site was rewritten and nothing was converted to
 server-side paging: the measurement was the deliverable, and the numbers say a blanket rewrite would be aimed
 at the cheapest of the three costs. 100,000 rows was not seeded — the answer was unambiguous at 10,000, and
 the local cluster lives on a RAM disk. No timing assertion was added anywhere: a timing test is a flaky test,
-so the numbers are recorded here instead. `/attendance/daily` was not fixed — it is a different defect from
-this item, it sits in attendance/leave code that deserves its own round, and it must not ride along inside a
-measurement round.
+so the numbers are recorded here instead. Attendance was fixed subsequently, as verified above.
 
-- [ ] `core/attendance.ts:2245` — batch the per-employee holiday resolution. Every other loader in the same
-      function already batches; this is the one that did not. Highest value of anything on this list.
-- [ ] Bound the twelve client-slice call sites at the QUERY, the way `HISTORY_ROW_CAP` already does
+**Current unbounded reads confirmed 2026-10-05.** The user has confirmed 4,000 employees at launch. These
+paths still warrant query/payload limits and production-like measurements; the old small demo population
+is not a reason to defer them. Scope-fenced reads must remain scope-fenced when introducing server search.
+
+| Surface | Current source evidence | Required capacity work |
+|---|---|---|
+| Personnel employee switcher | `app/admin/personnel/page.tsx:203,488` loads all employees separately from the paged table; `employee-switcher.tsx:53` searches the full client prop | Server-backed, scoped search with bounded results; preserve access to every eligible employee |
+| Loans and employee panel | `app/admin/loans/page.tsx:67,78,154,167` reads all employees and all company loans before filtering; `components/loan-list.tsx:100` pages in the browser | Filter/page loans at the query and bound employee lookup; measure historical loan/repayment growth |
+| Monthly roster | `core/roster.ts:2553,2574,2586` loads employees, filters in memory and reads all matching assignments; `app/roster/page.tsx:470` sends cells to the client before `components/roster-grid.tsx:283` slices employees | Page employee rows and their corresponding assignments before serialization; test a 31-day window (up to 124,000 employee-date positions at 4,000 employees) |
+| Payroll run detail | `core/payroll.ts:10361-10390` reads all payslips including statutory JSON; `app/payroll/[batchId]/page.tsx:111` then slices on the server | Bound list queries independently from aggregate totals; measure full-run processing, viewing and export at 4,000 employees |
+
+An assumed 100–200 concurrently active users is a **planning assumption**, not a measured requirement or
+capacity guarantee. Validate actual clock-in burst concentration, payroll job overlap, company/calendar
+distribution, document sizes and retention. Capture response-time percentiles, error rate, queueing,
+database connection/lock pressure, CPU/RAM, transferred bytes and recovery after cancelled requests using
+synthetic data on production-equivalent resources.
+
+- [x] Batch/memoize per-employee holiday resolution — verified in current daily, range and monthly paths
+- [ ] Re-measure current attendance and the unbounded surfaces above at the 4,000-person launch workload
+- [ ] Bound growing client payloads and query reads, preserving full employee selection through scoped search
 - [ ] Decide whether `ALL_ROW_CEILING = 2000` is still right now that 2,000 rows is a 9.6 MB document. It
       truncates honestly, which is the important half; the number is the open question.
-- [ ] `/payroll/<batchId>` server-side paging — only past ~5,000 employees in one run. Not urgent.
+- [ ] `/payroll/<batchId>` query pagination and launch-scale payroll rehearsal; the historical ~5,000
+      estimate does not establish safety at 4,000 on the proposed servers
+
+### 7.3 Multiple app replicas require explicit coordination
+
+**Verified code facts, 2026-10-05:** attachments are PostgreSQL `bytea`, including employee documents
+(`db/schema.ts:5450-5461`; `core/employee-documents.ts:150-164`), so app replicas do not currently need a
+shared upload directory. Database storage, WAL, backup duration and restore sizing must include those
+blobs. Private object storage would require an application migration; it is not an existing capability.
+
+Jobs run as separate host-cron CLI processes, not timers started by the web app
+(`scripts/provision-runner.ts:4-14`). Provisioning already claims work using `FOR UPDATE SKIP LOCKED`
+(`:82-97`); do not assume every sweep has equivalent exclusion. `deploy/cron-alert.sh:92-94` executes its
+command without a distributed lock, and `core/job-run.ts:126` records results rather than acquiring a lease.
+
+The repository has no explicit shared Next.js cache handler, deployment ID or Server Actions encryption-key
+configuration in `next.config.ts`. React `cache()` in the session/viewer helpers is request memoization,
+not evidence of shared cross-replica caching. Follow the current
+[Next.js self-hosting requirements](https://nextjs.org/docs/app/guides/self-hosting): replicas must serve the
+same build artifact, share the appropriate Server Actions key and handle deployment version skew; persistent
+cache use and invalidation need an explicit multi-instance design. A Redis service alone does not satisfy
+these requirements.
+
+- [ ] Deploy one immutable build across replicas; configure and verify shared Server Actions key handling
+      and rolling-deployment version behavior without exposing secrets
+- [ ] Audit persistent cache/invalidation usage and exercise cross-replica action requests after a rollout
+- [ ] Run one scheduler, or implement per-job distributed leases plus retry/idempotency checks before
+      enabling duplicate runners; preserve the provisioning queue's existing claim semantics
+- [ ] Add/verify edge rate limits and appropriate application request limits, including clock-in burst tests
+- [ ] Separate web, worker and migration credentials; constrain database connection pools across all replicas
+- [ ] Validate private database access, encrypted backups and a timed restore with representative attachment
+      volume before accepting hosting resources as sufficient
 
 ---
 
@@ -766,9 +866,9 @@ measurement round.
   which answer is right. v2.0 has never been uploaded from this system, and the system starts writing it
   on 1 October 2026.
 - The seven PCB relief figures, against a primary source: the LHDN specification URL 404s.
-- Load behaviour at customer scale ON THE BOX. 7.2 measured four screens on a workstation, but nothing
-  has ever been load-tested on production itself, whose 2 vCPU / 3.9 GB is the binding constraint.
-- Whether a restore of the current dumps actually succeeds — the one rehearsal on the box failed for an
-  unrelated permission reason and was never retried.
-- Anything at all about real customer data, because there has never been any.
+- Current performance at the confirmed 4,000-person launch workload, including clock-in bursts and payroll
+  overlap, on the proposed production resources. The historical workstation results do not establish this.
+- Whether a current production backup can be restored within the agreed recovery objective.
+- Customer payroll reconciliation, accepted filing and operational rehearsal evidence; this audit did not
+  inspect real employee records or conduct those exercises.
 </content>

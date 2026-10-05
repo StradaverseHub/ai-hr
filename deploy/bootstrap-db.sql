@@ -1,11 +1,8 @@
 -- AI HR — one-time database bootstrap (run as a Postgres SUPERUSER).
 --
---   sudo -u postgres psql \
---     -v owner_pw=CHANGE_ME_OWNER_PW \
---     -v app_pw=CHANGE_ME_APP_PW \
---     -v platform_pw=CHANGE_ME_PLATFORM_PW \
---     -f deploy/bootstrap-db.sql
---   (pass the passwords WITHOUT surrounding quotes — psql's :'var' form quotes them for you.)
+--   sudo -u postgres deploy/bootstrap-db.sh
+-- The wrapper reads hidden prompts (or --stdin), then supplies environment variables to psql 16+.
+-- Never put passwords in command arguments: sudo logs them and process listings expose them.
 --
 -- Creates the `ai_hr` database and the THREE roles the app needs:
 --   • ai_hr_owner    — owns the schema; runs migrations + seed (MIGRATION_DATABASE_URL).
@@ -27,6 +24,21 @@
 -- the migrations deliberately REVOKE (the encrypted ai_provider_config.api_key_ciphertext, and the
 -- append-only domain_event). The default-privileges approach + the migrations' own REVOKEs are correct.
 \set ON_ERROR_STOP on
+\set ECHO none
+\set ECHO_HIDDEN off
+\set VERBOSITY terse
+\set SHOW_CONTEXT never
+
+-- Reset first: \getenv leaves its target unchanged when the environment variable is absent.
+-- This also prevents a stale/predefined psql variable from rescuing missing credential input.
+\set owner_pw ''
+\set app_pw ''
+\set platform_pw ''
+\getenv owner_pw AIHR_BOOTSTRAP_OWNER_PW
+\getenv app_pw AIHR_BOOTSTRAP_APP_PW
+\getenv platform_pw AIHR_BOOTSTRAP_PLATFORM_PW
+
+SET password_encryption = 'scram-sha-256';
 
 -- Stash the passwords in session GUCs first: psql ':var' substitution does NOT happen
 -- inside a dollar-quoted DO body, so the DO block reads them via current_setting() instead.
@@ -39,6 +51,11 @@ SELECT set_config('aihr_bootstrap.platform_pw', :'platform_pw', false);
 
 DO $$
 BEGIN
+  IF coalesce(current_setting('aihr_bootstrap.owner_pw', true), '') = ''
+     OR coalesce(current_setting('aihr_bootstrap.app_pw', true), '') = ''
+     OR coalesce(current_setting('aihr_bootstrap.platform_pw', true), '') = '' THEN
+    RAISE EXCEPTION 'All three bootstrap passwords are required and must be non-empty; no roles were created';
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ai_hr_owner') THEN
     EXECUTE format('CREATE ROLE ai_hr_owner LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE', current_setting('aihr_bootstrap.owner_pw'));
   END IF;
