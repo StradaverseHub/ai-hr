@@ -1,7 +1,7 @@
 /** Fresh installation only. Read/check by default; --apply writes one tenant and a private activation file.
  * DB modules are dynamically imported only AFTER configuration and production credentials pass.
  */
-import { constants } from 'node:fs';
+import { constants, realpathSync } from 'node:fs';
 import { lstat, open, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -170,7 +170,7 @@ async function main() {
     : 'CREATED: customer and pending administrator invitation committed; activation URL is only in the requested private file.');
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   main().then(() => process.exit(0), (error: unknown) => {
     console.error(error instanceof BootstrapRefusal ? error.message : 'Bootstrap refused; check private configuration and production environment. No secret details were printed.');
     process.exit(1);

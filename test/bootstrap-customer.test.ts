@@ -45,10 +45,10 @@ async function customerCount() {
   const [row] = await owner.db.execute(sql`select count(*)::int as count from tenant where id <> ${SYSTEM_TENANT}::uuid`);
   return row.count;
 }
-function cli(args: string[], env = environment()): Promise<{ code: number | null; out: string }> {
+function cli(args: string[], env = environment(), entry = path.join(ROOT, 'scripts/bootstrap-customer.ts')): Promise<{ code: number | null; out: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['--import', path.join(ROOT, 'node_modules/tsx/dist/loader.mjs'),
-      path.join(ROOT, 'scripts/bootstrap-customer.ts'), '--config', configFile, ...args], {
+      entry, '--config', configFile, ...args], {
       cwd: directory, env, stdio: ['ignore', 'pipe', 'pipe'],
     });
     let out = '';
@@ -93,7 +93,9 @@ describe('fresh customer bootstrap — one audited customer without a privileged
   });
 
   it('rejects missing production authentication and an untrusted activation origin before any apply', async () => {
-    const result = await cli(['--apply', '--activation-file', activationFile], { ...environment(), WORKOS_API_KEY: '' });
+    const linked = path.join(directory, 'bootstrap-customer.ts');
+    await fs.symlink(path.join(ROOT, 'scripts/bootstrap-customer.ts'), linked);
+    const result = await cli(['--apply', '--activation-file', activationFile], { ...environment(), WORKOS_API_KEY: '' }, linked);
     expect(result.code).toBe(1);
     expect(result.out).toContain('WORKOS_API_KEY');
     expect(result.out).not.toContain(input.adminEmail);

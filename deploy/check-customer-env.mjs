@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // No dependencies or database access: deploy.sh runs this before its first install. This validates
 // configuration, not provider credentials, a registered callback, or a successful first login.
-import { accessSync, constants } from 'node:fs';
+import { accessSync, constants, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -117,7 +117,9 @@ export function customerEnvironmentErrors(env = process.env, cwd = process.cwd()
   return errors;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// Node canonicalizes the ESM entry URL. Canonicalize argv too, or a symlinked release silently
+// skips preflight and returns success without checking any configuration.
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   const errors = customerEnvironmentErrors();
   if (errors.length) {
     console.error('✗ Customer deployment refused before install, build or migrations:');
