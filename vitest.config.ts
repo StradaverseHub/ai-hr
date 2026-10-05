@@ -51,6 +51,9 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'node',
+          // AuthKit uses Next's extensionless subpaths. Transform it through Vite so real SDK
+          // middleware/PKCE tests resolve them and the request-context mocks reach the SDK too.
+          server: { deps: { inline: ['@workos-inc/authkit-nextjs'] } },
           setupFiles: ['./test/env.ts'],
           // Each worker gets its OWN database, stamped from a migrated template (test/global-setup.ts), so
           // files no longer share tables and can run in parallel. Previously this was pinned to a single
