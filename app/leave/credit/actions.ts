@@ -8,13 +8,25 @@ import { getTranslations } from 'next-intl/server';
 import { myEmployment } from '@/core/read';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import {
+  cancelOwnReplacementLeaveRequest,
   extendedHoursDayForEmployment,
   isLeaveCreditDayType,
+  ReplacementRequestNotPendingError,
   submitLeaveCreditRequest,
   type LeaveCreditRowInput,
 } from '@/packs/leave/service';
 
-const PAGE = '/leave/credit';
+/**
+ * r389 (ba039150) — WHERE A SUBMISSION LANDS. It used to be `/leave/credit` on success AND on error, because
+ * that page held a second copy of the form and the list of what had been submitted. The form copy is gone
+ * (the dialog on My Leave is the only place to ask) and the page is Leave Credit History now, so a
+ * submission returns to My Leave — where the dialog was opened — with the confirmation, exactly as Request
+ * Leave does (app/leave/actions.ts `requestLeaveAction`). An error returns there too, rather than to a page
+ * with no form on it to correct.
+ */
+const SUBMIT_LANDING = '/leave';
+/** The history page, which a submission and a cancellation both change. */
+const HISTORY = '/leave/credit';
 
 /**
  * r343 cbfa8b0b · One date's read-only facts for the single table: what the ROSTER holds for it, the
@@ -102,11 +114,51 @@ export async function submitLeaveCreditRequestAction(formData: FormData) {
       today: todayInKualaLumpur(),
     });
   } catch (e) {
-    redirect(`${PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
+    redirect(`${SUBMIT_LANDING}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
-  revalidatePath(PAGE);
-  // The My Absence card shows the pending figure, so it goes stale on every submission too.
-  revalidatePath('/leave');
+  // Both pages read what was just written: My Leave's card shows the pending figure, and Leave Credit
+  // History lists the new request.
+  revalidatePath(SUBMIT_LANDING);
+  revalidatePath(HISTORY);
+  // The ALREADY-LOCALISED sentence, which the global ToastFromQuery (app/layout.tsx) renders as is — the
+  // house convention requestLeaveAction follows (never an i18n key in the address).
   const t = await getTranslations('replacementRequest');
-  redirect(`${PAGE}?toast=${encodeURIComponent(t('submittedToast'))}`);
+  redirect(`${SUBMIT_LANDING}?toast=${encodeURIComponent(t('submittedToast'))}`);
+}
+
+/**
+ * r389 (bc3e203d) — Cancel on a PENDING row of Leave Credit History.
+ *
+ * The request id is the only thing read off the form; WHOSE it is and WHETHER it is still pending are decided
+ * by `cancelOwnReplacementLeaveRequest` against the session (see its header for why RLS cannot decide
+ * either). The redirect keeps the page's filters, tab and paging (`back`, narrowed to a query string on this
+ * page), so the row the employee was looking at stays in view with its new status.
+ *
+ * A refusal because the request is no longer pending gets its own translated sentence; anything else goes
+ * through publicErrorMessage (r388), never `e.message` of a driver error.
+ */
+export async function cancelLeaveCreditRequestAction(formData: FormData) {
+  const session = await getSession();
+  const requestId = String(formData.get('requestId') ?? '');
+  const backRaw = String(formData.get('back') ?? '');
+  // Only a query string for THIS page — never a path, so the field cannot become an open redirect.
+  const back = /^[A-Za-z0-9_=&.%-]*$/.test(backRaw) ? backRaw : '';
+  const there = (key: 'toast' | 'error', message: string) => {
+    const q = new URLSearchParams(back);
+    q.delete('toast');
+    q.delete('error');
+    q.set(key, message);
+    return `${HISTORY}?${q.toString()}`;
+  };
+  const t = await getTranslations('leaveCreditHistory');
+  try {
+    await cancelOwnReplacementLeaveRequest(session, { requestId });
+  } catch (e) {
+    redirect(there('error', e instanceof ReplacementRequestNotPendingError ? t('cancelNotPending') : publicErrorMessage(e)));
+  }
+  // The approver's list and its badge, My Leave's pending figure, and this page.
+  revalidatePath(HISTORY);
+  revalidatePath(SUBMIT_LANDING);
+  revalidatePath('/approvals');
+  redirect(there('toast', t('cancelledToast')));
 }

@@ -169,8 +169,10 @@ function CreditSubmit({blocked, explanation}: {blocked:boolean;explanation:strin
  * was minted for "Ordinary Day" and none is needed for the refusal above. r360's four new keys
  * (`dayTypeLookupFailed`, `dayTypeRetry`, `dayTypeFromRoster`, `dayTypeFromHolidays`) ARE translated in all
  * six, and so are r362's three (`dayTypeReading`, `dayTypeNotFound`, `crossesMidnight`). Of the eight
- * `table.*` keys this screen introduced at r343, the ones it STILL renders in English in all six catalogues
- * are `rosterMismatch`, `myRequests`, `noRequests`, `statusHeading` and `submittedOn` — like the other
+ * `table.*` keys this screen introduced at r343, the one it STILL renders in English in all six catalogues
+ * is `rosterMismatch` (r389: `myRequests`, `noRequests`, `statusHeading` and `submittedOn` were the old
+ * submitted-requests list on /leave/credit, which became Leave Credit History with its own translated
+ * headings, so those four are RETIRED in place rather than paid off) — like the other
  * English `replacementRequest.*` keys this form already rendered before them (`workedDate`,
  * `addRow`, `reason`, `unit`, `totalDays`, …). ⚠️ THE OTHER THREE OF THE EIGHT LEFT THAT SET RATHER THAN
  * BEING PAID OFF IN PLACE, and the distinction is the point of naming them: `help` and `windowNotClaimed`
@@ -271,9 +273,10 @@ export function LeaveCreditRequestTable({
   today: string;
   requiresFirstScheduleConsent?: boolean;
   /**
-   * Called as the form is submitted, so a host that OPENED this table can close itself. Optional: the
-   * `/leave/credit` screen has nothing to close, and the dialog on My Absence passes its own setter. It is
-   * not a validation hook — the submit is a server action and this runs beside it, not before it.
+   * Called as the form is submitted, so a host that OPENED this table can close itself. Optional; the
+   * dialog on My Leave passes its own setter, and since r389 (ba039150) it is the table's only host — the
+   * `/leave/credit` copy is gone. It is not a validation hook — the submit is a server action and this runs
+   * beside it, not before it.
    */
   onSubmitted?: () => void;
   header?: ReactNode;

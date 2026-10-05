@@ -26,9 +26,14 @@ type Action = (fd: FormData) => void | Promise<void>;
 export type ReplacementLeaveTypeView = { id: string; name: string };
 
 /**
- * "+ Leave Credit request" — the employee's own claim for time already worked. THE ONLY EMPLOYEE ENTRY
+ * "Leave Credit request" — the employee's own claim for time already worked. THE ONLY EMPLOYEE ENTRY
  * POINT, and since r343's fix pass it is a SHELL: the trigger, the dialog frame and the two sentences that
  * say what a Leave Credit is. Everything inside it is `LeaveCreditRequestTable`.
+ *
+ * r389 (ba039150) — THE TRIGGER DREW TWO PLUS SIGNS ("+ + Leave Credit request"): the `<Plus>` icon below AND
+ * a catalogue value that began with "+ ". The icon stays, because it is what every primary "add" button in
+ * the product draws (Request leave beside it included); the "+" left the value of
+ * `replacementRequest.trigger` in all six locales.
  *
  * ── ⚠️ r343 FIX PASS — WHAT THIS FILE USED TO BE, AND WHY IT IS NOT THAT ANY MORE ───────────────────────
  * This was r336's TWO-SECTION form: Section A for a rest day / off day / public holiday that was worked,
@@ -44,13 +49,14 @@ export type ReplacementLeaveTypeView = { id: string; name: string };
  * and competing surfaces). So the BODY of this dialog is now the single table and the TRIGGER is untouched:
  * the button the employee already knows, in the place they already know, opening the form they asked for.
  *
- * ── ONE COMPONENT, TWO ENTRY POINTS, AND NOT ONE LINE OF IT COPIED ──────────────────────────────────────
- * `/leave/credit` renders the SAME `LeaveCreditRequestTable` — the same file, imported, never a second copy
- * — and adds beneath it the list of requests already submitted, which is the other half of the contest ("…
- * and displayed in the same request table") and does not belong inside a dialog. Submitting from here
- * redirects to that screen with the toast, so the employee lands where their new request is listed. There is
- * one form component, one service (`submitLeaveCreditRequest`) and one set of posted field names; a change
- * to the form cannot land on one surface and miss the other.
+ * ── ONE COMPONENT, ONE ENTRY POINT ───────────────────────────────────────────────────────────────────────
+ * r343 had `/leave/credit` render the SAME `LeaveCreditRequestTable` as a second entry point, with the list of
+ * submitted requests beneath it. r389 (ba039150) removed that second copy at the reporter's request — two
+ * places to fill in one form — and turned the page into Leave Credit History (bc3e203d), which keeps the list
+ * and adds what happened to each credit. So this dialog is now the only mount of the form. Submitting
+ * redirects back to My Leave with the confirmation, the same as Request Leave; the request is then listed
+ * under My Leave › Leave Credit History. There is one form component, one service
+ * (`submitLeaveCreditRequest`) and one set of posted field names.
  *
  * WHY THE SHELL IS STILL A DIALOG. The trigger sits in the My Absence header beside "+ Request Leave", and
  * that pairing is r296's: one asks to TAKE time, the other to be CREDITED for time worked. Turning the
@@ -128,8 +134,8 @@ export function ReplacementLeaveRequestDialog({
               dayFactsAction={dayFactsAction}
               tiers={tiers}
               ordinaryDayAllowed={ordinaryDayAllowed}
-              // The dialog closes as the submission leaves; the action redirects to /leave/credit, where the
-              // new request is listed. A modal still standing over that navigation is the defect.
+              // The dialog closes as the submission leaves; the action redirects back to My Leave with the
+              // confirmation (r389). A modal still standing over that navigation is the defect.
               onSubmitted={() => setOpen(false)}
             />
         </Dialog.Content>

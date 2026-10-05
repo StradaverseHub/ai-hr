@@ -67,9 +67,11 @@ import { RequestLeaveDialog } from '@/components/leave/request-leave-dialog';
 // 296fc027 — the employee replacement-leave request: the button beside "+ Request Leave", the availability
 // read that decides whether to offer it, and the action it posts to.
 import { ReplacementLeaveRequestDialog } from '@/components/leave/replacement-leave-request-dialog';
-// r343 — the dialog's body is now the single Leave Credit table, and it posts to that table's own action.
-// The two actions live beside the `/leave/credit` screen because that screen is the other entry point to the
-// SAME component (components/leave/leave-credit-request-table.tsx) and both must post through one path.
+// r343 — the dialog's body is the single Leave Credit table, and it posts to that table's own action.
+// r389 (ba039150) — the dialog is now the ONLY entry point to that form: `/leave/credit` lost its second copy
+// and became Leave Credit History. The two actions still live beside it, in ./credit/actions, because the
+// Leave Credit actions (submit, the per-date facts, and the history's Cancel) are one module; the submit
+// lands back HERE with the confirmation.
 import { leaveCreditDayFactsAction, submitLeaveCreditRequestAction } from './credit/actions';
 // r219 (7966ee35) — …and, when that availability read says NO, the sentence saying why. The read has always
 // carried a discriminated reason; this page rendered the boolean and dropped it, so the reporter spent a
@@ -702,7 +704,9 @@ export default async function LeavePage({
                   replacementType={{ id: replacementLeaveType.id, name: replacementLeaveType.name }}
                   // r343 — the SINGLE-TABLE submit. It adjudicates each row's chosen Day Type against the
                   // roster before composing `submitReplacementLeaveRequest`, which still enforces every
-                  // control it ever did, and it redirects to /leave/credit where the new request is listed.
+                  // control it ever did. r389 (ba039150): it redirects back to this page with the
+                  // confirmation, as Request Leave does; the request is listed under My Leave › Leave Credit
+                  // History.
                   submitAction={submitLeaveCreditRequestAction}
                   today={today}
                   requiresFirstScheduleConsent={replacementRequest.requiresFirstScheduleConsent}
@@ -716,21 +720,12 @@ export default async function LeavePage({
                   ordinaryDayAllowed={leaveCreditOffer?.ordinaryDayAllowed ?? false}
                 />
               )}
-              {/* ⚠️ THE WAY BACK. Without this the employee could reach /leave/credit only by submitting
-                  something or by typing the URL, and that screen holds the OTHER half of the reporter's
-                  contest — "displayed in the same request table". My Absence shows a summed pending-days
-                  figure (above); the itemised list of what they asked for lives there and nowhere else.
-                  A summary with no route to its detail is the half-delivered shape this item exists to
-                  stop, so the link sits beside the trigger that opens the form it lists. */}
-              {ess && replacementRequest.allowed && replacementLeaveType != null && (
-                <Link
-                  href="/leave/credit"
-                  className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-                  data-testid="leave-credit-requests-link"
-                >
-                  {t('replacementRequest.viewMyRequests')}
-                </Link>
-              )}
+              {/* r389 (ba039150) — THE "View my leave credit requests" LINK THAT STOOD HERE IS GONE, and so
+                  is the duplicate form it led to. r343 put it beside the button because the itemised list
+                  of submitted requests lived only on that page, and a summary with no route to its detail is
+                  half-delivered. The route still exists, from the menu instead of from beside a button: the
+                  page is My Leave › Leave Credit History (packs/leave/index.ts LEAVE_SELF_NAV), gated on the
+                  same `toil` module. Its key is retired in all six catalogues, not deleted. */}
             </div>
           }
         />
