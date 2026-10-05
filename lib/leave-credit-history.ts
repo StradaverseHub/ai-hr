@@ -116,6 +116,12 @@ export type CreditHistoryLine = {
   /** Kuala Lumpur day and time of the decision, or of the employee's cancellation. */
   decidedOn: string | null;
   decidedTime: string | null;
+  /**
+   * r389 (migration 0512) — the display name of whoever approved or rejected the request, read through
+   * `app.own_replacement_request_deciders` because an employee cannot read that person's row through RLS.
+   * Null while undecided, for a cancelled request, or when the decider's login has no person.
+   */
+  decidedByName: string | null;
   decisionNote: string | null;
   reason: string | null;
   /** The attendance snapshot stored with the line (ordinary-day lines only). */
@@ -130,6 +136,7 @@ export type CreditHistoryFilters = {
   tab: ApprovalTab;
   creditStatus: LeaveCreditStatusKey | null;
   dayType: CreditDayType | null;
+  /** The year worked. `null` is All years; an address with no `year` means the CURRENT year (the default). */
   year: number | null;
   from: string | null;
   to: string | null;
@@ -145,16 +152,23 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const one = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
 const isIn = <T extends string>(list: readonly T[], v: unknown): v is T => typeof v === 'string' && (list as readonly string[]).includes(v);
 
+/** The Year filter's "All" in the address. An ABSENT `year` is not All: it is the default, the current year. */
+export const YEAR_ALL = 'all';
+
 /**
  * Read the address. Every value is NARROWED, never passed through: an unknown tab is All, an unknown status
  * or day type is no filter, a malformed date is no bound — so a hand-edited link cannot start filtering on a
  * value the form would never have produced.
+ *
+ * r389 (bc3e203d, the reporter's "Default: current year") — `year` absent or unreadable is `currentYear`,
+ * `year=all` is every year. `currentYear` is the caller's `todayInKualaLumpur()` year, never the browser's.
  */
-export function parseCreditHistoryQuery(sp: Record<string, string | string[] | undefined>): CreditHistoryQuery {
+export function parseCreditHistoryQuery(sp: Record<string, string | string[] | undefined>, currentYear: number): CreditHistoryQuery {
   const tabRaw = one(sp.tab);
   const creditRaw = one(sp.credit);
   const dayRaw = one(sp.day);
-  const yearRaw = Number(one(sp.year));
+  const yearText = one(sp.year);
+  const yearRaw = Number(yearText);
   const fromRaw = one(sp.from);
   const toRaw = one(sp.to);
   const sizeRaw = Number(one(sp.size));
@@ -164,7 +178,7 @@ export function parseCreditHistoryQuery(sp: Record<string, string | string[] | u
       tab: isIn(APPROVAL_TABS, tabRaw) ? tabRaw : 'all',
       creditStatus: isIn(LEAVE_CREDIT_STATUSES, creditRaw) ? creditRaw : null,
       dayType: isIn(CREDIT_DAY_TYPES, dayRaw) ? dayRaw : null,
-      year: Number.isInteger(yearRaw) && yearRaw >= 1900 && yearRaw <= 9999 ? yearRaw : null,
+      year: yearText === YEAR_ALL ? null : yearText && Number.isInteger(yearRaw) && yearRaw >= 1900 && yearRaw <= 9999 ? yearRaw : currentYear,
       from: fromRaw && ISO.test(fromRaw) ? fromRaw : null,
       to: toRaw && ISO.test(toRaw) ? toRaw : null,
     },
@@ -220,10 +234,14 @@ export function isFiltered(f: CreditHistoryFilters): boolean {
   return f.creditStatus != null || f.dayType != null || f.year != null || f.from != null || f.to != null;
 }
 
-/** The query string for this view, with overrides. Only non-default values are written. */
+/**
+ * The query string for this view, with overrides. Only non-default values are written — so the current year
+ * is left out (absent IS the current year) and All years is written as `year=all`.
+ */
 export function creditHistoryParams(
   q: { filters: CreditHistoryFilters; page?: number; size?: CreditHistoryPageSize },
   over: Partial<CreditHistoryFilters> & { page?: number; size?: CreditHistoryPageSize } = {},
+  currentYear: number,
 ): URLSearchParams {
   const f = { ...q.filters, ...over };
   const size = over.size ?? q.size ?? CREDIT_HISTORY_PAGE_SIZES[0];
@@ -232,7 +250,8 @@ export function creditHistoryParams(
   if (f.tab !== 'all') out.set('tab', f.tab);
   if (f.creditStatus) out.set('credit', f.creditStatus);
   if (f.dayType) out.set('day', f.dayType);
-  if (f.year != null) out.set('year', String(f.year));
+  if (f.year == null) out.set('year', YEAR_ALL);
+  else if (f.year !== currentYear) out.set('year', String(f.year));
   if (f.from) out.set('from', f.from);
   if (f.to) out.set('to', f.to);
   if (size !== CREDIT_HISTORY_PAGE_SIZES[0]) out.set('size', String(size));
@@ -255,9 +274,25 @@ export function expiryHintDays(line: Pick<CreditHistoryLine, 'credit'>, today: s
   return n >= 0 && n <= EXPIRY_HINT_DAYS ? n : null;
 }
 
-/** The years with a date worked, newest first — the Year filter offers nothing that would be empty. */
+/** The years with a date worked, newest first — the Year filter offers nothing that would be empty… */
 export function creditHistoryYears(lines: readonly CreditHistoryLine[]): number[] {
   return [...new Set(lines.map((l) => Number(l.workedDate.slice(0, 4))))].sort((a, b) => b - a);
+}
+
+/** …except the current year, which is always offered because it is the default selection. */
+export function creditHistoryYearOptions(lines: readonly CreditHistoryLine[], currentYear: number): number[] {
+  return [...new Set([currentYear, ...creditHistoryYears(lines)])].sort((a, b) => b - a);
+}
+
+/**
+ * What the filter form puts in the address: every field that has a value, in form order, and nothing that is
+ * empty — so applying the filters never writes `day=&from=&to=`. "All" on the Year filter is the value
+ * `all`, which is NOT empty and therefore kept: dropping it would read as the default, the current year.
+ */
+export function filterFormQuery(entries: Iterable<[string, FormDataEntryValue]>): string {
+  const out = new URLSearchParams();
+  for (const [k, v] of entries) if (typeof v === 'string' && v.trim() !== '') out.append(k, v);
+  return out.toString();
 }
 
 /** `YYYY-MM-DD` → `DD/MM/YYYY`, day first, as the export and the reporter's sketch read. */

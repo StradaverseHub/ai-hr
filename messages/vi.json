@@ -13985,6 +13985,7 @@
       "notRecorded": "Không được ghi lại cùng yêu cầu này",
       "approval": "Phê duyệt",
       "level": "Cấp {level}",
+      "levelNamed": "Cấp {level} · {name}",
       "approved": "Đã phê duyệt · {date} {time}",
       "rejected": "Đã từ chối · {date} {time}",
       "waiting": "Đang chờ phê duyệt",

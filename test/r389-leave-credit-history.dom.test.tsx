@@ -11,15 +11,17 @@
  * locales and fails on any missing message — the MISSING_MESSAGE class that passes tsc and the suite.
  */
 import React from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import ta from '../messages/ta.json';
 import th from '../messages/th.json';
-import vi from '../messages/vi.json';
+import viMessages from '../messages/vi.json';
 import zh from '../messages/zh.json';
+const { push } = vi.hoisted(() => ({ push: vi.fn((_url: string) => undefined) }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 import { LeaveCreditHistoryFilterForm, LeaveCreditHistoryTable } from '../components/leave/leave-credit-history';
 import { dmy, type CreditHistoryLine, type CreditHistoryFilters } from '../lib/leave-credit-history';
 
@@ -33,6 +35,7 @@ const base = {
   days: 1,
   decidedOn: null,
   decidedTime: null,
+  decidedByName: null,
   decisionNote: null,
   reason: 'Month-end payroll closing',
   shiftEnd: null,
@@ -80,6 +83,7 @@ const USED = line({
   approvalStatus: 'approved',
   decidedOn: '2026-09-01',
   decidedTime: '09:42',
+  decidedByName: 'Daniel Tan',
   decisionNote: 'Approved — month-end closing.',
   credit: {
     accrualId: 'a-used',
@@ -127,7 +131,7 @@ const EXPIRED = line({
 });
 const ROWS = [PENDING, PENDING_TWIN, REJECTED, USED, AVAILABLE_30, AVAILABLE_31, PAID_OUT, EXPIRED];
 
-const CATALOGUES = { en, ms, ta, th, vi, zh } as const;
+const CATALOGUES = { en, ms, ta, th, vi: viMessages, zh } as const;
 type Locale = keyof typeof CATALOGUES;
 const noop = async () => {};
 
@@ -204,7 +208,8 @@ describe('r389 · the Leave Credit History table', () => {
     expect(att.textContent).not.toContain('Not recorded with this request');
     const appr = within(panel).getByTestId('lch-approval');
     expect(appr.textContent).toContain('Waiting for approval');
-    expect(appr.textContent).toContain('Level 1');
+    // Undecided: the level, and no name.
+    expect(within(appr).getByTestId('lch-approval-level').textContent).toBe('Level 1');
     expect(within(panel).getByTestId('lch-usage').textContent).toContain('A credit is created only when the request is approved.');
   });
 
@@ -216,6 +221,8 @@ describe('r389 · the Leave Credit History table', () => {
     expect(within(att).getAllByText('Not recorded with this request')).toHaveLength(2); // shift end + clock-out
     const appr = within(panel).getByTestId('lch-approval');
     expect(appr.textContent).toContain('Approved · 01/09/2026 09:42');
+    // r389 / migration 0512 — the approver's name beside the level, as the approved mockup draws it.
+    expect(within(appr).getByTestId('lch-approval-level').textContent).toBe('Level 1 · Daniel Tan');
     expect(appr.textContent).toContain('Approved — month-end closing.');
     expect(within(panel).getByTestId('lch-usage-used').textContent).toMatch(/^1\.00 days?$/);
     expect(within(panel).getByTestId('lch-usage-remaining').textContent).toMatch(/^0\.00 days?$/);
@@ -252,13 +259,40 @@ describe('r389 · the Leave Credit History table', () => {
 });
 
 describe('r389 · the filter form', () => {
-  const filters = (over: Partial<CreditHistoryFilters> = {}): CreditHistoryFilters => ({ tab: 'pending', creditStatus: null, dayType: null, year: null, from: null, to: null, ...over });
+  // The page hands the form the CURRENT year already selected when the address names none (the default).
+  const filters = (over: Partial<CreditHistoryFilters> = {}): CreditHistoryFilters => ({ tab: 'pending', creditStatus: null, dayType: null, year: 2026, from: null, to: null, ...over });
   const showForm = (f: CreditHistoryFilters) =>
     render(
       <NextIntlClientProvider locale="en" messages={en}>
         <LeaveCreditHistoryFilterForm filters={f} years={[2026, 2025]} size={20} clearHref="/leave/credit?size=20" />
       </NextIntlClientProvider>,
     );
+
+  it('the Year starts on the year the page selected, offers All, and applying drops every empty field from the address', () => {
+    push.mockClear();
+    showForm(filters());
+    const form = screen.getByTestId('lch-filter-form');
+    const year = within(form).getByLabelText('Year') as HTMLSelectElement;
+    expect(year.value).toBe('2026');
+    expect([...year.options].map((o) => [o.value, o.textContent])).toEqual([
+      ['all', 'All'],
+      ['2026', '2026'],
+      ['2025', '2025'],
+    ]);
+    fireEvent.submit(form);
+    expect(push).toHaveBeenLastCalledWith('/leave/credit?tab=pending&size=20&year=2026');
+    // All years is a VALUE, kept in the address — dropping it would read as the default year.
+    fireEvent.change(year, { target: { value: 'all' } });
+    fireEvent.change(within(form).getByLabelText('Credit Status'), { target: { value: 'used' } });
+    fireEvent.submit(form);
+    expect(push).toHaveBeenLastCalledWith('/leave/credit?tab=approved&size=20&credit=used&year=all');
+    expect(push.mock.calls.every(([url]) => !/=(&|$)/.test(url))).toBe(true);
+  });
+
+  it('an address on All years opens the form on All', () => {
+    showForm(filters({ year: null }));
+    expect((within(screen.getByTestId('lch-filter-form')).getByLabelText('Year') as HTMLSelectElement).value).toBe('all');
+  });
 
   it('choosing a Credit Status switches the applied tab to Approved; choosing All gives the tab back', () => {
     showForm(filters());

@@ -13985,6 +13985,7 @@
       "notRecorded": "Not recorded with this request",
       "approval": "Approval",
       "level": "Level {level}",
+      "levelNamed": "Level {level} · {name}",
       "approved": "Approved · {date} {time}",
       "rejected": "Rejected · {date} {time}",
       "waiting": "Waiting for approval",

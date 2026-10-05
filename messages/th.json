@@ -13985,6 +13985,7 @@
       "notRecorded": "ไม่ได้บันทึกไว้พร้อมคำขอนี้",
       "approval": "การอนุมัติ",
       "level": "ขั้นที่ {level}",
+      "levelNamed": "ขั้นที่ {level} · {name}",
       "approved": "อนุมัติแล้ว · {date} {time}",
       "rejected": "ไม่อนุมัติ · {date} {time}",
       "waiting": "รอการอนุมัติ",

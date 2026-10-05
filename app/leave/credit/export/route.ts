@@ -69,7 +69,8 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const fmtRaw = url.searchParams.get('format');
   const format: ReportFormat = FORMATS.includes(fmtRaw as ReportFormat) ? (fmtRaw as ReportFormat) : 'xlsx';
-  const q = parseCreditHistoryQuery(Object.fromEntries(url.searchParams.entries()));
+  // The same default as the screen: no `year` is the current year on the Kuala Lumpur clock.
+  const q = parseCreditHistoryQuery(Object.fromEntries(url.searchParams.entries()), Number(todayInKualaLumpur().slice(0, 4)));
 
   const t = await getTranslations('leaveCreditHistory');
   const tLeave = await getTranslations('leave');

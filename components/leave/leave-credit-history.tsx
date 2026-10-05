@@ -20,6 +20,7 @@
  */
 import { useState, type ReactNode } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import { Check, Clock, Filter, ChevronDown, X } from 'lucide-react';
 import { Drawer } from '@/components/ui/drawer';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -29,8 +30,10 @@ import {
   CREDIT_STATUS_LABEL_KEY,
   DAY_TYPE_LABEL_KEY,
   LEAVE_CREDIT_STATUSES,
+  YEAR_ALL,
   dmy,
   expiryHintDays,
+  filterFormQuery,
   hhmm,
   hoursLabel,
   tabAfterApply,
@@ -378,7 +381,11 @@ function CreditDrawer({
             </span>
             <div className="min-w-0 flex-1">
               <p className="font-medium">{approvalLine}</p>
-              {l.approvalStatus !== 'cancelled' && <p className="text-muted-foreground">{t('drawer.level', { level: 1 })}</p>}
+              {l.approvalStatus !== 'cancelled' && (
+                <p className="text-muted-foreground" data-testid="lch-approval-level">
+                  {l.decidedByName ? t('drawer.levelNamed', { level: 1, name: l.decidedByName }) : t('drawer.level', { level: 1 })}
+                </p>
+              )}
               {l.decisionNote && (
                 <div className="mt-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
                   <p className="text-xs text-muted-foreground">{t('drawer.remarks')}</p>
@@ -457,6 +464,10 @@ function CreditDrawer({
  *
  * Choosing a Credit Status switches the tab to Approved when the form is applied (bc3e203d): the hidden `tab`
  * field is `tabAfterApply(current, chosen)`, the same pure function the suite pins.
+ *
+ * The Year defaults to the current year (the page passes it already selected); "All" is the value `all`. With
+ * script the form navigates to an address holding only the fields that have a value (`filterFormQuery`), so
+ * applying the filters does not write `day=&from=&to=`; without script it still works as a plain GET.
  */
 export function LeaveCreditHistoryFilterForm({
   filters,
@@ -473,6 +484,7 @@ export function LeaveCreditHistoryFilterForm({
   const t = useTranslations('leaveCreditHistory');
   const tCredit = useTranslations('admin.leaveCredit');
   const tRR = useTranslations('replacementRequest');
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [credit, setCredit] = useState<string>(filters.creditStatus ?? '');
   const tab: ApprovalTab = tabAfterApply(filters.tab, credit || null);
@@ -498,6 +510,11 @@ export function LeaveCreditHistoryFilterForm({
         method="GET"
         action="/leave/credit"
         data-testid="lch-filter-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const qs = filterFormQuery(new FormData(e.currentTarget).entries());
+          router.push(qs ? `/leave/credit?${qs}` : '/leave/credit');
+        }}
         className={`${open ? 'grid' : 'hidden'} mt-3 grid-cols-1 gap-3 sm:grid-cols-2 md:mt-0 md:grid md:grid-cols-[repeat(5,minmax(0,1fr))_auto_auto] md:items-end`}
       >
         {tab !== 'all' && <input type="hidden" name="tab" value={tab} />}
@@ -526,8 +543,8 @@ export function LeaveCreditHistoryFilterForm({
         </label>
         <label>
           <span className={labelCls}>{t('filters.year')}</span>
-          <select name="year" defaultValue={filters.year != null ? String(filters.year) : ''} className={selectCls}>
-            <option value="">{t('filters.all')}</option>
+          <select name="year" defaultValue={filters.year != null ? String(filters.year) : YEAR_ALL} className={selectCls}>
+            <option value={YEAR_ALL}>{t('filters.all')}</option>
             {years.map((y) => (
               <option key={y} value={String(y)}>
                 {y}

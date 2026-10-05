@@ -13985,6 +13985,7 @@
       "notRecorded": "此申请未记录",
       "approval": "审批",
       "level": "第 {level} 级",
+      "levelNamed": "第 {level} 级 · {name}",
       "approved": "已批准 · {date} {time}",
       "rejected": "已拒绝 · {date} {time}",
       "waiting": "等待审批",

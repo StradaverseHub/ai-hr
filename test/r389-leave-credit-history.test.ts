@@ -49,7 +49,7 @@ vi.mock('next-intl/server', async () => {
   };
 });
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
@@ -74,6 +74,8 @@ import {
   CREDIT_STATUS_OF_ACCRUAL,
   LEAVE_CREDIT_STATUSES,
   applyCreditHistoryFilters,
+  creditHistoryParams,
+  creditHistoryYearOptions,
   creditHistoryYears,
   dmy,
   expiryHintDays,
@@ -103,7 +105,10 @@ const nextMonday = (from: string) => {
   while ((new Date(`${x}T00:00:00Z`).getUTCDay() || 7) !== 1) x = addDays(x, 1);
   return x;
 };
+/** Every filter off, Year included (`year: null` is All years — NOT the screen's default, see CY). */
 const NO_FILTERS: CreditHistoryFilters = { tab: 'all', creditStatus: null, dayType: null, year: null, from: null, to: null };
+/** The current year on the Kuala Lumpur clock: the Year filter's default (the reporter's "Default: current year"). */
+const CY = Number(TODAY.slice(0, 4));
 
 let b: Base;
 let admin: SessionContext;
@@ -313,6 +318,7 @@ describe('r389 · Leave Credit History lists the signed-in person’s own reques
     expect(mine.find((l) => l.requestId === oldReq.id)).toMatchObject({ workedDate: '2023-03-01', approvalStatus: 'rejected', dayType: 'rest_day', credit: null });
     // The Year filter offers the earlier employment's year too, so it can be found.
     expect(creditHistoryYears(mine)).toContain(2023);
+    expect(creditHistoryYearOptions(mine, CY)).toEqual(expect.arrayContaining([CY, 2023]));
   });
 });
 
@@ -562,37 +568,58 @@ describe('r389 · every credit status, read as the system stored it', () => {
     countsAgree({ from: d(-66), to: d(-50) });
     expect(run({ from: d(-4), to: d(-1) }).rows).toHaveLength(0);
 
-    // Clear is the bare address: no filter survives the parse of it.
-    expect(parseCreditHistoryQuery({}).filters).toEqual(NO_FILTERS);
-    // A hand-edited address narrows to nothing it could not have produced.
-    expect(parseCreditHistoryQuery({ tab: 'deleted', credit: 'stolen', day: 'sunday', year: 'x', from: '2026-1-1', size: '7', page: '-2' })).toEqual({
-      filters: NO_FILTERS,
+    // Clear is the bare address, which is the DEFAULTS: every filter off except the Year, which is the
+    // current year (r389 — the reporter's "Default: current year"). `year=all` is every year.
+    expect(parseCreditHistoryQuery({}, CY).filters).toEqual({ ...NO_FILTERS, year: CY });
+    expect(parseCreditHistoryQuery({ year: 'all' }, CY).filters.year).toBeNull();
+    expect(parseCreditHistoryQuery({ year: String(CY - 1) }, CY).filters.year).toBe(CY - 1);
+    // …so by default the list is the current year's dates and no other.
+    const byDefault = run(parseCreditHistoryQuery({}, CY).filters).rows;
+    expect(byDefault.every((l) => l.workedDate.startsWith(`${CY}-`))).toBe(true);
+    expect(byDefault.length).toBe(lines.filter((l) => l.workedDate.startsWith(`${CY}-`)).length);
+    // The address round-trips: the default year is left out, All is written as `all`, another year by number.
+    expect(creditHistoryParams({ filters: { ...NO_FILTERS, year: CY } }, {}, CY).toString()).toBe('');
+    expect(creditHistoryParams({ filters: NO_FILTERS }, {}, CY).toString()).toBe('year=all');
+    expect(creditHistoryParams({ filters: { ...NO_FILTERS, year: CY - 1 } }, {}, CY).toString()).toBe(`year=${CY - 1}`);
+    for (const f of [{ ...NO_FILTERS, year: CY }, NO_FILTERS, { ...NO_FILTERS, year: CY - 3, tab: 'approved' as const, creditStatus: 'used' as const }])
+      expect(parseCreditHistoryQuery(Object.fromEntries(creditHistoryParams({ filters: f }, {}, CY)), CY).filters).toEqual(f);
+    // The Year options always include the current year (it is the default) as well as every year with a date.
+    expect(creditHistoryYearOptions([], CY)).toEqual([CY]);
+    // A hand-edited address narrows to nothing it could not have produced (an unreadable year is the default).
+    expect(parseCreditHistoryQuery({ tab: 'deleted', credit: 'stolen', day: 'sunday', year: 'x', from: '2026-1-1', size: '7', page: '-2' }, CY)).toEqual({
+      filters: { ...NO_FILTERS, year: CY },
       page: 0,
       size: 10,
     });
-    expect(parseCreditHistoryQuery({ size: '50', page: '2', tab: 'approved', credit: 'paid_out' })).toMatchObject({ size: 50, page: 2, filters: { tab: 'approved', creditStatus: 'paid_out' } });
+    expect(parseCreditHistoryQuery({ size: '50', page: '2', tab: 'approved', credit: 'paid_out' }, CY)).toMatchObject({ size: 50, page: 2, filters: { tab: 'approved', creditStatus: 'paid_out' } });
   });
 
   it('the export holds exactly the screen’s filtered rows, for the session’s own person, and no money', async () => {
     const w = await statusesWorld();
     const lines = await listOwnLeaveCreditHistory(w.empCtx);
-    const csvRows = async (qs: string) => {
+    const csvRows = async (qs: string, expectRows: boolean) => {
       const res = await exportGET(new Request(`http://localhost/leave/credit/export?format=csv&${qs}`));
-      expect(res.status, qs).toBe(200);
+      // An empty view is answered with a sentence, not an empty file (the default year can be empty early
+      // in January, when every fixture date falls in the year before — the clock decides, not the test).
+      expect(res.status, qs).toBe(expectRows ? 200 : 404);
       const text = (await res.text()).replace(/^﻿/, '');
       const [head, ...body] = text.trim().split(/\r?\n/);
       return { head, body, text };
     };
     sessionHolder.s = w.empCtx;
-    for (const qs of ['', 'tab=approved', 'credit=available&tab=approved', `from=${d(-66)}&to=${d(-50)}`, 'tab=pending', 'size=10&page=1']) {
-      const { head, body, text } = await csvRows(qs);
+    const QUERIES = ['', 'year=all', 'year=all&tab=approved', 'year=all&credit=available&tab=approved', `year=all&from=${d(-66)}&to=${d(-50)}`, 'year=all&tab=pending', `year=${CY - 1}`, 'tab=approved'];
+    for (const qs of QUERIES) {
+      const screen = applyCreditHistoryFilters(lines, parseCreditHistoryQuery(Object.fromEntries(new URLSearchParams(qs)), CY).filters).rows;
+      const { head, body, text } = await csvRows(qs, screen.length > 0);
+      if (screen.length === 0) continue;
       expect(head).toBe('Date Worked,Day Type,Extended Hours,Credit Days,Expiry Date,Applied On,Approval Status,Credit Status');
-      const screen = applyCreditHistoryFilters(lines, parseCreditHistoryQuery(Object.fromEntries(new URLSearchParams(qs))).filters).rows;
       expect(body.map((r) => r.split(',')[0]), qs).toEqual(screen.map((l) => dmy(l.workedDate)));
       expect(text).not.toMatch(/RM\s?\d|amountOwed/);
     }
+    // Non-vacuity: the all-years queries above did export rows.
+    expect((await csvRows('year=all', true)).body).toHaveLength(9);
     // Paging is not a filter: a later page of the screen still exports the whole filtered list.
-    expect((await csvRows('size=10&page=1')).body).toHaveLength(9);
+    expect((await csvRows('year=all&size=10&page=1', true)).body).toHaveLength(9);
 
     // Another person's session exports their own (none), never this employee's.
     sessionHolder.s = w.mgrCtx;
@@ -721,5 +748,114 @@ describe('r389 · a Leave Credit request submitted from the dialog returns to My
     const actions = codeOnly(read('app/leave/credit/actions.ts'));
     expect(actions).toContain("const SUBMIT_LANDING = '/leave';");
     expect(actions).not.toMatch(/redirect\(`\$\{HISTORY\}\?(toast|error)/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// (7) MIGRATION 0512 — THE DECIDER'S NAME, FOR THE REQUEST'S OWNER ONLY
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+describe('r389 · migration 0512: the approver’s name reaches the request’s owner and nobody else', () => {
+  const deciders = (ctx: SessionContext, ids: string[]) =>
+    withTenant(ctx, async (tx) =>
+      (await tx.execute(sql`SELECT request_id, decided_by_name FROM app.own_replacement_request_deciders(${`{${ids.join(',')}}`}::uuid[]) ORDER BY request_id`)) as unknown as {
+        request_id: string;
+        decided_by_name: string | null;
+      }[],
+    );
+
+  it('the owner sees who approved and who rejected; RLS alone would not tell them; nobody else gets a row', async () => {
+    const { emp, empCtx, mgrCtx } = await managed('Aisyah Named', 'Daniel Tan');
+    const rA = await claim(empCtx, emp.employmentId, [d(-12)]);
+    await decideReplacementLeaveRequest(mgrCtx, { requestId: rA, decision: 'approved', note: 'Approved — month-end closing.' });
+    const rR = await claim(empCtx, emp.employmentId, [d(-13)]);
+    await decideReplacementLeaveRequest(mgrCtx, { requestId: rR, decision: 'rejected', note: 'Rostered that day.' });
+    const rP = await claim(empCtx, emp.employmentId, [d(-14)]);
+    const all = [rA, rR, rP];
+
+    // NON-VACUITY: the plain join, run as the employee through RLS, yields no name — which is the whole reason
+    // the function exists. (app_user is tenant-readable; the decider's PERSON row is what RLS withholds.)
+    const viaRls = await withTenant(empCtx, (tx) =>
+      tx
+        .select({ name: schema.person.fullName })
+        .from(schema.replacementLeaveRequest)
+        .innerJoin(schema.appUser, eq(schema.appUser.id, schema.replacementLeaveRequest.decidedByUserId))
+        .innerJoin(schema.person, eq(schema.person.id, schema.appUser.personId))
+        .where(eq(schema.replacementLeaveRequest.id, rA)),
+    );
+    expect(viaRls, 'RLS hides the decider’s person row from the employee').toEqual([]);
+    // …while the decider's login IS recorded on the request.
+    expect((await owner.db.select().from(schema.replacementLeaveRequest).where(eq(schema.replacementLeaveRequest.id, rA)))[0].decidedByUserId).toBe(mgrCtx.userId);
+
+    // The owner: both decided requests named, the pending one absent.
+    expect(await deciders(empCtx, all)).toEqual(
+      [
+        { request_id: rA, decided_by_name: 'Daniel Tan' },
+        { request_id: rR, decided_by_name: 'Daniel Tan' },
+      ].sort((a, b) => (a.request_id < b.request_id ? -1 : 1)),
+    );
+    // …and the history carries it to the View panel.
+    const lines = await listOwnLeaveCreditHistory(empCtx);
+    expect(lines.find((l) => l.requestId === rA)!.decidedByName).toBe('Daniel Tan');
+    expect(lines.find((l) => l.requestId === rR)!.decidedByName).toBe('Daniel Tan');
+    expect(lines.find((l) => l.requestId === rP)!.decidedByName).toBeNull();
+
+    // The decider himself — a manager who CAN read the report's request through RLS — gets nothing: not his.
+    expect((await withTenant(mgrCtx, (tx) => tx.select({ id: schema.replacementLeaveRequest.id }).from(schema.replacementLeaveRequest).where(eq(schema.replacementLeaveRequest.id, rA)))).length).toBe(1);
+    expect(await deciders(mgrCtx, all)).toEqual([]);
+    // A manager of somebody else, and another employee of the same company.
+    const other = await managed('Bala Elsewhere', 'Chong Other Manager');
+    expect(await deciders(other.mgrCtx, all)).toEqual([]);
+    expect(await deciders(other.empCtx, all)).toEqual([]);
+    // An HR administrator (who reads names through RLS anyway): no administrator branch.
+    expect(await deciders(admin, all)).toEqual([]);
+    // A different tenant, even holding the ids.
+    const b2 = await seedBase();
+    await setModule(b2.tenantId, 'toil', 'active');
+    const admin2 = await entitledCtx(b2);
+    const dina = await hire('Dina Other Tenant', b2);
+    expect(await deciders(await ctxFor(dina, 'employee', b2, admin2.entitlements), all)).toEqual([]);
+    // No user in the session.
+    expect(await deciders({ ...empCtx, userId: undefined }, all)).toEqual([]);
+
+    // SEARCH_PATH: a TEMP app_user table that names the owner's person cannot stand in for the real one.
+    const shadowed = await withTenant(other.empCtx, async (tx) => {
+      await tx.execute(sql`CREATE TEMP TABLE app_user (id uuid, tenant_id uuid, person_id uuid) ON COMMIT DROP`);
+      await tx.execute(sql`INSERT INTO pg_temp.app_user VALUES (${other.empCtx.userId}::uuid, ${b.tenantId}::uuid, ${emp.personId}::uuid)`);
+      return tx.execute(sql`SELECT request_id FROM app.own_replacement_request_deciders(${`{${all.join(',')}}`}::uuid[])`);
+    });
+    expect(shadowed as unknown as unknown[]).toEqual([]);
+  });
+
+  it('is SECURITY DEFINER, STABLE, with a pinned search_path, revoked from PUBLIC and granted to ai_hr_app; journal idx 512', async () => {
+    const rows = (await owner.db.execute(sql`
+      SELECT p.proname, p.prosecdef, p.proconfig, p.provolatile,
+             pg_get_function_result(p.oid) AS result, pg_get_function_identity_arguments(p.oid) AS args,
+             has_function_privilege('ai_hr_app', p.oid, 'EXECUTE') AS app_exec,
+             EXISTS (SELECT 1 FROM aclexplode(p.proacl) a WHERE a.grantee = 0) AS public_exec
+        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'app' AND p.proname = 'own_replacement_request_deciders'`)) as unknown as Record<string, unknown>[];
+    expect(rows).toEqual([
+      {
+        proname: 'own_replacement_request_deciders',
+        prosecdef: true,
+        proconfig: ['search_path=pg_catalog, public, pg_temp'],
+        provolatile: 's',
+        result: 'TABLE(request_id uuid, decided_by_name text)',
+        args: 'p_request_ids uuid[]',
+        app_exec: true,
+        public_exec: false,
+      },
+    ]);
+    // Every relation in the body is schema-qualified (0312's rule), proven on the text, not assumed.
+    const body = read('db/migrations/0512_own_replacement_request_deciders.sql').split('AS $$')[1]?.split('$$;')[0] ?? '';
+    expect(body.length, 'the function body was found').toBeGreaterThan(300);
+    const relations = [...body.matchAll(/\b(?:FROM|JOIN)\s+([\w.]+)/g)].map((m) => m[1]);
+    expect(relations.length).toBeGreaterThanOrEqual(5);
+    expect(relations.filter((r) => !r.startsWith('public.'))).toEqual([]);
+    // The journal: idx 512, and a `when` above 0511's on the sibling branch (1791210418875).
+    const journal = JSON.parse(read('db/migrations/meta/_journal.json')) as { entries: { idx: number; when: number; tag: string }[] };
+    const entry = journal.entries.find((e) => e.tag === '0512_own_replacement_request_deciders')!;
+    expect(entry.idx).toBe(512);
+    expect(entry.when).toBeGreaterThan(1791210418875);
   });
 });

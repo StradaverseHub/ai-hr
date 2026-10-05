@@ -16,7 +16,7 @@ import {
   CREDIT_HISTORY_PAGE_SIZES,
   applyCreditHistoryFilters,
   creditHistoryParams,
-  creditHistoryYears,
+  creditHistoryYearOptions,
   isFiltered,
   parseCreditHistoryQuery,
 } from '@/lib/leave-credit-history';
@@ -87,7 +87,10 @@ export default async function LeaveCreditHistoryPage({
     );
   }
 
-  const q = parseCreditHistoryQuery(sp);
+  // The Year filter defaults to the CURRENT year (the reporter's "Default: current year"), read off the same
+  // Kuala Lumpur clock as everything else on this page; `?year=all` is every year.
+  const currentYear = Number(today.slice(0, 4));
+  const q = parseCreditHistoryQuery(sp, currentYear);
   const all = await listOwnLeaveCreditHistory(session);
   const { rows, counts } = applyCreditHistoryFilters(all, q.filters);
 
@@ -97,7 +100,7 @@ export default async function LeaveCreditHistoryPage({
   const pageRows = rows.slice(page * q.size, page * q.size + q.size);
   const view = { filters: q.filters, page, size: q.size };
   const href = (over: Parameters<typeof creditHistoryParams>[1]) => {
-    const qs = creditHistoryParams(view, over).toString();
+    const qs = creditHistoryParams(view, over, currentYear).toString();
     return qs ? `/leave/credit?${qs}` : '/leave/credit';
   };
 
@@ -114,9 +117,11 @@ export default async function LeaveCreditHistoryPage({
   for (const l of all) (requestDates[l.requestId] ??= []).push(l.workedDate);
   for (const k of Object.keys(requestDates)) requestDates[k].sort();
 
-  const exportQs = creditHistoryParams({ filters: q.filters }, { page: 0, size: CREDIT_HISTORY_PAGE_SIZES[0] }).toString();
+  const exportQs = creditHistoryParams({ filters: q.filters }, { page: 0, size: CREDIT_HISTORY_PAGE_SIZES[0] }, currentYear).toString();
   const exportHref = `/leave/credit/export${exportQs ? `?${exportQs}` : ''}`;
-  const backQs = creditHistoryParams(view).toString();
+  const backQs = creditHistoryParams(view, {}, currentYear).toString();
+  // Clear returns to the DEFAULTS — the current year, every status, every day type — keeping only the rows per
+  // page the reader chose.
   const clearHref = q.size !== CREDIT_HISTORY_PAGE_SIZES[0] ? `/leave/credit?size=${q.size}` : '/leave/credit';
 
   const from = rows.length === 0 ? 0 : page * q.size + 1;
@@ -164,7 +169,7 @@ export default async function LeaveCreditHistoryPage({
         </div>
         <LeaveCreditHistoryFilterForm
           filters={q.filters}
-          years={creditHistoryYears(all)}
+          years={creditHistoryYearOptions(all, currentYear)}
           size={q.size !== CREDIT_HISTORY_PAGE_SIZES[0] ? q.size : null}
           clearHref={clearHref}
         />

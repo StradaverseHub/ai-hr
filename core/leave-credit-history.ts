@@ -21,6 +21,11 @@
  *                                          `replacement-leave-request.cancelled` (when the employee withdrew).
  *                                          Employee-readable by subject RLS (migration 0037).
  *   · leave_request                      — the dates and leave type of each application that used a credit.
+ *   · app.own_replacement_request_deciders (migration 0512) — the display name of whoever decided each of
+ *                                          the person's OWN decided requests. A SECURITY DEFINER read, because
+ *                                          the decider's `person` row is invisible to the employee through RLS
+ *                                          (visibility flows downward); it checks ownership itself and returns
+ *                                          the name and nothing else about them.
  *
  * ⚠️ NEVER MONEY. `toil.converted` carries `amountOwed` and a valuation basis in its payload. Only the DAY
  * fields are selected out of the payload (`->> 'daysCredited'`, `->> 'asOf'`), never the payload itself, so
@@ -176,6 +181,16 @@ export async function listOwnLeaveCreditHistory(ctx: SessionContext): Promise<Cr
       : [];
     const leaveById = new Map(leaves.map((l) => [l.id, l]));
 
+    // The decider's name, for the person's own decided requests only (the function re-checks ownership).
+    const decidedIds = heads.filter((h) => (h.status === 'approved' || h.status === 'rejected') && UUID.test(h.id)).map((h) => h.id);
+    const deciderName = new Map<string, string>();
+    if (decidedIds.length > 0) {
+      const rows = (await tx.execute(
+        sql`SELECT request_id, decided_by_name FROM app.own_replacement_request_deciders(${`{${decidedIds.join(',')}}`}::uuid[])`,
+      )) as unknown as { request_id: string; decided_by_name: string | null }[];
+      for (const r of rows) if (r.decided_by_name) deciderName.set(r.request_id, r.decided_by_name);
+    }
+
     const headById = new Map(heads.map((h) => [h.id, h]));
     return lines.map((l): CreditHistoryLine => {
       const h = headById.get(l.requestId)!;
@@ -220,6 +235,7 @@ export async function listOwnLeaveCreditHistory(ctx: SessionContext): Promise<Cr
         approvalStatus: h.status,
         decidedOn: decidedInstant ? todayInKualaLumpur(decidedInstant) : null,
         decidedTime: decidedInstant ? timeInKualaLumpur(decidedInstant) : null,
+        decidedByName: deciderName.get(h.id) ?? null,
         decisionNote: h.status === 'approved' || h.status === 'rejected' ? (h.decisionNote?.trim() || null) : null,
         reason: h.reason?.trim() || null,
         shiftEnd: l.shiftEnd ?? null,

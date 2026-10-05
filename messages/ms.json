@@ -13985,6 +13985,7 @@
       "notRecorded": "Tidak direkodkan bersama permohonan ini",
       "approval": "Kelulusan",
       "level": "Peringkat {level}",
+      "levelNamed": "Peringkat {level} · {name}",
       "approved": "Diluluskan · {date} {time}",
       "rejected": "Ditolak · {date} {time}",
       "waiting": "Menunggu kelulusan",
