@@ -1104,6 +1104,9 @@ export function CompanyPanel({
                     size="sm"
                     variant="ghost"
                     className="text-destructive hover:text-destructive"
+                    // f00bd1eb — the confirmation's Delete is the red button the approved mockup shows; the
+                    // trigger stays a quiet ghost beside Archive.
+                    confirmVariant="destructive"
                     title={t('deleteCompanyTitle')}
                     description={t('deleteCompanyDescription')}
                     confirmLabel={t('delete')}
