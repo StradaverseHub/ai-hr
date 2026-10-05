@@ -45,13 +45,14 @@ async function customerCount() {
   const [row] = await owner.db.execute(sql`select count(*)::int as count from tenant where id <> ${SYSTEM_TENANT}::uuid`);
   return row.count;
 }
-function cli(args: string[], env = environment(), entry = path.join(ROOT, 'scripts/bootstrap-customer.ts')): Promise<{ code: number | null; out: string }> {
+function cli(args: string[], env: Record<string, string | undefined> = environment(), entry = path.join(ROOT, 'scripts/bootstrap-customer.ts')): Promise<{ code: number | null; out: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['--import', path.join(ROOT, 'node_modules/tsx/dist/loader.mjs'),
       entry, '--config', configFile, ...args], {
       // The private fixture cwd deliberately has no development env file. Point the loader at the
       // real TS aliases explicitly, as running from the documented application cwd does naturally.
-      cwd: directory, env: { ...env, TSX_TSCONFIG_PATH: path.join(ROOT, 'tsconfig.json') }, stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: directory, env: { ...env, TSX_TSCONFIG_PATH: path.join(ROOT, 'tsconfig.json') } as NodeJS.ProcessEnv,
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
     let out = '';
     child.stdout.on('data', (value) => { out += value; });
@@ -250,7 +251,8 @@ describe('fresh customer bootstrap — one audited customer without a privileged
       { SHARE_PASSWORD: 'short' }, { AI_CONFIG_SECRET: 'CHANGE_ME' }, { WORKOS_API_HTTPS: 'false' },
       { NEXT_PUBLIC_WORKOS_REDIRECT_URI: '' }, { NEXT_PUBLIC_WORKOS_REDIRECT_URI: 'http://hr.fixture-company.com/callback' },
       { NEXT_PUBLIC_WORKOS_REDIRECT_URI: 'https://customer.test/callback' }]) {
-      await expect(validateBootstrapEnvironment({ ...environment(), ...patch }, directory)).rejects.toThrow();
+      // Deliberately malformed process input; Next narrows NODE_ENV on ProcessEnv at type level.
+      await expect(validateBootstrapEnvironment({ ...environment(), ...patch } as NodeJS.ProcessEnv, directory)).rejects.toThrow();
     }
     expect(await customerCount()).toBe(0);
     expect(await count('domain_event')).toBe(0);
