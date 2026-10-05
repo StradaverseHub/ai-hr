@@ -82,8 +82,8 @@ Minimize clicks, entry and searching; maximize context, defaults, visibility and
   root scratch HEAD). A fresh worktree has no `.env.local` (gitignored) and no `node_modules`: copy the
   first, symlink the second — **but see the next bullet before you do, if Next has been upgraded.**
   `git -C <missing dir> status | wc -l` prints 0, indistinguishable from clean.
-- **The `node_modules` SYMLINK IS A LANDMINE ON NEXT 16.3.x, and the upgrade is still owed** (three CVEs,
-  r371). On 16.3.x Turbopack's filesystem root is hermetic and **any symlink resolving outside the project
+- **The `node_modules` SYMLINK IS A LANDMINE ON NEXT 16.3.x** (the private-cloud preparation upgrades to
+  16.3.8). On 16.3.x Turbopack's filesystem root is hermetic and **any symlink resolving outside the project
   root fails both `next build` AND `pnpm dev`** — `TurbopackInternalError: Symlink [project]/node_modules is
   invalid, it points out of the filesystem root`. It dies at entrypoint resolution before compiling
   anything, so it reads as a code error and is not one; `pnpm dev` prints `✓ Ready in …` and *then* panics.
