@@ -86,6 +86,9 @@ that role bypasses tenant RLS for its explicitly granted tables, so keep it out 
 runtime. Likewise add only the provider/runtime settings a deliberately enabled feature requires.
 The platform pool is not a replacement for the app URL. Treat both environment files as secret
 material in rotation and recovery procedures, with changes applied to both where a value is shared.
+The unit validates these effective runtime values before every start, independently of the deploy
+preflight. A stale/missing WorkOS setting, disabled audit chain or non-production runtime must refuse
+to start rather than reopen a demo authentication path.
 
 ## 3. Build, then prepare the cache and install the unit
 
@@ -166,7 +169,11 @@ semantics, alert delivery and last-success age before enabling business-changing
 installed backup service. Configure an encrypted off-host destination and separate backup identity;
 keep its DB/storage credentials inaccessible to web and ordinary job accounts. A daily dump alone
 can lose nearly a day of writes: agree the customer's recovery point/time objectives and enable
-managed PostgreSQL PITR or WAL archiving when required. Choose retention and immutability that meet
+PostgreSQL PITR through continuous WAL archiving to the independent backup host/storage. The private
+cloud design uses a self-managed PostgreSQL 16 primary/standby pair: require certificate-verified TLS
+for remote DB connections, restricted replication credentials, tested failover/fencing, and a named
+operator responsible for patching, replication lag, WAL retention and recovery. A standby is not a
+backup. Rehearse both failover and archive-based point-in-time recovery. Choose retention and immutability that meet
 the actual contract. Schedule the backup, route both failure and stale-success alerts to an owner,
 and complete an isolated restore rehearsal before sensitive data is loaded. Do not restore customer
 dumps onto developer laptops. Record measured recovery time and latest recoverable timestamp; do
