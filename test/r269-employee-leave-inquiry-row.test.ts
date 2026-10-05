@@ -303,7 +303,8 @@ describe('5ca446db — the sidebar lights the new row on both inquiry screens, a
     // Non-vacuity for the two `it.each` tables below: an empty or leave-only row set would make "exactly
     // one lights" trivially true.
     expect(ALL_ROWS.length).toBeGreaterThan(10);
-    for (const key of ['leave:employeeLeaveInquiry', 'leave:teamLeaveTracker', 'leave:leaveOverview', 'leave:leaveHistory', 'leave:leaveEntitlements'])
+    // r389 — `leave:leaveCreditHistory` joined the names: the My Leave node's third row, at /leave/credit.
+    for (const key of ['leave:employeeLeaveInquiry', 'leave:teamLeaveTracker', 'leave:leaveOverview', 'leave:leaveHistory', 'leave:leaveCreditHistory', 'leave:leaveEntitlements'])
       expect(ALL_ROWS.map((r) => r.key), key).toContain(key);
   });
 
@@ -317,6 +318,10 @@ describe('5ca446db — the sidebar lights the new row on both inquiry screens, a
     [TRACKER_HREF, 'leave:teamLeaveTracker'],
     ['/leave', 'leave:leaveOverview'],
     ['/leave/history', 'leave:leaveHistory'],
+    // r389 (bc3e203d) — Leave Credit History lights alone on its own address. `/leave` is exactHref, so
+    // Leave Request does not light here by prefix; and the HR row Leave Config › Leave Credit (another
+    // address entirely) does not either.
+    ['/leave/credit', 'leave:leaveCreditHistory'],
     // …and Entitlements is NOT lit by the new row: the row the reporter opened Leave Config on still wins
     // its own screen.
     ['/admin/leave-config/types', 'leave:leaveEntitlements'],

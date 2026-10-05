@@ -41,6 +41,8 @@ describe('My Absence: first-level nav rename (label-only, same href)', () => {
     expect(leavePack).toContain("group: 'main', labelKey: 'myLeave', icon: CalendarDays,");
     expect(leavePack).toContain("{href:'/leave', labelKey:'leaveOverview', icon:CalendarDays, exactHref:true}");
     expect(leavePack).toContain("{href:'/leave/history', labelKey:'leaveHistory', icon:History, exactHref:true}");
+    // r389 (bc3e203d) — the third row, Leave Credit History, at the address the old form-plus-list page held.
+    expect(leavePack).toContain("{href:'/leave/credit', labelKey:'leaveCreditHistory', icon:CalendarClock, exactHref:true}");
     // The old top-level `labelKey: 'leave'` is gone (renamed to myAbsence; leaveConfig — the ADMIN
     // config row — is unaffected). Asserted on the labelKey form directly: since rung 6 the sidebar's
     // only bare `'leave'` token is the `modulePackById('leave')` registry lookup, not a nav labelKey.
