@@ -6,6 +6,7 @@ import {requirePackFor} from '../localization/registry';
 import {DEFAULT_MY_STATUTORY} from '../localization/my/statutory-tables';
 import {saveStatutoryRulesetMY} from '../localization/my/statutory-config';
 import {hireEmployee} from '../core/org';
+import {isModuleEnabled} from '../core/entitlements';
 import {setCompensation} from '../core/comp';
 import {createBatch,createAdditionalRun,generatePayslips,upsertPayComponent,setEmploymentPayComponent,setPayrollBatchComponent} from '../packs/payroll/service';
 import {readPcbExemptions} from '../core/pcb-exemptions';
@@ -46,7 +47,12 @@ describe('r387 retained one-off noncash exemption assessment',()=>{
   }
   expect(initial.pcbNonCash.ownedEaEntries.filter((x:any)=>x.source==='one_off')).toHaveLength(2);
   const second=await createAdditionalRun(ctx,{companyId:base.companyId,payPeriod:period,runType:'bonus'});await addBonus(second.batchId);await generatePayslips(ctx,{batchId:second.batchId});
-  const regular=await createBatch(ctx,{companyId:base.companyId,payPeriod:period});await generatePayslips(ctx,{batchId:regular.batchId});
+  // Module entitlement is captured in the session: refresh it to exercise the genuine legacy early return.
+  await setModule(base.tenantId,'typed_pay_components','disabled');
+  const legacyCtx=await entitledCtx(base);
+  expect(isModuleEnabled(legacyCtx,'typed_pay_components')).toBe(false);
+  expect(isModuleEnabled(legacyCtx,'multi_cycle_payroll')).toBe(true);
+  const regular=await createBatch(legacyCtx,{companyId:base.companyId,payPeriod:period});await generatePayslips(legacyCtx,{batchId:regular.batchId});
   for(const batchId of [second.batchId,regular.batchId]){
    const current=await slip(batchId),st=current.statutory as any;
    const evidence=readPcbExemptions(st.pcbExemptions);expect(evidence).not.toBeNull();
