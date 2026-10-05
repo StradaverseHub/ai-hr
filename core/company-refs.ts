@@ -97,7 +97,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'module_change_request', column: 'company_id', disposition: 'other', note: 'A module activation request for this company. Composite key with tenant_id.' },
 
   // ── config: deleted with the company, in this order ──────────────────────────────────────────────────
-  { table: 'company_logo', column: 'company_id', disposition: 'config', note: 'The company\'s logo image.' },
+  { table: 'company_logo', column: 'company_id', disposition: 'config', note: 'The company\'s logo image, held in its own side table.' },
   { table: 'company_statutory_my', column: 'company_id', disposition: 'config', note: 'The company\'s own EPF / SOCSO / LHDN registration numbers.' },
   { table: 'company_statutory_authority', column: 'company_id', disposition: 'config', note: 'Per-authority payment setup. Before company_bank_profile, which it references.' },
   { table: 'company_bank_profile', column: 'company_id', disposition: 'config', note: 'The company\'s disbursement bank accounts.' },
@@ -109,9 +109,9 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'payroll_permission_grant', column: 'company_id', disposition: 'config', note: 'Per-company payroll permission overrides. ON DELETE CASCADE already; deleted explicitly for one rule.' },
   { table: 'employee_id_config', column: 'company_id', disposition: 'config', note: 'The Employee ID running-number setup. A draft holding one of its numbers is an employee record and refuses first.' },
   { table: 'leave_approval_policy', column: 'company_id', disposition: 'config', note: 'Leave approval routing. Before department, position and business_unit, which it may name.' },
-  { table: 'leave_encashment_policy', column: 'company_id', disposition: 'config', note: 'Leave encashment rules.' },
-  { table: 'attendance_allowance_policy', column: 'company_id', disposition: 'config', note: 'Attendance allowance rules.' },
-  { table: 'attendance_policy', column: 'company_id', disposition: 'config', note: 'Attendance policy.' },
+  { table: 'leave_encashment_policy', column: 'company_id', disposition: 'config', note: 'Leave encashment rules for this company. Setup only; encashment paid is payroll.' },
+  { table: 'attendance_allowance_policy', column: 'company_id', disposition: 'config', note: 'Attendance allowance rules for this company. Setup only; paid allowances live in payroll.' },
+  { table: 'attendance_policy', column: 'company_id', disposition: 'config', note: 'The company\'s attendance policy (grace periods, clocking rules). Setup only.' },
   { table: 'shift', column: 'company_id', disposition: 'config', note: 'Shift definitions. Before attendance_rule, which a shift references.' },
   { table: 'attendance_rule', column: 'company_id', disposition: 'config', note: 'Attendance schedule rules.' },
   { table: 'toil_policy', column: 'company_id', disposition: 'config', note: 'THE AUTOMATIC SETUP for the TOIL module (the leave credit policy). One row on ABC Comapny.' },
@@ -132,7 +132,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
 
   // ── config-if-unreferenced: the company's own org structure, deleted unless something outside uses it ──
   { table: 'department', column: 'company_id', disposition: 'config-if-unreferenced', note: 'Before business_unit, which a department references.' },
-  { table: 'position', column: 'company_id', disposition: 'config-if-unreferenced', note: 'Positions of this company.' },
+  { table: 'position', column: 'company_id', disposition: 'config-if-unreferenced', note: 'Positions of this company. An assignment or approval rule elsewhere naming one refuses.' },
   { table: 'location', column: 'company_id', disposition: 'config-if-unreferenced', note: 'Work locations; a clocking location may point at one.' },
   { table: 'cost_center', column: 'company_id', disposition: 'config-if-unreferenced', note: 'Cost centres of this company.' },
   { table: 'business_unit', column: 'company_id', disposition: 'config-if-unreferenced', note: 'Last: departments, assignments and approval rules reference it.' },
