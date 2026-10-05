@@ -44,7 +44,9 @@ before the first customer write, off-box backups and a timed restore, confirmed 
 controlled hosting, runtime credential separation, customer payroll/filing rehearsals and a production-like
 4,000-employee load test. The multi-replica requirements in 7.3 must be met before adding app replicas.
 
-**Target clarified by the owner:** a new private-cloud environment, with 4,000 employees at launch.
+**Target clarified by the owner:** a new private-cloud environment in Malaysia, with 4,000 employees
+at launch. Approved external authentication and AI services are acceptable; provider/platform and
+domain remain undecided.
 The demo observations above describe the existing consultant host, not the proposed customer servers.
 Use `deploy/PRODUCTION-ARCHITECTURE.md` for procurement assumptions and `deploy/CUSTOMER.md` for the
 separate customer service, restricted credentials, startup checks and acceptance procedure. These

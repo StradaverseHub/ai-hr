@@ -9,6 +9,8 @@ Use `CUSTOMER.md` for installation and `../docs/CUSTOMER-DEPLOYMENT-READINESS.md
 REQUIREMENT: 4,000 employees at launch, increasing gradually (owner, 5 October 2026).
 REQUIREMENT: newly procured servers in the owner's private cloud; database and host operations are
 the owner's responsibility, unless separately contracted. No managed public-cloud database is assumed.
+REQUIREMENT: private-cloud hosting in Malaysia. The platform/provider and domain are not decided yet.
+DECISION: approved external authentication and AI services are acceptable (owner, 5 October 2026).
 ASSUMPTION: 100–200 active users plus concentrated morning clock-in traffic, with externally hosted AI
 inference. Active users are not all issuing requests simultaneously. These are load-test inputs, not
 tested capacity guarantees. Peak traffic, payroll size, attachment growth and budget remain unknown.
@@ -33,10 +35,10 @@ These totals assume the private-cloud platform supplies centralized monitoring/l
 administrative access services. If it does not, size those services separately from the measured log
 volume and retention policy; do not consume the database/backup reservation for unbounded logs.
 
-RECOMMENDATION: use the same approved data region for the database, app, backups and logs. Malaysia
-is a candidate if the owner requires local hosting; do not assume that authentication, AI, telemetry
-or support access stays in that region. Review each processor's actual terms and processing locations.
-No provider price or monthly total is asserted until region, availability, backup retention and traffic
+RECOMMENDATION: keep private-cloud application data, databases, backups and logs in Malaysia. Approved
+external services are permitted, but their authentication, AI, telemetry and support processing may
+occur elsewhere. Review each selected processor's actual terms, data scope and processing locations.
+No provider price or monthly total is asserted until provider, availability, backup retention and traffic
 are chosen. Include private-cloud compute/storage HA, backup storage, outbound traffic, WAF, logs, authentication, AI API
 usage, staging and operational support in the quote.
 
@@ -172,8 +174,8 @@ queries based on the measured bottleneck. Do not promise a headcount limit from 
 
 ## Launch evidence and outstanding decisions
 
-Owner inputs needed to finalize provisioning: peak users, private-cloud provider/platform and allowed
-regions, monthly budget, domain, recovery objectives, backup retention, identity-provider environment,
+Owner inputs needed to finalize provisioning: peak users, private-cloud provider/platform in Malaysia,
+monthly budget, domain, recovery objectives, backup retention, identity-provider environment,
 first administrator and alert recipient. Customer-specific inputs also include import files, payroll
 cut-off/pay day, benefit/approval rules, bank payment layout and statutory filing sign-off.
 
