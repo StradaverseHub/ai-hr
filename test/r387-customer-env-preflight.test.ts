@@ -73,7 +73,7 @@ function runDeploy(
       PATH: `${bin}:/usr/bin:/bin:/usr/sbin:/sbin`, HOME: dir,
       DEPLOY_TRACE: trace, AIHR_DEPLOY_STATE_DIR: path.join(dir, 'state'),
       ...options.inherited,
-    },
+    } as unknown as NodeJS.ProcessEnv,
   });
   return {
     status: result.status,
@@ -116,6 +116,22 @@ describe('customer deploy refuses unsafe configuration before any install or dat
   it.each(['WORKOS_API_KEY', 'WORKOS_CLIENT_ID', 'WORKOS_COOKIE_PASSWORD', 'NEXT_PUBLIC_WORKOS_REDIRECT_URI', 'AI_CONFIG_SECRET'])('refuses absent %s', (key) => {
     refused(runDeploy({ [key]: undefined }), key);
   });
+  it.each([
+    undefined, '', 'not-a-url', 'https://app:secret@db.internal/ai_hr',
+    'postgresql://app@db.internal/ai_hr', 'postgresql://app:CHANGE_ME@db.internal/ai_hr',
+    'postgresql://app:CHANGE%5FME@db.internal/ai_hr',
+    ...['postgres', 'ai_hr_owner', 'ai_hr_platform'].map((role) => `postgresql://${role}:secret@db.internal/ai_hr`),
+  ])('refuses unsafe app database configuration without logging credentials', (value) => {
+    const result = runDeploy({ DATABASE_URL: value });
+    refused(result, 'DATABASE_URL');
+    if (value) expect(result.output).not.toContain(value);
+  });
+  it('refuses the migration role reused by the app on the same database', () => {
+    refused(runDeploy({ DATABASE_URL: SAFE_ENV.MIGRATION_DATABASE_URL }), 'separate database roles');
+  });
+  it.each(['user=postgres', 'database=another_database', 'role=ai_hr_owner', 'options=-c%20role%3Dai_hr_owner'])('refuses PostgreSQL query override %s', (query) => {
+    refused(runDeploy({ DATABASE_URL: `${SAFE_ENV.DATABASE_URL}?${query}` }), 'query parameters');
+  });
   it.each(['WORKOS_API_KEY', 'WORKOS_CLIENT_ID', 'WORKOS_COOKIE_PASSWORD', 'SHARE_PASSWORD', 'AI_CONFIG_SECRET'])('refuses placeholder %s without printing the secret', (key) => {
     const value = 'CHANGE_ME_this-is-sensitive-and-must-not-be-logged';
     const result = runDeploy({ [key]: value });
@@ -154,6 +170,27 @@ describe('customer deploy refuses unsafe configuration before any install or dat
 });
 
 describe('configured customer bootstrap and the guard sensitivity', () => {
+  it('validates the service environment without any migration credential or env file', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'r387-customer-runtime-'));
+    dirs.push(dir);
+    const { MIGRATION_DATABASE_URL: _, ...runtimeEnv } = SAFE_ENV;
+    const result = spawnSync(process.execPath, [path.join(REPO, 'deploy/check-customer-env.mjs')], {
+      cwd: dir, encoding: 'utf8', env: runtimeEnv as NodeJS.ProcessEnv,
+    });
+    expect(result.status, result.stderr).toBe(0);
+  });
+  it('ignores a masked override file the service user cannot read', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'r387-masked-runtime-'));
+    dirs.push(dir);
+    const masked = path.join(dir, '.env.local');
+    fs.writeFileSync(masked, 'ALLOW_DEMO_SESSION=true\n', { mode: 0o000 });
+    expect(() => fs.accessSync(masked, fs.constants.R_OK)).toThrow();
+    const { MIGRATION_DATABASE_URL: _, ...runtimeEnv } = SAFE_ENV;
+    const result = spawnSync(process.execPath, [path.join(REPO, 'deploy/check-customer-env.mjs')], {
+      cwd: dir, encoding: 'utf8', env: runtimeEnv as NodeJS.ProcessEnv,
+    });
+    expect(result.status, result.stderr).toBe(0);
+  });
   it.each(['deploy.sh', 'deploy-customer.sh'])('allows %s to complete without demo identity or existing tenant', (script) => {
     const result = runDeploy({}, { script });
     expect(result.status, result.output).toBe(0);

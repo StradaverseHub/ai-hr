@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // No dependencies or database access: deploy.sh runs this before its first install. This validates
 // configuration, not provider credentials, a registered callback, or a successful first login.
-import { existsSync } from 'node:fs';
+import { accessSync, constants } from 'node:fs';
 
 const errors = [];
 const env = process.env;
@@ -41,6 +41,38 @@ required('WORKOS_COOKIE_PASSWORD', 32);
 required('SHARE_PASSWORD', 16);
 required('AI_CONFIG_SECRET', 16);
 
+function databaseUrl(name) {
+  if (!required(name)) return;
+  try {
+    const url = new URL(env[name]);
+    if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname ||
+      !url.username || !url.password || url.pathname.length <= 1 || url.hash ||
+      placeholder.test(decodeURIComponent(url.href))) throw new Error('Invalid database configuration');
+    // postgres.js merges query parameters into its startup message after the URL's user/database.
+    // Checking only URL.username would accept ?user=postgres as an app-role connection.
+    if (['user', 'username', 'password', 'pass', 'database', 'dbname', 'host', 'hostname', 'port', 'role', 'options']
+      .some((key) => url.searchParams.has(key))) {
+      errors.push(`${name} must not override identity or connection details in query parameters.`);
+      return;
+    }
+    return url;
+  } catch {
+    errors.push(`${name} must be a PostgreSQL URL with a host, database, username and non-placeholder password.`);
+  }
+}
+const appDb = databaseUrl('DATABASE_URL');
+if (appDb && ['ai_hr_owner', 'ai_hr_platform', 'postgres'].includes(decodeURIComponent(appDb.username).toLowerCase())) {
+  errors.push('DATABASE_URL must use the non-privileged app role, never postgres, ai_hr_owner or ai_hr_platform.');
+}
+// Runtime deliberately has no migration credential. deploy.sh requires one separately before calling
+// this checker, while the service reuses it with only its restricted runtime environment.
+const migrationDb = env.MIGRATION_DATABASE_URL ? databaseUrl('MIGRATION_DATABASE_URL') : undefined;
+if (appDb && migrationDb && appDb.hostname === migrationDb.hostname &&
+  (appDb.port || '5432') === (migrationDb.port || '5432') && appDb.pathname === migrationDb.pathname &&
+  decodeURIComponent(appDb.username) === decodeURIComponent(migrationDb.username)) {
+  errors.push('DATABASE_URL and MIGRATION_DATABASE_URL must use separate database roles.');
+}
+
 if (required('NEXT_PUBLIC_WORKOS_REDIRECT_URI')) {
   let valid = false;
   try {
@@ -60,7 +92,14 @@ if (required('NEXT_PUBLIC_WORKOS_REDIRECT_URI')) {
 // Next also reads these files. A leftover development file could restore a demo flag that is absent
 // from the checked .env.production after the deploy process exits. Keep one production env source.
 for (const file of ['.env', '.env.local', '.env.production.local']) {
-  if (existsSync(file)) errors.push(`Remove ${file} from the customer release directory; it can supply unchecked runtime settings. Use .env.production for this deployment.`);
+  try {
+    accessSync(file, constants.R_OK);
+    errors.push(`Remove ${file} from the customer release directory; it can supply unchecked runtime settings. Use .env.production for this deployment.`);
+  } catch (error) {
+    // The hardened service masks these files with InaccessiblePaths. If its app user cannot read
+    // them, neither can Next; the inherited service environment remains the only effective source.
+    if (!['ENOENT', 'EACCES', 'EPERM'].includes(error.code)) throw error;
+  }
 }
 
 if (errors.length) {

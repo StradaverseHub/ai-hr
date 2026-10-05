@@ -140,7 +140,7 @@ function runDeploy(script: 'deploy.sh' | 'deploy-customer.sh', args: string[], e
 // test/share-gate.test.ts; do not re-pin it here by deleting this line.
 const CUSTOMER_ENV = [
   'NODE_ENV=production',
-  `MIGRATION_DATABASE_URL=${DEAD_DB}`,
+  `MIGRATION_DATABASE_URL=${DEAD_DB.replace('seedguard:seedguard', 'owner:owner')}`,
   `DATABASE_URL=${DEAD_DB}`,
   'SHARE_PASSWORD=fixture-not-a-real-secret',
   'AI_CONFIG_SECRET=fixture-encryption-secret',
