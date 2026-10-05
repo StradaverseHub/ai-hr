@@ -2,13 +2,13 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, listReprocessEmployeeOutcomes, batchInputRows, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory } from '@/core/payroll';
+import { batchDetailPage, listReprocessEmployeeOutcomes, batchInputRows, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory } from '@/core/payroll';
 import { payrollReadiness, type PayrollReadiness } from '@/core/payroll-readiness';
 import { statutoryPackStale } from '@/lib/statutory-readiness';
 import { auditEvents } from '@/core/read';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { Pager } from '@/components/pager';
-import { paginateRows, parsePageQuery } from '@/lib/pagination';
+import { parsePageQuery } from '@/lib/pagination';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { closeAction, generateAction, resetAction, unlockAction } from '../actions';
 // b372e923 — the payroll result destination, now spelled in ONE place because the Reprocess result table
@@ -78,19 +78,20 @@ export default async function BatchPage({
   const backHref = payrollListReturnTo(from);
   // …and the two screens BELOW this one get it too, so Back is unbroken all the way down the chain.
   const fromSuffix = backHref === '/payroll' ? '' : `?from=${encodeURIComponent(backHref)}`;
-  const data = await batchDetail(s, batchId);
+  const data = await batchDetailPage(s, batchId, parsePageQuery(sp));
   if (!data) notFound();
-  const { batch, slips } = data;
+  const { batch, slipPage } = data;
+  const slipCount = slipPage.state.total;
   const processingOutcomes = batch.status === 'draft' ? [] : await listReprocessEmployeeOutcomes(s, {batchId});
   const processingByEmployment = new Map(processingOutcomes.map(outcome => [outcome.employmentId, outcome]));
   // Feedback ef31d251 — this header used to render the RAW status enum, and "Processed" reads as
   // finished. It is not: payslips stay invisible to employees until Close, which is why eighteen runs
   // were calculated and never published. Derived through the shared helper the payroll LIST also uses,
-  // so the two screens cannot start disagreeing about what "published" means. batchDetail does a bare
+  // so the two screens cannot start disagreeing about what "published" means. batchDetailPage does a bare
   // select() of the batch row, so releasedAt is already in hand — no extra read.
   const pubState = payrollPublicationState(batch);
   // 49e7e0a2 — the run's recalculation mark. Set when a one-off transaction is added, changed or removed
-  // AFTER the run was processed; `closeBatch` refuses while it is set. `batchDetail` does a bare select()
+  // AFTER the run was processed; `closeBatch` refuses while it is set. `batchDetailPage` does a bare select()
   // of the batch row, so both columns are already in hand — no extra read.
   const needsRecalc = batch.needsRecalcAt != null;
   const recalcEmploymentIds = Array.isArray(batch.recalcEmploymentIds)
@@ -105,9 +106,8 @@ export default async function BatchPage({
   const totals = (batch.totals ?? {}) as Record<string, number>;
   const inputs = batch.status === 'draft' ? await batchInputRows(s, batchId) : [];
   const leavers = batch.status === 'draft' ? await leaverAdvisory(s, batchId) : [];
-  // fc776376 — both per-employee tables on this run are genuine lists that grow with headcount. The
-  // payslip BREAKDOWN (one payslip's own lines) is deliberately not paged: it is one record, not a list.
-  const slipPage = paginateRows(slips, parsePageQuery(sp));
+  // Payslip rows are limited in the database; header actions and close confirmation use the full
+  // matching count, including when the requested page is empty. Financial totals come from the batch.
   // Pre-processing checks (feedback f1564110, Phase 1): validate employee master data BEFORE the run
   // is calculated. Blockers (no salary record) disable Generate outright; warnings (no statutory
   // profile / no bank details) swap Generate for a ConfirmSubmit that posts ackWarnings=1.
@@ -410,7 +410,7 @@ export default async function BatchPage({
                 Same gates as the panel had (processed-only, multi-cycle on, payslips exist); the
                 destination re-asserts all three and the service is still the authority. A plain <Link>,
                 not a form: the destination is a page, and this keeps the header a server component. */}
-            {batch.status === 'processed' && multiCycleOn && slips.length > 0 && (
+            {batch.status === 'processed' && multiCycleOn && slipCount > 0 && (
               <Link
                 href={`/payroll/${batch.id}/reprocess${fromSuffix}`}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
@@ -424,7 +424,7 @@ export default async function BatchPage({
                 exist) PLUS the reset setting, because removal rides that same operator risk switch —
                 and the destination re-asserts every one of them. A plain <Link>: the destination is a
                 page, which keeps this header a server component. */}
-            {batch.status === 'processed' && multiCycleOn && resetOn && slips.length > 0 && (
+            {batch.status === 'processed' && multiCycleOn && resetOn && slipCount > 0 && (
               <Link
                 href={`/payroll/${batch.id}/remove${fromSuffix}`}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
@@ -455,7 +455,7 @@ export default async function BatchPage({
                   <ConfirmSubmit
                     variant="secondary"
                     title={t('closeConfirmTitle')}
-                    description={t('closeConfirmBody', { n: slips.length })}
+                    description={t('closeConfirmBody', { n: slipCount })}
                     confirmLabel={t('closeConfirmYes')}
                   >
                     {t('closeBatch')}
@@ -515,7 +515,7 @@ export default async function BatchPage({
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
           <div className="font-medium">⚠ {t('recalcBannerTitle', { n: recalcEmploymentIds.length })}</div>
           <p className="mt-1">{t('recalcBannerBody')}</p>
-          {multiCycleOn && slips.length > 0 && (
+          {multiCycleOn && slipCount > 0 && (
             <Link href={`/payroll/${batch.id}/reprocess${fromSuffix}`} className="mt-1 inline-block font-medium underline">
               {t('recalcBannerAction')}
             </Link>
@@ -1123,7 +1123,7 @@ export default async function BatchPage({
       )}
 
       <Card className="overflow-hidden">
-        <SectionHeader title={t('payslipsTitle')} count={slips.length} />
+        <SectionHeader title={t('payslipsTitle')} count={slipCount} />
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
