@@ -42,6 +42,8 @@ describe('r387 complete monetary parity against original calculation',()=>{
   const ids=new Map([[comp[0].id,'selected-salary-owner'],[bonus.id,'item:SYNTH_TAXABLE_BONUS']]);
   const bonusSources=await owner.db.select().from(schema.payrollBatchComponent).where(eq(schema.payrollBatchComponent.batchId,extra.batchId));
   const ownedBonus=bonusSources.filter(x=>x.employmentId===e.employmentId&&x.componentId===bonus.id);expect(ownedBonus).toHaveLength(1);ids.set(ownedBonus[0].id,'batch-item:SYNTH_TAXABLE_BONUS');
+  const taxSelections=await owner.db.select().from(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.employmentId,e.employmentId));
+  expect(taxSelections).toHaveLength(1);expect(taxSelections[0]).toMatchObject({tenantId:base.tenantId,companyId:base.companyId,scheme:'resident',transitionState:'resolved'});ids.set(taxSelections[0].id,'selected-employer-tax-owner');
   const assigned=await owner.db.select().from(schema.employmentPayComponent).where(eq(schema.employmentPayComponent.employmentId,e.employmentId));
   for(const assignment of assigned){const [item]=await owner.db.select().from(schema.payComponent).where(eq(schema.payComponent.id,assignment.componentId));ids.set(assignment.id,`assignment:${item.code}`);ids.set(item.id,`item:${item.code}`);}
   const normalized=(value:any,path="slip"):any=>{
