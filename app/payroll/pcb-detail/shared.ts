@@ -302,7 +302,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
    * `pcb-detail-view.tsx` calls, with the same explanation and equivalent formatters, so an expression
    * cannot differ between the page and the file that leaves the building.
    */
-  const bodyFor = (slot: PcbDetailBodySlot): { rows: PcbSlipPdfRow[]; columns?: string[]; note?: string } => {
+  const bodyFor = (slot: PcbDetailBodySlot): { rows: PcbSlipPdfRow[]; columns?: string[]; labelColumn?: string; note?: string } => {
     switch (slot) {
       // ⚠️ THE SAME EIGHT ROWS THE SCREEN RENDERS, AND NO MORE. Until r372 this block also carried the
       // statutory table version, which on the screen belongs to the "Calculation source" footer — and that
@@ -589,7 +589,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
       // FOOTER — where these figures came from. Absent from this document until r372.
       case 'exemptions': {
         const table = pcbExemptionTable(model.exemptions, key => t(key));
-        return {columns: table.columns.slice(1), rows: table.rows.length
+        return {columns: table.columns.slice(1), labelColumn: table.columns[0], rows: table.rows.length
           ? table.rows.map(row => ({line: '', label: row.label, cells: row.cells}))
           : [wide(table.empty)], note: table.note};
       }
@@ -680,7 +680,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
    */
   for (const e of layout) {
     const b = e.kind === 'section' ? slipRows(e.section) : bodyFor(e.slot);
-    sections.push({ heading: entryTitle(e), columns: b.columns ?? AMOUNT, rows: b.rows, note: b.note });
+    sections.push({ heading: entryTitle(e), columns: b.columns ?? AMOUNT, labelColumn: 'labelColumn' in b ? b.labelColumn : undefined, rows: b.rows, note: b.note });
   }
 
   const bytes = await renderPcbDetailPdf({
