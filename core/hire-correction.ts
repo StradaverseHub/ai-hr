@@ -58,7 +58,6 @@ import {
   employment,
   jobGrade,
   location,
-  payrollBatch,
   payslip,
   person,
   position,
@@ -920,45 +919,4 @@ export async function correctHireDetails(
       assignmentVersions: replaced.length,
     };
   });
-}
-
-/**
- * c063eea9 (2) — the payslips that make a Group Join Date / Join Date move unsafe.
- *
- * A payslip is "between" the old and the new date when its PAY PERIOD MONTH or its COVERAGE overlaps the
- * days whose employed status the move changes — `[min(old,new), max(old,new))`. Both are asked because each
- * misses a case on its own: a joiner prorated from the 15th has coverage starting on the 15th, so moving the
- * date back to the 1st changes a payslip whose coverage never touched the 1st–14th (the month catches it);
- * and a non-calendar payroll cycle can cover days outside its period month (the coverage catches it).
- * Any batch status counts: a draft payslip is still a payslip somebody has to deal with first.
- *
- * Returns the distinct 'YYYY-MM' periods, sorted; empty when the move is safe.
- */
-export async function payslipPeriodsBetweenTx(
-  tx: Tx,
-  employmentId: string,
-  oldDate: string,
-  newDate: string,
-): Promise<string[]> {
-  if (oldDate === newDate) return [];
-  const lo = oldDate < newDate ? oldDate : newDate;
-  const hi = oldDate < newDate ? newDate : oldDate;
-  const rows = await tx
-    .select({ period: payrollBatch.payPeriod, coverageFrom: payslip.coverageFrom, coverageTo: payslip.coverageTo })
-    .from(payslip)
-    .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-    .where(eq(payslip.employmentId, employmentId));
-  const nextMonthStart = (period: string) => {
-    const y = Number(period.slice(0, 4));
-    const m = Number(period.slice(5, 7));
-    return m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
-  };
-  const hit = new Set<string>();
-  for (const r of rows) {
-    const monthOverlaps = `${r.period}-01` < hi && lo < nextMonthStart(r.period);
-    // coverage_to is INCLUSIVE; the window is half-open [lo, hi).
-    const coverageOverlaps = !!r.coverageFrom && !!r.coverageTo && r.coverageFrom < hi && r.coverageTo >= lo;
-    if (monthOverlaps || coverageOverlaps) hit.add(r.period);
-  }
-  return [...hit].sort();
 }
