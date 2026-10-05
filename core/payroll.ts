@@ -1,3 +1,4 @@
+import {readPcbExemptions, type PcbExemptionRow} from './pcb-exemptions';
 import { classifyNonCashBenefit, NonCashBenefitConfigurationError, readPcbNonCash, totalNonCash, taxableNonCash, type NonCashEntry, type NonCashEaEntry, type PcbNonCashSnapshot } from '../localization/noncash-benefits';
 import { businessUnit, payslipInformationSetting } from '../db/schema';
 /**
@@ -4696,6 +4697,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
      * today; it is what makes the late regular run restate rather than silently under-remit.
      */
     const restatesMonth = !isAdditionalRun && batch.runSeq > 1;
+    // Display evidence only: a reused recurring assessment retains its recorded cap.
+    const earlierExemptionLimits = new Map<string, Map<string, number | null>>();
     const earlierRunByEmp = new Map<string, { additional: number; overtime: number }>();
     const earlierNonCashByEmp = new Map<string,{ownedEntries:NonCashEntry[];regularEntries:NonCashEntry[]|null;ownedEaEntries:NonCashEaEntry[];regularEaEntries:NonCashEaEntry[]|null;legacyRegular:boolean}>();
     const accumulatedNonCashByEmp = new Map<string,{bik:number;vola:number;complete:boolean}>();
@@ -4726,6 +4729,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         const nc=earlierNonCashByEmp.get(r.employmentId) ?? {ownedEntries:[],regularEntries:null,ownedEaEntries:[],regularEaEntries:null,legacyRegular:false};
         const saved=readPcbNonCash((r.statutory as {pcbNonCash?:unknown}|null)?.pcbNonCash);
         if((r.statutory as {pcbNonCash?:unknown}|null)?.pcbNonCash!==undefined&&!saved)throw new Error('Saved PCB non-cash ownership is malformed');
+        if(r.runType==='regular'){
+          const detail=readPcbExemptions((r.statutory as {pcbExemptions?:unknown}|null)?.pcbExemptions);
+          if(detail?.payPeriod===batch.payPeriod) earlierExemptionLimits.set(r.employmentId,new Map(detail.rows.filter(x=>x.table==='pcb').map(x=>[x.code,x.annualLimit])));
+        }
         if(saved){
           nc.ownedEntries.push(...saved.ownedEntries);
           nc.ownedEaEntries.push(...saved.ownedEaEntries);
@@ -5315,6 +5322,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       recordLines: PayslipRecordLine[];
       componentLines: PayComponentLine[];
       lpDeclared: number; exemptionUsed: Record<string, number>;
+      exemptionInformation: PcbExemptionRow[];
       nonCashEntries: NonCashEntry[];
       nonCashEaEntries:NonCashEaEntry[];
       // Feedback 3c473773 — the same component money tallied under each item's DECLARED payslip box, plus
@@ -5362,6 +5370,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           exemptionUsed: {},
           nonCashEntries: [],
           nonCashEaEntries: [],
+          exemptionInformation: [],
           // Flag off ⇒ there are no typed pay items, so there is no declared box to honour and nothing to
           // re-categorise. The legacy path stays exactly as it was.
           display: emptyTally(),
@@ -5431,6 +5440,19 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       const nonCashEntries: NonCashEntry[] = [];
       const nonCashEaEntries:NonCashEaEntry[]=[];
       const priorUsed = exemptUsedByEmp.get(e.employmentId) ?? {};
+      // Capture the existing assessment at its consumption sites. This map never supplies money,
+      // headroom, replay or statutory inputs; absence and recorded zero are different evidence.
+      const exemptionInformation = new Map<string, PcbExemptionRow>();
+      const reusedExemption = new Map<string, number>();
+      const recordExemption = (code: string, table: 'pcb'|'lp', annualLimit: number|null, item: string, reusedAmount?: number) => {
+        const row=exemptionInformation.get(code);
+        if(row){
+          if(row.annualLimit!==annualLimit) row.annualLimit=null;
+          if(!row.payItems.includes(item))row.payItems.push(item);
+          if(reusedAmount!==undefined)row.reused=true;
+        }else exemptionInformation.set(code,{code,table,annualLimit,accumulated:priorUsed[code]??0,thisMonth:0,payItems:[item],reused:reusedAmount!==undefined});
+        if(reusedAmount!==undefined)reusedExemption.set(code,round2((reusedExemption.get(code)??0)+reusedAmount));
+      };
       /** Remaining annual headroom for a code under `cap` (cap < 0 = fully exempt sentinel ⇒ unlimited). */
       const roomFor = (code: string, cap: number): number =>
         cap < 0 ? Number.POSITIVE_INFINITY : Math.max(0, round2(cap - (priorUsed[code] ?? 0) - (exemptionUsed[code] ?? 0)));
@@ -5566,11 +5588,12 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           if(savedEa && (savedEa.subjectPCB!==c.pcb || savedEa.kind!==benefitKind || savedEa.entered!==applied || savedEa.eaFormLine!==(c.eaFormLine??null) || (savedEa.exemptionCode??null)!==c.pcbExemptionCode)) throw new NonCashBenefitConfigurationError(c.code,'month_baseline_unavailable');
           let exempt=0,taxable=applied;
           if(savedEa){
+            if(c.pcb && c.pcbExemptionCode)recordExemption(c.pcbExemptionCode,'pcb',earlierExemptionLimits.get(e.employmentId)?.get(c.pcbExemptionCode)??null,c.name,savedEa.exemptAmount);
             nonCashEaEntries.push({...savedEa});
             if(c.pcb && savedRecurring) nonCashEntries.push({...savedRecurring});
           } else {
             const code=c.pcbExemptionCode;
-            if(code && c.pcb){const cap=exemptionTables.pcb[code]??0;exempt=cap===0?0:round2(Math.min(applied,roomFor(code,cap)));taxable=round2(applied-exempt);if(exempt>0)useRoom(code,exempt);}
+            if(code && c.pcb){const cap=exemptionTables.pcb[code]??0;recordExemption(code,'pcb',cap,c.name);exempt=cap===0?0:round2(Math.min(applied,roomFor(code,cap)));taxable=round2(applied-exempt);if(exempt>0)useRoom(code,exempt);}
             const source={kind:benefitKind,code:c.code,source:c.oneOff?'one_off' as const:'recurring' as const,...(c.sourceId?{sourceId:c.sourceId}:{}),...(code?{exemptionCode:code}:{})};
             if(c.pcb) nonCashEntries.push({...source,entered:applied,exempt,taxable});
             nonCashEaEntries.push({...source,entered:applied,exemptAmount:exempt,reportableAmount:taxable,eaFormLine:c.eaFormLine??null,subjectPCB:c.pcb});
@@ -5580,6 +5603,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         }
         if (c.pcbRemunerationType === 'optional_deduction') {
           const cap = c.pcbExemptionCode != null ? (exemptionTables.lp[c.pcbExemptionCode] ?? 0) : 0;
+          if(c.pcbExemptionCode!=null)recordExemption(c.pcbExemptionCode,'lp',cap,c.name);
           const claim = c.pcbExemptionCode != null ? round2(Math.min(applied, roomFor(c.pcbExemptionCode, cap))) : 0;
           if (claim > 0) {
             lpDeclared = round2(lpDeclared + claim);
@@ -5661,6 +5685,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           const code = c.pcbExemptionCode; // optional_deduction already consumed above — always a PCB_* code here
           if (code != null) {
             const cap = exemptionTables.pcb[code] ?? 0;
+            recordExemption(code,'pcb',cap,c.name);
             const exempt = cap === 0 ? 0 : round2(Math.min(applied, roomFor(code, cap)));
             if (exempt > 0) {
               taxable = round2(applied - exempt);
@@ -5712,7 +5737,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         else if (c.epf && !c.socso) { bonusAmt = round2(bonusAmt + applied); contributes('bonus', applied); }
         else { reimburse = round2(reimburse + applied); contributes('reimburse', applied); } // all-false earning: paid but untaxed
       }
-      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, epfWageDeduction, socsoWageDeduction, pcbWageDeduction, hrdfWageDeduction, recordLines, componentLines, lpDeclared, exemptionUsed, nonCashEntries, nonCashEaEntries, display, displayMoved, displayOtOutbound, orpUnpaidLeaveExtra };
+      for(const row of exemptionInformation.values())row.thisMonth=row.table==='lp' && isAdditionalRun ? 0 : round2((exemptionUsed[row.code]??0)+(reusedExemption.get(row.code)??0));
+      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, epfWageDeduction, socsoWageDeduction, pcbWageDeduction, hrdfWageDeduction, recordLines, componentLines, lpDeclared, exemptionUsed, exemptionInformation:[...exemptionInformation.values()].sort((a,b)=>a.code.localeCompare(b.code)), nonCashEntries, nonCashEaEntries, display, displayMoved, displayOtOutbound, orpUnpaidLeaveExtra };
     };
 
     /**
@@ -6856,6 +6882,9 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // production bonus payslips carried no stamp at all, which is why 6b134681's read-side work was
         // structurally inert there.
         ...(stampComponentLines.length ? { componentLines: stampComponentLines } : {}),
+        // Display-only evidence, captured from this exact calculation. Consumers never recompute it
+        // from today's catalogue and replay continues to read exemptionUsed unchanged.
+        pcbExemptions: {version:1,payPeriod:batch.payPeriod,taxYear:pYear,basis:'selected_calculation',rows:en.exemptionInformation},
         // Feedback 09b554e9 — per-code exemption/LP usage this month, replayed by future months' YTD
         // accumulator (like st.lp) and summed into the EA exempt-allowances figure. Regular run only
         // (an additional run re-folds the same recurring components; stamping again would double-count
