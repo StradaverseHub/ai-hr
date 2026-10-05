@@ -17,6 +17,8 @@ import {
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { companyDeleteBlockSqlText } from './company-refs';
+import { isCompanyDeleteBlock, type CompanyDeleteBlock } from '../lib/company-delete';
 import {
   aggregateTypesOfModule,
   isApprovalHistoryAction,
@@ -620,7 +622,11 @@ export function listCompanies(
         // Shared System Labels flag (62de487d) — the grid shows/toggles per-company sharing.
         sharedSystemLabels: company.sharedSystemLabels,
         archivedAt: company.archivedAt,
-        inUse: sql<boolean>`exists (select 1 from department d where d.company_id = company.id) or exists (select 1 from employment e where e.company_id = company.id) or exists (select 1 from company c where c.parent_company_id = company.id)`,
+        // f00bd1eb — `inUse` STOOD HERE: three tables (department, employment, child company) against the
+        // forty-five that reference a company, so an unused company with its six seeded payroll cycles read
+        // "Not referenced anywhere" and was offered a Delete the database refused. Its one consumer, the
+        // company panel, now asks `companyDeleteStatus` below, which runs the delete guard's own SQL for the
+        // one company on screen — rather than forty-odd subqueries per row on every list of companies.
         // hasLogo: EXISTS against the company_logo side table (NEVER the bytes — the blob is a different
         // table, so this can only ever pull a boolean). Non-breaking, name-based add for existing callers.
         hasLogo: sql<boolean>`exists (select 1 from company_logo cl where cl.company_id = company.id)`,
@@ -636,6 +642,33 @@ export function listCompanies(
       )
       .orderBy(company.legalName),
   );
+}
+
+/**
+ * f00bd1eb — what pressing Delete on this company will do, asked BEFORE it is pressed.
+ *
+ * `blockedBy` is the delete guard's own answer — `companyDeleteBlockSqlText` is the one SQL text both this
+ * and `deleteCompany` run — so the panel opens the confirmation only when the delete will succeed, and
+ * otherwise the refusal with its reason. `canDelete` is the authority the delete requires (and migration 0511
+ * enforces): administering the company's parent, or the company itself at a group root. Null when the
+ * company is not visible.
+ */
+export function companyDeleteStatus(
+  ctx: SessionContext,
+  companyId: string,
+): Promise<{ blockedBy: CompanyDeleteBlock | null; canDelete: boolean } | null> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        blockedBy: sql<string | null>`(${sql.raw(companyDeleteBlockSqlText('company.id'))})`,
+        canDelete: sql<boolean>`app.is_admin_for(coalesce(company.parent_company_id, company.id))`,
+      })
+      .from(company)
+      .where(eq(company.id, companyId))
+      .limit(1);
+    if (!row) return null;
+    return { blockedBy: isCompanyDeleteBlock(row.blockedBy) ? row.blockedBy : null, canDelete: row.canDelete === true };
+  });
 }
 
 export function listDepartments(

@@ -31,6 +31,9 @@ import {
   updateHoliday,
   updateHolidayGroup,
   deleteCompany,
+  CompanyDeleteForbiddenError,
+  CompanyInUseError,
+  CompanyNotFoundError,
   deleteCostCenter,
   deleteDepartment,
   deleteLeaveType,
@@ -141,6 +144,7 @@ import type { ToilAccrualBasis, ToilExpiryAction, ToilExpiryUnit, ToilReplacemen
 import { upsertCompanyBankProfile, removeCompanyBankProfile, type DisbursementBank } from '@/core/bank-profile';
 import { isMyBankKey } from '@/lib/my-banks';
 import { isCompanyPanelTab } from '@/lib/company-panel-tabs';
+import { COMPANY_DELETE_REFUSAL_KEY } from '@/lib/company-delete';
 // 65b22c00 — the consolidated General-tab Save. Both contracts live outside this file because a
 // `'use server'` module may only export async functions.
 import { COMPANY_GENERAL_TAB_SECTION_ORDER } from '@/lib/company-tab-sections';
@@ -1799,19 +1803,31 @@ export async function archiveCompanyAction(fd: FormData) {
  * answers a missing id with notFound(). "Staying" would hand the reader a 404 for the company they just
  * deleted. So success returns to the LIST, with the confirmation there.
  *
- * A REFUSAL is the opposite case and returns to the company: `deleteCompany` throws InUseError when a
- * department, employment or subsidiary still points at it, and that message belongs on the screen that
- * holds the button — where Archive is the next thing to press.
+ * A REFUSAL is the opposite case and returns to the company, where Archive is the next thing to press.
+ *
+ * f00bd1eb — ADMIN-ONLY, AND EVERY REFUSAL IN WORDS. This read the session with getSession, so any signed-in
+ * member could post it; requireAdmin now turns them away before anything runs, `deleteCompany` checks the
+ * caller administers this company, and migration 0511 refuses the row at the database if both were bypassed.
+ * The three refusals and the authority refusal are typed and become the reader's language here. Anything
+ * else goes through publicErrorMessage: never a driver message, never SQL in the address bar.
  */
 export async function deleteCompanyAction(fd: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const id = String(fd.get('id'));
+  const t = await getTranslations('admin.organization');
   try {
     await deleteCompany(s, { id });
   } catch (e) {
-    failCompany(e, id, companyTab(fd));
+    const message =
+      e instanceof CompanyInUseError
+        ? t(COMPANY_DELETE_REFUSAL_KEY[e.reason])
+        : e instanceof CompanyDeleteForbiddenError
+          ? t('deleteForbidden')
+          : e instanceof CompanyNotFoundError
+            ? t('deleteNotFound')
+            : publicErrorMessage(e);
+    failCompany(new Error(message), id, companyTab(fd));
   }
-  const t = await getTranslations('admin.organization');
   okToast(ORG, t('deletedToast'));
 }
 
