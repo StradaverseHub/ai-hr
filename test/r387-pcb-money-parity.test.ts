@@ -44,11 +44,11 @@ describe('r387 complete monetary parity against original calculation',()=>{
   const ownedBonus=bonusSources.filter(x=>x.employmentId===e.employmentId&&x.componentId===bonus.id);expect(ownedBonus).toHaveLength(1);ids.set(ownedBonus[0].id,'batch-item:SYNTH_TAXABLE_BONUS');
   const assigned=await owner.db.select().from(schema.employmentPayComponent).where(eq(schema.employmentPayComponent.employmentId,e.employmentId));
   for(const assignment of assigned){const [item]=await owner.db.select().from(schema.payComponent).where(eq(schema.payComponent.id,assignment.componentId));ids.set(assignment.id,`assignment:${item.code}`);ids.set(item.id,`item:${item.code}`);}
-  const normalized=(value:any):any=>{
-    if(typeof value==='string' && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(value)){expect(ids.has(value),`saved owner ${value} is independently identified`).toBe(true);return ids.get(value);}
+  const normalized=(value:any,path="slip"):any=>{
+    if(typeof value==='string' && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(value)){expect(ids.has(value),`saved owner ${value} at ${path} is independently identified`).toBe(true);return ids.get(value);}
     if(typeof value==='string' && value.startsWith(`${year}-`))return value.replace(`${year}-`,'YEAR-');
-    if(Array.isArray(value))return value.map(normalized);
-    if(value && typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,normalized(v)]));
+    if(Array.isArray(value))return value.map((v,i)=>normalized(v,`${path}[${i}]`));
+    if(value && typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,normalized(v,`${path}.${k}`)]));
     return value;
   };
   for(const batch of [first,second,extra]){
