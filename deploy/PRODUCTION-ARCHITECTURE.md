@@ -7,6 +7,8 @@ Use `CUSTOMER.md` for installation and `../docs/CUSTOMER-DEPLOYMENT-READINESS.md
 ## Starting capacity
 
 REQUIREMENT: 4,000 employees at launch, increasing gradually (owner, 5 October 2026).
+REQUIREMENT: newly procured servers in the owner's private cloud; database and host operations are
+the owner's responsibility, unless separately contracted. No managed public-cloud database is assumed.
 ASSUMPTION: 100–200 active users plus concentrated morning clock-in traffic, with externally hosted AI
 inference. Active users are not all issuing requests simultaneously. These are load-test inputs, not
 tested capacity guarantees. Peak traffic, payroll size, attachment growth and budget remain unknown.
@@ -14,19 +16,25 @@ tested capacity guarantees. Peak traffic, payroll size, attachment growth and bu
 | Component | Initial allocation | Purpose and limits |
 |---|---|---|
 | Application | 2 instances, each 4 vCPU, 8 GiB RAM, 60 GiB encrypted SSD | Dedicated private app instances across independent zones; complete the multi-instance checks below before serving traffic from both. No unrelated applications. |
-| PostgreSQL 16 | 4 vCPU, 16 GiB RAM per database node, 200 GiB encrypted SSD with storage growth alarms | Separate private managed database with synchronous HA standby where supported. Size storage using attachments as well as relational rows. The standby adds cost; it is not extra read/write capacity. |
+| PostgreSQL 16 | 2 VMs, each 4 vCPU, 16 GiB RAM, 200 GiB encrypted SSD data volume plus OS disk | Dedicated primary and streaming standby on independent compute/storage failure domains. Size data/WAL IOPS and attachment growth. The standby is not extra application write capacity. |
 | Scheduled jobs | 2 vCPU, 4 GiB RAM | One private job runner, using the same release as the web service. Run existing CLI jobs on one scheduler. Verify retry/idempotency before adding workers. |
 | Build runner | 4 vCPU, 16 GiB RAM, 60 GiB temporary storage | Linux x86_64, matching the runtime and supported Node release. Build away from the live web/database host. No employee data in CI. |
-| Edge | Managed HTTPS load balancer/reverse proxy, WAF/rate limits, stable DNS | Only HTTPS public; HTTP may redirect to HTTPS. Origin access only from the approved proxy. |
-| Backups | Encrypted storage in a separate account or independent failure boundary | Automated database backups/PITR plus separately protected recovery configuration. Budget retained versions, WAL and restore capacity. |
+| Edge | Private-cloud HA load balancer/WAF; if unavailable, two 1 vCPU / 2 GiB proxy VMs | Only HTTPS public; HTTP may redirect to HTTPS. Origin access only from the approved proxy. Validate how the virtual IP/load balancer itself fails over. |
+| Backup service | 2 vCPU, 4 GiB RAM; initially reserve 1 TiB encrypted backup capacity on an independent failure boundary | Base backups plus continuous WAL archive/PITR; separately protected recovery configuration. Confirm retention capacity from measured backup compression, daily changes and WAL generation. One TiB is an initial reservation, not a guarantee of 35 days at full database allocation. |
 | Staging | Separate 2 vCPU / 4 GiB app and isolated database | Synthetic or explicitly anonymized fixtures; no copies of production credentials. Larger temporary sizing for performance tests. |
 | GPU / Redis | None initially | AI inference uses provider APIs. Add cache/queue services only when the application needs and supports them. |
+
+The steady application/database/job allocation totals **18 vCPU and 52 GiB RAM**, excluding backup,
+build, staging and edge services. Including the proposed backup and build runners gives **24 vCPU and
+72 GiB RAM**; two optional proxy VMs add 2 vCPU / 4 GiB. Reserve hypervisor headroom independently and
+avoid placing every VM on one physical host or storage array. A DB witness/failover coordinator, if
+selected, is additional infrastructure; two DB VMs alone do not provide safe automatic failover.
 
 RECOMMENDATION: use the same approved data region for the database, app, backups and logs. Malaysia
 is a candidate if the owner requires local hosting; do not assume that authentication, AI, telemetry
 or support access stays in that region. Review each processor's actual terms and processing locations.
 No provider price or monthly total is asserted until region, availability, backup retention and traffic
-are chosen. Include database HA, backup storage, outbound traffic, WAF, logs, authentication, AI API
+are chosen. Include private-cloud compute/storage HA, backup storage, outbound traffic, WAF, logs, authentication, AI API
 usage, staging and operational support in the quote.
 
 The two-instance allocation is an architecture target, not an immediately safe change of replica
@@ -79,10 +87,18 @@ retention/deletion and recovery tests. Storage encryption does not replace appli
 
 PROPOSED recovery objectives, requiring owner agreement: no more than 15 minutes of data loss (RPO),
 and restore service within 4 hours (RTO). Daily dumps alone cannot meet the proposed RPO. Enable
-continuous recovery/WAL archiving or equivalent managed PITR, retain 35 days initially, and protect a
+continuous WAL archiving plus periodic base backups, retain 35 days initially, and protect a
 backup copy from application credentials and accidental deletion. Retention for statutory records,
 employee documents and backup copies needs its own approved policy; 35 days is an operational recovery
 proposal, not a legal retention rule.
+
+For self-managed PostgreSQL, use a mature backup system such as pgBackRest after validating it against
+the selected OS/storage. Prove the latest recoverable time from archived WAL; a running replica is
+not a backup against accidental deletion or corruption. Use a dedicated replication role, encrypted
+replication links and replication-lag/WAL-space alarms. Choose synchronous replication only with an
+explicit availability/data-loss tradeoff. Until a quorum-based failover controller and fencing are
+installed and tested, document controlled manual promotion: fence the previous primary before
+promoting its standby, then rejoin it safely. Never promote based only on a network timeout.
 
 Run `scripts/restore-rehearsal.sh` against a protected disposable restore target. Verify row counts,
 migration watermark, table permissions and tenant isolation, then exercise login and representative
@@ -135,7 +151,7 @@ queries based on the measured bottleneck. Do not promise a headcount limit from 
 
 ## Launch evidence and outstanding decisions
 
-Owner inputs needed to finalize provisioning: employee count and peak users, hosting/provider and allowed
+Owner inputs needed to finalize provisioning: peak users, private-cloud provider/platform and allowed
 regions, monthly budget, domain, recovery objectives, backup retention, identity-provider environment,
 first administrator and alert recipient. Customer-specific inputs also include import files, payroll
 cut-off/pay day, benefit/approval rules, bank payment layout and statutory filing sign-off.
@@ -152,9 +168,9 @@ stand in for agency acceptance or customer payroll approval.
   Server Action keys, caches and multi-instance coordination.
 - [AWS task sizing](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/capacity-tasksize.html):
   size from load tests; the allocations above are engineering assumptions.
-- [Private RDS access](https://docs.aws.amazon.com/AmazonRDS/latest/gettingstartedguide/security-public-private.html)
-  and [database backups](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithAutomatedBackups.html):
-  examples of managed controls, not a provider commitment.
+- [PostgreSQL continuous archiving](https://www.postgresql.org/docs/16/continuous-archiving.html),
+  [warm standby](https://www.postgresql.org/docs/16/warm-standby.html), and
+  [pgBackRest documentation](https://pgbackrest.org/user-guide.html): self-managed recovery and replication.
 - [OWASP authorization](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html),
   [secrets management](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html),
   [logging](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html), and
