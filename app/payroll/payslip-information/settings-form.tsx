@@ -90,7 +90,9 @@ export function SettingsForm({companyId, companyName, fields, otherCompanies}: {
             <GripVertical className="size-4 shrink-0 cursor-grab text-muted-foreground/70 active:cursor-grabbing" aria-hidden/>
             <span aria-hidden="true" className="grid size-6 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{i + 1}</span>
             <span className="min-w-0 flex-1 font-medium">{label(k)}</span>
-            <span className="flex shrink-0 items-center gap-2">
+            {/* Phone width: the Move buttons take their own line under the name and switch (order-last + full
+                basis), so a row is two lines rather than three; from `sm` up everything sits on one line. */}
+            <span className="order-last flex shrink-0 basis-full items-center gap-2 pl-[3.25rem] sm:order-none sm:basis-auto sm:pl-0">
               <button type="button" className={moveCls} aria-label={`${t('moveUp')}: ${label(k)}`} disabled={pending || i === 0} onClick={() => moveTo(i, i - 1)}>
                 <ArrowUp className="size-3.5" aria-hidden/>{t('moveUp')}
               </button>
@@ -149,7 +151,7 @@ function CopyToCompanies({companyId, companyName, companies, dirty}: {companyId:
   const toggle = (id: string) => setSelected(cur => { const next = new Set(cur); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const rowCls = 'flex min-h-11 cursor-pointer items-center gap-3 px-3 py-2 text-sm';
   const boxCls = 'size-4 shrink-0 accent-[var(--color-primary)]';
-  return <div className="flex max-w-xl flex-col gap-2">
+  return <div className="flex max-w-xl flex-col items-start gap-2">
     <AlertDialog.Root open={open} onOpenChange={o => { if (o) setSelected(new Set()); setOpen(o); }}>
       <AlertDialog.Trigger asChild>
         <Button type="button" variant="outline" disabled={pending}>{t('copyButton')}</Button>
