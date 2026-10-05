@@ -227,7 +227,7 @@ echo "$$" > "$LOCK_DIR/pid"
 STAGE=client
 SERVER_VNUM="$(blib_server_version_num "$DB_URL")"
 case "${SERVER_VNUM:-}" in ''|*[!0-9]*)
-  die 2 client "cannot reach the database to read its version. Connection: ${DB_URL%%:*}://…/$DB_NAME" ;;
+  die 2 client "cannot reach database '$DB_NAME' to read its version; check the backup connection configuration." ;;
 esac
 SERVER_MAJOR=$(( SERVER_VNUM / 10000 ))
 if [ -n "${PG_BIN:-}" ]; then

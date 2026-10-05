@@ -116,9 +116,9 @@ def main():
     if options.get('service', (None, None))[1]:
         raise Refused('use an explicit database connection; nested service references are unsupported.')
     child_env = os.environ.copy()
-    for envvar, _ in options.values():
-        if envvar:
-            child_env.pop(envvar, None)
+    # Preserve libpq's environment defaults unless this connection explicitly overrides them.
+    # Clearing an inherited PGSSLMODE=verify-full would silently weaken TLS to its default.
+    child_env.pop('PGSERVICE', None)
     child_env.pop('PGSERVICEFILE', None)
     additional = []
     for key, (envvar, value) in options.items():
