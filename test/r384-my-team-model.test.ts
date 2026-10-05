@@ -319,7 +319,7 @@ describe('My Team recorded leave dates and alternate authority',()=>{
 
 describe('My Team attendance review is per user, observation and fresh authority',()=>{
  it('keeps ordinary Records DTO exact while opt-in review metadata identifies the shown punch and refreshes after review',async()=>{
-  const date=addDaysIso(today,-1);await checkIn(adminCtx(b),{employmentId:subject.employmentId,date,time:'09:10'});
+  const date=addDaysIso(today,-1),q={...query,anchorDate:date};await checkIn(adminCtx(b),{employmentId:subject.employmentId,date,time:'09:10'});
   const plain=await attendanceForEmploymentsRange(managerCtx,[subject.employmentId],date,date),individual=await attendanceForEmploymentRange(managerCtx,subject.employmentId,date,date);
   expect(plain.get(subject.employmentId)).toEqual(individual);expect(Object.hasOwn(individual[0],'punchReview')).toBe(false);
   const enhanced=await attendanceForEmploymentsRange(managerCtx,[subject.employmentId],date,date,{includePunchReviews:true});
@@ -328,13 +328,14 @@ describe('My Team attendance review is per user, observation and fresh authority
   const [actual]=await withTenant(managerCtx,tx=>tx.select({checkInAt:schema.attendance.checkInAt,
     fingerprint:sql<string>`app.attendance_attention_fingerprint(${schema.attendance})`}).from(schema.attendance).where(eq(schema.attendance.id,shown.attendanceId!)));
   expect(punchReview?.fingerprint).toBe(actual.fingerprint);expect(shown.checkInAt).toBe(actual.checkInAt);
-  await markMyTeamPunchReviewed(managerCtx,{attendanceId:shown.attendanceId!,fingerprint:punchReview!.fingerprint},query);
+  await markMyTeamPunchReviewed(managerCtx,{attendanceId:shown.attendanceId!,fingerprint:punchReview!.fingerprint},q);
+  expect((await readMyTeam(managerCtx,q)).attention.some(a=>a.kind==='missing_punch'&&a.attendanceId===shown.attendanceId)).toBe(true);
   const refreshed=await attendanceForEmploymentsRange(managerCtx,[subject.employmentId],date,date,{includePunchReviews:true});
   expect(refreshed.get(subject.employmentId)![0].punchReview).toEqual({fingerprint:actual.fingerprint,reviewed:true});
-  expect((await readMyTeam(managerCtx,query)).attention.some(a=>a.kind==='missing_punch'&&a.attendanceId===shown.attendanceId)).toBe(false);
+  expect((await readMyTeam(managerCtx,q)).attention.some(a=>a.kind==='missing_punch'&&a.attendanceId===shown.attendanceId)).toBe(false);
  });
  it('a punch changed after the canonical read cannot lend its new fingerprint to the old displayed punch',async()=>{
-  const date=addDaysIso(today,-1);await checkIn(adminCtx(b),{employmentId:subject.employmentId,date,time:'09:10'});
+  const date=addDaysIso(today,-1),q={...query,anchorDate:date};await checkIn(adminCtx(b),{employmentId:subject.employmentId,date,time:'09:10'});
   const original=attendanceOwner.attendanceForEmploymentsRange;let changed=false;
   const spy=vi.spyOn(attendanceOwner,'attendanceForEmploymentsRange').mockImplementation(async(...args)=>{
    const result=await original(...args);
@@ -343,7 +344,7 @@ describe('My Team attendance review is per user, observation and fresh authority
    return result;
   });
   let snapshot:Awaited<ReturnType<typeof readMyTeam>>;
-  try{snapshot=await readMyTeam(managerCtx,query);expect(changed).toBe(true);}finally{spy.mockRestore();}
+  try{snapshot=await readMyTeam(managerCtx,q);expect(changed).toBe(true);}finally{spy.mockRestore();}
   const day=snapshot.employees.find(e=>e.employmentId===subject.employmentId)!.days.find(d=>d.date===date)!;
   expect(day.attendance?.checkInAt).toBe('09:10:00');
   const missing=snapshot.attention.find(a=>a.kind==='missing_punch'&&a.employmentId===subject.employmentId);
@@ -351,12 +352,12 @@ describe('My Team attendance review is per user, observation and fresh authority
   expect(missing.fingerprint).toBe(day.attendance!.fingerprint);
   await expect(markMyTeamPunchReviewed(managerCtx,{attendanceId:missing.attendanceId,fingerprint:missing.fingerprint},snapshot.query)).rejects.toThrow('MY_TEAM_REVIEW_CHANGED');
   expect(await owner.db.select().from(schema.attendanceAttentionReview).where(eq(schema.attendanceAttentionReview.attendanceId,missing.attendanceId))).toEqual([]);
-  const fresh=await readMyTeam(managerCtx,query),current=fresh.attention.find(a=>a.kind==='missing_punch'&&a.employmentId===subject.employmentId);
+  const fresh=await readMyTeam(managerCtx,q),current=fresh.attention.find(a=>a.kind==='missing_punch'&&a.employmentId===subject.employmentId);
   if(current?.kind!=='missing_punch')throw new Error('non-vacuous current punch snapshot');
   expect(fresh.employees.find(e=>e.employmentId===subject.employmentId)!.days.find(d=>d.date===date)!.attendance?.checkInAt).toBe('09:11:00');
   expect(current.fingerprint).not.toBe(missing.fingerprint);
   await markMyTeamPunchReviewed(managerCtx,{attendanceId:current.attendanceId,fingerprint:current.fingerprint},fresh.query);
-  expect((await readMyTeam(managerCtx,query)).attention.some(a=>a.kind==='missing_punch'&&a.attendanceId===current.attendanceId)).toBe(false);
+  expect((await readMyTeam(managerCtx,q)).attention.some(a=>a.kind==='missing_punch'&&a.attendanceId===current.attendanceId)).toBe(false);
  });
  it('marks only the observed missing punch; changed attendance reappears and stale/foreign markers refuse',async()=>{
   const date=addDaysIso(today,-1);await checkIn(adminCtx(b),{employmentId:subject.employmentId,date:date,time:'09:10'});
@@ -458,17 +459,17 @@ describe('My Team canonical balance and independent reader integration',()=>{
  it('keeps two actual manager observations independent while preserving attendance and each audit actor',async()=>{
   const parent=await hire('Synthetic senior manager'),userId=await createAppUser(b.tenantId,parent.personId,'manager');
   await setReportingLine(adminCtx(b),{subordinateEmploymentId:manager.employmentId,managerEmploymentId:parent.employmentId,lineType:'administrative',validFrom:'2024-01-01'});
-  const other:SessionContext={...managerCtx,userId,personId:parent.personId};const date=addDaysIso(today,-1);
+  const other:SessionContext={...managerCtx,userId,personId:parent.personId};const date=addDaysIso(today,-1),q={...query,anchorDate:date};
   await checkIn(adminCtx(b),{employmentId:subject.employmentId,date,time:'09:10'});
   const [source]=await owner.db.select().from(schema.attendance).where(and(eq(schema.attendance.employmentId,subject.employmentId),eq(schema.attendance.attendanceDate,date)));
-  const before=await readMyTeam(managerCtx,query),item=before.attention.find(x=>x.kind==='missing_punch'&&x.attendanceId===source.id);
+  const before=await readMyTeam(managerCtx,q),item=before.attention.find(x=>x.kind==='missing_punch'&&x.attendanceId===source.id);
   if(item?.kind!=='missing_punch')throw new Error('Actual observed punch required');
-  expect((await readMyTeam(other,query)).attention.some(x=>x.kind==='missing_punch'&&x.attendanceId===source.id)).toBe(true);
-  const first=await markMyTeamPunchReviewed(managerCtx,{attendanceId:source.id,fingerprint:item.fingerprint},query);
-  expect((await readMyTeam(managerCtx,query)).attention.some(x=>x.kind==='missing_punch'&&x.attendanceId===source.id)).toBe(false);
-  expect((await readMyTeam(other,query)).attention.some(x=>x.kind==='missing_punch'&&x.attendanceId===source.id)).toBe(true);
-  const second=await markMyTeamPunchReviewed(other,{attendanceId:source.id,fingerprint:item.fingerprint},query);expect(second.reviewId).not.toBe(first.reviewId);
-  expect((await readMyTeam(other,query)).attention.some(x=>x.kind==='missing_punch'&&x.attendanceId===source.id)).toBe(false);
+  expect((await readMyTeam(other,q)).attention.some(x=>x.kind==='missing_punch'&&x.attendanceId===source.id)).toBe(true);
+  const first=await markMyTeamPunchReviewed(managerCtx,{attendanceId:source.id,fingerprint:item.fingerprint},q);
+  expect((await readMyTeam(managerCtx,q)).attention.some(x=>x.kind==='missing_punch'&&x.attendanceId===source.id)).toBe(false);
+  expect((await readMyTeam(other,q)).attention.some(x=>x.kind==='missing_punch'&&x.attendanceId===source.id)).toBe(true);
+  const second=await markMyTeamPunchReviewed(other,{attendanceId:source.id,fingerprint:item.fingerprint},q);expect(second.reviewId).not.toBe(first.reviewId);
+  expect((await readMyTeam(other,q)).attention.some(x=>x.kind==='missing_punch'&&x.attendanceId===source.id)).toBe(false);
   const rows=await owner.db.select().from(schema.attendanceAttentionReview).where(eq(schema.attendanceAttentionReview.attendanceId,source.id));
   expect(new Set(rows.map(x=>x.reviewerUserId))).toEqual(new Set([managerCtx.userId,other.userId]));expect(rows).toHaveLength(2);
   for(const [reviewId,actor]of [[first.reviewId,managerCtx.userId],[second.reviewId,other.userId]]){
