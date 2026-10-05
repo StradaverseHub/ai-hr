@@ -6,6 +6,7 @@ vi.mock('@/lib/authz', () => ({ requireAdmin: vi.fn(async () => session.value) }
 vi.mock('next/headers', () => ({ cookies: vi.fn(async () => ({ get: () => undefined })) }));
 vi.mock('next-intl/server', () => ({ getTranslations: vi.fn(async () => (key: string) => key) }));
 import * as schema from '../db/schema';
+import { client } from '../db/client';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee } from '../core/org';
 import { createLoan, listLoansPage, listAppliedLoanRepaymentsPage } from '../core/loans';
@@ -68,6 +69,20 @@ describe('Loans server pages over the complete scoped population', () => {
     expect(first.rows[0].principal).toBe(130); expect(next.rows[0].principal).toBe(105);
     expect(new Set([...first.rows, ...next.rows].map((row) => row.id)).size).toBe(31);
     expect(next.state.from).toBe(26); expect(next.state.to).toBe(31);
+  });
+  it('bounds both actual SQL row reads before transferring loan or ledger rows', async () => {
+    const connection = client as unknown as { options: { debug?: unknown } };
+    const previous = connection.options.debug;
+    const reads: string[] = [];
+    connection.options.debug = (_id: number, text: string) => {
+      if (!/^select count/i.test(text) && /from "(?:employee_loan|loan_repayment)"/.test(text)) reads.push(text);
+    };
+    try {
+      await listLoansPage(adminCtx(base), { companyIds: [base.companyId], page: '1' });
+      await listAppliedLoanRepaymentsPage(adminCtx(base), { companyIds: [base.companyId], cycleLabels, page: '1' });
+      expect(reads).toHaveLength(2);
+      for (const read of reads) expect(read).toMatch(/\blimit \$\d+ offset \$\d+/i);
+    } finally { connection.options.debug = previous; }
   });
   it('searches beyond the initial page and treats SQL wildcards literally', async () => {
     for (const query of ['Worker 30', '100%_special', '130']) {
