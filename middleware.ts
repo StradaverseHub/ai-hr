@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { authkit, handleAuthkitHeaders } from '@workos-inc/authkit-nextjs';
 import { isAuthRoute } from '@/lib/auth-routes';
 import { demoSwitcherEnabled } from '@/lib/demo-mode';
+import { workosRequest } from '@/lib/workos-request';
 import { isHealthRoute } from '@/lib/health-route';
 import { isMobileApiRoute } from '@/lib/mobile-api/routes';
 
@@ -81,7 +82,7 @@ async function withBrowserSession(req: NextRequest): Promise<NextResponse> {
   if (demoSwitcherEnabled()) return withPathname(req);
   // withAuth() consumes verified middleware headers, not the browser cookie directly. The holding
   // gate alone cannot supply them. Keep the callback fixed to configuration, never an incoming header.
-  const { headers } = await authkit(req, { redirectUri: process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI });
+  const { headers } = await authkit(workosRequest(req), { redirectUri: process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI });
   return withPathname(req, headers);
 }
 
