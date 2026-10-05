@@ -377,6 +377,8 @@ describe('00e28308 · the month records the ruleset version it was opened under'
       grossPay: '5000.00',
       statutory: {
         ...GOLDEN_STATUTORY,
+        // Exact additive display evidence; all pre-existing monetary fields stay pinned below.
+        pcbExemptions: {version:1,payPeriod:MONTH,taxYear:2026,basis:'selected_calculation',rows:[]},
         salaryBasis: { version: 1, referenceDate: '2026-05-31', compensationId: salaryOwners[0].id,
           effectiveFrom: '2025-01-01', basicSalary: '5000.00', payMode: 'monthly' },
         pcbMeta: {
