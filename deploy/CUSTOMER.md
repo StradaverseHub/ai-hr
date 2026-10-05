@@ -95,6 +95,18 @@ to start rather than reopen a demo authentication path.
 Run the customer path as the deployment operator under Node 22. The `--migrate-only` flag still builds
 and runs migrations/catalog provisioning but leaves service restart to the following controlled step:
 
+For an **update to an existing installation**, first take that app host out of the load balancer,
+stop its service, and hand the private cache back to the deployment operator before building. The
+previous runtime's `0700` cache must not strand the next build under a different account:
+
+```bash
+cd /opt/ai-hr
+sudo systemctl stop aihr
+sudo chown -R "$(id -u):$(id -g)" /opt/ai-hr/.next/cache
+```
+
+For a fresh installation skip those two service/cache handoff commands. Then build and install:
+
 ```bash
 cd /opt/ai-hr
 PATH=/opt/node22/bin:$PATH ./deploy/deploy-customer.sh --migrate-only
