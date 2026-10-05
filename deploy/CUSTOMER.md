@@ -19,7 +19,9 @@ The `aihr` account has no login shell, SSH key, sudo rule, deployment-group memb
 the application code. Merely removing the owner URL from the process environment is insufficient if
 the same account can read it again from disk. The customer unit hides all Next environment files in
 the application directory as well as dropping migration and demo variables. It binds only to
-`127.0.0.1:3000`; an authenticated HTTPS reverse proxy or controlled tunnel must front it. PostgreSQL
+`127.0.0.1:3000`; each application host therefore needs a local HTTPS reverse proxy/ingress that the
+remote load balancer can reach over a private, certificate-verified connection. The remote balancer
+cannot directly reach another host's loopback listener. PostgreSQL
 must listen only on loopback/a private network and accept only the necessary application/admin hosts.
 
 ## 1. Prepare accounts, runtime and release files
@@ -157,6 +159,9 @@ and certificate renewal; 3000 and 5432 must not be reachable from the public int
 callback, logout, missing-access refusal, payroll/PDF rendering and attachment authorization using
 non-sensitive acceptance data. Inspect the service journal for permission/cache/render errors without
 exporting secrets or HR records. A healthy HTTP status alone does not prove these workflows render.
+As the DB administrator, independently verify the actual `ai_hr_app` role has `rolsuper=false`,
+`rolbypassrls=false`, no membership of privileged/owner roles, and no ownership of application tables.
+Configuration checks on the username do not prove live database privileges are correct.
 
 Provision the tenant and bind its first real admin through the operator/provisioning workflow.
 **Manual prerequisite:** a completely fresh installation also needs its first authorized platform
@@ -185,13 +190,25 @@ PostgreSQL PITR through continuous WAL archiving to the independent backup host/
 cloud design uses a self-managed PostgreSQL 16 primary/standby pair: require certificate-verified TLS
 for remote DB connections, restricted replication credentials, tested failover/fencing, and a named
 operator responsible for patching, replication lag, WAL retention and recovery. A standby is not a
-backup. Rehearse both failover and archive-based point-in-time recovery. Choose retention and immutability that meet
+backup. Rehearse both failover and archive-based point-in-time recovery. The logical dump rehearsal
+validates a dump/manifest pair; it does **not** validate physical backups or replay archived WAL.
+Perform a separate pgBackRest/PITR drill against the actual archive. Choose retention and immutability that meet
 the actual contract. Schedule the backup, route both failure and stale-success alerts to an owner,
 and complete an isolated restore rehearsal before sensitive data is loaded. Do not restore customer
 dumps onto developer laptops. Record measured recovery time and latest recoverable timestamp; do
 not infer them from a successful upload or a timer being enabled.
 
+The logical backup/rehearsal scripts require Python 3 plus libpq from the PostgreSQL client package.
+Their connection helper uses libpq's parser, preserves TLS options and passes credentials through
+short-lived process environment/private `0600` connection files instead of client arguments. Run
+under a dedicated backup account because root and the same UID can inspect process environment.
+Use a dedicated, owned `0700` staging directory. New/empty staging directories are secured; existing
+nonempty directories with group/other permissions and symlinks are refused for manual review.
+The scripts use `umask 077` for new dumps/manifests. Never enable shell tracing before loading secrets.
+
 Bootstrap credential regression checks can be run locally with PostgreSQL 16 binaries available:
 `node --test test/bootstrap-db.node.test.mjs`. They start a temporary isolated cluster and do not use
 the application's database. This does not validate the Linux service sandbox; validate that on the
 target customer staging host before cutover.
+Run `node --test test/backup-security.node.test.mjs` for verified-TLS backup/restore credential and
+file-permission regression checks against a separate temporary PostgreSQL cluster.

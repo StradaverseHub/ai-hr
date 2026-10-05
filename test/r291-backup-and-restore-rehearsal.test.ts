@@ -304,7 +304,7 @@ describe('backup-db.sh — the destination is the owner\'s decision, and its abs
 describe('backup-db.sh — safe to run repeatedly and beside a deploy', () => {
   it('a second copy refuses while the first holds the lock, and dumps nothing', () => {
     const staging = path.join(TMP, 'locked');
-    fs.mkdirSync(path.join(staging, '.lock'), { recursive: true });
+    fs.mkdirSync(path.join(staging, '.lock'), { recursive: true, mode: 0o700 });
     fs.writeFileSync(path.join(staging, '.lock/pid'), '424242');
     const r = backup({
       BACKUP_DEST: path.join(TMP, 'lockdest'),
@@ -319,7 +319,7 @@ describe('backup-db.sh — safe to run repeatedly and beside a deploy', () => {
 
   it('REFUSES rather than overwriting a dump that already carries this second\'s name', () => {
     const staging = path.join(TMP, 'clash');
-    fs.mkdirSync(staging, { recursive: true });
+    fs.mkdirSync(staging, { recursive: true, mode: 0o700 });
     // The name is ai_hr-<db>-<UTC stamp>.dump. Occupy every second the script could be about to use,
     // so this is a refusal being tested and not a race being won.
     const now = Date.now();
