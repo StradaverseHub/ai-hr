@@ -5296,6 +5296,20 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // exists so DisplayTally stays a total Record over PAY_DISPLAY_CATEGORIES rather than a partial one.
     const emptyTally = (): DisplayTally => ({ basic: 0, overtime: 0, bonus: 0, allowance: 0, claim: 0, deduction: 0, bik: 0, vola: 0 });
 
+    // Retained ownership feeds the selected month even when current typed pay items are disabled.
+    // This projection supplies display metadata only, never the calculation or replay ledger.
+    const retainedExemptionInformation = (employmentId:string) => {
+      const rows=new Map<string,PcbExemptionRow>();
+      for(const saved of retainedOneOffExemptions.get(employmentId)??[]){
+        const row=rows.get(saved.code);
+        if(row){
+          if(row.annualLimit!==saved.annualLimit)row.annualLimit=null;
+          if(!row.payItems.includes(saved.item))row.payItems.push(saved.item);
+          row.thisMonth=round2(row.thisMonth+saved.amount);
+        }else rows.set(saved.code,{code:saved.code,table:'pcb',annualLimit:saved.annualLimit,accumulated:exemptUsedByEmp.get(employmentId)?.[saved.code]??0,thisMonth:saved.amount,payItems:[saved.item],reused:true});
+      }
+      return rows;
+    };
     const earningsOf = (
       e: { employmentId: string; basic: unknown; allowance: unknown },
       factor: number,
@@ -5389,7 +5403,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           exemptionUsed: {},
           nonCashEntries: [],
           nonCashEaEntries: [],
-          exemptionInformation: [],
+          exemptionInformation: [...retainedExemptionInformation(e.employmentId).values()].sort((a,b)=>a.code.localeCompare(b.code)),
           // Flag off ⇒ there are no typed pay items, so there is no declared box to honour and nothing to
           // re-categorise. The legacy path stays exactly as it was.
           display: emptyTally(),
@@ -5461,8 +5475,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       const priorUsed = exemptUsedByEmp.get(e.employmentId) ?? {};
       // Capture the existing assessment at its consumption sites. This map never supplies money,
       // headroom, replay or statutory inputs; absence and recorded zero are different evidence.
-      const exemptionInformation = new Map<string, PcbExemptionRow>();
-      const reusedExemption = new Map<string, number>();
+      const exemptionInformation = retainedExemptionInformation(e.employmentId);
+      const reusedExemption = new Map([...exemptionInformation.values()].map(row=>[row.code,row.thisMonth]));
       const recordExemption = (code: string, table: 'pcb'|'lp', annualLimit: number|null, item: string, reusedAmount?: number) => {
         // Existing headroom treats every negative cap as unlimited; canonicalize that display
         // sentinel without changing the calculator's resolved cap.
@@ -5475,7 +5489,6 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         }else exemptionInformation.set(code,{code,table,annualLimit,accumulated:priorUsed[code]??0,thisMonth:0,payItems:[item],reused:reusedAmount!==undefined});
         if(reusedAmount!==undefined)reusedExemption.set(code,round2((reusedExemption.get(code)??0)+reusedAmount));
       };
-      for(const saved of retainedOneOffExemptions.get(e.employmentId)??[])recordExemption(saved.code,'pcb',saved.annualLimit,saved.item,saved.amount);
       /** Remaining annual headroom for a code under `cap` (cap < 0 = fully exempt sentinel ⇒ unlimited). */
       const roomFor = (code: string, cap: number): number =>
         cap < 0 ? Number.POSITIVE_INFINITY : Math.max(0, round2(cap - (priorUsed[code] ?? 0) - (exemptionUsed[code] ?? 0)));
