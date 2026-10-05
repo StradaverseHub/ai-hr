@@ -124,6 +124,20 @@ beforeEach(async () => {
   await upsertCompanyStatutoryAuthority(adminCtx(b), { companyId: b.companyId, authority: 'lhdn', signatoryPersonId: officer.personId });
 });
 
+describe('r388 · employer contact and complete address presentation', () => {
+  it('uses the selected employer telephone, even when the signatory contact differs, and keeps blank blank', async () => {
+    const { employmentId } = await hire();
+    await owner.db.update(schema.company).set({ phone: ' 03-12345678 ', legalName: 'Synthetic Employer Sdn Bhd', addressLine1: '12 Sample Road', addressLine2: 'Level 4', addressLine3: 'Unit A', postcode: '50000', city: 'Kuala Lumpur', state: 'Wilayah Persekutuan' }).where(eq(schema.company.id, b.companyId));
+    await owner.db.update(schema.companyStatutoryAuthority).set({ phone: '03-99999999' }).where(and(eq(schema.companyStatutoryAuthority.companyId, b.companyId), eq(schema.companyStatutoryAuthority.authority, 'lhdn')));
+    const input = { employmentId, year: YEAR, selectedDate: '2027-02-28' };
+    const form = (await pcb2iiStatement(adminCtx(b), input))!;
+    expect(form.officerPhone).toBe('03-12345678');
+    expect(form.employerNameAddress).toBe('Synthetic Employer Sdn Bhd\n12 Sample Road, Level 4, Unit A, 50000 Kuala Lumpur, Wilayah Persekutuan');
+    await owner.db.update(schema.company).set({ phone: ' ' }).where(eq(schema.company.id, b.companyId));
+    expect((await pcb2iiStatement(adminCtx(b), input))!.officerPhone).toBe('');
+  });
+});
+
 describe('72b100cd · an empty box and a zero are different statements', () => {
   it('a month with no payroll is NULL, and a month that deducted nothing is 0', async () => {
     const { employmentId } = await hire();

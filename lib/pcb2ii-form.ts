@@ -72,7 +72,7 @@ export type Pcb2iiForm = {
   months: Pcb2iiMonth[];
   /** Section 3. Empty today, by the reasoning in this file's header. */
   priorYearRows: Pcb2iiPriorYearRow[];
-  /** Name Of Officer / Designation / Telephone No. — the selected company LHDN authorised signatory and authority phone. */
+  /** Name Of Officer / Designation / Telephone No. — the selected company LHDN authorised signatory and existing employer telephone. */
   officerName: string;
   officerDesignation: string;
   officerPhone: string;

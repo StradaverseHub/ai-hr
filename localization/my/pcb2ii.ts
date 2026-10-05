@@ -33,7 +33,6 @@ import { withTenant } from '../../db/client';
 import {
   company,
   companyStatutoryMy,
-  companyStatutoryAuthority,
   employeeStatutoryMy,
   employment,
   payrollBatch,
@@ -57,7 +56,7 @@ const num = (v: unknown): number => {
 };
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-/** The employer block's address, one line, skipping the parts a company has not filled in. */
+/** Employer name on its own line, complete address below; same selected company owns every part. */
 const addressOf = (c: {
   legalName: string;
   addressLine1: string | null;
@@ -67,10 +66,10 @@ const addressOf = (c: {
   state: string | null;
   postcode: string | null;
 }): string =>
-  [c.legalName, c.addressLine1, c.addressLine2, c.addressLine3, [c.postcode, c.city].filter(Boolean).join(' '), c.state]
+  [c.legalName.trim(), [c.addressLine1, c.addressLine2, c.addressLine3, [c.postcode, c.city].filter(Boolean).join(' '), c.state]
     .map((s) => (s ?? '').trim())
     .filter((s) => s !== '')
-    .join(', ');
+    .join(', ')].filter(Boolean).join('\n');
 
 /**
  * One employee's PCB 2(II) for one year, or null when the employment is not visible or does not exist.
@@ -136,6 +135,7 @@ export async function pcb2iiStatement(
         state: company.state,
         postcode: company.postcode,
         eNumber: companyStatutoryMy.lhdnEmployerNo,
+        phone: company.phone,
       })
       .from(company)
       .leftJoin(companyStatutoryMy, eq(companyStatutoryMy.companyId, company.id))
@@ -183,11 +183,6 @@ export async function pcb2iiStatement(
     );
     const officerName = officer[0]?.officer_name?.trim();
     if (!officerName) throw new Pcb2iiPreparationError('signatory');
-    const [authority] = await tx
-      .select({ phone: companyStatutoryAuthority.phone })
-      .from(companyStatutoryAuthority)
-      .where(and(eq(companyStatutoryAuthority.companyId, employerId), eq(companyStatutoryAuthority.authority, 'lhdn')))
-      .limit(1);
 
     const months = emptyPcb2iiMonths();
     for (const s of slips) {
@@ -239,7 +234,7 @@ export async function pcb2iiStatement(
       priorYearRows: [],
       officerName,
       officerDesignation: officer[0]?.officer_position?.trim() ?? '',
-      officerPhone: authority?.phone?.trim() ?? '',
+      officerPhone: employer.phone?.trim() ?? '',
       // r328 — the EMPLOYER's own row, not the employment's current company. See the block above.
       employerNameAddress: addressOf(employer),
     } satisfies Pcb2iiForm;
