@@ -9,6 +9,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  like,
   lte,
   notInArray,
   or,
@@ -35,6 +36,14 @@ import {
   CARRY_FORFEIT_REASON_EXPIRY,
   POLICY_RECALC_REASON_PREFIX,
   PROFILE_RECALC_REASON_PREFIX,
+  // r389 (62a1bec1) — Earned to Date has ONE definition, in the kernel beside the engines' own "already
+  // granted" predicate: the breakdown walk and leaveBalances' `accrued` both read it, and a recalculation an
+  // Anniversary-to-Calendar correction superseded is decided by the same helper on both paths.
+  INELIGIBLE_GRANT_REVERSAL_REASON,
+  a2cSupersessionOf,
+  entitlementRecalcKind,
+  isEarnedToDateRow,
+  recalcAdjustmentReasonCond,
   earnedCycleStart,
   isEarnedMethod,
   // r299 (3de1453a) — Earned Accrual covers Annual Leave only, so an earned method on any other type is
@@ -2541,6 +2550,62 @@ export function pickName(name: string, i18n: LeaveTypeI18n, locale?: string): st
 }
 
 /**
+ * r389 (62a1bec1) — THE RECALCULATION HALF OF `accrued` (Earned to Date) for `leaveBalances` and
+ * `leaveBalancesAll`, keyed `${employmentId}|${leaveTypeId}`.
+ *
+ * `accrued` is the SQL `filter` over accrual / in-lieu rows beside it PLUS this: the policy / profile
+ * recalculation adjustments the kernel's `isEarnedToDateRow` calls earned. The recalc rows are few (production
+ * 2026: 41 across 26 pairs) and the a2c supersession test needs a pair's rows side by side, so they are read
+ * here and decided by the SAME kernel function the breakdown walk calls — never by a second SQL spelling of
+ * the rule that could drift from it. The `sys:a2c_recalc:*` rows ride along only so `a2cSupersessionOf` can see
+ * them; they are never summed here (their accrual row is already in the SQL half, their reversal is an
+ * adjustment and not earned).
+ *
+ * Same date cut as the caller (`effective_on <= asOf`, none when absent), so an as-at read counts exactly the
+ * recalculations that had happened by then.
+ */
+async function earnedRecalcDaysBy(tx: Tx, employmentIds: string[], asOf?: string): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (employmentIds.length === 0) return out;
+  const recalcRows = await tx
+    .select({
+      employmentId: leaveLedger.employmentId,
+      leaveTypeId: leaveLedger.leaveTypeId,
+      entryType: leaveLedger.entryType,
+      days: leaveLedger.days,
+      effectiveOn: leaveLedger.effectiveOn,
+      reason: leaveLedger.reason,
+    })
+    .from(leaveLedger)
+    .where(
+      and(
+        inArray(leaveLedger.employmentId, employmentIds),
+        asOf ? lte(leaveLedger.effectiveOn, asOf) : undefined,
+        or(recalcAdjustmentReasonCond(), like(leaveLedger.reason, `${A2C_RECALC_REASON_PREFIX}:%`)),
+      ),
+    );
+  const byPair = new Map<string, typeof recalcRows>();
+  for (const r of recalcRows) {
+    const k = `${r.employmentId}|${r.leaveTypeId}`;
+    const arr = byPair.get(k);
+    if (arr) arr.push(r);
+    else byPair.set(k, [r]);
+  }
+  for (const [k, pairRows] of byPair) {
+    const superseded = a2cSupersessionOf(pairRows);
+    let sum = 0;
+    for (const r of pairRows) {
+      // ADJUSTMENT rows only: an a2c ACCRUAL row is earned too, but the SQL half has already counted it.
+      if (r.entryType === 'adjustment' && isEarnedToDateRow(r, superseded)) {
+        sum = Math.round((sum + Number(r.days)) * 100) / 100;
+      }
+    }
+    if (sum !== 0) out.set(k, sum);
+  }
+  return out;
+}
+
+/**
  * One employment's balance per leave type — the source for the employee's own Leave page AND for the two
  * admin surfaces (Employee Balances, the Personnel profile's leave card).
  *
@@ -2671,11 +2736,13 @@ export function leaveBalances(
 ) {
   return withTenant(ctx, async (tx) => {
     const asOf = opts.asOf;
-    const [rows, pend, takenFiled, unpaidFiled] = await Promise.all([
+    const [rows, pend, takenFiled, unpaidFiled, recalcEarnedBy] = await Promise.all([
       tx
         .select({
           leaveTypeId: leaveType.id,
           leaveType: leaveType.name,
+          // r389 (62a1bec1): the accrual / in-lieu HALF of Earned to Date. The recalculation half is
+          // `recalcEarnedBy` below, added in the row map — see `earnedRecalcDaysBy`.
           accrued: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} in ('accrual', 'in_lieu_accrual')), 0)`,
           taken: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'debit'), 0)`,
           balance: sql<string>`coalesce(sum(${leaveLedger.days}), 0)`,
@@ -2773,6 +2840,9 @@ export function leaveBalances(
           ),
         )
         .groupBy(leaveRequest.leaveTypeId),
+      // r389 (62a1bec1) — the automatic recalculations the engines granted, decided by the kernel's
+      // `isEarnedToDateRow` exactly as the breakdown walk decides them. Same date cut as `rows`.
+      earnedRecalcDaysBy(tx, [employmentId], asOf),
     ]);
     const pendingBy = new Map(pend.map((p) => [p.leaveTypeId, Number(p.pending)]));
     // 690d4400 — TAKEN IS ABSENCE, not balance spend: the days the employee was away. `taken` from the
@@ -2791,10 +2861,14 @@ export function leaveBalances(
     const out = rows.map((r) => {
       const pending = pendingBy.get(r.leaveTypeId) ?? 0;
       const balance = Number(r.balance);
+      // r389 (62a1bec1) — EARNED TO DATE, both halves. Before r389 this was the accrual/in-lieu sum alone, so
+      // the Personnel record's "of N" and My Team's Entitled column left out every automatic recalculation
+      // the engines had granted. Untouched (to the byte) for a type with no recalculation.
+      const recalc = recalcEarnedBy.get(`${employmentId}|${r.leaveTypeId}`);
       return {
         leaveTypeId: r.leaveTypeId,
         leaveType: r.leaveType,
-        accrued: Number(r.accrued),
+        accrued: recalc == null ? Number(r.accrued) : Math.round((Number(r.accrued) + recalc) * 100) / 100,
         // 690d4400 — the ABSENCE figure, filed-type attributed. Falls back to the ledger's own debit total
         // only for a type that produced no request rows at all (a pure adjustment history).
         taken: takenFiledBy.get(r.leaveTypeId) ?? Number(r.taken),
@@ -3510,7 +3584,10 @@ export type LeaveEntitlementBreakdown = {
    * question being asked. Undefined everywhere else, and the panel then renders exactly what it did before.
    */
   eligibility?: EligibilityNotice;
-  /** Sum of accrual + in_lieu_accrual days effective within [cycleStart, asOf]. EXACT, and it stays exact:
+  /** EARNED TO DATE, exact: the sum of every row effective within [cycleStart, asOf] that the kernel's
+   *  `isEarnedToDateRow` (core/leave.ts) calls earned — accrual and in-lieu (Leave Credit) rows, and, since
+   *  r389 (62a1bec1), the automatic policy / profile RECALCULATION adjustments the engines already counted as
+   *  granted (unless an Anniversary-to-Calendar correction has superseded them). EXACT, and it stays exact:
    *  it is one of the six buckets that tile the ledger, so `totalEntitlement` and the reconciliation
    *  identity are computed from THIS figure. r335 (6af80f5d) deliberately did not round it — see
    *  `currentYearEntitlementRounded` below for what the screens show and why the two differ. */
@@ -3555,8 +3632,9 @@ export type LeaveEntitlementBreakdown = {
   /** ADR-0066: net `adjustment` days within the current cycle that are NOT the boundary forfeit — i.e.
    *  festive / one-off grants (and any manual +/- adjustment). Surfaced as its own line so the displayed
    *  breakdown reconciles with `balance` (accrual aggregates exclude `adjustment`). 0 when none.
-   *  COMMINGLED by construction (positive-or-recalc filter) — kept for the balance TABLE's Adjustment column
-   *  and its existing callers. The panel's Adjustment line now reads `configAdjustments` instead (0315dac7). */
+   *  COMMINGLED by construction (positive-or-recalc filter). r389 (62a1bec1): NO SCREEN READS IT — the grid's
+   *  Adjustment column and the panel's Adjustments line both read `adjustments` below. It is still returned
+   *  because its client mirror and existing tests name it; do not put it back on a screen. */
   otherAdjustments: number;
   /** Signed ledger balance as at asOf (Σ days over every row ≤ asOf) — the headline figure the
    *  RECONCILIATION PARTITION below closes onto. Same expression leaveBalances/leaveBalancesAll use. */
@@ -3582,12 +3660,16 @@ export type LeaveEntitlementBreakdown = {
    *  signed (so an overdrawn carry-in stays negative instead of being floored to 0 like `carriedForward`). */
   broughtForward: number;
   /** Σ days over in-cycle `adjustment` rows whose reason is NOT a `sys:` machine reason — the festive /
-   *  one-off / manual grants HR enters on Leave Config → Entitlement → Adjustment. BOTH signs. This is the
-   *  single source of truth the panel's Adjustment line shows (feedback 0315dac7 ask 1). */
+   *  one-off / manual grants HR enters on Leave Config → Entitlement → Adjustment. BOTH signs. Itemised as
+   *  HR's own rows in the explanation (`configAdjustmentItems`). r389 (62a1bec1): it is NOT what any
+   *  Adjustment line shows on its own any more — the grid read this and the panel read `adjustments`, which
+   *  is how the two screens came to print different Adjustment figures for one row. Both read `adjustments`. */
   configAdjustments: number;
-  /** Σ days over in-cycle `adjustment` rows stamped `sys:policy_recalc:*` / `sys:profile_recalc:*` — the
-   *  automatic corrections a policy edit or a grade/hire-date change posts. BOTH signs. Never appears on the
-   *  Adjustment configuration screen, so it gets its own labelled "System corrections" line. */
+  /** Σ days over in-cycle `adjustment` rows that are AUTOMATIC CORRECTIONS (`classifyLedgerAdjustment` ⇒
+   *  'system'): the Anniversary-to-Calendar correction's reversal, the reversal of a grant the employee was
+   *  never eligible for, and any policy/profile recalculation that correction superseded. BOTH signs.
+   *  r389 (62a1bec1): an UNSUPERSEDED policy/profile recalculation is no longer here — it is earned
+   *  entitlement and is counted in `currentYearEntitlement`. */
   systemAdjustments: number;
   /** Σ −days over in-cycle `adjustment` rows stamped one of the THREE forfeit reasons (carry cap, carry
    *  expiry, aged type expiry), as a POSITIVE magnitude, taken from the actual ledger rows. */
@@ -3605,9 +3687,11 @@ export type LeaveEntitlementBreakdown = {
   // the server, beside the buckets they sum. They are not new facts — they are sums of the partition above —
   // but computing them here keeps the panel descriptor a pure PICK (its standing no-hardcoded-formula
   // mandate) and keeps the arithmetic in the one place the reconciliation identity is already proven.
-  /** configAdjustments + systemAdjustments — the ONE "Adjustments" line the redesigned summary shows.
+  /** configAdjustments + systemAdjustments — the ONE "Adjustments" figure, on EVERY screen.
    *  The employee never needed the config/system split the old §4 drew; the partition is retained above
-   *  because the identity and the balance table are keyed off it. */
+   *  because the identity is keyed off it. r389 (62a1bec1): the Employee Balances / My Profile grid's
+   *  Adjustment column reads THIS field too (components/leave/leave-balance-row.ts), so the grid and the
+   *  Explain panel cannot print two different Adjustment figures for one row again. */
   adjustments: number;
   /** broughtForward + currentYearEntitlement + adjustments — the summary's "Total" subtotal line.
    *  Because the six buckets tile the ledger, `totalEntitlement − takenThisCycle − forfeitedThisCycle
@@ -3654,25 +3738,38 @@ export type LeaveEntitlementBreakdown = {
  *   • 'forfeit' — one of the THREE machine forfeit reasons. Enumerating all three matters: treating only the
  *     cap forfeit as a boundary row would leave the carry-EXPIRY forfeit counted as an adjustment AND as a
  *     forfeit (a second double-count).
- *   • 'system'  — an automatic correction posted by a policy edit (`sys:policy_recalc:<id>`), a profile
- *     change (`sys:profile_recalc:<id>`) or the Anniversary-to-Calendar first-year correction
- *     (`sys:a2c_recalc:<leaveTypeId>`, r303). Invisible on the Adjustment configuration screen, hence its own
- *     line. The a2c prefix was missing until r303: reprojectA2cEntitlement's REVERSAL row fell through to
- *     'config', so HR's grid Adjustment column showed a machine reversal as a typed adjustment.
+ *   • 'system'  — an automatic correction: the Anniversary-to-Calendar first-year correction
+ *     (`sys:a2c_recalc:<leaveTypeId>`, r303), the reversal of a grant the employee was never eligible for
+ *     (`sys:ineligible_grant_reversal`, r389), and a policy / profile recalculation (`sys:policy_recalc:<id>`,
+ *     `sys:profile_recalc:<id>`) that an Anniversary-to-Calendar correction has since SUPERSEDED. Invisible on
+ *     the Adjustment configuration screen, so never presented as something HR typed. The a2c prefix was missing
+ *     until r303 (its REVERSAL row read as a typed adjustment); the ineligible-grant reversal was missing until
+ *     r389 — 19 production rows read as manual HR adjustments.
  *   • 'config'  — everything else: the festive / one-off / manual grants HR actually enters. A NULL reason
  *     falls here (a hand-written ledger row with no reason is a manual adjustment, not a machine one).
+ *
+ * ⚠️ r389 (62a1bec1) — ASK `isEarnedToDateRow` (core/leave.ts) FIRST. An UNSUPERSEDED policy/profile
+ * recalculation is not an adjustment at all: it is entitlement the engines granted (the accrual run tops up
+ * around it, the reprojection's delta includes it), so the ledger walk counts it under Earned to Date and it
+ * never reaches this function. This classifier still answers 'system' for those reasons because the only
+ * recalc rows that DO reach it are the superseded ones, which sit beside the a2c reversal that cancels them.
  * Exported so the tests can assert the partition directly against the reason constants.
  */
 export type LedgerAdjustmentClass = 'config' | 'system' | 'forfeit';
 
-/** r303 — WHICH automatic correction a `sys:` recalc reason names, or null for anything else. The 'system' class
+/** r303 — WHICH automatic correction a `sys:` reason names, or null for anything else. The 'system' class
  *  below IS "this returns non-null", so the Leave Summary can name the kind of correction without a second
- *  reading of the prefixes. */
-export function systemCorrectionKind(reason: string | null): 'policy_recalc' | 'profile_recalc' | 'a2c_recalc' | null {
+ *  reading of the prefixes. r389: the two recalc kinds are read off the kernel's `entitlementRecalcKind`, the
+ *  same function the Earned to Date predicate uses, so the two can never disagree about which rows they are. */
+export function systemCorrectionKind(
+  reason: string | null,
+): 'policy_recalc' | 'profile_recalc' | 'a2c_recalc' | 'ineligible_grant_reversal' | null {
+  const recalc = entitlementRecalcKind(reason);
+  if (recalc) return recalc;
   const r = reason ?? '';
-  if (r.startsWith(`${POLICY_RECALC_REASON_PREFIX}:`)) return 'policy_recalc';
-  if (r.startsWith(`${PROFILE_RECALC_REASON_PREFIX}:`)) return 'profile_recalc';
   if (r.startsWith(`${A2C_RECALC_REASON_PREFIX}:`)) return 'a2c_recalc';
+  // An exact match, as the script that writes it stamps it (scripts/reverse-ineligible-leave-grants.ts).
+  if (r === INELIGIBLE_GRANT_REVERSAL_REASON) return 'ineligible_grant_reversal';
   return null;
 }
 
@@ -3960,9 +4057,18 @@ export function leaveEntitlementBreakdown(
     const systemItems: LeaveSummaryDerivation['adjustments']['system'] = [];
     const forfeitItems: LeaveSummaryDerivation['forfeited'] = [];
     const otherDebits: (LeaveSummaryDerivation['taken']['other'][number] & { ledgerId: string })[] = [];
+    // r389 (62a1bec1) — WHICH recalculations an Anniversary-to-Calendar correction in this window has
+    // superseded. Asked of `rows` itself, so it can only see corrections dated inside [cycleStart, asOf]: an
+    // as-at date before the correction shows the recalculation as the earned entitlement it then was.
+    const supersededByA2c = a2cSupersessionOf(rows);
     for (const r of rows) {
       const days = Number(r.days);
-      if (r.entryType === 'accrual' || r.entryType === 'in_lieu_accrual') {
+      // r389 (62a1bec1) — EARNED TO DATE IS THE KERNEL'S PREDICATE, not a list of entry types restated here.
+      // Until r389 this branch was `accrual || in_lieu_accrual` and an automatic recalculation fell through to
+      // the 'system' bucket below — while the engines had counted it as granted entitlement all along. That is
+      // the reported fault: EMP-0004's +0.32 `sys:profile_recalc` read as an Adjustment in this panel and as
+      // nothing at all in the grid, beside an accrual run that had topped up AROUND it to 12.00.
+      if (isEarnedToDateRow(r, supersededByA2c)) {
         cycleAccrual = r2(cycleAccrual + days);
         credits.push({
           effectiveOn: r.effectiveOn,
@@ -3970,9 +4076,12 @@ export function leaveEntitlementBreakdown(
           kind:
             r.entryType === 'in_lieu_accrual'
               ? 'leave_credit'
-              : systemCorrectionKind(r.reason) === 'a2c_recalc'
-                ? 'a2c_correction'
-                : 'grant',
+              : r.entryType === 'adjustment'
+                ? // isEarnedToDateRow admits an adjustment ONLY for a policy/profile recalc reason.
+                  entitlementRecalcKind(r.reason)!
+                : systemCorrectionKind(r.reason) === 'a2c_recalc'
+                  ? 'a2c_correction'
+                  : 'grant',
         });
         continue;
       }
@@ -4501,16 +4610,20 @@ export function leaveBalancesAll(ctx: SessionContext, companyIds?: string[]) {
         ),
     ]);
     const pendingBy = new Map(pend.map((p) => [`${p.employmentId}|${p.leaveTypeId}`, Number(p.pending)]));
+    // r389 (62a1bec1) — the SAME Earned to Date as `leaveBalances`: no screen reads this bulk pivot today, but
+    // two `accrued` figures under one name for one pair would be the defect this item closes, waiting.
+    const recalcEarnedBy = await earnedRecalcDaysBy(tx, [...new Set(rows.map((r) => r.employmentId))]);
     const out = rows.map((r) => {
       const pending = pendingBy.get(`${r.employmentId}|${r.leaveTypeId}`) ?? 0;
       const balance = Number(r.balance);
+      const recalc = recalcEarnedBy.get(`${r.employmentId}|${r.leaveTypeId}`);
       return {
         employmentId: r.employmentId,
         personId: r.personId,
         name: r.name,
         leaveTypeId: r.leaveTypeId,
         leaveType: r.leaveType,
-        accrued: Number(r.accrued),
+        accrued: recalc == null ? Number(r.accrued) : Math.round((Number(r.accrued) + recalc) * 100) / 100,
         taken: Number(r.taken),
         pending,
         balance,

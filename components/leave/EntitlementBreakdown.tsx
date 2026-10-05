@@ -65,9 +65,10 @@ export type EntitlementBreakdownData = {
   carryForwardExpiryDate: string | null;
   forfeited: number;
   /** ADR-0066: net non-boundary `adjustment` days in the current cycle (festive/one-off/manual grants).
-   *  Re-added for §4 Adjustments + balance reconciliation (was previously dropped by this mirror type).
-   *  COMMINGLED (config grants + policy-recalc corrections); the panel's Adjustment line reads
-   *  `configAdjustments` instead (0315dac7). Kept for the balance TABLE column. */
+   *  COMMINGLED (config grants + policy-recalc corrections). r389 (62a1bec1): NO SCREEN READS IT. The panel's
+   *  Adjustments line and the balance TABLE's Adjustment column both read `adjustments` below — the table
+   *  used to read `configAdjustments` while the panel read `adjustments`, which is how one row printed two
+   *  Adjustment figures. Kept only because the server still returns it. */
   otherAdjustments: number;
   /** 0315dac7 reconciliation partition — see core/read.ts LeaveEntitlementBreakdown for the full contract.
    *  Identity (closed by construction, every ledger row ≤ asOf in exactly one bucket):
@@ -85,7 +86,8 @@ export type EntitlementBreakdownData = {
   configAdjustmentItems: { effectiveOn: string; days: number; reason: string | null }[];
   /** 1f6fd6d8 roll-ups the redesigned summary reads — configAdjustments + systemAdjustments, and
    *  broughtForward + currentYearEntitlement + adjustments. Computed server-side beside the buckets they sum
-   *  so the panel descriptor stays a pure pick; see core/read.ts LeaveEntitlementBreakdown. */
+   *  so the panel descriptor stays a pure pick; see core/read.ts LeaveEntitlementBreakdown.
+   *  r389 (62a1bec1): `adjustments` is THE Adjustment figure on every screen — the grid column reads it too. */
   adjustments: number;
   totalEntitlement: number;
   totalAvailable: number;

@@ -92,15 +92,29 @@ export type LeaveSummaryDerivation = {
       /** For `earned_from`: the date earning counts from (`earnedAccrualStart`). */
       earnedFrom: string | null;
     } | null;
-    /** Every accrual-class row in [cycleStart, asOf], pushed in the branch that adds it to the figure. */
-    credits: { effectiveOn: string; days: number; kind: 'grant' | 'leave_credit' | 'a2c_correction' }[];
+    /** Every EARNED-TO-DATE row in [cycleStart, asOf] (core/leave.ts `isEarnedToDateRow`), pushed in the branch
+     *  that adds it to the figure. r389 (62a1bec1): `policy_recalc` / `profile_recalc` are the automatic
+     *  entitlement recalculations the engines granted, listed here with their date because that is the figure
+     *  they make up — they used to be listed under Adjustments, beside a grid that counted them nowhere. */
+    credits: {
+      effectiveOn: string;
+      days: number;
+      kind: 'grant' | 'leave_credit' | 'a2c_correction' | 'policy_recalc' | 'profile_recalc';
+    }[];
   };
   /** Brought Forward — the carry rule on the leave type (the figure itself is `broughtForward`). */
   carry: { rule: 'not_recorded' | 'off' | 'on'; maxDays: number; percent: number | null };
   /** Adjustments — HR's own rows and the automatic corrections, separately. */
   adjustments: {
     manual: { effectiveOn: string; days: number; reason: string | null }[];
-    system: { effectiveOn: string; days: number; kind: 'policy_recalc' | 'profile_recalc' | 'a2c_recalc' }[];
+    /** r389 (62a1bec1): automatic corrections only — the Anniversary-to-Calendar correction, the reversal of a
+     *  grant the employee was not eligible for, and a policy / profile recalculation ONLY where that a2c
+     *  correction superseded it (an unsuperseded one is an Earned to Date credit above). */
+    system: {
+      effectiveOn: string;
+      days: number;
+      kind: 'policy_recalc' | 'profile_recalc' | 'a2c_recalc' | 'ineligible_grant_reversal';
+    }[];
   };
   /** Taken — approved leave (debits tied to a leave application) and every other deduction, as positive days. */
   taken: {
