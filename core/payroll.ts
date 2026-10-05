@@ -4699,6 +4699,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     const restatesMonth = !isAdditionalRun && batch.runSeq > 1;
     // Display evidence only: a reused recurring assessment retains its recorded cap.
     const earlierExemptionLimits = new Map<string, Map<string, number | null>>();
+    const retainedOneOffExemptions = new Map<string, {code:string;annualLimit:number|null;item:string;amount:number}[]>();
     const earlierRunByEmp = new Map<string, { additional: number; overtime: number }>();
     const earlierNonCashByEmp = new Map<string,{ownedEntries:NonCashEntry[];regularEntries:NonCashEntry[]|null;ownedEaEntries:NonCashEaEntry[];regularEaEntries:NonCashEaEntry[]|null;legacyRegular:boolean}>();
     const accumulatedNonCashByEmp = new Map<string,{bik:number;vola:number;complete:boolean}>();
@@ -4742,6 +4743,16 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           earlierExemptionLimits.set(r.employmentId,caps);
         }
         if(saved){
+          // Earlier one-off assessments remain in the selected cumulative month working. Retain
+          // their display evidence from the owning slip, independently of current catalogue rows.
+          const detail=readPcbExemptions((r.statutory as {pcbExemptions?:unknown}|null)?.pcbExemptions);
+          const retained=retainedOneOffExemptions.get(r.employmentId)??[];
+          for(const entry of saved.ownedEaEntries.filter(x=>x.source==='one_off' && x.subjectPCB && x.exemptionCode)){
+            const row=detail?.payPeriod===batch.payPeriod?detail.rows.find(x=>x.table==='pcb' && x.code===entry.exemptionCode):undefined;
+            // A grouped row cannot identify one member's name. Its frozen component code is exact.
+            retained.push({code:entry.exemptionCode!,annualLimit:row?.annualLimit??null,item:row?.payItems.length===1?row.payItems[0]:entry.code,amount:entry.exemptAmount});
+          }
+          retainedOneOffExemptions.set(r.employmentId,retained);
           nc.ownedEntries.push(...saved.ownedEntries);
           nc.ownedEaEntries.push(...saved.ownedEaEntries);
           if(r.runType==='regular')nc.regularEaEntries=saved.ownedEaEntries.filter(x=>x.source==='recurring');
@@ -5464,6 +5475,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         }else exemptionInformation.set(code,{code,table,annualLimit,accumulated:priorUsed[code]??0,thisMonth:0,payItems:[item],reused:reusedAmount!==undefined});
         if(reusedAmount!==undefined)reusedExemption.set(code,round2((reusedExemption.get(code)??0)+reusedAmount));
       };
+      for(const saved of retainedOneOffExemptions.get(e.employmentId)??[])recordExemption(saved.code,'pcb',saved.annualLimit,saved.item,saved.amount);
       /** Remaining annual headroom for a code under `cap` (cap < 0 = fully exempt sentinel ⇒ unlimited). */
       const roomFor = (code: string, cap: number): number =>
         cap < 0 ? Number.POSITIVE_INFINITY : Math.max(0, round2(cap - (priorUsed[code] ?? 0) - (exemptionUsed[code] ?? 0)));
