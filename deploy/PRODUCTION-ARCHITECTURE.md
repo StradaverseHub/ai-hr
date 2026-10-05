@@ -50,6 +50,12 @@ connections only from app, job runner and explicitly controlled migration/recove
 expose PostgreSQL or the Next.js port to the internet. Restrict administrative access to a VPN or managed
 session service with MFA; disable public password-based SSH. Keep management/monitoring ports private.
 
+The customer service binds Next to loopback. With a separate load balancer, install a local HTTPS
+reverse proxy on each application VM: edge → app VM private HTTPS listener → `127.0.0.1:3000`.
+Firewall that private listener to the edge addresses and verify the edge-to-origin certificate.
+A remote load balancer cannot connect directly to another VM's loopback address. Keep the local
+proxy's resource use inside the app VM allocation and include it in load tests.
+
 Use a supported patched Node 22 or Node 24 LTS release, a supported OS and PostgreSQL patch release,
 and the tested package lockfile. Node 20 and Node 18 are end-of-life as of this design. Verify releases
 against the official [Node support schedule](https://nodejs.org/en/about/previous-releases).
@@ -100,10 +106,18 @@ explicit availability/data-loss tradeoff. Until a quorum-based failover controll
 installed and tested, document controlled manual promotion: fence the previous primary before
 promoting its standby, then rejoin it safely. Never promote based only on a network timeout.
 
-Run `scripts/restore-rehearsal.sh` against a protected disposable restore target. Verify row counts,
-migration watermark, table permissions and tenant isolation, then exercise login and representative
-HR workflows. Measure time from incident declaration to usable service. Exercise a corrupt backup,
-a failed restore and a loss of the primary host. Never rehearse over the live database.
+Set and test `archive_timeout` or equivalent continuous WAL delivery so quiet periods cannot exceed
+the agreed RPO while a WAL segment remains unfinished. Alert before the oldest unarchived write
+reaches that objective; monitor both archive failures and lag, including during low traffic.
+
+For a logical `pg_dump` plus manifest, run `scripts/restore-rehearsal.sh` against a protected disposable
+restore target. It checks that logical format; it cannot restore pgBackRest base backups or prove PITR.
+Separately restore the physical base backup and archived WAL into an isolated cluster, recover to a
+chosen timestamp with the selected backup tool, and verify known transactions on both sides of that
+timestamp. In both drills verify migration watermark, table permissions and tenant isolation, then
+exercise login and representative HR workflows. Measure time from incident declaration to usable
+service. Exercise a corrupt backup, a failed restore and loss of the primary host. Never rehearse
+over the live database.
 
 Alert an explicitly nominated operator on failed/stale backups, missing job heartbeats, failed login
 bursts, application 5xx, `/health` failure, database connection pressure, replication lag, disk growth
