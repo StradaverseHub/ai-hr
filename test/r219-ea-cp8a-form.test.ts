@@ -581,7 +581,7 @@ describe('r219 — a caption can never overprint its neighbour', () => {
      * matchAll found nothing, the array was empty and the case passed — on no source at all. A guard
      * that greps a slice must assert the slice exists, which is what the two lines below do.
      */
-    const from = src.indexOf('const W = {...eaFormWords(');
+    const from = src.indexOf("const W = eaFormWords(opts.locale ?? 'en');");
     const to = src.indexOf('return doc.save();');
     expect(from, 'the renderer’s drawing section could not be found — this guard reads nothing').toBeGreaterThan(0);
     expect(to, 'the renderer’s end could not be found — this guard reads nothing').toBeGreaterThan(from);
