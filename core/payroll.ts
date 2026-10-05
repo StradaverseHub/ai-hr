@@ -58,6 +58,7 @@ import {
 } from './payroll-anomaly';
 import { assertStatutory } from './company-tier';
 import { toCsv } from '../lib/csv';
+import { pageState, parsePageQuery, type PageQuery } from '../lib/pagination';
 import {
   assignment,
   attendance,
@@ -10358,35 +10359,61 @@ export function preProcessAdvisoryForSelection(
   });
 }
 
+function batchSlipRows(tx: Tx, batchId: string) {
+  return tx
+    .select({
+      id: payslip.id,
+      employmentId: payslip.employmentId,
+      name: person.fullName,
+      employeeCode: employment.employeeCode,
+      basic: payslip.basicSalary,
+      bonus: payslip.bonus,
+      daysWorked: payslip.daysWorked,
+      gross: payslip.grossPay,
+      statutory: payslip.statutory,
+      totalDeductions: payslip.totalDeductions,
+      net: payslip.netPay,
+      employerCost: payslip.employerCost,
+      // 97a9b0ab — the revision counter (1 = as first generated, >1 = selectively reprocessed).
+      // It has always been stored and never shown, which is why a moved figure looked unexplainable.
+      // The RULESET version rides `statutory.version` (already selected above) — no column, no DDL.
+      version: payslip.version,
+    })
+    .from(payslip)
+    .innerJoin(employment, eq(employment.id, payslip.employmentId))
+    .innerJoin(person, eq(person.id, employment.personId))
+    .where(eq(payslip.batchId, batchId))
+    .orderBy(person.fullName, employment.id, payslip.id)
+    .$dynamic();
+}
+
+/** Complete run reader for processing/export callers whose contract requires every payslip. */
 export function batchDetail(ctx: SessionContext, batchId: string) {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx.select().from(payrollBatch).where(eq(payrollBatch.id, batchId)).limit(1);
     if (!batch) return null;
-    const slips = await tx
-      .select({
-        id: payslip.id,
-        employmentId: payslip.employmentId,
-        name: person.fullName,
-        employeeCode: employment.employeeCode,
-        basic: payslip.basicSalary,
-        bonus: payslip.bonus,
-        daysWorked: payslip.daysWorked,
-        gross: payslip.grossPay,
-        statutory: payslip.statutory,
-        totalDeductions: payslip.totalDeductions,
-        net: payslip.netPay,
-        employerCost: payslip.employerCost,
-        // 97a9b0ab — the revision counter (1 = as first generated, >1 = selectively reprocessed).
-        // It has always been stored and never shown, which is why a moved figure looked unexplainable.
-        // The RULESET version rides `statutory.version` (already selected above) — no column, no DDL.
-        version: payslip.version,
-      })
-      .from(payslip)
+    const slips = await batchSlipRows(tx, batchId);
+    return { batch, slips };
+  });
+}
+
+/** Bounded display reader. The whole-run totals remain the batch's saved financial snapshot;
+ * row count and pagination never replace them with the sum of the visible page. */
+export function batchDetailPage(ctx: SessionContext, batchId: string, requested: PageQuery) {
+  const query = parsePageQuery({ page: String(requested.page), size: String(requested.size) });
+  return withTenant(ctx, async (tx) => {
+    // Batch totals describe the whole employer run. A viewer seeing only their own payslip through
+    // RLS must not gain those totals through this administrative list reader.
+    const [batch] = await tx.select().from(payrollBatch)
+      .where(and(eq(payrollBatch.id, batchId), sql`app.can_admin_payroll_for(${payrollBatch.companyId})`)).limit(1);
+    if (!batch) return null;
+    // Use the same joins/RLS visibility as the row read, without loading statutory JSON to count it.
+    const [count] = await tx.select({ total: sql<number>`count(*)::int` }).from(payslip)
       .innerJoin(employment, eq(employment.id, payslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(payslip.batchId, batchId))
-      .orderBy(person.fullName);
-    return { batch, slips };
+      .where(eq(payslip.batchId, batchId));
+    const slips = await batchSlipRows(tx, batchId).limit(query.limit).offset(query.offset);
+    return { batch, slipPage: { rows: slips, state: pageState(query, count.total, slips.length) } };
   });
 }
 
