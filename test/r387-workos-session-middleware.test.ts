@@ -26,6 +26,7 @@ vi.mock('@/core/auth', () => ({
   acceptInvitation: requestContext.acceptInvitation,
   recordLoginBlocked: vi.fn(), recordLoginSucceeded: vi.fn(),
 }));
+vi.mock('@/db/client', () => ({ client: async () => [] }));
 
 const CALLBACK = 'https://hr.customer.com/callback';
 function configured() {
@@ -70,6 +71,15 @@ function forwarded(response: Response) {
   }
   return result;
 }
+
+// Valid JWT syntax for the SDK's claims decoder; signature verification fails locally and drives the
+// refresh branch. Provider calls are mocked below, while PKCE/session sealing and cookie code are real.
+const token = `${Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'fixture' })).toString('base64url')}.${
+  Buffer.from(JSON.stringify({ sid: 'session_fixture', sub: 'user_fixture' })).toString('base64url')}.fixture`;
+const providerSession = {
+  accessToken: token, refreshToken: 'refresh_fixture',
+  user: { id: 'user_fixture', email: 'fixture@customer.com' },
+};
 
 describe('real authentication is connected to the AuthKit session carrier', () => {
   it('supplies the actual SDK withAuth prerequisite for an anonymous browser request', async () => {
@@ -136,13 +146,38 @@ describe('real authentication is connected to the AuthKit session carrier', () =
     expect(response.headers.get('vary')).toBe('Cookie');
   });
   it('does not consume the body of an authenticated server-action POST', async () => {
-    const req = new NextRequest('https://hr.customer.com/people', {
+    const req = new NextRequest('http://127.0.0.1:3000/people', {
       method: 'POST', body: 'employee=fixture', headers: request().headers,
     });
     const response = await middleware(req);
     expect(response.headers.get('x-middleware-next')).toBe('1');
     expect(req.bodyUsed).toBe(false);
     await expect(req.text()).resolves.toBe('employee=fixture');
+  });
+  it('uses the trusted HTTPS origin for session refresh and Secure cookies behind a proxy', async () => {
+    const provider = sdk.getWorkOS().userManagement;
+    vi.spyOn(provider, 'authenticateWithRefreshToken').mockResolvedValue(
+      providerSession as Awaited<ReturnType<typeof provider.authenticateWithRefreshToken>>,
+    );
+    await sdk.saveSession(providerSession as Parameters<typeof sdk.saveSession>[0], CALLBACK);
+    const sessionCookie = requestContext.cookieWrites.find((cookie) => cookie.name === 'wos-session')!;
+    expect(sessionCookie).toBeDefined();
+    const response = await middleware(new NextRequest('http://127.0.0.1:3000/people', {
+      headers: {
+        authorization: request().headers.get('authorization')!,
+        cookie: `wos-session=${sessionCookie.value}`,
+        host: 'attacker.invalid', 'x-forwarded-host': 'attacker.invalid', 'x-forwarded-proto': 'http',
+      },
+    }));
+    expect(provider.authenticateWithRefreshToken).toHaveBeenCalled();
+    expect(response.headers.get('set-cookie')).toMatch(/wos-session=.*; Secure(?:;|$)/);
+    expect(forwarded(response).get('x-url')).toBe('https://hr.customer.com/people');
+    requestContext.headers = forwarded(response);
+    await expect(sdk.withAuth()).resolves.toMatchObject({ user: { id: 'user_fixture' } });
+  });
+  it.each([undefined, 'http://hr.customer.com/callback', 'https://hr.customer.com/not-callback'])('refuses missing or unsafe configured public origin %s', async (value) => {
+    vi.stubEnv('NEXT_PUBLIC_WORKOS_REDIRECT_URI', value);
+    await expect(middleware(request())).rejects.toThrow('configured HTTPS /callback URI');
   });
   it('keeps the holding gate ahead of provider work', async () => {
     const auth = vi.spyOn(sdk, 'authkit');
@@ -227,6 +262,30 @@ describe('sign-in handoff writes PKCE only in the route handler', () => {
     const response = await GET(request('/callback?code=fixture&state=state-a', { cookie: 'wos-auth-verifier=state-b' }, false));
     expect(response.status).toBe(500);
     expect(response.headers.get('location')).toBeNull();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+  it('a successful callback on an internal HTTP listener redirects publicly and sets only Secure session cookies', async () => {
+    const provider = sdk.getWorkOS().userManagement;
+    vi.spyOn(provider, 'authenticateWithCode').mockResolvedValue(
+      providerSession as Awaited<ReturnType<typeof provider.authenticateWithCode>>,
+    );
+    const { GET: signIn } = await import('../app/login/workos/route');
+    const started = await signIn(request('/login/workos?returnTo=%2Finvite%2Fabc_123%2Factivate', {}, false));
+    const state = new URL(started.headers.get('location')!).searchParams.get('state')!;
+    const pkce = requestContext.cookieWrites.find((cookie) => cookie.value === state)!;
+    expect(pkce).toBeDefined();
+    const { GET: callback } = await import('../app/callback/route');
+    const response = await callback(new NextRequest(`http://127.0.0.1:3000/callback?code=fixture&state=${encodeURIComponent(state)}`, {
+      headers: {
+        cookie: `${pkce.name}=${pkce.value}`,
+        host: 'attacker.invalid', 'x-forwarded-host': 'attacker.invalid', 'x-forwarded-proto': 'http',
+      },
+    }));
+    expect(provider.authenticateWithCode).toHaveBeenCalledWith(expect.objectContaining({ code: 'fixture' }));
+    expect(response.headers.get('location')).toBe('https://hr.customer.com/invite/abc_123/activate');
+    expect(requestContext.cookieWrites.find((cookie) => cookie.name === 'wos-session')?.options)
+      .toMatchObject({ secure: true, httpOnly: true });
+    expect(response.headers.get('set-cookie')).toMatch(/Secure/);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });

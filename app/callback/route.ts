@@ -1,5 +1,7 @@
 import { handleAuth } from '@workos-inc/authkit-nextjs';
+import type { NextRequest } from 'next/server';
 import { recordLoginBlocked, recordLoginSucceeded } from '@/core/auth';
+import { workosRequest } from '@/lib/workos-request';
 
 /**
  * WorkOS OAuth callback (ADR-0072). handleAuth() exchanges the `code`, seals the session cookie, and
@@ -14,22 +16,27 @@ import { recordLoginBlocked, recordLoginSucceeded } from '@/core/auth';
  *
  * This route is a handler (no layout), so it is not affected by the app-shell session gate.
  */
-export const GET = handleAuth({
-  returnPathname: '/',
-  onSuccess: async ({ user }) => {
-    try {
-      const { client } = await import('@/db/client');
-      const rows = await client<{ app_user_id: string; tenant_id: string }[]>`
-        select app_user_id, tenant_id from app.principal_by_subject(${user.id})
-      `;
-      const resolved = rows[0];
-      if (resolved) {
-        await recordLoginSucceeded({ tenantId: resolved.tenant_id, userId: resolved.app_user_id });
-      } else {
-        await recordLoginBlocked({ subject: user.id });
+export async function GET(request: NextRequest) {
+  const publicRequest = workosRequest(request);
+  return handleAuth({
+    // Explicit origin for redirects, plus the public request URL for SDK-created Secure cookies.
+    baseURL: publicRequest.nextUrl.origin,
+    returnPathname: '/',
+    onSuccess: async ({ user }) => {
+      try {
+        const { client } = await import('@/db/client');
+        const rows = await client<{ app_user_id: string; tenant_id: string }[]>`
+          select app_user_id, tenant_id from app.principal_by_subject(${user.id})
+        `;
+        const resolved = rows[0];
+        if (resolved) {
+          await recordLoginSucceeded({ tenantId: resolved.tenant_id, userId: resolved.app_user_id });
+        } else {
+          await recordLoginBlocked({ subject: user.id });
+        }
+      } catch {
+        // Never block a valid login on an audit-write failure.
       }
-    } catch {
-      // Never block a valid login on an audit-write failure.
-    }
-  },
-});
+    },
+  })(publicRequest);
+}
