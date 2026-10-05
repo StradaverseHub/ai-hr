@@ -717,3 +717,77 @@ describe('c063eea9 — the screen and the action', () => {
     expect(src).toContain('{hireCorrectionCard}');
   });
 });
+
+describe('c063eea9 (2) — a join date cannot move across payslips', () => {
+  /** A payslip for `period`, in a batch of `status`, optionally with coverage dates. */
+  async function payslipFor(employmentId: string, period: string, status: 'draft' | 'processed' | 'closed', coverage?: [string, string]) {
+    const [pp] = await owner.db
+      .insert(schema.payPeriod)
+      .values({ tenantId: b.tenantId, companyId: b.companyId, period, status: status === 'closed' ? 'closed' : 'open' })
+      .returning({ id: schema.payPeriod.id });
+    const [batch] = await owner.db
+      .insert(schema.payrollBatch)
+      .values({ tenantId: b.tenantId, companyId: b.companyId, payPeriodId: pp.id, payPeriod: period, batchDate: `${period}-25`, status })
+      .returning({ id: schema.payrollBatch.id });
+    await owner.db.insert(schema.payslip).values({
+      tenantId: b.tenantId,
+      batchId: batch.id,
+      employmentId,
+      basicSalary: '3000.00',
+      grossPay: '3000.00',
+      statutory: {},
+      totalDeductions: '0.00',
+      netPay: '3000.00',
+      employerCost: '3000.00',
+      ...(coverage ? { coverageFrom: coverage[0], coverageTo: coverage[1] } : {}),
+    });
+  }
+  const datesOf = async (id: string) =>
+    (
+      await owner.db
+        .select({ hiredOn: schema.employment.hiredOn, joinDate: schema.employment.joinDate })
+        .from(schema.employment)
+        .where(eq(schema.employment.id, id))
+    )[0];
+
+  it('a Group Join Date Correction back across a prorated, closed payslip is refused, with the periods named', async () => {
+    const { employmentId: id } = await hireOne({ hiredOn: '2025-01-15' });
+    // A mid-month joiner's January payslip covers the 15th onwards; moving the start to the 1st changes it.
+    await payslipFor(id, '2025-01', 'closed', ['2025-01-15', '2025-01-31']);
+    await payslipFor(id, '2025-02', 'closed');
+    await expect(
+      createMovementEvent(ctx(), { employmentId: id, kind: 'groupJoinDateCorrection', effectiveDate: '2025-01-01' }),
+    ).rejects.toThrow('Payslips already exist between 2025-01-15 and 2025-01-01 (payroll 2025-01)');
+    // Forward, into the paid month, too.
+    await expect(
+      createMovementEvent(ctx(), { employmentId: id, kind: 'groupJoinDateCorrection', effectiveDate: '2025-02-10' }),
+    ).rejects.toThrow('(payroll 2025-01, 2025-02)');
+    expect(await datesOf(id)).toEqual({ hiredOn: '2025-01-15', joinDate: '2025-01-15' });
+  });
+
+  it('any payslip counts — a draft run is still a payslip', async () => {
+    const { employmentId: id } = await hireOne({ hiredOn: '2025-01-15' });
+    await payslipFor(id, '2025-01', 'draft');
+    await expect(
+      createMovementEvent(ctx(), { employmentId: id, kind: 'groupJoinDateCorrection', effectiveDate: '2025-01-10' }),
+    ).rejects.toThrow(/Group Join Date cannot be moved across them/);
+  });
+
+  it('a correction that crosses no payslip goes through (and carries the synchronised Join Date)', async () => {
+    const { employmentId: id } = await hireOne({ hiredOn: '2025-01-15' });
+    await payslipFor(id, '2025-06', 'closed');
+    await createMovementEvent(ctx(), { employmentId: id, kind: 'groupJoinDateCorrection', effectiveDate: '2025-01-02' });
+    expect(await datesOf(id)).toEqual({ hiredOn: '2025-01-02', joinDate: '2025-01-02' });
+  });
+
+  it('a Join Date Change across a payslip is refused; one that crosses none goes through', async () => {
+    const { employmentId: id } = await hireOne({ hiredOn: '2025-01-15' });
+    await payslipFor(id, '2025-03', 'processed');
+    await expect(
+      createMovementEvent(ctx(), { employmentId: id, kind: 'joinDateChange', effectiveDate: '2025-04-01' }),
+    ).rejects.toThrow('Payslips already exist between 2025-01-15 and 2025-04-01 (payroll 2025-03), so the Join Date cannot be moved across them.');
+    expect((await datesOf(id)).joinDate).toBe('2025-01-15');
+    await createMovementEvent(ctx(), { employmentId: id, kind: 'joinDateChange', effectiveDate: '2025-02-01' });
+    expect((await datesOf(id)).joinDate).toBe('2025-02-01');
+  });
+});
