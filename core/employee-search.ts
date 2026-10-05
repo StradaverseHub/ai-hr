@@ -53,7 +53,8 @@ function optionsQuery(tx: Tx) {
  * strpos/starts_with keep '%' and '_' literal, matching the existing client search semantics. */
 function searchRank(query: string) {
   const raw = query.trim().toLowerCase();
-  if (!raw) return sql<number>`0`;
+  // A bare numeric ORDER BY is a projection position in PostgreSQL; cast this constant expression.
+  if (!raw) return sql<number>`0::integer`;
   const folded = foldEmployeeCode(query);
   const name = sql`lower(${person.fullName})`;
   const code = sql`lower(coalesce(${employment.employeeCode}, ''))`;
