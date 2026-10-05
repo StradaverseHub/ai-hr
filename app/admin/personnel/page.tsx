@@ -6,7 +6,6 @@ import {
   countEmployeesByStatus,
   listCompanies,
   listDepartments,
-  listEmployees,
   listEmployeesPage,
 } from '@/core/read';
 import { listProfileChangeRequests } from '@/core/profile';
@@ -174,7 +173,6 @@ export default async function PeoplePage({
     departments,
     profileChanges,
     allDrafts,
-    allEmployees,
     savedColumns,
     idConfigs,
   ] = await Promise.all([
@@ -195,12 +193,6 @@ export default async function PeoplePage({
       ? listProfileChangeRequests(session, { companyIds: scopeIds, status: 'pending' })
       : Promise.resolve([]),
     isAdmin ? listEmployeeDrafts(session) : Promise.resolve([]),
-    // c002b3c3 — the switcher needs the WHOLE reachable set, not the page being displayed: searching for
-    // someone on page 7 of the list is the entire point. `listEmployees` is the same scoped read the
-    // profile route already uses for its own pickers, narrowed here by the active company context
-    // (`scopeIds`) so the box searches exactly what this screen is showing. It can only ever be NARROWER
-    // than RLS — the profile route re-resolves whatever is picked and 404s on anything out of scope.
-    listEmployees(session, scopeIds),
     // 579255c3 — this reader's own columns and their order. Per user (app_user.list_preferences through
     // the own-row seam), so one person's arrangement never changes what anybody else sees.
     getEmployeeListColumns(session),
@@ -485,15 +477,7 @@ export default async function PeoplePage({
                 filter's `q` box and does not narrow this table: it JUMPS to a profile. Both controls
                 are here because they answer different questions — "show me these people" and "take me
                 to this person" — and the second one previously had no answer at all. */}
-            <EmployeeSwitcher
-              employees={allEmployees.map((e) => ({
-                employmentId: e.employmentId,
-                name: e.name,
-                employeeCode: e.employeeCode,
-                company: e.company,
-                department: e.department,
-              }))}
-            />
+            <EmployeeSwitcher key={scopeIds.join(',')} />
             <FilterPanel
               action="/admin/personnel"
               fields={filterFields}

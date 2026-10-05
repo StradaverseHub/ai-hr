@@ -39,16 +39,18 @@ import messages from '../messages/en.json';
 
 // vi.mock factories are hoisted above every other statement in the file, so anything they close over has
 // to be hoisted with them — vi.hoisted is how this repo does that (test/personnel-tab-retention.test.ts).
-const { refresh, push, toastSuccess, toastError } = vi.hoisted(() => ({
+const { refresh, push, toastSuccess, toastError, searchEmployees } = vi.hoisted(() => ({
   refresh: vi.fn(),
   push: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
+  searchEmployees: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh, push, replace: vi.fn(), back: vi.fn(), forward: vi.fn(), prefetch: vi.fn() }),
 }));
 vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: toastError } }));
+vi.mock('../app/admin/personnel/search-actions', () => ({ searchPersonnelEmployeesAction: searchEmployees }));
 
 import { TabSaveScope } from '../components/tab-save-scope';
 import { Combobox } from '../components/ui/combobox';
@@ -530,15 +532,17 @@ describe('§7 "Open another employee" asks too — the switcher navigates progra
     { employmentId: 'ffffffff-0000-0000-0000-000000000001', name: 'Siti Nurhaliza', employeeCode: 'E-0002', company: 'Acme', department: 'Finance' },
   ];
 
-  const renderWithSwitcher = (save: SaveFn) =>
-    render(
+  const renderWithSwitcher = (save: SaveFn) => {
+    searchEmployees.mockResolvedValue(EMPLOYEES);
+    return render(
       <>
         <Screen save={save} />
         <NextIntlClientProvider locale="en" messages={messages}>
-          <EmployeeSwitcher employees={EMPLOYEES} currentEmploymentId={EMPLOYMENT_ID} tab="profile" />
+          <EmployeeSwitcher currentEmploymentId={EMPLOYMENT_ID} tab="profile" />
         </NextIntlClientProvider>
       </>,
     );
+  };
 
   it('prompts before jumping, and jumps once the edits are discarded', async () => {
     const user = userEvent.setup();

@@ -15,15 +15,14 @@
  * what a search shows stays testable on its own — which is the half of this feature that can silently go
  * wrong (a person you may see failing to appear looks identical to a person who does not exist).
  *
- * WHAT THIS IS NOT. It is not a query and it never reaches the database. The caller hands it a list it
- * has ALREADY read under the session's scope (`listEmployees(s, scopeIds)`), so this can only ever
- * narrow that list. That is the whole reason the search cannot become a way around scope: there is no
- * widening path here to get wrong. The authoritative refusal still lives on the profile route, which
- * resolves the chosen id with `employeeDetail(s, id)` and 404s when it comes back null.
+ * The live Personnel switcher now imports a bounded server action instead of receiving every employee.
+ * core/employee-search.ts implements the same ranking in SQL before LIMIT; regression tests compare it
+ * with this pure matcher. The action re-resolves admin/company scope, and the destination still calls
+ * employeeDetail under the session before opening a profile.
  */
 export { matchEmployees, EMPLOYEE_SEARCH_RESULT_CAP as SWITCHER_RESULT_CAP } from '@/lib/employee-search';
 
-/** The fields the switcher renders and matches on — a strict subset of a `listEmployees` row. */
+/** The fields the switcher renders — the server action returns only this projection. */
 export type SwitcherEmployee = {
   employmentId: string;
   name: string;

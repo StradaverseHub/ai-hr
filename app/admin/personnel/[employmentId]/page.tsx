@@ -587,23 +587,6 @@ export default async function EmployeePage({
   const thisMonthStart = `${today.slice(0, 7)}-01`;
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
-  // c002b3c3 — Search Employee. NO NEW READ: this is the `listEmployees(s)` set already loaded above for
-  // the Direct Superior picker, narrowed to the active company context. Two consequences worth stating.
-  // (1) The search cannot be broader than what this page may already see, because it is literally the
-  // same rows — there is no second, looser query to drift. (2) Picking a result only changes the URL;
-  // the next request re-runs `employeeDetail(s, employmentId)` at the top of this file, which returns
-  // null for anything out of scope and 404s. So the list is a convenience and the route is the guard,
-  // and an id typed straight into the address bar is refused exactly as it was before this box existed.
-  // Terminated employments stay IN: HR looks up leavers on this screen constantly (final pay, letters).
-  const switcherEmployees = employees
-    .filter((e) => scopeIds.includes(e.companyId))
-    .map((e) => ({
-      employmentId: e.employmentId,
-      name: e.name,
-      employeeCode: e.employeeCode,
-      company: e.company,
-      department: e.department,
-    }));
   // Direct Superior (dce55aff): the CURRENT superior is the active administrative reporting line (the
   // one relationship every downstream consumer — approvals, visibility, calendars — actually follows).
   // The closed lines feed the read-only history disclosure; the storage stays effective-dated underneath.
@@ -5013,7 +4996,7 @@ export default async function EmployeePage({
                 control does not move as you navigate. `tab` rides along so jumping to the next person
                 keeps the tab you were reading instead of resetting to Profile. */}
             <EmployeeSwitcher
-              employees={switcherEmployees}
+              key={scopeIds.join(',')}
               currentEmploymentId={emp.employmentId}
               tab={tab ?? null}
             />

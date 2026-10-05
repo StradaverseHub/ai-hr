@@ -212,8 +212,11 @@ describe('c002b3c3 · the switcher is mounted on both screens and stays an RSC-s
     // The filter panel is a different control answering a different question; both stay.
     expect(src).toContain('<FilterPanel');
     expect(src).toContain('dataTour="people-search"');
-    // It searches the whole reachable set, narrowed by the active company context — not the page.
-    expect(src).toContain('listEmployees(session, scopeIds)');
+    // The server action searches the whole scope; the page no longer serializes that population.
+    expect(src).not.toMatch(/\blistEmployees\(/);
+    expect(src).not.toContain('employees={allEmployees');
+    expect(read('app/admin/personnel/search-actions.ts')).toContain('await scopedAdmin()');
+    expect(read('app/admin/personnel/search-actions.ts')).toContain('companyIds: scopeIds');
   });
 
   it('the profile mounts it and keeps the open tab across the jump', () => {
@@ -221,8 +224,9 @@ describe('c002b3c3 · the switcher is mounted on both screens and stays an RSC-s
     expect(src).toContain('<EmployeeSwitcher');
     expect(src).toContain("from '../employee-switcher'");
     expect(src).toContain('tab={tab ?? null}');
-    // NO NEW READ: the switcher list is the already-loaded listEmployees set, narrowed by scope.
-    expect(src).toContain('scopeIds.includes(e.companyId)');
+    // Both mounts use the same bounded server search, reset when active company scope changes.
+    expect(src).toContain("key={scopeIds.join(',')}");
+    expect(src).not.toContain('employees={switcherEmployees}');
     // …and the route's own guard is untouched: this is what refuses an out-of-scope id.
     expect(src).toContain('const emp = await employeeDetail(s, employmentId);');
     expect(src).toContain('if (!emp) notFound();');

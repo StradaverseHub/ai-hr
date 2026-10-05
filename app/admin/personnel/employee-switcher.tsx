@@ -1,10 +1,11 @@
 'use client';
 
-import { useId, useMemo, useRef, useState, useTransition } from 'react';
+import { useEffect, useId, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { EmployeeName, inputCls } from '@/components/ui';
-import { SWITCHER_RESULT_CAP, matchEmployees, switcherHref, type SwitcherEmployee } from './employee-search';
+import { switcherHref, type SwitcherEmployee } from './employee-search';
+import { searchPersonnelEmployeesAction } from './search-actions';
 import { firstDirtyGuard } from '@/lib/unsaved-changes';
 
 /**
@@ -19,27 +20,25 @@ import { firstDirtyGuard } from '@/lib/unsaved-changes';
  * SWITCHER that NAVIGATES — there is no second column to give width to, and the page it lands on is a
  * different route. Forcing one layout on both would give the profile a rail it has no room for and give
  * the transaction screens a control that leaves the screen. What the two DO share is the thing worth
- * sharing: the same scoped read (`listEmployees`) and the same "partial ID or partial name" rule.
+ * sharing: the same "partial ID or partial name" rule.
  *
- * EVERY PROP IS PLAIN DATA. Both callers are SERVER components; a function crossing that boundary is a
- * 500 on every request that tsc, the suite and `next build` all stay green through (r123). There is no
- * callback here — selection is a URL, which is also what keeps the server-side scope guard in charge:
+ * Search is bounded on the server over the whole reachable population. No employee list crosses the
+ * initial page boundary. The imported server action re-resolves the admin and company scope; selection
+ * is a URL, which also keeps the profile's scope guard in charge:
  * the profile route re-resolves the chosen id with `employeeDetail(s, id)` and 404s if it comes back
  * null, so a result list can never be the thing that grants access.
  */
 export function EmployeeSwitcher({
-  employees,
   currentEmploymentId,
   tab,
 }: {
-  /** Already scope-fenced by the caller. This component only ever narrows it. */
-  employees: SwitcherEmployee[];
   /** The employee whose profile is open, if any — shown as "current" so a jump is obviously a jump. */
   currentEmploymentId?: string | null;
   /** The profile tab to keep open across the jump. Null on the listing, which has no tab. */
   tab?: string | null;
 }) {
   const t = useTranslations('people.switcher');
+  const tState = useTranslations('commandBar');
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const listId = useId();
@@ -48,11 +47,25 @@ export function EmployeeSwitcher({
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const [retry, setRetry] = useState(0);
+  const [answer, setAnswer] = useState<{ query: string; rows: SwitcherEmployee[]; failed: boolean } | null>(null);
+  const results = answer?.query === query ? answer.rows : [];
+  const loading = query.trim() !== '' && answer?.query !== query;
+  const failed = answer?.query === query && answer.failed;
 
-  const results = useMemo(
-    () => matchEmployees(employees, query, SWITCHER_RESULT_CAP),
-    [employees, query],
-  );
+  useEffect(() => {
+    if (!query.trim()) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const rows = await searchPersonnelEmployeesAction(query);
+        if (!cancelled) setAnswer({ query, rows, failed: false });
+      } catch {
+        if (!cancelled) setAnswer({ query, rows: [], failed: true });
+      }
+    }, 200);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [query, retry]);
 
   /**
    * 420ebab5 part two — "Open another employee" is one of the ways the reporter named for leaving a
@@ -100,18 +113,20 @@ export function EmployeeSwitcher({
     <div
       ref={boxRef}
       className="relative"
-      // Closing on blur rather than on a document listener keeps this island free of effects; the
-      // contains() check is what stops a click on a RESULT from closing the list before it navigates.
+      // A result click must not close the list before it navigates.
       onBlur={(e) => {
         if (!boxRef.current?.contains(e.relatedTarget as Node | null)) setOpen(false);
       }}
     >
       <input
         type="search"
+        maxLength={200}
         role="combobox"
         aria-expanded={showList}
         aria-controls={listId}
         aria-autocomplete="list"
+        aria-busy={loading}
+        aria-activedescendant={showList && results.length ? `${listId}-${Math.min(active, results.length - 1)}` : undefined}
         aria-label={t('ariaLabel')}
         data-tour="personnel-employee-switcher"
         value={query}
@@ -137,7 +152,14 @@ export function EmployeeSwitcher({
           aria-label={t('resultsLabel')}
           className="absolute right-0 z-50 mt-1 max-h-80 w-[min(22rem,90vw)] overflow-y-auto rounded-md border border-border bg-popover text-popover-foreground shadow-lg"
         >
-          {results.length === 0 ? (
+          {loading ? (
+            <p role="status" className="px-4 py-6 text-center text-sm text-muted-foreground">{tState('loading')}</p>
+          ) : failed ? (
+            <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+              <p role="alert">{tState('loadError')}</p>
+              <button type="button" className="mt-2 underline" onClick={() => { setAnswer(null); setRetry((value) => value + 1); }}>{tState('retry')}</button>
+            </div>
+          ) : results.length === 0 ? (
             <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noMatches')}</p>
           ) : (
             results.map((e, i) => {
@@ -145,6 +167,7 @@ export function EmployeeSwitcher({
               return (
                 <button
                   key={e.employmentId}
+                  id={`${listId}-${i}`}
                   type="button"
                   role="option"
                   aria-selected={i === active}
