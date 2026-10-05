@@ -26,7 +26,7 @@ import { deriveEmploymentStatus } from '@/core/employment-status';
 import { columnsFromParam, employeeColumnText, type EmployeeColumnKey } from '@/lib/employee-columns';
 import { toCsvReport, toXlsxReport, type ReportData } from '@/lib/report-export';
 import { todayInKualaLumpur } from '@/lib/hr-date';
-import { draftMatchesQuery, parsePersonnelListQuery, type PersonnelSearchParams } from '../list-query';
+import { draftListScope, draftMatchesQuery, parsePersonnelListQuery, type PersonnelSearchParams } from '../list-query';
 
 /** Header key per column — the SAME people.list.col* keys the table's <th> row resolves. */
 const HEADER_KEY: Record<EmployeeColumnKey, string> = {
@@ -60,7 +60,7 @@ const EMPLOYMENT_TYPE_KEY: Record<string, string> = {
 const ROW_CAP = 10_000;
 
 export async function GET(req: Request) {
-  const { s: session, scopeIds } = await scopedSession();
+  const { s: session, scopeIds, allowedCount } = await scopedSession();
   if (!isAdmin(session)) return new Response('Forbidden', { status: 403 });
 
   const url = new URL(req.url);
@@ -97,8 +97,12 @@ export async function GET(req: Request) {
         limit: ROW_CAP,
         offset: 0,
       });
+  // b1b1879d — the SAME top-bar scope the employees above are read under, built by the same function the
+  // screen uses. Without it a file exported while viewing one company carried every company's drafts.
   const drafts = query.draftOnly
-    ? (await listEmployeeDrafts(session)).filter((d) => draftMatchesQuery(d, query))
+    ? (await listEmployeeDrafts(session, draftListScope(scopeIds, allowedCount))).filter((d) =>
+        draftMatchesQuery(d, query),
+      )
     : [];
 
   const cell = (v: string | null): string => v ?? '';

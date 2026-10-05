@@ -143,3 +143,26 @@ export function draftMatchesQuery(
   }
   return true;
 }
+
+/**
+ * Which drafts the Personnel screen and its export are about, from the top-bar company scope (b1b1879d).
+ *
+ * THE REPORTED FAULT. Choosing Stradaverse at the top of the screen narrowed the employees but not the
+ * drafts: the list, the Draft card and the Excel file all carried CHIN HIN's, Demo's and XYZ's drafts beside
+ * Stradaverse's employees. The Filter panel's Company field already worked (`draftMatchesQuery` above); it
+ * was the top-bar scope that drafts never received. ONE function, used by page.tsx and export/route.ts, so
+ * the file and the screen cannot be scoped two ways.
+ *
+ * `allowedCount` is how many companies the reader may scope to at all (lib/scope.ts `scopedSession`). The
+ * scope is NARROWED when it selects fewer than that. A draft with no company yet belongs to no one company,
+ * so it appears only on the un-narrowed, every-company view — never under one company's name.
+ */
+export function draftListScope(
+  scopeIds: readonly string[],
+  allowedCount: number,
+): { companyIds: readonly string[]; includeWithoutCompany: boolean } {
+  // Distinct, because the scope cookie is a comma list a reader can repeat an id in: "A,A" is one company
+  // selected, not two, and must not read as the whole of a two-company tenant.
+  const selected = new Set(scopeIds).size;
+  return { companyIds: scopeIds, includeWithoutCompany: selected > 0 && selected >= allowedCount };
+}
