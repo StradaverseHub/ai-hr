@@ -82,6 +82,7 @@ import {
   deleteCompany,
 } from '../core/admin';
 import { companyDeleteStatus } from '../core/read';
+import { pgSqlState } from '../lib/db-error';
 import { deleteCompanyAction } from '../app/admin/actions';
 import { COMPANY_DELETE_BLOCKS, COMPANY_DELETE_REFUSAL_KEY, type CompanyDeleteBlock } from '../lib/company-delete';
 
@@ -119,6 +120,15 @@ beforeEach(async () => {
 });
 
 // ── helpers ────────────────────────────────────────────────────────────────────────────────────────
+/** The SQLSTATE a statement failed with, or 'ok'. */
+async function sqlStateOf(p: Promise<unknown>): Promise<string | undefined> {
+  try {
+    await p;
+    return 'ok';
+  } catch (e) {
+    return pgSqlState(e);
+  }
+}
 /** A company made the way the Organization screen makes one: with its automatic setup. */
 const fresh = async (legalName = `Unused ${randomUUID().slice(0, 6)} Sdn Bhd`) =>
   (await createCompany(ADMIN(), { legalName, companyLabel: 'UNUSED', registrationNo: '202601009999' })).id;
@@ -480,20 +490,41 @@ describe('§4 only an administrator for the company can delete it', () => {
     expect(await exists(child)).toBe(false);
   });
 
-  it('usage records: nobody outside the company may remove them, and a record with usage nobody may', async () => {
+  it('usage records stay unwritable by the app role; only 0511\'s function removes them, zero rows only, for an authorised caller', async () => {
     const companyB = await bare();
     await usage(companyB, {}, 1);
     await usage(companyB, { e: 1 }, 2);
-    const raw = (ctx: SessionContext, nonZero: boolean) =>
-      withTenant(ctx, (tx) =>
-        tx.execute(
-          sql`delete from usage_snapshot where company_id = ${companyB}::uuid and (active_employments > 0) = ${nonZero} returning id`,
-        ),
-      );
-    expect(await raw(scopedAdmin(b.companyId), false), "A's admin, B's zero row").toHaveLength(0);
-    expect(await raw(ADMIN(), true), 'a group admin, a row with usage').toHaveLength(0);
+    // The table privilege is untouched (0313, test/module-entitlement-rls): even a group admin cannot DELETE.
+    expect(
+      await sqlStateOf(
+        withTenant(ADMIN(), (tx) => tx.execute(sql`delete from usage_snapshot where company_id = ${companyB}::uuid`)),
+      ),
+    ).toBe('42501');
+    const viaFunction = (ctx: SessionContext) =>
+      withTenant(ctx, async (tx) => {
+        const [r] = (await tx.execute(sql`select app.delete_unused_usage_snapshots(${companyB}::uuid) as n`)) as unknown as { n: number }[];
+        return Number(r.n);
+      });
+    expect(await sqlStateOf(viaFunction(scopedAdmin(b.companyId))), "company A's admin, B's records").toBe('42501');
+    expect(await sqlStateOf(viaFunction(member())), 'a member').toBe('42501');
     expect(await usageRows(companyB)).toBe(2);
-    expect(await raw(ADMIN(), false), 'the control: a group admin, a zero row').toHaveLength(1);
+    expect(await viaFunction(ADMIN()), 'the control: an authorised caller removes the zero row only').toBe(1);
+    expect(await usageRows(companyB), 'the row with usage in it survives').toBe(1);
+  });
+
+  it('the function is SECURITY DEFINER with a pinned search_path, and only the app role may execute it', async () => {
+    const fns = [...new Set(COMPANY_REFERRERS.flatMap((r) => (r.deleteFunction ? [r.deleteFunction] : [])))];
+    expect(fns).toEqual(['app.delete_unused_usage_snapshots']);
+    const rows = (await owner.db.execute(sql`
+      select p.prosecdef, p.proconfig,
+             has_function_privilege('ai_hr_app', p.oid, 'EXECUTE') as app_exec,
+             exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0) as public_exec
+        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname = 'app' and p.proname = 'delete_unused_usage_snapshots'
+    `)) as unknown as { prosecdef: boolean; proconfig: string[]; app_exec: boolean; public_exec: boolean }[];
+    expect(rows).toEqual([
+      { prosecdef: true, proconfig: ['search_path=pg_catalog, public, pg_temp'], app_exec: true, public_exec: false },
+    ]);
   });
 });
 

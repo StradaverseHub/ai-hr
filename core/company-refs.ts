@@ -66,6 +66,11 @@ export type CompanyRef = {
    * whose non-zero rows are evidence.
    */
   refuseWhere?: readonly { reason: CompanyDeleteBlock; where: string }[];
+  /**
+   * `config` only: the app role has no DELETE on this table, so its company rows are removed by calling this
+   * function (one argument, the company id; returns the row count) instead of a plain DELETE.
+   */
+  deleteFunction?: string;
   /** Why it carries the disposition it does — read by whoever adds the forty-sixth. */
   note: string;
 };
@@ -127,7 +132,10 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
       { reason: 'employees', where: '{r}.active_employments > 0 or {r}.active_users > 0' },
       { reason: 'payroll', where: '{r}.payslips_generated > 0' },
     ],
-    note: 'Nightly platform usage. All-zero rows (five on ABC Comapny) are deleted and counted on company.deleted — the plan\'s decision; migration 0511 admits exactly those. A non-zero row is evidence and refuses. Composite key with tenant_id.',
+    // The metering record stays SELECT-only for the app role (0313, pinned by test/module-entitlement-rls);
+    // 0511's SECURITY DEFINER function removes the all-zero rows and nothing else.
+    deleteFunction: 'app.delete_unused_usage_snapshots',
+    note: 'Nightly platform usage. All-zero rows (five on ABC Comapny) are deleted and counted on company.deleted — the plan\'s decision; migration 0511\'s function removes exactly those. A non-zero row is evidence and refuses. Composite key with tenant_id.',
   },
 
   // ── config-if-unreferenced: the company's own org structure, deleted unless something outside uses it ──

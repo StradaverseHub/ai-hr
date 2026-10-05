@@ -5201,11 +5201,19 @@ export async function deleteCompany(ctx: SessionContext, p: { id: string }) {
     let usageSnapshotRows = 0;
     try {
       for (const ref of cascadedReferrers()) {
+        if (ref.deleteFunction) {
+          // A table the app role may not DELETE from (the usage metering record): migration 0511's function
+          // removes the all-zero rows, re-checking the caller's authority, and says how many.
+          const [r] = (await tx.execute(
+            sql`select ${sql.raw(ref.deleteFunction)}(${p.id}::uuid) as "n"`,
+          )) as unknown as { n: number }[];
+          if (ref.table === 'usage_snapshot') usageSnapshotRows = Number(r?.n ?? 0);
+          continue;
+        }
         // Table and column from the declaration, through sql.identifier; the id BOUND, never interpolated.
-        const deleted = (await tx.execute(
-          sql`delete from ${sql.identifier(ref.table)} where ${sql.identifier(ref.column)} = ${p.id}::uuid returning 1`,
-        )) as unknown as unknown[];
-        if (ref.table === 'usage_snapshot') usageSnapshotRows = deleted.length;
+        await tx.execute(
+          sql`delete from ${sql.identifier(ref.table)} where ${sql.identifier(ref.column)} = ${p.id}::uuid`,
+        );
       }
       const gone = await tx.delete(company).where(eq(company.id, p.id)).returning({ id: company.id });
       if (gone.length !== 1) throw new CompanyDeleteForbiddenError();
