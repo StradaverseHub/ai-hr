@@ -16,12 +16,12 @@ tested capacity guarantees. Peak traffic, payroll size, attachment growth and bu
 | Component | Initial allocation | Purpose and limits |
 |---|---|---|
 | Application | 2 instances, each 4 vCPU, 8 GiB RAM, 60 GiB encrypted SSD | Dedicated private app instances across independent zones; complete the multi-instance checks below before serving traffic from both. No unrelated applications. |
-| PostgreSQL 16 | 2 VMs, each 4 vCPU, 16 GiB RAM, 200 GiB encrypted SSD data volume plus OS disk | Dedicated primary and streaming standby on independent compute/storage failure domains. Size data/WAL IOPS and attachment growth. The standby is not extra application write capacity. |
-| Scheduled jobs | 2 vCPU, 4 GiB RAM | One private job runner, using the same release as the web service. Run existing CLI jobs on one scheduler. Verify retry/idempotency before adding workers. |
+| PostgreSQL 16 | 2 VMs, each 4 vCPU, 16 GiB RAM, 40 GiB OS plus 200 GiB encrypted SSD data volume | Dedicated primary and streaming standby on independent compute/storage failure domains. Size data/WAL IOPS and attachment growth. The standby is not extra application write capacity. |
+| Scheduled jobs | 2 vCPU, 4 GiB RAM, 40 GiB encrypted SSD | One private job runner, using the same release as the web service. Run existing CLI jobs on one scheduler. Verify retry/idempotency before adding workers. |
 | Build runner | 4 vCPU, 16 GiB RAM, 60 GiB temporary storage | Linux x86_64, matching the runtime and supported Node release. Build away from the live web/database host. No employee data in CI. |
 | Edge | Private-cloud HA load balancer/WAF; if unavailable, two 1 vCPU / 2 GiB proxy VMs | Only HTTPS public; HTTP may redirect to HTTPS. Origin access only from the approved proxy. Validate how the virtual IP/load balancer itself fails over. |
-| Backup service | 2 vCPU, 4 GiB RAM; initially reserve 1 TiB encrypted backup capacity on an independent failure boundary | Base backups plus continuous WAL archive/PITR; separately protected recovery configuration. Confirm retention capacity from measured backup compression, daily changes and WAL generation. One TiB is an initial reservation, not a guarantee of 35 days at full database allocation. |
-| Staging | Separate 2 vCPU / 4 GiB app and isolated database | Synthetic or explicitly anonymized fixtures; no copies of production credentials. Larger temporary sizing for performance tests. |
+| Backup service | 2 vCPU, 4 GiB RAM, 40 GiB OS; initially reserve 1 TiB encrypted backup capacity on an independent failure boundary | Base backups plus continuous WAL archive/PITR; separately protected recovery configuration. Confirm retention capacity from measured backup compression, daily changes and WAL generation. One TiB is an initial reservation, not a guarantee of 35 days at full database allocation. |
+| Staging | Separate app: 2 vCPU / 4 GiB / 40 GiB SSD; separate DB: 2 vCPU / 8 GiB / 100 GiB SSD | Synthetic or explicitly anonymized fixtures; no copies of production credentials. Temporarily match the production topology and allocation for performance tests. |
 | GPU / Redis | None initially | AI inference uses provider APIs. Add cache/queue services only when the application needs and supports them. |
 
 The steady application/database/job allocation totals **18 vCPU and 52 GiB RAM**, excluding backup,
@@ -29,6 +29,9 @@ build, staging and edge services. Including the proposed backup and build runner
 72 GiB RAM**; two optional proxy VMs add 2 vCPU / 4 GiB. Reserve hypervisor headroom independently and
 avoid placing every VM on one physical host or storage array. A DB witness/failover coordinator, if
 selected, is additional infrastructure; two DB VMs alone do not provide safe automatic failover.
+These totals assume the private-cloud platform supplies centralized monitoring/log collection and
+administrative access services. If it does not, size those services separately from the measured log
+volume and retention policy; do not consume the database/backup reservation for unbounded logs.
 
 RECOMMENDATION: use the same approved data region for the database, app, backups and logs. Malaysia
 is a candidate if the owner requires local hosting; do not assume that authentication, AI, telemetry
