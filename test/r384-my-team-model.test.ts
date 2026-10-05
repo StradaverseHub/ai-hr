@@ -328,8 +328,8 @@ describe('My Team attendance review is per user, observation and fresh authority
   const [actual]=await withTenant(managerCtx,tx=>tx.select({checkInAt:schema.attendance.checkInAt,
     fingerprint:sql<string>`app.attendance_attention_fingerprint(${schema.attendance})`}).from(schema.attendance).where(eq(schema.attendance.id,shown.attendanceId!)));
   expect(punchReview?.fingerprint).toBe(actual.fingerprint);expect(shown.checkInAt).toBe(actual.checkInAt);
-  await markMyTeamPunchReviewed(managerCtx,{attendanceId:shown.attendanceId!,fingerprint:punchReview!.fingerprint},q);
   expect((await readMyTeam(managerCtx,q)).attention.some(a=>a.kind==='missing_punch'&&a.attendanceId===shown.attendanceId)).toBe(true);
+  await markMyTeamPunchReviewed(managerCtx,{attendanceId:shown.attendanceId!,fingerprint:punchReview!.fingerprint},q);
   const refreshed=await attendanceForEmploymentsRange(managerCtx,[subject.employmentId],date,date,{includePunchReviews:true});
   expect(refreshed.get(subject.employmentId)![0].punchReview).toEqual({fingerprint:actual.fingerprint,reviewed:true});
   expect((await readMyTeam(managerCtx,q)).attention.some(a=>a.kind==='missing_punch'&&a.attendanceId===shown.attendanceId)).toBe(false);
