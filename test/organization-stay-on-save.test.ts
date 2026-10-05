@@ -82,6 +82,7 @@ vi.mock('next-intl/server', async () => {
 });
 
 import { adminCtx, closeAll, owner, resetDb, seedBase, type Base } from './harness';
+import { createCompany } from '../core/admin';
 import * as schema from '../db/schema';
 import {
   archiveCompanyAction,
@@ -350,19 +351,47 @@ describe('§3 archiveCompanyAction has two homes and two destinations', () => {
 
 // ── §4 ─────────────────────────────────────────────────────────────────────────────────────────────
 describe('§4 delete is the one that must NOT stay (classification finding 2)', () => {
+  /**
+   * f00bd1eb — REWRITTEN, because the old version was VACUOUS about the one thing that mattered. It deleted
+   * `secondCompany`, which beforeEach inserts directly as the database owner — a bare row with none of the
+   * setup a company created on the Organization screen is born with. createCompany seeds six payroll cycles
+   * (and a TOIL policy where that module is on), and those were exactly what made the real delete fail on
+   * production while this test stayed green. So the company is now made by createCompany, and the test
+   * asserts the setup existed before the delete and is gone after it.
+   */
   it('a successful delete returns to the LIST, because the record the screen reads is gone', async () => {
-    const { pathname, q } = parse(await redirectOf(() => deleteCompanyAction(fd({ id: secondCompany }))));
+    const created = await createCompany(ADMIN, { legalName: 'Unused Holdings Sdn Bhd' });
+    const cycles = () =>
+      owner.db.select().from(schema.payrollCycle).where(eq(schema.payrollCycle.companyId, created.id));
+    expect((await cycles()).length, 'createCompany seeded the automatic setup').toBeGreaterThan(0);
+
+    const { pathname, q } = parse(await redirectOf(() => deleteCompanyAction(fd({ id: created.id }))));
     expect(pathname).toBe(LIST);
-    expect(q.get('toast')).toBe('Company deleted');
-    const rows = await owner.db.select().from(schema.company).where(eq(schema.company.id, secondCompany));
+    expect(q.get('toast')).toBe('Company deleted successfully.');
+    expect(q.get('error')).toBeNull();
+    const rows = await owner.db.select().from(schema.company).where(eq(schema.company.id, created.id));
     expect(rows).toHaveLength(0);
+    expect(await cycles(), 'its setup went with it').toHaveLength(0);
   });
 
   it('a REFUSED delete returns to the company, where Archive is the next thing to press', async () => {
-    // b.companyId is in use: seedBase hires into it.
+    // b.companyId has departments, and the hire below gives it an employee: an employee record refuses.
+    await owner.db.insert(schema.employment).values({
+      tenantId: b.tenantId,
+      personId: (
+        await owner.db
+          .insert(schema.person)
+          .values({ tenantId: b.tenantId, fullName: 'Refusal Fixture', primaryEmail: `rf_${Date.now()}@t.local` })
+          .returning({ id: schema.person.id })
+      )[0].id,
+      companyId: b.companyId,
+      hiredOn: '2025-01-01',
+    });
     const { pathname, q } = parse(await redirectOf(() => deleteCompanyAction(fd({ id: b.companyId, tab: 'general' }))));
     expect(pathname).toBe(`${LIST}/${b.companyId}`);
-    expect(q.get('error')).toBeTruthy();
+    // f00bd1eb — the sentence, not merely "something": the employee refusal in the reader's words, no SQL.
+    expect(q.get('error')).toMatch(/^This company cannot be deleted because employee records have been created/);
+    expect(q.get('error')).not.toMatch(/Failed query/);
   });
 });
 
@@ -626,7 +655,8 @@ describe('§5 the panel posts what the actions read, and says it in six language
     phone: null,
     fax: null,
     archivedAt: null,
-    inUse: true,
+    deleteBlockedBy: 'employees',
+    canDelete: true,
     parentId: null,
     hasLogo: false,
     defaultPayrollCycle: 'Monthly',

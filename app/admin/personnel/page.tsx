@@ -45,6 +45,7 @@ import { CreateEmployeeDialog } from './create-employee-dialog';
 import {
   DRAFT_BUCKET,
   EMPLOYEE_STATUS_BUCKETS,
+  draftListScope,
   draftMatchesQuery,
   headcountFilters,
   parsePersonnelListQuery,
@@ -155,7 +156,7 @@ export default async function PeoplePage({
   const tMeOptions = await getTranslations(PROFILE_REQUEST_OPTION_NAMESPACE);
   // Employee Status redesign (R43 c26c3ce5): the People list shows the SYSTEM-DERIVED status (from each
   // employee's lifecycle dates + blacklist override), not the legacy stored assignment.status.
-  const { s: session, scopeIds } = await scopedSession();
+  const { s: session, scopeIds, allowedCount } = await scopedSession();
   const today = todayInKualaLumpur();
   const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
   const sp = await searchParams;
@@ -194,7 +195,9 @@ export default async function PeoplePage({
     isAdmin
       ? listProfileChangeRequests(session, { companyIds: scopeIds, status: 'pending' })
       : Promise.resolve([]),
-    isAdmin ? listEmployeeDrafts(session) : Promise.resolve([]),
+    // b1b1879d — drafts follow the TOP-BAR company scope exactly as the employees above do. They used to
+    // be read with no scope at all, so choosing one company still listed every company's drafts.
+    isAdmin ? listEmployeeDrafts(session, draftListScope(scopeIds, allowedCount)) : Promise.resolve([]),
     // c002b3c3 — the switcher needs the WHOLE reachable set, not the page being displayed: searching for
     // someone on page 7 of the list is the entire point. `listEmployees` is the same scoped read the
     // profile route already uses for its own pickers, narrowed here by the active company context
@@ -292,7 +295,13 @@ export default async function PeoplePage({
       label: t('company'),
       ariaLabel: t('filterCompany'),
       allLabel: t('allCompanies'),
-      options: companies.map((c) => ({ value: c.id, label: c.name })),
+      // b1b1879d — only the companies being viewed. `listCompanies` is tenant-wide, so this offered every
+      // company while the list was scoped to one: picking another produced its drafts beside zero
+      // employees. The top-bar scope stays the OUTER bound and this picks from inside it, the same rule
+      // lib/company-filter.ts states for page-level company selection.
+      options: companies
+        .filter((c) => scopeIds.includes(c.id))
+        .map((c) => ({ value: c.id, label: c.name })),
       removeAriaLabel: t('removeFilter', { label: t('company') }),
     },
     {

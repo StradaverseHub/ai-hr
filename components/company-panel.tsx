@@ -25,6 +25,7 @@ import { Button, Field, inputCls } from './ui';
 import { CompanyCodeField } from './company-code-field';
 import type { CompanyCodeHolder } from '@/lib/company-code';
 import { ConfirmSubmit } from './ui/confirm-submit';
+import { COMPANY_DELETE_REFUSAL_KEY, type CompanyDeleteBlock } from '@/lib/company-delete';
 import { CompanyLogo, CompanyLogoEdit } from './company-logo';
 // r79a — company.currency is now the salary-form default currency, so it uses the same ISO 4217 picker.
 import { CurrencySelect } from './currency-select';
@@ -127,7 +128,15 @@ export type PanelCompany = {
   phone: string | null;
   fax: string | null;
   archivedAt: Date | null;
-  inUse: boolean;
+  /**
+   * f00bd1eb — what Delete will do, decided by the server's own delete guard (core/read.ts
+   * companyDeleteStatus): null opens the confirmation, a reason opens the refusal with Archive instead.
+   * Replaces `inUse`, which counted three of the forty-five tables that reference a company.
+   */
+  deleteBlockedBy: CompanyDeleteBlock | null;
+  /** f00bd1eb — the reader administers this company's parent (or the company, at a group root): Delete is
+   *  theirs to press. Anyone else is not shown it; the action and the database refuse them regardless. */
+  canDelete: boolean;
   parentId: string | null;
   hasLogo: boolean;
   // Organization Module (361e3b15) — the company's saved default payroll cycle (name). Pre-selected in the
@@ -1038,10 +1047,17 @@ export function CompanyPanel({
 
         {/* Archive / delete — bucket (b), BELOW and OUTSIDE the scope. A single Save implies a single
             Discard, and a Discard that appeared to undo a deleted company would be a control lying about
-            what it does. Both keep their own immediate controls, and Delete keeps its confirmation. */}
+            what it does. Both keep their own immediate controls, and Delete keeps its confirmation.
+
+            f00bd1eb — DELETE NOW ANSWERS BEFORE IT ACTS. Pressing it opens ONE of two dialogs, chosen by the
+            server's own delete guard (`deleteBlockedBy`): the confirmation when the delete will succeed, or
+            "Unable to Delete Company" with the reason and Archive instead. The refusal lives INSIDE the
+            archive form, so its "Archive instead" submits exactly the archive the button beside it does —
+            one archive form, one returnTo marker, no second path. Archive is offered whether or not the
+            company could be deleted: hiding a company is always available. */}
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="space-y-3">
-            <div className="flex items-center gap-1.5 rounded-lg border border-border bg-card p-3">
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-card p-3">
               {c.archivedAt ? (
                 <form action={actions.archiveCompany}>
                   <input type="hidden" name="id" value={c.id} />
@@ -1057,22 +1073,40 @@ export function CompanyPanel({
                     {t('unarchive')}
                   </Button>
                 </form>
-              ) : c.inUse ? (
-                <form action={actions.archiveCompany}>
+              ) : (
+                <form action={actions.archiveCompany} className="flex flex-wrap items-center gap-1.5">
                   <input type="hidden" name="id" value={c.id} />
                   <input type="hidden" name="archived" value="true" />
                   <input type="hidden" name="returnTo" value="company" />
                   <Button type="submit" size="sm" variant="ghost">
                     {t('archiveCompany')}
                   </Button>
+                  {c.canDelete && c.deleteBlockedBy ? (
+                    <ConfirmSubmit
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive"
+                      confirmVariant="default"
+                      title={t('deleteRefusedTitle')}
+                      description={t(COMPANY_DELETE_REFUSAL_KEY[c.deleteBlockedBy])}
+                      confirmLabel={t('archiveInstead')}
+                      cancelLabel={t('close')}
+                    >
+                      {t('deleteCompany')}
+                    </ConfirmSubmit>
+                  ) : null}
                 </form>
-              ) : (
+              )}
+              {!c.archivedAt && c.canDelete && !c.deleteBlockedBy ? (
                 <form action={actions.deleteCompany}>
                   <input type="hidden" name="id" value={c.id} />
                   <ConfirmSubmit
                     size="sm"
                     variant="ghost"
                     className="text-destructive hover:text-destructive"
+                    // f00bd1eb — the confirmation's Delete is the red button the approved mockup shows; the
+                    // trigger stays a quiet ghost beside Archive.
+                    confirmVariant="destructive"
                     title={t('deleteCompanyTitle')}
                     description={t('deleteCompanyDescription')}
                     confirmLabel={t('delete')}
@@ -1080,10 +1114,7 @@ export function CompanyPanel({
                     {t('deleteCompany')}
                   </ConfirmSubmit>
                 </form>
-              )}
-              <span className="text-xs text-muted-foreground">
-                {c.inUse ? t('inUseArchiveInstead') : t('notReferenced')}
-              </span>
+              ) : null}
             </div>
           </div>
         </div>

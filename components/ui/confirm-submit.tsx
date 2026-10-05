@@ -39,6 +39,11 @@ type Props = {
   confirmLabel?: string;
   reasonField?: ReasonField;
   twoStep?: TwoStep;
+  /** f00bd1eb — the dismiss button's words when "Cancel" would be wrong (a refusal is closed, not cancelled). */
+  cancelLabel?: string;
+  /** f00bd1eb — the confirm button's variant when it differs from the trigger's (a destructive-looking
+   *  trigger whose dialog offers a safe alternative, e.g. Delete → "Archive instead"). Defaults to `variant`. */
+  confirmVariant?: ButtonProps['variant'];
 } & Omit<ButtonProps, 'type'>;
 
 /**
@@ -59,6 +64,8 @@ export function ConfirmSubmit({
   confirmLabel,
   reasonField,
   twoStep,
+  cancelLabel,
+  confirmVariant,
   variant = 'destructive',
   ...props
 }: Props) {
@@ -143,7 +150,7 @@ export function ConfirmSubmit({
           <div className="mt-5 flex justify-end gap-2">
             <AlertDialog.Cancel asChild>
               <Button type="button" variant="outline" size="sm">
-                {twoStep && !onStep2 ? twoStep.noLabel : t('cancel')}
+                {twoStep && !onStep2 ? twoStep.noLabel : (cancelLabel ?? t('cancel'))}
               </Button>
             </AlertDialog.Cancel>
             {twoStep && !onStep2 ? (
@@ -156,7 +163,7 @@ export function ConfirmSubmit({
               <AlertDialog.Action asChild>
                 <Button
                   type="button"
-                  variant={variant}
+                  variant={confirmVariant ?? variant}
                   size="sm"
                   disabled={confirmDisabled}
                   onClick={() => ref.current?.closest('form')?.requestSubmit()}

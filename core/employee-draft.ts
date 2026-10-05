@@ -34,7 +34,7 @@
  * read in the product joins `employment`, so a flag would need a new exclusion in each of them forever,
  * and the failure mode is a half-entered person appearing in a headcount or a payroll run.
  */
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { company, employeeDraft, employeeIdConfig, person, tenantCounter } from '../db/schema';
 import { appendEvent, actorOf } from '../db/events';
@@ -97,9 +97,35 @@ const str = (v: string | undefined) => {
   return s === '' ? undefined : s;
 };
 
-/** Drafts visible to the caller, most recently touched first. RLS (0337) is the authority: an author
- *  sees their own, an admin sees the tenant's. */
-export function listEmployeeDrafts(ctx: SessionContext): Promise<EmployeeDraftRow[]> {
+/**
+ * Which drafts a list is about (item b1b1879d): the companies the reader has selected in the top-bar
+ * company scope, and whether a draft with NO company yet belongs in the view.
+ *
+ * REQUIRED, not optional. The defect this item fixes was a caller that simply did not pass a scope: the
+ * Personnel list, its Draft card and its export all read every draft RLS allowed while the employees beside
+ * them followed the selected company. A default of "unscoped" would let the next caller repeat that, so
+ * every caller has to say what it is showing. `draftListScope` (app/admin/personnel/list-query.ts) is the
+ * one place the screen and the export build this from the top-bar scope.
+ */
+export type DraftListScope = {
+  /** The selected companies. Empty ⇒ nothing is selected ⇒ no drafts at all. */
+  companyIds: readonly string[];
+  /** A draft without a company belongs to no one company, so it is shown only on the all-companies view. */
+  includeWithoutCompany: boolean;
+};
+
+/** Drafts visible to the caller inside `scope`, most recently touched first.
+ *
+ *  TWO FENCES, and they answer different questions. `scope` is the VIEW: the companies picked at the top of
+ *  the screen, a narrowing the reader chose and can widen again. RLS (0510, replacing 0337) is the
+ *  AUTHORITY: an administrator sees a company's drafts only when they administer that company, a draft with
+ *  no company only when they administer every company, and an author always sees their own. The scope can
+ *  only ever be narrower than RLS; it never grants anything. */
+export function listEmployeeDrafts(ctx: SessionContext, scope: DraftListScope): Promise<EmployeeDraftRow[]> {
+  const ids = [...new Set(scope.companyIds)];
+  // An empty selection selects nothing. Without this, `includeWithoutCompany` alone would answer with the
+  // unassigned drafts under a scope that names no company at all.
+  if (ids.length === 0) return Promise.resolve([]);
   return withTenant(ctx, async (tx) => {
     const rows = await tx
       .select({
@@ -117,7 +143,13 @@ export function listEmployeeDrafts(ctx: SessionContext): Promise<EmployeeDraftRo
       .from(employeeDraft)
       .leftJoin(company, eq(company.id, employeeDraft.companyId))
       .leftJoin(person, eq(person.id, employeeDraft.createdByPersonId))
-      .orderBy(desc(employeeDraft.updatedAt));
+      .where(
+        scope.includeWithoutCompany
+          ? or(inArray(employeeDraft.companyId, ids), isNull(employeeDraft.companyId))
+          : inArray(employeeDraft.companyId, ids),
+      )
+      // `id` breaks a tie on `updated_at`, so two drafts saved in the same instant keep one order.
+      .orderBy(desc(employeeDraft.updatedAt), desc(employeeDraft.id));
     return rows.map(({ data, ...r }) => ({ ...r, missing: missingForCreation(asData(data)) }));
   });
 }

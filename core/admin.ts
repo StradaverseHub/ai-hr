@@ -27,6 +27,8 @@ import { visibleLabelIdsCondition } from './system-labels';
 // still exported and still used by their own tests; deleteLeaveType no longer calls them because the
 // entitlement layer is now declared like every other referrer rather than special-cased in the guard.
 import { configReferrers, historyReferrers } from './leave-type-refs';
+import { cascadedReferrers, companyDeleteBlockSqlText } from './company-refs';
+import { isCompanyDeleteBlock, type CompanyDeleteBlock } from '../lib/company-delete';
 import { isLoginBlocked } from './employment-status';
 import {
   isValidMonthDay,
@@ -5113,13 +5115,128 @@ export function archiveCompany(ctx: SessionContext, p: { id: string; archived: b
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'company', aggregateId: p.id, eventType: p.archived ? 'company.archived' : 'company.unarchived', actor: actorOf(ctx), payload: {} });
   });
 }
+/**
+ * f00bd1eb — a company that cannot be deleted, and which of the three reasons applies. Carries the reason
+ * rather than a sentence: the action turns it into the reader's language (lib/company-delete.ts), and the
+ * panel shows the same sentence before the button is ever pressed.
+ */
+export class CompanyInUseError extends Error {
+  constructor(public readonly reason: CompanyDeleteBlock) {
+    super(
+      reason === 'employees'
+        ? 'This company cannot be deleted because employee records have been created under this company.'
+        : reason === 'payroll'
+          ? 'This company cannot be deleted because payroll records exist for this company.'
+          : 'This company cannot be deleted because it is still linked to other records.',
+    );
+    this.name = 'CompanyInUseError';
+  }
+}
+
+/** f00bd1eb — the caller does not administer the company's parent (or the company itself, at a group root). */
+export class CompanyDeleteForbiddenError extends Error {
+  constructor() {
+    super('Only an administrator for this company can delete it.');
+    this.name = 'CompanyDeleteForbiddenError';
+  }
+}
+
+/** f00bd1eb — no such company in this tenant (already deleted, or never visible). */
+export class CompanyNotFoundError extends Error {
+  constructor() {
+    super('This company no longer exists.');
+    this.name = 'CompanyNotFoundError';
+  }
+}
+
+/**
+ * Delete a company that was never used, taking its automatic setup with it (f00bd1eb).
+ *
+ * ## What was wrong
+ *
+ * The guard counted three tables (department, employment, child company); the database has forty-five
+ * columns referencing `company.id`, and createCompany seeds six payroll cycles into every new company. So an
+ * unused company was offered Delete, Postgres refused on the cycles, and the raw message reached the screen.
+ * Nothing checked WHO was deleting: the action used getSession, this function checked no role, and the RLS
+ * policy on `company` gated DELETE by tenant alone.
+ *
+ * ## What it does now, in one transaction
+ *
+ * 1. Locks the company row (FOR UPDATE), so nothing can start referencing it between the check and the
+ *    delete — a foreign-key insert needs a KEY SHARE lock on the row, which this blocks.
+ * 2. AUTHORISES: the caller must administer the company's parent, or the company itself at a group root —
+ *    the same expression the row's WITH CHECK uses for writing it. Migration 0511 enforces the same rule as a
+ *    RESTRICTIVE delete policy, so this check is the explanation and the policy is the lock.
+ * 3. REFUSES with the reason from `companyDeleteBlockSqlText` (core/company-refs.ts) — the exact SQL the
+ *    panel ran to decide between the confirmation and the refusal.
+ * 4. Deletes the company's own setup in declaration order, then the company with RETURNING, and requires
+ *    exactly one row. Zero rows means RLS refused it, and that is never reported as success.
+ *
+ * A foreign key that still fires at step 4 means a row the caller's RLS could not see links to the company
+ * (the check in step 3 runs as the caller). That is the `other` refusal, said in words; the original error is
+ * logged on the server, never shown.
+ */
 export async function deleteCompany(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
-    const [dep] = await tx.select({ n: sql<number>`count(*)::int` }).from(department).where(eq(department.companyId, p.id));
-    const [emp] = await tx.select({ n: sql<number>`count(*)::int` }).from(employment).where(eq(employment.companyId, p.id));
-    const [sub] = await tx.select({ n: sql<number>`count(*)::int` }).from(company).where(eq(company.parentCompanyId, p.id));
-    if ((dep?.n ?? 0) + (emp?.n ?? 0) + (sub?.n ?? 0) > 0) throw new InUseError('company');
-    await tx.delete(company).where(eq(company.id, p.id));
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'company', aggregateId: p.id, eventType: 'company.deleted', actor: actorOf(ctx), payload: {} });
+    const rows = (await tx.execute(sql`
+      select company.legal_name as "legalName", company.company_label as "code",
+             company.registration_no as "registrationNo",
+             app.is_admin_for(coalesce(company.parent_company_id, company.id)) as "canDelete"
+        from company where company.id = ${p.id}::uuid for update`)) as unknown as {
+      legalName: string;
+      code: string | null;
+      registrationNo: string | null;
+      canDelete: boolean;
+    }[];
+    const row = rows[0];
+    if (!row) throw new CompanyNotFoundError();
+    if (!row.canDelete) throw new CompanyDeleteForbiddenError();
+
+    const [blocked] = (await tx.execute(
+      sql`select (${sql.raw(companyDeleteBlockSqlText('company.id'))}) as "reason" from company where company.id = ${p.id}::uuid`,
+    )) as unknown as { reason: string | null }[];
+    const reason = blocked?.reason;
+    if (isCompanyDeleteBlock(reason)) throw new CompanyInUseError(reason);
+
+    let usageSnapshotRows = 0;
+    try {
+      for (const ref of cascadedReferrers()) {
+        if (ref.deleteFunction) {
+          // A table the app role may not DELETE from (the usage metering record): migration 0511's function
+          // removes the all-zero rows, re-checking the caller's authority, and says how many.
+          const [r] = (await tx.execute(
+            sql`select ${sql.raw(ref.deleteFunction)}(${p.id}::uuid) as "n"`,
+          )) as unknown as { n: number }[];
+          if (ref.table === 'usage_snapshot') usageSnapshotRows = Number(r?.n ?? 0);
+          continue;
+        }
+        // Table and column from the declaration, through sql.identifier; the id BOUND, never interpolated.
+        await tx.execute(
+          sql`delete from ${sql.identifier(ref.table)} where ${sql.identifier(ref.column)} = ${p.id}::uuid`,
+        );
+      }
+      const gone = await tx.delete(company).where(eq(company.id, p.id)).returning({ id: company.id });
+      if (gone.length !== 1) throw new CompanyDeleteForbiddenError();
+    } catch (e) {
+      if (pgSqlState(e) === '23503') {
+        console.error(`[deleteCompany] ${p.id} still referenced after the guard`, e);
+        throw new CompanyInUseError('other');
+      }
+      throw e;
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'company',
+      aggregateId: p.id,
+      eventType: 'company.deleted',
+      actor: actorOf(ctx),
+      // The row is gone, so the event is what says which company this was.
+      payload: {
+        legalName: row.legalName,
+        code: row.code,
+        registrationNo: row.registrationNo,
+        usageSnapshotRows,
+      },
+    });
   });
 }

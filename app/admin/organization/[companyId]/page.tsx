@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { companyTree, listCompanies } from '@/core/read';
+import { companyDeleteStatus, companyTree, listCompanies } from '@/core/read';
 import { listProfileOptions } from '@/core/profile-options';
 import { packFor } from '@/localization/registry';
 import { listCompanyBankProfiles } from '@/core/bank-profile';
@@ -87,7 +87,7 @@ export default async function CompanyMaintenancePage({
    */
   const payrollOn = isModuleEnabledOrFalse(s, 'payroll');
 
-  const [statutory, bankProfiles, authorities, signatories, stateOpts, cycles] = await Promise.all([
+  const [statutory, bankProfiles, authorities, signatories, stateOpts, cycles, deleteStatus] = await Promise.all([
     // Rung 5c — company statutory rows come through the pack registry (ADR-0080 D1), not a direct
     // import. A non-MY company simply has no row, exactly as the grouped listing resolved it before.
     packFor('MY')?.companyStatutory.get(s, companyId) ?? null,
@@ -106,6 +106,9 @@ export default async function CompanyMaintenancePage({
     // Organization Module (361e3b15): THIS company's ACTIVE cycles, so the General-tab picker lists its
     // own cycles with the saved default pre-selected (and can flag a default that is no longer active).
     payrollOn ? listPayrollCycles(s, companyId, { activeOnly: true }) : null,
+    // f00bd1eb — what Delete will do, from the delete guard's own SQL (core/company-refs.ts), so the panel
+    // opens the confirmation only when the delete will succeed and the refusal, with its reason, otherwise.
+    companyDeleteStatus(s, companyId),
   ]);
 
   // The group hierarchy still comes from the separate companyTree read — listCompanies does not carry
@@ -149,7 +152,8 @@ export default async function CompanyMaintenancePage({
           phone: c.phone,
           fax: c.fax,
           archivedAt: c.archivedAt,
-          inUse: c.inUse,
+          deleteBlockedBy: deleteStatus?.blockedBy ?? null,
+          canDelete: deleteStatus?.canDelete ?? false,
           parentId: parentBy.get(c.id) ?? null,
           hasLogo: c.hasLogo,
           defaultPayrollCycle: c.defaultPayrollCycle,

@@ -2920,6 +2920,20 @@
       "when": 1791004108592,
       "tag": "0509_person_tax_circumstance",
       "breakpoints": true
+    },
+    {
+      "idx": 510,
+      "version": "7",
+      "when": 1791210417875,
+      "tag": "0510_employee_draft_company_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 511,
+      "version": "7",
+      "when": 1791210418875,
+      "tag": "0511_company_delete_authority",
+      "breakpoints": true
     }
   ]
 }

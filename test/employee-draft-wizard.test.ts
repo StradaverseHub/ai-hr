@@ -67,6 +67,18 @@ const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 let b: Base;
 
 /**
+ * b1b1879d — `listEmployeeDrafts` now takes the top-bar company scope, and has no unscoped default. These
+ * cases are about the draft itself, not the scope, so they read the every-company view: all of the tenant's
+ * companies selected, which is also the one view that includes a draft with no company yet.
+ */
+const everyCompany = async () => ({
+  companyIds: (
+    await owner.db.select({ id: schema.company.id }).from(schema.company).where(eq(schema.company.tenantId, b.tenantId))
+  ).map((r) => r.id),
+  includeWithoutCompany: true,
+});
+
+/**
  * A draft that has everything creation needs, for the fixtures below.
  *
  * IT NOW CARRIES A HAND-TYPED EMPLOYEE ID, and that is the item bd271009 behaviour change made visible:
@@ -446,7 +458,7 @@ describe('§3 a draft creates nothing until it is completed', () => {
   it('the list derives its label and company from the payload, and recomputes what is outstanding', async () => {
     const ctx = adminCtx(b);
     await saveEmployeeDraft(ctx, { data: { profile: { fullName: 'Half Done' } }, currentStep: 1 });
-    const rows = await listEmployeeDrafts(ctx);
+    const rows = await listEmployeeDrafts(ctx, await everyCompany());
     expect(rows).toHaveLength(1);
     expect(rows[0].label).toBe('Half Done');
     expect(rows[0].companyId).toBeNull();
@@ -458,7 +470,7 @@ describe('§3 a draft creates nothing until it is completed', () => {
     const { id } = await saveEmployeeDraft(ctx, { data: { profile: { fullName: 'First' } }, currentStep: 1 });
     const again = await saveEmployeeDraft(ctx, { id, data: { profile: { fullName: 'Second' } }, currentStep: 3 });
     expect(again.id).toBe(id);
-    expect(await listEmployeeDrafts(ctx)).toHaveLength(1);
+    expect(await listEmployeeDrafts(ctx, await everyCompany())).toHaveLength(1);
     expect((await getEmployeeDraft(ctx, id))?.data.profile?.fullName).toBe('Second');
   });
 
@@ -522,7 +534,7 @@ describe('§3 a draft creates nothing until it is completed', () => {
 
     // The draft is gone, and the completion is on the audit trail.
     expect(await getEmployeeDraft(ctx, id)).toBeNull();
-    expect(await listEmployeeDrafts(ctx)).toHaveLength(0);
+    expect(await listEmployeeDrafts(ctx, await everyCompany())).toHaveLength(0);
     const [ev] = await owner.db
       .select({ type: schema.domainEvent.eventType })
       .from(schema.domainEvent)
@@ -562,7 +574,7 @@ describe('§3 a draft creates nothing until it is completed', () => {
     const before = await counts();
     const { id } = await saveEmployeeDraft(ctx, { data: completeDraft(), currentStep: 3 });
     await discardEmployeeDraft(ctx, id);
-    expect(await listEmployeeDrafts(ctx)).toHaveLength(0);
+    expect(await listEmployeeDrafts(ctx, await everyCompany())).toHaveLength(0);
     expect(await counts()).toEqual(before);
   });
 
@@ -772,7 +784,7 @@ describe('§5 which Employee ID a wizard-created employee gets', () => {
     // A draft with no ID, for a company with no setup. `completeEmployeeDraft` would refuse it, but the
     // list spans many companies and must not start calling every such draft incomplete.
     await saveEmployeeDraft(ctx, { data: autoDraft(), currentStep: 5 });
-    expect((await listEmployeeDrafts(ctx))[0].missing).toEqual([]);
+    expect((await listEmployeeDrafts(ctx, await everyCompany()))[0].missing).toEqual([]);
   });
 });
 
@@ -1076,7 +1088,7 @@ describe('§7 an Employee ID held by a draft', () => {
       createEmployeeDraftWithReservedCode(ctx, { ...four(), primaryEmail: '' }),
     ).rejects.toThrow(/Cannot create the employee record yet.*primaryEmail/);
     expect(await counterOf()).toBe(before);
-    expect(await listEmployeeDrafts(ctx)).toHaveLength(0);
+    expect(await listEmployeeDrafts(ctx, await everyCompany())).toHaveLength(0);
   });
 
   it('the DATABASE holds the reservation, not merely the service — and only for non-null codes', async () => {
