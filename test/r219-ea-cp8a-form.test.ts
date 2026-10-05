@@ -296,7 +296,7 @@ describe('r219 — the agency’s own page furniture reaches the paper, in both 
         // ⚠️ r372 — `perkeso` ("2. PERKESO :" / "2. SOCSO:") carries the FORM'S OWN item number, and
         // the agency draws that number in its own column (62.5) with the word at 80.2. So it reaches
         // the page as two runs and is checked as two: the words here, and the "2." below.
-        const expected = key === 'employerNameAddress' ? (locale === 'ms' ? 'Nama Majikan' : 'Employer Name') : key === 'perkeso' ? eaCaptionWords(w, EA_FORM_NUMBERING.perkeso) : w;
+        const expected = key === 'perkeso' ? eaCaptionWords(w, EA_FORM_NUMBERING.perkeso) : w;
         const hit = key === 'masthead4' ? printed.some((t) => t.startsWith(w)) : printed.includes(expected);
         expect(hit, `${locale}: ${w}`).toBe(true);
         if (key === 'perkeso') expect(printed, `${locale}: Section E item 2's own number`).toContain('2.');
