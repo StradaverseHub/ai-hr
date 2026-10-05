@@ -7,8 +7,25 @@ export const PAYSLIP_INFORMATION_FIELDS = [
 export type PayslipInformationField = typeof PAYSLIP_INFORMATION_FIELDS[number];
 export const DEFAULT_PAYSLIP_INFORMATION_FIELDS: readonly PayslipInformationField[] =
   PAYSLIP_INFORMATION_FIELDS.filter(k => !['businessUnit','division','branch','region','line','section','team','base','category'].includes(k));
+/**
+ * r389 (23bd49d9) — the company's saved setting IS the order. A stored `fields` array is the ordered list of
+ * shown fields, read back exactly as saved: an unknown key is dropped (a renamed field never prints a raw
+ * key), a repeated key keeps its FIRST place (a field never prints twice), and anything that is not an array
+ * — no row yet — gives the defaults. Before r389 this re-filtered the catalogue, so the stored order was
+ * ignored; every row the setter wrote then was already in catalogue order, which is why no existing payslip
+ * changes until someone reorders.
+ */
 export function payslipInformationFields(raw: unknown): readonly PayslipInformationField[] {
-  return Array.isArray(raw) ? PAYSLIP_INFORMATION_FIELDS.filter(k => raw.includes(k)) : DEFAULT_PAYSLIP_INFORMATION_FIELDS;
+  if (!Array.isArray(raw)) return DEFAULT_PAYSLIP_INFORMATION_FIELDS;
+  const known = new Set<string>(PAYSLIP_INFORMATION_FIELDS);
+  const seen = new Set<string>();
+  const ordered: PayslipInformationField[] = [];
+  for (const key of raw) {
+    if (typeof key !== 'string' || !known.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    ordered.push(key as PayslipInformationField);
+  }
+  return ordered;
 }
 export function selectPayslipInformation(
   data: Partial<Record<PayslipInformationField, unknown>>,

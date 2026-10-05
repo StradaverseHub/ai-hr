@@ -17,7 +17,9 @@ describe('company-owned payslip display setting',()=>{
  it('has explicit defaults, saves an empty selection, persists ordered independent company choices and an audit event',async()=>{
   expect(await getPayslipInformationSettings(ctx(),base.companyId)).toEqual(DEFAULT_PAYSLIP_INFORMATION_FIELDS);
   await setPayslipInformationSettings(ctx(),base.companyId,['branch','employee','daysWorked']);
-  expect(await getPayslipInformationSettings(ctx(),base.companyId)).toEqual(['employee','branch','daysWorked']);
+  // r389 (23bd49d9) reversed the r378 re-sort: the saved list IS the payslip's reading order, so a
+  // non-catalogue order comes back exactly as saved (it used to come back as employee, branch, daysWorked).
+  expect(await getPayslipInformationSettings(ctx(),base.companyId)).toEqual(['branch','employee','daysWorked']);
   await setPayslipInformationSettings(ctx(),base.companyId,[]);
   expect(await getPayslipInformationSettings(ctx(),base.companyId)).toEqual([]);
   const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'payslip-information.changed'));
