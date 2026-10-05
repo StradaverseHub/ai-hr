@@ -313,7 +313,9 @@ const breakdownInput = (status: EntitlementStatus): BreakdownInput => ({
   carriedForward: 0,
   forfeited: 0,
   otherAdjustments: 0,
-  configAdjustments: 0,
+  // r389 (62a1bec1): the grid's Adjustment column reads `adjustments` (the panel's own field), not
+  // `configAdjustments`, which BreakdownInput no longer carries.
+  adjustments: 0,
   entitlementStatus: status,
 });
 

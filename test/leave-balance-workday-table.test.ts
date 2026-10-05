@@ -53,11 +53,15 @@ const baseBreakdown = (over: Partial<NonNullable<BreakdownInput>> = {}): Breakdo
   currentYearEntitlementRounded: over.currentYearEntitlement ?? 12,
   carriedForward: 5,
   forfeited: 1,
-  // 0315dac7: `otherAdjustments` commingles HR's configured grants with automatic system corrections; the
-  // Adjustment column now shows `configAdjustments`, the same bucket the breakdown panel's Adjustment line
-  // reads. Kept DISTINCT here (2 vs 6) so a regression back to the commingled figure fails loudly.
+  // 0315dac7: `otherAdjustments` commingles HR's configured grants with automatic system corrections. Kept
+  // DISTINCT here (2 vs 6) so a regression back to the commingled figure fails loudly.
+  // r389 (62a1bec1) — UPDATED, NOT LOOSENED: the column's source moved from `configAdjustments` to
+  // `adjustments`, the field the Explain panel's Adjustments line selects. The old pin named
+  // `configAdjustments` on the claim that the panel read the same bucket; the panel has read `adjustments`
+  // since 1f6fd6d8, which is how the two screens printed different Adjustment figures for one row.
+  // `configAdjustments` is no longer a BreakdownInput field at all, so a regression back to it cannot compile.
   otherAdjustments: 6,
-  configAdjustments: 2,
+  adjustments: 2,
   // 31e39d74: the default fixture describes a type whose entitlement HAS been generated (it has 12 days
   // of it), so `granted` is the only consistent value here. The other three states are exercised in
   // test/r196-entitlement-not-generated.test.ts.
@@ -71,8 +75,9 @@ describe('deriveBalanceRow: the standardized balance columns map from existing f
     expect(row.available).toBe(8.5); // shown as "Accrued"
     expect(row.taken).toBe(3);
     expect(row.broughtForward).toBe(5); // Carried Forward
-    // 0315dac7: the Adjustment column is the CONFIG adjustment total (what HR entered on the Adjustment
-    // step), NOT the commingled otherAdjustments — same figure the breakdown panel's Adjustment line shows.
+    // r389 (62a1bec1): the Adjustment column is `adjustments` — the SAME field the breakdown panel's
+    // Adjustments line selects — NOT the commingled otherAdjustments (0315dac7), and no longer the config-only
+    // bucket that the panel never read.
     expect(row.adjustment).toBe(2);
     expect(row.adjustment).not.toBe(baseBreakdown()!.otherAdjustments);
     expect(row.overutilized).toBe(0); // available >= 0 ⇒ 0
@@ -141,8 +146,9 @@ describe('deriveBalanceRow: the standardized balance columns map from existing f
 
   it('adjustment invariance: changing the adjustment total does NOT change Balance', () => {
     const base = baseBalance({ balance: 15 });
-    const a = deriveBalanceRow(base, baseBreakdown({ configAdjustments: 2 }));
-    const b = deriveBalanceRow(base, baseBreakdown({ configAdjustments: 40 }));
+    // r389: the column reads `adjustments` (see the fixture note above), so the invariance is pinned on it.
+    const a = deriveBalanceRow(base, baseBreakdown({ adjustments: 2 }));
+    const b = deriveBalanceRow(base, baseBreakdown({ adjustments: 40 }));
     expect(a.balance).toBe(15);
     expect(b.balance).toBe(15);
     expect(a.adjustment).toBe(2);
