@@ -370,6 +370,34 @@ describe('§4 the database fences drafts by company (migration 0510)', () => {
     expect(await getEmployeeDraft(author, draftB)).toBeNull();
   });
 
+  it('being the author does not let an administrator of A write a draft into B', async () => {
+    // The policy the plan sketched kept `is_self_person` in WITH CHECK for every draft, so an author could
+    // create one in a company they do not administer, or move their own there. 0510 keeps the author's SIGHT
+    // of their drafts (USING) but decides where a draft may LAND by who administers that company.
+    const [p] = await owner.db
+      .insert(schema.person)
+      .values({ tenantId: b.tenantId, fullName: 'Author Two', primaryEmail: `a2_${randomUUID().slice(0, 6)}@t.local` })
+      .returning({ id: schema.person.id });
+    const [u] = await owner.db
+      .insert(schema.appUser)
+      .values({ tenantId: b.tenantId, workosUserId: `user_${randomUUID()}`, personId: p.id })
+      .returning({ id: schema.appUser.id });
+    const author = adminOfA(p.id, u.id);
+    await expect(
+      saveEmployeeDraft(author, { data: { profile: { fullName: 'Into B' }, employment: { companyId: B } }, currentStep: 1 }),
+    ).rejects.toThrow();
+    const mine = await insertDraft(A, 'Author Movable', { createdByPersonId: p.id });
+    await expect(
+      saveEmployeeDraft(author, { id: mine, data: { profile: { fullName: 'Moved' }, employment: { companyId: B } }, currentStep: 2 }),
+    ).rejects.toThrow();
+    expect((await draftRow(mine)).companyId).toBe(A);
+    const inB = await owner.db.select().from(schema.employeeDraft).where(eq(schema.employeeDraft.companyId, B));
+    expect(inB.map((d) => d.id)).toEqual([draftB]);
+    // Unplaced, it is theirs to write.
+    const { id } = await saveEmployeeDraft(author, { data: { profile: { fullName: 'Still Unplaced' } }, currentStep: 1 });
+    expect((await draftRow(id)).companyId).toBeNull();
+  });
+
   it('a tenant-wide administrator sees and works on every company\'s drafts', async () => {
     for (const id of [draftA, draftB, draftNone]) expect((await getEmployeeDraft(groupAdmin(), id))?.id).toBe(id);
     await discardEmployeeDraft(groupAdmin(), draftB);
