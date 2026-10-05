@@ -3,14 +3,15 @@ import {randomUUID} from 'node:crypto';
 import {eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {requirePackFor} from '../localization/registry';
-import {todayInKualaLumpur} from '../lib/hr-date';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {createBatch,createAdditionalRun,generatePayslips,upsertPayComponent,setEmploymentPayComponent,setPayrollBatchComponent} from '../packs/payroll/service';
 import {saveTp3} from '../core/tp3';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import * as schema from '../db/schema';
-const year=Number(todayInKualaLumpur().slice(0,4));
+// Frozen historical money oracle generated with the original 2026 calculator.
+// Keep its already-past periods stable; the current-year capture test is separate.
+const year=2026;
 const pack=requirePackFor('MY');
 const flags={kind:'allowance' as const,isNonPayable:false,prorates:false,includedInPcb:true,includedInEpf:true,includedInSocsoEis:true,includedInHrdfBase:false,pcbRemunerationType:'normal' as const,epfBonus2012:false};
 describe('r387 complete monetary parity against original calculation',()=>{
