@@ -1,0 +1,788 @@
+[
+  {
+    "basicSalary": "10000.00",
+    "allowance": "200.00",
+    "overtimePay": "0.00",
+    "bonus": "0.00",
+    "daysWorked": "31.00",
+    "coverageFrom": "YEAR-01-01",
+    "coverageTo": "YEAR-01-31",
+    "grossPay": "10200.00",
+    "statutory": {
+      "lp": 20,
+      "pcb": 1578.75,
+      "hrdf": 0,
+      "bases": {
+        "epf": 10100,
+        "pcb": 10100,
+        "hrdf": 10000,
+        "socsoEis": 10100,
+        "epfAdditional": 0
+      },
+      "zakat": 0,
+      "epfMode": "auto",
+      "pcbMeta": {
+        "n": 11,
+        "P1": 138180.07,
+        "month": 1,
+        "trace": {
+          "B": 9400,
+          "M": 100000,
+          "R": 0.25,
+          "Z": 0,
+          "K1": 1111,
+          "K2": 262.63,
+          "Kt": 0,
+          "Y1": 10100,
+          "Y2": 10100,
+          "Yt": 0,
+          "K2t": 0,
+          "taxOnP1": 18945.02,
+          "category": 1,
+          "lpCurrent": 20,
+          "childCount": 0,
+          "childWorking": {
+            "mode": "manual",
+            "rows": [],
+            "table": null,
+            "headCount": 0,
+            "categoryUnits": {},
+            "disabledSpouse": false,
+            "disabledIndividual": false
+          },
+          "zakatCurrent": 0,
+          "lpAccumulated": 0,
+          "mtdNormalCalc": 1578.75,
+          "zakatLeftover": 0,
+          "mtdNormalFloored": 1578.75,
+          "childCountVersion": 1,
+          "mtdAdditionalCalc": 0,
+          "mtdAdditionalFloored": 0,
+          "childDeductionPerChild": 2000
+        },
+        "ytdNet": 30000,
+        "pcbPaid": 0,
+        "reliefs": {
+          "lp": 20,
+          "total": 9000,
+          "spouse": 0,
+          "children": 0,
+          "individual": 9000,
+          "disabledSpouse": 0,
+          "disabledIndividual": 0
+        },
+        "ytdGross": 30000,
+        "epfClaimed": 0,
+        "taxSelectionId": "selected-employer-tax-owner",
+        "taxCircumstance": {
+          "key": null,
+          "epoch": 0,
+          "version": 1,
+          "category": 1,
+          "applicable": true
+        },
+        "calculationScheme": "resident",
+        "taxSelectionSource": "income_tax_resident",
+        "taxSelectionVersion": 1
+      },
+      "version": "2026.11",
+      "pcbBonus": 0,
+      "pcbNonCash": {
+        "owned": {
+          "bik": 0,
+          "vola": 0
+        },
+        "before": {
+          "bik": 0,
+          "vola": 0
+        },
+        "current": {
+          "bik": {
+            "exempt": 40,
+            "entered": 40,
+            "taxable": 0
+          },
+          "vola": {
+            "exempt": 0,
+            "entered": 0,
+            "taxable": 0
+          }
+        },
+        "entries": [
+          {
+            "code": "SYNTH_NONCASH",
+            "kind": "bik",
+            "exempt": 40,
+            "source": "recurring",
+            "entered": 40,
+            "taxable": 0,
+            "sourceId": "assignment:SYNTH_NONCASH",
+            "exemptionCode": "PCB_PERQUISITE"
+          }
+        ],
+        "version": 1,
+        "eaEntries": [
+          {
+            "code": "SYNTH_NONCASH",
+            "kind": "bik",
+            "source": "recurring",
+            "entered": 40,
+            "sourceId": "assignment:SYNTH_NONCASH",
+            "eaFormLine": "EA_B3",
+            "subjectPCB": true,
+            "exemptAmount": 40,
+            "exemptionCode": "PCB_PERQUISITE",
+            "reportableAmount": 0
+          }
+        ],
+        "cashNormal": 10100,
+        "cumulative": {
+          "bik": 0,
+          "vola": 0
+        },
+        "accumulated": {
+          "bik": 0,
+          "vola": 0,
+          "complete": true
+        },
+        "ownedCurrent": {
+          "bik": {
+            "exempt": 40,
+            "entered": 40,
+            "taxable": 0
+          },
+          "vola": {
+            "exempt": 0,
+            "entered": 0,
+            "taxable": 0
+          }
+        },
+        "ownedEntries": [
+          {
+            "code": "SYNTH_NONCASH",
+            "kind": "bik",
+            "exempt": 40,
+            "source": "recurring",
+            "entered": 40,
+            "taxable": 0,
+            "sourceId": "assignment:SYNTH_NONCASH",
+            "exemptionCode": "PCB_PERQUISITE"
+          }
+        ],
+        "ownedEaEntries": [
+          {
+            "code": "SYNTH_NONCASH",
+            "kind": "bik",
+            "source": "recurring",
+            "entered": 40,
+            "sourceId": "assignment:SYNTH_NONCASH",
+            "eaFormLine": "EA_B3",
+            "subjectPCB": true,
+            "exemptAmount": 40,
+            "exemptionCode": "PCB_PERQUISITE",
+            "reportableAmount": 0
+          }
+        ]
+      },
+      "socsoSkbbk": 0,
+      "eisEmployee": 11.9,
+      "eisEmployer": 11.9,
+      "epfEmployee": 1111,
+      "epfEmployer": 1212,
+      "recordLines": [
+        {
+          "code": "SYNTH_NONCASH",
+          "name": "Recurring Car",
+          "amount": 40,
+          "nonPayable": true
+        }
+      ],
+      "salaryBasis": {
+        "payMode": "monthly",
+        "version": 1,
+        "basicSalary": "10000.00",
+        "effectiveFrom": "2025-01-01",
+        "referenceDate": "YEAR-01-31",
+        "compensationId": "selected-salary-owner"
+      },
+      "skbbkSubject": false,
+      "zakatInTotal": true,
+      "exemptionUsed": {
+        "LP_DENTAL": 20,
+        "PCB_PERQUISITE": 40,
+        "PCB_NON-TAXABLE": 30,
+        "PCB_TRA_BUSINESS": 50
+      },
+      "socsoEmployee": 29.75,
+      "socsoEmployer": 104.15,
+      "componentLines": [
+        {
+          "epf": true,
+          "pcb": true,
+          "code": "SYNTH_TRAVEL_A",
+          "hrdf": false,
+          "name": "Travel A",
+          "socso": true,
+          "amount": 100,
+          "buckets": [
+            {
+              "amount": 50,
+              "bucket": "reimburse"
+            },
+            {
+              "amount": 50,
+              "bucket": "wage"
+            }
+          ]
+        },
+        {
+          "epf": true,
+          "pcb": true,
+          "code": "SYNTH_TRAVEL_B",
+          "hrdf": false,
+          "name": "Travel B",
+          "socso": true,
+          "amount": 50,
+          "buckets": [
+            {
+              "amount": 50,
+              "bucket": "wage"
+            }
+          ]
+        },
+        {
+          "epf": true,
+          "pcb": true,
+          "code": "SYNTH_FULL_EXEMPT",
+          "hrdf": false,
+          "name": "Unlimited",
+          "socso": true,
+          "amount": 30,
+          "buckets": [
+            {
+              "amount": 30,
+              "bucket": "reimburse"
+            }
+          ]
+        },
+        {
+          "epf": true,
+          "pcb": true,
+          "code": "SYNTH_DENTAL",
+          "hrdf": false,
+          "name": "Dental",
+          "socso": true,
+          "amount": 20,
+          "buckets": [
+            {
+              "amount": 20,
+              "bucket": "reimburse"
+            }
+          ]
+        }
+      ],
+      "pcbNormalPreZakat": 1578.75
+    },
+    "otherDeductions": "0.00",
+    "totalDeductions": "2731.40",
+    "netPay": "7468.60",
+    "employerCost": "11528.05",
+    "version": 1
+  },
+  {
+    "basicSalary": "10000.00",
+    "allowance": "200.00",
+    "overtimePay": "0.00",
+    "bonus": "0.00",
+    "daysWorked": "28.00",
+    "coverageFrom": "YEAR-02-01",
+    "coverageTo": "YEAR-02-28",
+    "grossPay": "10200.00",
+    "statutory": {
+      "lp": 20,
+      "pcb": 1590.8,
+      "hrdf": 0,
+      "bases": {
+        "epf": 10150,
+        "pcb": 10150,
+        "hrdf": 10000,
+        "socsoEis": 10150,
+        "epfAdditional": 0
+      },
+      "zakat": 0,
+      "epfMode": "auto",
+      "pcbMeta": {
+        "n": 10,
+        "P1": 138710,
+        "month": 2,
+        "trace": {
+          "B": 9400,
+          "M": 100000,
+          "R": 0.25,
+          "Z": 0,
+          "K1": 1122,
+          "K2": 176.7,
+          "Kt": 0,
+          "Y1": 10150,
+          "Y2": 10150,
+          "Yt": 0,
+          "K2t": 0,
+          "taxOnP1": 19077.5,
+          "category": 1,
+          "lpCurrent": 20,
+          "childCount": 0,
+          "childWorking": {
+            "mode": "manual",
+            "rows": [],
+            "table": null,
+            "headCount": 0,
+            "categoryUnits": {},
+            "disabledSpouse": false,
+            "disabledIndividual": false
+          },
+          "zakatCurrent": 0,
+          "lpAccumulated": 20,
+          "mtdNormalCalc": 1590.8,
+          "zakatLeftover": 0,
+          "mtdNormalFloored": 1590.8,
+          "childCountVersion": 1,
+          "mtdAdditionalCalc": 0,
+          "mtdAdditionalFloored": 0,
+          "childDeductionPerChild": 2000
+        },
+        "ytdNet": 38989,
+        "pcbPaid": 1578.75,
+        "reliefs": {
+          "lp": 40,
+          "total": 9000,
+          "spouse": 0,
+          "children": 0,
+          "individual": 9000,
+          "disabledSpouse": 0,
+          "disabledIndividual": 0
+        },
+        "ytdGross": 40100,
+        "epfClaimed": 1111,
+        "taxSelectionId": "selected-employer-tax-owner",
+        "taxCircumstance": {
+          "key": null,
+          "epoch": 0,
+          "version": 1,
+          "category": 1,
+          "applicable": true
+        },
+        "calculationScheme": "resident",
+        "taxSelectionSource": "income_tax_resident",
+        "taxSelectionVersion": 1
+      },
+      "version": "2026.11",
+      "pcbBonus": 0,
+      "pcbNonCash": {
+        "owned": {
+          "bik": 0,
+          "vola": 0
+        },
+        "before": {
+          "bik": 0,
+          "vola": 0
+        },
+        "current": {
+          "bik": {
+            "exempt": 40,
+            "entered": 40,
+            "taxable": 0
+          },
+          "vola": {
+            "exempt": 0,
+            "entered": 0,
+            "taxable": 0
+          }
+        },
+        "entries": [
+          {
+            "code": "SYNTH_NONCASH",
+            "kind": "bik",
+            "exempt": 40,
+            "source": "recurring",
+            "entered": 40,
+            "taxable": 0,
+            "sourceId": "assignment:SYNTH_NONCASH",
+            "exemptionCode": "PCB_PERQUISITE"
+          }
+        ],
+        "version": 1,
+        "eaEntries": [
+          {
+            "code": "SYNTH_NONCASH",
+            "kind": "bik",
+            "source": "recurring",
+            "entered": 40,
+            "sourceId": "assignment:SYNTH_NONCASH",
+            "eaFormLine": "EA_B3",
+            "subjectPCB": true,
+            "exemptAmount": 40,
+            "exemptionCode": "PCB_PERQUISITE",
+            "reportableAmount": 0
+          }
+        ],
+        "cashNormal": 10150,
+        "cumulative": {
+          "bik": 0,
+          "vola": 0
+        },
+        "accumulated": {
+          "bik": 0,
+          "vola": 0,
+          "complete": true
+        },
+        "ownedCurrent": {
+          "bik": {
+            "exempt": 40,
+            "entered": 40,
+            "taxable": 0
+          },
+          "vola": {
+            "exempt": 0,
+            "entered": 0,
+            "taxable": 0
+          }
+        },
+        "ownedEntries": [
+          {
+            "code": "SYNTH_NONCASH",
+            "kind": "bik",
+            "exempt": 40,
+            "source": "recurring",
+            "entered": 40,
+            "taxable": 0,
+            "sourceId": "assignment:SYNTH_NONCASH",
+            "exemptionCode": "PCB_PERQUISITE"
+          }
+        ],
+        "ownedEaEntries": [
+          {
+            "code": "SYNTH_NONCASH",
+            "kind": "bik",
+            "source": "recurring",
+            "entered": 40,
+            "sourceId": "assignment:SYNTH_NONCASH",
+            "eaFormLine": "EA_B3",
+            "subjectPCB": true,
+            "exemptAmount": 40,
+            "exemptionCode": "PCB_PERQUISITE",
+            "reportableAmount": 0
+          }
+        ]
+      },
+      "socsoSkbbk": 0,
+      "eisEmployee": 11.9,
+      "eisEmployer": 11.9,
+      "epfEmployee": 1122,
+      "epfEmployer": 1224,
+      "recordLines": [
+        {
+          "code": "SYNTH_NONCASH",
+          "name": "Recurring Car",
+          "amount": 40,
+          "nonPayable": true
+        }
+      ],
+      "salaryBasis": {
+        "payMode": "monthly",
+        "version": 1,
+        "basicSalary": "10000.00",
+        "effectiveFrom": "2025-01-01",
+        "referenceDate": "YEAR-02-28",
+        "compensationId": "selected-salary-owner"
+      },
+      "skbbkSubject": false,
+      "zakatInTotal": true,
+      "exemptionUsed": {
+        "LP_DENTAL": 20,
+        "PCB_PERQUISITE": 40,
+        "PCB_NON-TAXABLE": 30
+      },
+      "socsoEmployee": 29.75,
+      "socsoEmployer": 104.15,
+      "componentLines": [
+        {
+          "epf": true,
+          "pcb": true,
+          "code": "SYNTH_TRAVEL_A",
+          "hrdf": false,
+          "name": "Travel A",
+          "socso": true,
+          "amount": 100,
+          "buckets": [
+            {
+              "amount": 100,
+              "bucket": "wage"
+            }
+          ]
+        },
+        {
+          "epf": true,
+          "pcb": true,
+          "code": "SYNTH_TRAVEL_B",
+          "hrdf": false,
+          "name": "Travel B",
+          "socso": true,
+          "amount": 50,
+          "buckets": [
+            {
+              "amount": 50,
+              "bucket": "wage"
+            }
+          ]
+        },
+        {
+          "epf": true,
+          "pcb": true,
+          "code": "SYNTH_FULL_EXEMPT",
+          "hrdf": false,
+          "name": "Unlimited",
+          "socso": true,
+          "amount": 30,
+          "buckets": [
+            {
+              "amount": 30,
+              "bucket": "reimburse"
+            }
+          ]
+        },
+        {
+          "epf": true,
+          "pcb": true,
+          "code": "SYNTH_DENTAL",
+          "hrdf": false,
+          "name": "Dental",
+          "socso": true,
+          "amount": 20,
+          "buckets": [
+            {
+              "amount": 20,
+              "bucket": "reimburse"
+            }
+          ]
+        }
+      ],
+      "pcbNormalPreZakat": 1590.8
+    },
+    "otherDeductions": "0.00",
+    "totalDeductions": "2754.45",
+    "netPay": "7445.55",
+    "employerCost": "11540.05",
+    "version": 1
+  },
+  {
+    "basicSalary": "0.00",
+    "allowance": "0.00",
+    "overtimePay": "0.00",
+    "bonus": "1000.00",
+    "daysWorked": null,
+    "coverageFrom": "YEAR-02-01",
+    "coverageTo": "YEAR-02-28",
+    "grossPay": "1000.00",
+    "statutory": {
+      "lp": 0,
+      "pcb": 250,
+      "hrdf": 0,
+      "bases": {
+        "epf": 10150,
+        "pcb": 11150,
+        "hrdf": 0,
+        "socsoEis": 10150,
+        "epfAdditional": 1000
+      },
+      "zakat": 0,
+      "epfMode": "auto",
+      "pcbMeta": {
+        "n": 10,
+        "P1": 138730,
+        "P2": 139730,
+        "delta": {
+          "prior": 1591.25,
+          "cumulative": 1841.25,
+          "cumulativeBonus": 250
+        },
+        "month": 2,
+        "trace": {
+          "B": 9400,
+          "M": 100000,
+          "R": 0.25,
+          "Z": 0,
+          "K1": 1122,
+          "K2": 176.7,
+          "Kt": 110,
+          "Y1": 10150,
+          "Y2": 10150,
+          "Yt": 1000,
+          "K2t": 165.7,
+          "taxOnP1": 19082.5,
+          "category": 1,
+          "lpCurrent": 0,
+          "childCount": 0,
+          "childWorking": {
+            "mode": "manual",
+            "rows": [],
+            "table": null,
+            "headCount": 0,
+            "categoryUnits": {},
+            "disabledSpouse": false,
+            "disabledIndividual": false
+          },
+          "totalMtdYear": 19082.5,
+          "totalTaxYear": 19332.5,
+          "zakatCurrent": 0,
+          "lpAccumulated": 20,
+          "mtdNormalCalc": 1591.25,
+          "zakatLeftover": 0,
+          "mtdNormalFloored": 1591.25,
+          "childCountVersion": 1,
+          "mtdAdditionalCalc": 250,
+          "mtdAdditionalFloored": 250,
+          "childDeductionPerChild": 2000
+        },
+        "ytdNet": 38989,
+        "pcbPaid": 1578.75,
+        "reliefs": {
+          "lp": 20,
+          "total": 9000,
+          "spouse": 0,
+          "children": 0,
+          "individual": 9000,
+          "disabledSpouse": 0,
+          "disabledIndividual": 0
+        },
+        "ytdGross": 40100,
+        "epfClaimed": 1111,
+        "taxSelectionId": "selected-employer-tax-owner",
+        "taxCircumstance": {
+          "key": null,
+          "epoch": 0,
+          "version": 1,
+          "category": 1,
+          "applicable": true
+        },
+        "calculationScheme": "resident",
+        "taxSelectionSource": "income_tax_resident",
+        "taxSelectionVersion": 1
+      },
+      "version": "2026.11",
+      "pcbBonus": 250,
+      "pcbNonCash": {
+        "owned": {
+          "bik": 0,
+          "vola": 0
+        },
+        "before": {
+          "bik": 0,
+          "vola": 0
+        },
+        "current": {
+          "bik": {
+            "exempt": 40,
+            "entered": 40,
+            "taxable": 0
+          },
+          "vola": {
+            "exempt": 0,
+            "entered": 0,
+            "taxable": 0
+          }
+        },
+        "entries": [
+          {
+            "code": "SYNTH_NONCASH",
+            "kind": "bik",
+            "exempt": 40,
+            "source": "recurring",
+            "entered": 40,
+            "taxable": 0,
+            "sourceId": "assignment:SYNTH_NONCASH",
+            "exemptionCode": "PCB_PERQUISITE"
+          }
+        ],
+        "version": 1,
+        "eaEntries": [
+          {
+            "code": "SYNTH_NONCASH",
+            "kind": "bik",
+            "source": "recurring",
+            "entered": 40,
+            "sourceId": "assignment:SYNTH_NONCASH",
+            "eaFormLine": "EA_B3",
+            "subjectPCB": true,
+            "exemptAmount": 40,
+            "exemptionCode": "PCB_PERQUISITE",
+            "reportableAmount": 0
+          }
+        ],
+        "cashNormal": 10150,
+        "cumulative": {
+          "bik": 0,
+          "vola": 0
+        },
+        "accumulated": {
+          "bik": 0,
+          "vola": 0,
+          "complete": true
+        },
+        "ownedCurrent": {
+          "bik": {
+            "exempt": 0,
+            "entered": 0,
+            "taxable": 0
+          },
+          "vola": {
+            "exempt": 0,
+            "entered": 0,
+            "taxable": 0
+          }
+        },
+        "ownedEntries": [],
+        "ownedEaEntries": []
+      },
+      "socsoSkbbk": 0,
+      "eisEmployee": 0,
+      "eisEmployer": 0,
+      "epfEmployee": 110,
+      "epfEmployer": 120,
+      "salaryBasis": {
+        "payMode": "monthly",
+        "version": 1,
+        "basicSalary": "10000.00",
+        "effectiveFrom": "2025-01-01",
+        "referenceDate": "YEAR-02-28",
+        "compensationId": "selected-salary-owner"
+      },
+      "skbbkSubject": false,
+      "zakatInTotal": true,
+      "socsoEmployee": 0,
+      "socsoEmployer": 0,
+      "componentLines": [
+        {
+          "epf": true,
+          "pcb": true,
+          "code": "SYNTH_TAXABLE_BONUS",
+          "hrdf": false,
+          "name": "Cash Bonus",
+          "socso": false,
+          "amount": 1000,
+          "buckets": [
+            {
+              "amount": 1000,
+              "bucket": "bonus"
+            }
+          ]
+        }
+      ],
+      "pcbNormalPreZakat": 1591.25
+    },
+    "otherDeductions": "0.00",
+    "totalDeductions": "360.00",
+    "netPay": "640.00",
+    "employerCost": "1120.00",
+    "version": 1
+  }
+]
