@@ -49,6 +49,8 @@ describe('share gate (middleware.ts)', () => {
   // which a hosting setup may populate and vitest loads).
   beforeEach(() => {
     delete process.env.SHARE_PASSWORD;
+    // This suite pins the consultant holding gate; real WorkOS composition has its own SDK tests.
+    vi.stubEnv('ALLOW_DEMO_SESSION', 'true');
   });
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -61,59 +63,59 @@ describe('share gate (middleware.ts)', () => {
       process.env.SHARE_PASSWORD = 'sekret';
     });
 
-    it('challenges with 401 when gated and no credentials', () => {
-      const res = middleware(req());
+    it('challenges with 401 when gated and no credentials', async () => {
+      const res = await middleware(req());
       expect(res.status).toBe(401);
       expect(res.headers.get('www-authenticate')).toContain('Basic');
     });
 
-    it('rejects a wrong password', () => {
-      expect(middleware(req(basic('nope'))).status).toBe(401);
+    it('rejects a wrong password', async () => {
+      expect((await middleware(req(basic('nope')))).status).toBe(401);
     });
 
-    it('lets the correct password through (any username)', () => {
-      expectPassedThrough(middleware(req(basic('sekret'))), '/people');
+    it('lets the correct password through (any username)', async () => {
+      expectPassedThrough(await middleware(req(basic('sekret'))), '/people');
     });
 
-    it('lets the WorkOS login flow past the challenge (ADR-0072), with x-pathname set', () => {
-      expectPassedThrough(middleware(req(undefined, '/login')), '/login');
+    it('lets the WorkOS login flow past the challenge (ADR-0072), with x-pathname set', async () => {
+      expectPassedThrough(await middleware(req(undefined, '/login')), '/login');
     });
   });
 
   describe('1.4 ARM 1 — SHARE_PASSWORD unset outside development must NOT serve the app', () => {
-    it('refuses with 503 in a production build, and does not pass the request through', () => {
+    it('refuses with 503 in a production build, and does not pass the request through', async () => {
       vi.stubEnv('NODE_ENV', 'production');
-      const res = middleware(req());
+      const res = await middleware(req());
       expect(res.status, 'a production build with no gate refuses to serve').toBe(503);
       expect(res.headers.get('x-middleware-next'), 'the request never reaches the route').toBeNull();
       expect(res.headers.get('x-middleware-request-x-pathname')).toBeNull();
     });
 
-    it('refuses the LOGIN route too — a missing password is a broken deployment, not a gate decision', () => {
+    it('refuses the LOGIN route too — a missing password is a broken deployment, not a gate decision', async () => {
       vi.stubEnv('NODE_ENV', 'production');
-      const res = middleware(req(undefined, '/login'));
+      const res = await middleware(req(undefined, '/login'));
       expect(res.status, 'the front door is not an exception when nothing is configured').toBe(503);
       expect(res.headers.get('x-middleware-next')).toBeNull();
     });
 
-    it('refuses even with Basic credentials — there is no password to compare them against', () => {
+    it('refuses even with Basic credentials — there is no password to compare them against', async () => {
       vi.stubEnv('NODE_ENV', 'production');
-      expect(middleware(req(basic('anything'))).status).toBe(503);
+      expect((await middleware(req(basic('anything')))).status).toBe(503);
     });
 
-    it('refuses when NODE_ENV is unset entirely (the unnamed environment fails CLOSED)', () => {
+    it('refuses when NODE_ENV is unset entirely (the unnamed environment fails CLOSED)', async () => {
       vi.stubEnv('NODE_ENV', undefined);
-      expect(middleware(req()).status).toBe(503);
+      expect((await middleware(req())).status).toBe(503);
     });
 
-    it('refuses under NODE_ENV=test as well — only `development` is allowed to run ungated', () => {
+    it('refuses under NODE_ENV=test as well — only `development` is allowed to run ungated', async () => {
       vi.stubEnv('NODE_ENV', 'test');
-      expect(middleware(req()).status).toBe(503);
+      expect((await middleware(req())).status).toBe(503);
     });
 
-    it('says what is wrong and where to fix it, rather than failing blank', () => {
+    it('says what is wrong and where to fix it, rather than failing blank', async () => {
       vi.stubEnv('NODE_ENV', 'production');
-      const res = middleware(req());
+      const res = await middleware(req());
       expect(res.headers.get('content-type')).toContain('text/plain');
       // Read as text so this asserts what an operator actually sees on the box.
       return res.text().then((body) => {
@@ -124,58 +126,58 @@ describe('share gate (middleware.ts)', () => {
   });
 
   describe('1.4 ARM 2 — `next dev` keeps working with no SHARE_PASSWORD', () => {
-    it('passes an ordinary route straight through, with x-pathname set for the layout', () => {
+    it('passes an ordinary route straight through, with x-pathname set for the layout', async () => {
       vi.stubEnv('NODE_ENV', 'development');
-      expectPassedThrough(middleware(req()), '/people');
+      expectPassedThrough(await middleware(req()), '/people');
     });
 
-    it('passes the login flow through too (the dev redirect-loop guard from lib/auth-routes.ts)', () => {
+    it('passes the login flow through too (the dev redirect-loop guard from lib/auth-routes.ts)', async () => {
       vi.stubEnv('NODE_ENV', 'development');
-      expectPassedThrough(middleware(req(undefined, '/login')), '/login');
+      expectPassedThrough(await middleware(req(undefined, '/login')), '/login');
     });
 
-    it('never challenges and never refuses in dev, whatever the request carries', () => {
+    it('never challenges and never refuses in dev, whatever the request carries', async () => {
       vi.stubEnv('NODE_ENV', 'development');
-      const res = middleware(req(basic('irrelevant')));
+      const res = await middleware(req(basic('irrelevant')));
       expect(res.status).toBe(200);
       expect(res.status).not.toBe(503);
     });
 
-    it('still never gates dev even when SHARE_PASSWORD IS set in .env.local for hosting', () => {
+    it('still never gates dev even when SHARE_PASSWORD IS set in .env.local for hosting', async () => {
       vi.stubEnv('NODE_ENV', 'development');
       process.env.SHARE_PASSWORD = 'sekret';
-      expectPassedThrough(middleware(req()), '/people');
+      expectPassedThrough(await middleware(req()), '/people');
     });
   });
 
   describe('ADR-0088 — the mobile API bypasses the CHALLENGE, never the refusal', () => {
     const token = 'Bearer aaa.bbb.ccc';
 
-    it('lets a bearer-carrying request to /api/mobile/* through a live gate (Basic cannot share the header)', () => {
+    it('lets a bearer-carrying request to /api/mobile/* through a live gate (Basic cannot share the header)', async () => {
       vi.stubEnv('NODE_ENV', 'production');
       process.env.SHARE_PASSWORD = 'sekret';
-      expectPassedThrough(middleware(req(token, '/api/mobile/v1/me')), '/api/mobile/v1/me');
+      expectPassedThrough(await middleware(req(token, '/api/mobile/v1/me')), '/api/mobile/v1/me');
     });
 
-    it('passes a credential-less request through too — the handler, not the gate, refuses it', () => {
+    it('passes a credential-less request through too — the handler, not the gate, refuses it', async () => {
       vi.stubEnv('NODE_ENV', 'production');
       process.env.SHARE_PASSWORD = 'sekret';
-      expectPassedThrough(middleware(req(undefined, '/api/mobile/v1/payslips')), '/api/mobile/v1/payslips');
+      expectPassedThrough(await middleware(req(undefined, '/api/mobile/v1/payslips')), '/api/mobile/v1/payslips');
     });
 
-    it('still challenges a look-alike path and every other API route', () => {
+    it('still challenges a look-alike path and every other API route', async () => {
       vi.stubEnv('NODE_ENV', 'production');
       process.env.SHARE_PASSWORD = 'sekret';
       for (const path of ['/api/mobilex', '/api/mobile-v1/me', '/api/payroll/reprocess-job/x', '/people']) {
-        const res = middleware(req(token, path));
+        const res = await middleware(req(token, path));
         expect(res.status, path).toBe(401);
         expect(res.headers.get('www-authenticate'), path).toContain('Basic');
       }
     });
 
-    it('is refused with 503 like everything else when SHARE_PASSWORD is unset outside development', () => {
+    it('is refused with 503 like everything else when SHARE_PASSWORD is unset outside development', async () => {
       vi.stubEnv('NODE_ENV', 'production');
-      const res = middleware(req(token, '/api/mobile/v1/me'));
+      const res = await middleware(req(token, '/api/mobile/v1/me'));
       expect(res.status).toBe(503);
       expect(res.headers.get('x-middleware-next')).toBeNull();
     });

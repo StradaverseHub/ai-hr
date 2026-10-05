@@ -32,7 +32,10 @@ export async function currentWorkosSession(): Promise<WorkosVerifiedSession> {
   return { subject: info.user.id, email: info.user.email ?? null };
 }
 
-/** The hosted AuthKit sign-in URL (used by /login). `returnTo` is where WorkOS sends the user post-login. */
+/**
+ * Hosted AuthKit sign-in URL. Call from a route handler or server action: AuthKit writes a PKCE
+ * cookie, which Next forbids during Server Component rendering. `returnTo` is the post-login path.
+ */
 export async function signInUrl(returnTo?: string): Promise<string> {
   return authkitGetSignInUrl(returnTo ? { returnTo } : undefined);
 }
