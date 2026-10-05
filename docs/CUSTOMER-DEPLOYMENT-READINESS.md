@@ -44,6 +44,14 @@ before the first customer write, off-box backups and a timed restore, confirmed 
 controlled hosting, runtime credential separation, customer payroll/filing rehearsals and a production-like
 4,000-employee load test. The multi-replica requirements in 7.3 must be met before adding app replicas.
 
+**Target clarified by the owner:** a new private-cloud environment, with 4,000 employees at launch.
+The demo observations above describe the existing consultant host, not the proposed customer servers.
+Use `deploy/PRODUCTION-ARCHITECTURE.md` for procurement assumptions and `deploy/CUSTOMER.md` for the
+separate customer service, restricted credentials, startup checks and acceptance procedure. These
+prepared controls have not been installed on the customer's environment. WorkOS middleware/sign-in,
+configuration validation and backup credential handling have also been hardened in the preparation
+branch; completing code checks does not close the installation or real-account acceptance boxes.
+
 ---
 
 ## THE VERDICT
@@ -142,11 +150,16 @@ Two live consequences, both measured on the box:
   discloses is.
 - A single POST to `/login/as` sets the `dev_user` cookie and makes the caller the group admin.
 
-All six steps of `docs/WORKOS-CUTOVER.md` are outstanding. Run the bootstrap invite **before** unsetting
-`ALLOW_DEMO_SESSION`, or you lock yourself out.
+For conversion of the existing demo, the six steps of `docs/WORKOS-CUTOVER.md` remain outstanding.
+Its bootstrap invitation rebinds an existing principal. For the newly requested customer environment,
+start with demo identities disabled, provision the initial tenant and operator through a reviewed
+administrative procedure, then verify a real login before importing employees. The existing bootstrap
+script alone cannot create that fresh tenant/operator. Do not seed demo data or enable demo sessions to
+work around first-administrator provisioning; see `deploy/CUSTOMER.md`.
 
 - [ ] WorkOS provisioned; four env vars set
-- [ ] `scripts/auth/bootstrap-invite.ts` run while the demo flag is still on
+- [ ] Initial tenant and authorized administrator provisioned; for demo conversion only, use the
+      existing-principal bootstrap invitation procedure
 - [ ] `ALLOW_DEMO_SESSION` and the `DEV_*` variables removed
 - [ ] `select workos_user_id from app_user` shows real `user_…` subjects
 - [ ] One full invite → activate → sign in → reset cycle exercised
