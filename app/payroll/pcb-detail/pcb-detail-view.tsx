@@ -994,11 +994,11 @@ export async function PcbDetailView({
       // ── FOOTER — where these figures came from (requirement 15). Out of the numbered run: it is not a
       //    step of the agency's calculation, it is provenance for the whole page. ──
       case 'exemptions': {
-        const table = pcbExemptionTable(exemptions, key => t(key));
+        const table = pcbExemptionTable(exemptions, key => t(key), cur);
         return <>
           {table.rows.length ? <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead><tr>{table.columns.map((column, index) => <th key={column} className={index ? 'px-3 py-2 text-right font-medium' : 'py-2 text-left font-medium'}>{column}</th>)}</tr></thead>
-            <tbody>{table.rows.map(row => <tr key={row.label} className="border-t border-border"><td className="py-2 pr-3">{row.label}</td>{row.cells.map((cell, index) => <td key={index} className="px-3 py-2 text-right font-mono tabular-nums">{cell}</td>)}</tr>)}</tbody>
+            <tbody>{table.rows.map(row => <tr key={row.label} className="border-t border-border"><td className="py-2 pr-3">{row.label}</td>{row.cells.map((cell, index) => <td key={index} className="px-3 py-2 text-right tabular-nums font-medium">{cell}</td>)}</tr>)}</tbody>
           </table></div> : <p className="text-sm text-muted-foreground">{table.empty}</p>}
           <p className="pt-3 text-xs text-muted-foreground">{table.note}</p>
         </>;

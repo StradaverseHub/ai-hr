@@ -6954,9 +6954,9 @@
     "pcbDetail": {
       "exemptionHeading": "ข้อมูลการยกเว้นภาษี",
       "exemptionType": "ประเภทการยกเว้น / รายการจ่าย",
-      "exemptionAnnualLimit": "วงเงินรายปี (RM)",
-      "exemptionAccumulated": "สะสม (RM)",
-      "exemptionThisMonth": "เดือนนี้ (RM)",
+      "exemptionAnnualLimit": "วงเงินรายปี",
+      "exemptionAccumulated": "สะสม",
+      "exemptionThisMonth": "เดือนนี้",
       "exemptionReused": "ใช้การประเมินที่บันทึกไว้ซ้ำ",
       "exemptionUnlimited": "ไม่มีวงเงินรายปี",
       "exemptionNone": "ไม่มีประเภทการยกเว้นที่เกี่ยวข้องบันทึกไว้สำหรับการคำนวณนี้",

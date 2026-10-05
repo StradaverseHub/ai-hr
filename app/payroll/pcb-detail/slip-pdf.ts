@@ -115,10 +115,12 @@ export async function renderPcbDetailPdf(data: PcbSlipPdfData): Promise<Uint8Arr
 
   let columns: string[] = [];
   let labelColumn: string | undefined;
+  /** Where the section's row labels start, so the label heading sits over the labels it names. */
+  let labelX = M + 4;
   /** The figure-column headings, repeated at the top of every page the section continues onto. */
   const columnHeadings = () => {
     if (columns.length === 0) return;
-    if (labelColumn) text(labelColumn, M + 4, 6.5, bold, muted);
+    if (labelColumn) text(labelColumn, labelX, 6.5, bold, muted);
     for (const [i, c] of columns.entries()) {
       textR(c, RIGHT - COL_W * (columns.length - 1 - i), 6.5, bold, muted);
     }
@@ -146,6 +148,8 @@ export async function renderPcbDetailPdf(data: PcbSlipPdfData): Promise<Uint8Arr
   for (const sec of data.sections) {
     columns = sec.columns;
     labelColumn = sec.labelColumn;
+    const markerW = Math.max(LINE_W, ...sec.rows.map((row) => bold.widthOfTextAtSize(safe(row.line), 8) + 8));
+    labelX = M + markerW;
     // A section heading with no room beneath it for its own first row is a heading stranded at a page
     // foot; 60 points is the strip plus a first wrapped label.
     need(60, false);
@@ -154,7 +158,6 @@ export async function renderPcbDetailPdf(data: PcbSlipPdfData): Promise<Uint8Arr
     y -= 22;
     columnHeadings();
 
-    const markerW = Math.max(LINE_W, ...sec.rows.map((row) => bold.widthOfTextAtSize(safe(row.line), 8) + 8));
     const labelW = RIGHT - M - markerW - COL_W * columns.length - 8;
     for (const row of sec.rows) {
       const size = row.sub ? 7.5 : 8;

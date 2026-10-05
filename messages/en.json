@@ -6954,9 +6954,9 @@
     "pcbDetail": {
       "exemptionHeading": "Exemption Information",
       "exemptionType": "Exemption Type / Pay Item",
-      "exemptionAnnualLimit": "Annual Limit (RM)",
-      "exemptionAccumulated": "Accumulated (RM)",
-      "exemptionThisMonth": "This Month (RM)",
+      "exemptionAnnualLimit": "Annual Limit",
+      "exemptionAccumulated": "Accumulated",
+      "exemptionThisMonth": "This Month",
       "exemptionReused": "Reused recorded assessment",
       "exemptionUnlimited": "No annual limit",
       "exemptionNone": "No applicable exemption types were recorded for this calculation.",

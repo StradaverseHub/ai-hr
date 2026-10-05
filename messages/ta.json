@@ -6954,9 +6954,9 @@
     "pcbDetail": {
       "exemptionHeading": "வரி விலக்கு தகவல்",
       "exemptionType": "விலக்கு வகை / ஊதிய உருப்படி",
-      "exemptionAnnualLimit": "ஆண்டு வரம்பு (RM)",
-      "exemptionAccumulated": "திரண்ட தொகை (RM)",
-      "exemptionThisMonth": "இந்த மாதம் (RM)",
+      "exemptionAnnualLimit": "ஆண்டு வரம்பு",
+      "exemptionAccumulated": "திரண்ட தொகை",
+      "exemptionThisMonth": "இந்த மாதம்",
       "exemptionReused": "பதிவுசெய்த மதிப்பீடு மீண்டும் பயன்படுத்தப்பட்டது",
       "exemptionUnlimited": "ஆண்டு வரம்பு இல்லை",
       "exemptionNone": "இந்தக் கணக்கீட்டுக்குப் பொருந்தும் விலக்கு வகைகள் பதிவாகவில்லை.",

@@ -588,7 +588,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
 
       // FOOTER — where these figures came from. Absent from this document until r372.
       case 'exemptions': {
-        const table = pcbExemptionTable(model.exemptions, key => t(key));
+        const table = pcbExemptionTable(model.exemptions, key => t(key), cur);
         return {columns: table.columns.slice(1), labelColumn: table.columns[0], rows: table.rows.length
           ? table.rows.map(row => ({line: '', label: row.label, cells: row.cells}))
           : [wide(table.empty)], note: table.note};

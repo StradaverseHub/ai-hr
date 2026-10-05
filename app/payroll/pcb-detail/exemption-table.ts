@@ -1,9 +1,10 @@
 import type { PcbExemptionDetail } from '@/core/pcb-exemptions';
-import { formatMoney } from '@/lib/money';
+import { formatMoney, type CurrencyCode } from '@/lib/money';
 
-/** One display projection for the screen and PDF; no calculation or current configuration reads. */
-export function pcbExemptionTable(detail: PcbExemptionDetail, t: (key: string) => string) {
-  const amount = (value: number | null) => value === null ? t('notRecordedShort') : `RM ${formatMoney(value, null)}`;
+/** One display projection for the screen and PDF; no calculation or current configuration reads.
+ *  Amounts use the page's own currency formatter, so one page never mixes two money notations. */
+export function pcbExemptionTable(detail: PcbExemptionDetail, t: (key: string) => string, currency: CurrencyCode | null) {
+  const amount = (value: number | null) => value === null ? t('notRecordedShort') : formatMoney(value, currency);
   return {
     columns: ['exemptionType', 'exemptionAnnualLimit', 'exemptionAccumulated', 'exemptionThisMonth'].map(t),
     rows: detail.rows.map(row => ({

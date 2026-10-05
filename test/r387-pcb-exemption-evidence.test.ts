@@ -43,7 +43,7 @@ describe('r387 recorded PCB exemption display evidence',()=>{
   const detail=pcbExemptionDetail({exemptionUsed:{PCB_TRA_BUSINESS:500,LP_DENTAL:0}});
   expect(detail.source).toBe('partial');expect(detail.rows).toHaveLength(2);
   expect(detail.rows.find(r=>r.code==='PCB_TRA_BUSINESS')).toMatchObject({annualLimit:null,accumulated:null,thisMonth:500,payItems:[]});
-  const table=pcbExemptionTable(detail,t);expect(table.rows.find(r=>r.label==='PCB_TRA_BUSINESS')?.cells).toEqual([en.notRecordedShort,en.notRecordedShort,'RM 500.00']);
+  const table=pcbExemptionTable(detail,t,'MYR');expect(table.rows.find(r=>r.label==='PCB_TRA_BUSINESS')?.cells).toEqual([en.notRecordedShort,en.notRecordedShort,'MYR 500.00']);
   expect(table.note).toBe(en.exemptionIncompleteNote);
  });
  it('distinguishes recorded empty applicability from missing history',()=>{
@@ -53,10 +53,10 @@ describe('r387 recorded PCB exemption display evidence',()=>{
  });
  it('prints all distinct types, genuine zeroes, unlimited and unknown caps without adding overlap',()=>{
   const value=snapshot();value.rows[0].annualLimit=null;
-  const table=pcbExemptionTable(pcbExemptionDetail({pcbExemptions:value}),t);
-  expect(table.rows).toHaveLength(4);expect(table.rows[0].cells).toEqual([en.notRecordedShort,'RM 3,500.00','RM 500.00']);
-  expect(table.rows[1].cells).toEqual(['RM 3,000.00','RM 0.00','RM 0.00']);
-  expect(table.rows[2].cells).toEqual([en.exemptionUnlimited,'RM 50.00','RM 75.00']);
+  const table=pcbExemptionTable(pcbExemptionDetail({pcbExemptions:value}),t,'MYR');
+  expect(table.rows).toHaveLength(4);expect(table.rows[0].cells).toEqual([en.notRecordedShort,'MYR 3,500.00','MYR 500.00']);
+  expect(table.rows[1].cells).toEqual(['MYR 3,000.00','MYR 0.00','MYR 0.00']);
+  expect(table.rows[2].cells).toEqual([en.exemptionUnlimited,'MYR 50.00','MYR 75.00']);
   expect(table.rows[2].label).toContain(en.exemptionReused);
   expect(table.note).toBe(en.exemptionBasisNote);
  });
@@ -77,7 +77,7 @@ describe('r387 recorded PCB exemption display evidence',()=>{
   const generated=statutory(10000,{category:1},0,0,{month:7});const before=JSON.stringify(generated);
   const x=explainPcb(generated,null),detail=pcbExemptionDetail({pcbExemptions:snapshot()});
   const messages=JSON.parse(fs.readFileSync(`messages/${locale}.json`,'utf8')).payroll.pcbDetail;
-  const table=pcbExemptionTable(detail,key=>messages[key]);
+  const table=pcbExemptionTable(detail,key=>messages[key],'MYR');
   const html=renderToStaticMarkup(await PcbDetailView({ctx:{employeeCode:'SYNTH',employeeName:'Synthetic Exemption',company:'Synthetic Company',periodLabel:'July 2026',payPeriod:'2026-07',runType:'additional',runSeq:2,currency:'MYR',rulesetVersion:null,identityNumber:null,identityIsPassport:false,taxNumber:null,taxCategory:1},explanation:x,worksheet:pcbWorksheet(x,null),slip:[],closing:pcbClosingSections(x),exemptions:detail}));
   expect(html).toContain(messages.exemptionHeading);
   for(const row of table.rows){expect(html).toContain(row.label);for(const cell of row.cells)expect(html).toContain(cell);}

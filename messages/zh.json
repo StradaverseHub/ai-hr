@@ -6954,9 +6954,9 @@
     "pcbDetail": {
       "exemptionHeading": "免税信息",
       "exemptionType": "免税类型 / 薪资项目",
-      "exemptionAnnualLimit": "年度限额（RM）",
-      "exemptionAccumulated": "累计（RM）",
-      "exemptionThisMonth": "本月（RM）",
+      "exemptionAnnualLimit": "年度限额",
+      "exemptionAccumulated": "累计",
+      "exemptionThisMonth": "本月",
       "exemptionReused": "复用已记录的评估",
       "exemptionUnlimited": "无年度限额",
       "exemptionNone": "此计算未记录适用的免税类型。",

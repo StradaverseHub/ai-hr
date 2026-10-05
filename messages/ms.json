@@ -6954,9 +6954,9 @@
     "pcbDetail": {
       "exemptionHeading": "Maklumat Pengecualian",
       "exemptionType": "Jenis Pengecualian / Item Bayaran",
-      "exemptionAnnualLimit": "Had Tahunan (RM)",
-      "exemptionAccumulated": "Terkumpul (RM)",
-      "exemptionThisMonth": "Bulan Ini (RM)",
+      "exemptionAnnualLimit": "Had Tahunan",
+      "exemptionAccumulated": "Terkumpul",
+      "exemptionThisMonth": "Bulan Ini",
       "exemptionReused": "Penilaian direkodkan digunakan semula",
       "exemptionUnlimited": "Tiada had tahunan",
       "exemptionNone": "Tiada jenis pengecualian yang terpakai direkodkan untuk pengiraan ini.",

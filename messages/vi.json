@@ -6954,9 +6954,9 @@
     "pcbDetail": {
       "exemptionHeading": "Thông tin miễn thuế",
       "exemptionType": "Loại miễn thuế / Khoản lương",
-      "exemptionAnnualLimit": "Giới hạn năm (RM)",
-      "exemptionAccumulated": "Lũy kế (RM)",
-      "exemptionThisMonth": "Tháng này (RM)",
+      "exemptionAnnualLimit": "Giới hạn năm",
+      "exemptionAccumulated": "Lũy kế",
+      "exemptionThisMonth": "Tháng này",
       "exemptionReused": "Sử dụng lại đánh giá đã lưu",
       "exemptionUnlimited": "Không giới hạn năm",
       "exemptionNone": "Không có loại miễn thuế áp dụng nào được ghi nhận cho phép tính này.",
