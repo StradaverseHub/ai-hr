@@ -75,6 +75,11 @@ export * from '../../core/replacement-request';
 // `submitReplacementLeaveRequest` rather than replacing it. Same registration discipline as the line above
 // (BOUNDARIES + ALWAYS_ALLOWED in test/leave-pack-drift.test.ts, no allowlist entry).
 export * from '../../core/leave-credit-request';
+// r389 bc3e203d — the employee's own Leave Credit History read (requests, lines, credits and the toil events
+// that used or settled them). Same registration discipline as the line above (BOUNDARIES + ALWAYS_ALLOWED in
+// test/leave-pack-drift.test.ts, no allowlist entry): its outside callers are app/leave/credit/, which reach
+// it through this facade.
+export * from '../../core/leave-credit-history';
 export * from '../../core/benefit-scheme';
 // 6e9a126e RELEASE ONE — the entitlement redesign's new layer (named templates + eligibility rules) and
 // the read-only record of what the eventual reset clears. Registered in BOTH BOUNDARIES and ALWAYS_ALLOWED

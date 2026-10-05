@@ -451,11 +451,20 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
   ],
 };
 
+// r389 (a6a4aa5f, ba039150, bc3e203d) — the menu reads Leave Request, Leave History, Leave Credit History.
+//   · `leaveOverview` KEEPS ITS KEY and changes its VALUE to "Leave Request" in all six locales: the key is
+//     what tests, the mobile preview's twin (mobilePreview.leave.overview) and saved role configs name, and
+//     the destination did not move. The page heading stays "My Leave" (leave.myAbsenceTitle).
+//   · `leaveCreditHistory` is the employee's own Leave Credit requests at /leave/credit — the page that used
+//     to hold a second copy of the request form plus this list, reached only from a link beside the button.
+//     It is the paid `toil` add-on's, so components/sidebar.tsx maps it to `toil` by label key exactly as it
+//     maps Leave Config › Leave Credit; the page repeats the check itself (a hidden row is not a gate).
 export const LEAVE_SELF_NAV: NavNodeGroupDescriptor = {
   group: 'main', labelKey: 'myLeave', icon: CalendarDays, activeMatch: 'children',
   children: [
     {href:'/leave', labelKey:'leaveOverview', icon:CalendarDays, exactHref:true},
     {href:'/leave/history', labelKey:'leaveHistory', icon:History, exactHref:true},
+    {href:'/leave/credit', labelKey:'leaveCreditHistory', icon:CalendarClock, exactHref:true},
   ],
 };
 
@@ -465,6 +474,7 @@ export const leavePack: ModulePack = {
   navLinks: LEAVE_NAV_LINKS,
   // 645e67c4 — the Administration-group contribution went from a flat row to a node (see LEAVE_ADMIN_NAV).
   // r378: the employee's own Overview and History live in LEAVE_SELF_NAV; configuration stays separate.
+  // r389: …and Leave Credit History beside them (module-gated on `toil` in the sidebar).
   navNodes: [LEAVE_SELF_NAV, LEAVE_ADMIN_NAV],
   // Pack-owned satellite tables (D5/D11 criterion 2 — documentation, not DDL). Audited from
   // db/schema.ts 2026-07-24. holiday / holiday_group / holiday_group_holiday stay OUTSIDE (shared

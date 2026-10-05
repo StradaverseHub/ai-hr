@@ -371,8 +371,9 @@
     "leaveBfImport": "休假结转数据导入",
     "leaveDataImport": "休假数据导入",
     "myLeave": "我的休假",
-    "leaveOverview": "休假概览",
+    "leaveOverview": "休假申请",
     "leaveHistory": "休假记录",
+    "leaveCreditHistory": "假期额度记录",
     "myTeam": "我的团队"
   },
   "dashboard": {
@@ -2711,7 +2712,7 @@
       "cancellationRequestedAt": "申请取消于 {date}"
     },
     "replacementRequest": {
-      "viewMyRequests": "View my leave credit requests"
+      "viewMyRequests": "[retired r389 — the 'View my leave credit requests' link beside the Leave Credit request button on My Leave. Item ba039150 removed it: the list it opened is now the Leave Credit History page, reached from the My Leave menu]"
     },
     "historyHeading": "休假记录"
   },
@@ -13247,7 +13248,7 @@
       "balance": "假期余额",
       "calendar": "请假日历",
       "application": "请假申请",
-      "overview": "休假概览",
+      "overview": "休假申请",
       "history": "休假记录",
       "historySample": "仅为示例布局，不包含实际休假记录。",
       "historyStatus": {
@@ -13815,7 +13816,7 @@
     "reviewReminderDaysHint": "以逗号分隔的天数：在试用/合同/实习结束日期前提醒经理和 HR（留空则默认为 30、14、7）。"
   },
   "replacementRequest": {
-    "trigger": "+ 假期额度申请",
+    "trigger": "假期额度申请",
     "title": "假期额度申请",
     "description": "为您在休息日、休假日或公共假期工作的日子申请额度，或为工作日下班时间之后的延长工时申请额度。在经理批准之前不会记入任何额度。",
     "leaveType": "Leave type",
@@ -13894,10 +13895,10 @@
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "在本公司，普通工作日无法获得积分。",
-      "myRequests": "My Leave Credit requests",
-      "noRequests": "You have not submitted a Leave Credit request yet.",
-      "statusHeading": "Status",
-      "submittedOn": "Submitted",
+      "myRequests": "[retired r389 — the 'My Leave Credit requests' heading of the list under the form on /leave/credit. Item bc3e203d turned that page into Leave Credit History, which carries its own headings under leaveCreditHistory]",
+      "noRequests": "[retired r389 — the empty state of the old list on /leave/credit. Leave Credit History says it with leaveCreditHistory.empty (item bc3e203d)]",
+      "statusHeading": "[retired r389 — the Status column heading of the old list on /leave/credit. Leave Credit History has an Approval Status and a Credit Status column of its own (item bc3e203d)]",
+      "submittedOn": "[retired r389 — the Submitted column heading of the old list on /leave/credit. Leave Credit History calls it Applied On (leaveCreditHistory.col.appliedOn, item bc3e203d)]",
       "noClockOutRecord": "无记录",
       "clockOutMissing": "此日期没有打卡下班记录。您的经理会在批准前核对这些工时。",
       "clockOutEarlier": "您申报至 {claimEnd}，但记录的打卡下班时间为 {clockOut}。您的经理会在批准前核对。",
@@ -13935,6 +13936,79 @@
       "reasonRequired": "请填写原因后继续。",
       "completeRows": "请完成符合条件的日期行后继续。",
       "reasonPlaceholder": "例如：月末薪资结算"
+    }
+  },
+  "leaveCreditHistory": {
+    "title": "假期额度记录",
+    "description": "您申请过的每一笔假期额度，以及此后每笔额度的去向。",
+    "export": "导出",
+    "approvalStatus": "审批状态",
+    "tabAll": "全部",
+    "filters": {
+      "toggle": "筛选",
+      "summary": "额度状态 · 日期类型 · 年份 · 日期",
+      "creditStatus": "额度状态",
+      "dayType": "日期类型",
+      "year": "年份",
+      "from": "工作日期从",
+      "to": "至",
+      "all": "全部",
+      "apply": "应用",
+      "clear": "清除"
+    },
+    "col": {
+      "dateWorked": "工作日期",
+      "dayType": "日期类型",
+      "extendedHours": "延长工时",
+      "creditDays": "额度天数",
+      "expiryDate": "到期日期",
+      "appliedOn": "申请日期",
+      "approvalStatus": "审批状态",
+      "creditStatus": "额度状态",
+      "action": "操作"
+    },
+    "hoursValue": "{from} – {to} · {hours} 小时",
+    "daysLeft": "{count, plural, =0 {今天到期} other {剩余 # 天}}",
+    "view": "查看",
+    "viewAria": "查看 {date} 的假期额度申请",
+    "cancel": "取消",
+    "cancelTitle": "要取消此假期额度申请吗？",
+    "cancelDescription": "它将从审批人的列表中撤回，申请中的每个日期都会一并取消：{dates}。",
+    "cancelConfirm": "取消申请",
+    "cancelledToast": "您的假期额度申请已取消。",
+    "cancelNotPending": "只能取消待审批的假期额度申请。此申请已被处理或已取消。",
+    "empty": "您还没有提交过假期额度申请。",
+    "emptyFiltered": "没有符合这些筛选条件的假期额度申请。",
+    "emptyTab": "此标签下没有假期额度申请。",
+    "drawer": {
+      "kicker": "假期额度申请 · 申请 {ref}",
+      "request": "申请",
+      "extendedHoursHint": "（符合条件的时数）",
+      "reason": "原因",
+      "attendance": "考勤参考",
+      "attendanceNote": "随申请记录",
+      "eligibleMinutes": "符合条件的分钟数",
+      "notRecorded": "此申请未记录",
+      "approval": "审批",
+      "level": "第 {level} 级",
+      "levelNamed": "第 {level} 级 · {name}",
+      "approved": "已批准 · {date} {time}",
+      "rejected": "已拒绝 · {date} {time}",
+      "waiting": "等待审批",
+      "cancelled": "已由您取消 · {date} {time}",
+      "cancelledUndated": "已由您取消",
+      "remarks": "备注",
+      "creditUsage": "额度使用情况",
+      "used": "已使用",
+      "remaining": "剩余",
+      "usedBy": "使用此额度的休假申请",
+      "notUsed": "尚无休假申请使用此额度。",
+      "usageLine": "{days} · {dates} · {leaveType}",
+      "forfeited": "已作废：{days}。额度已到期，于 {date} 结算。",
+      "paidOut": "以现金代替休假：{days}。额度已到期，于 {date} 结算。",
+      "reversed": "HR 已于 {date} 冲销。此额度不能再使用。",
+      "noCredit": "只有在申请获批后才会生成额度。",
+      "close": "关闭"
     }
   },
   "notices": {

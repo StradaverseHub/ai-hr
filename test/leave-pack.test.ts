@@ -15,7 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CalendarDays, CalendarRange, History, SlidersHorizontal, UserSearch } from 'lucide-react';
+import { CalendarClock, CalendarDays, CalendarRange, History, SlidersHorizontal, UserSearch } from 'lucide-react';
 import { leavePack } from '../packs/leave';
 import { listPacks, modulePackById, packById } from '../packs/registry';
 import * as facade from '../packs/leave/service';
@@ -29,6 +29,7 @@ import * as coreFormula from '../core/leave-formula';
 import * as coreImport from '../core/leave-import';
 import * as coreToil from '../core/toil';
 import * as coreBenefitScheme from '../core/benefit-scheme';
+import * as coreLeaveCreditHistory from '../core/leave-credit-history';
 
 describe('ADR-0080 rung 6: leave pack registration', () => {
   it('registers as a module pack the registry resolves by id', () => {
@@ -138,7 +139,11 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
     });
   });
 
-  it('declares exactly Overview and History under the ungated My Leave flyout', () => {
+  // r389 (bc3e203d) — UPDATED, NOT LOOSENED: the exact set gained Leave Credit History, third, at the address
+  // the old form-plus-list page held. The parent node stays ungated; the new ROW is gated on the `toil` module
+  // in components/sidebar.tsx (test/r299-leave-credit-screens.test.ts pins that mapping), which is a module
+  // gate, not a role flag — so the "no adminOnly / managerUp" loop below still holds for all three rows.
+  it('declares exactly Request, History and Leave Credit History under the ungated My Leave flyout', () => {
     const self = leavePack.navNodes!.filter(n => n.group === 'main');
     expect(self).toHaveLength(1);
     expect(self[0].labelKey).toBe('myLeave');
@@ -147,6 +152,7 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
     expect(self[0].activeMatch).toBe('children');
     expect(self[0].children.map(c => [c.href,c.labelKey,c.exactHref,c.icon])).toEqual([
       ['/leave','leaveOverview',true,CalendarDays], ['/leave/history','leaveHistory',true,History],
+      ['/leave/credit','leaveCreditHistory',true,CalendarClock],
     ]);
     expect(self[0]).not.toHaveProperty('adminOnly');
     expect(self[0]).not.toHaveProperty('managerUp');
@@ -213,6 +219,8 @@ describe('ADR-0080 rung 6: service facade re-exports the implementation unchange
     expect(facade.validateLeaveImport).toBe(coreImport.validateLeaveImport);
     expect(facade.commitLeaveImport).toBe(coreImport.commitLeaveImport);
     expect(facade.consumeReplacementLeaveTx).toBe(coreToil.consumeReplacementLeaveTx);
+    // r389 — the Leave Credit History read reaches outside callers through the facade like every module here.
+    expect(facade.listOwnLeaveCreditHistory).toBe(coreLeaveCreditHistory.listOwnLeaveCreditHistory);
     expect(facade.maybeAutoAccrueOnApprovalTx).toBe(coreToil.maybeAutoAccrueOnApprovalTx);
     expect(facade.listGradeGroups).toBe(coreBenefitScheme.listGradeGroups);
     expect(facade.createGradeGroup).toBe(coreBenefitScheme.createGradeGroup);

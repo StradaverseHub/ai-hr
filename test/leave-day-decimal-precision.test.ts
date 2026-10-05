@@ -330,7 +330,13 @@ describe('4a1abc4a · ONE formatter, and it stays one', () => {
     // credit, a Total Credit and a stored credit per submitted line; all three are day figures, so they are
     // listed here for the reason the header gives rather than left to be found by rendering later.
     '/components/leave/leave-credit-request-table.tsx',
-    '/app/leave/credit/page.tsx',
+    // r389 (bc3e203d) — REPOINTED, NOT DROPPED. `/app/leave/credit/page.tsx` stood here because it printed a
+    // stored credit per submitted line. It is Leave Credit History now, and the page itself prints no day
+    // figure: the credit days, the credit's used / remaining and each application's share are drawn by its
+    // client island, and the same figures go into the export. Those two files are where the figures are
+    // printed, so they are what this guard lists; a page with no day figure cannot be guarded for its format.
+    '/components/leave/leave-credit-history.tsx',
+    '/app/leave/credit/export/route.ts',
   ];
 
   it('no leave surface still prints a RAW day count', () => {

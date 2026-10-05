@@ -371,8 +371,9 @@
     "leaveBfImport": "นำเข้าข้อมูลยกยอดวันลา",
     "leaveDataImport": "นำเข้าข้อมูลการลา",
     "myLeave": "การลาของฉัน",
-    "leaveOverview": "ภาพรวมการลา",
+    "leaveOverview": "คำขอลา",
     "leaveHistory": "ประวัติการลา",
+    "leaveCreditHistory": "ประวัติเครดิตวันลา",
     "myTeam": "ทีมของฉัน"
   },
   "dashboard": {
@@ -2711,7 +2712,7 @@
       "cancellationRequestedAt": "ขอยกเลิกเมื่อ {date}"
     },
     "replacementRequest": {
-      "viewMyRequests": "View my leave credit requests"
+      "viewMyRequests": "[retired r389 — the 'View my leave credit requests' link beside the Leave Credit request button on My Leave. Item ba039150 removed it: the list it opened is now the Leave Credit History page, reached from the My Leave menu]"
     },
     "historyHeading": "ประวัติการลา"
   },
@@ -13247,7 +13248,7 @@
       "balance": "ยอดวันลาคงเหลือ",
       "calendar": "ปฏิทินการลา",
       "application": "ใบลา",
-      "overview": "ภาพรวมการลา",
+      "overview": "คำขอลา",
       "history": "ประวัติการลา",
       "historySample": "ตัวอย่างรูปแบบเท่านั้น ไม่มีข้อมูลการลาจริง",
       "historyStatus": {
@@ -13815,7 +13816,7 @@
     "reviewReminderDaysHint": "จำนวนวันคั่นด้วยจุลภาคก่อนวันสิ้นสุดทดลองงาน/สัญญา/ฝึกงาน ที่จะแจ้งเตือนผู้จัดการและ HR (ค่าเริ่มต้น 30, 14, 7 หากเว้นว่าง)"
   },
   "replacementRequest": {
-    "trigger": "+ คำขอเครดิตวันลา",
+    "trigger": "คำขอเครดิตวันลา",
     "title": "คำขอเครดิตวันลา",
     "description": "ขอเครดิตสำหรับวันหยุดประจำสัปดาห์ วันหยุด หรือวันหยุดนักขัตฤกษ์ที่คุณมาทำงาน หรือสำหรับชั่วโมงที่ทำงานต่อหลังเลิกกะในวันทำงาน จะยังไม่มีการเพิ่มเครดิตจนกว่าผู้จัดการของคุณจะอนุมัติ",
     "leaveType": "Leave type",
@@ -13894,10 +13895,10 @@
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "วันทำงานปกติไม่สามารถรับเครดิตได้ที่บริษัทนี้",
-      "myRequests": "My Leave Credit requests",
-      "noRequests": "You have not submitted a Leave Credit request yet.",
-      "statusHeading": "Status",
-      "submittedOn": "Submitted",
+      "myRequests": "[retired r389 — the 'My Leave Credit requests' heading of the list under the form on /leave/credit. Item bc3e203d turned that page into Leave Credit History, which carries its own headings under leaveCreditHistory]",
+      "noRequests": "[retired r389 — the empty state of the old list on /leave/credit. Leave Credit History says it with leaveCreditHistory.empty (item bc3e203d)]",
+      "statusHeading": "[retired r389 — the Status column heading of the old list on /leave/credit. Leave Credit History has an Approval Status and a Credit Status column of its own (item bc3e203d)]",
+      "submittedOn": "[retired r389 — the Submitted column heading of the old list on /leave/credit. Leave Credit History calls it Applied On (leaveCreditHistory.col.appliedOn, item bc3e203d)]",
       "noClockOutRecord": "ไม่มีบันทึก",
       "clockOutMissing": "ไม่มีบันทึกเวลาออกงานสำหรับวันนี้ ผู้จัดการของคุณจะตรวจสอบชั่วโมงเหล่านี้ก่อนอนุมัติ",
       "clockOutEarlier": "คุณแจ้งถึง {claimEnd} แต่เวลาออกงานที่บันทึกไว้คือ {clockOut} ผู้จัดการของคุณจะตรวจสอบก่อนอนุมัติ",
@@ -13935,6 +13936,79 @@
       "reasonRequired": "เพิ่มเหตุผลเพื่อดำเนินการต่อ",
       "completeRows": "กรอกแถวที่มีสิทธิ์ให้ครบเพื่อดำเนินการต่อ",
       "reasonPlaceholder": "เช่น ปิดรอบเงินเดือนสิ้นเดือน"
+    }
+  },
+  "leaveCreditHistory": {
+    "title": "ประวัติเครดิตวันลา",
+    "description": "เครดิตวันลาทุกรายการที่คุณขอ และสิ่งที่เกิดขึ้นกับเครดิตแต่ละรายการนับจากนั้น",
+    "export": "ส่งออก",
+    "approvalStatus": "สถานะการอนุมัติ",
+    "tabAll": "ทั้งหมด",
+    "filters": {
+      "toggle": "ตัวกรอง",
+      "summary": "สถานะเครดิต · ประเภทวัน · ปี · วันที่",
+      "creditStatus": "สถานะเครดิต",
+      "dayType": "ประเภทวัน",
+      "year": "ปี",
+      "from": "วันที่ทำงานตั้งแต่",
+      "to": "ถึง",
+      "all": "ทั้งหมด",
+      "apply": "ใช้",
+      "clear": "ล้าง"
+    },
+    "col": {
+      "dateWorked": "วันที่ทำงาน",
+      "dayType": "ประเภทวัน",
+      "extendedHours": "ชั่วโมงที่ทำเพิ่ม",
+      "creditDays": "วันเครดิต",
+      "expiryDate": "วันหมดอายุ",
+      "appliedOn": "วันที่ยื่น",
+      "approvalStatus": "สถานะการอนุมัติ",
+      "creditStatus": "สถานะเครดิต",
+      "action": "การดำเนินการ"
+    },
+    "hoursValue": "{from} – {to} · {hours} ชม.",
+    "daysLeft": "{count, plural, =0 {หมดอายุวันนี้} other {เหลืออีก # วัน}}",
+    "view": "ดู",
+    "viewAria": "ดูคำขอเครดิตวันลาของวันที่ {date}",
+    "cancel": "ยกเลิก",
+    "cancelTitle": "ยกเลิกคำขอเครดิตวันลานี้หรือไม่",
+    "cancelDescription": "คำขอนี้จะถูกถอนออกจากรายการของผู้อนุมัติ และทุกวันที่ในคำขอนี้จะถูกยกเลิกไปด้วย: {dates}",
+    "cancelConfirm": "ยกเลิกคำขอ",
+    "cancelledToast": "ยกเลิกคำขอเครดิตวันลาของคุณแล้ว",
+    "cancelNotPending": "ยกเลิกได้เฉพาะคำขอเครดิตวันลาที่รอการอนุมัติเท่านั้น คำขอนี้ได้รับการพิจารณาหรือถูกยกเลิกไปแล้ว",
+    "empty": "คุณยังไม่เคยยื่นคำขอเครดิตวันลา",
+    "emptyFiltered": "ไม่มีคำขอเครดิตวันลาที่ตรงกับตัวกรองเหล่านี้",
+    "emptyTab": "ไม่มีคำขอเครดิตวันลาในแท็บนี้",
+    "drawer": {
+      "kicker": "คำขอเครดิตวันลา · คำขอ {ref}",
+      "request": "คำขอ",
+      "extendedHoursHint": "(ชั่วโมงที่มีสิทธิ์)",
+      "reason": "เหตุผล",
+      "attendance": "ข้อมูลอ้างอิงการลงเวลา",
+      "attendanceNote": "บันทึกไว้พร้อมคำขอ",
+      "eligibleMinutes": "นาทีที่มีสิทธิ์",
+      "notRecorded": "ไม่ได้บันทึกไว้พร้อมคำขอนี้",
+      "approval": "การอนุมัติ",
+      "level": "ขั้นที่ {level}",
+      "levelNamed": "ขั้นที่ {level} · {name}",
+      "approved": "อนุมัติแล้ว · {date} {time}",
+      "rejected": "ไม่อนุมัติ · {date} {time}",
+      "waiting": "รอการอนุมัติ",
+      "cancelled": "คุณยกเลิกแล้ว · {date} {time}",
+      "cancelledUndated": "คุณยกเลิกแล้ว",
+      "remarks": "หมายเหตุ",
+      "creditUsage": "การใช้เครดิต",
+      "used": "ใช้แล้ว",
+      "remaining": "คงเหลือ",
+      "usedBy": "ใบลาที่ใช้เครดิตนี้",
+      "notUsed": "ยังไม่มีใบลาใดใช้เครดิตนี้",
+      "usageLine": "{days} · {dates} · {leaveType}",
+      "forfeited": "สูญสิทธิ์: {days} เครดิตหมดอายุและได้รับการปิดยอดเมื่อวันที่ {date}",
+      "paidOut": "จ่ายเป็นเงินแทนการลา: {days} เครดิตหมดอายุและได้รับการปิดยอดเมื่อวันที่ {date}",
+      "reversed": "HR ยกเลิกรายการเมื่อวันที่ {date} เครดิตนี้ใช้ไม่ได้อีกต่อไป",
+      "noCredit": "เครดิตจะถูกสร้างขึ้นเมื่อคำขอได้รับการอนุมัติเท่านั้น",
+      "close": "ปิด"
     }
   },
   "notices": {

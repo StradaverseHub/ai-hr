@@ -130,8 +130,10 @@ export const SCREENS: readonly ScreenEntry[] = [
     // sub-route with the same audience, the same scope and the same guard rides the parent's column rather
     // than minting a second one, because a second column would carry the SAME label — two rows reading
     // "My Absence" in the access grid describe one function as if it were two (570fd56e).
-    // r343 (cbfa8b0b) — '/leave/credit' rides THIS column on exactly that argument: the employee's own
-    // Leave Credit request table, reached from this very screen.
+    // r343 (cbfa8b0b) — '/leave/credit' rides THIS column on exactly that argument. r389 (bc3e203d): the
+    // address is now My Leave › Leave Credit History — the employee's own Leave Credit requests and what
+    // became of each credit — reached from the My Leave menu rather than a link on this screen; the form
+    // copy it used to carry is gone (ba039150). Same audience, same scope, same guard, so still this column.
     routes: ['/leave', '/leave/history', '/leave/credit'],
     hasScopeNote: true,
   },

@@ -371,8 +371,9 @@
     "leaveBfImport": "Import Data B/F Cuti",
     "leaveDataImport": "Import Data Cuti",
     "myLeave": "Cuti Saya",
-    "leaveOverview": "Gambaran Cuti",
+    "leaveOverview": "Permohonan Cuti",
     "leaveHistory": "Sejarah Cuti",
+    "leaveCreditHistory": "Sejarah Kredit Cuti",
     "myTeam": "Pasukan Saya"
   },
   "dashboard": {
@@ -2711,7 +2712,7 @@
       "cancellationRequestedAt": "Pembatalan dimohon {date}"
     },
     "replacementRequest": {
-      "viewMyRequests": "View my leave credit requests"
+      "viewMyRequests": "[retired r389 — the 'View my leave credit requests' link beside the Leave Credit request button on My Leave. Item ba039150 removed it: the list it opened is now the Leave Credit History page, reached from the My Leave menu]"
     },
     "historyHeading": "Sejarah cuti"
   },
@@ -13247,7 +13248,7 @@
       "balance": "Baki Cuti",
       "calendar": "Kalendar Cuti",
       "application": "Permohonan Cuti",
-      "overview": "Gambaran Cuti",
+      "overview": "Permohonan Cuti",
       "history": "Sejarah Cuti",
       "historySample": "Susun atur contoh sahaja; tiada rekod cuti langsung.",
       "historyStatus": {
@@ -13815,7 +13816,7 @@
     "reviewReminderDaysHint": "Hari dipisahkan koma sebelum tarikh tamat percubaan/kontrak/latihan industri apabila pengurus dan HR diingatkan (lalai 30, 14, 7 jika kosong)."
   },
   "replacementRequest": {
-    "trigger": "+ Permohonan Kredit Cuti",
+    "trigger": "Permohonan Kredit Cuti",
     "title": "Permohonan Kredit Cuti",
     "description": "Mohon kredit bagi hari rehat, hari cuti atau cuti umum yang anda bekerja, atau bagi jam lanjutan selepas syif anda pada hari bekerja. Tiada kredit diberikan sehingga pengurus anda meluluskannya.",
     "leaveType": "Leave type",
@@ -13894,10 +13895,10 @@
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "Hari bekerja biasa tidak boleh memperoleh kredit di syarikat ini.",
-      "myRequests": "My Leave Credit requests",
-      "noRequests": "You have not submitted a Leave Credit request yet.",
-      "statusHeading": "Status",
-      "submittedOn": "Submitted",
+      "myRequests": "[retired r389 — the 'My Leave Credit requests' heading of the list under the form on /leave/credit. Item bc3e203d turned that page into Leave Credit History, which carries its own headings under leaveCreditHistory]",
+      "noRequests": "[retired r389 — the empty state of the old list on /leave/credit. Leave Credit History says it with leaveCreditHistory.empty (item bc3e203d)]",
+      "statusHeading": "[retired r389 — the Status column heading of the old list on /leave/credit. Leave Credit History has an Approval Status and a Credit Status column of its own (item bc3e203d)]",
+      "submittedOn": "[retired r389 — the Submitted column heading of the old list on /leave/credit. Leave Credit History calls it Applied On (leaveCreditHistory.col.appliedOn, item bc3e203d)]",
       "noClockOutRecord": "Tiada rekod",
       "clockOutMissing": "Tiada waktu keluar direkodkan untuk tarikh ini. Pengurus anda akan menyemak jam ini sebelum meluluskannya.",
       "clockOutEarlier": "Anda menuntut sehingga {claimEnd}, tetapi waktu keluar yang direkodkan ialah {clockOut}. Pengurus anda akan menyemaknya sebelum meluluskan.",
@@ -13935,6 +13936,79 @@
       "reasonRequired": "Tambah sebab untuk meneruskan.",
       "completeRows": "Lengkapkan baris yang layak untuk meneruskan.",
       "reasonPlaceholder": "cth. Penutupan gaji akhir bulan"
+    }
+  },
+  "leaveCreditHistory": {
+    "title": "Sejarah Kredit Cuti",
+    "description": "Setiap Kredit Cuti yang anda mohon, dan apa yang telah berlaku kepada setiap kredit sejak itu.",
+    "export": "Eksport",
+    "approvalStatus": "Status Kelulusan",
+    "tabAll": "Semua",
+    "filters": {
+      "toggle": "Tapis",
+      "summary": "Status Kredit · Jenis Hari · Tahun · Tarikh",
+      "creditStatus": "Status Kredit",
+      "dayType": "Jenis Hari",
+      "year": "Tahun",
+      "from": "Tarikh Bekerja Dari",
+      "to": "Hingga",
+      "all": "Semua",
+      "apply": "Guna",
+      "clear": "Kosongkan"
+    },
+    "col": {
+      "dateWorked": "Tarikh Bekerja",
+      "dayType": "Jenis Hari",
+      "extendedHours": "Waktu Lanjutan",
+      "creditDays": "Hari Kredit",
+      "expiryDate": "Tarikh Luput",
+      "appliedOn": "Dimohon Pada",
+      "approvalStatus": "Status Kelulusan",
+      "creditStatus": "Status Kredit",
+      "action": "Tindakan"
+    },
+    "hoursValue": "{from} – {to} · {hours} jam",
+    "daysLeft": "{count, plural, =0 {Luput hari ini} other {# hari lagi}}",
+    "view": "Lihat",
+    "viewAria": "Lihat permohonan Kredit Cuti bagi {date}",
+    "cancel": "Batal",
+    "cancelTitle": "Batalkan permohonan Kredit Cuti ini?",
+    "cancelDescription": "Ia akan ditarik balik daripada senarai pelulus anda. Setiap tarikh dalam permohonan ini turut dibatalkan: {dates}.",
+    "cancelConfirm": "Batalkan permohonan",
+    "cancelledToast": "Permohonan Kredit Cuti anda telah dibatalkan.",
+    "cancelNotPending": "Hanya permohonan Kredit Cuti yang belum diputuskan boleh dibatalkan. Permohonan ini telah diputuskan atau dibatalkan.",
+    "empty": "Anda belum membuat sebarang permohonan Kredit Cuti.",
+    "emptyFiltered": "Tiada permohonan Kredit Cuti yang sepadan dengan penapis ini.",
+    "emptyTab": "Tiada permohonan Kredit Cuti dalam tab ini.",
+    "drawer": {
+      "kicker": "Permohonan Kredit Cuti · Permohonan {ref}",
+      "request": "Permohonan",
+      "extendedHoursHint": "(jam yang layak)",
+      "reason": "Sebab",
+      "attendance": "Rujukan Kehadiran",
+      "attendanceNote": "direkodkan bersama permohonan",
+      "eligibleMinutes": "Minit yang layak",
+      "notRecorded": "Tidak direkodkan bersama permohonan ini",
+      "approval": "Kelulusan",
+      "level": "Peringkat {level}",
+      "levelNamed": "Peringkat {level} · {name}",
+      "approved": "Diluluskan · {date} {time}",
+      "rejected": "Ditolak · {date} {time}",
+      "waiting": "Menunggu kelulusan",
+      "cancelled": "Dibatalkan oleh anda · {date} {time}",
+      "cancelledUndated": "Dibatalkan oleh anda",
+      "remarks": "Catatan",
+      "creditUsage": "Penggunaan Kredit",
+      "used": "Digunakan",
+      "remaining": "Berbaki",
+      "usedBy": "Digunakan oleh permohonan cuti",
+      "notUsed": "Tiada permohonan cuti yang menggunakan kredit ini.",
+      "usageLine": "{days} · {dates} · {leaveType}",
+      "forfeited": "Dilucutkan: {days}. Kredit telah luput dan diselesaikan pada {date}.",
+      "paidOut": "Dibayar sebagai ganti diambil: {days}. Kredit telah luput dan diselesaikan pada {date}.",
+      "reversed": "Dibatalkan oleh HR pada {date}. Kredit ini tidak boleh digunakan lagi.",
+      "noCredit": "Kredit hanya diwujudkan apabila permohonan diluluskan.",
+      "close": "Tutup"
     }
   },
   "notices": {

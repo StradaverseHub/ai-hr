@@ -99,8 +99,17 @@ describe('The menu row is gated on the toil module', () => {
   it('the sidebar maps the Leave Credit row to `toil`, and the resolver offers toil only when the tenant has it', async () => {
     expect(MODULE_CODES_WITH_NAV).toContain('toil');
     // The sidebar picks the row out of the leave pack by label key (no href is hardcoded there).
+    // r389 (bc3e203d) — UPDATED, NOT LOOSENED: the same flatMap now picks TWO rows, Leave Config › Leave
+    // Credit and My Leave › Leave Credit History, both the `toil` add-on's. This read
+    // `…filter((c) => c.labelKey === 'leaveCredit')…`; the HR row is still in it, by the same key.
     const sidebar = code(read('components/sidebar.tsx'));
-    expect(sidebar).toContain("n.children.filter((c) => c.labelKey === 'leaveCredit').map((c) => [c.href, 'toil'] as const)");
+    expect(sidebar).toContain(
+      "n.children.filter((c) => c.labelKey === 'leaveCredit' || c.labelKey === 'leaveCreditHistory').map((c) => [c.href, 'toil'] as const)",
+    );
+    // …and both labels name a real row of the leave pack, so neither half of the filter is dead text.
+    const childKeys = (leavePack.navNodes ?? []).flatMap((n) => n.children.map((c) => c.labelKey));
+    expect(childKeys).toContain('leaveCredit');
+    expect(childKeys).toContain('leaveCreditHistory');
 
     const off = await entitledCtx(b);
     expect(visibleModuleCodes(off), 'no toil row → the Leave Credit row is hidden').not.toContain('toil');
@@ -186,7 +195,12 @@ describe('Leave Adjustments points Replacement Leave at Leave Credit', () => {
 
 describe('My Leave — the Leave Credit request and the Apply form', () => {
   it('the request is presented as a Leave Credit request, names each date’s kind, and states the rule', () => {
-    expect(en.replacementRequest.trigger).toBe('+ Leave Credit request');
+    // r389 (ba039150) — UPDATED, NOT LOOSENED. This read `toBe('+ Leave Credit request')`, and the "+" in the
+    // VALUE was the defect: the trigger also draws a <Plus> icon, so the button read "+ + Leave Credit
+    // request". The icon stays; the value lost its "+" in all six locales (pinned there by
+    // test/r389-leave-credit-history.test.ts). The NAME this case is about — "Leave Credit request" — is
+    // unchanged.
+    expect(en.replacementRequest.trigger).toBe('Leave Credit request');
     expect(en.replacementRequest.title).toBe('Leave Credit request');
     const dialog = read('components/leave/replacement-leave-request-dialog.tsx');
     const table = read('components/leave/leave-credit-request-table.tsx');

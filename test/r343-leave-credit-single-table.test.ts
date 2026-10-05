@@ -339,16 +339,31 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 describe('r343 · the employee has ONE Leave Credit surface, and it is the single table', () => {
 
-  // ⚠️ AND A WAY BACK TO IT. /leave/credit holds the itemised list of what the employee asked for — the
-  // other half of the contest, "displayed in the same request table". My Absence renders only a summed
-  // pending-days figure, so without a link the employee reaches the list by submitting something or by
-  // typing the URL. A summary with no route to its detail is the half-delivered shape this item exists
-  // to stop.
-  it('My Absence links to the requests list, so the itemised table is reachable without submitting', () => {
-    const page = read('app/leave/page.tsx');
-    expect(page, 'the link exists').toContain('href="/leave/credit"');
-    expect(page, 'and is findable by test rather than by position').toContain('leave-credit-requests-link');
-    expect(page, 'and is captioned from the catalogue, not hardcoded').toContain("replacementRequest.viewMyRequests");
+  // ⚠️ r389 (ba039150) — REVERSED, AND THE PROPERTY IT PROTECTED IS KEPT BY OTHER MEANS. This case read
+  // "My Absence links to the requests list, so the itemised table is reachable without submitting", and
+  // asserted `href="/leave/credit"`, the `leave-credit-requests-link` test id and the
+  // `replacementRequest.viewMyRequests` caption on app/leave/page.tsx. The reporter asked for the link to go.
+  // What it protected — a route from the summary to the itemised list — survives as a MENU ROW: My Leave ›
+  // Leave Credit History at the same /leave/credit (test/leave-pack.test.ts pins the row,
+  // test/r299-leave-credit-screens.test.ts its `toil` gate). So the link is asserted ABSENT from the code,
+  // and its key RETIRED (not deleted) in all six catalogues.
+  it('r389 · the "View my leave credit requests" link is gone, its key retired in six, and the list is a menu row', () => {
+    const code = read('app/leave/page.tsx')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+    expect(code.length, 'the stripped page is real text, not an empty slice').toBeGreaterThan(10_000);
+    expect(code, 'no link to the old list').not.toContain('href="/leave/credit"');
+    expect(code).not.toContain('leave-credit-requests-link');
+    expect(code).not.toContain('viewMyRequests');
+    for (const l of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
+      const v = (JSON.parse(read(`messages/${l}.json`)).leave as any).replacementRequest.viewMyRequests;
+      expect(typeof v, `${l} lost the retired key — retired is not deleted`).toBe('string');
+      expect(v, `${l}: marked retired, not left reading as live copy`).toMatch(/^\[retired r389 —/);
+    }
+    // The route the link used to be: a My Leave row at the same address.
+    const leavePack = read('packs/leave/index.ts');
+    expect(leavePack).toContain("{href:'/leave/credit', labelKey:'leaveCreditHistory', icon:CalendarClock, exactHref:true}");
   });
   const DIALOG_TSX = 'components/leave/replacement-leave-request-dialog.tsx';
   const MY_LEAVE = 'app/leave/page.tsx';
@@ -388,18 +403,33 @@ describe('r343 · the employee has ONE Leave Credit surface, and it is the singl
     expect(myLeave).not.toContain('extendedHoursAction=');
   });
 
-  it('the /leave/credit screen renders the SAME component, imported — never a second copy of the form', () => {
+  // ⚠️ r389 (ba039150) — REVERSED. This case read "the /leave/credit screen renders the SAME component,
+  // imported — never a second copy of the form" and asserted the page imported and mounted
+  // `LeaveCreditRequestTable`. The reporter asked for that copy to go: two places to fill in one form is
+  // the duplication r343's own header warns about, and the dialog was already the prominent one. The page is
+  // Leave Credit History now. What is pinned instead: the page mounts NO form (neither the component nor a
+  // posted field of it), the dialog is the component's ONLY mount in the product, and exactly one file still
+  // DEFINES it — the r343 property ("one form component") at its new, stricter strength.
+  it('r389 · /leave/credit mounts no request form; the dialog is the only mount; one file defines it', () => {
     const page = read(CREDIT_PAGE);
-    expect(page).toContain("from '@/components/leave/leave-credit-request-table'");
-    expect(page).toContain('<LeaveCreditRequestTable');
-    // A second copy would mean a second <form>, a second dropdown or a second set of posted names here.
+    expect(page.length).toBeGreaterThan(2_000);
+    expect(page, 'the duplicate form is gone from the page').not.toContain('LeaveCreditRequestTable');
+    expect(page).not.toContain('leave-credit-request-table');
+    expect(page).not.toContain('submitLeaveCreditRequestAction');
     expect(page).not.toContain('name="workedDate"');
-    expect(page).not.toContain('<select');
+    // Every mount of the component in the product, found by walking app/ and components/.
+    const walk = (dir: string): string[] =>
+      fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(`${dir}/${e.name}`) : /\.tsx?$/.test(e.name) ? [`${dir}/${e.name}`] : [],
+      );
+    const files = [...walk('app'), ...walk('components')];
+    expect(files.length, 'the walk saw the tree').toBeGreaterThan(200);
+    const mounts = files.filter((f) => read(f).includes('<LeaveCreditRequestTable'));
+    expect(mounts).toEqual([DIALOG_TSX]);
     // Exactly one file in the product defines this form.
-    const defining = ['components/leave/leave-credit-request-table.tsx', DIALOG_TSX, CREDIT_PAGE, MY_LEAVE].filter((f) =>
-      read(f).includes('export function LeaveCreditRequestTable'),
-    );
+    const defining = files.filter((f) => read(f).includes('export function LeaveCreditRequestTable'));
     expect(defining).toEqual(['components/leave/leave-credit-request-table.tsx']);
+    void MY_LEAVE;
   });
 });
 
@@ -793,10 +823,14 @@ describe('r365 · the Attendance column, the shared panel, and what was retired 
 // this screen cannot grow by accident, and a key that is translated today fails the day it turns English.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 describe('r343 · the translated keys are translated, and the English ones are named and counted', () => {
+  // r389 (ba039150 + bc3e203d) — `app/leave/credit/page.tsx` LEFT THIS SURFACE, and not to hide anything:
+  // it no longer renders the request form or any `replacementRequest` key (it is Leave Credit History, whose
+  // own keys live under `leaveCreditHistory` and are pinned translated-in-six by
+  // test/r389-leave-credit-history.test.ts). Left here, its `t('title')` / `t('description')` — read against
+  // the WRONG namespace by `renderedKeys()` — would have been counted as this screen's keys.
   const SURFACE = [
     'components/leave/leave-credit-request-table.tsx',
     'components/leave/replacement-leave-request-dialog.tsx',
-    'app/leave/credit/page.tsx',
   ];
   const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
   const CAT = Object.fromEntries(
@@ -851,11 +885,12 @@ describe('r343 · the translated keys are translated, and the English ones are n
     // loss: both had to be rewritten for the owner's new rule, and both were translated into all six
     // locales while they were being rewritten. A key leaving the English-everywhere set is the set doing
     // its job — it exists to make the English-only count a decision rather than an accident.
-    'table.myRequests',
-    'table.noRequests',
+    //
+    // r389 — `table.myRequests`, `table.noRequests`, `table.statusHeading` and `table.submittedOn` LEFT this
+    // list too. They were the old submitted-requests list on /leave/credit, which became Leave Credit History
+    // with translated headings of its own; the four keys are RETIRED in place (`[retired r389 — …]` in all
+    // six) because nothing renders them any more.
     'table.rosterMismatch',
-    'table.statusHeading',
-    'table.submittedOn',
     'totalDays',
     'workedDate',
   ];
@@ -863,7 +898,10 @@ describe('r343 · the translated keys are translated, and the English ones are n
   // r362 — the title said "the sixteen … a seventeenth", which was true of the list as it stood. Retiring
   // `table.dayTypeChoose` takes it to fifteen. The number is in the title on purpose: it is the one place a
   // reader sees the size of the debt without counting, so it moves with the list.
-  it('the keys that ship English are EXACTLY the fifteen named above — a sixteenth fails this case', () => {
+  // r389 — NINE: the four `table.*` keys of the old /leave/credit list are retired (see the list's note).
+  // The count was "fifteen" in this title while the list held thirteen; the title now says what the list
+  // holds.
+  it('the keys that ship English are EXACTLY the nine named above — a tenth fails this case', () => {
     const english = renderedKeys().filter((k) => {
       const en = at('en', k);
       return typeof en === 'string' && LOCALES.slice(1).every((l) => at(l, k) === en);
