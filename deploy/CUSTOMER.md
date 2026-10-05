@@ -19,7 +19,9 @@ The `aihr` account has no login shell, SSH key, sudo rule, deployment-group memb
 the application code. Merely removing the owner URL from the process environment is insufficient if
 the same account can read it again from disk. The customer unit hides all Next environment files in
 the application directory as well as dropping migration and demo variables. It binds only to
-`127.0.0.1:3000`; an authenticated HTTPS reverse proxy or controlled tunnel must front it. PostgreSQL
+`127.0.0.1:3000`; each application host therefore needs a local HTTPS reverse proxy/ingress that the
+remote load balancer can reach over a private, certificate-verified connection. The remote balancer
+cannot directly reach another host's loopback listener. PostgreSQL
 must listen only on loopback/a private network and accept only the necessary application/admin hosts.
 
 ## 1. Prepare accounts, runtime and release files
@@ -86,11 +88,26 @@ that role bypasses tenant RLS for its explicitly granted tables, so keep it out 
 runtime. Likewise add only the provider/runtime settings a deliberately enabled feature requires.
 The platform pool is not a replacement for the app URL. Treat both environment files as secret
 material in rotation and recovery procedures, with changes applied to both where a value is shared.
+The unit validates these effective runtime values before every start, independently of the deploy
+preflight. A stale/missing WorkOS setting, disabled audit chain or non-production runtime must refuse
+to start rather than reopen a demo authentication path.
 
 ## 3. Build, then prepare the cache and install the unit
 
 Run the customer path as the deployment operator under Node 22. The `--migrate-only` flag still builds
 and runs migrations/catalog provisioning but leaves service restart to the following controlled step:
+
+For an **update to an existing installation**, first take that app host out of the load balancer,
+stop its service, and hand the private cache back to the deployment operator before building. The
+previous runtime's `0700` cache must not strand the next build under a different account:
+
+```bash
+cd /opt/ai-hr
+sudo systemctl stop aihr
+sudo chown -R "$(id -u):$(id -g)" /opt/ai-hr/.next/cache
+```
+
+For a fresh installation skip those two service/cache handoff commands. Then build and install:
 
 ```bash
 cd /opt/ai-hr
@@ -142,6 +159,9 @@ and certificate renewal; 3000 and 5432 must not be reachable from the public int
 callback, logout, missing-access refusal, payroll/PDF rendering and attachment authorization using
 non-sensitive acceptance data. Inspect the service journal for permission/cache/render errors without
 exporting secrets or HR records. A healthy HTTP status alone does not prove these workflows render.
+As the DB administrator, independently verify the actual `ai_hr_app` role has `rolsuper=false`,
+`rolbypassrls=false`, no membership of privileged/owner roles, and no ownership of application tables.
+Configuration checks on the username do not prove live database privileges are correct.
 
 Provision the tenant and bind its first real admin through the operator/provisioning workflow.
 **Manual prerequisite:** a completely fresh installation also needs its first authorized platform
@@ -166,13 +186,29 @@ semantics, alert delivery and last-success age before enabling business-changing
 installed backup service. Configure an encrypted off-host destination and separate backup identity;
 keep its DB/storage credentials inaccessible to web and ordinary job accounts. A daily dump alone
 can lose nearly a day of writes: agree the customer's recovery point/time objectives and enable
-managed PostgreSQL PITR or WAL archiving when required. Choose retention and immutability that meet
+PostgreSQL PITR through continuous WAL archiving to the independent backup host/storage. The private
+cloud design uses a self-managed PostgreSQL 16 primary/standby pair: require certificate-verified TLS
+for remote DB connections, restricted replication credentials, tested failover/fencing, and a named
+operator responsible for patching, replication lag, WAL retention and recovery. A standby is not a
+backup. Rehearse both failover and archive-based point-in-time recovery. The logical dump rehearsal
+validates a dump/manifest pair; it does **not** validate physical backups or replay archived WAL.
+Perform a separate pgBackRest/PITR drill against the actual archive. Choose retention and immutability that meet
 the actual contract. Schedule the backup, route both failure and stale-success alerts to an owner,
 and complete an isolated restore rehearsal before sensitive data is loaded. Do not restore customer
 dumps onto developer laptops. Record measured recovery time and latest recoverable timestamp; do
 not infer them from a successful upload or a timer being enabled.
 
+The logical backup/rehearsal scripts require Python 3 plus libpq from the PostgreSQL client package.
+Their connection helper uses libpq's parser, preserves TLS options and passes credentials through
+short-lived process environment/private `0600` connection files instead of client arguments. Run
+under a dedicated backup account because root and the same UID can inspect process environment.
+Use a dedicated, owned `0700` staging directory. New/empty staging directories are secured; existing
+nonempty directories with group/other permissions and symlinks are refused for manual review.
+The scripts use `umask 077` for new dumps/manifests. Never enable shell tracing before loading secrets.
+
 Bootstrap credential regression checks can be run locally with PostgreSQL 16 binaries available:
 `node --test test/bootstrap-db.node.test.mjs`. They start a temporary isolated cluster and do not use
 the application's database. This does not validate the Linux service sandbox; validate that on the
 target customer staging host before cutover.
+Run `node --test test/backup-security.node.test.mjs` for verified-TLS backup/restore credential and
+file-permission regression checks against a separate temporary PostgreSQL cluster.

@@ -19,6 +19,8 @@ Environment=NODE_ENV=production
 Environment=NEXT_TELEMETRY_DISABLED=1
 # These credentials/identities never belong in the customer web process, even if misconfigured.
 UnsetEnvironment=MIGRATION_DATABASE_URL TEST_DATABASE_URL TEST_MIGRATION_DATABASE_URL ALLOW_DEMO_SESSION DEV_TENANT_ID DEV_USER_ID NODE_OPTIONS
+# Check the EFFECTIVE runtime values too; the root-owned runtime file can drift from deploy config.
+ExecStartPre=/opt/node22/bin/node /opt/ai-hr/deploy/check-customer-env.mjs
 ExecStart=/opt/node22/bin/node /opt/ai-hr/node_modules/next/dist/bin/next start -H 127.0.0.1 -p ${PORT}
 Restart=on-failure
 RestartSec=5
