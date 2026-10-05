@@ -537,28 +537,34 @@ describe('ae5b84d5 — the projection kernel, directly', () => {
 });
 
 describe('49809272 — Balance / Ledger / Breakdown consistency', () => {
-  it('after an upward correction the breakdown reconciles (the credit lands in systemAdjustments)', async () => {
+  // r389 (62a1bec1) — BOTH CASES UPDATED, NOT LOOSENED. They pinned the recalc row in `systemAdjustments`
+  // with Earned to Date left at the original accrual. That was the reported fault: the engines count a
+  // `sys:profile_recalc` row as entitlement GRANTED (the accrual run tops up around it; this reprojection's
+  // own delta includes it), and only the read model filed it as an adjustment — so Earned read 12 here
+  // while the employee had been granted 14. The recalc now lands in Earned to Date (`currentYearEntitlement`)
+  // in BOTH signs, `systemAdjustments` and `adjustments` are 0, and the balance — the assertion that matters
+  // most, because nothing about the money may move — is byte-identical to what it was.
+  it('after an upward correction the breakdown reconciles (the credit lands in Earned to Date)', async () => {
     const tpl = await entitlement(12);
     const emp = await hireIn(b.companyId, b.deptA);
     await correct(tpl, 14);
     const view = await leaveEntitlementBreakdown(adminCtx(b), emp.employmentId, b.annualLeaveTypeId, '2026-12-31');
-    expect(view?.currentYearEntitlement).toBe(12); // the original accrual rows
-    // RELEASE THREE: the row's reason is now `sys:profile_recalc`, which the SIX-BUCKET partition classifies
-    // as a system correction — the bucket that exists precisely because the legacy `otherAdjustments` field
-    // omits sys:profile_recalc and every negative adjustment (0315dac7; pinned in
-    // test/leave-balance-reconciliation.test.ts). Asserting systemAdjustments is the honest reading of the
-    // same fact, and it holds in BOTH signs, which otherAdjustments never could.
-    expect(view?.systemAdjustments).toBe(2); // the recalc credit
+    expect(view?.currentYearEntitlement).toBe(14); // 12 accrual + the +2 automatic recalculation
+    expect(view?.systemAdjustments).toBe(0); // the recalc is earned entitlement, not a correction line
+    expect(view?.adjustments).toBe(0);
+    expect(view?.balance).toBe(14); // unchanged by r389 — the ledger still sums to 14
     expect(view?.totalAvailable).toBe(14); // = balance (no pending) — Balance & Ledger agree
   });
 
-  it('after a downward correction the breakdown still reconciles (signed recalc row surfaces)', async () => {
+  it('after a downward correction the breakdown still reconciles (signed recalc row lowers Earned)', async () => {
     const tpl = await entitlement(14);
     const emp = await hireIn(b.companyId, b.deptA);
     await correct(tpl, 12);
     const view = await leaveEntitlementBreakdown(adminCtx(b), emp.employmentId, b.annualLeaveTypeId, '2026-12-31');
-    expect(view?.currentYearEntitlement).toBe(14);
-    expect(view?.systemAdjustments).toBe(-2); // negative recalc row, accounted for rather than dropped
+    expect(view?.currentYearEntitlement).toBe(12); // 14 accrual − 2 automatic recalculation, accounted for
+    expect(view?.systemAdjustments).toBe(0);
+    expect(view?.adjustments).toBe(0);
+    expect(view?.balance).toBe(12);
     expect(view?.totalAvailable).toBe(12);
   });
 });

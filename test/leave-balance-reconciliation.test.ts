@@ -38,9 +38,11 @@ import {
   AGED_FORFEIT_REASON,
   CARRY_FORFEIT_REASON_CAP,
   CARRY_FORFEIT_REASON_EXPIRY,
+  INELIGIBLE_GRANT_REVERSAL_REASON,
   POLICY_RECALC_REASON_PREFIX,
   PROFILE_RECALC_REASON_PREFIX,
   expireCarriedLeave,
+  isEarnedToDateRow,
   openLeaveYear,
 } from '../core/leave';
 import { deriveBalanceRow } from '../components/leave/leave-balance-row';
@@ -217,8 +219,21 @@ describe('classifyLedgerAdjustment — the partition is exhaustive and mutually 
   });
 
   it('both recalc prefixes are system corrections — including sys:profile_recalc, which the old line dropped', () => {
+    // r389 (62a1bec1): still true OF THE CLASSIFIER, which only ever sees an adjustment the Earned to Date
+    // predicate did not claim. An UNSUPERSEDED recalc row is claimed first — it is earned entitlement — so the
+    // only recalc rows that reach this answer are the ones an Anniversary-to-Calendar correction superseded.
     expect(classifyLedgerAdjustment(`${POLICY_RECALC_REASON_PREFIX}:${randomUUID()}`)).toBe('system');
     expect(classifyLedgerAdjustment(`${PROFILE_RECALC_REASON_PREFIX}:${randomUUID()}`)).toBe('system');
+    const recalc = { entryType: 'adjustment', effectiveOn: '2026-04-01' };
+    expect(isEarnedToDateRow({ ...recalc, reason: `${POLICY_RECALC_REASON_PREFIX}:${randomUUID()}` })).toBe(true);
+    expect(isEarnedToDateRow({ ...recalc, reason: `${PROFILE_RECALC_REASON_PREFIX}:${randomUUID()}` })).toBe(true);
+  });
+
+  it('r389 — the automatic reversal of an ineligible grant is a SYSTEM correction, not an HR adjustment', () => {
+    // 19 production rows read as manual HR adjustments because this reason fell through to 'config'.
+    expect(classifyLedgerAdjustment(INELIGIBLE_GRANT_REVERSAL_REASON)).toBe('system');
+    // …and it is not earned entitlement: it reverses a grant, it does not recalculate one.
+    expect(isEarnedToDateRow({ entryType: 'adjustment', effectiveOn: '2026-09-21', reason: INELIGIBLE_GRANT_REVERSAL_REASON })).toBe(false);
   });
 
   it('r303 — the Anniversary-to-Calendar correction (sys:a2c_recalc:*) is a SYSTEM correction, not an HR adjustment', () => {
@@ -452,7 +467,16 @@ describe('ask 1 — the Adjustment line is the Adjustment configuration, and not
     const emp = await seedAdjustments();
     const bd = await bdOf(emp.employmentId, b.annualLeaveTypeId, '2026-12-31');
     expect(bd.configAdjustments).toBe(3); // 2 (CNY) + 1 (Deepavali) — exactly what HR configured
-    expect(bd.systemAdjustments).toBe(2); // +3 policy_recalc − 1 profile_recalc
+    // r389 (62a1bec1) — UPDATED, NOT LOOSENED. This read `systemAdjustments` 2 (+3 policy_recalc − 1
+    // profile_recalc). Those two rows are automatic entitlement RECALCULATIONS, which the engines count as
+    // granted, so they now sit in Earned to Date; no automatic correction is left in this cycle. The same
+    // +2 net is asserted where it now lives, so no day can have gone missing in the move.
+    expect(bd.systemAdjustments).toBe(0);
+    expect(bd.adjustments).toBe(3); // = configAdjustments: an adjustment appears only where HR made one
+    // No entitlement table is seeded here, so the hire grants nothing and Earned to Date is exactly the two
+    // recalculations: +3 − 1.
+    expect(bd.currentYearEntitlement).toBe(2);
+    expect(bd.balance).toBe(5); // 3 configured + 2 recalculated — the ledger, untouched
     expectReconciles(bd);
   });
 
@@ -463,8 +487,11 @@ describe('ask 1 — the Adjustment line is the Adjustment configuration, and not
     // correction into "Adjustment" (2 + 1 + 3 = 6) and silently loses the −1 profile correction.
     expect(bd.otherAdjustments).toBe(6);
     expect(bd.otherAdjustments).not.toBe(bd.configAdjustments);
-    // The split accounts for every one of those days, with none lost: config + system = the true net.
-    expect(r2(bd.configAdjustments + bd.systemAdjustments)).toBe(5);
+    // The split accounts for every one of those days, with none lost.
+    // r389 (62a1bec1) — UPDATED: this read `config + system = 5`. The +3 / −1 recalculations moved out of
+    // `systemAdjustments` into Earned to Date (they are entitlement the engines granted), so the same five
+    // days are now config 3 + earned 2 + system 0. The sum, which is what this line protects, is still 5.
+    expect(r2(bd.configAdjustments + bd.systemAdjustments + bd.currentYearEntitlement)).toBe(5);
   });
 
   it('each config adjustment is itemised with its own reason and day count (the traceability ask)', async () => {

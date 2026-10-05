@@ -25,8 +25,9 @@ export type LeaveBalanceRow = {
   adjustment: number | null;
   /** Derived max(0, -available): how far the type is over-drawn. */
   overutilized: number | null;
-  /** r279 — EARNED TO DATE. `currentYearEntitlement` alone: the accrual-class ledger sum between cycle start
-   *  and the as-at date, i.e. what this person has actually earned so far. It is NOT the year's allowance —
+  /** r279 — EARNED TO DATE. `currentYearEntitlement` alone: the earned-to-date ledger sum between cycle start
+   *  and the as-at date (accrual-class rows and, since r389, the automatic entitlement recalculations the
+   *  engines granted — core/leave.ts `isEarnedToDateRow`), i.e. what this person has actually earned so far. It is NOT the year's allowance —
    *  that is `fullEntitlement` below, and the reporter's request to rename this one "Full Entitlement" was
    *  answered the other way round for exactly that reason (the understatement closes on 31 December, so the
    *  wrong name would look right in January, when someone finally checked it).
@@ -154,9 +155,12 @@ export type BreakdownInput = {
   carriedForward: number;
   forfeited: number;
   otherAdjustments: number;
-  /** 0315dac7: the CONFIG-only adjustment total (festive / one-off / manual grants, both signs) — what the
-   *  Adjustment column shows, so this table and the breakdown panel name the same number. */
-  configAdjustments: number;
+  /** r389 (62a1bec1) — THE Adjustment figure: `LeaveEntitlementBreakdown.adjustments` (HR's own adjustments
+   *  + automatic corrections), the very field the Explain panel's Adjustments line selects
+   *  (components/leave/entitlement-panel-config.ts). It replaced `configAdjustments` here: the grid read the
+   *  config bucket while the panel read config + system, so one row could print two Adjustment figures.
+   *  Required, so a hand-built breakdown cannot silently fall back to a different bucket. */
+  adjustments: number;
   /** 31e39d74: computed server-side (core/read.ts) and PICKED here — never re-derived from the figures,
    *  because two of the four states are indistinguishable from the numbers alone. */
   entitlementStatus: EntitlementStatus;
@@ -192,12 +196,14 @@ export function deriveBalanceRow(b: BalanceInput, bd: BreakdownInput): Omit<Leav
     share: showTaken ? (b.share ?? 0) : null,
     pendingShare: showAvailable ? (b.pendingShare ?? 0) : null,
     broughtForward: bd ? bd.carriedForward : null,
-    // Adjustment = the CONFIG adjustments only (0315dac7). It used to be `otherAdjustments`, which commingles
-    // HR's festive / one-off grants with the automatic `sys:policy_recalc` corrections (and drops
-    // `sys:profile_recalc` and every negative row). The breakdown panel's Adjustment line reads the same
-    // configAdjustments bucket, so the table and the panel can never disagree about "Adjustment" — the
-    // feedback's single-source-of-truth requirement. System corrections are labelled separately in the panel.
-    adjustment: bd ? bd.configAdjustments : null,
+    // Adjustment = `bd.adjustments`, THE SAME FIELD the Explain panel's Adjustments line selects (r389,
+    // 62a1bec1). It used to be `otherAdjustments` (commingled, dropped negatives — 0315dac7), then
+    // `configAdjustments`, whose comment here claimed the panel read that bucket too. It did not: since
+    // 1f6fd6d8 the panel has read `adjustments` (config + system), so a row with an automatic correction
+    // printed one Adjustment in the grid and another in the panel. One field now, so they cannot disagree.
+    // An automatic entitlement RECALCULATION is in neither: it is earned entitlement and sits in Earned to
+    // Date (`ytdEntitled` below), on both screens, as the engines that granted it always counted it.
+    adjustment: bd ? bd.adjustments : null,
     // Overutilized = how far the type is over-drawn. Gated with Available (its own negation) so a hidden
     // balance can't leak.
     overutilized,

@@ -299,7 +299,11 @@ describe('f3a64d90 — saving the Leave Year Type corrects everyone already affe
     await staleRecalcAdjustment(employmentId, -9.5, '2026-05-01');
     await debit(employmentId, 3.5, '2026-06-10');
     const before = await annualSummary(employmentId);
-    expect(before.accrued).toBe(20);
+    // r389 (62a1bec1) — UPDATED, NOT LOOSENED: this read 20. An automatic policy/profile recalculation is
+    // now Earned to Date on every screen (the engines always counted it as granted), and BEFORE the a2c save
+    // nothing has superseded this one, so YTD is 20 − 9.50. The figures AFTER the save are unchanged below —
+    // the reversal supersedes the stale row (`a2cSupersessionOf`), so YTD is the a2c target again.
+    expect(before.accrued).toBe(10.5);
     expect(before.balance).toBe(7);
 
     // HR picks "Anniversary to Calendar" and saves — nothing else.

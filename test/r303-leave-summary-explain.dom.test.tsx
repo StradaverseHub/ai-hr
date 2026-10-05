@@ -113,7 +113,12 @@ const DERIVATION: LeaveSummaryDerivation = {
   carry: { rule: 'on', maxDays: 5, percent: null },
   adjustments: {
     manual: [{ effectiveOn: '2026-02-01', days: 2, reason: 'CNY 2026' }],
-    system: [{ effectiveOn: '2026-05-01', days: -1, kind: 'profile_recalc' }],
+    // r389 (62a1bec1) — UPDATED: this was a −1.00 `profile_recalc` system item. Since r389 an unsuperseded
+    // recalculation is an Earned to Date CREDIT, never a system adjustment, and its old caption ("after the
+    // employee's record changed") was not true of every row the prefix stamps. The same −1.00 is now the
+    // reversal of an ineligible grant — a system correction that genuinely belongs on this line — so every
+    // figure in HR_DATA (and every sentence's arithmetic) is unchanged.
+    system: [{ effectiveOn: '2026-05-01', days: -1, kind: 'ineligible_grant_reversal' }],
   },
   taken: { leaveDays: 3.5, other: [{ effectiveOn: '2026-10-01', days: 0.5, kind: 'credit_expired', reason: null }] },
   pending: [{ startDate: '2026-12-01', endDate: '2026-12-02', days: 2 }],
@@ -220,7 +225,9 @@ describe('r303: the HR mount shows a sentence under every line, and no icon', ()
     expect(text('broughtForward')).toContain('3.00 days were left unused before this leave year started on 2026-01-01.');
     expect(text('broughtForward')).toContain('up to 5.00 days carry into the next leave year');
     expect(text('adjustment')).toContain('2026-02-01: +2.00 — CNY 2026');
-    expect(text('adjustment')).toContain("2026-05-01: -1.00 — after the employee's record changed");
+    expect(text('adjustment')).toContain('2026-05-01: -1.00 — reversal of a grant the employee was not eligible for');
+    // r389 — the old profile-recalc caption is gone from this line, and from the catalogue.
+    expect(text('adjustment')).not.toContain("employee's record changed");
     expect(text('adjustment')).toContain('Together: 1.00.');
     expect(text('total')).toBe('3.00 brought forward + 10.50 earned to date + 1.00 adjustments = 14.50.');
     expect(text('taken')).toContain('Approved leave taken from 2026-01-01 to 2026-12-31: 3.50.');
@@ -323,8 +330,11 @@ const CHOICES: Record<string, Record<string, string[]>> = {
   earnedMethod: { method: ['up_front', 'earned_monthly', 'earned_quarterly', 'earned_daily'] },
   earnedLeaveYear: { kind: ['calendar', 'anniversary', 'a2c'] },
   earnedRounding: { method: ['none', 'up', 'down', 'nearest_half', 'custom', 'custom_no_table'] },
-  creditItem: { kind: ['grant', 'leave_credit', 'a2c_correction'] },
-  adjSystemItem: { kind: ['policy_recalc', 'profile_recalc', 'a2c_recalc'] },
+  // r389 (62a1bec1): the two automatic RECALCULATIONS are Earned to Date credits now, and the ineligible-grant
+  // reversal is a named system correction. Every kind the renderer can emit is listed, so each must print
+  // its own words in every locale.
+  creditItem: { kind: ['grant', 'leave_credit', 'a2c_correction', 'policy_recalc', 'profile_recalc'] },
+  adjSystemItem: { kind: ['policy_recalc', 'profile_recalc', 'a2c_recalc', 'ineligible_grant_reversal'] },
   takenOtherItem: { kind: ['credit_expired', 'credit_paid_out', 'credit_reversed'] },
   forfeitItem: { kind: ['carry_cap', 'carry_expiry', 'type_expiry'] },
 };

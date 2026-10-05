@@ -7650,16 +7650,123 @@ export const POLICY_RECALC_REASON_PREFIX = 'sys:policy_recalc';
  *  an employee's grade / grade group / employment type / confirmation status / hire date changes, the current
  *  cycle is re-projected and a compensating `adjustment` (reason `sys:profile_recalc:<employmentId>`) is
  *  posted. Same `sys:` family as the policy prefix — counts as "already granted this cycle" everywhere the
- *  policy prefix does, so the two recalc paths (and the accrual cron) stay mutually idempotent. */
+ *  policy prefix does, so the two recalc paths (and the accrual cron) stay mutually idempotent.
+ *
+ *  r389 (62a1bec1) — ⚠️ NOT ONLY A PROFILE CHANGE. `reprojectEntitlementForLeaveTypeCohort` reaches every
+ *  employment through `reprojectEntitlementForEmployment`, so an entitlement TABLE being created, an
+ *  eligibility rule being written or an earning method being saved stamps this same prefix (production:
+ *  EMP-0004's +0.32 on 2026-09-20 followed `entitlement_template_created`). Any caption shared by these rows
+ *  may say only what is true of every one of them: the entitlement was recalculated automatically. */
 export const PROFILE_RECALC_REASON_PREFIX = 'sys:profile_recalc';
 
 /** Drizzle predicate: a `leave_ledger.reason` stamped by EITHER recalc path (policy or profile). Both count
  *  as already-materialized entitlement, so the delta math sees them and never double-posts. */
-const recalcAdjustmentReasonCond = () =>
+export const recalcAdjustmentReasonCond = () =>
   or(
     like(leaveLedger.reason, `${POLICY_RECALC_REASON_PREFIX}:%`),
     like(leaveLedger.reason, `${PROFILE_RECALC_REASON_PREFIX}:%`),
   );
+
+/**
+ * r389 (62a1bec1) — WHAT THE ENGINES COUNT AS ENTITLEMENT ALREADY GRANTED THIS CYCLE, as ONE predicate.
+ *
+ * An `accrual` row, or an `adjustment` row stamped by either automatic recalculation (policy or profile).
+ * The accrual run's `already` sum and `reprojectEntitlementForEmployment`'s `alreadyPosted` fetch each
+ * spelled this out by hand; both now call this, byte-identical SQL, so neither can drift from the other or
+ * from the read model below, which is built ON it.
+ *
+ * ⚠️ `in_lieu_accrual` IS DELIBERATELY NOT HERE, and adding it would be a ledger change, not a tidy-up. A
+ * Leave Credit (core/toil.ts — the only writer, and only ever onto the Replacement type) is time off in
+ * lieu of a day WORKED, never entitlement. Summed into `alreadyPosted`, a profile save on a Replacement
+ * type that has a table would compute `expected − (grants + credits)` and claw the credits back. The read
+ * model adds them on top (`isEarnedToDateRow`), exactly as Earned to Date always has.
+ */
+export const entitlementGrantedRowCond = () =>
+  or(eq(leaveLedger.entryType, 'accrual'), and(eq(leaveLedger.entryType, 'adjustment'), recalcAdjustmentReasonCond()));
+
+/** r389 — WHICH automatic entitlement recalculation a reason names, or null for anything else. The prefix is
+ *  matched WITH its separator (as `recalcAdjustmentReasonCond` does), so a typed reason that merely starts
+ *  with the same letters stays HR's own. */
+export function entitlementRecalcKind(reason: string | null): 'policy_recalc' | 'profile_recalc' | null {
+  const r = reason ?? '';
+  if (r.startsWith(`${POLICY_RECALC_REASON_PREFIX}:`)) return 'policy_recalc';
+  if (r.startsWith(`${PROFILE_RECALC_REASON_PREFIX}:`)) return 'profile_recalc';
+  return null;
+}
+
+/**
+ * r389 (62a1bec1) — HAS AN ANNIVERSARY-TO-CALENDAR CORRECTION SUPERSEDED THE RECALCULATIONS DATED ON OR
+ * BEFORE A GIVEN DAY? Built once over ONE (employment, leave type)'s rows; returns the question as a function
+ * of a row's `effectiveOn`.
+ *
+ * WHY THE READ MODEL HAS TO ASK. `reprojectA2cEntitlement` treats every earlier policy/profile recalc row in
+ * the calendar window [1 Jan, asOf] as SUPERSEDED: its accrual-class top-up brings Earned to the up-front
+ * target WITHOUT them, and its `adjustment` row (one combined row, also covering forfeits — it cannot be
+ * split) reverses them. Counting those superseded rows as Earned would overstate Earned by exactly what the
+ * reversal takes back, and the reversal would sit under Adjustments as the balancing figure: f3a64d90's
+ * reporter case (target 19.73, a stale −9.50 recalc) would read Earned 10.23 with Adjustments +9.50 — the
+ * very mismatch r389 exists to remove, moved one screen over. A superseded recalc row therefore stays where
+ * it always was, beside its reversal as an automatic correction, and the two net to nothing there.
+ *
+ * THE RULE, read straight off the engine: an `sys:a2c_recalc:*` row (either class — a correction that wrote
+ * only an accrual delta had superseded rows netting to zero, and they still belong beside it) dated D
+ * supersedes every recalc row dated in [1 Jan of D's year, D]. Rows the read cannot see (outside the window
+ * it fetched) decide nothing, so an as-at date BEFORE the correction still shows the recalc as earned — which
+ * is what was true on that date.
+ *
+ * Production 2026: zero `sys:a2c_recalc` rows, so this changes no figure there today; it keeps an existing
+ * promise (test/leave-a2c-entitlement.test.ts, YTD 19.73) true for the first tenant that switches a type with
+ * recalculated balances to Anniversary to Calendar.
+ */
+export function a2cSupersessionOf(
+  rows: readonly { reason: string | null; effectiveOn: string }[],
+): (effectiveOn: string) => boolean {
+  const latestByYear = new Map<string, string>();
+  for (const r of rows) {
+    if (!(r.reason ?? '').startsWith(`${A2C_RECALC_REASON_PREFIX}:`)) continue;
+    const year = r.effectiveOn.slice(0, 4);
+    const prev = latestByYear.get(year);
+    if (prev == null || r.effectiveOn > prev) latestByYear.set(year, r.effectiveOn);
+  }
+  if (latestByYear.size === 0) return () => false;
+  return (effectiveOn) => {
+    const horizon = latestByYear.get(effectiveOn.slice(0, 4));
+    return horizon != null && effectiveOn <= horizon;
+  };
+}
+
+/**
+ * r389 (62a1bec1) — THE ONE DEFINITION OF AN "EARNED TO DATE" LEDGER ROW, for every screen.
+ *
+ * The engines already treated an automatic recalculation as entitlement granted (`entitlementGrantedRowCond`:
+ * the accrual run tops up AROUND it, the reprojection's delta includes it). The read model counted only
+ * `accrual` / `in_lieu_accrual` and filed the recalculation under Adjustments, so one ledger read three ways:
+ * EMP-0004 / Annual Leave — 11.18 accrual, +0.32 `sys:profile_recalc`, 0.50 accrual — showed Earned 11.50 /
+ * Adjustment 0.00 on Employee Balances and Earned 11.68 + Adjustments 0.32 in the Explain panel, where the
+ * engines had granted 12.00.
+ *
+ * Earned to Date = what the engines count as granted (`entitlementGrantedRowCond`) + Leave Credits
+ * (`in_lieu_accrual`), MINUS a recalculation an Anniversary-to-Calendar correction has since superseded (see
+ * `a2cSupersessionOf`; pass its result — omit it only where no a2c row can exist). Both read paths use this:
+ * the breakdown's ledger walk (core/read.ts leaveEntitlementBreakdown) and `leaveBalances`' `accrued`.
+ *
+ * Pure regrouping: every row still lands in exactly one bucket, so `balance` and the reconciliation identity
+ * are untouched; only which line a recalculation is printed under moves.
+ */
+export function isEarnedToDateRow(
+  r: { entryType: string; reason: string | null; effectiveOn: string },
+  supersededByA2c: (effectiveOn: string) => boolean = () => false,
+): boolean {
+  if (r.entryType === 'in_lieu_accrual') return true;
+  if (!isEntitlementGrantedRow(r)) return false;
+  return r.entryType === 'accrual' || !supersededByA2c(r.effectiveOn);
+}
+
+/** r389 — `entitlementGrantedRowCond` for a row already in memory. The two are one rule in two languages;
+ *  test/r389-recalc-earned-to-date.test.ts asserts they select exactly the same rows off a real ledger. */
+export function isEntitlementGrantedRow(r: { entryType: string; reason: string | null }): boolean {
+  return r.entryType === 'accrual' || (r.entryType === 'adjustment' && entitlementRecalcKind(r.reason) != null);
+}
 
 /**
  * 35b7af0a group 3 — `serviceYearsAt` and `completedYearsAt` are DEFINED in `lib/completed-years.ts` and
@@ -9591,13 +9698,9 @@ export async function accrueEarnedLeave(
           // recalc posts mid-cycle (reprojectEntitlementForPolicy / reprojectEntitlementForEmployment) —
           // otherwise this top-up would re-grant the same delta on top of the recalc credit. No pre-existing
           // row carries either reason, so behaviour is byte-identical for tenants that never recalc'd.
-          or(
-            eq(leaveLedger.entryType, 'accrual'),
-            and(
-              eq(leaveLedger.entryType, 'adjustment'),
-              recalcAdjustmentReasonCond(),
-            ),
-          ),
+          // r389 (62a1bec1): the SAME predicate, now named once and shared with the reprojection and the
+          // read model (`entitlementGrantedRowCond`) — the identical SQL it spelled out here by hand.
+          entitlementGrantedRowCond(),
           gte(leaveLedger.effectiveOn, accrualFrom),
           lte(leaveLedger.effectiveOn, accrualTo),
         ),
@@ -10193,6 +10296,11 @@ const a2cSupersededReasonCond = () =>
  * (to-date → up-front, e.g. 10.90 → 19.73) on the next correction sweep — up-front ≥ to-date for a mid-year
  * first-year employee, so that top-up is never a claw-down.
  *
+ * r389 (62a1bec1) — "YTD Entitled" (now Earned to Date) also counts the policy/profile recalc ADJUSTMENTS
+ * (`isEarnedToDateRow`), but never the ones THIS function supersedes: the read model asks
+ * `a2cSupersessionOf` and leaves a superseded recalc row beside this function's reversal, where the two net
+ * out. Nothing here changed; the note is so nobody reads the paragraph above as still the whole rule.
+ *
  * Two rows, both stamped `sys:a2c_recalc:<leaveTypeId>`:
  *  1. ACCRUAL delta — brings the window's accrual-class total to exactly the a2c target
  *     (a2cFirstYearEntitledToDate over the FULLY resolved entitlement: EA-1955 floor ∨ benefit-scheme band
@@ -10603,10 +10711,9 @@ export async function reprojectEntitlementForEmployment(
           inArray(leaveLedger.leaveTypeId, typeIds),
           gte(leaveLedger.effectiveOn, accrualFrom),
           lte(leaveLedger.effectiveOn, accrualTo),
-          or(
-            eq(leaveLedger.entryType, 'accrual'),
-            and(eq(leaveLedger.entryType, 'adjustment'), recalcAdjustmentReasonCond()),
-          ),
+          // r389 (62a1bec1): the one shared "already granted" predicate — byte-identical to the
+          // `accrual OR recalc adjustment` it replaces, and the base the read model's Earned is built on.
+          entitlementGrantedRowCond(),
         ),
       );
     const ledgerByType = new Map<string, { entryType: string; days: number; effectiveOn: string }[]>();
