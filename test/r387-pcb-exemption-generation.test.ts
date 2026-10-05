@@ -28,7 +28,7 @@ describe('r387 actual payroll exemption metadata capture',()=>{
    {code:'SYNTH_DENTAL',name:'Dental',pcbExemptionCode:'LP_DENTAL',amount:20,pcbRemunerationType:'optional_deduction' as const},
    {code:'SYNTH_NONCASH',name:'Recurring Car',pcbExemptionCode:'PCB_PERQUISITE',amount:40,kind:'non_payable' as const,isNonPayable:true,includedInEpf:false,includedInSocsoEis:false,displayCategory:'bik' as const,eaFormLine:'EA_B3'},
   ];
-  for(const spec of specs){const {amount,...input}=spec;const c=await upsertPayComponent(ctx,{...flags,...input});await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:c.id,amount,effectiveFrom:`${year}-01-01`});}
+  for(const spec of specs){const {amount,...input}=spec;const c=await upsertPayComponent(ctx,{...flags,...input});await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:c.id,amount,allowZeroAmount:amount===0,effectiveFrom:`${year}-01-01`});}
   const first=await createBatch(ctx,{companyId:base.companyId,payPeriod:`${year}-01`});await generatePayslips(ctx,{batchId:first.batchId});
   const second=await createBatch(ctx,{companyId:base.companyId,payPeriod:`${year}-02`});await generatePayslips(ctx,{batchId:second.batchId});
   const [regular]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,second.batchId));expect(regular).toBeTruthy();
