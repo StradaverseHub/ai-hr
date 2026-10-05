@@ -49,7 +49,9 @@ function cli(args: string[], env = environment(), entry = path.join(ROOT, 'scrip
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['--import', path.join(ROOT, 'node_modules/tsx/dist/loader.mjs'),
       entry, '--config', configFile, ...args], {
-      cwd: directory, env, stdio: ['ignore', 'pipe', 'pipe'],
+      // The private fixture cwd deliberately has no development env file. Point the loader at the
+      // real TS aliases explicitly, as running from the documented application cwd does naturally.
+      cwd: directory, env: { ...env, TSX_TSCONFIG_PATH: path.join(ROOT, 'tsconfig.json') }, stdio: ['ignore', 'pipe', 'pipe'],
     });
     let out = '';
     child.stdout.on('data', (value) => { out += value; });
