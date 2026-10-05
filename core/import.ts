@@ -12,6 +12,7 @@
  * Not atomic across rows by design: the per-row services each own their transaction, and a
  * day-one migration wants maximum rows in, not all-or-nothing. The dry run is the gate.
  */
+import { publicErrorMessage } from '@/lib/public-error';
 import { withTenant, type SessionContext } from '../db/client';
 import {
   company,
@@ -1161,7 +1162,7 @@ export async function commitEmployeeImport(
       }
       imported++;
     } catch (e) {
-      failed.push({ rowNum: row.result.rowNum, email: row.result.email, message: (e as Error).message });
+      failed.push({ rowNum: row.result.rowNum, email: row.result.email, message: publicErrorMessage(e) });
     }
   }
 
@@ -1198,7 +1199,7 @@ export async function commitEmployeeImport(
       superiorFailed.push({
         rowNum: row.result.rowNum,
         email: row.result.email,
-        message: (e as Error).message,
+        message: publicErrorMessage(e),
       });
     }
   }

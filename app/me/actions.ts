@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { plannedOvertimeMinutes } from '@/lib/overtime-duration';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -512,7 +513,7 @@ export async function localizeLeaveError(
   // approved). The DB trigger's own message stays English (defense-in-depth, documented in ADR-0069) — only
   // this friendly UX pre-check is translated.
   if (e instanceof LeaveBalanceFrozenError) return t('balanceFrozenForEncashment');
-  return (e as Error).message;
+  return publicErrorMessage(e);
 }
 
 /**
@@ -590,7 +591,7 @@ export async function myRequestCorrection(formData: FormData) {
       });
     }
   } catch (e) {
-    redirect(`${REQUESTS_PAGE}?section=${section}&error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${REQUESTS_PAGE}?section=${section}&error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(REQUESTS_PAGE);
   redirect(`${REQUESTS_PAGE}?section=${section}&toast=Attendance+request+submitted`);
@@ -612,7 +613,7 @@ export async function myCancelAttendanceRequest(formData: FormData) {
   try {
     await cancelOwnAttendanceCorrection(s, { correctionId: String(formData.get('correctionId')) });
   } catch (e) {
-    redirect(`${REQUEST_STATUS_PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${REQUEST_STATUS_PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(REQUEST_STATUS_PAGE);
   redirect(`${REQUEST_STATUS_PAGE}?toast=Attendance+request+withdrawn`);
@@ -665,7 +666,7 @@ async function localizeOvertimeRequestError(e: unknown): Promise<string> {
       ? t('otAlreadyCountedForDate', { date: e.date })
       : t('otPlanApprovedNotCounted', { date: e.date });
   }
-  return (e as Error).message;
+  return publicErrorMessage(e);
 }
 
 // R45 3707cba9 — "Overtime Request": OT-only, reusing the proven correction engine (requestedOtMinutes set,
@@ -793,7 +794,7 @@ export async function myUpdateContact(formData: FormData) {
       emergencyContactAddress: String(formData.get('emergencyContactAddress') ?? ''),
     });
   } catch (e) {
-    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/me?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/me');
   redirect('/me?toast=Profile+updated');
@@ -827,7 +828,7 @@ export async function myRequestProfileChange(formData: FormData) {
   try {
     await requestProfileChange(s, { employmentId, proposed });
   } catch (e) {
-    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/me?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/me');
   redirect('/me?toast=Change+requested+for+approval');
@@ -921,7 +922,7 @@ export async function myWithdrawResignation(formData: FormData) {
   try {
     await withdrawResignation(s, { requestId });
   } catch (e) {
-    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/me?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/me');
   redirect('/me?toast=Resignation+withdrawn');
@@ -956,7 +957,7 @@ async function localizeClockError(e: unknown): Promise<string> {
   if (e instanceof GeolocationRequiredError) return t('locationRequired');
   // 5249d43f — points the employee at the Clock in/out page, where device registration lives.
   if (e instanceof DeviceNotRegisteredError) return t('deviceNotRegistered');
-  return (e as Error).message;
+  return publicErrorMessage(e);
 }
 
 export async function myCheckIn(_formData: FormData) {
@@ -999,7 +1000,7 @@ export async function myCreateGoal(formData: FormData) {
       weight: weightRaw != null ? Number(weightRaw) : null,
     });
   } catch (e) {
-    redirect(`${PERFORMANCE_PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PERFORMANCE_PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(PERFORMANCE_PAGE);
   redirect(`${PERFORMANCE_PAGE}?toast=Goal+added`);
@@ -1015,7 +1016,7 @@ export async function myUpdateGoalProgress(formData: FormData) {
       status: String(formData.get('status')) as GoalStatus,
     });
   } catch (e) {
-    redirect(`${PERFORMANCE_PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PERFORMANCE_PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(PERFORMANCE_PAGE);
   redirect(`${PERFORMANCE_PAGE}?toast=Goal+updated`);
@@ -1031,7 +1032,7 @@ export async function mySubmitPeerFeedback(formData: FormData) {
       named: formData.get('named') === 'on',
     });
   } catch (e) {
-    redirect(`${PERFORMANCE_PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PERFORMANCE_PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(PERFORMANCE_PAGE);
   redirect(`${PERFORMANCE_PAGE}?toast=Feedback+submitted`);
@@ -1042,7 +1043,7 @@ export async function myDeclinePeerFeedback(formData: FormData) {
   try {
     await declinePeerFeedback(s, { requestId: String(formData.get('requestId')) });
   } catch (e) {
-    redirect(`${PERFORMANCE_PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PERFORMANCE_PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(PERFORMANCE_PAGE);
   redirect(`${PERFORMANCE_PAGE}?toast=Declined`);
@@ -1058,7 +1059,7 @@ export async function myEditGoal(formData: FormData) {
       description: strOrUndef(formData.get('description')) ?? '',
     });
   } catch (e) {
-    redirect(`${PERFORMANCE_PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PERFORMANCE_PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(PERFORMANCE_PAGE);
   redirect(`${PERFORMANCE_PAGE}?toast=Goal+updated`);

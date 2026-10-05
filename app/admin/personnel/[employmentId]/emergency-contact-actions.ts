@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
@@ -22,7 +23,7 @@ const back = (employmentId: string, qs: string, formData: FormData) => {
 };
 
 const errorMsg = (e: unknown): string =>
-  e instanceof EmergencyContactValidationError ? e.message : (e as Error).message;
+  e instanceof EmergencyContactValidationError ? e.message : publicErrorMessage(e);
 
 // Every field is always present on the (single-layout) contact form, so present-but-blank ⇒ null (clear).
 const str = (formData: FormData, key: string): string | null => {

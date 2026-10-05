@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -100,7 +101,7 @@ const txnErrorKey = (e: unknown): string =>
                         ? 'txnNotFound'
                         : e instanceof BatchNotDraftError
                           ? 'notDraft'
-                          : (e as Error).message;
+                          : publicErrorMessage(e);
 
 /**
  * r256 — THE ONE QUESTION THE SCREEN ASKS, as data.

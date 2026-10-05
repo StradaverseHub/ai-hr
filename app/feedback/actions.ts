@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -21,7 +22,7 @@ import type { FeedbackCategory } from '@/db/schema';
 
 const BASE = '/feedback';
 const fail = (e: unknown, path: string = BASE): never =>
-  redirect(`${path}?error=${encodeURIComponent((e as Error).message)}`);
+  redirect(`${path}?error=${encodeURIComponent(publicErrorMessage(e))}`);
 
 export async function submitFeedbackAction(formData: FormData) {
   const s = await getSession();

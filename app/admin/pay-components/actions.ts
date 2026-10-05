@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -34,7 +35,7 @@ const PAGE = '/admin/pay-components';
 // try/catch: a back() inside a try is caught, re-thrown through fail(e), and toasts the raw redirect
 // sentinel instead of the intended message (the pre-existing bug this file used to carry).
 const back = (toast: string) => redirect(`${PAGE}?toast=${encodeURIComponent(toast)}`);
-const fail = (e: unknown) => redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+const fail = (e: unknown) => redirect(`${PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
 
 /** Parse the serialised rule from the form's hidden `rule` field. Empty ⇒ null (fixed/legacy). Structurally
  *  invalid JSON ⇒ null (the service revalidates anyway; this is a tolerant parse). */
@@ -122,7 +123,7 @@ async function messageOf(e: unknown, t: Awaited<ReturnType<typeof getTranslation
   if (e instanceof PayComponentStatutoryConfigError) {
     return t(`errorStatutory_${e.code}`);
   }
-  return (e as Error).message;
+  return publicErrorMessage(e);
 }
 
 /**
@@ -242,7 +243,7 @@ export async function draftPayRuleAction(p: {
     if (e instanceof PayRuleDraftError) {
       return { error: e.reason === 'not_configured' ? t('assistUnconfigured') : t('assistFailed') };
     }
-    return { error: (e as Error).message };
+    return { error: publicErrorMessage(e) };
   }
 }
 
@@ -354,7 +355,7 @@ export async function deleteComponentAction(formData: FormData) {
   try {
     await deletePayComponent(s, String(formData.get('id')));
   } catch (e) {
-    const msg = e instanceof PayComponentInUseError ? t('errorInUse', { refs: e.refs }) : (e as Error).message;
+    const msg = e instanceof PayComponentInUseError ? t('errorInUse', { refs: e.refs }) : publicErrorMessage(e);
     return fail(new Error(msg));
   }
   revalidatePath(PAGE);

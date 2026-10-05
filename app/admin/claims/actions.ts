@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -18,7 +19,7 @@ import {
 } from '@/core/claims';
 
 const BASE = '/admin/claims';
-const fail = (e: unknown) => redirect(`${BASE}?error=${encodeURIComponent((e as Error).message)}`);
+const fail = (e: unknown) => redirect(`${BASE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
 const numOrNull = (v: FormDataEntryValue | null): number | null => {
   const s = String(v ?? '').trim();
   return s === '' ? null : Number(s);

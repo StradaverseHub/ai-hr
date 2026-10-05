@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
@@ -30,7 +31,7 @@ export async function setAgentSwitchAction(formData: FormData) {
   } catch (e) {
     // A typed refusal says WHICH condition failed; anything else is reported as itself rather than
     // flattened into a generic failure the operator cannot act on.
-    const msg = e instanceof TenantSettingError ? t(`refused.${e.reason}`) : (e as Error).message;
+    const msg = e instanceof TenantSettingError ? t(`refused.${e.reason}`) : publicErrorMessage(e);
     redirect(`${PAGE}?error=${encodeURIComponent(msg)}`);
   }
 

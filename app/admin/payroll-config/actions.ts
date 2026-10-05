@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -40,7 +41,7 @@ async function localise(e: unknown): Promise<string> {
   if (e instanceof InvalidDefaultPolicyError) return t('errors.invalidDefaultPolicy');
   // Anything else (an RLS refusal, a driver error) has no user-facing text of its own; the sibling falls
   // back the same way rather than inventing a message for a fault we have not classified.
-  return (e as Error).message;
+  return publicErrorMessage(e);
 }
 
 /** ToastFromQuery renders the raw string, so pass already-localised toast text (not a code). */

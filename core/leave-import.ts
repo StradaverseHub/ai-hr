@@ -42,6 +42,7 @@
  */
 // `and` and `sql` left with the 1-January marker query b2713800 removed (the marker set is now derived in
 // memory from the one ledger read). `inArray` / `isNull` were already unused before it.
+import { publicErrorMessage } from '@/lib/public-error';
 import { eq, inArray, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext } from '../db/client';
@@ -388,7 +389,7 @@ export async function commitLeaveImport(
       imported += 1;
     } catch (e) {
       // RLS WITH CHECK (can_see_employment / company scope) or any per-row DB error: record + continue.
-      failed.push({ rowNum: r.result.rowNum, employeeRef: r.result.employeeRef, message: (e as Error).message });
+      failed.push({ rowNum: r.result.rowNum, employeeRef: r.result.employeeRef, message: publicErrorMessage(e) });
     }
   }
 

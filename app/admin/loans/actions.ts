@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
@@ -33,7 +34,7 @@ const returnEmploymentId = (formData: FormData): string | null =>
 const listHref = (back: string | null, qs: string) =>
   `${BASE}?${back ? `employmentId=${encodeURIComponent(back)}&` : ''}${qs}`;
 const fail = (e: unknown, back: string | null = null) =>
-  redirect(listHref(back, `error=${encodeURIComponent((e as Error).message)}`));
+  redirect(listHref(back, `error=${encodeURIComponent(publicErrorMessage(e))}`));
 const ok = (msg: string, back: string | null = null) =>
   redirect(listHref(back, `toast=${encodeURIComponent(msg)}`));
 

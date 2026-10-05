@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -1072,7 +1073,7 @@ export async function previewEarnedAccrualAction(
     });
     return { rows: breakdown, asOf };
   } catch (e) {
-    return { error: (e as Error).message };
+    return { error: publicErrorMessage(e) };
   }
 }
 
@@ -1097,7 +1098,7 @@ export async function runEarnedAccrualAction(
     revalidatePath(ENTITLEMENTS);
     return { granted, forfeits };
   } catch (e) {
-    return { error: (e as Error).message };
+    return { error: publicErrorMessage(e) };
   }
 }
 
@@ -1291,7 +1292,7 @@ export async function saveHolidayAction(
       rowId = created.id;
     }
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: publicErrorMessage(e) };
   }
   revalidatePath(HOLIDAYS);
   // Editing a DATE moves the row: the master is ordered by date, so a corrected holiday can leave the page
@@ -1712,7 +1713,7 @@ export async function saveCompanyGeneralTabAction(formData: FormData): Promise<T
       saved.push(section);
     } catch (e) {
       if (saved.length > 0) revalidateCompany(companyId);
-      return { ok: false, saved, failedSection: section, error: (e as Error).message };
+      return { ok: false, saved, failedSection: section, error: publicErrorMessage(e) };
     }
   }
 
@@ -2431,7 +2432,7 @@ export async function setToilPolicyAction(fd: FormData) {
     });
     warning = r.premiumEquivalentWarning;
   } catch (e) {
-    redirect(back(`error=${encodeURIComponent((e as Error).message)}`));
+    redirect(back(`error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(LEAVE_REPLACEMENT);
   // The warning has been produced since Phase-B #14 but the old target never read the param, so it was
@@ -2566,7 +2567,7 @@ async function locationRefusalMessage(e: unknown): Promise<string> {
       ? t('branchTaken', { branch: e.branch, code: e.conflictCode })
       : t('branchTakenNoCode', { branch: e.branch });
   }
-  return (e as Error).message;
+  return publicErrorMessage(e);
 }
 
 /** Refused: back onto the screen the form was on, the reason beside the fields, everything typed echoed. */
@@ -2640,7 +2641,7 @@ export async function archiveLocationAction(fd: FormData) {
   try {
     await archiveLocation(user, { locationId: String(fd.get('locationId') ?? '') });
   } catch (e) {
-    failLocationTo(returnTo, (e as Error).message);
+    failLocationTo(returnTo, publicErrorMessage(e));
   }
   revalidatePath(LOCATIONS);
   redirect(returnTo);
@@ -2652,7 +2653,7 @@ export async function restoreLocationAction(fd: FormData) {
   try {
     await restoreLocation(user, { locationId: String(fd.get('locationId') ?? '') });
   } catch (e) {
-    failLocationTo(returnTo, (e as Error).message);
+    failLocationTo(returnTo, publicErrorMessage(e));
   }
   revalidatePath(LOCATIONS);
   redirect(returnTo);
@@ -2700,7 +2701,7 @@ async function clockingRefusalMessage(e: unknown): Promise<string> {
     const t = await getTranslations('admin.locations');
     return t('clockingNameTaken', { name: e.siteName });
   }
-  return (e as Error).message;
+  return publicErrorMessage(e);
 }
 
 /** Refused: back onto the page the form was on, the reason beside the fields, everything typed echoed. */

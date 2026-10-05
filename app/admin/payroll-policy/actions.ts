@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -195,7 +196,7 @@ async function errorMessage(e: unknown): Promise<string> {
   if (e instanceof PolicyInUseError) return t('inUse');
   if (e instanceof DefaultPolicyInUseError) return t('defaultInUse');
   if (e instanceof PolicyCompanyMismatchError) return t('companyMismatch');
-  return (e as Error).message;
+  return publicErrorMessage(e);
 }
 
 /**

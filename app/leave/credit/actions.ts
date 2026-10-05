@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -101,7 +102,7 @@ export async function submitLeaveCreditRequestAction(formData: FormData) {
       today: todayInKualaLumpur(),
     });
   } catch (e) {
-    redirect(`${PAGE}?error=${encodeURIComponent(e instanceof Error ? e.message : String(e))}`);
+    redirect(`${PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(PAGE);
   // The My Absence card shows the pending figure, so it goes stale on every submission too.

@@ -18,6 +18,7 @@
  * addresses were repointed at this page in the same commit.
  */
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { requireAdmin } from '@/lib/authz';
@@ -65,7 +66,7 @@ export async function grantLeaveCreditAction(formData: FormData) {
       today: todayInKualaLumpur(),
     });
   } catch (e) {
-    redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(PAGE);
   const q = new URLSearchParams({ granted: String(granted.daysCredited) });
@@ -87,7 +88,7 @@ export async function reverseLeaveCreditAction(formData: FormData) {
       today: todayInKualaLumpur(),
     });
   } catch (e) {
-    redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(PAGE);
   const q = new URLSearchParams({ reversed: String(out.daysReversed) });

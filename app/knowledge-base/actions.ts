@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -49,7 +50,7 @@ export async function createArticleAction(formData: FormData) {
     });
     id = res.id;
   } catch (e) {
-    redirect(`/knowledge-base?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/knowledge-base?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/knowledge-base');
   redirect(`/knowledge-base/${id}?toast=Article+created`);
@@ -73,7 +74,7 @@ export async function uploadFileAction(formData: FormData) {
     });
     id = res.id;
   } catch (e) {
-    redirect(`/knowledge-base?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/knowledge-base?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/knowledge-base');
   redirect(`/knowledge-base/${id}?toast=File+uploaded`);
@@ -103,7 +104,7 @@ export async function updateDocumentAction(formData: FormData) {
       audience: audienceOf(formData.get('audience')),
     });
   } catch (e) {
-    redirect(`/knowledge-base/${id}?edit=1&error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/knowledge-base/${id}?edit=1&error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/knowledge-base/${id}`);
   revalidatePath('/knowledge-base');
@@ -116,7 +117,7 @@ export async function archiveDocumentAction(formData: FormData) {
   try {
     await archiveDocument(s, id);
   } catch (e) {
-    redirect(`/knowledge-base/${id}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/knowledge-base/${id}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/knowledge-base');
   redirect('/knowledge-base?toast=Archived');
@@ -128,7 +129,7 @@ export async function restoreDocumentAction(formData: FormData) {
   try {
     await restoreDocument(s, id);
   } catch (e) {
-    redirect(`/knowledge-base/${id}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/knowledge-base/${id}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/knowledge-base/${id}`);
   revalidatePath('/knowledge-base');

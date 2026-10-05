@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
@@ -23,7 +24,7 @@ export async function unfreezeEncashmentAction(formData: FormData) {
       reason: String(formData.get('reason') ?? ''),
     });
   } catch (e) {
-    back(employmentId, `encashmentError=${encodeURIComponent((e as Error).message)}`, formData);
+    back(employmentId, `encashmentError=${encodeURIComponent(publicErrorMessage(e))}`, formData);
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   back(employmentId, 'toast=Saved', formData);
@@ -39,7 +40,7 @@ export async function adjustEncashmentAction(formData: FormData) {
       reason: String(formData.get('reason') ?? ''),
     });
   } catch (e) {
-    back(employmentId, `encashmentError=${encodeURIComponent((e as Error).message)}`, formData);
+    back(employmentId, `encashmentError=${encodeURIComponent(publicErrorMessage(e))}`, formData);
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   back(employmentId, 'toast=Saved', formData);

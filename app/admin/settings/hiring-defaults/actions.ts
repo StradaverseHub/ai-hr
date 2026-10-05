@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
@@ -30,7 +31,7 @@ export async function saveHiringDefaultsAction(formData: FormData) {
       reviewReminderDays: String(formData.get('reviewReminderDays') ?? '').trim() || null,
     });
   } catch (e) {
-    redirect(`${PAGE}/${companyId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PAGE}/${companyId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(PAGE);
   revalidatePath(`${PAGE}/${companyId}`);

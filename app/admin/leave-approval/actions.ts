@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
@@ -40,7 +41,7 @@ export async function saveLeaveEscalationPolicyAction(formData: FormData) {
   try {
     await setLeaveEscalationPolicy(s, { companyId, enabled, escalateAfterDays, target, targetRole, reason });
   } catch (e) {
-    redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   redirect(`${PAGE}?toast=${encodeURIComponent('Escalation settings saved')}`);
 }
@@ -128,7 +129,7 @@ export async function duplicateApprovalTemplateAction(formData: FormData) {
   try {
     await duplicateApprovalTemplate(s, templateId);
   } catch (e) {
-    redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   redirect(`${PAGE}?toast=${encodeURIComponent('Template duplicated')}`);
 }
@@ -141,7 +142,7 @@ export async function setApprovalTemplateActiveAction(formData: FormData) {
   try {
     await setApprovalTemplateActive(s, templateId, active);
   } catch (e) {
-    redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   redirect(`${PAGE}?toast=${encodeURIComponent(active ? 'Template activated' : 'Template deactivated')}`);
 }
@@ -153,7 +154,7 @@ export async function deleteApprovalTemplateAction(formData: FormData) {
   try {
     await deleteApprovalTemplate(s, templateId);
   } catch (e) {
-    redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   redirect(`${PAGE}?toast=${encodeURIComponent('Template deleted')}`);
 }
@@ -165,7 +166,7 @@ export async function setTenantDefaultTemplateAction(formData: FormData) {
   try {
     await setTenantDefaultTemplate(s, templateId);
   } catch (e) {
-    redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   redirect(`${PAGE}?toast=${encodeURIComponent(templateId ? 'Default flow set' : 'Default flow cleared')}`);
 }
@@ -188,7 +189,7 @@ export async function assignApprovalTemplateAction(formData: FormData) {
   try {
     await assignApprovalTemplate(s, { templateId, companyIds, leaveTypeIds, eligibilityRuleIds, minDays, maxDays });
   } catch (e) {
-    redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   redirect(`${PAGE}?toast=${encodeURIComponent('Template assigned')}`);
 }
@@ -201,7 +202,7 @@ export async function unassignApprovalTemplateAction(formData: FormData) {
   try {
     await unassignApprovalTemplate(s, ruleId, companyId);
   } catch (e) {
-    redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   redirect(`${PAGE}?toast=${encodeURIComponent('Assignment removed')}`);
 }

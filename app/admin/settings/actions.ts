@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -54,7 +55,7 @@ const SYSTEM_LABELS = '/admin/settings/system-labels';
 const REVALIDATE_ALSO = ['/admin/organization', '/admin/personnel', '/admin/personnel/import'];
 
 function fail(path: string, e: unknown): never {
-  redirect(`${path}?error=${encodeURIComponent((e as Error).message)}`);
+  redirect(`${path}?error=${encodeURIComponent(publicErrorMessage(e))}`);
 }
 function ok(path: string): never {
   revalidatePath(path);
@@ -281,7 +282,7 @@ function revalidateLabels() {
  * only text on this path actually written for a reader.
  */
 function labelFailureMessage(e: unknown): string {
-  return labelFailureCode(e) ?? (isDatabaseError(e) ? 'unexpectedError' : (e as Error).message);
+  return labelFailureCode(e) ?? (isDatabaseError(e) ? 'unexpectedError' : publicErrorMessage(e));
 }
 
 export type GridSaveResult =
@@ -496,7 +497,7 @@ export async function saveJobGradesGridAction(payload: {
         rowErrors.push({ key: c.key, field: 'code', message: e.message, restoreArchivedId: e.archivedId });
         continue;
       }
-      rowErrors.push({ key: c.key, field: fieldOfGradeError(e, c.name), message: (e as Error).message });
+      rowErrors.push({ key: c.key, field: fieldOfGradeError(e, c.name), message: publicErrorMessage(e) });
     }
   }
 
@@ -515,7 +516,7 @@ export async function saveJobGradesGridAction(payload: {
       }
       updated += 1;
     } catch (e) {
-      rowErrors.push({ key: u.key, field: fieldOfGradeError(e, u.name), message: (e as Error).message });
+      rowErrors.push({ key: u.key, field: fieldOfGradeError(e, u.name), message: publicErrorMessage(e) });
     }
   }
 

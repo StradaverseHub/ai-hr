@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { requireAdmin } from '@/lib/authz';
 import { erasePersonPii, type ErasureReport, type ErasureScope } from '@/core/pdpa';
 
@@ -26,6 +27,6 @@ export async function erasePersonPiiAction(input: {
     const report = await erasePersonPii(s, { subjectEmploymentId: employmentId, scope: input.scope as ErasureScope, reason, requestRef });
     return { ok: true, report };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: publicErrorMessage(e) };
   }
 }

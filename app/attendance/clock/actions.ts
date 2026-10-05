@@ -6,6 +6,7 @@
  * registered-device gate), so behaviour is identical everywhere. The employment is ALWAYS resolved from
  * the session, never a form field (ADR-0015).
  */
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -70,7 +71,7 @@ async function localizeClockError(e: unknown): Promise<string> {
       : t('outsideGeofence');
   }
   if (e instanceof GeolocationRequiredError) return t('locationRequired');
-  return (e as Error).message;
+  return publicErrorMessage(e);
 }
 
 export async function clockInAction(_formData: FormData) {
@@ -95,6 +96,6 @@ export async function registerDeviceAction(p: { label: string }): Promise<{ devi
     revalidatePath(PAGE);
     return { deviceToken };
   } catch (e) {
-    return { error: (e as Error).message };
+    return { error: publicErrorMessage(e) };
   }
 }

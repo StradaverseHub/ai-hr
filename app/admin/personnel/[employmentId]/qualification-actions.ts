@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
@@ -21,7 +22,7 @@ const back = (employmentId: string, qs: string, formData: FormData) => {
 };
 
 const errorMsg = (e: unknown): string =>
-  e instanceof QualificationValidationError ? e.message : (e as Error).message;
+  e instanceof QualificationValidationError ? e.message : publicErrorMessage(e);
 
 const str = (v: FormDataEntryValue | null): string | undefined => {
   const s = (v as string) ?? '';

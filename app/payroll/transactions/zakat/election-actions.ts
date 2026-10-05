@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
@@ -110,7 +111,7 @@ export async function saveZakatElectionAction(formData: FormData) {
       zakatEffectiveTo: (formData.get('zakatEffectiveTo') as string) || null,
     });
   } catch (e) {
-    redirect(backToForm(`error=${encodeURIComponent((e as Error).message)}`));
+    redirect(backToForm(`error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath('/payroll/transactions/zakat');
   redirect(back('toast=saved'));

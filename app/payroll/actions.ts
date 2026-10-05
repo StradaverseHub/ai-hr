@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { payrollNonCashErrorMessage } from '@/lib/payroll-noncash-error';
 import { payrollTaxSchemeErrorMessage } from '@/lib/payroll-tax-scheme-error';
@@ -179,7 +180,7 @@ export async function setPayrollInputAction(formData: FormData) {
       zakat: Number(formData.get('zakat')) || 0,
     });
   } catch (e) {
-    redirect(withQueryParam(back, 'error', (e as Error).message));
+    redirect(withQueryParam(back, 'error', publicErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}`);
   redirect(withQueryParam(back, 'toast', 'Saved'));
@@ -194,7 +195,7 @@ export async function prefillOvertimeAction(formData: FormData) {
   try {
     ({ applied, ineligible } = await prefillOvertimeFromAttendance(s, { batchId }));
   } catch (e) {
-    redirect(withQueryParam(back, 'error', (e as Error).message));
+    redirect(withQueryParam(back, 'error', publicErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note =
@@ -217,7 +218,7 @@ export async function prefillShiftDifferentialAction(formData: FormData) {
     applied = r.applied;
     gated = 'gated' in r && r.gated === true;
   } catch (e) {
-    redirect(withQueryParam(back, 'error', (e as Error).message));
+    redirect(withQueryParam(back, 'error', publicErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note = gated
@@ -241,7 +242,7 @@ export async function prefillClaimsAction(formData: FormData) {
     // what claims calls `claims` — the toast copy below is unchanged.
     ({ applied, sourceCount: claims, total } = await payrollInputContributorById('claims')!.contribute(s, { batchId }));
   } catch (e) {
-    redirect(withQueryParam(back, 'error', (e as Error).message));
+    redirect(withQueryParam(back, 'error', publicErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note =
@@ -264,7 +265,7 @@ export async function prefillLoansAction(formData: FormData) {
   try {
     ({ loans, total } = await prefillLoansForBatch(s, { batchId }));
   } catch (e) {
-    redirect(withQueryParam(back, 'error', (e as Error).message));
+    redirect(withQueryParam(back, 'error', publicErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note =
@@ -285,7 +286,7 @@ export async function prefillTp1Action(formData: FormData) {
   try {
     ({ applied, skipped } = await prefillTp1FromSelfRelief(s, { batchId }));
   } catch (e) {
-    redirect(withQueryParam(back, 'error', (e as Error).message));
+    redirect(withQueryParam(back, 'error', publicErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note =
@@ -307,7 +308,7 @@ export async function prefillFixedZakatAction(formData: FormData) {
   try {
     ({ applied } = await prefillFixedZakat(s, { batchId }));
   } catch (e) {
-    redirect(withQueryParam(back, 'error', (e as Error).message));
+    redirect(withQueryParam(back, 'error', publicErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note =
@@ -333,7 +334,7 @@ export async function transferAllowancesAction(formData: FormData) {
   try {
     ({ applied, ineligible, reversed, gated } = await transferAllowancesToBatch(s, { batchId, policyId }));
   } catch (e) {
-    redirect(withQueryParam(back, 'error', (e as Error).message));
+    redirect(withQueryParam(back, 'error', publicErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}`);
   const note = gated
@@ -449,7 +450,7 @@ export async function resetAction(formData: FormData) {
             ? t('resetReasonRequired')
             : e instanceof BatchNotResettableError
               ? t('resetOnlyProcessed')
-              : (e as Error).message;
+              : publicErrorMessage(e);
     if (onResetScreen) {
       const q = new URLSearchParams({ error: msg });
       // Only when it is not the default, so an unfiltered visit keeps a clean URL — the Remove screen's
@@ -600,7 +601,7 @@ export async function removeEmployeePayrollAction(formData: FormData) {
                     ? t('removeNotOnRun')
                     : e instanceof BatchNotResettableError
                       ? t('removeNotProcessed')
-                      : (e as Error).message;
+                      : publicErrorMessage(e);
     redirect(to({ error: msg }));
   }
   revalidatePath('/payroll');
@@ -636,7 +637,7 @@ export async function unlockAction(formData: FormData) {
           ? t('unlockReasonRequired')
           : e instanceof BatchNotUnlockableError
             ? t('unlockNotClosed')
-            : (e as Error).message;
+            : publicErrorMessage(e);
     redirect(withQueryParam(home, 'error', msg));
   }
   revalidatePath(`/payroll/${batchId}`);
@@ -693,7 +694,7 @@ export async function closeAction(formData: FormData) {
               ? ta('closeBlockedBySwing', { movement: e.movementPct, threshold: e.thresholdPct })
               : e instanceof PayrollPermissionDeniedError
                 ? t('closePermissionDenied')
-                : (e as Error).message;
+                : publicErrorMessage(e);
     redirect(withQueryParam(home, 'error', msg));
   }
   revalidatePath(`/payroll/${batchId}`);
@@ -720,7 +721,7 @@ export async function evaluateAnomaliesAction(formData: FormData) {
     const run = await evaluateBatchAnomalies(s, { batchId });
     summary = { block: run.block, review: run.review, autoClear: run.autoClear };
   } catch (e) {
-    redirect(withQueryParam(home, 'error', (e as Error).message));
+    redirect(withQueryParam(home, 'error', publicErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}/anomalies`);
   revalidatePath(`/payroll/${batchId}`);
@@ -753,7 +754,7 @@ export async function narrateAnomalyAction(formData: FormData) {
   try {
     outcome = await narrateVerdict(s, { verdictId });
   } catch (e) {
-    redirect(withQueryParam(home, 'error', (e as Error).message));
+    redirect(withQueryParam(home, 'error', publicErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}/anomalies`);
   // Three outcomes, three different sentences. "Nothing happened" is never rendered as success.
@@ -785,7 +786,7 @@ export async function proposeHypothesesAction(formData: FormData) {
   try {
     run = await proposeHypotheses(s, { batchId });
   } catch (e) {
-    redirect(withQueryParam(home, 'error', (e as Error).message));
+    redirect(withQueryParam(home, 'error', publicErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}/anomalies`);
   revalidatePath(`/payroll/${batchId}`);
@@ -827,7 +828,7 @@ export async function resolveAnomalyAction(formData: FormData) {
   try {
     await resolveAnomalyVerdict(s, { verdictId, resolution, note: note || undefined });
   } catch (e) {
-    redirect(withQueryParam(home, 'error', (e as Error).message));
+    redirect(withQueryParam(home, 'error', publicErrorMessage(e)));
   }
   revalidatePath(`/payroll/${batchId}/anomalies`);
   revalidatePath(`/payroll/${batchId}`);

@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -126,7 +127,7 @@ export async function setReviewEndDateAction(formData: FormData) {
   try {
     await setReviewEndDate(s, { employmentId, reviewType, endDate: String(formData.get('endDate') || '') || null });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -138,7 +139,7 @@ export async function startReviewAction(formData: FormData) {
   try {
     await startReview(s, { employmentId });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Review started`));
@@ -169,7 +170,7 @@ export async function uploadReviewDocumentAction(formData: FormData) {
     if (!mimeType) throw new Error('Only PDF, JPG, or PNG files are allowed');
     await uploadReviewDocument(s, { reviewId, kind: 'signed_letter', fileName: file.name, mimeType, content });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Document uploaded`));
@@ -193,7 +194,7 @@ export async function saveReviewLetterAction(formData: FormData) {
       content: Buffer.from(letter.bytes),
     });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Letter saved`));
@@ -224,7 +225,7 @@ export async function uploadEmployeeDocumentAction(formData: FormData) {
       content,
     });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Document uploaded`));
@@ -243,7 +244,7 @@ export async function updateEmployeeDocumentMetaAction(formData: FormData) {
       description: String(formData.get('description') ?? '') || null,
     });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Document updated`));
@@ -264,7 +265,7 @@ export async function replaceEmployeeDocumentAction(formData: FormData) {
       content,
     });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Attachment replaced`));
@@ -276,7 +277,7 @@ export async function deleteEmployeeDocumentAction(formData: FormData) {
   try {
     await deleteEmployeeDocument(s, { documentId: String(formData.get('documentId')) });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Document deleted`));
@@ -332,7 +333,7 @@ export async function setEmploymentComponentAction(formData: FormData) {
                   ? t('payComponentMidMonth', { code: e.code, nextFirst: e.nextFirstOfMonth })
                   : e instanceof FixedTransactionPaidError
                     ? t('payComponentClosedRun', { code: e.code, period: e.payPeriod })
-                    : (e as Error).message;
+                    : publicErrorMessage(e);
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(msg)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
@@ -398,7 +399,7 @@ export async function setLocationAction(formData: FormData) {
   } catch (e) {
     // Choosing the location the employee already has is not an error — nothing to record, nothing to say.
     if (!(e instanceof MovementNoChangeError)) {
-      redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+      redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
     }
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
@@ -432,7 +433,7 @@ export async function setDefaultShiftAction(formData: FormData) {
     });
   } catch (e) {
     const te = await getTranslations('people.detail');
-    let message = (e as Error).message;
+    let message = publicErrorMessage(e);
     if (e instanceof ShiftBackInsertError) message = te('shiftBackInsertRefused', { date: e.lastEffectiveFrom });
     else if (e instanceof ShiftEffectiveBeforeStartError) message = te('shiftEffectiveBeforeStart', { date: e.startDate });
     else if (e instanceof InvalidEffectiveDateError) message = te('shiftEffectiveDateInvalid');
@@ -654,7 +655,7 @@ export async function reverseMovementEventAction(formData: FormData) {
     // and the row falls back to the posting date under the screen's one "Took effect" heading.
     await recomputeEntitlement(s, employmentId, 'movement_recorded', { gradeBefore });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -698,7 +699,7 @@ export async function setDirectSuperiorAction(formData: FormData) {
       });
     }
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -719,7 +720,7 @@ export async function addDelegationAction(formData: FormData) {
       validTo: String(formData.get('validTo') ?? '').trim() || null,
     });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -735,7 +736,7 @@ export async function endDelegationAction(formData: FormData) {
       endDate: String(formData.get('endDate')),
     });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -792,7 +793,7 @@ async function compensationErrorMessage(e: unknown): Promise<string> {
     const t = await getTranslations('people.detail');
     return t('salaryNotANumberError');
   }
-  return (e as Error).message;
+  return publicErrorMessage(e);
 }
 
 /* r78c — why the Basic Salary screen is NOT routed through the movement recorder, unlike Work Location.
@@ -918,7 +919,7 @@ export async function supersedeCompensationAction(formData: FormData) {
       employmentId,
     });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -989,7 +990,7 @@ export async function setPersonAction(formData: FormData) {
   try {
     await applyPersonSection(s, formData);
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -1022,7 +1023,7 @@ export async function setEmploymentHolidayCalendarAction(formData: FormData) {
   try {
     await applyHolidayCalendarSection(s, formData);
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -1097,7 +1098,7 @@ export async function saveCardIdFieldAction(formData: FormData) {
   try {
     await applyCardIdSection(s, formData);
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}`));
@@ -1109,7 +1110,7 @@ export async function setEmploymentScheduleGroupAction(formData: FormData) {
   try {
     await applyScheduleGroupSection(s, formData);
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -1190,7 +1191,7 @@ export async function setContactAddressAction(formData: FormData) {
   try {
     await applyContactAddressSection(s, formData);
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -1221,7 +1222,7 @@ export async function setComplianceFieldsAction(formData: FormData) {
   try {
     await applyComplianceSection(s, formData);
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -1318,7 +1319,7 @@ export async function setEmploymentInfoAction(formData: FormData) {
   try {
     await applyEmploymentInfoSection(s, formData);
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -1387,7 +1388,7 @@ export async function changeEmploymentCompanyAction(formData: FormData) {
     if (e instanceof CompanyLockedError) {
       redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(t('employmentInfo.companyLockedNote'))}`));
     }
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -1406,7 +1407,7 @@ export async function setEmploymentBlacklistAction(formData: FormData) {
   try {
     await setEmploymentBlacklist(s, { employmentId, blacklisted, reason });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -1443,7 +1444,7 @@ export async function setPaymentMethodAction(formData: FormData) {
   try {
     await applyPaymentMethodSection(s, formData);
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -1487,7 +1488,7 @@ export async function setPersonPhotoAction(formData: FormData) {
     }
     await setPersonPhoto(s, { personId, content, fileName: file.name, mimeType, sizeBytes: content.byteLength });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -1501,7 +1502,7 @@ export async function removePersonPhotoAction(formData: FormData) {
   try {
     await removePersonPhoto(s, { personId });
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -1652,7 +1653,7 @@ export async function setStatutoryAction(formData: FormData) {
   try {
     await applyStatutorySection(s, formData);
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -1685,7 +1686,7 @@ export async function setTp3Action(formData: FormData) {
   try {
     await applyTp3Section(s, formData);
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -1725,7 +1726,7 @@ export async function setBankAction(formData: FormData) {
   try {
     await applyBankSection(s, formData);
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -1774,7 +1775,7 @@ export async function setIcAction(formData: FormData) {
   try {
     await applyIcSection(s, formData);
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -1811,7 +1812,7 @@ export async function setPassportAction(formData: FormData) {
   try {
     await applyPassportSection(s, formData);
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -2010,7 +2011,7 @@ async function runTabSave(
     } catch (e) {
       // Best-effort revalidate for whatever DID commit before the failure, then report which card broke.
       if (saved.length > 0) revalidatePath(`/admin/personnel/${employmentId}`);
-      return { ok: false, saved, failedSection: section, error: (e as Error).message };
+      return { ok: false, saved, failedSection: section, error: publicErrorMessage(e) };
     }
   }
 
@@ -2123,7 +2124,7 @@ export async function setTaxAction(formData: FormData) {
   try {
     await applyTaxSection(s, formData);
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -2149,7 +2150,7 @@ export async function setOthersStatutoryAction(formData: FormData) {
   try {
     await applyOthersStatutorySection(s, formData);
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -2204,7 +2205,7 @@ export async function setEmployeeClockingLocationsAction(formData: FormData) {
   try {
     await applyClockingLocationsSection(s, formData);
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
@@ -2236,7 +2237,7 @@ export async function setGeofencingAction(formData: FormData) {
   try {
     await applyGeofencingSection(s, formData);
   } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));

@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -146,7 +147,7 @@ export async function createAttendanceRuleAction(fd: FormData) {
   } catch (e) {
     // 665de026 — back to Add Schedule, the page that raised it. It is the one refusal here that has no
     // record to return to: the group was never created.
-    redirect(`${scheduleGroupNewPath()}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${scheduleGroupNewPath()}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   // 870b79e2 — the group's shifts are written AFTER the rule exists, because shift.rule_id needs an id to
   // point at. A failure here surfaces on the new rule's OWN edit form: the rule was created, so sending
@@ -196,7 +197,7 @@ export async function copyAttendanceRuleAction(fd: FormData) {
   try {
     copied = await copyAttendanceRule(s, { ruleId: String(fd.get('ruleId') ?? '') });
   } catch (e) {
-    redirect(`${LIST}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${LIST}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(LIST);
   const t = await getTranslations('admin.scheduleConfig');
@@ -219,7 +220,7 @@ export async function setAttendanceRuleStatusAction(fd: FormData) {
       status: fd.get('status') === 'inactive' ? 'inactive' : 'active',
     });
   } catch (e) {
-    redirect(`${LIST}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${LIST}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(LIST);
   redirect(LIST);
@@ -230,7 +231,7 @@ export async function deleteAttendanceRuleAction(fd: FormData) {
   try {
     await deleteAttendanceRule(s, { ruleId: String(fd.get('ruleId') ?? '') });
   } catch (e) {
-    redirect(`${LIST}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${LIST}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(LIST);
   redirect(LIST);

@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
@@ -55,7 +56,7 @@ export async function saveTp1Action(formData: FormData) {
       tp1Deduction: num(formData.get('tp1Deduction')),
     });
   } catch (e) {
-    backTo('/payroll/transactions/tp1', batchId, `error=${encodeURIComponent((e as Error).message)}`);
+    backTo('/payroll/transactions/tp1', batchId, `error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/payroll/transactions/tp1');
   backTo('/payroll/transactions/tp1', batchId, 'toast=saved');
@@ -230,7 +231,7 @@ export async function adminApproveTp1(formData: FormData) {
   try {
     await approveTp1ForPerson(s, input);
   } catch (e) {
-    backToTp1(employmentId, assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
+    backToTp1(employmentId, assessmentYear, `error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/payroll/transactions/tp1');
   backToTp1(employmentId, assessmentYear, 'toast=TP1+approved');
@@ -241,7 +242,7 @@ export async function adminRejectTp1(formData: FormData) {
   try {
     await rejectTp1ForPerson(s, input);
   } catch (e) {
-    backToTp1(employmentId, assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
+    backToTp1(employmentId, assessmentYear, `error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/payroll/transactions/tp1');
   backToTp1(employmentId, assessmentYear, 'toast=TP1+rejected');
@@ -273,7 +274,7 @@ export async function adminDeleteTp1(formData: FormData) {
     if (status === 'draft') await discardTp1DraftForPerson(s, input);
     else await cancelTp1ForPerson(s, input);
   } catch (e) {
-    backToTp1(employmentId, assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
+    backToTp1(employmentId, assessmentYear, `error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/payroll/transactions/tp1');
   backToTp1(employmentId, assessmentYear, 'toast=TP1+record+deleted');
@@ -285,7 +286,7 @@ export async function adminDiscardTp1Draft(formData: FormData) {
   try {
     await discardTp1DraftForPerson(s, input);
   } catch (e) {
-    backToTp1(employmentId, assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
+    backToTp1(employmentId, assessmentYear, `error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/payroll/transactions/tp1');
   backToTp1(employmentId, assessmentYear, 'toast=Draft+discarded');
@@ -296,7 +297,7 @@ export async function adminCancelTp1(formData: FormData) {
   try {
     await cancelTp1ForPerson(s, input);
   } catch (e) {
-    backToTp1(employmentId, assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
+    backToTp1(employmentId, assessmentYear, `error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/payroll/transactions/tp1');
   backToTp1(employmentId, assessmentYear, 'toast=TP1+cancelled');

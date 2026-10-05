@@ -9,6 +9,7 @@
  * an empty id must degrade to the bare route) in a second place, the definitions live here — a plain
  * module, NOT 'use server' — and both actions files import them. Call sites are unchanged.
  */
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 // 15e5bd93 rev 4 (r372) — `import type { StatutoryAuthority }` STOOD HERE, for `failStatutoryBody`'s
@@ -91,7 +92,7 @@ export const ENTITLEMENT_TEMPLATES = '/admin/leave-config/entitlement-tables';
 export const SYSTEM_LABELS = '/admin/settings/system-labels';
 
 export function fail(path: string, e: unknown): never {
-  redirect(`${path}?error=${encodeURIComponent((e as Error).message)}`);
+  redirect(`${path}?error=${encodeURIComponent(publicErrorMessage(e))}`);
 }
 
 export function ok(path: string): never {
@@ -138,7 +139,7 @@ export function okEntitlements(msg: string, leaveTypeId: string): never {
  */
 export function failEntitlements(e: unknown, leaveTypeId: string): never {
   redirect(
-    `${ENTITLEMENTS}?error=${encodeURIComponent((e as Error).message)}${leaveTypeId ? `#type-${leaveTypeId}` : ''}`,
+    `${ENTITLEMENTS}?error=${encodeURIComponent(publicErrorMessage(e))}${leaveTypeId ? `#type-${leaveTypeId}` : ''}`,
   );
 }
 
@@ -194,7 +195,7 @@ export function okCompany(companyId: string, msg: string, tab = ''): never {
 export function failCompany(e: unknown, companyId: string, tab = ''): never {
   const path = companyPath(companyId);
   redirect(
-    `${path}?error=${encodeURIComponent((e as Error).message)}${tab ? `&tab=${encodeURIComponent(tab)}` : ''}`,
+    `${path}?error=${encodeURIComponent(publicErrorMessage(e))}${tab ? `&tab=${encodeURIComponent(tab)}` : ''}`,
   );
 }
 
@@ -247,7 +248,7 @@ export function okStatutorySetup(companyId: string, msg: string): never {
  * about a form the reader can no longer see, with their typing gone.
  */
 export function failStatutorySetup(e: unknown, companyId: string): never {
-  redirect(`${companyStatutoryPath(companyId)}?error=${encodeURIComponent((e as Error).message)}`);
+  redirect(`${companyStatutoryPath(companyId)}?error=${encodeURIComponent(publicErrorMessage(e))}`);
 }
 
 /**
@@ -342,7 +343,7 @@ export function okScheduleGroup(ruleId: string, msg: string, section = ''): neve
 export function failScheduleGroup(e: unknown, ruleId: string, section = '', extra = ''): never {
   const path = scheduleGroupPath(ruleId);
   redirect(
-    `${path}?error=${encodeURIComponent((e as Error).message)}${extra}` +
+    `${path}?error=${encodeURIComponent(publicErrorMessage(e))}${extra}` +
       `${section ? `&section=${encodeURIComponent(section)}#section-${section}` : ''}`,
   );
 }

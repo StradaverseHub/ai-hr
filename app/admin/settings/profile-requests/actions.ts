@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
@@ -23,7 +24,7 @@ const PAGE = '/admin/settings/profile-requests';
 /** A typed refusal names WHICH condition of 0313's write policy failed; anything else reports itself. */
 async function refuse(e: unknown): Promise<never> {
   const t = await getTranslations('profileRequestSettings');
-  const msg = e instanceof TenantSettingError ? t(`refused.${e.reason}`) : (e as Error).message;
+  const msg = e instanceof TenantSettingError ? t(`refused.${e.reason}`) : publicErrorMessage(e);
   redirect(`${PAGE}?error=${encodeURIComponent(msg)}`);
 }
 

@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -50,7 +51,7 @@ function done(toast: string, nav: Nav = {}): never {
   redirect(approvalsReturnUrl({ ...nav, toast }));
 }
 function fail(e: unknown, nav: Nav = {}): never {
-  redirect(approvalsReturnUrl({ ...nav, error: (e as Error).message }));
+  redirect(approvalsReturnUrl({ ...nav, error: publicErrorMessage(e) }));
 }
 
 export async function approveLeaveAction(formData: FormData) {

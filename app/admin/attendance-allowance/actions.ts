@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -57,7 +58,7 @@ function scopeFromForm(fd: FormData): AttendanceAllowanceScope {
 async function errorMessage(e: unknown): Promise<string> {
   const t = await getTranslations('attendanceAllowance.errors');
   if (e instanceof DuplicateAllowancePolicyCodeError) return t('duplicateCode');
-  return (e as Error).message;
+  return publicErrorMessage(e);
 }
 
 async function run(write: () => Promise<void>, toastKey: string) {

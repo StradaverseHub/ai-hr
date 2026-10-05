@@ -1,12 +1,13 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { setGradeClaimLimits, type GradeLimitEdit } from '@/packs/claims/service';
 
 const BASE = '/admin/claims/limits';
-const fail = (e: unknown) => redirect(`${BASE}?error=${encodeURIComponent((e as Error).message)}`);
+const fail = (e: unknown) => redirect(`${BASE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
 
 const numOrNull = (v: unknown): number | null => {
   const s = String(v ?? '').trim();

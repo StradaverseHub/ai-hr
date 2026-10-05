@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
@@ -55,7 +56,7 @@ export async function saveTp3Action(formData: FormData) {
       remarks: input.remarks,
     }));
   } catch (e) {
-    back(employmentId, input.assessmentYear, `error=${encodeURIComponent((e as Error).message)}`);
+    back(employmentId, input.assessmentYear, `error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/payroll/transactions/tp3');
   // `redirect` throws, so this is the only line that runs on the success path.
@@ -77,7 +78,7 @@ export async function deleteTp3Action(formData: FormData) {
   try {
     await deleteTp3(s, { personId: subject.personId, assessmentYear: year });
   } catch (e) {
-    back(employmentId, year, `error=${encodeURIComponent((e as Error).message)}`);
+    back(employmentId, year, `error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/payroll/transactions/tp3');
   back(employmentId, year, 'toast=deleted');

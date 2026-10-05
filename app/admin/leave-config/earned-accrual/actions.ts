@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { requireAdmin } from '@/lib/authz';
 import {
   accrueEarnedLeave,
@@ -63,6 +64,6 @@ export async function previewEarnedAccrualWithReasonAction(scope: EarnedAccrualS
     });
     return { rows: breakdown, asOf, emptyReason, archivedHint, earnedToDateTotal };
   } catch (e) {
-    return { error: (e as Error).message };
+    return { error: publicErrorMessage(e) };
   }
 }

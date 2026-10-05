@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -15,7 +16,7 @@ export async function recordReportAction(formData: FormData) {
   try {
     await recordReport(s, { companyId, reportId, periodKey });
   } catch (e) {
-    redirect(`/payroll/reports?${qs}&error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/payroll/reports?${qs}&error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/payroll/reports');
   redirect(`/payroll/reports?${qs}&toast=Report%20recorded`);

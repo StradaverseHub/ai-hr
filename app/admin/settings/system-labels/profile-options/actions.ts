@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -20,7 +21,7 @@ const BASE = '/admin/settings/system-labels/profile-options';
 // the SAME catalog through the SAME two grid actions below — so a save there must revalidate that page too,
 // or the rail counts and rows would keep serving the pre-edit render.
 const ORG_LABELS = '/admin/settings/system-labels';
-const fail = (e: unknown) => redirect(`${BASE}?error=${encodeURIComponent((e as Error).message)}`);
+const fail = (e: unknown) => redirect(`${BASE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
 const numOrNull = (v: FormDataEntryValue | null): number | null => {
   const s = String(v ?? '').trim();
   return s === '' ? null : Number(s);
@@ -126,7 +127,7 @@ export async function saveProfileOptionsAction(payload: {
       createdIds.push({ key: c.key, id });
       created += 1;
     } catch (e) {
-      rowErrors.push({ key: c.key, message: (e as Error).message });
+      rowErrors.push({ key: c.key, message: publicErrorMessage(e) });
     }
   }
 
@@ -145,7 +146,7 @@ export async function saveProfileOptionsAction(payload: {
       }
       updated += 1;
     } catch (e) {
-      rowErrors.push({ key: u.key, message: (e as Error).message });
+      rowErrors.push({ key: u.key, message: publicErrorMessage(e) });
     }
   }
 
@@ -163,7 +164,7 @@ export async function removeProfileOptionAction(id: string): Promise<{ ok: true 
   try {
     await deleteProfileOption(s, id);
   } catch (e) {
-    return { ok: false, message: (e as Error).message };
+    return { ok: false, message: publicErrorMessage(e) };
   }
   revalidatePath(BASE);
   revalidatePath(ORG_LABELS);

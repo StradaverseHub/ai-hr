@@ -14,6 +14,7 @@ import { isEssViewComponentKey, type EssViewConfig } from './ess-view';
 import { normalizeLeaveFormulaConfig, type LeaveFormulaConfig } from './leave-formula';
 import { isLeaveColorToken, isLeaveIconKey } from '@/lib/leave-visual';
 import { isCurrencyCode } from '../lib/currencies';
+import { pgErrorChain, pgSqlState, isDatabaseError } from '../lib/db-error';
 // f1bbc572 — the tokens a label refusal may travel as, so the client can say it in the reader's language
 // instead of forwarding the driver's SQL. Pure module (the lib/leave-visual precedent above).
 import type { LabelErrorToken } from '../lib/label-error-token';
@@ -2746,29 +2747,9 @@ const KIND_AGG: Record<LabelKindStr, string> = {
   business_unit: 'business-unit',
 };
 
-/**
- * THE SQLSTATE, WHEREVER DRIZZLE PUT IT. Drizzle re-throws its own Error with the driver's PostgresError
- * on `.cause`, so `e.code` on the OUTER error is undefined for every database refusal — which is exactly
- * how `Failed query: update "department" set "name" = $1 … params: RenamedByB,…` came to be rendered
- * verbatim in an admin's error banner (f1bbc572 round 2): the 42501 branch below never matched, the catch
- * fell through to `else throw e`, and the action passed `(e as Error).message` to the screen. Walk the
- * chain, as isUniqueViolation above already does.
- */
-function pgErrorChain(e: unknown): { code?: string; message?: string }[] {
-  const out: { code?: string; message?: string }[] = [];
-  let cur = e as { code?: string; message?: string; cause?: unknown } | null | undefined;
-  for (let i = 0; cur && i < 4; i++) {
-    out.push({ code: cur.code, message: cur.message });
-    cur = cur.cause as { code?: string; message?: string; cause?: unknown } | null | undefined;
-  }
-  return out;
-}
-
-/** The SQLSTATE of the database refusal behind `e`, or undefined when `e` did not come from Postgres.
- *  (A SQLSTATE is five characters of [0-9A-Z]; Node's own `code`s — ECONNREFUSED, ERR_… — are not.) */
-function pgErrorCode(e: unknown): string | undefined {
-  return pgErrorChain(e).find((l) => /^[0-9A-Z]{5}$/.test(l.code ?? ''))?.code;
-}
+// r388 — the drizzle cause-chain walk and the SQLSTATE lookup moved to lib/db-error.ts, so the one place
+// that turns a caught error into user text (lib/public-error.ts) classifies exactly as these refusals do.
+const pgErrorCode = pgSqlState;
 
 /** Postgres insufficient_privilege (42501) — either the app.guard_is_global() trigger (0157) refusing a
  *  non-group-admin's is_global=true, or an RLS policy refusing the write outright. */
@@ -2801,11 +2782,9 @@ export function labelFailureCode(e: unknown): LabelErrorCode | undefined {
   return undefined;
 }
 
-/** True when `e` is the DATABASE speaking (any SQLSTATE), whose text — `Failed query: update "department"
- *  set "name" = $1 … params: …` — must never be rendered to a user. */
-export function isDatabaseError(e: unknown): boolean {
-  return pgErrorCode(e) !== undefined;
-}
+/** True when `e` is the DATABASE speaking, whose text — `Failed query: update "department" set "name" = $1 …
+ *  params: …` — must never be rendered to a user. Defined in lib/db-error.ts (r388); re-exported for callers. */
+export { isDatabaseError };
 
 /** Classify a caught row failure into the per-row error the grid renders. Returns undefined for anything
  *  this function does not recognise, which the caller re-throws rather than dressing up. */

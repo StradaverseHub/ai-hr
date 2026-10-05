@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -58,7 +59,7 @@ export async function saveReportAction(formData: FormData) {
   } catch (e) {
     // redirect() throws internally — re-throw those; only real errors land here.
     if (e && typeof e === 'object' && 'digest' in e) throw e;
-    redirect(`${BASE}/builder/${id || 'new'}?dataset=${encodeURIComponent(category)}&error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${BASE}/builder/${id || 'new'}?dataset=${encodeURIComponent(category)}&error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
 }
 
@@ -68,7 +69,7 @@ export async function deleteReportAction(formData: FormData) {
   try {
     await deleteCustomReport(s, id);
   } catch (e) {
-    redirect(`${BASE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${BASE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(BASE);
   redirect(`${BASE}?toast=${encodeURIComponent('Report deleted')}`);
@@ -82,7 +83,7 @@ export async function duplicateReportAction(formData: FormData) {
     const r = await duplicateCustomReport(s, id);
     newId = r?.id ?? null;
   } catch (e) {
-    redirect(`${BASE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${BASE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(BASE);
   redirect(newId ? `${BASE}/builder/${newId}?toast=${encodeURIComponent('Report duplicated')}` : BASE);
@@ -95,7 +96,7 @@ export async function toggleFavouriteAction(formData: FormData) {
   try {
     await toggleFavourite(s, { id, isFavourite: next });
   } catch (e) {
-    redirect(`${BASE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${BASE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(BASE);
   redirect(BASE);
@@ -108,7 +109,7 @@ export async function setSharedAction(formData: FormData) {
   try {
     await setShared(s, { id, shared: next });
   } catch (e) {
-    redirect(`${BASE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${BASE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(BASE);
   redirect(BASE);
@@ -124,7 +125,7 @@ export async function previewReport(spec: CustomReportSpec, limit = 25): Promise
     const data = await runCustomReport(s, scopeIds, { spec });
     return { ok: true, data: { ...data, rows: data.rows.slice(0, limit) } };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: publicErrorMessage(e) };
   }
 }
 
@@ -160,7 +161,7 @@ export async function saveAsTemplateAction(formData: FormData) {
     const r = await saveReportAsTemplate(s, id);
     newId = r?.id ?? null;
   } catch (e) {
-    redirect(`${BASE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${BASE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(BASE);
   redirect(newId ? `${BASE}/builder/${newId}?toast=${encodeURIComponent('Saved as template')}` : BASE);

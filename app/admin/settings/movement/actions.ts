@@ -11,6 +11,7 @@
  * Where an action DOES redirect it follows the house pattern: the redirect ALWAYS happens outside the
  * try/catch, so a NEXT_REDIRECT thrown by a successful redirect is never swallowed as a service error.
  */
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
@@ -41,7 +42,7 @@ async function run(write: () => Promise<void>) {
     await write();
     revalidate();
   } catch (e) {
-    errMsg = (e as Error).message;
+    errMsg = publicErrorMessage(e);
   }
   if (errMsg) redirect(`${PAGE}?error=${encodeURIComponent(errMsg)}`);
   redirect(`${PAGE}?toast=Saved`);
@@ -75,7 +76,7 @@ export async function saveMovementEventTypeAction(
       behaviourKind: String(formData.get('behaviourKind') ?? '').trim() || null,
     });
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: publicErrorMessage(e) };
   }
   revalidate();
   return { ok: true };

@@ -246,7 +246,16 @@
     "save": "Lưu",
     "cancel": "Hủy",
     "loading": "Đang tải…",
-    "search": "Tìm kiếm"
+    "search": "Tìm kiếm",
+    "databaseError": {
+      "system": "Không thể hoàn tất thay đổi này do lỗi hệ thống. Nếu lỗi tiếp tục xảy ra, hãy báo mã tham chiếu {ref}.",
+      "permission": "Bạn không có quyền thực hiện thay đổi này. Mã tham chiếu {ref}.",
+      "duplicate": "Thao tác này sẽ tạo bản trùng với một bản ghi đã tồn tại. Mã tham chiếu {ref}.",
+      "linked": "Bản ghi này vẫn được liên kết với các bản ghi khác nên không thể thay đổi hoặc xóa theo cách này. Mã tham chiếu {ref}.",
+      "invalidValue": "Một trong các giá trị đã nhập không được phép ở đây. Mã tham chiếu {ref}.",
+      "rule": "Thay đổi này bị từ chối bởi cơ chế bảo vệ các bản ghi hiện có, chẳng hạn như kỳ lương đã đóng. Mã tham chiếu {ref}.",
+      "busy": "Hệ thống đang bận và thay đổi chưa được hoàn tất. Vui lòng thử lại. Mã tham chiếu {ref}."
+    }
   },
   "nav": {
     "roster": "Lịch ca",

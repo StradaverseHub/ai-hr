@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -28,7 +29,7 @@ const audienceOf = (fd: FormData): string[] => fd.getAll('audience').map((v) => 
 async function errorMessage(e: unknown): Promise<string> {
   const t = await getTranslations('dashboardCardConfig.errors');
   if (e instanceof DuplicateCardKeyError) return t('duplicateKey');
-  return (e as Error).message;
+  return publicErrorMessage(e);
 }
 
 /**

@@ -12,6 +12,7 @@
  * to be told WHO already holds it; a generic failure would leave them guessing.
  */
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { requireAdmin } from '@/lib/authz';
@@ -38,7 +39,7 @@ export async function saveCardIdAction(formData: FormData) {
     // attendance at all.
     await setEmploymentCardId(s, { employmentId, cardId: cardId === '' ? null : cardId });
   } catch (e) {
-    back.set('error', (e as Error).message);
+    back.set('error', publicErrorMessage(e));
     redirect(`${PAGE}?${back.toString()}`);
   }
 

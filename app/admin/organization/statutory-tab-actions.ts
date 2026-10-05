@@ -41,6 +41,7 @@
  * body that did not commit still marked edited on screen rather than silently discarded — and the reader
  * stays on the screen, which is the reporter's own fourth point.
  */
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/session';
 // ADR-0080 D9/D11 — through the PACK FACADE, not `core/statutory-authority` directly. The pack-drift
@@ -155,7 +156,7 @@ export async function saveCompanyStatutoryTabAction(formData: FormData): Promise
       saved.push(section);
     } catch (e) {
       if (saved.length > 0) revalidateCompany(companyId);
-      return { ok: false, saved, failedSection: section, error: (e as Error).message };
+      return { ok: false, saved, failedSection: section, error: publicErrorMessage(e) };
     }
   }
 

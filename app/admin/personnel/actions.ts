@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
@@ -39,7 +40,7 @@ export async function decideProfileChangeAction(formData: FormData) {
       reason,
     });
   } catch (e) {
-    redirect(`/admin/personnel?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/admin/personnel?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/admin/personnel');
   redirect(`/admin/personnel?toast=${encodeURIComponent('Change ' + decision)}`);

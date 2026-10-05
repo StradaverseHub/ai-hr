@@ -246,7 +246,16 @@
     "save": "Simpan",
     "cancel": "Batal",
     "loading": "Memuatkan…",
-    "search": "Cari"
+    "search": "Cari",
+    "databaseError": {
+      "system": "Perubahan ini tidak dapat diselesaikan kerana ralat sistem. Jika ia berulang, laporkan rujukan {ref}.",
+      "permission": "Anda tidak mempunyai kebenaran untuk membuat perubahan ini. Rujukan {ref}.",
+      "duplicate": "Ini akan mewujudkan pendua bagi rekod yang sudah wujud. Rujukan {ref}.",
+      "linked": "Rekod ini masih dipautkan kepada rekod lain, jadi ia tidak boleh diubah atau dikeluarkan dengan cara ini. Rujukan {ref}.",
+      "invalidValue": "Salah satu nilai yang dimasukkan tidak dibenarkan di sini. Rujukan {ref}.",
+      "rule": "Perubahan ini ditolak oleh perlindungan yang melindungi rekod sedia ada, seperti gaji yang telah ditutup. Rujukan {ref}.",
+      "busy": "Sistem sedang sibuk dan perubahan tidak diselesaikan. Sila cuba lagi. Rujukan {ref}."
+    }
   },
   "nav": {
     "roster": "Roster",

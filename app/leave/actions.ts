@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { leaveSelfReturnUrl } from '@/lib/leave-return-context';
 import { redirect } from 'next/navigation';
@@ -531,7 +532,7 @@ export async function submitReplacementLeaveRequestAction(formData: FormData) {
       today: todayInKualaLumpur(),
     });
   } catch (e) {
-    redirect(`/leave?error=${encodeURIComponent(e instanceof Error ? e.message : String(e))}`);
+    redirect(`/leave?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/leave');
   revalidatePath('/leave/history');
@@ -569,7 +570,7 @@ export async function decideReplacementLeaveRequestAction(formData: FormData) {
       note: String(formData.get('note') ?? '').trim() || undefined,
     });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = publicErrorMessage(e);
     if (toApprovals) redirect(approvalsReturnUrl({ ...nav, error: message }));
     redirect(`/leave?error=${encodeURIComponent(message)}`);
   }

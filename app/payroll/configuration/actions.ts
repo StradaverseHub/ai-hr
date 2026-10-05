@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { getTranslations } from 'next-intl/server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -39,7 +40,7 @@ export async function saveStatutoryAction(formData: FormData) {
   } catch (e) {
     const t = await getTranslations('payroll.config');
     const msg = e instanceof StatutoryRulesetInvalidError && e.problems.includes('pcb_child_relief_configuration_invalid')
-      ? t('childQualificationInvalid') : e instanceof StatutoryRulesetInvalidError ? e.problems.join('; ') : (e as Error).message;
+      ? t('childQualificationInvalid') : e instanceof StatutoryRulesetInvalidError ? e.problems.join('; ') : publicErrorMessage(e);
     redirect(`${returnTo}?edit=1&error=${encodeURIComponent(msg)}`);
   }
   // Revalidate both the return tab AND the index (the overview banner/history/versions grid reflect the
@@ -114,7 +115,7 @@ export async function setStatutoryComponentAction(formData: FormData) {
   } catch (e) {
     const t = await getTranslations('payroll.config');
     const msg = e instanceof StatutoryRulesetInvalidError && e.problems.includes('pcb_child_relief_configuration_invalid')
-      ? t('childQualificationInvalid') : e instanceof StatutoryRulesetInvalidError ? e.problems.join('; ') : (e as Error).message;
+      ? t('childQualificationInvalid') : e instanceof StatutoryRulesetInvalidError ? e.problems.join('; ') : publicErrorMessage(e);
     redirect(`${returnTo}?error=${encodeURIComponent(msg)}`);
   }
   revalidatePath(returnTo);
@@ -130,7 +131,7 @@ export async function archiveStatutoryComponentAction(formData: FormData) {
   try {
     await pack!.statutoryConfig.archiveComponent(s, id);
   } catch (e) {
-    redirect(`${BASE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${BASE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(BASE);
   redirect(`${BASE}?toast=${encodeURIComponent('Override archived')}`);
@@ -145,7 +146,7 @@ export async function archiveStatutoryAction(formData: FormData) {
   try {
     await pack!.statutoryConfig.archive(s, id);
   } catch (e) {
-    redirect(`${BASE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${BASE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(BASE);
   redirect(`${BASE}?toast=${encodeURIComponent('Version archived')}`);

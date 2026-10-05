@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -53,7 +54,7 @@ export async function setMileageRateTableAction(formData: FormData) {
   try {
     await setMileageRateTable(s, { claimTypeId, gradeId, vehicleClass, effectiveFrom, bands });
   } catch (e) {
-    redirect(backTo(gradeId, vehicleClass, `error=${encodeURIComponent((e as Error).message)}`));
+    redirect(backTo(gradeId, vehicleClass, `error=${encodeURIComponent(publicErrorMessage(e))}`));
   }
   revalidatePath(BASE);
   redirect(backTo(gradeId, vehicleClass, `toast=${encodeURIComponent('Mileage rates saved')}`));

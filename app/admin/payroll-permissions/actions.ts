@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -27,7 +28,7 @@ export async function setPayrollPermissionAction(formData: FormData) {
   try {
     await setPayrollPermissionGrant(s, { companyId, permissionKey, role, allowed });
   } catch (e) {
-    redirect(`${ROUTE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${ROUTE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(ROUTE);
   redirect(`${ROUTE}?toast=saved`);
@@ -40,7 +41,7 @@ export async function deletePayrollPermissionAction(formData: FormData) {
   try {
     await deletePayrollPermissionGrant(s, { id });
   } catch (e) {
-    redirect(`${ROUTE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${ROUTE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(ROUTE);
   redirect(`${ROUTE}?toast=removed`);

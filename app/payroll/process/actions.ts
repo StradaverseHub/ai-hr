@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/session';
@@ -190,7 +191,7 @@ export async function createRunAction(formData: FormData) {
       batchId = r.batchId;
     }
   } catch (e) {
-    redirect(`/payroll/process?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/payroll/process?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/payroll');
   // Compact one-shot codes 'country|state|year|loaded|required' (';'-joined) — the domain event appended
@@ -243,7 +244,7 @@ export async function resumeRunAction(formData: FormData) {
       await updateBatchScope(s, { batchId, scope });
     }
   } catch (e) {
-    redirect(`/payroll/process?resume=${batchId}&error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/payroll/process?resume=${batchId}&error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
 
   // Re-read the batch AFTER the scope write: the persisted scope is the authority on who this run covers
@@ -347,7 +348,7 @@ export async function runMultiCompanyAction(formData: FormData) {
   } catch (e) {
     // A whole-run failure (e.g. an invalid session) is rare — per-company failures are caught inside the
     // orchestrator and reported as rows. Surface anything that escapes as a Step-1 error banner.
-    redirect(`/payroll/process?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/payroll/process?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/payroll');
   redirect(`/payroll/process/result?r=${encoded}${resultFromSuffix(formData.get('from'))}`);

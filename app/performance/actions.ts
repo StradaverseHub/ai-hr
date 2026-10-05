@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -107,7 +108,7 @@ export async function createCycleAction(formData: FormData) {
     });
     cycleId = res.cycleId;
   } catch (e) {
-    redirect(`/performance?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/performance');
   redirect(`/performance/${cycleId}`);
@@ -127,7 +128,7 @@ export async function previewEligibilityAction(formData: FormData): Promise<{ co
     });
     return { count };
   } catch (e) {
-    return { error: (e as Error).message };
+    return { error: publicErrorMessage(e) };
   }
 }
 
@@ -140,7 +141,7 @@ async function cycleLifecycle(
   try {
     await fn(s, { cycleId });
   } catch (e) {
-    redirect(`/performance/${cycleId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/${cycleId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/${cycleId}`);
   redirect(`/performance/${cycleId}`);
@@ -170,7 +171,7 @@ export async function submitSelfAction(formData: FormData) {
       goalsSummary: str(formData.get('goalsSummary')),
     });
   } catch (e) {
-    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/review/${reviewId}`);
   redirect(`/performance/review/${reviewId}?toast=${encodeURIComponent('Self-review submitted')}`);
@@ -189,7 +190,7 @@ export async function submitManagerAction(formData: FormData) {
       recommendedBonus: num(formData.get('recommendedBonus')) ?? null,
     });
   } catch (e) {
-    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/review/${reviewId}`);
   redirect(`/performance/review/${reviewId}?toast=${encodeURIComponent('Review finalized')}`);
@@ -201,7 +202,7 @@ export async function acknowledgeAction(formData: FormData) {
   try {
     await acknowledgeReview(s, { reviewId });
   } catch (e) {
-    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/review/${reviewId}`);
   redirect(`/performance/review/${reviewId}?toast=${encodeURIComponent('Acknowledged')}`);
@@ -218,7 +219,7 @@ export async function draftManagerReviewAction(reviewId: string): Promise<{ draf
     const { draft } = await draftManagerReview(s, { reviewId });
     return { draft };
   } catch (e) {
-    return { error: (e as Error).message };
+    return { error: publicErrorMessage(e) };
   }
 }
 
@@ -228,7 +229,7 @@ export async function linkGoalAction(formData: FormData) {
   try {
     await linkGoalToReview(s, { reviewId, goalId: String(formData.get('goalId')) });
   } catch (e) {
-    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/review/${reviewId}`);
   redirect(`/performance/review/${reviewId}?toast=${encodeURIComponent('Goal linked')}`);
@@ -240,7 +241,7 @@ export async function unlinkGoalAction(formData: FormData) {
   try {
     await unlinkGoalFromReview(s, { reviewId, goalId: String(formData.get('goalId')) });
   } catch (e) {
-    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/review/${reviewId}`);
   redirect(`/performance/review/${reviewId}?toast=${encodeURIComponent('Goal unlinked')}`);
@@ -255,7 +256,7 @@ export async function scheduleCheckInAction(formData: FormData) {
       notes: str(formData.get('notes')),
     });
   } catch (e) {
-    redirect(`/performance?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/performance');
   redirect(`/performance?toast=${encodeURIComponent('Check-in scheduled')}`);
@@ -266,7 +267,7 @@ export async function completeCheckInAction(formData: FormData) {
   try {
     await completeCheckIn(s, { checkinId: String(formData.get('checkinId')), notes: str(formData.get('notes')) });
   } catch (e) {
-    redirect(`/performance?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/performance');
   redirect(`/performance?toast=${encodeURIComponent('Check-in completed')}`);
@@ -277,7 +278,7 @@ export async function cancelCheckInAction(formData: FormData) {
   try {
     await cancelCheckIn(s, { checkinId: String(formData.get('checkinId')) });
   } catch (e) {
-    redirect(`/performance?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath('/performance');
   redirect(`/performance?toast=${encodeURIComponent('Check-in cancelled')}`);
@@ -290,7 +291,7 @@ export async function requestPeerFeedbackAction(formData: FormData) {
   try {
     await requestPeerFeedback(s, { reviewId, peerEmploymentIds });
   } catch (e) {
-    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/review/${reviewId}`);
   redirect(`/performance/review/${reviewId}?toast=${encodeURIComponent('Feedback requested')}`);
@@ -302,7 +303,7 @@ export async function openCalibrationAction(formData: FormData) {
   try {
     await openCalibrationSession(s, { cycleId });
   } catch (e) {
-    redirect(`/performance/${cycleId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/${cycleId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/${cycleId}`);
   redirect(`/performance/${cycleId}?toast=${encodeURIComponent('Calibration opened')}`);
@@ -319,7 +320,7 @@ export async function proposeCalibrationAction(formData: FormData) {
       proposedRating: rating ?? null,
     });
   } catch (e) {
-    redirect(`/performance/${cycleId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/${cycleId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/${cycleId}`);
   redirect(`/performance/${cycleId}`);
@@ -331,7 +332,7 @@ export async function commitCalibrationAction(formData: FormData) {
   try {
     await commitCalibration(s, { sessionId: String(formData.get('sessionId')) });
   } catch (e) {
-    redirect(`/performance/${cycleId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/${cycleId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/${cycleId}`);
   redirect(`/performance/${cycleId}?toast=${encodeURIComponent('Calibration committed')}`);
@@ -348,7 +349,7 @@ export async function enactAction(formData: FormData) {
       bonusBatchId: str(formData.get('bonusBatchId')),
     });
   } catch (e) {
-    redirect(`/performance/${cycleId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/${cycleId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/${cycleId}`);
   redirect(`/performance/${cycleId}?toast=${encodeURIComponent('Recommendation enacted')}`);
@@ -361,7 +362,7 @@ export async function declineAction(formData: FormData) {
   try {
     await declineCompAction(s, { reviewId });
   } catch (e) {
-    redirect(`/performance/${cycleId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/${cycleId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/${cycleId}`);
   redirect(`/performance/${cycleId}?toast=${encodeURIComponent('Recommendation declined')}`);
@@ -385,7 +386,7 @@ export async function submitStageSelfAction(formData: FormData) {
       goalsSummary: str(formData.get('goalsSummary')),
     });
   } catch (e) {
-    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/review/${reviewId}`);
   reviewRedirect(reviewId, 'Self-assessment submitted');
@@ -404,7 +405,7 @@ export async function submitStageManagerAction(formData: FormData) {
       overallRating: num(formData.get('overallRating')),
     });
   } catch (e) {
-    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/review/${reviewId}`);
   reviewRedirect(reviewId, 'Manager evaluation submitted');
@@ -416,7 +417,7 @@ export async function proposeGoalsAction(formData: FormData) {
   try {
     await proposeGoals(s, { reviewId });
   } catch (e) {
-    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/review/${reviewId}`);
   reviewRedirect(reviewId, 'Goals proposed');
@@ -428,7 +429,7 @@ export async function approveGoalAction(formData: FormData) {
   try {
     await approveGoal(s, { goalId: String(formData.get('goalId')) });
   } catch (e) {
-    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/review/${reviewId}`);
   reviewRedirect(reviewId, 'Goal approved');
@@ -440,7 +441,7 @@ export async function lockGoalSettingAction(formData: FormData) {
   try {
     await lockGoalSetting(s, { reviewId });
   } catch (e) {
-    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/review/${reviewId}`);
   reviewRedirect(reviewId, 'Goal-setting locked');
@@ -454,7 +455,7 @@ export async function closeReviewAction(formData: FormData) {
   try {
     await closeReview(s, { reviewId, abcClass, finalScore: num(formData.get('finalScore')) });
   } catch (e) {
-    redirect(`/performance/${cycleId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/${cycleId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/${cycleId}`);
   redirect(`/performance/${cycleId}?toast=${encodeURIComponent('Review closed')}`);
@@ -476,7 +477,7 @@ export async function uploadAttachmentAction(formData: FormData) {
       content: Buffer.from(await file.arrayBuffer()),
     });
   } catch (e) {
-    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(`/performance/review/${reviewId}`);
   reviewRedirect(reviewId, 'File uploaded');

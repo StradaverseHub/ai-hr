@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
@@ -239,7 +240,7 @@ export async function createSelfDelegationAction(
       orgScope: parseOrgScope(formData),
     });
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: publicErrorMessage(e) };
   }
   revalidatePath('/delegations');
   return { ok: true };
@@ -263,7 +264,7 @@ export async function revokeSelfDelegationAction(
     if (!row || !mine.has(row.delegatorEmploymentId)) throw new Error('You can only revoke your own delegations.');
     await endReportingLine(s, { reportingLineId, endDate });
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: publicErrorMessage(e) };
   }
   revalidatePath('/delegations');
   return { ok: true };
@@ -314,7 +315,7 @@ export async function hrCreateDelegationAction(
       orgScope: parseOrgScope(formData),
     });
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: publicErrorMessage(e) };
   }
   revalidatePath('/delegations');
   return { ok: true };
@@ -345,7 +346,7 @@ export async function hrEditDelegationAction(
       orgScope: parseOrgScope(formData),
     });
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: publicErrorMessage(e) };
   }
   revalidatePath('/delegations');
   return { ok: true };
@@ -363,7 +364,7 @@ export async function hrRevokeDelegationAction(
     if (!reportingLineId) throw new Error('Missing delegation.');
     await endReportingLine(s, { reportingLineId, endDate });
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: publicErrorMessage(e) };
   }
   revalidatePath('/delegations');
   return { ok: true };

@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { parseDatabaseErrorRef } from '@/lib/database-error-token';
+import { DatabaseErrorText } from '@/components/database-error-text';
 
 // Primitives (shadcn-pattern) re-exported so pages can `import { Button } from '@/components/ui'`.
 export { Button, buttonVariants } from './ui/button';
@@ -213,7 +215,8 @@ export function ErrorBanner({ message }: { message?: string }) {
   if (!message) return null;
   return (
     <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-      {message}
+      {/* r388 — a redacted database error carries a DB- reference; show its sentence in the viewer's language. */}
+      {parseDatabaseErrorRef(message) ? <DatabaseErrorText message={message} /> : message}
     </div>
   );
 }

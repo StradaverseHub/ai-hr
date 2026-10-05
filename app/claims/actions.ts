@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -7,7 +8,7 @@ import { myEmployment } from '@/core/read';
 import { cancelClaim, deleteClaimDraft, saveClaimDraft, submitClaimWithAttachment, submitDraftClaims } from '@/core/claims';
 
 const BASE = '/claims';
-const errorUrl = (e: unknown) => `${BASE}?error=${encodeURIComponent((e as Error).message)}`;
+const errorUrl = (e: unknown) => `${BASE}?error=${encodeURIComponent(publicErrorMessage(e))}`;
 
 /**
  * Derive a TRUSTWORTHY mime type from the file's leading bytes (fail-closed: unknown signature → null).
@@ -83,7 +84,7 @@ export async function submitClaimAction(_prevState: SubmitClaimState, formData: 
     }
     revalidatePath(BASE);
   } catch (e) {
-    return { error: (e as Error).message };
+    return { error: publicErrorMessage(e) };
   }
   redirect(`${BASE}?toast=${encodeURIComponent(toast)}`);
 }

@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -28,7 +29,7 @@ import type { TestRunOutcome } from '@/db/schema';
 
 const BASE = '/admin/system-testing';
 const fail = (e: unknown, path: string = BASE): never =>
-  redirect(`${path}?error=${encodeURIComponent((e as Error).message)}`);
+  redirect(`${path}?error=${encodeURIComponent(publicErrorMessage(e))}`);
 
 /** One step per line, order preserved — the form asks for a textarea, not a repeating field set. */
 function stepsFrom(formData: FormData): string[] {

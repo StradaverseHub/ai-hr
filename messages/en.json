@@ -246,7 +246,16 @@
     "save": "Save",
     "cancel": "Cancel",
     "loading": "Loading…",
-    "search": "Search"
+    "search": "Search",
+    "databaseError": {
+      "system": "This change could not be completed because of a system error. If it keeps happening, report reference {ref}.",
+      "permission": "You do not have permission to make this change. Reference {ref}.",
+      "duplicate": "This would create a duplicate of a record that already exists. Reference {ref}.",
+      "linked": "This record is still linked to other records, so it cannot be changed or removed this way. Reference {ref}.",
+      "invalidValue": "One of the values entered is not allowed here. Reference {ref}.",
+      "rule": "This change was refused by a safeguard that protects existing records, such as a closed payroll. Reference {ref}.",
+      "busy": "The system was busy and the change was not completed. Please try again. Reference {ref}."
+    }
   },
   "nav": {
     "roster": "Roster",

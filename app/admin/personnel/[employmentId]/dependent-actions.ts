@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
@@ -23,7 +24,7 @@ const back = (employmentId: string, qs: string, formData: FormData) => {
 };
 
 const errorMsg = (e: unknown): string =>
-  e instanceof DependentValidationError ? e.message : (e as Error).message;
+  e instanceof DependentValidationError ? e.message : publicErrorMessage(e);
 
 /**
  * R46 47146ea3 — rail (d) surfacing. The Children (PCB Relief) figure is now synced automatically from the

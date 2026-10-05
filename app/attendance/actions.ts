@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { getTranslations } from 'next-intl/server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -24,7 +25,7 @@ export async function checkInAction(formData: FormData) {
   try {
     await checkIn(s, { employmentId, date, time: String(formData.get('time') || '09:00') });
   } catch (e) {
-    redirect(`${DAILY}?date=${date}&error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${DAILY}?date=${date}&error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(DAILY);
   redirect(`${DAILY}?date=${date}&toast=Checked in`);
@@ -40,7 +41,7 @@ export async function decideCorrectionAction(formData: FormData) {
       rejectReason: String(formData.get('rejectReason') ?? ''),
     });
   } catch (e) {
-    redirect(`${back}?error=${encodeURIComponent(e instanceof MissingAttendanceRejectReasonError ? (await getTranslations('attendance'))('rejectRequired') : (e as Error).message)}`);
+    redirect(`${back}?error=${encodeURIComponent(e instanceof MissingAttendanceRejectReasonError ? (await getTranslations('attendance'))('rejectRequired') : publicErrorMessage(e))}`);
   }
   revalidatePath(back);
   redirect(`${back}?toast=${encodeURIComponent('Correction ' + String(formData.get('decision')))}`);
@@ -53,7 +54,7 @@ export async function checkOutAction(formData: FormData) {
   try {
     await checkOut(s, { employmentId, date, time: String(formData.get('time') || '18:00') });
   } catch (e) {
-    redirect(`${DAILY}?date=${date}&error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${DAILY}?date=${date}&error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(DAILY);
   redirect(`${DAILY}?date=${date}&toast=Checked out`);

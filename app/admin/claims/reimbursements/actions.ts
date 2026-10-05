@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -18,7 +19,7 @@ export async function markReimbursementsPaidAction(formData: FormData) {
   try {
     ({ paid } = await markReimbursementsPaid(s, { claimIds, payoutRef }));
   } catch (e) {
-    redirect(`${BASE}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${BASE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(BASE);
   redirect(`${BASE}?toast=${encodeURIComponent(`Marked ${paid} reimbursement${paid === 1 ? '' : 's'} paid`)}`);

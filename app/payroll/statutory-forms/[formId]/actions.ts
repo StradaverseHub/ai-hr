@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -28,7 +29,7 @@ export async function recordReportAction(formData: FormData) {
   try {
     await recordReport(s, { companyId, reportId: formId, periodKey });
   } catch (e) {
-    redirect(`${path}?${qs}&error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${path}?${qs}&error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(path);
   redirect(`${path}?${qs}&toast=Report%20recorded`);

@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { scopedAdmin } from '@/lib/scope';
@@ -106,7 +107,7 @@ function fixedErrorKey(e: unknown): string {
               ? 'paidOnPayslip'
               : e instanceof FixedTransactionNotFoundError
                 ? 'notFound'
-                : (e as Error).message;
+                : publicErrorMessage(e);
 }
 
 /**

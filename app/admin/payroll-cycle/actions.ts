@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -59,7 +60,7 @@ async function localise(e: unknown): Promise<string> {
   if (e instanceof PayrollCycleDuplicateCodeError) return t('errors.duplicateCode');
   if (e instanceof PayrollCycleRegularConflictError) return t('errors.regularConflict');
   if (e instanceof PayrollCycleInUseError) return t('errors.inUse', { refs: e.refs });
-  return (e as Error).message;
+  return publicErrorMessage(e);
 }
 
 /** ToastFromQuery renders the raw string, so pass already-localised toast text (not a code). */

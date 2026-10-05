@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -280,7 +281,7 @@ function shiftFields(formData: FormData, week: StoredWeek) {
 // unarchive, copy, delete) are fired from the list, so they keep BASE; create and update are fired from
 // their own page now, so a validation error has to land back on the form the operator filled in rather
 // than on a list that has forgotten every box they typed. Same idiom as rule-actions.ts.
-const errTarget = (e: unknown, at: string = BASE) => `${at}?error=${encodeURIComponent((e as Error).message)}`;
+const errTarget = (e: unknown, at: string = BASE) => `${at}?error=${encodeURIComponent(publicErrorMessage(e))}`;
 
 export async function createShiftAction(formData: FormData) {
   const s = await getSession();

@@ -1,5 +1,6 @@
 'use server';
 
+import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -35,7 +36,7 @@ async function errorMessage(e: unknown): Promise<string> {
   if (e instanceof DuplicateActiveConfigError) return t('duplicateActive');
   if (e instanceof PrefixCollisionError) return t('prefixCollision');
   if (e instanceof EmployeeCodeTooLongError) return t('tooLong');
-  return (e as Error).message;
+  return publicErrorMessage(e);
 }
 
 /**
