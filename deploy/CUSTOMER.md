@@ -92,6 +92,13 @@ The unit validates these effective runtime values before every start, independen
 preflight. A stale/missing WorkOS setting, disabled audit chain or non-production runtime must refuse
 to start rather than reopen a demo authentication path.
 
+For the separate private-cloud PostgreSQL hosts, both app and migration URLs need exactly one
+`sslmode=verify-full`. Install the database CA in a root-controlled path readable by the app, such as
+`/etc/ssl/certs/aihr-database-ca.pem`, and set `NODE_EXTRA_CA_CERTS` to that path in the deployment and
+runtime environments. PostgreSQL.js uses Node's CA trust; `PGSSLROOTCERT` configures libpq clients and
+does not replace that Node setting. Do not put this public CA certificate under `/etc/aihr`, which is
+hidden inside the service sandbox, or disable certificate verification.
+
 ## 3. Build, then prepare the cache and install the unit
 
 Run the customer path as the deployment operator under Node 22. The `--migrate-only` flag still builds
@@ -163,12 +170,70 @@ As the DB administrator, independently verify the actual `ai_hr_app` role has `r
 `rolbypassrls=false`, no membership of privileged/owner roles, and no ownership of application tables.
 Configuration checks on the username do not prove live database privileges are correct.
 
-Provision the tenant and bind its first real admin through the operator/provisioning workflow.
-**Manual prerequisite:** a completely fresh installation also needs its first authorized platform
-operator identity created and bound to WorkOS before that workflow is reachable. There is no completed
-one-command first-operator bootstrap in this runbook; prepare and review that privileged procedure
-with the owner before opening access. A new customer has no seeded admin; do not bypass that by
-enabling the demo switcher. Keep import of real
+### Bootstrap the first customer and HR administrator
+
+After migrations/catalog provisioning, run `scripts/bootstrap-customer.ts` from the deployment
+account. This fresh-installation path creates the customer and its first HR administrator invitation
+directly through the shared provisioning service. It does not require or grant a platform-operator
+role, send email, or call WorkOS. Future tenants still use the separate operator provisioning process.
+
+Create a private operator-owned directory outside the app tree (`0700`) and a JSON file inside it
+(`0600`). Use the real customer's values; the shape below is an example, not ready-to-import data:
+
+```json
+{
+  "name": "Customer legal name",
+  "adminEmail": "named-admin@customer.example",
+  "baseUrl": "https://hr.customer.example",
+  "country": "MY",
+  "modules": ["payroll", "attendance", "claims"]
+}
+```
+
+Choose only purchased non-core module codes and include their dependencies; core modules are already
+available and must not be listed. The HTTPS origin must match the registered WorkOS callback origin.
+Run the check first, with the fully configured production environment and distinct app/owner URLs:
+
+```bash
+cd /opt/ai-hr
+/opt/node22/bin/node --import tsx scripts/bootstrap-customer.ts --config /secure/operator/bootstrap.json
+```
+
+The default command validates and checks that the installation has no customer, ignoring only the
+reserved all-zero system tenant. It creates no customer, invitation or activation file. Apply after
+reviewing the private config, choosing a **new** output filename in the same private directory:
+
+```bash
+/opt/node22/bin/node --import tsx scripts/bootstrap-customer.ts --config /secure/operator/bootstrap.json --apply --activation-file /secure/operator/first-admin-activation.txt
+```
+
+The owner transaction locks bootstrap attempts, proves owner/app role separation and refuses an
+existing customer before writing. It creates one company, starter catalogs, an administrator person
+and login with no employment, and one pending HR-admin invitation. Every provisioning event is
+chained from the start and the tenant's audit setting stays enabled. The activation token is stored
+only as a hash in the database; its URL is written exclusively to the new `0600` file, never stdout or
+an error. Opening an existing file or symlink is refused. A failed output write rolls back the customer.
+
+Have the named administrator sign in to WorkOS with the exact configured email and open the private
+activation URL. The existing invitation flow binds that identity and grants one group-wide HR-admin
+role; it does not grant operator access. Verify the account and then securely remove the plaintext
+activation file once no longer required. Invitations expire after seven days and are single-use.
+
+**Interrupted-run recovery:** database commit and filesystem writes cannot form one atomic operation.
+The file and its parent directory are flushed before commit; a process/host failure may still leave
+an empty/partial file with no customer, a completed file and committed customer, or an uncertain
+commit outcome. Never delete a file and rerun blindly. Check the customer and pending invitation as
+the DB administrator; compare the locally computed token hash with `app_invitation.token_hash`
+without printing the token. If the transaction rolled back, inspect/remove only that failed run's
+private output and retry with a new filename. If it committed, use the matching intact invitation;
+if the token file was lost or the invitation expired, stop and arrange a reviewed, audited recovery
+with the database/application administrator. This direct bootstrap has no queued provisioning request,
+so the queued runner's reissue action cannot recover its link. A secure first-admin reissue command
+is not supplied here; that recovery remains an operational prerequisite. Do not use the legacy
+`auth/bootstrap-invite.ts` helper, which prints bearer links. A repeated or concurrent bootstrap
+refuses to add another customer or issue another token. Never enable the demo switcher to recover access.
+
+Keep import of real
 employee records closed until the authentication, cross-tenant access, audit, recovery and monitoring
 checks have passed on this specific installation.
 
