@@ -232,6 +232,11 @@ describe('§1 the declared referrer set is the live schema', () => {
     expect(declared, 'core/company-refs.ts COMPANY_CONFIG_DEPENDENTS must match the live keys').toEqual(live);
   });
 
+  it('every dependent points INTO a table deleted with the company (the generated SQL joins on it)', () => {
+    const cascaded = new Set(cascadedReferrers().map((r) => r.table));
+    for (const d of COMPANY_CONFIG_DEPENDENTS) expect(cascaded.has(d.references), `${d.table}.${d.column} -> ${d.references}`).toBe(true);
+  });
+
   it('a part is an ON DELETE CASCADE child, and nothing references a part', async () => {
     const fks = await liveFks();
     for (const d of COMPANY_CONFIG_DEPENDENTS.filter((x) => x.effect === 'part')) {
