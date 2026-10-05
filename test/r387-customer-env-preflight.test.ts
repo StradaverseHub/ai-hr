@@ -107,6 +107,17 @@ describe('customer deploy refuses unsafe configuration before any install or dat
   it.each(['false', 'TRUE', '1'])('refuses WORKOS_API_HTTPS=%s', (value) => {
     refused(runDeploy({ WORKOS_API_HTTPS: value }), 'WORKOS_API_HTTPS');
   });
+  it('refuses process-wide disabled certificate verification', () => {
+    refused(runDeploy({ NODE_TLS_REJECT_UNAUTHORIZED: '0' }), 'NODE_TLS_REJECT_UNAUTHORIZED');
+  });
+  it.each(['DATABASE_URL', 'MIGRATION_DATABASE_URL'])('requires verified TLS for remote %s', (key) => {
+    for (const query of ['', '?sslmode=require', '?sslmode=prefer', '?sslmode=disable',
+      '?sslmode=verify-full&sslmode=disable', '?sslmode=verify-full&ssl=false']) {
+      refused(runDeploy({ [key]: `postgresql://restricted:fixture@db.internal/preflight${query}` }), 'sslmode=verify-full');
+    }
+    const result = runDeploy({ [key]: 'postgresql://restricted:fixture@db.internal/preflight?sslmode=verify-full' });
+    expect(result.status, result.output).toBe(0);
+  });
   it.each([undefined, 'development', 'test'])('refuses NODE_ENV=%s', (value) => {
     refused(runDeploy({ NODE_ENV: value }), 'NODE_ENV');
   });

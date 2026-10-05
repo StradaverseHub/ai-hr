@@ -37,6 +37,9 @@ required('WORKOS_CLIENT_ID');
 if (env.WORKOS_API_HTTPS && env.WORKOS_API_HTTPS !== 'true') {
   errors.push('WORKOS_API_HTTPS must be absent or true; sending identity credentials over HTTP is refused.');
 }
+if (env.NODE_TLS_REJECT_UNAUTHORIZED === '0') {
+  errors.push('NODE_TLS_REJECT_UNAUTHORIZED must not disable certificate verification.');
+}
 required('WORKOS_COOKIE_PASSWORD', 32);
 required('SHARE_PASSWORD', 16);
 required('AI_CONFIG_SECRET', 16);
@@ -53,6 +56,12 @@ function databaseUrl(name) {
     if (['user', 'username', 'password', 'pass', 'database', 'dbname', 'host', 'hostname', 'port', 'role', 'options']
       .some((key) => url.searchParams.has(key))) {
       errors.push(`${name} must not override identity or connection details in query parameters.`);
+      return;
+    }
+    const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname.toLowerCase());
+    if (!loopback && (url.searchParams.getAll('sslmode').length !== 1 ||
+      url.searchParams.get('sslmode') !== 'verify-full' || url.searchParams.has('ssl'))) {
+      errors.push(`${name} must use sslmode=verify-full for a remote database; use a trusted certificate and its private DNS name.`);
       return;
     }
     return url;
