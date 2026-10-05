@@ -3,6 +3,11 @@
 Switching a deployment from the demo identity switcher to real WorkOS auth. The application code is
 complete (ADR-0072); this is a configuration + first-login procedure.
 
+**Scope: the consultant demo containing fictional data only.** Customer installations require real
+authentication before deployment and must never enable the demo switcher. Use
+[the customer deployment procedure](../deploy/CUSTOMER.md), including its first-operator prerequisite,
+for a new customer; the temporary demo identity and rollback steps below do not apply there.
+
 **Read step 0 before doing anything.** The order matters: get it wrong and nobody can log in, including you.
 
 ---
@@ -118,11 +123,14 @@ existing `app_user` is rebound rather than a duplicate identity being created.
 
 ## Rollback
 
-If anything goes wrong before or during step 5, set `ALLOW_DEMO_SESSION=true` and restart. The switcher
-comes back immediately and no data is affected — the flag is read at request time, not baked into the build.
+Only on the fictional-data consultant demo, if anything goes wrong before or during step 5, set
+`ALLOW_DEMO_SESSION=true` and restart. The switcher returns immediately because the flag is read at
+request time. It bypasses real identity checks: never use this rollback on a customer installation
+or any system holding real employee records. Keep customer access closed and repair authentication
+instead; the customer preflight deliberately rejects the demo flag.
 
-Once real users are bound, rolling back is still safe: their real subjects stay bound and keep working
-when you flip forward again.
+Bound subjects remain stored during a demo rollback and work again after real authentication is
+restored. That persistence does not make demo identity bypass safe for customer data.
 
 ## Notes
 
