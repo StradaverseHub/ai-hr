@@ -83,6 +83,10 @@ revocation and offboarding with real test accounts. Record administrative change
 exports without logging tokens, bank details, identity numbers, uploaded documents or full prompts.
 
 Arm audit chaining before the first real record and verify new events, including bootstrap and jobs.
+The fresh-customer bootstrap arms its transaction before the first write and persists the tenant's
+`audit.hash_chain_enabled` setting. Verify that tenant setting as well as the deployment environment;
+an existing explicit tenant setting takes precedence over the environment fallback. Check auth and
+scheduled-job events too, since they do not all run through an ordinary signed-in user transaction.
 Database-local hashes alone do not protect against a database owner who can rewrite both data and
 hashes. Send audit evidence to separately administered append-only storage and test verification.
 
