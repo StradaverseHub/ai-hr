@@ -54,6 +54,8 @@ export type PcbSlipPdfSection = {
   heading: string;
   /** Right-aligned column headings, drawn once per page the section occupies. Empty ⇒ no heading strip. */
   columns: string[];
+  /** Optional heading for the left description column. */
+  labelColumn?: string;
   rows: PcbSlipPdfRow[];
   note?: string;
 };
@@ -112,9 +114,11 @@ export async function renderPcbDetailPdf(data: PcbSlipPdfData): Promise<Uint8Arr
   };
 
   let columns: string[] = [];
+  let labelColumn: string | undefined;
   /** The figure-column headings, repeated at the top of every page the section continues onto. */
   const columnHeadings = () => {
     if (columns.length === 0) return;
+    if (labelColumn) text(labelColumn, M + 4, 6.5, bold, muted);
     for (const [i, c] of columns.entries()) {
       textR(c, RIGHT - COL_W * (columns.length - 1 - i), 6.5, bold, muted);
     }
@@ -141,6 +145,7 @@ export async function renderPcbDetailPdf(data: PcbSlipPdfData): Promise<Uint8Arr
 
   for (const sec of data.sections) {
     columns = sec.columns;
+    labelColumn = sec.labelColumn;
     // A section heading with no room beneath it for its own first row is a heading stranded at a page
     // foot; 60 points is the strip plus a first wrapped label.
     need(60, false);
