@@ -66,42 +66,42 @@ afterEach(() => {
 });
 
 describe('reachability — a health check behind a password is not a health check', () => {
-  it('lets an anonymous monitor past the Basic challenge in a gated production build', () => {
+  it('lets an anonymous monitor past the Basic challenge in a gated production build', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     process.env.SHARE_PASSWORD = 'sekret';
-    const res = middleware(req(HEALTH_PATH));
+    const res = await middleware(req(HEALTH_PATH));
     // The full pass-through shape, not `.not.toBe(401)` — a 503, a 500 and a redirect all satisfy that.
     expect(res.status, 'the monitor is not challenged').toBe(200);
     expect(res.headers.get('x-middleware-next'), 'the request reaches the route handler').toBe('1');
     expect(res.headers.get('www-authenticate'), 'no Basic challenge').toBeNull();
   });
 
-  it('CONTROL — the same build still challenges every other path, so the bypass is narrow', () => {
+  it('CONTROL — the same build still challenges every other path, so the bypass is narrow', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     process.env.SHARE_PASSWORD = 'sekret';
-    const res = middleware(req('/people'));
+    const res = await middleware(req('/people'));
     expect(res.status, 'the gate is live in this configuration').toBe(401);
     expect(res.headers.get('www-authenticate')).toContain('Basic');
   });
 
-  it('does NOT open a namespace: /health/anything is still gated (exact match, not a prefix)', () => {
+  it('does NOT open a namespace: /health/anything is still gated (exact match, not a prefix)', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     process.env.SHARE_PASSWORD = 'sekret';
     expect(isHealthRoute('/health/db')).toBe(false);
-    expect(middleware(req('/health/db')).status, 'a future sub-route inherits nothing').toBe(401);
+    expect((await middleware(req('/health/db'))).status, 'a future sub-route inherits nothing').toBe(401);
   });
 
-  it('still REFUSES when SHARE_PASSWORD is unset — a broken deployment must not report healthy', () => {
+  it('still REFUSES when SHARE_PASSWORD is unset — a broken deployment must not report healthy', async () => {
     vi.stubEnv('NODE_ENV', 'production');
-    const res = middleware(req(HEALTH_PATH));
+    const res = await middleware(req(HEALTH_PATH));
     expect(res.status, 'readiness 1.4 sits ABOVE the health bypass, deliberately').toBe(503);
     expect(res.headers.get('x-middleware-next'), 'the route handler never runs').toBeNull();
   });
 
-  it('is reachable with credentials too — a monitor that DOES hold the password is not punished', () => {
+  it('is reachable with credentials too — a monitor that DOES hold the password is not punished', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     process.env.SHARE_PASSWORD = 'sekret';
-    expect(middleware(req(HEALTH_PATH, basic('sekret'))).status).toBe(200);
+    expect((await middleware(req(HEALTH_PATH, basic('sekret')))).status).toBe(200);
   });
 });
 

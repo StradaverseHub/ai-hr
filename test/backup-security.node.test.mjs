@@ -124,6 +124,27 @@ test('invalid connection details cannot leak into diagnostics or invoke a client
   assert.ok(!(result.stdout + result.stderr).includes(secret));
 });
 
+test('application postgres.js driver requires a trusted certificate for verify-full URLs', () => {
+  const probe = `import postgres from 'postgres';
+    const db = postgres(process.env.AIHR_TLS_PROBE_URL, { max: 1, connect_timeout: 3 });
+    try { const rows = await db\`select current_database() as name\`; console.log(rows[0].name); }
+    catch (error) { console.error(error.code ?? 'CONNECTION_FAILED'); process.exitCode = 1; }
+    finally { await db.end({ timeout: 1 }); }`;
+  const url = `postgresql://postgres:${encodeURIComponent(ownerPassword)}@localhost:${port}/ai_hr_security?sslmode=verify-full`;
+  const trusted = run(process.execPath, ['--input-type=module', '--eval', probe], {
+    AIHR_TLS_PROBE_URL: url, NODE_EXTRA_CA_CERTS: path.join(tmp, 'server.crt'), NODE_TLS_REJECT_UNAUTHORIZED: '1',
+  });
+  assert.equal(ok(trusted), 'ai_hr_security');
+  const untrusted = run(process.execPath, ['--input-type=module', '--eval', probe], {
+    AIHR_TLS_PROBE_URL: url, NODE_EXTRA_CA_CERTS: '', NODE_TLS_REJECT_UNAUTHORIZED: '1',
+  });
+  assert.equal(untrusted.status, 1);
+  assert.match(untrusted.stderr, /SELF_SIGNED_CERT|UNABLE_TO_VERIFY/);
+  for (const result of [trusted, untrusted]) {
+    assert.ok(!(result.stdout + result.stderr).includes(ownerPassword));
+  }
+});
+
 test('scratch database override beats a dbname query parameter without losing verified TLS', () => {
   const result = run('python3', [helper, '--database', 'postgres', '--', path.join(pg, 'psql'), '-X', '-qAt', '-c', 'SELECT current_database();'], {
     AIHR_CONNECTION_URL: `${adminUrl}&dbname=this_database_does_not_exist`,

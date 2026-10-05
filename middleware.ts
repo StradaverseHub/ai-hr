@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { authkit, handleAuthkitHeaders } from '@workos-inc/authkit-nextjs';
 import { isAuthRoute } from '@/lib/auth-routes';
+import { demoSwitcherEnabled } from '@/lib/demo-mode';
+import { workosRequest } from '@/lib/workos-request';
 import { isHealthRoute } from '@/lib/health-route';
 import { isMobileApiRoute } from '@/lib/mobile-api/routes';
 
@@ -66,11 +69,21 @@ function safeEqual(a: string, b: string): boolean {
   return r === 0;
 }
 
-function withPathname(req: NextRequest): NextResponse {
+function withPathname(req: NextRequest, authHeaders = new Headers()): NextResponse {
   // Propagate the pathname to Server Components (the root layout reads it to detect auth routes).
-  const requestHeaders = new Headers(req.headers);
-  requestHeaders.set('x-pathname', req.nextUrl.pathname);
-  return NextResponse.next({ request: { headers: requestHeaders } });
+  // Set only a header: constructing a Request from req would consume a POST's body. AuthKit's helper
+  // copies/sanitizes request headers, strips client-supplied identity/redirect headers, preserves
+  // refreshed cookies, and keeps internal session headers out of the browser response.
+  req.headers.set('x-pathname', req.nextUrl.pathname);
+  return handleAuthkitHeaders(req, authHeaders);
+}
+
+async function withBrowserSession(req: NextRequest): Promise<NextResponse> {
+  if (demoSwitcherEnabled()) return withPathname(req);
+  // withAuth() consumes verified middleware headers, not the browser cookie directly. The holding
+  // gate alone cannot supply them. Keep the callback fixed to configuration, never an incoming header.
+  const { headers } = await authkit(workosRequest(req), { redirectUri: process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI });
+  return withPathname(req, headers);
 }
 
 /**
@@ -103,7 +116,7 @@ function refuseUnconfigured(): NextResponse {
   });
 }
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   // FIRST, above every bypass below, because this is not a question about THIS request — it is a
   // question about whether this deployment is configured to serve anything at all.
   const password = process.env.SHARE_PASSWORD;
@@ -129,7 +142,7 @@ export function middleware(req: NextRequest) {
   // Auth routes bypass the Basic-auth challenge but STILL run through here, so x-pathname is set.
   // They used to be excluded in the matcher instead, which skipped this function entirely and left
   // x-pathname unset on exactly the routes whose layout depends on it — see lib/auth-routes.ts.
-  if (isAuthRoute(req.nextUrl.pathname)) return withPathname(req);
+  if (isAuthRoute(req.nextUrl.pathname)) return withBrowserSession(req);
 
   // The gate is a hosting protection only — never gate local `next dev`, even if SHARE_PASSWORD is set
   // in .env.local for hosting.
@@ -140,7 +153,7 @@ export function middleware(req: NextRequest) {
     try {
       const decoded = atob(header.slice(6)); // "user:pass"
       const pass = decoded.slice(decoded.indexOf(':') + 1);
-      if (safeEqual(pass, password)) return withPathname(req);
+      if (safeEqual(pass, password)) return withBrowserSession(req);
     } catch {
       // malformed header → fall through to challenge
     }

@@ -31,8 +31,8 @@ export default async function LoginPage() {
 
   // Real deployment → WorkOS hosted login. Dev + gated demo (ALLOW_DEMO_SESSION) → identity switcher.
   if (!demoSwitcherEnabled()) {
-    const { signInUrl } = await import('@/lib/workos');
-    redirect(await signInUrl('/'));
+    // AuthKit creates a PKCE cookie. Cookie writes belong in a route handler, never in page rendering.
+    redirect('/login/workos');
   }
 
   const demo = isDemoDeployment();
