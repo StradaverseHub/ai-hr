@@ -765,8 +765,10 @@ export async function terminateEmployment(ctx: SessionContext, p: TerminateEmplo
   return withTenant(ctx, (tx) => terminateEmploymentTx(tx, ctx, p));
 }
 
-/** Walk the administrative graph UP from `manager`; cycle if we reach `subordinate`. */
-async function wouldCreateAdminCycle(
+/** Walk the administrative graph UP from `manager`; cycle if we reach `subordinate`.
+ *  c063eea9 — exported (unchanged) so the hire-details correction (core/hire-correction.ts) refuses a
+ *  reporting manager at hire with the SAME cycle rule setReportingLine applies, rather than a second copy. */
+export async function wouldCreateAdminCycle(
   tx: Tx,
   subordinateId: string,
   managerId: string,
