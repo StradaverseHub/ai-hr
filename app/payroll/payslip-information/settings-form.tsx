@@ -13,7 +13,7 @@
  * drops it to "Not shown", which is listed in the catalogue order and unnumbered.
  *
  * Copy to Companies is its own form (forms cannot nest), so the Save button reaches the save form through
- * the `form` attribute. Copy always copies the SAVED setting, so an unsaved draft is called out beside it.
+ * the `form` attribute. Copy always copies the SAVED setting, so an unsaved draft is called out in its dialog.
  */
 import { useActionState, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
@@ -21,8 +21,7 @@ import { ArrowDown, ArrowUp, GripVertical } from 'lucide-react';
 import { PAYSLIP_INFORMATION_FIELDS } from '@/core/payslip-information';
 import { savePayslipInformation, copyPayslipInformation } from './actions';
 import { Button, Card, ErrorBanner } from '@/components/ui';
-import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import { MultiSelectPopover } from '@/components/ui/multi-select-popover';
+import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { cn } from '@/lib/utils';
 
 type Company = {id: string; name: string};
@@ -120,7 +119,7 @@ export function SettingsForm({companyId, companyName, fields, otherCompanies}: {
       {otherCompanies.length > 0
         ? <CopyToCompanies companyId={companyId} companyName={companyName} companies={otherCompanies} dirty={dirty}/>
         : <span/>}
-      <div className="flex gap-3">
+      <div className="ml-auto flex gap-3">
         <Button asChild variant="outline"><a href="/payroll/setup">{t('cancel')}</a></Button>
         <Button type="submit" form={saveFormId} disabled={pending}>{pending ? t('saving') : t('save')}</Button>
       </div>
@@ -128,29 +127,63 @@ export function SettingsForm({companyId, companyName, fields, otherCompanies}: {
   </Card>;
 }
 
+/**
+ * Copy to Companies, as the approved sketch draws it: ONE dialog holding the company checklist (Select All
+ * Companies first), the replace / independent-afterwards / issued-payslips warning, and Copy Settings.
+ *
+ * Why not MultiSelectPopover + ConfirmSubmit (the build notes' first idea): measured in the r389 render check,
+ * the picker sits at the bottom of a long page and its open panel extends the scroll area; the mousedown on
+ * the Copy button closes it, the page shortens, and the button moves out from under the pointer, so the first
+ * click is lost. A checklist inside the dialog has nothing to collapse, and it is one click fewer.
+ *
+ * Built on the same Radix AlertDialog, overlay and panel styling as components/ui/confirm-submit.tsx. The
+ * form lives INSIDE the portalled content, so the ticked ids post from where they are chosen.
+ */
 function CopyToCompanies({companyId, companyName, companies, dirty}: {companyId: string; companyName: string; companies: Company[]; dirty: boolean}) {
   const t = useTranslations('payroll.payslipInformation');
   const [state, action, pending] = useActionState(copyPayslipInformation, {error: '', copiedTo: [] as string[]});
+  const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const nameOf = useMemo(() => new Map(companies.map(c => [c.id, c.name])), [companies]);
-  // The dialog names the targets in the picker's order, so what is confirmed is what was ticked.
-  const targets = companies.filter(c => selected.has(c.id)).map(c => c.name).join(', ');
-  return <form action={action} className="flex max-w-xl flex-col gap-2">
-    <input type="hidden" name="companyId" value={companyId}/>
-    <div className="flex flex-wrap items-end gap-3">
-      <MultiSelectPopover name="targetCompanyIds" label={t('copyPickerLabel')} allLabel={t('copyChoose')}
-        options={companies} selected={selected} onChange={setSelected} disabled={pending}
-        searchPlaceholder={t('copySearch')} selectAllLabel={t('copySelectAll')} clearAllLabel={t('copyClearAll')}
-        selectedCount={n => t('copySelectedCount', {count: n})}/>
-      <ConfirmSubmit variant="outline" confirmVariant="default" disabled={pending || selected.size === 0}
-        title={t('copyTitle')} subtitle={t('copyIntro', {source: companyName, targets})}
-        description={t('copyWarning')} confirmLabel={t('copyConfirm')}>
-        {t('copyButton')}
-      </ConfirmSubmit>
-    </div>
-    {dirty && <p className="text-xs text-amber-700 dark:text-amber-400">{t('copyUnsaved')}</p>}
+  const all = selected.size === companies.length;
+  const toggle = (id: string) => setSelected(cur => { const next = new Set(cur); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const rowCls = 'flex min-h-11 cursor-pointer items-center gap-3 px-3 py-2 text-sm';
+  const boxCls = 'size-4 shrink-0 accent-[var(--color-primary)]';
+  return <div className="flex max-w-xl flex-col gap-2">
+    <AlertDialog.Root open={open} onOpenChange={o => { if (o) setSelected(new Set()); setOpen(o); }}>
+      <AlertDialog.Trigger asChild>
+        <Button type="button" variant="outline" disabled={pending}>{t('copyButton')}</Button>
+      </AlertDialog.Trigger>
+      <AlertDialog.Portal>
+        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50"/>
+        <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100vh-2rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
+          <form action={action} onSubmit={() => setOpen(false)}>
+            <input type="hidden" name="companyId" value={companyId}/>
+            {companies.filter(c => selected.has(c.id)).map(c => <input key={c.id} type="hidden" name="targetCompanyIds" value={c.id}/>)}
+            <AlertDialog.Title className="text-base font-semibold">{t('copyTitle')}</AlertDialog.Title>
+            <AlertDialog.Description className="mt-1.5 text-sm text-foreground">{t('copyIntro', {source: companyName})}</AlertDialog.Description>
+            <div role="group" aria-label={t('copyButton')} className="mt-3 max-h-64 divide-y divide-border overflow-y-auto rounded-md border border-border">
+              <label className={cn(rowCls, 'bg-muted/40 font-medium')}>
+                <input type="checkbox" className={boxCls} checked={all} onChange={() => setSelected(all ? new Set() : new Set(companies.map(c => c.id)))}/>
+                {t('copySelectAll')}
+              </label>
+              {companies.map(c => <label key={c.id} className={cn(rowCls, 'hover:bg-muted')}>
+                <input type="checkbox" className={boxCls} checked={selected.has(c.id)} onChange={() => toggle(c.id)}/>
+                <span className="min-w-0 truncate">{c.name}</span>
+              </label>)}
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">{t('copyWarning')}</p>
+            {dirty && <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{t('copyUnsaved')}</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <AlertDialog.Cancel asChild><Button type="button" variant="outline" size="sm">{t('cancel')}</Button></AlertDialog.Cancel>
+              <Button type="submit" size="sm" disabled={selected.size === 0 || pending}>{t('copyConfirm')}</Button>
+            </div>
+          </form>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
     {state.error && <ErrorBanner message={state.error}/>}
     {state.copiedTo.length > 0 && !state.error && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-400">
       {t('copied', {companies: state.copiedTo.map(id => nameOf.get(id) ?? id).join(', ')})}</p>}
-  </form>;
+  </div>;
 }

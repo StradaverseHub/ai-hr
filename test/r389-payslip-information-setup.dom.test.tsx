@@ -102,27 +102,37 @@ describe('r389 Payslip Information Setup — Copy to Companies', () => {
     expect(screen.queryByRole('button', { name: 'Copy to Companies' })).toBeNull();
   });
 
-  it('lists only the other companies, waits for a choice, and confirms naming source and targets', () => {
+  it('opens one dialog listing only the other companies; Copy Settings waits for a choice and posts what was ticked', () => {
     renderForm();
-    const copy = screen.getByRole('button', { name: 'Copy to Companies' });
-    expect(copy).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: 'Copy saved settings to' }));
-    expect(screen.getAllByRole('checkbox').map(c => c.closest('label')?.textContent)).toEqual(['XYZ Company', 'Demo Company']);
-    fireEvent.click(screen.getByRole('button', { name: 'Select All Companies' }));
-    expect(copy).toBeEnabled();
-    fireEvent.click(copy);
+    fireEvent.click(screen.getByRole('button', { name: 'Copy to Companies' }));
     const dialog = screen.getByRole('alertdialog');
     expect(within(dialog).getByText('Copy Employment Info Display Settings')).toBeInTheDocument();
-    expect(dialog.textContent).toContain('Copy ABC Company’s saved display settings (which fields are shown and their order) to: XYZ Company, Demo Company');
+    expect(dialog.textContent).toContain('Copy ABC Company’s saved display settings (which fields are shown and their order) to:');
     expect(dialog.textContent).toContain(en.payroll.payslipInformation.copyWarning);
-    expect(within(dialog).getByRole('button', { name: 'Copy Settings' })).toBeInTheDocument();
+    expect(within(dialog).getAllByRole('checkbox').map(c => c.closest('label')?.textContent)).toEqual(['Select All Companies', 'XYZ Company', 'Demo Company']);
+    const confirm = within(dialog).getByRole('button', { name: 'Copy Settings' });
+    expect(confirm).toBeDisabled();
+    const targets = () => [...dialog.querySelectorAll<HTMLInputElement>('input[type="hidden"][name="targetCompanyIds"]')].map(i => i.value);
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Demo Company' }));
+    expect(confirm).toBeEnabled();
+    expect(targets()).toEqual(['co-c']);
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Select All Companies' }));
+    expect(targets()).toEqual(['co-b', 'co-c']);
+    expect(within(dialog).getByRole('checkbox', { name: 'Select All Companies' })).toBeChecked();
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Select All Companies' }));
+    expect(targets()).toEqual([]);
+    expect(confirm).toBeDisabled();
+    expect(dialog.querySelector<HTMLInputElement>('input[type="hidden"][name="companyId"]')?.value).toBe('co-a');
   });
 
-  it('warns that an unsaved draft is not what gets copied', () => {
+  it('warns, in the dialog, that an unsaved draft is not what gets copied', () => {
     renderForm();
-    expect(screen.queryByText(en.payroll.payslipInformation.copyUnsaved)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy to Companies' }));
+    expect(within(screen.getByRole('alertdialog')).queryByText(en.payroll.payslipInformation.copyUnsaved)).toBeNull();
+    fireEvent.keyDown(screen.getByRole('alertdialog'), { key: 'Escape' });
     fireEvent.click(screen.getByRole('button', { name: 'Move down: Employee ID' }));
-    expect(screen.getByText(en.payroll.payslipInformation.copyUnsaved)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy to Companies' }));
+    expect(within(screen.getByRole('alertdialog')).getByText(en.payroll.payslipInformation.copyUnsaved)).toBeInTheDocument();
   });
 });
 
@@ -134,7 +144,12 @@ describe('r389 Payslip Information Setup — six locales', () => {
       expect(screen.getAllByText(m[key]).length, `${loc}.${key}`).toBeGreaterThan(0);
     }
     fireEvent.click(screen.getByRole('button', { name: `${m.moveDown}: ${m.employeeCode}` }));
-    expect(screen.getByText(m.copyUnsaved)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: m.copyButton }));
+    const dialog = screen.getByRole('alertdialog');
+    for (const key of ['copyTitle', 'copySelectAll', 'copyWarning', 'copyUnsaved', 'copyConfirm']) {
+      expect(within(dialog).getAllByText(m[key]).length, `${loc}.${key}`).toBeGreaterThan(0);
+    }
+    expect(dialog.textContent).toContain(m.copyIntro.replace('{source}', 'ABC Company'));
     unmount();
   });
 });
