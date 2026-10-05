@@ -28,3 +28,13 @@ rows, sign-off rules and page dimensions. The two languages have separate measur
 field coordinates. Dynamic text prefers 8.5 pt and has the reviewed 6 pt floor; unsupported glyphs and
 fields exceeding their real bounds refuse the entire request rather than silently
 replacing characters, clipping an identifier or adding a continuation page.
+
+Employer name and address use the original three footer lines, word wrapping first
+and grapheme wrapping only for an unbroken word. The name starts its own line.
+Available width is 200.05 points in English and 189.85 points in Bahasa Malaysia
+after padding; the complete block prefers 8.5 pt and may reduce to 6 pt. There is
+no fixed character limit because font and glyph widths differ. Content that cannot
+fit all three lines at that floor refuses preparation. Telephone No. uses the
+selected employer's existing company telephone, remaining blank when absent.
+Receipt references and payment dates are centred horizontally and vertically
+within their original monthly boxes. Preview and Download share this renderer.

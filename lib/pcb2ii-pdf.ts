@@ -82,41 +82,35 @@ export async function renderPcb2iiPdf(form: Pcb2iiForm, lang: Pcb2iiLang): Promi
     }
     return result;
   }
-  function width(text: string, field: string, size = SIZES[0] as number): number {
-    return runs(text, field).reduce((sum, run) => sum + run.font.widthOfTextAtSize(run.text, size), 0);
-  }
-  function put(text: string, x: number, top: number, maxWidth: number, field: string, right = false) {
-    if (!text) return;
-    const segments = runs(text, field);
-    let chosen: { size: number; measured: number; ascent: number; descent: number; left: number; right: number } | null = null;
-    for (const size of SIZES) {
-      const measured = width(text, field, size);
-      let cursor = 0;
-      let ascent = 0;
-      let descent = 0;
-      let left = 0;
-      let inkRight = 0;
-      for (const run of segments) {
-        const bounds = measurePayslipTextBounds(run.font, run.text, size);
-        ascent = Math.max(ascent, bounds.ascent);
-        descent = Math.max(descent, bounds.descent);
-        left = Math.min(left, cursor + bounds.left);
-        inkRight = Math.max(inkRight, cursor + bounds.right);
-        cursor += run.font.widthOfTextAtSize(run.text, size);
-      }
-      const occupied = Math.max(measured, inkRight) - left;
-      if (Number.isFinite(occupied) && Number.isFinite(ascent + descent)
-          && occupied <= maxWidth - 2 * PAD && ascent + descent <= g.rowPitch - 1) {
-        chosen = { size, measured, ascent, descent, left, right: inkRight };
-        break;
-      }
+  function metrics(text: string, field: string, size: number) {
+    let cursor = 0, ascent = 0, descent = 0, left = 0, right = 0;
+    for (const run of runs(text, field)) {
+      const bounds = measurePayslipTextBounds(run.font, run.text, size);
+      ascent = Math.max(ascent, bounds.ascent);
+      descent = Math.max(descent, bounds.descent);
+      left = Math.min(left, cursor + bounds.left);
+      right = Math.max(right, cursor + bounds.right);
+      cursor += run.font.widthOfTextAtSize(run.text, size);
     }
-    if (!chosen) throw new Pcb2iiPreparationError('fit', field);
-    const { size, measured, ascent, descent, left } = chosen;
+    return { measured: cursor, ascent, descent, left, right };
+  }
+  function fits(text: string, field: string, size: number, maxWidth: number) {
+    const m = metrics(text, field, size);
+    const occupied = Math.max(m.measured, m.right) - m.left;
+    return Number.isFinite(occupied) && Number.isFinite(m.ascent + m.descent)
+      && occupied <= maxWidth - 2 * PAD && m.ascent + m.descent <= g.rowPitch - 1;
+  }
+  function put(text: string, x: number, top: number, maxWidth: number, field: string,
+    alignment: 'left' | 'right' | 'center' = 'left', fixedSize?: number) {
+    if (!text) return;
+    const size = (fixedSize === undefined ? SIZES : [fixedSize]).find(size => fits(text, field, size, maxWidth));
+    if (size === undefined) throw new Pcb2iiPreparationError('fit', field);
+    const m = metrics(text, field, size);
     const cellTop = top - (g.rowPitch - 3);
-    const baseline = cellTop + (g.rowPitch - ascent - descent) / 2 + ascent;
-    let cursor = right ? x + maxWidth - PAD - Math.max(measured, chosen.right) : x + PAD - left;
-    for (const run of segments) {
+    const baseline = cellTop + (g.rowPitch - m.ascent - m.descent) / 2 + m.ascent;
+    let cursor = alignment === 'right' ? x + maxWidth - PAD - Math.max(m.measured, m.right)
+      : alignment === 'center' ? x + (maxWidth - (m.right - m.left)) / 2 - m.left : x + PAD - m.left;
+    for (const run of runs(text, field)) {
       page.drawText(run.text, { x: cursor, y: page.getHeight() - baseline, size, font: run.font, color: rgb(0, 0, 0) });
       cursor += run.font.widthOfTextAtSize(run.text, size);
     }
@@ -132,31 +126,45 @@ export async function renderPcb2iiPdf(form: Pcb2iiForm, lang: Pcb2iiLang): Promi
     const cells = [pcb2iiAmount(month.mtd), pcb2iiAmount(month.cp38), month.mtdReceiptRef ?? '',
       month.cp38ReceiptRef ?? '', pcb2iiDate(month.mtdPaidOn), pcb2iiDate(month.cp38PaidOn)];
     cells.forEach((value, col) => put(value, g.columns[col], y, g.columns[col + 1] - g.columns[col],
-      col < 2 ? 'amount' : col < 4 ? 'receiptRef' : 'date', col < 2));
+      col < 2 ? 'amount' : col < 4 ? 'receiptRef' : 'date', col < 2 ? 'right' : 'center'));
   });
   const totals = pcb2iiTotals(form.months);
-  put(pcb2iiAmount(totals.mtd), g.columns[0], g.totalY, g.columns[1] - g.columns[0], 'amount', true);
-  put(pcb2iiAmount(totals.cp38), g.columns[1], g.totalY, g.columns[2] - g.columns[1], 'amount', true);
+  put(pcb2iiAmount(totals.mtd), g.columns[0], g.totalY, g.columns[1] - g.columns[0], 'amount', 'right');
+  put(pcb2iiAmount(totals.cp38), g.columns[1], g.totalY, g.columns[2] - g.columns[1], 'amount', 'right');
   [form.officerName, form.officerDesignation, form.officerPhone].forEach((value, i) =>
     put(value, g.officerX, g.officerY + i * g.rowPitch, g.officerWidth,
       ['officerName', 'officerDesignation', 'phone'][i]));
 
-  // The actual specimens have THREE address lines. Greedy grapheme wrapping keeps every codepoint,
-  // including unbroken Unicode words. Refuse excess lines rather than discarding the rest of an address.
-  const addressLines: string[] = [];
-  for (const paragraph of form.employerNameAddress.split(/\r?\n/)) {
-    let line = '';
-    for (const { segment } of graphemes.segment(paragraph)) {
-      if (width(line + segment, 'employerNameAddress', 6) > g.officerWidth - 2 * PAD) {
-        if (!line) throw new Pcb2iiPreparationError('fit', 'employerNameAddress');
-        addressLines.push(line);
-        line = segment;
-      } else line += segment;
+  // The official employer area has three lines. Like EA, keep name and address separate,
+  // wrap words first, and split only an unbroken word on complete grapheme boundaries.
+  // Prefer readable full-size text; reduce only when all complete content cannot fit those lines.
+  let employerBlock: {size: number; lines: string[]} | null = null;
+  sizeAttempt: for (const size of SIZES) {
+    const lines: string[] = [];
+    for (const paragraph of form.employerNameAddress.split(/\r?\n/)) {
+      if (/[\p{Cc}\p{Cf}]/u.test(paragraph)) throw new Pcb2iiPreparationError('fit', 'employerNameAddress');
+      let line = '';
+      for (const word of paragraph.trim().split(/\s+/).filter(Boolean)) {
+        const candidate = line ? `${line} ${word}` : word;
+        if (fits(candidate, 'employerNameAddress', size, g.officerWidth)) { line = candidate; continue; }
+        if (line) { lines.push(line); line = ''; }
+        for (const {segment} of graphemes.segment(word)) {
+          if (!fits(line + segment, 'employerNameAddress', size, g.officerWidth)) {
+            if (!line) continue sizeAttempt;
+            lines.push(line); line = '';
+          }
+          line += segment;
+        }
+      }
+      lines.push(line);
     }
-    addressLines.push(line);
+    if (lines.length <= 3 && lines.every(line => !line || fits(line, 'employerNameAddress', size, g.officerWidth))) {
+      employerBlock = {size, lines}; break;
+    }
   }
-  if (addressLines.length > 3) throw new Pcb2iiPreparationError('fit', 'employerNameAddress');
-  addressLines.forEach((line, i) => put(line, g.officerX, g.addressY + i * g.rowPitch,
-    g.officerWidth, 'employerNameAddress'));
+  if (!employerBlock) throw new Pcb2iiPreparationError('fit', 'employerNameAddress');
+  const fittedEmployer = employerBlock;
+  fittedEmployer.lines.forEach((line, i) => put(line, g.officerX, g.addressY + i * g.rowPitch,
+    g.officerWidth, 'employerNameAddress', 'left', fittedEmployer.size));
   return doc.save();
 }

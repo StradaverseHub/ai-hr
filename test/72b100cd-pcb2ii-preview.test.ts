@@ -467,10 +467,13 @@ describe('72b100cd · the employer block names the employer the form speaks for'
 
   it("the OLD employer's form carries the OLD employer's name — not the company they moved to", async () => {
     await transferred();
+    await owner.db.update(schema.company).set({ phone: '03-11111111' }).where(eq(schema.company.id, b.companyId));
+    await owner.db.update(schema.company).set({ phone: '03-22222222' }).where(eq(schema.company.id, foreignCompanyId));
     const form = await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, selectedDate: '2027-02-28', companyId: b.companyId });
     expect(form, 'A paid them in January, so A owes them a statement').toBeTruthy();
     // THE POINT. Before the fix this read 'Foreign …' — B's letterhead over A's deducted months.
     expect(form!.employerNameAddress, 'A’s own name').toContain('Acme');
+    expect(form!.officerPhone, 'A’s own employer telephone despite transfer to B').toBe('03-11111111');
     expect(form!.employerNameAddress, 'and never B’s').not.toContain('Foreign');
     expect(form!.months[0].mtd, 'January, deducted by A').toBe(250.5);
     expect(form!.months[1].mtd, 'February belongs to B, not to this sheet').toBeNull();
@@ -478,9 +481,12 @@ describe('72b100cd · the employer block names the employer the form speaks for'
 
   it("the NEW employer's form carries the NEW employer's name, and none of the old one's months", async () => {
     await transferred();
+    await owner.db.update(schema.company).set({ phone: '03-11111111' }).where(eq(schema.company.id, b.companyId));
+    await owner.db.update(schema.company).set({ phone: '03-22222222' }).where(eq(schema.company.id, foreignCompanyId));
     const form = await pcb2iiStatement(adminCtx(b), { employmentId, year: YEAR, selectedDate: '2027-02-28', companyId: foreignCompanyId });
     expect(form, 'B employs them now, so B’s statement exists even before B runs payroll').toBeTruthy();
     expect(form!.employerNameAddress).toContain('Foreign');
+    expect(form!.officerPhone).toBe('03-22222222');
     expect(form!.officerName).toBe('Company B officer');
     expect(form!.officerDesignation).toBe('');
     expect(form!.employerNameAddress).not.toContain('Acme');
