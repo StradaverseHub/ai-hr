@@ -39,6 +39,9 @@ type Props = {
   confirmLabel?: string;
   reasonField?: ReasonField;
   twoStep?: TwoStep;
+  /** r389 — opt-in: the dialog's Confirm button variant when it should differ from the trigger's (an outline
+   *  trigger beside a page's primary Save, confirming with a primary button). Omitted ⇒ `variant`, as before. */
+  confirmVariant?: ButtonProps['variant'];
 } & Omit<ButtonProps, 'type'>;
 
 /**
@@ -60,6 +63,7 @@ export function ConfirmSubmit({
   reasonField,
   twoStep,
   variant = 'destructive',
+  confirmVariant,
   ...props
 }: Props) {
   const t = useTranslations('components.confirmSubmit');
@@ -156,7 +160,7 @@ export function ConfirmSubmit({
               <AlertDialog.Action asChild>
                 <Button
                   type="button"
-                  variant={variant}
+                  variant={confirmVariant ?? variant}
                   size="sm"
                   disabled={confirmDisabled}
                   onClick={() => ref.current?.closest('form')?.requestSubmit()}
