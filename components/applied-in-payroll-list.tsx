@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Badge, inputCls } from '@/components/ui';
 import { paginateRows } from '@/lib/pagination';
+import type { AppliedLoanSortKey as SortKey, ServerTablePage } from '@/lib/server-table-page';
+import { useServerTableQuery } from '@/components/use-server-table-query';
 import { ClientPager, useClientPageQuery } from '@/components/client-pager';
 
 /**
@@ -49,7 +51,6 @@ export type AppliedInPayrollRow = {
   createdOn: string;
 };
 
-type SortKey = 'payPeriod' | 'employee' | 'company' | 'amount' | 'createdOn';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -58,8 +59,10 @@ export function AppliedInPayrollList({
   rows,
   emptyLabel,
   paramNames,
+  serverPage,
 }: {
   rows: AppliedInPayrollRow[];
+  serverPage?: ServerTablePage<SortKey>;
   /** Pre-translated "nothing here" line — each screen says what an empty list MEANS on that screen
    *  (no zakat deducted yet vs. no instalment taken yet), and the caller does the literal `t('…')`
    *  lookup so the i18n coverage check can still see it. */
@@ -69,11 +72,14 @@ export function AppliedInPayrollList({
 }) {
   const t = useTranslations('appliedInPayroll');
   const q = useClientPageQuery(paramNames);
-  const [query, setQuery] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('payPeriod');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const { query, setQuery, sort: navigateSort } = useServerTableQuery(serverPage?.query, { query: 'aQ', sort: 'aSort', dir: 'aDir', page: paramNames?.page ?? 'page' });
+  const [localSortKey, setSortKey] = useState<SortKey>('payPeriod');
+  const [localSortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
+  const sortKey = serverPage?.sort ?? localSortKey;
+  const sortDir = serverPage?.dir ?? localSortDir;
   const sorted = useMemo(() => {
+    if (serverPage) return rows;
     const needle = query.trim().toLowerCase();
     const matched = needle
       ? rows.filter(
@@ -111,11 +117,15 @@ export function AppliedInPayrollList({
       // Deterministic tiebreak so two runs of the same sort never disagree about row order.
       return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
     });
-  }, [rows, query, sortKey, sortDir]);
+  }, [rows, query, sortKey, sortDir, serverPage]);
 
-  const { rows: pageRows, state } = paginateRows(sorted, q);
+  const { rows: pageRows, state } = serverPage ? { rows, state: serverPage.state } : paginateRows(sorted, q);
 
   const toggleSort = (key: SortKey) => {
+    if (serverPage) {
+      navigateSort(key, key === sortKey ? (sortDir === 'asc' ? 'desc' : 'asc') : (key === 'payPeriod' || key === 'createdOn' ? 'desc' : 'asc'));
+      return;
+    }
     if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else {
       setSortKey(key);
@@ -138,13 +148,14 @@ export function AppliedInPayrollList({
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
         <input
           type="search"
+          maxLength={serverPage ? 200 : undefined}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t('searchPlaceholder')}
           className={`${inputCls} max-w-xs`}
           aria-label={t('searchPlaceholder')}
         />
-        <span className="text-xs text-muted-foreground">{t('nShown', { count: sorted.length })}</span>
+        <span className="text-xs text-muted-foreground">{t('nShown', { count: state.total })}</span>
       </div>
 
       <div className="overflow-x-auto border-t border-border">

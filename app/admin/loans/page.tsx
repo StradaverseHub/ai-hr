@@ -2,9 +2,9 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { listCompanies, listEmployees } from '@/core/read';
-import { listActiveLoans, type LoanRow } from '@/core/loans';
-import { listAppliedLoanRepayments } from '@/core/payroll-view';
+import { listCompanies } from '@/core/read';
+import { getEmployeeOption, listEmployeeOptionFacets, listEmployeeOptionsPage } from '@/core/employee-search';
+import { listLoansPage, listAppliedLoanRepaymentsPage } from '@/core/loans';
 import { Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import {
   CollapsibleEmployeePanel,
@@ -58,31 +58,37 @@ export const LOANS_PANEL_COOKIE = 'loans_panel';
 export default async function LoansPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; toast?: string; employmentId?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('loans');
-  const { error, employmentId } = await searchParams;
-
-  const [companies, employees] = await Promise.all([listCompanies(s), listEmployees(s)]);
-
-  // SCOPE-GUARD the param: the ?employmentId= must be in the list this admin can already see. An unknown or
-  // out-of-scope value is treated as NO selection (the whole list), never as an error and never as a read.
-  const selected = employmentId && employees.some((e) => e.employmentId === employmentId) ? employmentId : null;
-  const selectedEmp = selected ? (employees.find((e) => e.employmentId === selected) ?? null) : null;
-
-  const companyIds = companies.map((c) => c.id);
-  // Gather every loan across the companies the admin can see. Narrow AFTER the read, not before: the read
-  // is per-company and already access-fenced, and filtering here keeps the "no selection ⇒ everything"
-  // case byte-identical to what this page did before.
-  const loanRows: LoanRow[] = (await Promise.all(companyIds.map((id) => listActiveLoans(s, id)))).flat();
-  const visibleLoans = (selected ? loanRows.filter((l) => l.employmentId === selected) : loanRows).sort((a, b) =>
-    b.createdAt.localeCompare(a.createdAt),
-  );
-
-  // The instalments a run actually took. Narrowed in the QUERY, over the same company fence the loan read
-  // uses — and it fails closed on an empty set, so an admin who can see no company sees no rows.
-  const applied = await listAppliedLoanRepayments(s, { companyIds, employmentId: selected ?? undefined });
+  const raw = await searchParams;
+  const sp: Record<string, string | undefined> = Object.fromEntries(Object.entries(raw).map(([key, value]) => [key, typeof value === 'string' ? value : undefined]));
+  const { error, employmentId } = sp;
+  const companies = await listCompanies(s, { includeArchived: true });
+  const companyIds = companies.filter((c) => !c.archivedAt).map((c) => c.id);
+  // The legacy picker included archived-company employments, although the loan book lists live companies.
+  const pickerCompanyIds = companies.map((c) => c.id);
+  // A selection is resolved independently of the bounded picker and its filters. An unknown or foreign
+  // employment still means no selection, preserving the everyone-at-once history view.
+  const selectedEmp = employmentId ? await getEmployeeOption(s, pickerCompanyIds, employmentId) : null;
+  const selected = selectedEmp?.employmentId ?? null;
+  const filterId = (value?: string) => !value ? '' : /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) ? value : '00000000-0000-0000-0000-000000000000';
+  const picker = {
+    query: (sp.pickerQ ?? '').trim().slice(0, 200),
+    companyId: filterId(sp.pickerCompany), businessUnitId: filterId(sp.pickerBusinessUnit),
+    departmentId: filterId(sp.pickerDepartment), status: sp.pickerStatus === 'ended' ? 'ended' : sp.pickerStatus === 'active' ? 'active' : '',
+  };
+  const [employeePage, facets, loanPage, appliedPage] = await Promise.all([
+    listEmployeeOptionsPage(s, { companyIds: pickerCompanyIds, ...picker, status: picker.status === 'ended' ? 'terminated' : picker.status === 'active' ? 'active' : undefined, limit: 25, offset: 0 }),
+    listEmployeeOptionFacets(s, pickerCompanyIds, picker.companyId || undefined),
+    listLoansPage(s, { companyIds, employmentId: selected ?? undefined, query: sp.q, page: sp.page, size: sp.size, sort: sp.sort, dir: sp.dir }),
+    listAppliedLoanRepaymentsPage(s, {
+      companyIds, employmentId: selected ?? undefined, query: sp.aQ, page: sp.aPage, size: sp.aSize, sort: sp.aSort, dir: sp.aDir,
+      cycleLabels: { regular: t('cycle.regular'), off_cycle: t('cycle.off_cycle'), bonus: t('cycle.bonus'), adjustment: t('cycle.adjustment') },
+    }),
+  ]);
+  const applied = appliedPage.rows;
   const appliedList: AppliedInPayrollRow[] = applied.map((r) => ({
     id: r.id,
     payPeriod: r.payPeriod,
@@ -100,7 +106,7 @@ export default async function LoansPage({
   // ALL employees, not just active ones: a terminated employee can still carry a settled or outstanding
   // loan, and a screen whose whole job is the historical record must be able to reach them. The Employee
   // Status filter in the panel is what narrows to the active ones.
-  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
+  const panelEmployees: ScopeEmployee[] = employeePage.rows.map((e) => ({
     employmentId: e.employmentId,
     name: e.name,
     employeeCode: e.employeeCode,
@@ -151,7 +157,7 @@ export default async function LoansPage({
           <Card className="p-4">
             <h2 className="text-sm font-semibold">{t('employee')}</h2>
             <div className="mt-3">
-              <EmployeeScopePanel employees={panelEmployees} selectedId={selected} basePath="/admin/loans" />
+              <EmployeeScopePanel employees={panelEmployees} selectedId={selected} basePath="/admin/loans" serverResults={{ ...picker, ...facets, total: employeePage.total }} />
             </div>
           </Card>
         }
@@ -163,15 +169,16 @@ export default async function LoansPage({
           {!selectedEmp && <p className="text-xs text-muted-foreground">{t('pickEmployeeHint')}</p>}
 
           <Card className="overflow-hidden">
-            <SectionHeader title={t('loansTitle')} count={visibleLoans.length} />
-            <LoanList loans={visibleLoans} />
+            <SectionHeader title={t('loansTitle')} count={loanPage.state.total} />
+            <LoanList loans={loanPage.rows} serverPage={{ state: loanPage.state, query: loanPage.query, sort: loanPage.sort, dir: loanPage.dir }} />
           </Card>
 
           <Card className="overflow-hidden">
-            <SectionHeader title={t('appliedTitle')} count={applied.length} />
+            <SectionHeader title={t('appliedTitle')} count={appliedPage.state.total} />
             <p className="px-4 pt-2 text-xs text-muted-foreground">{t('appliedSubtitle')}</p>
             <AppliedInPayrollList
               rows={appliedList}
+              serverPage={{ state: appliedPage.state, query: appliedPage.query, sort: appliedPage.sort, dir: appliedPage.dir }}
               emptyLabel={t('appliedEmpty')}
               paramNames={{ page: 'aPage', size: 'aSize' }}
             />

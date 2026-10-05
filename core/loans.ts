@@ -10,7 +10,9 @@
  * amounts in payloads (ADR-0030). All writes are admin-only (asserted in the service; RLS does not enforce
  * admin-only writes here, matching claims — so the ESS path must NEVER call a loan write service).
  */
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
+import { pageState, parsePageQuery } from '../lib/pagination';
+import type { AppliedLoanSortKey, LoanSortKey } from '../lib/server-table-page';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
@@ -20,6 +22,8 @@ import {
   payrollBatch,
   payrollInput,
   person,
+  company,
+  payrollRunTypeEnum,
 } from '../db/schema';
 
 // RSC-safe pure calc engine + constants live in ./loans-compute (NO db import) so a client component
@@ -635,6 +639,113 @@ export async function listActiveLoans(ctx: SessionContext, companyId: string): P
       .where(eq(employment.companyId, companyId))
       .orderBy(sql`${employeeLoan.createdAt} desc`);
     return rows.map((r) => toLoanRow({ ...r.loan, employeeName: r.employeeName, employeeCode: r.employeeCode }));
+  });
+}
+
+type LoanPageInput = {
+  companyIds: string[];
+  employmentId?: string;
+  query?: string;
+  page?: string;
+  size?: string;
+  sort?: string;
+  dir?: string;
+};
+
+// Literal substring matching: '%' and '_' are data, never SQL wildcard operators.
+const contains = (expression: SQL, needle: string) => sql`strpos(lower(${expression}), ${needle}) > 0`;
+
+/** The admin loan book, filtered and ordered before LIMIT. Counts cover the same scoped predicate. */
+export async function listLoansPage(ctx: SessionContext, p: LoanPageInput) {
+  assertAdmin(ctx);
+  const q = parsePageQuery(p);
+  const query = (p.query ?? '').trim().slice(0, 200);
+  const sorts: Record<LoanSortKey, SQL> = {
+    employee: sql`lower(${person.fullName})`,
+    type: sql`${employeeLoan.loanType}`,
+    principal: sql`${employeeLoan.principal}`,
+    instalment: sql`${employeeLoan.monthlyInstalment}`,
+    outstanding: sql`${employeeLoan.outstandingBalance}`,
+    progress: sql`case when ${employeeLoan.durationMonths} > 0 then ${employeeLoan.instalmentsPaid}::numeric / ${employeeLoan.durationMonths} else 0 end`,
+    status: sql`case ${employeeLoan.status} when 'active' then 0 when 'suspended' then 1 when 'settled' then 2 when 'cancelled' then 3 else 99 end`,
+  };
+  const sort: LoanSortKey = Object.hasOwn(sorts, p.sort ?? '') ? p.sort as LoanSortKey : 'employee';
+  const dir = p.dir === 'desc' ? 'desc' as const : 'asc' as const;
+  if (!p.companyIds.length) return { rows: [] as LoanRow[], state: pageState(q, 0, 0), query, sort, dir };
+  return withTenant(ctx, async (tx) => {
+    const needle = query.toLowerCase();
+    const where = and(
+      inArray(employment.companyId, p.companyIds),
+      p.employmentId ? eq(employeeLoan.employmentId, p.employmentId) : undefined,
+      needle ? or(
+        contains(sql`${person.fullName}`, needle), contains(sql`coalesce(${employment.employeeCode}, '')`, needle),
+        contains(sql`${employeeLoan.loanType}::text`, needle), contains(sql`${employeeLoan.status}::text`, needle),
+        contains(sql`coalesce(${employeeLoan.notes}, '')`, needle),
+        contains(sql`trim(trailing '.' from trim(trailing '0' from ${employeeLoan.principal}::text))`, needle),
+      ) : undefined,
+    );
+    const [{ total }] = await tx.select({ total: sql<number>`count(*)::int` }).from(employeeLoan)
+      .innerJoin(employment, eq(employment.id, employeeLoan.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId)).where(where);
+    const rows = await tx.select({ loan: employeeLoan, employeeName: person.fullName, employeeCode: employment.employeeCode })
+      .from(employeeLoan).innerJoin(employment, eq(employment.id, employeeLoan.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId)).where(where)
+      .orderBy(dir === 'desc' ? desc(sorts[sort]) : asc(sorts[sort]), desc(employeeLoan.createdAt), asc(employeeLoan.id))
+      .limit(q.limit).offset(q.offset);
+    return {
+      rows: rows.map((r) => toLoanRow({ ...r.loan, employeeName: r.employeeName, employeeCode: r.employeeCode })),
+      state: pageState(q, total, rows.length), query, sort, dir,
+    };
+  });
+}
+
+/** Applied amounts come from the ledger, never from the scheduled due amount. Read-only admin history. */
+export async function listAppliedLoanRepaymentsPage(
+  ctx: SessionContext,
+  p: LoanPageInput & { cycleLabels: Record<(typeof payrollRunTypeEnum.enumValues)[number], string> },
+) {
+  assertAdmin(ctx);
+  const q = parsePageQuery(p);
+  const query = (p.query ?? '').trim().slice(0, 200);
+  const createdOn = sql<string>`to_char(${loanRepayment.appliedAt}, 'YYYY-MM-DD HH24:MI:SS')`;
+  const sorts: Record<AppliedLoanSortKey, SQL> = {
+    payPeriod: sql`${payrollBatch.payPeriod}`, employee: sql`lower(${person.fullName})`,
+    company: sql`lower(${company.legalName})`, amount: sql`${loanRepayment.appliedAmount}`, createdOn,
+  };
+  const sort: AppliedLoanSortKey = Object.hasOwn(sorts, p.sort ?? '') ? p.sort as AppliedLoanSortKey : 'payPeriod';
+  const dir = p.dir === 'asc' ? 'asc' as const : 'desc' as const;
+  const projection = {
+    id: loanRepayment.id, loanId: loanRepayment.loanId, employmentId: loanRepayment.employmentId,
+    employeeName: person.fullName, employeeCode: employment.employeeCode,
+    companyId: payrollBatch.companyId, company: company.legalName, sequenceNo: loanRepayment.sequenceNo,
+    payPeriod: payrollBatch.payPeriod, runType: payrollBatch.runType, runSeq: payrollBatch.runSeq,
+    batchStatus: payrollBatch.status, amount: loanRepayment.appliedAmount, createdOn,
+  };
+  return withTenant(ctx, async (tx) => {
+    const needle = query.toLowerCase();
+    // Search the exact translated label the table displays, including the optional run sequence.
+    const cycle = sql`(case ${payrollBatch.runType} ${sql.join(payrollRunTypeEnum.enumValues.map((type) =>
+      sql`when ${type} then ${p.cycleLabels[type]}`), sql` `)} end) || case when ${payrollBatch.runSeq} > 1 then ' #' || ${payrollBatch.runSeq}::text else '' end`;
+    const where = and(
+      p.companyIds.length ? inArray(payrollBatch.companyId, p.companyIds) : sql`false`,
+      eq(loanRepayment.status, 'applied'),
+      p.employmentId ? eq(loanRepayment.employmentId, p.employmentId) : undefined,
+      needle ? or(
+        contains(sql`${payrollBatch.payPeriod}`, needle), contains(cycle, needle),
+        contains(sql`${person.fullName}`, needle), contains(sql`coalesce(${employment.employeeCode}, '')`, needle),
+        contains(sql`${company.legalName}`, needle), contains(sql`${loanRepayment.appliedAmount}::text`, needle),
+        contains(createdOn, needle),
+      ) : undefined,
+    );
+    const joined = () => tx.select(projection).from(loanRepayment)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, loanRepayment.appliedBatchId))
+      .innerJoin(employment, eq(employment.id, loanRepayment.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId)).innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .where(where);
+    const [{ total }] = await tx.select({ total: sql<number>`count(*)::int` }).from(joined().as('matching_repayments'));
+    const rows = await joined().orderBy(dir === 'desc' ? desc(sorts[sort]) : asc(sorts[sort]), asc(loanRepayment.id))
+      .limit(q.limit).offset(q.offset);
+    return { rows, state: pageState(q, total, rows.length), query, sort, dir };
   });
 }
 

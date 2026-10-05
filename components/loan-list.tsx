@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import type { LoanRow } from '@/core/loans';
+import type { LoanSortKey as SortKey, ServerTablePage } from '@/lib/server-table-page';
+import { useServerTableQuery } from '@/components/use-server-table-query';
 import { EmployeeCode, inputCls } from '@/components/ui';
 import { paginateRows } from '@/lib/pagination';
 import { ClientPager, useClientPageQuery } from '@/components/client-pager';
@@ -22,9 +24,8 @@ import { ClientPager, useClientPageQuery } from '@/components/client-pager';
  *
  * SORT BEFORE PAGE, NEVER WITHIN THE PAGE (the rule recorded on components/client-pager.tsx): the whole
  * matching set is ordered and then sliced, so a column header cannot reorder twenty-five rows and leave the
- * rest where they were. Search and sort are CLIENT-side over the rows already on the page, matching the
- * transaction screens beside it — honest at this size, where the list is one employee's loans or one
- * tenant's.
+ * rest where they were. The Loans screen supplies serverPage: SQL filters and sorts the whole set
+ * before returning this page. Other callers can retain the bounded client-list contract.
  */
 
 const STATUS_CLS: Record<string, string> = {
@@ -41,18 +42,19 @@ function money(n: number): string {
   return `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-type SortKey = 'employee' | 'type' | 'principal' | 'instalment' | 'outstanding' | 'progress' | 'status';
-
-export function LoanList({ loans }: { loans: LoanRow[] }) {
+export function LoanList({ loans, serverPage }: { loans: LoanRow[]; serverPage?: ServerTablePage<SortKey> }) {
   const t = useTranslations('loans');
   const tType = useTranslations('loans.loanType');
   const tStatus = useTranslations('loans.status');
   const q = useClientPageQuery();
-  const [query, setQuery] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('employee');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const { query, setQuery, sort: navigateSort } = useServerTableQuery(serverPage?.query, { query: 'q', sort: 'sort', dir: 'dir', page: 'page' });
+  const [localSortKey, setSortKey] = useState<SortKey>('employee');
+  const [localSortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
+  const sortKey = serverPage?.sort ?? localSortKey;
+  const sortDir = serverPage?.dir ?? localSortDir;
   const sorted = useMemo(() => {
+    if (serverPage) return loans;
     const needle = query.trim().toLowerCase();
     const matched = needle
       ? loans.filter(
@@ -95,11 +97,15 @@ export function LoanList({ loans }: { loans: LoanRow[] }) {
       if (a.createdAt !== b.createdAt) return a.createdAt > b.createdAt ? -1 : 1;
       return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
     });
-  }, [loans, query, sortKey, sortDir]);
+  }, [loans, query, sortKey, sortDir, serverPage]);
 
-  const { rows: pageLoans, state } = paginateRows(sorted, q);
+  const { rows: pageLoans, state } = serverPage ? { rows: loans, state: serverPage.state } : paginateRows(sorted, q);
 
   const toggleSort = (key: SortKey) => {
+    if (serverPage) {
+      navigateSort(key, key === sortKey ? (sortDir === 'asc' ? 'desc' : 'asc') : (['principal', 'instalment', 'outstanding'].includes(key) ? 'desc' : 'asc'));
+      return;
+    }
     if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else {
       setSortKey(key);
@@ -121,13 +127,14 @@ export function LoanList({ loans }: { loans: LoanRow[] }) {
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
         <input
           type="search"
+          maxLength={serverPage ? 200 : undefined}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t('searchPlaceholder')}
           className={`${inputCls} max-w-xs`}
           aria-label={t('searchPlaceholder')}
         />
-        <span className="text-xs text-muted-foreground">{t('nShown', { count: sorted.length })}</span>
+        <span className="text-xs text-muted-foreground">{t('nShown', { count: state.total })}</span>
       </div>
 
       <div className="overflow-x-auto border-t border-border">
@@ -180,7 +187,7 @@ export function LoanList({ loans }: { loans: LoanRow[] }) {
             {pageLoans.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
-                  {loans.length === 0 ? t('empty') : t('noMatches')}
+                  {query.trim() ? t('noMatches') : t('empty')}
                 </td>
               </tr>
             )}

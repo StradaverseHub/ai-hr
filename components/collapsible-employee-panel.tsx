@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useTransition, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { INQUIRY_PICKER_KEYS } from '@/lib/inquiry-picker-context';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -215,6 +215,19 @@ function preservedParams(preserve?: Record<string, string | string[]>): URLSearc
   return qs;
 }
 
+/** Optional server-resolved results for large employee populations. Facets contain org labels only. */
+export type EmployeeScopeServerResults = {
+  query: string;
+  companyId: string;
+  businessUnitId: string;
+  departmentId: string;
+  status: string;
+  total: number;
+  companies: { id: string; name: string }[];
+  businessUnits: { id: string; name: string }[];
+  departments: { id: string; name: string }[];
+};
+
 /** Same cap Fixed Transaction has always used: the list is a picker, not a report. */
 const SCOPE_PANEL_CAP = 25;
 
@@ -251,6 +264,7 @@ export function EmployeeScopePanel({
   preserve,
   allowAll = false,
   preservePicker = false,
+  serverResults,
 }: {
   /** The already access-fenced employee set, mapped from the server's `listEmployees`. */
   employees: ScopeEmployee[];
@@ -286,6 +300,7 @@ export function EmployeeScopePanel({
   allowAll?: boolean;
   /** Leave Inquiry only: keep employee-search context separate from leave-code filters. */
   preservePicker?: boolean;
+  serverResults?: EmployeeScopeServerResults;
 }) {
   const t = useTranslations('employeePanel');
   const router = useRouter();
@@ -297,13 +312,38 @@ export function EmployeeScopePanel({
     if (typeof window !== 'undefined') return new URLSearchParams(window.location.search).get(key) ?? '';
     return typeof preserve?.[key] === 'string' ? preserve[key] as string : '';
   };
-  const [query, setQuery] = useState(() => initialPickerValue('pickerQ'));
-  const [companyId, setCompanyId] = useState(() => initialPickerValue('pickerCompany'));
-  const [businessUnitId, setBusinessUnitId] = useState(() => initialPickerValue('pickerBusinessUnit'));
-  const [departmentId, setDepartmentId] = useState(() => initialPickerValue('pickerDepartment'));
-  const [status, setStatus] = useState(() => initialPickerValue('pickerStatus'));
+  const [query, setQuery] = useState(() => serverResults?.query ?? initialPickerValue('pickerQ'));
+  const [companyId, setCompanyId] = useState(() => serverResults?.companyId ?? initialPickerValue('pickerCompany'));
+  const [businessUnitId, setBusinessUnitId] = useState(() => serverResults?.businessUnitId ?? initialPickerValue('pickerBusinessUnit'));
+  const [departmentId, setDepartmentId] = useState(() => serverResults?.departmentId ?? initialPickerValue('pickerDepartment'));
+  const [status, setStatus] = useState(() => serverResults?.status ?? initialPickerValue('pickerStatus'));
+  const resolvedFilters = serverResults ? JSON.stringify([serverResults.query, serverResults.companyId, serverResults.businessUnitId, serverResults.departmentId, serverResults.status]) : undefined;
+  const previousResolvedFilters = useRef(resolvedFilters);
+  const draftFilters = useRef('');
+  draftFilters.current = JSON.stringify([query.trim().slice(0, 200), companyId, businessUnitId, departmentId, status]);
   useEffect(() => {
-    if (!preservePicker) return;
+    if (!resolvedFilters) return;
+    // A slower response must not erase edits made after its request started. Back/Forward still replaces
+    // a clean draft, and a response matching the latest draft acknowledges those edits.
+    if (draftFilters.current === previousResolvedFilters.current || draftFilters.current === resolvedFilters) {
+      const [q, c, b, d, s] = JSON.parse(resolvedFilters) as string[];
+      setQuery(q); setCompanyId(c); setBusinessUnitId(b); setDepartmentId(d); setStatus(s);
+    }
+    previousResolvedFilters.current = resolvedFilters;
+  }, [resolvedFilters]);
+  useEffect(() => {
+    if (!resolvedFilters || JSON.stringify([query.trim().slice(0, 200), companyId, businessUnitId, departmentId, status]) === resolvedFilters) return;
+    const timer = setTimeout(() => {
+      const url = new URL(window.location.href);
+      for (const [key, value] of Object.entries({ pickerQ: query.trim().slice(0, 200), pickerCompany: companyId, pickerBusinessUnit: businessUnitId, pickerDepartment: departmentId, pickerStatus: status })) {
+        if (value) url.searchParams.set(key, value); else url.searchParams.delete(key);
+      }
+      startTransition(() => router.replace(`${basePath}?${url.searchParams.toString()}`, { scroll: false }));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query, companyId, businessUnitId, departmentId, status, resolvedFilters, router, basePath]);
+  useEffect(() => {
+    if (!preservePicker || serverResults) return;
     const url = new URL(window.location.href);
     for (const [key, value] of Object.entries({pickerQ:query,pickerCompany:companyId,pickerBusinessUnit:businessUnitId,pickerDepartment:departmentId,pickerStatus:status})) {
       if (value) url.searchParams.set(key,value); else url.searchParams.delete(key);
@@ -325,10 +365,11 @@ export function EmployeeScopePanel({
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const companyOptions = useMemo(() => {
+    if (serverResults) return serverResults.companies;
     const seen = new Map<string, string>();
     for (const e of employees) seen.set(e.companyId, e.company);
     return [...seen.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [employees]);
+  }, [employees, serverResults]);
 
   // BU / department options derive from the currently company-scoped set (no extra query).
   const inCompany = useMemo(
@@ -336,17 +377,20 @@ export function EmployeeScopePanel({
     [employees, companyId],
   );
   const businessUnitOptions = useMemo(() => {
+    if (serverResults) return serverResults.businessUnits;
     const seen = new Map<string, string>();
     for (const e of inCompany) if (e.businessUnitId && e.businessUnit) seen.set(e.businessUnitId, e.businessUnit);
     return [...seen.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [inCompany]);
+  }, [inCompany, serverResults]);
   const departmentOptions = useMemo(() => {
+    if (serverResults) return serverResults.departments;
     const seen = new Map<string, string>();
     for (const e of inCompany) if (e.departmentId && e.department) seen.set(e.departmentId, e.department);
     return [...seen.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [inCompany]);
+  }, [inCompany, serverResults]);
 
   const filtered = useMemo(() => {
+    if (serverResults) return employees;
     const q = query.trim().toLowerCase();
     let base = companyId ? employees.filter((e) => e.companyId === companyId) : employees;
     if (businessUnitId) base = base.filter((e) => e.businessUnitId === businessUnitId);
@@ -358,15 +402,16 @@ export function EmployeeScopePanel({
       );
     }
     return base;
-  }, [employees, query, companyId, businessUnitId, departmentId, status]);
+  }, [employees, query, companyId, businessUnitId, departmentId, status, serverResults]);
   const results = useMemo(() => filtered.slice(0, SCOPE_PANEL_CAP), [filtered]);
-  const capped = filtered.length > SCOPE_PANEL_CAP;
+  const resultTotal = serverResults?.total ?? filtered.length;
+  const capped = resultTotal > SCOPE_PANEL_CAP;
 
   const select = (id: string) => {
     // The screen's own filters ride along; anything it did NOT list is dropped on purpose, because a
     // param scoped to the PREVIOUS employee (a payslip id, a page number) is wrong for the next one.
     const qs = preservedParams(preserve);
-    if (preservePicker) {
+    if (preservePicker || serverResults) {
       for (const [key, value] of Object.entries({ pickerQ: query, pickerCompany: companyId, pickerBusinessUnit: businessUnitId, pickerDepartment: departmentId, pickerStatus: status })) {
         if (value) qs.set(key, value); else qs.delete(key);
       }
@@ -420,6 +465,7 @@ export function EmployeeScopePanel({
         <Field label={t('searchLabel')} className="flex-1">
           <input
             type="search"
+            maxLength={serverResults ? 200 : undefined}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('searchPlaceholder')}
@@ -493,7 +539,7 @@ export function EmployeeScopePanel({
       </div>
       {capped && (
         <p className="text-xs text-muted-foreground">
-          {t('showingCapped', { cap: SCOPE_PANEL_CAP, total: filtered.length })}
+          {t('showingCapped', { cap: SCOPE_PANEL_CAP, total: resultTotal })}
         </p>
       )}
 
