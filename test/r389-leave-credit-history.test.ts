@@ -279,6 +279,41 @@ describe('r389 · Leave Credit History lists the signed-in person’s own reques
     expect(mine.filter((l) => l.requestId === r1).every((l) => l.credit?.status === 'available')).toBe(true);
     expect(mine.find((l) => l.requestId === r2)!.credit).toBeNull();
   });
+
+  it('a rehired person keeps the requests of the earlier employment — every employment of the person, no one else’s', async () => {
+    const { emp, empCtx, mgrCtx } = await managed('Aisyah Rehired', 'Mahmud Rehire');
+    const now = await claim(empCtx, emp.employmentId, [d(-11)]);
+    await decideReplacementLeaveRequest(mgrCtx, { requestId: now, decision: 'approved' });
+    // The EARLIER employment of the same person (ended before the current one began), with a request it made
+    // then. Written directly: the request path rightly refuses a terminated employment, and this case is
+    // about what the history READS, not about who may still submit.
+    const [old] = await owner.db
+      .insert(schema.employment)
+      .values({ tenantId: b.tenantId, personId: emp.personId, companyId: b.companyId, hiredOn: '2020-01-01', terminatedOn: '2023-06-30', employeeCode: `OLD-${randomUUID().slice(0, 4)}` })
+      .returning({ id: schema.employment.id });
+    const [oldReq] = await owner.db
+      .insert(schema.replacementLeaveRequest)
+      .values({ tenantId: b.tenantId, employmentId: old.id, unit: 'day', totalDays: '1.00', submittedOn: '2023-03-02', status: 'rejected', reason: 'From the first employment' })
+      .returning({ id: schema.replacementLeaveRequest.id });
+    await owner.db
+      .insert(schema.replacementLeaveRequestDate)
+      .values({ tenantId: b.tenantId, requestId: oldReq.id, subjectEmploymentId: old.id, workedDate: '2023-03-01', days: '1.00', workedDayKind: 'rest_day' });
+    // Somebody else's earlier employment is not swept in by the same rule.
+    const other = await hire('Bala Other Person');
+    const [otherOld] = await owner.db
+      .insert(schema.employment)
+      .values({ tenantId: b.tenantId, personId: other.personId, companyId: b.companyId, hiredOn: '2020-01-01', terminatedOn: '2023-06-30', employeeCode: `OTH-${randomUUID().slice(0, 4)}` })
+      .returning({ id: schema.employment.id });
+    await owner.db
+      .insert(schema.replacementLeaveRequest)
+      .values({ tenantId: b.tenantId, employmentId: otherOld.id, unit: 'day', totalDays: '1.00', submittedOn: '2023-03-02', status: 'pending', reason: 'Not Aisyah' });
+
+    const mine = await listOwnLeaveCreditHistory(empCtx);
+    expect(new Set(mine.map((l) => l.requestId))).toEqual(new Set([now, oldReq.id]));
+    expect(mine.find((l) => l.requestId === oldReq.id)).toMatchObject({ workedDate: '2023-03-01', approvalStatus: 'rejected', dayType: 'rest_day', credit: null });
+    // The Year filter offers the earlier employment's year too, so it can be found.
+    expect(creditHistoryYears(mine)).toContain(2023);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
