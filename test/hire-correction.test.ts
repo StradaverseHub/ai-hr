@@ -651,7 +651,14 @@ describe('c063eea9 — entitlement follows the corrected department', () => {
       serviceBands: [{ fromYears: 0, toYears: null, days: 16 }],
       validFrom: '2020-01-01',
     });
-    await createEligibilityRule(c, { name: 'Finance', templateLineageId: finance.lineageId, criteria: { departmentIds: [b.deptA] }, validFrom: '2020-01-01' });
+    // The Finance rule is deliberately the MORE SPECIFIC one (department + employment type): if the
+    // superseded Finance row still matched, Finance would outrank HR and the balance would not move.
+    await createEligibilityRule(c, {
+      name: 'Finance',
+      templateLineageId: finance.lineageId,
+      criteria: { departmentIds: [b.deptA], employmentTypes: ['full_time'] },
+      validFrom: '2020-01-01',
+    });
     await createEligibilityRule(c, { name: 'HR', templateLineageId: hrTable.lineageId, criteria: { departmentIds: [hr] }, validFrom: '2020-01-01' });
     const { employmentId: id } = await hireOne({ hiredOn: '2026-01-01', grantAnnual: true });
     const balance = async () => {
