@@ -6952,6 +6952,16 @@
       "pcbPaymentSave": "Simpan"
     },
     "pcbDetail": {
+      "exemptionHeading": "Maklumat Pengecualian",
+      "exemptionType": "Jenis Pengecualian / Item Bayaran",
+      "exemptionAnnualLimit": "Had Tahunan (RM)",
+      "exemptionAccumulated": "Terkumpul (RM)",
+      "exemptionThisMonth": "Bulan Ini (RM)",
+      "exemptionReused": "Penilaian direkodkan digunakan semula",
+      "exemptionUnlimited": "Tiada had tahunan",
+      "exemptionNone": "Tiada jenis pengecualian yang terpakai direkodkan untuk pengiraan ini.",
+      "exemptionBasisNote": "Terkumpul ialah amaun yang digunakan sebelum pengiraan terpilih ini, termasuk TP3 dan larian terdahulu. Bulan Ini menunjukkan penilaian pengecualian yang digunakan oleh pengiraan terpilih, termasuk manfaat berulang yang digunakan semula. Pengiraan larian tambahan menerangkan pengiraan bulan terpilih, bukan potongan tambahan. Amaun yang digunakan semula mungkin sudah termasuk dalam Terkumpul; jangan jumlahkan lajur ini.",
+      "exemptionIncompleteNote": "Rekod pengecualian larian ini tidak lengkap. Hanya amaun tersimpan yang diketahui dipaparkan; had tahunan, amaun terkumpul dan pemakaian tidak dibina semula daripada konfigurasi semasa.",
       "additionalAmount": "Yₜ — saraan tambahan bulan ini",
       "additionalChargeable": "Pendapatan bercukai termasuk saraan tambahan (P₂)",
       "additionalEpf": "Kₜ — KWSP atas saraan tambahan",

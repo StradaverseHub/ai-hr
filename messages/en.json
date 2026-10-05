@@ -6952,6 +6952,16 @@
       "pcbPaymentSave": "Save"
     },
     "pcbDetail": {
+      "exemptionHeading": "Exemption Information",
+      "exemptionType": "Exemption Type / Pay Item",
+      "exemptionAnnualLimit": "Annual Limit (RM)",
+      "exemptionAccumulated": "Accumulated (RM)",
+      "exemptionThisMonth": "This Month (RM)",
+      "exemptionReused": "Reused recorded assessment",
+      "exemptionUnlimited": "No annual limit",
+      "exemptionNone": "No applicable exemption types were recorded for this calculation.",
+      "exemptionBasisNote": "Accumulated is the amount used before this selected calculation, including TP3 and earlier runs. This Month shows the exemption assessment used by the selected calculation, including reused recurring benefits. Additional-run working describes the selected month calculation, not the incremental deduction. Reused amounts may already be in Accumulated; do not add these columns.",
+      "exemptionIncompleteNote": "This run has incomplete exemption records. Only known saved amounts are shown; annual limits, accumulated amounts and applicability are not reconstructed from current configuration.",
       "additionalAmount": "Yₜ — additional remuneration this month",
       "additionalChargeable": "Chargeable income including additional remuneration (P₂)",
       "additionalEpf": "Kₜ — EPF on additional remuneration",

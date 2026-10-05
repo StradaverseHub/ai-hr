@@ -1,3 +1,5 @@
+import { pcbExemptionDetail, type PcbExemptionDetail } from '@/core/pcb-exemptions';
+import { pcbExemptionTable } from './exemption-table';
 /**
  * ad7bc503 — THE PCB / MTD CALCULATION DETAIL AS A DOCUMENT: THE GATE, THE READ AND THE RENDER, ONCE.
  *
@@ -104,6 +106,7 @@ export type PcbDetailModel = {
    *  part of the MODEL and not of either renderer, so the screen and this document iterate one list.
    *  r372 — and WHERE each of them goes is `pcbDetailLayout`'s answer, over this same model. */
   closing: PcbSlipSection[];
+  exemptions: PcbExemptionDetail;
 };
 
 /**
@@ -114,6 +117,7 @@ export type PcbDetailModel = {
  */
 export function pcbDetailModel(p: {
   statutory: unknown;
+  payPeriod?: string;
   fallbackReliefs: Parameters<typeof explainPcb>[1];
   previousEmployment: Parameters<typeof pcbWorksheet>[1];
   slipData: Awaited<ReturnType<typeof pcbSlipData>> | null;
@@ -138,6 +142,7 @@ export function pcbDetailModel(p: {
         })
       : [],
     closing: pcbClosingSections(explanation),
+    exemptions: pcbExemptionDetail(p.statutory, p.payPeriod),
   };
 }
 
@@ -182,7 +187,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
           month: probe.month,
         })
       : null;
-  const model = pcbDetailModel({ statutory: row.statutory, fallbackReliefs, previousEmployment, slipData });
+  const model = pcbDetailModel({ statutory: row.statutory, payPeriod: row.payPeriod, fallbackReliefs, previousEmployment, slipData });
 
   const [t, tr] = await Promise.all([
     getTranslations({ locale: lang, namespace: 'payroll.pcbDetail' }),
@@ -582,6 +587,12 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
       }
 
       // FOOTER — where these figures came from. Absent from this document until r372.
+      case 'exemptions': {
+        const table = pcbExemptionTable(model.exemptions, key => t(key));
+        return {columns: table.columns.slice(1), rows: table.rows.length
+          ? table.rows.map(row => ({line: '', label: row.label, cells: row.cells}))
+          : [wide(table.empty)], note: table.note};
+      }
       case 'source':
         return {
           columns: [],

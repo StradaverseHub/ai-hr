@@ -1,3 +1,4 @@
+import { pcbExemptionDetail } from '@/core/pcb-exemptions';
 /**
  * Feedback 45df860a — PCB / MTD Calculation Detail.
  *
@@ -197,6 +198,7 @@ export default async function PcbDetailPage({
           worksheet={worksheet}
           slip={slip}
           closing={closing}
+          exemptions={pcbExemptionDetail(row.statutory, row.payPeriod)}
         />
       )}
     </div>
