@@ -20,7 +20,8 @@
 import { createDb } from '../db/client';
 import { ProvisionStepError, provisionTenant, INVITE_TTL_DAYS } from '../db/provision';
 import { appendEvent } from '../db/events';
-import { appInvitation, appUser, person, tenantProvisionRequest, tenantProvisionRequestModule } from '../db/schema';
+import { armAuditForProvisioning, armAuditForTenant } from '../db/audit-transaction';
+import { appInvitation, appUser, person, tenantProvisionRequest, tenantProvisionRequestModule, tenantSetting } from '../db/schema';
 import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { createHash, randomBytes } from 'node:crypto';
 
@@ -166,6 +167,19 @@ async function markFailed(
     .where(eq(tenantProvisionRequest.id, id));
 }
 
+/** SQL errors can contain activation_url as a bound parameter. Keep only the stage and SQLSTATE. */
+function safeFailure(stage: string, error: unknown): string {
+  let cause: unknown = error;
+  for (let depth = 0; depth < 4 && cause && typeof cause === 'object'; depth++) {
+    const detail = cause as { code?: unknown; cause?: unknown };
+    if (typeof detail.code === 'string' && /^[0-9A-Z]{5}$/.test(detail.code)) {
+      return `Provisioning ${stage} failed (database code ${detail.code}). Check configuration before retrying.`;
+    }
+    cause = detail.cause;
+  }
+  return `Provisioning ${stage} failed. Check configuration before retrying.`;
+}
+
 /**
  * Provision one claimed request.
  *
@@ -192,12 +206,20 @@ async function provisionOne(
 
   try {
     await owner.db.transaction(async (tx) => {
+      const auditArmed = await armAuditForProvisioning(tx);
       const result = await provisionTenant(tx, {
         name: req.customerName,
         adminEmail: req.adminEmail,
         country: req.country,
         modules: req.modules,
       });
+      // Persist the customer choice: authenticated sessions resolve the tenant setting, not the
+      // runner's environment. The demo/off path creates no new setting and chains no old history.
+      if (auditArmed) {
+        await tx.insert(tenantSetting).values({
+          tenantId: result.tenantId, key: 'audit.hash_chain_enabled', value: true, source: 'platform',
+        });
+      }
       await tx
         .update(tenantProvisionRequest)
         .set({
@@ -215,8 +237,9 @@ async function provisionOne(
   } catch (e) {
     const stepErr = e instanceof ProvisionStepError ? e : null;
     const stepKey = stepErr?.step ?? null;
-    await markFailed(owner.db, req.id, stepKey, e instanceof Error ? e.message : String(e));
-    console.error(`✗ request ${req.id} failed at step ${stepKey ?? 'unknown'}: ${String(e)}`);
+    const message = safeFailure(stepKey ?? 'completion', e);
+    await markFailed(owner.db, req.id, stepKey, message);
+    console.error(`✗ request ${req.id}: ${message}`);
   }
 }
 
@@ -253,6 +276,7 @@ async function reissuePass(owner: ReturnType<typeof createDb>): Promise<number> 
   for (const row of due) {
     const tenantId = row.tenantId!;
     await owner.db.transaction(async (tx) => {
+      await armAuditForTenant(tx, tenantId);
       const [target] = await tx
         .select({ personId: appUser.personId })
         .from(appUser)
@@ -304,6 +328,9 @@ async function reissuePass(owner: ReturnType<typeof createDb>): Promise<number> 
           updatedAt: new Date(),
         })
         .where(eq(tenantProvisionRequest.id, row.id));
+    }).catch((error: unknown) => {
+      // Preserve rollback/retry behavior, but never hand SQL query parameters to the job logger.
+      throw new Error(safeFailure('reissue', error));
     });
     n += 1;
     console.log(`✓ reissued activation link for request ${row.id}`);

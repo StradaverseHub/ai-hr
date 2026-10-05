@@ -7,8 +7,8 @@
  *     normal appendEvent substrate — they have a tenant + an actor.
  *   • Pre-auth / cross-context events (invitation.accepted before a session exists, login-failed on an
  *     un-invited email, logout) cannot pass domain_event RLS, so they go through the SECURITY DEFINER
- *     app.append_auth_event writer on the RAW client (no tenant context), mirroring app.principal /
- *     app.onboarding_*. Actor is lowercase per db/events.ts.
+ *     app.append_auth_event writer in a transaction without invented user/grants. The transaction
+ *     arms audit chaining from the tenant/deployment configuration. Actor is lowercase per db/events.ts.
  *
  * WorkOS is injected as a provider seam (default = the real lib/workos wrappers) so tests can pass a
  * fake and never touch the SDK — the same shape as resolveDevPrincipal's injected `lookup`.
@@ -16,7 +16,8 @@
 import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { and, eq, isNull, ne } from 'drizzle-orm';
-import { client, withTenant, type SessionContext } from '../db/client';
+import { db, withTenant, type SessionContext, type Tx } from '../db/client';
+import { armAuditForTenant, AUTH_SYSTEM_TENANT_ID } from '../db/audit-transaction';
 import { appInvitation, appUser, roleAssignment } from '../db/schema';
 import { appendEvent, actorOf, subjectEmploymentForPerson } from '../db/events';
 import { InvalidInvitationError } from '../lib/auth-errors';
@@ -84,7 +85,7 @@ function newRawToken(): string {
 }
 
 /**
- * SECURITY DEFINER auth-audit writer on the RAW client (no tenant context). Used for pre-auth /
+ * SECURITY DEFINER auth-audit writer without a user/grant context. Used for pre-auth /
  * cross-context events that cannot pass domain_event RLS. tenantId null → the reserved system tenant
  * (migration 0151) → admin-only-to-read (fail-closed).
  */
@@ -96,8 +97,10 @@ async function appendAuthEvent(args: {
   actorType: 'user' | 'system' | 'external';
   actorId: string | null;
   payload?: unknown;
-}): Promise<void> {
-  await client`
+}, tx?: Tx): Promise<void> {
+  if (!tx) return db.transaction((transaction) => appendAuthEvent(args, transaction));
+  await armAuditForTenant(tx, args.tenantId ?? AUTH_SYSTEM_TENANT_ID);
+  await tx.execute(sql`
     select app.append_auth_event(
       ${args.tenantId}::uuid,
       ${args.aggregateType},
@@ -107,7 +110,7 @@ async function appendAuthEvent(args: {
       ${args.actorId}::uuid,
       ${JSON.stringify(args.payload ?? null)}::jsonb
     )
-  `;
+  `);
 }
 
 // ─────────────────────────── Admin: invitations ───────────────────────────
@@ -298,29 +301,37 @@ export async function revokeInvitation(
 
 /**
  * Un-authenticated invitation consume (the invitee has no session yet). Runs the SECURITY DEFINER
- * app.consume_invitation on the RAW client (single-use guarded in-DB by the conditional UPDATE), then
- * logs app-user.invitation.accepted via the auth-audit writer (now that the tenant is known). Returns
+ * app.consume_invitation (single-use guarded in-DB by the conditional UPDATE), then logs through the
+ * auth-audit writer on the SAME transaction (now that the tenant is known). Audit failure rolls back
+ * activation, rather than consuming the one-time invitation without recording it. Returns
  * the resolved (userId, tenantId). Throws InvalidInvitationError for unknown/consumed/expired tokens.
  */
 export async function acceptInvitation(input: {
   token: string;
   subject: string;
 }): Promise<{ userId: string; tenantId: string }> {
-  const rows = await client<{ app_user_id: string; tenant_id: string }[]>`
-    select app_user_id, tenant_id from app.consume_invitation(${input.token}, ${input.subject})
-  `;
-  const resolved = rows[0];
-  if (!resolved) throw new InvalidInvitationError();
-  await appendAuthEvent({
-    tenantId: resolved.tenant_id,
-    aggregateType: 'app-user',
-    aggregateId: resolved.app_user_id,
-    eventType: 'app-user.invitation.accepted',
-    actorType: 'user',
-    actorId: resolved.app_user_id,
-    payload: null,
+  return db.transaction(async (tx) => {
+    const rows = await tx.execute<{ app_user_id: string; tenant_id: string }>(sql`
+      select app_user_id, tenant_id from app.consume_invitation(${input.token}, ${input.subject})
+    `);
+    const resolved = rows[0];
+    if (!resolved) throw new InvalidInvitationError();
+    await appendAuthEvent({
+      tenantId: resolved.tenant_id,
+      aggregateType: 'app-user',
+      aggregateId: resolved.app_user_id,
+      eventType: 'app-user.invitation.accepted',
+      actorType: 'user',
+      actorId: resolved.app_user_id,
+      payload: null,
+    }, tx);
+    return { userId: resolved.app_user_id, tenantId: resolved.tenant_id };
+  }).catch((error: unknown) => {
+    if (error instanceof InvalidInvitationError) throw error;
+    // Drizzle attaches SQL parameters (including the still-usable bearer token after rollback).
+    // Never expose that query/cause to a route error logger or user-visible error boundary.
+    throw new Error('Invitation activation could not be completed. Please try again.');
   });
-  return { userId: resolved.app_user_id, tenantId: resolved.tenant_id };
 }
 
 // ─────────────────────────── Password reset (thin over WorkOS) ───────────────────────────
