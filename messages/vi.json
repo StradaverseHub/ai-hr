@@ -6952,6 +6952,16 @@
       "pcbPaymentSave": "Lưu"
     },
     "pcbDetail": {
+      "exemptionHeading": "Thông tin miễn thuế",
+      "exemptionType": "Loại miễn thuế / Khoản lương",
+      "exemptionAnnualLimit": "Giới hạn năm (RM)",
+      "exemptionAccumulated": "Lũy kế (RM)",
+      "exemptionThisMonth": "Tháng này (RM)",
+      "exemptionReused": "Sử dụng lại đánh giá đã lưu",
+      "exemptionUnlimited": "Không giới hạn năm",
+      "exemptionNone": "Không có loại miễn thuế áp dụng nào được ghi nhận cho phép tính này.",
+      "exemptionBasisNote": "Lũy kế là số tiền đã dùng trước phép tính được chọn, gồm TP3 và các lần chạy trước. Tháng này hiển thị đánh giá miễn thuế được dùng trong phép tính được chọn, gồm quyền lợi định kỳ được sử dụng lại. Phép tính của lần chạy bổ sung mô tả tính toán tháng được chọn, không phải khoản khấu trừ tăng thêm. Số tiền dùng lại có thể đã nằm trong Lũy kế; không cộng các cột này.",
+      "exemptionIncompleteNote": "Hồ sơ miễn thuế của lần chạy này chưa đầy đủ. Chỉ hiển thị số tiền đã lưu được xác nhận; không dựng lại giới hạn năm, số lũy kế hoặc tính áp dụng từ cấu hình hiện tại.",
       "additionalAmount": "Yₜ — thù lao bổ sung tháng này",
       "additionalChargeable": "Thu nhập chịu thuế gồm cả thù lao bổ sung (P₂)",
       "additionalEpf": "Kₜ — EPF trên thù lao bổ sung",

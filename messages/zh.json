@@ -6952,6 +6952,16 @@
       "pcbPaymentSave": "保存"
     },
     "pcbDetail": {
+      "exemptionHeading": "免税信息",
+      "exemptionType": "免税类型 / 薪资项目",
+      "exemptionAnnualLimit": "年度限额（RM）",
+      "exemptionAccumulated": "累计（RM）",
+      "exemptionThisMonth": "本月（RM）",
+      "exemptionReused": "复用已记录的评估",
+      "exemptionUnlimited": "无年度限额",
+      "exemptionNone": "此计算未记录适用的免税类型。",
+      "exemptionBasisNote": "累计表示本次选定计算之前已使用的金额，包括 TP3 和先前运行。本月显示选定计算使用的免税评估，包括复用的经常性福利。附加运行的计算过程描述选定月份的计算，而非增量扣款。复用金额可能已包含在累计中；请勿将这些列相加。",
+      "exemptionIncompleteNote": "此运行的免税记录不完整。仅显示已知的已保存金额；年度限额、累计金额及适用性不会依据当前配置重建。",
       "additionalAmount": "Yₜ — 本月额外薪酬",
       "additionalChargeable": "含额外薪酬的应课税收入（P₂）",
       "additionalEpf": "Kₜ — 额外薪酬的公积金",

@@ -2008,6 +2008,7 @@ export type PcbDetailBodySlot =
   | 'mtdAdditional'
   | 'mtdSteps'
   | 'lhdnWorksheet'
+  | 'exemptions'
   | 'source';
 
 /** One section of the document, in its place. `label` is the printed number, or null where none is. */
@@ -2136,6 +2137,8 @@ export function pcbDetailLayout(p: {
       section: sec,
     });
   }
+
+  body('exemptions', null, 'card', 'exemptionHeading');
 
   // LHDN's own worksheet order: the same recorded figures again, which is why it is an APPENDIX and no
   // longer positions 2 to 8 of the numbered run. It duplicated every figure shown below it and pushed the
