@@ -210,7 +210,7 @@ reviewing the private config, choosing a **new** output filename in the same pri
 The owner transaction locks bootstrap attempts, proves owner/app role separation and refuses an
 existing customer before writing. It creates one company, starter catalogs, an administrator person
 and login with no employment, and one pending HR-admin invitation. Every provisioning event is
-chained from the start and the tenant's audit setting stays enabled. The activation token is stored
+chained from the start and the tenant's audit setting is persisted as enabled. The activation token is stored
 only as a hash in the database; its URL is written exclusively to the new `0600` file, never stdout or
 an error. Opening an existing file or symlink is refused. A failed output write rolls back the customer.
 

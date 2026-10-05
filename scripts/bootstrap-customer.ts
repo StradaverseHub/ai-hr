@@ -2,10 +2,11 @@
  * DB modules are dynamically imported only AFTER configuration and production credentials pass.
  */
 import { constants } from 'node:fs';
-import { access, lstat, open, stat, unlink } from 'node:fs/promises';
+import { lstat, open, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+import { customerEnvironmentErrors } from '../deploy/check-customer-env.mjs';
 import { ALL_MODULE_CODES, CORE_MODULE_CODES, missingModuleDependencies } from '../packs/catalog';
 
 const SYSTEM_TENANT = '00000000-0000-0000-0000-000000000000';
@@ -44,61 +45,17 @@ export async function readBootstrapConfig(filename: string) {
 }
 
 export async function validateBootstrapEnvironment(env: NodeJS.ProcessEnv, cwd = process.cwd()) {
-  if (Number(process.versions.node.split('.')[0]) < 22) refuse('Customer bootstrap requires Node.js 22 or newer.');
-  const placeholder = /change[-_ ]?me|replace[-_ ]?me|replace[-_ ]?with|your[-_ ]|<|>|\.\.\./i;
-  const required = (name: string, minimum = 1) => {
-    const value = env[name] ?? '';
-    if (value !== value.trim() || value.length < minimum || placeholder.test(value)) {
-      refuse(`${name} must contain a complete non-placeholder production value.`);
-    }
-    return value;
-  };
-  if (env.NODE_ENV !== 'production' || env.AUDIT_HASH_CHAIN_ENABLED !== 'true') {
-    refuse('Bootstrap requires NODE_ENV=production and AUDIT_HASH_CHAIN_ENABLED=true.');
-  }
-  if (env.NODE_TLS_REJECT_UNAUTHORIZED === '0') refuse('TLS certificate verification cannot be disabled.');
-  for (const key of ['ALLOW_DEMO_SESSION', 'DEV_TENANT_ID', 'DEV_USER_ID']) {
-    if (Object.hasOwn(env, key)) refuse('Demo configuration is forbidden for customer bootstrap.');
-  }
-  required('WORKOS_API_KEY');
-  required('WORKOS_CLIENT_ID');
-  required('WORKOS_COOKIE_PASSWORD', 32);
-  required('SHARE_PASSWORD', 16);
-  required('AI_CONFIG_SECRET', 16);
-  if (env.WORKOS_API_HTTPS && env.WORKOS_API_HTTPS !== 'true') refuse('WorkOS credentials require HTTPS.');
-  let callback: URL;
-  try { callback = new URL(required('NEXT_PUBLIC_WORKOS_REDIRECT_URI')); }
-  catch { return refuse('A configured HTTPS customer WorkOS callback is required.'); }
-  const host = callback.hostname.toLowerCase();
-  const reserved = ['localhost', '[::1]', '[::]', '0.0.0.0'].includes(host) || /^127\./.test(host) ||
-    /(^|\.)(example\.(com|net|org)|invalid|test|localhost|example)$/.test(host);
-  if (callback.protocol !== 'https:' || callback.username || callback.password || reserved ||
-      callback.pathname !== '/callback' || callback.search || callback.hash) {
-    refuse('WorkOS callback must be a real customer HTTPS origin ending in /callback.');
-  }
-  for (const name of ['.env', '.env.local', '.env.production.local']) {
-    try { await access(path.join(cwd, name), constants.R_OK); }
-    catch (error) {
-      if (['ENOENT', 'EACCES', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) continue;
-      throw error;
-    }
-    refuse('Remove readable Next environment override files before customer bootstrap.');
-  }
+  const errors = customerEnvironmentErrors(env, cwd);
+  if (errors.length) refuse('Customer production configuration refused: ' + errors.join(' '));
+  // The shared runtime guard intentionally permits no migration credential. This operator-only
+  // command requires one and additionally insists both roles target the same database.
   let app: URL; let owner: URL;
-  try { app = new URL(required('DATABASE_URL')); owner = new URL(required('MIGRATION_DATABASE_URL')); }
+  try { app = new URL(env.DATABASE_URL!); owner = new URL(env.MIGRATION_DATABASE_URL ?? ''); }
   catch { return refuse('Separate valid app and migration database URLs are required.'); }
+  const overrideKeys = ['user', 'username', 'password', 'pass', 'role', 'host', 'hostname', 'port', 'database', 'dbname', 'options', 'ssl'];
   for (const url of [app, owner]) {
-    if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.username || !url.password ||
-        !url.hostname || url.pathname.length <= 1 || url.hash || placeholder.test(decodeURIComponent(url.toString()))) {
-      refuse('Separate complete app and migration database credentials are required.');
-    }
-    const overrideKeys = ['user', 'username', 'password', 'pass', 'role', 'host', 'hostname', 'port', 'database', 'dbname', 'options', 'ssl'];
     if ([...url.searchParams.keys()].some((key) => overrideKeys.includes(key.toLowerCase()))) {
       refuse('Database URLs must not carry connection identity or TLS overrides in query parameters.');
-    }
-    if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) &&
-        (url.searchParams.getAll('sslmode').length !== 1 || url.searchParams.get('sslmode') !== 'verify-full')) {
-      refuse('Remote database connections require sslmode=verify-full and trusted CA configuration.');
     }
   }
   const appRole = decodeURIComponent(app.username);
@@ -107,7 +64,7 @@ export async function validateBootstrapEnvironment(env: NodeJS.ProcessEnv, cwd =
       app.hostname !== owner.hostname || (app.port || '5432') !== (owner.port || '5432') || app.pathname !== owner.pathname) {
     refuse('App and migration URLs must identify the same database using distinct nonprivileged-app and owner roles.');
   }
-  return { appRole, ownerRole, ownerUrl: owner.toString(), callbackOrigin: callback.origin };
+  return { appRole, ownerRole, ownerUrl: owner.toString(), callbackOrigin: new URL(env.NEXT_PUBLIC_WORKOS_REDIRECT_URI!).origin };
 }
 
 export type BootstrapOptions = { configFile: string; apply?: boolean; activationFile?: string; cwd?: string };
@@ -144,6 +101,8 @@ export async function bootstrapCustomer(options: BootstrapOptions, env: NodeJS.P
             and not exists(select 1 from pg_roles privileged where
               (privileged.rolsuper or privileged.rolbypassrls or privileged.rolcreaterole or privileged.rolcreatedb
                or privileged.rolname in ('pg_read_all_data','pg_write_all_data','pg_execute_server_program','pg_read_server_files','pg_write_server_files')
+               or privileged.oid in (select datdba from pg_database where datname = current_database())
+               or privileged.oid in (select nspowner from pg_namespace where nspname in ('public','app'))
                or privileged.oid in (select c.relowner from pg_class c join pg_namespace n on n.oid = c.relnamespace
                   where n.nspname in ('public','app') and c.relkind in ('r','p','S','v','m','f')))
               and pg_has_role(r.oid, privileged.oid, 'MEMBER'))) as safe_app
