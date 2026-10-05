@@ -150,15 +150,17 @@ export async function cancelLeaveCreditRequestAction(formData: FormData) {
     q.set(key, message);
     return `${HISTORY}?${q.toString()}`;
   };
-  const t = await getTranslations('leaveCreditHistory');
+  // Its own name, not `t`: the submit action above binds `t` to `replacementRequest`, and the leave key
+  // resolver (test/leave-i18n-key-resolution.test.ts) maps a translator by its variable name per file.
+  const tHistory = await getTranslations('leaveCreditHistory');
   try {
     await cancelOwnReplacementLeaveRequest(session, { requestId });
   } catch (e) {
-    redirect(there('error', e instanceof ReplacementRequestNotPendingError ? t('cancelNotPending') : publicErrorMessage(e)));
+    redirect(there('error', e instanceof ReplacementRequestNotPendingError ? tHistory('cancelNotPending') : publicErrorMessage(e)));
   }
   // The approver's list and its badge, My Leave's pending figure, and this page.
   revalidatePath(HISTORY);
   revalidatePath(SUBMIT_LANDING);
   revalidatePath('/approvals');
-  redirect(there('toast', t('cancelledToast')));
+  redirect(there('toast', tHistory('cancelledToast')));
 }

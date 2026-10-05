@@ -52,7 +52,11 @@ describe('My Leave uses the shared sidebar flyout',()=>{
  it('r389 · offers Leave Credit History only with the toil module, and lights it alone on its own page',()=>{
   location.path='/leave/credit';
   const off=show(false,['attendance']);
+  // Without toil no visible row answers for /leave/credit, so Home is not the active section and starts
+  // closed — the same shape as the tracker case below. Open it, then the flyout: the row is simply absent.
+  const home=screen.getByRole('button',{name:messages.nav.sectionHome});expect(home).toHaveAttribute('aria-expanded','false');fireEvent.click(home);
   fireEvent.click(screen.getByRole('button',{name:'My Leave'}));
+  expect(within(screen.getByRole('navigation',{name:'My Leave'})).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history']);
   expect(within(screen.getByRole('navigation',{name:'My Leave'})).queryByRole('link',{name:'Leave Credit History'})).toBeNull();
   off.unmount();
   show(false,['toil']);
