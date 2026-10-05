@@ -1167,8 +1167,8 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels, opts: EaRenderOp
     if (n.sub) put(n.sub, A.subLabel, tt, size);
     return textX ?? (n.sub ? A.subText : A.subLabel);
   };
-  // V6 splits the employer name from its address; preserve original wording metadata for comparisons.
-  const W = {...eaFormWords(opts.locale ?? 'en'), employerNameAddress:opts.locale === 'ms' ? 'Nama Majikan' : 'Employer Name'};
+  // Separate value rows retain the agency's complete name-and-address caption.
+  const W = eaFormWords(opts.locale ?? 'en');
 
   // ── THE HEADER BAND — three blocks and the ruled banner under them ──────────────────────────────────
   //

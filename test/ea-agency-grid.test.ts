@@ -22,6 +22,7 @@
  * horizontal one has anywhere to land.
  */
 import { readFileSync } from 'node:fs';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 
 import { eaFormWords, EA_FORM, EA_V6_FOOT, blankEaPdfData, renderEaPdf, type EaPdfData } from '../lib/ea-pdf';
@@ -303,5 +304,48 @@ describe('r381 — screenshot footer retains the measured A–F body',()=>{
     const phone=long.runs.find(r=>r.text===statement().employer.phone);
     expect(phone).toBeDefined();
     expect(runAt(long.runs,phone!.tt,EA_FORM.dateX)?.text).toContain('Date');
+  });
+});
+
+describe('r388 — official employer caption owns the existing footer value rows',()=>{
+  it.each(EDITIONS)('%s restores the complete caption on filled and blank forms inside its existing column',async locale=>{
+    const expected=locale==='ms' ? 'Nama dan Alamat Majikan' : 'Name and Address of Employer';
+    expect(eaFormWords(locale).employerNameAddress).toBe(expected);
+    if(locale==='en')expect(joinRuns(agency.runs).some(run=>run.text.includes(expected)), 'the official reference must actually contain the complete caption').toBe(true);
+    const font=await (await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
+    for(const blank of [false,true]){
+      const data=blank ? blankEaPdfData() : statement();
+      const g=await readPdfPageGeometry(await renderEaPdf(data,eaPdfLabelsFromCatalogue(locale),{locale,blank}));
+      expect(g.pages).toBe(1);
+      const captions=g.runs.filter(run=>run.text===expected);
+      expect(captions,'the full official caption must be drawn, not just stored in a catalogue').toHaveLength(1);
+      const caption=captions[0];
+      expect(caption.x).toBe(EA_V6_FOOT.captionX);
+      expect(caption.tt).toBeCloseTo(EA_V6_FOOT.top+12+2*EA_V6_FOOT.lineHeight,1);
+      expect(caption.size).toBe(EA_V6_FOOT.size);
+      expect(caption.x+font.widthOfTextAtSize(caption.text,caption.size)).toBeLessThan(EA_V6_FOOT.valueX-8);
+      expect(g.runs.some(run=>run.text===(locale==='ms' ? 'Nama Majikan' : 'Employer Name'))).toBe(false);
+    }
+  });
+
+  it.each(EDITIONS)('%s retains the complete long employer name and address without moving body columns or footer rules',async locale=>{
+    const labels=eaPdfLabelsFromCatalogue(locale);
+    const short=await readPdfPageGeometry(await renderEaPdf(statement(),labels,{locale}));
+    const name='Synthetic Employer Manufacturing and Services Malaysia Sdn Bhd';
+    const address=['Lot 88-A, Jalan Perindustrian Desa Aman','52200 Kuala Lumpur, Wilayah Persekutuan'];
+    const long=await readPdfPageGeometry(await renderEaPdf({...statement(),employer:{...statement().employer,name,address}},labels,{locale}));
+    expect(long.pages).toBe(1);
+    expect(long.rects).toEqual(short.rects);
+    const body=(g:{runs:PdfRun[]})=>g.runs.filter(run=>run.tt<EA_V6_FOOT.top);
+    expect(body(long)).toEqual(body(short));
+    const values=long.runs.filter(run=>run.tt>EA_V6_FOOT.top&&near(run.x,EA_V6_FOOT.valueX+3));
+    expect(values.length,'long footer data must actually be rendered').toBeGreaterThan(4);
+    const printed=values.map(run=>run.text).join(' ');
+    expect(printed).toContain(name);
+    expect(printed).toContain(address.join(', '));
+    expect(values.every(run=>run.size===EA_V6_FOOT.size)).toBe(true);
+    const phone=values.find(run=>run.text===statement().employer.phone);
+    expect(phone).toBeDefined();
+    expect(runAt(long.runs,phone!.tt,EA_FORM.dateX)?.text).toBe(eaFormWords(locale).date);
   });
 });
