@@ -152,12 +152,16 @@ Two live consequences, both measured on the box:
 
 For conversion of the existing demo, the six steps of `docs/WORKOS-CUTOVER.md` remain outstanding.
 Its bootstrap invitation rebinds an existing principal. For the newly requested customer environment,
-start with demo identities disabled, provision the initial tenant and operator through a reviewed
-administrative procedure, then verify a real login before importing employees. The existing bootstrap
-script alone cannot create that fresh tenant/operator. Do not seed demo data or enable demo sessions to
-work around first-administrator provisioning; see `deploy/CUSTOMER.md`.
+start with demo identities disabled and use `scripts/bootstrap-customer.ts` to create the initial
+tenant and pending non-employee HR administrator. Its default checks without writing; explicit apply
+uses one transaction and saves the activation URL only to a new private file. This does not grant a
+cross-customer operator role. Follow `deploy/CUSTOMER.md`, then verify real activation/login before
+importing employees. The older `scripts/auth/bootstrap-invite.ts` alone cannot create a fresh tenant.
+Do not seed demo data or enable demo sessions to work around first-administrator provisioning.
 
 - [ ] WorkOS provisioned; four env vars set
+- [x] Fresh-customer bootstrap command prepared with production validation, restricted app-role
+      verification, no demo data and private one-time activation output
 - [ ] Initial tenant and authorized administrator provisioned; for demo conversion only, use the
       existing-principal bootstrap invitation procedure
 - [ ] `ALLOW_DEMO_SESSION` and the `DEV_*` variables removed
