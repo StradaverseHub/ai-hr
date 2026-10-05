@@ -22,6 +22,7 @@ import { buildPayslipPdfData, renderPayslipPdf, type PayslipPdfData } from '../l
 import { englishLongDate, payslipPaymentDate } from '../lib/payslip-pdf-strings';
 
 import { data, labels } from './fixtures/payslip-pdf-fixture';
+import { selectPayslipInformation, PAYSLIP_INFORMATION_FIELDS, type PayslipInformationField } from '../core/payslip-information';
 const head = (b: Uint8Array) => Buffer.from(b.slice(0, 5)).toString('latin1');
 /** How many sheets the renderer actually produced. Read back through pdf-lib rather than grepped: `save()`
  *  packs the page dictionaries into compressed object streams, so `/Type /Page` is not in the raw bytes. */
@@ -2076,5 +2077,32 @@ describe('r385 — company text midpoint beside the unchanged uploaded logo',()=
    expect(placed(runs,data.company)!.y).toBeCloseTo(placed(runs,labels.periodLabel)!.y,5);
    expect(drawnImages(bytes)).toHaveLength(logo?.bytes===PNG_1x1?1:0);
   }
+ });
+});
+
+
+describe('r389 (23bd49d9) — the Employment Info block follows the SAVED order, fed from selectPayslipInformation', () => {
+ it('pairs a non-catalogue setting row-major, left then right, and a blank field lets the next one move up', async () => {
+  const names = Object.fromEntries(PAYSLIP_INFORMATION_FIELDS.map(k => [k, `L.${k}`])) as Record<PayslipInformationField, string>;
+  // Employee ID before Employee Name (the reporter's example), then Position — blank for this employee — then Department and Grade.
+  const setting = ['employeeCode', 'employee', 'position', 'department', 'jobGrade'];
+  const rows = selectPayslipInformation({employeeCode: 'R389-CODE', employee: 'R389 Name', position: '   ', department: 'R389 Dept',
+    jobGrade: 'R389 Grade', branch: 'R389 Branch not chosen'}, setting, names);
+  expect(rows.map(r => r.key)).toEqual(['employeeCode', 'employee', 'department', 'jobGrade']);
+  const bytes = await renderPayslipPdf({...data, informationRows: rows}, labels);
+  const runs = drawnPlacements(bytes), heading = placed(runs, 'EMPLOYEE PROFILE')!, earnings = placed(runs, 'EARNINGS')!;
+  const body = runs.filter(r => r.page === heading.page && r.y < heading.y && r.y > earnings.y).map(r => r.text);
+  expect(body.slice(0, 8)).toEqual([names.employeeCode, 'R389-CODE', names.employee, 'R389 Name', names.department, 'R389 Dept', names.jobGrade, 'R389 Grade']);
+  const at = (text: string) => placed(runs, text)!;
+  // Row 1: Employee ID left, Employee Name right.
+  expect(at(names.employeeCode).y).toBeCloseTo(at(names.employee).y, 3);
+  expect(at(names.employeeCode).x).toBeLessThan(at(names.employee).x);
+  // Row 2: the blank Position is skipped, so Department moves up into the LEFT cell and Grade sits right of it.
+  expect(at(names.department).y).toBeLessThan(at(names.employeeCode).y);
+  expect(at(names.department).y).toBeCloseTo(at(names.jobGrade).y, 3);
+  expect(at(names.department).x).toBeCloseTo(at(names.employeeCode).x, 3);
+  expect(at(names.jobGrade).x).toBeCloseTo(at(names.employee).x, 3);
+  expect(placed(runs, names.position)).toBeUndefined();
+  expect(placed(runs, 'R389 Branch not chosen')).toBeUndefined();
  });
 });
