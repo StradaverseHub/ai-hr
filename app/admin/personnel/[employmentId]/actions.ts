@@ -27,6 +27,9 @@ import {
   type MovementKind,
 } from '@/core/movement';
 import { reprojectEntitlementForEmployment } from '@/core/leave';
+// c063eea9 — the hire-details correction. Its form parser lives in core/ (a 'use server' module may only
+// export async functions) and reads ONLY the six allow-listed fields.
+import { correctHireDetails, parseHireCorrectionForm } from '@/core/hire-correction';
 // r256 420ebab5 — the SERVICE behind the Payroll tab's policy card. The per-card door is
 // assignPolicyAction (app/admin/payroll-policy/actions.ts, resolved through getSession); the consolidated
 // door reaches the same service directly, under requireAdmin, so both write through one implementation.
@@ -656,6 +659,41 @@ export async function reverseMovementEventAction(formData: FormData) {
     await recomputeEntitlement(s, employmentId, 'movement_recorded', { gradeBefore });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * c063eea9 — "Correct hire details" on the Hired row. The form posts only the fields HR CHANGED (absent =
+ * untouched, blank = clear) plus a mandatory reason; parseHireCorrectionForm reads the six allow-listed names
+ * and nothing else, so a forged company, grade, employment type, date or salary field is never read.
+ *
+ * The entitlement recompute runs for the same reason a Group Join Date Correction's does: department,
+ * position, business unit, cost centre and location all feed entitlement eligibility (core/org-criteria.ts),
+ * so correcting them can move which entitlement applies. Best-effort and idempotent like every other caller;
+ * `changeEffectiveOn` is the hire date the correction applies from.
+ *
+ * A refusal returns to the open form (`correctHire=1`) so HR can fix the value without re-keying the rest,
+ * and goes through publicErrorMessage like every other action here (r388).
+ */
+export async function correctHireDetailsAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    const res = await correctHireDetails(s, {
+      employmentId,
+      changes: parseHireCorrectionForm(formData),
+      reason: orNull(formData.get('reason')),
+    });
+    await recomputeEntitlement(s, employmentId, 'hire_corrected', { changeEffectiveOn: res.hiredOn });
+  } catch (e) {
+    redirect(
+      withTab(
+        formData,
+        `/admin/personnel/${employmentId}?correctHire=1&error=${encodeURIComponent(publicErrorMessage(e))}`,
+      ),
+    );
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));

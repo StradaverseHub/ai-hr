@@ -365,6 +365,12 @@ export async function resolveOrgCriteriaTargets(
   if (departmentIds.length || employmentTypes.length || datedPicked.length) {
     const asOfAssignment = [
       sql`${assignment.employmentId} = ${employment.id}`,
+      // c063eea9 — a SUPERSEDED version was never in force: it is a record replaced by a rollback or by a
+      // hire-details correction, kept beside its replacement as evidence. Without this a corrected hire
+      // department went on matching the WRONG department's rules at every date it once covered, so the
+      // entitlement recalculation the correction triggers could not move anything. Every other dated
+      // assignment reader (getAssignmentAsOf, the EA job title, analytics) already filters it.
+      isNull(assignment.supersededAt),
       sql`${assignment.validFrom} <= ${p.asOf}`,
       or(isNull(assignment.validTo), gte(assignment.validTo, p.asOf)),
     ];

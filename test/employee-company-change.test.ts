@@ -406,19 +406,70 @@ describe('gate blocks — one insert per operational module head', () => {
     });
   }
 
-  it('(c) a saved salary (compensation) alone locks the field', async () => {
+  /**
+   * c063eea9 — THIS PIN WAS REVERSED, NOT DELETED. It used to read "(c) a saved salary (compensation) alone
+   * locks the field" and inserted the salary dated ON the hire date. That is exactly the row activation
+   * writes for every wizard hire (core/employee-draft.ts → setCompensation effectiveFrom = hiredOn), so the
+   * pin was asserting that the pre-transaction Company correction is unreachable for every new joiner — the
+   * fault the reporter raised. The owner's decision (board item c063eea9): the single hire-date salary is
+   * excluded exactly as the hire-time leave grant is; a salary dated AFTER the hire is still a pay change and
+   * still locks; and once payroll has run the payslip head locks it regardless of the salary rows.
+   */
+  it('(c) the hire-date salary alone does NOT lock the field; a later salary or a payslip does', async () => {
     const hire = await hireFresh();
     await owner.db.execute(
       sql`INSERT INTO compensation (tenant_id, employment_id, basic_salary, valid_from) VALUES (${b.tenantId}, ${hire.employmentId}, 3000, '2026-01-01')`,
     );
-    expect(await employmentCompanyEditable(adminCtx(b), hire.employmentId)).toBe(false);
+    // == hiredOn ('2026-01-01') → the activation salary: still editable.
+    expect(await employmentCompanyEditable(adminCtx(b), hire.employmentId)).toBe(true);
+
+    // A pay change dated after the hire is activity.
+    const later = await hireFresh();
+    // (closed at the raise, as the salary writer closes it — the overlap exclusion forbids two open rows)
+    await owner.db.execute(
+      sql`INSERT INTO compensation (tenant_id, employment_id, basic_salary, valid_from, valid_to) VALUES (${b.tenantId}, ${later.employmentId}, 3000, '2026-01-01', '2026-03-01')`,
+    );
+    await owner.db.execute(
+      sql`INSERT INTO compensation (tenant_id, employment_id, basic_salary, valid_from) VALUES (${b.tenantId}, ${later.employmentId}, 3500, '2026-03-01')`,
+    );
+    expect(await employmentCompanyEditable(adminCtx(b), later.employmentId)).toBe(false);
     await expect(
       changeEmploymentCompany(adminCtx(b), {
-        employmentId: hire.employmentId,
+        employmentId: later.employmentId,
         newCompanyId,
         departmentId: newDeptId,
       }),
     ).rejects.toBeInstanceOf(CompanyLockedError);
+
+    // The hire-date salary plus a payslip: payroll has run, so it locks.
+    const paid = await hireFresh();
+    await owner.db.execute(
+      sql`INSERT INTO compensation (tenant_id, employment_id, basic_salary, valid_from) VALUES (${b.tenantId}, ${paid.employmentId}, 3000, '2026-01-01')`,
+    );
+    const [pp] = await owner.db
+      .insert(schema.payPeriod)
+      .values({ tenantId: b.tenantId, companyId: b.companyId, period: '2026-01', status: 'open' })
+      .returning({ id: schema.payPeriod.id });
+    const [batch] = await owner.db
+      .insert(schema.payrollBatch)
+      .values({ tenantId: b.tenantId, companyId: b.companyId, payPeriodId: pp.id, payPeriod: '2026-01', batchDate: '2026-01-25', status: 'draft' })
+      .returning({ id: schema.payrollBatch.id });
+    await owner.db.insert(schema.payslip).values({
+      tenantId: b.tenantId,
+      batchId: batch.id,
+      employmentId: paid.employmentId,
+      basicSalary: '3000.00',
+      grossPay: '3000.00',
+      statutory: {},
+      totalDeductions: '0.00',
+      netPay: '3000.00',
+      employerCost: '3000.00',
+    });
+    expect(await employmentCompanyEditable(adminCtx(b), paid.employmentId)).toBe(false);
+
+    // And the first one really can be moved, salary and all.
+    await changeEmploymentCompany(adminCtx(b), { employmentId: hire.employmentId, newCompanyId, departmentId: newDeptId });
+    expect(await companyIdOf(hire.employmentId)).toBe(newCompanyId);
   });
 });
 

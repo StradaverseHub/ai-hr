@@ -1385,9 +1385,10 @@ export type EntitlementEligibilityExplanation = {
  * an entitlement.
  *
  * TWO GUARDS KEEP IT FROM CONTRADICTING THE DECISION:
- *   1. the dated assignment window is copied from `resolveOrgCriteriaTargets` exactly — started on or before
- *      `asOf`, not ended before it — and the latest such version is the one quoted (the matcher's `exists()`
- *      accepts ANY of them, so where superseded rows overlap the quoted one is the current statement);
+ *   1. the dated assignment window is copied from `resolveOrgCriteriaTargets` exactly — not superseded
+ *      (c063eea9), started on or before `asOf`, not ended before it — and the latest such version is the one
+ *      quoted (the matcher's `exists()` accepts ANY of them, so where a same-day handover leaves two rows
+ *      touching `asOf` the quoted one is the newer statement);
  *   2. `employeeValueForAxis` REFUSES to return a value the rule's own list contains. If this reader and the
  *      matcher ever disagreed, the screen degrades to naming the axis alone rather than printing a value
  *      that argues with the decision beside it.
@@ -1444,6 +1445,9 @@ async function employeeCriteriaFactsAt(
     .where(
       and(
         eq(assignment.employmentId, employmentId),
+        // c063eea9 — the SAME superseded filter resolveOrgCriteriaTargets now applies: the two windows
+        // must stay identical (see the note above), and a superseded row was never in force.
+        isNull(assignment.supersededAt),
         lte(assignment.validFrom, asOf),
         or(isNull(assignment.validTo), gte(assignment.validTo, asOf)),
       ),

@@ -10,7 +10,7 @@ import { appendEvent, actorOf, subjectEmploymentForPerson, type MovementTag } fr
 // r285 (a3a3acd6) — `closedPeriodsTx` + `overlapsClosedPeriod` are the repo's SINGLE definition of payroll
 // evidence (core/pay-components.ts:1977). setEmploymentInfo's closed-payroll gate reuses them rather than
 // writing a fourth one; org.ts already imported from comp.ts, so this adds no new edge to the import graph.
-import { closedPeriodsTx, nextEmployeeCode, overlapsClosedPeriod } from './comp';
+import { closedPeriodsTx, nextEmployeeCode, overlapsClosedPeriod, payslipPeriodsBetweenTx } from './comp';
 import { generateEmployeeCode } from './employee-id-config';
 // 06f0cb8f — "is this Employee ID free?" is a TWO-table question now (an employment may carry it, or a
 // draft may be holding it). Its own module because core/employee-draft.ts imports hireEmployee from here,
@@ -765,8 +765,10 @@ export async function terminateEmployment(ctx: SessionContext, p: TerminateEmplo
   return withTenant(ctx, (tx) => terminateEmploymentTx(tx, ctx, p));
 }
 
-/** Walk the administrative graph UP from `manager`; cycle if we reach `subordinate`. */
-async function wouldCreateAdminCycle(
+/** Walk the administrative graph UP from `manager`; cycle if we reach `subordinate`.
+ *  c063eea9 — exported (unchanged) so the hire-details correction (core/hire-correction.ts) refuses a
+ *  reporting manager at hire with the SAME cycle rule setReportingLine applies, rather than a second copy. */
+export async function wouldCreateAdminCycle(
   tx: Tx,
   subordinateId: string,
   managerId: string,
@@ -2961,6 +2963,35 @@ export async function setEmploymentInfo(
     const derivedFinal = (extendedConfirmation ?? confirmation) ?? null;
     if (derivedFinal !== (before.finalConfirmationDate ?? null)) {
       set.finalConfirmationDate = derivedFinal;
+    }
+
+    // c063eea9 (2) — A JOIN DATE CANNOT MOVE ACROSS ISSUED PAYSLIPS. The two date movements are the only
+    // writers of hired_on / join_date after creation, and they are TAGGED, so the closed-payroll gate below
+    // (untagged saves only) never asked them anything: a Group Join Date Correction could move the first
+    // day of employment to a date inside a month payroll had already paid, leaving payslips computed for an
+    // employment period the record no longer says existed (or missing days it now says did). Refused with
+    // the periods named, for any payslip — draft, processed or closed — between the old and the new date.
+    // A Group Join Date Correction that carries the Join Date with it (the synchronised case above) moves
+    // the same days, so asking about hired_on covers both.
+    if (p.movement?.type === 'groupJoinDateCorrection' && set.hiredOn !== undefined && set.hiredOn !== before.hiredOn) {
+      const periods = await payslipPeriodsBetweenTx(tx, p.employmentId, before.hiredOn, set.hiredOn as string);
+      if (periods.length) {
+        throw new Error(
+          `Payslips already exist between ${before.hiredOn} and ${set.hiredOn} (payroll ${periods.join(', ')}), so the Group Join Date cannot be moved across them. Issued payslips are never changed by a correction, so the date can only move once no payslip covers the days in between.`,
+        );
+      }
+    }
+    if (p.movement?.type === 'joinDateChange' && 'joinDate' in set) {
+      const oldJoin = before.joinDate ?? before.hiredOn;
+      const newJoin = set.joinDate as string | null;
+      if (newJoin && newJoin !== oldJoin) {
+        const periods = await payslipPeriodsBetweenTx(tx, p.employmentId, oldJoin, newJoin);
+        if (periods.length) {
+          throw new Error(
+            `Payslips already exist between ${oldJoin} and ${newJoin} (payroll ${periods.join(', ')}), so the Join Date cannot be moved across them. Issued payslips are never changed by a correction, so the date can only move once no payslip covers the days in between.`,
+          );
+        }
+      }
     }
 
     // r285 (a3a3acd6) — the closed-payroll gate. Scoped by FIELD, and only on an UNTAGGED save; the long

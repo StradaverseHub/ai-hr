@@ -57,6 +57,14 @@ import {
   type MovementKind,
 } from './movement-kinds';
 import { resolveMovementEventTypeTx } from './movement-type';
+// c063eea9 — the hire-details correction. It owns its event and the trace the Hired row wears; this module
+// loads the event (it projects no row of its own) and follows its row replacements when rolling back.
+import {
+  HIRE_CORRECTED_EVENT,
+  hireCorrectionTraceTx,
+  liveIncarnationOf,
+  type HireCorrectionTrace,
+} from './hire-correction';
 import {
   closedPeriodsTx,
   overlapsClosedPeriod,
@@ -140,6 +148,14 @@ export type MovementHistoryRow = {
   section: string | null;
   currency: string | null;
   basicAmount: string | null;
+  /**
+   * c063eea9 — non-null on the HIRED row once its details have been corrected (core/hire-correction.ts):
+   * who corrected it, when, why, and each corrected field's originally-recorded and corrected value. It is
+   * NOT `reversed`: the Hired row stays live, keeps its place at the top of the history and is never
+   * struck through — a correction of the hire is a fact about the hire, not an undoing of it. Null on every
+   * other row.
+   */
+  hireCorrection: HireCorrectionTrace | null;
 };
 
 /**
@@ -233,6 +249,8 @@ export type MovementDetail = {
    *  rendered when they carry real evidence, so a historical movement never shows today's value as if it
    *  had been part of the change. */
   flatChanges: MovementFlatChange[];
+  /** c063eea9 — the Hired row's correction trace (see MovementHistoryRow). Null on every other row. */
+  hireCorrection: HireCorrectionTrace | null;
 };
 
 /** Thrown when a New Event would change nothing — surfaced verbatim so remarks are never silently lost. */
@@ -278,6 +296,10 @@ const MOVEMENT_EVENT_TYPES = [
   // 941c9dac — the sweep's record that a scheduled movement took effect. Projects no row of its own; it
   // flips the scheduled row's derived status and carries the what-changed-from-what-to-what audit trail.
   'employment.movement.applied',
+  // c063eea9 — a correction of the hire's details. Projects NO row of its own (like the reversal event):
+  // it decorates the Hired row with its trace, and Roll Back reads its row replacements so a later
+  // movement's rollback acts on the corrected row rather than on the superseded original.
+  HIRE_CORRECTED_EVENT,
 ];
 
 /* 30325fc1 — EXTENDED_PROBATION_FIELDS / RESIGNATION_FIELDS were DELETED here. They were the field groups
@@ -745,6 +767,10 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
         applications.set(String(p.scheduledId), e.occurredAt);
         break;
 
+      case HIRE_CORRECTED_EVENT:
+        // c063eea9 — no row: the trace is attached to the Hired row by the callers that render it.
+        break;
+
       case 'employment.movement.reversed':
         // 66a63bd6 — marks the referenced row as rolled back. Deliberately projects NO row of its own:
         // one movement, one line in the history, with its correction shown on it.
@@ -1122,6 +1148,11 @@ export function movementHistory(ctx: SessionContext, employmentId: string): Prom
     const processed = await processedPeriodsTx(tx, employmentId);
     const latest = latestStateChangingSpanEnd(events, rows);
     const placementAt = await placementColumnsTx(tx, employmentId, emp.companyId, events);
+    // c063eea9 — one trace, resolved once, worn by the Hired row only.
+    const hireTrace = await hireCorrectionTraceTx(
+      tx,
+      events.filter((e) => e.eventType === HIRE_CORRECTED_EVENT),
+    );
     return rows.map((r) => {
       const g = groupEventsOf(events, r);
       const spanEnd = g.length ? Math.max(...g.map((e) => e.sequence)) : -1;
@@ -1151,6 +1182,7 @@ export function movementHistory(ctx: SessionContext, employmentId: string): Prom
         // After column does — the leg that wrote Division can carry a higher sequence than the leg that
         // owns the row, and bounding on the row's own event alone would show the pre-movement value.
         ...placementAt(r.effectiveDate, spanEnd === -1 ? r.sequence : spanEnd),
+        hireCorrection: r.kind === 'hired' ? hireTrace : null,
       };
     });
   });
@@ -1338,6 +1370,10 @@ export function movementDetail(
       before,
       after,
       flatChanges: flatChangesOf(group.length ? group : events.filter((e) => e.id === row.id)),
+      hireCorrection:
+        row.kind === 'hired'
+          ? await hireCorrectionTraceTx(tx, events.filter((e) => e.eventType === HIRE_CORRECTED_EVENT))
+          : null,
     };
   });
 }
@@ -2699,6 +2735,14 @@ async function reverseLegTx(
   employmentId: string,
   e: RawEvent,
   tag: MovementTag,
+  /**
+   * c063eea9 — the payloads of this employment's `employment.hire.corrected` events. A hire correction
+   * that carried a value forward SUPERSEDED the dated row this movement created and re-inserted it with
+   * a new id, so `e.aggregateId` can name a row that is no longer live. `liveIncarnationOf` follows the
+   * correction's own recorded replacements to the row that stands in for it now; without this the
+   * rollback found a superseded row, returned early, and left the movement's version in force.
+   */
+  hireCorrections: unknown[] = [],
 ): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const p = (e.payload ?? {}) as Record<string, any>;
@@ -2708,7 +2752,12 @@ async function reverseLegTx(
       const [row] = await tx
         .select()
         .from(assignment)
-        .where(and(eq(assignment.id, e.aggregateId), eq(assignment.employmentId, employmentId)))
+        .where(
+          and(
+            eq(assignment.id, liveIncarnationOf(e.aggregateId, hireCorrections)),
+            eq(assignment.employmentId, employmentId),
+          ),
+        )
         .limit(1);
       if (!row || row.supersededAt) return;
       const [prev] = await tx
@@ -2886,7 +2935,12 @@ async function reverseLegTx(
       const [row] = await tx
         .select()
         .from(reportingLine)
-        .where(and(eq(reportingLine.id, e.aggregateId), eq(reportingLine.subordinateEmploymentId, employmentId)))
+        .where(
+          and(
+            eq(reportingLine.id, liveIncarnationOf(e.aggregateId, hireCorrections)),
+            eq(reportingLine.subordinateEmploymentId, employmentId),
+          ),
+        )
         .limit(1);
       if (!row || row.supersededAt) return;
       await tx.update(reportingLine).set({ supersededAt: new Date() }).where(eq(reportingLine.id, row.id));
@@ -2972,8 +3026,9 @@ async function reverseMovementTx(
   }
   // Undo the newest leg first: within one movement a later leg can sit on top of an earlier one.
   const tag: MovementTag = { type: row.kind, groupId: randomUUID(), secondary: true };
+  const hireCorrections = events.filter((x) => x.eventType === HIRE_CORRECTED_EVENT).map((x) => x.payload);
   for (const e of [...group].sort((a, b) => b.sequence - a.sequence)) {
-    await reverseLegTx(tx, ctx, employmentId, e, tag);
+    await reverseLegTx(tx, ctx, employmentId, e, tag, hireCorrections);
   }
   await appendEvent(tx, {
     tenantId: ctx.tenantId,

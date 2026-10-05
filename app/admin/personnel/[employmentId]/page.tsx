@@ -121,6 +121,9 @@ import { TERMINATION_REASONS } from '@/core/termination-reason';
 // 476f23ed — the tenant's configurable movement event-type catalogue.
 import { listMovementEventTypes } from '@/core/movement-type';
 import { MovementNewEvent } from './movement-new-event';
+// c063eea9 — "Correct hire details" on the Hired row: the read behind the form, and its client island.
+import { HireCorrectionError, hireCorrectionView, type HireCorrectionField } from '@/core/hire-correction';
+import { HireCorrectionForm, type HireCorrectionFormField } from './hire-correction-form';
 import { serviceYearsMonthsDaysAt } from '@/core/leave';
 // 9d13221c — the Age figure beside Date of Birth no longer needs an import here at all: 35b7af0a group 3
 // moved both the derivation and the two Fields into components/birth-date-fields.tsx, which reads the same
@@ -158,7 +161,7 @@ import { employmentScheduleGroupId, listShiftsForTenant } from '@/core/roster';
 import { shiftArrangementHistory } from '@/core/shift-arrangement';
 import { EmployeeShiftFields } from '@/components/employee-shift-fields';
 import { setDefaultShiftAction } from './actions';
-import { listHolidayGroups, listPositions, listBusinessUnits } from '@/core/admin';
+import { listHolidayGroups, listPositions, listBusinessUnits, listCostCenters } from '@/core/admin';
 import { listLocations, resolveLocationForBranch, branchChangeDateFor } from '@/core/location';
 // f513ec02 adds listAttendanceRules — the Schedule Group picker's options. The tenant's attendance_rule
 // library IS the Schedule Group library (870b79e2); there is no second table behind the name. Taken from
@@ -221,6 +224,8 @@ export default async function EmployeePage({
     newEvent?: string;
     // 66a63bd6: `editMovement=<domainEventId>` reopens that movement for correction (same comparison form).
     editMovement?: string;
+    // c063eea9: `correctHire=1` opens the Correct hire details form for the Hired row.
+    correctHire?: string;
     // 95d17761: `showCorrected=1` puts the correction artefacts (reversed / corrected / cancelled /
     // superseded rows) back on the Employment History list. Absent — the default — they are hidden
     // behind a one-line count. A VIEW filter only: movementHistory still returns every row and the
@@ -285,6 +290,7 @@ export default async function EmployeePage({
     movement: spMovement,
     newEvent: spNewEvent,
     editMovement: spEditMovement,
+    correctHire: spCorrectHire,
     childReliefSynced,
     childReliefAlert,
     childReliefTo,
@@ -652,6 +658,47 @@ export default async function EmployeePage({
   const movementTypes = admin ? await listMovementEventTypes(s) : [];
   const movementTypeByCode = new Map(movementTypes.map((r) => [r.code, r]));
   const movementDetailData = admin && spMovement ? await movementDetail(s, employmentId, spMovement) : null;
+  /**
+   * c063eea9 — the Correct hire details form (?correctHire=1). Read ONLY while it is open, and only where
+   * Movement may write at all (the same `admin && !terminatedOn` gate `canCreateMovement` applies below).
+   *
+   * The option lists are scoped to the company the employee was HIRED INTO — the hire version's company —
+   * which after an Entity Transfer is not today's company. A hire label must be one THAT company may use,
+   * the service refuses anything else (and checks every later version it carries the value into against
+   * that version's own company), so offering today's company's labels would offer values it then refuses.
+   */
+  const hireCorrection =
+    admin && !emp.terminatedOn && spCorrectHire === '1'
+      ? // An employment with no assignment at all (legacy data) has nothing to correct: no form, rather
+        // than an error page. Any other failure is a real one and still surfaces.
+        await hireCorrectionView(s, employmentId).catch((e) => {
+          if (e instanceof HireCorrectionError) return null;
+          throw e;
+        })
+      : null;
+  const hireCorrectionOptions = hireCorrection
+    ? await (async () => {
+        const scope = [hireCorrection.companyId];
+        const [deps, poss, bus, ccs, locs] = await Promise.all([
+          listDepartments(s, { companyIds: scope }),
+          listPositions(s, { companyIds: scope }),
+          listBusinessUnits(s, { companyIds: scope }),
+          listCostCenters(s, { companyIds: scope }),
+          listLocations(s, scope),
+        ]);
+        const byField: Record<HireCorrectionField, { id: string; name: string }[]> = {
+          departmentId: deps.map((d) => ({ id: d.id, name: d.name })),
+          positionId: poss.map((pos) => ({ id: pos.id, name: pos.title })),
+          businessUnitId: bus.map((bu) => ({ id: bu.id, name: bu.name })),
+          costCenterId: ccs.map((cc) => ({ id: cc.id, name: `${cc.code} — ${cc.name}` })),
+          locationId: locs.map((l) => ({ id: l.id, name: `${l.name} (${l.code})` })),
+          // Reporting lines may cross companies by design (hireEmployee allows a cross-company manager), so
+          // the manager list is the same one the Direct Superior field offers.
+          managerEmploymentId: others.map((o) => ({ id: o.employmentId, name: o.name })),
+        };
+        return byField;
+      })()
+    : null;
   // 08913328 — the Current column of the New Event comparison screen. Only read when that screen is open.
   // 66a63bd6 — the Edit screen is the same form, so it reads the same Current column: a correction is
   // only offered on the LATEST movement, where "current" and "what this movement set" are the same values.
@@ -3447,6 +3494,16 @@ export default async function EmployeePage({
   // New Event is hidden once terminated (the same gate that hid the old Transfer form); the history
   // itself stays viewable. Rehire is a future, separate piece.
   const canCreateMovement = admin && !emp.terminatedOn;
+  /** c063eea9 — the caption of a hire-correction field, shared by the history row and the detail view. */
+  const hireFieldLabel = (f: HireCorrectionField): string =>
+    ({
+      departmentId: t('movement.field.department'),
+      positionId: t('movement.field.position'),
+      businessUnitId: t('movement.field.businessUnit'),
+      costCenterId: t('movement.hireCorrection.fieldCostCenter'),
+      locationId: t('movement.hireCorrection.fieldLocation'),
+      managerEmploymentId: t('movement.hireCorrection.fieldManager'),
+    })[f];
 
   const employmentHistoryCard = (
     <Card id="section-assignment-history" className="overflow-hidden">
@@ -3557,6 +3614,48 @@ export default async function EmployeePage({
                     {t('movement.status.superseded')}
                   </span>
                 )}
+                {/* c063eea9 — the Hired row after its details were corrected. NOT the Corrected badge above
+                    (that one marks a rolled-back row): this row stays live, keeps its place and is never
+                    struck through. It says who corrected it and when, and what was originally recorded. */}
+                {m.hireCorrection && (
+                  <div className="mt-1.5 space-y-1 text-xs font-normal">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300">
+                        {t('movement.hireCorrection.badge')}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {m.hireCorrection.by ? `${t('movement.hireCorrection.by', { name: m.hireCorrection.by })} · ` : ''}
+                        {todayInKualaLumpur(m.hireCorrection.at)}
+                      </span>
+                    </div>
+                    <details>
+                      <summary className="cursor-pointer text-primary">{t('movement.hireCorrection.details')}</summary>
+                      <table className="mt-1 text-left">
+                        <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          <tr>
+                            <th className="pr-3 font-medium">{t('movement.hireCorrection.colField')}</th>
+                            <th className="pr-3 font-medium">{t('movement.hireCorrection.originalHeading')}</th>
+                            <th className="font-medium">{t('movement.hireCorrection.correctedHeading')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {m.hireCorrection.fields.map((f) => (
+                            <tr key={f.field}>
+                              <td className="pr-3 text-muted-foreground">{hireFieldLabel(f.field)}</td>
+                              <td className="pr-3 text-foreground">{f.original ?? t('movement.hireCorrection.noneValue')}</td>
+                              <td className="font-medium text-foreground">{f.corrected ?? t('movement.hireCorrection.noneValue')}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {m.hireCorrection.reason && (
+                        <p className="mt-1 text-muted-foreground">
+                          {t('movement.hireCorrection.reason')}: {m.hireCorrection.reason}
+                        </p>
+                      )}
+                    </details>
+                  </div>
+                )}
               </td>
               <td className="px-4 py-2.5 font-mono text-xs">{m.effectiveDate}</td>
               {/* Reconstructed AS OF the row's effective date in core/movement.ts — never a live read of the
@@ -3580,6 +3679,16 @@ export default async function EmployeePage({
                       className="text-primary hover:underline"
                     >
                       {t('movement.edit')}
+                    </Link>
+                  )}
+                  {/* c063eea9 — the Hired row's own correction. It stays offered after a correction: correcting
+                      again is how a correction is undone (a hire correction has no Roll Back). */}
+                  {canCreateMovement && m.kind === 'hired' && (
+                    <Link
+                      href={`/admin/personnel/${employmentId}?tab=careerMovement&correctHire=1`}
+                      className="text-primary hover:underline"
+                    >
+                      {t('movement.hireCorrection.action')}
                     </Link>
                   )}
                   {canCreateMovement && m.canReverse && (
@@ -3734,6 +3843,29 @@ export default async function EmployeePage({
           {movementDetailData.row.reversed.reason ? ` · ${movementDetailData.row.reversed.reason}` : ''}
         </div>
       )}
+      {movementDetailData.hireCorrection && (
+        // c063eea9 — the Hired row's correction trace. The After column below already shows the CORRECTED
+        // values (it is an as-of read of the live rows); this block is what keeps the original visible.
+        <div className="border-t border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{t('movement.hireCorrection.badge')}</span>
+          {' · '}
+          {todayInKualaLumpur(movementDetailData.hireCorrection.at)}
+          {movementDetailData.hireCorrection.by
+            ? ` · ${t('movement.hireCorrection.by', { name: movementDetailData.hireCorrection.by })}`
+            : ''}
+          {movementDetailData.hireCorrection.reason ? ` · ${movementDetailData.hireCorrection.reason}` : ''}
+          <ul className="mt-1 space-y-0.5">
+            {movementDetailData.hireCorrection.fields.map((f) => (
+              <li key={f.field}>
+                {hireFieldLabel(f.field)}: {t('movement.hireCorrection.originalHeading')}{' '}
+                <span className="text-foreground">{f.original ?? t('movement.hireCorrection.noneValue')}</span>
+                {' → '}
+                <span className="font-medium text-foreground">{f.corrected ?? t('movement.hireCorrection.noneValue')}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <table className="w-full border-t border-border text-sm">
         <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
@@ -3886,6 +4018,91 @@ export default async function EmployeePage({
       />
     </Card>
   ) : null;
+
+  /**
+   * c063eea9 — Correct hire details (?correctHire=1). Everything the island shows is resolved here: the
+   * field values and their originally-recorded labels (core/hire-correction.ts hireCorrectionView), the
+   * option lists scoped to the hire's own company (read above), and the later records each field would
+   * carry into, labelled with the SAME resolver the history uses so a record reads identically in both.
+   * The read-only rows point at the screens that own those fields instead of offering them.
+   */
+  const hireCorrectionCard =
+    canCreateMovement && hireCorrection && hireCorrectionOptions
+      ? (() => {
+          const recordLabel = (r: { kind: string | null; effectiveDate: string }) =>
+            `${r.kind ? movementKindLabel(r.kind) : t('movement.hireCorrection.untaggedRecord')} ${r.effectiveDate}`;
+          const FIELD_LABEL: Record<HireCorrectionField, string> = {
+            departmentId: t('movement.field.department'),
+            positionId: t('movement.field.position'),
+            businessUnitId: t('movement.field.businessUnit'),
+            costCenterId: t('movement.hireCorrection.fieldCostCenter'),
+            locationId: t('movement.hireCorrection.fieldLocation'),
+            managerEmploymentId: t('movement.hireCorrection.fieldManager'),
+          };
+          const fields: HireCorrectionFormField[] = hireCorrection.fields.map((f) => ({
+            field: f.field,
+            label: FIELD_LABEL[f.field],
+            required: f.field === 'departmentId',
+            currentId: f.currentId,
+            currentLabel: f.currentLabel,
+            originalLabel: f.originalId ? f.originalLabel : t('movement.hireCorrection.noneValue'),
+            options: hireCorrectionOptions[f.field],
+            carriesInto: f.carriesInto.map(recordLabel),
+            stoppedBy: f.stoppedBy ? recordLabel(f.stoppedBy) : null,
+            reachesCurrent: f.reachesCurrent,
+          }));
+          const readOnly = [
+            {
+              key: 'company',
+              label: t('movement.field.company'),
+              value: hireCorrection.companyName ?? '—',
+              // The pointer that APPLIES, not both: the inline Company correction is open only while the
+              // pre-transaction gate (employmentCompanyBlockedTx) says nothing has been recorded yet.
+              pointer: companyEditable
+                ? t('movement.hireCorrection.companyEditableNow', { tab: t('tabs.job') })
+                : t('movement.hireCorrection.companyLocked', { type: movementKindLabel('entityTransfer') }),
+            },
+            {
+              key: 'groupJoinDate',
+              label: t('employmentInfo.groupJoinDate'),
+              value: hireCorrection.groupJoinDate,
+              pointer: t('movement.hireCorrection.usePointer', { type: movementKindLabel('groupJoinDateCorrection') }),
+              note: t('movement.hireCorrection.payslipRefusal'),
+            },
+            {
+              key: 'joinDate',
+              label: t('employmentInfo.joinDate'),
+              value: hireCorrection.joinDate ?? '—',
+              pointer: t('movement.hireCorrection.usePointer', { type: movementKindLabel('joinDateChange') }),
+              note: t('movement.hireCorrection.payslipRefusal'),
+            },
+            {
+              key: 'grade',
+              label: t('movement.field.grade'),
+              value: hireCorrection.gradeName ?? '—',
+              pointer: t('movement.hireCorrection.notYet'),
+            },
+            {
+              key: 'employmentType',
+              label: t('movement.field.employmentType'),
+              value: movementEmpTypeLabel(hireCorrection.employmentType) ?? '—',
+              pointer: t('movement.hireCorrection.notYet'),
+            },
+          ];
+          return (
+            <Card id="section-hire-correction" className="overflow-hidden">
+              <SectionHeader title={t('movement.hireCorrection.title')} />
+              <HireCorrectionForm
+                employmentId={employmentId}
+                heading={`${movementKindLabel('hired')} · ${hireCorrection.hiredOn}`}
+                fields={fields}
+                readOnly={readOnly}
+                cancelHref={`/admin/personnel/${employmentId}?tab=careerMovement`}
+              />
+            </Card>
+          );
+        })()
+      : null;
 
   const changeHistoryCard = admin ? (
     <Card id="section-change-history" className="overflow-hidden">
@@ -4830,6 +5047,7 @@ export default async function EmployeePage({
         {movementDetailCard}
         {newEventCard}
         {editEventCard}
+        {hireCorrectionCard}
         {employmentHistoryCard}
       </>
     ),

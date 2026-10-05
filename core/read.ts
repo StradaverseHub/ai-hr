@@ -2229,6 +2229,15 @@ export function holidayDatesForEmployment(
  * treating a salaried-but-unpaid employee as "no activity yet" would contradict steering HR to Movement once
  * anything is recorded.
  *
+ * c063eea9 — EXCEPT THE HIRE-DATE SALARY, excluded exactly as the hire-time leave grant below is. Activation
+ * (core/employee-draft.ts, completeEmployeeDraft → setCompensation effectiveFrom = hiredOn) ALWAYS writes one
+ * compensation row dated on the hire date, so counting it made this gate trip the moment every wizard hire
+ * was activated: the pre-transaction Company correction it guards was unreachable for exactly the new joiners
+ * it exists for. The projection already treats that row as part of Hired, not a movement (core/movement.ts,
+ * `p.effectiveFrom === emp.hiredOn`). A salary dated AFTER the hire still counts — that is a pay change, and
+ * it is in the history. "No payslip yet" needs no clause of its own here: the payslip head above already
+ * locks the field the moment payroll has run, whatever the compensation rows say.
+ *
  * leave_ledger: the SINGLE hire-time grant (entry_type='accrual' AND effective_on=hired_on — the row
  * hireEmployee auto-inserts) is EXCLUDED. Any later accrual, or any adjustment/debit/in_lieu row (even an
  * opening-balance adjustment stamped at hire), counts as activity and locks the field — conservative by
@@ -2244,7 +2253,8 @@ export function holidayDatesForEmployment(
  *     section are gone — but its head STAYS and the sub-select below MUST NOT be removed. The reporter
  *     kept every travel_request row for audit, so an employment can still carry travel history that a
  *     company change would orphan. test/employee-company-change.test.ts pins it with a real INSERT.
- *   offboarding → resignation_request probation → employment_review  compensation → compensation (a saved salary)
+ *   offboarding → resignation_request probation → employment_review  compensation → compensation (a saved salary
+ *     other than the hire-date row — c063eea9)
  *
  * Runs inside the caller's tx so the company-change writer can re-run the gate as its server-side source of
  * truth without a nested transaction. RLS still scopes every sub-select to the tenant.
@@ -2270,7 +2280,7 @@ export async function employmentCompanyBlockedTx(tx: Tx, employmentId: string): 
         or exists (select 1 from performance_review t where t.employment_id = ${employmentId})
         or exists (select 1 from resignation_request t where t.employment_id = ${employmentId})
         or exists (select 1 from employment_review t where t.employment_id = ${employmentId})
-        or exists (select 1 from compensation t where t.employment_id = ${employmentId})
+        or exists (select 1 from compensation t where t.employment_id = ${employmentId} and not (t.valid_from = ${employment.hiredOn}))
       )`,
     })
     .from(employment)
