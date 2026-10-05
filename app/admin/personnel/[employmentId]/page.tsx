@@ -122,7 +122,7 @@ import { TERMINATION_REASONS } from '@/core/termination-reason';
 import { listMovementEventTypes } from '@/core/movement-type';
 import { MovementNewEvent } from './movement-new-event';
 // c063eea9 — "Correct hire details" on the Hired row: the read behind the form, and its client island.
-import { hireCorrectionView, type HireCorrectionField } from '@/core/hire-correction';
+import { HireCorrectionError, hireCorrectionView, type HireCorrectionField } from '@/core/hire-correction';
 import { HireCorrectionForm, type HireCorrectionFormField } from './hire-correction-form';
 import { serviceYearsMonthsDaysAt } from '@/core/leave';
 // 9d13221c — the Age figure beside Date of Birth no longer needs an import here at all: 35b7af0a group 3
@@ -668,7 +668,14 @@ export default async function EmployeePage({
    * that version's own company), so offering today's company's labels would offer values it then refuses.
    */
   const hireCorrection =
-    admin && !emp.terminatedOn && spCorrectHire === '1' ? await hireCorrectionView(s, employmentId) : null;
+    admin && !emp.terminatedOn && spCorrectHire === '1'
+      ? // An employment with no assignment at all (legacy data) has nothing to correct: no form, rather
+        // than an error page. Any other failure is a real one and still surfaces.
+        await hireCorrectionView(s, employmentId).catch((e) => {
+          if (e instanceof HireCorrectionError) return null;
+          throw e;
+        })
+      : null;
   const hireCorrectionOptions = hireCorrection
     ? await (async () => {
         const scope = [hireCorrection.companyId];

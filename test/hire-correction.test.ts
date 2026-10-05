@@ -423,6 +423,13 @@ describe('c063eea9 — validation and refusals', () => {
     ).rejects.toThrow(/not a valid option for Acme Sdn Bhd, the company the employee was hired into/);
     expect((await allVersions(id)).every((v) => v.supersededAt === null)).toBe(true);
     expect((await eventsOf(id)).length).toBe(before);
+    // An archived label is not a valid option either, exactly as on the assignment writers.
+    const archived = await dept('Old Admin');
+    await owner.db.update(schema.department).set({ archivedAt: new Date() }).where(eq(schema.department.id, archived));
+    await expect(
+      correctHireDetails(ctx(), { employmentId: id, changes: { departmentId: archived }, reason: REASON }),
+    ).rejects.toBeInstanceOf(HireCorrectionError);
+    expect((await eventsOf(id)).length).toBe(before);
   });
 
   it('refuses when a LATER record that inherited the value belongs to a company that cannot use the new label', async () => {

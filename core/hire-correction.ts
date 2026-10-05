@@ -544,8 +544,6 @@ export type HireCorrectionView = {
   gradeName: string | null;
   employmentType: string | null;
   fields: HireCorrectionFieldView[];
-  /** Every company a correction of some field would reach (version 1 plus inherited later versions). */
-  reachedCompanyIds: string[];
 };
 
 export function hireCorrectionView(ctx: SessionContext, employmentId: string): Promise<HireCorrectionView> {
@@ -600,7 +598,6 @@ export function hireCorrectionView(ctx: SessionContext, employmentId: string): P
       const [g] = await tx.select({ name: jobGrade.name }).from(jobGrade).where(eq(jobGrade.id, hireGradeId)).limit(1);
       gradeName = g?.name ?? null;
     }
-    const maxSpan = Math.max(...HIRE_CORRECTION_ASSIGNMENT_FIELDS.map((f) => plan.span[f]));
     return {
       hiredOn: plan.anchor,
       companyId: v1.companyId,
@@ -610,7 +607,6 @@ export function hireCorrectionView(ctx: SessionContext, employmentId: string): P
       gradeName,
       employmentType: v1.row.employmentType,
       fields,
-      reachedCompanyIds: [...new Set(plan.chain.slice(0, maxSpan).map((v) => v.companyId))],
     };
   });
 }
