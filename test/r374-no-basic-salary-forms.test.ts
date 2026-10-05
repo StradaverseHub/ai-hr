@@ -877,7 +877,9 @@ describe('§6 the Movement screen reaches the same refusal, and it is now legibl
     const body = src.slice(start, end);
     expect(body.length, 'the action body is implausibly short — the markers moved').toBeGreaterThan(400);
     expect(body, 'a positive control: it really is the rollback action').toContain('reverseMovementEvent(');
-    expect(body).toContain('(e as Error).message');
+    // r388: the plain forward now goes through publicErrorMessage, which returns a domain message unchanged
+    // and only replaces database text, so this is still the untranslated forward this test pins.
+    expect(body).toContain('publicErrorMessage(e)');
     expect(body).not.toContain('compensationErrorMessage');
 
     const mv = read('core/movement.ts');
