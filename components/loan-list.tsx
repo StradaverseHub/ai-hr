@@ -187,7 +187,7 @@ export function LoanList({ loans, serverPage }: { loans: LoanRow[]; serverPage?:
             {pageLoans.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
-                  {query.trim() ? t('noMatches') : t('empty')}
+                  {serverPage ? (serverPage.query ? t('noMatches') : t('empty')) : (loans.length === 0 ? t('empty') : t('noMatches'))}
                 </td>
               </tr>
             )}

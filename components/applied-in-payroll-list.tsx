@@ -195,7 +195,7 @@ export function AppliedInPayrollList({
                 <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                   {/* An empty list is the state the reporter sees FIRST on Loans (1 loan, 0 instalments
                       deducted on production). It must read as empty, not as an error. */}
-                  {rows.length === 0 ? emptyLabel : t('noMatches')}
+                  {serverPage ? (serverPage.query ? t('noMatches') : emptyLabel) : (rows.length === 0 ? emptyLabel : t('noMatches'))}
                 </td>
               </tr>
             )}

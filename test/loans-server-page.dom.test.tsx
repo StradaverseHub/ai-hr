@@ -56,6 +56,11 @@ describe('Loans server table controls', () => {
     const sorted = new URLSearchParams(nav.replace.mock.calls.at(-1)![0].slice(1));
     expect(sorted.get('aSort')).toBe('amount'); expect(sorted.has('aPage')).toBe(false); expect(sorted.get('page')).toBe('1');
   });
+  it('distinguishes a server search with no matches from an empty applied history', () => {
+    wrap(<AppliedInPayrollList rows={[]} emptyLabel="No applied history" serverPage={{ state: pageState(parsePageQuery(), 0, 0), query: 'unmatched', sort: 'payPeriod', dir: 'desc' }} />);
+    expect(screen.getByText(messages.appliedInPayroll.noMatches)).toBeTruthy();
+    expect(screen.queryByText('No applied history')).toBeNull();
+  });
   it('employee search navigates rather than filtering only the initial result page', async () => {
     vi.useFakeTimers(); window.history.replaceState({}, '', '/admin/loans?page=1');
     const panel = (query: string) => <EmployeeScopePanel employees={[{ employmentId: 'emp-1', name: 'First Worker', employeeCode: 'E1', company: 'Acme', companyId: 'c1', department: null, departmentId: null, businessUnit: null, businessUnitId: null, status: 'active' }]} selectedId={null} basePath="/admin/loans" serverResults={{ query, companyId: '', departmentId: '', businessUnitId: '', status: '', total: 31, companies: [{ id: 'c1', name: 'Acme' }], departments: [], businessUnits: [] }} />;
