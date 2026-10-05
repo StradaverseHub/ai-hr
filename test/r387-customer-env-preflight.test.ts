@@ -95,6 +95,18 @@ function refused(result: ReturnType<typeof runDeploy>, setting: string) {
 }
 
 describe('customer deploy refuses unsafe configuration before any install or database work', () => {
+  it('refuses unsafe configuration when the native checker is invoked through a symlink', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'r387-preflight-symlink-'));
+    dirs.push(dir);
+    const linked = path.join(dir, 'check.mjs');
+    fs.symlinkSync(path.join(REPO, 'deploy/check-customer-env.mjs'), linked);
+    const result = spawnSync(process.execPath, [linked], {
+      cwd: dir, encoding: 'utf8', env: { ...SAFE_ENV, NODE_ENV: 'development' }, timeout: 10_000,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('NODE_ENV must be production');
+  });
+
   it('refuses an obsolete customer Node runtime before installation', () => {
     refused(runDeploy({}, { nodeVersion: '20.20.0' }), 'Node.js 22');
   });
