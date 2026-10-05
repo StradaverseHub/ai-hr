@@ -14,6 +14,24 @@ const geometry = {
   en: { columns: [131.72,197.72,263.75,329.77,401.65,467.68,533.68], monthY: 325.61, pitch: 13.32, addressY: 693.72 },
   ms: { columns: [130.28,194.84,259.43,324.01,388.57,453.16,517.72], monthY: 336.89, pitch: 13.08, addressY: 708.36 },
 };
+// Independent outline union: does not consume the production measurement helper.
+function inkBounds(font: NonNullable<PDFPageDrawTextOptions['font']>, text: string, size: number) {
+  type Glyph = {advanceWidth: number; bbox: {minX: number;maxX: number;minY: number;maxY: number};path?: {commands: unknown[]}};
+  const parsed = (font as unknown as {embedder: {font: {unitsPerEm: number;layout(text: string): {glyphs: Glyph[]}}}}).embedder.font;
+  let cursor = 0, left = Infinity, right = -Infinity, bottom = Infinity, top = -Infinity, outlines = 0;
+  for (const glyph of parsed.layout(text).glyphs) {
+    const b = glyph.bbox;
+    if (glyph.path?.commands.length !== 0) {
+      expect([b.minX,b.maxX,b.minY,b.maxY].every(Number.isFinite)).toBe(true);
+      left=Math.min(left,cursor+b.minX);right=Math.max(right,cursor+b.maxX);
+      bottom=Math.min(bottom,b.minY);top=Math.max(top,b.maxY);outlines++;
+    }
+    cursor+=glyph.advanceWidth;
+  }
+  expect(outlines,'centering evidence must contain actual outlines').toBeGreaterThan(0);
+  const scale=size/parsed.unitsPerEm;
+  return {left:left*scale,right:right*scale,ascent:top*scale,descent:-bottom*scale};
+}
 function capture() {
   const draws: { text: string; options: PDFPageDrawTextOptions }[] = [];
   const original = PDFPage.prototype.drawText;
@@ -40,7 +58,7 @@ describe('r388 · PCB2II original box layout', () => {
       const draw = draws.find(d => d.text === text)!;
       expect(draw, text).toBeDefined();
       const { x, y, size, font } = draw.options;
-      const bounds = measurePayslipTextBounds(font!, text, size!);
+      const bounds = inkBounds(font!, text, size!);
       expect(x! + (bounds.left + bounds.right) / 2, text + ' horizontal centre').toBeCloseTo((g.columns[col] + g.columns[col + 1]) / 2, 5);
       const cellTop = g.monthY + row * g.pitch - (g.pitch - 3);
       expect(792 - y! + (bounds.descent - bounds.ascent) / 2, text + ' vertical centre').toBeCloseTo(cellTop + g.pitch / 2, 5);

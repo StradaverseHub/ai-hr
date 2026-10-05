@@ -312,7 +312,7 @@ export type PayslipTextBounds = { ascent: number; descent: number; left: number;
  * by advanceWidth; it does not apply fontkit position offsets. Missing/non-finite glyphs cannot report
  * a small successful box.
  */
-export function measurePayslipTextBounds(font: PDFFont, text: string, size: number): PayslipTextBounds {
+export function measurePayslipTextBounds(font: PDFFont, text: string, size: number, options: { inkOnly?: boolean } = {}): PayslipTextBounds {
   const conservative = (): PayslipTextBounds => {
     const height = font.heightAtSize(size);
     return { ascent: height, descent: height, left: 0, right: font.widthOfTextAtSize(text, size) };
@@ -328,10 +328,12 @@ export function measurePayslipTextBounds(font: PDFFont, text: string, size: numb
     const shaped = parsed.layout(text);
     if (shaped.glyphs.length === 0) return conservative();
     let cursorX = 0;
-    let left = 0;
-    let right = 0;
-    let bottom = 0;
-    let top = 0;
+    // Layout fitting normally includes the origin/baseline conservatively. Optical centring
+    // may instead request only the union of actual glyph outlines, excluding empty space.
+    let left = options.inkOnly ? Infinity : 0;
+    let right = options.inkOnly ? -Infinity : 0;
+    let bottom = options.inkOnly ? Infinity : 0;
+    let top = options.inkOnly ? -Infinity : 0;
     for (let i = 0; i < shaped.glyphs.length; i += 1) {
       const glyph = shaped.glyphs[i];
       if (glyph.id === 0) return { ascent: Infinity, descent: Infinity, left: -Infinity, right: Infinity };
@@ -351,6 +353,7 @@ export function measurePayslipTextBounds(font: PDFFont, text: string, size: numb
       top = Math.max(top, glyph.bbox.maxY);
       cursorX += glyph.advanceWidth;
     }
+    if (options.inkOnly && left === Infinity) return { ascent: 0, descent: 0, left: 0, right: 0 };
     const scale = size / parsed.unitsPerEm;
     return { ascent: top * scale, descent: -bottom * scale, left: left * scale, right: right * scale };
   } catch {

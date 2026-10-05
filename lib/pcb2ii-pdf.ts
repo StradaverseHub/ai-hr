@@ -82,10 +82,11 @@ export async function renderPcb2iiPdf(form: Pcb2iiForm, lang: Pcb2iiLang): Promi
     }
     return result;
   }
-  function metrics(text: string, field: string, size: number) {
-    let cursor = 0, ascent = 0, descent = 0, left = 0, right = 0;
+  function metrics(text: string, field: string, size: number, inkOnly = false) {
+    let cursor = 0, ascent = inkOnly ? -Infinity : 0, descent = inkOnly ? -Infinity : 0,
+      left = inkOnly ? Infinity : 0, right = inkOnly ? -Infinity : 0;
     for (const run of runs(text, field)) {
-      const bounds = measurePayslipTextBounds(run.font, run.text, size);
+      const bounds = measurePayslipTextBounds(run.font, run.text, size, { inkOnly });
       ascent = Math.max(ascent, bounds.ascent);
       descent = Math.max(descent, bounds.descent);
       left = Math.min(left, cursor + bounds.left);
@@ -105,7 +106,7 @@ export async function renderPcb2iiPdf(form: Pcb2iiForm, lang: Pcb2iiLang): Promi
     if (!text) return;
     const size = (fixedSize === undefined ? SIZES : [fixedSize]).find(size => fits(text, field, size, maxWidth));
     if (size === undefined) throw new Pcb2iiPreparationError('fit', field);
-    const m = metrics(text, field, size);
+    const m = metrics(text, field, size, alignment === 'center');
     const cellTop = top - (g.rowPitch - 3);
     const baseline = cellTop + (g.rowPitch - m.ascent - m.descent) / 2 + m.ascent;
     let cursor = alignment === 'right' ? x + maxWidth - PAD - Math.max(m.measured, m.right)
