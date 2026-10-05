@@ -58,7 +58,6 @@ import {
   employment,
   jobGrade,
   location,
-  payslip,
   person,
   position,
   reportingLine,
@@ -544,8 +543,6 @@ export type HireCorrectionView = {
   joinDate: string | null;
   gradeName: string | null;
   employmentType: string | null;
-  /** True once any payslip exists for this employment (decides which Company pointer applies). */
-  hasPayslips: boolean;
   fields: HireCorrectionFieldView[];
   /** Every company a correction of some field would reach (version 1 plus inherited later versions). */
   reachedCompanyIds: string[];
@@ -603,7 +600,6 @@ export function hireCorrectionView(ctx: SessionContext, employmentId: string): P
       const [g] = await tx.select({ name: jobGrade.name }).from(jobGrade).where(eq(jobGrade.id, hireGradeId)).limit(1);
       gradeName = g?.name ?? null;
     }
-    const [ps] = await tx.select({ id: payslip.id }).from(payslip).where(eq(payslip.employmentId, employmentId)).limit(1);
     const maxSpan = Math.max(...HIRE_CORRECTION_ASSIGNMENT_FIELDS.map((f) => plan.span[f]));
     return {
       hiredOn: plan.anchor,
@@ -613,7 +609,6 @@ export function hireCorrectionView(ctx: SessionContext, employmentId: string): P
       joinDate: plan.emp.joinDate,
       gradeName,
       employmentType: v1.row.employmentType,
-      hasPayslips: !!ps,
       fields,
       reachedCompanyIds: [...new Set(plan.chain.slice(0, maxSpan).map((v) => v.companyId))],
     };
@@ -885,10 +880,9 @@ export async function correctHireDetails(
     for (const r of replaced) {
       if (openRow && r.supersededId === openRow.row.id) currentRecordChanged.push(...r.fields);
     }
-    if (rlRecord && (rlRecord.validTo === null)) currentRecordChanged.push('managerEmploymentId');
-    if (rlRecord && rlRecord.validTo === null && rlRecord.replacementId === null && plan.rlV1?.validTo === null) {
-      // cleared an open line: the current record changed too (already pushed above)
-    }
+    // The line in force at hire is still running (or, with no line at hire, the new one runs on): today's
+    // reporting manager is the one just corrected — including a correction to "none".
+    if (rlRecord && rlRecord.validTo === null) currentRecordChanged.push('managerEmploymentId');
 
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
