@@ -13997,8 +13997,8 @@
       "usedBy": "Used by leave applications",
       "notUsed": "No leave application has used this credit.",
       "usageLine": "{days} · {dates} · {leaveType}",
-      "forfeited": "Forfeited: {days}, when the credit expired on {date}.",
-      "paidOut": "Paid out instead of taken: {days}, when the credit reached its expiry on {date}.",
+      "forfeited": "Forfeited: {days}. The credit expired and was settled on {date}.",
+      "paidOut": "Paid out instead of taken: {days}. The credit expired and was settled on {date}.",
       "reversed": "Reversed by HR on {date}. This credit can no longer be used.",
       "noCredit": "A credit is created only when the request is approved.",
       "close": "Close"

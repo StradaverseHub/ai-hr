@@ -13997,8 +13997,8 @@
       "usedBy": "使用此额度的休假申请",
       "notUsed": "尚无休假申请使用此额度。",
       "usageLine": "{days} · {dates} · {leaveType}",
-      "forfeited": "已作废：{days}，额度于 {date} 到期时作废。",
-      "paidOut": "以现金代替休假：{days}，额度于 {date} 到期时折现。",
+      "forfeited": "已作废：{days}。额度已到期，于 {date} 结算。",
+      "paidOut": "以现金代替休假：{days}。额度已到期，于 {date} 结算。",
       "reversed": "HR 已于 {date} 冲销。此额度不能再使用。",
       "noCredit": "只有在申请获批后才会生成额度。",
       "close": "关闭"

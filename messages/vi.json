@@ -13997,8 +13997,8 @@
       "usedBy": "Các đơn nghỉ phép đã dùng",
       "notUsed": "Chưa có đơn nghỉ phép nào dùng khoản tín dụng này.",
       "usageLine": "{days} · {dates} · {leaveType}",
-      "forfeited": "Bị mất: {days}, khi khoản tín dụng hết hạn vào ngày {date}.",
-      "paidOut": "Được trả tiền thay vì nghỉ: {days}, khi khoản tín dụng đến hạn vào ngày {date}.",
+      "forfeited": "Bị mất: {days}. Khoản tín dụng đã hết hạn và được tất toán vào ngày {date}.",
+      "paidOut": "Được trả tiền thay vì nghỉ: {days}. Khoản tín dụng đã hết hạn và được tất toán vào ngày {date}.",
       "reversed": "HR đã hủy bỏ vào ngày {date}. Khoản tín dụng này không thể dùng được nữa.",
       "noCredit": "Khoản tín dụng chỉ được tạo khi yêu cầu được phê duyệt.",
       "close": "Đóng"

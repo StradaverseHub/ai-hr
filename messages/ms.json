@@ -13997,8 +13997,8 @@
       "usedBy": "Digunakan oleh permohonan cuti",
       "notUsed": "Tiada permohonan cuti yang menggunakan kredit ini.",
       "usageLine": "{days} · {dates} · {leaveType}",
-      "forfeited": "Dilucutkan: {days}, apabila kredit luput pada {date}.",
-      "paidOut": "Dibayar sebagai ganti diambil: {days}, apabila kredit mencapai tarikh luputnya pada {date}.",
+      "forfeited": "Dilucutkan: {days}. Kredit telah luput dan diselesaikan pada {date}.",
+      "paidOut": "Dibayar sebagai ganti diambil: {days}. Kredit telah luput dan diselesaikan pada {date}.",
       "reversed": "Dibatalkan oleh HR pada {date}. Kredit ini tidak boleh digunakan lagi.",
       "noCredit": "Kredit hanya diwujudkan apabila permohonan diluluskan.",
       "close": "Tutup"

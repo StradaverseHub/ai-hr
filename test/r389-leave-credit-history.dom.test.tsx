@@ -229,12 +229,12 @@ describe('r389 · the Leave Credit History table', () => {
     show();
     fireEvent.click(within(rowOf(PAID_OUT)).getByTestId('lch-view'));
     let panel = screen.getByRole('dialog');
-    expect(within(panel).getByTestId('lch-settled').textContent).toMatch(/^Paid out instead of taken: 1\.00 days?, when the credit reached its expiry on 02\/08\/2026\.$/);
+    expect(within(panel).getByTestId('lch-settled').textContent).toMatch(/^Paid out instead of taken: 1\.00 days?\. The credit expired and was settled on 02\/08\/2026\.$/);
     expect(panel.textContent).not.toMatch(/RM|MYR|\$/);
     fireEvent.click(within(panel).getAllByRole('button', { name: 'Close' })[0]);
     fireEvent.click(within(rowOf(EXPIRED)).getByTestId('lch-view'));
     panel = screen.getAllByRole('dialog').at(-1)!;
-    expect(within(panel).getByTestId('lch-settled').textContent).toMatch(/^Forfeited: 0\.50 days?, when the credit expired on 02\/07\/2026\.$/);
+    expect(within(panel).getByTestId('lch-settled').textContent).toMatch(/^Forfeited: 0\.50 days?\. The credit expired and was settled on 02\/07\/2026\.$/);
   });
 
   it('renders the table and every panel in all six locales without a missing or broken message', () => {
