@@ -1025,6 +1025,78 @@ export async function decideReplacementLeaveRequest(
 }
 
 /**
+ * r389 bc3e203d · THE EMPLOYEE WITHDRAWS THEIR OWN PENDING LEAVE CREDIT REQUEST.
+ *
+ * The status enum has carried 'cancelled' since migration 0381 and nothing wrote it until this function. A
+ * cancelled request leaves the approver's list because that list reads `status = 'pending'`
+ * (`listPendingReplacementLeaveRequests`), and it stops blocking its dates because the double-claim check
+ * counts only pending and approved requests (core/credit-ot-overlap.ts BLOCKING_STATUSES).
+ *
+ * ── RLS IS NOT THE CONTROL HERE, AND THAT WAS VERIFIED RATHER THAN ASSUMED ─────────────────────────────
+ * `replacement_leave_request_rls` (migration 0381) is a FOR ALL policy on `app.can_see_employment(employment_id)
+ * OR app.can_decide_via_delegation(employment_id)`. It admits an UPDATE by the employee on their own row in ANY
+ * status, and by their administrative line manager, a routed delegate and a company administrator on the
+ * employee's row. It has no status predicate and no ownership predicate beyond visibility. So the two rules
+ * this action exists to keep are enforced HERE, in the statement itself:
+ *   1. OWN: the request's employment belongs to the session's person (`employment.person_id = ctx.personId`).
+ *      A manager who can see a report's pending request through RLS is refused as "not found", exactly like
+ *      a stranger, so the action cannot be used to probe which ids exist.
+ *   2. PENDING: the UPDATE carries `status = 'pending'` in its WHERE and must return exactly one row, so a
+ *      decision that lands between the read and the write (an approver approving in another tab) wins, and
+ *      the employee is told the request has already been decided rather than silently un-approving it.
+ * test/r389-leave-credit-history.test.ts drives both, with the manager's refusal as the non-vacuity case: that
+ * manager CAN read the row through RLS, so the refusal can only be this guard's.
+ *
+ * Not gated on the `toil` module: withdrawing grants nothing, and refusing it after the module lapsed would
+ * strand a request in the approver's list (the same reasoning `decideReplacementLeaveRequest` gives for
+ * leaving rejection reachable).
+ */
+export async function cancelOwnReplacementLeaveRequest(
+  ctx: SessionContext,
+  p: { requestId: string },
+): Promise<{ requestId: string; status: 'cancelled' }> {
+  const notFound = () => new ReplacementRequestInvalidError('Leave Credit request not found.');
+  const personId = ctx.personId;
+  if (!personId || !/^[0-9a-f-]{36}$/i.test(p.requestId)) throw notFound();
+  return withTenant(ctx, async (tx) => {
+    const [req] = await tx
+      .select({ id: replacementLeaveRequest.id, status: replacementLeaveRequest.status, employmentId: replacementLeaveRequest.employmentId })
+      .from(replacementLeaveRequest)
+      .innerJoin(employment, eq(employment.id, replacementLeaveRequest.employmentId))
+      .where(and(eq(replacementLeaveRequest.id, p.requestId), eq(employment.personId, personId)))
+      .limit(1);
+    if (!req) throw notFound();
+    if (req.status !== 'pending') {
+      throw new ReplacementRequestNotPendingError('Only a pending Leave Credit request can be cancelled. This one has already been decided or cancelled.');
+    }
+    const updated = await tx
+      .update(replacementLeaveRequest)
+      .set({ status: 'cancelled', updatedAt: new Date() })
+      .where(
+        and(
+          eq(replacementLeaveRequest.id, req.id),
+          eq(replacementLeaveRequest.employmentId, req.employmentId),
+          eq(replacementLeaveRequest.status, 'pending'),
+        ),
+      )
+      .returning({ id: replacementLeaveRequest.id });
+    if (updated.length !== 1) {
+      throw new ReplacementRequestNotPendingError('Only a pending Leave Credit request can be cancelled. This one has already been decided or cancelled.');
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'replacement-leave-request',
+      aggregateId: req.id,
+      eventType: 'replacement-leave-request.cancelled',
+      actor: actorOf(ctx),
+      subjectEmploymentId: req.employmentId,
+      payload: { by: 'employee' },
+    });
+    return { requestId: req.id, status: 'cancelled' as const };
+  });
+}
+
+/**
  * 5ff7daff · THE APPROVER'S QUEUE — one pending replacement-leave request per row, with the employee's
  * name and every worked-date line.
  *

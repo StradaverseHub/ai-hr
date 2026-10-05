@@ -371,8 +371,9 @@
     "leaveBfImport": "Nhập dữ liệu B/F phép",
     "leaveDataImport": "Nhập dữ liệu nghỉ phép",
     "myLeave": "Nghỉ phép của tôi",
-    "leaveOverview": "Tổng quan nghỉ phép",
+    "leaveOverview": "Đơn xin nghỉ phép",
     "leaveHistory": "Lịch sử nghỉ phép",
+    "leaveCreditHistory": "Lịch sử tín dụng nghỉ phép",
     "myTeam": "Nhóm của tôi"
   },
   "dashboard": {
@@ -2711,7 +2712,7 @@
       "cancellationRequestedAt": "Yêu cầu hủy lúc {date}"
     },
     "replacementRequest": {
-      "viewMyRequests": "View my leave credit requests"
+      "viewMyRequests": "[retired r389 — the 'View my leave credit requests' link beside the Leave Credit request button on My Leave. Item ba039150 removed it: the list it opened is now the Leave Credit History page, reached from the My Leave menu]"
     },
     "historyHeading": "Lịch sử nghỉ phép"
   },
@@ -13241,7 +13242,7 @@
       "balance": "Số ngày phép còn lại",
       "calendar": "Lịch nghỉ phép",
       "application": "Đơn xin nghỉ phép",
-      "overview": "Tổng quan nghỉ phép",
+      "overview": "Đơn xin nghỉ phép",
       "history": "Lịch sử nghỉ phép",
       "historySample": "Chỉ là bố cục mẫu; không có hồ sơ nghỉ phép trực tiếp.",
       "historyStatus": {
@@ -13809,7 +13810,7 @@
     "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống)."
   },
   "replacementRequest": {
-    "trigger": "+ Yêu cầu tín dụng nghỉ phép",
+    "trigger": "Yêu cầu tín dụng nghỉ phép",
     "title": "Yêu cầu tín dụng nghỉ phép",
     "description": "Yêu cầu tín dụng cho ngày nghỉ hằng tuần, ngày nghỉ hoặc ngày lễ mà bạn đã làm việc, hoặc cho số giờ làm thêm sau khi kết thúc ca trong ngày làm việc. Chưa có tín dụng nào được ghi cho đến khi quản lý của bạn phê duyệt.",
     "leaveType": "Leave type",
@@ -13888,10 +13889,10 @@
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "Ngày làm việc bình thường không thể nhận tín dụng tại công ty này.",
-      "myRequests": "My Leave Credit requests",
-      "noRequests": "You have not submitted a Leave Credit request yet.",
-      "statusHeading": "Status",
-      "submittedOn": "Submitted",
+      "myRequests": "[retired r389 — the 'My Leave Credit requests' heading of the list under the form on /leave/credit. Item bc3e203d turned that page into Leave Credit History, which carries its own headings under leaveCreditHistory]",
+      "noRequests": "[retired r389 — the empty state of the old list on /leave/credit. Leave Credit History says it with leaveCreditHistory.empty (item bc3e203d)]",
+      "statusHeading": "[retired r389 — the Status column heading of the old list on /leave/credit. Leave Credit History has an Approval Status and a Credit Status column of its own (item bc3e203d)]",
+      "submittedOn": "[retired r389 — the Submitted column heading of the old list on /leave/credit. Leave Credit History calls it Applied On (leaveCreditHistory.col.appliedOn, item bc3e203d)]",
       "noClockOutRecord": "Không có dữ liệu",
       "clockOutMissing": "Không có giờ ra được ghi nhận cho ngày này. Quản lý của bạn sẽ kiểm tra số giờ này trước khi phê duyệt.",
       "clockOutEarlier": "Bạn khai đến {claimEnd}, nhưng giờ ra được ghi nhận là {clockOut}. Quản lý của bạn sẽ kiểm tra trước khi phê duyệt.",
@@ -13929,6 +13930,78 @@
       "reasonRequired": "Thêm lý do để tiếp tục.",
       "completeRows": "Hoàn thành các dòng đủ điều kiện để tiếp tục.",
       "reasonPlaceholder": "vd. Chốt bảng lương cuối tháng"
+    }
+  },
+  "leaveCreditHistory": {
+    "title": "Lịch sử tín dụng nghỉ phép",
+    "description": "Mọi tín dụng nghỉ phép bạn đã yêu cầu, và những gì đã xảy ra với từng khoản tín dụng kể từ đó.",
+    "export": "Xuất",
+    "approvalStatus": "Trạng thái phê duyệt",
+    "tabAll": "Tất cả",
+    "filters": {
+      "toggle": "Bộ lọc",
+      "summary": "Trạng thái tín dụng · Loại ngày · Năm · Ngày",
+      "creditStatus": "Trạng thái tín dụng",
+      "dayType": "Loại ngày",
+      "year": "Năm",
+      "from": "Ngày làm việc từ",
+      "to": "Đến",
+      "all": "Tất cả",
+      "apply": "Áp dụng",
+      "clear": "Xóa lọc"
+    },
+    "col": {
+      "dateWorked": "Ngày làm việc",
+      "dayType": "Loại ngày",
+      "extendedHours": "Giờ làm thêm",
+      "creditDays": "Số ngày tín dụng",
+      "expiryDate": "Ngày hết hạn",
+      "appliedOn": "Ngày nộp",
+      "approvalStatus": "Trạng thái phê duyệt",
+      "creditStatus": "Trạng thái tín dụng",
+      "action": "Hành động"
+    },
+    "hoursValue": "{from} – {to} · {hours} giờ",
+    "daysLeft": "{count, plural, =0 {Hết hạn hôm nay} other {Còn # ngày}}",
+    "view": "Xem",
+    "viewAria": "Xem yêu cầu tín dụng nghỉ phép cho ngày {date}",
+    "cancel": "Hủy",
+    "cancelTitle": "Hủy yêu cầu tín dụng nghỉ phép này?",
+    "cancelDescription": "Yêu cầu sẽ được rút khỏi danh sách của người phê duyệt. Mọi ngày trong yêu cầu này đều bị hủy theo: {dates}.",
+    "cancelConfirm": "Hủy yêu cầu",
+    "cancelledToast": "Yêu cầu tín dụng nghỉ phép của bạn đã được hủy.",
+    "cancelNotPending": "Chỉ có thể hủy yêu cầu tín dụng nghỉ phép đang chờ duyệt. Yêu cầu này đã được quyết định hoặc đã bị hủy.",
+    "empty": "Bạn chưa gửi yêu cầu tín dụng nghỉ phép nào.",
+    "emptyFiltered": "Không có yêu cầu tín dụng nghỉ phép nào khớp với các bộ lọc này.",
+    "emptyTab": "Không có yêu cầu tín dụng nghỉ phép nào trong thẻ này.",
+    "drawer": {
+      "kicker": "Yêu cầu tín dụng nghỉ phép · Yêu cầu {ref}",
+      "request": "Yêu cầu",
+      "extendedHoursHint": "(giờ hợp lệ)",
+      "reason": "Lý do",
+      "attendance": "Tham chiếu chấm công",
+      "attendanceNote": "được ghi lại cùng yêu cầu",
+      "eligibleMinutes": "Số phút hợp lệ",
+      "notRecorded": "Không được ghi lại cùng yêu cầu này",
+      "approval": "Phê duyệt",
+      "level": "Cấp {level}",
+      "approved": "Đã phê duyệt · {date} {time}",
+      "rejected": "Đã từ chối · {date} {time}",
+      "waiting": "Đang chờ phê duyệt",
+      "cancelled": "Bạn đã hủy · {date} {time}",
+      "cancelledUndated": "Bạn đã hủy",
+      "remarks": "Ghi chú",
+      "creditUsage": "Sử dụng tín dụng",
+      "used": "Đã dùng",
+      "remaining": "Còn lại",
+      "usedBy": "Các đơn nghỉ phép đã dùng",
+      "notUsed": "Chưa có đơn nghỉ phép nào dùng khoản tín dụng này.",
+      "usageLine": "{days} · {dates} · {leaveType}",
+      "forfeited": "Bị mất: {days}, khi khoản tín dụng hết hạn vào ngày {date}.",
+      "paidOut": "Được trả tiền thay vì nghỉ: {days}, khi khoản tín dụng đến hạn vào ngày {date}.",
+      "reversed": "HR đã hủy bỏ vào ngày {date}. Khoản tín dụng này không thể dùng được nữa.",
+      "noCredit": "Khoản tín dụng chỉ được tạo khi yêu cầu được phê duyệt.",
+      "close": "Đóng"
     }
   },
   "notices": {

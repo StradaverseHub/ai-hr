@@ -371,8 +371,9 @@
     "leaveBfImport": "Leave B/F Data Import",
     "leaveDataImport": "Leave Data Import",
     "myLeave": "My Leave",
-    "leaveOverview": "Leave Overview",
+    "leaveOverview": "Leave Request",
     "leaveHistory": "Leave History",
+    "leaveCreditHistory": "Leave Credit History",
     "myTeam": "My Team"
   },
   "dashboard": {
@@ -2711,7 +2712,7 @@
       "cancellationRequestedAt": "Cancellation requested {date}"
     },
     "replacementRequest": {
-      "viewMyRequests": "View my leave credit requests"
+      "viewMyRequests": "[retired r389 — the 'View my leave credit requests' link beside the Leave Credit request button on My Leave. Item ba039150 removed it: the list it opened is now the Leave Credit History page, reached from the My Leave menu]"
     },
     "historyHeading": "Leave history"
   },
@@ -13241,7 +13242,7 @@
       "balance": "Leave Balance",
       "calendar": "Leave Calendar",
       "application": "Leave Application",
-      "overview": "Leave Overview",
+      "overview": "Leave Request",
       "history": "Leave History",
       "historySample": "Sample layout only; no live leave records.",
       "historyStatus": {
@@ -13809,7 +13810,7 @@
     "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank)."
   },
   "replacementRequest": {
-    "trigger": "+ Leave Credit request",
+    "trigger": "Leave Credit request",
     "title": "Leave Credit request",
     "description": "Claim a credit for a rest day, off day or public holiday you worked, or for extended hours after your shift on a working day. Nothing is credited until your manager approves.",
     "leaveType": "Leave type",
@@ -13888,10 +13889,10 @@
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "An ordinary working day cannot earn a credit at this company.",
-      "myRequests": "My Leave Credit requests",
-      "noRequests": "You have not submitted a Leave Credit request yet.",
-      "statusHeading": "Status",
-      "submittedOn": "Submitted",
+      "myRequests": "[retired r389 — the 'My Leave Credit requests' heading of the list under the form on /leave/credit. Item bc3e203d turned that page into Leave Credit History, which carries its own headings under leaveCreditHistory]",
+      "noRequests": "[retired r389 — the empty state of the old list on /leave/credit. Leave Credit History says it with leaveCreditHistory.empty (item bc3e203d)]",
+      "statusHeading": "[retired r389 — the Status column heading of the old list on /leave/credit. Leave Credit History has an Approval Status and a Credit Status column of its own (item bc3e203d)]",
+      "submittedOn": "[retired r389 — the Submitted column heading of the old list on /leave/credit. Leave Credit History calls it Applied On (leaveCreditHistory.col.appliedOn, item bc3e203d)]",
       "noClockOutRecord": "No record",
       "clockOutMissing": "No clock-out is on record for this date. Your manager will check these hours before approving.",
       "clockOutEarlier": "You claimed to {claimEnd}, but the clock-out on record is {clockOut}. Your manager will check this before approving.",
@@ -13929,6 +13930,78 @@
       "reasonRequired": "Add a reason to continue.",
       "completeRows": "Complete the eligible rows to continue.",
       "reasonPlaceholder": "e.g. Month-end payroll closing"
+    }
+  },
+  "leaveCreditHistory": {
+    "title": "Leave Credit History",
+    "description": "Every Leave Credit you have requested, and what has happened to each credit since.",
+    "export": "Export",
+    "approvalStatus": "Approval Status",
+    "tabAll": "All",
+    "filters": {
+      "toggle": "Filters",
+      "summary": "Credit Status · Day Type · Year · Dates",
+      "creditStatus": "Credit Status",
+      "dayType": "Day Type",
+      "year": "Year",
+      "from": "Date Worked From",
+      "to": "To",
+      "all": "All",
+      "apply": "Apply",
+      "clear": "Clear"
+    },
+    "col": {
+      "dateWorked": "Date Worked",
+      "dayType": "Day Type",
+      "extendedHours": "Extended Hours",
+      "creditDays": "Credit Days",
+      "expiryDate": "Expiry Date",
+      "appliedOn": "Applied On",
+      "approvalStatus": "Approval Status",
+      "creditStatus": "Credit Status",
+      "action": "Action"
+    },
+    "hoursValue": "{from} – {to} · {hours}h",
+    "daysLeft": "{count, plural, =0 {Expires today} one {# day left} other {# days left}}",
+    "view": "View",
+    "viewAria": "View the Leave Credit request for {date}",
+    "cancel": "Cancel",
+    "cancelTitle": "Cancel this Leave Credit request?",
+    "cancelDescription": "It will be withdrawn from your approver's list. Every date in this request is cancelled with it: {dates}.",
+    "cancelConfirm": "Cancel request",
+    "cancelledToast": "Your Leave Credit request has been cancelled.",
+    "cancelNotPending": "Only a pending Leave Credit request can be cancelled. This one has already been decided or cancelled.",
+    "empty": "You have not made any Leave Credit request yet.",
+    "emptyFiltered": "No Leave Credit request matches these filters.",
+    "emptyTab": "No Leave Credit request in this tab.",
+    "drawer": {
+      "kicker": "Leave Credit request · Request {ref}",
+      "request": "Request",
+      "extendedHoursHint": "(eligible hours)",
+      "reason": "Reason",
+      "attendance": "Attendance Reference",
+      "attendanceNote": "recorded with the request",
+      "eligibleMinutes": "Eligible minutes",
+      "notRecorded": "Not recorded with this request",
+      "approval": "Approval",
+      "level": "Level {level}",
+      "approved": "Approved · {date} {time}",
+      "rejected": "Rejected · {date} {time}",
+      "waiting": "Waiting for approval",
+      "cancelled": "Cancelled by you · {date} {time}",
+      "cancelledUndated": "Cancelled by you",
+      "remarks": "Remarks",
+      "creditUsage": "Credit Usage",
+      "used": "Used",
+      "remaining": "Remaining",
+      "usedBy": "Used by leave applications",
+      "notUsed": "No leave application has used this credit.",
+      "usageLine": "{days} · {dates} · {leaveType}",
+      "forfeited": "Forfeited: {days}, when the credit expired on {date}.",
+      "paidOut": "Paid out instead of taken: {days}, when the credit reached its expiry on {date}.",
+      "reversed": "Reversed by HR on {date}. This credit can no longer be used.",
+      "noCredit": "A credit is created only when the request is approved.",
+      "close": "Close"
     }
   },
   "notices": {

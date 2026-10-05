@@ -371,8 +371,9 @@
     "leaveBfImport": "விடுப்பு B/F தரவு இறக்குமதி",
     "leaveDataImport": "விடுப்புத் தரவு இறக்குமதி",
     "myLeave": "எனது விடுப்பு",
-    "leaveOverview": "விடுப்பு கண்ணோட்டம்",
+    "leaveOverview": "விடுப்பு கோரிக்கை",
     "leaveHistory": "விடுப்பு வரலாறு",
+    "leaveCreditHistory": "விடுப்பு வரவு வரலாறு",
     "myTeam": "எனது குழு"
   },
   "dashboard": {
@@ -2711,7 +2712,7 @@
       "cancellationRequestedAt": "ரத்து கோரப்பட்டது {date}"
     },
     "replacementRequest": {
-      "viewMyRequests": "View my leave credit requests"
+      "viewMyRequests": "[retired r389 — the 'View my leave credit requests' link beside the Leave Credit request button on My Leave. Item ba039150 removed it: the list it opened is now the Leave Credit History page, reached from the My Leave menu]"
     },
     "historyHeading": "விடுப்பு வரலாறு"
   },
@@ -13241,7 +13242,7 @@
       "balance": "விடுப்பு இருப்பு",
       "calendar": "விடுப்பு நாட்காட்டி",
       "application": "விடுப்பு விண்ணப்பம்",
-      "overview": "விடுப்பு கண்ணோட்டம்",
+      "overview": "விடுப்பு கோரிக்கை",
       "history": "விடுப்பு வரலாறு",
       "historySample": "மாதிரி அமைப்பு மட்டுமே; நேரடி விடுப்பு பதிவுகள் இல்லை.",
       "historyStatus": {
@@ -13809,7 +13810,7 @@
     "reviewReminderDaysHint": "சோதனை/ஒப்பந்தம்/பயிற்சி முடிவு தேதிக்கு முன் மேலாளரும் HR-ும் நினைவூட்டப்படும் நாட்கள், காற்புள்ளியால் பிரிக்கப்பட்டவை (காலியாக இருந்தால் இயல்பு 30, 14, 7)."
   },
   "replacementRequest": {
-    "trigger": "+ விடுப்பு வரவுக் கோரிக்கை",
+    "trigger": "விடுப்பு வரவுக் கோரிக்கை",
     "title": "விடுப்பு வரவுக் கோரிக்கை",
     "description": "நீங்கள் வேலை செய்த ஓய்வு நாள், விடுமுறை நாள் அல்லது பொது விடுமுறைக்கு, அல்லது வேலை நாளில் உங்கள் பணிநேரம் முடிந்த பிறகு நீட்டிக்கப்பட்ட மணிநேரங்களுக்கு வரவைக் கோருங்கள். உங்கள் மேலாளர் ஒப்புதல் அளிக்கும் வரை எதுவும் வரவு வைக்கப்படாது.",
     "leaveType": "Leave type",
@@ -13888,10 +13889,10 @@
       "dayTypeChoose": "Choose a day type",
       "rosterMismatch": "Your roster has {roster} for this date.",
       "windowNotClaimed": "இந்த நிறுவனத்தில் சாதாரண வேலை நாள் வரவு பெற முடியாது.",
-      "myRequests": "My Leave Credit requests",
-      "noRequests": "You have not submitted a Leave Credit request yet.",
-      "statusHeading": "Status",
-      "submittedOn": "Submitted",
+      "myRequests": "[retired r389 — the 'My Leave Credit requests' heading of the list under the form on /leave/credit. Item bc3e203d turned that page into Leave Credit History, which carries its own headings under leaveCreditHistory]",
+      "noRequests": "[retired r389 — the empty state of the old list on /leave/credit. Leave Credit History says it with leaveCreditHistory.empty (item bc3e203d)]",
+      "statusHeading": "[retired r389 — the Status column heading of the old list on /leave/credit. Leave Credit History has an Approval Status and a Credit Status column of its own (item bc3e203d)]",
+      "submittedOn": "[retired r389 — the Submitted column heading of the old list on /leave/credit. Leave Credit History calls it Applied On (leaveCreditHistory.col.appliedOn, item bc3e203d)]",
       "noClockOutRecord": "பதிவு இல்லை",
       "clockOutMissing": "இந்த தேதிக்கு வெளியேறும் நேரம் பதிவாகவில்லை. ஒப்புதல் அளிக்கும் முன் உங்கள் மேலாளர் இந்த நேரத்தைச் சரிபார்ப்பார்.",
       "clockOutEarlier": "நீங்கள் {claimEnd} வரை கோரியுள்ளீர்கள், ஆனால் பதிவான வெளியேறும் நேரம் {clockOut}. ஒப்புதல் அளிக்கும் முன் உங்கள் மேலாளர் இதைச் சரிபார்ப்பார்.",
@@ -13929,6 +13930,78 @@
       "reasonRequired": "தொடர காரணத்தைச் சேர்க்கவும்.",
       "completeRows": "தொடர தகுதியுள்ள வரிசைகளை நிறைவு செய்யவும்.",
       "reasonPlaceholder": "எ.கா. மாத இறுதி ஊதிய முடிப்பு"
+    }
+  },
+  "leaveCreditHistory": {
+    "title": "விடுப்பு வரவு வரலாறு",
+    "description": "நீங்கள் கோரிய ஒவ்வொரு விடுப்பு வரவும், அதன் பின் ஒவ்வொரு வரவுக்கும் என்ன நடந்தது என்பதும்.",
+    "export": "ஏற்றுமதி",
+    "approvalStatus": "ஒப்புதல் நிலை",
+    "tabAll": "அனைத்தும்",
+    "filters": {
+      "toggle": "வடிகட்டிகள்",
+      "summary": "வரவு நிலை · நாள் வகை · ஆண்டு · தேதிகள்",
+      "creditStatus": "வரவு நிலை",
+      "dayType": "நாள் வகை",
+      "year": "ஆண்டு",
+      "from": "வேலை செய்த தேதி முதல்",
+      "to": "வரை",
+      "all": "அனைத்தும்",
+      "apply": "பயன்படுத்து",
+      "clear": "அழி"
+    },
+    "col": {
+      "dateWorked": "வேலை செய்த தேதி",
+      "dayType": "நாள் வகை",
+      "extendedHours": "நீட்டிக்கப்பட்ட நேரம்",
+      "creditDays": "வரவு நாட்கள்",
+      "expiryDate": "காலாவதி தேதி",
+      "appliedOn": "விண்ணப்பித்த தேதி",
+      "approvalStatus": "ஒப்புதல் நிலை",
+      "creditStatus": "வரவு நிலை",
+      "action": "செயல்"
+    },
+    "hoursValue": "{from} – {to} · {hours} மணி",
+    "daysLeft": "{count, plural, =0 {இன்று காலாவதியாகிறது} one {# நாள் மீதம்} other {# நாட்கள் மீதம்}}",
+    "view": "காண்க",
+    "viewAria": "{date} க்கான விடுப்பு வரவுக் கோரிக்கையைக் காண்க",
+    "cancel": "ரத்துசெய்",
+    "cancelTitle": "இந்த விடுப்பு வரவுக் கோரிக்கையை ரத்துசெய்யவா?",
+    "cancelDescription": "இது உங்கள் ஒப்புதலாளரின் பட்டியலிலிருந்து திரும்பப் பெறப்படும். இந்தக் கோரிக்கையிலுள்ள ஒவ்வொரு தேதியும் அதனுடன் ரத்தாகும்: {dates}.",
+    "cancelConfirm": "கோரிக்கையை ரத்துசெய்",
+    "cancelledToast": "உங்கள் விடுப்பு வரவுக் கோரிக்கை ரத்துசெய்யப்பட்டது.",
+    "cancelNotPending": "நிலுவையில் உள்ள விடுப்பு வரவுக் கோரிக்கையை மட்டுமே ரத்துசெய்ய முடியும். இது ஏற்கெனவே முடிவு செய்யப்பட்டது அல்லது ரத்துசெய்யப்பட்டது.",
+    "empty": "நீங்கள் இதுவரை எந்த விடுப்பு வரவுக் கோரிக்கையும் செய்யவில்லை.",
+    "emptyFiltered": "இந்த வடிகட்டிகளுக்குப் பொருந்தும் விடுப்பு வரவுக் கோரிக்கை எதுவும் இல்லை.",
+    "emptyTab": "இந்தத் தாவலில் விடுப்பு வரவுக் கோரிக்கை எதுவும் இல்லை.",
+    "drawer": {
+      "kicker": "விடுப்பு வரவுக் கோரிக்கை · கோரிக்கை {ref}",
+      "request": "கோரிக்கை",
+      "extendedHoursHint": "(தகுதியான மணிநேரம்)",
+      "reason": "காரணம்",
+      "attendance": "வருகைக் குறிப்பு",
+      "attendanceNote": "கோரிக்கையுடன் பதிவுசெய்யப்பட்டது",
+      "eligibleMinutes": "தகுதியான நிமிடங்கள்",
+      "notRecorded": "இந்தக் கோரிக்கையுடன் பதிவுசெய்யப்படவில்லை",
+      "approval": "ஒப்புதல்",
+      "level": "நிலை {level}",
+      "approved": "ஒப்புதல் அளிக்கப்பட்டது · {date} {time}",
+      "rejected": "நிராகரிக்கப்பட்டது · {date} {time}",
+      "waiting": "ஒப்புதலுக்காகக் காத்திருக்கிறது",
+      "cancelled": "உங்களால் ரத்துசெய்யப்பட்டது · {date} {time}",
+      "cancelledUndated": "உங்களால் ரத்துசெய்யப்பட்டது",
+      "remarks": "குறிப்புகள்",
+      "creditUsage": "வரவுப் பயன்பாடு",
+      "used": "பயன்படுத்தியது",
+      "remaining": "மீதமுள்ளது",
+      "usedBy": "பயன்படுத்திய விடுப்பு விண்ணப்பங்கள்",
+      "notUsed": "எந்த விடுப்பு விண்ணப்பமும் இந்த வரவைப் பயன்படுத்தவில்லை.",
+      "usageLine": "{days} · {dates} · {leaveType}",
+      "forfeited": "இழக்கப்பட்டது: {days}, வரவு {date} அன்று காலாவதியானபோது.",
+      "paidOut": "எடுப்பதற்குப் பதிலாகப் பணமாக்கப்பட்டது: {days}, வரவு {date} அன்று காலாவதியை அடைந்தபோது.",
+      "reversed": "{date} அன்று HR ஆல் திரும்பப்பெறப்பட்டது. இந்த வரவை இனி பயன்படுத்த முடியாது.",
+      "noCredit": "கோரிக்கைக்கு ஒப்புதல் அளிக்கப்படும்போது மட்டுமே வரவு உருவாக்கப்படும்.",
+      "close": "மூடு"
     }
   },
   "notices": {

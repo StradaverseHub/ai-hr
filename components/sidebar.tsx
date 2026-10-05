@@ -235,8 +235,12 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   // — test/leave-pack.test.ts refuses a leave href hardcoded here. Without this line the row would advertise
   // a module the tenant has not bought. test/r299-leave-credit-screens.test.ts pins the pair (this entry and
   // `toil` in lib/nav-entitlements.ts MODULE_CODES_WITH_NAV).
+  // r389 (bc3e203d) — and My Leave › Leave Credit History, the employee's own Leave Credit requests: the same
+  // paid add-on, picked out of the leave pack's self-service node the same way (by label key, so its address
+  // keeps the pack's one spelling). Without it a tenant that has not bought Leave Credit would be offered a
+  // row whose page only explains that the feature is off.
   ...(modulePackById('leave')!.navNodes ?? []).flatMap((n) =>
-    n.children.filter((c) => c.labelKey === 'leaveCredit').map((c) => [c.href, 'toil'] as const),
+    n.children.filter((c) => c.labelKey === 'leaveCredit' || c.labelKey === 'leaveCreditHistory').map((c) => [c.href, 'toil'] as const),
   ),
 ]);
 
