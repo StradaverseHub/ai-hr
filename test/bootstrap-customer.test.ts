@@ -69,6 +69,8 @@ describe('fresh customer bootstrap — one audited customer without a privileged
     await resetDb();
     directory = await fs.mkdtemp(path.join(os.tmpdir(), 'aihr-first-customer-'));
     await fs.chmod(directory, 0o700);
+    // provisionTenant reads bundled guide content relative to the release cwd.
+    await fs.symlink(path.join(ROOT, 'content'), path.join(directory, 'content'), 'dir');
     configFile = path.join(directory, 'config.json');
     activationFile = path.join(directory, 'activation.txt');
     await fs.writeFile(configFile, JSON.stringify(input), { mode: 0o600 });
