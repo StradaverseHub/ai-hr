@@ -81,6 +81,8 @@ async function snapshot(tenantIds: string[] = [base.tenantId]) {
 }
 
 const names = Object.fromEntries(PAYSLIP_INFORMATION_FIELDS.map(k => [k, `L.${k}`])) as Record<PayslipInformationField, string>;
+/** Everything on a read except one key — what must NOT move when only the display order changes. */
+const without = <T extends object>(o: T, key: keyof T) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== key));
 
 /** One closed (issued) payslip for one employee of the base company, readable by that employee. */
 async function issuedPayslip() {
@@ -143,10 +145,8 @@ describe('r389 saving an order', () => {
     expect(reviewAfter.informationFields).toEqual(['employeeCode', 'employee', 'daysWorked', 'department']);
     expect(detailAfter.informationFields).toEqual(['employeeCode', 'employee', 'daysWorked', 'department']);
     // Every other field of both reads — every amount, the statutory snapshot, YTD inputs — is unchanged.
-    const { informationFields: _r1, ...reviewMoneyBefore } = reviewBefore; const { informationFields: _r2, ...reviewMoneyAfter } = reviewAfter;
-    const { informationFields: _d1, ...detailMoneyBefore } = detailBefore; const { informationFields: _d2, ...detailMoneyAfter } = detailAfter;
-    expect(reviewMoneyAfter).toEqual(reviewMoneyBefore);
-    expect(detailMoneyAfter).toEqual(detailMoneyBefore);
+    expect(without(reviewAfter, 'informationFields')).toEqual(without(reviewBefore, 'informationFields'));
+    expect(without(detailAfter, 'informationFields')).toEqual(without(detailBefore, 'informationFields'));
     expect(Number(detailAfter.net)).toBeGreaterThan(0);
   });
 
@@ -163,8 +163,7 @@ describe('r389 saving an order', () => {
     expect(order(first.text)).toEqual([names.employee, names.employeeCode, names.daysWorked]);
     expect(order(second.text)).toEqual([names.daysWorked, names.employeeCode, names.employee]);
     // Same document otherwise: the PDF data apart from the profile rows, and every drawn word, as a multiset.
-    const { informationRows: _i1, ...dataBefore } = first.data; const { informationRows: _i2, ...dataAfter } = second.data;
-    expect(dataAfter).toEqual(dataBefore);
+    expect(without(second.data, 'informationRows')).toEqual(without(first.data, 'informationRows'));
     expect([...second.text].sort()).toEqual([...first.text].sort());
   });
 });

@@ -17,6 +17,7 @@
  */
 import { useActionState, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
 import { ArrowDown, ArrowUp, GripVertical } from 'lucide-react';
 import { PAYSLIP_INFORMATION_FIELDS } from '@/core/payslip-information';
 import { savePayslipInformation, copyPayslipInformation } from './actions';
@@ -122,7 +123,7 @@ export function SettingsForm({companyId, companyName, fields, otherCompanies}: {
         ? <CopyToCompanies companyId={companyId} companyName={companyName} companies={otherCompanies} dirty={dirty}/>
         : <span/>}
       <div className="ml-auto flex gap-3">
-        <Button asChild variant="outline"><a href="/payroll/setup">{t('cancel')}</a></Button>
+        <Button asChild variant="outline"><Link href="/payroll/setup">{t('cancel')}</Link></Button>
         <Button type="submit" form={saveFormId} disabled={pending}>{pending ? t('saving') : t('save')}</Button>
       </div>
     </div>
