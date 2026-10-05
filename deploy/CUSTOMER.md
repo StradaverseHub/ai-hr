@@ -42,8 +42,11 @@ deployment operator. Its directories must be traversable and code readable by `a
 the release tree nor its parent may be writable by `aihr`. Preserve executable bits. Do not run a
 recursive `chown aihr` on the code tree. Keep SSH keys, backups and all unrelated services outside it.
 
-Bootstrap a fresh database through `sudo -u postgres deploy/bootstrap-db.sh` as described in
-`DEPLOY.md`. Store the three generated passwords in the approved secret manager. New customer data
+On the **separate PostgreSQL primary**, make the reviewed `bootstrap-db.sh` and `bootstrap-db.sql`
+available to its database administrator, then run `sudo -u postgres deploy/bootstrap-db.sh` as
+described in `DEPLOY.md`. This is not an app-host command: the app hosts only need PostgreSQL clients.
+Supply three strong passwords from the approved secret manager and retain them there. Configure the
+private database endpoint and certificate-validated remote URLs below. New customer data
 must start in an empty database, never the consultant demo database or a copy containing demo rows.
 
 ## 2. Configure deployment and runtime separately
@@ -72,7 +75,8 @@ variable expansion. Store values safely in the secret manager; never print a fil
 ```dotenv
 NODE_ENV=production
 PORT=3000
-DATABASE_URL=postgresql://ai_hr_app:REPLACE_WITH_APP_PASSWORD@localhost:5432/ai_hr
+DATABASE_URL=postgresql://ai_hr_app:REPLACE_WITH_APP_PASSWORD@REPLACE_WITH_PRIVATE_DB_DNS:5432/ai_hr?sslmode=verify-full
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/aihr-database-ca.pem
 AI_CONFIG_SECRET=REPLACE_WITH_STABLE_RANDOM_SECRET
 AUDIT_HASH_CHAIN_ENABLED=true
 SHARE_PASSWORD=REPLACE_WITH_RANDOM_GATE_PASSWORD
@@ -100,6 +104,13 @@ does not replace that Node setting. Do not put this public CA certificate under 
 hidden inside the service sandbox, or disable certificate verification.
 
 ## 3. Build, then prepare the cache and install the unit
+
+**Interim single-active-host procedure:** the commands in this section build in place on an app host
+during a maintenance window. They are useful for installation rehearsal, but do not implement the
+separate build runner or shared-artifact rollout in the production architecture. Before the proposed
+multi-instance launch, implement and verify a Linux build-once pipeline that distributes the identical
+artifact to both app hosts, runs migrations once, and switches releases after readiness checks.
+Do not run these build commands independently on each replica. That pipeline remains outstanding.
 
 Run the customer path as the deployment operator under Node 22. The `--migrate-only` flag still builds
 and runs migrations/catalog provisioning but leaves service restart to the following controlled step:
@@ -141,7 +152,8 @@ available. `ProtectSystem=strict` keeps the remaining release filesystem read-on
 Recheck file writes if adding ISR/file-backed storage. Node's JIT needs executable memory, so the unit
 does not use `MemoryDenyWriteExecute`. Review the [systemd execution controls](https://github.com/systemd/systemd/blob/main/man/systemd.exec.xml)
 against the target OS. The 6 GiB/7 GiB memory bounds assume a dedicated 8 GiB application host with
-PostgreSQL, builds and batch workers elsewhere. They are starting settings, not a load-tested capacity
+PostgreSQL and batch workers elsewhere; builds also move to the separate runner in the target topology.
+The interim build above runs only while the app service is stopped. They are starting settings, not a load-tested capacity
 claim; watch cgroup memory and tune to the host/workload. Do not copy these limits onto the small
 shared demo server.
 

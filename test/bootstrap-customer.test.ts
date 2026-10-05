@@ -51,7 +51,8 @@ function cli(args: string[], env: Record<string, string | undefined> = environme
       entry, '--config', configFile, ...args], {
       // The private fixture cwd deliberately has no development env file. Point the loader at the
       // real TS aliases explicitly, as running from the documented application cwd does naturally.
-      cwd: directory, env: { ...env, TSX_TSCONFIG_PATH: path.join(ROOT, 'tsconfig.json') } as NodeJS.ProcessEnv,
+      // Next's ProcessEnv augmentation requires NODE_ENV, but this boundary deliberately tests its absence.
+      cwd: directory, env: { ...env, TSX_TSCONFIG_PATH: path.join(ROOT, 'tsconfig.json') } as unknown as NodeJS.ProcessEnv,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let out = '';
