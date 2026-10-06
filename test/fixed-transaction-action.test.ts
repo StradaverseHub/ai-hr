@@ -44,6 +44,7 @@ import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { listPayComponents, seedPayComponentCatalog } from '../core/pay-components';
+import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { createFixedTransactionAction } from '../app/payroll/transactions/fixed/actions';
 
@@ -56,6 +57,16 @@ const fd = (o: Record<string, string>) => {
 async function codeId(ctx: SessionContext, code: string): Promise<string> {
   const cat = await listPayComponents(ctx);
   return cat.find((c) => c.code === code)!.id;
+}
+
+/** 4fffe638 — the Add form posts a CONFIGURED cycle id (payrollCycleId), not a run type. */
+async function cycleId(ctx: SessionContext, companyId: string, name: string): Promise<string> {
+  await seedPayrollCycleCatalog(ctx, companyId);
+  const [row] = await owner.db
+    .select({ id: schema.payrollCycle.id })
+    .from(schema.payrollCycle)
+    .where(and(eq(schema.payrollCycle.companyId, companyId), eq(schema.payrollCycle.name, name)));
+  return row.id;
 }
 
 describe('Fixed Transaction action — scope guard', () => {
@@ -97,11 +108,12 @@ describe('Fixed Transaction action — scope guard', () => {
       hiredOn: '2026-01-01',
     });
     const allowId = await codeId(a, 'ALLOWANCE');
+    const monthlyB = await cycleId(a, companyB, 'Monthly');
     scope.s = a;
     scope.scopeIds = [base.companyId]; // company A only — company B is out of scope
 
     await createFixedTransactionAction(
-      fd({ employmentId: emp.employmentId, componentId: allowId, runType: 'regular', amount: '100', effectiveFrom: '2026-01-01' }),
+      fd({ employmentId: emp.employmentId, componentId: allowId, payrollCycleId: monthlyB, amount: '100', effectiveFrom: '2026-01-01' }),
     );
 
     // Redirected with the scope error, and NOTHING was written for that employment.
@@ -124,11 +136,12 @@ describe('Fixed Transaction action — scope guard', () => {
       hiredOn: '2026-01-01',
     });
     const allowId = await codeId(a, 'ALLOWANCE');
+    const bonusA = await cycleId(a, base.companyId, 'Bonus');
     scope.s = a;
     scope.scopeIds = [base.companyId];
 
     await createFixedTransactionAction(
-      fd({ employmentId: emp.employmentId, componentId: allowId, runType: 'bonus', amount: '250', effectiveFrom: '2026-01-01' }),
+      fd({ employmentId: emp.employmentId, componentId: allowId, payrollCycleId: bonusA, amount: '250', effectiveFrom: '2026-01-01' }),
     );
 
     expect(redirect).toHaveBeenCalledWith(expect.stringContaining('toast=saved'));
@@ -143,6 +156,8 @@ describe('Fixed Transaction action — scope guard', () => {
       );
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].amount)).toBeCloseTo(250, 2);
+    // 4fffe638 — the run type is the chosen cycle's own, and the row is linked to that exact cycle.
     expect(rows[0].runType).toBe('bonus');
+    expect(rows[0].payrollCycleId).toBe(bonusA);
   });
 });
