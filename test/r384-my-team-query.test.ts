@@ -4,7 +4,7 @@ import {hasTeamAccess} from '../lib/authz';
 import type {SessionContext} from '../db/client';
 describe('My Team URL state preserves narrowing without inventing authority',()=>{
  it('preserves explicit all-layers-off, team IDs and selected employment through a round trip',()=>{
-  const query={view:'week' as const,scope:'all' as const,anchorDate:'2026-10-01',companyIds:['11111111-1111-4111-8111-111111111111'],employmentId:'22222222-2222-4222-8222-222222222222',search:'=SUM(A1)',tile:'late' as const,layers:{roster:false,attendance:false,leave:false}};
+  const query={view:'week' as const,scope:'all' as const,anchorDate:'2026-10-01',companyIds:['11111111-1111-4111-8111-111111111111'],employmentId:'22222222-2222-4222-8222-222222222222',search:'=SUM(A1)',layers:{roster:false,attendance:false,leave:false}};
   expect(parseMyTeamQuery(serializeMyTeamQuery(query))).toEqual(query);
   expect(serializeMyTeamQuery(query).get('layers')).toBe('');
  });
@@ -13,7 +13,11 @@ describe('My Team URL state preserves narrowing without inventing authority',()=
   expect(parseMyTeamQuery(new URLSearchParams()).companyIds).toBeUndefined();
   expect(()=>parseMyTeamQuery(new URLSearchParams('companyIds=&companyIds=11111111-1111-4111-8111-111111111111'))).toThrow(MyTeamQueryError);
  });
- it.each(['view=custom','scope=tenant','anchorDate=2026-02-30','anchorDate=not-a-date','companyIds=not-an-id','departmentId=all','employmentId=arbitrary','tile=salary','layers=roster,roster','layers=salary'])('refuses invalid input %s',raw=>{expect(()=>parseMyTeamQuery(new URLSearchParams(raw))).toThrow(MyTeamQueryError);});
+ it.each(['view=custom','scope=tenant','anchorDate=2026-02-30','anchorDate=not-a-date','companyIds=not-an-id','departmentId=all','employmentId=arbitrary','layers=roster,roster','layers=salary'])('refuses invalid input %s',raw=>{expect(()=>parseMyTeamQuery(new URLSearchParams(raw))).toThrow(MyTeamQueryError);});
+ it('ignores a tile from an old bookmarked link and never writes one back (r392, 33930be9)',()=>{
+  for(const raw of ['tile=late','tile=salary']){const q=parseMyTeamQuery(new URLSearchParams(raw));expect(q).not.toHaveProperty('tile');expect(serializeMyTeamQuery(q).has('tile')).toBe(false);}
+  expect(serializeMyTeamQuery({view:'week',scope:'direct',tile:'late'}).has('tile')).toBe(false);
+ });
  it('uses existing calendar stepping across week and month boundaries',()=>{
   expect(stepMyTeamAnchor({view:'week',scope:'direct',anchorDate:'2026-12-28'},1)).toBe('2027-01-04');
   expect(stepMyTeamAnchor({view:'month',scope:'direct',anchorDate:'2026-01-31'},-1)).toBe('2025-12-01');

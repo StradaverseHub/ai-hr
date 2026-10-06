@@ -1,5 +1,5 @@
 import {describe,it,expect,vi,beforeEach} from 'vitest';
-import {readFileSync} from 'node:fs';
+import {existsSync,readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {ModuleNotEnabledError} from '../core/entitlements';
 import type {SessionContext} from '../db/client';
@@ -49,7 +49,9 @@ describe('My Team server boundary',()=>{
  it('keeps an awaited page guard and fresh owner lookup on every data/write destination',()=>{
   expect(source('app/manage/my-team/layout.tsx')).toContain("moduleLayout('leave')");
   const page=source('app/manage/my-team/page.tsx');expect(page).toContain('export default async function MyTeamPage');expect(page).toMatch(/await requireTeamAccess\(s\)/);
-  for(const path of ['app/manage/my-team/period/route.ts','app/manage/my-team/export/route.ts','app/manage/my-team/actions.ts']){const body=source(path);expect(body,path).toContain('await scopedSession()');expect(body,path).toContain('hasTeamAccess(s)');expect(body,path).toContain('await readMyTeam(s,');}
-  const actions=source('app/manage/my-team/actions.ts');expect(actions).toContain('await decideMyTeamLeave(s,snapshot.query,');expect(actions).toContain('await decideMyTeamLeaveDates(s,snapshot.query,');expect(actions).not.toMatch(/await decideLeave(?:Dates)?\(/);
+  for(const path of ['app/manage/my-team/period/route.ts','app/manage/my-team/export/route.ts']){const body=source(path);expect(body,path).toContain('await scopedSession()');expect(body,path).toContain('hasTeamAccess(s)');expect(body,path).toContain('await readMyTeam(s,');}
+  // r392 (33930be9): the attention panel's Approve/Reject and Mark reviewed actions were removed with the panel;
+  // My Team has no write destination left (leave is decided in Approval Items). See test/r392-my-team-sections-removed.dom.test.tsx.
+  expect(existsSync(resolve(process.cwd(),'app/manage/my-team/actions.ts'))).toBe(false);
  });
 });
