@@ -1920,9 +1920,9 @@
         "position": "Vị trí / Chức danh",
         "costCenter": "Trung tâm chi phí",
         "jobGrade": "Ngạch công việc",
-        "reportingManager": "Quản lý trực tiếp",
+        "reportingManager": "[retired r392 — the draft's 'Reporting manager' dropdown. Item 685d2380 replaced it with the Direct Superior search box (fields.directSuperior); the stored key reportingManagerEmploymentId is unchanged]",
         "employmentType": "Loại hợp đồng",
-        "hiredOn": "Ngày tuyển dụng",
+        "hiredOn": "[retired r392 — the draft's 'Hire date' label. Item 685d2380 renamed it Group Join Date (fields.groupJoinDate); the draft key hiredOn is unchanged and the outstanding list maps it to the new label]",
         "provisionalEndOn": "Ngày kết thúc tạm thời",
         "contractEndDate": "Ngày kết thúc hợp đồng",
         "basicSalary": "Lương cơ bản ban đầu (MYR)",
@@ -1942,7 +1942,10 @@
         "familyMemberDate": "Ngày của thành viên gia đình",
         "passport": "Hộ chiếu",
         "confirmationDate": "Ngày chính thức",
-        "employmentPeriods": "Thời gian thử việc và báo trước"
+        "employmentPeriods": "Thời gian thử việc và báo trước",
+        "groupJoinDate": "Ngày gia nhập tập đoàn",
+        "directSuperior": "Cấp trên trực tiếp",
+        "internshipEndDate": "Ngày kết thúc thực tập"
       },
       "employmentType": {
         "full_time": "Toàn thời gian",
@@ -1953,15 +1956,17 @@
       "none": "— Không có —",
       "orgLabelsEmptyForCompany": "Chưa có nhãn tổ chức nào được cấu hình cho công ty đã chọn.",
       "hints": {
-        "provisionalEndOn": "Kết thúc thử việc cho toàn thời gian (mặc định +3 tháng); nếu không là ngày kết thúc hợp đồng hoặc thực tập. Để trống nếu không có.",
+        "provisionalEndOn": "[retired r392 — the end-date box is now shown only for Contract and Intern; Full-Time works its probation end out from the Probation Period (probationEndsOn)]",
         "contractEndDate": "Ngày hết hạn hợp đồng — ngày làm việc cuối cùng theo hợp đồng này. Giá trị này được lưu làm ngày kết thúc hợp đồng ở tab Việc làm và kích hoạt đợt rà soát hết hạn hợp đồng.",
         "employeeCode": "Chữ cái, chữ số và dấu gạch ngang, tối đa 30 ký tự. Mã không được trùng với mã đang dùng.",
         "dateOfBirth": "Để trống thì hệ thống lấy từ số định danh nếu có thể.",
         "businessUnit": "Chỉ để lọc danh sách phòng ban. Không lưu vào hồ sơ nhân viên.",
-        "hiredOn": "Ngày làm việc đầu tiên. Sau khi tạo, ngày này chỉ thay đổi qua sự kiện điều động.",
+        "hiredOn": "[retired r392 — replaced by hints.groupJoinDate, which also says the Join Date for the current company starts the same day]",
         "bankAccount": "Nhập cả ngân hàng và số tài khoản, hoặc bỏ trống cả hai.",
         "noBasicSalary": "Lương cơ bản ban đầu đang để trống hoặc bằng không. Vui lòng hoàn tất Hình thức tính lương, Kỳ lương và Ghi chú trước khi kích hoạt nhân viên này.",
-        "companyFixed": "Nó quyết định quy tắc mã nhân viên nào được áp dụng và không thể đổi sau khi bản ghi được tạo."
+        "companyFixed": "Nó quyết định quy tắc mã nhân viên nào được áp dụng và không thể đổi sau khi bản ghi được tạo.",
+        "groupJoinDate": "Ngày đầu tiên làm việc tại tập đoàn. Ngày gia nhập của công ty này bắt đầu cùng ngày. Sau khi tạo, cả hai ngày chỉ thay đổi qua sự kiện điều động.",
+        "internshipEndDate": "Ngày cuối cùng của kỳ thực tập. Ngày này kích hoạt đợt rà soát kết thúc thực tập."
       },
       "backLabel": "Quay lại Quản lý Nhân sự",
       "title": "Tạo nhân viên mới",
@@ -2031,7 +2036,13 @@
         "continue": "Tiếp tục điền thông tin chi tiết",
         "backToList": "Trở lại danh sách"
       },
-      "close": "Đóng"
+      "close": "Đóng",
+      "directSuperiorNone": "Chưa có cấp trên trực tiếp",
+      "directSuperiorSearch": "Tìm theo mã nhân viên hoặc tên",
+      "directSuperiorNoResults": "Không có nhân viên phù hợp.",
+      "probationEndsOn": "Thử việc kết thúc vào {date} — Ngày gia nhập tập đoàn cộng Thời gian thử việc.",
+      "probationEndsOnStored": "Thử việc kết thúc vào {date} — ngày kết thúc đã lưu trong bản nháp này. Nhập Thời gian thử việc để tính từ Ngày gia nhập tập đoàn.",
+      "probationEndsNone": "Chưa có ngày kết thúc thử việc. Nhập Thời gian thử việc để tính ngày kết thúc thử việc."
     },
     "duplicates": {
       "title": "Hồ sơ nhân viên có thể bị trùng",

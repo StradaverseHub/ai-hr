@@ -1920,9 +1920,9 @@
         "position": "ตำแหน่ง / ชื่อตำแหน่งงาน",
         "costCenter": "ศูนย์ต้นทุน",
         "jobGrade": "ระดับงาน",
-        "reportingManager": "ผู้จัดการที่รายงาน",
+        "reportingManager": "[retired r392 — the draft's 'Reporting manager' dropdown. Item 685d2380 replaced it with the Direct Superior search box (fields.directSuperior); the stored key reportingManagerEmploymentId is unchanged]",
         "employmentType": "ประเภทการจ้างงาน",
-        "hiredOn": "วันที่จ้าง",
+        "hiredOn": "[retired r392 — the draft's 'Hire date' label. Item 685d2380 renamed it Group Join Date (fields.groupJoinDate); the draft key hiredOn is unchanged and the outstanding list maps it to the new label]",
         "provisionalEndOn": "วันที่สิ้นสุดชั่วคราว",
         "contractEndDate": "วันที่สิ้นสุดสัญญา",
         "basicSalary": "เงินเดือนพื้นฐานเริ่มต้น (MYR)",
@@ -1942,7 +1942,10 @@
         "familyMemberDate": "วันที่ของสมาชิกครอบครัว",
         "passport": "หนังสือเดินทาง",
         "confirmationDate": "วันที่บรรจุ",
-        "employmentPeriods": "ระยะทดลองงานและระยะแจ้งล่วงหน้า"
+        "employmentPeriods": "ระยะทดลองงานและระยะแจ้งล่วงหน้า",
+        "groupJoinDate": "วันที่เข้าร่วมกลุ่ม",
+        "directSuperior": "หัวหน้าโดยตรง",
+        "internshipEndDate": "วันที่สิ้นสุดการฝึกงาน"
       },
       "employmentType": {
         "full_time": "เต็มเวลา",
@@ -1953,15 +1956,17 @@
       "none": "— ไม่มี —",
       "orgLabelsEmptyForCompany": "ไม่มีป้ายกำกับองค์กรที่กำหนดค่าไว้สำหรับบริษัทที่เลือก",
       "hints": {
-        "provisionalEndOn": "สิ้นสุดทดลองงานสำหรับงานเต็มเวลา (ค่าเริ่มต้น +3 เดือน); มิฉะนั้นเป็นวันสิ้นสุดสัญญาหรือการฝึกงาน เว้นว่างหากไม่มี",
+        "provisionalEndOn": "[retired r392 — the end-date box is now shown only for Contract and Intern; Full-Time works its probation end out from the Probation Period (probationEndsOn)]",
         "contractEndDate": "วันที่สิ้นสุดสัญญา — วันทำงานสุดท้ายภายใต้สัญญานี้ ระบบจะบันทึกเป็นวันที่สิ้นสุดสัญญาในแท็บการจ้างงาน และใช้ขับเคลื่อนการทบทวนการสิ้นสุดสัญญา",
         "employeeCode": "ตัวอักษร ตัวเลข และขีดกลาง สูงสุด 30 ตัวอักษร และต้องยังไม่ถูกใช้งาน",
         "dateOfBirth": "เว้นว่างไว้ ระบบจะดึงจากเลขประจำตัวหากทำได้",
         "businessUnit": "ใช้กรองรายการแผนกเท่านั้น ไม่ได้บันทึกไว้กับพนักงาน",
-        "hiredOn": "วันแรกของการทำงาน หลังจากสร้างแล้ว วันที่นี้จะเปลี่ยนได้ผ่านเหตุการณ์การเคลื่อนย้ายเท่านั้น",
+        "hiredOn": "[retired r392 — replaced by hints.groupJoinDate, which also says the Join Date for the current company starts the same day]",
         "bankAccount": "กรอกทั้งธนาคารและเลขที่บัญชี หรือไม่กรอกทั้งคู่",
         "noBasicSalary": "เงินเดือนพื้นฐานเริ่มต้นว่างหรือเป็นศูนย์ กรุณากรอกรูปแบบการจ่าย งวดการจ่าย และหมายเหตุ ก่อนเปิดใช้งานพนักงานคนนี้",
-        "companyFixed": "เป็นตัวกำหนดว่าจะใช้กฎรหัสพนักงานแบบใด และเปลี่ยนไม่ได้หลังจากสร้างระเบียนแล้ว"
+        "companyFixed": "เป็นตัวกำหนดว่าจะใช้กฎรหัสพนักงานแบบใด และเปลี่ยนไม่ได้หลังจากสร้างระเบียนแล้ว",
+        "groupJoinDate": "วันแรกกับกลุ่มบริษัท วันที่เข้าร่วมของบริษัทนี้เริ่มในวันเดียวกัน หลังจากสร้างแล้ว วันที่ทั้งสองจะเปลี่ยนได้ผ่านเหตุการณ์การเคลื่อนย้ายเท่านั้น",
+        "internshipEndDate": "วันสุดท้ายของการฝึกงาน ใช้ขับเคลื่อนการทบทวนการสิ้นสุดการฝึกงาน"
       },
       "backLabel": "กลับไปที่การจัดการบุคลากร",
       "title": "สร้างพนักงานใหม่",
@@ -2031,7 +2036,13 @@
         "continue": "ดำเนินการกรอกรายละเอียดต่อ",
         "backToList": "กลับไปที่รายการ"
       },
-      "close": "ปิด"
+      "close": "ปิด",
+      "directSuperiorNone": "ไม่มีหัวหน้าโดยตรง",
+      "directSuperiorSearch": "ค้นหาด้วยรหัสพนักงานหรือชื่อ",
+      "directSuperiorNoResults": "ไม่พบพนักงานที่ตรงกัน",
+      "probationEndsOn": "ทดลองงานสิ้นสุดวันที่ {date} — วันที่เข้าร่วมกลุ่มบวกระยะเวลาทดลองงาน",
+      "probationEndsOnStored": "ทดลองงานสิ้นสุดวันที่ {date} — วันที่สิ้นสุดที่บันทึกไว้ในแบบร่างนี้แล้ว กรอกระยะเวลาทดลองงานเพื่อคำนวณจากวันที่เข้าร่วมกลุ่มแทน",
+      "probationEndsNone": "ไม่มีวันที่สิ้นสุดทดลองงาน กรอกระยะเวลาทดลองงานเพื่อคำนวณว่าทดลองงานสิ้นสุดเมื่อใด"
     },
     "duplicates": {
       "title": "ระเบียนพนักงานที่อาจซ้ำกัน",

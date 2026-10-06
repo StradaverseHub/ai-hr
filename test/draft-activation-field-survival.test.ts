@@ -125,12 +125,21 @@ const LANDS: Record<string, Record<string, string | null>> = {
     gradeId: 'employment.grade_id',
     reportingManagerEmploymentId: 'reporting_line.manager_employment_id',
     employmentType: 'assignment.employment_type',
+    // r392 (685d2380 step 1) — the tab labels this "Group Join Date". It always landed in BOTH hired_on
+    // (shown as Group Join Date) and join_date (the current company's Join Date); §2 asserts hired_on.
     hiredOn: 'employment.hired_on',
+    // r392 — REINTERPRETED, not moved. The box is shown for Contract / Intern only, and what lands is
+    // `draftProvisionalEndOn(e).date`: contract/intern → this stored value (§2's contract draft below);
+    // full_time → Group Join Date + the Probation Period, or this stored value on a legacy draft with no
+    // period; part_time → NULL whatever is stored. Every branch is pinned against Postgres in
+    // test/r392-draft-employment-tab.test.ts §3.
     provisionalEndOn: 'employment.provisional_end_on',
     // ── item a72610af ────────────────────────────────────────────────────────────────────────────
     // NONE of these reaches `hireEmployee` — `HireParams` accepts not one of them. They are `employment`
     // columns whose writer is `setEmploymentInfo`, which `completeEmployeeDraft` now calls after the hire,
     // exactly as `commitEmployeeImport` has since item 2983802f.
+    // r392 — for a FULL-TIME hire these two ALSO decide employment.provisional_end_on (Group Join Date +
+    // the period, `addEmploymentPeriod`); see provisionalEndOn above. Their own column is unchanged.
     probationValue: 'employment.probation_value',
     probationUnit: 'employment.probation_unit',
     extendedProbationValue: 'employment.extended_probation_value',

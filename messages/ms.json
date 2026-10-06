@@ -1920,11 +1920,11 @@
         "position": "Jawatan / Tajuk kerja",
         "costCenter": "Pusat kos",
         "jobGrade": "Gred kerja",
-        "reportingManager": "Pengurus pelapor",
+        "reportingManager": "[retired r392 — the draft's 'Reporting manager' dropdown. Item 685d2380 replaced it with the Direct Superior search box (fields.directSuperior); the stored key reportingManagerEmploymentId is unchanged]",
         "employmentType": "Jenis pekerjaan",
-        "hiredOn": "Tarikh ambil",
+        "hiredOn": "[retired r392 — the draft's 'Hire date' label. Item 685d2380 renamed it Group Join Date (fields.groupJoinDate); the draft key hiredOn is unchanged and the outstanding list maps it to the new label]",
         "provisionalEndOn": "Tarikh tamat sementara",
-        "contractEndDate": "Tarikh tamat kontrak",
+        "contractEndDate": "Tarikh Tamat Kontrak",
         "basicSalary": "Gaji asas permulaan (MYR)",
         "basicSalaryBlankPlaceholder": "Biarkan kosong jika tiada gaji asas",
         "remarksNoBasicPlaceholder": "cth. dibayar melalui fi pengarah setiap suku tahun",
@@ -1942,7 +1942,10 @@
         "familyMemberDate": "Tarikh ahli keluarga",
         "passport": "Pasport",
         "confirmationDate": "Tarikh Pengesahan",
-        "employmentPeriods": "Tempoh percubaan dan notis"
+        "employmentPeriods": "Tempoh percubaan dan notis",
+        "groupJoinDate": "Tarikh Menyertai Kumpulan",
+        "directSuperior": "Ketua Langsung",
+        "internshipEndDate": "Tarikh Tamat Latihan"
       },
       "employmentType": {
         "full_time": "Sepenuh masa",
@@ -1953,15 +1956,17 @@
       "none": "— Tiada —",
       "orgLabelsEmptyForCompany": "Tiada label organisasi dikonfigurasikan untuk syarikat yang dipilih.",
       "hints": {
-        "provisionalEndOn": "Tamat percubaan untuk sepenuh masa (lalai +3 bulan); jika tidak, tamat kontrak atau latihan. Biarkan kosong jika tiada.",
+        "provisionalEndOn": "[retired r392 — the end-date box is now shown only for Contract and Intern; Full-Time works its probation end out from the Probation Period (probationEndsOn)]",
         "contractEndDate": "Tarikh tamat kontrak — hari bekerja terakhir di bawah kontrak ini. Ia disimpan sebagai tarikh tamat kontrak pada tab Pekerjaan dan memacu semakan tamat kontrak.",
         "employeeCode": "Huruf, nombor dan sengkang, sehingga 30 aksara. Ia tidak boleh sedang digunakan.",
         "dateOfBirth": "Biarkan kosong dan ia diambil daripada nombor pengenalan jika boleh.",
         "businessUnit": "Hanya menapis senarai jabatan. Ia tidak disimpan pada pekerja.",
-        "hiredOn": "Hari pertama bekerja. Selepas penciptaan, tarikh ini hanya berubah melalui peristiwa pergerakan.",
+        "hiredOn": "[retired r392 — replaced by hints.groupJoinDate, which also says the Join Date for the current company starts the same day]",
         "bankAccount": "Isikan kedua-dua bank dan nombor akaun, atau tiada langsung.",
         "noBasicSalary": "Gaji Asas Permulaan kosong atau sifar. Sila lengkapkan Mod Bayaran, Terma Bayaran dan Catatan sebelum mengaktifkan pekerja ini.",
-        "companyFixed": "Ia menentukan peraturan ID Pekerja yang terpakai, dan tidak boleh diubah setelah rekod dicipta."
+        "companyFixed": "Ia menentukan peraturan ID Pekerja yang terpakai, dan tidak boleh diubah setelah rekod dicipta.",
+        "groupJoinDate": "Hari pertama bersama kumpulan. Tarikh Menyertai untuk syarikat ini bermula pada hari yang sama. Selepas penciptaan, kedua-dua tarikh hanya berubah melalui peristiwa pergerakan.",
+        "internshipEndDate": "Hari terakhir latihan. Ia memacu semakan tamat latihan."
       },
       "backLabel": "Kembali ke Pengurusan Kakitangan",
       "title": "Cipta pekerja baharu",
@@ -2031,7 +2036,13 @@
         "continue": "Teruskan mengisi butiran",
         "backToList": "Kembali ke senarai"
       },
-      "close": "Tutup"
+      "close": "Tutup",
+      "directSuperiorNone": "Tiada ketua langsung",
+      "directSuperiorSearch": "Cari mengikut ID pekerja atau nama",
+      "directSuperiorNoResults": "Tiada pekerja yang sepadan.",
+      "probationEndsOn": "Tempoh percubaan tamat pada {date} — Tarikh Menyertai Kumpulan ditambah Tempoh Percubaan.",
+      "probationEndsOnStored": "Tempoh percubaan tamat pada {date} — tarikh tamat yang telah disimpan pada draf ini. Masukkan Tempoh Percubaan untuk mengiranya daripada Tarikh Menyertai Kumpulan.",
+      "probationEndsNone": "Tiada tarikh tamat percubaan. Masukkan Tempoh Percubaan untuk mengira bila tempoh percubaan tamat."
     },
     "duplicates": {
       "title": "Rekod pekerja yang mungkin berganda",

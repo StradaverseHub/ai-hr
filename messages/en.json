@@ -1920,11 +1920,11 @@
         "position": "Position / Job title",
         "costCenter": "Cost center",
         "jobGrade": "Job grade",
-        "reportingManager": "Reporting manager",
+        "reportingManager": "[retired r392 — the draft's 'Reporting manager' dropdown. Item 685d2380 replaced it with the Direct Superior search box (fields.directSuperior); the stored key reportingManagerEmploymentId is unchanged]",
         "employmentType": "Employment type",
-        "hiredOn": "Hire date",
+        "hiredOn": "[retired r392 — the draft's 'Hire date' label. Item 685d2380 renamed it Group Join Date (fields.groupJoinDate); the draft key hiredOn is unchanged and the outstanding list maps it to the new label]",
         "provisionalEndOn": "Provisional end date",
-        "contractEndDate": "Contract end date",
+        "contractEndDate": "Contract End Date",
         "basicSalary": "Initial basic salary (MYR)",
         "basicSalaryBlankPlaceholder": "Leave blank if there is no basic salary",
         "remarksNoBasicPlaceholder": "e.g. paid by quarterly director's fees",
@@ -1942,7 +1942,10 @@
         "familyMemberDate": "Family member date",
         "passport": "Passport",
         "confirmationDate": "Confirmation Date",
-        "employmentPeriods": "Probation and notice periods"
+        "employmentPeriods": "Probation and notice periods",
+        "groupJoinDate": "Group Join Date",
+        "directSuperior": "Direct Superior",
+        "internshipEndDate": "Internship End Date"
       },
       "employmentType": {
         "full_time": "Full-time",
@@ -1953,15 +1956,17 @@
       "none": "— None —",
       "orgLabelsEmptyForCompany": "No organization labels are configured for the selected company.",
       "hints": {
-        "provisionalEndOn": "Probation end for full-time (defaults to +3 months); contract or internship end otherwise. Leave blank for none.",
+        "provisionalEndOn": "[retired r392 — the end-date box is now shown only for Contract and Intern; Full-Time works its probation end out from the Probation Period (probationEndsOn)]",
         "contractEndDate": "The contract expiry date — the last working day under this contract. It is stored as the contract end date on the Employment tab and drives the contract expiry review.",
         "employeeCode": "Letters, numbers and dashes, up to 30 characters. It must not already be in use.",
         "dateOfBirth": "Leave blank and it is taken from the identity number where possible.",
         "businessUnit": "Narrows the department list only. It is not stored on the employee.",
-        "hiredOn": "The first day of employment. After creation this date changes only through a movement event.",
+        "hiredOn": "[retired r392 — replaced by hints.groupJoinDate, which also says the Join Date for the current company starts the same day]",
         "bankAccount": "Give both the bank and the account number, or neither.",
         "noBasicSalary": "Initial Basic Salary is blank or zero. Please complete Pay Mode, Payment Term and Remarks before activating the employee.",
-        "companyFixed": "It decides which Employee ID rule applies, and it cannot be changed once the record is created."
+        "companyFixed": "It decides which Employee ID rule applies, and it cannot be changed once the record is created.",
+        "groupJoinDate": "The first day with the group. The Join Date for this company starts on the same day. After creation either date changes only through a movement event.",
+        "internshipEndDate": "The last day of the internship. It drives the internship end review."
       },
       "backLabel": "Back to Personnel Management",
       "title": "Create new employee",
@@ -2031,7 +2036,13 @@
         "continue": "Continue filling in details",
         "backToList": "Back to the list"
       },
-      "close": "Close"
+      "close": "Close",
+      "directSuperiorNone": "No direct superior",
+      "directSuperiorSearch": "Search by employee ID or name",
+      "directSuperiorNoResults": "No matching employees.",
+      "probationEndsOn": "Probation ends on {date} — the Group Join Date plus the Probation Period.",
+      "probationEndsOnStored": "Probation ends on {date} — the end date already saved on this draft. Enter a Probation Period to work it out from the Group Join Date instead.",
+      "probationEndsNone": "No probation end date. Enter a Probation Period to work out when probation ends."
     },
     "duplicates": {
       "title": "Possible duplicate employee records",

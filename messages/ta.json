@@ -1920,9 +1920,9 @@
         "position": "பதவி / பணித் தலைப்பு",
         "costCenter": "செலவு மையம்",
         "jobGrade": "பணி தரம்",
-        "reportingManager": "அறிக்கையிடும் மேலாளர்",
+        "reportingManager": "[retired r392 — the draft's 'Reporting manager' dropdown. Item 685d2380 replaced it with the Direct Superior search box (fields.directSuperior); the stored key reportingManagerEmploymentId is unchanged]",
         "employmentType": "வேலை வகை",
-        "hiredOn": "சேர்ந்த தேதி",
+        "hiredOn": "[retired r392 — the draft's 'Hire date' label. Item 685d2380 renamed it Group Join Date (fields.groupJoinDate); the draft key hiredOn is unchanged and the outstanding list maps it to the new label]",
         "provisionalEndOn": "தற்காலிக முடிவு தேதி",
         "contractEndDate": "ஒப்பந்த முடிவு தேதி",
         "basicSalary": "தொடக்க அடிப்படை சம்பளம் (MYR)",
@@ -1942,7 +1942,10 @@
         "familyMemberDate": "குடும்ப உறுப்பினர் தேதி",
         "passport": "கடவுச்சீட்டு",
         "confirmationDate": "உறுதிப்படுத்தல் தேதி",
-        "employmentPeriods": "தகுதிகாண் மற்றும் அறிவிப்பு காலம்"
+        "employmentPeriods": "தகுதிகாண் மற்றும் அறிவிப்பு காலம்",
+        "groupJoinDate": "குழு சேர்ந்த தேதி",
+        "directSuperior": "நேரடி மேலதிகாரி",
+        "internshipEndDate": "பயிற்சி முடிவு தேதி"
       },
       "employmentType": {
         "full_time": "முழுநேரம்",
@@ -1953,15 +1956,17 @@
       "none": "— எதுவுமில்லை —",
       "orgLabelsEmptyForCompany": "தேர்ந்தெடுக்கப்பட்ட நிறுவனத்திற்கு எந்த அமைப்பு லேபிள்களும் கட்டமைக்கப்படவில்லை.",
       "hints": {
-        "provisionalEndOn": "முழுநேரத்திற்கு பணிக்கால சோதனை முடிவு (இயல்பாக +3 மாதங்கள்); இல்லையெனில் ஒப்பந்தம் அல்லது பயிற்சி முடிவு. எதுவுமில்லை எனில் வெறுமையாக விடவும்.",
+        "provisionalEndOn": "[retired r392 — the end-date box is now shown only for Contract and Intern; Full-Time works its probation end out from the Probation Period (probationEndsOn)]",
         "contractEndDate": "ஒப்பந்த முடிவு தேதி — இந்த ஒப்பந்தத்தின் கீழ் கடைசி வேலை நாள். இது பணி தாவலில் ஒப்பந்த முடிவு தேதியாக சேமிக்கப்பட்டு ஒப்பந்த முடிவு மதிப்பாய்வை இயக்குகிறது.",
         "employeeCode": "எழுத்துகள், எண்கள் மற்றும் இடைக்கோடு, அதிகபட்சம் 30 எழுத்துகள். ஏற்கனவே பயன்பாட்டில் இருக்கக் கூடாது.",
         "dateOfBirth": "காலியாக விட்டால், முடிந்தவரை அடையாள எண்ணிலிருந்து எடுக்கப்படும்.",
         "businessUnit": "துறைப் பட்டியலை மட்டுமே சுருக்குகிறது. இது ஊழியரிடம் சேமிக்கப்படுவதில்லை.",
-        "hiredOn": "வேலையின் முதல் நாள். உருவாக்கத்திற்குப் பிறகு இந்தத் தேதி இயக்க நிகழ்வு மூலம் மட்டுமே மாறும்.",
+        "hiredOn": "[retired r392 — replaced by hints.groupJoinDate, which also says the Join Date for the current company starts the same day]",
         "bankAccount": "வங்கி மற்றும் கணக்கு எண் இரண்டையும் கொடுக்கவும், அல்லது இரண்டையும் விடவும்.",
         "noBasicSalary": "தொடக்க அடிப்படை ஊதியம் காலியாக அல்லது பூஜ்ஜியமாக உள்ளது. இந்த ஊழியரைச் செயல்படுத்துவதற்கு முன் ஊதிய முறை, கட்டண விதிமுறை மற்றும் குறிப்புகளை நிரப்பவும்.",
-        "companyFixed": "எந்த ஊழியர் ID விதி பொருந்தும் என்பதை இது தீர்மானிக்கிறது; பதிவு உருவான பிறகு மாற்ற முடியாது."
+        "companyFixed": "எந்த ஊழியர் ID விதி பொருந்தும் என்பதை இது தீர்மானிக்கிறது; பதிவு உருவான பிறகு மாற்ற முடியாது.",
+        "groupJoinDate": "குழுவுடன் முதல் நாள். இந்த நிறுவனத்திற்கான சேர்ந்த தேதியும் அதே நாளில் தொடங்கும். உருவாக்கத்திற்குப் பிறகு இரண்டு தேதிகளும் இயக்க நிகழ்வு மூலம் மட்டுமே மாறும்.",
+        "internshipEndDate": "பயிற்சியின் கடைசி நாள். இது பயிற்சி முடிவு மதிப்பாய்வை இயக்குகிறது."
       },
       "backLabel": "பணியாளர் மேலாண்மைக்குத் திரும்பு",
       "title": "புதிய ஊழியரை உருவாக்கு",
@@ -2031,7 +2036,13 @@
         "continue": "விவரங்களை நிரப்புவதைத் தொடரவும்",
         "backToList": "பட்டியலுக்குத் திரும்பு"
       },
-      "close": "மூடு"
+      "close": "மூடு",
+      "directSuperiorNone": "நேரடி மேலதிகாரி இல்லை",
+      "directSuperiorSearch": "பணியாளர் ஐடி அல்லது பெயர் மூலம் தேடுங்கள்",
+      "directSuperiorNoResults": "பொருந்தும் பணியாளர்கள் இல்லை.",
+      "probationEndsOn": "பரிசோதனை காலம் {date} அன்று முடிவடைகிறது — குழு சேர்ந்த தேதியுடன் பரிசோதனை காலம் சேர்த்து.",
+      "probationEndsOnStored": "பரிசோதனை காலம் {date} அன்று முடிவடைகிறது — இந்த வரைவில் ஏற்கனவே சேமிக்கப்பட்ட முடிவு தேதி. குழு சேர்ந்த தேதியிலிருந்து கணக்கிட பரிசோதனை காலத்தை உள்ளிடவும்.",
+      "probationEndsNone": "பரிசோதனை முடிவு தேதி இல்லை. பரிசோதனை எப்போது முடிவடையும் என்பதைக் கணக்கிட பரிசோதனை காலத்தை உள்ளிடவும்."
     },
     "duplicates": {
       "title": "நகல் ஊழியர் பதிவுகளாக இருக்கக்கூடியவை",
