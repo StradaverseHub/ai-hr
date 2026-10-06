@@ -271,18 +271,33 @@ export function EmployeeCode({ code, className }: { code?: string | null; classN
  * FIRST, on the LEFT of the name. Use this anywhere a staff name is shown inline (cards, rows, headers).
  * When there is no code it renders just the name, so callers can pass a nullable code directly.
  * `codeClassName` tunes the ID chip (e.g. spacing); `className` styles the whole inline group.
+ * `wrap` (r391) is for a narrow card whose job is recognising people (the org chart): the ID and name flow as
+ * ONE line of text that may run onto a second, starting back at the left edge under the ID, and ellipsise
+ * only after that. As a flex row the name had a ~70px column beside the ID and lost even short names
+ * ("ADLI BIN D…"); as inline flow it gets the card's full width from line two. The ID still reads first.
+ * Rows and table cells keep the single-line default.
  */
 export function EmployeeName({
   code,
   name,
   className,
   codeClassName,
+  wrap = false,
 }: {
   code?: string | null;
   name: string;
   className?: string;
   codeClassName?: string;
+  wrap?: boolean;
 }) {
+  if (wrap) {
+    return (
+      <span className={cn('block min-w-0 whitespace-normal break-words line-clamp-2', className)}>
+        <EmployeeCode code={code} className={cn('mr-1.5 whitespace-nowrap', codeClassName)} />
+        <span>{name}</span>
+      </span>
+    );
+  }
   return (
     /* r286 — WHY `min-w-0` AND WHY THE NAME CARRIES ITS OWN `truncate`.
      *

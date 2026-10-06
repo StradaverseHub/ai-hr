@@ -40,6 +40,8 @@ describe('r286 — EmployeeName cannot overspill its container', () => {
 
   it('the NAME carries the truncation, not the flex container', () => {
     // The whole defect in one line: `truncate` on the container does nothing for children.
+    // r391: the default (every row and table cell) still clips on one line; `wrap` is the org-chart card's
+    // two-line variant, measured in test/r391-employee-name-fits.browser.test.tsx.
     expect(fn).toContain('<span className="min-w-0 truncate">{name}</span>');
   });
 

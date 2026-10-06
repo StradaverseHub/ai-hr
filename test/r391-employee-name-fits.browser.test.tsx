@@ -13,6 +13,9 @@
  * `truncate` never has anything to clip against. A ceiling is what was missing: `max-w-full` caps the group
  * at its container, then the name (min-w-0) shrinks and ellipsises while the code (shrink-0) stays whole.
  *
+ * Capping alone then clipped almost every name on the card ("Aisyah R…", "ADLI BIN D…"): one line beside the
+ * ID leaves about 70px. So the org chart passes `wrap`: the name takes up to two lines, then ellipsises.
+ *
  * This renders the REAL OrgChart with the screenshot's people. A test browser has no Plus Jakarta Sans, so
  * the assertions are about room, not glyphs: one name is long enough to overflow in any font, one is short
  * enough to fit in any font.
@@ -72,23 +75,58 @@ describe('an employee name never runs out of its org-chart card', () => {
     }
   });
 
-  it('a long name is clipped with an ellipsis, and the employee ID beside it stays whole', () => {
+  const lineHeight = (el: HTMLElement) => parseFloat(getComputedStyle(el).lineHeight);
+  const lines = (el: HTMLElement) => Math.round(el.clientHeight / lineHeight(el));
+  const hiddenBelow = (el: HTMLElement) => el.scrollHeight > el.clientHeight + 1;
+
+  // In the org chart the ID and name flow as one line of text (EmployeeName `wrap`), so the clamp and the line
+  // count belong to the GROUP. An inline ID chip reports scrollWidth 0 whatever happens, so "the ID is whole"
+  // is measured as geometry: on the first line, inside the group, and as wide as the same ID set on its own.
+  const idIsWhole = (code: HTMLElement, group: HTMLElement) => {
+    const probe = document.createElement('span');
+    probe.className = code.className;
+    probe.style.position = 'absolute';
+    probe.textContent = code.textContent;
+    document.body.appendChild(probe);
+    const natural = rect(probe).width;
+    probe.remove();
+    const c = rect(code);
+    const g = rect(group);
+    expect(natural, 'a real ID width to compare with').toBeGreaterThan(20);
+    expect(c.width, 'the ID is not squeezed').toBeGreaterThanOrEqual(natural - 0.5);
+    expect(c.top, 'the ID starts the first line').toBeLessThan(g.top + lineHeight(group));
+    expect(c.right).toBeLessThanOrEqual(g.right + 0.5);
+  };
+
+  it('a very long name stops at TWO lines with an ellipsis, and the employee ID before it stays whole', () => {
     wrap(<OrgChart employees={PEOPLE} edges={[]} />);
-    const { nameEl, code } = nameParts(document, LONG);
-    expect(rect(nameEl).width, 'the name keeps visible room').toBeGreaterThan(20);
-    expect(clipped(nameEl), 'the long name is truncated rather than overflowing').toBe(true);
-    expect(getComputedStyle(nameEl).textOverflow).toBe('ellipsis');
+    const { group, code } = nameParts(document, LONG);
+    expect(lineHeight(group), 'a real line height to count lines with').toBeGreaterThan(10);
+    expect(lines(group)).toBe(2);
+    expect(hiddenBelow(group), 'the rest of the very long name is clamped, not spilling down the card').toBe(true);
+    expect(clipped(group), 'and never sideways').toBe(false);
     expect(code.textContent).toBe('CHCE0999');
-    expect(clipped(code), 'the ID is never eaten').toBe(false);
+    idIsWhole(code, group);
   });
 
-  it('a short name is not clipped at all', () => {
+  it.each(['ADLI BIN DAUD', 'CHONG SOOK FUN'])('%s (from the report) is shown IN FULL', (name) => {
     wrap(<OrgChart employees={PEOPLE} edges={[]} />);
-    const { nameEl } = nameParts(document, SHORT);
-    expect(clipped(nameEl)).toBe(false);
+    const { group, code } = nameParts(document, name);
+    expect(clipped(group)).toBe(false);
+    expect(hiddenBelow(group)).toBe(false);
+    expect(lines(group)).toBeLessThanOrEqual(2);
+    idIsWhole(code, group);
   });
 
-  it('the shared component fits a plain narrow block too (it is rendered from 31 places)', () => {
+  it('a short name takes one line and is not clipped', () => {
+    wrap(<OrgChart employees={PEOPLE} edges={[]} />);
+    const { group } = nameParts(document, SHORT);
+    expect(clipped(group)).toBe(false);
+    expect(hiddenBelow(group)).toBe(false);
+    expect(lines(group)).toBe(1);
+  });
+
+  it('everywhere else (no wrap) the name still clips on ONE line inside a narrow block — 31 call sites', () => {
     wrap(
       <div style={{ width: 140 }} data-testid="box">
         <EmployeeName code="CHCE0085" name={LONG} className="text-sm font-semibold" />
@@ -98,6 +136,8 @@ describe('an employee name never runs out of its org-chart card', () => {
     const { nameEl, group, code } = nameParts(box, LONG);
     expect(rect(group).right).toBeLessThanOrEqual(rect(box).right + 0.5);
     expect(clipped(nameEl)).toBe(true);
+    expect(getComputedStyle(nameEl).textOverflow).toBe('ellipsis');
+    expect(lines(nameEl)).toBe(1);
     expect(clipped(code)).toBe(false);
   });
 });
