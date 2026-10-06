@@ -482,11 +482,12 @@ describe('r360 — the payslip letterhead labels its registration number, and na
     expect(words, 'the registration number must be on the letterhead').toContain('201901024512');
     expect(words, 'and it must be captioned — this is the whole of requirement 1').toContain('regNo');
 
+    // r392 — the field is the `payrollCycle` setting field now, labelled from payroll.payslipInformation.
     // 2. THE PAY CYCLE FIELD NAMES THE CONFIGURED CYCLE. 'Monthly' is `payroll_cycle.name`; the echoed key
     //    'individual.cycle.regular' is the run-type word it replaces.
-    expect(infoValue(tree, 'fieldCycle'), 'the field must name the company’s own cycle').toBe('Monthly');
+    expect(infoValue(tree, 'payrollCycle'), 'the field must name the company’s own cycle').toBe('Monthly');
     expect(
-      infoValue(tree, 'fieldCycle'),
+      infoValue(tree, 'payrollCycle'),
       'and must NOT fall back to the kernel’s run-type word when a cycle is named',
     ).not.toBe('individual.cycle.regular');
   });
@@ -524,7 +525,7 @@ describe('r360 — the payslip letterhead labels its registration number, and na
     // NO LINE AT ALL — not an empty caption, not a dash. The caption is only printed beside a number.
     expect(words, 'no "Reg. no." caption when the company has no number').not.toContain('regNo');
     // …and the cycle field prints exactly what it printed before r360.
-    expect(infoValue(tree, 'fieldCycle'), 'a run that named no cycle keeps the run-type word').toBe(
+    expect(infoValue(tree, 'payrollCycle'), 'a run that named no cycle keeps the run-type word').toBe(
       'individual.cycle.regular',
     );
   });
