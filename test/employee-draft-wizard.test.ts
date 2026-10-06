@@ -43,6 +43,8 @@ import {
   type EmployeeDraftData,
 } from '../lib/employee-draft-schema';
 import { resolveEmployeeIdMode, type EmployeeIdRule } from '../lib/employee-id-mode';
+// r393 (685d2380 step 3b) — the client pack's statutory rules, which the draft screen hands `missingByTab`.
+import { myClientPack } from '../localization/my/client';
 import {
   completeEmployeeDraft,
   createEmployeeDraftWithReservedCode,
@@ -374,7 +376,18 @@ describe('§2 every computed translation key resolves, in all six locales', () =
       { family: [{}] },
       { family: [{ fullName: 'A', relationship: 'child', dateOfBirth: 'nope' }] },
     ];
+    // r393 (685d2380 step 3b) — the EPF election and the income tax residency are judged by the PACK'S
+    // rules, which the screen hands in (`clientPackFor('MY').statutory`); reachable ONLY with them supplied.
+    const statutoryTrip: EmployeeDraftData[] = [
+      { statutory: { epfMode: 'manual_percentage', epfEmployeeRate: '5' } },
+      { statutory: { epfMode: 'manual_percentage', epfEmployerRate: '5' } },
+      { statutory: { epfMode: 'manual_employee_amount', epfManualReason: 'x' } },
+      { statutory: { epfMode: 'manual_employer_amount', epfManualReason: 'x' } },
+      { statutory: { epfMode: 'manual_employee_amount', epfEmployeeAmount: '1' } },
+      { statutory: { taxResidency: 'c_suite' } },
+    ];
     const names = new Set([
+      ...statutoryTrip.flatMap((d) => missingForCreation(d, myClientPack.statutory)),
       ...trip.flatMap((d) => missingForCreation(d)),
       ...trip.flatMap((d) => missingToCreate(d)),
       // item bd271009 — the Manual Key In branch, reachable ONLY with a rule supplied.
@@ -390,6 +403,8 @@ describe('§2 every computed translation key resolves, in all six locales', () =
       'paymentMethodBank',
       // r393 (685d2380 step 3a) — a ticked custom holder box left blank.
       'customHolderName', 'customHolderId',
+      // r393 (685d2380 step 3b) — the EPF boxes and the residency, named by the pack's own rules.
+      'epfEmployeeRate', 'epfEmployerRate', 'epfEmployeeAmount', 'epfEmployerAmount', 'epfManualReason', 'taxResidency',
       'employeeCode']) {
       expect(names.has(expected), expected).toBe(true);
     }

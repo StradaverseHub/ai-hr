@@ -166,14 +166,34 @@ const LANDS: Record<string, Record<string, string | null>> = {
     // yes/no and `completeEmployeeDraft` maps 'no' forward onto eis_category 'none'. §2 has its own
     // case for it, because a legacy draft is exactly the row that cannot be re-typed.
     eisEligible: 'employee_statutory_my.eis_category (mapped forward)',
-    isResident: 'employee_statutory_my.is_resident',
+    // LEGACY since r393 (685d2380 step 3b): `taxResidency` below replaced it; `draftTaxResidency` maps it
+    // forward only when no taxResidency is chosen. §2 sets BOTH, contradicting, to prove the explicit wins.
+    isResident: 'employee_statutory_my.is_resident (legacy; superseded by taxResidency)',
     epfCitizenship: 'employee_statutory_my.epf_citizenship',
     // ── item a72610af ────────────────────────────────────────────────────────────────────────────
-    // The EPF CATEGORY is the five-name UI value; `mapEpfUiMode` turns it into one of the three lawful
-    // KWSP enum values at the server boundary, exactly as the Personnel statutory action does. The two
-    // elected rates are NOT collected on a draft (a below-floor rate would throw inside a writer that
-    // can only run after the employee exists) — see EmployeeDraftStatutory.epfMode.
+    // The EPF CATEGORY is the UI value; `mapEpfUiMode` turns it into one of the lawful KWSP enum values at
+    // the server boundary, exactly as the Personnel statutory action does.
+    // ⚠️ r393 (685d2380 step 3b) — this note used to end: "The two elected rates are NOT collected on a
+    // draft (a below-floor rate would throw inside a writer that can only run after the employee exists)".
+    // They are now, judged by the pack's rule before `hireEmployee`; see EmployeeDraftStatutory.epfMode.
     epfMode: 'employee_statutory_my.epf_mode (mapped through mapEpfUiMode)',
+    // ── r393 (item 685d2380 step 3b) ────────────────────────────────────────────────────────────
+    // The rate and amount boxes, as the raw strings typed, through the SAME `mapEpfUiMode` (percent ÷ 100,
+    // ringgit unscaled). Each lands ONLY under a category that uses it — the mapper nulls the rest — so §2
+    // (Manual (By Percentage)) lands the two rates; the amounts and the reason land under the three Manual
+    // (by Amount) categories, each asserted column by column against the Active action in
+    // test/r393-draft-statutory.test.ts §1.
+    epfEmployeeRate: 'employee_statutory_my.epf_employee_rate (percent ÷ 100, via mapEpfUiMode)',
+    epfEmployerRate: 'employee_statutory_my.epf_employer_rate (percent ÷ 100, via mapEpfUiMode)',
+    epfEmployeeAmount: 'employee_statutory_my.epf_employee_amount (manual categories; r393-draft-statutory §1)',
+    epfEmployerAmount: 'employee_statutory_my.epf_employer_amount (manual categories; r393-draft-statutory §1)',
+    epfManualReason: 'employee_statutory_my.epf_manual_reason (manual categories; r393-draft-statutory §1)',
+    subjectToSkbbk: 'employee_statutory_my.subject_to_skbbk',
+    // Through `pack.statutory.setTax`, the Income Tax (PCB) card's writer.
+    employerBearsTax: 'employee_statutory_my.employer_bears_tax',
+    // The EMPLOYER-SCOPED tax selection: resident / non_resident at hire, an incentive scheme by the scoped
+    // tax write after it. `employee_statutory_my.is_resident` mirrors it (every choice but Non-Resident).
+    taxResidency: 'employment_tax_selection_my.scheme (+ employee_statutory_my.is_resident)',
     employerBearsEpf: 'employee_statutory_my.employer_bears_epf',
     employerBearsSocso: 'employee_statutory_my.employer_bears_socso',
     employerBearsEis: 'employee_statutory_my.employer_bears_eis',
@@ -317,9 +337,17 @@ function everyField(): EmployeeDraftData {
       eisCategory: 'none',
       isResident: 'no',
       epfCitizenship: 'pr',
-      // item a72610af. The EPF category is 'semi_auto' rather than 'auto', because 'auto' is also what a
-      // draft that carries NO category maps to — testing it would prove nothing.
-      epfMode: 'semi_auto',
+      // item a72610af. The EPF category is not 'auto', because 'auto' is also what a draft that carries NO
+      // category maps to — testing it would prove nothing. r393 (685d2380 step 3b): Manual (By Percentage)
+      // rather than Semi-Auto, so BOTH rate boxes land, each its own distinct figure.
+      epfMode: 'manual_percentage',
+      epfEmployeeRate: '14.5',
+      epfEmployerRate: '16.25',
+      // r393 — the three tax/SOCSO additions. The residency CONTRADICTS the legacy isResident 'no' above on
+      // purpose: an explicit choice must win, and Knowledge Worker is also the scoped-write path.
+      subjectToSkbbk: 'yes',
+      employerBearsTax: 'yes',
+      taxResidency: 'knowledge_worker',
       // FOUR BOOLEANS CANNOT ALL BE DISTINCT, so they ALTERNATE. The 1-0-1-0 pattern is what a crossed
       // mapping would have to reproduce exactly to survive, which no adjacent swap does.
       employerBearsEpf: 'yes',
@@ -555,7 +583,8 @@ describe('§2 activate a draft with every field set, and read every landing back
     expect(stat.numChildren, 'employee_statutory_my.num_children').toBe(2);
     expect(stat.socsoCategory, 'employee_statutory_my.socso_category').toBe('second');
     expect(stat.eisCategory, 'employee_statutory_my.eis_category').toBe('none');
-    expect(stat.isResident, 'employee_statutory_my.is_resident').toBe(false);
+    // r393 (685d2380 step 3b) — the explicit Knowledge Worker beats the legacy isResident 'no': resident.
+    expect(stat.isResident, 'employee_statutory_my.is_resident — explicit taxResidency wins').toBe(true);
     expect(stat.epfCitizenship, 'employee_statutory_my.epf_citizenship').toBe('pr');
     // item a72610af — the passport block, through `pack.setPassport`.
     expect(stat.passportNumber, 'employee_statutory_my.passport_number').toBe(data.profile!.passportNumber);
@@ -566,12 +595,15 @@ describe('§2 activate a draft with every field set, and read every landing back
     // statutory list, so `setPassportProfileMY` normalises it. The assertion names the stored form.
     expect(stat.passportIssuingCountryCode, 'employee_statutory_my.passport_issuing_country_code').toBe('MY');
     expect(stat.passportRemark, 'employee_statutory_my.passport_remark').toBe('Renewed at Putrajaya');
-    // item a72610af — the EPF category, mapped to its lawful enum. 'semi_auto' is an employee-side
-    // election with the employer side left statutory, which is `voluntary_excess` with a null employer
-    // rate; the draft collects no rates, so both sides stay statutory.
+    // item a72610af — the EPF category, mapped to its lawful enum. r393 (685d2380 step 3b) — and the two
+    // rates typed in PERCENT land as decimals (the record's own ×100 shows them back as 14.5 and 16.25).
+    // The two assertions this replaced read "no rate on a draft" — retired with the narrowing.
     expect(stat.epfMode, 'employee_statutory_my.epf_mode').toBe('voluntary_excess');
-    expect(stat.epfEmployeeRate, 'employee_statutory_my.epf_employee_rate — no rate on a draft').toBeNull();
-    expect(stat.epfEmployerRate, 'employee_statutory_my.epf_employer_rate — no rate on a draft').toBeNull();
+    expect(stat.epfEmployeeRate, 'employee_statutory_my.epf_employee_rate').toBe('0.1450');
+    expect(stat.epfEmployerRate, 'employee_statutory_my.epf_employer_rate').toBe('0.1625');
+    expect(stat.epfEmployeeAmount, 'employee_statutory_my.epf_employee_amount — not a manual category').toBeNull();
+    expect(stat.subjectToSkbbk, 'employee_statutory_my.subject_to_skbbk').toBe(true);
+    expect(stat.employerBearsTax, 'employee_statutory_my.employer_bears_tax').toBe(true);
     // item a72610af — the four employer-bears switches, in their alternating pattern.
     expect(stat.employerBearsEpf, 'employee_statutory_my.employer_bears_epf').toBe(true);
     expect(stat.employerBearsSocso, 'employee_statutory_my.employer_bears_socso').toBe(false);
@@ -586,7 +618,16 @@ describe('§2 activate a draft with every field set, and read every landing back
     expect(stat.childReliefMode, 'employee_statutory_my.child_relief_mode').toBe('auto_table');
     // …and the residency the statutory writer set is still the one the tax writer re-derived, rather
     // than the 'resident' default it would have written for a caller that omitted it.
-    expect(stat.taxResidency, 'employee_statutory_my.tax_residency, derived from isResident').toBe('non_resident');
+    // r393 (685d2380 step 3b) — this asserted 'non_resident', "derived from isResident". The residency is
+    // now the EMPLOYER-SCOPED selection, moved onto Knowledge Worker by the scoped tax write (which, like
+    // the Active card's, leaves the person-level legacy column as the statutory write left it).
+    expect(stat.taxResidency, 'employee_statutory_my.tax_residency — person-level, untouched by the scoped write').toBe('resident');
+    const [sel] = await owner.db
+      .select()
+      .from(schema.employmentTaxSelectionMy)
+      .where(eq(schema.employmentTaxSelectionMy.employmentId, employmentId));
+    expect(sel.scheme, 'employment_tax_selection_my.scheme').toBe('knowledge_worker');
+    expect(sel.transitionState, 'employment_tax_selection_my.transition_state').toBe('resolved');
     // item a72610af — the training levy switch, through its own partial-save writer.
     expect(stat.subjectToHrdf, 'employee_statutory_my.subject_to_hrdf').toBe(true);
     // r393 (685d2380 step 3a) — the custom payment holder, through `pack.statutory.setBank`. That setter

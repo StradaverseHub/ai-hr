@@ -230,9 +230,15 @@ describe('Identification & Tax card (item 8b5334db): IC relocated to Profile, ta
   });
 
   it('exposes the four Income Tax Resident options incl. the new REP / Knowledge Worker statuses', () => {
+    // r393 (685d2380 step 3b) — the options moved one file further, into components/tax-residency-field.tsx,
+    // so the Create New Employee draft offers the same choices; the card renders that select in FORM mode
+    // (test/r393-draft-statutory.dom.test.tsx §5 pins the markup byte for byte). Asserted where each now lives.
+    const residency = read('components/tax-residency-field.tsx');
+    expect(identityTaxCard).toContain('<TaxResidencySelect key={taxContextKey} mode="form"');
     for (const v of ['value="resident"', 'value="non_resident"', 'value="rep"', 'value="knowledge_worker"']) {
-      expect(identityTaxCard.includes(v), `${v} should exist in the residency select`).toBe(true);
+      expect(residency.includes(v), `${v} should exist in the residency select`).toBe(true);
     }
+    expect(residency).toContain("name={none?undefined:'taxResidency'}");
   });
 });
 

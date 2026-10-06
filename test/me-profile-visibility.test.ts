@@ -61,6 +61,8 @@ const PERSONNEL_COMPONENTS = [
   'components/epf-registration-fields.tsx',
   'components/socso-eis-fields.tsx',
   'components/identity-tax-card.tsx',
+  // r393 (685d2380 step 3b) — the card's Income Tax Resident select moved into its own shared control.
+  'components/tax-residency-field.tsx',
   'components/bank-account-fields.tsx',
   // r260 — /me now names the PCB category with Personnel's own `taxCategoryLabel` key rather than a
   // second `me.pcbCategory` wording of its own, and this is the shared group that renders it on the
