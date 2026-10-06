@@ -52,7 +52,7 @@ import {
   setEmploymentPaymentMethod,
   updatePerson,
 } from './org';
-import { isModuleEnabledOrFalse } from './entitlements';
+import { isModuleEnabled } from './entitlements';
 import { bankTransferLacksBank, isPaymentMethod } from '../lib/payment-methods';
 // r393 (685d2380 step 3a) — the custom payment holder rule and its typed refusal are CLIENT-SAFE lib code
 // (the pack's `setBank` re-exports the same class), so this file judges a holder without reaching into
@@ -699,7 +699,9 @@ export async function completeEmployeeDraft(
   // show the picker otherwise ("It appears only where Payroll is switched on"), so a policy stored while it
   // was on is IGNORED rather than refused — refusing would hold Activate back over a field HR cannot see,
   // let alone clear — and the employee activates on the Monthly default, exactly as one with no pick.
-  const payrollOn = isModuleEnabledOrFalse(ctx, 'payroll', companyId);
+  // A service asks the STRICT form: an entitlements outage must surface as an error, never read as
+  // "payroll off" and silently drop the HR-chosen policy (test/module-catalog-drift.test.ts).
+  const payrollOn = isModuleEnabled(ctx, 'payroll', companyId);
   const policyId = payrollOn ? str(pay.payrollPolicyId) : undefined;
   if (policyId !== undefined) {
     const policy = UUID_RE.test(policyId) ? await getPolicy(ctx, policyId) : null;
