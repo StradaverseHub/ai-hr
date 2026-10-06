@@ -81,6 +81,17 @@ describe('real sign-in on, signed out (real SDK)', () => {
     expect(forwarded(res, 'x-workos-middleware')).toBe('true'); // what withAuth() requires
   });
 
+  // withAuth() trusts x-workos-session as the middleware's word. A browser that sends its own must never have
+  // it forwarded: on the routes that pass signed out, the SDK's partition strips it and sets nothing.
+  it.each(['/callback', '/invite/token123'])('%s never forwards a session header the BROWSER sent', async (path) => {
+    const res = await (await loadMiddleware())(req(path, { headers: { 'x-workos-session': 'forged', 'x-workos-impersonator': 'forged', 'x-url': 'https://evil.test/', 'x-pathname': '/admin' } }));
+    expect(passedThrough(res)).toBe(true);
+    expect(forwarded(res, 'x-workos-session')).toBeNull();
+    expect(forwarded(res, 'x-workos-impersonator')).toBeNull();
+    expect(forwarded(res, 'x-url')).not.toBe('https://evil.test/');
+    expect(forwarded(res, 'x-pathname')).toBe(path);
+  });
+
   it.each(['/health', '/api/mobile/v1/me'])('%s bypasses AuthKit (health check; bearer-token API)', async (path) => {
     const res = await (await loadMiddleware())(req(path));
     expect(passedThrough(res)).toBe(true);
