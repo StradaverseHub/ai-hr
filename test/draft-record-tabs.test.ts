@@ -144,6 +144,8 @@ describe('§2 the draft borrows the record\'s OWN words, in all six locales', ()
       // leading `/`, read from the catalogue ROOT instead.
       payMethodGroup: 'payMethodGroup',
       payrollPolicy: '/payrollPolicy.assignTitle',
+      // r393 (685d2380 step 3b) — the training levy moved into its own card, the record's Others Statutory.
+      othersStatutory: 'othersStatutoryTitle',
     };
     const dig = (node: unknown, path: string): unknown =>
       path.split('.').reduce<unknown>(
@@ -170,10 +172,15 @@ describe('§2 the draft borrows the record\'s OWN words, in all six locales', ()
     // a missing Tamil label ships as a raw key. Both blocks are written out one literal per line.
     const src = read(WIZARD);
     for (const k of DRAFT_TABS) expect(src, `t('tabs.${k}')`).toContain(`t('tabs.${k}')`);
+    // r393 (685d2380 step 3b) — `identityTax` left this list: the draft's "Identification & Tax" card is gone,
+    // its fields now in the record's Income Tax (PCB) section inside Statutory (Malaysia). The key is
+    // RETIRED, not deleted (it stays in every catalogue and in the SECTIONS table above, still equal to the
+    // record's heading), and the screen must no longer ask for it.
     for (const k of ['personalDetails', 'contactAddress', 'organisation', 'employmentDates', 'bank',
-      'statutoryMalaysia', 'identityTax', 'compensation', 'payMethodGroup', 'payrollPolicy']) {
+      'statutoryMalaysia', 'compensation', 'payMethodGroup', 'payrollPolicy', 'othersStatutory']) {
       expect(src, `t('sections.${k}')`).toContain(`t('sections.${k}')`);
     }
+    expect(src, 'the retired Identification & Tax card heading').not.toContain(`t('sections.identityTax')`);
     expect(src).not.toContain('t(`tabs.${');
     expect(src).not.toContain('t(`sections.${');
   });

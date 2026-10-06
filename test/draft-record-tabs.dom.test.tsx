@@ -212,13 +212,19 @@ describe('each tab carries the record\'s own section names and the draft\'s own 
     expect(within(panel).getByDisplayValue('nadia@acme.test')).toBeTruthy();
   });
 
+  // r393 (685d2380 step 3b) — the third card was "Identification & Tax" (identityTaxCardTitle); the record has
+  // had no such card since df09f22a merged it into Statutory (Malaysia) as "Income Tax (PCB)". The draft
+  // now has the record's three: Bank Information, Statutory (Malaysia) with Income Tax (PCB) inside, and
+  // Others Statutory.
   it('Bank & Statutory splits into the record\'s three cards rather than one flat grid', async () => {
     wrap();
     await openTab(messages.people.detail.tabs.bankStatutory);
     const text = shownPanel().textContent ?? '';
     expect(text).toContain(messages.people.detail.bankCardTitle);
     expect(text).toContain(messages.people.detail.statutoryMalaysia);
-    expect(text).toContain(messages.people.detail.identityTaxCardTitle);
+    expect(text).toContain(messages.people.detail.incomeTaxPcbSection);
+    expect(text).toContain(messages.people.detail.othersStatutoryTitle);
+    expect(text).not.toContain(messages.people.detail.identityTaxCardTitle);
   });
 
   it('Employment splits into Organisation and Employment Dates, as the record does', async () => {

@@ -2038,7 +2038,8 @@
         "identityTax": "身份与税务",
         "compensation": "基本薪资",
         "payMethodGroup": "该员工的支付方式",
-        "payrollPolicy": "薪资政策"
+        "payrollPolicy": "薪资政策",
+        "othersStatutory": "其他法定项目"
       },
       "draftStatus": "草稿 — 待启用",
       "cancel": "取消",

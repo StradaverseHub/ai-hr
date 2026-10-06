@@ -2038,7 +2038,8 @@
         "identityTax": "ข้อมูลประจำตัว & ภาษี",
         "compensation": "เงินเดือนพื้นฐาน",
         "payMethodGroup": "พนักงานคนนี้รับเงินอย่างไร",
-        "payrollPolicy": "นโยบายเงินเดือน"
+        "payrollPolicy": "นโยบายเงินเดือน",
+        "othersStatutory": "รายการตามกฎหมายอื่น ๆ"
       },
       "draftStatus": "ฉบับร่าง — รอเปิดใช้งาน",
       "cancel": "ยกเลิก",

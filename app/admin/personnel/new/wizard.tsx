@@ -103,7 +103,16 @@ import { PassportFields, PassportSectionTitle } from '@/components/passport-fiel
 import { ConfirmationDateField, EmploymentPeriodField } from '@/components/employment-period-fields';
 import { EpfElectionControlled } from '@/components/epf-election';
 // r393 (685d2380 step 3b) — the Income Tax Resident select, shared with the Personnel Income Tax (PCB) card.
-import { TaxResidencySelect } from '@/components/tax-residency-field';
+import { IncomeTaxResidentField } from '@/components/tax-residency-field';
+// r393 (685d2380 step 3b) — the record's Statutory (Malaysia) legends, hints and the two plain switches, in a
+// component that speaks the record's namespace (this screen must stay single-namespace — see that file).
+import {
+  EpfContributionSection,
+  IncomeTaxSection,
+  OthersStatutoryBody,
+  SocsoEisSection,
+  TaxNumberField,
+} from '@/components/statutory-sections';
 // r393 (685d2380 step 3b) — the client-safe pack seam: the draft's still-needed list names a refused EPF box
 // or income tax residency with the pack's OWN rules (localization/registry.client.ts).
 import { clientPackFor } from '@/localization/registry.client';
@@ -216,8 +225,6 @@ export function EmployeeWizard({
   payrollPolicies?: AssignablePolicyOption[];
 }) {
   const t = useTranslations('people.wizard');
-  // r393 (685d2380 step 3b) — the Active record's own words for the Statutory (Malaysia) sections.
-  const td = useTranslations('people.detail');
   const router = useRouter();
   const id = draftId;
   const [data, setData] = useState<EmployeeDraftData>(initialData);
@@ -960,11 +967,7 @@ export function EmployeeWizard({
         <Card>
           <SectionHeader title={t('sections.statutoryMalaysia')} />
           <div className="flex flex-col gap-6 p-4">
-            <fieldset data-draft-section="epf" className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4">
-              <legend className="-ml-1 rounded-md bg-card px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-foreground">
-                {td('epfContribTitle')}
-              </legend>
-              <p className="text-xs text-muted-foreground">{td('epfElectionHint')}</p>
+            <EpfContributionSection>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {/* 35b7af0a group 4 — EPF Number and EPF Citizenship are the SAME field group the Personnel
                     Bank & Statutory tab renders (components/epf-registration-fields.tsx). The wizard's private
@@ -1010,12 +1013,38 @@ export function EmployeeWizard({
                 value={data.statutory?.employerBearsEpf}
                 onChange={(employerBearsEpf) => set('statutory', { employerBearsEpf })}
               />
-            </fieldset>
+            </EpfContributionSection>
 
-            <fieldset data-draft-section="socsoEis" className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4">
-              <legend className="-ml-1 rounded-md bg-card px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-foreground">
-                {td('socsoEisCardTitle')}
-              </legend>
+            {/* r393 (685d2380 step 3b) — the record's SOCSO & EIS fieldset (components/statutory-sections.tsx,
+                which speaks the record's namespace): the registration fields, then Eligibility — "Subject to
+                SKBBK", stored 'yes' / 'no'; absent and 'no' both land as the new-employee default, off — and
+                the three employer-bears switches, beside the scheme they belong to as on the record. */}
+            <SocsoEisSection
+              subjectToSkbbk={data.statutory?.subjectToSkbbk}
+              onSubjectToSkbbk={(subjectToSkbbk) => set('statutory', { subjectToSkbbk })}
+              employerBears={
+                <>
+                  <EmployerBearsSwitch
+                    mode="controlled"
+                    field="employerBearsSocso"
+                    value={data.statutory?.employerBearsSocso}
+                    onChange={(employerBearsSocso) => set('statutory', { employerBearsSocso })}
+                  />
+                  <EmployerBearsSwitch
+                    mode="controlled"
+                    field="employerBearsEis"
+                    value={data.statutory?.employerBearsEis}
+                    onChange={(employerBearsEis) => set('statutory', { employerBearsEis })}
+                  />
+                  <EmployerBearsSwitch
+                    mode="controlled"
+                    field="employerBearsSkbbk"
+                    value={data.statutory?.employerBearsSkbbk}
+                    onChange={(employerBearsSkbbk) => set('statutory', { employerBearsSkbbk })}
+                  />
+                </>
+              }
+            >
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {/* 35b7af0a group 7 — SOCSO/EIS is the SAME group the Personnel Bank & Statutory tab renders
                     (components/socso-eis-fields.tsx). The wizard was a whole consolidation behind: item
@@ -1043,61 +1072,21 @@ export function EmployeeWizard({
                   onChange={(patch) => set('statutory', patch)}
                 />
               </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-2">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{td('subjectToLegend')}</p>
-                  {/* r393 (685d2380 step 3b) — "Subject to SKBBK", the Personnel card's own switch, label and
-                      hint. Stored 'yes' / 'no'; absent and 'no' both land as the new-employee default, off. */}
-                  <label className="flex items-center gap-2 text-sm" title={td('subjectToSkbbkHint')}>
-                    <input
-                      type="checkbox"
-                      checked={data.statutory?.subjectToSkbbk === 'yes'}
-                      onChange={(e) => set('statutory', { subjectToSkbbk: e.target.checked ? 'yes' : 'no' })}
-                      className="size-4 rounded"
-                    />
-                    {td('subjectToSkbbk')}
-                  </label>
-                </div>
-                <div className="flex flex-col gap-2">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground" title={td('employerBearsHint')}>
-                    {td('employerBearsLegend')}
-                  </p>
-                  <EmployerBearsSwitch
-                    mode="controlled"
-                    field="employerBearsSocso"
-                    value={data.statutory?.employerBearsSocso}
-                    onChange={(employerBearsSocso) => set('statutory', { employerBearsSocso })}
-                  />
-                  <EmployerBearsSwitch
-                    mode="controlled"
-                    field="employerBearsEis"
-                    value={data.statutory?.employerBearsEis}
-                    onChange={(employerBearsEis) => set('statutory', { employerBearsEis })}
-                  />
-                  <EmployerBearsSwitch
-                    mode="controlled"
-                    field="employerBearsSkbbk"
-                    value={data.statutory?.employerBearsSkbbk}
-                    onChange={(employerBearsSkbbk) => set('statutory', { employerBearsSkbbk })}
-                  />
-                </div>
-              </div>
-            </fieldset>
+            </SocsoEisSection>
 
-            <section data-draft-section="incomeTax" className="flex flex-col gap-6 border-t border-border pt-4">
-              <h3 className="text-sm font-semibold text-foreground">{td('incomeTaxPcbSection')}</h3>
-              <fieldset className="flex flex-col gap-3">
-                <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {td('taxInfoLegend')}
-                </legend>
+            {/* r393 (685d2380 step 3b) — the record's Income Tax (PCB) section: Tax information, Children (PCB
+                relief) and "Employer bears tax contribution" (stored 'yes' / 'no'; lands through
+                `pack.statutory.setTax` at Activate). */}
+            <IncomeTaxSection
+              employerBearsTax={data.statutory?.employerBearsTax}
+              onEmployerBearsTax={(employerBearsTax) => set('statutory', { employerBearsTax })}
+              taxInformation={
+                <>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <Field label={td('taxNumber')}>
-                    <input
-                      className={inputCls}
-                      value={data.statutory?.taxNumber ?? ''}
-                      onChange={(e) => set('statutory', { taxNumber: e.target.value })}
-                    />
-                  </Field>
+                  <TaxNumberField
+                    value={data.statutory?.taxNumber}
+                    onChange={(taxNumber) => set('statutory', { taxNumber })}
+                  />
                   {/* 35b7af0a group 6 — Tax Category is the SAME control the Personnel Identification & Tax
                       card renders (components/tax-category-field.tsx). The wizard's private select labelled its
                       options "1", "2" and "3"; the Personnel card has always named the five circumstances they
@@ -1116,15 +1105,12 @@ export function EmployeeWizard({
                       mapped forward by `draftTaxResidency` when no choice has been made, so a draft saved
                       before this change shows — and activates on — what it always would have). Under "Not
                       subject to income tax" it is disabled and shows that instead, as on the record. */}
-                  <Field label={td('incomeTaxResident')}>
-                    <TaxResidencySelect
-                      mode="controlled"
-                      none={data.statutory?.taxCategory === 'none'}
-                      value={draftTaxResidency(data.statutory) ?? ''}
-                      onChange={(taxResidency) => set('statutory', { taxResidency })}
-                      notSetLabel={t('notSet')}
-                    />
-                  </Field>
+                  <IncomeTaxResidentField
+                    none={data.statutory?.taxCategory === 'none'}
+                    value={draftTaxResidency(data.statutory) ?? ''}
+                    onChange={(taxResidency) => set('statutory', { taxResidency })}
+                    notSetLabel={t('notSet')}
+                  />
                   {/* a72610af — THE TWO DISABILITY RELIEFS (OKU), the SAME controls the Personnel Income Tax
                       (PCB) card renders (components/tax-relief-fields.tsx). Both default to "No", so a draft
                       nobody has touched claims nothing.
@@ -1146,11 +1132,10 @@ export function EmployeeWizard({
                   />
                 </div>
                 <DisabledReliefHints />
-              </fieldset>
-              <fieldset className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4">
-                <legend className="-ml-1 rounded-md bg-card px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-foreground">
-                  {td('childReliefLegend')}
-                </legend>
+                </>
+              }
+              childRelief={
+                <>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {/* a72610af — HOW CHILD RELIEF IS MAINTAINED, the SAME control the Personnel card renders. */}
                   <ChildReliefModeField
@@ -1174,22 +1159,9 @@ export function EmployeeWizard({
                 {/* 99b2d6c0 (r336) — the same explanation of "Auto (from table)" the Personnel card now
                     carries, on the screen where the mode is FIRST chosen. */}
                 <ChildReliefModeHint />
-              </fieldset>
-              {/* r393 (685d2380 step 3b) — "Employer bears tax contribution", the Personnel card's own switch,
-                  label and hint. Stored 'yes' / 'no'; lands through `pack.statutory.setTax` at Activate. */}
-              <fieldset className="flex flex-col gap-2">
-                <label className="flex items-center gap-2 text-sm" title={td('employerBearsTaxHint')}>
-                  <input
-                    type="checkbox"
-                    checked={data.statutory?.employerBearsTax === 'yes'}
-                    onChange={(e) => set('statutory', { employerBearsTax: e.target.checked ? 'yes' : 'no' })}
-                    className="size-4 rounded"
-                  />
-                  {td('employerBearsTax')}
-                </label>
-                <p className="text-xs text-muted-foreground">{td('employerBearsTaxHint')}</p>
-              </fieldset>
-            </section>
+                </>
+              }
+            />
           </div>
         </Card>
         {/* r393 (685d2380 step 3b) — OTHERS STATUTORY, its own card as on the record (below Statutory
@@ -1199,16 +1171,14 @@ export function EmployeeWizard({
             57840a6e is why that distinction matters: a control that wrote an explicit No by default excluded a
             whole company's staff from the levy for ever. */}
         <Card>
-          <SectionHeader title={td('othersStatutoryTitle')} />
-          <div data-draft-section="othersStatutory" className="flex flex-col gap-3 p-4">
-            <p className="text-xs text-muted-foreground">{td('othersStatutoryHint')}</p>
+          <SectionHeader title={t('sections.othersStatutory')} />
+          <OthersStatutoryBody>
             <HrdfSubjectField
               mode="controlled"
               value={data.statutory?.subjectToHrdf}
               onChange={(subjectToHrdf) => set('statutory', { subjectToHrdf })}
             />
-            <p className="text-xs text-muted-foreground">{td('subjectToHrdfHint')}</p>
-          </div>
+          </OthersStatutoryBody>
         </Card>
       </>
     ),

@@ -2038,7 +2038,8 @@
         "identityTax": "Identification & Tax",
         "compensation": "Basic Salary",
         "payMethodGroup": "How This Employee Is Paid",
-        "payrollPolicy": "Payroll policy"
+        "payrollPolicy": "Payroll policy",
+        "othersStatutory": "Others Statutory"
       },
       "draftStatus": "Draft — pending activation",
       "cancel": "Cancel",

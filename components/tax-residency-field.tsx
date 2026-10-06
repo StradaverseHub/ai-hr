@@ -58,3 +58,19 @@ export function TaxResidencySelect(
     </select>
   );
 }
+
+/** The draft's labelled field: the record's "Income Tax Resident" label around the controlled select. */
+export function IncomeTaxResidentField(props: {
+  none: boolean;
+  value: string | undefined;
+  onChange: (value: string) => void;
+  notSetLabel: string;
+}) {
+  const t = useTranslations('people.detail');
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-xs font-medium text-muted-foreground">{t('incomeTaxResident')}</span>
+      <TaxResidencySelect mode="controlled" {...props} />
+    </label>
+  );
+}

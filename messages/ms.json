@@ -2038,7 +2038,8 @@
         "identityTax": "Pengenalan & Cukai",
         "compensation": "Gaji Asas",
         "payMethodGroup": "Cara Pekerja Ini Dibayar",
-        "payrollPolicy": "Dasar gaji"
+        "payrollPolicy": "Dasar gaji",
+        "othersStatutory": "Statutori Lain"
       },
       "draftStatus": "Draf — menunggu pengaktifan",
       "cancel": "Batal",

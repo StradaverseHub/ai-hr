@@ -2038,7 +2038,8 @@
         "identityTax": "Nhận dạng & Thuế",
         "compensation": "Lương cơ bản",
         "payMethodGroup": "Nhân viên này được trả lương như thế nào",
-        "payrollPolicy": "Chính sách lương"
+        "payrollPolicy": "Chính sách lương",
+        "othersStatutory": "Quy định khác"
       },
       "draftStatus": "Nháp — chờ kích hoạt",
       "cancel": "Hủy",
