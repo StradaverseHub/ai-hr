@@ -90,6 +90,12 @@ const shownPanel = () => {
   expect(open, 'exactly one panel is shown at a time').toHaveLength(1);
   return open[0];
 };
+/** The control under a `Field` label. BY THE LABEL'S OWN CAPTION, not `getByLabelText`: a Field's <label>
+ *  wraps its hint and a select's options too, so its full text is never just the caption. */
+const control = (caption: string) => {
+  const span = [...shownPanel().querySelectorAll('label > span')].find((el) => el.textContent === caption);
+  return (span?.closest('label')?.querySelector('input, select') ?? null) as HTMLInputElement | HTMLSelectElement | null;
+};
 const savedData = () => (saveDraftAction.mock.calls.at(-1) as unknown as [string, EmployeeDraftData, number])[1];
 
 beforeEach(() => {
@@ -121,7 +127,9 @@ describe('Direct Superior is a search box', () => {
     const panel = within(shownPanel());
     await userEvent.click(panel.getByText(en.people.wizard.directSuperiorNone));
     await userEvent.type(panel.getByPlaceholderText(en.people.wizard.directSuperiorSearch), 'E0002');
-    const matches = panel.getAllByRole('option').filter((o) => o.textContent !== en.people.wizard.directSuperiorNone);
+    const matches = within(panel.getByRole('listbox'))
+      .getAllByRole('option')
+      .filter((o) => o.textContent !== en.people.wizard.directSuperiorNone);
     expect(matches.map((o) => o.textContent), 'search narrows to one match').toEqual(['E0002 – Bala Krishnan']);
     await userEvent.pointer({ keys: '[MouseLeft>]', target: matches[0] });
     await userEvent.click(screen.getByRole('button', { name: en.people.wizard.saveDraft }));
@@ -133,7 +141,9 @@ describe('Direct Superior is a search box', () => {
     const panel = within(shownPanel());
     await userEvent.click(panel.getByText(en.people.wizard.directSuperiorNone));
     await userEvent.type(panel.getByPlaceholderText(en.people.wizard.directSuperiorSearch), 'aisha');
-    const matches = panel.getAllByRole('option').filter((o) => o.textContent !== en.people.wizard.directSuperiorNone);
+    const matches = within(panel.getByRole('listbox'))
+      .getAllByRole('option')
+      .filter((o) => o.textContent !== en.people.wizard.directSuperiorNone);
     expect(matches.map((o) => o.textContent)).toEqual(['E0001 – Aisha Rahman', 'E0013 – Aisha Tan']);
   });
 
@@ -159,7 +169,9 @@ describe('the end-date box follows the Employment Type', () => {
 
   it('present for contract as "Contract End Date" and intern as "Internship End Date", and typing reaches the draft', async () => {
     const { unmount } = wrap(draftOf({ employmentType: 'contract' }));
-    const box = within(shownPanel()).getByLabelText(w.fields.contractEndDate) as HTMLInputElement;
+    const box = control(w.fields.contractEndDate) as HTMLInputElement;
+    expect(box, 'contract box').toBeTruthy();
+    expect(box.type).toBe('date');
     expect(w.fields.contractEndDate).toBe('Contract End Date');
     const end = addEmploymentPeriod(today, '12', 'month')!;
     await userEvent.type(box, end);
@@ -168,16 +180,15 @@ describe('the end-date box follows the Employment Type', () => {
     unmount();
 
     wrap(draftOf({ employmentType: 'intern' }));
-    expect(within(shownPanel()).getByLabelText(w.fields.internshipEndDate), 'intern box').toBeTruthy();
+    expect(control(w.fields.internshipEndDate), 'intern box').toBeTruthy();
     expect(w.fields.internshipEndDate).toBe('Internship End Date');
   });
 
   it('switching Full-Time → Contract on screen brings the box in', async () => {
     wrap(draftOf({ employmentType: 'full_time' }));
-    expect(within(shownPanel()).queryByLabelText(w.fields.contractEndDate)).toBeNull();
-    const typeSelect = within(shownPanel()).getByLabelText(w.fields.employmentType);
-    await userEvent.selectOptions(typeSelect, 'contract');
-    expect(within(shownPanel()).getByLabelText(w.fields.contractEndDate)).toBeTruthy();
+    expect(control(w.fields.contractEndDate), 'no box for full_time').toBeNull();
+    await userEvent.selectOptions(control(w.fields.employmentType)!, 'contract');
+    expect(control(w.fields.contractEndDate), 'box appears for contract').toBeTruthy();
   });
 });
 
