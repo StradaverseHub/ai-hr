@@ -68,7 +68,9 @@ Not automatable and deliberately not scripted — it involves account creation a
 2. Add the redirect URI: `https://<your-host>/callback` — must match exactly, including scheme and any
    trailing path. A mismatch fails at the callback with an opaque provider error. For this deployment:
    Production environment (`client_01KVVRP1CG86KEDFEMQF71Q3QJ`), `https://aihr.stradaverse.ai/callback`,
-   set as default. Also set the sign-out redirect / app homepage to `https://aihr.stradaverse.ai/`.
+   set as default. Add the **sign-out redirect** `https://aihr.stradaverse.ai/login`: the app passes
+   exactly that as `returnTo` on Log out (r390, `app/auth-actions.ts`), and WorkOS only returns the browser
+   to a listed address. Set the app homepage to `https://aihr.stradaverse.ai/`.
 3. Collect: **API key**, **Client ID**.
 4. Generate a cookie password (32+ chars): `openssl rand -base64 32`.
 
@@ -173,7 +175,17 @@ when you flip forward again.
 - `tenant.workos_org_id` is `org_dev` on the demo — a placeholder. It is not currently used to resolve a
   session (the subject is), so it does not block cutover, but set it to the real WorkOS organization id
   before relying on org-scoped features.
-- `SHARE_PASSWORD` (the demo gate) is independent of all this. Decide separately whether to keep it once
-  real logins are on; keeping both means two prompts.
+- `SHARE_PASSWORD` (the demo gate): the owner's decision (2026-10-06) is to REMOVE it once real logins work.
+  While both are set, the browser password prompt comes first and WorkOS second (r390 middleware). Remove it
+  only after step 5 is confirmed; middleware and `deploy.sh` both refuse to serve or deploy with neither.
+- What a person sees when sign-in works at WorkOS but not in AI HR (r390): an email with no AI HR account
+  linked (never invited, archived, a leaver) lands on /login, which names the email and offers **Sign out**
+  so they can use another account. It does not loop. The attempt is audited as `app-user.login-blocked`.
+- A callback that cannot complete (a reused or stale link, or the sign-in started in a different browser so
+  its verifier cookie is missing) shows "Sign-in could not be completed" with a **Try again** link, not a
+  500. The server log keeps the SDK's `[AuthKit callback error]` line with the cause.
+- The edge middleware reads `ALLOW_DEMO_SESSION`, `SHARE_PASSWORD` and the three secret WorkOS settings from
+  the server's environment at start-up (verified in the compiled middleware, r390), so a restart applies
+  them. `NEXT_PUBLIC_WORKOS_REDIRECT_URI` is compiled IN: changing it needs a deploy, not a restart.
 - Login, logout, failed login, invitation and password-reset events all land in the audit trail via the
   `app.append_auth_event` writer, and are visible under Admin → Audit.
