@@ -68,6 +68,8 @@ const PERSONNEL_COMPONENTS = [
   // key as "rendered nowhere on the Personnel screen", which is false.
   'components/tax-category-field.tsx',
   'components/bank-info-card.tsx',
+  // r393 (685d2380 step 3a) — the card's custom-holder ticks moved into their own shared group.
+  'components/custom-holder-fields.tsx',
   'components/salary-history-table.tsx',
   'components/pay-structure-fields.tsx',
   // a72610af — five more shared groups joined the list when the Create New Employee draft was widened to

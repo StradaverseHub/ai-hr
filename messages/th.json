@@ -1946,7 +1946,9 @@
         "groupJoinDate": "วันที่เข้าร่วมกลุ่ม",
         "directSuperior": "หัวหน้าโดยตรง",
         "internshipEndDate": "วันที่สิ้นสุดการฝึกงาน",
-        "paymentMethodBank": "ข้อมูลธนาคารสำหรับการโอนผ่านธนาคาร"
+        "paymentMethodBank": "ข้อมูลธนาคารสำหรับการโอนผ่านธนาคาร",
+        "customHolderName": "ชื่อผู้ถือบัญชีที่กำหนดเอง",
+        "customHolderId": "เลขประจำตัวผู้ถือบัญชีที่กำหนดเอง"
       },
       "employmentType": {
         "full_time": "เต็มเวลา",

@@ -53,6 +53,8 @@ const PAGE = read('app/admin/personnel/[employmentId]/page.tsx');
 const CARD = read('components/bank-info-card.tsx');
 // 35b7af0a group 5 — the two employee bank fields the wizard now shares with this card.
 const FIELDS = read('components/bank-account-fields.tsx');
+// r393 (685d2380 step 3a) — the custom-holder group the card and the draft both render.
+const HOLDER = read('components/custom-holder-fields.tsx');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 describe('Bank card — source layout (ef720d3a)', () => {
@@ -78,9 +80,15 @@ describe('Bank card — source layout (ef720d3a)', () => {
     expect(FIELDS.includes("name: 'bankName'")).toBe(true);
     expect(FIELDS.includes("name: 'bankAccountNo'")).toBe(true);
     expect(FIELDS.includes('<select')).toBe(true);
+    // r393 (685d2380 step 3a) — the four custom-holder inputs moved one file further, into
+    // components/custom-holder-fields.tsx, so the draft employee's Bank & Statutory tab renders the same
+    // ticks and boxes. The card composes the group in FORM mode, which is what still posts these names;
+    // test/r393-draft-custom-holder.dom.test.tsx pins the rendered markup byte for byte.
+    expect(CARD.includes('<CustomHolderFields')).toBe(true);
     for (const f of ['enableCustomHolderName', 'customHolderName', 'enableCustomHolderId', 'customHolderId']) {
-      expect(CARD.includes(`name="${f}"`), `missing card input ${f}`).toBe(true);
+      expect(HOLDER.includes(`'${f}'`), `missing holder input ${f}`).toBe(true);
     }
+    expect(HOLDER.includes('name: key')).toBe(true);
   });
 
   it('(b) sources the bank dropdown from the BNM catalog (29 canonical names incl. Maybank/CIMB)', () => {

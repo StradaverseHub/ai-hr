@@ -115,6 +115,8 @@ import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 // Payroll tab renders (form mode there, controlled here), so the two screens offer the same answers in the
 // same words.
 import { PaymentMethodField } from '@/components/payment-method-field';
+// r393 (685d2380 step 3a) — the custom payment holder group, shared with the Bank Information card.
+import { CustomHolderFields } from '@/components/custom-holder-fields';
 import {
   PayrollPolicyField,
   PayrollPolicyHint,
@@ -917,6 +919,22 @@ export function EmployeeWizard({
               bankName={data.statutory?.bankName}
               bankAccountNo={data.statutory?.bankAccountNo}
               hint={t('hints.bankAccount')}
+              onChange={(patch) => set('statutory', patch)}
+            />
+          </div>
+          {/* r393 (685d2380 step 3a) — the custom payment holder, the SAME field group the Active profile's
+              Bank Information card renders (components/custom-holder-fields.tsx). Ticking one opens its box;
+              a ticked box left blank is listed as still needed (`missingByTab`) and refused before the
+              employee is created. Everything entered lands through `pack.statutory.setBank` at Activate. */}
+          <div className="px-4 pb-4" data-custom-holder>
+            <CustomHolderFields
+              mode="controlled"
+              value={{
+                enableCustomHolderName: data.statutory?.enableCustomHolderName,
+                customHolderName: data.statutory?.customHolderName,
+                enableCustomHolderId: data.statutory?.enableCustomHolderId,
+                customHolderId: data.statutory?.customHolderId,
+              }}
               onChange={(patch) => set('statutory', patch)}
             />
           </div>

@@ -1,24 +1,11 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 // 35b7af0a group 5 — the Bank + Bank Account Number field group, shared with the Create New Employee
 // wizard. The BNM catalog it renders moved with it (it was this file's module-level BANK_NAMES).
 import { BankAccountFields } from '@/components/bank-account-fields';
-
-// Inlined from components/ui (server module) so this stays a clean client island — same pattern as
-// components/epf-election.tsx.
-const inputCls =
-  'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      {children}
-    </label>
-  );
-}
+// r393 (685d2380 step 3a) — the custom payment holder group, shared with the draft's Bank & Statutory tab.
+import { CustomHolderFields } from '@/components/custom-holder-fields';
 
 export type BankInfoDefaults = {
   bankName: string | null;
@@ -52,9 +39,6 @@ export function BankInfoCard({
   defaults: BankInfoDefaults;
 }) {
   const t = useTranslations('people.detail');
-  const [enableName, setEnableName] = useState(defaults.enableCustomHolderName);
-  const [enableId, setEnableId] = useState(defaults.enableCustomHolderId);
-
   // The catalog, and the rule that preserves a legacy / non-catalog bank name so an existing value isn't
   // silently dropped from the picker, moved into BankAccountFields with the fields themselves (35b7af0a
   // group 5) — the wizard needs both and had neither.
@@ -95,59 +79,19 @@ export function BankInfoCard({
           </div>
         </fieldset>
 
-        {/* Custom payment holder — pay salary into a third party's account (spouse / authorised person). */}
-        <fieldset className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4">
-          <legend className="-ml-1 rounded-md bg-card px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-foreground">
-            {t('customHolderTitle')}
-          </legend>
-          <p className="text-xs text-muted-foreground">{t('customHolderHint')}</p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  name="enableCustomHolderName"
-                  checked={enableName}
-                  onChange={(e) => setEnableName(e.target.checked)}
-                  className="size-4 rounded"
-                />
-                {t('enableCustomHolderName')}
-              </label>
-              {enableName && (
-                <Field label={t('customHolderName')}>
-                  <input
-                    name="customHolderName"
-                    required
-                    defaultValue={defaults.customHolderName ?? ''}
-                    className={inputCls}
-                  />
-                </Field>
-              )}
-            </div>
-            <div className="flex flex-col gap-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  name="enableCustomHolderId"
-                  checked={enableId}
-                  onChange={(e) => setEnableId(e.target.checked)}
-                  className="size-4 rounded"
-                />
-                {t('enableCustomHolderId')}
-              </label>
-              {enableId && (
-                <Field label={t('customHolderId')}>
-                  <input
-                    name="customHolderId"
-                    required
-                    defaultValue={defaults.customHolderId ?? ''}
-                    className={inputCls}
-                  />
-                </Field>
-              )}
-            </div>
-          </div>
-        </fieldset>
+        {/* Custom payment holder — pay salary into a third party's account (spouse / authorised person).
+            r393 (685d2380 step 3a) — the SAME field group the draft employee's Bank & Statutory tab renders
+            (components/custom-holder-fields.tsx). `mode="form"` is this card's markup from before the
+            extraction, byte for byte (test/r393-draft-custom-holder.dom.test.tsx). */}
+        <CustomHolderFields
+          mode="form"
+          defaults={{
+            enableCustomHolderName: defaults.enableCustomHolderName,
+            customHolderName: defaults.customHolderName,
+            enableCustomHolderId: defaults.enableCustomHolderId,
+            customHolderId: defaults.customHolderId,
+          }}
+        />
 
       </form>
     </div>

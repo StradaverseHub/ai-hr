@@ -1946,7 +1946,9 @@
         "groupJoinDate": "Ngày gia nhập tập đoàn",
         "directSuperior": "Cấp trên trực tiếp",
         "internshipEndDate": "Ngày kết thúc thực tập",
-        "paymentMethodBank": "Thông tin ngân hàng cho Chuyển khoản ngân hàng"
+        "paymentMethodBank": "Thông tin ngân hàng cho Chuyển khoản ngân hàng",
+        "customHolderName": "Tên chủ tài khoản tùy chỉnh",
+        "customHolderId": "Số giấy tờ tùy thân chủ tài khoản tùy chỉnh"
       },
       "employmentType": {
         "full_time": "Toàn thời gian",

@@ -1946,7 +1946,9 @@
         "groupJoinDate": "Group Join Date",
         "directSuperior": "Direct Superior",
         "internshipEndDate": "Internship End Date",
-        "paymentMethodBank": "Bank details for Bank Transfer"
+        "paymentMethodBank": "Bank details for Bank Transfer",
+        "customHolderName": "Custom holder name",
+        "customHolderId": "Custom holder identification"
       },
       "employmentType": {
         "full_time": "Full-time",

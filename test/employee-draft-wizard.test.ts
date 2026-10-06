@@ -367,6 +367,8 @@ describe('§2 every computed translation key resolves, in all six locales', () =
       { payroll: { basicSalary: '-100' } },
       // r393 (685d2380 step 2) — Bank Transfer with no bank on the Bank & Statutory tab.
       { payroll: { basicSalary: '1', paymentMethod: 'bank_transfer' } },
+      // r393 (685d2380 step 3a) — both custom-holder ticks on, both boxes blank.
+      { statutory: { enableCustomHolderName: 'yes', enableCustomHolderId: 'yes' } },
       // item 759dfc7d — the Family step's three names. Swept from the same rule for the same reason:
       // a family field added without a label would otherwise reach HR as a raw `fields.familyMemberX`.
       { family: [{}] },
@@ -386,6 +388,8 @@ describe('§2 every computed translation key resolves, in all six locales', () =
       'remarks',
       // r393 (685d2380 step 2) — Bank Transfer with no bank destination.
       'paymentMethodBank',
+      // r393 (685d2380 step 3a) — a ticked custom holder box left blank.
+      'customHolderName', 'customHolderId',
       'employeeCode']) {
       expect(names.has(expected), expected).toBe(true);
     }

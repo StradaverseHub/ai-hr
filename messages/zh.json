@@ -1946,7 +1946,9 @@
         "groupJoinDate": "集团入职日期",
         "directSuperior": "直属上级",
         "internshipEndDate": "实习结束日期",
-        "paymentMethodBank": "银行转账所需的银行信息"
+        "paymentMethodBank": "银行转账所需的银行信息",
+        "customHolderName": "自定义持有人姓名",
+        "customHolderId": "自定义持有人证件号码"
       },
       "employmentType": {
         "full_time": "全职",

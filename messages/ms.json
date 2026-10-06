@@ -1946,7 +1946,9 @@
         "groupJoinDate": "Tarikh Menyertai Kumpulan",
         "directSuperior": "Ketua Langsung",
         "internshipEndDate": "Tarikh Tamat Latihan",
-        "paymentMethodBank": "Maklumat bank untuk Pindahan Bank"
+        "paymentMethodBank": "Maklumat bank untuk Pindahan Bank",
+        "customHolderName": "Nama pemegang tersuai",
+        "customHolderId": "Pengenalan pemegang tersuai"
       },
       "employmentType": {
         "full_time": "Sepenuh masa",
