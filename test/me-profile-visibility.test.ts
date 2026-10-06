@@ -70,6 +70,9 @@ const PERSONNEL_COMPONENTS = [
   'components/bank-info-card.tsx',
   // r393 (685d2380 step 3a) — the card's custom-holder ticks moved into their own shared group.
   'components/custom-holder-fields.tsx',
+  // r393 (685d2380 step 2) — "How This Employee Is Paid" moved off the page into its own shared group;
+  // without it here `people.detail.paymentMethod` reads as rendered nowhere on the Personnel screen.
+  'components/payment-method-field.tsx',
   'components/salary-history-table.tsx',
   'components/pay-structure-fields.tsx',
   // a72610af — five more shared groups joined the list when the Create New Employee draft was widened to

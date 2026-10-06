@@ -187,6 +187,14 @@ const LANDS: Record<string, Record<string, string | null>> = {
     // The training levy switch has its own partial-save writer, and its ABSENT state is meaningful
     // ("follow the company's HRDF registration default"), so an absent value is not written at all.
     subjectToHrdf: 'employee_statutory_my.subject_to_hrdf',
+    // ── r393 (item 685d2380 step 3a) ────────────────────────────────────────────────────────────
+    // The custom payment holder. `pack.statutory.set` does not write these; they land through
+    // `pack.statutory.setBank` (the Bank Information card's own writer) AFTER it, and only while a tick
+    // is on — an un-ticked box is not carried. §2 ticks both, each box its own value.
+    enableCustomHolderName: 'employee_statutory_my.enable_custom_holder_name',
+    customHolderName: 'employee_statutory_my.custom_holder_name',
+    enableCustomHolderId: 'employee_statutory_my.enable_custom_holder_id',
+    customHolderId: 'employee_statutory_my.custom_holder_id',
   },
   EmployeeDraftPayroll: {
     basicSalary: 'compensation.basic_salary',
@@ -326,6 +334,12 @@ function everyField(): EmployeeDraftData {
       // from the 'manual' default and leaves the head count alone.
       childReliefMode: 'auto_table',
       subjectToHrdf: 'yes',
+      // r393 (685d2380 step 3a) — both ticks ON (an un-ticked box carries nothing, so it would prove
+      // nothing here), each box its own recognisable value.
+      enableCustomHolderName: 'yes',
+      customHolderName: 'Farah Aziz (spouse payee)',
+      enableCustomHolderId: 'yes',
+      customHolderId: '920314-14-6688',
     },
     payroll: {
       basicSalary: '5200',
@@ -575,6 +589,13 @@ describe('§2 activate a draft with every field set, and read every landing back
     expect(stat.taxResidency, 'employee_statutory_my.tax_residency, derived from isResident').toBe('non_resident');
     // item a72610af — the training levy switch, through its own partial-save writer.
     expect(stat.subjectToHrdf, 'employee_statutory_my.subject_to_hrdf').toBe(true);
+    // r393 (685d2380 step 3a) — the custom payment holder, through `pack.statutory.setBank`. That setter
+    // also rewrites the bank columns, so the bank name and account number asserted above surviving it is
+    // half of this claim.
+    expect(stat.enableCustomHolderName, 'employee_statutory_my.enable_custom_holder_name').toBe(true);
+    expect(stat.customHolderName, 'employee_statutory_my.custom_holder_name').toBe('Farah Aziz (spouse payee)');
+    expect(stat.enableCustomHolderId, 'employee_statutory_my.enable_custom_holder_id').toBe(true);
+    expect(stat.customHolderId, 'employee_statutory_my.custom_holder_id').toBe('920314-14-6688');
 
     const [comp] = await owner.db
       .select()
