@@ -164,7 +164,20 @@ fi
 #
 # WHEN THE GATE IS RETIRED (readiness 1.3, the WorkOS cutover), delete this line AND the gate in
 # middleware.ts together, in a commit someone reviews. Removing the variable is not how you turn it off.
-: "${SHARE_PASSWORD:?missing or empty in .env.production — the middleware.ts access gate cannot be enforced without it and this deploy refuses rather than publish an open app. Set it (deploy/.env.production.example) and re-run.}"
+#
+# r390 — THE REVIEWED CHANGE THAT COMMENT ASKED FOR. Real WorkOS sign-in (readiness 1.3) is the other
+# thing that can guard a deployment, so the preflight now demands ONE of the two, never neither: the demo
+# gate (SHARE_PASSWORD), or real sign-in fully configured (ALLOW_DEMO_SESSION not `true` AND all four
+# AuthKit settings non-empty — the same rule as lib/real-auth.ts and the middleware). Half a WorkOS
+# configuration still refuses, before anything is installed, built, migrated or restarted.
+if [ -z "${SHARE_PASSWORD:-}" ]; then
+  if [ "${ALLOW_DEMO_SESSION:-}" = "true" ] || [ -z "${WORKOS_API_KEY:-}" ] || [ -z "${WORKOS_CLIENT_ID:-}" ] \
+     || [ -z "${WORKOS_COOKIE_PASSWORD:-}" ] || [ -z "${NEXT_PUBLIC_WORKOS_REDIRECT_URI:-}" ]; then
+    echo "✗ SHARE_PASSWORD is missing or empty in .env.production and real WorkOS sign-in is not fully configured — nothing would guard this deployment, so it refuses rather than publish an open app. Set SHARE_PASSWORD (deploy/.env.production.example), or set WORKOS_API_KEY, WORKOS_CLIENT_ID, WORKOS_COOKIE_PASSWORD and NEXT_PUBLIC_WORKOS_REDIRECT_URI with ALLOW_DEMO_SESSION unset, and re-run." >&2
+    exit 1
+  fi
+  echo "▸ No SHARE_PASSWORD: real WorkOS sign-in is configured and guards this deployment."
+fi
 
 # Skip the install when the lockfile hasn't moved since the last successful install. node_modules is
 # rsync-excluded (it persists across deploys), so on a code-only update — the common case — reinstalling

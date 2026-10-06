@@ -458,6 +458,39 @@ describe('a refused deploy still exits non-zero (the trap must not eat the statu
     expect(askState(box).state).toBe('failed');
   });
 
+  // r390 — real WorkOS sign-in is the other thing that can guard a deployment. The preflight demands ONE of
+  // the two, never neither, and half a WorkOS configuration still refuses before anything is built.
+  const WORKOS_ENV = [
+    'WORKOS_API_KEY=sk_test_fixture_not_a_real_key',
+    'WORKOS_CLIENT_ID=client_fixture',
+    'WORKOS_COOKIE_PASSWORD=fixture-cookie-password-of-thirty-two-plus-chars',
+    'NEXT_PUBLIC_WORKOS_REDIRECT_URI=https://aihr.example.test/callback',
+  ];
+  const realAuthEnv = (drop: string[] = [], extra: string[] = []) =>
+    [...DEMO_ENV.split('\n').filter((l) => !l.startsWith('SHARE_PASSWORD') && !l.startsWith('ALLOW_DEMO_SESSION')),
+      ...WORKOS_ENV.filter((l) => !drop.some((d) => l.startsWith(d))), ...extra, ''].join('\n');
+
+  it('r390: no SHARE_PASSWORD but real sign-in fully configured gets PAST the gate (it reaches the build)', () => {
+    const box = makeBox(realAuthEnv());
+    const r = deployOnce(box, 'bbbbbbb');
+    expect(r.stdout).toContain('real WorkOS sign-in is configured');
+    expect(r.trace).toContain('pnpm build');
+  });
+
+  it.each([
+    ['WORKOS_COOKIE_PASSWORD missing', realAuthEnv(['WORKOS_COOKIE_PASSWORD'])],
+    ['the redirect URI missing', realAuthEnv(['NEXT_PUBLIC_WORKOS_REDIRECT_URI'])],
+    ['ALLOW_DEMO_SESSION=true (the switcher would still decide who you are)', realAuthEnv([], ['ALLOW_DEMO_SESSION=true'])],
+  ])('r390: no SHARE_PASSWORD and %s — refuses, nothing built', (_label, env) => {
+    const box = makeBox(env);
+    const r = deployOnce(box, 'bbbbbbb');
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('SHARE_PASSWORD');
+    expect(r.stderr).toContain('WORKOS_COOKIE_PASSWORD');
+    expect(r.trace).not.toContain('pnpm build');
+    expect(askState(box).state).toBe('failed');
+  });
+
   it('MIGRATION_DATABASE_URL missing', () => {
     const box = makeBox('NODE_ENV=production\n');
     const r = deployOnce(box, 'bbbbbbb');

@@ -1,5 +1,6 @@
 import { handleAuth } from '@workos-inc/authkit-nextjs';
 import { recordLoginBlocked, recordLoginSucceeded } from '@/core/auth';
+import { appOrigin } from '@/lib/real-auth';
 
 /**
  * WorkOS OAuth callback (ADR-0072). handleAuth() exchanges the `code`, seals the session cookie, and
@@ -16,6 +17,10 @@ import { recordLoginBlocked, recordLoginSucceeded } from '@/core/auth';
  */
 export const GET = handleAuth({
   returnPathname: '/',
+  // r390 — behind the Cloudflare tunnel this route sees http://127.0.0.1:3000, so the post-sign-in redirect
+  // must be built on the PUBLIC origin (from NEXT_PUBLIC_WORKOS_REDIRECT_URI), or the browser is sent to a
+  // localhost address it cannot reach.
+  baseURL: appOrigin(),
   onSuccess: async ({ user }) => {
     try {
       const { client } = await import('@/db/client');

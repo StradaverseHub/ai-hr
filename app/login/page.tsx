@@ -31,8 +31,11 @@ export default async function LoginPage() {
 
   // Real deployment → WorkOS hosted login. Dev + gated demo (ALLOW_DEMO_SESSION) → identity switcher.
   if (!demoSwitcherEnabled()) {
-    const { signInUrl } = await import('@/lib/workos');
-    redirect(await signInUrl('/'));
+    // r390 — with real sign-in, middleware.ts answers /login before this page runs: signed out it redirects
+    // to AuthKit (setting the SDK's PKCE cookie on that redirect), signed in it redirects home. Calling
+    // getSignInUrl() HERE would throw, because it sets a cookie and a Server Component may not. So the only
+    // safe thing this branch can do is hand the request back to the middleware's front door.
+    redirect('/');
   }
 
   const demo = isDemoDeployment();

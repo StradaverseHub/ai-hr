@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { applyResponseHeaders, authkit, handleAuthkitHeaders, partitionAuthkitHeaders } from '@workos-inc/authkit-nextjs';
 import { isAuthRoute } from '@/lib/auth-routes';
+import { appOrigin, realAuthEnabled } from '@/lib/real-auth';
 import { isHealthRoute } from '@/lib/health-route';
 import { isMobileApiRoute } from '@/lib/mobile-api/routes';
 
@@ -58,6 +60,24 @@ import { isMobileApiRoute } from '@/lib/mobile-api/routes';
  *
  * TURNING THE GATE OFF ON PURPOSE (readiness 1.3, when the demo moves to real WorkOS logins): delete
  * this gate from this file, in a commit someone reviews. Not by deleting a line from an env file.
+ *
+ * ── r390 — REAL WORKOS SIGN-IN (readiness 1.3) ────────────────────────────────────────────────────
+ *
+ * That reviewed change is this one, and it keeps the invariant rather than the variable: a deployment
+ * serves only when SOMETHING guards it. Either the demo gate (SHARE_PASSWORD) or real sign-in
+ * (lib/real-auth.ts: switcher off AND every AuthKit setting present). With neither, the 503 above every
+ * bypass stands exactly as before, and deploy/deploy.sh refuses to deploy.
+ *
+ * With real sign-in on, AuthKit runs here on every request except /health and the bearer-token mobile
+ * API. Two reasons it MUST be here, both measured against @workos-inc/authkit-nextjs 4.2.0:
+ *   1. `withAuth()` (lib/workos.ts → getSession) THROWS "isn't covered by the AuthKit middleware" unless
+ *      this function forwarded AuthKit's headers. Every test mocks lib/workos, so none could see it.
+ *   2. `getSignInUrl()` stores its PKCE verifier with cookies().set, which a Server Component (/login)
+ *      may not do. Signed-out requests are therefore redirected to AuthKit FROM HERE, where the SDK sets
+ *      that cookie on the redirect response itself.
+ * And it fails closed like the Basic gate did: a page with no WorkOS session redirects to sign-in and an
+ * API or server-action request gets 401, before any route handler runs. Only /callback, /invite and
+ * /reset-password are reachable signed out.
  */
 function safeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -79,9 +99,11 @@ function withPathname(req: NextRequest): NextResponse {
  * failure mode this replaces was one nobody could see at all.
  */
 const GATE_UNCONFIGURED =
-  'AI HR is not configured to serve. SHARE_PASSWORD is unset outside development, so the access gate ' +
-  'in middleware.ts cannot be enforced and this build refuses to serve rather than run open. ' +
-  'Set SHARE_PASSWORD in .env.production and redeploy (deploy/deploy.sh refuses without it).';
+  'AI HR is not configured to serve. SHARE_PASSWORD is unset outside development and real WorkOS sign-in ' +
+  'is not fully configured, so nothing guards this build and it refuses to serve rather than run open. ' +
+  'Set SHARE_PASSWORD in .env.production, or set WORKOS_API_KEY, WORKOS_CLIENT_ID, WORKOS_COOKIE_PASSWORD ' +
+  'and NEXT_PUBLIC_WORKOS_REDIRECT_URI with ALLOW_DEMO_SESSION off, and redeploy (deploy/deploy.sh refuses ' +
+  'without one of them).';
 
 /**
  * Once per process, not once per request. A 503 storm behind a tunnel would otherwise write the same
@@ -103,11 +125,42 @@ function refuseUnconfigured(): NextResponse {
   });
 }
 
-export function middleware(req: NextRequest) {
+/** True for requests that cannot follow a redirect to AuthKit: route handlers and server actions. */
+function wantsStatusNotRedirect(req: NextRequest): boolean {
+  return req.nextUrl.pathname.startsWith('/api/') || req.headers.has('next-action');
+}
+
+async function withWorkosSession(req: NextRequest): Promise<NextResponse> {
+  const path = req.nextUrl.pathname;
+  const { session, headers, authorizationUrl } = await authkit(req, {
+    redirectUri: process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI,
+  });
+  const signedIn = Boolean(session.user);
+  // /login is the front door: signed out it goes straight to AuthKit; signed in it goes home. The other
+  // auth routes (/callback, /invite, /reset-password) must work signed out.
+  if (!signedIn && (path === '/login' || !isAuthRoute(path))) {
+    if (wantsStatusNotRedirect(req)) {
+      const { responseHeaders } = partitionAuthkitHeaders(req, headers);
+      return applyResponseHeaders(new NextResponse('Authentication required.', { status: 401 }), responseHeaders);
+    }
+    return handleAuthkitHeaders(req, headers, { redirect: authorizationUrl });
+  }
+  if (signedIn && path === '/login') {
+    // Absolute and public: behind the tunnel req.url is http://127.0.0.1:3000.
+    return handleAuthkitHeaders(req, headers, { redirect: new URL('/', appOrigin() ?? req.url) });
+  }
+  // Pass through with AuthKit's request headers (withAuth reads them) AND x-pathname (the layout reads it).
+  const { requestHeaders, responseHeaders } = partitionAuthkitHeaders(req, headers);
+  requestHeaders.set('x-pathname', path);
+  return applyResponseHeaders(NextResponse.next({ request: { headers: requestHeaders } }), responseHeaders);
+}
+
+export function middleware(req: NextRequest): NextResponse | Promise<NextResponse> {
   // FIRST, above every bypass below, because this is not a question about THIS request — it is a
   // question about whether this deployment is configured to serve anything at all.
   const password = process.env.SHARE_PASSWORD;
-  if (!password) {
+  const realAuth = realAuthEnabled();
+  if (!password && !realAuth) {
     if (process.env.NODE_ENV !== 'development') return refuseUnconfigured();
     // `next dev`, no gate configured: the one and only ungated path.
     return withPathname(req);
@@ -126,30 +179,31 @@ export function middleware(req: NextRequest) {
   // a verified WorkOS bearer token; see lib/mobile-api/routes.ts.
   if (isMobileApiRoute(req.nextUrl.pathname)) return withPathname(req);
 
-  // Auth routes bypass the Basic-auth challenge but STILL run through here, so x-pathname is set.
-  // They used to be excluded in the matcher instead, which skipped this function entirely and left
-  // x-pathname unset on exactly the routes whose layout depends on it — see lib/auth-routes.ts.
-  if (isAuthRoute(req.nextUrl.pathname)) return withPathname(req);
-
-  // The gate is a hosting protection only — never gate local `next dev`, even if SHARE_PASSWORD is set
-  // in .env.local for hosting.
-  if (process.env.NODE_ENV === 'development') return withPathname(req);
-
-  const header = req.headers.get('authorization');
-  if (header?.startsWith('Basic ')) {
-    try {
-      const decoded = atob(header.slice(6)); // "user:pass"
-      const pass = decoded.slice(decoded.indexOf(':') + 1);
-      if (safeEqual(pass, password)) return withPathname(req);
-    } catch {
-      // malformed header → fall through to challenge
-    }
+  // The Basic-auth challenge applies only while a demo password is configured (with real sign-in it is an
+  // optional outer layer for the changeover). Auth routes bypass it but STILL run through here, so
+  // x-pathname is set. They used to be excluded in the matcher instead, which skipped this function
+  // entirely and left x-pathname unset on exactly the routes whose layout depends on it — see
+  // lib/auth-routes.ts. The gate is a hosting protection only — never gate local `next dev`, even if
+  // SHARE_PASSWORD is set in .env.local for hosting.
+  if (password && !isAuthRoute(req.nextUrl.pathname) && process.env.NODE_ENV !== 'development' && !basicPasses(req, password)) {
+    return new NextResponse('Authentication required.', {
+      status: 401,
+      headers: { 'WWW-Authenticate': 'Basic realm="AI HR demo", charset="UTF-8"' },
+    });
   }
 
-  return new NextResponse('Authentication required.', {
-    status: 401,
-    headers: { 'WWW-Authenticate': 'Basic realm="AI HR demo", charset="UTF-8"' },
-  });
+  return realAuth ? withWorkosSession(req) : withPathname(req);
+}
+
+function basicPasses(req: NextRequest, password: string): boolean {
+  const header = req.headers.get('authorization');
+  if (!header?.startsWith('Basic ')) return false;
+  try {
+    const decoded = atob(header.slice(6)); // "user:pass"
+    return safeEqual(decoded.slice(decoded.indexOf(':') + 1), password);
+  } catch {
+    return false; // malformed header → challenge
+  }
 }
 
 // Run on everything except Next's static assets and the favicon.
