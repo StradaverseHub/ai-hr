@@ -16,7 +16,9 @@ describe('Team-linked roster destination resolves its authority afresh',()=>{
  it('keeps normal roster behavior free of a new team lookup',async()=>{expect(await rosterTeamContext(ctx,[company],{})).toBeNull();expect(resolveScope).not.toHaveBeenCalled();});
  it('recomputes scoped IDs and applies only valid period/narrowing controls',async()=>{
   const result=await rosterTeamContext(ctx,[company],{myTeam:token,view:'week',from:'2026-10-06',q:'Aina'});
-  expect(resolveScope).toHaveBeenCalledWith(ctx,{view:'week',scope:'all',anchorDate:'2026-10-06',companyIds:[company],search:'Aina',tile:'late'});
+  // r392 (33930be9): the Today tiles are gone, so a `tile` in an old My Team link no longer narrows anything.
+  expect(resolveScope).toHaveBeenCalledWith(ctx,{view:'week',scope:'all',anchorDate:'2026-10-06',companyIds:[company],search:'Aina'});
+  expect(resolveScope.mock.calls[0][1]).not.toHaveProperty('tile');
   expect(result?.scope.employmentIds).toEqual(['fresh-report']);
   resolveScope.mockResolvedValueOnce({companyIds:[company],employmentIds:['changed-report'],from:'2026-10-05',to:'2026-10-11',canEditRoster:false});
   expect((await rosterTeamContext(ctx,[company],{myTeam:token}))?.scope.employmentIds).toEqual(['changed-report']);

@@ -176,6 +176,7 @@ export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
   { table: 'toil_accrual', column: 'policy_id', references: 'toil_policy', effect: 'blocks', note: 'TOIL accrued under our policy: leave somebody earned.' },
   { table: 'payroll_batch', column: 'payroll_cycle_id', references: 'payroll_cycle', effect: 'blocks', note: 'A payroll run on our cycle. Our own runs refuse as payroll first.' },
   { table: 'payroll_individual_txn', column: 'intended_cycle_id', references: 'payroll_cycle', effect: 'blocks', note: 'A transaction aimed at our cycle.' },
+  { table: 'employment_pay_component', column: 'payroll_cycle_id', references: 'payroll_cycle', effect: 'blocks', note: 'r392 (4fffe638, 0514): a fixed transaction linked to our cycle. Refuses, like an individual transaction aimed at it.' },
   { table: 'employee_draft', column: 'reserved_config_id', references: 'employee_id_config', effect: 'blocks', note: 'ON DELETE SET NULL. A draft holding a number from our running-number setup.' },
   { table: 'leave_approval_policy', column: 'department_id', references: 'department', effect: 'blocks', note: 'Another company\'s (or a tenant-wide) approval rule naming our department.' },
   { table: 'leave_approval_policy', column: 'position_id', references: 'position', effect: 'blocks', note: 'An approval rule outside the company naming our position.' },
