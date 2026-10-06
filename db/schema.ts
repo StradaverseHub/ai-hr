@@ -6667,6 +6667,14 @@ export const employmentPayComponent = pgTable(
     // column in this build (payout still follows the valid_from/valid_to window, exactly as recurring
     // amounts work today); it is captured, stored and shown, but does not route which run pays the item.
     runType: payrollRunTypeEnum('run_type'),
+    // 4fffe638 (migration 0514) — the CONFIGURED Payroll Cycle (Payroll > Settings > Payroll Cycles) the
+    // operator picked on the Fixed Transaction screen. When set, `runType` above is the cycle's own run
+    // type, written by the service from the cycle row, never from the client. Nullable: legacy rows the
+    // 0514 one-match backfill could not resolve, rows saved with no cycle, and every write from the
+    // people-detail editor stay null. THE KERNEL DOES NOT READ THIS COLUMN (core/payroll.ts selects on
+    // employment, window and superseded_at only): it is a record and a label, not routing. No ON DELETE —
+    // deletePayrollCycle refuses a cycle that is referenced here.
+    payrollCycleId: uuid('payroll_cycle_id').references(() => payrollCycle.id),
   },
   (t) => [index('employment_pay_component_idx').on(t.employmentId, t.validFrom)],
 );

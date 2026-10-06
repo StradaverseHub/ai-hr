@@ -2941,6 +2941,13 @@
       "when": 1791210419875,
       "tag": "0512_own_replacement_request_deciders",
       "breakpoints": true
+    },
+    {
+      "idx": 514,
+      "version": "7",
+      "when": 1791300001000,
+      "tag": "0514_fixed_transaction_payroll_cycle",
+      "breakpoints": true
     }
   ]
 }

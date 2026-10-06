@@ -813,7 +813,9 @@ export default async function TransactionViewPage({
                           </td>
                           <td className="px-4 py-2.5 text-right font-medium tabular-nums">{Number(r.amount).toFixed(2)}</td>
                           <td className="px-4 py-2.5">
-                            {r.runType ? t(`individual.cycle.${r.runType}`) : t('fixed.cycleUnspecified')}
+                            {/* 4fffe638 — linked cycle name, else run-type label, else unspecified. */}
+                            {r.payrollCycleName ??
+                              (r.runType ? t(`individual.cycle.${r.runType}`) : t('fixed.cycleUnspecified'))}
                           </td>
                           <td className="px-4 py-2.5 tabular-nums">{r.validFrom}</td>
                           <td className="px-4 py-2.5 tabular-nums">{r.validTo ?? '—'}</td>

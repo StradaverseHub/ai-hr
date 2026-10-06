@@ -14,7 +14,7 @@
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { payrollBatch, payrollCycle } from '../db/schema';
+import { employmentPayComponent, payrollBatch, payrollCycle, payrollIndividualTxn } from '../db/schema';
 
 /** The four fixed behavioural run types a cycle may map to (mirrors payrollRunTypeEnum). */
 export const PAYROLL_CYCLE_RUN_TYPES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
@@ -49,9 +49,17 @@ export class PayrollCycleRegularConflictError extends Error {
 }
 
 /** Thrown when a hard-delete is refused because the cycle is referenced by existing payroll batches
- *  (historical OR future) — deleting would orphan that run-type/remarks provenance. Archive instead. */
+ *  (historical OR future) — deleting would orphan that run-type/remarks provenance. Archive instead.
+ *
+ *  4fffe638 — also thrown, with `by: 'transactions'`, when no run uses the cycle but fixed transactions
+ *  (employment_pay_component.payroll_cycle_id, 0514) or individual transactions
+ *  (payroll_individual_txn.intended_cycle_id, 0441) are linked to it. Those columns are foreign keys
+ *  with no ON DELETE, so the delete would otherwise surface as a raw foreign-key failure. */
 export class PayrollCycleInUseError extends Error {
-  constructor(public readonly refs: number) {
+  constructor(
+    public readonly refs: number,
+    public readonly by: 'runs' | 'transactions' = 'runs',
+  ) {
     super('payroll-cycle-in-use');
     this.name = 'PayrollCycleInUseError';
   }
@@ -392,6 +400,19 @@ export async function deletePayrollCycle(ctx: SessionContext, id: string) {
     const [cnt] = await tx.select({ n: sql<number>`count(*)::int` }).from(payrollBatch).where(and(...conds));
     const refs = cnt?.n ?? 0;
     if (refs > 0) throw new PayrollCycleInUseError(refs);
+    // 4fffe638 — rows that LINK to this exact cycle by id (superseded and voided rows included: they are
+    // history, and the foreign key holds on them too). The count runs under the caller's RLS; a row the
+    // caller cannot see is still protected by the foreign key itself, just less politely.
+    const [fixedRefs] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(employmentPayComponent)
+      .where(eq(employmentPayComponent.payrollCycleId, id));
+    const [individualRefs] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(payrollIndividualTxn)
+      .where(eq(payrollIndividualTxn.intendedCycleId, id));
+    const txnRefs = (fixedRefs?.n ?? 0) + (individualRefs?.n ?? 0);
+    if (txnRefs > 0) throw new PayrollCycleInUseError(txnRefs, 'transactions');
     await tx.delete(payrollCycle).where(eq(payrollCycle.id, id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,

@@ -16,6 +16,7 @@ import {
   payComponent,
   payrollBatch,
   payrollBatchComponent,
+  payrollCycle,
   payrollInput,
   payslip,
   person,
@@ -226,9 +227,15 @@ export function listEmploymentPayComponents(ctx: SessionContext, employmentId: s
         remarks: employmentPayComponent.remarks,
         // Fixed Transaction screen (feedback b7fc8583) — the Payroll Cycle tag (null = unspecified).
         runType: employmentPayComponent.runType,
+        // 4fffe638 — the CONFIGURED cycle the row is linked to, with its name and whether it has since
+        // been made inactive. All three null on an unlinked row (LEFT JOIN, single FK: cannot multiply).
+        payrollCycleId: employmentPayComponent.payrollCycleId,
+        payrollCycleName: payrollCycle.name,
+        payrollCycleArchivedAt: payrollCycle.archivedAt,
       })
       .from(employmentPayComponent)
       .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+      .leftJoin(payrollCycle, eq(payrollCycle.id, employmentPayComponent.payrollCycleId))
       .where(
         and(
           eq(employmentPayComponent.employmentId, employmentId),
@@ -275,9 +282,13 @@ export function getEmploymentPayComponent(
         prorates: payComponent.prorates,
         remarks: employmentPayComponent.remarks,
         runType: employmentPayComponent.runType,
+        payrollCycleId: employmentPayComponent.payrollCycleId,
+        payrollCycleName: payrollCycle.name,
+        payrollCycleArchivedAt: payrollCycle.archivedAt,
       })
       .from(employmentPayComponent)
       .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+      .leftJoin(payrollCycle, eq(payrollCycle.id, employmentPayComponent.payrollCycleId))
       .where(
         and(
           eq(employmentPayComponent.id, p.id),
@@ -1585,7 +1596,17 @@ export function setEmploymentPayComponent(
     remarks?: string | null;
     // Fixed Transaction screen (feedback b7fc8583) — the Payroll Cycle tag. Cleaned to one of
     // regular/off_cycle/bonus/adjustment or null (unspecified). Stored + event-logged; the kernel ignores it.
+    // IGNORED when `payrollCycleId` is given: the run type is then the cycle's own.
     runType?: FixedTransactionCycle | null;
+    // 4fffe638 — the CONFIGURED Payroll Cycle to link the row to. Resolved inside the transaction against
+    // the employment's company (FixedTransactionCycleError on missing / archived / other-company) and the
+    // row's runType is set from it. Omitted / null = unlinked, exactly as before (the personnel editor
+    // never sends it). Like runType, the kernel never reads it.
+    payrollCycleId?: string | null;
+    // 4fffe638 — INTERNAL to updateEmploymentPayComponent: the superseded row's link and run type, carried
+    // forward verbatim on an edit that did not touch the cycle. Not re-validated on purpose — a row linked
+    // to a cycle that has since been made inactive must keep that link through an amount or date change.
+    inheritCycle?: { payrollCycleId: string | null; runType: FixedTransactionCycle | null };
     // Backfill-only opt-out of the amount>0 guard: the compensation backfill legitimately seeds a 0-amount
     // row for a zero-allowance line. ONLY the backfill call sites pass this true; every UI path inherits the guard.
     allowZeroAmount?: boolean;
@@ -1624,8 +1645,8 @@ export function setEmploymentPayComponent(
   const effectiveTo = p.effectiveTo ?? null;
   // Currency guard — single write-time site, MYR-only kernel.
   const currency = p.currency ?? 'MYR';
-  // Cycle tag — cleaned to the enum or null; never trust a raw form/URL value.
-  const runType = cleanCycle(p.runType);
+  // Cycle tag — cleaned to the enum or null inside `run` (it may come from a configured cycle there);
+  // never trust a raw form/URL value.
   const run = async (tx: Tx) => {
     // Validate inside the returned promise (not at call time) so the function ALWAYS returns a promise — a
     // bad value rejects rather than throwing synchronously, giving callers (and `.rejects` in tests) a single
@@ -1635,6 +1656,17 @@ export function setEmploymentPayComponent(
     // Amount>0 invariant on the aggregate — inherited by every UI write path. The backfill opts out for its
     // legitimate zero-allowance seed rows only (allowZeroAmount).
     if (!p.allowZeroAmount && !(p.amount > 0)) throw new FixedTransactionAmountError();
+    // 4fffe638 — the cycle link. Resolved BEFORE any write, so a refused cycle leaves the table untouched.
+    let payrollCycleId: string | null = null;
+    let runType: FixedTransactionCycle | null = cleanCycle(p.runType);
+    if (p.inheritCycle) {
+      payrollCycleId = p.inheritCycle.payrollCycleId;
+      runType = cleanCycle(p.inheritCycle.runType);
+    } else if (p.payrollCycleId) {
+      const c = await resolveFixedTxnCycle(tx, { employmentId: p.employmentId, payrollCycleId: p.payrollCycleId });
+      payrollCycleId = c.id;
+      runType = c.runType;
+    }
     // 2aed39d4 — a change whose window touches a month a CLOSED run already paid is refused. Removal
     // uses the identical test (archiveEmploymentPayComponent); PROCESSED-but-open is deliberately fine.
     if (!p.allowClosedPeriod) {
@@ -1793,6 +1825,7 @@ export function setEmploymentPayComponent(
         prorateOverride: p.prorateOverride ?? null,
         remarks: p.remarks ?? null,
         runType,
+        payrollCycleId,
       })
       .returning({ id: employmentPayComponent.id });
     await appendEvent(tx, {
@@ -1806,7 +1839,7 @@ export function setEmploymentPayComponent(
       // effectiveTo / currency / prorateOverride / runType are non-PII references/flags (not in the banned
       // set). runType is a constrained enum (cleaned above) so it is safe in the immutable log — unlike the
       // free-text `remarks`, which stays deliberately EXCLUDED here (PDPA Layer-0).
-      payload: { employmentId: p.employmentId, componentId: p.componentId, effectiveFrom: p.effectiveFrom, effectiveTo, currency, prorateOverride: p.prorateOverride ?? null, runType },
+      payload: { employmentId: p.employmentId, componentId: p.componentId, effectiveFrom: p.effectiveFrom, effectiveTo, currency, prorateOverride: p.prorateOverride ?? null, runType, payrollCycleId },
     });
     return { id: row.id };
   };
@@ -1823,6 +1856,52 @@ export class FixedTransactionNotFoundError extends Error {
     super('fixed-transaction-not-found');
     this.name = 'FixedTransactionNotFoundError';
   }
+}
+
+/**
+ * 4fffe638 — thrown when the Payroll Cycle named on a Fixed Transaction write cannot be linked.
+ *
+ *  - `not_found`        — no such cycle row (or RLS hides it).
+ *  - `archived`         — the cycle has been made inactive; the screen does not offer it, so a write
+ *                         naming it is a stale form or a tampered id. (An UNTOUCHED edit of a row already
+ *                         linked to a since-archived cycle never reaches this check: it inherits the
+ *                         superseded row's link instead, see updateEmploymentPayComponent.)
+ *  - `company_mismatch` — the cycle belongs to another company. Cycles are per company and the company is
+ *                         taken from the EMPLOYMENT, never from the client.
+ *
+ * Every reason is a refusal raised before any write, never a silent fallback to "no cycle".
+ */
+export class FixedTransactionCycleError extends Error {
+  constructor(public readonly reason: 'not_found' | 'archived' | 'company_mismatch') {
+    super(`Invalid payroll cycle for this fixed transaction (${reason}).`);
+    this.name = 'FixedTransactionCycleError';
+  }
+}
+
+/**
+ * 4fffe638 — resolve a configured Payroll Cycle for a Fixed Transaction write, inside the write's own
+ * transaction, against the EMPLOYMENT's company (getActivePayrollCycle's rule: missing, archived or
+ * other-company is refused). Returns the id to store and the run type the row must carry — the run type
+ * comes from the cycle row, never from the client.
+ */
+async function resolveFixedTxnCycle(
+  tx: Tx,
+  p: { employmentId: string; payrollCycleId: string },
+): Promise<{ id: string; runType: FixedTransactionCycle }> {
+  const [emp] = await tx
+    .select({ companyId: employment.companyId })
+    .from(employment)
+    .where(eq(employment.id, p.employmentId))
+    .limit(1);
+  const [row] = await tx
+    .select({ id: payrollCycle.id, companyId: payrollCycle.companyId, runType: payrollCycle.runType, archivedAt: payrollCycle.archivedAt })
+    .from(payrollCycle)
+    .where(eq(payrollCycle.id, p.payrollCycleId))
+    .limit(1);
+  if (!row) throw new FixedTransactionCycleError('not_found');
+  if (!emp || row.companyId !== emp.companyId) throw new FixedTransactionCycleError('company_mismatch');
+  if (row.archivedAt != null) throw new FixedTransactionCycleError('archived');
+  return { id: row.id, runType: row.runType as FixedTransactionCycle };
 }
 
 /**
@@ -1855,6 +1934,10 @@ export function updateEmploymentPayComponent(
     effectiveFrom: string;
     effectiveTo?: string | null;
     runType?: FixedTransactionCycle | null;
+    // 4fffe638 — a string links the new version to that configured cycle (validated, runType from it);
+    // null unlinks it (runType from `runType`). When BOTH this and `runType` are omitted the edit did not
+    // touch the cycle, and the superseded row's payroll_cycle_id and run_type are carried forward as-is.
+    payrollCycleId?: string | null;
     remarks?: string | null;
     prorateOverride?: boolean | null;
   },
@@ -1863,7 +1946,12 @@ export function updateEmploymentPayComponent(
     // Load the target row (RLS-confined to the tenant). Match the caller-supplied employmentId so the edit
     // can only touch a row the admin is actually looking at; a foreign/stale id yields no row.
     const [row] = await tx
-      .select({ componentId: employmentPayComponent.componentId, currency: employmentPayComponent.currency })
+      .select({
+        componentId: employmentPayComponent.componentId,
+        currency: employmentPayComponent.currency,
+        runType: employmentPayComponent.runType,
+        payrollCycleId: employmentPayComponent.payrollCycleId,
+      })
       .from(employmentPayComponent)
       .where(
         and(
@@ -1888,6 +1976,13 @@ export function updateEmploymentPayComponent(
         prorateOverride: p.prorateOverride ?? null,
         remarks: p.remarks ?? null,
         runType: p.runType ?? null,
+        payrollCycleId: p.payrollCycleId ?? null,
+        // 4fffe638 — an edit that said nothing about the cycle keeps the one the row already had. The
+        // screen's select is ALWAYS submitted, so "untouched" is decided by the action from its hidden
+        // cycleTouched flag (CLAUDE.md §8), which omits both fields here.
+        ...(p.payrollCycleId === undefined && p.runType === undefined
+          ? { inheritCycle: { payrollCycleId: row.payrollCycleId, runType: cleanCycle(row.runType) } }
+          : {}),
         // 2aed39d4 — THE row the admin opened. Without this an edit of an ended row reads as a clash
         // with itself and is either refused or cloned; with it, the row is versioned.
         replacesId: p.id,

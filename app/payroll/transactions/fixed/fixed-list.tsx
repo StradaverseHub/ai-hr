@@ -42,6 +42,8 @@ export type FixedTxnRow = {
   validTo: string | null;
   /** null on legacy rows and on anything written by the people-detail editor. */
   runType: string | null;
+  /** 4fffe638 — the linked configured Payroll Cycle's name; null when the row is not linked. */
+  cycleName: string | null;
   remarks: string | null;
   /** Derived on the SERVER against the tenant timezone — a browser an hour either side of MYT midnight
    *  would otherwise call an item ended a day early or late. */
@@ -180,9 +182,9 @@ export function FixedTxnList({
                 </td>
                 <td className="px-3 py-2.5 text-right font-medium tabular-nums">{formatMoney(r.amount, r.currency)}</td>
                 <td className="px-3 py-2.5">
-                  {/* Legacy + people-editor rows carry no cycle → "unspecified". New writes from this
-                      screen always carry one (the select is required). */}
-                  {r.runType ? (cycleLabels[r.runType] ?? r.runType) : cycleUnspecifiedLabel}
+                  {/* 4fffe638 — the linked cycle's name; else the old run-type label (a row the one-match
+                      backfill could not resolve); else "unspecified" (legacy + people-editor rows). */}
+                  {r.cycleName ?? (r.runType ? (cycleLabels[r.runType] ?? r.runType) : cycleUnspecifiedLabel)}
                 </td>
                 <td className="px-3 py-2.5 tabular-nums">{r.validFrom}</td>
                 <td className="px-3 py-2.5 tabular-nums">{r.validTo ?? '—'}</td>

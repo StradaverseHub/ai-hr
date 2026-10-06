@@ -72,9 +72,11 @@ export async function buildTxnTemplateReference(
         // amount", which is what a fixed-rule or ruleless item wants.
         input: payRuleInputUnit((c.rule ?? null) as PayRule | null) ?? '',
       })),
-    // The screen's "Payroll cycle" is the run_type enum, NOT a `payroll_cycle` row: production's 44
-    // payroll_cycle records all carry a NULL code and nothing on employment_pay_component references
-    // them. Listing the cycle catalogue here would be listing values the import cannot accept.
+    // The file's "Payroll cycle" column takes the run_type values, NOT a `payroll_cycle` name or code.
+    // 4fffe638 — employment_pay_component now has a payroll_cycle_id, but the import fills it only under
+    // the one-match rule (the employee's company has exactly one active cycle of that run type; see
+    // core/payroll-txn-import.ts loadOneMatchCycles). Listing the cycle catalogue here would still be
+    // listing values the import cannot accept.
     cycles: FIXED_TRANSACTION_CYCLES.map((c) => ({ code: c, label: tc(`cycle.${c}` as never) })),
     kinds: TXN_KINDS.map((k) => ({ code: k, label: tc(`kindLabel.${k}` as never) })),
   };

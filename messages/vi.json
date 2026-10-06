@@ -5407,7 +5407,10 @@
         "openEnded": "không có ngày kết thúc",
         "existingTitle": "Nhân viên này đã có {count, plural, other {# bản ghi}} cho khoản lương này",
         "existingClashTag": "chồng lấn với ngày bạn nhập",
-        "existingClash": "Khoảng ngày của bạn chồng lấn với một bản ghi ở trên. Việc lưu sẽ bị từ chối — hãy kết thúc bản ghi đó trước, hoặc thay đổi ngày của bạn."
+        "existingClash": "Khoảng ngày của bạn chồng lấn với một bản ghi ở trên. Việc lưu sẽ bị từ chối — hãy kết thúc bản ghi đó trước, hoặc thay đổi ngày của bạn.",
+        "cycleInvalid": "Chu kỳ tính lương đã chọn không khả dụng cho công ty của nhân viên này. Hãy chọn một chu kỳ tính lương đang hoạt động của công ty.",
+        "cycleInactive": "{name} (ngừng hoạt động)",
+        "noCycles": "Công ty này không có chu kỳ tính lương nào đang hoạt động. Hãy thêm tại Lương > Cài đặt > Chu kỳ tính lương."
       },
       "individual": {
         "title": "Giao dịch Riêng lẻ",
@@ -13126,7 +13129,8 @@
       "duplicateName": "Đã có chu kỳ với tên này cho công ty này.",
       "regularConflict": "Công ty này đã có một chu kỳ Thường đang hoạt động. Chỉ cho phép một chu kỳ.",
       "inUse": "Chu kỳ này được dùng trong {refs} đợt trả lương — hãy vô hiệu hóa thay vì xóa.",
-      "duplicateCode": "Một chu kỳ lương đang hoạt động khác trong công ty này đã dùng mã đó."
+      "duplicateCode": "Một chu kỳ lương đang hoạt động khác trong công ty này đã dùng mã đó.",
+      "inUseTransactions": "Chu kỳ này được liên kết với {refs} giao dịch — hãy vô hiệu hóa thay vì xóa."
     },
     "colBehaviour": "Hành vi xử lý",
     "behaviourPlaceholder": "Mô tả bằng lời của bạn mục đích của chu kỳ này (tham chiếu nghiệp vụ).",

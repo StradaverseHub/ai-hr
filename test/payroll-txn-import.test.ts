@@ -249,7 +249,8 @@ describe('5c65367d — payroll transaction Excel import', () => {
       runType: 'regular',
     });
     // A different cycle tag does NOT make it a different row: employment_pay_component_no_overlap has
-    // no cycle in its key, and there is no payroll_cycle_id on the table at all.
+    // no cycle in its key. 4fffe638 added payroll_cycle_id to the table, and it is not in the key either
+    // (a record and a label; the kernel never reads it).
     const p = await validateFixed([fixedRec({ start_date: '2026-08-15', payroll_cycle: 'bonus' })]);
     expect(p.rows[0].reason).toBe('overlap');
   });
