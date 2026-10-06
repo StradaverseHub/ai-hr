@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Payslip Information Setup — four more fields in the list</title>
+<style>/*BASE*/
+.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.row{display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:12px;background:var(--card);padding:6px 10px;min-height:42px}
+.row.off{background:rgb(240 241 247/.3)}
+.grip{width:10px;height:16px;flex:none;background:radial-gradient(circle,#b3b3bd 1.3px,transparent 1.6px) 0 0/5px 5.3px}
+.num{display:grid;place-items:center;width:22px;height:22px;flex:none;border-radius:50%;background:rgb(79 70 229/.1);color:var(--primary);font-size:11.5px;font-weight:600}
+.name{flex:1;font-weight:500;font-size:13.5px;min-width:0}
+.row.off .name{color:var(--muted-fg);padding-left:42px;font-weight:400}
+.mv{display:inline-flex;align-items:center;gap:3px;height:28px;padding:0 8px;border:1px solid var(--border);border-radius:10px;font-size:11.5px;font-weight:500;background:var(--card)}
+.mv.dis{opacity:.4}
+.sw{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted-fg);flex:none}
+.tg{width:34px;height:19px;border-radius:999px;background:rgb(99 99 111/.3);position:relative}
+.tg::after{content:'';position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgb(0 0 0/.2)}
+.tg.on{background:var(--primary)}.tg.on::after{left:17px}
+h2c{display:block;font-weight:600;margin:0 0 14px;font-size:15px}
+h3c{display:block;font-weight:600;font-size:13.5px;margin:0 0 8px}
+.row.new{border:2px solid var(--new);background:#f6fcfb}
+.foot{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);margin-top:16px;padding-top:14px}
+.fixed{margin-top:10px;border:2px dashed var(--gone);border-radius:12px;padding:8px 12px;font-size:12.5px;color:var(--gone);background:#fff7f5}
+.slip{margin-top:28px}
+.blk{border-radius:20px;border:1px solid var(--border);background:#fff;overflow:hidden;box-shadow:var(--shadow-card)}
+.blk h4{margin:0;background:#475569;color:#fff;text-align:center;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;padding:8px}
+.dl{display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;padding:14px 16px}
+.info{display:grid;grid-template-columns:2fr 3fr;gap:8px;font-size:13px;font-weight:500}
+.info dt{color:var(--muted-fg)}.info dd{margin:0}
+.info.new dt{color:var(--new)}
+.info.fx{background:#fff7f5;outline:1.5px dashed var(--gone);outline-offset:2px;border-radius:4px}
+</style>
+<body>
+<div class="sketch"><b>SKETCH</b> A picture of the plan, not the finished screen. Wording, spacing and colours will differ.</div>
+<p class="title">Payroll › Settings › Payslip Information Setup — Employment Info – Payslip Display Fields</p>
+<p class="lead">A company that has not changed its setup. Payment Method, Bank Name, Bank Account and Payroll Cycle join the list, already switched on and at the end — where they print today.</p>
+<div class="cols">
+  <div class="col"><span class="tag before">TODAY</span>
+    <div class="card pad"><h2c>Employment Info – Payslip Display Fields</h2c>
+      <h3c>Shown on payslip</h3c><ol class="list" id="b-shown"></ol>
+      <h3c style="margin-top:18px">Not shown</h3c><ul class="list" id="b-hidden"></ul>
+      <p class="hint" style="margin-top:12px">Fields print on the payslip in this order, two per row, left then right. If an employee has no value for a field, it is skipped and the next field moves up.</p>
+      <div class="foot"><span class="btn outline">Copy to Companies</span><span style="display:flex;gap:10px"><span class="btn outline">Cancel</span><span class="btn primary">Save</span></span></div>
+    </div>
+    <div class="fixed"><b>Not in this list today:</b> Payment method, Bank name, Bank account and Payroll cycle are always added after the fields above. They cannot be switched off or moved.</div>
+  </div>
+  <div class="col"><span class="tag after">AFTER THIS CHANGE</span>
+    <div class="card pad"><h2c>Employment Info – Payslip Display Fields</h2c>
+      <h3c>Shown on payslip</h3c><ol class="list" id="a-shown"></ol>
+      <h3c style="margin-top:18px">Not shown</h3c><ul class="list" id="a-hidden"></ul>
+      <p class="hint" style="margin-top:12px">Fields print on the payslip in this order, two per row, left then right. If an employee has no value for a field, it is skipped and the next field moves up.</p>
+      <div class="foot"><span class="btn outline">Copy to Companies</span><span style="display:flex;gap:10px"><span class="btn outline">Cancel</span><span class="btn primary">Save</span></span></div>
+    </div>
+    <div class="note"><span class="chip">NEW</span> These four work like every other field: switch on or off, Move up / Move down or drag, and Copy to Companies copies them. Nothing is added outside this list any more.</div>
+  </div>
+</div>
+
+<p class="title slip">The payslip's Employee Profile block — review screen and both downloaded copies (labels only)</p>
+<div class="cols">
+  <div class="col"><span class="tag before">TODAY</span>
+    <div class="blk"><h4>Employee Profile</h4><dl class="dl" id="b-slip"></dl></div>
+    <p class="hint" style="margin-top:8px">The last four rows (dashed) are fixed: they print whatever the setup says.</p>
+  </div>
+  <div class="col"><span class="tag after">AFTER THIS CHANGE</span>
+    <div class="blk"><h4>Employee Profile</h4><dl class="dl" id="a-slip"></dl></div>
+    <p class="hint" style="margin-top:8px">The same rows, now printed from the list above, in its order. Switch one off and it is not printed.</p>
+  </div>
+</div>
+<script>
+const base=['Employee Name','Employee ID','NRIC','Income Tax Number','EPF Number','SOCSO/EIS Number','Department','Position','Grade','Employee Type','Days Worked','Currency'];
+const hidden=['Business Unit','Division','Branch','Region','Line','Section','Team','Base','Category'];
+const extra=['Payment Method','Bank Name','Bank Account','Payroll Cycle'];
+const sw=on=>`<span class="sw">Shown<span class="tg ${on?'on':''}"></span></span>`;
+const shownRow=(n,i,len,isNew)=>`<li class="row ${isNew?'new':''}"><span class="grip"></span><span class="num">${i+1}</span><span class="name">${n} ${isNew?'<span class="chip">NEW</span>':''}</span><span class="mv ${i===0?'dis':''}">↑ Move up</span><span class="mv ${i===len-1?'dis':''}">↓ Move down</span>${sw(true)}</li>`;
+const offRow=n=>`<li class="row off"><span class="name">${n}</span>${sw(false)}</li>`;
+document.getElementById('b-shown').innerHTML=base.map((n,i)=>shownRow(n,i,base.length,false)).join('');
+const all=[...base,...extra];
+document.getElementById('a-shown').innerHTML=all.map((n,i)=>shownRow(n,i,all.length,i>=base.length)).join('');
+document.getElementById('b-hidden').innerHTML=hidden.map(offRow).join('');
+document.getElementById('a-hidden').innerHTML=hidden.map(offRow).join('');
+const info=(l,cls='')=>`<div class="info ${cls}"><dt>${l}</dt><dd>—</dd></div>`;
+document.getElementById('b-slip').innerHTML=base.map(l=>info(l)).join('')+['Payment method','Bank name','Bank account','Payroll cycle'].map(l=>info(l,'fx')).join('');
+document.getElementById('a-slip').innerHTML=base.map(l=>info(l)).join('')+extra.map(l=>info(l,'new')).join('');
+</script>
+</body></html>

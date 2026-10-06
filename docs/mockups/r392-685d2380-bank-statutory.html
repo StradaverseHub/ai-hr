@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Draft employee — Bank &amp; Statutory tab</title>
+<style>/*BASE*/
+.wrap{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.stack{display:flex;flex-direction:column;gap:8px}
+.newfs{border:2px solid var(--new)}
+.pop.flow{position:static;margin-top:4px}
+.sideNote{font-size:12.5px}
+</style>
+<body>
+<div class="sketch"><b>SKETCH</b> A picture of the plan, not the finished screen. Wording, spacing and colours will differ.</div>
+<p class="title">Personnel › Create new employee (Draft) — Bank &amp; Statutory tab, after this change</p>
+<p class="lead">Laid out like the same tab on an active employee's profile. Green outlines mark what the draft does not have today.</p>
+<div class="card hdr" style="margin-bottom:0"><div><div class="k">Employee ID</div><div class="v"><span class="mono">••••</span></div></div><div><div class="k">Full name</div><div class="v">Daniel Tan</div></div><div><div class="k">Company</div><div class="v">Demo Sdn Bhd</div></div><span class="badge">Draft — pending activation</span></div>
+<div class="tabs"><span>Profile</span><span>Employment</span><span class="on">Bank &amp; Statutory</span><span>Payroll</span><span>Family</span></div>
+<div class="wrap">
+<div>
+  <div class="card"><div class="sh">Bank Information</div><div class="pad">
+    <div class="sublegend" style="margin-bottom:8px">Employee bank information</div>
+    <div class="grid2">
+      <div class="field"><span class="lbl">Bank</span><span class="inp chev"><span class="ph">Select a bank</span></span></div>
+      <div class="field"><span class="lbl">Bank account</span><span class="inp"><span>••••</span></span></div>
+    </div>
+    <div class="fs newfs" style="margin-top:22px"><span class="legend">Custom payment holder <span class="chip">NEW</span></span>
+      <p class="hint" style="margin:0 0 10px">Pay this employee's salary into another person's account (for example a spouse or authorised person) when a banking restriction applies.</p>
+      <div class="stack">
+        <label class="check"><span class="cb on"></span>Use a custom holder name</label>
+        <div class="field" style="margin-left:24px"><span class="lbl">Custom holder name<span class="req">*</span></span><span class="inp"><span class="ph">Must be filled in before Activate</span></span></div>
+        <label class="check" style="margin-top:6px"><span class="cb"></span>Use a custom holder identification</label>
+      </div>
+    </div>
+  </div></div>
+
+  <div class="card"><div class="sh">Others Statutory</div><div class="pad">
+    <p class="hint" style="margin:0 0 10px">Statutory settings that do not belong under EPF, SOCSO, EIS or Tax Information.</p>
+    <div class="field newmark"><span class="lbl">Subject to HRDF <span class="chip">MOVED HERE</span></span><span class="inp chev">Following the company's HRDF registration default</span></div>
+  </div></div>
+  <div class="note sideNote">Today the draft has one Statutory card plus an "Identification &amp; Tax" card, no custom holder ticks, a Yes/No "Tax resident" choice, and the HRDF choice mixed in with the tax fields.</div>
+</div>
+
+<div>
+  <div class="card"><div class="sh">Statutory (Malaysia)</div><div class="pad">
+    <div class="fs"><span class="legend">EPF contribution</span>
+      <div class="grid2">
+        <div class="field"><span class="lbl">EPF number</span><span class="inp"><span>••••</span></span></div>
+        <div class="field"><span class="lbl">EPF citizenship</span><span class="inp chev">Malaysian citizen</span></div>
+        <div class="field span2"><span class="lbl">EPF Category</span><span class="inp chev">Voluntary excess (i-Topup)</span></div>
+        <div class="field newmark"><span class="lbl">Employee rate % <span class="chip">NEW</span></span><span class="inp"><span class="ph">—</span></span></div>
+        <div class="field newmark"><span class="lbl">Employer rate %</span><span class="inp"><span class="ph">—</span></span></div>
+      </div>
+      <p class="hint" style="margin-top:8px">The rate boxes show for the categories that use rates; the Manual (by Amount) categories show Employee / Employer amount boxes instead, as on the active profile.</p>
+      <label class="check" style="margin-top:10px"><span class="cb"></span>Employer bears EPF Contribution</label>
+    </div>
+
+    <div class="fs"><span class="legend">SOCSO &amp; EIS information</span>
+      <div class="grid3">
+        <div class="field"><span class="lbl">SOCSO &amp; EIS number</span><span class="inp"><span>••••</span></span></div>
+        <div class="field"><span class="lbl">SOCSO category</span><span class="inp chev">Auto (follow PERKESO…</span></div>
+        <div class="field"><span class="lbl">EIS category</span><span class="inp chev">Auto (follow PERKESO…</span></div>
+      </div>
+      <div class="grid2" style="margin-top:12px">
+        <div class="stack"><span class="sublegend">Eligibility</span><label class="check newmark" style="padding:2px 4px"><span class="cb"></span>Subject to SKBBK <span class="chip">NEW</span></label></div>
+        <div class="stack"><span class="sublegend">Employer bears contribution</span><label class="check"><span class="cb"></span>Employer bears SOCSO</label><label class="check"><span class="cb"></span>Employer bears EIS</label><label class="check"><span class="cb"></span>Employer bears SKBBK</label></div>
+      </div>
+    </div>
+
+    <div class="fs"><span class="legend">Income Tax (PCB)</span>
+      <div class="sublegend" style="margin-bottom:8px">Tax information</div>
+      <div class="grid2">
+        <div class="field"><span class="lbl">Tax number</span><span class="inp"><span>••••</span></span></div>
+        <div class="field"><span class="lbl">Tax Category</span><span class="inp chev"><span class="ph">— Not set —</span></span></div>
+        <div class="field span2 newmark"><span class="lbl">Income Tax Resident <span class="chip">FULL LIST</span></span><span class="inp chev focus"><span class="ph">— Not set —</span></span>
+          <div class="pop flow"><div class="opt">Resident</div><div class="opt">Non-Resident</div><div class="opt">Returning Expert Program (REP)</div><div class="opt">Knowledge Worker (IRDA)</div><div class="opt">Position C-Suites</div></div>
+        </div>
+      </div>
+      <label class="check newmark" style="margin-top:12px;padding:2px 4px"><span class="cb"></span>Employer bears tax contribution <span class="chip">NEW</span></label>
+      <div class="sublegend" style="margin:16px 0 8px">Children (PCB relief)</div>
+      <div class="grid2">
+        <div class="field"><span class="lbl">Child relief mode</span><span class="inp chev">Manual (enter number)</span></div>
+        <div class="field"><span class="lbl">Disabled individual (OKU)</span><span class="inp chev">No</span></div>
+        <div class="field"><span class="lbl">Disabled spouse (OKU)</span><span class="inp chev">No</span></div>
+      </div>
+      <div class="note" style="margin-top:12px">The qualifying-children count and the relief amount are worked out from the saved family record, so they appear on the profile once the employee is activated.</div>
+    </div>
+  </div></div>
+</div>
+</div>
+</body></html>

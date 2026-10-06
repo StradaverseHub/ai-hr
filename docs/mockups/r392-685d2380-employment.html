@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Draft employee — Employment tab</title>
+<style>/*BASE*/
+.per{display:grid;grid-template-columns:1fr 1.1fr;gap:8px}
+.gone{outline:2px dashed var(--gone);outline-offset:3px;border-radius:12px}
+.pop.flow{position:static;margin-top:4px}
+.srch{margin:2px 2px 6px}
+.probline{grid-column:1/-1;margin-top:-4px;font-size:13px;border-left:3px solid var(--new);background:var(--newbg);color:#134e4a;padding:7px 10px;border-radius:8px}
+.mute{color:var(--muted-fg)}
+</style>
+<body>
+<div class="sketch"><b>SKETCH</b> A picture of the plan, not the finished screen. Wording, spacing and colours will differ.</div>
+<p class="title">Personnel › Create new employee (Draft) — Employment tab</p>
+<p class="lead">Step 1 of the three. Organisation and Employment Dates cards; fields not mentioned stay as they are.</p>
+<div class="cols">
+<!-- ================= BEFORE ================= -->
+<div class="col"><span class="tag before">TODAY</span>
+  <div class="card hdr"><div><div class="k">Employee ID</div><div class="v"><span class="mono">••••</span></div></div><div><div class="k">Full name</div><div class="v">Aisyah R</div></div><div><div class="k">Company</div><div class="v">Demo Sdn Bhd</div></div><span class="badge">Draft — pending activation</span></div>
+  <div class="tabs"><span>Profile</span><span class="on">Employment</span><span>Bank &amp; Statutory</span><span>Payroll</span><span>Family</span></div>
+  <div class="card"><div class="sh">Organisation</div><div class="pad grid2">
+    <div class="field"><span class="lbl">Department</span><span class="inp chev"><span class="ph">— Select —</span></span></div>
+    <div class="field"><span class="lbl">Position / Job title</span><span class="inp chev"><span class="ph">— None —</span></span></div>
+    <div class="field"><span class="lbl">Job grade</span><span class="inp chev"><span class="ph">— None —</span></span></div>
+    <div class="field"><span class="lbl">Employment type</span><span class="inp chev">Full-time</span></div>
+    <div class="field span2"><span class="lbl">Reporting manager</span><span class="inp chev focus"><span class="ph">— None —</span></span>
+      <div class="pop flow"><div class="opt dis">— None —</div><div class="opt">Adam Lee</div><div class="opt">Aiman Zulkifli</div><div class="opt">Alicia Wong</div><div class="opt">Amirul Hakim</div><div class="opt dis">⋮ every candidate in one long list, scrolled by hand</div></div>
+    </div>
+  </div></div>
+  <div class="card"><div class="sh">Employment Dates</div><div class="pad grid2">
+    <div class="field"><span class="lbl">Hire date</span><span class="inp"><span class="ph">dd/mm/yyyy</span></span><p class="hint">The first day of employment. After creation this date changes only through a movement event.</p></div>
+    <div class="field gone"><span class="lbl">Provisional end date</span><span class="inp"><span class="ph">dd/mm/yyyy</span></span><p class="hint">Probation end for full-time (defaults to +3 months); contract or internship end otherwise. Leave blank for none.</p></div>
+    <div class="field"><span class="lbl">Probation Period</span><div class="per"><span class="inp"><span class="ph">—</span></span><span class="inp chev">Month(s)</span></div></div>
+    <div class="field"><span class="lbl">Extended Probation Period</span><div class="per"><span class="inp"><span class="ph">—</span></span><span class="inp chev">Month(s)</span></div></div>
+    <div class="field"><span class="lbl">Confirmation Date</span><span class="inp"><span class="ph">dd/mm/yyyy</span></span></div>
+    <div class="field"><span class="lbl">Notice Before Confirmation</span><div class="per"><span class="inp"><span class="ph">—</span></span><span class="inp chev">Month(s)</span></div></div>
+  </div></div>
+  <div class="note">"Hire date" and "Reporting manager" use different words from the active profile. The end-date box (dashed) shows for every Employment type, Full-time included.</div>
+</div>
+
+<!-- ================= AFTER ================= -->
+<div class="col"><span class="tag after">AFTER THIS CHANGE</span>
+  <div class="card hdr"><div><div class="k">Employee ID</div><div class="v"><span class="mono">••••</span></div></div><div><div class="k">Full name</div><div class="v">Aisyah R</div></div><div><div class="k">Company</div><div class="v">Demo Sdn Bhd</div></div><span class="badge">Draft — pending activation</span></div>
+  <div class="tabs"><span>Profile</span><span class="on">Employment</span><span>Bank &amp; Statutory</span><span>Payroll</span><span>Family</span></div>
+  <div class="card"><div class="sh">Organisation</div><div class="pad grid2">
+    <div class="field"><span class="lbl">Department</span><span class="inp chev"><span class="ph">— Select —</span></span></div>
+    <div class="field"><span class="lbl">Position / Job title</span><span class="inp chev"><span class="ph">— None —</span></span></div>
+    <div class="field"><span class="lbl">Job grade</span><span class="inp chev"><span class="ph">— None —</span></span></div>
+    <div class="field"><span class="lbl">Employment type</span><span class="inp chev">Contract</span></div>
+    <div class="field newmark span2"><span class="lbl">Direct Superior <span class="chip">RENAMED · SEARCH</span></span><span class="inp chev"><span class="ph">No direct superior</span></span>
+      <div class="pop flow"><div class="srch"><span class="inp focus">dan</span></div><div class="opt hl"><span class="mono">••••</span> – Daniel Tan</div><div class="opt"><span class="mono">••••</span> – Danish Iskandar</div><div class="opt"><span class="mono">••••</span> – Wan Dania</div></div>
+    </div>
+  </div></div>
+  <p class="hint" style="margin:6px 4px 0">Type an Employee ID or part of a name. Same search box as the active profile, offering the same people the list offers today.</p>
+
+  <div class="variant">When Employment type is Contract (Intern: "Internship End Date")</div>
+  <div class="card"><div class="sh">Employment Dates</div><div class="pad grid2">
+    <div class="field newmark"><span class="lbl">Group Join Date <span class="chip">RENAMED</span></span><span class="inp"><span class="ph">dd/mm/yyyy</span></span><p class="hint">The Join Date for the current company starts on the same day.</p></div>
+    <div class="field newmark"><span class="lbl">Contract End Date</span><span class="inp"><span class="ph">dd/mm/yyyy</span></span><p class="hint">The contract expiry date — the last working day under this contract.</p></div>
+    <div class="field"><span class="lbl">Probation Period</span><div class="per"><span class="inp"><span class="ph">—</span></span><span class="inp chev">Month(s)</span></div></div>
+    <div class="field"><span class="lbl">Confirmation Date</span><span class="inp"><span class="ph">dd/mm/yyyy</span></span></div>
+    <div class="span2 mute" style="font-size:12px">Extended probation and notice periods: unchanged.</div>
+  </div></div>
+
+  <div class="variant">When Employment type is Full-time (Part-time: no end-date box either)</div>
+  <div class="card"><div class="sh">Employment Dates</div><div class="pad grid2">
+    <div class="field"><span class="lbl">Group Join Date</span><span class="inp"><span class="ph">dd/mm/yyyy</span></span><p class="hint">The Join Date for the current company starts on the same day.</p></div>
+    <div class="field newmark"><span class="lbl">Probation Period</span><div class="per"><span class="inp"><span class="ph">—</span></span><span class="inp chev">Month(s)</span></div><p class="hint">Starts filled in with your company's default probation length.</p></div>
+    <div class="probline"><b>Probation ends on</b> — &nbsp;<span class="mute">(Group Join Date plus the Probation Period)</span></div>
+    <div class="field"><span class="lbl">Confirmation Date</span><span class="inp"><span class="ph">dd/mm/yyyy</span></span></div>
+    <div class="span2 mute" style="font-size:12px">No end-date box. Extended probation and notice periods: unchanged.</div>
+  </div></div>
+</div>
+</div>
+</body></html>

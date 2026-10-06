@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Add fixed transaction — company's named payroll cycles</title>
+<style>/*BASE*/
+.stage{position:relative;background:rgb(0 0 0/.5);border-radius:20px;padding:28px 22px 40px;min-height:560px}
+.dlg{background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-pop);padding:24px}
+.dlg h5{margin:0;font-size:16px;font-weight:600}
+.dlg .desc{margin:4px 0 0;font-size:13.5px;color:var(--muted-fg)}
+form{margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.acts{grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
+.pop{top:100%!important;position:absolute!important}
+</style>
+<body>
+<div class="sketch"><b>SKETCH</b> A picture of the plan, not the finished screen. Wording, spacing and colours will differ.</div>
+<p class="title">Payroll › Transaction Entry › Fixed Transaction › Add New Fixed Transaction — the Payroll cycle list</p>
+<p class="lead">Shown with the six cycles a company gets by default. A company that has renamed, added or switched off cycles sees its own list instead.</p>
+<div class="cols">
+  <div class="col"><span class="tag before">TODAY</span>
+    <div class="stage"><div class="dlg">
+      <h5>Add fixed transaction</h5>
+      <p class="desc">Add a fixed amount for a pay item over a date range. It applies to payroll runs whose period falls in that range. Changes take effect on the next generated payslip.</p>
+      <form>
+        <div class="field"><span class="lbl">Pay item<span class="req">*</span></span><span class="inp chev"><span>•••• — Pay item</span></span></div>
+        <div class="field"><span class="lbl">Payroll cycle<span class="req">*</span></span><span class="inp chev focus"><span class="ph">—</span></span>
+          <div class="pop"><div class="opt dis">—</div><div class="opt hl">Regular</div><div class="opt">Off-cycle</div><div class="opt">Bonus</div><div class="opt">Adjustment</div></div>
+        </div>
+        <div class="field"><span class="lbl">Amount<span class="req">*</span></span><span class="inp"></span></div>
+        <div class="field"><span class="lbl">Start date<span class="req">*</span></span><span class="inp"><span class="ph">dd/mm/yyyy</span></span></div>
+        <div class="field"><span class="lbl">End date</span><span class="inp"><span class="ph">dd/mm/yyyy</span></span></div>
+        <div class="field"><span class="lbl">Remarks</span><span class="inp"></span></div>
+        <div class="acts"><span class="btn sm outline">Cancel</span><span class="btn sm primary">Add</span></div>
+      </form>
+    </div></div>
+    <div class="note">The same four general labels for every company. They are not the cycles set up under Payroll Cycles, and the three off-cycle cycles cannot be told apart.</div>
+  </div>
+  <div class="col"><span class="tag after">AFTER THIS CHANGE</span>
+    <div class="stage"><div class="dlg">
+      <h5>Add fixed transaction</h5>
+      <p class="desc">Add a fixed amount for a pay item over a date range. It applies to payroll runs whose period falls in that range. Changes take effect on the next generated payslip.</p>
+      <form>
+        <div class="field"><span class="lbl">Pay item<span class="req">*</span></span><span class="inp chev"><span>•••• — Pay item</span></span></div>
+        <div class="field"><span class="lbl">Payroll cycle<span class="req">*</span></span><span class="inp chev focus"><span class="ph">—</span></span>
+          <div class="pop newmark"><div class="opt dis">—</div><div class="opt">Monthly</div><div class="opt">Bonus</div><div class="opt">Off-cycle</div><div class="opt">Adjustment</div><div class="opt">Advance Salary</div><div class="opt hl">Mid-Month</div></div>
+        </div>
+        <div class="field"><span class="lbl">Amount<span class="req">*</span></span><span class="inp"></span></div>
+        <div class="field"><span class="lbl">Start date<span class="req">*</span></span><span class="inp"><span class="ph">dd/mm/yyyy</span></span></div>
+        <div class="field"><span class="lbl">End date</span><span class="inp"><span class="ph">dd/mm/yyyy</span></span></div>
+        <div class="field"><span class="lbl">Remarks</span><span class="inp"></span></div>
+        <div class="acts"><span class="btn sm outline">Cancel</span><span class="btn sm primary">Add</span></div>
+      </form>
+    </div></div>
+    <div class="note"><span class="chip">NEW</span> The cycle names set up for the <b>employee's own company</b> under Payroll › Settings › Payroll Cycles, in the order shown there. Inactive cycles are not offered. The Edit screen uses the same list, and the fixed transaction list and Transaction View show the chosen cycle's name.</div>
+  </div>
+</div>
+</body></html>

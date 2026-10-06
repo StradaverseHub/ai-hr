@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Draft employee — Payroll tab</title>
+<style>/*BASE*/
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.pop.flow{position:static;margin-top:4px}
+.grp{border-top:1px solid var(--border);padding:16px}
+.grp.newmark{outline-offset:-3px;border-radius:0 0 20px 20px}
+.newcard{border:2px solid var(--new)}
+</style>
+<body>
+<div class="sketch"><b>SKETCH</b> A picture of the plan, not the finished screen. Wording, spacing and colours will differ.</div>
+<p class="title">Personnel › Create new employee (Draft) — Payroll tab, after this change</p>
+<p class="lead">Payment Method and Payroll Policy are added, the same controls as on the active profile. Green outlines mark what is new; the Basic Salary fields stay as they are.</p>
+<div style="max-width:880px">
+<div class="card hdr"><div><div class="k">Employee ID</div><div class="v"><span class="mono">••••</span></div></div><div><div class="k">Full name</div><div class="v">Aisyah R</div></div><div><div class="k">Company</div><div class="v">Demo Sdn Bhd</div></div><span class="badge">Draft — pending activation</span></div>
+<div class="tabs"><span>Profile</span><span>Employment</span><span>Bank &amp; Statutory</span><span class="on">Payroll</span><span>Family</span></div>
+
+<div class="card"><div class="sh">Basic Salary</div>
+  <div class="pad grid2">
+    <div class="field"><span class="lbl">Initial basic salary (MYR)</span><span class="inp"><span class="ph">Leave blank if there is no basic salary</span></span></div>
+    <div class="field"><span class="lbl">Monthly allowance</span><span class="inp"></span></div>
+    <div class="field"><span class="lbl">Pay Mode</span><span class="inp chev">Monthly</span></div>
+    <div class="field"><span class="lbl">Payment Term</span><span class="inp chev">Monthly</span></div>
+    <div class="field span2"><span class="lbl">Remarks</span><span class="inp"></span></div>
+  </div>
+  <div class="grp newmark">
+    <div class="legend" style="color:var(--muted-fg);font-weight:500;margin-bottom:10px">How This Employee Is Paid <span class="chip">NEW</span></div>
+    <div class="grid3">
+      <div class="field"><span class="lbl">Payment Method</span><span class="inp chev focus">Not specified</span>
+        <div class="pop flow"><div class="opt">Not specified</div><div class="opt hl">Bank Transfer</div><div class="opt">Cheque</div><div class="opt">Cash</div></div>
+      </div>
+    </div>
+    <p class="hint" style="margin-top:10px">Bank Transfer needs the bank and the account number on the Bank &amp; Statutory tab. Until both are there, the draft's list of what Activate still needs says so.</p>
+  </div>
+</div>
+
+<div class="card newcard"><div class="sh">Payroll policy <span class="chip">NEW</span></div>
+  <div class="pad">
+    <div class="field" style="max-width:360px"><span class="lbl">Applied policy</span><span class="inp chev">Monthly (default)</span></div>
+    <p class="hint" style="margin-top:10px">Offers the same list as the active profile: this company's active payroll policies, or the Monthly default. Shown only where Payroll is switched on.</p>
+  </div>
+</div>
+<div class="note">Both are carried onto the active profile when you press Activate, and are checked before the employee is created.</div>
+</div>
+</body></html>
