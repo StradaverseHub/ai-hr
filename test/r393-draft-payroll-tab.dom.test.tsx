@@ -20,7 +20,6 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { NextIntlClientProvider, useTranslations, type IntlError } from 'next-intl';
 import type { ReactNode } from 'react';
 import en from '../messages/en.json';
@@ -50,7 +49,8 @@ vi.mock('../app/admin/personnel/new/actions', () => ({
 
 const { EmployeeWizard } = await import('../app/admin/personnel/new/wizard');
 
-const root = fileURLToPath(new URL('..', import.meta.url));
+// jsdom's import.meta.url is not a file: URL, so the repo root is the working directory vitest runs in.
+const root = `${process.cwd()}/`;
 const LOCALES = { en, ms, zh, ta, th, vi: vi_ } as const;
 type Msgs = typeof en;
 
