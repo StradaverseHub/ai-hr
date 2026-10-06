@@ -226,8 +226,8 @@ export function EmployeeWizard({
   const isContractHire = employmentType === 'contract';
   const showsEndDateBox = draftShowsEndDateBox(employmentType);
   const endDate = draftProvisionalEndOn(data.employment);
-  // Two literal `t()` calls rather than a computed key — a template key is invisible to
-  // test/i18n-coverage.test.ts check C. Null for the two types that show no box.
+  // The box's name for the outstanding list. Literal `t()` calls rather than a computed key — a template
+  // key is invisible to test/i18n-coverage.test.ts check C. Null for the two types that show no box.
   const endDateLabel = isContractHire
     ? t('fields.contractEndDate')
     : employmentType === 'intern'
@@ -786,8 +786,8 @@ export function EmployeeWizard({
                 For Full-Time the end of probation is worked out from the Probation Period below and shown
                 as a read-only line; Part-Time carries no end date (Activate sends null whatever is stored).
                 Literal `t()` calls per type, never a computed key (test/i18n-coverage.test.ts check C). */}
-            {showsEndDateBox && endDateLabel && (
-              <Field label={endDateLabel}>
+            {showsEndDateBox && (
+              <Field label={isContractHire ? t('fields.contractEndDate') : t('fields.internshipEndDate')}>
                 <input
                   type="date"
                   className={inputCls}
