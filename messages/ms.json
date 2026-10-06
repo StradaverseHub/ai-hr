@@ -1945,7 +1945,8 @@
         "employmentPeriods": "Tempoh percubaan dan notis",
         "groupJoinDate": "Tarikh Menyertai Kumpulan",
         "directSuperior": "Ketua Langsung",
-        "internshipEndDate": "Tarikh Tamat Latihan"
+        "internshipEndDate": "Tarikh Tamat Latihan",
+        "paymentMethodBank": "Maklumat bank untuk Pindahan Bank"
       },
       "employmentType": {
         "full_time": "Sepenuh masa",
@@ -1966,7 +1967,8 @@
         "noBasicSalary": "Gaji Asas Permulaan kosong atau sifar. Sila lengkapkan Mod Bayaran, Terma Bayaran dan Catatan sebelum mengaktifkan pekerja ini.",
         "companyFixed": "Ia menentukan peraturan ID Pekerja yang terpakai, dan tidak boleh diubah setelah rekod dicipta.",
         "groupJoinDate": "Hari pertama bersama kumpulan. Tarikh Menyertai untuk syarikat ini bermula pada hari yang sama. Selepas penciptaan, kedua-dua tarikh hanya berubah melalui peristiwa pergerakan.",
-        "internshipEndDate": "Hari terakhir latihan. Ia memacu semakan tamat latihan."
+        "internshipEndDate": "Hari terakhir latihan. Ia memacu semakan tamat latihan.",
+        "paymentMethodBankTransfer": "Pindahan Bank memerlukan nama bank dan nombor akaun pada tab Bank & Statutori. Selagi kedua-duanya belum diisi, senarai perkara yang masih diperlukan untuk Aktifkan akan menyatakannya."
       },
       "backLabel": "Kembali ke Pengurusan Kakitangan",
       "title": "Cipta pekerja baharu",
@@ -2026,7 +2028,9 @@
         "bank": "Maklumat Bank",
         "statutoryMalaysia": "Berkanun (Malaysia)",
         "identityTax": "Pengenalan & Cukai",
-        "compensation": "Gaji Asas"
+        "compensation": "Gaji Asas",
+        "payMethodGroup": "Cara Pekerja Ini Dibayar",
+        "payrollPolicy": "Dasar gaji"
       },
       "draftStatus": "Draf — menunggu pengaktifan",
       "cancel": "Batal",
@@ -12173,7 +12177,8 @@
         "dailyRate": "Masukkan kadar sehari melebihi sifar.",
         "hourlyRate": "Masukkan kadar sejam melebihi sifar."
       }
-    }
+    },
+    "assignUnavailable": "Dasar yang dipilih tidak lagi tersedia — pilih yang lain"
   },
   "leaveApproval": {
     "description": "Pilih siapa yang meluluskan cuti, dan dalam susunan apa, bagi setiap syarikat.",

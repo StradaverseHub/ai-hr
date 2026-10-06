@@ -1945,7 +1945,8 @@
         "employmentPeriods": "试用期与通知期",
         "groupJoinDate": "集团入职日期",
         "directSuperior": "直属上级",
-        "internshipEndDate": "实习结束日期"
+        "internshipEndDate": "实习结束日期",
+        "paymentMethodBank": "银行转账所需的银行信息"
       },
       "employmentType": {
         "full_time": "全职",
@@ -1966,7 +1967,8 @@
         "noBasicSalary": "初始基本薪金为空或零。启用该员工之前，请填写计薪方式、付款周期和备注。",
         "companyFixed": "它决定适用哪条员工编号规则，记录创建后不可更改。",
         "groupJoinDate": "加入集团的第一天。本公司的入职日期从同一天开始。创建之后，这两个日期只能通过异动事件更改。",
-        "internshipEndDate": "实习的最后一天。该日期驱动实习结束审核。"
+        "internshipEndDate": "实习的最后一天。该日期驱动实习结束审核。",
+        "paymentMethodBankTransfer": "银行转账需要在「银行与法定」标签页填写银行名称和账号。在两项都填写之前，激活仍需项目列表会提示这一点。"
       },
       "backLabel": "返回员工管理",
       "title": "创建新员工",
@@ -2026,7 +2028,9 @@
         "bank": "银行信息",
         "statutoryMalaysia": "法定信息（马来西亚）",
         "identityTax": "身份与税务",
-        "compensation": "基本薪资"
+        "compensation": "基本薪资",
+        "payMethodGroup": "该员工的支付方式",
+        "payrollPolicy": "薪资政策"
       },
       "draftStatus": "草稿 — 待启用",
       "cancel": "取消",
@@ -12173,7 +12177,8 @@
         "dailyRate": "请输入大于零的每日费率。",
         "hourlyRate": "请输入大于零的每小时费率。"
       }
-    }
+    },
+    "assignUnavailable": "所选政策已不可用 — 请另选一个"
   },
   "leaveApproval": {
     "description": "为每家公司选择由谁审批请假以及审批顺序。",

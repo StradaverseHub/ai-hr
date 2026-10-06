@@ -154,7 +154,10 @@ import { addEmergencyContactAction, editEmergencyContactAction, deleteEmergencyC
 import { FamilyFormDialog } from '@/components/family-form-dialog';
 import { FamilyRelationshipFields } from '@/components/family-relationship-fields';
 import { listAssignablePolicies } from '@/core/payroll-policy';
-import { PAYMENT_METHODS } from '@/core/org';
+// r393 (685d2380 step 2) — Payment Method and Payroll Policy are shared field groups now, rendered here in
+// form mode and on the draft employee's Payroll tab in controlled mode.
+import { PaymentMethodField } from '@/components/payment-method-field';
+import { PayrollPolicyField } from '@/components/payroll-policy-field';
 import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
 import { employmentScheduleGroupId, listShiftsForTenant } from '@/core/roster';
 // 18504ca6 — the dated Shift arrangement ladder behind the card's new Effective date + Shift history list.
@@ -2323,14 +2326,9 @@ export default async function EmployeePage({
       <SectionHeader title={tp('assignTitle')} />
           <form action={assignPolicyAction} data-save-section="policy" className="flex flex-wrap items-end gap-3 p-4">
             <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <Field label={tp('assignLabel')}>
-              <select name="policyId" defaultValue={emp.payrollPolicyId ?? ''} className={inputCls}>
-                <option value="">{tp('assignNone')}</option>
-                {assignablePolicies.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </Field>
+            {/* r393 (685d2380 step 2) — the SHARED select the draft's Payroll tab renders too, in form mode
+                (markup unchanged — pinned by test/r393-draft-payroll-tab.dom.test.tsx). */}
+            <PayrollPolicyField mode="form" defaultValue={emp.payrollPolicyId} policies={assignablePolicies} />
           </form>
           {emp.payrollPolicyId && emp.payrollPolicyStatus !== 'active' && (
             <p className="px-4 pb-3 text-xs text-amber-600 dark:text-amber-400">{tp('assignInactiveNote')}</p>
@@ -3070,22 +3068,9 @@ export default async function EmployeePage({
               rather than saved as an unpayable row. */}
           <form action={setPaymentMethodAction} data-save-section="payment" className="flex flex-col gap-1.5">
             <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <span className="text-xs font-medium text-muted-foreground">{t('paymentMethod')}</span>
-            <div className="flex gap-2">
-              <select
-                name="paymentMethod"
-                defaultValue={emp.paymentMethod ?? ''}
-                disabled={!!emp.terminatedOn}
-                className={inputCls}
-              >
-                <option value="">{t('paymentMethodNotSet')}</option>
-                {PAYMENT_METHODS.map((m) => (
-                  <option key={m} value={m}>
-                    {t(`paymentMethod_${m}` as 'paymentMethod_bank_transfer')}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* r393 (685d2380 step 2) — the SHARED field group the draft's Payroll tab renders too, in
+                form mode (markup unchanged — pinned by test/r393-draft-payroll-tab.dom.test.tsx). */}
+            <PaymentMethodField mode="form" defaultValue={emp.paymentMethod} disabled={!!emp.terminatedOn} />
           </form>
         </div>
         <p className="text-xs text-muted-foreground">{t('paymentMethodBankHint')}</p>

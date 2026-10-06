@@ -111,6 +111,15 @@ import {
   HrdfSubjectField,
 } from '@/components/tax-relief-fields';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
+// r393 (685d2380 step 2) — Payment Method and Payroll Policy, the SAME field groups the Personnel record's
+// Payroll tab renders (form mode there, controlled here), so the two screens offer the same answers in the
+// same words.
+import { PaymentMethodField } from '@/components/payment-method-field';
+import {
+  PayrollPolicyField,
+  PayrollPolicyHint,
+  type AssignablePolicyOption,
+} from '@/components/payroll-policy-field';
 import { hireOptionVisible } from '@/lib/hire-form-filter';
 import {
   DEFAULT_EMPLOYMENT_TYPE,
@@ -153,6 +162,8 @@ export function EmployeeWizard({
   relationshipOptions,
   countryOptions,
   stateOptions,
+  payrollOn = false,
+  payrollPolicies = [],
 }: {
   today: string;
   draftId: string;
@@ -189,6 +200,12 @@ export function EmployeeWizard({
    *  Address card reads it (active options only). `countryOptions` above is the SAME country catalog that
    *  card uses, so the address blocks share it rather than resolving a second copy of one list. */
   stateOptions: { value: string; label: string }[];
+  /** r393 (685d2380 step 2) — is Payroll switched on for this draft's company? Decides whether the Payroll
+   *  tab shows the Payroll Policy picker at all (the record's own rule). Absent ⇒ off. */
+  payrollOn?: boolean;
+  /** r393 — the draft company's ACTIVE payroll policies (`listAssignablePolicies`), plain data. Blank in
+   *  the picker is the Monthly default. Empty when Payroll is off. */
+  payrollPolicies?: AssignablePolicyOption[];
 }) {
   const t = useTranslations('people.wizard');
   const router = useRouter();
@@ -1082,6 +1099,7 @@ export function EmployeeWizard({
       </>
     ),
     payroll: (
+      <>
       <Card>
         <SectionHeader title={t('sections.compensation')} />
         <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
@@ -1175,6 +1193,43 @@ export function EmployeeWizard({
             )}
         </div>
       </Card>
+      {/* r393 (685d2380 step 2) — HOW THIS EMPLOYEE IS PAID, the record's own select and the record's own
+          heading (`sections.payMethodGroup`, pinned equal to people.detail.payMethodGroup). Bank Transfer
+          needs the bank and the account number from the Bank & Statutory tab; until both are there
+          `missingByTab` lists `paymentMethodBank` above the Activate button — the SAME predicate the
+          record's writer refuses with — and the hint below says so where the choice is made. */}
+      <Card>
+        <SectionHeader title={t('sections.payMethodGroup')} />
+        <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5" data-payment-method>
+            <PaymentMethodField
+              mode="controlled"
+              value={data.payroll?.paymentMethod}
+              onChange={(paymentMethod) => set('payroll', { paymentMethod })}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground sm:col-span-2">{t('hints.paymentMethodBankTransfer')}</p>
+        </div>
+      </Card>
+      {/* r393 — THE PAYROLL POLICY, only where Payroll is switched on for this company (the record's
+          `payrollOn` rule). The list is the record's: this company's active policies, blank = the Monthly
+          default. The company is fixed on a draft (see the header), so a pick can never be left pointing
+          at another company's policy by this screen; Activate refuses one that a blob somehow carries. */}
+      {payrollOn && (
+        <Card>
+          <SectionHeader title={t('sections.payrollPolicy')} />
+          <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2" data-payroll-policy>
+            <PayrollPolicyField
+              mode="controlled"
+              value={data.payroll?.payrollPolicyId}
+              policies={payrollPolicies}
+              onChange={(payrollPolicyId) => set('payroll', { payrollPolicyId })}
+            />
+            <PayrollPolicyHint className="text-xs text-muted-foreground sm:col-span-2" />
+          </div>
+        </Card>
+      )}
+      </>
     ),
     /* 759dfc7d work item 1 — FAMILY, the one tab of the activated record a draft could never have had,
        because `employee_dependent` is keyed to a person and a draft creates none. It is edited into the

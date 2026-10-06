@@ -138,6 +138,12 @@ describe('§2 the draft borrows the record\'s OWN words, in all six locales', ()
       statutoryMalaysia: 'statutoryMalaysia',
       identityTax: 'identityTaxCardTitle',
       compensation: 'compensation',
+      // r393 (685d2380 step 2) — the Payroll tab's two new cards. "How This Employee Is Paid" is the
+      // record's own group heading on its Payroll tab; "Payroll policy" is the record's Payroll policy card
+      // title, which lives in the `payrollPolicy` namespace rather than under people.detail — hence the
+      // leading `/`, read from the catalogue ROOT instead.
+      payMethodGroup: 'payMethodGroup',
+      payrollPolicy: '/payrollPolicy.assignTitle',
     };
     const dig = (node: unknown, path: string): unknown =>
       path.split('.').reduce<unknown>(
@@ -151,7 +157,7 @@ describe('§2 the draft borrows the record\'s OWN words, in all six locales', ()
       // heading of its own invention would slip past a loop that only walked this table.
       expect(Object.keys(draftSections).sort(), `${loc} wizard.sections keys`).toEqual(Object.keys(SECTIONS).sort());
       for (const [key, path] of Object.entries(SECTIONS)) {
-        const record = dig(m.people.detail, path);
+        const record = path.startsWith('/') ? dig(m, path.slice(1)) : dig(m.people.detail, path);
         expect(String(record ?? '').trim(), `${loc} the record's heading behind sections.${key}`).not.toBe('');
         expect(draftSections[key], `${loc} wizard.sections.${key} must equal the record's own heading`)
           .toBe(record);
@@ -165,7 +171,7 @@ describe('§2 the draft borrows the record\'s OWN words, in all six locales', ()
     const src = read(WIZARD);
     for (const k of DRAFT_TABS) expect(src, `t('tabs.${k}')`).toContain(`t('tabs.${k}')`);
     for (const k of ['personalDetails', 'contactAddress', 'organisation', 'employmentDates', 'bank',
-      'statutoryMalaysia', 'identityTax', 'compensation']) {
+      'statutoryMalaysia', 'identityTax', 'compensation', 'payMethodGroup', 'payrollPolicy']) {
       expect(src, `t('sections.${k}')`).toContain(`t('sections.${k}')`);
     }
     expect(src).not.toContain('t(`tabs.${');

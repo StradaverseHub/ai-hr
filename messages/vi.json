@@ -1945,7 +1945,8 @@
         "employmentPeriods": "Thời gian thử việc và báo trước",
         "groupJoinDate": "Ngày gia nhập tập đoàn",
         "directSuperior": "Cấp trên trực tiếp",
-        "internshipEndDate": "Ngày kết thúc thực tập"
+        "internshipEndDate": "Ngày kết thúc thực tập",
+        "paymentMethodBank": "Thông tin ngân hàng cho Chuyển khoản ngân hàng"
       },
       "employmentType": {
         "full_time": "Toàn thời gian",
@@ -1966,7 +1967,8 @@
         "noBasicSalary": "Lương cơ bản ban đầu đang để trống hoặc bằng không. Vui lòng hoàn tất Hình thức tính lương, Kỳ lương và Ghi chú trước khi kích hoạt nhân viên này.",
         "companyFixed": "Nó quyết định quy tắc mã nhân viên nào được áp dụng và không thể đổi sau khi bản ghi được tạo.",
         "groupJoinDate": "Ngày đầu tiên làm việc tại tập đoàn. Ngày gia nhập của công ty này bắt đầu cùng ngày. Sau khi tạo, cả hai ngày chỉ thay đổi qua sự kiện điều động.",
-        "internshipEndDate": "Ngày cuối cùng của kỳ thực tập. Ngày này kích hoạt đợt rà soát kết thúc thực tập."
+        "internshipEndDate": "Ngày cuối cùng của kỳ thực tập. Ngày này kích hoạt đợt rà soát kết thúc thực tập.",
+        "paymentMethodBankTransfer": "Chuyển khoản ngân hàng cần tên ngân hàng và số tài khoản ở tab Ngân hàng & Luật định. Cho đến khi có đủ cả hai, danh sách những gì còn cần để Kích hoạt sẽ ghi rõ điều đó."
       },
       "backLabel": "Quay lại Quản lý Nhân sự",
       "title": "Tạo nhân viên mới",
@@ -2026,7 +2028,9 @@
         "bank": "Thông tin ngân hàng",
         "statutoryMalaysia": "Pháp lý (Malaysia)",
         "identityTax": "Nhận dạng & Thuế",
-        "compensation": "Lương cơ bản"
+        "compensation": "Lương cơ bản",
+        "payMethodGroup": "Nhân viên này được trả lương như thế nào",
+        "payrollPolicy": "Chính sách lương"
       },
       "draftStatus": "Nháp — chờ kích hoạt",
       "cancel": "Hủy",
@@ -12173,7 +12177,8 @@
         "dailyRate": "Nhập mức theo ngày lớn hơn 0.",
         "hourlyRate": "Nhập mức theo giờ lớn hơn 0."
       }
-    }
+    },
+    "assignUnavailable": "Chính sách đã chọn không còn khả dụng — hãy chọn chính sách khác"
   },
   "leaveApproval": {
     "description": "Chọn ai phê duyệt nghỉ phép và theo thứ tự nào cho mỗi công ty.",

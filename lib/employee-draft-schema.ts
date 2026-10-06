@@ -38,6 +38,7 @@
 import { resolveEmployeeIdMode, type EmployeeIdRule } from './employee-id-mode';
 import { copyPermanentToCorrespondence } from './address-blocks';
 import { addEmploymentPeriod } from './employment-period';
+import { bankTransferLacksBank } from './payment-methods';
 
 export type EmployeeDraftProfile = {
   fullName?: string;
@@ -305,6 +306,26 @@ export type EmployeeDraftPayroll = {
   paymentTerm?: string;
   rateAmount?: string;
   remarks?: string;
+  /**
+   * r393 (item 685d2380 step 2) — HOW THE EMPLOYEE IS PAID, the Active profile's "How This Employee Is
+   * Paid" select: '' | 'bank_transfer' | 'cheque' | 'cash' (`PAYMENT_METHODS`, lib/payment-methods.ts).
+   * Blank / absent is "Not specified", exactly as on the record (`employment.payment_method` NULL).
+   *
+   * It lands through `setEmploymentPaymentMethod` — the writer the record's own select saves through —
+   * AFTER the statutory write, because that writer reads the bank destination from the statutory row.
+   * Bank Transfer without both a bank name and an account number is named on this tab by `missingByTab`
+   * (`paymentMethodBank`) and refused by `completeEmployeeDraft` before `hireEmployee`, with the SAME
+   * predicate the writer uses (`bankTransferLacksBank`).
+   */
+  paymentMethod?: string;
+  /**
+   * r393 (item 685d2380 step 2) — THE PAYROLL POLICY, the Active profile's "Applied policy" select: the
+   * id of one of the DRAFT COMPANY'S ACTIVE payroll policies, or blank = the Monthly default (null).
+   * Shown only where Payroll is switched on; lands through `assignPolicy` (via packs/payroll/service).
+   * Not judged here — whether a policy exists, is active and belongs to the draft's company needs the
+   * database, so `completeEmployeeDraft` judges it before anything is created.
+   */
+  payrollPolicyId?: string;
 };
 
 /**
@@ -769,6 +790,13 @@ export function missingByTab(data: EmployeeDraftData): Record<DraftTabKey, strin
   // Mirrors setCompensation: a daily or hourly worker without a positive rate cannot be paid.
   if ((pay.payMode === 'daily' || pay.payMode === 'hourly') && !(Number(pay.rateAmount) > 0))
     payroll.push('rateAmount');
+  // r393 (685d2380 step 2) — BANK TRANSFER NEEDS SOMEWHERE TO TRANSFER TO. The bank and the account
+  // number are on the Bank & Statutory tab, but the CHOICE that needs them is here, so this tab is the one
+  // that names it. `bankTransferLacksBank` is the SAME predicate `setEmploymentPaymentMethod` refuses with
+  // (MissingBankForTransferError) — that writer runs after `hireEmployee` has committed, so its refusal has
+  // to be provoked here, where it costs nothing.
+  if ((pay.paymentMethod ?? '').trim() === 'bank_transfer' && bankTransferLacksBank(s))
+    payroll.push('paymentMethodBank');
 
   // ── Family (item 759dfc7d) ──────────────────────────────────────────────────────────────────────
   // NO FAMILY MEMBER IS REQUIRED — most new joiners have nothing to record here, and a tab that

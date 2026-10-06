@@ -37,6 +37,7 @@ import { assertProfileValueAllowed, type ProfileOptionCategory } from './profile
 import { writeSingleEmergencyContactInTx } from './emergency-contacts';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { addEmploymentPeriod } from '../lib/employment-period';
+import { PAYMENT_METHODS, bankTransferLacksBank, type PaymentMethod } from '../lib/payment-methods';
 import {
   person,
   employment,
@@ -3106,9 +3107,10 @@ export async function setEmploymentBlacklist(
   });
 }
 
-/** R46 79eb7151 — the disbursement channels an employee can be paid through. */
-export const PAYMENT_METHODS = ['bank_transfer', 'cheque', 'cash'] as const;
-export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+/** R46 79eb7151 — the disbursement channels an employee can be paid through. r393 (685d2380 step 2) — the
+ *  list and the bank rule now live in lib/payment-methods.ts (client-safe), because the draft's Payroll tab
+ *  judges the same rule in the browser; re-exported here so every existing importer is unchanged. */
+export { PAYMENT_METHODS, type PaymentMethod };
 
 /** R46 79eb7151 — Payment Method is 'bank_transfer' but the employee has no usable bank destination. */
 export class MissingBankForTransferError extends Error {
@@ -3165,7 +3167,8 @@ export async function setEmploymentPaymentMethod(
         .from(employeeStatutoryMy)
         .where(eq(employeeStatutoryMy.personId, before.personId))
         .limit(1);
-      if (!bank?.bankName?.trim() || !bank?.bankAccountNo?.trim()) {
+      // The SAME predicate the draft's Payroll tab and `completeEmployeeDraft` judge with (r393).
+      if (!bank || bankTransferLacksBank(bank)) {
         throw new MissingBankForTransferError();
       }
     }

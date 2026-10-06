@@ -1945,7 +1945,8 @@
         "employmentPeriods": "Probation and notice periods",
         "groupJoinDate": "Group Join Date",
         "directSuperior": "Direct Superior",
-        "internshipEndDate": "Internship End Date"
+        "internshipEndDate": "Internship End Date",
+        "paymentMethodBank": "Bank details for Bank Transfer"
       },
       "employmentType": {
         "full_time": "Full-time",
@@ -1966,7 +1967,8 @@
         "noBasicSalary": "Initial Basic Salary is blank or zero. Please complete Pay Mode, Payment Term and Remarks before activating the employee.",
         "companyFixed": "It decides which Employee ID rule applies, and it cannot be changed once the record is created.",
         "groupJoinDate": "The first day with the group. The Join Date for this company starts on the same day. After creation either date changes only through a movement event.",
-        "internshipEndDate": "The last day of the internship. It drives the internship end review."
+        "internshipEndDate": "The last day of the internship. It drives the internship end review.",
+        "paymentMethodBankTransfer": "Bank Transfer needs the bank and the account number on the Bank & Statutory tab. Until both are there, the list of what Activate still needs says so."
       },
       "backLabel": "Back to Personnel Management",
       "title": "Create new employee",
@@ -2026,7 +2028,9 @@
         "bank": "Bank Information",
         "statutoryMalaysia": "Statutory (Malaysia)",
         "identityTax": "Identification & Tax",
-        "compensation": "Basic Salary"
+        "compensation": "Basic Salary",
+        "payMethodGroup": "How This Employee Is Paid",
+        "payrollPolicy": "Payroll policy"
       },
       "draftStatus": "Draft — pending activation",
       "cancel": "Cancel",
@@ -12173,7 +12177,8 @@
         "dailyRate": "Enter a per-day rate greater than zero.",
         "hourlyRate": "Enter a per-hour rate greater than zero."
       }
-    }
+    },
+    "assignUnavailable": "Chosen policy is no longer available — choose another"
   },
   "leaveApproval": {
     "description": "Choose who signs off on leave, and in what order, for each company.",

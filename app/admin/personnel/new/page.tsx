@@ -11,6 +11,10 @@ import { listPositions, listCostCenters, listBusinessUnits } from '@/core/admin'
 import { resolveProbationMonths } from '@/core/org';
 import { getHiringDefaults } from '@/core/hiring-defaults';
 import { getEmployeeDraft } from '@/core/employee-draft';
+// r393 (685d2380 step 2) — the Payroll Policy picker offers what the Personnel record's offers: the DRAFT
+// COMPANY'S active policies, read through the Payroll pack's facade, and only where Payroll is switched on.
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
+import { listAssignablePolicies } from '@/packs/payroll/service';
 // Item a72610af — the Employment tab's three defaults are SEEDED INTO the draft here, on the server,
 // against the draft as loaded. See the function's own header for why a display-only fallback was the bug.
 import { withEmploymentDefaults } from '@/lib/employee-draft-schema';
@@ -169,6 +173,17 @@ export default async function CreateEmployeePage({
     ? resolveProbationMonths((await getHiringDefaults(session, draftCompanyId))?.probationMonths)
     : 3;
 
+  // r393 (685d2380 step 2) — PAYROLL SWITCHED ON for this draft's company decides whether the Payroll tab
+  // shows the policy picker at all (the record's own `payrollOn` rule, asked about the draft's company), and
+  // the picker offers the SAME list the record's does: `listAssignablePolicies` for that company — active
+  // policies only — with blank meaning the Monthly default. `completeEmployeeDraft` asks the same question
+  // and ignores a stored policy when the answer is no, so what is hidden here is also not applied.
+  const payrollOn = draftCompanyId ? isModuleEnabledOrFalse(session, 'payroll', draftCompanyId) : false;
+  const payrollPolicies =
+    payrollOn && draftCompanyId
+      ? (await listAssignablePolicies(session, draftCompanyId)).map((p) => ({ id: p.id, name: p.name }))
+      : [];
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
@@ -227,6 +242,8 @@ export default async function CreateEmployeePage({
         relationshipOptions={dependentRelationships.map((o) => ({ value: o.value, label: o.label }))}
         countryOptions={countries.map((o) => ({ value: o.value, label: o.label }))}
         stateOptions={states.map((o) => ({ value: o.value, label: o.label }))}
+        payrollOn={payrollOn}
+        payrollPolicies={payrollPolicies}
       />
     </div>
   );

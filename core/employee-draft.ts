@@ -43,7 +43,20 @@ import { appendEvent, actorOf } from '../db/events';
 // the profile columns. `commitEmployeeImport` composes the SAME hire-then-setEmploymentInfo-then-
 // updatePerson sequence (core/import.ts, item 2983802f), so this is the established path rather than a
 // second one — which is the whole point of the plan's "creation must go through the existing writers".
-import { hireEmployee, setEmploymentInfo, updatePerson } from './org';
+// r393 (685d2380 step 2) — Payment Method lands through the writer the Personnel record's own select saves
+// through (`setEmploymentPaymentMethod`), and Bank Transfer is refused with the same typed error it throws.
+import {
+  hireEmployee,
+  MissingBankForTransferError,
+  setEmploymentInfo,
+  setEmploymentPaymentMethod,
+  updatePerson,
+} from './org';
+import { isModuleEnabledOrFalse } from './entitlements';
+import { bankTransferLacksBank, isPaymentMethod } from '../lib/payment-methods';
+// r393 — the payroll policy is the Payroll pack's, so it is reached ONLY through the pack's facade (the
+// drift ratchet, test/payroll-pack-drift.test.ts): never the policy implementation module directly.
+import { assignPolicy, getPolicy } from '../packs/payroll/service';
 import { issueLegacyEmployeeCode, setCompensation } from './comp';
 import { setPersonComplianceFields } from './profile';
 import { listLeaveTypes } from './read';
@@ -73,6 +86,44 @@ import {
 // core/dependents.ts on purpose: `addDependent` and the materialisation share ONE column mapping, ONE
 // set of normalisers and ONE event, so a field the Personnel screen gains cannot be dropped here.
 import { assertDependentsValid, materialiseDependents, type DependentInput } from './dependents';
+
+/**
+ * r393 (item 685d2380 step 2) — WHY A DRAFT'S PAYROLL SETUP WAS REFUSED, judged BEFORE `hireEmployee`.
+ *
+ * Activate writes the policy with `assignPolicy` after the employee exists, and that writer checks only
+ * the company — not that the policy is still ACTIVE, and not whether Payroll is switched on. A refusal
+ * discovered there would leave an employment created and the draft sitting beside it (the half-activated
+ * state the plan promises never happens), so every rule is provoked here first and nothing is written.
+ *
+ *   payment_method_invalid — a stored value that is not one of PAYMENT_METHODS (a hand-edited blob);
+ *   policy_not_found       — the id names no policy this session can see (deleted, or not an id at all);
+ *   policy_inactive        — the policy exists but is no longer active (only active ones are assignable);
+ *   policy_other_company   — the policy belongs to a different company from the draft's. The company is
+ *                            fixed on a draft from Create on (saveEmployeeDraft re-pins it), so the screen
+ *                            can never pair them; this catches a blob that was.
+ * Bank Transfer without a bank destination is refused with `MissingBankForTransferError` — the SAME class
+ * `setEmploymentPaymentMethod` throws on the record — rather than with this one.
+ */
+export type DraftPayrollRefusal =
+  | 'payment_method_invalid'
+  | 'policy_not_found'
+  | 'policy_inactive'
+  | 'policy_other_company';
+export class DraftPayrollSetupError extends Error {
+  constructor(public readonly reason: DraftPayrollRefusal) {
+    super(
+      {
+        payment_method_invalid: 'The payment method on this draft is not one of Bank Transfer, Cheque or Cash.',
+        policy_not_found: 'The payroll policy chosen on this draft no longer exists. Choose another on the Payroll tab.',
+        policy_inactive: 'The payroll policy chosen on this draft is no longer active. Choose another on the Payroll tab.',
+        policy_other_company: "The payroll policy chosen on this draft belongs to a different company from the draft's.",
+      }[reason],
+    );
+    this.name = 'DraftPayrollSetupError';
+  }
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Standing entitlements granted on hire — the same three the hire form and the importer grant. */
 const STANDING_GRANTS = new Set(['ANNUAL', 'SICK', 'HOSPITALIZATION']);
@@ -587,9 +638,32 @@ export async function completeEmployeeDraft(
     ...missingToCreate(data, judgeTheId ? { employeeIdRule: rule } : {}),
     ...missingForCreation(data),
   ];
+  // r393 (685d2380 step 2) — the Payment Method refusals are TYPED, and they are raised ahead of the
+  // generic list so the caller gets the same error the record's own select would give. `missingByTab`
+  // names the bank gap on the Payroll tab with the SAME predicate (`paymentMethodBank`), so on the screen
+  // this can only fire for a blob that was never shown there.
+  const paymentMethod = str(pay.paymentMethod);
+  if (paymentMethod !== undefined && !isPaymentMethod(paymentMethod)) {
+    throw new DraftPayrollSetupError('payment_method_invalid');
+  }
+  if (paymentMethod === 'bank_transfer' && bankTransferLacksBank(s)) throw new MissingBankForTransferError();
   if (missing.length > 0) throw new Error(`Cannot create the employee yet: ${missing.join(', ')}`);
 
   const companyId = chosenCompanyId!;
+
+  // r393 (685d2380 step 2) — THE PAYROLL POLICY, judged before anything is created (see
+  // DraftPayrollSetupError). ONLY WHERE PAYROLL IS SWITCHED ON for this company: the Payroll tab does not
+  // show the picker otherwise ("It appears only where Payroll is switched on"), so a policy stored while it
+  // was on is IGNORED rather than refused — refusing would hold Activate back over a field HR cannot see,
+  // let alone clear — and the employee activates on the Monthly default, exactly as one with no pick.
+  const payrollOn = isModuleEnabledOrFalse(ctx, 'payroll', companyId);
+  const policyId = payrollOn ? str(pay.payrollPolicyId) : undefined;
+  if (policyId !== undefined) {
+    const policy = UUID_RE.test(policyId) ? await getPolicy(ctx, policyId) : null;
+    if (!policy) throw new DraftPayrollSetupError('policy_not_found');
+    if (policy.companyId !== companyId) throw new DraftPayrollSetupError('policy_other_company');
+    if (policy.status !== 'active') throw new DraftPayrollSetupError('policy_inactive');
+  }
   const hiredOn = str(e.hiredOn)!;
 
   const decision = resolveEmployeeIdMode(rule, {
@@ -746,6 +820,20 @@ export async function completeEmployeeDraft(
       bankName: str(s.bankName),
       bankAccountNo: str(s.bankAccountNo),
     });
+  }
+
+  // ── Payment Method and Payroll Policy (r393, item 685d2380 step 2) ─────────────────────────────
+  // AFTER the statutory write, and that order is load-bearing for the first: `setEmploymentPaymentMethod`
+  // refuses Bank Transfer unless the employee's STATUTORY row holds both a bank name and an account
+  // number, and that row is the one written just above. Both were judged before `hireEmployee` (the
+  // payment method by `bankTransferLacksBank`, the policy by the pre-flight), so neither can refuse here
+  // for a reason that was knowable earlier. Each is called only when the draft carries a value: blank is
+  // "Not specified" / the Monthly default, which is what a new employment already is.
+  if (paymentMethod !== undefined) {
+    await setEmploymentPaymentMethod(ctx, { employmentId, paymentMethod: paymentMethod as 'bank_transfer' | 'cheque' | 'cash' });
+  }
+  if (policyId !== undefined) {
+    await assignPolicy(ctx, { employmentId, policyId });
   }
 
   // ── The passport block (item a72610af) ──────────────────────────────────────────────────────────

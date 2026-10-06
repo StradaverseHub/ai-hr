@@ -365,6 +365,8 @@ describe('§2 every computed translation key resolves, in all six locales', () =
       // and a negative one. Both are listed so the sweep keeps covering the label for it.
       { payroll: { basicSalary: 'abc' } },
       { payroll: { basicSalary: '-100' } },
+      // r393 (685d2380 step 2) — Bank Transfer with no bank on the Bank & Statutory tab.
+      { payroll: { basicSalary: '1', paymentMethod: 'bank_transfer' } },
       // item 759dfc7d — the Family step's three names. Swept from the same rule for the same reason:
       // a family field added without a label would otherwise reach HR as a raw `fields.familyMemberX`.
       { family: [{}] },
@@ -382,6 +384,8 @@ describe('§2 every computed translation key resolves, in all six locales', () =
       // r374 — the payroll tab's new name. It is rendered by the SAME `t(\`fields.${f}\`)` as the rest,
       // so a locale without it would show HR a raw `fields.remarks` on the outstanding list.
       'remarks',
+      // r393 (685d2380 step 2) — Bank Transfer with no bank destination.
+      'paymentMethodBank',
       'employeeCode']) {
       expect(names.has(expected), expected).toBe(true);
     }

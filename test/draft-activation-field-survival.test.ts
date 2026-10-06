@@ -40,6 +40,8 @@ let b: Base;
 /** Two things `seedBase` does not provide and two draft fields need somewhere to land. */
 let gradeId: string;
 let managerEmploymentId: string;
+/** r393 — an active payroll policy in the draft's company, for the Payroll tab's policy picker. */
+let payrollPolicyId: string;
 
 /**
  * WHERE EVERY DRAFT FIELD ENDS UP. `null` means "does not land, and here is why" — the two entries that
@@ -193,6 +195,13 @@ const LANDS: Record<string, Record<string, string | null>> = {
     paymentTerm: 'compensation.payment_term',
     rateAmount: 'compensation.rate_amount',
     remarks: 'compensation.remarks',
+    // ── r393 (item 685d2380 step 2) ─────────────────────────────────────────────────────────────
+    // Neither reaches `setCompensation`. Payment Method lands through `setEmploymentPaymentMethod` (the
+    // record's own writer) AFTER the statutory write — Bank Transfer needs the bank that write stores —
+    // and the policy through `assignPolicy`, reached via packs/payroll/service. §2 uses Bank Transfer so
+    // the ordering is exercised, and a policy seeded for this company.
+    paymentMethod: 'employment.payment_method',
+    payrollPolicyId: 'employment.payroll_policy_id',
   },
 };
 
@@ -327,6 +336,9 @@ function everyField(): EmployeeDraftData {
       paymentTerm: 'monthly',
       rateAmount: '180',
       remarks: 'Initial package',
+      // r393 — Bank Transfer, which only lands if the bank above was written first.
+      paymentMethod: 'bank_transfer',
+      payrollPolicyId,
     },
     family: [{ fullName: 'Farah Aziz', relationship: 'spouse', dateOfBirth: '1992-03-14' }],
   };
@@ -356,6 +368,11 @@ async function seedExtras() {
     hiredOn: '2025-01-01',
   });
   managerEmploymentId = hired.employmentId;
+  const [pol] = await owner.db
+    .insert(schema.payrollPolicy)
+    .values({ tenantId: b.tenantId, companyId: b.companyId, name: `Survival ${randomUUID().slice(0, 4)}`, policyType: 'monthly' })
+    .returning({ id: schema.payrollPolicy.id });
+  payrollPolicyId = pol.id;
 }
 afterAll(async () => {
   await closeAll();
@@ -434,6 +451,9 @@ describe('§2 activate a draft with every field set, and read every landing back
     expect(emp.noticeBeforeConfirmationUnit, 'employment.notice_before_confirmation_unit').toBe('day');
     expect(emp.noticeAfterConfirmationValue, 'employment.notice_after_confirmation_value').toBe(2);
     expect(emp.noticeAfterConfirmationUnit, 'employment.notice_after_confirmation_unit').toBe('month');
+    // r393 (685d2380 step 2) — the Payroll tab's two new fields.
+    expect(emp.paymentMethod, 'employment.payment_method').toBe('bank_transfer');
+    expect(emp.payrollPolicyId, 'employment.payroll_policy_id').toBe(payrollPolicyId);
 
     const [person] = await owner.db
       .select()
