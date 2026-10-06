@@ -372,7 +372,7 @@
     "leaveDataImport": "นำเข้าข้อมูลการลา",
     "myLeave": "การลาของฉัน",
     "leaveOverview": "คำขอลา",
-    "leaveHistory": "ประวัติการลา",
+    "leaveHistory": "สถานะคำขอลา",
     "leaveCreditHistory": "ประวัติเครดิตวันลา",
     "myTeam": "ทีมของฉัน"
   },
@@ -2761,7 +2761,7 @@
     "replacementRequest": {
       "viewMyRequests": "[retired r389 — the 'View my leave credit requests' link beside the Leave Credit request button on My Leave. Item ba039150 removed it: the list it opened is now the Leave Credit History page, reached from the My Leave menu]"
     },
-    "historyHeading": "ประวัติการลา"
+    "historyHeading": "สถานะคำขอลา"
   },
   "leaveTracker": {
     "title": "ตัวติดตามการลาของทีม",
@@ -13321,7 +13321,7 @@
       "calendar": "ปฏิทินการลา",
       "application": "ใบลา",
       "overview": "คำขอลา",
-      "history": "ประวัติการลา",
+      "history": "สถานะคำขอลา",
       "historySample": "ตัวอย่างรูปแบบเท่านั้น ไม่มีข้อมูลการลาจริง",
       "historyStatus": {
         "pending": "รออนุมัติ",

@@ -372,7 +372,7 @@
     "leaveDataImport": "Leave Data Import",
     "myLeave": "My Leave",
     "leaveOverview": "Leave Request",
-    "leaveHistory": "Leave History",
+    "leaveHistory": "Leave Request Status",
     "leaveCreditHistory": "Leave Credit History",
     "myTeam": "My Team"
   },
@@ -2761,7 +2761,7 @@
     "replacementRequest": {
       "viewMyRequests": "[retired r389 — the 'View my leave credit requests' link beside the Leave Credit request button on My Leave. Item ba039150 removed it: the list it opened is now the Leave Credit History page, reached from the My Leave menu]"
     },
-    "historyHeading": "Leave history"
+    "historyHeading": "Leave Request Status"
   },
   "leaveTracker": {
     "title": "Team Leave Tracker",
@@ -13321,7 +13321,7 @@
       "calendar": "Leave Calendar",
       "application": "Leave Application",
       "overview": "Leave Request",
-      "history": "Leave History",
+      "history": "Leave Request Status",
       "historySample": "Sample layout only; no live leave records.",
       "historyStatus": {
         "pending": "Pending",

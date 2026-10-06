@@ -372,7 +372,7 @@
     "leaveDataImport": "Nhập dữ liệu nghỉ phép",
     "myLeave": "Nghỉ phép của tôi",
     "leaveOverview": "Đơn xin nghỉ phép",
-    "leaveHistory": "Lịch sử nghỉ phép",
+    "leaveHistory": "Trạng thái đơn xin nghỉ phép",
     "leaveCreditHistory": "Lịch sử tín dụng nghỉ phép",
     "myTeam": "Nhóm của tôi"
   },
@@ -2761,7 +2761,7 @@
     "replacementRequest": {
       "viewMyRequests": "[retired r389 — the 'View my leave credit requests' link beside the Leave Credit request button on My Leave. Item ba039150 removed it: the list it opened is now the Leave Credit History page, reached from the My Leave menu]"
     },
-    "historyHeading": "Lịch sử nghỉ phép"
+    "historyHeading": "Trạng thái đơn xin nghỉ phép"
   },
   "leaveTracker": {
     "title": "Theo dõi nghỉ phép của nhóm",
@@ -13321,7 +13321,7 @@
       "calendar": "Lịch nghỉ phép",
       "application": "Đơn xin nghỉ phép",
       "overview": "Đơn xin nghỉ phép",
-      "history": "Lịch sử nghỉ phép",
+      "history": "Trạng thái đơn xin nghỉ phép",
       "historySample": "Chỉ là bố cục mẫu; không có hồ sơ nghỉ phép trực tiếp.",
       "historyStatus": {
         "pending": "Chờ duyệt",

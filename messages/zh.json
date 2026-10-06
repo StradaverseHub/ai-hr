@@ -372,7 +372,7 @@
     "leaveDataImport": "休假数据导入",
     "myLeave": "我的休假",
     "leaveOverview": "休假申请",
-    "leaveHistory": "休假记录",
+    "leaveHistory": "休假申请状态",
     "leaveCreditHistory": "假期额度记录",
     "myTeam": "我的团队"
   },
@@ -2761,7 +2761,7 @@
     "replacementRequest": {
       "viewMyRequests": "[retired r389 — the 'View my leave credit requests' link beside the Leave Credit request button on My Leave. Item ba039150 removed it: the list it opened is now the Leave Credit History page, reached from the My Leave menu]"
     },
-    "historyHeading": "休假记录"
+    "historyHeading": "休假申请状态"
   },
   "leaveTracker": {
     "title": "团队休假追踪",
@@ -13321,7 +13321,7 @@
       "calendar": "请假日历",
       "application": "请假申请",
       "overview": "休假申请",
-      "history": "休假记录",
+      "history": "休假申请状态",
       "historySample": "仅为示例布局，不包含实际休假记录。",
       "historyStatus": {
         "pending": "待审",

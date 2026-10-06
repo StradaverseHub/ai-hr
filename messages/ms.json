@@ -372,7 +372,7 @@
     "leaveDataImport": "Import Data Cuti",
     "myLeave": "Cuti Saya",
     "leaveOverview": "Permohonan Cuti",
-    "leaveHistory": "Sejarah Cuti",
+    "leaveHistory": "Status Permohonan Cuti",
     "leaveCreditHistory": "Sejarah Kredit Cuti",
     "myTeam": "Pasukan Saya"
   },
@@ -2761,7 +2761,7 @@
     "replacementRequest": {
       "viewMyRequests": "[retired r389 — the 'View my leave credit requests' link beside the Leave Credit request button on My Leave. Item ba039150 removed it: the list it opened is now the Leave Credit History page, reached from the My Leave menu]"
     },
-    "historyHeading": "Sejarah cuti"
+    "historyHeading": "Status Permohonan Cuti"
   },
   "leaveTracker": {
     "title": "Penjejak Cuti Pasukan",
@@ -13321,7 +13321,7 @@
       "calendar": "Kalendar Cuti",
       "application": "Permohonan Cuti",
       "overview": "Permohonan Cuti",
-      "history": "Sejarah Cuti",
+      "history": "Status Permohonan Cuti",
       "historySample": "Susun atur contoh sahaja; tiada rekod cuti langsung.",
       "historyStatus": {
         "pending": "Tertangguh",

@@ -372,7 +372,7 @@
     "leaveDataImport": "விடுப்புத் தரவு இறக்குமதி",
     "myLeave": "எனது விடுப்பு",
     "leaveOverview": "விடுப்பு கோரிக்கை",
-    "leaveHistory": "விடுப்பு வரலாறு",
+    "leaveHistory": "விடுப்பு கோரிக்கை நிலை",
     "leaveCreditHistory": "விடுப்பு வரவு வரலாறு",
     "myTeam": "எனது குழு"
   },
@@ -2761,7 +2761,7 @@
     "replacementRequest": {
       "viewMyRequests": "[retired r389 — the 'View my leave credit requests' link beside the Leave Credit request button on My Leave. Item ba039150 removed it: the list it opened is now the Leave Credit History page, reached from the My Leave menu]"
     },
-    "historyHeading": "விடுப்பு வரலாறு"
+    "historyHeading": "விடுப்பு கோரிக்கை நிலை"
   },
   "leaveTracker": {
     "title": "குழு விடுப்பு கண்காணிப்பு",
@@ -13321,7 +13321,7 @@
       "calendar": "விடுப்பு நாட்காட்டி",
       "application": "விடுப்பு விண்ணப்பம்",
       "overview": "விடுப்பு கோரிக்கை",
-      "history": "விடுப்பு வரலாறு",
+      "history": "விடுப்பு கோரிக்கை நிலை",
       "historySample": "மாதிரி அமைப்பு மட்டுமே; நேரடி விடுப்பு பதிவுகள் இல்லை.",
       "historyStatus": {
         "pending": "நிலுவையில்",

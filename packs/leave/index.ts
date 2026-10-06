@@ -459,6 +459,8 @@ const LEAVE_ADMIN_NAV: NavNodeGroupDescriptor = {
 //     to hold a second copy of the request form plus this list, reached only from a link beside the button.
 //     It is the paid `toil` add-on's, so components/sidebar.tsx maps it to `toil` by label key exactly as it
 //     maps Leave Config › Leave Credit; the page repeats the check itself (a hidden row is not a gate).
+//   · r392 (e6712304): `leaveHistory` likewise KEEPS ITS KEY; its VALUE (and leave.historyHeading's) is now
+//     "Leave Request Status" in six locales. Leave History Data Import (admin) is a different screen.
 export const LEAVE_SELF_NAV: NavNodeGroupDescriptor = {
   group: 'main', labelKey: 'myLeave', icon: CalendarDays, activeMatch: 'children',
   children: [
