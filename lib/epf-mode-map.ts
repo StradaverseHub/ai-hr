@@ -30,7 +30,7 @@
  * the statutory form mounts EVERY input on every save, so a field the chosen category does not use arrives
  * populated with whatever the previous category left in the box. Nulling here is what makes switching
  * category actually clear the old figures instead of leaving a stale amount for a future payroll run to
- * apply. `resolveEpfElection` (localization/my/statutory.ts) then re-asserts the same nulling server-side
+ * apply. `resolveEpfElection` (localization/my/epf-election.ts, called by `setStatutoryProfileMY`) then re-asserts the same nulling server-side
  * and is the only place that VALIDATES.
  */
 // Rung 5b (ADR-0080 D1/D6): the lawful-enum vocabulary arrives via the contract, not the MY pack.
@@ -64,11 +64,15 @@ export type EpfElectionFields = {
 };
 
 /**
- * The three UI categories that REQUIRE a typed figure — item 70b14723. Exported because one caller has to
- * ask the question rather than find out by being refused: `completeEmployeeDraft` runs after `hireEmployee`
- * has committed, and `resolveEpfElection` refuses a manual category with no amount (it elects nothing). A
- * draft cannot carry the figure, so that path maps these to 'auto' BEFORE calling the mapper and says so.
- * `EpfCategoryField` (components/epf-election.tsx) does not offer them for the same reason.
+ * The three UI categories that REQUIRE a typed figure — item 70b14723.
+ *
+ * ⚠️ RETIRED CLAIM (r393, item 685d2380 step 3b), kept so the reversal is auditable. This note said the
+ * predicate was exported because `completeEmployeeDraft` "runs after `hireEmployee` has committed … A draft
+ * cannot carry the figure, so that path maps these to 'auto' BEFORE calling the mapper and says so.
+ * `EpfCategoryField` (components/epf-election.tsx) does not offer them for the same reason." The draft now
+ * carries the figures and the reason, and the pack's rule (`validateEpfElection`, a wrapper of
+ * `resolveEpfElection` in localization/my/epf-election.ts) is asked BEFORE `hireEmployee`; the downgrade
+ * and `EpfCategoryField` are gone. The predicate stays a true statement about the categories.
  */
 export const EPF_UI_AMOUNT_MODES = ['manual_employee_amount', 'manual_employer_amount', 'manual_both_amount'] as const;
 

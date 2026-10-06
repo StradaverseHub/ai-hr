@@ -118,6 +118,13 @@ divergence.
     on a money field is a wrong payslip. `core/employee-draft.ts` performs that downgrade **explicitly** for a
     stale draft, and the wizard names the card that has the boxes. It is faithful to the ticket, which asks
     for the categories at Bank & Statutory and says nothing about the wizard.
+    **Superseded by r393 (item 685d2380 step 3b), kept as written above.** The draft now offers all seven
+    categories WITH the amount and rate boxes and the reason. What made §12 necessary was that the only judge
+    of an election ran after the employee existed; `resolveEpfElection` moved, unchanged, to the db-free leaf
+    `localization/my/epf-election.ts`, and the draft asks it twice before anything is created — the client
+    pack's `epfElectionGap` names the refused box on the Bank & Statutory tab, and the server pack's
+    `validateEpfElection` refuses inside `completeEmployeeDraft` before `hireEmployee`. The explicit downgrade
+    to Auto is gone: with the rule asked first, it would only hide a choice HR made on purpose.
 
 ## Provenance — one seam, extended rather than duplicated
 

@@ -257,9 +257,11 @@ describe('ADR-0046 — EPF UI-category → lawful-enum mapping (pure)', () => {
     expect(mapEpfUiMode('manual_both_amount', null, null, '500', '650', '   ').epfManualReason).toBeNull();
   });
 
-  it('70b14723: the three named categories are the ones a DRAFT cannot carry, and the draft path knows it', () => {
-    // `completeEmployeeDraft` runs after `hireEmployee` has committed and the draft collects no figure, so it
-    // asks this question and downgrades to auto rather than being refused by a writer it cannot recover from.
+  // r393 (685d2380 step 3b) — this test's name and comment used to say the three categories are "the ones a
+  // DRAFT cannot carry" and that `completeEmployeeDraft` "asks this question and downgrades to auto". The
+  // draft now carries the figures and is judged by the pack's rule before `hireEmployee`
+  // (test/r393-draft-statutory.test.ts); the predicate's own answer, asserted below, is unchanged.
+  it('70b14723: exactly the three named fixed-amount categories need a typed figure', () => {
     for (const m of EPF_UI_AMOUNT_MODES) expect(epfUiModeNeedsAmount(m), m).toBe(true);
     for (const m of ['auto', 'manual_percentage', 'semi_auto', 'none', 'manual_fixed', 'garbage', null, undefined])
       expect(epfUiModeNeedsAmount(m), String(m)).toBe(false);
