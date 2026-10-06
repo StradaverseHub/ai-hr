@@ -46,6 +46,11 @@ export default defineConfig({
     },
   },
   test: {
+    // r390 — @workos-inc/authkit-nextjs ships ESM that imports `next/cache` with no extension. Next's bundler
+    // resolves that; Node's strict ESM resolver does not, so loading the SDK as an external dependency fails
+    // with "Cannot find module …/next/cache". Inlining it lets vite resolve it like Next does. middleware.ts
+    // imports the SDK since r390, so every test of the gate needs this; the build is unaffected.
+    server: { deps: { inline: ['@workos-inc/authkit-nextjs'] } },
     projects: [
       {
         extends: true,

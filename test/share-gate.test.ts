@@ -24,7 +24,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import type { NextResponse } from 'next/server';
-import { middleware } from '../middleware';
+import { middleware as gateMiddleware } from '../middleware';
+
+/** r390 — middleware() returns a Promise only with real WorkOS sign-in configured (test/r390-workos-middleware.test.ts).
+ *  Every configuration in this file is the gate alone, which must stay synchronous; this pins that too. */
+function middleware(r: NextRequest): NextResponse {
+  const res = gateMiddleware(r);
+  if (res instanceof Promise) throw new Error('without real sign-in the gate must answer synchronously');
+  return res;
+}
 
 const req = (auth?: string, path = '/people') =>
   new NextRequest(`http://localhost${path}`, auth ? { headers: { authorization: auth } } : undefined);

@@ -1,5 +1,4 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { applyResponseHeaders, authkit, handleAuthkitHeaders, partitionAuthkitHeaders } from '@workos-inc/authkit-nextjs';
 import { isAuthRoute } from '@/lib/auth-routes';
 import { appOrigin, realAuthEnabled } from '@/lib/real-auth';
@@ -130,7 +129,24 @@ function wantsStatusNotRedirect(req: NextRequest): boolean {
   return req.nextUrl.pathname.startsWith('/api/') || req.headers.has('next-action');
 }
 
-async function withWorkosSession(req: NextRequest): Promise<NextResponse> {
+/**
+ * The request as the BROWSER addressed it. Behind the Cloudflare tunnel the app sees http://127.0.0.1:3000,
+ * and the SDK derives the PKCE verifier cookie's Secure flag from request.url (authkit-nextjs 4.2.0
+ * pkce.js), so on the local address the browser would be handed that cookie without Secure. AuthKit is
+ * shown a header-only copy addressed to the public origin; the original request still continues. Its body
+ * is not needed here: AuthKit reads only the URL, the method and the headers (cookies included).
+ */
+function asPublicRequest(req: NextRequest): NextRequest {
+  const origin = appOrigin();
+  if (!origin || req.nextUrl.origin === origin) return req;
+  return new NextRequest(new URL(`${req.nextUrl.pathname}${req.nextUrl.search}`, origin), {
+    method: req.method,
+    headers: req.headers,
+  });
+}
+
+async function withWorkosSession(original: NextRequest): Promise<NextResponse> {
+  const req = asPublicRequest(original);
   const path = req.nextUrl.pathname;
   const { session, headers, authorizationUrl } = await authkit(req, {
     redirectUri: process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI,
