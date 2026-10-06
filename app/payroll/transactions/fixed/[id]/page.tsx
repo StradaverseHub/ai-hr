@@ -3,12 +3,14 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
-import { getEmploymentPayComponent, FIXED_TRANSACTION_CYCLES } from '@/core/pay-components';
+import { getEmploymentPayComponent } from '@/core/pay-components';
+import { listPayrollCycles } from '@/core/payroll-cycle';
 import { Badge, Button, Card, EmployeeName, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { formatMoney } from '@/lib/money';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { updateFixedTransactionAction, endFixedTransactionAction, archiveFixedTransactionAction } from '../actions';
+import { FixedCycleSelect, type FixedCycleOption } from '../cycle-select';
 
 /**
  * f3ae3245 — the dedicated View/Edit page for ONE recurring fixed pay item.
@@ -66,6 +68,21 @@ export default async function FixedTransactionDetailPage({
   const row = await getEmploymentPayComponent(s, { id, employmentId: emp.employmentId });
   if (!row) notFound();
 
+  // 4fffe638 — the employee's OWN company's active configured cycles, in the Payroll Cycles order. A row
+  // linked to a cycle since made inactive shows that cycle as the selected option, marked inactive, so an
+  // untouched save keeps it (it is not offered to anyone choosing afresh). An unlinked row that carries an
+  // old run-type tag shows that label as the placeholder; the untouched save keeps the tag.
+  const activeCycles = await listPayrollCycles(s, emp.companyId, { activeOnly: true });
+  const cycleOptions: FixedCycleOption[] = activeCycles.map((c) => ({ id: c.id, label: c.name }));
+  if (row.payrollCycleId && !activeCycles.some((c) => c.id === row.payrollCycleId)) {
+    cycleOptions.unshift({
+      id: row.payrollCycleId,
+      label: t('fixed.cycleInactive', { name: row.payrollCycleName ?? '—' }),
+    });
+  }
+  const cyclePlaceholder =
+    !row.payrollCycleId && row.runType ? t(`individual.cycle.${row.runType}` as never) : '—';
+
   const today = todayInKualaLumpur();
   const ended = row.validTo != null && row.validTo < today;
   const backHref = `/payroll/transactions/fixed?employmentId=${encodeURIComponent(emp.employmentId)}`;
@@ -84,6 +101,8 @@ export default async function FixedTransactionDetailPage({
     'backwards',
     // a3d485f6 — the mid-month refusal, same contract: it renders "{code}" and "{nextFirst}".
     'midMonth',
+    // 4fffe638 — the chosen Payroll Cycle is missing, inactive or another company's.
+    'cycleInvalid',
   ]);
   // The clash arguments are passed to EVERY key rather than only to the ones that use them: next-intl
   // ignores unused arguments, and branching here would mean a second place to update when a message
@@ -158,14 +177,11 @@ export default async function FixedTransactionDetailPage({
             />
           </Field>
           <Field label={t('fixed.payrollCycle')}>
-            <select name="runType" defaultValue={row.runType ?? ''} className={inputCls}>
-              <option value="">—</option>
-              {FIXED_TRANSACTION_CYCLES.map((c) => (
-                <option key={c} value={c}>
-                  {t(`individual.cycle.${c}` as never)}
-                </option>
-              ))}
-            </select>
+            <FixedCycleSelect
+              options={cycleOptions}
+              defaultValue={row.payrollCycleId ?? ''}
+              placeholderLabel={cyclePlaceholder}
+            />
           </Field>
           <Field label={t('fixed.startDate')} required requiredAriaLabel={t('fixed.requiredField')}>
             <input name="effectiveFrom" type="date" required defaultValue={row.validFrom} className={inputCls} />

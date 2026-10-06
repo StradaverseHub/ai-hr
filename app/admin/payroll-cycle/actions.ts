@@ -59,6 +59,8 @@ async function localise(e: unknown): Promise<string> {
   if (e instanceof PayrollCycleDuplicateNameError) return t('errors.duplicateName');
   if (e instanceof PayrollCycleDuplicateCodeError) return t('errors.duplicateCode');
   if (e instanceof PayrollCycleRegularConflictError) return t('errors.regularConflict');
+  // 4fffe638 — referenced only by linked fixed / individual transactions, not by any run.
+  if (e instanceof PayrollCycleInUseError && e.by === 'transactions') return t('errors.inUseTransactions', { refs: e.refs });
   if (e instanceof PayrollCycleInUseError) return t('errors.inUse', { refs: e.refs });
   return publicErrorMessage(e);
 }

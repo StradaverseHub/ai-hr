@@ -5407,7 +5407,10 @@
         "openEnded": "tiada tarikh tamat",
         "existingTitle": "Pekerja ini sudah mempunyai {count, plural, other {# rekod}} bagi item gaji ini",
         "existingClashTag": "bertindih dengan tarikh anda",
-        "existingClash": "Tarikh anda bertindih dengan rekod di atas. Simpanan akan ditolak — tamatkan rekod tersebut dahulu, atau ubah tarikh anda."
+        "existingClash": "Tarikh anda bertindih dengan rekod di atas. Simpanan akan ditolak — tamatkan rekod tersebut dahulu, atau ubah tarikh anda.",
+        "cycleInvalid": "Kitaran gaji yang dipilih tidak tersedia untuk syarikat pekerja ini. Pilih salah satu kitaran gaji aktif syarikat.",
+        "cycleInactive": "{name} (tidak aktif)",
+        "noCycles": "Syarikat ini tiada kitaran gaji aktif. Tambah satu di Gaji > Tetapan > Kitaran Gaji."
       },
       "individual": {
         "title": "Transaksi Individu",
@@ -13130,7 +13133,8 @@
       "duplicateName": "Kitaran dengan nama ini sudah wujud untuk syarikat ini.",
       "regularConflict": "Syarikat ini sudah mempunyai kitaran Biasa yang aktif. Hanya satu dibenarkan.",
       "inUse": "Kitaran ini digunakan dalam {refs} larian gaji — nyahaktifkan sebaliknya daripada memadam.",
-      "duplicateCode": "Kitaran gaji aktif lain dalam syarikat ini sudah menggunakan kod tersebut."
+      "duplicateCode": "Kitaran gaji aktif lain dalam syarikat ini sudah menggunakan kod tersebut.",
+      "inUseTransactions": "Kitaran ini dipautkan kepada {refs} transaksi — nyahaktifkan sebaliknya daripada memadam."
     },
     "colBehaviour": "Gelagat pemprosesan",
     "behaviourPlaceholder": "Terangkan, dalam perkataan anda sendiri, tujuan kitaran ini (rujukan perniagaan).",

@@ -9,6 +9,10 @@ import { createFixedTransactionAction } from './actions';
 
 export type AddDialogComponent = { id: string; code: string; name: string };
 
+/** 4fffe638 — one ACTIVE configured Payroll Cycle of the selected employee's company, in the Payroll
+ *  Cycles order. The id is what is posted; the service derives the run type from it. */
+export type AddDialogCycle = { id: string; name: string };
+
 /**
  * 2aed39d4 — one recurring row the employee ALREADY holds, as the Add dialog sees it. Ended rows are
  * included on purpose: an ended row still occupies its dates, and a new row running into one is exactly
@@ -56,11 +60,10 @@ export function FixedToolbar({
   employmentId: string;
   defaultStart: string;
   components: AddDialogComponent[];
-  cycles: readonly string[];
+  cycles: AddDialogCycle[];
   existing?: AddDialogExisting[];
 }) {
   const t = useTranslations('payroll.transactions.fixed');
-  const tc = useTranslations('payroll.transactions.individual');
   const router = useRouter();
   const [open, setOpen] = useState(false);
   // Mirrors of the three fields the overlap depends on. The form still posts the real inputs; these
@@ -107,16 +110,17 @@ export function FixedToolbar({
                 </select>
               </Field>
               <Field label={t('payrollCycle')} required requiredAriaLabel={t('requiredField')}>
-                <select name="runType" required defaultValue="" className={inputCls}>
+                <select name="payrollCycleId" required defaultValue="" className={inputCls}>
                   <option value="" disabled>
                     —
                   </option>
                   {cycles.map((c) => (
-                    <option key={c} value={c}>
-                      {tc(`cycle.${c}`)}
+                    <option key={c.id} value={c.id}>
+                      {c.name}
                     </option>
                   ))}
                 </select>
+                {cycles.length === 0 && <p className="mt-1 text-xs text-muted-foreground">{t('noCycles')}</p>}
               </Field>
               <Field label={t('amount')} required requiredAriaLabel={t('requiredField')}>
                 <input name="amount" type="number" min="0.01" step="0.01" required className={`${inputCls} text-right`} />

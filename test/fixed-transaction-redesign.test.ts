@@ -148,7 +148,17 @@ describe('f3ae3245 — what the redesign deliberately did NOT do', () => {
   it('KEEPS the Payroll Cycle field the request sketch omitted', () => {
     // It is mandatory on Add, so a redesign that dropped it from view would hide a required field.
     expect(rowsSrc).toContain('cycleLabels');
-    expect(detailSrc).toContain("name=\"runType\"");
+    // 4fffe638 — the Edit page's cycle field moved into a client island (cycle-select.tsx) so it can
+    // carry the hidden cycleTouched flag, and it now posts a CONFIGURED cycle id, not a run type. Both
+    // halves of the contract are pinned: the page renders the island, the island posts both fields.
+    const cycleSelectSrc = read(FIXED, 'cycle-select.tsx');
+    expect(detailSrc).toContain('<FixedCycleSelect');
+    expect(cycleSelectSrc).toContain('name="payrollCycleId"');
+    expect(cycleSelectSrc).toContain('name="cycleTouched"');
+    expect(actionsSrc).toContain("formData.get('cycleTouched')");
+    expect(read(FIXED, 'add-fixed-dialog.tsx')).toContain('name="payrollCycleId" required');
+    // The Add list is the employee's OWN company's ACTIVE configured cycles.
+    expect(listSrc).toContain('listPayrollCycles(s, selectedEmp.companyId, { activeOnly: true })');
   });
 
   it('keeps Status derived and two-valued — no draft, no pending, no "removed"', () => {

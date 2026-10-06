@@ -8,6 +8,7 @@ import { listEmployees } from '@/core/read';
 import {
   FixedTransactionAmountError,
   FixedTransactionBackwardsError,
+  FixedTransactionCycleError,
   FixedTransactionDateError,
   FixedTransactionMidMonthError,
   FixedTransactionNotFoundError,
@@ -18,7 +19,6 @@ import {
   endEmploymentPayComponent,
   setEmploymentPayComponent,
   updateEmploymentPayComponent,
-  type FixedTransactionCycle,
 } from '@/core/pay-components';
 
 const back = (employmentId: string | null, qs: string) =>
@@ -45,7 +45,9 @@ export async function createFixedTransactionAction(formData: FormData) {
 
   const componentId = String(formData.get('componentId') ?? '');
   const effectiveFrom = String(formData.get('effectiveFrom') ?? '');
-  const runType = String(formData.get('runType') ?? '');
+  // 4fffe638 — the CONFIGURED Payroll Cycle (one of the employee's company's active cycles). The run type
+  // is no longer posted: the service sets it from the cycle row, never from the client.
+  const payrollCycleId = String(formData.get('payrollCycleId') ?? '');
   const amount = Number(formData.get('amount'));
   const effectiveTo = String(formData.get('effectiveTo') ?? '').trim() || null;
   const remarks = String(formData.get('remarks') ?? '').trim() || null;
@@ -53,7 +55,7 @@ export async function createFixedTransactionAction(formData: FormData) {
   // Mandatory fields (pay item, cycle, start date, amount). Empty / bad values surface a friendly banner
   // rather than a raw throw. Amount>0 is enforced on the service too (both editors), but we short-circuit an
   // obviously-empty amount here for a cleaner message.
-  if (!componentId || !runType || !effectiveFrom || !(amount > 0)) {
+  if (!componentId || !payrollCycleId || !effectiveFrom || !(amount > 0)) {
     return back(employmentId, 'error=required');
   }
 
@@ -65,8 +67,9 @@ export async function createFixedTransactionAction(formData: FormData) {
       effectiveFrom,
       effectiveTo,
       remarks,
-      // Cleaned to the enum (or null) inside the service; an unknown value never persists.
-      runType: runType as FixedTransactionCycle,
+      // Validated inside the service against the EMPLOYMENT's company (missing / inactive / other-company
+      // refused with FixedTransactionCycleError → `cycleInvalid`); the row's run type comes from the cycle.
+      payrollCycleId,
     });
   } catch (e) {
     return back(employmentId, fixedErrorQs(e));
@@ -107,7 +110,10 @@ function fixedErrorKey(e: unknown): string {
               ? 'paidOnPayslip'
               : e instanceof FixedTransactionNotFoundError
                 ? 'notFound'
-                : publicErrorMessage(e);
+                : // 4fffe638 — the chosen Payroll Cycle is missing, inactive or another company's.
+                  e instanceof FixedTransactionCycleError
+                  ? 'cycleInvalid'
+                  : publicErrorMessage(e);
 }
 
 /**
@@ -165,7 +171,12 @@ export async function updateFixedTransactionAction(formData: FormData) {
 
   const id = String(formData.get('id') ?? '');
   const effectiveFrom = String(formData.get('effectiveFrom') ?? '');
-  const runType = String(formData.get('runType') ?? '');
+  // 4fffe638 — THE SELECT IS ALWAYS SUBMITTED, so its presence says nothing about whether the operator
+  // changed it (CLAUDE.md §8). The hidden `cycleTouched` flag is flipped to '1' by the select's onChange
+  // (fixed/cycle-select.tsx); only then is the cycle sent. Untouched, the service carries the edited
+  // row's own payroll_cycle_id and run_type forward — including a link to a cycle since made inactive.
+  const cycleTouched = String(formData.get('cycleTouched') ?? '') === '1';
+  const payrollCycleId = String(formData.get('payrollCycleId') ?? '');
   const amount = Number(formData.get('amount'));
   const effectiveTo = String(formData.get('effectiveTo') ?? '').trim() || null;
   const remarks = String(formData.get('remarks') ?? '').trim() || null;
@@ -182,7 +193,7 @@ export async function updateFixedTransactionAction(formData: FormData) {
       effectiveFrom,
       effectiveTo,
       remarks,
-      runType: runType as FixedTransactionCycle,
+      ...(cycleTouched && payrollCycleId ? { payrollCycleId } : {}),
     });
   } catch (e) {
     return back(employmentId, fixedErrorQs(e));

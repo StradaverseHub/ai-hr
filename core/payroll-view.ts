@@ -182,6 +182,8 @@ export type FixedTransactionViewRow = {
   validFrom: string;
   validTo: string | null;
   runType: RunType | null;
+  /** 4fffe638 — the linked configured Payroll Cycle's name; null when the row is not linked. */
+  payrollCycleName: string | null;
   remarks: string | null;
 };
 
@@ -218,10 +220,13 @@ export function listFixedTransactionsAcross(
         validFrom: employmentPayComponent.validFrom,
         validTo: employmentPayComponent.validTo,
         runType: employmentPayComponent.runType,
+        // 4fffe638 — LEFT JOIN on a single FK: an unlinked row keeps its run-type label, nothing multiplies.
+        payrollCycleName: payrollCycle.name,
         remarks: employmentPayComponent.remarks,
       })
       .from(employmentPayComponent)
       .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+      .leftJoin(payrollCycle, eq(payrollCycle.id, employmentPayComponent.payrollCycleId))
       .innerJoin(employment, eq(employment.id, employmentPayComponent.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))

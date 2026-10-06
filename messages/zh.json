@@ -5407,7 +5407,10 @@
         "openEnded": "无结束日期",
         "existingTitle": "该员工此薪资项目已有 {count, plural, other {# 条记录}}",
         "existingClashTag": "与您的日期重叠",
-        "existingClash": "您的日期与上述记录重叠。保存将被拒绝——请先结束该记录，或修改您的日期。"
+        "existingClash": "您的日期与上述记录重叠。保存将被拒绝——请先结束该记录，或修改您的日期。",
+        "cycleInvalid": "所选薪资周期不适用于该员工所属公司。请选择该公司的一个有效薪资周期。",
+        "cycleInactive": "{name}（已停用）",
+        "noCycles": "该公司没有有效的薪资周期。请在 薪资 > 设置 > 薪资周期 中添加。"
       },
       "individual": {
         "title": "个别交易",
@@ -13130,7 +13133,8 @@
       "duplicateName": "此公司已存在同名周期。",
       "regularConflict": "此公司已有一个启用的常规周期。仅允许一个。",
       "inUse": "此周期已用于 {refs} 个薪资批次——请停用而非删除。",
-      "duplicateCode": "本公司已有另一个启用中的薪资周期使用了该代码。"
+      "duplicateCode": "本公司已有另一个启用中的薪资周期使用了该代码。",
+      "inUseTransactions": "此周期已关联 {refs} 笔交易——请停用而非删除。"
     },
     "colBehaviour": "处理行为",
     "behaviourPlaceholder": "用您自己的话描述此周期的用途（业务参考）。",

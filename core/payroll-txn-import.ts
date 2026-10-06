@@ -57,7 +57,7 @@ import { createHash } from 'node:crypto';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 
 import { withTenant, type SessionContext } from '../db/client';
-import { employmentPayComponent, payComponent, payrollIndividualTxn } from '../db/schema';
+import { employmentPayComponent, payComponent, payrollCycle, payrollIndividualTxn } from '../db/schema';
 import { listEmployees } from './read';
 // ADR-0080 D9 — payroll is a PACK, and this module is spine, so every payroll service comes through the
 // FACADE rather than reaching into core/pay-components, core/pay-rule, core/payroll-individual-txn or
@@ -280,6 +280,31 @@ async function loadLiveFixedRows(
   return out;
 }
 
+/**
+ * 4fffe638 — the ONE-MATCH rule the 0514 backfill uses, for the import: company → run type → the single
+ * ACTIVE configured cycle with that run type. A (company, run type) with two or more active cycles — the
+ * usual off_cycle case (Off-cycle, Advance Salary, Mid-Month) — maps to null, because the file's Payroll
+ * Cycle column names a run type and cannot say which of them was meant. Read once for the whole file.
+ */
+async function loadOneMatchCycles(
+  ctx: SessionContext,
+  companyIds: string[],
+): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  if (companyIds.length === 0) return out;
+  const rows = await withTenant(ctx, (tx) =>
+    tx
+      .select({ id: payrollCycle.id, companyId: payrollCycle.companyId, runType: payrollCycle.runType })
+      .from(payrollCycle)
+      .where(and(inArray(payrollCycle.companyId, companyIds), isNull(payrollCycle.archivedAt))),
+  );
+  for (const r of rows) {
+    const key = `${r.companyId}|${r.runType}`;
+    out.set(key, out.has(key) ? null : r.id);
+  }
+  return out;
+}
+
 /** A row that has passed every check, carrying everything the write needs — so the commit does not
  *  re-parse the file's strings a second time and cannot reach a different conclusion from the preview. */
 type ResolvedFixed = {
@@ -289,6 +314,9 @@ type ResolvedFixed = {
   effectiveFrom: string;
   effectiveTo: string | null;
   runType: FixedTransactionCycle | null;
+  /** 4fffe638 — the configured cycle the row links to, under the 0514 ONE-MATCH rule only: set when the
+   *  employee's company has exactly one active cycle with `runType`, else null (no guessing). */
+  payrollCycleId: string | null;
   remarks: string | null;
 };
 type ResolvedIndividual = {
@@ -510,7 +538,14 @@ async function analyzeFixed(
   const rows: TxnImportRow[] = [];
   const resolved = new Map<number, ResolvedFixed>();
   // Resolve identity first so the live-row read can be one query for the whole file.
-  const stage: { rowNum: number; base: Omit<TxnImportRow, 'ok' | 'reason'>; r: ResolvedFixed | null; failure?: TxnImportRow }[] = [];
+  const stage: {
+    rowNum: number;
+    base: Omit<TxnImportRow, 'ok' | 'reason'>;
+    r: ResolvedFixed | null;
+    failure?: TxnImportRow;
+    /** 4fffe638 — the employee's company, for the one-match cycle link. */
+    companyId?: string;
+  }[] = [];
 
   for (const [i, rec] of records.entries()) {
     const rowNum = i + 2; // header is row 1
@@ -569,8 +604,10 @@ async function analyzeFixed(
       stage.push({ rowNum, base, r: null, failure: fail(base, 'endBeforeStart') });
       continue;
     }
-    // The screen's "Payroll cycle" is the run_type enum, not a payroll_cycle row — production's 44
-    // payroll_cycle records all have a NULL code and nothing on this table references them.
+    // The file's "Payroll cycle" column still takes the run_type values it always took (regular /
+    // off_cycle / bonus / adjustment), not a cycle name or code. 4fffe638 — the row is LINKED to a
+    // configured payroll_cycle only under the 0514 one-match rule (see loadOneMatchCycles, applied after
+    // this loop); an ambiguous run type stays an unlinked tag, exactly as the screen shows it.
     const cycleRaw = (rec.payroll_cycle ?? '').trim().toLowerCase();
     let runType: FixedTransactionCycle | null = null;
     if (cycleRaw !== '') {
@@ -591,9 +628,19 @@ async function analyzeFixed(
         effectiveFrom,
         effectiveTo,
         runType,
+        payrollCycleId: null,
         remarks: (rec.remarks ?? '').trim() || null,
       },
+      companyId: emp.companyId,
     });
+  }
+
+  // 4fffe638 — the one-match link, for rows whose file named a run type.
+  const oneMatch = await loadOneMatchCycles(ctx, [
+    ...new Set(stage.filter((x) => x.r?.runType && x.companyId).map((x) => x.companyId!)),
+  ]);
+  for (const x of stage) {
+    if (x.r?.runType && x.companyId) x.r.payrollCycleId = oneMatch.get(`${x.companyId}|${x.r.runType}`) ?? null;
   }
 
   // ── THE DUPLICATE PASS. The constraint's own predicate, against the rows on file AND against the
@@ -955,6 +1002,9 @@ export async function commitTxnImport(
           effectiveTo: r.effectiveTo,
           remarks: r.remarks,
           runType: r.runType,
+          // 4fffe638 — null unless the one-match rule resolved a cycle; when set, the service re-validates
+          // it and the run type comes from the cycle (identical to `runType` by construction).
+          payrollCycleId: r.payrollCycleId,
         });
         written += 1;
       } catch (e) {

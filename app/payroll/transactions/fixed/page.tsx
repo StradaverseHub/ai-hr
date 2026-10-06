@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
 import { listEmploymentPayComponents, listPayComponents, FIXED_TRANSACTION_CYCLES } from '@/core/pay-components';
+import { listPayrollCycles } from '@/core/payroll-cycle';
 import { Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { CollapsibleEmployeePanel } from '@/components/collapsible-employee-panel';
 import { EmployeePicker, type PickerEmployee } from './employee-picker';
@@ -37,6 +38,10 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
  *
  * The Payroll Cycle is captured + stored + shown but does NOT route which payroll run pays the item
  * (payout follows the valid_from/valid_to window). Unchanged by this redesign.
+ *
+ * 4fffe638 — the Add dialog's Payroll Cycle list is the employee's OWN company's ACTIVE configured cycles
+ * (Payroll > Settings > Payroll Cycles, in that screen's order), and the choice links the row to that
+ * exact cycle. Still display and record only: the kernel reads neither the link nor the run type.
  */
 
 /** One cookie per screen — Individual and Fixed collapse independently (49e7e0a2 / f3ae3245). */
@@ -87,9 +92,13 @@ export default async function FixedTransactionPage({
     status: e.terminatedOn == null ? 'active' : 'ended',
   }));
 
-  const [components, existing] = selected
-    ? await Promise.all([listPayComponents(s), listEmploymentPayComponents(s, selected)])
-    : [[], []];
+  const [components, existing, cycles] = selectedEmp
+    ? await Promise.all([
+        listPayComponents(s),
+        listEmploymentPayComponents(s, selectedEmp.employmentId),
+        listPayrollCycles(s, selectedEmp.companyId, { activeOnly: true }),
+      ])
+    : [[], [], []];
   const activeComponents = components.filter((c) => c.archivedAt == null);
 
   // 5c65367d — the Excel import's reference sheets. Read WITHOUT a selected employee on purpose: an
@@ -109,6 +118,9 @@ export default async function FixedTransactionPage({
     validFrom: r.validFrom,
     validTo: r.validTo,
     runType: r.runType,
+    // 4fffe638 — the linked configured cycle's name; the list falls back to the run-type label, then to
+    // "unspecified".
+    cycleName: r.payrollCycleName ?? null,
     remarks: r.remarks,
     ended: r.validTo != null && r.validTo < today,
   }));
@@ -136,6 +148,8 @@ export default async function FixedTransactionPage({
     // a3d485f6 — the change lands part-way through a month a live record already covers, which pays
     // both in full. Names the pay item and the first-of-month to use instead.
     'midMonth',
+    // 4fffe638 — the chosen Payroll Cycle is missing, inactive or another company's.
+    'cycleInvalid',
   ]);
   // Clash arguments are passed to every key; next-intl ignores the ones a message does not use.
   const errorMessage =
@@ -199,7 +213,7 @@ export default async function FixedTransactionPage({
                 // Today, resolved server-side in the tenant timezone like the `ended` flag below.
                 defaultStart={today}
                 components={activeComponents.map((c) => ({ id: c.id, code: c.code, name: c.name }))}
-                cycles={FIXED_TRANSACTION_CYCLES}
+                cycles={cycles.map((c) => ({ id: c.id, name: c.name }))}
                 // 2aed39d4 — what the employee ALREADY holds, so the dialog can show it on selection and
                 // turn amber before the save rather than after it. Superseded rows are already excluded
                 // by listEmploymentPayComponents; ENDED rows are deliberately included, because an ended
