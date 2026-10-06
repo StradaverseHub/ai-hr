@@ -296,8 +296,15 @@ export function EmployeeName({
      * `min-w-0` on the group lets it shrink inside whatever flex/grid parent holds it; `min-w-0 truncate`
      * on the name is what actually clips. The CODE keeps `shrink-0` because it is the identifier — a
      * half-eaten employee id is worse than a clipped name, and it is short and fixed-width by nature.
-     * In a roomy container nothing changes: `truncate` only bites once the content exceeds the box. */
-    <span className={cn('inline-flex min-w-0 items-baseline gap-1.5', className)}>
+     * In a roomy container nothing changes: `truncate` only bites once the content exceeds the box.
+     *
+     * r391 — AND `max-w-full`, WITHOUT WHICH NONE OF THE ABOVE EVER BIT. This group is INLINE-level, so it is
+     * sized shrink-to-fit, and its min-content width is the whole line (code + a `nowrap` name): `min-w-0`
+     * on the name only lowers the floor INSIDE the group, never the group's own size. So the group took its
+     * full text width, ran past the org-chart card's border, and the name had nothing to clip against —
+     * measured in Chromium: 25px past the card for "CHCE0292 ADLI BIN DAUD" (test/r391-employee-name-fits
+     * .browser.test.tsx). The ceiling caps the group at its container; then the name shrinks and ellipsises. */
+    <span className={cn('inline-flex min-w-0 max-w-full items-baseline gap-1.5', className)}>
       <EmployeeCode code={code} className={cn('shrink-0', codeClassName)} />
       <span className="min-w-0 truncate">{name}</span>
     </span>

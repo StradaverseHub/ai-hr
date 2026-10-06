@@ -28,7 +28,14 @@ describe('r286 — EmployeeName cannot overspill its container', () => {
     expect(fn, 'EmployeeName still exists').not.toBe('');
     // Without this the group sits at its automatic minimum width and pushes out of the parent instead of
     // letting the name clip — which is the org-chart card's failure exactly.
-    expect(fn).toMatch(/inline-flex min-w-0 items-baseline/);
+    expect(fn).toMatch(/inline-flex min-w-0 max-w-full items-baseline/);
+  });
+
+  it('r391 — the group has a CEILING, not just a floor', () => {
+    // min-w-0 alone was green here for months while the org-chart name still ran 25px past its card: an
+    // inline-flex group sizes to its whole text unless something caps it. These class pins cannot see that;
+    // test/r391-employee-name-fits.browser.test.tsx measures it in Chromium, and is the guard that can fail.
+    expect(fn).toContain('max-w-full');
   });
 
   it('the NAME carries the truncation, not the flex container', () => {
@@ -42,6 +49,6 @@ describe('r286 — EmployeeName cannot overspill its container', () => {
 
   it('every caller still gets to style the group', () => {
     // `className` must keep reaching the group, or 28 call sites lose their spacing and weight.
-    expect(fn).toMatch(/cn\('inline-flex min-w-0 items-baseline gap-1\.5', className\)/);
+    expect(fn).toMatch(/cn\('inline-flex min-w-0 max-w-full items-baseline gap-1\.5', className\)/);
   });
 });
