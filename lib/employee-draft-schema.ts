@@ -37,6 +37,7 @@
  */
 import { resolveEmployeeIdMode, type EmployeeIdRule } from './employee-id-mode';
 import { copyPermanentToCorrespondence } from './address-blocks';
+import { addEmploymentPeriod } from './employment-period';
 
 export type EmployeeDraftProfile = {
   fullName?: string;
@@ -523,10 +524,10 @@ export const DEFAULT_EMPLOYMENT_TYPE = 'full_time';
  * would re-apply the default on every render and fight anyone who deliberately cleared a field. That is
  * the pattern `withProbationDefault` already used for `provisionalEndOn` (which is why a stuck draft
  * already carried a probation-derived end date while carrying no employment type at all); this function
- * absorbs it so all three defaults are decided in ONE place and in the right order.
+ * absorbs it so all the defaults are decided in ONE place and in the right order.
  *
- * THE ORDER IS LOAD-BEARING. The probation end date is derived from the employment type, so the type is
- * resolved FIRST and the derivation reads the RESOLVED value. Deriving it from `e.employmentType` while
+ * THE ORDER IS LOAD-BEARING. The probation default depends on the employment type, so the type is
+ * resolved FIRST and the probation rule reads the RESOLVED value. Deriving it from `e.employmentType` while
  * seeding the type separately is how the production rows ended up internally inconsistent.
  *
  * `undefined` IS THE ONLY TRIGGER, and that is the whole precision of the fix: it mirrors the `??` the
@@ -534,29 +535,89 @@ export const DEFAULT_EMPLOYMENT_TYPE = 'full_time';
  * administrator has CLEARED is `''`, not `undefined` — it stays cleared, `missingByTab` keeps naming it,
  * and the screen keeps showing it blank. Re-filling a box somebody had just emptied would be a second
  * version of this same defect, pointing the other way.
+ *
+ * r392 (685d2380 step 1) — THE THIRD SEED CHANGED FROM AN END DATE TO A PERIOD. This used to seed
+ * `provisionalEndOn` (today + the company's probation months) for a full-time hire. The Employment tab no
+ * longer shows an end-date box for full-time at all: probation END is worked out from the Probation Period
+ * (`draftProvisionalEndOn`), so what is seeded now is the PERIOD — `probationValue` = the company's
+ * hiring-defaults probation length (core/hiring-defaults.ts `company.probation_months`, NULL = 3 via
+ * `resolveProbationMonths`), `probationUnit` = 'month'. Seeded only when ALL of:
+ *   • the resolved type is full_time (the configurable default has only ever applied to full-time);
+ *   • BOTH halves of the period are `undefined` (never touched — the rule above);
+ *   • `provisionalEndOn` is `undefined`. THIS IS THE LEGACY GUARD. Every full-time draft opened before r392
+ *     was seeded an end date by the old rule. The plan promises such a draft keeps that date at Activate
+ *     ("A full-time draft that already holds an end date keeps that date"), and `draftProvisionalEndOn`
+ *     only falls back to the stored date when there is NO period — so seeding a period onto it here would
+ *     silently replace the date it was promised to keep. HR can still type a period on it, and then the
+ *     period wins, which is visible on the "Probation ends on" line before Activate.
  */
 export function withEmploymentDefaults(
   data: EmployeeDraftData,
-  seed: { hiredOn: string; provisionalEndOn: string },
+  seed: { hiredOn: string; probationMonths: number },
 ): EmployeeDraftData {
   const e = data.employment ?? {};
   const employmentType = e.employmentType ?? DEFAULT_EMPLOYMENT_TYPE;
   const hiredOn = e.hiredOn ?? seed.hiredOn;
-  // The probation/provisional end date keeps the rule it has always had — seeded only when the field has
-  // never been touched, and only for a full-time hire (every other type's end date is user-supplied).
   // It reads `employmentType` above, not `e.employmentType`, so the two can never disagree.
-  const provisionalEndOn =
-    e.provisionalEndOn === undefined && employmentType === DEFAULT_EMPLOYMENT_TYPE
-      ? seed.provisionalEndOn
-      : e.provisionalEndOn;
-  if (
-    employmentType === e.employmentType &&
-    hiredOn === e.hiredOn &&
-    provisionalEndOn === e.provisionalEndOn
-  ) {
+  const seedPeriod =
+    employmentType === DEFAULT_EMPLOYMENT_TYPE &&
+    e.probationValue === undefined &&
+    e.probationUnit === undefined &&
+    e.provisionalEndOn === undefined;
+  if (employmentType === e.employmentType && hiredOn === e.hiredOn && !seedPeriod) {
     return data;
   }
-  return { ...data, employment: { ...e, employmentType, hiredOn, ...(provisionalEndOn === undefined ? {} : { provisionalEndOn }) } };
+  return {
+    ...data,
+    employment: {
+      ...e,
+      employmentType,
+      hiredOn,
+      ...(seedPeriod ? { probationValue: String(seed.probationMonths), probationUnit: 'month' } : {}),
+    },
+  };
+}
+
+/**
+ * WHICH END DATE A DRAFT'S EMPLOYMENT WILL CARRY — r392 (685d2380 step 1). ONE function for the screen and
+ * for Activate: the Employment tab's read-only "Probation ends on" line renders exactly what
+ * `completeEmployeeDraft` hands `hireEmployee` as `provisionalEndOn`, because both call this.
+ *
+ * Why the value matters: for full_time, `employment.provisional_end_on` is the only at-hire input that
+ * yields Employee Status "Probation" (core/employment-status.ts) and opens the probation review window
+ * (core/employment-review.ts `computeReviewWindow` fallback). For a contract hire `hireEmployee` also
+ * copies it into `contract_end_date`.
+ *
+ *   full_time  — Group Join Date + the Probation Period (`addEmploymentPeriod`) when there is a period it
+ *                can compute (source 'period'). With NO period but a stored date — a draft from before
+ *                r392, seeded an end date by the old default — the stored date is KEPT (source 'stored').
+ *                Neither → null: no probation end, status Active from the start.
+ *   part_time  — null WHATEVER is stored. The tab shows no end-date box for it, so a stored value can only
+ *                be left over from another type, and must not quietly land.
+ *   contract / intern — the stored value (the "Contract End Date" / "Internship End Date" box).
+ *
+ * The stored value is returned TRIMMED, blank → null — the same `str()` the activation path applied
+ * before this existed. Its FORMAT is not judged here; `missingByTab` names a malformed one, and only when
+ * this function would actually use it (`source === 'stored'`).
+ */
+export type DraftEndDate = { date: string | null; source: 'period' | 'stored' | null };
+export function draftProvisionalEndOn(e: EmployeeDraftEmployment | undefined): DraftEndDate {
+  const emp = e ?? {};
+  const type = (emp.employmentType ?? '').trim() || DEFAULT_EMPLOYMENT_TYPE;
+  const stored = (emp.provisionalEndOn ?? '').trim() || null;
+  if (type === 'part_time') return { date: null, source: null };
+  if (type === 'full_time') {
+    const derived = addEmploymentPeriod(emp.hiredOn, emp.probationValue, emp.probationUnit);
+    if (derived) return { date: derived, source: 'period' };
+  }
+  return stored ? { date: stored, source: 'stored' } : { date: null, source: null };
+}
+
+/** Does the Employment tab show the end-date box for this type? Contract and Intern only (r392). The
+ *  screen and its test read this, so the show-or-hide rule is stated once. */
+export function draftShowsEndDateBox(employmentType: string | undefined): boolean {
+  const type = (employmentType ?? '').trim() || DEFAULT_EMPLOYMENT_TYPE;
+  return type === 'contract' || type === 'intern';
 }
 
 /**
@@ -624,7 +685,10 @@ export function missingByTab(data: EmployeeDraftData): Record<DraftTabKey, strin
   if (blank(e.employmentType)) job.push('employmentType');
   if (blank(e.hiredOn)) job.push('hiredOn');
   else if (!DRAFT_DATE_RE.test((e.hiredOn ?? '').trim())) job.push('hiredOn');
-  if (!blank(e.provisionalEndOn) && !DRAFT_DATE_RE.test((e.provisionalEndOn ?? '').trim()))
+  // r392 — judged only when the stored end date is the one Activate will USE (`draftProvisionalEndOn`):
+  // a part-time hire's leftover value, or a full-time one superseded by its Probation Period, goes
+  // nowhere, and naming it would hold Activate back over a box the tab does not even show.
+  if (draftProvisionalEndOn(e).source === 'stored' && !DRAFT_DATE_RE.test((e.provisionalEndOn ?? '').trim()))
     job.push('provisionalEndOn');
   // ── The probation / confirmation / notice block (item a72610af) ────────────────────────────────
   // Every one of them OPTIONAL. The rules below are the ones `setEmploymentInfo` ENFORCES BY THROWING,

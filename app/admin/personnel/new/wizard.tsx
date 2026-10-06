@@ -110,12 +110,14 @@ import {
   DisabledReliefHints,
   HrdfSubjectField,
 } from '@/components/tax-relief-fields';
-import type { ComboboxOption } from '@/components/ui/combobox';
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { hireOptionVisible } from '@/lib/hire-form-filter';
 import {
   DEFAULT_EMPLOYMENT_TYPE,
   DRAFT_TABS,
   draftFamily,
+  draftProvisionalEndOn,
+  draftShowsEndDateBox,
   missingByTab,
   missingForCreation,
   noBasicSalaryAmount,
@@ -217,7 +219,31 @@ export function EmployeeWizard({
   const employeeCode = reservedEmployeeCode ?? data.profile?.employeeCode ?? '';
   // 8590615a — the single provisional/lifecycle end date the wizard captures MEANS the contract end date
   // when the hire is a contract hire, so it is labelled that way (the field itself is unchanged).
-  const isContractHire = (data.employment?.employmentType ?? DEFAULT_EMPLOYMENT_TYPE) === 'contract';
+  // r392 (685d2380 step 1) — and it is SHOWN only where the type needs one: Contract ("Contract End Date")
+  // and Intern ("Internship End Date"). Full-Time works its probation end out from the Probation Period
+  // (`draftProvisionalEndOn`, the same function Activate calls) and Part-Time carries none.
+  const employmentType = data.employment?.employmentType ?? DEFAULT_EMPLOYMENT_TYPE;
+  const isContractHire = employmentType === 'contract';
+  const showsEndDateBox = draftShowsEndDateBox(employmentType);
+  const endDate = draftProvisionalEndOn(data.employment);
+  // Two literal `t()` calls rather than a computed key — a template key is invisible to
+  // test/i18n-coverage.test.ts check C. Null for the two types that show no box.
+  const endDateLabel = isContractHire
+    ? t('fields.contractEndDate')
+    : employmentType === 'intern'
+      ? t('fields.internshipEndDate')
+      : null;
+  /**
+   * The outstanding list's label for a field name, in the words the TAB uses. Two names are relabelled by
+   * r392: `hiredOn` is shown on the tab as "Group Join Date" (its key `fields.hiredOn` is retired), and
+   * `provisionalEndOn` takes the box's own type-specific name. Everything else is `fields.<name>` as before
+   * — test/employee-draft-wizard.test.ts §2 sweeps every name either rule can return in all six locales.
+   */
+  const missingFieldLabel = (f: string) => {
+    if (f === 'hiredOn') return t('fields.groupJoinDate');
+    if (f === 'provisionalEndOn') return endDateLabel ?? t('fields.provisionalEndOn');
+    return t(`fields.${f}`);
+  };
 
   const missing = useMemo(() => missingByTab(data), [data]);
   const outstanding = useMemo(() => missingForCreation(data), [data]);
@@ -691,19 +717,22 @@ export function EmployeeWizard({
                 ))}
               </select>
             </Field>
-            <Field label={t('fields.reportingManager')}>
-              <select
-                className={inputCls}
+            {/* r392 (685d2380 step 1) — "Direct Superior", the Personnel record's word for it, found by
+                SEARCHING (Employee ID or part of a name) with the same Combobox that record uses. CONTROLLED
+                MODE: no `name`, so nothing is posted by a hidden input — the pick is written into the draft
+                state under the STORED key it has always had (`reportingManagerEmploymentId`), which
+                `completeEmployeeDraft` hands `hireEmployee` unchanged. The people offered are unchanged
+                too: page.tsx still reads `listManagerCandidates(session, { companyIds: scopeIds })`. */}
+            <Field label={t('fields.directSuperior')}>
+              <Combobox
                 value={data.employment?.reportingManagerEmploymentId ?? ''}
-                onChange={(e) => set('employment', { reportingManagerEmploymentId: e.target.value })}
-              >
-                <option value="">{t('none')}</option>
-                {managers.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
+                options={managers.map((m) => ({ value: m.id, label: m.label }))}
+                placeholder={t('directSuperiorNone')}
+                searchPlaceholder={t('directSuperiorSearch')}
+                noResultsLabel={t('directSuperiorNoResults')}
+                legacySuffix=""
+                onValueChange={(v) => set('employment', { reportingManagerEmploymentId: v })}
+              />
             </Field>
             {/* a72610af — THE `??` BELOW IS NO LONGER A DEFAULT, IT IS A GUARD, and the difference is the
                 whole of the defect this item fixed. It used to be the only statement of "Full Time" on
@@ -733,7 +762,11 @@ export function EmployeeWizard({
             {/* a72610af — same correction as the Employment Type select above: today's date is SEEDED
                 into the draft by page.tsx, so this `??` is a guard rather than the screen's only
                 statement of it. Before that it showed today and stored nothing. */}
-            <Field label={t('fields.hiredOn')}>
+            {/* r392 (685d2380 step 1) — labelled "Group Join Date", the Personnel record's name for the
+                column this lands in. NOTHING MOVED: `hireEmployee` has always written BOTH hired_on (shown
+                as Group Join Date) and join_date (the Join Date for the current company) from this one
+                value, and the hint says so. The draft key stays `hiredOn`. */}
+            <Field label={t('fields.groupJoinDate')}>
               <input
                 type="date"
                 className={inputCls}
@@ -742,29 +775,30 @@ export function EmployeeWizard({
               />
               {/* 89ea527b — Group Join Date and Join Date are the same day at creation and become
                   movement-only afterwards. The wizard captures the one date, as the ticket asks. */}
-              <p className="mt-1 text-xs text-muted-foreground">{t('hints.hiredOn')}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t('hints.groupJoinDate')}</p>
             </Field>
             {/* 8590615a — for a CONTRACT hire this one date is the contract end date, so it says so. The
                 field, its state and its draft key are unchanged (`provisionalEndOn`); only the label and the
-                hint switch, and `hireEmployee` now copies a contract hire's value into
-                `employment.contract_end_date` as well, which is what closes the two-homes gap: before this,
-                a contract hire's expiry lived in provisional_end_on while Employment Review wrote a
-                different column. Two literal `t()` calls rather than a computed key — a template key is
-                invisible to test/i18n-coverage.test.ts check C, and this file is single-namespace so both
-                keys are actually verified. For every other type the wording is exactly as it was. */}
-            <Field
-              label={isContractHire ? t('fields.contractEndDate') : t('fields.provisionalEndOn')}
-            >
-              <input
-                type="date"
-                className={inputCls}
-                value={data.employment?.provisionalEndOn ?? ''}
-                onChange={(e) => set('employment', { provisionalEndOn: e.target.value })}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                {isContractHire ? t('hints.contractEndDate') : t('hints.provisionalEndOn')}
-              </p>
-            </Field>
+                hint switch, and `hireEmployee` copies a contract hire's value into
+                `employment.contract_end_date` as well, which is what closes the two-homes gap.
+
+                r392 (685d2380 step 1) — THE BOX EXISTS ONLY FOR CONTRACT AND INTERN (`draftShowsEndDateBox`).
+                For Full-Time the end of probation is worked out from the Probation Period below and shown
+                as a read-only line; Part-Time carries no end date (Activate sends null whatever is stored).
+                Literal `t()` calls per type, never a computed key (test/i18n-coverage.test.ts check C). */}
+            {showsEndDateBox && endDateLabel && (
+              <Field label={endDateLabel}>
+                <input
+                  type="date"
+                  className={inputCls}
+                  value={data.employment?.provisionalEndOn ?? ''}
+                  onChange={(e) => set('employment', { provisionalEndOn: e.target.value })}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {isContractHire ? t('hints.contractEndDate') : t('hints.internshipEndDate')}
+                </p>
+              </Field>
+            )}
             {/* a72610af — PROBATION, EXTENDED PROBATION, THE CONFIRMATION DATE AND THE TWO NOTICE
                 PERIODS, each the SHARED control the Personnel Employment Dates card renders
                 (components/employment-period-fields.tsx). All OPTIONAL.
@@ -790,6 +824,19 @@ export function EmployeeWizard({
                 })
               }
             />
+            {/* r392 (685d2380 step 1) — FULL-TIME ONLY: when probation ends, READ-ONLY, from the SAME
+                `draftProvisionalEndOn` that `completeEmployeeDraft` hands `hireEmployee`, so the date on
+                this line is the date the employee is created with. A pre-r392 draft with no period keeps
+                the end date it already holds, and the line says that is where it came from. */}
+            {employmentType === 'full_time' && (
+              <p className="self-end text-sm text-muted-foreground sm:col-span-2" data-probation-ends>
+                {endDate.source === 'period' && endDate.date
+                  ? t('probationEndsOn', { date: endDate.date })
+                  : endDate.source === 'stored' && endDate.date
+                    ? t('probationEndsOnStored', { date: endDate.date })
+                    : t('probationEndsNone')}
+              </p>
+            )}
             <EmploymentPeriodField
               mode="controlled"
               labelKey="extendedProbationPeriod"
@@ -1234,7 +1281,7 @@ export function EmployeeWizard({
                   {tabLabel[k]}
                 </button>
                 {' — '}
-                {missing[k].map((f) => t(`fields.${f}`)).join(', ')}
+                {missing[k].map(missingFieldLabel).join(', ')}
               </li>
             ))}
           </ul>

@@ -1920,9 +1920,9 @@
         "position": "职位 / 职称",
         "costCenter": "成本中心",
         "jobGrade": "职级",
-        "reportingManager": "汇报经理",
+        "reportingManager": "[retired r392 — the draft's 'Reporting manager' dropdown. Item 685d2380 replaced it with the Direct Superior search box (fields.directSuperior); the stored key reportingManagerEmploymentId is unchanged]",
         "employmentType": "雇佣类型",
-        "hiredOn": "入职日期",
+        "hiredOn": "[retired r392 — the draft's 'Hire date' label. Item 685d2380 renamed it Group Join Date (fields.groupJoinDate); the draft key hiredOn is unchanged and the outstanding list maps it to the new label]",
         "provisionalEndOn": "临时结束日期",
         "contractEndDate": "合同结束日期",
         "basicSalary": "初始基本薪资 (MYR)",
@@ -1942,7 +1942,10 @@
         "familyMemberDate": "家庭成员日期",
         "passport": "护照",
         "confirmationDate": "确认日期",
-        "employmentPeriods": "试用期与通知期"
+        "employmentPeriods": "试用期与通知期",
+        "groupJoinDate": "集团入职日期",
+        "directSuperior": "直属上级",
+        "internshipEndDate": "实习结束日期"
       },
       "employmentType": {
         "full_time": "全职",
@@ -1953,15 +1956,17 @@
       "none": "— 无 —",
       "orgLabelsEmptyForCompany": "所选公司未配置任何组织标签。",
       "hints": {
-        "provisionalEndOn": "全职为试用期结束（默认 +3 个月）；否则为合同或实习结束日期。如无则留空。",
+        "provisionalEndOn": "[retired r392 — the end-date box is now shown only for Contract and Intern; Full-Time works its probation end out from the Probation Period (probationEndsOn)]",
         "contractEndDate": "合同到期日 — 本合同下的最后工作日。该日期会保存为“雇佣”标签页的合同结束日期，并驱动合同到期审核。",
         "employeeCode": "字母、数字与连字符，最多 30 个字符，且不能与现有编号重复。",
         "dateOfBirth": "留空时将尽可能从身份证号推导。",
         "businessUnit": "仅用于筛选部门列表，不会保存到员工记录。",
-        "hiredOn": "入职首日。创建之后，此日期只能通过异动事件更改。",
+        "hiredOn": "[retired r392 — replaced by hints.groupJoinDate, which also says the Join Date for the current company starts the same day]",
         "bankAccount": "银行与账号请同时填写，或都留空。",
         "noBasicSalary": "初始基本薪金为空或零。启用该员工之前，请填写计薪方式、付款周期和备注。",
-        "companyFixed": "它决定适用哪条员工编号规则，记录创建后不可更改。"
+        "companyFixed": "它决定适用哪条员工编号规则，记录创建后不可更改。",
+        "groupJoinDate": "加入集团的第一天。本公司的入职日期从同一天开始。创建之后，这两个日期只能通过异动事件更改。",
+        "internshipEndDate": "实习的最后一天。该日期驱动实习结束审核。"
       },
       "backLabel": "返回员工管理",
       "title": "创建新员工",
@@ -2031,7 +2036,13 @@
         "continue": "继续填写详细资料",
         "backToList": "返回列表"
       },
-      "close": "关闭"
+      "close": "关闭",
+      "directSuperiorNone": "暂无直属上级",
+      "directSuperiorSearch": "按员工编号或姓名搜索",
+      "directSuperiorNoResults": "没有匹配的员工。",
+      "probationEndsOn": "试用期于 {date} 结束 — 即集团入职日期加上试用期。",
+      "probationEndsOnStored": "试用期于 {date} 结束 — 这是此草稿中已保存的结束日期。输入试用期即可改为根据集团入职日期计算。",
+      "probationEndsNone": "无试用期结束日期。输入试用期即可计算试用期何时结束。"
     },
     "duplicates": {
       "title": "可能重复的员工记录",

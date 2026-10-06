@@ -36,6 +36,7 @@ import { assertProfileValueAllowed, type ProfileOptionCategory } from './profile
 // 23ad620e — the emergency contact is a per-person register now, not five person columns.
 import { writeSingleEmergencyContactInTx } from './emergency-contacts';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { addEmploymentPeriod } from '../lib/employment-period';
 import {
   person,
   employment,
@@ -154,12 +155,6 @@ export type HireParams = {
   grantLeaveTypes?: { id: string; code: string; yearCycleOverride?: string | null }[];
 };
 
-/** Days in a given month (1-based month). */
-function daysInMonth(year: number, month: number): number {
-  // Day 0 of the next month is the last day of `month` (Date.UTC normalises month overflow).
-  return new Date(Date.UTC(year, month, 0)).getUTCDate();
-}
-
 /**
  * Hiring enhancement — the server-side single source of truth for a hire's default provisional end date.
  * full_time → hire + `probationMonths` calendar months (default 3) with clamp-to-last-day-of-month (pure
@@ -167,6 +162,10 @@ function daysInMonth(year: number, month: number): number {
  * last day so 2026-11-30 + 3mo → 2027-02-28 (not an overflow into March). The probationMonths arg applies
  * ONLY to full_time — contract / intern / part_time → null (their fixed-term length is user-supplied, so
  * the configurable default does NOT touch them). Exported for unit tests and the page's default render.
+ *
+ * r392 (685d2380 step 1) — THE ARITHMETIC MOVED to lib/employment-period.ts `addEmploymentPeriod`, which
+ * the Create New Employee draft's "Probation ends on" line and its activation also call, so the month
+ * clamp exists once. The behaviour here is unchanged (test/hire-org-info.test.ts pins it).
  */
 export function computeProvisionalEndOn(
   hiredOn: string,
@@ -174,17 +173,7 @@ export function computeProvisionalEndOn(
   probationMonths = 3,
 ): string | null {
   if (employmentType !== 'full_time') return null;
-  const y = Number(hiredOn.slice(0, 4));
-  const m = Number(hiredOn.slice(5, 7));
-  const d = Number(hiredOn.slice(8, 10));
-  // Add probationMonths in 1-based month arithmetic.
-  const total = m - 1 + probationMonths; // 0-based month index after adding the months
-  const targetYear = y + Math.floor(total / 12);
-  const targetMonth = (total % 12) + 1; // back to 1-based
-  const clampedDay = Math.min(d, daysInMonth(targetYear, targetMonth));
-  const mm = String(targetMonth).padStart(2, '0');
-  const dd = String(clampedDay).padStart(2, '0');
-  return `${targetYear}-${mm}-${dd}`;
+  return addEmploymentPeriod(hiredOn, probationMonths, 'month');
 }
 
 /** Resolve a company's configured default probation length in months. Null/legacy config → 3 (the EA

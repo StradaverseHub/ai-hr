@@ -385,11 +385,31 @@ describe('§2 every computed translation key resolves, in all six locales', () =
       'employeeCode']) {
       expect(names.has(expected), expected).toBe(true);
     }
+    // r392 (685d2380 step 1) — TWO NAMES ARE RELABELLED BEFORE THE COMPUTED KEY IS REACHED, by the wizard's
+    // `missingFieldLabel`: `hiredOn` → `fields.groupJoinDate` (its old key is retired), and
+    // `provisionalEndOn` → the box's own type-specific name (`fields.contractEndDate` /
+    // `fields.internshipEndDate`, else the still-live `fields.provisionalEndOn`). So the key that must resolve
+    // for those names is the one actually RENDERED, and the retired one must stay retired — a sweep that
+    // only checked `fields.hiredOn` was non-empty would pass on "[retired r392 — …]".
+    const RELABEL: Record<string, string[]> = {
+      hiredOn: ['groupJoinDate'],
+      provisionalEndOn: ['contractEndDate', 'internshipEndDate', 'provisionalEndOn'],
+    };
+    const wizard = read('app/admin/personnel/new/wizard.tsx');
+    expect(wizard, 'the wizard intercepts hiredOn').toContain("if (f === 'hiredOn') return t('fields.groupJoinDate');");
+    expect(wizard, 'the outstanding list goes through the relabeller').toContain('{missing[k].map(missingFieldLabel).join');
     for (const loc of LOCALES) {
       const msgs = JSON.parse(read(`messages/${loc}.json`));
       for (const n of names) {
-        expect(String(msgs.people?.wizard?.fields?.[n] ?? '').trim(), `${loc} fields.${n}`).not.toBe('');
+        for (const key of RELABEL[n] ?? [n]) {
+          const v = String(msgs.people?.wizard?.fields?.[key] ?? '').trim();
+          expect(v, `${loc} fields.${key}`).not.toBe('');
+          expect(v, `${loc} fields.${key} is a live label, not a retired one`).not.toMatch(/^\[retired/);
+        }
       }
+      expect(String(msgs.people?.wizard?.fields?.hiredOn), `${loc} fields.hiredOn retired, not deleted`).toMatch(
+        /^\[retired r392/,
+      );
     }
   });
 

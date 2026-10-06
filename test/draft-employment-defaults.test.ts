@@ -50,12 +50,14 @@ let b: Base;
 
 /** The clock the screen reads, read the same way, so nothing here is pinned to a calendar date. */
 const today = () => todayInKualaLumpur();
-/** The full-time probation default the page computes for a company with no configured override. */
+/** The END DATE the OLD (pre-r392) seed wrote onto a full-time draft for a company with no configured
+ *  override. Still needed: drafts carrying it exist on production, and §3/§6 pin that they keep it. */
 const probationDefault = () => computeProvisionalEndOn(today(), 'full_time', 3) ?? today();
 
-/** The seed EXACTLY as app/admin/personnel/new/page.tsx applies it to a loaded draft. */
-const seeded = (data: EmployeeDraftData) =>
-  withEmploymentDefaults(data, { hiredOn: today(), provisionalEndOn: probationDefault() });
+/** The seed EXACTLY as app/admin/personnel/new/page.tsx applies it to a loaded draft (r392: the company's
+ *  hiring-defaults probation LENGTH, 3 months when unconfigured — no longer an end date). */
+const seeded = (data: EmployeeDraftData, probationMonths = 3) =>
+  withEmploymentDefaults(data, { hiredOn: today(), probationMonths });
 
 /** A draft as it really arrives after Create — through the real Create path, not a hand-built blob. */
 async function createDraft(): Promise<string> {
@@ -189,6 +191,10 @@ describe('§3 a draft already stuck in this state is unstuck WITHOUT anything be
     expect(stored.employment?.hiredOn).toBe(today());
     // The end date it was already carrying is untouched — it was never the problem.
     expect(stored.employment?.provisionalEndOn).toBe(probationDefault());
+    // r392 — and NO probation period is seeded beside it: the legacy guard. A period would make
+    // `draftProvisionalEndOn` derive a fresh end date and silently replace the one this draft was promised.
+    expect(stored.employment?.probationValue, 'no period seeded over a legacy end date').toBeUndefined();
+    expect(stored.employment?.probationUnit, 'no period seeded over a legacy end date').toBeUndefined();
     expect(missingByTab(stored).job, 'nothing outstanding on the Employment tab').toEqual([]);
   });
 });
@@ -212,18 +218,19 @@ describe('§4 the seed defaults, it does not overrule', () => {
     expect(missingByTab(out).job, 'and still named as outstanding').toContain('hiredOn');
   });
 
-  it('the type is resolved BEFORE the end date is derived from it', () => {
+  it('the type is resolved BEFORE the probation default is decided from it', () => {
     // The ordering hazard the plan names. An untouched draft is a full-time hire, so it gets the
-    // probation-derived end date…
+    // company's probation PERIOD (r392 — no longer an end date: the end is worked out from the period)…
     expect(seeded({}).employment).toEqual({
       employmentType: DEFAULT_EMPLOYMENT_TYPE,
       hiredOn: today(),
-      provisionalEndOn: probationDefault(),
+      probationValue: '3',
+      probationUnit: 'month',
     });
-    // …and a contract hire does NOT: its end date is user-supplied, not derived (computeProvisionalEndOn
-    // returns null for every type but full_time).
+    // …and a contract hire does NOT: the configurable default has only ever applied to full-time.
     const contract = seeded({ employment: { employmentType: 'contract' } });
     expect(contract.employment?.provisionalEndOn, 'no probation date on a contract hire').toBeUndefined();
+    expect(contract.employment?.probationValue, 'no probation period on a contract hire').toBeUndefined();
     expect(contract.employment?.hiredOn, 'but the hire date is still seeded').toBe(today());
   });
 
@@ -260,5 +267,41 @@ describe('§5 the screen that shows the defaults is the screen that seeds them',
     expect(src).toContain('DEFAULT_EMPLOYMENT_TYPE');
     // The bare literal is what made the screen's answer and the blob's answer two separate claims.
     expect(src, "no second hand-typed 'full_time' on the draft screen").not.toContain("?? 'full_time'");
+  });
+});
+
+// ── §6 r392 (685d2380 step 1) — the probation PERIOD is seeded, the end date no longer is ─────────────
+describe('§6 a new full-time draft is seeded the company probation LENGTH, not an end date', () => {
+  it('the length comes from the hiring default the page passes — 6 months here, not the code default', () => {
+    const out = seeded({}, 6).employment!;
+    expect(out.probationValue, 'employment.probationValue from company.probation_months').toBe('6');
+    expect(out.probationUnit, 'employment.probationUnit').toBe('month');
+    // THE INVERSION: before r392 this very call stored an end date. It must not any more — for a
+    // full-time draft the end is DERIVED from the period, on screen and at Activate, by one function.
+    expect(out.provisionalEndOn, 'no end date is seeded for a new full-time draft').toBeUndefined();
+  });
+
+  it('only when BOTH halves of the period are untouched — a cleared value stays cleared', () => {
+    const cleared = seeded({ employment: { employmentType: 'full_time', probationValue: '' } });
+    expect(cleared.employment?.probationValue, 'a cleared box stays cleared').toBe('');
+    expect(cleared.employment?.probationUnit, 'and its unit is not filled in behind it').toBeUndefined();
+    const chosen = seeded({ employment: { employmentType: 'full_time', probationUnit: 'week' } });
+    expect(chosen.employment?.probationValue, 'a unit somebody picked is not paired with our value').toBeUndefined();
+  });
+
+  it('never for part-time, contract or intern', () => {
+    for (const employmentType of ['part_time', 'contract', 'intern']) {
+      const out = seeded({ employment: { employmentType } }).employment!;
+      expect(out.probationValue, `${employmentType} probationValue`).toBeUndefined();
+      expect(out.probationUnit, `${employmentType} probationUnit`).toBeUndefined();
+    }
+  });
+
+  it('the page passes the hiring-defaults probation length, not an end date', () => {
+    const src = read('app/admin/personnel/new/page.tsx');
+    expect(src).toContain('withEmploymentDefaults(draft.data, { hiredOn: today, probationMonths })');
+    expect(src, 'read from core/hiring-defaults, defaulted by resolveProbationMonths').toMatch(
+      /resolveProbationMonths\(\(await getHiringDefaults\(session, draftCompanyId\)\)\?\.probationMonths\)/,
+    );
   });
 });

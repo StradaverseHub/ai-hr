@@ -8,7 +8,7 @@ import {
   listManagerCandidates,
 } from '@/core/read';
 import { listPositions, listCostCenters, listBusinessUnits } from '@/core/admin';
-import { computeProvisionalEndOn, resolveProbationMonths } from '@/core/org';
+import { resolveProbationMonths } from '@/core/org';
 import { getHiringDefaults } from '@/core/hiring-defaults';
 import { getEmployeeDraft } from '@/core/employee-draft';
 // Item a72610af — the Employment tab's three defaults are SEEDED INTO the draft here, on the server,
@@ -158,16 +158,16 @@ export default async function CreateEmployeePage({
     labelCompanyCsv('cost_center'),
   ]);
 
-  // The full-time probation default for THIS draft's company, so the Employment step opens with the
-  // provisional end date already filled — the same figure `hireAction` computes server-side, which
-  // remains the authority (r79a / 4fb8b75a step 3: it comes from HIRING defaults, not payroll config).
+  // The full-time probation default for THIS draft's company — the hiring-defaults probation length
+  // (core/hiring-defaults.ts, `company.probation_months`; NULL → 3 via `resolveProbationMonths`). Since
+  // r392 (685d2380 step 1) it seeds the Probation PERIOD rather than an end date: the Employment tab works
+  // the end out from the period (`draftProvisionalEndOn`), the same function Activate uses.
   // One company, not all nine (item 06f0cb8f): the company is fixed for the life of a draft, so the map
   // the wizard used to carry could only ever be read at one key.
   const draftCompanyId = draft.companyId;
   const probationMonths = draftCompanyId
     ? resolveProbationMonths((await getHiringDefaults(session, draftCompanyId))?.probationMonths)
     : 3;
-  const probationDefault = computeProvisionalEndOn(today, 'full_time', probationMonths) ?? today;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -185,7 +185,7 @@ export default async function CreateEmployeePage({
         today={today}
         draftId={draft.id}
         reservedEmployeeCode={draft.reservedEmployeeCode}
-        initialData={withEmploymentDefaults(draft.data, { hiredOn: today, provisionalEndOn: probationDefault })}
+        initialData={withEmploymentDefaults(draft.data, { hiredOn: today, probationMonths })}
         initialStep={draft.currentStep}
         initialTab={sp.tab}
         companies={companies.map((c) => ({ id: c.id, label: c.name }))}
@@ -208,9 +208,12 @@ export default async function CreateEmployeePage({
           companies: ccCsv.get(c.id) ?? c.companyId,
         }))}
         grades={grades.map((g) => ({ id: g.id, label: g.name }))}
+        // r392 — CODE then name ("EMP-0008 – John Tan"), the label the Personnel record's Direct Superior
+        // Combobox uses, so typing an Employee ID or part of a name narrows the list the same way on both.
+        // The candidate set itself is unchanged: `listManagerCandidates(session, { companyIds: scopeIds })`.
         managers={managerCandidates.map((m) => ({
           id: m.employmentId,
-          label: m.employeeCode ? `${m.name} (${m.employeeCode})` : m.name,
+          label: m.employeeCode ? `${m.employeeCode} – ${m.name}` : m.name,
         }))}
         nationalityOptions={nationalities.map((o) => ({ value: o.value, label: o.label }))}
         // PLAIN DATA across the boundary, trimmed to what the dropdowns render: this screen is a client

@@ -61,6 +61,7 @@ import { epfUiModeNeedsAmount, mapEpfUiMode } from '../lib/epf-mode-map';
 import {
   draftFamily,
   draftLabel,
+  draftProvisionalEndOn,
   missingForCreation,
   missingToCreate,
   stepKey,
@@ -670,7 +671,12 @@ export async function completeEmployeeDraft(
     reportingManagerEmploymentId: str(e.reportingManagerEmploymentId),
     employmentType: (str(e.employmentType) ?? 'full_time') as 'full_time' | 'part_time' | 'contract' | 'intern',
     hiredOn,
-    provisionalEndOn: str(e.provisionalEndOn) ?? null,
+    // r392 (685d2380 step 1) — NOT the stored box any more for every type. `draftProvisionalEndOn` is the
+    // SAME function the Employment tab's read-only "Probation ends on" line renders, so the date HR saw is
+    // the date this employee gets: full_time → Group Join Date + Probation Period (a pre-r392 draft with no
+    // period keeps its stored date); part_time → null whatever is stored; contract / intern → the stored
+    // Contract / Internship End Date. Its format was already judged by `missingForCreation` above.
+    provisionalEndOn: draftProvisionalEndOn(e).date,
     grantLeaveTypes: types
       .filter((t) => STANDING_GRANTS.has(t.code))
       .map((t) => ({ id: t.id, code: t.code, yearCycleOverride: t.yearCycleOverride })),
