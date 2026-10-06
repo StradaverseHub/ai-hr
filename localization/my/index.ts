@@ -5,6 +5,7 @@ import { MY_EA_REPORTING } from './ea-reporting';
  * Malaysia localization pack (ADR-0008). Slice 1 ships the statutory profile; leave rules,
  * holiday calendar, and payroll calculators (EPF/SOCSO/EIS/PCB) join here in later slices.
  */
+import { validateEpfElection } from './epf-election';
 import { correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, isValidIC, normalizeIC, setBankProfileMY, setIcProfileMY, setOthersStatutoryMY, setPassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
@@ -116,6 +117,9 @@ export const myPack: CountryPack = {
     // Rung 5c — the SOCSO/EIS blank-number default, consumed by the generic personnel + zakat screens
     // through the pack (previously a direct localization/my/statutory import).
     defaultSocsoEisNumber,
+    // r393 (685d2380 step 3b) — the EPF election pre-flight, from the db-free leaf the full-row setter
+    // itself calls (./epf-election.ts). `completeEmployeeDraft` reaches it through the registry.
+    validateEpfElection,
   },
   companyStatutory: {
     set: setCompanyStatutoryMY,

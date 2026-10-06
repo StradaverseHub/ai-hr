@@ -287,6 +287,27 @@ export interface CountryPackClient {
       icNumber?: string | null;
       nationality?: string | null;
     }) => string | undefined;
+    /**
+     * r393 (685d2380 step 3b) — would the statutory writer REFUSE this EPF election? Takes the raw screen
+     * values exactly as the record's statutory form posts them (UI category; rates in percent; amounts in
+     * the currency; blank = that side keeps the rule) and returns the draft field to name, or null. The
+     * pack's OWN rule (MY: `resolveEpfElection`, reached through `mapEpfUiMode`), never a copy of it.
+     * Optional: a jurisdiction with no elective contribution has nothing to refuse.
+     */
+    epfElectionGap?: (
+      uiMode: string | null | undefined,
+      employeeRate: string | null | undefined,
+      employerRate: string | null | undefined,
+      employeeAmount: string | null | undefined,
+      employerAmount: string | null | undefined,
+      manualReason: string | null | undefined,
+    ) => string | null;
+    /**
+     * r393 (685d2380 step 3b) — would the employer-scoped tax selection REFUSE this income tax residency
+     * for an employee whose statutory citizenship is `epfCitizenship`? Returns the draft field to name
+     * ('taxResidency'), or null. Blank residency is never a gap.
+     */
+    draftTaxResidencyGap?: (residency: string | null | undefined, epfCitizenship: string | null | undefined) => string | null;
   };
 
   /** Client-safe statutory-leave vocabulary. */
@@ -324,6 +345,7 @@ export interface CountryPackClient {
 
 // ── MY-derived signature accessors (type-only; nominalized in rung 5, see header) ──────────────────
 type MyStatutoryModule = typeof import('./my/statutory');
+type MyEpfElectionModule = typeof import('./my/epf-election');
 type MyCompanyStatutoryModule = typeof import('./my/company-statutory');
 type MyStatutoryConfigModule = typeof import('./my/statutory-config');
 type MyPayrollModule = typeof import('./my/payroll');
@@ -400,6 +422,13 @@ export interface CountryPack {
      * consumed by the generic personnel/zakat screens through the pack instead of a direct import.
      */
     defaultSocsoEisNumber: MyStatutoryModule['defaultSocsoEisNumber'];
+    /**
+     * r393 (685d2380 step 3b) — the EPF election PRE-FLIGHT: returns what `set` would persist for these
+     * (already mapped) election fields, or throws the SAME refusal `set` would throw (MY:
+     * `InvalidEpfElectionError` from `resolveEpfElection`). `completeEmployeeDraft` calls it BEFORE
+     * `hireEmployee`, so an election the writer refuses is refused while nothing has been created.
+     */
+    validateEpfElection: MyEpfElectionModule['validateEpfElection'];
   };
 
   /** Company-level statutory registration (employer numbers, HRDF band, …). */

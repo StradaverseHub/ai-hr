@@ -1,5 +1,5 @@
 import {TAX_CIRCUMSTANCE_OPTIONS,taxCircumstanceOf,readSavedTaxCircumstance} from './tax-circumstance';
-import {TAX_SELECTION_SCHEMES} from './tax-selection-codes';
+import {draftTaxResidencyGap,TAX_SELECTION_SCHEMES} from './tax-selection-codes';
 /**
  * MY client-safe pack entry (ADR-0080 rung 5b, D4) — the `CountryPackClient` implementation.
  *
@@ -22,6 +22,8 @@ import { defaultSocsoEisNumber } from './socso-eis';
 // `childReliefAmountFor` is built on. This is the whole point of putting it in a leaf: the Identification &
 // Tax card prices the grid the admin is typing into with the PACK's arithmetic, not a copy of it.
 import { childReliefFor } from './child-relief';
+// r393 (685d2380 step 3b) — the EPF election rule, from the db-free leaf `setStatutoryProfileMY` calls.
+import { epfElectionGap } from './epf-election';
 
 export const myClientPack: CountryPackClient = {
   country: 'MY',
@@ -35,6 +37,11 @@ export const myClientPack: CountryPackClient = {
     // 35b7af0a group 7 — the SAME default the Personnel card applies server-side, so the wizard's
     // shared SOCSO/EIS group cannot drift from it. From ./socso-eis, a db-free leaf (see its header).
     defaultSocsoEisNumber,
+    // r393 (685d2380 step 3b) — the Create New Employee draft names a refused EPF box and a refused income
+    // tax residency on its Bank & Statutory tab with the pack's OWN rules (./epf-election.ts,
+    // ./tax-selection-codes.ts), the same ones the writers refuse with after `hireEmployee`.
+    epfElectionGap,
+    draftTaxResidencyGap,
   },
   leave: {
     // The EA-1955 statutory floor the leave-rule preview shows (same resolver the server engines use).

@@ -6,7 +6,7 @@ import {actorOf,appendEvent} from '../../db/events';
 import {assignment,company,employment,employeeStatutoryMy,employmentTaxSchemeMy,employmentTaxSelectionMy,payrollBatch} from '../../db/schema';
 import {employedByCompanyDuring} from '../../core/employment-company';
 import type {PcbCalculationScheme} from './payroll';
-import {TAX_SELECTION_SCHEMES} from './tax-selection-codes';
+import {schemeCitizenshipOk,TAX_SELECTION_SCHEMES} from './tax-selection-codes';
 export {TAX_SELECTION_SCHEMES} from './tax-selection-codes';
 export type TaxSelectionCode='confirmation_required'|'invalid_scheme'|'citizenship_unknown'|'not_resident'|'not_found'|'invalid_period'|'stale_context';
 export class TaxSelectionError extends Error {
@@ -66,7 +66,7 @@ export async function saveTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p:{employmen
  const [profile]=await tx.select({citizenship:employeeStatutoryMy.epfCitizenship,key:employeeStatutoryMy.taxCircumstance,epoch:employeeStatutoryMy.taxApplicabilityEpoch}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,e.personId),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).limit(1).for('share');
  await lock(tx,ctx.tenantId,e.employmentId);
  if((profile?.key==='none')!==(p.scheme==='none'))throw new TaxSelectionError('invalid_scheme');
- if(p.scheme==='c_suite'&&!['pr','non_citizen'].includes(profile?.citizenship??''))throw new TaxSelectionError('citizenship_unknown',{configuredScheme:p.scheme});
+ if(p.scheme==='c_suite'&&!schemeCitizenshipOk(p.scheme,profile?.citizenship))throw new TaxSelectionError('citizenship_unknown',{configuredScheme:p.scheme});
  const before=await initialize(tx,ctx,e);
  if(p.expectedVersion!==undefined&&p.expectedVersion!==before.version)throw new TaxSelectionError('stale_context');
  const [after]=await tx.update(employmentTaxSelectionMy).set({...(p.scheme==='none'?{}:{scheme:p.scheme as PcbCalculationScheme}),taxApplicabilityEpoch:profile?.epoch??0,transitionState:'resolved',version:before.version+1,updatedAt:sql`now()`,updatedByUserId:ctx.userId}).where(eq(employmentTaxSelectionMy.id,before.id)).returning();
