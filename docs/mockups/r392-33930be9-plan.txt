@@ -1,0 +1,43 @@
+VERDICT: Partly there already   ·   SIZE: Quick
+
+YOUR REQUEST
+
+You asked us to remove two parts of the My Team page: the six summary tiles under the Scope selector (Team members, Checked in, Late, Absent, On leave, Pending approvals), and the "Needs your attention" card beside them, with its count badge and its View, Approve, Reject and "Choose pending dates to decide" buttons.
+
+THE SITUATION TODAY
+
+My Team opens with the six tiles and the "Needs your attention" card above the team grid, so the grid starts halfway down the screen.
+
+WHAT WE'LL CHANGE
+
+- Remove the six summary tiles.
+
+- Remove the "Needs your attention" card and its count badge, including its Approve, Reject, "Choose pending dates to decide" and "Mark reviewed" buttons.
+
+- The team grid moves up to sit directly under the Scope selector.
+
+- Everything else stays as it is: Export, Edit roster, Scope, Week and Month, the date arrows, search, the Show switches, the colours, and the side panel that opens when you click a name or a day.
+
+WHAT YOU'LL GET
+
+A shorter My Team page that opens straight onto the team grid.
+
+GOOD TO KNOW
+
+- Managers still approve or reject leave from Approval Items, as they do today. Only the shortcut on My Team goes away.
+
+- The tiles also worked as filters. With them gone, My Team always shows the whole team, and an old saved link that had a tile filter in it opens the whole team too.
+
+- We are not changing any figures, balances, attendance or leave records.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: components/my-team/my-team.tsx renders both sections inside one grid div (the tiles section aria-label t('today'), the attention section aria-labelledby my-team-attention). Remove that whole div, the tiles/counts constants, the decision/reason/dateIds state, approve(), and act()'s use for review. app/manage/my-team/page.tsx stops passing approveAction/reviewAction; delete the props from MyTeamProps. Removing the client references removes the server-action endpoints; then delete approveMyTeamLeaveAction and reviewMyTeamPunchAction from app/manage/my-team/actions.ts if nothing else imports them (grep first). Leave the leave approval kernel untouched.
+
+Tile filter: lib/my-team-query.ts still PARSES tile (an old bookmarked URL must not 400), but the page must not filter by it. Drop tile in parseMyTeamQuery output or in the page before readMyTeam, and in serializeMyTeamQuery, so the export link cannot carry a filter the user cannot see. core/my-team.ts may keep todaySummary/attention computation this round (export and period route may read them; check app/manage/my-team/export/report.ts); if they are unread after the change, remove them and their tests' expectations, not the tests.
+
+Message keys for removed UI (every tile_ key, attention, attentionCount, allClear, pendingLeaveLine, lateToday, noCheckIn, missingPunch, review, chooseDates, rejectReason, rejectReasonRequired, halfDayExtra and any other now-unused myTeam key): RETIRE in all six locales, never delete (repo convention, see the "[retired r389 — ...]" pattern). Grep the computed forms (the template-string t calls for tile_ and error_ prefixes) before retiring.
+
+Tests: update the dom/browser tests that assert tiles or attention (grep test/ for my-team, tile_, attention); a guard pinning the old sections is updated, not deleted. New assertions: no element with the tiles' or attention's accessible names renders; ?tile=late shows every grid row and the export href has no tile; the grid follows the scope row. Non-vacuity: restore the attention section from a copy and watch the new absence assertion fail. Render check on a dev server with a round-scoped port, zero MISSING_MESSAGE / FORMATTING_ERROR.

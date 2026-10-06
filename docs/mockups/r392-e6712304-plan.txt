@@ -1,0 +1,31 @@
+VERDICT: Not built yet   ·   SIZE: Quick
+
+THE SITUATION TODAY
+
+Under My Leave in the employee menu there are three entries: Leave Request, Leave History and Leave Credit History. You asked for Leave History to be called "Leave Request Status". The screen behind it shows each leave request and where it stands, so the new name describes it better.
+
+WHAT WE'LL CHANGE
+
+- The menu entry under My Leave reads "Leave Request Status" instead of "Leave History".
+
+- The title at the top of that screen, and the link to it on the Leave Request screen, use the same new name, so the menu and the page agree.
+
+- The other five languages change too: Status Permohonan Cuti (Malay), 休假申请状态 (Chinese), விடுப்பு கோரிக்கை நிலை (Tamil), สถานะคำขอลา (Thai) and Trạng thái đơn xin nghỉ phép (Vietnamese), each built from the wording already used there for Leave Request.
+
+WHAT YOU'LL GET
+
+Employees see "Leave Request Status" under My Leave, and the screen behind it works exactly as before.
+
+GOOD TO KNOW
+
+- This is a name change only. The screen, its tabs, the filters and every request stay as they are, and so do existing links and bookmarks.
+
+- The HR screen called "Leave History Data Import", used to load past leave records, is a different screen and keeps its name.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Values change, keys stay (the r389 leaveOverview precedent in packs/leave/index.ts: tests, saved role configs and the mobile preview name keys). Change the VALUE of nav.leaveHistory and leave.historyHeading in all six locales (en "Leave Request Status"; ms "Status Permohonan Cuti"; zh "休假申请状态"; ta "விடுப்பு கோரிக்கை நிலை"; th "สถานะคำขอลา"; vi "Trạng thái đơn xin nghỉ phép"). leave.historyHeading is used in app/leave/history/page.tsx (PageHeader and the admin/not-linked card), app/leave/page.tsx:820 (link) and components/leave/own-leave-history.tsx:501; read each to confirm the heading is the same screen name. If any use of historyHeading means something else, give it its own key rather than changing its meaning. Also change mobilePreview.leave.history to the same values so the mobile preview stays in step. Do not touch nav.leaveHistoryImport, admin.leaveDataImport.history or other "Leave History Data Import" strings. Update the comment block above LEAVE_SELF_NAV.
+
+Tests: test/r383-my-leave-flyout.dom.test.tsx asserts the link name 'Leave History' (lines 26, 38, 44, 70); update to the new name. Add a six-locale assertion that nav.leaveHistory and leave.historyHeading carry the new values and that nav.leaveHistoryImport is unchanged. Grep test/ for "Leave History" and "Sejarah Cuti" for other pins. Non-vacuity: revert en.json and watch the flyout test fail. Render check /leave/history and /leave as an employee on a round-scoped dev port; zero MISSING_MESSAGE.

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>My Team · without tiles and attention panel</title>
+<style>
+:root{font-family:Arial,sans-serif;color:#253244;background:#f1f3f7;font-size:13px;line-height:1.4}*{box-sizing:border-box}body{margin:0;padding:24px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:24px}.tag{font-size:12px;font-weight:700;letter-spacing:.06em;margin:0 0 8px}.before .tag{color:#9b4530}.after .tag{color:#14756c}
+.page{background:#fff;border:1px solid #d9e0e8;border-radius:8px;padding:18px;min-height:640px}
+h1{font-size:18px;margin:0}.sub{font-size:11px;color:#657287;margin:4px 0 0}.hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.btn{border:1px solid #cbd3de;border-radius:6px;padding:5px 9px;font-size:11px;background:#fff;display:inline-block}.btns{display:flex;gap:6px}
+.scope{margin:12px 0;font-size:11px}.scope span{border:1px solid #cbd3de;border-radius:6px;padding:4px 8px;margin-left:6px}
+.top{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.tile{border:1px solid #d9e0e8;border-radius:6px;padding:7px}.tile small{display:block;font-size:9px;color:#657287}.tile b{font-size:16px}
+.att{border:1px solid #d9e0e8;border-radius:6px}.att h2{font-size:11px;margin:0;padding:8px;border-bottom:1px solid #d9e0e8;display:flex;justify-content:space-between}.att li{list-style:none;padding:7px 8px;border-bottom:1px solid #eef1f6;font-size:10px}.att ul{margin:0;padding:0}
+.removed{position:relative;outline:2px dashed #c0392b;outline-offset:3px;border-radius:6px}.removed::after{content:"REMOVED";position:absolute;top:-10px;right:6px;background:#c0392b;color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px}
+.bar{display:flex;gap:6px;align-items:center;font-size:11px;margin-bottom:8px}.seg{border:1px solid #cbd3de;border-radius:6px;overflow:hidden;display:inline-flex}.seg span{padding:4px 8px}.seg .on{background:#14756c;color:#fff}
+table{border-collapse:collapse;width:100%;font-size:10px}th,td{border:1px solid #e3e8ef;padding:5px 4px;text-align:left;vertical-align:top}th{background:#f5f7fa;font-weight:600}
+.p{background:#e3f4ea}.l{background:#fdf0d5}.a{background:#fbe1e1}.lv{background:#ece4fb}.off{background:#eef0f3;color:#7a8597}.today{outline:2px solid #14756c;outline-offset:-2px}
+.note{margin-top:10px;font-size:10px;color:#657287}
+</style>
+<div class="cols">
+<div class="before"><p class="tag">TODAY</p><div class="page">
+<div class="hdr"><div><h1>My Team</h1><p class="sub">Leave, attendance and roster for everyone who reports to you, on one screen.</p></div><div class="btns"><span class="btn">Export CSV</span><span class="btn">Export Excel</span><span class="btn">Edit roster</span></div></div>
+<div class="scope">Scope <span>Direct reports ▾</span></div>
+<div class="top">
+<div class="tiles removed"><div class="tile"><small>Team members</small><b>–</b></div><div class="tile"><small>Checked in</small><b>–</b></div><div class="tile"><small>Late</small><b>–</b></div><div class="tile"><small>Absent</small><b>–</b></div><div class="tile"><small>On leave</small><b>–</b></div><div class="tile"><small>Pending approvals</small><b>–</b></div></div>
+<div class="att removed"><h2>Needs your attention <span>–</span></h2><ul><li>Farah Hanim · Annual Leave · 8 Oct<br><span class="btn">View</span> <span class="btn">Approve</span> <span class="btn">Reject</span></li><li>Arjun Kumar · Absent today<br><span class="btn">View</span></li><li>Farah Hanim · Late 24 min today<br><span class="btn">View</span></li></ul></div>
+</div>
+<div class="bar"><span class="seg"><span class="on">Week</span><span>Month</span></span><span class="btn">‹</span><b>Mon 5 Oct – Sun 11 Oct 2026</b><span class="btn">›</span><span class="btn">Today</span></div>
+<table><tr><th>Employee</th><th>Mon 5</th><th>Tue 6</th><th>Wed 7</th><th>Thu 8</th></tr>
+<tr><td>Arjun Kumar</td><td class="p">SF1</td><td class="a today">SF1 Absent</td><td>SF1</td><td>SF1</td></tr>
+<tr><td>Farah Hanim</td><td class="p">MB28</td><td class="l today">MB28 Late</td><td>MB28</td><td style="border:1px dashed #8e6bd8">AL · pending</td></tr>
+<tr><td>Siti Aminah</td><td class="lv">AL</td><td class="p today">SF1</td><td>SF1</td><td>SF1</td></tr></table>
+</div></div>
+<div class="after"><p class="tag">AFTER THIS CHANGE</p><div class="page">
+<div class="hdr"><div><h1>My Team</h1><p class="sub">Leave, attendance and roster for everyone who reports to you, on one screen.</p></div><div class="btns"><span class="btn">Export CSV</span><span class="btn">Export Excel</span><span class="btn">Edit roster</span></div></div>
+<div class="scope">Scope <span>Direct reports ▾</span></div>
+<div class="bar"><span class="seg"><span class="on">Week</span><span>Month</span></span><span class="btn">‹</span><b>Mon 5 Oct – Sun 11 Oct 2026</b><span class="btn">›</span><span class="btn">Today</span></div>
+<table><tr><th>Employee</th><th>Mon 5</th><th>Tue 6</th><th>Wed 7</th><th>Thu 8</th></tr>
+<tr><td>Arjun Kumar</td><td class="p">SF1</td><td class="a today">SF1 Absent</td><td>SF1</td><td>SF1</td></tr>
+<tr><td>Farah Hanim</td><td class="p">MB28</td><td class="l today">MB28 Late</td><td>MB28</td><td style="border:1px dashed #8e6bd8">AL · pending</td></tr>
+<tr><td>Siti Aminah</td><td class="lv">AL</td><td class="p today">SF1</td><td>SF1</td><td>SF1</td></tr></table>
+<p class="note">The grid, the side panel, search, Week / Month and the Show switches stay as they are.</p>
+</div></div>
+</div>
+</html>
