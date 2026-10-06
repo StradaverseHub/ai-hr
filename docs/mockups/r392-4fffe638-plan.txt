@@ -1,0 +1,55 @@
+VERDICT: Not built yet   ·   SIZE: Moderate
+
+ONE CORRECTION FIRST
+
+Your request says existing fixed transactions are already linked to a payroll cycle and that payroll processing uses that link. That is not quite how it works today. The Payroll Cycle on a fixed transaction is only a general label (Regular, Off-cycle, Bonus or Adjustment). It is not linked to any cycle set up in Payroll Cycles, and payroll processing does not look at it at all: a fixed item is paid in every payroll that falls within its start and end dates, and on bonus or off-cycle runs only items set up to pay as bonus are paid. This plan keeps that exactly as it is, which matches your instruction not to change processing.
+
+THE SITUATION TODAY
+
+When HR adds or edits a fixed transaction, the Payroll Cycle list always shows the same four general labels, whatever the company has set up. It does not show the cycle names the company keeps under Payroll > Settings > Payroll Cycles, such as Monthly or Mid-Month. Where a company has several off-cycle cycles (most have three: Off-cycle, Advance Salary and Mid-Month), the label cannot tell them apart.
+
+WHAT WE'LL CHANGE
+
+- On Add New and Edit, the Payroll Cycle list shows the cycle names set up for the employee's own company under Payroll Cycles, in the order shown there. Inactive cycles are not offered.
+
+- Choosing a cycle links the fixed transaction to that exact cycle. The cycle's run type stays part of the cycle's setup and is recorded alongside, as today.
+
+- The employee's fixed transaction list, the Edit screen and the Fixed Transaction section of Transaction View show the linked cycle's name.
+
+- Existing fixed transactions are linked to their company's cycle wherever there is only one possible match. Today that is every one marked Regular, which will show "Monthly".
+
+- Where there is more than one possible match we will not guess. Today that is 2 older Off-cycle records in Demo Sdn Bhd, which has two off-cycle cycles. They keep their current label until someone edits them and picks the right cycle. Records saved with no cycle keep showing as unspecified.
+
+- Saving a change to the amount or dates without touching the cycle keeps the cycle it already had.
+
+WHAT YOU'LL GET
+
+HR picks from the same named cycles they see in Payroll Cycles, and every fixed transaction shows the real cycle it belongs to. Amounts, dates, pay items and payroll results stay exactly as they are.
+
+GOOD TO KNOW
+
+- No payroll calculation changes. Linking a fixed transaction to a cycle does not change which payroll pays it, the same as today.
+
+- There is no setting today that assigns individual employees to particular cycles. Cycles belong to a company, so each employee sees their company's cycles.
+
+- The Excel import for fixed transactions keeps accepting the same Payroll Cycle values it accepts today, and links to the matching cycle when the employee's company has only one.
+
+- A cycle that has fixed transactions linked to it can be made inactive but not deleted, so the history stays intact.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: the kernel never reads employment_pay_component.run_type (core/payroll.ts recurring query about 4943-4971 selects employment, window, superseded only; comment at core/pay-components.ts about 1414). Display and record change only: core/payroll.ts must not change. Precedent: c11e81aa / 0441 (payroll_individual_txn.intended_cycle_id) and app/payroll/transactions/individual/page.tsx about 89-106 (listPayrollCycles per company, shows c.name).
+
+Migration 0514 (allocated by the parent; its journal when is above 0513's): ALTER TABLE employment_pay_component ADD COLUMN IF NOT EXISTS payroll_cycle_id uuid REFERENCES payroll_cycle(id) (no ON DELETE), partial index WHERE payroll_cycle_id IS NOT NULL. Backfill in the same file: link a row only when its employment's company has exactly one non-archived cycle with the row's run_type (superseded rows included so history agrees); leave ambiguous and null rows alone; re-runnable. Measured 2026-10-06: 46 regular rows link, 2 off_cycle rows in Demo Sdn Bhd and 37 null rows stay unlinked; re-measure before release and record in the round entry. db/schema.ts: payrollCycleId beside runType, with a comment that the kernel does not read it.
+
+Service (core/pay-components.ts): setEmploymentPayComponent / updateEmploymentPayComponent accept payrollCycleId, resolve it inside the transaction against the employment's company (getActivePayrollCycle logic: missing, archived or other-company refused with a typed error mapped to a localised error key) and set runType from the cycle, never from the client; event payload carries payrollCycleId. Reads return payrollCycleId and the cycle name (left join). An update that does not touch the cycle carries the superseded row's payroll_cycle_id and run_type forward: the select is always submitted, so use a hidden cycleTouched flag (c11e81aa pattern; CLAUDE.md section 8). The personnel editor (app/admin/personnel/[employmentId]/actions.ts about 300) never sends a cycle and must keep producing what it does today.
+
+Screens: add-fixed-dialog.tsx cycles become {id,name} from listPayrollCycles(s, companyId, {activeOnly:true}) in fixed/page.tsx; select name payrollCycleId, still required on Add. fixed/[id]/page.tsx same list; a linked archived cycle shows as the selected option marked inactive so an untouched save keeps it; an unlinked tagged row shows its old run-type label as the placeholder. fixed-list.tsx and Transaction View (core/payroll-view.ts listFixedTransactionsAcross, transaction-view/page.tsx about 816): cycle name, else run-type label, else unspecified. New keys in six locales; retire, never delete.
+
+Import (core/payroll-txn-import.ts about 573-582): keep accepting run-type values; write payrollCycleId only under the backfill's one-match rule; update the stale comments, including the test comment at test/payroll-txn-import.test.ts about 252.
+
+Delete guard (core/payroll-cycle.ts deletePayrollCycle about 383-405): also count employment_pay_component.payroll_cycle_id and payroll_individual_txn.intended_cycle_id references and throw a typed in-use error instead of a raw foreign-key failure.
+
+Tests: Add with Mid-Month in a company that also has Off-cycle and Advance Salary stores that exact id and the list shows Mid-Month (non-vacuity: resolve by run type instead and the name assertion fails); other-company and archived ids refused, nothing written; dropdown options equal that company's active cycles (at least 2), none from another company; untouched edit keeps cycle and run type, touched edit moves both; backfill fixture by count AND id (regular links, ambiguous off_cycle stays null, null stays null); kernel parity: a fixed row linked to a Bonus cycle on a regular run pays the same as an unlinked row; delete guard refuses a cycle referenced only by a fixed transaction. Update, do not loosen, fixed-transaction-redesign (about 148-151) and fixed-transaction-action (104/131/146). Run every guard that greps app/payroll/transactions and core/pay-components. gate:shadow covers the migration.

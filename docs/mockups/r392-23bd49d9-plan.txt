@@ -1,0 +1,53 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+YOUR REQUEST
+
+You asked us to add Bank Name, Bank Account and Payroll Cycle to Employment Info - Payslip Display Fields, so that each works like the existing fields: you can switch it on or off, it follows the order you set, it shows the same way on the Payslip Review screen and in the downloaded payslip, its value comes from the employee's or the payroll's own record, and there is no separate fixed display for it.
+
+THE SITUATION TODAY
+
+Bank Name, Bank Account and Payroll Cycle already print on every payslip, together with Payment Method. They sit at the end of the Employee Profile block, on the review screen and in the downloaded payslip. But they are not in the setup list: they are always added after the fields you chose, so you cannot switch them off or move them. That is the separate fixed display you described.
+
+WHAT WE'LL CHANGE
+
+- Add four fields to the setup list: Payment Method, Bank Name, Bank Account and Payroll Cycle. Payment Method is included because it prints in the same fixed spot today, and leaving it out would keep one line you still could not hide or move.
+
+- Each one can be switched on or off and moved up or down (or dragged) like the existing fields, and prints where you place it, two per row, left then right.
+
+- The fixed lines at the end of the block are removed, so each of these details prints once, only where your setup puts it.
+
+- The review screen, the reviewer's downloaded copy and the employee's own downloaded payslip all follow the same setting.
+
+- The values come from the same records as today: Bank Name and Bank Account from the employee's bank details, Payment Method from the employee's payroll details, and Payroll Cycle is the name of the payroll cycle the run was opened under (or the run type, for example "Regular", when the run was opened without one).
+
+- No payslip changes on the day this goes live. Every company, whether it has saved its setup or not, finds the four new fields switched on and placed at the end of its list, which is exactly where they print today. From then on you can switch them off or move them, and Copy to Companies copies them like any other field.
+
+WHAT YOU'LL GET
+
+Every line in the Employment Info block is controlled from one setup screen, and nothing prints outside it.
+
+GOOD TO KNOW
+
+- The bank account number stays in full on the review screen and on both downloaded copies, as you asked for earlier.
+
+- These details are read from the employee's current record each time a payslip is opened, as they are today. If an employee changes bank account, an older payslip opened later shows the new account. The system has never kept a record of which account each past payment went to, so that cannot be shown for past months; keeping that record from now on would be a separate request.
+
+- The four labels will read Payment Method, Bank Name, Bank Account and Payroll Cycle, with capitals like the other labels in the block (today they read "Bank name" and so on). All six languages are covered.
+
+- We're not touching how anything is calculated. This only changes what is shown and where.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: core/payslip-information.ts payslipProfileRows (about 42-51) appends paymentMethod, bankName, bankAccount, cycle after the selected rows whatever the setting says; called by the review page (app/payroll/individual-payslip/page.tsx about 735-742) and lib/payslip-pdf.ts drawEmployeePanel (about 1355-1369), which both PDF routes use. Nothing is snapshotted: both reads (payslipDetail core/payroll.ts, payslipForReview core/payroll-view.ts) live-join employee_statutory_my for bank, employment.payment_method, and payroll_cycle.name via payroll_batch.payroll_cycle_id; the cycle label is payslipCycleLabel (core/payslip-cycle-label.ts).
+
+Catalogue: append paymentMethod, bankName, bankAccount, payrollCycle to the END of PAYSLIP_INFORMATION_FIELDS and to DEFAULT_PAYSLIP_INFORMATION_FIELDS (12 to 16). Retire payslipProfileRows' appended extras (delete the function or make it a pass-through; grep every caller). drawEmployeePanel prints entries only; add the four to its no-informationRows fallback in default order.
+
+TRAP: the review page and both routes spread the read row into selectPayslipInformation. row.paymentMethod is the RAW enum (bank_transfer) and must be overridden with the translated word, as employmentType already is; neither read has a bankAccount key (only bankAccountFull and bankAccountMasked), so feed bankAccount = bankAccountFull explicitly; payrollCycle = the payslipCycleLabel output (strings.cycleLabel in the routes). Full account number is the approved b19042d0 behaviour; keep it. Fix the stale masking prose in core/payroll-view.ts (about 1355, 1369-1370, 1434-1436).
+
+Migration 0513 (allocated by the parent; data only): UPDATE payslip_information_setting appending each of the four keys not already present, in catalogue order, to fields, including an empty array. Re-runnable without duplicates. No schema change, no GRANT. Old code drops unknown keys, so it is safe across the restart. Record the production row count before and after in the round entry.
+
+Messages: payroll.payslipInformation.paymentMethod, bankName, bankAccount, payrollCycle in six locales, seeded from payroll.individualPayslip.field* (Title Case in en and ms). Retire, never delete, any field* key left unused (grep computed forms).
+
+Tests: update r378-payslip-information (16 defaults; the catalogue-size title), r378-payslip-information-settings and r389-payslip-information-order (they use bankAccount AS the unknown key: switch to a genuinely unknown key), r389-payslip-information-setup.dom (hidden count), payslip-pdf.test.ts r383 appended-order block. Byte-identity: for legacy saved rows (null, empty, defaults, the full old catalogue, singles, seeded subsets) the new selection of migrate(row) gives the same rows, values and order as the legacy payslipProfileRows(legacySelect(row), extra); non-vacuity: drop the migration's append and the named assertion fails. New: a setting without bankAccount prints no account number in the PDF text or on the review screen (non-vacuity: restore the appended block). New: raw bank_transfer never prints and bankAccount is non-empty when bankAccountFull is set, across the review page and both routes. Migration test on empty and a one-key row, run twice. Keep individual-payslip 742-750, payslip-pdf-unicode, migration-journal-ordering and event-payload-pii-guard green. Render check by driving the kernel on a round-scoped database and port (db:seed creates no payslips): review page and both PDFs, a company with a saved row and one without.

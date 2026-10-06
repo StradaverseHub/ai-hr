@@ -1,0 +1,63 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+When HR continues a Draft employee, the Employment, Bank & Statutory and Payroll tabs look and work differently from the same tabs on an active employee's profile. The Employment tab says "Hire date" and "Reporting manager", always shows a Provisional End Date box, and lists every candidate in one long dropdown. Bank Information has no custom payment holder options, Statutory (Malaysia) is laid out differently and some settings are missing, and there is no Payment Method or Payroll Policy, so HR has to open the employee again after activating to finish them.
+
+One good piece of news: the date typed into "Hire date" already becomes the employee's Group Join Date when the draft is activated, and the Join Date for the current company starts on that same day. So the rename moves no date; only the wording changes.
+
+WHAT WE'LL CHANGE
+
+Employment tab
+
+- "Hire date" is renamed "Group Join Date", with a note that the Join Date for the current company starts on the same day.
+
+- The end date box only appears when the Employment Type needs one: for Contract it reads "Contract End Date", for Intern "Internship End Date". It is hidden for Full-Time and Part-Time.
+
+- For Full-Time, the end of probation is worked out from the Probation Period on this tab (Group Join Date plus the period), and shown on the tab as a line saying when probation ends, so you can see it. The Probation Period starts filled in with your company's default length (3 months unless your hiring settings say otherwise). New full-time hires still show as "Probation" until it ends, as today. Part-Time hires carry no end date.
+
+- "Reporting manager" is renamed "Direct Superior", and the long dropdown becomes the same search box used on the active profile: type an Employee ID or part of a name and pick from the matches. It offers the same people the list offers today.
+
+Bank & Statutory tab
+
+- Bank Information gets the same "Use a custom holder name" and "Use a custom holder identification" ticks as the active profile. Ticking one opens its box, and a ticked box must be filled in before the employee can be activated.
+
+- Statutory (Malaysia) is rearranged into the same three sections as the active profile (EPF contribution, SOCSO & EIS information, and Income Tax (PCB)) with the same fields, choices and wording. That adds the EPF rate and amount boxes, Subject to SKBBK, Employer bears tax contribution and the full list of income tax residency choices. The training levy (HRDF) choice moves into its own Others Statutory section, as on the active profile.
+
+Payroll tab
+
+- Payment Method is added (Not specified, Bank Transfer, Cheque, Cash), the same as "How This Employee Is Paid" on the active profile. As there, Bank Transfer needs the bank and account number on the Bank & Statutory tab; until both are there, the draft's "still needed" list says so.
+
+- Payroll Policy is added, offering the same list as the active profile: your company's active payroll policies, or the Monthly default. It appears only where Payroll is switched on.
+
+For all three tabs
+
+- Everything entered on the draft, including these new fields, is carried onto the active profile when you press Activate. Every check is made before the employee is created, so Activate never stops halfway with half an employee saved.
+
+WHAT YOU'LL GET
+
+One design for the same information whether the employee is a draft or active, a Direct Superior found by searching instead of scrolling, and bank, statutory and pay setup finished once, on the draft.
+
+GOOD TO KNOW
+
+- We will deliver this in three steps, each going live when it is ready: the Employment tab first, then Payroll, then Bank & Statutory. This one approval covers all three.
+
+- The four Employment Types (Full-Time, Part-Time, Contract, Intern) are fixed in the system today, so the show-or-hide rule is set for each of the four.
+
+- Drafts already in progress keep everything typed so far. A full-time draft that already holds an end date keeps that date when it is activated.
+
+- Two Income Tax figures on the active profile, the qualifying-children count and the relief amount, are worked out from the employee's saved family record, so they appear once the employee is activated. The choices that drive them are all on the draft.
+
+- If you would rather keep the end date box visible for Full-Time instead of working it out from the Probation Period, reject this plan and say so.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+FACT: drafts are employee_draft.data jsonb (lib/employee-draft-schema.ts); screen app/admin/personnel/new/wizard.tsx; activation completeEmployeeDraft (core/employee-draft.ts about 546-960). hireEmployee writes hired_on AND join_date from hiredOn (core/org.ts about 266-267); the Active screen labels hired_on Group Join Date. Employment types are the fixed enum full_time, part_time, contract, intern. For full_time, provisional_end_on is the only at-hire input that yields status probation (core/employment-status.ts about 137) and opens the probation review window (core/employment-review.ts about 100). Migration: NONE in any step (new jsonb keys only; keep stored key names such as reportingManagerEmploymentId).
+
+Step 1, Employment (this round): relabel hiredOn to Group Join Date with the Join Date hint; retire old keys, grep prose asserting "Hire date". End-date box only for contract and intern (internshipEndDate label as a literal t() call). withEmploymentDefaults seeds probationValue/Unit from the company hiring-defaults probation length when both are undefined and type is full_time, and stops seeding provisionalEndOn for new full-time drafts. Pure helper addEmploymentPeriod(hiredOn, value, unit) with the month clamp of computeProvisionalEndOn, week 7 days, day 1. Activation provisionalEndOn: full_time with a probation period gives the derived date; full_time with no period but a stored provisionalEndOn (legacy drafts) keeps the stored date; part_time null whatever is stored; contract and intern the stored value. Full-time shows a read-only "Probation ends on" line from the same helper (one function for screen and activation). Direct Superior: components/ui/combobox.tsx in controlled mode (no name, onValueChange writing data.employment.reportingManagerEmploymentId), labels CODE then name; options stay listManagerCandidates(session, {companyIds: scopeIds}) (no widening of who can be picked; the draft scope was set deliberately in r389 b1b1879d). Tests: derivation (6 months with month-end clamp, weeks, part_time stored date lands null, contract keeps, legacy full_time keeps stored), dates from todayInKualaLumpur; DOM (labels render in six locales, search narrows to one match, box absent for full_time and part_time and present for contract and intern, probation line shows the derived date); extend the LANDS table in test/draft-activation-field-survival.test.ts; update, do not loosen, draft-employment-defaults, employee-draft-wizard missing-name and six-locale sweeps, personnel-contract-information about 268. Non-vacuity: revert the derivation to seeding provisionalEndOn and watch the named assertion fail.
+
+Step 2, Payroll: new keys payroll.paymentMethod, payroll.payrollPolicyId; extract the Active Payment Method and Payroll Policy selects into shared field groups with form and controlled modes (Active unchanged in form mode); listAssignablePolicies for the draft company only when payroll is on; missingByTab rule for bank_transfer without bank name or account (one shared predicate with MissingBankForTransferError); pre-flight before hireEmployee (policy active, same company, payroll on); after statutory, setEmploymentPaymentMethod and assignPolicy through packs/payroll/service only (drift ratchet).
+
+Step 3, Bank & Statutory (money-affecting, hand-verified): holder keys, subjectToSkbbk, employerBearsTax, taxResidency (isResident kept as legacy, mapped forward), EPF rates and amounts; extract a CustomHolderFields group from BankInfoCard; three fieldsets plus Others Statutory; export a pure EPF-election validator from the MY pack and call it before hireEmployee and on save (reverses the a72610af/70b14723 narrowing only with that validator in place); activation calls pack.statutory.setBank and passes the new tax and EPF fields; update the comments that assert the old narrowing.
