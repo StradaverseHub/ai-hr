@@ -23,7 +23,7 @@ describe('My Leave uses the shared sidebar flyout',()=>{
   fireEvent.click(leave);const panel=screen.getByRole('navigation',{name:'My Leave'});
   expect(rail.contains(panel)).toBe(false);
   expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/credit']);
-  expect(within(panel).getByRole('link',{name:'Leave History'})).toHaveAttribute('aria-current','page');
+  expect(within(panel).getByRole('link',{name:'Leave Request Status'})).toHaveAttribute('aria-current','page');
   expect(within(panel).getByRole('link',{name:'Leave Request'})).not.toHaveAttribute('aria-current');
   expect(within(panel).getByRole('link',{name:'Leave Credit History'})).not.toHaveAttribute('aria-current');
   // The old name is gone from the panel, not merely joined by the new one.
@@ -35,13 +35,13 @@ describe('My Leave uses the shared sidebar flyout',()=>{
   fireEvent.keyDown(document,{key:'Escape'});expect(screen.queryByRole('navigation',{name:'My Leave'})).toBeNull();expect(leave).toHaveFocus();
   fireEvent.click(leave);fireEvent.click(container.querySelector('.fixed.inset-0.z-40')!);expect(screen.queryByRole('navigation',{name:'My Leave'})).toBeNull();
   fireEvent.click(leave);fireEvent.click(screen.getByRole('link',{name:'Leave Request'}));expect(screen.queryByRole('navigation',{name:'My Leave'})).toBeNull();
-  expect(within(rail).queryByRole('link',{name:'Leave History'})).toBeNull();
+  expect(within(rail).queryByRole('link',{name:'Leave Request Status'})).toBeNull();
  });
  it('highlights the overview and keeps core leave visible while sellable attendance is hidden',()=>{
   location.path='/leave';const view=show();const leave=screen.getByRole('button',{name:'My Leave'});expect(leave.classList.contains('bg-accent')).toBe(true);
   fireEvent.click(leave);const panel=screen.getByRole('navigation',{name:'My Leave'});
   expect(within(panel).getByRole('link',{name:'Leave Request'})).toHaveAttribute('aria-current','page');
-  expect(within(panel).getByRole('link',{name:'Leave History'})).not.toHaveAttribute('aria-current');
+  expect(within(panel).getByRole('link',{name:'Leave Request Status'})).not.toHaveAttribute('aria-current');
   view.unmount();show(false,[]);
   // Leave is shared core, so an empty sellable-module list must retain both CORE self-service links — and
   // r389: must drop Leave Credit History, which belongs to the sellable `toil` add-on.
@@ -67,7 +67,7 @@ describe('My Leave uses the shared sidebar flyout',()=>{
   expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/leave','/leave/history','/leave/credit']);
   expect(within(panel).getByRole('link',{name:'Leave Credit History'})).toHaveAttribute('aria-current','page');
   expect(within(panel).getByRole('link',{name:'Leave Request'})).not.toHaveAttribute('aria-current');
-  expect(within(panel).getByRole('link',{name:'Leave History'})).not.toHaveAttribute('aria-current');
+  expect(within(panel).getByRole('link',{name:'Leave Request Status'})).not.toHaveAttribute('aria-current');
  });
  it.each([false,true])('does not highlight My Leave on the tracker route in collapsed=%s',collapsed=>{
   location.path='/leave/tracker';show(collapsed);
