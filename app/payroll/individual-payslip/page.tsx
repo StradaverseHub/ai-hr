@@ -1,6 +1,6 @@
 import {PayslipCompanyLogo} from '@/components/payslip-company-logo';
 import { isRecordedEmployerContribution, payslipConfiguredContributions } from '@/core/payslip-configured-contributions';
-import { selectPayslipInformation, payslipProfileRows } from '@/core/payslip-information';
+import { selectPayslipInformation, payslipInformationData } from '@/core/payslip-information';
 import { payslipInformationLabels } from '@/lib/payslip-information-labels';
 import { payslipPaymentDate } from '@/lib/payslip-pdf-strings';
 /**
@@ -732,13 +732,18 @@ export default async function IndividualPayslipPage({
               ⚠️ payroll.statutoryAdjustment.employeeHeading is a DIFFERENT key on a different screen. */}
           <Block title={tSlip('employeeProfile')}>
             <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
-              {payslipProfileRows(selectPayslipInformation({ ...row, employee: row.employeeName,
+              {/* r392 (23bd49d9) — Payment Method, Bank Name, Bank Account and Payroll Cycle are ordinary
+                  setting fields now, printed only where the company's setting places them; nothing is
+                  appended after the selection any more. `payslipInformationData` replaces the raw
+                  payment-method enum with its word, feeds the FULL account number, and supplies the cycle
+                  label — the same three facts both PDF routes feed it. */}
+              {selectPayslipInformation(payslipInformationData(row, {
+                employee: row.employeeName,
                 employmentType: row.employmentType ? t(`employmentType_${row.employmentType}`) : null,
-              }, row.informationFields, { ...informationLabels, identityNumber: row.identityIsPassport ? t('fieldPassport') : informationLabels.identityNumber }),
-                {paymentMethod:row.paymentMethod?t(`paymentMethod_${row.paymentMethod}`):null,
-                  bankName:row.bankName,bankAccount:row.bankAccountFull,
-                  cycle:payslipCycleLabel({cycleName:row.cycleName,runTypeLabel:tTxn(`individual.cycle.${row.runType}`)})},
-                {paymentMethod:t('fieldPaymentMethod'),bankName:t('fieldBankName'),bankAccount:t('fieldBankAccount'),cycle:t('fieldCycle')})
+                paymentMethod: row.paymentMethod ? t(`paymentMethod_${row.paymentMethod}`) : null,
+                bankAccount: row.bankAccountFull,
+                payrollCycle: payslipCycleLabel({cycleName:row.cycleName,runTypeLabel:tTxn(`individual.cycle.${row.runType}`)}),
+              }), row.informationFields, { ...informationLabels, identityNumber: row.identityIsPassport ? t('fieldPassport') : informationLabels.identityNumber })
                 .map((field,index)=><Info key={index} label={field.label} value={field.value}/>)}
             </dl>
           </Block>

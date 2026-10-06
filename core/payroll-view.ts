@@ -1352,10 +1352,12 @@ export type PayslipReviewRow = ProcessedPayslipViewRow & {
   jobGrade: string | null;
   employmentType: string | null;
   paymentMethod: string | null;
-  /** MASKED to the last four digits — what the REVIEW SCREEN prints. */
+  /** MASKED to the last four digits. r392: no payslip surface reads it any more — the review screen and
+   *  both PDFs print `bankAccountFull` (b19042d0); kept for any consumer that still wants the mask. */
   bankAccountMasked: string | null;
   /**
-   * The FULL account number, for the printed payslip only (f35f758a).
+   * The FULL account number, printed on the payslip (f35f758a) and, since b19042d0, on the review screen.
+   * It reaches both as the `bankAccount` setting field (r392, `payslipInformationData`).
    *
    * A COMMENT HERE USED TO SAY THIS NUMBER "must never leave the server". That was never an ADR decision —
    * it was a build-time judgement in 5c198931, recorded only as a code comment citing `core/pdpa.ts` — and
@@ -1366,7 +1368,8 @@ export type PayslipReviewRow = ProcessedPayslipViewRow & {
    * any admin whose company scope includes the employer can now download a payslip carrying an employee's
    * full account number, before release. That is new for THIS document and not new for the product: the
    * same number is already shown unmasked to admins at app/admin/claims/reimbursements/page.tsx and in the
-   * payment summary CSV (core/payroll.ts). The SCREEN deliberately keeps showing only the last four.
+   * payment summary CSV (core/payroll.ts). The review SCREEN shows it in full too (b19042d0), under the
+   * same scopedAdmin fence; a company can hide it by switching Bank Account off in its payslip setting.
    */
   bankAccountFull: string | null;
   bankName: string | null;
@@ -1431,9 +1434,10 @@ export function sumPayslipEmployerPeriodTotals(
  * Fails CLOSED on an empty scope, like every read in this file. An out-of-scope payslipId returns null,
  * so a tampered URL is indistinguishable from a missing payslip.
  *
- * The bank account is masked HERE rather than on screen: `employee_statutory_my.bank_account_no` is
- * PDPA-scoped financial data (core/pdpa.ts) and must not be emitted to the client at all, so the read
- * never returns it.
+ * The bank account comes back in BOTH forms: `bankAccountMasked` (last four) and `bankAccountFull`.
+ * `employee_statutory_my.bank_account_no` is PDPA-scoped financial data (core/pdpa.ts); the full number is
+ * printed on the review screen and both PDFs by decision (f35f758a, b19042d0), not by accident — see
+ * `PayslipReviewRow.bankAccountFull`.
  */
 export function payslipForReview(
   ctx: SessionContext,
@@ -1528,9 +1532,9 @@ export function payslipForReview(
     const acct = (bankAccountNo ?? '').trim();
     return {
       ...rest,
-      // Last four only, and only when there are more than four digits to hide. THE SCREEN reads this one.
+      // Last four only, and only when there are more than four digits to hide. No payslip surface reads it (r392).
       bankAccountMasked: acct ? (acct.length > 4 ? `••••${acct.slice(-4)}` : acct) : null,
-      // f35f758a — and the FULL number beside it, for the PDF only. See `PayslipReviewRow.bankAccountFull`
+      // f35f758a — and the FULL number beside it, which the screen and the PDFs print. See `PayslipReviewRow.bankAccountFull`
       // for what that exposes and why it was a deliberate decision rather than a leak.
       bankAccountFull: acct || null,
       // IC first; a non-Malaysian employee carries a passport instead (icNumber has been nullable since
