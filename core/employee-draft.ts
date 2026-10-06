@@ -71,15 +71,18 @@ import { findEmployeeCodeClaim } from './employee-code-claims';
 import { requirePackFor } from '../localization/registry';
 import { normalizeEmployeeCode, requireEmployeeCode } from '../lib/employee-code';
 import { resolveEmployeeIdMode, type EmployeeIdRule } from '../lib/employee-id-mode';
-// a72610af — the EPF category the draft stores is the five-name UI value; this is the SAME mapper the
-// Personnel statutory action calls to turn it into one of the three lawful KWSP enum values. The client
-// never decides the persisted enum, on either screen.
-import { epfUiModeNeedsAmount, mapEpfUiMode } from '../lib/epf-mode-map';
+// a72610af — the EPF category the draft stores is the UI value; this is the SAME mapper the Personnel
+// statutory action calls to turn it, and (r393, 685d2380 step 3b) the SAME raw rate and amount box strings,
+// into one of the lawful KWSP enum values and the figures to persist. The client never decides the
+// persisted enum, on either screen.
+import { mapEpfUiMode, type EpfElectionFields } from '../lib/epf-mode-map';
 import {
   draftCustomHolder,
+  draftEpfCitizenship,
   draftFamily,
   draftLabel,
   draftProvisionalEndOn,
+  draftTaxResidency,
   missingForCreation,
   missingToCreate,
   stepKey,
@@ -128,6 +131,32 @@ export class DraftPayrollSetupError extends Error {
     this.name = 'DraftPayrollSetupError';
   }
 }
+
+/**
+ * r393 (item 685d2380 step 3b) — WHY A DRAFT'S INCOME TAX RESIDENCY WAS REFUSED, judged BEFORE
+ * `hireEmployee`. The residency is the EMPLOYER-SCOPED tax selection, and an incentive scheme (REP,
+ * Knowledge Worker, C-Suites) is written by the scoped tax writer only once the employment exists; that
+ * writer refuses Position C-Suites unless the EPF citizenship is PR or non-citizen. Provoked here instead,
+ * with the pack's own rule (`draftTaxResidencyGap`), so Activate never stops after creating the employee.
+ * The tab names the same gap first (`missingByTab` → 'taxResidency').
+ */
+export type DraftStatutoryRefusal = 'tax_residency_invalid' | 'tax_residency_citizenship';
+export class DraftStatutorySetupError extends Error {
+  constructor(public readonly reason: DraftStatutoryRefusal) {
+    super(
+      {
+        tax_residency_invalid: 'The Income Tax Resident choice on this draft is not one of the listed choices. Choose one on the Bank & Statutory tab.',
+        tax_residency_citizenship:
+          'Position C-Suites needs the EPF citizenship set to Permanent resident or Non-citizen. Change one of them on the Bank & Statutory tab.',
+      }[reason],
+    );
+    this.name = 'DraftStatutorySetupError';
+  }
+}
+
+/** The three employer-scoped incentive schemes the hire-time selection cannot start on (it takes only
+ *  resident / non_resident); Activate moves the selection onto one with the scoped tax write. */
+const INCENTIVE_TAX_SCHEMES = new Set(['rep', 'knowledge_worker', 'c_suite']);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -719,6 +748,34 @@ export async function completeEmployeeDraft(
 
   const nationality = str(p.nationality);
 
+  // ── The EPF election and the income tax residency, judged BEFORE anything is created (r393, 685d2380
+  // step 3b) ───────────────────────────────────────────────────────────────────────────────────────
+  // The draft's raw box strings go through the SAME `mapEpfUiMode` the Active statutory action calls
+  // (percent → decimal, ringgit unscaled, blank → null, unused boxes nulled), and the result is asked of the
+  // pack's OWN rule, `validateEpfElection` — the one `pack.statutory.set` applies below. That writer can only
+  // run after `hireEmployee` has committed, so a below-floor rate, a rate over 100%, a negative amount, a
+  // manual category with no figure or no reason is refused HERE, with the same `InvalidEpfElectionError`,
+  // while nothing has been written. `str()` trims, so a blank or whitespace box is null, never 0.
+  const epfElection: EpfElectionFields = mapEpfUiMode(
+    str(s.epfMode),
+    str(s.epfEmployeeRate),
+    str(s.epfEmployerRate),
+    str(s.epfEmployeeAmount),
+    str(s.epfEmployerAmount),
+    str(s.epfManualReason),
+  );
+  pack.statutory.validateEpfElection(epfElection);
+  // The residency: an explicit `taxResidency` wins; a pre-r393 draft's `isResident` is mapped forward only
+  // when there is none (`draftTaxResidency`, the function the tab's select shows). "Not subject to income
+  // tax" makes it moot, exactly as on the record, so it is neither judged nor moved off the hire default.
+  const taxNone = (s.taxCategory ?? '').trim() === 'none';
+  const residency = draftTaxResidency(s);
+  const explicitResidency = str(s.taxResidency) !== undefined;
+  if (!taxNone && pack.client.statutory.draftTaxResidencyGap?.(residency, draftEpfCitizenship(s.epfCitizenship))) {
+    const known = (pack.client.payroll.taxSelectionSchemes ?? []).includes(residency ?? '');
+    throw new DraftStatutorySetupError(known ? 'tax_residency_citizenship' : 'tax_residency_invalid');
+  }
+
   // ── The family, judged BEFORE anything is created (item 759dfc7d) ───────────────────────────────
   // `materialiseDependents` can only run once a PERSON exists, which is to say after `hireEmployee` has
   // committed. So every refusal the dependent writer is capable of has to be provoked HERE, while the
@@ -731,7 +788,10 @@ export async function completeEmployeeDraft(
 
   const types = await listLeaveTypes(ctx);
   const { employmentId, personId } = await hireEmployee(ctx, {
-    initialTaxScheme:boolOrUndef(s.isResident)===false?'non_resident':'resident',
+    // r393 (685d2380 step 3b) — the hire-time selection takes only resident / non_resident; an incentive
+    // scheme starts as resident (it IS a resident category) and is moved onto its scheme by the scoped tax
+    // write below. A pre-r393 draft reads exactly as before: isResident 'no' ⇒ non_resident.
+    initialTaxScheme:residency==='non_resident'?'non_resident':'resident',
     // 35b7af0a group 8 — the nationality is seeded on the person HERE, at creation, because everything
     // downstream keys on it: the Personnel screen decides NRIC-vs-passport from `person.nationality`, and
     // before this the wizard left it NULL, so a hire it created showed NO Identity No card at all and the
@@ -774,7 +834,11 @@ export async function completeEmployeeDraft(
   // their effective value: an un-ticked box is not carried anywhere, so it must not conjure a row either
   // (an absent tick is what every draft before this change has). A ticked one needs the row, because
   // `setBank` below refuses without one.
-  if (icNumber || hasAnyStatutory(withoutCustomHolder(s)) || holderOn) {
+  //
+  // r393 (685d2380 step 3b) — the five EPF box keys likewise count only through what the category USES: a
+  // rate left in a box after switching to Auto lands nowhere (`mapEpfUiMode` nulls it), so it must not
+  // conjure a row on its own.
+  if (icNumber || hasAnyStatutory(withoutUnusedEpfBoxes(withoutCustomHolder(s), epfElection)) || holderOn) {
     await pack.statutory.set(ctx, {
       personId,
       // Item 35524d1f — null, not ''. The setter used to reject a blank IC, so a draft carrying any statutory
@@ -808,27 +872,24 @@ export async function completeEmployeeDraft(
       eisCategory:
         (str(s.eisCategory) as 'auto' | 'none' | undefined) ??
         (boolOrUndef(s.eisEligible) === false ? 'none' : undefined),
-      isResident: boolOrUndef(s.isResident),
-      epfCitizenship: citizenship(s.epfCitizenship),
-      // a72610af — the EPF CATEGORY, through the same mapper the Personnel statutory action uses. The
-      // draft stores the four-name UI value ('auto' | 'manual_percentage' | 'semi_auto' | 'none'); the
-      // lawful KWSP enum values are decided HERE, server-side. No rates: the draft does not
-      // collect them (see EmployeeDraftStatutory.epfMode for why), and `mapEpfUiMode` nulls both sides
-      // for every category, so 'a blank side stays statutory' is exactly what is stored.
+      // r393 (685d2380 step 3b) — the legacy mirror of the residency, from the effective value: every choice
+      // but Non-Resident is resident (the setter's own rule for the scoped column). A pre-r393 draft's
+      // `isResident` maps to the same boolean it always did; no residency at all stays undefined (⇒ true).
+      isResident: residency === undefined ? undefined : residency !== 'non_resident',
+      epfCitizenship: draftEpfCitizenship(s.epfCitizenship),
+      // r393 (685d2380 step 3b) — "Subject to SKBBK". Absent ⇒ undefined ⇒ the setter's false, the column
+      // default for a new employee, so a draft saved before this change is unchanged.
+      subjectToSkbbk: boolOrUndef(s.subjectToSkbbk),
+      // a72610af — the EPF CATEGORY, through the same mapper the Personnel statutory action uses, and
+      // (r393, 685d2380 step 3b) WITH the rate and amount boxes and the reason: `epfElection` above, already
+      // judged by the pack's own rule before `hireEmployee`, so the setter cannot refuse it here.
       //
-      // ⚠️ AND NO AMOUNTS EITHER, item 70b14723 — for a STRONGER version of the same reason, which is why
-      // `EpfCategoryField` does not offer the three fixed-amount categories at all. A manual category with
-      // no figure elects nothing and `resolveEpfElection` REFUSES it; this call site runs after
-      // `hireEmployee` has committed, so such a draft would fail an activation that had already created the
-      // employee. So a stray manual value from a stale tab is mapped to `auto` HERE and the draft activates
-      // instead of dying — HR then sets the figure on Bank & Statutory, where the boxes exist.
-      // `epfManualReason` is likewise never written from a draft.
-      //
-      // THE DOWNGRADE IS EXPLICIT HERE rather than hidden inside `mapEpfUiMode`, because that mapper is also
-      // the Personnel form's boundary and THERE a manual category with a blank box must be REFUSED, not
-      // quietly turned into Auto. One function, two callers; the caller that cannot carry the figure is the
-      // one that says so.
-      ...mapEpfUiMode(epfUiModeNeedsAmount(str(s.epfMode)) ? 'auto' : str(s.epfMode), null, null, null, null, null),
+      // ⚠️ RETIRED, NOT DELETED (r393): this call used to read
+      //     `...mapEpfUiMode(epfUiModeNeedsAmount(str(s.epfMode)) ? 'auto' : str(s.epfMode), null, null, null, null, null)`
+      // — no rates, no amounts, and a manual category silently DOWNGRADED to Auto, because the only judge of
+      // a figure ran after the employee existed and a refusal there would strand a half-activated hire. With
+      // `validateEpfElection` asked first, the downgrade would now only hide a choice HR made on purpose.
+      ...epfElection,
       // a72610af — the four employer-bears switches. Absent ⇒ undefined ⇒ the writer's `?? false`, which
       // is the column default, so a draft saved before this change creates a byte-identical employee.
       employerBearsEpf: boolOrUndef(s.employerBearsEpf),
@@ -897,24 +958,40 @@ export async function completeEmployeeDraft(
   // meant to. So it runs AFTER the statutory write and is handed that write's own values back, or a draft
   // that carried a tax number and an OKU claim would activate with the tax number silently dropped.
   //
-  // `taxResidency` is DERIVED from the draft's `isResident`, because the draft has never collected the
-  // four-way residency the column stores. resident ⇔ true; the three incentive statuses are set on the
-  // record. That keeps the two columns in the same agreement `setStatutoryProfileMY` just wrote.
+  // ⚠️ RETIRED, NOT DELETED (r393, 685d2380 step 3b) — this note used to say: "`taxResidency` is DERIVED
+  // from the draft's `isResident`, because the draft has never collected the four-way residency the column
+  // stores. resident ⇔ true; the three incentive statuses are set on the record." The draft now collects the
+  // full list (`taxResidency`), and `draftTaxResidency` maps a pre-r393 `isResident` forward only when no
+  // choice was made — so a draft saved before this change sends exactly the value it always sent.
+  //
+  // r393 — ALSO CALLED for "Employer bears tax contribution" and for an explicit residency, the two tax
+  // fields the draft gained. A draft with none of the new keys reaches this call exactly when it used to.
+  //
+  // THE INCENTIVE SCHEMES ARE EMPLOYER-SCOPED. REP, Knowledge Worker and C-Suites live on the employment's
+  // tax selection, which `hireEmployee` started as Resident; so for those three this is the SCOPED write the
+  // Active Income Tax (PCB) card makes (`employmentId` + `expectedCompanyId`), which moves the selection onto
+  // the scheme. Its one refusal that depends on the draft (C-Suites without PR / non-citizen EPF citizenship)
+  // was provoked before `hireEmployee`. "Not subject to income tax" keeps the old person-only write.
   const taxReliefs = {
     disabledIndividual: boolOrUndef(s.disabledIndividual),
     disabledSpouse: boolOrUndef(s.disabledSpouse),
     childReliefMode: str(s.childReliefMode),
   };
-  if (Object.values(taxReliefs).some((v) => v !== undefined)) {
+  const employerBearsTax = boolOrUndef(s.employerBearsTax);
+  const taxScheme = taxNone ? (residency === 'non_resident' ? 'non_resident' : 'resident') : (residency ?? 'resident');
+  const scopedTax = !taxNone && INCENTIVE_TAX_SCHEMES.has(taxScheme);
+  if (Object.values(taxReliefs).some((v) => v !== undefined) || employerBearsTax !== undefined || explicitResidency) {
     await pack.statutory.setTax(ctx, {
       personId,
+      ...(scopedTax ? { employmentId, expectedCompanyId: companyId } : {}),
       ...taxReliefs,
+      employerBearsTax,
       // Pass-through of everything this setter would otherwise reset to a default.
       taxNumber: str(s.taxNumber) ?? null,
       taxCategory: numOrUndef(s.taxCategory),
       ...(!['','1','2','3'].includes(s.taxCategory??'')?{taxCircumstance:s.taxCategory}:{}),
       numChildren: numOrUndef(s.numChildren),
-      taxResidency: boolOrUndef(s.isResident) === false ? 'non_resident' : 'resident',
+      taxResidency: taxScheme,
     });
   }
 
@@ -1161,6 +1238,17 @@ function withoutCustomHolder(s: EmployeeDraftStatutory): EmployeeDraftStatutory 
   delete rest.customHolderId;
   return rest;
 }
+/** r393 (685d2380 step 3b) — the statutory section without the EPF box keys the chosen category does not
+ *  use (`mapEpfUiMode` nulled them, so they land nowhere and must not decide whether a row is created). */
+function withoutUnusedEpfBoxes(s: EmployeeDraftStatutory, epf: EpfElectionFields): EmployeeDraftStatutory {
+  const rest = { ...s };
+  if (epf.epfEmployeeRate == null) delete rest.epfEmployeeRate;
+  if (epf.epfEmployerRate == null) delete rest.epfEmployerRate;
+  if (epf.epfEmployeeAmount == null) delete rest.epfEmployeeAmount;
+  if (epf.epfEmployerAmount == null) delete rest.epfEmployerAmount;
+  if (epf.epfManualReason == null) delete rest.epfManualReason;
+  return rest;
+}
 function hasAnyStatutory(s: Record<string, string | undefined>): boolean {
   return Object.values(s).some((v) => (v ?? '').trim() !== '');
 }
@@ -1175,11 +1263,8 @@ function boolOrUndef(v: string | undefined): boolean | undefined {
   if (s === '') return undefined;
   return ['true', 'yes', 'y', '1'].includes(s);
 }
-function citizenship(v: string | undefined): 'citizen' | 'pr' | 'non_citizen' | undefined {
-  const s = (v ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
-  if (s === 'citizen' || s === 'pr' || s === 'non_citizen') return s;
-  return undefined;
-}
+// r393 (685d2380 step 3b) — `citizenship()` moved to lib/employee-draft-schema.ts as `draftEpfCitizenship`,
+// unchanged, so the tab's C-Suite check reads the value Activate stores.
 
 /**
  * Postgres 23505 on the reservation index specifically.

@@ -228,36 +228,71 @@ export type EmployeeDraftStatutory = {
   /** LEGACY, kept so a draft saved before group 7 still opens and still creates the same employee.
    *  The wizard no longer writes it; completeEmployeeDraft maps 'no' forward to eisCategory 'none'. */
   eisEligible?: string;
+  /** LEGACY (r393, 685d2380 step 3b): the old Yes/No "Tax resident". The screen no longer writes it;
+   *  `taxResidency` above replaces it and `draftTaxResidency` maps it forward when that key is absent. */
   isResident?: string;
   epfCitizenship?: string;
   /**
-   * ITEM a72610af — THE EPF CATEGORY (`people.detail.epfMode`), the five-name election ADR-0046 defines.
+   * ITEM a72610af — THE EPF CATEGORY (`people.detail.epfMode`), the seven-name election ADR-0046 and
+   * ADR-0087 define: 'auto' | 'manual_percentage' | 'semi_auto' | 'manual_employee_amount' |
+   * 'manual_employer_amount' | 'manual_both_amount' | 'none'.
    *
-   * THE VALUE STORED HERE IS THE UI CATEGORY, not the lawful KWSP enum: 'auto' | 'manual_percentage' |
-   * 'semi_auto' | 'none'. `lib/epf-mode-map.ts` `mapEpfUiMode` maps the names down to the lawful enum
-   * values AT THE SERVER BOUNDARY, and `completeEmployeeDraft` calls the SAME mapper the
-   * Personnel action calls — the client never decides the persisted enum.
+   * THE VALUE STORED HERE IS THE UI CATEGORY, not the lawful KWSP enum. `lib/epf-mode-map.ts`
+   * `mapEpfUiMode` maps the names down to the lawful enum values AT THE SERVER BOUNDARY, and
+   * `completeEmployeeDraft` calls the SAME mapper the Personnel action calls, WITH THE SAME RAW STRINGS
+   * (below) — the client never decides the persisted enum or the figures.
    *
-   * ⚠️ ITEM 70b14723 ADDED THREE MORE CATEGORIES AND THIS LIST OF FOUR IS STILL RIGHT. Manual (Employee by
-   * Amount), Manual (Employer by Amount) and Manual (Employee and Employer by Amount) are NOT offered on a
-   * draft, for a STRONGER version of the reason the rates are not (below): a manual category with no figure
-   * elects nothing and `resolveEpfElection` REFUSES it outright, so unlike a rateless `voluntary_excess` it
-   * is not a lawful election that cannot throw — it is one that WILL throw, inside a writer that only runs
-   * after `hireEmployee` has committed. `completeEmployeeDraft` therefore maps any stray manual value to
-   * 'auto' explicitly (`epfUiModeNeedsAmount`), and the wizard's own hint names the card that has the
-   * boxes. See docs/adr/0087-epf-manual-amount-categories.md §12.
+   * ⚠️ THE NARROWING THIS FIELD USED TO CARRY IS REVERSED (r393, item 685d2380 step 3b) — retired rather
+   * than deleted, so the reversal is auditable. Two paragraphs here said:
    *
-   * THE TWO ELECTED RATES ARE DELIBERATELY NOT HERE, and it is a narrowing worth naming rather than
-   * hiding: `resolveEpfElection` REFUSES a rate below the statutory floor, and it runs inside
-   * `pack.statutory.set`, which `completeEmployeeDraft` can only call after `hireEmployee` has committed.
-   * A below-floor rate typed on a draft would therefore fail an activation that had already created the
-   * employee. Judging it here instead would need the floors on the client, and they are derived from the
-   * MY pack's statutory tables — a server module this file may not import (it is shared with the
-   * browser). A category with no rates is a lawful election that cannot throw: 'a blank side stays
-   * statutory', which is what the card's own hint already tells HR. The rates stay where they can be
-   * validated against the live tables, on the activated record.
+   *     "Manual (Employee by Amount), Manual (Employer by Amount) and Manual (Employee and Employer by
+   *      Amount) are NOT offered on a draft … `completeEmployeeDraft` therefore maps any stray manual value
+   *      to 'auto' explicitly (`epfUiModeNeedsAmount`)."
+   *     "THE TWO ELECTED RATES ARE DELIBERATELY NOT HERE … Judging it here instead would need the floors
+   *      on the client, and they are derived from the MY pack's statutory tables — a server module this
+   *      file may not import."
+   *
+   * Both were true of the code they described: the only judge of an election was `resolveEpfElection`,
+   * private to a db-backed module, and it ran inside a writer that only runs after `hireEmployee`. That
+   * judge now lives in a db-free leaf of the MY pack (localization/my/epf-election.ts) and is asked TWICE
+   * before anything is created — by the client pack's `epfElectionGap` on this tab's still-needed list
+   * (`missingByTab`, when the screen passes the pack's rules), and by the server pack's
+   * `validateEpfElection` inside `completeEmployeeDraft` before `hireEmployee`. So the rates and amounts
+   * are collected here, and a manual category is carried as chosen; the 'auto' downgrade is gone.
    */
   epfMode?: string;
+  /**
+   * r393 (item 685d2380 step 3b) — THE EPF RATE AND AMOUNT BOXES, the Active EPF card's own five, as the
+   * RAW BOX STRINGS. Rates are PERCENT as typed ('13', not '0.13') and amounts are RINGGIT, exactly what
+   * the Active form posts, because they go through the SAME `mapEpfUiMode` (percent ÷ 100, ringgit
+   * unscaled). ⚠️ NEVER `Number()` THEM: `Number('')` is 0, and a blank rate box means "this side stays
+   * statutory" (null), never 0% (which the floor refuses); a blank amount is null, never RM0.00.
+   * `mapEpfUiMode` keeps only the boxes the category uses and nulls the rest, so a figure left in a box
+   * the category no longer shows is neither judged nor stored.
+   */
+  epfEmployeeRate?: string;
+  epfEmployerRate?: string;
+  epfEmployeeAmount?: string;
+  epfEmployerAmount?: string;
+  epfManualReason?: string;
+  /**
+   * r393 (item 685d2380 step 3b) — "Subject to SKBBK", 'yes' | 'no' | absent. Absent and 'no' both land
+   * as false, the column's default for a new employee, so a draft saved before this change is unchanged.
+   */
+  subjectToSkbbk?: string;
+  /**
+   * r393 (item 685d2380 step 3b) — "Employer bears tax contribution", 'yes' | 'no' | absent. Lands through
+   * `pack.statutory.setTax` (the Income Tax (PCB) card's writer); absent ⇒ false, the column default.
+   */
+  employerBearsTax?: string;
+  /**
+   * r393 (item 685d2380 step 3b) — THE INCOME TAX RESIDENCY, the Active card's full list: 'resident' |
+   * 'non_resident' | 'rep' | 'knowledge_worker' | 'c_suite', or blank = not chosen (lands as Resident, as
+   * an untouched draft always has). It SUPERSEDES the legacy `isResident` below, which is kept so a draft
+   * saved before this change still activates as it would have: `draftTaxResidency` maps it forward
+   * (yes → resident, no → non_resident) ONLY when this key is absent — an explicit choice always wins.
+   */
+  taxResidency?: string;
   /**
    * ITEM a72610af — THE FOUR "EMPLOYER BEARS" SWITCHES, 'yes' | 'no' | absent.
    *
@@ -331,6 +366,55 @@ export function draftCustomHolder(s: EmployeeDraftStatutory | undefined): Requir
     customHolderId: enableId ? (s?.customHolderId ?? '').trim() || null : null,
   };
 }
+
+/**
+ * r393 (685d2380 step 3b) — the draft's EFFECTIVE income tax residency: the explicit `taxResidency`
+ * when one is chosen, otherwise the legacy `isResident` mapped forward (true → 'resident', false →
+ * 'non_resident', with exactly `completeEmployeeDraft`'s yes/no reading), otherwise undefined (not
+ * chosen). ONE function for the screen's select and for Activate, so the two cannot disagree.
+ */
+export function draftTaxResidency(s: EmployeeDraftStatutory | undefined): string | undefined {
+  const explicit = (s?.taxResidency ?? '').trim();
+  if (explicit !== '') return explicit;
+  const legacy = (s?.isResident ?? '').trim().toLowerCase();
+  if (legacy === '') return undefined;
+  return ['true', 'yes', 'y', '1'].includes(legacy) ? 'resident' : 'non_resident';
+}
+
+/** A raw draft box value, trimmed; blank ⇒ undefined. The SAME reading `completeEmployeeDraft` gives
+ *  every string it hands a writer, so the tab and Activate judge identical values. */
+export function draftBox(v: string | undefined): string | undefined {
+  const t = (v ?? '').trim();
+  return t === '' ? undefined : t;
+}
+
+/** The draft's EPF citizenship as the statutory row will store it, or undefined (⇒ the column default,
+ *  'citizen'). Moved here from core/employee-draft.ts unchanged (r393, 685d2380 step 3b) so the tab's
+ *  C-Suite check and Activate read the same value. */
+export function draftEpfCitizenship(v: string | undefined): 'citizen' | 'pr' | 'non_citizen' | undefined {
+  const s = (v ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (s === 'citizen' || s === 'pr' || s === 'non_citizen') return s;
+  return undefined;
+}
+
+/**
+ * r393 (685d2380 step 3b) — the COUNTRY PACK'S statutory rules, handed IN by the caller. This module is
+ * shared with the browser and names no jurisdiction, so it cannot import a pack; the draft screen passes
+ * `clientPackFor(...)?.statutory` (localization/registry.client.ts) and `missingByTab` names whatever those
+ * rules refuse. Absent ⇒ not judged here — `completeEmployeeDraft` asks the server pack before
+ * `hireEmployee` either way.
+ */
+export type DraftStatutoryRules = {
+  epfElectionGap?: (
+    uiMode: string | null | undefined,
+    employeeRate: string | null | undefined,
+    employerRate: string | null | undefined,
+    employeeAmount: string | null | undefined,
+    employerAmount: string | null | undefined,
+    manualReason: string | null | undefined,
+  ) => string | null;
+  draftTaxResidencyGap?: (residency: string | null | undefined, epfCitizenship: string | null | undefined) => string | null;
+};
 
 export type EmployeeDraftPayroll = {
   basicSalary?: string;
@@ -704,7 +788,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * Returns FIELD names so the caller translates; returning English here would put UI strings in a
  * module the server also imports.
  */
-export function missingByTab(data: EmployeeDraftData): Record<DraftTabKey, string[]> {
+export function missingByTab(data: EmployeeDraftData, rules?: DraftStatutoryRules): Record<DraftTabKey, string[]> {
   const p = data.profile ?? {};
   const e = data.employment ?? {};
   const pay = data.payroll ?? {};
@@ -783,6 +867,24 @@ export function missingByTab(data: EmployeeDraftData): Record<DraftTabKey, strin
   // SAME rule `pack.statutory.setBank` refuses with, which runs only after `hireEmployee` has committed.
   for (const gap of customHolderGaps(draftCustomHolder(s)))
     bankStatutory.push(gap === 'name' ? 'customHolderName' : 'customHolderId');
+  // r393 (685d2380 step 3b) — the EPF election and the income tax residency, judged by the PACK'S OWN
+  // rules (see DraftStatutoryRules) on the same trimmed strings Activate hands the writers. Each is a
+  // refusal `pack.statutory.set` / the scoped tax write would make after `hireEmployee` has committed.
+  const epfGap = rules?.epfElectionGap?.(
+    draftBox(s.epfMode),
+    draftBox(s.epfEmployeeRate),
+    draftBox(s.epfEmployerRate),
+    draftBox(s.epfEmployeeAmount),
+    draftBox(s.epfEmployerAmount),
+    draftBox(s.epfManualReason),
+  );
+  if (epfGap) bankStatutory.push(epfGap);
+  // "Not subject to income tax" makes the residency moot (the select is disabled and shows that instead),
+  // so a residency left behind from before is not judged.
+  if ((s.taxCategory ?? '').trim() !== 'none') {
+    const taxGap = rules?.draftTaxResidencyGap?.(draftTaxResidency(s), draftEpfCitizenship(s.epfCitizenship));
+    if (taxGap) bankStatutory.push(taxGap);
+  }
 
   const payroll: string[] = [];
   // ── THE INITIAL BASIC SALARY MAY BE BLANK OR ZERO (item 7dbaf677, r374) ────────────────────────
@@ -869,8 +971,8 @@ export function missingByTab(data: EmployeeDraftData): Record<DraftTabKey, strin
  * moment creation happens that moved. Renaming it would have made every call site read as if the rule
  * had changed, when what changed is that a second, much shorter rule now runs first.
  */
-export function missingForCreation(data: EmployeeDraftData): string[] {
-  const byTab = missingByTab(data);
+export function missingForCreation(data: EmployeeDraftData, rules?: DraftStatutoryRules): string[] {
+  const byTab = missingByTab(data, rules);
   return DRAFT_TABS.flatMap((k) => byTab[k]);
 }
 
