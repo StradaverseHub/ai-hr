@@ -54,6 +54,10 @@ import {
 } from './org';
 import { isModuleEnabledOrFalse } from './entitlements';
 import { bankTransferLacksBank, isPaymentMethod } from '../lib/payment-methods';
+// r393 (685d2380 step 3a) — the custom payment holder rule and its typed refusal are CLIENT-SAFE lib code
+// (the pack's `setBank` re-exports the same class), so this file judges a holder without reaching into
+// localization/my — the setter itself is reached only through `requirePackFor(...)`.
+import { customHolderGaps, IncompleteCustomHolderError } from '../lib/custom-holder';
 // r393 — the payroll policy is the Payroll pack's, so it is reached ONLY through the pack's facade (the
 // drift ratchet, test/payroll-pack-drift.test.ts): never the policy implementation module directly.
 import { assignPolicy, getPolicy } from '../packs/payroll/service';
@@ -72,6 +76,7 @@ import { resolveEmployeeIdMode, type EmployeeIdRule } from '../lib/employee-id-m
 // never decides the persisted enum, on either screen.
 import { epfUiModeNeedsAmount, mapEpfUiMode } from '../lib/epf-mode-map';
 import {
+  draftCustomHolder,
   draftFamily,
   draftLabel,
   draftProvisionalEndOn,
@@ -81,6 +86,7 @@ import {
   withSameAsPermanent,
   type EmployeeDraftData,
   type EmployeeDraftFamilyMember,
+  type EmployeeDraftStatutory,
 } from '../lib/employee-draft-schema';
 // 759dfc7d — the family the draft captured becomes real rows at Activate. Both of these live in
 // core/dependents.ts on purpose: `addDependent` and the materialisation share ONE column mapping, ONE
@@ -647,6 +653,14 @@ export async function completeEmployeeDraft(
     throw new DraftPayrollSetupError('payment_method_invalid');
   }
   if (paymentMethod === 'bank_transfer' && bankTransferLacksBank(s)) throw new MissingBankForTransferError();
+  // r393 (685d2380 step 3a) — A TICKED CUSTOM HOLDER BOX WITH NOTHING IN IT, refused with the SAME typed
+  // error `pack.statutory.setBank` throws. That setter can only run once the statutory row exists, which is
+  // after `hireEmployee` has committed, so its refusal is provoked HERE, where nothing has been written yet.
+  // `missingByTab` names the same gap on the Bank & Statutory tab (`customHolderName` / `customHolderId`).
+  const holder = draftCustomHolder(s);
+  const [holderGap] = customHolderGaps(holder);
+  if (holderGap) throw new IncompleteCustomHolderError(holderGap);
+  const holderOn = holder.enableCustomHolderName || holder.enableCustomHolderId;
   if (missing.length > 0) throw new Error(`Cannot create the employee yet: ${missing.join(', ')}`);
 
   const companyId = chosenCompanyId!;
@@ -756,7 +770,11 @@ export async function completeEmployeeDraft(
       .map((t) => ({ id: t.id, code: t.code, yearCycleOverride: t.yearCycleOverride })),
   });
 
-  if (icNumber || hasAnyStatutory(s)) {
+  // r393 (685d2380 step 3a) — the four holder keys decide whether a statutory row is created ONLY through
+  // their effective value: an un-ticked box is not carried anywhere, so it must not conjure a row either
+  // (an absent tick is what every draft before this change has). A ticked one needs the row, because
+  // `setBank` below refuses without one.
+  if (icNumber || hasAnyStatutory(withoutCustomHolder(s)) || holderOn) {
     await pack.statutory.set(ctx, {
       personId,
       // Item 35524d1f — null, not ''. The setter used to reject a blank IC, so a draft carrying any statutory
@@ -819,6 +837,21 @@ export async function completeEmployeeDraft(
       employerBearsSkbbk: boolOrUndef(s.employerBearsSkbbk),
       bankName: str(s.bankName),
       bankAccountNo: str(s.bankAccountNo),
+    });
+  }
+
+  // ── The custom payment holder (r393, item 685d2380 step 3a) ───────────────────────────────────────
+  // `pack.statutory.set` does not write these four columns; `setBank` is their only writer — the Active
+  // Bank Information card's own. Called ONLY when a tick is on, so a draft with no holder activates exactly
+  // as it always did (the four columns stay at their defaults: false / null). It is a partial-but-total
+  // write of the bank columns too, so it is handed the SAME bank name and account number just stored.
+  // Judged before `hireEmployee` (the pre-flight above), so it cannot refuse here.
+  if (holderOn) {
+    await pack.statutory.setBank(ctx, {
+      personId,
+      bankName: str(s.bankName) ?? null,
+      bankAccountNo: str(s.bankAccountNo) ?? null,
+      ...holder,
     });
   }
 
@@ -1118,6 +1151,16 @@ export function draftFamilyToDependents(data: EmployeeDraftData): DependentInput
   );
 }
 
+/** The statutory section without its four custom-holder keys — they count toward "is there a statutory
+ *  row to create" only through `draftCustomHolder`'s effective value (see the call site). */
+function withoutCustomHolder(s: EmployeeDraftStatutory): EmployeeDraftStatutory {
+  const rest = { ...s };
+  delete rest.enableCustomHolderName;
+  delete rest.customHolderName;
+  delete rest.enableCustomHolderId;
+  delete rest.customHolderId;
+  return rest;
+}
 function hasAnyStatutory(s: Record<string, string | undefined>): boolean {
   return Object.values(s).some((v) => (v ?? '').trim() !== '');
 }

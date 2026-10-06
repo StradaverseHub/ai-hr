@@ -39,6 +39,7 @@ import { resolveEmployeeIdMode, type EmployeeIdRule } from './employee-id-mode';
 import { copyPermanentToCorrespondence } from './address-blocks';
 import { addEmploymentPeriod } from './employment-period';
 import { bankTransferLacksBank } from './payment-methods';
+import { customHolderGaps, type CustomHolder } from './custom-holder';
 
 export type EmployeeDraftProfile = {
   fullName?: string;
@@ -297,7 +298,39 @@ export type EmployeeDraftStatutory = {
    * override. It lands through `pack.setOthersStatutory`, its own partial-save writer.
    */
   subjectToHrdf?: string;
+  /**
+   * r393 (item 685d2380 step 3a) — THE CUSTOM PAYMENT HOLDER, the Active profile's Bank Information
+   * "Use a custom holder name" / "Use a custom holder identification" ticks and their two boxes.
+   *
+   * The ticks are STRINGS, 'yes' | 'no' | absent, for the reason the employer-bears switches above are
+   * (every value in this section is a string; `hasAnyStatutory` trims each one). Only 'yes' is a tick.
+   * A ticked box left blank is named by `missingByTab` and refused by `completeEmployeeDraft` before
+   * `hireEmployee` — `customHolderGaps` (lib/custom-holder.ts), the SAME rule `pack.statutory.setBank`
+   * refuses with. They land through that setter, AFTER `pack.statutory.set` (which does not write them);
+   * a box whose tick is off is not carried, and the setter stores its column as null.
+   */
+  enableCustomHolderName?: string;
+  customHolderName?: string;
+  enableCustomHolderId?: string;
+  customHolderId?: string;
 };
+
+/**
+ * r393 (685d2380 step 3a) — the draft's four holder strings as the setter's shape. A tick is 'yes' only
+ * (case- and space-insensitive); a value is carried ONLY while its tick is on, so a box typed into and
+ * then un-ticked is neither judged nor written.
+ */
+export function draftCustomHolder(s: EmployeeDraftStatutory | undefined): Required<CustomHolder> {
+  const on = (v: string | undefined) => (v ?? '').trim().toLowerCase() === 'yes';
+  const enableName = on(s?.enableCustomHolderName);
+  const enableId = on(s?.enableCustomHolderId);
+  return {
+    enableCustomHolderName: enableName,
+    customHolderName: enableName ? (s?.customHolderName ?? '').trim() || null : null,
+    enableCustomHolderId: enableId,
+    customHolderId: enableId ? (s?.customHolderId ?? '').trim() || null : null,
+  };
+}
 
 export type EmployeeDraftPayroll = {
   basicSalary?: string;
@@ -746,6 +779,10 @@ export function missingByTab(data: EmployeeDraftData): Record<DraftTabKey, strin
   const s = data.statutory ?? {};
   const bankStatutory: string[] = [];
   if (blank(s.bankName) !== blank(s.bankAccountNo)) bankStatutory.push('bankAccount');
+  // r393 (685d2380 step 3a) — a ticked custom holder box must be filled in (or the tick taken off). The
+  // SAME rule `pack.statutory.setBank` refuses with, which runs only after `hireEmployee` has committed.
+  for (const gap of customHolderGaps(draftCustomHolder(s)))
+    bankStatutory.push(gap === 'name' ? 'customHolderName' : 'customHolderId');
 
   const payroll: string[] = [];
   // ── THE INITIAL BASIC SALARY MAY BE BLANK OR ZERO (item 7dbaf677, r374) ────────────────────────

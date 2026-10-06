@@ -10,6 +10,7 @@ import { actorOf, appendEvent, subjectEmploymentForPerson } from '../../db/event
 import { companyStatutoryMy, domainEvent, employeeStatutoryMy, employment, person } from '../../db/schema';
 import { CHILD_RELIEF_CATEGORY_KEYS, DEFAULT_MY_STATUTORY, type HrdfStatus } from './statutory-tables';
 import { MY_STATES } from './holidays';
+import { customHolderGaps, IncompleteCustomHolderError } from '../../lib/custom-holder';
 import type { EpfMode } from './payroll';
 
 /** 1.2.4 Zakat — the per-employee zakat-via-salary election method. */
@@ -614,17 +615,11 @@ export async function setTp3ProfileMY(ctx: SessionContext, p: Tp3Input) {
   });
 }
 
-/** A custom-holder switch was turned on without its required value (item ef720d3a). `field` names which. */
-export class IncompleteCustomHolderError extends Error {
-  constructor(public field: 'name' | 'id') {
-    super(
-      field === 'name'
-        ? 'Enter the custom holder name, or turn off "Use a custom holder name".'
-        : 'Enter the custom holder identification, or turn off "Use a custom holder identification".',
-    );
-    this.name = 'IncompleteCustomHolderError';
-  }
-}
+/** A custom-holder switch was turned on without its required value (item ef720d3a). `field` names which.
+ *  r393 (685d2380 step 3a) — the class and the rule it enforces moved to lib/custom-holder.ts, so the
+ *  draft screen and `completeEmployeeDraft` judge a holder with the SAME predicate this setter refuses
+ *  with. Re-exported here so every existing importer keeps working. */
+export { IncompleteCustomHolderError };
 
 /** Just the salary-payment bank columns + the custom-payment-holder controls (item ef720d3a). Used by the
  *  dedicated Bank Information card, which saves independently of the full statutory row. */
@@ -653,8 +648,13 @@ export async function setBankProfileMY(ctx: SessionContext, p: BankInput) {
   const holderId = (p.customHolderId ?? '').trim() || null;
   // Require-when-enabled (server-side; the client mirrors this). A flag on with a blank value is rejected so
   // an incomplete payee can never reach the disbursement path.
-  if (enableName && !holderName) throw new IncompleteCustomHolderError('name');
-  if (enableId && !holderId) throw new IncompleteCustomHolderError('id');
+  const [gap] = customHolderGaps({
+    enableCustomHolderName: enableName,
+    customHolderName: holderName,
+    enableCustomHolderId: enableId,
+    customHolderId: holderId,
+  });
+  if (gap) throw new IncompleteCustomHolderError(gap);
   const values = {
     bankName: (p.bankName ?? '').trim() || null,
     bankAccountNo: (p.bankAccountNo ?? '').trim() || null,
