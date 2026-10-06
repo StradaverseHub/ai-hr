@@ -13,6 +13,7 @@ import { useTranslations } from 'next-intl';
 import { clientPackFor } from '@/localization/registry.client';
 import type { ChildReliefPrice } from '@/localization/country-pack';
 import { TaxCategoryField } from './tax-category-field';
+import { TaxResidencySelect } from './tax-residency-field';
 import {
   ChildReliefModeField,
   ChildReliefModeHint,
@@ -509,15 +510,9 @@ export function IdentityTaxCard({
             <Field label={t('incomeTaxResident')}>
               {/* Reset only this draft when its employer owner/revision/confirmation changes. */}
               {none&&<input type="hidden" name="taxResidency" value="none"/>}
-              <select key={taxContextKey} id="income-tax-resident" aria-label={t('incomeTaxResident')} name={none?undefined:'taxResidency'} value={none?'none':taxResidency} onChange={e=>setTaxResidency(e.target.value)} disabled={none} required={!none} className={inputCls}>
-                {none&&<option value="none">{t('taxCategoryNone')}</option>}
-                <option value="" disabled>{t('taxSelectionChoose')}</option>
-                <option value="resident">{t('taxResidencyResident')}</option>
-                <option value="non_resident">{t('taxResidencyNonResident')}</option>
-                <option value="rep">{t('taxResidencyRep')}</option>
-                <option value="knowledge_worker">{t('taxResidencyKnowledgeWorker')}</option>
-                <option value="c_suite">{t('taxResidencyCSuite')}</option>
-              </select>
+              {/* r393 (685d2380 step 3b) — the SAME select the Create New Employee draft renders, in its
+                  form branch (components/tax-residency-field.tsx); markup unchanged. */}
+              <TaxResidencySelect key={taxContextKey} mode="form" none={none} value={taxResidency} onChange={setTaxResidency} />
               {taxSelection && <><span className="text-xs text-muted-foreground">{t('taxSelectionEmployer',{employer:taxSelection.companyName})}</span><span className="text-xs text-muted-foreground">{t('taxSelectionEligibilityHint')}</span>{taxSelection.confirmationRequired&&<span className="text-xs text-amber-700">{t('taxSelectionConfirmationRequired')}</span>}</>}
             </Field>
             {/* Item d64d0df4 — Disabled Individual and Disabled Spouse (OKU). Yes/No, defaulting to No,

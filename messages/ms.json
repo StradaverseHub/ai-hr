@@ -1948,7 +1948,13 @@
         "internshipEndDate": "Tarikh Tamat Latihan",
         "paymentMethodBank": "Maklumat bank untuk Pindahan Bank",
         "customHolderName": "Nama pemegang tersuai",
-        "customHolderId": "Pengenalan pemegang tersuai"
+        "customHolderId": "Pengenalan pemegang tersuai",
+        "epfEmployeeRate": "Kadar pekerja %",
+        "epfEmployerRate": "Kadar majikan %",
+        "epfEmployeeAmount": "Jumlah pekerja (RM sebulan)",
+        "epfEmployerAmount": "Jumlah majikan (RM sebulan)",
+        "epfManualReason": "Sebab bagi jumlah tetap",
+        "taxResidency": "Pemastautin Cukai Pendapatan"
       },
       "employmentType": {
         "full_time": "Sepenuh masa",

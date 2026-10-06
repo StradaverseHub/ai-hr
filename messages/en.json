@@ -1948,7 +1948,13 @@
         "internshipEndDate": "Internship End Date",
         "paymentMethodBank": "Bank details for Bank Transfer",
         "customHolderName": "Custom holder name",
-        "customHolderId": "Custom holder identification"
+        "customHolderId": "Custom holder identification",
+        "epfEmployeeRate": "Employee rate %",
+        "epfEmployerRate": "Employer rate %",
+        "epfEmployeeAmount": "Employee amount (RM per month)",
+        "epfEmployerAmount": "Employer amount (RM per month)",
+        "epfManualReason": "Reason for the fixed amount",
+        "taxResidency": "Income Tax Resident"
       },
       "employmentType": {
         "full_time": "Full-time",

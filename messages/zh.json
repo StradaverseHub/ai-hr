@@ -1948,7 +1948,13 @@
         "internshipEndDate": "实习结束日期",
         "paymentMethodBank": "银行转账所需的银行信息",
         "customHolderName": "自定义持有人姓名",
-        "customHolderId": "自定义持有人证件号码"
+        "customHolderId": "自定义持有人证件号码",
+        "epfEmployeeRate": "员工费率 %",
+        "epfEmployerRate": "雇主费率 %",
+        "epfEmployeeAmount": "雇员金额（每月 RM）",
+        "epfEmployerAmount": "雇主金额（每月 RM）",
+        "epfManualReason": "固定金额的原因",
+        "taxResidency": "所得税居民身份"
       },
       "employmentType": {
         "full_time": "全职",

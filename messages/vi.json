@@ -1948,7 +1948,13 @@
         "internshipEndDate": "Ngày kết thúc thực tập",
         "paymentMethodBank": "Thông tin ngân hàng cho Chuyển khoản ngân hàng",
         "customHolderName": "Tên chủ tài khoản tùy chỉnh",
-        "customHolderId": "Số giấy tờ tùy thân chủ tài khoản tùy chỉnh"
+        "customHolderId": "Số giấy tờ tùy thân chủ tài khoản tùy chỉnh",
+        "epfEmployeeRate": "Tỷ lệ nhân viên %",
+        "epfEmployerRate": "Tỷ lệ người sử dụng lao động %",
+        "epfEmployeeAmount": "Số tiền nhân viên (RM mỗi tháng)",
+        "epfEmployerAmount": "Số tiền người sử dụng lao động (RM mỗi tháng)",
+        "epfManualReason": "Lý do cho số tiền cố định",
+        "taxResidency": "Cư trú thuế thu nhập"
       },
       "employmentType": {
         "full_time": "Toàn thời gian",

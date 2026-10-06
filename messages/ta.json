@@ -1948,7 +1948,13 @@
         "internshipEndDate": "பயிற்சி முடிவு தேதி",
         "paymentMethodBank": "வங்கி பரிமாற்றத்திற்கான வங்கி விவரங்கள்",
         "customHolderName": "தனிப்பயன் பெறுநர் பெயர்",
-        "customHolderId": "தனிப்பயன் பெறுநர் அடையாள எண்"
+        "customHolderId": "தனிப்பயன் பெறுநர் அடையாள எண்",
+        "epfEmployeeRate": "ஊழியர் விகிதம் %",
+        "epfEmployerRate": "முதலாளி விகிதம் %",
+        "epfEmployeeAmount": "ஊழியர் தொகை (மாதத்திற்கு RM)",
+        "epfEmployerAmount": "முதலாளி தொகை (மாதத்திற்கு RM)",
+        "epfManualReason": "நிலையான தொகைக்கான காரணம்",
+        "taxResidency": "வருமான வரி குடியிருப்பு நிலை"
       },
       "employmentType": {
         "full_time": "முழுநேரம்",

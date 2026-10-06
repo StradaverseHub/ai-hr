@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useState, type ChangeEvent, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 
 // Inlined from components/ui (server module) so this stays a clean client island.
@@ -70,64 +70,24 @@ const isAmountMode = (m: UiMode): m is keyof typeof AMOUNT_MODES => m in AMOUNT_
 /**
  * ITEM a72610af — A CONTROLLED BRANCH, so the Create New Employee draft asks the same question.
  *
- * `EpfCategoryField` is the CATEGORY SELECT ALONE, driven by the draft's React state and carrying no
- * `name`. It renders the same five-name list from the same keys, so the two screens cannot word the
- * election differently — which matters here more than on most fields, because the names are the whole
- * user-facing model: the lawful enum underneath has three values and HR never sees it.
+ * ⚠️ RETIRED, NOT DELETED (r393, item 685d2380 step 3b). This used to be `EpfCategoryField`, the CATEGORY
+ * SELECT ALONE with FOUR names, and its header said:
  *
- * THE TWO ELECTED RATES ARE NOT OFFERED ON A DRAFT, and that is a deliberate narrowing rather than an
- * omission. `resolveEpfElection` (localization/my/statutory.ts) REFUSES a rate below the statutory floor,
- * and it runs inside `pack.statutory.set`, which `completeEmployeeDraft` can only reach after
- * `hireEmployee` has committed — so a below-floor rate typed on a draft would fail an activation that had
- * already created the employee. Judging it on the tab instead would need the floors in the browser, and
- * they are derived from the MY pack's statutory tables, a server module the shared draft schema may not
- * import. A category with no rates is a lawful election that cannot throw: a blank side stays statutory,
- * which is exactly what the hint below already tells HR. The rates are set on the activated record, where
- * they can be checked against the live tables.
+ *     "THE TWO ELECTED RATES ARE NOT OFFERED ON A DRAFT, and that is a deliberate narrowing rather than an
+ *      omission. `resolveEpfElection` … REFUSES a rate below the statutory floor, and it runs inside
+ *      `pack.statutory.set`, which `completeEmployeeDraft` can only reach after `hireEmployee` has
+ *      committed … Judging it on the tab instead would need the floors in the browser, and they are derived
+ *      from the MY pack's statutory tables, a server module the shared draft schema may not import."
+ *
+ * and, of the three fixed-amount categories, that offering them without the figure "would either fail an
+ * activation that had already created the employee, or force a silent downgrade to Auto". Both were true
+ * while the rule had no other home. `resolveEpfElection` now lives in a db-free leaf of the MY pack
+ * (localization/my/epf-election.ts): the draft's tab names a refused box through the CLIENT pack's
+ * `epfElectionGap`, and `completeEmployeeDraft` asks the SERVER pack's `validateEpfElection` BEFORE
+ * `hireEmployee`. So the draft now gets the WHOLE election — all seven categories and the same rate and
+ * amount boxes — through `EpfElectionControlled` below, which is this card's own markup bound to the
+ * draft's state instead of to a form. The `epfManualDraftHint` message is retired with it (kept, unused).
  */
-export function EpfCategoryField({
-  value,
-  onChange,
-}: {
-  value: string | undefined;
-  onChange: (value: string) => void;
-}) {
-  const t = useTranslations('people.detail');
-  const m: UiMode = UI_MODES.includes((value ?? '') as UiMode) ? (value as UiMode) : 'auto';
-  return (
-    <>
-      <Field label={t('epfMode')}>
-        <select value={m} onChange={(e) => onChange(e.target.value)} className={inputCls}>
-          <option value="auto">{t('epfModeAuto')}</option>
-          <option value="manual_percentage">{t('epfModeManualPercentage')}</option>
-          <option value="semi_auto">{t('epfModeSemiAuto')}</option>
-          <option value="none">{t('epfModeExempt')}</option>
-        </select>
-      </Field>
-      {/* The SAME hint the card shows for the same choice, which is also the explanation of why no rate
-          boxes appear here: leave a side blank and it stays statutory. */}
-      {m === 'manual_percentage' && <p className="text-xs text-muted-foreground">{t('epfVoluntaryHint')}</p>}
-      {m === 'semi_auto' && <p className="text-xs text-muted-foreground">{t('epfSemiAutoHint')}</p>}
-      {/* ── ITEM 70b14723 — WHY THE THREE FIXED-AMOUNT CATEGORIES ARE NOT IN THIS LIST ───────────────────
-          A DELIBERATE DEVIATION FROM THE APPROVED PLAN'S BUILD NOTES, which said to offer them here with no
-          amount boxes. That combination cannot be honoured. `resolveEpfElection` REFUSES a manual category
-          with no amount — it elects nothing, and a row carrying it would compute exactly as Auto while every
-          screen said a person had decided the figure — and it runs inside `pack.statutory.set`, which
-          `completeEmployeeDraft` can only reach AFTER `hireEmployee` has committed. So offering the category
-          without the figure would either fail an activation that had already created the employee, or force a
-          silent downgrade to Auto: HR picks "Manual (Employee by Amount)" in the wizard and the employee is
-          paid on the Third Schedule with nothing saying so. On a money field that is a wrong payslip.
-          It is also faithful to the TICKET, which asks for the categories at Personnel Management → Bank &
-          Statutory and says nothing about the wizard. The named hint points HR at the card that has them. */}
-      {<p className="text-xs text-muted-foreground">{t('epfManualDraftHint')}</p>}
-    </>
-  );
-}
-
-/** The four categories the DRAFT offers — see the hint above for why the three fixed-amount ones are not
- *  here, and lib/epf-mode-map.ts for why 'manual_fixed' is retired rather than deleted. */
-const UI_MODES: readonly UiMode[] = ['auto', 'manual_percentage', 'semi_auto', 'none'];
-
 /**
  * Derive the UI selection from the persisted enum + the figures (the category is NOT stored).
  *
@@ -172,15 +132,112 @@ export function EpfElection({
   employerAmount: number | null;
   manualReason: string | null;
 }) {
-  const t = useTranslations('people.detail');
   const [m, setM] = useState<UiMode>(uiModeFrom(mode, employeeRate, employerRate, employeeAmount, employerAmount));
+  return (
+    <EpfElectionBody
+      m={m}
+      onMode={setM}
+      bind={(field) => {
+        const stored = {
+          epfEmployeeRate: employeeRate,
+          epfEmployerRate: employerRate,
+          epfEmployeeAmount: employeeAmount,
+          epfEmployerAmount: employerAmount,
+          epfManualReason: manualReason,
+        }[field];
+        return { name: { name: field }, value: { defaultValue: stored ?? '' } };
+      }}
+      selectName={{ name: 'epfMode' }}
+    />
+  );
+}
+
+/** The draft's EPF keys — the raw box strings (rates in PERCENT, amounts in RINGGIT), never numbers. */
+export type EpfElectionDraftValue = {
+  epfMode?: string;
+  epfEmployeeRate?: string;
+  epfEmployerRate?: string;
+  epfEmployeeAmount?: string;
+  epfEmployerAmount?: string;
+  epfManualReason?: string;
+};
+type EpfBoxField = Exclude<keyof EpfElectionDraftValue, 'epfMode'>;
+
+/**
+ * r393 (685d2380 step 3b) — THE SAME ELECTION, CONTROLLED: the Create New Employee draft's Bank &
+ * Statutory tab. Identical markup to `EpfElection` above (one body renders both), but every input is bound
+ * to the draft's state and carries NO `name`, so nothing posts by itself. The category is the stored UI
+ * value (a draft has no lawful enum to derive it from); an unknown or blank one shows as Auto, which is
+ * what `mapEpfUiMode` makes of it at Activate. Values travel as the strings typed: a cleared box is '' and
+ * stays '' — the server reads blank as "this side stays statutory", never as 0.
+ */
+export function EpfElectionControlled({
+  value,
+  onChange,
+}: {
+  value: EpfElectionDraftValue;
+  onChange: (patch: EpfElectionDraftValue) => void;
+}) {
+  const m: UiMode = ALL_UI_MODES.includes((value.epfMode ?? '') as UiMode) ? (value.epfMode as UiMode) : 'auto';
+  return (
+    <EpfElectionBody
+      m={m}
+      onMode={(next) => onChange({ epfMode: next })}
+      bind={(field) => ({
+        name: {},
+        value: {
+          value: value[field] ?? '',
+          onChange: (e: ChangeEvent<HTMLInputElement>) => onChange({ [field]: e.target.value }),
+        },
+      })}
+      selectName={{}}
+    />
+  );
+}
+
+/** Every category either branch can show. `manual_fixed` is retired (lib/epf-mode-map.ts) and not offered. */
+const ALL_UI_MODES: readonly UiMode[] = [
+  'auto',
+  'manual_percentage',
+  'semi_auto',
+  'manual_employee_amount',
+  'manual_employer_amount',
+  'manual_both_amount',
+  'none',
+];
+
+/**
+ * The one body both branches render. `bind(field)` returns the input's NAME props and its VALUE props
+ * separately, spread where `name` and `defaultValue` always sat, so the form branch's markup is the
+ * pre-r393 markup attribute for attribute (test/r393-draft-statutory.dom.test.tsx pins it).
+ */
+function EpfElectionBody({
+  m,
+  onMode,
+  bind,
+  selectName,
+}: {
+  m: UiMode;
+  onMode: (m: UiMode) => void;
+  bind: (field: EpfBoxField) => {
+    name: { name?: string };
+    value: { defaultValue?: string | number; value?: string; onChange?: (e: ChangeEvent<HTMLInputElement>) => void };
+  };
+  selectName: { name?: string };
+}) {
+  const t = useTranslations('people.detail');
   const showEmployeeRate = m === 'manual_percentage' || m === 'semi_auto';
   const showEmployerRate = m === 'manual_percentage';
   const amounts = isAmountMode(m) ? AMOUNT_MODES[m] : null;
+  const er = bind('epfEmployeeRate');
+  const rr = bind('epfEmployerRate');
+  const ea = bind('epfEmployeeAmount');
+  const ra = bind('epfEmployerAmount');
+  const mr = bind('epfManualReason');
   return (
     <>
       <Field label={t('epfMode')}>
-        <select name="epfMode" value={m} onChange={(e) => setM(e.target.value as UiMode)} className={inputCls}>
+        <select {...selectName} value={m} onChange={(e) => onMode(e.target.value as UiMode)} className={inputCls}>
           <option value="auto">{t('epfModeAuto')}</option>
           <option value="manual_percentage">{t('epfModeManualPercentage')}</option>
           <option value="semi_auto">{t('epfModeSemiAuto')}</option>
@@ -197,12 +254,12 @@ export function EpfElection({
         <div className="grid grid-cols-2 gap-3 sm:col-span-2">
           {showEmployeeRate && (
             <Field label={t('epfEmployeeRate')}>
-              <input name="epfEmployeeRate" type="number" min="11" max="100" step="0.01" defaultValue={employeeRate ?? ''} placeholder="11" className={inputCls} />
+              <input {...er.name} type="number" min="11" max="100" step="0.01" {...er.value} placeholder="11" className={inputCls} />
             </Field>
           )}
           {showEmployerRate && (
             <Field label={t('epfEmployerRate')}>
-              <input name="epfEmployerRate" type="number" min="12" max="100" step="0.01" defaultValue={employerRate ?? ''} placeholder="13" className={inputCls} />
+              <input {...rr.name} type="number" min="12" max="100" step="0.01" {...rr.value} placeholder="13" className={inputCls} />
             </Field>
           )}
           {m === 'semi_auto' ? (
@@ -226,19 +283,19 @@ export function EpfElection({
         <div className="grid grid-cols-2 gap-3 sm:col-span-2">
           {amounts.employee && (
             <Field label={t('epfEmployeeAmount')}>
-              <input name="epfEmployeeAmount" type="number" min="0" step="0.01" required defaultValue={employeeAmount ?? ''} placeholder="0.00" className={inputCls} />
+              <input {...ea.name} type="number" min="0" step="0.01" required {...ea.value} placeholder="0.00" className={inputCls} />
             </Field>
           )}
           {amounts.employer && (
             <Field label={t('epfEmployerAmount')}>
-              <input name="epfEmployerAmount" type="number" min="0" step="0.01" required defaultValue={employerAmount ?? ''} placeholder="0.00" className={inputCls} />
+              <input {...ra.name} type="number" min="0" step="0.01" required {...ra.value} placeholder="0.00" className={inputCls} />
             </Field>
           )}
           {/* MANDATORY, like the per-run Statutory Adjustment's reason and for the same purpose: a figure that
               overrules a contribution schedule has to carry somebody's words or an auditor is left with an
               unexplained number. It reaches the payslip stamp and the Statutory Detail screen's banner. */}
           <Field label={t('epfManualReason')}>
-            <input name="epfManualReason" type="text" maxLength={500} required defaultValue={manualReason ?? ''} className={inputCls} />
+            <input {...mr.name} type="text" maxLength={500} required {...mr.value} className={inputCls} />
           </Field>
           <p className="text-xs text-muted-foreground sm:col-span-2">{t('epfManualAmountHint')}</p>
         </div>
