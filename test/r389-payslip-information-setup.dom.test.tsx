@@ -52,7 +52,7 @@ describe('r389 Payslip Information Setup — order', () => {
     const hidden = rowsOf(hiddenList());
     expect(hidden[0]).toBe('identityNumber');
     expect(hidden).not.toContain('employee');
-    expect(hidden).toHaveLength(18);
+    expect(hidden).toHaveLength(22); // r392: 25 catalogue fields, 3 shown
     expect(hiddenList().getAllByRole('listitem').every(li => !/^\d/.test(li.textContent ?? ''))).toBe(true);
   });
 

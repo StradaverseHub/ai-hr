@@ -1,4 +1,3 @@
-import {payslipProfileRows} from '../core/payslip-information';
 import { isRecordedEmployerContribution, payslipConfiguredContributions } from '../core/payslip-configured-contributions';
 // ADR-0036 (#22) — render a payslip as a PDF with pdf-lib (pure JS, no WASM/native, so no Next bundler
 // friction). A pure function over the payslipDetail / payslipForReview read + localized labels, so it is
@@ -210,8 +209,8 @@ export type PayslipPdfData = {
    * It used to be `bankAccountMasked`, and both reads that feed this module masked it to the last four
    * digits before it ever got here. The approved plan overturned that: a pay statement that says the money
    * went to "••••8901" does not say which account was paid. The reads now return both forms
-   * (core/payroll-view.ts `payslipForReview`, core/payroll.ts `payslipDetail`); the SCREENS keep the masked
-   * one, this document takes the whole number, and the exposure that creates is written down at
+   * (core/payroll-view.ts `payslipForReview`, core/payroll.ts `payslipDetail`); this document and (since
+   * b19042d0) the review screen take the whole number, and the exposure that creates is written down at
    * `PayslipReviewRow.bankAccountFull` rather than left to be discovered.
    *
    * The field was RENAMED rather than repurposed on purpose: a `bankAccountMasked` holding an unmasked
@@ -1360,13 +1359,16 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
         [t.taxNumber, d.taxNumber], [t.epfNumber, d.epfNumber], [t.socsoNumber, d.socsoNumber],
         [t.department, d.department], [t.position, d.position], [t.grade, d.jobGrade],
         [t.employmentType, d.employmentType], [t.daysWorked, d.daysWorked == null ? null : String(d.daysWorked)],
-        [t.currency, d.currency]] as [string, string | null | undefined][])
+        [t.currency, d.currency],
+        // r392 (23bd49d9) — the payment facts are catalogue fields now, last in the default order. This
+        // fallback (no `informationRows`) lists them in that order; the routes always pass the selection.
+        [t.paymentMethod, d.paymentMethod], [t.bankName, d.bankName], [t.bankAccount, d.bankAccount],
+        [t.payrollCycleLabel ?? 'Payroll cycle', d.cycleLabel]] as [string, string | null | undefined][])
         .filter(([, value]) => value != null && value.trim() !== '').map(([label, value]) => ({label, value: value!})),
     ];
-    const cells: [string,string][]=payslipProfileRows(entries,
-      {paymentMethod:d.paymentMethod,bankName:d.bankName,bankAccount:d.bankAccount,cycle:d.cycleLabel},
-      {paymentMethod:t.paymentMethod,bankName:t.bankName,bankAccount:t.bankAccount,cycle:t.payrollCycleLabel??'Payroll cycle'})
-      .map(e=>[e.label,e.value]);
+    // r392 (23bd49d9) — the panel prints the entries it is given and nothing else: Payment Method, Bank Name,
+    // Bank Account and Payroll Cycle are no longer appended after the company's selection.
+    const cells: [string,string][]=entries.map(e=>[e.label,e.value]);
     // Row-major order is the shared selector's order. Measure real wrapped values before page breaks.
     const width = A4_W - 2*M;
     const columnWidth = (width-24)/2;

@@ -2941,6 +2941,13 @@
       "when": 1791210419875,
       "tag": "0512_own_replacement_request_deciders",
       "breakpoints": true
+    },
+    {
+      "idx": 513,
+      "version": "7",
+      "when": 1791300000000,
+      "tag": "0513_payslip_information_payment_fields",
+      "breakpoints": true
     }
   ]
 }

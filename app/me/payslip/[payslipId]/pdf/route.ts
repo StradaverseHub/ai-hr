@@ -1,4 +1,4 @@
-import { selectPayslipInformation } from '@/core/payslip-information';
+import { selectPayslipInformation, payslipInformationData } from '@/core/payslip-information';
 import { payslipInformationLabels } from '@/lib/payslip-information-labels';
 // ADR-0036 (#22) — stream a payslip as a downloadable PDF. ABAC is inherited from payslipDetail,
 // which is RLS-gated to own-or-admin AND carries the ESS release gate, so an employee can only fetch
@@ -61,7 +61,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ payslip
   // admin review copy cannot disagree about which box an amount is in or whether the employer funded a
   // deduction. It reads THIS payslip's stored snapshot, never today's settings.
   const data = buildPayslipPdfData(p, strings.borneLabels, {
-    informationRows: selectPayslipInformation({ ...p, employee: p.employee, employmentType: strings.employmentType }, p.informationFields, await payslipInformationLabels(p.identityIsPassport)),
+    // r392 (23bd49d9) — the payment facts are setting fields now: the translated method (never the raw
+    // enum), the FULL account number and the cycle label, exactly as the review screen feeds them.
+    informationRows: selectPayslipInformation(payslipInformationData(p, { employee: p.employee, employmentType: strings.employmentType,
+      paymentMethod: strings.paymentMethod, bankAccount: p.bankAccountFull, payrollCycle: strings.cycleLabel }), p.informationFields, await payslipInformationLabels(p.identityIsPassport)),
     currency: p.currency,
     payDate: p.payDate,
     cycleLabel: strings.cycleLabel,
@@ -76,7 +79,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ payslip
     taxNumber: p.taxNumber,
     paymentMethod: strings.paymentMethod,
     bankName: p.bankName,
-    // f35f758a — the PDF takes the FULL account number; the screens keep the masked one. Both forms
+    // f35f758a — the PDF takes the FULL account number, as the review screen does (b19042d0). Both forms
     // come off the same read (see PayslipReviewRow.bankAccountFull for the exposure this creates).
     bankAccount: p.bankAccountFull,
     ytd: sumPayslipYtd(ytdRows),

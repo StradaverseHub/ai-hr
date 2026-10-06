@@ -6,14 +6,16 @@ import { PDFDocument } from 'pdf-lib';
 const names = Object.fromEntries(PAYSLIP_INFORMATION_FIELDS.map(k => [k,k])) as Record<typeof PAYSLIP_INFORMATION_FIELDS[number],string>;
 describe('company payslip information presentation', () => {
  it('continues a single oversized field across pages without dropping the field',async()=>{const bytes=await renderPayslipPdf({...data,informationRows:[{label:'Branch',value:'Synthetic organization description '.repeat(800)}]},labels);expect((await PDFDocument.load(bytes)).getPageCount()).toBeGreaterThan(2);});
- it('defaults retain twelve existing fields, hide nine organisation fields, omit blank but preserve zero', () => {
-  expect(DEFAULT_PAYSLIP_INFORMATION_FIELDS).toHaveLength(12);
+ it('defaults retain sixteen fields (r392 added the four payment fields), hide nine organisation fields, omit blank but preserve zero', () => {
+  expect(DEFAULT_PAYSLIP_INFORMATION_FIELDS).toHaveLength(16);
+  expect(DEFAULT_PAYSLIP_INFORMATION_FIELDS.slice(-4)).toEqual(['paymentMethod','bankName','bankAccount','payrollCycle']);
   const rows=selectPayslipInformation({employee:'Ada',identityNumber:'  ',daysWorked:0,branch:'North'},null,names);
   expect(rows.map(r=>r.key)).toEqual(['employee','daysWorked']);
   expect(rows[1].value).toBe('0');
  });
- it('each of 21 settings independently hides its label/value with deterministic order', () => {
+ it('each of 25 settings independently hides its label/value with deterministic order', () => {
   const values=Object.fromEntries(PAYSLIP_INFORMATION_FIELDS.map(k=>[k,'value-'+k]));
+  expect(PAYSLIP_INFORMATION_FIELDS).toHaveLength(25);
   for(const k of PAYSLIP_INFORMATION_FIELDS) {
    expect(selectPayslipInformation(values,[k],names)).toEqual([{key:k,label:k,value:'value-'+k}]);
    expect(selectPayslipInformation(values,PAYSLIP_INFORMATION_FIELDS.filter(x=>x!==k),names).some(x=>x.key===k)).toBe(false);

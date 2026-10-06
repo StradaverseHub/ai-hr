@@ -3,6 +3,11 @@ export const PAYSLIP_INFORMATION_FIELDS = [
   'employee', 'employeeCode', 'identityNumber', 'taxNumber', 'epfNumber', 'socsoNumber',
   'department', 'position', 'jobGrade', 'employmentType', 'businessUnit', 'division',
   'branch', 'region', 'line', 'section', 'team', 'base', 'category', 'daysWorked', 'currency',
+  // r392 (23bd49d9) — the four payment facts that used to be appended after every selection whatever the
+  // setting said. They are ordinary fields now, at the END of the catalogue and of the defaults, because
+  // the end of the block is exactly where they printed before; migration 0513 appends them to every saved
+  // row for the same reason, so no issued payslip changes on the day this ships.
+  'paymentMethod', 'bankName', 'bankAccount', 'payrollCycle',
 ] as const;
 export type PayslipInformationField = typeof PAYSLIP_INFORMATION_FIELDS[number];
 export const DEFAULT_PAYSLIP_INFORMATION_FIELDS: readonly PayslipInformationField[] =
@@ -39,14 +44,37 @@ export function selectPayslipInformation(
   });
 }
 
-/** One row-major profile order for review and both PDF outputs; header facts stay in the header. */
-export function payslipProfileRows(
-  informationRows: readonly {label:string;value:string}[],
-  extra:{paymentMethod?:string|null;bankName?:string|null;bankAccount?:string|null;cycle?:string|null},
-  labels:{paymentMethod:string;bankName:string;bankAccount:string;cycle:string},
-):{label:string;value:string}[]{
-  return [...informationRows.map(({label,value})=>({label,value})),
-    ...(['paymentMethod','bankName','bankAccount','cycle'] as const).flatMap(key=>{
-      const value=extra[key]?.trim();return value?[{label:labels[key],value}]:[];
-    })];
+/** r392 (23bd49d9) — the payment facts migration 0513 appends to every saved setting, in catalogue order. */
+export const PAYSLIP_PAYMENT_FIELDS = ['paymentMethod', 'bankName', 'bankAccount', 'payrollCycle'] as const satisfies readonly PayslipInformationField[];
+
+/**
+ * r392 (23bd49d9) — the TypeScript mirror of migration 0513, for tests: a saved array gains each payment
+ * field it does not already name, at the end, in catalogue order; anything that is not an array (no row) is
+ * returned unchanged, because "no row" already means the defaults, which now end with the same four.
+ */
+export function withPaymentFieldsAppended(raw: unknown): unknown {
+  if (!Array.isArray(raw)) return raw;
+  return [...raw, ...PAYSLIP_PAYMENT_FIELDS.filter(k => !raw.includes(k))];
+}
+
+/**
+ * r392 (23bd49d9) — THE VALUES BEHIND THE FOUR PAYMENT FIELDS, built in one place for the review screen and
+ * both PDF routes. Each caller used to spread its read row straight into `selectPayslipInformation`, which
+ * is wrong for exactly these keys:
+ *   - `row.paymentMethod` is the STORED ENUM (`bank_transfer`); a payslip must print the translated word, so
+ *     the caller's resolved word is REQUIRED here and always replaces it (null when there is none);
+ *   - neither read has a `bankAccount` key, only `bankAccountFull` and `bankAccountMasked`; the payslip
+ *     prints the full number (f35f758a, b19042d0), so each caller passes `bankAccount: row.bankAccountFull`;
+ *   - `payrollCycle` is not a column at all: it is the caller's `payslipCycleLabel` output.
+ * The resolved values are required parameters and always win over the row, so a caller cannot forget one
+ * and fall back to whatever the read happens to carry under that name.
+ */
+export function payslipInformationData(
+  row: object,
+  resolved: {
+    employee: string | null; employmentType: string | null; paymentMethod: string | null;
+    bankAccount: string | null; payrollCycle: string | null;
+  },
+): Partial<Record<PayslipInformationField, unknown>> {
+  return { ...(row as Partial<Record<PayslipInformationField, unknown>>), ...resolved };
 }

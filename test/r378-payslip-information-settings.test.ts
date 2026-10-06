@@ -27,7 +27,11 @@ describe('company-owned payslip display setting',()=>{
  });
  it('rejects unknown fields and another company without changing the saved setting',async()=>{
   await setPayslipInformationSettings(ctx(),base.companyId,['employee']);
-  await expect(setPayslipInformationSettings(ctx(),base.companyId,['bankAccount'])).rejects.toThrow('Unknown');
+  await expect(setPayslipInformationSettings(ctx(),base.companyId,['notAPayslipField'])).rejects.toThrow('Unknown');
+  // r392 — bankAccount used to be the unknown key here; it is a real field now and is accepted.
+  await setPayslipInformationSettings(ctx(),base.companyId,['bankAccount']);
+  expect(await getPayslipInformationSettings(ctx(),base.companyId)).toEqual(['bankAccount']);
+  await setPayslipInformationSettings(ctx(),base.companyId,['employee']);
   await expect(setPayslipInformationSettings(ctx(),randomUUID(),['employee'])).rejects.toThrow('Forbidden');
   await expect(getPayslipInformationSettings({...ctx(),roles:['employee'],grants:[]},base.companyId)).rejects.toThrow('Forbidden');
   expect(await getPayslipInformationSettings(ctx(),base.companyId)).toEqual(['employee']);

@@ -1,4 +1,4 @@
-import { selectPayslipInformation } from '@/core/payslip-information';
+import { selectPayslipInformation, payslipInformationData } from '@/core/payslip-information';
 import { payslipInformationLabels } from '@/lib/payslip-information-labels';
 /**
  * Feedback 169e3c24 — the admin review copy of a payslip as a PDF, available BEFORE release.
@@ -84,7 +84,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ payslipI
   // `employee` (the payslipDetail convention). Bridged here rather than renaming either, so neither the
   // ESS route nor the History screen has to change for this one.
   const data = buildPayslipPdfData({ ...p, employee: p.employeeName }, strings.borneLabels, {
-    informationRows: selectPayslipInformation({ ...p, employee: p.employeeName, employmentType: strings.employmentType }, p.informationFields, await payslipInformationLabels(p.identityIsPassport)),
+    // r392 (23bd49d9) — the payment facts are setting fields now: the translated method (never the raw
+    // enum), the FULL account number and the cycle label, exactly as the review screen feeds them.
+    informationRows: selectPayslipInformation(payslipInformationData(p, { employee: p.employeeName, employmentType: strings.employmentType,
+      paymentMethod: strings.paymentMethod, bankAccount: p.bankAccountFull, payrollCycle: strings.cycleLabel }), p.informationFields, await payslipInformationLabels(p.identityIsPassport)),
     currency: p.currency,
     reviewNotice,
     payDate: p.payDate,
@@ -100,7 +103,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ payslipI
     taxNumber: p.taxNumber,
     paymentMethod: strings.paymentMethod,
     bankName: p.bankName,
-    // f35f758a — the PDF takes the FULL account number; the screens keep the masked one. Both forms
+    // f35f758a — the PDF takes the FULL account number, as the review screen does (b19042d0). Both forms
     // come off the same read (see PayslipReviewRow.bankAccountFull for the exposure this creates).
     bankAccount: p.bankAccountFull,
     ytd: sumPayslipYtd(ytdRows),

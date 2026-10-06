@@ -291,7 +291,9 @@ describe('e0b6e3b8 — on the rendered screen, the two labels are different word
       const tree = await IndividualPayslipPage({ searchParams: Promise.resolve({ employmentId }) });
 
       const chooser = labelOfControl(tree, 'cycle');
-      const field = msg(locale, 'fieldCycle');
+      // r392 (23bd49d9) — Payroll Cycle is a payslip setting field now, labelled by its own catalogue key
+      // (payroll.payslipInformation.payrollCycle, Title Case) like every other field in the block.
+      const field = String(at(catalogue(locale), 'payroll.payslipInformation.payrollCycle'));
 
       // 1. THE CHOOSER RESOLVES THE NEW KEY. Asserted against the catalogue VALUE, not the key name: put
       //    `t('filterCycle')` back and this fires, because the retire marker is what would render.
