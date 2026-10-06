@@ -1990,12 +1990,15 @@ describe('r382 retained result on the admin review document', () => {
 
 
 describe('r383 restored compact payslip profile',()=>{
- it('keeps only configured employee facts in their saved order followed by payment and cycle',async()=>{
+ // r392 (23bd49d9) — the payment facts are setting fields now: the panel prints the configured rows and
+ // NOTHING after them, even when the data carries payment, bank and cycle values.
+ it('keeps only configured employee facts in their saved order, with nothing appended after them',async()=>{
   const subset=[{label:'Position',value:'Configured position'},{label:'Department',value:'Configured department'}];
   const bytes=await renderPayslipPdf({...data,informationRows:subset,bankName:'Saved bank',bankAccount:'FULLACCOUNT',paymentMethod:'Bank transfer',cycleLabel:'Company cycle'},labels);
   const runs=drawnPlacements(bytes),heading=placed(runs,'EMPLOYEE PROFILE')!,earnings=placed(runs,'EARNINGS')!;
   const body=runs.filter(r=>r.page===heading.page&&r.y<heading.y&&r.y>earnings.y).map(r=>r.text);
-  expect(body).toEqual(['Position','Configured position','Department','Configured department',labels.paymentMethod,'Bank transfer',labels.bankName,'Saved bank',labels.bankAccount,'FULLACCOUNT',labels.payrollCycleLabel??'Payroll cycle','Company cycle']);
+  expect(body).toEqual(['Position','Configured position','Department','Configured department']);
+  expect(drawnText(bytes)).not.toContain('FULLACCOUNT');
   expect(placed(runs,'Department')!.x-placed(runs,'Position')!.x).toBeCloseTo((595.28-48-24)/2+24,2);
   expect(body).not.toContain(data.company);expect(body).not.toContain(labels.periodLabel);expect(body).not.toContain(data.employee);
   const borders=drawnRects(bytes).filter(r=>r.op==='S'&&r.y<heading.y&&r.y>earnings.y);
@@ -2003,7 +2006,8 @@ describe('r383 restored compact payslip profile',()=>{
  });
  it('wraps complete configured profile values across pages without losing payment details',async()=>{
   const tokens=Array.from({length:700},(_,i)=>`ProfileToken${i}`);
-  const bytes=await renderPayslipPdf({...data,informationRows:[{label:'Department',value:tokens.join(' ')}],bankAccount:'FULLACCOUNT'},labels);
+  // r392 — the account prints because the setting names it (a row), not because it is appended.
+  const bytes=await renderPayslipPdf({...data,informationRows:[{label:'Department',value:tokens.join(' ')},{label:'Bank Account',value:'FULLACCOUNT'}],bankAccount:'FULLACCOUNT'},labels);
   expect(await pageCount(bytes)).toBeGreaterThan(1);
   expect(drawnText(bytes).replace(/\n/g,' ').match(/ProfileToken\d+/g)).toEqual(tokens);
   expect(drawnText(bytes)).toContain('FULLACCOUNT');

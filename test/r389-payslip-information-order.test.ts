@@ -15,7 +15,6 @@ import {
   DEFAULT_PAYSLIP_INFORMATION_FIELDS,
   PAYSLIP_INFORMATION_FIELDS,
   payslipInformationFields,
-  payslipProfileRows,
   selectPayslipInformation,
   type PayslipInformationField,
 } from '../core/payslip-information';
@@ -53,7 +52,7 @@ describe('r389 selector keeps the stored order', () => {
   });
 
   it('drops unknown keys and keeps the FIRST place of a repeated key', () => {
-    expect(payslipInformationFields(['branch', 'bankAccount', 'employee', 'branch', 7, null, 'employee', 'daysWorked']))
+    expect(payslipInformationFields(['branch', 'notAPayslipField', 'employee', 'branch', 7, null, 'employee', 'daysWorked']))
       .toEqual(['branch', 'employee', 'daysWorked']);
     const rows = selectPayslipInformation({ branch: 'North', employee: 'Ada', daysWorked: 0 }, ['branch', 'employee', 'branch'], names);
     expect(rows.map(r => r.key)).toEqual(['branch', 'employee']);
@@ -88,11 +87,9 @@ describe('r389 a catalogue-order row renders byte-identical rows to the pre-r389
         const before = JSON.stringify(legacySelect(data, setting));
         const after = JSON.stringify(selectPayslipInformation(data, setting, names));
         expect(after).toBe(before);
-        // …and the profile rows the screen and both PDFs are built from.
-        const extra = { paymentMethod: 'Bank transfer', bankName: 'Bank', bankAccount: '123', cycle: 'Monthly' };
-        const extraLabels = { paymentMethod: 'Payment', bankName: 'Bank name', bankAccount: 'Account', cycle: 'Cycle' };
-        expect(JSON.stringify(payslipProfileRows(selectPayslipInformation(data, setting, names), extra, extraLabels)))
-          .toBe(JSON.stringify(payslipProfileRows(legacySelect(data, setting), extra, extraLabels)));
+        // r392 retired payslipProfileRows (the appended payment block); the profile rows the screen and both
+        // PDFs print are now exactly this selection — pinned against the r389 output in
+        // test/r392-payslip-payment-fields.test.ts.
         compared++;
       }
     }
