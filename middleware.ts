@@ -152,18 +152,16 @@ async function withWorkosSession(original: NextRequest): Promise<NextResponse> {
     redirectUri: process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI,
   });
   const signedIn = Boolean(session.user);
-  // /login is the front door: signed out it goes straight to AuthKit; signed in it goes home. The other
-  // auth routes (/callback, /invite, /reset-password) must work signed out.
+  // /login is the front door: signed out it goes straight to AuthKit. Signed IN it renders the page, which
+  // sends a linked user home and tells an unlinked one why they are not in (redirecting home here instead
+  // looped forever for a WorkOS login with no AI HR account: home → AuthRequiredError → /login → home).
+  // The other auth routes (/callback, /invite, /reset-password) must work signed out.
   if (!signedIn && (path === '/login' || !isAuthRoute(path))) {
     if (wantsStatusNotRedirect(req)) {
       const { responseHeaders } = partitionAuthkitHeaders(req, headers);
       return applyResponseHeaders(new NextResponse('Authentication required.', { status: 401 }), responseHeaders);
     }
     return handleAuthkitHeaders(req, headers, { redirect: authorizationUrl });
-  }
-  if (signedIn && path === '/login') {
-    // Absolute and public: behind the tunnel req.url is http://127.0.0.1:3000.
-    return handleAuthkitHeaders(req, headers, { redirect: new URL('/', appOrigin() ?? req.url) });
   }
   // Pass through with AuthKit's request headers (withAuth reads them) AND x-pathname (the layout reads it).
   const { requestHeaders, responseHeaders } = partitionAuthkitHeaders(req, headers);

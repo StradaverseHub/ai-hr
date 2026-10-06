@@ -2,6 +2,9 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import { listPrincipals } from '@/lib/principals';
+import { getSession } from '@/lib/session';
+import { AuthRequiredError } from '@/lib/auth-errors';
+import { signOutUnlinkedAction } from '@/app/auth-actions';
 
 /**
  * /login (ADR-0072). In a real deployment this redirects to the WorkOS AuthKit hosted login, so the
@@ -31,10 +34,39 @@ export default async function LoginPage() {
 
   // Real deployment → WorkOS hosted login. Dev + gated demo (ALLOW_DEMO_SESSION) → identity switcher.
   if (!demoSwitcherEnabled()) {
-    // r390 — with real sign-in, middleware.ts answers /login before this page runs: signed out it redirects
-    // to AuthKit (setting the SDK's PKCE cookie on that redirect), signed in it redirects home. Calling
-    // getSignInUrl() HERE would throw, because it sets a cookie and a Server Component may not. So the only
-    // safe thing this branch can do is hand the request back to the middleware's front door.
+    // r390 — with real sign-in, middleware.ts redirects a SIGNED-OUT visitor to AuthKit before this page
+    // runs (setting the SDK's PKCE cookie on that redirect; getSignInUrl() here would throw, because it sets
+    // a cookie and a Server Component may not). So this branch only ever sees someone signed in at WorkOS:
+    // a linked account goes home; a WorkOS login with no AI HR account is told so, and can sign out to use
+    // another one. Sending that person home instead looped forever (home → AuthRequiredError → /login).
+    try {
+      await getSession();
+    } catch (e) {
+      if (!(e instanceof AuthRequiredError)) throw e;
+      const { currentWorkosSession } = await import('@/lib/workos');
+      const email = (await currentWorkosSession())?.email ?? '';
+      return (
+        <main className="flex min-h-dvh flex-col items-center justify-center bg-muted/30 px-6 py-10">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-background p-8 shadow-sm">
+            <p className="text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {tCommon('appName')}
+            </p>
+            <h1 className="mt-2 text-center text-2xl font-semibold text-foreground">{t('login.notLinkedTitle')}</h1>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground" data-testid="login-not-linked">
+              {t('login.notLinkedBody', { email })}
+            </p>
+            <form action={signOutUnlinkedAction} className="mt-6">
+              <button
+                type="submit"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                {t('login.notLinkedSignOut')}
+              </button>
+            </form>
+          </div>
+        </main>
+      );
+    }
     redirect('/');
   }
 

@@ -13164,7 +13164,10 @@
       "demoNote": "You are signing in to a demonstration environment. Choose an identity to explore the product with — no password is needed, and the data you see is sample data.",
       "chooseIdentity": "Choose who to explore as",
       "noRole": "No role",
-      "accessNote": "You will see exactly what this person sees. To try a different level of access, log out and choose again."
+      "accessNote": "You will see exactly what this person sees. To try a different level of access, log out and choose again.",
+      "notLinkedTitle": "No AI HR account for this sign-in",
+      "notLinkedBody": "You signed in as {email}, but no AI HR account is linked to that login yet. Ask your administrator to invite you, or sign out and use a different account.",
+      "notLinkedSignOut": "Sign out"
     },
     "invite": {
       "title": "You've been invited",
@@ -13187,7 +13190,10 @@
     "error": {
       "generic": "Sign-in failed. Please try again.",
       "rateLimited": "Too many attempts. Please wait a moment and try again."
-    }
+    },
+    "callbackFailedTitle": "Sign-in could not be completed",
+    "callbackFailedBody": "The sign-in link was stale, already used, or opened in a different browser. Nothing has changed — please start again.",
+    "callbackRetry": "Try again"
   },
   "attendanceAllowance": {
     "title": "Attendance allowance",

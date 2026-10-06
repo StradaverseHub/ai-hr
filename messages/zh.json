@@ -13164,7 +13164,10 @@
       "demoNote": "您正在登录演示环境。请选择一个身份来体验产品 — 无需密码，您看到的均为示例数据。",
       "chooseIdentity": "选择以谁的身份体验",
       "noRole": "无角色",
-      "accessNote": "您将看到该用户所能看到的内容。若要体验其他访问权限，请退出登录后重新选择。"
+      "accessNote": "您将看到该用户所能看到的内容。若要体验其他访问权限，请退出登录后重新选择。",
+      "notLinkedTitle": "此登录没有对应的 AI HR 账户",
+      "notLinkedBody": "您已以 {email} 登录，但该登录尚未关联任何 AI HR 账户。请联系管理员邀请您，或退出后使用其他账户。",
+      "notLinkedSignOut": "退出"
     },
     "invite": {
       "title": "您已被邀请",
@@ -13187,7 +13190,10 @@
     "error": {
       "generic": "登录失败，请重试。",
       "rateLimited": "尝试次数过多，请稍候再试。"
-    }
+    },
+    "callbackFailedTitle": "无法完成登录",
+    "callbackFailedBody": "登录链接已过期、已被使用，或在其他浏览器中打开。没有任何更改——请重新开始。",
+    "callbackRetry": "重试"
   },
   "attendanceAllowance": {
     "title": "出勤津贴",

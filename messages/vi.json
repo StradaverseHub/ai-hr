@@ -13164,7 +13164,10 @@
       "demoNote": "Bạn đang đăng nhập vào môi trường trình diễn. Hãy chọn một danh tính để khám phá sản phẩm — không cần mật khẩu, và dữ liệu bạn thấy là dữ liệu mẫu.",
       "chooseIdentity": "Chọn danh tính để khám phá",
       "noRole": "Không có vai trò",
-      "accessNote": "Bạn sẽ thấy đúng những gì người này thấy. Để thử mức truy cập khác, hãy đăng xuất và chọn lại."
+      "accessNote": "Bạn sẽ thấy đúng những gì người này thấy. Để thử mức truy cập khác, hãy đăng xuất và chọn lại.",
+      "notLinkedTitle": "Không có tài khoản AI HR cho lần đăng nhập này",
+      "notLinkedBody": "Bạn đã đăng nhập với {email}, nhưng chưa có tài khoản AI HR nào được liên kết với thông tin đăng nhập đó. Hãy nhờ quản trị viên mời bạn, hoặc đăng xuất và dùng tài khoản khác.",
+      "notLinkedSignOut": "Đăng xuất"
     },
     "invite": {
       "title": "Bạn đã được mời",
@@ -13187,7 +13190,10 @@
     "error": {
       "generic": "Đăng nhập thất bại. Vui lòng thử lại.",
       "rateLimited": "Quá nhiều lần thử. Vui lòng đợi một lát rồi thử lại."
-    }
+    },
+    "callbackFailedTitle": "Không thể hoàn tất đăng nhập",
+    "callbackFailedBody": "Liên kết đăng nhập đã hết hạn, đã được dùng, hoặc được mở trong trình duyệt khác. Không có gì thay đổi — vui lòng bắt đầu lại.",
+    "callbackRetry": "Thử lại"
   },
   "attendanceAllowance": {
     "title": "Phụ cấp chuyên cần",

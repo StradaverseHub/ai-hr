@@ -13164,7 +13164,10 @@
       "demoNote": "Anda sedang log masuk ke persekitaran demonstrasi. Pilih satu identiti untuk meneroka produk — tiada kata laluan diperlukan, dan data yang anda lihat ialah data contoh.",
       "chooseIdentity": "Pilih identiti untuk meneroka",
       "noRole": "Tiada peranan",
-      "accessNote": "Anda akan melihat tepat apa yang orang ini lihat. Untuk mencuba tahap akses yang berbeza, log keluar dan pilih semula."
+      "accessNote": "Anda akan melihat tepat apa yang orang ini lihat. Untuk mencuba tahap akses yang berbeza, log keluar dan pilih semula.",
+      "notLinkedTitle": "Tiada akaun AI HR untuk log masuk ini",
+      "notLinkedBody": "Anda log masuk sebagai {email}, tetapi belum ada akaun AI HR yang dipautkan kepada log masuk itu. Minta pentadbir anda menjemput anda, atau log keluar dan gunakan akaun lain.",
+      "notLinkedSignOut": "Log keluar"
     },
     "invite": {
       "title": "Anda telah dijemput",
@@ -13187,7 +13190,10 @@
     "error": {
       "generic": "Log masuk gagal. Sila cuba lagi.",
       "rateLimited": "Terlalu banyak percubaan. Sila tunggu sebentar dan cuba lagi."
-    }
+    },
+    "callbackFailedTitle": "Log masuk tidak dapat diselesaikan",
+    "callbackFailedBody": "Pautan log masuk telah tamat tempoh, telah digunakan, atau dibuka dalam pelayar lain. Tiada apa-apa yang berubah — sila mulakan semula.",
+    "callbackRetry": "Cuba lagi"
   },
   "attendanceAllowance": {
     "title": "Elaun kehadiran",

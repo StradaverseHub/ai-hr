@@ -150,9 +150,15 @@ describe('real sign-in on, signed in (authkit() replaced; the SDK header helpers
     expect(forwarded(res, 'x-pathname')).toBe('/leave');
   });
 
-  it('/login when already signed in goes HOME on the public origin, not to 127.0.0.1', async () => {
+  // Signed in at WorkOS, /login renders (app/login/page.tsx sends a LINKED account home and tells an UNLINKED
+  // one so). Redirecting home here looped forever for a WorkOS login with no AI HR account:
+  // home → AuthRequiredError → /login → home. The redirect must not come back.
+  it('/login when already signed in reaches the page instead of bouncing home', async () => {
     const res = await (await loadSignedIn({ id: 'user_r390', email: 'irwin@example.test' }))(req('/login'));
-    expect(res.status).toBe(307);
-    expect(res.headers.get('location')).toBe(`${ORIGIN}/`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('location')).toBeNull();
+    expect(passedThrough(res)).toBe(true);
+    expect(forwarded(res, 'x-pathname')).toBe('/login');
+    expect(forwarded(res, 'x-workos-session')).toBe('sealed-session-fixture');
   });
 });

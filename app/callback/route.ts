@@ -1,6 +1,7 @@
 import { handleAuth } from '@workos-inc/authkit-nextjs';
 import { recordLoginBlocked, recordLoginSucceeded } from '@/core/auth';
 import { appOrigin } from '@/lib/real-auth';
+import { getTranslations } from 'next-intl/server';
 
 /**
  * WorkOS OAuth callback (ADR-0072). handleAuth() exchanges the `code`, seals the session cookie, and
@@ -37,4 +38,21 @@ export const GET = handleAuth({
       // Never block a valid login on an audit-write failure.
     }
   },
+  // r390 — a callback that cannot complete (a stale or reused link, the sign-in opened in another browser so
+  // its verifier cookie is missing, a cancelled sign-in) used to end in the SDK's bare 500. Say what happened
+  // and offer a fresh start. Not a redirect to /login: if the cause persists, that would loop through AuthKit.
+  // The SDK has already logged the error as '[AuthKit callback error]' before calling this.
+  onError: async () => {
+    const t = await getTranslations('auth');
+    const retry = `${appOrigin() ?? ''}/login`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(t('callbackFailedTitle'))}</title></head>` +
+      `<body style="font-family:system-ui,sans-serif;max-width:28rem;margin:4rem auto;padding:0 1.5rem;line-height:1.5">` +
+      `<h1 style="font-size:1.4rem">${escapeHtml(t('callbackFailedTitle'))}</h1><p>${escapeHtml(t('callbackFailedBody'))}</p>` +
+      `<p><a href="${escapeHtml(retry)}">${escapeHtml(t('callbackRetry'))}</a></p></body></html>`;
+    return new Response(html, { status: 400, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+  },
 });
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}

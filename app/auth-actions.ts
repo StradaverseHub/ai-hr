@@ -6,6 +6,7 @@ import { AuthRequiredError } from '@/lib/auth-errors';
 import { logout as logoutService, requestPasswordReset } from '@/core/auth';
 import { demoSwitcherEnabled } from '@/lib/demo-mode';
 import { signOutDemo } from '@/app/identity-actions';
+import { appOrigin } from '@/lib/real-auth';
 
 /**
  * Log the current user out: append app-user.logged-out (auth-audit) then clear/revoke the WorkOS
@@ -28,7 +29,27 @@ export async function logoutAction() {
     await signOutDemo();
     redirect('/login');
   }
-  await logoutService({ tenantId: session.tenantId, userId: session.userId! }, undefined, '/login');
+  await logoutService({ tenantId: session.tenantId, userId: session.userId! }, undefined, signedOutReturn());
+  redirect('/login');
+}
+
+/** r390 — WorkOS sends the browser here after sign-out. It must be ABSOLUTE and listed under the environment's
+ *  sign-out redirects: behind the tunnel a relative '/login' resolves against nothing the browser can reach. */
+function signedOutReturn(): string {
+  const origin = appOrigin();
+  return origin ? `${origin}/login` : '/login';
+}
+
+/**
+ * r390 — sign out a WorkOS login that has NO AI HR account linked (the /login "not linked" view). logoutAction
+ * cannot serve it: it resolves the session first, and for exactly this user that throws AuthRequiredError and
+ * redirects to /login, so the WorkOS session would never end and they could not switch to another account.
+ * Nothing to audit against: there is no app_user to attribute the event to.
+ */
+export async function signOutUnlinkedAction() {
+  if (demoSwitcherEnabled()) redirect('/login');
+  const { endWorkosSession } = await import('@/lib/workos');
+  await endWorkosSession(signedOutReturn());
   redirect('/login');
 }
 
