@@ -2943,17 +2943,17 @@
       "breakpoints": true
     },
     {
-<<<<<<< HEAD
       "idx": 513,
       "version": "7",
       "when": 1791300000000,
       "tag": "0513_payslip_information_payment_fields",
-=======
+      "breakpoints": true
+    },
+    {
       "idx": 514,
       "version": "7",
       "when": 1791300001000,
       "tag": "0514_fixed_transaction_payroll_cycle",
->>>>>>> build/r392-c
       "breakpoints": true
     }
   ]
