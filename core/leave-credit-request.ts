@@ -48,7 +48,7 @@
  */
 import { withTenant, type SessionContext } from '../db/client';
 import { LEGACY_CLAIM_SOURCE_TYPE, type ReplacementClaimSourceType, type ToilWorkedDayKind } from '../db/schema';
-import { resolveWorkedDayKindTx } from './toil';
+import { leaveCreditRosterKindsTx } from './toil';
 import {
   ReplacementRequestInvalidError,
   submitReplacementLeaveRequest,
@@ -166,12 +166,9 @@ export async function leaveCreditRosterKinds(
   employmentId: string,
   dates: readonly string[],
 ): Promise<Map<string, ToilWorkedDayKind>> {
-  const distinct = [...new Set(dates)];
-  return withTenant(ctx, async (tx) => {
-    const out = new Map<string, ToilWorkedDayKind>();
-    for (const d of distinct) out.set(d, await resolveWorkedDayKindTx(tx, employmentId, d));
-    return out;
-  });
+  // r406 — the loop moved to `leaveCreditRosterKindsTx` (core/toil.ts) so HR's row-grant asks the same
+  // question inside its own single transaction; this is that helper in a transaction of its own, unchanged.
+  return withTenant(ctx, (tx) => leaveCreditRosterKindsTx(tx, employmentId, dates));
 }
 
 /**

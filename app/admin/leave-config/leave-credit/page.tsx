@@ -5,7 +5,8 @@ import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { DAY_DASH, formatDays } from '@/lib/day-format';
-import { listCompanies, listEmployees, replacementLeaveSummary } from '@/core/read';
+import { listCompanies, listEmployees, listLeaveTypes, replacementLeaveSummary } from '@/core/read';
+import { pickReplacementLeaveType } from '@/core/ess-view';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import {
   LEAVE_CREDIT_MOVEMENTS,
@@ -15,10 +16,10 @@ import {
 } from '@/packs/leave/service';
 import { Card, EmployeeName, ErrorBanner, PageHeader, btnGhost, btnPrimary, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from '@/components/ui';
 import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
-import { LeaveCreditAddDialog } from '@/components/leave/leave-credit-add-dialog';
+import { LeaveCreditGrantDialog } from '@/components/leave/leave-credit-grant-dialog';
 import { LeaveCreditReverseDialog } from '@/components/leave/leave-credit-reverse-dialog';
 import { closeReplacementLeaveYearAction, runToilExpiryAction } from '../../actions';
-import { grantLeaveCreditAction, previewLeaveCreditAction, reverseLeaveCreditAction } from './actions';
+import { grantLeaveCreditRowsAction, leaveCreditGrantContextAction, leaveCreditGrantDayFactsAction, reverseLeaveCreditAction } from './actions';
 
 /** Not exported: Next refuses unknown exports from a page module. */
 const PAGE = '/admin/leave-config/leave-credit';
@@ -105,6 +106,10 @@ export default async function LeaveConfigLeaveCreditPage({
   const employeeOptions = employees
     .map((e) => ({ id: e.employmentId, label: e.employeeCode ? `${e.employeeCode} — ${e.name}` : e.name }))
     .sort((a, b) => a.label.localeCompare(b.label));
+  // r406 — the tenant's OWN name for its Replacement Leave type, as the employee's form prints it (the table
+  // shows "Leave type: …"). A tenant with none yet still gets the form: the grant creates the type on first
+  // use (`ensureReplacementLeaveType`), so the fixed English label stands in and nothing posts an id.
+  const replacementLeaveType = moduleOn ? pickReplacementLeaveType(await listLeaveTypes(s, { locale, includeArchived: false })) : null;
 
   const fmtDate = (iso: string | null) => {
     if (!iso) return DAY_DASH;
@@ -190,11 +195,17 @@ export default async function LeaveConfigLeaveCreditPage({
         description={header.description}
         actions={
           moduleOn ? (
-            <LeaveCreditAddDialog
+            <LeaveCreditGrantDialog
               employees={employeeOptions}
               today={today}
-              submitAction={grantLeaveCreditAction}
-              previewAction={previewLeaveCreditAction}
+              replacementType={
+                replacementLeaveType
+                  ? { id: replacementLeaveType.id, name: replacementLeaveType.name }
+                  : { id: '', name: t('add.leaveTypeValue') }
+              }
+              submitAction={grantLeaveCreditRowsAction}
+              contextAction={leaveCreditGrantContextAction}
+              dayFactsAction={leaveCreditGrantDayFactsAction}
             />
           ) : undefined
         }
@@ -224,7 +235,10 @@ export default async function LeaveConfigLeaveCreditPage({
           {sp.granted !== undefined &&
             banner(
               t('banner.granted', { days: formatDays(Number(sp.granted)) }),
-              sp.otDate ? t('banner.grantedOvertime', { hours: hoursOf(sp.otMinutes), date: fmtDate(sp.otDate) }) : undefined,
+              // r406 — several dates now (one row each); listed, each formatted. One date reads exactly as before.
+              sp.otDate
+                ? t('banner.grantedOvertime', { hours: hoursOf(sp.otMinutes), date: sp.otDate.split(',').map((d) => fmtDate(d)).join(', ') })
+                : undefined,
             )}
           {sp.reversed !== undefined &&
             banner(

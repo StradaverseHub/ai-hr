@@ -10718,7 +10718,12 @@
         "firstScheduleConsentLabel": "Nhân viên đã đồng ý nhận ngày này làm nghỉ phép thay cho tiền làm thêm theo luật.",
         "firstScheduleBlocked": "Nhân viên này thuộc Phụ lục Thứ nhất và công ty không cho phép dùng tín dụng nghỉ phép thay cho tiền làm thêm theo luật. Hãy thay đổi trong thẻ Quy tắc trước.",
         "extendedShort": "Đây là một ngày làm việc bình thường. Nhân viên này chỉ được tính {minutes} phút sau giờ kết thúc ca theo lịch, thấp hơn ngưỡng nửa ngày của công ty, nên ngày này không thể nhận tín dụng nghỉ phép.",
-        "extendedEarned": "Nhân viên này đã làm {minutes} phút được tính sau giờ kết thúc ca theo lịch, được hưởng {days} ngày. Số tín dụng được cố định theo con số đó và không thể thay đổi ở đây."
+        "extendedEarned": "Nhân viên này đã làm {minutes} phút được tính sau giờ kết thúc ca theo lịch, được hưởng {days} ngày. Số tín dụng được cố định theo con số đó và không thể thay đổi ở đây.",
+        "descriptionRows": "Ghi có cho một ngày nhân viên đã làm việc. Khoản ghi có được thêm ngay lập tức.",
+        "help": "Thêm một dòng cho mỗi ngày làm việc, kèm thời gian. Bốn giờ hợp lệ được nửa ngày, tám giờ được cả ngày, theo quy tắc của công ty nhân viên. Xem hiển thị dữ liệu chấm công đã ghi. Khoản ghi có được thêm ngay — không cần quản lý duyệt.",
+        "pickEmployeeFirst": "Hãy chọn nhân viên trước.",
+        "checkingEmployee": "Đang kiểm tra nhân viên này…",
+        "ownRecord": "Bạn không thể thêm Tín dụng nghỉ phép vào hồ sơ của chính mình. Một quản trị viên HR khác phải thực hiện."
       },
       "rulesIntro": "Ai được nhận tín dụng nghỉ phép, cách nhận và tín dụng có hiệu lực bao lâu, theo từng công ty. Thay đổi ở đây áp dụng cho tín dụng cấp sau đó; tín dụng đã cấp giữ nguyên ngày hết hạn."
     },

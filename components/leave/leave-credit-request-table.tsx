@@ -8,7 +8,7 @@ import { Button, Field, btnPrimary, inputCls, tableWrapCls, tbodyCls, thCls, the
 // r362 58424c7f — `claimCrossesMidnight` is the ROLL'S OWN CONDITION, exported rather than re-parsed here:
 // the note this row prints and the minutes printed beside it come from one comparison, or they disagree the
 // first time either moves. See that file's header for why a reversed pair is not refused.
-import { assessExtendedClaim, claimCrossesMidnight, extendedHoursCreditDays, type ExtendedHoursTiers } from '@/lib/extended-hours';
+import { claimCrossesMidnight, leaveCreditWindowCredit, type ExtendedHoursTiers } from '@/lib/extended-hours';
 // 4a1abc4a — every day figure a leave surface prints goes through ONE formatter, so 0.5 and 0.50 cannot
 // appear on two screens for the same balance.
 import { DAY_DASH, formatDays } from '@/lib/day-format';
@@ -67,6 +67,34 @@ export type LeaveCreditDayFacts = {
    * arise there. Here it pre-explains the refusal the employee would otherwise meet at submit.
    */
   approvedOtPlan: { start: string | null; end: string | null; minutes: number } | null;
+  /**
+   * r406 952129bb · HR MODE ONLY — absent on the employee's own form, whose action never sends them.
+   * ⚠️ MONEY: the overtime already recorded on the date; a credit stops it being paid, so HR is told per row.
+   */
+  overtimeMinutes?: number;
+  /** r406 · HR MODE ONLY — the date already holds an unreversed credit for the picked employee. */
+  alreadyCredited?: boolean;
+};
+
+/**
+ * r406 952129bb · HR's + ADD LEAVE CREDIT MOUNTS THIS SAME TABLE — the plan's "one form and one calculation".
+ * Present only on that mount (components/leave/leave-credit-grant-dialog.tsx); every HR difference below is
+ * behind it, so the employee's mount on My Leave renders exactly as before. Copy arrives as finished strings
+ * from the HR shell, which owns the `admin.leaveCredit` translator.
+ */
+export type LeaveCreditHrMode = {
+  /** The picked employee, posted as `employmentId` and handed to `dayFactsAction`. '' until one is picked. */
+  employmentId: string;
+  help: string;
+  submitLabel: string;
+  /** Replaces the employee's first-person agreement sentence: HR records the EMPLOYEE's agreement. */
+  consentLabel: string;
+  pickEmployeeFirst: string;
+  alreadyCredited: string;
+  /** ⚠️ MONEY — the per-row note that recorded overtime will not also be paid once the day is credited. */
+  overtimeNote: (minutes: number) => string;
+  /** The shell's own refusal (own record, policy off, First Schedule not allowed) — blocks the submit. */
+  blocked: boolean;
 };
 
 /**
@@ -119,10 +147,10 @@ function AttendanceFacts({workedDate,view,alert}: {workedDate:string;view:LeaveC
 
 const minutesHM = formatMinutesToHM;
 
-function CreditSubmit({blocked, explanation}: {blocked:boolean;explanation:string}) {
+function CreditSubmit({blocked, explanation, label}: {blocked:boolean;explanation:string;label?:string}) {
   const {pending} = useFormStatus();
   const t = useTranslations('replacementRequest');
-  return <span tabIndex={blocked || pending ? 0 : undefined} title={blocked || pending ? explanation : undefined} className="inline-flex flex-col gap-1"><button className={btnPrimary} disabled={blocked || pending} data-testid="leave-credit-submit">{t('submit')}</button>{(blocked || pending) && <span className="text-xs text-muted-foreground">{explanation}</span>}</span>;
+  return <span tabIndex={blocked || pending ? 0 : undefined} title={blocked || pending ? explanation : undefined} className="inline-flex flex-col gap-1"><button className={btnPrimary} disabled={blocked || pending} data-testid="leave-credit-submit">{label ?? t('submit')}</button>{(blocked || pending) && <span className="text-xs text-muted-foreground">{explanation}</span>}</span>;
 }
 
 /**
@@ -245,11 +273,12 @@ export function LeaveCreditRequestTable({
   header,
   cancel,
   dialog = false,
+  hr,
 }: {
   replacementType: LeaveCreditLeaveTypeView;
   submitAction: Action;
   /** Resolves one date's roster kind and its two Attendance times, for the signed-in employee. */
-  dayFactsAction: (workedDate: string) => Promise<LeaveCreditDayFacts | null>;
+  dayFactsAction: (workedDate: string, employmentId?: string) => Promise<LeaveCreditDayFacts | null>;
   /**
    * The company's tier figures, so the credit shown as the employee types is the one they will get. NULL
    * when the company has not switched extended hours on — which is every company at release. The Ordinary
@@ -282,8 +311,12 @@ export function LeaveCreditRequestTable({
   header?: ReactNode;
   cancel?: ReactNode;
   dialog?: boolean;
+  /** r406 · HR's direct-grant mount. Absent on My Leave. See `LeaveCreditHrMode`. */
+  hr?: LeaveCreditHrMode;
 }) {
   const t = useTranslations('replacementRequest');
+  // r406 — HR mode: the rows stay closed until an employee is picked (the shell remounts this table per pick).
+  const subjectMissing = hr != null && hr.employmentId === '';
   // The four statuses of the requests table below share the vocabulary every other leave surface prints.
   const [reason, setReason] = useState('');
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
@@ -340,7 +373,7 @@ export function LeaveCreditRequestTable({
     for (const d of new Set(datesKey.split('|').filter(Boolean))) {
       if (d in facts) continue;
       setFacts((prev) => (d in prev ? prev : { ...prev, [d]: null }));
-      void dayFactsAction(d)
+      void (hr ? dayFactsAction(d, hr.employmentId) : dayFactsAction(d))
         .then((v) => {
           setFacts((prev) => ({ ...prev, [d]: v }));
           setFactError((prev) => {
@@ -359,6 +392,7 @@ export function LeaveCreditRequestTable({
         // reading "Reading your roster…" for ever behind its own failure sentence.
         .finally(() => setFactsSettled((prev) => (prev[d] ? prev : { ...prev, [d]: true })));
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [datesKey, dayFactsAction, facts, retryTick]);
 
   /** Ask again for the dates whose lookup failed. Clearing `facts` is what lets the effect re-fire. */
@@ -484,16 +518,19 @@ export function LeaveCreditRequestTable({
       // ⚠️ r353 — ONE CALL. The minutes the employee reads and the warning their approver reads come out of
       // the same `assessExtendedClaim`, because computing the figure here and the discrepancy somewhere else
       // is how the two screens would start disagreeing about one row.
-      const assessed = assessExtendedClaim({
+      // r406 — `leaveCreditWindowCredit` is that one call now, and the SAME function the employee submit,
+      // the approval and HR's direct grant run. It applies the r358 rule itself: the shift end and the
+      // clock-out reach `assessExtendedClaim` only when `floored` (an ordinary working day); on the three
+      // non-working types they are dropped, because the whole entered window is the claim.
+      const assessed = leaveCreditWindowCredit({
+        ordinaryWorkingDay: floored,
         claimStart: r.claimStart,
         claimEnd: r.claimEnd,
-        // r358 — NULL on the three non-working types, and it is the rule rather than missing data: the
-        // employee was never scheduled to be there, so the whole entered window is the claim. The service
-        // passes the same null for the same reason, so the figure here is the figure that gets banked.
-        shiftEnd: floored ? view.shiftEnd : null,
-        actualClockOut: floored ? view.actualClockOut : null,
+        shiftEnd: view.shiftEnd,
+        actualClockOut: view.actualClockOut,
+        tiers,
       });
-      const { countedMinutes, days } = extendedHoursCreditDays(assessed.minutes, tiers);
+      const { countedMinutes, days } = assessed;
       return {
         view,
         rosterMismatch,
@@ -559,7 +596,10 @@ export function LeaveCreditRequestTable({
   // answer is every row there is.
   const ordinaryUnavailableRows = rows.filter((r) => r.dayType === 'workday' && ordinaryEarnsNothing);
   const duplicateDates = rows.filter((row) => row.workedDate && rows.filter((other) => other.workedDate === row.workedDate).length > 1);
+  // r406 · HR mode: a date that already holds a credit (the grant refuses it too).
+  const alreadyCreditedRows = hr ? rows.filter((r) => r.workedDate && facts[r.workedDate]?.alreadyCredited === true) : [];
   const blocked =
+    (hr != null && (subjectMissing || hr.blocked || alreadyCreditedRows.length > 0)) ||
     !reason.trim() || duplicateDates.length > 0 ||
     totalCredit <= 0 ||
     mismatchRows.length > 0 ||
@@ -588,7 +628,8 @@ export function LeaveCreditRequestTable({
     <form action={submitAction} onSubmit={() => onSubmitted?.()} className={dialog ? 'flex min-h-0 max-h-[90vh] flex-col' : 'space-y-4'} data-testid="leave-credit-request-form">
       <div className={dialog ? 'shrink-0 border-b border-border p-4' : 'space-y-2'}>
         {header}
-        <p className="mt-2 text-xs text-muted-foreground" data-testid="leave-credit-helper">{t('table.help')}</p>
+        {hr && <input type="hidden" name="employmentId" value={hr.employmentId} />}
+        <p className="mt-2 text-xs text-muted-foreground" data-testid="leave-credit-helper">{hr ? hr.help : t('table.help')}</p>
         {tiers && <p className="mt-2 text-xs font-medium text-primary">{t('table.companyRule', {half: minutesHM(tiers.extendedHalfDayMinutes),full: minutesHM(tiers.extendedFullDayMinutes)})}</p>}
         <input type="hidden" name="leaveTypeId" value={replacementType.id} />
         <p className="mt-2 text-xs text-muted-foreground" data-testid="leave-credit-leave-type">{t('leaveType')}: {replacementType.name}</p>
@@ -710,6 +751,7 @@ export function LeaveCreditRequestTable({
                         type="date"
                         max={today}
                         value={r.workedDate}
+                        disabled={subjectMissing || undefined}
                         onChange={(e) => changeWorkedDate(r.key, e.target.value)}
                         aria-label={t('workedDate')}
                         className={inputCls}
@@ -833,6 +875,24 @@ export function LeaveCreditRequestTable({
                   </tr>
                   <tr><td colSpan={7} className="px-3 py-1"><button data-testid="leave-credit-details-toggle" type="button" disabled={!r.workedDate} aria-expanded={expandedRows.has(r.key)} className="min-h-11 text-xs font-medium text-primary underline" onClick={() => setExpandedRows((previous) => {const next = new Set(previous);if(next.has(r.key)) next.delete(r.key);else next.add(r.key);return next;})}><span aria-hidden>{expandedRows.has(r.key) ? '▾ ' : '▸ '}</span>{t('table.detailToggle')}</button></td></tr>
                   {expandedRows.has(r.key) && <tr><td colSpan={7} className="bg-muted/30 px-3 py-2">{factError[r.workedDate] ? <span>{t('table.dayTypeLookupFailed')} <button type="button" onClick={retryFacts}>{t('table.dayTypeRetry')}</button></span> : !factsSettled[r.workedDate] ? <p>{t('table.dayTypeReading')}</p> : !d?.view ? <p>{t('table.dayTypeNotFound')}</p> : <AttendanceFacts workedDate={r.workedDate} view={d.view} alert={attendanceAlert} />}</td></tr>}
+                  {/* r406 · HR MODE ONLY. ⚠️ MONEY — the per-row overtime note the plan promises; absent on the
+                      employee's mount, whose facts never carry `overtimeMinutes`. */}
+                  {hr && (d?.view?.overtimeMinutes ?? 0) > 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-3 pb-2">
+                        <p className="border-l-2 border-amber-500 pl-2 text-xs text-amber-800 dark:text-amber-300" data-testid="leave-credit-row-overtime">
+                          {hr.overtimeNote(d?.view?.overtimeMinutes ?? 0)}
+                        </p>
+                      </td>
+                    </tr>
+                  )}
+                  {hr && d?.view?.alreadyCredited === true && (
+                    <tr>
+                      <td colSpan={7} className="px-3 pb-2 text-xs font-medium text-destructive" data-testid="leave-credit-row-already-credited">
+                        {hr.alreadyCredited}
+                      </td>
+                    </tr>
+                  )}
                   {duplicateDates.some((row) => row.key === r.key) && <tr><td colSpan={7} className="px-3 py-1 text-xs text-destructive">{t('table.duplicateDate')}</td></tr>}
                   {/* ⚠️ r362 58424c7f · MUTED, AND THE COLOUR IS THE DECISION.
                       The reporter asked Leave Credit to REFUSE an end earlier than the start. It is
@@ -875,7 +935,8 @@ export function LeaveCreditRequestTable({
         </table>
       </div>
 
-      <Button type="button" size="sm" variant="secondary" onClick={addRow} data-testid="leave-credit-add-row" className="border border-dashed border-primary bg-transparent text-primary">
+      {subjectMissing && <p className="text-xs text-muted-foreground" data-testid="leave-credit-pick-employee-first">{hr?.pickEmployeeFirst}</p>}
+      <Button type="button" size="sm" variant="secondary" onClick={addRow} disabled={subjectMissing || undefined} data-testid="leave-credit-add-row" className="border border-dashed border-primary bg-transparent text-primary">
         {t('addRow')}
       </Button>
 
@@ -886,7 +947,7 @@ export function LeaveCreditRequestTable({
       {requiresFirstScheduleConsent && (
         <label className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-700 dark:bg-amber-950/40">
           <input type="checkbox" name="firstScheduleConsent" required className="mt-0.5 h-4 w-4" />
-          <span className="text-foreground">{t('firstScheduleConsent')}</span>
+          <span className="text-foreground">{hr ? hr.consentLabel : t('firstScheduleConsent')}</span>
         </label>
       )}
 
@@ -901,7 +962,7 @@ export function LeaveCreditRequestTable({
         </span>
       </div>
 
-        <div className="flex items-start gap-2">{cancel}<CreditSubmit blocked={blocked} explanation={!reason.trim() ? t('table.reasonRequired') : t('table.completeRows')} /></div>
+        <div className="flex items-start gap-2">{cancel}<CreditSubmit blocked={blocked} label={hr?.submitLabel} explanation={subjectMissing ? (hr?.pickEmployeeFirst ?? '') : !reason.trim() ? t('table.reasonRequired') : t('table.completeRows')} /></div>
       </div>
     </form>
   );

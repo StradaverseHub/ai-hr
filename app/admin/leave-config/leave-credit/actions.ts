@@ -22,56 +22,105 @@ import { publicErrorMessage } from '@/lib/public-error';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { requireAdmin } from '@/lib/authz';
-import { grantLeaveCredit, previewLeaveCredit, reverseLeaveCredit, type LeaveCreditPreview } from '@/packs/leave/service';
+import {
+  grantLeaveCreditRows,
+  isLeaveCreditDayType,
+  leaveCreditGrantContext,
+  leaveCreditGrantDayFacts,
+  reverseLeaveCredit,
+  type LeaveCreditGrantContext,
+  type LeaveCreditRowInput,
+} from '@/packs/leave/service';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
 const PAGE = '/admin/leave-config/leave-credit';
 const str = (v: FormDataEntryValue | null) => String(v ?? '').trim();
 
 /**
- * What the Add form shows before save for the employee and date typed: the kind of day, recorded overtime,
- * the default expiry, and whether the statutory floor applies. Best-effort — a failure renders nothing and
- * the save is still refused by the service if it should be.
+ * r406 952129bb — `previewLeaveCreditAction` and `grantLeaveCreditAction` STOOD HERE: the one-date, typed-days
+ * Add form (components/leave/leave-credit-add-dialog.tsx, deleted with them). + Add Leave Credit is now the
+ * employee's own Leave Credit form plus an Employee picker, and the three actions below feed it. The kernel
+ * functions they called (`previewLeaveCredit`, `grantLeaveCredit`) stay: the suite drives them directly.
  */
-export async function previewLeaveCreditAction(p: {
-  employmentId: string;
-  workedDate: string;
-}): Promise<LeaveCreditPreview | null> {
+
+/** After HR picks the employee: that employee's company tiers, switches and statutory floor. Best-effort. */
+export async function leaveCreditGrantContextAction(employmentId: string): Promise<LeaveCreditGrantContext | null> {
   const s = await requireAdmin();
-  if (!p.employmentId || !/^\d{4}-\d{2}-\d{2}$/.test(p.workedDate)) return null;
+  if (!employmentId) return null;
   try {
-    return await previewLeaveCredit(s, { employmentId: p.employmentId, workedDate: p.workedDate });
+    return await leaveCreditGrantContext(s, { employmentId, today: todayInKualaLumpur() });
   } catch {
     return null;
   }
 }
 
-/** + Add Leave Credit. */
-export async function grantLeaveCreditAction(formData: FormData) {
+/**
+ * One date's facts for the PICKED employee — the employee form's own view, plus the overtime already recorded
+ * (⚠️ MONEY: a credit stops it being paid) and whether the date already holds a credit. Listed field by field:
+ * this is the server→client boundary (test/server-client-boundary.test.ts). Rejects rather than returning
+ * null on a server failure, so the table's retry is offered — the employee action's contract.
+ */
+export async function leaveCreditGrantDayFactsAction(workedDate: string, employmentId?: string) {
   const s = await requireAdmin();
-  let granted: Awaited<ReturnType<typeof grantLeaveCredit>>;
-  const workedDate = str(formData.get('workedDate'));
+  if (!employmentId || !/^\d{4}-\d{2}-\d{2}$/.test(workedDate)) return null;
+  const day = await leaveCreditGrantDayFacts(s, { employmentId, workedDate });
+  return {
+    kind: day.kind,
+    scheduleName: day.scheduleName,
+    shiftCode: day.shiftCode,
+    shiftName: day.shiftName,
+    attendanceRecordPresent: day.attendanceRecordPresent,
+    shiftStart: day.shiftStart,
+    shiftEnd: day.shiftEnd,
+    actualClockIn: day.actualClockIn,
+    actualClockOut: day.actualClockOut,
+    measuredExtendedMinutes: day.measuredExtendedMinutes,
+    approvedOtPlan: day.approvedOtPlan,
+    overtimeMinutes: day.overtimeMinutes,
+    alreadyCredited: day.alreadyCredited,
+  };
+}
+
+/**
+ * + Add Leave Credit — the rows of the employee's form, granted DIRECTLY (`grantLeaveCreditRows`). The four
+ * row lists are zipped BY INDEX, exactly as `submitLeaveCreditRequestAction` does, for that action's reason:
+ * the table posts them from hidden inputs present on every row. The consent is read as the checkbox's default
+ * value, `'on'` — the employee form's checkbox, now this form's too.
+ */
+export async function grantLeaveCreditRowsAction(formData: FormData) {
+  const s = await requireAdmin();
+  const dates = formData.getAll('workedDate').map(String);
+  const dayTypes = formData.getAll('dayType').map(String);
+  const starts = formData.getAll('claimStart').map(String);
+  const ends = formData.getAll('claimEnd').map(String);
+  const rows: LeaveCreditRowInput[] = dates
+    .map((workedDate, i) => {
+      const raw = (dayTypes[i] ?? '').trim();
+      return {
+        workedDate: workedDate.trim(),
+        dayType: (isLeaveCreditDayType(raw) ? raw : '') as LeaveCreditRowInput['dayType'],
+        claimStart: (starts[i] ?? '').trim() || undefined,
+        claimEnd: (ends[i] ?? '').trim() || undefined,
+      };
+    })
+    .filter((r) => r.workedDate !== '');
+  let granted: Awaited<ReturnType<typeof grantLeaveCreditRows>>;
   try {
-    granted = await grantLeaveCredit(s, {
+    granted = await grantLeaveCreditRows(s, {
       employmentId: str(formData.get('employmentId')),
-      workedDate,
-      days: Number(str(formData.get('days'))),
+      rows,
       reason: str(formData.get('reason')),
-      remarks: str(formData.get('remarks')) || undefined,
-      expiresOn: str(formData.get('expiresOn')) || undefined,
-      // The employee's recorded agreement to take time instead of statutory overtime cash. Read by presence
-      // of the exact value the checkbox posts; the service refuses without it for a First-Schedule employee
-      // and ignores it for everyone else.
-      firstScheduleConsent: str(formData.get('firstScheduleConsent')) === '1',
+      firstScheduleConsent: str(formData.get('firstScheduleConsent')) === 'on',
       today: todayInKualaLumpur(),
     });
   } catch (e) {
     redirect(`${PAGE}?error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
   revalidatePath(PAGE);
-  const q = new URLSearchParams({ granted: String(granted.daysCredited) });
+  const q = new URLSearchParams({ granted: String(granted.totalDays) });
   if (granted.overtimeSuppressedMinutes > 0) {
-    q.set('otDate', workedDate);
+    // ⚠️ MONEY, carried to the banner: every date whose overtime this grant suppressed, and the total.
+    q.set('otDate', granted.overtimeDates.join(','));
     q.set('otMinutes', String(granted.overtimeSuppressedMinutes));
   }
   redirect(`${PAGE}?${q.toString()}`);
