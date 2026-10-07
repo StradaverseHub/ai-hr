@@ -179,7 +179,6 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
       'my.cp22',
       'my.ea',
       'my.pcb2ii',
-      'my.sip-contribution',
       'my.tp1',
       'my.tp3',
     ]);
@@ -926,6 +925,7 @@ describe('the four pins', () => {
       // r402 — one entry each (was `.en` / `.ms`).
       'my.ea',
       'my.pcb2ii',
+      'my.sip-contribution',
       'my.tp1',
       'my.tp3',
     ]);
@@ -1023,7 +1023,9 @@ describe('what the shelves say about the forms that are not built', () => {
    * missing — the printable form — shipped in 7ad37961. r224 only stopped the shelf saying otherwise.)
    */
   const NEVER_BUILT = [
-    'BBCB', 'Borang 8B', 'SIP 2', 'SIP 2A', 'TP3', 'PCB 2(II)', 'CP21', 'CP39A',
+    // r412 (item e74af58c, step 2) — 'Borang 8B' LEFT this list: it was BUILT (`my.borang-8b`). SIP 2 / SIP 2A
+    // stay: the EIS contribution schedule that was built is not a registration form.
+    'BBCB', 'SIP 2', 'SIP 2A', 'TP3', 'PCB 2(II)', 'CP21', 'CP39A',
     'HRDF Contribution', 'PTPTN Deduction', 'Tabung Haji Deduction', 'Union Fee',
   ];
 
