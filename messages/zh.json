@@ -4612,6 +4612,7 @@
       "planned_lhdn_cp22a_cessation_hint": "私营部门雇主在员工停止工作时（辞职、退休或身故）向 LHDN 提交的通知。需要该通知的离职者已在本页下方的 CP22 / CP22A 待办清单中标出，但该通知本身尚未构建。",
       "refusal_cycles_no_deductions": "在您选择的发薪周期中没有任何人被扣除 PCB 或 CP38，因此未生成 CP39。",
       "refusal_year_no_payroll": "该公司在您选择的年份没有已处理的薪资，因此未生成任何内容。",
+      "refusal_month_not_ended": "只能为已经结束的月份申报少缴供款。请选择更早的月份。",
       "desc_sip_contribution": "就业保险（SIP）月度缴款明细表：每人一行，列出雇主编号、身份证号码、缴款月份以及雇主与雇员的就业保险缴款合计，取自薪资运行、从不重新计算，并附总额。按您发送的样本排版；不含声明或签名部分。",
       "desc_borang_8b": "PERKESO 用于此前月份少缴社险（SOCSO）缴款的表格。打开时已填入公司资料和月份；员工行和少缴金额留给您填写，因为系统没有少缴记录。",
       "planned_perkeso_sip_2": "SIP 2 / SIP 2A",

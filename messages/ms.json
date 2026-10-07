@@ -4612,6 +4612,7 @@
       "planned_lhdn_cp22a_cessation_hint": "Notis yang dihantar oleh majikan sektor swasta kepada LHDN apabila pekerja berhenti kerja: perletakan jawatan, persaraan atau kematian. Pekerja berhenti yang memerlukannya sudah ditandakan pada senarai tugas CP22 / CP22A di bawah skrin ini, tetapi notis itu sendiri belum dibina.",
       "refusal_cycles_no_deductions": "Tiada sesiapa yang dipotong PCB atau CP38 dalam kitaran gaji yang anda pilih, jadi tiada CP39 dihasilkan.",
       "refusal_year_no_payroll": "Tiada gaji yang telah diproses bagi syarikat ini dalam tahun yang anda pilih, jadi tiada apa-apa dihasilkan.",
+      "refusal_month_not_ended": "Kurang bayar hanya boleh diisytiharkan bagi bulan yang telah berakhir. Pilih bulan yang lebih awal.",
       "desc_sip_contribution": "Jadual caruman bulanan SIP (Sistem Insurans Pekerjaan): satu baris bagi setiap orang dengan kod majikan, nombor kad pengenalan, bulan carum dan syer SIP majikan serta pekerja bersama, diambil daripada larian gaji dan tidak dikira semula, dengan jumlah. Disusun seperti contoh yang anda hantar; tiada bahagian akuan atau tandatangan.",
       "desc_borang_8b": "Borang PERKESO bagi caruman PERKESO yang terkurang bayar untuk bulan terdahulu. Ia dibuka dengan butiran syarikat anda dan bulan telah diisi; baris pekerja dan amaun terkurang bayar dibiarkan untuk anda isi, kerana sistem tidak menyimpan rekod kurang bayar.",
       "planned_perkeso_sip_2": "SIP 2 / SIP 2A",

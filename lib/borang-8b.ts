@@ -93,3 +93,11 @@ export function borang8BFrom(header: Record<string, unknown> | null | undefined)
     signatoryPhone: str(h.signatoryPhone),
   };
 }
+
+/**
+ * r412 verify D1 — an UNDER-paid month is a month whose contribution was already due: it has ENDED. The
+ * current month and any later one are refused (`today` is a Kuala Lumpur calendar date, yyyy-mm-dd).
+ */
+export function borang8BMonthHasEnded(periodKey: string, today: string): boolean {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(periodKey) && periodKey < today.slice(0, 7);
+}

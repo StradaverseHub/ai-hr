@@ -13,7 +13,8 @@
  */
 import { reportPreview } from '@/core/reporting';
 import { scopedAdmin } from '@/lib/scope';
-import { borang8BFrom, missingBorang8BHeader, type Borang8BForm } from '@/lib/borang-8b';
+import { borang8BFrom, borang8BMonthHasEnded, missingBorang8BHeader, type Borang8BForm } from '@/lib/borang-8b';
+import { todayInKualaLumpur } from '@/lib/hr-date';
 
 export const BORANG_8B_REPORT_ID = 'my.borang-8b';
 
@@ -22,6 +23,7 @@ const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 export type Borang8BLoad =
   | { ok: false; reason: 'not-found' }
+  | { ok: false; reason: 'month-not-ended' }
   | { ok: false; reason: 'not-ready'; headerMissing: string[] }
   | { ok: true; form: Borang8BForm; headerMissing: string[]; notes: string[] };
 
@@ -33,6 +35,8 @@ export async function loadBorang8B(p: {
   if (!UUID.test(p.companyId) || !PERIOD.test(p.periodKey)) return { ok: false, reason: 'not-found' };
   const { s, scopeIds } = await scopedAdmin();
   if (!scopeIds.includes(p.companyId)) return { ok: false, reason: 'not-found' };
+  // r412 verify D1 — no under-payment can be declared for a month that has not ended.
+  if (!borang8BMonthHasEnded(p.periodKey, todayInKualaLumpur())) return { ok: false, reason: 'month-not-ended' };
   let result;
   try {
     result = await reportPreview(s, { companyId: p.companyId, reportId: BORANG_8B_REPORT_ID, periodKey: p.periodKey });

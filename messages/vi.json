@@ -4612,6 +4612,7 @@
       "planned_lhdn_cp22a_cessation_hint": "Thông báo mà chủ lao động khu vực tư nhân gửi LHDN khi một nhân viên thôi việc: từ chức, nghỉ hưu hoặc qua đời. Những người nghỉ việc cần thông báo này đã được đánh dấu trên danh sách công việc CP22 / CP22A ở phía dưới màn hình này, nhưng bản thông báo thì chưa được xây dựng.",
       "refusal_cycles_no_deductions": "Không ai bị khấu trừ PCB hoặc CP38 trong các kỳ lương bạn đã chọn, nên không có CP39 nào được tạo.",
       "refusal_year_no_payroll": "Không có bảng lương đã xử lý của công ty này trong năm bạn đã chọn, nên không có gì được tạo.",
+      "refusal_month_not_ended": "Chỉ có thể khai báo đóng thiếu cho tháng đã kết thúc. Hãy chọn một tháng trước đó.",
       "desc_sip_contribution": "Bảng đóng góp hằng tháng EIS (SIP): mỗi người một dòng với mã chủ lao động, số căn cước, tháng đóng góp và phần đóng của chủ lao động cùng người lao động cộng lại, lấy từ kỳ tính lương và không tính lại, kèm tổng cộng. Trình bày theo mẫu bạn đã gửi; không có phần cam kết hay chữ ký.",
       "desc_borang_8b": "Biểu mẫu của PERKESO cho khoản đóng góp SOCSO bị đóng thiếu của một tháng trước. Biểu mẫu mở ra với thông tin công ty và tháng đã được điền; các dòng nhân viên và số tiền đóng thiếu được để trống cho bạn điền, vì hệ thống không lưu bản ghi đóng thiếu.",
       "planned_perkeso_sip_2": "SIP 2 / SIP 2A",

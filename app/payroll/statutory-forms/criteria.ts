@@ -155,6 +155,8 @@ export const CYCLES_REFUSALS = [
   'cycles_no_deductions',
   // r409 — an ANNUAL form (Form E / CP8D): no processed payroll in the year chosen. No month, no cycle.
   'year_no_payroll',
+  // r412 verify D1 — Borang 8B: an under-payment is declared only for a month that has ended.
+  'month_not_ended',
 ] as const;
 export type CyclesRefusal = (typeof CYCLES_REFUSALS)[number];
 

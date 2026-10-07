@@ -22,6 +22,7 @@ import type { SessionContext } from '../../db/client';
 import { contributionPeriodFor } from '../../lib/borang-8a';
 import { sipContributionMonth, sipRowsFrom } from '../../lib/sip-contribution';
 import { borang8AReport } from './borang-8a';
+import { SOCSO_NOT_IN_SELECTION_REASON } from './statutory-month-wage';
 import type { ReportColumn, ReportParams, ReportResult, ReportRow } from './reports';
 
 /** The schedule's columns, in the sample's own order and wording. BIL is the line number, drawn only. */
@@ -57,6 +58,7 @@ export async function sipContributionReport(ctx: SessionContext, params: ReportP
     employerCode: header.employerCode,
     contributionMonth: header.contributionMonth,
   });
+  const omittedIds = new Set(omitted.map((o) => o.employmentId));
   const total = round2(rows.reduce((a, r) => a + r.contribution, 0));
   // The run's own EIS, as the 8A read summed it on its OWN path (per-person `eis`, not the legs) — the
   // reconciliation strip compares two routes to one number rather than printing one number twice.
@@ -71,7 +73,16 @@ export async function sipContributionReport(ctx: SessionContext, params: ReportP
     columns: SIP_COLUMNS,
     rows: rows.map((r): ReportRow => ({ ...r })),
     totals: base.meta.hasBatch && !base.meta.selectionEmpty ? { contribution: total } : {},
-    readiness: base.readiness,
+    // r412 verify D3 — a person LEFT OFF this schedule (no EIS charged) must not block it for a fact that only
+    // matters to a line they are not on: a missing IC (a passport-only foreign worker) or an inconsistent
+    // SOCSO wage. The selection fact stays, so a bonus-only choice is still refused with every person named.
+    readiness: base.readiness
+      .map((r) =>
+        omittedIds.has(r.employmentId)
+          ? { ...r, missing: r.missing.filter((m) => m === SOCSO_NOT_IN_SELECTION_REASON) }
+          : r,
+      )
+      .filter((r) => r.missing.length > 0),
     meta: {
       ...base.meta,
       formHeader: header,

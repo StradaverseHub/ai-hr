@@ -5015,6 +5015,7 @@
       "planned_lhdn_cp22a_cessation_hint": "The notice a private-sector employer sends LHDN when an employee stops working: resignation, retirement or death. Leavers who need one are flagged on the CP22 / CP22A worklist further down this screen, but the notice itself is not built yet.",
       "refusal_cycles_no_deductions": "Nobody had PCB or CP38 deducted in the payroll cycles you picked, so no CP39 was produced.",
       "refusal_year_no_payroll": "There is no processed payroll for this company in the year you picked, so nothing was produced.",
+      "refusal_month_not_ended": "An underpayment can only be declared for a month that has already ended. Choose an earlier month.",
       "desc_sip_contribution": "The EIS (SIP) monthly contribution schedule: one line per person with the employer code, identity card number, contribution month and the EIS employer and employee shares together, taken from the payroll run and never recalculated, with a total. Laid out like the sample you sent; it has no declaration or signature section.",
       "desc_borang_8b": "PERKESO's form for SOCSO contributions under-paid for an earlier month. It opens with your company details and the month filled in; the employee lines and the under-paid amounts are left for you to fill in, because the system holds no record of an underpayment.",
       "planned_perkeso_sip_2": "SIP 2 / SIP 2A",

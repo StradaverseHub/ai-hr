@@ -13,6 +13,9 @@ export async function GET(req: Request) {
   const loaded = await loadBorang8B({ companyId: q.get('companyId') ?? '', periodKey: q.get('periodKey') ?? '' });
   if (!loaded.ok) {
     if (loaded.reason === 'not-found') return new Response('Not found', { status: 404 });
+    if (loaded.reason === 'month-not-ended') {
+      return new Response('Borang 8B is for a month that has already ended; choose an earlier month.', { status: 422 });
+    }
     return new Response(`Cannot produce Borang 8B: the company is missing: ${loaded.headerMissing.join(', ')}.`, {
       status: 422,
     });

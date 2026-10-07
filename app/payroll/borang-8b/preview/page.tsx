@@ -4,7 +4,7 @@ import { listCompanies } from '@/core/read';
 import { scopedAdmin } from '@/lib/scope';
 import { PageHeader, pageWideCls } from '@/components/ui';
 import { StatutoryPdfViewer } from '@/components/statutory-pdf-viewer';
-import { criteriaHref, criteriaReturnHref } from '../../statutory-forms/criteria';
+import { criteriaHref, criteriaReturnHref, cyclesRefusalHref } from '../../statutory-forms/criteria';
 import { BORANG_8B_REPORT_ID, borang8BDocumentQuery, loadBorang8B } from '../shared';
 
 /**
@@ -51,7 +51,12 @@ export default async function Borang8BPreviewPage({ searchParams }: { searchPara
   const periodKey = `${year}-${month}`;
 
   const loaded = await loadBorang8B({ companyId, periodKey, includeIncomplete: true });
-  if (!loaded.ok) notFound();
+  if (!loaded.ok) {
+    if (loaded.reason === 'month-not-ended') {
+      redirect(cyclesRefusalHref(BORANG_8B_REPORT_ID, { companyId, year, month }, 'month_not_ended'));
+    }
+    notFound();
+  }
   const { form, headerMissing } = loaded;
   const ready = headerMissing.length === 0;
 

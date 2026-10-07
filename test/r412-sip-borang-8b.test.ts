@@ -424,7 +424,8 @@ describe('the SIP selection reaches every surface, and the gate runs before anyt
     expect(SHARED.indexOf(NO_DATA)).toBeGreaterThan(0);
     expect(SHARED.indexOf(READY)).toBeGreaterThan(SHARED.indexOf(NO_DATA));
     // The readiness list is the 8A read's, passed through untouched.
-    expect(code('localization/my/sip-contribution.ts')).toContain('readiness: base.readiness,');
+    // r412 verify D3: the 8A readiness list, narrowed for people LEFT OFF the schedule (selection reason kept).
+    expect(code('localization/my/sip-contribution.ts')).toContain('readiness: base.readiness\n      .map((r) =>');
     expect(code('localization/my/sip-contribution.ts')).toContain('const base = await borang8AReport(ctx, params);');
   });
 
@@ -441,9 +442,34 @@ describe('the SIP selection reaches every surface, and the gate runs before anyt
     const BS = code('app/payroll/borang-8b/shared.ts');
     expect(B.length).toBeGreaterThan(2000);
     expect(B).not.toContain('parseRunSelection');
-    expect(B).not.toContain('cyclesRefusalHref');
+    // Its only refusal back to the step is r412 verify D1's: a month that has not ended.
+    expect(B.match(/cyclesRefusalHref\(/g) ?? []).toHaveLength(1);
+    expect(B).toContain("'month_not_ended'");
     expect(BS).toContain('const { s, scopeIds } = await scopedAdmin();');
     expect(BS).toContain("if (!scopeIds.includes(p.companyId)) return { ok: false, reason: 'not-found' };");
     expect(BS).not.toContain('isAdmin');
   });
 });
+
+describe('r412 verify D1 · Borang 8B is only for a month that has ENDED', () => {
+  it('refuses the current month and any later one, accepts an earlier one', async () => {
+    const { borang8BMonthHasEnded } = await import('../lib/borang-8b');
+    expect(borang8BMonthHasEnded('2026-09', '2026-10-08')).toBe(true);
+    expect(borang8BMonthHasEnded('2025-12', '2026-01-01')).toBe(true);
+    expect(borang8BMonthHasEnded('2026-10', '2026-10-08')).toBe(false);
+    expect(borang8BMonthHasEnded('2026-12', '2026-10-08')).toBe(false);
+    expect(borang8BMonthHasEnded('2099-01', '2026-10-08')).toBe(false);
+    expect(borang8BMonthHasEnded('2026-13', '2027-01-01')).toBe(false);
+    const shared = fs.readFileSync(path.join(__dirname, '..', 'app/payroll/borang-8b/shared.ts'), 'utf8');
+    expect(shared).toContain('if (!borang8BMonthHasEnded(p.periodKey, todayInKualaLumpur())) return { ok: false, reason: \'month-not-ended\' };');
+  });
+});
+
+describe('r412 verify D3 · a person left off the EIS schedule cannot block it for a line they are not on', () => {
+  it('keeps only the selection reason for omitted people', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'localization/my/sip-contribution.ts'), 'utf8');
+    expect(src).toContain('omittedIds.has(r.employmentId)');
+    expect(src).toContain('r.missing.filter((m) => m === SOCSO_NOT_IN_SELECTION_REASON)');
+  });
+});
+
