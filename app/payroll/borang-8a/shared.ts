@@ -162,8 +162,9 @@ export type Borang8ALoad =
   /**
    * r408 (item e74af58c) — the runs exist and were ticked, but carry NO SOCSO contribution at all (nobody on
    * them, or not a sen charged) and nobody is named on the readiness list. A Borang 8A of empty boxes would
-   * assert a filing of nothing. Refused HERE so the preview, the PDF, the text copy, the ASSIST file and the
-   * Payment Submission shelf all refuse it the same way. A BONUS-ONLY selection does not land here: the read
+   * assert a filing of nothing. Refused HERE so the preview, the PDF and the text copy refuse it the same
+   * way; the ASSIST file and the Payment Submission shelf pass `refuseEmpty: false` and keep building it, as
+   * before r408 (whether PERKESO expects a nil filing is unknown). A BONUS-ONLY selection does not land here: the read
    * names everyone on it with the "not in this selection" reason, and that is the refusal it gets (r373).
    */
   | { ok: false; reason: 'no-contributions' }

@@ -394,15 +394,18 @@ describe('the typed STATUS column', () => {
     const q = new URLSearchParams();
     q.set(`${BORANG_8A_STATUS_PARAM_PREFIX}a`, '');
     q.set(`${BORANG_8A_STATUS_PARAM_PREFIX}b`, '   ');
-    q.set(`${BORANG_8A_STATUS_PARAM_PREFIX}c`, 'BARU');
+    q.set(`${BORANG_8A_STATUS_PARAM_PREFIX}c`, 's');
     q.set('companyId', 'not-a-status');
     const overrides = statusOverridesFrom(q);
-    expect([...overrides]).toEqual([['c', 'BARU']]);
+    expect([...overrides]).toEqual([['c', 'S']]);
   });
 
-  it('caps a status at the width of the printed cell', () => {
-    const q = new URLSearchParams([[`${BORANG_8A_STATUS_PARAM_PREFIX}a`, 'X'.repeat(50)]]);
-    expect(statusOverridesFrom(q).get('a')).toBe('X'.repeat(12));
+  it('r408 verify D3 — accepts only PERKESO’s own codes (M, B, H, S, T); anything else is not printed', () => {
+    const q = new URLSearchParams();
+    for (const [id, v] of [['a', 'BARU'], ['b', 'X'], ['c', 'X'.repeat(50)], ['d', 't'], ['e', ' M ']]) {
+      q.set(`${BORANG_8A_STATUS_PARAM_PREFIX}${id}`, v);
+    }
+    expect([...statusOverridesFrom(q)]).toEqual([['d', 'T'], ['e', 'M']]);
   });
 
   /**

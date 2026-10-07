@@ -125,7 +125,7 @@ describe('the Continue gate', () => {
     const before = PREVIEW_CODE.slice(0, PREVIEW_CODE.indexOf(GATE_START));
     expect(before).not.toContain('borang8ADocumentQuery(');
     expect(before).not.toContain('<StatutoryPdfViewer');
-    // …decided in the LOADER, so every download refuses the same selection, the ASSIST file included.
+    // …decided in the LOADER, so the form's downloads refuse the same selection (the ASSIST file does not).
     for (const r of ['pdf', 'text']) {
       expect(code(`app/payroll/borang-8a/${r}/route.ts`)).toContain("loaded.reason === 'no-contributions'");
     }
@@ -177,6 +177,10 @@ describe('column (2) STATUS — B / H / M from the records', () => {
     // Joined and left in the same month: the later event wins, and column (1) still shows both dates.
     [{ startIso: '2026-07-02', stopIso: '2026-07-25', terminationType: 'contract_end' }, 'H'],
     [{ startIso: '2026-07-02', stopIso: '2026-07-25', terminationType: 'death' }, 'M'],
+    // r408 verify D1 — left on the 5th, rejoined on the 20th: at the end of the month they are employed, B.
+    [{ startIso: '2026-07-20', stopIso: '2026-07-05', terminationType: 'voluntary' }, 'B'],
+    // Same day in and out: the leaving code.
+    [{ startIso: '2026-07-10', stopIso: '2026-07-10', terminationType: 'voluntary' }, 'H'],
   ] as const)('%o in %s → %s', (p, expected) => {
     expect(borang8AStatusFor(p, P)).toBe(expected);
   });
