@@ -56,7 +56,7 @@ import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee, setReportingLine } from '../core/org';
-import { decideLeave, requestLeave } from '../core/leave';
+import { requestLeave } from '../core/leave';
 import { leaveBalances } from '../core/read';
 import { createEligibilityRule, createEntitlementTemplate } from '../core/entitlement-template';
 import { ESS_VIEW_COMPONENT_KEYS } from '../core/ess-view';
@@ -109,6 +109,7 @@ async function leaveTypeRow(o: {
   visibleToEmployee?: boolean;
   archived?: boolean;
   essViewConfig?: Record<string, boolean>;
+  role?: string;
 }) {
   const [row] = await owner.db
     .insert(schema.leaveType)
@@ -123,6 +124,7 @@ async function leaveTypeRow(o: {
       ...(o.visibleToEmployee === false ? { visibleToEmployee: false } : {}),
       ...(o.archived ? { archivedAt: new Date(`${Y}-01-02T00:00:00Z`) } : {}),
       ...(o.essViewConfig ? { essViewConfig: o.essViewConfig } : {}),
+      ...(o.role ? { role: o.role } : {}),
     })
     .returning({ id: schema.leaveType.id });
   return row.id;
@@ -171,7 +173,8 @@ const codeOf = async (employmentId: string) => {
  * Annual Leave days, so a row from the wrong person is visible in its figure.
  */
 async function world() {
-  const AL = await leaveTypeRow({ code: code('AL'), name: uniq('Annual') });
+  // role 'annual': proration is decided by the leave type's ROLE (845903a3), so the mid-year hire prorates.
+  const AL = await leaveTypeRow({ code: code('AL'), name: uniq('Annual'), role: 'annual' });
   const EL = await leaveTypeRow({ code: code('EL'), name: uniq('Emergency'), balanceSourceTypeId: AL, visibleToEmployee: false });
   const HID = await leaveTypeRow({ code: code('HD'), name: uniq('Hidden Own'), visibleToEmployee: false });
   const ARC = await leaveTypeRow({ code: code('AR'), name: uniq('Retired'), archived: true });
@@ -208,8 +211,16 @@ async function world() {
   await ledger(aisyah.employmentId, HID, 4, `${Y}-01-01`);
   await ledger(aisyah.employmentId, ARC, 3, `${Y}-01-01`);
   const ctx = adminCtx(b);
-  const req = await requestLeave(ctx, { employmentId: aisyah.employmentId, leaveTypeId: EL, startDate: `${Y}-03-02`, endDate: `${Y}-03-02`, today: `${Y}-01-15` });
-  await decideLeave(ctx, { leaveRequestId: req.leaveRequestId, decision: 'approved' });
+  // The approved day is posted as the ledger debit an approval writes (decideLeave left this fixture's request
+  // pending under the seeded approval chain, and the fixture must not depend on the chain or the calendar).
+  await owner.db.insert(schema.leaveLedger).values({
+    tenantId: b.tenantId,
+    employmentId: aisyah.employmentId,
+    leaveTypeId: EL,
+    entryType: 'debit',
+    days: '-1.00',
+    effectiveOn: `${Y}-03-02`,
+  });
   await requestLeave(ctx, { employmentId: aisyah.employmentId, leaveTypeId: EL, startDate: `${Y}-04-06`, endDate: `${Y}-04-07`, today: `${Y}-01-15` });
 
   await ledger(mgr.employmentId, AL, 9, `${Y}-01-01`);
@@ -274,8 +285,10 @@ describe('r404 · 1. PARITY — the employee sees HR’s figures for the same em
     const al = mid.get(w.types.AL)!;
     expect(al.share, 'the hidden borrower’s approved day shows on the pool’s Share').toBe(1);
     expect(al.pendingShare, 'and its pending days on Pending Share').toBe(2);
-    expect(al.sharedBalance?.contributions.some((c) => c.leaveTypeId === w.types.EL), 'the EL badge has its contribution').toBe(true);
-    expect(al.broughtForward, 'brought forward from last year').toBe(5);
+    expect((al.sharedBalance?.contributions ?? []).some((c) => c.leaveTypeId === w.types.EL), 'the EL badge has its contribution').toBe(true);
+    // Last year's 5 days reach the row's breakdown as the balance before the year opened; with no carry rule
+    // they do not carry, which is itself a figure the parity comparison above holds HR and self to.
+    expect(al.breakdown?.broughtForward, 'brought forward from last year reaches the row').toBe(5);
     expect(mid.get(w.types.ARC)?.balance, 'the archived type holding days is listed').toBe(3);
     // The second date must answer differently somewhere, or "two dates" proves nothing about asOf.
     const hrMid = await employeeBalanceRows(adminCtx(b), w.newbie.employmentId, AS_OF_MID, 'en');
@@ -308,11 +321,11 @@ describe('r404 · 2. SCOPE — no parameter reaches anybody else’s row', () =>
     for (const { who, other } of cases) {
       const sp = HOSTILE(other.employmentId, other.personId, other.code ?? '');
       const got = await loadLeaveDetails(who.ctx, { ...sp, asOf: AS_OF_END }, 'en');
-      expect(got.me?.employmentId, `${who.ctx.roles[0]}: the employment is the session’s`).toBe(who.employmentId);
+      expect(got.me?.employmentId, `${who.ctx.roles?.[0]}: the employment is the session’s`).toBe(who.employmentId);
       const own = await employeeBalanceRows(who.ctx, who.employmentId, AS_OF_END, 'en', {}, { audience: 'self' });
-      expect(got.rows, `${who.ctx.roles[0]}: the session’s own rows`).toEqual(own);
+      expect(got.rows, `${who.ctx.roles?.[0]}: the session’s own rows`).toEqual(own);
       const theirs = await employeeBalanceRows(adminCtx(b), other.employmentId, AS_OF_END, 'en', {}, { audience: 'self' });
-      expect(JSON.stringify(got.rows), `${who.ctx.roles[0]}: distinguishable from the colleague’s`).not.toEqual(JSON.stringify(theirs));
+      expect(JSON.stringify(got.rows), `${who.ctx.roles?.[0]}: distinguishable from the colleague’s`).not.toEqual(JSON.stringify(theirs));
     }
   });
 
@@ -407,7 +420,9 @@ describe('r404 · 3. VISIBILITY — what the employee may and may not see', () =
   it('an ineligible type is absent for the employee (includeIneligible: false), present for HR', async () => {
     const w = await world();
     const INEL = await leaveTypeRow({ code: code('IN'), name: uniq('Ineligible') });
-    await owner.db.update(schema.leaveType).set({ eligibility: { minServiceMonths: 1200 } }).where(eqId(INEL));
+    // Profile eligibility (gender) — the identity half `includeIneligible` is about (d272834b).
+    await owner.db.update(schema.leaveType).set({ eligibility: { gender: ['female'] } }).where(eqId(INEL));
+    await owner.db.update(schema.person).set({ gender: 'male' }).where(eq(schema.person.id, w.aisyah.personId));
     await ledger(w.aisyah.employmentId, INEL, 2, `${Y}-01-01`);
     const self = byId(await employeeBalanceRows(w.aisyah.ctx, w.aisyah.employmentId, AS_OF_END, 'en', {}, { audience: 'self' }));
     const hr = byId(await employeeBalanceRows(adminCtx(b), w.aisyah.employmentId, AS_OF_END, 'en'));
@@ -510,8 +525,8 @@ describe('r404 · the Explain panel speaks to "you", in six languages', () => {
     const explain = EN.leave.breakdown.explain as Record<string, string>;
     const thirdPerson = Object.entries(explain)
       .filter(([, v]) => /this employee|the employee|someone|\bthey\b|\bthem\b|\btheir\b/i.test(v))
-      // "they add up" — a pronoun for records, not a person.
-      .filter(([k]) => k !== 'itemsDoNotAddUp')
+      // "they add up" / "waiting on them" — pronouns for records and applications, not a person.
+      .filter(([k]) => k !== 'itemsDoNotAddUp' && k !== 'availableFromBalancePool')
       .map(([k]) => k)
       .sort();
     expect(thirdPerson.length, 'non-vacuous').toBeGreaterThanOrEqual(5);
