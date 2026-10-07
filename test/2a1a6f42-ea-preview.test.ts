@@ -409,7 +409,9 @@ describe('2a1a6f42 · the screen offers the preview, in every locale, for THIS f
   const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
   it('passes the picker BOTH props, naming the EA’s own preview route', () => {
-    expect(SCREEN).toMatch(/previewAction="\/payroll\/statutory-forms\/ea\/preview"/);
+    // r402 (item f3cf2444) — Preview goes to the EA's in-app VIEWER, which frames this same inline route
+    // (test/r402-statutory-pdf-viewer.test.ts pins the frame's source to it).
+    expect(SCREEN).toMatch(/previewAction="\/payroll\/statutory-forms\/ea\/view"/);
     expect(SCREEN).toMatch(/preview: t\('eaPreview'\)/);
     // Its own key, never PCB 2(II)'s: a screen that borrows a string named after another statutory
     // document is the defect r328 fixed in the other direction.
@@ -423,9 +425,11 @@ describe('2a1a6f42 · the screen offers the preview, in every locale, for THIS f
     expect(PICKER).toMatch(/previewAction && strings\.preview/);
     expect(PICKER).toMatch(/previewAction\?: string/);
     expect(PICKER).toMatch(/preview\?: string/);
-    // It opens in a new tab so the selection survives being looked at, and it is refused in exactly the
-    // two states the download is.
-    expect(PICKER).toMatch(/formTarget="_blank"/);
+    // ⚠️ r402 (item f3cf2444) — REVERSED: it no longer opens a new tab. The reporter asked for the form to
+    // open inside the system; the selection survives because the viewer's Back carries the ticked ids and
+    // the picker starts with them ticked (`initialSelected`).
+    expect(code(PICKER)).not.toMatch(/formTarget="_blank"/);
+    expect(PICKER).toMatch(/initialSelected/);
   });
 
   it('eaPreview exists in all six locales and names no statutory document', () => {
