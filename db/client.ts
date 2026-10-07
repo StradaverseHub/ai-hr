@@ -180,10 +180,13 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
     return db.transaction(async (tx) => {
       // set_config(name, value, is_local=true) === SET LOCAL — cleared at COMMIT.
-      await tx.execute(sql`select set_config('app.tenant_id', ${ctx.tenantId}, true)`);
-      await tx.execute(sql`select set_config('app.user_id', ${ctx.userId ?? ''}, true)`);
-      await tx.execute(sql`select set_config('app.roles', ${roleNames.join(',')}, true)`);
-      await tx.execute(sql`select set_config('app.grants', ${JSON.stringify(grants)}, true)`);
+      // r394: ONE round trip, not four. Every withTenant transaction paid four sequential statements
+      // before its first real query (measured: 145 of 366 statements on one employee navigation to
+      // My Leave). The four are independent and all evaluated in this one row, so the outcome is the
+      // same; test/r394-with-tenant-one-round-trip.test.ts pins both the values and the single statement.
+      await tx.execute(
+        sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId ?? ''}, true), set_config('app.roles', ${roleNames.join(',')}, true), set_config('app.grants', ${JSON.stringify(grants)}, true)`,
+      );
       // ADR-0030 Layer 2 gate: the domain_event hash-chain trigger only fires when this GUC is 'on'.
       // Off by default → chain columns stay NULL → byte-identical behaviour (deployment flag).
       //
