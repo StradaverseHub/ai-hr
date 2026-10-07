@@ -142,6 +142,10 @@ const WIDENED_LATER = [
   // shows the actual Borang A inside the system, across the full width of the screen"). It left
   // CAP_SURVIVORS / CAPPED_BY_DESIGN; the sheet keeps its A4 proportions inside the viewer's frame.
   'app/payroll/borang-a/preview/page.tsx',
+  // r408 (e74af58c) — the Borang 8A review screen followed it onto the shared full-width viewer ("the
+  // preview shows the actual PDF across the full width of the screen at its true A4 shape"). It left
+  // CAP_SURVIVORS / CAPPED_BY_DESIGN for the same reason Borang A did.
+  'app/payroll/borang-8a/preview/page.tsx',
 ] as const;
 
 const ALL_WIDE = [...STANDARDISED, ...ALREADY_WIDE, ...WIDENED_LATER];
@@ -189,7 +193,6 @@ const PAYROLL_MODULE_ON_DISK = [
  * measure of the sheet it prints to. If CP39's preview ever stops being a document, this line goes.
  */
 const CAP_SURVIVORS = [
-  'app/payroll/borang-8a/preview/page.tsx',
   'app/payroll/cp39/preview/page.tsx',
   'app/payroll/statutory-forms/[formId]/page.tsx',
 ] as const;
@@ -226,7 +229,7 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
     const carriers = PAYROLL_MODULE_ON_DISK.filter((f) => read(f).includes('mx-auto max-w-[100rem]'));
     expect(
       carriers,
-      'the Payroll module carries the superseded cap somewhere other than the printed documents (three since r407)',
+      'the Payroll module carries the superseded cap somewhere other than the printed documents (two since r408)',
     ).toEqual([...CAP_SURVIVORS]);
   });
 
@@ -249,7 +252,6 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
    */
   const CAPPED_BY_DESIGN = [
     // Printed statutory documents — see CAP_SURVIVORS.
-    'app/payroll/borang-8a/preview/page.tsx',
     'app/payroll/cp39/preview/page.tsx',
     'app/payroll/statutory-forms/[formId]/page.tsx',
     // r256 858a1128 — the per-form CRITERIA step STOOD HERE (`max-w-3xl`, "a prompt stretched across a 27"

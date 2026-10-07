@@ -11,7 +11,7 @@
  * in production: a missing join yields an empty schedule, a wrong join yields somebody else's figure, and a
  * dropped employee yields a Borang 8A that reconciles perfectly to a payroll it does not match.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
@@ -23,6 +23,9 @@ import { setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { createAdditionalRun, createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
 import { reportPreview } from '../core/reporting';
 import { BORANG_8A_HEADER_KEYS, borang8AFrom } from '../lib/borang-8a';
+import { renderBorang8APdf } from '../lib/borang-8a-pdf';
+import { SOCSO_NOT_IN_SELECTION_REASON } from '../localization/my/statutory-month-wage';
+import { borang8AHasContributions } from '../app/payroll/borang-8a/query';
 // r372 — THE THIRD SURFACE, COVERED BY ITS OWN TEST AND NOT BY INFERENCE. `socsoEisFileForBatch` is an
 // INDEPENDENT resolution of the same PERKESO population as the read above — its own batch query, its own
 // accumulator, its own download route — and r296 is what happened the last time the two resolved one field
@@ -52,7 +55,15 @@ beforeEach(async () => {
 });
 
 let seq = 0;
-async function hire(p: { name: string; hiredOn: string; salary: number; ic: string | null; terminatedOn?: string }) {
+async function hire(p: {
+  name: string;
+  hiredOn: string;
+  salary: number;
+  ic: string | null;
+  terminatedOn?: string;
+  /** r408 — column (2)'s M. Written beside `terminatedOn`, the way the termination movement records it. */
+  terminationType?: 'death' | 'voluntary';
+}) {
   seq += 1;
   const a = adminCtx(b);
   const E = await hireEmployee(a, {
@@ -75,7 +86,7 @@ async function hire(p: { name: string; hiredOn: string; salary: number; ic: stri
   if (p.terminatedOn) {
     await owner.db
       .update(schema.employment)
-      .set({ terminatedOn: p.terminatedOn })
+      .set({ terminatedOn: p.terminatedOn, terminationType: p.terminationType ?? null })
       .where(eq(schema.employment.id, E.employmentId));
   }
   return E;
@@ -105,7 +116,9 @@ describe('the Borang 8A read', () => {
     expect(h.contributionMonth).toBe('07 / 2026');
     expect(h.contributionPeriodKey).toBe('2026-07');
     expect(h.payrollPeriodKey).toBe('2026-07');
-    expect(h.paymentDueDate).toBe('31/07/2026');
+    // r408 — the 15th of the FOLLOWING month (PERKESO 2025 booklet). This pin read 31/07/2026 until r408,
+    // which was the 2020 COVID relief (Pekeliling 4/2020), not the rule.
+    expect(h.paymentDueDate).toBe('15/08/2026');
   });
 
   it('takes the contribution from the run — SOCSO employee + employer, and nothing else', async () => {
@@ -170,8 +183,9 @@ describe('the Borang 8A read', () => {
     expect(byName.get('BBB NEW JOINER')!.startDate).toBe('14072026');
     // Nobody left this month, so the stop column is blank for both, exactly as the specimen leaves it.
     expect(r.rows.every((row) => row.stopDate === '')).toBe(true);
-    // …and no status is invented for anyone: PERKESO's code list is not in the specimen.
-    expect(r.rows.every((row) => row.status === '')).toBe(true);
+    // r408 — column (2) is DERIVED now: B for the joiner, blank for the continuing employee.
+    expect(byName.get('AAA CONTINUING')!.status).toBe('');
+    expect(byName.get('BBB NEW JOINER')!.status).toBe('B');
   });
 
   it('fills the stop date only for someone who left inside the month', async () => {
@@ -473,5 +487,108 @@ describe('r372 — an additional run and the SOCSO salary column', () => {
     await expect(socsoEisFileForBatch(a, { companyId: b.companyId, periodKey: '2026-07' })).rejects.toThrow(
       /DIFFERENT SOCSO\/EIS wages[\s\S]*AAA CHANGED/,
     );
+  });
+});
+
+/**
+ * ─── r408 (item e74af58c) — STEP 1 OF THE PERKESO WORKFLOW, AGAINST A REAL KERNEL ──────────────────
+ *
+ * The status column derived from the records (B / H / M, including a death), Select All rendering the
+ * same bytes as no selection, and a bonus-only selection refused by NAME as r373 refused it.
+ */
+describe('r408 — column (2) STATUS, derived from the records', () => {
+  it('B for a joiner, H for a leaver, M for a death, blank for everyone else', async () => {
+    await hire({ name: 'AAA CONTINUING', hiredOn: '2024-03-01', salary: 3000, ic: '900101015555' });
+    await hire({ name: 'BBB JOINER', hiredOn: '2026-07-14', salary: 3000, ic: '880808085555' });
+    await hire({ name: 'CCC LEAVER', hiredOn: '2024-03-01', salary: 3000, ic: '870707075555', terminatedOn: '2026-07-20', terminationType: 'voluntary' });
+    await hire({ name: 'DDD DECEASED', hiredOn: '2024-03-01', salary: 3000, ic: '860606065555', terminatedOn: '2026-07-09', terminationType: 'death' });
+    // A death recorded for a LATER month is not this month's: no M, no H.
+    await hire({ name: 'EEE LATER DEATH', hiredOn: '2024-03-01', salary: 3000, ic: '850505055555', terminatedOn: '2026-08-03', terminationType: 'death' });
+    const r = await run('2026-07');
+    const status = Object.fromEntries(r.rows.map((row) => [String(row.name), row.status]));
+    expect(status).toEqual({
+      'AAA CONTINUING': '',
+      'BBB JOINER': 'B',
+      'CCC LEAVER': 'H',
+      'DDD DECEASED': 'M',
+      'EEE LATER DEATH': '',
+    });
+    // The death row still carries its stop date in column (1), like any leaver.
+    expect(r.rows.find((row) => row.name === 'DDD DECEASED')!.stopDate).toBe('09072026');
+  });
+});
+
+describe('r408 — the payroll-cycle selection, through the drawn Borang 8A', () => {
+  const salary = 4000;
+  const BONUS = 1200;
+
+  async function julyWithBonus() {
+    await setModule(b.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(b);
+    const e = await hire({ name: 'AAA CYCLE', hiredOn: '2024-03-01', salary, ic: '900101015555' });
+    await hire({ name: 'ZZZ REGULAR ONLY', hiredOn: '2024-03-01', salary, ic: '880808085555' });
+    const reg = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
+    await generatePayslips(a, { batchId: reg.batchId });
+    const bonus = await createAdditionalRun(a, { companyId: b.companyId, payPeriod: '2026-07', runType: 'bonus' });
+    await setPayrollInput(a, { batchId: bonus.batchId, employmentId: e.employmentId, overtimeAmount: 0, bonusAmount: BONUS });
+    await generatePayslips(a, { batchId: bonus.batchId });
+    // The run numbers are READ BACK, never assumed to be 1 and 2.
+    const rows = await owner.db
+      .select({ runSeq: schema.payrollBatch.runSeq, runType: schema.payrollBatch.runType })
+      .from(schema.payrollBatch)
+      .where(and(eq(schema.payrollBatch.companyId, b.companyId), eq(schema.payrollBatch.payPeriod, '2026-07')));
+    return {
+      a,
+      regularSeq: rows.find((x) => x.runType === 'regular')!.runSeq,
+      bonusSeq: rows.find((x) => x.runType === 'bonus')!.runSeq,
+    };
+  }
+  const view = (a: Awaited<ReturnType<typeof entitledCtx>>, runSeqs?: number[]) =>
+    reportPreview(a, { companyId: b.companyId, reportId: 'my.borang-8a', periodKey: '2026-07', runSeqs });
+
+  /**
+   * The criteria step's Select All submits NO `run` parameter, so this is the other half: a selection that
+   * NAMES every run renders the very same bytes. Date is frozen only around the render (pdf-lib stamps
+   * CreationDate / ModDate).
+   */
+  it('ticking every cycle renders the very same PDF bytes as no selection', async () => {
+    const { a, regularSeq, bonusSeq } = await julyWithBonus();
+    const draw = async (r: Awaited<ReturnType<typeof view>>) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-08-12T02:00:00Z'));
+      try {
+        return Buffer.from(await renderBorang8APdf(borang8AFrom({ header: r.meta.formHeader!, rows: r.rows })));
+      } finally {
+        vi.useRealTimers();
+      }
+    };
+    const omitted = await view(a);
+    const everyRun = await view(a, [regularSeq, bonusSeq]);
+    expect(omitted.rows.length).toBe(2);
+    const [x, y] = [await draw(omitted), await draw(everyRun)];
+    expect(x.byteLength).toBeGreaterThan(1000);
+    expect(x.equals(y), 'Select All drew a different Borang 8A from no selection').toBe(true);
+    // …and a REGULAR-only selection is the same SOCSO money too: SOCSO is charged on the regular run.
+    const regularOnly = await view(a, [regularSeq]);
+    expect(regularOnly.totals.contribution).toBeCloseTo(omitted.totals.contribution, 2);
+    expect(borang8AHasContributions(omitted.rows)).toBe(true);
+  });
+
+  /**
+   * BONUS-ONLY IS REFUSED, AS r373 REFUSED IT: everyone on the selection is NAMED with the SOCSO-not-in-
+   * this-selection reason, which holds the PDF, the text copy and the ASSIST file (the loader's `not-ready`
+   * gate) — and it does NOT turn into the anonymous "nothing to file" refusal, because the readiness list is
+   * not empty (`loadBorang8A` asks that question only when nobody is named).
+   */
+  it('a bonus-only selection names everyone on it with the not-in-selection reason, and carries no SOCSO', async () => {
+    const { a, bonusSeq } = await julyWithBonus();
+    const r = await view(a, [bonusSeq]);
+    expect(r.rows.map((row) => row.name)).toEqual(['AAA CYCLE']);
+    expect(r.rows.every((row) => Number(row.contribution) === 0)).toBe(true);
+    expect(r.readiness.map((x) => x.name)).toEqual(['AAA CYCLE']);
+    expect(r.readiness[0].missing).toContain(SOCSO_NOT_IN_SELECTION_REASON);
+    // The no-data rule alone WOULD call this "nothing to file"; the readiness list is what keeps the
+    // named refusal in front of it.
+    expect(borang8AHasContributions(r.rows)).toBe(false);
   });
 });
