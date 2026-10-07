@@ -33,6 +33,14 @@ procedure.
 > are not yet set. Production has no person record for the owner: the bootstrap binds the owner's login to the
 > seeded group-wide "HR Admin" person (`37c34b0e-93ee-4eef-a8df-b51c9364beb1`, app_user `22222222-…`), which is
 > then renamed in Personnel.
+>
+> **Owner's decision, 2026-10-07:** this box is a UAT/staging deployment (a new server will host production),
+> so the cutover proceeds WITHOUT the Origin CA certificate / Full (strict). Accepted risk: the Cloudflare → box
+> hop is encrypted but the origin is not authenticated, so an attacker on that path could impersonate the box and
+> read session cookies (passwords are typed into WorkOS's hosted page, not sent over this hop). MUST be closed on
+> the production server before real HR data. The owner's login is minted as `super_admin` (group-wide customer
+> admin) and then given an `operator` grant by hand as the owner role (ADR-0079: the only way that tier is
+> granted), so the owner sees both the tenant's admin screens and the Operator console (/operator).
 
 ## 1a. HTTPS for aihr.stradaverse.ai (this deployment)
 
