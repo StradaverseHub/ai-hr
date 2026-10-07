@@ -38,8 +38,10 @@ import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { UI_THEME_COOKIE, resolveUiTheme } from '@/lib/ui-theme';
 
-const jakarta = Plus_Jakarta_Sans({ variable: '--font-jakarta', subsets: ['latin'], display: 'swap' });
-const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
+// r396: Classic's faces are no longer the default, so they are not preloaded on every page (they still load,
+// on demand, for a Classic user). Monolith's two faces preload.
+const jakarta = Plus_Jakarta_Sans({ variable: '--font-jakarta', subsets: ['latin'], display: 'swap', preload: false });
+const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'], preload: false });
 // r396 — Monolith's faces (docs/design/monolith/README.md §2), loaded BESIDE Classic's. Both sets of
 // variables are always on <html>; app/globals.css maps --font-jakarta / --font-geist-mono onto these two
 // only under `:root[data-ui-theme="monolith"]`, so Classic keeps Jakarta + Geist Mono untouched and the

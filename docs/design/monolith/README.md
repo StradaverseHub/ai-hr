@@ -19,7 +19,7 @@ Drop `tokens.css` into `app/globals.css` (replace the `:root` and `.dark` blocks
 | Mid | `#63625D` | `#A8A69E` | Secondary text, labels. 5.9:1 on bone. |
 | Faint | `#9A988F` | `#6B6A66` | Placeholders and off states only. |
 | Signal | `#FF4D00` | same | Marks only: 2–3px lines, dots, rings, glows, the live dot. Never a fill behind text. |
-| Signal text | `#C23A00` | `#FF6A2B` | Orange as text: pending, overdue, needs you. AA on bone. |
+| Signal text | `#BD3800` | `#FF6A2B` | Orange as text: pending, overdue, needs you. AA on bone and on pressed rows (r396 build: the board's `#C23A00` is 4.44:1 on pressed, so it was darkened). |
 | Light | `#FBFAF7` | `#1C1C1C` | The radial pool under an object. |
 
 Radius is 0 except pills (999px). No drop shadows on UI, only the object's long skewed shadow.

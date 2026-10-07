@@ -99,7 +99,7 @@
   --muted-foreground: #63625d; /* mid */
   --accent: #ece9e2; /* hover wash = pressed, never a tint */
   --accent-foreground: #111111;
-  --destructive: #c23a00; /* orange text, AA on bone */
+  --destructive: #bd3800; /* orange text: AA on bone and on pressed (hover) rows; r396 darkened from the board's #c23a00, 4.44:1 on pressed */
   --destructive-foreground: #f2f0eb;
   --border: #d9d6cf; /* hairline */
   --input: #111111; /* inputs are underlined in ink, not boxed */
@@ -114,7 +114,7 @@
   --mid: #63625d;
   --faint: #9a988f; /* placeholders, off states — never body text */
   --signal: #ff4d00; /* the orange mark: lines, dots, rings, glows */
-  --signal-text: #c23a00; /* orange as text */
+  --signal-text: #bd3800; /* orange as text; see --destructive */
   --light: #fbfaf7; /* the light pool under an object */
   --shadow-sm: none;
   --shadow-card: none;
