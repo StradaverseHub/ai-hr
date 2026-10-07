@@ -516,6 +516,8 @@ describe('r404 · 4. THE FILE IS THE SCREEN', () => {
     expect(leaveDetailsAsOf('2025-02-29', TODAY), 'not a calendar day').toBe(TODAY);
     expect(leaveDetailsAsOf('31/12/2026', TODAY)).toBe(TODAY);
     expect(leaveDetailsAsOf(undefined, TODAY)).toBe(TODAY);
+    expect(leaveDetailsAsOf('0000-01-01', TODAY), 'year 0 round-trips in JS but Postgres has none').toBe(TODAY);
+    expect(leaveDetailsAsOf('1899-12-31', TODAY)).toBe(TODAY);
     expect(leaveDetailsAsOf(['2024-01-31'], TODAY)).toBe('2024-01-31');
     expect(leaveDetailsFilename('E-01/../x', '2026-01-31')).toBe('LeaveDetails_E-01x_2026-01-31');
     expect(leaveDetailsFilename(null, '2026-01-31')).toBe('LeaveDetails_employee_2026-01-31');

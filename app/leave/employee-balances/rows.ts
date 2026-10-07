@@ -380,5 +380,17 @@ export async function employeeBalanceRows(
   // borrower's OWN type's switches — `b.essView` — not the pool's). test/r404-leave-details.test.ts pins the
   // equivalence field for field against an HR session for the same employee and date.
   const essByType = new Map(balances.map((b) => [b.leaveTypeId, b.essView] as const));
-  return sorted.filter(hasAnyFigure).map((r) => selfView(r, essByType.get(r.leaveTypeId)));
+  const storyByType = new Map(balances.map((b) => [b.leaveTypeId, balanceStoryTypeId(b)] as const));
+  const allOn = (ess: Record<string, boolean> | null | undefined) => ESS_VIEW_COMPONENT_KEYS.every((k) => ess?.[k] !== false);
+  return sorted.filter(hasAnyFigure).map((r) => {
+    const v = selfView(r, essByType.get(r.leaveTypeId));
+    // A borrower row's Explain data is the POOL's breakdown (`balanceStoryTypeId`), so the pool's switches
+    // gate it too: a pool that hides a figure must not have it read off a borrower's panel. A pool this
+    // read did not return (hidden or ineligible) withholds the panel rather than being presumed visible.
+    const story = storyByType.get(r.leaveTypeId);
+    if (v.breakdown && story && story !== r.leaveTypeId && (!essByType.has(story) || !allOn(essByType.get(story)))) {
+      return { ...v, breakdown: null };
+    }
+    return v;
+  });
 }
