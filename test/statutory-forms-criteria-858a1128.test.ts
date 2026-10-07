@@ -212,19 +212,33 @@ describe('each form’s criteria step asks for what THAT form needs, and nothing
     const monthly = MY_REPORTS.filter((r) => r.submission && r.periodKind === 'month');
     expect(monthly.length).toBeGreaterThan(0);
     for (const r of monthly) {
-      const d = reportDestination(r.id, r.periodKind, r.runSelection);
+      // r412 — read the way the step reads it, `preview` included: a monthly form with its own preview and no
+      // cycles (Borang 8B) continues there with company, year and month.
+      const d = reportDestination(r.id, r.periodKind, r.runSelection, r.preview);
       if (r.runSelection) {
         expect(d.criteria.map((c) => c.kind), r.id).toEqual(['company', 'year', 'month', 'cycles']);
         expect(d.criteria.find((c) => c.kind === 'cycles')!.field, r.id).toBe('run');
         expect(d.action, r.id).toBe(r.runSelection.action);
       } else {
         expect(d.criteria.map((c) => c.kind), r.id).toEqual(['company', 'year', 'month']);
-        expect(d.action, r.id).toBe(`/payroll/statutory-forms/${r.id}`);
+        expect(d.action, r.id).toBe(r.preview ? r.preview.action : `/payroll/statutory-forms/${r.id}`);
       }
     }
-    // Borang A (r407), Borang 8A (r408) and CP39 (r409) declare it today — pinned, so a refactor that dropped
-    // any declaration cannot quietly turn the cycle box off.
-    expect(monthly.filter((r) => r.runSelection).map((r) => r.id).sort()).toEqual(['my.borang-8a', 'my.borang-a', 'my.cp39']);
+    // Borang A (r407), Borang 8A (r408), CP39 (r409) and the EIS (SIP) schedule (r412) declare it today —
+    // pinned, so a refactor that dropped any declaration cannot quietly turn the cycle box off.
+    expect(monthly.filter((r) => r.runSelection).map((r) => r.id).sort()).toEqual([
+      'my.borang-8a',
+      'my.borang-a',
+      'my.cp39',
+      'my.sip-contribution',
+    ]);
+    // r412 — and exactly one monthly form continues to its own preview WITHOUT cycles: Borang 8B.
+    expect(monthly.filter((r) => r.preview && !r.runSelection).map((r) => r.id)).toEqual(['my.borang-8b']);
+    expect(reportDestination('x', 'month', null, { action: '/p' }).action).toBe('/p');
+    // `runSelection` wins when both are declared.
+    expect(reportDestination('x', 'month', { action: '/c' }, { action: '/p' }).action).toBe('/c');
+    // An event form is offered neither.
+    expect(reportDestination('x', 'event', null, { action: '/p' }).action).toBe('/payroll/statutory-forms/x');
   });
 
   it('asks an ANNUAL report for company and year, and never a month', () => {

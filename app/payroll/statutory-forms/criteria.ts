@@ -99,12 +99,15 @@ export function reportDestination(
   const cycles = periodKind === 'month' && runSelection ? runSelection : null;
   // r409 (item 79f3f64d) — an ANNUAL form whose pack declares `preview` continues to that preview, with
   // Company and Year and nothing else. Annual only, for the same reason in reverse.
-  const annualPreview = periodKind === 'year' && preview ? preview : null;
+  // r412 (item e74af58c) — and a MONTHLY form that is NOT filed per payroll cycle (Borang 8B: the employer's
+  // header and an under-paid month, drawn from no run) continues to its preview with Company, Year and
+  // Month. `runSelection` wins when both are declared: the cycle box is the stronger contract.
+  const ownPreview = (periodKind === 'year' || (periodKind === 'month' && !cycles)) && preview ? preview : null;
   return {
     action: cycles
       ? cycles.action
-      : annualPreview
-        ? annualPreview.action
+      : ownPreview
+        ? ownPreview.action
         : `/payroll/statutory-forms/${encodeURIComponent(reportId)}`,
     criteria: [
       { kind: 'company', field: 'companyId' },

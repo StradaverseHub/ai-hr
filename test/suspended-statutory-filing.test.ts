@@ -59,7 +59,18 @@ describe('the submission field is what decides the override', () => {
     // tenant must still be able to meet it. If a later edit drops `submission` from this entry to keep
     // it off some other list, this line is what says the override went with it.
     const filed = MY_REPORTS.filter((r) => r.submission).map((r) => r.id).sort();
-    expect(filed).toEqual(['my.borang-8a', 'my.borang-a', 'my.cp39', 'my.cp8d', 'my.epf', 'my.hrd-levy', 'my.socso-eis']);
+    // r412 (item e74af58c, step 2) — `my.borang-8b` and `my.sip-contribution` are PERKESO filings: listed, not loosened.
+    expect(filed).toEqual([
+      'my.borang-8a',
+      'my.borang-8b',
+      'my.borang-a',
+      'my.cp39',
+      'my.cp8d',
+      'my.epf',
+      'my.hrd-levy',
+      'my.sip-contribution',
+      'my.socso-eis',
+    ]);
 
     const internal = MY_REPORTS.filter((r) => !r.submission).map((r) => r.id);
     expect(internal).toEqual(['my.contributions']);

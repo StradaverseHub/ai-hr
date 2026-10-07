@@ -1192,6 +1192,13 @@ export const SCREENS: readonly ScreenEntry[] = [
       // downloads, and shared.ts) are route handlers and a plain module, not guarded pages, so they are not
       // listed — the check walks page.tsx.
       '/payroll/borang-8a/preview',
+      // r412 (item e74af58c, step 2): the EIS (SIP) contribution schedule and Borang 8B previews — each the
+      // form in the shared viewer and its download. Same scopedAdmin key as the Borang 8A preview above: the
+      // SIP schedule lists every employee's name, IC and EIS contribution, and the 8B names the company's
+      // PERKESO signatory. Registered here because test/function-access.test.ts checks reverse completeness;
+      // their `pdf` siblings are route handlers, and `shared.ts` / `query.ts` plain modules, so not listed.
+      '/payroll/sip-contribution/preview',
+      '/payroll/borang-8b/preview',
       // 9c8dad7a: the Borang A review step, between the EPF shelf's figures screen and the THREE downloads
       // (the drawn form, its readable text twin and the i-Akaun upload file). Same scopedAdmin key as the
       // directory that links to it and as the [formId] screen above — it lists every employee's name,

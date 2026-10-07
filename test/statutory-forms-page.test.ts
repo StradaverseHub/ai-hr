@@ -100,10 +100,15 @@ describe('the pack declares where each form is filed, and by when', () => {
    */
   it('keeps SOCSO and EIS on ONE combined return, which is still the only combined one', () => {
     const perkeso = MY_REPORTS.filter((r) => r.submission?.body === 'perkeso');
-    expect(perkeso.map((r) => r.id).sort()).toEqual(['my.borang-8a', 'my.socso-eis']);
+    // r412 (item e74af58c, step 2) — Borang 8B and the EIS (SIP) contribution schedule JOINED the shelf.
+    expect(perkeso.map((r) => r.id).sort()).toEqual(['my.borang-8a', 'my.borang-8b', 'my.sip-contribution', 'my.socso-eis']);
     // The combined SOCSO+EIS return has not been split, and nothing else claims to be one.
-    const combined = perkeso.filter((r) => r.label.includes('EIS'));
+    // r412 — UPDATED, NOT LOOSENED: "claims to be the COMBINED return" is a label naming BOTH SOCSO and EIS.
+    // The SIP schedule names EIS alone — it is an EIS-only document — and is pinned below never to name SOCSO.
+    const combined = perkeso.filter((r) => r.label.includes('EIS') && r.label.includes('SOCSO'));
     expect(combined.map((r) => r.id)).toEqual(['my.socso-eis']);
+    expect(MY_REPORTS.find((r) => r.id === 'my.sip-contribution')!.label).not.toContain('SOCSO');
+    expect(MY_REPORTS.find((r) => r.id === 'my.borang-8b')!.label).not.toContain('EIS');
     // Borang 8A carries no EIS and is not offered as the combined return under another name.
     expect(MY_REPORTS.find((r) => r.id === 'my.borang-8a')!.label).not.toContain('EIS');
   });
@@ -174,6 +179,7 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
       'my.cp22',
       'my.ea',
       'my.pcb2ii',
+      'my.sip-contribution',
       'my.tp1',
       'my.tp3',
     ]);
@@ -207,9 +213,11 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
     // below, so deleting an entry from here without building it cannot pass as this same migration.
     expect(MY_PLANNED_FORMS.map((p) => p.id)).toEqual([
       'epf.borang-bbcb',
-      'perkeso.borang-8b',
-      'perkeso.sip',
+      // r412 (item e74af58c, step 2) — `perkeso.borang-8b` LEFT (built: `my.borang-8b`, same shelfOrder 3), and
+      // `perkeso.sip` ("SIP Forms") LEFT: its contribution schedule is built (`my.sip-contribution`, shelfOrder
+      // 4) and what stays unbuilt — SIP 2 / SIP 2A — is planned under its own name, `perkeso.sip-2`.
       'perkeso.employee-registration',
+      'perkeso.sip-2',
       'lhdn.cp21',
       'lhdn.cp22a',
       'lhdn.cp39a',
@@ -909,6 +917,10 @@ describe('the four pins', () => {
     // typesetting of LHDN's TP3 from the specimen attached to the item, not a facsimile of their PDF.
     ).toEqual([
       'my.borang-8a',
+      // r412 — Borang 8B is drawn to PERKESO's own blank 8B (the 8A's measured geometry); the EIS (SIP)
+      // schedule to the reporter's sample, which is not a government page at all — `agency-layout` is its
+      // ceiling, and neither is `official`.
+      'my.borang-8b',
       'my.borang-a',
       'my.cp39',
       // r402 — one entry each (was `.en` / `.ms`).
