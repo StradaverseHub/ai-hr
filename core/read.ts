@@ -3875,8 +3875,16 @@ export function leaveEntitlementBreakdown(
   return withTenant(ctx, (tx) => leaveEntitlementBreakdownTx(tx, employmentId, leaveTypeId, asOf, locale, opts));
 }
 
-/** The leave-type columns the breakdown reads — ONE definition for the single read and the batched one. */
-const breakdownTypeColumns = {
+/**
+ * The leave-type columns the breakdown reads — ONE definition for the single read and the batched one.
+ *
+ * ⚠️ A FUNCTION, NOT A MODULE CONSTANT, and that is load-bearing. `leaveTypeRuleColumns` comes from ./leave,
+ * which imports this module back: evaluated at module load, the spread can run while ./leave is still
+ * initialising and silently spread NOTHING — every carry/accrual rule column vanishes from the select and the
+ * breakdown reports no carry forward. Measured in r397: test/carry-forward-report.test.ts (i) read 0 carried
+ * against the engine's 5. Built at call time, exactly as the inline select always was.
+ */
+const breakdownTypeColumns = () => ({
   id: leaveType.id, name: leaveType.name, code: leaveType.code, role: leaveType.role, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, formulaExplanations: leaveType.formulaExplanations, yearCycleOverride: leaveType.yearCycleOverride,
   // 845903a3 (r313) — the ENTITLEMENT rounding trio, named here rather than added to
   // `leaveTypeRuleColumns`. That map exists so the granting engines and the projection kernel
@@ -3885,10 +3893,10 @@ const breakdownTypeColumns = {
   // item's whole promise is that Earned to Date does not move — so they ride THIS read only.
   entitlementRoundingMethod: leaveType.entitlementRoundingMethod, entitlementRoundingThreshold: leaveType.entitlementRoundingThreshold, entitlementRoundingBands: leaveType.entitlementRoundingBands,
   ...leaveTypeRuleColumns,
-};
+});
 /** The employment basics the breakdown reads — likewise one definition for both. */
 const breakdownEmploymentColumns = { hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn, gradeId: employment.gradeId, companyId: employment.companyId, leaveCycle: company.leaveCycle };
-const selectBreakdownTypes = (tx: Tx) => tx.select(breakdownTypeColumns).from(leaveType);
+const selectBreakdownTypes = (tx: Tx) => tx.select(breakdownTypeColumns()).from(leaveType);
 const selectBreakdownEmployment = (tx: Tx, employmentId: string) =>
   tx
     .select(breakdownEmploymentColumns)
