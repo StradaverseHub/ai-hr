@@ -134,6 +134,10 @@ const WIDENED_LATER = [
   // 711adcd2 (r254) — the Pay Item form, for the SAME reason and on the reporter's own drawing. See
   // NARROW_FORMS in section C.
   'app/admin/pay-components/component-form.tsx',
+  // r402 (f3cf2444) — the statutory-form criteria step, on the reporter's own request ("the first step
+  // also uses the full screen width instead of a narrow box"). See CAPPED_BY_DESIGN in section A for the
+  // r256 reason it used to be capped; the boxes now sit in one row across the width instead.
+  'app/payroll/statutory-forms/open/page.tsx',
 ] as const;
 
 const ALL_WIDE = [...STANDARDISED, ...ALREADY_WIDE, ...WIDENED_LATER];
@@ -246,12 +250,10 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
     'app/payroll/borang-a/preview/page.tsx',
     'app/payroll/cp39/preview/page.tsx',
     'app/payroll/statutory-forms/[formId]/page.tsx',
-    // r256 858a1128 — the per-form CRITERIA step. Section C's category exactly: three selects and two
-    // buttons, answering "which company, which year, which month" for ONE form before anything is
-    // produced. `max-w-3xl`, because a prompt stretched across a 27" monitor puts its label at one edge
-    // and its select at the other. Its two siblings are NOT exceptions — the directory and the EA
-    // employee selection are both lists, and both are on pageWideCls.
-    'app/payroll/statutory-forms/open/page.tsx',
+    // r256 858a1128 — the per-form CRITERIA step STOOD HERE (`max-w-3xl`, "a prompt stretched across a 27"
+    // monitor puts its label at one edge and its select at the other"). ⚠️ r402 (f3cf2444) moved it to
+    // WIDENED_LATER on the reporter's request; the label-at-one-edge worry is answered by laying the boxes
+    // out in a row of equal columns rather than one long line.
     // One-record previews and forms — section C's category.
     'app/payroll/cp22/[employmentId]/preview/page.tsx',
     'app/payroll/reports/ea/[employmentId]/page.tsx',

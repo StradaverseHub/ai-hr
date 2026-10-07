@@ -185,7 +185,8 @@ describe('every registered form reaches the directory, with the status it alread
   it('moves no form between fidelity statuses', () => {
     const official = [...MY_REPORTS, ...MY_STATUTORY_LINKS].filter((e) => e.fidelity === 'official');
     expect(official.map((e) => e.id)).toEqual(['my.cp22']);
-    expect(EA_LINKS.map((l) => l.fidelity)).toEqual(['agency-layout', 'agency-layout']);
+    // r402 — one EA entry since the per-language pair merged; its status is unchanged.
+    expect(EA_LINKS.map((l) => l.fidelity)).toEqual(['agency-layout']);
   });
 
   it('renders the same status keys on the criteria step as on the shelf', () => {
@@ -227,47 +228,76 @@ describe('each form’s criteria step asks for what THAT form needs, and nothing
 
   /**
    * The plan's third test, and the reporter's own words: the EA asks for Company and Payroll Year, and
-   * there is NO Payroll Month box on it. Both language rows are checked — they are two entries, and a
-   * change to one that missed the other is exactly the shape of defect this catches.
+   * there is NO Payroll Month box on it.
+   *
+   * ⚠️ r402 (item f3cf2444) — UPDATED, NOT DELETED. The two language rows are ONE entry now and the
+   * language is a criterion of its own ("Version", `{lang}`), where r256 carried it through as a hidden
+   * field because it was part of WHICH ROW was pressed. The month half of the case is unchanged.
    */
-  it('asks the C.P.8A (EA) for company and year, and NEVER for a month', () => {
-    expect(EA_LINKS.map((l) => l.id).sort()).toEqual(['my.ea.en', 'my.ea.ms']);
+  it('asks the C.P.8A (EA) for company, year and version, and NEVER for a month', () => {
+    expect(EA_LINKS.map((l) => l.id).sort()).toEqual(['my.ea']);
     for (const l of EA_LINKS) {
       const d = parseDestination(l.href);
-      expect(d.criteria.map((c) => c.kind), l.id).toEqual(['company', 'year']);
+      expect(d.criteria.map((c) => c.kind), l.id).toEqual(['company', 'year', 'version']);
       expect(d.criteria.map((c) => c.kind), l.id).not.toContain('month');
+      expect(d.criteria.find((c) => c.kind === 'version')!.field, l.id).toBe('lang');
       expect(d.action, l.id).toBe('/payroll/statutory-forms/ea');
-      // The language the row promises rides through the step untouched — it is not a criterion, it is
-      // part of which form was chosen.
-      expect(d.hidden, l.id).toEqual([{ name: 'lang', value: l.id.endsWith('.ms') ? 'ms' : 'en' }]);
+      expect(d.hidden, l.id).toEqual([]);
     }
   });
 
   /**
    * 72b100cd — the same three facts for PCB 2(II): company and year, never a month (the form has no month
-   * box, it has twelve month ROWS), and the language rides through as part of which form was chosen.
+   * box, it has twelve month ROWS). r402 — and the language is its Version criterion, as for the EA.
    */
-  it('asks PCB 2(II) for company and year, and NEVER for a month', () => {
-    expect(PCB2II_LINKS.map((l) => l.id).sort()).toEqual(['my.pcb2ii.en', 'my.pcb2ii.ms']);
+  it('asks PCB 2(II) for company, year and version, and NEVER for a month', () => {
+    expect(PCB2II_LINKS.map((l) => l.id).sort()).toEqual(['my.pcb2ii']);
     for (const l of PCB2II_LINKS) {
       const d = parseDestination(l.href);
-      expect(d.criteria.map((c) => c.kind), l.id).toEqual(['company', 'year']);
+      expect(d.criteria.map((c) => c.kind), l.id).toEqual(['company', 'year', 'version']);
       expect(d.criteria.map((c) => c.kind), l.id).not.toContain('month');
       expect(d.action, l.id).toBe('/payroll/statutory-forms/pcb2ii');
-      expect(d.hidden, l.id).toEqual([{ name: 'lang', value: l.id.endsWith('.ms') ? 'ms' : 'en' }]);
+      expect(d.hidden, l.id).toEqual([]);
     }
+  });
+
+  /**
+   * r402 (item f3cf2444) — THE VERSION OPTIONS ARE THE ENTRY'S, AND ONLY A `{lang}` ENTRY HAS THEM.
+   *
+   * The step draws the Version select from `versions`, so an entry whose href took `{lang}` without
+   * declaring them would draw an empty select, and one that declared them without `{lang}` would offer a
+   * choice the destination ignores. Both directions are pinned over the pack's own entries.
+   */
+  it('every {lang} entry declares its versions, English first, and no other entry does', () => {
+    for (const l of MY_STATUTORY_LINKS) {
+      const takesVersion = kinds(l.href).includes('version');
+      if (takesVersion) {
+        expect(l.versions?.map((v) => v.value), l.id).toEqual(['en', 'ms']);
+        for (const v of l.versions!) {
+          for (const dict of [en, ms, ta, th, vi, zh]) {
+            expect((dict.payroll.statutoryForms as Record<string, string>)[v.labelKey], `${l.id} ${v.labelKey}`).toBeTruthy();
+          }
+        }
+      } else {
+        expect(l.versions, `${l.id} declares versions its href does not take`).toBeUndefined();
+      }
+    }
+    expect(MY_STATUTORY_LINKS.filter((l) => kinds(l.href).includes('version')).map((l) => l.id).sort()).toEqual([
+      'my.ea',
+      'my.pcb2ii',
+    ]);
+    // The step draws it from the entry, and defaults off the URL or the FIRST version — never the locale.
+    expect(CRITERIA).toContain("field('version')");
+    expect(CRITERIA).toContain('link?.versions');
+    expect(CRITERIA).toContain('defaultVersion(versions, sp.lang)');
   });
 
   it('says CONTINUE on every two-step form’s step, because company + year is the first of two', () => {
     // UPDATED, NOT LOOSENED (r323): the set was EA_LINKS alone. PCB 2(II) joined it because it has the
     // same shape — one statement per employee — not because the assertion was inconvenient. The exact-set
     // half below is what keeps that honest: every OTHER entry must still fall back to "Generate form".
-    expect(TWO_STEP_LINKS.map((l) => l.id).sort()).toEqual([
-      'my.ea.en',
-      'my.ea.ms',
-      'my.pcb2ii.en',
-      'my.pcb2ii.ms',
-    ]);
+    // r402 — one entry per form (the per-language pairs merged).
+    expect(TWO_STEP_LINKS.map((l) => l.id).sort()).toEqual(['my.ea', 'my.pcb2ii']);
     for (const l of TWO_STEP_LINKS) expect(l.criteriaLabelKey, l.id).toBe('criteria_continue');
     // Every other templated entry falls back to the shared "Generate form" — the button that IS the
     // moment of generation.

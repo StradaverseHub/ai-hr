@@ -9,19 +9,28 @@
  * green on any test of either half — so the rule is written once and read three times.
  *
  * IT IS DERIVED FROM THE DESTINATION, NEVER FROM THE FORM'S NAME OR ID. A catalog href declares its own
- * placeholders, so Form TP1 (`?year={year}`) asks for a year and not a company, the two C.P.8A (EA) rows
- * ask for a company and a year and NEVER a month, and a monthly report asks for all three. That is the
+ * placeholders, so Form TP1 (`?year={year}`) asks for a year and not a company, the C.P.8A (EA) asks for a
+ * company, a year and a version (`{lang}`, since r402) and NEVER a month, and a monthly report asks for
+ * company, year and month. That is the
  * reporter's complaint answered at its root: the EA stopped asking for a Payroll Month because the thing
  * it opens does not take one, not because a screen was taught to special-case it.
  */
 
-/** The three things a destination can ask to have chosen, in the order they are drawn. */
-export type CriterionKind = 'company' | 'year' | 'month';
+/**
+ * The things a destination can ask to have chosen, in the order they are drawn.
+ *
+ * r402 (item f3cf2444) — `version` JOINED THEM. The C.P.8A (EA) and PCB 2(II) used to be two shelf entries
+ * each, one per language; they are one entry each now, and the language is asked for here as "Version".
+ * Its OPTIONS are not this module's: they are declared on the catalog entry beside the href
+ * (`StatutoryFormLink.versions`), so the step offers exactly what the destination allowlists.
+ */
+export type CriterionKind = 'company' | 'year' | 'month' | 'version';
 
 const PLACEHOLDER: Record<string, CriterionKind> = {
   '{companyId}': 'company',
   '{year}': 'year',
   '{month}': 'month',
+  '{lang}': 'version',
 };
 
 /**
@@ -30,7 +39,7 @@ const PLACEHOLDER: Record<string, CriterionKind> = {
  * The ONE test that decides whether a shelf card goes through the criteria step. An entry with no
  * placeholder (the CP22 worklist anchor) is one press, exactly as it always was.
  */
-export const TEMPLATED = /\{(?:companyId|year|month)\}/;
+export const TEMPLATED = /\{(?:companyId|year|month|lang)\}/;
 
 /** The criteria step for one catalog entry, addressed by the entry's own id. */
 export const criteriaHref = (formId: string) =>
@@ -41,7 +50,7 @@ export type ParsedDestination = {
   action: string;
   /** The boxes to draw, in href order. `field` is the DESTINATION's own parameter name. */
   criteria: { kind: CriterionKind; field: string }[];
-  /** Everything that is not a placeholder, carried through unchanged (the EA rows' `lang=en`). */
+  /** Everything that is not a placeholder, carried through unchanged. */
   hidden: { name: string; value: string }[];
 };
 
@@ -174,4 +183,44 @@ export function defaultCriteria(
   const filedInArrears = target?.periodKind === 'year' && target.submission != null;
   const inSeason = m <= FILING_SEASON_LAST_MONTH;
   return { year: String(filedInArrears && inSeason ? y - 1 : y), month: ended.month };
+}
+
+/**
+ * r402 (item f3cf2444) — THE VERSION THE STEP ARRIVES SHOWING.
+ *
+ * A version asked for in the URL (`?lang=ms`, which is what a former `my.ea.ms` bookmark redirects to) is
+ * honoured when the entry declares it; anything else — absent, misspelt, a language the entry does not
+ * publish — falls to the entry's FIRST declared version. Never the viewer's UI language: which language a
+ * statutory form is printed in is the operator's choice, and a Chinese-language screen must not silently
+ * pick a form LHDN does not publish.
+ */
+export function defaultVersion(
+  versions: readonly { value: string }[] | undefined,
+  asked: string | undefined,
+): string {
+  if (!versions || versions.length === 0) return '';
+  return versions.some((v) => v.value === asked) ? asked! : versions[0].value;
+}
+
+/**
+ * r402 (item f3cf2444) — WHERE A FORMER ENTRY ID LIVES NOW, or null.
+ *
+ * `my.ea.en` / `my.ea.ms` / `my.pcb2ii.en` / `my.pcb2ii.ms` are in bookmarks. The catalog entry that
+ * replaced them lists them in `formerIds`, each with the version it stood for; this returns the criteria
+ * step for the merged entry with that version chosen. The ids are the catalog's, not this module's.
+ */
+export function formerIdRedirect(
+  links: readonly { id: string; formerIds?: { id: string; version: string }[] }[],
+  formId: string,
+  body?: string,
+): string | null {
+  for (const l of links) {
+    const hit = l.formerIds?.find((f) => f.id === formId);
+    if (hit) {
+      return `${criteriaHref(l.id)}&lang=${encodeURIComponent(hit.version)}${
+        body ? `&body=${encodeURIComponent(body)}` : ''
+      }`;
+    }
+  }
+  return null;
 }

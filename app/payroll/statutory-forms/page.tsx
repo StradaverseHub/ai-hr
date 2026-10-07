@@ -437,7 +437,7 @@ export default async function StatutoryFormsPage({
         // label, which is why rewording either one never touches the other.
         //
         // r242 — the two EA entries now name `openForm` explicitly, which is the SHARED label they would
-        // have fallen back to. Naming it is the point: the row that reads "Open form" is the row that ends
+        // have fallen back to. (r402 merged them into ONE entry, `my.ea`, which still names it.) Naming it is the point: the row that reads "Open form" is the row that ends
         // at a completed EA, and that decision belongs in the catalog beside the href it describes.
         //
         // r256 — a TEMPLATED href goes to the criteria step, an un-templated one stays a direct link. The
@@ -461,6 +461,9 @@ export default async function StatutoryFormsPage({
         tertiary: extraAction(l.tertiaryHref, l.tertiaryLabelKey, l.tertiaryTitleKey, null),
         // r242 — and the ONE name those two now sit under on the EA rows. Read off the catalog like every
         // other string here; a row that declares no key renders its extras exactly as it did.
+        // r402 (item f3cf2444) — NO ROW DECLARES EXTRAS FOR THE EA ANY MORE: the reporter asked for the
+        // "Blank form and field register" control to go, and the merged `my.ea` entry carries no second or
+        // third action. The machinery stays because the CP22 row's blank still uses `secondary`.
         extrasLabel: l.extrasLabelKey ? t(l.extrasLabelKey as 'link_ea_more') : null,
       });
     }

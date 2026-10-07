@@ -13,6 +13,7 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 // C.P.8A and is the second screen to use it, not a second copy of it. A lookalike picker here would be
 // the "six slightly different employee pickers" this repo keeps consolidating away from (r320).
 import { EaEmployeePicker, type EaPickerRow } from '../ea/employee-picker';
+import { defaultVersion } from '../criteria';
 import { MAX_EA_SELECTION } from '../ea/limits';
 
 /**
@@ -49,28 +50,31 @@ type Pcb2iiPageLang = (typeof PCB2II_LANGS)[number];
 export default async function Pcb2iiEmployeeSelectionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ companyId?: string; year?: string; lang?: string; selectedDate?: string; error?: string; field?: string }>;
+  searchParams: Promise<{ companyId?: string; year?: string; lang?: string; selectedDate?: string; id?: string | string[]; error?: string; field?: string }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.statutoryForms');
   const tStatus = await getTranslations('people.employeeStatus');
   const sp = await searchParams;
 
-  const lang: Pcb2iiPageLang | null = PCB2II_LANGS.includes(sp.lang as Pcb2iiPageLang)
-    ? (sp.lang as Pcb2iiPageLang)
-    : null;
   const catalog = await listStatutoryCatalog(s, scopeIds);
-  // Matched on its DESTINATION and its language, so no entry id is written down here.
-  const entry =
-    catalog.links.find(
-      (l) => l.href.startsWith('/payroll/statutory-forms/pcb2ii') && (!lang || l.href.includes(`lang=${lang}`)),
-    ) ?? null;
+  // The shelf entry that owns this screen — matched on its DESTINATION, so no report id and no entry id is
+  // written down here. r402 (item f3cf2444): there is ONE entry per form now, and the language is its
+  // Version, so the entry is no longer narrowed by `lang`.
+  const entry = catalog.links.find((l) => l.href.startsWith('/payroll/statutory-forms/pcb2ii?')) ?? null;
   if (!entry) notFound();
+  // `lang` is allowlisted twice — by this screen's own list and by the entry's declared versions — and an
+  // absent or unknown one becomes the entry's FIRST version (English), never the viewer's UI language.
+  const lang = defaultVersion(
+    entry.versions,
+    PCB2II_LANGS.includes(sp.lang as Pcb2iiPageLang) ? sp.lang : undefined,
+  ) as Pcb2iiPageLang;
+  const versionLabelKey = entry.versions?.find((v) => v.value === lang)?.labelKey;
 
   // An out-of-scope companyId in the URL is treated as absent rather than honoured.
   const companyId = sp.companyId && scopeIds.includes(sp.companyId) ? sp.companyId : '';
   const year = /^\d{4}$/.test(sp.year ?? '') ? sp.year! : '';
-  if (!companyId || !year) redirect(`/payroll/statutory-forms/open?form=${encodeURIComponent(entry.id)}`);
+  if (!companyId || !year) redirect(`/payroll/statutory-forms/open?form=${encodeURIComponent(entry.id)}&lang=${lang}`);
 
   const reportId = entry.populationReportId;
   if (!reportId || !catalog.reports.some((r) => r.id === reportId)) notFound();
@@ -116,8 +120,16 @@ export default async function Pcb2iiEmployeeSelectionPage({
   };
   const fitFieldKey = sp.field ?? 'details';
   const fitField = Object.hasOwn(fitFields, fitFieldKey) ? fitFields[fitFieldKey] : fitFields.details;
-  const heading = t(entry.labelKey as 'link_pcb2ii_en');
-  const backHref = `/payroll/statutory-forms/open?form=${encodeURIComponent(entry.id)}`;
+  // r402 — the merged entry's name plus the Version chosen.
+  const heading = versionLabelKey
+    ? `${t(entry.labelKey as 'link_pcb2ii')} · ${t(versionLabelKey as 'version_en')}`
+    : t(entry.labelKey as 'link_pcb2ii');
+  const backHref = `/payroll/statutory-forms/open?form=${encodeURIComponent(entry.id)}&lang=${lang}`;
+  // r402 — coming BACK from the in-app viewer: the ticked people ride in the URL as `id`, and the picker
+  // starts with them ticked. Only ids that are in this year's population survive, so a hand-edited URL
+  // cannot tick somebody the list does not offer.
+  const asked = new Set(Array.isArray(sp.id) ? sp.id : sp.id ? [sp.id] : []);
+  const initialSelected = rows.filter((r) => asked.has(r.employmentId)).map((r) => r.employmentId);
   /* r331 (72b100cd) — THE DOOR TO THE RECEIPTS SCREEN, and it is here because this is the form that
      PRINTS them. Section 2 of PCB 2(II) reports, per month, the receipt / bank slip / transaction number
      and the payment date; until r331 the only place to key one was the bottom of the CP39 screen for one
@@ -163,11 +175,12 @@ export default async function Pcb2iiEmployeeSelectionPage({
               rows={rows}
               selectedDateField={{label: t('pcb2iiSelectedDate'), value: selectedDate, help: t('pcb2iiDateHelp'), receiptsHref: `/payroll/statutory-forms/pcb2ii/receipts?companyId=${encodeURIComponent(companyId)}&year=${encodeURIComponent(year)}${lang ? `&lang=${lang}` : ''}`, receiptsLabel: t('pcb2iiReceiptsLink')}}
               action="/payroll/statutory-forms/pcb2ii/download"
-              previewAction="/payroll/statutory-forms/pcb2ii/preview"
+              previewAction="/payroll/statutory-forms/pcb2ii/view"
+              initialSelected={initialSelected}
               hidden={[
                 { name: 'companyId', value: companyId },
                 { name: 'year', value: year },
-                ...(lang ? [{ name: 'lang', value: lang }] : []),
+                { name: 'lang', value: lang },
               ]}
               strings={{
                 searchName: t('eaSearchName'),

@@ -7,6 +7,7 @@ import { deriveEmploymentStatus } from '@/core/employment-status';
 import { Card, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { EaEmployeePicker, type EaPickerRow } from './employee-picker';
+import { defaultVersion } from '../criteria';
 import { MAX_EA_SELECTION } from './limits';
 
 /**
@@ -51,7 +52,7 @@ type EaLang = (typeof EA_LANGS)[number];
 export default async function EaEmployeeSelectionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ companyId?: string; year?: string; lang?: string }>;
+  searchParams: Promise<{ companyId?: string; year?: string; lang?: string; id?: string | string[] }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.statutoryForms');
@@ -60,21 +61,25 @@ export default async function EaEmployeeSelectionPage({
   const tStatus = await getTranslations('people.employeeStatus');
   const sp = await searchParams;
 
-  const lang: EaLang | null = EA_LANGS.includes(sp.lang as EaLang) ? (sp.lang as EaLang) : null;
   const catalog = await listStatutoryCatalog(s, scopeIds);
-  // The shelf entry that owns this screen — matched on its DESTINATION and its language, so no report id
-  // and no entry id is written down here. `lang` narrows it to the row the operator actually pressed.
-  const entry =
-    catalog.links.find(
-      (l) => l.href.startsWith('/payroll/statutory-forms/ea') && (!lang || l.href.includes(`lang=${lang}`)),
-    ) ?? null;
+  // The shelf entry that owns this screen — matched on its DESTINATION, so no report id and no entry id is
+  // written down here. r402 (item f3cf2444): there is ONE entry per form now, and the language is its
+  // Version, so the entry is no longer narrowed by `lang`.
+  const entry = catalog.links.find((l) => l.href.startsWith('/payroll/statutory-forms/ea?')) ?? null;
   if (!entry) notFound();
+  // `lang` is allowlisted twice — by this screen's own list and by the entry's declared versions — and an
+  // absent or unknown one becomes the entry's FIRST version (English), never the viewer's UI language.
+  const lang = defaultVersion(
+    entry.versions,
+    EA_LANGS.includes(sp.lang as EaLang) ? sp.lang : undefined,
+  ) as EaLang;
+  const versionLabelKey = entry.versions?.find((v) => v.value === lang)?.labelKey;
 
   // An out-of-scope companyId in the URL is treated as absent rather than honoured — the same rule the
   // export route and `[formId]` apply, so the three cannot disagree about who may reach a company.
   const companyId = sp.companyId && scopeIds.includes(sp.companyId) ? sp.companyId : '';
   const year = /^\d{4}$/.test(sp.year ?? '') ? sp.year! : '';
-  if (!companyId || !year) redirect(`/payroll/statutory-forms/open?form=${encodeURIComponent(entry.id)}`);
+  if (!companyId || !year) redirect(`/payroll/statutory-forms/open?form=${encodeURIComponent(entry.id)}&lang=${lang}`);
 
   const reportId = entry.populationReportId;
   // An entry with no declared population cannot list anybody, and a jurisdiction that registers no such
@@ -115,8 +120,17 @@ export default async function EaEmployeeSelectionPage({
     })
     .filter((r): r is EaPickerRow => r !== null);
 
-  const heading = t(entry.labelKey as 'link_ea_en');
-  const backHref = `/payroll/statutory-forms/open?form=${encodeURIComponent(entry.id)}`;
+  // r402 — the merged entry's name plus the Version chosen, so the operator can see which language
+  // they are about to produce.
+  const heading = versionLabelKey
+    ? `${t(entry.labelKey as 'link_ea')} · ${t(versionLabelKey as 'version_en')}`
+    : t(entry.labelKey as 'link_ea');
+  const backHref = `/payroll/statutory-forms/open?form=${encodeURIComponent(entry.id)}&lang=${lang}`;
+  // r402 — coming BACK from the in-app viewer: the ticked people ride in the URL as `id`, and the picker
+  // starts with them ticked. Only ids that are in this year's population survive, so a hand-edited URL
+  // cannot tick somebody the list does not offer.
+  const asked = new Set(Array.isArray(sp.id) ? sp.id : sp.id ? [sp.id] : []);
+  const initialSelected = rows.filter((r) => asked.has(r.employmentId)).map((r) => r.employmentId);
 
   return (
     // 152fea7f — `pageWideCls`, the Payroll module's one full-width container. This screen is a TABLE of
@@ -153,11 +167,12 @@ export default async function EaEmployeeSelectionPage({
                  shelf that could not be looked at before it was downloaded. It passes both now. The route
                  serves the download's own bytes `inline` — see ./shared.ts, which both doors are four
                  lines over, so the preview cannot become a lighter gate onto the same tax figures. */
-              previewAction="/payroll/statutory-forms/ea/preview"
+              previewAction="/payroll/statutory-forms/ea/view"
+              initialSelected={initialSelected}
               hidden={[
                 { name: 'companyId', value: companyId },
                 { name: 'year', value: year },
-                ...(lang ? [{ name: 'lang', value: lang }] : []),
+                { name: 'lang', value: lang },
               ]}
               strings={{
                 searchName: t('eaSearchName'),
