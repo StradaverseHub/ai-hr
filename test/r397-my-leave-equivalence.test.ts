@@ -48,6 +48,9 @@ import { decideLeave, requestLeave } from '../core/leave';
 import { myEmployment } from '../core/read';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { setToilPolicy } from '../core/toil';
+import { createEntitlementTemplate } from '../core/entitlement-template';
+import { leaveEntitlementBreakdown, leaveEntitlementBreakdowns } from '../core/read';
+import { leaveTypeApplySummary, leaveTypeApplySummaries } from '../core/leave';
 import { loadMyLeaveBefore } from './fixtures/r397-leave-before';
 import { loadMyLeave } from '../app/leave/my-leave-data';
 import {
@@ -181,6 +184,20 @@ beforeAll(async () => {
   types.archived = await leaveType({ code: 'OLD', name: 'Retired Leave', archivedAt: new Date(`${YEAR - 1}-06-01T00:00:00Z`) } as never);
   types.a2a = await leaveType({ code: 'STUDY', name: 'Study Leave', yearCycleOverride: 'a2a' });
   types.unpaid = await leaveType({ code: 'UNPAID', name: 'Unpaid Leave', paid: false });
+  // A type that BORROWS Annual Leave's balance (Balance Deduction Source): its pending days reserve Annual's.
+  types.borrower = await leaveType({ code: 'EMERG', name: 'Emergency Leave', balanceSourceTypeId: b.annualLeaveTypeId });
+  // A type with ONE table and NO rule (the sole-table path) and one whose only rule points at another company
+  // (no_eligibility_match, which reads the eligibility explanation) — the resolver's two short-circuit shapes.
+  types.sole = await leaveType({ code: 'HOSP', name: 'Hospitalisation Leave' });
+  types.nomatch = await leaveType({ code: 'MAT', name: 'Maternity Leave' });
+  await createEntitlementTemplate(adminCtx(b), {
+    leaveTypeId: types.sole,
+    name: 'Hospitalisation table',
+    serviceBands: [{ fromYears: 0, toYears: null, days: 60 }],
+    validFrom: `${YEAR - 3}-01-01`,
+  });
+  const [otherCo] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Other Sdn Bhd' }).returning({ id: schema.company.id });
+  await seedEntitlement(adminCtx(b), { leaveTypeId: types.nomatch, annualDays: 60, companyId: otherCo.id, validFrom: `${YEAR - 3}-01-01` });
   await seedEntitlement(adminCtx(b), { leaveTypeId: types.sick, annualDays: 14, validFrom: `${YEAR - 3}-01-01` });
   await seedEntitlement(adminCtx(b), { leaveTypeId: types.annual, annualDays: 14, validFrom: `${YEAR - 3}-01-01` });
   const [grp] = await owner.db
@@ -207,11 +224,16 @@ beforeAll(async () => {
   await ledger(r, types.hidden, 'accrual', 5, `${YEAR}-01-01`);
   await ledger(r, types.archived, 'accrual', 2, `${YEAR - 1}-01-01`);
   await ledger(r, types.a2a, 'accrual', 4, `${YEAR - 1}-01-15`);
+  await ledger(r, types.sole, 'accrual', 60, `${YEAR}-01-01`);
+  await ledger(r, types.nomatch, 'accrual', 1, `${YEAR}-01-01`);
+  await ledger(r, types.annual, 'accrual', 1.5, `${YEAR}-02-01`); // a later grant inside the cycle
   // An approved full day (admin files it — no backdating gate), a pending HALF DAY, a pending shared-group day.
   const appr = await requestLeave(adminCtx(b), { employmentId: r, leaveTypeId: types.annual, startDate: addDays(TODAY, 14), endDate: addDays(TODAY, 15), today: TODAY });
   await decideLeave(adminCtx(b), { leaveRequestId: appr.leaveRequestId, decision: 'approved' });
   await requestLeave(adminCtx(b), { employmentId: r, leaveTypeId: types.annual, startDate: addDays(TODAY, 30), endDate: addDays(TODAY, 30), durationType: 'half_day_am', today: TODAY });
   await requestLeave(adminCtx(b), { employmentId: r, leaveTypeId: types.sg1, startDate: addDays(TODAY, 40), endDate: addDays(TODAY, 40), today: TODAY });
+  // A pending request on the BORROWER: it reserves Annual Leave's balance.
+  await requestLeave(adminCtx(b), { employmentId: r, leaveTypeId: types.borrower, startDate: addDays(TODAY, 60), endDate: addDays(TODAY, 61), today: TODAY });
   const rej = await requestLeave(adminCtx(b), { employmentId: r, leaveTypeId: types.sick, startDate: addDays(TODAY, 50), endDate: addDays(TODAY, 50), today: TODAY });
   await decideLeave(adminCtx(b), { leaveRequestId: rej.leaveRequestId, decision: 'rejected', rejectReason: 'Clash' });
   // A PENDING replacement claim.
@@ -286,6 +308,44 @@ describe('r397 · the My Leave loader returns exactly what the sequential reads 
       }
     }, 60_000);
   }
+});
+
+describe('r397 · the batched per-type reads answer what the single reads answer, item for item', () => {
+  it('leaveEntitlementBreakdowns = leaveEntitlementBreakdown for every type × several dates, both employments', async () => {
+    const all = Object.values(types);
+    const dates = [TODAY, `${YEAR}-12-31`, `${YEAR - 1}-12-31`, `${YEAR - 1}-06-30`, addDays(TODAY, 45)];
+    for (const e of [emps.rich, emps.rehired, emps.empty]) {
+      const items = all.flatMap((leaveTypeId) => dates.map((asOf) => ({ leaveTypeId, asOf })));
+      const batched = await leaveEntitlementBreakdowns(e.ctx, e.employmentId, items, 'en');
+      const single = [];
+      for (const i of items) single.push(await leaveEntitlementBreakdown(e.ctx, e.employmentId, i.leaveTypeId, i.asOf, 'en'));
+      expect(batched).toEqual(single);
+      if (e === emps.rich) {
+        // Non-vacuity: the comparison crossed every entitlement shape the resolver short-circuits on.
+        const statuses = new Set(single.map((x) => x?.entitlementStatus));
+        expect(statuses.has('no_eligibility_match'), [...statuses].join()).toBe(true);
+        expect(single.some((x) => x?.entitlementTemplateName === 'Hospitalisation table'), 'the sole-table path').toBe(true);
+        expect(single.some((x) => x != null && x.balance !== 0)).toBe(true);
+      }
+    }
+  }, 120_000);
+
+  it('leaveTypeApplySummaries = leaveTypeApplySummary for every type, borrower and source included', async () => {
+    const all = Object.values(types);
+    for (const e of [emps.rich, emps.rehired, emps.empty]) {
+      const batched = await leaveTypeApplySummaries(e.ctx, e.employmentId, all);
+      for (const leaveTypeId of all) {
+        expect(batched.get(leaveTypeId), leaveTypeId).toEqual(await leaveTypeApplySummary(e.ctx, { employmentId: e.employmentId, leaveTypeId }));
+      }
+      expect(batched.size).toBe(all.length);
+    }
+    // Non-vacuity: the borrower's pending days reserve ANNUAL's balance, and both report it.
+    const rich = await leaveTypeApplySummaries(emps.rich.ctx, emps.rich.employmentId, [types.annual, types.borrower, types.repl]);
+    expect(rich.get(types.annual)!.pending).toBeGreaterThan(0.5); // the half day + the two borrower days
+    expect(rich.get(types.borrower)!.pending).toBe(rich.get(types.annual)!.pending);
+    expect(rich.get(types.annual)!.balance).not.toBe(0);
+    expect(rich.get(types.repl)!.expiringSoon).not.toBeNull();
+  }, 120_000);
 });
 
 describe('r397 · statement budget for one My Leave load', () => {

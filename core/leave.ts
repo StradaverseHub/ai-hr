@@ -1856,6 +1856,110 @@ export async function leaveTypeApplySummary(
   });
 }
 
+/** One leave type's apply-popup summary — `leaveTypeApplySummary`'s own return shape. */
+export type LeaveTypeApplySummary = Awaited<ReturnType<typeof leaveTypeApplySummary>>;
+
+/**
+ * r397 — `leaveTypeApplySummary` for SEVERAL leave types of ONE employee, in ONE transaction and a fixed number
+ * of statements, keyed by leave type id. The My Leave dashboard asked the single read once per card: one
+ * transaction and six statements per leave type, every one a `where leave_type_id = $1` repeat of the last.
+ *
+ * THE SAME FIGURES, BY THE SAME SQL, GROUPED — never re-derived in JavaScript:
+ *   · the source of each type     — `balance_source_type_id`, one `id in (…)` read (resolveBalanceSourceTypeId:
+ *                                    the type's own id when it has no source or is not visible);
+ *   · balance                     — `coalesce(sum(days), 0)` per SOURCE, `group by leave_type_id` (leaveBalance);
+ *   · taken                       — `coalesce(-sum(days) filter (where entry_type = 'debit'), 0)` per source;
+ *   · the spenders of each source — the source plus every type whose source it is (balanceSpenderTypeIds);
+ *   · pending                     — `coalesce(sum(days - coalesce(unpaid_days, 0)), 0)` over each source's OWN
+ *                                    spender set, summed in SQL per source (pendingLeaveDays), so a request
+ *                                    is counted for every source whose set holds its type, exactly as the
+ *                                    per-source read counted it — and never twice within one set;
+ *   · essViewConfig / role / code — the asked type's own row (the same select, `id in (…)`);
+ *   · expiringSoon                — replacementExpiringSoonTx, for a Replacement Leave type while the Leave
+ *                                    Credit register is live, as before; asked once, it reads no leave type.
+ * A missing group is the empty sum: 0, which is what `coalesce(sum(…), 0)` returned for the single read.
+ * The rounding is the single read's own (`round2` of the same numbers). The single read is untouched and
+ * remains what the Apply popup and every other caller use.
+ */
+export async function leaveTypeApplySummaries(
+  ctx: SessionContext,
+  employmentId: string,
+  leaveTypeIds: readonly string[],
+): Promise<Map<string, LeaveTypeApplySummary>> {
+  const ids = [...new Set(leaveTypeIds)];
+  if (ids.length === 0) return new Map();
+  return withTenant(ctx, async (tx) => {
+    const typeRows = await tx
+      .select({ id: leaveType.id, src: leaveType.balanceSourceTypeId, essViewConfig: leaveType.essViewConfig, role: leaveType.role, code: leaveType.code })
+      .from(leaveType)
+      .where(inArray(leaveType.id, ids));
+    const typeById = new Map(typeRows.map((r) => [r.id, r]));
+    const sourceOf = new Map(ids.map((id) => [id, typeById.get(id)?.src ?? id]));
+    const sources = [...new Set(sourceOf.values())];
+    const [balanceRows, takenRows, borrowerRows] = await Promise.all([
+      tx
+        .select({ typeId: leaveLedger.leaveTypeId, bal: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
+        .from(leaveLedger)
+        .where(and(eq(leaveLedger.employmentId, employmentId), inArray(leaveLedger.leaveTypeId, sources)))
+        .groupBy(leaveLedger.leaveTypeId),
+      tx
+        .select({
+          typeId: leaveLedger.leaveTypeId,
+          taken: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'debit'), 0)`,
+        })
+        .from(leaveLedger)
+        .where(and(eq(leaveLedger.employmentId, employmentId), inArray(leaveLedger.leaveTypeId, sources)))
+        .groupBy(leaveLedger.leaveTypeId),
+      tx
+        .select({ id: leaveType.id, src: leaveType.balanceSourceTypeId })
+        .from(leaveType)
+        .where(inArray(leaveType.balanceSourceTypeId, sources)),
+    ]);
+    // Each source's spender set, de-duplicated within the set (the single read's `inArray` is a set too).
+    const spenders = new Map(sources.map((src) => [src, new Set<string>([src])]));
+    for (const b of borrowerRows) if (b.src != null) spenders.get(b.src)?.add(b.id);
+    const pairSrc: string[] = [];
+    const pairType: string[] = [];
+    for (const [src, set] of spenders) {
+      for (const t of set) {
+        pairSrc.push(src);
+        pairType.push(t);
+      }
+    }
+    const pendingRows = (await tx.execute(
+      sql`select m.src::text as src, coalesce(sum(${leaveRequest.days} - coalesce(${leaveRequest.unpaidDays}, 0)), 0) as pending
+          from unnest(${`{${pairSrc.join(',')}}`}::uuid[], ${`{${pairType.join(',')}}`}::uuid[]) as m(src, type_id)
+          join ${leaveRequest} on ${leaveRequest.leaveTypeId} = m.type_id
+          where ${leaveRequest.employmentId} = ${employmentId} and ${leaveRequest.status} = 'pending'
+          group by m.src`,
+    )) as unknown as { src: string; pending: string }[];
+    const balanceBy = new Map(balanceRows.map((r) => [r.typeId, Number(r.bal ?? 0)]));
+    const takenBy = new Map(takenRows.map((r) => [r.typeId, r.taken]));
+    const pendingBy = new Map(pendingRows.map((r) => [r.src, Number(r.pending ?? 0)]));
+    let expiring: Promise<number> | null = null;
+    const out = new Map<string, LeaveTypeApplySummary>();
+    for (const id of ids) {
+      const sourceTypeId = sourceOf.get(id)!;
+      const balance = balanceBy.get(sourceTypeId) ?? 0;
+      const pending = pendingBy.get(sourceTypeId) ?? 0;
+      const lt = typeById.get(id);
+      const expiringSoon =
+        leaveTypeIs(lt, 'replacement') && leaveCreditRegisterLive(ctx)
+          ? await (expiring ??= replacementExpiringSoonTx(tx, employmentId, todayInKualaLumpur()))
+          : null;
+      out.set(id, {
+        pending: round2(pending),
+        taken: round2(Number(takenBy.get(sourceTypeId) ?? 0)),
+        balance: round2(balance),
+        available: round2(balance - pending),
+        expiringSoon,
+        essViewConfig: (lt?.essViewConfig ?? null) as Record<string, boolean> | null,
+      });
+    }
+    return out;
+  });
+}
+
 // ── Shared Leave Group enforcement (r88, feedback 1ef1cf95; the rules themselves R44 4c48fd1f + r82a) ──
 // The two rules are unchanged and both enforcement points are unchanged — APPLY and APPROVAL. What moved is
 // WHERE the group is looked up: a group is now tenant-level with leave-type members (leave_shared_group /

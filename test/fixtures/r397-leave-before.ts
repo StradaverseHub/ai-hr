@@ -22,7 +22,8 @@ import {
   myEmployment,
 } from '../../core/read';
 import { canApplyLeaveOnBehalf } from '../../core/leave';
-import { myLeaveDashboard } from '../../core/my-leave';
+// The pre-r397 dashboard, verbatim (its per-type reads were batched by r397).
+import { myLeaveDashboardBefore as myLeaveDashboard } from './r397-my-leave-dashboard-before';
 import { sharedLeaveGroupBalances } from '../../core/leave-shared-group';
 import {
   leaveCreditOfferForEmployment,
