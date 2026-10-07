@@ -331,6 +331,7 @@ describe('r413 · the catalog', () => {
       form: 'CP22',
       previewPath: '/payroll/cp22/{employmentId}/preview',
     });
-    expect(MY_OFFICIAL_ARTWORK.map((o) => o.id)).toEqual(['my.cp22', 'my.cp22a']);
+    // r415 — CP21 [Pin.1/2025] joined as the third (test/r415-cp21-particulars.test.ts pins its entry).
+    expect(MY_OFFICIAL_ARTWORK.map((o) => o.id)).toEqual(['my.cp22', 'my.cp22a', 'my.cp21']);
   });
 });

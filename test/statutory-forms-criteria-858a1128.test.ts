@@ -185,9 +185,11 @@ describe('every registered form reaches the directory, with the status it alread
    * `my.cp22` remains the ONLY `official` row, which is the claim that costs the most if it is untrue.
    */
   // r413 — CP22A was BUILT on LHDN's own artwork and joined the official whitelist; no existing form moved.
+  // r415 — CP21 likewise (LHDN's CP21 [Pin.1/2025]); it was a planned form, so again no existing form moved.
+  // The shared caption ("The government’s own printed form, filled in from your payroll") is true of it too.
   it('moves no form between fidelity statuses', () => {
     const official = [...MY_REPORTS, ...MY_STATUTORY_LINKS].filter((e) => e.fidelity === 'official');
-    expect(official.map((e) => e.id)).toEqual(['my.cp22', 'my.cp22a']);
+    expect(official.map((e) => e.id)).toEqual(['my.cp22', 'my.cp22a', 'my.cp21']);
     // r402 — one EA entry since the per-language pair merged; its status is unchanged.
     expect(EA_LINKS.map((l) => l.fidelity)).toEqual(['agency-layout']);
   });

@@ -1826,6 +1826,24 @@ export const CP21_ESOS_ITEM = 'Manfaat Skim Pemberian Saham (ESOS)';
 
 const RESIDENT_SCHEMES = new Set(['resident', 'rep', 'knowledge_worker', 'c_suite']);
 
+/**
+ * CP22A's section-B line numbers → CP21's (see the doc-comment above): 1–10 as they are; CP22A's 12 and the
+ * ESOS benefit → CP21's 11, each named. Absent stays absent (blank); a present zero stays a zero. Pure.
+ */
+export function cp21LinesFrom(pay: Pick<Cp22aPdfData['pay'], 'lines' | 'line12Items' | 'esos'>): {
+  lines: Partial<Record<Cp21PayLine, number>>;
+  line11Items: string[];
+} {
+  const lines: Partial<Record<Cp21PayLine, number>> = {};
+  for (const n of [1, 3, 4, 5, 6, 7, 8, 9] as const) if (pay.lines[n] != null) lines[n] = pay.lines[n];
+  const line11Items = [...pay.line12Items];
+  if (pay.lines[12] != null || pay.esos != null) {
+    lines[11] = Math.round(((pay.lines[12] ?? 0) + (pay.esos ?? 0)) * 100) / 100;
+    if (pay.esos) line11Items.push(CP21_ESOS_ITEM);
+  }
+  return { lines, line11Items };
+}
+
 export async function cp21Particulars(
   ctx: SessionContext,
   p: { employmentId: string; today?: string; departureDate?: string | null },
@@ -1912,14 +1930,7 @@ export async function cp21Particulars(
     bearsTax,
   });
 
-  // CP22A's line numbers → CP21's (see the doc-comment): 1–10 as they are, 12 + ESOS → 11.
-  const lines: Partial<Record<Cp21PayLine, number>> = {};
-  for (const n of [1, 3, 4, 5, 6, 7, 8, 9] as const) if (pay.lines[n] != null) lines[n] = pay.lines[n];
-  const line11Items = [...pay.line12Items];
-  if (pay.lines[12] != null || pay.esos != null) {
-    lines[11] = Math.round(((pay.lines[12] ?? 0) + (pay.esos ?? 0)) * 100) / 100;
-    if (pay.esos) line11Items.push(CP21_ESOS_ITEM);
-  }
+  const { lines, line11Items } = cp21LinesFrom(pay);
 
   const corrAddr = base.employee.correspondenceAddress;
   const corrTail = [[corrAddr.postcode, corrAddr.town].filter(Boolean).join(' '), corrAddr.state].filter(Boolean).join(', ');

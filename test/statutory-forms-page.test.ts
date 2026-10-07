@@ -176,8 +176,10 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
     // `my.pcb2ii.en`/`my.pcb2ii.ms` are `my.pcb2ii`, each with a Version choice; the former ids redirect.
     // r413 (item 79f3f64d, step 2) — `my.cp22a` JOINED this list, from MY_PLANNED_FORMS, a door for the
     // same reason TP1 is: one person's notice, no company-wide table for a ReportDef to generate.
+    // r415 (item 79f3f64d, step 3) — `my.cp21` JOINED it the same way, for the same reason.
     expect(MY_STATUTORY_LINKS.map((l) => l.id).sort()).toEqual([
       'my.borang-e',
+      'my.cp21',
       'my.cp22',
       'my.cp22a',
       'my.ea',
@@ -220,7 +222,7 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
       // 4) and what stays unbuilt — SIP 2 / SIP 2A — is planned under its own name, `perkeso.sip-2`.
       'perkeso.employee-registration',
       'perkeso.sip-2',
-      'lhdn.cp21',
+      // r415 — `lhdn.cp21` LEFT, built, to MY_STATUTORY_LINKS as `my.cp21` at the same shelfOrder 8.
       // r413 — `lhdn.cp22a` LEFT, built, to MY_STATUTORY_LINKS as `my.cp22a` at the same shelfOrder 10.
       'lhdn.cp39a',
     ]);
@@ -880,7 +882,8 @@ describe('the four pins', () => {
       ...MY_STATUTORY_LINKS.filter((l) => l.fidelity === 'official').map((l) => l.id),
     ].sort();
     expect(official).toEqual(MY_OFFICIAL_ARTWORK.map((o) => o.id).sort());
-    expect(official).toEqual(['my.cp22', 'my.cp22a']);
+    // r415 — CP21 [Pin.1/2025] is the third, by the same door: its artwork and its map (lib/cp21-fields.ts).
+    expect(official).toEqual(['my.cp21', 'my.cp22', 'my.cp22a']);
     // …and the claim is true: each artwork and its field map are both on disk.
     for (const o of MY_OFFICIAL_ARTWORK) {
       expect(fs.existsSync(path.join(ROOT, o.artwork)), o.artwork).toBe(true);
@@ -1063,7 +1066,9 @@ describe('what the shelves say about the forms that are not built', () => {
   const NEVER_BUILT = [
     // r412 (item e74af58c, step 2) — 'Borang 8B' LEFT this list: it was BUILT (`my.borang-8b`). SIP 2 / SIP 2A
     // stay: the EIS contribution schedule that was built is not a registration form.
-    'BBCB', 'SIP 2', 'SIP 2A', 'TP3', 'PCB 2(II)', 'CP21', 'CP39A',
+    // r415 (item 79f3f64d, step 3) — 'CP21' LEFT this list: it was BUILT (`my.cp21`, a statutory LINK, so it
+    // never was and is not a registered report; its name still reaches the screens only through the catalog).
+    'BBCB', 'SIP 2', 'SIP 2A', 'TP3', 'PCB 2(II)', 'CP39A',
     'HRDF Contribution', 'PTPTN Deduction', 'Tabung Haji Deduction', 'Union Fee',
   ];
 
