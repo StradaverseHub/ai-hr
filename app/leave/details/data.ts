@@ -84,7 +84,9 @@ export function leaveDetailsAsOf(raw: unknown, today: string = todayInKualaLumpu
   const v = first(raw);
   if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return today;
   const t = Date.parse(`${v}T00:00:00Z`);
-  return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === v ? v : today;
+  // Postgres has no year 0 and JS round-trips it, so bound the year to what a leave record can hold.
+  const year = Number(v.slice(0, 4));
+  return year >= 1900 && year <= 2999 && Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === v ? v : today;
 }
 
 /** The leave-code search: trimmed, at most 40 characters, absent when empty. */
