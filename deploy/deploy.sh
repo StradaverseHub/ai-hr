@@ -294,7 +294,16 @@ dstate phase build
 #
 # Still never typescript.ignoreBuildErrors: the build's type pass catches RSC client/server boundary
 # errors that tsc alone does not, which is the whole reason it runs here.
-NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=4096" pnpm build
+# 4096 -> 6144 on 2026-10-07 deploying r394, which died as a V8 self-OOM at ~4030 MB, 18 minutes into
+# "Running TypeScript" — the same wall, one round later. The note above made growing swap the precondition for
+# the next bump, and it has been met: /swap2.img (8 GB) now sits beside /swap.img (3.8 GB), so RAM+swap is
+# ~15.7 GB against the 5.6 GB that note measured. 6144 + ~0.5 GB overhead is ~42% of that, well clear of the
+# kernel-kill regime. It does not make the build fast (the tail spills to disk-backed swap); RAM on the VM is
+# still the durable fix. r394's 232 one-line loading.tsx files did NOT grow the type pass: the generated route
+# validator was byte-identical in size with and without them (3157 lines), so this is the tree's growth.
+# ⚠️ And a failed build leaves `.next` without a BUILD_ID: restarting the service then has NOTHING to start
+# (r394 took the app down that way, 12:05 MYT). After a failed build, redeploy; never restart.
+NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=6144" pnpm build
 # The build id this source produced, recorded the instant the build succeeded and nowhere else.
 # `deploy-state.sh status` compares it against the .next/BUILD_ID physically on disk, which is how a
 # later deploy that died before finishing its own build is distinguishable from a clean one.
