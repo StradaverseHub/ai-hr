@@ -34,7 +34,7 @@
  * (r411: this used to say KWSP publishes none, which nobody here checked). So there is nothing to
  * overlay: the page is drawn, and the catalog entry declares `agency-layout` —
  * never `official`, which in this codebase means the government's own published page and belongs only to
- * the forms in `MY_OFFICIAL_ARTWORK` (CP22, CP22A). test/statutory-forms-page.test.ts pins that.
+ * the forms in `MY_OFFICIAL_ARTWORK` (CP22, CP22A, CP21). test/statutory-forms-page.test.ts pins that.
  */
 
 /** One employee's line on the form — the specimen's own columns, in its own order. */

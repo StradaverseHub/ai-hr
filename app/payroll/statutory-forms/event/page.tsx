@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
-import { complianceWorklist, listStatutoryCatalog } from '@/core/reporting';
+import { activeStaff, complianceWorklist, listStatutoryCatalog } from '@/core/reporting';
 import { Card, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { Field } from '@/components/monolith/field';
 import { MONO_LABEL, MONO_UNDERLINE_FIELD as MONO_FIELD } from '@/components/monolith/classes';
@@ -26,6 +26,13 @@ import { EVENT_CONTINUE, EVENT_SCREEN, eventLinkOf, eventRefusalFrom } from './s
  * redirects to the form's own preview (CP22's review screen, unchanged; CP22A's viewer). Nobody chosen
  * brings the operator back here with the refusal in words, and an empty list says why it is empty and
  * offers no Continue — no blank form is produced.
+ *
+ * r415 (item 79f3f64d, step 3) — A FORM WHOSE EVENT NOTHING RECORDS. CP21 (an employee leaving Malaysia)
+ * opens here too, but no record says who is leaving the country, so its entry declares `people: 'active'`
+ * and the list is every ACTIVE employee of the company (`activeStaff`), with the same name search. Those
+ * rows have no event, no due date and no status — LHDN's 30-day clock runs from a departure date only the
+ * operator knows, which they type on the next screen — so the table shows the name, position and joining
+ * date instead, and says so above the list.
  *
  * GATED like the directory: `scopedAdmin`, an out-of-scope company is never listed or honoured, and the
  * list is RLS-read. It shows names and leaving/joining dates, so it is registered in the function-access
@@ -59,7 +66,14 @@ export default async function EventSelectPage({
   const companyId = sp.companyId && companies.some((c) => c.id === sp.companyId) ? sp.companyId : (companies[0]?.id ?? '');
   const companyName = companies.find((c) => c.id === companyId)?.name ?? '—';
   const q = (sp.q ?? '').slice(0, 100).trim();
-  const rows = companyId ? await complianceWorklist(s, { companyId, form: link.event.form, nameQuery: q }) : [];
+  const ev = link.event;
+  const listsActive = ev.people === 'active';
+  const rows =
+    companyId && !listsActive && ev.form !== 'CP21'
+      ? await complianceWorklist(s, { companyId, form: ev.form, nameQuery: q })
+      : [];
+  const staff = companyId && listsActive ? await activeStaff(s, { companyId, nameQuery: q }) : [];
+  const count = listsActive ? staff.length : rows.length;
   const refusal = eventRefusalFrom(sp.refusal);
 
   // The form's own short name, as the mockup heads the screen ("CP22A — choose the employee"); the full
@@ -123,12 +137,58 @@ export default async function EventSelectPage({
           <input type="hidden" name="form" value={formId} />
           <input type="hidden" name="companyId" value={companyId} />
           {q && <input type="hidden" name="q" value={q} />}
-          <p className="text-xs text-muted-foreground">{t(isLeaving ? 'windowCP22A' : 'windowCP22')}</p>
+          <p className="text-xs text-muted-foreground">
+            {listsActive ? t('windowActive') : t(isLeaving ? 'windowCP22A' : 'windowCP22')}
+          </p>
 
-          {rows.length === 0 ? (
+          {count === 0 ? (
             <p data-event-empty className="py-6 text-center text-sm text-muted-foreground">
-              {q ? t('emptySearch', { q }) : t(isLeaving ? 'emptyCP22A' : 'emptyCP22', { company: companyName })}
+              {q
+                ? t('emptySearch', { q })
+                : listsActive
+                  ? t('emptyActive', { company: companyName })
+                  : t(isLeaving ? 'emptyCP22A' : 'emptyCP22', { company: companyName })}
             </p>
+          ) : listsActive ? (
+            <div className="overflow-x-auto">
+              <table data-event-active className="w-full text-sm sm:min-w-[36rem]">
+                <thead className={`border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground monolith:border-ink ${MONO_LABEL}`}>
+                  <tr>
+                    <th className="px-3 py-2 font-medium">{t('colName')}</th>
+                    <th className="hidden px-3 py-2 font-medium sm:table-cell">{t('colPosition')}</th>
+                    <th className="px-3 py-2 font-medium">{t('colJoined')}</th>
+                    <th className="px-3 py-2 text-right font-medium">{t('colSelect')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border monolith:divide-hairline">
+                  {staff.map((w, i) => {
+                    const id = `event-pick-${w.employmentId}`;
+                    return (
+                      <tr key={w.employmentId} data-event-row>
+                        <td className="px-3 py-3 font-medium">
+                          <label htmlFor={id} className="cursor-pointer">
+                            {w.name}
+                          </label>
+                        </td>
+                        <td className="hidden px-3 py-3 text-muted-foreground sm:table-cell">{w.title ?? '—'}</td>
+                        <td className="px-3 py-3 font-mono text-xs tabular-nums">{human(w.hiredOn)}</td>
+                        <td className="px-3 py-3 text-right">
+                          <input
+                            id={id}
+                            type="radio"
+                            name="employmentId"
+                            value={w.employmentId}
+                            defaultChecked={staff.length === 1 && i === 0}
+                            aria-label={t('selectLabel', { name: w.name })}
+                            className="h-5 w-5 cursor-pointer accent-primary monolith:accent-ink"
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm sm:min-w-[36rem]">
@@ -199,7 +259,7 @@ export default async function EventSelectPage({
             </Link>
             <button
               data-event-continue
-              disabled={rows.length === 0}
+              disabled={count === 0}
               className={`${btnPrimary} disabled:cursor-not-allowed disabled:opacity-50 monolith:h-11 monolith:rounded-full monolith:bg-ink monolith:px-5 monolith:text-bone`}
             >
               {t('continue')}

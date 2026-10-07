@@ -40,7 +40,7 @@
  * reference "Income Tax CP39.pdf" (Producer = Developer Express Inc. DXperience v23.2.5, created
  * 2026-08-14), and the same as the EPF and SOCSO "agency reference" attachments HANDOFF records. It is
  * deliberately NOT in `public/forms/`, which holds only the agency artwork in `MY_OFFICIAL_ARTWORK`
- * (CP22, and CP22A since r413), and only those entries say `official`. Understating is safe; overstating is the failure the whole vocabulary exists to stop.
+ * (CP22; CP22A since r413; CP21 since r415), and only those entries say `official`. Understating is safe; overstating is the failure the whole vocabulary exists to stop.
  *
  * ── AND IT IS NOT A SUBMISSION ────────────────────────────────────────────────────────────────────
  * LHDN stopped accepting paper CP39 in September 2019; the filing goes through e-PCB / e-Data PCB /

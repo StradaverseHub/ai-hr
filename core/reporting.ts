@@ -27,6 +27,7 @@ import {
   employeeDependent,
   employeeStatutoryMy,
   employment,
+  employmentTaxSelectionMy,
   employmentPayComponent,
   payComponent,
   payrollBatch,
@@ -58,6 +59,7 @@ import type { ReportData } from '../lib/report-export';
 import type { Cp22Address, Cp22PdfData } from '../lib/cp22-pdf';
 // r413 — the same reasoning: TYPE-ONLY, so no pdf-lib reaches this module.
 import type { Cp22aCessation, Cp22aPayLine, Cp22aPdfData } from '../lib/cp22a-pdf';
+import type { Cp21PayLine, Cp21PdfData } from '../lib/cp21-pdf';
 // r292 — `resolvePayrollPermission` is REUSED, not re-implemented: `markReportFiled` is gated on the same
 // two-layer granular mechanism payroll.unlock / payroll.close use, so a customer configures who may file
 // from the screen they already configure every other high-risk payroll authority from.
@@ -1552,6 +1554,111 @@ const CP22A_LINE12_PARTS = [
   { field: 'annuity', label: 'Anuiti' },
 ] as const;
 
+/**
+ * r415 — THE YEAR'S PAY SO FAR, ON LHDN'S CP22A LINE NUMBERS, FOR EVERY LHDN NOTICE THAT ASKS FOR IT.
+ *
+ * Moved out of `cp22aParticulars` word for word (r413's derivation, its two verify fixes included) so the
+ * CP21 [Pin.1/2025], whose section B is the same eleven lines plus nothing, reads the SAME derivation rather
+ * than a copy of it. Everything the doc-comment on `Cp22aParticulars` says about section B is true here:
+ * the EA engine narrowed to processed batches up to `throughPeriod` with no whole-year override; blank, not
+ * 0.00, for a line nothing could reach; line 6 blank when the employer bears the tax and no pay item carries
+ * it; "dari" 1 January or the hire date; "hingga" the end of the last processed period, never past `capAt`.
+ *
+ * `capAt` is the date the form's own header gives as the end (CP22A: the leaving date; CP21: the expected
+ * departure date when one is typed, else nothing).
+ */
+async function lhdnYearSoFar(
+  ctx: SessionContext,
+  p: {
+    employmentId: string;
+    companyId: string;
+    year: string;
+    throughPeriod: string;
+    hiredOn: string | null;
+    capAt: string | null;
+    bearsTax: boolean | null;
+  },
+): Promise<{
+  ea: EaStatement | null;
+  pay: Cp22aPdfData['pay'];
+  deductions: Cp22aPdfData['deductions'];
+}> {
+  const { year, throughPeriod } = p;
+  // The last PROCESSED pay period inside [year-01, throughPeriod], for this employer.
+  const lastPeriod = await withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ last: sql<string | null>`max(${payrollBatch.payPeriod})` })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .where(
+        and(
+          eq(payslip.employmentId, p.employmentId),
+          eq(payrollBatch.companyId, p.companyId),
+          inArray(payrollBatch.status, ['processed', 'closed']),
+          gte(payrollBatch.payPeriod, `${year}-01`),
+          lte(payrollBatch.payPeriod, throughPeriod),
+        ),
+      );
+    return row?.last ?? null;
+  });
+
+  // The EMPLOYER's pack — the callers' `cp22Particulars` already refused a company no pack owns.
+  const pack = packFor(await companyCountry(ctx, p.companyId));
+  const ea = lastPeriod && pack
+    ? await pack.eaStatement(ctx, {
+        employmentId: p.employmentId,
+        year,
+        companyId: p.companyId,
+        throughPeriod,
+        processedOnly: true,
+        applyOverrides: false,
+      })
+    : null;
+
+  const lines: Partial<Record<Cp22aPayLine, number>> = {};
+  const line12Items: string[] = [];
+  let esos: number | null = null;
+  let deductions: Cp22aPdfData['deductions'] = { pcb: null, zakat: null, epf: null };
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  if (ea) {
+    const b = ea.partB;
+    const mapped = new Set<string>(ea.routing.active ? (ea.routing.mappedFields ?? []) : []);
+    const has = (field: string, value: number) => value !== 0 || mapped.has(field);
+    lines[1] = r2(b.grossSalary);
+    lines[3] = r2(b.bonus + b.directorFee);
+    // ⚠️ r413 verify (HIGH) — line 6 is captioned "termasuk cukai ditanggung oleh majikan". When the employer
+    // bears the tax (A7 Ya) but no pay item carries that tax, the EA engine has nothing for it, and a figure
+    // here would understate income on a form that says Ya. Blank — never a number we cannot stand behind.
+    if (!(p.bearsTax === true && !has('taxBorneByEmployer', b.taxBorneByEmployer))) {
+      lines[6] = r2(b.allowances + b.tipsPerquisites + b.taxBorneByEmployer);
+    }
+    if (has('gratuity', b.gratuity)) lines[4] = r2(b.gratuity);
+    if (has('compensation', b.compensation)) lines[5] = r2(b.compensation);
+    if (has('pension', ea.partC.pension)) lines[7] = r2(ea.partC.pension);
+    if (has('benefitsInKind', b.benefitsInKind)) lines[8] = r2(b.benefitsInKind);
+    if (has('livingAccommodation', b.livingAccommodation)) lines[9] = r2(b.livingAccommodation);
+    const parts12 = { arrears: b.arrears, unapprovedFundRefund: b.unapprovedFundRefund, annuity: ea.partC.annuity };
+    if (CP22A_LINE12_PARTS.some(({ field }) => has(field, parts12[field]))) {
+      lines[12] = r2(CP22A_LINE12_PARTS.reduce((sum, { field }) => sum + parts12[field], 0));
+      for (const { field, label } of CP22A_LINE12_PARTS) if (parts12[field] !== 0) line12Items.push(label);
+    }
+    if (has('esos', b.esos)) esos = r2(b.esos);
+    deductions = { pcb: r2(ea.partD.mtd), zakat: r2(ea.partD.zakat), epf: r2(ea.partE.epf) };
+  }
+
+  const yearStart = `${year}-01-01`;
+  const hired = p.hiredOn;
+  const from = lastPeriod ? (hired && hired > yearStart ? hired : yearStart) : null;
+  const periodEnd = lastPeriod
+    ? `${lastPeriod}-${String(daysInMonth(Number(lastPeriod.slice(0, 4)), Number(lastPeriod.slice(5, 7)))).padStart(2, '0')}`
+    : null;
+  // r413 verify (MEDIUM) — "hingga" never runs past the date the form's own header says the employment ended:
+  // once the leaving month's payroll is processed, the month end would otherwise print a date after it.
+  const to = periodEnd && p.capAt && p.capAt < periodEnd ? p.capAt : periodEnd;
+
+  return { ea, pay: { from, to, lines, line12Items, esos }, deductions };
+}
+
 export async function cp22aParticulars(
   ctx: SessionContext,
   p: { employmentId: string; today?: string },
@@ -1610,79 +1717,17 @@ export async function cp22aParticulars(
   if (!extra.emp?.terminatedOn) return null;
   const cessationDate = extra.emp.terminatedOn;
   const year = cessationDate.slice(0, 4);
-  const throughPeriod = cessationDate.slice(0, 7);
-
-  // The last PROCESSED pay period inside [year-01, cessation month], for this employer.
-  const lastPeriod = await withTenant(ctx, async (tx) => {
-    const [row] = await tx
-      .select({ last: sql<string | null>`max(${payrollBatch.payPeriod})` })
-      .from(payslip)
-      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-      .where(
-        and(
-          eq(payslip.employmentId, p.employmentId),
-          eq(payrollBatch.companyId, base.companyId),
-          inArray(payrollBatch.status, ['processed', 'closed']),
-          gte(payrollBatch.payPeriod, `${year}-01`),
-          lte(payrollBatch.payPeriod, throughPeriod),
-        ),
-      );
-    return row?.last ?? null;
+  // r415 — the year-so-far derivation moved, UNCHANGED, into `lhdnYearSoFar` above, so the CP21 reads the
+  // same lines, the same line-6 rule and the same "hingga" as this form instead of a second copy of them.
+  const { ea, pay, deductions } = await lhdnYearSoFar(ctx, {
+    employmentId: p.employmentId,
+    companyId: base.companyId,
+    year,
+    throughPeriod: cessationDate.slice(0, 7),
+    hiredOn: base.employee.commencementDate,
+    capAt: cessationDate,
+    bearsTax: extra.bearsTax,
   });
-
-  // The EMPLOYER's pack — `cp22Particulars` already refused a company no pack owns.
-  const pack = packFor(await companyCountry(ctx, base.companyId));
-  const ea = lastPeriod && pack
-    ? await pack.eaStatement(ctx, {
-        employmentId: p.employmentId,
-        year,
-        companyId: base.companyId,
-        throughPeriod,
-        processedOnly: true,
-        applyOverrides: false,
-      })
-    : null;
-
-  const lines: Partial<Record<Cp22aPayLine, number>> = {};
-  const line12Items: string[] = [];
-  let esos: number | null = null;
-  let deductions: Cp22aPdfData['deductions'] = { pcb: null, zakat: null, epf: null };
-  const r2 = (n: number) => Math.round(n * 100) / 100;
-  if (ea) {
-    const b = ea.partB;
-    const mapped = new Set<string>(ea.routing.active ? (ea.routing.mappedFields ?? []) : []);
-    const has = (field: string, value: number) => value !== 0 || mapped.has(field);
-    lines[1] = r2(b.grossSalary);
-    lines[3] = r2(b.bonus + b.directorFee);
-    // ⚠️ r413 verify (HIGH) — line 6 is captioned "termasuk cukai ditanggung oleh majikan". When the employer
-    // bears the tax (A7 Ya) but no pay item carries that tax, the EA engine has nothing for it, and a figure
-    // here would understate income on a form that says Ya. Blank — never a number we cannot stand behind.
-    if (!(extra.bearsTax === true && !has('taxBorneByEmployer', b.taxBorneByEmployer))) {
-      lines[6] = r2(b.allowances + b.tipsPerquisites + b.taxBorneByEmployer);
-    }
-    if (has('gratuity', b.gratuity)) lines[4] = r2(b.gratuity);
-    if (has('compensation', b.compensation)) lines[5] = r2(b.compensation);
-    if (has('pension', ea.partC.pension)) lines[7] = r2(ea.partC.pension);
-    if (has('benefitsInKind', b.benefitsInKind)) lines[8] = r2(b.benefitsInKind);
-    if (has('livingAccommodation', b.livingAccommodation)) lines[9] = r2(b.livingAccommodation);
-    const parts12 = { arrears: b.arrears, unapprovedFundRefund: b.unapprovedFundRefund, annuity: ea.partC.annuity };
-    if (CP22A_LINE12_PARTS.some(({ field }) => has(field, parts12[field]))) {
-      lines[12] = r2(CP22A_LINE12_PARTS.reduce((sum, { field }) => sum + parts12[field], 0));
-      for (const { field, label } of CP22A_LINE12_PARTS) if (parts12[field] !== 0) line12Items.push(label);
-    }
-    if (has('esos', b.esos)) esos = r2(b.esos);
-    deductions = { pcb: r2(ea.partD.mtd), zakat: r2(ea.partD.zakat), epf: r2(ea.partE.epf) };
-  }
-
-  const yearStart = `${year}-01-01`;
-  const hired = base.employee.commencementDate;
-  const from = lastPeriod ? (hired && hired > yearStart ? hired : yearStart) : null;
-  const periodEnd = lastPeriod
-    ? `${lastPeriod}-${String(daysInMonth(Number(lastPeriod.slice(0, 4)), Number(lastPeriod.slice(5, 7)))).padStart(2, '0')}`
-    : null;
-  // r413 verify (MEDIUM) — "hingga" never runs past the date the form's own header says the employment ended:
-  // once the leaving month's payroll is processed, the month end would otherwise print a date after it.
-  const to = periodEnd && cessationDate < periodEnd ? cessationDate : periodEnd;
 
   const corrAddr = base.employee.correspondenceAddress;
   const corrTail = [[corrAddr.postcode, corrAddr.town].filter(Boolean).join(' '), corrAddr.state].filter(Boolean).join(', ');
@@ -1719,7 +1764,7 @@ export async function cp22aParticulars(
       correspondenceAddress: [...corrAddr.lines, corrTail].map((s) => s.trim()).filter(Boolean),
     },
     spouse: base.spouse ? { fullName: base.spouse.fullName, icOrPassport: base.spouse.icOrPassport } : null,
-    pay: { from, to, lines, line12Items, esos },
+    pay,
     deductions,
     officer,
     today,
@@ -1730,6 +1775,243 @@ export async function cp22aParticulars(
       rep: { name: null, icNo: null, relationship: null, address: [], phone: null },
     },
   };
+}
+
+// ── CP21 (the notice of an employee leaving Malaysia, r415 / 79f3f64d step 3) ──────────────────────────
+/**
+ * Everything LHDN's CP21 [Pin.1/2025] can be filled from, for one employee.
+ *
+ * BUILT ON `cp22Particulars` AND `lhdnYearSoFar`, NOT BESIDE THEM. The employer block, the identity numbers,
+ * date of birth, nationality, telephone, correspondence address and the position title are the same facts
+ * the CP22 reads, under the same RLS and pack gate; section B and D are the CP22A's derivation, read once.
+ *
+ * NOTHING RECORDS AN INTENDED DEPARTURE, so the departure date (A3) is the OPERATOR'S, typed on the preview
+ * and passed in here as `departureDate` (lib/cp21-review.ts validates it). It decides the period:
+ *   the tax year is the departure year (section B: "bagi tahun beliau meninggalkan negara ini"), else
+ *   today's; payslips count up to the departure month, else up to today's month; "hingga" is the end of
+ *   the last processed period, never past the departure date when one is typed.
+ * NULL — the routes' 404 — only for what `cp22Particulars` refuses: an employment the caller cannot see and
+ * a company no pack owns. A CP21 is not refused for an employee with a leaving date: they may still be
+ * leaving the country.
+ *
+ * SECTION B, RENUMBERED FROM THE CP22A's LINES (lib/cp21-fields.ts): 1–10 are the same lines; CP21's 11
+ * "Bayaran-bayaran lain (jika ada, nyatakan)" takes CP22A's 12 (arrears, unapproved-fund refund, annuity);
+ * and because CP21 [Pin.1/2025] prints NO share-scheme line, the EA's ESOS benefit — employment income the
+ * EA reports — goes on line 11 too, NAMED on its "nyatakan", rather than being left off the total.
+ * DECISION (r415): that is the reading under which nothing the EA counts disappears from the form.
+ *
+ * A4 "Mastautin dalam tahun meninggalkan Malaysia". The column the brief named, employee_statutory_my's
+ * residency, is no longer the owner: since migration 0505 the per-employment, per-company
+ * `employment_tax_selection_my.scheme` is ("The Income Tax Resident field owns the scoped scheme",
+ * localization/my/tax-selection.ts). So A4 reads the CONFIGURED scheme exactly as `resolveTaxSelectionMY`
+ * computes it — the selection's scheme, else the legacy profile (tax_residency with is_resident) — and
+ * marks non_resident as Tidak and the resident schemes (resident, rep, knowledge_worker, c_suite: "Approved
+ * incentive categories are resident", setTaxProfileMY) as Ya. No selection and no profile: blank.
+ *
+ * A9 "Tempat lahir" has no column and stays blank (CP21_UNFILLABLE_REASONS). A10 "Jenis pekerjaan" is the
+ * current position title — on this form there is no separate "Jawatan" box for it to belong to.
+ *
+ * NO DOMAIN EVENT: a read. Downloading a CP21 is not filing one.
+ */
+export type Cp21Particulars = Omit<Cp21PdfData, 'typed'> & {
+  companyId: string;
+  /** The tax year section B covers. */
+  year: string;
+  unmappedPayItems: { code: string; name: string }[];
+  routingActive: boolean;
+};
+
+/** What goes on CP21's line-11 "nyatakan" for the ESOS benefit, in the form's language. */
+export const CP21_ESOS_ITEM = 'Manfaat Skim Pemberian Saham (ESOS)';
+
+const RESIDENT_SCHEMES = new Set(['resident', 'rep', 'knowledge_worker', 'c_suite']);
+
+export async function cp21Particulars(
+  ctx: SessionContext,
+  p: { employmentId: string; today?: string; departureDate?: string | null },
+): Promise<Cp21Particulars | null> {
+  const today = p.today ?? todayInKualaLumpur();
+  const base = await cp22Particulars(ctx, { employmentId: p.employmentId, today });
+  if (!base) return null;
+  const departure = p.departureDate ?? null;
+
+  const extra = await withTenant(ctx, async (tx) => {
+    const [corr] = await tx
+      .select({ personalEmail: person.personalEmail, primaryEmail: person.primaryEmail })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    const [profile] = await tx
+      .select({
+        bearsTax: employeeStatutoryMy.employerBearsTax,
+        taxResidency: employeeStatutoryMy.taxResidency,
+        isResident: employeeStatutoryMy.isResident,
+      })
+      .from(employment)
+      .innerJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    const [selection] = await tx
+      .select({ scheme: employmentTaxSelectionMy.scheme })
+      .from(employmentTaxSelectionMy)
+      .where(
+        and(
+          eq(employmentTaxSelectionMy.employmentId, p.employmentId),
+          eq(employmentTaxSelectionMy.companyId, base.companyId),
+        ),
+      )
+      .limit(1);
+    const [auth] = await tx
+      .select({ signatoryPersonId: companyStatutoryAuthority.signatoryPersonId })
+      .from(companyStatutoryAuthority)
+      .where(and(eq(companyStatutoryAuthority.companyId, base.companyId), eq(companyStatutoryAuthority.authority, 'lhdn')))
+      .limit(1);
+    // Section E — the company's LHDN signatory first, the same lookup cp22aParticulars makes.
+    const signatory = auth?.signatoryPersonId
+      ? ((
+          await tx
+            .select({ name: person.fullName, email: person.primaryEmail, title: position.title })
+            .from(person)
+            .leftJoin(employment, and(eq(employment.personId, person.id), eq(employment.companyId, base.companyId)))
+            .leftJoin(
+              assignment,
+              and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo), isNull(assignment.supersededAt)),
+            )
+            .leftJoin(position, eq(position.id, assignment.positionId))
+            .where(eq(person.id, auth.signatoryPersonId))
+            .orderBy(desc(assignment.validFrom))
+            .limit(1)
+        )[0] ?? null)
+      : null;
+    const sessionEmail = !signatory && ctx.personId
+      ? (await tx.select({ email: person.primaryEmail }).from(person).where(eq(person.id, ctx.personId)).limit(1))[0]?.email ?? null
+      : null;
+    return { corr, profile: profile ?? null, selection: selection ?? null, signatory, sessionEmail };
+  });
+
+  // A4 — the configured scheme, by resolveTaxSelectionMY's own `configured` rule.
+  const legacy = extra.profile
+    ? extra.profile.taxResidency === 'resident' && extra.profile.isResident === false
+      ? 'non_resident'
+      : extra.profile.taxResidency ?? (extra.profile.isResident === false ? 'non_resident' : 'resident')
+    : null;
+  const scheme = extra.selection?.scheme ?? legacy;
+  const resident = scheme === 'non_resident' ? false : scheme && RESIDENT_SCHEMES.has(scheme) ? true : null;
+  const bearsTax = extra.profile ? extra.profile.bearsTax : null;
+
+  const anchor = departure ?? today;
+  const year = anchor.slice(0, 4);
+  const { ea, pay, deductions } = await lhdnYearSoFar(ctx, {
+    employmentId: p.employmentId,
+    companyId: base.companyId,
+    year,
+    throughPeriod: anchor.slice(0, 7),
+    hiredOn: base.employee.commencementDate,
+    capAt: departure,
+    bearsTax,
+  });
+
+  // CP22A's line numbers → CP21's (see the doc-comment): 1–10 as they are, 12 + ESOS → 11.
+  const lines: Partial<Record<Cp21PayLine, number>> = {};
+  for (const n of [1, 3, 4, 5, 6, 7, 8, 9] as const) if (pay.lines[n] != null) lines[n] = pay.lines[n];
+  const line11Items = [...pay.line12Items];
+  if (pay.lines[12] != null || pay.esos != null) {
+    lines[11] = Math.round(((pay.lines[12] ?? 0) + (pay.esos ?? 0)) * 100) / 100;
+    if (pay.esos) line11Items.push(CP21_ESOS_ITEM);
+  }
+
+  const corrAddr = base.employee.correspondenceAddress;
+  const corrTail = [[corrAddr.postcode, corrAddr.town].filter(Boolean).join(' '), corrAddr.state].filter(Boolean).join(', ');
+  const officer = extra.signatory
+    ? { name: extra.signatory.name, designation: extra.signatory.title ?? null, email: extra.signatory.email ?? null }
+    : { name: base.declarant.name, designation: base.declarant.designation, email: base.declarant.name ? extra.sessionEmail : null };
+
+  return {
+    companyId: base.companyId,
+    year,
+    unmappedPayItems: ea?.routing.unmapped ?? [],
+    routingActive: ea?.routing.active ?? false,
+    employer: {
+      name: base.employer.name,
+      addressLines: base.employer.addressLines,
+      eNumber: base.employer.eNumber,
+      phone: base.employer.phone,
+    },
+    employee: {
+      fullName: base.employee.fullName,
+      icNo: base.employee.icNo,
+      passportNo: base.employee.passportNo,
+      taxNo: base.employee.incomeTaxNo,
+      commencementDate: base.employee.commencementDate,
+      resident,
+      citizen: base.employee.citizen,
+      dateOfBirth: base.employee.dateOfBirth,
+      natureOfEmployment: base.employee.designation,
+      phone: base.employee.phone,
+      // The employee's OWN address first: the work mailbox may stop working once they leave.
+      email: extra.corr?.personalEmail || extra.corr?.primaryEmail || null,
+      correspondenceAddress: [...corrAddr.lines, corrTail].map((s) => s.trim()).filter(Boolean),
+      taxBorneByEmployer: bearsTax,
+    },
+    pay: { from: pay.from, to: pay.to, lines, line11Items },
+    deductions,
+    officer,
+    today,
+  };
+}
+
+/** One row of the CP21 employee list. */
+export type ActiveStaffRow = { employmentId: string; name: string; hiredOn: string; title: string | null };
+
+/**
+ * r415 — THE LIST FOR A FORM WHOSE EVENT NOTHING RECORDS (CP21): EVERY ACTIVE EMPLOYEE OF THE COMPANY.
+ * Nothing records an intended departure, so there is no event to narrow by (the approved plan: "CP21 lists all current staff").
+ *
+ * Active = employed by this company today: `employment.company_id` is the company (the same column the
+ * compliance worklist reads), joined on or before today, and no leaving date or one today or later — a
+ * person serving notice is still staff. Gated like the worklist: a company no pack owns has no statutory
+ * list. The name search is a case-insensitive substring applied AFTER RLS (it can only hide). Ordered by
+ * name, then employment id, so the list is reproducible.
+ */
+export function activeStaff(
+  ctx: SessionContext,
+  p: { companyId: string; today?: string; nameQuery?: string },
+): Promise<ActiveStaffRow[]> {
+  const today = p.today ?? todayInKualaLumpur();
+  return withTenant(ctx, async (tx) => {
+    const [co] = await tx.select({ country: company.country }).from(company).where(eq(company.id, p.companyId)).limit(1);
+    if (!packFor(co?.country ?? null)) return [];
+    const rows = await tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        hiredOn: employment.hiredOn,
+        title: position.title,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(
+        assignment,
+        and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo), isNull(assignment.supersededAt)),
+      )
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .where(
+        and(
+          eq(employment.companyId, p.companyId),
+          lte(employment.hiredOn, today),
+          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, today)),
+        ),
+      )
+      .orderBy(person.fullName, employment.id);
+    const needle = (p.nameQuery ?? '').trim().toLocaleLowerCase();
+    // One row per employment even if a stray second open assignment exists.
+    const seen = new Set<string>();
+    return rows
+      .filter((r) => (seen.has(r.employmentId) ? false : (seen.add(r.employmentId), true)))
+      .filter((r) => !needle || r.name.toLocaleLowerCase().includes(needle))
+      .map((r) => ({ ...r, title: r.title ?? null }));
+  });
 }
 
 /** Recently recorded report artefacts for a company (audit trail). */
