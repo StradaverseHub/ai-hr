@@ -59,7 +59,17 @@ describe('the submission field is what decides the override', () => {
     // tenant must still be able to meet it. If a later edit drops `submission` from this entry to keep
     // it off some other list, this line is what says the override went with it.
     const filed = MY_REPORTS.filter((r) => r.submission).map((r) => r.id).sort();
-    expect(filed).toEqual(['my.borang-8a', 'my.borang-a', 'my.cp39', 'my.cp8d', 'my.epf', 'my.hrd-levy', 'my.socso-eis']);
+    // r411 — `my.borang-bbcd`, the BBCD: the cover for the KWSP payment, filed with the same deadline.
+    expect(filed).toEqual([
+      'my.borang-8a',
+      'my.borang-a',
+      'my.borang-bbcd',
+      'my.cp39',
+      'my.cp8d',
+      'my.epf',
+      'my.hrd-levy',
+      'my.socso-eis',
+    ]);
 
     const internal = MY_REPORTS.filter((r) => !r.submission).map((r) => r.id);
     expect(internal).toEqual(['my.contributions']);

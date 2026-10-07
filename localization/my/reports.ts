@@ -2278,8 +2278,9 @@ export const MY_REPORTS: ReportDef[] = [
   // filing deadline for the same body. (Borang 8A carries 15 too since r408: PERKESO's own 2025 booklet
   // puts its deadline on the 15th of the following month.)
   //
-  // `fidelity: 'agency-layout'`, never 'official': see FormFidelity. The reporter's specimen is another
-  // vendor's DevExpress output and KWSP publishes no blank page.
+  // `fidelity: 'agency-layout'`, never 'official': see FormFidelity. The reporter's specimens are other
+  // vendors' outputs and we hold no KWSP blank (r411: the claim that KWSP publishes none was never
+  // checked and is no longer made).
   //
   // `outputs` carries `file` as well as `pdf`/`print`: item 3aae0789 is the i-Akaun upload file, built
   // from the SAME rows as the drawn page, behind its own route.
@@ -2289,6 +2290,25 @@ export const MY_REPORTS: ReportDef[] = [
     // `borangAReport` honours `runSeqs` (r372/r373), which is the only reason this may be declared.
     runSelection: { action: '/payroll/borang-a/preview' },
     submission: { body: 'epf', agency: 'EPF (KWSP)', channel: 'i-Akaun (Employer)', dueDayOfNextMonth: 15 } },
+  // r411 (item 4f45f9b0) — BBCD, "Borang Bayaran Caruman Bulanan - Pita/Disket": the one-page cover for the
+  // month's Borang A payment, laid out like the reporter's October sample.
+  //
+  // `generate: borangAReport`, AND THAT IS THE POINT, NOT A SHORTCUT. A BBCD has no figures of its own: its
+  // Amaun Caruman is the Borang A total for the same company, month and payroll cycles (its own CATATAN 2:
+  // "Jumlah cek mesti sama dengan jumlah Borang BBCD"). Its preview and PDF route call `loadBorangA` and
+  // project the built form (lib/borang-bbcd.ts), so the two documents share one read and one number. The
+  // generic figures screen, if it is ever opened for this id, shows that same Borang A read.
+  //
+  // `runSelection` — Open Form asks for the payroll cycles, and Continue opens the BBCD itself.
+  // `fidelity: 'agency-layout'`: drawn to the sample's arrangement on our paper; the sample is another
+  // payroll system's print, and we hold no KWSP blank. `outputs`: the drawn page only.
+  //
+  // `shelfOrder: 4`, after the planned "Borang BBCB" (3), which keeps its slot: whether the reporter's
+  // "BBCB" was this form is THEIRS to confirm, and is not settled by this entry.
+  { id: 'my.borang-bbcd', label: 'BBCD — Borang Bayaran Caruman Bulanan (KWSP)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: borangAReport,
+    descriptionKey: 'desc_borang_bbcd', fidelity: 'agency-layout', outputs: ['pdf', 'print'], shelfOrder: 4,
+    runSelection: { action: '/payroll/borang-bbcd/preview' },
+    submission: { body: 'epf', agency: 'EPF (KWSP)', channel: 'KWSP / Ejen Kutipan KWSP', dueDayOfNextMonth: 15 } },
   // SOCSO and EIS go up TOGETHER through ASSIST's combined contribution function — the reporter's words.
   // ONE `perkeso` shelf for the same reason: they are one filing, not two that happen to share a portal.
   // Same rule as EPF above: this is not "Borang 8A" and is not offered as one.

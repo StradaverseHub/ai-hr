@@ -1202,6 +1202,11 @@ export const SCREENS: readonly ScreenEntry[] = [
       // file downloads, and shared.ts) are route handlers and a plain module, not guarded pages, so they
       // are not listed — the check walks page.tsx.
       '/payroll/borang-a/preview',
+      // r411 (item 4f45f9b0): the BBCD preview — Borang A's payment cover, from the same Open Form path and
+      // the same payroll read. Same scopedAdmin key as the Borang A preview beside it: it frames the
+      // company's EPF reference, its month's contribution total and its signatory's name and IC. Its
+      // sibling /payroll/borang-bbcd/pdf is a route handler, not a guarded page.
+      '/payroll/borang-bbcd/preview',
       // e0cd4583: the CP39 review step, between the LHDN shelf's figures screen and the two downloads
       // (the drawn monthly PCB statement and its readable text twin). Same scopedAdmin key as the
       // directory that links to it and as the [formId] screen above — it lists every employee's name,

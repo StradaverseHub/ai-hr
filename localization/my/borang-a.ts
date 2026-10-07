@@ -103,9 +103,11 @@ export const BORANG_A_COLUMNS: ReportColumn[] = [
   { key: 'employee', label: 'Caruman Pekerja (RM)', numeric: true },
 ];
 
+// r411 (item 4f45f9b0) — this used to add that KWSP does not publish a blank Borang A. Nobody here checked
+// that, so the note no longer says it.
 const NOTE_NOT_ARTWORK =
-  'This is our own layout, drawn to match a completed Borang A. KWSP does not publish a blank Borang A ' +
-  'to print onto, so this is not the agency’s own page — check it before you file it.';
+  'This is our own layout, drawn to match a completed Borang A — not the agency’s own page. Check it ' +
+  'before you file it.';
 const NOTE_PLUS_ONE =
   'The contribution month is the payroll month PLUS ONE, which is note 6 printed on the form itself. ' +
   '(The PERKESO Borang 8A for the same payroll month is stamped that month, with no shift — the two ' +
