@@ -850,8 +850,8 @@ describe('the four pins', () => {
     //
     // 8ca344bf ADDED `agency-layout` TO THAT LIST AND NOT TO THE LINE ABOVE, WHICH IS THE WHOLE POINT.
     // The Borang 8A specimen we built against is another payroll vendor's DevExpress output, not PERKESO
-    // artwork, and PERKESO publishes no blank page — so the form is drawn to the agency's layout on our
-    // own paper and says so. `my.cp22` remains the ONLY `official` entry, deliberately: it is the claim
+    // artwork. (r408: PERKESO DOES publish a blank 8A; the form is still drawn to the agency's page 1 on
+    // our own paper rather than printed onto that 2013 file, and says so.) `my.cp22` remains the ONLY `official` entry, deliberately: it is the claim
     // that costs the most if it is untrue.
     for (const e of [...MY_REPORTS, ...MY_STATUTORY_LINKS]) {
       if (e.fidelity && e.id !== 'my.cp22') {

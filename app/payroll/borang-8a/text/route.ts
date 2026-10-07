@@ -13,7 +13,7 @@
  */
 import { borang8ATextExport } from '@/lib/borang-8a';
 import { borang8AFilename } from '@/lib/borang-8a-pdf';
-import { describeGaps, loadBorang8A } from '../shared';
+import { NO_CONTRIBUTIONS, describeGaps, loadBorang8A } from '../shared';
 
 export const runtime = 'nodejs';
 
@@ -31,14 +31,17 @@ export async function GET(req: Request) {
       return new Response('No payroll run for this month — run payroll first.', { status: 422 });
     }
     // r372 (item f022dd70) — TWO MORE REFUSALS, BOTH ABOUT THE PAYROLL-CYCLE SELECTION ON THE LINK.
-    // Unreachable from this screen, which sends no run parameter, and answered here anyway: a route is
-    // not a screen, and a hand-edited link must not fall through to "somebody is missing a number".
+    // r408: the review screen DOES send run parameters now (it carries the criteria step's selection), and
+    // its Continue gate refuses an empty selection before any link is drawn — so these answer a hand-edited
+    // or stale link. A route is not a screen, and such a link must not fall through to "somebody is
+    // missing a number".
     if (loaded.reason === 'selection-empty') {
       return new Response('No payroll run for this month matches the payroll cycles you selected.', {
         status: 422,
       });
     }
     if (loaded.reason === 'bad-selection') return new Response(loaded.message, { status: 422 });
+    if (loaded.reason === 'no-contributions') return new Response(NO_CONTRIBUTIONS, { status: 422 });
     // Both kinds of gap, named, THROUGH THE ONE HELPER (r372). An employer-level gap (no SOCSO employer
     // code) gaps every page at once and is fixed in one place; a per-employee gap is fixed on that
     // person's record, and the reason is the pack's own — this route does not guess which one it was.

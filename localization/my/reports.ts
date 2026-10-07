@@ -204,16 +204,18 @@ export type ReportSubmission = {
  *                     but the paper is ours.
  *
  *                     ⚠️ r218 NARROWED THIS DEFINITION WHEN `my.cp39` JOINED THE STATUS. It used to
- *                     read "because the AGENCY publishes no blank page", which is true and sourced for
- *                     PERKESO and KWSP and NOT established for LHDN — whose own specimen carries
- *                     "Borang ini boleh difotokopi". The status is about what WE hold (`public/forms`
+ *                     read "because the AGENCY publishes no blank page", which was believed for PERKESO
+ *                     and KWSP and NOT established for LHDN — whose own specimen carries "Borang ini
+ *                     boleh difotokopi". ⚠️ r408: for PERKESO it was FALSE — PERKESO publishes a blank
+ *                     Borang 8A (and 8B) on its website, which the reporter linked. The status is about what WE hold (`public/forms`
  *                     answers that, and is guarded); an agency's publishing decisions belong in that
  *                     form's own module, where the evidence is.
  *
  * WHY IT HAD TO EXIST RATHER THAN REUSING EITHER NEIGHBOUR. `official` is a claim about GOVERNMENT
- * ARTWORK and is `my.cp22`'s alone — the specimen Borang 8A we built against is another payroll vendor's
- * DevExpress output, not a PERKESO page, and PERKESO publishes no blank one; claiming `official` for it
- * would be the exact untrue claim this whole vocabulary exists to prevent. `figures` is equally wrong in
+ * ARTWORK and is `my.cp22`'s alone — the Borang 8A is our own drawing of the agency's page 1 (r408
+ * measured it from PERKESO's published 2013 blank, which we do not print onto and do not hold in
+ * `public/forms/`); claiming `official` for it would be the exact untrue claim this whole vocabulary exists
+ * to prevent. `figures` is equally wrong in
  * the other direction: its hint says "laid out our way, not on the agency's own document", and a Borang
  * 8A drawn line for line to the agency's form is not laid out our way.
  *
@@ -385,7 +387,7 @@ export type ReportDef = {
    * statutory return. `action` is the screen the step's Continue opens (the form's own preview), which
    * runs the server-side "is there anything to file" gate and sends a refusal back to the step.
    * `app/payroll/statutory-forms/criteria.ts` turns this into the `cycles` criterion; my.borang-a declares
-   * it now, my.borang-8a and my.cp39 are expected to next.
+   * it now, my.borang-8a since r408, and my.cp39 is expected to next.
    */
   runSelection?: { action: string };
   generate: (ctx: SessionContext, params: ReportParams) => Promise<ReportResult>;
@@ -2227,8 +2229,8 @@ export const MY_REPORTS: ReportDef[] = [
   // wage EPF was actually charged on, and it is emphatically not produced by relabelling the listing.
   //
   // `dueDayOfNextMonth: 15` — KWSP's deadline, the same one `my.epf` carries, because it is the same
-  // filing deadline for the same body. (Borang 8A's null is a different situation: PERKESO's deadline is
-  // the last day of the contribution month, which this field cannot express.)
+  // filing deadline for the same body. (Borang 8A carries 15 too since r408: PERKESO's own 2025 booklet
+  // puts its deadline on the 15th of the following month.)
   //
   // `fidelity: 'agency-layout'`, never 'official': see FormFidelity. The reporter's specimen is another
   // vendor's DevExpress output and KWSP publishes no blank page.
@@ -2256,18 +2258,22 @@ export const MY_REPORTS: ReportDef[] = [
   // This is a different document: PERKESO's own monthly contribution SCHEDULE, one SOCSO figure per person,
   // and it is emphatically not produced by relabelling the listing above.
   //
-  // `dueDayOfNextMonth: null` IS DELIBERATE AND IS NOT AN OVERSIGHT. This form's deadline is the LAST DAY
-  // OF THE CONTRIBUTION MONTH ITSELF, which `submissionDueFor` — which models "day N of the month AFTER the
-  // period" and nothing else — cannot express. Writing 15 here would print the ASSIST deadline on a form
-  // whose own deadline is two weeks earlier, and an invented statutory date is worse than an absent one
-  // because somebody files against it. The real deadline is computed by `paymentDueDateFor` and printed ON
-  // THE FORM, which is where the reporter's own specimen carries it.
+  // `dueDayOfNextMonth: 15` — r408 (item e74af58c). PERKESO's 2025 employer booklet: contributions are due
+  // "tidak lewat daripada 15 hari bulan bagi caruman bulan sebelumnya". Until r408 this was null, on the
+  // belief that the deadline was the last day of the contribution month; that was PERKESO's temporary
+  // relief for April–September 2020 contributions only (Pekeliling Majikan Bil. 4 Tahun 2020). The same
+  // date is computed by `paymentDueDateFor` and printed ON THE FORM.
   //
-  // `fidelity: 'agency-layout'`, never 'official': see FormFidelity. The reporter's specimen is another
-  // vendor's DevExpress output and PERKESO publishes no blank page.
+  // `fidelity: 'agency-layout'`, never 'official': see FormFidelity. PERKESO does publish a blank Borang 8A
+  // (r408 corrected the opposite claim); we draw its page 1 box for box rather than printing onto a 2013
+  // file whose guidance page quotes old limits.
+  //
+  // `runSelection` — r408: Open Form asks for the payroll cycles, and Continue opens the form itself.
+  // `borang8AReport` honours `runSeqs` (r372/r373), which is the only reason this may be declared.
   { id: 'my.borang-8a', label: 'Borang 8A — monthly contribution schedule (PERKESO)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: borang8AReport,
     descriptionKey: 'desc_borang_8a', fidelity: 'agency-layout', outputs: ['pdf', 'print'], shelfOrder: 2,
-    submission: { body: 'perkeso', agency: 'PERKESO', channel: 'PERKESO ASSIST', dueDayOfNextMonth: null } },
+    runSelection: { action: '/payroll/borang-8a/preview' },
+    submission: { body: 'perkeso', agency: 'PERKESO', channel: 'PERKESO ASSIST', dueDayOfNextMonth: 15 } },
   // dueDayOfNextMonth null: the annual deadline was never stated to us. See ReportSubmission.
   //
   // ONE GENERATOR, TWO CATALOG ENTRIES. `cp8d` returns the Form E Part A headcounts (meta.summary, via

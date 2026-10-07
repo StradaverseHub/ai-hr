@@ -44,12 +44,18 @@
  * LAYOUT and the two dating rules, and for nothing else.
  *
  * ── THE STATUS COLUMN ─────────────────────────────────────────────────────────────────────────────
- * PERKESO's official code list for column (2) is not in the specimen, and we are not inventing one. The
- * reporter's own attachment leaves the column blank for a continuing employee and leaves Tarikh Mula /
- * Berhenti blank too. So: the dates are filled from the dates we already hold WHEN THEY FALL INSIDE THE
- * CONTRIBUTION MONTH, the status is blank for everyone who neither joined nor left, and the review screen
- * accepts a typed status per row which is never persisted. When PERKESO's list is confirmed, nothing here
- * has to be rebuilt.
+ * r408 (item e74af58c) — DERIVED FOR THREE CODES, TYPED FOR TWO. PERKESO's own code list is on page 2 of
+ * the agency's blank Borang 8A ("PANDUAN MENGISI BORANG 8A", Ruangan (2): "Status Pekerja (M-Meninggal
+ * Dunia, B-Pekerja Baru, H-Berhenti, S-…faedah PERKESO, T-Pekerja yang mengambil cuti tanpa gaji
+ * sepanjang bulan)"). Until r408 this header said the list was not in our evidence and the column was
+ * always blank. The three codes the records DO hold are now derived, by `borang8AStatusFor` below:
+ *   • B — joined (join date, else hire date) inside the contribution month;
+ *   • H — terminated inside the contribution month, other than by death;
+ *   • M — terminated inside the contribution month with `termination_type = 'death'`.
+ * S and T stay what they were: typed per row on the review screen (`st_<employmentId>`, never persisted),
+ * because nothing here records a PERKESO-benefit absence or a whole month of unpaid leave. A typed status
+ * REPLACES the derived one for that row; an empty box leaves the derived one alone (read by value).
+ * Everyone who neither joined nor left keeps a blank box, as the agency form does.
  */
 import { and, eq, inArray } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';
@@ -109,15 +115,33 @@ export const BORANG_8A_COLUMNS: ReportColumn[] = [
 ];
 
 const NOTE_NOT_ARTWORK =
-  'This is our own layout, drawn line for line to match a completed Borang 8A. PERKESO does not publish ' +
-  'a blank Borang 8A to print onto, so this is not the agency’s own page — check it before you file it.';
+  'This is our own drawing of PERKESO’s Borang 8A, box for box to the agency’s page 1, on a page of ours — ' +
+  'not PERKESO’s own file, whose 2013 guidance page quotes old contribution limits. Check it before you file it.';
 const NOTE_NO_OFFSET =
-  'The contribution month is the payroll month itself, with no shift, and the payment deadline is the last ' +
-  'day of that same month. (The EPF Borang A for the same payroll month is stamped the month after — the ' +
-  'two rules are different on purpose.)';
+  'The contribution month is the payroll month itself, with no shift. Payment is due by the 15th of the ' +
+  'following month (PERKESO 2025 employer guide). (The EPF Borang A for the same payroll month is stamped the ' +
+  'month after — the two month rules are different on purpose.)';
 const NOTE_STATUS =
-  'Column (2) STATUS is left blank for anyone who neither joined nor left in the month, exactly as a filed ' +
-  'Borang 8A does. Type a status against any row on the review screen if you need one.';
+  'Column (2) STATUS fills itself: B for someone who joined this month, H for someone who left, M for a ' +
+  'death. S and T are not held in the records — type them against a row on the review screen if they apply.';
+
+/**
+ * r408 (item e74af58c) — COLUMN (2), DERIVED. PERKESO's codes from page 2 of the agency's Borang 8A; see THE
+ * STATUS COLUMN above. Pure, so the rule is pinned without a database.
+ *
+ * LEAVING OUTRANKS JOINING. Somebody who joined AND left inside the same month gets H (or M): the form has
+ * one status box, column (1) still shows both dates, and the later event is the one PERKESO acts on.
+ * A death recorded with no termination date in the month asserts nothing here — the box is dated by the
+ * month, and an undated death is not this month's.
+ */
+export function borang8AStatusFor(
+  p: { startIso: string | null; stopIso: string | null; terminationType: string | null },
+  periodKey: string,
+): '' | 'B' | 'H' | 'M' {
+  if (fallsInMonth(p.stopIso, periodKey)) return p.terminationType === 'death' ? 'M' : 'H';
+  if (fallsInMonth(p.startIso, periodKey)) return 'B';
+  return '';
+}
 
 /** Employer address as printed: three free lines plus a postcode/town, state tail. */
 function addressLines(c: {
@@ -233,6 +257,8 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
         joinDate: employment.joinDate,
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,
+        // r408 — column (2)'s M: a termination of type 'death' inside the month.
+        terminationType: employment.terminationType,
         statutory: payslip.statutory,
         // r372 — WHICH RUN OF THE MONTH WROTE THIS PAYSLIP. Joined rather than mapped off `batches` so the
         // pairing is an invariant of the query and cannot acquire a "?? 1" fallback that silently decides
@@ -277,6 +303,7 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
       ic: string | null;
       startIso: string | null;
       stopIso: string | null;
+      terminationType: string | null;
       socso: number;
       eis: number;
       skbbk: number;
@@ -339,6 +366,7 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
           // Part A makes, and the one an entity transfer moves.
           startIso: s.joinDate ?? s.hiredOn,
           stopIso: s.terminatedOn,
+          terminationType: s.terminationType ?? null,
           socso: 0,
           eis: 0,
           skbbk: 0,
@@ -383,8 +411,9 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
         employmentId: a.employmentId,
         startDate: started ? formDate(a.startIso) : '',
         stopDate: stopped ? formDate(a.stopIso) : '',
-        // Blank unless the review screen types one in. No code list is invented here.
-        status: '',
+        // r408 — B / H / M from the records (PERKESO's own code list); S and T only when typed on the
+        // review screen, which overlays this in the loader.
+        status: borang8AStatusFor(a, periodKey),
         ic: a.ic ?? '',
         name: a.name,
         contribution: a.socso,
