@@ -346,7 +346,7 @@ describe('/admin/organization/[companyId] — the scope refusal and the parent p
       // Edit opens the EXISTING editor (keeping the tab), never another view.
       const editTags = html.match(/<a\b[^>]*data-company-edit-link[^>]*>/g) ?? [];
       expect(editTags, `${tab}: exactly one Edit link`).toHaveLength(1);
-      const editHref = editTags[0].match(/href="([^"]*)"/)?.[1];
+      const editHref = editTags[0]?.match(/href="([^"]*)"/)?.[1];
       expect(editHref, `${tab}: Edit opens the editor`).toBe(
         tab === 'bank' || tab === 'statutory' ? `/admin/organization/${id}?tab=${tab}` : `/admin/organization/${id}`,
       );
