@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIHR Claims</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#F2F0EB;color:#111111;font-family:'Schibsted Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#111111}a:hover{color:#C23A00}
+:focus-visible{outline:2px solid #FF4D00;outline-offset:4px}
+.mono{font-family:'DM Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+.num{font-family:'DM Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.mid{color:#63625D}.or{color:#C23A00}
+.grid{position:absolute;inset:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(90deg,rgba(17,17,17,.06) 0 1px,transparent 1px 8.3333%)}
+.navl{text-decoration:none;color:#63625D;padding:6px 0;border:0;border-bottom:1px solid transparent;background:transparent;cursor:pointer;font:inherit;letter-spacing:inherit;text-transform:inherit}
+.navl:hover{color:#111}.navl.on{color:#111;border-bottom-color:#111}
+.pill{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:48px;padding:0 22px;border-radius:999px;border:1px solid #111;background:#111;color:#F2F0EB;font:600 15px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer;text-decoration:none;white-space:nowrap;transition:transform .2s}
+.pill:hover{transform:translateY(-1px);color:#F2F0EB}
+.pill.inv{background:#F2F0EB;color:#111;border-color:#F2F0EB}
+.txt{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 2px;border:0;background:transparent;color:#111;font:500 15px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer;text-decoration:none;border-bottom:1px solid #111}
+.txt:hover{color:#C23A00;border-bottom-color:#C23A00}
+.txt.bone{color:#F2F0EB;border-bottom-color:#F2F0EB}
+.txt.orb{color:#FF4D00;border-bottom-color:#FF4D00}
+.intent{display:flex;align-items:center;gap:14px;height:64px;border-top:1px solid #111;border-bottom:1px solid #111;padding:0 2px}
+.intent input{flex:1;min-width:0;background:transparent;border:0;color:#111;font:500 20px 'Schibsted Grotesk',system-ui,sans-serif;letter-spacing:-.01em}
+.intent input::placeholder{color:#9A988F}
+.cell{display:flex;flex-direction:column;gap:8px;padding:18px 20px 20px 20px;border-left:1px solid #D9D6CF}
+.cell:first-child{border-left:0;padding-left:0}
+.deck{position:relative;height:700px;perspective:1600px;perspective-origin:50% 30%}
+.spot{position:absolute;left:50%;top:46%;width:900px;height:900px;margin:-450px;border-radius:50%;background:radial-gradient(circle,#FBFAF7 0%,rgba(251,250,247,.7) 28%,transparent 62%);pointer-events:none}
+.card{position:absolute;left:50%;top:36px;width:580px;margin-left:-290px;border-radius:12px;background:linear-gradient(160deg,#3a3a3a 0%,#121212 38%,#0a0a0a 55%,#232323 78%,#050505 100%);color:#F2F0EB;padding:34px 36px;transform-style:preserve-3d;transition:transform .55s cubic-bezier(.2,.8,.2,1),opacity .55s;display:flex;flex-direction:column;gap:18px;box-shadow:0 100px 100px -50px rgba(17,17,17,.85),0 30px 40px -30px rgba(17,17,17,.5);overflow:hidden}
+.card::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.18) 47%,rgba(255,255,255,.04) 52%,transparent 62%);background-size:260% 100%;animation:sheen 7s ease-in-out infinite;pointer-events:none}
+@keyframes sheen{0%{background-position:120% 0}60%,100%{background-position:-140% 0}}
+.card.p0{transform:translateZ(0);z-index:6}
+.card.p1{transform:translateY(16px) translateZ(-70px) scale(.96);z-index:5;opacity:.8}
+.card.p2{transform:translateY(32px) translateZ(-140px) scale(.92);z-index:4;opacity:.55}
+.card.p3{transform:translateY(48px) translateZ(-210px) scale(.88);z-index:3;opacity:.35}
+.card.p4{transform:translateY(64px) translateZ(-280px) scale(.84);z-index:2;opacity:.2}
+.card.p5{transform:translateY(80px) translateZ(-350px) scale(.8);z-index:1;opacity:.1}
+.card.outok{transform:translateX(70%) rotate(8deg) translateZ(60px);opacity:0;z-index:7}
+.card.outbad{transform:translateX(-70%) rotate(-8deg) translateZ(60px);opacity:0;z-index:7}
+.etch{height:1px;background:rgba(255,255,255,.22)}
+.paper{background:#F2F0EB;color:#111;border-radius:3px;padding:10px;font:400 8px 'DM Mono',monospace;line-height:1.5;width:76px;height:92px;flex:none;box-shadow:0 14px 20px -12px rgba(0,0,0,.9);transform:rotate(-3deg)}
+.paper i{display:block;height:3px;background:#D9D6CF;margin:4px 0;border-radius:2px}
+.row{display:grid;grid-template-columns:36px 1.2fr 1fr 130px 110px;gap:16px;align-items:center;min-height:54px;border-top:1px solid #D9D6CF;text-decoration:none;color:#111;position:relative;transition:background .2s;background:transparent;border-left:0;border-right:0;border-bottom:0;cursor:pointer;text-align:left;font-family:inherit;width:100%;padding:0 2px;font-size:15px}
+.row:hover{background:#ECE9E2}
+.row.cur::before{opacity:1}
+.row::before{content:"";position:absolute;left:-18px;top:0;bottom:0;width:3px;background:#FF4D00;opacity:0;transition:opacity .2s}
+.list{padding-left:18px;margin-left:-18px;border-bottom:1px solid #D9D6CF}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{font:400 11px 'DM Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#63625D;text-align:left;padding:10px 12px 10px 0;border-bottom:1px solid #111}
+td{padding:11px 12px 11px 0;border-bottom:1px solid #D9D6CF;white-space:nowrap}
+.r{text-align:right}
+.deck{cursor:grab;touch-action:none;user-select:none}.deck.dragging,.deck.dragging *{cursor:grabbing}
+.cam{transition:transform .6s cubic-bezier(.2,.8,.2,1)}.cam.drag{transition:none}
+.rv{animation:up .8s cubic-bezier(.2,.8,.2,1) both}
+@keyframes up{from{transform:translateY(16px);opacity:0}}
+.empty{animation:up .6s cubic-bezier(.2,.8,.2,1) both}
+.stat{font:400 11px 'DM Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#63625D;display:flex;gap:28px;flex-wrap:wrap}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+.still *,.still *::before,.still *::after{animation:none!important;transition:none!important}
+</style>
+</helmet>
+<div class="root {{motionClass}}" style="position: relative; min-height: 1240px; background: #F2F0EB; color: #111111; font-family: 'Schibsted Grotesk', system-ui, sans-serif; overflow: hidden">
+  <div class="grid" aria-hidden="true" style="margin: 0 56px"></div>
+  <div style="position: relative; z-index: 1; max-width: 1328px; margin: 0 auto; padding: 26px 56px 32px; display: flex; flex-direction: column; gap: 30px">
+
+    <header class="rv" style="display: flex; align-items: center; gap: 28px; flex-wrap: wrap">
+      <a href="Main.dc.html" class="mono" style="text-decoration: none; color: #111; font-weight: 500">AIHR <span class="mid">/ SYSTEM 01</span></a>
+      <nav aria-label="Primary" style="display: flex; gap: 22px; flex-wrap: wrap; margin-left: 20px" class="mono">
+        <a class="navl" href="Main.dc.html">Home</a><a class="navl" href="Payroll.dc.html">Payroll</a><a class="navl" href="People.dc.html">People</a><a class="navl" href="Leave.dc.html">Leave</a><a class="navl" href="Attendance.dc.html">Time</a><a class="navl on" href="Claims.dc.html">Claims</a><a class="navl" href="Compliance.dc.html">Statutory</a><a class="navl" href="Drive.dc.html">Drive</a>
+      </nav>
+      <div class="mono" style="margin-left: auto; display: flex; gap: 22px"><a class="navl on" href="#approvals">Approvals</a><a class="navl" href="#reimb">Reimbursements</a><a class="navl" href="#limits">Limits</a><a class="navl" href="#mileage">Mileage</a><a class="navl" href="#forms">Claim forms</a></div>
+    </header>
+
+    <section class="rv" style="display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 20px; animation-delay: .1s">
+      <div><span class="mono mid">Decide from the deck · approved amounts ride into the October payroll</span><h1 style="margin: 6px 0 0; font-size: 88px; font-weight: 500; line-height: .92; letter-spacing: -.045em">Claims.</h1></div>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; flex: 0 1 700px">
+        <div class="cell"><span class="mono mid">Open</span><span class="num" style="font-size: 44px; font-weight: 500; letter-spacing: -.03em; line-height: 1">{{openCount}}</span><span class="mid" style="font-size: 13px">awaiting your decision</span></div>
+        <div class="cell"><span class="mono mid">Awaiting</span><span class="num" style="font-size: 20px; font-weight: 500; line-height: 1.2; margin-top: 10px">{{openTotal}}</span><span class="mid" style="font-size: 13px">in the deck</span></div>
+        <div class="cell"><span class="mono mid">Approved · Oct payroll</span><span class="num" style="font-size: 20px; font-weight: 500; line-height: 1.2; margin-top: 10px">{{approvedTotal}}</span><span class="mid" style="font-size: 13px">reimbursed 25 Oct</span></div>
+        <div class="cell"><span class="mono mid">Paid · September</span><span class="num" style="font-size: 20px; font-weight: 500; line-height: 1.2; margin-top: 10px">RM 22,310.00</span><span class="mid" style="font-size: 13px">63 claims</span></div>
+      </div>
+    </section>
+
+    <section class="rv" style="animation-delay: .2s">
+      <label class="intent">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="#FF4D00" aria-hidden="true"><path d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2z"></path></svg>
+        <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Ask about claims</span>
+        <input type="text" placeholder="Approve everything under RM 100 with a receipt, or: who has hit their mileage limit?">
+        <button class="txt" type="button" style="min-height: 40px; border-bottom: 0; font-size: 20px">↵</button>
+      </label>
+    </section>
+
+    <section class="rv" style="display: flex; gap: 40px; align-items: flex-start; flex-wrap: wrap; animation-delay: .3s">
+      <div style="flex: 999 1 600px; min-width: 0">
+        <div style="display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 8px; border-bottom: 1px solid #111"><span class="mono mid">The deck · oldest first · approve sends right, reject sends left</span><span class="mono mid">{{openCount}} left</span></div>
+        <div class="deck {{stageCls}}" ref="{{stageRef}}" onPointerDown="{{down}}" onPointerMove="{{move}}" onPointerUp="{{up}}" onPointerCancel="{{up}}" onPointerLeave="{{up}}" onWheel="{{wheel}}">
+          <span class="spot" aria-hidden="true"></span>
+          <div class="cam {{dragCls}}" style="position: absolute; inset: 0; transform-style: preserve-3d; transform-origin: 50% 40%; transform: rotateX({{rx}}deg) rotateY({{ry}}deg) scale3d({{zoom}}, {{zoom}}, {{zoom}})">
+<sc-for list="{{deck}}" as="c" hint-placeholder-count="4">
+            <div class="card {{c.pos}}">
+              <div style="display: flex; justify-content: space-between; align-items: baseline; position: relative"><span class="mono" style="color: #9A988F">{{c.n}} · {{c.dept}} · {{c.date}}</span><span class="mono" style="color: {{c.kindColor}}">{{c.kind}}</span></div>
+              <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; position: relative"><div><div style="font-size: 36px; font-weight: 500; letter-spacing: -.035em; line-height: 1">{{c.who}}</div><div style="font-size: 14px; color: #B8B5AC; margin-top: 8px">{{c.type}} · {{c.desc}}</div></div><div class="num" style="font-size: 48px; font-weight: 500; letter-spacing: -.035em; white-space: nowrap">{{c.amount}}</div></div>
+              <span class="etch"></span>
+              <div style="display: flex; gap: 18px; align-items: center; position: relative"><span class="paper" aria-hidden="true">RECEIPT<i></i><i style="width: 70%"></i><i style="width: 85%"></i><i style="width: 50%"></i></span><div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; flex: 1; min-width: 0"><span style="color: #D9D6CF">{{c.receipt}}</span><span style="color: {{c.c1Color}}">{{c.c1}}</span><span style="color: {{c.c2Color}}">{{c.c2}}</span><span style="color: {{c.c3Color}}">{{c.c3}}</span></div></div>
+              <span class="etch"></span>
+              <div style="display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 13px; position: relative"><span style="color: #9A988F">Annual limit</span><span class="num">{{c.limit}}</span><span style="color: #9A988F">Already claimed</span><span class="num">{{c.claimed}}</span><span style="color: #9A988F">Reserved, awaiting approval</span><span class="num">{{c.reserved}}</span><span style="font-weight: 500">Balance after this claim</span><span class="num" style="color: {{c.afterColor}}">{{c.after}}</span></div>
+              <div style="display: flex; gap: 22px; align-items: center; margin-top: 4px; position: relative"><button class="pill inv" type="button" onClick="{{c.approve}}">Approve <span aria-hidden="true">→</span></button><button class="txt orb" type="button" onClick="{{c.reject}}">Reject</button><button class="txt bone" type="button" onClick="{{c.skip}}">Skip</button></div>
+            </div>
+          </sc-for>
+</div>
+          <sc-if value="{{deckEmpty}}" hint-placeholder-val="{{ false }}">
+            <div class="empty" style="position: absolute; left: 50%; top: 120px; width: 480px; margin-left: -240px; padding: 30px 0; border-top: 1px solid #111; border-bottom: 1px solid #111; display: flex; flex-direction: column; gap: 12px"><span class="mono">Deck clear</span><div style="font-size: 34px; font-weight: 500; letter-spacing: -.035em; line-height: 1">Nothing needs your decision.</div><div class="mid" style="font-size: 14px">Approved claims are queued for the October payroll. Rejected ones went back to their owners with your note.</div><button class="txt" type="button" onClick="{{reset}}" style="align-self: flex-start">Reset the deck</button></div>
+          </sc-if>
+        </div>
+      </div>
+
+      <aside style="flex: 1 1 340px; min-width: 300px; display: flex; flex-direction: column; gap: 26px">
+        <div>
+          <div style="display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 12px"><span class="mono mid">Queue</span><div class="mono" style="display: flex; gap: 18px"><button class="navl {{fAll}}" type="button" onClick="{{filterAll}}">All</button><button class="navl {{fMile}}" type="button" onClick="{{filterMile}}">Mileage</button><button class="navl {{fMed}}" type="button" onClick="{{filterMed}}">Medical</button></div></div>
+          <div class="list"><sc-for list="{{queue}}" as="q" hint-placeholder-count="6"><button class="row {{q.cur}}" type="button" onClick="{{q.jump}}"><span class="mono mid">{{q.n}}</span><span style="font-weight: 500">{{q.who}}</span><span class="mid" style="font-size: 13px">{{q.type}} · {{q.date}}</span><span class="num" style="font-size: 14px">{{q.amount}}</span><span class="mono" style="color: {{q.color}}">{{q.status}}</span></button></sc-for></div>
+        </div>
+        <div>
+          <span class="mono mid">Limits · Nusantara Sdn Bhd</span>
+          <table style="margin-top: 8px"><thead><tr><th>Type</th><th class="r">Annual</th><th class="r">Per claim</th><th>Tax</th></tr></thead><tbody>
+            <tr><td>Mileage</td><td class="num r">6,000.00</td><td class="num r">—</td><td class="mono mid">reimbursement</td></tr>
+            <tr><td>Medical, clinic</td><td class="num r">1,500.00</td><td class="num r">200.00</td><td class="mono mid">reimbursement</td></tr>
+            <tr><td>Meal, OT</td><td class="num r">No limit</td><td class="num r">30.00</td><td class="mono">taxable</td></tr>
+            <tr><td>Equipment</td><td class="num r">1,200.00</td><td class="num r">300.00</td><td class="mono mid">reimbursement</td></tr>
+            <tr><td>Subscriptions</td><td class="num r">2,000.00</td><td class="num r">—</td><td class="mono mid">reimbursement</td></tr>
+          </tbody></table>
+          <span class="mid" style="font-size: 13px; line-height: 1.5; display: block; margin-top: 10px">Mileage is priced from the rate table on submit: RM 0.70/km to 500 km a month, RM 0.60/km beyond.</span>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="rv stat" style="border-top: 1px solid #111; padding-top: 14px; animation-delay: .4s"><span>Sys OK</span><span>{{openCount}} open</span><span>Taxable items marked so PCB stays right</span><span style="margin-left: auto">Reimbursed with the October run · 25 Oct</span></footer>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"boolean","default":true,"section":"Look"},"$preview":{"width":1440,"height":1240}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.camCfg = { a0: 0, b0: 0, aMin: -40, aMax: 40, bMin: -20, bMax: 25, zMin: 0.7, zMax: 1.3 }; }
+  view() {
+    const st = this.state || {}, c = this.camCfg;
+    return { a: st.ca == null ? c.a0 : st.ca, b: st.cb == null ? c.b0 : st.cb, zoom: st.zoom == null ? 1 : st.zoom };
+  }
+  orbit(g, dx, dy) {
+    const c = this.camCfg;
+    const cl = (v, lo, hi) => lo == null ? v : Math.max(lo, Math.min(hi, v));
+    return { ca: cl(g.a + dx * 0.35, c.aMin, c.aMax), cb: cl(g.b - dy * 0.15, c.bMin, c.bMax) };
+  }
+  zoomBy(e) {
+    const v = this.view(), c = this.camCfg;
+    const d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    this.setState({ zoom: Math.min(c.zMax, Math.max(c.zMin, +(v.zoom * Math.exp(-d * 0.0016)).toFixed(3))) });
+  }
+  onDown(e) {
+    if (e.button != null && e.button !== 0) return;
+    const v = this.view();
+    this.moved = false;
+    this.drag = { x: e.clientX, y: e.clientY, a: v.a, b: v.b, id: e.pointerId, el: e.currentTarget };
+  }
+  onMove(e) {
+    const g = this.drag; if (!g) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (!this.moved) { if (Math.abs(dx) + Math.abs(dy) < 5) return; this.moved = true; try { g.el.setPointerCapture(g.id); } catch (err) {} }
+    this.setState(Object.assign({ dragging: true }, this.orbit(g, dx, dy)));
+  }
+  onUp() {
+    if (!this.drag) return;
+    this.drag = null;
+    setTimeout(() => { this.moved = false; }, 0);
+    this.setState({ dragging: false });
+  }
+  camera() {
+    const st = this.state || {}, v = this.view(), c = this.camCfg;
+    return {
+      ry: v.a, rx: v.b, rxNeg: -v.b, zoom: v.zoom, dragCls: st.dragging ? 'drag' : '', stageCls: st.dragging ? 'dragging' : '',
+      stageRef: (el) => { if (!el || el.__wheelBound) return; el.__wheelBound = true; el.addEventListener('wheel', (e) => { e.preventDefault(); this.zoomBy(e); }, { passive: false }); },
+      wheel: (e) => { if (e.currentTarget && e.currentTarget.__wheelBound) return; this.zoomBy(e); },
+      down: (e) => this.onDown(e), move: (e) => this.onMove(e), up: () => this.onUp(),
+      zoomIn: () => this.setState({ zoom: Math.min(c.zMax, +(v.zoom + 0.15).toFixed(2)) }),
+      zoomOut: () => this.setState({ zoom: Math.max(c.zMin, +(v.zoom - 0.15).toFixed(2)) }),
+      camHome: () => this.setState({ ca: c.a0, cb: c.b0, zoom: 1 })
+    };
+  }
+  renderVals() {
+    const st = this.state || {};
+    const decisions = st.decisions || {};
+    const leaving = st.leaving || null;
+    const leavingVerdict = st.leavingVerdict || '';
+    const filter = st.filter || 'all';
+    const skipped = st.skipped || [];
+    const fmt = (n) => 'RM ' + n.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const base = [
+      { id: 'c1', who: 'Daniel Lim', dept: 'Logistics', date: '1 Oct', type: 'Mileage', cat: 'mile', desc: 'Client visits, Johor Bahru · 600 km', amt: 420, kind: 'Reimbursement', receipt: 'Toll and fuel receipts · 3 files', limit: 6000, claimed: 3160, reserved: 0, checks: [['Receipt attached', true], ['Within annual limit', true], ['Rate table applied, 600 km', true]] },
+      { id: 'c2', who: 'Aisyah Rahman', dept: 'Marketing', date: '3 Sep', type: 'Medical, clinic', cat: 'med', desc: 'Klinik Mediviron · MC 3 Sep', amt: 85, kind: 'Reimbursement', receipt: 'Clinic receipt · 1 file', limit: 1500, claimed: 240, reserved: 0, checks: [['Receipt attached', true], ['Within annual limit', true], ['Under per-claim cap of RM 200', true]] },
+      { id: 'c3', who: 'Wei Jie Tan', dept: 'Operations', date: '4 Oct', type: 'Meal, OT', cat: 'other', desc: 'Night shift meal · OT 0:34', amt: 30, kind: 'Taxable', receipt: 'No receipt required for this type', limit: 0, claimed: 0, reserved: 0, checks: [['No receipt required', true], ['No annual limit', true], ['At per-claim cap of RM 30', true]] },
+      { id: 'c4', who: 'Priya Nair', dept: 'Finance', date: '30 Sep', type: 'Subscriptions', cat: 'other', desc: 'ACCA annual membership', amt: 1280, kind: 'Reimbursement', receipt: 'Invoice · 1 file', limit: 2000, claimed: 0, reserved: 0, checks: [['Receipt attached', true], ['Within annual limit', true], ['Professional body on the approved list', true]] },
+      { id: 'c5', who: 'Marcus Ong', dept: 'Engineering', date: '5 Oct', type: 'Equipment', cat: 'other', desc: 'Monitor arm and USB-C dock', amt: 356.9, kind: 'Reimbursement', receipt: 'Receipt · 1 file', limit: 1200, claimed: 0, reserved: 0, checks: [['Receipt attached', true], ['Within annual limit', true], ['Over per-claim cap of RM 300', false]] },
+      { id: 'c6', who: 'Farah Hussin', dept: 'Customer care', date: '29 Sep', type: 'Mileage', cat: 'mile', desc: 'Outlet visits, Klang Valley · 283 km', amt: 198.1, kind: 'Reimbursement', receipt: 'Toll receipts · 2 files', limit: 6000, claimed: 5940, reserved: 60, checks: [['Receipt attached', true], ['Annual limit reached', false], ['Rate table applied, 283 km', true]] }
+    ];
+    const decide = (id, verdict) => { this.setState({ leaving: id, leavingVerdict: verdict }); setTimeout(() => { const d = Object.assign({}, this.state.decisions || {}); d[id] = verdict; this.setState({ decisions: d, leaving: null, leavingVerdict: '' }); }, 520); };
+    const order = base.filter((c) => skipped.indexOf(c.id) < 0).concat(base.filter((c) => skipped.indexOf(c.id) >= 0));
+    const open = order.filter((c) => !decisions[c.id]);
+    const ck = (k) => ({ t: (k[1] ? '✓ ' : '✕ ') + k[0], col: k[1] ? '#D9D6CF' : '#FF4D00' });
+    const deck = open.slice(0, 6).map((c, i) => { const after = c.limit ? c.limit - c.claimed - c.reserved - c.amt : 0; return { ...c, n: 'Claim ' + c.id.replace('c', '0'), pos: leaving === c.id ? (leavingVerdict === 'ok' ? 'outok' : 'outbad') : 'p' + i, amount: fmt(c.amt), kindColor: c.kind === 'Taxable' ? '#FF4D00' : '#9A988F', limit: c.limit ? fmt(c.limit) : 'No limit', claimed: c.limit ? fmt(c.claimed) : '—', reserved: c.limit ? fmt(c.reserved) : '—', after: c.limit ? fmt(after) : '—', afterColor: after < 0 ? '#FF4D00' : '#F2F0EB', c1: ck(c.checks[0]).t, c1Color: ck(c.checks[0]).col, c2: ck(c.checks[1]).t, c2Color: ck(c.checks[1]).col, c3: ck(c.checks[2]).t, c3Color: ck(c.checks[2]).col, approve: () => decide(c.id, 'ok'), reject: () => decide(c.id, 'bad'), skip: () => this.setState({ skipped: skipped.filter((x) => x !== c.id).concat([c.id]) }) }; });
+    const top = open[0] ? open[0].id : null;
+    const queue = base.filter((c) => filter === 'all' || c.cat === filter).map((c, i) => { const d = decisions[c.id]; return { ...c, n: '0' + (i + 1), amount: fmt(c.amt), status: d === 'ok' ? 'Approved' : (d === 'bad' ? 'Rejected' : 'Pending'), color: d === 'ok' ? '#111' : (d === 'bad' ? '#C23A00' : '#63625D'), cur: c.id === top ? 'cur' : '', jump: () => { if (!d) this.setState({ skipped: open.filter((o) => o.id !== c.id).map((o) => o.id) }); } }; });
+    const approvedSum = base.filter((c) => decisions[c.id] === 'ok').reduce((a, c) => a + c.amt, 0) + 9140;
+    const openSum = open.reduce((a, c) => a + c.amt, 0) + 16050.9;
+    return { ...this.camera(), motionClass: this.props.motion === false ? 'still' : '', deck, queue, deckEmpty: open.length === 0 && !leaving, openCount: open.length + 5, openTotal: fmt(openSum), approvedTotal: fmt(approvedSum), fAll: filter === 'all' ? 'on' : '', fMile: filter === 'mile' ? 'on' : '', fMed: filter === 'med' ? 'on' : '', filterAll: () => this.setState({ filter: 'all' }), filterMile: () => this.setState({ filter: 'mile' }), filterMed: () => this.setState({ filter: 'med' }), reset: () => this.setState({ decisions: {}, skipped: [], leaving: null }) };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIHR employee app home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#F2F0EB;color:#111111;font-family:'Schibsted Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#111111}a:hover{color:#C23A00}
+:focus-visible{outline:2px solid #FF4D00;outline-offset:3px}
+.mono{font-family:'DM Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+.num{font-family:'DM Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.mid{color:#63625D}.or{color:#C23A00}
+.intent{display:flex;align-items:center;gap:10px;height:52px;border-top:1px solid #111;border-bottom:1px solid #111}
+.intent input{flex:1;min-width:0;background:transparent;border:0;color:#111;font:500 16px 'Schibsted Grotesk',system-ui,sans-serif}
+.intent input::placeholder{color:#9A988F}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#FF4D00;box-shadow:0 0 0 3px rgba(255,77,0,.18);animation:beat 2.4s ease-in-out infinite}
+@keyframes beat{50%{box-shadow:0 0 0 7px rgba(255,77,0,0)}}
+.clockWrap{position:relative;width:270px;height:270px;margin:0 auto;display:flex;align-items:center;justify-content:center}
+.clockWrap::before{content:"";position:absolute;left:50%;top:50%;width:360px;height:360px;margin:-180px;border-radius:50%;background:radial-gradient(circle,#FBFAF7 0%,rgba(251,250,247,.7) 30%,transparent 64%);pointer-events:none}
+.clockWrap::after{content:"";position:absolute;left:50%;bottom:6px;width:240px;height:40px;margin-left:-100px;border-radius:50%;background:rgba(17,17,17,.34);filter:blur(16px);transform:skewX(-24deg)}
+.ringO{position:absolute;inset:0;border-radius:50%;border:1px solid #111;opacity:.25}
+.ringP{position:absolute;inset:0;border-radius:50%;border:1px solid #FF4D00;animation:pulse 3s ease-out infinite}
+.ringP.b{animation-delay:1.5s}
+@keyframes pulse{from{transform:scale(.82);opacity:.8}to{transform:scale(1.25);opacity:0}}
+.clock{width:216px;height:216px;border-radius:50%;border:0;cursor:pointer;color:#F2F0EB;font-family:'Schibsted Grotesk',system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:radial-gradient(circle at 34% 28%,#4a4a4a,#111 44%,#000 100%);box-shadow:0 60px 60px -30px rgba(17,17,17,.75),inset -20px -26px 40px rgba(0,0,0,.6);transition:transform .35s cubic-bezier(.2,.8,.2,1);position:relative;overflow:hidden}
+.clock::before{content:"";position:absolute;left:18%;top:10%;width:34%;height:22%;border-radius:50%;background:radial-gradient(ellipse,rgba(255,255,255,.5),transparent 70%)}
+.clock:hover{transform:scale(1.03) translateY(-3px)}
+.clock:active{transform:scale(.97)}
+.clock.in{box-shadow:0 40px 50px -24px rgba(17,17,17,.7),inset -16px -20px 34px rgba(0,0,0,.6),0 0 0 3px #FF4D00}
+.cell{display:flex;flex-direction:column;gap:4px;padding:12px 14px 14px;border-left:1px solid #D9D6CF}
+.cell:first-child{border-left:0;padding-left:0}
+.row{display:flex;flex-direction:column;gap:3px;padding:12px 0;border-top:1px solid #D9D6CF;text-decoration:none;color:#111}
+.tabBtn{flex:1;display:flex;align-items:center;justify-content:center;padding:14px 0;border:0;background:transparent;color:#63625D;font:400 11px 'DM Mono',monospace;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;text-decoration:none;min-height:48px;border-top:1px solid transparent}
+.tabBtn.on{color:#111;border-top-color:#111}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+.still *,.still *::before,.still *::after{animation:none!important;transition:none!important}
+.clockWrap{perspective:900px}
+.clockWrap{cursor:grab;touch-action:none;user-select:none}.clockWrap.dragging,.clockWrap.dragging *{cursor:grabbing}
+.cam{transition:transform .6s cubic-bezier(.2,.8,.2,1)}.cam.drag{transition:none}
+</style>
+</helmet>
+<div class="root {{motionClass}}" style="position: relative; width: 390px; height: 844px; background: #F2F0EB; color: #111111; font-family: 'Schibsted Grotesk', system-ui, sans-serif; overflow: hidden; display: flex; flex-direction: column">
+  <div style="position: relative; z-index: 1; flex: 1; min-height: 0; overflow-y: auto; padding: 54px 22px 16px; display: flex; flex-direction: column; gap: 18px">
+    <header style="display: flex; align-items: flex-end; justify-content: space-between; gap: 12px">
+      <div><div class="mono mid">Mon 6 Oct · 09:12</div><div style="font-size: 32px; font-weight: 500; letter-spacing: -.035em; line-height: 1; margin-top: 6px">Selamat pagi, Aisyah.</div></div>
+      <a href="#notifications" class="mono" aria-label="Notifications, 2 unread" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; min-height: 44px"><span class="dot" aria-hidden="true"></span>2</a>
+    </header>
+
+    <label class="intent">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="#FF4D00" aria-hidden="true"><path d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2z"></path></svg>
+      <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Tell AIHR what you need</span>
+      <input type="text" placeholder="Ask AIHR">
+      <span style="font-size: 18px">↵</span>
+    </label>
+
+    <section style="display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 6px 0">
+      <div class="clockWrap {{stageCls}}" ref="{{stageRef}}" onPointerDown="{{down}}" onPointerMove="{{move}}" onPointerUp="{{up}}" onPointerCancel="{{up}}" onPointerLeave="{{up}}" onWheel="{{wheel}}">
+        <span class="ringO" aria-hidden="true"></span><span class="ringP" aria-hidden="true"></span><span class="ringP b" aria-hidden="true"></span>
+        <div class="cam {{dragCls}}" style="transform-style: preserve-3d; transform: rotateX({{rx}}deg) rotateY({{ry}}deg) scale3d({{zoom}}, {{zoom}}, {{zoom}})">
+<button class="clock {{clockCls}}" type="button" onClick="{{toggle}}">
+          <span style="font-size: 26px; font-weight: 500; letter-spacing: -.025em; position: relative">{{clockLabel}}</span>
+          <span class="mono" style="color: #B8B5AC; position: relative">{{clockSub}}</span>
+        </button>
+</div>
+      </div>
+      <div class="mono mid" style="text-align: center; line-height: 1.8">Menara Nusantara · in zone<br><span style="color: {{shiftColor}}">{{shiftText}}</span> · shift 09:00 to 18:00</div>
+    </section>
+
+    <section>
+      <div style="display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 10px; border-bottom: 1px solid #111"><span class="mono mid">Leave</span><a href="Leave.dc.html" class="mono" style="text-decoration: none">Compose →</a></div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0">
+        <div class="cell"><span class="mono mid">Annual</span><span class="num" style="font-size: 30px; font-weight: 500; letter-spacing: -.03em; line-height: 1">11<span class="mid" style="font-size: 13px; letter-spacing: 0"> / 20</span></span></div>
+        <div class="cell"><span class="mono mid">Medical</span><span class="num" style="font-size: 30px; font-weight: 500; letter-spacing: -.03em; line-height: 1">12<span class="mid" style="font-size: 13px; letter-spacing: 0"> / 14</span></span></div>
+        <div class="cell"><span class="mono mid">Replace.</span><span class="num" style="font-size: 30px; font-weight: 500; letter-spacing: -.03em; line-height: 1">2<span class="mid" style="font-size: 13px; letter-spacing: 0"> / 2</span></span></div>
+      </div>
+      <div class="row" style="flex-direction: row; justify-content: space-between; align-items: baseline"><span style="font-size: 14px; font-weight: 500">Annual · 12 to 14 Oct</span><span class="mono mid">Pending · Hafiz</span></div>
+    </section>
+
+    <a href="MobilePayslip.dc.html" style="text-decoration: none; color: #111; border-top: 1px solid #111; border-bottom: 1px solid #111; padding: 14px 0; display: flex; align-items: center; justify-content: space-between; gap: 12px">
+      <span><span class="mono mid" style="display: block">September payslip · paid 25 Sep</span><span class="num" style="display: block; font-size: 28px; font-weight: 500; letter-spacing: -.03em; margin-top: 4px">RM 6,673.05</span></span>
+      <span style="font-size: 22px">→</span>
+    </a>
+
+    <section>
+      <div class="mono mid" style="padding-bottom: 6px">Notices</div>
+      <div class="row"><div style="display: flex; justify-content: space-between; gap: 8px"><span style="font-size: 14px; font-weight: 500">Deepavali working arrangement</span><span class="mono mid">3 Oct</span></div><div class="mid" style="font-size: 13px; line-height: 1.45">8 Nov is a public holiday. Outlets open on a volunteer roster with replacement leave.</div></div>
+      <div class="row" style="border-bottom: 1px solid #D9D6CF"><div style="display: flex; justify-content: space-between; gap: 8px"><span style="font-size: 14px; font-weight: 500">Medical plan enrolment closes 31 Oct</span><span class="mono mid">1 Oct</span></div><div class="mid" style="font-size: 13px; line-height: 1.45">Add dependants in My Profile before the cut-off.</div></div>
+    </section>
+  </div>
+
+  <nav aria-label="Primary" style="position: relative; z-index: 1; display: flex; border-top: 1px solid #D9D6CF; padding: 0 10px 10px; background: #F2F0EB">
+    <a class="tabBtn on" href="MobileHome.dc.html">Home</a><a class="tabBtn" href="Leave.dc.html">Leave</a><a class="tabBtn" href="MobilePayslip.dc.html">Pay</a><button class="tabBtn" type="button">Me</button>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"boolean","default":true,"section":"Look"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.camCfg = { a0: 0, b0: 0, aMin: -35, aMax: 35, bMin: -30, bMax: 30, zMin: 0.8, zMax: 1.25 }; }
+  view() {
+    const st = this.state || {}, c = this.camCfg;
+    return { a: st.ca == null ? c.a0 : st.ca, b: st.cb == null ? c.b0 : st.cb, zoom: st.zoom == null ? 1 : st.zoom };
+  }
+  orbit(g, dx, dy) {
+    const c = this.camCfg;
+    const cl = (v, lo, hi) => lo == null ? v : Math.max(lo, Math.min(hi, v));
+    return { ca: cl(g.a + dx * 0.35, c.aMin, c.aMax), cb: cl(g.b - dy * 0.15, c.bMin, c.bMax) };
+  }
+  zoomBy(e) {
+    const v = this.view(), c = this.camCfg;
+    const d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    this.setState({ zoom: Math.min(c.zMax, Math.max(c.zMin, +(v.zoom * Math.exp(-d * 0.0016)).toFixed(3))) });
+  }
+  onDown(e) {
+    if (e.button != null && e.button !== 0) return;
+    const v = this.view();
+    this.moved = false;
+    this.drag = { x: e.clientX, y: e.clientY, a: v.a, b: v.b, id: e.pointerId, el: e.currentTarget };
+  }
+  onMove(e) {
+    const g = this.drag; if (!g) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (!this.moved) { if (Math.abs(dx) + Math.abs(dy) < 5) return; this.moved = true; try { g.el.setPointerCapture(g.id); } catch (err) {} }
+    this.setState(Object.assign({ dragging: true }, this.orbit(g, dx, dy)));
+  }
+  onUp() {
+    if (!this.drag) return;
+    this.drag = null;
+    setTimeout(() => { this.moved = false; }, 0);
+    this.setState({ dragging: false });
+  }
+  camera() {
+    const st = this.state || {}, v = this.view(), c = this.camCfg;
+    return {
+      ry: v.a, rx: v.b, rxNeg: -v.b, zoom: v.zoom, dragCls: st.dragging ? 'drag' : '', stageCls: st.dragging ? 'dragging' : '',
+      stageRef: (el) => { if (!el || el.__wheelBound) return; el.__wheelBound = true; el.addEventListener('wheel', (e) => { e.preventDefault(); this.zoomBy(e); }, { passive: false }); },
+      wheel: (e) => { if (e.currentTarget && e.currentTarget.__wheelBound) return; this.zoomBy(e); },
+      down: (e) => this.onDown(e), move: (e) => this.onMove(e), up: () => this.onUp(),
+      zoomIn: () => this.setState({ zoom: Math.min(c.zMax, +(v.zoom + 0.15).toFixed(2)) }),
+      zoomOut: () => this.setState({ zoom: Math.max(c.zMin, +(v.zoom - 0.15).toFixed(2)) }),
+      camHome: () => this.setState({ ca: c.a0, cb: c.b0, zoom: 1 })
+    };
+  }
+  renderVals() {
+    const st = this.state || {};
+    const checkedIn = !!st.checkedIn;
+    return { ...this.camera(), motionClass: this.props.motion === false ? 'still' : '', clockCls: checkedIn ? 'in' : '', clockLabel: checkedIn ? 'Check out' : 'Check in', clockSub: checkedIn ? 'In at 09:02' : 'Tap to clock in', shiftColor: checkedIn ? '#111' : '#C23A00', shiftText: checkedIn ? 'On shift' : 'Not clocked in', toggle: () => this.setState({ checkedIn: !checkedIn }) };
+  }
+}
+</script>
+</body>
+</html>

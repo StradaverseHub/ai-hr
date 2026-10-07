@@ -1,0 +1,720 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIHR Dashboard</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#F2F0EB;color:#111111;font-family:'Schibsted Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#111111}a:hover{color:#C23A00}
+:focus-visible{outline:2px solid #FF4D00;outline-offset:3px}
+.mono{font-family:'DM Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+.num{font-family:'DM Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.mid{color:#63625D}.or{color:#C23A00}
+.rail{flex:0 0 232px;border-right:1px solid #D9D6CF;padding:22px 20px 24px 24px;display:flex;flex-direction:column;gap:22px;background:#F2F0EB}
+.rail .brand{text-decoration:none;color:#111;font-weight:500;display:block}
+.rail .g{display:flex;flex-direction:column;gap:2px}
+.rail .gl{color:#63625D;padding:0 0 6px;border-bottom:1px solid #D9D6CF;margin-bottom:6px}
+.rail a.it,.rail span.it{display:flex;align-items:center;justify-content:space-between;min-height:32px;padding:0 0 0 10px;border-left:1px solid transparent;text-decoration:none;color:#63625D;font:400 11px 'DM Mono',monospace;letter-spacing:.12em;text-transform:uppercase}
+.rail a.it:hover{color:#111;border-left-color:#D9D6CF}
+.rail .it.on{color:#111;border-left-color:#111}
+.rail .it.mod{color:#111}
+.rail .kids{display:flex;flex-direction:column;margin:2px 0 6px 10px;border-left:1px solid #D9D6CF}
+.rail .kids .it{min-height:28px;font-size:10px;padding-left:12px;border-left:0;margin-left:-1px}
+.rail .kids .it.on{color:#C23A00;border-left:0}
+.rail .cnt{color:#C23A00;font-size:10px}
+.main{flex:1 1 0;min-width:0;padding:22px 48px 40px 44px;display:flex;flex-direction:column;gap:24px;position:relative}
+.grid{position:absolute;inset:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(90deg,rgba(17,17,17,.05) 0 1px,transparent 1px 8.3333%);margin:0 48px 0 44px}
+.top{display:flex;align-items:center;gap:22px;flex-wrap:wrap;min-height:36px}
+.navl{text-decoration:none;color:#63625D;padding:6px 0;border:0;border-bottom:1px solid transparent;background:transparent;cursor:pointer;font:inherit;letter-spacing:inherit;text-transform:inherit}
+.navl:hover{color:#111}.navl.on{color:#111;border-bottom-color:#111}
+.pill{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:44px;padding:0 20px;border-radius:999px;border:1px solid #111;background:#111;color:#F2F0EB;font:600 14px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer;text-decoration:none;white-space:nowrap}
+.pill.ghost{background:transparent;color:#111}
+.txt{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 2px;border:0;background:transparent;color:#111;font:500 15px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer;text-decoration:none;border-bottom:1px solid #111}
+.txt:hover{color:#C23A00;border-bottom-color:#C23A00}
+.intent{display:flex;align-items:center;gap:14px;height:60px;border-top:1px solid #111;border-bottom:1px solid #111;padding:0 2px}
+.intent input{flex:1;min-width:0;background:transparent;border:0;color:#111;font:500 19px 'Schibsted Grotesk',system-ui,sans-serif;letter-spacing:-.01em}
+.intent input::placeholder{color:#9A988F}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#FF4D00;box-shadow:0 0 0 3px rgba(255,77,0,.18);animation:beat 2.4s ease-in-out infinite}
+@keyframes beat{50%{box-shadow:0 0 0 7px rgba(255,77,0,0)}}
+h1{margin:6px 0 0;font-size:56px;font-weight:500;line-height:.96;letter-spacing:-.04em}
+.cells{display:grid;gap:0}
+.cell{display:flex;flex-direction:column;gap:6px;padding:16px 18px 18px 18px;border-left:1px solid #D9D6CF}
+.cell:first-child{border-left:0;padding-left:0}
+.cell b{font:500 36px 'DM Mono',monospace;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums}
+.cell b small{font-size:14px;letter-spacing:0;color:#63625D;margin-left:6px;font-weight:400}
+.sec{border-top:1px solid #111;padding-top:12px;display:flex;flex-direction:column;gap:10px}
+.sh{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.tabs{display:flex;gap:20px}
+.th{display:grid;gap:14px;align-items:center;min-height:30px;color:#63625D;padding:0 2px}
+.tr{display:grid;gap:14px;align-items:center;min-height:50px;border-top:1px solid #D9D6CF;text-decoration:none;color:#111;position:relative;background:transparent;border-left:0;border-right:0;border-bottom:0;cursor:pointer;text-align:left;font-family:inherit;width:100%;padding:0 2px;font-size:14px}
+.tr:hover{background:#ECE9E2}
+.tr.on{background:#111;color:#F2F0EB}
+.tr.on .mid{color:#B8B5AC}
+.tr::before{content:"";position:absolute;left:-16px;top:0;bottom:0;width:3px;background:#FF4D00;opacity:0}
+.tr:hover::before{opacity:1}
+.tbl{padding-left:16px;margin-left:-16px;border-bottom:1px solid #D9D6CF}
+.tr .st{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+.kv{display:grid;gap:12px 20px;font-size:14px}
+.kv > div{display:flex;flex-direction:column;gap:4px;padding:10px 0;border-top:1px solid #D9D6CF}
+.kv .v{font-weight:500;font-size:15px}
+.kv .v.big{font:500 28px 'DM Mono',monospace;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.fm{display:grid;gap:14px 24px}
+.fd{display:flex;flex-direction:column;gap:6px}
+.fd input,.fd select,.fd textarea{background:transparent;border:0;border-bottom:1px solid #111;padding:8px 0;font:500 15px 'Schibsted Grotesk',system-ui,sans-serif;color:#111;min-height:40px}
+.fd textarea{min-height:80px;resize:none}
+.sw{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:40px;border-top:1px solid #D9D6CF;font-size:14px;cursor:pointer}
+.sw i{width:40px;height:22px;border:1px solid #111;border-radius:999px;position:relative;flex:none}
+.sw i::after{content:"";position:absolute;left:3px;top:3px;width:14px;height:14px;border-radius:50%;background:#111}
+.sw.off i::after{left:21px;background:transparent;border:1px solid #111;width:12px;height:12px}
+.ls{display:grid;grid-template-columns:70px 1fr auto;gap:14px;align-items:center;min-height:46px;border-top:1px solid #D9D6CF;font-size:14px;padding:0 2px}
+.steps{display:flex}
+.step{display:flex;flex-direction:column;gap:6px;flex:1 1 0;min-width:0;padding-right:10px}
+.step i{display:block;height:1px;background:#111;margin-top:6px}
+.step.todo i{background:#D9D6CF}.step.cur .mono{color:#C23A00}.step.cur i{background:#FF4D00;box-shadow:0 0 8px rgba(255,77,0,.6)}
+.ruler{position:relative;height:72px;border-top:1px solid #111;display:flex}
+.tick{flex:1;position:relative;border:0;background:transparent;cursor:pointer;color:#63625D;font:400 11px 'DM Mono',monospace;letter-spacing:.12em;padding:12px 0 0;text-align:left;text-transform:uppercase;line-height:1.7}
+.tick::before{content:"";position:absolute;left:0;top:0;width:1px;height:10px;background:#111}
+.tick.past{color:#111}.tick.on{color:#C23A00}.tick.on::before{width:2px;height:24px;background:#FF4D00;box-shadow:0 0 10px rgba(255,77,0,.6)}
+.bars{display:flex;align-items:flex-end;gap:10px;height:160px;border-bottom:1px solid #111;padding:0 2px}
+.bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:stretch;gap:6px;height:100%}
+.bar i{display:block;background:#111;min-height:2px}
+.bar.or i{background:#FF4D00;box-shadow:0 0 12px rgba(255,77,0,.5)}
+.bar span{text-align:center}
+.note{display:flex;flex-direction:column;gap:6px;max-width:560px}
+.empty{min-height:120px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:8px;border:1px dashed #9A988F;padding:20px 24px}
+.panel{flex:1 1 300px;min-width:280px;display:flex;flex-direction:column;gap:14px;border-top:1px solid #111;padding-top:12px}
+.stage{position:relative;perspective:1400px;perspective-origin:50% 40%;display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none;user-select:none;flex:none}
+.stage.dragging,.stage.dragging *{cursor:grabbing}
+.spot{position:absolute;left:50%;top:50%;border-radius:50%;background:radial-gradient(circle,#FBFAF7 0%,rgba(251,250,247,.7) 28%,transparent 62%);pointer-events:none}
+.shadow{position:absolute;left:50%;bottom:8%;border-radius:50%;background:rgba(17,17,17,.36);filter:blur(18px);transform:skewX(-26deg);pointer-events:none}
+.cam{position:relative;transform-style:preserve-3d;transition:transform .6s cubic-bezier(.2,.8,.2,1)}.cam.drag{transition:none}
+.ob{position:relative;transform-style:preserve-3d}
+.ob .f{position:absolute;inset:0;background:linear-gradient(160deg,#3a3a3a 0%,#121212 38%,#0a0a0a 55%,#232323 78%,#050505 100%);overflow:hidden}
+.ob .f::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.2) 47%,transparent 60%);background-size:260% 100%;animation:sheen 7s ease-in-out infinite}
+@keyframes sheen{0%{background-position:120% 0}60%,100%{background-position:-140% 0}}
+.ob .mark{position:absolute;left:14%;right:14%;height:3px;background:#FF4D00;box-shadow:0 0 12px #FF4D00,0 0 36px rgba(255,77,0,.6)}
+.ob .line{position:absolute;left:14%;right:14%;height:1px;background:rgba(255,255,255,.22)}
+.ob.slab{width:150px;height:210px}
+.ob.slab .f{border-radius:8px}
+.ob.slab .b{position:absolute;inset:0;background:#000;transform:translateZ(-26px);border-radius:8px}
+.ob.slab .r{position:absolute;left:100%;top:0;width:26px;height:100%;transform-origin:left;transform:rotateY(90deg);background:#000}
+.ob.slab .t{position:absolute;left:0;top:0;width:100%;height:26px;transform-origin:top;transform:rotateX(-90deg);background:#3a3a3a}
+.ob.plates{width:200px;height:130px;transform:rotateX(58deg) rotateZ(-30deg)}
+.ob.plates .f{border-radius:6px;box-shadow:0 8px 0 #000}
+.ob.orb{width:180px;height:180px;border-radius:50%;background:radial-gradient(circle at 34% 28%,#5a5a5a,#111 42%,#000 100%);box-shadow:inset -24px -30px 50px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;color:#F2F0EB;font:500 44px 'Schibsted Grotesk',sans-serif;letter-spacing:-.04em}
+.ob.coin{width:180px;height:180px;border-radius:50%;background:radial-gradient(circle at 34% 28%,#3a3a3a,#111 40%,#000 100%);box-shadow:inset -20px -26px 50px rgba(0,0,0,.6)}
+.ob.coin::after{content:"";position:absolute;inset:14%;border-radius:50%;border:1px solid rgba(255,255,255,.22)}
+.ob.coin .mark{left:50%;top:50%;width:3px;height:40%;margin:-40% 0 0 -1px;transform-origin:bottom;right:auto}
+.ob.cube{width:150px;height:150px}
+.ob.cube .f{border-radius:6px}
+.ob.cube .b{position:absolute;inset:0;background:#000;transform:translateZ(-150px)}
+.ob.cube .r{position:absolute;left:100%;top:0;width:150px;height:100%;transform-origin:left;transform:rotateY(90deg);background:linear-gradient(180deg,#1b1b1b,#000)}
+.ob.cube .t{position:absolute;left:0;top:0;width:100%;height:150px;transform-origin:top;transform:rotateX(-90deg);background:linear-gradient(90deg,#4a4a4a,#2a2a2a)}
+.ob.card{width:230px;height:150px}
+.ob.card .f{border-radius:10px}
+.rv{animation:up .8s cubic-bezier(.2,.8,.2,1) both}
+@keyframes up{from{transform:translateY(14px);opacity:0}}
+.stat{font:400 11px 'DM Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#63625D;display:flex;gap:28px;flex-wrap:wrap;border-top:1px solid #111;padding-top:12px;margin-top:auto}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+.still *,.still *::before,.still *::after{animation:none!important;transition:none!important}
+@media (max-width:900px){.rail{display:none}.main{padding:18px 16px 32px}.grid{margin:0 16px}h1{font-size:40px}}
+
+.stagewrap{position:relative;border-top:1px solid #111;border-bottom:1px solid #111}
+.stage{position:relative;height:960px;perspective:1800px;perspective-origin:35% 30%;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;padding-right:400px;cursor:grab;touch-action:none;user-select:none}
+.stage.dragging,.stage.dragging *{cursor:grabbing}
+.stage::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 35% 50%,transparent 40%,rgba(17,17,17,.08) 100%)}
+.spot{position:absolute;left:35%;top:52%;width:1400px;height:1400px;margin:-700px;border-radius:50%;background:radial-gradient(circle,#FCFBF8 0%,rgba(251,250,247,.8) 24%,transparent 58%);pointer-events:none;animation:drift 16s ease-in-out infinite}
+@keyframes drift{0%,100%{transform:translate(-36px,-14px)}50%{transform:translate(36px,14px)}}
+.tshadow{position:absolute;left:35%;bottom:26px;width:1200px;height:190px;margin-left:-380px;border-radius:50%;background:rgba(17,17,17,.34);filter:blur(36px);transform:skewX(-26deg);pointer-events:none}
+.tower{position:relative;width:560px;height:790px;transform-style:preserve-3d;transition:transform .8s cubic-bezier(.2,.8,.2,1);margin-bottom:60px}
+.tower.drag{transition:none}
+.plaza{position:absolute;left:50%;top:calc(100% - 16px);width:1400px;height:900px;margin:-450px 0 0 -700px;transform:rotateX(90deg);transform-style:preserve-3d;background:#F2F0EB;background-image:linear-gradient(90deg,rgba(17,17,17,.08) 1px,transparent 1px),linear-gradient(180deg,rgba(17,17,17,.08) 1px,transparent 1px);background-size:70px 70px;border:1px solid #D9D6CF}
+.plaza .road{position:absolute;background:repeating-linear-gradient(90deg,#111 0 16px,transparent 16px 30px);opacity:.5}
+.plaza .road.v{background:repeating-linear-gradient(180deg,#111 0 16px,transparent 16px 30px)}
+.plaza .lot{position:absolute;border:1px solid #111;opacity:.4;background:repeating-linear-gradient(90deg,transparent 0 23px,rgba(17,17,17,.5) 23px 24px)}
+.plaza .car{position:absolute;width:32px;height:15px;background:#111;border-radius:2px;animation:drive 16s linear infinite}
+.plaza .car.b{animation-duration:22s;animation-delay:-8s;width:56px;height:17px}
+.plaza .car.c{animation-duration:19s;animation-delay:-13s}
+.plaza .bus{position:absolute;width:84px;height:20px;background:#111;border-radius:3px;background-image:radial-gradient(circle,rgba(242,240,235,.8) 1.6px,transparent 2.2px);background-size:12px 20px;background-position:6px 0;animation:drive 26s linear infinite;animation-delay:-4s}
+@keyframes drive{from{transform:translateX(-140px)}to{transform:translateX(1480px)}}
+.plaza .ppl{position:absolute;width:8px;height:8px;border-radius:50%;background:#111;animation:walk 10s ease-in-out infinite alternate}
+@keyframes walk{to{transform:translate(90px,-36px)}}
+.plaza .tree{position:absolute;width:22px;height:22px;border-radius:50%;background:#111;opacity:.75}
+.plinth{position:absolute;left:50%;bottom:16px;width:660px;height:24px;margin-left:-330px;transform-style:preserve-3d}
+.plinth .f{position:absolute;inset:0;background:linear-gradient(180deg,#2a2a2a,#050505);border:1px solid #000}
+.plinth .t{position:absolute;left:0;top:0;width:100%;height:400px;transform-origin:top;transform:rotateX(-90deg);background:linear-gradient(180deg,#444,#1a1a1a);border:1px solid #000}
+.plinth .r{position:absolute;left:100%;top:0;width:400px;height:100%;transform-origin:left;transform:rotateY(90deg);background:#0a0a0a;border:1px solid #000;backface-visibility:hidden}
+.fl{position:absolute;left:50%;width:560px;height:76px;margin-left:-280px;transform-style:preserve-3d;border:0;background:transparent;padding:0;cursor:pointer;transition:transform .6s cubic-bezier(.2,.8,.2,1)}
+.fl .f{position:absolute;inset:0;background:linear-gradient(180deg,#2c2c2c,#0d0d0d 55%,#040404);border:1px solid #000;box-shadow:inset 0 1px 0 rgba(255,255,255,.22);overflow:hidden;display:flex;align-items:center;justify-content:space-between;padding:0 20px;color:#F2F0EB;font:400 12px 'DM Mono',monospace;letter-spacing:.12em;text-transform:uppercase}
+.fl .f::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.18) 47%,transparent 60%);background-size:260% 100%;animation:sheen 8s ease-in-out infinite;pointer-events:none}
+@keyframes sheen{0%{background-position:120% 0}60%,100%{background-position:-140% 0}}
+.fl .desks{position:absolute;left:20px;top:18px;bottom:18px;background-image:radial-gradient(circle,rgba(242,240,235,.8) 1.8px,transparent 2.6px);background-size:18px 16px;pointer-events:none;animation:flick 7s ease-in-out infinite}
+@keyframes flick{0%,100%{opacity:1}50%{opacity:.72}}
+.fl:nth-of-type(2n) .desks{animation-delay:-3.5s}
+.fl .t{position:absolute;left:0;top:0;width:100%;height:320px;transform-origin:top;transform:rotateX(-90deg);background:linear-gradient(180deg,#505050,#2a2a2a);border:1px solid #000}
+.fl .r{position:absolute;left:100%;top:0;width:320px;height:100%;transform-origin:left;transform:rotateY(90deg);background-image:radial-gradient(circle,rgba(242,240,235,.42) 1.6px,transparent 2.3px),linear-gradient(180deg,#161616,#000);background-size:18px 16px,100% 100%;background-position:9px 18px,0 0;border:1px solid #000;backface-visibility:hidden}
+.fl .l{position:absolute;left:-320px;top:0;width:320px;height:100%;transform-origin:right;transform:rotateY(-90deg);background:linear-gradient(180deg,#1c1c1c,#050505);border:1px solid #000;backface-visibility:hidden}
+.fl .b{position:absolute;inset:0;background:#080808;border:1px solid #000;transform:translateZ(-320px) rotateY(180deg);backface-visibility:hidden}
+.fl.off .f{background:#070707;color:#6B6A66;box-shadow:none}
+.fl.off .t{background:#1c1c1c}
+.fl.off .r{background-image:none;background:#070707}
+.fl.group .t::after{content:"";position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px;border-radius:50%;background:#FF4D00;box-shadow:0 0 24px #FF4D00;animation:beat 2.4s ease-in-out infinite}
+.fl:hover{transform:translateX(14px)}
+.fl.on{transform:translateX(90px)}
+.fl.on .f,.fl.on .t{box-shadow:inset 0 0 0 2px #FF4D00}
+.ctl{position:absolute;left:0;bottom:28px;z-index:3;display:flex;flex-direction:column;gap:2px;border:1px solid #111;background:#F2F0EB;padding:6px 0}
+.ctl button{width:44px;height:44px;border:0;background:transparent;color:#111;font:500 18px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer}
+.ctl button:hover{background:#ECE9E2;color:#C23A00}
+.cap{position:absolute;left:0;top:14px;z-index:3;display:flex;flex-direction:column;gap:6px}
+.panel{position:absolute;right:0;top:0;bottom:0;width:420px;padding:18px 0 0 40px;z-index:2;display:flex;flex-direction:column;gap:22px;background:linear-gradient(90deg,rgba(242,240,235,0) 0,rgba(242,240,235,.94) 40px,#F2F0EB 100%)}
+.blk .wall{position:absolute;backface-visibility:hidden;border:1px solid #000;background-image:radial-gradient(circle,rgba(242,240,235,.6) 1.5px,transparent 2.2px),linear-gradient(180deg,#171717,#040404);background-size:16px 20px,100% 100%;background-position:8px 10px,0 0}
+.blk .front{left:0;top:100%;width:100%;transform-origin:50% 0;transform:rotateX(90deg) rotateY(180deg)}
+.blk .back{left:0;bottom:100%;width:100%;transform-origin:50% 100%;transform:rotateX(-90deg) rotateY(180deg);background-image:radial-gradient(circle,rgba(242,240,235,.3) 1.5px,transparent 2.2px),linear-gradient(180deg,#0e0e0e,#000)}
+.blk .side{right:100%;top:0;height:100%;transform-origin:100% 50%;transform:rotateY(-90deg) rotateZ(180deg);background-image:radial-gradient(circle,rgba(242,240,235,.34) 1.5px,transparent 2.2px),linear-gradient(180deg,#101010,#000)}
+.blk .rside{left:100%;top:0;height:100%;transform-origin:0 50%;transform:rotateY(90deg) rotateZ(180deg);background-image:radial-gradient(circle,rgba(242,240,235,.34) 1.5px,transparent 2.2px),linear-gradient(180deg,#101010,#000)}
+.blk .top{position:absolute;inset:0;background:linear-gradient(135deg,#3e3e3e,#161616);border:1px solid #000;transition:box-shadow .3s}
+
+.stage{height:960px}
+.tower{height:830px}
+.plinth{height:60px}
+.plinth .f{display:flex;align-items:flex-end;justify-content:center;overflow:visible}
+.door{position:absolute;left:50%;bottom:0;width:56px;height:46px;margin-left:-28px;background:#F2F0EB;border:1px solid #000;transition:box-shadow .3s}
+.door::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:#111}
+.door::after{content:"LOBBY";position:absolute;left:50%;top:-22px;transform:translateX(-50%);font:500 9px 'DM Mono',monospace;letter-spacing:.16em;color:#F2F0EB}
+.plinth.near .door{box-shadow:0 0 0 2px #FF4D00,0 0 28px #FF4D00}
+.avw{position:absolute;left:0;bottom:0;width:0;height:0;transform-style:preserve-3d}
+.avd{transform-style:preserve-3d;animation:drop 1.4s cubic-bezier(.2,.8,.2,1) both}
+@keyframes drop{0%{transform:translateY(-900px)}66%{transform:translateY(0)}82%{transform:translateY(-16px)}100%{transform:translateY(0)}}
+.avb{position:absolute;left:0;bottom:0;width:0;height:0;transform-style:preserve-3d}
+.av{position:absolute;left:-10px;bottom:0;width:20px;height:46px}
+.av i{position:absolute;left:4px;bottom:0;width:12px;height:30px;background:#111;border-radius:6px 6px 4px 4px}
+.av i::before{content:"";position:absolute;left:1px;top:-13px;width:10px;height:10px;border-radius:50%;background:#111}
+.av i::after{content:"";position:absolute;left:3px;top:-17px;width:4px;height:4px;border-radius:50%;background:#FF4D00;box-shadow:0 0 10px #FF4D00}
+.av b{position:absolute;left:50%;bottom:54px;transform:translateX(-50%);white-space:nowrap;font:500 10px 'DM Mono',monospace;letter-spacing:.12em;text-transform:uppercase;background:#111;color:#F2F0EB;padding:4px 7px}
+.av b::after{content:"";position:absolute;left:50%;bottom:-5px;width:1px;height:5px;background:#111}
+.walking .av i{animation:stride .36s ease-in-out infinite alternate}
+@keyframes stride{from{transform:translateY(0) scaleY(1)}to{transform:translateY(-3px) scaleY(.94)}}
+.ring{position:absolute;left:-30px;bottom:-7px;width:60px;height:60px;border-radius:50%;border:2px solid #FF4D00;opacity:0;animation:land 1s ease-out 1.15s both}
+@keyframes land{0%{opacity:.9;transform:rotateX(90deg) scale(.2)}100%{opacity:0;transform:rotateX(90deg) scale(2.2)}}
+.chipf{position:absolute;z-index:3;font:400 11px 'DM Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#111;background:#F2F0EB;border:1px solid #111;padding:6px 10px;display:flex;gap:8px;align-items:center}
+.chipf.or{color:#C23A00;border-color:#FF4D00}
+.prompt{position:absolute;left:0;bottom:120px;z-index:3;display:flex;flex-direction:column;gap:6px;max-width:380px}
+.prompt .key{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:24px;border:1px solid #111;padding:0 6px;font:500 11px 'DM Mono',monospace;background:#F2F0EB;margin-right:8px}
+.pad{position:absolute;right:440px;bottom:28px;z-index:3;display:grid;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(2,44px);gap:2px}
+.pad button{border:1px solid #111;background:#F2F0EB;color:#111;font:500 16px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer;touch-action:none;user-select:none}
+.pad button:hover{background:#ECE9E2}
+.pad button:active{background:#111;color:#F2F0EB}
+.iplane{position:relative;transform-style:preserve-3d;background:#ECE9E2;background-image:linear-gradient(90deg,rgba(17,17,17,.06) 1px,transparent 1px),linear-gradient(180deg,rgba(17,17,17,.06) 1px,transparent 1px);background-size:45px 45px;border:1px solid #D9D6CF}
+.iplane.l1{animation:liftA .7s ease-in-out both}
+.iplane.l2{animation:liftB .7s ease-in-out both}
+@keyframes liftA{0%{opacity:1}35%{opacity:0;filter:blur(2px)}65%{opacity:0}100%{opacity:1;filter:blur(0)}}
+@keyframes liftB{0%{opacity:1}35%{opacity:0;filter:blur(2px)}65%{opacity:0}100%{opacity:1;filter:blur(0)}}
+.room{position:absolute;background:#F2F0EB;border:1px solid #D9D6CF}
+.zone3{position:absolute;border:1px solid #D9D6CF}
+.zone3 b{position:absolute;left:8px;top:6px;font:400 10px 'DM Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#63625D;font-weight:400}
+.blk{position:absolute;transform-style:preserve-3d}
+.blk .top{position:absolute;inset:0;background:linear-gradient(135deg,#3e3e3e,#161616);border:1px solid #000}
+.blk.lift .top::after{content:"";position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px;border-radius:50%;background:#FF4D00;box-shadow:0 0 14px #FF4D00;animation:beat 2.4s ease-in-out infinite}
+.blk.lift.near .top{box-shadow:0 0 0 2px #FF4D00,0 0 30px rgba(255,77,0,.6)}
+.blk.desk .top{background:linear-gradient(135deg,#2c2c2c,#111)}
+.blk.desk .top::after{content:"";position:absolute;left:14%;right:14%;top:40%;height:1px;background:rgba(255,255,255,.22)}
+.blk.wallb .wall{background-image:linear-gradient(180deg,#2a2a2a,#0a0a0a)}
+.blk.wallb .top{background:#3a3a3a}
+.mat{position:absolute;border:1px dashed #FF4D00;display:flex;align-items:center;justify-content:center;font:400 9px 'DM Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#C23A00}
+.pp{position:absolute;width:0;height:0;transform-style:preserve-3d}
+.pp i{position:absolute;left:-5px;bottom:0;width:10px;height:22px;background:#111;border-radius:5px 5px 3px 3px}
+.pp i::before{content:"";position:absolute;left:1px;top:-10px;width:8px;height:8px;border-radius:50%;background:#111}
+.pp.away i,.pp.away i::before{background:transparent;border:1px dashed #9A988F}
+.pp.leave i,.pp.leave i::before{background:#C23A00}
+.pp.remote i,.pp.remote i::before{background:#9A988F}
+.pp b{position:absolute;left:50%;bottom:36px;transform:translateX(-50%);white-space:nowrap;font:500 9px 'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;background:#F2F0EB;border:1px solid #111;color:#111;padding:3px 6px}
+.pp.need b{border-color:#FF4D00;color:#C23A00;box-shadow:0 0 12px rgba(255,77,0,.5)}
+.pp.near b{background:#111;color:#F2F0EB}
+.avi{position:absolute;width:0;height:0;transform-style:preserve-3d}
+.avb2{position:absolute;left:0;top:0;width:0;height:0;transform-style:preserve-3d}
+.mini{display:grid;gap:2px;border:1px solid #111;padding:5px;position:relative}
+.mz{position:relative;border:1px solid #D9D6CF;z-index:0}
+.md{position:relative;z-index:1;display:flex;align-items:center;justify-content:center}
+.md i{width:18px;height:18px;border-radius:50%;border:1px solid #111;display:flex;align-items:center;justify-content:center;font:500 8px 'DM Mono',monospace;color:#111}
+.md.in i{background:#111;color:#F2F0EB}
+.md.away i,.md.remote i{color:#9A988F;border-color:#9A988F;border-style:dashed}
+.md.need i{box-shadow:0 0 0 2px #FF4D00}
+.me{position:absolute;z-index:2;width:10px;height:10px;margin:-5px;border-radius:50%;background:#FF4D00;box-shadow:0 0 0 3px rgba(255,77,0,.25),0 0 14px #FF4D00;pointer-events:none;transition:left .15s linear,top .15s linear}
+.qrow{display:grid;grid-template-columns:28px 1fr auto;gap:12px;align-items:center;min-height:54px;border-top:1px solid #D9D6CF;background:transparent;border-left:0;border-right:0;border-bottom:0;cursor:pointer;text-align:left;font-family:inherit;color:#111;width:100%;padding:0 2px;font-size:14px}
+.qrow:hover{background:#ECE9E2}
+.qrow.done{color:#63625D}
+.qrow.done .t{text-decoration:line-through}
+.qrow i{width:16px;height:16px;border:1px solid #111;display:inline-block}
+.qrow.done i{background:#111;position:relative}
+.qrow.done i::after{content:"";position:absolute;left:5px;top:1px;width:4px;height:9px;border:solid #F2F0EB;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.bar{height:3px;background:#D9D6CF;position:relative}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:#FF4D00;box-shadow:0 0 10px rgba(255,77,0,.6);transition:width .5s}
+.card{border:1px solid #111;padding:14px 16px;display:flex;flex-direction:column;gap:8px;background:#F2F0EB}
+.toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:4;background:#111;color:#F2F0EB;padding:8px 14px;font:400 11px 'DM Mono',monospace;letter-spacing:.12em;text-transform:uppercase;animation:up .5s cubic-bezier(.2,.8,.2,1) both}
+</style>
+</helmet>
+<div class="root {{motionClass}}" style="position: relative; min-height: 2460px; background: #F2F0EB; color: #111111; font-family: 'Schibsted Grotesk', system-ui, sans-serif; display: flex; align-items: stretch; outline: none" onKeyDown="{{keyDown}}" onKeyUp="{{keyUp}}" onBlur="{{blur}}" tabIndex="-1" ref="{{rootRef}}">
+  <nav class="rail" aria-label="Primary">
+    <a href="P-Dashboard.dc.html" class="mono brand">AIHR <span class="mid">/ SYSTEM 01</span></a>
+<div class="g">
+<a class="it on" href="P-Dashboard.dc.html">Dashboard</a>
+<a class="it" href="P-MyProfile.dc.html">My Profile</a>
+<a class="it" href="P-OrgChart.dc.html">Org chart</a>
+<a class="it" href="P-MyLeave.dc.html">My Leave</a>
+<a class="it" href="P-AttendanceRecords.dc.html">My Attendance</a>
+<a class="it" href="P-Claims.dc.html">Claims</a>
+<a class="it" href="P-Feedback.dc.html">Feedback</a>
+<a class="it" href="P-KnowledgeBase.dc.html">Knowledge Base</a>
+<a class="it" href="P-MobilePreview.dc.html">Mobile App Preview</a>
+</div>
+<div class="g">
+<span class="mono gl">Manage</span>
+<a class="it" href="P-Personnel.dc.html">Personnel</a>
+<a class="it" href="P-LeaveTracker.dc.html">Team Leave Tracker</a>
+<a class="it" href="P-Approvals.dc.html">Approval Items</a>
+<a class="it" href="P-Performance.dc.html">Performance</a>
+<a class="it" href="P-Roster.dc.html">Roster</a>
+<a class="it" href="P-AttendanceImport.dc.html">Import</a>
+</div>
+<div class="g">
+<span class="mono gl">Admin</span>
+<a class="it" href="P-Organization.dc.html">Organization</a>
+<a class="it" href="P-PersonnelAdmin.dc.html">Personnel (admin)</a>
+<a class="it" href="P-EmployeeId.dc.html">System Settings</a>
+<a class="it" href="P-LeaveEntitlements.dc.html">Leave config</a>
+<a class="it" href="P-ShiftSettings.dc.html">Attendance</a>
+<a class="it" href="P-ClaimTypes.dc.html">Claims config</a>
+<a class="it" href="P-PayrollProcess.dc.html">Payroll</a>
+<a class="it" href="P-NoticeBoardAdmin.dc.html">Notice Board</a>
+<a class="it" href="P-Analytics.dc.html">Analytics</a>
+<a class="it" href="P-Reports.dc.html">Reports</a>
+<a class="it" href="P-AuditTrail.dc.html">Audit trail</a>
+<a class="it" href="P-ScheduledActions.dc.html">Scheduled actions</a>
+<a class="it" href="P-DataPrivacy.dc.html">Data Privacy</a>
+<a class="it" href="P-AIConfig.dc.html">AI</a>
+<a class="it" href="P-Users.dc.html">Security &amp; permissions</a>
+</div>
+    <span class="mono mid" style="margin-top: auto">AR · Aisyah Rahman<br>HR admin · EN</span>
+  </nav>
+  <div class="main">
+    <div class="grid" aria-hidden="true"></div>
+    <div style="position: relative; z-index: 1; display: flex; flex-direction: column; gap: 24px; flex: 1">
+      <div class="top mono rv">
+        <span class="mid">/</span>
+        <span style="width: 1px; height: 14px; background: #D9D6CF"></span>
+        <span class="mid">All companies <span style="color: #111">▾</span></span>
+        <span class="mid" style="margin-left: auto; display: inline-flex; align-items: center; gap: 10px"><span class="dot" aria-hidden="true"></span>Live 09:12</span>
+        <span class="mid">3 <span class="or">notices</span></span>
+      </div>
+      <section class="rv" style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap">
+        <div style="flex: 1 1 420px; min-width: 0"><span class="mono mid">Nusantara Holdings Bhd · 8 companies · 248 people · Monday 6 October 2026</span><h1>Good morning, Aisyah.</h1>
+          <div style="display: flex; gap: 22px; align-items: center; flex-wrap: wrap; margin-top: 14px"><span class="mono mid">Day 12 streak</span><span class="mono" style="color: #C23A00">{{pts}} pts today</span><span class="mono mid">{{doneCount}} of 5 quests</span><a class="txt" href="P-MyProfile.dc.html" style="min-height: 36px; font-size: 14px">My Profile</a></div></div>
+        <div class="cells" style="grid-template-columns: repeat(4, minmax(0, 1fr)); flex: 0 1 640px">
+          <div class="cell"><span class="mono mid">Companies</span><b>8<small>floors</small></b><span class="mid" style="font-size: 13px">4 with lights off</span></div>
+          <div class="cell"><span class="mono mid">Headcount</span><b>248<small>people</small></b><span class="mid" style="font-size: 13px">230 in now</span></div>
+          <div class="cell"><span class="mono or">Needs you</span><b style="color: #C23A00">{{needCount}}</b><span class="mid" style="font-size: 13px">approvals and checks</span></div>
+          <div class="cell"><span class="mono mid">Departments</span><b>14</b><span class="mid" style="font-size: 13px"><span class="or">NH Retail</span> needs 2</span></div>
+        </div>
+      </section>
+      <label class="intent rv" style="animation-delay: .05s"><svg viewBox="0 0 24 24" width="20" height="20" fill="#FF4D00" aria-hidden="true"><path d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2z"></path></svg><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Find people or ask</span><input type="text" placeholder="Find someone on the tower: Priya, Finance, who is in on Floor 06" onInput="{{find}}"><button class="txt" type="button" onClick="{{showPeople}}" style="min-height: 40px; border-bottom: 0; font-size: 18px">↵</button></label>
+
+      <section class="rv stagewrap" style="animation-delay: .1s">
+        <div class="stage {{stageCls}}" aria-label="The tower" ref="{{stageRef}}" onPointerDown="{{down}}" onPointerMove="{{move}}" onPointerUp="{{up}}" onPointerCancel="{{up}}" onPointerLeave="{{up}}" onWheel="{{wheel}}">
+          <span class="spot" aria-hidden="true"></span><span class="tshadow" aria-hidden="true"></span>
+          <sc-if value="{{outside}}" hint-placeholder-val="{{ true }}">
+          <div class="tower {{dragCls}}" ref="{{towerRef}}">
+            <div class="plaza" aria-hidden="true">
+              <span class="road" style="left: 0; right: 0; top: 520px; height: 2px"></span>
+              <span class="road" style="left: 0; right: 0; top: 24px; height: 2px"></span>
+              <span class="road v" style="top: 0; bottom: 0; left: 300px; width: 2px"></span>
+              <span class="road v" style="top: 0; bottom: 0; left: 1100px; width: 2px"></span>
+              <span class="lot" style="left: 1140px; top: 110px; width: 230px; height: 330px"></span>
+              <span class="lot" style="left: 40px; top: 110px; width: 230px; height: 330px"></span>
+              <span class="car" style="top: 506px; left: 0"></span><span class="car b" style="top: 526px; left: 0"></span><span class="bus" style="top: 540px; left: 0"></span><span class="car c" style="top: 10px; left: 0"></span>
+              <span class="tree" style="left: 330px; top: 580px"></span><span class="tree" style="left: 370px; top: 610px"></span><span class="tree" style="left: 1040px; top: 590px"></span><span class="tree" style="left: 1000px; top: 630px"></span><span class="tree" style="left: 80px; top: 600px"></span><span class="tree" style="left: 1300px; top: 560px"></span><span class="tree" style="left: 340px; top: 60px"></span><span class="tree" style="left: 1060px; top: 60px"></span>
+              <span class="ppl" style="left: 520px; top: 560px"></span><span class="ppl" style="left: 760px; top: 600px; animation-delay: -3s"></span><span class="ppl" style="left: 640px; top: 640px; animation-delay: -6s"></span><span class="ppl" style="left: 880px; top: 560px; animation-delay: -1.5s"></span><span class="ppl" style="left: 980px; top: 480px; animation-delay: -4.5s"></span>
+            </div>
+            <div class="plinth {{plinthCls}}" aria-hidden="true"><span class="r"></span><span class="t"></span><span class="f"><span class="door"></span></span></div>
+            <sc-for list="{{floors}}" as="f" hint-placeholder-count="8">
+              <button class="fl {{f.cls}}" type="button" onClick="{{f.pick}}" aria-label="{{f.label}}" style="bottom: {{f.bottom}}px">
+                <span class="b"></span><span class="l"></span><span class="r"></span><span class="t"></span>
+                <span class="f"><span class="desks" style="width: {{f.lit}}%"></span><span style="position: relative; z-index: 1">{{f.code}} · {{f.short}}</span><span style="position: relative; z-index: 1">{{f.headTxt}}</span></span>
+              </button>
+            </sc-for>
+            <div class="avw" aria-hidden="true" ref="{{avRef}}">
+              <div class="{{dropCls}}"><div class="avb" style="transform: rotateY({{ryNeg}}deg) rotateX({{rxNeg}}deg)"><span class="av"><b>You · AR</b><i></i></span></div><sc-if value="{{dropping}}" hint-placeholder-val="{{ true }}"><span class="ring"></span></sc-if></div>
+            </div>
+          </div>
+          </sc-if>
+          <sc-if value="{{inside}}" hint-placeholder-val="{{ false }}">
+          <div class="iplane {{liftCls}} {{dragCls}}" ref="{{planeRef}}" style="width: {{pw}}px; height: {{ph}}px">
+            <span class="room" style="left: 100px; top: 100px; width: {{rw}}px; height: {{rh}}px"></span>
+            <sc-for list="{{zones3}}" as="z" hint-placeholder-count="3"><span class="zone3" style="left: {{z.px}}px; top: {{z.py}}px; width: {{z.pw}}px; height: {{z.ph}}px"><b>{{z.n}}</b></span></sc-for>
+            <span class="mat" style="left: {{matX}}px; top: {{matY}}px; width: 80px; height: 30px">Exit · plaza</span>
+            <sc-for list="{{blocks}}" as="b" hint-placeholder-count="12"><span class="blk {{b.cls}}" style="left: {{b.x}}px; top: {{b.y}}px; width: {{b.w}}px; height: {{b.d}}px"><span class="wall back" style="height: {{b.h}}px"></span><span class="wall side" style="width: {{b.h}}px"></span><span class="wall rside" style="width: {{b.h}}px"></span><span class="wall front" style="height: {{b.h}}px"></span><span class="top" style="transform: translateZ({{b.h}}px)"></span></span></sc-for>
+            <sc-for list="{{figs}}" as="p" hint-placeholder-count="8"><span class="pp {{p.cls}}" style="left: {{p.fx}}px; top: {{p.fy}}px; transform: rotateZ({{rzNeg}}deg) rotateX(-58deg)"><i></i><b>{{p.ini}}</b></span></sc-for>
+            <span class="avi" aria-hidden="true" ref="{{avInRef}}"><span class="avb2" style="transform: rotateZ({{rzNeg}}deg) rotateX(-58deg)"><span class="av"><b>You</b><i></i></span></span></span>
+          </div>
+          </sc-if>
+          <div class="cap"><span class="mono mid">{{capA}}</span><span class="mono or">{{capB}}</span></div>
+          <span class="chipf" style="right: 440px; top: 14px">Deepavali · 33 days</span>
+          <span class="chipf or" style="right: 440px; top: 54px"><span class="dot" aria-hidden="true"></span>September payroll · not published</span>
+          <span class="chipf" style="left: 0; top: 60px">{{whereChip}}</span>
+          <sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}"><span class="toast">{{toast}}</span></sc-if>
+          <div class="prompt"><span class="mono or">{{promptK}}</span><span style="font-size: 18px; font-weight: 500; letter-spacing: -.02em; line-height: 1.25"><sc-if value="{{hasKey}}" hint-placeholder-val="{{ true }}"><span class="key">{{promptKey}}</span></sc-if>{{promptT}}</span></div>
+          <div class="pad" aria-label="Walk">
+            <span></span><button type="button" onPointerDown="{{padU}}" onPointerUp="{{padOff}}" onPointerLeave="{{padOff}}" onPointerCancel="{{padOff}}" aria-label="Walk up">▲</button><span></span>
+            <button type="button" onPointerDown="{{padL}}" onPointerUp="{{padOff}}" onPointerLeave="{{padOff}}" onPointerCancel="{{padOff}}" aria-label="Walk left">◀</button><button type="button" onPointerDown="{{padD}}" onPointerUp="{{padOff}}" onPointerLeave="{{padOff}}" onPointerCancel="{{padOff}}" aria-label="Walk down">▼</button><button type="button" onPointerDown="{{padR}}" onPointerUp="{{padOff}}" onPointerLeave="{{padOff}}" onPointerCancel="{{padOff}}" aria-label="Walk right">▶</button>
+          </div>
+          <div class="ctl" aria-label="View controls">
+            <button type="button" onClick="{{act}}" aria-label="Act">↵</button>
+            <button type="button" onClick="{{zoomIn}}" aria-label="Zoom in">+</button>
+            <button type="button" onClick="{{zoomOut}}" aria-label="Zoom out">−</button>
+            <button type="button" onClick="{{rotL}}" aria-label="Rotate left">↺</button>
+            <button type="button" onClick="{{rotR}}" aria-label="Rotate right">↻</button>
+            <button type="button" onClick="{{home}}" aria-label="Reset view">⌂</button>
+          </div>
+        </div>
+
+        <aside class="panel">
+          
+<sc-if value="{{inside}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-direction: column; gap: 10px">
+  <div style="display: flex; align-items: baseline; justify-content: space-between"><span class="mono mid">Floor {{sel.num}} · {{sel.name}}</span><span class="mono mid">{{sel.inNow}} in · {{sel.headTxt}}</span></div>
+  <div class="mini" style="grid-template-columns: repeat({{sel.cols}}, minmax(0, 1fr)); grid-template-rows: repeat({{sel.rows}}, 26px)">
+    <sc-for list="{{zones}}" as="z" hint-placeholder-count="3"><span class="mz" style="grid-column: {{z.x}} / span {{z.w}}; grid-row: {{z.y}} / span {{z.h}}"></span></sc-for>
+    <sc-for list="{{people}}" as="p" hint-placeholder-count="8"><span class="md {{p.cls}}" style="grid-column: {{p.x}}; grid-row: {{p.y}}"><i>{{p.ini}}</i></span></sc-for>
+    <span class="me" aria-hidden="true" style="left: {{miniX}}%; top: {{miniY}}%"></span>
+  </div>
+  <sc-if value="{{hasCard}}" hint-placeholder-val="{{ true }}">
+  <div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px"><span style="font-size: 20px; font-weight: 500; letter-spacing: -.02em">{{card.n}}</span><span class="mono" style="color: {{card.sc}}">{{card.st}}</span></div>
+    <span class="mid" style="font-size: 13px">{{card.r}} · {{card.d}} · {{card.note}}</span>
+    <div style="display: flex; gap: 18px; flex-wrap: wrap; align-items: center">
+      <button class="pill" type="button" onClick="{{card.act}}" style="min-height: 38px; font-size: 13px">{{card.qa}}</button>
+      <a class="txt" href="P-PersonnelProfile.dc.html" style="min-height: 36px; font-size: 13px">Open profile</a>
+    </div>
+  </div>
+  </sc-if>
+  <sc-if value="{{noCard}}" hint-placeholder-val="{{ false }}"><span class="mono mid">{{insideHint}}</span></sc-if>
+</div>
+</sc-if>
+<sc-if value="{{outside}}" hint-placeholder-val="{{ false }}">
+<div class="card" style="border-color: #FF4D00">
+  <span class="mono or">{{outK}}</span>
+  <span style="font-size: 20px; font-weight: 500; letter-spacing: -.02em">{{outT}}</span>
+  <span class="mid" style="font-size: 13px">Walk with the arrow keys or WASD, or hold the pad. Walk through the lobby door to go in. Drag the view to look around.</span>
+  <div style="display: flex; gap: 18px; align-items: center"><button class="txt" type="button" onClick="{{showQuests}}" style="min-height: 36px; font-size: 13px">See today’s quests</button></div>
+</div>
+</sc-if>
+
+          <div style="border-top: 1px solid #111; padding-top: 12px; display: flex; flex-direction: column; gap: 10px">
+            <div class="mono" style="display: flex; gap: 20px"><button class="navl {{tabQ}}" type="button" onClick="{{showQuests}}">Quests</button><button class="navl {{tabF}}" type="button" onClick="{{showFloors}}">Floors</button><button class="navl {{tabP}}" type="button" onClick="{{showPeople}}">People</button><button class="navl {{tabA}}" type="button" onClick="{{showAct}}">Activity</button><span class="mid" style="margin-left: auto">{{tabRight}}</span></div>
+            <sc-if value="{{isQ}}" hint-placeholder-val="{{ true }}">
+              <div class="bar" aria-hidden="true"><i style="width: {{progress}}%"></i></div>
+              <div style="border-bottom: 1px solid #D9D6CF"><sc-for list="{{quests}}" as="q" hint-placeholder-count="5"><button class="qrow {{q.cls}}" type="button" onClick="{{q.go}}"><i></i><span><span class="t" style="display: block; font-weight: 500">{{q.t}}</span><span class="mid" style="display: block; font-size: 12px">{{q.s}}</span></span><span class="mono" style="color: {{q.pc}}">{{q.ptsTxt}}</span></button></sc-for></div>
+            </sc-if>
+            <sc-if value="{{isF}}" hint-placeholder-val="{{ false }}">
+              <div style="border-bottom: 1px solid #D9D6CF"><sc-for list="{{floorsDown}}" as="l" hint-placeholder-count="8"><button class="lv {{l.cls}}" type="button" onClick="{{l.ride}}"><span class="mono mid">{{l.code}}</span><span><span style="display: block; font-weight: 500">{{l.name}}</span><span class="mid" style="display: block; font-size: 12px; color: {{l.noteColor}}">{{l.note}}</span></span><span class="num" style="text-align: right">{{l.head}}</span></button></sc-for></div>
+            </sc-if>
+            <sc-if value="{{isP}}" hint-placeholder-val="{{ false }}">
+              <div style="border-bottom: 1px solid #D9D6CF"><sc-for list="{{found}}" as="r" hint-placeholder-count="5"><button class="lv" type="button" onClick="{{r.go}}"><span class="mono mid">{{r.code}}</span><span><span style="display: block; font-weight: 500">{{r.n}}</span><span class="mid" style="display: block; font-size: 12px">{{r.r}} · {{r.d}}</span></span><span class="mono" style="text-align: right; color: {{r.sc}}">{{r.st}}</span></button></sc-for></div>
+              <sc-if value="{{noneFound}}" hint-placeholder-val="{{ false }}"><span class="mono mid">No one matches. Try a name, a department or a floor.</span></sc-if>
+            </sc-if>
+            <sc-if value="{{isA}}" hint-placeholder-val="{{ false }}">
+              <div style="border-bottom: 1px solid #D9D6CF">
+                <div class="row" style="grid-template-columns: 70px 1fr auto"><span class="num mid" style="font-size: 12px">09:12</span><span>Aisyah Rahman clocked in · Floor 07</span><span></span></div>
+                <div class="row" style="grid-template-columns: 70px 1fr auto"><span class="num mid" style="font-size: 12px">09:05</span><span>Marcus Ong · claim RM 128.40 submitted</span><span></span></div>
+                <div class="row" style="grid-template-columns: 70px 1fr auto"><span class="num mid" style="font-size: 12px">08:31</span><span>Nurul Izzati · first day · Floor 05</span><span></span></div>
+                <div class="row" style="grid-template-columns: 70px 1fr auto"><span class="num mid" style="font-size: 12px">3 Oct</span><span>Office closure · 8 November · notice</span><button class="txt" type="button" onClick="{{readNotice}}" style="min-height: 32px; font-size: 13px">{{noticeLabel}}</button></div>
+                <div class="row" style="grid-template-columns: 70px 1fr auto"><span class="num mid" style="font-size: 12px">2 Oct</span><span>September payroll calculated · not published</span><a class="txt" href="P-PayrollBatch.dc.html" style="min-height: 32px; font-size: 13px">Open</a></div>
+              </div>
+            </sc-if>
+          </div>
+        </aside>
+      </section>
+
+      <section class="sec rv" style="animation-delay: .2s">
+        <div class="sh"><span class="mono mid">01 · Approval requests · 5 awaiting your decision</span><a class="txt" href="P-Approvals.dc.html" style="min-height: 36px; font-size: 14px">Open Approvals</a></div>
+        <div class="th mono" style="grid-template-columns: 40px 1.6fr 1.1fr 110px 110px"><span>#</span><span>Request</span><span>Who</span><span>When</span><span>Status</span></div>
+        <div class="tbl">
+          <div class="tr" style="grid-template-columns: 40px 1.6fr 1.1fr 110px 110px"><span class="mono mid">01</span><span style="font-weight: 500">Annual leave · 12 to 14 Oct · 3 days</span><span class="mid">Aisyah Rahman · Marketing</span><span class="mid">Today 08:40</span><span class="st" style="color: #C23A00">Pending</span></div>
+          <div class="tr" style="grid-template-columns: 40px 1.6fr 1.1fr 110px 110px"><span class="mono mid">02</span><span style="font-weight: 500">Claim · Client lunch · RM 128.40</span><span class="mid">Marcus Ong · Engineering</span><span class="mid">Today 09:05</span><span class="st" style="color: #C23A00">Pending</span></div>
+          <div class="tr" style="grid-template-columns: 40px 1.6fr 1.1fr 110px 110px"><span class="mono mid">03</span><span style="font-weight: 500">Attendance correction · 3 Oct · out 19:10</span><span class="mid">Wei Jie Tan · Operations</span><span class="mid">Yesterday</span><span class="st" style="color: #C23A00">Pending</span></div>
+          <div class="tr" style="grid-template-columns: 40px 1.6fr 1.1fr 110px 110px"><span class="mono mid">04</span><span style="font-weight: 500">OT plan · 8 Oct · 3.0 h · month-end closing</span><span class="mid">Mei Ling Chua · Finance</span><span class="mid">Yesterday</span><span class="st" style="color: #C23A00">Pending</span></div>
+          <div class="tr" style="grid-template-columns: 40px 1.6fr 1.1fr 110px 110px"><span class="mono mid">05</span><span style="font-weight: 500">Resignation · last day 18 Oct</span><span class="mid">Arjun Pillai · Sales</span><span class="mid">2 Oct</span><span class="st" style="color: #63625D">HR review</span></div>
+        </div>
+      </section>
+
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px">
+        <section class="sec rv" style="animation-delay: .25s"><div class="sh"><span class="mono mid">02 · Attendance today</span></div><div class="kv" style="grid-template-columns: repeat(2, minmax(0, 1fr))"><div><span class="mono mid">Present</span><span class="v big">231</span></div><div><span class="mono mid">Late</span><span class="v big" style="color: #C23A00">6</span></div><div><span class="mono mid">Half day</span><span class="v big">2</span></div><div><span class="mono mid">Absent</span><span class="v big" style="color: #C23A00">9</span></div></div></section>
+        <section class="sec rv" style="animation-delay: .3s"><div class="sh"><span class="mono mid">03 · Recently joined</span></div><div style="border-bottom: 1px solid #D9D6CF"><div class="ls"><span class="mono mid">1 Oct</span><span><span style="font-weight: 500">Marcus Ong</span> <span class="mid">· Engineering</span></span><span class="mono">Probation</span></div><div class="ls"><span class="mono mid">28 Sep</span><span><span style="font-weight: 500">Nurul Izzati</span> <span class="mid">· NH Retail</span></span><span class="mono">Probation</span></div><div class="ls"><span class="mono mid">15 Sep</span><span><span style="font-weight: 500">Daniel Lim</span> <span class="mid">· NH Logistics</span></span><span class="mono">Active</span></div></div></section>
+        <section class="sec rv" style="animation-delay: .35s"><div class="sh"><span class="mono mid">04 · Upcoming</span></div><div style="border-bottom: 1px solid #D9D6CF"><div class="ls"><span class="mono mid">15 Oct</span><span><span style="font-weight: 500">EPF, SOCSO, EIS and PCB due</span></span><span class="mono" style="color: #C23A00">Statutory</span></div><div class="ls"><span class="mono mid">25 Oct</span><span><span style="font-weight: 500">October pay date</span></span><span class="mono mid"></span></div><div class="ls"><span class="mono mid">8 Nov</span><span><span style="font-weight: 500">Deepavali</span> <span class="mid">· all companies</span></span><span class="mono mid"></span></div></div></section>
+      </div>
+
+      <footer class="stat rv" style="animation-delay: .4s"><span>Sys OK</span><span>8 companies · 248 people</span><span>Last sweep 02:00 · 4 jobs ran</span><span style="margin-left: auto">Customize dashboard · View all activity</span></footer>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"boolean","default":true,"section":"Look"},"$preview":{"width":1440,"height":2460}}'>
+class Component extends DCLogic {
+  constructor(p) {
+    super(p);
+    this.keys = {}; this.p = { x: 700, y: 640 }; this.q = { x: 0, y: 0 }; this.cam = { x: 0, z: 0 }; this.icam = { x: 0, y: 0 }; this.nearKey = ''; this.cellKey = '';
+  }
+  componentDidMount() {
+    this.mounted = true; this.last = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const step = (t) => { if (!this.mounted) return; const dt = Math.min(0.05, (t - this.last) / 1000); this.last = t; try { this.tick(dt); } catch (err) {} this.raf = requestAnimationFrame(step); };
+    if (typeof requestAnimationFrame !== 'undefined') this.raf = requestAnimationFrame(step);
+    this.dropT = setTimeout(() => this.setState({ landed: true }), 1500);
+  }
+  componentWillUnmount() { this.mounted = false; if (this.raf) cancelAnimationFrame(this.raf); clearTimeout(this.dropT); clearTimeout(this.toastT); }
+  view() { const st = this.state || {}; return { a: st.ry == null ? -28 : st.ry, b: st.rx == null ? -14 : st.rx, rz: st.rz == null ? -30 : st.rz, zoom: st.zoom == null ? 1 : st.zoom }; }
+  orbit(g, dx, dy) {
+    const st = this.state || {};
+    if (st.scene === 'inside') return { rz: g.rz + dx * 0.35 };
+    return { ry: Math.max(-80, Math.min(80, g.a + dx * 0.35)), rx: Math.max(-42, Math.min(-4, g.b - dy * 0.15)) };
+  }
+  zoomBy(e) { const v = this.view(); const d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY; this.setState({ zoom: Math.min(2.2, Math.max(0.6, +(v.zoom * Math.exp(-d * 0.0016)).toFixed(3))) }); }
+  onDown(e) { if (e.button != null && e.button !== 0) return; const v = this.view(); this.moved = false; this.drag = { x: e.clientX, y: e.clientY, a: v.a, b: v.b, rz: v.rz, id: e.pointerId, el: e.currentTarget }; try { if (this.rootEl) this.rootEl.focus({ preventScroll: true }); } catch (err) {} }
+  onMove(e) { const g = this.drag; if (!g) return; const dx = e.clientX - g.x, dy = e.clientY - g.y; if (!this.moved) { if (Math.abs(dx) + Math.abs(dy) < 5) return; this.moved = true; try { g.el.setPointerCapture(g.id); } catch (err) {} } this.setState(Object.assign({ dragging: true }, this.orbit(g, dx, dy))); }
+  onUp() { if (!this.drag) return; this.drag = null; setTimeout(() => { this.moved = false; }, 0); this.setState({ dragging: false }); }
+  data() {
+    if (this._d) return this._d;
+    const F = [
+      { id: 'hold', code: 'F08', num: '08', short: 'Nusantara Holdings', name: 'Nusantara Holdings Bhd', head: 2, desks: 8, group: true, note: 'Group · 1 desk row lit', cols: 6, rows: 2, zones: [{ n: 'Board', x: 1, y: 1, w: 6, h: 2 }], people: [
+        { id: 'hamid', n: 'Tan Sri Hamid Nusantara', r: 'Group CEO', d: 'Board', x: 2, y: 1, s: 'in', note: 'In since 08:30' }, { id: 'rosli', n: 'Rosli Ahmad', r: 'Group CFO', d: 'Board', x: 4, y: 1, s: 'away', note: 'Away · 6 to 8 Oct' }] },
+      { id: 'nsb', code: 'F07', num: '07', short: 'Nusantara Sdn Bhd', name: 'Nusantara Sdn Bhd', head: 146, desks: 160, note: '8 departments · 3 away today', cols: 12, rows: 5, zones: [{ n: 'Finance', x: 1, y: 1, w: 4, h: 2 }, { n: 'Marketing', x: 5, y: 1, w: 3, h: 2 }, { n: 'Engineering', x: 8, y: 1, w: 5, h: 2 }, { n: 'Operations', x: 1, y: 3, w: 6, h: 3 }, { n: 'Sales', x: 7, y: 3, w: 3, h: 3 }, { n: 'People', x: 10, y: 3, w: 3, h: 3 }], people: [
+        { id: 'priya', n: 'Priya Nair', r: 'Finance Director', d: 'Finance', x: 1, y: 1, s: 'in', note: 'September run calculated, not published' }, { id: 'mei', n: 'Mei Ling Chua', r: 'Accountant', d: 'Finance', x: 3, y: 1, s: 'in', note: 'OT plan 8 Oct pending' }, { id: 'raj', n: 'Raj Kumar', r: 'Payroll Executive', d: 'Finance', x: 2, y: 2, s: 'leave', note: 'Medical leave today' }, { id: 'hana', n: 'Hana Yusof', r: 'Analyst', d: 'Finance', x: 4, y: 2, s: 'away', note: 'Absent · no clock-in' },
+        { id: 'me', n: 'Aisyah Rahman', r: 'Marketing Executive', d: 'Marketing', x: 5, y: 1, s: 'in', note: 'That is your desk · in at 09:02' }, { id: 'nadia', n: 'Nadia Lim', r: 'Designer', d: 'Marketing', x: 7, y: 2, s: 'in', note: 'In at 08:58' },
+        { id: 'marcus', n: 'Marcus Ong', r: 'Software Engineer', d: 'Engineering', x: 9, y: 1, s: 'in', note: 'Joined 1 Oct · probation' }, { id: 'jason', n: 'Jason Teh', r: 'Engineering Lead', d: 'Engineering', x: 11, y: 1, s: 'in', note: 'In at 09:00' }, { id: 'amira', n: 'Amira Hassan', r: 'QA Engineer', d: 'Engineering', x: 10, y: 2, s: 'remote', note: 'Remote today' },
+        { id: 'kelvin', n: 'Kelvin Chong', r: 'Head of Operations', d: 'Operations', x: 1, y: 3, s: 'in', note: '7 approvals in his queue' }, { id: 'weijie', n: 'Wei Jie Tan', r: 'Operations Executive', d: 'Operations', x: 3, y: 4, s: 'in', note: 'Correction 3 Oct pending' }, { id: 'farah', n: 'Farah Hussin', r: 'Customer Care Lead', d: 'Operations', x: 5, y: 4, s: 'in', note: 'Late 31 min · leave 12 to 14 Oct pending' }, { id: 'ben', n: 'Ben Koh', r: 'Operations Executive', d: 'Operations', x: 2, y: 5, s: 'in', note: 'In at 09:04' },
+        { id: 'arjun', n: 'Arjun Pillai', r: 'Account Manager', d: 'Sales', x: 8, y: 3, s: 'in', note: 'Serving notice · last day 18 Oct · CP22A overdue' }, { id: 'lina', n: 'Lina Wong', r: 'Sales Executive', d: 'Sales', x: 8, y: 5, s: 'away', note: 'Client visit · Penang' },
+        { id: 'siti', n: 'Siti Aminah', r: 'Head of People', d: 'People', x: 11, y: 4, s: 'in', note: 'In at 08:40' }] },
+      { id: 'nl', code: 'F06', num: '06', short: 'NH Logistics', name: 'NH Logistics Sdn Bhd', head: 64, desks: 72, note: 'Night shift · 22 on', cols: 10, rows: 3, zones: [{ n: 'Warehouse', x: 1, y: 1, w: 6, h: 3 }, { n: 'Fleet', x: 7, y: 1, w: 4, h: 3 }], people: [
+        { id: 'daniel', n: 'Daniel Lim', r: 'Driver', d: 'Fleet', x: 8, y: 1, s: 'away', note: 'Night shift · off until 22:00' }, { id: 'hafiz', n: 'Hafiz Zulkifli', r: 'Fleet Supervisor', d: 'Fleet', x: 9, y: 3, s: 'in', note: 'In at 08:50' }, { id: 'siva', n: 'Siva Kumar', r: 'Warehouse Lead', d: 'Warehouse', x: 2, y: 1, s: 'in', note: 'In at 08:02' }, { id: 'meifong', n: 'Lim Mei Fong', r: 'Warehouse Supervisor', d: 'Warehouse', x: 4, y: 3, s: 'in', note: '3 corrections pending · no-show flag 8 to 10 Oct' }] },
+      { id: 'nr', code: 'F05', num: '05', short: 'NH Retail', name: 'NH Retail Sdn Bhd', head: 36, desks: 40, note: 'Needs 2 departments', noteColor: '#C23A00', cols: 8, rows: 3, zones: [{ n: 'Mid Valley', x: 1, y: 1, w: 4, h: 3 }, { n: 'Sunway', x: 5, y: 1, w: 4, h: 3 }], people: [
+        { id: 'nurul', n: 'Nurul Izzati', r: 'Retail Associate', d: 'Mid Valley', x: 2, y: 1, s: 'in', note: 'First day · EPF no. missing' }, { id: 'wenhan', n: 'Lee Wen Han', r: 'Store Manager', d: 'Mid Valley', x: 3, y: 3, s: 'in', note: 'In at 09:30' }, { id: 'zara', n: 'Zara Hamzah', r: 'Store Manager', d: 'Sunway', x: 7, y: 2, s: 'in', note: 'In at 09:40' }] },
+      { id: 'nd', code: 'F04', num: '04', short: 'NH Digital', name: 'NH Digital Sdn Bhd', head: 0, desks: 24, off: true, note: 'Lights off · incorporated 1 Oct', cols: 6, rows: 2, zones: [], people: [] },
+      { id: 'np', code: 'F03', num: '03', short: 'NH Properties', name: 'NH Properties Sdn Bhd', head: 0, desks: 16, off: true, note: 'Lights off · dormant', cols: 6, rows: 2, zones: [], people: [] },
+      { id: 'nc', code: 'F02', num: '02', short: 'Nusantara Capital', name: 'Nusantara Capital Sdn Bhd', head: 0, desks: 16, off: true, note: 'Lights off · dormant', cols: 6, rows: 2, zones: [], people: [] },
+      { id: 'nf', code: 'F01', num: '01', short: 'NH Food Industries', name: 'NH Food Industries Sdn Bhd', head: 0, desks: 16, off: true, note: 'Possible duplicate · lights off', noteColor: '#C23A00', cols: 6, rows: 2, zones: [], people: [] }
+    ];
+    const Q = [
+      { id: 'q1', t: 'Approve Farah’s leave', s: 'Floor 07 · Operations · 12 to 14 Oct · overlaps Aisyah', floor: 'nsb', person: 'farah', pts: 20, qa: 'Approve 3 days' },
+      { id: 'q2', t: 'See Priya about September', s: 'Floor 07 · Finance · run calculated, not published', floor: 'nsb', person: 'priya', pts: 20, qa: 'Agree to publish' },
+      { id: 'q3', t: 'Welcome Marcus Ong', s: 'Floor 07 · Engineering · joined 1 Oct', floor: 'nsb', person: 'marcus', pts: 10, qa: 'Say hello' },
+      { id: 'q4', t: 'Clear the hub corrections', s: 'Floor 06 · Warehouse · Lim Mei Fong · 3 pending', floor: 'nl', person: 'meifong', pts: 30, qa: 'Review 3 corrections' },
+      { id: 'q5', t: 'Read the 8 November notice', s: 'Activity · published 3 Oct', floor: null, person: null, pts: 10, qa: 'Read' }
+    ];
+    this._d = { F, Q }; return this._d;
+  }
+  // ---- geometry of a floor interior (plane px) ----
+  geo(f) {
+    const C = 90, O = 100; const W = f.cols * C, H = f.rows * C;
+    const liftY = O + H / 2; const doorX = O + W / 2;
+    const desks = f.people.map((p) => ({ p, cx: O + (p.x - 0.5) * C, cy: O + (p.y - 0.5) * C }));
+    return { C, O, W, H, pw: W + 200, ph: H + 200, liftY, doorX, desks, lift: { x: O - 82, y: liftY - 36, w: 62, d: 72, h: 90 } };
+  }
+  floorOf(id) { return this.data().F.find((x) => x.id === id); }
+  curFloor() { return this.floorOf((this.state || {}).sel || 'nsb'); }
+  // ---- scene changes ----
+  enterBuilding() {
+    const f = this.floorOf('nsb'); const g = this.geo(f);
+    this.q = { x: g.doorX, y: g.O + g.H - 40 }; this.icam = { x: 0, y: 0 }; this.nearKey = '';
+    this.setState({ scene: 'inside', sel: 'nsb', visited: true, lift: false, near: null, toast: 'You stepped into Menara Nusantara · Floor 07' }); this.toastLater();
+  }
+  exitBuilding() {
+    this.p = { x: 700, y: 480 }; this.cam = { x: 0, z: 0 }; this.nearKey = '';
+    this.setState({ scene: 'plaza', near: null, lift: false, toast: 'Back on the plaza' }); this.toastLater();
+  }
+  rideTo(id) {
+    const f = this.floorOf(id); if (!f) return; const g = this.geo(f);
+    this.q = { x: g.O + 28, y: g.liftY }; this.icam = { x: 0, y: 0 }; this.nearKey = '';
+    const st = this.state || {};
+    this.setState({ scene: 'inside', sel: id, lift: true, liftTick: (st.liftTick || 0) + 1, near: { type: 'lift' }, toast: 'Lift · Floor ' + f.num + ' · ' + f.name }); this.toastLater();
+  }
+  goPerson(fid, pid) {
+    const f = this.floorOf(fid); const d = f && f.people.find((x) => x.id === pid); if (!d) return; const g = this.geo(f);
+    this.q = { x: g.O + (d.x - 0.5) * g.C, y: g.O + (d.y - 0.5) * g.C + 58 }; this.icam = { x: 0, y: 0 }; this.nearKey = '';
+    const st = this.state || {};
+    this.setState({ scene: 'inside', sel: fid, lift: false, liftTick: (st.liftTick || 0) + 1, near: { type: 'person', id: pid } });
+  }
+  toastLater() { clearTimeout(this.toastT); this.toastT = setTimeout(() => this.setState({ toast: null }), 2600); }
+  completeQuest(qid) { const st = this.state || {}; const done = Object.assign({}, st.done || {}); done[qid] = true; const q = this.data().Q.find((x) => x.id === qid); this.setState({ done, toast: 'Quest done · +' + q.pts + ' pts' }); this.toastLater(); }
+  act() {
+    const st = this.state || {}; const near = st.near; const { Q } = this.data();
+    if (st.scene !== 'inside') { if (near && near.type === 'door') this.enterBuilding(); return; }
+    if (st.lift) { this.setState({ lift: false, toast: 'You stepped out on Floor ' + this.curFloor().num }); this.toastLater(); return; }
+    if (!near) return;
+    if (near.type === 'lift') { this.setState({ lift: true, toast: 'Lift · ↑ ↓ to choose a floor · Enter to step out' }); this.toastLater(); return; }
+    if (near.type === 'exit') { this.exitBuilding(); return; }
+    if (near.type === 'person') {
+      const f = this.curFloor(); const p = f.people.find((x) => x.id === near.id);
+      const q = Q.find((x) => x.person === near.id && !(st.done || {})[x.id]);
+      if (q) this.completeQuest(q.id); else { this.setState({ toast: 'You said hello to ' + p.n.split(' ')[0] }); this.toastLater(); }
+    }
+  }
+  onKeyDown(e) {
+    const tag = (e.target && e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    const k = e.key; const st = this.state || {};
+    const nav = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '];
+    if (nav.indexOf(k) >= 0) e.preventDefault();
+    if (st.lift && (k === 'ArrowUp' || k === 'ArrowDown' || k === 'w' || k === 's')) {
+      const { F } = this.data(); const i = F.findIndex((x) => x.id === (st.sel || 'nsb'));
+      const j = (k === 'ArrowUp' || k === 'w') ? Math.max(0, i - 1) : Math.min(F.length - 1, i + 1);
+      if (j !== i) this.rideTo(F[j].id);
+      return;
+    }
+    if (k === 'Enter' || k === ' ') { this.act(); return; }
+    if (k === 'Escape' && st.lift) { this.setState({ lift: false }); return; }
+    this.keys[k] = true;
+  }
+  onKeyUp(e) { delete this.keys[e.key]; }
+  // ---- the loop ----
+  tick(dt) {
+    const st = this.state || {}; const k = this.keys;
+    let vx = 0, vy = 0;
+    if (k.ArrowLeft || k.a || k.A || k.padL) vx -= 1; if (k.ArrowRight || k.d || k.D || k.padR) vx += 1;
+    if (k.ArrowUp || k.w || k.W || k.padU) vy -= 1; if (k.ArrowDown || k.s || k.S || k.padD) vy += 1;
+    const moving = (vx || vy) && !this.drag && !st.lift;
+    if (moving) { const n = Math.hypot(vx, vy); vx /= n; vy /= n; }
+    const v = this.view();
+    if (st.scene === 'inside') {
+      const f = this.curFloor(); const g = this.geo(f);
+      if (moving) {
+        const sp = 230; let nx = this.q.x + vx * sp * dt, ny = this.q.y + vy * sp * dt;
+        const inLiftLane = Math.abs(ny - g.liftY) < 30; const inDoorLane = Math.abs(nx - g.doorX) < 36;
+        const minX = inLiftLane ? g.O - 60 : g.O + 14, maxX = g.O + g.W - 14, minY = g.O + 14, maxY = inDoorLane ? g.O + g.H + 34 : g.O + g.H - 14;
+        nx = Math.max(minX, Math.min(maxX, nx)); ny = Math.max(minY, Math.min(maxY, ny));
+        for (const d of g.desks) { const dx = nx - d.cx, dy = ny - (d.cy - 6); const dist = Math.hypot(dx, dy); if (dist < 34 && dist > 0.01) { nx = d.cx + dx / dist * 34; ny = (d.cy - 6) + dy / dist * 34; } }
+        this.q.x = nx; this.q.y = ny;
+        if (ny > g.O + g.H + 26) { this.exitBuilding(); return; }
+      }
+      // near checks
+      let near = null;
+      if (this.q.x < g.O + 2 && Math.abs(this.q.y - g.liftY) < 36) near = { type: 'lift' };
+      else if (this.q.y > g.O + g.H - 4 && Math.abs(this.q.x - g.doorX) < 40) near = { type: 'exit' };
+      else { let best = null, bd = 64; for (const d of g.desks) { const dist = Math.hypot(this.q.x - d.cx, this.q.y - (d.cy + 24)); if (dist < bd) { bd = dist; best = d; } } if (best) near = { type: 'person', id: best.p.id }; }
+      const key = near ? near.type + ':' + (near.id || '') : '';
+      if (key !== this.nearKey) { this.nearKey = key; this.setState({ near }); }
+      const cell = Math.floor((this.q.x - g.O) / g.C) + ':' + Math.floor((this.q.y - g.O) / g.C);
+      if (cell !== this.cellKey) { this.cellKey = cell; this.setState({ cellTick: (st.cellTick || 0) + 1 }); }
+      // DOM
+      if (this.avInEl) { this.avInEl.style.left = this.q.x + 'px'; this.avInEl.style.top = this.q.y + 'px'; this.avInEl.className = 'avi' + (moving ? ' walking' : ''); }
+      if (this.planeEl) {
+        const tx = -(this.q.x - g.pw / 2), ty = -(this.q.y - g.ph / 2);
+        this.icam.x += (tx - this.icam.x) * Math.min(1, dt * 6); this.icam.y += (ty - this.icam.y) * Math.min(1, dt * 6);
+        this.planeEl.style.transform = 'rotateX(58deg) rotateZ(' + v.rz + 'deg) scale3d(' + v.zoom + ',' + v.zoom + ',' + v.zoom + ') translate3d(' + this.icam.x.toFixed(1) + 'px,' + this.icam.y.toFixed(1) + 'px,0)';
+      }
+    } else {
+      if (moving && st.landed) {
+        const sp = 260; let nx = this.p.x + vx * sp * dt, ny = this.p.y + vy * sp * dt;
+        nx = Math.max(30, Math.min(1370, nx)); ny = Math.max(30, Math.min(870, ny));
+        // the building footprint: x 370–1030, y 50–450, with the lobby door at x 672–728
+        const inDoor = nx > 664 && nx < 736;
+        if (nx > 370 && nx < 1030 && ny < 452) { if (inDoor) { if (ny < 436) { this.enterBuilding(); return; } } else { if (this.p.y >= 452) ny = 452; else if (this.p.x <= 370) nx = 370; else if (this.p.x >= 1030) nx = 1030; else ny = 452; } }
+        this.p.x = nx; this.p.y = ny;
+      }
+      let near = null;
+      if (this.p.x > 640 && this.p.x < 760 && this.p.y < 520) near = { type: 'door' };
+      const key = near ? near.type : '';
+      if (key !== this.nearKey) { this.nearKey = key; this.setState({ near }); }
+      if (this.avEl) { this.avEl.style.left = (this.p.x - 420) + 'px'; this.avEl.style.bottom = '16px'; this.avEl.style.transform = 'translate3d(0,0,' + (this.p.y - 450) + 'px)'; this.avEl.className = 'avw' + (moving && st.landed ? ' walking' : ''); }
+      if (this.towerEl) {
+        const { F } = this.data(); const fi = st.focus ? F.findIndex((x) => x.id === st.focus) : -1;
+        const ftx = fi >= 0 ? -45 : 0, fty = fi >= 0 ? (76 + (7 - fi) * 92) - 377 : 0;
+        const cx = -(this.p.x - 700) * 0.55, cz = -(this.p.y - 450) * 0.4;
+        this.cam.x += (cx - this.cam.x) * Math.min(1, dt * 5); this.cam.z += (cz - this.cam.z) * Math.min(1, dt * 5);
+        this.towerEl.style.transform = 'rotateX(' + v.b + 'deg) rotateY(' + v.a + 'deg) scale3d(' + v.zoom + ',' + v.zoom + ',' + v.zoom + ') translate3d(' + (ftx + this.cam.x).toFixed(1) + 'px,' + fty + 'px,' + this.cam.z.toFixed(1) + 'px)';
+      }
+    }
+  }
+  renderVals() {
+    const st = this.state || {}; const v = this.view(); const { F, Q } = this.data();
+    const selId = st.sel || 'nsb'; const tab = st.tab || 'quests'; const done = st.done || {}; const scene = st.scene || 'plaza';
+    const inside = scene === 'inside';
+    const list = F.map((c, i) => ({ ...c, idx: i + 1, cls: (inside && c.id === selId ? 'on ' : '') + (c.off ? 'off ' : '') + (c.group ? 'group' : ''), lit: c.desks ? Math.round(Math.min(c.head / c.desks, 1) * 88) : 0, headTxt: c.head === 1 ? '1 person' : c.head + ' people', inNow: c.people.filter((p) => p.s === 'in').length + (c.id === 'nsb' ? 118 : c.id === 'nl' ? 40 : c.id === 'nr' ? 28 : 0), label: c.code + ' ' + c.name, noteColor: c.noteColor || '#63625D', pick: () => { if (this.moved) return; this.setState({ focus: st.focus === c.id ? null : c.id, zoom: st.focus === c.id ? 1 : 1.25 }); }, ride: () => this.rideTo(c.id) }));
+    const floors = list.map((c, i) => ({ ...c, bottom: 76 + (7 - i) * 92 }));
+    const i = list.findIndex((c) => c.id === selId); const sel = list[i] || list[1];
+    const g = this.geo(sel);
+    const near = st.near; const questFor = (pid) => Q.find((q) => q.person === pid && !done[q.id]);
+    const sColor = (s) => s === 'in' ? '#111' : (s === 'leave' ? '#C23A00' : '#63625D');
+    const sWord = (s) => s === 'in' ? 'In' : (s === 'leave' ? 'On leave' : (s === 'remote' ? 'Remote' : 'Away'));
+    const nearId = near && near.type === 'person' ? near.id : null;
+    const people = (inside ? sel.people : []).map((p) => ({ ...p, ini: p.n.split(' ').map((w) => w[0]).slice(0, 2).join(''), cls: p.s + (questFor(p.id) ? ' need' : '') + (nearId === p.id ? ' near' : '') }));
+    const figs = people.map((p) => ({ ...p, fx: g.O + (p.x - 0.5) * g.C, fy: g.O + (p.y - 0.5) * g.C + 24 }));
+    const zones3 = (inside ? sel.zones : []).map((z) => ({ ...z, px: g.O + (z.x - 1) * g.C, py: g.O + (z.y - 1) * g.C, pw: z.w * g.C, ph: z.h * g.C }));
+    const blocks = [];
+    if (inside) {
+      const O = g.O, W = g.W, H = g.H, T = 10, WH = 56;
+      blocks.push({ cls: 'wallb', x: O - T, y: O - T, w: W + 2 * T, d: T, h: WH });
+      blocks.push({ cls: 'wallb', x: O + W, y: O, w: T, d: H, h: WH });
+      blocks.push({ cls: 'wallb', x: O - T, y: O + H, w: W / 2 - 40 + T, d: T, h: WH });
+      blocks.push({ cls: 'wallb', x: O + W / 2 + 40, y: O + H, w: W / 2 - 40 + T, d: T, h: WH });
+      blocks.push({ cls: 'wallb', x: O - T, y: O, w: T, d: H / 2 - 36, h: WH });
+      blocks.push({ cls: 'wallb', x: O - T, y: O + H / 2 + 36, w: T, d: H / 2 - 36, h: WH });
+      blocks.push({ cls: 'lift' + (near && near.type === 'lift' ? ' near' : ''), x: g.lift.x, y: g.lift.y, w: g.lift.w, d: g.lift.d, h: g.lift.h });
+      g.desks.forEach((d) => blocks.push({ cls: 'desk', x: d.cx - 25, y: d.cy - 28, w: 50, d: 32, h: 20 }));
+    }
+    const here = nearId ? sel.people.find((p) => p.id === nearId) : null;
+    const card = here ? { n: here.n, r: here.r, d: here.d, note: here.note, st: sWord(here.s), sc: sColor(here.s), qa: questFor(here.id) ? questFor(here.id).qa : 'Say hello', act: () => this.act() } : { n: '', r: '', d: '', note: '', st: '', sc: '#111', qa: '', act: () => {} };
+    const q = (st.q || '').trim().toLowerCase(); const found = [];
+    F.forEach((f) => f.people.forEach((p) => { if (!q || p.n.toLowerCase().includes(q) || p.d.toLowerCase().includes(q) || p.r.toLowerCase().includes(q) || f.name.toLowerCase().includes(q) || f.code.toLowerCase().includes(q)) found.push({ code: f.code, n: p.n, r: p.r, d: p.d, st: sWord(p.s), sc: sColor(p.s), go: () => this.goPerson(f.id, p.id) }); }));
+    const quests = Q.map((x) => ({ ...x, cls: done[x.id] ? 'done' : '', ptsTxt: done[x.id] ? '+' + x.pts : x.pts + ' pts', pc: done[x.id] ? '#C23A00' : '#63625D', go: () => { if (x.person) this.goPerson(x.floor, x.person); else this.setState({ tab: 'act' }); } }));
+    const doneCount = Q.filter((x) => done[x.id]).length; const pts = Q.filter((x) => done[x.id]).reduce((a, x) => a + x.pts, 0);
+    let prompt;
+    if (!inside) prompt = near && near.type === 'door' ? { k: 'Lobby door', key: '↑', t: 'Walk in to Menara Nusantara' } : { k: st.landed ? 'Plaza · Menara Nusantara' : 'Landing', key: '', t: st.landed ? 'Walk to the lobby door ahead of you. Drag to look around.' : 'Touching down…' };
+    else if (st.lift) prompt = { k: 'Lift · Floor ' + sel.num, key: '↑ ↓', t: 'Choose a floor · Enter steps out' };
+    else if (near && near.type === 'lift') prompt = { k: 'Lift', key: '↵', t: 'Call the lift' };
+    else if (near && near.type === 'exit') prompt = { k: 'Exit', key: '↓', t: 'Walk out to the plaza' };
+    else if (here) prompt = { k: here.n + ' · ' + sWord(here.s), key: '↵', t: questFor(here.id) ? questFor(here.id).qa : 'Say hello' };
+    else prompt = { k: 'Floor ' + sel.num + ' · ' + sel.name, key: '', t: sel.off ? 'Lights off. Nobody works here yet. The lift is on the left.' : 'Walk up to someone. Orange name tags are quests. The lift is on the left, the exit at the bottom.' };
+    return {
+      motionClass: this.props.motion === false ? 'still' : '',
+      ry: v.a, rx: v.b, ryNeg: -v.a, rxNeg: -v.b, rzNeg: -v.rz, zoom: v.zoom, dragCls: st.dragging ? 'drag' : '', stageCls: st.dragging ? 'dragging' : '',
+      stageRef: (el) => { if (!el || el.__wheelBound) return; el.__wheelBound = true; el.addEventListener('wheel', (e) => { e.preventDefault(); this.zoomBy(e); }, { passive: false }); },
+      rootRef: (el) => { this.rootEl = el; if (!el || el.__focused) return; el.__focused = true; setTimeout(() => { try { el.focus({ preventScroll: true }); } catch (err) {} }, 1500); },
+      towerRef: (el) => { this.towerEl = el; if (el) el.style.transform = 'rotateX(' + v.b + 'deg) rotateY(' + v.a + 'deg) scale3d(' + v.zoom + ',' + v.zoom + ',' + v.zoom + ')'; }, avRef: (el) => { this.avEl = el; if (el) { el.style.left = (this.p.x - 420) + 'px'; el.style.bottom = '16px'; el.style.transform = 'translate3d(0,0,' + (this.p.y - 450) + 'px)'; } }, planeRef: (el) => { this.planeEl = el; if (el) el.style.transform = 'rotateX(58deg) rotateZ(' + v.rz + 'deg) scale3d(' + v.zoom + ',' + v.zoom + ',' + v.zoom + ') translate3d(' + (-(this.q.x - g.pw / 2)).toFixed(1) + 'px,' + (-(this.q.y - g.ph / 2)).toFixed(1) + 'px,0)'; }, avInRef: (el) => { this.avInEl = el; if (el) { el.style.left = this.q.x + 'px'; el.style.top = this.q.y + 'px'; } },
+      wheel: (e) => { if (e.currentTarget && e.currentTarget.__wheelBound) return; this.zoomBy(e); },
+      down: (e) => this.onDown(e), move: (e) => this.onMove(e), up: () => this.onUp(),
+      keyDown: (e) => this.onKeyDown(e), keyUp: (e) => this.onKeyUp(e), blur: () => { this.keys = {}; },
+      padU: (e) => { e.stopPropagation(); this.keys.padU = true; }, padD: (e) => { e.stopPropagation(); this.keys.padD = true; }, padL: (e) => { e.stopPropagation(); this.keys.padL = true; }, padR: (e) => { e.stopPropagation(); this.keys.padR = true; }, padOff: () => { delete this.keys.padU; delete this.keys.padD; delete this.keys.padL; delete this.keys.padR; },
+      act: () => this.act(),
+      outside: !inside, inside, dropping: !st.landed, dropCls: st.landed ? '' : 'avd', plinthCls: near && near.type === 'door' ? 'near' : '',
+      liftCls: 'l' + (((st.liftTick || 0) % 2) + 1),
+      floors, floorsDown: list, sel, zones: inside ? sel.zones : [], people, figs, zones3, blocks, pw: g.pw, ph: g.ph, rw: g.W, rh: g.H, matX: g.doorX - 40, matY: g.O + g.H + 4,
+      miniX: Math.round((this.q.x - g.O) / g.W * 100), miniY: Math.round((this.q.y - g.O) / g.H * 100),
+      hasCard: !!here, noCard: inside && !here, card, insideHint: st.lift ? 'In the lift · ↑ ↓ choose a floor · Enter to step out' : 'Walk with ← → ↑ ↓ · stand by someone to talk · Enter acts',
+      whereChip: inside ? 'You · Floor ' + sel.num + ' · ' + sel.short : 'You · Plaza · Menara Nusantara',
+      capA: inside ? 'Inside · ' + sel.name + ' · desks are people in now' : 'The tower · a floor per company · lit desks are people in now',
+      capB: inside ? 'Drag to orbit · scroll to zoom · ← → ↑ ↓ walk · Enter acts' : 'Drag to orbit · scroll to zoom · ← → ↑ ↓ walk · the lobby door is ahead',
+      promptK: prompt.k, promptT: prompt.t, promptKey: prompt.key, hasKey: !!prompt.key,
+      outK: near && near.type === 'door' ? 'At the lobby door' : (st.landed ? 'You landed · Menara Nusantara · 09:12' : 'Touching down'), outT: near && near.type === 'door' ? 'Walk in. Floor 07 is yours.' : 'Walk to the lobby door to go in.',
+      hasToast: !!st.toast, toast: st.toast || '',
+      quests, doneCount, pts, progress: Math.round(doneCount / Q.length * 100), needCount: 7 - doneCount,
+      found, noneFound: found.length === 0, find: (e) => this.setState({ q: e.target.value, tab: 'people' }),
+      zoomIn: () => this.setState({ zoom: Math.min(2.2, +(v.zoom + 0.15).toFixed(2)) }), zoomOut: () => this.setState({ zoom: Math.max(0.6, +(v.zoom - 0.15).toFixed(2)) }),
+      rotL: () => this.setState(inside ? { rz: v.rz - 15 } : { ry: Math.max(-80, v.a - 14) }), rotR: () => this.setState(inside ? { rz: v.rz + 15 } : { ry: Math.min(80, v.a + 14) }),
+      home: () => this.setState({ ry: -28, rx: -14, rz: -30, zoom: 1, focus: null }),
+      tabQ: tab === 'quests' ? 'on' : '', tabF: tab === 'floors' ? 'on' : '', tabP: tab === 'people' ? 'on' : '', tabA: tab === 'act' ? 'on' : '',
+      isQ: tab === 'quests', isF: tab === 'floors', isP: tab === 'people', isA: tab === 'act',
+      tabRight: tab === 'quests' ? doneCount + ' of ' + Q.length + ' · ' + pts + ' pts' : (tab === 'people' ? found.length + ' found' : (tab === 'floors' ? 'tap a floor to ride the lift' : '8 floors · 248 people')),
+      showQuests: () => this.setState({ tab: 'quests' }), showFloors: () => this.setState({ tab: 'floors' }), showPeople: () => this.setState({ tab: 'people' }), showAct: () => this.setState({ tab: 'act' }),
+      readNotice: () => this.completeQuest('q5'), noticeLabel: done.q5 ? 'Read ✓' : 'Read'
+    };
+  }
+}
+</script>
+</body>
+</html>
