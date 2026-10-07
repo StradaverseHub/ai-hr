@@ -335,6 +335,30 @@ export type StatutoryFormLink = {
    * has one extra and needs no name over it).
    */
   extrasLabelKey?: string;
+  /**
+   * r402 (item f3cf2444) — THE VERSIONS THIS ENTRY CAN BE OPENED IN, when its href carries `{lang}`.
+   *
+   * Until r402 a form published in two languages was two shelf entries (`my.ea.en` / `my.ea.ms`), so the
+   * Income Tax shelf showed four cards for two forms. The reporter asked for one card per form and the
+   * language as a "Version" choice on the criteria step. The options are declared HERE, beside the href
+   * that takes them, because the step must offer exactly the values the destination allowlists — a step
+   * that hardcoded "en / ms" would be the screen naming a jurisdiction's languages.
+   *
+   * The FIRST option is the default. It is never the viewer's UI language: which language a statutory form
+   * comes out in must be the operator's choice, not "whatever the screen was set to" (587ee719).
+   *
+   * `test/statutory-forms-criteria-858a1128.test.ts` pins that every `{lang}` href declares this and that
+   * no other entry does.
+   */
+  versions?: { value: string; labelKey: string }[];
+  /**
+   * r402 (item f3cf2444) — IDS THIS ENTRY USED TO BE, each with the version it stood for.
+   *
+   * `/payroll/statutory-forms/open?form=my.ea.ms` is in somebody's bookmarks. The criteria step resolves a
+   * former id to this entry with that version already chosen, rather than 404ing a link that worked last
+   * week. Declared on the entry, so no screen writes down a form id.
+   */
+  formerIds?: { id: string; version: string }[];
 };
 
 export type ReportDef = {
@@ -2284,6 +2308,11 @@ export const MY_REPORTS: ReportDef[] = [
  * so an unbuilt form cannot acquire an action by accident.
  */
 export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
+  // ⚠️ r402 (item f3cf2444) — READ THE HISTORY BELOW AS HISTORY. Every "both rows", "these two entries" and
+  // "each EA row" in the notes that follow describes the shelf BEFORE r402, when the EA was two entries (one
+  // per language) and each carried a blank form and a field register. Since r402 it is ONE entry, `my.ea`,
+  // with a Version choice and no extra actions — the note directly above the entry says what changed.
+  //
   // The EA statement is per EMPLOYEE, so it has no single company-wide table to open. The year's
   // employee list IS the CP8D population — one row per employee for the tax year.
   //
@@ -2339,51 +2368,41 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
   //   • `extrasLabelKey` folds the blank and the field register under one named control, so neither can be
   //     mistaken for the route to a completed form. Both stay reachable, one press further on.
   // Nothing about what either row PRODUCES moves, and the fidelity is untouched.
+  //
+  // ⚠️ r402 (item f3cf2444) — r220 AND r242 ARE REVERSED HERE, ON THE REPORTER'S OWN REQUEST. The two EA rows
+  // became ONE (`my.ea`), the language moved to a Version choice on the criteria step (`{lang}` + `versions`
+  // below), and the blank form and field register are no longer offered from the card at all: the
+  // reporter asked for the "Blank form and field register" control to go, with nothing in its place. The
+  // two routes (`/payroll/ea/blank`, `/payroll/ea/field-register`) and lib/ea-field-register.ts are KEPT as
+  // unlinked endpoints — the reporter said not to remove the underlying data — so nothing that renders
+  // either document moved. The former ids redirect (`formerIds`), and there is still one EA renderer.
   {
-    id: 'my.ea.en',
-    labelKey: 'link_ea_en',
-    hintKey: 'link_ea_hint',
-    descriptionKey: 'desc_ea_en',
+    id: 'my.ea',
+    labelKey: 'link_ea',
+    hintKey: 'link_ea_hint_version',
+    descriptionKey: 'desc_ea',
     body: 'lhdn',
     cadence: 'annual',
-    href: '/payroll/statutory-forms/ea?companyId={companyId}&year={year}&lang=en',
+    href: '/payroll/statutory-forms/ea?companyId={companyId}&year={year}&lang={lang}',
     actionLabelKey: 'openForm',
     criteriaLabelKey: 'criteria_continue',
     populationReportId: 'my.cp8d',
-    secondaryHref: '/payroll/ea/blank?lang=en',
-    secondaryLabelKey: 'link_ea_blank_en',
-    secondaryTitleKey: 'link_ea_blank_title',
-    tertiaryHref: '/payroll/ea/field-register',
-    tertiaryLabelKey: 'link_ea_register',
-    tertiaryTitleKey: 'link_ea_register_title',
-    extrasLabelKey: 'link_ea_more',
+    versions: [
+      { value: 'en', labelKey: 'version_en' },
+      { value: 'ms', labelKey: 'version_ms' },
+    ],
+    formerIds: [
+      { id: 'my.ea.en', version: 'en' },
+      { id: 'my.ea.ms', version: 'ms' },
+    ],
     fidelity: 'agency-layout',
     outputs: ['pdf', 'print'],
     shelfOrder: 3,
   },
-  {
-    id: 'my.ea.ms',
-    labelKey: 'link_ea_ms',
-    hintKey: 'link_ea_hint',
-    descriptionKey: 'desc_ea_ms',
-    body: 'lhdn',
-    cadence: 'annual',
-    href: '/payroll/statutory-forms/ea?companyId={companyId}&year={year}&lang=ms',
-    actionLabelKey: 'openForm',
-    criteriaLabelKey: 'criteria_continue',
-    populationReportId: 'my.cp8d',
-    secondaryHref: '/payroll/ea/blank?lang=ms',
-    secondaryLabelKey: 'link_ea_blank_ms',
-    secondaryTitleKey: 'link_ea_blank_title',
-    tertiaryHref: '/payroll/ea/field-register',
-    tertiaryLabelKey: 'link_ea_register',
-    tertiaryTitleKey: 'link_ea_register_title',
-    extrasLabelKey: 'link_ea_more',
-    fidelity: 'agency-layout',
-    outputs: ['pdf', 'print'],
-    shelfOrder: 4,
-  },
   /**
+   * ⚠️ r402 (item f3cf2444) — THIS NOTE DESCRIBES TWO ROWS AND THERE IS NOW ONE. `my.pcb2ii` replaced the
+   * `.en` / `.ms` pair below the note; "both rows" and "these two" are r323's shelf, kept as history.
+   *
    * 72b100cd (r323) — PCB 2(II), built. Both rows LEFT MY_PLANNED_FORMS and joined MY_STATUTORY_LINKS at
    * the SAME shelfOrder 5 and 6 they held there: the shelf is unchanged, the cards simply stop saying
    * "not built yet" and grow an action.
@@ -2402,35 +2421,32 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
    * specimens the reporter attached, not a facsimile of their PDF — the same honest label Borang A,
    * Borang 8A and the EA carry. CP22 is the only 'official' row in this catalogue and a test pins that.
    */
+  //
+  // r402 (item f3cf2444) — ONE ENTRY, A VERSION CHOICE. The same merge as the EA above: `my.pcb2ii.en` and
+  // `my.pcb2ii.ms` became `my.pcb2ii`, the language is chosen on the criteria step, and the former ids
+  // redirect with their version preselected. The form, its renderer and its two languages are unchanged.
   {
-    id: 'my.pcb2ii.en',
-    labelKey: 'link_pcb2ii_en',
+    id: 'my.pcb2ii',
+    labelKey: 'link_pcb2ii',
     hintKey: 'link_pcb2ii_hint',
-    descriptionKey: 'desc_pcb2ii_en',
+    descriptionKey: 'desc_pcb2ii',
     body: 'lhdn',
     cadence: 'annual',
-    href: '/payroll/statutory-forms/pcb2ii?companyId={companyId}&year={year}&lang=en',
+    href: '/payroll/statutory-forms/pcb2ii?companyId={companyId}&year={year}&lang={lang}',
     actionLabelKey: 'openForm',
     criteriaLabelKey: 'criteria_continue',
     populationReportId: 'my.cp8d',
+    versions: [
+      { value: 'en', labelKey: 'version_en' },
+      { value: 'ms', labelKey: 'version_ms' },
+    ],
+    formerIds: [
+      { id: 'my.pcb2ii.en', version: 'en' },
+      { id: 'my.pcb2ii.ms', version: 'ms' },
+    ],
     fidelity: 'agency-layout',
     outputs: ['pdf', 'print'],
     shelfOrder: 5,
-  },
-  {
-    id: 'my.pcb2ii.ms',
-    labelKey: 'link_pcb2ii_ms',
-    hintKey: 'link_pcb2ii_hint',
-    descriptionKey: 'desc_pcb2ii_ms',
-    body: 'lhdn',
-    cadence: 'annual',
-    href: '/payroll/statutory-forms/pcb2ii?companyId={companyId}&year={year}&lang=ms',
-    actionLabelKey: 'openForm',
-    criteriaLabelKey: 'criteria_continue',
-    populationReportId: 'my.cp8d',
-    fidelity: 'agency-layout',
-    outputs: ['pdf', 'print'],
-    shelfOrder: 6,
   },
   // 587ee719 — BORANG E IS AN ALIAS, AND MUST STAY ONE. The reporter listed Borang E (item 7) and CP8D
   // (item 13) as two forms; they are two NAMES for one annual return we already produce in a single step,
@@ -2609,6 +2625,7 @@ export const MY_PLANNED_FORMS: PlannedFormDef[] = [
   // so they left this list and joined MY_STATUTORY_LINKS as `my.pcb2ii.en` / `my.pcb2ii.ms` at the SAME shelf
   // orders 5 and 6 they held here — the migration path `PlannedFormDef` was designed for, and the one
   // TP1, Borang A and Borang 8A each took before them. Their four planned_* message keys went with them.
+  // (r402 merged that pair into the one entry `my.pcb2ii` at shelfOrder 5; the ids redirect.)
   { id: 'lhdn.cp21', labelKey: 'planned_lhdn_cp21', hintKey: 'planned_lhdn_cp21_hint', body: 'lhdn', cadence: 'event', shelfOrder: 8 },
   { id: 'lhdn.cp22a', labelKey: 'planned_lhdn_cp22a', hintKey: 'planned_lhdn_cp22a_hint', body: 'lhdn', cadence: 'event', shelfOrder: 10 },
   { id: 'lhdn.cp39a', labelKey: 'planned_lhdn_cp39a', hintKey: 'planned_lhdn_cp39a_hint', body: 'lhdn', cadence: 'monthly', shelfOrder: 12 },

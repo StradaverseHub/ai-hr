@@ -1137,6 +1137,12 @@ export const SCREENS: readonly ScreenEntry[] = [
       // by name, employee ID, department and status. Its `download` sibling is a route handler, not a
       // guarded page, so it is not listed — the reverse-completeness check walks page.tsx files.
       '/payroll/statutory-forms/ea',
+      // r402 f3cf2444: the in-app VIEWER for the EA the picker above ticked — the existing inline preview
+      // route in a full-width frame, with Version, Download and Back. Same scopedAdmin key as the picker
+      // and DELIBERATELY not a column of its own: it shows nothing the preview route did not already serve
+      // to this key, and that route still runs its own gate inside the frame. Registered because
+      // test/function-access.test.ts checks reverse completeness for every guarded page.tsx.
+      '/payroll/statutory-forms/ea/view',
       // 72b100cd (r323): PCB 2(II)'s employee selection — step two of the SAME two-step flow the EA above
       // uses, for the same reason: this form is one statement PER EMPLOYEE for a year, not one document
       // for a company and a period. Same scopedAdmin key as its siblings, and it needs one on its own
@@ -1145,6 +1151,9 @@ export const SCREENS: readonly ScreenEntry[] = [
       // is a route handler, not a guarded page, so it is not listed; the reverse-completeness check in
       // test/function-access.test.ts walks page.tsx files.
       '/payroll/statutory-forms/pcb2ii',
+      // r402 f3cf2444: PCB 2(II)'s in-app viewer — the same viewer as the EA's above, over this form's
+      // existing inline preview route. Same key, same reason, same reverse-completeness registration.
+      '/payroll/statutory-forms/pcb2ii/view',
       // 72b100cd (r331): the PCB 2(II) Receipt / Transaction Details screen — a whole year of the
       // employer's own PCB payments (receipt number and payment date, MTD and CP38 apart) maintained on
       // one page instead of one month at a time at the bottom of CP39. Same scopedAdmin key as the

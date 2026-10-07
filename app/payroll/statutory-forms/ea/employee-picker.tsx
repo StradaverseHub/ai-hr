@@ -94,12 +94,17 @@ export function EaEmployeePicker({
   hidden,
   strings,
   selectedDateField,
+  initialSelected,
 }: {
   rows: EaPickerRow[];
   /** The download route. A plain href — never a callback: a closure crossing this boundary 500s. */
   action: string;
   /**
-   * 72b100cd (r328) — the route that serves the SAME document `inline`, or nothing.
+   * 72b100cd (r328) — where Preview goes, or nothing.
+   *
+   * r402 (item f3cf2444) — IT IS NOW THE IN-APP VIEWER (`…/view`), NOT THE INLINE PDF ROUTE. The viewer is
+   * a page that frames that same `inline` route at full width, so the document looked at is still the
+   * download's own bytes; what changed is that it opens inside the product rather than in a new tab.
    *
    * ⚠️ A PLAIN HREF, for the same reason `action` is one. A server action handed to a client island as a
    * prop typechecks, builds and then 500s at runtime; this is a string that ends up in a `formAction`
@@ -111,11 +116,17 @@ export function EaEmployeePicker({
   strings: EaPickerStrings;
   /** Optional preparation requirement; callers without it preserve existing selection behavior. */
   selectedDateField?: {label: string; value: string; help: string; receiptsHref: string; receiptsLabel: string};
+  /**
+   * r402 (item f3cf2444) — who arrives already ticked. The in-app viewer's Back returns here with the
+   * selection in the URL, so looking at a form no longer empties the list behind it. The page filters it
+   * to this year's population before passing it; absent ⇒ nothing ticked, exactly as before.
+   */
+  initialSelected?: string[];
 }) {
   const [selectedDate, setSelectedDate] = useState(selectedDateField?.value ?? '');
   const [nameQuery, setNameQuery] = useState('');
   const [codeQuery, setCodeQuery] = useState('');
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>(() => [...new Set(initialSelected ?? [])]);
 
   // The matching itself lives in `./filter` — pure, so test/statutory-forms-criteria-858a1128.test.ts can
   // run it over rows and prove the employee-ID box really matches on the employee ID. A predicate written
@@ -249,11 +260,12 @@ export function EaEmployeePicker({
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {/* 72b100cd (r328) — LOOK BEFORE YOU SEND, and it is the same form either way.
-              `formAction` retargets THIS submit at the preview route, so the preview is generated from the
+              `formAction` retargets THIS submit at the preview, so the preview is generated from the
               identical selection, year, company and language the download would use — there is no second
-              place a preview could be built from a slightly different set. It opens in a new tab so the
-              selection survives being looked at; the reporter's flow is select → preview → download, and a
-              preview that navigated away would empty the picker behind it.
+              place a preview could be built from a slightly different set.
+              r402 (item f3cf2444) — IT NO LONGER OPENS A NEW TAB. The reporter asked for the form to open
+              inside the system, so Preview navigates to the in-app viewer; the selection survives because the
+              viewer's Back returns here with the ticked ids in the URL (`initialSelected`).
               Rendered only when the caller supplies both a route and a label — both statutory screens on
               this picker do from r331 (2a1a6f42), each naming its OWN route — and refused in exactly the
               same two states as the download beside it. */}
@@ -261,7 +273,6 @@ export function EaEmployeePicker({
             <button
               type="submit"
               formAction={previewAction}
-              formTarget="_blank"
               disabled={selected.length === 0 || overLimit}
               className="h-9 rounded-md border border-border px-3 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
             >

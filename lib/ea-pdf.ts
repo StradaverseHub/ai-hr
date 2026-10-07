@@ -26,7 +26,7 @@
 //
 // ⚠️ THE SPECIMEN IS NOT LHDN ARTWORK. Its Producer is "Developer Express Inc. DXperience v23.2.5" —
 // another payroll system's rendering of the agency's page, the same provenance as the CP39, Borang 8A
-// and Borang A references. So `my.ea.en` / `my.ea.ms` declare `agency-layout` (drawn to the agency's own
+// and Borang A references. So the EA's shelf entry (`my.ea`; `my.ea.en` / `my.ea.ms` before r402) declares `agency-layout` (drawn to the agency's own
 // arrangement, on our own paper, with no agency artwork on disk) and may NEVER declare `official`;
 // `public/forms/` still holds exactly one genuine artwork, `cp22-pin-1-2021.pdf`. AGENTS 28b: nothing
 // here asserts what LHDN does or does not publish — only what this repository holds, which
@@ -314,7 +314,8 @@ export function blankEaPdfData(): EaPdfData {
  * rule to its A / B / C instruction panels ("the viewer's language never changes a Malaysian tax form").
  *
  * THE SECTION TITLES AND THE BOX CAPTIONS ARE labels, and they carry the form's OWN NUMBERING in their
- * value ("1(a) …", "5(b) …"). That is what makes `my.ea.en` and `my.ea.ms` two readable documents off one
+ * value ("1(a) …", "5(b) …"). That is what makes the EA's two Versions (English and Bahasa Malaysia — the
+ * `my.ea` entry's `lang`, two entries before r402) two readable documents off one
  * renderer rather than one document twice — the reporter asked for the form in each language, and the
  * approved plan promises the English version keeps working.
  *
