@@ -344,7 +344,12 @@ describe('/admin/organization/[companyId] — the scope refusal and the parent p
         expect(html.toLowerCase(), `${tab}: the read-only view rendered ${banned}`).not.toContain(banned);
       }
       // Edit opens the EXISTING editor (keeping the tab), never another view.
-      expect(html, `${tab}: Edit link`).toMatch(new RegExp(`href="/admin/organization/${id}(\\?tab=(bank|statutory))?" data-company-edit-link`));
+      const editTags = html.match(/<a\b[^>]*data-company-edit-link[^>]*>/g) ?? [];
+      expect(editTags, `${tab}: exactly one Edit link`).toHaveLength(1);
+      const editHref = editTags[0].match(/href="([^"]*)"/)?.[1];
+      expect(editHref, `${tab}: Edit opens the editor`).toBe(
+        tab === 'bank' || tab === 'statutory' ? `/admin/organization/${id}?tab=${tab}` : `/admin/organization/${id}`,
+      );
       expect(html, `${tab}: never names a company outside the grant`).not.toContain('Gamma Sdn Bhd');
       expect(html).not.toContain('5140-GAMMA-009');
     }
@@ -352,7 +357,6 @@ describe('/admin/organization/[companyId] — the scope refusal and the parent p
     expect(pages.general).toContain('BTE');
     expect(pages.general).toContain('Ipoh');
     expect(pages.general).toContain('Beta Sdn Bhd');
-    expect(pages.general).toContain('href="/admin/organization/' + id + '" data-company-edit-link');
     // An unrecognised ?tab= opens General, exactly as the editor treats it.
     expect(pages.bogus).toBe(pages.general);
     // Bank: this company's account, and only on the bank tab.

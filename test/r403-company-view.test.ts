@@ -39,10 +39,11 @@ describe('the view page cannot write, by construction', () => {
     expect(imports.length, 'imports parsed').toBeGreaterThan(10);
     for (const imp of imports) {
       expect(imp, 'no import from the actions module').not.toMatch(/from '(\.\.\/)+actions'|from '@\/app\/admin\/actions'/);
-      expect(imp, 'no CompanyPanel').not.toMatch(/company-panel'|CompanyPanel/);
+      // `lib/company-panel-tabs` (the closed tab list) is fine; the editable panel component is not.
+      expect(imp, 'no CompanyPanel').not.toMatch(/components\/company-panel'|\bCompanyPanel\b/);
       expect(imp, 'no logo EDIT affordance').not.toContain('CompanyLogoEdit');
     }
-    expect(CODE).not.toContain('CompanyPanel');
+    expect(CODE).not.toMatch(/\bCompanyPanel\b/);
     expect(CODE).not.toMatch(/Action\b/);
   });
 
