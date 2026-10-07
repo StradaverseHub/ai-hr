@@ -2955,6 +2955,13 @@
       "when": 1791300001000,
       "tag": "0514_fixed_transaction_payroll_cycle",
       "breakpoints": true
+    },
+    {
+      "idx": 515,
+      "version": "7",
+      "when": 1791400000000,
+      "tag": "0515_set_based_visibility",
+      "breakpoints": true
     }
   ]
 }
