@@ -20,6 +20,7 @@ import {
   attendancePolicy,
   clockingLocation,
   company,
+  companyStatutoryAuthority,
   companyStatutoryMy,
   compensation,
   department,
@@ -28,6 +29,8 @@ import {
   employment,
   employmentPayComponent,
   payComponent,
+  payrollBatch,
+  payslip,
   performanceGoal,
   performanceReview,
   person,
@@ -53,6 +56,8 @@ import type { ReportData } from '../lib/report-export';
 // TYPE-ONLY, and that matters: lib/cp22-pdf.ts imports pdf-lib, and `import type` is erased at compile
 // time so this read pulls no PDF machinery into every caller of core/reporting.
 import type { Cp22Address, Cp22PdfData } from '../lib/cp22-pdf';
+// r413 — the same reasoning: TYPE-ONLY, so no pdf-lib reaches this module.
+import type { Cp22aCessation, Cp22aPayLine, Cp22aPdfData } from '../lib/cp22a-pdf';
 // r292 — `resolvePayrollPermission` is REUSED, not re-implemented: `markReportFiled` is gated on the same
 // two-layer granular mechanism payroll.unlock / payroll.close use, so a customer configures who may file
 // from the screen they already configure every other high-risk payroll authority from.
@@ -896,8 +901,15 @@ export type WorklistItem = {
   form: 'CP22' | 'CP22A';
   reason: string;
   eventDate: string;
-  dueBy: string;
-  status: 'overdue' | 'due_soon' | 'upcoming';
+  /**
+   * The statutory deadline, or NULL when the law ties it to a date the system does not hold. CP22A
+   * [Pin.1/2023]'s own instruction: "sekurang-kurangnya 30 hari sebelum tarikh pemberhentian … atau dalam
+   * tempoh 30 hari selepas dimaklumkan kematian seseorang pekerja". For a DEATH the clock starts when the
+   * employer is TOLD (the form's own box A5), which nothing records — so no date is computed and the row
+   * says why (`on_notice`), rather than printing leaving date − 30, a deadline that is not the law's.
+   */
+  dueBy: string | null;
+  status: 'overdue' | 'due_soon' | 'upcoming' | 'on_notice';
 };
 
 const isoAddDays = (iso: string, n: number): string => {
@@ -929,9 +941,20 @@ const statusFor = (today: string, dueBy: string): WorklistItem['status'] =>
  * would be designing against an imagined second jurisdiction. The GATE is what cannot wait, because it
  * is wrong for a real company the moment one is onboarded.
  */
+/**
+ * r413 (item 79f3f64d, step 2) — GENERALISED FOR THE EVENT-SELECTION SCREEN, AND ONLY NARROWED.
+ *
+ * The forms about one person (CP22 for a joiner, CP22A for a leaver) open on a list of the people the
+ * event happened to. That list IS this worklist, with the same window (hires in the last 60 days;
+ * cessations from 60 days back to 90 days ahead) and the same statuses — a second read with its own
+ * window would be a second answer to "who needs a CP22A". Two optional narrowings, both absent for the
+ * Statutory Forms foot, which is therefore byte-unchanged:
+ *   `form`      — only that form's rows;
+ *   `nameQuery` — a case-insensitive substring of the person's name, applied AFTER RLS (it can only hide).
+ */
 export function complianceWorklist(
   ctx: SessionContext,
-  p: { companyId: string; today?: string },
+  p: { companyId: string; today?: string; form?: WorklistItem['form']; nameQuery?: string },
 ): Promise<WorklistItem[]> {
   const today = p.today ?? todayInKualaLumpur();
   const hireFloor = isoAddDays(today, -60); // recent hires still within / just past the 30-day window
@@ -953,6 +976,7 @@ export function complianceWorklist(
         name: person.fullName,
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,
+        terminationType: employment.terminationType,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
@@ -964,12 +988,21 @@ export function complianceWorklist(
         items.push({ employmentId: e.id, name: e.name, form: 'CP22', reason: 'New hire', eventDate: e.hiredOn, dueBy, status: statusFor(today, dueBy) });
       }
       if (e.terminatedOn && e.terminatedOn >= ceaseFloor && e.terminatedOn <= ceaseCeil) {
-        const dueBy = isoAddDays(e.terminatedOn, -30); // notify ≥30 days before cessation
-        items.push({ employmentId: e.id, name: e.name, form: 'CP22A', reason: 'Cessation', eventDate: e.terminatedOn, dueBy, status: statusFor(today, dueBy) });
+        if (e.terminationType === 'death') {
+          // Within 30 days of being TOLD of the death — a date not recorded, so none is computed (see dueBy).
+          items.push({ employmentId: e.id, name: e.name, form: 'CP22A', reason: 'Cessation', eventDate: e.terminatedOn, dueBy: null, status: 'on_notice' });
+        } else {
+          const dueBy = isoAddDays(e.terminatedOn, -30); // notify ≥30 days before cessation
+          items.push({ employmentId: e.id, name: e.name, form: 'CP22A', reason: 'Cessation', eventDate: e.terminatedOn, dueBy, status: statusFor(today, dueBy) });
+        }
       }
     }
-    const rank = { overdue: 0, due_soon: 1, upcoming: 2 };
-    return items.sort((a, b) => rank[a.status] - rank[b.status] || a.dueBy.localeCompare(b.dueBy));
+    const rank = { overdue: 0, due_soon: 1, on_notice: 2, upcoming: 3 };
+    const needle = (p.nameQuery ?? '').trim().toLocaleLowerCase();
+    return items
+      .filter((i) => !p.form || i.form === p.form)
+      .filter((i) => !needle || i.name.toLocaleLowerCase().includes(needle))
+      .sort((a, b) => rank[a.status] - rank[b.status] || (a.dueBy ?? '').localeCompare(b.dueBy ?? ''));
   });
 }
 
@@ -1435,6 +1468,268 @@ export function cp22Particulars(
       today,
     };
   });
+}
+
+// ── CP22A particulars (the private-sector cessation notice, r413 / 79f3f64d step 2) ─────────────────────
+/**
+ * Everything LHDN's CP22A [Pin.1/2023] can be filled from, for one LEAVER.
+ *
+ * BUILT ON `cp22Particulars`, NOT BESIDE IT. The employer block, the identity numbers, date of birth,
+ * marital status, telephone, e-mail, correspondence address and spouse are the SAME facts about the same
+ * person the CP22 already reads, under the same RLS and the same pack gate — so this calls it, and a
+ * second copy of that read cannot drift. What CP22A adds is the cessation (date and kind), the year's pay
+ * so far, the year's deductions, and an authorised officer.
+ *
+ * NULL — the route's 404 — for an employment the caller cannot see, a company no pack owns, and an
+ * employment with NO CESSATION DATE: a CP22A is a notice about someone leaving, and a form for somebody
+ * who is not leaving would be a document about an event that has not been recorded.
+ *
+ * ── SECTION B, AND WHY IT IS THE EA ENGINE ───────────────────────────────────────────────────────────
+ * The CP22A's section B is the year's remuneration "dari hari pertama tahun semasa sehingga tarikh
+ * berhenti" — the same income, line for line, that the EA reports for the year. So it is READ from
+ * `pack.eaStatement`, narrowed three ways that no EA caller asks for: payslips up to the CESSATION MONTH,
+ * PROCESSED batches only, and no whole-year ea_override (see the parameter note on `eaStatement`). No PCB,
+ * MTD or EA calculation changes; the EA figures are re-grouped onto LHDN's CP22A lines:
+ *
+ *   1  Gaji, bayaran, upah dan kerja lebih masa ← EA grossSalary (basic + overtime)
+ *   3  Komisen dan bonus                      ← EA bonus + directorFee (the EA box "fees, commission or
+ *                                                bonus" holds commission and director's fee together; the
+ *                                                CP22A puts fees on line 1, commission on line 3 — they
+ *                                                cannot be told apart, so the EA's own grouping stands)
+ *   4  Ganjaran                               ← EA gratuity
+ *   5  Pampasan kehilangan pekerjaan          ← EA compensation
+ *   6  Elaun tunai termasuk cukai ditanggung  ← EA allowances (taxable) + tipsPerquisites + taxBorneByEmployer
+ *   7  Pencen daripada majikan                ← EA pension
+ *   8  Manfaat berupa barangan                ← EA benefitsInKind
+ *   9  Nilai tempat kediaman                  ← EA livingAccommodation
+ *   12 Lain-lain bayaran                      ← EA arrears + unapprovedFundRefund + annuity, each named
+ *   13 ESOS / ESPP                            ← EA esos
+ *   2, 10, 11                                 ← nothing (no EA figure separates them) — always blank
+ *
+ * ⚠️ BLANK, NOT 0.00, FOR A LINE NOTHING COULD HAVE REACHED. Lines 1, 3 and 6 are always derived from the
+ * payslip's own columns, so their 0.00 is a fact. The others reach a figure ONLY through a pay item mapped
+ * to that EA box (ea54fe6e routing) — so a 0 there with nothing mapped (or routing inactive for the year)
+ * is "we cannot tell", and the line prints nothing. It prints 0.00 only when a mapped item exists and the
+ * processed payroll paid none of it.
+ *
+ * "HINGGA" IS THE END OF THE LAST PROCESSED PERIOD, NEVER THE CESSATION DATE. The form is due 30 days
+ * BEFORE the last day, normally before the final pay is run; printing the cessation date over a sum that
+ * stops a month earlier would state a period the figure does not cover. "Dari" is 1 January, or the hire
+ * date when it is later. No processed payroll in the period ⇒ every B and D box is blank.
+ *
+ * D2 / D3 / D4 are the EA's own year sums of statutory.pcb, statutory.zakat and statutory.epfEmployee over
+ * the SAME narrowed slips — one derivation, the EA's, not a second sum here.
+ *
+ * A13 a) is the EA's item 8 count (the same child-relief-mode rule). A13 b) — the AMOUNT — stays blank:
+ * the monthly MTD and the annual child reliefs are different schedules and no single figure answers it.
+ *
+ * SECTION E: the LHDN signatory on `company_statutory_authority` (the officer CP39 and the EA print), else
+ * the session's own person exactly as CP22's section F does, else blank. Never the company's name.
+ *
+ * NO DOMAIN EVENT: a read. Downloading a CP22A is not filing one.
+ */
+export type Cp22aParticulars = Cp22aPdfData & {
+  companyId: string;
+  /** The tax year section B covers (the cessation year). */
+  year: string;
+  /** Pay items with money on these slips and no EA line — shown on the preview, as the EA screen does. */
+  unmappedPayItems: { code: string; name: string }[];
+  /** Whether a mapped pay item can reach the routing-only lines for this year (see above). */
+  routingActive: boolean;
+};
+
+/** A2 — LHDN's three kinds. retired → Bersara, death → Meninggal dunia, everything else → Berhenti kerja. */
+export function cp22aCessationFor(terminationType: string | null | undefined): Cp22aCessation {
+  if (terminationType === 'retired') return 'retired';
+  if (terminationType === 'death') return 'death';
+  return 'resigned';
+}
+
+/** Line 12's components, named in the form's language for its "nyatakan" rule. */
+const CP22A_LINE12_PARTS = [
+  { field: 'arrears', label: 'Tunggakan gaji' },
+  { field: 'unapprovedFundRefund', label: 'Bayaran balik kumpulan wang tidak diluluskan' },
+  { field: 'annuity', label: 'Anuiti' },
+] as const;
+
+export async function cp22aParticulars(
+  ctx: SessionContext,
+  p: { employmentId: string; today?: string },
+): Promise<Cp22aParticulars | null> {
+  const today = p.today ?? todayInKualaLumpur();
+  const base = await cp22Particulars(ctx, { employmentId: p.employmentId, today });
+  if (!base) return null;
+
+  const extra = await withTenant(ctx, async (tx) => {
+    const [emp] = await tx
+      .select({ terminatedOn: employment.terminatedOn, terminationType: employment.terminationType })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    const [corr] = await tx
+      .select({ personalEmail: person.personalEmail, primaryEmail: person.primaryEmail })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    // A7 — whether the employer bears this person's tax: the flag payroll funds the PCB from. A missing
+    // statutory row is null (both A7 boxes blank), never a "Tidak".
+    const [bears] = await tx
+      .select({ tax: employeeStatutoryMy.employerBearsTax })
+      .from(employment)
+      .innerJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    // Section E — the company's LHDN signatory first (the same row CP39 and the EA read).
+    const [auth] = await tx
+      .select({ signatoryPersonId: companyStatutoryAuthority.signatoryPersonId })
+      .from(companyStatutoryAuthority)
+      .where(and(eq(companyStatutoryAuthority.companyId, base.companyId), eq(companyStatutoryAuthority.authority, 'lhdn')))
+      .limit(1);
+    const officerOf = async (personId: string) => {
+      const [o] = await tx
+        .select({ name: person.fullName, email: person.primaryEmail, title: position.title })
+        .from(person)
+        .leftJoin(employment, and(eq(employment.personId, person.id), eq(employment.companyId, base.companyId)))
+        .leftJoin(
+          assignment,
+          and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo), isNull(assignment.supersededAt)),
+        )
+        .leftJoin(position, eq(position.id, assignment.positionId))
+        .where(eq(person.id, personId))
+        .orderBy(desc(assignment.validFrom))
+        .limit(1);
+      return o ?? null;
+    };
+    const signatory = auth?.signatoryPersonId ? await officerOf(auth.signatoryPersonId) : null;
+    const sessionEmail = !signatory && ctx.personId
+      ? (await tx.select({ email: person.primaryEmail }).from(person).where(eq(person.id, ctx.personId)).limit(1))[0]?.email ?? null
+      : null;
+    return { emp, corr, signatory, sessionEmail, bearsTax: bears ? bears.tax : null };
+  });
+  if (!extra.emp?.terminatedOn) return null;
+  const cessationDate = extra.emp.terminatedOn;
+  const year = cessationDate.slice(0, 4);
+  const throughPeriod = cessationDate.slice(0, 7);
+
+  // The last PROCESSED pay period inside [year-01, cessation month], for this employer.
+  const lastPeriod = await withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ last: sql<string | null>`max(${payrollBatch.payPeriod})` })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .where(
+        and(
+          eq(payslip.employmentId, p.employmentId),
+          eq(payrollBatch.companyId, base.companyId),
+          inArray(payrollBatch.status, ['processed', 'closed']),
+          gte(payrollBatch.payPeriod, `${year}-01`),
+          lte(payrollBatch.payPeriod, throughPeriod),
+        ),
+      );
+    return row?.last ?? null;
+  });
+
+  // The EMPLOYER's pack — `cp22Particulars` already refused a company no pack owns.
+  const pack = packFor(await companyCountry(ctx, base.companyId));
+  const ea = lastPeriod && pack
+    ? await pack.eaStatement(ctx, {
+        employmentId: p.employmentId,
+        year,
+        companyId: base.companyId,
+        throughPeriod,
+        processedOnly: true,
+        applyOverrides: false,
+      })
+    : null;
+
+  const lines: Partial<Record<Cp22aPayLine, number>> = {};
+  const line12Items: string[] = [];
+  let esos: number | null = null;
+  let deductions: Cp22aPdfData['deductions'] = { pcb: null, zakat: null, epf: null };
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  if (ea) {
+    const b = ea.partB;
+    const mapped = new Set<string>(ea.routing.active ? (ea.routing.mappedFields ?? []) : []);
+    const has = (field: string, value: number) => value !== 0 || mapped.has(field);
+    lines[1] = r2(b.grossSalary);
+    lines[3] = r2(b.bonus + b.directorFee);
+    // ⚠️ r413 verify (HIGH) — line 6 is captioned "termasuk cukai ditanggung oleh majikan". When the employer
+    // bears the tax (A7 Ya) but no pay item carries that tax, the EA engine has nothing for it, and a figure
+    // here would understate income on a form that says Ya. Blank — never a number we cannot stand behind.
+    if (!(extra.bearsTax === true && !has('taxBorneByEmployer', b.taxBorneByEmployer))) {
+      lines[6] = r2(b.allowances + b.tipsPerquisites + b.taxBorneByEmployer);
+    }
+    if (has('gratuity', b.gratuity)) lines[4] = r2(b.gratuity);
+    if (has('compensation', b.compensation)) lines[5] = r2(b.compensation);
+    if (has('pension', ea.partC.pension)) lines[7] = r2(ea.partC.pension);
+    if (has('benefitsInKind', b.benefitsInKind)) lines[8] = r2(b.benefitsInKind);
+    if (has('livingAccommodation', b.livingAccommodation)) lines[9] = r2(b.livingAccommodation);
+    const parts12 = { arrears: b.arrears, unapprovedFundRefund: b.unapprovedFundRefund, annuity: ea.partC.annuity };
+    if (CP22A_LINE12_PARTS.some(({ field }) => has(field, parts12[field]))) {
+      lines[12] = r2(CP22A_LINE12_PARTS.reduce((sum, { field }) => sum + parts12[field], 0));
+      for (const { field, label } of CP22A_LINE12_PARTS) if (parts12[field] !== 0) line12Items.push(label);
+    }
+    if (has('esos', b.esos)) esos = r2(b.esos);
+    deductions = { pcb: r2(ea.partD.mtd), zakat: r2(ea.partD.zakat), epf: r2(ea.partE.epf) };
+  }
+
+  const yearStart = `${year}-01-01`;
+  const hired = base.employee.commencementDate;
+  const from = lastPeriod ? (hired && hired > yearStart ? hired : yearStart) : null;
+  const periodEnd = lastPeriod
+    ? `${lastPeriod}-${String(daysInMonth(Number(lastPeriod.slice(0, 4)), Number(lastPeriod.slice(5, 7)))).padStart(2, '0')}`
+    : null;
+  // r413 verify (MEDIUM) — "hingga" never runs past the date the form's own header says the employment ended:
+  // once the leaving month's payroll is processed, the month end would otherwise print a date after it.
+  const to = periodEnd && cessationDate < periodEnd ? cessationDate : periodEnd;
+
+  const corrAddr = base.employee.correspondenceAddress;
+  const corrTail = [[corrAddr.postcode, corrAddr.town].filter(Boolean).join(' '), corrAddr.state].filter(Boolean).join(', ');
+  const officer = extra.signatory
+    ? { name: extra.signatory.name, designation: extra.signatory.title ?? null, email: extra.signatory.email ?? null }
+    : { name: base.declarant.name, designation: base.declarant.designation, email: base.declarant.name ? extra.sessionEmail : null };
+
+  return {
+    companyId: base.companyId,
+    year,
+    unmappedPayItems: ea?.routing.unmapped ?? [],
+    routingActive: ea?.routing.active ?? false,
+    employer: {
+      name: base.employer.name,
+      addressLines: base.employer.addressLines,
+      eNumber: base.employer.eNumber,
+      phone: base.employer.phone,
+    },
+    employee: {
+      fullName: base.employee.fullName,
+      icNo: base.employee.icNo,
+      passportNo: base.employee.passportNo,
+      taxNo: base.employee.incomeTaxNo,
+      commencementDate: base.employee.commencementDate,
+      cessationDate,
+      cessation: cp22aCessationFor(extra.emp.terminationType),
+      taxBorneByEmployer: extra.bearsTax,
+      dateOfBirth: base.employee.dateOfBirth,
+      maritalStatus: base.employee.maritalStatus,
+      childrenCount: ea?.employee.children ?? null,
+      phone: base.employee.phone,
+      // The leaver's OWN address first: the work mailbox is the one about to stop working.
+      email: extra.corr?.personalEmail || extra.corr?.primaryEmail || null,
+      correspondenceAddress: [...corrAddr.lines, corrTail].map((s) => s.trim()).filter(Boolean),
+    },
+    spouse: base.spouse ? { fullName: base.spouse.fullName, icOrPassport: base.spouse.icOrPassport } : null,
+    pay: { from, to, lines, line12Items, esos },
+    deductions,
+    officer,
+    today,
+    typed: {
+      deathNotifiedDate: null,
+      retirement: null,
+      scheme: null,
+      rep: { name: null, icNo: null, relationship: null, address: [], phone: null },
+    },
+  };
 }
 
 /** Recently recorded report artefacts for a company (audit trail). */

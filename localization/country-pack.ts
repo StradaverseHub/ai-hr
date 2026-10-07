@@ -743,7 +743,17 @@ export interface CountryPack {
    *  can span more than one employer, and an EA form belongs to exactly one of them. */
   eaStatement: (
     ctx: SessionContext,
-    p: { employmentId: string; year: string; companyId?: string },
+    p: {
+      employmentId: string;
+      year: string;
+      companyId?: string;
+      /** r413 — CP22A only: payslips with pay_period ≤ this `yyyy-mm`. Absent for every EA surface. */
+      throughPeriod?: string;
+      /** r413 — CP22A only: processed/closed batches only. Absent for every EA surface. */
+      processedOnly?: boolean;
+      /** r413 — CP22A only: false skips the whole-year ea_override layer. Absent ⇒ applied, as always. */
+      applyOverrides?: boolean;
+    },
   ) => Promise<EaStatement | null>;
 
   /** Every employer that owes this employee a statement for the year, oldest first. One entry for anyone

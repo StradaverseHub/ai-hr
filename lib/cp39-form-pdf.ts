@@ -31,8 +31,8 @@
  * ⚠️ AND THE SPECIMEN IS STILL NOT LHDN ARTWORK. It is another payroll system's rendering of the
  * agency's page — the same provenance as the earlier CP39 reference "Income Tax CP39.pdf"
  * (Producer = Developer Express Inc. DXperience v23.2.5), and the same as the EPF and SOCSO "agency
- * reference" attachments HANDOFF records. `public/forms/` still holds exactly one genuine artwork,
- * `cp22-pin-1-2021.pdf`, and the specimen deliberately does NOT go there. So `my.cp39` declares
+ * reference" attachments HANDOFF records. `public/forms/` holds only the agency artwork in
+ * `MY_OFFICIAL_ARTWORK` (CP22, and CP22A since r413), and the specimen deliberately does NOT go there. So `my.cp39` declares
  * `agency-layout` — drawn to the agency's own arrangement, on our own paper, with no agency artwork on
  * disk, exactly like `my.borang-8a` and `my.borang-a` — and it may NEVER declare `official`. The page
  * says so on its own face in the strip along the bottom.
