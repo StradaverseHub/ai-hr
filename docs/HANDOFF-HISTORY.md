@@ -1,3 +1,24 @@
+## r414 — 2026-10-08 · main@f6a540b09708157904e857ba5c6c7cf87067a662 · migration none
+
+**Scope.** Three builds, one gate: r411 (4f45f9b0 re-plan — Borang A to the October KWSP 6 sample, new BBCD), r412 (e74af58c step 2 — EIS (SIP) schedule, Borang 8B), r413 (79f3f64d step 2 — CP22A on LHDN's Pin.1/2023 artwork, generic choose-the-employee event screen). Deployed with `improve:deploy`; live after restart (401 on box, public /health 200, zero-line dry-run). Board unchanged: 4f45f9b0 planned (re-plan awaiting approval), e74af58c and 79f3f64d building (79f3f64d step 3 CP21 in progress as r415).
+
+**Decisions.**
+- 4f45f9b0 was CONTESTED with "Attached the file sample": the reporter sent the KWSP 6 Borang A and "BBCD" samples (another payroll system's prints; real names/ICs — never committed). Re-planned as r411 to follow them. The samples' only figure that reached a commit comment was removed and the branch squashed before merge.
+- Borang A: one JUMLAH = employer + employee = header Amaun; brought-forward from sheet 2 only; NO carried-forward row; the unverified "KWSP publishes no blank form" clause removed (key retired). The review table under the viewer totals the same way as the PDF.
+- BBCD is a projection of the Borang A read (no money of its own); NAMA PENUH printed in capitals (HURUF BESAR); a not-ready Borang A also blocks it. The planned "Borang BBCB" card was LEFT on the shelf: the earlier plan told the reporter it stays, so removing it is theirs to confirm.
+- EIS (SIP) schedule: fidelity `figures` (the sample is a vendor print); a person paid with no EIS is left off and named; such a person cannot block it for a missing IC or inconsistent SOCSO wage, but the selection reason still refuses bonus-only. 30 rows/sheet.
+- Borang 8B: header filled from records and the 'socso' signatory, every employee line and total blank, no deadline; refuses a month that has not ended (`month_not_ended`).
+- The shared `agency-layout` caption ("we hold no blank from the agency to print onto") was challenged by a verifier and KEPT: it is r218's deliberately narrow claim about OUR shelf, true for every member, and pinned.
+- CP22A: `MY_OFFICIAL_ARTWORK` whitelist (CP22, CP22A) checked both ways; A7 from `employee_statutory_my.employer_bears_tax`; line 6 BLANK when the employer bears the tax and no pay item carries it; "hingga" capped at the leaving date; a death's due date is "within 30 days of being told" (the notification date is typed, never stored), not a computed date. CP22 output byte-identical.
+
+**Gate.** 20 chunks, 1218 of 1218; one red (r291 detached-deploy timing, 0 assertions), re-run alone 38/38.
+
+**Not done / owed.**
+- CP22A: a hyphen in a stored employer number lands in a digit cell (left: it may separate a check digit); line 3's 0.00 asserts "no commission" while EA routing is off (pre-2027); D2's label says "paid to LHDN" for PCB deducted.
+- BBCD/Borang A: contribution-month hint wrong only on a hand-edited `epfPeriod` link; awkward not-ready title wording.
+- 8B and Borang 8A reuse 8A heading positions (NAMA PEKERJA ~10pt right of PERKESO's 8B).
+- SIP 2/2A remain planned (2017 forms, ASSIST registration).
+
 ## r410 — 2026-10-08 · main@6d3ebf9496a4e5171adfe768800072616f65c6d3 · migration none
 
 **Scope.** Four builds, one gate (r406 952129bb HR Add Leave Credit, r407 4f45f9b0 Borang A workflow + redraw, r408 e74af58c step 1 Borang 8A, r409 79f3f64d step 1 CP39 + CP8D). Deployed with `improve:deploy`; live after restart (401 on box, public /health 200, zero-line dry-run). Board: e74af58c and 79f3f64d approved byte-identical and set to building (later steps remain); 952129bb still planned; 4f45f9b0 was CONTESTED ("Attached the file sample") and re-planned as r411; f3cf2444 (r405) approved byte-identical and recorded deployed.
