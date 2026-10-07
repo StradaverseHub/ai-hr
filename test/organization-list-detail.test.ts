@@ -28,6 +28,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { scope } = vi.hoisted(() => ({ scope: { s: null as unknown, scopeIds: [] as string[] } }));
@@ -73,6 +74,9 @@ import CompanyMaintenancePage from '../app/admin/organization/[companyId]/page';
 // statutory screen itself. Its import, its render helper and its two cases are removed rather than
 // loosened — there is no route left to refuse anything.
 import CompanyStatutorySetupPage from '../app/admin/organization/[companyId]/statutory/page';
+// 7a595a02 (r403) — the THIRD guarded route onto one company's data: the read-only view. Same rule as the
+// statutory screen above: a second door must not be an easier door, so the refusal is RUN, not scanned.
+import CompanyViewPage from '../app/admin/organization/[companyId]/view/page';
 import { StatutorySetupScreen } from '../components/statutory-setup-screen';
 import NewCompanyPage from '../app/admin/organization/new/page';
 import { createCompanyAction } from '../app/admin/actions';
@@ -205,6 +209,12 @@ describe('/admin/organization/[companyId] — the scope refusal and the parent p
       params: Promise.resolve({ companyId }),
       searchParams: Promise.resolve({}),
     });
+  /** 7a595a02 — the read-only view, whose guard must refuse exactly what the editor's refuses. */
+  const renderView = (companyId: string, tab?: string) =>
+    CompanyViewPage({
+      params: Promise.resolve({ companyId }),
+      searchParams: Promise.resolve(tab ? { tab } : {}),
+    });
   /** The Statutory Payment Setup LIST, whose guard mirrors the detail page's line for line. */
   const renderStatutory = (companyId: string) =>
     CompanyStatutorySetupPage({
@@ -258,6 +268,100 @@ describe('/admin/organization/[companyId] — the scope refusal and the parent p
     await expect(renderStatutory(ids['Gamma Sdn Bhd'])).rejects.toThrow(NOT_FOUND);
     await expect(renderStatutory(ids['Acme Sdn Bhd'])).rejects.toThrow(NOT_FOUND);
     await expect(renderStatutory(randomUUID()), 'and a non-company id').rejects.toThrow(NOT_FOUND);
+  });
+
+  /**
+   * 7a595a02 (r403) — THE READ-ONLY VIEW REFUSES WHAT THE EDITOR REFUSES, AND NOTHING LESS.
+   *
+   * The view reads the same company row, bank accounts and statutory setup as the editor. A view that
+   * rendered a company the editor 404s would leak its bank accounts without any save being attempted, so
+   * the refusal is executed on both pages over one matrix of readers × companies — including a company in
+   * ANOTHER TENANT — and the two outcomes must agree cell by cell.
+   */
+  it('REFUSES on the read-only view exactly what the editor refuses — across companies and tenants', async () => {
+    // A second tenant with its own company and its own tenant-wide admin.
+    const other = await seedBase();
+    const readers: Record<string, SessionContext> = {
+      'Beta-scoped admin': await scopedAdminCtx(ids['Beta Sdn Bhd']),
+      'tenant-wide admin': await scopedAdminCtx(null),
+    };
+    const targets: Record<string, string> = {
+      Acme: ids['Acme Sdn Bhd'],
+      Beta: ids['Beta Sdn Bhd'],
+      'Beta East': ids['Beta East Sdn Bhd'],
+      Gamma: ids['Gamma Sdn Bhd'],
+      'other tenant’s company': other.companyId,
+      'not a company': randomUUID(),
+    };
+    const outcome = async (p: Promise<unknown>) =>
+      p.then(
+        () => 'rendered',
+        (e: unknown) => (e === NOT_FOUND ? '404' : `threw ${String(e)}`),
+      );
+    const seen = new Set<string>();
+    for (const [who, ctx] of Object.entries(readers)) {
+      for (const [what, id] of Object.entries(targets)) {
+        scope.s = ctx;
+        scope.scopeIds = [];
+        const editor = await outcome(render(id));
+        const view = await outcome(renderView(id));
+        expect(view, `${who} → ${what}: the view must answer as the editor does`).toBe(editor);
+        expect(['rendered', '404'], `${who} → ${what}`).toContain(view);
+        seen.add(view);
+      }
+    }
+    // Non-vacuity: the matrix held BOTH answers, so agreement is not "both always 404" or "both always render".
+    expect([...seen].sort()).toEqual(['404', 'rendered']);
+
+    // And the cells that matter, stated outright rather than only as agreement.
+    scope.s = readers['Beta-scoped admin'];
+    await expect(renderView(ids['Gamma Sdn Bhd']), 'a sibling company outside the grant').rejects.toThrow(NOT_FOUND);
+    await expect(renderView(ids['Acme Sdn Bhd']), 'the grant does not reach upward').rejects.toThrow(NOT_FOUND);
+    await expect(renderView(ids['Beta East Sdn Bhd']), 'the grant reaches the subsidiary').resolves.toBeTruthy();
+    scope.s = readers['tenant-wide admin'];
+    await expect(renderView(other.companyId), 'another tenant, even for a tenant-wide admin').rejects.toThrow(NOT_FOUND);
+    // …and an ?tab= cannot route around it.
+    await expect(renderView(other.companyId, 'bank'), 'nor via the bank tab').rejects.toThrow(NOT_FOUND);
+  });
+
+  it('the view renders the company as TEXT — no form control, no write — with Edit into the editor', async () => {
+    scope.s = await scopedAdminCtx(ids['Beta Sdn Bhd']);
+    scope.scopeIds = [];
+    await owner.db.update(schema.company).set({ companyLabel: 'BTE', city: 'Ipoh' }).where(eq(schema.company.id, ids['Beta East Sdn Bhd']));
+    await owner.db.insert(schema.companyBankProfile).values([
+      { tenantId: base.tenantId, companyId: ids['Beta East Sdn Bhd'], bank: 'maybank', corporateId: 'CORP-EAST', debitAccountNo: '5140-EAST-001' },
+      // A sibling's account: must never surface on Beta East's view.
+      { tenantId: base.tenantId, companyId: ids['Gamma Sdn Bhd'], bank: 'maybank', corporateId: 'CORP-GAMMA', debitAccountNo: '5140-GAMMA-009' },
+    ]);
+    const id = ids['Beta East Sdn Bhd'];
+    const pages: Record<string, string> = {};
+    for (const tab of ['general', 'bank', 'statutory', 'bogus'] as const) {
+      pages[tab] = renderToStaticMarkup((await renderView(id, tab)) as never);
+    }
+    for (const [tab, html] of Object.entries(pages)) {
+      expect(html.length, `${tab}: rendered something substantial`).toBeGreaterThan(1500);
+      for (const banned of ['<form', '<input', '<select', '<textarea', '<button', ' name="', 'formaction']) {
+        expect(html.toLowerCase(), `${tab}: the read-only view rendered ${banned}`).not.toContain(banned);
+      }
+      // Edit opens the EXISTING editor (keeping the tab), never another view.
+      expect(html, `${tab}: Edit link`).toMatch(new RegExp(`href="/admin/organization/${id}(\\?tab=(bank|statutory))?" data-company-edit-link`));
+      expect(html, `${tab}: never names a company outside the grant`).not.toContain('Gamma Sdn Bhd');
+      expect(html).not.toContain('5140-GAMMA-009');
+    }
+    // General: the editor's fields, as text — code, city, and the parent the tree resolves.
+    expect(pages.general).toContain('BTE');
+    expect(pages.general).toContain('Ipoh');
+    expect(pages.general).toContain('Beta Sdn Bhd');
+    expect(pages.general).toContain('href="/admin/organization/' + id + '" data-company-edit-link');
+    // An unrecognised ?tab= opens General, exactly as the editor treats it.
+    expect(pages.bogus).toBe(pages.general);
+    // Bank: this company's account, and only on the bank tab.
+    expect(pages.bank).toContain('5140-EAST-001');
+    expect(pages.bank).toContain('CORP-EAST');
+    expect(pages.general).not.toContain('5140-EAST-001');
+    // Statutory: the bodies list, read-only.
+    expect(pages.statutory).toContain('data-statutory-body="epf"');
+    expect(pages.statutory).toContain('aria-current="page"');
   });
 
   /**
@@ -578,10 +682,28 @@ describe('Organization listing — View · Edit · Archive (3c2f55d7 rev 2)', ()
     expect(ROWS).toContain('{r.archived ? labels.unarchive : labels.archive}');
   });
 
-  it('View and Edit both open the company page — there is no read-only rendering of it', () => {
+  /**
+   * ⚠️ REVERSED BY 7a595a02 (r403). This case read "View and Edit both open the company page — there is no
+   * read-only rendering of it", and pinned two identical hrefs. The read-only view now exists
+   * (app/admin/organization/[companyId]/view), so View — and the company's NAME — go there, and Edit alone
+   * opens the editor. Updated, not deleted: the half that still holds (Edit opens the editor) is asserted.
+   */
+  it('View and the company name open the read-only view; Edit alone opens the editor', () => {
     const viewAt = ROWS.indexOf('{labels.view}');
+    const editAt = ROWS.indexOf('{labels.edit}');
+    const nameAt = ROWS.indexOf('{r.name}\n');
+    expect(viewAt, 'View caption found').toBeGreaterThanOrEqual(0);
+    expect(editAt, 'Edit caption found').toBeGreaterThan(viewAt);
+    expect(nameAt, 'name cell found').toBeGreaterThanOrEqual(0);
     const cell = ROWS.slice(ROWS.lastIndexOf('<td', viewAt), ROWS.indexOf('</td>', viewAt));
-    expect(cell.match(/href=\{`\$\{basePath\}\/\$\{r\.id\}`\}/g) ?? []).toHaveLength(2);
-    expect(cell).toContain('{labels.edit}');
+    expect(cell.length, 'the actions cell slice is real').toBeGreaterThan(200);
+    // The link immediately before each caption.
+    const hrefBefore = (at: number) => {
+      const linkAt = ROWS.lastIndexOf('<Link href=', at);
+      return ROWS.slice(linkAt, ROWS.indexOf('}', ROWS.indexOf('`}', linkAt)) + 1);
+    };
+    expect(hrefBefore(viewAt)).toBe('<Link href={`${basePath}/${r.id}/view`}');
+    expect(hrefBefore(nameAt)).toBe('<Link href={`${basePath}/${r.id}/view`}');
+    expect(hrefBefore(editAt)).toBe('<Link href={`${basePath}/${r.id}`}');
   });
 });
