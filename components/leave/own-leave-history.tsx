@@ -21,39 +21,15 @@ import { requestLeaveCancellationAction, editLeaveAction, cancelOwnLeaveAction }
 
 export type HistorySearch = { warnHoliday?: string; hTab?: string; hType?: string | string[]; hFrom?: string; hTo?: string; leaveYear?: string; year?: string; state?: string; loaded?: string };
 
-/** One server-owned projection for the unchanged history and upcoming consumers. */
-export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, eligibleTypeIds}: {
-  session: Awaited<ReturnType<typeof scopedSession>>['s'];
-  me: NonNullable<Awaited<ReturnType<typeof myEmployment>>>;
-  sp: HistorySearch;
-  locale: string;
-  leaveTypes: Awaited<ReturnType<typeof listLeaveTypes>>;
-  eligibleTypeIds: Set<string>;
-}) {
-  const t = await getTranslations('leave');
-  const tMe = await getTranslations('me');
-  const today = todayInKualaLumpur();
-  const unpaidTypeName = leaveTypes.find((lt) => lt.code === 'UNPAID')?.name;
-  // History: the viewer's OWN requests, and only those.
-  //
-  // This used to be a two-branch destructure of eight names. afd0a87c emptied the admin branch of its
-  // org-wide register, leaving it holding `companies` / `departments` / `employeeList` for the Employee
-  // Details listing alone — and 388e53c2 moved that listing to app/leave/tracker/page.tsx, which reads
-  // them there. So one path is left, and it is the self-service one. (An administrator never reaches this
-  // line at all: the short page returns above.)
-  //
-  // 5f2e20fb — NARROWED IN SQL, not in JavaScript after the fact. The old shape read the scope-wide flat
-  // list (capped at 200 rows) and then kept the viewer's own; RLS on leave_request is `can_see_employment`,
-  // so a manager's subordinates filled that cap and the manager's OWN older records fell off the bottom of
-  // it before the filter ever ran. Narrowing by employmentId makes the cap per-employee. This does NOT
-  // resurrect the org-wide register: there is no company/status/approver dimension here, only "mine".
-  //
-  // The id list comes from myEmploymentIdsAll — the exact equivalent of the personId test it replaces, and
-  // the reason it is not simply [me.employmentId]: a rehired person holds more than one employment and must
-  // keep seeing the earlier one's records. Never allowed to be empty, because an empty `employmentIds`
-  // applies NO narrowing at all in the read.
-  const myEmploymentIds = (await myEmploymentIdsAll(session)).map((e) => e.employmentId);
-  const historyEmploymentIds = myEmploymentIds.length > 0 ? myEmploymentIds : [me.employmentId];
+type OwnSession = Awaited<ReturnType<typeof scopedSession>>['s'];
+type OwnMe = NonNullable<Awaited<ReturnType<typeof myEmployment>>>;
+type OwnRequestRow = Awaited<ReturnType<typeof myUpcomingLeave>>[number];
+
+/**
+ * r397 — the history filter, shape-checked. MOVED VERBATIM out of loadOwnLeaveHistory (which calls it) so the
+ * My Leave page can carry the same filter params without running the history reads it never renders.
+ */
+function ownHistoryFilter(sp: HistorySearch) {
   const hArr = (v?: string | string[]): string[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
   // SHAPE-CHECKED BEFORE THEY REACH SQL, because these three go straight into typed predicates in
   // core/read.ts — `from`/`to` into lte/gte against `date` columns, `hType` into an inArray against a
@@ -78,6 +54,110 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
     ...(hTo ? { hTo } : {}),
     ...(sp.hTab ? { hTab: sp.hTab } : {}),
   };
+  return { hTypeIds, hFrom, hTo, historyFiltered, historyFilterParams };
+}
+
+/** r397 — WHOSE records: moved verbatim out of loadOwnLeaveHistory, which calls it. */
+async function ownHistoryEmploymentIds(session: OwnSession, me: OwnMe): Promise<string[]> {
+  // History: the viewer's OWN requests, and only those.
+  //
+  // This used to be a two-branch destructure of eight names. afd0a87c emptied the admin branch of its
+  // org-wide register, leaving it holding `companies` / `departments` / `employeeList` for the Employee
+  // Details listing alone — and 388e53c2 moved that listing to app/leave/tracker/page.tsx, which reads
+  // them there. So one path is left, and it is the self-service one. (An administrator never reaches this
+  // line at all: the short page returns above.)
+  //
+  // 5f2e20fb — NARROWED IN SQL, not in JavaScript after the fact. The old shape read the scope-wide flat
+  // list (capped at 200 rows) and then kept the viewer's own; RLS on leave_request is `can_see_employment`,
+  // so a manager's subordinates filled that cap and the manager's OWN older records fell off the bottom of
+  // it before the filter ever ran. Narrowing by employmentId makes the cap per-employee. This does NOT
+  // resurrect the org-wide register: there is no company/status/approver dimension here, only "mine".
+  //
+  // The id list comes from myEmploymentIdsAll — the exact equivalent of the personId test it replaces, and
+  // the reason it is not simply [me.employmentId]: a rehired person holds more than one employment and must
+  // keep seeing the earlier one's records. Never allowed to be empty, because an empty `employmentIds`
+  // applies NO narrowing at all in the read.
+  const myEmploymentIds = (await myEmploymentIdsAll(session)).map((e) => e.employmentId);
+  const historyEmploymentIds = myEmploymentIds.length > 0 ? myEmploymentIds : [me.employmentId];
+  return historyEmploymentIds;
+}
+
+/**
+ * r397 — Upcoming Leave rows, pre-translated for the client island. MOVED VERBATIM out of loadOwnLeaveHistory
+ * (the display status and the row map), so the history route and the My Leave page share one projection.
+ * `approvalTrails` must answer for every row in `upcomingRows`; a trail is a per-request fact
+ * (ownLeaveApprovalTrails resolves each id on its own), so asking for more ids changes nothing about these.
+ */
+async function ownUpcomingView(
+  upcomingRows: OwnRequestRow[],
+  approvalTrails: Awaited<ReturnType<typeof ownLeaveApprovalTrails>>,
+): Promise<UpcomingLeaveRow[]> {
+  const t = await getTranslations('leave');
+  const tMe = await getTranslations('me');
+  /** The display status of a row: Pending Cancellation / Partially approved / the stored status. */
+  const displayStatus = (r: OwnRequestRow) => {
+    const pendingCancel = r.status === 'approved' && r.pendingCancellationId != null;
+    const isPartial = isPartiallyApproved(r, approvalTrails.get(r.id));
+    return pendingCancel
+      ? { key: 'pendingCancellation', label: t('pendingCancellationStatus') }
+      : isPartial
+        ? { key: 'partial', label: tMe('leaveStatus.partiallyApproved') }
+        : { key: r.status, label: t(`status.${r.status}`) };
+  };
+  // r302 — Upcoming Leave rows, pre-translated for the client island.
+  const upcoming: UpcomingLeaveRow[] = upcomingRows.map((r) => {
+    const st = displayStatus(r);
+    return {
+      id: r.id,
+      leaveType: r.leaveType,
+      startDate: r.startDate,
+      endDate: r.endDate,
+      days: Number(r.days),
+      statusKey: st.key,
+      statusLabel: st.label,
+    };
+  });
+  return upcoming;
+}
+
+/**
+ * r397 — WHAT THE MY LEAVE PAGE (app/leave/page.tsx) USES of loadOwnLeaveHistory, and only that: the Upcoming
+ * Leave rows and the history filter it carries on the Year form. The page has always discarded `history`
+ * (the card is on /leave/history), yet paid for every read behind it on each visit — the unfiltered list and
+ * its count, the grouped tab counts, the shown list and its count, five date breakdowns, the cancel offers,
+ * the cancellation progress, the cancellations and the rejections, eight sequential steps.
+ *
+ * SAME OUTPUT BY CONSTRUCTION: the same three helpers loadOwnLeaveHistory calls (ownHistoryFilter,
+ * ownHistoryEmploymentIds, ownUpcomingView), the same myUpcomingLeave read, and the approval trails asked for
+ * the Upcoming rows alone — the only rows `upcoming` reads a trail for. test/r397-my-leave-equivalence.test.ts
+ * compares this against loadOwnLeaveHistory's own `upcoming` and `historyFilterParams`.
+ */
+export async function loadOwnUpcomingLeave({ session, me, sp }: { session: OwnSession; me: OwnMe; sp: HistorySearch }) {
+  const today = todayInKualaLumpur();
+  const { historyFilterParams } = ownHistoryFilter(sp);
+  const historyEmploymentIds = await ownHistoryEmploymentIds(session, me);
+  const upcomingRows = await myUpcomingLeave(session, historyEmploymentIds, today);
+  // No rows ⇒ no trail can be read for any of them; ownLeaveApprovalTrails answers an empty Map for an empty list.
+  const approvalTrails = upcomingRows.length > 0 ? await ownLeaveApprovalTrails(session, upcomingRows.map((r) => r.id)) : new Map();
+  const upcoming = await ownUpcomingView(upcomingRows, approvalTrails);
+  return { upcoming, historyFilterParams };
+}
+
+/** One server-owned projection for the unchanged history and upcoming consumers. */
+export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, eligibleTypeIds}: {
+  session: Awaited<ReturnType<typeof scopedSession>>['s'];
+  me: NonNullable<Awaited<ReturnType<typeof myEmployment>>>;
+  sp: HistorySearch;
+  locale: string;
+  leaveTypes: Awaited<ReturnType<typeof listLeaveTypes>>;
+  eligibleTypeIds: Set<string>;
+}) {
+  const t = await getTranslations('leave');
+  const tMe = await getTranslations('me');
+  const today = todayInKualaLumpur();
+  const unpaidTypeName = leaveTypes.find((lt) => lt.code === 'UNPAID')?.name;
+  const historyEmploymentIds = await ownHistoryEmploymentIds(session, me);
+  const { hTypeIds, hFrom, hTo, historyFiltered, historyFilterParams } = ownHistoryFilter(sp);
   // Call A is UNFILTERED and is what the tick-list is built from — options taken from the filtered set would
   // vanish the moment a filter was applied. It also supplies the "of 14" half of the header count.
   // Call B is the rendered rows. `from`/`to` are OVERLAP semantics inside the read (startDate <= to AND
@@ -184,16 +264,6 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
   const kindLabel = (kind: string | null): string | null => {
     const key = approverKindLabelKey(kind);
     return key ? tApproval(key) : null;
-  };
-  /** The display status of a row: Pending Cancellation / Partially approved / the stored status. */
-  const displayStatus = (r: (typeof selfHistory)[number]) => {
-    const pendingCancel = r.status === 'approved' && r.pendingCancellationId != null;
-    const isPartial = isPartiallyApproved(r, approvalTrails.get(r.id));
-    return pendingCancel
-      ? { key: 'pendingCancellation', label: t('pendingCancellationStatus') }
-      : isPartial
-        ? { key: 'partial', label: tMe('leaveStatus.partiallyApproved') }
-        : { key: r.status, label: t(`status.${r.status}`) };
   };
   // The row's Approver cell, the View panel's approval progress and a cancellation's who/when — pure functions
   // in lib/my-leave-history.ts over this request's translator, so they are tested against the six catalogues.
@@ -467,19 +537,7 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
     cancelled: t('myLeave.emptyCancelled'),
   };
 
-  // r302 — Upcoming Leave rows, pre-translated for the client island.
-  const upcoming: UpcomingLeaveRow[] = upcomingRows.map((r) => {
-    const st = displayStatus(r);
-    return {
-      id: r.id,
-      leaveType: r.leaveType,
-      startDate: r.startDate,
-      endDate: r.endDate,
-      days: Number(r.days),
-      statusKey: st.key,
-      statusLabel: st.label,
-    };
-  });
+  const upcoming = await ownUpcomingView(upcomingRows, approvalTrails);
 
   const history = (
 <Card className="flex flex-col" data-tour="leave-requests">

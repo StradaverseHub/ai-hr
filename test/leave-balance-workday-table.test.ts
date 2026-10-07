@@ -335,7 +335,8 @@ describe('Leave Balance table: /leave no longer composes it; the dashboard keeps
   });
 
   it('scopes the balances to the VIEWER via per-employment leaveBalances (not the all-employee pivot)', () => {
-    expect(page).toContain('myLeaveDashboard(session, me.employmentId,');
+    // UPDATED BY r397: the read moved, unchanged, into the page's loader (app/leave/my-leave-data.ts).
+    expect(read('app/leave/my-leave-data.ts')).toContain('myLeaveDashboard(session, me.employmentId,');
     expect(myLeave).toMatch(/leaveBalances\(ctx, employmentId, locale\b/);
     expect(page.includes('leaveBalancesAll')).toBe(false);
     expect(myLeave.includes('leaveBalancesAll')).toBe(false);

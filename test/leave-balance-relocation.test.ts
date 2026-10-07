@@ -35,7 +35,9 @@ describe('R37 e5a158d3 → r302: /leave hosts the viewer’s own balances, now a
     expect(leavePage).not.toMatch(/<LeaveBalanceTable/);
     expect(leavePage).not.toMatch(/deriveBalanceRow\(/);
     expect(leavePage).toMatch(/<MyLeaveDashboard\s/);
-    expect(leavePage).toContain('myLeaveDashboard(session, me.employmentId, { today, year: sp.leaveYear, locale })');
+    // UPDATED BY r397: the read moved, unchanged, into the page's loader (app/leave/my-leave-data.ts).
+    expect(read('/app/leave/my-leave-data.ts')).toContain('myLeaveDashboard(session, me.employmentId, { today, year: sp.leaveYear, locale })');
+    expect(leavePage).toContain('await loadMyLeave({ session, scopeIds, me, sp, locale, today })');
   });
 
   it('preserves the per-type breakdown side-sheet with ESS gating, posting back to /leave', () => {
@@ -61,7 +63,9 @@ describe('R37 e5a158d3: same source, scoped to the viewer (no data change)', () 
     // /leave uses the VIEWER's own employment — the self-service view, not the admin pivot. r302 moved the two
     // reads into core/my-leave.ts; they are the same reads, per leave year.
     expect(myLeave).toMatch(/leaveBalances\(ctx, employmentId, locale, \{ includeArchived: false \}\)/);
-    expect(myLeave).toMatch(/leaveEntitlementBreakdown\(ctx, employmentId, storyId, asOf, locale\)/);
+    // UPDATED BY r397: one BATCHED read for every card (leaveEntitlementBreakdowns, core/read.ts), whose items
+    // run leaveEntitlementBreakdown's own body — the same source, per card and per year.
+    expect(myLeave).toMatch(/leaveEntitlementBreakdowns\(ctx, employmentId, shownPlans\.map\(\(p\) => \(\{ leaveTypeId: p\.storyId, asOf: p\.asOf \}\)\), locale\)/);
     // a7cbd895 (My Absence): the ENTIRE /me Leave tab has since moved to /leave, so /me reads no leave
     // sources at all anymore.
     expect(mePage.includes('leaveBalances(')).toBe(false);

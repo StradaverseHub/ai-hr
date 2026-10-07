@@ -216,11 +216,14 @@ describe('5f2e20fb · only the history box is affected (source shape)', () => {
   it('no section above the history read touches hFrom / hTo / hType', () => {
     // The item is explicit: balances, entitlement breakdowns and the secondary groups are untouched. They
     // are all resolved ABOVE the history read on this page, so the slice is the assertion.
-    const overview = read('app/leave/page.tsx');
-    const balanceRead = overview.match(/const dashboard =[^;]+;/)?.[0];
+    // UPDATED BY r397: the page's reads moved, unchanged, into app/leave/my-leave-data.ts; the dashboard read is
+    // pinned there, and the history filter reaches the page only through loadOwnUpcomingLeave's carrier.
+    const overview = read('app/leave/my-leave-data.ts');
+    const balanceRead = overview.match(/const dashboardP =[^;]+;/)?.[0];
     expect(balanceRead, 'dashboard read exists').toBeTruthy();
     for (const key of ['hFrom', 'hTo', 'hType']) expect(balanceRead).not.toContain(key);
-    expect(overview).toContain('loadOwnLeaveHistory({ session, me, sp, locale, leaveTypes, eligibleTypeIds })');
+    expect(overview).toContain('loadOwnUpcomingLeave({ session, me, sp })');
+    expect(read('app/leave/history/page.tsx')).toContain('loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, eligibleTypeIds:');
     // The leave YEAR the dashboard owns is untouched by the history filter, and rides along as a hidden input
     // so applying a filter cannot reset it. UPDATED BY r302 (6c9802c9): this was the as-at date, which went
     // with the My balances card; the Year selector replaced it, and the carrier moved with it.

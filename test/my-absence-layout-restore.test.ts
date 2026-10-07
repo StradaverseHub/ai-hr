@@ -252,8 +252,12 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
     expect(guardAt, 'the short-page guard').toBeGreaterThan(-1);
     // …and it comes BEFORE the self-service reads it protects.
     // r302: the balance read is the per-year dashboard read now (it calls leaveBalances inside core/my-leave.ts).
-    for (const read of ['myLeaveDashboard(session', 'loadOwnLeaveHistory({', 'listEmployees(session']) {
-      expect(leavePage.indexOf(read), read).toBeGreaterThan(guardAt);
+    // UPDATED BY r397: the reads are made by ONE loader call (app/leave/my-leave-data.ts); the call comes after the
+    // guard, and the loader holds the reads.
+    expect(leavePage.indexOf('await loadMyLeave('), 'the loader call').toBeGreaterThan(guardAt);
+    const loader = read('app/leave/my-leave-data.ts');
+    for (const r of ['myLeaveDashboard(session', 'loadOwnUpcomingLeave({', 'listEmployees(session']) {
+      expect(loader.indexOf(r), r).toBeGreaterThan(-1);
     }
   });
 

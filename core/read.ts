@@ -89,6 +89,7 @@ import {
 } from './leave';
 import {
   buildTemplateEntitlementResolver,
+  type TemplateEntitlementResolver,
   eligibilityNoticeFrom,
   explainEntitlementEligibility,
 } from './entitlement-template';
@@ -3871,31 +3872,73 @@ export function leaveEntitlementBreakdown(
    *  the HR mounts ask; see `LeaveEntitlementBreakdown.derivation`. */
   opts: { derivation?: boolean } = {},
 ): Promise<LeaveEntitlementBreakdown | null> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, (tx) => leaveEntitlementBreakdownTx(tx, employmentId, leaveTypeId, asOf, locale, opts));
+}
+
+/**
+ * The leave-type columns the breakdown reads — ONE definition for the single read and the batched one.
+ *
+ * ⚠️ A FUNCTION, NOT A MODULE CONSTANT, and that is load-bearing. `leaveTypeRuleColumns` comes from ./leave,
+ * which imports this module back: evaluated at module load, the spread can run while ./leave is still
+ * initialising and silently spread NOTHING — every carry/accrual rule column vanishes from the select and the
+ * breakdown reports no carry forward. Measured in r397: test/carry-forward-report.test.ts (i) read 0 carried
+ * against the engine's 5. Built at call time, exactly as the inline select always was.
+ */
+const breakdownTypeColumns = () => ({
+  id: leaveType.id, name: leaveType.name, code: leaveType.code, role: leaveType.role, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, formulaExplanations: leaveType.formulaExplanations, yearCycleOverride: leaveType.yearCycleOverride,
+  // 845903a3 (r313) — the ENTITLEMENT rounding trio, named here rather than added to
+  // `leaveTypeRuleColumns`. That map exists so the granting engines and the projection kernel
+  // read the IDENTICAL rule set; a rule one reads and the other does not posts a permanent
+  // oscillating delta on every reproject. These three must never reach a ledger write — the
+  // item's whole promise is that Earned to Date does not move — so they ride THIS read only.
+  entitlementRoundingMethod: leaveType.entitlementRoundingMethod, entitlementRoundingThreshold: leaveType.entitlementRoundingThreshold, entitlementRoundingBands: leaveType.entitlementRoundingBands,
+  ...leaveTypeRuleColumns,
+});
+/** The employment basics the breakdown reads — likewise one definition for both. */
+const breakdownEmploymentColumns = { hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn, gradeId: employment.gradeId, companyId: employment.companyId, leaveCycle: company.leaveCycle };
+const selectBreakdownTypes = (tx: Tx) => tx.select(breakdownTypeColumns()).from(leaveType);
+const selectBreakdownEmployment = (tx: Tx, employmentId: string) =>
+  tx
+    .select(breakdownEmploymentColumns)
+    .from(employment)
+    .innerJoin(company, eq(company.id, employment.companyId))
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+type BreakdownTypeRow = Awaited<ReturnType<typeof selectBreakdownTypes>>[number];
+type BreakdownEmploymentRow = Awaited<ReturnType<typeof selectBreakdownEmployment>>[number];
+
+/**
+ * r397 — WHAT A BATCH MAY HAND THE BREAKDOWN INSTEAD OF IT READING THEM: the leave-type row, the employment row
+ * and the template resolver. Each is the result of the very query (or the very resolver build) the breakdown
+ * makes for itself when `pre` is absent; the batch reads them ONCE for every type of one employee instead of
+ * once per type. Everything after these three reads is untouched.
+ */
+type BreakdownPreloaded = {
+  type: BreakdownTypeRow | undefined;
+  emp: BreakdownEmploymentRow | undefined;
+  templates: TemplateEntitlementResolver;
+};
+
+async function leaveEntitlementBreakdownTx(
+  tx: Tx,
+  employmentId: string,
+  leaveTypeId: string,
+  asOf: string,
+  locale: string | undefined,
+  opts: { derivation?: boolean },
+  pre?: BreakdownPreloaded,
+): Promise<LeaveEntitlementBreakdown | null> {
+  {
     // The type + the employment basics. RLS gates the employment row; a peer who can't see it gets null
     // here (employment join returns nothing) → a defined empty state, never an error or a leak.
-    const [[type], [emp]] = await Promise.all([
-      tx
-        // 9816a5ad step 2: the type's own rules ride along — the carry cap and expiry this panel shows
-        // must be the ones openLeaveYear / expireCarriedLeave actually enforce.
-        .select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, role: leaveType.role, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, formulaExplanations: leaveType.formulaExplanations, yearCycleOverride: leaveType.yearCycleOverride,
-          // 845903a3 (r313) — the ENTITLEMENT rounding trio, named here rather than added to
-          // `leaveTypeRuleColumns`. That map exists so the granting engines and the projection kernel
-          // read the IDENTICAL rule set; a rule one reads and the other does not posts a permanent
-          // oscillating delta on every reproject. These three must never reach a ledger write — the
-          // item's whole promise is that Earned to Date does not move — so they ride THIS read only.
-          entitlementRoundingMethod: leaveType.entitlementRoundingMethod, entitlementRoundingThreshold: leaveType.entitlementRoundingThreshold, entitlementRoundingBands: leaveType.entitlementRoundingBands,
-          ...leaveTypeRuleColumns })
-        .from(leaveType)
-        .where(eq(leaveType.id, leaveTypeId))
-        .limit(1),
-      tx
-        .select({ hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn, gradeId: employment.gradeId, companyId: employment.companyId, leaveCycle: company.leaveCycle })
-        .from(employment)
-        .innerJoin(company, eq(company.id, employment.companyId))
-        .where(eq(employment.id, employmentId))
-        .limit(1),
-    ]);
+    const [[type], [emp]] = pre
+      ? [[pre.type], [pre.emp]]
+      : await Promise.all([
+          // 9816a5ad step 2: the type's own rules ride along — the carry cap and expiry this panel shows
+          // must be the ones openLeaveYear / expireCarriedLeave actually enforce.
+          selectBreakdownTypes(tx).where(eq(leaveType.id, leaveTypeId)).limit(1),
+          selectBreakdownEmployment(tx, employmentId),
+        ]);
     if (!type || !emp) return null;
 
     // Leave Year Type override (e1a51aea): this TYPE's effective cycle — a per-type 'a2a'/'c2c' override
@@ -3914,11 +3957,13 @@ export function leaveEntitlementBreakdown(
     // ⚠️ RLS: entitlement_template and entitlement_eligibility_rule are TENANT-READ, admin-write (0396),
     // deliberately — this screen is reached by an ordinary employee looking at their own balance, and an
     // admin-gated read would leave them looking at a breakdown that contradicts their own ledger.
-    const templates = await buildTemplateEntitlementResolver(tx, {
-      employmentIds: [employmentId],
-      leaveTypeIds: [leaveTypeId],
-      asOf,
-    });
+    const templates =
+      pre?.templates ??
+      (await buildTemplateEntitlementResolver(tx, {
+        employmentIds: [employmentId],
+        leaveTypeIds: [leaveTypeId],
+        asOf,
+      }));
     // ADR-0066: resolve under the employee's company so /me + admin show the per-company entitlement.
     // Leave Entitlement Rules Engine: service measured at cycleStart keeps carryMax/expiry/earned-flag and
     // the tie-break consistent with the banded winner. This does NOT change currentYearEntitlement below
@@ -4453,6 +4498,56 @@ export function leaveEntitlementBreakdown(
       // r303: attached only when asked, so a caller that did not ask receives the object it always did.
       ...(derivation ? { derivation } : {}),
     };
+  }
+}
+
+/**
+ * r397 — `leaveEntitlementBreakdown` for SEVERAL leave types of ONE employee, in ONE transaction: the same
+ * answer, item for item, as calling the single read once per item (the My Leave dashboard did exactly that, one
+ * transaction per leave type, each re-reading the same employment row).
+ *
+ * WHAT IS SHARED, AND WHY THE ANSWER CANNOT MOVE:
+ *   · the employment row — one employee, so one row; the single read selects the same columns by the same id;
+ *   · the leave-type rows — `where id in (…)` over the SAME column set (`breakdownTypeColumns`) instead of one
+ *     `where id = …` each; a row the caller cannot see is absent from both;
+ *   · the template resolver — built once per DISTINCT asOf over every type asked at that asOf. Every answer it
+ *     gives is per (employment, leave type): templates are keyed by their own leave type, rules are matched per
+ *     employment, and a winner is chosen among the candidates OF THAT TYPE, so including more types in the
+ *     build changes no type's band, winner or has-a-table answer.
+ *   · everything else — the four ledger/request reads, the walk and every figure — is the single read's own
+ *     body (`leaveEntitlementBreakdownTx`), run once per item. No arithmetic is restated here.
+ * No `derivation`: the batched caller (core/my-leave.ts) never asks for it.
+ */
+export function leaveEntitlementBreakdowns(
+  ctx: SessionContext,
+  employmentId: string,
+  items: readonly { leaveTypeId: string; asOf: string }[],
+  locale?: string,
+): Promise<(LeaveEntitlementBreakdown | null)[]> {
+  if (items.length === 0) return Promise.resolve([]);
+  return withTenant(ctx, async (tx) => {
+    const typeIds = [...new Set(items.map((i) => i.leaveTypeId))];
+    const [types, [emp]] = await Promise.all([
+      selectBreakdownTypes(tx).where(inArray(leaveType.id, typeIds)),
+      selectBreakdownEmployment(tx, employmentId),
+    ]);
+    const typeById = new Map(types.map((t) => [t.id, t]));
+    // The single read returns null before building a resolver when either row is missing; so does this.
+    if (!emp) return items.map(() => null);
+    const resolverByAsOf = new Map<string, TemplateEntitlementResolver>();
+    for (const asOf of [...new Set(items.map((i) => i.asOf))]) {
+      const ids = [...new Set(items.filter((i) => i.asOf === asOf && typeById.has(i.leaveTypeId)).map((i) => i.leaveTypeId))];
+      resolverByAsOf.set(asOf, await buildTemplateEntitlementResolver(tx, { employmentIds: [employmentId], leaveTypeIds: ids, asOf }));
+    }
+    return Promise.all(
+      items.map((i) =>
+        leaveEntitlementBreakdownTx(tx, employmentId, i.leaveTypeId, i.asOf, locale, {}, {
+          type: typeById.get(i.leaveTypeId),
+          emp,
+          templates: resolverByAsOf.get(i.asOf)!,
+        }),
+      ),
+    );
   });
 }
 

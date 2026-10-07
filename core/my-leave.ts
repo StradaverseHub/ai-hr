@@ -63,10 +63,10 @@ import {
   earnedCycleStart,
   isEarnedAccrualType,
   leaveCycleEnd,
-  leaveTypeApplySummary,
+  leaveTypeApplySummaries,
   resolveLeaveYearCycle,
 } from '../packs/leave/service';
-import { leaveBalances, leaveEntitlementBreakdown, listLeaveRequestsPage, type LeaveEntitlementBreakdown } from './read';
+import { leaveBalances, leaveEntitlementBreakdowns, listLeaveRequestsPage, type LeaveEntitlementBreakdown } from './read';
 import { balanceStoryTypeId, type SharedLeaveBalanceInfo } from '../lib/shared-leave-balance';
 import { PRIMARY_CODES, SECONDARY_GROUPS, resolveSecondaryGroup } from '../lib/leave-groups';
 import type { EntitlementStatus } from '../lib/entitlement-status';
@@ -324,25 +324,40 @@ export async function myLeaveDashboard(
   const years = await offeredLeaveYears(ctx, employmentId, today, hiredOn, cycleByType);
   const selectedYear = resolveSelectedLeaveYear(opts.year, years, currentYear);
 
+  // r397 — EACH CARD'S LEAVE YEAR IS DECIDED FIRST, WITH NO READ (it is pure date arithmetic on `hiredOn`, `today`
+  // and the type's cycle), so the two per-type reads below can be asked for EVERY card at once: one transaction
+  // for the breakdowns and one for the Apply figures, instead of two transactions per card — the 7-card test
+  // employee paid 14 transactions and 98 statements here. `leaveEntitlementBreakdowns` and
+  // `leaveTypeApplySummaries` answer, item for item, what `leaveEntitlementBreakdown` and `leaveTypeApplySummary`
+  // answered (their headers say how); every line from `const view` down is unchanged.
+  const plans = balances.map((b) => {
+    const storyId = balanceStoryTypeId(b);
+    const cycle = cycleByType.get(storyId);
+    // The cycle in force today, then one cycle back per year before the current one (see the header): the day
+    // before a cycle opens belongs to the cycle before it, so this can neither repeat a cycle nor skip one.
+    let cycleStart = earnedCycleStart(hiredOn, today, cycle);
+    for (let back = currentYear - selectedYear; back > 0; back--) {
+      cycleStart = earnedCycleStart(hiredOn, dayBefore(cycleStart), cycle);
+    }
+    const cycleEnd = leaveCycleEnd(cycleStart);
+    const asOf = cycleEnd;
+    const isCurrentCycle = cycleStart <= today && today <= cycleEnd;
+    // r302 hand-fix (defect 3b) — a leave year that ended before the employee joined is not theirs to show.
+    return { b, storyId, cycleStart, cycleEnd, asOf, isCurrentCycle, shown: !(cycleEnd < hiredOn) };
+  });
+  const shownPlans = plans.filter((p) => p.shown);
+  const [breakdowns, applyByType] = await Promise.all([
+    leaveEntitlementBreakdowns(ctx, employmentId, shownPlans.map((p) => ({ leaveTypeId: p.storyId, asOf: p.asOf })), locale),
+    leaveTypeApplySummaries(ctx, employmentId, shownPlans.filter((p) => p.isCurrentCycle).map((p) => p.b.leaveTypeId)),
+  ]);
+  const breakdownByPlan = new Map(shownPlans.map((p, i) => [p, breakdowns[i]] as const));
+
   const maybeCards = await Promise.all(
-    balances.map(async (b): Promise<MyLeaveCard | null> => {
-      const storyId = balanceStoryTypeId(b);
-      const cycle = cycleByType.get(storyId);
-      // The cycle in force today, then one cycle back per year before the current one (see the header): the day
-      // before a cycle opens belongs to the cycle before it, so this can neither repeat a cycle nor skip one.
-      let cycleStart = earnedCycleStart(hiredOn, today, cycle);
-      for (let back = currentYear - selectedYear; back > 0; back--) {
-        cycleStart = earnedCycleStart(hiredOn, dayBefore(cycleStart), cycle);
-      }
-      const cycleEnd = leaveCycleEnd(cycleStart);
-      // r302 hand-fix (defect 3b) — a leave year that ended before the employee joined is not theirs to show.
-      if (cycleEnd < hiredOn) return null;
-      const asOf = cycleEnd;
-      const isCurrentCycle = cycleStart <= today && today <= cycleEnd;
-      const [bd, apply] = await Promise.all([
-        leaveEntitlementBreakdown(ctx, employmentId, storyId, asOf, locale),
-        isCurrentCycle ? leaveTypeApplySummary(ctx, { employmentId, leaveTypeId: b.leaveTypeId }) : Promise.resolve(null),
-      ]);
+    plans.map(async (plan): Promise<MyLeaveCard | null> => {
+      const { b, storyId, cycleStart, cycleEnd, asOf, isCurrentCycle } = plan;
+      if (!plan.shown) return null;
+      const bd = breakdownByPlan.get(plan) ?? null;
+      const apply = isCurrentCycle ? (applyByType.get(b.leaveTypeId) ?? null) : null;
       const view = b.essView as Record<string, boolean>;
       const shows = (k: string) => view[k] !== false;
       const hasEntitlement = bd != null && bd.entitlementStatus !== 'no_entitlement_table';

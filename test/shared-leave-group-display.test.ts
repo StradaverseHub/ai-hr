@@ -426,7 +426,8 @@ describe('46afcc48 · the Leave tab draws the group at its placement', () => {
   const cardsCmp = read('../components/leave/my-leave-dashboard.tsx');
 
   it('the page reads the placed groups and renders BOTH placements', () => {
-    expect(leavePage).toContain("import { sharedLeaveGroupBalances } from '@/core/leave-shared-group'");
+    // UPDATED BY r397: the read moved, unchanged, into the page's loader (app/leave/my-leave-data.ts).
+    expect(read('../app/leave/my-leave-data.ts')).toContain("import { sharedLeaveGroupBalances } from '@/core/leave-shared-group'");
     expect(leavePage).toContain('sharedGroupsPrimary');
     expect(leavePage).toContain('sharedGroupsSecondary');
     // 46afcc48: PRIMARY groups no longer render in their own <SharedLeaveGroupCards> Card — they are passed
@@ -459,7 +460,12 @@ describe('46afcc48 · the Leave tab draws the group at its placement', () => {
   it('it is SELF-SERVICE only — the read is suppressed for an HR admin, not merely the markup', () => {
     // 8ec63139: this route is an admin's employee-inquiry landing page and their own pooled balance does
     // not belong on it. Gating only the JSX would still pay for the query on every admin page load.
-    expect(leavePage).toMatch(/ess && me \? await sharedLeaveGroupBalances\(/);
+    // UPDATED BY r397: the read is made by the page's loader, which the page calls only AFTER the short-page
+    // early return every admin takes — so the query is still never paid for on an admin page load.
+    const shortPageAt = leavePage.indexOf('if (me == null || admin) {');
+    expect(shortPageAt).toBeGreaterThan(-1);
+    expect(leavePage.indexOf('await loadMyLeave(')).toBeGreaterThan(shortPageAt);
+    expect(read('../app/leave/my-leave-data.ts')).toMatch(/sharedLeaveGroupBalances\(session, me\.employmentId, \{ locale, asOf \}\)/);
   });
 
   it('the card prints the pooled figure through the shared day formatter, never a private toFixed', () => {
