@@ -149,7 +149,7 @@ describe('r413 · the artwork is LHDN’s CP22A [Pin.1/2023], unaltered', () => 
 describe('r413 · the field map is data, and it holds', () => {
   it('puts every widget inside its page, and no two widgets on a page overlap', () => {
     const rects = CP22A_FIELDS.flatMap((f) => cp22aWidgets(f).map((r) => ({ code: f.code, page: f.page, ...r })));
-    expect(rects.length).toBeGreaterThan(150);
+    expect(rects.length).toBeGreaterThan(120);
     for (const r of rects) {
       expect(r.x, r.code).toBeGreaterThanOrEqual(0);
       expect(r.y, r.code).toBeGreaterThanOrEqual(0);

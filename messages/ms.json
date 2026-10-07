@@ -4613,7 +4613,7 @@
       "refusal_cycles_no_deductions": "Tiada sesiapa yang dipotong PCB atau CP38 dalam kitaran gaji yang anda pilih, jadi tiada CP39 dihasilkan.",
       "refusal_year_no_payroll": "Tiada gaji yang telah diproses bagi syarikat ini dalam tahun yang anda pilih, jadi tiada apa-apa dihasilkan.",
       "link_cp22_new": "CP22 — pemberitahuan pekerja baharu",
-      "link_cp22_new_hint": "Pemberitahuan kepada LHDN bahawa seseorang telah mula bekerja. Pilih syarikat dan pekerja baharu, semak borang, kemudian muat turun.",
+      "link_cp22_new_hint": "Pemberitahuan kepada LHDN bahawa seseorang telah mula bekerja, difailkan melalui perkhidmatan e-CP22 di MyTax. Pilih syarikat dan pekerja baharu, semak borang, kemudian muat turun: itulah yang anda masukkan, dan rekod anda sendiri.",
       "link_cp22a": "CP22A — pemberitahuan pemberhentian kerja (swasta)",
       "link_cp22a_hint": "Pemberitahuan kepada LHDN bahawa seseorang berhenti kerja: berhenti, bersara atau meninggal dunia. Pilih syarikat dan pekerja, lihat borang, kemudian muat turun.",
       "desc_cp22a": "Diisi pada borang CP22A [Pin.1/2023] LHDN sendiri. Gaji tahun semasa setakat ini, cukai dipotong, zakat dan KWSP diambil daripada gaji yang telah diproses; kotak yang tiada dalam rekod dibiarkan kosong, bukan 0.00."

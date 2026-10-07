@@ -5016,7 +5016,7 @@
       "refusal_cycles_no_deductions": "Nobody had PCB or CP38 deducted in the payroll cycles you picked, so no CP39 was produced.",
       "refusal_year_no_payroll": "There is no processed payroll for this company in the year you picked, so nothing was produced.",
       "link_cp22_new": "CP22 — notice of a new employee",
-      "link_cp22_new_hint": "The notice to LHDN that someone has started work. Choose the company and the new joiner, check the form, then download it.",
+      "link_cp22_new_hint": "The notice to LHDN that someone has started work, filed through the e-CP22 service on MyTax. Choose the company and the new joiner, check the form, then download it: it is what you key in, and your own record.",
       "link_cp22a": "CP22A — notice of an employee leaving (private sector)",
       "link_cp22a_hint": "The notice to LHDN that someone is stopping work: resignation, retirement or death. Choose the company and the leaver, see the form, then download it.",
       "desc_cp22a": "Filled in on LHDN’s own CP22A [Pin.1/2023] form. The year’s pay so far, tax deducted, zakat and EPF come from processed payroll; boxes the records do not hold are left blank, never 0.00."

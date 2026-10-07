@@ -793,9 +793,9 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
   });
 
   /**
-   * The action hangs off the worklist ROWS, because the document is per employee. CP22A gets no button:
-   * the leaver notice is a later round, and a button that produced the joiner form for a leaver would be
-   * worse than the dash that sits there now — that half is unchanged.
+   * The action hangs off the worklist ROWS, because the document is per employee. (Until r413 a CP22A row
+   * got a dash, because a button that produced the joiner form for a leaver would have been worse; r413
+   * built the leaver's own form, so the row opens THAT.)
    *
    * 88076362 REVERSED THE OTHER HALF. This used to assert the row linked straight to `/pdf`, and that WAS
    * the reporter's complaint: "you press Download beside a new joiner and a finished form arrives; there
@@ -803,11 +803,16 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
    * is one press further on. The `/pdf` route still exists and still works on its own — it is what the
    * review screen's own Download button points at — so its existence stays pinned here.
    */
-  it('opens the CP22 review screen from every new-hire row, and nothing on the CP22A rows', () => {
+  // ⚠️ r413 (item 79f3f64d, step 2) — THE CP22A HALF IS REVERSED, AND THE CASE MOVES WITH IT. CP22A is
+  // built, so a leaver row now opens the CP22A viewer — its OWN form, never the joiner's — instead of the
+  // dash; `cp22aNotYet` is retired. The joiner half is unchanged.
+  it('opens the CP22 review screen from every new-hire row, and the CP22A viewer from every leaver row', () => {
     expect(PAGE).toContain('/payroll/cp22/${w.employmentId}/preview');
     expect(PAGE).toContain("w.form === 'CP22'");
     expect(PAGE).toContain("tCp22('reviewLink')");
-    expect(PAGE).toContain("tCp22('cp22aNotYet')");
+    expect(PAGE).not.toContain("tCp22('cp22aNotYet')");
+    expect(PAGE).toContain('/payroll/cp22a/${w.employmentId}/preview');
+    expect(en.payroll.cp22.cp22aNotYet).toMatch(/^\[retired r413/);
     // The row must NOT go straight to the document any more — that is the behaviour this round removed.
     expect(PAGE).not.toContain('/payroll/cp22/${w.employmentId}/pdf');
     expect(fs.existsSync(path.join(ROOT, 'app/payroll/cp22/[employmentId]/preview/page.tsx'))).toBe(true);

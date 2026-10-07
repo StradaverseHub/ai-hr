@@ -161,7 +161,7 @@ describe('r413 · the screen', () => {
     );
     expect(html).toContain('data-event-empty');
     expect(html).toContain('emptySearch');
-    expect(html).toMatch(/data-event-continue=""[^>]*disabled=""|disabled=""[^>]*data-event-continue=""/);
+    expect(html).toMatch(/<button data-event-continue="true" disabled=""/);
   });
 
   it('404s a form that is not a form about one person, and never honours an out-of-scope company', async () => {

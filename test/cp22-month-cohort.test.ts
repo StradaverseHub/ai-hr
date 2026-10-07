@@ -346,7 +346,9 @@ describe('the CP22 copy says what the download is', () => {
     expect(cp22.notFiling).toContain('MyTax');
     expect(cp22.downloadTitle).toContain('e-CP22');
     expect(cp22.blankTitle).toContain('e-CP22');
-    expect(messages(loc).payroll.statutoryForms.link_cp22_hint).toContain('e-CP22');
+    // r413 — the CP22 row's hint moved to `link_cp22_new_hint` (the old one said "CP22 / CP22A"); it keeps saying it.
+    expect(messages(loc).payroll.statutoryForms.link_cp22_new_hint).toContain('e-CP22');
+    expect(messages(loc).payroll.statutoryForms.link_cp22_new_hint).toContain('MyTax');
   });
 
   // The reporter's reference labels its button "Download For Submission". The plan explicitly refuses that
