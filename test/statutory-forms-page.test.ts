@@ -242,8 +242,11 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
         entries.length,
       );
     }
-    // The reporter listed thirteen Income Tax forms. Thirteen is what the LHDN shelf holds.
-    expect(byShelf.get('lhdn')!.length).toBe(13);
+    // The reporter listed thirteen Income Tax forms, counting the EA and PCB 2(II) once per language.
+    // ⚠️ r402 (item f3cf2444) — at the same reporter's request those two pairs are ONE card each, with the
+    // language as a Version choice, so the LHDN shelf holds eleven cards for the same thirteen documents.
+    expect(byShelf.get('lhdn')!.length).toBe(11);
+    expect(byShelf.get('lhdn')!.map((e) => e.id)).toEqual(expect.arrayContaining(['my.ea', 'my.pcb2ii']));
   });
 
   it('resolves every label the catalog names against en.json', () => {

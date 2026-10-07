@@ -185,7 +185,8 @@ describe('every registered form reaches the directory, with the status it alread
   it('moves no form between fidelity statuses', () => {
     const official = [...MY_REPORTS, ...MY_STATUTORY_LINKS].filter((e) => e.fidelity === 'official');
     expect(official.map((e) => e.id)).toEqual(['my.cp22']);
-    expect(EA_LINKS.map((l) => l.fidelity)).toEqual(['agency-layout', 'agency-layout']);
+    // r402 — one EA entry since the per-language pair merged; its status is unchanged.
+    expect(EA_LINKS.map((l) => l.fidelity)).toEqual(['agency-layout']);
   });
 
   it('renders the same status keys on the criteria step as on the shelf', () => {
