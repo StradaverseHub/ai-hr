@@ -1,0 +1,50 @@
+VERDICT: Partly there already   ·   SIZE: Medium
+
+THANK YOU FOR THE TWO SAMPLES
+
+You replied "Attached the file sample" and sent the KWSP 6 Borang A sample and the BBCD sample. We have read both page by page. This plan replaces the previous one and now follows your October samples, not the August one.
+
+A CORRECTION WE OWE YOU
+
+When we built payroll cycle selection for Payment Submission, our plan told you that picking a single cycle "will often show a smaller, more correct wage figure than picking All". That was wrong, and we withdraw it. Picking All gives the month's wage, and picking only some cycles gives the wage for just those cycles. Neither is more correct; they answer different questions.
+
+THE SITUATION TODAY
+
+The new Borang A path is being released now: Open Form, choose Company, Year, Month and Payroll Cycle, Continue, see the whole form inside the system, then download. The cycles you tick now reach every download, including the text copy and the i-Akaun file. The form has been redrawn, and it already matches your October sample in almost every part: the four header boxes, the page number, the date printed and the number of employees, the ruled member table, the brought-forward row on later pages, the signature lines, the Cop Rasmi Majikan box, CATATAN and PERINGATAN. Three things still differ from your sample, and BBCD is not built.
+
+WHAT WE'LL CHANGE
+
+- Borang A, the last page: one JUMLAH (RM) figure, the employer's and the employee's contributions added together, as your sample prints it. The separate wage total under JUMLAH goes, because your sample does not print one.
+
+- Borang A, the brought-forward and carried-forward rows: the brought-forward row appears from page 2 onwards only (today an empty one is also drawn on page 1), and no page has a carried-forward row, as on your sample. The brought-forward row already carries only the employer and employee totals, as yours does.
+
+- Borang A, the small print at the foot of every page: we remove a sentence saying KWSP publishes no blank Borang A. We have not checked that, so it should not be printed on your form.
+
+- New: BBCD (Borang Bayaran Caruman Bulanan - Pita/Disket), one page, laid out like your sample. It opens from the same path as Borang A, with the same Company, Year, Month and Payroll Cycle choice, and shows inside the system before you download it. It fills in the employer reference number, the contribution month, the total contribution, the payroll month the contributions were deducted from, the company name and address, and the name, IC number, position and telephone of the person set as the company's KWSP signatory.
+
+- The BBCD total is always the same figure as the Borang A total for the same choice, because both come from the same payroll read.
+
+WHAT YOU'LL GET
+
+A Borang A that matches your October sample, and a BBCD cover page filled in from the same payroll, both opened, previewed and downloaded the same way.
+
+GOOD TO KNOW
+
+- The "No Rujukan Borang A" box stays empty. Your sample shows a number there, but the system does not hold one, and we will not make one up. You can write it in by hand.
+
+- On both forms, the payment method ticks, the cheque number, the signature, the date and the stamps stay empty for you to fill in by hand, as on your samples.
+
+- Your samples are printed from another payroll system and carry its logo. Our forms do not print a logo.
+
+- If nobody is set as the company's KWSP signatory, the BBCD signatory lines stay empty and the screen tells you before you download.
+
+- We are not changing how EPF is calculated. Every amount comes from processed payroll.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Base: main after r410 (r407's Borang A workflow, cycles criterion, shared viewer). The reporter's two PDFs (scratchpad board/4f45f9b0/attach2) hold real names and ICs: never commit them or crops of them.
+Borang A (lib/borang-a-pdf.ts, lib/borang-a.ts): JUMLAH on the last sheet = one combined figure (totalEmployer + totalEmployee), matching the header Amaun Caruman; drop the JUMLAH UPAH cell. B/F row from sheet 2 only (r407 draws an empty one on sheet 1; it already has no wage cell, see carryRow); NO C/F row on any sheet (the October sample's page 1 of 35 ends at row 20 with no C/F row, and its page 35 shows B/F then JUMLAH; the PDF holds only those two pages). Remove the "KWSP publishes no blank form" clause from the footer note, the text twin and comments (retire keys, never delete). Tests: B/F + sheet = running total at 1, 2, 3 sheets; JUMLAH = header Amaun = sum of rows to the sen; no wage total drawn; no 0.00 where nothing is carried.
+BBCD: new lib/borang-bbcd-pdf.ts (US Letter like the sample is NOT required; use A4 like Borang A). Fields: No. Rujukan Majikan (company_statutory_my epf employer no), Bulan Caruman MMYY and JADUAL CARUMAN BULAN <month name year> (the Borang A contribution month), Amaun Caruman (= Borang A total from the same loadBorangA read, same run selection), "potongan gaji bulan <wage month>" (the payroll month), Nama and Alamat (company), declaration text as on the sample, signatory lines from company_statutory_authority 'epf' signatory (name, IC, position, phone), CATATAN 1-3 as on the sample. Payment ticks, cheque no, signature, Cop Agen Kutipan blank. New shelf entry my.borang-bbcd with runSelection and its own preview route; same refusals as Borang A (cycles_no_data etc.). 6 locales. Tests: BBCD amount equals Borang A total for the same selection (all, regular only, bonus only); signatory-missing readiness; Select All = no selection bytes.
+No migration.
