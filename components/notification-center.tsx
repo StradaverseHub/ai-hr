@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { useIsMonolith } from '@/components/ui-theme-context';
 import { Bell, Search } from 'lucide-react';
 import { markAllNotificationsReadAction, markNotificationReadAction } from '@/app/notification-actions';
 import type { NotificationRow } from '@/core/notifications';
@@ -197,6 +198,8 @@ export function NotificationCenter({
   // ── Bell badge (feedback f71dcafd): ONE combined count, so the old unread + task bubbles can no
   // longer collide on the same 36px button. The per-tab pills below keep the two figures separate. ──
   const total = unread + taskCount;
+  // r398 — Monolith's top line shows the count as mono text, the number in signal-text (README §3).
+  const monolith = useIsMonolith();
 
   const tabBtn = (key: TabKey, label: string, count?: number) => (
     <button
@@ -222,13 +225,23 @@ export function NotificationCenter({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label={t('ariaBell', { total, unread, tasks: taskCount })}
-        className="relative inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        className="relative inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground monolith:w-auto monolith:gap-1.5 monolith:rounded-none monolith:px-1 monolith:font-mono monolith:text-[11px] monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid monolith:hover:bg-transparent monolith:hover:text-ink"
       >
-        <Bell className="size-[18px]" />
-        {total > 0 && (
-          <span className="absolute right-1 top-1 inline-flex min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-[15px] text-primary-foreground">
-            {total > 99 ? '99+' : total}
+        {monolith ? (
+          // The button's aria-label carries the full count; this text is its visible form.
+          <span aria-hidden className="whitespace-nowrap">
+            <span className={total > 0 ? 'tabular-nums text-signal-text' : 'tabular-nums'}>{total > 99 ? '99+' : total}</span>{' '}
+            {t('countWord', { count: total })}
           </span>
+        ) : (
+          <>
+            <Bell className="size-[18px]" />
+            {total > 0 && (
+              <span className="absolute right-1 top-1 inline-flex min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-[15px] text-primary-foreground">
+                {total > 99 ? '99+' : total}
+              </span>
+            )}
+          </>
         )}
       </button>
 

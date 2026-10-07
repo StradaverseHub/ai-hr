@@ -11023,7 +11023,9 @@
     "platformAccount": "Akaun platform",
     "selectAll": "Pilih semua",
     "signedInAs": "Log masuk sebagai",
-    "viewProfile": "Lihat Profil Saya"
+    "viewProfile": "Lihat Profil Saya",
+    "live": "Langsung",
+    "scope": "Skop"
   },
   "components": {
     "plannedAbsences": {
@@ -11783,7 +11785,8 @@
       "resignation": "Putuskan permohonan peletakan jawatan",
       "managerReview": "Lengkapkan penilaian pekerjaan",
       "hrReview": "Rekod keputusan semakan HR"
-    }
+    },
+    "countWord": "{count, plural, other {pemberitahuan}}"
   },
   "approvalHistory": {
     "title": "Sejarah Kelulusan",

@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { ChevronDown } from 'lucide-react';
 import { setCompanyScope } from '@/app/scope-actions';
 import { cn } from '@/lib/utils';
+import { useIsMonolith } from '@/components/ui-theme-context';
 
 /**
  * Odoo-style multi-company context: shows the active company/companies, multi-select to re-scope.
@@ -28,6 +29,23 @@ import { cn } from '@/lib/utils';
  * label reflects `selected` (the committed, active scope = what you are viewing), the in-popover
  * button reflects `sel` (the pending pick). Right after Deselect all those legitimately differ.
  */
+/**
+ * The ACTIVE scope's label — what the trigger shows. Exported (r398) so the Monolith status line says the
+ * same words for the same scope instead of a second copy of this rule drifting from the first.
+ */
+export function companyScopeLabel(
+  t: (key: 'allCompanies' | 'companyCount', values?: { count: number }) => string,
+  companies: { id: string; name: string }[],
+  selected: string[],
+): string {
+  const selSet = new Set(selected);
+  return selSet.size >= companies.length
+    ? t('allCompanies')
+    : selSet.size === 1
+      ? (companies.find((c) => selSet.has(c.id))?.name ?? t('companyCount', { count: 1 }))
+      : t('companyCount', { count: selSet.size });
+}
+
 export function CompanySwitcher({
   companies,
   selected,
@@ -38,6 +56,7 @@ export function CompanySwitcher({
   const [open, setOpen] = useState(false);
   const [sel, setSel] = useState<Set<string>>(() => new Set(selected));
   const t = useTranslations('topbar');
+  const monolith = useIsMonolith();
 
   // Resync the pending picks from the server-resolved scope after every revalidation, WITHOUT
   // remounting (a key on the component would tear down and close the popover mid-pick). The Set is
@@ -49,13 +68,7 @@ export function CompanySwitcher({
 
   if (companies.length === 0) return null;
 
-  const selSet = new Set(selected);
-  const label =
-    selSet.size >= companies.length
-      ? t('allCompanies')
-      : selSet.size === 1
-        ? (companies.find((c) => selSet.has(c.id))?.name ?? t('companyCount', { count: 1 }))
-        : t('companyCount', { count: selSet.size });
+  const label = companyScopeLabel(t, companies, selected);
 
   // every() over the rendered companies, NOT a size compare: a size compare misfires if `sel` ever
   // holds an id that is not in the listed companies.
@@ -77,14 +90,21 @@ export function CompanySwitcher({
           setOpen(!open);
         }}
         aria-expanded={open}
-        className="flex min-w-0 max-w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]"
+        className="flex min-w-0 max-w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98] monolith:gap-1.5 monolith:rounded-none monolith:border-0 monolith:bg-transparent monolith:px-0 monolith:font-mono monolith:text-[11px] monolith:font-normal monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid monolith:hover:bg-transparent monolith:hover:text-ink monolith:active:scale-100"
       >
-        <span className="size-2 shrink-0 rounded-full bg-primary" />
+        <span className="size-2 shrink-0 rounded-full bg-primary monolith:hidden" />
         <span className="min-w-0 max-w-[14rem] truncate">{label}</span>
+        {/* r398 — Monolith's top line names the company as mono text with a ▾ (README §3). */}
+        {monolith && (
+          <span aria-hidden className="shrink-0 text-ink">
+            ▾
+          </span>
+        )}
         <ChevronDown
           className={cn(
             'size-4 shrink-0 text-muted-foreground transition-transform duration-200 ease-snappy',
             open && 'rotate-180',
+            'monolith:hidden',
           )}
         />
       </button>

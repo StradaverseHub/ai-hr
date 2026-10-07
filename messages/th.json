@@ -11023,7 +11023,9 @@
     "platformAccount": "บัญชีระบบ",
     "selectAll": "เลือกทั้งหมด",
     "signedInAs": "เข้าสู่ระบบในชื่อ",
-    "viewProfile": "ดูโปรไฟล์ของฉัน"
+    "viewProfile": "ดูโปรไฟล์ของฉัน",
+    "live": "สด",
+    "scope": "ขอบเขต"
   },
   "components": {
     "plannedAbsences": {
@@ -11783,7 +11785,8 @@
       "resignation": "พิจารณาคำขอลาออก",
       "managerReview": "ทำการประเมินการจ้างงานให้เสร็จ",
       "hrReview": "บันทึกผลการพิจารณาของ HR"
-    }
+    },
+    "countWord": "{count, plural, other {การแจ้งเตือน}}"
   },
   "approvalHistory": {
     "title": "ประวัติการอนุมัติ",

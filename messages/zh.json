@@ -11023,7 +11023,9 @@
     "platformAccount": "平台账户",
     "selectAll": "全选",
     "signedInAs": "当前登录身份",
-    "viewProfile": "查看我的资料"
+    "viewProfile": "查看我的资料",
+    "live": "实时",
+    "scope": "范围"
   },
   "components": {
     "plannedAbsences": {
@@ -11783,7 +11785,8 @@
       "resignation": "决定辞职申请",
       "managerReview": "完成雇佣评估",
       "hrReview": "记录 HR 评估决定"
-    }
+    },
+    "countWord": "{count, plural, other {条通知}}"
   },
   "approvalHistory": {
     "title": "审批历史",

@@ -11023,7 +11023,9 @@
     "platformAccount": "Platform account",
     "selectAll": "Select all",
     "signedInAs": "Signed in as",
-    "viewProfile": "View my profile"
+    "viewProfile": "View my profile",
+    "live": "Live",
+    "scope": "Scope"
   },
   "components": {
     "plannedAbsences": {
@@ -11783,7 +11785,8 @@
       "resignation": "Decide resignation request",
       "managerReview": "Complete employment review",
       "hrReview": "Record HR review decision"
-    }
+    },
+    "countWord": "{count, plural, one {notification} other {notifications}}"
   },
   "approvalHistory": {
     "title": "Approval History",

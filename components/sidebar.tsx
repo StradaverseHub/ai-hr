@@ -3,7 +3,8 @@
 import Link from './intent-link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
+import { useIsMonolith } from './ui-theme-context';
 import { KingdeeMark } from './kingdee-mark';
 import {
   ArrowLeftRight,
@@ -493,6 +494,8 @@ export function Sidebar({
   approvalCount = 0,
   enabledModules = null,
   defaultCollapsed,
+  viewerName = null,
+  viewerCode = null,
 }: {
   isAdmin: boolean;
   /** Manager-and-up: shows the Approvals inbox. */
@@ -512,6 +515,9 @@ export function Sidebar({
    *  never queries. 0 (or a viewer without the row) renders no badge. */
   approvalCount?: number;
   defaultCollapsed: boolean;
+  /** r398 — the Monolith rail's user line (README §3). Display only; Classic does not render it. */
+  viewerName?: string | null;
+  viewerCode?: string | null;
 }) {
   const pathname = usePathname();
   // Query-aware active matching (fdc20776): usePathname excludes the query string, so the six
@@ -525,7 +531,16 @@ export function Sidebar({
   // nav.appName, which does not exist — and a MISSING_MESSAGE passes tsc, the suite and `next build`
   // alike, so nothing would have told us until the screen rendered.
   const tCommon = useTranslations('common');
-  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const [collapsedPref, setCollapsed] = useState(defaultCollapsed);
+  // r398 — Monolith's rail is always open on desktop (README §3: "the boards assume the rail is always open
+  // on desktop"), so it offers no collapse and ignores the preference. Classic reads it exactly as before;
+  // the `rail_collapsed` cookie is neither read differently nor written by Monolith.
+  const monolith = useIsMonolith();
+  const collapsed = monolith ? false : collapsedPref;
+  const locale = useLocale();
+  // r398 — Monolith shows a module's children INLINE (no flyout panel). An explicit open/close per module
+  // overrides "open while you are inside it"; the default is the active module open, every other closed.
+  const [railKids, setRailKids] = useState<Readonly<Record<string, boolean>>>({});
   // Single-open flyout state (fdc20776): the labelKey of the open module, or null. Clicking a
   // parent sets it (replacing any other open module); clicking the same parent again closes.
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -610,7 +625,7 @@ export function Sidebar({
   const sectionOpen = (key?: string) =>
     key == null || key === activeSectionKey || openSections.has(key);
 
-  const openNode = openKey
+  const openNode = openKey && !monolith
     ? groups.flatMap((g) => g.items).find((r): r is CollapsibleGroupItem => isCollapsible(r) && r.labelKey === openKey && (!r.defaultHref || collapsed)) ?? null
     : null;
   const openChildren = openNode ? openNode.children.filter(canSeeChild) : [];
@@ -636,6 +651,163 @@ export function Sidebar({
   const rowBase =
     'group flex items-center rounded-2xl transition duration-150 ease-snappy active:scale-[0.98]';
 
+  /* ── r398 — THE MONOLITH RAIL (README §3, shell.css `.rail`). Rendering only: it walks the SAME `groups`
+     (already role- and module-filtered above), the same `canSeeChild`, and lights rows with the same
+     isNavRowActive / isParentActive predicates, so which rows exist, in which order, and which one is
+     current cannot differ between the themes. What differs is structure the board needs and CSS cannot
+     produce: no icons, mono rows, and a module's children INLINE behind a hairline instead of a flyout. */
+  const railRow =
+    'flex min-h-8 w-full items-center justify-between gap-2 border-l border-transparent py-1 pl-2.5 text-left font-mono text-[11px] uppercase tracking-[0.12em] text-mid no-underline hover:border-hairline hover:text-ink';
+  const railKid =
+    '-ml-px flex min-h-7 items-center py-1 pl-3 font-mono text-[10px] uppercase tracking-[0.12em] text-mid no-underline hover:text-ink';
+  const toggleKids = (key: string, expanded: boolean) => setRailKids((prev) => ({ ...prev, [key]: !expanded }));
+  const monolithModule = (item: CollapsibleGroupItem) => {
+    const children = item.children.filter(canSeeChild);
+    if (children.length === 0) return null;
+    const active =
+      item.defaultHref || item.activeMatch === 'children'
+        ? children.some(isRowActive)
+        : isParentActive(pathname, children.flatMap(childPaths));
+    const expanded = railKids[item.labelKey] ?? active;
+    const label = t(item.labelKey);
+    const kidsId = `rail-kids-${item.labelKey}`;
+    // Exactly one child reads as the current page: the longest matching href (the flyout's own rule).
+    const currentHref = children
+      .filter((c) => isRowActive(c))
+      .sort((a, b) => b.href.split('?')[0].length - a.href.split('?')[0].length)[0]?.href;
+    const mark = (
+      <span aria-hidden className="shrink-0 text-faint">
+        {expanded ? '−' : '+'}
+      </span>
+    );
+    return (
+      <div key={item.labelKey} data-rail-module={item.labelKey}>
+        {item.defaultHref ? (
+          <div className={cn(railRow, 'pr-0', (active || expanded) && 'text-ink', active && 'border-ink')}>
+            <Link href={item.defaultHref} className="min-w-0 flex-1 text-inherit no-underline">
+              {label}
+            </Link>
+            <button
+              type="button"
+              aria-label={label}
+              aria-expanded={expanded}
+              aria-controls={kidsId}
+              onClick={() => toggleKids(item.labelKey, expanded)}
+              className="inline-flex min-h-7 items-center px-1"
+            >
+              {mark}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-controls={kidsId}
+            onClick={() => toggleKids(item.labelKey, expanded)}
+            className={cn(railRow, (active || expanded) && 'text-ink', active && 'border-ink')}
+          >
+            <span className="min-w-0">{label}</span>
+            {mark}
+          </button>
+        )}
+        {expanded && (
+          <nav id={kidsId} aria-label={label} className="mt-0.5 mb-1.5 ml-2.5 flex flex-col border-l border-hairline">
+            {children.map((child) => {
+              const current = child.href === currentHref;
+              return (
+                <Link
+                  key={child.href}
+                  href={child.href}
+                  data-tour={child.tour}
+                  aria-current={current ? 'page' : undefined}
+                  className={cn(railKid, current && 'text-signal-text hover:text-signal-text')}
+                >
+                  {t(child.labelKey)}
+                </Link>
+              );
+            })}
+          </nav>
+        )}
+      </div>
+    );
+  };
+  const monolithRail = () => (
+    <>
+      <Link
+        href="/"
+        aria-label={t('home')}
+        className="block shrink-0 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-ink no-underline"
+      >
+        {/* The board's brand line. A mark, not copy (like `common.appName`, the same in every locale);
+            the link's accessible name is the translated `nav.home`. */}
+        AIHR <span className="text-mid">/ SYSTEM 01</span>
+      </Link>
+      <nav data-tour="nav" className="relative -mr-2 flex w-full flex-1 flex-col gap-[22px] overflow-y-auto overflow-x-hidden pr-2">
+        {groups.map((group, gi) => (
+          <div key={gi} className="flex w-full flex-col gap-0.5">
+            {group.labelKey && (
+              <button
+                type="button"
+                onClick={() =>
+                  setOpenSections((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(group.labelKey!)) next.delete(group.labelKey!);
+                    else next.add(group.labelKey!);
+                    return next;
+                  })
+                }
+                disabled={group.labelKey === activeSectionKey}
+                aria-expanded={sectionOpen(group.labelKey)}
+                aria-controls={`nav-section-${group.labelKey}`}
+                className="mb-1.5 flex w-full items-center justify-between border-b border-hairline pb-1.5 text-left font-mono text-[11px] uppercase tracking-[0.12em] text-mid enabled:hover:text-ink"
+              >
+                <span>{t(group.labelKey)}</span>
+                {group.labelKey !== activeSectionKey && (
+                  <span aria-hidden className="text-faint">
+                    {sectionOpen(group.labelKey) ? '−' : '+'}
+                  </span>
+                )}
+              </button>
+            )}
+            <div id={group.labelKey ? `nav-section-${group.labelKey}` : undefined} className="flex w-full flex-col gap-0.5">
+              {sectionOpen(group.labelKey) &&
+                group.items.map((item) => {
+                  if (isCollapsible(item)) return monolithModule(item);
+                  const active = isRowActive(item);
+                  const label = t(item.labelKey);
+                  const showApprovalCount = item.href === '/approvals' && approvalCount > 0;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.navigationHref ?? item.href}
+                      data-tour={item.tour}
+                      aria-label={showApprovalCount ? `${label}, ${t('approvalsCount', { count: approvalCount })}` : label}
+                      aria-current={active ? 'page' : undefined}
+                      className={cn(railRow, active && 'border-ink text-ink hover:border-ink')}
+                    >
+                      <span className="min-w-0">{label}</span>
+                      {showApprovalCount && (
+                        <span aria-hidden className="shrink-0 text-[10px] tabular-nums text-signal-text">
+                          {approvalCount > 99 ? '99+' : approvalCount}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+            </div>
+          </div>
+        ))}
+      </nav>
+      {viewerName && (
+        <p className="mono m-0 shrink-0 text-mid" data-rail-user>
+          {viewerName}
+          <br />
+          {[viewerCode, locale.toUpperCase()].filter(Boolean).join(' · ')}
+        </p>
+      )}
+    </>
+  );
+
   return (
     // Wrapper (fdc20776): the aside is overflow-hidden, so the flyout panel cannot live inside it —
     // it anchors to this relative wrapper instead, which takes over the aside's responsive/flex-item
@@ -643,15 +815,19 @@ export function Sidebar({
     // layout gutter, and the aside's h-full needs the wrapper to have height). While a panel is open
     // the wrapper is raised to z-50 so the rail rows stay clickable above the z-40 backdrop (module
     // swap in one click); the raise is conditional so onboarding-tour stacking is unaffected otherwise.
-    <div className={cn('relative hidden h-full shrink-0', pathname === '/manage/my-team' ? 'min-[900px]:block' : 'sm:block', openNode && 'z-50')}>
+    <div className={cn('relative hidden h-full shrink-0', pathname === '/manage/my-team' ? 'min-[900px]:block' : 'sm:block', openNode && 'z-50', 'monolith:max-[899px]:hidden!')}>
       <aside
         className={cn(
           'flex h-full flex-col overflow-hidden rounded-[1.25rem] border border-border bg-sidebar py-4 shadow-[var(--shadow-card)] transition-[width] duration-200 ease-snappy',
           collapsed ? 'w-[66px] items-center px-3' : 'w-[232px] px-3',
           // Above the panel's backdrop, so every rail row stays clickable while a panel is open.
           openNode && 'relative z-50',
+          // r398 — Monolith (README §3): no floating panel — square, no shadow, one hairline on the right,
+          // the board's 22/20/24/24 padding and 22px between blocks. Classic's computed style is untouched.
+          'monolith:gap-[22px] monolith:rounded-none monolith:border-0 monolith:border-r monolith:border-hairline monolith:bg-background monolith:pt-[22px] monolith:pr-5 monolith:pb-6 monolith:pl-6 monolith:shadow-none',
         )}
       >
+        {monolith ? monolithRail() : (<>
         <Link
           href="/"
           aria-label={t('home')}
@@ -831,6 +1007,7 @@ export function Sidebar({
             </>
           )}
         </button>
+        </>)}
       </aside>
 
       {openNode && (

@@ -37,6 +37,9 @@ import { shapeApprovalHistoryItems } from '@/lib/approval-history';
 import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { UI_THEME_COOKIE, resolveUiTheme } from '@/lib/ui-theme';
+import { UiThemeProvider } from '@/components/ui-theme-context';
+import { IntentBar } from '@/components/intent-bar';
+import { ShellRoutePath, ShellLiveClock, ShellStatusLine } from '@/components/shell-top-line';
 
 // r396: Classic's faces are no longer the default, so they are not preloaded on every page (they still load,
 // on demand, for a Classic user). Monolith's two faces preload.
@@ -167,12 +170,15 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       className={`${fontVariables} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="h-dvh overflow-hidden bg-canvas p-3 font-sans lg:p-4">
+      <body className="h-dvh overflow-hidden bg-canvas p-3 font-sans lg:p-4 monolith:bg-background monolith:p-0!">
         <NextIntlClientProvider>
         <Providers>
+        {/* r398 — the theme the shell's structural branches render on the server (components/ui-theme-context.tsx);
+            on the client they follow <html data-ui-theme> itself. */}
+        <UiThemeProvider theme={uiTheme}>
           {/* Detached floating layout: the rail, the top bar, and each content card
               float separately on the canvas with gutters between them. */}
-          <div className="flex h-full gap-3 lg:gap-4">
+          <div className="flex h-full gap-3 lg:gap-4 monolith:gap-0!">
             <Sidebar
               // ADR-0049: a partner is an admin who sees a subset, so it gets the admin nav group;
               // each page's route guard (requirePayrollAccess / requirePerfCompAccess) 403/redirects
@@ -194,8 +200,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // lib/nav-entitlements.ts for why nav fails OPEN while every service gate fails closed.
               enabledModules={visibleModuleCodes(session)}
               defaultCollapsed={railCollapsed}
+              // r398 — the Monolith rail's user line. Display only, the same identity the header shows.
+              viewerName={viewer.name}
+              viewerCode={viewer.employeeCode}
             />
-            <div className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4">
+            <div className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4 monolith:gap-5! monolith:px-4 monolith:pt-4 min-[900px]:monolith:pr-12 min-[900px]:monolith:pl-11 min-[900px]:monolith:pt-[22px]">
               {/* Three-zone grid: equal minmax(0,1fr) side tracks keep the centre search geometrically
                   centred regardless of what each cluster contains (dev switcher hidden in production,
                   bell variants, …). The centre track is bounded from sm up so the w-full trigger has a
@@ -243,7 +252,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   there. Nothing was centred there before either: the left cluster was overflowing its
                   own track. From md up the equal tracks and the exact centring return (measured: the
                   centre's midpoint is 0px off the header's midpoint at every width ≥ 768). */}
-              <header className="grid h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,max-content)] items-center gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)] sm:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,max-content)] md:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,min(28rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)]">
+              <header className="grid h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,max-content)] items-center gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)] sm:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,max-content)] md:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,min(28rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] monolith-rv monolith:flex monolith:h-auto monolith:min-h-9 monolith:gap-[22px] monolith:rounded-none monolith:border-0 monolith:bg-transparent monolith:px-0 monolith:shadow-none">
                 {/* Left cluster = WHERE you are working. The CompanySwitcher MOVED here from the right
                     cluster (r256): this track is a full 1fr — 243px at 1280, 563px at 1920 — carrying
                     one static group label, while the switcher was being crushed to 27px on the right
@@ -251,8 +260,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                     scope are the same question and now sit together; the right cluster is now only
                     "you". `Demo Group` is shrink-0 so the switcher stays the one compressible child
                     here, exactly as it was on the right. */}
-                <div className="flex min-w-0 items-center gap-2.5 text-sm text-muted-foreground">
-                  <span className="shrink-0 font-medium text-foreground/80">Demo Group</span>
+                {/* r398 — in Monolith this cluster is the board's top line: the route path in mono, a hairline
+                    tick, the company switcher as mono text, and (pushed right) the live dot + clock. It takes
+                    the whole row there (`flex-1`); the centre track is hidden, so the right cluster keeps
+                    every control it has in Classic and gets MORE room, not less. */}
+                <div className="flex min-w-0 items-center gap-2.5 text-sm text-muted-foreground monolith:flex-1 monolith:gap-[22px] monolith:font-mono monolith:text-[11px] monolith:uppercase monolith:tracking-[0.12em]">
+                  <ShellRoutePath />
+                  <span className="shrink-0 font-medium text-foreground/80 monolith:hidden">Demo Group</span>
                   <CompanySwitcher companies={allowed} selected={scopeIds} />
                   {showDevSwitcher && (
                     <>
@@ -272,8 +286,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                       )}
                     </>
                   )}
+                  <ShellLiveClock />
                 </div>
-                <div className="flex min-w-0 items-center justify-center">
+                {/* r398 — hidden, NOT unmounted, in Monolith: <CommandBar /> keeps its ⌘K listener and its dialog
+                    (portalled to <body>), and the intent bar below opens that same dialog. */}
+                <div className="flex min-w-0 items-center justify-center monolith:hidden">
                   <CommandBar />
                 </div>
                 {/* Right cluster (overlap guard d9b81f8d): min-w-0 lets the 1fr track constrain the
@@ -321,6 +338,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   <UserMenu name={viewer.name} employeeCode={viewer.employeeCode} employed={viewer.employed} />
                 </div>
               </header>
+              <IntentBar />
               {/* `relative` is load-bearing: sr-only helpers are position:absolute, and with no
                   positioned ancestor they escape main's scroll clipping and pile up scrollable
                   overflow on <html> itself. body's overflow-hidden propagates to the viewport, which
@@ -328,6 +346,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   page shifted the whole canvas (header + sidebar off-screen) with no wheel recovery.
                   Making main the containing block keeps that overflow inside the scroller. */}
               <main className="relative min-w-0 flex-1 overflow-y-auto pb-1">{children}</main>
+              <ShellStatusLine companies={allowed} selected={scopeIds} />
             </div>
           </div>
           <OnboardingTour tours={tours} autoStartTourId={onboarded ? null : WELCOME_TOUR_ID} />
@@ -340,6 +359,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <ToastFromQuery />
           </Suspense>
           <Toaster />
+        </UiThemeProvider>
         </Providers>
         </NextIntlClientProvider>
       </body>
