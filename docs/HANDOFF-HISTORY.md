@@ -1,3 +1,22 @@
+## r415 — 2026-10-08 · main@d6836f2d067e32ae22cd7ec52d0247cc43d250a2 · migration none
+
+**Scope.** 79f3f64d step 3: CP21 (employee leaving Malaysia) filled in on LHDN's CP21 [Pin.1/2025] artwork, opened through the event screen. Deployed; live after restart (401 on box, public /health 200, zero-line dry-run). Board: 79f3f64d recorded built and deployed (all three approved steps live).
+
+**Decisions.**
+- CP22A's year-to-date derivation moved, unchanged, into `lhdnYearSoFar()`; CP21 and CP22A read one copy. Verified CP22A data, its PDF bytes and EA statements identical to the base commit, including a routed employer-bears-tax scenario.
+- A4 resident reads `employment_tax_selection_my.scheme` (the owner since 0505) through `resolveTaxSelectionMY`'s rule: non_resident → Tidak; resident, rep, knowledge_worker, c_suite → Ya (the four resident PCB paths); nothing recorded → blank.
+- The event screen gained `people: 'active'`: every active employee of the chosen company (nothing records an intended departure). CP22/CP22A lists unchanged.
+- Typed boxes A3, A14, A15, A16, A18 travel in the query string, validated, never stored; A16 on or before A3 is dropped and named. Typed text outside Latin-1 is NAMED on the preview (A14/A15), since the form's font prints it as "?".
+- ESOS (no CP21 line of its own) goes on line 11 "Bayaran-bayaran lain", named.
+- A verifier asked to stop counting payroll processed after today when the typed departure is later. Tried and REVERTED: it changed approved, live CP22A figures, and the approved plan says the period ends at the last processed payroll. A future month processed in advance is rare; left as is and owed a decision if it ever matters.
+
+**Gate.** 20/20 GREEN, 1220 of 1220, first pass.
+
+**Not done / owed.**
+- CP22A's A17d textarea clips on the Monolith theme (CP21's A15 was fixed).
+- CP21 dates are cut to 10 characters before validation (a trailing junk suffix is accepted); a lone CR in A15 merges two rows; a long unbroken value in a two-row box shrinks onto row 1 (shared fitter; renderers disagree on clipping).
+- A4 prints the configured scheme even when the selection is `confirmation_required` or stale.
+
 ## r414 — 2026-10-08 · main@f6a540b09708157904e857ba5c6c7cf87067a662 · migration none
 
 **Scope.** Three builds, one gate: r411 (4f45f9b0 re-plan — Borang A to the October KWSP 6 sample, new BBCD), r412 (e74af58c step 2 — EIS (SIP) schedule, Borang 8B), r413 (79f3f64d step 2 — CP22A on LHDN's Pin.1/2023 artwork, generic choose-the-employee event screen). Deployed with `improve:deploy`; live after restart (401 on box, public /health 200, zero-line dry-run). Board unchanged: 4f45f9b0 planned (re-plan awaiting approval), e74af58c and 79f3f64d building (79f3f64d step 3 CP21 in progress as r415).
