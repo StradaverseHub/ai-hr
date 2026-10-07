@@ -1,3 +1,26 @@
+## r397 — 2026-10-07 · main@7a712b0669fe38b20e38befa6aca90c0eff7ef3a · migration none
+
+**Scope.** No board item; the owner's navigation-speed goal. My Leave (/leave) was the last slow employee page after r395 (~530 ms server on production, not RLS-bound).
+
+**Decisions.** `app/leave/my-leave-data.ts` (`loadMyLeave`) runs the page's reads as four concurrent chains (each read keeps its own transaction; dependency graph in the file header). /leave stopped running the whole history card's reads (two lists + counts, tab counts, date breakdowns, cancel offers, cancellations, rejections) when it only uses `upcoming` and the filter params: `loadOwnUpcomingLeave` shares the moved-verbatim helpers with `loadOwnLeaveHistory`; /leave/history unchanged. Per-card N+1s batched: `leaveEntitlementBreakdowns` (one transaction per employee, the single read's body extracted unchanged as `leaveEntitlementBreakdownTx`) and `leaveTypeApplySummaries` (6 statements regardless of card count; the borrower→source pending rule kept). The viewer's employment comes through the cache()d `viewerEmployment`. No balance rule restated. Statements per load: 271 / 46 transactions → 134 / 18 (pinned).
+
+**Verification.** test/r397-my-leave-equivalence.test.ts compares `loadMyLeave` against verbatim pre-r397 copies across 10 configurations (earned annual with carry-in, approved/pending/half-day, borrowing type, sick table, replacement leave on, shared group, hidden/archived types, rehire, empty employee, leave-year variants, Malay) plus batch-vs-single parity. The builder introduced an import-cycle bug (carry-forward read 0) that its own equivalence test missed and test/carry-forward-report.test.ts caught; fixed. Parent's mutation: dropping borrowers from the pending source set fails 6 named cases. Production RSC payload byte-identical to baseline apart from build ids (seeded employee). Full gate at 7a712b06 (main merged in): 20/20, 1,196 of 1,196, first pass. Local next build needed the 6144 heap. Production: deploy exit 0, refs 7a712b06, stale_build=0, GET / 401.
+
+**Measured (production, employee, warm).** /leave ~320–360 ms server (was ~530). **Not done.** The ~40 per-card ledger/request reads inside each breakdown remain (each card has its own cycle window); leaveBalances still runs twice.
+
+## r396 — 2026-10-07 · main@c23bd21d70fc73f11877585e52b1a327f3bc5b67 · migration none
+
+**Scope and authorization.** No board item. The owner: "Create a function where user can change the theme of the system. Apply the Monolith theme", following docs/design/monolith (delivered as a zip; the branch claude/brave-goldberg-5kejmd was unreachable — gh is signed in as stradaverse-hub, which gets 404 on zenlam/ai-hr) and its README §7 rollout, each step through its own gate. This is STEP 1 (tokens and fonts).
+
+**Decisions.**
+- DECISION (parent): the theme is a per-user choice — Monolith (default) and Classic (today's look) — in a `ui_theme` cookie read on the server into `<html data-ui-theme>`, so the first paint is right. README §1 says replace :root; that would leave nothing to switch back to, so Monolith's tokens are SCOPED under `:root[data-ui-theme='monolith']` (+ `.dark`) and Classic's :root/.dark are byte-identical to before. Control: a labelled select in the account menu (the header cluster is test-pinned and full).
+- `--signal-text` / `--destructive` (light) #c23a00 → #bd3800: the board's value is 4.44:1 on the pressed (hover) row; #bd3800 is 4.94 on bone and 4.64 on pressed. README table and tokens.css updated with the reason. The README's own "mid 5.9:1" is 5.37 and "destructive 5.1:1" is 4.73 (measured).
+- Classic's faces (Plus Jakarta Sans, Geist Mono) `preload: false` now that Monolith is the default.
+
+**Verification.** Builder: 20 node + 9 DOM tests, 14 mutations each failing a named assertion, guards and browser tests green; render check in Monolith light/dark and Classic. Full gate at c23bd21d: 20/20, 1,195 of 1,195, first pass. Production: refs c23bd21d, stale_build=0, `data-ui-theme="monolith"` by default and `"classic"` with the cookie. Three test-screenshot files from the step-1 worktree were rsynced to the box (harmless, not source).
+
+**Not done.** Steps 2–6 (shell, primitives, screens, objects). Hard-coded rounded classes and Tailwind's built-in shadows still show in Monolith until steps 2–3.
+
 ## r395 — 2026-10-07 · main@e135f3b492eb05a21af235f5dfbc3b32dbd87a19 · migration 0515
 
 **Scope and authorization.** No board item. Continues the owner's navigation-speed goal (r394). Shipped with improve:deploy.
