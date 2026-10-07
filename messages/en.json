@@ -8042,7 +8042,14 @@
       "statutoryUnsavedDiscard": "Discard & Leave",
       "statutoryUnsavedSave": "Save & Leave",
       "statutoryCardSetUp": "Set up",
-      "statutoryCardNotSetUp": "Not set up"
+      "statutoryCardNotSetUp": "Not set up",
+      "viewAddress": "Address",
+      "viewSectionPayrollGroup": "Payroll and group",
+      "viewNoBankProfiles": "No bank accounts on file.",
+      "viewNoParent": "None (group root)",
+      "viewNoStatutoryPack": "No statutory pack is installed for {country}, so there are no statutory identifiers to show.",
+      "viewCycleInactive": "\"{name}\" is no longer an active cycle.",
+      "viewReadOnlyNote": "Read-only. Press Edit to change these details."
     },
     "systemLabels": {
       "pageTitle": "System Labels",

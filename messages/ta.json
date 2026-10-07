@@ -8042,7 +8042,14 @@
       "statutoryUnsavedDiscard": "நிராகரித்து வெளியேறு",
       "statutoryUnsavedSave": "சேமித்து வெளியேறு",
       "statutoryCardSetUp": "அமைக்கப்பட்டது",
-      "statutoryCardNotSetUp": "அமைக்கப்படவில்லை"
+      "statutoryCardNotSetUp": "அமைக்கப்படவில்லை",
+      "viewAddress": "முகவரி",
+      "viewSectionPayrollGroup": "சம்பளம் மற்றும் குழுமம்",
+      "viewNoBankProfiles": "பதிவில் வங்கிக் கணக்குகள் இல்லை.",
+      "viewNoParent": "இல்லை (குழும மூலம்)",
+      "viewNoStatutoryPack": "{country} க்கு சட்டப்பூர்வ தொகுப்பு நிறுவப்படவில்லை, எனவே காட்ட சட்டப்பூர்வ அடையாளங்கள் இல்லை.",
+      "viewCycleInactive": "\"{name}\" இனி செயலில் உள்ள சுழற்சி அல்ல.",
+      "viewReadOnlyNote": "படிக்க மட்டும். இந்த விவரங்களை மாற்ற திருத்து என்பதை அழுத்தவும்."
     },
     "systemLabels": {
       "pageTitle": "அமைப்பு லேபிள்கள்",

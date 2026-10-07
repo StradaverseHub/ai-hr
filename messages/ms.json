@@ -8042,7 +8042,14 @@
       "statutoryUnsavedDiscard": "Buang & Keluar",
       "statutoryUnsavedSave": "Simpan & Keluar",
       "statutoryCardSetUp": "Ditetapkan",
-      "statutoryCardNotSetUp": "Belum ditetapkan"
+      "statutoryCardNotSetUp": "Belum ditetapkan",
+      "viewAddress": "Alamat",
+      "viewSectionPayrollGroup": "Gaji dan kumpulan",
+      "viewNoBankProfiles": "Tiada akaun bank dalam rekod.",
+      "viewNoParent": "Tiada (induk kumpulan)",
+      "viewNoStatutoryPack": "Tiada pek berkanun dipasang untuk {country}, jadi tiada pengenal berkanun untuk dipaparkan.",
+      "viewCycleInactive": "\"{name}\" bukan lagi kitaran yang aktif.",
+      "viewReadOnlyNote": "Baca sahaja. Tekan Sunting untuk menukar butiran ini."
     },
     "systemLabels": {
       "pageTitle": "Label Sistem",
