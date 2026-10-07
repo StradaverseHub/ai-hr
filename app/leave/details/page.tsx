@@ -218,13 +218,13 @@ export default async function LeaveDetailsPage({
           <div className="overflow-x-auto overscroll-x-contain" data-testid="leave-details-scroll" tabIndex={0} aria-label={t('scrollHint')}>
             <table className="w-full min-w-[1180px] border-collapse text-sm" data-testid="leave-details-table">
               <caption className="sr-only">{t('tableLabel')}</caption>
-              <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground monolith:bg-transparent">
+              <thead className="bg-muted text-left text-xs uppercase text-muted-foreground monolith:bg-transparent">
                 <tr className="monolith:border-b monolith:border-ink">
                   {cols.map((c, i) => (
                     <th
                       key={c.id}
                       scope="col"
-                      className={cn(thBase, c.align === 'right' && 'text-right', i === 0 && cn(stickyCol, 'bg-muted monolith:bg-background min-w-36'))}
+                      className={cn(thBase, c.align === 'right' && 'text-right', i === 0 && cn(stickyCol, 'min-w-36 bg-muted monolith:bg-background'))}
                     >
                       {c.label}
                     </th>
