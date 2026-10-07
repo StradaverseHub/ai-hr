@@ -5,9 +5,9 @@ import { redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
+import { viewerEmployment } from '@/lib/viewer';
 import {
   leaveRequestDateBreakdown,
-  myEmployment,
   myEmploymentIdsAll,
   listEmployees,
   listLeaveTypes,
@@ -192,7 +192,10 @@ export default async function LeavePage({
   }
   // R37 e5a158d3: the balance view is the viewer's OWN detailed table (was an all-employee pivot). Resolved
   // BEFORE anything else because it is what decides whether this page has a subject at all.
-  const me = await myEmployment(session);
+  // r397 — through `viewerEmployment` (lib/viewer.ts), the React `cache()`d seam over THIS SAME read: the root
+  // layout's notice slot asks it with the same per-request session object, so one request now pays for the
+  // employment lookup once instead of twice. Same function, same argument, same row.
+  const me = await viewerEmployment(session);
 
   // ── The short page (feedback 388e53c2) ───────────────────────────────────────────────────────────────
   // TWO viewers get the heading and one sentence instead of the self-service surface, and NONE of the
