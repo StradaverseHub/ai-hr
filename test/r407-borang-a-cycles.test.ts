@@ -117,7 +117,8 @@ describe('the cycle selection reaches every Borang A surface', () => {
 
 describe('the Continue gate', () => {
   it('refuses before anything is drawn: invalid, no runs, nothing selected, nothing to file', () => {
-    const gate = slice(PREVIEW_CODE, 'THE CONTINUE GATE', 'const monthFmt', 600);
+    const GATE_START = "if (!selection.ok) redirect(";
+    const gate = slice(PREVIEW_CODE, GATE_START, 'const monthFmt', 600);
     for (const reason of ['cycles_invalid', 'cycles_no_runs', 'cycles_no_data']) {
       expect(gate, reason).toContain(`'${reason}'`);
     }
@@ -125,8 +126,8 @@ describe('the Continue gate', () => {
     expect(gate).toContain("loaded.reason === 'selection-empty'");
     expect(gate).toContain('loaded.form.totalContribution === 0');
     // Nothing that draws or links a document precedes the gate.
-    const before = PREVIEW_CODE.slice(0, PREVIEW_CODE.indexOf('THE CONTINUE GATE'));
-    expect(PREVIEW_CODE.indexOf('THE CONTINUE GATE')).toBeGreaterThan(0);
+    expect(PREVIEW_CODE.indexOf(GATE_START)).toBeGreaterThan(0);
+    const before = PREVIEW_CODE.slice(0, PREVIEW_CODE.indexOf(GATE_START));
     expect(before).not.toContain('borangADocumentQuery(');
     expect(before).not.toContain('<StatutoryPdfViewer');
   });

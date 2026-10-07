@@ -6,7 +6,7 @@ import { listFilableRunsForPeriod } from '@/packs/payroll/service';
 import { scopedAdmin } from '@/lib/scope';
 import { money } from '@/lib/borang-a';
 import { parseRunSelection } from '@/lib/payroll-run-selection';
-import { Card, Field, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
+import { Card, Field, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { StatutoryPdfViewer } from '@/components/statutory-pdf-viewer';
 import { criteriaHref, criteriaReturnHref, cyclesRefusalHref } from '../../statutory-forms/criteria';
 import { BORANG_A_REPORT_ID, loadBorangA } from '../shared';
@@ -457,7 +457,7 @@ export default async function BorangAPreviewPage({ searchParams }: { searchParam
     // NOT READY: no drawn form at all — the PDF route would refuse it, and a framed refusal is not a preview.
     // The names and what each is missing, exactly as before, and the table that shows them.
     return (
-      <div className="w-full space-y-6">
+      <div className={pageWideCls}>
         <PageHeader title={t('title')} description={subtitle} back={{ href: backToCriteria, label: t('viewerBack') }} />
         {provenance}
         {tiles}
@@ -472,7 +472,7 @@ export default async function BorangAPreviewPage({ searchParams }: { searchParam
   }
 
   return (
-    <div className="w-full space-y-6">
+    <div className={pageWideCls}>
       <StatutoryPdfViewer
         title={t('title')}
         subtitle={subtitle}

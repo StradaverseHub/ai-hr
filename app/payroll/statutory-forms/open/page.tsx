@@ -201,9 +201,7 @@ export default async function StatutoryFormCriteriaPage({
   const fidelity = (report ? report.fidelity : link!.fidelity) ?? null;
   // r407 — a form filed per payroll cycle CONTINUES to its preview; it does not generate on this press.
   const continues = parsed.criteria.some((c) => c.kind === 'cycles');
-  const buttonLabel = t(
-    (link?.criteriaLabelKey ?? (continues ? 'criteria_continue' : 'criteria_generate')) as 'criteria_generate',
-  );
+  const buttonLabel = t((continues ? 'criteria_continue' : (link?.criteriaLabelKey ?? 'criteria_generate')) as 'criteria_generate');
   const backHref = `/payroll/statutory-forms${sp.body ? `?body=${encodeURIComponent(sp.body)}` : ''}`;
   const field = (kind: CriterionKind) => parsed.criteria.find((c) => c.kind === kind);
   // r402 — the Version options are the ENTRY's, so the step offers exactly what the destination allowlists.
