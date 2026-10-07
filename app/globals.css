@@ -4,6 +4,12 @@
    `dark:` variant respond to that class instead of the OS preference. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* r398 — the Monolith SHELL (docs/design/monolith/README.md §3). `monolith:` styles an element only while
+   <html data-ui-theme="monolith">, so one component's markup can carry both looks and Classic's computed
+   styles are untouched: a `monolith:` utility does not match in Classic at all. Same shape as `dark:` above
+   (:where keeps the specificity of the bare utility, so variant order decides, exactly as for dark:). */
+@custom-variant monolith (&:where([data-ui-theme='monolith'] *));
+
 :root {
   /* Floating-shell surfaces: canvas frame the app floats on → content area
      where cards sit → white card/chrome. Warm, soft, friendly (the pivot). */
@@ -241,6 +247,33 @@
     font-family: var(--font-dm-mono), ui-monospace, monospace;
     font-variant-numeric: tabular-nums;
   }
+}
+
+/* r398 — shell motion (README §6). The reveal plays once, when the shell mounts (the layout persists across
+   navigations, so it is not replayed per page); figures are never inside an animated shell element. The live
+   dot's 2.4s beat is the only loop. Both are switched off by the global prefers-reduced-motion rule below. */
+@keyframes monolith-up {
+  from {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+}
+@keyframes monolith-beat {
+  50% {
+    box-shadow: 0 0 0 7px rgb(255 77 0 / 0);
+  }
+}
+:root[data-ui-theme='monolith'] .monolith-rv {
+  animation: monolith-up 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+:root[data-ui-theme='monolith'] .monolith-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 0 3px rgb(255 77 0 / 0.18);
+  animation: monolith-beat 2.4s ease-in-out infinite;
 }
 
 body {

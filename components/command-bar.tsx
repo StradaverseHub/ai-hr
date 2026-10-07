@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { Search, ArrowRight, UserCog } from 'lucide-react';
 import { DelegationManager } from '@/components/delegation-manager';
 import { loadDelegationContextAction, type DelegationContext } from '@/app/delegations/actions';
+import { OPEN_COMMAND_BAR_EVENT, type OpenCommandBarDetail } from '@/lib/command-bar-events';
 
 /**
  * R44 delegation (Phase 1) — the product's FIRST global command bar. There was no search / cmdk primitive
@@ -61,6 +62,20 @@ export function CommandBar() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // r398 — the Monolith intent bar opens THIS dialog (lib/command-bar-events.ts) with whatever was typed
+  // there as the query, so it searches the same registry and lands on the same panels. It never opens a
+  // sub-panel directly: the list is where a match is chosen, exactly as from ⌘K.
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const detail = (e as CustomEvent<OpenCommandBarDetail>).detail;
+      setActive(null);
+      setQuery(typeof detail?.query === 'string' ? detail.query : '');
+      setOpen(true);
+    };
+    window.addEventListener(OPEN_COMMAND_BAR_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_COMMAND_BAR_EVENT, onOpen);
   }, []);
 
   const reset = useCallback(() => {
