@@ -374,6 +374,7 @@
     "leaveOverview": "Leave Request",
     "leaveHistory": "Leave Request Status",
     "leaveCreditHistory": "Leave Credit History",
+    "leaveDetails": "Leave Details",
     "myTeam": "My Team"
   },
   "dashboard": {
@@ -2542,6 +2543,15 @@
         "sharedTakenItem": "{type}: {days}",
         "sharedPendingIntro": "Awaiting approval against this balance, by each leave type that shares it:",
         "sharedPendingItem": "{type}: {days}"
+      },
+      "explainSelf": {
+        "eligibleNoMatch": "No entitlement table applies to you. Tables exist for this leave type, but none of them reaches you, so Entitlement is 0.00.",
+        "eligibleViaScheme": "Entitlement table: {table}. It applies because the benefit scheme {scheme} matches you.",
+        "eligibleViaDefault": "Entitlement table: {table}. It applies because it is this leave type's default table; no benefit scheme matches you.",
+        "joinMonthsRemaining": "You joined on {hiredOn}, during this leave year: Annual Leave counts the months left in the year you joined, including the month you joined.",
+        "joinFull": "You joined on {hiredOn}, during this leave year: this leave type is given in full in the year you join.",
+        "adjSystemItem": "{date}: {days} — {kind, select, policy_recalc {automatic recalculation after a leave rule changed, replaced by the Anniversary to Calendar correction} profile_recalc {automatic entitlement recalculation, replaced by the Anniversary to Calendar correction} a2c_recalc {Anniversary to Calendar correction} ineligible_grant_reversal {reversal of a grant you were not eligible for} other {automatic correction}}",
+        "entitlementProrated": "You joined part way through the leave year, so the {annual} day allowance is prorated: {eligibleDays} eligible days out of {yearDays} gives {unrounded} days."
       }
     },
     "preview": {
@@ -14145,6 +14155,19 @@
       "noCredit": "A credit is created only when the request is approved.",
       "close": "Close"
     }
+  },
+  "leaveDetails": {
+    "title": "Leave Details",
+    "description": "Your balance for every leave type, as at the date you choose.",
+    "viewOnly": "View only · your own record",
+    "searchLabel": "Search leave code",
+    "searchPlaceholder": "e.g. AL",
+    "downloadExcel": "Download Excel",
+    "footnote": "Only leave types with an entitlement or activity are listed.",
+    "noRows": "You have no leave balances to show for this date.",
+    "noMatch": "No leave type matches your search.",
+    "tableLabel": "Your leave balances",
+    "scrollHint": "Swipe the table sideways to see every column."
   },
   "notices": {
     "pageTitle": "Notice Board",

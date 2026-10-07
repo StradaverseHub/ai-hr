@@ -374,6 +374,7 @@
     "leaveOverview": "休假申请",
     "leaveHistory": "休假申请状态",
     "leaveCreditHistory": "假期额度记录",
+    "leaveDetails": "假期明细",
     "myTeam": "我的团队"
   },
   "dashboard": {
@@ -2542,6 +2543,15 @@
         "sharedTakenItem": "{type}：{days}",
         "sharedPendingIntro": "按共用此余额的各假期类型列出的待审批天数：",
         "sharedPendingItem": "{type}：{days}"
+      },
+      "explainSelf": {
+        "eligibleNoMatch": "没有额度表适用于您。此假期类型有额度表，但没有一个触及您，因此额度为 0.00。",
+        "eligibleViaScheme": "额度表：{table}。适用原因：福利方案 {scheme} 与您匹配。",
+        "eligibleViaDefault": "额度表：{table}。适用原因：它是此假期类型的默认额度表；没有福利方案与您匹配。",
+        "joinMonthsRemaining": "您于 {hiredOn} 在本假期年度内入职：年假按您入职当年剩余月份计算，包括入职当月。",
+        "joinFull": "您于 {hiredOn} 在本假期年度内入职：此假期类型在您入职当年全额发放。",
+        "adjSystemItem": "{date}：{days} — {kind, select, policy_recalc {假期规则变更后的自动重新计算，已被入职周年至日历年更正取代} profile_recalc {额度自动重新计算，已被入职周年至日历年更正取代} a2c_recalc {入职周年至日历年更正} ineligible_grant_reversal {撤销您不符合资格的额度发放} other {系统自动更正}}",
+        "entitlementProrated": "您在休假年度中途入职，因此 {annual} 天额度按比例折算：{yearDays} 天中有 {eligibleDays} 天符合条件，得出 {unrounded} 天。"
       }
     },
     "preview": {
@@ -14145,6 +14155,19 @@
       "noCredit": "只有在申请获批后才会生成额度。",
       "close": "关闭"
     }
+  },
+  "leaveDetails": {
+    "title": "假期明细",
+    "description": "截至您选择的日期，您每种假期类型的余额。",
+    "viewOnly": "仅供查看 · 您本人的记录",
+    "searchLabel": "搜索假期代码",
+    "searchPlaceholder": "例如 AL",
+    "downloadExcel": "下载 Excel",
+    "footnote": "仅列出有额度或有记录的假期类型。",
+    "noRows": "此日期没有可显示的假期余额。",
+    "noMatch": "没有与您的搜索匹配的假期类型。",
+    "tableLabel": "您的假期余额",
+    "scrollHint": "左右滑动表格以查看所有列。"
   },
   "notices": {
     "pageTitle": "公告栏",

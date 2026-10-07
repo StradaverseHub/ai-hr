@@ -15,7 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CalendarClock, CalendarDays, CalendarRange, History, SlidersHorizontal, UserSearch } from 'lucide-react';
+import { CalendarClock, CalendarDays, ClipboardList, CalendarRange, History, SlidersHorizontal, UserSearch } from 'lucide-react';
 import { leavePack } from '../packs/leave';
 import { listPacks, modulePackById, packById } from '../packs/registry';
 import * as facade from '../packs/leave/service';
@@ -153,6 +153,8 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
     expect(self[0].children.map(c => [c.href,c.labelKey,c.exactHref,c.icon])).toEqual([
       ['/leave','leaveOverview',true,CalendarDays], ['/leave/history','leaveHistory',true,History],
       ['/leave/credit','leaveCreditHistory',true,CalendarClock],
+      // r404 (42e55e2b) — UPDATED, NOT LOOSENED: My Leave › Leave Details, fourth, after Leave Credit History.
+      ['/leave/details','leaveDetails',true,ClipboardList],
     ]);
     expect(self[0]).not.toHaveProperty('adminOnly');
     expect(self[0]).not.toHaveProperty('managerUp');

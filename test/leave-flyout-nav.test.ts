@@ -654,7 +654,8 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     // r389 (bc3e203d) — UPDATED, NOT LOOSENED: My Leave › Leave Credit History joined the self-service node
     // at /leave/credit. It is still a self-service row (no adminOnly / managerUp, asserted above); the paid
     // `toil` module gates it in the sidebar, which test/r299-leave-credit-screens.test.ts pins.
-    expect(main[0].children.map((l) => l.href)).toEqual(['/leave', '/leave/history', '/leave/credit']);
+    // r404 (42e55e2b) — UPDATED, NOT LOOSENED: Leave Details joined as the fourth self-service row.
+    expect(main[0].children.map((l) => l.href)).toEqual(['/leave', '/leave/history', '/leave/credit', '/leave/details']);
     expect(main[0].children.every((l) => l.exactHref)).toBe(true);
     expect(leavePack.navLinks!.some((l) => l.group === 'admin'), 'the flat admin row is replaced by the node').toBe(false);
   });

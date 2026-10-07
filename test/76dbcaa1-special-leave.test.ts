@@ -101,7 +101,8 @@ describe('r355 · the details screen and its route are gone, and nothing points 
     // names the route while doing so, so a bare `not.toContain` would fail against correct code.
     expect(codeOnly(perms), 'no registered route for the deleted page').not.toContain("'/leave/shared/[groupId]'");
     expect(codeOnly(perms), 'the existing leave column carries Overview, approved History, and Credit').toContain(
-      "routes: ['/leave', '/leave/history', '/leave/credit']",
+      // r404 (42e55e2b) — '/leave/details' rides the same column; still one My Absence column (asserted below).
+      "routes: ['/leave', '/leave/history', '/leave/credit', '/leave/details']",
     );
     // Unchanged from 76dbcaa1: the point of riding an existing column was that a second one would repeat
     // this label. Removing the sub-route must not have minted one on the way out.

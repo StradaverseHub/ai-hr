@@ -13,6 +13,8 @@ import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
 import type { EntitlementBreakdownData } from '@/components/leave/EntitlementBreakdown';
 import type { EntitlementStatus } from '@/lib/entitlement-status';
 import { balanceStoryTypeId, isPoolBorrower, type SharedLeaveBalanceInfo } from '@/lib/shared-leave-balance';
+// r404 — the nine Employee Leave View switches, for the self audience's gate (`selfView`).
+import { ESS_VIEW_COMPONENT_KEYS } from '@/core/ess-view';
 
 /**
  * The Employee Balances table body (feedback 20c699f8), shared by the screen and its export so a
@@ -108,13 +110,123 @@ export type EmployeeBalanceRow = {
   hrExplanation: { sharedBalance: SharedLeaveBalanceInfo | null; entitlementFromPool: string | null };
 };
 
+/**
+ * r404 (42e55e2b) — WHO IS READING THE ROWS. `'hr'` is Employee Balances and its export, and is the default,
+ * so every caller that predates the audience is byte-identical. `'self'` is My Leave › Leave Details
+ * (app/leave/details), where the employee reads THEIR OWN rows; see `selfView` below for exactly what changes.
+ *
+ * ⚠️ THE AUDIENCE IS NOT A SCOPE. It decides which leave types are listed and which figures are blanked; it
+ * never decides WHOSE rows these are. `employmentId` does, and on the self page it comes from
+ * `myEmployment(session)` and nothing else — RLS does not confine an HR admin or a manager to their own rows,
+ * so a self page that took the id off the address would show HR anyone's balances under "your own record".
+ */
+export type BalanceAudience = 'hr' | 'self';
+
+/**
+ * r404 — A ROW AS THE EMPLOYEE MAY SEE IT. Every figure HR's row carries, but any figure the leave type's
+ * Employee Leave View Configuration hides is `null` (the grid prints "—", the file an empty cell), never the
+ * number. `available` and `pending` widen to nullable for that reason, which is why this is its own type
+ * rather than `EmployeeBalanceRow`: HR's screen hands `available` to the Explain panel as a number and must
+ * keep compiling exactly as it did.
+ */
+export type SelfBalanceRow = Omit<EmployeeBalanceRow, 'available' | 'pending'> & {
+  available: number | null;
+  pending: number | null;
+};
+
+/**
+ * r404 — THE NINE ESS SWITCHES, APPLIED TO HR'S ROW. Pure, so it is unit-tested on its own.
+ *
+ * Column → switch. `deriveBalanceRow` (the employee's own /me grid) already gates four of these the same way
+ * (available, taken, eligible, balance = available ∧ taken); this map is that rule made complete for the
+ * sixteen-column table, and it is STRICTER, never looser:
+ *   Entitlement ← eligible          Earned to Date ← ytdEntitled      Brought Forward ← broughtForward
+ *   Taken, Share ← taken            Pending Approval ← pendingApproval
+ *   Pending Share ← available ∧ pendingApproval (deriveBalanceRow: available only)
+ *   Adjustment ← adjustment         Overutilized, Available Balance ← available
+ *   Forfeited BF ← forfeited        Balance ← available ∧ taken
+ * The resolved entitlement TABLE's name rides `eligible` (it is the caption of the Entitlement figure).
+ *
+ * THE EXPLAIN PANEL IS WITHHELD WHOLE WHEN ANY SWITCH IS OFF. The panel receives the full breakdown object as
+ * a client prop, and its step-by-step sentences cross-reference figures (Available's sentence prints Taken
+ * and Pending); `applyEssConfig` hides lines, not the numbers inside other lines' sentences or the RSC
+ * payload. So a row with anything hidden gets no Explain button (an em dash), rather than a panel that can
+ * be read for the figure the grid blanks. Production hides nothing today (plan, "GOOD TO KNOW").
+ */
+export function selfView(hr: EmployeeBalanceRow, essView: Record<string, boolean> | null | undefined): SelfBalanceRow {
+  const on = (k: string) => essView?.[k] !== false;
+  const showAvailable = on('available');
+  const showTaken = on('taken');
+  const showEligible = on('eligible');
+  const showPending = on('pendingApproval');
+  const allVisible = ESS_VIEW_COMPONENT_KEYS.every((k) => on(k));
+  return {
+    ...hr,
+    fullEntitlement: showEligible ? hr.fullEntitlement : null,
+    entitlementTemplateName: showEligible ? hr.entitlementTemplateName : null,
+    ytdEntitled: on('ytdEntitled') ? hr.ytdEntitled : null,
+    broughtForward: on('broughtForward') ? hr.broughtForward : null,
+    taken: showTaken ? hr.taken : null,
+    share: showTaken ? hr.share : null,
+    pending: showPending ? hr.pending : null,
+    pendingShare: showAvailable && showPending ? hr.pendingShare : null,
+    adjustment: on('adjustment') ? hr.adjustment : null,
+    overutilized: showAvailable ? hr.overutilized : null,
+    forfeitedBf: on('forfeited') ? hr.forfeitedBf : null,
+    balance: showAvailable && showTaken ? hr.balance : null,
+    available: showAvailable ? hr.available : null,
+    breakdown: allVisible ? hr.breakdown : null,
+  };
+}
+
+/**
+ * r404 — "LEAVE TYPES WITH NOTHING AT ALL ARE LEFT OUT" (the plan; the reporter's sample hides CGL, EXM, GD).
+ * Read off HR's UNGATED row, so whether a row is listed never depends on which figures are hidden from it: a
+ * type whose every figure is hidden but which holds days is still listed (as dashes), exactly as /leave still
+ * draws its card. A retired type that still holds days has a non-zero Balance and stays.
+ */
+export function hasAnyFigure(hr: EmployeeBalanceRow): boolean {
+  return [
+    hr.fullEntitlement,
+    hr.ytdEntitled,
+    hr.broughtForward,
+    hr.taken,
+    hr.pending,
+    hr.adjustment,
+    hr.share,
+    hr.pendingShare,
+    hr.overutilized,
+    hr.forfeitedBf,
+    hr.balance,
+    hr.available,
+  ].some((v) => v != null && v !== 0);
+}
+
+export function employeeBalanceRows(
+  ctx: SessionContext,
+  employmentId: string,
+  asOf: string,
+  locale: string,
+  filter?: { q?: string; typeIds?: string[]; dir?: 'asc' | 'desc' },
+  opts?: { audience?: 'hr' },
+): Promise<EmployeeBalanceRow[]>;
+export function employeeBalanceRows(
+  ctx: SessionContext,
+  employmentId: string,
+  asOf: string,
+  locale: string,
+  filter: { q?: string; typeIds?: string[]; dir?: 'asc' | 'desc' },
+  opts: { audience: 'self' },
+): Promise<SelfBalanceRow[]>;
 export async function employeeBalanceRows(
   ctx: SessionContext,
   employmentId: string,
   asOf: string,
   locale: string,
   filter: { q?: string; typeIds?: string[]; dir?: 'asc' | 'desc' } = {},
-): Promise<EmployeeBalanceRow[]> {
+  opts: { audience?: BalanceAudience } = {},
+): Promise<EmployeeBalanceRow[] | SelfBalanceRow[]> {
+  const self = opts.audience === 'self';
   // 994a5287: `includeHidden` — this is HR's own screen, so a leave type HR has hidden from EMPLOYEE
   // self-service must still be listed here. Without it the reporter's "some Leave Types may not appear"
   // reproduced exactly: a visible_to_employee=false type was absent from these rows. The eligible-but-
@@ -135,7 +247,16 @@ export async function employeeBalanceRows(
   // d272834b — `includeIneligible: true` joins `includeHidden` / `includeArchived`, same call, same asOf.
   // This is the HR screen the item's remediation is read from: the 55 employments holding a net 98-day
   // Maternity balance they were never eligible for are findable here and nowhere the employee can see.
-  const balances = await leaveBalances(ctx, employmentId, locale, { includeHidden: true, includeArchived: true, includeIneligible: true, asOf });
+  //
+  // r404 (42e55e2b) — THE SELF AUDIENCE READS THE SAME FUNCTION WITH THE EMPLOYEE'S OWN FLAGS: hidden types
+  // stay hidden (visible_to_employee=false — production's Emergency Leave), ineligible types stay out (the
+  // default every employee screen uses), and archived types are KEPT for the reason ec991c2a gives above: a
+  // retired type still holding days is days the employee holds. The pool's Share is computed inside
+  // `leaveBalances` BEFORE its visibility filter, so the hidden Emergency Leave's days still appear in Annual
+  // Leave's Share column and its "EL" badge — the plan says so in as many words.
+  const balances = self
+    ? await leaveBalances(ctx, employmentId, locale, { includeHidden: false, includeArchived: true, includeIneligible: false, asOf })
+    : await leaveBalances(ctx, employmentId, locale, { includeHidden: true, includeArchived: true, includeIneligible: true, asOf });
   // r303 (31492f74): `derivation: true` — this is an HR screen, and its Explain panel prints the per-line working.
   // Same read, same date; the working rides on the very `bd` every figure in the row comes from.
   const breakdowns = await Promise.all(
@@ -251,5 +372,13 @@ export async function employeeBalanceRows(
   // Default A→Z by leave code; rows with no code fall back to the type name so they do not clump under ''.
   const key = (r: EmployeeBalanceRow) => r.code || r.leaveType;
   const mul = filter.dir === 'desc' ? -1 : 1;
-  return rows.sort((a, b) => mul * key(a).localeCompare(key(b), locale, { sensitivity: 'base' }));
+  const sorted = rows.sort((a, b) => mul * key(a).localeCompare(key(b), locale, { sensitivity: 'base' }));
+  if (!self) return sorted;
+  // r404 — THE SELF AUDIENCE IS HR'S ROW, NARROWED, AND NEVER A SECOND DERIVATION. The figures above came off
+  // the very expression HR's screen prints; the employee's version drops the types with nothing at all
+  // (`hasAnyFigure`, read on the ungated row) and then blanks what the leave type hides (`selfView`, with the
+  // borrower's OWN type's switches — `b.essView` — not the pool's). test/r404-leave-details.test.ts pins the
+  // equivalence field for field against an HR session for the same employee and date.
+  const essByType = new Map(balances.map((b) => [b.leaveTypeId, b.essView] as const));
+  return sorted.filter(hasAnyFigure).map((r) => selfView(r, essByType.get(r.leaveTypeId)));
 }

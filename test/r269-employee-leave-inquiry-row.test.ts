@@ -304,7 +304,7 @@ describe('5ca446db — the sidebar lights the new row on both inquiry screens, a
     // one lights" trivially true.
     expect(ALL_ROWS.length).toBeGreaterThan(10);
     // r389 — `leave:leaveCreditHistory` joined the names: the My Leave node's third row, at /leave/credit.
-    for (const key of ['leave:employeeLeaveInquiry', 'leave:teamLeaveTracker', 'leave:leaveOverview', 'leave:leaveHistory', 'leave:leaveCreditHistory', 'leave:leaveEntitlements'])
+    for (const key of ['leave:employeeLeaveInquiry', 'leave:teamLeaveTracker', 'leave:leaveOverview', 'leave:leaveHistory', 'leave:leaveCreditHistory', 'leave:leaveDetails', 'leave:leaveEntitlements'])
       expect(ALL_ROWS.map((r) => r.key), key).toContain(key);
   });
 
@@ -322,6 +322,8 @@ describe('5ca446db — the sidebar lights the new row on both inquiry screens, a
     // Leave Request does not light here by prefix; and the HR row Leave Config › Leave Credit (another
     // address entirely) does not either.
     ['/leave/credit', 'leave:leaveCreditHistory'],
+    // r404 (42e55e2b) — Leave Details lights alone on its own address (exactHref, like its siblings).
+    ['/leave/details', 'leave:leaveDetails'],
     // …and Entitlements is NOT lit by the new row: the row the reporter opened Leave Config on still wins
     // its own screen.
     ['/admin/leave-config/types', 'leave:leaveEntitlements'],
