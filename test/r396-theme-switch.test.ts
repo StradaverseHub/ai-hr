@@ -137,9 +137,10 @@ describe('C. app/layout.tsx writes the theme onto <html data-ui-theme>', () => {
   });
   it('the AUTHENTICATED <html> carries the same attribute (one per <html> in the file)', () => {
     const src = read('app/layout.tsx');
-    const htmlTags = src.match(/<html\b/g) ?? [];
+    // The JSX elements, not comment mentions of <html>: each opens with `<html` + newline + `lang={locale}`.
+    const htmlTags = src.match(/<html\s+lang=\{locale\}/g) ?? [];
     expect(htmlTags.length).toBe(2);
-    expect(src.match(/data-ui-theme=\{uiTheme\}/g) ?? []).toHaveLength(htmlTags.length);
+    expect(src.match(/<html\s+lang=\{locale\}\s+data-ui-theme=\{uiTheme\}/g) ?? []).toHaveLength(2);
     expect(src).toMatch(/const uiTheme = resolveUiTheme\(\(await cookies\(\)\)\.get\(UI_THEME_COOKIE\)\?\.value\);/);
   });
 });
