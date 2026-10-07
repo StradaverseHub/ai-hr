@@ -229,6 +229,16 @@ describe('topbar — the right cluster has a budget and it is full', () => {
     expect(SIDEBAR).toContain(replicaConst('RAIL_VISIBILITY_CLS'));
     expect(SIDEBAR).toContain(replicaConst('RAIL_DEFAULT_BREAKPOINT_CLS'));
     expect(SIDEBAR).toContain(replicaConst('RAIL_TEAM_BREAKPOINT_CLS'));
+    // r398 — the Monolith replica is the SAME elements with `monolith:` utilities appended, so each is pinned
+    // as "Classic string + space + Monolith suffix": a Monolith change re-measures, and the Classic half of
+    // each string stays exactly what the measurements above were taken with.
+    expect(LAYOUT).toContain(`${replicaConst('SHELL_BODY_CLS')} ${replicaConst('MONO_BODY_CLS')}`);
+    expect(LAYOUT).toContain(`${replicaConst('SHELL_ROW_CLS')} ${replicaConst('MONO_ROW_CLS')}`);
+    expect(LAYOUT).toContain(`${replicaConst('SHELL_COL_CLS')} ${replicaConst('MONO_COL_CLS')}`);
+    expect(LAYOUT).toContain(`${replicaConst('HEADER_CLS')} ${replicaConst('MONO_HEADER_CLS')}`);
+    expect(LAYOUT).toContain(`${replicaConst('LEFT_CLUSTER_CLS')} ${replicaConst('MONO_LEFT_CLS')}`);
+    expect(SIDEBAR).toContain(`'${replicaConst('MONO_RAIL_CLS')}'`);
+    expect(BELL).toContain(`className="${replicaConst('BELL_CLS')}"`);
     expect(SIDEBAR, 'the measured route-specific breakpoint must match the actual rail').toContain(
       `pathname === '/manage/my-team' ? '${replicaConst('RAIL_TEAM_BREAKPOINT_CLS')}' : '${replicaConst('RAIL_DEFAULT_BREAKPOINT_CLS')}'`,
     );

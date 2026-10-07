@@ -350,3 +350,141 @@ describe('topbar fits the window at every width (r374)', () => {
   }
   }
 });
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════════
+ * r398 — THE SAME TWO QUESTIONS IN MONOLITH, which is the DEFAULT theme.
+ *
+ * Everything above measures Classic (no data-ui-theme on <html>, so no `monolith:` utility matches). The
+ * Monolith top line is a different geometry over the same header element: the header is a FLEX row, the
+ * centre search track is hidden (the intent bar replaces it), the left cluster takes the free width, the
+ * shell drops its frame (body p-0, rail/content gap 0) and pads the content column 16px, or 44/48px from
+ * 900 where the rail arrives (below 900 the Monolith rail is hidden — README §3). And the bell is no longer
+ * a 36px glyph: it is mono TEXT ("99+ NOTIFICATIONS", the number only below sm), so its stand-in carries the
+ * trigger's real class string AND its widest real content, because its width is now content-dependent.
+ * (The real NotificationCenter cannot load here: next/navigation forks React in this harness — see the
+ * r256 note in vitest.browser.config.ts.)
+ *
+ * The Monolith suffixes are copied VERBATIM from the sources and pinned there by
+ * test/topbar-overlap-guard.test.ts, exactly like the Classic strings above.
+ * ════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/** app/layout.tsx — the Monolith utilities appended to each shell element's Classic class string. */
+export const MONO_BODY_CLS = 'monolith:bg-background! monolith:p-0!';
+export const MONO_ROW_CLS = 'monolith:gap-0!';
+export const MONO_COL_CLS =
+  'monolith:gap-5! monolith:px-4 monolith:pt-4 min-[900px]:monolith:pr-12 min-[900px]:monolith:pl-11 min-[900px]:monolith:pt-[22px]';
+export const MONO_HEADER_CLS =
+  'monolith:flex monolith:h-auto monolith:min-h-9 monolith:gap-[22px] monolith:rounded-none monolith:border-0 monolith:bg-transparent monolith:px-0 monolith:shadow-none monolith-rv';
+export const LEFT_CLUSTER_CLS = 'flex min-w-0 items-center gap-2.5 text-sm text-muted-foreground';
+export const MONO_LEFT_CLS =
+  'monolith:flex-1 monolith:gap-[22px] monolith:font-mono monolith:text-[11px] monolith:uppercase monolith:tracking-[0.12em]';
+/** components/notification-center.tsx — the trigger button, Classic footprint + Monolith suffix. */
+export const BELL_CLS =
+  'relative inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground monolith:w-auto monolith:gap-1.5 monolith:rounded-none monolith:px-1 monolith:font-mono monolith:text-[11px] monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid monolith:hover:bg-transparent monolith:hover:text-ink';
+/** components/sidebar.tsx — the Monolith rail is hidden below 900px (v4 `max-[900px]` is `width < 900px`; `max-[899px]` left it showing AT 899, which this sweep caught). */
+export const MONO_RAIL_CLS = 'monolith:max-[900px]:hidden!';
+
+const monoHeaderWidthFor = (viewport: number) =>
+  viewport >= 900 ? viewport - 232 - 44 - 48 : viewport - 16 - 16;
+
+function MonolithShell({ account }: { account: ReactNode }) {
+  return (
+    <div className={`${SHELL_BODY_CLS} ${MONO_BODY_CLS}`} data-testid="shell">
+      <div className={`${SHELL_ROW_CLS} ${MONO_ROW_CLS}`}>
+        <div className={`${RAIL_WIDTH_CLS} ${RAIL_VISIBILITY_CLS} ${RAIL_DEFAULT_BREAKPOINT_CLS} ${MONO_RAIL_CLS}`} />
+        <div className={`${SHELL_COL_CLS} ${MONO_COL_CLS}`}>
+          <header className={`${HEADER_CLS} ${MONO_HEADER_CLS}`} data-testid="topbar">
+            <div className={`${LEFT_CLUSTER_CLS} ${MONO_LEFT_CLS}`}>
+              {/* components/shell-top-line.tsx ShellRoutePath — a long real route, truncating. */}
+              <span className="min-w-0 shrink truncate text-mid">/admin/leave-config/entitlement-tables</span>
+              <span aria-hidden className="h-3.5 w-px shrink-0 bg-hairline" />
+              <span className="shrink-0 font-medium text-foreground/80 monolith:hidden">Demo Group</span>
+              {/* The company switcher's trigger: min-w-0 + a truncating label, as in the component. */}
+              <span className="flex min-w-0 max-w-full items-center gap-1.5">
+                <span className="min-w-0 max-w-[14rem] truncate">Nusantara Holdings Sdn Bhd</span>
+                <span aria-hidden className="shrink-0">▾</span>
+              </span>
+              {/* ShellLiveClock — its exact classes. */}
+              <span className="ml-auto hidden shrink-0 items-center gap-2.5 whitespace-nowrap text-mid sm:inline-flex">
+                <span aria-hidden className="monolith-dot" />
+                Live <time>16:37</time>
+              </span>
+            </div>
+            <div className="flex min-w-0 items-center justify-center monolith:hidden">
+              <span className="inline-flex h-10 w-auto min-w-0 items-center gap-2 rounded-md border border-input bg-card px-3 text-sm sm:w-full" />
+            </div>
+            <div className={RIGHT_CLUSTER_CLS} data-testid="right-cluster">
+              <div className={DIVIDER_CLS} />
+              <button type="button" className={BELL_CLS}>
+                <span className="whitespace-nowrap">
+                  <span className="tabular-nums text-signal-text">99+</span>{' '}
+                  <span className="hidden sm:inline">notifications</span>
+                </span>
+              </button>
+              <span className={ICON_CLS} />
+              <span className={ICON_CLS} />
+              {account}
+            </div>
+          </header>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+describe('Monolith top line: the identity is visible and nothing scrolls sideways (r398)', () => {
+  beforeAll(() => {
+    document.body.style.margin = '0';
+  });
+  afterEach(() => {
+    cleanup();
+    document.documentElement.removeAttribute('data-ui-theme');
+  });
+  const monolith = () => document.documentElement.setAttribute('data-ui-theme', 'monolith');
+
+  it('the Monolith variant actually applies (guards the harness): the header is a flex row', async () => {
+    await page.viewport(1440, 900);
+    monolith();
+    wrap(<MonolithShell account={null} />);
+    const header = document.querySelector<HTMLElement>('[data-testid="topbar"]')!;
+    expect(getComputedStyle(header).display).toBe('flex');
+    expect(getComputedStyle(header).borderTopLeftRadius).toBe('0px');
+    expect(Math.round(header.getBoundingClientRect().width)).toBe(monoHeaderWidthFor(1440));
+  });
+
+  for (const width of WIDTHS) {
+    it(`leaves the identity at least ${IDENTITY_BUDGET_PX}px at ${width}`, async () => {
+      await page.viewport(width, 900);
+      monolith();
+      wrap(
+        <MonolithShell
+          account={<UserMenu name="Nurulhuda binti Abdul Rahman Al-Hafiz" employeeCode="EMP-0001" employed />}
+        />,
+      );
+      expect(box(identityColumn())).toBeGreaterThanOrEqual(IDENTITY_BUDGET_PX);
+    });
+  }
+
+  for (const width of OVERFLOW_WIDTHS) {
+    it(`needs no sideways scrolling at ${width}`, async () => {
+      await page.viewport(width, 900);
+      monolith();
+      wrap(
+        <MonolithShell
+          account={<UserMenu name="Nurulhuda binti Abdul Rahman Al-Hafiz" employeeCode="EMP-0001" employed />}
+        />,
+      );
+      const shell = document.querySelector<HTMLElement>('[data-testid="shell"]')!;
+      const header = document.querySelector<HTMLElement>('[data-testid="topbar"]')!;
+      const cluster = document.querySelector<HTMLElement>('[data-testid="right-cluster"]')!;
+      // Non-vacuity: a populated header of the width the Monolith shell gives it.
+      expect(cluster.children).toHaveLength(5);
+      expect(Math.round(header.getBoundingClientRect().width)).toBe(monoHeaderWidthFor(width));
+      expect(shell.clientWidth).toBe(width);
+      expect(describeEl(firstOverflowing(shell))).toBe(null);
+      expect(shell.scrollWidth).toBeLessThanOrEqual(shell.clientWidth);
+      expect(describeEl(firstOverflowing(header))).toBe(null);
+      expect(cluster.scrollWidth).toBeLessThanOrEqual(cluster.clientWidth);
+    });
+  }
+});
