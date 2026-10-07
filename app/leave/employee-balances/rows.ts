@@ -153,7 +153,7 @@ export type SelfBalanceRow = Omit<EmployeeBalanceRow, 'available' | 'pending'> &
  * payload. So a row with anything hidden gets no Explain button (an em dash), rather than a panel that can
  * be read for the figure the grid blanks. Production hides nothing today (plan, "GOOD TO KNOW").
  */
-export function selfView(row: EmployeeBalanceRow, essView: Record<string, boolean> | null | undefined): SelfBalanceRow {
+export function selfView(hr: EmployeeBalanceRow, essView: Record<string, boolean> | null | undefined): SelfBalanceRow {
   const on = (k: string) => essView?.[k] !== false;
   const showAvailable = on('available');
   const showTaken = on('taken');
@@ -161,21 +161,21 @@ export function selfView(row: EmployeeBalanceRow, essView: Record<string, boolea
   const showPending = on('pendingApproval');
   const allVisible = ESS_VIEW_COMPONENT_KEYS.every((k) => on(k));
   return {
-    ...row,
-    fullEntitlement: showEligible ? row.fullEntitlement : null,
-    entitlementTemplateName: showEligible ? row.entitlementTemplateName : null,
-    ytdEntitled: on('ytdEntitled') ? row.ytdEntitled : null,
-    broughtForward: on('broughtForward') ? row.broughtForward : null,
-    taken: showTaken ? row.taken : null,
-    share: showTaken ? row.share : null,
-    pending: showPending ? row.pending : null,
-    pendingShare: showAvailable && showPending ? row.pendingShare : null,
-    adjustment: on('adjustment') ? row.adjustment : null,
-    overutilized: showAvailable ? row.overutilized : null,
-    forfeitedBf: on('forfeited') ? row.forfeitedBf : null,
-    balance: showAvailable && showTaken ? row.balance : null,
-    available: showAvailable ? row.available : null,
-    breakdown: allVisible ? row.breakdown : null,
+    ...hr,
+    fullEntitlement: showEligible ? hr.fullEntitlement : null,
+    entitlementTemplateName: showEligible ? hr.entitlementTemplateName : null,
+    ytdEntitled: on('ytdEntitled') ? hr.ytdEntitled : null,
+    broughtForward: on('broughtForward') ? hr.broughtForward : null,
+    taken: showTaken ? hr.taken : null,
+    share: showTaken ? hr.share : null,
+    pending: showPending ? hr.pending : null,
+    pendingShare: showAvailable && showPending ? hr.pendingShare : null,
+    adjustment: on('adjustment') ? hr.adjustment : null,
+    overutilized: showAvailable ? hr.overutilized : null,
+    forfeitedBf: on('forfeited') ? hr.forfeitedBf : null,
+    balance: showAvailable && showTaken ? hr.balance : null,
+    available: showAvailable ? hr.available : null,
+    breakdown: allVisible ? hr.breakdown : null,
   };
 }
 
@@ -185,20 +185,20 @@ export function selfView(row: EmployeeBalanceRow, essView: Record<string, boolea
  * type whose every figure is hidden but which holds days is still listed (as dashes), exactly as /leave still
  * draws its card. A retired type that still holds days has a non-zero Balance and stays.
  */
-export function hasAnyFigure(row: EmployeeBalanceRow): boolean {
+export function hasAnyFigure(hr: EmployeeBalanceRow): boolean {
   return [
-    row.fullEntitlement,
-    row.ytdEntitled,
-    row.broughtForward,
-    row.taken,
-    row.pending,
-    row.adjustment,
-    row.share,
-    row.pendingShare,
-    row.overutilized,
-    row.forfeitedBf,
-    row.balance,
-    row.available,
+    hr.fullEntitlement,
+    hr.ytdEntitled,
+    hr.broughtForward,
+    hr.taken,
+    hr.pending,
+    hr.adjustment,
+    hr.share,
+    hr.pendingShare,
+    hr.overutilized,
+    hr.forfeitedBf,
+    hr.balance,
+    hr.available,
   ].some((v) => v != null && v !== 0);
 }
 

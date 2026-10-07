@@ -204,10 +204,12 @@ async function world() {
     validFrom: '2020-01-01',
   });
 
-  // Aisyah: 16 days this year + 5 brought forward from last year, one approved and one pending EL day-pair
+  // Aisyah: 16 days this year (+2 on 1 September) + 5 brought forward from last year, one approved and one pending EL day-pair
   // drawn from the pool, 4 days on the hidden type, 3 on the retired type.
   await ledger(aisyah.employmentId, AL, 16, `${Y}-01-01`);
   await ledger(aisyah.employmentId, AL, 5, `${Y - 1}-06-01`);
+  // A credit BETWEEN the two As-at dates: without it a read that ignored asOf would answer both dates alike.
+  await ledger(aisyah.employmentId, AL, 2, `${Y}-09-01`);
   await ledger(aisyah.employmentId, HID, 4, `${Y}-01-01`);
   await ledger(aisyah.employmentId, ARC, 3, `${Y}-01-01`);
   const ctx = adminCtx(b);
