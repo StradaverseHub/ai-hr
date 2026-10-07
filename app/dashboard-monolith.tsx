@@ -197,13 +197,19 @@ export function monolithDashboardBlocks(p: {
               key: String(i),
               lead: relativeTime(a.occurredAt, p.nowMs),
               title: humanizeEvent(a.eventType),
-              sub: a.actorName ?? a.actorType,
-              right: href ? (
-                <Link href={href} className={cn(MONO_LABEL, 'text-ink underline-offset-4 hover:text-signal-text')}>
-                  {aggregateLabel(a.aggregateType)}
-                </Link>
-              ) : (
-                <span className={cn(MONO_LABEL, 'text-mid')}>{aggregateLabel(a.aggregateType)}</span>
+              // The record it touched, then who — the same two facts, in the same order, as the Classic line.
+              sub: (
+                <>
+                  {href ? (
+                    <Link href={href} className="text-ink underline underline-offset-4 hover:text-signal-text">
+                      {aggregateLabel(a.aggregateType)}
+                    </Link>
+                  ) : (
+                    aggregateLabel(a.aggregateType)
+                  )}
+                  {' · '}
+                  {a.actorName ?? a.actorType}
+                </>
               ),
             };
           })}

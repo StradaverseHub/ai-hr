@@ -1108,25 +1108,20 @@ export default async function MePage({
     </>
   );
 
+  // The board's stat cells, from values this page already holds; a cell with no value is left out, not faked.
+  const meCells = [
+    ...(lastPayslip
+      ? [{ label: t('lastPayslip'), value: rm(lastPayslip.net), sub: `${lastPayslip.payPeriod} · ${lastPayslip.company}` }]
+      : []),
+    ...(groupService ? [{ label: tp('employmentInfo.groupService'), value: groupService, sub: emp.hiredOn ?? undefined }] : []),
+  ];
+
   const monolithHead = (
     <>
       <div data-tour="me-intro">
         <MonoPageHeader kicker={identityLine} title={t('title')} />
       </div>
-      <Cells
-        items={[
-          {
-            label: t('todayHeading'),
-            value: todayRow ? (todayRow.checkOutAt ? `${todayRow.checkInAt} → ${todayRow.checkOutAt}` : todayRow.checkInAt) : '—',
-            sub: todayRow ? t(`attStatus.${todayRow.status}`) : today,
-          },
-          ...(lastPayslip
-            ? [{ label: t('lastPayslip'), value: rm(lastPayslip.net), sub: `${lastPayslip.payPeriod} · ${lastPayslip.company}` }]
-            : []),
-          ...(groupService ? [{ label: tp('employmentInfo.groupService'), value: groupService, sub: emp.hiredOn ?? undefined }] : []),
-        ]}
-        className="monolith:[&_b]:text-[28px]"
-      />
+      {meCells.length > 0 && <Cells items={meCells} className="monolith:[&_b]:text-[28px]" />}
       <ErrorBanner message={error} />
       {/* The geofenced punch, as a section — the same capability, the same two actions, in the same place. */}
       <div data-tour="me-attendance">
