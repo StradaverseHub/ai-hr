@@ -132,7 +132,10 @@ describe('the Continue gate', () => {
     expect(gate).toContain("loaded.reason === 'no-contributions'");
     // …decided in the LOADER, so the download routes refuse the same selection (a direct link included).
     const shared = code('app/payroll/borang-a/shared.ts');
-    expect(shared).toContain("if (!borangAHasContributions(result.rows)) return { ok: false, reason: 'no-contributions' };");
+    expect(shared).toContain("if (p.refuseEmpty !== false && !borangAHasContributions(result.rows)) return { ok: false, reason: 'no-contributions' };");
+    // verify D1 — the i-Akaun upload file (and the Payment Submission shelf behind it) keeps building a zero
+    // month's EPFORMA2: the refusal is the FORM's, and whether KWSP expects a nil filing is unknown.
+    expect(shared).toContain('query: p.query, refuseEmpty: false });');
     for (const r of ['pdf', 'text']) {
       expect(code(`app/payroll/borang-a/${r}/route.ts`)).toContain("loaded.reason === 'no-contributions'");
     }

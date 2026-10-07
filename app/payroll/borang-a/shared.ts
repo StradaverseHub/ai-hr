@@ -163,6 +163,13 @@ export async function loadBorangA(p: {
   periodKey: string;
   query: URLSearchParams;
   includeIncomplete?: boolean;
+  /**
+   * r407 verify D1 — the "nothing to file" refusal is the FORM's (preview, PDF, text): the plan promises no
+   * empty Borang A is drawn. The i-Akaun upload file keeps its pre-r407 behaviour — a zero month still
+   * builds a valid EPFORMA2 with zero totals — because whether KWSP expects a nil filing is UNKNOWN, and a
+   * refusal there would block a filing nobody asked us to stop. `loadBorangAFile` passes false.
+   */
+  refuseEmpty?: boolean;
 }): Promise<BorangALoad> {
   if (!UUID.test(p.companyId) || !PERIOD.test(p.periodKey)) return { ok: false, reason: 'not-found' };
   const { s, scopeIds } = await scopedAdmin();
@@ -190,7 +197,7 @@ export async function loadBorangA(p: {
   if (result.meta.selectionEmpty) return { ok: false, reason: 'selection-empty' };
   // r407 — nothing to file. Checked on the ROWS the read returned, before any readiness gap is reported:
   // naming who is missing a member number on a form that would carry no money is the wrong conversation.
-  if (!borangAHasContributions(result.rows)) return { ok: false, reason: 'no-contributions' };
+  if (p.refuseEmpty !== false && !borangAHasContributions(result.rows)) return { ok: false, reason: 'no-contributions' };
 
   const missing = result.readiness.map((r) => ({ employmentId: r.employmentId, name: r.name, missing: r.missing }));
   // TWO KINDS OF GAP, ONE GATE. `missing` is per-employee; `headerMissing` is employer-level (no EPF
@@ -244,7 +251,7 @@ export async function loadBorangAFile(p: {
   periodKey: string;
   query: URLSearchParams;
 }): Promise<BorangAFileLoad> {
-  const loaded = await loadBorangA({ companyId: p.companyId, periodKey: p.periodKey, query: p.query });
+  const loaded = await loadBorangA({ companyId: p.companyId, periodKey: p.periodKey, query: p.query, refuseEmpty: false });
   if (!loaded.ok) {
     if (loaded.reason === 'not-found') return { ok: false, status: 404, message: 'Not found' };
     if (loaded.reason === 'no-batch') {
