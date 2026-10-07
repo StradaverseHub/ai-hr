@@ -5,7 +5,7 @@ import { cp21Particulars } from '@/core/reporting';
 import { cp21ContinuedCodes, cp21OverflowCodes } from '@/lib/cp21-pdf';
 import { cp22aDmy } from '@/lib/cp22a-pdf';
 import { CP21_FIELDS } from '@/lib/cp21-fields';
-import { CP21_TYPED_PARAMS, cp21TypedQuery, cp21TypedRejections, readCp21Typed } from '@/lib/cp21-review';
+import { CP21_TYPED_PARAMS, cp21TypedQuery, cp21TypedRejections, cp21TypedUnprintable, readCp21Typed } from '@/lib/cp21-review';
 import { btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { MONO_UNDERLINE_FIELD as MONO_FIELD } from '@/components/monolith/classes';
 import { StatutoryPdfViewer } from '@/components/statutory-pdf-viewer';
@@ -58,6 +58,7 @@ export default async function Cp21PreviewPage({
   const query = toQuery(await searchParams);
   const typed = readCp21Typed(query);
   const rejected = cp21TypedRejections(query);
+  const unprintable = cp21TypedUnprintable(query);
 
   const { s, scopeIds } = await scopedAdmin();
   const particulars = await cp21Particulars(s, { employmentId, departureDate: typed.departureDate });
@@ -95,6 +96,11 @@ export default async function Cp21PreviewPage({
         </div>
       </div>
 
+      {unprintable.length > 0 && (
+        <div role="alert" data-cp21-unprintable className={warnCls}>
+          {t('unprintableNote', { codes: unprintable.join(', ') })}
+        </div>
+      )}
       {rejected.length > 0 && (
         <div role="alert" data-cp21-rejected className={warnCls}>
           {t('rejectedNote', { codes: rejected.join(', ') })}

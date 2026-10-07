@@ -4861,6 +4861,7 @@
       "resident_no": "Tidak",
       "resident_unknown": "Tiada rekod — dibiarkan kosong",
       "rejectedNote": "Tidak digunakan kerana nilainya bukan jawapan yang dibenarkan: {codes}. Tarikh mesti tarikh sebenar, dan tarikh kembali mesti selepas tarikh berlepas.",
+      "unprintableNote": "Sesetengah aksara dalam {codes} tidak boleh dicetak pada borang LHDN dan akan dipaparkan sebagai \"?\". Taip dalam huruf Rumi, contohnya alamat dalam bahasa Inggeris atau Melayu.",
       "periodTitle": "Gaji setakat ini",
       "periodNoteDeparture": "Bahagian B meliputi gaji yang diproses dari {from} hingga {to}: akhir gaji terakhir yang diproses sehingga bulan berlepas, tidak sekali-kali selepas tarikh berlepas ({departure}).",
       "periodNoteToday": "Bahagian B meliputi gaji yang diproses dari {from} hingga {to}: akhir gaji terakhir yang diproses setakat ini tahun ini. Taip tarikh berlepas untuk menamatkannya pada bulan berlepas.",

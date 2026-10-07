@@ -4861,6 +4861,7 @@
       "resident_no": "Không",
       "resident_unknown": "Chưa ghi nhận — để trống",
       "rejectedNote": "Không dùng vì giá trị không phải câu trả lời hợp lệ: {codes}. Ngày phải là ngày có thật, và ngày trở lại phải sau ngày rời đi.",
+      "unprintableNote": "Một số ký tự trong {codes} không thể in trên biểu mẫu của LHDN và sẽ hiện thành \"?\". Hãy gõ bằng chữ Latinh không dấu, ví dụ địa chỉ bằng tiếng Anh hoặc tiếng Mã Lai.",
       "periodTitle": "Lương đến nay",
       "periodNoteDeparture": "Phần B gồm bảng lương đã xử lý từ {from} đến {to}: cuối kỳ lương đã xử lý gần nhất tính đến tháng rời đi, không bao giờ sau ngày rời đi ({departure}).",
       "periodNoteToday": "Phần B gồm bảng lương đã xử lý từ {from} đến {to}: cuối kỳ lương đã xử lý gần nhất trong năm nay. Nhập ngày rời đi để kết thúc ở tháng rời đi.",

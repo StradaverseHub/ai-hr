@@ -4861,6 +4861,7 @@
       "resident_no": "否",
       "resident_unknown": "未记录 — 留空",
       "rejectedNote": "以下栏位的值不是允许的答案，因此未使用：{codes}。日期必须是真实日期，返回日期必须晚于离境日期。",
+      "unprintableNote": "{codes} 中的部分字符无法印在 LHDN 的表格上，会显示为“?”。请改用拉丁字母输入，例如用英文或马来文填写地址。",
       "periodTitle": "至今的薪资",
       "periodNoteDeparture": "B 部分涵盖从 {from} 到 {to} 已处理的薪资：截至离境月份最后一次已处理薪资的期末，绝不晚于离境日期（{departure}）。",
       "periodNoteToday": "B 部分涵盖从 {from} 到 {to} 已处理的薪资：本年至今最后一次已处理薪资的期末。输入离境日期即可改为截至离境月份。",

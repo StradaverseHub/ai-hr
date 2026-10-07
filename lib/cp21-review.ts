@@ -85,6 +85,19 @@ export function readCp21Typed(q: URLSearchParams): Cp21Typed {
 }
 
 /** The typed boxes whose value was present but not an allowed answer, by form code (A3, A16, A18). */
+/**
+ * r415 verify D2 — typed text LHDN's form cannot print. The AcroForm font is WinAnsi (Latin-1): Chinese,
+ * Thai, Tamil or Vietnamese letters print as "?". Named on the preview so the operator retypes them in Latin
+ * letters; the value is kept, never silently altered here.
+ */
+export function cp21TypedUnprintable(q: URLSearchParams): string[] {
+  const bad = (v: string | null) => /[^\x20-\x7E\xA0-\xFF\r\n]/.test(v ?? '');
+  const out: string[] = [];
+  if (bad(q.get(CP21_TYPED_PARAMS.reason))) out.push('A14');
+  if (bad(q.get(CP21_TYPED_PARAMS.overseasAddress))) out.push('A15');
+  return out;
+}
+
 export function cp21TypedRejections(q: URLSearchParams): string[] {
   return read(q).rejected;
 }

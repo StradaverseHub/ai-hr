@@ -5264,6 +5264,7 @@
       "resident_no": "No",
       "resident_unknown": "Not recorded — left blank",
       "rejectedNote": "Not used, because the value is not an allowed answer: {codes}. A date must be a real date, and the return date must be after the departure date.",
+      "unprintableNote": "Some characters in {codes} cannot be printed on LHDN's form and will show as \"?\". Type them in Latin letters, for example the address in English or Malay.",
       "periodTitle": "Pay so far",
       "periodNoteDeparture": "Section B covers processed payroll from {from} to {to}: the end of the last processed payroll up to the departure month, never after the departure date ({departure}).",
       "periodNoteToday": "Section B covers processed payroll from {from} to {to}: the end of the last processed payroll so far this year. Type the departure date to end it at the departure month instead.",

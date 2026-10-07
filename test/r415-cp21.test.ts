@@ -407,3 +407,15 @@ describe('r415 · CP22 and CP22A did not move', () => {
     }
   });
 });
+
+describe('r415 verify D2 · typed text the form cannot print is named, not silently turned into "?"', () => {
+  it('flags A14 and A15 when they hold characters outside Latin-1, and nothing for plain text', async () => {
+    const { cp21TypedUnprintable, CP21_TYPED_PARAMS } = await import('../lib/cp21-review');
+    const q = (o: Record<string, string>) => new URLSearchParams(Object.entries(o));
+    expect(cp21TypedUnprintable(q({ [CP21_TYPED_PARAMS.reason]: 'Transfer to Singapore office', [CP21_TYPED_PARAMS.overseasAddress]: '1 Raffles Place\nSingapore 048616' }))).toEqual([]);
+    expect(cp21TypedUnprintable(q({ [CP21_TYPED_PARAMS.overseasAddress]: '北京市朝阳区' }))).toEqual(['A15']);
+    expect(cp21TypedUnprintable(q({ [CP21_TYPED_PARAMS.reason]: 'Về nước', [CP21_TYPED_PARAMS.overseasAddress]: 'Hà Nội' }))).toEqual(['A14', 'A15']);
+    // Latin-1 accents print fine and are not flagged.
+    expect(cp21TypedUnprintable(q({ [CP21_TYPED_PARAMS.overseasAddress]: 'Zürich, Schweiz' }))).toEqual([]);
+  });
+});
