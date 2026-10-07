@@ -189,8 +189,12 @@ describe('388e53c2 · My Leave means your own leave again', () => {
     // above the early return — so the list follows the read rather than the read being kept for the list.
     // r302 (6c9802c9): the balance read became the per-year dashboard read (core/my-leave.ts calls
     // leaveBalances inside it), so the list follows the read again — the property is unchanged.
-    for (const r of ['myLeaveDashboard(session', 'loadOwnLeaveHistory({ session', 'listEmployees(session']) {
-      expect(leavePage.indexOf(r), r).toBeGreaterThan(guardAt);
+    // UPDATED BY r397: every self-service read is made by ONE loader call (app/leave/my-leave-data.ts), so the
+    // property is that the CALL comes after the early return — and that the loader holds the reads.
+    expect(leavePage.indexOf('await loadMyLeave('), 'the loader call').toBeGreaterThan(guardAt);
+    const loader = read('app/leave/my-leave-data.ts');
+    for (const r of ['myLeaveDashboard(session', 'loadOwnUpcomingLeave({ session', 'listEmployees(session']) {
+      expect(loader.indexOf(r), r).toBeGreaterThan(-1);
     }
   });
 
@@ -217,7 +221,8 @@ describe('388e53c2 · My Leave means your own leave again', () => {
       // r302 (6c9802c9) — the employee's balances are the dashboard now (the My balances table is gone by the
       // approved plan); what this case defends — the self-service half is still here — is unchanged.
       '<MyLeaveDashboard',
-      'loadOwnLeaveHistory({ session',
+      // UPDATED BY r397: the own-leave reads are made by the page's loader (app/leave/my-leave-data.ts).
+      'await loadMyLeave({ session',
       'const ess = !admin;',
     ]) {
       expect(leavePage.includes(kept), kept).toBe(true);

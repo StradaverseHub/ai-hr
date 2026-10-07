@@ -24,7 +24,7 @@ import {
 // 5f2e20fb — the SAME filter control the three HR leave screens use, on the employee's own history box.
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 // 5206539f — `leave.apply_on_behalf` is resolved by the SAME function requestLeave's own gate calls
-// (canApplyLeaveOnBehalf, asked in ./my-leave-data.ts since r397), so the selector below and the refusal in the
+// (the on-behalf permission read, asked in ./my-leave-data.ts since r397), so the selector below and the refusal in the
 // service can never answer differently.
 import { todayInKualaLumpur } from '@/core/leave';
 import { isReplacementLeaveType, pickReplacementLeaveType } from '@/core/ess-view';
@@ -82,7 +82,7 @@ import { LeaveDateOutcome } from '@/components/leave/leave-date-outcome';
 import { LeaveHistoryCards, type LeaveHistoryEntry } from '@/components/leave/leave-history-cards';
 // Shared Leave Group display (feedback 46afcc48): the pooled allowance several leave types draw on, drawn
 // as ONE balance, independent of each member type's own placement. r302: a tile in the dashboard grid. Read
-// by sharedLeaveGroupBalances in ./my-leave-data.ts (r397).
+// by the shared-group balance read in ./my-leave-data.ts (r397).
 // r341 (8d3a7bff) — which leave-type card a shared group's ceiling belongs on, decided in one pure place.
 import { planSharedGroupCeilings } from '@/lib/shared-leave-pool';
 import { durationLabel } from '@/lib/leave-duration';
@@ -290,8 +290,7 @@ export default async function LeavePage({
   //
   // Company-scoped: an override row may be granted for one company of a group, so the viewer's OWN company
   // (off the already-loaded employee list — `me` does not carry the id) is what this question is asked in.
-  // r397: asked by the loader as `canApplyLeaveOnBehalf(session, myCompanyId)`, myCompanyId being
-  // `active.find((e) => e.employmentId === me.employmentId)?.companyId ?? null` over the same employee list.
+  // r397: asked by the loader (./my-leave-data.ts), in the viewer's own company taken off the same employee list.
   // WHO a holder may pick: everyone in their scope, with THE VIEWER LEADING THE LIST. That ordering is the
   // one ad965821 rule that survives — LeaveDurationFields defaults employmentId to the first option, so
   // without it a holder opening Request Leave would be applying for whoever `listEmployees` returned first
@@ -398,8 +397,8 @@ export default async function LeavePage({
   // THIS IS NOT THE ENFORCEMENT. `submitReplacementLeaveRequest` re-derives all three server-side; this
   // read exists so the button is not offered where the submission would be refused. Hiding it is the
   // courtesy, refusing the POST is the control.
-  // r397: read by the loader — replacementRequestAvailability(session, me.employmentId, today). `ess` is necessarily
-  // true past the short-page return, which is the only path that reaches the loader.
+  // r397: read by the loader (./my-leave-data.ts), as of today. `ess` is necessarily true past the short-page
+  // return, which is the only path that reaches the loader.
   // ⚠️ r358 70294f7a — THE TIERS NO LONGER DEPEND ON THE SWITCH, AND THAT IS THE ITEM. This read
   // `extendedHoursOfferForEmployment`, which returns null when the company has not switched extended
   // hours on — false on EVERY company — and the table read that null as "no tier ladder exists" and
@@ -429,8 +428,8 @@ export default async function LeavePage({
   // for" from leaveTypeApplySummary, the Apply popup's own figure (= the submit guard, test/r75). Hidden types
   // never arrive; Primary types come before Secondary. The read is where the r209 pool story (whose breakdown a
   // borrower tells) and the ec991c2a archived gate now live; this page computes no balance.
-  // r397: read by the loader — myLeaveDashboard(session, me.employmentId, { today, year: sp.leaveYear, locale }) —
-  // with `leaveYearAsOf` = the chosen year's 31 December when it is not the current year, else today.
+  // r397: read by the loader (./my-leave-data.ts) for the chosen leave year, with `leaveYearAsOf` = that year's
+  // 31 December when it is not the current year, else today.
 
   // ── Replacement Leave: the per-credit register behind its card (feedback 00307068) ─────────────────────
   // Replacement Leave is a stack of separately earned credits, so its card opens a TABLE of those credits
@@ -461,7 +460,7 @@ export default async function LeavePage({
   // `sharedLeaveGroupBalances` returns only the groups HR has PLACED (Hidden groups never come back), each with
   // the genuinely drawable figure. r302: placement is ORDER now — Primary groups first, then Secondary — drawn
   // as tiles in the dashboard grid, for the chosen year (a group's cycle is the calendar year of `asOf`).
-  // r397: read by the loader — sharedLeaveGroupBalances(session, me.employmentId, { locale, asOf: leaveYearAsOf }).
+  // r397: read by the loader (./my-leave-data.ts), as of `leaveYearAsOf`.
   // Pre-translate here (t() is server-side) so the tile stays a plain presentational element.
   const sharedGroupEntriesAt = (placement: 'primary' | 'secondary') =>
     sharedGroupBalances
