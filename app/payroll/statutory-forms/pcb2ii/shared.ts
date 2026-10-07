@@ -89,6 +89,9 @@ export async function pcb2iiPdfResponse(req: Request, disposition: Pcb2iiDisposi
     if (validPcb2iiSelectedDate(selectedDate)) back.searchParams.set('selectedDate', selectedDate);
     back.searchParams.set('error', code);
     if (field) back.searchParams.set('field', field);
+    // r402: the viewer follows this refusal at the top level (no new tab any more), so the picker must come
+    // back with the same people ticked; it pre-ticks `id`s, filtered to that year's population.
+    for (const id of unique) back.searchParams.append('id', id);
     return new Response(null, {
       status: 303,
       headers: { Location: back.toString(), 'Cache-Control': 'private, no-store' },

@@ -527,6 +527,10 @@ describe('r379 · required date and batch preparation refusal', () => {
       const back = new URL(response.headers.get('Location')!);
       expect(back.searchParams.get('error')).toBe('signatory');
       expect(back.searchParams.get('selectedDate')).toBe('2027-02-28');
+      // r402: the in-app viewer follows this refusal at the top level, so the picker must come back ticked.
+      const sent = [...new Set(new URL(url(route, ok())).searchParams.getAll('id'))];
+      expect(sent.length, 'the request ticked somebody').toBeGreaterThan(0);
+      expect(back.searchParams.getAll('id'), 'the refusal keeps the ticked people').toEqual(sent);
       expect(await response.text()).toBe('');
     }
   });
