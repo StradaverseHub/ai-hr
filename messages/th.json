@@ -4508,8 +4508,8 @@
       "planned_perkeso_employee_registration_hint": "การลงทะเบียน PERKESO สำหรับพนักงานใหม่ ยังไม่ได้สร้าง",
       "planned_lhdn_cp21": "CP21 — พนักงานเดินทางออกจากมาเลเซีย",
       "planned_lhdn_cp21_hint": "การแจ้งว่าพนักงานกำลังจะเดินทางออกจากมาเลเซีย ยังไม่ได้สร้าง",
-      "planned_lhdn_cp22a": "CP22A — การเคลียร์ภาษีเมื่อสิ้นสุดการจ้าง",
-      "planned_lhdn_cp22a_hint": "ผู้ที่ลาออกและต้องใช้ CP22A ถูกระบุไว้แล้วในรายการงาน CP22 / CP22A ด้านล่างของหน้านี้ แต่ตัวหนังสือแจ้งเองยังไม่ได้สร้าง",
+      "planned_lhdn_cp22a": "[retired r409 — replaced by planned_lhdn_cp22a_cessation; it called CP22A 'tax clearance on cessation', which is wrong: on LHDN's form CP22A is the private-sector employer's notice that an employee has stopped working]",
+      "planned_lhdn_cp22a_hint": "[retired r409 — replaced by planned_lhdn_cp22a_cessation_hint, together with planned_lhdn_cp22a]",
       "planned_lhdn_cp39a": "CP39A — การหักภาษีจากเงินค้างจ่าย",
       "planned_lhdn_cp39a_hint": "หนังสือแสดงการหักภาษีจากเงินค้างจ่าย ยังไม่ได้สร้าง",
       "fidelity_agency_layout": "ผังของหน่วยงาน",
@@ -4607,7 +4607,11 @@
       "cycles_partial": "คุณไม่ได้เลือกรอบการจ่ายเงินเดือนอย่างน้อยหนึ่งรอบ แบบฟอร์มจะมีเฉพาะรอบที่เลือก และไม่มีช่องที่ระบุว่าแต่ละบรรทัดมาจากรอบใด",
       "refusal_cycles_no_runs": "ไม่มีเงินเดือนที่ประมวลผลแล้วสำหรับบริษัทและเดือนนี้ จึงไม่มีการสร้างเอกสารใด",
       "refusal_cycles_no_data": "ไม่มีเงินสมทบที่ประมวลผลแล้วสำหรับแบบฟอร์มนี้ในรอบการจ่ายเงินเดือนที่เลือก จึงไม่มีการสร้างเอกสารใด",
-      "refusal_cycles_invalid": "การเลือกรอบการจ่ายเงินเดือนไม่ถูกต้อง กรุณาเลือกใหม่อีกครั้ง"
+      "refusal_cycles_invalid": "การเลือกรอบการจ่ายเงินเดือนไม่ถูกต้อง กรุณาเลือกใหม่อีกครั้ง",
+      "planned_lhdn_cp22a_cessation": "CP22A — แบบแจ้งพนักงานพ้นสภาพ (ภาคเอกชน)",
+      "planned_lhdn_cp22a_cessation_hint": "แบบแจ้งที่นายจ้างภาคเอกชนส่งถึง LHDN เมื่อพนักงานหยุดทำงาน: ลาออก เกษียณ หรือเสียชีวิต ผู้ที่ลาออกและต้องใช้แบบนี้ถูกระบุไว้แล้วในรายการงาน CP22 / CP22A ด้านล่างของหน้านี้ แต่ตัวแบบแจ้งยังไม่ได้สร้าง",
+      "refusal_cycles_no_deductions": "ไม่มีผู้ใดถูกหัก PCB หรือ CP38 ในรอบเงินเดือนที่คุณเลือก จึงไม่ได้สร้าง CP39",
+      "refusal_year_no_payroll": "ไม่มีเงินเดือนที่ประมวลผลแล้วของบริษัทนี้ในปีที่คุณเลือก จึงไม่ได้สร้างเอกสารใด"
     },
     "ea": {
       "backToReports": "รายงาน",
@@ -7083,7 +7087,10 @@
       "pcbPaymentKindCp38": "CP38 (คำสั่งผ่อนชำระ)",
       "pcbPaymentReceiptRef": "เลขที่ใบเสร็จ / สลิปธนาคาร / ธุรกรรม",
       "pcbPaymentPaidOn": "วันที่ชำระ",
-      "pcbPaymentSave": "บันทึก"
+      "pcbPaymentSave": "บันทึก",
+      "cyclesAll": "ทุกรอบเงินเดือน",
+      "viewerBack": "เปลี่ยนการเลือก",
+      "previewBlocked": "รายงานจะแสดงที่นี่เมื่อกรอกข้อมูลที่ขาดตามรายการด้านบนครบแล้ว"
     },
     "pcbDetail": {
       "exemptionHeading": "ข้อมูลการยกเว้นภาษี",
@@ -7804,6 +7811,17 @@
       "runTypeOffCycle": "นอกรอบ",
       "runTypeBonus": "โบนัส",
       "runTypeAdjustment": "ปรับปรุง"
+    },
+    "cp8dPreview": {
+      "title": "แบบ E / CP8D — แบบรายงานประจำปี (LHDN)",
+      "viewerBack": "เปลี่ยนการเลือก",
+      "tileYear": "ปี",
+      "tileEmployees": "พนักงานที่รวมอยู่",
+      "notArtworkTitle": "รูปแบบของเรา ไม่ใช่แบบ E ของ LHDN",
+      "notArtwork": "PDF นี้คือตาราง CP8D รายพนักงานของปีนั้น ในรูปแบบคอลัมน์ของเราเอง: เป็นไฟล์เดียวกับที่ปุ่มดาวน์โหลด PDF บันทึก ไม่ใช่แม่แบบแบบ E หรือ CP8D ของ LHDN ยื่นผ่าน e-Filing (แบบ E)",
+      "partATitle": "จำนวนพนักงานในแบบ E ส่วน A",
+      "partAHint": "คำนวณจากเงินเดือนชุดเดียวกับตาราง แสดงไว้ที่นี่และไม่ได้พิมพ์ลงใน PDF",
+      "figuresLink": "เปิดตารางตัวเลข (และบันทึกการสร้างครั้งนี้)"
     }
   },
   "admin": {

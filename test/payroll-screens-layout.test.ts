@@ -146,6 +146,10 @@ const WIDENED_LATER = [
   // preview shows the actual PDF across the full width of the screen at its true A4 shape"). It left
   // CAP_SURVIVORS / CAPPED_BY_DESIGN for the same reason Borang A did.
   'app/payroll/borang-8a/preview/page.tsx',
+  // r409 (79f3f64d) — the CP39 review screen became the same full-width viewer ("This is the same path as
+  // EA, Borang A and Borang 8A"), and Form E / CP8D gained one. Both left / never entered CAP_SURVIVORS.
+  'app/payroll/cp39/preview/page.tsx',
+  'app/payroll/cp8d/preview/page.tsx',
 ] as const;
 
 const ALL_WIDE = [...STANDARDISED, ...ALREADY_WIDE, ...WIDENED_LATER];
@@ -191,9 +195,11 @@ const PAYROLL_MODULE_ON_DISK = [
  * the old cap"). It is admitted rather than swept because it is the same category as its three
  * neighbours: a printed LHDN form built to mirror the Borang A three-layer split, previewed at the
  * measure of the sheet it prints to. If CP39's preview ever stops being a document, this line goes.
+ *
+ * ⚠️ r407-r409: Borang A, Borang 8A and CP39 all LEFT this list for the shared full-width PDF viewer (their
+ * previews now show the real page at its true A4 shape), so the figures table is the one survivor.
  */
 const CAP_SURVIVORS = [
-  'app/payroll/cp39/preview/page.tsx',
   'app/payroll/statutory-forms/[formId]/page.tsx',
 ] as const;
 
@@ -229,7 +235,7 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
     const carriers = PAYROLL_MODULE_ON_DISK.filter((f) => read(f).includes('mx-auto max-w-[100rem]'));
     expect(
       carriers,
-      'the Payroll module carries the superseded cap somewhere other than the printed documents (two since r408)',
+      'the Payroll module carries the superseded cap somewhere other than the printed documents (one since r408 + r409)',
     ).toEqual([...CAP_SURVIVORS]);
   });
 
@@ -243,7 +249,7 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
    * thought about. So this one applies `capsPage` to the module READ FROM DISK and pins the exceptions.
    *
    * WHAT THE LIST BELOW IS, honestly: a snapshot of every Payroll file that caps its container TODAY, not
-   * a claim that each was individually approved to. Three categories are genuinely settled — the three
+   * a claim that each was individually approved to. Three categories are genuinely settled — the two
    * printed documents (CAP_SURVIVORS), the single-record forms of section C, and the statutory
    * CONFIGURATION pages, which are one-record settings forms of the same kind. The rest are simply
    * untouched by any width round so far. The value of naming them is that adding a NEW capped Payroll
@@ -252,7 +258,6 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
    */
   const CAPPED_BY_DESIGN = [
     // Printed statutory documents — see CAP_SURVIVORS.
-    'app/payroll/cp39/preview/page.tsx',
     'app/payroll/statutory-forms/[formId]/page.tsx',
     // r256 858a1128 — the per-form CRITERIA step STOOD HERE (`max-w-3xl`, "a prompt stretched across a 27"
     // monitor puts its label at one edge and its select at the other"). ⚠️ r402 (f3cf2444) moved it to

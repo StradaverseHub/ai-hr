@@ -14,7 +14,7 @@
  * form that is easier to copy. Both call `loadCp39Form`, so there is one gate, not two.
  */
 import { cp39FormFilename, cp39FormTextExport } from '@/lib/cp39-form';
-import { describeCp39Gaps, loadCp39Form } from '../shared';
+import { NO_DEDUCTIONS, describeCp39Gaps, loadCp39Form } from '../shared';
 
 export const runtime = 'nodejs';
 
@@ -31,6 +31,15 @@ export async function GET(req: Request) {
     if (loaded.reason === 'no-batch') {
       return new Response('No payroll run for this month — run payroll first.', { status: 422 });
     }
+    // r409 (item 79f3f64d) — THREE MORE REFUSALS. The review screen's Continue gate answers each of these
+    // before any link is drawn, so here they answer a hand-edited or stale link: a route is not a screen.
+    if (loaded.reason === 'selection-empty') {
+      return new Response('No payroll run for this month matches the payroll cycles you selected.', {
+        status: 422,
+      });
+    }
+    if (loaded.reason === 'bad-selection') return new Response(loaded.message, { status: 422 });
+    if (loaded.reason === 'no-deductions') return new Response(NO_DEDUCTIONS, { status: 422 });
     return new Response(`Cannot produce a CP39: ${describeCp39Gaps(loaded)}.`, { status: 422 });
   }
 

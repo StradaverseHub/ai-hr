@@ -1,17 +1,25 @@
+import { notFound, redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { listCompanies } from '@/core/read';
+import { payslipCycleLabel } from '@/core/payslip-cycle-label';
+import { listFilableRunsForPeriod } from '@/packs/payroll/service';
 import { scopedAdmin } from '@/lib/scope';
 import { formatMyIc, money } from '@/lib/cp39-form';
-import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
-import { Card, Field, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
-import { loadCp39Form } from '../shared';
+import { todayInKualaLumpur } from '@/lib/hr-date';
+import { parseRunSelection } from '@/lib/payroll-run-selection';
+import { Card, Field, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
+import { StatutoryPdfViewer } from '@/components/statutory-pdf-viewer';
+import { criteriaHref, criteriaReturnHref, cyclesRefusalHref } from '../../statutory-forms/criteria';
+import { CP39_REPORT_ID, loadCp39Form } from '../shared';
+import { cp39DocumentPairs, cp39DocumentQuery, cp39Query, type Search } from '../query';
 // 72b100cd — the payment reference this month's PCB 2(II) will print, read beside the return it settles.
 import { pcbPaymentsForYear } from '@/core/pcb-payment';
 import { recordPcbPaymentAction } from '../../pcb-payment-actions';
 
 /**
- * e0cd4583 — the CP39 review screen: pick a payroll cycle month, check the statement, fill in the
- * preparer block, then download it two ways.
+ * e0cd4583 — the CP39 review screen: check the statement for the company, month and payroll cycles chosen
+ * on the criteria step, fill in the preparer block, then download it (the drawn statement, its text twin
+ * and the e-Data PCB upload file).
  *
  * "FILTER → PREVIEW (auto-filled data shown, the preparer block and payment fields editable) → DOWNLOAD"
  * is the request's own workflow, and it is why this screen exists beside the generic [formId] figures
@@ -19,6 +27,24 @@ import { recordPcbPaymentAction } from '../../pcb-payment-actions';
  * what it cannot do is carry the preparer inputs, because it does not know what a CP39 is. So the shelf
  * card opens the figures screen as every other form does, and the figures screen hands you this one for
  * the printed document itself.
+ *
+ * ── r409 (item 79f3f64d): CHOOSE, CONTINUE, LOOK, DOWNLOAD — Borang A's r407 path, copied ───────────
+ * This is now where the CP39 criteria step's Continue lands (`runSelection.action` on `my.cp39`): Company,
+ * Year, Month and Payroll Cycle (Select All ticked) are chosen THERE, and "Change selection" goes back to it
+ * with the choice kept. The old Company / Year / Month filter card on this screen is gone, and an arrival
+ * that names no company or no month goes to the step rather than defaulting to one (r256).
+ *
+ *   • THE CONTINUE GATE RUNS HERE, BEFORE ANYTHING IS DRAWN. No processed run for the month, an invalid
+ *     cycle selection, ticked cycles that are not in the month, or a selection on which nobody had PCB or
+ *     CP38 deducted sends the operator BACK to the step (`cyclesRefusalHref`) with the refusal in words.
+ *     No empty statement is produced.
+ *   • THE STATEMENT IS SHOWN IN THE APP: the shared viewer frames `../pdf?…&disposition=inline`, the
+ *     download route's own bytes served inline. Its Download buttons are the same routes, same parameters.
+ *   • THE SELECTION REACHES EVERY SURFACE: frame, the three downloads and the schedule form's hidden
+ *     inputs are all built from `cp39DocumentPairs` (../query.ts), which carries `run`.
+ *   • UNCHANGED: the readiness lists, the warnings, the schedule table, the preparer and payment inputs and
+ *     the PCB payment reference cards. The 72b100cd cards stay on this path because
+ *     app/payroll/pcb-payment-actions.ts revalidates it.
  *
  * GET-DRIVEN, NO CLIENT STATE, NO SERVER ACTION — r191's CP22 and r194's Borang A review screens' shape.
  * The typed inputs travel in the query string, so the reviewed statement is a URL: it re-opens, bookmarks,
@@ -64,100 +90,88 @@ const PREPARER_FIELD_LABEL: Record<string, string> = {
   preparerPhone: 'prepField_phone',
 };
 
-/** Default to the month just ENDED — the one whose CP39 payment is actually due. Same rule as the shelf. */
-function previousMonth(today: string): string {
-  const y = Number(today.slice(0, 4));
-  const m = Number(today.slice(5, 7));
-  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
-}
-
-type Search = Record<string, string | string[] | undefined>;
-
-/** The screen's own params → the URLSearchParams the shared loader reads. One conversion, here. */
-function toQuery(sp: Search): URLSearchParams {
-  const q = new URLSearchParams();
-  for (const [k, v] of Object.entries(sp)) if (typeof v === 'string') q.set(k, v);
-  return q;
-}
+/** The run-type word for a cycle label, through an EXPLICIT map (the shared picker's own words). */
+const RUN_TYPE_KEY: Record<string, 'runTypeRegular' | 'runTypeOffCycle' | 'runTypeBonus' | 'runTypeAdjustment'> = {
+  regular: 'runTypeRegular',
+  off_cycle: 'runTypeOffCycle',
+  bonus: 'runTypeBonus',
+  adjustment: 'runTypeAdjustment',
+};
 
 export default async function Cp39PreviewPage({ searchParams }: { searchParams: Promise<Search> }) {
   const t = await getTranslations('payroll.cp39Form');
+  const tf = await getTranslations('payroll.statutoryForms');
+  const tr = await getTranslations('payroll.runPicker');
   const locale = await getLocale();
   const sp = await searchParams;
+  const one = (k: string) => (typeof sp[k] === 'string' ? (sp[k] as string) : '');
 
   const { scopeIds, s } = await scopedAdmin();
   const companies = (await listCompanies(s)).filter((c) => !c.archivedAt && scopeIds.includes(c.id));
-  // An out-of-scope companyId in the URL falls back to the first company this admin CAN administer rather
-  // than being honoured — the same rule the [formId] screen and the download routes apply, so the three
-  // cannot disagree about which company is being looked at.
-  const requested = typeof sp.companyId === 'string' && scopeIds.includes(sp.companyId) ? sp.companyId : '';
-  const companyId = requested || companies[0]?.id || '';
+  // An out-of-scope companyId is treated as ABSENT, the rule the download routes apply; and absent goes to
+  // the criteria step (r256), never to "the first company this admin can administer".
+  const companyId = scopeIds.includes(one('companyId')) ? one('companyId') : '';
 
   const today = todayInKualaLumpur();
-  const spPeriod = typeof sp.periodKey === 'string' ? sp.periodKey : '';
-  const fallback = /^\d{4}-\d{2}$/.test(spPeriod) ? spPeriod : previousMonth(today);
-  const year = typeof sp.year === 'string' && /^\d{4}$/.test(sp.year) ? sp.year : fallback.slice(0, 4);
-  const month = MONTHS.includes(sp.month as (typeof MONTHS)[number]) ? (sp.month as string) : fallback.slice(5, 7);
+  // The legacy `periodKey` (YYYY-MM) is still accepted — the [formId] figures screen's link carries it.
+  const legacy = /^\d{4}-(0[1-9]|1[0-2])$/.test(one('periodKey')) ? one('periodKey') : '';
+  const year = /^\d{4}$/.test(one('year')) ? one('year') : legacy.slice(0, 4);
+  const month = MONTHS.includes(one('month') as (typeof MONTHS)[number]) ? one('month') : legacy.slice(5, 7);
+  if (!companyId || !year || !month) redirect(criteriaHref(CP39_REPORT_ID));
   const periodKey = `${year}-${month}`;
-  // 72b100cd — the year's payment references for this company, so the two cards below open on what was
-  // recorded rather than blank. Keyed 'YYYY-MM|kind'; a month with no record simply has no entry.
-  const pcbPayments = companyId ? await pcbPaymentsForYear(s, { companyId, year: Number(year) }) : new Map();
-  const years = yearOptions(today, year);
-  const monthFmt = new Intl.DateTimeFormat(locale, { month: 'long', timeZone: 'UTC' });
-  const monthName = (mm: string) => monthFmt.format(new Date(Date.UTC(2000, Number(mm) - 1, 1)));
-  const periodLabel = `${monthName(month)} ${year}`;
-  const companyName = companies.find((c) => c.id === companyId)?.name ?? '—';
 
+  // EVERY value of a repeated `run` (the old conversion kept strings only and dropped the array).
+  const query = cp39Query(sp);
+  const selection = parseRunSelection(query);
+  const runSeqs = selection.ok ? selection.runSeqs : undefined;
+  const criteria = { companyId, year, month, runSeqs };
+
+  // ── THE CONTINUE GATE. Nothing below this block runs for a selection with nothing to file. ──────────
+  if (!selection.ok) redirect(cyclesRefusalHref(CP39_REPORT_ID, criteria, 'cycles_invalid'));
+  const filable = await listFilableRunsForPeriod(s, { companyIds: scopeIds, companyId, periodKey });
+  if (filable.length === 0) redirect(cyclesRefusalHref(CP39_REPORT_ID, criteria, 'cycles_no_runs'));
   // `includeIncomplete` — this screen must be able to RENDER the table in order to name who is missing.
   // The download routes call the same function without it and are refused.
-  const loaded = companyId
-    ? await loadCp39Form({ companyId, periodKey, query: toQuery(sp), includeIncomplete: true })
-    : ({ ok: false, reason: 'not-found' } as const);
+  const loaded = await loadCp39Form({ companyId, periodKey, query, includeIncomplete: true });
+  if (!loaded.ok) {
+    if (loaded.reason === 'no-batch') redirect(cyclesRefusalHref(CP39_REPORT_ID, criteria, 'cycles_no_runs'));
+    if (loaded.reason === 'selection-empty') redirect(cyclesRefusalHref(CP39_REPORT_ID, criteria, 'cycles_no_data'));
+    if (loaded.reason === 'bad-selection') redirect(cyclesRefusalHref(CP39_REPORT_ID, criteria, 'cycles_invalid'));
+    // Nobody on the ticked cycles had PCB or CP38 deducted. Decided in the loader, so every download route
+    // refuses the same selection the same way.
+    if (loaded.reason === 'no-deductions') {
+      redirect(cyclesRefusalHref(CP39_REPORT_ID, criteria, 'cycles_no_deductions'));
+    }
+    // 'not-found': a company whose jurisdiction does not register this form. Same bare answer as the routes.
+    notFound();
+  }
 
-  const filter = (
-    <Card className="overflow-hidden print:hidden">
-      <form method="get" className="flex flex-wrap items-end gap-3 px-4 py-4">
-        <Field label={t('company')}>
-          <select name="companyId" defaultValue={companyId} className={inputCls}>
-            {companies.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label={t('year')}>
-          <select name="year" defaultValue={year} className={inputCls}>
-            {years.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label={t('month')}>
-          <select name="month" defaultValue={month} className={inputCls}>
-            {MONTHS.map((m) => (
-              <option key={m} value={m}>
-                {monthName(m)}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <button className="h-9 rounded-md border border-border px-3 text-sm font-medium hover:bg-accent">
-          {t('show')}
-        </button>
-      </form>
-    </Card>
-  );
+  // 72b100cd — the year's payment references for this company, so the two cards below open on what was
+  // recorded rather than blank. Keyed 'YYYY-MM|kind'; a month with no record simply has no entry.
+  const pcbPayments = await pcbPaymentsForYear(s, { companyId, year: Number(year) });
+  const monthFmt = new Intl.DateTimeFormat(locale, { month: 'long', timeZone: 'UTC' });
+  const periodLabel = `${monthFmt.format(new Date(Date.UTC(2000, Number(month) - 1, 1)))} ${year}`;
+  const companyName = companies.find((c) => c.id === companyId)?.name ?? '—';
+  // The cycles this statement covers, by the names the criteria step showed — or "All payroll cycles".
+  const cyclesText =
+    runSeqs === undefined
+      ? t('cyclesAll')
+      : filable
+          .filter((r) => runSeqs.includes(r.runSeq))
+          .map(
+            (r) =>
+              payslipCycleLabel({
+                cycleName: r.cycleName,
+                runTypeLabel: RUN_TYPE_KEY[r.runType] ? tr(RUN_TYPE_KEY[r.runType]) : null,
+              }) ?? tr('run', { seq: r.runSeq }),
+          )
+          .join(', ');
+  const subtitle = `${companyName} · ${periodLabel} · ${cyclesText}`;
 
-  const header = (
-    <PageHeader
-      title={t('title')}
-      description={`${companyName} · ${periodLabel}`}
-      back={{ href: `/payroll/statutory-forms?companyId=${encodeURIComponent(companyId)}&body=lhdn`, label: t('back') }}
-    />
-  );
+  // ONE list of parameters for the frame, the three downloads and the schedule form's hidden inputs.
+  const documentQuery = cp39DocumentQuery({ companyId, periodKey, runSeqs, query });
+  const hiddenPairs = cp39DocumentPairs({ companyId, periodKey, runSeqs });
+  const backToCriteria = criteriaReturnHref(CP39_REPORT_ID, criteria);
 
   // THE PROVENANCE NOTICE, above everything and never in a tooltip: what comes off this screen looks like
   // a government form and is not one. c99e8358 REWORDED IT RATHER THAN REMOVING IT — the old wording said
@@ -167,26 +181,11 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
   // `agency-layout` is as far as this goes. That is the single claim the statutory-forms fidelity
   // vocabulary exists to keep honest, and the screen that produces the document is where it is said.
   const provenance = (
-    <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+    <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs monolith:rounded-none monolith:border-hairline monolith:bg-transparent">
       <span className="font-medium">{t('notArtworkTitle')}</span>{' '}
       <span className="text-muted-foreground">{t('notArtwork')}</span>
     </div>
   );
-
-  if (!loaded.ok) {
-    return (
-      <div className="mx-auto max-w-[100rem] space-y-6">
-        {header}
-        {provenance}
-        {filter}
-        <Card>
-          <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-            {loaded.reason === 'no-batch' ? t('noBatch', { company: companyName, period: periodLabel }) : t('notFound')}
-          </p>
-        </Card>
-      </div>
-    );
-  }
 
   const { form, missing, headerMissing, preparerMissing, notes } = loaded;
   const ready = missing.length === 0 && headerMissing.length === 0;
@@ -194,39 +193,38 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
   // paid. `form.employees` is still the paid figure and is shown beside this one, never instead of it.
   const rows = form.pages.flatMap((p) => p.rows);
 
-  return (
-    <div className="mx-auto max-w-[100rem] space-y-6">
-      {header}
-      {provenance}
-      {filter}
-
-      {/* The deduction month, stated where the statement is produced. It is the fact most likely to be
-          "corrected" into the EPF +1 rule by somebody comparing the two forms. */}
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-4">
-        <div className="bg-card p-4">
+  // The deduction month, stated where the statement is produced. It is the fact most likely to be
+  // "corrected" into the EPF +1 rule by somebody comparing the two forms. Two columns: it sits in the
+  // viewer's side panel at 20rem.
+  const tiles = (
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border monolith:rounded-none">
+        <div className="bg-card p-3">
           <div className="text-xs text-muted-foreground">{t('tileMonth')}</div>
-          <div className="text-lg font-semibold">
+          <div className="text-base font-semibold">
             {form.deductionMonth} {form.deductionYear}
           </div>
           <div className="text-xs text-muted-foreground">{t('tileMonthHint')}</div>
         </div>
-        <div className="bg-card p-4">
+        <div className="bg-card p-3">
           <div className="text-xs text-muted-foreground">{t('tilePcb')}</div>
-          <div className="text-lg font-semibold tabular-nums">RM {money(form.totalPcb)}</div>
+          <div className="text-base font-semibold tabular-nums">RM {money(form.totalPcb)}</div>
           <div className="text-xs text-muted-foreground">{t('tilePcbHint', { count: form.pcbEmployees })}</div>
         </div>
-        <div className="bg-card p-4">
+        <div className="bg-card p-3">
           <div className="text-xs text-muted-foreground">{t('tileCp38')}</div>
-          <div className="text-lg font-semibold tabular-nums">RM {money(form.totalCp38)}</div>
+          <div className="text-base font-semibold tabular-nums">RM {money(form.totalCp38)}</div>
           <div className="text-xs text-muted-foreground">{t('tileCp38Hint', { count: form.cp38Employees })}</div>
         </div>
-        <div className="bg-card p-4">
+        <div className="bg-card p-3">
           <div className="text-xs text-muted-foreground">{t('tileAmount')}</div>
-          <div className="text-lg font-semibold tabular-nums">RM {money(form.totalAmount)}</div>
-          <div className="text-xs text-muted-foreground">{t('tileEmployer', { ref: form.employerNo || '—' })}</div>
+          <div className="text-base font-semibold tabular-nums">RM {money(form.totalAmount)}</div>
+          <div className="text-xs text-muted-foreground">{t('tileEmployer', { ref: form.employerNo ? `E ${form.employerNo}` : '—' })}</div>
         </div>
       </div>
+  );
 
+  const checks = (
+    <>
       {notes.map((note) => (
         <div
           key={note}
@@ -332,18 +330,24 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
         <p className="font-medium">{t('blankColumnsTitle')}</p>
         <p className="mt-1">{t('blankColumnsHint')}</p>
       </div>
+    </>
+  );
 
+  const schedule = (
       <Card className="overflow-hidden">
         {/* THE COUNT ON THE HEADING IS THE COUNT OF ROWS BELOW IT. It used to be `form.employees` —
             everyone the run paid — over a table that also printed everyone, and the two Bilangan Pekerja
             tiles above already counted only the deducted. That is 7ee14bbc: 38 against 7. */}
         <SectionHeader title={t('scheduleTitle')} count={form.deductedEmployees} />
 
-        {/* SIBLING of the filter form above, never nested inside it. Carries its own companyId +
-            periodKey so a download always asks for the month that is on screen. */}
+        {/* THE SCHEDULE FORM. Its hidden inputs are `cp39DocumentPairs` — company, payroll month AND the
+            payroll cycles — so Apply re-reviews the same selection and every download below is built from it.
+            Before r409 it carried companyId / periodKey / year / month only, and a download was the whole
+            month whatever had been ticked. */}
         <form method="get" action="/payroll/cp39/preview">
-          <input type="hidden" name="companyId" value={companyId} />
-          <input type="hidden" name="periodKey" value={periodKey} />
+          {hiddenPairs.map((h, i) => (
+            <input key={`${h.name}-${i}`} type="hidden" name={h.name} value={h.value} />
+          ))}
           <input type="hidden" name="year" value={year} />
           <input type="hidden" name="month" value={month} />
 
@@ -377,7 +381,7 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
               <input
                 type="date"
                 name="date"
-                defaultValue={typeof sp.date === 'string' ? sp.date : today}
+                defaultValue={one('date') || today}
                 className={inputCls}
               />
             </Field>
@@ -435,9 +439,10 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
                     {/* Not an error state: there is no old-IC field to be missing. Rendered as a neutral
                         dash rather than the red one a genuinely absent value gets. */}
                     <td className="px-3 py-2 text-muted-foreground">{r.oldIc || '—'}</td>
-                    {/* 7ee14bbc — DASHED HERE AND ON THE DRAWN PAGE, NOWHERE ELSE. `formatMyIc` touches
-                        neither the stored value nor the e-Data PCB upload file, whose identity-card
-                        field is twelve characters wide. What the operator checks here is what prints. */}
+                    {/* 7ee14bbc / r409 — DASHED HERE, ON THE SCREEN, AND NOWHERE ELSE. A person reading the
+                        number checks it more easily in the card's own grouping. Since r409 the drawn page
+                        prints the twelve digits LHDN's instructions write (`cp39IcForForm`), the text twin
+                        and the e-Data PCB file print digits too, and `formatMyIc` touches none of them. */}
                     <td className="px-3 py-2 font-mono text-xs">
                       {r.newIc ? formatMyIc(r.newIc) : <span className="text-red-600">—</span>}
                     </td>
@@ -520,7 +525,10 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
           </div>
         </form>
       </Card>
+  );
 
+  const payments = (
+    <>
       {/**
        * 72b100cd (r321) — WHAT YOU PAID LHDN FOR THIS MONTH, and the only place it is recorded.
        *
@@ -560,6 +568,52 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
           })}
         </div>
       </Card>
+    </>
+  );
+
+  if (!ready) {
+    // NOT READY: no drawn statement at all — the PDF route would refuse it, and a framed refusal is not a
+    // preview. The names and what each is missing, exactly as before, and the table that shows them.
+    return (
+      <div className={pageWideCls}>
+        <PageHeader title={t('title')} description={subtitle} back={{ href: backToCriteria, label: t('viewerBack') }} />
+        {provenance}
+        {tiles}
+        {checks}
+        <p className="text-sm text-muted-foreground" data-preview-blocked>
+          {t('previewBlocked')}
+        </p>
+        {schedule}
+        {payments}
+      </div>
+    );
+  }
+
+  return (
+    <div className={pageWideCls}>
+      <StatutoryPdfViewer
+        title={t('title')}
+        subtitle={subtitle}
+        pdfUrl={`/payroll/cp39/pdf?${documentQuery}&disposition=inline`}
+        downloads={[
+          { href: `/payroll/cp39/pdf?${documentQuery}`, label: t('downloadPdf') },
+          { href: `/payroll/cp39/text?${documentQuery}`, label: t('downloadText') },
+          // The e-Data PCB upload file reads company, month and `run` and ignores the rest.
+          { href: `/payroll/reports/cp39-file?${documentQuery}`, label: t('downloadFile') },
+        ]}
+        back={{ href: backToCriteria, label: t('viewerBack') }}
+        openInNewTabLabel={tf('viewer_openNewTab')}
+        frameTitle={tf('viewer_frameTitle', { form: t('title') })}
+        sidePanel={
+          <>
+            {tiles}
+            {provenance}
+            {checks}
+          </>
+        }
+      />
+      {schedule}
+      {payments}
     </div>
   );
 }

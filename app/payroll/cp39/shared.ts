@@ -37,15 +37,21 @@
  *
  * ⚠️ THE SENTENCE THAT USED TO END THIS PARAGRAPH — "`ReportParams` stays {companyId, periodKey}" — IS
  * RETIRED. r372 (item f022dd70) added an optional `runSeqs` to that type for the payroll-cycle selection
- * on Payment Submission. THE PRINTED CP39 STATEMENT DOES NOT SEND IT and has no control that could: this
- * screen is one month's statement, whole. The claim about THIS screen's inputs is unchanged; the claim
- * about the type was true when it was written and is not any more.
+ * on Payment Submission.
+ *
+ * ⚠️ AND SINCE r409 (item 79f3f64d) THE PRINTED STATEMENT SENDS IT. The criteria step asks for the payroll
+ * cycles (`runSelection` on `my.cp39`), and the `run` values it submits are read HERE, once, through
+ * `parseRunSelection`, and handed to the read — so the review screen, the PDF and the text copy cannot
+ * cover different runs. Absent ⇒ `undefined` ⇒ the whole month, which is what every older link is. An
+ * invalid selection is refused (`bad-selection`), never quietly widened.
  *
  * THE SIGNATURE IS THE ONE FIELD WITH NO INPUT, and that is not an omission: the request says to leave
  * it blank for physical signing, so the form draws a box to sign in.
  */
 import { reportPreview } from '@/core/reporting';
 import { scopedAdmin } from '@/lib/scope';
+import { parseRunSelection } from '@/lib/payroll-run-selection';
+import { cp39HasDeductions } from './query';
 import {
   cp39FormFrom,
   missingCp39FormHeader,
@@ -59,6 +65,10 @@ import {
 /** The catalog id this screen is the printed form for. One literal, shared, rather than three. */
 export const CP39_REPORT_ID = 'my.cp39';
 
+/** r409 — the routes' plain-text refusal for a selection on which nobody had PCB or CP38 deducted. */
+export const NO_DEDUCTIONS =
+  'No PCB or CP38 was deducted for this month and these payroll cycles — no CP39 is produced.';
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -67,6 +77,16 @@ export type Cp39Missing = { employmentId: string; name: string; missing: string[
 export type Cp39Load =
   | { ok: false; reason: 'not-found' }
   | { ok: false; reason: 'no-batch' }
+  /** r409 — the month ran, none of the ticked cycles is in it. */
+  | { ok: false; reason: 'selection-empty' }
+  /** r409 — the run parameters on the link are not run numbers. Refused, never quietly widened. */
+  | { ok: false; reason: 'bad-selection'; message: string }
+  /**
+   * r409 (item 79f3f64d) — the runs exist and were ticked, but nobody on them had a sen of PCB or CP38
+   * deducted. "If there is nothing to report, no blank form is produced": a CP39 whose schedule is empty
+   * and whose boxes read RM 0.00 is a statement of nothing. Refused HERE so every surface refuses it.
+   */
+  | { ok: false; reason: 'no-deductions' }
   | {
       ok: false;
       reason: 'not-ready';
@@ -120,12 +140,17 @@ export async function loadCp39Form(p: {
   const { s, scopeIds } = await scopedAdmin();
   if (!scopeIds.includes(p.companyId)) return { ok: false, reason: 'not-found' };
 
+  // r409 — the payroll cycles, parsed ONCE for the screen and both routes. See the header.
+  const selection = parseRunSelection(p.query);
+  if (!selection.ok) return { ok: false, reason: 'bad-selection', message: selection.reason };
+
   let result;
   try {
     result = await reportPreview(s, {
       companyId: p.companyId,
       reportId: CP39_REPORT_ID,
       periodKey: p.periodKey,
+      runSeqs: selection.runSeqs,
     });
   } catch {
     // `resolveDef` throws for a jurisdiction whose pack does not register this form. Same bare answer as
@@ -133,6 +158,10 @@ export async function loadCp39Form(p: {
     return { ok: false, reason: 'not-found' };
   }
   if (!result.meta.hasBatch) return { ok: false, reason: 'no-batch' };
+  if (result.meta.selectionEmpty) return { ok: false, reason: 'selection-empty' };
+  // r409 — nothing to file. Checked on the ROWS the read returned, before any readiness gap is reported:
+  // naming who is missing a tax number on a statement that would carry no deduction is the wrong conversation.
+  if (!cp39HasDeductions(result.rows)) return { ok: false, reason: 'no-deductions' };
 
   const missing = result.readiness.map((r) => ({ employmentId: r.employmentId, name: r.name, missing: r.missing }));
   // TWO KINDS OF GAP, ONE GATE. `missing` is per-employee; `headerMissing` is employer-level (no LHDN
@@ -146,8 +175,8 @@ export async function loadCp39Form(p: {
 
   const base = cp39FormFrom({ header: result.meta.formHeader, rows: result.rows });
   // The operator's preparer block and print date, applied to the FORM rather than passed into the read,
-  // so `ReportParams` stays {companyId, periodKey} and the pack never learns about a per-generation
-  // input. An invalid date is ignored rather than throwing: this is a render path and a junk query
+  // so the pack never learns about a per-generation PRESENTATION input. (The payroll cycles are not one:
+  // they change which payslips are read, so they ride `ReportParams.runSeqs` above, since r409.) An invalid date is ignored rather than throwing: this is a render path and a junk query
   // string must not 500 the review screen.
   const form = withPaymentInstrument(
     withPreparer(base, {

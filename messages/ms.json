@@ -4508,8 +4508,8 @@
       "planned_perkeso_employee_registration_hint": "Pendaftaran PERKESO bagi pekerja baharu. Belum dibina.",
       "planned_lhdn_cp21": "CP21 — pekerja meninggalkan Malaysia",
       "planned_lhdn_cp21_hint": "Notis bahawa seorang pekerja akan meninggalkan Malaysia. Belum dibina.",
-      "planned_lhdn_cp22a": "CP22A — pelepasan cukai apabila berhenti",
-      "planned_lhdn_cp22a_hint": "Pekerja berhenti yang memerlukan CP22A sudah ditandakan pada senarai tugas CP22 / CP22A di bawah skrin ini, tetapi notis itu sendiri belum dibina.",
+      "planned_lhdn_cp22a": "[retired r409 — replaced by planned_lhdn_cp22a_cessation; it called CP22A 'tax clearance on cessation', which is wrong: on LHDN's form CP22A is the private-sector employer's notice that an employee has stopped working]",
+      "planned_lhdn_cp22a_hint": "[retired r409 — replaced by planned_lhdn_cp22a_cessation_hint, together with planned_lhdn_cp22a]",
       "planned_lhdn_cp39a": "CP39A — potongan cukai atas tunggakan",
       "planned_lhdn_cp39a_hint": "Penyata potongan cukai bagi bayaran tunggakan. Belum dibina.",
       "fidelity_agency_layout": "Susun atur agensi",
@@ -4607,7 +4607,11 @@
       "cycles_partial": "Anda telah mengecualikan sekurang-kurangnya satu kitaran gaji. Borang hanya akan mengandungi kitaran yang ditandakan, dan tiada ruang yang menyatakan kitaran mana sesuatu baris berasal.",
       "refusal_cycles_no_runs": "Tiada gaji yang telah diproses bagi syarikat dan bulan ini, jadi tiada apa-apa dihasilkan.",
       "refusal_cycles_no_data": "Tiada caruman yang telah diproses bagi borang ini dalam kitaran gaji yang anda pilih, jadi tiada apa-apa dihasilkan.",
-      "refusal_cycles_invalid": "Pilihan kitaran gaji tidak sah. Sila pilih kitaran sekali lagi."
+      "refusal_cycles_invalid": "Pilihan kitaran gaji tidak sah. Sila pilih kitaran sekali lagi.",
+      "planned_lhdn_cp22a_cessation": "CP22A — notis pekerja berhenti (sektor swasta)",
+      "planned_lhdn_cp22a_cessation_hint": "Notis yang dihantar oleh majikan sektor swasta kepada LHDN apabila pekerja berhenti kerja: perletakan jawatan, persaraan atau kematian. Pekerja berhenti yang memerlukannya sudah ditandakan pada senarai tugas CP22 / CP22A di bawah skrin ini, tetapi notis itu sendiri belum dibina.",
+      "refusal_cycles_no_deductions": "Tiada sesiapa yang dipotong PCB atau CP38 dalam kitaran gaji yang anda pilih, jadi tiada CP39 dihasilkan.",
+      "refusal_year_no_payroll": "Tiada gaji yang telah diproses bagi syarikat ini dalam tahun yang anda pilih, jadi tiada apa-apa dihasilkan."
     },
     "ea": {
       "backToReports": "Laporan",
@@ -7083,7 +7087,10 @@
       "pcbPaymentKindCp38": "CP38 (arahan ansuran)",
       "pcbPaymentReceiptRef": "No. resit / slip bank / transaksi",
       "pcbPaymentPaidOn": "Tarikh bayaran",
-      "pcbPaymentSave": "Simpan"
+      "pcbPaymentSave": "Simpan",
+      "cyclesAll": "Semua kitaran gaji",
+      "viewerBack": "Tukar pilihan",
+      "previewBlocked": "Penyata ditunjukkan di sini setelah kekurangan yang disenaraikan di atas diisi."
     },
     "pcbDetail": {
       "exemptionHeading": "Maklumat Pengecualian",
@@ -7804,6 +7811,17 @@
       "runTypeOffCycle": "Luar kitaran",
       "runTypeBonus": "Bonus",
       "runTypeAdjustment": "Pelarasan"
+    },
+    "cp8dPreview": {
+      "title": "Borang E / CP8D — penyata tahunan (LHDN)",
+      "viewerBack": "Tukar pilihan",
+      "tileYear": "Tahun",
+      "tileEmployees": "Pekerja yang disertakan",
+      "notArtworkTitle": "Susun atur kami, bukan Borang E LHDN.",
+      "notArtwork": "PDF ini ialah jadual CP8D setiap pekerja bagi tahun tersebut, dalam susun atur lajur kami sendiri: fail yang sama yang disimpan oleh butang Muat Turun PDF. Ia bukan templat Borang E atau CP8D LHDN. Failkan melalui e-Filing (Borang E).",
+      "partATitle": "Bilangan pekerja Borang E Bahagian A",
+      "partAHint": "Dikira daripada gaji yang sama dengan jadual. Ia disenaraikan di sini dan tidak dicetak pada PDF.",
+      "figuresLink": "Buka jadual angka (dan rekodkan penjanaan ini)"
     }
   },
   "admin": {

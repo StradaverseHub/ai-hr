@@ -974,7 +974,12 @@ describe('the four pins', () => {
     const borangE = MY_STATUTORY_LINKS.find((l) => l.id === 'my.borang-e')!;
     const annual = MY_REPORTS.filter((r) => r.submission?.body === 'lhdn' && r.periodKind === 'year');
     expect(annual.map((r) => r.id)).toEqual(['my.cp8d']);
-    expect(borangE.href).toContain(`/payroll/statutory-forms/${annual[0].id}?`);
+    // r409 (item 79f3f64d) — UPDATED, NOT DELETED. The alias used to point at the figures screen for the
+    // same id (`/payroll/statutory-forms/my.cp8d?`); both cards now open the Form E / CP8D PREVIEW, so the
+    // alias declares the generator it resolves to and opens that generator's own preview.
+    expect(borangE.populationReportId).toBe(annual[0].id);
+    expect(annual[0].preview?.action).toBe('/payroll/cp8d/preview');
+    expect(borangE.href).toContain(`${annual[0].preview!.action}?`);
     // Both cards must say so, or two entries read as two documents and somebody waits for the second.
     expect(borangE.descriptionKey).toBeTruthy();
     expect(MY_REPORTS.find((r) => r.id === 'my.cp8d')!.descriptionKey).toBeTruthy();
