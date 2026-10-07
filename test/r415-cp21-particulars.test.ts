@@ -36,6 +36,7 @@ import {
   employeeEaStatement,
 } from '../core/reporting';
 import { renderCp22aPdf } from '../lib/cp22a-pdf';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { MY_OFFICIAL_ARTWORK, MY_PLANNED_FORMS, MY_STATUTORY_LINKS } from '../localization/my/reports';
 
 let scope: { s: SessionContext; scopeIds: string[] };
@@ -251,7 +252,7 @@ describe('r415 · cp21Particulars — the year so far, from processed payroll, u
       provenance: { reason: 'test', declarationIds: [] },
     });
     expect((await cp21Particulars(a, { employmentId }))!.employee.resident).toBe(false);
-    await owner.db.update(schema.employmentTaxSelectionMy).set({ scheme: 'knowledge_worker' }).where(eq(schema.employmentTaxSelectionMy.employmentId, employmentId));
+    await owner.db.update(schema.employmentTaxSelectionMy).set({ scheme: 'knowledge_worker', version: sql`${schema.employmentTaxSelectionMy.version} + 1` }).where(eq(schema.employmentTaxSelectionMy.employmentId, employmentId));
     expect((await cp21Particulars(a, { employmentId }))!.employee.resident).toBe(true);
   });
 
@@ -428,9 +429,10 @@ describe('r415 · the PDF route and the preview', () => {
 });
 
 describe('r415 · the event screen lists every ACTIVE employee for CP21', () => {
-  const today = new Date().toISOString().slice(0, 10);
+  // The screen reads the tenant's clock (todayInKualaLumpur), so the fixture does too — never a UTC slice.
+  const today = todayInKualaLumpur();
   const dayOffset = (n: number) => {
-    const d = new Date();
+    const d = new Date(`${today}T00:00:00Z`);
     d.setUTCDate(d.getUTCDate() + n);
     return d.toISOString().slice(0, 10);
   };

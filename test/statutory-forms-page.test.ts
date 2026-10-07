@@ -653,6 +653,8 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
       ['my.tp3', 'openEmployeeList'],
       ['my.cp22', 'openForm'],
       ['my.cp22a', 'openForm'],
+      // r415 — CP21 says "Open form" for CP22A's reason: the list it passes through is not the destination.
+      ['my.cp21', 'openForm'],
     ]);
     // …and the shared key is REUSED rather than duplicated: no EA-only "Open form" wording of its own.
     expect(en.payroll.statutoryForms.openEmployeeList).toBe('Open employee list');
