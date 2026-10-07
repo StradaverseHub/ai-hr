@@ -4576,7 +4576,7 @@
       "pcb2iiReceiptsRecorded": "Đã ghi",
       "pcb2iiReceiptsNotRecorded": "Chưa ghi",
       "link_ea": "Biểu mẫu C.P.8A (EA)",
-      "link_ea_hint_version": "Mở từ danh sách nhân viên của năm đó. Chọn tiếng Anh hoặc tiếng Mã Lai khi mở; biểu mẫu được tạo theo phiên bản bạn chọn, bất kể màn hình này đang đặt ngôn ngữ nào.",
+      "link_ea_hint_version": "Mở từ danh sách nhân viên của năm đó. Biểu mẫu được tạo theo phiên bản bạn chọn, bất kể màn hình này đang đặt ngôn ngữ nào.",
       "desc_ea": "Bản kê thu nhập hằng năm của từng nhân viên. Chọn tiếng Anh hoặc tiếng Mã Lai khi mở. Vẽ theo bố cục C.P.8A (Pin. 2023), in trên giấy của chúng tôi — chúng tôi không có mẫu C.P.8A trắng của LHDN.",
       "link_pcb2ii": "PCB 2(II)",
       "desc_pcb2ii": "Bản kê nộp thuế của người sử dụng lao động. Chọn tiếng Anh hoặc tiếng Mã Lai khi mở, rồi chọn nhân viên.",

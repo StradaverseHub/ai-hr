@@ -4576,7 +4576,7 @@
       "pcb2iiReceiptsRecorded": "已记录",
       "pcb2iiReceiptsNotRecorded": "未记录",
       "link_ea": "C.P.8A (EA) 表格",
-      "link_ea_hint_version": "从该年度的员工列表打开。打开时选择英文或马来文；无论此屏幕设置为哪种语言，表格都会以您选择的版本输出。",
+      "link_ea_hint_version": "从该年度的员工列表打开。无论此屏幕设置为哪种语言，表格都会以您选择的版本输出。",
       "desc_ea": "每位员工的年度薪酬报表。打开时选择英文或马来文。按 C.P.8A（Pin. 2023）的版面绘制，印在我们自己的纸张上——我们没有 LHDN 的空白 C.P.8A 表格。",
       "link_pcb2ii": "PCB 2(II)",
       "desc_pcb2ii": "雇主缴税报表。打开时选择英文或马来文，再选择员工。",
