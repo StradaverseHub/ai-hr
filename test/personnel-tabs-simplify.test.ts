@@ -51,7 +51,8 @@ describe('d3a02679 — Personnel tab simplification', () => {
   it('the tablist row wraps onto multiple lines instead of overflowing horizontally', () => {
     const src = fs.readFileSync(path.resolve(__dirname, '../components/personnel-tabs.tsx'), 'utf8');
     // The <nav> tablist container reflows with flex-wrap...
-    expect(src).toMatch(/className="flex flex-wrap gap-1 /);
+    // (r401: the class string is now the first argument of cn(), beside the opt-in Monolith classes.)
+    expect(src).toMatch(/className=(?:"|\{cn\(\s*')flex flex-wrap gap-1 /);
     // ...and no longer relies on horizontal scroll to reach hidden tabs.
     expect(src).not.toContain('overflow-x-auto');
     // Active-tab styling + keep-panels-mounted behaviour untouched.

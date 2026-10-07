@@ -24,7 +24,11 @@ import { AttendanceClockButton, LocationNotice } from '@/components/attendance-c
 import { ClientTabs } from '@/components/personnel-tabs';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { myProfileRecord } from './record';
-import { ReadCard, ReadField, ReadGroup } from './read-field';
+import { MONO_ME_SECTION_HEAD, ReadCard, ReadField, ReadGroup } from './read-field';
+// r401 — Monolith step 4 (docs/design/monolith/reference/P-MyProfile.dc.html): the theme decides how the SAME
+// record is drawn, never what is read.
+import { currentUiTheme } from '@/lib/ui-theme-server';
+import { Cells, MonoPageHeader, Section, Status, type StatusTone } from '@/components/monolith';
 // r260 stage two (9583deac) — the request card and the pending-value projection. One declaration of
 // which fields may be asked about (lib/profile-requestable-fields.ts) feeds both.
 import { RequestChangeCard, pendingProposedByKey } from './request-change-card';
@@ -122,6 +126,26 @@ const PCB_LABEL_KEY: Record<number, string> = {
   2: 'pcbMarriedSpouseNotWorking',
   3: 'pcbMarriedSpouseWorking',
 };
+
+/**
+ * r401 — MONOLITH, as appended `monolith:` utilities on the markup both themes share (Classic paints exactly as
+ * before; these match nothing outside <html data-ui-theme="monolith">). Cards are already sections there
+ * (components/ui/card.tsx, r400); these flatten what sits inside them to the board's hairline grammar.
+ */
+/** A card's direct children lose their 16px inset, so content sits flush under the section's ink rule. */
+const MONO_FLUSH = 'monolith:[&>*]:px-0';
+/** A data table as the board's `.th` / `.tr`: mono column heads, 50px hairline rows, flush left. */
+const MONO_TABLE =
+  'monolith:border-b monolith:border-hairline monolith:[&_th]:h-[30px] monolith:[&_th]:px-1 monolith:[&_th]:font-normal monolith:[&_td]:h-[50px] monolith:[&_td]:px-1';
+const MONO_THEAD = 'monolith:bg-transparent monolith:font-mono monolith:text-[11px] monolith:tracking-[0.12em] monolith:text-mid';
+/** The off-cycle run-type pill → a status word in signal-text (it is not a regular run; README §4). */
+const MONO_RUN_WORD =
+  'monolith:rounded-none monolith:bg-transparent monolith:px-0 monolith:py-0 monolith:font-mono monolith:text-[11px] monolith:font-normal monolith:uppercase monolith:tracking-[0.12em] monolith:text-signal-text';
+/** A bordered small link → the board's `.txt` underlined text button. */
+const MONO_TXT_LINK =
+  'monolith:rounded-none monolith:border-0 monolith:border-b monolith:border-ink monolith:px-0.5 monolith:py-1 monolith:text-[13px] monolith:text-ink monolith:hover:border-signal-text monolith:hover:bg-transparent monolith:hover:text-signal-text';
+/** Attendance status → tone (components.md): present is done; late / absent need attention; half day neutral. */
+const ATT_TONE: Record<string, StatusTone> = { present: 'ink', late: 'signal', half_day: 'mid', absent: 'signal' };
 
 function Pill({ status, map, label }: { status: string; map: Record<string, string>; label?: string }) {
   return (
@@ -520,15 +544,15 @@ export default async function MePage({
         </details>
       </ReadCard>
 
-      <Card id="section-emergency-contact" className="overflow-hidden">
-        <SectionHeader title={tp('emergencyTitle')} count={record.emergencyContacts.length} />
+      <Card id="section-emergency-contact" className={`overflow-hidden ${MONO_FLUSH}`}>
+        <SectionHeader title={tp('emergencyTitle')} count={record.emergencyContacts.length} className={MONO_ME_SECTION_HEAD} />
         {record.emergencyContacts.length === 0 ? (
           <p className="px-4 py-4 text-sm text-muted-foreground">{tp('emergency.none')}</p>
         ) : (
           <div className="overflow-x-auto px-4 pb-4 pt-3">
-            <table className="w-full min-w-[40rem] text-left text-sm">
+            <table className={`w-full min-w-[40rem] text-left text-sm ${MONO_TABLE}`}>
               <thead>
-                <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                <tr className={`border-b border-border text-xs uppercase tracking-wide text-muted-foreground ${MONO_THEAD}`}>
                   <th className="py-2 pr-3 font-medium">{tp('emergency.name')}</th>
                   <th className="py-2 pr-3 font-medium">{tp('emergency.relationship')}</th>
                   <th className="py-2 pr-3 font-medium">{tp('emergency.mobilePhone')}</th>
@@ -632,8 +656,8 @@ export default async function MePage({
           Same arithmetic as the retired Overview card (basic + monthly allowance, from `myEmployments`),
           so a figure an employee learned to recognise did not quietly change meaning under them. */}
       {employments.length > 1 && (
-        <Card className="overflow-hidden">
-          <SectionHeader title={t('myPositions', { count: employments.length })} count={employments.length} />
+        <Card className={`overflow-hidden ${MONO_FLUSH}`}>
+          <SectionHeader title={t('myPositions', { count: employments.length })} count={employments.length} className={MONO_ME_SECTION_HEAD} />
           <ul className="divide-y divide-border">
             {employments.map((e) => (
               <li key={e.employmentId} className="px-4 py-3">
@@ -722,8 +746,8 @@ export default async function MePage({
 
       {/* r298 — this card, TP1 and My loans are the Payroll pack's; absent (and unread) without Payroll. */}
       {payrollOn && (
-      <Card className="overflow-hidden" data-tour="me-payslips">
-        <SectionHeader title={t('myPayslips')} count={finalizedPayslips.length} />
+      <Card className={`overflow-hidden ${MONO_FLUSH}`} data-tour="me-payslips">
+        <SectionHeader title={t('myPayslips')} count={finalizedPayslips.length} className={MONO_ME_SECTION_HEAD} />
         {payslipMonths.length === 0 && <p className="p-4 text-sm text-muted-foreground">{t('noPayslipsYet')}</p>}
         {payslipMonths.length > 0 && (
           // Native GET round-trip: `tab=payroll` so the full-document reload lands back on this tab.
@@ -753,8 +777,8 @@ export default async function MePage({
           </form>
         )}
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+          <table className={`w-full text-sm ${MONO_TABLE}`}>
+            <thead className={`bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground ${MONO_THEAD}`}>
               <tr>
                 <th className="px-4 py-2 font-medium">{t('colPeriod')}</th>
                 <th className="px-4 py-2 font-medium">{t('colCompany')}</th>
@@ -773,7 +797,7 @@ export default async function MePage({
                       {ps.payPeriod}
                     </Link>
                     {ps.runType !== 'regular' && (
-                      <span className="ml-2 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                      <span className={`ml-2 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 ${MONO_RUN_WORD}`}>
                         {tRun(ps.runType)}
                       </span>
                     )}
@@ -787,7 +811,7 @@ export default async function MePage({
                     <a
                       href={`/me/payslip/${ps.id}/pdf`}
                       download
-                      className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted"
+                      className={`inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted ${MONO_TXT_LINK}`}
                     >
                       {t('payslip.downloadPdf')}
                     </a>
@@ -809,8 +833,8 @@ export default async function MePage({
 
       {/* My Payroll — Self Personal Tax Relief (LHDN TP1). Year-scoped, grouped per company. */}
       {payrollOn && (
-      <Card className="overflow-hidden">
-        <SectionHeader title={t('taxReliefTp1')} count={taxRelief.rows.length} />
+      <Card className={`overflow-hidden ${MONO_FLUSH}`}>
+        <SectionHeader title={t('taxReliefTp1')} count={taxRelief.rows.length} className={MONO_ME_SECTION_HEAD} />
         <p className="px-4 pb-2 pt-1 text-xs text-muted-foreground">
           {t('taxReliefDescription', { year: String(taxRelief.year) })}
         </p>
@@ -823,8 +847,8 @@ export default async function MePage({
           <p className="px-4 pb-4 text-sm text-muted-foreground">{t('noTaxRelief')}</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <table className={`w-full text-sm ${MONO_TABLE}`}>
+              <thead className={`bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground ${MONO_THEAD}`}>
                 <tr>
                   <th className="px-4 py-2 font-medium">{t('colCompany')}</th>
                   <th className="px-4 py-2 font-medium">{t('colPeriod')}</th>
@@ -845,7 +869,7 @@ export default async function MePage({
                         <td className="px-4 py-2.5 font-medium">
                           {r.payPeriod}
                           {r.runType !== 'regular' && (
-                            <span className="ml-2 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                            <span className={`ml-2 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 ${MONO_RUN_WORD}`}>
                               {tRun(r.runType)}
                             </span>
                           )}
@@ -879,10 +903,10 @@ export default async function MePage({
 
       {/* 1.2.8 My loans (ADR-0060) — read-only: outstanding balance + per-instalment schedule. */}
       {payrollOn && myLoans.length > 0 && (
-        <Card className="overflow-hidden">
-          <SectionHeader title={t('myLoans')} count={myLoans.length} />
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+        <Card className={`overflow-hidden ${MONO_FLUSH}`}>
+          <SectionHeader title={t('myLoans')} count={myLoans.length} className={MONO_ME_SECTION_HEAD} />
+          <table className={`w-full text-sm ${MONO_TABLE}`}>
+            <thead className={`bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground ${MONO_THEAD}`}>
               <tr>
                 <th className="px-4 py-2 font-medium">{t('loanType')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('loanInstalment')}</th>
@@ -912,16 +936,16 @@ export default async function MePage({
 
   // ── FAMILY TAB ────────────────────────────────────────────────────────────────────────────────────
   const familyPanel = (
-    <Card id="section-family" className="overflow-hidden">
-      <SectionHeader title={tp('family.title')} count={record.dependents.length} />
+    <Card id="section-family" className={`overflow-hidden ${MONO_FLUSH}`}>
+      <SectionHeader title={tp('family.title')} count={record.dependents.length} className={MONO_ME_SECTION_HEAD} />
       <p className="mx-4 mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">{tp('family.note')}</p>
       {record.dependents.length === 0 ? (
         <p className="px-4 py-4 text-sm text-muted-foreground">{tp('family.none')}</p>
       ) : (
         <div className="overflow-x-auto px-4 pb-4 pt-3">
-          <table className="w-full min-w-[44rem] text-left text-sm">
+          <table className={`w-full min-w-[44rem] text-left text-sm ${MONO_TABLE}`}>
             <thead>
-              <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+              <tr className={`border-b border-border text-xs uppercase tracking-wide text-muted-foreground ${MONO_THEAD}`}>
                 <th className="py-2 pr-3 font-medium">{tp('family.name')}</th>
                 <th className="py-2 pr-3 font-medium">{tp('family.relationship')}</th>
                 <th className="py-2 pr-3 font-medium">{tp('family.dateOfBirth')}</th>
@@ -968,8 +992,8 @@ export default async function MePage({
           and then dropped it), and only the PDF link is offered: /payroll/reports/ea sits behind the Payroll
           layout. A company that never ran payroll sees no EA card at all. */}
       {(payrollOn || eaRows.length > 0) && (
-      <Card className="p-5">
-        <SectionHeader title={t('taxStatementEa')} />
+      <Card className={`p-5 ${MONO_FLUSH} monolith:p-0`}>
+        <SectionHeader title={t('taxStatementEa')} className={MONO_ME_SECTION_HEAD} />
         <p className="px-1 pt-2 text-xs text-muted-foreground">{t('taxStatementDescription')}</p>
         {eaRows.length === 0 ? (
           <p className="mt-3 rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
@@ -1006,8 +1030,8 @@ export default async function MePage({
       <MeReviewCard s={s} employmentId={employmentId} />
 
       {/* Resignation (ADR-0042, #29) — employee-initiated, HR-approved. */}
-      <Card className="p-5">
-        <SectionHeader title={t('resignationTitle')} />
+      <Card className={`p-5 ${MONO_FLUSH} monolith:p-0`}>
+        <SectionHeader title={t('resignationTitle')} className={MONO_ME_SECTION_HEAD} />
         <p className="px-1 pt-2 text-xs text-muted-foreground">{t('resignationDescription')}</p>
         {resignation?.status === 'pending' ? (
           <div className="mt-3 space-y-3 rounded-lg border border-border bg-muted/30 p-4">
@@ -1060,66 +1084,141 @@ export default async function MePage({
     </>
   );
 
+  // r401 — MONOLITH (docs/design/monolith/reference/P-MyProfile.dc.html). Only the page head and the punch
+  // differ in STRUCTURE (a kicker + 56px title + stat cells; the punch as a numbered section with its status as
+  // a word), so only they branch. Everything below — the six tabs and every card, form and action on them — is
+  // ONE tree for both themes, restyled by appended `monolith:` utilities. Same reads, same values.
+  const monolith = (await currentUiTheme()) === 'monolith';
+  // The newest released payslip already on this page (finalizedPayslips), for the board's "Last payslip" cell.
+  const lastPayslip = [...finalizedPayslips].sort((a, b) => (a.payPeriod < b.payPeriod ? 1 : a.payPeriod > b.payPeriod ? -1 : 0))[0] ?? null;
+  const groupService = fmtServiceYmd(emp.hiredOn);
+  const identityLine = `${p.employeeCode ? `${p.employeeCode} · ` : ''}${p.fullName} · ${emp.position ?? '—'}, ${emp.department ?? '—'}`;
+
+  const punchLinks = (
+    <>
+      <Link href="/attendance" className="text-sm font-medium text-primary underline-offset-2 hover:underline monolith:border-b monolith:border-ink monolith:pb-0.5 monolith:text-[14px] monolith:text-ink monolith:no-underline monolith:hover:border-signal-text monolith:hover:text-signal-text">
+        {t('viewAttendanceHistory')} →
+      </Link>
+      <Link href="/attendance/requests" className="text-sm font-medium text-primary underline-offset-2 hover:underline monolith:border-b monolith:border-ink monolith:pb-0.5 monolith:text-[14px] monolith:text-ink monolith:no-underline monolith:hover:border-signal-text monolith:hover:text-signal-text">
+        {t('fileAttendanceRequest')} →
+      </Link>
+      <Link href="/me/performance" className="text-sm font-medium text-primary underline-offset-2 hover:underline monolith:border-b monolith:border-ink monolith:pb-0.5 monolith:text-[14px] monolith:text-ink monolith:no-underline monolith:hover:border-signal-text monolith:hover:text-signal-text">
+        {t('myPerformanceLink')} →
+      </Link>
+    </>
+  );
+
+  // The board's stat cells, from values this page already holds; a cell with no value is left out, not faked.
+  const meCells = [
+    ...(lastPayslip
+      ? [{ label: t('lastPayslip'), value: rm(lastPayslip.net), sub: `${lastPayslip.payPeriod} · ${lastPayslip.company}` }]
+      : []),
+    ...(groupService ? [{ label: tp('employmentInfo.groupService'), value: groupService, sub: emp.hiredOn ?? undefined }] : []),
+  ];
+
+  const monolithHead = (
+    <>
+      <div data-tour="me-intro">
+        <MonoPageHeader kicker={identityLine} title={t('title')} />
+      </div>
+      {meCells.length > 0 && <Cells items={meCells} className="monolith:[&_b]:text-[28px]" />}
+      <ErrorBanner message={error} />
+      {/* The geofenced punch, as a section — the same capability, the same two actions, in the same place. */}
+      <div data-tour="me-attendance">
+        <Section label={t('todayHeading')} right={today}>
+          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-hairline pt-3">
+            <div className="flex flex-wrap items-baseline gap-3 text-[15px]">
+              {todayRow ? (
+                <>
+                  <span className="num font-medium text-ink">
+                    {todayRow.checkOutAt ? `${todayRow.checkInAt} → ${todayRow.checkOutAt}` : todayRow.checkInAt}
+                  </span>
+                  <Status word={t(`attStatus.${todayRow.status}`)} tone={ATT_TONE[todayRow.status] ?? 'mid'} />
+                </>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              {!todayRow ? (
+                <AttendanceClockButton action={myCheckIn} label={t('checkIn')} />
+              ) : !todayRow.checkOutAt ? (
+                <AttendanceClockButton action={myCheckOut} label={t('checkOut')} variant="secondary" />
+              ) : null}
+            </div>
+          </div>
+          <LocationNotice />
+          <div className="mt-1 flex flex-wrap gap-x-[22px] gap-y-2">{punchLinks}</div>
+        </Section>
+      </div>
+    </>
+  );
+
   return (
     // c002b3c3's container — the SAME width the Personnel record uses, because "full width, arranged in
     // cards, so a section reads across the screen" is the plan's wording and a narrower cap here would
     // reflow every card the two screens are meant to share.
     <div className="mx-auto max-w-[100rem] space-y-6">
-      <div data-tour="me-intro">
-        <PageHeader
-          title={t('title')}
-          description={`${p.employeeCode ? `${p.employeeCode} · ` : ''}${p.fullName} · ${emp.position ?? '—'}, ${emp.department ?? '—'}`}
-        />
-      </div>
+      {monolith ? (
+        monolithHead
+      ) : (
+        <>
+        <div data-tour="me-intro">
+          <PageHeader
+            title={t('title')}
+            description={`${p.employeeCode ? `${p.employeeCode} · ` : ''}${p.fullName} · ${emp.position ?? '—'}, ${emp.department ?? '—'}`}
+          />
+        </div>
 
-      <ErrorBanner message={error} />
+        <ErrorBanner message={error} />
 
-      {/* The geofenced punch. NOT a tab: /me is one of only two places a clock-in can be made, and the six
-          tabs below are the Personnel record's shape, which has no clocking card on it. Keeping it above
-          the strip is what stops the restructure from quietly removing a capability. */}
-      <Card className="p-4" data-tour="me-attendance">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold">{t('todayHeading')}</h2>
-            <p className="text-xs text-muted-foreground">{today}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            {!todayRow ? (
-              <AttendanceClockButton action={myCheckIn} label={t('checkIn')} />
-            ) : !todayRow.checkOutAt ? (
-              <>
+        {/* The geofenced punch. NOT a tab: /me is one of only two places a clock-in can be made, and the six
+            tabs below are the Personnel record's shape, which has no clocking card on it. Keeping it above
+            the strip is what stops the restructure from quietly removing a capability. */}
+        <Card className="p-4" data-tour="me-attendance">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold">{t('todayHeading')}</h2>
+              <p className="text-xs text-muted-foreground">{today}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              {!todayRow ? (
+                <AttendanceClockButton action={myCheckIn} label={t('checkIn')} />
+              ) : !todayRow.checkOutAt ? (
+                <>
+                  <span className="text-sm text-muted-foreground">
+                    {t.rich('checkedInAt', {
+                      time: () => <span className="font-medium text-foreground">{todayRow.checkInAt}</span>,
+                    })}{' '}
+                    <Pill status={todayRow.status} map={ATT_STATUS} label={t(`attStatus.${todayRow.status}`)} />
+                  </span>
+                  <AttendanceClockButton action={myCheckOut} label={t('checkOut')} variant="secondary" />
+                </>
+              ) : (
                 <span className="text-sm text-muted-foreground">
-                  {t.rich('checkedInAt', {
-                    time: () => <span className="font-medium text-foreground">{todayRow.checkInAt}</span>,
-                  })}{' '}
+                  {todayRow.checkInAt} → {todayRow.checkOutAt}{' '}
                   <Pill status={todayRow.status} map={ATT_STATUS} label={t(`attStatus.${todayRow.status}`)} />
                 </span>
-                <AttendanceClockButton action={myCheckOut} label={t('checkOut')} variant="secondary" />
-              </>
-            ) : (
-              <span className="text-sm text-muted-foreground">
-                {todayRow.checkInAt} → {todayRow.checkOutAt}{' '}
-                <Pill status={todayRow.status} map={ATT_STATUS} label={t(`attStatus.${todayRow.status}`)} />
-              </span>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-        <LocationNotice />
-        {/* A link, not a copy — the same rule the request forms moved under at 0bb0e303. */}
-        <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 border-t border-border pt-3">
-          <Link href="/attendance" className="text-sm font-medium text-primary underline-offset-2 hover:underline">
-            {t('viewAttendanceHistory')} →
-          </Link>
-          <Link href="/attendance/requests" className="text-sm font-medium text-primary underline-offset-2 hover:underline">
-            {t('fileAttendanceRequest')} →
-          </Link>
-          <Link href="/me/performance" className="text-sm font-medium text-primary underline-offset-2 hover:underline">
-            {t('myPerformanceLink')} →
-          </Link>
-        </div>
-      </Card>
+          <LocationNotice />
+          {/* A link, not a copy — the same rule the request forms moved under at 0bb0e303. */}
+          <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 border-t border-border pt-3">
+            <Link href="/attendance" className="text-sm font-medium text-primary underline-offset-2 hover:underline">
+              {t('viewAttendanceHistory')} →
+            </Link>
+            <Link href="/attendance/requests" className="text-sm font-medium text-primary underline-offset-2 hover:underline">
+              {t('fileAttendanceRequest')} →
+            </Link>
+            <Link href="/me/performance" className="text-sm font-medium text-primary underline-offset-2 hover:underline">
+              {t('myPerformanceLink')} →
+            </Link>
+          </div>
+        </Card>
+        </>
+      )}
 
       <ClientTabs<MeTabKey>
+        monolithTxt
         defaultTab={activeTab}
         emptyLabel={tp('tabs.empty')}
         ariaLabel={t('title')}

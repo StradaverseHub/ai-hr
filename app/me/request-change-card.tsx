@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { Button, Card, Field, SectionHeader, inputCls } from '@/components/ui';
+import { MONO_ME_SECTION_HEAD } from './read-field';
 import { myRequestProfileChange } from './actions';
 import {
   formatProposedValue,
@@ -150,8 +151,13 @@ export async function RequestChangeCard({
 
   return (
     <Card id={`section-request-${tab}`} data-tour={tab === 'bankStatutory' ? 'me-bank' : undefined}>
-      <SectionHeader title={title} subtitle={fields.length > 0 ? t('changesNeedApproval') : t('noRequestableFields')} />
-      <div className="p-4">
+      {/* r401 — Monolith: the same section head as every other My Profile card; Classic unchanged. */}
+      <SectionHeader
+        title={title}
+        subtitle={fields.length > 0 ? t('changesNeedApproval') : t('noRequestableFields')}
+        className={`${MONO_ME_SECTION_HEAD} monolith:[&>p]:normal-case monolith:[&>p]:font-sans monolith:[&>p]:tracking-normal monolith:[&>p]:text-[13px]`}
+      />
+      <div className="p-4 monolith:px-0">
         {fields.length > 0 ? (
         <details>
           <summary className="cursor-pointer select-none text-xs font-medium uppercase tracking-wide text-muted-foreground">

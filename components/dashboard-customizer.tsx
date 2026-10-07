@@ -52,6 +52,7 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { ArrowUpRight, GripVertical, Pin, Plus, X } from 'lucide-react';
 import { Button, Card } from '@/components/ui';
+import { SectionOrdinalProvider } from '@/components/monolith/section-ordinal';
 import {
   MAX_SHORTCUTS,
   isFixedRowKey,
@@ -76,6 +77,20 @@ export function gridColsFor(count: number): string {
   return GRID_COLS[Math.min(Math.max(count, 1), 4)] ?? 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-4';
 }
 
+/**
+ * r401 — Monolith (docs/design/monolith/reference/P-Dashboard.dc.html). Every class below is `monolith:`-scoped
+ * and APPENDED, so Classic's markup paints exactly as before. The top row reads as the board's `.cells`: no gaps,
+ * a hairline between neighbours, the first column flush left. Each cell carries a left hairline and 18px; the
+ * grid is pulled 19px left and clipped there, so whichever cells start a line (4, 2 or 1 across) lose their
+ * rule and padding to the clip — no per-breakpoint bookkeeping. The clip keeps 8px outside the other edges so
+ * a focus outline is never cut.
+ */
+const MONO_ROW1 =
+  'monolith:gap-x-0 monolith:gap-y-6 monolith:-ml-[19px] monolith:[clip-path:inset(-8px_-8px_-8px_11px)]';
+const MONO_ROW1_CELL = 'monolith:border-l monolith:border-hairline monolith:pl-[18px]';
+const MONO_ROWS = 'monolith:gap-8';
+const MONO_DASHED = 'monolith:rounded-none monolith:border monolith:border-faint';
+
 /** One HR-configured card the employee may show / add / reorder. */
 export type CustomizerCard = {
   key: string;
@@ -91,12 +106,12 @@ export type CustomizerCard = {
 function ShortcutCard({ label, href, badge }: { label: string; href: string; badge: string }) {
   return (
     <Link href={href} className="block h-full">
-      <Card className="flex h-full items-center justify-between gap-3 p-5 transition-colors hover:border-foreground/20">
+      <Card className="flex h-full items-center justify-between gap-3 p-5 transition-colors hover:border-foreground/20 monolith:px-0 monolith:pt-3 monolith:pb-3 monolith:hover:border-signal">
         <div className="min-w-0">
-          <div className="text-[10px] font-medium uppercase tracking-wide text-primary/80">{badge}</div>
-          <div className="mt-1 truncate text-lg font-semibold tracking-tight">{label}</div>
+          <div className="text-[10px] font-medium uppercase tracking-wide text-primary/80 monolith:font-mono monolith:text-[11px] monolith:font-normal monolith:tracking-[0.12em] monolith:text-mid">{badge}</div>
+          <div className="mt-1 truncate text-lg font-semibold tracking-tight monolith:font-medium monolith:tracking-[-0.02em] monolith:text-ink">{label}</div>
         </div>
-        <ArrowUpRight className="size-5 shrink-0 text-muted-foreground" />
+        <ArrowUpRight className="size-5 shrink-0 text-muted-foreground monolith:text-mid" />
       </Card>
     </Link>
   );
@@ -134,7 +149,7 @@ function SortableCard({
       data-card-key={id}
       className={`relative h-full rounded-2xl border-2 border-dashed border-primary/30 p-2 ${
         isDragging ? 'opacity-80 shadow-lg' : ''
-      } ${shaking ? 'animate-shake border-destructive/60' : ''}`}
+      } ${shaking ? 'animate-shake border-destructive/60' : ''} ${MONO_DASHED}${shaking ? ' monolith:border-signal' : ''}`}
     >
       <div className="mb-2 flex items-center gap-2">
         {/* The handle carries dnd-kit's KeyboardSensor activator as well as the pointer one, so this button
@@ -144,18 +159,18 @@ function SortableCard({
         <button
           type="button"
           aria-label={t('reorderCardAria', { card: label })}
-          className="grid size-7 shrink-0 cursor-grab touch-none place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-primary/40"
+          className="grid size-7 shrink-0 cursor-grab touch-none place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-primary/40 monolith:rounded-none monolith:hover:bg-pressed monolith:focus:ring-0 monolith:focus-visible:outline-2"
           {...attributes}
           {...listeners}
         >
           <GripVertical className="size-4" />
         </button>
-        <span className="text-xs font-medium text-muted-foreground">{label}</span>
+        <span className="text-xs font-medium text-muted-foreground monolith:font-mono monolith:text-[11px] monolith:font-normal monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid">{label}</span>
         <button
           type="button"
           onClick={() => onRemove(id)}
           aria-label={t('removeCardAria', { card: label })}
-          className="ml-auto grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus:outline-none focus:ring-2 focus:ring-destructive/40"
+          className="ml-auto grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus:outline-none focus:ring-2 focus:ring-destructive/40 monolith:rounded-none monolith:hover:bg-pressed monolith:hover:text-signal-text monolith:focus:ring-0 monolith:focus-visible:outline-2"
         >
           <X className="size-4" />
         </button>
@@ -163,12 +178,12 @@ function SortableCard({
       {/* The card preview is inert while customizing so drags don't trigger inner links/controls. */}
       <div className="pointer-events-none select-none">{children}</div>
       {shaking && (
-        <p role="alert" className="mt-2 px-1 text-xs font-medium text-destructive">
+        <p role="alert" className="mt-2 px-1 text-xs font-medium text-destructive monolith:text-signal-text">
           {mandatoryMessage}
         </p>
       )}
       {mandatory && !shaking && (
-        <p className="mt-2 px-1 text-[11px] text-muted-foreground">{t('mandatoryCardHint')}</p>
+        <p className="mt-2 px-1 text-[11px] text-muted-foreground monolith:text-mid">{t('mandatoryCardHint')}</p>
       )}
     </div>
   );
@@ -178,7 +193,7 @@ function SortableCard({
 function FixedCard({ label, children }: { label: string; children: ReactNode }) {
   const t = useTranslations('dashboard');
   return (
-    <div className="relative h-full rounded-2xl border-2 border-dashed border-muted-foreground/25 bg-muted/20 p-2">
+    <div className={`relative h-full rounded-2xl border-2 border-dashed border-muted-foreground/25 bg-muted/20 p-2 ${MONO_DASHED} monolith:bg-transparent`}>
       <div className="mb-2 flex items-center gap-2">
         <Pin className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         <span className="text-xs font-medium text-muted-foreground">{label}</span>
@@ -197,6 +212,7 @@ export function DashboardCustomizer({
   layout,
   saveAction,
   resetAction,
+  sectionKeys,
 }: {
   /** Every ACTIVE HR-configured card, in display order (the add menu + labels come from here). */
   cards: CustomizerCard[];
@@ -206,6 +222,12 @@ export function DashboardCustomizer({
   layout: DashboardLayout;
   saveAction: (layout: { selected: string[]; order: string[] }) => Promise<void>;
   resetAction: () => Promise<void>;
+  /**
+   * r401 — Monolith only: the cardKeys whose node is a numbered SECTION (`01 · Attendance`). Each such block
+   * is told its place among the sections IN THE USER'S CURRENT ORDER (live while customizing), through
+   * components/monolith/section-ordinal.tsx. Absent (Classic) → no provider is mounted and nothing changes.
+   */
+  sectionKeys?: string[];
 }) {
   const t = useTranslations('dashboard');
   const byKey = useMemo(() => new Map(cards.map((c) => [c.key, c])), [cards]);
@@ -254,6 +276,14 @@ export function DashboardCustomizer({
   // The flat draggable order shared by the top row and the third area — row membership re-derives from the
   // MAX_FIRST_ROW slice, so a drag between the two grids is just a move within this flat sequence.
   const sortableKeys = [...row1Keys, ...row3Keys];
+  // r401 — the on-screen order of the numbered sections: top row, shortcuts, the fixed row, then the rest.
+  const sectionOrdinal = useMemo(() => {
+    if (!sectionKeys) return null;
+    const isSection = new Set(sectionKeys);
+    const out = new Map<string, number>();
+    for (const k of [...row1Keys, ...shortcutRowKeys, ...fixedKeys, ...row3Keys]) if (isSection.has(k)) out.set(k, out.size + 1);
+    return out;
+  }, [sectionKeys, row1Keys, shortcutRowKeys, fixedKeys, row3Keys]);
 
   // At the cap, the Add menu still LISTS the remaining shortcuts but refuses them, with the reason spelled
   // out — a silently vanishing menu entry reads as a bug.
@@ -384,7 +414,10 @@ export function DashboardCustomizer({
 
   /** Resolve the render node for a card: bespoke server block, else a generic shortcut link, else null. */
   const nodeFor = (key: string): ReactNode => {
-    if (blocks[key] !== undefined) return blocks[key];
+    if (blocks[key] !== undefined) {
+      const ordinal = sectionOrdinal?.get(key);
+      return ordinal === undefined ? blocks[key] : <SectionOrdinalProvider value={ordinal}>{blocks[key]}</SectionOrdinalProvider>;
+    }
     const card = byKey.get(key);
     if (card && card.href) {
       const marker = OPENS_ON_ARRIVAL[key];
@@ -419,7 +452,7 @@ export function DashboardCustomizer({
                 {addOpen && addable.length > 0 && (
                   <div
                     role="menu"
-                    className="absolute right-0 z-30 mt-1 max-h-72 w-64 overflow-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg"
+                    className="absolute right-0 z-30 mt-1 max-h-72 w-64 overflow-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg monolith:rounded-none monolith:border-ink"
                   >
                     {addable.map((c) => {
                       const blocked = c.cardType === 'shortcut' && shortcutLimitReached;
@@ -431,11 +464,11 @@ export function DashboardCustomizer({
                           onClick={() => addCard(c.key)}
                           disabled={blocked}
                           title={blocked ? t('shortcutsLimitToast', { max: MAX_SHORTCUTS }) : undefined}
-                          className="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+                          className="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent monolith:rounded-none monolith:hover:bg-pressed"
                         >
                           <span className="truncate">{c.label}</span>
                           {(c.cardType === 'shortcut' || c.cardType === 'action') && (
-                            <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-primary/80">
+                            <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-primary/80 monolith:font-mono monolith:tracking-[0.12em] monolith:text-mid">
                               {t('shortcutBadge')}
                             </span>
                           )}
@@ -519,7 +552,7 @@ export function DashboardCustomizer({
                   </SortableCard>
                 ))}
                 {row1Keys.length === 0 && shortcutRowKeys.length === 0 && (
-                  <p className="col-span-full rounded-2xl border-2 border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                  <p className={`col-span-full rounded-2xl border-2 border-dashed border-border p-8 text-center text-sm text-muted-foreground ${MONO_DASHED} monolith:border-dashed monolith:text-mid`}>
                     {t('emptyDashboardHint')}
                   </p>
                 )}
@@ -552,7 +585,7 @@ export function DashboardCustomizer({
                     </div>
                   </SortableContext>
                 ) : (
-                  <p className="rounded-2xl border-2 border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                  <p className={`rounded-2xl border-2 border-dashed border-border p-6 text-center text-sm text-muted-foreground ${MONO_DASHED} monolith:border-dashed monolith:text-mid`}>
                     {t('shortcutsEmptyHint', { max: MAX_SHORTCUTS })}
                   </p>
                 )}
@@ -595,16 +628,16 @@ export function DashboardCustomizer({
         <div className="space-y-6">
           {/* Row 1 — the employee's arranged top-row grid (up to 4 cards). */}
           {row1Keys.length > 0 && (
-            <div className={`grid gap-6 ${gridColsFor(row1Keys.length)}`}>
+            <div className={`grid gap-6 ${gridColsFor(row1Keys.length)} ${MONO_ROW1}`}>
               {row1Keys.map((key) => (
-                <div key={key} className="h-full">{nodeFor(key)}</div>
+                <div key={key} className={`h-full ${MONO_ROW1_CELL}`}>{nodeFor(key)}</div>
               ))}
             </div>
           )}
           {/* Shortcuts — the employee's mini-card row, in their saved order. Hidden when empty so a
               dashboard with no shortcuts renders exactly as it did before (feedback 3d2bc793). */}
           {shortcutRowKeys.length > 0 && (
-            <div className={`grid gap-6 ${gridColsFor(shortcutRowKeys.length)}`}>
+            <div className={`grid gap-6 ${gridColsFor(shortcutRowKeys.length)} ${MONO_ROWS}`}>
               {shortcutRowKeys.map((key) => (
                 <div key={key} className="h-full">{nodeFor(key)}</div>
               ))}
@@ -612,7 +645,7 @@ export function DashboardCustomizer({
           )}
           {/* Row 2 — the fixed full-width row. Empty today. */}
           {fixedKeys.length > 0 && (
-            <div className={`grid gap-6 ${gridColsFor(fixedKeys.length)}`}>
+            <div className={`grid gap-6 ${gridColsFor(fixedKeys.length)} ${MONO_ROWS}`}>
               {fixedKeys.map((key) => (
                 <div key={key} className="h-full">{nodeFor(key)}</div>
               ))}
@@ -620,7 +653,7 @@ export function DashboardCustomizer({
           )}
           {/* Row 3 — everything else, below it. */}
           {row3Keys.length > 0 && (
-            <div className={`grid gap-6 ${gridColsFor(row3Keys.length)}`}>
+            <div className={`grid gap-6 ${gridColsFor(row3Keys.length)} ${MONO_ROWS}`}>
               {row3Keys.map((key) => (
                 <div key={key} className="h-full">{nodeFor(key)}</div>
               ))}

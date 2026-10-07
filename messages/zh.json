@@ -3426,6 +3426,7 @@
     "pcbMarriedSpouseNotWorking": "已婚 · 配偶无业",
     "pcbMarriedSpouseWorking": "已婚 · 配偶在职",
     "myPayslips": "我的工资单",
+    "lastPayslip": "最近一期工资单",
     "noPayslipsYet": "暂无工资单。工资单将在薪资批次关闭并发布后显示。",
     "selectMonth": "工资月份",
     "selectCycle": "发薪周期",
@@ -14221,6 +14222,7 @@
     "cardEmpty": "暂无公告。",
     "cardViewAll": "查看全部公告",
     "cardNewCount": "{count} 条新公告",
+    "cardUnreadWord": "新",
     "popupRead": "阅读公告",
     "popupDismiss": "关闭"
   },

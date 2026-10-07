@@ -229,13 +229,17 @@ export function SectionHeader({
   // history list and reported as one twice; it is in fact a disambiguator that appears only when two
   // runs share company + year + month + cycle. Opt-in, so every existing header renders unchanged.
   subtitle,
+  // r401 — OPTIONAL extra classes, for a screen whose Monolith branch restyles its section heads with
+  // `monolith:` utilities (My Profile). Absent → the className is the literal below, byte for byte.
+  className,
 }: {
   title: string;
   count?: number;
   subtitle?: string;
+  className?: string;
 }) {
   return (
-    <div className="border-b border-border px-4 py-3 text-sm font-medium">
+    <div className={className ? cn('border-b border-border px-4 py-3 text-sm font-medium', className) : 'border-b border-border px-4 py-3 text-sm font-medium'}>
       {title}
       {count !== undefined && <span className="ml-2 text-muted-foreground">({count})</span>}
       {subtitle && <p className="mt-1 text-xs font-normal text-muted-foreground">{subtitle}</p>}

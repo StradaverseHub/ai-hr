@@ -141,7 +141,11 @@ describe('C. app/layout.tsx writes the theme onto <html data-ui-theme>', () => {
     const htmlTags = src.match(/<html\s+lang=\{locale\}/g) ?? [];
     expect(htmlTags.length).toBe(2);
     expect(src.match(/<html\s+lang=\{locale\}\s+data-ui-theme=\{uiTheme\}/g) ?? []).toHaveLength(2);
-    expect(src).toMatch(/const uiTheme = resolveUiTheme\(\(await cookies\(\)\)\.get\(UI_THEME_COOKIE\)\?\.value\);/);
+    // r401 — the cookie is read in ONE place, lib/ui-theme-server.ts, which the layout and the pages that branch
+    // on the theme (Dashboard, My Profile) all call; the read itself is the same resolveUiTheme(cookie) it was.
+    expect(src).toMatch(/const uiTheme = await currentUiTheme\(\);/);
+    expect(read('lib/ui-theme-server.ts')).toMatch(/value = \(await cookies\(\)\)\.get\(UI_THEME_COOKIE\)\?\.value;/);
+    expect(read('lib/ui-theme-server.ts')).toMatch(/return resolveUiTheme\(value\);/);
   });
 });
 

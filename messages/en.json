@@ -3426,6 +3426,7 @@
     "pcbMarriedSpouseNotWorking": "Married · spouse not working",
     "pcbMarriedSpouseWorking": "Married · spouse working",
     "myPayslips": "My payslips",
+    "lastPayslip": "Last payslip",
     "noPayslipsYet": "No payslips available yet. A payslip appears here once its payroll run is closed and released.",
     "selectMonth": "Payroll month",
     "selectCycle": "Pay cycle",
@@ -14221,6 +14222,7 @@
     "cardEmpty": "No notices right now.",
     "cardViewAll": "View all notices",
     "cardNewCount": "{count} new",
+    "cardUnreadWord": "New",
     "popupRead": "Read notice",
     "popupDismiss": "Close"
   },

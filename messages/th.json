@@ -3426,6 +3426,7 @@
     "pcbMarriedSpouseNotWorking": "สมรส · คู่สมรสไม่ทำงาน",
     "pcbMarriedSpouseWorking": "สมรส · คู่สมรสทำงาน",
     "myPayslips": "สลิปเงินเดือนของฉัน",
+    "lastPayslip": "สลิปเงินเดือนล่าสุด",
     "noPayslipsYet": "ยังไม่มีสลิปเงินเดือน สลิปจะแสดงที่นี่เมื่อรอบการจ่ายเงินเดือนปิดและเผยแพร่แล้ว",
     "selectMonth": "เดือนจ่ายเงินเดือน",
     "selectCycle": "รอบการจ่ายเงิน",
@@ -14221,6 +14222,7 @@
     "cardEmpty": "ขณะนี้ไม่มีประกาศ",
     "cardViewAll": "ดูประกาศทั้งหมด",
     "cardNewCount": "ใหม่ {count} รายการ",
+    "cardUnreadWord": "ใหม่",
     "popupRead": "อ่านประกาศ",
     "popupDismiss": "ปิด"
   },
