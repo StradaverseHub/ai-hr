@@ -148,7 +148,13 @@ export function toXlsxReport(d: ReportData): SerializedReport {
 // ── PDF (pdf-lib + WinAnsi safe() guard) ─────────────────────────────────────
 // Helvetica is WinAnsi (Latin-1): guard non-Latin codepoints so a CJK/Tamil roster never crashes the
 // render. Documented as lossy for non-Latin names (ADR-0047 §7) — the substitution is intentional.
-const safe = (s: string): string => (s ?? '').replace(/[^\x20-\x7E\xA0-\xFF]/g, '?');
+//
+// r409 verifier — THE EN AND EM DASH ARE LET THROUGH. Both are in WinAnsi (0x96 / 0x97) and Helvetica has
+// the glyphs (the same path `truncate` already relies on for '…'), so substituting them was a defect, not
+// the documented lossy case: every statutory-forms export title is "<label> — <period>", and Form E /
+// CP8D's preview framed it as "Form E / CP8D ? annual (LHDN) ? 2025". Text only — no digit, sign or
+// separator is touched, so no figure in any report that uses this writer can change.
+const safe = (s: string): string => (s ?? '').replace(/[^\x20-\x7E\xA0-\xFF–—]/g, '?');
 
 export async function toPdfReport(d: ReportData): Promise<SerializedReport> {
   const doc = await PDFDocument.create();

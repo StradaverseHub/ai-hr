@@ -143,3 +143,59 @@ describe('CSV golden byte-stability (ADR-0047 §9.1)', () => {
     expect(csv).toBe('Name,Company,Department,Terminated on,Type,Reason' + CRLF);
   });
 });
+
+/**
+ * r409 verifier — the PDF writer kept the EN and EM DASH as '?'. Both are WinAnsi codepoints Helvetica
+ * draws, so they are not the documented lossy case. Every statutory-forms export title is
+ * "<label> — <period>", and the Form E / CP8D preview frames that PDF. Read back from the content stream
+ * (pdf-lib writes WinAnsi bytes as hex `<…> Tj`): 0x97 is '—', 0x96 is '–', 0x3F is '?'.
+ */
+describe('PDF keeps the en and em dash (r409 verifier)', () => {
+  const drawnText = async (bytes: Uint8Array): Promise<string> => {
+    const { PDFDocument, PDFArray } = await import('pdf-lib');
+    const zlib = await import('node:zlib');
+    const doc = await PDFDocument.load(bytes);
+    let out = '';
+    for (const page of doc.getPages()) {
+      const c = page.node.Contents();
+      const refs = c instanceof PDFArray ? c.asArray() : c ? [c] : [];
+      for (const ref of refs) {
+        const raw = (doc.context.lookup(ref) as unknown as { contents?: Uint8Array }).contents;
+        if (!raw) continue;
+        let s: string;
+        try {
+          s = zlib.inflateSync(Buffer.from(raw)).toString('latin1');
+        } catch {
+          s = Buffer.from(raw).toString('latin1');
+        }
+        for (const m of s.matchAll(/<([0-9A-Fa-f]*)>\s*Tj/g)) out += Buffer.from(m[1], 'hex').toString('latin1') + '\n';
+      }
+    }
+    return out;
+  };
+
+  it('draws "—" and "–" as themselves, and leaves every figure exactly as the row holds it', async () => {
+    const pdf = await toPdfReport({
+      filename: 'cp8d',
+      title: 'Form E / CP8D — annual (LHDN) — 2025',
+      columns: ['No', 'Name', 'Gross'],
+      rows: [
+        [1, 'A – B', 1234.5],
+        [2, 'C', 100],
+      ],
+    });
+    const text = await drawnText(pdf.bytes);
+    expect(text.length, 'the content stream must have been read').toBeGreaterThan(20);
+    expect(text).toContain('Form E / CP8D \x97 annual (LHDN) \x97 2025');
+    expect(text).toContain('A \x96 B');
+    expect(text).not.toContain('?');
+    // The writer does not format money; a figure prints as the report row holds it.
+    expect(text).toContain('1234.5\n');
+    expect(text).toContain('100\n');
+  });
+
+  it('a codepoint outside WinAnsi is still substituted, not thrown on', async () => {
+    const pdf = await toPdfReport({ filename: 'x', title: 'T', columns: ['Name'], rows: [['李伟']] });
+    expect(await drawnText(pdf.bytes)).toContain('??');
+  });
+});
