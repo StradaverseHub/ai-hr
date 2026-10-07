@@ -206,13 +206,25 @@ describe('each form’s criteria step asks for what THAT form needs, and nothing
    * day it is registered.
    */
   it('asks a monthly report for company, year and month', () => {
+    // r407 (item 4f45f9b0) — UPDATED, NOT LOOSENED. A monthly form whose pack declares `runSelection` ALSO
+    // asks for the payroll cycles and continues to its own preview; every other monthly form is exactly
+    // as it was. Read off the catalog card the step itself reads (`runSelection`), so the two cannot drift.
     const monthly = MY_REPORTS.filter((r) => r.submission && r.periodKind === 'month');
     expect(monthly.length).toBeGreaterThan(0);
     for (const r of monthly) {
-      const d = reportDestination(r.id, r.periodKind);
-      expect(d.criteria.map((c) => c.kind), r.id).toEqual(['company', 'year', 'month']);
-      expect(d.action, r.id).toBe(`/payroll/statutory-forms/${r.id}`);
+      const d = reportDestination(r.id, r.periodKind, r.runSelection);
+      if (r.runSelection) {
+        expect(d.criteria.map((c) => c.kind), r.id).toEqual(['company', 'year', 'month', 'cycles']);
+        expect(d.criteria.find((c) => c.kind === 'cycles')!.field, r.id).toBe('run');
+        expect(d.action, r.id).toBe(r.runSelection.action);
+      } else {
+        expect(d.criteria.map((c) => c.kind), r.id).toEqual(['company', 'year', 'month']);
+        expect(d.action, r.id).toBe(`/payroll/statutory-forms/${r.id}`);
+      }
     }
+    // Borang A is the one that declares it today — pinned, so a refactor that dropped the declaration
+    // cannot quietly turn the cycle box off.
+    expect(monthly.filter((r) => r.runSelection).map((r) => r.id)).toEqual(['my.borang-a']);
   });
 
   it('asks an ANNUAL report for company and year, and never a month', () => {
