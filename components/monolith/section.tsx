@@ -67,12 +67,8 @@ export function Section({
         >
           {(label != null || index != null) && (
             <h2 id={headingId} className={cn('text-sm font-medium', MONO_LABEL, 'monolith:text-mid')}>
-              {index != null && (
-                <span className="num tabular-nums text-muted-foreground monolith:text-mid">
-                  {String(index).padStart(2, '0')}
-                  {label != null && ' · '}
-                </span>
-              )}
+              {index != null && <span className="num tabular-nums text-muted-foreground monolith:text-mid">{String(index).padStart(2, '0')}</span>}
+              {index != null && label != null && ' · '}
               {label}
             </h2>
           )}
