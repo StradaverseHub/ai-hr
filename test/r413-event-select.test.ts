@@ -137,6 +137,43 @@ describe('r413 · the list is the compliance worklist, narrowed', () => {
   });
 });
 
+/**
+ * VERIFIER FIX — A DEATH'S DEADLINE IS NOT "LEAVING DATE − 30". CP22A [Pin.1/2023]'s own instruction:
+ * "sekurang-kurangnya 30 hari sebelum tarikh pemberhentian … atau dalam tempoh 30 hari selepas dimaklumkan
+ * kematian seseorang pekerja". The date the employer is told is not recorded, so no date is computed.
+ * NON-VACUITY: remove the `terminationType === 'death'` branch in complianceWorklist and every assertion
+ * below fails (the row gets leaving date − 30 and a computed status).
+ */
+describe('r413 · a death is due 30 days after the employer is TOLD — no computed date', () => {
+  beforeEach(async () => {
+    await owner.db.update(schema.employment).set({ terminationType: 'death', terminatedOn: dayOffset(-5) }).where(eq(schema.employment.id, leaverId));
+  });
+
+  it('the worklist row carries no due date and the on_notice status; a retirement still gets leaving − 30', async () => {
+    const a = adminCtx(b);
+    const [death] = await complianceWorklist(a, { companyId: b.companyId, today: TODAY, form: 'CP22A' });
+    expect(death).toMatchObject({ employmentId: leaverId, eventDate: dayOffset(-5), dueBy: null, status: 'on_notice' });
+    await owner.db.update(schema.employment).set({ terminationType: 'retired' }).where(eq(schema.employment.id, leaverId));
+    const [retired] = await complianceWorklist(a, { companyId: b.companyId, today: TODAY, form: 'CP22A' });
+    expect(retired).toMatchObject({ dueBy: dayOffset(-35), status: 'overdue' });
+  });
+
+  it('the event screen prints the reason, never the leaving date − 30', async () => {
+    const html = renderToStaticMarkup(await EventPage({ searchParams: Promise.resolve({ form: 'my.cp22a', companyId: b.companyId }) }));
+    expect(html).toContain('Siti Nurhaliza');
+    expect(html).toContain('data-due-on-notice');
+    expect(html).toContain('dueOnNotice');
+    expect(html).toContain('status_on_notice');
+    const wrong = dayOffset(-35);
+    expect(html).not.toContain(`${wrong.slice(8, 10)}/${wrong.slice(5, 7)}/${wrong.slice(0, 4)}`);
+  });
+
+  it('the directory’s own worklist table says the same word where the date would be', () => {
+    const src = code(fs.readFileSync(path.join(ROOT, 'app/payroll/statutory-forms/page.tsx'), 'utf8'));
+    expect(src).toMatch(/\{w\.dueBy \?\? <span data-due-on-notice[^>]*>\{t\('dueOnNotice'\)\}<\/span>\}/);
+  });
+});
+
 describe('r413 · the screen', () => {
   it('lists the leavers for CP22A — name, event, dates, status word and a select — and nobody else', async () => {
     const html = renderToStaticMarkup(await EventPage({ searchParams: Promise.resolve({ form: 'my.cp22a', companyId: b.companyId }) }));

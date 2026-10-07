@@ -129,6 +129,7 @@ const WL_STATUS: Record<string, string> = {
   overdue: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
   due_soon: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
   upcoming: 'bg-muted text-muted-foreground',
+  on_notice: 'bg-muted text-muted-foreground',
 };
 
 /**
@@ -794,7 +795,7 @@ export default async function StatutoryFormsPage({
                     <td className="px-4 py-2.5">{w.form}</td>
                     <td className="px-4 py-2.5 text-muted-foreground">{w.reason}</td>
                     <td className="px-4 py-2.5 font-mono text-xs">{w.eventDate}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs">{w.dueBy}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs">{w.dueBy ?? <span data-due-on-notice className="font-sans">{t('dueOnNotice')}</span>}</td>
                     <td className="px-4 py-2.5">
                       <span
                         className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${WL_STATUS[w.status]}`}

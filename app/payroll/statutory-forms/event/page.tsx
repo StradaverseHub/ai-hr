@@ -37,6 +37,7 @@ const STATUS_CLS = {
   overdue: 'text-red-700 dark:text-red-400 monolith:text-signal-text',
   due_soon: 'text-foreground monolith:text-ink',
   upcoming: 'text-muted-foreground monolith:text-mid',
+  on_notice: 'text-foreground monolith:text-ink',
 } as const;
 
 export default async function EventSelectPage({
@@ -153,7 +154,10 @@ export default async function EventSelectPage({
                         </td>
                         <td className="hidden px-3 py-3 sm:table-cell">{t(isLeaving ? 'event_CP22A' : 'event_CP22')}</td>
                         <td className="hidden px-3 py-3 font-mono text-xs tabular-nums sm:table-cell">{human(w.eventDate)}</td>
-                        <td className="px-3 py-3 font-mono text-xs tabular-nums">{human(w.dueBy)}</td>
+                        <td className="px-3 py-3 font-mono text-xs tabular-nums">
+                          {/* A death's deadline runs from when the employer is TOLD, which is not recorded: no date, and why. */}
+                          {w.dueBy ? human(w.dueBy) : <span data-due-on-notice className="font-sans">{tf('dueOnNotice')}</span>}
+                        </td>
                         <td className={`px-3 py-3 font-mono text-xs uppercase tracking-wide ${STATUS_CLS[w.status]}`}>
                           {tf(`status_${w.status}` as 'status_upcoming')}
                         </td>

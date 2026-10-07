@@ -4431,6 +4431,8 @@
       "status_overdue": "已逾期",
       "status_due_soon": "即将到期",
       "status_upcoming": "尚未到期",
+      "status_on_notice": "自获悉起",
+      "dueOnNotice": "获悉死亡后 30 天内",
       "status_unknown": "未设截止日期",
       "link_ea_hint": "[retired r402 — said English and Bahasa Malaysia were two entries; replaced by link_ea_hint_version]",
       "link_cp22": "[retired r413 — replaced by link_cp22_new; CP22A has its own card now, so the CP22 row no longer says \"CP22 / CP22A\"]",

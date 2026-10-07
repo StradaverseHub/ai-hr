@@ -4834,6 +4834,8 @@
       "status_overdue": "Overdue",
       "status_due_soon": "Due soon",
       "status_upcoming": "Upcoming",
+      "status_on_notice": "From notice",
+      "dueOnNotice": "Within 30 days of being told of the death",
       "status_unknown": "No deadline set",
       "link_ea_hint": "[retired r402 — said English and Bahasa Malaysia were two entries; replaced by link_ea_hint_version]",
       "link_cp22": "[retired r413 — replaced by link_cp22_new; CP22A has its own card now, so the CP22 row no longer says \"CP22 / CP22A\"]",

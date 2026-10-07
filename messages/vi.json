@@ -4431,6 +4431,8 @@
       "status_overdue": "Quá hạn",
       "status_due_soon": "Sắp đến hạn",
       "status_upcoming": "Sắp tới",
+      "status_on_notice": "Tính từ ngày được báo",
+      "dueOnNotice": "Trong vòng 30 ngày sau khi được báo tin qua đời",
       "status_unknown": "Chưa đặt hạn",
       "link_ea_hint": "[retired r402 — said English and Bahasa Malaysia were two entries; replaced by link_ea_hint_version]",
       "link_cp22": "[retired r413 — replaced by link_cp22_new; CP22A has its own card now, so the CP22 row no longer says \"CP22 / CP22A\"]",

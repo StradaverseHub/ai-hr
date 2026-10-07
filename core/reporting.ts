@@ -901,8 +901,15 @@ export type WorklistItem = {
   form: 'CP22' | 'CP22A';
   reason: string;
   eventDate: string;
-  dueBy: string;
-  status: 'overdue' | 'due_soon' | 'upcoming';
+  /**
+   * The statutory deadline, or NULL when the law ties it to a date the system does not hold. CP22A
+   * [Pin.1/2023]'s own instruction: "sekurang-kurangnya 30 hari sebelum tarikh pemberhentian … atau dalam
+   * tempoh 30 hari selepas dimaklumkan kematian seseorang pekerja". For a DEATH the clock starts when the
+   * employer is TOLD (the form's own box A5), which nothing records — so no date is computed and the row
+   * says why (`on_notice`), rather than printing leaving date − 30, a deadline that is not the law's.
+   */
+  dueBy: string | null;
+  status: 'overdue' | 'due_soon' | 'upcoming' | 'on_notice';
 };
 
 const isoAddDays = (iso: string, n: number): string => {
@@ -969,6 +976,7 @@ export function complianceWorklist(
         name: person.fullName,
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,
+        terminationType: employment.terminationType,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
@@ -980,16 +988,21 @@ export function complianceWorklist(
         items.push({ employmentId: e.id, name: e.name, form: 'CP22', reason: 'New hire', eventDate: e.hiredOn, dueBy, status: statusFor(today, dueBy) });
       }
       if (e.terminatedOn && e.terminatedOn >= ceaseFloor && e.terminatedOn <= ceaseCeil) {
-        const dueBy = isoAddDays(e.terminatedOn, -30); // notify ≥30 days before cessation
-        items.push({ employmentId: e.id, name: e.name, form: 'CP22A', reason: 'Cessation', eventDate: e.terminatedOn, dueBy, status: statusFor(today, dueBy) });
+        if (e.terminationType === 'death') {
+          // Within 30 days of being TOLD of the death — a date not recorded, so none is computed (see dueBy).
+          items.push({ employmentId: e.id, name: e.name, form: 'CP22A', reason: 'Cessation', eventDate: e.terminatedOn, dueBy: null, status: 'on_notice' });
+        } else {
+          const dueBy = isoAddDays(e.terminatedOn, -30); // notify ≥30 days before cessation
+          items.push({ employmentId: e.id, name: e.name, form: 'CP22A', reason: 'Cessation', eventDate: e.terminatedOn, dueBy, status: statusFor(today, dueBy) });
+        }
       }
     }
-    const rank = { overdue: 0, due_soon: 1, upcoming: 2 };
+    const rank = { overdue: 0, due_soon: 1, on_notice: 2, upcoming: 3 };
     const needle = (p.nameQuery ?? '').trim().toLocaleLowerCase();
     return items
       .filter((i) => !p.form || i.form === p.form)
       .filter((i) => !needle || i.name.toLocaleLowerCase().includes(needle))
-      .sort((a, b) => rank[a.status] - rank[b.status] || a.dueBy.localeCompare(b.dueBy));
+      .sort((a, b) => rank[a.status] - rank[b.status] || (a.dueBy ?? '').localeCompare(b.dueBy ?? ''));
   });
 }
 
