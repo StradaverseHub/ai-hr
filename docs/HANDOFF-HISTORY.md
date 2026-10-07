@@ -1,3 +1,28 @@
+## r410 — 2026-10-08 · main@6d3ebf9496a4e5171adfe768800072616f65c6d3 · migration none
+
+**Scope.** Four builds, one gate (r406 952129bb HR Add Leave Credit, r407 4f45f9b0 Borang A workflow + redraw, r408 e74af58c step 1 Borang 8A, r409 79f3f64d step 1 CP39 + CP8D). Deployed with `improve:deploy`; live after restart (401 on box, public /health 200, zero-line dry-run). Board: e74af58c and 79f3f64d approved byte-identical and set to building (later steps remain); 952129bb still planned; 4f45f9b0 was CONTESTED ("Attached the file sample") and re-planned as r411; f3cf2444 (r405) approved byte-identical and recorded deployed.
+
+**Decisions.**
+- One window→days function (`leaveCreditWindowCredit`) for the employee submit, approval re-derivation, the screen and HR's direct grant (`grantLeaveCreditRows`, source hr_manual_grant). ⚠️ MONEY, hand-fixed after verify: HR's grant refuses a date with a PENDING overtime claim or Leave Credit request, and overtime cannot be claimed on a date HR credited directly (it would be approved and never paid). `policy` credits do NOT block their own overtime (approved rest-day overtime mints them; test/plan-ot.test.ts).
+- The shared 'cycles' criterion (r407) is generic: `runSelection` on a ReportDef. CP39's PRINTED form never honoured the ticked cycles before r409 (only the e-Data file did); it now opts in via `loadBatchRows(..., { honourRunSeqs: true })`; the five other readers are byte-unchanged.
+- "Nothing to file" is the FORM's refusal only (Borang A, Borang 8A, CP39). The KWSP and ASSIST upload files and the Payment Submission shelf keep building a zero month as before (`refuseEmpty: false`): whether either agency expects a nil filing is UNKNOWN.
+- Borang 8A: due date the 15th of the following month (PERKESO 2025 booklet; Pekeliling 4/2020's last-day rule covered Apr–Sep 2020 only). Status derived B/H/M; joined and left in one month → the later event decides (a rehire is B); typed status accepts only M/B/H/S/T. False "PERKESO publishes no blank form" removed. Fidelity stays agency-layout.
+- CP39: one E before the employer number (a stored E, "E-", "E " stripped), IC digits only on the form, tax number as stored. CP22A label corrected (private-sector cessation), CP22B recorded not applicable, CP39A still planned.
+- SECURITY (verify, fixed): `/payroll/reports/cp39-file` gated on `isAdmin` only, so a company-A admin could request company B's e-Data file; now scopedAdmin + scopeIds, else 404.
+- Generic export PDF keeps en/em dashes (they printed "?").
+
+**Gate.** 20/20 GREEN, 1212 of 1212, first pass.
+
+**Corrections owed.** Delivered in the r411 plan text: the r373 "smaller, more correct wage figure" retraction.
+
+**Not done / owed.**
+- 8A: a join date merely CORRECTED inside the month still reads B (indistinguishable from a joiner); terminatedOn vs lastWorkingDate for H is unconfirmed; the Select-All test does not pin the status column.
+- Borang A D2: Select All (no run=) still reads draft batches while the cycle list shows processed ones only — changes Borang A and the KWSP file, own round.
+- CP8D figures PDF prints money without 2 decimals (pre-existing, lib/report-export.ts consumers).
+- The cp39-file route records an artefact for a selection with no deductions.
+- SOCSO step 2 (EIS schedule, 8B), LHDN steps 2–3 (CP22A, CP21, event selection), r411 (Borang A last page, BBCD).
+- `plan-r200.workflow.js` still carries the old "publish no blank template" sentence (archived prompt, not printed).
+
 ## r405 — 2026-10-08 · main@25ff9ea11b876d78b61daf63d092ed9d524168a3 · migration none
 
 **Scope.** Three board items, built while `planned` (r389/r392 precedent): f3cf2444 (one EA and one PCB 2(II) card with a Version step, full-width in-app viewer, Blank form and field register unlinked), 7a595a02 (read-only company view), 42e55e2b (My Leave › Leave Details + Excel). Deployed with `improve:deploy`, so **no board write**: build-start/deployed are recorded only when the reporter approves each plan byte-identical. Live after restart (401 on box, public /health 200, zero-line dry-run).
