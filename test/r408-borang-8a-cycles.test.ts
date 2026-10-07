@@ -138,7 +138,9 @@ describe('the Continue gate', () => {
    * has had since r373, and every download stays held by the `not-ready` gate after it.
    */
   it('asks "anything to file?" only when nobody is named, and before the readiness gate', () => {
-    const NO_DATA = "if (missing.length === 0 && !borang8AHasContributions(result.rows)) return { ok: false, reason: 'no-contributions' };";
+    const NO_DATA = "if (p.refuseEmpty !== false && missing.length === 0 && !borang8AHasContributions(result.rows)) return { ok: false, reason: 'no-contributions' };";
+    // The ASSIST upload file keeps building a no-SOCSO month (the form's refusal, not the filing's — as r407).
+    expect(code('app/payroll/borang-8a/shared.ts')).toContain('const loaded = await loadBorang8A({ ...p, refuseEmpty: false });');
     const READY = 'if ((missing.length > 0 || headerMissing.length > 0) && !p.includeIncomplete)';
     expect(SHARED_CODE.indexOf(NO_DATA)).toBeGreaterThan(0);
     expect(SHARED_CODE.indexOf(READY)).toBeGreaterThan(SHARED_CODE.indexOf(NO_DATA));

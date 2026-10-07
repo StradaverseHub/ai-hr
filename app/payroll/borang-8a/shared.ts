@@ -58,7 +58,7 @@ export async function loadBorang8AFile(p: {
   periodKey: string;
   query: URLSearchParams;
 }): Promise<Borang8AFileLoad> {
-  const loaded = await loadBorang8A(p);
+  const loaded = await loadBorang8A({ ...p, refuseEmpty: false });
   if (!loaded.ok) {
     if (loaded.reason === 'not-found') return { ok: false, status: 404, message: 'Not found' };
     if (loaded.reason === 'no-batch') {
@@ -219,6 +219,13 @@ export async function loadBorang8A(p: {
   periodKey: string;
   query: URLSearchParams;
   includeIncomplete?: boolean;
+  /**
+   * r408 — the "nothing to file" refusal is the FORM's (preview, PDF, text): the plan promises no empty
+   * Borang 8A is drawn. The ASSIST upload file keeps its pre-r408 behaviour for a month with no SOCSO,
+   * exactly as r407 left the KWSP file: whether PERKESO expects a nil filing is UNKNOWN, and refusing it
+   * would block a filing nobody asked us to stop. `loadBorang8AFile` passes false.
+   */
+  refuseEmpty?: boolean;
 }): Promise<Borang8ALoad> {
   if (!UUID.test(p.companyId) || !PERIOD.test(p.periodKey)) return { ok: false, reason: 'not-found' };
   const { s, scopeIds } = await scopedAdmin();
@@ -254,7 +261,7 @@ export async function loadBorang8A(p: {
   const headerMissing = missingBorang8AHeader(result.meta.formHeader);
   // r408 — NOTHING TO FILE. Asked only when nobody is named: a bonus-only selection names every person with
   // the SOCSO-not-in-this-selection reason, and that named refusal is the one it has always had.
-  if (missing.length === 0 && !borang8AHasContributions(result.rows)) return { ok: false, reason: 'no-contributions' };
+  if (p.refuseEmpty !== false && missing.length === 0 && !borang8AHasContributions(result.rows)) return { ok: false, reason: 'no-contributions' };
   if ((missing.length > 0 || headerMissing.length > 0) && !p.includeIncomplete) {
     return { ok: false, reason: 'not-ready', missing, headerMissing };
   }
