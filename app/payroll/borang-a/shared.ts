@@ -48,6 +48,7 @@
  * input that lands nowhere would be a control that silently does nothing, so there is not one.
  */
 import { reportPreview } from '@/core/reporting';
+import { borangAHasContributions } from './query';
 import { scopedAdmin } from '@/lib/scope';
 import { parseRunSelection } from '@/lib/payroll-run-selection';
 import {
@@ -68,6 +69,10 @@ import {
   type BorangAFileReadiness,
 } from '@/lib/kwsp-borang-a-file';
 
+/** r407 — the routes' plain-text refusal for a selection with no EPF contribution on it. */
+export const NO_CONTRIBUTIONS =
+  'No processed EPF contributions for this month and these payroll cycles — no Borang A is produced.';
+
 /** The catalog id this screen is the form for. One literal, shared, rather than four. */
 export const BORANG_A_REPORT_ID = 'my.borang-a';
 
@@ -87,6 +92,13 @@ export type BorangALoad =
   | { ok: false; reason: 'selection-empty' }
   /** r372 — the run parameters on the link are not run numbers. Refused, never quietly widened. */
   | { ok: false; reason: 'bad-selection'; message: string }
+  /**
+   * r407 (item 4f45f9b0) — the runs exist and were ticked, but they carry NO EPF contribution at all
+   * (nobody on them, or not a sen of EPF charged). "The system shall not generate an empty statutory
+   * form": a Borang A of 0.00 boxes asserts a filing of nothing. Refused HERE so the preview, the PDF, the
+   * text copy, the i-Akaun file and the Payment Submission shelf all refuse it the same way.
+   */
+  | { ok: false; reason: 'no-contributions' }
   | {
       ok: false;
       reason: 'not-ready';
@@ -139,8 +151,10 @@ export function borangARows(form: BorangAForm): BorangARow[] {
  * ── r372 (item f022dd70): THE PAYROLL CYCLES THIS DOWNLOAD COVERS ─────────────────────────────────
  * Read off the SAME query the rest of the per-generation inputs are read from, and validated in ONE place
  * (lib/payroll-run-selection.ts) so the three statutory formats cannot disagree about what a bad value
- * means. NO run parameters ⇒ `undefined` ⇒ the whole month, which is what every link written before this
- * round is and what every other surface (the review screen, the PDF, the text export) still sends. An
+ * means. NO run parameters ⇒ `undefined` ⇒ the whole month, which is what every link written before r372
+ * is. Since r407 (item 4f45f9b0) the review screen, its framed PDF and all three downloads carry the
+ * criteria step's selection too, through ONE list (`./query.ts`), so a filtered review can no longer
+ * download a whole-month file. An
  * INVALID one is REFUSED rather than dropped: dropping it would build the file over a different population
  * from the one the URL named, which is the reporter's acceptance criterion read backwards.
  */
@@ -149,6 +163,13 @@ export async function loadBorangA(p: {
   periodKey: string;
   query: URLSearchParams;
   includeIncomplete?: boolean;
+  /**
+   * r407 verify D1 — the "nothing to file" refusal is the FORM's (preview, PDF, text): the plan promises no
+   * empty Borang A is drawn. The i-Akaun upload file keeps its pre-r407 behaviour — a zero month still
+   * builds a valid EPFORMA2 with zero totals — because whether KWSP expects a nil filing is UNKNOWN, and a
+   * refusal there would block a filing nobody asked us to stop. `loadBorangAFile` passes false.
+   */
+  refuseEmpty?: boolean;
 }): Promise<BorangALoad> {
   if (!UUID.test(p.companyId) || !PERIOD.test(p.periodKey)) return { ok: false, reason: 'not-found' };
   const { s, scopeIds } = await scopedAdmin();
@@ -174,6 +195,9 @@ export async function loadBorangA(p: {
   // r372 — the month ran, the ticked cycles are not in it. Answered apart from 'no-batch' so the
   // operator is sent to the control they got wrong rather than to a payroll run that already exists.
   if (result.meta.selectionEmpty) return { ok: false, reason: 'selection-empty' };
+  // r407 — nothing to file. Checked on the ROWS the read returned, before any readiness gap is reported:
+  // naming who is missing a member number on a form that would carry no money is the wrong conversation.
+  if (p.refuseEmpty !== false && !borangAHasContributions(result.rows)) return { ok: false, reason: 'no-contributions' };
 
   const missing = result.readiness.map((r) => ({ employmentId: r.employmentId, name: r.name, missing: r.missing }));
   // TWO KINDS OF GAP, ONE GATE. `missing` is per-employee; `headerMissing` is employer-level (no EPF
@@ -227,7 +251,7 @@ export async function loadBorangAFile(p: {
   periodKey: string;
   query: URLSearchParams;
 }): Promise<BorangAFileLoad> {
-  const loaded = await loadBorangA({ companyId: p.companyId, periodKey: p.periodKey, query: p.query });
+  const loaded = await loadBorangA({ companyId: p.companyId, periodKey: p.periodKey, query: p.query, refuseEmpty: false });
   if (!loaded.ok) {
     if (loaded.reason === 'not-found') return { ok: false, status: 404, message: 'Not found' };
     if (loaded.reason === 'no-batch') {
@@ -243,6 +267,7 @@ export async function loadBorangAFile(p: {
       };
     }
     if (loaded.reason === 'bad-selection') return { ok: false, status: 422, message: loaded.message };
+    if (loaded.reason === 'no-contributions') return { ok: false, status: 422, message: NO_CONTRIBUTIONS };
     return { ok: false, status: 422, message: `Cannot produce a Borang A upload file: ${describeGaps(loaded)}.` };
   }
 

@@ -138,6 +138,10 @@ const WIDENED_LATER = [
   // also uses the full screen width instead of a narrow box"). See CAPPED_BY_DESIGN in section A for the
   // r256 reason it used to be capped; the boxes now sit in one row across the width instead.
   'app/payroll/statutory-forms/open/page.tsx',
+  // r407 (4f45f9b0) — the Borang A review screen became the full-width in-app viewer ("Preview then
+  // shows the actual Borang A inside the system, across the full width of the screen"). It left
+  // CAP_SURVIVORS / CAPPED_BY_DESIGN; the sheet keeps its A4 proportions inside the viewer's frame.
+  'app/payroll/borang-a/preview/page.tsx',
 ] as const;
 
 const ALL_WIDE = [...STANDARDISED, ...ALREADY_WIDE, ...WIDENED_LATER];
@@ -186,7 +190,6 @@ const PAYROLL_MODULE_ON_DISK = [
  */
 const CAP_SURVIVORS = [
   'app/payroll/borang-8a/preview/page.tsx',
-  'app/payroll/borang-a/preview/page.tsx',
   'app/payroll/cp39/preview/page.tsx',
   'app/payroll/statutory-forms/[formId]/page.tsx',
 ] as const;
@@ -218,12 +221,12 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
     //
     // So the module is enumerated from disk instead, and the survivors are pinned by name. It fails
     // when a NEW Payroll screen is born carrying the old cap, when a swept screen regresses to it, and
-    // when one of the four documents below is widened without this list being updated to say so. It
+    // when one of the printed documents below is widened without this list being updated to say so. It
     // also fails if the walk itself breaks, because the expected list is not empty.
     const carriers = PAYROLL_MODULE_ON_DISK.filter((f) => read(f).includes('mx-auto max-w-[100rem]'));
     expect(
       carriers,
-      'the Payroll module carries the superseded cap somewhere other than the four printed documents',
+      'the Payroll module carries the superseded cap somewhere other than the printed documents (three since r407)',
     ).toEqual([...CAP_SURVIVORS]);
   });
 
@@ -237,7 +240,7 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
    * thought about. So this one applies `capsPage` to the module READ FROM DISK and pins the exceptions.
    *
    * WHAT THE LIST BELOW IS, honestly: a snapshot of every Payroll file that caps its container TODAY, not
-   * a claim that each was individually approved to. Three categories are genuinely settled — the four
+   * a claim that each was individually approved to. Three categories are genuinely settled — the three
    * printed documents (CAP_SURVIVORS), the single-record forms of section C, and the statutory
    * CONFIGURATION pages, which are one-record settings forms of the same kind. The rest are simply
    * untouched by any width round so far. The value of naming them is that adding a NEW capped Payroll
@@ -247,7 +250,6 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
   const CAPPED_BY_DESIGN = [
     // Printed statutory documents — see CAP_SURVIVORS.
     'app/payroll/borang-8a/preview/page.tsx',
-    'app/payroll/borang-a/preview/page.tsx',
     'app/payroll/cp39/preview/page.tsx',
     'app/payroll/statutory-forms/[formId]/page.tsx',
     // r256 858a1128 — the per-form CRITERIA step STOOD HERE (`max-w-3xl`, "a prompt stretched across a 27"

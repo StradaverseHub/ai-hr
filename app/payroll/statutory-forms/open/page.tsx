@@ -6,9 +6,13 @@ import { listCompanies } from '@/core/read';
 import { listStatutoryCatalog } from '@/core/reporting';
 import { Card, PageHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { Field } from '@/components/monolith/field';
-import { MONO_UNDERLINE_FIELD as MONO_FIELD } from '@/components/monolith/classes';
+import { MONO_LABEL, MONO_UNDERLINE_FIELD as MONO_FIELD } from '@/components/monolith/classes';
 import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
+import { parseRunSelection } from '@/lib/payroll-run-selection';
+import { CyclesCriterion } from './cycles-criterion';
 import {
+  CYCLES_ENDPOINT,
+  cyclesRefusalFrom,
   defaultCriteria,
   defaultVersion,
   destinationReportId,
@@ -69,12 +73,28 @@ import {
  * chosen. The step was `max-w-3xl` and is now on `pageWideCls` with the boxes in one row — the reporter
  * asked for the full width, which reverses r256's cap on this screen.
  *
+ * r407 (item 4f45f9b0) — A PAYROLL CYCLE BOX, AND THE WAY BACK FROM A REFUSAL. A monthly report whose pack
+ * declares `runSelection` (Borang A first) gets a `cycles` criterion: the shared run picker, Select All
+ * ticked, listing only the processed runs of the company and month chosen above it. Continue goes to the
+ * form's own preview, whose server-side gate sends an empty or invalid selection BACK HERE with
+ * `?refusal=cycles_…` and the criteria it was given — so the step re-opens on the operator's own company,
+ * year, month and ticks, with the refusal said in words, and nothing was produced. The prefill is honoured
+ * for every form (a company outside this admin's scope, a malformed year or month are ignored, never
+ * echoed); the error is allowlisted by `cyclesRefusalFrom`.
+ *
  * AN UNKNOWN OR UNBUILT FORM 404s. `form` comes from the URL, so it is attacker-controlled; it is
  * resolved against the catalog of the jurisdictions this admin's OWN company scope reaches, and a
  * `PlannedFormDef` can never match because planned entries are not in the two collections searched — the
  * type carries no href, so there is nothing here that could give one an action.
  */
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
+
+/** r407 — the Continue gate's refusals, through an EXPLICIT map (a computed key renders MISSING_MESSAGE). */
+const REFUSAL_KEY = {
+  cycles_no_runs: 'refusal_cycles_no_runs',
+  cycles_no_data: 'refusal_cycles_no_data',
+  cycles_invalid: 'refusal_cycles_invalid',
+} as const;
 
 const FIDELITY_KEY: Record<string, string> = {
   official: 'fidelity_official',
@@ -101,7 +121,17 @@ const FIDELITY_CLS: Record<string, string> = {
 export default async function StatutoryFormCriteriaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ form?: string; body?: string; lang?: string }>;
+  searchParams: Promise<{
+    form?: string;
+    body?: string;
+    lang?: string;
+    /** r407 — the criteria a refused Continue came back with. Validated below; never echoed raw. */
+    companyId?: string;
+    year?: string;
+    month?: string;
+    run?: string | string[];
+    refusal?: string;
+  }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.statutoryForms');
@@ -129,7 +159,9 @@ export default async function StatutoryFormCriteriaPage({
   // Both branches come out of `../criteria`, which is also what the directory reads to decide whether a
   // card comes here at all — one rule, three readers, so a card cannot be sent to a step that then asks
   // for something the destination does not take.
-  const parsed = link ? parseDestination(link.href) : reportDestination(report!.id, report!.periodKind);
+  const parsed = link
+    ? parseDestination(link.href)
+    : reportDestination(report!.id, report!.periodKind, report!.runSelection);
 
   /**
    * THE PERIOD THIS STEP ARRIVES SHOWING — the last one that has actually HAPPENED, never "now".
@@ -145,8 +177,17 @@ export default async function StatutoryFormCriteriaPage({
   const target = catalog.reports.find(
     (r) => r.id === destinationReportId(parsed.action, link?.populationReportId),
   );
-  const { year: defaultYear, month: defaultMonth } = defaultCriteria(today, parsed.criteria, target);
+  const defaults = defaultCriteria(today, parsed.criteria, target);
+  // r407 — criteria handed back by a refused Continue win over the defaults, when they are well formed.
+  const backCompany = sp.companyId && companies.some((c) => c.id === sp.companyId) ? sp.companyId : '';
+  const defaultYear = /^\d{4}$/.test(sp.year ?? '') ? sp.year! : defaults.year;
+  const defaultMonth = MONTHS.includes(sp.month as (typeof MONTHS)[number]) ? sp.month! : defaults.month;
+  const defaultCompany = backCompany || companies[0]?.id || '';
   const years = yearOptions(today, defaultYear);
+  const backRuns = parseRunSelection(
+    new URLSearchParams((Array.isArray(sp.run) ? sp.run : sp.run ? [sp.run] : []).map((v) => ['run', v])),
+  );
+  const refusal = cyclesRefusalFrom(sp.refusal);
 
   const name = report ? report.label : t(link!.labelKey as 'link_cp22');
   const description = report
@@ -158,7 +199,9 @@ export default async function StatutoryFormCriteriaPage({
       : null;
   const hint = link ? t(link.hintKey as 'link_cp22_hint') : null;
   const fidelity = (report ? report.fidelity : link!.fidelity) ?? null;
-  const buttonLabel = t((link?.criteriaLabelKey ?? 'criteria_generate') as 'criteria_generate');
+  // r407 — a form filed per payroll cycle CONTINUES to its preview; it does not generate on this press.
+  const continues = parsed.criteria.some((c) => c.kind === 'cycles');
+  const buttonLabel = t((continues ? 'criteria_continue' : (link?.criteriaLabelKey ?? 'criteria_generate')) as 'criteria_generate');
   const backHref = `/payroll/statutory-forms${sp.body ? `?body=${encodeURIComponent(sp.body)}` : ''}`;
   const field = (kind: CriterionKind) => parsed.criteria.find((c) => c.kind === kind);
   // r402 — the Version options are the ENTRY's, so the step offers exactly what the destination allowlists.
@@ -202,7 +245,7 @@ export default async function StatutoryFormCriteriaPage({
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 monolith:border-t monolith:border-ink monolith:pt-4">
           {field('company') && (
             <Field label={t('company')}>
-              <select name={field('company')!.field} defaultValue={companies[0]?.id ?? ''} className={selectCls} required>
+              <select name={field('company')!.field} defaultValue={defaultCompany} className={selectCls} required>
                 {companies.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -250,6 +293,42 @@ export default async function StatutoryFormCriteriaPage({
             </Field>
           )}
           </div>
+          {/* r407 (item 4f45f9b0) — PAYROLL CYCLE, for a monthly form filed per cycle. Below the row of
+              selects because it is a list, not a box; it re-lists whenever Company, Year or Month changes. */}
+          {field('cycles') && field('company') && field('year') && field('month') && (
+            // A FIELDSET, NOT `Field`: `Field` is a <label> that contains its control, and a label around a
+            // list of checkboxes and a Clear button turns a click on any of its text into a click on the
+            // FIRST control — Select all. One legend names the group instead.
+            <fieldset data-criterion="cycles" className="space-y-2 monolith:border-t monolith:border-ink monolith:pt-4">
+              <legend className={`text-sm font-medium ${MONO_LABEL} monolith:text-mid`}>{t('cycles')}</legend>
+              <p className="text-xs text-muted-foreground monolith:text-[12px] monolith:text-mid">{t('cycles_hint')}</p>
+              <CyclesCriterion
+                companyField={field('company')!.field}
+                yearField={field('year')!.field}
+                monthField={field('month')!.field}
+                initialCompanyId={defaultCompany}
+                initialYear={defaultYear}
+                initialMonth={defaultMonth}
+                endpoint={CYCLES_ENDPOINT}
+                initialRunSeqs={backRuns.ok ? backRuns.runSeqs : undefined}
+                strings={{
+                  noRuns: t('cycles_noRuns'),
+                  nonePicked: t('cycles_nonePicked'),
+                  partialWarning: t('cycles_partial'),
+                }}
+              />
+            </fieldset>
+          )}
+          {/* r407 — THE CONTINUE GATE'S ANSWER, on the step it refused from. Allowlisted; nothing produced. */}
+          {refusal && (
+            <p
+              role="alert"
+              data-criteria-refusal={refusal}
+              className="border-l-2 border-red-600 pl-3 text-sm text-red-700 dark:border-red-400 dark:text-red-400 monolith:border-signal monolith:text-signal-text"
+            >
+              {t(REFUSAL_KEY[refusal])}
+            </p>
+          )}
           <div className="flex flex-wrap items-center justify-end gap-3 monolith:border-t monolith:border-hairline monolith:pt-4">
             <Link
               href={backHref}
@@ -257,7 +336,12 @@ export default async function StatutoryFormCriteriaPage({
             >
               {t('criteria_cancel')}
             </Link>
-            <button className={`${btnPrimary} monolith:h-11 monolith:rounded-full monolith:bg-ink monolith:px-5 monolith:text-bone`}>{buttonLabel}</button>
+            <button
+              data-criteria-submit
+              className={`${btnPrimary} disabled:cursor-not-allowed disabled:opacity-50 monolith:h-11 monolith:rounded-full monolith:bg-ink monolith:px-5 monolith:text-bone`}
+            >
+              {buttonLabel}
+            </button>
           </div>
         </form>
       </Card>

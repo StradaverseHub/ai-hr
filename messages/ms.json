@@ -4599,7 +4599,15 @@
       "viewer_back": "Kembali",
       "viewer_openNewTab": "Buka dalam tab baharu",
       "viewer_frameTitle": "{form} — pratonton",
-      "viewer_showVersion": "Papar versi ini"
+      "viewer_showVersion": "Papar versi ini",
+      "cycles": "Kitaran gaji",
+      "cycles_hint": "Hanya kitaran gaji yang telah diproses bagi syarikat dan bulan yang dipilih disenaraikan.",
+      "cycles_noRuns": "Belum ada kitaran gaji yang diproses bagi syarikat dan bulan ini.",
+      "cycles_nonePicked": "Tandakan sekurang-kurangnya satu kitaran gaji untuk meneruskan.",
+      "cycles_partial": "Anda telah mengecualikan sekurang-kurangnya satu kitaran gaji. Borang hanya akan mengandungi kitaran yang ditandakan, dan tiada ruang yang menyatakan kitaran mana sesuatu baris berasal.",
+      "refusal_cycles_no_runs": "Tiada gaji yang telah diproses bagi syarikat dan bulan ini, jadi tiada apa-apa dihasilkan.",
+      "refusal_cycles_no_data": "Tiada caruman yang telah diproses bagi borang ini dalam kitaran gaji yang anda pilih, jadi tiada apa-apa dihasilkan.",
+      "refusal_cycles_invalid": "Pilihan kitaran gaji tidak sah. Sila pilih kitaran sekali lagi."
     },
     "ea": {
       "backToReports": "Laporan",
@@ -6980,7 +6988,10 @@
       "downloadReport": "Semak fail muat naik medan demi medan",
       "downloadReportTitle": "Laporan mengenai fail muat naik itu sendiri: panjang setiap baris, dan setiap medan dengan lajur, panjang dan nilainya, supaya anda boleh membandingkannya dengan sampel KWSP sebelum memuat naik.",
       "fileBlocked": "Fail muat naik disekat sehingga rekod di atas dibetulkan.",
-      "downloadsBlocked": "Muat turun disekat sehingga setiap baris lengkap."
+      "downloadsBlocked": "Muat turun disekat sehingga setiap baris lengkap.",
+      "cyclesAll": "Semua kitaran gaji",
+      "viewerBack": "Tukar pilihan",
+      "previewBlocked": "Borang dipaparkan di sini setelah kekurangan yang disenaraikan di atas dilengkapkan."
     },
     "cp39Form": {
       "title": "CP39 — penyata PCB / MTD bulanan (LHDN)",
@@ -7767,6 +7778,18 @@
       "error_invalid_scheme": "Pilih kategori Pemastautin Cukai Pendapatan yang sah.",
       "error_citizenship_unknown": "Kewarganegaraan yang direkodkan tidak memenuhi syarat C-Suite bagi pemastautin bukan warganegara.",
       "error_not_resident": "Status pemastautin cukai yang direkodkan tidak memenuhi syarat skim pemastautin ini."
+    },
+    "runPicker": {
+      "all": "Semua kitaran gaji",
+      "selectAll": "Pilih semua",
+      "clear": "Kosongkan",
+      "search": "Cari kitaran gaji",
+      "loading": "Mencari proses gaji bulan ini…",
+      "run": "Proses ke-{seq} bulan ini",
+      "runTypeRegular": "Biasa",
+      "runTypeOffCycle": "Luar kitaran",
+      "runTypeBonus": "Bonus",
+      "runTypeAdjustment": "Pelarasan"
     }
   },
   "admin": {

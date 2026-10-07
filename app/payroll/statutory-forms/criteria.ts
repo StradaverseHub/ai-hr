@@ -16,6 +16,8 @@
  * it opens does not take one, not because a screen was taught to special-case it.
  */
 
+import { RUN_PARAM } from '@/lib/payroll-run-selection';
+
 /**
  * The things a destination can ask to have chosen, in the order they are drawn.
  *
@@ -24,7 +26,7 @@
  * Its OPTIONS are not this module's: they are declared on the catalog entry beside the href
  * (`StatutoryFormLink.versions`), so the step offers exactly what the destination allowlists.
  */
-export type CriterionKind = 'company' | 'year' | 'month' | 'version';
+export type CriterionKind = 'company' | 'year' | 'month' | 'version' | 'cycles';
 
 const PLACEHOLDER: Record<string, CriterionKind> = {
   '{companyId}': 'company',
@@ -88,9 +90,14 @@ export function parseDestination(href: string): ParsedDestination {
 export function reportDestination(
   reportId: string,
   periodKind: 'month' | 'year' | 'event',
+  runSelection?: { action: string } | null,
 ): ParsedDestination {
+  // r407 (item 4f45f9b0) — a MONTHLY form whose pack declares `runSelection` also asks for the payroll
+  // cycles, and its Continue opens the form's own preview instead of the generic figures screen. Monthly
+  // only: a cycle is a run of ONE month, and an annual form offered one would be a question with no answer.
+  const cycles = periodKind === 'month' && runSelection ? runSelection : null;
   return {
-    action: `/payroll/statutory-forms/${encodeURIComponent(reportId)}`,
+    action: cycles ? cycles.action : `/payroll/statutory-forms/${encodeURIComponent(reportId)}`,
     criteria: [
       { kind: 'company', field: 'companyId' },
       { kind: 'year', field: 'year' },
@@ -98,9 +105,72 @@ export function reportDestination(
       // applies, written the same way round, so a `periodKind` this catalog does not use today cannot make
       // the two disagree by one of them defaulting to "monthly" and the other to "annual".
       ...(periodKind === 'year' ? [] : [{ kind: 'month' as const, field: 'month' }]),
+      // The field is the shared run parameter (`lib/payroll-run-selection.ts`), never a per-form spelling:
+      // every destination that honours a selection reads it through `parseRunSelection`.
+      ...(cycles ? [{ kind: 'cycles' as const, field: RUN_PARAM }] : []),
     ],
     hidden: [],
   };
+}
+
+/**
+ * r407 (item 4f45f9b0) — THE `cycles` CRITERION, FOR EVERY MONTHLY FORM FILED PER PAYROLL CYCLE.
+ *
+ * Borang A is the first; SOCSO Borang 8A and LHDN CP39 reuse this as written. The contract, end to end:
+ *
+ *   1. The pack declares `runSelection: { action }` on the report (only where `generate` honours
+ *      `runSeqs`). `reportDestination` above then adds `{ kind: 'cycles', field: 'run' }`.
+ *   2. The criteria step (`open/page.tsx`) draws `components/run-picker.tsx` for it, fed from
+ *      `CYCLES_ENDPOINT` (which calls `listFilableRunsForPeriod` through `packs/payroll/service`).
+ *      SELECT ALL IS TICKED ON ARRIVAL and submits NO `run` parameter; a strict subset submits one
+ *      `run=<run_seq>` per ticked cycle. Nothing ticked disables Continue.
+ *   3. The destination parses the selection with `parseRunSelection` and runs the CONTINUE GATE on the
+ *      server: no processed run for the month, a selection that is invalid, or a selection with nothing to
+ *      file → `redirect(cyclesRefusalHref(...))`, which lands back on the step with the criteria kept and
+ *      the refusal shown. NO DOCUMENT IS PRODUCED on that path.
+ *   4. Everything the destination offers afterwards (preview frame, every download) carries the same
+ *      `run` values. `runQueryPairs` is the one spelling of them.
+ */
+export const CYCLES_ENDPOINT = '/payroll/payment-submission/runs';
+
+/** Why the Continue gate sent the operator back. The step shows the matching sentence, nothing else. */
+export const CYCLES_REFUSALS = ['cycles_no_runs', 'cycles_no_data', 'cycles_invalid'] as const;
+export type CyclesRefusal = (typeof CYCLES_REFUSALS)[number];
+
+/** The refusal named on the URL, allowlisted — an unknown value shows nothing rather than echoing. */
+export function cyclesRefusalFrom(raw: string | string[] | undefined): CyclesRefusal | null {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  return (CYCLES_REFUSALS as readonly string[]).includes(v ?? '') ? (v as CyclesRefusal) : null;
+}
+
+/** `run=…` pairs for a selection; NONE for `undefined` (all cycles), which is the no-change guarantee. */
+export function runQueryPairs(runSeqs: readonly number[] | undefined): { name: string; value: string }[] {
+  return (runSeqs ?? []).map((seq) => ({ name: RUN_PARAM, value: String(seq) }));
+}
+
+/**
+ * Back to the criteria step, with the refusal and the criteria the operator chose, so they stay on "the same
+ * screen" with their selection intact and fix the one thing that was wrong.
+ */
+export function cyclesRefusalHref(
+  formId: string,
+  p: { companyId: string; year: string; month: string; runSeqs?: readonly number[] },
+  reason: CyclesRefusal,
+): string {
+  // `refusal`, NOT `error`: `?error=` is the house channel for server-action failures, which
+  // components/ui/toast-trigger.tsx toasts RAW and then strips from the URL — so the step would show the
+  // bare code in a toast and lose its own sentence.
+  return `${criteriaReturnHref(formId, p)}&refusal=${encodeURIComponent(reason)}`;
+}
+
+/** The criteria step for `formId`, re-opened on criteria already chosen — the preview's "Change selection". */
+export function criteriaReturnHref(
+  formId: string,
+  p: { companyId: string; year: string; month: string; runSeqs?: readonly number[] },
+): string {
+  const q = new URLSearchParams({ form: formId, companyId: p.companyId, year: p.year, month: p.month });
+  for (const { name, value } of runQueryPairs(p.runSeqs)) q.append(name, value);
+  return `/payroll/statutory-forms/open?${q.toString()}`;
 }
 
 /**

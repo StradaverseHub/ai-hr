@@ -11,11 +11,30 @@
  *
  * ── WHAT cc9f9420 ADDED, AND WHY THE PAGE GOT TIGHTER ─────────────────────────────────────────────
  * The reporter asked for the page FURNITURE a counter clerk recognises, none of which existed: the
- * KWSP 6 masthead and its Kaedah 11(1) citation, the No. Rujukan Borang A box, the CARA BAYARAN band and
- * its five ticks, the reserved N K column, the Tandatangan / Cop Rasmi Majikan / Cop Agen Kutipan boxes,
- * the eight-point CATATAN block and the PERINGATAN warning. All of that eats vertical space the employee rows used to have —
+ * KWSP 6 masthead and its Kaedah 11(1) citation, the No. Rujukan Borang A box, the CARA BAYARAN band, the
+ * reserved N K column, the signature / Cop Rasmi Majikan / Cop Agen Kutipan boxes, the eight-point CATATAN
+ * block and the PERINGATAN warning. All of that eats vertical space the employee rows used to have —
  * which is why `BORANG_A_ROWS_PER_PAGE` is now MEASURED against `borangASheetRowCapacity()` below rather
  * than chosen, and asserted against it in test/borang-a.test.ts.
+ *
+ * ── r407 (item 4f45f9b0): REDRAWN BOX FOR BOX FROM THE KWSP 6 SPECIMEN ─────────────────────────────
+ * The reporter asked for the "layout, structure, fields, table arrangement, borders, alignment and overall
+ * presentation" to follow the sample. Every position below is a PROPORTION of the specimen's own page
+ * (rasterised from attachment 8e028654 "EPF Borang A.pdf", the August KWSP 6 on items 9c8dad7a/cc9f9420),
+ * re-based onto our margins, and the layout is the specimen's:
+ *   • ONE OUTER FRAME around the masthead block, with the employer labels ("Nama Majikan", "Alamat") in
+ *     its LEFT MARGIN, the four-box header strip, the payment band and the employer band in the middle,
+ *     and the Borang A / Mukasurat / Cop Agen Kutipan column on the right;
+ *   • TWO payment ticks (Wang Tunai; Cek / Kiriman Wang / Wang Pos / Draf Bank) with the instrument's
+ *     number line under the second, as the specimen prints them;
+ *   • a RULED member table — every column and row has its lines — with the two-level CARUMAN heading;
+ *   • the brought-forward and carried-forward rows on EVERY sheet. Where there is nothing to carry (into
+ *     sheet one, out of the last sheet) the row is drawn and its cells are EMPTY — never 0.00, which would
+ *     assert that money was carried;
+ *   • the foot in the specimen's three columns: the representative's block with the place to sign beside
+ *     "Tandatangan Wakil Majikan", the Cop Rasmi Majikan box, and CATATAN; PERINGATAN under all three.
+ * The "Bulan Upah" line beside Tarikh DiCetak is GONE (the specimen has none); the payroll month stays in
+ * the provenance line at the foot, so note 6's "+1" is still checkable on the page.
  *
  * ── THE N K COLUMN IS PRINTED AND PERMANENTLY EMPTY ───────────────────────────────────────────────
  * Catatan 5 on the form: "Ruang ketiga (N K) hanya diisi oleh KWSP sahaja." It is drawn so the sheet has
@@ -52,99 +71,90 @@ import {
 /** A4 portrait, in points. */
 const W = 595.28;
 const H = 841.89;
-const M = 34;
+/** Side, top and bottom margin. The specimen runs to ~13pt; 28pt keeps every rule inside a printer's reach. */
+const M = 28;
 const RIGHT = W - M;
+const CW = RIGHT - M;
 
 /**
- * The masthead block's RIGHT-HAND COLUMN — "Borang A", "Mukasurat n/N" and the Cop Agen Kutipan box,
- * stacked in their own bordered column exactly where the specimen puts them. The reporter's point 4 is
- * about this placement: the page number belongs beside the form label, not adrift under the address.
+ * ── THE MASTHEAD BLOCK, ONE OUTER FRAME ─────────────────────────────────────────────────────────────
+ * Horizontal proportions of the specimen's frame (869px wide at 110 dpi): the left margin column holding
+ * "Nama Majikan" / "Alamat" is 12.1% of it, the middle (strip, payment band, employer band) runs to 83.4%,
+ * and the Borang A column takes the rest.
  */
-const HDR_RIGHT_X = RIGHT - 118;
-/** Everything else in the masthead block lives to the left of that column, with an 8pt gutter. */
-const HDR_LEFT_R = HDR_RIGHT_X - 8;
+const LX = M + 66;
+const RX = RIGHT - 90;
+const FRAME_TOP = H - M;
+const STRIP_TOP = FRAME_TOP - 38;
+const CAP_H = 22;
+const VAL_H = 20;
+const PAY_TOP = STRIP_TOP - CAP_H - VAL_H;
+const PAY_H = 50;
+const EMP_TOP = PAY_TOP - PAY_H;
+const EMP_H = 56;
+/** The frame's bottom edge — also where the employer band ends. */
+const FRAME_BOT = EMP_TOP - EMP_H;
+/** The four strip cells, as fractions of LX..RX — the specimen's 190 / 122 / 163 / 145 px. */
+const STRIP_FRACTIONS = [0.306, 0.197, 0.263, 0.234] as const;
 
 /**
- * Column geometry, measured against the HEADINGS rather than guessed — the r193 lesson: a heading is not
- * clipped, so one wider than its column prints straight into its neighbour. Every gap below is wider than
- * the 7pt bold heading that sits in it. The three money columns are RIGHT-aligned, headings included, so
- * a heading can only ever grow leftwards into its own column's whitespace.
- *
- * `nk` IS NEW AND EVERYTHING FROM `ic` RIGHTWARDS SHIFTED BY 20pt to make room for it. The N K heading is
- * "N K" at 7pt bold = 12.05pt wide in a 20pt column, so it clears "NO. KAD PENGENALAN" by 7.95pt, and
- * NAME sits at M+208 rather than M+202 because at M+202 the 79.94pt "NO. KAD PENGENALAN" heading cleared
- * it by 2.06pt — the r193 failure exactly, and invisible to every check but a measurement. Every
- * clearance here is asserted from the FONT METRICS in test/borang-a.test.ts rather than eyeballed.
- *
- * The three money columns are 68/68/68pt wide rather than the 76/76/80 they were: the N K column took
- * 20pt off NAMA, and taking it back off three columns whose widest figure is ~53pt at 9.5pt bold is what
- * keeps a long legal name from being clipped mid-word. Measured, not trimmed by eye.
+ * ── THE MEMBER TABLE, RULED ─────────────────────────────────────────────────────────────────────────
+ * Column edges, left to right, measured against the HEADINGS (the r193 lesson: a heading is not clipped,
+ * so one wider than its column prints into its neighbour) and asserted from the font metrics in
+ * test/borang-a.test.ts. The specimen's own order: BIL · NO. AHLI · N K · NO. KAD PENGENALAN · NAMA ·
+ * UPAH · CARUMAN (MAJIKAN, PEKERJA). The three money columns are a little wider than the specimen's so a
+ * six-figure JUMLAH fits at reading size; NAMA gives up the difference and shrinks a long name to fit.
  */
 const COL = {
   bil: M,
-  member: M + 26,
-  nk: M + 100,
-  ic: M + 120,
-  name: M + 208,
-  wageR: W - M - 136,
-  employerR: W - M - 68,
-  employeeR: W - M,
+  member: M + 22,
+  nk: M + 96,
+  ic: M + 114,
+  name: M + 198,
+  wage: RIGHT - 164,
+  employer: RIGHT - 110,
+  employee: RIGHT - 55,
+  end: RIGHT,
 };
+const TABLE_TOP = FRAME_BOT - 8;
+const HEAD_ROW = 14;
+/** Bottom of the two-level heading — the top edge of the brought-forward row. */
+const HEAD_BOT = TABLE_TOP - 2 * HEAD_ROW;
 const ROW_H = 14;
+/** Text baseline inside a row band whose TOP edge is `top`. */
+const base = (top: number) => top - 10;
 
 /**
- * ── THE FOOT FURNITURE, ALL ANCHORED TO THE FOOT OF THE SHEET ─────────────────────────────────────
- * Measured downwards from the bottom edge, because that is what they are anchored to. The table above
- * them must never cross `TABLE_FLOOR`, and `borangASheetRowCapacity()` is the arithmetic that says how
- * many rows fit above it.
+ * ── THE FOOT, ANCHORED TO THE BOTTOM EDGE ─────────────────────────────────────────────────────────────
+ * Provenance band, then PERINGATAN, then the three-column band (representative · Cop Rasmi Majikan ·
+ * CATATAN). Measured upwards from the bottom margin because that is what they are anchored to.
  */
-/** First baseline of the provenance band. */
-const PROV_TOP = M + 36;
-/** First baseline of the PERINGATAN pair. */
-const WARN_TOP = M + 66;
-/** Top baseline of the signature / Cop Rasmi Majikan / CATATAN band. */
-const FOOT_BAND_TOP = M + 202;
-/** Nothing drawn by the table may go below this. 14pt of air above the foot band. */
-const TABLE_FLOOR = FOOT_BAND_TOP + 14;
-/** First employee-row baseline, under the two-line column headings and their rule. */
-const FIRST_ROW_TOP = 594.89;
-/** What the carry-out / JUMLAH block costs below the last row: rule, baseline, closing rule. */
-const TOTALS_BLOCK_H = 23;
-
+const PROV_TOP = M + 50;
+const WARN_TOP = PROV_TOP + 30;
+const FOOT_BOT = WARN_TOP + 12;
+const REP_ROW = 14;
+/** Baseline of the LAST representative row (Tarikh); the five above it step up by REP_ROW. */
+const REP_LAST = FOOT_BOT + 4;
+const REP_ROWS = 6;
+/** The place to sign: beside the "Tandatangan Wakil Majikan" label, above the Nama row. */
+const SIGN_BOT = REP_LAST + (REP_ROWS - 1) * REP_ROW + 10;
+const SIGN_H = 28;
+const FOOT_TOP = SIGN_BOT + SIGN_H + 4;
+/** Nothing drawn by the table may go below this. */
+const TABLE_FLOOR = FOOT_TOP + 6;
 /**
- * The foot band, TWO columns wide and NON-OVERLAPPING — the representative's rows with their two signing
- * boxes underneath on the left, CATATAN on the right. Named rather than inlined because the first draft's
- * inlined numbers overlapped and nothing but a raster said so.
- *   labels  M .. SIG_VALUE_X            (34 .. 106; the widest, "No. Kad Pengenalan", ends at 97.55)
- *   values  SIG_VALUE_X .. SIG_RIGHT    (106 .. 320)
- *   boxes   M .. SIG_RIGHT, below the rows: TANDATANGAN then COP RASMI MAJIKAN
- *   catatan CATATAN_X .. RIGHT          (328 .. 561.28)
+ * Foot columns, the specimen's proportions: values end at 34% of the frame, Cop Rasmi Majikan 35.7%–60.4%,
+ * CATATAN from 61.6%. The label column matches the masthead's left margin so the two line up.
  *
- * ⚠️ THE VALUE COLUMN WAS 98pt WIDE AND THAT WAS A DEFECT, not a measurement. The employer's stamp box
- * used to sit BETWEEN the values and CATATAN, in the same horizontal band, which left the values about
- * twenty characters at 8pt bold: 'NURUL HUDA BINTI ISMAIL' printed as 'NURUL HUDA BINTI ISM', with no
- * ellipsis and no marker, so the page read as if that were the signatory's name. On a signed statutory
- * filing that is worse than the overprint it was introduced to cure — an overprint LOOKS wrong, a
- * truncation looks right. So the stamp box moved DOWN, under the rows and beside the signature box, and
- * the values got the whole left half of the sheet back. Nothing in this band is clipped: see `atFit`.
+ * ⚠️ The value column is where a signatory's legal name prints. It SHRINKS to fit (`atFit`) and is never
+ * cut: a truncated name reads as the name, which on a signed return is worse than an overprint.
  */
-const CATATAN_X = M + 294;
-const SIG_VALUE_X = M + 72;
-/** Right edge of the representative's value column: an 8pt gutter short of CATATAN. */
-const SIG_RIGHT = CATATAN_X - 8;
+const SIG_VALUE_X = LX;
+const SIG_RIGHT = M + 188;
 const SIG_VALUE_W = SIG_RIGHT - SIG_VALUE_X;
-/** The representative's rows: first baseline, and the step down to the next. */
-const REP_ROW_TOP = FOOT_BAND_TOP - 13;
-const REP_ROW_H = 12;
-/**
- * The two signing boxes, side by side UNDER the rows: TANDATANGAN at the margin, COP RASMI MAJIKAN
- * right-aligned to the value column. Their top clears the last row's baseline by 7pt and their bottom
- * clears the PERINGATAN line by 12pt; both gaps are asserted on the drawn page rather than eyeballed.
- */
-const SIGN_BOX_W = 136;
-const SIGN_BOX_H = 44;
-const SIGN_BOX_TOP = FOOT_BAND_TOP - 80;
-const COP_BOX_X = SIG_RIGHT - SIGN_BOX_W;
+const COP_X = SIG_RIGHT + 8;
+const COP_R = M + 324;
+const CATATAN_X = COP_R + 8;
 
 /**
  * The drawn sheet's own vertical budget, PUBLISHED so the row count can be checked against it.
@@ -153,18 +163,29 @@ const COP_BOX_X = SIG_RIGHT - SIGN_BOX_W;
  * two cannot be one constant. This is the next best thing: the renderer states its capacity, and the test
  * asserts the pure module's number never exceeds it. Overprinting the CATATAN block is invisible to tsc,
  * to the suite, to `next build` and to a 200 — a PDF that overlaps itself is still a valid PDF.
+ *
+ * r407 — `firstRowTop` is the top EDGE of the row band (the brought-forward row's top), and the carry-in
+ * row is paid for on EVERY sheet now, because it is drawn on every sheet. `columns` and `frameBottom` are
+ * published so the tests read the renderer's geometry instead of restating it.
  */
 export const BORANG_A_SHEET_GEOMETRY = {
   pageHeight: H,
   rowHeight: ROW_H,
-  firstRowTop: FIRST_ROW_TOP,
-  /** Sheets 2+ open with the carry-in row, so the WORST-CASE sheet pays for it. */
+  firstRowTop: HEAD_BOT,
   carryInHeight: ROW_H,
-  totalsBlockHeight: TOTALS_BLOCK_H,
+  /** Carried-forward row plus the JUMLAH row. */
+  totalsBlockHeight: 2 * ROW_H,
   tableFloor: TABLE_FLOOR,
+  tableTop: TABLE_TOP,
+  frameBottom: FRAME_BOT,
+  columns: COL,
+  sigValueX: SIG_VALUE_X,
+  sigRight: SIG_RIGHT,
+  catatanX: CATATAN_X,
+  paymentRight: RX,
 } as const;
 
-/** How many employee rows fit on the worst-case sheet — one that carries in AND carries out. */
+/** How many employee rows fit on a sheet: under the heading and the brought-forward row, above the foot. */
 export function borangASheetRowCapacity(g = BORANG_A_SHEET_GEOMETRY): number {
   const usable = g.firstRowTop - g.carryInHeight - g.totalsBlockHeight - g.tableFloor;
   return Math.floor(usable / g.rowHeight);
@@ -179,8 +200,8 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
 
   const ink = rgb(0.09, 0.09, 0.11);
   const muted = rgb(0.42, 0.42, 0.47);
-  const rule = rgb(0.6, 0.6, 0.65);
-  const hair = rgb(0.82, 0.82, 0.86);
+  const rule = rgb(0.25, 0.25, 0.28);
+  const hair = rgb(0.6, 0.6, 0.65);
 
   /**
    * Helvetica is WinAnsi (Latin-1). Typography is FOLDED rather than dropped: an em dash and a curly
@@ -217,9 +238,7 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
   for (const pageData of form.pages) {
     const page = doc.addPage([W, H]);
     const last = pageData.sheet === pageData.of;
-    let y = H - M;
 
-    /** Absolute-y helpers, for the boxed blocks that do not flow. */
     const at = (s: string, x: number, yy: number, size: number, f = font, color = ink) =>
       page.drawText(safe(s), { x, y: yy, size, font: f, color });
     const atR = (s: string, xr: number, yy: number, size: number, f = font, color = ink) =>
@@ -229,19 +248,11 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
     /**
      * A value that MUST NOT BE CUT: it SHRINKS to fit its column, and is always drawn WHOLE.
      *
-     * ⚠️ THIS REPLACED A CLIP, AND THE DIFFERENCE IS THE ENTIRE POINT. Every header and foot-band value
-     * on this page used to go through `atClip`, which drops characters off the end until the rest fits —
-     * so 'NURUL HUDA BINTI ISMAIL' printed as 'NURUL HUDA BINTI ISM' and 'PERBADANAN PEMBANGUNAN
-     * PERTANIAN NEGERI SELANGOR SDN BHD' as 'PERBADANAN PEMBANGUNAN PERTANIAN NEGERI S'. There is no
-     * ellipsis and no marker, so a truncated legal name reads as the name, which on a filing somebody
-     * signs is the worst failure this renderer has: an overprint looks wrong and gets queried, a clean
-     * truncation does not. A clip is also exactly how you HIDE an overprint from a collision check, so
-     * the overprint guard in the tests cannot see one.
-     *
-     * The size is floored to 0.1pt so the drawn string is strictly inside `maxW`, and clamped at 1pt so
-     * an absurd input can never shrink to nothing — invisible is silent loss too. It shrinks below a
-     * comfortable reading size rather than dropping a character: a small name is the person's name, and
-     * a cut one is somebody else's.
+     * ⚠️ THIS REPLACED A CLIP, AND THE DIFFERENCE IS THE ENTIRE POINT. A clip drops characters off the end
+     * until the rest fits — 'NURUL HUDA BINTI ISMAIL' printed as 'NURUL HUDA BINTI ISM' — and there is no
+     * ellipsis and no marker, so a truncated legal name reads as the name. A clip is also exactly how you
+     * HIDE an overprint from a collision check. The size is floored to 0.1pt so the drawn string is
+     * strictly inside `maxW`, and clamped at 1pt so an absurd input can never shrink to nothing.
      */
     const fitSize = (v: string, maxW: number, size: number, f = font) => {
       const w = f.widthOfTextAtSize(v, size);
@@ -252,235 +263,251 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
       const v = safe(s);
       page.drawText(v, { x, y: yy, size: fitSize(v, maxW, size, f), font: f, color });
     };
+    /** Right-aligned, shrink-to-fit — a money cell. */
+    const atFitR = (s: string, xr: number, yy: number, maxW: number, size: number, f = font, color = ink) => {
+      const v = safe(s);
+      const sz = fitSize(v, maxW, size, f);
+      page.drawText(v, { x: xr - f.widthOfTextAtSize(v, sz), y: yy, size: sz, font: f, color });
+    };
+    /** The table's name cell — shrink to fit, never cut. Named so the guard can find it. */
+    const textFit = (name: string, y: number) => atFit(name, COL.name + 3, y, COL.wage - COL.name - 6, 8.5);
+    const hline = (x1: number, x2: number, yy: number, thickness = 0.6, color = rule) =>
+      page.drawLine({ start: { x: x1, y: yy }, end: { x: x2, y: yy }, thickness, color });
+    const vline = (x: number, y1: number, y2: number, thickness = 0.6, color = rule) =>
+      page.drawLine({ start: { x, y: y1 }, end: { x, y: y2 }, thickness, color });
+    const box = (x: number, yy: number, w: number, h: number, color = rule, borderWidth = 0.7) =>
+      page.drawRectangle({ x, y: yy, width: w, height: h, borderColor: color, borderWidth });
 
-    /** Flowing helpers, for the table, which walks `y` down the page. */
-    const text = (s: string, x: number, size: number, f = font, color = ink) => at(s, x, y, size, f, color);
-    const textR = (s: string, xr: number, size: number, f = font, color = ink) => atR(s, xr, y, size, f, color);
-    /** The table's flowing shrink-to-fit — same rule as `atFit`, walking `y` down the page. */
-    const textFit = (s: string, x: number, maxW: number, size: number, f = font, color = ink) =>
-      atFit(s, x, y, maxW, size, f, color);
-    const line = (yy: number, thickness = 0.7, color = rule) =>
-      page.drawLine({ start: { x: M, y: yy }, end: { x: RIGHT, y: yy }, thickness, color });
-    const box = (x: number, yy: number, w: number, h: number, color = rule) =>
-      page.drawRectangle({ x, y: yy, width: w, height: h, borderColor: color, borderWidth: 0.7 });
+    // ── The outer frame ─────────────────────────────────────────────────────────────────────────────
+    box(M, FRAME_BOT, CW, FRAME_TOP - FRAME_BOT, rule, 0.9);
 
-    // ── Masthead ────────────────────────────────────────────────────────────────────────────────
-    // "KWSP 6" and the Kaedah 11(1) citation, which is the reporter's point 1 and the single fastest way
-    // for a counter clerk to tell this sheet from the half-dozen other KWSP forms it resembles.
-    atC('KUMPULAN WANG SIMPANAN PEKERJA', (M + RIGHT) / 2, y, 12, bold);
-    atR('KWSP 6', RIGHT, y, 9.5, bold);
-    y -= 13;
-    atC(BORANG_A_CITATION, (M + RIGHT) / 2, y, 7.5, font, muted);
-    y -= 8;
+    // ── Masthead: the agency's name and Kaedah 11(1), centred over the middle column; KWSP 6 top right ─
+    const midX = (LX + RX) / 2;
+    atC('KUMPULAN WANG SIMPANAN PEKERJA', midX, FRAME_TOP - 17, 13, bold);
+    atC(BORANG_A_CITATION, midX, FRAME_TOP - 30, 7.5);
+    atC('KWSP 6', (RX + RIGHT) / 2, FRAME_TOP - 15, 9.5);
 
-    // ── The masthead block: header strip, CARA BAYARAN, employer, and the Borang A column ────────
-    const HDR_TOP = y;
-    const cellW = (HDR_LEFT_R - M) / 4;
-    const capRow = HDR_TOP - 20;
-    const valRow = capRow - 18;
-    const payTop = valRow;
-    const payBot = payTop - 52;
-    const empTop = payBot;
-    const HDR_BOT = empTop - 58;
-
-    // Four boxed slots, not three: "No. Rujukan Borang A" is KWSP's own reference for the filing and is
-    // DRAWN EMPTY — payroll cannot know it, and a plausible-looking placeholder is worse than a blank.
-    const slots: [string, string][] = [
-      ['No. Rujukan Majikan', form.employerRef],
-      ['Bulan Caruman', `${form.contributionMonthCode}  (${form.contributionMonth})`],
-      ['Amaun Caruman (RM)', money(form.totalContribution)],
-      ['No. Rujukan Borang A', ''],
+    // ── The four-box strip ──────────────────────────────────────────────────────────────────────────
+    // No. Rujukan Borang A is KWSP's own reference for the filing and is DRAWN EMPTY — payroll cannot know
+    // it, and a plausible-looking placeholder is worse than a blank. The specimen's Bulan Caruman box holds
+    // MMYY and nothing else ("0826"), so that is what prints.
+    const slots: { cap: string[]; val: string; align: 'l' | 'c' | 'r' }[] = [
+      { cap: ['No. Rujukan Majikan'], val: form.employerRef, align: 'l' },
+      { cap: ['Bulan', 'Caruman'], val: form.contributionMonthCode, align: 'c' },
+      { cap: ['Amaun Caruman', '(RM)'], val: money(form.totalContribution), align: 'r' },
+      { cap: ['No. Rujukan', 'Borang A'], val: '', align: 'l' },
     ];
-    for (const [i, [cap, val]] of slots.entries()) {
-      const x = M + i * cellW;
-      box(x, capRow, cellW, 20);
-      box(x, valRow, cellW, 18);
-      atC(cap, x + cellW / 2, capRow + 7, 7, bold);
-      if (val) atFit(val, x + 4, valRow + 6, cellW - 8, 8.5, bold);
+    let cx = LX;
+    for (const [i, slot] of slots.entries()) {
+      const w = (RX - LX) * STRIP_FRACTIONS[i];
+      box(cx, STRIP_TOP - CAP_H, w, CAP_H);
+      box(cx, PAY_TOP, w, VAL_H);
+      const capBase = slot.cap.length === 1 ? STRIP_TOP - 14 : STRIP_TOP - 9.5;
+      for (const [k, l] of slot.cap.entries()) atC(l, cx + w / 2, capBase - k * 8.5, 7, bold);
+      if (slot.val) {
+        const vy = PAY_TOP + 6.5;
+        if (slot.align === 'l') atFit(slot.val, cx + 4, vy, w - 8, 9, bold);
+        else if (slot.align === 'r') atFitR(slot.val, cx + w - 4, vy, w - 8, 9, bold);
+        else atC(slot.val, cx + w / 2, vy, 9, bold);
+      }
+      cx += w;
     }
 
-    // CARA BAYARAN — the reporter's point 2. Every box below is EMPTY and stays empty: payroll does not
-    // know how a filing was paid.
-    //
-    // FIVE TICKS, NOT TWO. This comment used to justify a two-tick grouping "the agency's, not ours" and
-    // sat directly above a loop that emits five — the justification survived the change that reversed it.
-    // The reporter's own correction asks for the five methods listed separately, and that is what the loop
-    // below does.
-    box(M, payBot, HDR_LEFT_R - M, payTop - payBot);
-    let py = payTop - 10;
-    for (const l of wrap(BORANG_A_PAYMENT_INSTRUCTION, 7, HDR_LEFT_R - M - 12)) {
-      at(l, M + 6, py, 7);
-      py -= 9;
+    // ── CARA BAYARAN: the instruction, TWO ticks, and the instrument's number line ─────────────────
+    // Every box here is EMPTY and stays empty: payroll does not know how a filing was paid.
+    box(LX, EMP_TOP, RX - LX, PAY_H);
+    let py = PAY_TOP - 9;
+    for (const l of wrap(BORANG_A_PAYMENT_INSTRUCTION, 7, RX - LX - 12)) {
+      at(l, LX + 6, py, 7);
+      py -= 8.5;
     }
-    py -= 4;
-    // ONE TICK PER METHOD, stepped by each caption's MEASURED width rather than a fixed stride: at the
-    // 150pt stride two ticks could afford, the fifth box would be drawn at x=640 on a 595.28pt sheet —
-    // off the right edge, and a box drawn off the page is not a box anybody notices is missing.
-    let tx = M + 6;
-    for (const opt of BORANG_A_PAYMENT_METHODS) {
-      box(tx, py - 1, 8, 8);
-      at(opt, tx + 12, py + 0.5, 7.5);
-      tx += 12 + font.widthOfTextAtSize(safe(opt), 7.5) + 16;
+    const tickY = EMP_TOP + 16;
+    const tick2X = LX + 6 + 84;
+    for (const [i, opt] of BORANG_A_PAYMENT_METHODS.entries()) {
+      const tx = i === 0 ? LX + 6 : tick2X;
+      box(tx, tickY - 1, 8, 8);
+      at(opt, tx + 12, tickY + 0.5, 7.5);
     }
-    py -= 15;
-    at(BORANG_A_PAYMENT_REF_LABEL, M + 6, py, 7.5);
-    page.drawLine({
-      start: { x: M + 6 + font.widthOfTextAtSize(safe(BORANG_A_PAYMENT_REF_LABEL), 7.5) + 6, y: py - 2 },
-      end: { x: HDR_LEFT_R - 8, y: py - 2 },
-      thickness: 0.5,
-      color: hair,
-    });
+    // The specimen prints the instrument's number on the line UNDER the second tick, starting where its
+    // caption starts.
+    const refY = EMP_TOP + 5;
+    at(BORANG_A_PAYMENT_REF_LABEL, tick2X + 12, refY, 7.5);
+    const refEnd = tick2X + 12 + font.widthOfTextAtSize(safe(BORANG_A_PAYMENT_REF_LABEL), 7.5) + 4;
+    hline(refEnd, RX - 8, refY - 1.5, 0.5, hair);
 
-    // Employer identity, with Tarikh DiCetak / Bil Pekerja / Bulan Upah stacked on the right of the same
-    // band — where the specimen puts them, and where they no longer cost the table a whole strip slot.
-    box(M, HDR_BOT, HDR_LEFT_R - M, empTop - HDR_BOT);
-    at('Nama Majikan / Alamat', M + 6, empTop - 9, 6.5, font, muted);
-    atFit(form.employerName, M + 6, empTop - 20, 240, 9, bold);
+    // ── The employer band, its labels in the frame's LEFT MARGIN ────────────────────────────────────
+    // "Nama Majikan" and "Alamat" sit right-aligned in the margin column, against the band, exactly where
+    // the specimen puts them. Tarikh DiCetak and Bil Pekerja on the right of the same band.
+    vline(LX, FRAME_BOT, EMP_TOP);
+    const nameY = EMP_TOP - 11;
+    atR('Nama Majikan', LX - 5, nameY, 7.5);
+    atR('Alamat', LX - 5, nameY - 11, 7.5);
+    const infoX = LX + 250;
+    atFit(form.employerName, LX + 6, nameY, infoX - LX - 14, 9, bold);
     /**
      * EVERY address line, not the first three. `addressLines` builds up to four — addressLine1..3 and a
-     * `postcode city, state` tail — and taking three dropped exactly the tail, which is the line a
-     * counter clerk reads and the one the plain-text twin was still printing. The leading is computed
-     * from the room actually left inside the box rather than fixed at 9pt, so a fourth line clears the
-     * rule instead of straddling it, and a caller that hands over more lines than `addressLines` can
-     * build compresses instead of overflowing. Nothing is dropped at any count.
+     * `postcode city, state` tail — and the tail is the line a counter clerk reads. The leading is computed
+     * from the room actually left inside the band, so nothing is dropped at any count.
      */
-    const addrTop = empTop - 29;
-    const addrLead = Math.min(8, (addrTop - (HDR_BOT + 4)) / Math.max(1, form.employerAddress.length - 1));
+    const addrTop = nameY - 11;
+    const addrLead = Math.min(8.5, (addrTop - (FRAME_BOT + 4)) / Math.max(1, form.employerAddress.length - 1));
     for (const [i, l] of form.employerAddress.entries()) {
-      atFit(l, M + 6, addrTop - i * addrLead, 240, Math.min(7, addrLead - 0.6), font, muted);
+      atFit(l, LX + 6, addrTop - i * addrLead, infoX - LX - 14, Math.min(7.5, addrLead - 0.6));
     }
-    const infoX = M + 254;
-    const infoVX = M + 320;
     for (const [i, [l, v]] of (
       [
         ['Tarikh DiCetak', form.printedOn],
         ['Bil Pekerja', String(form.employees)],
-        // Note 6 on the form's own CATATAN is "Bulan caruman bersamaan Bulan Upah + 1". Printing the wage
-        // month beside the contribution month is what makes that note checkable at the counter, and it is
-        // the single fact most likely to be "corrected" by somebody comparing this with a PERKESO form,
-        // whose rule is the opposite.
-        ['Bulan Upah', form.payrollPeriodKey],
       ] as [string, string][]
     ).entries()) {
-      const yy = empTop - 9 - i * 11;
-      at(`${l} :`, infoX, yy, 7, font, muted);
-      atFit(v, infoVX, yy, HDR_LEFT_R - 8 - infoVX, 7.5, bold);
+      const yy = nameY - i * 11;
+      at(`${l} :`, infoX, yy, 7.5);
+      atFit(v, infoX + 60, yy, RX - 6 - (infoX + 60), 8, bold);
     }
 
-    // The Borang A column: form label, page number and the collection agent's stamp box, stacked exactly
-    // as the specimen stacks them. Cop Agen Kutipan is DRAWN EMPTY on every sheet — it is the collecting
-    // agent's, not ours.
-    box(HDR_RIGHT_X, HDR_BOT, RIGHT - HDR_RIGHT_X, HDR_TOP - HDR_BOT);
-    const rcx = (HDR_RIGHT_X + RIGHT) / 2;
-    atC('Borang A', rcx, HDR_TOP - 34, 17, bold);
-    atC(`Mukasurat: ${pageData.sheet}/${pageData.of}`, rcx, HDR_TOP - 62, 8, font, muted);
-    atC('Cop Agen Kutipan', rcx, HDR_BOT + 8, 7, font, muted);
+    // ── The Borang A column: KWSP 6 above, "Borang / A", the sheet number, Cop Agen Kutipan ─────────
+    // Cop Agen Kutipan is DRAWN EMPTY on every sheet — it is the collecting agent's, not ours.
+    vline(RX, FRAME_BOT, STRIP_TOP);
+    hline(LX, RX, STRIP_TOP);
+    const rcx = (RX + RIGHT) / 2;
+    atC('Borang', rcx, STRIP_TOP - 22, 18, bold);
+    atC('A', rcx, STRIP_TOP - 42, 18, bold);
+    atC(`Mukasurat: ${pageData.sheet}/${pageData.of}`, rcx, STRIP_TOP - 70, 8);
+    atC('Cop Agen Kutipan', rcx, FRAME_BOT + 8, 7.5);
 
-    y = HDR_BOT - 4;
-
-    // ── Column headings, two lines, in the specimen's own order ─────────────────────────────────
-    // BIL · NO. AHLI · N K · NO. KAD PENGENALAN · NAMA PEKERJA / AHLI · UPAH (RM) · CARUMAN (RM).
-    const h1 = y - 11;
-    const h2 = y - 21;
-    at('BIL', COL.bil, h1, 7, bold, muted);
-    at('NO. AHLI', COL.member, h1, 7, bold, muted);
+    // ── The ruled member table: the two-level heading ───────────────────────────────────────────────
+    const r1 = TABLE_TOP - 10;
+    const r2 = TABLE_TOP - 24;
+    const mid = TABLE_TOP - 17;
+    const ctr = (a: number, b: number) => (a + b) / 2;
+    atC('BIL', ctr(COL.bil, COL.member), mid, 7, bold);
+    atC('NO. AHLI', ctr(COL.member, COL.nk), mid, 7, bold);
     // The reserved column. Its HEADING is the only thing that ever prints here.
-    at('N K', COL.nk, h1, 7, bold, muted);
-    at('NO. KAD PENGENALAN', COL.ic, h1, 7, bold, muted);
-    at('NAMA PEKERJA / AHLI', COL.name, h1, 7, bold, muted);
-    at('(Seperti yang terdapat di dalam Kad Pengenalan)', COL.name, h2, 6, font, muted);
-    atR('UPAH (RM)', COL.wageR, h1, 7, bold, muted);
-    atC('CARUMAN (RM)', (COL.wageR + COL.employeeR) / 2, h1, 7, bold, muted);
-    atR('MAJIKAN', COL.employerR, h2, 7, bold, muted);
-    atR('PEKERJA', COL.employeeR, h2, 7, bold, muted);
-    y = h2 - 7;
-    line(y, 0.9);
-    y = FIRST_ROW_TOP;
-
-    // ── Carry-in ────────────────────────────────────────────────────────────────────────────────
-    // Contribution columns ONLY. The specimen leaves Upah blank on this row, and the running totals come
-    // from `paginateBorangA` rather than being re-added here — one arithmetic, asserted without a PDF.
-    // "(jika ada)" is the reporter's point 6 and the specimen's own wording.
-    if (pageData.sheet > 1) {
-      textR('Jumlah yang dibawa dari mukasurat terdahulu (jika ada)', COL.wageR - 6, 8, bold);
-      textR(money(pageData.carryInEmployer), COL.employerR, 8, bold);
-      textR(money(pageData.carryInEmployee), COL.employeeR, 8, bold);
-      y -= 4;
-      page.drawLine({ start: { x: M, y }, end: { x: RIGHT, y }, thickness: 0.4, color: hair });
-      y -= ROW_H - 4;
+    atC('N K', ctr(COL.nk, COL.ic), mid, 6.5, bold);
+    atC('NO. KAD', ctr(COL.ic, COL.name), r1, 7, bold);
+    atC('PENGENALAN', ctr(COL.ic, COL.name), r2, 7, bold);
+    atC('NAMA PEKERJA / AHLI', ctr(COL.name, COL.wage), r1, 7, bold);
+    atC('(Seperti yang terdapat di dalam Kad Pengenalan)', ctr(COL.name, COL.wage), r2, 6);
+    atC('UPAH', ctr(COL.wage, COL.employer), r1, 7, bold);
+    atC('(RM)', ctr(COL.wage, COL.employer), r2, 7, bold);
+    atC('CARUMAN (RM)', ctr(COL.employer, COL.end), r1, 7, bold);
+    atC('MAJIKAN', ctr(COL.employer, COL.employee), r2, 7, bold);
+    atC('PEKERJA', ctr(COL.employee, COL.end), r2, 7, bold);
+    hline(M, RIGHT, TABLE_TOP, 0.9);
+    hline(COL.employer, RIGHT, TABLE_TOP - HEAD_ROW);
+    hline(M, RIGHT, HEAD_BOT, 0.9);
+    for (const x of [COL.bil, COL.member, COL.nk, COL.ic, COL.name, COL.wage, COL.employer, COL.end]) {
+      vline(x, HEAD_BOT, TABLE_TOP);
     }
+    vline(COL.employee, HEAD_BOT, TABLE_TOP - HEAD_ROW);
 
-    // ── Rows ────────────────────────────────────────────────────────────────────────────────────
+    /**
+     * A CARRY ROW: one merged cell from the margin through UPAH (the specimen prints no wage on either
+     * carry row) holding the label, then the two contribution cells. `values` null ⇒ the cells are drawn
+     * EMPTY: there is nothing to carry, and 0.00 would assert that there was.
+     */
+    const carryRow = (top: number, label: string, values: [number, number] | null) => {
+      const y = base(top);
+      atR(label, COL.employer - 4, y, 7.5, bold);
+      if (values) {
+        atFitR(money(values[0]), COL.employee - 3, y, COL.employee - COL.employer - 6, 8.5, bold);
+        atFitR(money(values[1]), COL.end - 3, y, COL.end - COL.employee - 6, 8.5, bold);
+      }
+      hline(M, RIGHT, top - ROW_H);
+      for (const x of [M, COL.employer, COL.employee, COL.end]) vline(x, top - ROW_H, top);
+    };
+
+    // ── Brought forward — EVERY sheet. Empty on sheet one. ──────────────────────────────────────────
+    let top = HEAD_BOT;
+    carryRow(
+      top,
+      'Jumlah yang dibawa dari mukasurat terdahulu (jika ada)',
+      pageData.sheet > 1 ? [pageData.carryInEmployer, pageData.carryInEmployee] : null,
+    );
+    top -= ROW_H;
+
+    // ── Rows ────────────────────────────────────────────────────────────────────────────────────────
     // Bil runs across the WHOLE form, not per sheet: it is the numbering a KWSP counter reads down.
     //
-    // ⚠️ NOTHING IN THIS LOOP MAY ADDRESS `COL.nk`. The N K column is KWSP's (catatan 5) and is printed
+    // ⚠️ NOTHING IN THIS LOOP MAY WRITE INTO `COL.nk`. The N K column is KWSP's (catatan 5) and is printed
     // empty on purpose. `BorangARow` carries no field for it either, and the test reads the drawn text
     // positions back out of the rendered PDF to prove nothing lands in that band.
     let bil = form.pages.slice(0, pageData.sheet - 1).reduce((a, p) => a + p.rows.length, 0);
+    const rowsTop = top;
     for (const r of pageData.rows) {
       bil += 1;
-      text(String(bil), COL.bil, 8.5);
-      text(r.memberNo, COL.member, 8.5);
-      text(r.ic, COL.ic, 8.5);
-      // SHRINK, NEVER CUT. This was `textClip` until the review: a name longer than the column lost its
-      // tail silently, so 'NURUL HUDA BINTI ISMAIL' printed as 'NURUL HUDA BINTI ISM' and the page read as
-      // if that were the person's name. On a form an employer signs and files, a slightly smaller name is
-      // right and a wrong name is not — so the table's name now goes through the same fit-to-width every
-      // other signed value on this sheet uses, and nothing on the page is clipped at all.
-      //
-      // The 56pt allowance is kept and is not arbitrary: at 40 a 40-character legal name ran right up
-      // against the Upah figure with no visible gap ("…MOHAMED ZUL 6,200.00"), found by rasterising. And
-      // the earlier comment here claimed the allowance "survived the N K shift because the NAME column
-      // moved with the columns to its left" — it did NOT: the budget went 133.28pt to 127.28pt, about one
-      // character. That is exactly the sentence a later reader would have trusted instead of measuring.
-      textFit(r.name, COL.name, COL.wageR - COL.name - 56, 8.5);
+      const y = base(top);
+      atC(String(bil), ctr(COL.bil, COL.member), y, 8.5);
+      atFit(r.memberNo, COL.member + 3, y, COL.nk - COL.member - 6, 8.5);
+      atFit(r.ic, COL.ic + 3, y, COL.name - COL.ic - 6, 8.5);
+      // SHRINK, NEVER CUT — see `atFit`. A slightly smaller name is the person's name; a cut one is not.
+      textFit(r.name, y);
       // A row whose EPF wage basis was never recorded cannot reach this renderer — the download gate
       // refuses it — but if it ever did, it must not print a zero that reads as a real wage.
-      textR(r.wageRecorded ? money(r.wage) : '(tiada)', COL.wageR, 8.5);
-      textR(money(r.employer), COL.employerR, 8.5);
-      textR(money(r.employee), COL.employeeR, 8.5);
-      y -= 4;
-      page.drawLine({ start: { x: M, y }, end: { x: RIGHT, y }, thickness: 0.4, color: hair });
-      y -= ROW_H - 4;
+      atFitR(r.wageRecorded ? money(r.wage) : '(tiada)', COL.employer - 3, y, COL.employer - COL.wage - 6, 8.5);
+      atFitR(money(r.employer), COL.employee - 3, y, COL.employee - COL.employer - 6, 8.5);
+      atFitR(money(r.employee), COL.end - 3, y, COL.end - COL.employee - 6, 8.5);
+      top -= ROW_H;
+      hline(M, RIGHT, top, 0.4, hair);
     }
     if (pageData.rows.length === 0) {
-      text('Tiada pekerja bagi bulan ini / no employees for this month', M, 8.5, font, muted);
-      y -= ROW_H;
+      at('Tiada pekerja bagi bulan ini / no employees for this month', COL.name + 3, base(top), 8.5, font, muted);
+      top -= ROW_H;
+      hline(M, RIGHT, top, 0.4, hair);
+    }
+    // The ruled grid: every column line through the member rows.
+    for (const x of [COL.bil, COL.member, COL.nk, COL.ic, COL.name, COL.wage, COL.employer, COL.employee, COL.end]) {
+      vline(x, top, rowsTop);
+    }
+    hline(M, RIGHT, top, 0.9);
+
+    // ── Carried forward — EVERY sheet. Empty on the last, where JUMLAH carries the total. ───────────
+    carryRow(
+      top,
+      'Jumlah yang dibawa ke mukasurat seterusnya (jika ada)',
+      last ? null : [pageData.carryOutEmployer, pageData.carryOutEmployee],
+    );
+    top -= ROW_H;
+
+    // ── JUMLAH (RM), on the last sheet only ─────────────────────────────────────────────────────────
+    // Repeating it is how a multi-page form gets filed with the grand total mistaken for a page total.
+    if (last) {
+      const y = base(top);
+      atR('JUMLAH (RM)', COL.wage - 4, y, 9, bold);
+      atFitR(money(form.totalWage), COL.employer - 3, y, COL.employer - COL.wage - 6, 9, bold);
+      atFitR(money(form.totalEmployer), COL.employee - 3, y, COL.employee - COL.employer - 6, 9, bold);
+      atFitR(money(form.totalEmployee), COL.end - 3, y, COL.end - COL.employee - 6, 9, bold);
+      hline(COL.name, RIGHT, top - ROW_H, 1.1);
+      for (const x of [COL.name, COL.wage, COL.employer, COL.employee, COL.end]) vline(x, top - ROW_H, top);
+      top -= ROW_H;
     }
 
-    // ── Carry-out, or the whole-form JUMLAH on the last sheet ────────────────────────────────────
-    y -= 2;
-    line(y, 0.9);
-    y -= 13;
-    if (!last) {
-      textR('Jumlah yang dibawa ke mukasurat seterusnya (jika ada)', COL.wageR - 6, 8.5, bold);
-      textR(money(pageData.carryOutEmployer), COL.employerR, 8.5, bold);
-      textR(money(pageData.carryOutEmployee), COL.employeeR, 8.5, bold);
-    } else {
-      // JUMLAH ON THE LAST SHEET ONLY: repeating it is how a multi-page form gets filed with the grand
-      // total mistaken for a page total.
-      // NOT `COL.wageR - 6` like the carry rows above: those leave Upah BLANK, this one prints a figure
-      // there. At -6 the label ran straight through "204,600.00" on a two-sheet form — a defect no static
-      // check, no type and no 200 can see, and one that only appeared on a raster of sheet 2.
-      textR('JUMLAH (RM)', COL.wageR - 80, 9.5, bold);
-      textR(money(form.totalWage), COL.wageR, 9.5, bold);
-      textR(money(form.totalEmployer), COL.employerR, 9.5, bold);
-      textR(money(form.totalEmployee), COL.employeeR, 9.5, bold);
-    }
-    y -= 8;
-    line(y, 1.1);
+    /**
+     * THE FOOT FOLLOWS THE TABLE, as on the specimen — the representative's block, Cop Rasmi Majikan,
+     * CATATAN and PERINGATAN sit a little under the last row rather than at the foot of an empty page. Its
+     * space is still RESERVED at the bottom (TABLE_FLOOR), so `lift` is never negative: a full sheet puts
+     * it exactly where the capacity arithmetic says, a short one moves it up. Only the provenance band stays
+     * anchored to the bottom edge.
+     */
+    const lift = Math.max(0, top - 14 - FOOT_TOP);
+    const [signBot, repLast, footBot, footTop, warnTop] = [SIGN_BOT, REP_LAST, FOOT_BOT, FOOT_TOP, WARN_TOP].map(
+      (v) => v + lift,
+    );
 
-    // ── The signature band, LAST SHEET ONLY, anchored to the foot ────────────────────────────────
+    // ── The representative's block, LAST SHEET ONLY ─────────────────────────────────────────────────
     // A filing is signed once, at the end of the deck — which is also why the space it occupies is
     // RESERVED on every sheet (see TABLE_FLOOR): `paginateBorangA` takes one rows-per-page for the whole
     // form, so a sheet that could hold more would renumber every sheet after it.
     if (last) {
-      at('Tandatangan Wakil Majikan', M, FOOT_BAND_TOP, 7.5, bold, muted);
+      // THE PLACE TO SIGN, where the specimen puts it: beside "Tandatangan Wakil Majikan", above Nama.
+      at('Tandatangan', M, signBot + SIGN_H - 9, 7.5);
+      at('Wakil Majikan', M, signBot + SIGN_H - 18, 7.5);
+      box(SIG_VALUE_X, signBot, SIG_VALUE_W, SIGN_H);
       const rep: [string, string][] = [
         ['Nama', form.repName],
         ['No. Kad Pengenalan', form.repIc],
         ['Jawatan', form.repPosition],
-        // The reporter's point 7: this label is "No. Tel / Bimbit" on the agency's form, not "No. Tel".
+        // The agency's own label is "No. Tel / Bimbit", not "No. Tel".
         ['No. Tel / Bimbit', form.repPhone],
         ['E-mel', form.repEmail],
         // TARIKH IS NEVER THE PRINT DATE. It is the date the representative signed, which has not
@@ -488,72 +515,48 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
         ['Tarikh', ''],
       ];
       for (const [i, [l, v]] of rep.entries()) {
-        const yy = REP_ROW_TOP - i * REP_ROW_H;
-        at(`${l}`, M, yy, 7, font, muted);
-        // A BLANK RULE RATHER THAN AN INVENTED VALUE. Production carries this block for one company in
-        // nine; the rest print a rule to write on, which is what the specimen's own blank lines are.
-        //
-        // ⚠️ `atFit`, NEVER `atClip`. This is the signatory's legal identity on a KWSP filing; it shrinks
-        // to fit and is always whole. See the note on `atFit` for what the clip that was here did.
-        if (v) {
-          atFit(v, SIG_VALUE_X, yy, SIG_VALUE_W, 8, bold);
-        } else {
-          page.drawLine({
-            start: { x: SIG_VALUE_X, y: yy - 2 },
-            end: { x: SIG_RIGHT, y: yy - 2 },
-            thickness: 0.5,
-            color: hair,
-          });
-        }
+        const yy = repLast + (REP_ROWS - 1 - i) * REP_ROW;
+        at(l, M, yy, 7);
+        // A BLANK RULE RATHER THAN AN INVENTED VALUE. ⚠️ `atFit`, never a clip: this is the signatory's
+        // legal identity on a KWSP filing; it shrinks to fit and is always whole.
+        if (v) atFit(v, SIG_VALUE_X + 3, yy, SIG_VALUE_W - 6, 8, bold);
+        hline(SIG_VALUE_X, SIG_RIGHT, yy - 4, 0.5, hair);
       }
-      // THE PLACE TO SIGN, and the employer's own stamp box, side by side UNDER the rows. Both drawn
-      // empty. The signature box is not decoration: a Borang A is a signed return, and the branch that
-      // added the stamp box deleted the box `main` captioned "Tandatangan & Tarikh" without replacing it,
-      // which left a form whose plain-text twin advertised a signature line the drawn page did not have.
-      //
-      // They sit BELOW the rows rather than beside them because beside them is what forced the 98pt value
-      // column that truncated the representative's name. Vertical room is what this band is short of, and
-      // 44pt of box is enough to sign and stamp in; 98pt of box was not worth the name.
-      const signBoxY = SIGN_BOX_TOP - SIGN_BOX_H;
-      box(M, signBoxY, SIGN_BOX_W, SIGN_BOX_H);
-      atC('Tandatangan', M + SIGN_BOX_W / 2, signBoxY + 6, 7, font, muted);
-      box(COP_BOX_X, signBoxY, SIGN_BOX_W, SIGN_BOX_H);
-      atC('Cop Rasmi Majikan', COP_BOX_X + SIGN_BOX_W / 2, signBoxY + 6, 7, font, muted);
+      // The employer's own stamp, beside the representative's block. Drawn empty.
+      box(COP_X, footBot, COP_R - COP_X, footTop - footBot);
+      atC('Cop Rasmi Majikan', (COP_X + COP_R) / 2, footBot + 6, 7.5);
     }
 
-    // ── CATATAN, on EVERY sheet ─────────────────────────────────────────────────────────────────
-    // Form furniture, not a signature: each printed sheet of a Borang A carries the notes, and reserving
-    // the space on every sheet without drawing them would leave a hole. The wording is ONE array in
+    // ── CATATAN, on EVERY sheet ─────────────────────────────────────────────────────────────────────
+    // Form furniture, not a signature: each printed sheet carries the notes. The wording is ONE array in
     // lib/borang-a.ts so a supplied KWSP 6 page can be dropped in without touching this renderer.
-    const catX = CATATAN_X;
-    const catW = RIGHT - catX;
-    at('CATATAN', catX, FOOT_BAND_TOP, 7.5, bold, muted);
-    let cy = FOOT_BAND_TOP - 12;
+    const catW = RIGHT - CATATAN_X;
+    at('CATATAN', CATATAN_X, footTop - 8, 7.5, bold);
+    let cy = footTop - 19;
     for (const [i, note] of BORANG_A_CATATAN.entries()) {
-      const lines = wrap(note, 6.8, catW - 12);
-      at(`${i + 1}.`, catX, cy, 6.8, font, muted);
-      for (const l of lines) {
-        at(l, catX + 11, cy, 6.8, font, muted);
-        cy -= 9;
+      at(`${i + 1}.`, CATATAN_X, cy, 6.6);
+      for (const l of wrap(note, 6.6, catW - 11)) {
+        at(l, CATATAN_X + 10, cy, 6.6);
+        cy -= 8;
       }
     }
 
-    // ── PERINGATAN ──────────────────────────────────────────────────────────────────────────────
-    // The reporter's point 9. Malay is the specimen's sentence; the English line under it is OURS and
-    // says so, because an unattributed translation of a statutory warning borrows the agency's authority.
-    let wy = WARN_TOP;
+    // ── PERINGATAN ──────────────────────────────────────────────────────────────────────────────────
+    // Malay is the specimen's sentence; the English line under it is OURS and says so, because an
+    // unattributed translation of a statutory warning borrows the agency's authority.
+    let wy = warnTop;
     for (const [i, s] of [BORANG_A_PERINGATAN_MS, BORANG_A_PERINGATAN_EN].entries()) {
-      for (const l of wrap(s, 7, RIGHT - M, i === 0 ? bold : font)) {
-        at(l, M, wy, 7, i === 0 ? bold : font, i === 0 ? ink : muted);
+      for (const l of wrap(s, 6.8, CW, i === 0 ? bold : font)) {
+        at(l, M, wy, 6.8, i === 0 ? bold : font, i === 0 ? ink : muted);
         wy -= 9;
       }
     }
 
-    // ── Provenance band ─────────────────────────────────────────────────────────────────────────
-    // WRAPPED, not one long line: the English sentence is wider than A4 and an unwrapped one runs off
-    // the right edge, which no static check can see.
+    // ── Provenance band ─────────────────────────────────────────────────────────────────────────────
+    // WRAPPED, not one long line: the English sentence is wider than A4. The payroll month lives HERE
+    // (the specimen has no "Bulan Upah" box), so note 6's "+1" stays checkable on the page.
     let by = PROV_TOP;
-    line(by + 10, 0.7, hair);
+    hline(M, RIGHT, by + 9, 0.6, hair);
     const band = [
       'Susun atur kami sendiri, dilukis mengikut Borang A — bukan borang rasmi KWSP.',
       'Our own layout, drawn to match Borang A. KWSP publishes no blank form to print onto, so this is not ' +
@@ -564,11 +567,12 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
       `Bulan caruman ${form.contributionMonth} · bulan upah ${form.payrollPeriodKey}`,
     ];
     for (const paragraph of band) {
-      for (const l of wrap(paragraph, 6.4, RIGHT - M)) {
-        at(l, M, by, 6.4, font, muted);
-        by -= 8.5;
+      for (const l of wrap(paragraph, 6.2, CW)) {
+        at(l, M, by, 6.2, font, muted);
+        by -= 7.8;
       }
     }
+
   }
 
   return doc.save();

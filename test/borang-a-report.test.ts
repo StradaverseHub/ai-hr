@@ -12,7 +12,8 @@
  * employee yields a Borang A that reconciles perfectly to a payroll it does not match, and a wage quietly
  * taken from gross pay over-reports a statutory contribution for everybody with overtime.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import zlib from 'node:zlib';
 import { randomUUID } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
@@ -27,8 +28,26 @@ import { reportPreview } from '../core/reporting';
 // r372 (item f022dd70) — the read behind the download pop-up's Payroll Cycle list. Exercised HERE, beside
 // the report it feeds, so "the control offers a run" and "the file contains that run" stay one claim.
 import { listFilableRunsForPeriod } from '../core/payroll-view';
-import { BORANG_A_HEADER_KEYS, borangAFrom } from '../lib/borang-a';
+import { BORANG_A_HEADER_KEYS, borangAFrom, money } from '../lib/borang-a';
+import { renderBorangAPdf } from '../lib/borang-a-pdf';
 import { borangAFileReadiness, buildBorangAFile, parseBorangAFileTotals } from '../lib/kwsp-borang-a-file';
+
+/** r407 — every string a rendered PDF drew (pdf-lib's Flate content streams, WinAnsi hex strings). */
+function drawnTexts(pdf: Buffer): string[] {
+  const out: string[] = [];
+  for (const m of pdf.toString('latin1').matchAll(/stream\r?\n/g)) {
+    const start = m.index! + m[0].length;
+    const end = pdf.indexOf('endstream', start, 'latin1');
+    let body: string;
+    try {
+      body = zlib.inflateSync(pdf.subarray(start, end)).toString('latin1');
+    } catch {
+      continue;
+    }
+    for (const t of body.matchAll(/<([0-9A-Fa-f]*)> Tj/g)) out.push(Buffer.from(t[1], 'hex').toString('latin1'));
+  }
+  return out;
+}
 
 let b: Base;
 
@@ -754,6 +773,49 @@ describe('r372 — filing one payroll cycle of a month on its own', () => {
     expect(omitted.rows).toEqual(everyRun.rows);
     expect(omitted.totals).toEqual(everyRun.totals);
     expect(omitted.readiness).toEqual(everyRun.readiness);
+  });
+
+  /**
+   * r407 (item 4f45f9b0) — THE SAME TWO GUARANTEES, THROUGH THE NEW DOOR: the drawn page.
+   *
+   * The criteria step's Select All submits NO `run` parameter (components/run-picker.tsx), so the form an
+   * operator downloads after ticking everything is the unfiltered one by construction. This pins the other
+   * half: even a selection that NAMES every run renders the very same bytes, so the two cannot drift. Date
+   * is frozen only around the render (pdf-lib stamps CreationDate/ModDate); the read's own Tarikh DiCetak
+   * is today's for both.
+   */
+  it('r407 — ticking every cycle renders the very same PDF bytes as no selection', async () => {
+    const { a, regularSeq, bonusSeq } = await julyWithBonus();
+    const omitted = await view(a);
+    const everyRun = await view(a, [regularSeq, bonusSeq]);
+    const draw = async (r: Awaited<ReturnType<typeof view>>) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-08-12T02:00:00Z'));
+      try {
+        return Buffer.from(await renderBorangAPdf(borangAFrom({ header: r.meta.formHeader!, rows: r.rows })));
+      } finally {
+        vi.useRealTimers();
+      }
+    };
+    const [x, y] = [await draw(omitted), await draw(everyRun)];
+    expect(x.byteLength).toBeGreaterThan(1000);
+    expect(x.equals(y), 'Select All drew a different Borang A from no selection').toBe(true);
+  });
+
+  it('r407 — a bonus-only Borang A PRINTS the bonus as Upah, with the bonus run\'s own contributions', async () => {
+    const { a, bonusSeq } = await julyWithBonus();
+    const r = await view(a, [bonusSeq]);
+    const form = borangAFrom({ header: r.meta.formHeader!, rows: r.rows });
+    const drawn = Buffer.from(await renderBorangAPdf(form));
+    const texts = drawnTexts(drawn);
+    const row = form.pages[0].rows.find((x) => x.name === 'AAA CYCLE')!;
+    expect(row.wage).toBeCloseTo(BONUS, 2);
+    // ON THE PAGE, not only in the read: the Upah cell says the bonus, never the month's salary.
+    expect(texts).toContain(money(BONUS));
+    expect(texts).not.toContain(money(salary));
+    expect(texts).not.toContain(money(salary + BONUS));
+    expect(texts).toContain(money(row.employer));
+    expect(texts).toContain(money(row.employee));
   });
 
   it('leaves out an employee the selected cycles never paid, and keeps them for the ones that did', async () => {

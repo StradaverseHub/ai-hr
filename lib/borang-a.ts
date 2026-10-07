@@ -221,22 +221,20 @@ export const BORANG_A_PERINGATAN_EN =
 /**
  * CARA BAYARAN — the payment-method ticks, DRAWN EMPTY on every sheet.
  *
- * ONE TICK PER METHOD, all five of them. An earlier draft folded them into two — 'Wang Tunai' and
- * 'Cek/Kiriman Wang/Wang Pos', with Draf Bank pushed onto the reference line — on the grounds that the
- * specimen groups them that way. That is wrong for a box somebody TICKS: an operator paying by Wang Pos
- * would tick a box that also says Cek and Kiriman Wang, and the filing would then state a payment
- * method that was not used. The approved plan says five, and an approval on this board carries no
- * payload, so there is no reading of it under which the reporter asked for two.
+ * r407 (item 4f45f9b0) — TWO TICKS, AS THE KWSP 6 SPECIMEN PRINTS THEM. cc9f9420 split them into five
+ * ('Wang Tunai', 'Cek', 'Kiriman Wang', 'Wang Pos', 'Draf Bank') on that item's approved plan. The reporter
+ * has since asked, in 4f45f9b0, for the form's "layout, structure, fields, table arrangement, borders,
+ * alignment and overall presentation" to follow the sample, and the plan they approved names "the two
+ * payment ticks with the cheque / EFT / TT line". The specimen has exactly two: Wang Tunai, and one tick
+ * for the instruments (Cek / Kiriman Wang / Wang Pos / Draf Bank) whose number goes on the line under it.
+ * That is the agency's grouping, and the latest approved word reverses the earlier one.
  *
- * NEVER PRE-FILLED. Payroll does not know how a filing was paid, and ticking a box here would be
- * inventing a fact about a payment.
+ * NEVER PRE-FILLED. Payroll does not know how a filing was paid, and ticking a box here would be inventing
+ * a fact about a payment.
  */
 export const BORANG_A_PAYMENT_METHODS: readonly string[] = [
   'Wang Tunai',
-  'Cek',
-  'Kiriman Wang',
-  'Wang Pos',
-  'Draf Bank',
+  'Cek / Kiriman Wang / Wang Pos / Draf Bank',
 ];
 
 /**
@@ -244,8 +242,8 @@ export const BORANG_A_PAYMENT_METHODS: readonly string[] = [
  *
  * It reads as Malay, which the first transcription of it did not: '/Draf Bank*No /EFT /TT. :' printed
  * verbatim on the page, leading slash, inline '*No' and stray full stop included. A Latin-1 round-trip
- * test proves a string survives the font; it cannot tell you the string is gibberish. Draf Bank is a
- * tick of its own now, so this line is purely the instrument's reference number.
+ * test proves a string survives the font; it cannot tell you the string is gibberish. It is drawn under the
+ * second tick (the instruments), where the specimen puts its own reference line.
  */
 export const BORANG_A_PAYMENT_REF_LABEL = 'No. Cek / Draf Bank / EFT / TT :';
 
@@ -527,9 +525,8 @@ export function borangATextExport(form: BorangAForm): string {
   field('Amaun Caruman', `RM ${money(form.totalContribution)}`);
   L.push('');
 
-  // CARA BAYARAN — the same FIVE methods the drawn page carries, and blank for the same reason. (Said
-  // "two ticks" until the review, immediately above a loop over all five: the text twin and the drawn
-  // page have always agreed, only this sentence disagreed with both.)
+  // CARA BAYARAN — the same ticks the drawn page carries (two since r407, the specimen's own), read off the
+  // one array and blank for the same reason.
   L.push('CARA BAYARAN');
   L.push(`  ${BORANG_A_PAYMENT_INSTRUCTION}`);
   for (const m of BORANG_A_PAYMENT_METHODS) L.push(`  [ ] ${m}`);

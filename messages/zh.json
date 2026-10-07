@@ -4599,7 +4599,15 @@
       "viewer_back": "返回",
       "viewer_openNewTab": "在新标签页中打开",
       "viewer_frameTitle": "{form} — 预览",
-      "viewer_showVersion": "显示此版本"
+      "viewer_showVersion": "显示此版本",
+      "cycles": "薪资周期",
+      "cycles_hint": "只列出所选公司和月份中已处理的薪资周期。",
+      "cycles_noRuns": "该公司和月份尚无已处理的薪资周期。",
+      "cycles_nonePicked": "请至少勾选一个薪资周期以继续。",
+      "cycles_partial": "您漏选了至少一个薪资周期。表格只会包含所勾选的周期，且表格上没有注明每一行来自哪个周期的栏位。",
+      "refusal_cycles_no_runs": "该公司和月份没有已处理的薪资，因此未生成任何内容。",
+      "refusal_cycles_no_data": "所选薪资周期中没有此表格的已处理缴款，因此未生成任何内容。",
+      "refusal_cycles_invalid": "薪资周期的选择无效，请重新选择。"
     },
     "ea": {
       "backToReports": "报表",
@@ -6980,7 +6988,10 @@
       "downloadReport": "逐字段核对上传文件",
       "downloadReportTitle": "针对上传文件本身的报告：每行的长度，以及每个字段的列位置、长度和取值，便于上传前与 KWSP 样本逐行比对。",
       "fileBlocked": "在修正上述记录之前，上传文件不可下载。",
-      "downloadsBlocked": "每一行完整之前无法下载。"
+      "downloadsBlocked": "每一行完整之前无法下载。",
+      "cyclesAll": "所有薪资周期",
+      "viewerBack": "更改选择",
+      "previewBlocked": "上方所列缺漏补齐后，表格将显示在此处。"
     },
     "cp39Form": {
       "title": "CP39 — 每月 PCB / MTD 扣缴表（内陆税收局 LHDN）",
@@ -7767,6 +7778,18 @@
       "error_invalid_scheme": "请选择有效的所得税居民类别。",
       "error_citizenship_unknown": "已记录的国籍不符合 C-Suite 方案针对非公民居民的要求。",
       "error_not_resident": "已记录的税务居民身份不符合此居民方案的要求。"
+    },
+    "runPicker": {
+      "all": "所有薪资周期",
+      "selectAll": "全选",
+      "clear": "清除",
+      "search": "搜索薪资周期",
+      "loading": "正在查找本月的薪资运行…",
+      "run": "本月第 {seq} 次运行",
+      "runTypeRegular": "常规",
+      "runTypeOffCycle": "额外周期",
+      "runTypeBonus": "奖金",
+      "runTypeAdjustment": "调整"
     }
   },
   "admin": {
