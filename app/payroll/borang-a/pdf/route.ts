@@ -18,7 +18,7 @@
  */
 import { borangAFilename } from '@/lib/borang-a';
 import { renderBorangAPdf } from '@/lib/borang-a-pdf';
-import { describeGaps, loadBorangA } from '../shared';
+import { NO_CONTRIBUTIONS, describeGaps, loadBorangA } from '../shared';
 
 export const runtime = 'nodejs';
 
@@ -49,6 +49,7 @@ export async function GET(req: Request) {
       });
     }
     if (loaded.reason === 'bad-selection') return new Response(loaded.message, { status: 422 });
+    if (loaded.reason === 'no-contributions') return new Response(NO_CONTRIBUTIONS, { status: 422 });
     return new Response(`Cannot produce Borang A: ${describeGaps(loaded)}.`, { status: 422 });
   }
 

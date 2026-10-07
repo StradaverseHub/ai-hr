@@ -59,3 +59,13 @@ export function borangADocumentQuery(p: Parameters<typeof borangADocumentPairs>[
   for (const { name, value } of borangADocumentPairs(p)) q.append(name, value);
   return q.toString();
 }
+
+/**
+ * r407 — IS THERE ANYTHING TO FILE? At least one row, and at least one sen of EPF (employer or employee)
+ * across them. Pure, so the rule is pinned without a session; `loadBorangA` refuses with
+ * `'no-contributions'` when this is false, for every surface at once.
+ */
+export function borangAHasContributions(rows: readonly Record<string, unknown>[]): boolean {
+  const sen = rows.reduce((a, r) => a + Math.round(((Number(r.employer) || 0) + (Number(r.employee) || 0)) * 100), 0);
+  return rows.length > 0 && sen !== 0;
+}

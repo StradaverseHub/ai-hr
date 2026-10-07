@@ -77,7 +77,7 @@ import {
  * declares `runSelection` (Borang A first) gets a `cycles` criterion: the shared run picker, Select All
  * ticked, listing only the processed runs of the company and month chosen above it. Continue goes to the
  * form's own preview, whose server-side gate sends an empty or invalid selection BACK HERE with
- * `?error=cycles_…` and the criteria it was given — so the step re-opens on the operator's own company,
+ * `?refusal=cycles_…` and the criteria it was given — so the step re-opens on the operator's own company,
  * year, month and ticks, with the refusal said in words, and nothing was produced. The prefill is honoured
  * for every form (a company outside this admin's scope, a malformed year or month are ignored, never
  * echoed); the error is allowlisted by `cyclesRefusalFrom`.
@@ -130,7 +130,7 @@ export default async function StatutoryFormCriteriaPage({
     year?: string;
     month?: string;
     run?: string | string[];
-    error?: string;
+    refusal?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
@@ -187,7 +187,7 @@ export default async function StatutoryFormCriteriaPage({
   const backRuns = parseRunSelection(
     new URLSearchParams((Array.isArray(sp.run) ? sp.run : sp.run ? [sp.run] : []).map((v) => ['run', v])),
   );
-  const refusal = cyclesRefusalFrom(sp.error);
+  const refusal = cyclesRefusalFrom(sp.refusal);
 
   const name = report ? report.label : t(link!.labelKey as 'link_cp22');
   const description = report

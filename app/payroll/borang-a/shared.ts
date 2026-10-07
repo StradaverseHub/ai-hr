@@ -48,6 +48,7 @@
  * input that lands nowhere would be a control that silently does nothing, so there is not one.
  */
 import { reportPreview } from '@/core/reporting';
+import { borangAHasContributions } from './query';
 import { scopedAdmin } from '@/lib/scope';
 import { parseRunSelection } from '@/lib/payroll-run-selection';
 import {
@@ -68,6 +69,10 @@ import {
   type BorangAFileReadiness,
 } from '@/lib/kwsp-borang-a-file';
 
+/** r407 — the routes' plain-text refusal for a selection with no EPF contribution on it. */
+export const NO_CONTRIBUTIONS =
+  'No processed EPF contributions for this month and these payroll cycles — no Borang A is produced.';
+
 /** The catalog id this screen is the form for. One literal, shared, rather than four. */
 export const BORANG_A_REPORT_ID = 'my.borang-a';
 
@@ -87,6 +92,13 @@ export type BorangALoad =
   | { ok: false; reason: 'selection-empty' }
   /** r372 — the run parameters on the link are not run numbers. Refused, never quietly widened. */
   | { ok: false; reason: 'bad-selection'; message: string }
+  /**
+   * r407 (item 4f45f9b0) — the runs exist and were ticked, but they carry NO EPF contribution at all
+   * (nobody on them, or not a sen of EPF charged). "The system shall not generate an empty statutory
+   * form": a Borang A of 0.00 boxes asserts a filing of nothing. Refused HERE so the preview, the PDF, the
+   * text copy, the i-Akaun file and the Payment Submission shelf all refuse it the same way.
+   */
+  | { ok: false; reason: 'no-contributions' }
   | {
       ok: false;
       reason: 'not-ready';
@@ -176,6 +188,9 @@ export async function loadBorangA(p: {
   // r372 — the month ran, the ticked cycles are not in it. Answered apart from 'no-batch' so the
   // operator is sent to the control they got wrong rather than to a payroll run that already exists.
   if (result.meta.selectionEmpty) return { ok: false, reason: 'selection-empty' };
+  // r407 — nothing to file. Checked on the ROWS the read returned, before any readiness gap is reported:
+  // naming who is missing a member number on a form that would carry no money is the wrong conversation.
+  if (!borangAHasContributions(result.rows)) return { ok: false, reason: 'no-contributions' };
 
   const missing = result.readiness.map((r) => ({ employmentId: r.employmentId, name: r.name, missing: r.missing }));
   // TWO KINDS OF GAP, ONE GATE. `missing` is per-employee; `headerMissing` is employer-level (no EPF
@@ -245,6 +260,7 @@ export async function loadBorangAFile(p: {
       };
     }
     if (loaded.reason === 'bad-selection') return { ok: false, status: 422, message: loaded.message };
+    if (loaded.reason === 'no-contributions') return { ok: false, status: 422, message: NO_CONTRIBUTIONS };
     return { ok: false, status: 422, message: `Cannot produce a Borang A upload file: ${describeGaps(loaded)}.` };
   }
 

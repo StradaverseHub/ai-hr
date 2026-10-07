@@ -157,7 +157,10 @@ export function cyclesRefusalHref(
   p: { companyId: string; year: string; month: string; runSeqs?: readonly number[] },
   reason: CyclesRefusal,
 ): string {
-  return `${criteriaReturnHref(formId, p)}&error=${encodeURIComponent(reason)}`;
+  // `refusal`, NOT `error`: `?error=` is the house channel for server-action failures, which
+  // components/ui/toast-trigger.tsx toasts RAW and then strips from the URL — so the step would show the
+  // bare code in a toast and lose its own sentence.
+  return `${criteriaReturnHref(formId, p)}&refusal=${encodeURIComponent(reason)}`;
 }
 
 /** The criteria step for `formId`, re-opened on criteria already chosen — the preview's "Change selection". */

@@ -129,14 +129,13 @@ export default async function BorangAPreviewPage({ searchParams }: { searchParam
       redirect(cyclesRefusalHref(BORANG_A_REPORT_ID, criteria, 'cycles_no_data'));
     }
     if (loaded.reason === 'bad-selection') redirect(cyclesRefusalHref(BORANG_A_REPORT_ID, criteria, 'cycles_invalid'));
+    // "No processed EPF contributions for this selection" — nobody on it, or nobody charged a sen of EPF.
+    // Decided in the loader, so every download route refuses the same selection the same way.
+    if (loaded.reason === 'no-contributions') {
+      redirect(cyclesRefusalHref(BORANG_A_REPORT_ID, criteria, 'cycles_no_data'));
+    }
     // 'not-found': a company whose jurisdiction does not register this form. Same bare answer as the routes.
     notFound();
-  }
-  // "No processed EPF contributions for this selection" — nobody on it, or nobody charged a sen of EPF.
-  // An empty Borang A is never drawn: the plan's words, and the request's ("shall not generate an empty
-  // statutory form").
-  if (loaded.form.employees === 0 || loaded.form.totalContribution === 0) {
-    redirect(cyclesRefusalHref(BORANG_A_REPORT_ID, criteria, 'cycles_no_data'));
   }
 
   const monthFmt = new Intl.DateTimeFormat(locale, { month: 'long', timeZone: 'UTC' });

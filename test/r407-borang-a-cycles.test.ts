@@ -18,7 +18,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { borangADocumentPairs, borangADocumentQuery, borangAQuery } from '../app/payroll/borang-a/query';
+import {
+  borangADocumentPairs,
+  borangADocumentQuery,
+  borangAHasContributions,
+  borangAQuery,
+} from '../app/payroll/borang-a/query';
 import {
   CYCLES_ENDPOINT,
   criteriaReturnHref,
@@ -124,12 +129,27 @@ describe('the Continue gate', () => {
     }
     expect(gate).toContain('listFilableRunsForPeriod(');
     expect(gate).toContain("loaded.reason === 'selection-empty'");
-    expect(gate).toContain('loaded.form.totalContribution === 0');
+    expect(gate).toContain("loaded.reason === 'no-contributions'");
+    // …decided in the LOADER, so the download routes refuse the same selection (a direct link included).
+    const shared = code('app/payroll/borang-a/shared.ts');
+    expect(shared).toContain("if (!borangAHasContributions(result.rows)) return { ok: false, reason: 'no-contributions' };");
+    for (const r of ['pdf', 'text']) {
+      expect(code(`app/payroll/borang-a/${r}/route.ts`)).toContain("loaded.reason === 'no-contributions'");
+    }
+    expect(shared).toContain("loaded.reason === 'no-contributions'");
     // Nothing that draws or links a document precedes the gate.
     expect(PREVIEW_CODE.indexOf(GATE_START)).toBeGreaterThan(0);
     const before = PREVIEW_CODE.slice(0, PREVIEW_CODE.indexOf(GATE_START));
     expect(before).not.toContain('borangADocumentQuery(');
     expect(before).not.toContain('<StatutoryPdfViewer');
+  });
+
+  it('calls a selection with no EPF money on it "nothing to file", and anything else something', () => {
+    expect(borangAHasContributions([])).toBe(false);
+    // The render check's own case: a bonus run that paid nobody any EPF — a form of 0.00 boxes.
+    expect(borangAHasContributions([{ employer: 0, employee: 0 }, { employer: '0', employee: null }])).toBe(false);
+    expect(borangAHasContributions([{ employer: 0, employee: 0 }, { employer: 0.01, employee: 0 }])).toBe(true);
+    expect(borangAHasContributions([{ employer: 744, employee: 682 }])).toBe(true);
   });
 
   it('sends the operator back to the criteria step with their criteria and the reason', () => {
@@ -145,7 +165,9 @@ describe('the Continue gate', () => {
     expect(u.searchParams.get('year')).toBe('2026');
     expect(u.searchParams.get('month')).toBe('07');
     expect(u.searchParams.getAll('run')).toEqual(['2']);
-    expect(cyclesRefusalFrom(u.searchParams.get('error') ?? undefined)).toBe('cycles_no_data');
+    expect(cyclesRefusalFrom(u.searchParams.get('refusal') ?? undefined)).toBe('cycles_no_data');
+    // NOT `?error=`, which the global toast trigger shows raw and strips (components/ui/toast-trigger.tsx).
+    expect(u.searchParams.has('error')).toBe(false);
     // "Change selection" is the same address without a refusal.
     expect(criteriaReturnHref('my.borang-a', { companyId: 'c1', year: '2026', month: '07' })).toBe(
       '/payroll/statutory-forms/open?form=my.borang-a&companyId=c1&year=2026&month=07',
