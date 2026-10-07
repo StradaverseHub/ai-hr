@@ -1,3 +1,13 @@
+## r400 — 2026-10-07 · main@9219e4c7155e2afa88bc9c20a6f224874730aa74 · migration none
+
+**Scope.** Monolith rollout STEP 3, the primitives (README §4, components.md). No board item. APIs kept; rendering only.
+
+**Decisions.** components/ui/{button,input,badge,card} retuned with `monolith:` utilities appended after Classic's strings: default Button → pill (ink, 44px, 999px), secondary → ghost pill, destructive → signal-text ghost pill (no orange fill), outline/ghost/link → underlined `.txt`; Input → underlined `.fd` (focus rule turns signal without layout shift); Badge → mono status word (success/accent ink, warning/danger signal-text, default/info mid); Card → hairline section (1px ink top, no radius/fill/shadow). New components/monolith/ (Status, LiveDot, StatusLine, Cells, Kv, Note, Empty, Panel server-safe; Section, HairlineTable, HairlineList, Steps, Ruler, Field, Switch client), no strings of their own, real semantics. Caller sizing classes lose to Monolith's (accepted until step 4). test/r304-approval-template-drawer.dom.test.tsx now compares row-action markup with whole `monolith:` tokens stripped (asserting they were present), still byte-for-byte otherwise — reviewed by the parent.
+
+**Verification.** Classic intact three ways: class literals of main present verbatim; branch output minus `monolith:` tokens equals main's for every variant × size (catches tailwind-merge dropping a Classic class); computed styles in Chromium equal across >200 properties per case; pixel diffs zero or native-select/relative-time noise. 12 mutations by name. Full gate at 9219e4c7: 20/20, 1,201 of 1,201, first pass; test:browser 126 + 1 expected fail; next build. Production: refs 9219e4c7, stale_build=0, GET / 401.
+
+**Not done.** Screens do not adopt the new primitives yet (step 4); Bars, PageHeader, UnderlineSelect, ObjectStage not built; bespoke status pills and buttons (personnel, My Leave, the Annual/Sick tags) untouched.
+
 ## r398 — 2026-10-07 · main@a04fe36d0401f3e300abe3343c3cfa639f8a20c8 · migration none
 
 **Scope.** Monolith rollout STEP 2, the shell (docs/design/monolith README §3). No board item.
