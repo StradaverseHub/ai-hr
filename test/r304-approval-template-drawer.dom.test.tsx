@@ -225,6 +225,21 @@ function rowActionsMarkup(li: HTMLElement): string {
     .replace(/radix-[^"]+/g, 'radix-ID');
 }
 
+/**
+ * r400 — the Monolith primitives append `monolith:`-scoped utilities to Button's classes. Those do not match
+ * outside <html data-ui-theme="monolith">, so they change nothing Classic paints (proven in a real engine by
+ * test/r400-monolith-primitives.browser.test.tsx); the pin below is on everything ELSE, byte for byte. The
+ * strip is exact: only whole `monolith:` tokens inside class attributes are removed, and the result must not
+ * still contain one (so a renamed variant cannot slip through as an unstripped token).
+ */
+function withoutMonolithClasses(markup: string): string {
+  const out = markup.replace(/class="([^"]*)"/g, (_m, cls: string) =>
+    `class="${cls.split(' ').filter((t) => !t.startsWith('monolith:')).join(' ')}"`,
+  );
+  expect(out).not.toContain('monolith:');
+  return out;
+}
+
 const fill = (template: string, name: string) => template.replace('{name}', name);
 const closeLabel = (loc: Locale) => (CATALOGUES[loc] as unknown as { components: { drawer: { close: string } } }).components.drawer.close;
 const editButtonOf = (loc: Locale, name: string) =>
@@ -893,7 +908,10 @@ describe('r304 · the row actions are pinned as main shipped them', () => {
     ) as Record<string, string>;
     mount('en');
     for (const t of TEMPLATES) {
-      expect(rowActionsMarkup(rowOf(t.name)), `${t.name}: the row actions changed`).toBe(pinned[t.id]);
+      const now = rowActionsMarkup(rowOf(t.name));
+      // Non-vacuity of the strip: Monolith classes really are on these buttons, and are what is removed.
+      expect(now).toContain('monolith:');
+      expect(withoutMonolithClasses(now), `${t.name}: the row actions changed`).toBe(pinned[t.id]);
     }
     expect(LOCALES).toHaveLength(6);
   });
