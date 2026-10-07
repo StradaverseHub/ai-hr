@@ -206,7 +206,10 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
     const named = [...src.matchAll(/name="([a-zA-Z]+)"/g)].map((m) => m[1]);
     expect([...new Set(named)].sort()).toEqual(
       // r358 — `days` left this set with the dropdown that posted it.
-      ['claimEnd', 'claimStart', 'dayType', 'firstScheduleConsent', 'leaveTypeId', 'reason', 'workedDate'].sort(),
+      // r406 — `employmentId` joined it: HR mode's picked employee, a hidden input rendered ONLY in HR mode
+      // (`{hr && …}`) and never disabled. The employee's mount posts no such field (pinned by render in
+      // test/r299-leave-credit-dialogs.dom.test.tsx).
+      ['claimEnd', 'claimStart', 'dayType', 'employmentId', 'firstScheduleConsent', 'leaveTypeId', 'reason', 'workedDate'].sort(),
     );
   });
 
@@ -252,7 +255,15 @@ describe('r343 · ONE table, no sections, and five posted values per row', () =>
      *     shift", which must be the SAME answer or the screen contradicts the arithmetic.
      * Both are named, so removing either fails here rather than passing on the other's mention.
      */
-    expect(src, 'the money rule: NULL shift end on the three non-working types').toContain('shiftEnd: floored ? view.shiftEnd : null');
+    // r406 (952129bb) — UPDATED, NOT LOOSENED. This read `toContain('shiftEnd: floored ? view.shiftEnd : null')`.
+    // The floor decision moved INTO `leaveCreditWindowCredit` (lib/extended-hours.ts), the one window → days
+    // step the screen, the employee submit, the approval and HR's grant now share — so the money rule is pinned
+    // at BOTH ends of the contract: the screen hands it `floored`, and the shared function drops the shift end
+    // and the clock-out unless the day is an ordinary working day.
+    expect(src, 'the money rule: the screen hands the floor decision to the shared step').toContain('ordinaryWorkingDay: floored,');
+    const lib = read('lib/extended-hours.ts');
+    expect(lib, 'NULL shift end on the three non-working types').toContain('shiftEnd: p.ordinaryWorkingDay ? p.shiftEnd : null');
+    expect(lib).toContain('actualClockOut: p.ordinaryWorkingDay ? p.actualClockOut : null');
     expect(src, 'recorded effective shift identity is display-only').toContain('view?.shiftCode');
     expect(src).toContain('const windowLive = wantsWindow && !ordinaryUnavailable;');
     expect(src).toContain('claimsTimeWindow');
@@ -425,7 +436,10 @@ describe('r343 · the employee has ONE Leave Credit surface, and it is the singl
     const files = [...walk('app'), ...walk('components')];
     expect(files.length, 'the walk saw the tree').toBeGreaterThan(200);
     const mounts = files.filter((f) => read(f).includes('<LeaveCreditRequestTable'));
-    expect(mounts).toEqual([DIALOG_TSX]);
+    // r406 (952129bb) — UPDATED, NOT LOOSENED: HR's + Add Leave Credit now mounts the SAME component (that is
+    // the item: one form, one calculation). This read `toEqual([DIALOG_TSX])`. Still exactly the two shells,
+    // still no page-level copy, and still one defining file below.
+    expect(mounts.sort()).toEqual([DIALOG_TSX, 'components/leave/leave-credit-grant-dialog.tsx'].sort());
     // Exactly one file in the product defines this form.
     const defining = files.filter((f) => read(f).includes('export function LeaveCreditRequestTable'));
     expect(defining).toEqual(['components/leave/leave-credit-request-table.tsx']);
@@ -687,9 +701,12 @@ describe('r365 · the Attendance column, the shared panel, and what was retired 
     const code = stripped(TABLE);
     const stmt = code.slice(code.indexOf('const blocked ='), code.indexOf(';', code.indexOf('const blocked =')));
     const operands = [...stmt.matchAll(/([A-Za-z_$][\w$]*)\s*(?:\.length\s*>\s*0|<=\s*0)/g)].map((m) => m[1]).sort();
+    // r406 — `alreadyCreditedRows` joined, behind `hr != null &&`: HR mode only, and it is a register fact
+    // (an unreversed credit on the date), not attendance. On the employee's mount it is always [].
     expect(operands).toEqual(
-      ['belowThresholdRows', 'duplicateDates', 'incompleteRows', 'mismatchRows', 'ordinaryUnavailableRows', 'totalCredit'].sort(),
+      ['alreadyCreditedRows', 'belowThresholdRows', 'duplicateDates', 'incompleteRows', 'mismatchRows', 'ordinaryUnavailableRows', 'totalCredit'].sort(),
     );
+    expect(stmt).toContain('(hr != null && (subjectMissing || hr.blocked || alreadyCreditedRows.length > 0))');
     for (const name of ['attendance', 'Attendance', 'hasClockOut', 'exceedsClockOut', 'actualClock', 'approvedOtPlan'])
       expect(stmt, `${name} must not reach the submit gate`).not.toContain(name);
   });
@@ -997,8 +1014,19 @@ describe('r353 · the approvals queue warns, from the SAME computation the emplo
   const TABLE = 'components/leave/leave-credit-request-table.tsx';
 
   it('ONE computation: both surfaces call assessExtendedClaim, and neither re-derives the discrepancy', () => {
+    // r406 (952129bb) — UPDATED, NOT LOOSENED: the TABLE now reaches `assessExtendedClaim` through
+    // `leaveCreditWindowCredit`, which is that call plus the tier ladder, shared with every kernel path. This
+    // read `toContain('assessExtendedClaim(')` for both files; the table's half moved one hop and is pinned
+    // at both hops so neither can be dropped.
+    expect(read(APPROVALS), `${APPROVALS} must read the shared assessment`).toContain('assessExtendedClaim(');
+    expect(read(TABLE), `${TABLE} must read the shared step`).toContain('leaveCreditWindowCredit(');
+    const libSrc = read('lib/extended-hours.ts');
+    const at = libSrc.indexOf('export function leaveCreditWindowCredit(');
+    expect(at).toBeGreaterThanOrEqual(0);
+    const body = libSrc.slice(at, at + 1200);
+    expect(body.length).toBeGreaterThan(400);
+    expect(body, 'the shared step IS the shared assessment').toContain('assessExtendedClaim(');
     for (const f of [APPROVALS, TABLE]) {
-      expect(read(f), `${f} must read the shared assessment`).toContain('assessExtendedClaim(');
       expect(read(f), `${f} must import it rather than copy it`).toMatch(/from '@\/lib\/extended-hours'/);
     }
     // A hand-rolled comparison of the two times on either surface is the second derivation this forbids.

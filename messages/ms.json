@@ -4508,8 +4508,8 @@
       "planned_perkeso_employee_registration_hint": "Pendaftaran PERKESO bagi pekerja baharu. Belum dibina.",
       "planned_lhdn_cp21": "CP21 — pekerja meninggalkan Malaysia",
       "planned_lhdn_cp21_hint": "Notis bahawa seorang pekerja akan meninggalkan Malaysia. Belum dibina.",
-      "planned_lhdn_cp22a": "CP22A — pelepasan cukai apabila berhenti",
-      "planned_lhdn_cp22a_hint": "Pekerja berhenti yang memerlukan CP22A sudah ditandakan pada senarai tugas CP22 / CP22A di bawah skrin ini, tetapi notis itu sendiri belum dibina.",
+      "planned_lhdn_cp22a": "[retired r409 — replaced by planned_lhdn_cp22a_cessation; it called CP22A 'tax clearance on cessation', which is wrong: on LHDN's form CP22A is the private-sector employer's notice that an employee has stopped working]",
+      "planned_lhdn_cp22a_hint": "[retired r409 — replaced by planned_lhdn_cp22a_cessation_hint, together with planned_lhdn_cp22a]",
       "planned_lhdn_cp39a": "CP39A — potongan cukai atas tunggakan",
       "planned_lhdn_cp39a_hint": "Penyata potongan cukai bagi bayaran tunggakan. Belum dibina.",
       "fidelity_agency_layout": "Susun atur agensi",
@@ -4599,7 +4599,19 @@
       "viewer_back": "Kembali",
       "viewer_openNewTab": "Buka dalam tab baharu",
       "viewer_frameTitle": "{form} — pratonton",
-      "viewer_showVersion": "Papar versi ini"
+      "viewer_showVersion": "Papar versi ini",
+      "cycles": "Kitaran gaji",
+      "cycles_hint": "Hanya kitaran gaji yang telah diproses bagi syarikat dan bulan yang dipilih disenaraikan.",
+      "cycles_noRuns": "Belum ada kitaran gaji yang diproses bagi syarikat dan bulan ini.",
+      "cycles_nonePicked": "Tandakan sekurang-kurangnya satu kitaran gaji untuk meneruskan.",
+      "cycles_partial": "Anda telah mengecualikan sekurang-kurangnya satu kitaran gaji. Borang hanya akan mengandungi kitaran yang ditandakan, dan tiada ruang yang menyatakan kitaran mana sesuatu baris berasal.",
+      "refusal_cycles_no_runs": "Tiada gaji yang telah diproses bagi syarikat dan bulan ini, jadi tiada apa-apa dihasilkan.",
+      "refusal_cycles_no_data": "Tiada caruman yang telah diproses bagi borang ini dalam kitaran gaji yang anda pilih, jadi tiada apa-apa dihasilkan.",
+      "refusal_cycles_invalid": "Pilihan kitaran gaji tidak sah. Sila pilih kitaran sekali lagi.",
+      "planned_lhdn_cp22a_cessation": "CP22A — notis pekerja berhenti (sektor swasta)",
+      "planned_lhdn_cp22a_cessation_hint": "Notis yang dihantar oleh majikan sektor swasta kepada LHDN apabila pekerja berhenti kerja: perletakan jawatan, persaraan atau kematian. Pekerja berhenti yang memerlukannya sudah ditandakan pada senarai tugas CP22 / CP22A di bawah skrin ini, tetapi notis itu sendiri belum dibina.",
+      "refusal_cycles_no_deductions": "Tiada sesiapa yang dipotong PCB atau CP38 dalam kitaran gaji yang anda pilih, jadi tiada CP39 dihasilkan.",
+      "refusal_year_no_payroll": "Tiada gaji yang telah diproses bagi syarikat ini dalam tahun yang anda pilih, jadi tiada apa-apa dihasilkan."
     },
     "ea": {
       "backToReports": "Laporan",
@@ -6869,13 +6881,13 @@
       "month": "Bulan payroll",
       "show": "Papar",
       "notArtworkTitle": "Susun atur kami, bukan halaman PERKESO.",
-      "notArtwork": "PERKESO tidak menerbitkan Borang 8A kosong untuk dicetak, jadi ini dilukis kotak demi kotak mengikut borang agensi itu di atas halaman kami sendiri. Semak setiap angka sebelum anda kunci masuk atau failkan.",
+      "notArtwork": "[retired r408 — said \"PERKESO publishes no blank Borang 8A to print onto\", which is false: PERKESO publishes one (item e74af58c). Replaced by notArtworkDrawn]",
       "noBatch": "Tiada payroll dijumpai untuk {company} · {period}. Jalankan payroll bulan ini dahulu.",
       "notFound": "Borang itu tidak tersedia untuk syarikat yang dipilih.",
       "tileMonth": "Bulan caruman",
       "tileMonthHint": "Bulan payroll itu sendiri, tanpa anjakan.",
       "tileDue": "Bayar tidak lewat daripada",
-      "tileDueHint": "Hari terakhir bulan caruman itu.",
+      "tileDueHint": "[retired r408 — said the deadline is the last day of the contribution month; PERKESO’s 2025 guide puts it on the 15th of the following month (item e74af58c). Replaced by tileDueNextMonth]",
       "tileEmployees": "Pekerja pada borang",
       "tileSheets": "{count, plural, other {# lembaran}}",
       "tileTotal": "Amaun Caruman (jumlah)",
@@ -6884,7 +6896,7 @@
       "missingTitle": "{count, plural, other {# pekerja belum boleh dimasukkan ke dalam borang:}}",
       "missingHint": "Betulkan apa yang dinamakan bagi setiap pekerja dan kembali — tiada apa boleh dimuat turun sehingga setiap baris lengkap.",
       "scheduleTitle": "Penyata",
-      "statusHint": "Lajur (2) STATUS dibiarkan kosong bagi sesiapa yang tidak masuk mahupun berhenti bulan ini, sama seperti Borang 8A yang difailkan. Taip satu pada baris jika anda perlukan — tiada apa-apa disimpan.",
+      "statusHint": "[retired r408 — said column (2) STATUS is always left blank; it now fills B / H / M itself (item e74af58c). Replaced by statusHintDerived]",
       "statusPlaceholder": "Status",
       "statusAria": "Status untuk {name}",
       "colStart": "(1) Tarikh Mula Kerja",
@@ -6915,7 +6927,21 @@
       "unfinishedNameTitle": "Sesetengah nama pekerja kelihatan belum lengkap.",
       "unfinishedNameHint": "Ruangan nama PERKESO ialah “nama seperti dalam kad pengenalan atau pasport”. Ini nama yang tersimpan dalam rekod pekerja — fail membawanya sebagaimana adanya dan tidak sesekali memendekkan atau mereka-reka nama. Jika dimuat naik begini, caruman ini difailkan atas nama tersebut. Betulkan pada rekod pekerja, kemudian kembali ke sini. Tiada apa-apa di sini yang menghalang muat turun.",
       "oneLineNoticeTitle": "Setiap pekerja ialah satu baris panjang dalam fail muat naik.",
-      "oneLineNoticeBody": "Setiap rekod ialah satu baris sepanjang {length} aksara, tanpa apa-apa pemisah di tengahnya. Jika anda membuka fail itu dalam Notepad atau editor lain yang menghidupkan lilit perkataan, seorang pekerja akan kelihatan seolah-olah terbelah kepada dua baris — itu editor melipat baris panjang supaya muat pada tetingkap, bukan pemisah dalam fail. Matikan lilit perkataan dan setiap pekerja akan berada pada satu baris. “Semak fail” memaparkan setiap medan dengan penomboran PERKESO sendiri."
+      "oneLineNoticeBody": "Setiap rekod ialah satu baris sepanjang {length} aksara, tanpa apa-apa pemisah di tengahnya. Jika anda membuka fail itu dalam Notepad atau editor lain yang menghidupkan lilit perkataan, seorang pekerja akan kelihatan seolah-olah terbelah kepada dua baris — itu editor melipat baris panjang supaya muat pada tetingkap, bukan pemisah dalam fail. Matikan lilit perkataan dan setiap pekerja akan berada pada satu baris. “Semak fail” memaparkan setiap medan dengan penomboran PERKESO sendiri.",
+      "cyclesAll": "Semua kitaran gaji",
+      "viewerBack": "Tukar pilihan",
+      "previewBlocked": "Borang dipaparkan di sini setelah kekurangan yang disenaraikan di atas dilengkapkan.",
+      "notArtworkDrawn": "Dilukis kotak demi kotak mengikut Borang 8A PERKESO sendiri (muka surat 1), pada halaman kami — bukan fail PERKESO, yang bertarikh 2013 dan halaman panduannya memetik had caruman lama. Semak setiap angka sebelum anda memasukkan atau memfailkannya.",
+      "tileDueNextMonth": "15 haribulan bulan selepas bulan caruman (panduan majikan PERKESO 2025).",
+      "statusHintDerived": "Ruangan (2) STATUS diisi sendiri: B bagi pekerja yang mula bekerja bulan ini, H bagi yang berhenti, M bagi kematian. Rekod tidak menyimpan S (menerima faedah PERKESO) atau T (cuti tanpa gaji sepanjang bulan) — taip S atau T pada baris jika berkenaan. Status yang ditaip menggantikan status yang diisi bagi baris itu.",
+      "blankTitle": "Kotak yang dibiarkan kosong pada borang ini",
+      "blankPayment": "Kaedah pembayaran",
+      "blankPaymentHint": "Kotak tanda dan nombor cek atau kiriman wang. Rekod tidak menyimpan cara anda membayar.",
+      "blankSignature": "Tandatangan, nama, telefon dan cop",
+      "blankSignatureHint": "Ditandatangani dan dicop dengan tangan selepas dicetak, pada setiap lembaran.",
+      "blankAgent": "Kotak ejen pemungut",
+      "blankAgentHint": "Cop dan nombor slip bayaran diisi oleh ejen pemungut, bukan oleh majikan.",
+      "blankStatus": "Ruangan status"
     },
     "borangA": {
       "title": "Borang A — borang caruman bulanan (KWSP)",
@@ -6980,7 +7006,10 @@
       "downloadReport": "Semak fail muat naik medan demi medan",
       "downloadReportTitle": "Laporan mengenai fail muat naik itu sendiri: panjang setiap baris, dan setiap medan dengan lajur, panjang dan nilainya, supaya anda boleh membandingkannya dengan sampel KWSP sebelum memuat naik.",
       "fileBlocked": "Fail muat naik disekat sehingga rekod di atas dibetulkan.",
-      "downloadsBlocked": "Muat turun disekat sehingga setiap baris lengkap."
+      "downloadsBlocked": "Muat turun disekat sehingga setiap baris lengkap.",
+      "cyclesAll": "Semua kitaran gaji",
+      "viewerBack": "Tukar pilihan",
+      "previewBlocked": "Borang dipaparkan di sini setelah kekurangan yang disenaraikan di atas dilengkapkan."
     },
     "cp39Form": {
       "title": "CP39 — penyata PCB / MTD bulanan (LHDN)",
@@ -7058,7 +7087,10 @@
       "pcbPaymentKindCp38": "CP38 (arahan ansuran)",
       "pcbPaymentReceiptRef": "No. resit / slip bank / transaksi",
       "pcbPaymentPaidOn": "Tarikh bayaran",
-      "pcbPaymentSave": "Simpan"
+      "pcbPaymentSave": "Simpan",
+      "cyclesAll": "Semua kitaran gaji",
+      "viewerBack": "Tukar pilihan",
+      "previewBlocked": "Penyata ditunjukkan di sini setelah kekurangan yang disenaraikan di atas diisi."
     },
     "pcbDetail": {
       "exemptionHeading": "Maklumat Pengecualian",
@@ -7767,6 +7799,29 @@
       "error_invalid_scheme": "Pilih kategori Pemastautin Cukai Pendapatan yang sah.",
       "error_citizenship_unknown": "Kewarganegaraan yang direkodkan tidak memenuhi syarat C-Suite bagi pemastautin bukan warganegara.",
       "error_not_resident": "Status pemastautin cukai yang direkodkan tidak memenuhi syarat skim pemastautin ini."
+    },
+    "runPicker": {
+      "all": "Semua kitaran gaji",
+      "selectAll": "Pilih semua",
+      "clear": "Kosongkan",
+      "search": "Cari kitaran gaji",
+      "loading": "Mencari proses gaji bulan ini…",
+      "run": "Proses ke-{seq} bulan ini",
+      "runTypeRegular": "Biasa",
+      "runTypeOffCycle": "Luar kitaran",
+      "runTypeBonus": "Bonus",
+      "runTypeAdjustment": "Pelarasan"
+    },
+    "cp8dPreview": {
+      "title": "Borang E / CP8D — penyata tahunan (LHDN)",
+      "viewerBack": "Tukar pilihan",
+      "tileYear": "Tahun",
+      "tileEmployees": "Pekerja yang disertakan",
+      "notArtworkTitle": "Susun atur kami, bukan Borang E LHDN.",
+      "notArtwork": "PDF ini ialah jadual CP8D setiap pekerja bagi tahun tersebut, dalam susun atur lajur kami sendiri: fail yang sama yang disimpan oleh butang Muat Turun PDF. Ia bukan templat Borang E atau CP8D LHDN. Failkan melalui e-Filing (Borang E).",
+      "partATitle": "Bilangan pekerja Borang E Bahagian A",
+      "partAHint": "Dikira daripada gaji yang sama dengan jadual. Ia disenaraikan di sini dan tidak dicetak pada PDF.",
+      "figuresLink": "Buka jadual angka (dan rekodkan penjanaan ini)"
     }
   },
   "admin": {
@@ -10718,7 +10773,12 @@
         "firstScheduleConsentLabel": "Pekerja telah bersetuju mengambil hari ini sebagai cuti sebagai ganti bayaran kerja lebih masa berkanun.",
         "firstScheduleBlocked": "Pekerja ini berada dalam Jadual Pertama dan syarikatnya tidak membenarkan Kredit Cuti sebagai ganti bayaran kerja lebih masa berkanun. Ubah dalam tab Peraturan terlebih dahulu.",
         "extendedShort": "Ini hari bekerja biasa. Hanya {minutes} minit selepas waktu tamat syif yang dijadualkan dikira untuk pekerja ini, iaitu di bawah ambang setengah hari syarikat, jadi tarikh ini tidak boleh memperoleh Kredit Cuti.",
-        "extendedEarned": "Pekerja ini bekerja {minutes} minit yang dikira selepas waktu tamat syif yang dijadualkan, yang memperoleh {days} hari. Jumlah kredit ditetapkan pada angka itu dan tidak boleh diubah di sini."
+        "extendedEarned": "Pekerja ini bekerja {minutes} minit yang dikira selepas waktu tamat syif yang dijadualkan, yang memperoleh {days} hari. Jumlah kredit ditetapkan pada angka itu dan tidak boleh diubah di sini.",
+        "descriptionRows": "Kreditkan hari yang telah dikerjakan oleh pekerja. Kredit ditambah serta-merta.",
+        "help": "Tambah satu baris bagi setiap tarikh bekerja, berserta masanya. Empat jam yang layak memberi setengah hari, lapan jam sehari penuh, mengikut peraturan syarikat pekerja. Lihat menunjukkan rekod kehadiran. Kredit ditambah serta-merta — tiada langkah pengurus.",
+        "pickEmployeeFirst": "Pilih pekerja terlebih dahulu.",
+        "checkingEmployee": "Menyemak pekerja ini…",
+        "ownRecord": "Anda tidak boleh menambah Kredit Cuti pada rekod anda sendiri. Pentadbir HR lain mesti melakukannya."
       },
       "rulesIntro": "Siapa boleh memperoleh Kredit Cuti, cara ia diperoleh dan tempoh kredit bertahan, mengikut syarikat. Perubahan di sini terpakai kepada kredit yang diberikan selepasnya; kredit yang sudah diberikan mengekalkan tarikh luputnya."
     },

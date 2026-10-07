@@ -4508,8 +4508,8 @@
       "planned_perkeso_employee_registration_hint": "Đăng ký PERKESO cho nhân viên mới. Chưa xây dựng.",
       "planned_lhdn_cp21": "CP21 — nhân viên rời Malaysia",
       "planned_lhdn_cp21_hint": "Thông báo nhân viên sắp rời Malaysia. Chưa xây dựng.",
-      "planned_lhdn_cp22a": "CP22A — thanh toán thuế khi chấm dứt hợp đồng",
-      "planned_lhdn_cp22a_hint": "Những người nghỉ việc cần CP22A đã được đánh dấu trên danh sách công việc CP22 / CP22A ở phía dưới màn hình này, nhưng bản thông báo thì chưa xây dựng.",
+      "planned_lhdn_cp22a": "[retired r409 — replaced by planned_lhdn_cp22a_cessation; it called CP22A 'tax clearance on cessation', which is wrong: on LHDN's form CP22A is the private-sector employer's notice that an employee has stopped working]",
+      "planned_lhdn_cp22a_hint": "[retired r409 — replaced by planned_lhdn_cp22a_cessation_hint, together with planned_lhdn_cp22a]",
       "planned_lhdn_cp39a": "CP39A — khấu trừ thuế trên khoản truy lĩnh",
       "planned_lhdn_cp39a_hint": "Bản kê thuế đã khấu trừ trên các khoản truy lĩnh. Chưa xây dựng.",
       "fidelity_agency_layout": "Bố cục của cơ quan",
@@ -4599,7 +4599,19 @@
       "viewer_back": "Quay lại",
       "viewer_openNewTab": "Mở trong thẻ mới",
       "viewer_frameTitle": "{form} — xem trước",
-      "viewer_showVersion": "Hiển thị phiên bản này"
+      "viewer_showVersion": "Hiển thị phiên bản này",
+      "cycles": "Kỳ trả lương",
+      "cycles_hint": "Chỉ liệt kê các kỳ trả lương đã xử lý của công ty và tháng đã chọn.",
+      "cycles_noRuns": "Chưa có kỳ trả lương nào đã xử lý cho công ty và tháng này.",
+      "cycles_nonePicked": "Hãy chọn ít nhất một kỳ trả lương để tiếp tục.",
+      "cycles_partial": "Bạn đã bỏ ra ít nhất một kỳ trả lương. Biểu mẫu chỉ gồm các kỳ đã chọn và không có ô nào cho biết mỗi dòng thuộc kỳ nào.",
+      "refusal_cycles_no_runs": "Không có bảng lương đã xử lý cho công ty và tháng này, nên không có gì được tạo.",
+      "refusal_cycles_no_data": "Các kỳ trả lương đã chọn không có khoản đóng góp đã xử lý nào cho biểu mẫu này, nên không có gì được tạo.",
+      "refusal_cycles_invalid": "Lựa chọn kỳ trả lương không hợp lệ. Hãy chọn lại.",
+      "planned_lhdn_cp22a_cessation": "CP22A — thông báo nhân viên nghỉ việc (khu vực tư nhân)",
+      "planned_lhdn_cp22a_cessation_hint": "Thông báo mà chủ lao động khu vực tư nhân gửi LHDN khi một nhân viên thôi việc: từ chức, nghỉ hưu hoặc qua đời. Những người nghỉ việc cần thông báo này đã được đánh dấu trên danh sách công việc CP22 / CP22A ở phía dưới màn hình này, nhưng bản thông báo thì chưa được xây dựng.",
+      "refusal_cycles_no_deductions": "Không ai bị khấu trừ PCB hoặc CP38 trong các kỳ lương bạn đã chọn, nên không có CP39 nào được tạo.",
+      "refusal_year_no_payroll": "Không có bảng lương đã xử lý của công ty này trong năm bạn đã chọn, nên không có gì được tạo."
     },
     "ea": {
       "backToReports": "Báo cáo",
@@ -6869,13 +6881,13 @@
       "month": "Tháng lương",
       "show": "Hiển thị",
       "notArtworkTitle": "Bố cục của chúng tôi, không phải trang của PERKESO.",
-      "notArtwork": "PERKESO không phát hành Borang 8A trắng để in đè, nên tài liệu này được vẽ từng ô khớp với biểu mẫu của cơ quan trên trang của chúng tôi. Hãy kiểm tra mọi con số trước khi nhập hoặc nộp.",
+      "notArtwork": "[retired r408 — said \"PERKESO publishes no blank Borang 8A to print onto\", which is false: PERKESO publishes one (item e74af58c). Replaced by notArtworkDrawn]",
       "noBatch": "Không tìm thấy kỳ lương cho {company} · {period}. Hãy chạy lương tháng này trước.",
       "notFound": "Biểu mẫu đó không có cho công ty đã chọn.",
       "tileMonth": "Tháng đóng góp",
       "tileMonthHint": "Chính là tháng lương, không dịch chuyển.",
       "tileDue": "Nộp chậm nhất ngày",
-      "tileDueHint": "Ngày cuối cùng của chính tháng đóng góp đó.",
+      "tileDueHint": "[retired r408 — said the deadline is the last day of the contribution month; PERKESO’s 2025 guide puts it on the 15th of the following month (item e74af58c). Replaced by tileDueNextMonth]",
       "tileEmployees": "Nhân viên trên biểu mẫu",
       "tileSheets": "{count, plural, other {# tờ}}",
       "tileTotal": "Amaun Caruman (tổng)",
@@ -6884,7 +6896,7 @@
       "missingTitle": "{count, plural, other {# nhân viên chưa thể đưa vào biểu mẫu:}}",
       "missingHint": "Hãy sửa những gì được nêu bên cạnh từng người rồi quay lại — không tải được gì cho đến khi mọi dòng đầy đủ.",
       "scheduleTitle": "Bảng kê",
-      "statusHint": "Cột (2) TRẠNG THÁI để trống với người không vào cũng không nghỉ trong tháng, đúng như một Borang 8A đã nộp. Gõ vào dòng nào nếu bạn cần — không có gì được lưu.",
+      "statusHint": "[retired r408 — said column (2) STATUS is always left blank; it now fills B / H / M itself (item e74af58c). Replaced by statusHintDerived]",
       "statusPlaceholder": "Trạng thái",
       "statusAria": "Trạng thái của {name}",
       "colStart": "(1) Tarikh Mula Kerja — ngày bắt đầu làm việc",
@@ -6915,7 +6927,21 @@
       "unfinishedNameTitle": "Một số tên nhân viên trông chưa hoàn chỉnh.",
       "unfinishedNameHint": "Ô tên của PERKESO là “tên theo CMND/CCCD hoặc hộ chiếu”. Đây là tên đang lưu trong hồ sơ nhân viên — tệp mang đúng như vậy, không rút gọn và không tự đặt. Nếu tải lên như hiện tại, các khoản đóng này sẽ được nộp dưới những tên đó. Hãy sửa trên hồ sơ nhân viên rồi quay lại. Không có gì ở đây ngăn việc tải xuống.",
       "oneLineNoticeTitle": "Trong tệp tải lên, mỗi nhân viên là một dòng dài.",
-      "oneLineNoticeBody": "Mỗi bản ghi là một dòng duy nhất gồm {length} ký tự, không có ngắt dòng nào ở giữa. Nếu bạn mở tệp bằng Notepad hoặc trình soạn thảo khác đang bật tự động xuống dòng, một nhân viên sẽ trông như bị tách thành hai dòng — đó là trình soạn thảo gấp một dòng dài cho vừa cửa sổ, không phải ngắt dòng trong tệp. Hãy tắt tự động xuống dòng thì mỗi nhân viên sẽ nằm trên một dòng. “Kiểm tra tệp” liệt kê từng trường theo đúng cách đánh số trường của PERKESO."
+      "oneLineNoticeBody": "Mỗi bản ghi là một dòng duy nhất gồm {length} ký tự, không có ngắt dòng nào ở giữa. Nếu bạn mở tệp bằng Notepad hoặc trình soạn thảo khác đang bật tự động xuống dòng, một nhân viên sẽ trông như bị tách thành hai dòng — đó là trình soạn thảo gấp một dòng dài cho vừa cửa sổ, không phải ngắt dòng trong tệp. Hãy tắt tự động xuống dòng thì mỗi nhân viên sẽ nằm trên một dòng. “Kiểm tra tệp” liệt kê từng trường theo đúng cách đánh số trường của PERKESO.",
+      "cyclesAll": "Tất cả chu kỳ trả lương",
+      "viewerBack": "Đổi lựa chọn",
+      "previewBlocked": "Biểu mẫu sẽ hiển thị ở đây khi các thiếu sót nêu trên được bổ sung.",
+      "notArtworkDrawn": "Vẽ từng ô theo đúng Borang 8A của chính PERKESO (trang 1), trên trang của chúng tôi — không phải tệp của PERKESO, vốn lập năm 2013 và trang hướng dẫn còn trích mức trần đóng góp cũ. Hãy kiểm tra mọi con số trước khi nhập hoặc nộp.",
+      "tileDueNextMonth": "Ngày 15 của tháng sau tháng đóng góp (hướng dẫn chủ lao động PERKESO 2025).",
+      "statusHintDerived": "Cột (2) STATUS tự điền: B cho người vào làm trong tháng, H cho người nghỉ việc, M cho trường hợp tử vong. Hồ sơ không lưu S (đang hưởng trợ cấp PERKESO) hoặc T (nghỉ không lương cả tháng) — hãy nhập S hoặc T vào dòng đó nếu áp dụng. Trạng thái nhập tay sẽ thay cho trạng thái tự điền của dòng đó.",
+      "blankTitle": "Các ô để trống trên biểu mẫu này",
+      "blankPayment": "Phương thức thanh toán",
+      "blankPaymentHint": "Các ô đánh dấu và số séc hoặc phiếu chuyển tiền. Hồ sơ không lưu cách bạn đã thanh toán.",
+      "blankSignature": "Chữ ký, họ tên, điện thoại và con dấu",
+      "blankSignatureHint": "Ký và đóng dấu bằng tay sau khi in, trên mỗi tờ.",
+      "blankAgent": "Các ô của đại lý thu",
+      "blankAgentHint": "Con dấu và số phiếu nộp tiền do đại lý thu điền, không phải chủ lao động.",
+      "blankStatus": "Cột trạng thái"
     },
     "borangA": {
       "title": "Borang A — biểu mẫu đóng góp hằng tháng (KWSP)",
@@ -6980,7 +7006,10 @@
       "downloadReport": "Kiểm tra tệp tải lên theo từng trường",
       "downloadReportTitle": "Báo cáo về chính tệp tải lên: độ dài từng dòng, và từng trường kèm cột, độ dài và giá trị, để bạn đối chiếu với mẫu của KWSP trước khi tải lên.",
       "fileBlocked": "Tệp tải lên bị chặn cho đến khi các hồ sơ ở trên được sửa.",
-      "downloadsBlocked": "Việc tải xuống bị chặn cho đến khi mọi dòng đầy đủ."
+      "downloadsBlocked": "Việc tải xuống bị chặn cho đến khi mọi dòng đầy đủ.",
+      "cyclesAll": "Tất cả chu kỳ trả lương",
+      "viewerBack": "Đổi lựa chọn",
+      "previewBlocked": "Biểu mẫu sẽ hiển thị ở đây khi các thiếu sót nêu trên được bổ sung."
     },
     "cp39Form": {
       "title": "CP39 — bảng kê khấu trừ PCB / MTD hằng tháng (LHDN)",
@@ -7058,7 +7087,10 @@
       "pcbPaymentKindCp38": "CP38 (lệnh trả góp)",
       "pcbPaymentReceiptRef": "Số biên lai / phiếu ngân hàng / giao dịch",
       "pcbPaymentPaidOn": "Ngày nộp",
-      "pcbPaymentSave": "Lưu"
+      "pcbPaymentSave": "Lưu",
+      "cyclesAll": "Tất cả kỳ lương",
+      "viewerBack": "Đổi lựa chọn",
+      "previewBlocked": "Bản kê sẽ hiển thị ở đây khi các thiếu sót liệt kê ở trên được bổ sung."
     },
     "pcbDetail": {
       "exemptionHeading": "Thông tin miễn thuế",
@@ -7767,6 +7799,29 @@
       "error_invalid_scheme": "Chọn phân loại Cư trú thuế thu nhập hợp lệ.",
       "error_citizenship_unknown": "Quốc tịch đã ghi nhận không đáp ứng yêu cầu C-Suite dành cho người cư trú không phải công dân.",
       "error_not_resident": "Tình trạng cư trú thuế đã ghi nhận không đáp ứng yêu cầu của chương trình cư trú này."
+    },
+    "runPicker": {
+      "all": "Tất cả chu kỳ trả lương",
+      "selectAll": "Chọn tất cả",
+      "clear": "Bỏ chọn",
+      "search": "Tìm chu kỳ trả lương",
+      "loading": "Đang tìm các đợt trả lương của tháng này…",
+      "run": "Đợt thứ {seq} của tháng",
+      "runTypeRegular": "Thường kỳ",
+      "runTypeOffCycle": "Ngoài chu kỳ",
+      "runTypeBonus": "Thưởng",
+      "runTypeAdjustment": "Điều chỉnh"
+    },
+    "cp8dPreview": {
+      "title": "Mẫu E / CP8D — tờ khai hằng năm (LHDN)",
+      "viewerBack": "Đổi lựa chọn",
+      "tileYear": "Năm",
+      "tileEmployees": "Số nhân viên",
+      "notArtworkTitle": "Bố cục của chúng tôi, không phải Mẫu E của LHDN.",
+      "notArtwork": "Tệp PDF là bảng CP8D theo từng nhân viên của năm, theo bố cục cột của chúng tôi: chính là tệp mà nút Tải PDF lưu. Đây không phải mẫu Form E hay CP8D của LHDN. Nộp qua e-Filing (Mẫu E).",
+      "partATitle": "Số lượng nhân viên Mẫu E Phần A",
+      "partAHint": "Được tính từ cùng bảng lương với bảng kê. Chúng được liệt kê ở đây và không được in trên PDF.",
+      "figuresLink": "Mở bảng số liệu (và ghi nhận lần tạo này)"
     }
   },
   "admin": {
@@ -10718,7 +10773,12 @@
         "firstScheduleConsentLabel": "Nhân viên đã đồng ý nhận ngày này làm nghỉ phép thay cho tiền làm thêm theo luật.",
         "firstScheduleBlocked": "Nhân viên này thuộc Phụ lục Thứ nhất và công ty không cho phép dùng tín dụng nghỉ phép thay cho tiền làm thêm theo luật. Hãy thay đổi trong thẻ Quy tắc trước.",
         "extendedShort": "Đây là một ngày làm việc bình thường. Nhân viên này chỉ được tính {minutes} phút sau giờ kết thúc ca theo lịch, thấp hơn ngưỡng nửa ngày của công ty, nên ngày này không thể nhận tín dụng nghỉ phép.",
-        "extendedEarned": "Nhân viên này đã làm {minutes} phút được tính sau giờ kết thúc ca theo lịch, được hưởng {days} ngày. Số tín dụng được cố định theo con số đó và không thể thay đổi ở đây."
+        "extendedEarned": "Nhân viên này đã làm {minutes} phút được tính sau giờ kết thúc ca theo lịch, được hưởng {days} ngày. Số tín dụng được cố định theo con số đó và không thể thay đổi ở đây.",
+        "descriptionRows": "Ghi có cho một ngày nhân viên đã làm việc. Khoản ghi có được thêm ngay lập tức.",
+        "help": "Thêm một dòng cho mỗi ngày làm việc, kèm thời gian. Bốn giờ hợp lệ được nửa ngày, tám giờ được cả ngày, theo quy tắc của công ty nhân viên. Xem hiển thị dữ liệu chấm công đã ghi. Khoản ghi có được thêm ngay — không cần quản lý duyệt.",
+        "pickEmployeeFirst": "Hãy chọn nhân viên trước.",
+        "checkingEmployee": "Đang kiểm tra nhân viên này…",
+        "ownRecord": "Bạn không thể thêm Tín dụng nghỉ phép vào hồ sơ của chính mình. Một quản trị viên HR khác phải thực hiện."
       },
       "rulesIntro": "Ai được nhận tín dụng nghỉ phép, cách nhận và tín dụng có hiệu lực bao lâu, theo từng công ty. Thay đổi ở đây áp dụng cho tín dụng cấp sau đó; tín dụng đã cấp giữ nguyên ngày hết hạn."
     },

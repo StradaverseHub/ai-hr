@@ -50,7 +50,7 @@
  * three sheets without a PDF in sight.
  */
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
-import { cp39ScheduleScopeNote, formatMyIc, money, type Cp39Form, type Cp39FormPage } from './cp39-form';
+import { cp39ScheduleScopeNote, money, type Cp39Form, type Cp39FormPage } from './cp39-form';
 
 /** A4 portrait, in points — the employee schedule sheets, page two onward. */
 const W = 595.28;
@@ -1099,10 +1099,11 @@ export async function renderCp39FormPdf(form: Cp39Form): Promise<Uint8Array> {
       left('tin', r.tin);
       left('name', r.name);
       left('oldIc', r.oldIc);
-      // 7ee14bbc — THE ONLY PLACE THE DASHES ARE ADDED IS HERE, ON THE WAY TO THE PAGE. The stored value
-      // is untouched and the e-Data PCB upload file is untouched: its identity-card field is twelve
-      // characters wide and two dashes would make fourteen. See `formatMyIc`.
-      left('newIc', formatMyIc(r.newIc));
+      // r409 (item 79f3f64d) — DIGITS ONLY, AS LHDN WRITES IT. 7ee14bbc added dashes here; LHDN's own CP39
+      // instructions print the No. K/P Baru as twelve digits, so the row model (`cp39IcForForm`, applied in
+      // `cp39FormFrom`) now hands this renderer the digits and nothing re-dashes them on the way to the
+      // page. `formatMyIc` stays on the review SCREEN, where a person reads the number.
+      left('newIc', r.newIc);
       left('employeeNo', r.employeeNo);
       left('passport', r.passport);
       left('countryCode', r.countryCode);

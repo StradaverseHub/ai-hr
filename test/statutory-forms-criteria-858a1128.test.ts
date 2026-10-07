@@ -206,13 +206,25 @@ describe('each form’s criteria step asks for what THAT form needs, and nothing
    * day it is registered.
    */
   it('asks a monthly report for company, year and month', () => {
+    // r407 (item 4f45f9b0) — UPDATED, NOT LOOSENED. A monthly form whose pack declares `runSelection` ALSO
+    // asks for the payroll cycles and continues to its own preview; every other monthly form is exactly
+    // as it was. Read off the catalog card the step itself reads (`runSelection`), so the two cannot drift.
     const monthly = MY_REPORTS.filter((r) => r.submission && r.periodKind === 'month');
     expect(monthly.length).toBeGreaterThan(0);
     for (const r of monthly) {
-      const d = reportDestination(r.id, r.periodKind);
-      expect(d.criteria.map((c) => c.kind), r.id).toEqual(['company', 'year', 'month']);
-      expect(d.action, r.id).toBe(`/payroll/statutory-forms/${r.id}`);
+      const d = reportDestination(r.id, r.periodKind, r.runSelection);
+      if (r.runSelection) {
+        expect(d.criteria.map((c) => c.kind), r.id).toEqual(['company', 'year', 'month', 'cycles']);
+        expect(d.criteria.find((c) => c.kind === 'cycles')!.field, r.id).toBe('run');
+        expect(d.action, r.id).toBe(r.runSelection.action);
+      } else {
+        expect(d.criteria.map((c) => c.kind), r.id).toEqual(['company', 'year', 'month']);
+        expect(d.action, r.id).toBe(`/payroll/statutory-forms/${r.id}`);
+      }
     }
+    // Borang A (r407), Borang 8A (r408) and CP39 (r409) declare it today — pinned, so a refactor that dropped
+    // any declaration cannot quietly turn the cycle box off.
+    expect(monthly.filter((r) => r.runSelection).map((r) => r.id).sort()).toEqual(['my.borang-8a', 'my.borang-a', 'my.cp39']);
   });
 
   it('asks an ANNUAL report for company and year, and never a month', () => {
@@ -223,7 +235,13 @@ describe('each form’s criteria step asks for what THAT form needs, and nothing
         'company',
         'year',
       ]);
+      // r409 — read the way the step reads it (with the card's `runSelection` and `preview`): still company
+      // and year only, and Form E / CP8D continues to its own preview.
+      const d = reportDestination(r.id, r.periodKind, r.runSelection, r.preview);
+      expect(d.criteria.map((c) => c.kind), r.id).toEqual(['company', 'year']);
+      expect(d.action, r.id).toBe(r.preview ? r.preview.action : `/payroll/statutory-forms/${r.id}`);
     }
+    expect(annual.filter((r) => r.preview).map((r) => r.id)).toEqual(['my.cp8d']);
   });
 
   /**
@@ -299,9 +317,18 @@ describe('each form’s criteria step asks for what THAT form needs, and nothing
     // r402 — one entry per form (the per-language pairs merged).
     expect(TWO_STEP_LINKS.map((l) => l.id).sort()).toEqual(['my.ea', 'my.pcb2ii']);
     for (const l of TWO_STEP_LINKS) expect(l.criteriaLabelKey, l.id).toBe('criteria_continue');
+    // r409 (item 79f3f64d) — UPDATED, NOT LOOSENED, the same way: the Borang E alias now opens the Form E /
+    // CP8D PREVIEW (look, then download), so its button says Continue for the reason the report card's does
+    // (`report.preview` on the step). Named, so the exact set below still holds every other entry to it.
+    const PREVIEW_LINKS = MY_STATUTORY_LINKS.filter((l) => l.id === 'my.borang-e');
+    expect(PREVIEW_LINKS).toHaveLength(1);
+    for (const l of PREVIEW_LINKS) {
+      expect(l.criteriaLabelKey, l.id).toBe('criteria_continue');
+      expect(l.href.startsWith(MY_REPORTS.find((r) => r.id === l.populationReportId)!.preview!.action), l.id).toBe(true);
+    }
     // Every other templated entry falls back to the shared "Generate form" — the button that IS the
     // moment of generation.
-    for (const l of MY_STATUTORY_LINKS.filter((x) => !TWO_STEP_LINKS.includes(x))) {
+    for (const l of MY_STATUTORY_LINKS.filter((x) => !TWO_STEP_LINKS.includes(x) && !PREVIEW_LINKS.includes(x))) {
       expect(l.criteriaLabelKey, l.id).toBeUndefined();
     }
     expect(CRITERIA).toContain("link?.criteriaLabelKey ?? 'criteria_generate'");
@@ -535,8 +562,16 @@ describe('the criteria step arrives on a period that has already happened', () =
     const cp8d = MY_REPORTS.find((r) => r.id === 'my.cp8d')!;
     const asReport = reportDestination(cp8d.id, cp8d.periodKind);
     expect(defaultCriteria('2027-03-05', asReport.criteria, targetOf(asReport)).year).toBe('2026');
-    const asLink = parseDestination(linkById.get('my.borang-e')!.href);
-    expect(defaultCriteria('2027-03-05', asLink.criteria, targetOf(asLink)).year).toBe('2026');
+    // r409 — the alias opens the CP8D preview, a path that names no report, so it DECLARES the report its
+    // figures come from (`populationReportId`) and the step resolves the target through that.
+    const borangE = linkById.get('my.borang-e')!;
+    const asLink = parseDestination(borangE.href);
+    expect(borangE.populationReportId).toBe('my.cp8d');
+    expect(defaultCriteria('2027-03-05', asLink.criteria, targetOf(asLink, borangE.populationReportId)).year).toBe('2026');
+    // …and the card's own preview destination defaults the same way (the step targets a report by its id).
+    const asPreview = reportDestination(cp8d.id, cp8d.periodKind, cp8d.runSelection, cp8d.preview);
+    expect(asPreview.action).toBe('/payroll/cp8d/preview');
+    expect(defaultCriteria('2027-03-05', asPreview.criteria, cp8d).year).toBe('2026');
   });
 
   it('leaves Form TP1 on the assessment year in progress, because it is not filed in arrears', () => {

@@ -550,12 +550,16 @@ describe('the four surfaces cannot disagree', () => {
     expect(PREVIEW_CODE).toContain('/payroll/borang-a/file');
   });
 
-  it('never nests the two forms, which browsers silently drop', () => {
-    // The filter form and the schedule form are siblings; the schedule form carries its own hidden
-    // companyId and periodKey precisely so it can be one.
-    expect(PREVIEW).toContain('<input type="hidden" name="companyId"');
-    expect(PREVIEW).toContain('<input type="hidden" name="periodKey"');
-    expect((PREVIEW.match(/<form /g) ?? []).length).toBe(2);
+  it('has ONE form, whose hidden inputs are the shared document parameters (company, month AND cycles)', () => {
+    // UPDATED, NOT DELETED (r407, item 4f45f9b0). There used to be two sibling forms — a Company / Year /
+    // Month filter and the schedule — and the schedule form hard-coded companyId / periodKey / year / month
+    // as its hidden inputs and NOT the payroll cycles, so a filtered review downloaded the whole month. The
+    // filter moved to the criteria step; the schedule form's hidden inputs come from the one list
+    // (`borangADocumentPairs`) the viewer's frame and links use, which carries `run`.
+    expect((PREVIEW.match(/<form /g) ?? []).length).toBe(1);
+    expect(PREVIEW_CODE).toContain('borangADocumentPairs({ companyId, periodKey, runSeqs })');
+    expect(PREVIEW_CODE).toContain('hiddenPairs.map(');
+    expect(PREVIEW).toContain('<input key={`${h.name}-${i}`} type="hidden" name={h.name} value={h.value} />');
   });
 });
 
@@ -601,10 +605,13 @@ describe('the drawn page', () => {
     expect(PDF_SRC).toContain('replace(/[–—−]/g,');
   });
 
-  it('prints the whole-form JUMLAH on the last sheet only', () => {
+  it('prints the whole-form JUMLAH on the last sheet only', async () => {
     // Repeating it is how a multi-page form gets filed with the grand total mistaken for a page total.
-    expect(code('lib/borang-a-pdf.ts')).toContain('JUMLAH (RM)');
-    expect(code('lib/borang-a-pdf.ts')).toContain('if (!last) {');
+    // r407: read off the DRAWN sheets rather than grepped for an `if (!last)` the redraw no longer has.
+    const rows = Array.from({ length: 5 }, (_, i) => row({ employmentId: `e${i}` }));
+    const sheets = await drawnPages(borangAFrom({ header: header(), rows, perPage: 2 }));
+    expect(sheets).toHaveLength(3);
+    expect(sheets.map((s) => s.filter((d) => d.text === 'JUMLAH (RM)').length)).toEqual([0, 0, 1]);
   });
 });
 
@@ -818,8 +825,8 @@ describe('the KWSP 6 page furniture', () => {
    * KWSP sahaja". Asserted at the two places it could be broken: the drawn page, and the row type.
    */
   it('never writes anything but the heading into the N K column', async () => {
-    const NK_X = 34 + 100;
-    const IC_X = 34 + 120;
+    const NK_X = BORANG_A_SHEET_GEOMETRY.columns.nk;
+    const IC_X = BORANG_A_SHEET_GEOMETRY.columns.ic;
     const { tableFloor, firstRowTop } = BORANG_A_SHEET_GEOMETRY;
     for (const sheet of await drawnPages(built(BORANG_A_ROWS_PER_PAGE * 2 + 1))) {
       const inColumn = sheet.filter(
@@ -1064,7 +1071,7 @@ describe('nothing somebody signs for is silently cut', () => {
     const tail = sheet.find((d) => d.text.startsWith('50450'))!;
     const name = sheet.find((d) => d.text === LONG.employerName)!;
     expect(tail.y).toBeLessThan(name.y);
-    expect(tail.y).toBeGreaterThan(638.89 + 3);
+    expect(tail.y).toBeGreaterThan(BORANG_A_SHEET_GEOMETRY.frameBottom + 3);
   });
 
   it('shrinks a pathological value rather than shortening it, and keeps it inside its column', async () => {
@@ -1077,10 +1084,11 @@ describe('nothing somebody signs for is silently cut', () => {
     const v = sheet.find((d) => d.text === monster);
     expect(v, 'the representative name was cut instead of shrunk').toBeDefined();
     expect(v!.size, 'a value that fits should not have been shrunk at all').toBeLessThan(8);
-    // The value column runs from SIG_VALUE_X (M + 72 = 106) to an 8pt gutter short of CATATAN_X
-    // (M + 294 = 328). Past 320 it prints into the notes; that is the overprint the clip was hiding.
-    expect(v!.x).toBe(106);
-    expect(endOf(v!, fonts), 'the name ran out of its column').toBeLessThanOrEqual(320.001);
+    // The value column runs from SIG_VALUE_X (+3 of padding) to SIG_RIGHT (−3), with Cop Rasmi Majikan and
+    // then CATATAN beyond it. Past it the name prints into the stamp box; that is the overprint a clip hides.
+    const g = BORANG_A_SHEET_GEOMETRY;
+    expect(v!.x).toBe(g.sigValueX + 3);
+    expect(endOf(v!, fonts), 'the name ran out of its column').toBeLessThanOrEqual(g.sigRight - 3 + 0.001);
   });
 
   it('keeps every foot-band value out of the CATATAN column, on the drawn page', async () => {
@@ -1098,30 +1106,29 @@ describe('nothing somebody signs for is silently cut', () => {
   });
 
   it('draws a place to SIGN as well as a place to stamp, both big enough to use', async () => {
-    // `main` drew a box captioned "Tandatangan & Tarikh". The first cut of this band replaced it with a
-    // Cop Rasmi Majikan box and NOTHING ELSE, so the only "Tandatangan" left on the sheet was the band
-    // heading — while the plain-text twin went on advertising a signature line. A Borang A is a signed
-    // return; a form with nowhere to sign is not one.
+    // `main` once drew a Cop Rasmi Majikan box and NOTHING to sign in. A Borang A is a signed return.
+    // r407 (item 4f45f9b0) — WHERE THE SPECIMEN PUTS THEM: the place to sign is the box beside the
+    // "Tandatangan / Wakil Majikan" label, above the Nama row; the employer's stamp is the tall box beside
+    // the representative's rows. Both are measured off the drawn page.
     const sheet = await longSheet();
     const boxes = (await drawnBoxes(longForm()))[0];
-    const heading = sheet.find((d) => d.text === 'Tandatangan Wakil Majikan')!;
-    const found: Record<string, Box> = {};
-    for (const cap of ['Tandatangan', 'Cop Rasmi Majikan']) {
-      const t = sheet.find((d) => d.text === cap);
-      expect(t, `there is no "${cap}" block on the drawn page — only the band heading`).toBeDefined();
-      expect(t!.y, `"${cap}" is the band heading, not a block of its own`).toBeLessThan(heading.y - 100);
-      const b = boxes.find((r) => t!.x >= r.x && t!.x <= r.x + r.w && t!.y >= r.y && t!.y <= r.y + r.h);
-      expect(b, `"${cap}" is a caption with no box around it`).toBeDefined();
-      expect(b!.h, `the "${cap}" box is too shallow to use`).toBeGreaterThanOrEqual(40);
-      found[cap] = b!;
-    }
-    expect(found['Tandatangan'].x, 'the two boxes are the same box').not.toBe(found['Cop Rasmi Majikan'].x);
-    // The boxes sit UNDER the rows and ABOVE the warning — which is the whole reason the value column
-    // could go back to being wide enough for a name.
-    const lastRow = Math.min(...sheet.filter((d) => d.x === 34 && d.y < heading.y && d.y > 120).map((d) => d.y));
+    const g = BORANG_A_SHEET_GEOMETRY;
+    const sign = sheet.find((d) => d.text === 'Tandatangan')!;
+    const nama = sheet.find((d) => d.text === 'Nama')!;
+    expect(sign, 'there is no "Tandatangan" label').toBeDefined();
+    const signBox = boxes.find((b) => Math.abs(b.x - g.sigValueX) < 0.01 && b.y <= sign.y && b.y + b.h >= sign.y);
+    expect(signBox, 'there is no box to sign in beside "Tandatangan Wakil Majikan"').toBeDefined();
+    expect(signBox!.h, 'the signing box is too shallow to use').toBeGreaterThanOrEqual(24);
+    expect(signBox!.y, 'the signing box overlaps the Nama row').toBeGreaterThan(nama.y);
+
+    const cop = sheet.find((d) => d.text === 'Cop Rasmi Majikan')!;
+    const copBox = boxes.find((b) => cop.x >= b.x && cop.x <= b.x + b.w && cop.y >= b.y && cop.y <= b.y + b.h);
+    expect(copBox, '"Cop Rasmi Majikan" is a caption with no box around it').toBeDefined();
+    expect(copBox!.h, 'the stamp box is too shallow to use').toBeGreaterThanOrEqual(80);
+    expect(copBox!.x, 'the stamp box sits on the representative\'s values').toBeGreaterThanOrEqual(g.sigRight);
+    expect(copBox!.x + copBox!.w, 'the stamp box runs into CATATAN').toBeLessThanOrEqual(g.catatanX);
     const warning = sheet.find((d) => d.text.startsWith('PERINGATAN'))!;
-    for (const b of Object.values(found)) {
-      expect(b.y + b.h, 'a signing box overlaps the representative rows').toBeLessThan(lastRow);
+    for (const b of [signBox!, copBox!]) {
       expect(b.y, 'a signing box overlaps the PERINGATAN line').toBeGreaterThan(warning.y + 5);
     }
   });
@@ -1137,8 +1144,10 @@ describe('nothing somebody signs for is silently cut', () => {
       return d!;
     });
     expect(new Set(ticks.map((t) => t.y)).size, 'the ticks are not on one baseline').toBe(1);
-    // The CARA BAYARAN box ends at HDR_LEFT_R = RIGHT - 126 = 435.28.
-    expect(endOf(ticks[ticks.length - 1], fonts), 'the last tick is outside the band').toBeLessThan(435.28);
+    // The CARA BAYARAN band ends where the Borang A column begins.
+    expect(endOf(ticks[ticks.length - 1], fonts), 'the last tick is outside the band').toBeLessThan(
+      BORANG_A_SHEET_GEOMETRY.paymentRight,
+    );
     // …and one box per caption, at the caption's own baseline.
     const boxes = (await drawnBoxes(longForm()))[0];
     for (const t of ticks) {
@@ -1149,14 +1158,14 @@ describe('nothing somebody signs for is silently cut', () => {
     }
   });
 
-  it('gives each named method a tick of its own, and no tick two methods', () => {
-    // The approved plan names five. An approval on this board carries no payload, so there is no reading
-    // of it under which the reporter asked for two — and a tick that means "Cek OR Kiriman Wang OR Wang
-    // Pos" makes an operator paying by Wang Pos state a payment method they did not use.
-    for (const m of ['Wang Tunai', 'Cek', 'Kiriman Wang', 'Wang Pos', 'Draf Bank']) {
-      expect(BORANG_A_PAYMENT_METHODS, `"${m}" has no tick of its own`).toContain(m);
-    }
-    for (const m of BORANG_A_PAYMENT_METHODS) expect(m, `"${m}" is more than one method`).not.toMatch(/[/,]/);
+  it('draws the specimen\'s TWO ticks: cash, and the instruments whose number goes on the line', () => {
+    // UPDATED, NOT DELETED (r407, item 4f45f9b0). cc9f9420's plan named five ticks and this case pinned
+    // them. The reporter then asked (4f45f9b0) for the form to follow the KWSP 6 sample's "layout,
+    // structure, fields ... and overall presentation", and approved a plan naming "the two payment ticks
+    // with the cheque / EFT / TT line" — the sample's own grouping. The latest approved word wins.
+    expect(BORANG_A_PAYMENT_METHODS).toEqual(['Wang Tunai', 'Cek / Kiriman Wang / Wang Pos / Draf Bank']);
+    // Every instrument the five-tick version named is still on the page, inside the second tick.
+    for (const m of ['Cek', 'Kiriman Wang', 'Wang Pos', 'Draf Bank']) expect(BORANG_A_PAYMENT_METHODS[1]).toContain(m);
   });
 
   it('has a payment reference label that reads as Malay rather than as a mis-transcription', () => {

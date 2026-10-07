@@ -12,6 +12,7 @@
  * is turned back into a printable form by `lib/borang-8a.ts`.
  */
 import { reportPreview } from '@/core/reporting';
+import { borang8AHasContributions } from './query';
 import { scopedAdmin } from '@/lib/scope';
 import { parseRunSelection } from '@/lib/payroll-run-selection';
 import {
@@ -57,7 +58,7 @@ export async function loadBorang8AFile(p: {
   periodKey: string;
   query: URLSearchParams;
 }): Promise<Borang8AFileLoad> {
-  const loaded = await loadBorang8A(p);
+  const loaded = await loadBorang8A({ ...p, refuseEmpty: false });
   if (!loaded.ok) {
     if (loaded.reason === 'not-found') return { ok: false, status: 404, message: 'Not found' };
     if (loaded.reason === 'no-batch') {
@@ -73,6 +74,7 @@ export async function loadBorang8AFile(p: {
       };
     }
     if (loaded.reason === 'bad-selection') return { ok: false, status: 422, message: loaded.message };
+    if (loaded.reason === 'no-contributions') return { ok: false, status: 422, message: NO_CONTRIBUTIONS };
     return {
       ok: false,
       status: 422,
@@ -111,6 +113,10 @@ export async function loadBorang8AFile(p: {
     throw e;
   }
 }
+
+/** r408 — the routes' plain-text refusal for a selection with no SOCSO contribution on it. */
+export const NO_CONTRIBUTIONS =
+  'No processed SOCSO contributions for this month and these payroll cycles — no Borang 8A is produced.';
 
 /** The catalog id this screen is the form for. One literal, shared, rather than three. */
 export const BORANG_8A_REPORT_ID = 'my.borang-8a';
@@ -153,6 +159,15 @@ export type Borang8ALoad =
   | { ok: false; reason: 'selection-empty' }
   /** r372 — the run parameters on the link are not run numbers. Refused, never quietly widened. */
   | { ok: false; reason: 'bad-selection'; message: string }
+  /**
+   * r408 (item e74af58c) — the runs exist and were ticked, but carry NO SOCSO contribution at all (nobody on
+   * them, or not a sen charged) and nobody is named on the readiness list. A Borang 8A of empty boxes would
+   * assert a filing of nothing. Refused HERE so the preview, the PDF and the text copy refuse it the same
+   * way; the ASSIST file and the Payment Submission shelf pass `refuseEmpty: false` and keep building it, as
+   * before r408 (whether PERKESO expects a nil filing is unknown). A BONUS-ONLY selection does not land here: the read
+   * names everyone on it with the "not in this selection" reason, and that is the refusal it gets (r373).
+   */
+  | { ok: false; reason: 'no-contributions' }
   | {
       ok: false;
       reason: 'not-ready';
@@ -194,8 +209,9 @@ export type Borang8ALoad =
  * ── r372 (item f022dd70): THE PAYROLL CYCLES THIS DOWNLOAD COVERS ─────────────────────────────────
  * Read off the SAME query the rest of the per-generation inputs are read from, and validated in ONE place
  * (lib/payroll-run-selection.ts) so the three statutory formats cannot disagree about what a bad value
- * means. NO run parameters ⇒ `undefined` ⇒ the whole month, which is what every link written before this
- * round is and what every other surface (the review screen, the PDF, the text export) still sends. An
+ * means. NO run parameters ⇒ `undefined` ⇒ the whole month, which is what every link written before r372
+ * is. Since r408 (item e74af58c) the review screen, its framed PDF and every download carry the criteria
+ * step's selection, through ONE list (`./query.ts`). An
  * INVALID one is REFUSED rather than dropped: dropping it would build the file over a different population
  * from the one the URL named, which is the reporter's acceptance criterion read backwards.
  */
@@ -204,6 +220,13 @@ export async function loadBorang8A(p: {
   periodKey: string;
   query: URLSearchParams;
   includeIncomplete?: boolean;
+  /**
+   * r408 — the "nothing to file" refusal is the FORM's (preview, PDF, text): the plan promises no empty
+   * Borang 8A is drawn. The ASSIST upload file keeps its pre-r408 behaviour for a month with no SOCSO,
+   * exactly as r407 left the KWSP file: whether PERKESO expects a nil filing is UNKNOWN, and refusing it
+   * would block a filing nobody asked us to stop. `loadBorang8AFile` passes false.
+   */
+  refuseEmpty?: boolean;
 }): Promise<Borang8ALoad> {
   if (!UUID.test(p.companyId) || !PERIOD.test(p.periodKey)) return { ok: false, reason: 'not-found' };
   const { s, scopeIds } = await scopedAdmin();
@@ -237,6 +260,9 @@ export async function loadBorang8A(p: {
   // one blocks the download — and the review screen shows both, which is the entire reason it must still
   // render when they exist.
   const headerMissing = missingBorang8AHeader(result.meta.formHeader);
+  // r408 — NOTHING TO FILE. Asked only when nobody is named: a bonus-only selection names every person with
+  // the SOCSO-not-in-this-selection reason, and that named refusal is the one it has always had.
+  if (p.refuseEmpty !== false && missing.length === 0 && !borang8AHasContributions(result.rows)) return { ok: false, reason: 'no-contributions' };
   if ((missing.length > 0 || headerMissing.length > 0) && !p.includeIncomplete) {
     return { ok: false, reason: 'not-ready', missing, headerMissing };
   }

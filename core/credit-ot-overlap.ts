@@ -35,9 +35,9 @@
  * still owns "this date already has a credit". This owns "this date already has a live claim on the other
  * side of the cash/time-in-lieu choice", which is a different question with a different answer set.
  */
-import { and, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client';
-import { attendanceCorrection, replacementLeaveRequest, replacementLeaveRequestDate } from '../db/schema';
+import { attendanceCorrection, replacementLeaveRequest, replacementLeaveRequestDate, toilAccrual } from '../db/schema';
 
 /**
  * The two statuses that block, for BOTH record types. `replacement_leave_request_status` and
@@ -75,7 +75,12 @@ export const CREDIT_BLOCKS_OT_MESSAGE = (dates: string[]) =>
  * Returns a SORTED, de-duplicated list so the message it feeds reads the same every time and a test can
  * assert it without an ORDER BY of its own (CLAUDE.md §8: pin invariants, not positions).
  */
-export async function liveOvertimeClaimDatesTx(tx: Tx, employmentId: string, dates: string[]): Promise<string[]> {
+export async function liveOvertimeClaimDatesTx(
+  tx: Tx,
+  employmentId: string,
+  dates: string[],
+  statuses: readonly (typeof BLOCKING_STATUSES)[number][] = BLOCKING_STATUSES,
+): Promise<string[]> {
   if (dates.length === 0) return [];
   const rows = await tx
     .select({ date: attendanceCorrection.attendanceDate })
@@ -84,7 +89,7 @@ export async function liveOvertimeClaimDatesTx(tx: Tx, employmentId: string, dat
       and(
         eq(attendanceCorrection.employmentId, employmentId),
         inArray(attendanceCorrection.attendanceDate, dates),
-        inArray(attendanceCorrection.status, [...BLOCKING_STATUSES]),
+        inArray(attendanceCorrection.status, [...statuses]),
         isNotNull(attendanceCorrection.requestedOtMinutes),
         // A zero-minute OT figure is a request for no overtime and blocks nothing. Written as a SQL
         // comparison rather than filtered in JS so the index can still be used.
@@ -139,6 +144,58 @@ export async function assertNoOvertimeClaimForDatesTx(tx: Tx, employmentId: stri
 export async function assertNoCreditClaimForDatesTx(tx: Tx, employmentId: string, dates: string[]): Promise<void> {
   const clash = await liveCreditClaimDatesTx(tx, employmentId, dates);
   if (clash.length > 0) throw new ClaimOverlapError(CREDIT_BLOCKS_OT_MESSAGE(clash), clash);
+  // r406 ⚠️ MONEY — a credit HR banked directly (which writes no replacement_leave_request row) blocks
+  // overtime too: payroll's EXCLUDE_TOIL_BANKED_DAYS drops a credited
+  // day's overtime, so an overtime claim approved on that date would be approved and never paid.
+  const banked = await bankedCreditDatesTx(tx, employmentId, dates);
+  if (banked.length > 0) throw new ClaimOverlapError(CREDIT_BANKED_BLOCKS_OT_MESSAGE(banked), banked);
+}
+
+/** Direction 2b — the date already holds a banked Leave Credit (from any source), so overtime cannot be claimed. */
+export const CREDIT_BANKED_BLOCKS_OT_MESSAGE = (dates: string[]) =>
+  `${dates.join(', ')} ${dates.length === 1 ? 'is' : 'are'} already credited as a Leave Credit by HR, so overtime cannot also be claimed for ${dates.length === 1 ? 'that date' : 'those dates'}. Ask HR to reverse the credit first if the day should be paid as overtime instead.`;
+
+/**
+ * Which of `dates` hold an HR-entered Leave Credit (`hr_manual_grant`), banked and not reversed. Sorted.
+ *
+ * ONLY that source. A `policy` credit IS the overtime's own compensation (approved rest-day overtime mints
+ * it; test/plan-ot.test.ts), so it must not block the overtime that made it; an `employee_request` credit is
+ * already blocked through its request's status (`liveCreditClaimDatesTx`). An HR grant writes no request
+ * row, which is the gap this closes.
+ */
+export async function bankedCreditDatesTx(tx: Tx, employmentId: string, dates: string[]): Promise<string[]> {
+  if (dates.length === 0) return [];
+  const rows = await tx
+    .select({ date: toilAccrual.workedDate })
+    .from(toilAccrual)
+    .where(
+      and(
+        eq(toilAccrual.employmentId, employmentId),
+        inArray(toilAccrual.workedDate, dates),
+        ne(toilAccrual.status, 'reversed'),
+        eq(toilAccrual.source, 'hr_manual_grant'),
+      ),
+    )
+    .orderBy(asc(toilAccrual.workedDate));
+  return [...new Set(rows.map((r) => r.date).filter((d): d is string => d != null))].sort();
+}
+
+/**
+ * r406 ⚠️ MONEY — HR's direct grant: a PENDING overtime claim, or a PENDING Leave Credit request, on a date
+ * HR credits. Neither is in attendance yet, so the per-row overtime warning reads 0 and the payroll-started
+ * check never fires: the claim would be approved later and its pay silently dropped (or the employee's own
+ * request would fail on approval). APPROVED overtime is not refused here — it is already in attendance, is
+ * shown to HR as the per-row warning, and converting it to a credit before payroll starts is the approved
+ * plan's behaviour.
+ */
+export const PENDING_CLAIM_BLOCKS_GRANT_MESSAGE = (dates: string[]) =>
+  `${dates.join(', ')} ${dates.length === 1 ? 'has' : 'have'} an overtime claim or a Leave Credit request still waiting for a decision. Approve or reject it first, then add the credit, so the same hours are not lost or counted twice.`;
+
+export async function assertNoPendingClaimForGrantTx(tx: Tx, employmentId: string, dates: string[]): Promise<void> {
+  const ot = await liveOvertimeClaimDatesTx(tx, employmentId, dates, ['pending']);
+  const credit = await liveCreditClaimDatesTx(tx, employmentId, dates);
+  const clash = [...new Set([...ot, ...credit])].sort();
+  if (clash.length > 0) throw new ClaimOverlapError(PENDING_CLAIM_BLOCKS_GRANT_MESSAGE(clash), clash);
 }
 
 /**

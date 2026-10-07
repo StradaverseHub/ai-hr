@@ -5,19 +5,17 @@
  * (localization/my/borang-8a.ts) and from the drawing (lib/borang-8a-pdf.ts).
  *
  * ── WHY THIS FORM IS NOT `official`, SAID HERE AS WELL AS ON THE SHELF ──────────────────────────────
- * The specimen we built against (attachment 91ce0f6a, "Socso Borang 8A.pdf", 84,219 bytes, PDF 1.6, one
- * A4 page, producer "Developer Express Inc. DXperience v23.2.5") is a FILLED OUTPUT from another payroll
- * vendor's engine. It is not PERKESO artwork, it carries no form fields, and PERKESO publishes no blank
- * page for this form at all. So there is nothing to print onto: we draw the page ourselves, matching the
- * specimen line for line, and the catalog entry declares `agency-layout` — never `official`, which in
- * this codebase means the government's own published page and belongs to `my.cp22` alone.
+ * The first specimens we built against (attachments 91ce0f6a and 16f2aac1) are FILLED OUTPUT from another
+ * payroll vendor's engine (producer "Developer Express Inc. DXperience v23.2.5"), not PERKESO artwork.
  *
- * 16f2aac1 ASKED AGAIN, WITH A NEW ATTACHMENT, AND THE ANSWER DID NOT CHANGE. Its metadata was read
- * before any of its corrections were built: producer "Developer Express Inc. DXperience (tm) v23.2.5",
- * one A4 page, no form fields — the SAME vendor engine as 91ce0f6a, so it is another completed form from
- * another payroll system and not an agency blank. It is excellent evidence of the agency's WORDING, and
- * every one of the nine corrections was taken from it; it is not evidence that we have agency artwork.
- * `agency-layout` STANDS. Do not promote this form to `official` on the strength of a third such file.
+ * r408 (item e74af58c) — PERKESO DOES PUBLISH A BLANK BORANG 8A, and this header used to say it did not.
+ * The reporter linked it from PERKESO's own website: a two-page A4 PDF (producer "doPDF Ver 7.3", created
+ * 1 July 2013). Page 1 is the form; page 2 is "PANDUAN MENGISI BORANG 8A", whose guidance still quotes the
+ * 2013 rules (an RM3,000 wage line), and page 1 carries OCR form ids and the logo. So the page is still
+ * DRAWN, not printed onto: lib/borang-8a-pdf.ts reproduces page 1's boxes, measured from that file, and
+ * deliberately leaves out page 2, the OCR ids and the logo. The catalog entry stays `agency-layout` — the
+ * layout is the agency's, the paper is ours — and never `official`, which in this codebase means the
+ * government's own page and belongs to `my.cp22` alone. The blank is NOT committed to `public/forms/`.
  *
  * ── THE NO-OFFSET RULE, AND WHY IT IS A RULE RATHER THAN A DEFAULT ─────────────────────────────────
  * A Borang 8A's contribution month IS the payroll month. KWSP's Borang A, for the same payroll cycle, is
@@ -29,12 +27,20 @@
  * the SOCSO and EPF periods for one cycle ever agree.
  *
  * ── THE DUE DATE ──────────────────────────────────────────────────────────────────────────────────
- * The LAST DAY OF THE CONTRIBUTION MONTH, which is what the specimen shows ("tidak lewat daripada
- * 31/07/2026" on a 07/2026 form). NOT the 15th-of-next-month that KWSP uses and that
- * `ReportSubmission.dueDayOfNextMonth` models for the SOCSO+EIS ASSIST listing — those are two different
- * deadlines on two different filings, and conflating them is the same class of mistake as the offset.
+ * THE 15TH OF THE MONTH AFTER THE CONTRIBUTION MONTH. PERKESO's own 2025 employer booklet ("Perlindungan
+ * Keselamatan Sosial | PERKESO", section Caruman → "Tempoh Pembayaran Caruman", printed page 9): "Caruman
+ * hendaklah dibayar tidak lewat daripada 15 hari bulan bagi caruman bulan sebelumnya (contoh; caruman bulan
+ * Januari 2025 hendaklah dibayar tidak lewat daripada 15 Februari 2025)".
+ *
+ * ⚠️ r408 (item e74af58c) CORRECTED THIS. From 8ca344bf to r407 it was the LAST DAY of the contribution
+ * month, copied from a vendor's filled specimen ("tidak lewat daripada 31/07/2026" on a 07/2026 form). That
+ * was PERKESO's temporary COVID relief — Pekeliling Majikan Bil. 4 Tahun 2020, which moved the deadline to
+ * the last day of the month for the April to September 2020 contributions ONLY. (The circular is cited from
+ * the approved plan; its text is not held in this repository.) It is no rule today.
+ *
+ * The deadline moves a DAY into the next month; the CONTRIBUTION month the form is stamped with never moves
+ * (the no-offset rule above). Those are different facts, and only the first one changed.
  */
-
 /** One employee's line on the schedule. `contribution` is RM, already taken from the run. */
 export type Borang8ARow = {
   /** Not printed — the key a typed STATUS override is addressed by. */
@@ -102,7 +108,7 @@ export type Borang8AHeader = {
   contributionPeriodKey: string;
   /** The payroll `YYYY-MM` this was generated from. Equal to `contributionPeriodKey`, by the rule above. */
   payrollPeriodKey: string;
-  /** Bayaran tidak lewat daripada — `DD/MM/YYYY`, the last day of the contribution month. */
+  /** Bayaran tidak lewat daripada — `DD/MM/YYYY`, the 15th of the month after the contribution month. */
   paymentDueDate: string;
 };
 
@@ -130,12 +136,15 @@ export const BORANG_8A_HEADER_KEYS = [
   'paymentDueDate',
 ] as const;
 
-/** Rows per printed sheet. The specimen is a single-employee form, so this is ours: 20 lines leave room
- *  for the repeated header and the payment/signature blocks at the foot of every sheet. */
+/** Rows per printed sheet: PERKESO's own Borang 8A page 1 rules exactly TWENTY employee lines (r408,
+ *  measured from the agency's blank: 20 rows at a 19.4pt pitch between the heading band and "Jumlah muka
+ *  surat ini"). A sheet that held more or fewer would not be the agency's sheet. */
 export const BORANG_8A_ROWS_PER_PAGE = 20;
 
 /** The prefix a typed per-row STATUS override arrives under, e.g. `st_<employmentId>=BARU`. */
 export const BORANG_8A_STATUS_PARAM_PREFIX = 'st_';
+/** PERKESO's column (2) codes, from page 2 of the agency's blank Borang 8A. */
+export const BORANG_8A_STATUS_CODES: ReadonlySet<string> = new Set(['M', 'B', 'H', 'S', 'T']);
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -160,17 +169,21 @@ export function contributionMonthLabel(periodKey: string): string {
 }
 
 /**
- * The payment deadline: the LAST DAY of the contribution month, as `DD/MM/YYYY`.
+ * The payment deadline: the 15th of the month AFTER the contribution month, as `DD/MM/YYYY` (PERKESO 2025
+ * booklet; see THE DUE DATE above). 2026-12 is due 15/01/2027 — the year rolls with the month.
  *
- * `Date.UTC(y, m, 0)` is day zero of the NEXT month, i.e. the last day of this one — the only month
- * arithmetic in this file, and it moves a DAY, never the month the form is stamped with.
+ * `Date.UTC(y, m, 15)` with the 1-based contribution month `m` used as a 0-based month index IS the next
+ * month: the only month arithmetic in this file, and it dates the DEADLINE, never the month the form is
+ * stamped with.
  */
 export function paymentDueDateFor(periodKey: string): string {
   const p = contributionPeriodFor(periodKey);
   const y = Number(p.slice(0, 4));
   const m = Number(p.slice(5, 7));
-  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  return `${String(last).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
+  const due = new Date(Date.UTC(y, m, 15));
+  const dd = String(due.getUTCDate()).padStart(2, '0');
+  const mm = String(due.getUTCMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${due.getUTCFullYear()}`;
 }
 
 /**
@@ -328,8 +341,10 @@ export function statusOverridesFrom(params: URLSearchParams): Map<string, string
   for (const [k, v] of params) {
     if (!k.startsWith(BORANG_8A_STATUS_PARAM_PREFIX)) continue;
     const id = k.slice(BORANG_8A_STATUS_PARAM_PREFIX.length);
-    const value = (v ?? '').trim().slice(0, 12);
-    if (id && value) out.set(id, value);
+    // r408 verify D3 — PERKESO's own codes only (page 2 of the agency's 8A): M, B, H, S, T. Anything else is
+    // ignored rather than printed, because a statutory box must not carry a code PERKESO does not define.
+    const value = (v ?? '').trim().toUpperCase();
+    if (id && BORANG_8A_STATUS_CODES.has(value)) out.set(id, value);
   }
   return out;
 }
@@ -359,8 +374,8 @@ export function borang8ATextExport(form: Borang8AForm): string {
   L.push('PERATURAN-PERATURAN (AM) KESELAMATAN SOSIAL PEKERJA 1971 (PER. 44A)');
   L.push(`CARUMAN GAJI BULAN ${form.contributionMonth} — BORANG 8A`);
   L.push('');
-  L.push('NOT PERKESO ARTWORK. Our own layout, drawn to match the agency form. PERKESO publishes no');
-  L.push('blank Borang 8A to print onto. Check every figure before you key or file it.');
+  L.push('NOT PERKESO ARTWORK. Our own drawing of PERKESO\'s Borang 8A layout, not the agency\'s file.');
+  L.push('Figures are taken from the payroll run, never recalculated. Check every figure before you key or file it.');
   L.push('');
   L.push(`No. Kod Majikan                        : ${form.employerCode}`);
   L.push(`No. MyCoID / No. Pendaftaran Perniagaan: ${form.mycoid || '—'}`);
@@ -370,8 +385,8 @@ export function borang8ATextExport(form: Borang8AForm): string {
   L.push(`Amaun Caruman (RM)                     : ${money(form.total)}`);
   L.push(`Bil. Pekerja                           : ${form.employees}`);
   L.push('');
-  // The deadline sentence, verbatim as it prints on the form. The DATE is unchanged — `paymentDueDateFor`
-  // owns that rule (last day of the contribution month) and is deliberately untouched by the re-wording.
+  // The deadline sentence, verbatim as it prints on the form. The DATE is `paymentDueDateFor`'s (the 15th of
+  // the month after the contribution month, r408).
   L.push(`Amaun caruman di atas hendaklah dibayar kepada PERKESO/EJEN PEMUNGUT tidak lewat daripada`);
   L.push(`${form.paymentDueDate}`);
   L.push('');

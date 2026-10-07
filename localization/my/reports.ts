@@ -51,6 +51,7 @@ export const EA_FUND_NAME = 'KWSP';
 // model is what refuses to print a month it cannot name. Imported here so the read degrades on the same
 // rule the model enforces, rather than on a second copy of the regex that could drift from it.
 import { isCp39PeriodKey } from '../../lib/cp39-form';
+import { runSelectionSet } from '../../lib/payroll-run-selection';
 import { todayInKualaLumpur } from '../../lib/hr-date';
 
 export type ReportColumn = { key: string; label: string; numeric?: boolean };
@@ -112,8 +113,9 @@ export type ReportParams = {
    * directly; the two that DO carry one must read the whole month and scope the wage —
    * `scopedMonthWagesFrom` in ./statutory-month-wage explains why.
    *
-   * ⚠️ EXACTLY TWO GENERATORS READ THIS FIELD TODAY — `my.borang-a` and `my.borang-8a`, the two reached
-   * from Payment Submission's Payroll Cycle control. Every other entry in this catalogue IGNORES it, which
+   * ⚠️ EXACTLY THREE GENERATORS READ THIS FIELD TODAY — `my.borang-a` and `my.borang-8a`, the two reached
+   * from Payment Submission's Payroll Cycle control, and since r409 `my.cp39`, whose criteria step asks for
+   * the cycles (`runSelection`). Every other entry in this catalogue IGNORES it, which
    * is correct rather than an omission: nothing sends it to them, and a report that silently honoured a
    * selection its own screen has no control for would hand an operator a narrower document than the one
    * they asked for. Adding the control to another report means teaching that report the field, in the same
@@ -204,16 +206,18 @@ export type ReportSubmission = {
  *                     but the paper is ours.
  *
  *                     ⚠️ r218 NARROWED THIS DEFINITION WHEN `my.cp39` JOINED THE STATUS. It used to
- *                     read "because the AGENCY publishes no blank page", which is true and sourced for
- *                     PERKESO and KWSP and NOT established for LHDN — whose own specimen carries
- *                     "Borang ini boleh difotokopi". The status is about what WE hold (`public/forms`
+ *                     read "because the AGENCY publishes no blank page", which was believed for PERKESO
+ *                     and KWSP and NOT established for LHDN — whose own specimen carries "Borang ini
+ *                     boleh difotokopi". ⚠️ r408: for PERKESO it was FALSE — PERKESO publishes a blank
+ *                     Borang 8A (and 8B) on its website, which the reporter linked. The status is about what WE hold (`public/forms`
  *                     answers that, and is guarded); an agency's publishing decisions belong in that
  *                     form's own module, where the evidence is.
  *
  * WHY IT HAD TO EXIST RATHER THAN REUSING EITHER NEIGHBOUR. `official` is a claim about GOVERNMENT
- * ARTWORK and is `my.cp22`'s alone — the specimen Borang 8A we built against is another payroll vendor's
- * DevExpress output, not a PERKESO page, and PERKESO publishes no blank one; claiming `official` for it
- * would be the exact untrue claim this whole vocabulary exists to prevent. `figures` is equally wrong in
+ * ARTWORK and is `my.cp22`'s alone — the Borang 8A is our own drawing of the agency's page 1 (r408
+ * measured it from PERKESO's published 2013 blank, which we do not print onto and do not hold in
+ * `public/forms/`); claiming `official` for it would be the exact untrue claim this whole vocabulary exists
+ * to prevent. `figures` is equally wrong in
  * the other direction: its hint says "laid out our way, not on the agency's own document", and a Borang
  * 8A drawn line for line to the agency's form is not laid out our way.
  *
@@ -377,6 +381,26 @@ export type ReportDef = {
   fidelity?: FormFidelity;
   /** 587ee719 — position within its body shelf. See `StatutoryFormLink.shelfOrder`. */
   shelfOrder?: number;
+  /**
+   * r407 (item 4f45f9b0) — THIS FORM IS FILED PER PAYROLL CYCLE, AND WHERE ITS CRITERIA STEP CONTINUES TO.
+   *
+   * Declared ONLY by a report whose `generate` honours `params.runSeqs` — a criteria step that offered a
+   * Payroll Cycle box for a generator that ignored it would be a control that silently does nothing, on a
+   * statutory return. `action` is the screen the step's Continue opens (the form's own preview), which
+   * runs the server-side "is there anything to file" gate and sends a refusal back to the step.
+   * `app/payroll/statutory-forms/criteria.ts` turns this into the `cycles` criterion; my.borang-a declares
+   * it (r407), my.borang-8a (r408, item e74af58c) and my.cp39 (r409, item 79f3f64d).
+   */
+  runSelection?: { action: string };
+  /**
+   * r409 (item 79f3f64d) — AN ANNUAL FORM WHOSE CRITERIA STEP CONTINUES TO ITS OWN PREVIEW.
+   *
+   * The yearly counterpart of `runSelection`, without the cycles: a year has no payroll cycle, so the step
+   * asks for Company and Year only and Continue opens `action` — the form shown in the shared viewer, then
+   * downloaded — instead of the generic figures screen. Declared ONLY by a `periodKind: 'year'` report
+   * (`reportDestination` ignores it on any other); my.cp8d declares it.
+   */
+  preview?: { action: string };
   generate: (ctx: SessionContext, params: ReportParams) => Promise<ReportResult>;
 };
 
@@ -425,21 +449,47 @@ type BatchRow = {
   version?: string | null;
   st: Stat;
 };
-type LoadedBatch = { hasBatch: boolean; batchStatus?: string; rows: BatchRow[] };
+type LoadedBatch = {
+  hasBatch: boolean;
+  batchStatus?: string;
+  rows: BatchRow[];
+  /** r409 — the month HAS runs and none of them is one the caller asked for. Only with `honourRunSeqs`. */
+  selectionEmpty?: boolean;
+};
 
-async function loadBatchRows(ctx: SessionContext, params: ReportParams): Promise<LoadedBatch> {
+/**
+ * r409 (item 79f3f64d) — `honourRunSeqs` IS OPT-IN, PER GENERATOR, and only CP39 opts in.
+ *
+ * Six reports share this loader and `ReportParams.runSeqs` is ignored by all but the ones that were taught
+ * it (see that field's note). Reading it here unconditionally would make every one of them silently honour
+ * a selection its own screen has no control for. CP39 may filter its SQL because every figure it reads
+ * (PCB, CP38) is a per-run DELTA — the reason the e-Data PCB file filters its own query the same way — and
+ * it has no wage column, which is what stops Borang A and Borang 8A from filtering here.
+ *
+ * ABSENT `runSeqs` ⇒ no filter at all, so the whole-month path is the one it always was, by construction.
+ */
+async function loadBatchRows(
+  ctx: SessionContext,
+  params: ReportParams,
+  opts: { honourRunSeqs?: boolean } = {},
+): Promise<LoadedBatch> {
   return withTenant(ctx, async (tx) => {
     // Wave 2C (ADR-0024): a (company, month) may now hold multiple runs (regular + bonus/off-cycle).
     // The monthly statutory return is ONE filing for the month, so aggregate across ALL runs of the
     // period. Runs store delta figures, so summing per employee yields the exact monthly total — with a
     // single run this is byte-identical to before. (Mirrors loadYearRows, scoped to one month.)
-    const batches = await tx
-      .select({ id: payrollBatch.id, status: payrollBatch.status })
+    const monthBatches = await tx
+      .select({ id: payrollBatch.id, status: payrollBatch.status, runSeq: payrollBatch.runSeq })
       .from(payrollBatch)
       .where(
         and(eq(payrollBatch.companyId, params.companyId), eq(payrollBatch.payPeriod, params.periodKey)),
       );
-    if (batches.length === 0) return { hasBatch: false, rows: [] };
+    if (monthBatches.length === 0) return { hasBatch: false, rows: [] };
+    // r409 — the runs the caller ticked, or the whole month (`undefined`, and every caller but CP39).
+    const selection = opts.honourRunSeqs ? runSelectionSet(params.runSeqs) : undefined;
+    const batches = selection ? monthBatches.filter((b) => selection.has(b.runSeq)) : monthBatches;
+    // A DIFFERENT FACT from "no payroll": the month ran, the ticked cycles are not in it.
+    if (batches.length === 0) return { hasBatch: true, selectionEmpty: true, rows: [] };
     const batchIds = batches.map((b) => b.id);
     // Period-level status for the report header: closed only if every run is closed; draft if any run
     // is still a draft; otherwise processed.
@@ -540,6 +590,8 @@ function versionOf(blobs: unknown[]): string {
 
 const meta = (b: LoadedBatch) => ({
   hasBatch: b.hasBatch,
+  // r409 — present only when a selection-honouring read found none of the ticked runs.
+  ...(b.selectionEmpty ? { selectionEmpty: true } : {}),
   batchStatus: b.batchStatus,
   statutoryVersion: versionOf(b.rows.map((r) => ({ version: r.version }))),
 });
@@ -619,7 +671,10 @@ const CP39_COLS: ReportColumn[] = [
  * against the overview and is untouched by the addition.
  */
 async function cp39(ctx: SessionContext, params: ReportParams): Promise<ReportResult> {
-  const b = await loadBatchRows(ctx, params);
+  // r409 (item 79f3f64d) — THE PRINTED CP39 HONOURS THE PAYROLL-CYCLE SELECTION. Until this round only the
+  // e-Data PCB upload file did; the printed statement read the whole month whatever was ticked. See
+  // `loadBatchRows` for why CP39 may filter its query and the two wage-carrying forms may not.
+  const b = await loadBatchRows(ctx, params, { honourRunSeqs: true });
   // ⚠️ THE NO-BATCH ANSWER COMES FIRST, AND THE ORDER OF THESE TWO STATEMENTS IS THE WHOLE POINT.
   //
   // `cp39FormExtras` VALIDATES the period and THROWS on anything that is not YYYY-MM (it has to: a
@@ -636,7 +691,7 @@ async function cp39(ctx: SessionContext, params: ReportParams): Promise<ReportRe
   // shared.ts) before it ever looks at `meta.formHeader`, and `meta.notes` are rendered only inside
   // `StatutoryReportPanel`, which the no-batch branch of both screens does not reach. The four queries
   // this used to run on the empty path were discarded work.
-  if (!b.hasBatch) return empty(CP39_COLS, b);
+  if (!b.hasBatch || b.selectionEmpty) return empty(CP39_COLS, b);
   // …AND THE ORDERING ABOVE IS NOT ENOUGH ON ITS OWN, because `hasBatch` is true whenever some
   // payroll_batch.pay_period equals this key VERBATIM — and nothing enforces that column's format.
   // db/schema.ts declares it plain `text` with no CHECK; createBatch/createAdditionalRun never validate
@@ -2200,6 +2255,10 @@ export const MY_REPORTS: ReportDef[] = [
   // vocabulary exists to prevent.
   { id: 'my.cp39', label: 'CP39 — MTD / PCB (LHDN)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: cp39,
     descriptionKey: 'desc_cp39', fidelity: 'agency-layout', outputs: ['pdf', 'xlsx', 'csv', 'print', 'file'], shelfOrder: 11,
+    // r409 (item 79f3f64d) — Open Form asks for Company, Year, Month AND the payroll cycles, and Continue
+    // opens the statement itself in the shared viewer. `cp39` honours `runSeqs` since r409 (it reads them
+    // through `loadBatchRows(…, { honourRunSeqs: true })`), which is the only reason this may be declared.
+    runSelection: { action: '/payroll/cp39/preview' },
     submission: { body: 'lhdn', agency: 'LHDN', channel: 'e-PCB / e-Data PCB / e-CP39', dueDayOfNextMonth: 15 } },
   // NOT "Borang A", and it never becomes Borang A by being renamed. What this produces is a contributions
   // listing whose wage column is GROSS PAY; Borang A wants the EPF-liable wage and is a different document
@@ -2216,8 +2275,8 @@ export const MY_REPORTS: ReportDef[] = [
   // wage EPF was actually charged on, and it is emphatically not produced by relabelling the listing.
   //
   // `dueDayOfNextMonth: 15` — KWSP's deadline, the same one `my.epf` carries, because it is the same
-  // filing deadline for the same body. (Borang 8A's null is a different situation: PERKESO's deadline is
-  // the last day of the contribution month, which this field cannot express.)
+  // filing deadline for the same body. (Borang 8A carries 15 too since r408: PERKESO's own 2025 booklet
+  // puts its deadline on the 15th of the following month.)
   //
   // `fidelity: 'agency-layout'`, never 'official': see FormFidelity. The reporter's specimen is another
   // vendor's DevExpress output and KWSP publishes no blank page.
@@ -2226,6 +2285,9 @@ export const MY_REPORTS: ReportDef[] = [
   // from the SAME rows as the drawn page, behind its own route.
   { id: 'my.borang-a', label: 'Borang A — monthly contribution form (KWSP)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: borangAReport,
     descriptionKey: 'desc_borang_a', fidelity: 'agency-layout', outputs: ['pdf', 'print', 'file'], shelfOrder: 2,
+    // r407 (item 4f45f9b0) — Open Form asks for the payroll cycles too, and Continue opens the form itself.
+    // `borangAReport` honours `runSeqs` (r372/r373), which is the only reason this may be declared.
+    runSelection: { action: '/payroll/borang-a/preview' },
     submission: { body: 'epf', agency: 'EPF (KWSP)', channel: 'i-Akaun (Employer)', dueDayOfNextMonth: 15 } },
   // SOCSO and EIS go up TOGETHER through ASSIST's combined contribution function — the reporter's words.
   // ONE `perkeso` shelf for the same reason: they are one filing, not two that happen to share a portal.
@@ -2242,18 +2304,22 @@ export const MY_REPORTS: ReportDef[] = [
   // This is a different document: PERKESO's own monthly contribution SCHEDULE, one SOCSO figure per person,
   // and it is emphatically not produced by relabelling the listing above.
   //
-  // `dueDayOfNextMonth: null` IS DELIBERATE AND IS NOT AN OVERSIGHT. This form's deadline is the LAST DAY
-  // OF THE CONTRIBUTION MONTH ITSELF, which `submissionDueFor` — which models "day N of the month AFTER the
-  // period" and nothing else — cannot express. Writing 15 here would print the ASSIST deadline on a form
-  // whose own deadline is two weeks earlier, and an invented statutory date is worse than an absent one
-  // because somebody files against it. The real deadline is computed by `paymentDueDateFor` and printed ON
-  // THE FORM, which is where the reporter's own specimen carries it.
+  // `dueDayOfNextMonth: 15` — r408 (item e74af58c). PERKESO's 2025 employer booklet: contributions are due
+  // "tidak lewat daripada 15 hari bulan bagi caruman bulan sebelumnya". Until r408 this was null, on the
+  // belief that the deadline was the last day of the contribution month; that was PERKESO's temporary
+  // relief for April–September 2020 contributions only (Pekeliling Majikan Bil. 4 Tahun 2020). The same
+  // date is computed by `paymentDueDateFor` and printed ON THE FORM.
   //
-  // `fidelity: 'agency-layout'`, never 'official': see FormFidelity. The reporter's specimen is another
-  // vendor's DevExpress output and PERKESO publishes no blank page.
+  // `fidelity: 'agency-layout'`, never 'official': see FormFidelity. PERKESO does publish a blank Borang 8A
+  // (r408 corrected the opposite claim); we draw its page 1 box for box rather than printing onto a 2013
+  // file whose guidance page quotes old limits.
+  //
+  // `runSelection` — r408: Open Form asks for the payroll cycles, and Continue opens the form itself.
+  // `borang8AReport` honours `runSeqs` (r372/r373), which is the only reason this may be declared.
   { id: 'my.borang-8a', label: 'Borang 8A — monthly contribution schedule (PERKESO)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: borang8AReport,
     descriptionKey: 'desc_borang_8a', fidelity: 'agency-layout', outputs: ['pdf', 'print'], shelfOrder: 2,
-    submission: { body: 'perkeso', agency: 'PERKESO', channel: 'PERKESO ASSIST', dueDayOfNextMonth: null } },
+    runSelection: { action: '/payroll/borang-8a/preview' },
+    submission: { body: 'perkeso', agency: 'PERKESO', channel: 'PERKESO ASSIST', dueDayOfNextMonth: 15 } },
   // dueDayOfNextMonth null: the annual deadline was never stated to us. See ReportSubmission.
   //
   // ONE GENERATOR, TWO CATALOG ENTRIES. `cp8d` returns the Form E Part A headcounts (meta.summary, via
@@ -2264,6 +2330,10 @@ export const MY_REPORTS: ReportDef[] = [
   // fails the moment a second annual LHDN report is registered.
   { id: 'my.cp8d', label: 'Form E / CP8D — annual (LHDN)', cadence: 'annual', scope: 'year', periodKind: 'year', generate: cp8d,
     descriptionKey: 'desc_cp8d', fidelity: 'figures', outputs: ['pdf', 'xlsx', 'csv', 'print'], shelfOrder: 13,
+    // r409 (item 79f3f64d) — Company and Year, Continue, look, download. The preview frames the PDF this
+    // entry has always exported (lib/report-export.ts, through the generic export route) — our layout,
+    // `figures`, and it does not become LHDN's Form E by being shown in a viewer.
+    preview: { action: '/payroll/cp8d/preview' },
     submission: { body: 'lhdn', agency: 'LHDN', channel: 'e-Filing (Form E)', dueDayOfNextMonth: null } },
   // r224 — THE FIRST ENTRY ON THE "OTHER STATUTORY" SHELF, which until now was a heading over an empty
   // state. See `hrdLevy` for what it does and does not print.
@@ -2460,7 +2530,13 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
     descriptionKey: 'desc_borang_e',
     body: 'lhdn',
     cadence: 'annual',
-    href: '/payroll/statutory-forms/my.cp8d?companyId={companyId}&year={year}',
+    // r409 (item 79f3f64d) — THE SAME PREVIEW THE CP8D CARD OPENS, because they are one return. Until r409
+    // this pointed at the figures screen `/payroll/statutory-forms/my.cp8d`; the alias is now declared by
+    // `populationReportId` (the report its figures come from) rather than implied by the path.
+    href: '/payroll/cp8d/preview?companyId={companyId}&year={year}',
+    populationReportId: 'my.cp8d',
+    // Continue, not Generate: the step opens the preview, and the download is a press further on.
+    criteriaLabelKey: 'criteria_continue',
     fidelity: 'figures',
     outputs: ['pdf', 'xlsx', 'csv', 'print'],
     shelfOrder: 7,
@@ -2627,8 +2703,37 @@ export const MY_PLANNED_FORMS: PlannedFormDef[] = [
   // TP1, Borang A and Borang 8A each took before them. Their four planned_* message keys went with them.
   // (r402 merged that pair into the one entry `my.pcb2ii` at shelfOrder 5; the ids redirect.)
   { id: 'lhdn.cp21', labelKey: 'planned_lhdn_cp21', hintKey: 'planned_lhdn_cp21_hint', body: 'lhdn', cadence: 'event', shelfOrder: 8 },
-  { id: 'lhdn.cp22a', labelKey: 'planned_lhdn_cp22a', hintKey: 'planned_lhdn_cp22a_hint', body: 'lhdn', cadence: 'event', shelfOrder: 10 },
+  // r409 (item 79f3f64d) — NEW KEYS, BECAUSE THE OLD ONES SAID THE WRONG THING. `planned_lhdn_cp22a` called
+  // CP22A "tax clearance on cessation". That label was ours and it was wrong: on LHDN's own form CP22A is the
+  // notice a PRIVATE-SECTOR employer gives when an employee stops working (resignation, retirement, death).
+  // The old pair is retired in all six catalogues, not deleted (a key dropped from `en` alone keeps
+  // rendering from the others). Still planned: it is built in step 2 of the same item.
+  { id: 'lhdn.cp22a', labelKey: 'planned_lhdn_cp22a_cessation', hintKey: 'planned_lhdn_cp22a_cessation_hint', body: 'lhdn', cadence: 'event', shelfOrder: 10 },
+  // CP39A STAYS PLANNED. We hold no current LHDN CP39A and it is not on LHDN's form download page; the
+  // reporter is asked to send the official form as a request of its own (item 79f3f64d's plan).
   { id: 'lhdn.cp39a', labelKey: 'planned_lhdn_cp39a', hintKey: 'planned_lhdn_cp39a_hint', body: 'lhdn', cadence: 'monthly', shelfOrder: 12 },
+];
+
+/**
+ * r409 (item 79f3f64d) — FORMS WE HAVE DECIDED NOT TO BUILD BECAUSE THEY DO NOT APPLY, and why.
+ *
+ * NOT `MY_PLANNED_FORMS`: a planned form is one we intend to build, and the shelf shows it as such. These are
+ * forms whose own title says they are for somebody else, so listing one on a private company's shelf as
+ * "planned" would promise a document that company can never file. Recorded here, in data, so the decision has
+ * an owner and a test, and so the next round that reads the reporter's list of forms does not re-plan it.
+ * Nothing renders this list.
+ *
+ * CP22B is LHDN's cessation notice for GOVERNMENT AGENCIES ("Agensi Kerajaan" is printed in its title); a
+ * private-sector employer files CP22A for the same event. If a tenant's company IS a government agency, that
+ * is a new request naming the company, not a change to this list.
+ */
+export const MY_NOT_APPLICABLE_FORMS: readonly { id: string; body: StatutoryBodyKey; reason: 'government-agency'; note: string }[] = [
+  {
+    id: 'lhdn.cp22b',
+    body: 'lhdn',
+    reason: 'government-agency',
+    note: 'CP22B is the cessation notice for government agencies only; private-sector employers file CP22A.',
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

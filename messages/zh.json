@@ -4508,8 +4508,8 @@
       "planned_perkeso_employee_registration_hint": "为新员工办理 PERKESO 登记。尚未构建。",
       "planned_lhdn_cp21": "CP21 — 员工离开马来西亚",
       "planned_lhdn_cp21_hint": "员工即将离开马来西亚的通知。尚未构建。",
-      "planned_lhdn_cp22a": "CP22A — 离职税务清缴",
-      "planned_lhdn_cp22a_hint": "需要 CP22A 的离职者已在本页下方的 CP22 / CP22A 待办清单中标出，但该通知本身尚未构建。",
+      "planned_lhdn_cp22a": "[retired r409 — replaced by planned_lhdn_cp22a_cessation; it called CP22A 'tax clearance on cessation', which is wrong: on LHDN's form CP22A is the private-sector employer's notice that an employee has stopped working]",
+      "planned_lhdn_cp22a_hint": "[retired r409 — replaced by planned_lhdn_cp22a_cessation_hint, together with planned_lhdn_cp22a]",
       "planned_lhdn_cp39a": "CP39A — 欠款补发的扣税",
       "planned_lhdn_cp39a_hint": "补发款项的扣税报表。尚未构建。",
       "fidelity_agency_layout": "机构版式",
@@ -4599,7 +4599,19 @@
       "viewer_back": "返回",
       "viewer_openNewTab": "在新标签页中打开",
       "viewer_frameTitle": "{form} — 预览",
-      "viewer_showVersion": "显示此版本"
+      "viewer_showVersion": "显示此版本",
+      "cycles": "薪资周期",
+      "cycles_hint": "只列出所选公司和月份中已处理的薪资周期。",
+      "cycles_noRuns": "该公司和月份尚无已处理的薪资周期。",
+      "cycles_nonePicked": "请至少勾选一个薪资周期以继续。",
+      "cycles_partial": "您漏选了至少一个薪资周期。表格只会包含所勾选的周期，且表格上没有注明每一行来自哪个周期的栏位。",
+      "refusal_cycles_no_runs": "该公司和月份没有已处理的薪资，因此未生成任何内容。",
+      "refusal_cycles_no_data": "所选薪资周期中没有此表格的已处理缴款，因此未生成任何内容。",
+      "refusal_cycles_invalid": "薪资周期的选择无效，请重新选择。",
+      "planned_lhdn_cp22a_cessation": "CP22A — 员工离职通知（私营部门）",
+      "planned_lhdn_cp22a_cessation_hint": "私营部门雇主在员工停止工作时（辞职、退休或身故）向 LHDN 提交的通知。需要该通知的离职者已在本页下方的 CP22 / CP22A 待办清单中标出，但该通知本身尚未构建。",
+      "refusal_cycles_no_deductions": "在您选择的发薪周期中没有任何人被扣除 PCB 或 CP38，因此未生成 CP39。",
+      "refusal_year_no_payroll": "该公司在您选择的年份没有已处理的薪资，因此未生成任何内容。"
     },
     "ea": {
       "backToReports": "报表",
@@ -6869,13 +6881,13 @@
       "month": "薪资月份",
       "show": "显示",
       "notArtworkTitle": "这是我们的版式，不是 PERKESO 的页面。",
-      "notArtwork": "PERKESO 并未发布可供套印的空白 Borang 8A，因此本表是照机构表单逐格绘制在我们自己的页面上。录入或申报前请核对每一个数字。",
+      "notArtwork": "[retired r408 — said \"PERKESO publishes no blank Borang 8A to print onto\", which is false: PERKESO publishes one (item e74af58c). Replaced by notArtworkDrawn]",
       "noBatch": "未找到 {company} · {period} 的薪资run。请先运行该月薪资。",
       "notFound": "所选公司没有该表单。",
       "tileMonth": "缴款月份",
       "tileMonthHint": "就是薪资月份本身，不作任何偏移。",
       "tileDue": "缴款期限",
-      "tileDueHint": "该缴款月份的最后一天。",
+      "tileDueHint": "[retired r408 — said the deadline is the last day of the contribution month; PERKESO’s 2025 guide puts it on the 15th of the following month (item e74af58c). Replaced by tileDueNextMonth]",
       "tileEmployees": "表上的员工人数",
       "tileSheets": "{count, plural, other {# 页}}",
       "tileTotal": "Amaun Caruman（合计）",
@@ -6884,7 +6896,7 @@
       "missingTitle": "{count, plural, other {有 # 名员工暂时无法列入表格：}}",
       "missingHint": "请按每位员工旁列出的原因更正后再回来 — 每一行完整之前无法下载任何内容。",
       "scheduleTitle": "明细表",
-      "statusHint": "第 (2) 栏“状态”对本月既未入职也未离职的人一律留空，与实际申报的 Borang 8A 一致。需要时可在该行输入——不会保存任何内容。",
+      "statusHint": "[retired r408 — said column (2) STATUS is always left blank; it now fills B / H / M itself (item e74af58c). Replaced by statusHintDerived]",
       "statusPlaceholder": "状态",
       "statusAria": "{name} 的状态",
       "colStart": "(1) Tarikh Mula Kerja — 入职日期",
@@ -6915,7 +6927,21 @@
       "unfinishedNameTitle": "部分员工姓名看起来尚未填写完整。",
       "unfinishedNameHint": "PERKESO 的姓名栏要求“与身份证或护照一致的姓名”。这些是员工档案中保存的姓名——文件原样带出，不会截短也不会自行编造。照此上传，这些缴款就会以这些姓名申报。请先在员工档案中更正，然后再回到此页。此处不会阻止下载。",
       "oneLineNoticeTitle": "上传文件中，每位员工占一整行。",
-      "oneLineNoticeBody": "每条记录都是一行 {length} 个字符，中间没有任何换行。如果用记事本或其他开启了自动换行的编辑器打开，某位员工看起来会像是被拆成了两行——那是编辑器为了适应窗口而折行，并不是文件里有换行。关闭自动换行，每位员工就会回到一行上。“检查文件”会按 PERKESO 自己的字段编号逐项列出。"
+      "oneLineNoticeBody": "每条记录都是一行 {length} 个字符，中间没有任何换行。如果用记事本或其他开启了自动换行的编辑器打开，某位员工看起来会像是被拆成了两行——那是编辑器为了适应窗口而折行，并不是文件里有换行。关闭自动换行，每位员工就会回到一行上。“检查文件”会按 PERKESO 自己的字段编号逐项列出。",
+      "cyclesAll": "所有薪资周期",
+      "viewerBack": "更改选择",
+      "previewBlocked": "上方所列缺漏补齐后，表格将显示在此处。",
+      "notArtworkDrawn": "按 PERKESO 自己的 Borang 8A（第 1 页）逐格绘制在我们的页面上——不是 PERKESO 的文件；该文件制于 2013 年，其说明页引用的是旧的缴款上限。键入或提交前请核对每一个数字。",
+      "tileDueNextMonth": "缴款月份之后一个月的 15 日（PERKESO 2025 年雇主指南）。",
+      "statusHintDerived": "第 (2) 栏 STATUS 自动填写：本月入职为 B，离职为 H，身故为 M。记录中没有 S（领取 PERKESO 津贴）或 T（整月无薪假）——如适用，请在该行输入 S 或 T。输入的状态会取代该行自动填写的状态。",
+      "blankTitle": "本表格上留空的格子",
+      "blankPayment": "付款方式",
+      "blankPaymentHint": "勾选框以及支票或汇票号码。记录中没有您的付款方式。",
+      "blankSignature": "签名、姓名、电话和印章",
+      "blankSignatureHint": "打印后在每一页亲笔签名并盖章。",
+      "blankAgent": "收款代理栏",
+      "blankAgentHint": "印章和付款单号码由收款代理填写，而非雇主。",
+      "blankStatus": "状态栏"
     },
     "borangA": {
       "title": "Borang A — 月度缴款表（公积金局 KWSP）",
@@ -6980,7 +7006,10 @@
       "downloadReport": "逐字段核对上传文件",
       "downloadReportTitle": "针对上传文件本身的报告：每行的长度，以及每个字段的列位置、长度和取值，便于上传前与 KWSP 样本逐行比对。",
       "fileBlocked": "在修正上述记录之前，上传文件不可下载。",
-      "downloadsBlocked": "每一行完整之前无法下载。"
+      "downloadsBlocked": "每一行完整之前无法下载。",
+      "cyclesAll": "所有薪资周期",
+      "viewerBack": "更改选择",
+      "previewBlocked": "上方所列缺漏补齐后，表格将显示在此处。"
     },
     "cp39Form": {
       "title": "CP39 — 每月 PCB / MTD 扣缴表（内陆税收局 LHDN）",
@@ -7058,7 +7087,10 @@
       "pcbPaymentKindCp38": "CP38（分期指示）",
       "pcbPaymentReceiptRef": "收据／银行单据／交易号码",
       "pcbPaymentPaidOn": "缴付日期",
-      "pcbPaymentSave": "保存"
+      "pcbPaymentSave": "保存",
+      "cyclesAll": "所有发薪周期",
+      "viewerBack": "更改选择",
+      "previewBlocked": "补齐上方列出的缺漏后，报表会显示在这里。"
     },
     "pcbDetail": {
       "exemptionHeading": "免税信息",
@@ -7767,6 +7799,29 @@
       "error_invalid_scheme": "请选择有效的所得税居民类别。",
       "error_citizenship_unknown": "已记录的国籍不符合 C-Suite 方案针对非公民居民的要求。",
       "error_not_resident": "已记录的税务居民身份不符合此居民方案的要求。"
+    },
+    "runPicker": {
+      "all": "所有薪资周期",
+      "selectAll": "全选",
+      "clear": "清除",
+      "search": "搜索薪资周期",
+      "loading": "正在查找本月的薪资运行…",
+      "run": "本月第 {seq} 次运行",
+      "runTypeRegular": "常规",
+      "runTypeOffCycle": "额外周期",
+      "runTypeBonus": "奖金",
+      "runTypeAdjustment": "调整"
+    },
+    "cp8dPreview": {
+      "title": "E 表格 / CP8D — 年度申报（LHDN）",
+      "viewerBack": "更改选择",
+      "tileYear": "年份",
+      "tileEmployees": "包含的员工",
+      "notArtworkTitle": "这是我们的版式，不是 LHDN 的 E 表格。",
+      "notArtwork": "该 PDF 是当年每位员工的 CP8D 明细表，采用我们自己的栏目版式：与“下载 PDF”按钮保存的是同一个文件。它不是 LHDN 的 E 表格或 CP8D 模板。请通过 e-Filing（E 表格）申报。",
+      "partATitle": "E 表格 A 部分人数",
+      "partAHint": "根据与明细表相同的薪资计算。它们列在这里，不会打印在 PDF 上。",
+      "figuresLink": "打开数字表（并记录本次生成）"
     }
   },
   "admin": {
@@ -10718,7 +10773,12 @@
         "firstScheduleConsentLabel": "员工已同意以假期代替法定加班工资。",
         "firstScheduleBlocked": "该员工属于第一附表范围，其公司不允许以假期额度代替法定加班工资。请先在“规则”标签页中修改。",
         "extendedShort": "这是普通工作日。该员工在排班下班时间之后仅计入 {minutes} 分钟，低于公司的半天阈值，因此该日期无法获得假期额度。",
-        "extendedEarned": "该员工在排班下班时间之后计入 {minutes} 分钟，可获得 {days} 天。额度数量已按该数字固定，在此无法更改。"
+        "extendedEarned": "该员工在排班下班时间之后计入 {minutes} 分钟，可获得 {days} 天。额度数量已按该数字固定，在此无法更改。",
+        "descriptionRows": "为员工已工作的日子记入假期额度。额度将立即添加。",
+        "help": "每个工作日期添加一行，并填写时间。按员工所属公司的规则，4 个合格小时计半天，8 个小时计一天。“查看”显示已记录的考勤。额度将立即添加——无需经理审批。",
+        "pickEmployeeFirst": "请先选择员工。",
+        "checkingEmployee": "正在检查该员工…",
+        "ownRecord": "您不能在自己的记录上添加假期额度。必须由其他 HR 管理员操作。"
       },
       "rulesIntro": "按公司设置谁可获得假期额度、如何获得以及额度有效期。此处的修改适用于之后发放的额度；已发放的额度保留原到期日。"
     },

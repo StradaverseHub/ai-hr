@@ -4,7 +4,7 @@ import { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { Field, btnGhost, btnPrimary, inputCls } from '@/components/ui';
-import { RunPicker } from './run-picker';
+import { RunPicker } from '@/components/run-picker';
 import type { SubmissionFormat } from './registry';
 
 /**
@@ -191,7 +191,18 @@ export function DownloadDialog({
               // month from a control that looked like it had picked one run. The asymmetry is the failure
               // mode, not the code.
               <Field label={t('payCycle')}>
-                <RunPicker companyId={companyId} periodKey={`${year}-${month}`} endpoint={runsEndpoint} />
+                <RunPicker
+                  companyId={companyId}
+                  periodKey={`${year}-${month}`}
+                  endpoint={runsEndpoint}
+                  // r407 — the picker moved to components/; the three sentences about what Download does
+                  // next stay THIS pop-up's, word for word.
+                  strings={{
+                    noRuns: t('payCycleNoRuns'),
+                    nonePicked: t('payCycleNonePicked'),
+                    partialWarning: t('payCyclePartialWarning'),
+                  }}
+                />
               </Field>
             )}
             {periodKind === 'month-cycle' && (

@@ -4911,8 +4911,8 @@
       "planned_perkeso_employee_registration_hint": "PERKESO registration for a new employee. Not built.",
       "planned_lhdn_cp21": "CP21 — employee leaving Malaysia",
       "planned_lhdn_cp21_hint": "Notification that an employee is leaving Malaysia. Not built.",
-      "planned_lhdn_cp22a": "CP22A — tax clearance on cessation",
-      "planned_lhdn_cp22a_hint": "Leavers needing a CP22A are already flagged on the CP22 / CP22A worklist further down this screen, but the notice itself is not built.",
+      "planned_lhdn_cp22a": "[retired r409 — replaced by planned_lhdn_cp22a_cessation; it called CP22A 'tax clearance on cessation', which is wrong: on LHDN's form CP22A is the private-sector employer's notice that an employee has stopped working]",
+      "planned_lhdn_cp22a_hint": "[retired r409 — replaced by planned_lhdn_cp22a_cessation_hint, together with planned_lhdn_cp22a]",
       "planned_lhdn_cp39a": "CP39A — tax deduction on arrears",
       "planned_lhdn_cp39a_hint": "The statement of tax deducted on arrear payments. Not built.",
       "fidelity_agency_layout": "Agency layout",
@@ -5002,7 +5002,19 @@
       "viewer_back": "Back",
       "viewer_openNewTab": "Open in new tab",
       "viewer_frameTitle": "{form} — preview",
-      "viewer_showVersion": "Show this version"
+      "viewer_showVersion": "Show this version",
+      "cycles": "Payroll cycle",
+      "cycles_hint": "Only processed payroll cycles of the chosen company and month are listed.",
+      "cycles_noRuns": "No processed payroll cycle for this company and month yet.",
+      "cycles_nonePicked": "Tick at least one payroll cycle to continue.",
+      "cycles_partial": "You have left out at least one payroll cycle. The form will carry only the cycles you ticked, and it has no box that says which cycle a line came from.",
+      "refusal_cycles_no_runs": "There is no processed payroll for this company and month, so nothing was produced.",
+      "refusal_cycles_no_data": "No processed contributions for this form in the payroll cycles you picked, so nothing was produced.",
+      "refusal_cycles_invalid": "The payroll cycle selection was not valid. Pick the cycles again.",
+      "planned_lhdn_cp22a_cessation": "CP22A — notice of an employee leaving (private sector)",
+      "planned_lhdn_cp22a_cessation_hint": "The notice a private-sector employer sends LHDN when an employee stops working: resignation, retirement or death. Leavers who need one are flagged on the CP22 / CP22A worklist further down this screen, but the notice itself is not built yet.",
+      "refusal_cycles_no_deductions": "Nobody had PCB or CP38 deducted in the payroll cycles you picked, so no CP39 was produced.",
+      "refusal_year_no_payroll": "There is no processed payroll for this company in the year you picked, so nothing was produced."
     },
     "ea": {
       "backToReports": "Reports",
@@ -6869,13 +6881,13 @@
       "month": "Payroll month",
       "show": "Show",
       "notArtworkTitle": "Our layout, not PERKESO’s page.",
-      "notArtwork": "PERKESO publishes no blank Borang 8A to print onto, so this is drawn box for box to match the agency’s form on a page of ours. Check every figure before you key it in or file it.",
+      "notArtwork": "[retired r408 — said \"PERKESO publishes no blank Borang 8A to print onto\", which is false: PERKESO publishes one (item e74af58c). Replaced by notArtworkDrawn]",
       "noBatch": "No payroll run found for {company} · {period}. Run payroll for this month first.",
       "notFound": "That form is not available for the selected company.",
       "tileMonth": "Contribution month",
       "tileMonthHint": "The payroll month itself, with no shift.",
       "tileDue": "Pay no later than",
-      "tileDueHint": "The last day of the contribution month.",
+      "tileDueHint": "[retired r408 — said the deadline is the last day of the contribution month; PERKESO’s 2025 guide puts it on the 15th of the following month (item e74af58c). Replaced by tileDueNextMonth]",
       "tileEmployees": "Employees on the form",
       "tileSheets": "{count, plural, one {# sheet} other {# sheets}}",
       "tileTotal": "Amaun Caruman (total)",
@@ -6884,7 +6896,7 @@
       "missingTitle": "{count, plural, one {# employee cannot go on the form yet:} other {# employees cannot go on the form yet:}}",
       "missingHint": "Fix what is named against each person and come back — nothing can be downloaded until every row is complete.",
       "scheduleTitle": "The schedule",
-      "statusHint": "Column (2) STATUS is left blank for anyone who neither joined nor left this month, exactly as a filed Borang 8A leaves it. Type one against a row if you need it — nothing is saved.",
+      "statusHint": "[retired r408 — said column (2) STATUS is always left blank; it now fills B / H / M itself (item e74af58c). Replaced by statusHintDerived]",
       "statusPlaceholder": "Status",
       "statusAria": "Status for {name}",
       "colStart": "(1) Tarikh Mula Kerja — start date",
@@ -6915,7 +6927,21 @@
       "unfinishedNameTitle": "Some employee names do not look finished.",
       "unfinishedNameHint": "PERKESO’s name box is “name as per IC or passport”. These are the names saved on the staff records — the file carries them exactly as they are and never shortens or invents one. Uploading as they stand files these contributions under these names. Correct them on the staff record, then come back. Nothing here stops the download.",
       "oneLineNoticeTitle": "Each employee is one long line in the upload file.",
-      "oneLineNoticeBody": "Every record is a single line of {length} characters, with nothing in the middle of it. If you open the file in Notepad or another editor with word wrap turned on, one employee will look as though they have been split over two lines — that is the editor folding a long line to fit the window, not a break in the file. Turn word wrap off and each employee sits on one line. “Check the file” shows every field with PERKESO’s own numbering."
+      "oneLineNoticeBody": "Every record is a single line of {length} characters, with nothing in the middle of it. If you open the file in Notepad or another editor with word wrap turned on, one employee will look as though they have been split over two lines — that is the editor folding a long line to fit the window, not a break in the file. Turn word wrap off and each employee sits on one line. “Check the file” shows every field with PERKESO’s own numbering.",
+      "cyclesAll": "All payroll cycles",
+      "viewerBack": "Change selection",
+      "previewBlocked": "The form is shown here once the gaps listed above are filled.",
+      "notArtworkDrawn": "Drawn box for box to PERKESO’s own Borang 8A (page 1), on a page of ours — not PERKESO’s file, which dates from 2013 and whose guidance page quotes old contribution limits. Check every figure before you key it in or file it.",
+      "tileDueNextMonth": "The 15th of the month after the contribution month (PERKESO 2025 employer guide).",
+      "statusHintDerived": "Column (2) STATUS fills itself: B for someone who joined this month, H for someone who left, M for a death. The records do not hold S (on PERKESO benefit) or T (unpaid leave for the whole month) — type S or T against a row if it applies. A typed status replaces the one filled in for that row.",
+      "blankTitle": "Boxes left blank on this form",
+      "blankPayment": "Payment method",
+      "blankPaymentHint": "The tick boxes and the cheque or money-order number. The records do not hold how you paid.",
+      "blankSignature": "Signature, name, telephone and stamp",
+      "blankSignatureHint": "Signed and stamped by hand after printing, on every sheet.",
+      "blankAgent": "Collection agent boxes",
+      "blankAgentHint": "The stamp and the payment slip number are filled in by the collection agent, not by the employer.",
+      "blankStatus": "Status column"
     },
     "borangA": {
       "title": "Borang A — monthly contribution form (KWSP)",
@@ -6980,7 +7006,10 @@
       "downloadReport": "Check the upload file field by field",
       "downloadReportTitle": "A report on the upload file itself: every line’s length, and every field with its columns, its length and its value, so you can compare it against a KWSP sample before you upload.",
       "fileBlocked": "The upload file is blocked until the records above are fixed.",
-      "downloadsBlocked": "Downloads are blocked until every row is complete."
+      "downloadsBlocked": "Downloads are blocked until every row is complete.",
+      "cyclesAll": "All payroll cycles",
+      "viewerBack": "Change selection",
+      "previewBlocked": "The form is shown here once the gaps listed above are filled."
     },
     "cp39Form": {
       "title": "CP39 — monthly PCB / MTD statement (LHDN)",
@@ -7058,7 +7087,10 @@
       "pcbPaymentKindCp38": "CP38 (instalment instruction)",
       "pcbPaymentReceiptRef": "Receipt / bank slip / transaction no.",
       "pcbPaymentPaidOn": "Payment date",
-      "pcbPaymentSave": "Save"
+      "pcbPaymentSave": "Save",
+      "cyclesAll": "All payroll cycles",
+      "viewerBack": "Change selection",
+      "previewBlocked": "The statement is shown here once the gaps listed above are filled."
     },
     "pcbDetail": {
       "exemptionHeading": "Exemption Information",
@@ -7767,6 +7799,29 @@
       "error_invalid_scheme": "Select a valid Income Tax Resident category.",
       "error_citizenship_unknown": "The recorded citizenship does not meet the resident non-citizen C-Suite requirement.",
       "error_not_resident": "The recorded tax residency does not meet this resident scheme requirement."
+    },
+    "runPicker": {
+      "all": "All payroll cycles",
+      "selectAll": "Select all",
+      "clear": "Clear",
+      "search": "Search payroll cycles",
+      "loading": "Looking up this month’s payroll runs…",
+      "run": "Run {seq} of the month",
+      "runTypeRegular": "Regular",
+      "runTypeOffCycle": "Off-cycle",
+      "runTypeBonus": "Bonus",
+      "runTypeAdjustment": "Adjustment"
+    },
+    "cp8dPreview": {
+      "title": "Form E / CP8D — annual return (LHDN)",
+      "viewerBack": "Change selection",
+      "tileYear": "Year",
+      "tileEmployees": "Employees included",
+      "notArtworkTitle": "Our layout, not LHDN’s Form E.",
+      "notArtwork": "The PDF is the CP8D per-employee schedule for the year, in our own column layout: the same file the Download PDF button saves. It is not LHDN’s Form E or CP8D template. File through e-Filing (Form E).",
+      "partATitle": "Form E Part A head counts",
+      "partAHint": "Worked out from the same payroll as the schedule. They are listed here and are not printed on the PDF.",
+      "figuresLink": "Open the figures table (and record this generation)"
     }
   },
   "admin": {
@@ -10718,7 +10773,12 @@
         "firstScheduleConsentLabel": "The employee has agreed to take this day as leave instead of statutory overtime pay.",
         "firstScheduleBlocked": "This employee is within the First Schedule and their company does not allow a Leave Credit in place of statutory overtime pay. Change that in the Rules tab first.",
         "extendedShort": "This is an ordinary working day. Only {minutes} minute(s) past the scheduled shift end counted for this employee, which is below the company’s half-day threshold, so this date cannot earn a Leave Credit.",
-        "extendedEarned": "This employee worked {minutes} counted minute(s) past the scheduled shift end, which earns {days} day. The credit amount is fixed at that figure and cannot be changed here."
+        "extendedEarned": "This employee worked {minutes} counted minute(s) past the scheduled shift end, which earns {days} day. The credit amount is fixed at that figure and cannot be changed here.",
+        "descriptionRows": "Credit a day an employee worked. The credit is added immediately.",
+        "help": "Add one row for each date worked, with the times. Four eligible hours earn half a day, eight a full day, by the employee’s company rule. View shows the attendance on record. The credit is added immediately — there is no manager step.",
+        "pickEmployeeFirst": "Choose the employee first.",
+        "checkingEmployee": "Checking this employee…",
+        "ownRecord": "You cannot add a Leave Credit on your own record. Another HR administrator must do it."
       },
       "rulesIntro": "Who can earn a Leave Credit, how it is earned and how long a credit lasts, per company. A change here applies to credits granted after it; a credit already granted keeps its expiry date."
     },

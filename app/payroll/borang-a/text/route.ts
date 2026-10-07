@@ -12,7 +12,7 @@
  * call `loadBorangA`, so there is one gate, not two.
  */
 import { borangAFilename, borangATextExport } from '@/lib/borang-a';
-import { describeGaps, loadBorangA } from '../shared';
+import { NO_CONTRIBUTIONS, describeGaps, loadBorangA } from '../shared';
 
 export const runtime = 'nodejs';
 
@@ -30,14 +30,17 @@ export async function GET(req: Request) {
       return new Response('No payroll run for this month — run payroll first.', { status: 422 });
     }
     // r372 (item f022dd70) — TWO MORE REFUSALS, BOTH ABOUT THE PAYROLL-CYCLE SELECTION ON THE LINK.
-    // Unreachable from this screen, which sends no run parameter, and answered here anyway: a route is
-    // not a screen, and a hand-edited link must not fall through to "somebody is missing a number".
+    // r407: the review screen DOES send run parameters now (it carries the criteria step's selection), and
+    // its Continue gate refuses an empty selection before any link is drawn — so these answer a hand-edited
+    // or stale link. A route is not a screen, and such a link must not fall through to "somebody is
+    // missing a number".
     if (loaded.reason === 'selection-empty') {
       return new Response('No payroll run for this month matches the payroll cycles you selected.', {
         status: 422,
       });
     }
     if (loaded.reason === 'bad-selection') return new Response(loaded.message, { status: 422 });
+    if (loaded.reason === 'no-contributions') return new Response(NO_CONTRIBUTIONS, { status: 422 });
     return new Response(`Cannot produce Borang A: ${describeGaps(loaded)}.`, { status: 422 });
   }
 

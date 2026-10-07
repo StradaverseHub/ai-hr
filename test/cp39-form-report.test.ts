@@ -15,7 +15,7 @@
  * over-reports a payment; and a throw on the read path 500s two screens that have always degraded to a
  * card. `test/borang-a-report.test.ts` is this file's template, for the same reason and the same form.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import {
@@ -39,6 +39,7 @@ import { setCp38 } from '../core/cp38';
 import { createAdditionalRun, createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
 import { reportPreview } from '../core/reporting';
 import { CP39_FORM_HEADER_KEYS, cp39FormFrom, missingCp39FormHeader } from '../lib/cp39-form';
+import { renderCp39FormPdf } from '../lib/cp39-form-pdf';
 
 let b: Base;
 
@@ -122,6 +123,7 @@ describe('the CP39 employer header', () => {
     // The read must set EVERY key the renderer looks for. A box the read forgot prints empty on a
     // statutory document and looks exactly like a company that never filled the field in.
     for (const k of CP39_FORM_HEADER_KEYS) expect(h[k], k).toBeDefined();
+    // The READ carries the stored value; the "E" is stripped later, by the form model (r409).
     expect(h.employerNo).toBe('E 908915-10');
     expect(h.registrationNo).toBe('199801012345');
     expect(h.employerName).toBe('Acme Sdn Bhd');
@@ -381,6 +383,96 @@ describe('CP38, which is not PCB', () => {
   });
 });
 
+/**
+ * r409 (item 79f3f64d) — THE PRINTED CP39 FOR SOME OF A MONTH'S PAYROLL CYCLES.
+ *
+ * Until r409 only the e-Data PCB upload file honoured `runSeqs`; the printed statement read the whole month
+ * whatever was ticked. May, with TWO employees and two runs: the regular run pays both, the bonus run pays a
+ * keyed bonus to ONE of them — so ZZZ genuinely has no payslip on the bonus run, and "an unticked cycle
+ * contributes nobody" is an assertion about the filter, not about a person who was never in the month.
+ */
+describe('r409 — the printed CP39 honours the payroll-cycle selection', () => {
+  async function mayWithBonus() {
+    await setModule(b.tenantId, 'multi_cycle_payroll', 'active');
+    const a = await entitledCtx(b);
+    const e = await hire({ name: 'AAA CYCLE', salary: 9000, ic: '900101015555', taxNumber: 'SG10000000001' });
+    await hire({ name: 'ZZZ REGULAR ONLY', salary: 9000, ic: '880808085555', taxNumber: 'SG10000000002' });
+    const reg = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId: reg.batchId });
+    const bonus = await createAdditionalRun(a, { companyId: b.companyId, payPeriod: '2026-05', runType: 'bonus' });
+    await setPayrollInput(a, { batchId: bonus.batchId, employmentId: e.employmentId, overtimeAmount: 0, bonusAmount: 6000 });
+    await generatePayslips(a, { batchId: bonus.batchId });
+    // Read back, never assumed to be 1 and 2: `run_seq` is the kernel's to allocate.
+    const runs = await owner.db
+      .select({ runSeq: schema.payrollBatch.runSeq, runType: schema.payrollBatch.runType })
+      .from(schema.payrollBatch)
+      .where(and(eq(schema.payrollBatch.companyId, b.companyId), eq(schema.payrollBatch.payPeriod, '2026-05')));
+    return {
+      a,
+      regularSeq: runs.find((r) => r.runType === 'regular')!.runSeq,
+      bonusSeq: runs.find((r) => r.runType === 'bonus')!.runSeq,
+    };
+  }
+  const view = (a: Awaited<ReturnType<typeof entitledCtx>>, runSeqs?: number[]) =>
+    reportPreview(a, { companyId: b.companyId, reportId: 'my.cp39', periodKey: '2026-05', runSeqs });
+  const pcbOf = (r: { rows: Record<string, unknown>[] }, name: string) =>
+    Number(r.rows.find((x) => x.name === name)?.pcb ?? NaN);
+
+  /**
+   * The criteria step's Select All submits NO `run` parameter (components/run-picker.tsx), so ticking
+   * everything is the unfiltered read by construction. This pins the other half: a selection that NAMES
+   * every run renders the very same bytes. Date frozen only around the render (pdf-lib stamps the
+   * document's CreationDate); the read's own Tarikh dicetak is today's for both.
+   */
+  it('ticking every cycle renders the very same PDF bytes as no selection', async () => {
+    const { a, regularSeq, bonusSeq } = await mayWithBonus();
+    const omitted = await view(a);
+    const everyRun = await view(a, [regularSeq, bonusSeq]);
+    const draw = async (r: Awaited<ReturnType<typeof view>>) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-06-10T02:00:00Z'));
+      try {
+        return Buffer.from(await renderCp39FormPdf(cp39FormFrom({ header: r.meta.formHeader, rows: r.rows })));
+      } finally {
+        vi.useRealTimers();
+      }
+    };
+    const [x, y] = [await draw(omitted), await draw(everyRun)];
+    expect(x.byteLength).toBeGreaterThan(1000);
+    expect(x.equals(y), 'Select All drew a different CP39 from no selection').toBe(true);
+    expect(everyRun.rows).toEqual(omitted.rows);
+    expect(everyRun.totals).toEqual(omitted.totals);
+    expect('selectionEmpty' in everyRun.meta).toBe(false);
+  });
+
+  it('a bonus-only CP39 carries the bonus run’s PCB alone, and nobody the bonus run did not pay', async () => {
+    const { a, regularSeq, bonusSeq } = await mayWithBonus();
+    const whole = await view(a);
+    const regular = await view(a, [regularSeq]);
+    const bonusOnly = await view(a, [bonusSeq]);
+    // The premise, asserted: the bonus run deducted PCB, or "the subset" would be a subset of nothing.
+    expect(pcbOf(bonusOnly, 'AAA CYCLE')).toBeGreaterThan(0);
+    expect(bonusOnly.rows.map((r) => r.name)).toEqual(['AAA CYCLE']);
+    expect(regular.rows.map((r) => r.name).sort()).toEqual(['AAA CYCLE', 'ZZZ REGULAR ONLY']);
+    // Per-run DELTAS, so the two subsets sum to the whole month, to the sen.
+    const sen = (n: number) => Math.round(n * 100);
+    expect(sen(pcbOf(regular, 'AAA CYCLE') + pcbOf(bonusOnly, 'AAA CYCLE'))).toBe(sen(pcbOf(whole, 'AAA CYCLE')));
+    expect(sen(regular.totals.pcb + bonusOnly.totals.pcb)).toBe(sen(whole.totals.pcb));
+    // On the PAGE too: the bonus-only statement's grand total is the bonus run's PCB, not the month's.
+    const form = cp39FormFrom({ header: bonusOnly.meta.formHeader, rows: bonusOnly.rows });
+    expect(sen(form.totalPcb)).toBe(sen(pcbOf(bonusOnly, 'AAA CYCLE')));
+    expect(sen(form.totalPcb)).toBeLessThan(sen(whole.totals.pcb));
+  });
+
+  it('a cycle that is not in the month is "selection empty", never "run payroll first"', async () => {
+    const { a, regularSeq, bonusSeq } = await mayWithBonus();
+    const r = await view(a, [Math.max(regularSeq, bonusSeq) + 7]);
+    expect(r.meta.hasBatch).toBe(true);
+    expect(r.meta.selectionEmpty).toBe(true);
+    expect(r.rows).toEqual([]);
+  });
+});
+
 describe('readiness', () => {
   /**
    * NAMED, NEVER DROPPED. The e-Data PCB file refuses without a tax reference number, so the printed
@@ -490,7 +582,8 @@ describe('the read feeds the printed statement', () => {
     const r = await run('2026-07');
 
     const form = cp39FormFrom({ header: r.meta.formHeader, rows: r.rows });
-    expect(form.employerNo).toBe('E 908915-10');
+    // r409 — the form prints the "E" beside the box itself, so the model hands it the number without it.
+    expect(form.employerNo).toBe('908915-10');
     expect(form.employerName).toBe('Acme Sdn Bhd');
     // The '\n'-joined scalar the read had to flatten comes back as printable lines.
     expect(form.employerAddress).toEqual([
