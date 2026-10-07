@@ -39,7 +39,7 @@ import { leaveVisual } from '@/lib/leave-visual';
 // balance grid behind it cannot print the same number two ways.
 import { DAY_DASH, formatDays } from '@/lib/day-format';
 import type { EntitlementBreakdownData, HrLeaveSummaryExplanation } from './EntitlementBreakdown';
-import { explainLeaveSummary, type ExplainArg, type ExplainStep, type LeaveSummaryLineKey } from '@/lib/leave-summary-explain';
+import { SELF_VOICED_EXPLAIN_KEYS, explainLeaveSummary, type ExplainArg, type ExplainStep, type LeaveSummaryLineKey } from '@/lib/leave-summary-explain';
 import {
   entitlementStatusNeedsNotice,
   ELIGIBILITY_AXIS_LABEL_KEY,
@@ -130,6 +130,7 @@ export function LeaveDetailsPanel({
   triggerLabel,
   triggerClassName,
   hrExplanation,
+  voice = 'hr',
 }: {
   data: EntitlementBreakdownData;
   summary: PanelSummary;
@@ -194,6 +195,13 @@ export function LeaveDetailsPanel({
    * Omit it and nothing about this panel changes.
    */
   hrExplanation?: HrLeaveSummaryExplanation;
+  /**
+   * r404 (42e55e2b) — WHO THE STEP-BY-STEP SENTENCES ADDRESS. `'hr'` (the default, so both HR mounts are
+   * byte-identical) speaks about "this employee"; `'self'` is My Leave › Leave Details, where the reader IS the
+   * employee, and the seven sentences that name a third person (`SELF_VOICED_EXPLAIN_KEYS`) resolve under
+   * `leave.breakdown.explainSelf` instead. Every other sentence is already person-neutral and is shared.
+   */
+  voice?: 'hr' | 'self';
 }) {
   const t = useTranslations('leave.breakdown');
   const locale = useLocale();
@@ -283,7 +291,10 @@ export function LeaveDetailsPanel({
     }
     return out;
   };
-  const explainText = (s: ExplainStep) => t(`explain.${s.key}`, explainValues(s.args));
+  const explainText = (s: ExplainStep) =>
+    voice === 'self' && SELF_VOICED_EXPLAIN_KEYS.has(s.key)
+      ? t(`explainSelf.${s.key}`, explainValues(s.args))
+      : t(`explain.${s.key}`, explainValues(s.args));
   // Consecutive `item` steps are one list under the sentence before them (a credit, an adjustment, a request).
   const renderExplanation = (steps: ExplainStep[]) => {
     const out: ReactNode[] = [];

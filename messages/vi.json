@@ -374,6 +374,7 @@
     "leaveOverview": "Đơn xin nghỉ phép",
     "leaveHistory": "Trạng thái đơn xin nghỉ phép",
     "leaveCreditHistory": "Lịch sử tín dụng nghỉ phép",
+    "leaveDetails": "Chi tiết nghỉ phép",
     "myTeam": "Nhóm của tôi"
   },
   "dashboard": {
@@ -2542,6 +2543,15 @@
         "sharedTakenItem": "{type}: {days}",
         "sharedPendingIntro": "Đang chờ duyệt trên số dư này, theo từng loại phép dùng chung:",
         "sharedPendingItem": "{type}: {days}"
+      },
+      "explainSelf": {
+        "eligibleNoMatch": "Không có bảng định mức nào áp dụng cho bạn. Loại nghỉ phép này có bảng, nhưng không bảng nào đến được bạn, nên Quyền lợi là 0.00.",
+        "eligibleViaScheme": "Bảng định mức: {table}. Bảng này áp dụng vì chế độ phúc lợi {scheme} khớp với bạn.",
+        "eligibleViaDefault": "Bảng định mức: {table}. Bảng này áp dụng vì là bảng mặc định của loại nghỉ phép này; không có chế độ phúc lợi nào khớp với bạn.",
+        "joinMonthsRemaining": "Bạn vào làm ngày {hiredOn}, trong năm nghỉ phép này: Nghỉ phép năm tính số tháng còn lại trong năm bạn vào làm, kể cả tháng bạn vào làm.",
+        "joinFull": "Bạn vào làm ngày {hiredOn}, trong năm nghỉ phép này: loại nghỉ phép này được cấp đủ trong năm bạn vào làm.",
+        "adjSystemItem": "{date}: {days} — {kind, select, policy_recalc {tự động tính lại sau khi quy tắc nghỉ phép thay đổi, đã được thay thế bởi điều chỉnh Ngày vào làm đến năm dương lịch} profile_recalc {tự động tính lại định mức, đã được thay thế bởi điều chỉnh Ngày vào làm đến năm dương lịch} a2c_recalc {điều chỉnh Ngày vào làm đến năm dương lịch} ineligible_grant_reversal {hoàn lại khoản cấp mà bạn không đủ điều kiện nhận} other {điều chỉnh tự động}}",
+        "entitlementProrated": "Bạn vào làm giữa năm nghỉ phép, nên quyền lợi {annual} ngày được chia theo tỷ lệ: {eligibleDays} ngày đủ điều kiện trên {yearDays} ngày cho ra {unrounded} ngày."
       }
     },
     "preview": {
@@ -14123,6 +14133,19 @@
       "noCredit": "Khoản tín dụng chỉ được tạo khi yêu cầu được phê duyệt.",
       "close": "Đóng"
     }
+  },
+  "leaveDetails": {
+    "title": "Chi tiết nghỉ phép",
+    "description": "Số dư của bạn cho mọi loại nghỉ phép, tính đến ngày bạn chọn.",
+    "viewOnly": "Chỉ xem · hồ sơ của chính bạn",
+    "searchLabel": "Tìm mã nghỉ phép",
+    "searchPlaceholder": "vd. AL",
+    "downloadExcel": "Tải Excel",
+    "footnote": "Chỉ liệt kê các loại nghỉ phép có định mức hoặc có phát sinh.",
+    "noRows": "Bạn không có số dư nghỉ phép nào để hiển thị cho ngày này.",
+    "noMatch": "Không có loại nghỉ phép nào khớp với tìm kiếm của bạn.",
+    "tableLabel": "Số dư nghỉ phép của bạn",
+    "scrollHint": "Vuốt bảng sang ngang để xem mọi cột."
   },
   "notices": {
     "pageTitle": "Bảng thông báo",

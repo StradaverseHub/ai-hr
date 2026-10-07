@@ -134,7 +134,10 @@ export const SCREENS: readonly ScreenEntry[] = [
     // address is now My Leave › Leave Credit History — the employee's own Leave Credit requests and what
     // became of each credit — reached from the My Leave menu rather than a link on this screen; the form
     // copy it used to carry is gone (ba039150). Same audience, same scope, same guard, so still this column.
-    routes: ['/leave', '/leave/history', '/leave/credit'],
+    // r404 (42e55e2b) — '/leave/details' (My Leave › Leave Details) rides this column on the same argument:
+    // the employee's own leave balances, same audience, same guard (`scopedSession`), self-scoped in the page
+    // by `myEmployment(session)`. A second column would repeat the "My Absence" label.
+    routes: ['/leave', '/leave/history', '/leave/credit', '/leave/details'],
     hasScopeNote: true,
   },
   {

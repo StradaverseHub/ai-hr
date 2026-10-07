@@ -758,3 +758,19 @@ export function explainLeaveSummary(
     available,
   };
 }
+
+/**
+ * r404 (42e55e2b) — THE SEVEN HR-VOICED EXPLAIN SENTENCES, the only ones that speak about a third person
+ * ("this employee", "they joined", "someone joins", "the employee was not eligible"). Each has a second-person
+ * twin under `leave.breakdown.explainSelf` in all six catalogues; test/r404-leave-details.test.ts checks the
+ * set against the English catalogue so a NEW third-person sentence cannot ship into the employee's panel.
+ */
+export const SELF_VOICED_EXPLAIN_KEYS: ReadonlySet<string> = new Set([
+  'eligibleNoMatch',
+  'eligibleViaScheme',
+  'eligibleViaDefault',
+  'joinMonthsRemaining',
+  'joinFull',
+  'adjSystemItem',
+  'entitlementProrated',
+]);
