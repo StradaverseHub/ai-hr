@@ -31,7 +31,11 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (p: string) => fs.readFileSync(path.join(ROOT, p), 'utf8');
-const onMain = (p: string) => execFileSync('git', ['show', `main:${p}`], { cwd: ROOT, encoding: 'utf8' });
+/** Classic's baseline: main as it stood just before r400 (docs: record r398/r399). Pinned to a commit, not to
+ * `main`, because once r400 merged, `main:` carried the monolith: tokens itself and the guard compared main with
+ * main-minus-its-own-tokens (5 red on main, r401). A ref that moves cannot be a baseline. */
+const CLASSIC_BASE = '32ae1ccd78419f7df810f7afaf6de9168d331f9c';
+const onMain = (p: string) => execFileSync('git', ['show', `${CLASSIC_BASE}:${p}`], { cwd: ROOT, encoding: 'utf8' });
 const FILES = ['components/ui/button.tsx', 'components/ui/input.tsx', 'components/ui/badge.tsx', 'components/ui/card.tsx'];
 
 /** Every single-quoted string literal that reads as a Tailwind class list (at least one utility-shaped token). */

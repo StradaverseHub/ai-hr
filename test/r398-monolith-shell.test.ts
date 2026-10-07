@@ -16,7 +16,11 @@ import { describe, expect, it } from 'vitest';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (p: string) => fs.readFileSync(path.join(ROOT, p), 'utf8');
-const onMain = (p: string) => execFileSync('git', ['show', `main:${p}`], { cwd: ROOT, encoding: 'utf8' });
+/** Classic's baseline: main as last merged into build/r398-shell, i.e. main without r398. Pinned to a commit
+ * (r401): once r398 merged, `main:` WAS this branch, so the sweep compared the shell with itself and passed on
+ * nothing. A ref that moves cannot be a baseline. */
+const CLASSIC_BASE = 'f79f0259f529dfafd1426fbf70389c8555495858';
+const onMain = (p: string) => execFileSync('git', ['show', `${CLASSIC_BASE}:${p}`], { cwd: ROOT, encoding: 'utf8' });
 
 const LAYOUT = read('app/layout.tsx');
 const SIDEBAR = read('components/sidebar.tsx');
