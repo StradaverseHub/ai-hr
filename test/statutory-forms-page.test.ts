@@ -167,13 +167,13 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
     // df35d60d — `my.tp3` JOINED this list, from MY_PLANNED_FORMS, and it is a door for the SAME reason
     // `my.tp1` is: a TP3 is one person's record of their own previous employment for one assessment
     // year, so there is no company-wide table for a ReportDef to generate.
+    // ⚠️ r402 (item f3cf2444) — THE PAIRS BECAME ONE ENTRY EACH. `my.ea.en`/`my.ea.ms` are `my.ea` and
+    // `my.pcb2ii.en`/`my.pcb2ii.ms` are `my.pcb2ii`, each with a Version choice; the former ids redirect.
     expect(MY_STATUTORY_LINKS.map((l) => l.id).sort()).toEqual([
       'my.borang-e',
       'my.cp22',
-      'my.ea.en',
-      'my.ea.ms',
-      'my.pcb2ii.en',
-      'my.pcb2ii.ms',
+      'my.ea',
+      'my.pcb2ii',
       'my.tp1',
       'my.tp3',
     ]);
@@ -242,8 +242,11 @@ describe('the shelves come from the catalog, so a new form needs no screen chang
         entries.length,
       );
     }
-    // The reporter listed thirteen Income Tax forms. Thirteen is what the LHDN shelf holds.
-    expect(byShelf.get('lhdn')!.length).toBe(13);
+    // The reporter listed thirteen Income Tax forms, counting the EA and PCB 2(II) once per language.
+    // ⚠️ r402 (item f3cf2444) — at the same reporter's request those two pairs are ONE card each, with the
+    // language as a Version choice, so the LHDN shelf holds eleven cards for the same thirteen documents.
+    expect(byShelf.get('lhdn')!.length).toBe(11);
+    expect(byShelf.get('lhdn')!.map((e) => e.id)).toEqual(expect.arrayContaining(['my.ea', 'my.pcb2ii']));
   });
 
   it('resolves every label the catalog names against en.json', () => {
@@ -615,13 +618,12 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
     expect(
       MY_STATUTORY_LINKS.map((l) => [l.id, l.actionLabelKey ?? null]),
     ).toEqual([
-      ['my.ea.en', 'openForm'],
-      ['my.ea.ms', 'openForm'],
+      // r402 — one EA entry now (was `.en`/`.ms`); it still names `openForm`.
+      ['my.ea', 'openForm'],
       // r323 — PCB 2(II) says "Open form" for the same reason the EA does: the button opens the employee
       // picker, and the DESTINATION is what it names. `openEmployeeList` stays TP1's, where the list IS
-      // the destination; `openWorklist` stays CP22's alone.
-      ['my.pcb2ii.en', 'openForm'],
-      ['my.pcb2ii.ms', 'openForm'],
+      // the destination; `openWorklist` stays CP22's alone. (One entry since r402.)
+      ['my.pcb2ii', 'openForm'],
       ['my.borang-e', null],
       ['my.tp1', 'openEmployeeList'],
       // df35d60d — TP3 says "Open employee list" for the SAME reason TP1 does and the EA does not: its
@@ -650,10 +652,10 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
     // no title key of its own — so r220's `secondaryTitleKey` left this row byte-identical.
     expect(cp22.secondaryTitleKey).toBeUndefined();
     expect(PAGE).toContain("tCp22('blankTitle')");
-    // r220 — THE EA ROWS NOW HAVE ONE TOO, so the old "no other row grows a second action" sweep would
-    // now be asserting the opposite of a decision the reporter approved (AGENTS 18). The half of it that
-    // is still right is kept: a row that has NOT been given a second action must not sprout one.
-    for (const l of MY_STATUTORY_LINKS.filter((x) => !['my.cp22', 'my.ea.en', 'my.ea.ms'].includes(x.id))) {
+    // r220 gave the EA rows one too; ⚠️ r402 (item f3cf2444) TOOK IT AWAY again at the reporter's request,
+    // so the sweep is back to its original shape: the CP22 row is the ONLY row with a second action, and
+    // the merged EA entry is swept with every other row.
+    for (const l of MY_STATUTORY_LINKS.filter((x) => x.id !== 'my.cp22')) {
       expect(l.secondaryHref, `${l.id} must have one action`).toBeUndefined();
       expect(l.tertiaryHref, `${l.id} must have one action`).toBeUndefined();
     }
@@ -683,7 +685,10 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
    */
   it('an EA arrival is titled as the EA, from the shelf row’s OWN label key', () => {
     // Off the same keys the shelf renders, so the row you pressed and the page you land on cannot drift.
-    expect(FORM_PAGE).toContain("const eaTitle = eaLang ? t(eaLang === 'ms' ? 'link_ea_ms' : 'link_ea_en') : null;");
+    // r402 — the two per-language rows are one entry (`link_ea`), so a bookmarked CP8D arrival carrying
+    // `lang` is titled with that one label; the language still rides through to the statement.
+    expect(FORM_PAGE).toContain("const eaTitle = eaLang ? t('link_ea') : null;");
+    expect(MY_STATUTORY_LINKS.find((l) => l.id === 'my.ea')!.labelKey).toBe('link_ea');
     expect(FORM_PAGE).toContain('const heading = eaTitle ?? def.label;');
     // …and BOTH headers use it. The print one was the second place the wrong name appeared, and the worse
     // of the two: a printed page naming a return it is not is a document somebody could file wrongly.
@@ -712,68 +717,49 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
     }
   });
 
-  it('offers the blank EA and the field register from both EA rows, in each row’s own language', () => {
-    const en_ = MY_STATUTORY_LINKS.find((l) => l.id === 'my.ea.en')!;
-    const ms_ = MY_STATUTORY_LINKS.find((l) => l.id === 'my.ea.ms')!;
-
-    expect(en_.secondaryHref).toBe('/payroll/ea/blank?lang=en');
-    expect(ms_.secondaryHref).toBe('/payroll/ea/blank?lang=ms');
-    expect(en_.secondaryLabelKey).toBe('link_ea_blank_en');
-    expect(ms_.secondaryLabelKey).toBe('link_ea_blank_ms');
-    expect(en.payroll.statutoryForms.link_ea_blank_en).toBe('Download blank EA form (English)');
-    expect(en.payroll.statutoryForms.link_ea_blank_ms).toBe('Download blank EA form (Bahasa Malaysia)');
-
-    // ONE register, offered from both rows, and it is the same href on each.
-    expect(en_.tertiaryHref).toBe('/payroll/ea/field-register');
-    expect(ms_.tertiaryHref).toBe('/payroll/ea/field-register');
-    expect(en_.tertiaryLabelKey).toBe('link_ea_register');
-    expect(ms_.tertiaryLabelKey).toBe('link_ea_register');
-
-    // Both routes exist, and the screen renders the third action from the catalog rather than by name.
+  /**
+   * ⚠️ r402 (item f3cf2444) — r220 AND r242 ARE REVERSED: THE EA CARD OFFERS NO BLANK AND NO REGISTER.
+   *
+   * r220 offered the blank C.P.8A and the field register from both EA rows; r242 folded them under one
+   * named control ("Blank form and field register"). The reporter then asked for that control to go, with
+   * nothing in its place, and for the underlying data to stay. So the two cases that pinned the offer are
+   * UPDATED to pin its removal (AGENTS 18 — a guard pinning a decision being reversed is updated, not
+   * deleted), and the routes and the register module are pinned as KEPT.
+   */
+  it('the merged EA card offers no blank form and no field register, and both routes stay as unlinked endpoints', () => {
+    const ea = MY_STATUTORY_LINKS.find((l) => l.id === 'my.ea')!;
+    expect(ea.secondaryHref).toBeUndefined();
+    expect(ea.secondaryLabelKey).toBeUndefined();
+    expect(ea.tertiaryHref).toBeUndefined();
+    expect(ea.tertiaryLabelKey).toBeUndefined();
+    expect(ea.extrasLabelKey).toBeUndefined();
+    // No catalog entry links to either route any more…
+    for (const l of MY_STATUTORY_LINKS) {
+      for (const href of [l.href, l.secondaryHref, l.tertiaryHref]) {
+        expect(href ?? '', `${l.id} must not link the blank EA or the register`).not.toMatch(/\/payroll\/ea\/(blank|field-register)/);
+      }
+    }
+    // …and neither does the screen.
+    expect(PAGE).not.toContain('/payroll/ea/blank');
+    expect(PAGE).not.toContain('/payroll/ea/field-register');
+    // The underlying data stays: both routes and the register module still exist.
     expect(fs.existsSync(path.join(ROOT, 'app/payroll/ea/blank/route.ts'))).toBe(true);
     expect(fs.existsSync(path.join(ROOT, 'app/payroll/ea/field-register/route.ts'))).toBe(true);
-    expect(PAGE).toContain('l.tertiaryHref');
-    expect(PAGE).toContain('[c.secondary, c.tertiary]');
-
-    // Each EA row declares its OWN tooltip key, so the blank C.P.8A's caveat is not the blank CP22's.
-    expect(en_.secondaryTitleKey).toBe('link_ea_blank_title');
-    expect(ms_.secondaryTitleKey).toBe('link_ea_blank_title');
-    expect(en_.tertiaryTitleKey).toBe('link_ea_register_title');
+    expect(fs.existsSync(path.join(ROOT, 'lib/ea-field-register.ts'))).toBe(true);
+    // The keys are RETIRED, never deleted.
+    for (const k of ['link_ea_more', 'link_ea_blank_en', 'link_ea_blank_ms', 'link_ea_blank_title', 'link_ea_register', 'link_ea_register_title'] as const) {
+      expect(en.payroll.statutoryForms[k], k).toMatch(/^\[retired r402/);
+    }
   });
 
-  /**
-   * ⚠️ r242 (item b36a8a91) — THE TWO EXTRAS ARE STILL BOTH THERE, AND THEY NOW SIT UNDER ONE NAME.
-   *
-   * The case above is what r220 approved and it is unchanged: the blank form and the field register are
-   * offered from both EA rows, in each row's own language. What this round changes is their WEIGHT. Three
-   * actions side by side, the middle one a blank form, is how the reporter downloaded an empty C.P.8A
-   * believing it was the completed one — so the extras fold under a single named control and the row is
-   * left with one obvious route to a completed form.
-   *
-   * THE BLANK MUST STAY REACHABLE. It is a real thing HR sometimes wants, and this is a demotion, not a
-   * deletion — which is why the hrefs above are pinned unchanged and why this case pins that the folded
-   * control still renders BOTH of them.
-   */
-  it('folds the EA row’s blank form and field register under one named action, without hiding either', () => {
-    for (const id of ['my.ea.en', 'my.ea.ms']) {
-      const l = MY_STATUTORY_LINKS.find((x) => x.id === id)!;
-      expect(l.extrasLabelKey, id).toBe('link_ea_more');
-      // The demotion is presentational: both extras keep their own href, label and tooltip.
-      expect(l.secondaryHref, id).toBeTruthy();
-      expect(l.tertiaryHref, id).toBeTruthy();
-    }
-    expect(en.payroll.statutoryForms.link_ea_more).toBe('Blank form and field register');
-    // The screen reads the name off the catalog and renders the extras through ONE component, so a row
-    // that declares no name still renders them side by side exactly as it did.
+  it('the extras machinery is kept for the CP22 row, and no row names a group of extras any more', () => {
+    // The screen still renders extras from the catalog through ONE component, because the CP22's blank
+    // still uses `secondary`; a row that declares no name renders them side by side exactly as it did.
     expect(PAGE).toContain('l.extrasLabelKey ?');
     expect(PAGE).toContain('groupLabel={c.extrasLabel}');
     expect(PAGE).toContain('if (!groupLabel) return');
-    // A <details>, not a client menu: this screen is a server component and the fold must work with no
-    // JavaScript, or the blank form stops being reachable for anyone who has it turned off.
-    expect(PAGE).toContain('<details');
-    expect(PAGE).toContain('<summary');
-    // Every row that has NOT been given a name over its extras must not sprout one.
-    for (const l of MY_STATUTORY_LINKS.filter((x) => !['my.ea.en', 'my.ea.ms'].includes(x.id))) {
+    expect(PAGE).toContain('[c.secondary, c.tertiary]');
+    for (const l of MY_STATUTORY_LINKS) {
       expect(l.extrasLabelKey, `${l.id} must not name a group of extras`).toBeUndefined();
     }
   });
@@ -784,7 +770,7 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
    * `agency-layout`, and the blank download does not move them.
    */
   it('the blank EA does not promote either EA row’s fidelity', () => {
-    for (const id of ['my.ea.en', 'my.ea.ms']) {
+    for (const id of ['my.ea']) {
       expect(MY_STATUTORY_LINKS.find((l) => l.id === id)!.fidelity, id).toBe('agency-layout');
     }
     expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /(cp\W?8a|\bea\b)/i.test(f))).toEqual([]);
@@ -895,7 +881,8 @@ describe('the four pins', () => {
     // rendering of the agency's page, deliberately NOT in `public/forms/`. Both entries move together:
     // they are one renderer in two languages, so a split between them would be a claim that the form is
     // more faithful in one language than the other, which is not a thing that can be true here.
-    for (const id of ['my.ea.en', 'my.ea.ms']) {
+    // (r402 — one entry since then, `my.ea`, whose two Versions share that one renderer.)
+    for (const id of ['my.ea']) {
       expect(MY_STATUTORY_LINKS.find((l) => l.id === id)!.fidelity, id).toBe('agency-layout');
     }
     expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /(cp\W?8a|\bea\b)/i.test(f))).toEqual([]);
@@ -924,10 +911,9 @@ describe('the four pins', () => {
       'my.borang-8a',
       'my.borang-a',
       'my.cp39',
-      'my.ea.en',
-      'my.ea.ms',
-      'my.pcb2ii.en',
-      'my.pcb2ii.ms',
+      // r402 — one entry each (was `.en` / `.ms`).
+      'my.ea',
+      'my.pcb2ii',
       'my.tp1',
       'my.tp3',
     ]);
@@ -1185,11 +1171,17 @@ describe('what the shelves say about the forms that are not built', () => {
     // The dictionaries must actually DIFFER, or "two languages" is two identical documents.
     expect(ms.payroll.ea.title).not.toBe(en.payroll.ea.title);
 
+    // ⚠️ r402 (item f3cf2444) — THE TWO ENTRIES ARE ONE NOW, AND THE TWO LANGUAGES ARE ITS VERSIONS. The
+    // href takes `{lang}` and the entry declares exactly the two values the routes allowlist, so the
+    // criteria step offers English and Bahasa Malaysia and still nothing else.
     const eas = MY_STATUTORY_LINKS.filter((l) => l.id.startsWith('my.ea'));
-    expect(eas.map((l) => l.id)).toEqual(['my.ea.en', 'my.ea.ms']);
-    expect(eas.map((l) => new URL(l.href, 'http://x').searchParams.get('lang'))).toEqual(['en', 'ms']);
-    // Both open the SAME screen — the year's employee list — so there is no second EA route either.
-    expect(new Set(eas.map((l) => l.href.split('?')[0])).size).toBe(1);
+    expect(eas.map((l) => l.id)).toEqual(['my.ea']);
+    expect(new URL(eas[0].href, 'http://x').searchParams.get('lang')).toBe('{lang}');
+    expect(eas[0].versions!.map((v) => v.value)).toEqual(['en', 'ms']);
+    expect(eas[0].formerIds).toEqual([
+      { id: 'my.ea.en', version: 'en' },
+      { id: 'my.ea.ms', version: 'ms' },
+    ]);
 
     // ONE renderer, and the labels are resolved for the language that was ASKED FOR rather than for the
     // viewer. `getTranslations('payroll.ea')` — the bare string form — is the bug this replaced.
@@ -1233,8 +1225,12 @@ describe('what the shelves say about the forms that are not built', () => {
     // read the cookie unconditionally, which would have made `lang=ms` return a 200 in the wrong language.
     expect(read('i18n/request.ts')).toContain('locale: requested');
 
-    // The shelf hint must no longer state the opposite of what ships.
-    expect(en.payroll.statutoryForms.link_ea_hint).not.toContain('not a second form');
+    // The shelf hint must no longer state the opposite of what ships. r402 — and it must no longer say the
+    // two languages are two entries: the old hint is retired and the entry names a new one.
+    expect(eas[0].hintKey).toBe('link_ea_hint_version');
+    expect(en.payroll.statutoryForms.link_ea_hint_version).not.toContain('not a second form');
+    expect(en.payroll.statutoryForms.link_ea_hint_version).not.toMatch(/two separate entries/);
+    expect(en.payroll.statutoryForms.link_ea_hint).toMatch(/^\[retired r402/);
   });
 });
 

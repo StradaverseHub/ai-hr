@@ -1,14 +1,18 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { listStatutoryCatalog } from '@/core/reporting';
-import { Card, Field, PageHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Card, PageHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
+import { Field } from '@/components/monolith/field';
+import { MONO_UNDERLINE_FIELD as MONO_FIELD } from '@/components/monolith/classes';
 import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
 import {
   defaultCriteria,
+  defaultVersion,
   destinationReportId,
+  formerIdRedirect,
   parseDestination,
   reportDestination,
   type CriterionKind,
@@ -58,6 +62,13 @@ import {
  * just begun. `defaultCriteria` in `../criteria` holds the rules and the arithmetic; both are driven off
  * the TENANT's clock, because between 00:00 and 08:00 MYT the UTC date is still yesterday's.
  *
+ * r402 (item f3cf2444) — A VERSION BOX, AND THE FULL WIDTH. The C.P.8A (EA) and PCB 2(II) are one shelf
+ * entry each now; their href carries `{lang}`, so this step draws a Version select whose options are the
+ * entry's own `versions`, arriving on `?lang=` when the entry publishes it and on the entry's first version
+ * otherwise (never the viewer's UI language). A former id (`my.ea.ms`) redirects here with its version
+ * chosen. The step was `max-w-3xl` and is now on `pageWideCls` with the boxes in one row — the reporter
+ * asked for the full width, which reverses r256's cap on this screen.
+ *
  * AN UNKNOWN OR UNBUILT FORM 404s. `form` comes from the URL, so it is attacker-controlled; it is
  * resolved against the catalog of the jurisdictions this admin's OWN company scope reaches, and a
  * `PlannedFormDef` can never match because planned entries are not in the two collections searched — the
@@ -90,7 +101,7 @@ const FIDELITY_CLS: Record<string, string> = {
 export default async function StatutoryFormCriteriaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ form?: string; body?: string }>;
+  searchParams: Promise<{ form?: string; body?: string; lang?: string }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.statutoryForms');
@@ -103,7 +114,12 @@ export default async function StatutoryFormCriteriaPage({
   const catalog = await listStatutoryCatalog(s, scopeIds);
   const report = catalog.reports.find((r) => r.id === formId);
   const link = catalog.links.find((l) => l.id === formId);
-  if (!report && !link) notFound();
+  if (!report && !link) {
+    // r402 — a former id (a bookmark to `my.ea.ms`) lands on the merged entry with its version chosen.
+    const moved = formerIdRedirect(catalog.links, formId, sp.body);
+    if (moved) redirect(moved);
+    notFound();
+  }
 
   const companies = (await listCompanies(s)).filter((c) => !c.archivedAt && scopeIds.includes(c.id));
   // THE TENANT'S CLOCK, NOT THE HOST'S. Between 00:00 and 08:00 MYT the UTC date is still yesterday's, and
@@ -145,9 +161,13 @@ export default async function StatutoryFormCriteriaPage({
   const buttonLabel = t((link?.criteriaLabelKey ?? 'criteria_generate') as 'criteria_generate');
   const backHref = `/payroll/statutory-forms${sp.body ? `?body=${encodeURIComponent(sp.body)}` : ''}`;
   const field = (kind: CriterionKind) => parsed.criteria.find((c) => c.kind === kind);
+  // r402 — the Version options are the ENTRY's, so the step offers exactly what the destination allowlists.
+  const versions = link?.versions ?? [];
+  const chosenVersion = defaultVersion(versions, sp.lang);
+  const selectCls = `${inputCls} ${MONO_FIELD}`;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader back={{ href: backHref, label: t('pageTitle') }} title={t('criteriaTitle', { form: name })} />
 
       <Card className="overflow-hidden">
@@ -173,13 +193,16 @@ export default async function StatutoryFormCriteriaPage({
             criteria end up in the address bar of the screen that uses them, so the generated view is
             refreshable, bookmarkable and can be sent to somebody — which is the property every existing
             deep link into `[formId]` depends on. */}
-        <form method="get" action={parsed.action} className="flex flex-wrap items-end gap-3 px-4 py-4">
+        <form method="get" action={parsed.action} className="space-y-4 px-4 py-4 monolith:px-0">
           {parsed.hidden.map((h) => (
             <input key={h.name} type="hidden" name={h.name} value={h.value} />
           ))}
+          {/* r402 — ONE ROW across the full width: Company, Year and (for a form published in more than one
+              language) Version, stacking on a phone. */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 monolith:border-t monolith:border-ink monolith:pt-4">
           {field('company') && (
             <Field label={t('company')}>
-              <select name={field('company')!.field} defaultValue={companies[0]?.id ?? ''} className={inputCls} required>
+              <select name={field('company')!.field} defaultValue={companies[0]?.id ?? ''} className={selectCls} required>
                 {companies.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -190,7 +213,7 @@ export default async function StatutoryFormCriteriaPage({
           )}
           {field('year') && (
             <Field label={t('year')}>
-              <select name={field('year')!.field} defaultValue={defaultYear} className={inputCls} required>
+              <select name={field('year')!.field} defaultValue={defaultYear} className={selectCls} required>
                 {years.map((y) => (
                   <option key={y} value={y}>
                     {y}
@@ -204,7 +227,7 @@ export default async function StatutoryFormCriteriaPage({
               in as many words. */}
           {field('month') && (
             <Field label={t('month')}>
-              <select name={field('month')!.field} defaultValue={defaultMonth} className={inputCls} required>
+              <select name={field('month')!.field} defaultValue={defaultMonth} className={selectCls} required>
                 {MONTHS.map((m) => (
                   <option key={m} value={m}>
                     {monthName(m)}
@@ -213,11 +236,28 @@ export default async function StatutoryFormCriteriaPage({
               </select>
             </Field>
           )}
-          <div className="flex items-center gap-3">
-            <Link href={backHref} className="h-9 rounded-md px-3 text-sm leading-9 text-muted-foreground hover:text-foreground">
+          {/* r402 (item f3cf2444) — VERSION: the language the form is printed in. Drawn only for an entry
+              whose href takes `{lang}`, with the entry's own options; the field name is the destination's. */}
+          {field('version') && versions.length > 0 && (
+            <Field label={t('version')} hint={t('version_hint')}>
+              <select name={field('version')!.field} defaultValue={chosenVersion} className={selectCls} required>
+                {versions.map((v) => (
+                  <option key={v.value} value={v.value}>
+                    {t(v.labelKey as 'version_en')}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-3 monolith:border-t monolith:border-hairline monolith:pt-4">
+            <Link
+              href={backHref}
+              className="h-9 rounded-md px-3 text-sm leading-9 text-muted-foreground hover:text-foreground monolith:h-auto monolith:rounded-none monolith:border-b monolith:border-ink monolith:px-0.5 monolith:leading-normal monolith:text-ink"
+            >
               {t('criteria_cancel')}
             </Link>
-            <button className={btnPrimary}>{buttonLabel}</button>
+            <button className={`${btnPrimary} monolith:h-11 monolith:rounded-full monolith:bg-ink monolith:px-5 monolith:text-bone`}>{buttonLabel}</button>
           </div>
         </form>
       </Card>

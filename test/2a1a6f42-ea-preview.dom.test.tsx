@@ -73,14 +73,16 @@ const ROWS: EaPickerRow[] = [
 ];
 
 /** The EA screen's own call site: its download route, its preview route, its hidden criteria. */
-const mount = (opts: { loc?: Loc; withPreview?: boolean } = {}) => {
+const mount = (opts: { loc?: Loc; withPreview?: boolean; initialSelected?: string[] } = {}) => {
   const loc = opts.loc ?? 'en';
   const s = stringsFor(loc);
   return render(
     <EaEmployeePicker
       rows={ROWS}
       action="/payroll/statutory-forms/ea/download"
-      previewAction={opts.withPreview === false ? undefined : '/payroll/statutory-forms/ea/preview'}
+      // r402 (item f3cf2444) — the EA screen points Preview at its in-app viewer now.
+      previewAction={opts.withPreview === false ? undefined : '/payroll/statutory-forms/ea/view'}
+      initialSelected={opts.initialSelected}
       hidden={[
         { name: 'companyId', value: '33333333-3333-4333-8333-333333333333' },
         { name: 'year', value: '2026' },
@@ -94,14 +96,16 @@ const mount = (opts: { loc?: Loc; withPreview?: boolean } = {}) => {
 const previewButton = (loc: Loc = 'en') => screen.getByRole('button', { name: words(loc).eaPreview });
 
 describe('2a1a6f42 · the C.P.8A (EA) picker now offers a Preview', () => {
-  it('renders the button, retargeted at the EA preview route, opening a new tab', async () => {
+  it('renders the button, retargeted at the EA viewer, in the SAME tab (r402)', async () => {
     mount();
     const btn = previewButton();
     expect(btn.getAttribute('type'), 'it SUBMITS the picker’s own form').toBe('submit');
     // `formAction` retargets THIS submit, so the preview is built from the identical selection, company,
     // year and language the download would use. A separate link would be a second place to build it from.
-    expect(btn.getAttribute('formaction')).toBe('/payroll/statutory-forms/ea/preview');
-    expect(btn.getAttribute('formtarget'), 'the selection must survive being looked at').toBe('_blank');
+    expect(btn.getAttribute('formaction')).toBe('/payroll/statutory-forms/ea/view');
+    // ⚠️ r402 (item f3cf2444) — REVERSED: no new tab. The form opens inside the product; the selection
+    // survives through the viewer's Back, which returns the ticked ids (see the initialSelected case).
+    expect(btn.getAttribute('formtarget'), 'Preview opens inside the system, not a new tab').toBeNull();
     // And the form it retargets is the download's form, carrying the criteria unchanged.
     const form = btn.closest('form')!;
     expect(form.getAttribute('action')).toBe('/payroll/statutory-forms/ea/download');
@@ -154,6 +158,20 @@ describe('2a1a6f42 · the C.P.8A (EA) picker now offers a Preview', () => {
    * AND THE MIRROR OF IT, so the count above cannot pass because the picker stopped rendering buttons at
    * all: with both props the form carries TWO submits, the preview and the download.
    */
+  /**
+   * r402 (item f3cf2444) — COMING BACK FROM THE VIEWER KEEPS THE SELECTION. The viewer's Back returns to
+   * the picker with the ticked ids in the URL; the page hands them over as `initialSelected`, and they are
+   * submitted again exactly as if they had just been ticked.
+   */
+  it('starts with the ids it is handed already ticked, and submits them', () => {
+    mount({ initialSelected: ['22222222-2222-4222-8222-222222222222', '22222222-2222-4222-8222-222222222222'] });
+    expect((screen.getByRole('checkbox', { name: 'Tan Sri Abu' }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole('checkbox', { name: 'Lim Wei Ming' }) as HTMLInputElement).checked).toBe(false);
+    const fd = new FormData(previewButton().closest('form')!);
+    expect(fd.getAll('id'), 'de-duplicated').toEqual(['22222222-2222-4222-8222-222222222222']);
+    expect((previewButton() as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('renders exactly TWO submits when a screen supplies both', () => {
     const { container } = mount();
     expect(container.querySelectorAll('button[type="submit"], form button:not([type])').length).toBe(2);
@@ -168,7 +186,7 @@ describe('2a1a6f42 · the C.P.8A (EA) picker now offers a Preview', () => {
       expect(label.trim(), `${loc}: eaPreview must not be blank`).not.toBe('');
       // Found BY that word: if the catalogue were missing the key the button would carry no accessible
       // name and this lookup would throw rather than quietly passing.
-      expect(previewButton(loc).getAttribute('formaction')).toBe('/payroll/statutory-forms/ea/preview');
+      expect(previewButton(loc).getAttribute('formaction')).toBe('/payroll/statutory-forms/ea/view');
       cleanup();
     }
   });

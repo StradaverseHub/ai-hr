@@ -53,8 +53,9 @@ import { recordReportAction } from './actions';
  * fully specified, and they land on the figures exactly as they did. Requiring a `?generate=1` would have
  * broken every one of them for no gain.
  *
- * 587ee719 — `lang` IS ACCEPTED AND CARRIED, NOT RENDERED. The two EA shelf entries (my.ea.en / my.ea.ms)
- * land on this screen's CP8D employee list, and the language they were chosen for has to survive the trip
+ * 587ee719 — `lang` IS ACCEPTED AND CARRIED, NOT RENDERED. The EA shelf entry (two of them, my.ea.en /
+ * my.ea.ms, until r402 merged them into `my.ea` with a Version choice) used to land on this screen's CP8D
+ * employee list, and bookmarks still do, and the language they were chosen for has to survive the trip
  * to the per-employee statement. It changes nothing about this page's own words: those follow the viewer's
  * UI locale exactly as before.
  */
@@ -205,7 +206,9 @@ export default async function StatutoryFormPage({
    * on cannot drift apart; `def.label` stays the answer for every other arrival, including Form E from
    * its own row.
    */
-  const eaTitle = eaLang ? t(eaLang === 'ms' ? 'link_ea_ms' : 'link_ea_en') : null;
+  // r402 (item f3cf2444) — the two per-language EA rows became ONE (`my.ea`), so the title is its one
+  // label; the language still rides along to the per-employee statement through `eaLang`.
+  const eaTitle = eaLang ? t('link_ea') : null;
   const heading = eaTitle ?? def.label;
   // r256 — Back returns to the DIRECTORY, on the shelf this form sits on. It no longer carries the year
   // and month: the directory has no period on it any more, and a link that still named one would be

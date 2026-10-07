@@ -334,11 +334,13 @@ describe('72b100cd · the gate is written once, so it cannot relax on one side',
    * which is the failure the rest of this file exists for.
    */
   it('each screen points the shared picker at ITS OWN preview route', () => {
+    // r402 (item f3cf2444) — each screen's Preview now goes to ITS OWN in-app viewer, which frames that
+    // form's own inline route; the "own route, never the other form's" claim is unchanged.
     expect(SCREEN, 'the PCB 2(II) screen').toMatch(
-      /previewAction="\/payroll\/statutory-forms\/pcb2ii\/preview"/,
+      /previewAction="\/payroll\/statutory-forms\/pcb2ii\/view"/,
     );
     expect(EA_SCREEN, 'the C.P.8A (EA) screen, from r331 on').toMatch(
-      /previewAction="\/payroll\/statutory-forms\/ea\/preview"/,
+      /previewAction="\/payroll\/statutory-forms\/ea\/view"/,
     );
     // Neither may point at the other's document.
     expect(code(SCREEN), 'the PCB 2(II) screen must not open the EA').not.toMatch(
@@ -525,6 +527,10 @@ describe('r379 · required date and batch preparation refusal', () => {
       const back = new URL(response.headers.get('Location')!);
       expect(back.searchParams.get('error')).toBe('signatory');
       expect(back.searchParams.get('selectedDate')).toBe('2027-02-28');
+      // r402: the in-app viewer follows this refusal at the top level, so the picker must come back ticked.
+      const sent = [...new Set(new URL(url(route, ok()).url).searchParams.getAll('id'))];
+      expect(sent.length, 'the request ticked somebody').toBeGreaterThan(0);
+      expect(back.searchParams.getAll('id'), 'the refusal keeps the ticked people').toEqual(sent);
       expect(await response.text()).toBe('');
     }
   });

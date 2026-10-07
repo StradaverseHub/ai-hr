@@ -638,6 +638,9 @@ describe('r389 · the My Leave menu, the renamed row, the retired link and the s
       ['/leave', 'leaveOverview'],
       ['/leave/history', 'leaveHistory'],
       ['/leave/credit', 'leaveCreditHistory'],
+      // r404 (42e55e2b) — UPDATED, NOT LOOSENED: Leave Details is the fourth row; it is core leave and not
+      // toil-gated, which the sidebar assertions below still prove (only leaveCreditHistory is named there).
+      ['/leave/details', 'leaveDetails'],
     ]);
     const sidebar = codeOnly(read('components/sidebar.tsx'));
     expect(sidebar).toContain("c.labelKey === 'leaveCreditHistory'");
