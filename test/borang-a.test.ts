@@ -384,7 +384,8 @@ describe('the plain-text export', () => {
     const rows = Array.from({ length: 5 }, (_, i) => row({ employmentId: `e${i}` }));
     const text = borangATextExport(borangAFrom({ header: header(), rows, perPage: 2 }));
     expect((text.match(/Jumlah yang dibawa dari mukasurat terdahulu/g) ?? []).length).toBe(2);
-    expect((text.match(/Jumlah yang dibawa ke mukasurat seterusnya/g) ?? []).length).toBe(2);
+    // r411 (the October sample) — NO carried-forward line on any sheet, in the text twin as on the page.
+    expect((text.match(/Jumlah yang dibawa ke mukasurat seterusnya/g) ?? []).length).toBe(0);
     expect((text.match(/^JUMLAH \(RM\)/gm) ?? []).length).toBe(0);
     expect((text.match(/JUMLAH \(RM\)/g) ?? []).length).toBe(1);
     expect(text).toContain('Mukasurat 3/3');
@@ -454,7 +455,8 @@ describe('the catalog entry', () => {
   });
 
   it('claims `agency-layout` and never `official`', () => {
-    // KWSP publishes no blank Borang A, so there is no artwork on disk this could have been drawn onto —
+    // We hold no KWSP blank Borang A (r411: no longer claimed that KWSP publishes none), so there is no
+    // artwork on disk this could have been drawn onto —
     // which is exactly why it may not make the claim `my.cp22` makes.
     expect(def!.fidelity).toBe('agency-layout');
     // `my.cp22` — the ONE `official` entry — is a StatutoryFormLink, not a ReportDef, so nothing in
@@ -810,10 +812,11 @@ describe('the KWSP 6 page furniture', () => {
     for (const [i, note] of BORANG_A_CATATAN.entries()) expect(flat, note).toContain(`${i + 1}. ${note}`);
   });
 
-  it('carries "(jika ada)" on BOTH carry-forward lines and nowhere near the JUMLAH', async () => {
+  it('carries "(jika ada)" on the brought-forward line and nowhere near the JUMLAH', async () => {
     // Point 6. The subtotals themselves were already built and proven; only the suffix was missing.
+    // r411 — the carried-forward line is gone (the October sample has none), so only one carry line is left.
     const sheets = await drawnPages(built(3, 2));
-    expect(flatten(sheets[0])).toContain('Jumlah yang dibawa ke mukasurat seterusnya (jika ada)');
+    expect(flatten(sheets[0])).not.toContain('Jumlah yang dibawa ke mukasurat seterusnya');
     expect(flatten(sheets[1])).toContain('Jumlah yang dibawa dari mukasurat terdahulu (jika ada)');
     // The whole-form total is not a "if any" line and must not acquire the suffix.
     expect(flatten(sheets[1])).toContain('JUMLAH (RM)');

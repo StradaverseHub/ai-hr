@@ -864,8 +864,8 @@ describe('the four pins', () => {
     expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /8a/i.test(f))).toEqual([]);
     // 9c8dad7a — AND BORANG A, WHICH IS THE SECOND MEMBER OF `agency-layout` AND NOT A THIRD STATUS.
     // Same argument, different agency: the reporter's EPF specimen is the same vendor's DevExpress output
-    // and KWSP publishes no blank Borang A either, so there is no artwork on disk for it to have been
-    // drawn onto. Forms sharing ONE value is what stops the vocabulary growing a status per form.
+    // and we hold no KWSP blank either (r411: whether KWSP publishes one was never checked, so it is no
+    // longer claimed), so there is no artwork on disk for it to have been drawn onto. Forms sharing ONE value is what stops the vocabulary growing a status per form.
     expect(MY_REPORTS.find((r) => r.id === 'my.borang-a')!.fidelity).toBe('agency-layout');
     expect(fs.readdirSync(path.join(ROOT, 'public/forms')).filter((f) => /borang/i.test(f))).toEqual([]);
     // c99e8358 — AND THE CP39, WHICH IS THE THIRD MEMBER. This line used to read
@@ -910,6 +910,8 @@ describe('the four pins', () => {
     ).toEqual([
       'my.borang-8a',
       'my.borang-a',
+      // r411 — BBCD, drawn to the reporter's October sample on our paper; we hold no KWSP blank.
+      'my.borang-bbcd',
       'my.cp39',
       // r402 — one entry each (was `.en` / `.ms`).
       'my.ea',

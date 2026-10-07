@@ -222,9 +222,14 @@ describe('each form’s criteria step asks for what THAT form needs, and nothing
         expect(d.action, r.id).toBe(`/payroll/statutory-forms/${r.id}`);
       }
     }
-    // Borang A (r407), Borang 8A (r408) and CP39 (r409) declare it today — pinned, so a refactor that dropped
-    // any declaration cannot quietly turn the cycle box off.
-    expect(monthly.filter((r) => r.runSelection).map((r) => r.id).sort()).toEqual(['my.borang-8a', 'my.borang-a', 'my.cp39']);
+    // Borang A (r407), Borang 8A (r408), CP39 (r409) and BBCD (r411) declare it today — pinned, so a refactor
+    // that dropped any declaration cannot quietly turn the cycle box off.
+    expect(monthly.filter((r) => r.runSelection).map((r) => r.id).sort()).toEqual([
+      'my.borang-8a',
+      'my.borang-a',
+      'my.borang-bbcd',
+      'my.cp39',
+    ]);
   });
 
   it('asks an ANNUAL report for company and year, and never a month', () => {
