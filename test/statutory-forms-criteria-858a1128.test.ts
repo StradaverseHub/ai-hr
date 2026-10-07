@@ -143,8 +143,10 @@ describe('the main screen is a directory: no company, year or month gates the fo
    * bookmark people hold is `?companyId=…#worklist`, so the anchor and the parameter both have to survive
    * a round whose whole point is removing the filter bar above them.
    */
+  // r413 (item 79f3f64d, step 2) — the CP22 ROW now opens the event-selection screen (one press, no
+  // placeholder, so still not templated); the WORKLIST it used to scroll to stays at its anchor.
   it('keeps the CP22 worklist reachable at its own anchor', () => {
-    expect(linkById.get('my.cp22')?.href).toBe('/payroll/statutory-forms#worklist');
+    expect(linkById.get('my.cp22')?.href).toBe('/payroll/statutory-forms/event?form=my.cp22');
     expect(TEMPLATED.test(linkById.get('my.cp22')!.href)).toBe(false);
     expect(DIRECTORY).toContain('id="worklist"');
     expect(DIRECTORY).toContain('complianceWorklist');
@@ -182,9 +184,10 @@ describe('every registered form reaches the directory, with the status it alread
    * quietly does — a shared caption acquires a new subject the moment a new member joins the set.
    * `my.cp22` remains the ONLY `official` row, which is the claim that costs the most if it is untrue.
    */
+  // r413 — CP22A was BUILT on LHDN's own artwork and joined the official whitelist; no existing form moved.
   it('moves no form between fidelity statuses', () => {
     const official = [...MY_REPORTS, ...MY_STATUTORY_LINKS].filter((e) => e.fidelity === 'official');
-    expect(official.map((e) => e.id)).toEqual(['my.cp22']);
+    expect(official.map((e) => e.id)).toEqual(['my.cp22', 'my.cp22a']);
     // r402 — one EA entry since the per-language pair merged; its status is unchanged.
     expect(EA_LINKS.map((l) => l.fidelity)).toEqual(['agency-layout']);
   });
@@ -343,7 +346,8 @@ describe('each form’s criteria step asks for what THAT form needs, and nothing
   it('sends a templated entry to the criteria step and an un-templated one straight through', () => {
     for (const l of MY_STATUTORY_LINKS) {
       const templated = TEMPLATED.test(l.href);
-      expect(templated, `${l.id} ${l.href}`).toBe(l.id !== 'my.cp22');
+      // r413 — CP22 and CP22A open the event-selection screen in one press: no placeholder.
+      expect(templated, `${l.id} ${l.href}`).toBe(!l.event);
     }
     expect(criteriaHref('my.cp39')).toBe('/payroll/statutory-forms/open?form=my.cp39');
     expect(DIRECTORY).toContain('TEMPLATED.test(l.href) ? criteriaHref(l.id) : l.href');
