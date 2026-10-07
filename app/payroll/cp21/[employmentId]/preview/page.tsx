@@ -73,6 +73,9 @@ export default async function Cp21PreviewPage({
   const blanks = CP21_FIELDS.filter((f) => f.source === 'none');
   const backHref = `/payroll/statutory-forms/event?form=my.cp21&companyId=${encodeURIComponent(particulars.companyId)}`;
   const selectCls = `${inputCls} ${MONO_FIELD}`;
+  // The monolith underline field fixes its height at h-10, which would clip a four-row textarea to one and
+  // a half lines (seen at 1440 and 390 in r415's render check). The textarea takes the field WITHOUT it.
+  const textareaCls = `${inputCls} h-auto py-1.5 ${MONO_FIELD.replace('monolith:h-10', 'monolith:h-auto')}`;
   const panelCls = 'rounded-md border border-border px-3 py-2 text-xs monolith:rounded-none';
   const warnCls =
     'rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300 monolith:rounded-none';
@@ -135,7 +138,7 @@ export default async function Cp21PreviewPage({
             maxLength={400}
             name={CP21_TYPED_PARAMS.overseasAddress}
             defaultValue={typed.overseasAddress.join('\n')}
-            className={`${inputCls} h-auto py-1.5 ${MONO_FIELD}`}
+            className={textareaCls}
           />
         </label>
         <label className="flex flex-col gap-1 text-xs">
