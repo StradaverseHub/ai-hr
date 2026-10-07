@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Plus_Jakarta_Sans, Geist_Mono } from 'next/font/google';
+import { Plus_Jakarta_Sans, Geist_Mono, Schibsted_Grotesk, DM_Mono } from 'next/font/google';
 import { cookies, headers } from 'next/headers';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale } from 'next-intl/server';
@@ -36,9 +36,24 @@ import { listApprovalHistory } from '@/core/read';
 import { shapeApprovalHistoryItems } from '@/lib/approval-history';
 import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
+import { UI_THEME_COOKIE, resolveUiTheme } from '@/lib/ui-theme';
 
-const jakarta = Plus_Jakarta_Sans({ variable: '--font-jakarta', subsets: ['latin'], display: 'swap' });
-const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
+// r396: Classic's faces are no longer the default, so they are not preloaded on every page (they still load,
+// on demand, for a Classic user). Monolith's two faces preload.
+const jakarta = Plus_Jakarta_Sans({ variable: '--font-jakarta', subsets: ['latin'], display: 'swap', preload: false });
+const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'], preload: false });
+// r396 — Monolith's faces (docs/design/monolith/README.md §2), loaded BESIDE Classic's. Both sets of
+// variables are always on <html>; app/globals.css maps --font-jakarta / --font-geist-mono onto these two
+// only under `:root[data-ui-theme="monolith"]`, so Classic keeps Jakarta + Geist Mono untouched and the
+// CJK / Thai / Tamil fallback chain in --font-sans is shared by both themes.
+const schibsted = Schibsted_Grotesk({
+  variable: '--font-schibsted',
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  display: 'swap',
+});
+const dmMono = DM_Mono({ variable: '--font-dm-mono', subsets: ['latin'], weight: ['400', '500'] });
+const fontVariables = `${jakarta.variable} ${geistMono.variable} ${schibsted.variable} ${dmMono.variable}`;
 
 // A literal, not common.appName: `metadata` is evaluated outside the request/locale scope, so there is
 // no translator here. The brand name is the same string in all six locales anyway — it is a name, not
@@ -55,13 +70,18 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const pathname = (await headers()).get('x-pathname') ?? '';
   const isAuthRoute = isAuthRoutePath(pathname);
   const locale = await getLocale();
+  // r396 — the UI theme, from the `ui_theme` cookie, written onto <html> so the FIRST paint is already in
+  // the chosen theme (no flash). Absent or unknown → Monolith (lib/ui-theme.ts). Read before the auth
+  // branch so /login is themed too. Light/dark is a separate axis (next-themes' `.dark` class).
+  const uiTheme = resolveUiTheme((await cookies()).get(UI_THEME_COOKIE)?.value);
 
   if (isAuthRoute) {
     // Bare shell for the login flow: fonts + theme + intl, no sidebar / topbar / session.
     return (
       <html
         lang={locale}
-        className={`${jakarta.variable} ${geistMono.variable} h-full antialiased`}
+        data-ui-theme={uiTheme}
+        className={`${fontVariables} h-full antialiased`}
         suppressHydrationWarning
       >
         <body className="h-dvh overflow-auto bg-canvas font-sans">
@@ -143,7 +163,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html
       lang={locale}
-      className={`${jakarta.variable} ${geistMono.variable} h-full antialiased`}
+      data-ui-theme={uiTheme}
+      className={`${fontVariables} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="h-dvh overflow-hidden bg-canvas p-3 font-sans lg:p-4">

@@ -68,6 +68,102 @@
   --shadow-shell: 0 16px 48px -12px rgb(0 0 0 / 0.7);
 }
 
+/* ── r396 — THE MONOLITH THEME (docs/design/monolith/, README §1–2) ─────────────────────────────────────
+   Two UI themes, chosen per browser by the `ui_theme` cookie and written by the server as
+   <html data-ui-theme="monolith|classic"> (app/layout.tsx, lib/ui-theme.ts). The :root and .dark blocks
+   above ARE Classic and are deliberately untouched (test/r396-theme-switch.test.ts compares them with
+   main). Monolith's values from docs/design/monolith/tokens.css live only under the scope below, so every
+   existing token NAME works in both themes.
+   SPECIFICITY IS THE MECHANISM: `:root[data-ui-theme]` (0,2,0) beats both `:root` and `.dark` (0,1,0),
+   and the dark block (0,3,0) beats the light one — so light/dark stays an independent axis in Monolith,
+   and a token Monolith's dark block does not restate (radius, shadows, fonts) keeps Monolith's light
+   value in dark mode rather than falling back to Classic's. */
+:root[data-ui-theme='monolith'] {
+  /* Ground and ink */
+  --canvas: #ece9e2; /* pressed — the frame behind the shell */
+  --background: #f2f0eb; /* bone — the page */
+  --foreground: #111111; /* ink */
+  --card: #f2f0eb; /* no cards: surfaces are the page, divided by hairlines */
+  --card-foreground: #111111;
+  --popover: #f2f0eb;
+  --popover-foreground: #111111;
+  --sidebar: #f2f0eb;
+  --sidebar-foreground: #63625d;
+  --sidebar-border: #d9d6cf;
+  /* The one accent is ink. Orange is a MARK, never a fill behind text. */
+  --primary: #111111;
+  --primary-foreground: #f2f0eb;
+  --secondary: #ece9e2; /* pressed */
+  --secondary-foreground: #111111;
+  --muted: #ece9e2;
+  --muted-foreground: #63625d; /* mid */
+  --accent: #ece9e2; /* hover wash = pressed, never a tint */
+  --accent-foreground: #111111;
+  --destructive: #bd3800; /* orange text: AA on bone and on pressed (hover) rows; r396 darkened from the board's #c23a00, 4.44:1 on pressed */
+  --destructive-foreground: #f2f0eb;
+  --border: #d9d6cf; /* hairline */
+  --input: #111111; /* inputs are underlined in ink, not boxed */
+  --ring: #ff4d00;
+  --radius: 0px; /* square. --radius-lg/md/sm follow it (negative calc clamps to 0) */
+  --radius-panel: 0px; /* --radius-xl reads this first, so shell panels are square too */
+  /* Monolith-only */
+  --ink: #111111;
+  --bone: #f2f0eb;
+  --pressed: #ece9e2;
+  --hairline: #d9d6cf;
+  --mid: #63625d;
+  --faint: #9a988f; /* placeholders, off states — never body text */
+  --signal: #ff4d00; /* the orange mark: lines, dots, rings, glows */
+  --signal-text: #bd3800; /* orange as text; see --destructive */
+  --light: #fbfaf7; /* the light pool under an object */
+  --shadow-sm: none;
+  --shadow-card: none;
+  --shadow-pop: 0 24px 60px -24px rgb(17 17 17 / 0.35);
+  --shadow-shell: none;
+  --object-shadow: 0 100px 90px -56px rgb(17 17 17 / 0.75);
+  --glow: 0 0 12px #ff4d00, 0 0 36px rgb(255 77 0 / 0.6);
+  /* Type (README §2): the app's two font variables re-pointed at Monolith's faces. next/font defines
+     --font-jakarta / --font-geist-mono on <html> through a class (0,1,0); this scope outranks it. The
+     CJK / Thai / Tamil fallbacks in --font-sans are untouched, so they serve both themes. */
+  --font-jakarta: var(--font-schibsted);
+  --font-geist-mono: var(--font-dm-mono);
+}
+
+:root[data-ui-theme='monolith'].dark {
+  --canvas: #0a0a0a;
+  --background: #111111;
+  --foreground: #f2f0eb;
+  --card: #111111;
+  --card-foreground: #f2f0eb;
+  --popover: #161616;
+  --popover-foreground: #f2f0eb;
+  --sidebar: #111111;
+  --sidebar-foreground: #9a988f;
+  --sidebar-border: #2a2a2a;
+  --primary: #f2f0eb;
+  --primary-foreground: #111111;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #f2f0eb;
+  --muted: #1a1a1a;
+  --muted-foreground: #a8a69e;
+  --accent: #1a1a1a;
+  --accent-foreground: #f2f0eb;
+  --destructive: #ff6a2b;
+  --destructive-foreground: #111111;
+  --border: #2a2a2a;
+  --input: #f2f0eb;
+  --ring: #ff4d00;
+  --ink: #f2f0eb;
+  --bone: #111111;
+  --pressed: #1a1a1a;
+  --hairline: #2a2a2a;
+  --mid: #a8a69e;
+  --faint: #6b6a66;
+  --signal: #ff4d00;
+  --signal-text: #ff6a2b;
+  --light: #1c1c1c;
+}
+
 @theme inline {
   /* Latin runs on Jakarta; CJK / Thai / Tamil fall through to OS-native script fonts
      (macOS · Windows · Linux-Noto) via per-glyph fallback — no web-font download. See ADR-0016. */
@@ -103,9 +199,48 @@
   --radius-lg: var(--radius); /* 16 — cards */
   --radius-md: calc(var(--radius) - 4px); /* 12 — buttons, inputs */
   --radius-sm: calc(var(--radius) - 8px); /* 8 — small */
-  --radius-xl: calc(var(--radius) + 8px); /* 24 — shell, big panels */
+  /* r396: `--radius-panel` is unset in Classic, so the fallback is exactly the old calc (24px); Monolith
+     sets it to 0px. Needed because `inline` bakes this expression into every rounded-xl utility. */
+  --radius-xl: var(--radius-panel, calc(var(--radius) + 8px)); /* 24 — shell, big panels */
   /* Strong ease-out (easing.dev) — the built-in curve is too weak to feel intentional. */
   --ease-snappy: cubic-bezier(0.23, 1, 0.32, 1);
+  /* r396 — Monolith-only colours and tracking (docs/design/monolith/tokens.css). The variables behind the
+     colours are defined only under :root[data-ui-theme='monolith'], so these utilities are for Monolith
+     screens; nothing in Classic uses them. */
+  --color-ink: var(--ink);
+  --color-bone: var(--bone);
+  --color-pressed: var(--pressed);
+  --color-hairline: var(--hairline);
+  --color-mid: var(--mid);
+  --color-faint: var(--faint);
+  --color-signal: var(--signal);
+  --color-signal-text: var(--signal-text);
+  --color-light: var(--light);
+  --tracking-mono: 0.12em;
+  --tracking-display: -0.04em;
+}
+
+/* r396 — Monolith's theme-level rules (tokens.css `@layer base`, README §2), scoped so Classic is
+   unaffected. The reduced-motion half of tokens.css is already covered by the global rule below.
+   .mono = labels, figures, status words; .num = any figure (tabular). Neither class existed before. */
+:root[data-ui-theme='monolith'] body {
+  font-feature-settings: 'ss01', 'cv11';
+}
+:root[data-ui-theme='monolith'] :focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 3px;
+}
+@layer components {
+  :root[data-ui-theme='monolith'] .mono {
+    font-family: var(--font-dm-mono), ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  :root[data-ui-theme='monolith'] .num {
+    font-family: var(--font-dm-mono), ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 body {

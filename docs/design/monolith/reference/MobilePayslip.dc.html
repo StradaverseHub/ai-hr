@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIHR employee app payslip</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#F2F0EB;color:#111111;font-family:'Schibsted Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#111111}a:hover{color:#C23A00}
+:focus-visible{outline:2px solid #FF4D00;outline-offset:3px}
+.mono{font-family:'DM Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+.num{font-family:'DM Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.mid{color:#63625D}
+.scene{perspective:1100px;height:330px;position:relative}
+.scene::before{content:"";position:absolute;left:50%;top:50%;width:420px;height:420px;margin:-210px;border-radius:50%;background:radial-gradient(circle,#FBFAF7 0%,rgba(251,250,247,.7) 30%,transparent 64%);pointer-events:none;z-index:0}
+.flip{z-index:1}
+.flip{position:relative;width:100%;height:100%;transform-style:preserve-3d;transition:transform .9s cubic-bezier(.2,.8,.2,1);animation:floaty 7s ease-in-out infinite alternate}
+@keyframes floaty{from{translate:0 0}to{translate:0 -6px}}
+.flip.back{transform:rotateY(180deg)}
+.faceF,.faceB{position:absolute;inset:0;border-radius:10px;backface-visibility:hidden;padding:22px;display:flex;flex-direction:column;gap:8px;color:#F2F0EB;overflow:hidden;background:linear-gradient(160deg,#3a3a3a 0%,#121212 38%,#0a0a0a 55%,#232323 78%,#050505 100%);box-shadow:0 40px 50px -26px rgba(17,17,17,.7)}
+.faceF::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.18) 47%,transparent 60%);background-size:260% 100%;animation:sheen 7s ease-in-out infinite;pointer-events:none}
+@keyframes sheen{0%{background-position:120% 0}60%,100%{background-position:-140% 0}}
+.faceB{transform:rotateY(180deg)}
+.etch{height:1px;background:rgba(255,255,255,.22)}
+.line{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:3px 0;position:relative}
+.txtb{display:inline-flex;align-items:center;min-height:40px;padding:0;border:0;background:transparent;color:#F2F0EB;font:500 14px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer;border-bottom:1px solid #F2F0EB;position:relative}
+.row{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:11px 0;border-top:1px solid #D9D6CF}
+.pill{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:0 18px;border-radius:999px;border:1px solid #111;background:#111;color:#F2F0EB;font:600 14px 'Schibsted Grotesk',system-ui,sans-serif;text-decoration:none}
+.txt{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:0 4px;border:0;background:transparent;color:#111;font:500 14px 'Schibsted Grotesk',system-ui,sans-serif;text-decoration:none;border-bottom:1px solid #111}
+.tabBtn{flex:1;display:flex;align-items:center;justify-content:center;padding:14px 0;border:0;background:transparent;color:#63625D;font:400 11px 'DM Mono',monospace;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;text-decoration:none;min-height:48px;border-top:1px solid transparent}
+.tabBtn.on{color:#111;border-top-color:#111}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+.still *,.still *::before,.still *::after{animation:none!important;transition:none!important}
+.scene{cursor:grab;touch-action:none;user-select:none}.scene.dragging,.scene.dragging *{cursor:grabbing}
+.cam{transition:transform .6s cubic-bezier(.2,.8,.2,1)}.cam.drag{transition:none}
+</style>
+</helmet>
+<div class="root {{motionClass}}" style="position: relative; width: 390px; height: 844px; background: #F2F0EB; color: #111111; font-family: 'Schibsted Grotesk', system-ui, sans-serif; overflow: hidden; display: flex; flex-direction: column">
+  <div style="position: relative; z-index: 1; flex: 1; min-height: 0; overflow-y: auto; padding: 54px 22px 16px; display: flex; flex-direction: column; gap: 18px">
+    <header style="display: flex; align-items: flex-end; justify-content: space-between; gap: 12px">
+      <div><a href="MobileHome.dc.html" class="mono mid" style="text-decoration: none">← Home</a><div style="font-size: 32px; font-weight: 500; letter-spacing: -.035em; line-height: 1; margin-top: 10px">September.</div></div>
+      <span class="mono">Paid 25 Sep</span>
+    </header>
+
+    <div class="scene {{stageCls}}" ref="{{stageRef}}" onPointerDown="{{down}}" onPointerMove="{{move}}" onPointerUp="{{up}}" onPointerCancel="{{up}}" onPointerLeave="{{up}}" onWheel="{{wheel}}">
+      <div class="cam {{dragCls}}" style="position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transform: rotateX({{rx}}deg) rotateY({{ry}}deg) scale3d({{zoom}}, {{zoom}}, {{zoom}})">
+<div class="flip {{flipCls}}">
+        <div class="faceF">
+          <span class="mono" style="color: #9A988F; position: relative">Net pay · Nusantara Sdn Bhd</span>
+          <span class="num" style="font-size: 50px; font-weight: 500; letter-spacing: -.045em; line-height: 1; position: relative">RM 6,673.05</span>
+          <span class="mono" style="color: #9A988F; position: relative">Maybank ···· 4821 · monthly · annual leave 1 day</span>
+          <span class="etch" style="margin-top: auto"></span>
+          <button class="txtb" type="button" onClick="{{flip}}" style="align-self: flex-start">Show breakdown</button>
+        </div>
+        <div class="faceB">
+          <div style="display: flex; justify-content: space-between; align-items: center; position: relative"><span class="mono" style="color: #9A988F">Breakdown</span><button class="txtb" type="button" onClick="{{flip}}" style="min-height: 32px; font-size: 13px">Back</button></div>
+          <div class="line"><span>Basic salary</span><span class="num">7,800.00</span></div>
+          <div class="line"><span>Transport allowance</span><span class="num">600.00</span></div>
+          <div class="line" style="color: #B8B5AC"><span>EPF 11%</span><span class="num">− 924.00</span></div>
+          <div class="line" style="color: #B8B5AC"><span>SOCSO</span><span class="num">− 24.75</span></div>
+          <div class="line" style="color: #B8B5AC"><span>EIS</span><span class="num">− 15.75</span></div>
+          <div class="line" style="color: #B8B5AC"><span>PCB</span><span class="num">− 722.45</span></div>
+          <div class="line" style="color: #B8B5AC"><span>Zakat</span><span class="num">− 40.00</span></div>
+          <span class="etch"></span>
+          <div class="line" style="font-weight: 500"><span>Net pay</span><span class="num">6,673.05</span></div>
+        </div>
+      </div>
+</div>
+    </div>
+
+    <section><div class="mono mid" style="padding-bottom: 6px">Employer contributions</div><div class="row"><span>EPF 13%</span><span class="num">1,092.00</span></div><div class="row"><span>SOCSO</span><span class="num">86.65</span></div><div class="row" style="border-bottom: 1px solid #D9D6CF"><span>EIS</span><span class="num">15.75</span></div></section>
+    <section><div class="mono mid" style="padding-bottom: 6px">2026 to date</div><div class="row"><span>Gross</span><span class="num">75,600.00</span></div><div class="row"><span>EPF, employee</span><span class="num">8,316.00</span></div><div class="row"><span>PCB</span><span class="num">6,502.05</span></div><div class="row" style="border-bottom: 1px solid #D9D6CF"><span>Tax relief claimed, TP1</span><span class="num">4,400.00</span></div></section>
+
+    <div style="display: flex; gap: 20px; align-items: center"><a class="pill" href="#pdf" style="flex: 1">Download PDF →</a><a class="txt" href="#ea">EA 2025</a></div>
+    <div class="mono mid" style="text-align: center; line-height: 1.8">Figures are what was paid · they never animate</div>
+  </div>
+
+  <nav aria-label="Primary" style="position: relative; z-index: 1; display: flex; border-top: 1px solid #D9D6CF; padding: 0 10px 10px; background: #F2F0EB">
+    <a class="tabBtn" href="MobileHome.dc.html">Home</a><a class="tabBtn" href="Leave.dc.html">Leave</a><a class="tabBtn on" href="MobilePayslip.dc.html">Pay</a><button class="tabBtn" type="button">Me</button>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"boolean","default":true,"section":"Look"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.camCfg = { a0: 0, b0: 0, aMin: -60, aMax: 60, bMin: -25, bMax: 25, zMin: 0.8, zMax: 1.25 }; }
+  view() {
+    const st = this.state || {}, c = this.camCfg;
+    return { a: st.ca == null ? c.a0 : st.ca, b: st.cb == null ? c.b0 : st.cb, zoom: st.zoom == null ? 1 : st.zoom };
+  }
+  orbit(g, dx, dy) {
+    const c = this.camCfg;
+    const cl = (v, lo, hi) => lo == null ? v : Math.max(lo, Math.min(hi, v));
+    return { ca: cl(g.a + dx * 0.35, c.aMin, c.aMax), cb: cl(g.b - dy * 0.15, c.bMin, c.bMax) };
+  }
+  zoomBy(e) {
+    const v = this.view(), c = this.camCfg;
+    const d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    this.setState({ zoom: Math.min(c.zMax, Math.max(c.zMin, +(v.zoom * Math.exp(-d * 0.0016)).toFixed(3))) });
+  }
+  onDown(e) {
+    if (e.button != null && e.button !== 0) return;
+    const v = this.view();
+    this.moved = false;
+    this.drag = { x: e.clientX, y: e.clientY, a: v.a, b: v.b, id: e.pointerId, el: e.currentTarget };
+  }
+  onMove(e) {
+    const g = this.drag; if (!g) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (!this.moved) { if (Math.abs(dx) + Math.abs(dy) < 5) return; this.moved = true; try { g.el.setPointerCapture(g.id); } catch (err) {} }
+    this.setState(Object.assign({ dragging: true }, this.orbit(g, dx, dy)));
+  }
+  onUp() {
+    if (!this.drag) return;
+    this.drag = null;
+    setTimeout(() => { this.moved = false; }, 0);
+    this.setState({ dragging: false });
+  }
+  camera() {
+    const st = this.state || {}, v = this.view(), c = this.camCfg;
+    return {
+      ry: v.a, rx: v.b, rxNeg: -v.b, zoom: v.zoom, dragCls: st.dragging ? 'drag' : '', stageCls: st.dragging ? 'dragging' : '',
+      stageRef: (el) => { if (!el || el.__wheelBound) return; el.__wheelBound = true; el.addEventListener('wheel', (e) => { e.preventDefault(); this.zoomBy(e); }, { passive: false }); },
+      wheel: (e) => { if (e.currentTarget && e.currentTarget.__wheelBound) return; this.zoomBy(e); },
+      down: (e) => this.onDown(e), move: (e) => this.onMove(e), up: () => this.onUp(),
+      zoomIn: () => this.setState({ zoom: Math.min(c.zMax, +(v.zoom + 0.15).toFixed(2)) }),
+      zoomOut: () => this.setState({ zoom: Math.max(c.zMin, +(v.zoom - 0.15).toFixed(2)) }),
+      camHome: () => this.setState({ ca: c.a0, cb: c.b0, zoom: 1 })
+    };
+  }
+  renderVals() {
+    const st = this.state || {};
+    const back = !!st.back;
+    return { ...this.camera(), motionClass: this.props.motion === false ? 'still' : '', flipCls: back ? 'back' : '', flip: () => this.setState({ back: !back }) };
+  }
+}
+</script>
+</body>
+</html>

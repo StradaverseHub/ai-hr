@@ -11124,6 +11124,11 @@
     "themeToggle": {
       "toggle": "தீம் மாற்று"
     },
+    "uiTheme": {
+      "label": "தீம்",
+      "monolith": "Monolith",
+      "classic": "கிளாசிக்"
+    },
     "drawer": {
       "close": "மூடு"
     }

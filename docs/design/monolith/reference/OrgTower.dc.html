@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIHR Org tower</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#F2F0EB;color:#111111;font-family:'Schibsted Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#111111}a:hover{color:#C23A00}
+:focus-visible{outline:2px solid #FF4D00;outline-offset:4px}
+.mono{font-family:'DM Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+.num{font-family:'DM Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.mid{color:#63625D}.or{color:#C23A00}
+.grid{position:absolute;inset:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(90deg,rgba(17,17,17,.06) 0 1px,transparent 1px 8.3333%)}
+.navl{text-decoration:none;color:#63625D;padding:6px 0;border:0;border-bottom:1px solid transparent;background:transparent;cursor:pointer;font:inherit;letter-spacing:inherit;text-transform:inherit}
+.navl:hover{color:#111}.navl.on{color:#111;border-bottom-color:#111}
+.pill{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:44px;padding:0 20px;border-radius:999px;border:1px solid #111;background:#111;color:#F2F0EB;font:600 14px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer;text-decoration:none;white-space:nowrap}
+.txt{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 2px;border:0;background:transparent;color:#111;font:500 15px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer;text-decoration:none;border-bottom:1px solid #111}
+.txt:hover{color:#C23A00;border-bottom-color:#C23A00}
+.intent{display:flex;align-items:center;gap:14px;height:64px;border-top:1px solid #111;border-bottom:1px solid #111;padding:0 2px}
+.intent input{flex:1;min-width:0;background:transparent;border:0;color:#111;font:500 20px 'Schibsted Grotesk',system-ui,sans-serif;letter-spacing:-.01em}
+.intent input::placeholder{color:#9A988F}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#FF4D00;box-shadow:0 0 0 3px rgba(255,77,0,.18);animation:beat 2.4s ease-in-out infinite}
+@keyframes beat{50%{box-shadow:0 0 0 7px rgba(255,77,0,0)}}
+.cell{display:flex;flex-direction:column;gap:8px;padding:18px 20px 20px 20px;border-left:1px solid #D9D6CF}
+.cell:first-child{border-left:0;padding-left:0}
+.stagewrap{position:relative;border-top:1px solid #111;border-bottom:1px solid #111}
+.stage{position:relative;height:960px;perspective:1800px;perspective-origin:35% 30%;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;padding-right:400px;cursor:grab;touch-action:none;user-select:none}
+.stage.dragging,.stage.dragging *{cursor:grabbing}
+.stage::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 35% 50%,transparent 40%,rgba(17,17,17,.08) 100%)}
+.spot{position:absolute;left:35%;top:52%;width:1400px;height:1400px;margin:-700px;border-radius:50%;background:radial-gradient(circle,#FCFBF8 0%,rgba(251,250,247,.8) 24%,transparent 58%);pointer-events:none;animation:drift 16s ease-in-out infinite}
+@keyframes drift{0%,100%{transform:translate(-36px,-14px)}50%{transform:translate(36px,14px)}}
+.tshadow{position:absolute;left:35%;bottom:26px;width:1200px;height:190px;margin-left:-380px;border-radius:50%;background:rgba(17,17,17,.34);filter:blur(36px);transform:skewX(-26deg);pointer-events:none}
+.tower{position:relative;width:560px;height:790px;transform-style:preserve-3d;transition:transform .8s cubic-bezier(.2,.8,.2,1);margin-bottom:60px}
+.tower.drag{transition:none}
+.plaza{position:absolute;left:50%;top:calc(100% - 16px);width:1400px;height:900px;margin:-450px 0 0 -700px;transform:rotateX(90deg);transform-style:preserve-3d;background:#F2F0EB;background-image:linear-gradient(90deg,rgba(17,17,17,.08) 1px,transparent 1px),linear-gradient(180deg,rgba(17,17,17,.08) 1px,transparent 1px);background-size:70px 70px;border:1px solid #D9D6CF}
+.plaza .road{position:absolute;background:repeating-linear-gradient(90deg,#111 0 16px,transparent 16px 30px);opacity:.5}
+.plaza .road.v{background:repeating-linear-gradient(180deg,#111 0 16px,transparent 16px 30px)}
+.plaza .lot{position:absolute;border:1px solid #111;opacity:.4;background:repeating-linear-gradient(90deg,transparent 0 23px,rgba(17,17,17,.5) 23px 24px)}
+.plaza .car{position:absolute;width:32px;height:15px;background:#111;border-radius:2px;animation:drive 16s linear infinite}
+.plaza .car.b{animation-duration:22s;animation-delay:-8s;width:56px;height:17px}
+.plaza .car.c{animation-duration:19s;animation-delay:-13s}
+.plaza .bus{position:absolute;width:84px;height:20px;background:#111;border-radius:3px;background-image:radial-gradient(circle,rgba(242,240,235,.8) 1.6px,transparent 2.2px);background-size:12px 20px;background-position:6px 0;animation:drive 26s linear infinite;animation-delay:-4s}
+@keyframes drive{from{transform:translateX(-140px)}to{transform:translateX(1480px)}}
+.plaza .ppl{position:absolute;width:8px;height:8px;border-radius:50%;background:#111;animation:walk 10s ease-in-out infinite alternate}
+@keyframes walk{to{transform:translate(90px,-36px)}}
+.plaza .tree{position:absolute;width:22px;height:22px;border-radius:50%;background:#111;opacity:.75}
+.plinth{position:absolute;left:50%;bottom:16px;width:660px;height:24px;margin-left:-330px;transform-style:preserve-3d}
+.plinth .f{position:absolute;inset:0;background:linear-gradient(180deg,#2a2a2a,#050505);border:1px solid #000}
+.plinth .t{position:absolute;left:0;top:0;width:100%;height:400px;transform-origin:top;transform:rotateX(-90deg);background:linear-gradient(180deg,#444,#1a1a1a);border:1px solid #000}
+.plinth .r{position:absolute;left:100%;top:0;width:400px;height:100%;transform-origin:left;transform:rotateY(90deg);background:#0a0a0a;border:1px solid #000;backface-visibility:hidden}
+.fl{position:absolute;left:50%;width:560px;height:76px;margin-left:-280px;transform-style:preserve-3d;border:0;background:transparent;padding:0;cursor:pointer;transition:transform .6s cubic-bezier(.2,.8,.2,1)}
+.fl .f{position:absolute;inset:0;background:linear-gradient(180deg,#2c2c2c,#0d0d0d 55%,#040404);border:1px solid #000;box-shadow:inset 0 1px 0 rgba(255,255,255,.22);overflow:hidden;display:flex;align-items:center;justify-content:space-between;padding:0 20px;color:#F2F0EB;font:400 12px 'DM Mono',monospace;letter-spacing:.12em;text-transform:uppercase}
+.fl .f::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.18) 47%,transparent 60%);background-size:260% 100%;animation:sheen 8s ease-in-out infinite;pointer-events:none}
+@keyframes sheen{0%{background-position:120% 0}60%,100%{background-position:-140% 0}}
+.fl .desks{position:absolute;left:20px;top:18px;bottom:18px;background-image:radial-gradient(circle,rgba(242,240,235,.8) 1.8px,transparent 2.6px);background-size:18px 16px;pointer-events:none;animation:flick 7s ease-in-out infinite}
+@keyframes flick{0%,100%{opacity:1}50%{opacity:.72}}
+.fl:nth-of-type(2n) .desks{animation-delay:-3.5s}
+.fl .t{position:absolute;left:0;top:0;width:100%;height:320px;transform-origin:top;transform:rotateX(-90deg);background:linear-gradient(180deg,#505050,#2a2a2a);border:1px solid #000}
+.fl .r{position:absolute;left:100%;top:0;width:320px;height:100%;transform-origin:left;transform:rotateY(90deg);background-image:radial-gradient(circle,rgba(242,240,235,.42) 1.6px,transparent 2.3px),linear-gradient(180deg,#161616,#000);background-size:18px 16px,100% 100%;background-position:9px 18px,0 0;border:1px solid #000;backface-visibility:hidden}
+.fl .l{position:absolute;left:-320px;top:0;width:320px;height:100%;transform-origin:right;transform:rotateY(-90deg);background:linear-gradient(180deg,#1c1c1c,#050505);border:1px solid #000;backface-visibility:hidden}
+.fl .b{position:absolute;inset:0;background:#080808;border:1px solid #000;transform:translateZ(-320px) rotateY(180deg);backface-visibility:hidden}
+.fl.off .f{background:#070707;color:#6B6A66;box-shadow:none}
+.fl.off .t{background:#1c1c1c}
+.fl.off .r{background-image:none;background:#070707}
+.fl.group .t::after{content:"";position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px;border-radius:50%;background:#FF4D00;box-shadow:0 0 24px #FF4D00;animation:beat 2.4s ease-in-out infinite}
+.fl:hover{transform:translateX(14px)}
+.fl.on{transform:translateX(90px)}
+.fl.on .f,.fl.on .t{box-shadow:inset 0 0 0 2px #FF4D00}
+.ctl{position:absolute;left:0;bottom:28px;z-index:3;display:flex;flex-direction:column;gap:2px;border:1px solid #111;background:#F2F0EB;padding:6px 0}
+.ctl button{width:44px;height:44px;border:0;background:transparent;color:#111;font:500 18px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer}
+.ctl button:hover{background:#ECE9E2;color:#C23A00}
+.cap{position:absolute;left:0;top:14px;z-index:3;display:flex;flex-direction:column;gap:6px}
+.panel{position:absolute;right:0;top:0;bottom:0;width:420px;padding:18px 0 0 40px;z-index:2;display:flex;flex-direction:column;gap:22px;background:linear-gradient(90deg,rgba(242,240,235,0) 0,rgba(242,240,235,.94) 40px,#F2F0EB 100%)}
+.lv{display:grid;grid-template-columns:40px 1fr 54px;gap:12px;align-items:center;min-height:50px;border-top:1px solid #D9D6CF;background:transparent;border-left:0;border-right:0;border-bottom:0;cursor:pointer;text-align:left;font-family:inherit;color:#111;width:100%;padding:0 2px;font-size:14px}
+.lv:hover{background:#ECE9E2}
+.lv.on{background:#111;color:#F2F0EB}
+.lv.on .mid{color:#B8B5AC}
+.spec{display:grid;grid-template-columns:1fr 1fr;gap:14px 20px;font-size:14px}
+.spec b{display:block;font:500 30px 'DM Mono',monospace;letter-spacing:-.03em;line-height:1;margin-top:6px;font-variant-numeric:tabular-nums}
+.step{display:flex;flex-direction:column;gap:6px;flex:1 1 0;min-width:0;padding:0 10px 0 0;position:relative}
+.step i{display:block;height:1px;background:#111;margin-top:7px}
+.step.todo i{background:#D9D6CF}
+.step.cur .mono{color:#C23A00}
+.row{display:grid;grid-template-columns:70px 1fr auto;gap:14px;align-items:center;min-height:46px;border-top:1px solid #D9D6CF;font-size:14px;padding:0 2px}
+.rv{animation:up .8s cubic-bezier(.2,.8,.2,1) both}
+@keyframes up{from{transform:translateY(16px);opacity:0}}
+.stat{font:400 11px 'DM Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#63625D;display:flex;gap:28px;flex-wrap:wrap}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+.still *,.still *::before,.still *::after{animation:none!important;transition:none!important}
+</style>
+</helmet>
+<div class="root {{motionClass}}" style="position: relative; min-height: 1600px; background: #F2F0EB; color: #111111; font-family: 'Schibsted Grotesk', system-ui, sans-serif; overflow: hidden">
+  <div class="grid" aria-hidden="true" style="margin: 0 56px"></div>
+  <div style="position: relative; z-index: 1; max-width: 1328px; margin: 0 auto; padding: 26px 56px 32px; display: flex; flex-direction: column; gap: 26px">
+
+    <header class="rv" style="display: flex; align-items: center; gap: 28px; flex-wrap: wrap">
+      <a href="Main.dc.html" class="mono" style="text-decoration: none; color: #111; font-weight: 500">AIHR <span class="mid">/ SYSTEM 01</span></a>
+      <nav aria-label="Primary" style="display: flex; gap: 22px; flex-wrap: wrap; margin-left: 20px" class="mono">
+        <a class="navl" href="Main.dc.html">Home</a><a class="navl" href="Payroll.dc.html">Payroll</a><a class="navl on" href="People.dc.html">People</a><a class="navl" href="Leave.dc.html">Leave</a><a class="navl" href="Attendance.dc.html">Time</a><a class="navl" href="Claims.dc.html">Claims</a><a class="navl" href="Compliance.dc.html">Statutory</a><a class="navl" href="Drive.dc.html">Drive</a>
+      </nav>
+      <div class="mono" style="margin-left: auto; display: flex; gap: 22px; align-items: center"><a class="navl" href="People.dc.html">Gallery</a><a class="navl on" href="OrgTower.dc.html">Org tower</a><a class="navl" href="Campus.dc.html">Campus</a><span style="width: 1px; height: 14px; background: #D9D6CF"></span><span class="mid" style="display: inline-flex; align-items: center; gap: 10px"><span class="dot" aria-hidden="true"></span>Live 09:12</span></div>
+    </header>
+
+    <section class="rv" style="display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 20px; animation-delay: .1s">
+      <div><span class="mono mid">Nusantara Holdings Bhd · a floor per company · as at 6 October 2026</span><h1 style="margin: 6px 0 0; font-size: 88px; font-weight: 500; line-height: .92; letter-spacing: -.045em">Org tower.</h1></div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; flex: 0 1 600px">
+        <div class="cell"><span class="mono mid">Companies</span><span class="num" style="font-size: 44px; font-weight: 500; letter-spacing: -.03em; line-height: 1">8<span class="mid" style="font-size: 16px; letter-spacing: 0"> floors</span></span><span class="mid" style="font-size: 13px">4 with lights off</span></div>
+        <div class="cell"><span class="mono mid">Headcount</span><span class="num" style="font-size: 44px; font-weight: 500; letter-spacing: -.03em; line-height: 1">248<span class="mid" style="font-size: 16px; letter-spacing: 0"> people</span></span><span class="mid" style="font-size: 13px">across the group</span></div>
+        <div class="cell"><span class="mono mid">Departments</span><span class="num" style="font-size: 44px; font-weight: 500; letter-spacing: -.03em; line-height: 1">14<span class="mid" style="font-size: 16px; letter-spacing: 0"> set up</span></span><span class="mid" style="font-size: 13px"><span class="or">1 company</span> needs departments</span></div>
+      </div>
+    </section>
+
+    <section class="rv" style="animation-delay: .2s">
+      <label class="intent">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="#FF4D00" aria-hidden="true"><path d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2z"></path></svg>
+        <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Ask about the group</span>
+        <input type="text" placeholder="Which companies have no staff, or: add Sales and Operations to NH Retail">
+        <button class="txt" type="button" style="min-height: 40px; border-bottom: 0; font-size: 20px">↵</button>
+      </label>
+    </section>
+
+    <section class="rv stagewrap" style="animation-delay: .3s">
+      <div class="stage {{stageCls}}" ref="{{stageRef}}" onPointerDown="{{down}}" onPointerMove="{{move}}" onPointerUp="{{up}}" onPointerCancel="{{up}}" onPointerLeave="{{up}}" onWheel="{{wheel}}" aria-label="Organisation tower">
+        <span class="spot" aria-hidden="true"></span><span class="tshadow" aria-hidden="true"></span>
+        <div class="tower {{dragCls}}" style="transform: rotateX({{rx}}deg) rotateY({{ry}}deg) scale3d({{zoom}}, {{zoom}}, {{zoom}}) translate3d({{tx}}px, {{ty}}px, 0)">
+          <div class="plaza" aria-hidden="true">
+            <span class="road" style="left: 0; right: 0; top: 520px; height: 2px"></span>
+            <span class="road" style="left: 0; right: 0; top: 24px; height: 2px"></span>
+            <span class="road v" style="top: 0; bottom: 0; left: 300px; width: 2px"></span>
+            <span class="road v" style="top: 0; bottom: 0; left: 1100px; width: 2px"></span>
+            <span class="lot" style="left: 1140px; top: 110px; width: 230px; height: 330px"></span>
+            <span class="lot" style="left: 40px; top: 110px; width: 230px; height: 330px"></span>
+            <span class="car" style="top: 506px; left: 0"></span><span class="car b" style="top: 526px; left: 0"></span><span class="bus" style="top: 540px; left: 0"></span><span class="car c" style="top: 10px; left: 0"></span>
+            <span class="tree" style="left: 330px; top: 580px"></span><span class="tree" style="left: 370px; top: 610px"></span><span class="tree" style="left: 1040px; top: 590px"></span><span class="tree" style="left: 1000px; top: 630px"></span><span class="tree" style="left: 80px; top: 600px"></span><span class="tree" style="left: 1300px; top: 560px"></span><span class="tree" style="left: 1340px; top: 620px"></span><span class="tree" style="left: 340px; top: 60px"></span><span class="tree" style="left: 1060px; top: 60px"></span>
+            <span class="ppl" style="left: 520px; top: 560px"></span><span class="ppl" style="left: 760px; top: 600px; animation-delay: -3s"></span><span class="ppl" style="left: 640px; top: 640px; animation-delay: -6s"></span><span class="ppl" style="left: 880px; top: 560px; animation-delay: -1.5s"></span><span class="ppl" style="left: 420px; top: 470px; animation-delay: -8s"></span><span class="ppl" style="left: 980px; top: 480px; animation-delay: -4.5s"></span>
+          </div>
+          <div class="plinth" aria-hidden="true"><span class="r"></span><span class="t"></span><span class="f"></span></div>
+          <sc-for list="{{floors}}" as="f" hint-placeholder-count="8">
+            <button class="fl {{f.cls}}" type="button" onClick="{{f.pick}}" aria-label="{{f.label}}" style="bottom: {{f.bottom}}px">
+              <span class="b"></span><span class="l"></span><span class="r"></span><span class="t"></span>
+              <span class="f"><span class="desks" style="width: {{f.lit}}%"></span><span style="position: relative; z-index: 1">{{f.code}} · {{f.short}}</span><span style="position: relative; z-index: 1">{{f.headTxt}}</span></span>
+            </button>
+          </sc-for>
+        </div>
+        <div class="cap"><span class="mono mid">One tower · a floor per company · lit desks are people</span><span class="mono or">Drag to orbit · scroll to zoom · click a floor to fly to it, click again to fly out</span></div>
+        <div class="ctl" aria-label="Tower controls">
+          <button type="button" onClick="{{above}}" aria-label="Floor above">↑</button>
+          <button type="button" onClick="{{below}}" aria-label="Floor below">↓</button>
+          <button type="button" onClick="{{zoomIn}}" aria-label="Zoom in">+</button>
+          <button type="button" onClick="{{zoomOut}}" aria-label="Zoom out">−</button>
+          <button type="button" onClick="{{rotL}}" aria-label="Rotate left">↺</button>
+          <button type="button" onClick="{{rotR}}" aria-label="Rotate right">↻</button>
+          <button type="button" onClick="{{home}}" aria-label="Reset view">⌂</button>
+        </div>
+      </div>
+
+      <aside class="panel">
+        <div style="display: flex; flex-direction: column; gap: 14px">
+          <div><span class="mono mid">Floor {{sel.num}} · company {{sel.idx}} of 8</span><div style="font-size: 34px; font-weight: 500; letter-spacing: -.035em; line-height: 1; margin-top: 6px">{{sel.name}}</div><div class="mid" style="font-size: 14px; margin-top: 6px">Parent: {{sel.parent}}</div></div>
+          <div style="display: flex; gap: 18px; align-items: baseline"><span class="mono" style="color: {{sel.lightColor}}">{{sel.light}}</span><span class="mono mid">{{sel.headTxt}} · {{sel.depts}} departments</span></div>
+          <div class="spec" style="border-top: 1px solid #D9D6CF; padding-top: 14px">
+            <div><span class="mono mid">Headcount</span><b>{{sel.head}}</b></div>
+            <div><span class="mono mid">Share of group</span><b>{{sel.share}}%</b></div>
+            <div><span class="mono mid">Desks lit</span><b>{{sel.head}}<span class="mid" style="font-size: 14px; letter-spacing: 0"> / {{sel.desks}}</span></b></div>
+            <div><span class="mono mid">Away today</span><b>{{sel.away}}</b></div>
+          </div>
+          <div style="display: flex; gap: 22px; flex-wrap: wrap"><button class="txt" type="button" onClick="{{below}}" style="font-size: 14px">↓ Floor below</button><button class="txt" type="button" onClick="{{above}}" style="font-size: 14px">↑ Floor above</button></div>
+          <div style="display: flex; gap: 22px; flex-wrap: wrap; align-items: center"><a class="pill" href="People.dc.html">Open company →</a><button class="txt" type="button" style="font-size: 14px">Add departments</button></div>
+        </div>
+
+        <div style="border-top: 1px solid #111; padding-top: 12px">
+          <div class="mono" style="display: flex; gap: 22px; padding-bottom: 6px"><button class="navl {{tabF}}" type="button" onClick="{{showFloors}}">Floors</button><button class="navl {{tabA}}" type="button" onClick="{{showAct}}">Activity</button><button class="navl {{tabH}}" type="button" onClick="{{showHol}}">Holidays</button><span class="mid" style="margin-left: auto">8 floors · 248 people</span></div>
+          <sc-if value="{{isFloors}}" hint-placeholder-val="{{ true }}">
+            <div style="border-bottom: 1px solid #D9D6CF"><sc-for list="{{floorsDown}}" as="l" hint-placeholder-count="8"><button class="lv {{l.cls}}" type="button" onClick="{{l.pick}}"><span class="mono mid">{{l.code}}</span><span><span style="display: block; font-weight: 500">{{l.name}}</span><span class="mid" style="display: block; font-size: 12px; color: {{l.noteColor}}">{{l.note}}</span></span><span class="num" style="text-align: right">{{l.head}}</span></button></sc-for></div>
+          </sc-if>
+          <sc-if value="{{isAct}}" hint-placeholder-val="{{ false }}">
+            <div style="border-bottom: 1px solid #D9D6CF">
+              <div class="row"><span class="num mid" style="font-size: 12px">09:12</span><span>Aisyah Rahman clocked in late · Nusantara Sdn Bhd</span><span></span></div>
+              <div class="row"><span class="num mid" style="font-size: 12px">08:31</span><span>Nurul Izzati hired · NH Retail Sdn Bhd</span><span></span></div>
+              <div class="row"><span class="num mid" style="font-size: 12px">Yesterday</span><span>Siti Aminah transferred to NH Logistics Sdn Bhd</span><span></span></div>
+              <div class="row"><span class="num mid" style="font-size: 12px">4 Oct</span><span>Marcus Ong hired · Nusantara Sdn Bhd</span><span></span></div>
+              <div class="row"><span class="num mid" style="font-size: 12px">1 Oct</span><span>NH Digital Sdn Bhd incorporated · no staff yet</span><span></span></div>
+            </div>
+          </sc-if>
+          <sc-if value="{{isHol}}" hint-placeholder-val="{{ false }}">
+            <div style="border-bottom: 1px solid #D9D6CF">
+              <div class="row"><span class="num mid" style="font-size: 12px">8 Nov</span><span>Deepavali</span><span class="mono mid">All companies</span></div>
+              <div class="row"><span class="num mid" style="font-size: 12px">11 Dec</span><span>Sultan of Selangor's birthday</span><span class="mono mid">NH Logistics · Shah Alam</span></div>
+              <div class="row"><span class="num mid" style="font-size: 12px">25 Dec</span><span>Christmas Day</span><span class="mono mid">All companies</span></div>
+              <div class="row"><span class="num mid" style="font-size: 12px">1 Jan</span><span>New Year's Day</span><span class="mono mid">All companies</span></div>
+            </div>
+          </sc-if>
+        </div>
+      </aside>
+    </section>
+
+    <section class="rv" style="display: flex; gap: 40px; align-items: flex-start; flex-wrap: wrap; animation-delay: .4s">
+      <div style="flex: 999 1 560px; min-width: 0">
+        <span class="mono mid">Group setup progress</span>
+        <div style="display: flex; margin-top: 10px">
+          <div class="step"><span class="mono">01 Companies</span><span class="mid" style="font-size: 13px">8 created</span><i></i></div>
+          <div class="step"><span class="mono">02 Parents</span><span class="mid" style="font-size: 13px">linked 29 min ago</span><i></i></div>
+          <div class="step"><span class="mono">03 Statutory</span><span class="mid" style="font-size: 13px">updated</span><i></i></div>
+          <div class="step cur"><span class="mono">04 Departments</span><span class="mid" style="font-size: 13px">14 set up · NH Retail needs 2</span><i style="background: #FF4D00; box-shadow: 0 0 8px rgba(255,77,0,.6)"></i></div>
+          <div class="step todo"><span class="mono mid">05 Staff</span><span class="mid" style="font-size: 13px">248 placed · 0 unplaced</span><i></i></div>
+        </div>
+      </div>
+      <div style="flex: 1 1 320px; min-width: 300px; display: flex; flex-direction: column; gap: 6px">
+        <span class="mono or">Possible duplicate</span>
+        <span style="font-size: 18px; font-weight: 500; letter-spacing: -.02em">NH Food Industries Sdn Bhd appears twice.</span>
+        <span class="mid" style="font-size: 13px; line-height: 1.5">Two entities with the same registration number. Merge them before staff are placed, or the second keeps its lights off.</span>
+        <a class="txt" href="#dup" style="align-self: flex-start; font-size: 14px">Open →</a>
+      </div>
+    </section>
+
+    <footer class="rv stat" style="border-top: 1px solid #111; padding-top: 14px; animation-delay: .5s"><span>Sys OK</span><span>8 companies · 4 operating</span><span>248 placed</span><span style="margin-left: auto">Drag to orbit · scroll to zoom · the rail steps floors</span></footer>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"boolean","default":true,"section":"Look"},"$preview":{"width":1440,"height":1600}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.focusZoom = 1.35; }
+  view() {
+    const st = this.state || {};
+    return { a: st.ry == null ? -28 : st.ry, b: st.rx == null ? -14 : st.rx, zoom: st.zoom == null ? 1 : st.zoom };
+  }
+  orbit(g, dx, dy) {
+    return { ry: Math.max(-80, Math.min(80, g.a + dx * 0.35)), rx: Math.max(-42, Math.min(-4, g.b + dy * 0.15)) };
+  }
+  zoomBy(e) {
+    const v = this.view();
+    const d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    this.setState({ zoom: Math.min(2.2, Math.max(0.6, +(v.zoom * Math.exp(-d * 0.0016)).toFixed(3))) });
+  }
+  onDown(e) {
+    if (e.button != null && e.button !== 0) return;
+    const v = this.view();
+    this.moved = false;
+    this.drag = { x: e.clientX, y: e.clientY, a: v.a, b: v.b, id: e.pointerId, el: e.currentTarget };
+  }
+  onMove(e) {
+    const g = this.drag; if (!g) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (!this.moved) { if (Math.abs(dx) + Math.abs(dy) < 5) return; this.moved = true; try { g.el.setPointerCapture(g.id); } catch (err) {} }
+    this.setState(Object.assign({ dragging: true }, this.orbit(g, dx, dy)));
+  }
+  onUp() {
+    if (!this.drag) return;
+    this.drag = null;
+    setTimeout(() => { this.moved = false; }, 0);
+    this.setState({ dragging: false });
+  }
+  go(id, toggle) {
+    if (this.moved) return;
+    const st = this.state || {};
+    if (toggle && st.focus === id) { this.setState({ focus: null, zoom: 1 }); return; }
+    this.setState({ sel: id, focus: id, zoom: this.focusZoom });
+  }
+  camera() {
+    const st = this.state || {};
+    const v = this.view();
+    return {
+      zoom: v.zoom, dragCls: st.dragging ? 'drag' : '', stageCls: st.dragging ? 'dragging' : '',
+      stageRef: (el) => { if (!el || el.__wheelBound) return; el.__wheelBound = true; el.addEventListener('wheel', (e) => { e.preventDefault(); this.zoomBy(e); }, { passive: false }); },
+      wheel: (e) => { if (e.currentTarget && e.currentTarget.__wheelBound) return; this.zoomBy(e); },
+      down: (e) => this.onDown(e), move: (e) => this.onMove(e), up: () => this.onUp(),
+      zoomIn: () => this.setState({ zoom: Math.min(2.2, +(v.zoom + 0.15).toFixed(2)) }),
+      zoomOut: () => this.setState({ zoom: Math.max(0.6, +(v.zoom - 0.15).toFixed(2)) })
+    };
+  }
+  renderVals() {
+    const st = this.state || {};
+    const v = this.view();
+    const selId = st.sel || 'nsb';
+    const tab = st.tab || 'floors';
+    const TOTAL = 248;
+    const cos = [
+      { id: 'hold', code: 'F08', num: '08', short: 'Nusantara Holdings', name: 'Nusantara Holdings Bhd', parent: 'Group', head: 2, desks: 8, depts: 1, away: 0, group: true, note: 'Group · 1 desk row lit' },
+      { id: 'nsb', code: 'F07', num: '07', short: 'Nusantara Sdn Bhd', name: 'Nusantara Sdn Bhd', parent: 'Nusantara Holdings Bhd', head: 146, desks: 160, depts: 8, away: 3, note: '8 departments · 3 away today' },
+      { id: 'nl', code: 'F06', num: '06', short: 'NH Logistics', name: 'NH Logistics Sdn Bhd', parent: 'Nusantara Holdings Bhd', head: 64, desks: 72, depts: 3, away: 2, note: 'Night shift · 22 on' },
+      { id: 'nr', code: 'F05', num: '05', short: 'NH Retail', name: 'NH Retail Sdn Bhd', parent: 'Nusantara Holdings Bhd', head: 36, desks: 40, depts: 0, away: 2, note: 'Needs 2 departments', noteColor: '#C23A00' },
+      { id: 'nd', code: 'F04', num: '04', short: 'NH Digital', name: 'NH Digital Sdn Bhd', parent: 'Nusantara Holdings Bhd', head: 0, desks: 24, depts: 0, away: 0, off: true, note: 'Lights off · incorporated 1 Oct' },
+      { id: 'np', code: 'F03', num: '03', short: 'NH Properties', name: 'NH Properties Sdn Bhd', parent: 'Nusantara Holdings Bhd', head: 0, desks: 16, depts: 0, away: 0, off: true, note: 'Lights off · dormant' },
+      { id: 'nc', code: 'F02', num: '02', short: 'Nusantara Capital', name: 'Nusantara Capital Sdn Bhd', parent: 'Nusantara Holdings Bhd', head: 0, desks: 16, depts: 0, away: 0, off: true, note: 'Lights off · dormant' },
+      { id: 'nf', code: 'F01', num: '01', short: 'NH Food Industries', name: 'NH Food Industries Sdn Bhd', parent: 'Nusantara Holdings Bhd', head: 0, desks: 16, depts: 0, away: 0, off: true, note: 'Possible duplicate · lights off', noteColor: '#C23A00' }
+    ];
+    const list = cos.map((c, i) => ({ ...c, idx: i + 1, cls: (c.id === selId ? 'on ' : '') + (c.off ? 'off ' : '') + (c.group ? 'group' : ''), lit: c.desks ? Math.round(Math.min(c.head / c.desks, 1) * 88) : 0, headTxt: c.head === 1 ? '1 person' : c.head + ' people', label: c.code + ' ' + c.name, noteColor: c.noteColor || '#63625D', pick: () => this.go(c.id, true) }));
+    const floors = list.map((c, i) => ({ ...c, bottom: 40 + (7 - i) * 92 }));
+    const i = list.findIndex((c) => c.id === selId);
+    const s = list[i] || list[1];
+    const sel = { ...s, share: Math.round((s.head / TOTAL) * 100), light: s.off ? 'Lights off' : 'Lights on', lightColor: s.off ? '#63625D' : '#111' };
+    const fi = st.focus ? list.findIndex((c) => c.id === st.focus) : -1;
+    const tx = fi >= 0 ? -45 : 0;
+    const ty = fi >= 0 ? (40 + (7 - fi) * 92) - 357 : 0;
+    return {
+      ...this.camera(),
+      motionClass: this.props.motion === false ? 'still' : '',
+      ry: v.a, rx: v.b, tx, ty, floors, floorsDown: list, sel,
+      above: () => this.go(list[Math.max(0, i - 1)].id, false),
+      below: () => this.go(list[Math.min(list.length - 1, i + 1)].id, false),
+      rotL: () => this.setState({ ry: Math.max(-80, v.a - 14) }),
+      rotR: () => this.setState({ ry: Math.min(80, v.a + 14) }),
+      home: () => this.setState({ ry: -28, rx: -14, zoom: 1, focus: null }),
+      tabF: tab === 'floors' ? 'on' : '', tabA: tab === 'act' ? 'on' : '', tabH: tab === 'hol' ? 'on' : '',
+      isFloors: tab === 'floors', isAct: tab === 'act', isHol: tab === 'hol',
+      showFloors: () => this.setState({ tab: 'floors' }), showAct: () => this.setState({ tab: 'act' }), showHol: () => this.setState({ tab: 'hol' })
+    };
+  }
+}
+</script>
+</body>
+</html>

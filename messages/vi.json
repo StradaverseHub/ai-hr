@@ -11124,6 +11124,11 @@
     "themeToggle": {
       "toggle": "Chuyển giao diện"
     },
+    "uiTheme": {
+      "label": "Giao diện",
+      "monolith": "Monolith",
+      "classic": "Cổ điển"
+    },
     "drawer": {
       "close": "Đóng"
     }

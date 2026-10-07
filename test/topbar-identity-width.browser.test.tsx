@@ -56,6 +56,9 @@ import '../app/globals.css';
 // The logout server action, stubbed: importing it for real pulls lib/session → db/client, which opens a
 // database connection at module load. Nothing here submits the form (same reasoning as the DOM test).
 vi.mock('@/app/auth-actions', () => ({ logoutAction: async () => {} }));
+// r396 — the account menu now also holds the UI-theme picker, whose server action imports next/cache and
+// next/headers (server-only, and they do not load in a browser bundle). Stubbed for the same reason.
+vi.mock('@/app/ui-theme-actions', () => ({ setUiTheme: async () => ({ ok: true }) }));
 
 const { UserMenu } = await import('../components/user-menu');
 

@@ -11124,6 +11124,11 @@
     "themeToggle": {
       "toggle": "切换主题"
     },
+    "uiTheme": {
+      "label": "主题",
+      "monolith": "Monolith",
+      "classic": "经典"
+    },
     "drawer": {
       "close": "关闭"
     }

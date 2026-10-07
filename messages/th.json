@@ -11124,6 +11124,11 @@
     "themeToggle": {
       "toggle": "สลับธีม"
     },
+    "uiTheme": {
+      "label": "ธีม",
+      "monolith": "Monolith",
+      "classic": "คลาสสิก"
+    },
     "drawer": {
       "close": "ปิด"
     }

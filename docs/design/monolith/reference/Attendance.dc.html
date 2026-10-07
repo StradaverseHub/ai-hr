@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIHR Attendance</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#F2F0EB;color:#111111;font-family:'Schibsted Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#111111}a:hover{color:#C23A00}
+:focus-visible{outline:2px solid #FF4D00;outline-offset:4px}
+.mono{font-family:'DM Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+.num{font-family:'DM Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.mid{color:#63625D}.or{color:#C23A00}
+.grid{position:absolute;inset:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(90deg,rgba(17,17,17,.06) 0 1px,transparent 1px 8.3333%)}
+.navl{text-decoration:none;color:#63625D;padding:6px 0;border:0;border-bottom:1px solid transparent;background:transparent;cursor:pointer;font:inherit;letter-spacing:inherit;text-transform:inherit}
+.navl:hover{color:#111}.navl.on{color:#111;border-bottom-color:#111}
+.txt{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 2px;border:0;background:transparent;color:#111;font:500 15px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer;text-decoration:none;border-bottom:1px solid #111}
+.txt:hover{color:#C23A00;border-bottom-color:#C23A00}
+.txt.or{color:#C23A00;border-bottom-color:#C23A00}
+.intent{display:flex;align-items:center;gap:14px;height:64px;border-top:1px solid #111;border-bottom:1px solid #111;padding:0 2px}
+.intent input{flex:1;min-width:0;background:transparent;border:0;color:#111;font:500 20px 'Schibsted Grotesk',system-ui,sans-serif;letter-spacing:-.01em}
+.intent input::placeholder{color:#9A988F}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#FF4D00;box-shadow:0 0 0 3px rgba(255,77,0,.18);animation:beat 2.4s ease-in-out infinite}
+@keyframes beat{50%{box-shadow:0 0 0 7px rgba(255,77,0,0)}}
+.cell{display:flex;flex-direction:column;gap:8px;padding:18px 20px 20px 20px;border-left:1px solid #D9D6CF}
+.cell:first-child{border-left:0;padding-left:0}
+.cstage{position:relative;width:560px;height:560px;display:flex;align-items:center;justify-content:center;flex:none}
+.spot{position:absolute;left:50%;top:50%;width:760px;height:760px;margin:-380px;border-radius:50%;background:radial-gradient(circle,#FBFAF7 0%,rgba(251,250,247,.7) 28%,transparent 62%);pointer-events:none}
+.shadow{position:absolute;left:50%;bottom:36px;width:520px;height:80px;margin-left:-200px;border-radius:50%;background:rgba(17,17,17,.36);filter:blur(24px);transform:skewX(-26deg)}
+.clock{position:relative;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle at 34% 28%,#3a3a3a,#111 40%,#000 100%);box-shadow:0 90px 100px -46px rgba(17,17,17,.8),inset -26px -32px 60px rgba(0,0,0,.6);flex:none;animation:bob 7s ease-in-out infinite alternate}
+@keyframes bob{to{transform:translateY(-10px)}}
+.clock::before{content:"";position:absolute;inset:20px;border-radius:50%;background:repeating-conic-gradient(from 0deg,rgba(255,255,255,.4) 0 .5deg,transparent .5deg 30deg);-webkit-mask:radial-gradient(circle,transparent 86%,#000 87%);mask:radial-gradient(circle,transparent 86%,#000 87%)}
+.clock .h{position:absolute;left:50%;top:50%;width:4px;height:112px;margin:-112px 0 0 -2px;background:#F2F0EB;transform-origin:50% 100%;transform:rotate(276deg);border-radius:2px}
+.clock .m{position:absolute;left:50%;top:50%;width:3px;height:160px;margin:-160px 0 0 -1.5px;background:#F2F0EB;transform-origin:50% 100%;transform:rotate(72deg);border-radius:2px}
+.clock .s{position:absolute;left:50%;top:50%;width:2px;height:182px;margin:-182px 0 0 -1px;background:#FF4D00;box-shadow:0 0 12px #FF4D00,0 0 30px rgba(255,77,0,.5);transform-origin:50% 100%;animation:sec 60s linear infinite;border-radius:2px}
+@keyframes sec{to{transform:rotate(360deg)}}
+.clock .c{position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px;border-radius:50%;background:#FF4D00;box-shadow:0 0 12px #FF4D00}
+.clock .lbl{position:absolute;left:0;right:0;top:66%;text-align:center;color:#9A988F;font-size:13px}
+.scale{display:grid;grid-template-columns:230px 1fr 140px;gap:16px;align-items:center;height:28px}
+.scale .ticks{position:relative;height:28px}
+.scale .ticks span{position:absolute;top:8px;transform:translateX(-50%);font:400 11px 'DM Mono',monospace;letter-spacing:.1em;color:#9A988F}
+.lane{display:grid;grid-template-columns:230px 1fr 140px;gap:16px;align-items:center;height:52px;border:0;border-top:1px solid #D9D6CF;background:transparent;color:#111;cursor:pointer;text-align:left;font-family:inherit;width:100%;padding:0 2px;transition:background .2s;position:relative}
+.lane:hover{background:#ECE9E2}
+.lane.on{background:#111;color:#F2F0EB}
+.lane.on .mid{color:#B8B5AC}
+.lane .nm{font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.track{position:relative;height:18px}
+.track .g{position:absolute;inset:0;background-image:linear-gradient(90deg,#D9D6CF 1px,transparent 1px);background-size:12.5% 100%}
+.lane.on .track .g{background-image:linear-gradient(90deg,rgba(242,240,235,.25) 1px,transparent 1px)}
+.span{position:absolute;top:4px;height:10px;background:#111;border-radius:2px}
+.lane.on .span{background:#F2F0EB}
+.span.live::after{content:"";position:absolute;right:-4px;top:1px;width:8px;height:8px;border-radius:50%;background:#FF4D00;box-shadow:0 0 8px #FF4D00}
+.span.ot{background:#FF4D00;box-shadow:0 0 8px rgba(255,77,0,.6)}
+.now{position:absolute;top:-6px;bottom:-6px;width:2px;background:#FF4D00;box-shadow:0 0 10px rgba(255,77,0,.6)}
+.ctx{position:absolute;left:0;top:0;font:400 11px 'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#9A988F}
+.spec{display:grid;grid-template-columns:auto 1fr;gap:10px 18px;font-size:14px}
+.req{display:flex;flex-direction:column;gap:6px;padding:12px 0;border-top:1px solid #D9D6CF;font-size:14px}
+table{border-collapse:collapse;width:100%;min-width:900px;font-size:14px}
+th{font:400 11px 'DM Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#63625D;text-align:left;padding:10px 12px 10px 0;border-bottom:1px solid #111}
+td{padding:12px 12px 12px 0;border-bottom:1px solid #D9D6CF;white-space:nowrap}
+.r{text-align:right}
+.cstage{perspective:1500px}
+.cstage{cursor:grab;touch-action:none;user-select:none}.cstage.dragging,.cstage.dragging *{cursor:grabbing}
+.cam{transition:transform .6s cubic-bezier(.2,.8,.2,1)}.cam.drag{transition:none}
+.rv{animation:up .8s cubic-bezier(.2,.8,.2,1) both}
+@keyframes up{from{transform:translateY(16px);opacity:0}}
+.stat{font:400 11px 'DM Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#63625D;display:flex;gap:28px;flex-wrap:wrap}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+.still *,.still *::before,.still *::after{animation:none!important;transition:none!important}
+</style>
+</helmet>
+<div class="root {{motionClass}}" style="position: relative; min-height: 1300px; background: #F2F0EB; color: #111111; font-family: 'Schibsted Grotesk', system-ui, sans-serif; overflow: hidden">
+  <div class="grid" aria-hidden="true" style="margin: 0 56px"></div>
+  <div style="position: relative; z-index: 1; max-width: 1328px; margin: 0 auto; padding: 26px 56px 32px; display: flex; flex-direction: column; gap: 30px">
+
+    <header class="rv" style="display: flex; align-items: center; gap: 28px; flex-wrap: wrap">
+      <a href="Main.dc.html" class="mono" style="text-decoration: none; color: #111; font-weight: 500">AIHR <span class="mid">/ SYSTEM 01</span></a>
+      <nav aria-label="Primary" style="display: flex; gap: 22px; flex-wrap: wrap; margin-left: 20px" class="mono">
+        <a class="navl" href="Main.dc.html">Home</a><a class="navl" href="Payroll.dc.html">Payroll</a><a class="navl" href="People.dc.html">People</a><a class="navl" href="Leave.dc.html">Leave</a><a class="navl on" href="Attendance.dc.html">Time</a><a class="navl" href="Claims.dc.html">Claims</a><a class="navl" href="Compliance.dc.html">Statutory</a><a class="navl" href="Drive.dc.html">Drive</a>
+      </nav>
+      <div class="mono" style="margin-left: auto; display: flex; gap: 22px"><a class="navl" href="#clock">Clock</a><a class="navl on" href="#daily">Daily</a><a class="navl" href="Campus.dc.html">Campus</a><a class="navl" href="#individual">Individual</a><a class="navl" href="#requests">Requests · 3</a><a class="navl" href="#ot">Plan OT · 12</a><a class="navl" href="#import">Import</a></div>
+    </header>
+
+    <section class="rv" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 24px; animation-delay: .1s">
+      <div style="flex: 1 1 520px; display: flex; flex-direction: column; gap: 22px">
+        <span class="mono mid" style="display: flex; align-items: center; gap: 12px"><span class="dot" aria-hidden="true"></span>Live · Monday 6 October 2026 · 09:12</span>
+        <h1 style="margin: 0; font-size: 88px; font-weight: 500; line-height: .92; letter-spacing: -.045em">Live floor.</h1>
+        <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; max-width: 760px">
+          <div class="cell"><span class="mono mid">Present</span><span class="num" style="font-size: 44px; font-weight: 500; letter-spacing: -.03em; line-height: 1">230</span><span class="mid" style="font-size: 13px">of 248</span></div>
+          <div class="cell"><span class="mono mid">Late</span><span class="num" style="font-size: 44px; font-weight: 500; letter-spacing: -.03em; line-height: 1">9</span><span class="mid" style="font-size: 13px">longest 40 min</span></div>
+          <div class="cell"><span class="mono mid">Half day</span><span class="num" style="font-size: 44px; font-weight: 500; letter-spacing: -.03em; line-height: 1">1</span><span class="mid" style="font-size: 13px">planned</span></div>
+          <div class="cell"><span class="mono or">Absent</span><span class="num" style="font-size: 44px; font-weight: 500; letter-spacing: -.03em; line-height: 1; color: #C23A00">3</span><span class="mid" style="font-size: 13px">no check-in</span></div>
+          <div class="cell"><span class="mono mid">On leave</span><span class="num" style="font-size: 44px; font-weight: 500; letter-spacing: -.03em; line-height: 1">5</span><span class="mid" style="font-size: 13px">approved</span></div>
+        </div>
+      </div>
+      <div class="cstage {{stageCls}}" aria-hidden="true" ref="{{stageRef}}" onPointerDown="{{down}}" onPointerMove="{{move}}" onPointerUp="{{up}}" onPointerCancel="{{up}}" onPointerLeave="{{up}}" onWheel="{{wheel}}"><span class="spot"></span><span class="shadow"></span><div class="cam {{dragCls}}" style="transform-style: preserve-3d; transform: rotateX({{rx}}deg) rotateY({{ry}}deg) scale3d({{zoom}}, {{zoom}}, {{zoom}})">
+<div class="clock"><span class="h"></span><span class="m"></span><span class="s"></span><span class="c"></span><span class="lbl mono">Menara Nusantara</span></div>
+</div></div>
+    </section>
+
+    <section class="rv" style="animation-delay: .2s">
+      <label class="intent">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="#FF4D00" aria-hidden="true"><path d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2z"></path></svg>
+        <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Ask about attendance</span>
+        <input type="text" placeholder="Who is late today, or: export September OT for Operations">
+        <button class="txt" type="button" style="min-height: 40px; border-bottom: 0; font-size: 20px">↵</button>
+      </label>
+    </section>
+
+    <section class="rv" style="display: flex; gap: 40px; align-items: flex-start; flex-wrap: wrap; animation-delay: .3s">
+      <div style="flex: 999 1 640px; min-width: 0">
+        <div style="display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 8px"><span class="mono mid">Nusantara Sdn Bhd · one lane per person · 06:00 to 06:00 · 10 of 248</span><span class="mono or">Orange is now</span></div>
+        <div class="scale"><span></span><span class="ticks"><span style="left: 0%">06</span><span style="left: 12.5%">09</span><span style="left: 25%">12</span><span style="left: 37.5%">15</span><span style="left: 50%">18</span><span style="left: 62.5%">21</span><span style="left: 75%">00</span><span style="left: 87.5%">03</span><span style="left: 100%">06</span></span><span></span></div>
+        <div style="border-bottom: 1px solid #D9D6CF">
+          <sc-for list="{{lanes}}" as="l" hint-placeholder-count="10">
+            <button class="lane {{l.cls}}" type="button" onClick="{{l.pick}}">
+              <span style="display: flex; align-items: baseline; gap: 14px; min-width: 0"><span class="mono mid">{{l.n}}</span><span style="min-width: 0"><span class="nm">{{l.name}}</span><span class="mid" style="display: block; font-size: 12px">{{l.shift}}</span></span></span>
+              <span class="track"><span class="g" aria-hidden="true"></span>
+                <sc-if value="{{l.hasSpan}}" hint-placeholder-val="{{ true }}"><span class="span {{l.spanCls}}" style="left: {{l.left}}%; width: {{l.width}}%"></span></sc-if>
+                <sc-if value="{{l.hasOt}}" hint-placeholder-val="{{ false }}"><span class="span ot" style="left: {{l.otLeft}}%; width: {{l.otWidth}}%"></span></sc-if>
+                <sc-if value="{{l.noSpan}}" hint-placeholder-val="{{ false }}"><span class="ctx">{{l.ctx}}</span></sc-if>
+                <span class="now" style="left: 13.3%" aria-hidden="true"></span>
+              </span>
+              <span class="mono" style="color: {{l.color}}">{{l.status}}</span>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+
+      <aside style="flex: 1 1 320px; min-width: 300px; display: flex; flex-direction: column; gap: 18px; border-top: 1px solid #111; padding-top: 14px">
+        <div><span class="mono mid">{{sel.n}} · {{sel.shift}}</span><div style="font-size: 34px; font-weight: 500; letter-spacing: -.035em; line-height: 1; margin-top: 6px">{{sel.name}}</div><div class="mono" style="margin-top: 8px; color: {{sel.color}}">{{sel.status}}</div></div>
+        <div class="spec" style="border-top: 1px solid #D9D6CF; padding-top: 12px"><span class="mid">Check-in</span><span class="num">{{sel.in}}</span><span class="mid">Check-out</span><span class="num">{{sel.out}}</span><span class="mid">Hours</span><span class="num">{{sel.hours}}</span><span class="mid">Overtime</span><span class="num">{{sel.ot}}</span><span class="mid">OT class</span><span>{{sel.otClass}}</span><span class="mid">Location</span><span>{{sel.location}}</span><span class="mid">Month flags</span><span>{{sel.flags}}</span></div>
+        <div style="display: flex; gap: 22px; flex-wrap: wrap"><button class="txt" type="button" style="font-size: 14px">Fix a missed punch</button><a class="txt" href="#individual" style="font-size: 14px">Individual record</a></div>
+        <div style="border-top: 1px solid #111; padding-top: 12px">
+          <span class="mono mid">Correction requests · approving re-derives the day; you cannot approve your own</span>
+          <div style="margin-top: 4px; border-bottom: 1px solid #D9D6CF">
+            <sc-for list="{{requests}}" as="q" hint-placeholder-count="3">
+              <div class="req">
+                <div style="display: flex; justify-content: space-between; gap: 10px"><span style="font-weight: 500">{{q.who}}</span><span class="mono mid">{{q.date}}</span></div>
+                <div class="mid"><span class="num" style="color: #111">{{q.proposed}}</span> · {{q.reason}}</div>
+                <sc-if value="{{q.open}}" hint-placeholder-val="{{ true }}"><div style="display: flex; gap: 22px"><button class="txt" type="button" onClick="{{q.approve}}" style="min-height: 32px; font-size: 14px">Approve</button><button class="txt or" type="button" onClick="{{q.reject}}" style="min-height: 32px; font-size: 14px">Reject</button></div></sc-if>
+                <sc-if value="{{q.own}}" hint-placeholder-val="{{ false }}"><span class="mono mid">Your request · awaiting another approver</span></sc-if>
+                <sc-if value="{{q.decided}}" hint-placeholder-val="{{ false }}"><span class="mono" style="color: {{q.color}}">{{q.verdict}}</span></sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="rv" style="animation-delay: .4s">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 8px; flex-wrap: wrap; gap: 10px"><span class="mono mid">Today's records · OT above the 104 h cap flagged · 45 h+ week indicative</span><span class="mono mid">OT &gt; 104h · 1 · 45h+ week · 4</span></div>
+      <div style="overflow-x: auto">
+        <table>
+          <thead><tr><th>Employee</th><th>Shift</th><th>Location</th><th class="r">In</th><th class="r">Out</th><th class="r">Hours</th><th class="r">OT</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td style="font-weight: 500">Priya Nair</td><td class="mid">Day 09:00–18:00</td><td class="mid">Menara Nusantara</td><td class="num r">08:51</td><td class="num r">—</td><td class="num r">0:21</td><td class="num r">0:00</td><td class="mono">present</td></tr>
+            <tr><td style="font-weight: 500">Aisyah Rahman</td><td class="mid">Day 09:00–18:00</td><td class="mid">Menara Nusantara</td><td class="num r">09:12</td><td class="num r">—</td><td class="num r">0:00</td><td class="num r">0:00</td><td class="mono mid">late · 12 min</td></tr>
+            <tr><td style="font-weight: 500">Wei Jie Tan</td><td class="mid">Night 22:00–06:00</td><td class="mid">NH Logistics hub</td><td class="num r">21:48</td><td class="num r">06:34</td><td class="num r">8:00</td><td class="num r">0:34</td><td class="mono">done</td></tr>
+            <tr><td style="font-weight: 500">Daniel Lim</td><td class="mid">Day 09:00–18:00</td><td class="mid">NH Logistics hub</td><td class="num r">09:04</td><td class="num r">—</td><td class="num r">0:08</td><td class="num r">0:00</td><td class="mono">present</td></tr>
+            <tr><td style="font-weight: 500">Farah Hussin</td><td class="mid">Day 09:00–18:00</td><td class="mid">—</td><td class="num r">—</td><td class="num r">—</td><td class="num r">—</td><td class="num r">—</td><td class="mono mid">on leave</td></tr>
+            <tr><td style="font-weight: 500">Raj Kumar</td><td class="mid">Day 09:00–18:00</td><td class="mid">Menara Nusantara</td><td class="num r">09:40</td><td class="num r">—</td><td class="num r">0:00</td><td class="num r">0:00</td><td class="mono mid">late · 40 min</td></tr>
+            <tr><td style="font-weight: 500">Siti Aminah</td><td class="mid">Day 09:00–18:00</td><td class="mid">NH Logistics hub</td><td class="num r">—</td><td class="num r">—</td><td class="num r">—</td><td class="num r">—</td><td class="mono or">absent</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer class="rv stat" style="border-top: 1px solid #111; padding-top: 14px; animation-delay: .5s"><span>Sys OK</span><span>230 in · 9 late · 3 absent</span><span>Rest-day and holiday work is OT-class in full</span><span style="margin-left: auto">Hours derive from the company work schedule</span></footer>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"boolean","default":true,"section":"Look"},"$preview":{"width":1440,"height":1300}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.camCfg = { a0: 0, b0: 0, aMin: -45, aMax: 45, bMin: -35, bMax: 35, zMin: 0.7, zMax: 1.3 }; }
+  view() {
+    const st = this.state || {}, c = this.camCfg;
+    return { a: st.ca == null ? c.a0 : st.ca, b: st.cb == null ? c.b0 : st.cb, zoom: st.zoom == null ? 1 : st.zoom };
+  }
+  orbit(g, dx, dy) {
+    const c = this.camCfg;
+    const cl = (v, lo, hi) => lo == null ? v : Math.max(lo, Math.min(hi, v));
+    return { ca: cl(g.a + dx * 0.35, c.aMin, c.aMax), cb: cl(g.b - dy * 0.15, c.bMin, c.bMax) };
+  }
+  zoomBy(e) {
+    const v = this.view(), c = this.camCfg;
+    const d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    this.setState({ zoom: Math.min(c.zMax, Math.max(c.zMin, +(v.zoom * Math.exp(-d * 0.0016)).toFixed(3))) });
+  }
+  onDown(e) {
+    if (e.button != null && e.button !== 0) return;
+    const v = this.view();
+    this.moved = false;
+    this.drag = { x: e.clientX, y: e.clientY, a: v.a, b: v.b, id: e.pointerId, el: e.currentTarget };
+  }
+  onMove(e) {
+    const g = this.drag; if (!g) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (!this.moved) { if (Math.abs(dx) + Math.abs(dy) < 5) return; this.moved = true; try { g.el.setPointerCapture(g.id); } catch (err) {} }
+    this.setState(Object.assign({ dragging: true }, this.orbit(g, dx, dy)));
+  }
+  onUp() {
+    if (!this.drag) return;
+    this.drag = null;
+    setTimeout(() => { this.moved = false; }, 0);
+    this.setState({ dragging: false });
+  }
+  camera() {
+    const st = this.state || {}, v = this.view(), c = this.camCfg;
+    return {
+      ry: v.a, rx: v.b, rxNeg: -v.b, zoom: v.zoom, dragCls: st.dragging ? 'drag' : '', stageCls: st.dragging ? 'dragging' : '',
+      stageRef: (el) => { if (!el || el.__wheelBound) return; el.__wheelBound = true; el.addEventListener('wheel', (e) => { e.preventDefault(); this.zoomBy(e); }, { passive: false }); },
+      wheel: (e) => { if (e.currentTarget && e.currentTarget.__wheelBound) return; this.zoomBy(e); },
+      down: (e) => this.onDown(e), move: (e) => this.onMove(e), up: () => this.onUp(),
+      zoomIn: () => this.setState({ zoom: Math.min(c.zMax, +(v.zoom + 0.15).toFixed(2)) }),
+      zoomOut: () => this.setState({ zoom: Math.max(c.zMin, +(v.zoom - 0.15).toFixed(2)) }),
+      camHome: () => this.setState({ ca: c.a0, cb: c.b0, zoom: 1 })
+    };
+  }
+  renderVals() {
+    const st = this.state || {};
+    const selId = st.sel || 'aisyah';
+    const decisions = st.decisions || {};
+    const pct = (h) => (((h - 6) + 24) % 24) / 24 * 100;
+    const NOW = 9.2;
+    const base = [
+      { id: 'priya', name: 'Priya Nair', shift: 'Day 09:00–18:00', location: 'Menara Nusantara', inH: 8.85, outH: null, inTxt: '08:51', outTxt: '—', hours: '0:21', ot: '0:00', otClass: 'Workday', flags: 'None', status: 'present', color: '#111' },
+      { id: 'aisyah', name: 'Aisyah Rahman', shift: 'Day 09:00–18:00', location: 'Menara Nusantara', inH: 9.2, outH: null, inTxt: '09:12', outTxt: '—', hours: '0:00', ot: '0:00', otClass: 'Workday', flags: 'Late twice this month', status: 'late · 12 min', color: '#63625D' },
+      { id: 'weijie', name: 'Wei Jie Tan', shift: 'Night 22:00–06:00', location: 'NH Logistics hub', inH: 21.8, outH: 6, otFrom: 6, otTo: 6.57, inTxt: '21:48', outTxt: '06:34', hours: '8:00', ot: '0:34', otClass: 'Workday', flags: 'OT > 104h · 45h+ week', status: 'done', color: '#111' },
+      { id: 'daniel', name: 'Daniel Lim', shift: 'Day 09:00–18:00', location: 'NH Logistics hub', inH: 9.07, outH: null, inTxt: '09:04', outTxt: '—', hours: '0:08', ot: '0:00', otClass: 'Workday', flags: 'None', status: 'present', color: '#111' },
+      { id: 'farah', name: 'Farah Hussin', shift: 'Day 09:00–18:00', location: '—', ctx: 'On leave · until 8 Oct', inTxt: '—', outTxt: '—', hours: '—', ot: '—', otClass: '—', flags: 'None', status: 'on leave', color: '#63625D' },
+      { id: 'marcus', name: 'Marcus Ong', shift: 'Day 09:00–18:00', location: 'Menara Nusantara', inH: 8.97, outH: null, inTxt: '08:58', outTxt: '—', hours: '0:14', ot: '0:00', otClass: 'Workday', flags: 'None', status: 'present', color: '#111' },
+      { id: 'nurul', name: 'Nurul Izzati', shift: 'Retail A 10:00–19:00', location: 'NH Retail · Mid Valley', ctx: 'Shift starts 10:00', inTxt: '—', outTxt: '—', hours: '—', ot: '—', otClass: 'Workday', flags: 'First week', status: 'not started', color: '#63625D' },
+      { id: 'raj', name: 'Raj Kumar', shift: 'Day 09:00–18:00', location: 'Menara Nusantara', inH: 9.67, outH: null, inTxt: '09:40', outTxt: '—', hours: '0:00', ot: '0:00', otClass: 'Workday', flags: 'Late 4 times', status: 'late · 40 min', color: '#63625D' },
+      { id: 'mei', name: 'Mei Ling Chua', shift: 'Half day 09:00–13:00', location: 'Menara Nusantara', inH: 9.03, outH: null, inTxt: '09:02', outTxt: '—', hours: '0:10', ot: '0:00', otClass: 'Workday', flags: 'None', status: 'half day', color: '#111' },
+      { id: 'siti', name: 'Siti Aminah', shift: 'Day 09:00–18:00', location: 'NH Logistics hub', ctx: 'No check-in', inTxt: '—', outTxt: '—', hours: '—', ot: '—', otClass: 'Workday', flags: 'None', status: 'absent', color: '#C23A00' }
+    ];
+    const lanes = base.map((l, i) => {
+      const hasSpan = l.inH !== undefined;
+      const left = hasSpan ? pct(l.inH) : 0;
+      const right = hasSpan ? (l.outH === null ? pct(NOW) : pct(l.outH)) : 0;
+      const live = hasSpan && l.outH === null;
+      return { ...l, n: (i + 1 < 10 ? '0' : '') + (i + 1), cls: l.id === selId ? 'on' : '', hasSpan, noSpan: !hasSpan, ctx: l.ctx || '', left: left.toFixed(1), width: hasSpan ? Math.max(right - left, 1).toFixed(1) : '0', spanCls: live ? 'live' : '', hasOt: l.otFrom !== undefined, otLeft: l.otFrom !== undefined ? pct(l.otFrom).toFixed(1) : '0', otWidth: l.otFrom !== undefined ? (pct(l.otTo) - pct(l.otFrom)).toFixed(1) : '0', pick: () => this.setState({ sel: l.id }) };
+    });
+    const s = lanes.find((l) => l.id === selId) || lanes[1];
+    const requests = [ { id: 'r1', who: 'Priya Nair', date: '2 Oct', proposed: 'Check-out 18:40', reason: 'Forgot to clock out', own: false }, { id: 'r2', who: 'Wei Jie Tan', date: '4 Oct', proposed: 'Check-in 21:45', reason: 'Terminal offline at the hub', own: false }, { id: 'r3', who: 'Hafiz Rahman', date: '1 Oct', proposed: 'Check-in 08:30', reason: 'Client site, no terminal', own: true } ].map((q) => { const d = decisions[q.id]; return { ...q, open: !q.own && !d, decided: !!d, verdict: d === 'ok' ? 'Approved · record re-derived' : 'Rejected', color: d === 'ok' ? '#111' : '#C23A00', approve: () => this.setState({ decisions: { ...decisions, [q.id]: 'ok' } }), reject: () => this.setState({ decisions: { ...decisions, [q.id]: 'bad' } }) }; });
+    return { ...this.camera(), motionClass: this.props.motion === false ? 'still' : '', lanes, sel: { ...s, in: s.inTxt, out: s.outTxt }, requests };
+  }
+}
+</script>
+</body>
+</html>

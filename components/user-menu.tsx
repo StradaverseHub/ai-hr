@@ -7,6 +7,7 @@ import { ChevronDown, UserRound } from 'lucide-react';
 import { Avatar } from '@/components/ui';
 import { LogoutButton } from '@/components/logout-button';
 import { TourLauncher } from '@/components/tour-launcher';
+import { UiThemeSwitcher } from '@/components/ui-theme-switcher';
 import { cn } from '@/lib/utils';
 
 /**
@@ -187,6 +188,11 @@ export function UserMenu({
             </Link>
             {/* Moved out of the header (r256) so the corner has room to say who you are on a laptop. */}
             <TourLauncher variant="menu" onSelect={() => setOpen(false)} />
+            {/* r396 — the UI theme (Monolith | Classic). Here, not in the header: the right cluster is a
+                full, measured budget, and light/dark keeps its own header button. */}
+            <div className="my-1 h-px bg-border" />
+            <UiThemeSwitcher />
+            <div className="my-1 h-px bg-border" />
             <LogoutButton variant="menu" />
           </div>
         </>

@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIHR Statutory</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#F2F0EB;color:#111111;font-family:'Schibsted Grotesk',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#111111}a:hover{color:#C23A00}
+:focus-visible{outline:2px solid #FF4D00;outline-offset:4px}
+.mono{font-family:'DM Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+.num{font-family:'DM Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.mid{color:#63625D}.or{color:#C23A00}
+.grid{position:absolute;inset:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(90deg,rgba(17,17,17,.06) 0 1px,transparent 1px 8.3333%)}
+.navl{text-decoration:none;color:#63625D;padding:6px 0;border:0;border-bottom:1px solid transparent;background:transparent;cursor:pointer;font:inherit;letter-spacing:inherit;text-transform:inherit}
+.navl:hover{color:#111}.navl.on{color:#111;border-bottom-color:#111}
+.pill{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:48px;padding:0 22px;border-radius:999px;border:1px solid #111;background:#111;color:#F2F0EB;font:600 15px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer;text-decoration:none;white-space:nowrap;transition:transform .2s}
+.pill:hover{transform:translateY(-1px);color:#F2F0EB}
+.txt{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 2px;border:0;background:transparent;color:#111;font:500 15px 'Schibsted Grotesk',system-ui,sans-serif;cursor:pointer;text-decoration:none;border-bottom:1px solid #111}
+.txt:hover{color:#C23A00;border-bottom-color:#C23A00}
+.intent{display:flex;align-items:center;gap:14px;height:64px;border-top:1px solid #111;border-bottom:1px solid #111;padding:0 2px}
+.intent input{flex:1;min-width:0;background:transparent;border:0;color:#111;font:500 20px 'Schibsted Grotesk',system-ui,sans-serif;letter-spacing:-.01em}
+.stage{perspective:1800px;perspective-origin:50% 30%;flex:0 0 680px;height:660px;position:relative;display:flex;align-items:flex-end;justify-content:center}
+.spot{position:absolute;left:50%;top:50%;width:840px;height:840px;margin:-420px;border-radius:50%;background:radial-gradient(circle,#FBFAF7 0%,rgba(251,250,247,.7) 28%,transparent 62%);pointer-events:none}
+.tab3{position:absolute;left:50%;bottom:96px;width:240px;height:370px;margin-left:-120px;border-radius:8px;background:linear-gradient(160deg,#3a3a3a 0%,#121212 40%,#0a0a0a 58%,#232323 80%,#050505 100%);color:#F2F0EB;transform-origin:50% 130%;box-shadow:0 80px 90px -40px rgba(17,17,17,.8);padding:26px;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;animation:fan 9s ease-in-out infinite alternate}
+.tab3 .mono{font-size:13px}
+.tab3::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.18) 47%,transparent 60%);background-size:260% 100%;animation:sheen 7s ease-in-out infinite}
+@keyframes sheen{0%{background-position:120% 0}60%,100%{background-position:-140% 0}}
+@keyframes fan{from{transform:rotate(var(--r)) translateZ(0)}to{transform:rotate(calc(var(--r) * 1.15)) translateY(-8px)}}
+.tab3 .due{height:3px;background:#FF4D00;box-shadow:0 0 12px #FF4D00,0 0 36px rgba(255,77,0,.6)}
+.tab3 .quiet{height:1px;background:rgba(255,255,255,.22)}
+.shadow{position:absolute;left:50%;bottom:60px;width:640px;height:90px;margin-left:-280px;border-radius:50%;background:rgba(17,17,17,.36);filter:blur(26px);transform:skewX(-22deg)}
+.step{display:grid;grid-template-columns:36px 1fr auto;gap:16px;align-items:center;min-height:56px;border-top:1px solid #D9D6CF;font-size:15px}
+.row{display:grid;grid-template-columns:36px 1.2fr 1.6fr 150px 130px 110px;gap:16px;align-items:center;min-height:56px;border-top:1px solid #D9D6CF;text-decoration:none;color:#111;position:relative;transition:background .2s;background:transparent;border-left:0;border-right:0;border-bottom:0;cursor:pointer;text-align:left;font-family:inherit;width:100%;padding:0 2px;font-size:15px}
+.row:hover{background:#ECE9E2}
+.row::before{content:"";position:absolute;left:-18px;top:0;bottom:0;width:3px;background:#FF4D00;opacity:0;transition:opacity .2s}
+.row:hover::before{opacity:1}
+.list{padding-left:18px;margin-left:-18px;border-bottom:1px solid #D9D6CF}
+.ruler{position:relative;height:84px;border-top:1px solid #111}
+.mk{position:absolute;top:0;display:flex;flex-direction:column;gap:6px;padding-top:14px;font:400 11px 'DM Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#63625D;white-space:nowrap}
+.mk::before{content:"";position:absolute;left:0;top:0;width:1px;height:10px;background:#111}
+.mk b{font-weight:500;color:#111}
+.mk.or b{color:#C23A00}.mk.or::before{width:2px;height:24px;background:#FF4D00;box-shadow:0 0 10px rgba(255,77,0,.6)}
+.stage{cursor:grab;touch-action:none;user-select:none}.stage.dragging,.stage.dragging *{cursor:grabbing}
+.cam{transition:transform .6s cubic-bezier(.2,.8,.2,1)}.cam.drag{transition:none}
+.rv{animation:up .8s cubic-bezier(.2,.8,.2,1) both}
+@keyframes up{from{transform:translateY(16px);opacity:0}}
+.stat{font:400 11px 'DM Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#63625D;display:flex;gap:28px;flex-wrap:wrap}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+.still *,.still *::before,.still *::after{animation:none!important;transition:none!important}
+</style>
+</helmet>
+<div class="root {{motionClass}}" style="position: relative; min-height: 1300px; background: #F2F0EB; color: #111111; font-family: 'Schibsted Grotesk', system-ui, sans-serif; overflow: hidden">
+  <div class="grid" aria-hidden="true" style="margin: 0 56px"></div>
+  <div style="position: relative; z-index: 1; max-width: 1328px; margin: 0 auto; padding: 26px 56px 32px; display: flex; flex-direction: column; gap: 30px">
+
+    <header class="rv" style="display: flex; align-items: center; gap: 28px; flex-wrap: wrap">
+      <a href="Main.dc.html" class="mono" style="text-decoration: none; color: #111; font-weight: 500">AIHR <span class="mid">/ SYSTEM 01</span></a>
+      <nav aria-label="Primary" style="display: flex; gap: 22px; flex-wrap: wrap; margin-left: 20px" class="mono">
+        <a class="navl" href="Main.dc.html">Home</a><a class="navl" href="Payroll.dc.html">Payroll</a><a class="navl" href="People.dc.html">People</a><a class="navl" href="Leave.dc.html">Leave</a><a class="navl" href="Attendance.dc.html">Time</a><a class="navl" href="Claims.dc.html">Claims</a><a class="navl on" href="Compliance.dc.html">Statutory</a><a class="navl" href="Drive.dc.html">Drive</a>
+      </nav>
+      <span class="mono mid" style="margin-left: auto">Payroll / Statutory · Nusantara Sdn Bhd · September 2026</span>
+    </header>
+
+    <section style="display: flex; flex-wrap: wrap; align-items: center; gap: 24px; min-height: 680px">
+      <div class="rv" style="flex: 1 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 22px; animation-delay: .1s">
+        <span class="mono or">Due 15 October · T−9 days</span>
+        <h1 style="margin: 0; font-size: 88px; font-weight: 500; line-height: .92; letter-spacing: -.045em; max-width: 640px">September filings.</h1>
+        <p class="mid" style="margin: 0; font-size: 17px; line-height: 1.5; max-width: 520px">PCB (CP39), EPF Borang A, SOCSO/EIS Borang 8A and the HRD Corp levy for the released September run. Files are generated. Payment is the step left.</p>
+        <div style="max-width: 560px; border-bottom: 1px solid #D9D6CF">
+          <div class="step"><span class="mono mid">01</span><span>Figures locked</span><span class="mono">25 Sep · Done</span></div>
+          <div class="step"><span class="mono mid">02</span><span>Files generated</span><span class="mono">1 Oct · Done</span></div>
+          <div class="step"><span class="mono" style="color: {{payColor}}">03</span><span>{{payText}}</span><sc-if value="{{notPaid}}" hint-placeholder-val="{{ true }}"><button class="pill" type="button" onClick="{{markPaid}}" style="min-height: 40px; font-size: 14px">Confirm RM 556,618.70</button></sc-if><sc-if value="{{paid}}" hint-placeholder-val="{{ false }}"><button class="txt" type="button" onClick="{{undoPaid}}" style="min-height: 32px; font-size: 14px">Undo</button></sc-if></div>
+          <div class="step"><span class="mono mid">04</span><span class="mid">Receipts filed</span><span class="mono mid">After payment</span></div>
+        </div>
+      </div>
+      <div class="stage rv {{stageCls}}" aria-hidden="true" ref="{{stageRef}}" onPointerDown="{{down}}" onPointerMove="{{move}}" onPointerUp="{{up}}" onPointerCancel="{{up}}" onPointerLeave="{{up}}" onWheel="{{wheel}}" style="animation-delay: .2s">
+        <span class="spot"></span><span class="shadow"></span>
+        <div class="cam {{dragCls}}" style="position: absolute; inset: 0; transform-style: preserve-3d; transform-origin: 50% 58%; transform: rotateX({{rx}}deg) rotateY({{ry}}deg) scale3d({{zoom}}, {{zoom}}, {{zoom}})">
+<div class="tab3" style="--r: -24deg"><span class="mono">EPF · KWSP</span><span class="due"></span></div>
+        <div class="tab3" style="--r: -8deg; animation-delay: -2s"><span class="mono">PERKESO</span><span class="due"></span></div>
+        <div class="tab3" style="--r: 8deg; animation-delay: -4s"><span class="mono">LHDN</span><span class="due"></span></div>
+        <div class="tab3" style="--r: 24deg; animation-delay: -6s"><span class="mono">OTHER</span><span class="quiet"></span></div>
+</div>
+      </div>
+    </section>
+
+    <section class="rv" style="animation-delay: .3s">
+      <label class="intent">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="#FF4D00" aria-hidden="true"><path d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2z"></path></svg>
+        <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">What should the system file</span>
+        <input type="text" value="Generate September statutory files for Nusantara Sdn Bhd">
+        <button class="txt" type="button" style="min-height: 40px; border-bottom: 0; font-size: 20px">↵</button>
+      </label>
+    </section>
+
+    <section class="rv" style="animation-delay: .4s">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 12px; flex-wrap: wrap; gap: 10px">
+        <span class="mono mid">Filings, by the authority you file with</span>
+        <div class="mono" style="display: flex; gap: 22px"><sc-for list="{{bodies}}" as="b" hint-placeholder-count="5"><button class="navl {{b.cls}}" type="button" onClick="{{b.pick}}">{{b.name}}</button></sc-for></div>
+      </div>
+      <div class="list">
+        <sc-for list="{{forms}}" as="f" hint-placeholder-count="8">
+          <button class="row" type="button"><span class="mono mid">{{f.n}}</span><span style="font-weight: 500">{{f.name}}</span><span class="mid" style="font-size: 14px">{{f.desc}}</span><span class="num" style="font-size: 14px">{{f.figure}}</span><span class="mono mid">{{f.due}}</span><span class="mono" style="color: {{f.color}}">{{f.status}}</span></button>
+        </sc-for>
+      </div>
+    </section>
+
+    <section class="rv" style="display: flex; gap: 40px; flex-wrap: wrap; align-items: flex-start; animation-delay: .5s">
+      <div style="flex: 999 1 560px; min-width: 0">
+        <div style="padding-bottom: 12px"><span class="mono mid">Deadline rail · October to March</span></div>
+        <div class="ruler">
+          <div class="mk" style="left: 2%"><b>6 Oct</b><span>Today</span></div>
+          <div class="mk or" style="left: 10%"><b>15 Oct</b><span>Sep filings</span></div>
+          <div class="mk" style="left: 24%"><b>31 Oct</b><span>Zakat · PTPTN</span></div>
+          <div class="mk" style="left: 36%"><b>15 Nov</b><span>Oct filings</span></div>
+          <div class="mk" style="left: 52%"><b>15 Dec</b><span>Nov filings</span></div>
+          <div class="mk" style="left: 76%"><b>28 Feb</b><span>EA to employees</span></div>
+          <div class="mk" style="left: 92%"><b>31 Mar</b><span>Form E · CP8D</span></div>
+        </div>
+      </div>
+      <div style="flex: 1 1 320px; min-width: 280px; display: flex; flex-direction: column; gap: 10px; border-top: 1px solid #111; padding-top: 14px">
+        <span class="mono or">Overdue · 2 CP22A notices</span>
+        <span style="font-size: 20px; font-weight: 500; letter-spacing: -.02em; line-height: 1.2">Arjun Pillai and one other September leaver.</span>
+        <span class="mid" style="font-size: 14px; line-height: 1.5">A CP22A is due at least 30 days before cessation. Both drafts are ready to key into e-CP22 on MyTax.</span>
+        <a class="txt" href="#worklist" style="align-self: flex-start">Open the worklist</a>
+      </div>
+    </section>
+
+    <footer class="rv stat" style="border-top: 1px solid #111; padding-top: 14px; animation-delay: .6s"><span>Sys OK</span><span>4 filings due 15 Oct</span><span>2 overdue</span><span>Statutory tables draft until signed off</span><span style="margin-left: auto">Figures from the released run · never re-computed here</span></footer>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"boolean","default":true,"section":"Look"},"$preview":{"width":1440,"height":1300}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.camCfg = { a0: 0, b0: 0, aMin: -50, aMax: 50, bMin: -25, bMax: 25, zMin: 0.7, zMax: 1.3 }; }
+  view() {
+    const st = this.state || {}, c = this.camCfg;
+    return { a: st.ca == null ? c.a0 : st.ca, b: st.cb == null ? c.b0 : st.cb, zoom: st.zoom == null ? 1 : st.zoom };
+  }
+  orbit(g, dx, dy) {
+    const c = this.camCfg;
+    const cl = (v, lo, hi) => lo == null ? v : Math.max(lo, Math.min(hi, v));
+    return { ca: cl(g.a + dx * 0.35, c.aMin, c.aMax), cb: cl(g.b - dy * 0.15, c.bMin, c.bMax) };
+  }
+  zoomBy(e) {
+    const v = this.view(), c = this.camCfg;
+    const d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    this.setState({ zoom: Math.min(c.zMax, Math.max(c.zMin, +(v.zoom * Math.exp(-d * 0.0016)).toFixed(3))) });
+  }
+  onDown(e) {
+    if (e.button != null && e.button !== 0) return;
+    const v = this.view();
+    this.moved = false;
+    this.drag = { x: e.clientX, y: e.clientY, a: v.a, b: v.b, id: e.pointerId, el: e.currentTarget };
+  }
+  onMove(e) {
+    const g = this.drag; if (!g) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y;
+    if (!this.moved) { if (Math.abs(dx) + Math.abs(dy) < 5) return; this.moved = true; try { g.el.setPointerCapture(g.id); } catch (err) {} }
+    this.setState(Object.assign({ dragging: true }, this.orbit(g, dx, dy)));
+  }
+  onUp() {
+    if (!this.drag) return;
+    this.drag = null;
+    setTimeout(() => { this.moved = false; }, 0);
+    this.setState({ dragging: false });
+  }
+  camera() {
+    const st = this.state || {}, v = this.view(), c = this.camCfg;
+    return {
+      ry: v.a, rx: v.b, rxNeg: -v.b, zoom: v.zoom, dragCls: st.dragging ? 'drag' : '', stageCls: st.dragging ? 'dragging' : '',
+      stageRef: (el) => { if (!el || el.__wheelBound) return; el.__wheelBound = true; el.addEventListener('wheel', (e) => { e.preventDefault(); this.zoomBy(e); }, { passive: false }); },
+      wheel: (e) => { if (e.currentTarget && e.currentTarget.__wheelBound) return; this.zoomBy(e); },
+      down: (e) => this.onDown(e), move: (e) => this.onMove(e), up: () => this.onUp(),
+      zoomIn: () => this.setState({ zoom: Math.min(c.zMax, +(v.zoom + 0.15).toFixed(2)) }),
+      zoomOut: () => this.setState({ zoom: Math.max(c.zMin, +(v.zoom - 0.15).toFixed(2)) }),
+      camHome: () => this.setState({ ca: c.a0, cb: c.b0, zoom: 1 })
+    };
+  }
+  renderVals() {
+    const st = this.state || {};
+    const body = st.body || 'all';
+    const paid = !!st.paid;
+    const bodies = [ { id: 'all', name: 'All' }, { id: 'epf', name: 'EPF' }, { id: 'perkeso', name: 'SOCSO / EIS' }, { id: 'lhdn', name: 'LHDN' }, { id: 'other', name: 'Other' } ].map((b) => ({ ...b, cls: b.id === body ? 'on' : '', pick: () => this.setState({ body: b.id }) }));
+    const m = paid ? { status: 'Paid', color: '#111' } : { status: 'Due soon', color: '#C23A00' };
+    const all = [
+      { body: 'epf', name: 'Borang A', desc: 'Contributions for every member, filed through i-Akaun', figure: 'RM 373,770.00', due: '15 Oct', ...m },
+      { body: 'perkeso', name: 'Borang 8A', desc: 'SOCSO and EIS, one file, one payment, PERKESO ASSIST', figure: 'RM 39,296.00', due: '15 Oct', ...m },
+      { body: 'lhdn', name: 'CP39 · PCB e-Data', desc: 'Monthly tax deductions as the e-Data PCB text file', figure: 'RM 127,513.70', due: '15 Oct', ...m },
+      { body: 'other', name: 'HRD Corp levy', desc: 'Levy on the September wage bill', figure: 'RM 16,039.00', due: '15 Oct', ...m },
+      { body: 'lhdn', name: 'CP22 / CP22A', desc: 'Joiner and cessation notices, driven by hire and termination dates', figure: '1 filed · 2 overdue', due: '18 Sep', status: 'Overdue', color: '#C23A00' },
+      { body: 'other', name: 'Zakat remittance', desc: 'Elected by 19 employees, remitted to the state body', figure: 'RM 4,200.00', due: '31 Oct', status: 'Upcoming', color: '#63625D' },
+      { body: 'lhdn', name: 'EA statements', desc: 'Each employee’s statement, English and Bahasa Malaysia', figure: '248 statements', due: '28 Feb', status: 'Upcoming', color: '#63625D' },
+      { body: 'lhdn', name: 'Form E / CP8D', desc: 'The employer return for 2026 with the employee listing', figure: 'Opens 1 Jan', due: '31 Mar', status: 'Upcoming', color: '#63625D' }
+    ];
+    const forms = all.filter((f) => body === 'all' || f.body === body).map((f, i) => ({ ...f, n: '0' + (i + 1) }));
+    return { ...this.camera(), motionClass: this.props.motion === false ? 'still' : '', bodies, forms, paid, notPaid: !paid, payColor: paid ? '#111' : '#C23A00', payText: paid ? 'Payment confirmed · today' : 'Payment confirmed', markPaid: () => this.setState({ paid: true }), undoPaid: () => this.setState({ paid: false }) };
+  }
+}
+</script>
+</body>
+</html>
