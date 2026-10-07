@@ -198,6 +198,29 @@ describe('r413 · cp22aParticulars — the year so far, from processed payroll, 
     expect(signed.officer.email).toMatch(/^siti_/);
   });
 
+  it('r413 verify (MEDIUM) — "hingga" is capped at the leaving date once the leaving month is processed', async () => {
+    await owner.db
+      .update(schema.payrollBatch)
+      .set({ status: 'processed' })
+      .where(and(eq(schema.payrollBatch.companyId, base.companyId), eq(schema.payrollBatch.payPeriod, '2026-04')));
+    const p = (await cp22aParticulars(adminCtx(base), { employmentId, today: '2026-04-25' }))!;
+    expect(p.employee.cessationDate).toBe('2026-04-20');
+    expect(p.pay.to, 'never after the date the header says the employment ended').toBe('2026-04-20');
+  });
+
+  it('r413 verify (HIGH) — line 6 is blank when the employer bears the tax and nothing carries it', async () => {
+    const before = (await cp22aParticulars(adminCtx(base), { employmentId, today: '2026-03-25' }))!;
+    expect(before.employee.taxBorneByEmployer).toBe(false);
+    expect(before.pay.lines[6], 'line 6 prints while the employee bears their own tax').not.toBeUndefined();
+    await owner.db
+      .update(schema.employeeStatutoryMy)
+      .set({ employerBearsTax: true })
+      .where(eq(schema.employeeStatutoryMy.personId, personId));
+    const p = (await cp22aParticulars(adminCtx(base), { employmentId, today: '2026-03-25' }))!;
+    expect(p.employee.taxBorneByEmployer).toBe(true);
+    expect(p.pay.lines[6], 'a figure here would leave out the tax the form says the employer bears').toBeUndefined();
+  });
+
   describe('the PDF route', () => {
     const url = (id: string) => new Request(`http://localhost/payroll/cp22a/${id}/pdf?inline=1`);
     const call = (id: string) => pdfGET(url(id), { params: Promise.resolve({ employmentId: id }) });

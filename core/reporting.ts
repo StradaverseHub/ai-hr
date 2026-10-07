@@ -1654,7 +1654,12 @@ export async function cp22aParticulars(
     const has = (field: string, value: number) => value !== 0 || mapped.has(field);
     lines[1] = r2(b.grossSalary);
     lines[3] = r2(b.bonus + b.directorFee);
-    lines[6] = r2(b.allowances + b.tipsPerquisites + b.taxBorneByEmployer);
+    // ⚠️ r413 verify (HIGH) — line 6 is captioned "termasuk cukai ditanggung oleh majikan". When the employer
+    // bears the tax (A7 Ya) but no pay item carries that tax, the EA engine has nothing for it, and a figure
+    // here would understate income on a form that says Ya. Blank — never a number we cannot stand behind.
+    if (!(extra.bearsTax === true && !has('taxBorneByEmployer', b.taxBorneByEmployer))) {
+      lines[6] = r2(b.allowances + b.tipsPerquisites + b.taxBorneByEmployer);
+    }
     if (has('gratuity', b.gratuity)) lines[4] = r2(b.gratuity);
     if (has('compensation', b.compensation)) lines[5] = r2(b.compensation);
     if (has('pension', ea.partC.pension)) lines[7] = r2(ea.partC.pension);
@@ -1672,9 +1677,12 @@ export async function cp22aParticulars(
   const yearStart = `${year}-01-01`;
   const hired = base.employee.commencementDate;
   const from = lastPeriod ? (hired && hired > yearStart ? hired : yearStart) : null;
-  const to = lastPeriod
+  const periodEnd = lastPeriod
     ? `${lastPeriod}-${String(daysInMonth(Number(lastPeriod.slice(0, 4)), Number(lastPeriod.slice(5, 7)))).padStart(2, '0')}`
     : null;
+  // r413 verify (MEDIUM) — "hingga" never runs past the date the form's own header says the employment ended:
+  // once the leaving month's payroll is processed, the month end would otherwise print a date after it.
+  const to = periodEnd && cessationDate < periodEnd ? cessationDate : periodEnd;
 
   const corrAddr = base.employee.correspondenceAddress;
   const corrTail = [[corrAddr.postcode, corrAddr.town].filter(Boolean).join(' '), corrAddr.state].filter(Boolean).join(', ');
