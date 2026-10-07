@@ -42,7 +42,7 @@ const W = 595.28;
 const H = 841.89;
 
 /** A run of equal ruled boxes: left edge of the first, pitch, count, and the row they sit on. */
-type BoxRun = { x: number; pitch: number; n: number; y: number; h: number };
+export type BoxRun = { x: number; pitch: number; n: number; y: number; h: number };
 
 /**
  * THE AGENCY'S PAGE 1, MEASURED. Every figure is a coordinate read off PERKESO's blank Borang 8A (2013),
@@ -443,8 +443,8 @@ export async function renderBorang8APdf(form: Borang8AForm): Promise<Uint8Array>
   return doc.save();
 }
 
-/** Rule a run of equal boxes. */
-function boxes(page: PDFPage, r: BoxRun, lw: number) {
+/** Rule a run of equal boxes. Exported for Borang 8B (lib/borang-8b-pdf.ts), which shares the agency's boxes. */
+export function boxes(page: PDFPage, r: BoxRun, lw: number) {
   for (let i = 0; i < r.n; i += 1) {
     page.drawRectangle({ x: r.x + i * r.pitch, y: r.y, width: r.pitch, height: r.h, borderColor: rgb(0, 0, 0), borderWidth: lw });
   }

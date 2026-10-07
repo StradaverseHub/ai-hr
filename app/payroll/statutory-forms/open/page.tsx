@@ -96,6 +96,7 @@ const REFUSAL_KEY = {
   cycles_invalid: 'refusal_cycles_invalid',
   cycles_no_deductions: 'refusal_cycles_no_deductions',
   year_no_payroll: 'refusal_year_no_payroll',
+  month_not_ended: 'refusal_month_not_ended',
 } as const;
 
 const FIDELITY_KEY: Record<string, string> = {

@@ -60,14 +60,17 @@ describe('the submission field is what decides the override', () => {
     // it off some other list, this line is what says the override went with it.
     const filed = MY_REPORTS.filter((r) => r.submission).map((r) => r.id).sort();
     // r411 — `my.borang-bbcd`, the BBCD: the cover for the KWSP payment, filed with the same deadline.
+    // r412 (item e74af58c, step 2) — `my.borang-8b` and `my.sip-contribution` are PERKESO filings: listed, not loosened.
     expect(filed).toEqual([
       'my.borang-8a',
+      'my.borang-8b',
       'my.borang-a',
       'my.borang-bbcd',
       'my.cp39',
       'my.cp8d',
       'my.epf',
       'my.hrd-levy',
+      'my.sip-contribution',
       'my.socso-eis',
     ]);
 

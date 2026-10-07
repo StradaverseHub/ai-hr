@@ -39,6 +39,10 @@ import { borang8AReport } from './borang-8a';
 // this shelf reads) and registers here like every other form. The two files share NO code: their
 // contribution-month rules are opposites, and a shared helper is how one acquires the other's.
 import { borangAReport } from './borang-a';
+// r412 (item e74af58c, step 2) — the EIS (SIP) contribution schedule is the Borang 8A read re-shaped (no second
+// read, no EIS arithmetic), and Borang 8B reads the employer header only. Both register here like every form.
+import { sipContributionReport } from './sip-contribution';
+import { borang8BReport } from './borang-8b';
 // e0cd4583 — the CP39 PRINTED form's extra header and per-employee fields. NOT a second generator and
 // NOT a second catalogue entry: `cp39()` below merges these into the rows and meta it already returns,
 // so the LHDN shelf keeps ONE CP39 card with ONE readiness gate.
@@ -397,8 +401,12 @@ export type ReportDef = {
    *
    * The yearly counterpart of `runSelection`, without the cycles: a year has no payroll cycle, so the step
    * asks for Company and Year only and Continue opens `action` — the form shown in the shared viewer, then
-   * downloaded — instead of the generic figures screen. Declared ONLY by a `periodKind: 'year'` report
-   * (`reportDestination` ignores it on any other); my.cp8d declares it.
+   * downloaded — instead of the generic figures screen. my.cp8d declares it.
+   *
+   * r412 (item e74af58c) — ALSO HONOURED ON A MONTHLY REPORT THAT DECLARES NO `runSelection`: the step asks
+   * Company, Year and Month and Continue opens `action`. my.borang-8b declares it (an under-paid month, drawn
+   * from no payroll run, so a cycle box would be a control that does nothing). `reportDestination` ignores
+   * it on an 'event' report, and `runSelection` wins on a monthly one that declares both.
    */
   preview?: { action: string };
   generate: (ctx: SessionContext, params: ReportParams) => Promise<ReportResult>;
@@ -2340,6 +2348,33 @@ export const MY_REPORTS: ReportDef[] = [
     descriptionKey: 'desc_borang_8a', fidelity: 'agency-layout', outputs: ['pdf', 'print'], shelfOrder: 2,
     runSelection: { action: '/payroll/borang-8a/preview' },
     submission: { body: 'perkeso', agency: 'PERKESO', channel: 'PERKESO ASSIST', dueDayOfNextMonth: 15 } },
+  // r412 (item e74af58c, step 2) — BORANG 8B, built. It LEFT MY_PLANNED_FORMS (`perkeso.borang-8b`) and joined
+  // this list at the same shelfOrder 3 it held there. PERKESO's PER. 44D form for contributions UNDER-paid
+  // for an earlier month: the header (employer, the underpaid month, the PERKESO signatory) is filled; every
+  // employee line and amount stays blank, because core/back-pay.ts charges arrears in the month paid and the
+  // system therefore holds no underpayment record. See localization/my/borang-8b.ts.
+  //
+  // `dueDayOfNextMonth: null` — PERKESO's own 8B sentence ends "…yang dilantik" and names NO deadline.
+  // NO `runSelection`: the form is not drawn from a payroll run, so a cycle box would be a control that does
+  // nothing. `preview` instead: the criteria step asks Company, Year and Month, and Continue opens the form.
+  // `fidelity: 'agency-layout'`, never 'official' — the 8A's reasons, and the 8A's measured geometry.
+  { id: 'my.borang-8b', label: 'Borang 8B — under-paid contributions (PERKESO)', cadence: 'event', scope: 'period', periodKind: 'month', generate: borang8BReport,
+    descriptionKey: 'desc_borang_8b', fidelity: 'agency-layout', outputs: ['pdf', 'print'], shelfOrder: 3,
+    preview: { action: '/payroll/borang-8b/preview' },
+    submission: { body: 'perkeso', agency: 'PERKESO', channel: 'PERKESO / collection agent', dueDayOfNextMonth: null } },
+  // r412 (item e74af58c, step 2) — THE EIS (SIP) MONTHLY CONTRIBUTION SCHEDULE, built. It takes the slot the
+  // planned "SIP Forms" entry held (shelfOrder 4); SIP 2 / SIP 2A — the registration forms — stay planned
+  // below. Laid out like the reporter's sample, which is another payroll system's report and NOT a PERKESO
+  // form — so `fidelity: 'figures'`, NOT `agency-layout`: the shared agency-layout caption says "drawn box for
+  // box to match the agency's own form", which is untrue of a vendor's report, and a shared caption may say
+  // only what is true of every member (CLAUDE.md §8). Rasterising the criteria step caught it.
+  //
+  // `runSelection` — `sipContributionReport` IS the Borang 8A read (which honours `runSeqs`) re-shaped, so
+  // the cycle box is real. `dueDayOfNextMonth: 15`: EIS is paid with SOCSO, on the 8A's date.
+  { id: 'my.sip-contribution', label: 'EIS (SIP) monthly contribution schedule (PERKESO)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: sipContributionReport,
+    descriptionKey: 'desc_sip_contribution', fidelity: 'figures', outputs: ['pdf', 'print'], shelfOrder: 4,
+    runSelection: { action: '/payroll/sip-contribution/preview' },
+    submission: { body: 'perkeso', agency: 'PERKESO', channel: 'PERKESO ASSIST', dueDayOfNextMonth: 15 } },
   // dueDayOfNextMonth null: the annual deadline was never stated to us. See ReportSubmission.
   //
   // ONE GENERATOR, TWO CATALOG ENTRIES. `cp8d` returns the Form E Part A headcounts (meta.summary, via
@@ -2705,9 +2740,16 @@ export const MY_PLANNED_FORMS: PlannedFormDef[] = [
   // 8ca344bf — `perkeso.borang-8a` STOOD HERE and is deliberately gone: it was BUILT, so it left this list
   // and joined MY_REPORTS at the same shelfOrder 2, which is exactly the path this type's doc-comment
   // describes. Its two message keys went with it; the shelf and this screen were not touched.
-  { id: 'perkeso.borang-8b', labelKey: 'planned_perkeso_borang_8b', hintKey: 'planned_perkeso_borang_8b_hint', body: 'perkeso', cadence: 'monthly', shelfOrder: 3 },
-  { id: 'perkeso.sip', labelKey: 'planned_perkeso_sip', hintKey: 'planned_perkeso_sip_hint', body: 'perkeso', cadence: 'monthly', shelfOrder: 4 },
+  // r412 (item e74af58c, step 2) — `perkeso.borang-8b` STOOD HERE and is deliberately gone: it was BUILT, so it
+  // left this list and joined MY_REPORTS as `my.borang-8b` at the same shelfOrder 3. And `perkeso.sip` ("SIP
+  // Forms") stood here at shelfOrder 4: its monthly half — the EIS contribution schedule — is BUILT and took
+  // that slot as `my.sip-contribution`. What it named that is NOT built is SIP 2 / SIP 2A, the EIS
+  // registration forms, and those STAY planned, by their own name, below. The retired message keys are
+  // marked "[retired r412 …]" in every locale rather than deleted.
   { id: 'perkeso.employee-registration', labelKey: 'planned_perkeso_employee_registration', hintKey: 'planned_perkeso_employee_registration_hint', body: 'perkeso', cadence: 'event', shelfOrder: 5 },
+  // r412 — SIP 2 / SIP 2A stay planned (the approved plan): PERKESO's forms date from 2017 and still print the
+  // old RM4,000 wage limit, and PERKESO's 2025 guide registers employees through the ASSIST portal.
+  { id: 'perkeso.sip-2', labelKey: 'planned_perkeso_sip_2', hintKey: 'planned_perkeso_sip_2_hint', body: 'perkeso', cadence: 'event', shelfOrder: 6 },
   // r224 — `lhdn.tp1` STOOD HERE and is deliberately gone: it was BUILT (the declaration screen at
   // /payroll/transactions/tp1 and the drawn form at lib/tp1-pdf.ts), so it left this list and joined
   // MY_STATUTORY_LINKS as `my.tp1` at the same shelfOrder 1, exactly as the two Borangs did before it.

@@ -508,8 +508,12 @@ describe('the criteria each form asks for', () => {
     expect(d.action).toBe('/payroll/cp8d/preview');
     expect(d.criteria.map((c) => c.kind)).toEqual(['company', 'year']);
     expect(REGISTERED_ROUTES.has('/payroll/cp8d/preview')).toBe(true);
-    // A monthly form can never be sent to an annual preview, nor an annual one given cycles.
-    expect(reportDestination('x', 'month', null, { action: '/y' }).action).toBe('/payroll/statutory-forms/x');
+    // An annual form is never given cycles. ⚠️ r412 (item e74af58c) — UPDATED, NOT DELETED: a MONTHLY form
+    // with its own preview and no cycles (Borang 8B) now continues to that preview with company, year and
+    // month; a monthly form that declares cycles still continues to its cycles action, never the preview.
+    expect(reportDestination('x', 'month', null, { action: '/y' }).action).toBe('/y');
+    expect(reportDestination('x', 'month', null, { action: '/y' }).criteria.map((c) => c.kind)).toEqual(['company', 'year', 'month']);
+    expect(reportDestination('x', 'month', { action: '/c' }, { action: '/y' }).action).toBe('/c');
     expect(reportDestination('x', 'year', { action: '/y' }, null).criteria.map((c) => c.kind)).toEqual(['company', 'year']);
   });
 
