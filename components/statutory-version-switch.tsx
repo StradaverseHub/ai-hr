@@ -1,6 +1,6 @@
 'use client';
 
-import { MONO_FIELD } from '@/components/ui/input';
+import { MONO_UNDERLINE_FIELD as MONO_FIELD } from '@/components/monolith/classes';
 import { inputCls } from '@/components/ui';
 
 /**

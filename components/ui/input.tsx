@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
  * by a 1px shadow (no layout shift). The label above the field is <Field> (components/monolith/field.tsx) —
  * an <input> has no label of its own. Appended after Classic's string, which is byte-identical to main's.
  */
-export const MONO_FIELD =
+const MONO_FIELD =
   'monolith:h-10 monolith:rounded-none monolith:border-0 monolith:border-b monolith:border-input monolith:bg-transparent monolith:px-0 monolith:py-2 monolith:text-[15px] monolith:font-medium monolith:shadow-none monolith:placeholder:text-faint monolith:focus-visible:border-signal monolith:focus-visible:ring-0 monolith:focus-visible:shadow-[0_1px_0_0_var(--signal)]';
 
 export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(

@@ -30,6 +30,7 @@ import {
   parseDestination,
 } from '../app/payroll/statutory-forms/criteria';
 import { viewerQuery } from '../app/payroll/statutory-forms/viewer-params';
+import { MONO_UNDERLINE_FIELD } from '../components/monolith/classes';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import ta from '../messages/ta.json';
@@ -96,6 +97,14 @@ describe('r402 · one EA card and one PCB 2(II) card on the Income Tax shelf', (
 });
 
 describe('r402 · the Version criterion', () => {
+  it('the select\'s Monolith underline is the same string <Input> uses (no drift between two copies)', () => {
+    const input = fs.readFileSync(path.join(ROOT, 'components/ui/input.tsx'), 'utf8');
+    const m = /const MONO_FIELD =\n  '([^']+)';/.exec(input);
+    expect(m, 'MONO_FIELD not found in components/ui/input.tsx').not.toBeNull();
+    expect(m![1].length).toBeGreaterThan(100);
+    expect(MONO_UNDERLINE_FIELD).toBe(m![1]);
+  });
+
   it('the step asks for company, year and version, and the version field is the destination’s `lang`', () => {
     for (const id of ['my.ea', 'my.pcb2ii']) {
       const d = parseDestination(MY_STATUTORY_LINKS.find((l) => l.id === id)!.href);

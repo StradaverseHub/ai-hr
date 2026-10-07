@@ -6,7 +6,7 @@ import { listCompanies } from '@/core/read';
 import { listStatutoryCatalog } from '@/core/reporting';
 import { Card, PageHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { Field } from '@/components/monolith/field';
-import { MONO_FIELD } from '@/components/ui/input';
+import { MONO_UNDERLINE_FIELD as MONO_FIELD } from '@/components/monolith/classes';
 import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
 import {
   defaultCriteria,
