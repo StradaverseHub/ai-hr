@@ -254,6 +254,8 @@ export type FormFidelity = 'official' | 'agency-layout' | 'figures' | 'draft-fil
 export const MY_OFFICIAL_ARTWORK: readonly { id: string; edition: string; artwork: string; fieldMap: string }[] = [
   { id: 'my.cp22', edition: 'CP22 [Pin.1/2021]', artwork: 'public/forms/cp22-pin-1-2021.pdf', fieldMap: 'lib/cp22-fields.ts' },
   { id: 'my.cp22a', edition: 'CP22A [Pin.1/2023]', artwork: 'public/forms/cp22a-pin-1-2023.pdf', fieldMap: 'lib/cp22a-fields.ts' },
+  // r415 (item 79f3f64d, step 3) — the third, by the same door: LHDN's own CP21 [Pin.1/2025] and its map.
+  { id: 'my.cp21', edition: 'CP21 [Pin.1/2025]', artwork: 'public/forms/cp21-pin-1-2025.pdf', fieldMap: 'lib/cp21-fields.ts' },
 ];
 
 /** What comes out of a form, for the chips on its card. `file` is the agency upload file (draft). */
@@ -396,7 +398,18 @@ export type StatutoryFormLink = {
    * chosen continues to `previewPath` with `{employmentId}` substituted. Declared HERE, beside the href, so
    * the selection screen names no form: it reads the entry and draws whatever event it declares.
    */
-  event?: { form: 'CP22' | 'CP22A'; previewPath: string };
+  event?: {
+    form: 'CP22' | 'CP22A' | 'CP21';
+    previewPath: string;
+    /**
+     * r415 (item 79f3f64d, step 3) — WHO THE SCREEN LISTS. Absent: the compliance worklist's people for
+     * `form` (CP22's joiners, CP22A's leavers), as r413 built it. `'active'`: every ACTIVE employee of the
+     * company — for a form whose event nothing records. CP21 is that form: nobody's intended departure from
+     * Malaysia is on file, so the plan lists "all current staff" with the name search and lets the operator
+     * choose. Declared here, so the screen still names no form.
+     */
+    people?: 'active';
+  };
 };
 
 export type ReportDef = {
@@ -2320,7 +2333,7 @@ export const MY_REPORTS: ReportDef[] = [
   //
   // ⚠️ AND NOT ONE STEP FURTHER. The specimen is another payroll system's rendering of the agency's
   // page, not LHDN's own artwork; it is deliberately NOT in `public/forms/`, which holds only the agency
-  // files listed in `MY_OFFICIAL_ARTWORK` (CP22 and, since r413, CP22A) — no CP39. The drawn page and its
+  // files listed in `MY_OFFICIAL_ARTWORK` (CP22; CP22A since r413; CP21 since r415) — no CP39. The drawn page and its
   // text twin both say on their face that the paper is ours. Understating is safe; overstating is the single failure this
   // vocabulary exists to prevent.
   { id: 'my.cp39', label: 'CP39 — MTD / PCB (LHDN)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: cp39,
@@ -2795,6 +2808,26 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
     shelfOrder: 10,
     event: { form: 'CP22A', previewPath: '/payroll/cp22a/{employmentId}/preview' },
   },
+  // r415 (item 79f3f64d, step 3) — CP21, BUILT. It LEFT MY_PLANNED_FORMS (`lhdn.cp21`) and joined this list at
+  // the same shelfOrder 8 it held there — a link for the reason CP22A is one: it is one person's notice.
+  // Filled on LHDN's own CP21 [Pin.1/2025] (public/forms/cp21-pin-1-2025.pdf, mapped in lib/cp21-fields.ts),
+  // so it is the third member of `MY_OFFICIAL_ARTWORK`. Opens on the same event-selection screen, which for
+  // this entry lists every ACTIVE employee (`people: 'active'`): nothing records an intended departure. Its
+  // planned keys (`planned_lhdn_cp21` and its hint) are retired in all six catalogues, not deleted.
+  {
+    id: 'my.cp21',
+    labelKey: 'link_cp21',
+    hintKey: 'link_cp21_hint',
+    descriptionKey: 'desc_cp21',
+    body: 'lhdn',
+    cadence: 'event',
+    href: '/payroll/statutory-forms/event?form=my.cp21',
+    actionLabelKey: 'openForm',
+    fidelity: 'official',
+    outputs: ['pdf', 'print'],
+    shelfOrder: 8,
+    event: { form: 'CP21', previewPath: '/payroll/cp21/{employmentId}/preview', people: 'active' },
+  },
 ];
 
 /**
@@ -2853,7 +2886,9 @@ export const MY_PLANNED_FORMS: PlannedFormDef[] = [
   // orders 5 and 6 they held here — the migration path `PlannedFormDef` was designed for, and the one
   // TP1, Borang A and Borang 8A each took before them. Their four planned_* message keys went with them.
   // (r402 merged that pair into the one entry `my.pcb2ii` at shelfOrder 5; the ids redirect.)
-  { id: 'lhdn.cp21', labelKey: 'planned_lhdn_cp21', hintKey: 'planned_lhdn_cp21_hint', body: 'lhdn', cadence: 'event', shelfOrder: 8 },
+  // r415 (item 79f3f64d, step 3) — `lhdn.cp21` STOOD HERE and is deliberately gone: it was BUILT, so it left
+  // this list and joined MY_STATUTORY_LINKS as `my.cp21` at the same shelfOrder 8. Its two planned_* keys are
+  // retired in all six catalogues, not deleted.
   // r413 (item 79f3f64d, step 2) — `lhdn.cp22a` STOOD HERE and is deliberately gone: it was BUILT, so it
   // left this list and joined MY_STATUTORY_LINKS as `my.cp22a` at the same shelfOrder 10. Its r409 keys
   // (`planned_lhdn_cp22a_cessation` and its hint) are retired in all six catalogues, not deleted.
