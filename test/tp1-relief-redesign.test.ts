@@ -467,7 +467,9 @@ describe('3e3d3fb2 — TP1 Relief, rebuilt the way Fixed Transaction is', () => 
   it('the history is narrowed to the selected employee — in the QUERY, not over rows already read', async () => {
     const tree = await render({ employmentId: aisha.employmentId });
     const { declarations, applied } = lists(tree);
-    expect(JSON.stringify(declarations[0].props.rows)).not.toContain('9999');
+    // The other employee's marker is its AMOUNT. Match the amount field, not the whole JSON: a random uuid can
+    // begin with 9999 (it did, r401 gate: id 9999172f-…), which made this red on a legitimate row.
+    expect((declarations[0].props.rows as { amount: string }[]).map((r) => r.amount)).not.toContain('9999.00');
     expect((applied[0].props.rows as { employeeName: string }[]).map((r) => r.employeeName)).toEqual([
       'Aisha Rahman',
     ]);
