@@ -189,7 +189,10 @@ describe('§3 the Requests subsection is REMOVED — where each of its six capab
     // name. The employee's own My Leave History now uses the paginated read for its date/leave-type
     // filter, narrowed to the viewer's own employments — which is the opposite of a register. Asserted
     // on the narrowing, which is what made the old call org-wide in the first place.
-    const calls = ownHistory.match(/listLeaveRequestsPage\(session, \{[\s\S]*?\n\s*\}\)/g) ?? [];
+    // UPDATED BY r394: the per-tab counts are ONE grouped read (countLeaveRequestsByStatus, same filter
+    // as the list), so the three reads are: unfiltered rows, the tab counts, the active tab's rows. The
+    // narrowing asserted below now covers the count read too.
+    const calls = ownHistory.match(/(?:listLeaveRequestsPage|countLeaveRequestsByStatus)\(session, \{[\s\S]*?\n\s*\}\)/g) ?? [];
     expect(calls).toHaveLength(3);
     for (const call of calls) {
       expect(call).toContain('employmentIds:');

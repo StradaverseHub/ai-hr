@@ -1,5 +1,5 @@
 import { getTranslations } from 'next-intl/server';
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 
 /**
  * Sub-navigation within the Holiday module (66b8f5a8 — Holiday Module Enhancement & Centralized Holiday

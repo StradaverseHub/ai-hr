@@ -22,6 +22,16 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['fontkit'],
 
   /**
+   * r394 — how long a FULLY prefetched route (components/intent-link.tsx: the sidebar prefetches the whole
+   * page on hover/focus) may be reused from the client router cache. Next's default for full prefetches is
+   * 5 minutes, which on an HR system could show a leave list or a balance that has already changed; 30 s
+   * (Next's minimum) covers hover-to-click and quick back-and-forth, and every server action that changes
+   * data already calls revalidatePath, which clears it. `dynamic` stays at its default of 0: a page reached
+   * WITHOUT a prefetch is always rendered fresh.
+   */
+  experimental: { staleTimes: { static: 30 } },
+
+  /**
    * Security (assessment 2026-09, findings M5/H3). Global response headers. Applied to every route so a
    * new page cannot forget them. The CSP is deliberately the SAFE subset — `frame-ancestors` (anti
    * clickjacking of HR/payroll screens), `object-src 'none'` and `base-uri 'self'` — and NOT a

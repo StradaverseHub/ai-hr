@@ -1,5 +1,5 @@
 import { getTranslations } from 'next-intl/server';
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 
 /**
  * Sub-navigation within Attendance > Records (314ea061 — Attendance Records tabs, Phase 1). Mirrors

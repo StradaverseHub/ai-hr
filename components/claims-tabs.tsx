@@ -1,5 +1,5 @@
 import { getTranslations } from 'next-intl/server';
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 
 /**
  * Sub-navigation within the Claims Settings module (ccbd0508 — Claim Module Simplification). Mirrors

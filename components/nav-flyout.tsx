@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 import { useEffect, useRef, type Ref } from 'react';
 import { useTranslations } from 'next-intl';
 import { ChevronRight, type LucideIcon } from 'lucide-react';

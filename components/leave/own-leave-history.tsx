@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
-import { leaveRequestDateBreakdown, myEmployment, myEmploymentIdsAll, listLeaveTypes, listLeaveRequestsPage, employeeCancelOffers, pendingCancellationProgress } from '@/core/read';
+import { leaveRequestDateBreakdown, myEmployment, myEmploymentIdsAll, listLeaveTypes, listLeaveRequestsPage, countLeaveRequestsByStatus, employeeCancelOffers, pendingCancellationProgress } from '@/core/read';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { todayInKualaLumpur } from '@/packs/leave/service';
 import { myUpcomingLeave, ownLeaveApprovalTrails, ownLeaveCancellations, ownLeaveRejections } from '@/core/my-leave';
@@ -94,27 +94,17 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
   // SQL through the read's own `statuses` filter (validated against the enum there), together with the same
   // type/date filter — so a tab's count and its rows can never disagree, and the 200-row cap is per tab rather
   // than a page of mixed statuses filtered afterwards. The count reads ask for one row and keep the total.
-  const tabCounts = Object.fromEntries(
-    await Promise.all(
-      LEAVE_HISTORY_TABS.map(
-        async (tab) =>
-          [
-            tab,
-            (
-              await listLeaveRequestsPage(session, {
-                employmentIds: historyEmploymentIds,
-                statuses: [tab],
-                leaveTypeIds: hTypeIds.length > 0 ? hTypeIds : undefined,
-                from: hFrom,
-                to: hTo,
-                limit: 1,
-                offset: 0,
-              })
-            ).total,
-          ] as const,
-      ),
-    ),
-  ) as Record<LeaveHistoryTab, number>;
+  // r394: ONE grouped count with the list's own filter (countLeaveRequestsByStatus shares
+  // leaveRequestPageWhere with listLeaveRequestsPage), not one list read per tab — that was four
+  // transactions on every visit. A tab with no rows is absent from the result and reads 0.
+  const byStatus = await countLeaveRequestsByStatus(session, {
+    employmentIds: historyEmploymentIds,
+    statuses: [...LEAVE_HISTORY_TABS],
+    leaveTypeIds: hTypeIds.length > 0 ? hTypeIds : undefined,
+    from: hFrom,
+    to: hTo,
+  });
+  const tabCounts = Object.fromEntries(LEAVE_HISTORY_TABS.map((tab) => [tab, byStatus[tab] ?? 0])) as Record<LeaveHistoryTab, number>;
   const historyTab = resolveHistoryTab(sp.hTab, tabCounts);
   const historyShown = await listLeaveRequestsPage(session, {
     employmentIds: historyEmploymentIds,

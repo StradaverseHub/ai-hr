@@ -1451,6 +1451,95 @@ export type LeaveRequestRow = Awaited<ReturnType<typeof listLeaveRequests>>[numb
  * `companyIds` is the narrowing scope fence from the company switcher (ALWAYS applied), and the individual
  * filters below narrow further. Read-only — no DomainEvent (search/filter/paginate mutate nothing).
  */
+/** r394 — the ONE filter for leave-request pages: the rows, their total and the per-status tab counts all
+ *  read this, so a tab's count and its rows can never disagree (r302's promise, now structural). */
+type LeaveRequestPageFilter = Parameters<typeof listLeaveRequestsPage>[1];
+function leaveRequestPageWhere(p: LeaveRequestPageFilter) {
+  const q = p.q?.trim();
+  // Current open assignment (≤1 row / employment) — copied from listEmployeesPage so department /
+  // business-unit / location filters resolve off the employee's CURRENT posting, shared by rows + count.
+  const currentAssignment = and(
+    eq(assignment.employmentId, employment.id),
+    isNull(assignment.validTo),
+    isNull(assignment.supersededAt),
+  );
+  // Statuses validated against the enum before hitting SQL (defence-in-depth; an unknown value would
+  // otherwise widen to nothing but a bad cast could throw). Same for the sort whitelist below.
+  const validStatuses = (p.statuses ?? []).filter((s) =>
+    (leaveRequestStatusEnum.enumValues as readonly string[]).includes(s),
+  ) as (typeof leaveRequestStatusEnum.enumValues)[number][];
+  // duration_type is a plain text column (ADR-0048), so the allow-list IS the validation.
+  const validDurations = (p.durationTypes ?? []).filter((d) =>
+    (['full_day', 'half_day_am', 'half_day_pm', 'hourly'] as readonly string[]).includes(d),
+  );
+  // uuid-prefix reference search: strip a leading '#', match when it looks like a (partial) uuid.
+  const refTerm = q?.replace(/^#/, '');
+  const isRef = !!refTerm && /^[0-9a-f-]{6,}$/i.test(refTerm);
+  const where = and(
+    p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
+    p.companyId ? eq(employment.companyId, p.companyId) : undefined,
+    p.businessUnitId ? eq(department.businessUnitId, p.businessUnitId) : undefined,
+    p.departmentId ? eq(assignment.departmentId, p.departmentId) : undefined,
+    p.locationId ? eq(assignment.locationId, p.locationId) : undefined,
+    // Multi-select column filters (feedback 8ec63139) — OR within a field, AND across fields, the same
+    // shape leaveTypeIds/statuses already had.
+    p.filterCompanyIds?.length ? inArray(employment.companyId, p.filterCompanyIds) : undefined,
+    p.businessUnitIds?.length ? inArray(department.businessUnitId, p.businessUnitIds) : undefined,
+    p.departmentIds?.length ? inArray(assignment.departmentId, p.departmentIds) : undefined,
+    p.locationIds?.length ? inArray(assignment.locationId, p.locationIds) : undefined,
+    p.employmentIds?.length ? inArray(leaveRequest.employmentId, p.employmentIds) : undefined,
+    validDurations.length ? inArray(leaveRequest.durationType, validDurations) : undefined,
+    p.leaveTypeIds && p.leaveTypeIds.length ? inArray(leaveRequest.leaveTypeId, p.leaveTypeIds) : undefined,
+    validStatuses.length ? inArray(leaveRequest.status, validStatuses) : undefined,
+    // Approval Information — "Approved by" is the stored final decider (exact match on a named person).
+    p.approvedBy ? eq(leaveRequest.decidedByEmploymentId, p.approvedBy) : undefined,
+    // "Pending with" narrows to rows whose CURRENT (first) pending approval step awaits this role. The
+    // value is whitelisted against the two approver kinds; an unknown value matches nothing rather than
+    // interpolating raw input. NB: only pending rows have a pending step, so this implicitly scopes to them.
+    p.pendingWith && (p.pendingWith === 'direct_manager' || p.pendingWith === 'hr_admin')
+      ? sql`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1) = ${p.pendingWith}`
+      : undefined,
+    // Leave-date window uses OVERLAP semantics so "July 2026" catches leave spanning a month boundary:
+    // startDate <= to AND endDate >= from.
+    p.to ? lte(leaveRequest.startDate, p.to) : undefined,
+    p.from ? gte(leaveRequest.endDate, p.from) : undefined,
+    // Application-date range compares on created_at::date (calendar day, TZ-agnostic for the admin view).
+    p.appliedFrom ? sql`${leaveRequest.createdAt}::date >= ${p.appliedFrom}` : undefined,
+    p.appliedTo ? sql`${leaveRequest.createdAt}::date <= ${p.appliedTo}` : undefined,
+    // Employee Leave Record (feedback 953be4b0) asks to search by leave CODE alongside employee id/name,
+    // so the code joins the existing OR. Widening only — every term that matched before still matches.
+    q
+      ? isRef
+        ? sql`(${person.fullName} ilike ${'%' + q + '%'} or ${employment.employeeCode} ilike ${'%' + q + '%'} or ${leaveType.code} ilike ${'%' + q + '%'} or ${leaveRequest.id}::text ilike ${refTerm + '%'})`
+        : sql`(${person.fullName} ilike ${'%' + q + '%'} or ${employment.employeeCode} ilike ${'%' + q + '%'} or ${leaveType.code} ilike ${'%' + q + '%'})`
+      : undefined,
+  );
+  return { where, currentAssignment };
+}
+
+/**
+ * r394 — per-status counts for the leave-request pages in ONE grouped query, with exactly the joins and
+ * filter `listLeaveRequestsPage` counts with. My Leave's four history tabs used to ask the list for one row
+ * per tab — four transactions, each a row read plus a count (and a working-day resolution for that row) —
+ * on every navigation to the page. `statuses` in `p` still narrows; a status with no rows is absent (0).
+ */
+export function countLeaveRequestsByStatus(ctx: SessionContext, p: Omit<LeaveRequestPageFilter, 'limit' | 'offset' | 'sort' | 'dir'>): Promise<Record<string, number>> {
+  return withTenant(ctx, async (tx) => {
+    const { where, currentAssignment } = leaveRequestPageWhere({ ...p, limit: 0, offset: 0 });
+    const rows = await tx
+      .select({ status: leaveRequest.status, count: sql<number>`count(distinct ${leaveRequest.id})::int` })
+      .from(leaveRequest)
+      .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+      .leftJoin(assignment, currentAssignment)
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .where(where)
+      .groupBy(leaveRequest.status);
+    return Object.fromEntries(rows.map((r) => [r.status, Number(r.count)]));
+  });
+}
+
 export function listLeaveRequestsPage(
   ctx: SessionContext,
   p: {
@@ -1493,65 +1582,7 @@ export function listLeaveRequestsPage(
   },
 ): Promise<{ rows: LeaveRequestRow[]; total: number }> {
   return withTenant(ctx, async (tx) => {
-    const q = p.q?.trim();
-    // Current open assignment (≤1 row / employment) — copied from listEmployeesPage so department /
-    // business-unit / location filters resolve off the employee's CURRENT posting, shared by rows + count.
-    const currentAssignment = and(
-      eq(assignment.employmentId, employment.id),
-      isNull(assignment.validTo),
-      isNull(assignment.supersededAt),
-    );
-    // Statuses validated against the enum before hitting SQL (defence-in-depth; an unknown value would
-    // otherwise widen to nothing but a bad cast could throw). Same for the sort whitelist below.
-    const validStatuses = (p.statuses ?? []).filter((s) =>
-      (leaveRequestStatusEnum.enumValues as readonly string[]).includes(s),
-    ) as (typeof leaveRequestStatusEnum.enumValues)[number][];
-    // duration_type is a plain text column (ADR-0048), so the allow-list IS the validation.
-    const validDurations = (p.durationTypes ?? []).filter((d) =>
-      (['full_day', 'half_day_am', 'half_day_pm', 'hourly'] as readonly string[]).includes(d),
-    );
-    // uuid-prefix reference search: strip a leading '#', match when it looks like a (partial) uuid.
-    const refTerm = q?.replace(/^#/, '');
-    const isRef = !!refTerm && /^[0-9a-f-]{6,}$/i.test(refTerm);
-    const where = and(
-      p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
-      p.companyId ? eq(employment.companyId, p.companyId) : undefined,
-      p.businessUnitId ? eq(department.businessUnitId, p.businessUnitId) : undefined,
-      p.departmentId ? eq(assignment.departmentId, p.departmentId) : undefined,
-      p.locationId ? eq(assignment.locationId, p.locationId) : undefined,
-      // Multi-select column filters (feedback 8ec63139) — OR within a field, AND across fields, the same
-      // shape leaveTypeIds/statuses already had.
-      p.filterCompanyIds?.length ? inArray(employment.companyId, p.filterCompanyIds) : undefined,
-      p.businessUnitIds?.length ? inArray(department.businessUnitId, p.businessUnitIds) : undefined,
-      p.departmentIds?.length ? inArray(assignment.departmentId, p.departmentIds) : undefined,
-      p.locationIds?.length ? inArray(assignment.locationId, p.locationIds) : undefined,
-      p.employmentIds?.length ? inArray(leaveRequest.employmentId, p.employmentIds) : undefined,
-      validDurations.length ? inArray(leaveRequest.durationType, validDurations) : undefined,
-      p.leaveTypeIds && p.leaveTypeIds.length ? inArray(leaveRequest.leaveTypeId, p.leaveTypeIds) : undefined,
-      validStatuses.length ? inArray(leaveRequest.status, validStatuses) : undefined,
-      // Approval Information — "Approved by" is the stored final decider (exact match on a named person).
-      p.approvedBy ? eq(leaveRequest.decidedByEmploymentId, p.approvedBy) : undefined,
-      // "Pending with" narrows to rows whose CURRENT (first) pending approval step awaits this role. The
-      // value is whitelisted against the two approver kinds; an unknown value matches nothing rather than
-      // interpolating raw input. NB: only pending rows have a pending step, so this implicitly scopes to them.
-      p.pendingWith && (p.pendingWith === 'direct_manager' || p.pendingWith === 'hr_admin')
-        ? sql`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1) = ${p.pendingWith}`
-        : undefined,
-      // Leave-date window uses OVERLAP semantics so "July 2026" catches leave spanning a month boundary:
-      // startDate <= to AND endDate >= from.
-      p.to ? lte(leaveRequest.startDate, p.to) : undefined,
-      p.from ? gte(leaveRequest.endDate, p.from) : undefined,
-      // Application-date range compares on created_at::date (calendar day, TZ-agnostic for the admin view).
-      p.appliedFrom ? sql`${leaveRequest.createdAt}::date >= ${p.appliedFrom}` : undefined,
-      p.appliedTo ? sql`${leaveRequest.createdAt}::date <= ${p.appliedTo}` : undefined,
-      // Employee Leave Record (feedback 953be4b0) asks to search by leave CODE alongside employee id/name,
-      // so the code joins the existing OR. Widening only — every term that matched before still matches.
-      q
-        ? isRef
-          ? sql`(${person.fullName} ilike ${'%' + q + '%'} or ${employment.employeeCode} ilike ${'%' + q + '%'} or ${leaveType.code} ilike ${'%' + q + '%'} or ${leaveRequest.id}::text ilike ${refTerm + '%'})`
-          : sql`(${person.fullName} ilike ${'%' + q + '%'} or ${employment.employeeCode} ilike ${'%' + q + '%'} or ${leaveType.code} ilike ${'%' + q + '%'})`
-        : undefined,
-    );
+    const { where, currentAssignment } = leaveRequestPageWhere(p);
     // Sort whitelist — NEVER interpolate user input into the ORDER BY.
     const sortCol: Record<string, AnyColumn> = {
       applied: leaveRequest.createdAt,

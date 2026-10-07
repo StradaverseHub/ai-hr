@@ -68,7 +68,10 @@ describe('leave filter panel: surviving inquiry and dedicated own History surfac
     // `statuses:` argument is now legitimate — but only ever ONE status, taken from the tab whitelist, on a read
     // that is still narrowed to the viewer. Three reads: the unfiltered one (options + total), one count per
     // tab, and the active tab's rows.
-    const pageCalls = ownHistory.match(/listLeaveRequestsPage\(session, \{[\s\S]*?\n\s*\}\)/g) ?? [];
+    // UPDATED BY r394: the per-tab counts are ONE grouped read (countLeaveRequestsByStatus, same filter
+    // as the list), so the three reads are: unfiltered rows, the tab counts, the active tab's rows. The
+    // narrowing asserted below now covers the count read too.
+    const pageCalls = ownHistory.match(/(?:listLeaveRequestsPage|countLeaveRequestsByStatus)\(session, \{[\s\S]*?\n\s*\}\)/g) ?? [];
     expect(pageCalls.length, 'the self-service history reads the paginated, self-narrowed read').toBe(3);
     for (const call of pageCalls) {
       expect(call, 'every /leave history read is narrowed to the viewer').toContain(
@@ -76,7 +79,7 @@ describe('leave filter panel: surviving inquiry and dedicated own History surfac
       );
       expect(call).not.toContain('companyIds:');
       const statuses = call.match(/statuses: (.*),/)?.[1];
-      if (statuses != null) expect(['[tab]', '[historyTab]'], `a history read narrowed by ${statuses}`).toContain(statuses);
+      if (statuses != null) expect(['[tab]', '[historyTab]', '[...LEAVE_HISTORY_TABS]'], `a history read narrowed by ${statuses}`).toContain(statuses);
     }
     expect(ownHistory).toContain('LEAVE_HISTORY_TABS.map(');
     expect(ownHistory).toContain('const historyTab = resolveHistoryTab(sp.hTab, tabCounts);');

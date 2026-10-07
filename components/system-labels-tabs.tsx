@@ -1,5 +1,5 @@
 import { getTranslations } from 'next-intl/server';
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 
 /**
  * Sub-navigation within the System Labels module (fbdeee87 — Relocate Profile Options into System Labels).

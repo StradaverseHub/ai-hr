@@ -45,7 +45,7 @@
  * tab down by handing a closure across the server/client boundary and
  * `test/server-client-boundary.test.ts` pins the class.
  */
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 import { getTranslations } from 'next-intl/server';
 
 /** Every screen in the area. The id is also its label key and its page heading. */

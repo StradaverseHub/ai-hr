@@ -182,7 +182,10 @@ describe('drift guards (source assertions)', () => {
     // employmentIds, so it can carry the My Leave History date/leave-type filter. Asserting the old literal
     // would have pinned a read the same round deliberately replaced.
     const src = read('components/leave/own-leave-history.tsx');
-    const calls = src.match(/listLeaveRequestsPage\(session, \{[\s\S]*?\n\s*\}\)/g) ?? [];
+    // UPDATED BY r394: the per-tab counts are ONE grouped read (countLeaveRequestsByStatus, same filter
+    // as the list), so the three reads are: unfiltered rows, the tab counts, the active tab's rows. The
+    // narrowing asserted below now covers the count read too.
+    const calls = src.match(/(?:listLeaveRequestsPage|countLeaveRequestsByStatus)\(session, \{[\s\S]*?\n\s*\}\)/g) ?? [];
     expect(calls).toHaveLength(3);
     for (const call of calls) {
       expect(call).toContain('employmentIds: historyEmploymentIds');

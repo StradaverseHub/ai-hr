@@ -1,5 +1,5 @@
 import { getTranslations } from 'next-intl/server';
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 
 /**
  * Sub-navigation within the Statutory Configuration module (31646c85 — Statutory Configuration UI
