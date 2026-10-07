@@ -143,6 +143,8 @@ export const BORANG_8A_ROWS_PER_PAGE = 20;
 
 /** The prefix a typed per-row STATUS override arrives under, e.g. `st_<employmentId>=BARU`. */
 export const BORANG_8A_STATUS_PARAM_PREFIX = 'st_';
+/** PERKESO's column (2) codes, from page 2 of the agency's blank Borang 8A. */
+export const BORANG_8A_STATUS_CODES: ReadonlySet<string> = new Set(['M', 'B', 'H', 'S', 'T']);
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -339,8 +341,10 @@ export function statusOverridesFrom(params: URLSearchParams): Map<string, string
   for (const [k, v] of params) {
     if (!k.startsWith(BORANG_8A_STATUS_PARAM_PREFIX)) continue;
     const id = k.slice(BORANG_8A_STATUS_PARAM_PREFIX.length);
-    const value = (v ?? '').trim().slice(0, 12);
-    if (id && value) out.set(id, value);
+    // r408 verify D3 — PERKESO's own codes only (page 2 of the agency's 8A): M, B, H, S, T. Anything else is
+    // ignored rather than printed, because a statutory box must not carry a code PERKESO does not define.
+    const value = (v ?? '').trim().toUpperCase();
+    if (id && BORANG_8A_STATUS_CODES.has(value)) out.set(id, value);
   }
   return out;
 }

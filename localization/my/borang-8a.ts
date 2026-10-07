@@ -129,8 +129,12 @@ const NOTE_STATUS =
  * r408 (item e74af58c) — COLUMN (2), DERIVED. PERKESO's codes from page 2 of the agency's Borang 8A; see THE
  * STATUS COLUMN above. Pure, so the rule is pinned without a database.
  *
- * LEAVING OUTRANKS JOINING. Somebody who joined AND left inside the same month gets H (or M): the form has
- * one status box, column (1) still shows both dates, and the later event is the one PERKESO acts on.
+ * BOTH IN THE MONTH: THE LATER EVENT DECIDES (r408 verify D1). PERKESO's page 2 lists M/B/H/S/T with no
+ * ranking, and the box holds one code, so the code follows what is true at the end of the month: left on
+ * the 5th and rejoined on the 20th is B; joined on the 3rd and left on the 25th is H (or M). On the same day,
+ * the leaving code. Column (1) still shows both dates. A join date MOVED inside the month for someone who is
+ * not new (a restructure recorded as a Join Date Change) also reads B — the records cannot tell the two
+ * apart, so the review screen lets a status be typed over it.
  * A death recorded with no termination date in the month asserts nothing here — the box is dated by the
  * month, and an undated death is not this month's.
  */
@@ -138,8 +142,12 @@ export function borang8AStatusFor(
   p: { startIso: string | null; stopIso: string | null; terminationType: string | null },
   periodKey: string,
 ): '' | 'B' | 'H' | 'M' {
-  if (fallsInMonth(p.stopIso, periodKey)) return p.terminationType === 'death' ? 'M' : 'H';
-  if (fallsInMonth(p.startIso, periodKey)) return 'B';
+  const stopped = fallsInMonth(p.stopIso, periodKey);
+  const started = fallsInMonth(p.startIso, periodKey);
+  const leaving = p.terminationType === 'death' ? 'M' : 'H';
+  if (stopped && started) return (p.startIso as string) > (p.stopIso as string) ? 'B' : leaving;
+  if (stopped) return leaving;
+  if (started) return 'B';
   return '';
 }
 
