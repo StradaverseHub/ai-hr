@@ -791,7 +791,12 @@ describe('the header, the preparer block and the gates', () => {
     expect(money(4173.9)).toBe('4,173.90');
     expect(money(0)).toBe('0.00');
     const form = cp39FormFrom({ header: header(), rows: [] });
+    // r409 — the form's employer number no longer carries the "E" (the page prints it beside the box), and
+    // the filename puts it back: unchanged for this E-prefixed fixture, and the same for one typed without.
     expect(cp39FormFilename(form, 'pdf')).toBe('cp39-E0094573909-202601.pdf');
+    expect(cp39FormFilename(cp39FormFrom({ header: header({ employerNo: '0094573909' }), rows: [] }), 'pdf')).toBe(
+      'cp39-E0094573909-202601.pdf',
+    );
     expect(cp39FormFilename(cp39FormFrom({ header: header({ employerNo: '' }), rows: [] }), 'txt')).toMatch(
       /^cp39-EMP-/,
     );
@@ -1011,8 +1016,15 @@ describe('the three surfaces cannot disagree', () => {
   });
 
   it('never nests forms, which browsers silently drop', () => {
-    expect(PREVIEW).toContain('<input type="hidden" name="companyId"');
-    expect(PREVIEW).toContain('<input type="hidden" name="periodKey"');
+    // r409 — the schedule form's company and period now come from `cp39DocumentPairs`, the list that also
+    // carries the payroll cycles (test/r409-cp39-lhdn.test.ts pins it); the hand-written pair is gone.
+    expect(PREVIEW_CODE).toContain('const hiddenPairs = cp39DocumentPairs({ companyId, periodKey, runSeqs });');
+    const schedule = PREVIEW.slice(PREVIEW.indexOf('<form method="get" action="/payroll/cp39/preview">'));
+    const scheduleForm = schedule.slice(0, schedule.indexOf('</form>'));
+    expect(PREVIEW.indexOf('<form method="get" action="/payroll/cp39/preview">')).toBeGreaterThanOrEqual(0);
+    expect(scheduleForm.length).toBeGreaterThan(3000);
+    expect(scheduleForm).toContain('<input key={`${h.name}-${i}`} type="hidden" name={h.name} value={h.value} />');
+    expect(scheduleForm).not.toContain('<input type="hidden" name="companyId"');
     expect(maxFormDepth(PREVIEW_CODE)).toBe(1);
   });
 
@@ -1153,7 +1165,9 @@ describe('the text export', () => {
   const txt = cp39FormTextExport(form);
 
   it('carries the employer block, the period and both payment totals', () => {
-    expect(txt).toContain('E0094573909');
+    // r409 — the label carries the "(E)"; the value is the number without it, so the E appears once.
+    expect(txt).toContain('No. Majikan (E)              : 0094573909');
+    expect(txt).not.toContain('E0094573909');
     expect(txt).toContain('ISEDECOR BINA SDN BHD');
     expect(txt).toContain('POTONGAN BAGI BULAN JANUARI TAHUN 2026');
     expect(txt).toContain('198.75');
@@ -1368,7 +1382,14 @@ describe('7ee14bbc — the schedule prints the DEDUCTED, and the count beside it
   });
 });
 
-describe('7ee14bbc — identity card numbers are dashed AT RENDER, and nowhere else', () => {
+/**
+ * ⚠️ r409 (item 79f3f64d) REVERSED HALF OF THIS. 7ee14bbc dashed the No. K/P Baru on the drawn page; LHDN's own
+ * CP39 instructions write it as twelve digits, so the PDF now prints digits only (`cp39IcForForm`, applied in
+ * `cp39FormFrom`). `formatMyIc` and its conservatism are unchanged, and it stays on the review SCREEN. The
+ * guards below were UPDATED to the new decision rather than deleted; test/r409-cp39-lhdn.test.ts carries the
+ * new rule's own cases and its non-vacuity checks.
+ */
+describe('7ee14bbc / r409 — identity card numbers: dashed on the SCREEN, digits on the form', () => {
   it.each([
     ['941128035179', '941128-03-5179'],
     ['860208105128', '860208-10-5128'],
@@ -1394,11 +1415,11 @@ describe('7ee14bbc — identity card numbers are dashed AT RENDER, and nowhere e
     expect(form.pages[0].rows[0].newIc).toBe('941128035179');
   });
 
-  it('draws the whole formatted number on the page, and the raw one nowhere', async () => {
+  it('r409 — draws the twelve digits on the page, and the dashed form nowhere', async () => {
     const form = cp39FormFrom({ header: header(), rows: [row({ employmentId: 'a', newIc: '941128035179' })] });
     const drawn = await drawnText(await renderCp39FormPdf(form));
-    expect(drawn).toContain('941128-03-5179');
-    expect(drawn).not.toContain('941128035179');
+    expect(drawn).toContain('941128035179');
+    expect(drawn).not.toContain('941128-03-5179');
   });
 
   /**
@@ -1407,14 +1428,17 @@ describe('7ee14bbc — identity card numbers are dashed AT RENDER, and nowhere e
    * would have shipped `941128-03-517` — a different identity card number, on every row, looking
    * completely normal. The premise is asserted rather than assumed.
    */
-  it('shrinks to fit rather than truncating, which is the only reason the dashes are safe', async () => {
+  it('shrinks to fit rather than truncating, so an identifier wider than its box is drawn whole', async () => {
+    // r409 — the dashed number no longer reaches the page, but the premise this case pinned still matters:
+    // a fourteen-character identifier (a stored value that is not a MyKad is printed as stored) is wider
+    // than the No. K/P Baru column, and the old `textClip` would have cut it short on a tax document.
     const doc = await PDFDocument.create();
     const font = await doc.embedFont(StandardFonts.Helvetica);
     const col = CP39_TABLE_COLUMNS.find((c) => c.key === 'newIc')!;
-    expect(font.widthOfTextAtSize('941128-03-5179', CP39_ROW_SIZE)).toBeGreaterThan(col.width - 4);
+    expect(font.widthOfTextAtSize('A1234567-B9876', CP39_ROW_SIZE)).toBeGreaterThan(col.width - 4);
 
-    const form = cp39FormFrom({ header: header(), rows: [row({ employmentId: 'a', newIc: '941128035179' })] });
-    expect(await drawnText(await renderCp39FormPdf(form))).toContain('941128-03-5179');
+    const form = cp39FormFrom({ header: header(), rows: [row({ employmentId: 'a', newIc: 'A1234567-B9876' })] });
+    expect(await drawnText(await renderCp39FormPdf(form))).toContain('A1234567-B9876');
     expect(PDF_CODE, 'the clipping renderer is gone, not merely unused').not.toContain('textClip');
   });
 
@@ -1450,13 +1474,15 @@ describe('7ee14bbc — identity card numbers are dashed AT RENDER, and nowhere e
     for (const line of file.content.split('\r\n').filter(Boolean).slice(1)) expect(line).toHaveLength(136);
   });
 
-  it('cannot be reached by the formatter at all, and IS applied on both render surfaces', () => {
+  it('cannot be reached by the formatter at all, and is applied on the SCREEN only (r409)', () => {
     // The file builder reads `employee_statutory_my.ic_number` straight from the database; it has never
     // imported the printed form's model and must not start.
     expect(code('localization/my/cp39-file.ts')).not.toContain('formatMyIc');
     expect(code('localization/my/cp39-file.ts')).not.toContain('cp39-form');
-    // Source-shape across BOTH halves of the contract: a unit test of either one passes throughout.
-    expect(PDF_CODE).toContain('formatMyIc(r.newIc)');
+    // Source-shape across BOTH halves of the contract: a unit test of either one passes throughout. r409
+    // reversed the drawn page's half: the PDF prints what the row model hands it, which is digits.
+    expect(PDF_CODE).not.toContain('formatMyIc');
+    expect(PDF_CODE).toContain("left('newIc', r.newIc);");
     expect(PREVIEW_CODE).toContain('formatMyIc(r.newIc)');
   });
 
@@ -2517,7 +2543,9 @@ describe('0fea5cc9 — page two is the specimen’s ruled schedule, and its page
       const head = runs.filter((r) => r.top <= Y.tableTop);
       const text = head.map((r) => r.text).join(' ');
       expect(text, `sheet carrying ${marker} lost its employer number`).toContain('No. Majikan');
-      expect(text).toContain('E0094573909');
+      // r409 — the bold "E" is the form's own, beside the box; the stored prefix is not printed again.
+      expect(text).toContain('0094573909');
+      expect(text).not.toContain('E0094573909');
       expect(text).toContain('ISEDECOR BINA SDN BHD');
       expect(text).toContain('POTONGAN BAGI BULAN JANUARI 2026');
       // `No. Majikan E <number>` sits at the LEFT of the same line the page number closes at the right.
