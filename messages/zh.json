@@ -4457,7 +4457,7 @@
       "socsoEisDownloadTitle": "合并 SOCSO + EIS 缴款文本文件（ASSIST，v2.0 含 SKBBK）",
       "legendTitle": "每张表单的状态代表什么",
       "fidelity_official": "官方表单",
-      "fidelity_official_hint": "政府自己的印制表单，由您的薪资数据填入。目前仅 CP22。",
+      "fidelity_official_hint": "政府自己的印制表单，由您的薪资数据填入。",
       "fidelity_figures": "仅数据",
       "fidelity_figures_hint": "表单所需的每一个数字，完整且可下载或打印——但采用我们的版式，而非机构本身的文件。",
       "fidelity_draft_file": "上传文件 · 草稿",

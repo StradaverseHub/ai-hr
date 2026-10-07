@@ -4860,7 +4860,7 @@
       "socsoEisDownloadTitle": "Combined SOCSO + EIS contribution textfile (ASSIST, v2.0 with SKBBK)",
       "legendTitle": "What the status on each form means",
       "fidelity_official": "Official form",
-      "fidelity_official_hint": "The government’s own printed form, filled in from your payroll. Today: CP22 only.",
+      "fidelity_official_hint": "The government’s own printed form, filled in from your payroll.",
       "fidelity_figures": "Figures only",
       "fidelity_figures_hint": "Every number the form needs, complete and ready to download or print — laid out our way, not on the agency’s own document.",
       "fidelity_draft_file": "Upload file · draft",

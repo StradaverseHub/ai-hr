@@ -4457,7 +4457,7 @@
       "socsoEisDownloadTitle": "Fail teks caruman SOCSO + EIS gabungan (ASSIST, v2.0 dengan SKBBK)",
       "legendTitle": "Maksud status pada setiap borang",
       "fidelity_official": "Borang rasmi",
-      "fidelity_official_hint": "Borang bercetak kerajaan sendiri, diisi daripada payroll anda. Setakat ini: CP22 sahaja.",
+      "fidelity_official_hint": "Borang bercetak kerajaan sendiri, diisi daripada payroll anda.",
       "fidelity_figures": "Angka sahaja",
       "fidelity_figures_hint": "Setiap angka yang diperlukan borang, lengkap dan sedia dimuat turun atau dicetak — dalam susun atur kami, bukan pada dokumen agensi itu sendiri.",
       "fidelity_draft_file": "Fail muat naik · draf",

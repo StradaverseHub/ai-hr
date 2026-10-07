@@ -4457,7 +4457,7 @@
       "socsoEisDownloadTitle": "Tệp văn bản đóng góp SOCSO + EIS kết hợp (ASSIST, v2.0 với SKBBK)",
       "legendTitle": "Ý nghĩa của trạng thái trên mỗi biểu mẫu",
       "fidelity_official": "Biểu mẫu chính thức",
-      "fidelity_official_hint": "Biểu mẫu in của chính cơ quan nhà nước, được điền từ dữ liệu lương của bạn. Hiện nay: chỉ CP22.",
+      "fidelity_official_hint": "Biểu mẫu in của chính cơ quan nhà nước, được điền từ dữ liệu lương của bạn.",
       "fidelity_figures": "Chỉ số liệu",
       "fidelity_figures_hint": "Đầy đủ mọi con số biểu mẫu cần, sẵn sàng tải về hoặc in — nhưng theo bố cục của chúng tôi, không phải trên tài liệu của chính cơ quan.",
       "fidelity_draft_file": "Tệp tải lên · bản nháp",

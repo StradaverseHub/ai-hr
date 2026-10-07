@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getLocale, getTranslations } from 'next-intl/server';
+import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { complianceWorklist, listStatutoryCatalog } from '@/core/reporting';
@@ -49,7 +49,6 @@ export default async function EventSelectPage({
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.eventSelect');
   const tf = await getTranslations('payroll.statutoryForms');
-  const locale = await getLocale();
 
   const catalog = await listStatutoryCatalog(s, scopeIds);
   const link = eventLinkOf(catalog.links, formId);
@@ -65,8 +64,8 @@ export default async function EventSelectPage({
   // The form's own short name, as the mockup heads the screen ("CP22A — choose the employee"); the full
   // catalog title is the shelf card's.
   const formName = link.event.form;
-  const dateFmt = new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
-  const human = (iso: string) => dateFmt.format(new Date(`${iso}T00:00:00Z`));
+  // dd/mm/yyyy, as the mockup and LHDN's own forms write a date — never the viewer locale's month-first order.
+  const human = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
   const isLeaving = link.event.form === 'CP22A';
   const backHref = '/payroll/statutory-forms';
 
@@ -131,12 +130,12 @@ export default async function EventSelectPage({
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[36rem] text-sm">
+              <table className="w-full text-sm sm:min-w-[36rem]">
                 <thead className={`border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground monolith:border-ink ${MONO_LABEL}`}>
                   <tr>
                     <th className="px-3 py-2 font-medium">{t('colName')}</th>
-                    <th className="px-3 py-2 font-medium">{t('colEvent')}</th>
-                    <th className="px-3 py-2 font-medium">{t('colEventDate')}</th>
+                    <th className="hidden px-3 py-2 font-medium sm:table-cell">{t('colEvent')}</th>
+                    <th className="hidden px-3 py-2 font-medium sm:table-cell">{t('colEventDate')}</th>
                     <th className="px-3 py-2 font-medium">{t('colDueBy')}</th>
                     <th className="px-3 py-2 font-medium">{t('colStatus')}</th>
                     <th className="px-3 py-2 text-right font-medium">{t('colSelect')}</th>
@@ -152,8 +151,8 @@ export default async function EventSelectPage({
                             {w.name}
                           </label>
                         </td>
-                        <td className="px-3 py-3">{t(isLeaving ? 'event_CP22A' : 'event_CP22')}</td>
-                        <td className="px-3 py-3 font-mono text-xs tabular-nums">{human(w.eventDate)}</td>
+                        <td className="hidden px-3 py-3 sm:table-cell">{t(isLeaving ? 'event_CP22A' : 'event_CP22')}</td>
+                        <td className="hidden px-3 py-3 font-mono text-xs tabular-nums sm:table-cell">{human(w.eventDate)}</td>
                         <td className="px-3 py-3 font-mono text-xs tabular-nums">{human(w.dueBy)}</td>
                         <td className={`px-3 py-3 font-mono text-xs uppercase tracking-wide ${STATUS_CLS[w.status]}`}>
                           {tf(`status_${w.status}` as 'status_upcoming')}
