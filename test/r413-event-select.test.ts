@@ -209,15 +209,18 @@ describe('r413 · CP22 moved onto the screen and its document did not change', (
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'cp22-pdf.ts'), atBaseline('lib/cp22-pdf.ts'));
     fs.writeFileSync(path.join(dir, 'cp22-fields.ts'), atBaseline('lib/cp22-fields.ts'));
-    const baseline = (await import(path.join(dir, 'cp22-pdf.ts'))) as typeof import('../lib/cp22-pdf');
-    const data = (await cp22Particulars(adminCtx(b), { employmentId: joinerId, today: TODAY }))!;
-    expect(data).not.toBeNull();
-    const template = new Uint8Array(fs.readFileSync(path.join(ROOT, 'public', 'forms', 'cp22-pin-1-2021.pdf')));
-    const [now, then] = await Promise.all([renderCp22Pdf(template, data), baseline.renderCp22Pdf(template, data)]);
-    const [a, z] = [await stable(now), await stable(then)];
-    expect(a.length).toBeGreaterThan(100_000);
-    expect(a === z).toBe(true);
-    fs.rmSync(path.dirname(dir), { recursive: true, force: true });
+    try {
+      const baseline = (await import(path.join(dir, 'cp22-pdf.ts'))) as typeof import('../lib/cp22-pdf');
+      const data = (await cp22Particulars(adminCtx(b), { employmentId: joinerId, today: TODAY }))!;
+      expect(data).not.toBeNull();
+      const template = new Uint8Array(fs.readFileSync(path.join(ROOT, 'public', 'forms', 'cp22-pin-1-2021.pdf')));
+      const [now, then] = await Promise.all([renderCp22Pdf(template, data), baseline.renderCp22Pdf(template, data)]);
+      const [a, z] = [await stable(now), await stable(then)];
+      expect(a.length).toBeGreaterThan(100_000);
+      expect(a === z).toBe(true);
+    } finally {
+      fs.rmSync(path.dirname(dir), { recursive: true, force: true });
+    }
   });
 
   it('reads the record with the baseline’s own `cp22Particulars` — the slice is found, long and identical', () => {
