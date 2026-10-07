@@ -36,7 +36,7 @@ import { listApprovalHistory } from '@/core/read';
 import { shapeApprovalHistoryItems } from '@/lib/approval-history';
 import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
-import { UI_THEME_COOKIE, resolveUiTheme } from '@/lib/ui-theme';
+import { currentUiTheme } from '@/lib/ui-theme-server';
 import { UiThemeProvider } from '@/components/ui-theme-context';
 import { IntentBar } from '@/components/intent-bar';
 import { ShellRoutePath, ShellLiveClock, ShellStatusLine } from '@/components/shell-top-line';
@@ -76,7 +76,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // r396 — the UI theme, from the `ui_theme` cookie, written onto <html> so the FIRST paint is already in
   // the chosen theme (no flash). Absent or unknown → Monolith (lib/ui-theme.ts). Read before the auth
   // branch so /login is themed too. Light/dark is a separate axis (next-themes' `.dark` class).
-  const uiTheme = resolveUiTheme((await cookies()).get(UI_THEME_COOKIE)?.value);
+  // r401 — read through lib/ui-theme-server.ts, the ONE reader, so a page that branches on the theme (the
+  // Dashboard, My Profile) gets the very value written here.
+  const uiTheme = await currentUiTheme();
 
   if (isAuthRoute) {
     // Bare shell for the login flow: fonts + theme + intl, no sidebar / topbar / session.
