@@ -1,3 +1,21 @@
+## r398 — 2026-10-07 · main@a04fe36d0401f3e300abe3343c3cfa639f8a20c8 · migration none
+
+**Scope.** Monolith rollout STEP 2, the shell (docs/design/monolith README §3). No board item.
+
+**Decisions.** Classic stays today's shell: Monolith is delivered by a `monolith:` Tailwind variant (`@custom-variant monolith (&:where([data-ui-theme='monolith'] *))`) appended after each Classic class string, and by theme branches (`useUiTheme()`, server value from the layout so hydration matches) only where the structure differs: the rail (`monolithRail()`, walking the same filtered groups and active-row rules — no nav membership changed; no icons, mono rows, children inline with one aria-current child in signal-text, `AIHR / SYSTEM 01` brand line, user line), the top line (mono route path, company switcher as mono text, live clock, notification count), the INTENT BAR (opens the existing CommandBar via `openCommandBar(query)` — no second palette), and a footer line showing scope only (no system-health or last-sweep source exists to stand behind "Sys OK"). Collapse is disabled in Monolith only. DECISION (parent): the README hides the rail below 900px, but nothing else opens navigation at those widths, so the Monolith rail keeps Classic's breakpoints; the width replica and overlap guard pin "no Monolith-only hide".
+
+**Verification.** Builder: 12 DOM + 8 node tests, 10 mutations, 74 shell-related files, test:browser incl. a 27-width no-overflow sweep that caught a real `max-[899px]` off-by-one; Classic proven unchanged by pixel diffs of before/after screenshots. Full gate at a04fe36d (main incl. r397/r399 merged): 20/20, 1,199 of 1,199, first pass; test:browser 116 + 1 expected fail; next build (6144 heap). Production: refs a04fe36d, stale_build=0, GET / 401; screenshot shows the Monolith shell.
+
+**Not done.** Steps 3–6 (primitives, screens, objects). Untranslated-by-a-native strings: topbar.live, topbar.scope, notifications.countWord. The intent bar shows on every page (no per-screen opt-out yet).
+
+## r399 — 2026-10-07 · main@f79f0259f529dfafd1426fbf70389c8555495858 · migration none
+
+**Scope.** The owner: "in the feedback page, when I click into a feedback item, there's weird empty white boxes in between the navigation". Reproduced on production: r394's loading shell (three empty cards and a panel) showed for ~350 ms on a feedback item (heavy page, board links not prefetched).
+
+**Decisions.** components/route-loading.tsx draws a title, a subtitle and hairline rows (no cards), with theme tokens, and fades in only after 150 ms (`.route-loading` in globals.css; none under reduced motion). IntentLink waits INTENT_DWELL_MS (80 ms) of resting pointer before a full prefetch (focus/touch immediate) so sweeping a long list does not render every row's page; the feedback board's rows use it.
+
+**Verification.** test/r399-quiet-navigation.dom.test.tsx (dwell, pass-over, focus/touch, prefetch={false} wins, board wiring, no cards, delayed fade); mutations (instant escalation; r394's boxed shell) fail 3 by name. Full gate at 4f23608e: 19/20 green, chunk 10 red with ZERO AssertionErrors (17 timeouts under load), re-run green 60/60; 1,197 of 1,197. Production: refs f79f0259; hover-then-click on a feedback item shows the finished item 60 ms after the click, no shell at any sample.
+
 ## r397 — 2026-10-07 · main@7a712b0669fe38b20e38befa6aca90c0eff7ef3a · migration none
 
 **Scope.** No board item; the owner's navigation-speed goal. My Leave (/leave) was the last slow employee page after r395 (~530 ms server on production, not RLS-bound).
