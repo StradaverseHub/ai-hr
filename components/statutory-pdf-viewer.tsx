@@ -60,7 +60,16 @@ export type StatutoryPdfViewerProps = {
   controls?: ReactNode;
   /** An optional column beside the document. */
   sidePanel?: ReactNode;
+  /**
+   * r413 — the page's TRUE shape. Absent ⇒ A4 (210:297), which is every form before CP22A, so their markup
+   * is unchanged. LHDN publishes CP22A [Pin.1/2023] on US Letter (612 × 792 pt), and framing it at A4 would
+   * show it stretched — the thing the reporter asked this viewer never to do.
+   */
+  pageShape?: 'a4' | 'letter';
 };
+
+/** Literal class strings, so Tailwind sees them. */
+const PAGE_SHAPE_CLS = { a4: 'aspect-[210/297]', letter: 'aspect-[612/792]' } as const;
 
 /**
  * The frame's source: the inline route exactly, plus a PDF open parameter asking the browser's viewer to
@@ -84,6 +93,7 @@ export function StatutoryPdfViewer({
   frameTitle,
   controls,
   sidePanel,
+  pageShape = 'a4',
 }: StatutoryPdfViewerProps) {
   const [primary, ...rest] = downloads;
   return (
@@ -117,14 +127,14 @@ export function StatutoryPdfViewer({
 
       <div className={sidePanel ? 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]' : undefined}>
         <div className="space-y-3 rounded-lg bg-muted/40 p-2 sm:p-6 monolith:rounded-none monolith:bg-pressed">
-          {/* ONE A4 PAGE AT ITS TRUE SHAPE: the frame keeps the 210:297 ratio at every width, so the browser
+          {/* ONE PAGE AT ITS TRUE SHAPE (A4 210:297 unless `pageShape` says Letter): the ratio holds at every width, so the browser
               scales the page to fit rather than stretching it. Wider than a page would be useful only for
               squinting at a cell, so it stops at 64rem; a second page scrolls inside the frame. */}
           <StatutoryPdfFrame
             src={pdfFrameSrc(pdfUrl)}
             inlinePath={pdfUrl.split('?')[0]}
             title={frameTitle}
-            className="mx-auto block aspect-[210/297] w-full max-w-5xl border border-border bg-white shadow-sm monolith:border-hairline monolith:shadow-none"
+            className={`mx-auto block ${PAGE_SHAPE_CLS[pageShape]} w-full max-w-5xl border border-border bg-white shadow-sm monolith:border-hairline monolith:shadow-none`}
           />
           <p className="text-center">
             <a

@@ -1183,6 +1183,16 @@ export const SCREENS: readonly ScreenEntry[] = [
       // revoke. Its FOUR siblings under /payroll/cp22 (the [employmentId] pdf and text downloads, batch and
       // blank) are route handlers, not guarded pages, so they are not listed — the check walks page.tsx.
       '/payroll/cp22/[employmentId]/preview',
+      // r413 (item 79f3f64d, step 2): the CP22A viewer — one leaver's notice on LHDN's own page, framed, with
+      // the four boxes only the operator can answer. Same scopedAdmin key as the CP22 review screen above
+      // and for the same reason: it shows one named person's IC, TIN, address and year's pay. Its `pdf`
+      // sibling is a route handler, not a guarded page. Registered for test/function-access.test.ts.
+      '/payroll/cp22a/[employmentId]/preview',
+      // r413 (item 79f3f64d, step 2): the event-selection screen for forms about one person (CP22, CP22A) —
+      // Company, then the people the event happened to, with a name search. Same scopedAdmin key as the
+      // directory that links to it: it lists names with joining or leaving dates. Its `continue` sibling is
+      // a route handler (a redirect), not a guarded page. Registered for test/function-access.test.ts.
+      '/payroll/statutory-forms/event',
       // 8ca344bf: the Borang 8A review step, between the PERKESO shelf's figures screen and the two
       // downloads. Same scopedAdmin key as the directory that links to it and as the [formId] screen above
       // — it lists every employee's name, IC and SOCSO contribution for the month, so it is admin-scoped

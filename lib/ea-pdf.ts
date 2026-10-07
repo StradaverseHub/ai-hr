@@ -28,7 +28,8 @@
 // another payroll system's rendering of the agency's page, the same provenance as the CP39, Borang 8A
 // and Borang A references. So the EA's shelf entry (`my.ea`; `my.ea.en` / `my.ea.ms` before r402) declares `agency-layout` (drawn to the agency's own
 // arrangement, on our own paper, with no agency artwork on disk) and may NEVER declare `official`;
-// `public/forms/` still holds exactly one genuine artwork, `cp22-pin-1-2021.pdf`. AGENTS 28b: nothing
+// `public/forms/` holds only the agency artwork listed in `MY_OFFICIAL_ARTWORK` (CP22, and CP22A since
+// r413) — no C.P.8A. AGENTS 28b: nothing
 // here asserts what LHDN does or does not publish — only what this repository holds, which
 // `public/forms/` answers.
 //

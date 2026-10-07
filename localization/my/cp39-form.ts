@@ -80,7 +80,7 @@ import type { ReportParams } from './reports';
  *
  * THE FIRST NOTE IS THE ONE THAT MATTERS AND IT IS NOT DECORATION. Since r218 the page follows the
  * agency's own ARRANGEMENT — traced from the filled specimen at `docs/forms/cp39-pin-2015-specimen.png`
- * — but the ARTWORK is still not ours to print: `public/forms/` contains one file and it is the CP22.
+ * — but the ARTWORK is still not ours to print: `public/forms/` holds no CP39 (only the CP22 and CP22A).
  * That is why `my.cp39` declares `fidelity: 'agency-layout'` and never `official`. Overstating it is
  * precisely the failure the fidelity vocabulary exists to prevent, and under-stating it (this comment
  * said `figures` for a day after the catalog said otherwise) invites the next reader to "correct" the

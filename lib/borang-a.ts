@@ -32,8 +32,8 @@
  * "Developer Express Inc. DXperience v23.2.5") is a FILLED OUTPUT from another payroll vendor's engine.
  * It is not KWSP artwork, it carries no form fields, and KWSP publishes no blank Borang A to print onto.
  * So there is nothing to overlay: the page is drawn, and the catalog entry declares `agency-layout` —
- * never `official`, which in this codebase means the government's own published page and belongs to
- * `my.cp22` alone. test/statutory-forms-page.test.ts pins that.
+ * never `official`, which in this codebase means the government's own published page and belongs only to
+ * the forms in `MY_OFFICIAL_ARTWORK` (CP22, CP22A). test/statutory-forms-page.test.ts pins that.
  */
 
 /** One employee's line on the form — the specimen's own columns, in its own order. */
