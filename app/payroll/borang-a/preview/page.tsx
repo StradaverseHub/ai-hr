@@ -81,21 +81,13 @@ const REP_FIELD_LABEL: Record<string, string> = {
 };
 
 
-/** The run-type word for a cycle label, through an explicit map (the shared picker's own words). */
-function runTypeWord(t: (k: 'runTypeRegular' | 'runTypeOffCycle' | 'runTypeBonus' | 'runTypeAdjustment') => string, runType: string) {
-  switch (runType) {
-    case 'regular':
-      return t('runTypeRegular');
-    case 'off_cycle':
-      return t('runTypeOffCycle');
-    case 'bonus':
-      return t('runTypeBonus');
-    case 'adjustment':
-      return t('runTypeAdjustment');
-    default:
-      return null;
-  }
-}
+/** The run-type word for a cycle label, through an EXPLICIT map (the shared picker's own words). */
+const RUN_TYPE_KEY: Record<string, 'runTypeRegular' | 'runTypeOffCycle' | 'runTypeBonus' | 'runTypeAdjustment'> = {
+  regular: 'runTypeRegular',
+  off_cycle: 'runTypeOffCycle',
+  bonus: 'runTypeBonus',
+  adjustment: 'runTypeAdjustment',
+};
 
 export default async function BorangAPreviewPage({ searchParams }: { searchParams: Promise<Search> }) {
   const t = await getTranslations('payroll.borangA');
@@ -158,7 +150,10 @@ export default async function BorangAPreviewPage({ searchParams }: { searchParam
           .filter((r) => runSeqs.includes(r.runSeq))
           .map(
             (r) =>
-              payslipCycleLabel({ cycleName: r.cycleName, runTypeLabel: runTypeWord(tr, r.runType) }) ??
+              payslipCycleLabel({
+                cycleName: r.cycleName,
+                runTypeLabel: RUN_TYPE_KEY[r.runType] ? tr(RUN_TYPE_KEY[r.runType]) : null,
+              }) ??
               tr('run', { seq: r.runSeq }),
           )
           .join(', ');

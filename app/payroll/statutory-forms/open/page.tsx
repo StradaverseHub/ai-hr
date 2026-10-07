@@ -6,7 +6,7 @@ import { listCompanies } from '@/core/read';
 import { listStatutoryCatalog } from '@/core/reporting';
 import { Card, PageHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { Field } from '@/components/monolith/field';
-import { MONO_UNDERLINE_FIELD as MONO_FIELD } from '@/components/monolith/classes';
+import { MONO_LABEL, MONO_UNDERLINE_FIELD as MONO_FIELD } from '@/components/monolith/classes';
 import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
 import { parseRunSelection } from '@/lib/payroll-run-selection';
 import { CyclesCriterion } from './cycles-criterion';
@@ -298,7 +298,12 @@ export default async function StatutoryFormCriteriaPage({
           {/* r407 (item 4f45f9b0) — PAYROLL CYCLE, for a monthly form filed per cycle. Below the row of
               selects because it is a list, not a box; it re-lists whenever Company, Year or Month changes. */}
           {field('cycles') && field('company') && field('year') && field('month') && (
-            <Field label={t('cycles')} hint={t('cycles_hint')}>
+            // A FIELDSET, NOT `Field`: `Field` is a <label> that contains its control, and a label around a
+            // list of checkboxes and a Clear button turns a click on any of its text into a click on the
+            // FIRST control — Select all. One legend names the group instead.
+            <fieldset data-criterion="cycles" className="space-y-2 monolith:border-t monolith:border-ink monolith:pt-4">
+              <legend className={`text-sm font-medium ${MONO_LABEL} monolith:text-mid`}>{t('cycles')}</legend>
+              <p className="text-xs text-muted-foreground monolith:text-[12px] monolith:text-mid">{t('cycles_hint')}</p>
               <CyclesCriterion
                 companyField={field('company')!.field}
                 yearField={field('year')!.field}
@@ -314,7 +319,7 @@ export default async function StatutoryFormCriteriaPage({
                   partialWarning: t('cycles_partial'),
                 }}
               />
-            </Field>
+            </fieldset>
           )}
           {/* r407 — THE CONTINUE GATE'S ANSWER, on the step it refused from. Allowlisted; nothing produced. */}
           {refusal && (

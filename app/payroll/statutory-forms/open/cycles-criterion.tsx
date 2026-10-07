@@ -53,7 +53,7 @@ export function CyclesCriterion({
     const read = () => {
       const v = (name: string) => {
         const el = form.elements.namedItem(name);
-        return el && 'value' in el ? String((el as HTMLSelectElement).value) : '';
+        return el instanceof HTMLSelectElement || el instanceof HTMLInputElement ? el.value : '';
       };
       setCrit({ companyId: v(companyField), year: v(yearField), month: v(monthField) });
     };
